@@ -66,7 +66,14 @@ If neither file exists, ssqch warns that the CSS and JS haven't been built.
 
 Options: `--output DIR`, `--env development|production` (otherwise `$SSQCH_ENV`, `$ELEVENTY_ENV`,
 `$NODE_ENV`; defaults to production for `build`, development for `serve`), `--verbose` for
-per-phase timings, `--quiet`.
+per-phase timings and the slowest images to encode, `--quiet` to print only warnings and errors.
+
+Like Eleventy, a build prints a line for each page it writes and each image it encodes:
+
+```text
+[ssqch] Encoded ./src/site/content/images/hero.png into 10 files (webp, png) in 51.06ms
+[ssqch] Writing ./dist/about/index.html from ./src/site/pages/about.md (edge, md)
+```
 
 ## Layout
 

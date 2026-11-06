@@ -91,6 +91,10 @@ fn an_eleventy_style_config_runs_on_ssqch_modules() {
     // RSS plugin filters and the named absoluteUrl export (WHATWG URL rules).
     assert!(html.contains("https://example.com/blog/#top https://example.com/ 2026-03-14T00:00:00Z"), "{}", html);
 
+    // A line per page written and per image encoded, like Eleventy's output.
+    assert!(log.contains("[ssqch] Writing ./dist/index.html from ./src/index.edge (edge)"), "{}", log);
+    assert!(log.contains("[ssqch] Encoded ./src/img/squatch.png into 4 files (webp, png) in "), "{}", log);
+
     // Options and plugins ssqch can't honor are reported, not silently dropped.
     assert!(log.contains("sharpWebpOptions.effort is ignored"), "{}", log);
     assert!(log.contains("eleventy-plugin-broken-links isn't available in ssqch"), "{}", log);

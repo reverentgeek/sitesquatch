@@ -168,6 +168,10 @@ pub struct ImageProcessor {
     /// Every derivative this build produced or reused, for `prune`.
     used: Mutex<HashSet<PathBuf>>,
     hashes: Mutex<hash_cache::HashCache>,
+    /// Set from the build's `--quiet`.
+    quiet: std::sync::atomic::AtomicBool,
+    /// Every source image encoded this build: (path, files written, time).
+    timings: Mutex<Vec<(PathBuf, usize, std::time::Duration)>>,
     warned: Mutex<HashSet<String>>,
 }
 
@@ -181,6 +185,8 @@ impl ImageProcessor {
             reused: AtomicUsize::new(0),
             used: Mutex::new(HashSet::new()),
             hashes: Mutex::new(hash_cache::HashCache::default()),
+            quiet: std::sync::atomic::AtomicBool::new(false),
+            timings: Mutex::new(Vec::new()),
             warned: Mutex::new(HashSet::new()),
         })
     }
@@ -298,9 +304,23 @@ impl ImageProcessor {
         let reused = meta.formats.values().map(Vec::len).sum::<usize>() - jobs.len();
         self.reused.fetch_add(reused, Ordering::Relaxed);
         if !jobs.is_empty() {
+            let started = std::time::Instant::now();
             let img = decode(src)?;
             jobs.par_iter().try_for_each(|job| self.encode(&img, job).with_context(|| format!("encoding {}", job.path.display())))?;
             self.generated.fetch_add(jobs.len(), Ordering::Relaxed);
+            let took = started.elapsed();
+            if !self.quiet.load(Ordering::Relaxed) {
+                let formats: Vec<&str> = meta.formats.keys().map(|f| f.ext()).collect();
+                println!(
+                    "[ssqch] Encoded {} into {} file{} ({}) in {:.2?}",
+                    sitesquatch::display_path(&ctx, src),
+                    jobs.len(),
+                    if jobs.len() == 1 { "" } else { "s" },
+                    formats.join(", "),
+                    took
+                );
+            }
+            self.timings.lock().unwrap().push((src.to_path_buf(), jobs.len(), took));
         }
         Ok(meta)
     }
@@ -713,6 +733,7 @@ impl Plugin for ImagePlugin {
             // Source files may have changed between dev-server builds.
             p.memo.lock().unwrap().clear();
             p.used.lock().unwrap().clear();
+            p.timings.lock().unwrap().clear();
             if p.options.hash_cache {
                 p.hashes.lock().unwrap().load(ctx.root.join(CACHE_FILE));
             }
@@ -726,6 +747,8 @@ impl Plugin for ImagePlugin {
         }
         let p = self.processor.clone();
         let quiet = cfg.quiet;
+        let verbose = cfg.verbose;
+        self.processor.quiet.store(quiet, Ordering::Relaxed);
         cfg.on_after_build(move |ctx, _| {
             let pruned = if p.options.prune { p.prune(&ctx.output_dir.join(&p.options.output_subdir))? } else { 0 };
             if p.options.hash_cache {
@@ -735,6 +758,16 @@ impl Plugin for ImagePlugin {
                 }
             }
             let busy = p.generated.load(Ordering::Relaxed) + p.reused.load(Ordering::Relaxed) + pruned > 0;
+            if verbose && !quiet {
+                let mut timings = p.timings.lock().unwrap().clone();
+                timings.sort_by(|a, b| b.2.cmp(&a.2));
+                if !timings.is_empty() {
+                    println!("Slowest images to encode:");
+                    for (src, files, took) in timings.iter().take(10) {
+                        println!("  {:>8.2?}  {} ({} files)", took, sitesquatch::display_path(ctx, src), files);
+                    }
+                }
+            }
             if !quiet && busy {
                 println!(
                     "Images: generated {} files, reused {}{}",

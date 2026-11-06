@@ -186,6 +186,10 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
                     std::fs::create_dir_all(parent)?;
                 }
                 std::fs::write(out, html).with_context(|| format!("writing {}", out.display()))?;
+                if !cfg.quiet {
+                    // One line per page, like Eleventy's `[11ty] Writing ... from ... (edge)`.
+                    println!("[ssqch] Writing {} from {} ({})", display_path(&ctx, out), display_path(&ctx, &page.tpl.input), page.tpl.engines.join(", "));
+                }
                 Ok(out.clone())
             }))
             .collect(),
@@ -627,6 +631,14 @@ fn edge_code_mentions(body: &str, word: &str) -> bool {
         }
     }
     false
+}
+
+/// `./dist/about/index.html` for a path inside the project, else the full path.
+pub fn display_path(ctx: &BuildContext, path: &Path) -> String {
+    match path.strip_prefix(&ctx.root) {
+        Ok(rel) => format!("./{}", rel.display()),
+        Err(_) => path.display().to_string(),
+    }
 }
 
 fn render_computed(value: &Value, data: &Map, engines: &Engines, name: &str) -> Result<Value> {
