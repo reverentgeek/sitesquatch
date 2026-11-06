@@ -15,14 +15,20 @@
 //! one lock, so pages render in parallel but JavaScript runs one call at a
 //! time, which keeps module-level state in the config behaving as it would in
 //! Node.
+//!
+//! The same engine runs JavaScript data files (`_data/*.js` and
+//! `*.11tydata.js`), and provides the parts of Node's `fs`, `path`, `url`,
+//! `process` and `Buffer` that configs and data files commonly use.
 
 mod convert;
 mod modules;
+mod native;
 
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
+use std::time::SystemTime;
 
 use anyhow::{anyhow, bail, Context as _, Result};
 use rquickjs::{CatchResultExt, Context, Ctx, Function, Object, Runtime};
@@ -43,10 +49,12 @@ pub fn find_config(root: &Path) -> Option<PathBuf> {
 }
 
 /// Run the config module at `path` and apply what it registers to `cfg`.
+/// JavaScript data files are enabled too (see [`add_data_files`]).
 pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)]) -> Result<()> {
     let path = std::fs::canonicalize(path).with_context(|| format!("reading {}", path.display()))?;
-    let root = std::fs::canonicalize(&cfg.root).unwrap_or_else(|_| cfg.root.clone());
+    let root = project_root(cfg);
     let engine = Engine::new(&root, cfg.env.as_str())?;
+    install_data_files(cfg, DataFiles::new(&root, cfg.env.as_str(), Some(engine.clone())));
     let specifier = modules::specifier(&root, &path);
     let result = engine
         .with(|ctx| {
@@ -64,6 +72,82 @@ pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)]) -
         })
         .with_context(|| file_name(&path))?;
     apply(cfg, &engine, &result, builtins).with_context(|| file_name(&path))
+}
+
+/// Read `_data/*.js` and `*.11tydata.js` data files (and `.mjs`). A data
+/// file's default export is the data, or a function (sync or async) that
+/// returns it, called on every build. The engine starts on first use, so this
+/// costs nothing for a site without JavaScript data files.
+pub fn add_data_files(cfg: &mut Config) {
+    let root = project_root(cfg);
+    install_data_files(cfg, DataFiles::new(&root, cfg.env.as_str(), None));
+}
+
+fn install_data_files(cfg: &mut Config, files: DataFiles) {
+    let files = Arc::new(files);
+    for ext in ["js", "mjs"] {
+        let files = files.clone();
+        cfg.add_data_extension(ext, move |path| files.load(path));
+    }
+}
+
+fn project_root(cfg: &Config) -> PathBuf {
+    std::fs::canonicalize(&cfg.root).unwrap_or_else(|_| cfg.root.clone())
+}
+
+struct DataFiles {
+    root: PathBuf,
+    env: String,
+    engine: Mutex<Option<Arc<Engine>>>,
+    /// Modification time and reload count of every data file seen, so a
+    /// changed file is imported fresh during `ssqch serve`.
+    versions: Mutex<HashMap<PathBuf, (Option<SystemTime>, u32)>>,
+}
+
+impl DataFiles {
+    fn new(root: &Path, env: &str, engine: Option<Arc<Engine>>) -> Self {
+        DataFiles { root: root.to_path_buf(), env: env.to_string(), engine: Mutex::new(engine), versions: Mutex::new(HashMap::new()) }
+    }
+
+    fn engine(&self) -> Result<Arc<Engine>> {
+        let mut slot = self.engine.lock().unwrap();
+        if let Some(engine) = &*slot {
+            return Ok(engine.clone());
+        }
+        let engine = Engine::new(&self.root, &self.env)?;
+        *slot = Some(engine.clone());
+        Ok(engine)
+    }
+
+    fn load(&self, path: &Path) -> Result<Value> {
+        let name = modules::name(&self.root, path);
+        (|| {
+            let engine = self.engine()?;
+            let modified = std::fs::metadata(path)?.modified().ok();
+            let version = {
+                let mut versions = self.versions.lock().unwrap();
+                let entry = versions.entry(path.to_path_buf()).or_insert((modified, 0));
+                if entry.0 != modified {
+                    *entry = (modified, entry.1 + 1);
+                }
+                entry.1
+            };
+            let mut specifier = modules::specifier(&self.root, path);
+            if version > 0 {
+                specifier.push_str(&format!("?v={}", version));
+            }
+            engine.with(|ctx| {
+                let value = rquickjs::Module::import(&ctx, specifier.as_bytes())
+                    .and_then(|p| p.finish::<Object>())
+                    .and_then(|namespace| ctx.globals().get::<_, Object>("__ssqch")?.get::<_, Function>("loadData")?.call::<_, rquickjs::Value>((namespace,)))
+                    .and_then(convert::settle)
+                    .catch(&ctx)
+                    .map_err(|e| convert::caught(e))?;
+                Conv::new(&ctx, &engine)?.from_js(value)
+            })
+        })()
+        .with_context(|| name)
+    }
 }
 
 fn file_name(path: &Path) -> String {
@@ -184,13 +268,16 @@ impl Engine {
             })?;
             globals.set("__ssqch_print", print)?;
             globals.set("process", process_object(&ctx, root, env)?)?;
-            let mut options = rquickjs::context::EvalOptions::default();
-            options.global = true;
-            options.filename = Some(convert::PRELUDE_NAME.into());
-            ctx.eval_with_options::<(), _>(include_str!("prelude.js"), options)
-                .catch(&ctx)
-                .map_err(|e| convert::caught(e))
-                .context("internal error in the ssqch prelude")?;
+            native::install(&ctx, root)?;
+            for source in [include_str!("prelude.js"), include_str!("node.js")] {
+                let mut options = rquickjs::context::EvalOptions::default();
+                options.global = true;
+                options.filename = Some(convert::PRELUDE_NAME.into());
+                ctx.eval_with_options::<(), _>(source, options)
+                    .catch(&ctx)
+                    .map_err(|e| convert::caught(e))
+                    .context("internal error in the ssqch prelude")?;
+            }
             Ok(())
         })?;
         Ok(engine)

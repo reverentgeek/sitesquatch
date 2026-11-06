@@ -62,8 +62,12 @@ pub fn yaml_to_value(v: serde_yaml::Value) -> Value {
     }
 }
 
-/// Load a JSON, YAML or TOML data file into a value.
-pub fn load_data_file(path: &Path) -> Result<Option<Value>> {
+/// Loads a data file in a format added with `Config::add_data_extension`.
+pub type DataLoader = Arc<dyn Fn(&Path) -> Result<Value> + Send + Sync>;
+
+/// Load a JSON, YAML or TOML data file, or one in an `extra` format, into a
+/// value. `None` means the format isn't known.
+pub fn load_data_file(path: &Path, extra: &[(String, DataLoader)]) -> Result<Option<Value>> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let read = || std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()));
     let value = match ext {
@@ -73,7 +77,10 @@ pub fn load_data_file(path: &Path) -> Result<Option<Value>> {
             let t: toml::Value = toml::from_str(&read()?).with_context(|| format!("invalid TOML in {}", path.display()))?;
             Value::from(serde_json::to_value(t)?)
         }
-        _ => return Ok(None),
+        _ => match extra.iter().find(|(e, _)| e == ext) {
+            Some((_, load)) => load(path)?,
+            None => return Ok(None),
+        },
     };
     Ok(Some(value))
 }
@@ -117,8 +124,8 @@ pub fn normalize_tags(data: &mut Map) {
 
 /// Read every data file in the global data directory. Subdirectories become
 /// nested objects. Returns the data and the names of files that could not be
-/// loaded (for example JavaScript data files).
-pub fn load_global_data(dir: &Path) -> Result<(Map, Vec<String>)> {
+/// loaded (in a format nothing handles).
+pub fn load_global_data(dir: &Path, extra: &[(String, DataLoader)]) -> Result<(Map, Vec<String>)> {
     let mut data = Map::new();
     let mut skipped = Vec::new();
     if !dir.is_dir() {
@@ -134,10 +141,10 @@ pub fn load_global_data(dir: &Path) -> Result<(Map, Vec<String>)> {
         }
         let stem = path.file_stem().unwrap().to_string_lossy().to_string();
         if path.is_dir() {
-            let (nested, nested_skipped) = load_global_data(&path)?;
+            let (nested, nested_skipped) = load_global_data(&path, extra)?;
             data.insert(name.clone(), Value::object(nested));
             skipped.extend(nested_skipped.into_iter().map(|s| format!("{}/{}", name, s)));
-        } else if let Some(value) = load_data_file(&path)? {
+        } else if let Some(value) = load_data_file(&path, extra)? {
             data.insert(stem, value);
         } else {
             skipped.push(name);

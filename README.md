@@ -122,10 +122,52 @@ embedded in the `ssqch` binary (it adds about 1.2 MB), so modern JavaScript work
 | `setDataDeepMerge`, `setTemplateFormats`, `set{Input,Output,Includes,Data}Directory` | Settings, also accepted in the returned object or `export const config`. |
 | `config.env`, `config.isProduction`, `config.isDevelopment`, `config.serving` | Which build this is. `process.env` works too. |
 
-Imports can be relative files (`./lib/filters.js`, with or without the extension) and JSON
-(`import site from "./site.json"`). Template values cross over as plain JavaScript values, and
-dates arrive as `Date` objects. Pages render in parallel, but JavaScript runs one call at a time, so
-module-level state in your config behaves the way it would in Node.
+Imports can be relative files (`./lib/filters.js`, with or without the extension), JSON
+(`import site from "./site.json"`), and these Node built-ins, with or without the `node:` prefix:
+
+| Module | What's there |
+| --- | --- |
+| `node:fs` | `readFileSync`, `writeFileSync`, `appendFileSync`, `existsSync`, `statSync`, `lstatSync`, `readdirSync` (with `withFileTypes`), `mkdirSync`, `rmSync`, `unlinkSync`, `renameSync`, `copyFileSync`, `realpathSync`, `accessSync`, and `fs.promises` |
+| `node:fs/promises` | The async versions of the above |
+| `node:path` | All of `path.posix`, matching Node's results on [a set of edge cases](crates/sitesquatch-js/tests/fixtures/path-cases.mjs) |
+| `node:url` | `fileURLToPath`, `pathToFileURL` (and `import.meta.url` is set) |
+| `node:process`, `node:buffer` | `process.env`, `process.cwd()`, `process.platform`, and `Buffer` (also a global) with `utf8`, `hex`, `base64`, `base64url` and `latin1` |
+
+Errors carry Node's codes (`err.code === "ENOENT"`), and relative paths resolve against the
+project root, like running Node from there.
+
+Template values cross over as plain JavaScript values, and dates arrive as `Date` objects. Pages
+render in parallel, but JavaScript runs one call at a time, so module-level state in your config
+behaves the way it would in Node.
+
+### JavaScript data files
+
+Like Eleventy, `_data/*.js` files are global data, and `*.11tydata.js` files next to a template or
+in a folder (`posts/posts.11tydata.js`) are template and directory data. The default export is the
+data, or a function (sync or async) that returns it:
+
+```js
+// src/_data/snacks.js
+import { readFile } from "node:fs/promises";
+
+export default async function () {
+  return JSON.parse(await readFile("data/snacks.json", "utf8"));
+}
+```
+
+```js
+// src/posts/posts.11tydata.js
+export default {
+  tags: "posts",
+  eleventyComputed: {
+    permalink: (data) => `/snacks/${data.page.fileSlug}/`,
+  },
+};
+```
+
+Data functions run on every build. `ssqch serve` reloads a data file when it changes (files it
+imports stay cached until you restart). These work with `sitesquatch.toml` sites too, no
+`ssqch.config.js` needed.
 
 Built-in plugin options:
 
@@ -140,8 +182,8 @@ Errors point back at your code: `ssqch.config.js: too many pine cones` followed 
 like `at bad (lib/filters.js:3:9)`. Misspelled plugin names and options are errors, not silently
 ignored.
 
-> **Note:** these aren't supported yet: npm packages and `node:` built-ins (`fs`, `path`),
-> `addCollection`, `addTransform`, `on("eleventy.before")`, paired shortcodes, timers and
+> **Note:** these aren't supported yet: npm packages, CommonJS (`require`, `module.exports`),
+> Node built-ins beyond the ones above (such as `node:crypto`), `addCollection`, `addTransform`, `on("eleventy.before")`, paired shortcodes, timers and
 > `fetch`. Calling an unsupported method fails with a message saying so. After editing the config,
 > restart `ssqch serve` to pick up the changes.
 >
@@ -289,9 +331,11 @@ differ on purpose:
 
 ## Not done yet / known gaps
 
-- JavaScript config covers filters, shortcodes, global data and settings so far. `_data/*.js` files
-  are skipped with a warning (use `addGlobalData` for now), and see the note under
-  [Configuring a site](#configuring-a-site) for what else isn't supported yet.
+- JavaScript config and data files don't cover npm packages, CommonJS, collections, transforms or
+  build hooks yet; see the note under [Configuring a site](#configuring-a-site).
+- An `eleventyComputed` function gets a copy of the page's data, including all global data, on every
+  call. That's fine for a blog (about 65 µs per page with 46 KB of global data), but it will add up
+  on large sites until values are passed to JavaScript without copying.
 - Edge: no `@inject`, `@debugger`, `@svg`, components-as-tags (`@!card()`), destructuring in
   `@let`, scoped slots, regex literals, or the `in` operator. Array `reverse`/`sort` return copies
   rather than mutating.

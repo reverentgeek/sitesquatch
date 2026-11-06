@@ -29,7 +29,10 @@ fn configure(cfg: &mut Config) -> Result<()> {
     match sitesquatch_js::find_config(&cfg.root) {
         Some(js) if toml.is_file() => bail!("found both {} and sitesquatch.toml; keep one of them", js.file_name().unwrap_or_default().to_string_lossy()),
         Some(js) => sitesquatch_js::load(cfg, &js, BUILTINS),
-        None => sitesquatch::site_toml::apply(cfg),
+        None => {
+            sitesquatch_js::add_data_files(cfg);
+            sitesquatch::site_toml::apply(cfg)
+        }
     }
 }
 

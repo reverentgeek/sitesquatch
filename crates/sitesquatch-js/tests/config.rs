@@ -1,25 +1,15 @@
 //! End-to-end tests: write a small site with an `ssqch.config.js`, build it,
 //! and check the output.
 
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+mod common;
+
+use std::path::Path;
+
+use common::project;
 
 use anyhow::Result;
 use sitesquatch::{Config, Environment, Value};
 use sitesquatch_js::BuiltinPlugin;
-
-/// A fresh, empty project directory.
-fn project(files: &[(&str, &str)]) -> PathBuf {
-    static N: AtomicUsize = AtomicUsize::new(0);
-    let dir = std::env::temp_dir().join(format!("ssqch-js-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
-    let _ = std::fs::remove_dir_all(&dir);
-    for (path, text) in files {
-        let path = dir.join(path);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path, text).unwrap();
-    }
-    dir
-}
 
 /// A stand-in for a built-in plugin: registers a filter that reads its options.
 fn greeter(cfg: &mut Config, options: &serde_json::Value) -> Result<()> {
@@ -163,7 +153,7 @@ fn errors_point_at_the_config_source() {
 fn unsupported_things_say_so() {
     assert!(load_error("export default (c) => c.addCollection(\"posts\", () => []);").contains("config.addCollection() isn't supported by ssqch yet"));
     assert!(load_error("import x from \"left-pad\"; export default () => {};").contains("importing npm packages isn't supported"));
-    assert!(load_error("import fs from \"node:fs\"; export default () => {};").contains("Node built-in modules aren't available"));
+    assert!(load_error("import c from \"node:crypto\"; export default () => {};").contains("node:crypto isn't available in ssqch"));
     assert!(load_error("export default () => ({ dir: { layouts: \"_layouts\" } });").contains("dir.layouts isn't supported"));
     assert!(load_error("export default (c) => c.addPlugin(\"test:gretter\");").contains("unknown plugin \"test:gretter\" (built-in plugins: test:greeter)"));
     assert!(load_error("export default async () => { await new Promise(() => {}); };").contains("never settled"));

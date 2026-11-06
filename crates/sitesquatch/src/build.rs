@@ -101,7 +101,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     }
 
     // ---- global data
-    let (mut global, skipped) = data::load_global_data(&ctx.data_dir)?;
+    let (mut global, skipped) = data::load_global_data(&ctx.data_dir, &cfg.data_extensions)?;
     let provided: Vec<(String, Result<Value>)> = cfg
         .global_data
         .par_iter()
@@ -113,7 +113,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     for file in skipped {
         let stem = file.rsplit('/').next().unwrap_or(&file).split('.').next().unwrap_or("");
         if !global.contains_key(stem) && !cfg.quiet {
-            eprintln!("warn: skipped _data/{} (only JSON, YAML and TOML are read; provide `{}` with Config::add_global_data)", file, stem);
+            eprintln!("warn: skipped _data/{} (no loader for that format; provide `{}` with Config::add_global_data)", file, stem);
         }
     }
     let version = env!("CARGO_PKG_VERSION");
@@ -129,7 +129,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
 
     // ---- templates
     let files = discover(cfg, &ctx)?;
-    let dir_data = load_directory_data(&ctx, &files)?;
+    let dir_data = load_directory_data(cfg, &ctx, &files)?;
     let layouts: Mutex<HashMap<String, Arc<Layout>>> = Mutex::new(HashMap::new());
     let tpls: Vec<Arc<Tpl>> = collect_errors(
         files.par_iter().map(|path| load_template(cfg, &ctx, path, &global, &dir_data, &layouts).map(Arc::new)).collect(),
@@ -273,7 +273,7 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
 
 /// Directory data files: `posts/posts.json` (or `posts/posts.11tydata.json`)
 /// applies to everything inside `posts/`.
-fn load_directory_data(ctx: &BuildContext, files: &[PathBuf]) -> Result<HashMap<PathBuf, Map>> {
+fn load_directory_data(cfg: &Config, ctx: &BuildContext, files: &[PathBuf]) -> Result<HashMap<PathBuf, Map>> {
     let mut dirs: HashSet<PathBuf> = HashSet::new();
     for f in files {
         let mut dir = f.parent();
@@ -289,13 +289,19 @@ fn load_directory_data(ctx: &BuildContext, files: &[PathBuf]) -> Result<HashMap<
     for dir in dirs {
         let name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let mut data = Map::new();
+        let mut candidates = Vec::new();
         for ext in ["json", "yaml", "yml", "toml"] {
-            for candidate in [format!("{}.{}", name, ext), format!("{}.11tydata.{}", name, ext)] {
-                let path = dir.join(&candidate);
-                if path.is_file() {
-                    if let Some(Value::Obj(o)) = data::load_data_file(&path)? {
-                        merge(&mut data, &o, true);
-                    }
+            candidates.push(format!("{}.{}", name, ext));
+            candidates.push(format!("{}.11tydata.{}", name, ext));
+        }
+        // Added formats (JavaScript) only with the `.11tydata.` suffix, so a
+        // `posts/posts.js` script isn't mistaken for data.
+        candidates.extend(cfg.data_extensions.iter().map(|(ext, _)| format!("{}.11tydata.{}", name, ext)));
+        for candidate in candidates {
+            let path = dir.join(&candidate);
+            if path.is_file() {
+                if let Some(Value::Obj(o)) = data::load_data_file(&path, &cfg.data_extensions)? {
+                    merge(&mut data, &o, true);
                 }
             }
         }
@@ -359,10 +365,11 @@ fn load_template(
             }
         }
         let stem = path.file_stem().unwrap().to_string_lossy().to_string();
-        for ext in ["json", "11tydata.json"] {
-            let candidate = path.with_file_name(format!("{}.{}", stem, ext));
+        let suffixes = ["json".to_string(), "11tydata.json".to_string()].into_iter().chain(cfg.data_extensions.iter().map(|(ext, _)| format!("11tydata.{}", ext)));
+        for suffix in suffixes {
+            let candidate = path.with_file_name(format!("{}.{}", stem, suffix));
             if candidate.is_file() {
-                if let Some(Value::Obj(o)) = data::load_data_file(&candidate)? {
+                if let Some(Value::Obj(o)) = data::load_data_file(&candidate, &cfg.data_extensions)? {
                     merge(&mut own, &o, cfg.data_deep_merge);
                 }
             }
@@ -603,6 +610,8 @@ fn render_computed(value: &Value, data: &Map, engines: &Engines, name: &str) -> 
             }
             Value::object(out)
         }
+        // A function (from a JavaScript data file) gets the page's data, like Eleventy.
+        Value::Func(f) => f.call(&[Value::object(data.clone())])?,
         other => other.clone(),
     })
 }

@@ -145,6 +145,13 @@
 		dateMs: v => v instanceof Date ? v.getTime() : undefined,
 		makeDate: ms => new Date( ms ),
 
+		// A data file's value: its default export, called if it's a function.
+		async loadData( module ) {
+			if ( !( "default" in module ) ) throw new Error( "a data file needs a default export: the data, or a function that returns it" );
+			const value = module.default;
+			return typeof value === "function" ? await value() : value;
+		},
+
 		async run( module, env, serving ) {
 			const { config, ops, settings, pending } = makeConfig( env, serving );
 			applyReturned( settings, module.config, "export const config" );

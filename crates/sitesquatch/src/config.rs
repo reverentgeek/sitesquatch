@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
+use crate::data::DataLoader;
 use crate::engines::{EngineEnv, TemplateEngine};
 use crate::Value;
 
@@ -153,6 +154,7 @@ pub struct Config {
     pub(crate) passthrough: Vec<(PathBuf, Option<PathBuf>)>,
     pub(crate) filters: Vec<(String, Value)>,
     pub(crate) global_data: Vec<(String, DataFn)>,
+    pub(crate) data_extensions: Vec<(String, DataLoader)>,
     pub(crate) collections: Vec<(String, CollectionFn)>,
     pub(crate) transforms: Vec<(String, TransformFn)>,
     pub(crate) engines: Vec<(String, EngineFactory)>,
@@ -181,6 +183,7 @@ impl Config {
             passthrough: Vec::new(),
             filters: Vec::new(),
             global_data: Vec::new(),
+            data_extensions: Vec::new(),
             collections: Vec::new(),
             transforms: Vec::new(),
             engines: Vec::new(),
@@ -237,6 +240,19 @@ impl Config {
         F: Fn(&BuildContext) -> Result<Value> + Send + Sync + 'static,
     {
         self.global_data.push((name.into(), Arc::new(f)));
+        self
+    }
+
+    /// Read data files with another extension, like Eleventy's
+    /// `addDataExtension`: `_data/name.<ext>` and `name.11tydata.<ext>`
+    /// template and directory data files. `f` gets the file's path.
+    pub fn add_data_extension<F>(&mut self, ext: impl Into<String>, f: F) -> &mut Self
+    where
+        F: Fn(&Path) -> Result<Value> + Send + Sync + 'static,
+    {
+        let ext = ext.into();
+        self.data_extensions.retain(|(e, _)| *e != ext);
+        self.data_extensions.push((ext, Arc::new(f)));
         self
     }
 
