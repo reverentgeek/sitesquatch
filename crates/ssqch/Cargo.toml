@@ -1,0 +1,22 @@
+[package]
+name = "ssqch"
+description = "The SiteSquatch command-line tool, configured by ssqch.config.js or sitesquatch.toml"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ssqch"
+path = "src/main.rs"
+
+[features]
+avif = ["sitesquatch-plugin-image/avif"]
+
+[dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+sitesquatch.workspace = true
+sitesquatch-js.workspace = true
+sitesquatch-plugin-rss.workspace = true
+sitesquatch-plugin-image.workspace = true
+sitesquatch-plugin-minify.workspace = true

@@ -58,17 +58,115 @@ per-phase timings, `--quiet`.
 ## Layout
 
 ```text
+crates/ssqch             The `ssqch` command-line tool, configured by ssqch.config.js or sitesquatch.toml
+crates/sitesquatch       Generator core, CLI and dev server, as a library
 crates/sitesquatch-edge  Edge.js template engine (parser + JavaScript expression evaluator)
-crates/sitesquatch       Generator core, CLI, dev server; `ssqch` binary configured by sitesquatch.toml
+crates/sitesquatch-js    ssqch.config.js support, on an embedded QuickJS engine
 plugins/rss              getNewestCollectionItemDate, dateToRfc3339/822, absoluteUrl, htmlToAbsoluteUrls, url
 plugins/image            <img> -> responsive <picture> (like @11ty/eleventy-img's transform)
 plugins/minify           Conservative HTML minifier (like html-minifier-terser's collapseWhitespace)
 examples/reverentgeek    The blog's .eleventy.js, src/utils/eleventy/*.js and _data/*.js, ported to Rust
 ```
 
-## Writing a site or plugin
+## Configuring a site
 
-A site is a small Rust binary, the counterpart of `.eleventy.js`:
+Install the `ssqch` command:
+
+```sh
+cargo install --path crates/ssqch                    # add --features avif for AVIF images
+```
+
+Then put an `ssqch.config.js` in your project root. If you've written an Eleventy config, this will
+look familiar:
+
+```js
+// ssqch.config.js
+import { slugify } from "./src/utils/slugify.js";
+import site from "./src/site.json";
+
+export default function (config) {
+  config.addPassthroughCopy({ "src/assets/fonts": "fonts" });
+  config.addWatchTarget("src/assets/");
+
+  config.addFilter("slug", (s) => slugify(s));
+  config.addFilter("isoDate", (d) => d.toISOString().slice(0, 10));
+  config.addShortcode("year", () => String(new Date().getFullYear()));
+  config.addGlobalData("site", site);
+  config.addGlobalData("snacks", async () => [{ name: "Pine Cone Crunch", stars: 5 }]);
+
+  config.addPlugin("ssqch:rss");
+  config.addPlugin("ssqch:image", { widths: [300, 600, 1200], formats: ["webp", "auto"] });
+  if (config.isProduction) config.addPlugin("ssqch:minify");
+
+  return { dir: { input: "src", output: "dist" }, templateFormats: ["edge", "md"] };
+}
+```
+
+```sh
+ssqch build                 # production build
+ssqch serve --port 8080     # development build, watch and live reload
+```
+
+No Node install needed. The config runs on [QuickJS](https://github.com/quickjs-ng/quickjs),
+embedded in the `ssqch` binary (it adds about 1.2 MB), so modern JavaScript works: ES modules,
+`async`/`await`, arrow functions and the standard built-ins.
+
+| In your config | What it does |
+| --- | --- |
+| `addFilter`, `addShortcode` (and their `Async` versions) | Functions callable from templates: `{{ slug(title) }}`. Async functions are awaited. |
+| `addGlobalData(name, value)` | Data for every template. Pass a function (sync or async) to compute it on each build. |
+| `addPassthroughCopy(path)` or `({ from: to })` | Copy files or folders into the output. |
+| `addWatchTarget(path)` | More paths for `ssqch serve` to watch. |
+| `addPlugin("ssqch:rss" \| "ssqch:image" \| "ssqch:minify", options)` | Turn on a built-in plugin. |
+| `addPlugin(fn, options)` | Call `fn(config, options)`, like an Eleventy plugin. |
+| `setDataDeepMerge`, `setTemplateFormats`, `set{Input,Output,Includes,Data}Directory` | Settings, also accepted in the returned object or `export const config`. |
+| `config.env`, `config.isProduction`, `config.isDevelopment`, `config.serving` | Which build this is. `process.env` works too. |
+
+Imports can be relative files (`./lib/filters.js`, with or without the extension) and JSON
+(`import site from "./site.json"`). Template values cross over as plain JavaScript values, and
+dates arrive as `Date` objects. Pages render in parallel, but JavaScript runs one call at a time, so
+module-level state in your config behaves the way it would in Node.
+
+Built-in plugin options:
+
+- **`ssqch:image`:** `formats` (`avif`, `webp`, `jpeg`, `png`, `auto`), `widths`,
+  `defaultAttributes`, `outputDir`, `urlPath`, `webpQuality`, `avifQuality`, `avifSpeed`,
+  `jpegQuality`, `minimumThreshold`, `prune`. AVIF needs `ssqch` built with `--features avif`.
+- **`ssqch:minify`:** `collapseWhitespace`, `removeComments`, `shortDoctype` (all `true` by
+  default).
+- **`ssqch:rss`:** no options.
+
+Errors point back at your code: `ssqch.config.js: too many pine cones` followed by a stack trace
+like `at bad (lib/filters.js:3:9)`. Misspelled plugin names and options are errors, not silently
+ignored.
+
+> **Note:** these aren't supported yet: npm packages and `node:` built-ins (`fs`, `path`),
+> `addCollection`, `addTransform`, `on("eleventy.before")`, paired shortcodes, timers and
+> `fetch`. Calling an unsupported method fails with a message saying so. After editing the config,
+> restart `ssqch serve` to pick up the changes.
+>
+> QuickJS has no `Intl`, so `toLocaleDateString()` and friends ignore their locale and options
+> and use the machine's time zone: a `2026-03-14` front matter date comes out as `03/13/2026` west of
+> UTC. Format dates yourself from the `getUTC*()` methods or `toISOString()`.
+
+### Configuring with TOML
+
+Sites that need no code at all can use a `sitesquatch.toml` instead (use one or the other). Every
+key is optional; see `crates/sitesquatch/src/site_toml.rs` for the full list.
+
+```toml
+input = "src"
+output = "public"
+template_formats = ["edge", "md", "html"]
+
+[passthrough]
+"src/robots.txt" = ""   # empty keeps the path relative to the input directory
+```
+
+## Extending ssqch in Rust
+
+When JavaScript isn't enough (a new template engine, a heavy transform), a site can be its own small
+Rust binary. That's how the ReverentGeek blog is built:
 
 ```rust
 fn main() -> std::process::ExitCode {
@@ -97,26 +195,6 @@ the `Config`:
 
 Plugins can share services. The image plugin exposes an `ImageProcessor`, and the blog plugin uses
 it for `heroImage` data and the `socialImage` filter.
-
-### No Rust required
-
-Sites that don't need custom code can use the plain `ssqch` binary with a `sitesquatch.toml` in
-the project root. Every key is optional; see `crates/sitesquatch/src/site_toml.rs` for the full list.
-
-```toml
-input = "src"
-output = "public"
-template_formats = ["edge", "md", "html"]
-
-[passthrough]
-"src/robots.txt" = ""   # empty keeps the path relative to the input directory
-```
-
-```sh
-cargo install --path crates/sitesquatch   # installs `ssqch`
-ssqch build
-ssqch serve --port 8080
-```
 
 ### Supported Eleventy features
 
@@ -211,8 +289,9 @@ differ on purpose:
 
 ## Not done yet / known gaps
 
-- Plugins are Rust only. JavaScript (QuickJS) or WASM plugins would let `_data/*.js` and filters run
-  unchanged; today JS data files are skipped with a warning.
+- JavaScript config covers filters, shortcodes, global data and settings so far. `_data/*.js` files
+  are skipped with a warning (use `addGlobalData` for now), and see the note under
+  [Configuring a site](#configuring-a-site) for what else isn't supported yet.
 - Edge: no `@inject`, `@debugger`, `@svg`, components-as-tags (`@!card()`), destructuring in
   `@let`, scoped slots, regex literals, or the `in` operator. Array `reverse`/`sort` return copies
   rather than mutating.

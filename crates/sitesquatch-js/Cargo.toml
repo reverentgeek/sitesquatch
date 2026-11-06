@@ -1,0 +1,13 @@
+[package]
+name = "sitesquatch-js"
+description = "JavaScript site configuration (ssqch.config.js) for SiteSquatch, on QuickJS"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+sitesquatch.workspace = true
+rquickjs = { version = "0.14", features = ["loader", "parallel"] }

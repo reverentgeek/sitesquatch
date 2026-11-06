@@ -1,0 +1,289 @@
+//! `ssqch.config.js`: configure a SiteSquatch build in JavaScript, like
+//! Eleventy's `eleventy.config.js`.
+//!
+//! ```js
+//! export default function (config) {
+//!   config.addPassthroughCopy({ "src/assets/fonts": "fonts" });
+//!   config.addFilter("shout", (s) => s.toUpperCase());
+//!   config.addPlugin("ssqch:image", { widths: [300, 600, 1200] });
+//!   return { dir: { input: "src", output: "dist" } };
+//! }
+//! ```
+//!
+//! The config runs on an embedded QuickJS engine, so no Node install is
+//! needed. Every call into JavaScript (filters, data functions) goes through
+//! one lock, so pages render in parallel but JavaScript runs one call at a
+//! time, which keeps module-level state in the config behaving as it would in
+//! Node.
+
+mod convert;
+mod modules;
+
+use std::cell::Cell;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, Weak};
+
+use anyhow::{anyhow, bail, Context as _, Result};
+use rquickjs::{CatchResultExt, Context, Ctx, Function, Object, Runtime};
+use sitesquatch::{Config, Func, Value};
+
+use convert::Conv;
+
+/// Config file names looked for in the project root, in order.
+pub const CONFIG_FILES: [&str; 2] = ["ssqch.config.js", "ssqch.config.mjs"];
+
+/// A built-in Rust plugin that the config can enable by name, such as
+/// `config.addPlugin("ssqch:image", { ... })`. It receives the options object.
+pub type BuiltinPlugin = fn(&mut Config, &serde_json::Value) -> Result<()>;
+
+/// The config file in `root`, if there is one.
+pub fn find_config(root: &Path) -> Option<PathBuf> {
+    CONFIG_FILES.iter().map(|name| root.join(name)).find(|p| p.is_file())
+}
+
+/// Run the config module at `path` and apply what it registers to `cfg`.
+pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)]) -> Result<()> {
+    let path = std::fs::canonicalize(path).with_context(|| format!("reading {}", path.display()))?;
+    let root = std::fs::canonicalize(&cfg.root).unwrap_or_else(|_| cfg.root.clone());
+    let engine = Engine::new(&root, cfg.env.as_str())?;
+    let specifier = modules::specifier(&root, &path);
+    let result = engine
+        .with(|ctx| {
+            let namespace = rquickjs::Module::import(&ctx, specifier.as_bytes())
+                .and_then(|p| p.finish::<Object>())
+                .catch(&ctx)
+                .map_err(|e| convert::caught(e))?;
+            let run: Function = ctx.globals().get::<_, Object>("__ssqch")?.get("run")?;
+            let returned = run
+                .call::<_, rquickjs::Value>((namespace, cfg.env.as_str(), cfg.serving))
+                .and_then(convert::settle)
+                .catch(&ctx)
+                .map_err(|e| convert::caught(e))?;
+            Conv::new(&ctx, &engine)?.from_js(returned)
+        })
+        .with_context(|| file_name(&path))?;
+    apply(cfg, &engine, &result, builtins).with_context(|| file_name(&path))
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&str, BuiltinPlugin)]) -> Result<()> {
+    let settings = result.get("settings");
+    let path_setting = |key: &str| -> Result<Option<PathBuf>> {
+        match settings.get(key) {
+            Value::Undefined | Value::Null => Ok(None),
+            Value::Str(s) => Ok(Some(PathBuf::from(&*s))),
+            other => bail!("dir.{} must be a string, not {}", key, other.type_of()),
+        }
+    };
+    if let Some(p) = path_setting("input")? { cfg.input = p; }
+    if let Some(p) = path_setting("output")? { cfg.output = p; }
+    if let Some(p) = path_setting("includes")? { cfg.includes = p; }
+    if let Some(p) = path_setting("data")? { cfg.data = p; }
+    match settings.get("templateFormats") {
+        Value::Undefined => {}
+        Value::Str(s) => cfg.template_formats = s.split(',').map(|f| f.trim().to_string()).filter(|f| !f.is_empty()).collect(),
+        Value::Arr(a) => cfg.template_formats = a.iter().map(|f| f.to_js_string()).collect(),
+        other => bail!("templateFormats must be an array or a comma-separated string, not {}", other.type_of()),
+    }
+    for (key, slot) in [("markdownTemplateEngine", &mut cfg.markdown_template_engine), ("htmlTemplateEngine", &mut cfg.html_template_engine)] {
+        match settings.get(key) {
+            Value::Undefined => {}
+            Value::Bool(false) | Value::Null => *slot = None,
+            Value::Str(s) => *slot = Some(s.to_string()).filter(|s| !s.is_empty()),
+            other => bail!("{} must be a string or false, not {}", key, other.type_of()),
+        }
+    }
+    if let Value::Bool(b) = settings.get("dataDeepMerge") {
+        cfg.data_deep_merge = b;
+    }
+
+    for op in result.get("ops").as_array().unwrap_or(&[]) {
+        let name = op.get("name").to_js_string();
+        match op.get("op").as_str().unwrap_or_default() {
+            "filter" => {
+                let f = engine.function(op.get("fn"))?;
+                cfg.add_global(name, engine.value(f));
+            }
+            "data" => match op.get("fn") {
+                Value::Undefined => {
+                    let value = op.get("value");
+                    cfg.add_global_data(name, move |_| Ok(value.clone()));
+                }
+                id => {
+                    let f = engine.function(id)?;
+                    let label = name.clone();
+                    cfg.add_global_data(name, move |_| f.call(&[]).with_context(|| format!("addGlobalData(\"{}\")", label)));
+                }
+            },
+            "passthrough" => {
+                let from = op.get("from").to_js_string();
+                match op.get("to") {
+                    Value::Str(to) => cfg.add_passthrough_copy_to(from, &*to),
+                    _ => cfg.add_passthrough_copy(from),
+                };
+            }
+            "watch" => {
+                cfg.add_watch_target(op.get("path").to_js_string());
+            }
+            "plugin" => {
+                let Some((_, register)) = builtins.iter().find(|(n, _)| *n == name) else {
+                    let known: Vec<&str> = builtins.iter().map(|(n, _)| *n).collect();
+                    bail!("unknown plugin \"{}\" (built-in plugins: {})", name, known.join(", "));
+                };
+                let options = match op.get("options") {
+                    Value::Undefined | Value::Null => serde_json::Value::Object(Default::default()),
+                    v => v.to_json(),
+                };
+                register(cfg, &options).with_context(|| format!("config.addPlugin(\"{}\")", name))?;
+            }
+            other => bail!("internal error: unknown config operation {:?}", other),
+        }
+    }
+    Ok(())
+}
+
+thread_local! {
+    /// Set while this thread holds the engine, to turn re-entry (which would
+    /// deadlock on the runtime lock) into an error.
+    static IN_JS: Cell<bool> = const { Cell::new(false) };
+}
+
+/// The QuickJS runtime and context. Field order matters: the context must be
+/// dropped before the runtime.
+pub(crate) struct Engine {
+    context: Context,
+    _runtime: Runtime,
+    /// Template functions that wrap a JavaScript function, so passing one
+    /// back into JavaScript hands over the original function instead of a
+    /// wrapper that would need to re-enter the engine. Keyed by address, and
+    /// checked against the weak reference so a reused address never matches.
+    origins: Mutex<HashMap<usize, (Weak<NativeFn>, u32)>>,
+}
+
+type NativeFn = dyn Fn(&[Value]) -> Result<Value> + Send + Sync;
+
+impl Engine {
+    fn new(root: &Path, env: &str) -> Result<Arc<Engine>> {
+        let runtime = Runtime::new()?;
+        runtime.set_max_stack_size(4 * 1024 * 1024);
+        runtime.set_loader(modules::Resolver::new(root), modules::Loader::new(root));
+        let context = Context::full(&runtime)?;
+        let engine = Arc::new(Engine { context, _runtime: runtime, origins: Mutex::new(HashMap::new()) });
+        engine.with(|ctx| {
+            let globals = ctx.globals();
+            let print = Function::new(ctx.clone(), |level: i32, message: String| {
+                if level == 0 {
+                    println!("{}", message);
+                } else {
+                    eprintln!("{}", message);
+                }
+            })?;
+            globals.set("__ssqch_print", print)?;
+            globals.set("process", process_object(&ctx, root, env)?)?;
+            let mut options = rquickjs::context::EvalOptions::default();
+            options.global = true;
+            options.filename = Some(convert::PRELUDE_NAME.into());
+            ctx.eval_with_options::<(), _>(include_str!("prelude.js"), options)
+                .catch(&ctx)
+                .map_err(|e| convert::caught(e))
+                .context("internal error in the ssqch prelude")?;
+            Ok(())
+        })?;
+        Ok(engine)
+    }
+
+    /// Run `f` with the engine locked.
+    pub(crate) fn with<R>(&self, f: impl FnOnce(Ctx) -> Result<R>) -> Result<R> {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                IN_JS.with(|c| c.set(false));
+            }
+        }
+        if IN_JS.with(|c| c.replace(true)) {
+            bail!("a JavaScript function was called from inside another JavaScript call, which ssqch doesn't support yet");
+        }
+        let _reset = Reset;
+        self.context.with(f)
+    }
+
+    /// A handle to the JavaScript function kept at index `id`.
+    fn function(self: &Arc<Self>, id: Value) -> Result<JsFn> {
+        let id = id.as_f64().ok_or_else(|| anyhow!("internal error: missing function id"))? as u32;
+        Ok(JsFn { engine: self.clone(), id })
+    }
+
+    /// A template function value that calls `f`.
+    pub(crate) fn value(&self, f: JsFn) -> Value {
+        let id = f.id;
+        let func = Func::new(move |args| f.call(args));
+        let mut origins = self.origins.lock().unwrap();
+        if origins.len() >= 1024 && origins.len().is_power_of_two() {
+            origins.retain(|_, (weak, _)| weak.strong_count() > 0);
+        }
+        origins.insert(Arc::as_ptr(&func.0) as *const () as usize, (Arc::downgrade(&func.0), id));
+        Value::Func(func)
+    }
+
+    /// The JavaScript function behind `f`, if it wraps one.
+    pub(crate) fn origin(&self, f: &Func) -> Option<u32> {
+        let origins = self.origins.lock().unwrap();
+        let (weak, id) = origins.get(&(Arc::as_ptr(&f.0) as *const () as usize))?;
+        weak.upgrade().filter(|live| Arc::ptr_eq(live, &f.0)).map(|_| *id)
+    }
+}
+
+/// A JavaScript function, callable from any thread.
+#[derive(Clone)]
+pub(crate) struct JsFn {
+    pub(crate) engine: Arc<Engine>,
+    pub(crate) id: u32,
+}
+
+impl JsFn {
+    /// Call with template values; a returned Promise is awaited.
+    pub(crate) fn call(&self, args: &[Value]) -> Result<Value> {
+        self.engine.with(|ctx| {
+            let conv = Conv::new(&ctx, &self.engine)?;
+            let fns: rquickjs::Array = ctx.globals().get::<_, Object>("__ssqch")?.get("fns")?;
+            let f: Function = fns.get(self.id as usize)?;
+            let js_args = args.iter().map(|a| conv.to_js(a)).collect::<Result<Vec<_>>>()?;
+            let out = f
+                .call::<_, rquickjs::Value>((rquickjs::function::Rest(js_args),))
+                .and_then(convert::settle)
+                .catch(&ctx)
+                .map_err(|e| convert::caught(e))?;
+            conv.from_js(out)
+        })
+    }
+}
+
+/// `process.env`, `process.cwd()` and `process.platform`. The build's
+/// environment is filled in for `SSQCH_ENV` and `ELEVENTY_ENV` when they're
+/// unset, so ported configs that read them see the `--env` choice.
+fn process_object<'js>(ctx: &Ctx<'js>, root: &Path, env: &str) -> rquickjs::Result<Object<'js>> {
+    let process = Object::new(ctx.clone())?;
+    let vars = Object::new(ctx.clone())?;
+    for (k, v) in std::env::vars() {
+        vars.set(k, v)?;
+    }
+    for key in ["SSQCH_ENV", "ELEVENTY_ENV"] {
+        if std::env::var_os(key).is_none() {
+            vars.set(key, env)?;
+        }
+    }
+    process.set("env", vars)?;
+    let cwd = root.to_string_lossy().into_owned();
+    process.set("cwd", Function::new(ctx.clone(), move || cwd.clone())?)?;
+    let platform = match std::env::consts::OS {
+        "macos" => "darwin",
+        "windows" => "win32",
+        other => other,
+    };
+    process.set("platform", platform)?;
+    Ok(process)
+}

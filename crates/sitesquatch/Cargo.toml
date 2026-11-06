@@ -5,11 +5,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-# The command-line tool is `ssqch`; the library is `sitesquatch`.
-[[bin]]
-name = "ssqch"
-path = "src/main.rs"
-
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
