@@ -1863,6 +1863,7 @@ dependencies = [
  "ravif",
  "rayon",
  "rgb",
+ "serde_json",
  "sitesquatch",
  "webp",
 ]

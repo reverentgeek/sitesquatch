@@ -52,7 +52,7 @@ fn rss(cfg: &mut Config, options: &Json) -> Result<()> {
 fn image(cfg: &mut Config, options: &Json) -> Result<()> {
     let o = Options::new(
         options,
-        &["formats", "widths", "defaultAttributes", "outputDir", "urlPath", "webpQuality", "avifQuality", "avifSpeed", "jpegQuality", "minimumThreshold", "prune"],
+        &["formats", "widths", "defaultAttributes", "outputDir", "urlPath", "webpQuality", "avifQuality", "avifSpeed", "jpegQuality", "minimumThreshold", "prune", "hashCache"],
     )?;
     let mut opts = ImageOptions::default();
     if let Some(list) = o.list("formats")? {
@@ -81,6 +81,7 @@ fn image(cfg: &mut Config, options: &Json) -> Result<()> {
     if let Some(q) = o.number("jpegQuality")? { opts.jpeg_quality = q.clamp(1.0, 100.0) as u8; }
     if let Some(t) = o.number("minimumThreshold")? { opts.minimum_threshold = t; }
     if let Some(p) = o.bool("prune")? { opts.prune = p; }
+    if let Some(c) = o.bool("hashCache")? { opts.hash_cache = c; }
     let plugin = ImagePlugin::new(opts);
     modules::set_image_processor(plugin.processor.clone())?;
     cfg.add_plugin(plugin);

@@ -15,6 +15,7 @@ anyhow.workspace = true
 indexmap.workspace = true
 lol_html.workspace = true
 rayon.workspace = true
+serde_json.workspace = true
 sitesquatch.workspace = true
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 webp = { version = "0.3", default-features = false }

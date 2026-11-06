@@ -11,6 +11,10 @@
 //! - `eleventy:widths="300,600"` sets the widths for that image
 //! - `eleventy:ignore` leaves the tag untouched
 
+mod hash_cache;
+
+pub use hash_cache::CACHE_FILE;
+
 use std::collections::{HashMap, HashSet};
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
@@ -97,6 +101,9 @@ pub struct ImageOptions {
     /// use (derivatives of removed or edited images). Only turn this on for
     /// full builds where every image goes through this plugin.
     pub prune: bool,
+    /// Remember each image's id between builds in `.cache/ssqch/image-hashes.json`
+    /// (see [`CACHE_FILE`]), so warm builds don't re-read every image.
+    pub hash_cache: bool,
 }
 
 impl Default for ImageOptions {
@@ -113,6 +120,7 @@ impl Default for ImageOptions {
             jpeg_quality: 80,
             minimum_threshold: 1.25,
             prune: false,
+            hash_cache: true,
         }
     }
 }
@@ -159,6 +167,7 @@ pub struct ImageProcessor {
     reused: AtomicUsize,
     /// Every derivative this build produced or reused, for `prune`.
     used: Mutex<HashSet<PathBuf>>,
+    hashes: Mutex<hash_cache::HashCache>,
     warned: Mutex<HashSet<String>>,
 }
 
@@ -171,6 +180,7 @@ impl ImageProcessor {
             generated: AtomicUsize::new(0),
             reused: AtomicUsize::new(0),
             used: Mutex::new(HashSet::new()),
+            hashes: Mutex::new(hash_cache::HashCache::default()),
             warned: Mutex::new(HashSet::new()),
         })
     }
@@ -297,15 +307,28 @@ impl ImageProcessor {
 
     /// Short, URL-safe id from the source file's contents and the encoder
     /// settings. Not the path or mtime: a fresh `git clone` gives every file a
-    /// new mtime, which would turn every CI build into a cold one.
+    /// new mtime, which would turn every CI build into a cold one. The hash
+    /// cache only saves re-reading files whose size and mtime haven't changed.
     fn hash_id(&self, src: &Path) -> Result<String> {
+        let o = &self.options;
+        let settings = format!("{}|{}|{}|{}", o.webp_quality, o.avif_quality, o.avif_speed, o.jpeg_quality);
+        let (size, mtime) = hash_cache::stamp(src)?;
+        let mtime = mtime.filter(|_| o.hash_cache);
+        if let Some(m) = mtime {
+            if let Some(id) = self.hashes.lock().unwrap().get(src, size, m, &settings) {
+                return Ok(id);
+            }
+        }
         let file = std::fs::File::open(src).with_context(|| format!("image not found: {}", src.display()))?;
         let mut h = blake3::Hasher::new();
         h.update_reader(file).with_context(|| format!("reading {}", src.display()))?;
-        let o = &self.options;
-        h.update(format!("{}|{}|{}|{}", o.webp_quality, o.avif_quality, o.avif_speed, o.jpeg_quality).as_bytes());
+        h.update(settings.as_bytes());
         const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-        Ok(h.finalize().as_bytes().iter().take(10).map(|b| ALPHABET[(*b & 63) as usize] as char).collect())
+        let id: String = h.finalize().as_bytes().iter().take(10).map(|b| ALPHABET[(*b & 63) as usize] as char).collect();
+        if let Some(m) = mtime {
+            self.hashes.lock().unwrap().put(src, size, m, &settings, &id);
+        }
+        Ok(id)
     }
 
     fn encode(&self, img: &DynamicImage, job: &ImageEntry) -> Result<()> {
@@ -521,6 +544,52 @@ mod tests {
     }
 
     #[test]
+    fn the_hash_cache_skips_unchanged_files_and_rereads_changed_ones() {
+        use std::time::{Duration, SystemTime};
+        let dir = std::env::temp_dir().join(format!("ssqch-hashcache-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (img, cache) = (dir.join("a.png"), dir.join(".cache/ssqch/image-hashes.json"));
+        let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let write = |bytes: &[u8], mtime: SystemTime| {
+            std::fs::write(&img, bytes).unwrap();
+            std::fs::File::options().write(true).open(&img).unwrap().set_modified(mtime).unwrap();
+        };
+        write(b"pine cone", t0);
+
+        let first = ImageProcessor::new(ImageOptions::default());
+        first.hashes.lock().unwrap().load(cache.clone());
+        let id = first.hash_id(&img).unwrap();
+        first.hashes.lock().unwrap().save().unwrap();
+        assert!(cache.is_file(), "the cache is written after a build that hashed something");
+
+        // Same size and mtime: the id comes from the cache, so swapping the
+        // bytes behind its back goes unnoticed. That's the trade-off.
+        write(b"pine c0ne", t0);
+        let second = ImageProcessor::new(ImageOptions::default());
+        second.hashes.lock().unwrap().load(cache.clone());
+        assert_eq!(second.hash_id(&img).unwrap(), id);
+
+        // A new mtime (an edit, or a fresh checkout) means reading the file again.
+        write(b"pine c0ne", t0 + Duration::from_secs(1));
+        assert_ne!(second.hash_id(&img).unwrap(), id);
+        write(b"pine cone", t0 + Duration::from_secs(2));
+        assert_eq!(second.hash_id(&img).unwrap(), id, "same contents, same id, whatever the mtime");
+
+        // Different encoder settings never reuse an entry.
+        let third = ImageProcessor::new(ImageOptions { webp_quality: 90.0, ..ImageOptions::default() });
+        third.hashes.lock().unwrap().load(cache.clone());
+        assert_ne!(third.hash_id(&img).unwrap(), id);
+
+        // A corrupt cache is just an empty one.
+        std::fs::write(&cache, "not json").unwrap();
+        let fourth = ImageProcessor::new(ImageOptions::default());
+        fourth.hashes.lock().unwrap().load(cache.clone());
+        assert_eq!(fourth.hash_id(&img).unwrap(), id);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn widths_match_eleventy_img() {
         let defaults = [300, 600, 900, 1200, 1500];
         assert_eq!(valid_widths(810, &defaults, 1.25), vec![300, 600, 810]);
@@ -644,6 +713,9 @@ impl Plugin for ImagePlugin {
             // Source files may have changed between dev-server builds.
             p.memo.lock().unwrap().clear();
             p.used.lock().unwrap().clear();
+            if p.options.hash_cache {
+                p.hashes.lock().unwrap().load(ctx.root.join(CACHE_FILE));
+            }
             p.generated.store(0, Ordering::Relaxed);
             p.reused.store(0, Ordering::Relaxed);
             Ok(())
@@ -656,6 +728,12 @@ impl Plugin for ImagePlugin {
         let quiet = cfg.quiet;
         cfg.on_after_build(move |ctx, _| {
             let pruned = if p.options.prune { p.prune(&ctx.output_dir.join(&p.options.output_subdir))? } else { 0 };
+            if p.options.hash_cache {
+                // A cache that can't be written only costs speed, so warn and carry on.
+                if let Err(e) = p.hashes.lock().unwrap().save() {
+                    p.warn_once(format!("couldn't write {}: {:#}", ctx.root.join(CACHE_FILE).display(), e));
+                }
+            }
             let busy = p.generated.load(Ordering::Relaxed) + p.reused.load(Ordering::Relaxed) + pruned > 0;
             if !quiet && busy {
                 println!(

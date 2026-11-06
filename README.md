@@ -8,9 +8,10 @@ build hooks.
 It builds [reverentgeek.com](https://reverentgeek.com) with no changes to the [source](https://github.com/reverentgeek/blog):
 168 pages, about 3,200 responsive image derivatives, feed, sitemap, Netlify `_headers`/`_redirects`.
 
-Compared with Eleventy on the same blog, `ssqch` rebuilds about **16x faster** (0.08 s vs 1.28 s)
-and builds from scratch about **3.6x faster** with the same image formats (23.7 s vs 84.5 s). See
-[Benchmarks vs. Eleventy](#benchmarks-vs-eleventy).
+Compared with Eleventy on the same blog, `ssqch` rebuilds about **14x faster** (0.09 s vs 1.28 s)
+and builds from scratch about **3 to 4x faster** with the same image formats (25 to 31 s vs 91 s).
+Running the blog's own `.eleventy.js` instead of the Rust port, it rebuilds about **8x faster**
+(0.16 s). See [Benchmarks vs. Eleventy](#benchmarks-vs-eleventy).
 
 ## Try it
 
@@ -180,7 +181,8 @@ Built-in plugin options:
 
 - **`ssqch:image`:** `formats` (`avif`, `webp`, `jpeg`, `png`, `auto`), `widths`,
   `defaultAttributes`, `outputDir`, `urlPath`, `webpQuality`, `avifQuality`, `avifSpeed`,
-  `jpegQuality`, `minimumThreshold`, `prune`. AVIF needs `ssqch` built with `--features avif`.
+  `jpegQuality`, `minimumThreshold`, `prune`, `hashCache` (on by default; see
+  [Deploying from CI](#deploying-from-ci)). AVIF needs `ssqch` built with `--features avif`.
 - **`ssqch:minify`:** `collapseWhitespace`, `removeComments`, `shortDoctype` (all `true` by
   default).
 - **`ssqch:rss`:** no options.
@@ -297,30 +299,33 @@ include/component chain.
 ## Benchmarks vs. Eleventy
 
 These numbers come from building the ReverentGeek blog (161 HTML pages plus feed, sitemap and
-Netlify files) on an Apple M5 Pro (15 cores) in November 2026. Both tools ran in production mode
-(HTML minification on) against the same copy of the blog. Eleventy 4.0.0-alpha.10 ran as the blog's
-`build:eleventy` step (`eleventy` called directly, no npx/pnpm wrapper). Each ssqch variant wrote to
-its own output folder, so no image cache was shared.
+Netlify files) on an Apple M5 Pro (15 cores) in November 2026, all in production mode (HTML
+minification on) against the same copy of the blog. Eleventy 4.0.0-alpha.10 ran as the blog's
+`build:eleventy` step (`eleventy` called directly, no npx/pnpm wrapper). The ssqch builds are the
+Rust port (`examples/reverentgeek`) with and without AVIF, and the `ssqch` binary running the blog's
+real `.eleventy.js`. Each wrote to its own output folder, so no image cache was shared.
 
-| Build | Eleventy 4.0.0-alpha.10 | ssqch `--features avif` (same formats) | ssqch default (no AVIF) |
-| --- | --- | --- | --- |
-| **Cold** (no images cached) | **84.5 s** | **23.7 s** (3.6x faster) | **7.0 s** (12x faster) |
-| CPU time, cold (user + sys) | 971 s | 301 s | 77 s |
-| Peak memory, cold | 1.85 GB | 1.90 GB | 1.53 GB |
-| **Warm** (images cached, median of 3) | **1.28 s** | **0.08 s** (~16x faster) | **0.08 s** (~16x faster) |
-| Peak memory, warm | ~378 MB | ~50 MB | ~48 MB |
-| Image files written | 4,980 (273 MB) | 4,716 (270 MB) | 3,178 (235 MB) |
+| Build | Eleventy 4.0.0-alpha.10 | ssqch default (no AVIF) | ssqch `--features avif` (same formats) | ssqch running `.eleventy.js` (AVIF) |
+| --- | --- | --- | --- | --- |
+| **Cold** (no images cached) | **91.3 s** | **8.0 s** (11x faster) | **30.8 s** (3.0x faster) | **25.0 s** (3.7x faster) |
+| CPU time, cold (user + sys) | 1,042 s | 79 s | 323 s | 335 s |
+| Peak memory, cold | 1.75 GB | 1.41 GB | 1.54 GB | 1.80 GB |
+| **Warm** (images cached, median of 3) | **1.28 s** | **0.09 s** (14x faster) | **0.10 s** (13x faster) | **0.16 s** (8x faster) |
+| Peak memory, warm | ~378 MB | ~52 MB | ~50 MB | ~47 MB |
+| Image files written | 4,980 (273 MB) | 3,160 (233 MB) | 4,689 (268 MB) | 4,689 (268 MB) |
 
-- **Warm builds** are what the dev server and cached CI builds do. Eleventy's own log reports
-  1.16 s; ssqch reports 59 ms. Wall times above include process startup (Node vs. a native binary).
-- **Cold builds** are dominated by image encoding, and AVIF is the most expensive format: it takes
-  ssqch from 7 s to 24 s.
+- **Warm builds** are what the dev server and cached CI builds do. Eleventy's own log reports about
+  1.2 s; ssqch reports about 67 ms for the Rust port. Wall times above include process startup
+  (Node vs. a native binary).
+- **Running the JavaScript config** costs about 70 ms more than the Rust port on a warm build:
+  that's the blog's collections, filters and data files running in QuickJS.
+- **Cold builds** are dominated by image encoding, and AVIF is the most expensive format. They're
+  single runs and vary: the two AVIF builds do the same encoding work, and AVIF cold builds ranged
+  from 21 s to 31 s across four runs.
 - The AVIF encoders differ: Eleventy uses sharp/libaom at effort 4, ssqch uses ravif at speed 8.
   Total sizes came out about the same, but image quality wasn't compared.
-- Eleventy writes more image files, mostly AVIF/WebP versions of GIF first frames; ssqch copies
-  GIFs as they are, keeping them animated.
-- One cold run per tool, so treat cold numbers as accurate to a few seconds; warm runs were very
-  consistent.
+- Eleventy writes more image files, mostly AVIF/WebP versions of GIF first frames and of SVGs;
+  ssqch copies GIFs (keeping them animated) and serves SVGs as they are.
 - Only the site generation step is measured. Building the CSS and JavaScript isn't included.
 
 To reproduce on macOS, run `scripts/bench.sh [path/to/blog] [warm-runs]` (the blog defaults to
@@ -333,7 +338,16 @@ never touched, and writes `results.csv`, `bench.log` and `summary.txt` to
 Image derivatives are named by a hash of the source file's contents plus the encoder settings, not
 its path or modification time. That matters in CI, where every fresh clone gives each file a new
 modification time. Cache the output's `img/` folder between runs, and a build with no new images
-encodes nothing. On the blog, a fresh clone with `dist/img` restored rebuilds in about 90 ms.
+encodes nothing. On the blog, a fresh clone with `dist/img` restored rebuilds in about 85 ms.
+
+Hashing every source image on every build would cost about 20 ms on the blog (around 420 MB of
+images), so ssqch remembers each image's id, with its size and modification time, in
+`.cache/ssqch/image-hashes.json` under the project root. Unchanged files skip the read, and a
+changed size or modification time means hashing the file again. A fresh clone has all-new
+modification times, so its first build re-hashes everything and gets the same ids. Add `.cache/` to
+your `.gitignore` (Eleventy uses it too), or turn the cache off with `hashCache: false` on the
+`ssqch:image` plugin (`ImageOptions::hash_cache` in Rust). It lives outside the output folder
+because it names your source paths, and the output gets published.
 
 Set `ImageOptions::prune` and ssqch deletes derivatives the build didn't use, so the cache doesn't
 keep growing as images are edited or removed. Only turn it on for full builds where every image

@@ -24,12 +24,18 @@ mkdir -p "$OUT" "$WORK/bin"
 echo "Building ssqch binaries..."
 (cd "$REPO" && cargo build --release -q -p reverentgeek && cp target/release/reverentgeek "$WORK/bin/ssqch-default")
 (cd "$REPO" && cargo build --release -q -p reverentgeek --features avif && cp target/release/reverentgeek "$WORK/bin/ssqch-avif")
-(cd "$REPO" && cargo build --release -q -p reverentgeek) # leave the default build in place
+(cd "$REPO" && cargo build --release -q -p ssqch --features avif && cp target/release/ssqch "$WORK/bin/ssqch-js")
+(cd "$REPO" && cargo build --release -q -p reverentgeek -p ssqch) # leave the default builds in place
 
 echo "Cloning blog..."
 cp -cR "$BLOG" "$WORK/blog" 2>/dev/null || cp -R "$BLOG" "$WORK/blog"
 B="$WORK/blog"
 rm -rf "$B/dist" "$B/.cache"
+# The blog's real .eleventy.js, run by the ssqch binary. Its own clone,
+# because the config's Image() calls write to ./dist/img.
+cp -cR "$B" "$WORK/blog-js" 2>/dev/null || cp -R "$B" "$WORK/blog-js"
+J="$WORK/blog-js"
+echo 'export { default } from "./.eleventy.js";' > "$J/ssqch.config.js"
 
 RESULTS="$OUT/results.csv"
 LOG="$OUT/bench.log"
@@ -69,10 +75,14 @@ for variant in default avif; do
   done
 done
 
+echo "ssqch running .eleventy.js (avif)"
+measure ssqch-js cold "$WORK/bin/ssqch-js" build --root "$J" --quiet
+for i in $(seq "$WARM_RUNS"); do measure ssqch-js "warm$i" "$WORK/bin/ssqch-js" build --root "$J" --quiet; done
+
 {
   echo
   printf "%-14s %8s %8s %10s %10s\n" tool cold_s warm_s cold_cpu_s warm_mb
-  for tool in 11ty ssqch-default ssqch-avif; do
+  for tool in 11ty ssqch-default ssqch-avif ssqch-js; do
     awk -F, -v tool="$tool" '
       $1 == tool && $2 == "cold" { cold = $3; cpu = $4 + $5 }
       $1 == tool && $2 ~ /^warm/ { w[++n] = $3; m[n] = $6 }
@@ -83,8 +93,8 @@ done
       }' "$RESULTS"
   done
   echo
-  for d in dist out-default out-avif; do
-    printf "%-12s %5s image files, %s\n" "$d" "$(ls "$B/$d/img" 2>/dev/null | wc -l | tr -d ' ')" "$(du -sh "$B/$d/img" 2>/dev/null | cut -f1)"
+  for d in "$B/dist" "$B/out-default" "$B/out-avif" "$J/dist"; do
+    printf "%-22s %5s image files, %s\n" "${d#$WORK/}" "$(ls "$d/img" 2>/dev/null | wc -l | tr -d ' ')" "$(du -sh "$d/img" 2>/dev/null | cut -f1)"
   done
 } | tee "$OUT/summary.txt"
 
