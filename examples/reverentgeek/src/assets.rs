@@ -55,21 +55,47 @@ pub fn fingerprint(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-/// Template paths for `{{ assets.css }}` etc.: fingerprinted names from the
-/// manifest in production, plain names (what the dev watchers write) otherwise.
+/// Template paths for `{{ assets.css }}` etc.
+///
+/// In production: the fingerprinted names from the manifest. In development:
+/// the plain name when a watcher (`pnpm run serve:css`) is writing it,
+/// otherwise the fingerprinted file a production build left behind, so
+/// `serve` after `build` still has styles. A file that doesn't exist either
+/// way gets a warning instead of a silently unstyled site.
 pub fn data(ctx: &BuildContext) -> Result<Value> {
+    let manifest: serde_json::Map<String, serde_json::Value> = match std::fs::read_to_string(ctx.root.join(MANIFEST)) {
+        Ok(text) => serde_json::from_str(&text).with_context(|| format!("invalid {}", MANIFEST))?,
+        Err(_) => Default::default(),
+    };
+    let exists = |url: &str| ctx.output_dir.join(url.trim_start_matches('/')).is_file();
     let mut assets = Map::new();
     for (key, file) in ENTRIES {
-        assets.insert(key.into(), Value::from(format!("/assets/{}", file)));
-    }
-    if ctx.env == Environment::Production {
-        if let Ok(text) = std::fs::read_to_string(ctx.root.join(MANIFEST)) {
-            if let Value::Obj(hashed) = Value::from(serde_json::from_str::<serde_json::Value>(&text)?) {
-                assets.extend(hashed.iter().map(|(k, v)| (k.clone(), v.clone())));
-            }
+        let plain = format!("/assets/{}", file);
+        let hashed = manifest.get(key).and_then(|v| v.as_str()).map(String::from);
+        let url = match (ctx.env, hashed) {
+            (Environment::Production, Some(h)) => h,
+            (Environment::Development, Some(h)) if !exists(&plain) && exists(&h) => h,
+            _ => plain,
+        };
+        if !exists(&url) {
+            warn_once(format!(
+                "{} doesn't exist in {}; build the CSS and JS first (pnpm run build:css and build:js, or serve:css and serve:js while serving)",
+                url,
+                ctx.output_dir.display()
+            ));
         }
+        assets.insert(key.into(), Value::from(url));
     }
     Ok(Value::object(assets))
+}
+
+fn warn_once(message: String) {
+    static WARNED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let mut warned = WARNED.lock().unwrap();
+    if !warned.contains(&message) {
+        eprintln!("warn: {}", message);
+        warned.push(message);
+    }
 }
 
 /// Delete `stem.<8 hex>.ext` files other than `keep`.

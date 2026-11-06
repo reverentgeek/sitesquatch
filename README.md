@@ -52,6 +52,18 @@ The output goes to `../blog/dist`, and the build ends with a summary like
 `Wrote 168 pages and copied 12 files in 87.53ms (production mode)`. The first build encodes
 about 3,200 images, so expect it to take a few seconds. Later builds reuse them.
 
+`serve` doesn't build the CSS and JS. Pages link to the plain `index.css` when a watcher is
+writing it, and otherwise to the fingerprinted file the last production build left. To work on
+styles, run the blog's watchers alongside the server:
+
+```sh
+(cd ../blog && pnpm run serve:css) &
+(cd ../blog && pnpm run serve:js) &
+cargo run --release -p reverentgeek -- serve --root ../blog
+```
+
+If neither file exists, ssqch warns that the CSS and JS haven't been built.
+
 Options: `--output DIR`, `--env development|production` (otherwise `$SSQCH_ENV`, `$ELEVENTY_ENV`,
 `$NODE_ENV`; defaults to production for `build`, development for `serve`), `--verbose` for
 per-phase timings, `--quiet`.
