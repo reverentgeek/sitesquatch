@@ -1,0 +1,23 @@
+[package]
+name = "sitesquatch-plugin-image"
+description = "Responsive image transform for SiteSquatch (like @11ty/eleventy-img)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# AVIF encoding is pure Rust (rav1e) but slow; opt in when you want it.
+avif = ["dep:ravif", "dep:rgb"]
+
+[dependencies]
+anyhow.workspace = true
+indexmap.workspace = true
+lol_html.workspace = true
+rayon.workspace = true
+sitesquatch.workspace = true
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
+webp = { version = "0.3", default-features = false }
+blake3 = "1"
+ravif = { version = "0.12", optional = true }
+rgb = { version = "0.8", optional = true }

@@ -1,0 +1,12 @@
+[package]
+name = "sitesquatch-plugin-rss"
+description = "RSS/Atom feed helpers for SiteSquatch (port of @11ty/eleventy-plugin-rss filters)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+lol_html.workspace = true
+sitesquatch.workspace = true

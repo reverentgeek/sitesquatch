@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "plugins/*", "examples/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1"
+chrono = "0.4"
+indexmap = "2"
+rayon = "1"
+regex = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
+lol_html = "2"
+sitesquatch = { path = "crates/sitesquatch" }
+sitesquatch-edge = { path = "crates/sitesquatch-edge" }
+sitesquatch-plugin-rss = { path = "plugins/rss" }
+sitesquatch-plugin-image = { path = "plugins/image" }
+sitesquatch-plugin-minify = { path = "plugins/minify" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4

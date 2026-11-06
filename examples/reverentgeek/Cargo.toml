@@ -1,0 +1,21 @@
+[package]
+name = "reverentgeek"
+description = "The ReverentGeek blog, built with SiteSquatch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+sitesquatch.workspace = true
+sitesquatch-plugin-rss.workspace = true
+sitesquatch-plugin-image.workspace = true
+sitesquatch-plugin-minify.workspace = true
+regex.workspace = true
+sha2 = "0.10"
+
+[features]
+avif = ["sitesquatch-plugin-image/avif"]

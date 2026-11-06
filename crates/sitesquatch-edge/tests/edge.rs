@@ -1,0 +1,102 @@
+use sitesquatch_edge::{Engine, MemoryLoader, Value};
+
+fn engine(partials: &[(&str, &str)]) -> Engine {
+    let mut m = MemoryLoader::default();
+    for (k, v) in partials {
+        m.0.insert(k.to_string(), v.to_string());
+    }
+    let mut e = Engine::new(m);
+    e.add_global("upper", Value::func(|a| Ok(Value::from(a[0].to_js_string().to_uppercase()))));
+    e
+}
+
+fn data(json: &str) -> Value {
+    Value::from(serde_json::from_str::<serde_json::Value>(json).unwrap())
+}
+
+fn render(src: &str, json: &str) -> String {
+    engine(&[]).render_str("test", src, data(json)).unwrap()
+}
+
+#[test]
+fn mustaches_escape_and_raw() {
+    assert_eq!(render("{{ a }}|{{{ a }}}", r#"{"a":"<b>"}"#), "&lt;b&gt;|<b>");
+    assert_eq!(render("{{ missing }}", "{}"), "");
+    assert_eq!(render("{{-- gone --}}x", "{}"), "x");
+    assert_eq!(render("@{{ raw }}", "{}"), "{{ raw }}");
+}
+
+#[test]
+fn js_expressions() {
+    let d = r#"{"site":{"url":"https://x.com"},"page":{"url":"/a/"},"n":2,"tags":["posts","js"],"s":"/img/a.png"}"#;
+    assert_eq!(render("{{ site.url + page.url }}", d), "https://x.com/a/");
+    assert_eq!(render("{{ n ? 'Page ' + (n + 1) : 'Home' }}", d), "Page 3");
+    assert_eq!(render("{{ tags.includes('posts') && tags.length }}", d), "2");
+    assert_eq!(render("{{ s.startsWith('http') ? s : site.url + s }}", d), "https://x.com/img/a.png");
+    assert_eq!(render("{{ tags.slice().reverse().slice(0, 1) }}", d), "js");
+    assert_eq!(render("{{ { tip: 'T', note: 'N' }[kind || 'note'] || 'X' }}", d), "N");
+    assert_eq!(render("{{ tags.map(t => upper(t)).join(' ') }}", d), "POSTS JS");
+    assert_eq!(render("{{ `${n * 1.5}rem` }}", d), "3rem");
+    assert_eq!(render("{{ await upper('x') }}", d), "X");
+    assert_eq!(render("{{ nope?.deep.chain }}", d), "");
+    assert_eq!(render("{{{ JSON.stringify({ a: 1, b: [true] }) }}}", d), r#"{"a":1,"b":[true]}"#);
+}
+
+#[test]
+fn conditionals_loops_and_whitespace() {
+    let src = "<ul>\n  @each((item, i) in items)\n  <li>{{ i }}:{{ item }}</li>\n  @end\n</ul>";
+    assert_eq!(render(src, r#"{"items":["a","b"]}"#), "<ul>\n  <li>0:a</li>\n  <li>1:b</li>\n</ul>");
+
+    let src = "@if(x)\nyes\n@elseif(y)\nmaybe\n@else\nno\n@end\n";
+    // Newlines belong to source lines (as in Edge.js), so the second branch's
+    // line keeps the line break that preceded it in the source.
+    assert_eq!(render(src, r#"{"x":1}"#), "yes");
+    assert_eq!(render(src, r#"{"y":1}"#), "\nmaybe");
+
+    // Same as Edge.js: `~` drops the newline that would precede the next text line.
+    let src = "  <title>\n@if(t)~\n{{ t }}\n@end~\n  </title>";
+    assert_eq!(render(src, r#"{"t":"Hi"}"#), "  <title>Hi  </title>");
+
+    let src = "@each(x in list)\n{{ x }}\n@else\nempty\n@end";
+    assert_eq!(render(src, r#"{"list":[]}"#), "\nempty");
+}
+
+#[test]
+fn text_files_keep_their_lines() {
+    let src = "/feed.xml\n  type: atom\n@if(on)\n/a  /b\n@end\n# end\n";
+    assert_eq!(render(src, r#"{"on":true}"#), "/feed.xml\n  type: atom\n/a  /b\n# end");
+    assert_eq!(render(src, "{}"), "/feed.xml\n  type: atom\n# end");
+}
+
+#[test]
+fn let_and_assign_with_multiline_args() {
+    let src = "@let(label = {\n  tip: 'Pro tip',\n  note: 'Note'\n}[type || 'note'] || 'Note')\n@if(force)\n  @assign(label = 'Forced')\n@end\n{{ label }}";
+    assert_eq!(render(src, r#"{"type":"tip"}"#), "Pro tip");
+    assert_eq!(render(src, r#"{"force":true}"#), "Forced");
+}
+
+#[test]
+fn includes_share_scope_and_components_isolate() {
+    let e = engine(&[
+        ("partials/greet", "Hello {{ name }}"),
+        ("components/card", "[{{ title }}|{{ name }}|{{{ await $slots.main() }}}|{{{ $slots.foot ? $slots.foot() : '' }}}]"),
+    ]);
+    let d = data(r#"{"name":"Ada"}"#);
+    assert_eq!(e.render_str("t", "@include('partials/greet')", d.clone()).unwrap(), "Hello Ada");
+    assert_eq!(e.render_str("t", "@!component('components/card', { title: 'T' })", d.clone()).unwrap(), "[T|||]");
+    let src = "@component('components/card', { title: 'T' })\nbody {{ name }}\n@slot('foot')\nF\n@end\n@end";
+    assert_eq!(e.render_str("t", src, d).unwrap(), "[T||body Ada|\nF]");
+}
+
+#[test]
+fn errors_report_template_and_line() {
+    let err = engine(&[]).render_str("page.edge", "line1\n{{ a.b.c }}", data("{}")).unwrap_err();
+    let msg = format!("{:#}", err);
+    assert!(msg.contains("page.edge:2"), "{}", msg);
+    assert!(msg.contains("Cannot read properties of undefined"), "{}", msg);
+}
+
+#[test]
+fn unknown_at_words_are_text() {
+    assert_eq!(render("@media (x) {}\nemail me @ home", "{}"), "@media (x) {}\nemail me @ home");
+}
