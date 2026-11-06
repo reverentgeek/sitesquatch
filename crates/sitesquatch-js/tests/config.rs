@@ -151,7 +151,7 @@ fn errors_point_at_the_config_source() {
 
 #[test]
 fn unsupported_things_say_so() {
-    assert!(load_error("export default (c) => c.addCollection(\"posts\", () => []);").contains("config.addCollection() isn't supported by ssqch yet"));
+    assert!(load_error("export default (c) => c.addPairedShortcode(\"note\", (s) => s);").contains("config.addPairedShortcode() isn't supported by ssqch yet"));
     assert!(load_error("import x from \"left-pad\"; export default () => {};").contains("importing npm packages isn't supported"));
     assert!(load_error("import c from \"node:crypto\"; export default () => {};").contains("node:crypto isn't available in ssqch"));
     assert!(load_error("export default () => ({ dir: { layouts: \"_layouts\" } });").contains("dir.layouts isn't supported"));

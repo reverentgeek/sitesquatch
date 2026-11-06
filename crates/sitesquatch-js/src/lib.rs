@@ -23,6 +23,7 @@
 mod convert;
 mod modules;
 mod native;
+mod views;
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -213,6 +214,34 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
             "watch" => {
                 cfg.add_watch_target(op.get("path").to_js_string());
             }
+            "collection" => {
+                let f = engine.function(op.get("fn"))?;
+                cfg.add_collection(name, move |api| f.call(&[Value::array(api.get_all())]));
+            }
+            "transform" => {
+                let f = engine.function(op.get("fn"))?;
+                cfg.add_transform(name, move |tctx, html| {
+                    let input_path = tctx.input_path.strip_prefix(&tctx.build.root).map(|p| format!("./{}", p.display())).unwrap_or_else(|_| tctx.input_path.display().to_string());
+                    let page = Value::from_pairs([
+                        ("url", Value::from(tctx.url)),
+                        ("inputPath", Value::from(input_path)),
+                        ("outputPath", Value::from(tctx.output_path.to_string_lossy().into_owned())),
+                    ]);
+                    match f.call(&[Value::from(html), page])? {
+                        Value::Str(s) => Ok(s.to_string()),
+                        other => bail!("transform returned {}", other.type_of()),
+                    }
+                });
+            }
+            "hook" => {
+                let f = engine.function(op.get("fn"))?;
+                let event = op.get("event").to_js_string();
+                if event == "eleventy.before" {
+                    cfg.on_before_build(move |ctx| f.call(&[hook_event(ctx, None)]).map(|_| ()).context("config.on(\"eleventy.before\")"));
+                } else {
+                    cfg.on_after_build(move |ctx, report| f.call(&[hook_event(ctx, Some(report))]).map(|_| ()).context("config.on(\"eleventy.after\")"));
+                }
+            }
             "plugin" => {
                 let Some((_, register)) = builtins.iter().find(|(n, _)| *n == name) else {
                     let known: Vec<&str> = builtins.iter().map(|(n, _)| *n).collect();
@@ -228,6 +257,34 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
         }
     }
     Ok(())
+}
+
+/// The argument to `eleventy.before` and `eleventy.after` handlers, with
+/// Eleventy's field names. Directories are relative to the project root.
+fn hook_event(ctx: &sitesquatch::BuildContext, report: Option<&sitesquatch::BuildReport>) -> Value {
+    let rel = |p: &Path| match p.strip_prefix(&ctx.root) {
+        Ok(r) if r.as_os_str().is_empty() => "./".to_string(),
+        Ok(r) => format!("./{}/", r.display()),
+        Err(_) => format!("{}/", p.display()),
+    };
+    let dirs = Value::from_pairs([
+        ("input", Value::from(rel(&ctx.input_dir))),
+        ("output", Value::from(rel(&ctx.output_dir))),
+        ("includes", Value::from(rel(&ctx.includes_dir))),
+        ("data", Value::from(rel(&ctx.data_dir))),
+    ]);
+    let mut event = vec![
+        ("directories", dirs.clone()),
+        ("dir", dirs),
+        ("runMode", Value::from(if ctx.serving { "serve" } else { "build" })),
+        ("outputMode", Value::from("fs")),
+        ("env", Value::from(ctx.env.as_str())),
+    ];
+    if let Some(report) = report {
+        let results = report.written.iter().map(|p| Value::from_pairs([("outputPath", Value::from(p.to_string_lossy().into_owned()))])).collect();
+        event.push(("results", Value::array(results)));
+    }
+    Value::from_pairs(event)
 }
 
 thread_local! {
@@ -246,6 +303,9 @@ pub(crate) struct Engine {
     /// wrapper that would need to re-enter the engine. Keyed by address, and
     /// checked against the weak reference so a reused address never matches.
     origins: Mutex<HashMap<usize, (Weak<NativeFn>, u32)>>,
+    /// Set when a call creates a view, so the call ends by clearing the
+    /// view identity map (skipped for calls that made none).
+    pub(crate) views_used: std::sync::atomic::AtomicBool,
 }
 
 type NativeFn = dyn Fn(&[Value]) -> Result<Value> + Send + Sync;
@@ -256,7 +316,7 @@ impl Engine {
         runtime.set_max_stack_size(4 * 1024 * 1024);
         runtime.set_loader(modules::Resolver::new(root), modules::Loader::new(root));
         let context = Context::full(&runtime)?;
-        let engine = Arc::new(Engine { context, _runtime: runtime, origins: Mutex::new(HashMap::new()) });
+        let engine = Arc::new(Engine { context, _runtime: runtime, origins: Mutex::new(HashMap::new()), views_used: Default::default() });
         engine.with(|ctx| {
             let globals = ctx.globals();
             let print = Function::new(ctx.clone(), |level: i32, message: String| {
@@ -278,6 +338,7 @@ impl Engine {
                     .map_err(|e| convert::caught(e))
                     .context("internal error in the ssqch prelude")?;
             }
+            views::install(&ctx, &engine)?;
             Ok(())
         })?;
         Ok(engine)
@@ -295,7 +356,20 @@ impl Engine {
             bail!("a JavaScript function was called from inside another JavaScript call, which ssqch doesn't support yet");
         }
         let _reset = Reset;
-        self.context.with(f)
+        self.context.with(|ctx| {
+            let result = f(ctx.clone());
+            if !self.views_used.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                return result;
+            }
+            // Forget which views exist, so their identity map doesn't grow.
+            let end: rquickjs::Result<()> = ctx.globals().get::<_, Object>("__ssqch").and_then(|h| h.get::<_, Function>("endCall")).and_then(|f| f.call(()));
+            if let Err(e) = end {
+                if result.is_ok() {
+                    return Err(anyhow!("internal error ending a JavaScript call: {}", e));
+                }
+            }
+            result
+        })
     }
 
     /// A handle to the JavaScript function kept at index `id`.

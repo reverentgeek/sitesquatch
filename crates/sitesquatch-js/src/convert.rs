@@ -1,8 +1,10 @@
 //! Converting between template values (`sitesquatch::Value`) and JavaScript.
 //!
-//! Values are deep-copied in both directions. Dates stay dates, and
-//! functions cross over as callable functions.
+//! Objects and arrays go to JavaScript as lazy views (see `views.rs`) and
+//! come back as copies, unless they're views nobody wrote to. Dates stay
+//! dates, and functions cross over as callable functions.
 
+use std::cell::OnceCell;
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
@@ -11,42 +13,72 @@ use rquickjs::function::Rest;
 use rquickjs::{Array, CaughtError, Ctx, Exception, Function, Object, Type};
 use sitesquatch::{Map, Value};
 
+use crate::views;
 use crate::{Engine, JsFn};
 
 /// File name of the prelude, whose frames are hidden from stack traces.
 pub(crate) const PRELUDE_NAME: &str = "<ssqch>";
 
+/// Objects and arrays holding at most this many values in total (at any
+/// depth) are copied into JavaScript instead of viewed.
+const SMALL: usize = 16;
+
+fn is_small(v: &Value) -> bool {
+    fn fits(v: &Value, budget: &mut usize) -> bool {
+        if *budget == 0 {
+            return false;
+        }
+        *budget -= 1;
+        match v {
+            Value::Arr(items) => items.iter().all(|i| fits(i, budget)),
+            Value::Obj(map) => map.values().all(|i| fits(i, budget)),
+            _ => true,
+        }
+    }
+    fits(v, &mut SMALL.clone())
+}
+
 /// Objects nested deeper than this are almost certainly circular.
 const MAX_DEPTH: usize = 128;
 
+/// Converts values, looking up the prelude's helper functions only when a
+/// conversion needs one (most only touch strings and numbers).
 pub(crate) struct Conv<'js> {
     ctx: Ctx<'js>,
     engine: Arc<Engine>,
-    date_ms: Function<'js>,
-    make_date: Function<'js>,
-    keep: Function<'js>,
+    helpers: Object<'js>,
+    date_ms: OnceCell<Function<'js>>,
+    make_date: OnceCell<Function<'js>>,
+    keep: OnceCell<Function<'js>>,
+    make_view: OnceCell<Function<'js>>,
+    unwrap_view: OnceCell<Function<'js>>,
+    is_array: OnceCell<Function<'js>>,
 }
 
 impl<'js> Conv<'js> {
     pub(crate) fn new(ctx: &Ctx<'js>, engine: &Arc<Engine>) -> Result<Self> {
-        let helpers: Object = ctx.globals().get("__ssqch")?;
         Ok(Conv {
             ctx: ctx.clone(),
             engine: engine.clone(),
-            date_ms: helpers.get("dateMs")?,
-            make_date: helpers.get("makeDate")?,
-            keep: helpers.get("keep")?,
+            helpers: ctx.globals().get("__ssqch")?,
+            date_ms: OnceCell::new(),
+            make_date: OnceCell::new(),
+            keep: OnceCell::new(),
+            make_view: OnceCell::new(),
+            unwrap_view: OnceCell::new(),
+            is_array: OnceCell::new(),
         })
     }
 
-    pub(crate) fn to_js(&self, v: &Value) -> Result<rquickjs::Value<'js>> {
-        self.to_js_at(v, 0)
+    fn helper<'a>(&'a self, cell: &'a OnceCell<Function<'js>>, name: &str) -> Result<&'a Function<'js>> {
+        if let Some(f) = cell.get() {
+            return Ok(f);
+        }
+        let f: Function = self.helpers.get(name)?;
+        Ok(cell.get_or_init(|| f))
     }
 
-    fn to_js_at(&self, v: &Value, depth: usize) -> Result<rquickjs::Value<'js>> {
-        if depth > MAX_DEPTH {
-            bail!("value is nested too deeply to pass to JavaScript");
-        }
+    pub(crate) fn to_js(&self, v: &Value) -> Result<rquickjs::Value<'js>> {
         let ctx = self.ctx.clone();
         Ok(match v {
             Value::Undefined => rquickjs::Value::new_undefined(ctx),
@@ -54,21 +86,26 @@ impl<'js> Conv<'js> {
             Value::Bool(b) => rquickjs::Value::new_bool(ctx, *b),
             Value::Num(n) => rquickjs::Value::new_number(ctx, *n),
             Value::Str(s) => rquickjs::String::from_str(ctx, s)?.into_value(),
-            Value::Arr(items) => {
+            // Small values (object literals in templates) are cheaper to copy than to wrap.
+            Value::Arr(items) if is_small(v) => {
                 let arr = Array::new(ctx)?;
                 for (i, item) in items.iter().enumerate() {
-                    arr.set(i, self.to_js_at(item, depth + 1)?)?;
+                    arr.set(i, self.to_js(item)?)?;
                 }
                 arr.into_value()
             }
-            Value::Obj(map) => {
+            Value::Obj(map) if is_small(v) => {
                 let obj = Object::new(ctx)?;
                 for (k, item) in map.iter() {
-                    obj.set(k.as_str(), self.to_js_at(item, depth + 1)?)?;
+                    obj.set(k.as_str(), self.to_js(item)?)?;
                 }
                 obj.into_value()
             }
-            Value::Date(d) => self.make_date.call((d.timestamp_millis() as f64,))?,
+            Value::Arr(_) | Value::Obj(_) => {
+                self.engine.views_used.store(true, std::sync::atomic::Ordering::Relaxed);
+                views::view(&ctx, self.helper(&self.make_view, "view")?, v)?
+            }
+            Value::Date(d) => self.helper(&self.make_date, "makeDate")?.call((d.timestamp_millis() as f64,))?,
             Value::Func(f) if self.engine.origin(f).is_some() => {
                 let fns: Array = self.ctx.globals().get::<_, Object>("__ssqch")?.get("fns")?;
                 fns.get(self.engine.origin(f).unwrap_or_default() as usize)?
@@ -104,6 +141,18 @@ impl<'js> Conv<'js> {
             Type::Int | Type::Float => Value::Num(v.as_number().unwrap_or(f64::NAN)),
             Type::BigInt => Value::Num(v.as_big_int().and_then(|b| b.clone().to_i64().ok()).map(|n| n as f64).unwrap_or(f64::NAN)),
             Type::String => Value::str(v.as_string().map(|s| s.to_string()).transpose()?.unwrap_or_default()),
+            // A view nobody wrote to goes back as the original value.
+            Type::Array | Type::Object | Type::Proxy if let Some(original) = views::unwrap(self.helper(&self.unwrap_view, "unwrapView")?, &v)? => original,
+            // A Proxy around an array (a view that was written to, say by sort()).
+            Type::Proxy if self.helper(&self.is_array, "isArray")?.call::<_, bool>((v.clone(),))? => {
+                let obj = v.into_object().ok_or_else(|| anyhow!("expected an array"))?;
+                let len: f64 = obj.get("length")?;
+                let mut items = Vec::with_capacity(len as usize);
+                for i in 0..len as usize {
+                    items.push(self.from_js_at(obj.get(i as u32)?, depth + 1)?);
+                }
+                Value::array(items)
+            }
             Type::Array => {
                 let arr = v.into_array().ok_or_else(|| anyhow!("expected an array"))?;
                 let mut items = Vec::with_capacity(arr.len());
@@ -113,12 +162,12 @@ impl<'js> Conv<'js> {
                 Value::array(items)
             }
             Type::Function | Type::Constructor => {
-                let id: u32 = self.keep.call((v,))?;
+                let id: u32 = self.helper(&self.keep, "keep")?.call((v,))?;
                 self.engine.value(JsFn { engine: self.engine.clone(), id })
             }
             Type::Promise => bail!("got a Promise inside a value; await it before returning"),
             Type::Object | Type::Exception | Type::Proxy => {
-                let ms: Option<f64> = self.date_ms.call((v.clone(),))?;
+                let ms: Option<f64> = self.helper(&self.date_ms, "dateMs")?.call((v.clone(),))?;
                 if let Some(ms) = ms {
                     return Ok(DateTime::<Utc>::from_timestamp_millis(ms as i64).map(Value::Date).unwrap_or(Value::Null));
                 }

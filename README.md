@@ -117,6 +117,9 @@ embedded in the `ssqch` binary (it adds about 1.2 MB), so modern JavaScript work
 | `addGlobalData(name, value)` | Data for every template. Pass a function (sync or async) to compute it on each build. |
 | `addPassthroughCopy(path)` or `({ from: to })` | Copy files or folders into the output. |
 | `addWatchTarget(path)` | More paths for `ssqch serve` to watch. |
+| `addCollection(name, (api) => ...)` | A custom collection. `api` has `getAll`, `getAllSorted`, `getFilteredByTag`, `getFilteredByTags` and `getFilteredByGlob`, like Eleventy's. |
+| `addTransform(name, function (content) { ... })` | Post-process every output file. `this.page` has `url`, `inputPath` and `outputPath`; `outputPath` is also the second argument. Return the content, changed or not. Async works. |
+| `on("eleventy.before" \| "eleventy.after", fn)` | Build hooks. `fn` gets `{ directories, runMode, outputMode }`, plus `results` after the build. Async works. |
 | `addPlugin("ssqch:rss" \| "ssqch:image" \| "ssqch:minify", options)` | Turn on a built-in plugin. |
 | `addPlugin(fn, options)` | Call `fn(config, options)`, like an Eleventy plugin. |
 | `setDataDeepMerge`, `setTemplateFormats`, `set{Input,Output,Includes,Data}Directory` | Settings, also accepted in the returned object or `export const config`. |
@@ -136,9 +139,13 @@ Imports can be relative files (`./lib/filters.js`, with or without the extension
 Errors carry Node's codes (`err.code === "ENOENT"`), and relative paths resolve against the
 project root, like running Node from there.
 
-Template values cross over as plain JavaScript values, and dates arrive as `Date` objects. Pages
-render in parallel, but JavaScript runs one call at a time, so module-level state in your config
-behaves the way it would in Node.
+Template values arrive as ordinary-looking JavaScript objects, arrays and `Date`s. Large objects
+(a page's data, a collection) are really lazy views: a property is read from Rust the first time
+you touch it, so passing `collections.posts` to a filter costs nothing until the filter reads it.
+They behave like plain objects (`Object.keys`, spread, `JSON.stringify`, `sort()` and other in-place
+changes all work), and changes stay inside JavaScript: a filter that sorts `collections.posts`
+doesn't reorder it for other pages. Pages render in parallel, but JavaScript runs one call at a
+time, so module-level state in your config behaves the way it would in Node.
 
 ### JavaScript data files
 
@@ -183,8 +190,8 @@ like `at bad (lib/filters.js:3:9)`. Misspelled plugin names and options are erro
 ignored.
 
 > **Note:** these aren't supported yet: npm packages, CommonJS (`require`, `module.exports`),
-> Node built-ins beyond the ones above (such as `node:crypto`), `addCollection`, `addTransform`, `on("eleventy.before")`, paired shortcodes, timers and
-> `fetch`. Calling an unsupported method fails with a message saying so. After editing the config,
+> Node built-ins beyond the ones above (such as `node:crypto`), paired shortcodes,
+> `addExtension`, the `eleventy.beforeWatch` event, timers and `fetch`. Calling an unsupported method fails with a message saying so. After editing the config,
 > restart `ssqch serve` to pick up the changes.
 >
 > QuickJS has no `Intl`, so `toLocaleDateString()` and friends ignore their locale and options
@@ -331,11 +338,11 @@ differ on purpose:
 
 ## Not done yet / known gaps
 
-- JavaScript config and data files don't cover npm packages, CommonJS, collections, transforms or
-  build hooks yet; see the note under [Configuring a site](#configuring-a-site).
-- An `eleventyComputed` function gets a copy of the page's data, including all global data, on every
-  call. That's fine for a blog (about 65 µs per page with 46 KB of global data), but it will add up
-  on large sites until values are passed to JavaScript without copying.
+- JavaScript config and data files don't cover npm packages or CommonJS yet; see the note under
+  [Configuring a site](#configuring-a-site).
+- JavaScript is interpreted (QuickJS has no JIT), so heavy collection code is slower than in Node.
+  Reading a page in a collection costs about 2 µs the first time; the blog's `topics` and
+  `postsByYear` collections over 2,000 posts take about 45 ms together.
 - Edge: no `@inject`, `@debugger`, `@svg`, components-as-tags (`@!card()`), destructuring in
   `@let`, scoped slots, regex literals, or the `in` operator. Array `reverse`/`sort` return copies
   rather than mutating.
