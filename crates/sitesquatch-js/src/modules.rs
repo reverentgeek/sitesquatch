@@ -11,9 +11,12 @@
 //! file that QuickJS has already cached (used to reload changed data files).
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use rquickjs::loader::ImportAttributes;
 use rquickjs::{Ctx, Error, Module, Object, Result};
+
+use crate::JsModule;
 
 /// Node built-in modules provided by `node.js`.
 pub(crate) const NODE_MODULES: [&str; 7] = ["fs", "fs/promises", "path", "path/posix", "url", "process", "buffer"];
@@ -43,11 +46,12 @@ fn split_query(name: &str) -> (&str, &str) {
 
 pub(crate) struct Resolver {
     root: PathBuf,
+    modules: Arc<[JsModule]>,
 }
 
 impl Resolver {
-    pub(crate) fn new(root: &Path) -> Self {
-        Resolver { root: root.to_path_buf() }
+    pub(crate) fn new(root: &Path, modules: Arc<[JsModule]>) -> Self {
+        Resolver { root: root.to_path_buf(), modules }
     }
 }
 
@@ -56,6 +60,9 @@ impl rquickjs::loader::Resolver for Resolver {
         let builtin = name.strip_prefix("node:").unwrap_or(name);
         if NODE_MODULES.contains(&builtin) {
             return Ok(format!("node:{}", builtin));
+        }
+        if let Some(module) = self.modules.iter().find(|m| m.name == name || m.aliases.iter().any(|a| a == name)) {
+            return Ok(module.name.clone());
         }
         if name.starts_with("node:") {
             return Err(Error::new_resolving_message(base, name, format!("{} isn't available in ssqch (available: {})", name, NODE_MODULES.map(|m| format!("node:{}", m)).join(", "))));
@@ -89,11 +96,12 @@ impl rquickjs::loader::Resolver for Resolver {
 
 pub(crate) struct Loader {
     root: PathBuf,
+    modules: Arc<[JsModule]>,
 }
 
 impl Loader {
-    pub(crate) fn new(root: &Path) -> Self {
-        Loader { root: root.to_path_buf() }
+    pub(crate) fn new(root: &Path, modules: Arc<[JsModule]>) -> Self {
+        Loader { root: root.to_path_buf(), modules }
     }
 }
 
@@ -101,6 +109,9 @@ impl rquickjs::loader::Loader for Loader {
     fn load<'js>(&mut self, ctx: &Ctx<'js>, name: &str, _attributes: Option<ImportAttributes<'js>>) -> Result<Module<'js>> {
         if let Some(builtin) = name.strip_prefix("node:") {
             return Module::declare(ctx.clone(), name, builtin_source(ctx, builtin)?);
+        }
+        if let Some(module) = self.modules.iter().find(|m| m.name == name) {
+            return Module::declare(ctx.clone(), name, module.source.clone());
         }
         let (file, _) = split_query(name);
         let path = self.root.join(file);

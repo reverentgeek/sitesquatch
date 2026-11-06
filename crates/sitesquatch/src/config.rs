@@ -157,6 +157,7 @@ pub struct Config {
     pub(crate) data_extensions: Vec<(String, DataLoader)>,
     pub(crate) collections: Vec<(String, CollectionFn)>,
     pub(crate) transforms: Vec<(String, TransformFn)>,
+    pub(crate) html_transforms: Vec<(String, TransformFn)>,
     pub(crate) engines: Vec<(String, EngineFactory)>,
     pub(crate) before_build: Vec<BeforeHook>,
     pub(crate) after_build: Vec<AfterHook>,
@@ -186,6 +187,7 @@ impl Config {
             data_extensions: Vec::new(),
             collections: Vec::new(),
             transforms: Vec::new(),
+            html_transforms: Vec::new(),
             engines: Vec::new(),
             before_build: Vec::new(),
             after_build: Vec::new(),
@@ -264,12 +266,24 @@ impl Config {
         self
     }
 
-    /// Post-process every rendered output file, in registration order.
+    /// Post-process every rendered output file, after any HTML transforms
+    /// (see [`Config::add_html_transform`]), in registration order.
     pub fn add_transform<F>(&mut self, name: impl Into<String>, f: F) -> &mut Self
     where
         F: Fn(&TransformContext, String) -> Result<String> + Send + Sync + 'static,
     {
         self.transforms.push((name.into(), Arc::new(f)));
+        self
+    }
+
+    /// A transform that runs before every [`Config::add_transform`] one, like
+    /// a plugin on Eleventy's `htmlTransformer` (the stage `@11ty/eleventy-img`
+    /// uses), whatever order plugins were added in.
+    pub fn add_html_transform<F>(&mut self, name: impl Into<String>, f: F) -> &mut Self
+    where
+        F: Fn(&TransformContext, String) -> Result<String> + Send + Sync + 'static,
+    {
+        self.html_transforms.push((name.into(), Arc::new(f)));
         self
     }
 

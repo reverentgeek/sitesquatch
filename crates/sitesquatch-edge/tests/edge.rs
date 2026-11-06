@@ -47,18 +47,17 @@ fn conditionals_loops_and_whitespace() {
     let src = "<ul>\n  @each((item, i) in items)\n  <li>{{ i }}:{{ item }}</li>\n  @end\n</ul>";
     assert_eq!(render(src, r#"{"items":["a","b"]}"#), "<ul>\n  <li>0:a</li>\n  <li>1:b</li>\n</ul>");
 
+    // Expected values are Edge.js 6.5.1's output.
     let src = "@if(x)\nyes\n@elseif(y)\nmaybe\n@else\nno\n@end\n";
-    // Newlines belong to source lines (as in Edge.js), so the second branch's
-    // line keeps the line break that preceded it in the source.
     assert_eq!(render(src, r#"{"x":1}"#), "yes");
-    assert_eq!(render(src, r#"{"y":1}"#), "\nmaybe");
+    assert_eq!(render(src, r#"{"y":1}"#), "maybe");
 
     // Same as Edge.js: `~` drops the newline that would precede the next text line.
     let src = "  <title>\n@if(t)~\n{{ t }}\n@end~\n  </title>";
     assert_eq!(render(src, r#"{"t":"Hi"}"#), "  <title>Hi  </title>");
 
     let src = "@each(x in list)\n{{ x }}\n@else\nempty\n@end";
-    assert_eq!(render(src, r#"{"list":[]}"#), "\nempty");
+    assert_eq!(render(src, r#"{"list":[]}"#), "empty");
 }
 
 #[test]
@@ -85,7 +84,9 @@ fn includes_share_scope_and_components_isolate() {
     assert_eq!(e.render_str("t", "@include('partials/greet')", d.clone()).unwrap(), "Hello Ada");
     assert_eq!(e.render_str("t", "@!component('components/card', { title: 'T' })", d.clone()).unwrap(), "[T|||]");
     let src = "@component('components/card', { title: 'T' })\nbody {{ name }}\n@slot('foot')\nF\n@end\n@end";
-    assert_eq!(e.render_str("t", src, d).unwrap(), "[T||body Ada|\nF]");
+    // Edge.js gives "[T|undefined|body Ada|F]": it prints undefined values,
+    // where ssqch prints nothing.
+    assert_eq!(e.render_str("t", src, d).unwrap(), "[T||body Ada|F]");
 }
 
 #[test]
@@ -99,4 +100,29 @@ fn errors_report_template_and_line() {
 #[test]
 fn unknown_at_words_are_text() {
     assert_eq!(render("@media (x) {}\nemail me @ home", "{}"), "@media (x) {}\nemail me @ home");
+}
+
+#[test]
+fn escapes_like_edge_js() {
+    // Edge.js 6.5.1 renders `{{ s }}` with this value as the expected string.
+    let s = "a & b < c > d \" e ' f ` g = h";
+    assert_eq!(sitesquatch_edge::escape_html(s), "a &amp; b &lt; c &gt; d &quot; e &#x27; f &#x60; g = h");
+}
+
+/// Newline and `~` handling, checked against Edge.js 6.5.1: the expected
+/// outputs are what `edge.renderRaw(template, { xs: [1, 2] })` returns, with
+/// the same `c` component and `p` partial registered.
+#[test]
+fn whitespace_matches_edge_js() {
+    let cases: Vec<String> = serde_json::from_str(include_str!("fixtures/whitespace-cases.json")).unwrap();
+    let expected: Vec<String> = serde_json::from_str(include_str!("fixtures/whitespace-expected.json")).unwrap();
+    let mut failures = Vec::new();
+    for (i, (src, want)) in cases.iter().zip(&expected).enumerate() {
+        let e = engine(&[("c", "<{{{ await $slots.main() }}}>[{{{ $slots.foot ? await $slots.foot() : \"\" }}}]"), ("p", "\nP1\nP2\n")]);
+        let got = e.render_str("test", src, data(r#"{"xs":[1,2]}"#)).unwrap();
+        if &got != want {
+            failures.push(format!("case {}: {:?}\n  edge.js: {:?}\n  ssqch:   {:?}", i, src, want, got));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

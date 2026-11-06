@@ -4,6 +4,8 @@
 //! config file) or `sitesquatch.toml` in the project root. Sites that want to
 //! extend SiteSquatch in Rust build their own binary with `sitesquatch::cli::run`.
 
+mod modules;
+
 use anyhow::{bail, Result};
 use serde_json::Value as Json;
 use sitesquatch::Config;
@@ -26,14 +28,18 @@ fn main() -> std::process::ExitCode {
 
 fn configure(cfg: &mut Config) -> Result<()> {
     let toml = cfg.root.join("sitesquatch.toml");
+    let js_modules = modules::js_modules();
     match sitesquatch_js::find_config(&cfg.root) {
         Some(js) if toml.is_file() => bail!("found both {} and sitesquatch.toml; keep one of them", js.file_name().unwrap_or_default().to_string_lossy()),
-        Some(js) => sitesquatch_js::load(cfg, &js, BUILTINS),
+        Some(js) => sitesquatch_js::load(cfg, &js, BUILTINS, &js_modules)?,
         None => {
-            sitesquatch_js::add_data_files(cfg);
-            sitesquatch::site_toml::apply(cfg)
+            sitesquatch_js::add_data_files(cfg, &js_modules);
+            sitesquatch::site_toml::apply(cfg)?;
         }
     }
+    // JavaScript data files can call Image() even without the plugin.
+    modules::ensure_image_processor(cfg);
+    Ok(())
 }
 
 fn rss(cfg: &mut Config, options: &Json) -> Result<()> {
@@ -75,7 +81,9 @@ fn image(cfg: &mut Config, options: &Json) -> Result<()> {
     if let Some(q) = o.number("jpegQuality")? { opts.jpeg_quality = q.clamp(1.0, 100.0) as u8; }
     if let Some(t) = o.number("minimumThreshold")? { opts.minimum_threshold = t; }
     if let Some(p) = o.bool("prune")? { opts.prune = p; }
-    cfg.add_plugin(ImagePlugin::new(opts));
+    let plugin = ImagePlugin::new(opts);
+    modules::set_image_processor(plugin.processor.clone())?;
+    cfg.add_plugin(plugin);
     Ok(())
 }
 
@@ -89,7 +97,7 @@ fn minify(cfg: &mut Config, options: &Json) -> Result<()> {
     Ok(())
 }
 
-fn parse_format(name: &str) -> Result<Format> {
+pub(crate) fn parse_format(name: &str) -> Result<Format> {
     Ok(match name {
         "avif" => Format::Avif,
         "webp" => Format::Webp,

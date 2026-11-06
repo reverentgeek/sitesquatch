@@ -209,6 +209,8 @@
 			}
 		}
 		const known = [ "templateFormats", "markdownTemplateEngine", "htmlTemplateEngine", "dataDeepMerge" ];
+		// Eleventy settings with nothing to do here.
+		delete rest.passthroughFileCopy;
 		for ( const [ key, value ] of Object.entries( rest ) ) {
 			if ( !known.includes( key ) ) fail( `${ where }: "${ key }" isn't a supported setting (supported: dir, ${ known.join( ", " ) })` );
 			settings[key] = value;

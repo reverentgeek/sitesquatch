@@ -44,6 +44,22 @@ pub const CONFIG_FILES: [&str; 2] = ["ssqch.config.js", "ssqch.config.mjs"];
 /// `config.addPlugin("ssqch:image", { ... })`. It receives the options object.
 pub type BuiltinPlugin = fn(&mut Config, &serde_json::Value) -> Result<()>;
 
+/// A JavaScript module built into the program running the config, such as
+/// `ssqch:image`. Its source reaches its native functions through
+/// `globalThis.__ssqch.natives[name]`.
+#[derive(Clone)]
+pub struct JsModule {
+    /// What `import` names, such as `ssqch:image`.
+    pub name: String,
+    /// Other import names it answers to, such as an Eleventy package it
+    /// stands in for (`@11ty/eleventy-img`).
+    pub aliases: Vec<String>,
+    /// The ES module source.
+    pub source: String,
+    /// Values (usually functions) for the source to use.
+    pub natives: Vec<(String, Value)>,
+}
+
 /// The config file in `root`, if there is one.
 pub fn find_config(root: &Path) -> Option<PathBuf> {
     CONFIG_FILES.iter().map(|name| root.join(name)).find(|p| p.is_file())
@@ -51,11 +67,12 @@ pub fn find_config(root: &Path) -> Option<PathBuf> {
 
 /// Run the config module at `path` and apply what it registers to `cfg`.
 /// JavaScript data files are enabled too (see [`add_data_files`]).
-pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)]) -> Result<()> {
+pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)], modules: &[JsModule]) -> Result<()> {
     let path = std::fs::canonicalize(path).with_context(|| format!("reading {}", path.display()))?;
     let root = project_root(cfg);
-    let engine = Engine::new(&root, cfg.env.as_str())?;
-    install_data_files(cfg, DataFiles::new(&root, cfg.env.as_str(), Some(engine.clone())));
+    let modules: Arc<[JsModule]> = modules.into();
+    let engine = Engine::new(&root, cfg.env.as_str(), modules.clone())?;
+    install_data_files(cfg, DataFiles::new(&root, cfg.env.as_str(), modules, Some(engine.clone())));
     let specifier = modules::specifier(&root, &path);
     let result = engine
         .with(|ctx| {
@@ -79,9 +96,9 @@ pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)]) -
 /// file's default export is the data, or a function (sync or async) that
 /// returns it, called on every build. The engine starts on first use, so this
 /// costs nothing for a site without JavaScript data files.
-pub fn add_data_files(cfg: &mut Config) {
+pub fn add_data_files(cfg: &mut Config, modules: &[JsModule]) {
     let root = project_root(cfg);
-    install_data_files(cfg, DataFiles::new(&root, cfg.env.as_str(), None));
+    install_data_files(cfg, DataFiles::new(&root, cfg.env.as_str(), modules.into(), None));
 }
 
 fn install_data_files(cfg: &mut Config, files: DataFiles) {
@@ -99,6 +116,7 @@ fn project_root(cfg: &Config) -> PathBuf {
 struct DataFiles {
     root: PathBuf,
     env: String,
+    modules: Arc<[JsModule]>,
     engine: Mutex<Option<Arc<Engine>>>,
     /// Modification time and reload count of every data file seen, so a
     /// changed file is imported fresh during `ssqch serve`.
@@ -106,8 +124,8 @@ struct DataFiles {
 }
 
 impl DataFiles {
-    fn new(root: &Path, env: &str, engine: Option<Arc<Engine>>) -> Self {
-        DataFiles { root: root.to_path_buf(), env: env.to_string(), engine: Mutex::new(engine), versions: Mutex::new(HashMap::new()) }
+    fn new(root: &Path, env: &str, modules: Arc<[JsModule]>, engine: Option<Arc<Engine>>) -> Self {
+        DataFiles { root: root.to_path_buf(), env: env.to_string(), modules, engine: Mutex::new(engine), versions: Mutex::new(HashMap::new()) }
     }
 
     fn engine(&self) -> Result<Arc<Engine>> {
@@ -115,7 +133,7 @@ impl DataFiles {
         if let Some(engine) = &*slot {
             return Ok(engine.clone());
         }
-        let engine = Engine::new(&self.root, &self.env)?;
+        let engine = Engine::new(&self.root, &self.env, self.modules.clone())?;
         *slot = Some(engine.clone());
         Ok(engine)
     }
@@ -311,10 +329,10 @@ pub(crate) struct Engine {
 type NativeFn = dyn Fn(&[Value]) -> Result<Value> + Send + Sync;
 
 impl Engine {
-    fn new(root: &Path, env: &str) -> Result<Arc<Engine>> {
+    fn new(root: &Path, env: &str, modules: Arc<[JsModule]>) -> Result<Arc<Engine>> {
         let runtime = Runtime::new()?;
         runtime.set_max_stack_size(4 * 1024 * 1024);
-        runtime.set_loader(modules::Resolver::new(root), modules::Loader::new(root));
+        runtime.set_loader(modules::Resolver::new(root, modules.clone()), modules::Loader::new(root, modules.clone()));
         let context = Context::full(&runtime)?;
         let engine = Arc::new(Engine { context, _runtime: runtime, origins: Mutex::new(HashMap::new()), views_used: Default::default() });
         engine.with(|ctx| {
@@ -329,7 +347,7 @@ impl Engine {
             globals.set("__ssqch_print", print)?;
             globals.set("process", process_object(&ctx, root, env)?)?;
             native::install(&ctx, root)?;
-            for source in [include_str!("prelude.js"), include_str!("node.js")] {
+            for source in [include_str!("prelude.js"), include_str!("node.js"), include_str!("intl.js")] {
                 let mut options = rquickjs::context::EvalOptions::default();
                 options.global = true;
                 options.filename = Some(convert::PRELUDE_NAME.into());
@@ -339,6 +357,16 @@ impl Engine {
                     .context("internal error in the ssqch prelude")?;
             }
             views::install(&ctx, &engine)?;
+            let natives = Object::new(ctx.clone())?;
+            let conv = Conv::new(&ctx, &engine)?;
+            for module in modules.iter() {
+                let exports = Object::new(ctx.clone())?;
+                for (name, value) in &module.natives {
+                    exports.set(name.as_str(), conv.to_js(value)?)?;
+                }
+                natives.set(module.name.as_str(), exports)?;
+            }
+            ctx.globals().get::<_, Object>("__ssqch")?.set("natives", natives)?;
             Ok(())
         })?;
         Ok(engine)

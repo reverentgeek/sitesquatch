@@ -14,18 +14,9 @@ impl Plugin for RssPlugin {
     }
 
     fn register(&self, cfg: &mut Config) {
-        cfg.add_filter("getNewestCollectionItemDate", |args| {
-            let newest = args.arg(0).as_array().unwrap_or(&[]).iter().filter_map(|item| item.get("date").to_date()).max();
-            Ok(newest.map(Value::Date).unwrap_or(Value::Undefined))
-        });
-        cfg.add_filter("dateToRfc3339", |args| {
-            let d = args.arg(0).to_date().ok_or_else(|| anyhow!("dateToRfc3339: not a date: {:?}", args.arg(0)))?;
-            Ok(Value::from(d.format("%Y-%m-%dT%H:%M:%SZ").to_string()))
-        });
-        cfg.add_filter("dateToRfc822", |args| {
-            let d = args.arg(0).to_date().ok_or_else(|| anyhow!("dateToRfc822: not a date: {:?}", args.arg(0)))?;
-            Ok(Value::from(d.format("%a, %d %b %Y %H:%M:%S +0000").to_string()))
-        });
+        cfg.add_filter("getNewestCollectionItemDate", |args| Ok(newest_item_date(&args.arg(0))));
+        cfg.add_filter("dateToRfc3339", |args| date_to_rfc3339(&args.arg(0)).map(Value::from));
+        cfg.add_filter("dateToRfc822", |args| date_to_rfc822(&args.arg(0)).map(Value::from));
         cfg.add_filter("absoluteUrl", |args| Ok(Value::from(absolute_url(&args.arg_string(0), &args.arg_string(1)))));
         cfg.add_filter("htmlToAbsoluteUrls", |args| Ok(Value::from(html_to_absolute_urls(&args.arg_string(0), &args.arg_string(1))?)));
         // Eleventy's built-in `url` filter (no path prefix support yet).
@@ -33,35 +24,34 @@ impl Plugin for RssPlugin {
     }
 }
 
-/// Resolve `url` against `base`, like `new URL(url, base).toString()` for
-/// http(s) URLs.
+/// The newest `date` among a collection's items (undefined if it's empty).
+pub fn newest_item_date(items: &Value) -> Value {
+    let newest = items.as_array().unwrap_or(&[]).iter().filter_map(|item| item.get("date").to_date()).max();
+    newest.map(Value::Date).unwrap_or(Value::Undefined)
+}
+
+/// `2026-03-14T00:00:00Z`
+pub fn date_to_rfc3339(date: &Value) -> Result<String> {
+    let d = date.to_date().ok_or_else(|| anyhow!("dateToRfc3339: not a date: {:?}", date))?;
+    Ok(d.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+}
+
+/// `Sat, 14 Mar 2026 00:00:00 +0000`
+pub fn date_to_rfc822(date: &Value) -> Result<String> {
+    let d = date.to_date().ok_or_else(|| anyhow!("dateToRfc822: not a date: {:?}", date))?;
+    Ok(d.format("%a, %d %b %Y %H:%M:%S +0000").to_string())
+}
+
+/// Resolve `url` against `base`, like `new URL(url, base).toString()`.
 pub fn absolute_url(url: &str, base: &str) -> String {
-    if url.contains("://") || url.starts_with("mailto:") || url.starts_with("data:") || url.starts_with('#') {
-        return url.to_string();
+    // The same WHATWG URL rules as `new URL(url, base).toString()`, which is
+    // what @11ty/eleventy-plugin-rss uses: "https://example.com" becomes
+    // "https://example.com/", and "#top" resolves against the page. Like the
+    // plugin, a URL that can't be resolved is returned unchanged.
+    match url::Url::parse(base).and_then(|b| b.join(url)) {
+        Ok(u) => u.to_string(),
+        Err(_) => url.to_string(),
     }
-    let (scheme, rest) = base.split_once("://").unwrap_or(("https", base));
-    if let Some(proto_relative) = url.strip_prefix("//") {
-        return format!("{}://{}", scheme, proto_relative);
-    }
-    let (host, base_path) = match rest.find('/') {
-        Some(i) => (&rest[..i], &rest[i..]),
-        None => (rest, "/"),
-    };
-    if url.starts_with('/') {
-        return format!("{}://{}{}", scheme, host, url);
-    }
-    let dir = &base_path[..base_path.rfind('/').map(|i| i + 1).unwrap_or(0)];
-    let mut segments: Vec<&str> = dir.split('/').filter(|s| !s.is_empty()).collect();
-    for seg in url.split('/') {
-        match seg {
-            "." => {}
-            ".." => {
-                segments.pop();
-            }
-            s => segments.push(s),
-        }
-    }
-    format!("{}://{}/{}", scheme, host, segments.join("/"))
 }
 
 /// Rewrite `href`, `src`, `poster` and `srcset` attributes to absolute URLs.
@@ -102,12 +92,26 @@ pub fn html_to_absolute_urls(html: &str, base: &str) -> Result<String> {
 mod tests {
     use super::*;
 
+    /// Expected values are what Node's `new URL(url, base).toString()` returns
+    /// (the url, unchanged, when it throws).
     #[test]
-    fn resolves_urls() {
+    fn resolves_urls_like_node() {
         assert_eq!(absolute_url("/a/", "https://x.com"), "https://x.com/a/");
         assert_eq!(absolute_url("img.png", "https://x.com/post/"), "https://x.com/post/img.png");
         assert_eq!(absolute_url("../b", "https://x.com/a/c/"), "https://x.com/a/b");
         assert_eq!(absolute_url("https://y.com/z", "https://x.com"), "https://y.com/z");
+        assert_eq!(absolute_url("https://getmetermaid.com", "https://reverentgeek.com/p/"), "https://getmetermaid.com/");
+        assert_eq!(absolute_url("#gear-list", "https://reverentgeek.com/my-video-streaming-setup/"), "https://reverentgeek.com/my-video-streaming-setup/#gear-list");
+        assert_eq!(absolute_url("?q=1", "https://x.com/a/b"), "https://x.com/a/b?q=1");
+        assert_eq!(absolute_url("//cdn.x.com/a.js", "https://x.com/"), "https://cdn.x.com/a.js");
+        assert_eq!(absolute_url("mailto:a@b.com", "https://x.com/"), "mailto:a@b.com");
+        assert_eq!(absolute_url("HTTPS://Example.COM/A%20B", "https://x.com/"), "https://example.com/A%20B");
+        assert_eq!(absolute_url("a b.png", "https://x.com/p/"), "https://x.com/p/a%20b.png");
+        assert_eq!(absolute_url("", "https://x.com/p/"), "https://x.com/p/");
+        assert_eq!(absolute_url("https://x.com:443/a", "https://x.com/"), "https://x.com/a");
+        assert_eq!(absolute_url("data:image/png;base64,AAA", "https://x.com/"), "data:image/png;base64,AAA");
+        assert_eq!(absolute_url("./", "https://x.com/a/b/"), "https://x.com/a/b/");
+        assert_eq!(absolute_url("https://bad host/", "https://x.com/"), "https://bad host/");
     }
 
     #[test]

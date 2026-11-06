@@ -189,14 +189,39 @@ Errors point back at your code: `ssqch.config.js: too many pine cones` followed 
 like `at bad (lib/filters.js:3:9)`. Misspelled plugin names and options are errors, not silently
 ignored.
 
-> **Note:** these aren't supported yet: npm packages, CommonJS (`require`, `module.exports`),
-> Node built-ins beyond the ones above (such as `node:crypto`), paired shortcodes,
-> `addExtension`, the `eleventy.beforeWatch` event, timers and `fetch`. Calling an unsupported method fails with a message saying so. After editing the config,
-> restart `ssqch serve` to pick up the changes.
->
-> QuickJS has no `Intl`, so `toLocaleDateString()` and friends ignore their locale and options
-> and use the machine's time zone: a `2026-03-14` front matter date comes out as `03/13/2026` west of
-> UTC. Format dates yourself from the `getUTC*()` methods or `toISOString()`.
+### Running an Eleventy config
+
+Many Eleventy configs run unchanged. ssqch answers imports of these packages with its own
+modules, backed by the built-in plugins:
+
+| Import | What you get |
+| --- | --- |
+| `@11ty/eleventy-img` | `Image(src, options)`, returning eleventy-img's metadata (`{ webp: [{ url, width, height, srcset, sourceType, ... }] }`), and `eleventyImageTransformPlugin` |
+| `@11ty/eleventy-plugin-rss` | The plugin (its filters), plus `getNewestCollectionItemDate`, `dateToRfc3339`, `dateToRfc822`, `absoluteUrl` and `convertHtmlToAbsoluteUrls` |
+| `html-minifier-terser` | `minify(html, options)` with `collapseWhitespace`, `removeComments` and `useShortDoctype` (off unless set, like html-minifier) |
+| `eleventy-plugin-edgejs` | Nothing to do: Edge is built in |
+| `eleventy-plugin-broken-links` | A warning that it isn't available |
+
+The same modules are importable as `ssqch:image`, `ssqch:rss` and `ssqch:minify`. Options ssqch
+can't honor, such as sharp's `effort` or a `transform` function, are ignored with a warning. An
+`Image()` call whose `outputDir` or `urlPath` doesn't match the build is an error, not a surprise.
+The ReverentGeek blog builds from its real `.eleventy.js` with a one-line `ssqch.config.js`:
+
+```js
+export { default } from "./.eleventy.js";
+```
+
+Dates and numbers format like Node for `en-US`: `toLocaleDateString()`, `toLocaleTimeString()`,
+`toLocaleString()`, `Intl.DateTimeFormat` and `Intl.NumberFormat` match Node 24 on
+[902 cases](crates/sitesquatch-js/tests/fixtures/intl-cases.mjs). QuickJS has no `Intl` of its own, so
+other locales, and time zones other than UTC and the machine's, throw instead of formatting
+something else.
+
+> **Note:** these aren't supported yet: other npm packages, CommonJS (`require`,
+> `module.exports`), Node built-ins beyond the ones above (such as `node:crypto`), paired
+> shortcodes, `addExtension`, the `eleventy.beforeWatch` event, timers and `fetch`. Calling an
+> unsupported method fails with a message saying so. After editing the config, restart
+> `ssqch serve` to pick up the changes.
 
 ### Configuring with TOML
 
@@ -258,7 +283,10 @@ hrefs), dynamic permalinks, `permalink: false`, `dynamicPermalink`, `eleventyExc
 
 `{{ }}`, `{{{ }}}`, `{{-- --}}`, `@{{ }}`, `@if/@elseif/@else/@unless`, `@each` (with index,
 objects, `@else`, `$loop`), `@let`, `@assign`, `@include`, `@includeIf`, `@component`/`@!component`
-with named slots and isolated scope, `~` whitespace control, Edge's newline rules.
+with named slots and isolated scope, `~` whitespace control. Newlines and escaping follow
+Edge.js exactly, checked against Edge.js 6.5 on
+[42 whitespace cases](crates/sitesquatch-edge/tests/fixtures/whitespace-cases.json). One
+difference: an undefined value prints nothing, where Edge.js prints `undefined`.
 
 Expressions cover the JavaScript the blog uses and a bit more: object/array literals with
 shorthand and spread, template literals, optional chaining, arrow functions, ternaries, `??`,
@@ -322,19 +350,23 @@ The blog deploys to Netlify from GitHub Actions without a Node toolchain:
 
 ## Parity with the 11ty build
 
-Compared page by page against the Eleventy build's `dist/`, SiteSquatch produces exactly the same
-set of files, and the blog's own `test/smoke.test.js` passes against SiteSquatch output. Every text
-output is byte-identical (`_headers`, `_redirects`, `robots.txt`, `webfinger`, `llms.txt`). With
-attribute order and minifier formatting ignored, 147 of 161 HTML pages are identical. The other 14
-differ on purpose:
+The ReverentGeek blog builds two ways: from its real `.eleventy.js` (the one-line
+`ssqch.config.js` above), and from the Rust port in `examples/reverentgeek`. Both were compared
+file by file with Eleventy 4.0.0-alpha.10's build of the same source, all three built with
+`TZ=UTC` (as on Netlify) and AVIF on:
 
-- **Dates are rendered in UTC.** `postDate`/`getFullYear` run in the local time zone in Node, so an
-  Eleventy build west of UTC shows `date: 2014-07-14` as "July 13, 2014" (Netlify, in UTC, shows the
-  14th). SiteSquatch always shows the front matter date, and the archive's year grouping follows.
-- **Animated GIFs stay animated.** eleventy-img (without `sharpOptions.animated`) keeps only the
-  first frame; SiteSquatch copies GIFs for `auto` output.
-- **AVIF is opt-in** (`--features avif`), because the pure-Rust encoder is slow. Without it the hero
-  preload uses WebP.
+- The two ssqch builds are identical on all 183 files.
+- Against Eleventy, the file set is the same, the blog's `test/smoke.test.js` passes, and
+  `sitemap.xml`, `_headers`, `_redirects`, `robots.txt`, `llms.txt` and `webfinger` are
+  byte-identical.
+- 169 of 182 files are identical once image file names (each tool hashes its own), attribute
+  order, and the minifier differences listed below are ignored. The other 13:
+  - **Animated GIFs stay animated** (11 pages). eleventy-img (without `sharpOptions.animated`)
+    keeps only the first frame; ssqch copies GIFs for `auto` output.
+  - **SVGs are served as SVGs** (`/portfolio/`). eleventy-img also rasterizes them to AVIF and
+    WebP.
+  - **`feed.xml`:** raw `<br />` and `<img ... />` that a post's author wrote stay as written;
+    Eleventy's RSS plugin reserializes them as `<br>`. The posts' text is otherwise identical.
 
 ## Not done yet / known gaps
 
@@ -346,10 +378,12 @@ differ on purpose:
 - Edge: no `@inject`, `@debugger`, `@svg`, components-as-tags (`@!card()`), destructuring in
   `@let`, scoped slots, regex literals, or the `in` operator. Array `reverse`/`sort` return copies
   rather than mutating.
-- Markdown: pulldown-cmark with tables and strikethrough. Output matches markdown-it closely
-  (`<s>`, single `~` left literal) but leaves `"` unescaped in text.
-- The minifier doesn't rewrite attribute values (`defer="defer"`, `style` spacing) like
-  html-minifier does.
+- Markdown: pulldown-cmark with tables and strikethrough, adjusted to match markdown-it (`<s>`,
+  single `~` left literal, `<img>`/`<hr>`/`<br>` without a slash, table alignment styles, line
+  breaks in alt text), but it leaves `"` unescaped in text.
+- The minifier doesn't rewrite attribute values like html-minifier does (`defer="defer"`, spaces
+  in a viewport `content`).
+- Images: no SVG rasterizing, and no color-profile conversion (profiles are dropped).
 - Custom collections see pages that aren't paginated over collections. Pages paginated over
   collections are added to `all`/tags afterwards.
 - No `eleventy-plugin-broken-links` equivalent. The output directory isn't cleaned (like Eleventy).

@@ -11,7 +11,7 @@ use sitesquatch::{Config, Environment};
 fn build(root: &Path) -> anyhow::Result<()> {
     let mut cfg = Config::new(root, Environment::Production);
     cfg.quiet = true;
-    sitesquatch_js::add_data_files(&mut cfg);
+    sitesquatch_js::add_data_files(&mut cfg, &[]);
     sitesquatch::build(&cfg)?;
     Ok(())
 }
@@ -59,7 +59,7 @@ fn changed_data_files_reload_between_builds() {
     let root = project(&[("_data/snacks.js", "export default [\"Pine Cone Crunch\"];"), ("index.edge", "{{ snacks.join(\", \") }}")]);
     let mut cfg = Config::new(&root, Environment::Development);
     cfg.quiet = true;
-    sitesquatch_js::add_data_files(&mut cfg);
+    sitesquatch_js::add_data_files(&mut cfg, &[]);
     sitesquatch::build(&cfg).unwrap();
     assert_eq!(read(&root, "_site/index.html"), "Pine Cone Crunch");
 
@@ -208,4 +208,55 @@ fn data_file_errors_name_the_file() {
 
     let e = build_error(&[("_data/x.js", "import c from \"node:crypto\"; export default 1;"), ("index.edge", "")]);
     assert!(e.contains("node:crypto isn't available in ssqch (available: node:fs"), "{}", e);
+}
+
+#[test]
+fn intl_dates_and_numbers_match_node() {
+    let root = project(&[
+        ("_data/out.mjs", include_str!("fixtures/intl-cases.mjs")),
+        ("index.edge", "{{{ JSON.stringify(out) }}}"),
+    ]);
+    build(&root).unwrap();
+    let expected: serde_json::Value = serde_json::from_str(include_str!("fixtures/intl-expected.json")).unwrap();
+    let got = json(&root, "_site/index.html");
+    let mut mismatches = Vec::new();
+    for (key, cases) in expected.as_object().unwrap() {
+        for (i, want) in cases.as_array().unwrap().iter().enumerate() {
+            if &got[key][i] != want {
+                mismatches.push(format!("{}[{}]: node {} vs {}", key, i, want, got[key][i]));
+            }
+        }
+    }
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+}
+
+#[test]
+fn intl_refuses_what_it_cant_format() {
+    let e = build_error(&[("_data/x.js", "export default new Date(0).toLocaleDateString(\"de-DE\");"), ("index.edge", "")]);
+    assert!(e.contains("only \"en-US\" formatting is available in ssqch (got \"de-DE\")"), "{}", e);
+    let e = build_error(&[("_data/x.js", "export default new Date(0).toLocaleDateString(\"en-US\", { timeZone: \"America/Chicago\" });"), ("index.edge", "")]);
+    assert!(e.contains("only the UTC and local time zones are available in ssqch"), "{}", e);
+    let e = build_error(&[("_data/x.js", "export default (1).toLocaleString(\"en-US\", { style: \"currency\", currency: \"USD\" });"), ("index.edge", "")]);
+    assert!(e.contains("the \"style\" option isn't supported in ssqch"), "{}", e);
+}
+
+#[test]
+fn programs_can_add_modules_with_native_functions() {
+    use sitesquatch::Value;
+    let module = sitesquatch_js::JsModule {
+        name: "test:snacks".into(),
+        aliases: vec!["eleventy-plugin-snacks".into()],
+        source: "const native = globalThis.__ssqch.natives[\"test:snacks\"];\nexport const shout = (s) => native.shout(s);\nexport default { shout };".into(),
+        natives: vec![("shout".into(), Value::func(|args| Ok(Value::from(format!("{}!", args[0].to_js_string().to_uppercase())))))],
+    };
+    let root = project(&[
+        ("_data/a.js", "import { shout } from \"test:snacks\"; export default shout(\"pine cone\");"),
+        ("_data/b.js", "import snacks from \"eleventy-plugin-snacks\"; export default snacks.shout(\"brittle\");"),
+        ("index.edge", "{{ a }}|{{ b }}"),
+    ]);
+    let mut cfg = Config::new(&root, Environment::Production);
+    cfg.quiet = true;
+    sitesquatch_js::add_data_files(&mut cfg, &[module]);
+    sitesquatch::build(&cfg).unwrap();
+    assert_eq!(read(&root, "_site/index.html"), "PINE CONE!|BRITTLE!");
 }

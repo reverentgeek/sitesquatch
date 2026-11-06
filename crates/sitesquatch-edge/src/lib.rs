@@ -115,7 +115,10 @@ impl Engine {
         let mut scope = Scope::new(data, self.globals.clone());
         let mut out = String::new();
         template::render_nodes(self, &tpl.name, &tpl.nodes, &mut scope, &mut out, 0)?;
-        Ok(out)
+        // Like Edge.js, trim one newline from the start and end of the output.
+        let out = out.strip_prefix("\r\n").or_else(|| out.strip_prefix('\n')).unwrap_or(&out);
+        let out = out.strip_suffix("\r\n").or_else(|| out.strip_suffix('\n')).unwrap_or(out);
+        Ok(out.to_string())
     }
 
     pub fn render_str(&self, name: &str, src: &str, data: Value) -> Result<String> {

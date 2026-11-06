@@ -7,7 +7,8 @@
 //! - `@let(name = expr)`, `@assign(name = expr)`
 //! - `@include('partial')`, `@includeIf(cond, 'partial')`
 //! - `@component('name', props) ... @slot('name') ... @end ... @end`, `@!component(...)`
-//! - a trailing `~` on a tag cancels the newline before the next line of text
+//! - a trailing `~` on a tag cancels the next newline (as do `@let`, `@assign`
+//!   and `@slot`, Edge's `noNewLine` tags)
 //!
 //! Tags must start a line. A line holding only a tag (or a comment) is
 //! removed from the output entirely.
@@ -68,7 +69,7 @@ impl TagArgs {
 }
 
 pub fn parse(name: &str, src: &str) -> Result<Template> {
-    let mut p = TemplateParser { src, pos: 0, at_bol: true, pending_nl: false, drop_nl: false };
+    let mut p = TemplateParser { src, pos: 0, at_bol: true, pending_nl: false, drop_nl: false, last_line_tag: false };
     let (nodes, stop) = p.parse_nodes(&[]).with_context(|| format!("parse error in {}", name))?;
     if let Some(tag) = stop {
         bail!("parse error in {}:{}: unexpected @{}", name, tag.line, tag.name);
@@ -76,10 +77,13 @@ pub fn parse(name: &str, src: &str) -> Result<Template> {
     Ok(Template { name: name.to_string(), nodes })
 }
 
-/// Newlines follow Edge.js: lines are *joined* by newlines, a newline is
-/// emitted before each line of text (never for tag lines), and a tag ending
-/// in `~` cancels the newline before the next line of text. So tag-only lines
-/// vanish and a template's final newline is not output.
+/// Newlines follow edge-lexer: lines are *joined* by newlines. A newline is
+/// emitted before each line of text (comments included), and between two
+/// consecutive opening tag lines (a closing `@end` line doesn't count as
+/// either). A tag ending in `~`, or a `noNewLine` tag such as `@let`, cancels
+/// the next newline emitted, wherever it falls. So tag-only lines vanish, and
+/// [`crate::Engine::render`] trims one newline from each end of the output.
+/// Checked against Edge.js in tests/fixtures/whitespace-*.json.
 struct TemplateParser<'a> {
     src: &'a str,
     pos: usize,
@@ -89,7 +93,12 @@ struct TemplateParser<'a> {
     pending_nl: bool,
     /// Set by `~`: skip the next pending line break.
     drop_nl: bool,
+    /// The last line was an opening tag (edge-lexer's `isLastLineATag`).
+    last_line_tag: bool,
 }
+
+/// Edge.js tags declared `noNewLine`: they cancel the next newline like `~`.
+const NO_NEWLINE_TAGS: &[&str] = &["let", "assign", "slot"];
 
 impl<'a> TemplateParser<'a> {
     fn line_at(&self, pos: usize) -> usize {
@@ -128,10 +137,24 @@ impl<'a> TemplateParser<'a> {
                 if rest.starts_with('@') && !rest.starts_with("@{{") {
                     let tag_pos = self.pos;
                     if let Some(tag) = self.try_tag()? {
-                        // The tag line produces no output at all.
+                        // The tag line produces no output at all, except that
+                        // two opening tag lines in a row get a newline between them.
                         buf.truncate(ls);
-                        self.pending_nl = pending;
-                        self.drop_nl = drop || tag.swallow;
+                        let mut drop = drop;
+                        if tag.name != "end" {
+                            if self.last_line_tag && pending {
+                                if drop {
+                                    drop = false;
+                                } else {
+                                    buf.push('\n');
+                                }
+                            }
+                            self.last_line_tag = true;
+                        }
+                        // The break after a tag line still precedes the next line of
+                        // text, even after line 1 (Edge trims the output's first newline).
+                        self.pending_nl = pending || self.line_at(tag_pos) == 1;
+                        self.drop_nl = drop || tag.swallow || NO_NEWLINE_TAGS.contains(&tag.name.as_str());
                         self.at_bol = true;
                         flush(&mut buf, &mut nodes);
                         line_start = None;
@@ -160,21 +183,8 @@ impl<'a> TemplateParser<'a> {
 
             if rest.starts_with("{{--") {
                 let end = rest.find("--}}").ok_or_else(|| anyhow!("line {}: unclosed comment", self.line_at(self.pos)))? + 4;
+                // Like Edge, a comment outputs nothing but its line stays.
                 self.pos += end;
-                if let Some((ls, pending, drop)) = line_start {
-                    // A comment on its own line disappears along with the line.
-                    let after = &self.src[self.pos..];
-                    let ws = after.len() - after.trim_start_matches([' ', '\t', '\r']).len();
-                    if after[ws..].starts_with('\n') || ws == after.len() {
-                        buf.truncate(ls);
-                        self.pending_nl = pending;
-                        self.drop_nl = drop;
-                        self.pos += ws + after[ws..].starts_with('\n') as usize;
-                        self.at_bol = true;
-                        line_start = None;
-                        continue;
-                    }
-                }
                 line_start = None;
                 continue;
             }
@@ -204,12 +214,23 @@ impl<'a> TemplateParser<'a> {
                 }
                 self.pending_nl = true;
                 self.at_bol = true;
+                self.last_line_tag = false;
                 line_start = None;
             } else {
                 buf.push(c);
                 if !c.is_whitespace() {
                     line_start = None;
                 }
+            }
+        }
+        // Edge counts the empty line after a final line break too (the
+        // renderer then trims one trailing newline).
+        if self.at_bol && self.pending_nl {
+            self.pending_nl = false;
+            if self.drop_nl {
+                self.drop_nl = false;
+            } else {
+                buf.push('\n');
             }
         }
         flush(&mut buf, &mut nodes);
@@ -338,6 +359,12 @@ impl<'a> TemplateParser<'a> {
                         slots.push((name, body));
                     }
                 }
+                // Edge.js ignores the main slot's first newline.
+                if let Some(Node::Text(t)) = main.first_mut() {
+                    if let Some(rest) = t.strip_prefix('\n') {
+                        *t = rest.to_string();
+                    }
+                }
                 Node::Component { path, props, main, slots, line }
             }
             other => bail!("line {}: unsupported tag @{} at byte {}", line, other, tag_pos),
@@ -390,7 +417,9 @@ pub fn escape_html(s: &str) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
+            // Edge.js escapes with `he.escape`, which writes these two in hex.
+            '\'' => out.push_str("&#x27;"),
+            '`' => out.push_str("&#x60;"),
             c => out.push(c),
         }
     }

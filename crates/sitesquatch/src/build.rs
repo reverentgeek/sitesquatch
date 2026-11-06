@@ -157,7 +157,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
 
     // ---- render bodies
     let (early, late): (Vec<usize>, Vec<usize>) =
-        (0..pages.len()).filter(|&i| pages[i].output.is_some() || pages[i].in_collections).partition(|&i| !pages[i].tpl.body.contains("collections"));
+        (0..pages.len()).filter(|&i| pages[i].output.is_some() || pages[i].in_collections).partition(|&i| !uses_collections(&pages[i].tpl));
     let mut contents: HashMap<usize, String> = collect_errors(
         early.par_iter().map(|&i| render_body(&pages[i], &engines, None).map(|c| (i, c))).collect(),
     )?
@@ -179,7 +179,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
                 let body = contents.get(i).cloned().unwrap_or_default();
                 let mut html = render_layouts(page, body, &engines, &collections)?;
                 let tctx = TransformContext { url: page.url.as_deref().unwrap_or(""), output_path: out, input_path: &page.tpl.input, build: &ctx };
-                for (name, transform) in &cfg.transforms {
+                for (name, transform) in cfg.html_transforms.iter().chain(&cfg.transforms) {
                     html = transform(&tctx, html).with_context(|| format!("transform `{}` failed for {}", name, page.tpl.rel))?;
                 }
                 if let Some(parent) = out.parent() {
@@ -598,6 +598,37 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
     .with_context(|| format!("in {}", tpl.rel))
 }
 
+/// Whether a template's body reads `collections`, so it must render after
+/// every other page (whose `templateContent` it may show). Only Edge code
+/// counts: `{{ ... }}` and `@directive` lines. A post that merely mentions
+/// "collections" in its text, or isn't processed by Edge at all
+/// (`templateEngineOverride: md`), renders in the first pass so its content
+/// can appear in feeds.
+fn uses_collections(tpl: &Tpl) -> bool {
+    if !tpl.engines.iter().any(|e| e == "edge") || !tpl.body.contains("collections") {
+        return false;
+    }
+    edge_code_mentions(&tpl.body, "collections")
+}
+
+fn edge_code_mentions(body: &str, word: &str) -> bool {
+    for (pos, _) in body.match_indices(word) {
+        let before = &body[..pos];
+        // Inside an interpolation: the last `{{` comes after the last `}}`.
+        if let Some(open) = before.rfind("{{") {
+            if before[open..].find("}}").is_none() && !before[open..].starts_with("{{--") {
+                return true;
+            }
+        }
+        // On a directive line such as `@each(post in collections.posts)`.
+        let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
+        if body[line_start..].trim_start().starts_with('@') {
+            return true;
+        }
+    }
+    false
+}
+
 fn render_computed(value: &Value, data: &Map, engines: &Engines, name: &str) -> Result<Value> {
     Ok(match value {
         Value::Str(s) if s.contains("{{") => {
@@ -755,4 +786,31 @@ fn passthrough_copy(cfg: &Config, ctx: &BuildContext) -> Result<usize> {
             .collect(),
     )?;
     Ok(copied.into_iter().filter(|c| *c).count())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::edge_code_mentions;
+
+    #[test]
+    fn collections_in_prose_is_not_code() {
+        let code = [
+            "{{ collections.posts.length }}",
+            "{{{ collections.all[0].templateContent }}}",
+            "<ul>\n  @each(post in collections.posts)\n  <li>{{ post.url }}</li>\n  @end\n</ul>",
+            "{{ adjacentPosts(\n  collections.posts, page.url) }}",
+        ];
+        for body in code {
+            assert!(edge_code_mentions(body, "collections"), "{:?}", body);
+        }
+        let prose = [
+            "I have mugs, hats, toys and other collections.",
+            "Collections in Eleventy are {{ \"great\" }}, and so are collections.",
+            "{{-- collections are rendered later --}}",
+            "Use `collections.posts` in a template.",
+        ];
+        for body in prose {
+            assert!(!edge_code_mentions(body, "collections"), "{:?}", body);
+        }
+    }
 }

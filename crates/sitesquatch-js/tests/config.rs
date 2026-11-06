@@ -24,7 +24,7 @@ fn configure(root: &Path, env: Environment) -> Result<Config> {
     let mut cfg = Config::new(root, env);
     cfg.quiet = true;
     let path = sitesquatch_js::find_config(root).expect("config file");
-    sitesquatch_js::load(&mut cfg, &path, BUILTINS)?;
+    sitesquatch_js::load(&mut cfg, &path, BUILTINS, &[])?;
     Ok(cfg)
 }
 

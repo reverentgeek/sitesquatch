@@ -9,4 +9,5 @@ license.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 lol_html.workspace = true
+url = "2"
 sitesquatch.workspace = true

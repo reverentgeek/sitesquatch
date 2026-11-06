@@ -98,9 +98,82 @@ impl TemplateEngine for MarkdownEngine {
             Event::Start(Tag::Subscript) | Event::End(TagEnd::Subscript) => Event::Text("~".into()),
             other => other,
         });
-        html::push_html(&mut out, events);
+        html::push_html(&mut out, html5_void_tags(events).into_iter());
         Ok(out)
     }
+}
+
+/// Write `<img ...>`, `<hr>` and `<br>` like markdown-it, instead of
+/// pulldown-cmark's XHTML-style `<img ... />`, keep line breaks in alt text
+/// (markdown-it does; pulldown-cmark turns them into spaces), and write table
+/// alignment as `style="text-align:left"` (pulldown-cmark adds a space). Raw
+/// HTML in the Markdown is left alone.
+fn html5_void_tags<'a>(events: impl Iterator<Item = Event<'a>>) -> Vec<Event<'a>> {
+    let mut out = Vec::new();
+    let mut image: Option<(Vec<Event<'a>>, usize)> = None;
+    let mut aligns: Vec<pulldown_cmark::Alignment> = Vec::new();
+    let (mut in_head, mut column) = (false, 0usize);
+    for e in events {
+        if let Some((buf, depth)) = image.as_mut() {
+            match e {
+                Event::Start(Tag::Image { .. }) => *depth += 1,
+                Event::End(TagEnd::Image) if *depth == 0 => {
+                    buf.push(e);
+                    let mut html = String::new();
+                    html::push_html(&mut html, buf.drain(..));
+                    let html = html.strip_suffix(" />").map(|h| format!("{}>", h)).unwrap_or(html);
+                    out.push(Event::InlineHtml(html.into()));
+                    image = None;
+                    continue;
+                }
+                Event::End(TagEnd::Image) => *depth -= 1,
+                Event::SoftBreak => {
+                    buf.push(Event::Text("\n".into()));
+                    continue;
+                }
+                _ => {}
+            }
+            buf.push(e);
+            continue;
+        }
+        match e {
+            Event::Start(Tag::Table(ref a)) => {
+                aligns = a.clone();
+                out.push(e);
+            }
+            Event::Start(Tag::TableHead) => {
+                (in_head, column) = (true, 0);
+                out.push(e);
+            }
+            Event::End(TagEnd::TableHead) => {
+                in_head = false;
+                out.push(e);
+            }
+            Event::Start(Tag::TableRow) => {
+                column = 0;
+                out.push(e);
+            }
+            Event::Start(Tag::TableCell) => {
+                use pulldown_cmark::Alignment;
+                let style = match aligns.get(column) {
+                    Some(Alignment::Left) => " style=\"text-align:left\"",
+                    Some(Alignment::Center) => " style=\"text-align:center\"",
+                    Some(Alignment::Right) => " style=\"text-align:right\"",
+                    _ => "",
+                };
+                out.push(Event::Html(format!("<{}{}>", if in_head { "th" } else { "td" }, style).into()));
+            }
+            Event::End(TagEnd::TableCell) => {
+                column += 1;
+                out.push(Event::Html(if in_head { "</th>" } else { "</td>" }.into()));
+            }
+            Event::Start(Tag::Image { .. }) => image = Some((vec![e], 0)),
+            Event::Rule => out.push(Event::Html("<hr>\n".into())),
+            Event::HardBreak => out.push(Event::InlineHtml("<br>\n".into())),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Passes content through unchanged (`.html` and `.txt` without pre-processing).
@@ -124,5 +197,32 @@ impl Engines {
             known.sort();
             format!("no template engine named `{}` (known: {})", name, known.join(", "))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The expected HTML is markdown-it 15's output for the same source
+    /// (with `html: true`, as Eleventy configures it).
+    #[test]
+    fn void_tags_and_alt_text_match_markdown_it() {
+        let src = "![Buy my shirts on\nAmazon!](/a.jpg \"T\")\n\nline one  \nline two\n\n---\n\n<img src=\"/raw.png\" />\n";
+        let ctx = RenderContext { name: "test.md", input_path: Path::new("test.md"), cache_key: None };
+        let html = MarkdownEngine::default().render(src, &Value::Undefined, &ctx).unwrap();
+        assert_eq!(
+            html,
+            "<p><img src=\"/a.jpg\" alt=\"Buy my shirts on\nAmazon!\" title=\"T\"></p>\n<p>line one<br>\nline two</p>\n<hr>\n<img src=\"/raw.png\" />\n"
+        );
+    }
+
+    #[test]
+    fn table_alignment_matches_markdown_it() {
+        let ctx = RenderContext { name: "test.md", input_path: Path::new("test.md"), cache_key: None };
+        let html = MarkdownEngine::default().render("| a | b | c | d |\n|:--|:-:|--:|---|\n| 1 | 2 | 3 | 4 |\n", &Value::Undefined, &ctx).unwrap();
+        assert!(html.contains("<th style=\"text-align:left\">a</th><th style=\"text-align:center\">b</th><th style=\"text-align:right\">c</th><th>d</th>"), "{}", html);
+        assert!(html.contains("<td style=\"text-align:left\">1</td><td style=\"text-align:center\">2</td><td style=\"text-align:right\">3</td><td>4</td>"), "{}", html);
+        assert_eq!(html.matches("<tr>").count(), 2, "{}", html);
     }
 }

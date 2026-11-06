@@ -12,7 +12,7 @@ fn configure(root: &Path) -> anyhow::Result<Config> {
     let mut cfg = Config::new(root, Environment::Production);
     cfg.quiet = true;
     let path = sitesquatch_js::find_config(root).expect("config file");
-    sitesquatch_js::load(&mut cfg, &path, &[])?;
+    sitesquatch_js::load(&mut cfg, &path, &[], &[])?;
     Ok(cfg)
 }
 

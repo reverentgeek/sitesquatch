@@ -185,6 +185,16 @@ impl ImageProcessor {
         }
     }
 
+    /// Where derivatives are written, once the build has started.
+    pub fn output_dir(&self) -> Result<PathBuf> {
+        Ok(self.ctx()?.output_dir.join(&self.options.output_subdir))
+    }
+
+    /// The project root, once the build has started.
+    pub fn root(&self) -> Result<PathBuf> {
+        Ok(self.ctx()?.root)
+    }
+
     /// Resolve an `<img src>` to a file: site-absolute paths are relative to
     /// the input directory, others to the page's own directory.
     pub fn resolve_src(&self, src: &str, page_input: &Path) -> Option<PathBuf> {
@@ -606,11 +616,19 @@ fn percent_decode(s: &str) -> String {
 /// to generate images from other plugins.
 pub struct ImagePlugin {
     pub processor: Arc<ImageProcessor>,
+    /// Rewrite `<img>` tags in HTML output. Off for a site that only
+    /// generates images itself (through the processor).
+    pub transform: bool,
 }
 
 impl ImagePlugin {
     pub fn new(options: ImageOptions) -> Self {
-        ImagePlugin { processor: ImageProcessor::new(options) }
+        ImagePlugin { processor: ImageProcessor::new(options), transform: true }
+    }
+
+    /// Only the processor, without the `<img>` transform.
+    pub fn processor_only(options: ImageOptions) -> Self {
+        ImagePlugin { processor: ImageProcessor::new(options), transform: false }
     }
 }
 
@@ -630,13 +648,16 @@ impl Plugin for ImagePlugin {
             p.reused.store(0, Ordering::Relaxed);
             Ok(())
         });
-        let p = self.processor.clone();
-        cfg.add_transform("image", move |ctx, html| if ctx.is_html() { p.transform_html(&html, ctx.input_path) } else { Ok(html) });
+        if self.transform {
+            let p = self.processor.clone();
+            cfg.add_html_transform("image", move |ctx, html| if ctx.is_html() { p.transform_html(&html, ctx.input_path) } else { Ok(html) });
+        }
         let p = self.processor.clone();
         let quiet = cfg.quiet;
         cfg.on_after_build(move |ctx, _| {
             let pruned = if p.options.prune { p.prune(&ctx.output_dir.join(&p.options.output_subdir))? } else { 0 };
-            if !quiet {
+            let busy = p.generated.load(Ordering::Relaxed) + p.reused.load(Ordering::Relaxed) + pruned > 0;
+            if !quiet && busy {
                 println!(
                     "Images: generated {} files, reused {}{}",
                     p.generated.load(Ordering::Relaxed),
