@@ -396,8 +396,9 @@ file by file with Eleventy 4.0.0-alpha.10's build of the same source, all three 
   byte-identical.
 - 169 of 182 files are identical once image file names (each tool hashes its own), attribute
   order, and the minifier differences listed below are ignored. The other 13:
-  - **Animated GIFs stay animated** (11 pages). eleventy-img (without `sharpOptions.animated`)
-    keeps only the first frame; ssqch copies GIFs for `auto` output.
+  - **GIFs are copied as they are** (11 pages). eleventy-img (without `sharpOptions.animated`)
+    re-encodes them and keeps only the first frame; ssqch copies GIFs for `auto` output. Most of
+    the blog's GIFs are single-frame anyway; the 3 animated ones (on 3 pages) stay animated.
   - **SVGs are served as SVGs** (`/portfolio/`). eleventy-img also rasterizes them to AVIF and
     WebP.
   - **`feed.xml`:** raw `<br />` and `<img ... />` that a post's author wrote stay as written;
