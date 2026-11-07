@@ -201,7 +201,9 @@ Built-in plugin options:
 - **`ssqch:image`:** `formats` (`avif`, `webp`, `jpeg`, `png`, `auto`), `widths`,
   `defaultAttributes`, `outputDir`, `urlPath`, `webpQuality`, `avifQuality`, `avifSpeed`,
   `jpegQuality`, `minimumThreshold`, `prune`, `hashCache` (on by default; see
-  [Deploying from CI](#deploying-from-ci)). AVIF needs `ssqch` built with `--features avif`.
+  [Deploying from CI](#deploying-from-ci)). AVIF needs `ssqch` built with `--features avif`; on
+  x86_64 that build also needs the [nasm](https://nasm.us) assembler (`apt-get install nasm`,
+  `brew install nasm`), which the AVIF encoder uses for speed.
 - **`ssqch:minify`:** `collapseWhitespace`, `removeComments`, `shortDoctype` (all `true` by
   default).
 - **`ssqch:rss`:** no options.
