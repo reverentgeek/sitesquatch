@@ -46,6 +46,10 @@ fn main() -> std::process::ExitCode {
 }
 
 fn configure(cfg: &mut Config) -> Result<()> {
+    // Template engines beyond Edge and Markdown. A site renders their files by
+    // listing the extension in `templateFormats`.
+    #[cfg(feature = "liquid")]
+    cfg.add_plugin(sitesquatch_plugin_liquid::LiquidPlugin);
     let toml = cfg.root.join("sitesquatch.toml");
     let js_modules = modules::js_modules();
     match sitesquatch_js::find_config(&cfg.root) {

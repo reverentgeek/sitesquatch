@@ -162,3 +162,42 @@ fn the_config_can_define_template_engines() {
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(!ok && log.contains("engines.md: \"md\" is built in"), "{}", log);
 }
+
+#[cfg(feature = "liquid")]
+#[test]
+fn liquid_templates_get_filters_includes_and_collections() {
+    let dir = temp_dir("liquid");
+    let d = dir.to_str().unwrap();
+    for sub in ["src/_includes", "src/posts"] {
+        std::fs::create_dir_all(dir.join(sub)).unwrap();
+    }
+    let write = |name: &str, body: &str| std::fs::write(dir.join(name), body).unwrap();
+    write(
+        "ssqch.config.js",
+        "export default {\n  dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"liquid\", \"md\", \"edge\"],\n  filters: { shout: (s) => String(s).toUpperCase(), wrap: (s, l, r) => l + s + r },\n  collections: { posts: (pages) => pages.byTag(\"post\") },\n};\n",
+    );
+    write("src/_includes/base.liquid", "<title>{{ title | shout }}</title>{% include nav.html section=\"home\" %}{{ content }}{% render \"footer\", year: 2026 %}");
+    write("src/_includes/nav.html", "<nav>{{ include.section }}</nav>");
+    write("src/_includes/footer.liquid", "<footer>{{ year }}</footer>");
+    write("src/_includes/edge.edge", "<edge>{{ content }}</edge>");
+    write(
+        "src/index.liquid",
+        "---\nlayout: base\ntitle: Sightings\n---\n{{ collections.posts | size }} {{ \"x\" | wrap: \"[\", \"]\" }} [{{ nope }}{{ page.nope }}]{% for post in collections.posts %} {{ post.data.title | slugify }}@{{ post.date | date: \"%Y-%m-%d\" }}{% endfor %} {{ 3 | plus: 1 }} {{ 2.5 }}",
+    );
+    write("src/edge-layout.liquid", "---\nlayout: edge\n---\n{{ \"liquid\" | upcase }}");
+    write("src/posts/pine.md", "---\ntitle: Pine Cone Crunch\ntags: post\ndate: 2026-01-02\nlayout: base\n---\n*{{ title }}*\n");
+    write("src/posts/brittle.md", "---\ntitle: Bigfoot Brittle\ntags: post\ndate: 2026-03-04\nrender: [liquid, md]\n---\n{{ title | downcase }}\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
+    assert_eq!(read("index.html"), "<title>SIGHTINGS</title><nav>home</nav>2 [x] [] pine-cone-crunch@2026-01-02 bigfoot-brittle@2026-03-04 4 2.5<footer>2026</footer>");
+    assert_eq!(read("edge-layout/index.html"), "<edge>LIQUID</edge>");
+    // Markdown runs through Edge first by default; a Liquid layout wraps it.
+    assert_eq!(read("posts/pine/index.html"), "<title>PINE CONE CRUNCH</title><nav>home</nav><p><em>Pine Cone Crunch</em></p>\n<footer>2026</footer>");
+    assert_eq!(read("posts/brittle/index.html"), "<p>bigfoot brittle</p>\n");
+
+    // Liquid errors name the template.
+    write("src/broken.liquid", "{% if %}");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("broken.liquid"), "{}", log);
+}

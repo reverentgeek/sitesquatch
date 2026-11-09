@@ -14,7 +14,10 @@ name = "ssqch"
 path = "src/main.rs"
 
 [features]
+default = ["liquid"]
 avif = ["sitesquatch-plugin-image/avif"]
+# Liquid templates (`.liquid`).
+liquid = ["dep:sitesquatch-plugin-liquid"]
 
 # Release builds include AVIF support (see dist-workspace.toml).
 [package.metadata.dist]
@@ -42,6 +45,7 @@ sitesquatch-plugin-image.workspace = true
 sitesquatch-plugin-minify.workspace = true
 sitesquatch-plugin-assets.workspace = true
 sitesquatch-plugin-links.workspace = true
+sitesquatch-plugin-liquid = { workspace = true, optional = true }
 
 # The allocator for static musl builds (see main.rs).
 [target.'cfg(target_env = "musl")'.dependencies]

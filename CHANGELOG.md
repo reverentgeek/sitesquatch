@@ -28,6 +28,10 @@ a `v<version>` tag on a commit where that version matches.
 - Template engines in the config: `engines: { ext: (source, data) => html }` (or an object with a
   `render` method, sync or async). Add the extension to `templateFormats` to render those files,
   use it for layouts, or name it in `markdownEngine`.
+- Liquid templates: add `"liquid"` to `templateFormats` to render `.liquid` pages and layouts, or
+  use `markdownEngine: "liquid"`. Config filters work as Liquid filters, `include` and `render`
+  read from `_includes`, and Jekyll's filters and `include` parameters are there too. Liquid adds
+  about 2 MB to the binary; Rust builds can leave it out with `--no-default-features`.
 
 ### Changed
 
