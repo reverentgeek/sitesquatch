@@ -8,6 +8,20 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Fixed
+
+- Images with a color profile other than sRGB (Display P3 from iPhones and Macs, Adobe RGB,
+  Generic RGB, display profiles) are converted to sRGB before encoding, instead of having the
+  profile dropped. Their colors no longer look washed out. Against macOS ColorSync's conversion,
+  the result is within about one level (0-255) on average. Images without a profile, or with an
+  sRGB one, are unchanged, and only converted images get new file names, so an upgrade
+  re-encodes just those. The build summary counts them ("converted to sRGB").
+- Profiles that can't be converted, such as the HDR (PQ, gain map) profiles of newer iPhone
+  photos, no longer stop the image from being processed: it's encoded as before, with a warning
+  that suggests converting the source to sRGB.
+
 ## 0.2.1 - 2026-11-08
 
 ### Changed

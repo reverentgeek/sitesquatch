@@ -23,3 +23,4 @@ webp = { version = "0.3", default-features = false }
 blake3 = "1"
 ravif = { version = "0.12", optional = true }
 rgb = { version = "0.8", optional = true }
+moxcms = "0.8"
