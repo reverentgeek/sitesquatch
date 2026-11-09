@@ -59,6 +59,8 @@ cd my-site && ssqch serve
 
 Open <http://localhost:8080>, edit `src/posts/hello-world.md`, and watch the page reload. `ssqch init` never overwrites a file that's already there, so it's safe to run in a folder you've started.
 
+The layout and home page are [Edge](#templates-and-data) templates. To start in another language, pass `--engine liquid`, `--engine njk` (Nunjucks) or `--engine hbs` (Handlebars); the config then lists that engine in `templateFormats` and runs Markdown through it.
+
 To see how the pieces fit, here's a tiny site built by hand: a home page that lists posts. Here's the whole thing:
 
 ```text

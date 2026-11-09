@@ -46,6 +46,41 @@ fn init_creates_a_site_that_builds() {
 }
 
 #[test]
+fn init_starts_a_site_in_each_engine() {
+    for engine in ["liquid", "njk", "hbs"] {
+        let dir = temp_dir(&format!("init-{}", engine));
+        let d = dir.to_str().unwrap();
+        let (ok, log) = ssqch(&["init", d, "--engine", engine]);
+        assert!(ok, "{}", log);
+        for file in [format!("src/_includes/layout.{}", engine), format!("src/index.{}", engine)] {
+            assert!(dir.join(&file).is_file(), "{} wasn't created:\n{}", file, log);
+        }
+        assert!(!dir.join("src/index.edge").exists(), "{}", engine);
+        let config = std::fs::read_to_string(dir.join("ssqch.config.js")).unwrap();
+        assert!(config.contains(&format!("templateFormats: [\"{}\", \"md\"]", engine)), "{}", config);
+
+        let (ok, log) = ssqch(&["build", "--root", d]);
+        assert!(ok, "{}: {}", engine, log);
+        assert!(log.contains("Links   3 checked, 0 broken"), "{}: {}", engine, log);
+        let home = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
+        assert!(home.contains("<a href=\"/posts/hello-world/\">Hello, world</a> (January 1, 2026)"), "{}: {}", engine, home);
+        assert!(home.contains("<title>My Squatch Site</title>"), "{}: {}", engine, home);
+        let post = std::fs::read_to_string(dir.join("dist/posts/hello-world/index.html")).unwrap();
+        assert!(post.contains("<title>Hello, world | My Squatch Site</title>") && post.contains("<h1>Hello, world</h1>") && post.contains("<code>posts.json</code>"), "{}: {}", engine, post);
+        assert!(post.contains(&format!("Built with SiteSquatch {}.", env!("CARGO_PKG_VERSION"))), "{}: {}", engine, post);
+    }
+}
+
+#[test]
+fn init_rejects_an_unknown_engine() {
+    let dir = temp_dir("init-pug");
+    let (ok, log) = ssqch(&["init", dir.to_str().unwrap(), "--engine", "pug"]);
+    assert!(!ok);
+    assert!(log.contains("--engine pug: not a starter engine (use edge, liquid, njk, hbs)"), "{}", log);
+    assert!(!dir.exists());
+}
+
+#[test]
 fn types_writes_the_declarations() {
     let dir = temp_dir("types");
     std::fs::create_dir_all(&dir).unwrap();

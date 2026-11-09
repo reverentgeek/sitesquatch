@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
+    <meta name="description" content="{{ description or site.description }}">
+    <style>
+      body { font-family: system-ui, sans-serif; line-height: 1.6; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; color: #1f2937; }
+      a { color: #1d4ed8; }
+      img { max-width: 100%; height: auto; }
+    </style>
+  </head>
+  <body>
+    <header><a href="/">{{ site.title }}</a></header>
+    <main>
+      {% if title %}
+        <h1>{{ title }}</h1>
+      {% endif %}
+      {{ content }}
+    </main>
+    <footer>
+      <p>Built with SiteSquatch {{ ssqch.version }}.</p>
+    </footer>
+  </body>
+</html>
