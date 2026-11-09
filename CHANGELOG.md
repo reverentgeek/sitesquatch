@@ -8,6 +8,12 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+- `ssqch init --engine liquid` (or `njk`, `hbs`) starts the site with a layout and home page in
+  that template language, and a config that lists it in `templateFormats` and uses it for
+  Markdown. The default is still Edge.
+
 ## 0.3.0 - 2026-11-09
 
 ### Breaking

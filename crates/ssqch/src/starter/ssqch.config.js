@@ -11,7 +11,7 @@ export default defineConfig(({ env }) => ({
 
   // Functions templates can call: {{ readableDate(post.date) }}
   filters: {
-    readableDate: (date) => date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }),
+    readableDate: (date) => new Date(date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }),
   },
 
   // Newest posts first, for the home page.

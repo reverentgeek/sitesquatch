@@ -135,8 +135,8 @@ Shared work, done with the first engine (Liquid) and reused by the rest:
       `templateFormats` the new extensions.
 - [x] Each engine is a cargo feature that the release builds turn on (`liquid` is a default
       feature of `ssqch`). Liquid adds about 2.1 MB (11.4 MB to 13.6 MB on macOS arm64).
-- [ ] Docs and tooling: the README has a section per engine, and `ssqch types` mentions the
-      names. Left: `ssqch init` could take `--engine liquid`.
+- [x] Docs and tooling: the README has a section per engine, and `ssqch types` mentions the
+      names. `ssqch init --engine liquid` (or `njk`, `hbs`) starts a site in that language.
 - [x] Tests: a small site per engine in `crates/ssqch/tests/cli.rs`, including layout chains
       that mix engines.
 - [x] Rename the `templateEngineOverride` front-matter key to `render` (`render: md`,
@@ -262,7 +262,7 @@ reuse it, and crates.io comes before `cargo binstall`.
       blog moved to "Working on SiteSquatch".
 - [x] `ssqch init [dir]`: scaffolds a starter site (config, layout, home page, a post with
       directory data, `_data/site.json`, `ssqch.d.ts`, `jsconfig.json`, `.gitignore`), keeping
-      existing files. A test builds what it writes. Not released yet.
+      existing files. A test builds what it writes. Released in 0.2.7.
 - [ ] Possible design changes:
   - Clearer, documented data-cascade rules.
   - An image API that names its output formats explicitly, instead of an `auto` setting.
