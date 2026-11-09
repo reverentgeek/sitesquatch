@@ -111,10 +111,13 @@ In priority order, by how widely each is used across static site generators and 
       (not `/`) with a safe `content`, chainable undefined, `dump` and `truncate`, and errors with
       `template:line`. For `.njk`, `elseif` and `for key, value in object` are rewritten to
       minijinja's syntax. Not supported: Nunjucks' async tags and custom tag extensions.
-- [ ] **Handlebars and Mustache** (`.hbs`, `.mustache`): the
-      [`handlebars`](https://crates.io/crates/handlebars) crate renders both (Mustache templates
-      mostly work as Handlebars). Config `filters` become helpers, and partials come from
-      `_includes`.
+- [x] **Handlebars and Mustache** (`.hbs`, `.handlebars`, `.mustache`): `plugins/handlebars`
+      on the `handlebars` crate, a default `ssqch` feature. Config filters are helpers, every
+      include is a partial, inverted sections are rewritten to `unless`, and for `.mustache`,
+      `{{.}}` and sections over lists or truthy values work through a `__section` helper. The
+      crate needs JSON, so each page's data is converted (dates become strings); it's the one
+      engine where big collections cost per page. Not supported: Mustache lambdas and delimiter
+      changes, and `.length` on lists (use `len`).
 - [x] **JavaScript engines from the config**: `engines: { ext: (source, data) => html }` or
       `{ render(source, data) }`, sync or async, on QuickJS. Page data arrives as lazy views, so
       passing it costs little. Libraries like EJS or Pug still need npm packages or CommonJS,
@@ -132,11 +135,10 @@ Shared work, done with the first engine (Liquid) and reused by the rest:
       `templateFormats` the new extensions.
 - [x] Each engine is a cargo feature that the release builds turn on (`liquid` is a default
       feature of `ssqch`). Liquid adds about 2.1 MB (11.4 MB to 13.6 MB on macOS arm64).
-- [ ] Docs and tooling: the README has Liquid and Nunjucks/Jinja sections, and `ssqch types`
-      mentions the names.
-      Left: `ssqch init` could take `--engine liquid`.
-- [ ] Tests: a small site per engine, including a layout chain that mixes engines. Liquid and
-      Nunjucks/Jinja have one (`crates/ssqch/tests/cli.rs`).
+- [ ] Docs and tooling: the README has a section per engine, and `ssqch types` mentions the
+      names. Left: `ssqch init` could take `--engine liquid`.
+- [x] Tests: a small site per engine in `crates/ssqch/tests/cli.rs`, including layout chains
+      that mix engines.
 - [x] Rename the `templateEngineOverride` front-matter key to `render` (`render: md`,
       `render: [liquid, md]`, `render: false`). Breaking; the old key is an error that names the
       new one.

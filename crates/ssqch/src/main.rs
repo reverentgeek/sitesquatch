@@ -52,6 +52,8 @@ fn configure(cfg: &mut Config) -> Result<()> {
     cfg.add_plugin(sitesquatch_plugin_liquid::LiquidPlugin);
     #[cfg(feature = "jinja")]
     cfg.add_plugin(sitesquatch_plugin_jinja::JinjaPlugin);
+    #[cfg(feature = "handlebars")]
+    cfg.add_plugin(sitesquatch_plugin_handlebars::HandlebarsPlugin);
     let toml = cfg.root.join("sitesquatch.toml");
     let js_modules = modules::js_modules();
     match sitesquatch_js::find_config(&cfg.root) {
