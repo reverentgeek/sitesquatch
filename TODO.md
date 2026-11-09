@@ -54,7 +54,7 @@ Follow-ups:
       **Blog:** switched over locally (templates use plain paths; `hash-assets.js`,
       `_data/assets.js` and `build:hash` are gone), waiting for the release.
 - [x] `node:crypto` (`createHash` with md5, sha1, sha256, sha384, sha512) for user code in
-      configs and data files. Not released yet.
+      configs and data files. Released in 0.2.4.
 - [x] **Color profiles in the image plugin.** Images with a non-sRGB RGB profile are converted
       to sRGB with `moxcms` (`plugins/image/src/color.rs`), within about one level of macOS
       ColorSync. Only converted images get new ids, so upgrading re-encodes just those (39 of the
@@ -65,15 +65,15 @@ Follow-ups:
       reading the gain map (ISO 21496-1) or tone-mapping PQ to SDR the way ColorSync does.
       **Blog:** has 4 (the Helix roller case post); converting those sources once with `sips`
       fixes them now.
-- [x] **A built-in link checker:** `linksPlugin()` from `ssqch/links` (`plugins/links`). Not
-      released yet.
+- [x] **A built-in link checker:** `linksPlugin()` from `ssqch/links` (`plugins/links`). Released
+      in 0.2.4.
       **Blog:** it found 413 broken links on 8 pages, all to full-size originals under
       `/content/images/` that the build never publishes (they 404 on the live site too).
 - [x] **Check `serve` against the blog.** With `pnpm run serve`, a post edit rebuilds and
       reloads in about 0.4 s, and a CSS edit reloads after PostCSS has written the new CSS.
 - [x] Make CSS reloads robust: `ssqch serve` also watches the output and reloads (without a
       rebuild) when another tool writes a CSS or JavaScript file there after the last build.
-      Not released yet.
+      Released in 0.2.4.
 - [ ] Output differences found comparing against the blog's old build: none have to match
       anymore, so just fix the ones that are wrong:
   - Markdown leaves `"` unescaped in text. Escaping it is the safer default.
