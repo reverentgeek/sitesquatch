@@ -33,6 +33,24 @@ change affects it.
   blog in `examples/reverentgeek`, an example of the Rust API (it doesn't have to match the
   blog's config).
 - `scripts/bench.sh` runs the benchmarks in the README; results go to `bench-results/`.
+- CI (`.github/workflows/ci.yml`) runs the tests with and without AVIF on Linux and macOS, and
+  `cargo clippy --workspace --all-targets --features ssqch/avif -- -D warnings`. Keep clippy
+  clean. The code isn't formatted with rustfmt (it uses long lines), so don't run `cargo fmt`.
+
+## Releasing
+
+Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configured in
+`dist-workspace.toml`. `.github/workflows/release.yml` is generated: change the config and run
+`dist generate` instead of editing it. `dist plan` shows what a release would contain.
+
+1. In `CHANGELOG.md`, rename `## Unreleased` to `## <version> - <YYYY-MM-DD>` (semver; while
+   0.x, a breaking change bumps the minor version).
+2. Set `[workspace.package] version` in `Cargo.toml` to match, and run `cargo build` to update
+   `Cargo.lock`.
+3. Commit, push to `main`, and wait for CI to pass.
+4. Tag and push: `git tag v<version> && git push origin v<version>`. The release workflow
+   builds the archives, refuses a tag that doesn't match a package version, and publishes the
+   GitHub release with that version's changelog section as its notes.
 
 ## Conventions
 

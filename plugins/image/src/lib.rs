@@ -571,88 +571,6 @@ pub fn valid_widths(original: u32, requested: &[u32], minimum_threshold: f64) ->
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ids_depend_on_contents_not_path_or_mtime() {
-        let dir = std::env::temp_dir().join(format!("ssqch-hash-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let (a, b, c) = (dir.join("a.png"), dir.join("b.png"), dir.join("c.png"));
-        std::fs::write(&a, b"same bytes").unwrap();
-        std::fs::write(&b, b"same bytes").unwrap();
-        std::fs::write(&c, b"other bytes").unwrap();
-        let p = ImageProcessor::new(ImageOptions::default());
-        let id = p.hash_id(&a).unwrap();
-
-        // A fresh checkout gives files a new mtime; the id must not change.
-        std::fs::File::options().write(true).open(&a).unwrap().set_modified(std::time::SystemTime::UNIX_EPOCH).unwrap();
-        assert_eq!(p.hash_id(&a).unwrap(), id);
-        assert_eq!(p.hash_id(&b).unwrap(), id, "a moved or renamed image keeps its derivatives");
-        assert_ne!(p.hash_id(&c).unwrap(), id);
-        let q = ImageProcessor::new(ImageOptions { webp_quality: 90.0, ..ImageOptions::default() });
-        assert_ne!(q.hash_id(&a).unwrap(), id, "encoder settings are part of the id");
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn the_hash_cache_skips_unchanged_files_and_rereads_changed_ones() {
-        use std::time::{Duration, SystemTime};
-        let dir = std::env::temp_dir().join(format!("ssqch-hashcache-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let (img, cache) = (dir.join("a.png"), dir.join(".cache/ssqch/image-hashes.json"));
-        let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-        let write = |bytes: &[u8], mtime: SystemTime| {
-            std::fs::write(&img, bytes).unwrap();
-            std::fs::File::options().write(true).open(&img).unwrap().set_modified(mtime).unwrap();
-        };
-        write(b"pine cone", t0);
-
-        let first = ImageProcessor::new(ImageOptions::default());
-        first.hashes.lock().unwrap().load(cache.clone());
-        let id = first.hash_id(&img).unwrap();
-        first.hashes.lock().unwrap().save().unwrap();
-        assert!(cache.is_file(), "the cache is written after a build that hashed something");
-
-        // Same size and mtime: the id comes from the cache, so swapping the
-        // bytes behind its back goes unnoticed. That's the trade-off.
-        write(b"pine c0ne", t0);
-        let second = ImageProcessor::new(ImageOptions::default());
-        second.hashes.lock().unwrap().load(cache.clone());
-        assert_eq!(second.hash_id(&img).unwrap(), id);
-
-        // A new mtime (an edit, or a fresh checkout) means reading the file again.
-        write(b"pine c0ne", t0 + Duration::from_secs(1));
-        assert_ne!(second.hash_id(&img).unwrap(), id);
-        write(b"pine cone", t0 + Duration::from_secs(2));
-        assert_eq!(second.hash_id(&img).unwrap(), id, "same contents, same id, whatever the mtime");
-
-        // Different encoder settings never reuse an entry.
-        let third = ImageProcessor::new(ImageOptions { webp_quality: 90.0, ..ImageOptions::default() });
-        third.hashes.lock().unwrap().load(cache.clone());
-        assert_ne!(third.hash_id(&img).unwrap(), id);
-
-        // A corrupt cache is just an empty one.
-        std::fs::write(&cache, "not json").unwrap();
-        let fourth = ImageProcessor::new(ImageOptions::default());
-        fourth.hashes.lock().unwrap().load(cache.clone());
-        assert_eq!(fourth.hash_id(&img).unwrap(), id);
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn widths_never_upscale() {
-        let defaults = [300, 600, 900, 1200, 1500];
-        assert_eq!(valid_widths(810, &defaults, 1.25), vec![300, 600, 810]);
-        assert_eq!(valid_widths(672, &defaults, 1.25), vec![300, 600]);
-        assert_eq!(valid_widths(2000, &defaults, 1.25), vec![300, 600, 900, 1200, 1500]);
-        assert_eq!(valid_widths(256, &[48, 96, 144], 1.25), vec![48, 96, 144]);
-        assert_eq!(valid_widths(200, &[300, 600], 1.25), vec![200]);
-    }
-}
-
 /// A single candidate needs no width descriptor.
 fn srcset_attr(entries: &[ImageEntry]) -> String {
     match entries {
@@ -794,7 +712,7 @@ impl Plugin for ImagePlugin {
             }
             if verbose && !quiet {
                 let mut timings = p.timings.lock().unwrap().clone();
-                timings.sort_by(|a, b| b.2.cmp(&a.2));
+                timings.sort_by_key(|t| std::cmp::Reverse(t.2));
                 if !timings.is_empty() {
                     println!("Slowest images to encode:");
                     for (src, files, took) in timings.iter().take(10) {
@@ -806,5 +724,87 @@ impl Plugin for ImagePlugin {
         });
         let p = self.processor.clone();
         cfg.add_summary("Images", move |_| p.summary());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ids_depend_on_contents_not_path_or_mtime() {
+        let dir = std::env::temp_dir().join(format!("ssqch-hash-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b, c) = (dir.join("a.png"), dir.join("b.png"), dir.join("c.png"));
+        std::fs::write(&a, b"same bytes").unwrap();
+        std::fs::write(&b, b"same bytes").unwrap();
+        std::fs::write(&c, b"other bytes").unwrap();
+        let p = ImageProcessor::new(ImageOptions::default());
+        let id = p.hash_id(&a).unwrap();
+
+        // A fresh checkout gives files a new mtime; the id must not change.
+        std::fs::File::options().write(true).open(&a).unwrap().set_modified(std::time::SystemTime::UNIX_EPOCH).unwrap();
+        assert_eq!(p.hash_id(&a).unwrap(), id);
+        assert_eq!(p.hash_id(&b).unwrap(), id, "a moved or renamed image keeps its derivatives");
+        assert_ne!(p.hash_id(&c).unwrap(), id);
+        let q = ImageProcessor::new(ImageOptions { webp_quality: 90.0, ..ImageOptions::default() });
+        assert_ne!(q.hash_id(&a).unwrap(), id, "encoder settings are part of the id");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_hash_cache_skips_unchanged_files_and_rereads_changed_ones() {
+        use std::time::{Duration, SystemTime};
+        let dir = std::env::temp_dir().join(format!("ssqch-hashcache-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (img, cache) = (dir.join("a.png"), dir.join(".cache/ssqch/image-hashes.json"));
+        let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let write = |bytes: &[u8], mtime: SystemTime| {
+            std::fs::write(&img, bytes).unwrap();
+            std::fs::File::options().write(true).open(&img).unwrap().set_modified(mtime).unwrap();
+        };
+        write(b"pine cone", t0);
+
+        let first = ImageProcessor::new(ImageOptions::default());
+        first.hashes.lock().unwrap().load(cache.clone());
+        let id = first.hash_id(&img).unwrap();
+        first.hashes.lock().unwrap().save().unwrap();
+        assert!(cache.is_file(), "the cache is written after a build that hashed something");
+
+        // Same size and mtime: the id comes from the cache, so swapping the
+        // bytes behind its back goes unnoticed. That's the trade-off.
+        write(b"pine c0ne", t0);
+        let second = ImageProcessor::new(ImageOptions::default());
+        second.hashes.lock().unwrap().load(cache.clone());
+        assert_eq!(second.hash_id(&img).unwrap(), id);
+
+        // A new mtime (an edit, or a fresh checkout) means reading the file again.
+        write(b"pine c0ne", t0 + Duration::from_secs(1));
+        assert_ne!(second.hash_id(&img).unwrap(), id);
+        write(b"pine cone", t0 + Duration::from_secs(2));
+        assert_eq!(second.hash_id(&img).unwrap(), id, "same contents, same id, whatever the mtime");
+
+        // Different encoder settings never reuse an entry.
+        let third = ImageProcessor::new(ImageOptions { webp_quality: 90.0, ..ImageOptions::default() });
+        third.hashes.lock().unwrap().load(cache.clone());
+        assert_ne!(third.hash_id(&img).unwrap(), id);
+
+        // A corrupt cache is just an empty one.
+        std::fs::write(&cache, "not json").unwrap();
+        let fourth = ImageProcessor::new(ImageOptions::default());
+        fourth.hashes.lock().unwrap().load(cache.clone());
+        assert_eq!(fourth.hash_id(&img).unwrap(), id);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn widths_never_upscale() {
+        let defaults = [300, 600, 900, 1200, 1500];
+        assert_eq!(valid_widths(810, &defaults, 1.25), vec![300, 600, 810]);
+        assert_eq!(valid_widths(672, &defaults, 1.25), vec![300, 600]);
+        assert_eq!(valid_widths(2000, &defaults, 1.25), vec![300, 600, 900, 1200, 1500]);
+        assert_eq!(valid_widths(256, &[48, 96, 144], 1.25), vec![48, 96, 144]);
+        assert_eq!(valid_widths(200, &[300, 600], 1.25), vec![200]);
     }
 }

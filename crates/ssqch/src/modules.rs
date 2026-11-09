@@ -55,7 +55,7 @@ pub fn js_modules() -> Vec<JsModule> {
             "ssqch/image",
             include_str!("js/image.js"),
             vec![
-                ("generate", Value::func(|args| generate_image(args))),
+                ("generate", Value::func(generate_image)),
             ],
         ),
         module(

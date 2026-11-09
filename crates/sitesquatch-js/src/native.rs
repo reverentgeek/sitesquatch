@@ -226,7 +226,7 @@ pub(crate) fn encode(text: &str, encoding: &str) -> std::result::Result<Vec<u8>,
         "latin1" | "binary" | "ascii" => text.chars().map(|c| c as u32 as u8).collect(),
         "hex" => {
             let digits: Vec<u8> = text.bytes().take_while(|b| b.is_ascii_hexdigit()).collect();
-            digits.chunks_exact(2).map(|p| u8::from_str_radix(std::str::from_utf8(p).unwrap_or("00"), 16).unwrap_or(0)).collect()
+            digits.as_chunks::<2>().0.iter().map(|p| u8::from_str_radix(std::str::from_utf8(p).unwrap_or("00"), 16).unwrap_or(0)).collect()
         }
         "base64" | "base64url" => base64_decode(text),
         other => return Err(format!("unknown encoding: {}", other)),

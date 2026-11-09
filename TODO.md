@@ -40,7 +40,7 @@ were edited). What changed, for the changelog's first "Breaking" entry:
 
 Follow-ups:
 
-- [ ] Write the `CHANGELOG.md` entry above when the first release is cut (see "Versioning").
+- [x] Write the `CHANGELOG.md` entry above (under "Unreleased" until the first release).
 - [ ] **Blog:** pin `SSQCH_REF` in its deploy workflow to the commit that adds `defineConfig`,
       once it's pushed. Push this repository first: the blog's deploy builds ssqch from it.
 - [ ] Type definitions for `defineConfig` and the `ssqch/*` modules (a `.d.ts`), for editor
@@ -85,11 +85,14 @@ in a couple of minutes.
 The smallest part of this section that lets the blog go back to Netlify building the site
 itself (**Blog:** "Step 2" in `../blog/TODO.md`):
 
-- [ ] A release workflow that builds Linux x86_64 with AVIF, as a musl static binary (or built
-      for a glibc no newer than the Netlify build image's), with a checksum. The other platforms
-      can follow in later releases.
-- [ ] An install script that Netlify's build command can run (`curl -fsSL .../install.sh | sh`,
-      pinned to a version), installing into a directory on `PATH` without root.
+- [x] A release workflow (`dist`, see `dist-workspace.toml`) that builds Linux x86_64 with AVIF
+      as a musl static binary, with SHA-256 checksums and build attestations. Pull requests run
+      the same build without publishing. The other platforms can follow in later releases.
+- [ ] See the release build pass on a pull request (it hasn't run yet), then tag `v0.2.0`.
+- [x] An install script: dist's `ssqch-installer.sh`, attached to each release. Its URL pins the
+      version, it checks the archive's checksum, and `SSQCH_UNMANAGED_INSTALL=<dir>` installs
+      into that directory without touching shell profiles:
+      `curl -fsSL https://github.com/reverentgeek/sitesquatch/releases/download/v0.2.0/ssqch-installer.sh | SSQCH_UNMANAGED_INSTALL=.cache/bin sh`.
 - [ ] Measure a cold build of the blog (no `dist/img` cache, about 3,200 image derivatives with
       AVIF) on a Netlify-sized machine, and check it fits Netlify's build timeout. If it doesn't,
       lower `avifSpeed` for the first build, or prime the cache once.
@@ -100,32 +103,32 @@ itself (**Blog:** "Step 2" in `../blog/TODO.md`):
 
 Settle this before the first tag, since the release workflow keys off it.
 
-- [ ] Pick a versioning policy (semver, starting from 0.x) and keep a `CHANGELOG.md`, with a
-      "Breaking" heading that says what a site has to change. Removing Eleventy is the first
-      entry.
-- [ ] Release by bumping `[workspace.package] version` (it's `0.1.0` today) and tagging to match.
-      `ssqch --version` (clap's `#[command(version)]`) and the template global's `version`
-      (`CARGO_PKG_VERSION` in `crates/sitesquatch/src/build.rs`) already report the workspace
-      version, so nothing else needs changing.
-- [ ] Have the release workflow fail if the tag doesn't match the workspace version.
+- [x] Semver from 0.x, with a `CHANGELOG.md` whose **Breaking** sections say what a site has to
+      change. Removing Eleventy is the first entry.
+- [x] Release by bumping `[workspace.package] version` (still `0.1.0`) and tagging to match; the
+      steps are in `CLAUDE.md`. `ssqch --version` and the template global's `version` already
+      report the workspace version.
+- [x] The release workflow fails if the tag doesn't match a package version (`dist` checks).
 
 ### CI
 
-- [ ] Add a test workflow on pushes and pull requests: `cargo build`, `cargo test`, with and
-      without `--features avif`. There are no workflows in `.github/workflows/` yet.
+- [x] A test workflow on pushes and pull requests (`.github/workflows/ci.yml`): `cargo test`
+      with and without AVIF on Linux and macOS, and clippy with `-D warnings`. Windows isn't
+      tested yet; add it with the Windows release build.
 - [ ] Optionally build the blog and compare it against a known-good output, as a regression
       test.
 
 ### Release builds
 
-- [ ] Try [`dist`](https://opensource.axo.dev/cargo-dist/) (formerly cargo-dist) before
+- [x] Try [`dist`](https://opensource.axo.dev/cargo-dist/) (formerly cargo-dist) before
       writing the workflow by hand. It generates the tag-triggered workflow, per-platform
       archives, checksums, a `curl | sh` installer, a Homebrew formula pushed to a tap, an npm
       wrapper package and `cargo binstall` metadata. It also handles feature flags and system
       packages like nasm (`[dist.dependencies]`). That covers most of this section and
       "Installing" below, including "Netlify first".
-- [ ] A GitHub Actions release workflow that runs on a version tag (`v0.2.0`), depends on the
-      test workflow passing, and publishes `ssqch` to a GitHub release.
+- [ ] A GitHub Actions release workflow that runs on a version tag (`v0.2.0`) and publishes
+      `ssqch` to a GitHub release: done with `dist`, except that it doesn't wait for the test
+      workflow. The release steps in `CLAUDE.md` say to wait for CI before tagging.
 - [ ] Build for the common platforms: Linux x86_64 and aarch64, macOS arm64 and x86_64, and
       Windows x86_64.
   - Prefer native runners per target (`ubuntu-24.04-arm`, `macos-latest`, `windows-latest`).
@@ -137,19 +140,18 @@ Settle this before the first tag, since the release workflow keys off it.
     including some Netlify build images.
   - macOS x86_64: Intel runners are being retired, so build `x86_64-apple-darwin` on an arm64
     runner (nasm from Homebrew works there).
-- [ ] Ship AVIF support in the release builds (`--features avif`). On x86_64 the build needs the
-      `nasm` assembler installed first (`rav1e` uses it through `nasm-rs`); ARM builds don't.
+- [x] Ship AVIF support in the release builds (`features = ["avif"]` in `crates/ssqch/Cargo.toml`;
+      dist installs `nasm` from apt). ARM builds won't need nasm.
 - [ ] Smoke-test each built binary in the release job: `ssqch --version`, then a build of a
       small fixture site that includes a JPEG and checks the WebP and AVIF output.
-- [ ] Put `LICENSE` and `README.md` in each archive.
-- [ ] Publish a SHA-256 checksum file alongside the archives, so installs can be verified.
-- [ ] Add build provenance with `actions/attest-build-provenance` (one step; pairs with the
-      checksums).
+- [x] Put `LICENSE` and `README.md` in each archive (and `CHANGELOG.md`; dist does this).
+- [x] Publish a SHA-256 checksum file alongside the archives, so installs can be verified.
+- [x] Add build provenance (`github-attestations = true` in `dist-workspace.toml`).
 - [ ] macOS Gatekeeper: decide whether to sign and notarize, or document
       `xattr -d com.apple.quarantine ssqch` for browser downloads. The install script and
       Homebrew don't hit the quarantine.
-- [ ] Release only `ssqch`, not the `reverentgeek` example binary (it's already
-      `publish = false`).
+- [x] Release only `ssqch`, not the `reverentgeek` example binary (`dist = false` in its
+      `Cargo.toml`).
 
 ### Installing
 

@@ -126,10 +126,13 @@ impl<'js> Conv<'js> {
         })
     }
 
+    // `from_js` reads as "convert from JavaScript"; it needs the context in `self`.
+    #[allow(clippy::wrong_self_convention)]
     pub(crate) fn from_js(&self, v: rquickjs::Value<'js>) -> Result<Value> {
         self.from_js_at(v, 0)
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_js_at(&self, v: rquickjs::Value<'js>, depth: usize) -> Result<Value> {
         if depth > MAX_DEPTH {
             bail!("value is nested too deeply (is it circular?)");
