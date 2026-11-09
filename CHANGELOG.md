@@ -8,6 +8,18 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Added
+
+- `ssqch init [dir]` creates a starter site: `ssqch.config.js`, a layout, a home page, a post
+  with directory data, a data file, editor types and a `.gitignore`. It never overwrites an
+  existing file.
+- `ssqch types` writes `ssqch.d.ts`, type definitions for `ssqch.config.js` and the `ssqch/*`
+  modules, so editors autocomplete and check configs (with `checkJs` in `jsconfig.json`).
+- Rust: `sitesquatch::cli::run_with` lets a binary add its own subcommands
+  (`ExtraCommand`), and `sitesquatch::cli::clap` re-exports the clap it uses.
+
 ## 0.2.6 - 2026-11-08
 
 ### Fixed
