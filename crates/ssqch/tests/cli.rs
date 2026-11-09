@@ -57,3 +57,31 @@ fn types_writes_the_declarations() {
         assert!(types.contains(&format!("declare module {}", module)), "missing {}", module);
     }
 }
+
+#[test]
+fn render_front_matter_picks_the_engines() {
+    let dir = temp_dir("render");
+    let d = dir.to_str().unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
+    let write = |name: &str, body: &str| std::fs::write(dir.join(name), body).unwrap();
+    write("default.md", "---\nname: Bigfoot\n---\nHi {{ name }}\n");
+    write("md-only.md", "---\nname: Bigfoot\nrender: md\n---\nHi {{ name }}\n");
+    write("chain.md", "---\nname: Bigfoot\nrender: [edge, md]\n---\n*{{ name }}*\n");
+    write("raw.md", "---\nrender: false\n---\n*{{ name }}*\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    let read = |name: &str| std::fs::read_to_string(dir.join("_site").join(name).join("index.html")).unwrap();
+    assert_eq!(read("default"), "<p>Hi Bigfoot</p>\n");
+    assert_eq!(read("md-only"), "<p>Hi {{ name }}</p>\n");
+    assert_eq!(read("chain"), "<p><em>Bigfoot</em></p>\n");
+    assert_eq!(read("raw"), "*{{ name }}*\n");
+
+    write("old.md", "---\ntemplateEngineOverride: md\n---\nHi\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("front matter `templateEngineOverride` is now `render`"), "{}", log);
+    std::fs::remove_file(dir.join("old.md")).unwrap();
+
+    write("bad.md", "---\nrender: 3\n---\nHi\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("`render` must be an engine name"), "{}", log);
+}
