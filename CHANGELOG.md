@@ -16,6 +16,14 @@ a `v<version>` tag on a commit where that version matches.
   (`render: md`). A build that finds the old key stops with an error that says so. `render` also
   takes a list (`render: [edge, md]`) and `false`, which writes the body without processing it.
 
+### Added
+
+- `clean: true` in the config (or `clean = true` in `sitesquatch.toml`) deletes stale files from
+  the output: pages and passthrough files an earlier build wrote that this one didn't, like a
+  deleted post, and the folders they leave empty. Each build lists what it wrote in
+  `.cache/ssqch/output-files.json`, so files other tools write into the output are never touched.
+  Off by default.
+
 ### Changed
 
 - Markdown escapes `"` in text and inline code as `&quot;`, like the CommonMark reference

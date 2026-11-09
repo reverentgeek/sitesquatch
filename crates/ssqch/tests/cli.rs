@@ -85,3 +85,42 @@ fn render_front_matter_picks_the_engines() {
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(!ok && log.contains("`render` must be an engine name"), "{}", log);
 }
+
+#[test]
+fn clean_removes_only_stale_files_ssqch_wrote() {
+    let dir = temp_dir("clean");
+    let d = dir.to_str().unwrap();
+    std::fs::create_dir_all(dir.join("files")).unwrap();
+    let write = |name: &str, body: &str| std::fs::write(dir.join(name), body).unwrap();
+    let config = |clean: bool| format!("export default {{ clean: {}, passthrough: \"files\" }};\n", clean);
+    write("ssqch.config.js", &config(false));
+    write("keep.md", "Keep\n");
+    write("gone.md", "Gone\n");
+    write("files/old.txt", "old\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    // Another tool (a CSS build, say) writes into the output too.
+    std::fs::create_dir_all(dir.join("_site/assets")).unwrap();
+    write("_site/assets/index.css", "body{}");
+
+    std::fs::remove_file(dir.join("gone.md")).unwrap();
+    std::fs::remove_file(dir.join("files/old.txt")).unwrap();
+    let site = dir.join("_site");
+    // With clean off, nothing goes.
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    assert!(site.join("gone/index.html").is_file() && site.join("files/old.txt").is_file());
+
+    write("ssqch.config.js", &config(true));
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    assert!(log.contains("Removed  2 stale files"), "{}", log);
+    assert!(!site.join("gone").exists(), "the emptied folder goes too");
+    assert!(!site.join("files/old.txt").exists());
+    assert!(site.join("keep/index.html").is_file());
+    assert!(site.join("assets/index.css").is_file(), "files other tools wrote stay");
+
+    // Nothing stale the next time.
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && !log.contains("Removed"), "{}", log);
+}

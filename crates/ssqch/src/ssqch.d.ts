@@ -120,6 +120,8 @@ declare module "ssqch" {
 		htmlEngine?: string | false;
 		/** Merge objects and concatenate arrays through the data cascade. Default `true`. */
 		deepMerge?: boolean;
+		/** Delete output files an earlier build wrote or copied that this one didn't (a deleted post's page). Files other tools write are never touched. Default `false`. */
+		clean?: boolean;
 	}
 
 	/** Returns its argument. It's there so the config reads as one, and for these types. */

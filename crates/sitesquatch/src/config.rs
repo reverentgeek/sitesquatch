@@ -123,6 +123,8 @@ pub struct BuildReport {
     pub files_unchanged: usize,
     /// Total size of every passthrough file, copied or not.
     pub passthrough_bytes: u64,
+    /// Stale files deleted from the output (with `clean`).
+    pub files_removed: usize,
     pub written: Vec<PathBuf>,
     pub duration: std::time::Duration,
     pub timings: Vec<(String, std::time::Duration)>,
@@ -159,6 +161,11 @@ pub struct Config {
     pub html_engine: Option<String>,
     /// Merge objects and concatenate arrays across the data cascade.
     pub data_deep_merge: bool,
+    /// Delete output files an earlier build wrote or copied that this build
+    /// didn't (a deleted post's page, a removed passthrough file). Files from
+    /// other tools are never touched: only files listed in
+    /// `.cache/ssqch/output-files.json` are candidates.
+    pub clean: bool,
     pub env: Environment,
     pub serving: bool,
     pub quiet: bool,
@@ -191,6 +198,7 @@ impl Config {
             markdown_engine: Some("edge".into()),
             html_engine: Some("edge".into()),
             data_deep_merge: true,
+            clean: false,
             env,
             serving: false,
             quiet: false,

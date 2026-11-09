@@ -205,6 +205,11 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
         Value::Bool(b) => cfg.data_deep_merge = b,
         other => bail!("deepMerge must be true or false, not {}", other.type_of()),
     }
+    match settings.get("clean") {
+        Value::Undefined => {}
+        Value::Bool(b) => cfg.clean = b,
+        other => bail!("clean must be true or false, not {}", other.type_of()),
+    }
 
     for op in result.get("ops").as_array().unwrap_or(&[]) {
         let name = op.get("name").to_js_string();

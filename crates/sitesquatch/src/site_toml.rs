@@ -30,6 +30,7 @@ pub struct SiteToml {
     pub markdown_engine: Option<String>,
     pub html_engine: Option<String>,
     pub data_deep_merge: Option<bool>,
+    pub clean: Option<bool>,
     #[serde(default)]
     pub passthrough: BTreeMap<String, String>,
 }
@@ -50,6 +51,7 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
     if let Some(v) = site.markdown_engine { cfg.markdown_engine = Some(v).filter(|s| !s.is_empty()); }
     if let Some(v) = site.html_engine { cfg.html_engine = Some(v).filter(|s| !s.is_empty()); }
     if let Some(v) = site.data_deep_merge { cfg.data_deep_merge = v; }
+    if let Some(v) = site.clean { cfg.clean = v; }
     for (from, to) in site.passthrough {
         if to.is_empty() {
             cfg.add_passthrough_copy(from);

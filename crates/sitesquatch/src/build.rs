@@ -9,7 +9,7 @@
 //!    go first, so their `templateContent` can appear in collections (feeds).
 //! 5. Wrap bodies in layouts, run transforms, write files, copy passthroughs.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime};
@@ -199,6 +199,9 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     let copy = passthrough_copy(cfg, &ctx)?;
     timer.lap("copy");
 
+    let outputs: Vec<&PathBuf> = written.iter().map(|(p, _)| p).chain(&copy.paths).collect();
+    let files_removed = record_outputs(cfg, &ctx, &outputs)?;
+
     let mut report = BuildReport {
         templates: tpls.len(),
         pages_written: written.len(),
@@ -206,6 +209,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
         files_copied: copy.copied,
         files_unchanged: copy.unchanged,
         passthrough_bytes: copy.bytes,
+        files_removed,
         written: written.into_iter().map(|(p, _)| p).collect(),
         duration: started.elapsed(),
         ..Default::default()
@@ -248,6 +252,67 @@ fn collect_errors<T>(results: Vec<Result<T>>) -> Result<Vec<T>> {
     let count = errors.len();
     errors.truncate(10);
     Err(anyhow!("{} error(s):\n  - {}{}", count, errors.join("\n  - "), if count > 10 { "\n  ..." } else { "" }))
+}
+
+// --------------------------------------------------------------------- clean
+
+/// Where the build records the files it wrote and copied, relative to the
+/// output folder, so a later build with `clean` knows which ones are its own.
+const OUTPUT_LIST: &str = ".cache/ssqch/output-files.json";
+
+/// Record this build's output files. Files an earlier build recorded that this
+/// one didn't produce are stale: with `clean` they're deleted, and without it
+/// they stay on the list, so turning `clean` on later still finds them.
+/// Returns how many were deleted.
+fn record_outputs(cfg: &Config, ctx: &BuildContext, outputs: &[&PathBuf]) -> Result<usize> {
+    let list_path = ctx.root.join(OUTPUT_LIST);
+    let output_name = slashes(ctx.output_dir.strip_prefix(&ctx.root).unwrap_or(&ctx.output_dir));
+    let mut current: BTreeSet<String> = outputs.iter().filter_map(|p| p.strip_prefix(&ctx.output_dir).ok()).map(slashes).collect();
+    let previous: Vec<String> = std::fs::read_to_string(&list_path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .filter(|v| v["output"].as_str() == Some(output_name.as_str()))
+        .and_then(|v| v["files"].as_array().map(|files| files.iter().filter_map(|f| f.as_str().map(String::from)).collect()))
+        .unwrap_or_default();
+
+    let mut removed = 0;
+    let stale: Vec<String> = previous.into_iter().filter(|r| !current.contains(r)).collect();
+    for rel in stale {
+        // Only plain relative paths inside the output folder.
+        let rel_path = Path::new(&rel);
+        if rel_path.is_absolute() || rel_path.components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
+            continue;
+        }
+        let path = ctx.output_dir.join(rel_path);
+        if !path.is_file() {
+            continue;
+        }
+        if !cfg.clean {
+            // Still ours, and stale: remember it for when `clean` is turned on.
+            current.insert(rel);
+            continue;
+        }
+        std::fs::remove_file(&path).with_context(|| format!("removing stale {}", path.display()))?;
+        removed += 1;
+        if !cfg.quiet {
+            println!("[ssqch] Removed {}", display_path(ctx, &path));
+        }
+        // Then any folders that are now empty, up to the output folder.
+        let mut dir = path.parent();
+        while let Some(d) = dir.filter(|d| *d != ctx.output_dir && d.starts_with(&ctx.output_dir)) {
+            if std::fs::remove_dir(d).is_err() {
+                break;
+            }
+            dir = d.parent();
+        }
+    }
+
+    if let Some(parent) = list_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let list = serde_json::json!({ "output": output_name, "files": current });
+    std::fs::write(&list_path, serde_json::to_string_pretty(&list)?).with_context(|| format!("writing {}", list_path.display()))?;
+    Ok(removed)
 }
 
 // ------------------------------------------------------------------ discover
@@ -810,6 +875,8 @@ struct CopyStats {
     copied: usize,
     unchanged: usize,
     bytes: u64,
+    /// Every destination, copied or not.
+    paths: Vec<PathBuf>,
 }
 
 fn passthrough_copy(cfg: &Config, ctx: &BuildContext) -> Result<CopyStats> {
@@ -853,7 +920,7 @@ fn passthrough_copy(cfg: &Config, ctx: &BuildContext) -> Result<CopyStats> {
             .collect(),
     )?;
     let copied = results.iter().filter(|(c, _)| *c).count();
-    Ok(CopyStats { copied, unchanged: results.len() - copied, bytes: results.iter().map(|(_, n)| n).sum() })
+    Ok(CopyStats { copied, unchanged: results.len() - copied, bytes: results.iter().map(|(_, n)| n).sum(), paths: jobs.into_iter().map(|(_, dest)| dest).collect() })
 }
 
 #[cfg(test)]
