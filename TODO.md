@@ -105,12 +105,12 @@ In priority order, by how widely each is used across static site generators and 
       Jekyll's `include` (with `include.*` parameters) and filters, `render`, mixed layout chains
       and lax unknown variables work. Left: `{% render %}` partials are strict about unknown
       variables (the crate's runtime), and errors name the template but not the line.
-- [ ] **Nunjucks and Jinja** (`.njk`, `.jinja`, `.j2`): Nunjucks is common with Eleventy, and
-      Jinja with Python generators (Pelican, MkDocs themes).
-      [`minijinja`](https://crates.io/crates/minijinja) implements Jinja2 and covers most
-      Nunjucks syntax. List the Nunjucks features it doesn't cover, and decide whether `.njk` is
-      close enough or gets documented as Jinja. Tera (Zola's engine) is similar enough to skip
-      unless someone asks.
+- [x] **Nunjucks and Jinja** (`.njk`, `.jinja`, `.j2`): `plugins/jinja` on minijinja, a default
+      `ssqch` feature. Data through minijinja objects without copying, config filters as filters
+      and functions, includes, inheritance and macros from `_includes`, Nunjucks-style escaping
+      (not `/`) with a safe `content`, chainable undefined, `dump` and `truncate`, and errors with
+      `template:line`. For `.njk`, `elseif` and `for key, value in object` are rewritten to
+      minijinja's syntax. Not supported: Nunjucks' async tags and custom tag extensions.
 - [ ] **Handlebars and Mustache** (`.hbs`, `.mustache`): the
       [`handlebars`](https://crates.io/crates/handlebars) crate renders both (Mustache templates
       mostly work as Handlebars). Config `filters` become helpers, and partials come from
@@ -132,10 +132,11 @@ Shared work, done with the first engine (Liquid) and reused by the rest:
       `templateFormats` the new extensions.
 - [x] Each engine is a cargo feature that the release builds turn on (`liquid` is a default
       feature of `ssqch`). Liquid adds about 2.1 MB (11.4 MB to 13.6 MB on macOS arm64).
-- [ ] Docs and tooling: the README has a Liquid section and `ssqch types` mentions `"liquid"`.
+- [ ] Docs and tooling: the README has Liquid and Nunjucks/Jinja sections, and `ssqch types`
+      mentions the names.
       Left: `ssqch init` could take `--engine liquid`.
-- [ ] Tests: a small site per engine, including a layout chain that mixes engines. Liquid has
-      one (`crates/ssqch/tests/cli.rs`).
+- [ ] Tests: a small site per engine, including a layout chain that mixes engines. Liquid and
+      Nunjucks/Jinja have one (`crates/ssqch/tests/cli.rs`).
 - [x] Rename the `templateEngineOverride` front-matter key to `render` (`render: md`,
       `render: [liquid, md]`, `render: false`). Breaking; the old key is an error that names the
       new one.

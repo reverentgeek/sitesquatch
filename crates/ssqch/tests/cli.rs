@@ -201,3 +201,38 @@ fn liquid_templates_get_filters_includes_and_collections() {
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(!ok && log.contains("broken.liquid"), "{}", log);
 }
+
+#[cfg(feature = "jinja")]
+#[test]
+fn nunjucks_templates_get_filters_includes_and_collections() {
+    let dir = temp_dir("nunjucks");
+    let d = dir.to_str().unwrap();
+    for sub in ["src/_includes", "src/posts"] {
+        std::fs::create_dir_all(dir.join(sub)).unwrap();
+    }
+    let write = |name: &str, body: &str| std::fs::write(dir.join(name), body).unwrap();
+    write(
+        "ssqch.config.js",
+        "export default {\n  dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"njk\", \"jinja\", \"md\"],\n  filters: { shout: (s) => String(s).toUpperCase(), year: (d) => d.getUTCFullYear() },\n  collections: { posts: (pages) => pages.byTag(\"post\") },\n};\n",
+    );
+    write("src/_includes/base.njk", "<title>{{ title | shout }}</title>{% include \"nav.njk\" %}{{ content }}");
+    write("src/_includes/nav.njk", "<nav>{% for p in collections.posts %}<a href=\"{{ p.url }}\">{{ p.data.title }}</a>{% endfor %}</nav>");
+    write("src/_includes/frame.jinja", "<main>{% block body %}{% endblock %}</main>");
+    write(
+        "src/index.njk",
+        "---\nlayout: base.njk\ntitle: Sightings <&>\n---\n{{ title }} {{ shout(\"fn\") }} [{{ nope }}{{ nope.deeper }}] {% for p in collections.posts %}{{ p.date | year }}{% endfor %}{% if false %}{% elseif true %} elseif{% endif %}{% set o = {\"a\": 1} %}{% for k, v in o %} {{ k }}={{ v }}{% endfor %} {{ \"the quick fox\" | truncate(9) }}",
+    );
+    write("src/extends.jinja", "{% extends \"frame.jinja\" %}{% block body %}{{ \"<b>\" | safe }}{% endblock %}");
+    write("src/posts/pine.md", "---\ntitle: Pine Cone Crunch\ntags: post\ndate: 2026-01-02\nrender: [njk, md]\n---\n*{{ title | lower }}*\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
+    assert_eq!(read("index.html"), "<title>SIGHTINGS &lt;&amp;&gt;</title><nav><a href=\"/posts/pine/\">Pine Cone Crunch</a></nav>Sightings &lt;&amp;&gt; FN [] 2026 elseif a=1 the...");
+    assert_eq!(read("extends/index.html"), "<main><b></main>");
+    assert_eq!(read("posts/pine/index.html"), "<p><em>pine cone crunch</em></p>\n");
+
+    // Errors name the template and line.
+    write("src/broken.njk", "ok\n{% if %}");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("broken.njk:2: syntax error"), "{}", log);
+}

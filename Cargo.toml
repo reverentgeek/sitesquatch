@@ -25,6 +25,7 @@ sitesquatch-plugin-minify = { version = "0.2.7", path = "plugins/minify" }
 sitesquatch-plugin-assets = { version = "0.2.7", path = "plugins/assets" }
 sitesquatch-plugin-links = { version = "0.2.7", path = "plugins/links" }
 sitesquatch-plugin-liquid = { version = "0.2.7", path = "plugins/liquid" }
+sitesquatch-plugin-jinja = { version = "0.2.7", path = "plugins/jinja" }
 
 [profile.release]
 lto = "thin"

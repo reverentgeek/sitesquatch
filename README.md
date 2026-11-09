@@ -4,7 +4,7 @@
 [![Latest release](https://img.shields.io/github/v/release/reverentgeek/sitesquatch)](https://github.com/reverentgeek/sitesquatch/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-SiteSquatch (`ssqch`) is a static site generator that fits in a single binary. You write templates in [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/) and Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. No Node required at all: the JavaScript runs on an engine built into `ssqch`.
+SiteSquatch (`ssqch`) is a static site generator that fits in a single binary. You write templates in [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/) or [Jinja](https://jinja.palletsprojects.com/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. No Node required at all: the JavaScript runs on an engine built into `ssqch`.
 
 It's quick, too. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in about **0.1 s** once its images are cached. See [Benchmarks](#benchmarks) for the details.
 
@@ -317,6 +317,17 @@ export default defineConfig({
 - **Filters:** Liquid's standard filters, Jekyll's `slugify`, `push`, `pop`, `shift`, `unshift` and `array_to_sentence_string`, and Shopify's `pluralize`. Your config `filters` work too: `{{ title | shout }}` calls `shout(title)`, and `{{ x | wrap: "[", "]" }}` calls `wrap(x, "[", "]")`. A config filter replaces a built-in one with the same name.
 - **Includes:** `{% include "nav.html" %}` and Jekyll's `{% include nav.html section="home" %}` (read as `include.section`) see the page's variables. `{% render "footer", year: 2026 %}` sees only what it's given, and an unknown variable inside it is an error. Both read from `_includes`, adding `.liquid` when the name has none.
 - **Mixing engines:** a Liquid page can use an Edge layout and the other way around.
+
+### Nunjucks and Jinja
+
+Add `"njk"` (Nunjucks) or `"jinja"` / `"j2"` (Jinja) to `templateFormats`, and those files render with [minijinja](https://github.com/mitsuhiko/minijinja), a Rust implementation of Jinja2 that covers most of Nunjucks. `markdownEngine: "njk"` runs Markdown through it, and `render: [njk, md]` does it for one post.
+
+- **Data:** the same as Edge and Liquid. Undefined values, and properties of undefined values, print nothing.
+- **Escaping:** output is HTML-escaped, as in Nunjucks and Jinja; use `| safe` to opt out. A layout's `content` is already marked safe, so `{{ content }}` works.
+- **Filters and functions:** Jinja's built-in filters, plus Nunjucks' `dump` and `truncate`. Your config `filters` work both ways: `{{ title | shout }}` and `{{ shout(title) }}`.
+- **Includes and inheritance:** `{% include %}`, `{% extends %}` with `{% block %}`, `{% import %}` and `{% from ... import %}` read from `_includes`. Front-matter `layout` works too.
+- **Nunjucks syntax:** in `.njk` files, `{% elseif %}` and `{% for key, value in object %}` work as in Nunjucks. Not supported: Nunjucks' async tags (`asyncEach`, `asyncAll`) and its custom tag extensions.
+- **Errors** name the template and line: `broken.njk:2: syntax error`.
 
 ## Reading the build summary
 
