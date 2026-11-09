@@ -151,17 +151,11 @@ Settle this before the first tag, since the release workflow keys off it.
 - [ ] A GitHub Actions release workflow that runs on a version tag (`v0.2.0`) and publishes
       `ssqch` to a GitHub release: done with `dist`, except that it doesn't wait for the test
       workflow. The release steps in `CLAUDE.md` say to wait for CI before tagging.
-- [ ] Build for the common platforms: Linux x86_64 and aarch64, macOS arm64 and x86_64, and
-      Windows x86_64.
-  - Prefer native runners per target (`ubuntu-24.04-arm`, `macos-latest`, `windows-latest`).
-    Besides nasm, `libwebp-sys` and `rquickjs-sys` compile C with `cc`, so cross-compiling needs
-    a C toolchain for each target. Check that `rquickjs` ships prebuilt bindings for every
-    target, or you'll also need bindgen and libclang.
-  - Linux: ship musl static builds (or build on the oldest Ubuntu you'll support). A binary
-    built on `ubuntu-latest` needs a recent glibc and won't run on older distros or CI images,
-    including some Netlify build images.
-  - macOS x86_64: Intel runners are being retired, so build `x86_64-apple-darwin` on an arm64
-    runner (nasm from Homebrew works there).
+- [x] Build for the common platforms: Linux x86_64 (static musl), macOS arm64 and x86_64, and
+      Windows x86_64, each on its native runner, with nasm from apt, Homebrew or Chocolatey
+      (`.github/build-setup.yml` puts Chocolatey's on PATH). Each binary is smoke-tested on its
+      own platform before publishing. Not released yet.
+- [ ] Linux aarch64 (static musl), when someone needs it.
 - [x] Ship AVIF support in the release builds (`features = ["avif"]` in `crates/ssqch/Cargo.toml`;
       dist installs `nasm` from apt). ARM builds won't need nasm.
 - [x] Smoke-test the Linux binary before publishing (`.github/workflows/smoke-test.yml`, run by

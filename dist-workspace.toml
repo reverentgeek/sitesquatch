@@ -10,11 +10,10 @@ cargo-dist-version = "0.34.0"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
-installers = ["shell"]
-# Target platforms to build apps for (Rust target-triple syntax). Linux x86_64
-# first, as a static musl binary so it runs on any distro (and Netlify's
-# build image); more platforms later.
-targets = ["x86_64-unknown-linux-musl"]
+installers = ["shell", "powershell"]
+# Target platforms to build apps for (Rust target-triple syntax). Linux is a
+# static musl binary, so it runs on any distro (and Netlify's build image).
+targets = ["x86_64-unknown-linux-musl", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"]
 # Don't install an updater next to the binary
 install-updater = false
 # Sign the build provenance of each archive (GitHub artifact attestations)
@@ -27,7 +26,15 @@ pr-run-mode = "upload"
 # Run the Linux binary before publishing (.github/workflows/smoke-test.yml).
 # A failure stops the release.
 global-artifacts-jobs = ["./smoke-test"]
+# Steps to run before building (.github/build-setup.yml): nasm on PATH on Windows.
+github-build-setup = "../build-setup.yml"
 
 # The AVIF encoder (rav1e) needs the nasm assembler on x86_64.
 [dist.dependencies.apt]
+nasm = "*"
+
+[dist.dependencies.homebrew]
+nasm = "*"
+
+[dist.dependencies.chocolatey]
 nasm = "*"
