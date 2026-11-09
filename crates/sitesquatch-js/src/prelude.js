@@ -88,7 +88,9 @@
 	// a plugin, and is applied in order: the config's own entries first, then
 	// each plugin's, depth first.
 	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "deepMerge", "clean" ];
-	const PARTS = [ "data", "filters", "collections", "transforms", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins" ];
+	const PARTS = [ "data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins" ];
+	// Engine names a config can't replace.
+	const CORE_ENGINES = [ "edge", "md", "html", "txt" ];
 	const DIRS = [ "input", "output", "includes", "data" ];
 
 	const isObject = v => v !== null && typeof v === "object" && !Array.isArray( v );
@@ -97,7 +99,7 @@
 	async function collect( env, serving ) {
 		const ops = [];
 		const settings = {};
-		const names = { data: new Map(), filters: new Map(), collections: new Map(), transforms: new Map() };
+		const names = { data: new Map(), filters: new Map(), collections: new Map(), transforms: new Map(), engines: new Map() };
 		const context = Object.freeze( { env, serving } );
 
 		const claim = ( kind, singular, name, where ) => {
@@ -175,6 +177,24 @@
 				};
 				ops.push( { op: "transform", name, fn: keep( run ) } );
 			} );
+			if ( part.engines !== undefined ) {
+				isObject( part.engines ) || fail( `${ where }: engines must be an object of { extension: function or { render } }` );
+				for ( const [ name, engine ] of Object.entries( part.engines ) ) {
+					const render = typeof engine === "function" ? engine : engine?.render;
+					typeof render === "function" || fail( `${ where }: engines.${ name } must be a function (source, data) or an object with a render(source, data) method` );
+					/^[A-Za-z0-9_-]+$/.test( name ) || fail( `${ where }: engines.${ name }: an engine's name is a file extension (letters, digits, - and _)` );
+					CORE_ENGINES.includes( name ) && fail( `${ where }: engines.${ name }: "${ name }" is built in and can't be replaced` );
+					claim( "engines", "engine", name, where );
+					const run = async ( source, data, inputPath ) => {
+						const out = await render.call( engine, source, data );
+						if ( typeof out !== "string" ) {
+							throw new TypeError( `engine "${ name }" returned ${ out === undefined ? "undefined" : typeof out } for ${ inputPath }; return the rendered text` );
+						}
+						return out;
+					};
+					ops.push( { op: "engine", name, fn: keep( run ) } );
+				}
+			}
 
 			for ( const entry of list( part.passthrough ) ) {
 				if ( typeof entry === "string" ) {

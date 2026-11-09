@@ -124,3 +124,41 @@ fn clean_removes_only_stale_files_ssqch_wrote() {
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok && !log.contains("Removed"), "{}", log);
 }
+
+#[test]
+fn the_config_can_define_template_engines() {
+    let dir = temp_dir("js-engines");
+    let d = dir.to_str().unwrap();
+    std::fs::create_dir_all(dir.join("_includes")).unwrap();
+    let write = |name: &str, body: &str| std::fs::write(dir.join(name), body).unwrap();
+    let config = |engines: &str, formats: &str| format!("export default {{ templateFormats: [{}], markdownEngine: \"tmpl\", engines: {{ {} }} }};\n", formats, engines);
+    let engines = r#"
+        shout: (source) => source.toUpperCase(),
+        tmpl: {
+            prefix: "~",
+            async render(source, data) {
+                return this.prefix + source.replace(/\$\{(\w+)\}/g, (_, key) => String(data[key] ?? ""));
+            },
+        },"#;
+    write("ssqch.config.js", &config(engines, "\"shout\", \"tmpl\", \"md\""));
+    write("_includes/frame.tmpl", "<frame>${content}</frame>");
+    write("loud.shout", "hello, squatch\n");
+    write("hi.tmpl", "---\nname: Bigfoot\nlayout: frame\n---\nHi ${name}");
+    write("post.md", "---\nname: Bigfoot\n---\n*${name}*\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("_site").join(path)).unwrap();
+    assert_eq!(read("loud/index.html"), "HELLO, SQUATCH\n");
+    assert_eq!(read("hi/index.html"), "~<frame>~Hi Bigfoot</frame>");
+    assert_eq!(read("post/index.html"), "<p>~<em>Bigfoot</em></p>\n");
+
+    // Returning something other than a string names the engine and the file.
+    write("ssqch.config.js", &config("shout: () => 42,", "\"shout\""));
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("engine \"shout\" returned number for loud.shout"), "{}", log);
+
+    // Built-in engines can't be replaced.
+    write("ssqch.config.js", &config("md: (s) => s,", "\"md\""));
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("engines.md: \"md\" is built in"), "{}", log);
+}

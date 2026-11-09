@@ -114,11 +114,10 @@ In priority order, by how widely each is used across static site generators and 
       [`handlebars`](https://crates.io/crates/handlebars) crate renders both (Mustache templates
       mostly work as Handlebars). Config `filters` become helpers, and partials come from
       `_includes`.
-- [ ] **JavaScript engines from the config**: let `ssqch.config.js` register an engine
-      (something like `engines: { ejs: { extensions: ["ejs"], render(source, data) { ... } } }`)
-      that runs on QuickJS, so pure-JavaScript libraries like EJS or Pug work without Rust. It's
-      slower than a native engine (JavaScript runs one call at a time), so measure it, and check
-      which libraries load in QuickJS with the Node built-ins ssqch has.
+- [x] **JavaScript engines from the config**: `engines: { ext: (source, data) => html }` or
+      `{ render(source, data) }`, sync or async, on QuickJS. Page data arrives as lazy views, so
+      passing it costs little. Libraries like EJS or Pug still need npm packages or CommonJS,
+      which ssqch doesn't load yet (README, Known gaps).
 - [ ] Not planned unless someone asks: Go templates (Hugo; no Rust implementation matches Go's
       `text/template` closely) and MDX/JSX (needs a JavaScript toolchain and a component model).
 

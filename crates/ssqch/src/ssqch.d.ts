@@ -62,6 +62,8 @@ declare module "ssqch" {
 
 	type MaybePromise<T> = T | Promise<T>;
 	type Hook = (event: BuildEvent) => MaybePromise<void>;
+	/** Renders a template's body (front matter removed) with the page's data. */
+	type EngineRender = (source: string, data: Record<string, any>) => MaybePromise<string>;
 
 	/** A built-in plugin, as returned by `imagePlugin()` and the others. */
 	export interface BuiltinPlugin {
@@ -82,6 +84,8 @@ declare module "ssqch" {
 		collections?: Record<string, (pages: Pages) => unknown>;
 		/** Run on every output file. Return the content, changed or not. */
 		transforms?: Record<string, (content: string, page: TransformPage) => MaybePromise<string>>;
+		/** Template engines of your own, by file extension: a function, or an object with `render`. Return the rendered text. */
+		engines?: Record<string, EngineRender | { render: EngineRender }>;
 		/** Files or folders to copy: a path, or `{ from: to }`, or an array of them. */
 		passthrough?: string | Record<string, string> | Array<string | Record<string, string>>;
 		/** More paths for `ssqch serve` to watch. */

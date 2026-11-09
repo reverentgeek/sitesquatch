@@ -213,6 +213,7 @@ The default export is the config: an object, or a function (sync or async) that 
 | `data` | `{ name: value }` for every template. A function (sync or async) is called on each build. |
 | `collections` | `{ name: (pages) => ... }`. `pages` has `all()`, `byTag(tag)`, `byTags(...tags)` and `byGlob(glob or globs)`, oldest first. |
 | `transforms` | `{ name: (content, page) => content }`, run on every output file. `page` has `url`, `inputPath` and `outputPath`. Return the content, changed or not. Async works. |
+| `engines` | Template engines of your own: `{ extension: (source, data) => html }`, or an object with a `render(source, data)` method (async is fine). Add the extension to `templateFormats` to render those files; layouts in that extension work too, and `markdownEngine` can name one. `edge`, `md`, `html` and `txt` can't be replaced. |
 | `passthrough` | Files or folders to copy: a path, or `{ from: to }`, or an array of them. |
 | `watch` | More paths for `ssqch serve` to watch. |
 | `beforeBuild`, `afterBuild` | Build hooks (a function or an array). They get `{ env, serving, dirs }`, plus `written` (the files written) after the build. Async works. |
