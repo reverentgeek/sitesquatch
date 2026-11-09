@@ -119,6 +119,9 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       BUILD_MANIFEST_NAME: target/distrib/${{ join(matrix.targets, '-') }}-dist-manifest.json
+      CODESIGN_CERTIFICATE: ${{ secrets.CODESIGN_CERTIFICATE }}
+      CODESIGN_CERTIFICATE_PASSWORD: ${{ secrets.CODESIGN_CERTIFICATE_PASSWORD }}
+      CODESIGN_IDENTITY: ${{ secrets.CODESIGN_IDENTITY }}
     permissions:
       "attestations": "write"
       "contents": "read"
@@ -142,6 +145,10 @@ jobs:
         if: "runner.os == 'Windows'"
         run: "echo \"C:\\Program Files\\NASM\" >> $env:GITHUB_PATH"
         shell: "pwsh"
+      - name: "Use the hardened runtime when signing (macOS)"
+        if: "runner.os == 'macOS'"
+        run: "echo \"CODESIGN_OPTIONS=runtime\" >> \"$GITHUB_ENV\""
+        shell: "bash"
       - uses: swatinem/rust-cache@v2
         with:
           key: ${{ join(matrix.targets, '-') }}
@@ -243,6 +250,15 @@ jobs:
     with:
       plan: ${{ needs.plan.outputs.val }}
     secrets: inherit
+
+  custom-notarize:
+    needs:
+      - plan
+      - build-local-artifacts
+    uses: $/.github/workflows/notarize.yml
+    with:
+      plan: ${{ needs.plan.outputs.val }}
+    secrets: inherit
   # Determines if we should publish/announce
   host:
     needs:
@@ -250,8 +266,9 @@ jobs:
       - build-local-artifacts
       - build-global-artifacts
       - custom-smoke-test
+      - custom-notarize
     # Only run if we're "publishing", and only if plan, local and global didn't fail (skipped is fine)
-    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.custom-smoke-test.result == 'skipped' || needs.custom-smoke-test.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.custom-smoke-test.result == 'skipped' || needs.custom-smoke-test.result == 'success') && (needs.custom-notarize.result == 'skipped' || needs.custom-notarize.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     runs-on: "ubuntu-22.04"
