@@ -109,6 +109,11 @@ pub struct ImageOptions {
     /// Remember each image's id between builds in `.cache/ssqch/image-hashes.json`
     /// (see [`CACHE_FILE`]), so warm builds don't re-read every image.
     pub hash_cache: bool,
+    /// Rewrite `<a href>` links to local images (click-to-enlarge) to a
+    /// generated copy: the source's format, at its own width capped at the
+    /// largest of `widths`. Without this, a link to a source image that isn't
+    /// published is broken.
+    pub linked_images: bool,
 }
 
 impl Default for ImageOptions {
@@ -126,6 +131,7 @@ impl Default for ImageOptions {
             minimum_threshold: 1.25,
             prune: false,
             hash_cache: true,
+            linked_images: true,
         }
     }
 }
@@ -236,6 +242,16 @@ impl ImageProcessor {
             None => page_input.parent()?.join(&clean),
         };
         Some(path)
+    }
+
+    /// The URL a link to the image at `src` should point to: one copy in the
+    /// source's own format (so it opens anywhere), at the image's width capped
+    /// at the largest configured width. GIFs and SVGs are their copied files.
+    fn link_target(&self, src: &Path) -> Result<String> {
+        let cap = self.options.widths.iter().copied().max().unwrap_or(0);
+        let meta = self.generate(src, &[cap], &[Format::Auto])?;
+        let entry = meta.formats.values().flatten().max_by_key(|e| e.width).ok_or_else(|| anyhow!("no image generated for {}", src.display()))?;
+        Ok(entry.url.clone())
     }
 
     /// Generate (or reuse) derivatives of `src` at `widths` in `formats`.
@@ -536,13 +552,38 @@ impl ImageProcessor {
 
     /// Rewrite every local `<img>` in an HTML document.
     pub fn transform_html(&self, html: &str, page_input: &Path) -> Result<String> {
-        if !html.contains("<img") {
+        let links = self.options.linked_images && html.contains("<a");
+        if !html.contains("<img") && !links {
             return Ok(html.to_string());
         }
+        // Links to local images (click-to-enlarge), rewritten to a generated copy.
+        let link_handler = element!("a[href]", move |el| {
+            if el.has_attribute("ssqch:ignore") {
+                el.remove_attribute("ssqch:ignore");
+                return Ok(());
+            }
+            if !links {
+                return Ok(());
+            }
+            let href = el.get_attribute("href").unwrap_or_default();
+            let Some(path) = self.resolve_src(&href, page_input) else { return Ok(()) };
+            if Format::from_path(&path).is_none() {
+                return Ok(());
+            }
+            if !path.is_file() {
+                self.warn_once(format!("linked image not found: {} (in {})", href, page_input.display()));
+                return Ok(());
+            }
+            match self.link_target(&path) {
+                Ok(url) => el.set_attribute("href", &url)?,
+                Err(e) => self.warn_once(format!("{:#}", e)),
+            }
+            Ok(())
+        });
         rewrite_str(
             html,
             RewriteStrSettings {
-                element_content_handlers: vec![element!("img[src]", |el| {
+                element_content_handlers: vec![link_handler, element!("img[src]", |el| {
                     if el.has_attribute("ssqch:ignore") {
                         el.remove_attribute("ssqch:ignore");
                         return Ok(());

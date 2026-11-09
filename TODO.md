@@ -69,6 +69,9 @@ Follow-ups:
       in 0.2.4.
       **Blog:** it found 413 broken links on 8 pages, all to full-size originals under
       `/content/images/` that the build never publishes (they 404 on the live site too).
+- [x] Links to local images point at a generated copy (`linkedImages`, on by default), which
+      fixes those 413: on the blog, 17,423 links checked, 0 broken, with 31 new image files.
+      Not released yet.
 - [x] **Check `serve` against the blog.** With `pnpm run serve`, a post edit rebuilds and
       reloads in about 0.4 s, and a CSS edit reloads after PostCSS has written the new CSS.
 - [x] Make CSS reloads robust: `ssqch serve` also watches the output and reloads (without a

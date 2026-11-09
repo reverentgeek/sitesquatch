@@ -243,3 +243,38 @@ fn broken_links_fail_a_production_build_and_warn_in_development() {
     assert!(ok, "{}", log);
     assert!(log.contains("warn: 4 broken links:") && log.contains("checked, 4 broken"), "{}", log);
 }
+
+fn linked_images_site(options: &str) -> PathBuf {
+    let config = format!(
+        "import {{ imagePlugin }} from \"ssqch/image\";\nexport default {{ dirs: {{ input: \"src\", output: \"dist\" }}, plugins: [imagePlugin({{ formats: [\"webp\", \"auto\"], widths: [16, 48]{} }})] }};",
+        options
+    );
+    let page = "<a href=\"/img/squatch.png\"><img src=\"/img/squatch.png\" width=\"16\" alt=\"Squatch\"></a>\n<a href=\"img/squatch.png\" ssqch:ignore>raw</a>\n<a href=\"/about/\">about</a>\n<a href=\"/img/missing.png\">missing</a>";
+    project(&[("ssqch.config.js", config.as_bytes()), ("src/img/squatch.png", PNG), ("src/index.edge", page.as_bytes())])
+}
+
+#[test]
+fn links_to_images_point_at_a_generated_copy() {
+    let root = linked_images_site("");
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    let html = read(&root, "dist/index.html");
+    let first = html.lines().next().unwrap();
+    // The source is 64 px wide; the largest configured width is 48, so the link gets a 48 px PNG.
+    let href = first.split("href=\"").nth(1).unwrap().split('"').next().unwrap();
+    assert!(href.starts_with("/img/") && href.ends_with("-48.png"), "{}", first);
+    assert!(root.join("dist").join(href.trim_start_matches('/')).is_file(), "{} exists", href);
+    assert!(first.contains("<picture>"), "the image inside is still a <picture>: {}", first);
+    assert!(html.contains("<a href=\"img/squatch.png\">raw</a>"), "ssqch:ignore keeps the link (and is removed): {}", html);
+    assert!(html.contains("<a href=\"/about/\">about</a>"), "links to pages are left alone: {}", html);
+    assert!(html.contains("<a href=\"/img/missing.png\">") && log.contains("linked image not found: /img/missing.png"), "{}\n{}", html, log);
+}
+
+#[test]
+fn linked_images_can_be_turned_off() {
+    let root = linked_images_site(", linkedImages: false");
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert!(read(&root, "dist/index.html").starts_with("<a href=\"/img/squatch.png\">"), "{}", read(&root, "dist/index.html"));
+}
+

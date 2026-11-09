@@ -8,6 +8,16 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Added
+
+- Links to local images (`<a href="/photos/big.jpg">`, the click-to-enlarge pattern) point at a
+  generated copy: the image's own format (JPEG, PNG), at its own width capped at the largest of
+  `widths`. Before, they pointed at the source file, which isn't published, so they were broken.
+  Copies are cached and named like the rest; a copy the `<picture>` already uses is reused. Turn
+  it off with `linkedImages: false`, or per link with `ssqch:ignore` on the `<a>`.
+
 ## 0.2.4 - 2026-11-08
 
 ### Added
