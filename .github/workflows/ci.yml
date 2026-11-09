@@ -35,7 +35,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq nasm
       - if: matrix.avif && runner.os == 'Windows'
         uses: ilammy/setup-nasm@v1
-      - run: cargo test --workspace --locked ${{ matrix.avif && '--features ssqch/avif' || '' }}
+      - run: cargo test --workspace --locked --no-fail-fast ${{ matrix.avif && '--features ssqch/avif' || '' }}
 
   clippy:
     runs-on: ubuntu-latest

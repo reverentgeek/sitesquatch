@@ -461,7 +461,7 @@ fn load_template(
 
 fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engines: &Engines) -> Result<Vec<Page>> {
     (|| {
-        let input_path = format!("./{}", tpl.input.strip_prefix(&ctx.root).unwrap_or(&tpl.input).display());
+        let input_path = display_path(ctx, &tpl.input);
         let date = match tpl.data.get("date") {
             Some(v) if !v.is_nullish() => v.to_date().ok_or_else(|| anyhow!("can't parse date {:?}", v))?,
             _ => tpl.mtime,
@@ -650,12 +650,19 @@ fn edge_code_mentions(body: &str, word: &str) -> bool {
     false
 }
 
-/// `./dist/about/index.html` for a path inside the project, else the full path.
+/// `./dist/about/index.html` for a path inside the project, else the full
+/// path. Always with `/`, on Windows too: it's what templates, globs and
+/// JavaScript see (`page.inputPath`), and what the build log prints.
 pub fn display_path(ctx: &BuildContext, path: &Path) -> String {
     match path.strip_prefix(&ctx.root) {
-        Ok(rel) => format!("./{}", rel.display()),
+        Ok(rel) => format!("./{}", slashes(rel)),
         Err(_) => path.display().to_string(),
     }
+}
+
+/// A relative path with `/` separators, whatever the platform.
+pub fn slashes(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn render_computed(value: &Value, data: &Map, engines: &Engines, name: &str) -> Result<Value> {
