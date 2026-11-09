@@ -24,6 +24,9 @@ unix-archive = ".tar.gz"
 # Build the release artifacts on pull requests too (without publishing), so a
 # broken release build shows up before tagging.
 pr-run-mode = "upload"
+# Run the Linux binary before publishing (.github/workflows/smoke-test.yml).
+# A failure stops the release.
+global-artifacts-jobs = ["./smoke-test"]
 
 # The AVIF encoder (rav1e) needs the nasm assembler on x86_64.
 [dist.dependencies.apt]

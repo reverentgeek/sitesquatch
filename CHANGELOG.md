@@ -8,6 +8,18 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Fixed
+
+- `ssqch --version` and `--help` name the binary (`ssqch 0.2.2`), not the library crate
+  (`sitesquatch 0.2.2`). A site's own Rust binary shows its own name.
+
+### Added
+
+- Releases run a smoke test before publishing: the Linux binary has to be static, report its
+  version, and build a small site with AVIF and WebP images.
+
 ## 0.2.2 - 2026-11-08
 
 ### Fixed
