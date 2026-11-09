@@ -225,11 +225,9 @@ Settle this before the first tag, since the release workflow keys off it.
 - [x] Put `LICENSE` and `README.md` in each archive (and `CHANGELOG.md`; dist does this).
 - [x] Publish a SHA-256 checksum file alongside the archives, so installs can be verified.
 - [x] Add build provenance (`github-attestations = true` in `dist-workspace.toml`).
-- [ ] macOS Gatekeeper: sign and notarize (decided 2026-11-09). The `macos-signing` branch has
-      it: dist signs with the hardened runtime, and `.github/workflows/notarize.yml` notarizes
-      each macOS binary and checks Gatekeeper accepts it. Waiting on an Apple Developer account's
-      certificate and API key as repository secrets (`CLAUDE.md` lists them). Unverified: dist
-      doesn't pass `--timestamp` to `codesign`; the notarize job checks for one.
+- [x] macOS Gatekeeper: the macOS binaries are signed (dist, hardened runtime) and notarized
+      (`.github/workflows/notarize.yml`, Apple ID), and a check confirms Gatekeeper accepts a
+      browser-downloaded binary as `Notarized Developer ID`. Verified on the PR, 2026-11-09.
 - [x] Release only `ssqch`, not the `reverentgeek` example binary (`dist = false` in its
       `Cargo.toml`).
 

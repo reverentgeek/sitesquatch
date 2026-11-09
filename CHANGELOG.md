@@ -18,6 +18,8 @@ a `v<version>` tag on a commit where that version matches.
 
 ### Added
 
+- The macOS binaries are signed with a Developer ID and notarized by Apple, so a binary
+  downloaded with a browser runs without a Gatekeeper warning.
 - `clean: true` in the config (or `clean = true` in `sitesquatch.toml`) deletes stale files from
   the output: pages and passthrough files an earlier build wrote that this one didn't, like a
   deleted post, and the folders they leave empty. Each build lists what it wrote in
