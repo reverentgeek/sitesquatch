@@ -58,7 +58,7 @@ Follow-ups:
 - [x] **Color profiles in the image plugin.** Images with a non-sRGB RGB profile are converted
       to sRGB with `moxcms` (`plugins/image/src/color.rs`), within about one level of macOS
       ColorSync. Only converted images get new ids, so upgrading re-encodes just those (39 of the
-      blog's 737 sources). Not released yet.
+      blog's 737 sources). Released in 0.2.2.
 - [ ] HDR photos (newer iPhones: Display P3 primaries, PQ curve, gain-map lookup table) can't be
       converted: `moxcms` fails with `InvalidAtoBLut`, and they need HDR-to-SDR tone mapping, not
       a color conversion. They're encoded as they are, with a warning. Doing it properly means
