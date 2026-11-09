@@ -150,7 +150,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, root: &Path) -> Result<()> {
     native.set(
         "realpath",
         Function::new(ctx.clone(), move |ctx: Ctx<'js>, path: String| -> Result<String> {
-            std::fs::canonicalize(at(&r, &path)).map(|p| p.to_string_lossy().into_owned()).map_err(|e| throw(&ctx, e, "realpath", &path))
+            dunce::canonicalize(at(&r, &path)).map(|p| p.to_string_lossy().into_owned()).map_err(|e| throw(&ctx, e, "realpath", &path))
         })?,
     )?;
 

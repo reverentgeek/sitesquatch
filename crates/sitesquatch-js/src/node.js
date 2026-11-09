@@ -88,6 +88,9 @@
 	};
 	const trimTrailing = p => p.length > 1 ? p.replace( /\/+$/, "" ) || "/" : p;
 
+	// POSIX rules, plus Windows drive paths (C:/site, C:\\site) count as absolute.
+	const absolute = p => p.startsWith( "/" ) || /^[A-Za-z]:[\\/]/.test( p );
+
 	const path = {
 		sep: "/",
 		delimiter: ":",
@@ -108,7 +111,7 @@
 		},
 		resolve( ...parts ) {
 			let resolved = "";
-			for ( let i = parts.length - 1; i >= -1 && !resolved.startsWith( "/" ); i-- ) {
+			for ( let i = parts.length - 1; i >= -1 && !absolute( resolved ); i-- ) {
 				const part = i >= 0 ? parts[i] : process.cwd();
 				needString( "path", part );
 				if ( part ) resolved = resolved ? `${ part }/${ resolved }` : part;
@@ -117,7 +120,7 @@
 		},
 		isAbsolute( p ) {
 			needString( "path", p );
-			return p.startsWith( "/" );
+			return absolute( p );
 		},
 		// dirname, basename, extname and parse follow Node's rules, including
 		// the edge cases: "a//b" -> "a/", ".." has no extension.
@@ -188,11 +191,13 @@
 			const href = typeof value === "string" ? value : value && value.href;
 			if ( typeof href !== "string" || !href.startsWith( "file:" ) ) throw new TypeError( "The URL must be of scheme file" );
 			const rest = href.slice( "file:".length ).replace( /^\/\/(localhost)?/, "" );
-			return decodeURIComponent( rest.split( /[?#]/ )[0] );
+			const decoded = decodeURIComponent( rest.split( /[?#]/ )[0] );
+			// file:///C:/site -> C:/site on Windows.
+			return /^\/[A-Za-z]:\//.test( decoded ) ? decoded.slice( 1 ) : decoded;
 		},
 		pathToFileURL( p ) {
-			const absolute = path.resolve( pathArg( p ) );
-			const href = "file://" + encodeURI( absolute ).replace( /[?#]/g, encodeURIComponent );
+			const resolved = path.resolve( pathArg( p ) );
+			const href = "file://" + ( resolved.startsWith( "/" ) ? "" : "/" ) + encodeURI( resolved ).replace( /[?#]/g, encodeURIComponent );
 			return { href, protocol: "file:", pathname: href.slice( "file://".length ), toString: () => href };
 		}
 	};

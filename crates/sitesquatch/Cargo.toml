@@ -22,3 +22,4 @@ walkdir = "2"
 clap = { version = "4", features = ["derive", "string"] }
 tiny_http = "0.12"
 notify = "8"
+dunce = "1"

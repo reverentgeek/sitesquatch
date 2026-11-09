@@ -96,7 +96,7 @@ impl rquickjs::loader::Resolver for Resolver {
         candidates
             .into_iter()
             .find(|p| p.is_file())
-            .and_then(|p| std::fs::canonicalize(p).ok())
+            .and_then(|p| dunce::canonicalize(p).ok())
             .map(|p| format!("{}{}", self::name(&self.root, &p), query))
             .ok_or_else(|| Error::new_resolving_message(base, name, "file not found"))
     }
@@ -161,11 +161,18 @@ fn is_identifier(s: &str) -> bool {
 }
 
 /// `file:///...` for `import.meta.url`, percent-encoding what URLs require.
+/// On Windows, `C:\site\a.js` becomes `file:///C:/site/a.js`.
 fn file_url(path: &Path) -> String {
+    let mut text = path.to_string_lossy().replace('\\', "/");
+    if !text.starts_with('/') {
+        text.insert(0, '/');
+    }
+    let drive = text.as_bytes().get(1).is_some_and(u8::is_ascii_alphabetic) && text.as_bytes().get(2) == Some(&b':');
     let mut url = String::from("file://");
-    for b in path.to_string_lossy().bytes() {
+    for (i, b) in text.bytes().enumerate() {
         match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' => url.push(b as char),
+            b':' if drive && i == 2 => url.push(':'),
             _ => url.push_str(&format!("%{:02X}", b)),
         }
     }
