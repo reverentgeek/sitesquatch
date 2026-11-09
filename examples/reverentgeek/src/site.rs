@@ -1,5 +1,5 @@
 //! Site-specific filters, collections and data: the Rust version of
-//! `src/utils/eleventy/*.js` and `src/site/_data/*.js`.
+//! `src/utils/site/*.js` and `src/site/_data/*.js`.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -124,7 +124,7 @@ impl Plugin for ReverentGeek {
         let images = self.images.clone();
         cfg.add_global_data("heroImage", move |ctx| hero_image(&images, ctx));
 
-        // ---- filters (src/utils/eleventy/register-filters.js)
+        // ---- filters (src/utils/site/filters.js)
         cfg.add_filter("isSiteMapSafe", |args| Ok(Value::from((!args.arg_string(0).starts_with("/_")).to_string())));
         cfg.add_filter("htmlDateString", |args| Ok(Value::from(date_arg(args)?.format("%Y-%m-%d").to_string())));
         cfg.add_filter("postDate", |args| Ok(Value::from(date_arg(args)?.format("%B %-d, %Y").to_string())));
@@ -169,9 +169,9 @@ impl Plugin for ReverentGeek {
             });
             Ok(Value::from(serde_json::to_string_pretty(&ld)?))
         });
-        cfg.add_shortcode("currentYear", |_| Ok(Value::from(chrono::Utc::now().year())));
+        cfg.add_filter("currentYear", |_| Ok(Value::from(chrono::Utc::now().year())));
 
-        // src/utils/eleventy/social-image-filter.js
+        // src/utils/site/social-image.js
         let images = self.images.clone();
         cfg.add_filter("socialImage", move |args| {
             let path = args.arg_string(0);
@@ -189,10 +189,10 @@ impl Plugin for ReverentGeek {
             })
         });
 
-        // ---- collections (src/utils/eleventy/collections.js)
+        // ---- collections (src/utils/site/collections.js)
         cfg.add_collection("topics", |api| {
             let mut by_topic: BTreeMap<String, Vec<Value>> = BTreeMap::new();
-            for post in api.get_filtered_by_tag("posts") {
+            for post in api.by_tag("posts") {
                 for tag in topics_only(&post.get("data").get("tags")) {
                     by_topic.entry(tag).or_default().push(post.clone());
                 }
@@ -218,7 +218,7 @@ impl Plugin for ReverentGeek {
             ))
         });
         cfg.add_collection("postsByYear", |api| {
-            let mut posts = api.get_filtered_by_tag("posts");
+            let mut posts = api.by_tag("posts");
             by_newest_first(&mut posts);
             let mut years: Vec<(i32, Vec<Value>)> = Vec::new();
             for post in posts {

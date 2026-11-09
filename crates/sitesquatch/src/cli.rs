@@ -18,7 +18,7 @@ struct Cli {
     /// Override the output directory (relative to the root)
     #[arg(long, short, global = true)]
     output: Option<PathBuf>,
-    /// development or production (default: $SSQCH_ENV, $ELEVENTY_ENV, $NODE_ENV,
+    /// development or production (default: $SSQCH_ENV, $NODE_ENV,
     /// then production for `build` and development for `serve`)
     #[arg(long, global = true)]
     env: Option<String>,
@@ -47,7 +47,7 @@ pub fn run(configure: impl Fn(&mut Config)) -> ExitCode {
     let env = cli
         .env
         .clone()
-        .or_else(|| ["SSQCH_ENV", "ELEVENTY_ENV", "NODE_ENV"].iter().find_map(|k| std::env::var(k).ok()))
+        .or_else(|| ["SSQCH_ENV", "NODE_ENV"].iter().find_map(|k| std::env::var(k).ok()))
         .and_then(|e| Environment::parse(&e))
         .unwrap_or(if serving { Environment::Development } else { Environment::Production });
 

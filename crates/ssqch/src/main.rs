@@ -1,7 +1,7 @@
 //! The `ssqch` command-line tool.
 //!
-//! A site is configured by `ssqch.config.js` (JavaScript, like Eleventy's
-//! config file) or `sitesquatch.toml` in the project root. Sites that want to
+//! A site is configured by `ssqch.config.js` (JavaScript) or
+//! `sitesquatch.toml` in the project root. Sites that want to
 //! extend SiteSquatch in Rust build their own binary with `sitesquatch::cli::run`.
 
 mod modules;
@@ -14,8 +14,9 @@ use sitesquatch_plugin_image::{Format, ImageOptions, ImagePlugin};
 use sitesquatch_plugin_minify::{MinifyOptions, MinifyPlugin};
 use sitesquatch_plugin_rss::RssPlugin;
 
-/// Plugins a JavaScript config can enable with `config.addPlugin(name, options)`.
-const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch:rss", rss), ("ssqch:image", image), ("ssqch:minify", minify)];
+/// Built-in plugins, which a JavaScript config adds with `imagePlugin()`,
+/// `rssPlugin()` and `minifyPlugin()` from the matching `ssqch:` modules.
+const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify)];
 
 fn main() -> std::process::ExitCode {
     sitesquatch::cli::run(|cfg| {
@@ -37,7 +38,7 @@ fn configure(cfg: &mut Config) -> Result<()> {
             sitesquatch::site_toml::apply(cfg)?;
         }
     }
-    // JavaScript data files can call Image() even without the plugin.
+    // JavaScript data files can call image() even without the plugin.
     modules::ensure_image_processor(cfg);
     Ok(())
 }
@@ -48,7 +49,6 @@ fn rss(cfg: &mut Config, options: &Json) -> Result<()> {
     Ok(())
 }
 
-/// Same option names as `@11ty/eleventy-img` where they overlap.
 fn image(cfg: &mut Config, options: &Json) -> Result<()> {
     let o = Options::new(
         options,

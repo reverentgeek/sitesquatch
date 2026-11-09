@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Benchmark Eleventy against ssqch building the ReverentGeek blog.
+# Benchmark ssqch building the ReverentGeek blog: the Rust port
+# (examples/reverentgeek) with and without AVIF, and the ssqch binary running
+# the blog's ssqch.config.js.
 #
 # Usage: scripts/bench.sh [path/to/blog] [warm-runs]
 #
 # The blog is cloned into a temporary directory (copy-on-write on APFS), so
-# the original and its dist/ are never touched. Each tool gets one cold run
-# (no images cached) and N warm runs. Results go to bench-results/<timestamp>/.
+# the original and its dist/ are never touched. Each build gets one cold run
+# (no images cached) and N warm runs, writing to its own output folder.
+# Results go to bench-results/<timestamp>/.
 #
-# Requires: macOS (/usr/bin/time -l, cp -c), cargo, and the blog's
-# node_modules installed (pnpm install).
+# Requires: macOS (/usr/bin/time -l, cp -c) and cargo.
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -18,7 +20,7 @@ OUT="$REPO/bench-results/$(date +%Y%m%d-%H%M%S)"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/ssqch-bench.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
-[ -x "$BLOG/node_modules/.bin/eleventy" ] || { echo "No Eleventy in $BLOG/node_modules (run pnpm install)" >&2; exit 1; }
+[ -f "$BLOG/ssqch.config.js" ] || { echo "No ssqch.config.js in $BLOG" >&2; exit 1; }
 mkdir -p "$OUT" "$WORK/bin"
 
 echo "Building ssqch binaries..."
@@ -31,11 +33,6 @@ echo "Cloning blog..."
 cp -cR "$BLOG" "$WORK/blog" 2>/dev/null || cp -R "$BLOG" "$WORK/blog"
 B="$WORK/blog"
 rm -rf "$B/dist" "$B/.cache"
-# The blog's real .eleventy.js, run by the ssqch binary. Its own clone,
-# because the config's Image() calls write to ./dist/img.
-cp -cR "$B" "$WORK/blog-js" 2>/dev/null || cp -R "$B" "$WORK/blog-js"
-J="$WORK/blog-js"
-echo 'export { default } from "./.eleventy.js";' > "$J/ssqch.config.js"
 
 RESULTS="$OUT/results.csv"
 LOG="$OUT/bench.log"
@@ -59,12 +56,8 @@ measure() {
     END { print tool "," run "," wall "," user "," sys "," rss }' "$t" >> "$RESULTS"
 }
 
-export ELEVENTY_ENV=production NODE_ENV=production
+export SSQCH_ENV=production
 cd "$B"
-
-echo "Eleventy $("$B/node_modules/.bin/eleventy" --version)"
-measure 11ty cold "$B/node_modules/.bin/eleventy"
-for i in $(seq "$WARM_RUNS"); do measure 11ty "warm$i" "$B/node_modules/.bin/eleventy"; done
 
 for variant in default avif; do
   echo "ssqch ($variant)"
@@ -75,14 +68,15 @@ for variant in default avif; do
   done
 done
 
-echo "ssqch running .eleventy.js (avif)"
-measure ssqch-js cold "$WORK/bin/ssqch-js" build --root "$J" --quiet
-for i in $(seq "$WARM_RUNS"); do measure ssqch-js "warm$i" "$WORK/bin/ssqch-js" build --root "$J" --quiet; done
+echo "ssqch running ssqch.config.js (avif)"
+rm -rf "$B/out-js"
+measure ssqch-js cold "$WORK/bin/ssqch-js" build --root "$B" --output "$B/out-js" --quiet
+for i in $(seq "$WARM_RUNS"); do measure ssqch-js "warm$i" "$WORK/bin/ssqch-js" build --root "$B" --output "$B/out-js" --quiet; done
 
 {
   echo
   printf "%-14s %8s %8s %10s %10s\n" tool cold_s warm_s cold_cpu_s warm_mb
-  for tool in 11ty ssqch-default ssqch-avif ssqch-js; do
+  for tool in ssqch-default ssqch-avif ssqch-js; do
     awk -F, -v tool="$tool" '
       $1 == tool && $2 == "cold" { cold = $3; cpu = $4 + $5 }
       $1 == tool && $2 ~ /^warm/ { w[++n] = $3; m[n] = $6 }
@@ -93,7 +87,7 @@ for i in $(seq "$WARM_RUNS"); do measure ssqch-js "warm$i" "$WORK/bin/ssqch-js" 
       }' "$RESULTS"
   done
   echo
-  for d in "$B/dist" "$B/out-default" "$B/out-avif" "$J/dist"; do
+  for d in "$B/out-default" "$B/out-avif" "$B/out-js"; do
     printf "%-22s %5s image files, %s\n" "${d#$WORK/}" "$(ls "$d/img" 2>/dev/null | wc -l | tr -d ' ')" "$(du -sh "$d/img" 2>/dev/null | cut -f1)"
   done
 } | tee "$OUT/summary.txt"

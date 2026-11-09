@@ -1,5 +1,5 @@
 // Runs once per engine, before the site's config module is imported.
-// Defines `console` and the `config` object handed to `ssqch.config.js`.
+// Defines `console`, and reads the object `ssqch.config.js` exports.
 //
 // Registrations are recorded as plain data (`ops`) in call order, then read
 // back by Rust. JavaScript functions are kept in `fns` and referred to by
@@ -26,23 +26,18 @@
 	globalThis.console = { log: log( 0 ), info: log( 0 ), debug: log( 0 ), warn: log( 1 ), error: log( 2 ) };
 
 	const fail = message => { throw new TypeError( message ); };
-	const needName = ( method, name ) => typeof name === "string" && name !== "" || fail( `config.${ method }(): the name must be a non-empty string` );
-	const needFn = ( method, fn ) => typeof fn === "function" || fail( `config.${ method }(): the second argument must be a function` );
 
-	const HOOKS = [ "eleventy.before", "eleventy.after" ];
-
-	// Eleventy's collection API over every page in collections (oldest first).
-	// Tag filtering runs in Rust, and results are fresh copy-on-write views,
-	// so an item only becomes a JavaScript object when something reads it.
+	// The collection API: every page in collections (oldest first). Tag
+	// filtering runs in Rust, and results are fresh copy-on-write views, so an
+	// item only becomes a JavaScript object when something reads it.
 	function collectionApi( items ) {
 		const views = globalThis.__ssqch.views;
 		const handle = globalThis.__ssqch.unwrapView( items );
 		return {
-			getAll: () => views.select( handle, null ),
-			getAllSorted: () => views.select( handle, null ),
-			getFilteredByTag: tag => views.select( handle, [ String( tag ) ] ),
-			getFilteredByTags: ( ...tags ) => views.select( handle, tags.map( String ) ),
-			getFilteredByGlob( globs ) {
+			all: () => views.select( handle, null ),
+			byTag: tag => views.select( handle, [ String( tag ) ] ),
+			byTags: ( ...tags ) => views.select( handle, tags.map( String ) ),
+			byGlob( globs ) {
 				const patterns = [].concat( globs ).map( globToRegExp );
 				return items.filter( item => patterns.some( re => re.test( stripDot( item.inputPath ) ) ) );
 			}
@@ -83,138 +78,132 @@
 		return new RegExp( `^${ re }$` );
 	}
 
-	function makeConfig( env, serving ) {
+	// ---- The config object.
+	//
+	//   export default defineConfig(({ env, serving }) => ({ dirs, filters, plugins, ... }));
+	//
+	// A config (or a plugin) is a plain object; a function returning one (sync
+	// or async) gets `{ env, serving }`. Settings only make sense once, so
+	// they're allowed at the top level only. Everything else can also come from
+	// a plugin, and is applied in order: the config's own entries first, then
+	// each plugin's, depth first.
+	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "deepMerge" ];
+	const PARTS = [ "data", "filters", "collections", "transforms", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins" ];
+	const DIRS = [ "input", "output", "includes", "data" ];
+
+	const isObject = v => v !== null && typeof v === "object" && !Array.isArray( v );
+	const list = v => v === undefined ? [] : [].concat( v );
+
+	async function collect( env, serving ) {
 		const ops = [];
 		const settings = {};
-		const pending = [];
+		const names = { data: new Map(), filters: new Map(), collections: new Map(), transforms: new Map() };
+		const context = Object.freeze( { env, serving } );
 
-		const filter = method => ( name, fn ) => {
-			needName( method, name );
-			needFn( method, fn );
-			ops.push( { op: "filter", name, fn: keep( fn ) } );
+		const claim = ( kind, singular, name, where ) => {
+			const earlier = names[kind].get( name );
+			if ( earlier ) fail( `${ where }: ${ singular } "${ name }" is already defined by ${ earlier }` );
+			names[kind].set( name, where );
 		};
-		const notYet = method => () => fail( `config.${ method }() isn't supported by ssqch yet` );
-		const dir = key => path => {
-			typeof path === "string" || fail( `config.set${ key[0].toUpperCase() + key.slice( 1 ) }Directory(): expected a string` );
-			settings[key] = path;
+		const functions = ( kind, singular, value, where, add ) => {
+			if ( value === undefined ) return;
+			isObject( value ) || fail( `${ where }: ${ kind } must be an object of { name: function }` );
+			for ( const [ name, fn ] of Object.entries( value ) ) {
+				typeof fn === "function" || fail( `${ where }: ${ kind }.${ name } must be a function` );
+				claim( kind, singular, name, where );
+				add( name, fn );
+			}
+		};
+		const hooks = ( event, value, where ) => {
+			for ( const fn of list( value ) ) {
+				typeof fn === "function" || fail( `${ where }: ${ event } must be a function (or an array of functions)` );
+				ops.push( { op: "hook", event, fn: keep( fn ), where } );
+			}
 		};
 
-		const config = {
-			env,
-			serving,
-			isProduction: env === "production",
-			isDevelopment: env === "development",
+		async function apply( part, where, top ) {
+			if ( typeof part === "function" ) part = await part( context );
+			if ( part === undefined || part === null || part === false ) return;
+			isObject( part ) || fail( `${ where } must be an object (or a function that returns one)` );
 
-			addFilter: filter( "addFilter" ),
-			addAsyncFilter: filter( "addAsyncFilter" ),
-			addShortcode: filter( "addShortcode" ),
-			addAsyncShortcode: filter( "addAsyncShortcode" ),
-			addJavaScriptFunction: filter( "addJavaScriptFunction" ),
+			// A built-in plugin, such as imagePlugin() from "ssqch/image".
+			if ( "builtin" in part ) {
+				ops.push( { op: "plugin", name: part.builtin, options: part.options ?? {} } );
+				return;
+			}
 
-			addGlobalData( name, value ) {
-				needName( "addGlobalData", name );
-				ops.push( typeof value === "function" ? { op: "data", name, fn: keep( value ) } : { op: "data", name, value } );
-			},
+			for ( const key of Object.keys( part ) ) {
+				if ( key === "name" && !top ) {
+					continue;
+				} else if ( SETTINGS.includes( key ) ) {
+					top || fail( `${ where }: "${ key }" can only be set in the config itself, not in a plugin` );
+				} else if ( !PARTS.includes( key ) ) {
+					fail( `${ where }: "${ key }" isn't a config option (options: ${ ( top ? [ ...SETTINGS, ...PARTS ] : PARTS ).join( ", " ) })` );
+				}
+			}
 
-			addPassthroughCopy( paths ) {
-				if ( typeof paths === "string" ) {
-					ops.push( { op: "passthrough", from: paths } );
-				} else if ( paths && typeof paths === "object" ) {
-					for ( const [ from, to ] of Object.entries( paths ) ) {
-						typeof to === "string" || fail( `config.addPassthroughCopy(): the destination for "${ from }" must be a string` );
-						ops.push( { op: "passthrough", from, to } );
+			if ( top ) {
+				if ( part.dirs !== undefined ) {
+					isObject( part.dirs ) || fail( `${ where }: dirs must be an object` );
+					for ( const [ key, value ] of Object.entries( part.dirs ) ) {
+						DIRS.includes( key ) || fail( `${ where }: dirs.${ key } isn't supported (use ${ DIRS.join( ", " ) })` );
+						typeof value === "string" || fail( `${ where }: dirs.${ key } must be a string` );
+						settings[key] = value;
 					}
-				} else {
-					fail( "config.addPassthroughCopy(): expected a path or an object of { from: to } paths" );
 				}
-			},
-
-			addWatchTarget( path ) {
-				typeof path === "string" || fail( "config.addWatchTarget(): expected a path" );
-				ops.push( { op: "watch", path } );
-			},
-
-			// A function plugin is called right away with (config, options), like
-			// Eleventy. A string names a built-in ssqch plugin, such as "ssqch:image".
-			addPlugin( plugin, options = {} ) {
-				if ( typeof plugin === "function" ) {
-					const result = plugin( config, options );
-					if ( result && typeof result.then === "function" ) pending.push( result );
-				} else if ( typeof plugin === "string" ) {
-					ops.push( { op: "plugin", name: plugin, options } );
-				} else {
-					fail( "config.addPlugin(): expected a function or the name of a built-in plugin (\"ssqch:image\")" );
+				for ( const key of [ "templateFormats", "markdownEngine", "htmlEngine", "deepMerge" ] ) {
+					if ( part[key] !== undefined ) settings[key] = part[key];
 				}
-			},
+			}
 
-			setDataDeepMerge( on ) {
-				settings.dataDeepMerge = Boolean( on );
-			},
-			setTemplateFormats( formats ) {
-				settings.templateFormats = formats;
-			},
-			setInputDirectory: dir( "input" ),
-			setOutputDirectory: dir( "output" ),
-			setIncludesDirectory: dir( "includes" ),
-			setDataDirectory: dir( "data" ),
-
-			// Eleventy settings with nothing to do here.
-			setUseGitIgnore() {},
-			setQuietMode() {},
-			configureErrorReporting() {},
-
-			addCollection( name, fn ) {
-				needName( "addCollection", name );
-				needFn( "addCollection", fn );
-				ops.push( { op: "collection", name, fn: keep( items => fn( collectionApi( items ) ) ) } );
-			},
-
-			// Called as fn.call({ page }, content, outputPath), like Eleventy.
-			addTransform( name, fn ) {
-				needName( "addTransform", name );
-				needFn( "addTransform", fn );
+			if ( part.data !== undefined ) {
+				isObject( part.data ) || fail( `${ where }: data must be an object of { name: value or function }` );
+				for ( const [ name, value ] of Object.entries( part.data ) ) {
+					claim( "data", "data", name, where );
+					ops.push( typeof value === "function" ? { op: "data", name, fn: keep( value ) } : { op: "data", name, value } );
+				}
+			}
+			functions( "filters", "filter", part.filters, where, ( name, fn ) => ops.push( { op: "filter", name, fn: keep( fn ) } ) );
+			functions( "collections", "collection", part.collections, where, ( name, fn ) => ops.push( { op: "collection", name, fn: keep( items => fn( collectionApi( items ) ) ) } ) );
+			functions( "transforms", "transform", part.transforms, where, ( name, fn ) => {
 				const run = async ( content, page ) => {
-					const out = await fn.call( { page, inputPath: page.inputPath, outputPath: page.outputPath, url: page.url }, content, page.outputPath );
+					const out = await fn( content, page );
 					if ( typeof out !== "string" ) {
 						throw new TypeError( `transform "${ name }" returned ${ out === undefined ? "undefined" : typeof out } for ${ page.outputPath }; return the content (unchanged if there's nothing to do)` );
 					}
 					return out;
 				};
 				ops.push( { op: "transform", name, fn: keep( run ) } );
-			},
+			} );
 
-			on( event, fn ) {
-				if ( !HOOKS.includes( event ) ) fail( `config.on(): unknown event "${ event }" (supported: ${ HOOKS.join( ", " ) })` );
-				needFn( "on", fn );
-				ops.push( { op: "hook", event, fn: keep( fn ) } );
-			},
-			addPairedShortcode: notYet( "addPairedShortcode" ),
-			addPairedAsyncShortcode: notYet( "addPairedAsyncShortcode" ),
-			addExtension: notYet( "addExtension" ),
-			addTemplateFormats: notYet( "addTemplateFormats" ),
-			setLayoutsDirectory: notYet( "setLayoutsDirectory" )
-		};
-		return { config, ops, settings, pending };
-	}
+			for ( const entry of list( part.passthrough ) ) {
+				if ( typeof entry === "string" ) {
+					ops.push( { op: "passthrough", from: entry } );
+				} else if ( isObject( entry ) ) {
+					for ( const [ from, to ] of Object.entries( entry ) ) {
+						typeof to === "string" || fail( `${ where }: passthrough destination for "${ from }" must be a string` );
+						ops.push( { op: "passthrough", from, to } );
+					}
+				} else {
+					fail( `${ where }: passthrough entries must be paths or { from: to } objects` );
+				}
+			}
+			for ( const path of list( part.watch ) ) {
+				typeof path === "string" || fail( `${ where }: watch must be a path or an array of paths` );
+				ops.push( { op: "watch", path } );
+			}
+			hooks( "beforeBuild", part.beforeBuild, where );
+			hooks( "afterBuild", part.afterBuild, where );
 
-	// Eleventy's return object (and `export const config`): directories and engines.
-	function applyReturned( settings, returned, where ) {
-		if ( returned === undefined || returned === null ) return;
-		if ( typeof returned !== "object" ) fail( `${ where } must be an object` );
-		const { dir, ...rest } = returned;
-		if ( dir !== undefined ) {
-			for ( const [ key, value ] of Object.entries( dir ) ) {
-				if ( ![ "input", "output", "includes", "data" ].includes( key ) ) fail( `${ where }: dir.${ key } isn't supported (use input, output, includes and data)` );
-				settings[key] = value;
+			const plugins = list( part.plugins );
+			for ( let i = 0; i < plugins.length; i++ ) {
+				const plugin = plugins[i];
+				const label = plugin?.name ? `plugin "${ plugin.name }"` : `plugins[${ i }]`;
+				await apply( plugin, top ? label : `${ where } > ${ label }`, false );
 			}
 		}
-		const known = [ "templateFormats", "markdownTemplateEngine", "htmlTemplateEngine", "dataDeepMerge" ];
-		// Eleventy settings with nothing to do here.
-		delete rest.passthroughFileCopy;
-		for ( const [ key, value ] of Object.entries( rest ) ) {
-			if ( !known.includes( key ) ) fail( `${ where }: "${ key }" isn't a supported setting (supported: dir, ${ known.join( ", " ) })` );
-			settings[key] = value;
-		}
+
+		return { apply, ops, settings };
 	}
 
 	// ---- Views of template values (see views.rs).
@@ -341,15 +330,9 @@
 		},
 
 		async run( module, env, serving ) {
-			const { config, ops, settings, pending } = makeConfig( env, serving );
-			applyReturned( settings, module.config, "export const config" );
-			const main = module.default;
-			if ( typeof main === "function" ) {
-				applyReturned( settings, await main( config ), "the object returned by the config function" );
-			} else if ( main !== undefined ) {
-				applyReturned( settings, main, "export default" );
-			}
-			await Promise.all( pending );
+			"default" in module || fail( "ssqch.config.js needs a default export: export default defineConfig({ ... })" );
+			const { apply, ops, settings } = await collect( env, serving );
+			await apply( module.default, "ssqch.config.js", true );
 			return { ops, settings };
 		}
 	};

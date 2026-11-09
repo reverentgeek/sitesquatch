@@ -42,10 +42,10 @@ fn data_files_can_be_values_functions_or_async() {
 fn template_and_directory_data_files_with_computed_functions() {
     let root = project(&[
         (
-            "posts/posts.11tydata.js",
-            "export default { tags: \"posts\", from: \"directory\", eleventyComputed: { shout: (data) => data.title.toUpperCase() + \"!\", permalink: (data) => `/snacks/${data.page.fileSlug}/` } };",
+            "posts/posts.data.js",
+            "export default { tags: \"posts\", from: \"directory\", computed: { shout: (data) => data.title.toUpperCase() + \"!\", permalink: (data) => `/snacks/${data.page.fileSlug}/` } };",
         ),
-        ("posts/hello.11tydata.js", "export default () => ({ from: \"template\" });"),
+        ("posts/hello.data.js", "export default () => ({ from: \"template\" });"),
         ("posts/hello.edge", "---\ntitle: hello forest\n---\n{{ shout }}|{{ from }}|{{ tags }}"),
         // A plain `.js` next to templates is a script, not data.
         ("posts/posts.js", "throw new Error(\"not data\");"),
@@ -245,13 +245,12 @@ fn programs_can_add_modules_with_native_functions() {
     use sitesquatch::Value;
     let module = sitesquatch_js::JsModule {
         name: "test:snacks".into(),
-        aliases: vec!["eleventy-plugin-snacks".into()],
         source: "const native = globalThis.__ssqch.natives[\"test:snacks\"];\nexport const shout = (s) => native.shout(s);\nexport default { shout };".into(),
         natives: vec![("shout".into(), Value::func(|args| Ok(Value::from(format!("{}!", args[0].to_js_string().to_uppercase())))))],
     };
     let root = project(&[
         ("_data/a.js", "import { shout } from \"test:snacks\"; export default shout(\"pine cone\");"),
-        ("_data/b.js", "import snacks from \"eleventy-plugin-snacks\"; export default snacks.shout(\"brittle\");"),
+        ("_data/b.js", "import snacks from \"test:snacks\"; export default snacks.shout(\"brittle\");"),
         ("index.edge", "{{ a }}|{{ b }}"),
     ]);
     let mut cfg = Config::new(&root, Environment::Production);

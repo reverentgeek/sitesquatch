@@ -1,6 +1,5 @@
-//! JavaScript modules for the built-in plugins (`ssqch:image`, `ssqch:rss`,
-//! `ssqch:minify`), and stand-ins for the Eleventy packages they replace, so
-//! an Eleventy config that imports `@11ty/eleventy-img` runs unchanged.
+//! JavaScript modules for the built-in plugins: `ssqch/image`, `ssqch/rss`
+//! and `ssqch/minify`.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -14,20 +13,20 @@ use sitesquatch_plugin_minify::MinifyOptions;
 use crate::parse_format;
 
 /// The image processor every image API in the build shares: the
-/// `ssqch:image` plugin's, or a processor-only one when the config didn't add
-/// the plugin but calls `Image()`.
+/// `ssqch/image` plugin's, or a processor-only one when the config didn't add
+/// the plugin but calls `image()`.
 pub static IMAGES: Mutex<Option<Arc<ImageProcessor>>> = Mutex::new(None);
 
 pub fn set_image_processor(processor: Arc<ImageProcessor>) -> Result<()> {
     let mut slot = IMAGES.lock().unwrap();
     if slot.is_some() {
-        bail!("the ssqch:image plugin was added twice");
+        bail!("the ssqch/image plugin was added twice");
     }
     *slot = Some(processor);
     Ok(())
 }
 
-/// Give `Image()` a processor if the config didn't add the plugin.
+/// Give `image()` a processor if the config didn't add the plugin.
 pub fn ensure_image_processor(cfg: &mut Config) {
     let mut slot = IMAGES.lock().unwrap();
     if slot.is_none() {
@@ -42,10 +41,9 @@ fn processor() -> Result<Arc<ImageProcessor>> {
     IMAGES.lock().unwrap().clone().ok_or_else(|| anyhow!("the image processor isn't set up"))
 }
 
-fn module(name: &str, aliases: &[&str], source: &str, natives: Vec<(&str, Value)>) -> JsModule {
+fn module(name: &str, source: &str, natives: Vec<(&str, Value)>) -> JsModule {
     JsModule {
         name: name.into(),
-        aliases: aliases.iter().map(|a| a.to_string()).collect(),
         source: source.into(),
         natives: natives.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
     }
@@ -54,17 +52,14 @@ fn module(name: &str, aliases: &[&str], source: &str, natives: Vec<(&str, Value)
 pub fn js_modules() -> Vec<JsModule> {
     vec![
         module(
-            "ssqch:image",
-            &["@11ty/eleventy-img"],
+            "ssqch/image",
             include_str!("js/image.js"),
             vec![
                 ("generate", Value::func(|args| generate_image(args))),
-                ("settings", Value::func(|_| image_settings())),
             ],
         ),
         module(
-            "ssqch:rss",
-            &["@11ty/eleventy-plugin-rss"],
+            "ssqch/rss",
             include_str!("js/rss.js"),
             vec![
                 ("newestItemDate", Value::func(|args| Ok(sitesquatch_plugin_rss::newest_item_date(&arg(args, 0))))),
@@ -78,8 +73,7 @@ pub fn js_modules() -> Vec<JsModule> {
             ],
         ),
         module(
-            "ssqch:minify",
-            &["html-minifier-terser"],
+            "ssqch/minify",
             include_str!("js/minify.js"),
             vec![(
                 "minify",
@@ -89,8 +83,6 @@ pub fn js_modules() -> Vec<JsModule> {
                 }),
             )],
         ),
-        module("ssqch:edgejs", &["eleventy-plugin-edgejs"], include_str!("js/edgejs.js"), vec![]),
-        module("ssqch:broken-links", &["eleventy-plugin-broken-links"], include_str!("js/broken-links.js"), vec![]),
     ]
 }
 
@@ -98,7 +90,7 @@ fn arg(args: &[Value], i: usize) -> Value {
     args.get(i).cloned().unwrap_or_default()
 }
 
-/// `generate(absolutePath, widths, formats)` -> eleventy-img metadata:
+/// `generate(absolutePath, widths, formats)` -> one array per format:
 /// `{ webp: [{ format, width, height, url, sourceType, srcset, filename, outputPath, size }], ... }`
 fn generate_image(args: &[Value]) -> Result<Value> {
     let p = processor()?;
@@ -106,7 +98,7 @@ fn generate_image(args: &[Value]) -> Result<Value> {
     let widths: Vec<u32> = arg(args, 1).as_array().unwrap_or(&[]).iter().map(|w| w.to_number().max(0.0) as u32).collect();
     let formats = arg(args, 2).as_array().unwrap_or(&[]).iter().map(|f| parse_format(&f.to_js_string())).collect::<Result<Vec<_>>>()?;
     if !Path::new(&src).is_file() {
-        bail!("Image(): file not found: {}", src);
+        bail!("image(): file not found: {}", src);
     }
     let meta = p.generate(Path::new(&src), &widths, &formats)?;
     let root = p.root()?;
@@ -132,15 +124,4 @@ fn generate_image(args: &[Value]) -> Result<Value> {
         out.insert(format.ext().to_string(), Value::array(items));
     }
     Ok(Value::object(out))
-}
-
-fn image_settings() -> Result<Value> {
-    let p = processor()?;
-    Ok(Value::from_pairs([
-        ("outputDir", Value::from(p.output_dir()?.to_string_lossy().into_owned())),
-        ("urlPath", Value::from(p.options.url_path.as_str())),
-        ("webpQuality", Value::Num(p.options.webp_quality as f64)),
-        ("avifQuality", Value::Num(p.options.avif_quality as f64)),
-        ("jpegQuality", Value::Num(p.options.jpeg_quality as f64)),
-    ]))
 }

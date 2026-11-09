@@ -4,7 +4,7 @@
 //! input = "src"
 //! output = "dist"
 //! template_formats = ["edge", "md", "html"]
-//! markdown_template_engine = "edge"
+//! markdown_engine = "edge"
 //!
 //! [passthrough]
 //! "src/assets/fonts" = "fonts"
@@ -27,8 +27,8 @@ pub struct SiteToml {
     pub includes: Option<PathBuf>,
     pub data: Option<PathBuf>,
     pub template_formats: Option<Vec<String>>,
-    pub markdown_template_engine: Option<String>,
-    pub html_template_engine: Option<String>,
+    pub markdown_engine: Option<String>,
+    pub html_engine: Option<String>,
     pub data_deep_merge: Option<bool>,
     #[serde(default)]
     pub passthrough: BTreeMap<String, String>,
@@ -47,8 +47,8 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
     if let Some(v) = site.includes { cfg.includes = v; }
     if let Some(v) = site.data { cfg.data = v; }
     if let Some(v) = site.template_formats { cfg.template_formats = v; }
-    if let Some(v) = site.markdown_template_engine { cfg.markdown_template_engine = Some(v).filter(|s| !s.is_empty()); }
-    if let Some(v) = site.html_template_engine { cfg.html_template_engine = Some(v).filter(|s| !s.is_empty()); }
+    if let Some(v) = site.markdown_engine { cfg.markdown_engine = Some(v).filter(|s| !s.is_empty()); }
+    if let Some(v) = site.html_engine { cfg.html_engine = Some(v).filter(|s| !s.is_empty()); }
     if let Some(v) = site.data_deep_merge { cfg.data_deep_merge = v; }
     for (from, to) in site.passthrough {
         if to.is_empty() {

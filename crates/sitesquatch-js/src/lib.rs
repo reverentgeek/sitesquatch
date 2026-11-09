@@ -1,13 +1,15 @@
-//! `ssqch.config.js`: configure a SiteSquatch build in JavaScript, like
-//! Eleventy's `eleventy.config.js`.
+//! `ssqch.config.js`: configure a SiteSquatch build in JavaScript.
 //!
 //! ```js
-//! export default function (config) {
-//!   config.addPassthroughCopy({ "src/assets/fonts": "fonts" });
-//!   config.addFilter("shout", (s) => s.toUpperCase());
-//!   config.addPlugin("ssqch:image", { widths: [300, 600, 1200] });
-//!   return { dir: { input: "src", output: "dist" } };
-//! }
+//! import { defineConfig } from "ssqch";
+//! import { imagePlugin } from "ssqch/image";
+//!
+//! export default defineConfig(({ env }) => ({
+//!   dirs: { input: "src", output: "dist" },
+//!   passthrough: [{ "src/assets/fonts": "fonts" }],
+//!   filters: { shout: (s) => s.toUpperCase() },
+//!   plugins: [imagePlugin({ widths: [300, 600, 1200] })],
+//! }));
 //! ```
 //!
 //! The config runs on an embedded QuickJS engine, so no Node install is
@@ -17,7 +19,7 @@
 //! Node.
 //!
 //! The same engine runs JavaScript data files (`_data/*.js` and
-//! `*.11tydata.js`), and provides the parts of Node's `fs`, `path`, `url`,
+//! `*.data.js`), and provides the parts of Node's `fs`, `path`, `url`,
 //! `process` and `Buffer` that configs and data files commonly use.
 
 mod convert;
@@ -40,20 +42,18 @@ use convert::Conv;
 /// Config file names looked for in the project root, in order.
 pub const CONFIG_FILES: [&str; 2] = ["ssqch.config.js", "ssqch.config.mjs"];
 
-/// A built-in Rust plugin that the config can enable by name, such as
-/// `config.addPlugin("ssqch:image", { ... })`. It receives the options object.
+/// A built-in Rust plugin that a config enables with an object like
+/// `{ builtin: "ssqch/image", options: { ... } }` in its `plugins` (what
+/// `imagePlugin()` from `ssqch/image` returns). It receives the options.
 pub type BuiltinPlugin = fn(&mut Config, &serde_json::Value) -> Result<()>;
 
 /// A JavaScript module built into the program running the config, such as
-/// `ssqch:image`. Its source reaches its native functions through
+/// `ssqch/image`. Its source reaches its native functions through
 /// `globalThis.__ssqch.natives[name]`.
 #[derive(Clone)]
 pub struct JsModule {
-    /// What `import` names, such as `ssqch:image`.
+    /// What `import` names, such as `ssqch/image`.
     pub name: String,
-    /// Other import names it answers to, such as an Eleventy package it
-    /// stands in for (`@11ty/eleventy-img`).
-    pub aliases: Vec<String>,
     /// The ES module source.
     pub source: String,
     /// Values (usually functions) for the source to use.
@@ -92,7 +92,7 @@ pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)], m
     apply(cfg, &engine, &result, builtins).with_context(|| file_name(&path))
 }
 
-/// Read `_data/*.js` and `*.11tydata.js` data files (and `.mjs`). A data
+/// Read `_data/*.js` and `*.data.js` data files (and `.mjs`). A data
 /// file's default export is the data, or a function (sync or async) that
 /// returns it, called on every build. The engine starts on first use, so this
 /// costs nothing for a site without JavaScript data files.
@@ -179,7 +179,7 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
         match settings.get(key) {
             Value::Undefined | Value::Null => Ok(None),
             Value::Str(s) => Ok(Some(PathBuf::from(&*s))),
-            other => bail!("dir.{} must be a string, not {}", key, other.type_of()),
+            other => bail!("dirs.{} must be a string, not {}", key, other.type_of()),
         }
     };
     if let Some(p) = path_setting("input")? { cfg.input = p; }
@@ -192,7 +192,7 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
         Value::Arr(a) => cfg.template_formats = a.iter().map(|f| f.to_js_string()).collect(),
         other => bail!("templateFormats must be an array or a comma-separated string, not {}", other.type_of()),
     }
-    for (key, slot) in [("markdownTemplateEngine", &mut cfg.markdown_template_engine), ("htmlTemplateEngine", &mut cfg.html_template_engine)] {
+    for (key, slot) in [("markdownEngine", &mut cfg.markdown_engine), ("htmlEngine", &mut cfg.html_engine)] {
         match settings.get(key) {
             Value::Undefined => {}
             Value::Bool(false) | Value::Null => *slot = None,
@@ -200,8 +200,10 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
             other => bail!("{} must be a string or false, not {}", key, other.type_of()),
         }
     }
-    if let Value::Bool(b) = settings.get("dataDeepMerge") {
-        cfg.data_deep_merge = b;
+    match settings.get("deepMerge") {
+        Value::Undefined => {}
+        Value::Bool(b) => cfg.data_deep_merge = b,
+        other => bail!("deepMerge must be true or false, not {}", other.type_of()),
     }
 
     for op in result.get("ops").as_array().unwrap_or(&[]) {
@@ -219,7 +221,7 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
                 id => {
                     let f = engine.function(id)?;
                     let label = name.clone();
-                    cfg.add_global_data(name, move |_| f.call(&[]).with_context(|| format!("addGlobalData(\"{}\")", label)));
+                    cfg.add_global_data(name, move |_| f.call(&[]).with_context(|| format!("data.{}", label)));
                 }
             },
             "passthrough" => {
@@ -234,7 +236,7 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
             }
             "collection" => {
                 let f = engine.function(op.get("fn"))?;
-                cfg.add_collection(name, move |api| f.call(&[Value::array(api.get_all())]));
+                cfg.add_collection(name, move |api| f.call(&[Value::array(api.all())]));
             }
             "transform" => {
                 let f = engine.function(op.get("fn"))?;
@@ -254,10 +256,11 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
             "hook" => {
                 let f = engine.function(op.get("fn"))?;
                 let event = op.get("event").to_js_string();
-                if event == "eleventy.before" {
-                    cfg.on_before_build(move |ctx| f.call(&[hook_event(ctx, None)]).map(|_| ()).context("config.on(\"eleventy.before\")"));
+                let label = format!("{} ({})", event, op.get("where").to_js_string());
+                if event == "beforeBuild" {
+                    cfg.on_before_build(move |ctx| f.call(&[hook_event(ctx, None)]).map(|_| ()).context(label.clone()));
                 } else {
-                    cfg.on_after_build(move |ctx, report| f.call(&[hook_event(ctx, Some(report))]).map(|_| ()).context("config.on(\"eleventy.after\")"));
+                    cfg.on_after_build(move |ctx, report| f.call(&[hook_event(ctx, Some(report))]).map(|_| ()).context(label.clone()));
                 }
             }
             "plugin" => {
@@ -269,7 +272,7 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
                     Value::Undefined | Value::Null => serde_json::Value::Object(Default::default()),
                     v => v.to_json(),
                 };
-                register(cfg, &options).with_context(|| format!("config.addPlugin(\"{}\")", name))?;
+                register(cfg, &options).with_context(|| format!("plugin \"{}\"", name))?;
             }
             other => bail!("internal error: unknown config operation {:?}", other),
         }
@@ -277,8 +280,9 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
     Ok(())
 }
 
-/// The argument to `eleventy.before` and `eleventy.after` handlers, with
-/// Eleventy's field names. Directories are relative to the project root.
+/// The argument to `beforeBuild` and `afterBuild` hooks. Directories are
+/// relative to the project root; `written` (after the build) lists the files
+/// it wrote.
 fn hook_event(ctx: &sitesquatch::BuildContext, report: Option<&sitesquatch::BuildReport>) -> Value {
     let rel = |p: &Path| match p.strip_prefix(&ctx.root) {
         Ok(r) if r.as_os_str().is_empty() => "./".to_string(),
@@ -291,16 +295,10 @@ fn hook_event(ctx: &sitesquatch::BuildContext, report: Option<&sitesquatch::Buil
         ("includes", Value::from(rel(&ctx.includes_dir))),
         ("data", Value::from(rel(&ctx.data_dir))),
     ]);
-    let mut event = vec![
-        ("directories", dirs.clone()),
-        ("dir", dirs),
-        ("runMode", Value::from(if ctx.serving { "serve" } else { "build" })),
-        ("outputMode", Value::from("fs")),
-        ("env", Value::from(ctx.env.as_str())),
-    ];
+    let mut event = vec![("env", Value::from(ctx.env.as_str())), ("serving", Value::Bool(ctx.serving)), ("dirs", dirs)];
     if let Some(report) = report {
-        let results = report.written.iter().map(|p| Value::from_pairs([("outputPath", Value::from(p.to_string_lossy().into_owned()))])).collect();
-        event.push(("results", Value::array(results)));
+        let written = report.written.iter().map(|p| Value::from(p.to_string_lossy().into_owned())).collect();
+        event.push(("written", Value::array(written)));
     }
     Value::from_pairs(event)
 }
@@ -452,18 +450,16 @@ impl JsFn {
 }
 
 /// `process.env`, `process.cwd()` and `process.platform`. The build's
-/// environment is filled in for `SSQCH_ENV` and `ELEVENTY_ENV` when they're
-/// unset, so ported configs that read them see the `--env` choice.
+/// environment is filled in for `SSQCH_ENV` when it's unset, so code that
+/// reads it sees the `--env` choice.
 fn process_object<'js>(ctx: &Ctx<'js>, root: &Path, env: &str) -> rquickjs::Result<Object<'js>> {
     let process = Object::new(ctx.clone())?;
     let vars = Object::new(ctx.clone())?;
     for (k, v) in std::env::vars() {
         vars.set(k, v)?;
     }
-    for key in ["SSQCH_ENV", "ELEVENTY_ENV"] {
-        if std::env::var_os(key).is_none() {
-            vars.set(key, env)?;
-        }
+    if std::env::var_os("SSQCH_ENV").is_none() {
+        vars.set("SSQCH_ENV", env)?;
     }
     process.set("env", vars)?;
     let cwd = root.to_string_lossy().into_owned();

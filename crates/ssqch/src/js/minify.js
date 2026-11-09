@@ -1,24 +1,28 @@
-// `ssqch:minify`, which also answers to `html-minifier-terser`.
+// `ssqch/minify`: HTML minification.
 //
-//   import htmlmin from "html-minifier-terser";
-//   const html = await htmlmin.minify(content, { collapseWhitespace: true, removeComments: true });
+//   import { minifyPlugin, minify } from "ssqch/minify";
 //
-// Supports collapseWhitespace, removeComments and useShortDoctype; other
-// options are ignored with a warning. Like html-minifier, every option is
-// off unless set.
-const native = globalThis.__ssqch.natives["ssqch:minify"];
+//   export default defineConfig(({ env }) => ({
+//     plugins: [env === "production" && minifyPlugin()],
+//   }));
+//
+//   const small = minify(html, { removeComments: false });
+//
+// minifyPlugin() minifies every HTML output file, after the image transform.
+// Options (all on by default): collapseWhitespace, removeComments and
+// shortDoctype.
+const native = globalThis.__ssqch.natives["ssqch/minify"];
 
-const SUPPORTED = [ "collapseWhitespace", "removeComments", "useShortDoctype" ];
-const warned = new Set();
+const OPTIONS = [ "collapseWhitespace", "removeComments", "shortDoctype" ];
 
-export async function minify( html, options = {} ) {
-	for ( const key of Object.keys( options ) ) {
-		if ( !SUPPORTED.includes( key ) && !warned.has( key ) ) {
-			warned.add( key );
-			console.warn( `warn: html-minifier option ${ key } is ignored by ssqch (supported: ${ SUPPORTED.join( ", " ) })` );
-		}
-	}
-	return native.minify( String( html ), Boolean( options.collapseWhitespace ), Boolean( options.removeComments ), Boolean( options.useShortDoctype ) );
+export function minifyPlugin( options = {} ) {
+	return { name: "ssqch/minify", builtin: "ssqch/minify", options };
 }
 
-export default { minify };
+export function minify( html, options = {} ) {
+	for ( const key of Object.keys( options ) ) {
+		if ( !OPTIONS.includes( key ) ) throw new TypeError( `minify(): unknown option "${ key }" (options: ${ OPTIONS.join( ", " ) })` );
+	}
+	const { collapseWhitespace = true, removeComments = true, shortDoctype = true } = options;
+	return native.minify( String( html ), Boolean( collapseWhitespace ), Boolean( removeComments ), Boolean( shortDoctype ) );
+}

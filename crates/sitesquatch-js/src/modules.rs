@@ -18,6 +18,11 @@ use rquickjs::{Ctx, Error, Module, Object, Result};
 
 use crate::JsModule;
 
+/// `import { defineConfig } from "ssqch"`. `defineConfig` returns its
+/// argument: it's there so configs read as configs (and for editor hints).
+const CONFIG_MODULE: &str = "ssqch";
+const CONFIG_MODULE_SOURCE: &str = "export const defineConfig = (config) => config;\nexport default { defineConfig };\n";
+
 /// Node built-in modules provided by `node.js`.
 pub(crate) const NODE_MODULES: [&str; 7] = ["fs", "fs/promises", "path", "path/posix", "url", "process", "buffer"];
 
@@ -61,7 +66,10 @@ impl rquickjs::loader::Resolver for Resolver {
         if NODE_MODULES.contains(&builtin) {
             return Ok(format!("node:{}", builtin));
         }
-        if let Some(module) = self.modules.iter().find(|m| m.name == name || m.aliases.iter().any(|a| a == name)) {
+        if name == CONFIG_MODULE {
+            return Ok(name.to_string());
+        }
+        if let Some(module) = self.modules.iter().find(|m| m.name == name) {
             return Ok(module.name.clone());
         }
         if name.starts_with("node:") {
@@ -109,6 +117,9 @@ impl rquickjs::loader::Loader for Loader {
     fn load<'js>(&mut self, ctx: &Ctx<'js>, name: &str, _attributes: Option<ImportAttributes<'js>>) -> Result<Module<'js>> {
         if let Some(builtin) = name.strip_prefix("node:") {
             return Module::declare(ctx.clone(), name, builtin_source(ctx, builtin)?);
+        }
+        if name == CONFIG_MODULE {
+            return Module::declare(ctx.clone(), name, CONFIG_MODULE_SOURCE);
         }
         if let Some(module) = self.modules.iter().find(|m| m.name == name) {
             return Module::declare(ctx.clone(), name, module.source.clone());

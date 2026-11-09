@@ -75,7 +75,7 @@ impl TemplateEngine for EdgeEngine {
 // ---------------------------------------------------------------- Markdown
 
 /// CommonMark plus tables and strikethrough, with raw HTML allowed: the same
-/// feature set as markdown-it's defaults in Eleventy.
+/// feature set as markdown-it with `html: true`.
 pub struct MarkdownEngine {
     pub options: Options,
 }
@@ -205,7 +205,7 @@ mod tests {
     use super::*;
 
     /// The expected HTML is markdown-it 15's output for the same source
-    /// (with `html: true`, as Eleventy configures it).
+    /// (with `html: true`).
     #[test]
     fn void_tags_and_alt_text_match_markdown_it() {
         let src = "![Buy my shirts on\nAmazon!](/a.jpg \"T\")\n\nline one  \nline two\n\n---\n\n<img src=\"/raw.png\" />\n";

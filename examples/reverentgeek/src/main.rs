@@ -1,6 +1,7 @@
 //! The ReverentGeek blog, built with SiteSquatch.
 //!
-//! A port of the blog's `.eleventy.js`. With the blog cloned next to this repository:
+//! A Rust port of the blog's `ssqch.config.js`, as an example of the Rust
+//! API. With the blog cloned next to this repository:
 //!
 //! ```sh
 //! cargo run --release -p reverentgeek -- build --root ../blog
@@ -19,8 +20,8 @@ fn main() -> std::process::ExitCode {
         cfg.input = "src/site".into();
         cfg.output = "dist".into();
         cfg.template_formats = ["edge", "md", "txt", "html"].map(String::from).to_vec();
-        cfg.markdown_template_engine = Some("edge".into());
-        cfg.html_template_engine = Some("edge".into());
+        cfg.markdown_engine = Some("edge".into());
+        cfg.html_engine = Some("edge".into());
         cfg.data_deep_merge = true;
 
         cfg.add_watch_target("src/assets/");
@@ -31,7 +32,7 @@ fn main() -> std::process::ExitCode {
 
         cfg.add_plugin(RssPlugin);
 
-        // Same settings as src/utils/eleventy/image-transform-options.js.
+        // Same settings as src/utils/site/image-options.js.
         // AVIF needs `--features avif` (slow to encode, so it's opt-in).
         let formats = if cfg!(feature = "avif") { vec![Format::Avif, Format::Webp, Format::Auto] } else { vec![Format::Webp, Format::Auto] };
         // Production builds also delete unused derivatives (scripts/prune-images.js).

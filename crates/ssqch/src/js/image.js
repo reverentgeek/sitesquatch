@@ -1,90 +1,61 @@
-// `ssqch:image`, which also answers to `@11ty/eleventy-img`.
+// `ssqch/image`: responsive images.
 //
-//   import Image, { eleventyImageTransformPlugin } from "@11ty/eleventy-img";
-//   const metadata = await Image("src/hero.png", { widths: [600, 1200], formats: ["webp", "png"] });
+//   import { imagePlugin, image } from "ssqch/image";
 //
-// Images come from the same processor as the `<img>` transform, so they share
-// its cache, encoder settings and output folder. Options ssqch can't honor
-// (sharp settings, transform functions) are ignored with a warning.
+//   export default defineConfig({
+//     plugins: [imagePlugin({ formats: ["avif", "webp", "auto"], widths: [600, 1200] })],
+//   });
+//
+//   const derivatives = await image("src/hero.png", { widths: [600, 1200], formats: ["webp", "png"] });
+//
+// imagePlugin() turns every local <img> in HTML output into a <picture>.
+// image() generates one image's derivatives with the same processor, so
+// both share its cache, encoder settings and output folder.
 import path from "node:path";
 
-const native = globalThis.__ssqch.natives["ssqch:image"];
-
-const warned = new Set();
-const warnOnce = message => {
-	if ( !warned.has( message ) ) {
-		warned.add( message );
-		console.warn( `warn: ${ message }` );
-	}
-};
+const native = globalThis.__ssqch.natives["ssqch/image"];
 
 const FORMATS = [ "avif", "webp", "jpeg", "jpg", "png", "gif", "svg", "auto" ];
-const SHARP = { sharpWebpOptions: "webpQuality", sharpAvifOptions: "avifQuality", sharpJpegOptions: "jpegQuality" };
+const IMAGE_OPTIONS = [ "widths", "formats" ];
 
-function checkFormats( formats, where ) {
+/** The <img> transform, with the encoder settings image() also uses. */
+export function imagePlugin( options = {} ) {
+	return { name: "ssqch/image", builtin: "ssqch/image", options };
+}
+
+function checkFormats( formats ) {
+	Array.isArray( formats ) || fail( "formats must be an array" );
 	for ( const f of formats ) {
-		if ( !FORMATS.includes( f ) ) throw new TypeError( `${ where }: unknown format "${ f }" (use ${ FORMATS.join( ", " ) })` );
+		FORMATS.includes( f ) || fail( `unknown format "${ f }" (use ${ FORMATS.join( ", " ) })` );
 	}
 	return formats.map( f => f === "jpg" ? "jpeg" : f );
 }
 
-function widthsOf( widths ) {
-	return widths.map( w => w === null || w === "auto" ? 0 : Number( w ) );
+// "auto" (or 0) is the original width.
+function checkWidths( widths ) {
+	Array.isArray( widths ) || fail( "widths must be an array" );
+	return widths.map( w => {
+		if ( w === "auto" ) return 0;
+		Number.isInteger( w ) && w >= 0 || fail( `widths must be whole numbers or "auto", got ${ JSON.stringify( w ) }` );
+		return w;
+	} );
 }
 
-// Warn about options that change Eleventy's output but not ssqch's.
-function noteIgnored( options, where, settings ) {
-	for ( const [ key, value ] of Object.entries( options ) ) {
-		if ( key in SHARP ) {
-			const { quality, ...rest } = value || {};
-			if ( quality !== undefined && settings && quality !== settings[SHARP[key]] ) {
-				warnOnce( `${ where }: ${ key }.quality ${ quality } is ignored; this build encodes at ${ SHARP[key] } ${ settings[SHARP[key]] } (set it on the ssqch:image plugin)` );
-			}
-			const others = Object.keys( rest );
-			if ( others.length ) warnOnce( `${ where }: ${ key }.${ others.join( ", " ) } ${ others.length > 1 ? "are" : "is" } ignored (ssqch doesn't use sharp)` );
-		} else if ( key === "transform" ) {
-			warnOnce( `${ where }: the transform function is ignored (ssqch doesn't use sharp, and drops color profiles without converting colors)` );
-		} else {
-			warnOnce( `${ where }: the ${ key } option is ignored by ssqch` );
-		}
-	}
+function fail( message ) {
+	throw new TypeError( `image(): ${ message }` );
 }
 
-/** Generate an image's derivatives, returning eleventy-img's metadata shape. */
-export default async function Image( src, options = {} ) {
-	if ( typeof src !== "string" ) throw new TypeError( "Image(): ssqch only accepts a file path" );
-	if ( /^https?:\/\//.test( src ) ) throw new Error( `Image(): remote images aren't supported by ssqch (${ src })` );
-	const { formats = [ "webp", "jpeg" ], widths = [ "auto" ], outputDir, urlPath, ...rest } = options;
-	const settings = native.settings();
-	if ( outputDir !== undefined && path.resolve( outputDir ) !== settings.outputDir ) {
-		throw new Error( `Image(): outputDir "${ outputDir }" isn't where this build writes images (${ path.relative( process.cwd(), settings.outputDir ) || "." }); set outputDir on the ssqch:image plugin instead` );
+/**
+ * Generate an image's derivatives. Returns `{ [format]: [entry] }`, smallest
+ * first, where each entry has format, width, height, url, sourceType, srcset,
+ * filename, outputPath and size.
+ */
+export async function image( src, options = {} ) {
+	typeof src === "string" || fail( "the source must be a file path" );
+	/^https?:\/\//.test( src ) && fail( `remote images aren't supported (${ src })` );
+	for ( const key of Object.keys( options ) ) {
+		IMAGE_OPTIONS.includes( key ) || fail( `unknown option "${ key }" (options: ${ IMAGE_OPTIONS.join( ", " ) }; encoder settings go on imagePlugin())` );
 	}
-	if ( urlPath !== undefined && urlPath.replace( /\/?$/, "/" ) !== settings.urlPath ) {
-		throw new Error( `Image(): urlPath "${ urlPath }" doesn't match this build's image URL path (${ settings.urlPath }); set urlPath on the ssqch:image plugin instead` );
-	}
-	noteIgnored( rest, "Image()", settings );
-	return native.generate( path.resolve( src ), widthsOf( widths ), checkFormats( formats, "Image()" ) );
+	const { formats = [ "webp", "jpeg" ], widths = [ "auto" ] } = options;
+	return native.generate( path.resolve( src ), checkWidths( widths ), checkFormats( formats ) );
 }
-
-/** Eleventy's `<img>` transform plugin, as the ssqch:image plugin. */
-export function eleventyImageTransformPlugin( config, options = {} ) {
-	const { formats, widths, defaultAttributes, urlPath, outputDir, ...rest } = options;
-	const mapped = {};
-	if ( formats !== undefined ) mapped.formats = checkFormats( formats, "eleventyImageTransformPlugin" );
-	if ( widths !== undefined ) mapped.widths = widthsOf( widths );
-	if ( defaultAttributes !== undefined ) mapped.defaultAttributes = defaultAttributes;
-	if ( urlPath !== undefined ) mapped.urlPath = urlPath;
-	if ( outputDir !== undefined ) warnOnce( "eleventyImageTransformPlugin: outputDir is ignored; images go to the img folder in the output (set outputDir on the ssqch:image plugin)" );
-	for ( const [ key, setting ] of Object.entries( SHARP ) ) {
-		if ( rest[key] && rest[key].quality !== undefined ) {
-			mapped[setting] = rest[key].quality;
-			const { quality, ...others } = rest[key];
-			rest[key] = others;
-			if ( !Object.keys( others ).length ) delete rest[key];
-		}
-	}
-	noteIgnored( rest, "eleventyImageTransformPlugin", null );
-	config.addPlugin( "ssqch:image", mapped );
-}
-
-Image.eleventyImageTransformPlugin = eleventyImageTransformPlugin;

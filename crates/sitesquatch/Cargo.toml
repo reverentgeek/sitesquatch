@@ -1,6 +1,6 @@
 [package]
 name = "sitesquatch"
-description = "A fast, pluggable static site generator inspired by Eleventy"
+description = "A fast, pluggable static site generator"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

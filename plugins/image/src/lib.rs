@@ -1,4 +1,4 @@
-//! Responsive images for SiteSquatch, modelled on `@11ty/eleventy-img`'s transform.
+//! Responsive images for SiteSquatch.
 //!
 //! Every local `<img>` in HTML output becomes a `<picture>` with one
 //! `<source>` per modern format and a fallback `<img>`. Derivatives are
@@ -7,9 +7,10 @@
 //! reused on later builds, including fresh CI checkouts that restore
 //! `<output>/img/` from a cache.
 //!
-//! Per-image overrides (same as eleventy-img):
-//! - `eleventy:widths="300,600"` sets the widths for that image
-//! - `eleventy:ignore` leaves the tag untouched
+//! Per-image overrides:
+//! - `ssqch:widths="300,600"` sets the widths for that image
+//! - `ssqch:ignore` leaves the tag untouched
+//! - a plain `width` attribute pins the image to that one width
 
 mod hash_cache;
 
@@ -95,7 +96,7 @@ pub struct ImageOptions {
     pub avif_speed: u8,
     pub jpeg_quality: u8,
     /// A too-large width is clamped to the original only when the previous
-    /// width is this many times smaller than the original (eleventy-img: 1.25).
+    /// width is this many times smaller than the original (default 1.25).
     pub minimum_threshold: f64,
     /// After a build, delete files in the output folder that the build didn't
     /// use (derivatives of removed or edited images). Only turn this on for
@@ -256,7 +257,7 @@ impl ImageProcessor {
         };
 
         // SVGs are copied as they are, and so are GIFs in `auto` output (which
-        // keeps animations; eleventy-img keeps only the first frame). A GIF
+        // keeps animations). A GIF
         // explicitly requested as PNG/WebP (a social card) is converted.
         let copy_gif = src_format == Format::Gif && formats.iter().all(|f| matches!(f, Format::Auto | Format::Gif | Format::Webp | Format::Avif));
         if src_format == Format::Svg || copy_gif {
@@ -290,7 +291,7 @@ impl ImageProcessor {
             }
             let mut entries = Vec::new();
             for &w in &targets {
-                // eleventy-img (sharp) rounds heights down.
+                // Heights round down.
                 let h = ((h0 as f64) * (w as f64) / (w0 as f64)).floor().max(1.0) as u32;
                 let e = entry(f, w, h, format!("{}-{}.{}", id, w, f.ext()));
                 if !e.path.exists() {
@@ -480,8 +481,8 @@ impl ImageProcessor {
             html,
             RewriteStrSettings {
                 element_content_handlers: vec![element!("img[src]", |el| {
-                    if el.has_attribute("eleventy:ignore") {
-                        el.remove_attribute("eleventy:ignore");
+                    if el.has_attribute("ssqch:ignore") {
+                        el.remove_attribute("ssqch:ignore");
                         return Ok(());
                     }
                     let src = el.get_attribute("src").unwrap_or_default();
@@ -490,8 +491,8 @@ impl ImageProcessor {
                         self.warn_once(format!("image not found: {} (in {})", src, page_input.display()));
                         return Ok(());
                     }
-                    // Like eleventy-img: a plain `width` attribute pins the image to that one width.
-                    let widths: Vec<u32> = match (el.get_attribute("eleventy:widths"), el.get_attribute("width").and_then(|w| w.trim().parse::<u32>().ok())) {
+                    // A plain `width` attribute pins the image to that one width.
+                    let widths: Vec<u32> = match (el.get_attribute("ssqch:widths"), el.get_attribute("width").and_then(|w| w.trim().parse::<u32>().ok())) {
                         (Some(w), _) => w.split(',').filter_map(|s| s.trim().parse().ok()).collect(),
                         (None, Some(w)) => vec![w],
                         (None, None) => self.options.widths.clone(),
@@ -504,7 +505,7 @@ impl ImageProcessor {
                         }
                     };
                     let attrs: Vec<(String, String)> =
-                        el.attributes().iter().filter(|a| !a.name().starts_with("eleventy:")).map(|a| (a.name(), a.value())).collect();
+                        el.attributes().iter().filter(|a| !a.name().starts_with("ssqch:")).map(|a| (a.name(), a.value())).collect();
                     el.replace(&self.picture_html(&meta, &attrs), ContentType::Html);
                     Ok(())
                 })],
@@ -515,7 +516,9 @@ impl ImageProcessor {
     }
 }
 
-/// Port of eleventy-img's `getValidWidths` (no upscaling).
+/// The widths to generate for an image `original` pixels wide: never wider
+/// than the original, and a too-large width is clamped to the original only
+/// when the previous width is `minimum_threshold` times smaller than it.
 pub fn valid_widths(original: u32, requested: &[u32], minimum_threshold: f64) -> Vec<u32> {
     let mut sorted: Vec<u32> = requested.iter().map(|&w| if w == 0 { original } else { w }).collect();
     sorted.sort_unstable();
@@ -610,7 +613,7 @@ mod tests {
     }
 
     #[test]
-    fn widths_match_eleventy_img() {
+    fn widths_never_upscale() {
         let defaults = [300, 600, 900, 1200, 1500];
         assert_eq!(valid_widths(810, &defaults, 1.25), vec![300, 600, 810]);
         assert_eq!(valid_widths(672, &defaults, 1.25), vec![300, 600]);
@@ -620,7 +623,7 @@ mod tests {
     }
 }
 
-/// A single candidate needs no width descriptor (matches eleventy-img).
+/// A single candidate needs no width descriptor.
 fn srcset_attr(entries: &[ImageEntry]) -> String {
     match entries {
         [one] => one.url.clone(),

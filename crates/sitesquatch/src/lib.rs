@@ -1,9 +1,8 @@
 //! # SiteSquatch
 //!
-//! A static site generator in the spirit of [Eleventy](https://www.11ty.dev):
-//! a data cascade, layouts, collections, pagination and permalinks, Edge.js
-//! and Markdown templates, and a plugin API for filters, shortcodes, global
-//! data, collections, transforms, template engines and build hooks.
+//! A static site generator: a data cascade, layouts, collections, pagination
+//! and permalinks, Edge.js and Markdown templates, and a plugin API for
+//! filters, global data, collections, transforms, template engines and build hooks.
 //!
 //! ```no_run
 //! fn main() -> std::process::ExitCode {

@@ -1,4 +1,4 @@
-//! RSS/Atom helpers for SiteSquatch, mirroring `@11ty/eleventy-plugin-rss`:
+//! RSS/Atom helpers for SiteSquatch:
 //! `getNewestCollectionItemDate`, `dateToRfc3339`, `dateToRfc822`,
 //! `absoluteUrl` and `htmlToAbsoluteUrls`.
 
@@ -19,7 +19,7 @@ impl Plugin for RssPlugin {
         cfg.add_filter("dateToRfc822", |args| date_to_rfc822(&args.arg(0)).map(Value::from));
         cfg.add_filter("absoluteUrl", |args| Ok(Value::from(absolute_url(&args.arg_string(0), &args.arg_string(1)))));
         cfg.add_filter("htmlToAbsoluteUrls", |args| Ok(Value::from(html_to_absolute_urls(&args.arg_string(0), &args.arg_string(1))?)));
-        // Eleventy's built-in `url` filter (no path prefix support yet).
+        // `url(path)`: returns the path as it is (no path prefix support yet).
         cfg.add_filter("url", |args| Ok(args.arg(0)));
     }
 }
@@ -44,10 +44,10 @@ pub fn date_to_rfc822(date: &Value) -> Result<String> {
 
 /// Resolve `url` against `base`, like `new URL(url, base).toString()`.
 pub fn absolute_url(url: &str, base: &str) -> String {
-    // The same WHATWG URL rules as `new URL(url, base).toString()`, which is
-    // what @11ty/eleventy-plugin-rss uses: "https://example.com" becomes
-    // "https://example.com/", and "#top" resolves against the page. Like the
-    // plugin, a URL that can't be resolved is returned unchanged.
+    // The same WHATWG URL rules as `new URL(url, base).toString()`:
+    // "https://example.com" becomes "https://example.com/", and "#top"
+    // resolves against the page. A URL that can't be resolved is returned
+    // unchanged.
     match url::Url::parse(base).and_then(|b| b.join(url)) {
         Ok(u) => u.to_string(),
         Err(_) => url.to_string(),

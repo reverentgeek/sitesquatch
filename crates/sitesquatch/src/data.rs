@@ -17,7 +17,7 @@ pub fn parse_front_matter(src: &str) -> Result<(Map, &str)> {
     for line in rest.split_inclusive('\n') {
         if line.trim_end() == "---" {
             let yaml = &rest[..offset];
-            // Like gray-matter + Eleventy: blank lines right after the fence are dropped.
+            // Blank lines right after the fence are dropped, like gray-matter.
             let body = rest[offset + line.len()..].trim_start_matches(['\r', '\n']);
             let data = parse_yaml(yaml).context("invalid YAML front matter")?;
             return Ok((data, body));
@@ -86,7 +86,7 @@ pub fn load_data_file(path: &Path, extra: &[(String, DataLoader)]) -> Result<Opt
 }
 
 /// Deep-merge `over` into `base`: objects merge recursively and arrays
-/// concatenate (Eleventy's `setDataDeepMerge(true)`); everything else, or
+/// concatenate; everything else, or
 /// everything when `deep` is false, is replaced.
 pub fn merge(base: &mut Map, over: &Map, deep: bool) {
     for (key, value) in over {

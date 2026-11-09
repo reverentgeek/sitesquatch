@@ -1,8 +1,7 @@
 //! Site configuration and the plugin registration API.
 //!
-//! This mirrors Eleventy's `eleventyConfig` object: plugins (and your own
-//! site code) call `add_filter`, `add_collection`, `add_transform`, ... on a
-//! [`Config`] before the build starts.
+//! Plugins (and your own site code) call `add_filter`, `add_collection`,
+//! `add_transform`, ... on a [`Config`] before the build starts.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -81,23 +80,23 @@ impl TransformContext<'_> {
     }
 }
 
-/// What custom collections are built from, like Eleventy's `collectionApi`.
+/// What custom collections are built from: every page in collections.
 pub struct CollectionApi {
     pub(crate) items: Vec<Value>,
 }
 
 impl CollectionApi {
     /// Every page in collections, sorted by date (oldest first).
-    pub fn get_all(&self) -> Vec<Value> {
+    pub fn all(&self) -> Vec<Value> {
         self.items.clone()
     }
 
-    pub fn get_filtered_by_tag(&self, tag: &str) -> Vec<Value> {
-        self.get_filtered_by_tags(&[tag])
+    pub fn by_tag(&self, tag: &str) -> Vec<Value> {
+        self.by_tags(&[tag])
     }
 
     /// Pages that have *all* of the given tags.
-    pub fn get_filtered_by_tags(&self, tags: &[&str]) -> Vec<Value> {
+    pub fn by_tags(&self, tags: &[&str]) -> Vec<Value> {
         self.items
             .iter()
             .filter(|item| {
@@ -140,10 +139,10 @@ pub struct Config {
     pub data: PathBuf,
     /// File extensions treated as templates.
     pub template_formats: Vec<String>,
-    /// Engine that pre-processes Markdown files (Eleventy's `markdownTemplateEngine`).
-    pub markdown_template_engine: Option<String>,
-    /// Engine that pre-processes `.html` files (Eleventy's `htmlTemplateEngine`).
-    pub html_template_engine: Option<String>,
+    /// Engine that pre-processes Markdown files before Markdown renders them.
+    pub markdown_engine: Option<String>,
+    /// Engine that pre-processes `.html` files.
+    pub html_engine: Option<String>,
     /// Merge objects and concatenate arrays across the data cascade.
     pub data_deep_merge: bool,
     pub env: Environment,
@@ -174,8 +173,8 @@ impl Config {
             includes: PathBuf::from("_includes"),
             data: PathBuf::from("_data"),
             template_formats: ["edge", "md", "html"].map(String::from).to_vec(),
-            markdown_template_engine: Some("edge".into()),
-            html_template_engine: Some("edge".into()),
+            markdown_engine: Some("edge".into()),
+            html_engine: Some("edge".into()),
             data_deep_merge: true,
             env,
             serving: false,
@@ -210,8 +209,8 @@ impl Config {
         self
     }
 
-    /// Register a function callable from every template. Like the Edge.js
-    /// plugin for Eleventy, filters and shortcodes are Edge globals:
+    /// Register a function callable from every template. Filters are Edge
+    /// globals:
     /// `{{ postDate(date) }}`.
     pub fn add_filter<F>(&mut self, name: impl Into<String>, f: F) -> &mut Self
     where
@@ -219,15 +218,6 @@ impl Config {
     {
         self.filters.push((name.into(), Value::func(f)));
         self
-    }
-
-    /// Shortcodes are filters that return markup; the distinction is kept for
-    /// readability when porting Eleventy configs.
-    pub fn add_shortcode<F>(&mut self, name: impl Into<String>, f: F) -> &mut Self
-    where
-        F: Fn(&[Value]) -> Result<Value> + Send + Sync + 'static,
-    {
-        self.add_filter(name, f)
     }
 
     /// Register any global value (an object of helpers, a constant...).
@@ -245,8 +235,8 @@ impl Config {
         self
     }
 
-    /// Read data files with another extension, like Eleventy's
-    /// `addDataExtension`: `_data/name.<ext>` and `name.11tydata.<ext>`
+    /// Read data files with another extension: `_data/name.<ext>` and
+    /// `name.data.<ext>`
     /// template and directory data files. `f` gets the file's path.
     pub fn add_data_extension<F>(&mut self, ext: impl Into<String>, f: F) -> &mut Self
     where
@@ -276,9 +266,9 @@ impl Config {
         self
     }
 
-    /// A transform that runs before every [`Config::add_transform`] one, like
-    /// a plugin on Eleventy's `htmlTransformer` (the stage `@11ty/eleventy-img`
-    /// uses), whatever order plugins were added in.
+    /// A transform that runs before every [`Config::add_transform`] one,
+    /// whatever order plugins were added in. The image plugin uses it, so later
+    /// transforms (minifying) see the final markup.
     pub fn add_html_transform<F>(&mut self, name: impl Into<String>, f: F) -> &mut Self
     where
         F: Fn(&TransformContext, String) -> Result<String> + Send + Sync + 'static,

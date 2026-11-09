@@ -1,0 +1,39 @@
+{
+	"version": "0.2",
+	"language": "en",
+	"ignorePaths": [
+		"target",
+		"out",
+		"bench-results",
+		"Cargo.lock"
+	],
+	"words": [
+		"bindgen",
+		"binstall",
+		"cmark",
+		"distros",
+		"eleventy",
+		"ENOENT",
+		"hrefs",
+		"lcms",
+		"libaom",
+		"libclang",
+		"libwebp",
+		"lychee",
+		"moxcms",
+		"nasm",
+		"pulldown",
+		"quickjs",
+		"rasterizing",
+		"ravif",
+		"realpath",
+		"reserialized",
+		"reserializes",
+		"reverentgeek",
+		"rquickjs",
+		"sitesquatch",
+		"ssqch",
+		"strikethrough",
+		"xattr"
+	]
+}

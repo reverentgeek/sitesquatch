@@ -3,7 +3,7 @@
 //! 1. Run `before_build` hooks, set up engines, load global data.
 //! 2. Discover templates and resolve each one's data cascade:
 //!    global data < layout front matter < directory data < template data
-//!    file < front matter < `eleventyComputed`.
+//!    file < front matter < `computed`.
 //! 3. Expand pagination, render permalinks, check for output conflicts.
 //! 4. Render page bodies in parallel. Bodies that don't mention `collections`
 //!    go first, so their `templateContent` can appear in collections (feeds).
@@ -123,8 +123,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
         ("env", Value::from(ctx.env.as_str())),
         ("serving", Value::Bool(ctx.serving)),
     ]);
-    global.insert("sitesquatch".into(), runtime.clone());
-    global.entry("eleventy".into()).or_insert(runtime);
+    global.insert("ssqch".into(), runtime);
     timer.lap("data");
 
     // ---- templates
@@ -187,7 +186,6 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
                 }
                 std::fs::write(out, html).with_context(|| format!("writing {}", out.display()))?;
                 if !cfg.quiet {
-                    // One line per page, like Eleventy's `[11ty] Writing ... from ... (edge)`.
                     println!("[ssqch] Writing {} from {} ({})", display_path(&ctx, out), display_path(&ctx, &page.tpl.input), page.tpl.engines.join(", "));
                 }
                 Ok(out.clone())
@@ -263,7 +261,7 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
             continue;
         }
         let name = entry.file_name().to_string_lossy();
-        if name.contains(".11tydata.") {
+        if is_data_file(&name) {
             continue;
         }
         let ext = entry.path().extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
@@ -275,7 +273,13 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-/// Directory data files: `posts/posts.json` (or `posts/posts.11tydata.json`)
+/// Template and directory data files (`hello.data.js`, `posts.data.json`)
+/// sit next to templates, but aren't templates themselves.
+fn is_data_file(name: &str) -> bool {
+    name.contains(".data.")
+}
+
+/// Directory data files: `posts/posts.json` (or `posts/posts.data.json`)
 /// applies to everything inside `posts/`.
 fn load_directory_data(cfg: &Config, ctx: &BuildContext, files: &[PathBuf]) -> Result<HashMap<PathBuf, Map>> {
     let mut dirs: HashSet<PathBuf> = HashSet::new();
@@ -296,11 +300,11 @@ fn load_directory_data(cfg: &Config, ctx: &BuildContext, files: &[PathBuf]) -> R
         let mut candidates = Vec::new();
         for ext in ["json", "yaml", "yml", "toml"] {
             candidates.push(format!("{}.{}", name, ext));
-            candidates.push(format!("{}.11tydata.{}", name, ext));
+            candidates.push(format!("{}.data.{}", name, ext));
         }
-        // Added formats (JavaScript) only with the `.11tydata.` suffix, so a
+        // Added formats (JavaScript) only with the `.data.` suffix, so a
         // `posts/posts.js` script isn't mistaken for data.
-        candidates.extend(cfg.data_extensions.iter().map(|(ext, _)| format!("{}.11tydata.{}", name, ext)));
+        candidates.extend(cfg.data_extensions.iter().map(|(ext, _)| format!("{}.data.{}", name, ext)));
         for candidate in candidates {
             let path = dir.join(&candidate);
             if path.is_file() {
@@ -369,7 +373,7 @@ fn load_template(
             }
         }
         let stem = path.file_stem().unwrap().to_string_lossy().to_string();
-        let suffixes = ["json".to_string(), "11tydata.json".to_string()].into_iter().chain(cfg.data_extensions.iter().map(|(ext, _)| format!("11tydata.{}", ext)));
+        let suffixes = ["json".to_string(), "data.json".to_string()].into_iter().chain(cfg.data_extensions.iter().map(|(ext, _)| format!("data.{}", ext)));
         for suffix in suffixes {
             let candidate = path.with_file_name(format!("{}.{}", stem, suffix));
             if candidate.is_file() {
@@ -405,8 +409,8 @@ fn load_template(
             Some(list) => list.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
             None => {
                 let pre = match ext.as_str() {
-                    "md" => cfg.markdown_template_engine.clone(),
-                    "html" => cfg.html_template_engine.clone(),
+                    "md" => cfg.markdown_engine.clone(),
+                    "html" => cfg.html_engine.clone(),
                     _ => None,
                 };
                 pre.into_iter().chain(std::iter::once(ext.clone())).collect()
@@ -507,10 +511,10 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
             }
             data.insert("page".into(), base_page(Value::Undefined, Value::Undefined));
 
-            // eleventyComputed
-            if let Some(Value::Obj(computed)) = tpl.data.get("eleventyComputed").cloned() {
+            // computed
+            if let Some(Value::Obj(computed)) = tpl.data.get("computed").cloned() {
                 for (key, value) in computed.iter() {
-                    let v = render_computed(value, &data, engines, &tpl.rel).with_context(|| format!("eleventyComputed.{}", key))?;
+                    let v = render_computed(value, &data, engines, &tpl.rel).with_context(|| format!("computed.{}", key))?;
                     data.insert(key.clone(), v);
                 }
             }
@@ -529,7 +533,7 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
                     Some(rendered.trim().to_string())
                 }
                 Some(v) if !v.is_nullish() => bail!("permalink must be a string or false"),
-                // Non-HTML plain files (llms.txt) keep their own name, like Eleventy.
+                // Non-HTML plain files (llms.txt) keep their own name.
                 _ if tpl.engines.iter().all(|e| e == "txt") => Some(format!("/{}", tpl.rel)),
                 _ => {
                     let stem = &tpl.file_path_stem;
@@ -570,7 +574,7 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
             }
             data.shift_remove("collections");
 
-            let excluded = data.get("eleventyExcludeFromCollections").is_some_and(Value::truthy);
+            let excluded = data.get("excludeFromCollections").is_some_and(Value::truthy);
             let in_collections = !excluded && !tpl.plain_copy && (page_index == 0 || pagination.as_ref().is_some_and(|p| p.get("addAllPagesToCollections").truthy()));
             pages.push(Page { tpl: tpl.clone(), data: Arc::new(data), url, output, date, in_collections });
         }
@@ -644,7 +648,7 @@ pub fn display_path(ctx: &BuildContext, path: &Path) -> String {
 fn render_computed(value: &Value, data: &Map, engines: &Engines, name: &str) -> Result<Value> {
     Ok(match value {
         Value::Str(s) if s.contains("{{") => {
-            Value::from(engines.edge.inner().render_str(&format!("{} (eleventyComputed)", name), s, Value::object(data.clone()))?)
+            Value::from(engines.edge.inner().render_str(&format!("{} (computed)", name), s, Value::object(data.clone()))?)
         }
         Value::Obj(o) => {
             let mut out = Map::new();
@@ -653,7 +657,7 @@ fn render_computed(value: &Value, data: &Map, engines: &Engines, name: &str) -> 
             }
             Value::object(out)
         }
-        // A function (from a JavaScript data file) gets the page's data, like Eleventy.
+        // A function (from a JavaScript data file) gets the page's data.
         Value::Func(f) => f.call(&[Value::object(data.clone())])?,
         other => other.clone(),
     })
@@ -817,7 +821,7 @@ mod tests {
         }
         let prose = [
             "I have mugs, hats, toys and other collections.",
-            "Collections in Eleventy are {{ \"great\" }}, and so are collections.",
+            "Collections in ssqch are {{ \"great\" }}, and so are collections.",
             "{{-- collections are rendered later --}}",
             "Use `collections.posts` in a template.",
         ];

@@ -39,30 +39,36 @@ fn read(root: &Path, path: &str) -> String {
 }
 
 const SITE_CONFIG: &str = r##"
+import { defineConfig } from "ssqch";
 import { shout } from "./lib/text";
 import site from "./lib/site.json";
 
 let calls = 0;
 
-export const config = { dir: { output: "public" } };
+// A plugin is a piece of config, or a function that returns one.
+const wave = (emoji) => ({ name: "wave", filters: { wave: (n) => `${emoji} ${n}` } });
+const greeter = (greeting) => ({ builtin: "test:greeter", options: { greeting } });
 
-export default async function (config) {
-  config.addFilter("shout", shout);
-  config.addFilter("count", () => ++calls);
-  config.addFilter("year", (d) => d.getUTCFullYear());
-  config.addFilter("nextDay", (d) => new Date(d.getTime() + 86400000));
-  config.addAsyncFilter("later", async (s) => { await null; return s + " (async)"; });
-  config.addFilter("applyTwice", (fn, x) => fn(fn(x)));
-  config.addFilter("envName", () => `${config.env}/${process.env.ELEVENTY_ENV}`);
-  config.addShortcode("hashtags", (list) => list.map((t) => "#" + t).join(" "));
-  config.addGlobalData("site", site);
-  config.addGlobalData("snacks", async () => [{ name: "Pine Cone Crunch" }, { name: "Bigfoot Brittle" }]);
-  config.addPassthroughCopy({ "static/robots.txt": "robots.txt" });
-  config.addPassthroughCopy("src/plain.txt");
-  config.addPlugin((c, opts) => c.addFilter("wave", (n) => `${opts.emoji} ${n}`), { emoji: "o/" });
-  config.addPlugin("test:greeter", { greeting: "Howdy" });
-  return { dir: { input: "src" }, templateFormats: ["edge"] };
-}
+export default defineConfig(async ({ env }) => ({
+  dirs: { input: "src", output: "public" },
+  templateFormats: ["edge"],
+  filters: {
+    shout,
+    count: () => ++calls,
+    year: (d) => d.getUTCFullYear(),
+    nextDay: (d) => new Date(d.getTime() + 86400000),
+    later: async (s) => { await null; return s + " (async)"; },
+    applyTwice: (fn, x) => fn(fn(x)),
+    envName: () => `${env}/${process.env.SSQCH_ENV}`,
+    hashtags: (list) => list.map((t) => "#" + t).join(" "),
+  },
+  data: {
+    site,
+    snacks: async () => [{ name: "Pine Cone Crunch" }, { name: "Bigfoot Brittle" }],
+  },
+  passthrough: [{ "static/robots.txt": "robots.txt" }, "src/plain.txt"],
+  plugins: [wave("o/"), async () => greeter("Howdy"), null, false],
+}));
 "##;
 
 const SITE_PAGE: &str = r##"---
@@ -103,19 +109,19 @@ fn builds_a_site_configured_in_javascript() {
 #[test]
 fn development_env_is_visible_to_the_config() {
     let root = project(&[
-        ("ssqch.config.js", "export default (c) => { c.addGlobalData(\"mode\", { env: c.env, dev: c.isDevelopment }); };"),
-        ("index.edge", "{{ mode.env }} {{ mode.dev }}"),
+        ("ssqch.config.js", "export default ({ env, serving }) => ({ data: { mode: { env, serving } } });"),
+        ("index.edge", "{{ mode.env }} {{ mode.serving }} {{ ssqch.env }}"),
     ]);
     let cfg = configure(&root, Environment::Development).unwrap();
     sitesquatch::build(&cfg).unwrap();
-    assert_eq!(read(&root, "_site/index.html"), "development true");
+    assert_eq!(read(&root, "_site/index.html"), "development false development");
 }
 
 #[test]
 fn javascript_calls_are_serialized_across_parallel_pages() {
     let mut files = vec![(
         "ssqch.config.js".to_string(),
-        "let n = 0; export default (c) => { c.addFilter(\"tick\", () => ++n); };".to_string(),
+        "let n = 0; export default { filters: { tick: () => ++n } };".to_string(),
     )];
     for i in 0..300 {
         files.push((format!("p{}.edge", i), "{{ tick() }}".to_string()));
@@ -139,7 +145,7 @@ fn load_error(config: &str) -> String {
 
 #[test]
 fn errors_point_at_the_config_source() {
-    let e = load_error("export default (c) => {\n  c.addFilter(\"x\", () => 1 +);\n};\n");
+    let e = load_error("export default {\n  filters: { x: () => 1 + },\n};\n");
     assert!(e.starts_with("ssqch.config.js: "), "{}", e);
     assert!(e.contains("at ssqch.config.js:2:"), "{}", e);
 
@@ -150,20 +156,33 @@ fn errors_point_at_the_config_source() {
 }
 
 #[test]
-fn unsupported_things_say_so() {
-    assert!(load_error("export default (c) => c.addPairedShortcode(\"note\", (s) => s);").contains("config.addPairedShortcode() isn't supported by ssqch yet"));
-    assert!(load_error("import x from \"left-pad\"; export default () => {};").contains("importing npm packages isn't supported"));
-    assert!(load_error("import c from \"node:crypto\"; export default () => {};").contains("node:crypto isn't available in ssqch"));
-    assert!(load_error("export default () => ({ dir: { layouts: \"_layouts\" } });").contains("dir.layouts isn't supported"));
-    assert!(load_error("export default (c) => c.addPlugin(\"test:gretter\");").contains("unknown plugin \"test:gretter\" (built-in plugins: test:greeter)"));
-    assert!(load_error("export default async () => { await new Promise(() => {}); };").contains("never settled"));
-    assert!(load_error("export default (c) => c.addFilter(\"x\");").contains("the second argument must be a function"));
+fn mistakes_in_the_config_say_what_to_fix() {
+    let cases = [
+        ("import x from \"left-pad\"; export default {};", "importing npm packages isn't supported"),
+        ("import c from \"node:crypto\"; export default {};", "node:crypto isn't available in ssqch"),
+        ("export const config = {};", "needs a default export: export default defineConfig({ ... })"),
+        ("export default { dirs: { layouts: \"_layouts\" } };", "dirs.layouts isn't supported (use input, output, includes, data)"),
+        ("export default { dir: { input: \"src\" } };", "\"dir\" isn't a config option (options: dirs, templateFormats"),
+        ("export default { plugins: [{ builtin: \"test:gretter\" }] };", "unknown plugin \"test:gretter\" (built-in plugins: test:greeter)"),
+        ("export default async () => { await new Promise(() => {}); };", "never settled"),
+        ("export default { filters: { x: 1 } };", "filters.x must be a function"),
+        ("export default { plugins: [{ name: \"snacks\", dirs: { input: \"src\" } }] };", "plugin \"snacks\": \"dirs\" can only be set in the config itself"),
+        (
+            "export default { filters: { x: () => 1 }, plugins: [{ name: \"snacks\", filters: { x: () => 2 } }] };",
+            "plugin \"snacks\": filter \"x\" is already defined by ssqch.config.js",
+        ),
+        ("export default { plugins: [() => ({ plugins: [{ beforeBuild: 1 }] })] };", "plugins[0] > plugins[0]: beforeBuild must be a function"),
+    ];
+    for (config, want) in cases {
+        let e = load_error(config);
+        assert!(e.contains(want), "{}\n  wanted: {}\n  got: {}", config, want, e);
+    }
 }
 
 #[test]
 fn filter_errors_carry_the_javascript_stack() {
     let root = project(&[
-        ("ssqch.config.js", "export default (c) => {\n  c.addFilter(\"boom\", () => { throw new Error(\"the snack drawer is empty\"); });\n};\n"),
+        ("ssqch.config.js", "export default {\n  filters: { boom: () => { throw new Error(\"the snack drawer is empty\"); } },\n};\n"),
         ("index.edge", "{{ boom() }}"),
     ]);
     let e = format!("{:#}", build(&root).unwrap_err());
@@ -174,7 +193,7 @@ fn filter_errors_carry_the_javascript_stack() {
 #[test]
 fn circular_data_is_an_error_not_a_hang() {
     let root = project(&[
-        ("ssqch.config.js", "export default (c) => { const a = {}; a.self = a; c.addGlobalData(\"loop\", () => a); };"),
+        ("ssqch.config.js", "const a = {}; a.self = a; export default { data: { loop: () => a } };"),
         ("index.edge", "{{ loop }}"),
     ]);
     let e = format!("{:#}", build(&root).unwrap_err());

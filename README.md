@@ -1,17 +1,12 @@
 # SiteSquatch
 
-A prototype static site generator in Rust, inspired by [Eleventy](https://www.11ty.dev): a data
-cascade, layouts, collections, pagination and permalinks, with Edge.js and Markdown templates and
-a plugin API for filters, shortcodes, global data, collections, transforms, template engines and
-build hooks.
+A prototype static site generator in Rust: a data cascade, layouts, collections, pagination and
+permalinks, with Edge.js and Markdown templates, a JavaScript config, and a plugin API for
+filters, global data, collections, transforms, template engines and build hooks.
 
-It builds [reverentgeek.com](https://reverentgeek.com) with no changes to the [source](https://github.com/reverentgeek/blog):
+It builds [reverentgeek.com](https://reverentgeek.com) from its [source](https://github.com/reverentgeek/blog):
 168 pages, about 3,200 responsive image derivatives, feed, sitemap, Netlify `_headers`/`_redirects`.
-
-Compared with Eleventy on the same blog, `ssqch` rebuilds about **14x faster** (0.09 s vs 1.28 s)
-and builds from scratch about **3 to 4x faster** with the same image formats (25 to 31 s vs 91 s).
-Running the blog's own `.eleventy.js` instead of the Rust port, it rebuilds about **8x faster**
-(0.16 s). See [Benchmarks vs. Eleventy](#benchmarks-vs-eleventy).
+With images cached, a rebuild takes about **0.1 s**; see [Benchmarks](#benchmarks).
 
 ## Try it
 
@@ -22,53 +17,48 @@ ReverentGeek blog, so clone it next to this repository:
 git clone https://github.com/reverentgeek/blog.git ../blog
 ```
 
-ssqch builds the pages, but the blog's CSS and JavaScript still come from Tailwind and esbuild.
-Build those first, either with Node:
+ssqch builds the pages, but the blog's CSS and JavaScript come from Tailwind and esbuild. With
+Node installed, the blog's own scripts build everything:
 
 ```sh
-(cd ../blog && pnpm install && pnpm run build:css && pnpm run build:js)
+cargo build --release -p ssqch --features avif
+(cd ../blog && pnpm install && SSQCH_BIN=../ssqch/target/release/ssqch pnpm run build)
 ```
 
-or without it. `scripts/build-native.sh` in the blog downloads standalone Tailwind and esbuild
-binaries, builds the CSS and JS, and then runs ssqch for you:
+Without Node for the CSS and JS, `scripts/build-native.sh` in the blog downloads standalone
+Tailwind and esbuild binaries, builds the CSS and JS, and then runs ssqch. It still uses Node to
+fingerprint the CSS and JS (`index.css` becomes `index.<hash>.css`) and to prune unused images:
 
 ```sh
-cargo build --release -p reverentgeek
-SSQCH_BIN="$PWD/target/release/reverentgeek" ../blog/scripts/build-native.sh
+SSQCH_BIN="$PWD/target/release/ssqch" ../blog/scripts/build-native.sh
 ```
 
-In production builds ssqch fingerprints the CSS and JS itself (`index.css` becomes
-`index.<hash>.css`), so the blog's `build:hash` step isn't needed.
-
-To build or serve the site directly:
+To build or serve the site directly, once the CSS and JS exist:
 
 ```sh
-cargo run --release -p reverentgeek -- build --root ../blog
-cargo run --release -p reverentgeek -- serve --root ../blog                    # watch + live reload
-cargo run --release -p reverentgeek --features avif -- build --root ../blog    # also write AVIF (slower)
+target/release/ssqch build --root ../blog
+target/release/ssqch serve --root ../blog    # watch + live reload
 ```
 
 The output goes to `../blog/dist`, and the build ends with a summary like
-`Wrote 168 pages and copied 12 files in 87.53ms (production mode)`. The first build encodes
-about 3,200 images, so expect it to take a few seconds. Later builds reuse them.
+`Wrote 168 pages and copied 12 files in 99.65ms (production mode)`. The first build encodes
+about 3,200 images, so expect it to take a while (see [Benchmarks](#benchmarks)). Later builds
+reuse them.
 
-`serve` doesn't build the CSS and JS. Pages link to the plain `index.css` when a watcher is
-writing it, and otherwise to the fingerprinted file the last production build left. To work on
-styles, run the blog's watchers alongside the server:
+`serve` doesn't build the CSS and JS. To work on styles, run the blog's watchers alongside the
+server:
 
 ```sh
 (cd ../blog && pnpm run serve:css) &
 (cd ../blog && pnpm run serve:js) &
-cargo run --release -p reverentgeek -- serve --root ../blog
+target/release/ssqch serve --root ../blog
 ```
 
-If neither file exists, ssqch warns that the CSS and JS haven't been built.
+Options: `--output DIR`, `--env development|production` (otherwise `$SSQCH_ENV` or `$NODE_ENV`;
+defaults to production for `build`, development for `serve`), `--verbose` for per-phase timings
+and the slowest images to encode, `--quiet` to print only warnings and errors.
 
-Options: `--output DIR`, `--env development|production` (otherwise `$SSQCH_ENV`, `$ELEVENTY_ENV`,
-`$NODE_ENV`; defaults to production for `build`, development for `serve`), `--verbose` for
-per-phase timings and the slowest images to encode, `--quiet` to print only warnings and errors.
-
-Like Eleventy, a build prints a line for each page it writes and each image it encodes:
+A build prints a line for each page it writes and each image it encodes:
 
 ```text
 [ssqch] Encoded ./src/site/content/images/hero.png into 10 files (webp, png) in 51.06ms
@@ -83,9 +73,9 @@ crates/sitesquatch       Generator core, CLI and dev server, as a library
 crates/sitesquatch-edge  Edge.js template engine (parser + JavaScript expression evaluator)
 crates/sitesquatch-js    ssqch.config.js support, on an embedded QuickJS engine
 plugins/rss              getNewestCollectionItemDate, dateToRfc3339/822, absoluteUrl, htmlToAbsoluteUrls, url
-plugins/image            <img> -> responsive <picture> (like @11ty/eleventy-img's transform)
-plugins/minify           Conservative HTML minifier (like html-minifier-terser's collapseWhitespace)
-examples/reverentgeek    The blog's .eleventy.js, src/utils/eleventy/*.js and _data/*.js, ported to Rust
+plugins/image            <img> -> responsive <picture>, and image() for data files
+plugins/minify           Conservative HTML minifier
+examples/reverentgeek    The blog's config ported to Rust, as an example of the Rust API
 ```
 
 ## Configuring a site
@@ -96,30 +86,41 @@ Install the `ssqch` command:
 cargo install --path crates/ssqch                    # add --features avif for AVIF images
 ```
 
-Then put an `ssqch.config.js` in your project root. If you've written an Eleventy config, this will
-look familiar:
+Then put an `ssqch.config.js` in your project root:
 
 ```js
 // ssqch.config.js
+import { defineConfig } from "ssqch";
+import { imagePlugin } from "ssqch/image";
+import { minifyPlugin } from "ssqch/minify";
+import { rssPlugin } from "ssqch/rss";
 import { slugify } from "./src/utils/slugify.js";
 import site from "./src/site.json";
 
-export default function (config) {
-  config.addPassthroughCopy({ "src/assets/fonts": "fonts" });
-  config.addWatchTarget("src/assets/");
+export default defineConfig(({ env }) => ({
+  dirs: { input: "src", output: "dist" },
+  templateFormats: ["edge", "md"],
+  passthrough: [{ "src/assets/fonts": "fonts" }, "src/favicon.ico"],
+  watch: ["src/assets/"],
 
-  config.addFilter("slug", (s) => slugify(s));
-  config.addFilter("isoDate", (d) => d.toISOString().slice(0, 10));
-  config.addShortcode("year", () => String(new Date().getFullYear()));
-  config.addGlobalData("site", site);
-  config.addGlobalData("snacks", async () => [{ name: "Pine Cone Crunch", stars: 5 }]);
+  filters: {
+    slug: (s) => slugify(s),
+    isoDate: (d) => d.toISOString().slice(0, 10),
+  },
+  data: {
+    site,
+    snacks: async () => [{ name: "Pine Cone Crunch", stars: 5 }],
+  },
+  collections: {
+    snacks: (pages) => pages.byTag("snacks").filter((p) => p.data.stars > 3),
+  },
 
-  config.addPlugin("ssqch:rss");
-  config.addPlugin("ssqch:image", { widths: [300, 600, 1200], formats: ["webp", "auto"] });
-  if (config.isProduction) config.addPlugin("ssqch:minify");
-
-  return { dir: { input: "src", output: "dist" }, templateFormats: ["edge", "md"] };
-}
+  plugins: [
+    rssPlugin(),
+    imagePlugin({ widths: [300, 600, 1200], formats: ["webp", "auto"] }),
+    env === "production" && minifyPlugin(),
+  ],
+}));
 ```
 
 ```sh
@@ -131,22 +132,31 @@ No Node install needed. The config runs on [QuickJS](https://github.com/quickjs-
 embedded in the `ssqch` binary (it adds about 1.2 MB), so modern JavaScript works: ES modules,
 `async`/`await`, arrow functions and the standard built-ins.
 
-| In your config | What it does |
+The default export is the config: an object, or a function (sync or async) that gets
+`{ env, serving }` and returns one. `defineConfig` just returns what it's given; it makes the
+file read as a config. Every key is optional:
+
+| Key | What it does |
 | --- | --- |
-| `addFilter`, `addShortcode` (and their `Async` versions) | Functions callable from templates: `{{ slug(title) }}`. Async functions are awaited. |
-| `addGlobalData(name, value)` | Data for every template. Pass a function (sync or async) to compute it on each build. |
-| `addPassthroughCopy(path)` or `({ from: to })` | Copy files or folders into the output. |
-| `addWatchTarget(path)` | More paths for `ssqch serve` to watch. |
-| `addCollection(name, (api) => ...)` | A custom collection. `api` has `getAll`, `getAllSorted`, `getFilteredByTag`, `getFilteredByTags` and `getFilteredByGlob`, like Eleventy's. |
-| `addTransform(name, function (content) { ... })` | Post-process every output file. `this.page` has `url`, `inputPath` and `outputPath`; `outputPath` is also the second argument. Return the content, changed or not. Async works. |
-| `on("eleventy.before" \| "eleventy.after", fn)` | Build hooks. `fn` gets `{ directories, runMode, outputMode }`, plus `results` after the build. Async works. |
-| `addPlugin("ssqch:rss" \| "ssqch:image" \| "ssqch:minify", options)` | Turn on a built-in plugin. |
-| `addPlugin(fn, options)` | Call `fn(config, options)`, like an Eleventy plugin. |
-| `setDataDeepMerge`, `setTemplateFormats`, `set{Input,Output,Includes,Data}Directory` | Settings, also accepted in the returned object or `export const config`. |
-| `config.env`, `config.isProduction`, `config.isDevelopment`, `config.serving` | Which build this is. `process.env` works too. |
+| `dirs` | `input` (default `.`), `output` (`_site`), and `includes` (`_includes`) and `data` (`_data`), relative to the input. |
+| `templateFormats` | File extensions to render (default `["edge", "md", "html"]`). |
+| `markdownEngine`, `htmlEngine` | The engine that runs over `.md` and `.html` files first (default `"edge"`; `false` for none). |
+| `deepMerge` | Merge objects and concatenate arrays through the data cascade (default `true`). |
+| `filters` | `{ name: function }`, callable from templates: `{{ slug(title) }}`. Async functions are awaited. |
+| `data` | `{ name: value }` for every template. A function (sync or async) is called on each build. |
+| `collections` | `{ name: (pages) => ... }`. `pages` has `all()`, `byTag(tag)`, `byTags(...tags)` and `byGlob(glob or globs)`, oldest first. |
+| `transforms` | `{ name: (content, page) => content }`, run on every output file. `page` has `url`, `inputPath` and `outputPath`. Return the content, changed or not. Async works. |
+| `passthrough` | Files or folders to copy: a path, or `{ from: to }`, or an array of them. |
+| `watch` | More paths for `ssqch serve` to watch. |
+| `beforeBuild`, `afterBuild` | Build hooks (a function or an array). They get `{ env, serving, dirs }`, plus `written` (the files written) after the build. Async works. |
+| `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `deepMerge`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` to have it show up in errors. |
+
+Two plugins defining the same filter, data or collection name is an error that names both. So
+are misspelled keys and options.
 
 Imports can be relative files (`./lib/filters.js`, with or without the extension), JSON
-(`import site from "./site.json"`), and these Node built-ins, with or without the `node:` prefix:
+(`import site from "./site.json"`), the built-in modules (`ssqch`, `ssqch/image`, `ssqch/rss`,
+`ssqch/minify`), and these Node built-ins, with or without the `node:` prefix:
 
 | Module | What's there |
 | --- | --- |
@@ -169,9 +179,9 @@ time, so module-level state in your config behaves the way it would in Node.
 
 ### JavaScript data files
 
-Like Eleventy, `_data/*.js` files are global data, and `*.11tydata.js` files next to a template or
-in a folder (`posts/posts.11tydata.js`) are template and directory data. The default export is the
-data, or a function (sync or async) that returns it:
+`_data/*.js` files are global data, and `*.data.js` files next to a template or in a folder
+(`posts/posts.data.js`) are template and directory data. The default export is the data, or a
+function (sync or async) that returns it:
 
 ```js
 // src/_data/snacks.js
@@ -183,10 +193,10 @@ export default async function () {
 ```
 
 ```js
-// src/posts/posts.11tydata.js
+// src/posts/posts.data.js
 export default {
   tags: "posts",
-  eleventyComputed: {
+  computed: {
     permalink: (data) => `/snacks/${data.page.fileSlug}/`,
   },
 };
@@ -196,43 +206,28 @@ Data functions run on every build. `ssqch serve` reloads a data file when it cha
 imports stay cached until you restart). These work with `sitesquatch.toml` sites too, no
 `ssqch.config.js` needed.
 
-Built-in plugin options:
+### Built-in plugins
 
-- **`ssqch:image`:** `formats` (`avif`, `webp`, `jpeg`, `png`, `auto`), `widths`,
+- **`ssqch/image`:** `imagePlugin(options)` turns every local `<img>` in HTML output into a
+  `<picture>`. Options: `formats` (`avif`, `webp`, `jpeg`, `png`, `auto`), `widths`,
   `defaultAttributes`, `outputDir`, `urlPath`, `webpQuality`, `avifQuality`, `avifSpeed`,
   `jpegQuality`, `minimumThreshold`, `prune`, `hashCache` (on by default; see
-  [Deploying from CI](#deploying-from-ci)). AVIF needs `ssqch` built with `--features avif`; on
-  x86_64 that build also needs the [nasm](https://nasm.us) assembler (`apt-get install nasm`,
-  `brew install nasm`), which the AVIF encoder uses for speed.
-- **`ssqch:minify`:** `collapseWhitespace`, `removeComments`, `shortDoctype` (all `true` by
-  default).
-- **`ssqch:rss`:** no options.
+  [Deploying from CI](#deploying-from-ci)). On an `<img>`, `ssqch:widths="300,600"` picks that
+  image's widths, a plain `width` attribute pins it to one width, and `ssqch:ignore` leaves it
+  alone. `image(src, { widths, formats })` generates one image's derivatives with the same
+  settings and cache, returning `{ webp: [{ url, width, height, srcset, sourceType, ... }] }`;
+  data files can call it even without the plugin. AVIF needs `ssqch` built with
+  `--features avif`; on x86_64 that build also needs the [nasm](https://nasm.us) assembler
+  (`apt-get install nasm`, `brew install nasm`), which the AVIF encoder uses for speed.
+- **`ssqch/minify`:** `minifyPlugin(options)` minifies HTML output, after the image transform.
+  `minify(html, options)` does the same for a string. Options: `collapseWhitespace`,
+  `removeComments`, `shortDoctype` (all `true` by default).
+- **`ssqch/rss`:** `rssPlugin()` adds the filters `getNewestCollectionItemDate`, `dateToRfc3339`,
+  `dateToRfc822`, `absoluteUrl`, `htmlToAbsoluteUrls` and `url`. The same functions are named
+  exports, for use in your own code.
 
 Errors point back at your code: `ssqch.config.js: too many pine cones` followed by a stack trace
-like `at bad (lib/filters.js:3:9)`. Misspelled plugin names and options are errors, not silently
-ignored.
-
-### Running an Eleventy config
-
-Many Eleventy configs run unchanged. ssqch answers imports of these packages with its own
-modules, backed by the built-in plugins:
-
-| Import | What you get |
-| --- | --- |
-| `@11ty/eleventy-img` | `Image(src, options)`, returning eleventy-img's metadata (`{ webp: [{ url, width, height, srcset, sourceType, ... }] }`), and `eleventyImageTransformPlugin` |
-| `@11ty/eleventy-plugin-rss` | The plugin (its filters), plus `getNewestCollectionItemDate`, `dateToRfc3339`, `dateToRfc822`, `absoluteUrl` and `convertHtmlToAbsoluteUrls` |
-| `html-minifier-terser` | `minify(html, options)` with `collapseWhitespace`, `removeComments` and `useShortDoctype` (off unless set, like html-minifier) |
-| `eleventy-plugin-edgejs` | Nothing to do: Edge is built in |
-| `eleventy-plugin-broken-links` | A warning that it isn't available |
-
-The same modules are importable as `ssqch:image`, `ssqch:rss` and `ssqch:minify`. Options ssqch
-can't honor, such as sharp's `effort` or a `transform` function, are ignored with a warning. An
-`Image()` call whose `outputDir` or `urlPath` doesn't match the build is an error, not a surprise.
-The ReverentGeek blog builds from its real `.eleventy.js` with a one-line `ssqch.config.js`:
-
-```js
-export { default } from "./.eleventy.js";
-```
+like `at bad (lib/filters.js:3:9)`.
 
 Dates and numbers format like Node for `en-US`: `toLocaleDateString()`, `toLocaleTimeString()`,
 `toLocaleString()`, `Intl.DateTimeFormat` and `Intl.NumberFormat` match Node 24 on
@@ -240,11 +235,9 @@ Dates and numbers format like Node for `en-US`: `toLocaleDateString()`, `toLocal
 other locales, and time zones other than UTC and the machine's, throw instead of formatting
 something else.
 
-> **Note:** these aren't supported yet: other npm packages, CommonJS (`require`,
-> `module.exports`), Node built-ins beyond the ones above (such as `node:crypto`), paired
-> shortcodes, `addExtension`, the `eleventy.beforeWatch` event, timers and `fetch`. Calling an
-> unsupported method fails with a message saying so. After editing the config, restart
-> `ssqch serve` to pick up the changes.
+> **Note:** these aren't supported yet: npm packages, CommonJS (`require`, `module.exports`),
+> Node built-ins beyond the ones above (such as `node:crypto`), timers and `fetch`. After
+> editing the config, restart `ssqch serve` to pick up the changes.
 
 ### Configuring with TOML
 
@@ -263,7 +256,7 @@ template_formats = ["edge", "md", "html"]
 ## Extending ssqch in Rust
 
 When JavaScript isn't enough (a new template engine, a heavy transform), a site can be its own small
-Rust binary. That's how the ReverentGeek blog is built:
+Rust binary. `examples/reverentgeek` builds the ReverentGeek blog this way:
 
 ```rust
 fn main() -> std::process::ExitCode {
@@ -280,27 +273,28 @@ fn main() -> std::process::ExitCode {
 A plugin implements `sitesquatch::Plugin` (any `Fn(&mut Config)` works too) and registers things on
 the `Config`:
 
-| API | Eleventy equivalent |
+| API | In `ssqch.config.js` |
 | --- | --- |
-| `add_filter`, `add_shortcode`, `add_global` | `addFilter`, `addShortcode` (Edge globals, as in eleventy-plugin-edgejs) |
-| `add_global_data(name, \|ctx\| ...)` | a JavaScript file in `_data/` |
-| `add_collection(name, \|api\| ...)` | `addCollection` (`get_all`, `get_filtered_by_tag(s)`) |
-| `add_transform(name, \|ctx, html\| ...)` | `addTransform` |
-| `add_template_engine(ext, factory)` | `addExtension` (Markdown and Edge use this same trait) |
-| `on_before_build`, `on_after_build` | `eleventy.before` / `eleventy.after` |
-| `add_passthrough_copy[_to]`, `add_watch_target` | same |
+| `add_filter`, `add_global` | `filters` (Edge globals) |
+| `add_global_data(name, \|ctx\| ...)` | `data`, or a JavaScript file in `_data/` |
+| `add_collection(name, \|api\| ...)` | `collections` (`all`, `by_tag`, `by_tags`) |
+| `add_transform(name, \|ctx, html\| ...)` | `transforms` |
+| `add_template_engine(ext, factory)` | not available (Markdown and Edge use this same trait) |
+| `on_before_build`, `on_after_build` | `beforeBuild`, `afterBuild` |
+| `add_passthrough_copy[_to]`, `add_watch_target` | `passthrough`, `watch` |
 
 Plugins can share services. The image plugin exposes an `ImageProcessor`, and the blog plugin uses
 it for `heroImage` data and the `socialImage` filter.
 
-### Supported Eleventy features
+### Templates and data
 
-Data cascade (global `_data` JSON/YAML/TOML < layout front matter < directory data < template data
-file < front matter < `eleventyComputed`), deep merge, tags and collections (sorted by date), custom
-collections, pagination (`data`, `size`, `alias`, `reverse`, `filter`, `addAllPagesToCollections`,
-hrefs), dynamic permalinks, `permalink: false`, `dynamicPermalink`, `eleventyExcludeFromCollections`,
-`templateEngineOverride`, `markdownTemplateEngine`/`htmlTemplateEngine`, layout chaining,
-`page.*`, `templateContent` in collections, output conflict detection.
+Data cascade (global `_data` JSON/YAML/TOML/JavaScript < layout front matter < directory data <
+template data file < front matter < `computed`), deep merge, tags and collections (sorted by
+date), custom collections, pagination (`data`, `size`, `alias`, `reverse`, `filter`,
+`addAllPagesToCollections`, hrefs), dynamic permalinks, `permalink: false`, `dynamicPermalink`,
+`excludeFromCollections`, `templateEngineOverride`, layout chaining, `page.*`, `templateContent`
+in collections, output conflict detection. Every template can read `ssqch.version`, `ssqch.env`,
+`ssqch.serving` and `ssqch.generator`.
 
 ### Edge.js support
 
@@ -317,36 +311,32 @@ shorthand and spread, template literals, optional chaining, arrow functions, ter
 `JSON`, `Object`, `Math`, `Array` globals. Errors report `template:line` through the
 include/component chain.
 
-## Benchmarks vs. Eleventy
+## Benchmarks
 
 These numbers come from building the ReverentGeek blog (161 HTML pages plus feed, sitemap and
 Netlify files) on an Apple M5 Pro (15 cores) in November 2026, all in production mode (HTML
-minification on) against the same copy of the blog. Eleventy 4.0.0-alpha.10 ran as the blog's
-`build:eleventy` step (`eleventy` called directly, no npx/pnpm wrapper). The ssqch builds are the
-Rust port (`examples/reverentgeek`) with and without AVIF, and the `ssqch` binary running the blog's
-real `.eleventy.js`. Each wrote to its own output folder, so no image cache was shared.
+minification on). The builds are the Rust port (`examples/reverentgeek`) with and without AVIF,
+and the `ssqch` binary running the blog's JavaScript config. Each wrote to its own output folder,
+so no image cache was shared.
 
-| Build | Eleventy 4.0.0-alpha.10 | ssqch default (no AVIF) | ssqch `--features avif` (same formats) | ssqch running `.eleventy.js` (AVIF) |
-| --- | --- | --- | --- | --- |
-| **Cold** (no images cached) | **91.3 s** | **8.0 s** (11x faster) | **30.8 s** (3.0x faster) | **25.0 s** (3.7x faster) |
-| CPU time, cold (user + sys) | 1,042 s | 79 s | 323 s | 335 s |
-| Peak memory, cold | 1.75 GB | 1.41 GB | 1.54 GB | 1.80 GB |
-| **Warm** (images cached, median of 3) | **1.28 s** | **0.09 s** (14x faster) | **0.10 s** (13x faster) | **0.16 s** (8x faster) |
-| Peak memory, warm | ~378 MB | ~52 MB | ~50 MB | ~47 MB |
-| Image files written | 4,980 (273 MB) | 3,160 (233 MB) | 4,689 (268 MB) | 4,689 (268 MB) |
+| Build | Rust port (no AVIF) | Rust port, `--features avif` | `ssqch` with the JavaScript config (AVIF) |
+| --- | --- | --- | --- |
+| **Cold** (no images cached) | **8.0 s** | **30.8 s** | **25.0 s** |
+| CPU time, cold (user + sys) | 79 s | 323 s | 335 s |
+| Peak memory, cold | 1.41 GB | 1.54 GB | 1.80 GB |
+| **Warm** (images cached, median of 3) | **0.09 s** | **0.10 s** | **0.16 s** |
+| Peak memory, warm | ~52 MB | ~50 MB | ~47 MB |
+| Image files written | 3,160 (233 MB) | 4,689 (268 MB) | 4,689 (268 MB) |
 
-- **Warm builds** are what the dev server and cached CI builds do. Eleventy's own log reports about
-  1.2 s; ssqch reports about 67 ms for the Rust port. Wall times above include process startup
-  (Node vs. a native binary).
+- **Warm builds** are what the dev server and cached CI builds do. Wall times include process
+  startup.
 - **Running the JavaScript config** costs about 70 ms more than the Rust port on a warm build:
-  that's the blog's collections, filters and data files running in QuickJS.
+  that's the blog's collections, filters and data files running in QuickJS. These numbers were
+  measured before the blog's config moved to `defineConfig`; it runs the same filters,
+  collections and data files.
 - **Cold builds** are dominated by image encoding, and AVIF is the most expensive format. They're
   single runs and vary: the two AVIF builds do the same encoding work, and AVIF cold builds ranged
-  from 21 s to 31 s across four runs.
-- The AVIF encoders differ: Eleventy uses sharp/libaom at effort 4, ssqch uses ravif at speed 8.
-  Total sizes came out about the same, but image quality wasn't compared.
-- Eleventy writes more image files, mostly AVIF/WebP versions of GIF first frames and of SVGs;
-  ssqch copies GIFs (keeping them animated) and serves SVGs as they are.
+  from 21 s to 31 s across four runs. ssqch encodes AVIF with ravif at speed 8 (`avifSpeed`).
 - Only the site generation step is measured. Building the CSS and JavaScript isn't included.
 
 To reproduce on macOS, run `scripts/bench.sh [path/to/blog] [warm-runs]` (the blog defaults to
@@ -366,43 +356,22 @@ images), so ssqch remembers each image's id, with its size and modification time
 `.cache/ssqch/image-hashes.json` under the project root. Unchanged files skip the read, and a
 changed size or modification time means hashing the file again. A fresh clone has all-new
 modification times, so its first build re-hashes everything and gets the same ids. Add `.cache/` to
-your `.gitignore` (Eleventy uses it too), or turn the cache off with `hashCache: false` on the
-`ssqch:image` plugin (`ImageOptions::hash_cache` in Rust). It lives outside the output folder
-because it names your source paths, and the output gets published.
+your `.gitignore`, or turn the cache off with `hashCache: false` on `imagePlugin()`
+(`ImageOptions::hash_cache` in Rust). It lives outside the output folder because it names your
+source paths, and the output gets published.
 
-Set `ImageOptions::prune` and ssqch deletes derivatives the build didn't use, so the cache doesn't
-keep growing as images are edited or removed. Only turn it on for full builds where every image
-goes through the image plugin. The blog enables it in production.
+Set `prune: true` on `imagePlugin()` (`ImageOptions::prune` in Rust) and ssqch deletes
+derivatives the build didn't use, so the cache doesn't keep growing as images are edited or
+removed. Only turn it on for full builds where every image goes through the image plugin.
 
-The blog deploys to Netlify from GitHub Actions without a Node toolchain:
+The blog deploys to Netlify from GitHub Actions:
 
-1. Restore the cached ssqch binary (compiled only when this repository changes), `dist/img`, and
-   the downloaded Tailwind and esbuild binaries.
+1. Restore the cached `ssqch` binary (compiled only when the pinned sitesquatch commit changes),
+   `dist/img`, and the downloaded Tailwind and esbuild binaries.
 2. Run `scripts/build-native.sh`.
 3. Run the smoke tests.
 4. Run `netlify deploy --prod --dir dist`. Netlify only uploads files whose contents changed, so a
    new post sends a few pages and that post's images.
-
-## Parity with the 11ty build
-
-The ReverentGeek blog builds two ways: from its real `.eleventy.js` (the one-line
-`ssqch.config.js` above), and from the Rust port in `examples/reverentgeek`. Both were compared
-file by file with Eleventy 4.0.0-alpha.10's build of the same source, all three built with
-`TZ=UTC` (as on Netlify) and AVIF on:
-
-- The two ssqch builds are identical on all 183 files.
-- Against Eleventy, the file set is the same, the blog's `test/smoke.test.js` passes, and
-  `sitemap.xml`, `_headers`, `_redirects`, `robots.txt`, `llms.txt` and `webfinger` are
-  byte-identical.
-- 169 of 182 files are identical once image file names (each tool hashes its own), attribute
-  order, and the minifier differences listed below are ignored. The other 13:
-  - **GIFs are copied as they are** (11 pages). eleventy-img (without `sharpOptions.animated`)
-    re-encodes them and keeps only the first frame; ssqch copies GIFs for `auto` output. Most of
-    the blog's GIFs are single-frame anyway; the 3 animated ones (on 3 pages) stay animated.
-  - **SVGs are served as SVGs** (`/portfolio/`). eleventy-img also rasterizes them to AVIF and
-    WebP.
-  - **`feed.xml`:** raw `<br />` and `<img ... />` that a post's author wrote stay as written;
-    Eleventy's RSS plugin reserializes them as `<br>`. The posts' text is otherwise identical.
 
 ## Not done yet / known gaps
 
@@ -417,10 +386,10 @@ file by file with Eleventy 4.0.0-alpha.10's build of the same source, all three 
 - Markdown: pulldown-cmark with tables and strikethrough, adjusted to match markdown-it (`<s>`,
   single `~` left literal, `<img>`/`<hr>`/`<br>` without a slash, table alignment styles, line
   breaks in alt text), but it leaves `"` unescaped in text.
-- The minifier doesn't rewrite attribute values like html-minifier does (`defer="defer"`, spaces
-  in a viewport `content`).
-- Images: no SVG rasterizing, and no color-profile conversion (profiles are dropped).
+- The minifier doesn't shorten attribute values (`defer="defer"`, spaces in a viewport `content`).
+- Images: no SVG rasterizing, and no color-profile conversion (profiles are dropped). SVGs are
+  served as they are, and GIFs are copied for `auto` output, so animations keep working.
 - Custom collections see pages that aren't paginated over collections. Pages paginated over
   collections are added to `all`/tags afterwards.
-- No `eleventy-plugin-broken-links` equivalent. The output directory isn't cleaned (like Eleventy).
-- `{{ eleventy.version }}` renders SiteSquatch's version.
+- No link checker or asset fingerprinting yet (the blog uses its own scripts). The output
+  directory isn't cleaned before a build.
