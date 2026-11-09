@@ -8,7 +8,14 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
-## Unreleased
+## 0.2.6 - 2026-11-08
+
+### Fixed
+
+- Windows: relative paths handed to templates and JavaScript (`page.inputPath`, a transform's
+  `inputPath`, the hook event's `dirs`, the build log) use `/`, so `byGlob()` matches. Paths
+  are canonicalized without the `\\?\` prefix, so `image()` finds its files, and
+  `import.meta.url`, `pathToFileURL` and `fileURLToPath` handle `file:///C:/...` URLs.
 
 ### Added
 

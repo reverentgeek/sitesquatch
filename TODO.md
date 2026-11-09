@@ -154,7 +154,7 @@ Settle this before the first tag, since the release workflow keys off it.
 - [x] Build for the common platforms: Linux x86_64 (static musl), macOS arm64 and x86_64, and
       Windows x86_64, each on its native runner, with nasm from apt, Homebrew or Chocolatey
       (`.github/build-setup.yml` puts Chocolatey's on PATH). Each binary is smoke-tested on its
-      own platform before publishing. Not released yet.
+      own platform before publishing. Released in 0.2.6.
 - [ ] Linux aarch64 (static musl), when someone needs it.
 - [x] Ship AVIF support in the release builds (`features = ["avif"]` in `crates/ssqch/Cargo.toml`;
       dist installs `nasm` from apt). ARM builds won't need nasm.
