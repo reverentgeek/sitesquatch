@@ -7,8 +7,9 @@
 # Gatekeeper looks the ticket up online instead, so the archives don't change
 # after signing.
 #
-# Secrets: NOTARY_API_KEY (the App Store Connect API key's .p8 contents),
-# NOTARY_API_KEY_ID and NOTARY_API_ISSUER.
+# Secrets (the same names as in reverentgeek/metermaid): APPLE_ID (the Apple
+# ID's email), APPLE_PASSWORD (an app-specific password for it) and
+# APPLE_TEAM_ID (the 10-character Developer Team ID).
 name: Notarize
 
 on:
@@ -46,21 +47,18 @@ jobs:
           echo "$info" | grep -q "flags=.*runtime" || { echo "::error::the signature doesn't use the hardened runtime (CODESIGN_OPTIONS=runtime)"; exit 1; }
       - name: Submit to Apple's notary service
         env:
-          NOTARY_API_KEY: ${{ secrets.NOTARY_API_KEY }}
-          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
-          NOTARY_API_ISSUER: ${{ secrets.NOTARY_API_ISSUER }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          for v in NOTARY_API_KEY NOTARY_API_KEY_ID NOTARY_API_ISSUER; do
+          for v in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
             [ -n "${!v}" ] || { echo "::error::the $v secret isn't set"; exit 1; }
           done
-          key="$RUNNER_TEMP/notary.p8"
-          printf '%s' "$NOTARY_API_KEY" > "$key"
+          auth=(--apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID")
           ditto -c -k ssqch ssqch.zip
-          xcrun notarytool submit ssqch.zip --key "$key" --key-id "$NOTARY_API_KEY_ID" --issuer "$NOTARY_API_ISSUER" \
-            --wait --timeout 30m --output-format json | tee result.json
+          xcrun notarytool submit ssqch.zip "${auth[@]}" --wait --timeout 30m --output-format json | tee result.json
           id=$(python3 -c 'import json; print(json.load(open("result.json"))["id"])')
-          xcrun notarytool log "$id" --key "$key" --key-id "$NOTARY_API_KEY_ID" --issuer "$NOTARY_API_ISSUER"
-          rm -f "$key"
+          xcrun notarytool log "$id" "${auth[@]}"
           status=$(python3 -c 'import json; print(json.load(open("result.json"))["status"])')
           [ "$status" = Accepted ] || { echo "::error::notarization status: $status"; exit 1; }
       - name: Gatekeeper accepts it

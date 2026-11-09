@@ -71,9 +71,11 @@ these repository secrets (`gh secret set NAME < file`):
 - `CODESIGN_CERTIFICATE_PASSWORD`: the password chosen when exporting it.
 - `CODESIGN_IDENTITY`: the certificate's name, like `Developer ID Application: Name (TEAMID)`
   (`security find-identity -v -p codesigning`).
-- `NOTARY_API_KEY`, `NOTARY_API_KEY_ID`, `NOTARY_API_ISSUER`: an App Store Connect API key
-  (Users and Access, Integrations, App Store Connect API): the `.p8` file's contents, its key
-  ID and the issuer ID.
+- `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`: for notarization, the Apple ID's email, an
+  app-specific password for it (appleid.apple.com, Sign-In and Security), and the 10-character
+  Developer Team ID. These are the same names as in `reverentgeek/metermaid`, whose
+  `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` and `APPLE_SIGNING_IDENTITY` hold the
+  same values as the three `CODESIGN_*` secrets here (dist needs those names).
 
 Without them, the release builds fail: GitHub passes a missing secret as an empty string, and
 dist tries to sign with it.
