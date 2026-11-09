@@ -1,0 +1,70 @@
+# Notarizes the signed macOS binaries with Apple, so Gatekeeper lets them run
+# when they're downloaded with a browser. dist signs them while building
+# (`macos-sign` in dist-workspace.toml) and calls this afterwards
+# (`global-artifacts-jobs`); if it fails, the release isn't published.
+#
+# A bare command-line binary can't have a notarization ticket stapled to it.
+# Gatekeeper looks the ticket up online instead, so the archives don't change
+# after signing.
+#
+# Secrets: NOTARY_API_KEY (the App Store Connect API key's .p8 contents),
+# NOTARY_API_KEY_ID and NOTARY_API_ISSUER.
+name: Notarize
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  notarize:
+    name: notarize (${{ matrix.target }})
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: artifacts-build-local-${{ matrix.target }}
+          path: artifacts
+      - name: Unpack the binary
+        run: |
+          mkdir unpacked
+          tar xzf "artifacts/ssqch-${{ matrix.target }}.tar.gz" -C unpacked
+          cp "unpacked/ssqch-${{ matrix.target }}/ssqch" .
+      - name: Check the signature
+        run: |
+          codesign --verify --strict --verbose=2 ssqch
+          info=$(codesign --display --verbose=4 ssqch 2>&1)
+          echo "$info"
+          echo "$info" | grep -q "^Authority=Developer ID Application" || { echo "::error::not signed with a Developer ID Application certificate"; exit 1; }
+          echo "$info" | grep -q "^Timestamp=" || { echo "::error::the signature has no secure timestamp, which notarization requires"; exit 1; }
+          echo "$info" | grep -q "flags=.*runtime" || { echo "::error::the signature doesn't use the hardened runtime (CODESIGN_OPTIONS=runtime)"; exit 1; }
+      - name: Submit to Apple's notary service
+        env:
+          NOTARY_API_KEY: ${{ secrets.NOTARY_API_KEY }}
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER: ${{ secrets.NOTARY_API_ISSUER }}
+        run: |
+          for v in NOTARY_API_KEY NOTARY_API_KEY_ID NOTARY_API_ISSUER; do
+            [ -n "${!v}" ] || { echo "::error::the $v secret isn't set"; exit 1; }
+          done
+          key="$RUNNER_TEMP/notary.p8"
+          printf '%s' "$NOTARY_API_KEY" > "$key"
+          ditto -c -k ssqch ssqch.zip
+          xcrun notarytool submit ssqch.zip --key "$key" --key-id "$NOTARY_API_KEY_ID" --issuer "$NOTARY_API_ISSUER" \
+            --wait --timeout 30m --output-format json | tee result.json
+          id=$(python3 -c 'import json; print(json.load(open("result.json"))["id"])')
+          xcrun notarytool log "$id" --key "$key" --key-id "$NOTARY_API_KEY_ID" --issuer "$NOTARY_API_ISSUER"
+          rm -f "$key"
+          status=$(python3 -c 'import json; print(json.load(open("result.json"))["status"])')
+          [ "$status" = Accepted ] || { echo "::error::notarization status: $status"; exit 1; }
+      - name: Gatekeeper accepts it
+        run: |
+          # As if it came from a browser download.
+          xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;" ssqch
+          spctl --assess --type execute --verbose=4 ssqch

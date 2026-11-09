@@ -18,6 +18,9 @@ targets = ["x86_64-unknown-linux-musl", "aarch64-apple-darwin", "x86_64-apple-da
 install-updater = false
 # Sign the build provenance of each archive (GitHub artifact attestations)
 github-attestations = true
+# Sign the macOS binaries with a Developer ID certificate (hardened runtime, so they
+# can be notarized). Needs the CODESIGN_* repository secrets; see CLAUDE.md.
+macos-sign = true
 # .tar.gz rather than .tar.xz, so installing only needs tar and gzip
 unix-archive = ".tar.gz"
 # Pull requests only run `dist plan` (seconds). The release binaries are built
@@ -28,9 +31,10 @@ pr-run-mode = "plan"
 # Keep the Rust build cache in the release builds (dist only caches them by
 # default when pull requests build them too).
 cache-builds = true
-# Run the Linux binary before publishing (.github/workflows/smoke-test.yml).
-# A failure stops the release.
-global-artifacts-jobs = ["./smoke-test"]
+# Run each binary before publishing (.github/workflows/smoke-test.yml), and
+# notarize the macOS ones (.github/workflows/notarize.yml). A failure stops the
+# release.
+global-artifacts-jobs = ["./smoke-test", "./notarize"]
 # On a tag, wait for CI to pass on the tagged commit before building
 # (.github/workflows/check-ci.yml). A failed or missing CI run stops the release.
 plan-jobs = ["./check-ci"]

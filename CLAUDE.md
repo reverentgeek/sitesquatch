@@ -60,6 +60,24 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configur
 5. Publish the crates from the tag: `cargo publish --workspace --locked`. It publishes them in
    dependency order, using the crates.io token in `~/.cargo/credentials.toml`.
 
+### macOS signing and notarization
+
+dist signs the macOS binaries (`macos-sign`, hardened runtime from `.github/build-setup.yml`),
+and `.github/workflows/notarize.yml` notarizes them before a release is published. They need
+these repository secrets (`gh secret set NAME < file`):
+
+- `CODESIGN_CERTIFICATE`: a Developer ID Application certificate exported from Keychain Access
+  as a `.p12`, base64-encoded (`base64 -i cert.p12`).
+- `CODESIGN_CERTIFICATE_PASSWORD`: the password chosen when exporting it.
+- `CODESIGN_IDENTITY`: the certificate's name, like `Developer ID Application: Name (TEAMID)`
+  (`security find-identity -v -p codesigning`).
+- `NOTARY_API_KEY`, `NOTARY_API_KEY_ID`, `NOTARY_API_ISSUER`: an App Store Connect API key
+  (Users and Access, Integrations, App Store Connect API): the `.p8` file's contents, its key
+  ID and the issuer ID.
+
+Without them, the release builds fail: GitHub passes a missing secret as an empty string, and
+dist tries to sign with it.
+
 ## Conventions
 
 - Commit subjects are short, imperative, in sentence case (`Fix unstyled pages when serving
