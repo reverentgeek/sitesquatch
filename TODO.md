@@ -7,8 +7,8 @@ a change here say **Needs ssqch:**. When one side finishes, tick it and update t
 The order of work:
 
 1. ~~**Remove Eleventy**, and convert the blog to a native `ssqch.config.js`.~~ Done (below).
-2. **A Linux x86_64 release and an install script**, the smallest part of "Prebuilt binaries"
-   that lets the blog go back to Netlify builds.
+2. ~~**A Linux x86_64 release and an install script**, so the blog can go back to Netlify
+   builds.~~ Done: v0.2.1, and the blog builds on Netlify (2026-11-08).
 3. **The blog's other requests** (fingerprinting, color profiles, link checking).
 4. **The rest of the release and adoption work.**
 
@@ -41,8 +41,8 @@ were edited). What changed, for the changelog's first "Breaking" entry:
 Follow-ups:
 
 - [x] Write the `CHANGELOG.md` entry above (under "Unreleased" until the first release).
-- [ ] **Blog:** pin `SSQCH_REF` in its deploy workflow to the commit that adds `defineConfig`,
-      once it's pushed. Push this repository first: the blog's deploy builds ssqch from it.
+- [x] **Blog:** pin the ssqch it builds with. It now installs a pinned release instead
+      (`SSQCH_VERSION` in its `netlify.toml`).
 - [ ] Type definitions for `defineConfig` and the `ssqch/*` modules (a `.d.ts`), for editor
       hints. They'd ship in the npm package, if there is one.
 
@@ -97,19 +97,23 @@ itself (**Blog:** "Step 2" in `../blog/TODO.md`):
       version, it checks the archive's checksum, and `SSQCH_UNMANAGED_INSTALL=<dir>` installs
       into that directory without touching shell profiles:
       `curl -fsSL https://github.com/reverentgeek/sitesquatch/releases/download/v0.2.0/ssqch-installer.sh | SSQCH_UNMANAGED_INSTALL=.cache/bin sh`.
-- [ ] Measure a cold build of the blog (no `dist/img` cache, about 4,700 image files with AVIF)
-      on a Netlify-sized machine, and check it fits Netlify's build timeout. On a 4-core GitHub
-      runner it takes about 4m 45s (PR #2's benchmark). If it doesn't fit, lower `avifSpeed`
-      for the first build, or prime the cache once.
-- [ ] If a benchmark is needed again, don't compile in it: trigger on `workflow_run` of the
+- [x] Check a cold build of the blog fits Netlify's build timeout. The first Netlify build
+      (deploy `6af12456`, ssqch 0.2.1) took 259 s; a warm one takes 18 s. On a 4-core GitHub
+      runner a cold build takes about 4m 45s (PR #2's benchmark).
+- [x] **Blog:** builds on Netlify from `netlify.toml`, installing the pinned release. Its
+      GitHub Actions deploy and `scripts/build-native.sh` are deleted.
+- Note: if a benchmark is needed again, don't compile in it: trigger on `workflow_run` of the
       Release workflow, download its PR artifact (the musl binary that would ship), and compare
       it with the latest release from its installer. No glibc reference build. Use a stratified
       sample of the blog's source images (about 80–100, matching the mix of formats and sizes),
       run 5–10 cold builds per binary interleaved (A, B, A, B, ...), and report the median and
       spread, plus CPU time. PR #2's `bench-allocator.yml` is the starting point (it's in that
       PR's history).
-- [ ] Document the Netlify recipe: the `netlify.toml` build command, caching `dist/img` and
-      `.cache/ssqch` with `netlify-plugin-cache`, and pinning the ssqch version.
+- [ ] Document the Netlify recipe in the README, using the blog's `netlify.toml` as the example:
+      the build command (the installer with `SSQCH_UNMANAGED_INSTALL`, then the build), the
+      pinned `SSQCH_VERSION`, and caching `dist/img` and `.cache/ssqch` with
+      `netlify-plugin-cache`. The README's "Deploying from CI" section still describes the
+      blog's old GitHub Actions deploy, so replace that part.
 
 ### Versioning
 
@@ -191,8 +195,8 @@ reuse it, and crates.io comes before `cargo binstall`.
 ### Using it in CI
 
 - [ ] A GitHub Action (`reverentgeek/setup-ssqch`, a separate repository) that installs a pinned
-      version with the install script, for sites that build in GitHub Actions. The blog won't
-      need it once it builds on Netlify.
+      version with the install script, for sites that build in GitHub Actions. The blog doesn't
+      need it (it builds on Netlify).
 
 ### Getting started
 
