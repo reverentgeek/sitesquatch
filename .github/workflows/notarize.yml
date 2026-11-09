@@ -63,6 +63,10 @@ jobs:
           [ "$status" = Accepted ] || { echo "::error::notarization status: $status"; exit 1; }
       - name: Gatekeeper accepts it
         run: |
-          # As if it came from a browser download.
+          # As if it came from a browser download. A command-line tool isn't an
+          # app, so `--type execute` always rejects it; Gatekeeper checks a
+          # downloaded tool's primary signature, which must be notarized.
           xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;" ssqch
-          spctl --assess --type execute --verbose=4 ssqch
+          result=$(spctl --assess --type open --context context:primary-signature --verbose=4 ssqch 2>&1) || true
+          echo "$result"
+          echo "$result" | grep -q "accepted" && echo "$result" | grep -q "source=Notarized Developer ID" || { echo "::error::Gatekeeper doesn't accept the binary as notarized"; exit 1; }
