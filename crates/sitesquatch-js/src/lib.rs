@@ -241,7 +241,7 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
             "transform" => {
                 let f = engine.function(op.get("fn"))?;
                 cfg.add_transform(name, move |tctx, html| {
-                    let input_path = tctx.input_path.strip_prefix(&tctx.build.root).map(|p| format!("./{}", p.display())).unwrap_or_else(|_| tctx.input_path.display().to_string());
+                    let input_path = sitesquatch::display_path(tctx.build, tctx.input_path);
                     let page = Value::from_pairs([
                         ("url", Value::from(tctx.url)),
                         ("inputPath", Value::from(input_path)),
@@ -286,7 +286,7 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
 fn hook_event(ctx: &sitesquatch::BuildContext, report: Option<&sitesquatch::BuildReport>) -> Value {
     let rel = |p: &Path| match p.strip_prefix(&ctx.root) {
         Ok(r) if r.as_os_str().is_empty() => "./".to_string(),
-        Ok(r) => format!("./{}/", r.display()),
+        Ok(r) => format!("./{}/", sitesquatch::slashes(r)),
         Err(_) => format!("{}/", p.display()),
     };
     let dirs = Value::from_pairs([
