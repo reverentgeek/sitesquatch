@@ -10,7 +10,11 @@ cargo-dist-version = "0.34.0"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
-installers = ["shell", "powershell"]
+installers = ["shell", "powershell", "homebrew"]
+# The Homebrew formula goes to this tap (`brew install reverentgeek/tap/ssqch`). Publishing
+# it needs a HOMEBREW_TAP_TOKEN repository secret that can push to the tap; see CLAUDE.md.
+tap = "reverentgeek/homebrew-tap"
+publish-jobs = ["homebrew"]
 # Target platforms to build apps for (Rust target-triple syntax). Linux is a
 # static musl binary, so it runs on any distro (and Netlify's build image).
 targets = ["x86_64-unknown-linux-musl", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"]
@@ -27,7 +31,7 @@ unix-archive = ".tar.gz"
 # and smoke-tested on version tags, after CI passes on the tagged commit. For a
 # pull request that changes how releases are built (this file, the workflows,
 # .github/build-setup.yml), set this to "upload" there to build them on the PR.
-pr-run-mode = "plan"
+pr-run-mode = "upload"
 # Keep the Rust build cache in the release builds (dist only caches them by
 # default when pull requests build them too).
 cache-builds = true

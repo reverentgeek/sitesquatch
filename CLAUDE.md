@@ -76,6 +76,9 @@ these repository secrets (`gh secret set NAME < file`):
   Developer Team ID. These are the same names as in `reverentgeek/metermaid`, whose
   `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` and `APPLE_SIGNING_IDENTITY` hold the
   same values as the three `CODESIGN_*` secrets here (dist needs those names).
+- `HOMEBREW_TAP_TOKEN`: a fine-grained personal access token with Contents read and write
+  access to `reverentgeek/homebrew-tap`. dist's `publish-homebrew-formula` job uses it to push
+  `Formula/ssqch.rb` after each release.
 
 Without them, the release builds fail: GitHub passes a missing secret as an empty string, and
 dist tries to sign with it.
