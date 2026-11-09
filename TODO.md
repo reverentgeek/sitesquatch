@@ -241,9 +241,9 @@ reuse it, and crates.io comes before `cargo binstall`.
 - [x] Support `cargo binstall ssqch`: `[package.metadata.binstall]` in `crates/ssqch/Cargo.toml`
       points at the release archives (the Windows zip has no folder inside). It takes effect from
       the first release published with it; check `cargo binstall ssqch` then.
-- [ ] A Homebrew tap (`brew install reverentgeek/tap/ssqch`). That needs a separate
-      `reverentgeek/homebrew-tap` repository, plus a release job (and a token with access to it)
-      that updates the formula.
+- [x] A Homebrew tap (`brew install reverentgeek/tap/ssqch`): dist's `homebrew` installer
+      writes the formula, and its publish job pushes it to `reverentgeek/homebrew-tap` with the
+      `HOMEBREW_TAP_TOKEN` secret. First published with the next release.
 - [ ] Consider an npm package that downloads the matching binary (like esbuild's platform
       packages), so a site with a `package.json` can pin ssqch as a dev dependency and run
       `npx ssqch build`. That would also make a Netlify build pick up ssqch from `pnpm install`,
@@ -251,9 +251,9 @@ reuse it, and crates.io comes before `cargo binstall`.
 
 ### Using it in CI
 
-- [ ] A GitHub Action (`reverentgeek/setup-ssqch`, a separate repository) that installs a pinned
-      version with the install script, for sites that build in GitHub Actions. The blog doesn't
-      need it (it builds on Netlify).
+- [x] A GitHub Action (`reverentgeek/setup-ssqch`, a separate repository) that installs a pinned
+      version (or the latest) on Linux, macOS and Windows runners, checking the archive's
+      checksum and using the tool cache. The blog doesn't need it (it builds on Netlify).
 
 ### Getting started
 

@@ -26,6 +26,12 @@ On **Linux (x86_64)** and **macOS** (Apple Silicon or Intel), install the prebui
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.sh | sh
 ```
 
+With [Homebrew](https://brew.sh) (macOS or Linux):
+
+```sh
+brew install reverentgeek/tap/ssqch
+```
+
 On **Windows (x86_64)**, use the PowerShell installer:
 
 ```powershell
@@ -38,6 +44,15 @@ On other platforms (Linux on ARM, say), build it from [crates.io](https://crates
 
 ```sh
 cargo install ssqch --locked --features avif
+```
+
+In **GitHub Actions**, [`reverentgeek/setup-ssqch`](https://github.com/reverentgeek/setup-ssqch) installs a pinned version on Linux, macOS and Windows runners:
+
+```yaml
+- uses: reverentgeek/setup-ssqch@v1
+  with:
+    version: 0.3.0
+- run: ssqch build
 ```
 
 > **Note:** AVIF support on an x86_64 machine needs the [nasm](https://nasm.us) assembler installed first (`brew install nasm`, `apt-get install nasm`, `choco install nasm`). ARM machines don't need it. Leave off `--features avif` to skip AVIF, and the build gets faster too.

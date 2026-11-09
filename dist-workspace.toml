@@ -10,7 +10,11 @@ cargo-dist-version = "0.34.0"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
-installers = ["shell", "powershell"]
+installers = ["shell", "powershell", "homebrew"]
+# The Homebrew formula goes to this tap (`brew install reverentgeek/tap/ssqch`). Publishing
+# it needs a HOMEBREW_TAP_TOKEN repository secret that can push to the tap; see CLAUDE.md.
+tap = "reverentgeek/homebrew-tap"
+publish-jobs = ["homebrew"]
 # Target platforms to build apps for (Rust target-triple syntax). Linux is a
 # static musl binary, so it runs on any distro (and Netlify's build image).
 targets = ["x86_64-unknown-linux-musl", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"]
