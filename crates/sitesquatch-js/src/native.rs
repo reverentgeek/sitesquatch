@@ -168,7 +168,29 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, root: &Path) -> Result<()> {
         })?,
     )?;
 
+    native.set(
+        "hash",
+        Function::new(ctx.clone(), |ctx: Ctx<'js>, algorithm: String, data: TypedArray<'js, u8>| -> Result<TypedArray<'js, u8>> {
+            let bytes = copy_bytes(&data);
+            let digest = hash(&algorithm, &bytes).ok_or_else(|| Exception::throw_type(&ctx, &format!("Digest method not supported: {}", algorithm)))?;
+            TypedArray::new(ctx, digest)
+        })?,
+    )?;
+
     ctx.globals().set("__ssqch_native", native)
+}
+
+/// `crypto.createHash()`'s digests (the list is in node.js).
+fn hash(algorithm: &str, bytes: &[u8]) -> Option<Vec<u8>> {
+    use sha2::Digest;
+    Some(match algorithm.to_ascii_lowercase().as_str() {
+        "md5" => md5::Md5::digest(bytes).to_vec(),
+        "sha1" => sha1::Sha1::digest(bytes).to_vec(),
+        "sha256" => sha2::Sha256::digest(bytes).to_vec(),
+        "sha384" => sha2::Sha384::digest(bytes).to_vec(),
+        "sha512" => sha2::Sha512::digest(bytes).to_vec(),
+        _ => return None,
+    })
 }
 
 fn bytes_of<'js>(ctx: &Ctx<'js>, data: &Value<'js>, encoding: &str) -> Result<Vec<u8>> {

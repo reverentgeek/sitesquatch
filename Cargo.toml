@@ -23,6 +23,7 @@ sitesquatch-plugin-rss = { path = "plugins/rss" }
 sitesquatch-plugin-image = { path = "plugins/image" }
 sitesquatch-plugin-minify = { path = "plugins/minify" }
 sitesquatch-plugin-assets = { path = "plugins/assets" }
+sitesquatch-plugin-links = { path = "plugins/links" }
 
 [profile.release]
 lto = "thin"

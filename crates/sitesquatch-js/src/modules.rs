@@ -24,7 +24,7 @@ const CONFIG_MODULE: &str = "ssqch";
 const CONFIG_MODULE_SOURCE: &str = "export const defineConfig = (config) => config;\nexport default { defineConfig };\n";
 
 /// Node built-in modules provided by `node.js`.
-pub(crate) const NODE_MODULES: [&str; 7] = ["fs", "fs/promises", "path", "path/posix", "url", "process", "buffer"];
+pub(crate) const NODE_MODULES: [&str; 8] = ["fs", "fs/promises", "path", "path/posix", "url", "process", "buffer", "crypto"];
 
 /// The module name for `path`: relative to the project root when it's
 /// inside it, absolute otherwise.

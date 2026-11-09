@@ -276,7 +276,37 @@
 	fs.promises = promises;
 	fs.constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 };
 
+	// ---- crypto: hashing (createHash), computed in Rust.
+	const HASHES = [ "md5", "sha1", "sha256", "sha384", "sha512" ];
+	class Hash {
+		#algorithm;
+		#chunks = [];
+		#done = false;
+		constructor( algorithm ) {
+			if ( !HASHES.includes( String( algorithm ).toLowerCase() ) ) {
+				throw new Error( `Digest method not supported: ${ algorithm } (ssqch supports ${ HASHES.join( ", " ) })` );
+			}
+			this.#algorithm = String( algorithm ).toLowerCase();
+		}
+		update( data, encoding ) {
+			if ( this.#done ) throw new Error( "Digest already called" );
+			this.#chunks.push( typeof data === "string" ? Buffer.from( data, encoding || "utf8" ) : Buffer.from( data ) );
+			return this;
+		}
+		digest( encoding ) {
+			if ( this.#done ) throw new Error( "Digest already called" );
+			this.#done = true;
+			const out = asBuffer( native.hash( this.#algorithm, Buffer.concat( this.#chunks ) ) );
+			return encoding ? out.toString( encoding ) : out;
+		}
+	}
+	const crypto = {
+		createHash: algorithm => new Hash( algorithm ),
+		getHashes: () => [ ...HASHES ]
+	};
+
 	globalThis.__ssqch.node = {
+		crypto,
 		fs,
 		"fs/promises": promises,
 		path,

@@ -159,7 +159,7 @@ fn errors_point_at_the_config_source() {
 fn mistakes_in_the_config_say_what_to_fix() {
     let cases = [
         ("import x from \"left-pad\"; export default {};", "importing npm packages isn't supported"),
-        ("import c from \"node:crypto\"; export default {};", "node:crypto isn't available in ssqch"),
+        ("import h from \"node:http\"; export default {};", "node:http isn't available in ssqch"),
         ("export const config = {};", "needs a default export: export default defineConfig({ ... })"),
         ("export default { dirs: { layouts: \"_layouts\" } };", "dirs.layouts isn't supported (use input, output, includes, data)"),
         ("export default { dir: { input: \"src\" } };", "\"dir\" isn't a config option (options: dirs, templateFormats"),

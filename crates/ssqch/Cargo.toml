@@ -26,6 +26,7 @@ sitesquatch-plugin-rss.workspace = true
 sitesquatch-plugin-image.workspace = true
 sitesquatch-plugin-minify.workspace = true
 sitesquatch-plugin-assets.workspace = true
+sitesquatch-plugin-links.workspace = true
 
 # The allocator for static musl builds (see main.rs).
 [target.'cfg(target_env = "musl")'.dependencies]

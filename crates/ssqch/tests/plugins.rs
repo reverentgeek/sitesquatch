@@ -195,3 +195,51 @@ fn a_missing_asset_fails_a_production_build() {
     assert!(!ok);
     assert!(log.contains("index.js doesn't exist; build the CSS and JS before ssqch"), "{}", log);
 }
+
+const LINKS_CONFIG: &[u8] = br#"
+import { linksPlugin } from "ssqch/links";
+export default {
+  dirs: { input: "src", output: "dist" },
+  plugins: [linksPlugin({ ignore: ["/downloads/"] })],
+};
+"#;
+
+fn links_site(index: &[u8]) -> PathBuf {
+    project(&[
+        ("ssqch.config.js", LINKS_CONFIG),
+        ("src/index.edge", index),
+        ("src/about.edge", b"---\npermalink: /about/\n---\n<h2 id=\"team\">Team</h2>"),
+        ("src/feed.xml", b"<feed/>"),
+        ("src/_redirects", b"/old-post /about/ 301\n/archive/* /about/ 301\n"),
+    ])
+}
+
+#[test]
+fn the_link_checker_passes_a_clean_site() {
+    let root = links_site(
+        b"<h1 id=\"top\">Hi</h1><a href=\"/about/\">about</a><a href=\"/about/#team\">team</a><a href=\"about/\">relative</a><a href=\"#top\">top</a><a href=\"/feed.xml\">feed</a><a href=\"/old-post\">redirected</a><a href=\"/archive/2019/\">archived</a><a href=\"/downloads/missing.zip\">ignored</a><a href=\"https://example.com/nope\">external</a><a href=\"mailto:squatch@example.com\">mail</a>",
+    );
+    std::fs::write(root.join("src/_redirects"), "/old-post /about/ 301\n/archive/* /about/ 301\n").unwrap();
+    let config = String::from_utf8_lossy(LINKS_CONFIG).replace("dirs: { input: \"src\", output: \"dist\" },", "dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"edge\"],\n  passthrough: [\"src/_redirects\", \"src/feed.xml\"],");
+    std::fs::write(root.join("ssqch.config.js"), config).unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert!(log.contains("  Links   "), "{}", log);
+    assert!(log.contains("checked, 0 broken"), "{}", log);
+}
+
+#[test]
+fn broken_links_fail_a_production_build_and_warn_in_development() {
+    let root = links_site(b"<a href=\"/abuot/\">typo</a><a href=\"/about/#tema\">anchor</a><a href=\"#nowhere\">here</a><img src=\"/img/missing.png\" alt=\"\">");
+    let (ok, log) = ssqch(&root);
+    assert!(!ok, "{}", log);
+    assert!(log.contains("4 broken links:"), "{}", log);
+    assert!(log.contains("/ -> /abuot/ (not found)"), "{}", log);
+    assert!(log.contains("/ -> /about/#tema (no id \"tema\" on that page)"), "{}", log);
+    assert!(log.contains("/ -> #nowhere (no id \"nowhere\" on this page)"), "{}", log);
+    assert!(log.contains("/ -> /img/missing.png (not found)"), "{}", log);
+
+    let (ok, log) = ssqch_with(&root, &["--env", "development"]);
+    assert!(ok, "{}", log);
+    assert!(log.contains("warn: 4 broken links:") && log.contains("checked, 4 broken"), "{}", log);
+}

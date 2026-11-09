@@ -13,7 +13,7 @@ What's in the box:
 - **A data cascade, layouts, collections, pagination and permalinks**, so a blog or docs site needs no custom code.
 - **A JavaScript config** with filters, global data, custom collections, transforms and build hooks, plus the Node built-ins configs usually reach for (`fs`, `path`, `url`, `process`, `Buffer`).
 - **Responsive images:** every `<img>` becomes a `<picture>` with AVIF, WebP and fallback sources, cached by content so later builds skip the encoding.
-- **RSS helpers, HTML minification, asset fingerprinting** and a dev server with live reload.
+- **RSS helpers, HTML minification, asset fingerprinting, a link checker** and a dev server with live reload.
 - **A Rust API** for when JavaScript isn't enough: custom template engines, heavy transforms, or a whole site as its own binary.
 
 SiteSquatch is young (0.x), so expect some breaking changes between minor versions. Each one is listed in the [changelog](CHANGELOG.md) with what you'd need to change.
@@ -140,6 +140,8 @@ To work on it with live reload, run the dev server and open <http://localhost:80
 ssqch serve
 ```
 
+`ssqch serve` rebuilds when your sources change and reloads the browser. It also reloads (without a rebuild) when another tool, like a PostCSS or esbuild watcher, writes a CSS or JavaScript file into the output folder, so the page never reloads before its new CSS is there.
+
 `ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--port N` for `serve`, `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode.
 
 ## Configuring a site
@@ -202,7 +204,7 @@ Mistakes get caught early. A misspelled key or option is an error, and so are tw
 
 ### What you can import
 
-Config and data files can import relative files (`./lib/filters.js`, with or without the extension), JSON (`import site from "./site.json"`), the built-in modules (`ssqch`, `ssqch/image`, `ssqch/rss`, `ssqch/minify`, `ssqch/assets`), and these Node built-ins, with or without the `node:` prefix:
+Config and data files can import relative files (`./lib/filters.js`, with or without the extension), JSON (`import site from "./site.json"`), the built-in modules (`ssqch`, `ssqch/image`, `ssqch/rss`, `ssqch/minify`, `ssqch/assets`, `ssqch/links`), and these Node built-ins, with or without the `node:` prefix:
 
 | Module | What's there |
 | --- | --- |
@@ -210,11 +212,12 @@ Config and data files can import relative files (`./lib/filters.js`, with or wit
 | `node:fs/promises` | The async versions of the above |
 | `node:path` | All of `path.posix`, matching Node's results on [a set of edge cases](crates/sitesquatch-js/tests/fixtures/path-cases.mjs) |
 | `node:url` | `fileURLToPath`, `pathToFileURL` (and `import.meta.url` is set) |
+| `node:crypto` | `createHash` with `md5`, `sha1`, `sha256`, `sha384` and `sha512` (`update()` with strings or Buffers, `digest()` to a Buffer or `hex`, `base64`, `base64url` or `latin1`), and `getHashes()` |
 | `node:process`, `node:buffer` | `process.env`, `process.cwd()`, `process.platform`, and `Buffer` (also a global) with `utf8`, `hex`, `base64`, `base64url` and `latin1` |
 
 Errors carry Node's codes (`err.code === "ENOENT"`), and relative paths resolve against the project root, as if you ran Node from there. Dates and numbers format like Node does for `en-US`: `toLocaleDateString()`, `toLocaleString()`, `Intl.DateTimeFormat` and `Intl.NumberFormat` match Node 24 on [902 cases](crates/sitesquatch-js/tests/fixtures/intl-cases.mjs). Other locales, and time zones other than UTC and the machine's, throw an error rather than quietly formatting something else.
 
-> **Note:** these aren't supported yet: npm packages, CommonJS (`require`, `module.exports`), other Node built-ins (such as `node:crypto`), timers and `fetch`. After editing the config, restart `ssqch serve` to pick up the changes.
+> **Note:** these aren't supported yet: npm packages, CommonJS (`require`, `module.exports`), other Node built-ins (such as `node:http`), timers and `fetch`. After editing the config, restart `ssqch serve` to pick up the changes.
 
 The config runs on [QuickJS](https://github.com/quickjs-ng/quickjs), which adds about 1.2 MB to the binary and supports modern JavaScript: ES modules, `async`/`await`, arrow functions and the standard built-ins. Template values arrive as ordinary-looking objects, arrays and `Date`s. Behind the scenes, big ones (a page's data, a collection) are lazy views that only copy a property from Rust when you read it, so passing `collections.posts` to a filter costs nothing until the filter looks inside. Changes you make stay in JavaScript: a filter that sorts `collections.posts` doesn't reorder it for other pages. Pages render in parallel, but JavaScript runs one call at a time, so module-level state in your config behaves as it would in Node.
 
@@ -249,6 +252,7 @@ Data functions run on every build. `ssqch serve` reloads a data file when it cha
 - **`ssqch/minify`:** `minifyPlugin(options)` minifies HTML output, after the image transform. `minify(html, options)` does the same for a string. Options: `collapseWhitespace`, `removeComments`, `shortDoctype` (all `true` by default).
 - **`ssqch/rss`:** `rssPlugin()` adds the filters `getNewestCollectionItemDate`, `dateToRfc3339`, `dateToRfc822`, `absoluteUrl`, `htmlToAbsoluteUrls` and `url`. They're also named exports, for your own code.
 - **`ssqch/assets`:** `assetsPlugin({ files })` fingerprints CSS and JS for long-lived caching. Templates link the plain paths (`<link rel="stylesheet" href="/assets/index.css">`). In a production build, each listed file in the output folder (written there by your CSS or JS tool before `ssqch build`) is renamed to `index.<hash>.css`, older fingerprinted copies are deleted, and every `href` and `src` in the HTML that points at it is rewritten, keeping any query string. `ssqch serve` leaves the plain paths alone. A listed file that's missing fails a production build. `assetUrl("/assets/index.css")` returns the URL to use, for places outside an `href` or `src`. `url()` references inside CSS and imports inside JavaScript aren't rewritten. Options: `files` (URL paths, required) and `fingerprint` (`true` or `false`; on for production builds by default).
+- **`ssqch/links`:** `linksPlugin(options)` checks the built site's internal links after each build. Every `href` (on `a`, `link` and `area`), `src` (images, scripts, iframes, media) and `srcset` URL has to point at something in the output, and a `#fragment` has to match an `id` on the page it points to. External links aren't checked, and neither are paths a Netlify `_redirects` file in the output covers. Broken links fail production builds, listing each page and link, and are warnings in `ssqch serve`. Options: `anchors` (check `#fragments`; default `true`), `ignore` (URL path prefixes to skip, like `["/downloads/"]`) and `fail` (`true` or `false`; production builds only by default).
 
 ### Configuring with TOML
 
@@ -395,6 +399,7 @@ plugins/rss              Feed filters: getNewestCollectionItemDate, dateToRfc333
 plugins/image            <img> -> responsive <picture>, and image() for data files
 plugins/minify           Conservative HTML minifier
 plugins/assets           Asset fingerprinting: content-hashed names and rewritten references
+plugins/links            Link checker: internal links and anchors in the built site
 examples/reverentgeek    The blog's config ported to Rust, as an example of the Rust API
 ```
 
@@ -420,6 +425,6 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/) from a ve
 - **Images:** no SVG rasterizing, and HDR photos (the PQ, gain-map profiles of newer iPhones) can't be converted to sRGB, so they look washed out; the build warns about them, and converting the source to sRGB once fixes it. SVGs are served as they are, and GIFs are copied for `auto` output, so animations keep working.
 - **Minifier:** it doesn't shorten attribute values (`defer="defer"`, spaces in a viewport `content`).
 - **Collections:** custom collections don't see pages that are paginated over collections. Those pages are added to `all` and their tags afterwards.
-- **Not built yet:** a link checker, and cleaning the output folder before a build. Prebuilt binaries for macOS and Windows are on the way; see [TODO.md](TODO.md).
+- **Not built yet:** cleaning the output folder before a build. Prebuilt binaries for macOS and Windows are on the way; see [TODO.md](TODO.md).
 
 Found a bug, or have an idea? [Open an issue](https://github.com/reverentgeek/sitesquatch/issues). Happy building, and may your pages load faster than a Squatch sighting disappears.

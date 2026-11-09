@@ -53,7 +53,8 @@ Follow-ups:
       content-hashed names and rewrite `href` and `src` references. Released in 0.2.3.
       **Blog:** switched over locally (templates use plain paths; `hash-assets.js`,
       `_data/assets.js` and `build:hash` are gone), waiting for the release.
-- [ ] `node:crypto` (`createHash`) for user code in configs and data files.
+- [x] `node:crypto` (`createHash` with md5, sha1, sha256, sha384, sha512) for user code in
+      configs and data files. Not released yet.
 - [x] **Color profiles in the image plugin.** Images with a non-sRGB RGB profile are converted
       to sRGB with `moxcms` (`plugins/image/src/color.rs`), within about one level of macOS
       ColorSync. Only converted images get new ids, so upgrading re-encodes just those (39 of the
@@ -64,16 +65,15 @@ Follow-ups:
       reading the gain map (ISO 21496-1) or tone-mapping PQ to SDR the way ColorSync does.
       **Blog:** has 4 (the Helix roller case post); converting those sources once with `sips`
       fixes them now.
-- [ ] **A built-in link checker.** ssqch has every output page and URL, so check internal links
-      and anchors after the build, and fail a production build on a broken one. External links
-      can stay with an outside tool like `lychee`.
-      **Blog:** it had a broken-links plugin in development before the move to ssqch.
+- [x] **A built-in link checker:** `linksPlugin()` from `ssqch/links` (`plugins/links`). Not
+      released yet.
+      **Blog:** it found 413 broken links on 8 pages, all to full-size originals under
+      `/content/images/` that the build never publishes (they 404 on the live site too).
 - [x] **Check `serve` against the blog.** With `pnpm run serve`, a post edit rebuilds and
       reloads in about 0.4 s, and a CSS edit reloads after PostCSS has written the new CSS.
-- [ ] Make CSS reloads robust: ssqch signals a reload when the source CSS changes, and the
-      blog's PostCSS watcher writes `dist/assets/index.css` separately. In the check, the CSS was
-      ready about 80 ms before the reload; a slower machine or bigger stylesheet could reload
-      with the old CSS. Reloading when files in the output's assets change would fix it.
+- [x] Make CSS reloads robust: `ssqch serve` also watches the output and reloads (without a
+      rebuild) when another tool writes a CSS or JavaScript file there after the last build.
+      Not released yet.
 - [ ] Output differences found comparing against the blog's old build: none have to match
       anymore, so just fix the ones that are wrong:
   - Markdown leaves `"` unescaped in text. Escaping it is the safer default.
