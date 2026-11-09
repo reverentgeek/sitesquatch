@@ -709,16 +709,29 @@ fn render_engines(v: &Value) -> Result<Vec<String>> {
 }
 
 /// Whether a template's body reads `collections`, so it must render after
-/// every other page (whose `templateContent` it may show). Only Edge code
-/// counts: `{{ ... }}` and `@directive` lines. A post that merely mentions
-/// "collections" in its text, or isn't processed by Edge at all
-/// (`render: md`), renders in the first pass so its content
-/// can appear in feeds.
+/// every other page (whose `templateContent` it may show). Only template code
+/// counts: `{{ ... }}` and `@directive` lines for Edge, `{{ }}` and `{% %}`
+/// tags for other template languages. A post that merely mentions
+/// "collections" in its text, or is only Markdown (`render: md`), renders in
+/// the first pass so its content can appear in feeds.
 fn uses_collections(tpl: &Tpl) -> bool {
-    if !tpl.engines.iter().any(|e| e == "edge") || !tpl.body.contains("collections") {
+    if !tpl.body.contains("collections") {
         return false;
     }
-    edge_code_mentions(&tpl.body, "collections")
+    if tpl.engines.iter().any(|e| e == "edge") && edge_code_mentions(&tpl.body, "collections") {
+        return true;
+    }
+    // Other template languages (Liquid and the like) put code in `{{ }}` and
+    // `{% %}`. Markdown and plain files have none.
+    tpl.engines.iter().any(|e| !matches!(e.as_str(), "edge" | "md" | "html" | "txt")) && tag_code_mentions(&tpl.body, "collections")
+}
+
+/// Whether `word` appears inside a `{{ ... }}` or `{% ... %}` tag.
+fn tag_code_mentions(body: &str, word: &str) -> bool {
+    body.match_indices(word).any(|(pos, _)| {
+        let before = &body[..pos];
+        [("{{", "}}"), ("{%", "%}")].iter().any(|(open, close)| before.rfind(open).is_some_and(|o| !before[o..].contains(close)))
+    })
 }
 
 fn edge_code_mentions(body: &str, word: &str) -> bool {
