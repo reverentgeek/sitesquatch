@@ -48,13 +48,12 @@ Follow-ups:
 
 ## What else the blog is waiting on
 
-- [ ] **Asset fingerprinting in `ssqch`.** Today only the Rust port fingerprints CSS and JS
-      (`examples/reverentgeek/src/assets.rs`). Move it into `ssqch` as a built-in that's
-      configured from `ssqch.config.js`: which files to hash, and a global with the hashed URLs
-      (like the blog's `{{ assets.css }}`). Adding `node:crypto` (`createHash`) for user code is
-      a separate, smaller item. `modules.rs` provides `fs`, `fs/promises`, `path`, `path/posix`,
-      `url`, `process` and `buffer` today.
-      **Blog:** replaces `scripts/hash-assets.js`, `.asset-manifest.json` and `_data/assets.js`.
+- [x] **Asset fingerprinting in `ssqch`:** `assetsPlugin({ files })` from `ssqch/assets`
+      (`plugins/assets`). Templates link plain paths; production builds rename the files to
+      content-hashed names and rewrite `href` and `src` references. Not released yet.
+      **Blog:** switched over locally (templates use plain paths; `hash-assets.js`,
+      `_data/assets.js` and `build:hash` are gone), waiting for the release.
+- [ ] `node:crypto` (`createHash`) for user code in configs and data files.
 - [x] **Color profiles in the image plugin.** Images with a non-sRGB RGB profile are converted
       to sRGB with `moxcms` (`plugins/image/src/color.rs`), within about one level of macOS
       ColorSync. Only converted images get new ids, so upgrading re-encodes just those (39 of the

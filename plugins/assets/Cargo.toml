@@ -1,0 +1,13 @@
+[package]
+name = "sitesquatch-plugin-assets"
+description = "Asset fingerprinting for SiteSquatch: content-hashed file names and rewritten references"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+lol_html.workspace = true
+sitesquatch.workspace = true
+blake3 = "1"

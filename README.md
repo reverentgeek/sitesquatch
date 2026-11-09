@@ -13,7 +13,7 @@ What's in the box:
 - **A data cascade, layouts, collections, pagination and permalinks**, so a blog or docs site needs no custom code.
 - **A JavaScript config** with filters, global data, custom collections, transforms and build hooks, plus the Node built-ins configs usually reach for (`fs`, `path`, `url`, `process`, `Buffer`).
 - **Responsive images:** every `<img>` becomes a `<picture>` with AVIF, WebP and fallback sources, cached by content so later builds skip the encoding.
-- **RSS helpers, HTML minification** and a dev server with live reload.
+- **RSS helpers, HTML minification, asset fingerprinting** and a dev server with live reload.
 - **A Rust API** for when JavaScript isn't enough: custom template engines, heavy transforms, or a whole site as its own binary.
 
 SiteSquatch is young (0.x), so expect some breaking changes between minor versions. Each one is listed in the [changelog](CHANGELOG.md) with what you'd need to change.
@@ -202,7 +202,7 @@ Mistakes get caught early. A misspelled key or option is an error, and so are tw
 
 ### What you can import
 
-Config and data files can import relative files (`./lib/filters.js`, with or without the extension), JSON (`import site from "./site.json"`), the built-in modules (`ssqch`, `ssqch/image`, `ssqch/rss`, `ssqch/minify`), and these Node built-ins, with or without the `node:` prefix:
+Config and data files can import relative files (`./lib/filters.js`, with or without the extension), JSON (`import site from "./site.json"`), the built-in modules (`ssqch`, `ssqch/image`, `ssqch/rss`, `ssqch/minify`, `ssqch/assets`), and these Node built-ins, with or without the `node:` prefix:
 
 | Module | What's there |
 | --- | --- |
@@ -248,6 +248,7 @@ Data functions run on every build. `ssqch serve` reloads a data file when it cha
 - **`ssqch/image`:** `imagePlugin(options)` turns every local `<img>` in HTML output into a `<picture>`. Options: `formats` (`avif`, `webp`, `jpeg`, `png`, `auto`), `widths`, `defaultAttributes`, `outputDir`, `urlPath`, `webpQuality`, `avifQuality`, `avifSpeed`, `jpegQuality`, `minimumThreshold`, `prune` and `hashCache`. On an `<img>`, `ssqch:widths="300,600"` picks that image's widths, a plain `width` attribute pins it to one width, and `ssqch:ignore` leaves it alone. Images with a color profile other than sRGB (Display P3, Adobe RGB) are converted to sRGB first, so their colors stay true. `image(src, { widths, formats })` makes one image's files with the same settings and cache, returning `{ webp: [{ url, width, height, srcset, sourceType, ... }] }`. Data files can call it even without the plugin.
 - **`ssqch/minify`:** `minifyPlugin(options)` minifies HTML output, after the image transform. `minify(html, options)` does the same for a string. Options: `collapseWhitespace`, `removeComments`, `shortDoctype` (all `true` by default).
 - **`ssqch/rss`:** `rssPlugin()` adds the filters `getNewestCollectionItemDate`, `dateToRfc3339`, `dateToRfc822`, `absoluteUrl`, `htmlToAbsoluteUrls` and `url`. They're also named exports, for your own code.
+- **`ssqch/assets`:** `assetsPlugin({ files })` fingerprints CSS and JS for long-lived caching. Templates link the plain paths (`<link rel="stylesheet" href="/assets/index.css">`). In a production build, each listed file in the output folder (written there by your CSS or JS tool before `ssqch build`) is renamed to `index.<hash>.css`, older fingerprinted copies are deleted, and every `href` and `src` in the HTML that points at it is rewritten, keeping any query string. `ssqch serve` leaves the plain paths alone. A listed file that's missing fails a production build. `assetUrl("/assets/index.css")` returns the URL to use, for places outside an `href` or `src`. `url()` references inside CSS and imports inside JavaScript aren't rewritten. Options: `files` (URL paths, required) and `fingerprint` (`true` or `false`; on for production builds by default).
 
 ### Configuring with TOML
 
@@ -393,6 +394,7 @@ crates/sitesquatch-js    ssqch.config.js support, on an embedded QuickJS engine
 plugins/rss              Feed filters: getNewestCollectionItemDate, dateToRfc3339/822, absoluteUrl, htmlToAbsoluteUrls, url
 plugins/image            <img> -> responsive <picture>, and image() for data files
 plugins/minify           Conservative HTML minifier
+plugins/assets           Asset fingerprinting: content-hashed names and rewritten references
 examples/reverentgeek    The blog's config ported to Rust, as an example of the Rust API
 ```
 
@@ -418,6 +420,6 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/) from a ve
 - **Images:** no SVG rasterizing, and HDR photos (the PQ, gain-map profiles of newer iPhones) can't be converted to sRGB, so they look washed out; the build warns about them, and converting the source to sRGB once fixes it. SVGs are served as they are, and GIFs are copied for `auto` output, so animations keep working.
 - **Minifier:** it doesn't shorten attribute values (`defer="defer"`, spaces in a viewport `content`).
 - **Collections:** custom collections don't see pages that are paginated over collections. Those pages are added to `all` and their tags afterwards.
-- **Not built yet:** a link checker, asset fingerprinting, and cleaning the output folder before a build. Prebuilt binaries for macOS and Windows are on the way; see [TODO.md](TODO.md).
+- **Not built yet:** a link checker, and cleaning the output folder before a build. Prebuilt binaries for macOS and Windows are on the way; see [TODO.md](TODO.md).
 
 Found a bug, or have an idea? [Open an issue](https://github.com/reverentgeek/sitesquatch/issues). Happy building, and may your pages load faster than a Squatch sighting disappears.
