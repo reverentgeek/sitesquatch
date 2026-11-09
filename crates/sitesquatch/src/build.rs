@@ -418,8 +418,11 @@ fn load_template(
         normalize_tags(&mut data);
 
         let ext = path.extension().unwrap().to_string_lossy().to_ascii_lowercase();
-        let engines: Vec<String> = match data.get("templateEngineOverride").and_then(|v| v.as_str()) {
-            Some(list) => list.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+        if data.contains_key("templateEngineOverride") {
+            bail!("front matter `templateEngineOverride` is now `render` (for example `render: md`)");
+        }
+        let engines: Vec<String> = match data.get("render").filter(|v| !v.is_nullish()) {
+            Some(v) => render_engines(v)?,
             None => {
                 let pre = match ext.as_str() {
                     "md" => cfg.markdown_engine.clone(),
@@ -547,7 +550,7 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
                 }
                 Some(v) if !v.is_nullish() => bail!("permalink must be a string or false"),
                 // Non-HTML plain files (llms.txt) keep their own name.
-                _ if tpl.engines.iter().all(|e| e == "txt") => Some(format!("/{}", tpl.rel)),
+                _ if !tpl.engines.is_empty() && tpl.engines.iter().all(|e| e == "txt") => Some(format!("/{}", tpl.rel)),
                 _ => {
                     let stem = &tpl.file_path_stem;
                     let mut url = match stem.strip_suffix("/index") {
@@ -619,11 +622,32 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
     .with_context(|| format!("in {}", tpl.rel))
 }
 
+/// The engines named by a template's `render` data: one name (`md`), a
+/// comma-separated chain (`"liquid, md"`), a list (`[liquid, md]`), or `false`
+/// to write the body as it is.
+fn render_engines(v: &Value) -> Result<Vec<String>> {
+    let names: Vec<String> = match v {
+        Value::Bool(false) => return Ok(Vec::new()),
+        Value::Str(_) => v.as_str().unwrap_or_default().split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+        _ => match v.as_array() {
+            Some(items) => items
+                .iter()
+                .map(|i| i.as_str().map(|s| s.trim().to_string()).ok_or_else(|| anyhow!("`render` list items must be engine names, not {}", i.type_of())))
+                .collect::<Result<_>>()?,
+            None => bail!("`render` must be an engine name (`md`), a list of names, or false, not {}", v.type_of()),
+        },
+    };
+    if names.is_empty() {
+        bail!("`render` is empty: name an engine (`md`), or use `render: false` to skip processing");
+    }
+    Ok(names)
+}
+
 /// Whether a template's body reads `collections`, so it must render after
 /// every other page (whose `templateContent` it may show). Only Edge code
 /// counts: `{{ ... }}` and `@directive` lines. A post that merely mentions
 /// "collections" in its text, or isn't processed by Edge at all
-/// (`templateEngineOverride: md`), renders in the first pass so its content
+/// (`render: md`), renders in the first pass so its content
 /// can appear in feeds.
 fn uses_collections(tpl: &Tpl) -> bool {
     if !tpl.engines.iter().any(|e| e == "edge") || !tpl.body.contains("collections") {

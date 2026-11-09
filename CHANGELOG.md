@@ -10,6 +10,12 @@ a `v<version>` tag on a commit where that version matches.
 
 ## Unreleased
 
+### Breaking
+
+- The `templateEngineOverride` front-matter key is now `render`. Rename it in your templates
+  (`render: md`). A build that finds the old key stops with an error that says so. `render` also
+  takes a list (`render: [edge, md]`) and `false`, which writes the body without processing it.
+
 ### Changed
 
 - Markdown escapes `"` in text and inline code as `&quot;`, like the CommonMark reference
