@@ -75,19 +75,7 @@ pub fn run(configure: impl Fn(&mut Config)) -> ExitCode {
 }
 
 pub(crate) fn print_report(cfg: &Config, report: &BuildReport) {
-    if cfg.quiet {
-        return;
+    if !cfg.quiet {
+        print!("{}", crate::report::summary(cfg, report));
     }
-    if cfg.verbose {
-        for (label, d) in &report.timings {
-            println!("  {:<28} {:>8.1?}", label, d);
-        }
-    }
-    println!(
-        "Wrote {} pages and copied {} files in {:.2?} ({} mode)",
-        report.pages_written,
-        report.files_copied,
-        report.duration,
-        cfg.env.as_str()
-    );
 }

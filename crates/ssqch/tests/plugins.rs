@@ -90,6 +90,16 @@ fn the_built_in_plugins_work_together() {
     assert!(log.contains("[ssqch] Writing ./dist/index.html from ./src/index.edge (edge)"), "{}", log);
     assert!(log.contains("[ssqch] Encoded ./src/img/squatch.png into "), "{}", log);
     assert!(!log.contains("warn"), "{}", log);
+
+    // The summary at the end: every image file is new on the first build, and reused on the next.
+    assert!(log.contains("Built in ") && log.contains(" (production)\n"), "{}", log);
+    assert!(log.contains("  Pages   1 written from 1 template, "), "{}", log);
+    assert!(log.contains("  Images  8 files from 1 source, ") && log.contains(": 8 encoded, 0 reused"), "{}", log);
+    assert!(log.contains("  Output  dist: 9 files, "), "{}", log);
+    assert!(log.contains("  Time    setup ") && log.contains(", write "), "{}", log);
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert!(log.contains(": 0 encoded, 8 reused"), "{}", log);
 }
 
 #[test]

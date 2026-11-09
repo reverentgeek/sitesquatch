@@ -165,9 +165,12 @@ pub struct ImageProcessor {
     ctx: RwLock<Option<BuildContext>>,
     memo: Mutex<HashMap<MemoKey, MemoCell>>,
     generated: AtomicUsize,
-    reused: AtomicUsize,
+    /// Files deleted by `prune` at the end of the last build.
+    pruned: AtomicUsize,
     /// Every derivative this build produced or reused, for `prune`.
     used: Mutex<HashSet<PathBuf>>,
+    /// Every source image this build used.
+    sources: Mutex<HashSet<PathBuf>>,
     hashes: Mutex<hash_cache::HashCache>,
     /// Set from the build's `--quiet`.
     quiet: std::sync::atomic::AtomicBool,
@@ -183,8 +186,9 @@ impl ImageProcessor {
             ctx: RwLock::new(None),
             memo: Mutex::new(HashMap::new()),
             generated: AtomicUsize::new(0),
-            reused: AtomicUsize::new(0),
+            pruned: AtomicUsize::new(0),
             used: Mutex::new(HashSet::new()),
+            sources: Mutex::new(HashSet::new()),
             hashes: Mutex::new(hash_cache::HashCache::default()),
             quiet: std::sync::atomic::AtomicBool::new(false),
             timings: Mutex::new(Vec::new()),
@@ -234,6 +238,7 @@ impl ImageProcessor {
         cell.get_or_init(|| {
             let meta = self.generate_uncached(src, widths, formats).map_err(|e| format!("{:#}", e))?;
             self.used.lock().unwrap().extend(meta.formats.values().flatten().map(|e| e.path.clone()));
+            self.sources.lock().unwrap().insert(src.to_path_buf());
             Ok(Arc::new(meta))
         })
         .clone()
@@ -267,8 +272,6 @@ impl ImageProcessor {
             if !e.path.exists() {
                 std::fs::copy(src, &e.path)?;
                 self.generated.fetch_add(1, Ordering::Relaxed);
-            } else {
-                self.reused.fetch_add(1, Ordering::Relaxed);
             }
             let mut meta = ImageMetadata::default();
             meta.formats.insert(src_format, vec![e]);
@@ -302,8 +305,6 @@ impl ImageProcessor {
             meta.formats.insert(f, entries);
         }
 
-        let reused = meta.formats.values().map(Vec::len).sum::<usize>() - jobs.len();
-        self.reused.fetch_add(reused, Ordering::Relaxed);
         if !jobs.is_empty() {
             let started = std::time::Instant::now();
             let img = decode(src)?;
@@ -382,6 +383,35 @@ impl ImageProcessor {
         }
         std::fs::rename(&tmp, &job.path)?;
         Ok(())
+    }
+
+    /// The `Images` line of the build summary: the derivatives this build
+    /// used, from how many source images, and how many it had to encode.
+    fn summary(&self) -> Option<String> {
+        let used = self.used.lock().unwrap();
+        let pruned = self.pruned.load(Ordering::Relaxed);
+        if used.is_empty() && pruned == 0 {
+            return None;
+        }
+        let size: u64 = used.iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum();
+        let sources = self.sources.lock().unwrap().len();
+        // A file two pages ask for in different widths can be counted twice
+        // by the encoder, so cap at the number of files.
+        let encoded = self.generated.load(Ordering::Relaxed).min(used.len());
+        let mut line = format!(
+            "{} file{} from {} source{}, {}: {} encoded, {} reused",
+            sitesquatch::report::count(used.len()),
+            if used.len() == 1 { "" } else { "s" },
+            sitesquatch::report::count(sources),
+            if sources == 1 { "" } else { "s" },
+            sitesquatch::report::bytes(size),
+            sitesquatch::report::count(encoded),
+            sitesquatch::report::count(used.len() - encoded),
+        );
+        if self.options.prune {
+            line.push_str(&format!(", {} pruned", sitesquatch::report::count(pruned)));
+        }
+        Some(line)
     }
 
     /// Delete files in `dir` that this build didn't produce or reuse.
@@ -736,12 +766,13 @@ impl Plugin for ImagePlugin {
             // Source files may have changed between dev-server builds.
             p.memo.lock().unwrap().clear();
             p.used.lock().unwrap().clear();
+            p.sources.lock().unwrap().clear();
             p.timings.lock().unwrap().clear();
             if p.options.hash_cache {
                 p.hashes.lock().unwrap().load(ctx.root.join(CACHE_FILE));
             }
             p.generated.store(0, Ordering::Relaxed);
-            p.reused.store(0, Ordering::Relaxed);
+            p.pruned.store(0, Ordering::Relaxed);
             Ok(())
         });
         if self.transform {
@@ -754,13 +785,13 @@ impl Plugin for ImagePlugin {
         self.processor.quiet.store(quiet, Ordering::Relaxed);
         cfg.on_after_build(move |ctx, _| {
             let pruned = if p.options.prune { p.prune(&ctx.output_dir.join(&p.options.output_subdir))? } else { 0 };
+            p.pruned.store(pruned, Ordering::Relaxed);
             if p.options.hash_cache {
                 // A cache that can't be written only costs speed, so warn and carry on.
                 if let Err(e) = p.hashes.lock().unwrap().save() {
                     p.warn_once(format!("couldn't write {}: {:#}", ctx.root.join(CACHE_FILE).display(), e));
                 }
             }
-            let busy = p.generated.load(Ordering::Relaxed) + p.reused.load(Ordering::Relaxed) + pruned > 0;
             if verbose && !quiet {
                 let mut timings = p.timings.lock().unwrap().clone();
                 timings.sort_by(|a, b| b.2.cmp(&a.2));
@@ -771,15 +802,9 @@ impl Plugin for ImagePlugin {
                     }
                 }
             }
-            if !quiet && busy {
-                println!(
-                    "Images: generated {} files, reused {}{}",
-                    p.generated.load(Ordering::Relaxed),
-                    p.reused.load(Ordering::Relaxed),
-                    if p.options.prune { format!(", pruned {}", pruned) } else { String::new() }
-                );
-            }
             Ok(())
         });
+        let p = self.processor.clone();
+        cfg.add_summary("Images", move |_| p.summary());
     }
 }

@@ -40,10 +40,8 @@ target/release/ssqch build --root ../blog
 target/release/ssqch serve --root ../blog    # watch + live reload
 ```
 
-The output goes to `../blog/dist`, and the build ends with a summary like
-`Wrote 168 pages and copied 12 files in 99.65ms (production mode)`. The first build encodes
-about 3,200 images, so expect it to take a while (see [Benchmarks](#benchmarks)). Later builds
-reuse them.
+The output goes to `../blog/dist`. The first build encodes about 3,200 images, so expect it to
+take a while (see [Benchmarks](#benchmarks)). Later builds reuse them.
 
 `serve` doesn't build the CSS and JS. To work on styles, run the blog's watchers alongside the
 server:
@@ -55,15 +53,29 @@ target/release/ssqch serve --root ../blog
 ```
 
 Options: `--output DIR`, `--env development|production` (otherwise `$SSQCH_ENV` or `$NODE_ENV`;
-defaults to production for `build`, development for `serve`), `--verbose` for per-phase timings
-and the slowest images to encode, `--quiet` to print only warnings and errors.
+defaults to production for `build`, development for `serve`), `--verbose` to also list the
+slowest images to encode, `--quiet` to print only warnings and errors.
 
-A build prints a line for each page it writes and each image it encodes:
+A build prints a line for each page it writes and each image it encodes, then a summary:
 
 ```text
 [ssqch] Encoded ./src/site/content/images/hero.png into 10 files (webp, png) in 51.06ms
 [ssqch] Writing ./dist/about/index.html from ./src/site/pages/about.md (edge, md)
+...
+Built in 110 ms (production)
+  Pages   168 written from 140 templates, 6.83 MB
+  Copied  0 files, 12 unchanged, 3.88 MB
+  Images  4,689 files from 737 sources, 271 MB: 0 encoded, 4,689 reused
+  Output  dist: 4,872 files, 282 MB
+  Time    setup 1.11 ms, data 1.31 ms, read 32.3 ms, paginate 2.81 ms, render 7.56 ms, write 55.9 ms, copy 193 µs, after 9.21 ms
 ```
+
+`Images` counts the derivatives this build used, from how many source images, and how many it
+had to encode; with `prune` on, it also says how many stale files it deleted. `Output` is
+everything in the output folder, including files from earlier builds. `Time` splits the build
+into phases: `write` includes layouts, transforms and image encoding, and `after` the
+`afterBuild` hooks. `ssqch serve` prints the same summary after every rebuild. A Rust plugin
+adds its own line with `Config::add_summary`.
 
 ## Layout
 

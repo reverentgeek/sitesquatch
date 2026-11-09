@@ -100,6 +100,8 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
         engines.get(f).context("check `template_formats`")?;
     }
 
+    timer.lap("setup");
+
     // ---- global data
     let (mut global, skipped) = data::load_global_data(&ctx.data_dir, &cfg.data_extensions)?;
     let provided: Vec<(String, Result<Value>)> = cfg
@@ -170,7 +172,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
 
     // ---- layouts, transforms, write
     let outputs: Vec<(usize, PathBuf)> = pages.iter().enumerate().filter_map(|(i, p)| p.output.clone().map(|o| (i, o))).collect();
-    let written: Vec<PathBuf> = collect_errors(
+    let written: Vec<(PathBuf, u64)> = collect_errors(
         outputs
             .par_iter()
             .map(|(i, out)| guard(&pages[*i].tpl.rel, || {
@@ -184,24 +186,35 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
                 if let Some(parent) = out.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                std::fs::write(out, html).with_context(|| format!("writing {}", out.display()))?;
+                std::fs::write(out, &html).with_context(|| format!("writing {}", out.display()))?;
                 if !cfg.quiet {
                     println!("[ssqch] Writing {} from {} ({})", display_path(&ctx, out), display_path(&ctx, &page.tpl.input), page.tpl.engines.join(", "));
                 }
-                Ok(out.clone())
+                Ok((out.clone(), html.len() as u64))
             }))
             .collect(),
     )?;
-    timer.lap("layouts+transforms+write");
+    timer.lap("write");
 
-    let copied = passthrough_copy(cfg, &ctx)?;
-    timer.lap("passthrough");
+    let copy = passthrough_copy(cfg, &ctx)?;
+    timer.lap("copy");
 
-    let mut report = BuildReport { pages_written: written.len(), files_copied: copied, written, duration: started.elapsed(), timings: Vec::new() };
+    let mut report = BuildReport {
+        templates: tpls.len(),
+        pages_written: written.len(),
+        page_bytes: written.iter().map(|(_, n)| n).sum(),
+        files_copied: copy.copied,
+        files_unchanged: copy.unchanged,
+        passthrough_bytes: copy.bytes,
+        written: written.into_iter().map(|(p, _)| p).collect(),
+        duration: started.elapsed(),
+        ..Default::default()
+    };
     for hook in &cfg.after_build {
         hook(&ctx, &report).context("after_build hook failed")?;
     }
-    timer.lap("after_build");
+    report.summary = cfg.summaries.iter().filter_map(|(label, f)| f(&ctx).map(|line| (label.clone(), line))).collect();
+    timer.lap("after");
     report.duration = started.elapsed();
     report.timings = timer.timings;
     Ok(report)
@@ -762,7 +775,13 @@ fn render_layouts(page: &Page, body: String, engines: &Engines, collections: &Va
 
 // --------------------------------------------------------------- passthrough
 
-fn passthrough_copy(cfg: &Config, ctx: &BuildContext) -> Result<usize> {
+struct CopyStats {
+    copied: usize,
+    unchanged: usize,
+    bytes: u64,
+}
+
+fn passthrough_copy(cfg: &Config, ctx: &BuildContext) -> Result<CopyStats> {
     let mut jobs: Vec<(PathBuf, PathBuf)> = Vec::new();
     for (from, to) in &cfg.passthrough {
         let src = ctx.root.join(from);
@@ -783,25 +802,27 @@ fn passthrough_copy(cfg: &Config, ctx: &BuildContext) -> Result<usize> {
             jobs.push((src, dest));
         }
     }
-    let copied: Vec<bool> = collect_errors(
+    // (copied?, size) per file.
+    let results: Vec<(bool, u64)> = collect_errors(
         jobs.par_iter()
             .map(|(src, dest)| {
                 let meta = std::fs::metadata(src)?;
                 if let Ok(existing) = std::fs::metadata(dest) {
                     let fresh = existing.len() == meta.len() && existing.modified().ok() >= meta.modified().ok();
                     if fresh {
-                        return Ok(false);
+                        return Ok((false, meta.len()));
                     }
                 }
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
                 std::fs::copy(src, dest).with_context(|| format!("copying {} to {}", src.display(), dest.display()))?;
-                Ok(true)
+                Ok((true, meta.len()))
             })
             .collect(),
     )?;
-    Ok(copied.into_iter().filter(|c| *c).count())
+    let copied = results.iter().filter(|(c, _)| *c).count();
+    Ok(CopyStats { copied, unchanged: results.len() - copied, bytes: results.iter().map(|(_, n)| n).sum() })
 }
 
 #[cfg(test)]

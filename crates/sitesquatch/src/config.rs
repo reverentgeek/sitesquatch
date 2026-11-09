@@ -112,11 +112,24 @@ impl CollectionApi {
 /// A build summary handed to `after_build` hooks.
 #[derive(Debug, Default, Clone)]
 pub struct BuildReport {
+    /// Template files read (a paginated template counts once).
+    pub templates: usize,
     pub pages_written: usize,
+    /// Total size of the pages written.
+    pub page_bytes: u64,
+    /// Passthrough files copied because they were new or changed.
     pub files_copied: usize,
+    /// Passthrough files already up to date in the output.
+    pub files_unchanged: usize,
+    /// Total size of every passthrough file, copied or not.
+    pub passthrough_bytes: u64,
     pub written: Vec<PathBuf>,
     pub duration: std::time::Duration,
     pub timings: Vec<(String, std::time::Duration)>,
+    /// Lines plugins add to the build summary (see [`Config::add_summary`]),
+    /// such as `("Images", "4,689 files ...")`. Filled in after the
+    /// `after_build` hooks run.
+    pub summary: Vec<(String, String)>,
 }
 
 pub type DataFn = Arc<dyn Fn(&BuildContext) -> Result<Value> + Send + Sync>;
@@ -124,6 +137,7 @@ pub type CollectionFn = Arc<dyn Fn(&CollectionApi) -> Result<Value> + Send + Syn
 pub type TransformFn = Arc<dyn Fn(&TransformContext, String) -> Result<String> + Send + Sync>;
 pub type BeforeHook = Arc<dyn Fn(&BuildContext) -> Result<()> + Send + Sync>;
 pub type AfterHook = Arc<dyn Fn(&BuildContext, &BuildReport) -> Result<()> + Send + Sync>;
+pub type SummaryFn = Arc<dyn Fn(&BuildContext) -> Option<String> + Send + Sync>;
 pub type EngineFactory = Arc<dyn Fn(&EngineEnv) -> Result<Arc<dyn TemplateEngine>> + Send + Sync>;
 
 pub struct Config {
@@ -162,6 +176,7 @@ pub struct Config {
     pub(crate) after_build: Vec<AfterHook>,
     pub(crate) watch_targets: Vec<PathBuf>,
     pub(crate) plugins: Vec<String>,
+    pub(crate) summaries: Vec<(String, SummaryFn)>,
 }
 
 impl Config {
@@ -192,6 +207,7 @@ impl Config {
             after_build: Vec::new(),
             watch_targets: Vec::new(),
             plugins: Vec::new(),
+            summaries: Vec::new(),
         }
     }
 
@@ -299,6 +315,17 @@ impl Config {
         F: Fn(&BuildContext, &BuildReport) -> Result<()> + Send + Sync + 'static,
     {
         self.after_build.push(Arc::new(f));
+        self
+    }
+
+    /// Add a line to the summary printed after each build, such as
+    /// `Images  4,689 files from 812 sources`. `f` runs after the
+    /// `after_build` hooks; returning `None` leaves the line out.
+    pub fn add_summary<F>(&mut self, label: impl Into<String>, f: F) -> &mut Self
+    where
+        F: Fn(&BuildContext) -> Option<String> + Send + Sync + 'static,
+    {
+        self.summaries.push((label.into(), Arc::new(f)));
         self
     }
 
