@@ -4,6 +4,7 @@
 //! `sitesquatch.toml` in the project root. Sites that want to
 //! extend SiteSquatch in Rust build their own binary with `sitesquatch::cli::run`.
 
+mod init;
 mod modules;
 
 // musl's allocator is slow under the many-threaded allocation of a build
@@ -29,12 +30,19 @@ use sitesquatch_plugin_rss::RssPlugin;
 const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify), ("ssqch/assets", assets), ("ssqch/links", links)];
 
 fn main() -> std::process::ExitCode {
-    sitesquatch::cli::run(|cfg| {
-        if let Err(e) = configure(cfg) {
-            eprintln!("\x1b[31merror:\x1b[0m {:#}", e);
-            std::process::exit(1);
-        }
-    })
+    let extra = vec![
+        sitesquatch::cli::ExtraCommand { command: init::init_command(), run: Box::new(init::run_init) },
+        sitesquatch::cli::ExtraCommand { command: init::types_command(), run: Box::new(init::run_types) },
+    ];
+    sitesquatch::cli::run_with(
+        |cfg| {
+            if let Err(e) = configure(cfg) {
+                eprintln!("\x1b[31merror:\x1b[0m {:#}", e);
+                std::process::exit(1);
+            }
+        },
+        extra,
+    )
 }
 
 fn configure(cfg: &mut Config) -> Result<()> {

@@ -50,7 +50,16 @@ ssqch --version
 
 ## Build your first site
 
-Let's make a tiny site with a home page that lists posts. Here's the whole thing:
+The quickest start is `ssqch init`, which creates a starter site (a config, a layout, a home page, a post, a data file, and editor types) and then gets out of the way:
+
+```sh
+ssqch init my-site
+cd my-site && ssqch serve
+```
+
+Open <http://localhost:8080>, edit `src/posts/hello-world.md`, and watch the page reload. `ssqch init` never overwrites a file that's already there, so it's safe to run in a folder you've started.
+
+To see how the pieces fit, here's a tiny site built by hand: a home page that lists posts. Here's the whole thing:
 
 ```text
 ssqch.config.js
@@ -151,6 +160,8 @@ ssqch serve
 `ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--port N` for `serve`, `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode.
 
 ## Configuring a site
+
+> **Pro tip:** run `ssqch types` to write `ssqch.d.ts`, and list it in `jsconfig.json`'s `"include"` (`ssqch init` does both). Your editor then autocompletes config keys and plugin options, and underlines mistakes like `ouput` or `linksPlugin({ fail: "yes" })`, without any npm packages. Run it again after upgrading ssqch.
 
 Here's a fuller config, with data, a custom collection and the built-in plugins:
 

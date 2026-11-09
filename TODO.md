@@ -43,8 +43,10 @@ Follow-ups:
 - [x] Write the `CHANGELOG.md` entry above (under "Unreleased" until the first release).
 - [x] **Blog:** pin the ssqch it builds with. It now installs a pinned release instead
       (`SSQCH_VERSION` in its `netlify.toml`).
-- [ ] Type definitions for `defineConfig` and the `ssqch/*` modules (a `.d.ts`), for editor
-      hints. They'd ship in the npm package, if there is one.
+- [x] Type definitions for `defineConfig` and the `ssqch/*` modules: `ssqch types` writes
+      `ssqch.d.ts` (ambient `declare module` declarations, so no npm package is needed), and
+      `ssqch init` includes it with a `jsconfig.json`. Checked with `tsc` against the starter,
+      the README's example and the blog's config. Not released yet.
 
 ## What else the blog is waiting on
 
@@ -59,6 +61,11 @@ Follow-ups:
       to sRGB with `moxcms` (`plugins/image/src/color.rs`), within about one level of macOS
       ColorSync. Only converted images get new ids, so upgrading re-encodes just those (39 of the
       blog's 737 sources). Released in 0.2.2.
+- [ ] Clean stale files from the output (the README's known gaps). It needs a design call, not
+      just code: cleaning before a build would delete what other tools write first (the blog's
+      CSS and JS from PostCSS and esbuild) and the image cache (`dist/img`). Safer: after a
+      production build, delete files the build neither wrote nor copied, keeping the image
+      folder (which `prune` handles) and paths listed in a `keep` option. Off by default.
 - [ ] HDR photos (newer iPhones: Display P3 primaries, PQ curve, gain-map lookup table) can't be
       converted: `moxcms` fails with `InvalidAtoBLut`, and they need HDR-to-SDR tone mapping, not
       a color conversion. They're encoded as they are, with a warning. Doing it properly means
@@ -196,11 +203,12 @@ reuse it, and crates.io comes before `cargo binstall`.
 
 ### Getting started
 
-- [ ] Rewrite the README's "Try it" around installing a prebuilt binary and `ssqch init`, rather
-      than cloning the blog and running `cargo`.
-- [ ] `ssqch init`: scaffold a starter site (an `ssqch.config.js`, a layout, a post, and an
-      `_data` file). Decide whether the starter is embedded in the binary or fetched, and add a
-      test that the scaffolded site builds.
+- [x] Rewrite the README's "Try it" around installing a prebuilt binary and `ssqch init`: the
+      README leads with Install and "Build your first site" (`ssqch init`), and building the
+      blog moved to "Working on SiteSquatch".
+- [x] `ssqch init [dir]`: scaffolds a starter site (config, layout, home page, a post with
+      directory data, `_data/site.json`, `ssqch.d.ts`, `jsconfig.json`, `.gitignore`), keeping
+      existing files. A test builds what it writes. Not released yet.
 - [ ] Possible design changes:
   - Clearer, documented data-cascade rules.
   - An image API that names its output formats explicitly, instead of an `auto` setting.
