@@ -88,14 +88,26 @@ itself (**Blog:** "Step 2" in `../blog/TODO.md`):
 - [x] A release workflow (`dist`, see `dist-workspace.toml`) that builds Linux x86_64 with AVIF
       as a musl static binary, with SHA-256 checksums and build attestations. Pull requests run
       the same build without publishing. The other platforms can follow in later releases.
-- [ ] See the release build pass on a pull request (it hasn't run yet), then tag `v0.2.0`.
+- [x] See the release build pass on a pull request, then tag `v0.2.0` (released 2026-11-08).
+- [x] Release 0.2.1 with mimalloc in the musl build (PR #2). The v0.2.0 musl binary's warm build
+      of the blog was 2.4x slower than glibc's (0.73 s against 0.30 s); with mimalloc it matches
+      glibc. Cold builds gained about 6% (one run each), and peak memory went from 368 MB to
+      700 MB.
 - [x] An install script: dist's `ssqch-installer.sh`, attached to each release. Its URL pins the
       version, it checks the archive's checksum, and `SSQCH_UNMANAGED_INSTALL=<dir>` installs
       into that directory without touching shell profiles:
       `curl -fsSL https://github.com/reverentgeek/sitesquatch/releases/download/v0.2.0/ssqch-installer.sh | SSQCH_UNMANAGED_INSTALL=.cache/bin sh`.
-- [ ] Measure a cold build of the blog (no `dist/img` cache, about 3,200 image derivatives with
-      AVIF) on a Netlify-sized machine, and check it fits Netlify's build timeout. If it doesn't,
-      lower `avifSpeed` for the first build, or prime the cache once.
+- [ ] Measure a cold build of the blog (no `dist/img` cache, about 4,700 image files with AVIF)
+      on a Netlify-sized machine, and check it fits Netlify's build timeout. On a 4-core GitHub
+      runner it takes about 4m 45s (PR #2's benchmark). If it doesn't fit, lower `avifSpeed`
+      for the first build, or prime the cache once.
+- [ ] If a benchmark is needed again, don't compile in it: trigger on `workflow_run` of the
+      Release workflow, download its PR artifact (the musl binary that would ship), and compare
+      it with the latest release from its installer. No glibc reference build. Use a stratified
+      sample of the blog's source images (about 80–100, matching the mix of formats and sizes),
+      run 5–10 cold builds per binary interleaved (A, B, A, B, ...), and report the median and
+      spread, plus CPU time. PR #2's `bench-allocator.yml` is the starting point (it's in that
+      PR's history).
 - [ ] Document the Netlify recipe: the `netlify.toml` build command, caching `dist/img` and
       `.cache/ssqch` with `netlify-plugin-cache`, and pinning the ssqch version.
 
