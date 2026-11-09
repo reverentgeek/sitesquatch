@@ -48,10 +48,13 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configur
 2. Set `[workspace.package] version` in `Cargo.toml` to match, along with the `version` of each
    `sitesquatch*` entry in `[workspace.dependencies]`, and run `cargo build` to update
    `Cargo.lock`.
-3. Commit, push to `main`, and wait for CI to pass.
+3. Commit and push to `main`.
 4. Tag and push: `git tag v<version> && git push origin v<version>`. The release workflow
-   builds the archives, refuses a tag that doesn't match a package version, and publishes the
-   GitHub release with that version's changelog section as its notes.
+   waits for CI to pass on the tagged commit (`.github/workflows/check-ci.yml`), builds the
+   archives, refuses a tag that doesn't match a package version, and publishes the GitHub
+   release with that version's changelog section as its notes. If CI fails, nothing is
+   published: fix it and tag the fixed commit with the same version (delete the old tag
+   first).
 5. Publish the crates from the tag: `cargo publish --workspace --locked`. It publishes them in
    dependency order, using the crates.io token in `~/.cargo/credentials.toml`.
 

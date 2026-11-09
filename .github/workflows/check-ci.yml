@@ -1,0 +1,52 @@
+# Before a release builds, waits for the CI workflow (ci.yml) to pass on the
+# tagged commit. dist calls this alongside its plan job (`plan-jobs` in
+# dist-workspace.toml), and the builds wait for it, so a tag pushed before CI
+# finishes waits, and a tag on a commit whose CI failed (or never ran) doesn't
+# release. On pull requests it does nothing: CI runs there on its own.
+name: Check CI
+
+on:
+  workflow_call:
+
+jobs:
+  check-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Wait for CI on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            echo "Not a tag ($GITHUB_REF); nothing to check."
+            exit 0
+          fi
+          # Up to 40 minutes: CI takes a few, but it may still be queued.
+          for attempt in $(seq 1 80); do
+            run=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=1" \
+              --jq '.workflow_runs[0] // empty | "\(.status) \(.conclusion) \(.html_url)"')
+            if [ -z "$run" ]; then
+              # No run yet. Give CI 10 minutes to start before giving up.
+              if [ "$attempt" -gt 20 ]; then
+                echo "::error::No CI run for $SHA. Push the commit to main (CI runs there) before tagging it."
+                exit 1
+              fi
+              echo "No CI run for $SHA yet; waiting."
+            else
+              read -r status conclusion url <<< "$run"
+              if [ "$status" = completed ]; then
+                if [ "$conclusion" = success ]; then
+                  echo "CI passed on $SHA: $url"
+                  exit 0
+                fi
+                echo "::error::CI on $SHA finished with '$conclusion': $url. Fix it, push, and tag the fixed commit."
+                exit 1
+              fi
+              echo "CI on $SHA is $status: $url"
+            fi
+            sleep 30
+          done
+          echo "::error::Gave up waiting for CI on $SHA."
+          exit 1

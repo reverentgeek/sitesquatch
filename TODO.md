@@ -207,9 +207,9 @@ Settle this before the first tag, since the release workflow keys off it.
       wrapper package and `cargo binstall` metadata. It also handles feature flags and system
       packages like nasm (`[dist.dependencies]`). That covers most of this section and
       "Installing" below, including "Netlify first".
-- [ ] A GitHub Actions release workflow that runs on a version tag (`v0.2.0`) and publishes
-      `ssqch` to a GitHub release: done with `dist`, except that it doesn't wait for the test
-      workflow. The release steps in `CLAUDE.md` say to wait for CI before tagging.
+- [x] A GitHub Actions release workflow that runs on a version tag (`v0.2.0`) and publishes
+      `ssqch` to a GitHub release: done with `dist`. It waits for CI to pass on the tagged
+      commit before building (`.github/workflows/check-ci.yml`, a dist `plan-jobs` job).
 - [x] Build for the common platforms: Linux x86_64 (static musl), macOS arm64 and x86_64, and
       Windows x86_64, each on its native runner, with nasm from apt, Homebrew or Chocolatey
       (`.github/build-setup.yml` puts Chocolatey's on PATH). Each binary is smoke-tested on its
