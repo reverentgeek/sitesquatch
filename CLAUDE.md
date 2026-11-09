@@ -45,7 +45,8 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configur
 
 1. In `CHANGELOG.md`, rename `## Unreleased` to `## <version> - <YYYY-MM-DD>` (semver; while
    0.x, a breaking change bumps the minor version).
-2. Set `[workspace.package] version` in `Cargo.toml` to match, and run `cargo build` to update
+2. Set `[workspace.package] version` in `Cargo.toml` to match, along with the `version` of each
+   `sitesquatch*` entry in `[workspace.dependencies]`, and run `cargo build` to update
    `Cargo.lock`.
 3. Commit, push to `main`, and wait for CI to pass.
 4. Tag and push: `git tag v<version> && git push origin v<version>`. The release workflow
