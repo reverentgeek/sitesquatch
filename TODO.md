@@ -55,13 +55,16 @@ Follow-ups:
       a separate, smaller item. `modules.rs` provides `fs`, `fs/promises`, `path`, `path/posix`,
       `url`, `process` and `buffer` today.
       **Blog:** replaces `scripts/hash-assets.js`, `.asset-manifest.json` and `_data/assets.js`.
-- [ ] **Color profiles in the image plugin.** It drops ICC profiles without converting colors, so
-      Display P3 photos come out washed out (the blog has 40). Read the profile from the decoder
-      (`ImageDecoder::icc_profile` in `image` 0.25) and convert to sRGB before encoding. `moxcms`
-      is pure Rust; `lcms2` would add another C dependency to the cross-compiles. Check PNGs too.
-      **Blog:** the sharp `transform` workaround is gone with the Eleventy packages, so until
-      this lands, those photos stay slightly washed out (or the source files get converted
-      once).
+- [x] **Color profiles in the image plugin.** Images with a non-sRGB RGB profile are converted
+      to sRGB with `moxcms` (`plugins/image/src/color.rs`), within about one level of macOS
+      ColorSync. Only converted images get new ids, so upgrading re-encodes just those (39 of the
+      blog's 737 sources). Not released yet.
+- [ ] HDR photos (newer iPhones: Display P3 primaries, PQ curve, gain-map lookup table) can't be
+      converted: `moxcms` fails with `InvalidAtoBLut`, and they need HDR-to-SDR tone mapping, not
+      a color conversion. They're encoded as they are, with a warning. Doing it properly means
+      reading the gain map (ISO 21496-1) or tone-mapping PQ to SDR the way ColorSync does.
+      **Blog:** has 4 (the Helix roller case post); converting those sources once with `sips`
+      fixes them now.
 - [ ] **A built-in link checker.** ssqch has every output page and URL, so check internal links
       and anchors after the build, and fail a production build on a broken one. External links
       can stay with an outside tool like `lychee`.

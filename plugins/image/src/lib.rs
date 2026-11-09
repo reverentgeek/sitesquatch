@@ -11,7 +11,11 @@
 //! - `ssqch:widths="300,600"` sets the widths for that image
 //! - `ssqch:ignore` leaves the tag untouched
 //! - a plain `width` attribute pins the image to that one width
+//!
+//! Images with an RGB color profile other than sRGB (Display P3, Adobe RGB)
+//! are converted to sRGB before encoding; see `color`.
 
+mod color;
 mod hash_cache;
 
 pub use hash_cache::CACHE_FILE;
@@ -167,6 +171,8 @@ pub struct ImageProcessor {
     generated: AtomicUsize,
     /// Files deleted by `prune` at the end of the last build.
     pruned: AtomicUsize,
+    /// Source images this build converted to sRGB (see `color`).
+    converted: Mutex<HashSet<PathBuf>>,
     /// Every derivative this build produced or reused, for `prune`.
     used: Mutex<HashSet<PathBuf>>,
     /// Every source image this build used.
@@ -187,6 +193,7 @@ impl ImageProcessor {
             memo: Mutex::new(HashMap::new()),
             generated: AtomicUsize::new(0),
             pruned: AtomicUsize::new(0),
+            converted: Mutex::new(HashSet::new()),
             used: Mutex::new(HashSet::new()),
             sources: Mutex::new(HashSet::new()),
             hashes: Mutex::new(hash_cache::HashCache::default()),
@@ -307,7 +314,18 @@ impl ImageProcessor {
 
         if !jobs.is_empty() {
             let started = std::time::Instant::now();
-            let img = decode(src)?;
+            let (img, plan) = decode(src)?;
+            match plan {
+                color::Plan::Convert(_) => {
+                    self.converted.lock().unwrap().insert(src.to_path_buf());
+                }
+                color::Plan::Unsupported(why) => self.warn_once(format!(
+                    "{} has a color profile ssqch can't convert to sRGB ({}), so its colors may look washed out. HDR photos from newer iPhones do this; converting the source to sRGB once fixes it (on macOS: sips -m \"/System/Library/ColorSync/Profiles/sRGB Profile.icc\" <file>)",
+                    sitesquatch::display_path(&ctx, src),
+                    why
+                )),
+                color::Plan::Keep => {}
+            }
             jobs.par_iter().try_for_each(|job| self.encode(&img, job).with_context(|| format!("encoding {}", job.path.display())))?;
             self.generated.fetch_add(jobs.len(), Ordering::Relaxed);
             let took = started.elapsed();
@@ -331,13 +349,20 @@ impl ImageProcessor {
     /// settings. Not the path or mtime: a fresh `git clone` gives every file a
     /// new mtime, which would turn every CI build into a cold one. The hash
     /// cache only saves re-reading files whose size and mtime haven't changed.
+    ///
+    /// An image that gets converted to sRGB (see `color`) has that mixed into
+    /// its id, so turning conversion on renamed only those images' files
+    /// instead of re-encoding every image. The hash cache's key has a
+    /// `color1` marker, so ids cached before conversion existed are worked out
+    /// again.
     fn hash_id(&self, src: &Path) -> Result<String> {
         let o = &self.options;
         let settings = format!("{}|{}|{}|{}", o.webp_quality, o.avif_quality, o.avif_speed, o.jpeg_quality);
+        let cache_key = format!("{}|color1", settings);
         let (size, mtime) = hash_cache::stamp(src)?;
         let mtime = mtime.filter(|_| o.hash_cache);
         if let Some(m) = mtime {
-            if let Some(id) = self.hashes.lock().unwrap().get(src, size, m, &settings) {
+            if let Some(id) = self.hashes.lock().unwrap().get(src, size, m, &cache_key) {
                 return Ok(id);
             }
         }
@@ -345,10 +370,13 @@ impl ImageProcessor {
         let mut h = blake3::Hasher::new();
         h.update_reader(file).with_context(|| format!("reading {}", src.display()))?;
         h.update(settings.as_bytes());
+        if color::Plan::for_file(src).converts() {
+            h.update(b"|srgb");
+        }
         const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
         let id: String = h.finalize().as_bytes().iter().take(10).map(|b| ALPHABET[(*b & 63) as usize] as char).collect();
         if let Some(m) = mtime {
-            self.hashes.lock().unwrap().put(src, size, m, &settings, &id);
+            self.hashes.lock().unwrap().put(src, size, m, &cache_key, &id);
         }
         Ok(id)
     }
@@ -398,6 +426,7 @@ impl ImageProcessor {
         // A file two pages ask for in different widths can be counted twice
         // by the encoder, so cap at the number of files.
         let encoded = self.generated.load(Ordering::Relaxed).min(used.len());
+        let converted = self.converted.lock().unwrap().len();
         let mut line = format!(
             "{} file{} from {} source{}, {}: {} encoded, {} reused",
             sitesquatch::report::count(used.len()),
@@ -408,6 +437,9 @@ impl ImageProcessor {
             sitesquatch::report::count(encoded),
             sitesquatch::report::count(used.len() - encoded),
         );
+        if converted > 0 {
+            line.push_str(&format!(" ({} source{} converted to sRGB)", sitesquatch::report::count(converted), if converted == 1 { "" } else { "s" }));
+        }
         if self.options.prune {
             line.push_str(&format!(", {} pruned", sitesquatch::report::count(pruned)));
         }
@@ -626,12 +658,18 @@ fn header_dimensions(src: &Path) -> Result<((u32, u32), image::metadata::Orienta
     Ok((dims, orientation))
 }
 
-fn decode(src: &Path) -> Result<DynamicImage> {
+/// The image's pixels, rotated by its EXIF orientation and converted to sRGB
+/// if its color profile calls for it, with the plan that was followed.
+fn decode(src: &Path) -> Result<(DynamicImage, color::Plan)> {
     let mut decoder = ImageReader::open(src)?.with_guessed_format()?.into_decoder()?;
     let orientation = decoder.orientation().unwrap_or(image::metadata::Orientation::NoTransforms);
+    let plan = color::Plan::for_icc(decoder.icc_profile().ok().flatten().as_deref());
     let mut img = DynamicImage::from_decoder(decoder).with_context(|| format!("decoding {}", src.display()))?;
     img.apply_orientation(orientation);
-    Ok(img)
+    if let color::Plan::Convert(profile) = &plan {
+        img = color::to_srgb(&img, profile).with_context(|| format!("decoding {}", src.display()))?;
+    }
+    Ok((img, plan))
 }
 
 fn percent_decode(s: &str) -> String {
@@ -685,6 +723,7 @@ impl Plugin for ImagePlugin {
             p.memo.lock().unwrap().clear();
             p.used.lock().unwrap().clear();
             p.sources.lock().unwrap().clear();
+            p.converted.lock().unwrap().clear();
             p.timings.lock().unwrap().clear();
             if p.options.hash_cache {
                 p.hashes.lock().unwrap().load(ctx.root.join(CACHE_FILE));
