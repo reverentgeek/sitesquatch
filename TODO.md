@@ -61,11 +61,10 @@ Follow-ups:
       to sRGB with `moxcms` (`plugins/image/src/color.rs`), within about one level of macOS
       ColorSync. Only converted images get new ids, so upgrading re-encodes just those (39 of the
       blog's 737 sources). Released in 0.2.2.
-- [ ] Clean stale files from the output (the README's known gaps). It needs a design call, not
-      just code: cleaning before a build would delete what other tools write first (the blog's
-      CSS and JS from PostCSS and esbuild) and the image cache (`dist/img`). Safer: after a
-      production build, delete files the build neither wrote nor copied, keeping the image
-      folder (which `prune` handles) and paths listed in a `keep` option. Off by default.
+- [x] Clean stale files from the output: `clean: true`. Each build lists the pages and
+      passthrough files it wrote in `.cache/ssqch/output-files.json`, and a build with `clean`
+      deletes listed files it didn't write again. Files from other tools (the blog's CSS and JS)
+      and the image folder aren't on the list, so no `keep` option is needed. Off by default.
 - [ ] HDR photos (newer iPhones: Display P3 primaries, PQ curve, gain-map lookup table) can't be
       converted: `moxcms` fails with `InvalidAtoBLut`, and they need HDR-to-SDR tone mapping, not
       a color conversion. They're encoded as they are, with a warning. Doing it properly means

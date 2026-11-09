@@ -87,7 +87,7 @@
 	// they're allowed at the top level only. Everything else can also come from
 	// a plugin, and is applied in order: the config's own entries first, then
 	// each plugin's, depth first.
-	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "deepMerge" ];
+	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "deepMerge", "clean" ];
 	const PARTS = [ "data", "filters", "collections", "transforms", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins" ];
 	const DIRS = [ "input", "output", "includes", "data" ];
 
@@ -151,7 +151,7 @@
 						settings[key] = value;
 					}
 				}
-				for ( const key of [ "templateFormats", "markdownEngine", "htmlEngine", "deepMerge" ] ) {
+				for ( const key of [ "templateFormats", "markdownEngine", "htmlEngine", "deepMerge", "clean" ] ) {
 					if ( part[key] !== undefined ) settings[key] = part[key];
 				}
 			}

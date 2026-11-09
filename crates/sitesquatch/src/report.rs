@@ -41,6 +41,9 @@ pub fn summary(cfg: &Config, report: &BuildReport) -> String {
         copied.push_str(&format!(", {}", bytes(report.passthrough_bytes)));
         lines.push(("Copied".into(), copied));
     }
+    if report.files_removed > 0 {
+        lines.push(("Removed".into(), format!("{} stale file{}", count(report.files_removed), plural(report.files_removed))));
+    }
 
     lines.extend(report.summary.iter().cloned());
 

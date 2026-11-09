@@ -208,6 +208,7 @@ The default export is the config: an object, or a function (sync or async) that 
 | `templateFormats` | File extensions to render (default `["edge", "md", "html"]`). |
 | `markdownEngine`, `htmlEngine` | The engine that runs over `.md` and `.html` files first (default `"edge"`; `false` for none). |
 | `deepMerge` | Merge objects and concatenate arrays through the data cascade (default `true`). |
+| `clean` | Delete stale files from the output: pages and passthrough files an earlier build wrote that this one didn't, like a deleted post (default `false`). ssqch keeps a list of what it writes in `.cache/ssqch/output-files.json`, so files other tools write into the output (your CSS build, say) are never touched. |
 | `filters` | `{ name: function }`, callable from templates: `{{ slug(title) }}`. Async functions are awaited. |
 | `data` | `{ name: value }` for every template. A function (sync or async) is called on each build. |
 | `collections` | `{ name: (pages) => ... }`. `pages` has `all()`, `byTag(tag)`, `byTags(...tags)` and `byGlob(glob or globs)`, oldest first. |
@@ -215,7 +216,7 @@ The default export is the config: an object, or a function (sync or async) that 
 | `passthrough` | Files or folders to copy: a path, or `{ from: to }`, or an array of them. |
 | `watch` | More paths for `ssqch serve` to watch. |
 | `beforeBuild`, `afterBuild` | Build hooks (a function or an array). They get `{ env, serving, dirs }`, plus `written` (the files written) after the build. Async works. |
-| `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `deepMerge`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
+| `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `deepMerge`, `clean`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
 
 Mistakes get caught early. A misspelled key or option is an error, and so are two plugins that define the same filter, data or collection name (the message names both). When something in your code throws, you get `ssqch.config.js: too many pine cones` and a stack trace that points at your file, like `at bad (lib/filters.js:3:9)`.
 
@@ -439,10 +440,9 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/) from a ve
 
 - **JavaScript:** no npm packages or CommonJS yet (see the note under [Configuring a site](#configuring-a-site)). JavaScript is interpreted (QuickJS has no JIT), so heavy collection code is slower than in Node: reading a page in a collection costs about 2 µs the first time, and the blog's `topics` and `postsByYear` collections over 2,000 posts take about 45 ms together.
 - **Edge:** no `@inject`, `@debugger`, `@svg`, components as tags (`@!card()`), destructuring in `@let`, scoped slots, regex literals, or the `in` operator. Array `reverse` and `sort` return copies instead of changing the array.
-- **Markdown:** pulldown-cmark with tables and strikethrough, adjusted to match markdown-it (`<s>`, a single `~` left as it is, `<img>`, `<hr>` and `<br>` without a slash, table alignment styles, line breaks in alt text). It leaves `"` unescaped in text.
+- **Markdown:** pulldown-cmark with tables and strikethrough, adjusted to match markdown-it (`<s>`, a single `~` left as it is, `<img>`, `<hr>` and `<br>` without a slash, table alignment styles, line breaks in alt text).
 - **Images:** no SVG rasterizing, and HDR photos (the PQ, gain-map profiles of newer iPhones) can't be converted to sRGB, so they look washed out; the build warns about them, and converting the source to sRGB once fixes it. SVGs are served as they are, and GIFs are copied for `auto` output, so animations keep working.
-- **Minifier:** it doesn't shorten attribute values (`defer="defer"`, spaces in a viewport `content`).
 - **Collections:** custom collections don't see pages that are paginated over collections. Those pages are added to `all` and their tags afterwards.
-- **Not built yet:** cleaning the output folder before a build. Prebuilt binaries cover Linux x86_64, macOS and Windows x86_64; see [TODO.md](TODO.md) for what's next.
+- **Platforms:** prebuilt binaries cover Linux x86_64, macOS and Windows x86_64, but not Linux on ARM yet; see [TODO.md](TODO.md) for what's next.
 
 Found a bug, or have an idea? [Open an issue](https://github.com/reverentgeek/sitesquatch/issues). Happy building, and may your pages load faster than a Squatch sighting disappears.
