@@ -175,13 +175,8 @@ Settle this before the first tag, since the release workflow keys off it.
 Order matters here: the install script comes first because the Netlify recipe and the Action
 reuse it, and crates.io comes before `cargo binstall`.
 
-- [ ] Publish the crates to crates.io (`cargo install ssqch`).
-  - Give each path dependency in `[workspace.dependencies]` a `version` too
-    (`sitesquatch = { path = "crates/sitesquatch", version = "0.2.0" }`); crates.io rejects
-    path-only deps.
-  - Publish in dependency order: `sitesquatch-edge`, `sitesquatch`, `sitesquatch-js`, the
-    plugins, then `ssqch`.
-  - Check that the `sitesquatch*` and `ssqch` names are free on crates.io (and `ssqch` on npm).
+- [x] Publish the crates to crates.io (`cargo install ssqch`), from 0.2.6. Each release runs
+      `cargo publish --workspace` after the tag (see `CLAUDE.md`).
 - [ ] Support `cargo binstall ssqch`. It finds the repository through the crates.io index, so it
       needs the crates.io publish first. Add `[package.metadata.binstall]` if the archive names
       don't follow its default pattern.

@@ -34,10 +34,10 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/reverentgeek/sites
 
 The installers check the download's SHA-256 checksum, install `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and add that folder to your `PATH`. Every release binary runs a smoke test on its own platform before it's published. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.2.6`. You can also download an archive for your platform from the [releases page](https://github.com/reverentgeek/sitesquatch/releases).
 
-On other platforms (Linux on ARM, say), build it with a recent stable [Rust toolchain](https://rustup.rs):
+On other platforms (Linux on ARM, say), build it from [crates.io](https://crates.io/crates/ssqch) with a recent stable [Rust toolchain](https://rustup.rs):
 
 ```sh
-cargo install --git https://github.com/reverentgeek/sitesquatch --tag v0.2.6 --locked --features avif ssqch
+cargo install ssqch --locked --features avif
 ```
 
 > **Note:** AVIF support on an x86_64 machine needs the [nasm](https://nasm.us) assembler installed first (`brew install nasm`, `apt-get install nasm`, `choco install nasm`). ARM machines don't need it. Leave off `--features avif` to skip AVIF, and the build gets faster too.

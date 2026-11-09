@@ -16,14 +16,14 @@ rayon = "1"
 regex = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 lol_html = "2"
-sitesquatch = { path = "crates/sitesquatch" }
-sitesquatch-edge = { path = "crates/sitesquatch-edge" }
-sitesquatch-js = { path = "crates/sitesquatch-js" }
-sitesquatch-plugin-rss = { path = "plugins/rss" }
-sitesquatch-plugin-image = { path = "plugins/image" }
-sitesquatch-plugin-minify = { path = "plugins/minify" }
-sitesquatch-plugin-assets = { path = "plugins/assets" }
-sitesquatch-plugin-links = { path = "plugins/links" }
+sitesquatch = { version = "0.2.6", path = "crates/sitesquatch" }
+sitesquatch-edge = { version = "0.2.6", path = "crates/sitesquatch-edge" }
+sitesquatch-js = { version = "0.2.6", path = "crates/sitesquatch-js" }
+sitesquatch-plugin-rss = { version = "0.2.6", path = "plugins/rss" }
+sitesquatch-plugin-image = { version = "0.2.6", path = "plugins/image" }
+sitesquatch-plugin-minify = { version = "0.2.6", path = "plugins/minify" }
+sitesquatch-plugin-assets = { version = "0.2.6", path = "plugins/assets" }
+sitesquatch-plugin-links = { version = "0.2.6", path = "plugins/links" }
 
 [profile.release]
 lto = "thin"

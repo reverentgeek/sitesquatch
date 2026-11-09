@@ -5,6 +5,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "../../README.md"
+keywords = ["static-site", "ssg", "blog", "cli", "markdown"]
+categories = ["command-line-utilities", "web-programming"]
 
 [[bin]]
 name = "ssqch"

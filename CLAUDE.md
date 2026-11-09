@@ -51,6 +51,8 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configur
 4. Tag and push: `git tag v<version> && git push origin v<version>`. The release workflow
    builds the archives, refuses a tag that doesn't match a package version, and publishes the
    GitHub release with that version's changelog section as its notes.
+5. Publish the crates from the tag: `cargo publish --workspace --locked`. It publishes them in
+   dependency order, using the crates.io token in `~/.cargo/credentials.toml`.
 
 ## Conventions
 

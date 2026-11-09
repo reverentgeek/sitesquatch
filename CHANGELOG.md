@@ -19,6 +19,7 @@ a `v<version>` tag on a commit where that version matches.
 
 ### Added
 
+- The crates are on crates.io: `cargo install ssqch --locked --features avif`.
 - Prebuilt binaries for macOS (Apple Silicon and Intel) and Windows (x86_64), alongside Linux,
   with a PowerShell installer for Windows. Each one runs a smoke test on its own platform
   before a release is published.
