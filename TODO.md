@@ -91,6 +91,57 @@ Follow-ups:
     `content`). Add the rewrites that shrink output.
   - `feed.xml` keeps `<br />` and `<img ... />` as written. That's fine.
 
+## More template languages
+
+Goal: people coming from another generator can keep the template language they already know.
+Today ssqch renders Edge, Markdown and plain HTML. A Rust binary can add an engine with
+`add_template_engine`, but `ssqch.config.js` can't. The blog stays on Edge and doesn't need any
+of this.
+
+In priority order, by how widely each is used across static site generators and themes:
+
+- [ ] **Liquid** (`.liquid`): Jekyll, GitHub Pages, Shopify themes and many Eleventy sites use it.
+      The [`liquid`](https://crates.io/crates/liquid) crate (from Cobalt) implements it. Config
+      `filters` work as Liquid filters (`{{ title | slug }}`), `{% include %}` and `{% render %}`
+      read from `_includes`, and layouts use the same layout chain as Edge.
+- [ ] **Nunjucks and Jinja** (`.njk`, `.jinja`, `.j2`): Nunjucks is common with Eleventy, and
+      Jinja with Python generators (Pelican, MkDocs themes).
+      [`minijinja`](https://crates.io/crates/minijinja) implements Jinja2 and covers most
+      Nunjucks syntax. List the Nunjucks features it doesn't cover, and decide whether `.njk` is
+      close enough or gets documented as Jinja. Tera (Zola's engine) is similar enough to skip
+      unless someone asks.
+- [ ] **Handlebars and Mustache** (`.hbs`, `.mustache`): the
+      [`handlebars`](https://crates.io/crates/handlebars) crate renders both (Mustache templates
+      mostly work as Handlebars). Config `filters` become helpers, and partials come from
+      `_includes`.
+- [ ] **JavaScript engines from the config**: let `ssqch.config.js` register an engine
+      (something like `engines: { ejs: { extensions: ["ejs"], render(source, data) { ... } } }`)
+      that runs on QuickJS, so pure-JavaScript libraries like EJS or Pug work without Rust. It's
+      slower than a native engine (JavaScript runs one call at a time), so measure it, and check
+      which libraries load in QuickJS with the Node built-ins ssqch has.
+- [ ] Not planned unless someone asks: Go templates (Hugo; no Rust implementation matches Go's
+      `text/template` closely) and MDX/JSX (needs a JavaScript toolchain and a component model).
+
+Shared work, done with the first engine (Liquid) and reused by the rest:
+
+- [ ] One path for every engine to get what Edge gets: config filters, the `ssqch.*` globals,
+      the data cascade, `_includes`, layouts, the compiled-template cache, and errors that name
+      `template:line`.
+- [ ] `markdownEngine` and `htmlEngine` accept the new names (`markdownEngine: "liquid"`), and
+      `templateFormats` the new extensions.
+- [ ] Each engine is a cargo feature that the release builds turn on (like `avif`), so a Rust
+      binary can leave them out. Check what each adds to the binary size and the build time.
+- [ ] Docs and tooling: the README lists the engines and their extensions, `ssqch types` knows
+      the new names, and `ssqch init` could take `--engine liquid`.
+- [ ] Tests: a small site per engine, including a layout chain that mixes engines (a Liquid page
+      in an Edge layout).
+- [ ] Rename the `templateEngineOverride` front-matter key. It's Eleventy's name, which ssqch
+      shouldn't use, and with more engines it matters more. Pick a native key (for example
+      `engine: md`, or `engine: [liquid, md]` for a chain). That's a breaking change: list it
+      under **Breaking** in the changelog.
+      **Blog:** one post's front matter uses it (`edgejs-template-plugin-for-11ty.md`). The
+      post's text about Eleventy's key stays as it is.
+
 ## Prebuilt binaries and easier adoption
 
 Goal: anyone can use `ssqch` without installing Rust or compiling it, and can start a new site
