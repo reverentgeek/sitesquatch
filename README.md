@@ -1,104 +1,150 @@
 # SiteSquatch
 
-A prototype static site generator in Rust: a data cascade, layouts, collections, pagination and
-permalinks, with Edge.js and Markdown templates, a JavaScript config, and a plugin API for
-filters, global data, collections, transforms, template engines and build hooks.
+[![CI](https://github.com/reverentgeek/sitesquatch/actions/workflows/ci.yml/badge.svg)](https://github.com/reverentgeek/sitesquatch/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/reverentgeek/sitesquatch)](https://github.com/reverentgeek/sitesquatch/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-It builds [reverentgeek.com](https://reverentgeek.com) from its [source](https://github.com/reverentgeek/blog):
-168 pages, about 3,200 responsive image derivatives, feed, sitemap, Netlify `_headers`/`_redirects`.
-With images cached, a rebuild takes about **0.1 s**; see [Benchmarks](#benchmarks).
+SiteSquatch (`ssqch`) is a static site generator that fits in a single binary. You write templates in [Edge.js](https://edgejs.dev) and Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. No Node required at all: the JavaScript runs on an engine built into `ssqch`.
 
-## Try it
+It's quick, too. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in about **0.1 s** once its images are cached. See [Benchmarks](#benchmarks) for the details.
 
-You'll need a recent stable [Rust toolchain](https://rustup.rs). The example site is the
-ReverentGeek blog, so clone it next to this repository:
+What's in the box:
 
-```sh
-git clone https://github.com/reverentgeek/blog.git ../blog
-```
+- **A data cascade, layouts, collections, pagination and permalinks**, so a blog or docs site needs no custom code.
+- **A JavaScript config** with filters, global data, custom collections, transforms and build hooks, plus the Node built-ins configs usually reach for (`fs`, `path`, `url`, `process`, `Buffer`).
+- **Responsive images:** every `<img>` becomes a `<picture>` with AVIF, WebP and fallback sources, cached by content so later builds skip the encoding.
+- **RSS helpers, HTML minification** and a dev server with live reload.
+- **A Rust API** for when JavaScript isn't enough: custom template engines, heavy transforms, or a whole site as its own binary.
 
-ssqch builds the pages, but the blog's CSS and JavaScript come from Tailwind and esbuild. With
-Node installed, the blog's own scripts build everything:
+SiteSquatch is young (0.x), so expect some breaking changes between minor versions. Each one is listed in the [changelog](CHANGELOG.md) with what you'd need to change.
 
-```sh
-cargo build --release -p ssqch --features avif
-(cd ../blog && pnpm install && SSQCH_BIN=../ssqch/target/release/ssqch pnpm run build)
-```
+## Install
 
-Without Node for the CSS and JS, `scripts/build-native.sh` in the blog downloads standalone
-Tailwind and esbuild binaries, builds the CSS and JS, and then runs ssqch. It still uses Node to
-fingerprint the CSS and JS (`index.css` becomes `index.<hash>.css`) and to prune unused images:
+On **Linux (x86_64)**, install the prebuilt binary. It's statically linked, so it runs on any distribution:
 
 ```sh
-SSQCH_BIN="$PWD/target/release/ssqch" ../blog/scripts/build-native.sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.sh | sh
 ```
 
-To build or serve the site directly, once the CSS and JS exist:
+The installer checks the download's SHA-256 checksum, installs `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and adds that folder to your `PATH`. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.2.1`.
+
+On **macOS and Windows**, there are no prebuilt binaries yet, so build it with a recent stable [Rust toolchain](https://rustup.rs):
 
 ```sh
-target/release/ssqch build --root ../blog
-target/release/ssqch serve --root ../blog    # watch + live reload
+cargo install --git https://github.com/reverentgeek/sitesquatch --tag v0.2.1 --locked --features avif ssqch
 ```
 
-The output goes to `../blog/dist`. The first build encodes about 3,200 images, so expect it to
-take a while (see [Benchmarks](#benchmarks)). Later builds reuse them.
+> **Note:** AVIF support on an x86_64 machine needs the [nasm](https://nasm.us) assembler installed first (`brew install nasm`, `apt-get install nasm`). Apple Silicon and other ARM machines don't need it. Leave off `--features avif` to skip AVIF, and the build gets faster too.
 
-`serve` doesn't build the CSS and JS. To work on styles, run the blog's watchers alongside the
-server:
+Check that it worked:
 
 ```sh
-(cd ../blog && pnpm run serve:css) &
-(cd ../blog && pnpm run serve:js) &
-target/release/ssqch serve --root ../blog
+ssqch --version
 ```
 
-Options: `--output DIR`, `--env development|production` (otherwise `$SSQCH_ENV` or `$NODE_ENV`;
-defaults to production for `build`, development for `serve`), `--verbose` to also list the
-slowest images to encode, `--quiet` to print only warnings and errors.
+## Build your first site
 
-A build prints a line for each page it writes and each image it encodes, then a summary:
+Let's make a tiny site with a home page that lists posts. Here's the whole thing:
 
 ```text
-[ssqch] Encoded ./src/site/content/images/hero.png into 10 files (webp, png) in 51.06ms
-[ssqch] Writing ./dist/about/index.html from ./src/site/pages/about.md (edge, md)
-...
-Built in 110 ms (production)
-  Pages   168 written from 140 templates, 6.83 MB
-  Copied  0 files, 12 unchanged, 3.88 MB
-  Images  4,689 files from 737 sources, 271 MB: 0 encoded, 4,689 reused
-  Output  dist: 4,872 files, 282 MB
-  Time    setup 1.11 ms, data 1.31 ms, read 32.3 ms, paginate 2.81 ms, render 7.56 ms, write 55.9 ms, copy 193 µs, after 9.21 ms
+ssqch.config.js
+src/
+  _includes/layout.edge
+  index.edge
+  posts/pine-cone-crunch.md
 ```
 
-`Images` counts the derivatives this build used, from how many source images, and how many it
-had to encode; with `prune` on, it also says how many stale files it deleted. `Output` is
-everything in the output folder, including files from earlier builds. `Time` splits the build
-into phases: `write` includes layouts, transforms and image encoding, and `after` the
-`afterBuild` hooks. `ssqch serve` prints the same summary after every rebuild. A Rust plugin
-adds its own line with `Config::add_summary`.
+### Step 1: The config
 
-## Layout
+`ssqch.config.js` sits in your project root. This one reads templates from `src`, writes to `dist`, and adds a `shout` filter:
+
+```js
+// ssqch.config.js
+import { defineConfig } from "ssqch";
+
+export default defineConfig({
+  dirs: { input: "src", output: "dist" },
+  filters: {
+    shout: (text) => `${text.toUpperCase()}!`,
+  },
+});
+```
+
+### Step 2: A layout
+
+Layouts live in `src/_includes`. `{{{ content }}}` (three braces, so it isn't escaped) is where each page's body goes:
+
+```html
+<!-- src/_includes/layout.edge -->
+<!doctype html>
+<html lang="en">
+  <head><title>{{ title }}</title></head>
+  <body>
+    <main>{{{ content }}}</main>
+  </body>
+</html>
+```
+
+### Step 3: A post and a home page
+
+Front matter sets each page's data. Tagging the post `posts` puts it in `collections.posts`:
+
+```markdown
+<!-- src/posts/pine-cone-crunch.md -->
+---
+layout: layout.edge
+title: Pine Cone Crunch
+tags: posts
+---
+Crunchy, foresty, and only slightly sticky.
+```
+
+The home page uses the filter and loops over the posts:
+
+```html
+<!-- src/index.edge -->
+---
+layout: layout.edge
+title: Squatch Snacks
+---
+<h1>{{ shout(title) }}</h1>
+<ul>
+  @each(post in collections.posts)
+    <li><a href="{{ post.url }}">{{ post.data.title }}</a></li>
+  @end
+</ul>
+```
+
+### Step 4: Build it
+
+```sh
+ssqch build
+```
+
+You'll see a line for each page, then a summary:
 
 ```text
-crates/ssqch             The `ssqch` command-line tool, configured by ssqch.config.js or sitesquatch.toml
-crates/sitesquatch       Generator core, CLI and dev server, as a library
-crates/sitesquatch-edge  Edge.js template engine (parser + JavaScript expression evaluator)
-crates/sitesquatch-js    ssqch.config.js support, on an embedded QuickJS engine
-plugins/rss              getNewestCollectionItemDate, dateToRfc3339/822, absoluteUrl, htmlToAbsoluteUrls, url
-plugins/image            <img> -> responsive <picture>, and image() for data files
-plugins/minify           Conservative HTML minifier
-examples/reverentgeek    The blog's config ported to Rust, as an example of the Rust API
+[ssqch] Writing ./dist/index.html from ./src/index.edge (edge)
+[ssqch] Writing ./dist/posts/pine-cone-crunch/index.html from ./src/posts/pine-cone-crunch.md (edge, md)
+Built in 2.75 ms (production)
+  Pages   2 written from 2 templates, 401 B
+  Output  dist: 2 files, 401 B
+  Time    setup 224 µs, data 435 µs, read 1.54 ms, paginate 45 µs, render 205 µs, write 282 µs, copy 0 µs, after 20 µs
 ```
+
+`dist/index.html` has a `SQUATCH SNACKS!` heading and a link to `/posts/pine-cone-crunch/`. You've got a website!
+
+To work on it with live reload, run the dev server and open <http://localhost:8080>:
+
+```sh
+ssqch serve
+```
+
+`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--port N` for `serve`, `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode.
 
 ## Configuring a site
 
-Install the `ssqch` command:
-
-```sh
-cargo install --path crates/ssqch                    # add --features avif for AVIF images
-```
-
-Then put an `ssqch.config.js` in your project root:
+Here's a fuller config, with data, a custom collection and the built-in plugins:
 
 ```js
 // ssqch.config.js
@@ -124,7 +170,7 @@ export default defineConfig(({ env }) => ({
     snacks: async () => [{ name: "Pine Cone Crunch", stars: 5 }],
   },
   collections: {
-    snacks: (pages) => pages.byTag("snacks").filter((p) => p.data.stars > 3),
+    favorites: (pages) => pages.byTag("snacks").filter((p) => p.data.stars > 3),
   },
 
   plugins: [
@@ -135,18 +181,7 @@ export default defineConfig(({ env }) => ({
 }));
 ```
 
-```sh
-ssqch build                 # production build
-ssqch serve --port 8080     # development build, watch and live reload
-```
-
-No Node install needed. The config runs on [QuickJS](https://github.com/quickjs-ng/quickjs),
-embedded in the `ssqch` binary (it adds about 1.2 MB), so modern JavaScript works: ES modules,
-`async`/`await`, arrow functions and the standard built-ins.
-
-The default export is the config: an object, or a function (sync or async) that gets
-`{ env, serving }` and returns one. `defineConfig` just returns what it's given; it makes the
-file read as a config. Every key is optional:
+The default export is the config: an object, or a function (sync or async) that gets `{ env, serving }` and returns one. `defineConfig` returns whatever you give it; it's there so the file reads like a config. Every key is optional:
 
 | Key | What it does |
 | --- | --- |
@@ -161,14 +196,13 @@ file read as a config. Every key is optional:
 | `passthrough` | Files or folders to copy: a path, or `{ from: to }`, or an array of them. |
 | `watch` | More paths for `ssqch serve` to watch. |
 | `beforeBuild`, `afterBuild` | Build hooks (a function or an array). They get `{ env, serving, dirs }`, plus `written` (the files written) after the build. Async works. |
-| `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `deepMerge`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` to have it show up in errors. |
+| `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `deepMerge`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
 
-Two plugins defining the same filter, data or collection name is an error that names both. So
-are misspelled keys and options.
+Mistakes get caught early. A misspelled key or option is an error, and so are two plugins that define the same filter, data or collection name (the message names both). When something in your code throws, you get `ssqch.config.js: too many pine cones` and a stack trace that points at your file, like `at bad (lib/filters.js:3:9)`.
 
-Imports can be relative files (`./lib/filters.js`, with or without the extension), JSON
-(`import site from "./site.json"`), the built-in modules (`ssqch`, `ssqch/image`, `ssqch/rss`,
-`ssqch/minify`), and these Node built-ins, with or without the `node:` prefix:
+### What you can import
+
+Config and data files can import relative files (`./lib/filters.js`, with or without the extension), JSON (`import site from "./site.json"`), the built-in modules (`ssqch`, `ssqch/image`, `ssqch/rss`, `ssqch/minify`), and these Node built-ins, with or without the `node:` prefix:
 
 | Module | What's there |
 | --- | --- |
@@ -178,22 +212,15 @@ Imports can be relative files (`./lib/filters.js`, with or without the extension
 | `node:url` | `fileURLToPath`, `pathToFileURL` (and `import.meta.url` is set) |
 | `node:process`, `node:buffer` | `process.env`, `process.cwd()`, `process.platform`, and `Buffer` (also a global) with `utf8`, `hex`, `base64`, `base64url` and `latin1` |
 
-Errors carry Node's codes (`err.code === "ENOENT"`), and relative paths resolve against the
-project root, like running Node from there.
+Errors carry Node's codes (`err.code === "ENOENT"`), and relative paths resolve against the project root, as if you ran Node from there. Dates and numbers format like Node does for `en-US`: `toLocaleDateString()`, `toLocaleString()`, `Intl.DateTimeFormat` and `Intl.NumberFormat` match Node 24 on [902 cases](crates/sitesquatch-js/tests/fixtures/intl-cases.mjs). Other locales, and time zones other than UTC and the machine's, throw an error rather than quietly formatting something else.
 
-Template values arrive as ordinary-looking JavaScript objects, arrays and `Date`s. Large objects
-(a page's data, a collection) are really lazy views: a property is read from Rust the first time
-you touch it, so passing `collections.posts` to a filter costs nothing until the filter reads it.
-They behave like plain objects (`Object.keys`, spread, `JSON.stringify`, `sort()` and other in-place
-changes all work), and changes stay inside JavaScript: a filter that sorts `collections.posts`
-doesn't reorder it for other pages. Pages render in parallel, but JavaScript runs one call at a
-time, so module-level state in your config behaves the way it would in Node.
+> **Note:** these aren't supported yet: npm packages, CommonJS (`require`, `module.exports`), other Node built-ins (such as `node:crypto`), timers and `fetch`. After editing the config, restart `ssqch serve` to pick up the changes.
+
+The config runs on [QuickJS](https://github.com/quickjs-ng/quickjs), which adds about 1.2 MB to the binary and supports modern JavaScript: ES modules, `async`/`await`, arrow functions and the standard built-ins. Template values arrive as ordinary-looking objects, arrays and `Date`s. Behind the scenes, big ones (a page's data, a collection) are lazy views that only copy a property from Rust when you read it, so passing `collections.posts` to a filter costs nothing until the filter looks inside. Changes you make stay in JavaScript: a filter that sorts `collections.posts` doesn't reorder it for other pages. Pages render in parallel, but JavaScript runs one call at a time, so module-level state in your config behaves as it would in Node.
 
 ### JavaScript data files
 
-`_data/*.js` files are global data, and `*.data.js` files next to a template or in a folder
-(`posts/posts.data.js`) are template and directory data. The default export is the data, or a
-function (sync or async) that returns it:
+`_data/*.js` files are global data, and `*.data.js` files next to a template or in a folder (`posts/posts.data.js`) are template and directory data. The default export is the data, or a function (sync or async) that returns it:
 
 ```js
 // src/_data/snacks.js
@@ -214,47 +241,17 @@ export default {
 };
 ```
 
-Data functions run on every build. `ssqch serve` reloads a data file when it changes (files it
-imports stay cached until you restart). These work with `sitesquatch.toml` sites too, no
-`ssqch.config.js` needed.
+Data functions run on every build. `ssqch serve` reloads a data file when it changes (the files it imports stay cached until you restart). Data files work in TOML-configured sites too.
 
 ### Built-in plugins
 
-- **`ssqch/image`:** `imagePlugin(options)` turns every local `<img>` in HTML output into a
-  `<picture>`. Options: `formats` (`avif`, `webp`, `jpeg`, `png`, `auto`), `widths`,
-  `defaultAttributes`, `outputDir`, `urlPath`, `webpQuality`, `avifQuality`, `avifSpeed`,
-  `jpegQuality`, `minimumThreshold`, `prune`, `hashCache` (on by default; see
-  [Deploying from CI](#deploying-from-ci)). On an `<img>`, `ssqch:widths="300,600"` picks that
-  image's widths, a plain `width` attribute pins it to one width, and `ssqch:ignore` leaves it
-  alone. `image(src, { widths, formats })` generates one image's derivatives with the same
-  settings and cache, returning `{ webp: [{ url, width, height, srcset, sourceType, ... }] }`;
-  data files can call it even without the plugin. AVIF needs `ssqch` built with
-  `--features avif`; on x86_64 that build also needs the [nasm](https://nasm.us) assembler
-  (`apt-get install nasm`, `brew install nasm`), which the AVIF encoder uses for speed.
-- **`ssqch/minify`:** `minifyPlugin(options)` minifies HTML output, after the image transform.
-  `minify(html, options)` does the same for a string. Options: `collapseWhitespace`,
-  `removeComments`, `shortDoctype` (all `true` by default).
-- **`ssqch/rss`:** `rssPlugin()` adds the filters `getNewestCollectionItemDate`, `dateToRfc3339`,
-  `dateToRfc822`, `absoluteUrl`, `htmlToAbsoluteUrls` and `url`. The same functions are named
-  exports, for use in your own code.
-
-Errors point back at your code: `ssqch.config.js: too many pine cones` followed by a stack trace
-like `at bad (lib/filters.js:3:9)`.
-
-Dates and numbers format like Node for `en-US`: `toLocaleDateString()`, `toLocaleTimeString()`,
-`toLocaleString()`, `Intl.DateTimeFormat` and `Intl.NumberFormat` match Node 24 on
-[902 cases](crates/sitesquatch-js/tests/fixtures/intl-cases.mjs). QuickJS has no `Intl` of its own, so
-other locales, and time zones other than UTC and the machine's, throw instead of formatting
-something else.
-
-> **Note:** these aren't supported yet: npm packages, CommonJS (`require`, `module.exports`),
-> Node built-ins beyond the ones above (such as `node:crypto`), timers and `fetch`. After
-> editing the config, restart `ssqch serve` to pick up the changes.
+- **`ssqch/image`:** `imagePlugin(options)` turns every local `<img>` in HTML output into a `<picture>`. Options: `formats` (`avif`, `webp`, `jpeg`, `png`, `auto`), `widths`, `defaultAttributes`, `outputDir`, `urlPath`, `webpQuality`, `avifQuality`, `avifSpeed`, `jpegQuality`, `minimumThreshold`, `prune` and `hashCache`. On an `<img>`, `ssqch:widths="300,600"` picks that image's widths, a plain `width` attribute pins it to one width, and `ssqch:ignore` leaves it alone. `image(src, { widths, formats })` makes one image's files with the same settings and cache, returning `{ webp: [{ url, width, height, srcset, sourceType, ... }] }`. Data files can call it even without the plugin.
+- **`ssqch/minify`:** `minifyPlugin(options)` minifies HTML output, after the image transform. `minify(html, options)` does the same for a string. Options: `collapseWhitespace`, `removeComments`, `shortDoctype` (all `true` by default).
+- **`ssqch/rss`:** `rssPlugin()` adds the filters `getNewestCollectionItemDate`, `dateToRfc3339`, `dateToRfc822`, `absoluteUrl`, `htmlToAbsoluteUrls` and `url`. They're also named exports, for your own code.
 
 ### Configuring with TOML
 
-Sites that need no code at all can use a `sitesquatch.toml` instead (use one or the other). Every
-key is optional; see `crates/sitesquatch/src/site_toml.rs` for the full list.
+A site that needs no code at all can use a `sitesquatch.toml` instead (one or the other, not both). Every key is optional; `crates/sitesquatch/src/site_toml.rs` has the full list.
 
 ```toml
 input = "src"
@@ -265,10 +262,99 @@ template_formats = ["edge", "md", "html"]
 "src/robots.txt" = ""   # empty keeps the path relative to the input directory
 ```
 
-## Extending ssqch in Rust
+## Templates and data
 
-When JavaScript isn't enough (a new template engine, a heavy transform), a site can be its own small
-Rust binary. `examples/reverentgeek` builds the ReverentGeek blog this way:
+Here's what's supported:
+
+- **The data cascade**, from lowest to highest priority: global `_data` files (JSON, YAML, TOML or JavaScript), layout front matter, directory data, template data files, front matter, then `computed`. Objects merge and arrays concatenate, unless `deepMerge` is off.
+- **Collections:** tags become collections, sorted by date, plus your custom ones. `excludeFromCollections: true` keeps a page out.
+- **Pagination:** `data`, `size`, `alias`, `reverse`, `filter`, `addAllPagesToCollections` and hrefs.
+- **Permalinks:** dynamic permalinks, `permalink: false` and `dynamicPermalink`.
+- **Everything else:** `templateEngineOverride`, layout chaining, `page.*`, `templateContent` in collections, and an error when two pages would write the same file. Every template can read `ssqch.version`, `ssqch.env`, `ssqch.serving` and `ssqch.generator`.
+
+Edge.js support covers `{{ }}`, `{{{ }}}`, `{{-- --}}`, `@{{ }}`, `@if/@elseif/@else/@unless`, `@each` (with index, objects, `@else` and `$loop`), `@let`, `@assign`, `@include`, `@includeIf`, `@component`/`@!component` with named slots and isolated scope, and `~` whitespace control. Newlines and escaping match Edge.js 6.5 on [42 whitespace cases](crates/sitesquatch-edge/tests/fixtures/whitespace-cases.json). One difference: an undefined value prints nothing, where Edge.js prints `undefined`.
+
+Expressions cover object and array literals (with shorthand and spread), template literals, optional chaining, arrow functions, ternaries, `??`, `typeof`, `await` (a no-op), `new Date()`, the common String, Array, Number and Date methods, and the `JSON`, `Object`, `Math` and `Array` globals. Errors report `template:line` through the include and component chain.
+
+## Reading the build summary
+
+Every build ends with a summary. Here's the ReverentGeek blog with its images cached:
+
+```text
+Built in 110 ms (production)
+  Pages   168 written from 140 templates, 6.83 MB
+  Copied  0 files, 12 unchanged, 3.88 MB
+  Images  4,689 files from 737 sources, 271 MB: 0 encoded, 4,689 reused
+  Output  dist: 4,872 files, 282 MB
+  Time    setup 1.11 ms, data 1.31 ms, read 32.3 ms, paginate 2.81 ms, render 7.56 ms, write 55.9 ms, copy 193 µs, after 9.21 ms
+```
+
+- **Images** counts the image files this build used, the source images they came from, and how many had to be encoded. With `prune` on, it also says how many stale files it deleted.
+- **Output** is everything in the output folder, including files left from earlier builds.
+- **Time** splits the build into phases. `write` includes layouts, transforms and image encoding, so a build that encodes images spends most of its time there. `after` is the `afterBuild` hooks.
+
+`ssqch serve` prints the same summary after every rebuild.
+
+## Deploying
+
+### Keep the image cache between builds
+
+Encoding images is by far the slowest part of a build, so it's worth never doing it twice. Each image file is named by a hash of the source image's contents and the encoder settings, not its path or modification time. Restore the output's `img/` folder from the last build, and a build with no new images encodes nothing, even on a fresh clone in CI.
+
+ssqch also remembers each source image's hash, size and modification time in `.cache/ssqch/image-hashes.json`, so unchanged images aren't read again. Cache that folder too. (A fresh clone gives every file a new modification time, so its first build re-hashes everything, which takes about 20 ms on the blog's 420 MB of images.) Add `.cache/` to your `.gitignore`, or turn the hash cache off with `hashCache: false`. It's kept outside the output folder because it names your source paths, and the output gets published.
+
+Set `prune: true` on `imagePlugin()` to delete image files the build didn't use, so the cache doesn't keep growing as images change. Only turn it on for full builds, where every image goes through the image plugin.
+
+### Netlify
+
+Netlify can build the site itself, with no deploy token to manage. This is the ReverentGeek blog's `netlify.toml` (it builds its CSS and JavaScript with npm scripts first, so it runs `pnpm run build`; a site without that step can run `.cache/bin/ssqch build` instead):
+
+```toml
+[build]
+  command = "curl --proto '=https' --tlsv1.2 -fsSL https://github.com/reverentgeek/sitesquatch/releases/download/v$SSQCH_VERSION/ssqch-installer.sh | SSQCH_UNMANAGED_INSTALL=.cache/bin sh && SSQCH_BIN=.cache/bin/ssqch pnpm run build && node --test test/smoke.test.js"
+  publish = "dist/"
+
+[build.environment]
+  NODE_VERSION = "24"
+  SSQCH_VERSION = "0.2.1"
+
+[[plugins]]
+  package = "netlify-plugin-cache"
+  [plugins.inputs]
+    paths = ["dist/img", ".cache/ssqch"]
+```
+
+- **`SSQCH_VERSION`** pins the release, so a new SiteSquatch version can't surprise a deploy. Bump it when you're ready.
+- **`SSQCH_UNMANAGED_INSTALL=.cache/bin`** installs the binary into that folder and leaves shell profiles alone.
+- **[`netlify-plugin-cache`](https://github.com/jakejarvis/netlify-plugin-cache)** carries the image files and the hash cache over to the next build. Add it to your `devDependencies`.
+
+On the blog, the first Netlify build (which encoded every image) took about 4 minutes, and the next one took 18 seconds, including Netlify's own setup.
+
+## Benchmarks
+
+These numbers come from building the ReverentGeek blog (161 HTML pages plus a feed, a sitemap and Netlify files) on an Apple M5 Pro (15 cores) in November 2026, in production mode with HTML minification on. Each build wrote to its own output folder, so no image cache was shared.
+
+| Build | Rust port (no AVIF) | Rust port, `--features avif` | `ssqch` with the JavaScript config (AVIF) |
+| --- | --- | --- | --- |
+| **Cold** (no images cached) | **8.0 s** | **30.8 s** | **25.0 s** |
+| CPU time, cold (user + sys) | 79 s | 323 s | 335 s |
+| Peak memory, cold | 1.41 GB | 1.54 GB | 1.80 GB |
+| **Warm** (images cached, median of 3) | **0.09 s** | **0.10 s** | **0.16 s** |
+| Peak memory, warm | ~52 MB | ~50 MB | ~47 MB |
+| Image files written | 3,160 (233 MB) | 4,689 (268 MB) | 4,689 (268 MB) |
+
+- **Warm builds** are what the dev server and cached CI builds do. Wall times include starting the process.
+- **The JavaScript config** costs about 70 ms more than the Rust port on a warm build: that's the blog's collections, filters and data files running in QuickJS. These were measured before the blog's config moved to `defineConfig`; it runs the same code.
+- **Cold builds** are mostly image encoding, and AVIF is the most expensive format. They're single runs and vary: the two AVIF builds do the same work, and AVIF cold builds ranged from 21 s to 31 s across four runs. ssqch encodes AVIF with ravif at speed 8 (`avifSpeed`).
+- Only site generation is measured, not building the CSS and JavaScript.
+
+On a 4-core GitHub Actions runner, the v0.2.1 release builds the blog in about 0.3 s warm and 4m 45s cold.
+
+To reproduce the table on macOS, run `scripts/bench.sh [path/to/blog] [warm-runs]` (the blog defaults to `../blog`). It works on a copy-on-write clone of the blog in a temporary folder, so your copy is never touched, and writes `results.csv`, `bench.log` and `summary.txt` to `bench-results/<timestamp>/`.
+
+## Extending SiteSquatch in Rust
+
+When JavaScript isn't enough, a site can be its own small Rust binary. `examples/reverentgeek` builds the ReverentGeek blog this way:
 
 ```rust
 fn main() -> std::process::ExitCode {
@@ -282,10 +368,9 @@ fn main() -> std::process::ExitCode {
 }
 ```
 
-A plugin implements `sitesquatch::Plugin` (any `Fn(&mut Config)` works too) and registers things on
-the `Config`:
+A plugin implements `sitesquatch::Plugin` (any `Fn(&mut Config)` works too) and registers things on the `Config`:
 
-| API | In `ssqch.config.js` |
+| Rust API | In `ssqch.config.js` |
 | --- | --- |
 | `add_filter`, `add_global` | `filters` (Edge globals) |
 | `add_global_data(name, \|ctx\| ...)` | `data`, or a JavaScript file in `_data/` |
@@ -294,114 +379,45 @@ the `Config`:
 | `add_template_engine(ext, factory)` | not available (Markdown and Edge use this same trait) |
 | `on_before_build`, `on_after_build` | `beforeBuild`, `afterBuild` |
 | `add_passthrough_copy[_to]`, `add_watch_target` | `passthrough`, `watch` |
+| `add_summary(label, \|ctx\| ...)` | not available (adds a line to the build summary) |
 
-Plugins can share services. The image plugin exposes an `ImageProcessor`, and the blog plugin uses
-it for `heroImage` data and the `socialImage` filter.
+Plugins can share services. The image plugin exposes an `ImageProcessor`, and the blog's plugin uses it for its hero image data and its `socialImage` filter.
 
-### Templates and data
+## Working on SiteSquatch
 
-Data cascade (global `_data` JSON/YAML/TOML/JavaScript < layout front matter < directory data <
-template data file < front matter < `computed`), deep merge, tags and collections (sorted by
-date), custom collections, pagination (`data`, `size`, `alias`, `reverse`, `filter`,
-`addAllPagesToCollections`, hrefs), dynamic permalinks, `permalink: false`, `dynamicPermalink`,
-`excludeFromCollections`, `templateEngineOverride`, layout chaining, `page.*`, `templateContent`
-in collections, output conflict detection. Every template can read `ssqch.version`, `ssqch.env`,
-`ssqch.serving` and `ssqch.generator`.
+```text
+crates/ssqch             The `ssqch` command-line tool
+crates/sitesquatch       Generator core, CLI and dev server, as a library
+crates/sitesquatch-edge  Edge.js template engine (parser + JavaScript expression evaluator)
+crates/sitesquatch-js    ssqch.config.js support, on an embedded QuickJS engine
+plugins/rss              Feed filters: getNewestCollectionItemDate, dateToRfc3339/822, absoluteUrl, htmlToAbsoluteUrls, url
+plugins/image            <img> -> responsive <picture>, and image() for data files
+plugins/minify           Conservative HTML minifier
+examples/reverentgeek    The blog's config ported to Rust, as an example of the Rust API
+```
 
-### Edge.js support
+Run the tests with `cargo test --workspace` (add `--features ssqch/avif` to include the AVIF encoder). [CI](.github/workflows/ci.yml) runs them on Linux and macOS, with and without AVIF, plus `cargo clippy` with warnings as errors.
 
-`{{ }}`, `{{{ }}}`, `{{-- --}}`, `@{{ }}`, `@if/@elseif/@else/@unless`, `@each` (with index,
-objects, `@else`, `$loop`), `@let`, `@assign`, `@include`, `@includeIf`, `@component`/`@!component`
-with named slots and isolated scope, `~` whitespace control. Newlines and escaping follow
-Edge.js exactly, checked against Edge.js 6.5 on
-[42 whitespace cases](crates/sitesquatch-edge/tests/fixtures/whitespace-cases.json). One
-difference: an undefined value prints nothing, where Edge.js prints `undefined`.
+The ReverentGeek blog is the real-world test site. To build it with your changes, clone it next to this repository and use its own build script, which also builds the CSS and JavaScript:
 
-Expressions cover the JavaScript the blog uses and a bit more: object/array literals with
-shorthand and spread, template literals, optional chaining, arrow functions, ternaries, `??`,
-`typeof`, `await` (a no-op), `new Date()`, plus common String/Array/Number/Date methods and
-`JSON`, `Object`, `Math`, `Array` globals. Errors report `template:line` through the
-include/component chain.
+```sh
+git clone https://github.com/reverentgeek/blog.git ../blog
+cargo build --release -p ssqch --features avif
+(cd ../blog && pnpm install && SSQCH_BIN=../ssqch/target/release/ssqch pnpm test)
+```
 
-## Benchmarks
+`pnpm test` builds the site and runs the blog's smoke tests. The first build encodes every image, so give it a few minutes; later builds reuse them.
 
-These numbers come from building the ReverentGeek blog (161 HTML pages plus feed, sitemap and
-Netlify files) on an Apple M5 Pro (15 cores) in November 2026, all in production mode (HTML
-minification on). The builds are the Rust port (`examples/reverentgeek`) with and without AVIF,
-and the `ssqch` binary running the blog's JavaScript config. Each wrote to its own output folder,
-so no image cache was shared.
+Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/) from a version tag. The steps are in [`CLAUDE.md`](CLAUDE.md#releasing).
 
-| Build | Rust port (no AVIF) | Rust port, `--features avif` | `ssqch` with the JavaScript config (AVIF) |
-| --- | --- | --- | --- |
-| **Cold** (no images cached) | **8.0 s** | **30.8 s** | **25.0 s** |
-| CPU time, cold (user + sys) | 79 s | 323 s | 335 s |
-| Peak memory, cold | 1.41 GB | 1.54 GB | 1.80 GB |
-| **Warm** (images cached, median of 3) | **0.09 s** | **0.10 s** | **0.16 s** |
-| Peak memory, warm | ~52 MB | ~50 MB | ~47 MB |
-| Image files written | 3,160 (233 MB) | 4,689 (268 MB) | 4,689 (268 MB) |
+## Known gaps
 
-- **Warm builds** are what the dev server and cached CI builds do. Wall times include process
-  startup.
-- **Running the JavaScript config** costs about 70 ms more than the Rust port on a warm build:
-  that's the blog's collections, filters and data files running in QuickJS. These numbers were
-  measured before the blog's config moved to `defineConfig`; it runs the same filters,
-  collections and data files.
-- **Cold builds** are dominated by image encoding, and AVIF is the most expensive format. They're
-  single runs and vary: the two AVIF builds do the same encoding work, and AVIF cold builds ranged
-  from 21 s to 31 s across four runs. ssqch encodes AVIF with ravif at speed 8 (`avifSpeed`).
-- Only the site generation step is measured. Building the CSS and JavaScript isn't included.
+- **JavaScript:** no npm packages or CommonJS yet (see the note under [Configuring a site](#configuring-a-site)). JavaScript is interpreted (QuickJS has no JIT), so heavy collection code is slower than in Node: reading a page in a collection costs about 2 µs the first time, and the blog's `topics` and `postsByYear` collections over 2,000 posts take about 45 ms together.
+- **Edge:** no `@inject`, `@debugger`, `@svg`, components as tags (`@!card()`), destructuring in `@let`, scoped slots, regex literals, or the `in` operator. Array `reverse` and `sort` return copies instead of changing the array.
+- **Markdown:** pulldown-cmark with tables and strikethrough, adjusted to match markdown-it (`<s>`, a single `~` left as it is, `<img>`, `<hr>` and `<br>` without a slash, table alignment styles, line breaks in alt text). It leaves `"` unescaped in text.
+- **Images:** no SVG rasterizing, and color profiles are dropped without converting colors, so wide-gamut (Display P3) photos look a little washed out. SVGs are served as they are, and GIFs are copied for `auto` output, so animations keep working.
+- **Minifier:** it doesn't shorten attribute values (`defer="defer"`, spaces in a viewport `content`).
+- **Collections:** custom collections don't see pages that are paginated over collections. Those pages are added to `all` and their tags afterwards.
+- **Not built yet:** a link checker, asset fingerprinting, and cleaning the output folder before a build. Prebuilt binaries for macOS and Windows are on the way; see [TODO.md](TODO.md).
 
-To reproduce on macOS, run `scripts/bench.sh [path/to/blog] [warm-runs]` (the blog defaults to
-`../blog`). It benchmarks a copy-on-write clone of the blog in a temporary directory, so your copy is
-never touched, and writes `results.csv`, `bench.log` and `summary.txt` to
-`bench-results/<timestamp>/`.
-
-## Deploying from CI
-
-Image derivatives are named by a hash of the source file's contents plus the encoder settings, not
-its path or modification time. That matters in CI, where every fresh clone gives each file a new
-modification time. Cache the output's `img/` folder between runs, and a build with no new images
-encodes nothing. On the blog, a fresh clone with `dist/img` restored rebuilds in about 85 ms.
-
-Hashing every source image on every build would cost about 20 ms on the blog (around 420 MB of
-images), so ssqch remembers each image's id, with its size and modification time, in
-`.cache/ssqch/image-hashes.json` under the project root. Unchanged files skip the read, and a
-changed size or modification time means hashing the file again. A fresh clone has all-new
-modification times, so its first build re-hashes everything and gets the same ids. Add `.cache/` to
-your `.gitignore`, or turn the cache off with `hashCache: false` on `imagePlugin()`
-(`ImageOptions::hash_cache` in Rust). It lives outside the output folder because it names your
-source paths, and the output gets published.
-
-Set `prune: true` on `imagePlugin()` (`ImageOptions::prune` in Rust) and ssqch deletes
-derivatives the build didn't use, so the cache doesn't keep growing as images are edited or
-removed. Only turn it on for full builds where every image goes through the image plugin.
-
-The blog deploys to Netlify from GitHub Actions:
-
-1. Restore the cached `ssqch` binary (compiled only when the pinned sitesquatch commit changes),
-   `dist/img`, and the downloaded Tailwind and esbuild binaries.
-2. Run `scripts/build-native.sh`.
-3. Run the smoke tests.
-4. Run `netlify deploy --prod --dir dist`. Netlify only uploads files whose contents changed, so a
-   new post sends a few pages and that post's images.
-
-## Not done yet / known gaps
-
-- JavaScript config and data files don't cover npm packages or CommonJS yet; see the note under
-  [Configuring a site](#configuring-a-site).
-- JavaScript is interpreted (QuickJS has no JIT), so heavy collection code is slower than in Node.
-  Reading a page in a collection costs about 2 µs the first time; the blog's `topics` and
-  `postsByYear` collections over 2,000 posts take about 45 ms together.
-- Edge: no `@inject`, `@debugger`, `@svg`, components-as-tags (`@!card()`), destructuring in
-  `@let`, scoped slots, regex literals, or the `in` operator. Array `reverse`/`sort` return copies
-  rather than mutating.
-- Markdown: pulldown-cmark with tables and strikethrough, adjusted to match markdown-it (`<s>`,
-  single `~` left literal, `<img>`/`<hr>`/`<br>` without a slash, table alignment styles, line
-  breaks in alt text), but it leaves `"` unescaped in text.
-- The minifier doesn't shorten attribute values (`defer="defer"`, spaces in a viewport `content`).
-- Images: no SVG rasterizing, and no color-profile conversion (profiles are dropped). SVGs are
-  served as they are, and GIFs are copied for `auto` output, so animations keep working.
-- Custom collections see pages that aren't paginated over collections. Pages paginated over
-  collections are added to `all`/tags afterwards.
-- No link checker or asset fingerprinting yet (the blog uses its own scripts). The output
-  directory isn't cleaned before a build.
+Found a bug, or have an idea? [Open an issue](https://github.com/reverentgeek/sitesquatch/issues). Happy building, and may your pages load faster than a Squatch sighting disappears.

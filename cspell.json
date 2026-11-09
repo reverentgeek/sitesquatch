@@ -10,10 +10,12 @@
 	"words": [
 		"bindgen",
 		"binstall",
+		"clippy",
 		"cmark",
 		"distros",
 		"eleventy",
 		"ENOENT",
+		"foresty",
 		"hrefs",
 		"lcms",
 		"libaom",
@@ -32,8 +34,10 @@
 		"reverentgeek",
 		"rquickjs",
 		"sitesquatch",
+		"Squatch",
 		"ssqch",
 		"strikethrough",
+		"tlsv",
 		"xattr"
 	]
 }

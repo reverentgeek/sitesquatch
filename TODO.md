@@ -109,11 +109,8 @@ itself (**Blog:** "Step 2" in `../blog/TODO.md`):
       run 5–10 cold builds per binary interleaved (A, B, A, B, ...), and report the median and
       spread, plus CPU time. PR #2's `bench-allocator.yml` is the starting point (it's in that
       PR's history).
-- [ ] Document the Netlify recipe in the README, using the blog's `netlify.toml` as the example:
-      the build command (the installer with `SSQCH_UNMANAGED_INSTALL`, then the build), the
-      pinned `SSQCH_VERSION`, and caching `dist/img` and `.cache/ssqch` with
-      `netlify-plugin-cache`. The README's "Deploying from CI" section still describes the
-      blog's old GitHub Actions deploy, so replace that part.
+- [x] Document the Netlify recipe in the README ("Deploying"), using the blog's `netlify.toml`
+      as the example. It replaces the old GitHub Actions description.
 
 ### Versioning
 

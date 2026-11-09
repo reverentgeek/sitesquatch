@@ -56,5 +56,6 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configur
 
 - Commit subjects are short, imperative, in sentence case (`Fix unstyled pages when serving
   after a production build`).
-- README and TODO prose wraps at 100 columns.
+- README paragraphs, list items and callouts are one line each (no hard wrapping). TODO and
+  CHANGELOG prose wraps at 100 columns.
 - Error messages name the file and what went wrong (`ssqch.config.js: too many pine cones`).
