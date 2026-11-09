@@ -26,6 +26,9 @@ pr-run-mode = "upload"
 # Run the Linux binary before publishing (.github/workflows/smoke-test.yml).
 # A failure stops the release.
 global-artifacts-jobs = ["./smoke-test"]
+# On a tag, wait for CI to pass on the tagged commit before building
+# (.github/workflows/check-ci.yml). A failed or missing CI run stops the release.
+plan-jobs = ["./check-ci"]
 # Steps to run before building (.github/build-setup.yml): nasm on PATH on Windows.
 github-build-setup = "../build-setup.yml"
 
@@ -38,3 +41,7 @@ nasm = "*"
 
 [dist.dependencies.chocolatey]
 nasm = "*"
+
+# The CI check reads workflow runs.
+[dist.github-custom-job-permissions]
+check-ci = { actions = "read" }
