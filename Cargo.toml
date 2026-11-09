@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*", "plugins/*", "examples/*"]
 
 [workspace.package]
-version = "0.2.7"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/reverentgeek/sitesquatch"
@@ -16,17 +16,17 @@ rayon = "1"
 regex = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 lol_html = "2"
-sitesquatch = { version = "0.2.7", path = "crates/sitesquatch" }
-sitesquatch-edge = { version = "0.2.7", path = "crates/sitesquatch-edge" }
-sitesquatch-js = { version = "0.2.7", path = "crates/sitesquatch-js" }
-sitesquatch-plugin-rss = { version = "0.2.7", path = "plugins/rss" }
-sitesquatch-plugin-image = { version = "0.2.7", path = "plugins/image" }
-sitesquatch-plugin-minify = { version = "0.2.7", path = "plugins/minify" }
-sitesquatch-plugin-assets = { version = "0.2.7", path = "plugins/assets" }
-sitesquatch-plugin-links = { version = "0.2.7", path = "plugins/links" }
-sitesquatch-plugin-liquid = { version = "0.2.7", path = "plugins/liquid" }
-sitesquatch-plugin-jinja = { version = "0.2.7", path = "plugins/jinja" }
-sitesquatch-plugin-handlebars = { version = "0.2.7", path = "plugins/handlebars" }
+sitesquatch = { version = "0.3.0", path = "crates/sitesquatch" }
+sitesquatch-edge = { version = "0.3.0", path = "crates/sitesquatch-edge" }
+sitesquatch-js = { version = "0.3.0", path = "crates/sitesquatch-js" }
+sitesquatch-plugin-rss = { version = "0.3.0", path = "plugins/rss" }
+sitesquatch-plugin-image = { version = "0.3.0", path = "plugins/image" }
+sitesquatch-plugin-minify = { version = "0.3.0", path = "plugins/minify" }
+sitesquatch-plugin-assets = { version = "0.3.0", path = "plugins/assets" }
+sitesquatch-plugin-links = { version = "0.3.0", path = "plugins/links" }
+sitesquatch-plugin-liquid = { version = "0.3.0", path = "plugins/liquid" }
+sitesquatch-plugin-jinja = { version = "0.3.0", path = "plugins/jinja" }
+sitesquatch-plugin-handlebars = { version = "0.3.0", path = "plugins/handlebars" }
 
 [profile.release]
 lto = "thin"
