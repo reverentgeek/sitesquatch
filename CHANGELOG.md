@@ -17,6 +17,11 @@ a `v<version>` tag on a commit where that version matches.
 
 ### Added
 
+- Asset fingerprinting: `assetsPlugin({ files })` from `ssqch/assets`. Templates link plain
+  paths like `/assets/index.css`; production builds rename each listed file in the output to
+  `index.<hash>.css` (8 hex characters of a content hash), delete older fingerprinted copies,
+  and rewrite every `href` and `src` that points at it. `ssqch serve` keeps the plain paths.
+  `assetUrl(path)` returns the URL to use elsewhere.
 - Releases run a smoke test before publishing: the Linux binary has to be static, report its
   version, and build a small site with AVIF and WebP images.
 

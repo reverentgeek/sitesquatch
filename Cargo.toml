@@ -22,6 +22,7 @@ sitesquatch-js = { path = "crates/sitesquatch-js" }
 sitesquatch-plugin-rss = { path = "plugins/rss" }
 sitesquatch-plugin-image = { path = "plugins/image" }
 sitesquatch-plugin-minify = { path = "plugins/minify" }
+sitesquatch-plugin-assets = { path = "plugins/assets" }
 
 [profile.release]
 lto = "thin"

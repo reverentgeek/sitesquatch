@@ -1,5 +1,5 @@
-//! JavaScript modules for the built-in plugins: `ssqch/image`, `ssqch/rss`
-//! and `ssqch/minify`.
+//! JavaScript modules for the built-in plugins: `ssqch/image`, `ssqch/rss`,
+//! `ssqch/minify` and `ssqch/assets`.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -72,6 +72,7 @@ pub fn js_modules() -> Vec<JsModule> {
                 ),
             ],
         ),
+        module("ssqch/assets", include_str!("js/assets.js"), vec![]),
         module(
             "ssqch/minify",
             include_str!("js/minify.js"),

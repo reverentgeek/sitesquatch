@@ -18,12 +18,13 @@ use serde_json::Value as Json;
 use sitesquatch::Config;
 use sitesquatch_js::BuiltinPlugin;
 use sitesquatch_plugin_image::{Format, ImageOptions, ImagePlugin};
+use sitesquatch_plugin_assets::{AssetsOptions, AssetsPlugin};
 use sitesquatch_plugin_minify::{MinifyOptions, MinifyPlugin};
 use sitesquatch_plugin_rss::RssPlugin;
 
 /// Built-in plugins, which a JavaScript config adds with `imagePlugin()`,
-/// `rssPlugin()` and `minifyPlugin()` from the matching `ssqch:` modules.
-const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify)];
+/// `rssPlugin()`, `minifyPlugin()` and `assetsPlugin()` from the matching `ssqch/` modules.
+const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify), ("ssqch/assets", assets)];
 
 fn main() -> std::process::ExitCode {
     sitesquatch::cli::run(|cfg| {
@@ -102,6 +103,16 @@ fn minify(cfg: &mut Config, options: &Json) -> Result<()> {
     if let Some(b) = o.bool("removeComments")? { opts.remove_comments = b; }
     if let Some(b) = o.bool("shortDoctype")? { opts.short_doctype = b; }
     cfg.add_plugin(MinifyPlugin { options: opts });
+    Ok(())
+}
+
+fn assets(cfg: &mut Config, options: &Json) -> Result<()> {
+    let o = Options::new(options, &["files", "fingerprint"])?;
+    let files = o.list("files")?.unwrap_or_default();
+    if files.is_empty() {
+        bail!("files is required: the URL paths of the files to fingerprint, like [\"/assets/index.css\"]");
+    }
+    cfg.add_plugin(AssetsPlugin::new(AssetsOptions { files, fingerprint: o.bool("fingerprint")? })?);
     Ok(())
 }
 

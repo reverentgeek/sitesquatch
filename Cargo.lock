@@ -1870,6 +1870,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sitesquatch-plugin-assets"
+version = "0.2.2"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "lol_html",
+ "sitesquatch",
+]
+
+[[package]]
 name = "sitesquatch-plugin-image"
 version = "0.2.2"
 dependencies = [
@@ -1927,6 +1937,7 @@ dependencies = [
  "serde_json",
  "sitesquatch",
  "sitesquatch-js",
+ "sitesquatch-plugin-assets",
  "sitesquatch-plugin-image",
  "sitesquatch-plugin-minify",
  "sitesquatch-plugin-rss",

@@ -21,7 +21,12 @@ fn project(files: &[(&str, &[u8])]) -> PathBuf {
 
 /// Run `ssqch build` in `root`: (success, stdout + stderr).
 fn ssqch(root: &Path) -> (bool, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_ssqch")).arg("build").arg("--root").arg(root).env("TZ", "UTC").output().unwrap();
+    ssqch_with(root, &[])
+}
+
+/// `ssqch build --root <root>` plus `args`.
+fn ssqch_with(root: &Path, args: &[&str]) -> (bool, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_ssqch")).arg("build").arg("--root").arg(root).args(args).env("TZ", "UTC").output().unwrap();
     (out.status.success(), format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
 }
 
@@ -129,4 +134,64 @@ fn bad_plugin_options_fail_clearly() {
         assert!(!ok, "expected a failure for {}", want);
         assert!(log.contains(want), "wanted: {}\n  got: {}", want, log);
     }
+}
+
+const ASSETS_CONFIG: &[u8] = br#"
+import { assetsPlugin } from "ssqch/assets";
+export default {
+  dirs: { input: "src", output: "dist" },
+  plugins: [assetsPlugin({ files: ["/assets/index.css", "/assets/index.js"] })],
+};
+"#;
+
+const ASSETS_PAGE: &[u8] = b"<link rel=\"stylesheet\" href=\"/assets/index.css\"><link rel=\"preload\" href=\"/assets/index.js?v=2\" as=\"script\"><script src=\"/assets/index.js\" defer></script><p>{{ assetUrl('/assets/index.css') }}</p>";
+
+#[test]
+fn assets_are_fingerprinted_in_production_builds() {
+    // The CSS and JS tools write into the output folder before ssqch runs.
+    let root = project(&[
+        ("ssqch.config.js", ASSETS_CONFIG),
+        ("src/index.edge", ASSETS_PAGE),
+        ("dist/assets/index.css", b"body { color: green }"),
+        ("dist/assets/index.js", b"console.log('squatch');"),
+    ]);
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    let html = read(&root, "dist/index.html");
+    let css = std::fs::read_dir(root.join("dist/assets")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).find(|n| n.ends_with(".css")).unwrap();
+    assert!(css.len() == "index.12345678.css".len() && css.starts_with("index.") && css != "index.css", "{}", css);
+    assert!(!root.join("dist/assets/index.css").exists() && !root.join("dist/assets/index.js").exists(), "plain files are renamed");
+    assert!(html.contains(&format!("href=\"/assets/{}\"", css)), "{}", html);
+    assert!(html.contains(&format!("<p>/assets/{}</p>", css)), "assetUrl() returns the fingerprinted URL: {}", html);
+    assert!(html.contains(".js?v=2\"") && !html.contains("\"/assets/index.js"), "every reference to index.js is rewritten, keeping the query: {}", html);
+    assert!(log.contains("  Assets  2 fingerprinted (index."), "{}", log);
+
+    // A second build without rebuilding the CSS and JS reuses the fingerprinted files.
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert_eq!(read(&root, "dist/index.html"), html);
+}
+
+#[test]
+fn development_builds_use_the_plain_paths() {
+    let root = project(&[
+        ("ssqch.config.js", ASSETS_CONFIG),
+        ("src/index.edge", ASSETS_PAGE),
+        ("dist/assets/index.css", b"body { color: green }"),
+        ("dist/assets/index.js", b"console.log('squatch');"),
+    ]);
+    let (ok, log) = ssqch_with(&root, &["--env", "development"]);
+    assert!(ok, "{}", log);
+    let html = read(&root, "dist/index.html");
+    assert!(html.contains("href=\"/assets/index.css\"") && html.contains("<p>/assets/index.css</p>"), "{}", html);
+    assert!(root.join("dist/assets/index.css").exists(), "nothing is renamed");
+    assert!(!log.contains("Assets"), "{}", log);
+}
+
+#[test]
+fn a_missing_asset_fails_a_production_build() {
+    let root = project(&[("ssqch.config.js", ASSETS_CONFIG), ("src/index.edge", ASSETS_PAGE), ("dist/assets/index.css", b"body {}")]);
+    let (ok, log) = ssqch(&root);
+    assert!(!ok);
+    assert!(log.contains("index.js doesn't exist; build the CSS and JS before ssqch"), "{}", log);
 }
