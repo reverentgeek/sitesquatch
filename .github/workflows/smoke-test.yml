@@ -1,0 +1,49 @@
+# Runs the release's Linux binary before anything is published. dist calls this
+# after building the archives (`global-artifacts-jobs` in dist-workspace.toml),
+# on version tags and pull requests; if it fails, the release isn't published.
+name: Smoke test
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: crates/ssqch/tests/fixtures
+      - uses: actions/download-artifact@v8
+        with:
+          name: artifacts-build-local-x86_64-unknown-linux-musl
+          path: artifacts
+      - name: Unpack the binary
+        run: |
+          tar xzf artifacts/ssqch-x86_64-unknown-linux-musl.tar.gz
+          mv ssqch-x86_64-unknown-linux-musl/ssqch .
+          file ssqch | tee /dev/stderr | grep -q "static"
+      - name: ssqch --version
+        run: ./ssqch --version | grep -E "^ssqch [0-9]+\.[0-9]+\.[0-9]+"
+      - name: Build a small site with images
+        run: |
+          mkdir -p site/src/img
+          cp crates/ssqch/tests/fixtures/squatch.png site/src/img/
+          cat > site/ssqch.config.js <<'JS'
+          import { defineConfig } from "ssqch";
+          import { imagePlugin } from "ssqch/image";
+          export default defineConfig({
+            dirs: { input: "src", output: "dist" },
+            filters: { shout: (s) => s.toUpperCase() },
+            plugins: [imagePlugin({ formats: ["avif", "webp", "auto"], widths: [16, 32] })],
+          });
+          JS
+          printf -- '---\ntitle: smoke test\n---\n<h1>{{ shout(title) }}</h1>\n<img src="/img/squatch.png" alt="Squatch">\n' > site/src/index.edge
+          ./ssqch build --root site
+          grep -q "<h1>SMOKE TEST</h1>" site/dist/index.html
+          grep -q "<picture>" site/dist/index.html
+          ls site/dist/img
+          ls site/dist/img/*.avif site/dist/img/*.webp > /dev/null

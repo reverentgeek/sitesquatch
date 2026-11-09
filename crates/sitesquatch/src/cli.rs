@@ -1,9 +1,9 @@
 //! Command line interface shared by the `ssqch` binary and custom site binaries.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use crate::config::{BuildReport, Config, Environment};
 
@@ -42,7 +42,14 @@ enum Command {
 
 /// Parse arguments, let `configure` set up the site, then build or serve.
 pub fn run(configure: impl Fn(&mut Config)) -> ExitCode {
-    let cli = Cli::parse();
+    // Named after the running binary (`ssqch`, or a site's own binary), not
+    // this library crate, so `--version` and `--help` show the right name.
+    let name = std::env::args_os()
+        .next()
+        .and_then(|arg| Path::new(&arg).file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "ssqch".into());
+    let matches = Cli::command().name(name).get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     let serving = matches!(cli.command, Some(Command::Serve { .. }));
     let env = cli
         .env

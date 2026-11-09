@@ -19,6 +19,6 @@ serde_yaml = "0.9"
 toml = "0.8"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 walkdir = "2"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "string"] }
 tiny_http = "0.12"
 notify = "8"

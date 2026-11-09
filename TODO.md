@@ -69,8 +69,12 @@ Follow-ups:
       and anchors after the build, and fail a production build on a broken one. External links
       can stay with an outside tool like `lychee`.
       **Blog:** it had a broken-links plugin in development before the move to ssqch.
-- [ ] **Check `serve` against the blog.** It starts and serves pages with the native config;
-      live reload of template and CSS edits hasn't been checked yet.
+- [x] **Check `serve` against the blog.** With `pnpm run serve`, a post edit rebuilds and
+      reloads in about 0.4 s, and a CSS edit reloads after PostCSS has written the new CSS.
+- [ ] Make CSS reloads robust: ssqch signals a reload when the source CSS changes, and the
+      blog's PostCSS watcher writes `dist/assets/index.css` separately. In the check, the CSS was
+      ready about 80 ms before the reload; a slower machine or bigger stylesheet could reload
+      with the old CSS. Reloading when files in the output's assets change would fix it.
 - [ ] Output differences found comparing against the blog's old build: none have to match
       anymore, so just fix the ones that are wrong:
   - Markdown leaves `"` unescaped in text. Escaping it is the safer default.
@@ -158,8 +162,9 @@ Settle this before the first tag, since the release workflow keys off it.
     runner (nasm from Homebrew works there).
 - [x] Ship AVIF support in the release builds (`features = ["avif"]` in `crates/ssqch/Cargo.toml`;
       dist installs `nasm` from apt). ARM builds won't need nasm.
-- [ ] Smoke-test each built binary in the release job: `ssqch --version`, then a build of a
-      small fixture site that includes a JPEG and checks the WebP and AVIF output.
+- [x] Smoke-test the Linux binary before publishing (`.github/workflows/smoke-test.yml`, run by
+      dist through `global-artifacts-jobs`): static linking, `ssqch --version`, and a small site
+      with AVIF and WebP output. Extend it when more platforms ship.
 - [x] Put `LICENSE` and `README.md` in each archive (and `CHANGELOG.md`; dist does this).
 - [x] Publish a SHA-256 checksum file alongside the archives, so installs can be verified.
 - [x] Add build provenance (`github-attestations = true` in `dist-workspace.toml`).
