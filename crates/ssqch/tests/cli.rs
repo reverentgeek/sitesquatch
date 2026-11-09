@@ -236,3 +236,33 @@ fn nunjucks_templates_get_filters_includes_and_collections() {
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(!ok && log.contains("broken.njk:2: syntax error"), "{}", log);
 }
+
+#[cfg(feature = "handlebars")]
+#[test]
+fn handlebars_and_mustache_templates_render() {
+    let dir = temp_dir("handlebars");
+    let d = dir.to_str().unwrap();
+    for sub in ["src/_includes", "src/posts"] {
+        std::fs::create_dir_all(dir.join(sub)).unwrap();
+    }
+    let write = |name: &str, body: &str| std::fs::write(dir.join(name), body).unwrap();
+    write(
+        "ssqch.config.js",
+        "export default {\n  dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"hbs\", \"mustache\", \"md\"],\n  filters: { shout: (s) => String(s).toUpperCase(), wrap: (s, l, r) => l + s + r, opts: (s, o) => s + o.size },\n  collections: { posts: (pages) => pages.byTag(\"post\") },\n};\n",
+    );
+    write("src/_includes/base.hbs", "<title>{{shout title}}</title>{{> nav}}{{{content}}}");
+    write("src/_includes/nav.hbs", "<nav>{{#each collections.posts}}<a href=\"{{this.url}}\">{{this.data.title}}</a>{{/each}}</nav>");
+    write("src/index.hbs", "---\nlayout: base.hbs\ntitle: Sightings <&>\n---\n{{title}} {{{title}}} [{{nope}}{{nope.deeper}}] {{wrap \"x\" \"[\" \"]\"}} {{opts \"o\" size=2}} {{len collections.posts}}{{^nothing}} none{{/nothing}}");
+    write("src/list.mustache", "---\nname: Squatch\nitems: [a, b]\nflag: true\n---\nHi {{name}}{{#items}} {{.}}{{/items}}{{#flag}} yes{{/flag}}{{#missing}} no{{/missing}}{{^missing}} empty{{/missing}}");
+    write("src/posts/pine.md", "---\ntitle: Pine Cone Crunch\ntags: post\ndate: 2026-01-02\nlayout: base.hbs\n---\n*hi*\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
+    assert_eq!(read("index.html"), "<title>SIGHTINGS &lt;&amp;&gt;</title><nav><a href=\"/posts/pine/\">Pine Cone Crunch</a></nav>Sightings &lt;&amp;&gt; Sightings <&> [] [x] o2 1 none");
+    assert_eq!(read("list/index.html"), "Hi Squatch a b yes empty");
+    assert_eq!(read("posts/pine/index.html"), "<title>PINE CONE CRUNCH</title><nav><a href=\"/posts/pine/\">Pine Cone Crunch</a></nav><p><em>hi</em></p>\n");
+
+    write("src/broken.hbs", "ok\n{{#if}}");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("broken.hbs"), "{}", log);
+}

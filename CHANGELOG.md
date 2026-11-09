@@ -36,6 +36,9 @@ a `v<version>` tag on a commit where that version matches.
   filters and functions, `include`, `extends`, `import` and `from` read from `_includes`, output is
   HTML-escaped (a layout's `content` is safe), and errors name the line. In `.njk` files,
   Nunjucks' `elseif` and `for key, value in object` work too.
+- Handlebars and Mustache templates (`.hbs`, `.handlebars`, `.mustache`): config filters are
+  helpers, every file in `_includes` is a partial, and Mustache sections, inverted sections and
+  `{{.}}` work. Data is converted to JSON per page, so dates are ISO strings.
 
 ### Changed
 

@@ -4,7 +4,7 @@
 [![Latest release](https://img.shields.io/github/v/release/reverentgeek/sitesquatch)](https://github.com/reverentgeek/sitesquatch/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-SiteSquatch (`ssqch`) is a static site generator that fits in a single binary. You write templates in [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/) or [Jinja](https://jinja.palletsprojects.com/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. No Node required at all: the JavaScript runs on an engine built into `ssqch`.
+SiteSquatch (`ssqch`) is a static site generator that fits in a single binary. You write templates in [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Jinja](https://jinja.palletsprojects.com/), [Handlebars](https://handlebarsjs.com/) or [Mustache](https://mustache.github.io/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. No Node required at all: the JavaScript runs on an engine built into `ssqch`.
 
 It's quick, too. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in about **0.1 s** once its images are cached. See [Benchmarks](#benchmarks) for the details.
 
@@ -328,6 +328,16 @@ Add `"njk"` (Nunjucks) or `"jinja"` / `"j2"` (Jinja) to `templateFormats`, and t
 - **Includes and inheritance:** `{% include %}`, `{% extends %}` with `{% block %}`, `{% import %}` and `{% from ... import %}` read from `_includes`. Front-matter `layout` works too.
 - **Nunjucks syntax:** in `.njk` files, `{% elseif %}` and `{% for key, value in object %}` work as in Nunjucks. Not supported: Nunjucks' async tags (`asyncEach`, `asyncAll`) and its custom tag extensions.
 - **Errors** name the template and line: `broken.njk:2: syntax error`.
+
+### Handlebars and Mustache
+
+Add `"hbs"` (or `"handlebars"`) or `"mustache"` to `templateFormats`, and those files render with the [`handlebars`](https://crates.io/crates/handlebars) crate. Mustache templates render as Handlebars.
+
+- **Data:** the same as the other engines, converted to JSON for each page. Dates become ISO 8601 strings, and very large collections cost more than in Edge, Liquid or Nunjucks. Missing values print nothing.
+- **Escaping:** `{{ }}` escapes HTML and `{{{ }}}` doesn't, so a layout writes `{{{content}}}`.
+- **Helpers:** Handlebars' built-ins (`if`, `unless`, `each`, `with`, `lookup`, `len`, `eq` and the other comparisons). Your config `filters` are helpers: `{{shout title}}`, `{{wrap title "[" "]"}}`, and hash arguments (`size=2`) arrive as a trailing object. Use `{{len list}}`, not `list.length`.
+- **Partials:** every file in `_includes`, by its path with or without the extension: `{{> nav}}` or `{{> nav.hbs}}`.
+- **Mustache:** variables, `{{{ }}}`, partials, sections over lists and truthy values (`{{#items}}{{.}}{{/items}}`) and inverted sections (`{{^items}}none{{/items}}`). Inside a section, reach outer values with `../name`, as in Handlebars. Not supported: lambdas and changing delimiters.
 
 ## Reading the build summary
 
