@@ -206,8 +206,8 @@ fn data_file_errors_name_the_file() {
     let e = build_error(&[("_data/x.js", "import fs from \"node:fs\"; export default fs.readFileSync(\"nope.json\", \"utf8\");"), ("index.edge", "")]);
     assert!(e.contains("ENOENT: no such file or directory, open 'nope.json'"), "{}", e);
 
-    let e = build_error(&[("_data/x.js", "import c from \"node:crypto\"; export default 1;"), ("index.edge", "")]);
-    assert!(e.contains("node:crypto isn't available in ssqch (available: node:fs"), "{}", e);
+    let e = build_error(&[("_data/x.js", "import h from \"node:http\"; export default 1;"), ("index.edge", "")]);
+    assert!(e.contains("node:http isn't available in ssqch (available: node:fs"), "{}", e);
 }
 
 #[test]
@@ -258,4 +258,49 @@ fn programs_can_add_modules_with_native_functions() {
     sitesquatch_js::add_data_files(&mut cfg, &[module]);
     sitesquatch::build(&cfg).unwrap();
     assert_eq!(read(&root, "_site/index.html"), "PINE CONE!|BRITTLE!");
+}
+
+#[test]
+fn crypto_create_hash_matches_node() {
+    // Expected values are Node's: crypto.createHash(alg).update("hello").digest("hex"), etc.
+    let root = project(&[
+        (
+            "_data/hashes.js",
+            r#"import crypto, { createHash } from "node:crypto";
+import plain from "crypto";
+const hex = (alg) => createHash(alg).update("hello").digest("hex");
+export default {
+  md5: hex("md5"),
+  sha1: hex("sha1"),
+  sha256: hex("sha256"),
+  sha512Length: createHash("SHA512").update("hello").digest().length,
+  chunked: createHash("sha256").update("hel").update(Buffer.from("lo")).digest("hex") === hex("sha256"),
+  base64: createHash("sha256").update("68656c6c6f", "hex").digest("base64"),
+  base64url: createHash("sha1").update("hello").digest("base64url"),
+  sameModule: plain.createHash === crypto.createHash,
+  hashes: crypto.getHashes().join(","),
+};"#,
+        ),
+        (
+            "index.edge",
+            "{{ hashes.md5 }}\n{{ hashes.sha1 }}\n{{ hashes.sha256 }}\n{{ hashes.sha512Length }}\n{{ hashes.chunked }}\n{{ hashes.base64 }}\n{{ hashes.base64url }}\n{{ hashes.sameModule }}\n{{ hashes.hashes }}",
+        ),
+    ]);
+    build(&root).unwrap();
+    let html = read(&root, "_site/index.html");
+    let lines: Vec<&str> = html.lines().collect();
+    assert_eq!(lines[0], "5d41402abc4b2a76b9719d911017c592");
+    assert_eq!(lines[1], "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d");
+    assert_eq!(lines[2], "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+    assert_eq!(lines[3], "64");
+    assert_eq!(lines[4], "true", "update() can be called in pieces, with strings or Buffers");
+    assert_eq!(lines[5], "LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ=");
+    assert_eq!(lines[6], "qvTGHdzF6KLavt4PO0gs2a6pQ00");
+    assert_eq!(lines[7], "true");
+    assert_eq!(lines[8], "md5,sha1,sha256,sha384,sha512");
+
+    let e = build_error(&[("_data/x.js", "import { createHash } from \"node:crypto\"; export default createHash(\"whirlpool\");"), ("index.edge", "")]);
+    assert!(e.contains("Digest method not supported: whirlpool (ssqch supports md5, sha1, sha256, sha384, sha512)"), "{}", e);
+    let e = build_error(&[("_data/x.js", "import { createHash } from \"node:crypto\"; const h = createHash(\"md5\"); h.digest(); export default h.digest();"), ("index.edge", "")]);
+    assert!(e.contains("Digest already called"), "{}", e);
 }

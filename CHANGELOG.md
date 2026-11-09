@@ -8,6 +8,24 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Added
+
+- A link checker: `linksPlugin(options)` from `ssqch/links`. After each build, every internal
+  `href`, `src` and `srcset` URL in the HTML has to point at something in the output, and a
+  `#fragment` at an `id` on that page. External links, and paths a Netlify `_redirects` file
+  covers, aren't checked. Broken links fail production builds and are warnings in `ssqch serve`.
+  Options: `anchors`, `ignore` and `fail`.
+- `node:crypto` in configs and data files: `createHash` (`md5`, `sha1`, `sha256`, `sha384`,
+  `sha512`) with Node's `update()` and `digest()`, and `getHashes()`.
+
+### Fixed
+
+- `ssqch serve` reloads the browser when another tool (a PostCSS or esbuild watcher) writes a
+  CSS or JavaScript file into the output folder. Before, a CSS edit could reload the page before
+  the new CSS was written, leaving the old styles until the next change.
+
 ## 0.2.3 - 2026-11-08
 
 ### Fixed

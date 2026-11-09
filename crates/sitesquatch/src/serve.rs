@@ -1,9 +1,14 @@
 //! Development server: static file server, file watcher and live reload.
+//!
+//! A change to the site's sources rebuilds it and reloads the browser. A CSS
+//! or JavaScript file that another tool writes into the output folder (a
+//! PostCSS or esbuild watcher, say) reloads the browser without a rebuild,
+//! so a page never reloads before its new CSS is there.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use notify::{RecursiveMode, Watcher};
@@ -15,7 +20,7 @@ const RELOAD_SCRIPT: &str = r#"<script>(()=>{let v;setInterval(async()=>{try{con
 pub fn serve(cfg: &Config, port: u16) -> Result<()> {
     let ctx = cfg.build_context();
     let build_id = Arc::new(AtomicU64::new(0));
-    run_build(cfg, &build_id);
+    let mut built_at = run_build(cfg, &build_id);
 
     let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| anyhow::anyhow!("can't listen on port {}: {}", port, e))?;
     println!("Serving {} at http://localhost:{}/", ctx.output_dir.display(), port);
@@ -39,24 +44,37 @@ pub fn serve(cfg: &Config, port: u16) -> Result<()> {
         }
     }
     let output = ctx.output_dir.clone();
+    // The output too, for CSS and JavaScript other tools write there.
+    if output.exists() && !cfg.watch_paths().iter().any(|p| output.starts_with(p)) {
+        watcher.watch(&output, RecursiveMode::Recursive).with_context(|| format!("watching {}", output.display()))?;
+    }
     loop {
-        let paths = rx.recv()?;
-        let mut relevant: Vec<PathBuf> = paths.into_iter().filter(|p| !p.starts_with(&output)).collect();
+        let mut paths = rx.recv()?;
         // Debounce bursts of events (editors often write several times).
         while let Ok(more) = rx.recv_timeout(Duration::from_millis(120)) {
-            relevant.extend(more.into_iter().filter(|p| !p.starts_with(&output)));
+            paths.extend(more);
         }
-        if relevant.is_empty() {
-            continue;
-        }
-        if let Some(p) = relevant.first() {
+        let (outputs, sources): (Vec<PathBuf>, Vec<PathBuf>) = paths.into_iter().partition(|p| p.starts_with(&output));
+        if let Some(p) = sources.first() {
             println!("Changed: {}", p.strip_prefix(&ctx.root).unwrap_or(p).display());
+            built_at = run_build(cfg, &build_id);
+        } else if let Some(p) = outputs.iter().find(|p| written_by_another_tool(p, built_at)) {
+            println!("Changed: {} (reloading)", p.strip_prefix(&ctx.root).unwrap_or(p).display());
+            build_id.fetch_add(1, Ordering::SeqCst);
         }
-        run_build(cfg, &build_id);
     }
 }
 
-fn run_build(cfg: &Config, build_id: &AtomicU64) {
+/// A CSS or JavaScript file in the output that changed after the last build
+/// finished, so another tool wrote it (ssqch's own copies are older).
+fn written_by_another_tool(path: &Path, built_at: SystemTime) -> bool {
+    let asset = path.extension().is_some_and(|e| e == "css" || e == "js" || e == "mjs");
+    asset && std::fs::metadata(path).and_then(|m| m.modified()).is_ok_and(|t| t > built_at)
+}
+
+/// Build, print the summary, and bump the build id the browser polls.
+/// Returns when the build finished.
+fn run_build(cfg: &Config, build_id: &AtomicU64) -> SystemTime {
     match crate::build(cfg) {
         Ok(report) => {
             crate::cli::print_report(cfg, &report);
@@ -64,6 +82,7 @@ fn run_build(cfg: &Config, build_id: &AtomicU64) {
         }
         Err(e) => eprintln!("\x1b[31mBuild failed:\x1b[0m {:#}", e),
     }
+    SystemTime::now()
 }
 
 fn content_type(path: &Path) -> &'static str {

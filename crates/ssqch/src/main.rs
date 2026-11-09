@@ -19,12 +19,14 @@ use sitesquatch::Config;
 use sitesquatch_js::BuiltinPlugin;
 use sitesquatch_plugin_image::{Format, ImageOptions, ImagePlugin};
 use sitesquatch_plugin_assets::{AssetsOptions, AssetsPlugin};
+use sitesquatch_plugin_links::{LinksOptions, LinksPlugin};
 use sitesquatch_plugin_minify::{MinifyOptions, MinifyPlugin};
 use sitesquatch_plugin_rss::RssPlugin;
 
 /// Built-in plugins, which a JavaScript config adds with `imagePlugin()`,
-/// `rssPlugin()`, `minifyPlugin()` and `assetsPlugin()` from the matching `ssqch/` modules.
-const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify), ("ssqch/assets", assets)];
+/// `rssPlugin()`, `minifyPlugin()`, `assetsPlugin()` and `linksPlugin()` from the matching
+/// `ssqch/` modules.
+const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify), ("ssqch/assets", assets), ("ssqch/links", links)];
 
 fn main() -> std::process::ExitCode {
     sitesquatch::cli::run(|cfg| {
@@ -113,6 +115,12 @@ fn assets(cfg: &mut Config, options: &Json) -> Result<()> {
         bail!("files is required: the URL paths of the files to fingerprint, like [\"/assets/index.css\"]");
     }
     cfg.add_plugin(AssetsPlugin::new(AssetsOptions { files, fingerprint: o.bool("fingerprint")? })?);
+    Ok(())
+}
+
+fn links(cfg: &mut Config, options: &Json) -> Result<()> {
+    let o = Options::new(options, &["anchors", "ignore", "fail"])?;
+    cfg.add_plugin(LinksPlugin::new(LinksOptions { anchors: o.bool("anchors")?, ignore: o.list("ignore")?.unwrap_or_default(), fail: o.bool("fail")? })?);
     Ok(())
 }
 

@@ -1,0 +1,13 @@
+[package]
+name = "sitesquatch-plugin-links"
+description = "Link checker for SiteSquatch: internal links and anchors in the built site"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+lol_html.workspace = true
+rayon.workspace = true
+sitesquatch.workspace = true
