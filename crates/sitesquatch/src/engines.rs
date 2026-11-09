@@ -170,7 +170,26 @@ fn html5_void_tags<'a>(events: impl Iterator<Item = Event<'a>>) -> Vec<Event<'a>
             Event::Start(Tag::Image { .. }) => image = Some((vec![e], 0)),
             Event::Rule => out.push(Event::Html("<hr>\n".into())),
             Event::HardBreak => out.push(Event::InlineHtml("<br>\n".into())),
+            // pulldown-cmark leaves `"` as it is in text; escape it, as the CommonMark
+            // reference renderer does.
+            Event::Text(t) if t.contains('"') => out.push(Event::Html(escape_text(&t).into())),
+            Event::Code(t) if t.contains('"') => out.push(Event::Html(format!("<code>{}</code>", escape_text(&t)).into())),
             other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Escape text for HTML: `&`, `<`, `>` and `"`.
+fn escape_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 16);
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            c => out.push(c),
         }
     }
     out
@@ -224,5 +243,16 @@ mod tests {
         assert!(html.contains("<th style=\"text-align:left\">a</th><th style=\"text-align:center\">b</th><th style=\"text-align:right\">c</th><th>d</th>"), "{}", html);
         assert!(html.contains("<td style=\"text-align:left\">1</td><td style=\"text-align:center\">2</td><td style=\"text-align:right\">3</td><td>4</td>"), "{}", html);
         assert_eq!(html.matches("<tr>").count(), 2, "{}", html);
+    }
+
+    #[test]
+    fn double_quotes_are_escaped_in_text_and_code() {
+        let ctx = RenderContext { name: "test.md", input_path: Path::new("test.md"), cache_key: None };
+        let src = "Say \"hi\" & `x = \"<y>\"` ![a \"b\"](/i.png)\n\n```js\nlet s = \"q\";\n```\n\n<span title=\"raw\">\"raw\"</span>\n";
+        let html = MarkdownEngine::default().render(src, &Value::Undefined, &ctx).unwrap();
+        assert_eq!(
+            html,
+            "<p>Say &quot;hi&quot; &amp; <code>x = &quot;&lt;y&gt;&quot;</code> <img src=\"/i.png\" alt=\"a &quot;b&quot;\"></p>\n<pre><code class=\"language-js\">let s = &quot;q&quot;;\n</code></pre>\n<p><span title=\"raw\">&quot;raw&quot;</span></p>\n"
+        );
     }
 }

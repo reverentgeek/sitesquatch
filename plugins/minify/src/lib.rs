@@ -1,6 +1,9 @@
 //! Conservative HTML minification, modelled on html-minifier-terser with
 //! `collapseWhitespace`, `removeComments` and `useShortDoctype`.
 //!
+//! With `shorten_attributes`, boolean attributes lose their values
+//! (`defer="defer"` to `defer`), and whitespace that doesn't matter comes out of
+//! `class`, `srcset`, `sizes`, URL attributes and the viewport `<meta>`.
 //! Attribute order and quoting are left alone; `<pre>`, `<textarea>`,
 //! `<script>` and `<style>` contents are copied verbatim.
 
@@ -11,11 +14,12 @@ pub struct MinifyOptions {
     pub collapse_whitespace: bool,
     pub remove_comments: bool,
     pub short_doctype: bool,
+    pub shorten_attributes: bool,
 }
 
 impl Default for MinifyOptions {
     fn default() -> Self {
-        MinifyOptions { collapse_whitespace: true, remove_comments: true, short_doctype: true }
+        MinifyOptions { collapse_whitespace: true, remove_comments: true, short_doctype: true, shorten_attributes: true }
     }
 }
 
@@ -99,6 +103,9 @@ pub fn minify(html: &str, opts: &MinifyOptions) -> String {
                     markup.push('>');
                 }
                 let closing = raw_tag.starts_with("</");
+                if opts.shorten_attributes && !closing && name != "!doctype" && !name.starts_with('!') && !name.starts_with('?') {
+                    markup = shorten_attributes(&markup, &name);
+                }
                 toks.push(Tok::Tag(markup, if closing { format!("/{}", name) } else { name.clone() }));
                 i = j + 1;
                 if !closing && RAW.contains(&name.as_str()) && !raw_tag.ends_with("/>") {
@@ -224,6 +231,103 @@ fn collapse_tag(tag: &str) -> String {
     out
 }
 
+/// HTML attributes whose presence is the value (`defer="defer"` means `defer`).
+const BOOLEAN: &[&str] = &[
+    "allowfullscreen", "async", "autofocus", "autoplay", "checked", "controls", "default", "defer", "disabled", "formnovalidate", "inert", "ismap",
+    "itemscope", "loop", "multiple", "muted", "nomodule", "novalidate", "open", "playsinline", "readonly", "required", "reversed", "selected",
+];
+const URL_ATTRS: &[&str] = &["href", "src", "action", "poster", "cite", "data", "formaction"];
+
+struct Attr<'a> {
+    name: &'a str,
+    /// `(quote, value)`; the quote is `None` for an unquoted value.
+    value: Option<(Option<char>, &'a str)>,
+}
+
+/// Split the attributes out of a start tag (after whitespace collapsing).
+/// Returns `None` for anything it doesn't follow, which is then left alone.
+fn parse_attrs(tag: &str) -> Option<(&str, Vec<Attr<'_>>, &str)> {
+    let inner = tag.strip_prefix('<')?;
+    let (inner, end) = match inner.strip_suffix("/>") {
+        Some(i) => (i, "/>"),
+        None => (inner.strip_suffix('>')?, ">"),
+    };
+    let name_end = inner.find(|c: char| c.is_ascii_whitespace()).unwrap_or(inner.len());
+    let (name, mut rest) = inner.split_at(name_end);
+    let mut attrs = Vec::new();
+    loop {
+        rest = rest.trim_start();
+        if rest.is_empty() {
+            break;
+        }
+        let n = rest.find(|c: char| c.is_ascii_whitespace() || c == '=').unwrap_or(rest.len());
+        if n == 0 {
+            return None;
+        }
+        let attr_name = &rest[..n];
+        rest = rest[n..].trim_start();
+        let value = if let Some(after) = rest.strip_prefix('=') {
+            let after = after.trim_start();
+            match after.chars().next() {
+                Some(q @ ('"' | '\'')) => {
+                    let close = after[1..].find(q)? + 1;
+                    rest = &after[close + 1..];
+                    Some((Some(q), &after[1..close]))
+                }
+                Some(_) => {
+                    let e = after.find(|c: char| c.is_ascii_whitespace()).unwrap_or(after.len());
+                    rest = &after[e..];
+                    Some((None, &after[..e]))
+                }
+                None => return None,
+            }
+        } else {
+            None
+        };
+        attrs.push(Attr { name: attr_name, value });
+    }
+    Some((name, attrs, end))
+}
+
+/// Shorten a start tag's attributes without changing what they mean.
+fn shorten_attributes(tag: &str, element: &str) -> String {
+    let Some((name, attrs, end)) = parse_attrs(tag) else { return tag.to_string() };
+    let viewport = element == "meta" && attrs.iter().any(|a| a.name.eq_ignore_ascii_case("name") && a.value.is_some_and(|(_, v)| v.trim().eq_ignore_ascii_case("viewport")));
+    let mut out = String::with_capacity(tag.len());
+    out.push('<');
+    out.push_str(name);
+    for a in &attrs {
+        out.push(' ');
+        out.push_str(a.name);
+        let lower = a.name.to_ascii_lowercase();
+        let Some((quote, value)) = a.value else { continue };
+        if BOOLEAN.contains(&lower.as_str()) && (value.is_empty() || value.eq_ignore_ascii_case(&lower)) {
+            continue;
+        }
+        let value = match lower.as_str() {
+            "class" | "sizes" => collapse_ws(value).trim().to_string(),
+            "srcset" => collapse_ws(value).trim().replace(", ", ","),
+            "content" if viewport => value.split(',').map(|part| part.split('=').map(str::trim).collect::<Vec<_>>().join("=")).collect::<Vec<_>>().join(","),
+            l if URL_ATTRS.contains(&l) => value.trim().to_string(),
+            _ => value.to_string(),
+        };
+        out.push('=');
+        match quote {
+            Some(q) => {
+                out.push(q);
+                out.push_str(&value);
+                out.push(q);
+            }
+            None => out.push_str(&value),
+        }
+    }
+    if end == "/>" {
+        out.push('/');
+    }
+    out.push('>');
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,5 +350,20 @@ mod tests {
         assert_eq!(m("<div>\n  <a href=\"/\">\n    Home\n  </a>\n</div>"), "<div><a href=\"/\">Home</a></div>");
         assert_eq!(m("<a><svg></svg>\n  Buy me\n</a>\n</div>"), "<a><svg></svg> Buy me</a></div>");
         assert_eq!(m("<script>\n  var a = 1;\n</script>"), "<script>var a = 1;</script>");
+    }
+
+    #[test]
+    fn shortens_attributes() {
+        assert_eq!(m("<script defer=\"defer\" src=\"/a.js\"></script>"), "<script defer src=\"/a.js\"></script>");
+        assert_eq!(m("<video autoplay=\"\" muted loop='LOOP' controls=\"false\">"), "<video autoplay muted loop controls=\"false\">");
+        assert_eq!(m("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"), "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+        assert_eq!(m("<meta name=\"description\" content=\"a, b = c\">"), "<meta name=\"description\" content=\"a, b = c\">");
+        assert_eq!(m("<img class=\"  a\n  b \" srcset=\"/a.jpg 1x, /b.jpg 2x\" src=\" /a.jpg \">"), "<img class=\"a b\" srcset=\"/a.jpg 1x,/b.jpg 2x\" src=\"/a.jpg\">");
+        assert_eq!(m("<a href=x title=\"a  b\">"), "<a href=x title=\"a  b\">");
+        assert_eq!(m("<details open=\"\"><summary>s</summary></details>"), "<details open><summary>s</summary></details>");
+        assert_eq!(m("<path d=\"M0 0\"/>"), "<path d=\"M0 0\"/>");
+        assert_eq!(m("<input value=\" keep \" hidden=\"until-found\">"), "<input value=\" keep \" hidden=\"until-found\">");
+        let off = MinifyOptions { shorten_attributes: false, ..MinifyOptions::default() };
+        assert_eq!(minify("<script defer=\"defer\"></script>", &off), "<script defer=\"defer\"></script>");
     }
 }

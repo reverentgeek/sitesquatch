@@ -77,7 +77,7 @@ fn the_built_in_plugins_work_together() {
     // The image transform ran before minifying, and its markup was minified with the rest.
     assert!(!html.contains("a comment") && !html.contains("\n"), "{}", html);
     assert!(html.contains("<picture><source type=\"image/webp\" srcset=\"/img/"), "{}", html);
-    assert!(html.contains("-16.webp 16w, /img/") && html.contains("-32.webp 32w"), "{}", html);
+    assert!(html.contains("-16.webp 16w,/img/") && html.contains("-32.webp 32w"), "{}", html);
     assert!(html.contains("loading=\"lazy\"") && html.contains("width=\"32\" height=\"16\""), "{}", html);
 
     // Per-image attributes: ssqch:widths picks the widths, ssqch:ignore leaves the tag alone.

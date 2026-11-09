@@ -84,11 +84,12 @@ Follow-ups:
 - [x] Make CSS reloads robust: `ssqch serve` also watches the output and reloads (without a
       rebuild) when another tool writes a CSS or JavaScript file there after the last build.
       Released in 0.2.4.
-- [ ] Output differences found comparing against the blog's old build: none have to match
+- [x] Output differences found comparing against the blog's old build: none have to match
       anymore, so just fix the ones that are wrong:
-  - Markdown leaves `"` unescaped in text. Escaping it is the safer default.
+  - Markdown leaves `"` unescaped in text. Fixed: it's escaped like the CommonMark reference
+    renderer (on the blog, about 10 KB more HTML).
   - The minifier doesn't rewrite attribute values (`defer="defer"`, spaces in the viewport
-    `content`). Add the rewrites that shrink output.
+    `content`). Fixed: `shortenAttributes` (about 4 KB less on the blog).
   - `feed.xml` keeps `<br />` and `<img ... />` as written. That's fine.
 
 ## Prebuilt binaries and easier adoption

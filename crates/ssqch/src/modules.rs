@@ -80,7 +80,7 @@ pub fn js_modules() -> Vec<JsModule> {
             vec![(
                 "minify",
                 Value::func(|args| {
-                    let opts = MinifyOptions { collapse_whitespace: arg(args, 1).truthy(), remove_comments: arg(args, 2).truthy(), short_doctype: arg(args, 3).truthy() };
+                    let opts = MinifyOptions { collapse_whitespace: arg(args, 1).truthy(), remove_comments: arg(args, 2).truthy(), short_doctype: arg(args, 3).truthy(), shorten_attributes: arg(args, 4).truthy() };
                     Ok(Value::from(sitesquatch_plugin_minify::minify(&arg(args, 0).to_js_string(), &opts)))
                 }),
             )],
