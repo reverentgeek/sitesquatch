@@ -8,6 +8,17 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Changed
+
+- Markdown escapes `"` in text and inline code as `&quot;`, like the CommonMark reference
+  renderer. Raw HTML in Markdown is left as written.
+- The minifier shortens attributes (`shortenAttributes`, on by default): boolean attributes lose
+  their values (`defer="defer"` becomes `defer`), and whitespace that doesn't matter comes out of
+  `class`, `srcset`, `sizes`, URL attributes and the viewport `<meta>`. On the blog, quote
+  escaping adds about 10 KB of HTML and the attribute changes save about 4 KB.
+
 ## 0.2.7 - 2026-11-09
 
 ### Added

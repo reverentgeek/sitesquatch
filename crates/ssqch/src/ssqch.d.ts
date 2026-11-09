@@ -204,6 +204,8 @@ declare module "ssqch/minify" {
 		removeComments?: boolean;
 		/** Default `true`. */
 		shortDoctype?: boolean;
+		/** Drop boolean attributes' values (`defer="defer"` to `defer`) and extra whitespace in `class`, `srcset`, URLs and the viewport `<meta>`. Default `true`. */
+		shortenAttributes?: boolean;
 	}
 
 	/** Minifies HTML output, after the image transform. */

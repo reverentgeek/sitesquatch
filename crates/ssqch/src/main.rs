@@ -108,11 +108,12 @@ fn image(cfg: &mut Config, options: &Json) -> Result<()> {
 }
 
 fn minify(cfg: &mut Config, options: &Json) -> Result<()> {
-    let o = Options::new(options, &["collapseWhitespace", "removeComments", "shortDoctype"])?;
+    let o = Options::new(options, &["collapseWhitespace", "removeComments", "shortDoctype", "shortenAttributes"])?;
     let mut opts = MinifyOptions::default();
     if let Some(b) = o.bool("collapseWhitespace")? { opts.collapse_whitespace = b; }
     if let Some(b) = o.bool("removeComments")? { opts.remove_comments = b; }
     if let Some(b) = o.bool("shortDoctype")? { opts.short_doctype = b; }
+    if let Some(b) = o.bool("shortenAttributes")? { opts.shorten_attributes = b; }
     cfg.add_plugin(MinifyPlugin { options: opts });
     Ok(())
 }
