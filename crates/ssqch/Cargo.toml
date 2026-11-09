@@ -20,6 +20,18 @@ avif = ["sitesquatch-plugin-image/avif"]
 [package.metadata.dist]
 features = ["avif"]
 
+# `cargo binstall ssqch` downloads the release archive instead of compiling.
+# dist's archives are `ssqch-<target>.tar.gz` with the binary in a
+# `ssqch-<target>/` folder; the Windows zip has `ssqch.exe` at the top.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }{ archive-suffix }"
+bin-dir = "{ name }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+bin-dir = "{ bin }{ binary-ext }"
+
 [dependencies]
 anyhow.workspace = true
 serde_json.workspace = true

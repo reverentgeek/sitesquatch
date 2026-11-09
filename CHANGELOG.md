@@ -23,6 +23,8 @@ a `v<version>` tag on a commit where that version matches.
   deleted post, and the folders they leave empty. Each build lists what it wrote in
   `.cache/ssqch/output-files.json`, so files other tools write into the output are never touched.
   Off by default.
+- `cargo binstall ssqch` installs the release binary instead of compiling (with
+  [cargo-binstall](https://github.com/cargo-bins/cargo-binstall)).
 
 ### Changed
 

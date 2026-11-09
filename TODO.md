@@ -235,9 +235,9 @@ reuse it, and crates.io comes before `cargo binstall`.
 
 - [x] Publish the crates to crates.io (`cargo install ssqch`), from 0.2.6. Each release runs
       `cargo publish --workspace` after the tag (see `CLAUDE.md`).
-- [ ] Support `cargo binstall ssqch`. It finds the repository through the crates.io index, so it
-      needs the crates.io publish first. Add `[package.metadata.binstall]` if the archive names
-      don't follow its default pattern.
+- [x] Support `cargo binstall ssqch`: `[package.metadata.binstall]` in `crates/ssqch/Cargo.toml`
+      points at the release archives (the Windows zip has no folder inside). It takes effect from
+      the first release published with it; check `cargo binstall ssqch` then.
 - [ ] A Homebrew tap (`brew install reverentgeek/tap/ssqch`). That needs a separate
       `reverentgeek/homebrew-tap` repository, plus a release job (and a token with access to it)
       that updates the formula.
