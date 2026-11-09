@@ -354,7 +354,7 @@ impl Config {
     }
 
     pub fn build_context(&self) -> BuildContext {
-        let root = std::fs::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone());
+        let root = dunce::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone());
         let input_dir = root.join(&self.input);
         BuildContext {
             output_dir: root.join(&self.output),

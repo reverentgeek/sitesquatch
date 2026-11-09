@@ -257,7 +257,7 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
     let skip_dirs: Vec<PathBuf> = [ctx.includes_dir.clone(), ctx.data_dir.clone(), ctx.output_dir.clone()]
         .into_iter()
         .chain(cfg.passthrough.iter().map(|(from, _)| ctx.root.join(from)))
-        .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
+        .map(|p| dunce::canonicalize(&p).unwrap_or(p))
         .collect();
     let mut files = Vec::new();
     let walker = walkdir::WalkDir::new(&ctx.input_dir).follow_links(true).into_iter().filter_entry(|e| {
@@ -265,7 +265,7 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
         if e.depth() > 0 && (name.starts_with('.') || name == "node_modules") {
             return false;
         }
-        let path = std::fs::canonicalize(e.path()).unwrap_or_else(|_| e.path().to_path_buf());
+        let path = dunce::canonicalize(e.path()).unwrap_or_else(|_| e.path().to_path_buf());
         !skip_dirs.contains(&path)
     });
     for entry in walker {
@@ -792,7 +792,7 @@ fn passthrough_copy(cfg: &Config, ctx: &BuildContext) -> Result<CopyStats> {
     let mut jobs: Vec<(PathBuf, PathBuf)> = Vec::new();
     for (from, to) in &cfg.passthrough {
         let src = ctx.root.join(from);
-        let src = std::fs::canonicalize(&src).with_context(|| format!("passthrough source {} does not exist", src.display()))?;
+        let src = dunce::canonicalize(&src).with_context(|| format!("passthrough source {} does not exist", src.display()))?;
         let dest = match to {
             Some(to) => ctx.output_dir.join(to),
             None => ctx.output_dir.join(src.strip_prefix(&ctx.input_dir).or_else(|_| src.strip_prefix(&ctx.root)).unwrap_or(&src)),

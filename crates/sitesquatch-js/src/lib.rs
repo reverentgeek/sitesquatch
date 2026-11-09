@@ -68,7 +68,7 @@ pub fn find_config(root: &Path) -> Option<PathBuf> {
 /// Run the config module at `path` and apply what it registers to `cfg`.
 /// JavaScript data files are enabled too (see [`add_data_files`]).
 pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)], modules: &[JsModule]) -> Result<()> {
-    let path = std::fs::canonicalize(path).with_context(|| format!("reading {}", path.display()))?;
+    let path = dunce::canonicalize(path).with_context(|| format!("reading {}", path.display()))?;
     let root = project_root(cfg);
     let modules: Arc<[JsModule]> = modules.into();
     let engine = Engine::new(&root, cfg.env.as_str(), modules.clone())?;
@@ -110,7 +110,7 @@ fn install_data_files(cfg: &mut Config, files: DataFiles) {
 }
 
 fn project_root(cfg: &Config) -> PathBuf {
-    std::fs::canonicalize(&cfg.root).unwrap_or_else(|_| cfg.root.clone())
+    dunce::canonicalize(&cfg.root).unwrap_or_else(|_| cfg.root.clone())
 }
 
 struct DataFiles {
@@ -462,7 +462,9 @@ fn process_object<'js>(ctx: &Ctx<'js>, root: &Path, env: &str) -> rquickjs::Resu
         vars.set("SSQCH_ENV", env)?;
     }
     process.set("env", vars)?;
-    let cwd = root.to_string_lossy().into_owned();
+    // With `/` on Windows too (`C:/Users/...`), which the JavaScript `path`
+    // module (POSIX, plus drive letters) works with.
+    let cwd = root.to_string_lossy().replace('\\', "/");
     process.set("cwd", Function::new(ctx.clone(), move || cwd.clone())?)?;
     let platform = match std::env::consts::OS {
         "macos" => "darwin",
