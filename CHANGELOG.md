@@ -8,6 +8,15 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Added
+
+- Prebuilt binaries for macOS (Apple Silicon and Intel) and Windows (x86_64), alongside Linux,
+  with a PowerShell installer for Windows. Each one runs a smoke test on its own platform
+  before a release is published.
+- CI runs the tests on Windows too.
+
 ## 0.2.5 - 2026-11-08
 
 ### Added

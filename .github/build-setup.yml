@@ -1,0 +1,7 @@
+# Extra steps dist runs before building the release binaries
+# (`github-build-setup` in dist-workspace.toml). Chocolatey installs nasm,
+# which the AVIF encoder needs on x86_64, into a folder that isn't on PATH.
+- name: Put nasm on PATH (Windows)
+  if: runner.os == 'Windows'
+  shell: pwsh
+  run: echo "C:\Program Files\NASM" >> $env:GITHUB_PATH

@@ -20,21 +20,27 @@ SiteSquatch is young (0.x), so expect some breaking changes between minor versio
 
 ## Install
 
-On **Linux (x86_64)**, install the prebuilt binary. It's statically linked, so it runs on any distribution:
+On **Linux (x86_64)** and **macOS** (Apple Silicon or Intel), install the prebuilt binary with the installer script. The Linux binary is statically linked, so it runs on any distribution:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.sh | sh
 ```
 
-The installer checks the download's SHA-256 checksum, installs `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and adds that folder to your `PATH`. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.2.1`.
+On **Windows (x86_64)**, use the PowerShell installer:
 
-On **macOS and Windows**, there are no prebuilt binaries yet, so build it with a recent stable [Rust toolchain](https://rustup.rs):
-
-```sh
-cargo install --git https://github.com/reverentgeek/sitesquatch --tag v0.2.1 --locked --features avif ssqch
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.ps1 | iex"
 ```
 
-> **Note:** AVIF support on an x86_64 machine needs the [nasm](https://nasm.us) assembler installed first (`brew install nasm`, `apt-get install nasm`). Apple Silicon and other ARM machines don't need it. Leave off `--features avif` to skip AVIF, and the build gets faster too.
+The installers check the download's SHA-256 checksum, install `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and add that folder to your `PATH`. Every release binary runs a smoke test on its own platform before it's published. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.2.6`. You can also download an archive for your platform from the [releases page](https://github.com/reverentgeek/sitesquatch/releases).
+
+On other platforms (Linux on ARM, say), build it with a recent stable [Rust toolchain](https://rustup.rs):
+
+```sh
+cargo install --git https://github.com/reverentgeek/sitesquatch --tag v0.2.6 --locked --features avif ssqch
+```
+
+> **Note:** AVIF support on an x86_64 machine needs the [nasm](https://nasm.us) assembler installed first (`brew install nasm`, `apt-get install nasm`, `choco install nasm`). ARM machines don't need it. Leave off `--features avif` to skip AVIF, and the build gets faster too.
 
 Check that it worked:
 
@@ -425,6 +431,6 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/) from a ve
 - **Images:** no SVG rasterizing, and HDR photos (the PQ, gain-map profiles of newer iPhones) can't be converted to sRGB, so they look washed out; the build warns about them, and converting the source to sRGB once fixes it. SVGs are served as they are, and GIFs are copied for `auto` output, so animations keep working.
 - **Minifier:** it doesn't shorten attribute values (`defer="defer"`, spaces in a viewport `content`).
 - **Collections:** custom collections don't see pages that are paginated over collections. Those pages are added to `all` and their tags afterwards.
-- **Not built yet:** cleaning the output folder before a build. Prebuilt binaries for macOS and Windows are on the way; see [TODO.md](TODO.md).
+- **Not built yet:** cleaning the output folder before a build. Prebuilt binaries cover Linux x86_64, macOS and Windows x86_64; see [TODO.md](TODO.md) for what's next.
 
 Found a bug, or have an idea? [Open an issue](https://github.com/reverentgeek/sitesquatch/issues). Happy building, and may your pages load faster than a Squatch sighting disappears.

@@ -1,6 +1,7 @@
-# Runs the release's Linux binary before anything is published. dist calls this
-# after building the archives (`global-artifacts-jobs` in dist-workspace.toml),
-# on version tags and pull requests; if it fails, the release isn't published.
+# Runs each release binary on its own platform before anything is published.
+# dist calls this after building the archives (`global-artifacts-jobs` in
+# dist-workspace.toml), on version tags and pull requests; if it fails, the
+# release isn't published.
 name: Smoke test
 
 on:
@@ -12,20 +13,50 @@ on:
 
 jobs:
   smoke-test:
-    runs-on: ubuntu-latest
+    name: smoke-test (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl, runner: ubuntu-latest, archive: tar.gz }
+          - { target: aarch64-apple-darwin, runner: macos-15, archive: tar.gz }
+          - { target: x86_64-apple-darwin, runner: macos-15-intel, archive: tar.gz }
+          - { target: x86_64-pc-windows-msvc, runner: windows-latest, archive: zip }
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v6
         with:
           sparse-checkout: crates/ssqch/tests/fixtures
       - uses: actions/download-artifact@v8
         with:
-          name: artifacts-build-local-x86_64-unknown-linux-musl
+          name: artifacts-build-local-${{ matrix.target }}
           path: artifacts
       - name: Unpack the binary
         run: |
-          tar xzf artifacts/ssqch-x86_64-unknown-linux-musl.tar.gz
-          mv ssqch-x86_64-unknown-linux-musl/ssqch .
-          file ssqch | tee /dev/stderr | grep -q "static"
+          mkdir unpacked
+          if [ "${{ matrix.archive }}" = zip ]; then
+            unzip -q "artifacts/ssqch-${{ matrix.target }}.zip" -d unpacked
+          else
+            tar xzf "artifacts/ssqch-${{ matrix.target }}.tar.gz" -C unpacked
+          fi
+          bin=$(find unpacked -type f \( -name ssqch -o -name ssqch.exe \) | head -1)
+          [ -n "$bin" ] || { echo "no ssqch binary in the archive"; find unpacked; exit 1; }
+          cp "$bin" .
+          ls -l ssqch*
+      - name: The Linux binary is static
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: file ssqch | tee /dev/stderr | grep -q "static"
+      - name: The macOS binary is the right architecture
+        if: runner.os == 'macOS'
+        run: |
+          file ssqch | tee /dev/stderr
+          case "${{ matrix.target }}" in
+            aarch64-*) file ssqch | grep -q arm64 ;;
+            x86_64-*) file ssqch | grep -q x86_64 ;;
+          esac
       - name: ssqch --version
         run: ./ssqch --version | grep -E "^ssqch [0-9]+\.[0-9]+\.[0-9]+"
       - name: Build a small site with images
@@ -35,13 +66,14 @@ jobs:
           cat > site/ssqch.config.js <<'JS'
           import { defineConfig } from "ssqch";
           import { imagePlugin } from "ssqch/image";
+          import { linksPlugin } from "ssqch/links";
           export default defineConfig({
             dirs: { input: "src", output: "dist" },
             filters: { shout: (s) => s.toUpperCase() },
-            plugins: [imagePlugin({ formats: ["avif", "webp", "auto"], widths: [16, 32] })],
+            plugins: [imagePlugin({ formats: ["avif", "webp", "auto"], widths: [16, 32] }), linksPlugin()],
           });
           JS
-          printf -- '---\ntitle: smoke test\n---\n<h1>{{ shout(title) }}</h1>\n<img src="/img/squatch.png" alt="Squatch">\n' > site/src/index.edge
+          printf -- '---\ntitle: smoke test\n---\n<h1>{{ shout(title) }}</h1>\n<a href="/img/squatch.png"><img src="/img/squatch.png" alt="Squatch"></a>\n' > site/src/index.edge
           ./ssqch build --root site
           grep -q "<h1>SMOKE TEST</h1>" site/dist/index.html
           grep -q "<picture>" site/dist/index.html
