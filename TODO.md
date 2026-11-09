@@ -50,7 +50,7 @@ Follow-ups:
 
 - [x] **Asset fingerprinting in `ssqch`:** `assetsPlugin({ files })` from `ssqch/assets`
       (`plugins/assets`). Templates link plain paths; production builds rename the files to
-      content-hashed names and rewrite `href` and `src` references. Not released yet.
+      content-hashed names and rewrite `href` and `src` references. Released in 0.2.3.
       **Blog:** switched over locally (templates use plain paths; `hash-assets.js`,
       `_data/assets.js` and `build:hash` are gone), waiting for the release.
 - [ ] `node:crypto` (`createHash`) for user code in configs and data files.
