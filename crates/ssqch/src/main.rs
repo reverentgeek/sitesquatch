@@ -6,6 +6,13 @@
 
 mod modules;
 
+// musl's allocator is slow under the many-threaded allocation of a build
+// (rendering pages and encoding images in parallel), so the static Linux
+// release uses mimalloc. Other targets keep the system allocator.
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use anyhow::{bail, Result};
 use serde_json::Value as Json;
 use sitesquatch::Config;
