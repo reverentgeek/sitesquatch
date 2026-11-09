@@ -4,7 +4,12 @@ description = "The ReverentGeek blog, built with SiteSquatch"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 publish = false
+
+# An example, not something to release.
+[package.metadata.dist]
+dist = false
 
 [dependencies]
 anyhow.workspace = true
