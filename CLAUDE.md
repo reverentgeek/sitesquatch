@@ -33,9 +33,11 @@ change affects it.
   blog in `examples/reverentgeek`, an example of the Rust API (it doesn't have to match the
   blog's config).
 - `scripts/bench.sh` runs the benchmarks in the README; results go to `bench-results/`.
-- CI (`.github/workflows/ci.yml`) runs the tests with and without AVIF on Linux and macOS, and
-  `cargo clippy --workspace --all-targets --features ssqch/avif -- -D warnings`. Keep clippy
-  clean. The code isn't formatted with rustfmt (it uses long lines), so don't run `cargo fmt`.
+- CI (`.github/workflows/ci.yml`) runs the tests on Linux, macOS and Windows (with AVIF on
+  Linux only), and `cargo clippy --workspace --all-targets --features ssqch/avif -- -D
+  warnings`. Keep clippy clean. Pull requests don't build the release binaries
+  (`pr-run-mode = "plan"`); version tags do. When a pull request changes how releases are
+  built, set `pr-run-mode = "upload"` in it (and run `dist generate`) to build them there. The code isn't formatted with rustfmt (it uses long lines), so don't run `cargo fmt`.
 
 ## Releasing
 

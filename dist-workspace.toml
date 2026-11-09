@@ -20,9 +20,14 @@ install-updater = false
 github-attestations = true
 # .tar.gz rather than .tar.xz, so installing only needs tar and gzip
 unix-archive = ".tar.gz"
-# Build the release artifacts on pull requests too (without publishing), so a
-# broken release build shows up before tagging.
-pr-run-mode = "upload"
+# Pull requests only run `dist plan` (seconds). The release binaries are built
+# and smoke-tested on version tags, after CI passes on the tagged commit. For a
+# pull request that changes how releases are built (this file, the workflows,
+# .github/build-setup.yml), set this to "upload" there to build them on the PR.
+pr-run-mode = "plan"
+# Keep the Rust build cache in the release builds (dist only caches them by
+# default when pull requests build them too).
+cache-builds = true
 # Run the Linux binary before publishing (.github/workflows/smoke-test.yml).
 # A failure stops the release.
 global-artifacts-jobs = ["./smoke-test"]
