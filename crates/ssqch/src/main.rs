@@ -50,6 +50,8 @@ fn configure(cfg: &mut Config) -> Result<()> {
     // listing the extension in `templateFormats`.
     #[cfg(feature = "liquid")]
     cfg.add_plugin(sitesquatch_plugin_liquid::LiquidPlugin);
+    #[cfg(feature = "jinja")]
+    cfg.add_plugin(sitesquatch_plugin_jinja::JinjaPlugin);
     let toml = cfg.root.join("sitesquatch.toml");
     let js_modules = modules::js_modules();
     match sitesquatch_js::find_config(&cfg.root) {

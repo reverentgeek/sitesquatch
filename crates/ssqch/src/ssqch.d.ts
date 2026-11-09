@@ -116,9 +116,9 @@ declare module "ssqch" {
 			/** Default `_data`. */
 			data?: string;
 		};
-		/** File extensions to render. Default `["edge", "md", "html"]`. Add `"liquid"` for Liquid templates. */
+		/** File extensions to render. Default `["edge", "md", "html"]`. Add `"liquid"` for Liquid, `"njk"` for Nunjucks, or `"jinja"` / `"j2"` for Jinja. */
 		templateFormats?: string[];
-		/** The engine that runs over `.md` files first: `"edge"` (the default), `"liquid"`, or `false` for none. */
+		/** The engine that runs over `.md` files first: `"edge"` (the default), `"liquid"`, `"njk"`, `"jinja"`, or `false` for none. */
 		markdownEngine?: string | false;
 		/** The engine that runs over `.html` files first. Default `"edge"`; `false` for none. */
 		htmlEngine?: string | false;

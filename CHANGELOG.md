@@ -32,6 +32,10 @@ a `v<version>` tag on a commit where that version matches.
   use `markdownEngine: "liquid"`. Config filters work as Liquid filters, `include` and `render`
   read from `_includes`, and Jekyll's filters and `include` parameters are there too. Liquid adds
   about 2 MB to the binary; Rust builds can leave it out with `--no-default-features`.
+- Nunjucks and Jinja templates (`.njk`, `.jinja`, `.j2`) with minijinja: config filters work as
+  filters and functions, `include`, `extends`, `import` and `from` read from `_includes`, output is
+  HTML-escaped (a layout's `content` is safe), and errors name the line. In `.njk` files,
+  Nunjucks' `elseif` and `for key, value in object` work too.
 
 ### Changed
 
