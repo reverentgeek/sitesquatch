@@ -8,6 +8,16 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## 0.2.1 - 2026-11-08
+
+### Changed
+
+- The static Linux build (`x86_64-unknown-linux-musl`) uses mimalloc instead of musl's
+  allocator, which was slow under a build's many threads. A warm build of the ReverentGeek blog
+  on a GitHub runner went from 0.73 s to 0.30 s, the same as a glibc build; a cold build (every
+  image encoded) went from 301 s to 283 s. Peak memory during a cold build is higher: about
+  700 MB, up from 368 MB.
+
 ## 0.2.0 - 2026-11-08
 
 The first release.
