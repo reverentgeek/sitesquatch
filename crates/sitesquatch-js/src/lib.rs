@@ -218,6 +218,10 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
                 let f = engine.function(op.get("fn"))?;
                 cfg.add_global(name, engine.value(f));
             }
+            "engine" => {
+                let f = engine.function(op.get("fn"))?;
+                cfg.add_template_engine(name.clone(), move |_env| Ok(Arc::new(JsEngine { name: name.clone(), f: f.clone() }) as Arc<dyn sitesquatch::TemplateEngine>));
+            }
             "data" => match op.get("fn") {
                 Value::Undefined => {
                     let value = op.get("value");
@@ -426,6 +430,21 @@ impl Engine {
         let origins = self.origins.lock().unwrap();
         let (weak, id) = origins.get(&(Arc::as_ptr(&f.0) as *const () as usize))?;
         weak.upgrade().filter(|live| Arc::ptr_eq(live, &f.0)).map(|_| *id)
+    }
+}
+
+/// A template engine defined in `ssqch.config.js` (`engines`).
+struct JsEngine {
+    name: String,
+    f: JsFn,
+}
+
+impl sitesquatch::TemplateEngine for JsEngine {
+    fn render(&self, source: &str, data: &Value, ctx: &sitesquatch::RenderContext) -> Result<String> {
+        match self.f.call(&[Value::from(source), data.clone(), Value::from(ctx.name)])? {
+            Value::Str(s) => Ok(s.to_string()),
+            other => bail!("engine `{}` returned {}", self.name, other.type_of()),
+        }
     }
 }
 
