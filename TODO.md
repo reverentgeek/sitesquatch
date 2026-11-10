@@ -4,6 +4,10 @@ The ReverentGeek blog (`../blog`) is the main real-world site. Its own tasks are
 `../blog/TODO.md`. Items here that the blog is waiting on say **Blog:**, and blog items that need
 a change here say **Needs ssqch:**. When one side finishes, tick it and update the other list.
 
+0.4 (the adoption work below) is built on the `release/0.4` branch, not `main`. Don't tag or
+release it until all of it is done and tested, and its examples are deployed. Fixes for 0.3 still
+go to `main` (and merge into `release/0.4`).
+
 The order of work:
 
 1. ~~**Remove Eleventy**, and convert the blog to a native `ssqch.config.js`.~~ Done (below).
@@ -161,7 +165,7 @@ migration guides it unblocks.
 
 ### What makes ssqch distinct (design these first, build them across the phases)
 
-- [ ] **Render hooks and containers in any engine:** templates in `_includes/hooks/` (`heading`,
+- [x] **Render hooks and containers in any engine:** templates in `_includes/hooks/` (`heading`,
       `link`, `image`, `fence`) decide how Markdown renders, and `::: name args` renders
       `_includes/containers/name.*`. One idea covers admonitions, tabs, anchors, figures and
       diagram fences. Hugo's render hooks only work in Go templates.
@@ -183,20 +187,34 @@ migration guides it unblocks.
 
 ### 1. Markdown core (every site needs something here)
 
-- [ ] Automatic heading IDs, with a choice of slugger (GitHub-style; Hugo's "blackfriday" for
-      letsencrypt.org's anchors).
-- [ ] `{#id}` heading attributes (pulldown-cmark's `ENABLE_HEADING_ATTRIBUTES`).
-- [ ] `page.headings` (level, text, id) and a `toc` filter.
-- [ ] A `markdown: { ... }` config key: footnotes, definition lists, task lists, smart
-      punctuation, autolinked URLs.
-- [ ] A `markdown` filter in every engine, also exported from `ssqch`, for Markdown inside HTML
-      and component bodies (Jekyll's `markdown="1"`, Hexo's `{% note %}`).
-- [ ] Keep a fence's whole info string (`title=`, `{1,3}`) and pass it to the `fence` hook.
-- [ ] The render hooks and containers above (admonitions on Docusaurus, VitePress, MkDocs and
-      Hexo all become containers).
-- [ ] Build-time syntax highlighting: classes, light and dark themes, line highlighting. Evaluate
-      giallo (Zola's; TextMate grammars, VS Code themes), syntect and arborium.
-- [ ] Examples `blog-tags` and `docs-sidebar`.
+- [x] Automatic heading IDs, with a choice of slugger (`headingIds: "github"`, the default, or
+      `"blackfriday"` for letsencrypt.org's anchors). On the blog, the only change to the HTML
+      is the new `id`s (17,423 links checked, 0 broken).
+- [x] `{#id}` heading attributes (pulldown-cmark's `ENABLE_HEADING_ATTRIBUTES`).
+- [x] `page.headings` (level, id, text) and a `toc` filter. The headings come from the rendered
+      HTML, so they work in every engine; layouts and collections see them, the page's own body
+      doesn't (it hasn't rendered yet).
+- [x] A `markdown: { ... }` config key: footnotes (GitHub-style, collected at the end), definition
+      lists, task lists, smart punctuation, autolinked URLs, and GitHub's `> [!NOTE]` alerts.
+- [x] A `markdown` filter in every engine, also exported from `ssqch`, for Markdown inside HTML
+      and component bodies (Jekyll's `markdown="1"`, Hexo's `{% note %}`). `markdown="1"` on raw
+      HTML itself isn't supported; opensource.guide's 3,803 uses would need it or a codemod.
+- [x] Keep a fence's whole info string (`title=`, `{1,3}`) and pass it to the `fence` hook.
+- [x] The render hooks and containers above (admonitions on Docusaurus, VitePress, MkDocs and
+      Hexo all become containers). Left: containers must close in the block they opened in.
+- [x] Build-time syntax highlighting: `markdown: { highlight: true }`, classes, light and dark
+      themes, line highlighting. Evaluated (2026-11-09): giallo is EUPL-1.2 (copyleft, awkward
+      in an MIT binary); arborium (tree-sitter) adds 44 MB for 30 languages; syntect with
+      two-face's grammars adds 1.7 MB for about 200, pure Rust, but parses about 7x slower (the
+      blog's 350 fences add 60 ms). Went with syntect, mapping scopes to a small set of `hl-*`
+      classes so the HTML stays small.
+  - [ ] Grammars for Edge, Liquid and Handlebars (two-face has none). Add `.sublime-syntax`
+        files of our own.
+  - [ ] A cache for highlighted fences, if big sites find it slow.
+  - [ ] **Blog:** could switch from Prism (`prism.js`, 20 KB) to `highlight: true`, once Edge
+        fences highlight.
+- [ ] Examples `blog-tags` and `docs-sidebar`. Both need phase 2 and 5 work first (alias
+      redirects, per-tag feeds, navigation from data), so they move to the end of phase 2.
 
 ### 2. Site plumbing
 
@@ -210,7 +228,8 @@ migration guides it unblocks.
 - [ ] Render a string `permalink` with the page's own engine, not always Edge.
 - [ ] `assetsPlugin({ integrity: true })` for SRI hashes.
 - [ ] `strict: true`: undefined template values are errors.
-- [ ] Examples `blog-categories` and `glossary-docs`; guides from Zola and from Eleventy.
+- [ ] Examples `blog-categories` and `glossary-docs` (and `blog-tags` and `docs-sidebar` from
+      phase 1); guides from Zola and from Eleventy.
 
 ### 3. Trial migrations
 

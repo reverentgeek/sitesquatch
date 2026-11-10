@@ -332,3 +332,77 @@ fn handlebars_and_mustache_templates_render() {
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(!ok && log.contains("broken.hbs"), "{}", log);
 }
+
+#[test]
+fn markdown_options_hooks_containers_and_headings() {
+    let dir = temp_dir("markdown");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write(
+        "ssqch.config.js",
+        "import { defineConfig, markdown } from \"ssqch\";\nexport default defineConfig({\n  dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"edge\", \"md\", \"njk\", \"liquid\"],\n  markdown: { headingIds: \"blackfriday\", smartPunctuation: true },\n  data: { blurb: markdown(\"Made with *care*\", { inline: true }) },\n});\n",
+    );
+    write("src/_includes/doc.edge", "<nav>{{{ toc(page.headings, { to: 4 }) }}}</nav>\n<p>{{{ blurb }}}</p>\n<main>{{{ content }}}</main>\n");
+    write("src/_includes/hooks/heading.liquid", "<h{{ heading.level }} id=\"{{ heading.id }}\">{{ heading.content }} <a href=\"#{{ heading.id }}\" aria-hidden=\"true\">#</a></h{{ heading.level }}>\n");
+    write("src/_includes/hooks/fence-mermaid.edge", "<pre class=\"mermaid\" data-info=\"{{ fence.info }}\">{{ fence.code }}</pre>\n");
+    write("src/_includes/containers/warning.njk", "<aside class=\"warning\" data-page=\"{{ title }}\"><strong>{{ container.args or \"Warning\" }}</strong>\n{{ container.content | safe }}</aside>\n");
+    write(
+        "src/docs/intro.md",
+        "---\ntitle: Intro\nlayout: doc.edge\n---\n# Getting started\n\nSome \"quotes\" -- and a note.[^1] See https://example.com.\n\n## Install it {#setup}\n\n::: warning Careful\nDon't eat the *pine* cones.\n:::\n\n> [!TIP]\n> Use {{ title }}.\n\n### What's next?\n\n```mermaid {theme=dark}\ngraph TD\n```\n\n{{{ markdown(\"**bold**\", \"inline\") }}}\n\n[^1]: The note.\n",
+    );
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let page = std::fs::read_to_string(dir.join("dist/docs/intro/index.html")).unwrap();
+    for expected in [
+        "<nav><ul><li><a href=\"#setup\">Install it</a><ul><li><a href=\"#what-s-next\">What’s next?</a></li></ul></li></ul></nav>",
+        "<p>Made with <em>care</em></p>",
+        "<h1 id=\"getting-started\">Getting started <a href=\"#getting-started\" aria-hidden=\"true\">#</a></h1>",
+        "<p>Some “quotes” – and a note.<sup class=\"footnote-ref\"><a href=\"#fn-1\" id=\"fnref-1\">1</a></sup> See <a href=\"https://example.com\">https://example.com</a>.</p>",
+        "<aside class=\"warning\" data-page=\"Intro\"><strong>Careful</strong>\n<p>Don’t eat the <em>pine</em> cones.</p>\n</aside>",
+        "<div class=\"markdown-alert markdown-alert-tip\">\n<p class=\"markdown-alert-title\">Tip</p>\n<p>Use Intro.</p>\n</div>",
+        "<pre class=\"mermaid\" data-info=\"mermaid {theme=dark}\">graph TD\n</pre>",
+        "<p><strong>bold</strong></p>",
+        "<li id=\"fn-1\">\n<p>The note. <a href=\"#fnref-1\" class=\"footnote-backref\" aria-label=\"Back to reference 1\">↩</a></p>\n</li>",
+    ] {
+        assert!(page.contains(expected), "missing {:?} in\n{}", expected, page);
+    }
+
+    // Mistakes name the option or the file.
+    write("ssqch.config.js", "export default { markdown: { footnote: false } };\n");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("markdown.footnote isn't an option (options: headingIds,"), "{}", log);
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" } };\n");
+    write("src/_includes/hooks/link.pug", "a");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("_includes/hooks/link.pug: no template engine named `pug`"), "{}", log);
+}
+
+#[test]
+fn markdown_highlights_code_and_writes_the_stylesheet() {
+    let dir = temp_dir("highlight");
+    let d = dir.to_str().unwrap();
+    std::fs::create_dir_all(dir.join("src/_includes/hooks")).unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), "export default { dirs: { input: \"src\", output: \"dist\" }, markdown: { highlight: { css: \"/assets/code.css\" } } };\n").unwrap();
+    std::fs::write(dir.join("src/index.md"), "```js {2}\nconst a = 1;\nlet b = \"two\";\n```\n\n```nonsense\n<x>\n```\n\n```diagram\nA -> B\n```\n").unwrap();
+    std::fs::write(dir.join("src/_includes/hooks/fence-diagram.edge"), "<figure data-lang=\"{{ fence.lang }}\">{{ fence.highlighted ?? fence.code }}</figure>\n").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let page = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
+    assert_eq!(
+        page,
+        "<pre class=\"highlight\"><code class=\"language-js\"><span class=\"line\"><span class=\"hl-keyword\">const</span> a <span class=\"hl-operator\">=</span> <span class=\"hl-number\">1</span>;</span>\n\
+         <span class=\"line highlighted\"><span class=\"hl-keyword\">let</span> b <span class=\"hl-operator\">=</span> <span class=\"hl-string\">&quot;two&quot;</span>;</span>\n</code></pre>\n\
+         <pre><code class=\"language-nonsense\">&lt;x&gt;\n</code></pre>\n\
+         <figure data-lang=\"diagram\">A -&gt; B\n</figure>\n"
+    );
+    let css = std::fs::read_to_string(dir.join("dist/assets/code.css")).unwrap();
+    assert!(css.contains(".hl-keyword { color: var(--hl-keyword); }") && css.contains("prefers-color-scheme: dark"), "{}", css);
+
+    std::fs::write(dir.join("ssqch.config.js"), "export default { markdown: { highlight: { css: \"code.css\" } } };\n").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("markdown.highlight.css must be a path like \"/assets/highlight.css\", or false, not \"code.css\""), "{}", log);
+}

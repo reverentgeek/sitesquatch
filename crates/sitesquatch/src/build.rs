@@ -21,7 +21,7 @@ use regex::Regex;
 
 use crate::config::{BuildContext, BuildReport, CollectionApi, Config, TransformContext};
 use crate::data::{self, merge, normalize_tags};
-use crate::engines::{EdgeEngine, EngineEnv, Engines, MarkdownEngine, PlainEngine, RenderContext, TemplateEngine};
+use crate::engines::{load_hook_templates, EdgeEngine, EngineEnv, Engines, MarkdownEngine, PlainEngine, RenderContext, TemplateEngine};
 use crate::{Map, Value};
 
 struct Layout {
@@ -81,7 +81,8 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     }
 
     // ---- engines
-    let mut globals = Map::new();
+    let markdown = Arc::new(MarkdownEngine::new(cfg.markdown.clone()));
+    let mut globals = builtin_filters(&markdown);
     for (name, f) in &cfg.filters {
         globals.insert(name.clone(), f.clone());
     }
@@ -89,16 +90,19 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     let edge = Arc::new(EdgeEngine::new(&env));
     let mut by_name: HashMap<String, Arc<dyn TemplateEngine>> = HashMap::new();
     by_name.insert("edge".into(), edge.clone());
-    by_name.insert("md".into(), Arc::new(MarkdownEngine::default()));
+    by_name.insert("md".into(), markdown.clone());
     by_name.insert("html".into(), Arc::new(PlainEngine));
     by_name.insert("txt".into(), Arc::new(PlainEngine));
     for (ext, factory) in &cfg.engines {
         by_name.insert(ext.clone(), factory(&env).with_context(|| format!("setting up the `{}` engine", ext))?);
     }
-    let engines = Engines { edge, by_name };
+    let engines = Arc::new(Engines { edge, by_name });
     for f in &cfg.template_formats {
         engines.get(f).context("check `template_formats`")?;
     }
+    let hooks = load_hook_templates(&ctx.includes_dir, &slashes(&cfg.includes), &engines)?;
+    markdown.set_hooks(hooks, Arc::downgrade(&engines));
+    crate::markdown::set_current(cfg.markdown.clone());
 
     timer.lap("setup");
 
@@ -159,13 +163,13 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     // ---- render bodies
     let (early, late): (Vec<usize>, Vec<usize>) =
         (0..pages.len()).filter(|&i| pages[i].output.is_some() || pages[i].in_collections).partition(|&i| !uses_collections(&pages[i].tpl));
-    let mut contents: HashMap<usize, String> = collect_errors(
+    let mut contents: HashMap<usize, Body> = collect_errors(
         early.par_iter().map(|&i| render_body(&pages[i], &engines, None).map(|c| (i, c))).collect(),
     )?
     .into_iter()
     .collect();
     let collections = build_collections(cfg, &pages, &contents)?;
-    let late_contents: Vec<(usize, String)> =
+    let late_contents: Vec<(usize, Body)> =
         collect_errors(late.par_iter().map(|&i| render_body(&pages[i], &engines, Some(&collections)).map(|c| (i, c))).collect())?;
     contents.extend(late_contents);
     timer.lap("render");
@@ -197,9 +201,10 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     timer.lap("write");
 
     let copy = passthrough_copy(cfg, &ctx)?;
+    let stylesheet = write_highlight_css(cfg, &ctx)?;
     timer.lap("copy");
 
-    let outputs: Vec<&PathBuf> = written.iter().map(|(p, _)| p).chain(&copy.paths).collect();
+    let outputs: Vec<&PathBuf> = written.iter().map(|(p, _)| p).chain(&copy.paths).chain(&stylesheet).collect();
     let files_removed = record_outputs(cfg, &ctx, &outputs)?;
 
     let mut report = BuildReport {
@@ -222,6 +227,52 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     report.duration = started.elapsed();
     report.timings = timer.timings;
     Ok(report)
+}
+
+/// Filters every site has: `markdown(text)` (or `markdown(text, "inline")`)
+/// and `toc(page.headings)` (or `toc(page.headings, { from: 2, to: 4, ordered: true })`).
+/// A config filter with the same name replaces one.
+fn builtin_filters(markdown: &Arc<MarkdownEngine>) -> Map {
+    let mut filters = Map::new();
+    let md = markdown.clone();
+    filters.insert(
+        "markdown".into(),
+        Value::func(move |args| {
+            let text = args.first().map(|v| if v.is_nullish() { String::new() } else { v.to_js_string() }).unwrap_or_default();
+            let inline = match args.get(1) {
+                Some(Value::Str(s)) => &**s == "inline",
+                Some(v @ Value::Obj(_)) => v.get("inline").truthy(),
+                _ => false,
+            };
+            md.render_html(&text, &Value::Undefined, Path::new(""), inline).map(Value::from)
+        }),
+    );
+    filters.insert(
+        "toc".into(),
+        Value::func(|args| {
+            let headings = args.first().and_then(|v| v.as_array()).unwrap_or(&[]);
+            let (mut from, mut to, mut ordered) = (2.0, 3.0, false);
+            match args.get(1) {
+                Some(o @ Value::Obj(_)) => {
+                    for key in o.as_object().unwrap().keys() {
+                        if !["from", "to", "ordered"].contains(&key.as_str()) {
+                            bail!("toc: unknown option `{}` (options: from, to, ordered)", key);
+                        }
+                    }
+                    from = o.get("from").as_f64().unwrap_or(from);
+                    to = o.get("to").as_f64().unwrap_or(to);
+                    ordered = o.get("ordered").truthy();
+                }
+                Some(n) if n.as_f64().is_some() => {
+                    from = n.to_number();
+                    to = args.get(2).and_then(|v| v.as_f64()).unwrap_or(to.max(from));
+                }
+                _ => {}
+            }
+            Ok(Value::from(crate::markdown::toc(headings, from.clamp(1.0, 6.0) as u8, to.clamp(1.0, 6.0) as u8, ordered)))
+        }),
+    );
+    filters
 }
 
 /// Run every job, then report all failures together rather than just the first.
@@ -252,6 +303,26 @@ fn collect_errors<T>(results: Vec<Result<T>>) -> Result<Vec<T>> {
     let count = errors.len();
     errors.truncate(10);
     Err(anyhow!("{} error(s):\n  - {}{}", count, errors.join("\n  - "), if count > 10 { "\n  ..." } else { "" }))
+}
+
+/// With `markdown.highlight`, write the highlighting stylesheet (unless
+/// `css` is false), skipping the write when it's already up to date.
+#[cfg(feature = "highlight")]
+fn write_highlight_css(cfg: &Config, ctx: &BuildContext) -> Result<Option<PathBuf>> {
+    let Some(url) = cfg.markdown.highlight_css.as_deref().filter(|_| cfg.markdown.highlight) else { return Ok(None) };
+    let path = ctx.output_dir.join(url.trim_start_matches('/'));
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(crate::highlight::CSS) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, crate::highlight::CSS).with_context(|| format!("writing {}", path.display()))?;
+    }
+    Ok(Some(path))
+}
+
+#[cfg(not(feature = "highlight"))]
+fn write_highlight_css(_cfg: &Config, _ctx: &BuildContext) -> Result<Option<PathBuf>> {
+    Ok(None)
 }
 
 // --------------------------------------------------------------------- clean
@@ -804,7 +875,7 @@ fn check_conflicts(pages: &[Page]) -> Result<()> {
 
 // --------------------------------------------------------------- collections
 
-fn build_collections(cfg: &Config, pages: &[Page], contents: &HashMap<usize, String>) -> Result<Value> {
+fn build_collections(cfg: &Config, pages: &[Page], contents: &HashMap<usize, Body>) -> Result<Value> {
     let mut members: Vec<usize> = (0..pages.len()).filter(|&i| pages[i].in_collections).collect();
     members.sort_by(|&a, &b| pages[a].date.cmp(&pages[b].date).then_with(|| pages[a].tpl.input.cmp(&pages[b].tpl.input)));
 
@@ -812,7 +883,9 @@ fn build_collections(cfg: &Config, pages: &[Page], contents: &HashMap<usize, Str
     let mut by_tag: indexmap::IndexMap<String, Vec<Value>> = indexmap::IndexMap::new();
     for &i in &members {
         let p = &pages[i];
-        let content = contents.get(&i).map(|c| Value::from(c.as_str())).unwrap_or_default();
+        let body = contents.get(&i);
+        let content = body.map(|b| Value::from(b.html.as_str())).unwrap_or_default();
+        let page = with_headings(p.data.get("page").cloned().unwrap_or_default(), body);
         let item = Value::from_pairs([
             ("url", p.url.clone().map(Value::from).unwrap_or(Value::Bool(false))),
             ("date", Value::Date(p.date)),
@@ -820,7 +893,7 @@ fn build_collections(cfg: &Config, pages: &[Page], contents: &HashMap<usize, Str
             ("fileSlug", Value::from(p.tpl.file_slug.as_str())),
             ("filePathStem", Value::from(p.tpl.file_path_stem.as_str())),
             ("outputPath", p.output.as_ref().map(|o| Value::from(o.to_string_lossy().to_string())).unwrap_or(Value::Bool(false))),
-            ("page", p.data.get("page").cloned().unwrap_or_default()),
+            ("page", page),
             ("data", Value::Obj(p.data.clone())),
             ("templateContent", content.clone()),
             ("content", content),
@@ -855,22 +928,45 @@ fn with_collections(page: &Page, collections: Option<&Value>) -> Map {
     data
 }
 
-fn render_body(page: &Page, engines: &Engines, collections: Option<&Value>) -> Result<String> {
+/// A page's rendered content, and the headings in it (`page.headings`).
+#[derive(Clone, Default)]
+struct Body {
+    html: String,
+    headings: Value,
+}
+
+fn render_body(page: &Page, engines: &Engines, collections: Option<&Value>) -> Result<Body> {
     let data = Value::object(with_collections(page, collections));
     let mut content = page.tpl.body.clone();
     for name in &page.tpl.engines {
         let ctx = RenderContext { name: &page.tpl.rel, input_path: &page.tpl.input, cache_key: Some(&page.tpl.rel) };
         content = engines.get(name)?.render(&content, &data, &ctx).with_context(|| format!("rendering {} with `{}`", page.tpl.rel, name))?;
     }
-    Ok(content)
+    let headings = Value::array(crate::markdown::headings(&content).iter().map(|h| h.to_value()).collect());
+    Ok(Body { html: content, headings })
 }
 
-fn render_layouts(page: &Page, body: String, engines: &Engines, collections: &Value) -> Result<String> {
+/// `page` with `headings` from the rendered body.
+fn with_headings(page: Value, body: Option<&Body>) -> Value {
+    match (page, body) {
+        (Value::Obj(map), Some(body)) => {
+            let mut map = (*map).clone();
+            map.insert("headings".into(), body.headings.clone());
+            Value::object(map)
+        }
+        (page, _) => page,
+    }
+}
+
+fn render_layouts(page: &Page, body: Body, engines: &Engines, collections: &Value) -> Result<String> {
     if page.tpl.layouts.is_empty() {
-        return Ok(body);
+        return Ok(body.html);
     }
     let mut data = with_collections(page, Some(collections));
-    let mut content = body;
+    if let Some(p) = data.get("page").cloned() {
+        data.insert("page".into(), with_headings(p, Some(&body)));
+    }
+    let mut content = body.html;
     for layout in &page.tpl.layouts {
         data.insert("content".into(), Value::from(content));
         let ctx = RenderContext { name: &layout.name, input_path: &page.tpl.input, cache_key: Some(&layout.name) };

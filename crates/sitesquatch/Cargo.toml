@@ -7,6 +7,11 @@ license.workspace = true
 repository.workspace = true
 readme = "../../README.md"
 
+[features]
+default = ["highlight"]
+# Build-time syntax highlighting (`markdown: { highlight: true }`), about 2.8 MB.
+highlight = ["dep:syntect", "dep:two-face"]
+
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
@@ -19,6 +24,9 @@ serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 toml = "0.8"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+pulldown-cmark-escape = "0.11"
+syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-fancy", "dump-load"], optional = true }
+two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"], optional = true }
 walkdir = "2"
 clap = { version = "4", features = ["derive", "string"] }
 tiny_http = "0.12"

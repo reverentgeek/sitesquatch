@@ -8,6 +8,38 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Breaking
+
+- Markdown turns on GitHub's extensions by default: heading `id`s, `{#id}` heading attributes,
+  footnotes, task lists, bare URLs as links, `> [!NOTE]` alerts, and `:::` containers. Most
+  sites only gain `id`s on their headings. A site that adds heading `id`s itself (in a transform,
+  say) should drop that code or set `markdown: { headingIds: false }`, and one that writes `:::`
+  or `[^1]` as plain text can turn `containers` or `footnotes` off the same way.
+
+### Added
+
+- A `markdown` config key (`[markdown]` in `sitesquatch.toml`): `headingIds` (`"github"`, the
+  default, `"blackfriday"` to match Hugo's older anchors, or `false`), `headingAttributes`,
+  `footnotes`, `taskLists`, `autolinks`, `alerts`, `containers`, `definitionLists`,
+  `smartPunctuation` and `highlight`.
+- Build-time syntax highlighting: `markdown: { highlight: true }` highlights fenced code with
+  about 200 Sublime Text and TextMate grammars, as `hl-keyword`, `hl-string` and similar classes,
+  and writes a stylesheet with GitHub's light and dark colors to `/highlight.css`. `{1,4-6}` in a
+  fence's info string marks lines. It adds about 1.7 MB to the binary; build without the
+  `highlight` feature of `sitesquatch` to leave it out.
+- Render hooks: templates in `_includes/hooks/` (`heading`, `link`, `image`, `fence`, or
+  `fence-<lang>` for one language), in any engine, decide how those parts of Markdown render.
+  A fence hook gets the whole info string (`js {1,3} title="app.js"`), not just the language.
+- Containers: `::: name args` blocks render through `_includes/containers/name.*` with the
+  block's rendered Markdown as `container.content`, or as `<div class="name">` without a
+  template. Alerts use a container template with their name when there is one.
+- `page.headings` (`level`, `id` and `text`), for layouts and collections, and a `toc` filter that
+  turns it into nested links: `{{{ toc(page.headings, { from: 2, to: 3 }) }}}`.
+- A `markdown` filter (`{{{ markdown(summary) }}}`, or `markdown(title, "inline")` without the
+  `<p>`), and `markdown(text, { inline })` from `ssqch` for config and data files.
+
 ## 0.3.3 - 2026-11-09
 
 - A mistake in `ssqch.config.js` names the file once (`ssqch.config.js: dirs.ouput isn't

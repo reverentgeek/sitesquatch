@@ -19,6 +19,9 @@ pub mod cli;
 pub mod config;
 pub mod data;
 pub mod engines;
+#[cfg(feature = "highlight")]
+pub mod highlight;
+pub mod markdown;
 pub mod report;
 pub mod serve;
 pub mod site_toml;

@@ -18,10 +18,19 @@ use rquickjs::{Ctx, Error, Module, Object, Result};
 
 use crate::JsModule;
 
-/// `import { defineConfig } from "ssqch"`. `defineConfig` returns its
-/// argument: it's there so configs read as configs (and for editor hints).
+/// `import { defineConfig, markdown } from "ssqch"`. `defineConfig` returns
+/// its argument: it's there so configs read as configs (and for editor
+/// hints). `markdown(text, { inline })` renders Markdown with the site's options.
 const CONFIG_MODULE: &str = "ssqch";
-const CONFIG_MODULE_SOURCE: &str = "export const defineConfig = (config) => config;\nexport default { defineConfig };\n";
+const CONFIG_MODULE_SOURCE: &str = r#"export const defineConfig = (config) => config;
+export function markdown(text, options = {}) {
+	for (const key of Object.keys(options ?? {})) {
+		if (key !== "inline") throw new TypeError(`markdown(): unknown option "${key}" (options: inline)`);
+	}
+	return globalThis.__ssqch.natives.ssqch.markdown(String(text ?? ""), Boolean(options?.inline));
+}
+export default { defineConfig, markdown };
+"#;
 
 /// Node built-in modules provided by `node.js`.
 pub(crate) const NODE_MODULES: [&str; 8] = ["fs", "fs/promises", "path", "path/posix", "url", "process", "buffer", "crypto"];

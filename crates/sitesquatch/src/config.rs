@@ -10,6 +10,7 @@ use anyhow::Result;
 
 use crate::data::DataLoader;
 use crate::engines::{EngineEnv, TemplateEngine};
+use crate::markdown::MarkdownOptions;
 use crate::Value;
 
 /// A plugin bundles configuration: filters, data, collections, transforms,
@@ -159,6 +160,8 @@ pub struct Config {
     pub markdown_engine: Option<String>,
     /// Engine that pre-processes `.html` files.
     pub html_engine: Option<String>,
+    /// How Markdown renders: heading IDs, footnotes and the other extensions.
+    pub markdown: MarkdownOptions,
     /// Merge objects and concatenate arrays across the data cascade.
     pub data_deep_merge: bool,
     /// Delete output files an earlier build wrote or copied that this build
@@ -197,6 +200,7 @@ impl Config {
             template_formats: ["edge", "md", "html"].map(String::from).to_vec(),
             markdown_engine: Some("edge".into()),
             html_engine: Some("edge".into()),
+            markdown: MarkdownOptions::default(),
             data_deep_merge: true,
             clean: false,
             env,

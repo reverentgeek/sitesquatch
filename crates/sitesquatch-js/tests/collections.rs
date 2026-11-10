@@ -81,7 +81,7 @@ original={{ collections.posts.map(p => p.fileSlug).join(",") }}"#,
     assert_eq!(lines[7], "newest=yogurt,brittle,pine");
     assert_eq!(
         lines[8],
-        r#"summary=[{&quot;title&quot;:&quot;Pine Cone Crunch&quot;,&quot;year&quot;:2024,&quot;html&quot;:&quot;&lt;h1&gt;Pine&lt;/h1&gt;&quot;},{&quot;title&quot;:&quot;Bigfoot Brittle&quot;,&quot;year&quot;:2025,&quot;html&quot;:&quot;&lt;h1&gt;Brittle&lt;/h1&gt;&quot;}]"#
+        r#"summary=[{&quot;title&quot;:&quot;Pine Cone Crunch&quot;,&quot;year&quot;:2024,&quot;html&quot;:&quot;&lt;h1 id=\&quot;pine\&quot;&gt;Pine&lt;/h1&gt;&quot;},{&quot;title&quot;:&quot;Bigfoot Brittle&quot;,&quot;year&quot;:2025,&quot;html&quot;:&quot;&lt;h1 id=\&quot;brittle\&quot;&gt;Brittle&lt;/h1&gt;&quot;}]"#
     );
     assert_eq!(lines[9], "original=pine,brittle,yogurt", "sorting in a collection must not reorder collections.posts");
 }
@@ -93,7 +93,7 @@ fn transforms_get_the_content_and_the_page() {
   dirs: { input: "src" },
   transforms: {
     upper: async (content, page) => {
-      if (page.outputPath.endsWith(".html")) return content.replace(/<h1>(.*?)<\/h1>/g, (_, t) => `<h1>${t.toUpperCase()}</h1>`);
+      if (page.outputPath.endsWith(".html")) return content.replace(/<h1( [^>]*)?>(.*?)<\/h1>/g, (_, a, t) => `<h1>${t.toUpperCase()}</h1>`);
       return content;
     },
     stamp: (content, { url, inputPath, outputPath }) => outputPath.endsWith(".html") ? `${content}<!-- ${url} ${inputPath} -->` : content,

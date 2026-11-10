@@ -6,6 +6,10 @@
 //! template_formats = ["edge", "md", "html"]
 //! markdown_engine = "edge"
 //!
+//! [markdown]
+//! heading_ids = "blackfriday"
+//! footnotes = true
+//!
 //! [passthrough]
 //! "src/assets/fonts" = "fonts"
 //! "src/favicon.ico" = ""      # empty: keep its path
@@ -31,6 +35,8 @@ pub struct SiteToml {
     pub html_engine: Option<String>,
     pub data_deep_merge: Option<bool>,
     pub clean: Option<bool>,
+    /// `[markdown]`, with the config's keys in snake case (`heading_ids = "blackfriday"`).
+    pub markdown: Option<toml::Table>,
     #[serde(default)]
     pub passthrough: BTreeMap<String, String>,
 }
@@ -52,6 +58,14 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
     if let Some(v) = site.html_engine { cfg.html_engine = Some(v).filter(|s| !s.is_empty()); }
     if let Some(v) = site.data_deep_merge { cfg.data_deep_merge = v; }
     if let Some(v) = site.clean { cfg.clean = v; }
+    if let Some(table) = site.markdown {
+        let mut map = crate::Map::new();
+        for (key, value) in table {
+            let camel: String = key.split('_').enumerate().map(|(i, w)| match w.chars().next() { Some(c) if i > 0 => c.to_uppercase().collect::<String>() + &w[c.len_utf8()..], _ => w.to_string() }).collect();
+            map.insert(camel, crate::Value::from(serde_json::to_value(value)?));
+        }
+        cfg.markdown.apply(&crate::Value::object(map)).with_context(|| format!("invalid {}", path.display()))?;
+    }
     for (from, to) in site.passthrough {
         if to.is_empty() {
             cfg.add_passthrough_copy(from);

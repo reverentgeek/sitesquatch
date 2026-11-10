@@ -221,6 +221,7 @@ The default export is the config: an object, or a function (sync or async) that 
 | `dirs` | `input` (default `.`), `output` (`_site`), and `includes` (`_includes`) and `data` (`_data`), relative to the input. |
 | `templateFormats` | File extensions to render (default `["edge", "md", "html"]`). |
 | `markdownEngine`, `htmlEngine` | The engine that runs over `.md` and `.html` files first (default `"edge"`; `false` for none). |
+| `markdown` | Heading IDs, footnotes and the other Markdown extensions; see [Markdown](#markdown). |
 | `deepMerge` | Merge objects and concatenate arrays through the data cascade (default `true`). |
 | `clean` | Delete stale files from the output: pages and passthrough files an earlier build wrote that this one didn't, like a deleted post (default `false`). ssqch keeps a list of what it writes in `.cache/ssqch/output-files.json`, so files other tools write into the output (your CSS build, say) are never touched. |
 | `filters` | `{ name: function }`, callable from templates: `{{ slug(title) }}`. Async functions are awaited. |
@@ -231,13 +232,13 @@ The default export is the config: an object, or a function (sync or async) that 
 | `passthrough` | Files or folders to copy: a path, or `{ from: to }`, or an array of them. |
 | `watch` | More paths for `ssqch serve` to watch. |
 | `beforeBuild`, `afterBuild` | Build hooks (a function or an array). They get `{ env, serving, dirs }`, plus `written` (the files written) after the build. Async works. |
-| `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `deepMerge`, `clean`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
+| `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `markdown`, `deepMerge`, `clean`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
 
 Mistakes get caught early. A misspelled key or option is an error, and so are two plugins that define the same filter, data or collection name (the message names both). When something in your code throws, you get `ssqch.config.js: too many pine cones` and a stack trace that points at your file, like `at bad (lib/filters.js:3:9)`.
 
 ### What you can import
 
-Config and data files can import relative files (`./lib/filters.js`, with or without the extension), JSON (`import site from "./site.json"`), the built-in modules (`ssqch`, `ssqch/image`, `ssqch/rss`, `ssqch/minify`, `ssqch/assets`, `ssqch/links`), and these Node built-ins, with or without the `node:` prefix:
+Config and data files can import relative files (`./lib/filters.js`, with or without the extension), JSON (`import site from "./site.json"`), the built-in modules (`ssqch`, which has `defineConfig` and `markdown(text, { inline })`, `ssqch/image`, `ssqch/rss`, `ssqch/minify`, `ssqch/assets`, `ssqch/links`), and these Node built-ins, with or without the `node:` prefix:
 
 | Module | What's there |
 | --- | --- |
@@ -296,6 +297,9 @@ input = "src"
 output = "public"
 template_formats = ["edge", "md", "html"]
 
+[markdown]
+heading_ids = "blackfriday"
+
 [passthrough]
 "src/robots.txt" = ""   # empty keeps the path relative to the input directory
 ```
@@ -314,6 +318,72 @@ Here's what's supported:
 Edge.js support covers `{{ }}`, `{{{ }}}`, `{{-- --}}`, `@{{ }}`, `@if/@elseif/@else/@unless`, `@each` (with index, objects, `@else` and `$loop`), `@let`, `@assign`, `@include`, `@includeIf`, `@component`/`@!component` with named slots and isolated scope, and `~` whitespace control. Newlines and escaping match Edge.js 6.5 on [42 whitespace cases](crates/sitesquatch-edge/tests/fixtures/whitespace-cases.json). One difference: an undefined value prints nothing, where Edge.js prints `undefined`.
 
 Expressions cover object and array literals (with shorthand and spread), template literals, optional chaining, arrow functions, ternaries, `??`, `typeof`, `await` (a no-op), `new Date()`, the common String, Array, Number and Date methods, and the `JSON`, `Object`, `Math` and `Array` globals. Errors report `template:line` through the include and component chain.
+
+### Markdown
+
+Markdown is [CommonMark](https://commonmark.org) with GitHub's extensions: tables, strikethrough, footnotes, task lists, bare URLs as links, and alerts. Headings get `id`s, so every section can be linked to. The `markdown` config key turns the extensions on and off:
+
+```js
+export default defineConfig({
+  markdown: {
+    headingIds: "blackfriday", // or "github" (the default), or false
+    smartPunctuation: true,
+  },
+});
+```
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `headingIds` | `"github"` | Automatic heading `id`s. `"github"` matches GitHub's anchors (`Hello, World!` becomes `hello-world`); `"blackfriday"` matches Hugo's older ones (`A -- B` becomes `a-b`, not `a----b`). A repeated heading gets `-1`, `-2` and so on. `false` turns them off. |
+| `headingAttributes` | `true` | `## Install {#setup .wide}` sets the heading's `id` and `class`. An `id` given this way always wins. |
+| `footnotes` | `true` | `[^1]` references, with the notes in a `<section class="footnotes">` at the end and links back to each reference. |
+| `taskLists` | `true` | `- [ ]` and `- [x]` items, as disabled checkboxes. |
+| `autolinks` | `true` | Bare `https://` and `www.` URLs become links. |
+| `alerts` | `true` | GitHub's `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` and `[!CAUTION]`, as `<div class="markdown-alert markdown-alert-note">` with a title, the same markup GitHub uses (or a container template of that name, below). |
+| `containers` | `true` | `::: name args` blocks (below). |
+| `definitionLists` | `false` | A term, then `: definition` lines, as `<dl>`. |
+| `smartPunctuation` | `false` | Curly quotes, `--` and `---` as dashes, `...` as an ellipsis. |
+| `highlight` | `false` | Syntax highlighting at build time (below). `true`, or `{ css: "/assets/code.css" }` to put the stylesheet somewhere else, or `{ css: false }` to leave it out. |
+
+**Syntax highlighting:** with `highlight: true`, fenced code is highlighted while the site builds, so pages need no highlighting script. The grammars are Sublime Text's and TextMate's (about 200 languages, from [syntect](https://github.com/trishume/syntect) and [bat](https://github.com/sharkdp/bat)), and each token gets one class for what it is: `hl-keyword`, `hl-string`, `hl-comment`, `hl-function`, `hl-type`, `hl-number` and so on. The build writes a stylesheet for them to `/highlight.css` (link it from your layout) with GitHub's colors, light and dark. Each color is a CSS custom property, like `--hl-keyword`, so a theme switch or your own palette only has to set those. Mark lines with braces in the fence's info string, ```` ```js {1,4-6} ````, and those lines get `class="line highlighted"`. A language without a grammar renders as plain `<pre><code class="language-x">`.
+
+**A table of contents:** after a page's content renders, `page.headings` lists its headings (`level`, `id` and `text`), so its layouts can build a table of contents. The built-in `toc` filter does it for you: `{{{ toc(page.headings) }}}` writes nested `<ul>` links to the `h2` and `h3` headings, and `toc(page.headings, { from: 2, to: 4, ordered: true })` changes the levels or uses `<ol>`. In Liquid that's `{{ page.headings | toc: 2, 4 }}`, and in Nunjucks, `{{ toc(page.headings) | safe }}`. The headings come from the HTML, so they work for pages in any template language. Collections have them too (`post.page.headings`).
+
+**Markdown anywhere:** the `markdown` filter renders a string, such as a description from front matter: `{{{ markdown(summary) }}}`, or `markdown(title, "inline")` (in Liquid, `{{ title | markdown: "inline" }}`) to leave out the `<p>`. Config and data files can `import { markdown } from "ssqch"`.
+
+**Containers:** a block between `::: name` and `:::` renders through `_includes/containers/name.*`, a template in any engine. It gets the page's data plus `container.name`, `container.args` (the rest of the opening line) and `container.content` (the block's Markdown, rendered). One template covers admonitions, tabs, figures or anything else that wraps content:
+
+```markdown
+::: warning Hot pine cones
+They're **very** crunchy.
+:::
+```
+
+```njk
+{# src/_includes/containers/warning.njk #}
+<aside class="callout warning">
+  <p class="callout-title">{{ container.args or "Warning" }}</p>
+  {{ container.content | safe }}
+</aside>
+```
+
+Containers nest: an outer one opens with more colons (`::::`) and closes with as many. Without a template, a container renders as `<div class="name">` (with the arguments as a `<p class="container-title">`). An alert renders through a container template with its name, if there is one, so `containers/warning.njk` styles `> [!WARNING]` too.
+
+**Render hooks:** templates in `_includes/hooks/` take over how parts of Markdown render, in any engine. Each gets the page's data plus one value:
+
+| Template | Gets | For example |
+| --- | --- | --- |
+| `heading.*` | `heading.level`, `id`, `text`, `content` (the inner HTML) and `attrs` | Anchor links next to headings |
+| `link.*` | `link.href`, `title`, `text` and `content` | `target="_blank"` and an icon on external links |
+| `image.*` | `image.src`, `alt` and `title` | `<figure>` with a caption |
+| `fence.*`, or `fence-<lang>.*` for one language | `fence.lang`, `info` (the whole line after the backticks, like `js {1,3} title="app.js"`), `code`, and `highlighted` (the highlighted HTML, with `highlight` on) | Diagrams from `mermaid` fences, titled code blocks |
+
+```edge
+{{-- src/_includes/hooks/heading.edge --}}
+<h{{ heading.level }} id="{{ heading.id }}">{{{ heading.content }}} <a href="#{{ heading.id }}" class="anchor" aria-hidden="true">#</a></h{{ heading.level }}>
+```
+
+Put `aria-hidden="true"` on decoration like that `#`, and `page.headings` leaves it out of the heading's text.
 
 ### Liquid
 
@@ -495,7 +565,7 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/) from a ve
 
 - **JavaScript:** no npm packages or CommonJS yet (see the note under [Configuring a site](#configuring-a-site)). JavaScript is interpreted (QuickJS has no JIT), so heavy collection code is slower than in Node: reading a page in a collection costs about 2 µs the first time, and the blog's `topics` and `postsByYear` collections over 2,000 posts take about 45 ms together.
 - **Edge:** no `@inject`, `@debugger`, `@svg`, components as tags (`@!card()`), destructuring in `@let`, scoped slots, regex literals, or the `in` operator. Array `reverse` and `sort` return copies instead of changing the array.
-- **Markdown:** pulldown-cmark with tables and strikethrough, adjusted to match markdown-it (`<s>`, a single `~` left as it is, `<img>`, `<hr>` and `<br>` without a slash, table alignment styles, line breaks in alt text).
+- **Markdown:** containers have to close inside the block they opened in (the same list item, say). Highlighting has no grammars for Edge, Liquid or Handlebars yet (Jinja and Nunjucks work), and parsing is slower than tree-sitter's: the blog's 350 fences add about 60 ms to a build.
 - **Images:** no SVG rasterizing, and HDR photos (the PQ, gain-map profiles of newer iPhones) can't be converted to sRGB, so they look washed out; the build warns about them, and converting the source to sRGB once fixes it. SVGs are served as they are, and GIFs are copied for `auto` output, so animations keep working.
 - **Collections:** custom collections don't see pages that are paginated over collections. Those pages are added to `all` and their tags afterwards.
 - **Platforms:** prebuilt binaries cover Linux x86_64, macOS and Windows x86_64, but not Linux on ARM yet; see [TODO.md](TODO.md) for what's next.

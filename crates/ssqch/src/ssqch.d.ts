@@ -23,12 +23,46 @@ declare module "ssqch" {
 		filePathStem: string;
 		/** Where the page is written, or `false`. */
 		outputPath: string | false;
-		page: Record<string, unknown>;
+		/** `url`, `inputPath`, `date` and the rest, plus `headings` from the rendered body. */
+		page: Record<string, unknown> & { headings?: Heading[] };
 		/** The page's data: front matter, data files and the rest of the cascade. */
 		data: Record<string, any>;
 		/** The rendered body, without layouts. */
 		templateContent: string;
 		content: string;
+	}
+
+	/** A heading in a page's rendered body (`page.headings`). */
+	export interface Heading {
+		level: number;
+		/** The heading's `id`, if it has one. */
+		id?: string;
+		/** Its text, without tags or anything marked `aria-hidden="true"`. */
+		text: string;
+	}
+
+	/** How Markdown renders. */
+	export interface MarkdownOptions {
+		/** Automatic heading `id`s: `"github"` (the default), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), or `false` for none. A `{#id}` on the heading always wins. */
+		headingIds?: "github" | "blackfriday" | false;
+		/** `## Heading {#id .class key=value}`. Default `true`. */
+		headingAttributes?: boolean;
+		/** `[^1]` references, with the notes at the end of the page. Default `true`. */
+		footnotes?: boolean;
+		/** `- [ ]` and `- [x]` items. Default `true`. */
+		taskLists?: boolean;
+		/** Bare `https://` and `www.` URLs become links. Default `true`. */
+		autolinks?: boolean;
+		/** GitHub's `> [!NOTE]` alerts: note, tip, important, warning and caution. Default `true`. */
+		alerts?: boolean;
+		/** `::: name args` blocks, rendered by `_includes/containers/name.*`. Default `true`. */
+		containers?: boolean;
+		/** A term, then `: definition` lines. Default `false`. */
+		definitionLists?: boolean;
+		/** Curly quotes, dashes and ellipses. Default `false`. */
+		smartPunctuation?: boolean;
+		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. Default `false`. */
+		highlight?: boolean | { css?: string | false };
 	}
 
 	/** What a collection function gets. */
@@ -122,6 +156,8 @@ declare module "ssqch" {
 		markdownEngine?: string | false;
 		/** The engine that runs over `.html` files first. Default `"edge"`; `false` for none. */
 		htmlEngine?: string | false;
+		/** Heading IDs, footnotes and the other Markdown extensions. */
+		markdown?: MarkdownOptions;
 		/** Merge objects and concatenate arrays through the data cascade. Default `true`. */
 		deepMerge?: boolean;
 		/** Delete output files an earlier build wrote or copied that this one didn't (a deleted post's page). Files other tools write are never touched. Default `false`. */
@@ -130,7 +166,9 @@ declare module "ssqch" {
 
 	/** Returns its argument. It's there so the config reads as one, and for these types. */
 	export function defineConfig<T extends Config | ((context: ConfigContext) => MaybePromise<Config>)>(config: T): T;
-	const ssqch: { defineConfig: typeof defineConfig };
+	/** Render Markdown with the site's `markdown` options (render hooks and containers are for templates). `inline` drops the `<p>` around a single paragraph. */
+	export function markdown(text: string, options?: { inline?: boolean }): string;
+	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown };
 	export default ssqch;
 }
 

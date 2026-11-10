@@ -2,13 +2,13 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock, Weak};
 
 use anyhow::{Context, Result};
-use pulldown_cmark::{html, Event, Options, Parser, Tag, TagEnd};
 use sitesquatch_edge::{FsLoader, Template};
 
 use crate::config::BuildContext;
+use crate::markdown::{self, Hooks, MarkdownOptions};
 use crate::{Map, Value};
 
 /// What an engine factory gets to work with.
@@ -74,125 +74,112 @@ impl TemplateEngine for EdgeEngine {
 
 // ---------------------------------------------------------------- Markdown
 
-/// CommonMark plus tables and strikethrough, with raw HTML allowed: the same
-/// feature set as markdown-it with `html: true`.
+/// Markdown, with the site's `markdown` options and its render hooks and
+/// containers (see [`crate::markdown`]).
 pub struct MarkdownEngine {
-    pub options: Options,
+    pub options: MarkdownOptions,
+    hooks: OnceLock<HookTemplates>,
 }
 
 impl Default for MarkdownEngine {
     fn default() -> Self {
-        // SUBSCRIPT makes single `~` its own construct so only `~~` strikes
-        // through; it is turned back into literal tildes below (as markdown-it does).
-        MarkdownEngine { options: Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_SUBSCRIPT }
+        MarkdownEngine::new(MarkdownOptions::default())
+    }
+}
+
+impl MarkdownEngine {
+    pub fn new(options: MarkdownOptions) -> Self {
+        MarkdownEngine { options, hooks: OnceLock::new() }
+    }
+
+    /// Render `source` for the page with `data` (which hook templates see),
+    /// or for no page with `Value::Undefined`. `inline` drops the `<p>`
+    /// around a single paragraph.
+    pub fn render_html(&self, source: &str, data: &Value, input_path: &Path, inline: bool) -> Result<String> {
+        let engines = self.hooks.get().and_then(|h| h.engines.upgrade().map(|e| (h, e)));
+        let page_hooks = engines.as_ref().map(|(set, engines)| PageHooks { set, engines, data, input_path });
+        let hooks = page_hooks.as_ref().filter(|h| !h.set.templates.is_empty()).map(|h| h as &dyn Hooks);
+        if inline {
+            markdown::render_inline(source, &self.options, hooks)
+        } else {
+            markdown::render(source, &self.options, hooks)
+        }
+    }
+
+    pub(crate) fn set_hooks(&self, templates: HashMap<String, HookTemplate>, engines: Weak<Engines>) {
+        let _ = self.hooks.set(HookTemplates { templates, engines });
     }
 }
 
 impl TemplateEngine for MarkdownEngine {
-    fn render(&self, source: &str, _data: &Value, _ctx: &RenderContext) -> Result<String> {
-        let mut out = String::with_capacity(source.len() * 3 / 2);
-        // markdown-it writes strikethrough as <s>, pulldown-cmark as <del>.
-        let events = Parser::new_ext(source, self.options).map(|e| match e {
-            Event::Start(Tag::Strikethrough) => Event::Html("<s>".into()),
-            Event::End(TagEnd::Strikethrough) => Event::Html("</s>".into()),
-            Event::Start(Tag::Subscript) | Event::End(TagEnd::Subscript) => Event::Text("~".into()),
-            other => other,
-        });
-        html::push_html(&mut out, html5_void_tags(events).into_iter());
-        Ok(out)
+    fn render(&self, source: &str, data: &Value, ctx: &RenderContext) -> Result<String> {
+        self.render_html(source, data, ctx.input_path, false)
     }
 }
 
-/// Write `<img ...>`, `<hr>` and `<br>` like markdown-it, instead of
-/// pulldown-cmark's XHTML-style `<img ... />`, keep line breaks in alt text
-/// (markdown-it does; pulldown-cmark turns them into spaces), and write table
-/// alignment as `style="text-align:left"` (pulldown-cmark adds a space). Raw
-/// HTML in the Markdown is left alone.
-fn html5_void_tags<'a>(events: impl Iterator<Item = Event<'a>>) -> Vec<Event<'a>> {
-    let mut out = Vec::new();
-    let mut image: Option<(Vec<Event<'a>>, usize)> = None;
-    let mut aligns: Vec<pulldown_cmark::Alignment> = Vec::new();
-    let (mut in_head, mut column) = (false, 0usize);
-    for e in events {
-        if let Some((buf, depth)) = image.as_mut() {
-            match e {
-                Event::Start(Tag::Image { .. }) => *depth += 1,
-                Event::End(TagEnd::Image) if *depth == 0 => {
-                    buf.push(e);
-                    let mut html = String::new();
-                    html::push_html(&mut html, buf.drain(..));
-                    let html = html.strip_suffix(" />").map(|h| format!("{}>", h)).unwrap_or(html);
-                    out.push(Event::InlineHtml(html.into()));
-                    image = None;
-                    continue;
-                }
-                Event::End(TagEnd::Image) => *depth -= 1,
-                Event::SoftBreak => {
-                    buf.push(Event::Text("\n".into()));
-                    continue;
-                }
-                _ => {}
-            }
-            buf.push(e);
-            continue;
-        }
-        match e {
-            Event::Start(Tag::Table(ref a)) => {
-                aligns = a.clone();
-                out.push(e);
-            }
-            Event::Start(Tag::TableHead) => {
-                (in_head, column) = (true, 0);
-                out.push(e);
-            }
-            Event::End(TagEnd::TableHead) => {
-                in_head = false;
-                out.push(e);
-            }
-            Event::Start(Tag::TableRow) => {
-                column = 0;
-                out.push(e);
-            }
-            Event::Start(Tag::TableCell) => {
-                use pulldown_cmark::Alignment;
-                let style = match aligns.get(column) {
-                    Some(Alignment::Left) => " style=\"text-align:left\"",
-                    Some(Alignment::Center) => " style=\"text-align:center\"",
-                    Some(Alignment::Right) => " style=\"text-align:right\"",
-                    _ => "",
-                };
-                out.push(Event::Html(format!("<{}{}>", if in_head { "th" } else { "td" }, style).into()));
-            }
-            Event::End(TagEnd::TableCell) => {
-                column += 1;
-                out.push(Event::Html(if in_head { "</th>" } else { "</td>" }.into()));
-            }
-            Event::Start(Tag::Image { .. }) => image = Some((vec![e], 0)),
-            Event::Rule => out.push(Event::Html("<hr>\n".into())),
-            Event::HardBreak => out.push(Event::InlineHtml("<br>\n".into())),
-            // pulldown-cmark leaves `"` as it is in text; escape it, as the CommonMark
-            // reference renderer does.
-            Event::Text(t) if t.contains('"') => out.push(Event::Html(escape_text(&t).into())),
-            Event::Code(t) if t.contains('"') => out.push(Event::Html(format!("<code>{}</code>", escape_text(&t)).into())),
-            other => out.push(other),
-        }
-    }
-    out
+/// A render hook or container template from `_includes/hooks/` or
+/// `_includes/containers/`.
+pub(crate) struct HookTemplate {
+    /// `_includes/hooks/heading.edge`, for errors.
+    pub name: String,
+    pub ext: String,
+    pub body: String,
 }
 
-/// Escape text for HTML: `&`, `<`, `>` and `"`.
-fn escape_text(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 16);
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            c => out.push(c),
+pub(crate) struct HookTemplates {
+    /// Keyed by `hooks/heading`, `containers/note`, ...
+    templates: HashMap<String, HookTemplate>,
+    engines: Weak<Engines>,
+}
+
+/// Read `_includes/hooks/*` and `_includes/containers/*`. Each name can have
+/// one template, in any engine.
+pub(crate) fn load_hook_templates(includes_dir: &Path, includes_name: &str, engines: &Engines) -> Result<HashMap<String, HookTemplate>> {
+    let mut out: HashMap<String, HookTemplate> = HashMap::new();
+    for kind in ["hooks", "containers"] {
+        let Ok(entries) = std::fs::read_dir(includes_dir.join(kind)) else { continue };
+        let mut paths: Vec<PathBuf> = entries.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.is_file()).collect();
+        paths.sort();
+        for path in paths {
+            let file = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            if file.starts_with('.') {
+                continue;
+            }
+            let name = format!("{}/{}/{}", includes_name, kind, file);
+            let (Some(stem), Some(ext)) = (path.file_stem(), path.extension()) else { continue };
+            let ext = ext.to_string_lossy().to_ascii_lowercase();
+            engines.get(&ext).with_context(|| name.clone())?;
+            let key = format!("{}/{}", kind, stem.to_string_lossy());
+            if let Some(other) = out.get(&key) {
+                anyhow::bail!("{} and {} are both templates for `{}`; keep one", other.name, name, key);
+            }
+            let src = std::fs::read_to_string(&path).with_context(|| format!("reading {}", name))?;
+            let (_, body) = crate::data::parse_front_matter(&src).with_context(|| name.clone())?;
+            out.insert(key, HookTemplate { name, ext, body: body.to_string() });
         }
     }
-    out
+    Ok(out)
+}
+
+struct PageHooks<'a> {
+    set: &'a HookTemplates,
+    engines: &'a Arc<Engines>,
+    data: &'a Value,
+    input_path: &'a Path,
+}
+
+impl Hooks for PageHooks<'_> {
+    fn has(&self, name: &str) -> bool {
+        self.set.templates.contains_key(name)
+    }
+
+    fn render(&self, name: &str, key: &str, value: Value) -> Result<String> {
+        let t = &self.set.templates[name];
+        let mut data = self.data.as_object().cloned().unwrap_or_default();
+        data.insert(key.to_string(), value);
+        let ctx = RenderContext { name: &t.name, input_path: self.input_path, cache_key: Some(&t.name) };
+        self.engines.get(&t.ext)?.render(&t.body, &Value::object(data), &ctx).with_context(|| format!("rendering {}", t.name))
+    }
 }
 
 /// Passes content through unchanged (`.html` and `.txt` without pre-processing).

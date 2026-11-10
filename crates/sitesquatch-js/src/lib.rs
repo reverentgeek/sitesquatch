@@ -211,6 +211,10 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
             other => bail!("{} must be a string or false, not {}", key, other.type_of()),
         }
     }
+    match settings.get("markdown") {
+        Value::Undefined => {}
+        v => cfg.markdown.apply(&v)?,
+    }
     match settings.get("deepMerge") {
         Value::Undefined => {}
         Value::Bool(b) => cfg.data_deep_merge = b,
@@ -377,6 +381,14 @@ impl Engine {
             views::install(&ctx, &engine)?;
             let natives = Object::new(ctx.clone())?;
             let conv = Conv::new(&ctx, &engine)?;
+            // `markdown()` from "ssqch".
+            let config_natives = Object::new(ctx.clone())?;
+            let markdown = Value::func(|args| {
+                let text = args.first().map(|v| if v.is_nullish() { String::new() } else { v.to_js_string() }).unwrap_or_default();
+                sitesquatch::markdown::render_current(&text, args.get(1).is_some_and(Value::truthy)).map(Value::from)
+            });
+            config_natives.set("markdown", conv.to_js(&markdown)?)?;
+            natives.set("ssqch", config_natives)?;
             for module in modules.iter() {
                 let exports = Object::new(ctx.clone())?;
                 for (name, value) in &module.natives {
