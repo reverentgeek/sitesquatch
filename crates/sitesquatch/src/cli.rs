@@ -79,7 +79,7 @@ enum Command {
         format: String,
     },
     /// Show where a page comes from, and which level of the data cascade set each value
-    #[command(after_help = "Nothing is built or written, and build hooks don't run.\n\n  ssqch inspect /guides/install/\n  ssqch inspect src/guides/install.md --field title\n  ssqch inspect /guides/install/ --field hero.alt --format json")]
+    #[command(after_help = "The site is read as a build reads it, up to rendering: beforeBuild hooks run (data can depend on them),\nbut no page is rendered or written, and afterBuild hooks don't run. Standard output is only the report.\n\n  ssqch inspect /guides/install/\n  ssqch inspect src/guides/install.md --field title\n  ssqch inspect /guides/install/ --field hero.alt --format json")]
     Inspect {
         /// The page: its URL (/about/), or its template's path
         page: String,
@@ -181,11 +181,16 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
         // Read where requests are made (the JavaScript runtime's `fetch`).
         std::env::set_var("SSQCH_OFFLINE", "1");
     }
+    // `ssqch inspect` prints a report: what its hooks and `console.log` say goes to standard error.
+    let inspecting = matches!(cli.command, Some(Command::Inspect { .. }));
+    if inspecting {
+        crate::diagnostics::capture();
+    }
     let root = cli.root.clone().unwrap_or_else(|| PathBuf::from("."));
     let make_config = || -> anyhow::Result<Config> {
         let mut cfg = Config::new(root.clone(), env);
         cfg.serving = serving;
-        cfg.quiet = cli.quiet;
+        cfg.quiet = cli.quiet || inspecting;
         cfg.verbose = cli.verbose;
         configure(&mut cfg)?;
         if let Some(out) = &cli.output {
@@ -290,7 +295,11 @@ fn run_inspect(cfg: &Config, page: &str, field: Option<&str>, format: &str) -> a
     if !matches!(format, "text" | "json") {
         anyhow::bail!("--format {}: use text or json", format);
     }
-    let report = crate::inspect::inspect(cfg, page)?;
+    let report = crate::inspect::inspect(cfg, page);
+    for warning in crate::diagnostics::take_warnings() {
+        eprintln!("warn: {}", warning.message);
+    }
+    let report = report?;
     let field = match field {
         Some(name) => Some(report.field(name).ok_or_else(|| {
             let names: Vec<&str> = report.fields.iter().map(|f| f.name.as_str()).collect();

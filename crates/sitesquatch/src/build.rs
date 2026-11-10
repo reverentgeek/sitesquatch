@@ -344,12 +344,19 @@ pub(crate) struct InspectedPage {
     pub layers: Vec<(String, Map)>,
 }
 
-/// Every page the site would build, with where its data came from. Nothing
-/// is rendered or written, and build hooks don't run.
+/// Every page the site would build, with where its data came from. This is
+/// a build up to the point of rendering: file builders and `before_build`
+/// hooks run, because data can depend on them (a plugin that learns the
+/// build's context there, a command that writes a data file). No page is
+/// rendered or written, and `after_build` hooks don't run.
 pub(crate) fn inspect_pages(cfg: &Config) -> Result<(BuildContext, Map, Vec<InspectedPage>)> {
     let ctx = cfg.build_context();
     if !ctx.input_dir.is_dir() {
         bail!("input directory {} does not exist", ctx.input_dir.display());
+    }
+    run_file_builders(cfg, &ctx)?;
+    for hook in &cfg.before_build {
+        hook(&ctx).context("before_build hook failed")?;
     }
     let mut timer = Timer { last: Instant::now(), timings: Vec::new() };
     let prepared = prepare(cfg, &ctx, &mut timer, true)?;

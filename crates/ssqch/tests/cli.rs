@@ -1091,7 +1091,11 @@ fn inspect_says_where_a_page_and_its_data_come_from() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, text).unwrap();
     };
-    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, data: { build: () => ({ n: 7 }) } };\n");
+    // The hook makes a data file, as a build's would; it and `console.log` mustn't get into the report.
+    write(
+        "ssqch.config.js",
+        "import { writeFileSync } from \"node:fs\";\nconsole.log(\"from the config\");\nexport default {\n  dirs: { input: \"src\", output: \"dist\" },\n  data: { build: () => ({ n: 7 }) },\n  beforeBuild: [() => writeFileSync(\"src/_data/made.json\", \"{ \\\"by\\\": \\\"the hook\\\" }\"), { run: \"echo from-a-command\" }],\n  afterBuild: () => writeFileSync(\"after.txt\", \"ran\"),\n};\n",
+    );
     write("src/_data/site.json", "{ \"name\": \"Trails\", \"author\": { \"name\": \"Sam\" } }");
     write("src/_includes/base.edge", "---\nsection: none\ntheme: light\n---\n{{{ content }}}");
     write("src/_includes/guide.edge", "---\nlayout: base.edge\nsection: guides\n---\n{{{ content }}}");
@@ -1099,10 +1103,12 @@ fn inspect_says_where_a_page_and_its_data_come_from() {
     write("src/guides/2024-03-02-pine.md", "---\ntitle: Pine\nlevel: hard\nhero: { alt: A pine }\n---\nPine.\n");
     write("src/guides/2024-03-02-pine.json", "{ \"level\": \"medium\", \"reviewed\": true }");
     write("src/tags.edge", "---\npagination: { data: collections, size: 1, alias: tag }\npermalink: \"/tags/{{ tag }}/\"\n---\n{{ tag }}");
+    // The report (standard output), or what went wrong.
     let run = |args: &[&str]| {
         let mut all = vec!["inspect", "--root", d];
         all.extend(args);
-        ssqch(&all)
+        let (ok, stdout, stderr) = ssqch_outputs(&all);
+        (ok, if ok { stdout } else { stderr })
     };
 
     let (ok, log) = run(&["/guides/pine/"]);
@@ -1125,8 +1131,14 @@ fn inspect_says_where_a_page_and_its_data_come_from() {
     ] {
         assert!(rows.iter().any(|r| r == expected), "missing {:?} in\n{}", expected, log);
     }
-    // Nothing was built.
-    assert!(!dir.join("dist").exists() && !dir.join(".cache").exists());
+    // No page was built, and `afterBuild` didn't run.
+    assert!(!dir.join("dist").exists() && !dir.join("after.txt").exists());
+    // `beforeBuild` did, since data can depend on it. What it and the config print isn't in the report.
+    let (ok, stdout, stderr) = ssqch_outputs(&["inspect", "--root", d, "/guides/pine/", "--field", "made.by", "--format", "json"]);
+    assert!(ok, "{}", stderr);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("{}: {}", e, stdout));
+    assert_eq!(json["field"], serde_json::json!({ "name": "made.by", "value": "the hook", "from": "src/_data/made.json", "setBy": [{ "from": "src/_data/made.json", "value": "the hook" }] }));
+    assert!(stderr.contains("from the config") && stderr.contains("from-a-command"), "{}", stderr);
 
     // One field, by the template's path, with every level that set it.
     let (ok, log) = run(&["src/guides/2024-03-02-pine.md", "--field", "level"]);

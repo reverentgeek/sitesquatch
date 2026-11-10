@@ -668,7 +668,7 @@ Set by (the last one wins):
 - **Inside a value:** a dotted path reaches into objects (`--field site.author.name`, `--field hero.alt`).
 - **Pages made by pagination:** a template that makes many pages needs the URL of one of them. `ssqch inspect src/tags.edge` lists them.
 - **Scripts and agents:** `--format json` prints the report as JSON (`schemaVersion: 1`), with `value`, `from` and `setBy` for each field.
-- **Nothing is built:** it reads the site as a build would, up to the point of rendering. No file is written, and `beforeBuild` and `afterBuild` don't run.
+- **No page is built:** it reads the site as a build does, up to the point of rendering. `beforeBuild` hooks run, since data can depend on them (a command that writes a data file, a plugin that sets itself up there), but no page is rendered or written, and `afterBuild` doesn't run. Standard output is only the report; anything a hook or `console.log` prints goes to standard error.
 
 ## Reading the build summary
 

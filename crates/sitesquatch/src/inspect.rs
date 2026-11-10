@@ -8,6 +8,10 @@
 //! it set (objects and lists are merged, unless `deepMerge` is off). When a
 //! value isn't what you expect, this says which level set it, and which
 //! levels it overrode.
+//!
+//! The site is read as a build reads it, up to the point of rendering:
+//! `beforeBuild` hooks run, since data can depend on them, but no page is
+//! rendered or written and `afterBuild` hooks don't run.
 
 use anyhow::{bail, Result};
 
@@ -171,8 +175,18 @@ fn brief(value: &Value) -> String {
         }
         Value::Arr(items) => format!("[{} item{}]", items.len(), if items.len() == 1 { "" } else { "s" }),
         Value::Obj(map) => {
-            let keys: Vec<&str> = map.keys().map(String::as_str).take(4).collect();
-            format!("{{{}{}}}", keys.join(", "), if map.len() > 4 { ", …" } else { "" })
+            // As many of the first four keys as fit in the column.
+            let mut keys: Vec<&str> = Vec::new();
+            for key in map.keys().take(4) {
+                if keys.iter().map(|k| k.chars().count() + 2).sum::<usize>() + key.chars().count() > 44 {
+                    break;
+                }
+                keys.push(key);
+            }
+            match (keys.is_empty(), map.len() > keys.len()) {
+                (true, _) => format!("{{{} key{}}}", map.len(), if map.len() == 1 { "" } else { "s" }),
+                (false, more) => format!("{{{}{}}}", keys.join(", "), if more { ", …" } else { "" }),
+            }
         }
         Value::Func(_) => "a function".into(),
         Value::Undefined => "undefined".into(),

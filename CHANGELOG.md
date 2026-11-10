@@ -113,8 +113,9 @@ a `v<version>` tag on a commit where that version matches.
 - `ssqch inspect <url or file>` shows where a page comes from: its template, layouts, date and
   collections, and for each value in its data, which level of the data cascade set it and
   which levels it replaced. `--field level` shows one value in full with every level that set
-  it (`--field hero.alt` reaches inside), and `--format json` is for scripts. Nothing is built
-  or written. The README's "Where a value comes from" now gives the cascade's exact order.
+  it (`--field hero.alt` reaches inside), and `--format json` is for scripts. The site is read
+  as a build reads it, up to rendering: `beforeBuild` hooks run, but no page is rendered or
+  written. The README's "Where a value comes from" now gives the cascade's exact order.
 - `pagination: { data: collections }` goes over the collections' names, for a page per tag
   without a custom collection. It used to fail with "pagination data `collections` is
   undefined".
