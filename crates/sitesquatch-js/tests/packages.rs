@@ -227,6 +227,14 @@ export default [u.href, u.host, u.origin, u.searchParams.get("y"), p.toString(),
 }
 
 #[cfg(feature = "fetch")]
+static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+#[cfg(feature = "fetch")]
+static FLAKY: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// `SSQCH_OFFLINE` is for the whole process, so tests that fetch take turns.
+#[cfg(feature = "fetch")]
+static FETCHING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(feature = "fetch")]
 /// A tiny HTTP server for `fetch`: answers each request by path, on a
 /// thread, until the test ends.
 fn serve() -> String {
@@ -261,6 +269,13 @@ fn serve() -> String {
                     "/data.json" => ("200 OK", "content-type: application/json\r\n".to_string(), r#"{"snacks":["pine cones","berries"]}"#.to_string()),
                     "/echo" => ("201 Created", "set-cookie: a=1\r\nset-cookie: b=2\r\n".to_string(), format!("{} {} {} {}", method, String::from_utf8_lossy(&body), header("content-type"), header("x-squatch"))),
                     "/moved" => ("301 Moved Permanently", "location: /data.json\r\n".to_string(), String::new()),
+                    // A different answer each time, to tell a request from a saved copy.
+                    p if p.starts_with("/count") => ("200 OK", "set-cookie: a=1\r\n".to_string(), (COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1).to_string()),
+                    // Works once, then fails.
+                    "/flaky" => match FLAKY.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                        0 => ("200 OK", String::new(), "fine".to_string()),
+                        _ => ("503 Service Unavailable", String::new(), "down".to_string()),
+                    },
                     p if p.starts_with("/slow") => {
                         std::thread::sleep(std::time::Duration::from_millis(300));
                         ("200 OK", String::new(), "slow".to_string())
@@ -278,6 +293,7 @@ fn serve() -> String {
 #[cfg(feature = "fetch")]
 #[test]
 fn fetch_makes_requests() {
+    let _turn = FETCHING.lock().unwrap_or_else(|e| e.into_inner());
     let base = serve();
     let data = format!(
         r#"const base = "{}";
@@ -322,6 +338,7 @@ export default out.join("\n");
 #[cfg(feature = "fetch")]
 #[test]
 fn fetch_errors_reject_with_type_errors() {
+    let _turn = FETCHING.lock().unwrap_or_else(|e| e.into_inner());
     // Nothing listens on port 9 here (the discard port), or it refuses.
     let root = project(&[("_data/out.js", "try { await fetch(\"http://127.0.0.1:9/\"); } catch (e) { var out = `${e.name}: ${e.message.startsWith(\"fetch failed: http://127.0.0.1:9/\")}`; }\nexport default out;"), ("index.edge", "{{ out }}")]);
     build(&root).unwrap();
@@ -343,4 +360,48 @@ fn changed_commonjs_data_files_reload_between_builds() {
     std::fs::File::options().write(true).open(&file).unwrap().set_modified(later).unwrap();
     sitesquatch::build(&cfg).unwrap();
     assert_eq!(read(&root, "_site/index.html"), "Yeti Yogurt");
+}
+
+#[cfg(feature = "fetch")]
+#[test]
+fn fetch_saves_responses_with_a_cache_option() {
+    let _turn = FETCHING.lock().unwrap_or_else(|e| e.into_inner());
+    let base = serve();
+    let script = |body: &str| format!("const base = \"{}\";\nconst out = [];\nconst get = async (path, init) => {{ const r = await fetch(base + path, init); return `${{await r.text()}}:${{r.headers.get(\"x-ssqch-cache\") ?? \"network\"}}`; }};\n{}\nexport default out.join(\" \");\n", base, body);
+    let root = project(&[("index.edge", "{{{ out }}}")]);
+    let run = |body: &str| {
+        std::fs::create_dir_all(root.join("_data")).unwrap();
+        std::fs::write(root.join("_data/out.js"), script(body)).unwrap();
+        build(&root).map(|()| read(&root, "_site/index.html")).map_err(|e| format!("{:#}", e))
+    };
+    // Saved by the first request, reused by the second; without `cache`, the network every time.
+    let first = run(r#"out.push(await get("/count", { cache: "1h" }), await get("/count", { cache: "1h" }), await get("/count"), await get("/count", { cache: 3600 }));"#).unwrap();
+    let n: usize = first.split(':').next().unwrap().parse().unwrap();
+    assert_eq!(first, format!("{0}:network {0}:hit {1}:network {0}:hit", n, n + 1));
+    // The next build reuses it too. "reload" asks again and saves; a different request is a different entry.
+    let second = run(r#"out.push(await get("/count", { cache: "1h" }), await get("/count", { cache: "reload" }), await get("/count", { cache: "force-cache" }), await get("/count?b", { cache: "1h" }), await get("/count", { cache: "1h", headers: { "X-Token": "b" } }));"#).unwrap();
+    assert_eq!(second, format!("{}:hit {}:network {}:hit {}:network {}:network", n, n + 2, n + 2, n + 3, n + 4));
+    // Nothing an API key could be in is saved: not the URL (a query string), not request headers, not cookies.
+    let keyed = run(r#"out.push(await get("/count?api_key=SUPERSECRET", { cache: "1h" }), await get("/count?api_key=SUPERSECRET", { cache: Infinity }), (await fetch(base + "/count?api_key=SUPERSECRET", { cache: 1e30 })).url.endsWith("api_key=SUPERSECRET"));"#).unwrap();
+    assert!(keyed.ends_with(":hit true"), "{}", keyed);
+    let on_disk: String = std::fs::read_dir(root.join(".cache/ssqch/fetch")).unwrap().flatten().map(|e| format!("{} {}", e.file_name().to_string_lossy(), String::from_utf8_lossy(&std::fs::read(e.path()).unwrap()))).collect();
+    assert!(!on_disk.contains("SUPERSECRET") && !on_disk.contains(".tmp"), "{}", on_disk);
+    // Cookies and request headers aren't saved.
+    let saved: String = std::fs::read_dir(root.join(".cache/ssqch/fetch")).unwrap().flatten().filter(|e| e.path().extension().is_some_and(|x| x == "json")).map(|e| std::fs::read_to_string(e.path()).unwrap()).collect();
+    assert!(saved.contains("\"savedAt\"") && !saved.contains("set-cookie") && !saved.contains("X-Token") && !saved.contains("x-token"), "{}", saved);
+
+    // A failed refresh falls back to the older copy; without one, the failure is the answer.
+    let flaky = run(r#"out.push(await get("/flaky", { cache: "0s" }), await get("/flaky", { cache: "0s" }), await get("/flaky"));"#).unwrap();
+    assert_eq!(flaky, "fine:network fine:stale down:network");
+    let only = run(r#"try { await get("/never", { cache: "only-if-cached" }); } catch (e) { out.push(e.message); }"#).unwrap();
+    assert!(only.ends_with("/never: no saved copy (cache: \"only-if-cached\")"), "{}", only);
+    let bad = run(r#"try { await get("/count", { cache: "soon" }); } catch (e) { out.push(e.message); }"#).unwrap();
+    assert!(bad.starts_with("fetch: cache \"soon\" isn't a duration like \"1h\""), "{}", bad);
+
+    // Offline: saved copies whatever their age, and nothing else.
+    std::env::set_var("SSQCH_OFFLINE", "1");
+    let offline = run(r#"out.push(await get("/count", { cache: "1s" }));
+for (const init of [{ cache: "1h" }, undefined]) { try { await get("/count?new", init); } catch (e) { out.push(e.message.replace(/^.*?: offline/, "offline").replace(/ in .*$/, "")); } }"#);
+    std::env::remove_var("SSQCH_OFFLINE");
+    assert_eq!(offline.unwrap(), format!("{}:hit offline (SSQCH_OFFLINE), and there's no saved copy offline (SSQCH_OFFLINE), and this request has no `cache` option, so there's no saved copy to use", n + 2));
 }

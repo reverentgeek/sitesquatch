@@ -1129,8 +1129,9 @@
 			if ( type && !headers.has( "content-type" ) ) headers.set( "content-type", type );
 			const method = String( init.method ?? from?.method ?? "GET" ).toUpperCase();
 			if ( bytes && ( method === "GET" || method === "HEAD" ) ) throw new TypeError( "Request with GET/HEAD method cannot have body." );
-			this.#init = { url: new URL( from ? from.url : input ).href, method, headers, redirect: init.redirect ?? from?.redirect ?? "follow", signal: init.signal ?? from?.signal ?? null };
+			this.#init = { url: new URL( from ? from.url : input ).href, method, headers, redirect: init.redirect ?? from?.redirect ?? "follow", signal: init.signal ?? from?.signal ?? null, cache: init.cache ?? from?.cache ?? "default" };
 		}
+		get cache() { return this.#init.cache; }
 		get url() { return this.#init.url; }
 		get method() { return this.#init.method; }
 		get headers() { return this.#init.headers; }
@@ -1174,10 +1175,21 @@
 			this.signal._abort( reason );
 		}
 	}
+	// A request's `cache`: one of the standard modes, or how long a saved
+	// response stays good ("90s", "30m", "1h", "7d", "2w", or seconds as a number).
+	const CACHE_UNITS = { s: 1, m: 60, h: 3600, d: 86400, w: 604800 };
+	const cachePolicy = cache => {
+		if ( typeof cache === "number" && cache >= 0 ) return [ "max-age", cache ];
+		const duration = /^(\d+(?:\.\d+)?)\s*([smhdw])$/.exec( String( cache ).trim() );
+		if ( duration ) return [ "max-age", Number( duration[1] ) * CACHE_UNITS[duration[2]] ];
+		if ( [ "default", "no-store", "no-cache", "reload", "force-cache", "only-if-cached" ].includes( cache ) ) return [ cache, 0 ];
+		throw new TypeError( `fetch: cache ${ JSON.stringify( cache ) } isn't a duration like "1h" (s, m, h, d or w), or "force-cache", "reload", "only-if-cached" or "no-store"` );
+	};
 	globalThis.fetch = ( input, init = {} ) => {
-		let request;
+		let request, cache;
 		try {
 			request = input instanceof Request && !Object.keys( init ).length ? input : new Request( input instanceof URL ? input.href : input, init );
+			cache = cachePolicy( request.cache );
 		} catch ( e ) {
 			return Promise.reject( e );
 		}
@@ -1186,7 +1198,7 @@
 		const signal = request.signal;
 		if ( signal && signal.aborted ) return Promise.reject( signal.reason );
 		return new Promise( ( resolve, reject ) => {
-			const id = native.fetchStart( request.url, request.method, [ ...request.headers ], request._bytes, request.redirect, signal && signal._timeout || 0 );
+			const id = native.fetchStart( request.url, request.method, [ ...request.headers ], request._bytes, `${ request.redirect }\n${ cache[0] }\n${ cache[1] }`, signal && signal._timeout || 0 );
 			pendingFetches.set( id, done => {
 				if ( done.error ) {
 					const timedOut = done.error.endsWith( "(TimeoutError)" );

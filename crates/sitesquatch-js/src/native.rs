@@ -231,7 +231,7 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, root: &Path) -> Result<()> {
         })?,
     )?;
 
-    crate::fetch::install(ctx, &native)?;
+    crate::fetch::install(ctx, &native, root)?;
 
     native.set("arch", match std::env::consts::ARCH {
         "x86_64" => "x64",

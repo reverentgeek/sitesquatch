@@ -105,6 +105,22 @@ pub fn add_data_files(cfg: &mut Config, modules: &[JsModule]) {
 }
 
 fn install_data_files(cfg: &mut Config, files: DataFiles) {
+    // How this build's `fetch()` calls were answered, when there were any.
+    cfg.add_summary("Fetch", |_| {
+        let (asked, hits, stale) = fetch::take_counts();
+        let total = asked + hits + stale;
+        if total == 0 {
+            return None;
+        }
+        let mut line = format!("{} request{}", total, if total == 1 { "" } else { "s" });
+        if hits + stale > 0 {
+            line.push_str(&format!(", {} from the cache", hits + stale));
+        }
+        if stale > 0 {
+            line.push_str(&format!(" ({} out of date, after a failed request)", stale));
+        }
+        Some(line)
+    });
     let files = Arc::new(files);
     for ext in ["js", "mjs", "cjs"] {
         let files = files.clone();
