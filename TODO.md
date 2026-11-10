@@ -282,7 +282,9 @@ Found by the trials, not fixed yet:
 - [ ] `ssqch import eleventy`: CommonJS to ESM, `.11tydata.*` renames, Eleventy front-matter
       keys, shortcodes to filters, paired shortcodes to containers.
 
-### 4. Internationalization
+### 4. Internationalization (not in 0.4)
+
+Moved to a later release (decided 2026-11-09); 0.4 ships without it.
 
 - [ ] A design write-up first: a `locales` config key, `page.lang` from the folder,
       `page.translations` grouped by a translation key, a `t(key)` filter over
