@@ -26,7 +26,7 @@ fn init_creates_a_site_that_builds() {
     let d = dir.to_str().unwrap();
     let (ok, log) = ssqch(&["init", d]);
     assert!(ok, "{}", log);
-    for file in ["ssqch.config.js", "src/_includes/layout.edge", "src/index.edge", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore"] {
+    for file in ["ssqch.config.js", "src/_includes/layout.jinja", "src/index.jinja", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore"] {
         assert!(dir.join(file).is_file(), "{} wasn't created:\n{}", file, log);
     }
     assert!(log.contains("Camp is set up. Next: cd "), "{}", log);
@@ -54,16 +54,16 @@ fn init_creates_a_site_that_builds() {
     assert!(home.contains("<a href=\"/posts/my-second-post/\">My second post</a> (February 3, 2026)") && !dir.join("dist/_archetypes").exists(), "{}", home);
 
     // Running it again keeps what's there.
-    std::fs::write(dir.join("src/index.edge"), "mine").unwrap();
+    std::fs::write(dir.join("src/index.jinja"), "mine").unwrap();
     let (ok, log) = ssqch(&["init", d]);
     assert!(ok, "{}", log);
     assert!(log.contains("Nothing to do"), "{}", log);
-    assert_eq!(std::fs::read_to_string(dir.join("src/index.edge")).unwrap(), "mine");
+    assert_eq!(std::fs::read_to_string(dir.join("src/index.jinja")).unwrap(), "mine");
 }
 
 #[test]
 fn init_starts_a_site_in_each_engine() {
-    for engine in ["liquid", "njk", "hbs"] {
+    for engine in ["njk", "edge", "liquid", "hbs"] {
         let dir = temp_dir(&format!("init-{}", engine));
         let d = dir.to_str().unwrap();
         let (ok, log) = ssqch(&["init", d, "--engine", engine]);
@@ -71,13 +71,13 @@ fn init_starts_a_site_in_each_engine() {
         for file in [format!("src/_includes/layout.{}", engine), format!("src/index.{}", engine)] {
             assert!(dir.join(&file).is_file(), "{} wasn't created:\n{}", file, log);
         }
-        assert!(!dir.join("src/index.edge").exists(), "{}", engine);
+        assert!(!dir.join("src/index.jinja").exists(), "{}", engine);
         let config = std::fs::read_to_string(dir.join("ssqch.config.js")).unwrap();
-        assert!(config.contains(&format!("templateFormats: [\"{}\", \"md\"]", engine)), "{}", config);
+        assert!(config.contains(&format!("templateFormats: [\"{0}\", \"md\"],\n  markdownEngine: \"{0}\",", engine)), "{}", config);
 
         let (ok, log) = ssqch(&["build", "--root", d]);
         assert!(ok, "{}: {}", engine, log);
-        assert!(log.contains("Links   9 checked, 0 broken"), "{}: {}", engine, log);
+        assert!(log.contains("Links   9 checked, 0 broken") && !log.contains("warn"), "{}: {}", engine, log);
         let home = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
         assert!(home.contains("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), "{}: {}", engine, home);
         assert!(home.contains("<title>Field Notes</title>"), "{}: {}", engine, home);
@@ -95,31 +95,40 @@ fn init_starts_a_docs_site() {
     let d = dir.to_str().unwrap();
     let (ok, log) = ssqch(&["init", d, "--starter", "docs"]);
     assert!(ok, "{}", log);
-    for file in ["ssqch.config.js", "src/_data/nav.yml", "src/_includes/doc.edge", "src/assets/docs.css", "src/docs/guides/writing.md", "ssqch.d.ts", ".gitignore"] {
+    for file in ["ssqch.config.js", "src/_data/nav.yml", "src/_includes/doc.jinja", "src/assets/docs.css", "src/docs/guides/writing.md", "ssqch.d.ts", ".gitignore"] {
         assert!(dir.join(file).is_file(), "{} wasn't created:\n{}", file, log);
     }
-    let (ok, log) = ssqch(&["build", "--root", d]);
-    assert!(ok, "{}", log);
-    assert!(log.contains(", 0 broken") && !log.contains("warn"), "{}", log);
+    // The same pages, whichever language the templates are in.
+    let check = |dir: &std::path::Path, engine: &str| {
+        let (ok, log) = ssqch(&["build", "--root", dir.to_str().unwrap()]);
+        assert!(ok, "{}: {}", engine, log);
+        assert!(log.contains(", 0 broken") && !log.contains("warn"), "{}: {}", engine, log);
+        let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
+        let page = read("docs/guides/writing/index.html");
+        for expected in [
+            "<title>Writing pages | Squatch Docs</title>".to_string(),
+            "<span>Guides</span> › <span aria-current=\"page\">Writing pages</span>".into(),
+            "<a href=\"/docs/guides/writing/\" aria-current=\"page\">Writing pages</a>".into(),
+            "<a rel=\"prev\" href=\"/docs/install/\">← Installation</a>".into(),
+            "<a rel=\"next\" href=\"/docs/guides/deploying/\">Deploying →</a>".into(),
+            "<a href=\"#tabs\">Tabs</a>".into(),
+            "<h2 id=\"notes\">Notes <a class=\"anchor\" href=\"#notes\"".into(),
+            "<div class=\"tabs\"><section class=\"tab\" data-label=\"npm\"><p class=\"tab-label\">npm</p>".into(),
+            "<div class=\"warning\"><p class=\"container-title\">Check twice</p>".into(),
+            "<details><summary>How do these work?</summary>".into(),
+            "<span class=\"line highlighted\">".into(),
+            "this site is called Squatch Docs.".into(),
+            // The page names the starter's own files.
+            format!("<code>src/_includes/containers/name.{}</code>", engine),
+        ] {
+            assert!(page.contains(&expected), "{}: missing {:?} in\n{}", engine, expected, page);
+        }
+        assert!(read("404.html").contains("Page not found") && read("index.html").contains("Read the docs"), "{}", engine);
+        // The home page has no title of its own.
+        assert!(read("index.html").contains("<title>Squatch Docs</title>"), "{}: {}", engine, read("index.html"));
+    };
+    check(&dir, "jinja");
     let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
-    let page = read("docs/guides/writing/index.html");
-    for expected in [
-        "<title>Writing pages | Squatch Docs</title>",
-        "<span>Guides</span> › <span aria-current=\"page\">Writing pages</span>",
-        "<a href=\"/docs/guides/writing/\" aria-current=\"page\">Writing pages</a>",
-        "<a rel=\"prev\" href=\"/docs/install/\">← Installation</a>",
-        "<a rel=\"next\" href=\"/docs/guides/deploying/\">Deploying →</a>",
-        "<a href=\"#tabs\">Tabs</a>",
-        "<h2 id=\"notes\">Notes <a class=\"anchor\" href=\"#notes\"",
-        "<div class=\"tabs\"><section class=\"tab\" data-label=\"npm\"><p class=\"tab-label\">npm</p>",
-        "<div class=\"warning\"><p class=\"container-title\">Check twice</p>",
-        "<details><summary>How do these work?</summary>",
-        "<span class=\"line highlighted\">",
-        "this site is called Squatch Docs.",
-    ] {
-        assert!(page.contains(expected), "missing {:?} in\n{}", expected, page);
-    }
-    assert!(read("404.html").contains("Page not found") && read("index.html").contains("Read the docs"));
     // A new page from the starter's archetype passes the starter's schema.
     let (ok, log) = ssqch(&["new", "--root", d, "docs/guides", "--title", "Search"]);
     assert_eq!((ok, log.as_str()), (true, "Created src/docs/guides/search.md from src/_archetypes/docs.md\n"));
@@ -127,9 +136,17 @@ fn init_starts_a_docs_site() {
     assert!(ok && !log.contains("warn") && read("docs/guides/search/index.html").contains("<title>Search | Squatch Docs</title>"), "{}", log);
     assert!(dir.join("dist/assets/docs.js").is_file() && dir.join("dist/highlight.css").is_file());
 
-    let other = temp_dir("init-docs-liquid");
-    let (ok, log) = ssqch(&["init", other.to_str().unwrap(), "--starter", "docs", "--engine", "liquid"]);
-    assert!(!ok && log.contains("--starter docs is written in Edge"), "{}", log);
+    for engine in ["njk", "edge", "liquid", "hbs"] {
+        let other = temp_dir(&format!("init-docs-{}", engine));
+        let (ok, log) = ssqch(&["init", other.to_str().unwrap(), "--starter", "docs", "--engine", engine]);
+        assert!(ok, "{}: {}", engine, log);
+        assert!(other.join(format!("src/_includes/doc.{}", engine)).is_file() && !other.join("src/_includes/doc.jinja").exists(), "{}: {}", engine, log);
+        let config = std::fs::read_to_string(other.join("ssqch.config.js")).unwrap();
+        assert!(config.contains(&format!("templateFormats: [\"{0}\", \"md\"],\n  markdownEngine: \"{0}\",", engine)), "{}", config);
+        check(&other, engine);
+    }
+
+    let other = temp_dir("init-docs-shop");
     let (ok, log) = ssqch(&["init", other.to_str().unwrap(), "--starter", "shop"]);
     assert!(!ok && log.contains("--starter shop: not a starter (use site or docs)"), "{}", log);
     assert!(!other.exists());
@@ -140,8 +157,49 @@ fn init_rejects_an_unknown_engine() {
     let dir = temp_dir("init-pug");
     let (ok, log) = ssqch(&["init", dir.to_str().unwrap(), "--engine", "pug"]);
     assert!(!ok);
-    assert!(log.contains("--engine pug: not a starter engine (use edge, liquid, njk, hbs)"), "{}", log);
+    assert!(log.contains("--engine pug: not a starter engine (use jinja, njk, edge, liquid, hbs)"), "{}", log);
     assert!(!dir.exists());
+}
+
+#[cfg(feature = "jinja")]
+#[test]
+fn jinja_is_the_default_and_other_templates_are_named() {
+    let dir = temp_dir("default-engine");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    // No config: .jinja pages render, and Markdown and HTML run through Jinja first.
+    write("_includes/base.jinja", "<main>{% if title %}<h1>{{ title }}</h1>{% endif %}{{ content }}</main>");
+    write("index.jinja", "---\nlayout: base.jinja\ntitle: Camp\n---\n{% for n in [1, 2] %}{{ n }}{% endfor %}");
+    write("trail.md", "---\nlayout: base.jinja\n---\n{{ \"cedar\" | upper }} trail");
+    write("ranger.html", "{% set who = \"ranger\" %}<p>{{ who }}</p>");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && !log.contains("warn"), "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("_site").join(path)).unwrap();
+    assert_eq!(read("index.html"), "<main><h1>Camp</h1>12</main>");
+    assert_eq!(read("trail/index.html"), "<main><p>CEDAR trail</p>\n</main>");
+    assert_eq!(read("ranger/index.html"), "<p>ranger</p>");
+
+    // A template in a language the site has but doesn't list is named, not left out quietly.
+    write("old.edge", "@if(true)\nold\n@end\n");
+    write("older.edge", "{{ 'older' }}");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && log.contains("warn: 2 .edge files aren't rendered (old.edge, older.edge): templateFormats is jinja, md, html. Add \"edge\" to render them, or list them in `ignore`."), "{}", log);
+    assert!(!dir.join("_site/old").exists());
+    std::fs::remove_file(dir.join("older.edge")).unwrap();
+    let (_, stdout, _) = ssqch_outputs(&["build", "--root", d, "--format", "json"]);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("{}: {}", e, stdout));
+    assert_eq!(json["warnings"], serde_json::json!([{ "code": "template-formats", "message": "old.edge isn't rendered: templateFormats is jinja, md, html. Add \"edge\" to render it, or list it in `ignore`.", "file": "old.edge" }]), "{}", json);
+    // Listed, it renders; ignored, it's quiet.
+    write("ssqch.config.js", "export default { templateFormats: [\"jinja\", \"edge\", \"md\", \"html\"] };\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && !log.contains("warn") && read("old/index.html").contains("old"), "{}", log);
+    write("ssqch.config.js", "export default { ignore: [\"old.edge\"] };\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && !log.contains("warn"), "{}", log);
 }
 
 #[test]
@@ -434,7 +492,7 @@ fn markdown_options_hooks_containers_and_headings() {
     };
     write(
         "ssqch.config.js",
-        "import { defineConfig, markdown } from \"ssqch\";\nexport default defineConfig({\n  dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"edge\", \"md\", \"njk\", \"liquid\"],\n  markdown: { headingIds: \"blackfriday\", smartPunctuation: true },\n  data: { blurb: markdown(\"Made with *care*\", { inline: true }) },\n});\n",
+        "import { defineConfig, markdown } from \"ssqch\";\nexport default defineConfig({\n  dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"edge\", \"md\", \"njk\", \"liquid\"],\n  markdownEngine: \"edge\",\n  markdown: { headingIds: \"blackfriday\", smartPunctuation: true },\n  data: { blurb: markdown(\"Made with *care*\", { inline: true }) },\n});\n",
     );
     write("src/_includes/doc.edge", "<nav>{{{ toc(page.headings, { to: 4 }) }}}</nav>\n<p>{{{ blurb }}}</p>\n<main>{{{ content }}}</main>\n");
     write("src/_includes/hooks/heading.liquid", "<h{{ heading.level }} id=\"{{ heading.id }}\">{{ heading.content }} <a href=\"#{{ heading.id }}\" aria-hidden=\"true\">#</a></h{{ heading.level }}>\n");
@@ -567,14 +625,14 @@ fn last_modified_from_git() {
         assert!(out.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&out.stderr));
     };
     std::fs::write(dir.join("ssqch.config.js"), "import { sitemapPlugin } from \"ssqch/sitemap\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, lastModified: \"git\", plugins: [sitemapPlugin({ url: \"https://example.com\" })] };\n").unwrap();
-    std::fs::write(dir.join("src/a.edge"), "{{ page.lastModified.toISOString() }}").unwrap();
-    std::fs::write(dir.join("src/b.edge"), "{{ page.lastModified.toISOString() }}").unwrap();
+    std::fs::write(dir.join("src/a.jinja"), "{{ page.lastModified.toISOString() }}").unwrap();
+    std::fs::write(dir.join("src/b.jinja"), "{{ page.lastModified.toISOString() }}").unwrap();
     git(&["init", "-q"], "2020-01-01T00:00:00Z");
     git(&["add", "."], "2020-01-01T00:00:00Z");
     git(&["commit", "-q", "-m", "first"], "2021-03-04T05:06:07Z");
-    std::fs::write(dir.join("src/b.edge"), "{{ page.lastModified.toISOString() }} ").unwrap();
+    std::fs::write(dir.join("src/b.jinja"), "{{ page.lastModified.toISOString() }} ").unwrap();
     git(&["commit", "-q", "-am", "second"], "2022-05-06T07:08:09Z");
-    std::fs::write(dir.join("src/c.edge"), "{{ page.lastModified.getFullYear() }}").unwrap();
+    std::fs::write(dir.join("src/c.jinja"), "{{ page.lastModified.getFullYear() }}").unwrap();
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
     assert!(ok, "{}", log);
     let read = |p: &str| std::fs::read_to_string(dir.join(p)).unwrap();
@@ -793,7 +851,7 @@ fn serve_reads_a_changed_config_again() {
     write("lib/filters.js", "export const shout = (s) => s.toUpperCase() + \"!\";\n");
     write("src/_data/info.js", "import { n } from \"../util/helper.js\";\nexport default { n };\n");
     write("src/util/helper.js", "export const n = 1;\n");
-    write("src/index.edge", "{{ shout(greeting) }} {{ info.n }}");
+    write("src/index.jinja", "{{ shout(greeting) }} {{ info.n }}");
     let log = dir.join("serve.log");
     let out = std::fs::File::create(&log).unwrap();
     let child = Command::new(env!("CARGO_BIN_EXE_ssqch"))
@@ -817,7 +875,7 @@ fn serve_reads_a_changed_config_again() {
     // Fixed, with a changed setting.
     change_and_wait(&dir.join("ssqch.config.js"), "import { shout } from \"./lib/filters.js\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, filters: { shout }, data: { greeting: \"howdy\" } };\n", &page, "HOWDY? 2");
     // Templates still rebuild as before.
-    change_and_wait(&dir.join("src/index.edge"), "plain {{ info.n }}", &page, "plain 2");
+    change_and_wait(&dir.join("src/index.jinja"), "plain {{ info.n }}", &page, "plain 2");
 }
 
 #[cfg(feature = "jinja")]
@@ -1031,7 +1089,7 @@ fn import_moves_an_eleventy_site() {
 fn serve_does_not_rebuild_for_its_own_files() {
     let dir = temp_dir("serve-root");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("index.edge"), "one {{ 1 + 1 }}").unwrap();
+    std::fs::write(dir.join("index.jinja"), "one {{ 1 + 1 }}").unwrap();
     std::fs::write(dir.join("ssqch.config.js"), "export default { clean: true };\n").unwrap();
     // The server's output goes outside the folder it watches: a log in there changes with every build.
     let log = temp_dir("serve-root-log");
@@ -1043,12 +1101,12 @@ fn serve_does_not_rebuild_for_its_own_files() {
     let builds = || std::fs::read_to_string(&log).unwrap_or_default().matches("Built in").count();
     std::thread::sleep(std::time::Duration::from_millis(1500));
     assert_eq!(builds(), 1, "it rebuilt with nothing changed:\n{}", std::fs::read_to_string(&log).unwrap_or_default());
-    change_and_wait(&dir.join("index.edge"), "two {{ 2 + 2 }}", &page, "two 4");
+    change_and_wait(&dir.join("index.jinja"), "two {{ 2 + 2 }}", &page, "two 4");
     std::thread::sleep(std::time::Duration::from_millis(1500));
     let said = std::fs::read_to_string(&log).unwrap_or_default();
     assert_eq!(builds(), 2, "{}", said);
     // The server says its name, and what changed.
-    assert!(said.contains("Squatch Watch is on. Serving ") && said.contains("Fresh tracks in index.edge\n"), "{}", said);
+    assert!(said.contains("Squatch Watch is on. Serving ") && said.contains("Fresh tracks in index.jinja\n"), "{}", said);
     // The first build is the site's first; the rebuild isn't.
     assert_eq!(said.matches("First confirmed siting. Built in").count(), 1, "{}", said);
 }
@@ -1130,12 +1188,12 @@ fn inspect_says_where_a_page_and_its_data_come_from() {
         "import { writeFileSync } from \"node:fs\";\nconsole.log(\"from the config\");\nexport default {\n  dirs: { input: \"src\", output: \"dist\" },\n  data: { build: () => ({ n: 7 }) },\n  beforeBuild: [() => writeFileSync(\"src/_data/made.json\", \"{ \\\"by\\\": \\\"the hook\\\" }\"), { run: \"echo from-a-command\" }],\n  afterBuild: () => writeFileSync(\"after.txt\", \"ran\"),\n};\n",
     );
     write("src/_data/site.json", "{ \"name\": \"Trails\", \"author\": { \"name\": \"Sam\" } }");
-    write("src/_includes/base.edge", "---\nsection: none\ntheme: light\n---\n{{{ content }}}");
-    write("src/_includes/guide.edge", "---\nlayout: base.edge\nsection: guides\n---\n{{{ content }}}");
-    write("src/guides/guides.json", "{ \"layout\": \"guide.edge\", \"tags\": \"guides\", \"level\": \"easy\", \"permalink\": \"/guides/{{ page.fileSlug }}/\", \"computed\": { \"label\": \"{{ title }} ({{ level }})\" } }");
+    write("src/_includes/base.jinja", "---\nsection: none\ntheme: light\n---\n{{ content }}");
+    write("src/_includes/guide.jinja", "---\nlayout: base.jinja\nsection: guides\n---\n{{ content }}");
+    write("src/guides/guides.json", "{ \"layout\": \"guide.jinja\", \"tags\": \"guides\", \"level\": \"easy\", \"permalink\": \"/guides/{{ page.fileSlug }}/\", \"computed\": { \"label\": \"{{ title }} ({{ level }})\" } }");
     write("src/guides/2024-03-02-pine.md", "---\ntitle: Pine\nlevel: hard\nhero: { alt: A pine }\n---\nPine.\n");
     write("src/guides/2024-03-02-pine.json", "{ \"level\": \"medium\", \"reviewed\": true }");
-    write("src/tags.edge", "---\npagination: { data: collections, size: 1, alias: tag }\npermalink: \"/tags/{{ tag }}/\"\n---\n{{ tag }}");
+    write("src/tags.jinja", "---\npagination: { data: collections, size: 1, alias: tag }\npermalink: \"/tags/{{ tag }}/\"\n---\n{{ tag }}");
     // The report (standard output), or what went wrong.
     let run = |args: &[&str]| {
         let mut all = vec!["inspect", "--root", d];
@@ -1146,16 +1204,16 @@ fn inspect_says_where_a_page_and_its_data_come_from() {
 
     let (ok, log) = run(&["/guides/pine/"]);
     assert!(ok, "{}", log);
-    assert!(log.starts_with("/guides/pine/\n  From        src/guides/2024-03-02-pine.md (edge, md)\n  Writes      dist/guides/pine/index.html\n  Layouts     _includes/guide.edge > _includes/base.edge\n  Date        2024-03-02T00:00:00Z (from the file's name)\n  Collections all, guides\n"), "{}", log);
+    assert!(log.starts_with("/guides/pine/\n  From        src/guides/2024-03-02-pine.md (jinja, md)\n  Writes      dist/guides/pine/index.html\n  Layouts     _includes/guide.jinja > _includes/base.jinja\n  Date        2024-03-02T00:00:00Z (from the file's name)\n  Collections all, guides\n"), "{}", log);
     // The columns are as wide as the longest name, so compare the rows without their padding.
     let rows: Vec<String> = log.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect();
     for expected in [
         "site {name, author} src/_data/site.json",
         "build {n} the config's `data`",
         "ssqch {version, generator, env, serving, …} built in",
-        "section \"guides\" layout _includes/guide.edge (over layout _includes/base.edge)",
-        "theme \"light\" layout _includes/base.edge",
-        "layout \"guide.edge\" src/guides/guides.json",
+        "section \"guides\" layout _includes/guide.jinja (over layout _includes/base.jinja)",
+        "theme \"light\" layout _includes/base.jinja",
+        "layout \"guide.jinja\" src/guides/guides.json",
         "level \"hard\" front matter (over src/guides/guides.json, src/guides/2024-03-02-pine.json)",
         "reviewed true src/guides/2024-03-02-pine.json",
         "hero {alt} front matter",
@@ -1191,8 +1249,8 @@ fn inspect_says_where_a_page_and_its_data_come_from() {
     // A page of a paginated template, and what goes wrong.
     let (ok, log) = run(&["/tags/guides/", "--field", "tag"]);
     assert!(ok && log.contains("tag = \"guides\"") && log.contains("> pagination (its `alias`)"), "{}", log);
-    let (ok, log) = run(&["src/tags.edge"]);
-    assert!(!ok && log.contains("src/tags.edge makes 2 pages; give the URL of one: /tags/all/, /tags/guides/"), "{}", log);
+    let (ok, log) = run(&["src/tags.jinja"]);
+    assert!(!ok && log.contains("src/tags.jinja makes 2 pages; give the URL of one: /tags/all/, /tags/guides/"), "{}", log);
     let (ok, log) = run(&["/guides/pines/"]);
     assert!(!ok && log.contains("no page at \"/guides/pines/\""), "{}", log);
     let (ok, log) = run(&["/guides/pine/", "--field", "titel"]);
@@ -1216,7 +1274,7 @@ fn build_reports_in_json() {
     };
     let config = |schema: &str| {
         format!(
-            "import {{ linksPlugin }} from \"ssqch/links\";\nconsole.log(\"from the config\");\nexport default {{\n  dirs: {{ input: \"src\", output: \"dist\" }},\n  passthrough: [\"nothing/**\"],\n  schemas: {{ posts: {{ unknown: \"warn\", fields: {{ {} }} }} }},\n  beforeBuild: {{ run: \"echo from-a-command\" }},\n  plugins: [linksPlugin({{ fail: false }})],\n}};\n",
+            "import {{ linksPlugin }} from \"ssqch/links\";\nconsole.log(\"from the config\");\nexport default {{\n  dirs: {{ input: \"src\", output: \"dist\" }},\n  templateFormats: [\"edge\", \"md\"],\n  passthrough: [\"nothing/**\"],\n  schemas: {{ posts: {{ unknown: \"warn\", fields: {{ {} }} }} }},\n  beforeBuild: {{ run: \"echo from-a-command\" }},\n  plugins: [linksPlugin({{ fail: false }})],\n}};\n",
             schema
         )
     };
@@ -1321,6 +1379,11 @@ fn capabilities_match_what_a_config_can_use() {
     assert_eq!(caps["features"]["avif"], cfg!(feature = "avif"));
     assert_eq!(names(&caps["imageFormats"]).contains(&"avif".to_string()), cfg!(feature = "avif"));
     assert!(names(&caps["nodeModules"]["stubs"]).contains(&"node:http".to_string()) && !names(&caps["nodeModules"]["available"]).contains(&"node:http".to_string()));
+    // What a site gets without a config, and what a starter can be written in, the default first.
+    let default = if cfg!(feature = "jinja") { "jinja" } else { "edge" };
+    assert_eq!(caps["defaults"], serde_json::json!({ "templateFormats": [default, "md", "html"], "markdownEngine": default, "htmlEngine": default }));
+    assert_eq!(names(&caps["starterEngines"])[0], default);
+    assert!(names(&caps["starterEngines"]).contains(&"edge".to_string()));
 
     // Every command it lists is one, and it lists them all.
     let (_, help, _) = ssqch_outputs(&["--help"]);
@@ -1384,6 +1447,7 @@ fn capabilities_match_what_a_config_can_use() {
 
     let (ok, text, _) = ssqch_outputs(&["capabilities"]);
     assert!(ok && text.starts_with(&format!("ssqch {}\n  Commands           build, serve, ", env!("CARGO_PKG_VERSION"))) && text.contains("\n  Template languages edge (.edge), markdown (.md, .markdown), html (.html)"), "{}", text);
+    assert!(text.contains(&format!("\n  Defaults           templateFormats {0}, md, html; Markdown and HTML through {0}\n", default)), "{}", text);
     let (ok, log) = ssqch(&["capabilities", "--format", "xml"]);
     assert!(!ok && log.contains("--format xml: use text or json"), "{}", log);
 }
@@ -1446,7 +1510,7 @@ fn the_ranger_reports_what_happened() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, text).unwrap();
     };
-    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"edge\", \"md\"] };\n");
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"edge\", \"md\"], markdownEngine: \"edge\" };\n");
 
     // Nothing to build.
     std::fs::create_dir_all(dir.join("src")).unwrap();
@@ -1458,7 +1522,7 @@ fn the_ranger_reports_what_happened() {
     std::fs::create_dir_all(&root_site).unwrap();
     std::fs::write(root_site.join("notes.txt"), "not a page").unwrap();
     let (ok, log) = ssqch(&["build", "--root", root_site.to_str().unwrap()]);
-    assert!(ok && log.contains("Nothing sighted: no file in . matches templateFormats (edge, md, html).\n"), "{}", log);
+    assert!(ok && log.contains("Nothing sighted: no file in . matches templateFormats (jinja, md, html).\n"), "{}", log);
 
     // Layouts that lead back to each other: the loop is named.
     write("src/_includes/base.edge", "---\nlayout: wrap.edge\n---\n{{{ content }}}");
@@ -1627,7 +1691,7 @@ fn serve_tells_the_browser_what_changed() {
 
     // A build that fails is the browser's to show, and the page it has stays.
     let since = live(port, "", "/")["id"].as_u64().unwrap().to_string();
-    std::fs::write(dir.join("src/index.md"), "{{ nope.deeper.still }}\n").unwrap();
+    std::fs::write(dir.join("src/index.md"), "{{ nope( }}\n").unwrap();
     let started = std::time::Instant::now();
     let broken = loop {
         let now = live(port, &since, "/");
@@ -1705,16 +1769,16 @@ fn new_creates_a_page_from_an_archetype() {
     // The folder's archetype: its front matter is filled in, and its body is copied as it is.
     write("src/_archetypes/posts.md", "---\n# Fill in the description.\ntitle:\ndate:\ndescription:\ndraft: true\n---\n\nThe title is {{ title }}.\n");
     write("src/_archetypes/docs.md", "---\ntitle:\norder: 0\n---\n\nA doc.\n");
-    write("src/_archetypes/docs/guides.edge", "---\ntitle:\n---\n<p>A guide.</p>\n");
+    write("src/_archetypes/docs/guides.jinja", "---\ntitle:\n---\n<p>A guide.</p>\n");
     write("src/_archetypes/default.md", "---\ntitle:\n---\n\nA page.\n");
     let (ok, log) = new(&["src/posts/2026-01-05-winter-trails.md", "--title", "Winter trails: a guide", "--set", "tags=[news, trails]", "--set", "draft=false"]);
     assert_eq!((ok, log.as_str()), (true, "Created src/posts/2026-01-05-winter-trails.md from src/_archetypes/posts.md\n"));
     assert_eq!(read("src/posts/2026-01-05-winter-trails.md"), format!("---\n# Fill in the description.\ntitle: \"Winter trails: a guide\"\ndate: {}\ndescription:\ndraft: false\ntags: [news, trails]\n---\n\nThe title is {{{{ title }}}}.\n", today));
 
     // The most specific folder's archetype, by the new file's extension; then the folders above; then `default`.
-    let (ok, log) = new(&["docs/guides/install.edge"]);
-    assert!(ok && log.ends_with("from src/_archetypes/docs/guides.edge\n"), "{}", log);
-    assert_eq!(read("src/docs/guides/install.edge"), "---\ntitle: Install\n---\n<p>A guide.</p>\n");
+    let (ok, log) = new(&["docs/guides/install.jinja"]);
+    assert!(ok && log.ends_with("from src/_archetypes/docs/guides.jinja\n"), "{}", log);
+    assert_eq!(read("src/docs/guides/install.jinja"), "---\ntitle: Install\n---\n<p>A guide.</p>\n");
     let (ok, log) = new(&["docs/reference/cli/index.md", "--date", "2026-03-02"]);
     assert!(ok && log.ends_with("from src/_archetypes/docs.md\n"), "{}", log);
     // An index page is named by its folder, and --date adds a date the archetype doesn't have.
@@ -1738,11 +1802,11 @@ fn new_creates_a_page_from_an_archetype() {
     assert_eq!((ok, log.as_str()), (true, "Created src/posts/2026-03-02-whats-new-in-0-4.md from src/_archetypes/posts.md\n"));
     assert!(read("src/posts/2026-03-02-whats-new-in-0-4.md").contains("title: What's new in 0.4?\ndate: 2026-03-02\n"));
     // Folders with an index file.
-    write("src/trails/cedar/index.edge", "---\ntitle: Cedar\n---\n");
-    write("src/trails/fir/index.edge", "---\ntitle: Fir\n---\n");
+    write("src/trails/cedar/index.jinja", "---\ntitle: Cedar\n---\n");
+    write("src/trails/fir/index.jinja", "---\ntitle: Fir\n---\n");
     std::fs::remove_file(dir.join("src/_archetypes/default.md")).unwrap();
     let (ok, log) = new(&["trails", "--title", "Old Growth Loop"]);
-    assert!(ok && log.starts_with("Created src/trails/old-growth-loop/index.edge with a title and a date"), "{}", log);
+    assert!(ok && log.starts_with("Created src/trails/old-growth-loop/index.jinja with a title and a date"), "{}", log);
 
     // What goes wrong.
     for (args, expected) in [

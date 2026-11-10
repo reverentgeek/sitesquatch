@@ -1,6 +1,6 @@
 ---
 title: Islands of interactivity
-layout: base.edge
+layout: base.jinja
 ---
 This page is static HTML with two islands. Each is a custom element: a tag with a script that loads only on the pages that use it.
 

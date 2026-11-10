@@ -8,6 +8,40 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Breaking
+
+- Jinja is the default template language of the `ssqch` command, in place of Edge: the
+  defaults are `templateFormats: ["jinja", "md", "html"]`, `markdownEngine: "jinja"` and
+  `htmlEngine: "jinja"`. A site in Edge that relied on the defaults keeps working by setting
+  them: `templateFormats: ["edge", "md", "html"]` (or the list it uses), `markdownEngine:
+  "edge"` and `htmlEngine: "edge"` (`template_formats`, `markdown_engine` and `html_engine` in
+  `sitesquatch.toml`). A site that lists `"edge"` in `templateFormats` but not the other two
+  only needs `markdownEngine: "edge"`, and `htmlEngine: "edge"` if it has `.html` pages or
+  layouts. The Rust library's `Config::new` still defaults to Edge, the engine it has without
+  plugins, and so does an `ssqch` built without the `jinja` feature.
+- `ssqch init` starts a site in Jinja (`src/_includes/layout.jinja`, `src/index.jinja`), and
+  `ssqch init --starter docs` writes its layouts, render hook and containers in Jinja. Pass
+  `--engine edge` for the starters as they were.
+
+### Added
+
+- `ssqch init --starter docs` takes `--engine` too: `jinja` (the default), `njk`, `edge`,
+  `liquid` or `hbs`. Each one builds the same pages. The site starter gains `--engine jinja`,
+  and `--engine njk` writes the Jinja templates as `.njk` files.
+- A build warns about files in a template language the site has but doesn't list in
+  `templateFormats`, which it leaves out, instead of leaving them out without a word:
+  `index.edge isn't rendered: templateFormats is jinja, md, html. Add "edge" to render it, or
+  list it in ignore.` (diagnostic code `template-formats`).
+- `ssqch capabilities` reports the `defaults` (`templateFormats`, `markdownEngine`,
+  `htmlEngine`) and the `starterEngines` that `ssqch init --engine` takes.
+
+### Changed
+
+- The `versioned-docs` and `islands` examples are written in Jinja. `component-docs` stays in
+  Edge for its components with slots, and sets `markdownEngine: "edge"`.
+
 ## 0.4.0 - 2026-11-10
 
 ### Breaking

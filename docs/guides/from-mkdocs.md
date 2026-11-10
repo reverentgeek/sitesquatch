@@ -17,7 +17,7 @@ The [`docs-sidebar`](../../examples/sites/docs-sidebar/) example is distilled fr
 | `plugins: [search]` | [Pagefind](https://pagefind.app) after the build: `afterBuild: { run: "npx -y pagefind --site dist" }` |
 | `mkdocs-redirects` | `redirectsPlugin({ redirects })` from `ssqch/redirects`, or `aliases` on each page |
 | `git-revision-date-localized` | `lastModified: "git"`, then `page.lastModified` |
-| `mkdocs-macros` (Jinja in Markdown) | `markdownEngine: "jinja"`: Markdown runs through Jinja first |
+| `mkdocs-macros` (Jinja in Markdown) | Built in: Markdown runs through Jinja first (`markdownEngine: "jinja"`, the default) |
 | `extra_css` with Sass | `sassPlugin()` from `ssqch/sass` |
 | `strict: true` | `linksPlugin()` for broken links, and `strict: true` for undefined template values |
 
@@ -30,7 +30,7 @@ The [`docs-sidebar`](../../examples/sites/docs-sidebar/) example is distilled fr
 | `pymdownx.tabbed`: `=== "Tab"` | `:::: tabs` holding `::: tab Name` containers (see `versioned-docs`) |
 | `pymdownx.superfences` custom fences (`mermaid`) | A `fence-mermaid` hook |
 | `pymdownx.highlight`, `hl_lines="2 3"` | `markdown: { highlight: true }`, with `{2,3}` in the fence's info string |
-| `pymdownx.snippets`: `--8<-- "file.py"` | `{% include "samples/file.py" %}` inside the fence, with `markdownEngine: "jinja"` |
+| `pymdownx.snippets`: `--8<-- "file.py"` | `{% include "samples/file.py" %}` inside the fence |
 | `toc` with `permalink: true` | Heading ids are built in; a heading hook adds the permalink. `toc(page.headings)` builds the table of contents. |
 | `attr_list`: `## Title { #id }` | `## Title {#id}` |
 | `footnotes`, `tables` | Built in |

@@ -7,7 +7,7 @@ import { minifyPlugin } from "ssqch/minify";
 
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
-  templateFormats: ["edge", "md"],
+  templateFormats: ["jinja", "md"],
 
   // Functions templates can call: {{ readableDate(post.date) }}
   filters: {

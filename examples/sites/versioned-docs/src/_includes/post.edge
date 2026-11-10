@@ -1,8 +1,0 @@
----
-layout: base.edge
----
-<main style="margin: 0 auto">
-  <h1>{{ title }}</h1>
-  <p>{{ page.date.toISOString().slice(0, 10) }} by {{ authors.map(id => siteAuthors[id].name + ' (' + siteAuthors[id].title + ')').join(', ') }}</p>
-  {{{ content }}}
-</main>

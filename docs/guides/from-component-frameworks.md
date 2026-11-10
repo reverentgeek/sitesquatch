@@ -40,7 +40,7 @@ Moving one section at a time works: build the docs or blog with ssqch into a fol
 
 ## MDX and components
 
-MDX mixes Markdown with JSX. In ssqch, Markdown runs through a template language first (Edge by default), so a component call sits in the Markdown the same way:
+MDX mixes Markdown with JSX. In ssqch, Markdown runs through a template language first (Jinja by default), so a component call sits in the Markdown the same way. With `markdownEngine: "edge"`, an Edge component reads most like MDX:
 
 ```mdx
 <Callout type="warning" title="Careful">
@@ -65,8 +65,8 @@ This **cannot** be undone.
 | Component | Becomes |
 | --- | --- |
 | A layout (`<BaseLayout>`, `layout.tsx`, a VitePress theme `Layout.vue`) | A layout in `_includes/`, chosen by `layout` in front matter or directory data |
-| A presentational component with props (`<Card title>`) | An Edge component (`_includes/components/card.edge`, with `$props` and slots), a Nunjucks macro, or a Handlebars partial |
-| A component that wraps Markdown (`<Aside>`, `<Tabs>`) | A container: `_includes/containers/aside.edge` gets the rendered body as `container.content` |
+| A presentational component with props (`<Card title>`) | A Jinja macro (`{% macro card(title) %}`, with `caller()` for its body), an Edge component (`_includes/components/card.edge`, with `$props` and slots), or a Handlebars partial |
+| A component that wraps Markdown (`<Aside>`, `<Tabs>`) | A container: `_includes/containers/aside.jinja` gets the rendered body as `container.content` |
 | Something that changes how Markdown elements render (`components={{ a, h2, pre }}`) | Render hooks: `_includes/hooks/link.*`, `heading.*`, `fence.*` |
 | A component that reads data (`Astro.glob`, a `useData()` composable) | The template reads the same data: `collections`, `_data`, front matter |
 | `import` of a JSON or YAML file in a page | A file in `_data/`, available by name |
@@ -99,7 +99,7 @@ What doesn't have an equivalent: client-side routing between pages (links are or
 
 ## Per framework
 
-- **Astro:** `.astro` components are the closest to templates: the frontmatter script becomes data (front matter, `_data`, or a filter) and the template below it becomes Edge or Nunjucks. Starlight sites map onto `ssqch init --starter docs`.
+- **Astro:** `.astro` components are the closest to templates: the frontmatter script becomes data (front matter, `_data`, or a filter) and the template below it becomes Jinja or Edge. Starlight sites map onto `ssqch init --starter docs`.
 - **VitePress:** `.vitepress/config.js` `themeConfig.sidebar` becomes `_data/nav.yml`; `:::` containers, `{#id}` and line highlighting already match. Vue components in Markdown are the work.
 - **Next.js:** only statically exported pages (`output: "export"`) move. `next/link` and `next/image` become `<a>` and `<img>`; `getStaticProps` becomes a data file.
 - **Gatsby:** source plugins become data files (`fetch`, or reading files with `node:fs`), page queries become collections, and `gatsby-node.js` `createPages` becomes pagination. remark plugins map to the `markdown` options, render hooks and containers.

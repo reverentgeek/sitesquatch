@@ -1,6 +1,6 @@
 ---
 title: ""
-layout: base.edge
+layout: base.jinja
 ---
 <div class="home">
 

@@ -1,1 +1,1 @@
-{ "layout": "post.edge", "permalink": "/blog/{{ page.fileSlug }}/" }
+{ "layout": "post.jinja", "permalink": "/blog/{{ page.fileSlug }}/" }

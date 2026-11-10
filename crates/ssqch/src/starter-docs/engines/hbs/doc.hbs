@@ -1,0 +1,58 @@
+---
+layout: base.hbs
+sidebar: true
+---
+<div class="docs">
+  <main data-pagefind-body>
+    {{#if (gt (len (navBreadcrumbs nav page.url)) 1)}}
+    <nav class="breadcrumbs" aria-label="Breadcrumbs">
+      {{#each (navBreadcrumbs nav page.url)}}{{#unless @last}}
+      <span>{{title}}</span> ›
+      {{/unless}}{{/each}}
+      <span aria-current="page">{{title}}</span>
+    </nav>
+    {{/if}}
+    <h1>{{title}}</h1>
+    {{{content}}}
+
+    <footer class="page-footer">
+      {{#if site.editUrl}}
+      <p><a href="{{site.editUrl}}{{sourcePath page.inputPath}}">Edit this page</a></p>
+      {{/if}}
+      {{#with (navPager nav page.url)}}
+      <nav class="pager" aria-label="Previous and next pages">
+        <span>
+          {{#if previous}}
+          <a rel="prev" href="{{previous.url}}">← {{previous.title}}</a>
+          {{/if}}
+        </span>
+        <span>
+          {{#if next}}
+          <a rel="next" href="{{next.url}}">{{next.title}} →</a>
+          {{/if}}
+        </span>
+      </nav>
+      {{/with}}
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    {{#if (toc page.headings)}}
+    <p class="toc-title">On this page</p>
+    {{{toc page.headings}}}
+    {{/if}}
+  </aside>
+
+  {{!-- After the content in the HTML, so a phone (and a screen reader) gets
+       the page first. The stylesheet puts it on the left on wide screens. --}}
+  <nav class="sidebar" id="sidebar" aria-label="Documentation">
+    {{#each (navTree nav page.url)}}
+    <h2>{{title}}</h2>
+    <ul>
+      {{#each pages}}
+      <li><a href="{{url}}"{{#if current}} aria-current="page"{{/if}}>{{title}}</a></li>
+      {{/each}}
+    </ul>
+    {{/each}}
+  </nav>
+</div>

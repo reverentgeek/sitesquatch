@@ -58,6 +58,7 @@ fn configure(cfg: &mut Config) -> Result<()> {
     cfg.add_plugin(sitesquatch_plugin_liquid::LiquidPlugin);
     #[cfg(feature = "jinja")]
     cfg.add_plugin(sitesquatch_plugin_jinja::JinjaPlugin);
+    default_engines(cfg);
     #[cfg(feature = "handlebars")]
     cfg.add_plugin(sitesquatch_plugin_handlebars::HandlebarsPlugin);
     let toml = cfg.root.join("sitesquatch.toml");
@@ -73,6 +74,18 @@ fn configure(cfg: &mut Config) -> Result<()> {
     // JavaScript data files can call image() even without the plugin.
     modules::ensure_image_processor(cfg);
     Ok(())
+}
+
+/// Jinja is the CLI's default template language: pages in `.jinja`, and
+/// Markdown and HTML through it first. The library's defaults are Edge, the
+/// engine it has without plugins, and so is a build without the `jinja`
+/// feature. A site's config changes these after.
+pub(crate) fn default_engines(cfg: &mut Config) {
+    if cfg!(feature = "jinja") {
+        cfg.template_formats = ["jinja", "md", "html"].map(String::from).to_vec();
+        cfg.markdown_engine = Some("jinja".into());
+        cfg.html_engine = Some("jinja".into());
+    }
 }
 
 fn rss(cfg: &mut Config, options: &Json) -> Result<()> {

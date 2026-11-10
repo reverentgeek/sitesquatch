@@ -1,6 +1,6 @@
 # islands
 
-Interactivity without a framework, in Edge. It's what an Astro or Eleventy "islands" site looks like in ssqch: static HTML, with a few custom elements whose scripts load only where they're used.
+Interactivity without a framework, in Jinja. It's what an Astro or Eleventy "islands" site looks like in ssqch: static HTML, with a few custom elements whose scripts load only where they're used.
 
 What it shows:
 

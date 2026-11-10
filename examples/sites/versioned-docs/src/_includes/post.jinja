@@ -1,0 +1,8 @@
+---
+layout: base.jinja
+---
+<main style="margin: 0 auto">
+  <h1>{{ title }}</h1>
+  <p>{{ page.date | dateformat("%Y-%m-%d") }} by {% for id in authors %}{{ siteAuthors[id].name }} ({{ siteAuthors[id].title }}){% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {{ content }}
+</main>

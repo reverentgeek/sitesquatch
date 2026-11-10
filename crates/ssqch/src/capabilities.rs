@@ -66,6 +66,11 @@ pub fn capabilities() -> serde_json::Value {
         image_formats.insert(0, "avif");
     }
 
+    // What a site gets without setting them.
+    let mut cfg = sitesquatch::Config::new(".", sitesquatch::Environment::Production);
+    crate::default_engines(&mut cfg);
+    let defaults = json!({ "templateFormats": cfg.template_formats, "markdownEngine": cfg.markdown_engine, "htmlEngine": cfg.html_engine });
+
     json!({
         "schemaVersion": 1,
         "version": env!("CARGO_PKG_VERSION"),
@@ -75,6 +80,7 @@ pub fn capabilities() -> serde_json::Value {
         "configFiles": sitesquatch_js::CONFIG_FILES.iter().copied().chain(["sitesquatch.toml"]).collect::<Vec<_>>(),
         "configOptions": sitesquatch_js::config_options(),
         "templateLanguages": languages,
+        "defaults": defaults,
         "frontMatter": ["yaml", "json", "toml"],
         "dataFiles": ["json", "yaml", "yml", "toml", "js", "mjs", "cjs"],
         "modules": modules,
@@ -82,6 +88,7 @@ pub fn capabilities() -> serde_json::Value {
         "globals": globals,
         "imageFormats": image_formats,
         "starters": ["site", "docs"],
+        "starterEngines": crate::init::starter_engines(),
         "importers": ["eleventy", "zola"],
     })
 }
@@ -95,6 +102,10 @@ fn text(caps: &serde_json::Value) -> String {
     row("Optional features", features);
     let languages: Vec<String> = caps["templateLanguages"].as_array().into_iter().flatten().map(|l| format!("{} (.{})", l["name"].as_str().unwrap_or(""), l["extensions"].as_array().into_iter().flatten().filter_map(|e| e.as_str()).collect::<Vec<_>>().join(", ."))).collect();
     row("Template languages", languages.join(", "));
+    let defaults = &caps["defaults"];
+    let (md, html) = (defaults["markdownEngine"].as_str().unwrap_or("none"), defaults["htmlEngine"].as_str().unwrap_or("none"));
+    let through = if md == html { format!("Markdown and HTML through {}", md) } else { format!("Markdown through {}, HTML through {}", md, html) };
+    row("Defaults", format!("templateFormats {}; {}", defaults["templateFormats"].as_array().into_iter().flatten().filter_map(|f| f.as_str()).collect::<Vec<_>>().join(", "), through));
     row("Config files", list("configFiles"));
     row("Config options", list("configOptions"));
     let modules: Vec<&str> = caps["modules"].as_array().into_iter().flatten().filter_map(|m| m["name"].as_str()).collect();
@@ -102,7 +113,7 @@ fn text(caps: &serde_json::Value) -> String {
     row("Node modules", caps["nodeModules"]["available"].as_array().into_iter().flatten().filter_map(|m| m.as_str()).collect::<Vec<_>>().join(", "));
     row("Globals", list("globals"));
     row("Image formats", list("imageFormats"));
-    row("Starters", list("starters"));
+    row("Starters", format!("{} (in {})", list("starters"), list("starterEngines")));
     row("Importers", list("importers"));
     out.push_str("\n--format json has all of it, with each module's exports.\n");
     out

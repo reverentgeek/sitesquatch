@@ -1,0 +1,60 @@
+---
+layout: base.liquid
+sidebar: true
+---
+<div class="docs">
+  <main data-pagefind-body>
+    {% assign crumbs = nav | navBreadcrumbs: page.url %}
+    {% if crumbs.size > 1 %}
+    <nav class="breadcrumbs" aria-label="Breadcrumbs">
+      {% for crumb in crumbs %}{% unless forloop.last %}
+      <span>{{ crumb.title }}</span> ›
+      {% endunless %}{% endfor %}
+      <span aria-current="page">{{ title }}</span>
+    </nav>
+    {% endif %}
+    <h1>{{ title }}</h1>
+    {{ content }}
+
+    <footer class="page-footer">
+      {% if site.editUrl and site.editUrl != "" %}
+      <p><a href="{{ site.editUrl }}{{ page.inputPath | replace_first: './', '' }}">Edit this page</a></p>
+      {% endif %}
+      {% assign pager = nav | navPager: page.url %}
+      <nav class="pager" aria-label="Previous and next pages">
+        <span>
+          {% if pager.previous %}
+          <a rel="prev" href="{{ pager.previous.url }}">← {{ pager.previous.title }}</a>
+          {% endif %}
+        </span>
+        <span>
+          {% if pager.next %}
+          <a rel="next" href="{{ pager.next.url }}">{{ pager.next.title }} →</a>
+          {% endif %}
+        </span>
+      </nav>
+    </footer>
+  </main>
+
+  {% assign contents = page.headings | toc %}
+  <aside class="toc" aria-label="On this page">
+    {% if contents and contents != "" %}
+    <p class="toc-title">On this page</p>
+    {{ contents }}
+    {% endif %}
+  </aside>
+
+  {% comment %} After the content in the HTML, so a phone (and a screen reader) gets
+     the page first. The stylesheet puts it on the left on wide screens. {% endcomment %}
+  {% assign sections = nav | navTree: page.url %}
+  <nav class="sidebar" id="sidebar" aria-label="Documentation">
+    {% for section in sections %}
+    <h2>{{ section.title }}</h2>
+    <ul>
+      {% for item in section.pages %}
+      <li><a href="{{ item.url }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.title }}</a></li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </nav>
+</div>

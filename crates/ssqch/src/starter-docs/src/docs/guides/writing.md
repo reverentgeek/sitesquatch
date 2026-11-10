@@ -18,7 +18,7 @@ Give a block a title in brackets.
 > GitHub's alert syntax works as well, which keeps a README readable in both places.
 
 :::details How do these work?
-Each `:::name` block renders through `src/_includes/containers/name.edge` if there is one (like this one, `details.edge`), or as a `<div class="name">`.
+Each `:::name` block renders through `src/_includes/containers/name.jinja` if there is one (like this one, `details.jinja`), or as a `<div class="name">`.
 :::
 
 ## Tabs

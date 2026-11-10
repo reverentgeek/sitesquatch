@@ -46,7 +46,7 @@ blog.rust-lang.org was ported this way as a trial: all of its URLs and most page
 
 ## Templates
 
-Use `.njk` (Nunjucks) or `.jinja` files and set `markdownEngine` to the same, so shortcode calls in Markdown keep working as macros.
+Use `.jinja` files, ssqch's default, so Markdown already runs through Jinja and shortcode calls in it keep working as macros. (`.njk` works too, with `markdownEngine: "njk"`.)
 
 | Tera | Nunjucks in SiteSquatch |
 | --- | --- |

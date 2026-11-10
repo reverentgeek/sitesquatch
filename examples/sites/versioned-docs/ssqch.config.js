@@ -6,7 +6,7 @@ import versions from "./src/_data/versions.json";
 
 export default defineConfig( {
 	dirs: { input: "src", output: "dist" },
-	templateFormats: [ "edge", "md" ],
+	templateFormats: [ "jinja", "md" ],
 	markdown: { highlight: true },
 
 	filters: {

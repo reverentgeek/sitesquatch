@@ -11,7 +11,7 @@ const search = Boolean(process.env.SEARCH);
 
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
-  templateFormats: ["edge", "md"],
+  templateFormats: ["jinja", "md"],
   passthrough: ["src/assets"],
 
   // For a site served under a path, like https://you.github.io/repo/:

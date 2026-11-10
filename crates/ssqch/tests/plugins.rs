@@ -42,6 +42,8 @@ import { minifyPlugin } from "ssqch/minify";
 
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
+  templateFormats: ["edge", "md"],
+  markdownEngine: "edge",
   filters: { abs: (url) => absoluteUrl(url, "https://example.com/blog/") },
   plugins: [
     // Listed before the image plugin, but minifying still runs after images.
@@ -126,7 +128,7 @@ fn bad_plugin_options_fail_clearly() {
     for (file, source, want) in cases {
         let mut files: Vec<(&str, &[u8])> = vec![("src/img/squatch.png", PNG), ("src/index.edge", b"{{ hero }}")];
         if file != "ssqch.config.js" {
-            files.push(("ssqch.config.js", b"export default { dirs: { input: \"src\", output: \"dist\" } };"));
+            files.push(("ssqch.config.js", b"export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"edge\", \"md\"], markdownEngine: \"edge\" };"));
         }
         files.push((file, source));
         let root = project(&files);
@@ -140,6 +142,8 @@ const ASSETS_CONFIG: &[u8] = br#"
 import { assetsPlugin } from "ssqch/assets";
 export default {
   dirs: { input: "src", output: "dist" },
+  templateFormats: ["edge", "md"],
+  markdownEngine: "edge",
   plugins: [assetsPlugin({ files: ["/assets/index.css", "/assets/index.js"] })],
 };
 "#;
@@ -200,6 +204,8 @@ const LINKS_CONFIG: &[u8] = br#"
 import { linksPlugin } from "ssqch/links";
 export default {
   dirs: { input: "src", output: "dist" },
+  templateFormats: ["edge", "md"],
+  markdownEngine: "edge",
   plugins: [linksPlugin({ ignore: ["/downloads/"] })],
 };
 "#;
@@ -220,7 +226,7 @@ fn the_link_checker_passes_a_clean_site() {
         b"<h1 id=\"top\">Hi</h1><a href=\"/about/\">about</a><a href=\"/about/#team\">team</a><a href=\"about/\">relative</a><a href=\"#top\">top</a><a href=\"/feed.xml\">feed</a><a href=\"/old-post\">redirected</a><a href=\"/archive/2019/\">archived</a><a href=\"/downloads/missing.zip\">ignored</a><a href=\"https://example.com/nope\">external</a><a href=\"mailto:squatch@example.com\">mail</a>",
     );
     std::fs::write(root.join("src/_redirects"), "/old-post /about/ 301\n/archive/* /about/ 301\n").unwrap();
-    let config = String::from_utf8_lossy(LINKS_CONFIG).replace("dirs: { input: \"src\", output: \"dist\" },", "dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"edge\"],\n  passthrough: [\"src/_redirects\", \"src/feed.xml\"],");
+    let config = String::from_utf8_lossy(LINKS_CONFIG).replace("  templateFormats: [\"edge\", \"md\"],", "  templateFormats: [\"edge\"],\n  passthrough: [\"src/_redirects\", \"src/feed.xml\"],");
     std::fs::write(root.join("ssqch.config.js"), config).unwrap();
     let (ok, log) = ssqch(&root);
     assert!(ok, "{}", log);
@@ -246,7 +252,7 @@ fn broken_links_fail_a_production_build_and_warn_in_development() {
 
 fn linked_images_site(options: &str) -> PathBuf {
     let config = format!(
-        "import {{ imagePlugin }} from \"ssqch/image\";\nexport default {{ dirs: {{ input: \"src\", output: \"dist\" }}, plugins: [imagePlugin({{ formats: [\"webp\", \"auto\"], widths: [16, 48]{} }})] }};",
+        "import {{ imagePlugin }} from \"ssqch/image\";\nexport default {{ dirs: {{ input: \"src\", output: \"dist\" }}, templateFormats: [\"edge\", \"md\"], markdownEngine: \"edge\", plugins: [imagePlugin({{ formats: [\"webp\", \"auto\"], widths: [16, 48]{} }})] }};",
         options
     );
     let page = "<a href=\"/img/squatch.png\"><img src=\"/img/squatch.png\" width=\"16\" alt=\"Squatch\"></a>\n<a href=\"img/squatch.png\" ssqch:ignore>raw</a>\n<a href=\"/about/\">about</a>\n<a href=\"/img/missing.png\">missing</a>";
@@ -291,6 +297,7 @@ import { linksPlugin } from "ssqch/links";
 export default {
   dirs: { input: "src", output: "dist" },
   templateFormats: ["edge", "md", "txt"],
+  markdownEngine: "edge",
   plugins: [
     sitemapPlugin({ url: "https://example.com/", exclude: ["/tags/**"] }),
     redirectsPlugin({ netlify: true, redirects: { "/feed/": "/feed.xml", "/elsewhere": "https://other.example/" } }),
@@ -399,6 +406,8 @@ import { imagePlugin } from "ssqch/image";
 import { sassPlugin } from "ssqch/sass";
 export default {
   dirs: { input: "src", output: "dist" },
+  templateFormats: ["edge", "md"],
+  markdownEngine: "edge",
   base: "/repo/",
   plugins: [
     imagePlugin({ formats: ["webp"], widths: [16] }),
@@ -451,7 +460,7 @@ export default {
 #[test]
 fn a_hook_template_writes_redirect_pages_and_footnotes() {
     let root = project(&[
-        ("ssqch.config.js", b"import { redirectsPlugin } from \"ssqch/redirects\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, base: \"/docs\", data: { site: { name: \"Trails\" } }, plugins: [redirectsPlugin()] };"),
+        ("ssqch.config.js", b"import { redirectsPlugin } from \"ssqch/redirects\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"edge\", \"md\"], markdownEngine: \"edge\", base: \"/docs\", data: { site: { name: \"Trails\" } }, plugins: [redirectsPlugin()] };"),
         ("src/_includes/hooks/redirect.liquid", b"<!doctype html><title>{{ site.name }}</title><meta http-equiv=\"refresh\" content=\"0; url={{ redirect.to }}\"><p>{{ redirect.from }} is now <a href=\"{{ redirect.to }}\">here</a>.</p>\n"),
         ("src/_includes/hooks/footnote-ref.edge", b"<sup><a href=\"#{{ footnote.label }}\">{{ footnote.label }}</a></sup>"),
         ("src/_includes/hooks/footnotes.edge", b"@each(note in footnotes)\n<div class=\"footnote-definition\" id=\"{{ note.label }}\"><sup>{{ note.label }}</sup>{{{ note.content }}}</div>\n@end"),
@@ -468,7 +477,7 @@ fn a_hook_template_writes_redirect_pages_and_footnotes() {
 #[test]
 fn image_takes_a_name_for_its_files() {
     let root = project(&[
-        ("ssqch.config.js", b"export default { dirs: { input: \"src\", output: \"dist\" } };"),
+        ("ssqch.config.js", b"export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"edge\", \"md\"], markdownEngine: \"edge\" };"),
         ("src/img/squatch.png", PNG),
         (
             "src/_data/logos.js",

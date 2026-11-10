@@ -69,6 +69,34 @@ a tool finds out the same way. The only clue is a warning that scrolls past.
       minifying, browser targets), only if the items above leave a real gap. It wouldn't
       replace Tailwind. JavaScript bundling in Rust costs too much binary for what it gives.
 
+### Jinja by default (0.5)
+
+Decided 2026-11-10: Jinja is the most familiar template language across ecosystems (Python's
+Jinja2, Nunjucks, Rust's Tera and MiniJinja) and the most capable of the ones ssqch has
+(inheritance, macros, real expressions), so it's the default instead of Edge.
+
+- [x] The `ssqch` command's defaults are `templateFormats: ["jinja", "md", "html"]`,
+      `markdownEngine: "jinja"` and `htmlEngine: "jinja"` (Edge in a build without the `jinja`
+      feature, and in the Rust library's `Config::new`). Breaking, in the changelog.
+- [x] Both starters are written in Jinja, and both take `--engine jinja|njk|edge|liquid|hbs`
+      (the docs starter was Edge only). Each engine's docs starter builds the same pages.
+- [x] A warning names the files in a template language the site has but doesn't list in
+      `templateFormats`, which a build used to leave out without a word (`template-formats`).
+- [x] `ssqch capabilities` reports the defaults and the starter engines.
+- [x] Examples: `versioned-docs` and `islands` are Jinja (the same pages as before, apart from
+      whitespace). `component-docs` stays Edge, for its components with slots.
+- [x] **Blog:** stays in Edge, so its config sets `markdownEngine: "edge"` and
+      `htmlEngine: "edge"` (it already listed `edge` in `templateFormats`).
+- [ ] Jinja errors as good as Edge's: a missing `{% include %}` says which include it probably
+      meant (`did you mean partials/nav.jinja?`), and the error's source lines get carets
+      under what it quotes. Today a Jinja error names the file and line only.
+- [ ] `--verbose`'s "Uninhabited" line covers Jinja includes, now that most new sites have them
+      (see "Not yet" under Uninhabited templates).
+- [ ] Found while checking the docs starter's types (2026-11-10, already so in 0.4.0): `tsc`
+      on the docs starter reports 9 errors, in `src/assets/docs.js` (DOM `Element` lacks
+      `dataset` and `hidden`, and `PagefindUI` is unknown) and `process` in `ssqch.config.js`.
+      JSDoc casts, a `PagefindUI` declaration, and `process` in `ssqch.d.ts` would fix them.
+
 ## The Sasquatch voice (done, apart from two items)
 
 Built 2026-11-10, after David's review. ssqch reports like a deadpan park ranger who knows a
@@ -282,7 +310,7 @@ Shared work, done with the first engine (Liquid) and reused by the rest:
 - [x] Each engine is a cargo feature that the release builds turn on (`liquid` is a default
       feature of `ssqch`). Liquid adds about 2.1 MB (11.4 MB to 13.6 MB on macOS arm64).
 - [x] Docs and tooling: the README has a section per engine, and `ssqch types` mentions the
-      names. `ssqch init --engine liquid` (or `njk`, `hbs`) starts a site in that language.
+      names. `ssqch init --engine liquid` (or `njk`, `hbs`, `edge`) starts a site in that language.
 - [x] Tests: a small site per engine in `crates/ssqch/tests/cli.rs`, including layout chains
       that mix engines.
 - [x] Rename the `templateEngineOverride` front-matter key to `render` (`render: md`,

@@ -5,7 +5,7 @@ import { sitemapPlugin } from "ssqch/sitemap";
 
 export default defineConfig( {
 	dirs: { input: "src", output: "dist" },
-	templateFormats: [ "edge", "md" ],
+	templateFormats: [ "jinja", "md" ],
 
 	plugins: [
 		// src/elements/like-button.js loads on the pages with a <like-button>, and nowhere else.

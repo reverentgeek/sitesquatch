@@ -11,7 +11,7 @@ Welcome! This is a documentation site built with [SiteSquatch](https://github.co
 | `src/docs/` | The pages, in Markdown. A folder is a section of the URL. |
 | `src/_data/nav.yml` | The sidebar, which also gives each page its breadcrumbs and previous and next links. |
 | `src/_data/site.json` | The site's name and description. |
-| `src/_includes/` | The layouts (`base.edge`, `doc.edge`), and the templates behind headings, tabs and details. |
+| `src/_includes/` | The layouts (`base.jinja`, `doc.jinja`), and the templates behind headings, tabs and details. |
 | `src/assets/` | The stylesheet (its colors are custom properties at the top), and a small script for tabs, search and the light and dark switch. |
 | `ssqch.config.js` | The config: highlighting, the link checker, the schema for front matter. |
 

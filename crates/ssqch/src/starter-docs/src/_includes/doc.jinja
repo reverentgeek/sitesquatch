@@ -1,0 +1,59 @@
+---
+layout: base.jinja
+sidebar: true
+---
+<div class="docs">
+  <main data-pagefind-body>
+    {% set crumbs = nav | navBreadcrumbs(page.url) %}
+    {% if crumbs | length > 1 %}
+    <nav class="breadcrumbs" aria-label="Breadcrumbs">
+      {% for crumb in crumbs[:-1] %}
+      <span>{{ crumb.title }}</span> ›
+      {% endfor %}
+      <span aria-current="page">{{ title }}</span>
+    </nav>
+    {% endif %}
+    <h1>{{ title }}</h1>
+    {{ content }}
+
+    <footer class="page-footer">
+      {% if site.editUrl %}
+      <p><a href="{{ site.editUrl }}{{ page.inputPath | replace('./', '') }}">Edit this page</a></p>
+      {% endif %}
+      {% set pager = nav | navPager(page.url) %}
+      <nav class="pager" aria-label="Previous and next pages">
+        <span>
+          {% if pager.previous %}
+          <a rel="prev" href="{{ pager.previous.url }}">← {{ pager.previous.title }}</a>
+          {% endif %}
+        </span>
+        <span>
+          {% if pager.next %}
+          <a rel="next" href="{{ pager.next.url }}">{{ pager.next.title }} →</a>
+          {% endif %}
+        </span>
+      </nav>
+    </footer>
+  </main>
+
+  {% set contents = toc(page.headings) %}
+  <aside class="toc" aria-label="On this page">
+    {% if contents %}
+    <p class="toc-title">On this page</p>
+    {{ contents | safe }}
+    {% endif %}
+  </aside>
+
+  {# After the content in the HTML, so a phone (and a screen reader) gets
+     the page first. The stylesheet puts it on the left on wide screens. #}
+  <nav class="sidebar" id="sidebar" aria-label="Documentation">
+    {% for section in nav | navTree(page.url) %}
+    <h2>{{ section.title }}</h2>
+    <ul>
+      {% for item in section.pages %}
+      <li><a href="{{ item.url }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.title }}</a></li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </nav>
+</div>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ title ? title + ' | ' : '' }}Pinecone Native</title>
+<title>{% if title %}{{ title }} | {% endif %}Pinecone Native</title>
 <link rel="stylesheet" href="/highlight.css">
 <style>
   body { font: 17px/1.6 system-ui, sans-serif; margin: 0; }
@@ -26,15 +26,15 @@
   <a href="/"><strong>Pinecone Native</strong></a>
   <a href="/docs/1.0/">Docs</a>
   <a href="/blog/">Blog</a>
-  @if(version)
+  {% if version %}
   <nav aria-label="Versions">
-    @each(v in versions)
-    <a href="{{ inVersion(page.url, v.name, collections.all) }}"{{{ v.name === version ? ' aria-current="true"' : '' }}}>{{ v.label }}</a>
-    @end
+    {% for v in versions %}
+    <a href="{{ inVersion(page.url, v.name, collections.all) }}"{% if v.name == version %} aria-current="true"{% endif %}>{{ v.label }}</a>
+    {% endfor %}
   </nav>
-  @end
+  {% endif %}
 </header>
-{{{ content }}}
+{{ content }}
 <script>
   // Turn tab sections into buttons (without this, they read as labeled sections).
   for (const tabs of document.querySelectorAll(".tabs")) {

@@ -1,6 +1,6 @@
 ---
 title: About
-layout: base.edge
+layout: base.jinja
 ---
 This page has no islands, so it loads no JavaScript at all: view its source.
 

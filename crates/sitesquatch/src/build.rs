@@ -685,6 +685,10 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
         .chain(cfg.passthrough.iter().map(|(from, _)| ctx.root.join(from)))
         .map(|p| dunce::canonicalize(&p).unwrap_or(p))
         .collect();
+    // Files in a template language the site has but doesn't render, by
+    // extension: usually a missing `templateFormats` entry.
+    let engines: HashSet<String> = cfg.engines.iter().map(|(name, _)| name.to_ascii_lowercase()).chain(["edge".to_string()]).collect();
+    let mut unrendered: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     let mut files = Vec::new();
     let walker = walkdir::WalkDir::new(&ctx.input_dir).follow_links(true).into_iter().filter_entry(|e| {
         let name = e.file_name().to_string_lossy();
@@ -704,14 +708,29 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
             continue;
         }
         let ext = entry.path().extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-        if !formats.contains(&ext) {
+        if !formats.contains(&ext) && !engines.contains(&ext) {
             continue;
         }
         let rel = slashes(entry.path().strip_prefix(&ctx.input_dir).unwrap_or(entry.path()));
         if ignore.is_match(&rel) || passthrough_globs.is_match(slashes(entry.path().strip_prefix(&ctx.root).unwrap_or(entry.path()))) {
             continue;
         }
+        if !formats.contains(&ext) {
+            unrendered.entry(ext).or_default().push(slashes(entry.path().strip_prefix(&ctx.root).unwrap_or(entry.path())));
+            continue;
+        }
         files.push(entry.into_path());
+    }
+    for (ext, mut paths) in unrendered {
+        paths.sort();
+        let (n, first) = (paths.len(), paths[0].clone());
+        let which = match n {
+            1 => format!("{} isn't rendered", first),
+            _ => format!("{} .{} files aren't rendered ({}{})", n, ext, paths.iter().take(3).cloned().collect::<Vec<_>>().join(", "), if n > 3 { ", ..." } else { "" }),
+        };
+        let them = if n == 1 { "it" } else { "them" };
+        let message = format!("{}: templateFormats is {}. Add \"{}\" to render {them}, or list {them} in `ignore`.", which, cfg.template_formats.join(", "), ext);
+        diagnostics::warn(Diagnostic::warning("template-formats", message).file(first));
     }
     files.sort();
     Ok(files)

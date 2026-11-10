@@ -4,7 +4,7 @@
 [![Latest release](https://img.shields.io/github/v/release/reverentgeek/sitesquatch)](https://github.com/reverentgeek/sitesquatch/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-SiteSquatch (`ssqch`) is a static site generator that fits in a single binary: large, quick, and rarely photographed. You write templates in [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Jinja](https://jinja.palletsprojects.com/), [Handlebars](https://handlebarsjs.com/) or [Mustache](https://mustache.github.io/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. No Node required at all: the JavaScript runs on an engine built into `ssqch`.
+SiteSquatch (`ssqch`) is a static site generator that fits in a single binary: large, quick, and rarely photographed. You write templates in [Jinja](https://jinja.palletsprojects.com/) (the default), [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Handlebars](https://handlebarsjs.com/) or [Mustache](https://mustache.github.io/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. No Node required at all: the JavaScript runs on an engine built into `ssqch`.
 
 It moves fast for its size. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in about **0.1 s** once its images are cached, which is gone before you've found your camera. [Benchmarks](#benchmarks) has the measurements.
 
@@ -82,7 +82,7 @@ cd my-site && ssqch serve
 
 Open <http://localhost:8080>, edit `src/posts/i-know-what-i-saw.md`, and watch the page reload. (The starter is an amateur investigator's field notes: a sighting, a correction, and a stump. The posts are short, and each one shows you something.) `ssqch init` never overwrites a file that's already there, so it's safe to run in a folder you've started.
 
-The layout and home page are [Edge](#templates-and-data) templates. To start in another language, pass `--engine liquid`, `--engine njk` (Nunjucks) or `--engine hbs` (Handlebars); the config then lists that engine in `templateFormats` and runs Markdown through it.
+The layout and home page are [Jinja](#jinja-and-nunjucks) templates, ssqch's default language. To start in another one, pass `--engine edge`, `--engine liquid`, `--engine njk` (Nunjucks) or `--engine hbs` (Handlebars); the config then lists that engine in `templateFormats` and runs Markdown through it. `--engine` works with `--starter docs` too.
 
 Writing documentation? `ssqch init my-docs --starter docs` creates a docs site instead: a light and dark switch, a sidebar, breadcrumbs and previous/next links from one `nav.yml`, a table of contents on each page, notes and tabs, highlighted code, a schema that checks each page's front matter, the link checker, and Pagefind search with `SEARCH=1`. The pages are plain HTML that reads fine without JavaScript (a small script turns tab sections into tabs), and every file is yours to edit: there's no theme package underneath.
 
@@ -91,8 +91,8 @@ To see how the pieces fit, here's a small site built by hand: a home page that l
 ```text
 ssqch.config.js
 src/
-  _includes/layout.edge
-  index.edge
+  _includes/layout.jinja
+  index.jinja
   posts/pine-cone-crunch.md
 ```
 
@@ -114,14 +114,14 @@ export default defineConfig({
 
 ### Step 2: A layout
 
-Layouts live in `src/_includes`. In `src/_includes/layout.edge`, `{{{ content }}}` (three braces, so it isn't escaped) is where each page's body goes:
+Layouts live in `src/_includes`. In `src/_includes/layout.jinja`, `{{ content }}` is where each page's body goes (Jinja escapes what it prints, but `content` is already HTML, so it's marked safe):
 
 ```html
 <!doctype html>
 <html lang="en">
   <head><title>{{ title }}</title></head>
   <body>
-    <main>{{{ content }}}</main>
+    <main>{{ content }}</main>
   </body>
 </html>
 ```
@@ -132,25 +132,25 @@ Front matter sets each page's data, and it has to come first in the file. Taggin
 
 ```markdown
 ---
-layout: layout.edge
+layout: layout.jinja
 title: Pine Cone Crunch
 tags: posts
 ---
 Crunchy, foresty, and only slightly sticky.
 ```
 
-The home page, `src/index.edge`, uses the filter and loops over the posts:
+The home page, `src/index.jinja`, uses the filter and loops over the posts:
 
 ```html
 ---
-layout: layout.edge
+layout: layout.jinja
 title: Squatch Snacks
 ---
-<h1>{{ shout(title) }}</h1>
+<h1>{{ title | shout }}</h1>
 <ul>
-  @each(post in collections.posts)
+  {% for post in collections.posts %}
     <li><a href="{{ post.url }}">{{ post.data.title }}</a></li>
-  @end
+  {% endfor %}
 </ul>
 ```
 
@@ -163,11 +163,11 @@ ssqch build
 You'll see a line for each page, then a summary:
 
 ```text
-[ssqch] Writing ./dist/index.html from ./src/index.edge (edge)
-[ssqch] Writing ./dist/posts/pine-cone-crunch/index.html from ./src/posts/pine-cone-crunch.md (edge, md)
+[ssqch] Writing ./dist/index.html from ./src/index.jinja (jinja)
+[ssqch] Writing ./dist/posts/pine-cone-crunch/index.html from ./src/posts/pine-cone-crunch.md (jinja, md)
 First confirmed siting. Built in 2.75 ms (production)
-  Pages   2 written from 2 templates, 401 B
-  Output  dist: 2 files, 401 B
+  Pages   2 written from 2 templates, 410 B
+  Output  dist: 2 files, 410 B
   Time    setup 224 µs, data 435 µs, read 1.54 ms, paginate 45 µs, render 205 µs, write 282 µs, copy 0 µs, after 20 µs
 ```
 
@@ -220,7 +220,7 @@ import site from "./src/site.json";
 
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
-  templateFormats: ["edge", "md"],
+  templateFormats: ["jinja", "md"],
   passthrough: [{ "src/assets/fonts": "fonts" }, "src/favicon.ico"],
   watch: ["src/assets/"],
 
@@ -249,12 +249,12 @@ The default export is the config: an object, or a function (sync or async) that 
 | Key | What it does |
 | --- | --- |
 | `dirs` | `input` (default `.`), `output` (`_site`), and `includes` (`_includes`), `layouts` (the includes folder) and `data` (`_data`), relative to the input. |
-| `templateFormats` | File extensions to render (default `["edge", "md", "html"]`). |
-| `markdownEngine`, `htmlEngine` | The engine that runs over `.md` and `.html` files first (default `"edge"`; `false` for none). |
+| `templateFormats` | File extensions to render (default `["jinja", "md", "html"]`). A file in another template language the site has, like a `.edge` page when `edge` isn't listed, is left out with a warning that names it. |
+| `markdownEngine`, `htmlEngine` | The engine that runs over `.md` and `.html` files first (default `"jinja"`; `false` for none). |
 | `markdown` | Heading IDs, footnotes and the other Markdown extensions; see [Markdown](#markdown). |
 | `deepMerge` | Merge objects and concatenate arrays through the data cascade (default `true`). |
 | `leaveNoTrace` | Delete stale files from the output: pages and passthrough files an earlier build wrote that this one didn't, like a deleted post (default `false`). ssqch keeps a list of what it writes in `.cache/ssqch/output-files.json`, so files other tools write into the output (your CSS build, say) are never touched: it packs out only what it packed in. `clean` is another name for the same option (set one of them). |
-| `filters` | `{ name: function }`, callable from templates: `{{ slug(title) }}`. Async functions are awaited. |
+| `filters` | `{ name: function }`, callable from templates: `{{ title | slug }}` or `{{ slug(title) }}`. Async functions are awaited. |
 | `data` | `{ name: value }` for every template. A function (sync or async) is called on each build. |
 | `collections` | `{ name: (pages) => ... }`. `pages` has `all()`, `byTag(tag)`, `byTags(...tags)` and `byGlob(glob or globs)`, oldest first. |
 | `transforms` | `{ name: (content, page) => content }`, run on every output file. `page` has `url`, `inputPath` and `outputPath`. Return the content, changed or not. Async works. |
@@ -369,7 +369,7 @@ A site that needs no code at all can use a `sitesquatch.toml` instead (one or th
 ```toml
 input = "src"
 output = "public"
-template_formats = ["edge", "md", "html"]
+template_formats = ["jinja", "md", "html"]
 
 ignore = ["drafts/**"]
 leave_no_trace = true   # or `clean = true`, its other name
@@ -403,30 +403,27 @@ The lay of the land:
 - **The data cascade:** a page's data comes from several places, and each one replaces what the ones before it set: global data, the front matter of its layouts, directory data, the page's data file, its front matter, then `computed`. [Where a value comes from](#where-a-value-comes-from) has the exact order, and `ssqch inspect` shows it for any page.
 - **Collections:** tags become collections, sorted by date, plus your custom ones. `excludeFromCollections: true` keeps a page out.
 - **Pagination:** `data`, `size`, `alias`, `reverse`, `filter`, `addAllPagesToCollections` and hrefs. `data: collections` goes over the collections' names, for a page per tag (`filter: [all]` leaves `all` out).
-- **Permalinks:** dynamic permalinks, `permalink: false` and `dynamicPermalink`. A permalink (or `computed` value) with `{{ }}` renders in the page's own template language, so a Liquid page can write `permalink: "/{{ title | slugify }}/"`; Markdown and HTML pages use their `markdownEngine` or `htmlEngine`, or Edge.
+- **Permalinks:** dynamic permalinks, `permalink: false` and `dynamicPermalink`. A permalink (or `computed` value) with `{{ }}` renders in the page's own template language, so a Liquid page can write `permalink: "/{{ title | slugify }}/"`; Markdown and HTML pages use their `markdownEngine` or `htmlEngine` (Edge when that's `false`).
 - **Front matter:** YAML between `---` lines, TOML between `+++` lines, or JSON after `---json` (`---yaml` and `---toml` work too). `.markdown` files are Markdown, like `.md`.
 - **Navigation:** `navTree(nav, page.url)` takes a tree from data (`_data/nav.yml`: entries with `title`, `url`, and children under `children`, `items` or `pages`) and marks each entry `current`, `ancestor` or `open`, for a sidebar that highlights where you are. `navPager(nav, page.url)` returns `{ previous, next }` in reading order, and `navBreadcrumbs(nav, page.url)` the entries from the top down to the page. To build the tree from front matter instead, give pages `nav: { title, parent, order }` (or `nav: true`) and use `pagesTree(collections.docs)`. URLs match with or without `index.html` and the last `/`.
 - **Dates:** a page's `date` comes from its data, then from the start of its file name (`2024-06-01-post.md`), then from when the file last changed. `computed.date` works too.
 - **Drafts:** `draft: true` builds the page in development (`ssqch serve`, or `--env development`) and leaves it out of production builds, collections included.
 - **Excerpts and reading time:** `page.excerpt` is the HTML before a `<!-- more -->` comment, or else the first paragraph, for layouts and collections (`post.page.excerpt` in a list of posts). `readingTime(content)` is the minutes it takes to read some HTML at 200 words a minute (`readingTime(content, 250)` for another pace), at least 1.
-- **Choosing engines:** `.md` files run through Edge first, then Markdown (change that with `markdownEngine` and `htmlEngine`). Layouts follow the same rules, so a `.html` layout is an Edge template by default. A template's `render` front matter overrides it: `render: md` for Markdown only (handy for a post full of `{{ }}` code samples), `render: [edge, md]` for a chain, or `render: false` to write the body as it is. A layout chain can mix languages (a Markdown post in a Liquid layout that sits in an Edge one). Around here that's called trail mix.
+- **Choosing engines:** pages are Jinja (`.jinja`) unless you list other languages in `templateFormats`, and `.md` files run through Jinja first, then Markdown (change that with `markdownEngine` and `htmlEngine`). Layouts follow the same rules, so a `.html` layout is a Jinja template by default. A template's `render` front matter overrides it: `render: md` for Markdown only (handy for a post full of `{{ }}` code samples), `render: [edge, md]` for a chain, or `render: false` to write the body as it is. A layout chain can mix languages (a Markdown post in a Liquid layout that sits in an Edge one). Around here that's called trail mix.
 - **Everything else:** layout chaining, `page.*`, `templateContent` in collections, and an error when two pages would write the same file. Every template can read `ssqch.version`, `ssqch.env`, `ssqch.serving` and `ssqch.generator`.
 
-Edge.js support covers `{{ }}`, `{{{ }}}`, `{{-- --}}`, `@{{ }}`, `@if/@elseif/@else/@unless`, `@each` (with index, objects, `@else` and `$loop`), `@let`, `@assign`, `@include`, `@includeIf`, `@component`/`@!component` with named slots and isolated scope, and `~` whitespace control. Newlines and escaping match Edge.js 6.5 on [42 whitespace cases](crates/sitesquatch-edge/tests/fixtures/whitespace-cases.json). One difference: an undefined value prints nothing, where Edge.js prints `undefined`.
+Templates are [Jinja](#jinja-and-nunjucks) by default; [Edge](#edge), [Liquid](#liquid), [Nunjucks](#jinja-and-nunjucks) and [Handlebars and Mustache](#handlebars-and-mustache) are a `templateFormats` entry away, and one site can use several.
 
-Expressions cover object and array literals (with shorthand and spread), template literals, optional chaining, arrow functions, ternaries, `??`, `typeof`, `await` (a no-op), `new Date()`, the common String, Array, Number and Date methods, and the `JSON`, `Object`, `Math` and `Array` globals. Errors report `template:line` through the include and component chain.
-
-When a template fails, the error is followed by the lines it's about, numbered as the file is (front matter included), with carets under the part the message names:
+When a template fails, the error is followed by the lines it's about, numbered as the file is (front matter included), with carets under the part the message names when it quotes one:
 
 ```text
 error: 1 error(s):
-  - rendering posts/pine.md with `edge`: posts/pine.md:9: Cannot read properties of undefined (reading 'total') in `sightings`
+  - rendering posts/pine.md with `jinja`: posts/pine.md:3: unknown filter: filter rnd is unknown
 
-  --> src/posts/pine.md:13
-  11 | Crunchy, foresty, and only slightly sticky.
-  12 |
-  13 | The count is {{ sightings.total.toFixed(1) }} so far.
-     |                 ^^^^^^^^^
+  --> src/posts/pine.md:8
+   6 | Crunchy, foresty, and only slightly sticky.
+   7 |
+   8 | The count is {{ sightings.total | rnd(1) }} so far.
 ```
 
 A layout or an Edge include that isn't there says which one you probably meant (``layout `bse` not found: no sightings in src/_includes (did you mean `base`?)``). One that leads back to itself names the loop instead of running out of patience: `we've passed this tree before. Layout loop: base.edge -> wrap.edge -> base.edge`.
@@ -495,16 +492,55 @@ Containers nest: an outer one opens with more colons (`::::`) and closes with as
 | `footnotes.*` | `footnotes`: a list of `number`, `label`, `id`, `content` (the note's HTML) and `refs` (the ids of its references) | The notes as a `<div>` each, or as sidenotes |
 | `fence.*`, or `fence-<lang>.*` for one language | `fence.lang`, `info` (the whole line after the backticks, like `js {1,3} title="app.js"`), `code`, and `highlighted` (the highlighted HTML, with `highlight` on) | Diagrams from `mermaid` fences, titled code blocks |
 
-```edge
-{{-- src/_includes/hooks/heading.edge --}}
-<h{{ heading.level }} id="{{ heading.id }}">{{{ heading.content }}} <a href="#{{ heading.id }}" class="anchor" aria-hidden="true">#</a></h{{ heading.level }}>
+```jinja
+{# src/_includes/hooks/heading.jinja #}
+<h{{ heading.level }} id="{{ heading.id }}">{{ heading.content | safe }} <a href="#{{ heading.id }}" class="anchor" aria-hidden="true">#</a></h{{ heading.level }}>
 ```
 
 Put `aria-hidden="true"` on decoration like that `#`, and `page.headings` leaves it out of the heading's text.
 
+### Jinja and Nunjucks
+
+Jinja is ssqch's default template language: `.jinja` pages and layouts render with [minijinja](https://github.com/mitsuhiko/minijinja), a Rust implementation of Jinja2 that covers most of Nunjucks, and Markdown and HTML files run through it first. `ssqch init` starts a site in it. Add `"njk"` (Nunjucks) or `"j2"` to `templateFormats` for those extensions, `markdownEngine: "njk"` to run Markdown through the Nunjucks flavor, and `render: [njk, md]` to do that for one post. A home page, `src/index.jinja`, that lists the posts:
+
+```jinja
+---
+layout: base.jinja
+title: Squatch Snacks
+---
+{% for post in collections.posts %}
+  <h2><a href="{{ post.url }}">{{ post.data.title }}</a></h2>
+  <p>{{ post.date | dateformat("%B %-d, %Y") }}</p>
+{% endfor %}
+```
+
+- **Data:** front matter, the cascade, `page`, `collections` and `content` in layouts, the same as in the other engines. Undefined values, and properties of undefined values, print nothing (`strict: true` makes printing one an error).
+- **Escaping:** output is HTML-escaped, as in Nunjucks and Jinja; use `| safe` to opt out. A layout's `content` is already marked safe, so `{{ content }}` works.
+- **Filters and functions:** Jinja's built-in filters, plus Nunjucks' `dump` and `truncate`, and `pluralize`, `filesizeformat`, `striptags`, `cycler()` and `joiner()`. Your config `filters` work both ways: `{{ title | shout }}` and `{{ shout(title) }}`. On a page whose data has a field with a function's name, the call finds the field first, so use the filter form there.
+- **Dates:** `{{ page.date | dateformat }}` prints `Mar 14 2026`. `dateformat`, `timeformat` and `datetimeformat` take `"short"`, `"medium"`, `"long"`, `"full"`, `"iso"`, `"unix"`, or a `strftime` pattern (`dateformat("%B %-d, %Y")`), in UTC. Dates also have Python's `strftime()` and `isoformat()` and JavaScript's `toISOString()` and friends, and `now()` is the build's time.
+- **Your own tags:** in `.njk` files, a config filter is a tag too. `{% image "/a.png", "A pine" %}` prints what `image("/a.png", "A pine")` returns, without escaping it. With a closing tag, the function gets what's between them first: `{% callout "tip" %}...{% endcallout %}` calls `callout(content, "tip")`. That covers the built-in filters as well, so `{% markdown %}...{% endmarkdown %}` renders Markdown inside a template.
+- **Includes and inheritance:** `{% include %}`, `{% extends %}` with `{% block %}`, `{% import %}` and `{% from ... import %}` read from `_includes`. Front-matter `layout` works too.
+- **Nunjucks syntax:** in `.njk` files, `{% elseif %}` and `{% for key, value in object %}` work as in Nunjucks. Not supported: Nunjucks' async tags (`asyncEach`, `asyncAll`) and extensions that parse a tag's arguments themselves.
+- **Errors** name the template and line: `broken.njk:2: syntax error`.
+
+### Edge
+
+[Edge.js](https://edgejs.dev) templates (`.edge`) render with ssqch's own Edge engine, which needs no plugin, so it's what the Rust library uses by default too. Add `"edge"` to `templateFormats`, and `markdownEngine: "edge"` to run Markdown through it (`ssqch init --engine edge` does both). Its components with slots are handy in Markdown: [`component-docs`](examples/sites/component-docs/) uses them in place of MDX.
+
+```js
+export default defineConfig({
+  templateFormats: ["edge", "md"],
+  markdownEngine: "edge",
+});
+```
+
+Support covers `{{ }}`, `{{{ }}}`, `{{-- --}}`, `@{{ }}`, `@if/@elseif/@else/@unless`, `@each` (with index, objects, `@else` and `$loop`), `@let`, `@assign`, `@include`, `@includeIf`, `@component`/`@!component` with named slots and isolated scope, and `~` whitespace control. Newlines and escaping match Edge.js 6.5 on [42 whitespace cases](crates/sitesquatch-edge/tests/fixtures/whitespace-cases.json). One difference: an undefined value prints nothing, where Edge.js prints `undefined`.
+
+Expressions cover object and array literals (with shorthand and spread), template literals, optional chaining, arrow functions, ternaries, `??`, `typeof`, `await` (a no-op), `new Date()`, the common String, Array, Number and Date methods, and the `JSON`, `Object`, `Math` and `Array` globals. Errors report `template:line` through the include and component chain.
+
 ### Liquid
 
-Coming from Jekyll or a Shopify theme? Add `"liquid"` to `templateFormats` and `.liquid` pages and layouts render with [Liquid](https://shopify.github.io/liquid/) (the [`liquid`](https://crates.io/crates/liquid) crate). Use `markdownEngine: "liquid"` to run Markdown through Liquid instead of Edge, or `render: [liquid, md]` for one post.
+Coming from Jekyll or a Shopify theme? Add `"liquid"` to `templateFormats` and `.liquid` pages and layouts render with [Liquid](https://shopify.github.io/liquid/) (the [`liquid`](https://crates.io/crates/liquid) crate). Use `markdownEngine: "liquid"` to run Markdown through Liquid instead of Jinja, or `render: [liquid, md]` for one post.
 
 ```js
 import { defineConfig } from "ssqch";
@@ -516,29 +552,16 @@ export default defineConfig({
 });
 ```
 
-- **Data:** Liquid templates get the same data as Edge ones: front matter, the cascade, `page`, `collections` and `content` in layouts. Unknown variables and properties print nothing, as in Jekyll.
+- **Data:** Liquid templates get the same data as the other engines: front matter, the cascade, `page`, `collections` and `content` in layouts. Unknown variables and properties print nothing, as in Jekyll.
 - **Filters:** Liquid's standard filters, Jekyll's `slugify`, `push`, `pop`, `shift`, `unshift` and `array_to_sentence_string`, and Shopify's `pluralize`. Your config `filters` work too: `{{ title | shout }}` calls `shout(title)`, and `{{ x | wrap: "[", "]" }}` calls `wrap(x, "[", "]")`. A config filter replaces a built-in one with the same name.
 - **Includes:** `{% include "nav.html" %}` and Jekyll's `{% include nav.html section="home" %}` (read as `include.section`) see the page's variables. `{% render "footer", year: 2026 %}` sees only what it's given, and an unknown variable inside it is an error. Both read from `_includes`, adding `.liquid` when the name has none.
-- **Mixing engines:** a Liquid page can use an Edge layout and the other way around.
-
-### Nunjucks and Jinja
-
-Add `"njk"` (Nunjucks) or `"jinja"` / `"j2"` (Jinja) to `templateFormats`, and those files render with [minijinja](https://github.com/mitsuhiko/minijinja), a Rust implementation of Jinja2 that covers most of Nunjucks. `markdownEngine: "njk"` runs Markdown through it, and `render: [njk, md]` does it for one post.
-
-- **Data:** the same as Edge and Liquid. Undefined values, and properties of undefined values, print nothing.
-- **Escaping:** output is HTML-escaped, as in Nunjucks and Jinja; use `| safe` to opt out. A layout's `content` is already marked safe, so `{{ content }}` works.
-- **Filters and functions:** Jinja's built-in filters, plus Nunjucks' `dump` and `truncate`, and `pluralize`, `filesizeformat`, `striptags`, `cycler()` and `joiner()`. Your config `filters` work both ways: `{{ title | shout }}` and `{{ shout(title) }}`. On a page whose data has a field with a function's name, the call finds the field first, so use the filter form there.
-- **Dates:** `{{ page.date | dateformat }}` prints `Mar 14 2026`. `dateformat`, `timeformat` and `datetimeformat` take `"short"`, `"medium"`, `"long"`, `"full"`, `"iso"`, `"unix"`, or a `strftime` pattern (`dateformat("%B %-d, %Y")`), in UTC. Dates also have Python's `strftime()` and `isoformat()` and JavaScript's `toISOString()` and friends, and `now()` is the build's time.
-- **Your own tags:** in `.njk` files, a config filter is a tag too. `{% image "/a.png", "A pine" %}` prints what `image("/a.png", "A pine")` returns, without escaping it. With a closing tag, the function gets what's between them first: `{% callout "tip" %}...{% endcallout %}` calls `callout(content, "tip")`. That covers the built-in filters as well, so `{% markdown %}...{% endmarkdown %}` renders Markdown inside a template.
-- **Includes and inheritance:** `{% include %}`, `{% extends %}` with `{% block %}`, `{% import %}` and `{% from ... import %}` read from `_includes`. Front-matter `layout` works too.
-- **Nunjucks syntax:** in `.njk` files, `{% elseif %}` and `{% for key, value in object %}` work as in Nunjucks. Not supported: Nunjucks' async tags (`asyncEach`, `asyncAll`) and extensions that parse a tag's arguments themselves.
-- **Errors** name the template and line: `broken.njk:2: syntax error`.
+- **Mixing engines:** a Liquid page can use a Jinja layout and the other way around.
 
 ### Handlebars and Mustache
 
 Add `"hbs"` (or `"handlebars"`) or `"mustache"` to `templateFormats`, and those files render with the [`handlebars`](https://crates.io/crates/handlebars) crate. Mustache templates render as Handlebars.
 
-- **Data:** the same as the other engines, converted to JSON for each page. Dates become ISO 8601 strings, and very large collections cost more than in Edge, Liquid or Nunjucks. Missing values print nothing.
+- **Data:** the same as the other engines, converted to JSON for each page. Dates become ISO 8601 strings, and very large collections cost more than in Jinja, Edge or Liquid. Missing values print nothing.
 - **Escaping:** `{{ }}` escapes HTML and `{{{ }}}` doesn't, so a layout writes `{{{content}}}`.
 - **Helpers:** Handlebars' built-ins (`if`, `unless`, `each`, `with`, `lookup`, `len`, `eq` and the other comparisons). Your config `filters` are helpers: `{{shout title}}`, `{{wrap title "[" "]"}}`, and hash arguments (`size=2`) arrive as a trailing object. Use `{{len list}}`, not `list.length`.
 - **Partials:** every file in `_includes`, by its path with or without the extension: `{{> nav}}` or `{{> nav.hbs}}`.
@@ -556,8 +579,8 @@ export default defineConfig({
 
 ```text
 themes/trail/                 src/                        what the build uses
-  _includes/base.edge                                     the theme's layout
-  _includes/footer.edge       _includes/footer.edge       your footer
+  _includes/base.jinja                                    the theme's layout
+  _includes/footer.jinja      _includes/footer.jinja      your footer
   _data/site.json             _data/site.json             both, merged; your values win
   404.md                                                  the theme's 404 page
   about.md                    about.md                    your about page
@@ -565,7 +588,7 @@ themes/trail/                 src/                        what the build uses
 ```
 
 - **File by file:** an include, layout, hook or container you have wins over the theme's at the same path, so changing a theme's footer means adding one file, not forking the theme. Data is merged, with your values winning. A page or file in the theme is built or copied unless your input folder has a file at that path.
-- **Any engine:** the fallback works for Edge, Liquid, Nunjucks, Jinja and Handlebars includes alike, and a theme can mix them.
+- **Any engine:** the fallback works for Jinja, Nunjucks, Edge, Liquid and Handlebars includes alike, and a theme can mix them.
 - **No package manager:** a theme can be a git repository pinned to a tag or a commit (its full 40-character hash): `theme: "https://github.com/you/trail-theme#v1.2.0"`, or `#v1.2.0:theme` when the theme is in a folder of its repository (`{ git, ref, dir }` says the same as an object). ssqch fetches it once with `git` and keeps it in `.cache/ssqch/themes/`, so later builds don't touch the network; changing the commit or tag fetches the new one. An unpinned URL is an error, so a build next year gets the theme you tested with.
 - **Layers:** `theme` takes a list, and earlier themes sit on top of later ones.
 - **Not part of a theme:** the files about it at the top of its folder (`README`, `LICENSE`, `CHANGELOG`, `package.json`).
@@ -660,7 +683,7 @@ Write here. The title is {{ title }}.
 ```
 
 - **Only front matter is filled in.** `title` is set, `date` is set to today when the archetype has that key (or you pass `--date`), and `--set key=value` sets anything else (`--set draft=false`, `--set "tags=[news, trails]"`). Comments and the order of the keys stay. The body is copied as it is, so an archetype isn't a template with a syntax of its own: `{{ title }}` in it is for the page.
-- **Which archetype:** the one named after the page's folder, the most specific first. `docs/guides/install.md` uses `_archetypes/docs/guides.md`, then `_archetypes/docs.md`, then `_archetypes/default.md`, and with none of them the page gets a `title` and a `date`. `--archetype notes` picks one by name. An archetype can be in any template language (`posts.edge`), and a [theme](#themes) can bring its own in its `_archetypes/`.
+- **Which archetype:** the one named after the page's folder, the most specific first. `docs/guides/install.md` uses `_archetypes/docs/guides.md`, then `_archetypes/docs.md`, then `_archetypes/default.md`, and with none of them the page gets a `title` and a `date`. `--archetype notes` picks one by name. An archetype can be in any template language (`posts.jinja`), and a [theme](#themes) can bring its own in its `_archetypes/`.
 - **A file, or a folder and a title:** `ssqch new posts/pine-cones.md` names the file itself (the title is then "Pine cones", unless you pass `--title`). Given a folder, the file is named after the title, the way the folder's other pages are: with the date in front (`2026-11-10-pine-cones.md`) when most of them have one, and as `pine-cones/index.md` when most are folders with an index file.
 - **Nothing is overwritten,** and `--format json` prints the new file's `path`, its `archetype`, `title` and `date`.
 
@@ -685,16 +708,16 @@ ssqch inspect /guides/pine/
 
 ```text
 /guides/pine/
-  From        src/guides/2024-03-02-pine.md (edge, md)
+  From        src/guides/2024-03-02-pine.md (jinja, md)
   Writes      dist/guides/pine/index.html
-  Layouts     _includes/guide.edge > _includes/base.edge
+  Layouts     _includes/guide.jinja > _includes/base.jinja
   Date        2024-03-02T00:00:00Z (from the file's name)
   Collections all, guides
 
   Data (name, value, and the level of the cascade that set it)
     site       {name, author}        src/_data/site.json
-    section    "guides"              layout _includes/guide.edge (over layout _includes/base.edge)
-    layout     "guide.edge"          src/guides/guides.json
+    section    "guides"              layout _includes/guide.jinja (over layout _includes/base.jinja)
+    layout     "guide.jinja"         src/guides/guides.json
     level      "hard"                front matter (over src/guides/guides.json, src/guides/2024-03-02-pine.json)
     title      "Pine"                front matter
     label      "Pine (hard)"         computed
@@ -716,7 +739,7 @@ Set by (the last one wins):
 ```
 
 - **Inside a value:** a dotted path reaches into objects (`--field site.author.name`, `--field hero.alt`).
-- **Pages made by pagination:** a template that makes many pages needs the URL of one of them. `ssqch inspect src/tags.edge` lists them.
+- **Pages made by pagination:** a template that makes many pages needs the URL of one of them. `ssqch inspect src/tags.jinja` lists them.
 - **Scripts and agents:** `--format json` prints the report as JSON (`schemaVersion: 1`), with `value`, `from` and `setBy` for each field.
 - **No page is built:** it reads the site as a build does, up to the point of rendering. `beforeBuild` hooks run, since data can depend on them (a command that writes a data file, a plugin that sets itself up there), but no page is rendered or written, and `afterBuild` doesn't run. Standard output is only the report; anything a hook or `console.log` prints goes to standard error.
 

@@ -5,7 +5,9 @@ import { sassPlugin } from "ssqch/sass";
 
 export default defineConfig( {
 	dirs: { input: "src", output: "dist" },
+	// Edge, so pages can use @component with slots in place of MDX. Markdown runs through Edge too.
 	templateFormats: [ "edge", "md" ],
+	markdownEngine: "edge",
 	markdown: { highlight: true },
 
 	filters: {

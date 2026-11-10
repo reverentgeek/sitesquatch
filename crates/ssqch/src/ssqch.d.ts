@@ -179,11 +179,11 @@ declare module "ssqch" {
 			/** Default `_data`. */
 			data?: string;
 		};
-		/** File extensions to render. Default `["edge", "md", "html"]`. Add `"liquid"` for Liquid, `"njk"` for Nunjucks, `"jinja"` / `"j2"` for Jinja, `"hbs"` / `"handlebars"` for Handlebars, or `"mustache"`. */
+		/** File extensions to render. Default `["jinja", "md", "html"]`. Add `"edge"` for Edge, `"liquid"` for Liquid, `"njk"` for Nunjucks, `"j2"` for Jinja in `.j2` files, `"hbs"` / `"handlebars"` for Handlebars, or `"mustache"`. */
 		templateFormats?: string[];
-		/** The engine that runs over `.md` files first: `"edge"` (the default), `"liquid"`, `"njk"`, `"jinja"`, or `false` for none. */
+		/** The engine that runs over `.md` files first: `"jinja"` (the default), `"edge"`, `"liquid"`, `"njk"`, `"hbs"`, or `false` for none. */
 		markdownEngine?: string | false;
-		/** The engine that runs over `.html` files first. Default `"edge"`; `false` for none. */
+		/** The engine that runs over `.html` files first. Default `"jinja"`; `false` for none. */
 		htmlEngine?: string | false;
 		/** Heading IDs, footnotes and the other Markdown extensions. */
 		markdown?: MarkdownOptions;

@@ -1,4 +1,4 @@
 {
-  "layout": "layout.edge",
+  "layout": "layout.jinja",
   "tags": "posts"
 }
