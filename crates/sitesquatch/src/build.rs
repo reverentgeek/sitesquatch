@@ -254,7 +254,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     )?;
     timer.lap("write");
 
-    let generated = run_generators(cfg, &ctx, &pages, &written)?;
+    let generated = run_generators(cfg, &ctx, &pages, &written, &markdown, &global)?;
     let bundles = if cfg.bundles { bundle_files(cfg, &ctx, &pages, &files)? } else { Vec::new() };
     let copy = passthrough_copy(cfg, &ctx, bundles)?;
     let stylesheet = write_highlight_css(cfg, &ctx)?;
@@ -1424,7 +1424,7 @@ fn run_file_builders(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
 /// Run the generators ([`Config::add_generator`]) over the written pages and
 /// write their files. Returns the paths written (not counting appends to a
 /// page's own file).
-fn run_generators(cfg: &Config, ctx: &BuildContext, pages: &[Page], written: &[(PathBuf, u64)]) -> Result<Vec<PathBuf>> {
+fn run_generators(cfg: &Config, ctx: &BuildContext, pages: &[Page], written: &[(PathBuf, u64)], markdown: &MarkdownEngine, global: &Map) -> Result<Vec<PathBuf>> {
     if cfg.generators.is_empty() {
         return Ok(Vec::new());
     }
@@ -1437,6 +1437,7 @@ fn run_generators(cfg: &Config, ctx: &BuildContext, pages: &[Page], written: &[(
     let page_outputs: HashSet<&Path> = written.iter().map(|(p, _)| p.as_path()).collect();
     let mut owners: HashMap<PathBuf, String> = HashMap::new();
     let mut out = Vec::new();
+    let mut global_data: Option<Value> = None;
     for (name, generator) in &cfg.generators {
         for file in generator(ctx, &summaries).with_context(|| format!("{} failed", name))? {
             let rel = file.path.trim_start_matches('/');
@@ -1454,6 +1455,13 @@ fn run_generators(cfg: &Config, ctx: &BuildContext, pages: &[Page], written: &[(
                 }
             }
             let mut contents = file.contents;
+            // The site's own template for this kind of file, if it has one.
+            if let Some((hook, value)) = file.hook {
+                let data = global_data.get_or_insert_with(|| Value::object(global.clone()));
+                if let Some(rendered) = markdown.render_hook(&hook, value, data) {
+                    contents = rendered.with_context(|| format!("{}: writing {}", name, file.path))?;
+                }
+            }
             if file.append && (is_page || owners.contains_key(&path)) {
                 let mut existing = std::fs::read_to_string(&path).unwrap_or_default();
                 if !existing.is_empty() && !existing.ends_with('\n') {

@@ -100,7 +100,7 @@ fn arg(args: &[Value], i: usize) -> Value {
     args.get(i).cloned().unwrap_or_default()
 }
 
-/// `generate(absolutePath, widths, formats)` -> one array per format:
+/// `generate(absolutePath, widths, formats, name)` -> one array per format:
 /// `{ webp: [{ format, width, height, url, sourceType, srcset, filename, outputPath, size }], ... }`
 fn generate_image(args: &[Value]) -> Result<Value> {
     let p = processor()?;
@@ -110,7 +110,8 @@ fn generate_image(args: &[Value]) -> Result<Value> {
     if !Path::new(&src).is_file() {
         bail!("image(): file not found: {}", src);
     }
-    let meta = p.generate(Path::new(&src), &widths, &formats)?;
+    let name = arg(args, 3);
+    let meta = p.generate_named(Path::new(&src), &widths, &formats, name.as_str()).map_err(|e| anyhow!("image(): {:#}", e))?;
     let root = p.root()?;
     let mut out = Map::new();
     for (format, entries) in &meta.formats {

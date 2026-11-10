@@ -118,7 +118,7 @@ fn bad_plugin_options_fail_clearly() {
         (
             "src/_data/hero.js",
             b"import { image } from \"ssqch/image\"; export default () => image(\"src/img/squatch.png\", { outputDir: \"./public/images\" });",
-            "image(): unknown option \"outputDir\" (options: widths, formats; encoder settings go on imagePlugin())",
+            "image(): unknown option \"outputDir\" (options: widths, formats, name; encoder settings go on imagePlugin())",
         ),
         ("src/_data/hero.js", b"import { image } from \"ssqch/image\"; export default () => image(\"https://example.com/a.png\");", "image(): remote images aren't supported"),
         ("src/_data/hero.js", b"import { minify } from \"ssqch/minify\"; export default () => minify(\"<p>\", { useShortDoctype: true });", "minify(): unknown option \"useShortDoctype\""),
@@ -384,4 +384,121 @@ fn sass_compiles_folders_and_files() {
     std::fs::write(root.join("styles/pages/blog.scss"), ".post { color: $missing; }").unwrap();
     let (ok, log) = ssqch(&root);
     assert!(!ok && log.contains("styles/pages/blog.scss") && log.contains("Undefined variable"), "{}", log);
+}
+
+#[test]
+fn a_base_goes_in_front_of_urls_from_the_root() {
+    let root = project(&[
+        (
+            "ssqch.config.js",
+            br#"
+import { sitemapPlugin } from "ssqch/sitemap";
+import { redirectsPlugin } from "ssqch/redirects";
+import { linksPlugin } from "ssqch/links";
+import { imagePlugin } from "ssqch/image";
+import { sassPlugin } from "ssqch/sass";
+export default {
+  dirs: { input: "src", output: "dist" },
+  base: "/repo/",
+  plugins: [
+    imagePlugin({ formats: ["webp"], widths: [16] }),
+    sassPlugin({ files: { "styles/site.scss": "/site.css" } }),
+    sitemapPlugin({ url: "https://you.github.io" }),
+    redirectsPlugin(),
+    linksPlugin(),
+  ],
+};
+"#,
+        ),
+        ("styles/site.scss", b"body { background: url(/img/squatch.png); }"),
+        ("src/img/squatch.png", PNG),
+        ("src/_includes/layout.edge", b"<html><head><link rel=\"stylesheet\" href=\"/site.css\"></head><body><nav><a href=\"/\">Home</a> <a href=\"/about/#team\">About</a> <a href=\"https://you.github.io/other-project/\">Other</a></nav>{{{ content }}}<script>const feed = \"{{ withBase('/feed.json') }}\";</script><p>{{ page.url }} {{ ssqch.base }}</p></body></html>"),
+        ("src/index.md", b"---\nlayout: layout.edge\n---\nSee [about](/about/), [next door](about/) and [the old page](/old/).\n\n![Squatch](/img/squatch.png)\n"),
+        ("src/about.md", b"---\nlayout: layout.edge\naliases: /old/\n---\n## Team\n"),
+    ]);
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert!(log.contains("0 broken"), "{}", log);
+    // The output folder is the same with or without a base.
+    let home = read(&root, "dist/index.html");
+    for expected in [
+        "<link rel=\"stylesheet\" href=\"/repo/site.css\">",
+        "<a href=\"/repo/\">Home</a>",
+        "<a href=\"/repo/about/#team\">About</a>",
+        "<a href=\"/repo/about/\">about</a>",
+        "<a href=\"about/\">next door</a>",
+        "const feed = \"/repo/feed.json\";",
+        "<p>/ /repo</p>",
+        "decoding=\"async\" src=\"/repo/img/",
+    ] {
+        assert!(home.contains(expected), "missing {}\nin {}", expected, home);
+    }
+    assert!(!home.contains("/repo/repo"), "{}", home);
+    assert!(read(&root, "dist/site.css").contains("url(/repo/img/squatch.png)"));
+    assert!(read(&root, "dist/sitemap.xml").contains("<loc>https://you.github.io/repo/about/</loc>"));
+    let old = read(&root, "dist/old/index.html");
+    assert!(old.contains("url=/repo/about/") && old.contains("location.replace(\"/repo/about/\" + location.hash)"), "{}", old);
+
+    // --base wins over the config. A broken link is still caught, and reported as the template has it.
+    std::fs::write(root.join("src/about.md"), "---\nlayout: layout.edge\naliases: /old/\n---\n## Team\n\n[gone](/nope/)\n").unwrap();
+    let (ok, log) = ssqch_with(&root, &["--base", "/preview/pr-7"]);
+    assert!(!ok && log.contains("1 broken link:\n  /about/ -> /nope/ (not found)"), "{}", log);
+    assert!(read(&root, "dist/about/index.html").contains("<a href=\"/preview/pr-7/nope/\">gone</a>"));
+    let (ok, log) = ssqch_with(&root, &["--base", "preview"]);
+    assert!(!ok && log.contains("--base: base must be a URL path starting with /"), "{}", log);
+}
+
+#[test]
+fn a_hook_template_writes_redirect_pages_and_footnotes() {
+    let root = project(&[
+        ("ssqch.config.js", b"import { redirectsPlugin } from \"ssqch/redirects\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, base: \"/docs\", data: { site: { name: \"Trails\" } }, plugins: [redirectsPlugin()] };"),
+        ("src/_includes/hooks/redirect.liquid", b"<!doctype html><title>{{ site.name }}</title><meta http-equiv=\"refresh\" content=\"0; url={{ redirect.to }}\"><p>{{ redirect.from }} is now <a href=\"{{ redirect.to }}\">here</a>.</p>\n"),
+        ("src/_includes/hooks/footnote-ref.edge", b"<sup><a href=\"#{{ footnote.label }}\">{{ footnote.label }}</a></sup>"),
+        ("src/_includes/hooks/footnotes.edge", b"@each(note in footnotes)\n<div class=\"footnote-definition\" id=\"{{ note.label }}\"><sup>{{ note.label }}</sup>{{{ note.content }}}</div>\n@end"),
+        ("src/pine.md", b"---\naliases: /old-pine/\n---\nPines[^1] are tall.\n\n[^1]: Mostly.\n"),
+    ]);
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert_eq!(read(&root, "dist/old-pine/index.html"), "<!doctype html><title>Trails</title><meta http-equiv=\"refresh\" content=\"0; url=/docs/pine/\"><p>/old-pine/ is now <a href=\"/docs/pine/\">here</a>.</p>\n");
+    let page = read(&root, "dist/pine/index.html");
+    assert!(page.contains("<p>Pines<sup><a href=\"#1\">1</a></sup> are tall.</p>"), "{}", page);
+    assert!(page.contains("<div class=\"footnote-definition\" id=\"1\"><sup>1</sup><p>Mostly.</p>\n</div>"), "{}", page);
+}
+
+#[test]
+fn image_takes_a_name_for_its_files() {
+    let root = project(&[
+        ("ssqch.config.js", b"export default { dirs: { input: \"src\", output: \"dist\" } };"),
+        ("src/img/squatch.png", PNG),
+        (
+            "src/_data/logos.js",
+            br#"import { image } from "ssqch/image";
+const named = await image("src/img/squatch.png", { widths: [16, 24], formats: ["webp", "png"], name: "/assets/sponsors/acme" });
+const inside = await image("src/img/squatch.png", { widths: [16], formats: ["webp"], name: "cards/pine" });
+let bad;
+try { await image("src/img/squatch.png", { name: "../up" }); } catch (e) { bad = e.message; }
+export default { urls: [...named.webp, ...named.png, ...inside.webp].map((e) => e.url).join(" "), bad };
+"#,
+        ),
+        ("src/index.edge", b"{{ logos.urls }}|{{ logos.bad }}"),
+    ]);
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert_eq!(
+        read(&root, "dist/index.html"),
+        "/assets/sponsors/acme-16.webp /assets/sponsors/acme-24.webp /assets/sponsors/acme-16.png /assets/sponsors/acme-24.png /img/cards/pine-16.webp|image(): image name &quot;../up&quot; must be a URL path without the width and extension, like &quot;/assets/sponsors/acme&quot;"
+    );
+    for file in ["dist/assets/sponsors/acme-16.webp", "dist/assets/sponsors/acme-24.png", "dist/img/cards/pine-16.webp"] {
+        assert!(root.join(file).is_file(), "{} is missing", file);
+    }
+    // A newer source is encoded again under the same name.
+    let before = std::fs::metadata(root.join("dist/assets/sponsors/acme-16.webp")).unwrap().modified().unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert_eq!(std::fs::metadata(root.join("dist/assets/sponsors/acme-16.webp")).unwrap().modified().unwrap(), before, "an unchanged source was encoded again");
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    std::fs::write(root.join("src/img/squatch.png"), PNG).unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert!(std::fs::metadata(root.join("dist/assets/sponsors/acme-16.webp")).unwrap().modified().unwrap() > before, "a changed source wasn't encoded again");
 }

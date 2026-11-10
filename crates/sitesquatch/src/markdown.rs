@@ -4,7 +4,7 @@
 //!
 //! Render hooks are templates, in any engine, that take over part of the
 //! output: `_includes/hooks/heading.*`, `link.*`, `image.*`, `fence.*` (or
-//! `fence-<lang>.*` for one language). A `::: name args` block renders
+//! `fence-<lang>.*` for one language), `footnote-ref.*` and `footnotes.*`. A `::: name args` block renders
 //! `_includes/containers/name.*` with the block's rendered body as `content`.
 //! The renderer asks a [`Hooks`] implementation for them; without one (or
 //! without the template), it writes plain HTML.
@@ -219,7 +219,7 @@ impl MarkdownOptions {
 pub trait Hooks {
     fn has(&self, name: &str) -> bool;
     /// Render template `name`, with `value` in its data as `key` (`heading`,
-    /// `link`, `image`, `fence` or `container`).
+    /// `link`, `image`, `fence`, `footnote`, `footnotes` or `container`).
     fn render(&self, name: &str, key: &str, value: Value) -> Result<String>;
 }
 
@@ -252,6 +252,9 @@ pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -
             other => other,
         })
         .collect();
+    if opts.smart_punctuation {
+        keep_flags(&mut events);
+    }
     if let Some(f) = &opts.slugger_fn {
         assign_heading_ids(&mut events, |text| match f {
             Value::Func(f) => Ok(f.call(&[Value::from(text)]).map_err(|e| e.context("markdown.headingIds"))?.to_js_string()),
@@ -273,7 +276,7 @@ pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -
     let mut w = Writer { hooks, containers: &containers, defined, highlight: opts.highlight, opts: Some(opts), ..Default::default() };
     let mut out = String::with_capacity(source.len() * 3 / 2);
     w.write(&events, &mut out)?;
-    w.write_footnotes(&mut out);
+    w.write_footnotes(&mut out)?;
     Ok(out)
 }
 
@@ -286,6 +289,33 @@ pub fn render_inline(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Ho
         Some(inner) if !inner.contains("<p>") && !inner.contains("</p>") => inner.to_string(),
         _ => html,
     })
+}
+
+/// With smart punctuation, `--` is an en dash, which is wrong for a
+/// command-line flag in running text (`run it with --fix`). A dash that
+/// follows a space and runs straight into a word goes back to `--` (and
+/// `---` to itself), as markdown-it's typographer leaves them.
+fn keep_flags(events: &mut [Event]) {
+    for event in events.iter_mut() {
+        let Event::Text(text) = event else { continue };
+        if !text.contains(['\u{2013}', '\u{2014}']) {
+            continue;
+        }
+        let chars: Vec<char> = text.chars().collect();
+        let mut out = String::with_capacity(text.len() + 4);
+        for (i, &c) in chars.iter().enumerate() {
+            let dash = c == '\u{2013}' || c == '\u{2014}';
+            let after_space = i == 0 || chars[i - 1].is_whitespace();
+            let before_word = chars.get(i + 1).is_some_and(|n| n.is_alphanumeric());
+            // At the very start of the text there's no telling what came before, so only a space counts.
+            if dash && i > 0 && after_space && before_word {
+                out.push_str(if c == '\u{2013}' { "--" } else { "---" });
+            } else {
+                out.push(c);
+            }
+        }
+        *text = out.into();
+    }
 }
 
 // ------------------------------------------------------------- heading IDs
@@ -727,6 +757,19 @@ impl Writer<'_, '_> {
                     self.refs[n].1 += 1;
                     let slug = footnote_slug(label);
                     let suffix = if self.refs[n].1 > 1 { format!("-{}", self.refs[n].1) } else { String::new() };
+                    if self.has("hooks/footnote-ref") {
+                        let footnote = Value::from_pairs([
+                            ("number", Value::from(n + 1)),
+                            ("label", Value::from(label.as_ref())),
+                            ("id", Value::from(format!("fn-{}", slug))),
+                            ("refId", Value::from(format!("fnref-{}{}", slug, suffix))),
+                            ("index", Value::from(self.refs[n].1)),
+                        ]);
+                        let html = self.hook("hooks/footnote-ref", "footnote", footnote)?;
+                        plain.push(Event::InlineHtml(html.trim().to_string().into()));
+                        i += 1;
+                        continue;
+                    }
                     plain.push(Event::InlineHtml(format!("<sup class=\"footnote-ref\"><a href=\"#fn-{0}\" id=\"fnref-{0}{1}\">{2}</a></sup>", slug, suffix, n + 1).into()));
                 }
                 Event::FootnoteReference(label) => plain.push(Event::Text(format!("[^{}]", label).into())),
@@ -835,9 +878,30 @@ impl Writer<'_, '_> {
 
     /// The notes, in the order they were first referenced, each with links
     /// back to its references.
-    fn write_footnotes(&mut self, out: &mut String) {
+    fn write_footnotes(&mut self, out: &mut String) -> Result<()> {
         if self.refs.is_empty() {
-            return;
+            return Ok(());
+        }
+        // A `footnotes` hook renders the whole section its own way.
+        if self.has("hooks/footnotes") {
+            let notes: Vec<Value> = self
+                .refs
+                .iter()
+                .enumerate()
+                .map(|(n, (label, count))| {
+                    let slug = footnote_slug(label);
+                    let refs = (1..=*count).map(|k| Value::from(if k > 1 { format!("fnref-{}-{}", slug, k) } else { format!("fnref-{}", slug) })).collect();
+                    Value::from_pairs([
+                        ("number", Value::from(n + 1)),
+                        ("label", Value::from(label.as_str())),
+                        ("id", Value::from(format!("fn-{}", slug))),
+                        ("content", Value::from(self.notes.get(label).map(String::as_str).unwrap_or(""))),
+                        ("refs", Value::array(refs)),
+                    ])
+                })
+                .collect();
+            block(out, &self.hook("hooks/footnotes", "footnotes", Value::array(notes))?);
+            return Ok(());
         }
         out.push_str("<section class=\"footnotes\">\n<ol>\n");
         for (n, (label, count)) in self.refs.iter().enumerate() {
@@ -856,6 +920,7 @@ impl Writer<'_, '_> {
             out.push_str(&format!("<li id=\"fn-{}\">\n{}</li>\n", slug, note));
         }
         out.push_str("</ol>\n</section>\n");
+        Ok(())
     }
 }
 
@@ -1138,6 +1203,36 @@ mod tests {
         // Opened inside a list item, closed outside it.
         let err = render("- item\n  ::: note\n  x\n\n:::\n", &MarkdownOptions::default(), None).unwrap_err();
         assert!(err.to_string().contains("line 2: container `note`"), "{}", err);
+    }
+
+    #[test]
+    fn smart_punctuation_leaves_flags_alone() {
+        let smart = MarkdownOptions { smart_punctuation: true, ..Default::default() };
+        let html = render("Run it with --fix or ---force, pages 1--2 -- \"quoted\" --- done... and a -- b.\n", &smart, None).unwrap();
+        assert_eq!(html, "<p>Run it with --fix or ---force, pages 1\u{2013}2 \u{2013} \u{201c}quoted\u{201d} \u{2014} done\u{2026} and a \u{2013} b.</p>\n");
+    }
+
+    #[test]
+    fn footnote_hooks_render_references_and_notes() {
+        struct FootnoteHooks;
+        impl Hooks for FootnoteHooks {
+            fn has(&self, name: &str) -> bool {
+                matches!(name, "hooks/footnote-ref" | "hooks/footnotes")
+            }
+            fn render(&self, _name: &str, key: &str, v: Value) -> Result<String> {
+                Ok(match key {
+                    "footnote" => format!("<sup class=\"footnote-reference\"><a href=\"#{}\" id=\"{}\">[{}]</a></sup>\n", v.get("id").to_js_string(), v.get("refId").to_js_string(), v.get("number").to_js_string()),
+                    _ => v.as_array().unwrap().iter().map(|n| format!("<div class=\"footnote-definition\" id=\"{}\" data-label=\"{}\" data-refs=\"{}\">{}</div>\n", n.get("id").to_js_string(), n.get("label").to_js_string(), n.get("refs").as_array().unwrap().iter().map(|r| r.to_js_string()).collect::<Vec<_>>().join(" "), n.get("content").to_js_string().trim())).collect(),
+                })
+            }
+        }
+        let html = render("One[^a] two[^b] one again[^a].\n\n[^a]: First *note*.\n[^b]: Second.\n", &MarkdownOptions::default(), Some(&FootnoteHooks)).unwrap();
+        assert_eq!(
+            html,
+            "<p>One<sup class=\"footnote-reference\"><a href=\"#fn-a\" id=\"fnref-a\">[1]</a></sup> two<sup class=\"footnote-reference\"><a href=\"#fn-b\" id=\"fnref-b\">[2]</a></sup> one again<sup class=\"footnote-reference\"><a href=\"#fn-a\" id=\"fnref-a-2\">[1]</a></sup>.</p>\n\
+             <div class=\"footnote-definition\" id=\"fn-a\" data-label=\"a\" data-refs=\"fnref-a fnref-a-2\"><p>First <em>note</em>.</p></div>\n\
+             <div class=\"footnote-definition\" id=\"fn-b\" data-label=\"b\" data-refs=\"fnref-b\"><p>Second.</p></div>\n"
+        );
     }
 
     struct TestHooks;

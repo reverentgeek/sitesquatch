@@ -122,12 +122,16 @@ impl Plugin for RedirectsPlugin {
                     // file. `/releases/1.85.0` is a folder: an extension has letters.
                     let has_ext = from.rsplit('/').next().and_then(|last| last.rsplit_once('.')).is_some_and(|(stem, ext)| !stem.is_empty() && (1..=5).contains(&ext.len()) && ext.chars().all(|c| c.is_ascii_alphabetic()));
                     let path = if from.ends_with('/') || has_ext { from.clone() } else { format!("{}/", from) };
-                    files.push(GeneratedFile { path, contents: redirect_page(to), append: false });
+                    // Generated files aren't rewritten for `base`, so the target gets it here.
+                    let to = ctx.with_base(to);
+                    // A site's `_includes/hooks/redirect.*` can write the page its own way.
+                    let redirect = Value::from_pairs([("from", Value::from(from.as_str())), ("to", Value::from(to.as_str()))]);
+                    files.push(GeneratedFile::new(path, redirect_page(&to)).with_hook("redirect", redirect));
                 }
                 lines.push_str(&format!("{}  {}  301\n", from, to));
             }
             if options.netlify && !lines.is_empty() {
-                files.push(GeneratedFile { path: "/_redirects".into(), contents: lines, append: true });
+                files.push(GeneratedFile::new("/_redirects", lines).appended());
             }
             Ok(files)
         });

@@ -94,7 +94,7 @@ impl Plugin for SitemapPlugin {
                 xml.push_str("  </url>\n");
             }
             xml.push_str("</urlset>\n");
-            Ok(vec![GeneratedFile { path: options.output.clone(), contents: xml, append: false }])
+            Ok(vec![GeneratedFile::new(options.output.clone(), xml)])
         });
     }
 }

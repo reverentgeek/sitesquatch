@@ -109,7 +109,8 @@ impl Plugin for SassPlugin {
                 for (src, url) in entries(&ctx.root, from, to)? {
                     let name = sitesquatch::display_path(ctx, &src);
                     let css = grass::from_path(&src, &grass_options).map_err(|e| anyhow::anyhow!("{}: {}", name, e)).with_context(|| format!("compiling {}", name))?;
-                    files.push(GeneratedFile { path: url, contents: css, append: false });
+                    // `url(/fonts/a.woff2)` gets the site's `base`, like URLs in HTML.
+                    files.push(GeneratedFile::new(url, sitesquatch::base::css_with_base(&ctx.base, &css)));
                 }
             }
             *count.lock().unwrap() = Some((files.len(), style));

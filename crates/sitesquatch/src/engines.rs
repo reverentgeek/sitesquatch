@@ -109,6 +109,19 @@ impl MarkdownEngine {
         }
     }
 
+    /// Render the hook template `hooks/<name>` with `value` as `<name>` in
+    /// `data`, if the site has that template.
+    pub(crate) fn render_hook(&self, name: &str, value: Value, data: &Value) -> Option<Result<String>> {
+        let set = self.hooks.get()?;
+        let engines = set.engines.upgrade()?;
+        let key = format!("hooks/{}", name);
+        if !set.templates.contains_key(&key) {
+            return None;
+        }
+        let hooks = PageHooks { set, engines: &engines, data, input_path: Path::new("") };
+        Some(hooks.render(&key, name, value))
+    }
+
     pub(crate) fn set_hooks(&self, templates: HashMap<String, HookTemplate>, engines: Weak<Engines>) {
         let _ = self.hooks.set(HookTemplates { templates, engines });
     }

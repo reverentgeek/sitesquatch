@@ -188,6 +188,30 @@ pub struct GeneratedFile {
     /// Add to the end of a file a page wrote at the same path (a
     /// `_redirects` template, say), instead of it being a conflict.
     pub append: bool,
+    /// A template in `_includes/hooks/` that renders this file when the site
+    /// has it, instead of `contents`: its name (`redirect` for
+    /// `hooks/redirect.*`) and the value it gets under that name, next to
+    /// the site's global data. Only generators' files use it.
+    pub hook: Option<(String, Value)>,
+}
+
+impl GeneratedFile {
+    /// A file with these contents.
+    pub fn new(path: impl Into<String>, contents: impl Into<String>) -> Self {
+        GeneratedFile { path: path.into(), contents: contents.into(), append: false, hook: None }
+    }
+
+    /// Add to the end of a file a page wrote at the same path.
+    pub fn appended(mut self) -> Self {
+        self.append = true;
+        self
+    }
+
+    /// Let the site's `_includes/hooks/<name>.*` render the file, with `value` as `<name>`.
+    pub fn with_hook(mut self, name: impl Into<String>, value: Value) -> Self {
+        self.hook = Some((name.into(), value));
+        self
+    }
 }
 
 pub type FileBuilderFn = Arc<dyn Fn(&BuildContext) -> Result<Vec<GeneratedFile>> + Send + Sync>;

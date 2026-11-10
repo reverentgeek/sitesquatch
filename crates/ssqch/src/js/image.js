@@ -16,7 +16,7 @@ import path from "node:path";
 const native = globalThis.__ssqch.natives["ssqch/image"];
 
 const FORMATS = [ "avif", "webp", "jpeg", "jpg", "png", "gif", "svg", "auto" ];
-const IMAGE_OPTIONS = [ "widths", "formats" ];
+const IMAGE_OPTIONS = [ "widths", "formats", "name" ];
 
 /** The <img> transform, with the encoder settings image() also uses. */
 export function imagePlugin( options = {} ) {
@@ -48,7 +48,9 @@ function fail( message ) {
 /**
  * Generate an image's derivatives. Returns `{ [format]: [entry] }`, smallest
  * first, where each entry has format, width, height, url, sourceType, srcset,
- * filename, outputPath and size.
+ * filename, outputPath and size. Files are named after a hash of the source,
+ * in the plugin's output folder; `name` gives them a name and folder of your
+ * own ("/assets/sponsors/acme" writes /assets/sponsors/acme-200.webp).
  */
 export async function image( src, options = {} ) {
 	typeof src === "string" || fail( "the source must be a file path" );
@@ -56,6 +58,7 @@ export async function image( src, options = {} ) {
 	for ( const key of Object.keys( options ) ) {
 		IMAGE_OPTIONS.includes( key ) || fail( `unknown option "${ key }" (options: ${ IMAGE_OPTIONS.join( ", " ) }; encoder settings go on imagePlugin())` );
 	}
-	const { formats = [ "webp", "jpeg" ], widths = [ "auto" ] } = options;
-	return native.generate( path.resolve( src ), checkWidths( widths ), checkFormats( formats ) );
+	const { formats = [ "webp", "jpeg" ], widths = [ "auto" ], name } = options;
+	name === undefined || typeof name === "string" && name.trim() || fail( "name must be a URL path without the width and extension, like \"/assets/sponsors/acme\"" );
+	return native.generate( path.resolve( src ), checkWidths( widths ), checkFormats( formats ), name );
 }

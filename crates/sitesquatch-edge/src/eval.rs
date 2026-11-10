@@ -231,7 +231,13 @@ fn eval_chain(base: &Expr, links: &[Link], scope: &Scope) -> Result<Value> {
                     return Ok(Value::Undefined);
                 }
                 let args = eval_items(args, scope)?;
-                cur = match &cur {
+                // `image(...)` on a page with an `image:` field: the data
+                // isn't callable, so the call means the filter of that name.
+                let global = match (i, base, &cur) {
+                    (0, Expr::Ident(name), v) if !matches!(v, Value::Func(_)) => scope.globals().get(name).filter(|g| matches!(g, Value::Func(_))).cloned(),
+                    _ => None,
+                };
+                cur = match global.as_ref().unwrap_or(&cur) {
                     Value::Func(f) => f.call(&args).map_err(|e| anyhow!("{}(): {:#}", path, e))?,
                     _ => bail!("`{}` is not a function", path),
                 };

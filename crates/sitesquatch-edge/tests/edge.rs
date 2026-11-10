@@ -126,3 +126,14 @@ fn whitespace_matches_edge_js() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+#[test]
+fn a_call_reaches_the_filter_when_data_has_the_same_name() {
+    // Page data named like a filter shadows it as a value, but calling it means the filter.
+    let d = r#"{"upper":"a field","items":["a"]}"#;
+    assert_eq!(render("{{ upper }}|{{ upper('x') }}|{{ items.map(i => upper(i)).join('') }}", d), "a field|X|A");
+    // A loop variable or `@let` that's a function still wins.
+    assert_eq!(render("@let(upper = (s) => s + '!')\n{{ upper('x') }}", "{}"), "x!");
+    let err = engine(&[]).render_str("test", "{{ nope('x') }}", data(r#"{"nope":"text"}"#)).unwrap_err();
+    assert!(format!("{:#}", err).contains("`nope` is not a function"), "{:#}", err);
+}

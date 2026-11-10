@@ -165,7 +165,7 @@ impl ImageMetadata {
     }
 }
 
-type MemoKey = (PathBuf, Vec<u32>, Vec<Format>);
+type MemoKey = (PathBuf, Vec<u32>, Vec<Format>, Option<String>);
 type MemoCell = Arc<OnceLock<Result<Arc<ImageMetadata>, String>>>;
 
 /// Generates derivatives. Shared between the HTML transform and any plugin
@@ -256,10 +256,26 @@ impl ImageProcessor {
 
     /// Generate (or reuse) derivatives of `src` at `widths` in `formats`.
     pub fn generate(&self, src: &Path, widths: &[u32], formats: &[Format]) -> Result<Arc<ImageMetadata>> {
-        let key = (src.to_path_buf(), widths.to_vec(), formats.to_vec());
+        self.generate_named(src, widths, formats, None)
+    }
+
+    /// [`generate`](Self::generate), with file names of your own instead of
+    /// ones from a hash of the source. `name` is the output's URL path
+    /// without the width and extension: `/assets/sponsors/acme` writes
+    /// `/assets/sponsors/acme-200.webp`, and a name without a leading `/` is
+    /// inside the image output folder. A file is encoded again when its
+    /// source is newer than it.
+    pub fn generate_named(&self, src: &Path, widths: &[u32], formats: &[Format], name: Option<&str>) -> Result<Arc<ImageMetadata>> {
+        if let Some(name) = name {
+            let last = name.rsplit('/').next().unwrap_or("");
+            if last.is_empty() || name.split('/').any(|p| p == "..") || name.contains(['\\', '?', '#']) {
+                bail!("image name {:?} must be a URL path without the width and extension, like \"/assets/sponsors/acme\"", name);
+            }
+        }
+        let key = (src.to_path_buf(), widths.to_vec(), formats.to_vec(), name.map(String::from));
         let cell = self.memo.lock().unwrap().entry(key).or_default().clone();
         cell.get_or_init(|| {
-            let meta = self.generate_uncached(src, widths, formats).map_err(|e| format!("{:#}", e))?;
+            let meta = self.generate_uncached(src, widths, formats, name).map_err(|e| format!("{:#}", e))?;
             self.used.lock().unwrap().extend(meta.formats.values().flatten().map(|e| e.path.clone()));
             self.sources.lock().unwrap().insert(src.to_path_buf());
             Ok(Arc::new(meta))
@@ -268,20 +284,39 @@ impl ImageProcessor {
             .map_err(|e| anyhow!(e))
     }
 
-    fn generate_uncached(&self, src: &Path, widths: &[u32], formats: &[Format]) -> Result<ImageMetadata> {
+    fn generate_uncached(&self, src: &Path, widths: &[u32], formats: &[Format], name: Option<&str>) -> Result<ImageMetadata> {
         let ctx = self.ctx()?;
         let src_format = sniff_format(src)?;
-        let id = self.hash_id(src)?;
-        let out_dir = ctx.output_dir.join(&self.options.output_subdir);
+        // The folder, its URL, and the start of each file's name.
+        let (out_dir, url_path, id) = match name {
+            None => (ctx.output_dir.join(&self.options.output_subdir), self.options.url_path.clone(), self.hash_id(src)?),
+            Some(name) => {
+                let rel = name.trim_start_matches('/');
+                let (dir, stem) = match rel.rsplit_once('/') {
+                    Some((dir, stem)) => (format!("{}/", dir), stem),
+                    None => (String::new(), rel),
+                };
+                if name.starts_with('/') {
+                    (ctx.output_dir.join(&dir), format!("/{}", dir), stem.to_string())
+                } else {
+                    (ctx.output_dir.join(&self.options.output_subdir).join(&dir), format!("{}{}", self.options.url_path, dir), stem.to_string())
+                }
+            }
+        };
         std::fs::create_dir_all(&out_dir)?;
+        // A hashed name says what's in the file. A name of the site's own
+        // doesn't, so its file is stale when the source is newer.
+        let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        let source_time = name.and_then(|_| modified(src));
+        let fresh = |p: &Path| p.exists() && (source_time.is_none() || modified(p) >= source_time);
         let entry = |format: Format, width: u32, height: u32, name: String| ImageEntry {
             format,
             width,
             height,
-            url: format!("{}{}", self.options.url_path, name),
+            url: format!("{}{}", url_path, name),
             path: out_dir.join(&name),
             source_type: format.mime(),
-            srcset: format!("{}{} {}w", self.options.url_path, name, width),
+            srcset: format!("{}{} {}w", url_path, name, width),
         };
 
         // SVGs are copied as they are, and so are GIFs in `auto` output (which
@@ -292,7 +327,7 @@ impl ImageProcessor {
             let (w, h) = if src_format == Format::Gif { header_dimensions(src)?.0 } else { svg_dimensions(src).unwrap_or((0, 0)) };
             let name = if w > 0 { format!("{}-{}.{}", id, w, src_format.ext()) } else { format!("{}.{}", id, src_format.ext()) };
             let e = entry(src_format, w, h, name);
-            if !e.path.exists() {
+            if !fresh(&e.path) {
                 std::fs::copy(src, &e.path)?;
                 self.generated.fetch_add(1, Ordering::Relaxed);
             }
@@ -320,7 +355,7 @@ impl ImageProcessor {
                 // Heights round down.
                 let h = ((h0 as f64) * (w as f64) / (w0 as f64)).floor().max(1.0) as u32;
                 let e = entry(f, w, h, format!("{}-{}.{}", id, w, f.ext()));
-                if !e.path.exists() {
+                if !fresh(&e.path) {
                     jobs.push(e.clone());
                 }
                 entries.push(e);
