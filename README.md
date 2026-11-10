@@ -702,6 +702,42 @@ Netlify can build the site itself, with no deploy token to manage. This is the R
 
 On the blog, the first Netlify build (which encoded every image) took about 4 minutes, and the next one took 18 seconds, including Netlify's own setup.
 
+### GitHub Pages
+
+A project site is served at `https://you.github.io/<repository>/`, so the build needs that path as its [`base`](#serving-a-site-under-a-path). This workflow builds on every push to `main` and deploys with GitHub's own Pages actions (in the repository's settings, set Pages' source to "GitHub Actions"):
+
+```yaml
+# .github/workflows/pages.yml
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: reverentgeek/setup-ssqch@v1
+      - run: ssqch build --output dist --base "/${{ github.event.repository.name }}/"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
+```
+
+- **`--base`** takes the repository's name from the workflow, so the config doesn't have to know it and `ssqch serve` on your machine still serves the site at `/`. A user site (`you.github.io`) or one with a custom domain is at the root: leave `--base` off.
+- **Pin the version** as in [Install](#install) (`with: version:`), so a new release can't surprise a deploy.
+- **A 404 page:** GitHub Pages serves `404.html` from the site's root, so give your 404 page `permalink: /404.html`.
+- **Images:** to keep encoded images between builds, cache `dist/img` and `.cache/ssqch` with `actions/cache` (see [Keep the image cache between builds](#keep-the-image-cache-between-builds)).
+
 ## Benchmarks
 
 These numbers come from building the ReverentGeek blog (161 HTML pages plus a feed, a sitemap and Netlify files) on an Apple M5 Pro (15 cores) in November 2026, in production mode with HTML minification on. Each build wrote to its own output folder, so no image cache was shared.

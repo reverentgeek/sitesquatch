@@ -24,10 +24,10 @@ Zola). The
 blog builds with it, and `ssqch diff` against its 0.3.3 build shows only the new heading `id`s.
 Left before a release:
 
-- Backport to 0.3 (on `main`, then merge): the dev server fixes. In 0.3.3, `ssqch serve`
-  answers `/%2Fetc/hosts` with that file, and rebuilds in a loop when the input folder is the
-  project root. Both are fixed here (`crates/sitesquatch/src/serve.rs`, and `record_outputs`
-  in `build.rs`).
+- Release 0.3.4 from `main`: the dev server fixes are committed there (2026-11-10) and merged
+  into `release/0.4`, but not pushed, tagged or published. In 0.3.3, `ssqch serve` answers
+  `/%2Fetc/hosts` with that file, and rebuilds in a loop when the input folder is the project
+  root.
 
 - Deploy the examples (on hold; "Site plumbing" below).
 - Decide which of the "Later" items under each feature wait for 0.5.
@@ -415,6 +415,40 @@ Moved to a later release (decided 2026-11-09); 0.4 ships without it.
 - [x] Example `islands` (custom elements with `ssqch/elements`).
 - [x] Guides from Hexo and from component frameworks (Astro, VitePress, Next.js, Gatsby: what
       ports, and what stays client JavaScript), in `docs/guides/`.
+
+## From the research, not planned yet
+
+`research/` was read in full on 2026-11-10 (`developer-friction.md`, `product-opportunities.md`,
+`positioning.md`, `adoption-study.md`, `trial-migrations.md`). Its "first" priorities are done
+in 0.4: reloading the config, cached remote data, `base`, and `ssqch diff`. So are the eight
+gaps in `positioning.md`. What it proposes that isn't built or listed above, in the order
+I'd take them (the first three are small enough for 0.4; decide which go in):
+
+- [ ] **`ssqch inspect <url or file>`:** where a page comes from: its template and layout
+      chain, its collections, and for a data field (`--field title`) the value and which level
+      of the cascade set it (global data, layout, directory data, data file, front matter,
+      `computed`). With `--json`. It answers "why is this value what it is?" and is the
+      documented data-cascade rules ("Possible design changes", at the end) in executable form.
+- [ ] **A machine-readable interface for scripts and coding agents:** `ssqch build --format
+      json` (errors and warnings with a code, the file, the line when known, and the field for
+      schema errors), `ssqch capabilities --json` (version, engines, plugins and JavaScript
+      built-ins this binary has), and `ssqch serve --ready-file <path>` (the port and output
+      folder, written once the first build is done). `ssqch diff --format json` is the first
+      piece.
+- [ ] **`ssqch new <path>`:** a new post or page from an archetype (a file in
+      `_archetypes/`, with the date and slug filled in), as `hexo new` and `hugo new` do.
+- [ ] **References in schemas:** a field that has to name a page in another collection
+      (`author: "ref:authors"`), and output checks (every guide has a previous and next link).
+- [ ] **Named data sources:** `sources: { snacks: { url, cache, schema } }` with a
+      `ssqch refresh` command, so a build can run offline from pinned snapshots on purpose.
+- [ ] **`ssqch move <from> <to>`:** move a page, fix the links to it, and add an alias.
+- [ ] **More output formats for a page:** the same content as JSON or Markdown (for a search
+      index, an app, or `llms.txt`), from explicitly listed collections and fields.
+- [ ] **A searchable-directory example:** structured data, one page per record, filters as a
+      custom element, Pagefind for search.
+- [ ] Not for now: a page inspector in the browser, a component workbench, an MCP server (after
+      the JSON interface exists, as a thin layer over it), preview at a future date, a local
+      form editor for front matter, diagnostic bundles.
 
 ## Prebuilt binaries and easier adoption
 
