@@ -21,6 +21,7 @@ use regex::Regex;
 
 use crate::config::{BuildContext, BuildReport, CollectionApi, Config, TransformContext};
 use crate::data::{self, merge, normalize_tags};
+use crate::diagnostics::{self, Diagnostic, Diagnostics, Severity};
 use crate::engines::{load_hook_templates, EdgeEngine, EngineEnv, Engines, MarkdownEngine, PlainEngine, RenderContext, TemplateEngine};
 use crate::{Map, Value};
 
@@ -155,7 +156,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
                 }
                 std::fs::write(out, &html).with_context(|| format!("writing {}", out.display()))?;
                 if !cfg.quiet {
-                    println!("[ssqch] Writing {} from {} ({})", display_path(&ctx, out), display_path(&ctx, &page.tpl.input), page.tpl.engines.join(", "));
+                    diagnostics::progress(&format!("[ssqch] Writing {} from {} ({})", display_path(&ctx, out), display_path(&ctx, &page.tpl.input), page.tpl.engines.join(", ")));
                 }
                 Ok((out.clone(), html.len() as u64))
             }))
@@ -266,7 +267,8 @@ fn prepare(cfg: &Config, ctx: &BuildContext, timer: &mut Timer, keep_layers: boo
     for file in skipped {
         let stem = file.rsplit('/').next().unwrap_or(&file).split('.').next().unwrap_or("");
         if !global.contains_key(stem) && !cfg.quiet {
-            eprintln!("warn: skipped _data/{} (no loader for that format; provide `{}` with Config::add_global_data)", file, stem);
+            let path = display_path(ctx, &ctx.data_dir.join(&file));
+            diagnostics::warn(Diagnostic::warning("data", format!("skipped _data/{} (no loader for that format; provide `{}` with Config::add_global_data)", file, stem)).file(path));
         }
     }
     let version = env!("CARGO_PKG_VERSION");
@@ -300,7 +302,7 @@ fn prepare(cfg: &Config, ctx: &BuildContext, timer: &mut Timer, keep_layers: boo
         tpls.retain(|t| {
             let draft = t.data.get("draft").is_some_and(Value::truthy);
             if draft && cfg.verbose {
-                println!("[ssqch] Skipping draft {}", t.rel);
+                diagnostics::progress(&format!("[ssqch] Skipping draft {}", t.rel));
             }
             !draft
         });
@@ -323,7 +325,7 @@ fn prepare(cfg: &Config, ctx: &BuildContext, timer: &mut Timer, keep_layers: boo
             .collect();
         pages.extend(more);
     }
-    check_conflicts(&pages)?;
+    check_conflicts(ctx, &pages)?;
     Ok(Prepared { markdown, engines, theme_includes, global, files, tpls, pages, theme_copies })
 }
 
@@ -465,10 +467,18 @@ fn guard<T>(what: &str, f: impl FnOnce() -> Result<T>) -> Result<T> {
 fn collect_errors<T>(results: Vec<Result<T>>) -> Result<Vec<T>> {
     let mut ok = Vec::with_capacity(results.len());
     let mut errors = Vec::new();
+    let mut items = Vec::new();
     for r in results {
         match r {
             Ok(v) => ok.push(v),
-            Err(e) => errors.push(format!("{:#}", e)),
+            Err(e) => {
+                errors.push(format!("{:#}", e));
+                // Each one apart, for `ssqch build --format json`.
+                match e.chain().find_map(|cause| cause.downcast_ref::<Diagnostics>()) {
+                    Some(inner) => items.extend(inner.items.iter().cloned()),
+                    None => items.push(Diagnostic::error("", format!("{:#}", e))),
+                }
+            }
         }
     }
     if errors.is_empty() {
@@ -476,7 +486,8 @@ fn collect_errors<T>(results: Vec<Result<T>>) -> Result<Vec<T>> {
     }
     let count = errors.len();
     errors.truncate(10);
-    Err(anyhow!("{} error(s):\n  - {}{}", count, errors.join("\n  - "), if count > 10 { "\n  ..." } else { "" }))
+    let message = format!("{} error(s):\n  - {}{}", count, errors.join("\n  - "), if count > 10 { "\n  ..." } else { "" });
+    Err(Diagnostics { message, items }.into())
 }
 
 /// With `markdown.highlight`, write the highlighting stylesheet (unless
@@ -540,7 +551,7 @@ fn record_outputs(cfg: &Config, ctx: &BuildContext, outputs: &[&PathBuf]) -> Res
         std::fs::remove_file(&path).with_context(|| format!("removing stale {}", path.display()))?;
         removed += 1;
         if !cfg.quiet {
-            println!("[ssqch] Removed {}", display_path(ctx, &path));
+            diagnostics::progress(&format!("[ssqch] Removed {}", display_path(ctx, &path)));
         }
         // Then any folders that are now empty, up to the output folder.
         let mut dir = path.parent();
@@ -1267,20 +1278,22 @@ fn render_computed(value: &Value, data: &Map, engines: &Engines, tpl: &Tpl) -> R
     })
 }
 
-fn check_conflicts(pages: &[Page]) -> Result<()> {
+fn check_conflicts(ctx: &BuildContext, pages: &[Page]) -> Result<()> {
     let mut seen: HashMap<&Path, &str> = HashMap::new();
     let mut errors = Vec::new();
     for p in pages {
         if let Some(out) = &p.output {
             if let Some(other) = seen.insert(out, &p.tpl.rel) {
-                errors.push(format!("{} and {} both write to {}", other, p.tpl.rel, out.display()));
+                errors.push((format!("{} and {} both write to {}", other, p.tpl.rel, out.display()), p.tpl.input.clone()));
             }
         }
     }
     if errors.is_empty() {
         Ok(())
     } else {
-        bail!("output conflicts:\n  - {}", errors.join("\n  - "))
+        let message = format!("output conflicts:\n  - {}", errors.iter().map(|(m, _)| m.as_str()).collect::<Vec<_>>().join("\n  - "));
+        let items = errors.into_iter().map(|(m, input)| Diagnostic::error("conflict", m).file(display_path(ctx, &input))).collect();
+        Err(Diagnostics { message, items }.into())
     }
 }
 
@@ -1291,7 +1304,7 @@ fn check_schemas(cfg: &Config, ctx: &BuildContext, pages: &[Page]) -> Result<()>
         return Ok(());
     }
     // A template that makes many pages reports each problem once.
-    let found: Vec<Vec<(bool, String)>> = pages
+    let found: Vec<Vec<Diagnostic>> = pages
         .par_iter()
         .map(|page| {
             let tags: Vec<&str> = page.data.get("tags").and_then(|t| t.as_array()).map(|a| a.iter().filter_map(|t| t.as_str()).collect()).unwrap_or_default();
@@ -1300,30 +1313,34 @@ fn check_schemas(cfg: &Config, ctx: &BuildContext, pages: &[Page]) -> Result<()>
             let mut out = Vec::new();
             for schema in cfg.schemas.iter().filter(|s| s.covers(&page.tpl.rel, &tags, page.in_collections)) {
                 for problem in schema.check(&page.data, &page.tpl.front_keys, &files) {
-                    out.push((problem.warning, format!("{}: {} (schema `{}`)", file.trim_start_matches("./"), problem.message, schema.name)));
+                    let message = format!("{}: {} (schema `{}`)", file.trim_start_matches("./"), problem.message, schema.name);
+                    let found = if problem.warning { Diagnostic::warning("schema", message) } else { Diagnostic::error("schema", message) };
+                    out.push(found.file(file.as_str()).field(problem.field));
                 }
             }
             out
         })
         .collect();
     let mut seen = HashSet::new();
-    let (mut warnings, mut errors) = (Vec::new(), Vec::new());
-    for (warning, message) in found.into_iter().flatten() {
-        if seen.insert(message.clone()) {
-            if warning { warnings.push(message) } else { errors.push(message) }
+    let mut items: Vec<Diagnostic> = Vec::new();
+    for problem in found.into_iter().flatten() {
+        if !seen.insert(problem.message.clone()) {
+            continue;
+        }
+        match problem.severity {
+            Severity::Warning => diagnostics::warn(problem),
+            Severity::Error => items.push(problem),
         }
     }
-    for w in &warnings {
-        eprintln!("warn: {}", w);
-    }
-    if errors.is_empty() {
+    if items.is_empty() {
         return Ok(());
     }
-    let count = errors.len();
+    let count = items.len();
     let shown = if cfg.verbose { usize::MAX } else { 30 };
     let more = if count > shown { format!("\n  ... and {} more (--verbose lists them all)", count - shown) } else { String::new() };
-    errors.truncate(shown);
-    bail!("{} content {}:\n  - {}{}", count, if count == 1 { "error" } else { "errors" }, errors.join("\n  - "), more)
+    let listed: Vec<&str> = items.iter().take(shown).map(|d| d.message.as_str()).collect();
+    let message = format!("{} content {}:\n  - {}{}", count, if count == 1 { "error" } else { "errors" }, listed.join("\n  - "), more);
+    Err(Diagnostics { message, items }.into())
 }
 
 // --------------------------------------------------------------- collections
@@ -1475,7 +1492,7 @@ fn glob_jobs(ctx: &BuildContext, glob: &Path, to: Option<&Path>) -> Result<Vec<(
         jobs.push((path.to_path_buf(), dest));
     }
     if jobs.is_empty() && !ctx.serving {
-        eprintln!("warn: passthrough glob {:?} matches no files", pattern);
+        diagnostics::warn(Diagnostic::warning("passthrough", format!("passthrough glob {:?} matches no files", pattern)));
     }
     Ok(jobs)
 }
@@ -1529,7 +1546,7 @@ fn git_dates(cfg: &Config, ctx: &BuildContext) -> HashMap<PathBuf, DateTime<Utc>
     let git = |args: &[&str]| std::process::Command::new("git").arg("-C").arg(&ctx.root).args(["-c", "core.quotepath=off"]).args(args).output();
     let warn = |msg: &str| {
         if !cfg.quiet {
-            eprintln!("warn: lastModified: {}", msg);
+            diagnostics::warn(Diagnostic::warning("last-modified", format!("lastModified: {}", msg)));
         }
     };
     let top = match git(&["rev-parse", "--show-toplevel"]) {

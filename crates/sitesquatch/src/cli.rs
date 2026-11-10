@@ -42,11 +42,20 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Build the site (default)
-    Build,
+    #[command(after_help = "With --format json, standard output is one JSON report: whether the build worked, what it wrote, and its\nwarnings and errors, each with a code, the file, the line when it's known, and the field for a content error.\nProgress lines and `console.log` go to standard error.")]
+    Build {
+        /// text or json
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
     /// Build, serve, watch for changes and live-reload the browser
     Serve {
+        /// The port to listen on (0 picks a free one)
         #[arg(long, short, default_value_t = 8080)]
         port: u16,
+        /// Write this file once the first build is done: JSON with the url, port and output folder
+        #[arg(long, value_name = "FILE")]
+        ready_file: Option<PathBuf>,
     },
     /// Show where a page comes from, and which level of the data cascade set each value
     #[command(after_help = "Nothing is built or written, and build hooks don't run.\n\n  ssqch inspect /guides/install/\n  ssqch inspect src/guides/install.md --field title\n  ssqch inspect /guides/install/ --field hero.alt --format json")]
@@ -167,8 +176,18 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
         Ok(cfg)
     };
 
+    if let Some(Command::Build { format }) = &cli.command {
+        match format.as_str() {
+            "json" => return build_json(&make_config, &root, env),
+            "text" => {}
+            other => {
+                eprintln!("\x1b[31merror:\x1b[0m --format {}: use text or json", other);
+                return ExitCode::FAILURE;
+            }
+        }
+    }
     let result = make_config().and_then(|cfg| match &cli.command {
-        Some(Command::Serve { port }) => crate::serve::serve_reloading(cfg, *port, &make_config),
+        Some(Command::Serve { port, ready_file }) => crate::serve::serve_reloading(cfg, &crate::serve::ServeOptions { port: *port, ready_file: ready_file.clone() }, &make_config),
         Some(Command::Inspect { page, field, format }) => run_inspect(&cfg, page, field.as_deref(), format),
         _ => crate::build(&cfg).map(|report| print_report(&cfg, &report)),
     });
@@ -179,6 +198,44 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
             ExitCode::FAILURE
         }
     }
+}
+
+/// `ssqch build --format json`: build, and print one JSON report on
+/// standard output whether or not it worked.
+fn build_json(make_config: &dyn Fn() -> anyhow::Result<Config>, root: &Path, env: Environment) -> ExitCode {
+    use crate::diagnostics::{self, Locator};
+    diagnostics::capture();
+    let mut out = serde_json::json!({ "schemaVersion": 1, "ok": false, "environment": env.as_str() });
+    let errors = match make_config() {
+        Err(e) => diagnostics::from_error(&e, "config", &Locator::new(root)),
+        Ok(cfg) => {
+            let ctx = cfg.build_context();
+            let shown = |path: &Path, from: &Path| path.strip_prefix(from).unwrap_or(path).to_string_lossy().replace('\\', "/");
+            out["output"] = shown(&ctx.output_dir, &ctx.root).into();
+            match crate::build(&cfg) {
+                Ok(report) => {
+                    let ms = |d: std::time::Duration| (d.as_secs_f64() * 1e6).round() / 1e3;
+                    out["durationMs"] = ms(report.duration).into();
+                    out["pages"] = serde_json::json!({ "written": report.pages_written, "templates": report.templates, "bytes": report.page_bytes });
+                    out["copied"] = serde_json::json!({ "files": report.files_copied, "unchanged": report.files_unchanged, "bytes": report.passthrough_bytes });
+                    out["removed"] = report.files_removed.into();
+                    out["written"] = report.written.iter().map(|p| shown(p, &ctx.output_dir)).collect::<Vec<_>>().into();
+                    out["summary"] = report.summary.iter().map(|(label, value)| serde_json::json!({ "label": label, "value": value })).collect::<Vec<_>>().into();
+                    out["timings"] = report.timings.iter().map(|(phase, d)| serde_json::json!({ "phase": phase, "ms": ms(*d) })).collect::<Vec<_>>().into();
+                    Vec::new()
+                }
+                Err(e) => {
+                    let dirs = [ctx.input_dir.clone(), ctx.includes_dir.clone(), ctx.data_dir.clone()].into_iter().chain(ctx.theme_dirs.iter().flat_map(|t| [t.clone(), t.join("_includes")]));
+                    diagnostics::from_error(&e, "build", &Locator::new(&ctx.root).with_dirs(dirs))
+                }
+            }
+        }
+    };
+    out["ok"] = errors.is_empty().into();
+    out["warnings"] = diagnostics::take_warnings().iter().map(|w| w.to_json()).collect::<Vec<_>>().into();
+    out["errors"] = errors.iter().map(|e| e.to_json()).collect::<Vec<_>>().into();
+    println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+    if errors.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
 
 /// `ssqch inspect`: print where a page (or one field of its data) comes from.

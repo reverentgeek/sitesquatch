@@ -430,12 +430,21 @@ I'd take them (the first three went into 0.4):
       every level, and `--format json` is for scripts. The README's "Where a value comes from"
       documents the cascade's order (the "Clearer, documented data-cascade rules" item).
       Building it turned up that `pagination: { data: collections }` didn't work; it does now.
-- [ ] **A machine-readable interface for scripts and coding agents:** `ssqch build --format
-      json` (errors and warnings with a code, the file, the line when known, and the field for
-      schema errors), `ssqch capabilities --json` (version, engines, plugins and JavaScript
-      built-ins this binary has), and `ssqch serve --ready-file <path>` (the port and output
-      folder, written once the first build is done). `ssqch diff --format json` is the first
-      piece.
+- [x] **A machine-readable interface for scripts and coding agents:** `ssqch build --format
+      json` (one report: what was written, and warnings and errors with a code, the file, the
+      line when known, the field for schema problems and the URL for broken links),
+      `ssqch capabilities` (version, commands, features, template languages, config options,
+      modules with their exports, Node modules, globals) and `ssqch serve --ready-file <path>`
+      (URL, port, output folder and pid, written once the first build is done). With
+      `inspect --format json` and `diff --format json`, every command a script needs speaks
+      JSON. Left to do:
+  - [ ] Error messages from templates count lines from the end of the front matter
+        (`index.edge:4` for line 7 of the file). The JSON report's `line` is right; make the
+        text say the file's line too.
+  - [ ] The file and line of an error that isn't a schema, link or conflict problem are read
+        from its message (`diagnostics::locate`). Carry them in the error instead, starting
+        with the template engines.
+  - [ ] `console.warn` in a config goes to standard error, not into the report's `warnings`.
 - [ ] **`ssqch new <path>`:** a new post or page from an archetype (a file in
       `_archetypes/`, with the date and slug filled in), as `hexo new` and `hugo new` do.
 - [ ] **References in schemas:** a field that has to name a page in another collection

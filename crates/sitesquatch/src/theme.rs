@@ -108,7 +108,7 @@ fn fetch(root: &Path, url: &str, reference: &str, quiet: bool) -> Result<PathBuf
         return Ok(dir);
     }
     if !quiet {
-        println!("[ssqch] Fetching theme {}", source);
+        crate::diagnostics::progress(&format!("[ssqch] Fetching theme {}", source));
     }
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;

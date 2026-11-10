@@ -25,28 +25,72 @@ pub fn serve(cfg: &Config, port: u16) -> Result<()> {
     let site = Arc::new(RwLock::new(Site::of(cfg)));
     let server = listen(port, &site, &build_id)?;
     println!("Serving {} at http://localhost:{}{}/", site.read().unwrap().output.display(), server, site.read().unwrap().base);
-    watch(cfg, &build_id, &|| {
+    watch(cfg, &build_id, &|_| {}, &|| {
         println!("Restart to use the changed configuration.");
         false
     })
     .map(|_| ())
 }
 
+/// How [`serve_reloading`] serves.
+#[derive(Debug, Clone, Default)]
+pub struct ServeOptions {
+    /// The port to listen on; 0 picks a free one.
+    pub port: u16,
+    /// A file to write once the first build is done and the site is being
+    /// served: JSON with the `url`, the `port`, the `output` folder, this
+    /// process's `pid`, and `ok` (whether that build worked). A script waits
+    /// for the file instead of reading the server's output. It's deleted at
+    /// the start, and written again when a changed configuration loads.
+    pub ready_file: Option<PathBuf>,
+}
+
+/// Write the ready file in one step, so a reader never sees half of it.
+fn write_ready(path: &Path, site: &Site, port: u16, ok: bool) -> Result<()> {
+    let output = dunce::canonicalize(&site.output).unwrap_or_else(|_| site.output.clone());
+    let ready = serde_json::json!({
+        "schemaVersion": 1,
+        "url": format!("http://localhost:{}{}/", port, site.base),
+        "port": port,
+        "base": site.base,
+        "output": output.to_string_lossy(),
+        "pid": std::process::id(),
+        "ok": ok,
+    });
+    let partial = path.with_extension("partial");
+    std::fs::write(&partial, format!("{}\n", serde_json::to_string_pretty(&ready)?)).with_context(|| format!("--ready-file: writing {}", partial.display()))?;
+    std::fs::rename(&partial, path).with_context(|| format!("--ready-file: writing {}", path.display()))
+}
+
 /// [`serve`], reading the configuration again (with `reload`) when one of
 /// the files it came from changes ([`Config::add_config_file`]). If the new
 /// configuration doesn't load, the error is printed and the last good one
 /// keeps serving.
-pub fn serve_reloading(first: Config, port: u16, reload: &dyn Fn() -> Result<Config>) -> Result<()> {
+pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() -> Result<Config>) -> Result<()> {
     let build_id = Arc::new(AtomicU64::new(0));
     let site = Arc::new(RwLock::new(Site::of(&first)));
-    let server = listen(port, &site, &build_id)?;
+    if let Some(ready) = &options.ready_file {
+        // One from an earlier run would say this server is ready already.
+        match std::fs::remove_file(ready) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e).with_context(|| format!("--ready-file: removing {}", ready.display())),
+            _ => {}
+        }
+    }
+    let server = listen(options.port, &site, &build_id)?;
     println!("Serving {} at http://localhost:{}{}/", site.read().unwrap().output.display(), server, site.read().unwrap().base);
     let mut cfg = first;
     loop {
         *site.write().unwrap() = Site::of(&cfg);
         let next: std::cell::RefCell<Option<Config>> = Default::default();
         // Returns once a changed configuration has loaded.
-        let Reloaded = watch(&cfg, &build_id, &|| match reload() {
+        let built = |ok: bool| {
+            if let Some(ready) = &options.ready_file {
+                if let Err(e) = write_ready(ready, &site.read().unwrap(), server, ok) {
+                    eprintln!("\x1b[31merror:\x1b[0m {:#}", e);
+                }
+            }
+        };
+        let Reloaded = watch(&cfg, &build_id, &built, &|| match reload() {
             Ok(new) => {
                 *next.borrow_mut() = Some(new);
                 true
@@ -98,9 +142,11 @@ struct Reloaded;
 /// file the configuration came from changes, `reload` is called: if it
 /// returns true, this returns (the caller has a new configuration to watch
 /// with); if not, the watch goes on.
-fn watch(cfg: &Config, build_id: &AtomicU64, reload: &dyn Fn() -> bool) -> Result<Reloaded> {
+fn watch(cfg: &Config, build_id: &AtomicU64, first_build: &dyn Fn(bool), reload: &dyn Fn() -> bool) -> Result<Reloaded> {
     let ctx = cfg.build_context();
+    let before = build_id.load(Ordering::SeqCst);
     let mut built_at = run_build(cfg, build_id);
+    first_build(build_id.load(Ordering::SeqCst) != before);
 
     let (tx, rx) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {

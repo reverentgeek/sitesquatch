@@ -93,6 +93,16 @@ a `v<version>` tag on a commit where that version matches.
   `file` for a path that has to exist), nested objects, or functions; `unknown: "error"` catches
   misspelled front matter keys. `ssqch types` adds the schemas to `ssqch.d.ts`, so
   `pages.byTag("posts")` is typed. Rust: `Config::add_schema`.
+- For scripts and coding agents: `ssqch build --format json` prints one JSON report on standard
+  output, with what the build wrote and its warnings and errors as data: each has a `code`, the
+  `message`, the `file` and `line` when they're known (the line of the file, front matter
+  included), the `field` for a schema problem and the `url` for a broken link. Progress lines,
+  `console.log` and the output of `beforeBuild` commands go to standard error.
+  `ssqch capabilities` (`--format json`) says what the binary supports: commands, optional
+  features, template languages, config options, built-in modules and their exports, Node
+  modules and globals. `ssqch serve --ready-file <file>` writes the URL, port and output folder
+  once the first build is done. Rust: `sitesquatch::diagnostics` (`warn`, `Diagnostic`,
+  `Diagnostics`) for plugins, and `serve::serve_reloading` takes a `ServeOptions`.
 - `ssqch inspect <url or file>` shows where a page comes from: its template, layouts, date and
   collections, and for each value in its data, which level of the data cascade set it and
   which levels it replaced. `--field level` shows one value in full with every level that set

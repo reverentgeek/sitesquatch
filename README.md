@@ -176,7 +176,7 @@ ssqch serve
 
 `ssqch serve` rebuilds when your sources change and reloads the browser. It also reloads (without a rebuild) when another tool, like a PostCSS or esbuild watcher, writes a CSS or JavaScript file into the output folder, so the page never reloads before its new CSS is there.
 
-`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode. The other commands are `ssqch init`, `ssqch types`, [`ssqch inspect`](#where-a-value-comes-from), [`ssqch diff`](#comparing-two-builds) and [`ssqch import`](#moving-from-another-generator).
+`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode. The other commands are `ssqch init`, `ssqch types`, [`ssqch inspect`](#where-a-value-comes-from), [`ssqch diff`](#comparing-two-builds), [`ssqch import`](#moving-from-another-generator) and [`ssqch capabilities`](#scripts-and-coding-agents), and `ssqch build --format json` reports to a [script or a coding agent](#scripts-and-coding-agents).
 
 ## Configuring a site
 
@@ -692,6 +692,71 @@ Changed (2)
 
 It works on any two folders of HTML, so it can also compare another generator's output with ssqch's while you move a site over.
 
+## Scripts and coding agents
+
+The same commands work for a script, a CI job or a coding agent, with JSON in place of the text a person reads. Every JSON document has a `schemaVersion`, which changes only when a field is removed or changes meaning.
+
+`ssqch build --format json` prints one report on standard output, whether the build worked or not (the exit code is 0 or 1 as usual):
+
+```sh
+ssqch build --format json
+```
+
+```json
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "environment": "production",
+  "output": "dist",
+  "warnings": [
+    {
+      "code": "schema",
+      "message": "src/guides/pine.md: `lvl` isn't a field of this schema (did you mean `level`?) (schema `guides`)",
+      "file": "src/guides/pine.md",
+      "field": "lvl"
+    }
+  ],
+  "errors": [
+    {
+      "code": "template",
+      "message": "rendering index.edge with `edge`: index.edge:4: Cannot read properties of undefined (reading 'toUpperCase') in `guide.data.name`",
+      "file": "src/index.edge",
+      "line": 7
+    }
+  ]
+}
+```
+
+- **Each warning and error** has a `code` and the `message` a person would have read. `file` (from the project root) is there when the problem is in a file that exists, `line` when the line is known, `field` for a [schema](#content-schemas) problem, and `url` for a problem in a written page, like a broken link.
+- **`line` is a line of the file.** Template languages count from the end of the front matter, which is the number in the message (`index.edge:4`); the report adds the front matter back (`"line": 7`).
+- **The codes:** `config`, `data`, `front-matter`, `template`, `schema`, `conflict` (two pages write the same file), `links`, `images`, `assets`, `fetch`, `passthrough`, `last-modified`, `hook`, and `build` for anything else.
+- **A build that works** also has `durationMs`, `pages` (`written`, `templates`, `bytes`), `copied`, `removed`, `written` (each page's file, from the output folder), `summary` (the lines plugins add to the [build summary](#reading-the-build-summary)) and `timings`.
+- **Standard output is only the report.** The lines a person would have read (`[ssqch] Writing ...`), `console.log` from your config and the output of `beforeBuild` commands go to standard error; `--quiet` leaves the progress lines out.
+
+`ssqch capabilities --format json` says what this binary supports, so nothing has to be guessed from the documentation of another version: its `version`, `commands`, optional `features` (`avif`, `fetch`, `sass` and each template language, which a build from source can leave out), `templateLanguages` with their extensions, `configOptions`, the built-in `modules` with what each exports, `nodeModules`, `globals` and `imageFormats`. Without `--format json` it prints the same as text.
+
+`ssqch serve --ready-file <file>` writes a file once the first build is done and the site is being served, so a script can wait for the file instead of reading the server's output or sleeping:
+
+```sh
+ssqch serve --port 0 --ready-file .cache/ready.json &
+```
+
+```json
+{
+  "schemaVersion": 1,
+  "url": "http://localhost:60768/",
+  "port": 60768,
+  "base": "",
+  "output": "/home/sam/site/dist",
+  "pid": 39675,
+  "ok": true
+}
+```
+
+`ok` is whether that first build worked (the server keeps running either way, and rebuilds when a file changes). The file is deleted when the server starts, so one from an earlier run never counts, and it's written again when a changed config loads, since `output` and `base` can change with it.
+
+The other commands with JSON are [`ssqch inspect --format json`](#where-a-value-comes-from) (where a page's data came from) and [`ssqch diff --format json`](#comparing-two-builds) (what a change did to the output; it exits with 0, 1 or 2 like `diff`).
+
 ## Deploying
 
 ### Keep the image cache between builds
@@ -861,7 +926,7 @@ A plugin implements `sitesquatch::Plugin` (any `Fn(&mut Config)` works too) and 
 | `add_config_file(path)` | not available (a file `ssqch serve` reads the configuration again for) |
 | `add_summary(label, \|ctx\| ...)` | not available (adds a line to the build summary) |
 
-A site binary whose setup can fail uses `sitesquatch::cli::try_run_with`, whose closure returns a `Result` and is called again by `ssqch serve` when a config file changes. `sitesquatch::diff::compare` is `ssqch diff` as a function. `sitesquatch::inspect::inspect` is `ssqch inspect`.
+A site binary whose setup can fail uses `sitesquatch::cli::try_run_with`, whose closure returns a `Result` and is called again by `ssqch serve` when a config file changes. `sitesquatch::diff::compare` is `ssqch diff` as a function. `sitesquatch::inspect::inspect` is `ssqch inspect`. A plugin reports a warning with `sitesquatch::diagnostics::warn(Diagnostic::warning("code", message).file(path))`, which prints `warn: ...` and puts it in the JSON report, and fails with a `Diagnostics` error to keep its problems apart there.
 
 Plugins can share services. The image plugin exposes an `ImageProcessor`, and the blog's plugin uses it for its hero image data and its `socialImage` filter.
 

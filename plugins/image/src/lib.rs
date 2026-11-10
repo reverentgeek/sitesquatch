@@ -215,7 +215,7 @@ impl ImageProcessor {
 
     fn warn_once(&self, msg: String) {
         if self.warned.lock().unwrap().insert(msg.clone()) {
-            eprintln!("warn: {}", msg);
+            sitesquatch::diagnostics::warn(sitesquatch::diagnostics::Diagnostic::warning("images", msg));
         }
     }
 
@@ -382,14 +382,14 @@ impl ImageProcessor {
             let took = started.elapsed();
             if !self.quiet.load(Ordering::Relaxed) {
                 let formats: Vec<&str> = meta.formats.keys().map(|f| f.ext()).collect();
-                println!(
+                sitesquatch::diagnostics::progress(&format!(
                     "[ssqch] Encoded {} into {} file{} ({}) in {:.2?}",
                     sitesquatch::display_path(&ctx, src),
                     jobs.len(),
                     if jobs.len() == 1 { "" } else { "s" },
                     formats.join(", "),
                     took
-                );
+                ));
             }
             self.timings.lock().unwrap().push((src.to_path_buf(), jobs.len(), took));
         }
@@ -829,9 +829,9 @@ impl Plugin for ImagePlugin {
                 let mut timings = p.timings.lock().unwrap().clone();
                 timings.sort_by_key(|t| std::cmp::Reverse(t.2));
                 if !timings.is_empty() {
-                    println!("Slowest images to encode:");
+                    sitesquatch::diagnostics::progress("Slowest images to encode:");
                     for (src, files, took) in timings.iter().take(10) {
-                        println!("  {:>8.2?}  {} ({} files)", took, sitesquatch::display_path(ctx, src), files);
+                        sitesquatch::diagnostics::progress(&format!("  {:>8.2?}  {} ({} files)", took, sitesquatch::display_path(ctx, src), files));
                     }
                 }
             }

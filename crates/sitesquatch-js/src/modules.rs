@@ -38,11 +38,21 @@ export default { defineConfig, markdown, readData };
 "#;
 
 /// Node built-in modules provided by `node.js`.
-pub(crate) const NODE_MODULES: [&str; 32] = [
+pub(crate) static NODE_MODULES: [&str; 32] = [
     "fs", "fs/promises", "path", "path/posix", "url", "process", "buffer", "crypto", "module", "util", "events", "os", "assert", "assert/strict", "timers", "timers/promises", "string_decoder",
     // These load, but only enough for packages that require them without using them.
     "http", "https", "http2", "net", "tls", "dns", "child_process", "worker_threads", "cluster", "readline", "zlib", "vm", "stream", "tty", "perf_hooks",
 ];
+
+/// The Node built-in modules, as `(working, stubs)`: the stubs load, but
+/// their functions throw.
+pub fn node_modules() -> (&'static [&'static str], &'static [&'static str]) {
+    let stubs = NODE_MODULES.iter().position(|m| *m == "http").unwrap_or(NODE_MODULES.len());
+    NODE_MODULES.split_at(stubs)
+}
+
+/// The names `ssqch` itself exports.
+pub const CONFIG_MODULE_EXPORTS: [&str; 3] = ["defineConfig", "markdown", "readData"];
 
 /// The module name for `path`: relative to the project root when it's
 /// inside it, absolute otherwise.

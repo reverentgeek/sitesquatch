@@ -49,6 +49,21 @@ pub const CONFIG_FILES: [&str; 2] = ["ssqch.config.js", "ssqch.config.mjs"];
 /// `imagePlugin()` from `ssqch/image` returns). It receives the options.
 pub type BuiltinPlugin = fn(&mut Config, &serde_json::Value) -> Result<()>;
 
+pub use modules::{node_modules, CONFIG_MODULE_EXPORTS};
+
+/// The options a config can set, in the order its errors list them.
+pub fn config_options() -> Vec<String> {
+    // The lists the config is checked against.
+    let source = include_str!("prelude.js");
+    ["const SETTINGS = [", "const PARTS = ["]
+        .iter()
+        .flat_map(|start| {
+            let list = source.split_once(start).and_then(|(_, rest)| rest.split_once(']')).map(|(list, _)| list).unwrap_or("");
+            list.split(',').map(|name| name.trim().trim_matches('"').to_string()).filter(|name| !name.is_empty()).collect::<Vec<_>>()
+        })
+        .collect()
+}
+
 /// A JavaScript module built into the program running the config, such as
 /// `ssqch/image`. Its source reaches its native functions through
 /// `globalThis.__ssqch.natives[name]`.
@@ -451,7 +466,8 @@ impl Engine {
             let globals = ctx.globals();
             let print = Function::new(ctx.clone(), |level: i32, message: String| {
                 if level == 0 {
-                    println!("{}", message);
+                    // Standard error when standard output is kept for a JSON report.
+                    sitesquatch::diagnostics::progress(&message);
                 } else {
                     eprintln!("{}", message);
                 }

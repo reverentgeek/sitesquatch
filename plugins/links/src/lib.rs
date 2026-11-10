@@ -24,6 +24,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{anyhow, bail, Context, Result};
 use lol_html::{element, rewrite_str, RewriteStrSettings};
 use rayon::prelude::*;
+use sitesquatch::diagnostics::{self, Diagnostic, Diagnostics, Severity};
 use sitesquatch::{BuildContext, BuildReport, Config, Environment, Plugin};
 
 #[derive(Clone, Debug, Default)]
@@ -71,11 +72,17 @@ impl Plugin for LinksPlugin {
             }
             let fail = options.fail.unwrap_or(ctx.env == Environment::Production && !ctx.serving);
             let message = describe(&result.broken, if verbose { usize::MAX } else { 20 });
+            // One for each link, for `ssqch build --format json`.
+            let each = |severity: Severity| -> Vec<Diagnostic> {
+                result.broken.iter().map(|b| Diagnostic { severity, ..Diagnostic::error("links", format!("{} -> {} ({})", b.page, b.link, b.reason)).url(b.page.as_str()) }).collect()
+            };
             if fail {
-                bail!("{}", message);
+                return Err(Diagnostics { message, items: each(Severity::Error) }.into());
             }
-            if !quiet {
-                eprintln!("warn: {}", message);
+            if diagnostics::capturing() {
+                each(Severity::Warning).into_iter().for_each(diagnostics::warn);
+            } else if !quiet {
+                diagnostics::warn(Diagnostic::warning("links", message));
             }
             Ok(())
         });

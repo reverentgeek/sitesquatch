@@ -88,10 +88,10 @@ impl Plugin for AssetsPlugin {
                 } else if ctx.output_dir.join(file.trim_start_matches('/')).is_file() {
                     map.insert(file.clone(), file.clone());
                 } else if let Some(copy) = built_copy(&ctx.output_dir, file)? {
-                    eprintln!("warn: {} isn't in the output ({}), so pages link to {} from the last production build; run the tool that writes {} to see changes", file, display(ctx, &ctx.output_dir), copy, file);
+                    sitesquatch::diagnostics::warn(sitesquatch::diagnostics::Diagnostic::warning("assets", format!("{} isn't in the output ({}), so pages link to {} from the last production build; run the tool that writes {} to see changes", file, display(ctx, &ctx.output_dir), copy, file)));
                     map.insert(file.clone(), copy);
                 } else {
-                    eprintln!("warn: {} isn't in the output yet ({}); its tool may still be building it", file, display(ctx, &ctx.output_dir));
+                    sitesquatch::diagnostics::warn(sitesquatch::diagnostics::Diagnostic::warning("assets", format!("{} isn't in the output yet ({}); its tool may still be building it", file, display(ctx, &ctx.output_dir))));
                     map.insert(file.clone(), file.clone());
                 }
             }

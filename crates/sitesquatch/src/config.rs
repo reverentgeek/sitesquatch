@@ -613,7 +613,7 @@ impl Config {
 /// naming the command.
 pub fn run_command(ctx: &BuildContext, event: &str, command: &str, quiet: bool) -> Result<()> {
     if !quiet {
-        println!("[ssqch] {}: {}", event, command);
+        crate::diagnostics::progress(&format!("[ssqch] {}: {}", event, command));
     }
     let mut cmd = if cfg!(windows) {
         let mut c = std::process::Command::new("cmd");
@@ -624,6 +624,10 @@ pub fn run_command(ctx: &BuildContext, event: &str, command: &str, quiet: bool) 
         c.arg("-c").arg(command);
         c
     };
+    if crate::diagnostics::capturing() {
+        // Standard output is kept for the JSON report, so the command's goes to standard error.
+        cmd.stdout(std::process::Stdio::from(std::io::stderr()));
+    }
     let status = cmd
         .current_dir(&ctx.root)
         .env("SSQCH_ENV", ctx.env.as_str())

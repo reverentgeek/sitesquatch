@@ -1139,3 +1139,231 @@ fn inspect_says_where_a_page_and_its_data_come_from() {
     let (ok, log) = run(&["/guides/pine/", "--field", "titel"]);
     assert!(!ok && log.contains("/guides/pine/ has no `titel` in its data (it has: "), "{}", log);
 }
+
+/// Run `ssqch` and keep its two outputs apart.
+fn ssqch_outputs(args: &[&str]) -> (bool, String, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(args).env("TZ", "UTC").output().unwrap();
+    (out.status.success(), String::from_utf8_lossy(&out.stdout).into_owned(), String::from_utf8_lossy(&out.stderr).into_owned())
+}
+
+#[test]
+fn build_reports_in_json() {
+    let dir = temp_dir("build-json");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    let config = |schema: &str| {
+        format!(
+            "import {{ linksPlugin }} from \"ssqch/links\";\nconsole.log(\"from the config\");\nexport default {{\n  dirs: {{ input: \"src\", output: \"dist\" }},\n  passthrough: [\"nothing/**\"],\n  schemas: {{ posts: {{ unknown: \"warn\", fields: {{ {} }} }} }},\n  beforeBuild: {{ run: \"echo from-a-command\" }},\n  plugins: [linksPlugin({{ fail: false }})],\n}};\n",
+            schema
+        )
+    };
+    write("ssqch.config.js", &config("title: \"string\""));
+    write("src/posts/posts.json", "{ \"tags\": \"posts\" }");
+    write("src/posts/pine.md", "---\ntitle: Pine\nextra: 1\n---\n[gone](/nope/)\n");
+    write("src/index.edge", "---\ntitle: Home\n---\n\n<p>\n{{ title }}\n");
+    let report = |args: &[&str]| {
+        let mut all = vec!["build", "--format", "json", "--root", d];
+        all.extend(args);
+        let (ok, stdout, stderr) = ssqch_outputs(&all);
+        // Standard output is the report and nothing else.
+        let json: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("{}: {:?}\n{}", e, stdout, stderr));
+        assert_eq!(json["schemaVersion"], 1);
+        assert_eq!(json["ok"], ok, "{}", stdout);
+        (json, stderr)
+    };
+
+    // A build that works: what it wrote, and its warnings as data.
+    let (json, stderr) = report(&[]);
+    assert_eq!(json["ok"], true, "{}", json);
+    assert_eq!(json["environment"], "production");
+    assert_eq!(json["output"], "dist");
+    assert_eq!(json["pages"]["written"], 2);
+    let mut written: Vec<&str> = json["written"].as_array().unwrap().iter().filter_map(|w| w.as_str()).collect();
+    written.sort();
+    assert_eq!(written, ["index.html", "posts/pine/index.html"]);
+    assert!(json["durationMs"].as_f64().unwrap() > 0.0 && json["timings"][0]["phase"] == "setup", "{}", json);
+    assert_eq!(json["summary"][0], serde_json::json!({ "label": "Links", "value": "1 checked, 1 broken" }));
+    assert_eq!(json["errors"], serde_json::json!([]));
+    assert_eq!(
+        json["warnings"],
+        serde_json::json!([
+            { "code": "schema", "message": "src/posts/pine.md: `extra` isn't a field of this schema (schema `posts`)", "file": "src/posts/pine.md", "field": "extra" },
+            { "code": "passthrough", "message": "passthrough glob \"nothing/**\" matches no files" },
+            { "code": "links", "message": "/posts/pine/ -> /nope/ (not found)", "url": "/posts/pine/" },
+        ])
+    );
+    // What a person would have read went to standard error.
+    for line in ["from the config", "from-a-command", "[ssqch] Writing "] {
+        assert!(stderr.contains(line), "missing {:?} in {}", line, stderr);
+    }
+    assert!(!stderr.contains("warn:") && !stderr.contains("Built in"), "{}", stderr);
+    let (_, stderr) = report(&["--quiet"]);
+    assert!(!stderr.contains("[ssqch]"), "{}", stderr);
+
+    // Content errors: the file and the field.
+    write("ssqch.config.js", &config("title: \"string\", hero: \"string\""));
+    let (json, _) = report(&[]);
+    assert_eq!(json["errors"], serde_json::json!([{ "code": "schema", "message": "src/posts/pine.md: `hero` is required (a string) (schema `posts`)", "file": "src/posts/pine.md", "field": "hero" }]));
+    assert_eq!(json["warnings"][0]["field"], "extra");
+    assert!(json.get("pages").is_none(), "{}", json);
+    write("ssqch.config.js", &config("title: \"string\""));
+
+    // Template errors: each one apart, with the line of the file (not of the template's body).
+    write("src/index.edge", "---\ntitle: Home\n---\n\n<p>\n{{ nope.x }}\n");
+    write("src/about.edge", "---\ntitle: About\n---\n@if(title\n");
+    let (json, _) = report(&[]);
+    let mut errors: Vec<(String, String, u64)> = json["errors"].as_array().unwrap().iter().map(|e| (e["code"].as_str().unwrap().to_string(), e["file"].as_str().unwrap_or("").to_string(), e["line"].as_u64().unwrap_or(0))).collect();
+    errors.sort();
+    assert_eq!(errors, [("template".to_string(), "src/about.edge".to_string(), 4), ("template".to_string(), "src/index.edge".to_string(), 6)], "{}", json);
+    std::fs::remove_file(dir.join("src/about.edge")).unwrap();
+    write("src/index.edge", "---\ntitle: [Home\n---\nx\n");
+    let (json, _) = report(&[]);
+    assert_eq!((&json["errors"][0]["code"], &json["errors"][0]["file"]), (&serde_json::json!("front-matter"), &serde_json::json!("src/index.edge")), "{}", json);
+    write("src/index.edge", "---\ntitle: Home\n---\nx\n");
+
+    // A broken link that fails the build names the page.
+    write("ssqch.config.js", &config("title: \"string\"").replace("fail: false", "fail: true"));
+    let (json, _) = report(&[]);
+    assert_eq!(json["errors"], serde_json::json!([{ "code": "links", "message": "/posts/pine/ -> /nope/ (not found)", "url": "/posts/pine/" }]));
+
+    // A config that doesn't load.
+    write("ssqch.config.js", "export default {\n  dirs: { input: \"src\" },\n  plugins: [nope()],\n};\n");
+    let (json, _) = report(&[]);
+    assert_eq!(json["errors"].as_array().unwrap().len(), 1, "{}", json);
+    assert_eq!((&json["errors"][0]["code"], &json["errors"][0]["file"], &json["errors"][0]["line"]), (&serde_json::json!("config"), &serde_json::json!("ssqch.config.js"), &serde_json::json!(3)), "{}", json);
+    assert!(json.get("output").is_none(), "{}", json);
+
+    // The usual output is as it was.
+    write("ssqch.config.js", &config("title: \"string\""));
+    let (ok, stdout, stderr) = ssqch_outputs(&["build", "--root", d]);
+    assert!(ok && stdout.contains("from the config") && stdout.contains("from-a-command") && stdout.contains("Built in"), "{}\n{}", stdout, stderr);
+    assert_eq!(stderr.matches("warn: ").count(), 3, "{}", stderr);
+    assert!(stderr.contains("warn: 1 broken link:\n  /posts/pine/ -> /nope/ (not found)"), "{}", stderr);
+    let (ok, log) = ssqch(&["build", "--format", "yaml", "--root", d]);
+    assert!(!ok && log.contains("--format yaml: use text or json"), "{}", log);
+}
+
+#[test]
+fn capabilities_match_what_a_config_can_use() {
+    let (ok, stdout, _) = ssqch_outputs(&["capabilities", "--format", "json"]);
+    assert!(ok);
+    let caps: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("{}: {}", e, stdout));
+    assert_eq!(caps["schemaVersion"], 1);
+    assert_eq!(caps["version"], env!("CARGO_PKG_VERSION"));
+    let names = |value: &serde_json::Value| -> Vec<String> { value.as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect() };
+    for (key, expected) in [("commands", "inspect"), ("configOptions", "dirs"), ("configOptions", "plugins"), ("nodeModules", "node:fs"), ("globals", "URL"), ("imageFormats", "webp")] {
+        let list = if key == "nodeModules" { names(&caps[key]["available"]) } else { names(&caps[key]) };
+        assert!(list.iter().any(|n| n == expected), "{} lacks {}: {:?}", key, expected, list);
+    }
+    assert_eq!(caps["features"]["avif"], cfg!(feature = "avif"));
+    assert_eq!(names(&caps["imageFormats"]).contains(&"avif".to_string()), cfg!(feature = "avif"));
+    assert!(names(&caps["nodeModules"]["stubs"]).contains(&"node:http".to_string()) && !names(&caps["nodeModules"]["available"]).contains(&"node:http".to_string()));
+
+    // Every command it lists is one, and it lists them all.
+    let (_, help, _) = ssqch_outputs(&["--help"]);
+    let listed: Vec<String> = help.lines().skip_while(|l| !l.starts_with("Commands:")).skip(1).take_while(|l| !l.trim().is_empty()).filter_map(|l| l.split_whitespace().next().map(String::from)).filter(|c| c != "help").collect();
+    let mut commands = names(&caps["commands"]);
+    let mut listed_sorted = listed.clone();
+    commands.sort();
+    listed_sorted.sort();
+    assert_eq!(commands, listed_sorted);
+
+    // A config that uses everything it says is there: each module with its
+    // exports, each Node module, each global and each config option.
+    let dir = temp_dir("capabilities");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/index.md"), "Hi\n").unwrap();
+    let mut config = String::new();
+    let mut checks = String::new();
+    let modules = caps["modules"].as_array().unwrap();
+    let node: Vec<String> = [names(&caps["nodeModules"]["available"]), names(&caps["nodeModules"]["stubs"])].concat();
+    for (i, module) in modules.iter().enumerate() {
+        config.push_str(&format!("import * as m{} from {};\n", i, module["name"]));
+        for export in module["exports"].as_array().unwrap() {
+            checks.push_str(&format!("if (typeof m{}[{}] !== \"function\") throw new Error({} + \" lacks \" + {});\n", i, export, module["name"], export));
+        }
+        assert!(!module["exports"].as_array().unwrap().is_empty(), "{} exports nothing", module["name"]);
+    }
+    for (i, name) in node.iter().enumerate() {
+        config.push_str(&format!("import * as n{} from \"{}\";\n", i, name));
+    }
+    for global in names(&caps["globals"]) {
+        checks.push_str(&format!("if (typeof {} === \"undefined\") throw new Error(\"no {}\");\n", global, global));
+    }
+    // An option the config doesn't know would be an error; `undefined` leaves each as it is.
+    let options: Vec<String> = names(&caps["configOptions"]).iter().map(|o| if o == "dirs" { "dirs: { input: \"src\", output: \"dist\" }".to_string() } else { format!("{}: undefined", o) }).collect();
+    config.push_str(&checks);
+    config.push_str(&format!("export default {{ {} }};\n", options.join(", ")));
+    std::fs::write(dir.join("ssqch.config.js"), &config).unwrap();
+    let (ok, log) = ssqch(&["build", "--quiet", "--root", dir.to_str().unwrap()]);
+    assert!(ok, "{}\n{}", log, config);
+
+    // Each template language renders a file with each of its extensions.
+    let mut formats = Vec::new();
+    for language in caps["templateLanguages"].as_array().unwrap() {
+        for ext in names(&language["extensions"]) {
+            std::fs::write(dir.join(format!("src/page-{}.{}", ext, ext)), "language test\n").unwrap();
+            // `.markdown` files come with `md`.
+            if ext != "markdown" {
+                formats.push(format!("\"{}\"", ext));
+            }
+        }
+    }
+    std::fs::write(dir.join("ssqch.config.js"), format!("export default {{ dirs: {{ input: \"src\", output: \"dist\" }}, templateFormats: [{}] }};\n", formats.join(", "))).unwrap();
+    let (ok, log) = ssqch(&["build", "--quiet", "--root", dir.to_str().unwrap()]);
+    assert!(ok, "{}", log);
+    for language in caps["templateLanguages"].as_array().unwrap() {
+        for ext in names(&language["extensions"]) {
+            let page = std::fs::read_to_string(dir.join(format!("dist/page-{}/index.html", ext))).unwrap_or_else(|e| panic!("page-{}: {}", ext, e));
+            assert!(page.contains("language test"), "{}: {}", ext, page);
+        }
+    }
+
+    let (ok, text, _) = ssqch_outputs(&["capabilities"]);
+    assert!(ok && text.starts_with(&format!("ssqch {}\n  Commands           build, serve, ", env!("CARGO_PKG_VERSION"))) && text.contains("\n  Template languages edge (.edge), markdown (.md, .markdown), html (.html)"), "{}", text);
+    let (ok, log) = ssqch(&["capabilities", "--format", "xml"]);
+    assert!(!ok && log.contains("--format xml: use text or json"), "{}", log);
+}
+
+#[test]
+fn serve_writes_a_ready_file() {
+    let dir = temp_dir("serve-ready");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), "export default { dirs: { input: \"src\", output: \"dist\" }, base: \"/docs/\" };\n").unwrap();
+    std::fs::write(dir.join("src/index.md"), "Ready *now*\n").unwrap();
+    let ready = dir.join("ready.json");
+    // One left by an earlier run mustn't count.
+    std::fs::write(&ready, "{ \"port\": 1 }").unwrap();
+    let out = std::fs::File::create(dir.join("serve.log")).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(["serve", "--port", "0", "--ready-file"]).arg(&ready).arg("--root").arg(&dir).stdout(out.try_clone().unwrap()).stderr(out).spawn().unwrap();
+    let server = Server(child);
+    wait_for(&ready, "\"schemaVersion\": 1");
+    let info: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&ready).unwrap()).unwrap();
+    let port = info["port"].as_u64().unwrap();
+    assert!(port > 1, "{}", info);
+    assert_eq!(info["url"], format!("http://localhost:{}/docs/", port));
+    assert_eq!(info["base"], "/docs");
+    assert_eq!(info["ok"], true);
+    assert_eq!(info["pid"], server.0.id());
+    let output = std::path::PathBuf::from(info["output"].as_str().unwrap());
+    assert!(output.is_absolute() && output.ends_with("dist"), "{}", info);
+    // The first build is done by the time the file is there, and the site is being served.
+    assert!(std::fs::read_to_string(output.join("index.html")).unwrap().contains("Ready <em>now</em>"));
+    let page = http_get(port as u16, "/docs/");
+    assert!(page.starts_with("HTTP/1.1 200") && page.contains("Ready <em>now</em>"), "{}", page);
+}
+
+/// The whole response (status line, headers and body) to a GET from the dev server.
+fn http_get(port: u16, path: &str) -> String {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+    write!(stream, "GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n", path).unwrap();
+    let mut response = Vec::new();
+    let _ = stream.read_to_end(&mut response);
+    String::from_utf8_lossy(&response).into_owned()
+}

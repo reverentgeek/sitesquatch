@@ -349,7 +349,7 @@ fn answer(dir: &Path, ask: &Ask) -> Outcome {
     match (failed, copy) {
         // An older copy is better than no build.
         (Some(why), Some((reply, old))) => {
-            eprintln!("warn: fetch: {} {}; using the copy saved {}", ask.url, why.trim_start_matches(&format!("{}: ", ask.url)), age(old));
+            sitesquatch::diagnostics::warn(sitesquatch::diagnostics::Diagnostic::warning("fetch", format!("fetch: {} {}; using the copy saved {}", ask.url, why.trim_start_matches(&format!("{}: ", ask.url)), age(old))));
             COUNTS[2].fetch_add(1, Ordering::Relaxed);
             Ok(from_cache(reply, "stale"))
         }
@@ -357,7 +357,7 @@ fn answer(dir: &Path, ask: &Ask) -> Outcome {
             if let Ok(reply) = &outcome {
                 if (200..300).contains(&reply.status) {
                     if let Err(e) = save(dir, ask, reply) {
-                        eprintln!("warn: fetch: couldn't save {} in {}: {}", ask.url, dir.display(), e);
+                        sitesquatch::diagnostics::warn(sitesquatch::diagnostics::Diagnostic::warning("fetch", format!("fetch: couldn't save {} in {}: {}", ask.url, dir.display(), e)));
                     }
                 }
             }
