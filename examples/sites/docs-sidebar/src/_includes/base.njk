@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
 <link rel="stylesheet" href="/highlight.css">
+<link rel="stylesheet" href="/pagefind/pagefind-ui.css">
+<script src="/pagefind/pagefind-ui.js" defer></script>
+<script>addEventListener("DOMContentLoaded", () => window.PagefindUI && new PagefindUI({ element: "#search", showSubResults: true }));</script>
 <style>
   body { font: 17px/1.6 system-ui, sans-serif; margin: 0; display: grid; grid-template-columns: 15rem 1fr 13rem; }
   aside { padding: 1rem; font-size: 0.9em; }
@@ -26,16 +29,18 @@
 <body>
 <aside class="sidebar">
   <p><a href="/">{{ site.title }}</a></p>
-  {% for section in nav %}
-  <h2>{{ section.title }}</h2>
+  <div id="search"></div>
+  {# navTree marks the current page and the section it's in. #}
+  {% for section in nav | navTree(page.url) %}
+  <h2{% if section.open %} class="open"{% endif %}>{{ section.title }}</h2>
   <ul>
     {% for item in section.pages %}
-    <li><a href="{{ item.url }}"{% if item.url == page.url %} aria-current="page"{% endif %}>{{ item.title }}</a></li>
+    <li><a href="{{ item.url }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.title }}</a></li>
     {% endfor %}
   </ul>
   {% endfor %}
 </aside>
-<main>
+<main data-pagefind-body>
 {{ content | safe }}
 </main>
 <aside class="toc">

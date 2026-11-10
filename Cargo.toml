@@ -29,6 +29,7 @@ sitesquatch-plugin-assets = { version = "0.3.3", path = "plugins/assets" }
 sitesquatch-plugin-links = { version = "0.3.3", path = "plugins/links" }
 sitesquatch-plugin-sitemap = { version = "0.3.3", path = "plugins/sitemap" }
 sitesquatch-plugin-redirects = { version = "0.3.3", path = "plugins/redirects" }
+sitesquatch-plugin-sass = { version = "0.3.3", path = "plugins/sass" }
 sitesquatch-plugin-liquid = { version = "0.3.3", path = "plugins/liquid" }
 sitesquatch-plugin-jinja = { version = "0.3.3", path = "plugins/jinja" }
 sitesquatch-plugin-handlebars = { version = "0.3.3", path = "plugins/handlebars" }

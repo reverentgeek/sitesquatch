@@ -231,6 +231,12 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
             other => bail!("{} must be true or false, not {}", key, other.type_of()),
         }
     }
+    match settings.get("lastModified") {
+        Value::Undefined | Value::Null | Value::Bool(false) => {}
+        Value::Bool(true) => cfg.last_modified = Some(sitesquatch::LastModified::Git),
+        Value::Str(s) => cfg.last_modified = Some(sitesquatch::LastModified::parse(&s).ok_or_else(|| anyhow!("lastModified must be \"git\", \"file\" or false, not \"{}\"", s))?),
+        other => bail!("lastModified must be \"git\", \"file\" or false, not {}", other.type_of()),
+    }
     match settings.get("ignore") {
         Value::Undefined => {}
         Value::Str(s) => cfg.ignore = vec![s.to_string()],
@@ -290,6 +296,14 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
                         other => bail!("transform returned {}", other.type_of()),
                     }
                 });
+            }
+            "hook" if op.get("run").as_str().is_some() => {
+                let command = op.get("run").to_js_string();
+                if op.get("event").as_str() == Some("beforeBuild") {
+                    cfg.run_before_build(command);
+                } else {
+                    cfg.run_after_build(command);
+                }
             }
             "hook" => {
                 let f = engine.function(op.get("fn"))?;

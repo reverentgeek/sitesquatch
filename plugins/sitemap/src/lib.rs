@@ -78,7 +78,8 @@ impl Plugin for SitemapPlugin {
                 .filter(|p| options.paginated || !is_later_page(&p.data))
                 .filter(|p| !matches!(p.url.as_str(), "/404.html" | "/404/"))
                 .filter(|p| !exclude.is_match(&p.url))
-                .map(|p| (p.url.as_str(), p.date.format("%Y-%m-%d").to_string()))
+                // `page.lastModified` (with the `lastModified` setting), else the page's date.
+                .map(|p| (p.url.as_str(), p.data.get("page").get("lastModified").to_date().unwrap_or(p.date).format("%Y-%m-%d").to_string()))
                 .collect();
             entries.sort();
             let mut xml = String::from("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");

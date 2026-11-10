@@ -84,6 +84,21 @@ a `v<version>` tag on a commit where that version matches.
   methods in JavaScript's or Python's spelling (`title.startsWith("A")`), and JavaScript `Date`
   methods (`page.date.toISOString()`). Jinja templates get the Python string methods.
 - `ssqch build --verbose` lists every broken link instead of the first 20.
+- `ssqch/sass`: `sassPlugin({ files: { "src/scss": "/css" } })` compiles Sass with grass (pure
+  Rust), at the start of each build so fingerprinting and the link checker see the CSS. About
+  2.7 MB; the `sass` feature of `ssqch` (on by default).
+- Navigation helpers for templates: `navTree(nav, page.url)` marks the current page and its
+  sections in a tree from data, `navPager` gives previous and next, `navBreadcrumbs` the trail,
+  and `pagesTree(collection)` builds a tree from `nav` front matter.
+- `lastModified: "git"` (or `"file"`) sets `page.lastModified` from the last commit that changed
+  each page's file, with one `git log` per build. The sitemap uses it for `<lastmod>`.
+- `beforeBuild` and `afterBuild` can run programs: `{ run: "npx -y pagefind --site dist" }`
+  (and `before_build`/`after_build` lists in `sitesquatch.toml`). The README's Search section
+  uses it for Pagefind.
+- A `highlight(code, lang)` filter, and `container.source` (a container's lines as written) for
+  container templates. `:::tip[Title]` gives the arguments `Title`.
+- Rust: `Config::add_file_builder` for files built from their own sources at the start of a
+  build, and `Config::run_before_build`/`run_after_build`.
 - Examples in `examples/sites/` (`blog-tags`, `blog-categories`, `docs-sidebar` and
   `glossary-docs`), each built in CI with the link checker, and guides for moving from Zola and
   from Eleventy in `docs/guides/`.

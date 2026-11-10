@@ -1,0 +1,36 @@
+---
+layout: base.edge
+---
+@let(sidebar = sidebars[version])
+<div class="layout">
+<aside>
+  @each(section in navTree(sidebar, page.url))
+  <h2>{{ section.title }}</h2>
+  <ul>
+    @each(item in section.items)
+    <li><a href="{{ item.url }}"{{{ item.current ? ' aria-current="page"' : '' }}}>{{ item.title }}</a></li>
+    @end
+  </ul>
+  @end
+</aside>
+<main>
+  @if(version === 'next')
+  <p class="banner">This is unreleased documentation. For the latest version, see <a href="{{ inVersion(page.url, '1.0', collections.all) }}">1.0</a>.</p>
+  @end
+  <h1>{{ title }}</h1>
+  {{{ content }}}
+  @let(pager = navPager(sidebar, page.url))
+  <nav class="pager">
+    <span>
+      @if(pager.previous)
+      <a href="{{ pager.previous.url }}">← {{ pager.previous.title }}</a>
+      @end
+    </span>
+    <span>
+      @if(pager.next)
+      <a href="{{ pager.next.url }}">{{ pager.next.title }} →</a>
+      @end
+    </span>
+  </nav>
+</main>
+</div>

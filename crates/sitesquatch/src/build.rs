@@ -57,6 +57,8 @@ struct Tpl {
     mtime: DateTime<Utc>,
     /// The date at the start of the file name (`2024-06-01-post.md`).
     file_date: Option<DateTime<Utc>>,
+    /// `page.lastModified`, with the `last_modified` setting.
+    last_modified: Option<DateTime<Utc>>,
     /// Plain text with no front matter: copied as-is and kept out of collections.
     plain_copy: bool,
 }
@@ -91,6 +93,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
         bail!("input directory {} does not exist", ctx.input_dir.display());
     }
 
+    let built = run_file_builders(cfg, &ctx)?;
     for hook in &cfg.before_build {
         hook(&ctx).context("before_build hook failed")?;
     }
@@ -149,10 +152,14 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
 
     // ---- templates
     let files = discover(cfg, &ctx)?;
+    let commit_dates = match cfg.last_modified {
+        Some(crate::LastModified::Git) => git_dates(cfg, &ctx),
+        _ => HashMap::new(),
+    };
     let dir_data = load_directory_data(cfg, &ctx, &files)?;
     let layouts: Mutex<HashMap<String, Arc<Layout>>> = Mutex::new(HashMap::new());
     let mut tpls: Vec<Arc<Tpl>> = collect_errors(
-        files.par_iter().map(|path| load_template(cfg, &ctx, path, &global, &dir_data, &layouts).map(Arc::new)).collect(),
+        files.par_iter().map(|path| load_template(cfg, &ctx, path, &global, &dir_data, &layouts, &commit_dates).map(Arc::new)).collect(),
     )?;
     // Drafts (`draft: true`) are built in development only.
     if ctx.env == crate::Environment::Production {
@@ -241,7 +248,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     let stylesheet = write_highlight_css(cfg, &ctx)?;
     timer.lap("copy");
 
-    let outputs: Vec<&PathBuf> = written.iter().map(|(p, _)| p).chain(&generated).chain(&copy.paths).chain(&stylesheet).collect();
+    let outputs: Vec<&PathBuf> = written.iter().map(|(p, _)| p).chain(&generated).chain(&built).chain(&copy.paths).chain(&stylesheet).collect();
     let files_removed = record_outputs(cfg, &ctx, &outputs)?;
 
     let mut report = BuildReport {
@@ -282,6 +289,29 @@ fn builtin_filters(markdown: &Arc<MarkdownEngine>) -> Map {
                 _ => false,
             };
             md.render_html(&text, &Value::Undefined, Path::new(""), inline).map(Value::from)
+        }),
+    );
+    // Navigation: navTree(tree, page.url), navPager(tree, page.url),
+    // navBreadcrumbs(tree, page.url) and pagesTree(collection).
+    let list = |args: &[Value], i: usize| args.get(i).and_then(|v| v.as_array()).map(|a| a.to_vec()).unwrap_or_default();
+    let url = |args: &[Value]| args.get(1).map(Value::to_js_string).unwrap_or_default();
+    filters.insert("navTree".into(), Value::func(move |args| Ok(crate::nav::tree(&list(args, 0), &url(args)))));
+    filters.insert("navPager".into(), Value::func(move |args| Ok(crate::nav::pager(&list(args, 0), &url(args)))));
+    filters.insert("navBreadcrumbs".into(), Value::func(move |args| Ok(crate::nav::breadcrumbs(&list(args, 0), &url(args)))));
+    filters.insert("pagesTree".into(), Value::func(move |args| Ok(crate::nav::from_pages(&list(args, 0)))));
+    // highlight(code, lang): highlighted HTML for the inside of <code> (escaped
+    // text for a language without a grammar).
+    filters.insert(
+        "highlight".into(),
+        Value::func(|args| {
+            let code = args.first().map(Value::to_js_string).unwrap_or_default();
+            let lang = args.get(1).map(Value::to_js_string).unwrap_or_default();
+            #[cfg(feature = "highlight")]
+            if let Some(html) = crate::highlight::highlight(&lang, &code, &[]) {
+                return Ok(Value::from(html));
+            }
+            let _ = lang;
+            Ok(Value::from(crate::markdown::escape_text(&code)))
         }),
     );
     filters.insert(
@@ -574,6 +604,7 @@ fn load_template(
     global: &Map,
     dir_data: &HashMap<PathBuf, Map>,
     layouts: &Mutex<HashMap<String, Arc<Layout>>>,
+    commit_dates: &HashMap<PathBuf, DateTime<Utc>>,
 ) -> Result<Tpl> {
     let rel_path = path.strip_prefix(&ctx.input_dir).unwrap_or(path);
     let rel = rel_path.to_string_lossy().replace('\\', "/");
@@ -660,6 +691,11 @@ fn load_template(
             file_path_stem,
             mtime: DateTime::<Utc>::from(mtime),
             file_date,
+            last_modified: match cfg.last_modified {
+                Some(crate::LastModified::Git) => Some(commit_dates.get(path).copied().unwrap_or(DateTime::<Utc>::from(mtime))),
+                Some(crate::LastModified::File) => Some(DateTime::<Utc>::from(mtime)),
+                None => None,
+            },
         })
     })()
     .with_context(|| format!("in {}", rel))
@@ -676,14 +712,18 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
             _ => tpl.file_date.unwrap_or(tpl.mtime),
         };
         let base_page = |url: Value, output: Value, date: DateTime<Utc>| {
-            Value::from_pairs([
+            let mut page = vec![
                 ("url", url),
                 ("outputPath", output),
                 ("inputPath", Value::from(input_path.as_str())),
                 ("fileSlug", Value::from(tpl.file_slug.as_str())),
                 ("filePathStem", Value::from(tpl.file_path_stem.as_str())),
                 ("date", Value::Date(date)),
-            ])
+            ];
+            if let Some(modified) = tpl.last_modified {
+                page.push(("lastModified", Value::Date(modified)));
+            }
+            Value::from_pairs(page)
         };
 
         let pagination = tpl.data.get("pagination").filter(|p| p.as_object().is_some()).cloned();
@@ -1246,6 +1286,80 @@ fn bundle_files(cfg: &Config, ctx: &BuildContext, pages: &[Page], templates: &[P
         }
     }
     Ok(jobs)
+}
+
+/// When each file in the git repository last changed in a commit, from one
+/// `git log`. Files with uncommitted changes are left out (they use their
+/// modification time). Not a repository, or no git: nothing, with a warning.
+fn git_dates(cfg: &Config, ctx: &BuildContext) -> HashMap<PathBuf, DateTime<Utc>> {
+    let git = |args: &[&str]| std::process::Command::new("git").arg("-C").arg(&ctx.root).args(["-c", "core.quotepath=off"]).args(args).output();
+    let warn = |msg: &str| {
+        if !cfg.quiet {
+            eprintln!("warn: lastModified: {}", msg);
+        }
+    };
+    let top = match git(&["rev-parse", "--show-toplevel"]) {
+        Ok(out) if out.status.success() => PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()),
+        Ok(_) => {
+            warn("not a git repository, so pages use their files' times");
+            return HashMap::new();
+        }
+        Err(e) => {
+            warn(&format!("can't run git ({}), so pages use their files' times", e));
+            return HashMap::new();
+        }
+    };
+    let top = dunce::canonicalize(&top).unwrap_or(top);
+    if git(&["rev-parse", "--is-shallow-repository"]).is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "true") {
+        warn("this is a shallow clone, so dates come from the commits it has (fetch the full history, like `fetch-depth: 0` in GitHub Actions)");
+    }
+    let mut dates = HashMap::new();
+    let Ok(out) = git(&["log", "--format=@%ct", "--name-only", "--no-merges", "--", "."]) else { return dates };
+    let mut current: Option<DateTime<Utc>> = None;
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        if let Some(ts) = line.strip_prefix('@') {
+            current = ts.trim().parse::<i64>().ok().and_then(|t| DateTime::<Utc>::from_timestamp(t, 0));
+        } else if let (false, Some(date)) = (line.trim().is_empty(), current) {
+            dates.entry(top.join(line.trim())).or_insert(date);
+        }
+    }
+    if let Ok(out) = git(&["status", "--porcelain", "--", "."]) {
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            if let Some(path) = line.get(3..) {
+                let path = path.rsplit(" -> ").next().unwrap_or(path);
+                dates.remove(&top.join(path));
+            }
+        }
+    }
+    // Templates are found through the input folder's real path.
+    dates.into_iter().map(|(p, d)| (dunce::canonicalize(&p).unwrap_or(p), d)).collect()
+}
+
+/// Run the file builders ([`Config::add_file_builder`]) and write their
+/// files, unless a file is already up to date.
+fn run_file_builders(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
+    let mut owners: HashMap<PathBuf, &str> = HashMap::new();
+    let mut out = Vec::new();
+    for (name, builder) in &cfg.file_builders {
+        for file in builder(ctx).with_context(|| format!("{} failed", name))? {
+            let rel = file.path.trim_start_matches('/');
+            if !file.path.starts_with('/') || rel.is_empty() || rel.ends_with('/') || rel.split('/').any(|p| p == "..") {
+                bail!("{}: {:?} must be a URL path to a file in the output, starting with /", name, file.path);
+            }
+            let path = ctx.output_dir.join(rel);
+            if let Some(other) = owners.insert(path.clone(), name) {
+                bail!("{} and {} both write {}", other, name, display_path(ctx, &path));
+            }
+            if std::fs::read_to_string(&path).ok().as_deref() != Some(file.contents.as_str()) {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&path, &file.contents).with_context(|| format!("writing {}", path.display()))?;
+            }
+            out.push(path);
+        }
+    }
+    Ok(out)
 }
 
 /// Run the generators ([`Config::add_generator`]) over the written pages and

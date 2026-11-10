@@ -1,6 +1,8 @@
 ---
 layout: base.njk
 ---
+{% set crumbs = nav | navBreadcrumbs(page.url) %}
+<nav class="breadcrumbs">{% for crumb in crumbs %}{% if not loop.last %}{{ crumb.title }} › {% endif %}{% endfor %}</nav>
 <h1>{{ title }}</h1>
 {{ content | safe }}
 {% set pager = nav | navPager(page.url) %}

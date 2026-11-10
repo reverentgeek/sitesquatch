@@ -1,0 +1,4 @@
+[
+  { "name": "next", "label": "Next (unreleased)" },
+  { "name": "1.0", "label": "1.0", "latest": true }
+]

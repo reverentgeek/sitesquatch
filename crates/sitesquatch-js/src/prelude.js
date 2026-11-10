@@ -87,7 +87,7 @@
 	// they're allowed at the top level only. Everything else can also come from
 	// a plugin, and is applied in order: the config's own entries first, then
 	// each plugin's, depth first.
-	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "clean", "ignore", "bundles", "strict" ];
+	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "clean", "ignore", "bundles", "strict", "lastModified" ];
 	const PARTS = [ "data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins" ];
 	// Engine names a config can't replace.
 	const CORE_ENGINES = [ "edge", "md", "html", "txt" ];
@@ -116,10 +116,19 @@
 				add( name, fn );
 			}
 		};
+		// A hook is a function, or `{ run: "command" }` to run a program.
 		const hooks = ( event, value, where ) => {
-			for ( const fn of list( value ) ) {
-				typeof fn === "function" || fail( `${ where }: ${ event } must be a function (or an array of functions)` );
-				ops.push( { op: "hook", event, fn: keep( fn ), where } );
+			for ( const hook of list( value ) ) {
+				if ( isObject( hook ) ) {
+					for ( const key of Object.keys( hook ) ) {
+						key === "run" || fail( `${ where }: ${ event }: "${ key }" isn't an option (use { run: "command" })` );
+					}
+					typeof hook.run === "string" && hook.run.trim() || fail( `${ where }: ${ event }: run must be a command, like { run: "pagefind --site dist" }` );
+					ops.push( { op: "hook", event, run: hook.run, where } );
+					continue;
+				}
+				typeof hook === "function" || fail( `${ where }: ${ event } must be a function or { run: "command" } (or an array of them)` );
+				ops.push( { op: "hook", event, fn: keep( hook ), where } );
 			}
 		};
 

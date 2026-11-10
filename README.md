@@ -234,7 +234,8 @@ The default export is the config: an object, or a function (sync or async) that 
 | `strict` | Printing an undefined value (`{{ titel }}`) is an error that names the template and line, in every template language. Conditionals and defaults (`@if(subtitle)`, `{% if subtitle %}`, `x ?? "none"`) still work (default `false`). |
 | `passthrough` | Files or folders to copy: a path, or `{ from: to }`, or an array of them. A path can be a glob: `"src/**/*.pdf"` keeps each file's own path, and `{ "assets/**/*.png": "images" }` puts them under `images/` by their path below `assets/`. |
 | `watch` | More paths for `ssqch serve` to watch. |
-| `beforeBuild`, `afterBuild` | Build hooks (a function or an array). They get `{ env, serving, dirs }`, plus `written` (the files written) after the build. Async works. |
+| `beforeBuild`, `afterBuild` | Build hooks (a function or an array). They get `{ env, serving, dirs }`, plus `written` (the files written) after the build. Async works. A hook can also run a program: `afterBuild: { run: "npx -y pagefind --site dist" }` runs it in the project root (through `sh -c`, or `cmd /C` on Windows) with its output shown, and a failure fails the build. It gets `SSQCH_ENV`, `SSQCH_SERVING`, `SSQCH_INPUT` and `SSQCH_OUTPUT`. In `sitesquatch.toml`, `before_build` and `after_build` take lists of commands. |
+| `lastModified` | `page.lastModified`: `"git"` for when the page's file last changed in a commit (its modification time if it has uncommitted changes), or `"file"` for the modification time. Off by default. In CI, check out the full history (`fetch-depth: 0` in GitHub Actions), or every page gets the date of the last commit; the build warns about a shallow clone. |
 | `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `markdown`, `deepMerge`, `clean`, `ignore`, `bundles`, `strict`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
 
 Mistakes get caught early. A misspelled key or option is an error, and so are two plugins that define the same filter, data or collection name (the message names both). When something in your code throws, you get `ssqch.config.js: too many pine cones` and a stack trace that points at your file, like `at bad (lib/filters.js:3:9)`.
@@ -290,6 +291,7 @@ Data functions run on every build. `ssqch serve` reloads a data file when it cha
 - **`ssqch/rss`:** `rssPlugin()` adds the filters `getNewestCollectionItemDate`, `dateToRfc3339`, `dateToRfc822`, `absoluteUrl`, `htmlToAbsoluteUrls` and `url`. They're also named exports, for your own code.
 - **`ssqch/assets`:** `assetsPlugin({ files })` fingerprints CSS and JS for long-lived caching. Templates link the plain paths (`<link rel="stylesheet" href="/assets/index.css">`). In a production build, each listed file in the output folder (written there by your CSS or JS tool before `ssqch build`) is renamed to `index.<hash>.css`, older fingerprinted copies are deleted, and every `href` and `src` in the HTML that points at it is rewritten, keeping any query string. `ssqch serve` leaves the plain paths alone, unless the plain file isn't there but the last production build left a fingerprinted copy: then pages link to that copy (with a warning), so serving after a build without running your CSS and JS watchers still has styles. A listed file that's missing fails a production build. `assetUrl("/assets/index.css")` returns the URL to use, for places outside an `href` or `src`. `url()` references inside CSS and imports inside JavaScript aren't rewritten. Options: `files` (URL paths, required), `fingerprint` (`true` or `false`; on for production builds by default) and `integrity` (add `integrity="sha384-..."` to the `<link>` and `<script>` elements that load a fingerprinted file; default `false`).
 - **`ssqch/links`:** `linksPlugin(options)` checks the built site's internal links after each build. Every `href` (on `a`, `link` and `area`), `src` (images, scripts, iframes, media) and `srcset` URL has to point at something in the output, and a `#fragment` has to match an `id` on the page it points to. External links aren't checked, and neither are paths a Netlify `_redirects` file in the output covers. Broken links fail production builds, listing each page and link, and are warnings in `ssqch serve`. Options: `anchors` (check `#fragments`; default `true`), `ignore` (URL path prefixes to skip, like `["/downloads/"]`) and `fail` (`true` or `false`; production builds only by default).
+- **`ssqch/sass`:** `sassPlugin({ files: { "src/scss": "/css" } })` compiles Sass with [grass](https://github.com/connorskees/grass) (pure Rust: no Dart Sass or Node). A folder compiles every `.scss` and `.sass` file in it that doesn't start with `_`, keeping their paths; a file (`{ "src/app.scss": "/app.css" }`) compiles to the path given. The CSS is written at the start of each build, so `ssqch/assets` can fingerprint it and the link checker sees it, and `ssqch serve` rebuilds when a source changes. Options: `files` (required), `style` (`"compressed"` for production builds and `"expanded"` otherwise, by default) and `loadPaths`.
 - **`ssqch/sitemap`:** `sitemapPlugin({ url: "https://example.com" })` writes `sitemap.xml` listing every HTML page with its absolute URL and its date as `<lastmod>`. Left out: pages with `sitemap: false` in their data, 404 pages, pages 2 and on of a list split into pages (pagination with a `size` over 1; a page per tag is still listed), and URLs matching `exclude` globs (`["/tags/**"]`). Options: `url` (required), `exclude`, `lastmod` (default `true`), `output` (default `"/sitemap.xml"`) and `paginated` (list every page of a split list).
 - **`ssqch/redirects`:** `redirectsPlugin(options)` keeps old URLs working. A page lists its old URLs in front matter (`aliases: [/2019/pine-cones/, /pine.html]`), and the `redirects` option adds others (`{ "/feed/": "/feed.xml" }`, where the new URL can be on another site). Each old URL gets a small page that sends visitors on (a meta refresh, a canonical link and `noindex`), and with `netlify: true`, a `/old  /new  301` line in `_redirects`, after any lines your own `_redirects` template writes. An old URL that's another page's URL is an error. Options: `pages` (default `true`), `netlify` (default `false`) and `redirects`.
 
@@ -313,7 +315,7 @@ heading_ids = "blackfriday"
 
 ## Moving from another generator
 
-Guides map another generator's config, front matter and templates onto ssqch's: [from Zola](docs/guides/from-zola.md) and [from Eleventy](docs/guides/from-eleventy.md). [`examples/sites/`](examples/sites/) has small, complete sites to start from or copy parts of, each built in CI: `blog-tags`, `blog-categories`, `docs-sidebar` and `glossary-docs`.
+Guides map another generator's config, front matter and templates onto ssqch's: [from Zola](docs/guides/from-zola.md), [from Eleventy](docs/guides/from-eleventy.md), [from Docusaurus](docs/guides/from-docusaurus.md) and [from MkDocs](docs/guides/from-mkdocs.md). [`examples/sites/`](examples/sites/) has small, complete sites to start from or copy parts of, each built in CI: `blog-tags`, `blog-categories`, `docs-sidebar`, `glossary-docs`, `versioned-docs`, `component-docs` and `reference-pages`.
 
 ## Templates and data
 
@@ -324,6 +326,7 @@ Here's what's supported:
 - **Pagination:** `data`, `size`, `alias`, `reverse`, `filter`, `addAllPagesToCollections` and hrefs.
 - **Permalinks:** dynamic permalinks, `permalink: false` and `dynamicPermalink`. A permalink (or `computed` value) with `{{ }}` renders in the page's own template language, so a Liquid page can write `permalink: "/{{ title | slugify }}/"`; Markdown and HTML pages use their `markdownEngine` or `htmlEngine`, or Edge.
 - **Front matter:** YAML between `---` lines, TOML between `+++` lines, or JSON after `---json` (`---yaml` and `---toml` work too). `.markdown` files are Markdown, like `.md`.
+- **Navigation:** `navTree(nav, page.url)` takes a tree from data (`_data/nav.yml`: entries with `title`, `url`, and children under `children`, `items` or `pages`) and marks each entry `current`, `ancestor` or `open`, for a sidebar that highlights where you are. `navPager(nav, page.url)` returns `{ previous, next }` in reading order, and `navBreadcrumbs(nav, page.url)` the entries from the top down to the page. To build the tree from front matter instead, give pages `nav: { title, parent, order }` (or `nav: true`) and use `pagesTree(collections.docs)`. URLs match with or without `index.html` and the last `/`.
 - **Dates:** a page's `date` comes from its data, then from the start of its file name (`2024-06-01-post.md`), then from when the file last changed. `computed.date` works too.
 - **Drafts:** `draft: true` builds the page in development (`ssqch serve`, or `--env development`) and leaves it out of production builds, collections included.
 - **Excerpts and reading time:** `page.excerpt` is the HTML before a `<!-- more -->` comment, or else the first paragraph, for layouts and collections (`post.page.excerpt` in a list of posts). `readingTime(content)` is the minutes it takes to read some HTML at 200 words a minute (`readingTime(content, 250)` for another pace), at least 1.
@@ -365,9 +368,11 @@ export default defineConfig({
 
 **A table of contents:** after a page's content renders, `page.headings` lists its headings (`level`, `id` and `text`), so its layouts can build a table of contents. The built-in `toc` filter does it for you: `{{{ toc(page.headings) }}}` writes nested `<ul>` links to the `h2` and `h3` headings, and `toc(page.headings, { from: 2, to: 4, ordered: true })` changes the levels or uses `<ol>`. In Liquid that's `{{ page.headings | toc: 2, 4 }}`, and in Nunjucks, `{{ toc(page.headings) | safe }}`. The headings come from the HTML, so they work for pages in any template language. Collections have them too (`post.page.headings`).
 
+**Highlighting anywhere:** `highlight(code, lang)` returns the highlighted HTML for the inside of a `<code>` (escaped text for a language without a grammar), for code that isn't a Markdown fence: an example container's source, a snippet from a data file.
+
 **Markdown anywhere:** the `markdown` filter renders a string, such as a description from front matter: `{{{ markdown(summary) }}}`, or `markdown(title, "inline")` (in Liquid, `{{ title | markdown: "inline" }}`) to leave out the `<p>`. Config and data files can `import { markdown } from "ssqch"`.
 
-**Containers:** a block between `::: name` and `:::` renders through `_includes/containers/name.*`, a template in any engine. It gets the page's data plus `container.name`, `container.args` (the rest of the opening line) and `container.content` (the block's Markdown, rendered). One template covers admonitions, tabs, figures or anything else that wraps content:
+**Containers:** a block between `::: name` and `:::` renders through `_includes/containers/name.*`, a template in any engine. It gets the page's data plus `container.name`, `container.args` (the rest of the opening line, without `[` `]` around it: `:::tip[Watch out]` works), `container.content` (the block's Markdown, rendered) and `container.source` (the block's lines as written, for an example that shows its own code). One template covers admonitions, tabs, figures or anything else that wraps content:
 
 ```markdown
 ::: warning Hot pine cones
@@ -469,6 +474,18 @@ Encoding images is by far the slowest part of a build, so it's worth never doing
 ssqch also remembers each source image's hash, size and modification time in `.cache/ssqch/image-hashes.json`, so unchanged images aren't read again. Cache that folder too. (A fresh clone gives every file a new modification time, so its first build re-hashes everything, which takes about 20 ms on the blog's 420 MB of images.) Add `.cache/` to your `.gitignore`, or turn the hash cache off with `hashCache: false`. It's kept outside the output folder because it names your source paths, and the output gets published.
 
 Set `prune: true` on `imagePlugin()` to delete image files the build didn't use, so the cache doesn't keep growing as images change. Only turn it on for full builds, where every image goes through the image plugin.
+
+### Search
+
+ssqch doesn't build a search index itself; [Pagefind](https://pagefind.app) does it well and runs after the build. Add it as a command (with Node for `npx`, or install Pagefind's own binary):
+
+```js
+export default defineConfig(({ env }) => ({
+  afterBuild: env === "production" ? [{ run: "npx -y pagefind --site dist" }] : [],
+}));
+```
+
+Then load `/pagefind/pagefind-ui.js` and `pagefind-ui.css` in your layout and add a `<div id="search">` for its search box. The `docs-sidebar` example does this.
 
 ### Netlify
 

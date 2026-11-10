@@ -1,0 +1,10 @@
+[
+  { "title": "Getting started", "items": [
+    { "title": "Introduction", "url": "/docs/next/" },
+    { "title": "Installation", "url": "/docs/next/install/" }
+  ] },
+  { "title": "Guides", "items": [
+    { "title": "Animations", "url": "/docs/next/animations/" },
+    { "title": "New architecture", "url": "/docs/next/new-architecture/" }
+  ] }
+]

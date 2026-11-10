@@ -296,13 +296,23 @@ Moved to a later release (decided 2026-11-09); 0.4 ships without it.
 
 ### 5. Docs-site features
 
-- [ ] Navigation helpers: a tree from data with current and ancestor flags, and prev/next.
-- [ ] Sass with `grass` (pure Rust), as `ssqch/sass`.
-- [ ] Search: evaluate Pagefind's library API for a `searchPlugin()`, and the binary-size cost.
-- [ ] Decide whether hooks can run other programs, or document running them around the build.
-- [ ] `page.lastModified` from git, opt-in.
-- [ ] Examples `versioned-docs`, `component-docs` and `reference-pages`; guides from Docusaurus
-      and from MkDocs.
+- [x] Navigation helpers: `navTree` (current, ancestor and open flags), `navPager`,
+      `navBreadcrumbs`, and `pagesTree` for a tree from `nav` front matter.
+- [x] Sass with `grass` (pure Rust), as `ssqch/sass`, on a new `Config::add_file_builder` (files
+      written before `before_build` hooks, so fingerprinting sees them). eslint.org's 43
+      stylesheets compile, within 0.2% of Dart Sass's size (grass writes `hsl()` as hex). Adds
+      about 2.7 MB; a default feature.
+- [x] Search: evaluated (2026-11-09). Pagefind's library API works (eslint.org's 632 pages in
+      0.38 s) but adds about 13 MB to the binary. Decided: no built-in search for now; the README
+      shows Pagefind after the build, and `docs-sidebar` uses it with `SEARCH=1`.
+  - [ ] Maybe later: a lighter built-in search, or Pagefind as an opt-in download.
+- [x] Hooks can run programs: `{ run: "command" }` in `beforeBuild`/`afterBuild` (decided
+      2026-11-09).
+- [x] `page.lastModified` from git (`lastModified: "git"`), opt-in, with a warning for shallow
+      clones; the sitemap uses it.
+- [x] Examples `versioned-docs`, `component-docs` and `reference-pages`; guides from Docusaurus
+      and from MkDocs. Writing them added the `highlight` filter, `container.source` and
+      `:::tip[Title]` arguments.
 
 ### 6. JavaScript ecosystem
 

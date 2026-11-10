@@ -24,7 +24,7 @@ declare module "ssqch" {
 		/** Where the page is written, or `false`. */
 		outputPath: string | false;
 		/** `url`, `inputPath`, `date` and the rest, plus `headings` from the rendered body. */
-		page: Record<string, unknown> & { headings?: Heading[]; excerpt?: string };
+		page: Record<string, unknown> & { headings?: Heading[]; excerpt?: string; lastModified?: Date };
 		/** The page's data: front matter, data files and the rest of the cascade. */
 		data: Record<string, any>;
 		/** The rendered body, without layouts. */
@@ -97,7 +97,8 @@ declare module "ssqch" {
 	}
 
 	type MaybePromise<T> = T | Promise<T>;
-	type Hook = (event: BuildEvent) => MaybePromise<void>;
+	/** A function, or `{ run: "command" }` to run a program in the project root (through `sh -c`, or `cmd /C` on Windows). It gets `SSQCH_ENV`, `SSQCH_SERVING`, `SSQCH_INPUT` and `SSQCH_OUTPUT`; a failure fails the build. */
+	type Hook = ((event: BuildEvent) => MaybePromise<void>) | { run: string };
 	/** Renders a template's body (front matter removed) with the page's data. */
 	type EngineRender = (source: string, data: Record<string, any>) => MaybePromise<string>;
 
@@ -170,6 +171,8 @@ declare module "ssqch" {
 		bundles?: boolean;
 		/** Printing an undefined value (`{{ titel }}`) is an error, in every template language. Conditionals and defaults still work. Default `false`. */
 		strict?: boolean;
+		/** `page.lastModified`: `"git"` for the last commit that changed the page's file (its modification time when it has uncommitted changes), or `"file"` for the modification time. Off by default. Needs the full history in CI (`fetch-depth: 0`). */
+		lastModified?: "git" | "file" | false;
 	}
 
 	/** Returns its argument. It's there so the config reads as one, and for these types. */
@@ -331,4 +334,20 @@ declare module "ssqch/redirects" {
 
 	/** Redirects from each page's `aliases` front matter and from `redirects`. */
 	export function redirectsPlugin(options?: RedirectsPluginOptions): BuiltinPlugin;
+}
+
+declare module "ssqch/sass" {
+	import type { BuiltinPlugin } from "ssqch";
+
+	export interface SassPluginOptions {
+		/** Sources (relative to the project root) to output URL paths. A folder compiles every `.scss` and `.sass` file in it that doesn't start with `_`, keeping their paths: `{ "src/scss": "/css" }`. A file compiles to the path given: `{ "src/app.scss": "/app.css" }`. */
+		files: Record<string, string>;
+		/** Default: `"compressed"` for production builds, `"expanded"` otherwise. */
+		style?: "compressed" | "expanded";
+		/** More folders `@use` and `@import` look in, relative to the project root. */
+		loadPaths?: string[];
+	}
+
+	/** Compiles Sass at the start of each build, so fingerprinting and the link checker see the CSS. */
+	export function sassPlugin(options: SassPluginOptions): BuiltinPlugin;
 }

@@ -1,0 +1,13 @@
+---
+layout: base.edge
+title: Blog
+permalink: /blog/
+---
+<main style="margin: 0 auto">
+<h1>Blog</h1>
+<ul>
+@each(post in collections.posts)
+  <li><a href="{{ post.url }}">{{ post.data.title }}</a></li>
+@end
+</ul>
+</main>

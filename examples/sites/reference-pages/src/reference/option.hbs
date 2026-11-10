@@ -1,0 +1,25 @@
+---
+layout: base.hbs
+pagination:
+  data: options
+  size: 1
+  alias: option
+permalink: "/reference/{{option.name}}/"
+computed:
+  title: "{{option.name}}"
+---
+<h1><code>{{option.name}}</code></h1>
+<p>{{{markdown option.description "inline"}}}</p>
+<dl>
+  <dt>Type</dt><dd><code>{{option.type}}</code></dd>
+  <dt>Category</dt><dd>{{option.category}}</dd>
+  <dt>Default</dt><dd>{{#if option.default}}<code>{{option.default}}</code>{{else}}none{{/if}}</dd>
+</dl>
+{{#if option.related}}
+<h2>Related</h2>
+<ul>
+  {{#each option.related}}
+  <li><a href="/reference/{{this}}/"><code>{{this}}</code></a></li>
+  {{/each}}
+</ul>
+{{/if}}

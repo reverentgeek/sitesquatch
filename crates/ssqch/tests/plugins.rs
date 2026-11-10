@@ -354,3 +354,34 @@ fn assets_get_integrity_hashes() {
     assert!(ok, "{}", log);
     assert!(!read(&root, "dist/index.html").contains("integrity"));
 }
+
+#[test]
+fn sass_compiles_folders_and_files() {
+    let root = project(&[
+        ("ssqch.config.js", b"import { sassPlugin } from \"ssqch/sass\";\nimport { linksPlugin } from \"ssqch/links\";\nimport { assetsPlugin } from \"ssqch/assets\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [sassPlugin({ files: { \"styles\": \"/css\", \"print.sass\": \"/print.css\" } }), assetsPlugin({ files: [\"/css/app.css\"] }), linksPlugin()] };"),
+        ("styles/app.scss", b"@use \"colors\";\nbody { color: colors.$pine; a { color: red; } }\n"),
+        ("styles/_colors.scss", b"$pine: #01796f;\n"),
+        ("styles/pages/blog.scss", b".post { margin: 0 auto; }\n"),
+        ("print.sass", b"body\n  font-size: 12pt\n"),
+        ("src/index.html", b"<link rel=\"stylesheet\" href=\"/css/app.css\"><link rel=\"stylesheet\" href=\"/css/pages/blog.css\"><link rel=\"stylesheet\" href=\"/print.css\">"),
+    ]);
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert!(log.contains("Sass    3 files (compressed)"), "{}", log);
+    assert!(log.contains("Links   3 checked, 0 broken"), "{}", log);
+    // The assets plugin fingerprinted the compiled CSS.
+    let html = read(&root, "dist/index.html");
+    let app = html.split('"').find(|s| s.starts_with("/css/app.") && s.ends_with(".css")).unwrap_or_else(|| panic!("{}", html)).to_string();
+    assert_eq!(read(&root, &format!("dist{}", app)), "body{color:#01796f}body a{color:red}");
+    assert_eq!(read(&root, "dist/css/pages/blog.css"), ".post{margin:0 auto}");
+    assert_eq!(read(&root, "dist/print.css"), "body{font-size:12pt}");
+    assert!(!root.join("dist/css/_colors.css").exists());
+
+    // Expanded in development, and a mistake names the file.
+    let (ok, log) = ssqch_with(&root, &["--env", "development"]);
+    assert!(ok, "{}", log);
+    assert!(read(&root, "dist/css/pages/blog.css").contains(".post {\n  margin: 0 auto;\n}"));
+    std::fs::write(root.join("styles/pages/blog.scss"), ".post { color: $missing; }").unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(!ok && log.contains("styles/pages/blog.scss") && log.contains("Undefined variable"), "{}", log);
+}

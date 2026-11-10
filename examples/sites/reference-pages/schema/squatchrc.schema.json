@@ -1,0 +1,11 @@
+{
+  "title": "squatchrc",
+  "properties": {
+    "forest": { "category": "Location", "type": "string", "default": "pacific", "description": "The forest to search. One of `pacific`, `boreal` or `temperate`." },
+    "radius": { "category": "Location", "type": "number", "default": 5, "description": "How far from the trailhead to search, in kilometers.", "related": ["forest"] },
+    "nightVision": { "category": "Equipment", "type": "boolean", "default": false, "description": "Search after dark. Needs a camera that supports it.", "related": ["camera"] },
+    "camera": { "category": "Equipment", "type": "string", "default": "trail-cam", "description": "The camera to use: `trail-cam` or `drone`.", "related": ["nightVision"] },
+    "snacks": { "category": "Equipment", "type": "string[]", "default": ["pine cones"], "description": "Snacks to leave out as bait." },
+    "reportTo": { "category": "Reporting", "type": "string", "description": "An email address for sighting reports. No reports are sent without it." }
+  }
+}

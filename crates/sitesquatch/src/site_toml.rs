@@ -39,6 +39,13 @@ pub struct SiteToml {
     pub ignore: Option<Vec<String>>,
     pub bundles: Option<bool>,
     pub strict: Option<bool>,
+    /// `"git"` or `"file"`.
+    pub last_modified: Option<String>,
+    /// Programs to run before and after each build.
+    #[serde(default)]
+    pub before_build: Vec<String>,
+    #[serde(default)]
+    pub after_build: Vec<String>,
     /// `[markdown]`, with the config's keys in snake case (`heading_ids = "blackfriday"`).
     pub markdown: Option<toml::Table>,
     #[serde(default)]
@@ -66,6 +73,15 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
     if let Some(v) = site.ignore { cfg.ignore = v; }
     if let Some(v) = site.bundles { cfg.bundles = v; }
     if let Some(v) = site.strict { cfg.strict = v; }
+    for command in site.before_build {
+        cfg.run_before_build(command);
+    }
+    for command in site.after_build {
+        cfg.run_after_build(command);
+    }
+    if let Some(v) = site.last_modified {
+        cfg.last_modified = Some(crate::LastModified::parse(&v).with_context(|| format!("invalid {}: last_modified must be \"git\" or \"file\"", path.display()))?);
+    }
     if let Some(table) = site.markdown {
         let mut map = crate::Map::new();
         for (key, value) in table {

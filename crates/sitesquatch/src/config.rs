@@ -137,6 +137,26 @@ pub struct BuildReport {
     pub summary: Vec<(String, String)>,
 }
 
+/// Where `page.lastModified` comes from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LastModified {
+    /// The last commit that changed the file (or the file's time, when it has
+    /// uncommitted changes or isn't committed yet).
+    Git,
+    /// The file's modification time.
+    File,
+}
+
+impl LastModified {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "git" => Some(LastModified::Git),
+            "file" => Some(LastModified::File),
+            _ => None,
+        }
+    }
+}
+
 /// A page the build wrote, for [`Config::add_generator`].
 #[derive(Clone, Debug)]
 pub struct PageSummary {
@@ -159,6 +179,7 @@ pub struct GeneratedFile {
     pub append: bool,
 }
 
+pub type FileBuilderFn = Arc<dyn Fn(&BuildContext) -> Result<Vec<GeneratedFile>> + Send + Sync>;
 pub type GeneratorFn = Arc<dyn Fn(&BuildContext, &[PageSummary]) -> Result<Vec<GeneratedFile>> + Send + Sync>;
 pub type DataFn = Arc<dyn Fn(&BuildContext) -> Result<Value> + Send + Sync>;
 pub type CollectionFn = Arc<dyn Fn(&CollectionApi) -> Result<Value> + Send + Sync>;
@@ -204,6 +225,8 @@ pub struct Config {
     pub bundles: bool,
     /// Undefined values in templates are errors, not empty output.
     pub strict: bool,
+    /// Where `page.lastModified` comes from, if anywhere.
+    pub last_modified: Option<LastModified>,
     pub env: Environment,
     pub serving: bool,
     pub quiet: bool,
@@ -223,6 +246,7 @@ pub struct Config {
     pub(crate) plugins: Vec<String>,
     pub(crate) summaries: Vec<(String, SummaryFn)>,
     pub(crate) generators: Vec<(String, GeneratorFn)>,
+    pub(crate) file_builders: Vec<(String, FileBuilderFn)>,
 }
 
 impl Config {
@@ -243,6 +267,7 @@ impl Config {
             ignore: Vec::new(),
             bundles: false,
             strict: false,
+            last_modified: None,
             env,
             serving: false,
             quiet: false,
@@ -261,6 +286,7 @@ impl Config {
             plugins: Vec::new(),
             summaries: Vec::new(),
             generators: Vec::new(),
+            file_builders: Vec::new(),
         }
     }
 
@@ -371,6 +397,21 @@ impl Config {
         self
     }
 
+    /// Run a program before each build (after file builders), like a hook:
+    /// `npx tailwindcss -i src/app.css -o dist/app.css`. See [`run_command`].
+    pub fn run_before_build(&mut self, command: impl Into<String>) -> &mut Self {
+        let command = command.into();
+        let quiet = self.quiet;
+        self.on_before_build(move |ctx| run_command(ctx, "beforeBuild", &command, quiet))
+    }
+
+    /// Run a program after each build, like a hook: `pagefind --site dist`.
+    pub fn run_after_build(&mut self, command: impl Into<String>) -> &mut Self {
+        let command = command.into();
+        let quiet = self.quiet;
+        self.on_after_build(move |ctx, _| run_command(ctx, "afterBuild", &command, quiet))
+    }
+
     /// Add a line to the summary printed after each build, such as
     /// `Images  4,689 files from 812 sources`. `f` runs after the
     /// `after_build` hooks; returning `None` leaves the line out.
@@ -391,6 +432,17 @@ impl Config {
         F: Fn(&BuildContext, &[PageSummary]) -> Result<Vec<GeneratedFile>> + Send + Sync + 'static,
     {
         self.generators.push((name.into(), Arc::new(f)));
+        self
+    }
+
+    /// Add files built from sources of their own (compiled CSS), written at
+    /// the start of each build, before `before_build` hooks run (so asset
+    /// fingerprinting sees them). The build records them for `clean`.
+    pub fn add_file_builder<F>(&mut self, name: impl Into<String>, f: F) -> &mut Self
+    where
+        F: Fn(&BuildContext) -> Result<Vec<GeneratedFile>> + Send + Sync + 'static,
+    {
+        self.file_builders.push((name.into(), Arc::new(f)));
         self
     }
 
@@ -439,4 +491,37 @@ impl Config {
         paths.extend(self.watch_targets.iter().map(|p| ctx.root.join(p)));
         paths
     }
+}
+
+/// Run `command` through the shell (`sh -c`, or `cmd /C` on Windows) in the
+/// project root, with its output passed through. It gets `SSQCH_ENV`,
+/// `SSQCH_SERVING` (`true` or `false`), `SSQCH_INPUT` and `SSQCH_OUTPUT` (the
+/// folders, absolute). A failure (or a program that can't start) is an error
+/// naming the command.
+pub fn run_command(ctx: &BuildContext, event: &str, command: &str, quiet: bool) -> Result<()> {
+    if !quiet {
+        println!("[ssqch] {}: {}", event, command);
+    }
+    let mut cmd = if cfg!(windows) {
+        let mut c = std::process::Command::new("cmd");
+        c.arg("/C").arg(command);
+        c
+    } else {
+        let mut c = std::process::Command::new("sh");
+        c.arg("-c").arg(command);
+        c
+    };
+    let status = cmd
+        .current_dir(&ctx.root)
+        .env("SSQCH_ENV", ctx.env.as_str())
+        .env("SSQCH_SERVING", if ctx.serving { "true" } else { "false" })
+        .env("SSQCH_INPUT", &ctx.input_dir)
+        .env("SSQCH_OUTPUT", &ctx.output_dir)
+        .status()
+        .map_err(|e| anyhow::anyhow!("{}: couldn't run `{}`: {}", event, command, e))?;
+    if !status.success() {
+        let how = status.code().map(|c| format!("exited with status {}", c)).unwrap_or_else(|| "was stopped".into());
+        anyhow::bail!("{}: `{}` {}", event, command, how);
+    }
+    Ok(())
 }

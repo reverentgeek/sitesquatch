@@ -466,3 +466,57 @@ fn walk(dir: &std::path::Path) -> Vec<String> {
     }
     out
 }
+
+#[test]
+fn last_modified_from_git() {
+    let dir = temp_dir("lastmod");
+    let d = dir.to_str().unwrap();
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    let git = |args: &[&str], date: &str| {
+        let out = Command::new("git").arg("-C").arg(&dir).args(args).env("GIT_AUTHOR_DATE", date).env("GIT_COMMITTER_DATE", date).env("GIT_AUTHOR_NAME", "t").env("GIT_AUTHOR_EMAIL", "t@example.com").env("GIT_COMMITTER_NAME", "t").env("GIT_COMMITTER_EMAIL", "t@example.com").output().unwrap();
+        assert!(out.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&out.stderr));
+    };
+    std::fs::write(dir.join("ssqch.config.js"), "import { sitemapPlugin } from \"ssqch/sitemap\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, lastModified: \"git\", plugins: [sitemapPlugin({ url: \"https://example.com\" })] };\n").unwrap();
+    std::fs::write(dir.join("src/a.edge"), "{{ page.lastModified.toISOString() }}").unwrap();
+    std::fs::write(dir.join("src/b.edge"), "{{ page.lastModified.toISOString() }}").unwrap();
+    git(&["init", "-q"], "2020-01-01T00:00:00Z");
+    git(&["add", "."], "2020-01-01T00:00:00Z");
+    git(&["commit", "-q", "-m", "first"], "2021-03-04T05:06:07Z");
+    std::fs::write(dir.join("src/b.edge"), "{{ page.lastModified.toISOString() }} ").unwrap();
+    git(&["commit", "-q", "-am", "second"], "2022-05-06T07:08:09Z");
+    std::fs::write(dir.join("src/c.edge"), "{{ page.lastModified.getFullYear() }}").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let read = |p: &str| std::fs::read_to_string(dir.join(p)).unwrap();
+    assert_eq!(read("dist/a/index.html"), "2021-03-04T05:06:07.000Z");
+    assert_eq!(read("dist/b/index.html"), "2022-05-06T07:08:09.000Z ");
+    // Not committed yet: the file's own time.
+    assert!(read("dist/c/index.html").trim().parse::<i32>().unwrap() >= 2026);
+    assert!(read("dist/sitemap.xml").contains("<loc>https://example.com/a/</loc>\n    <lastmod>2021-03-04</lastmod>"), "{}", read("dist/sitemap.xml"));
+}
+
+#[cfg(unix)]
+#[test]
+fn hooks_run_commands() {
+    let dir = temp_dir("run");
+    let d = dir.to_str().unwrap();
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(
+        dir.join("ssqch.config.js"),
+        "import { linksPlugin } from \"ssqch/links\";\nexport default {\n  dirs: { input: \"src\", output: \"dist\" },\n  afterBuild: [{ run: \"mkdir -p \\\"$SSQCH_OUTPUT/search\\\" && echo \\\"$SSQCH_ENV $SSQCH_SERVING\\\" > dist/search/index.js\" }, () => {}],\n  plugins: [linksPlugin()],\n};\n",
+    )
+    .unwrap();
+    // The command runs before the link checker, so the link it makes resolves.
+    std::fs::write(dir.join("src/index.html"), "<script src=\"/search/index.js\"></script>").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    assert!(log.contains("[ssqch] afterBuild: mkdir -p"), "{}", log);
+    assert_eq!(std::fs::read_to_string(dir.join("dist/search/index.js")).unwrap(), "production false\n");
+
+    std::fs::write(dir.join("ssqch.config.js"), "export default { beforeBuild: { run: \"exit 3\" } };\n").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("beforeBuild: `exit 3` exited with status 3"), "{}", log);
+    std::fs::write(dir.join("ssqch.config.js"), "export default { afterBuild: { cmd: \"x\" } };\n").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("afterBuild: \"cmd\" isn't an option (use { run: \"command\" })"), "{}", log);
+}

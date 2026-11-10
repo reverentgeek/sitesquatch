@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title ? title + ' | ' : '' }}Pinecone Native</title>
+<link rel="stylesheet" href="/highlight.css">
+<style>
+  body { font: 17px/1.6 system-ui, sans-serif; margin: 0; }
+  header { display: flex; gap: 1rem; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid #ddd; }
+  .layout { display: grid; grid-template-columns: 15rem 1fr; }
+  aside { padding: 1rem; background: #f6f8fa; min-height: 100vh; }
+  aside ul { list-style: none; padding-left: 0.75rem; }
+  aside a[aria-current] { font-weight: bold; }
+  main { padding: 1rem 2rem; max-width: 46rem; }
+  pre { background: #f6f8fa; padding: 1rem; overflow-x: auto; }
+  .banner { background: #fff3cd; padding: 0.5rem 1rem; }
+  .tabs [role=tablist] button[aria-selected=true] { font-weight: bold; }
+  .pager { display: flex; justify-content: space-between; margin-top: 3rem; }
+  @media (max-width: 50rem) { .layout { display: block; } aside { min-height: 0; } }
+  @media (prefers-color-scheme: dark) { body { background: #0d1117; color: #e6edf3; } a { color: #58a6ff; } aside, pre { background: #161b22; } .banner { background: #3b2e00; } header { border-color: #30363d; } }
+</style>
+</head>
+<body>
+<header>
+  <a href="/"><strong>Pinecone Native</strong></a>
+  <a href="/docs/1.0/">Docs</a>
+  <a href="/blog/">Blog</a>
+  @if(version)
+  <nav aria-label="Versions">
+    @each(v in versions)
+    <a href="{{ inVersion(page.url, v.name, collections.all) }}"{{{ v.name === version ? ' aria-current="true"' : '' }}}>{{ v.label }}</a>
+    @end
+  </nav>
+  @end
+</header>
+{{{ content }}}
+<script>
+  // Turn tab sections into buttons (without this, they read as labeled sections).
+  for (const tabs of document.querySelectorAll(".tabs")) {
+    const panels = [...tabs.querySelectorAll(":scope > .tab")];
+    const list = document.createElement("div");
+    list.setAttribute("role", "tablist");
+    panels.forEach((panel, i) => {
+      const button = document.createElement("button");
+      button.textContent = panel.dataset.label;
+      button.setAttribute("role", "tab");
+      button.onclick = () => panels.forEach((p, j) => { p.hidden = i !== j; list.children[j].setAttribute("aria-selected", i === j); });
+      list.append(button);
+      panel.querySelector(".tab-label").remove();
+    });
+    tabs.prepend(list);
+    list.children[0].click();
+  }
+</script>
+</body>
+</html>

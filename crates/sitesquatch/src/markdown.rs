@@ -432,6 +432,8 @@ struct Container {
     name: String,
     args: String,
     line: usize,
+    /// The lines between the markers, as written.
+    source: String,
 }
 
 const OPEN: &str = "<!--ssqch:container:open:";
@@ -452,10 +454,17 @@ fn mark_containers<'a>(source: &'a str, found: &mut Vec<Container>) -> Cow<'a, s
         let trimmed = line.trim_start();
         let indent = &line[..line.len() - trimmed.len()];
         let body = trimmed.trim_end();
+        // Every open container's source gets the line (its own markers aside).
+        let keep = |found: &mut Vec<Container>, stack: &[(usize, usize)]| {
+            for &(id, _) in stack {
+                found[id].source.push_str(line);
+            }
+        };
         if let Some((ch, len)) = fence {
             if body.len() >= len && body.chars().all(|c| c == ch) {
                 fence = None;
             }
+            keep(found, &stack);
             out.push_str(line);
             continue;
         }
@@ -464,6 +473,7 @@ fn mark_containers<'a>(source: &'a str, found: &mut Vec<Container>) -> Cow<'a, s
             let len = body.chars().take_while(|c| *c == ch).count();
             if len >= 3 && !(ch == '`' && body[len..].contains('`')) {
                 fence = Some((ch, len));
+                keep(found, &stack);
                 out.push_str(line);
                 continue;
             }
@@ -475,19 +485,25 @@ fn mark_containers<'a>(source: &'a str, found: &mut Vec<Container>) -> Cow<'a, s
                 if let Some(&(id, opened)) = stack.last() {
                     if colons >= opened {
                         stack.pop();
+                        keep(found, &stack);
                         out.push_str(&format!("{}{}{}-->\n", indent, CLOSE, id));
                         continue;
                     }
                 }
             } else if rest.starts_with(|c: char| c.is_ascii_alphabetic()) {
                 let name_len = rest.find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_')).unwrap_or(rest.len());
+                keep(found, &stack);
                 let id = found.len();
-                found.push(Container { name: rest[..name_len].to_string(), args: rest[name_len..].trim().to_string(), line: n + 1 });
+                // `:::tip[A title]` (Docusaurus' spelling) has the args `A title`.
+                let args = rest[name_len..].trim();
+                let args = args.strip_prefix('[').and_then(|a| a.strip_suffix(']')).unwrap_or(args);
+                found.push(Container { name: rest[..name_len].to_string(), args: args.trim().to_string(), line: n + 1, source: String::new() });
                 stack.push((id, colons));
                 out.push_str(&format!("{}{}{}-->\n", indent, OPEN, id));
                 continue;
             }
         }
+        keep(found, &stack);
         out.push_str(line);
     }
     if found.is_empty() {
@@ -652,7 +668,7 @@ impl Writer<'_, '_> {
                         BlockQuoteKind::Caution => "caution",
                     };
                     if self.has(&format!("containers/{}", name)) {
-                        self.container(name, "", content, out)?;
+                        self.container(name, "", content, "", out)?;
                     } else {
                         let title = format!("{}{}", name[..1].to_ascii_uppercase(), &name[1..]);
                         out.push_str(&format!("<div class=\"markdown-alert markdown-alert-{}\">\n<p class=\"markdown-alert-title\">{}</p>\n{}</div>\n", name, title, content));
@@ -682,9 +698,9 @@ impl Writer<'_, '_> {
                         bail!("line {}: container `{}` has to close (with `:::`) inside the block it opened in, such as the same list item", c.line, c.name);
                     }
                     flush(&mut plain, out);
-                    let (name, args) = (c.name.clone(), c.args.clone());
+                    let (name, args, source) = (c.name.clone(), c.args.clone(), c.source.clone());
                     let content = self.inner(&events[i + 3..j])?;
-                    self.container(&name, &args, content, out)?;
+                    self.container(&name, &args, content, &source, out)?;
                     i = j + 3;
                     continue;
                 }
@@ -797,10 +813,10 @@ impl Writer<'_, '_> {
         Ok(())
     }
 
-    fn container(&mut self, name: &str, args: &str, content: String, out: &mut String) -> Result<()> {
+    fn container(&mut self, name: &str, args: &str, content: String, source: &str, out: &mut String) -> Result<()> {
         let template = format!("containers/{}", name);
         if self.has(&template) {
-            let value = Value::from_pairs([("name", Value::from(name)), ("args", Value::from(args)), ("content", Value::from(content))]);
+            let value = Value::from_pairs([("name", Value::from(name)), ("args", Value::from(args)), ("content", Value::from(content)), ("source", Value::from(source))]);
             block(out, &self.hook(&template, "container", value)?);
             return Ok(());
         }
@@ -1113,6 +1129,8 @@ mod tests {
             md(":::: outer\n::: inner\nx\n:::\n```\n::: not\n```\n::::\n"),
             "<div class=\"outer\">\n<div class=\"inner\">\n<p>x</p>\n</div>\n<pre><code>::: not\n</code></pre>\n</div>\n"
         );
+        // `:::name[Title]` arguments lose their brackets.
+        assert!(md(":::tip[Watch out]\nx\n:::\n").contains("<p class=\"container-title\">Watch out</p>"));
         // Left open, it closes at the end.
         assert_eq!(md("::: note\nopen"), "<div class=\"note\">\n<p>open</p>\n</div>\n");
         let off = MarkdownOptions { containers: false, ..Default::default() };
@@ -1134,7 +1152,7 @@ mod tests {
                 "link" => format!("<a href=\"{}\" data-text=\"{}\">{}</a>\n", v.get("href").to_js_string(), v.get("text").to_js_string(), v.get("content").to_js_string()),
                 "image" => format!("<figure>{}</figure>", v.get("alt").to_js_string()),
                 "fence" => format!("<div class=\"{}\" data-info=\"{}\">{}</div>", name, v.get("info").to_js_string(), v.get("code").to_js_string()),
-                _ => format!("<aside class=\"{}\" title=\"{}\">\n{}</aside>\n", v.get("name").to_js_string(), v.get("args").to_js_string(), v.get("content").to_js_string()),
+                _ => format!("<aside class=\"{}\" title=\"{}\" data-source=\"{}\">\n{}</aside>\n", v.get("name").to_js_string(), v.get("args").to_js_string(), v.get("source").to_js_string().escape_default(), v.get("content").to_js_string()),
             })
         }
     }
@@ -1155,8 +1173,8 @@ mod tests {
              <p><figure>Alt</figure></p>\n\
              <div class=\"hooks/fence-mermaid\" data-info=\"mermaid {theme=dark}\">graph\n</div>\n\
              <pre><code class=\"language-js\">x\n</code></pre>\n\
-             <aside class=\"tip\" title=\"T\">\n<p>body</p>\n</aside>\n\
-             <aside class=\"note\" title=\"\">\n<p>noted</p>\n</aside>\n"
+             <aside class=\"tip\" title=\"T\" data-source=\"body\\n\">\n<p>body</p>\n</aside>\n\
+             <aside class=\"note\" title=\"\" data-source=\"\">\n<p>noted</p>\n</aside>\n"
         );
         assert_eq!(headings(&html), vec![Heading { level: 2, id: Some("a-link-here".into()), text: "A link here".into() }]);
     }

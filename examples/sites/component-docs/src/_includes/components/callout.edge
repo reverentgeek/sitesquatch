@@ -1,0 +1,4 @@
+{{-- The slot is Markdown: a component's output is an HTML block, which Markdown leaves alone. --}}
+<div class="callout callout-{{ type || 'info' }}">
+{{{ markdown(await $slots.main()) }}}
+</div>

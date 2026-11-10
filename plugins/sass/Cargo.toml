@@ -1,0 +1,13 @@
+[package]
+name = "sitesquatch-plugin-sass"
+description = "Sass for SiteSquatch: compiles .scss and .sass files with grass"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+grass = { version = "0.13", default-features = false }
+sitesquatch.workspace = true
+walkdir = "2"

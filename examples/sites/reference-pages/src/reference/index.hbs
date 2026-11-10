@@ -1,0 +1,13 @@
+---
+layout: base.hbs
+title: All options
+---
+<h1>squatchrc options</h1>
+{{#each (byCategory options)}}
+<h2>{{name}}</h2>
+<ul>
+  {{#each options}}
+  <li><a href="/reference/{{name}}/"><code>{{name}}</code></a>: {{type}}</li>
+  {{/each}}
+</ul>
+{{/each}}

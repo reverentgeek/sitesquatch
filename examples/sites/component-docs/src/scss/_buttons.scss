@@ -1,0 +1,15 @@
+// scss-docs-start variables
+$btn-padding: 0.5rem 1rem !default;
+$btn-radius: 0.375rem !default;
+$btn-bg: $pine !default;
+// scss-docs-end variables
+
+.btn {
+  display: inline-block;
+  padding: $btn-padding;
+  border: 0;
+  border-radius: $btn-radius;
+  background: $btn-bg;
+  color: white;
+  &.btn-outline { background: transparent; color: $btn-bg; border: 2px solid $btn-bg; }
+}

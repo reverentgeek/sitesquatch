@@ -24,12 +24,14 @@ use sitesquatch_plugin_links::{LinksOptions, LinksPlugin};
 use sitesquatch_plugin_minify::{MinifyOptions, MinifyPlugin};
 use sitesquatch_plugin_redirects::{RedirectsOptions, RedirectsPlugin};
 use sitesquatch_plugin_rss::RssPlugin;
+#[cfg(feature = "sass")]
+use sitesquatch_plugin_sass::{SassOptions, SassPlugin, Style};
 use sitesquatch_plugin_sitemap::{SitemapOptions, SitemapPlugin};
 
 /// Built-in plugins, which a JavaScript config adds with `imagePlugin()`,
 /// `rssPlugin()`, `minifyPlugin()`, `assetsPlugin()` and `linksPlugin()` from the matching
 /// `ssqch/` modules.
-const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify), ("ssqch/assets", assets), ("ssqch/links", links), ("ssqch/sitemap", sitemap), ("ssqch/redirects", redirects)];
+const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify), ("ssqch/assets", assets), ("ssqch/links", links), ("ssqch/sitemap", sitemap), ("ssqch/redirects", redirects), ("ssqch/sass", sass)];
 
 fn main() -> std::process::ExitCode {
     let extra = vec![
@@ -169,6 +171,36 @@ fn redirects(cfg: &mut Config, options: &Json) -> Result<()> {
         }
     }
     cfg.add_plugin(RedirectsPlugin::new(opts)?);
+    Ok(())
+}
+
+#[cfg(not(feature = "sass"))]
+fn sass(_cfg: &mut Config, _options: &Json) -> Result<()> {
+    bail!("this ssqch was built without the `sass` feature")
+}
+
+#[cfg(feature = "sass")]
+fn sass(cfg: &mut Config, options: &Json) -> Result<()> {
+    let o = Options::new(options, &["files", "style", "loadPaths"])?;
+    let mut opts = SassOptions::default();
+    match o.get("files") {
+        Some(Json::Object(map)) => {
+            for (from, to) in map {
+                let Some(to) = to.as_str() else { bail!("files.{}: the output must be a URL path string", from) };
+                opts.files.push((from.clone(), to.to_string()));
+            }
+        }
+        Some(_) => bail!("files must be an object of {{ source: \"/output\" }}"),
+        None => {}
+    }
+    opts.style = match o.string("style")?.as_deref() {
+        None => None,
+        Some("compressed") => Some(Style::Compressed),
+        Some("expanded") => Some(Style::Expanded),
+        Some(other) => bail!("style must be \"compressed\" or \"expanded\", not {:?}", other),
+    };
+    opts.load_paths = o.list("loadPaths")?.unwrap_or_default();
+    cfg.add_plugin(SassPlugin::new(opts)?);
     Ok(())
 }
 

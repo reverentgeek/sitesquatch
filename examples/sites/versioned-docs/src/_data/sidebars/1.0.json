@@ -1,0 +1,9 @@
+[
+  { "title": "Getting started", "items": [
+    { "title": "Introduction", "url": "/docs/1.0/" },
+    { "title": "Installation", "url": "/docs/1.0/install/" }
+  ] },
+  { "title": "Guides", "items": [
+    { "title": "Animations", "url": "/docs/1.0/animations/" }
+  ] }
+]
