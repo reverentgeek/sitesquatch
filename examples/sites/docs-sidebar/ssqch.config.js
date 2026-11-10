@@ -20,5 +20,5 @@ export default defineConfig( {
 		}
 	},
 
-	plugins: [ sitemapPlugin( { url: "https://docs-sidebar.example.com" } ), linksPlugin() ]
+	plugins: [ sitemapPlugin( { url: "https://docs-sidebar.sitesquatch.dev" } ), linksPlugin() ]
 } );

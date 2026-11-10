@@ -58,5 +58,5 @@ fn blog_categories_builds_the_staging_site() {
     assert!(ok, "{}", log);
     let home = std::fs::read_to_string(copy.join("dist/index.html")).unwrap();
     assert!(home.contains("This is the staging site."), "{}", home);
-    assert!(std::fs::read_to_string(copy.join("dist/sitemap.xml")).unwrap().contains("https://staging.blog-categories.example.com/"));
+    assert!(std::fs::read_to_string(copy.join("dist/sitemap.xml")).unwrap().contains("https://staging.blog-categories.sitesquatch.dev/"));
 }

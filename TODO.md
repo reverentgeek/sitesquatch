@@ -238,9 +238,14 @@ migration guides it unblocks.
       and from Eleventy in `docs/guides/`. Writing them fixed two bugs: pages paginated over a
       collection had items without `content`, and pages whose includes read `collections`
       rendered too early.
-- [ ] Deploy the examples, so each has a live URL. Netlify sites (one per example) or GitHub
-      Pages; Pages under one repository needs a path prefix (`/sitesquatch/blog-tags/`), which
-      ssqch doesn't support yet.
+- [ ] Deploy the examples to Netlify, one site each, at `<name>.sitesquatch.dev`.
+      `.github/workflows/examples.yml` builds them with the branch's ssqch and uploads each
+      through Netlify's deploy API, from `release/0.4` for now (switch to `main` after 0.4).
+  - [ ] Create the four Netlify sites, add the `NETLIFY_AUTH_TOKEN` secret and the
+        `NETLIFY_SITE_*` variables (the workflow lists them), and run the workflow.
+  - [ ] DNS: `sitesquatch.dev` is on Namecheap's DNS. Add a CNAME per example to its
+        `.netlify.app` name, and the custom domain in each Netlify site.
+  - [ ] Link the live URLs from `examples/sites/README.md` and the README.
 - [ ] A `pathPrefix`-style setting for sites served below the domain root (GitHub Pages project
       sites): rewrite root-relative URLs in HTML, and a filter for the rest.
 - [ ] `docs-sidebar` search, once Pagefind is in (phase 5).
