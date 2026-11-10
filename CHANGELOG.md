@@ -8,7 +8,7 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
-## Unreleased
+## 0.4.0 - 2026-11-10
 
 ### Breaking
 
@@ -302,6 +302,9 @@ a `v<version>` tag on a commit where that version matches.
 
 ### Fixed
 
+- A version tag on a commit whose CI failed no longer publishes a GitHub release with no
+  binaries, marked Latest (which broke the install scripts' `latest` links, as 0.3.4 did for
+  a while). The CI check now runs after the builds, where its failure stops the release.
 - `AbortSignal.timeout(Infinity)` (or any huge number) no longer stops the build with a panic.
 - A TOML date written without quotes (`date = 2024-01-02`, in `+++` front matter or a `.toml`
   data file) is read as a date. It failed with "can't parse date".

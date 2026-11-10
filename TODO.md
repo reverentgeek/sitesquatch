@@ -29,19 +29,18 @@ Left before a release:
 - ~~Run CI for `release/0.4` on Linux and Windows.~~ It runs on pushes to the branch, and is
   green on every platform since `.gitattributes` pins LF line endings (2026-11-10; Windows
   checked out CRLF, which broke `collation_matches_node` and the starter's archetype).
-- Close the hole in the release workflow that 0.3.4 fell into (2026-11-10): when CI has failed
-  on the tagged commit, `check-ci` fails and the builds are skipped, but dist's `host` and
-  `announce` jobs count a skipped build as fine and publish a GitHub release with no binaries,
-  marked Latest, which breaks `releases/latest/download/...` for everyone. Until it's fixed,
-  tag only after CI is green on the commit. If it happens again: `gh release edit v<previous>
-  --latest`, delete the empty release and its tag, fix CI, and tag the fixed commit. CLAUDE.md's
-  "If CI fails, nothing is published" is wrong until then.
+- ~~Close the hole in the release workflow that 0.3.4 fell into.~~ Done (2026-11-10): the CI
+  check is a `global-artifacts-jobs` job now, after the builds, and dist's host job doesn't
+  publish when it fails. As a plan job, its failure made the builds skip, and host publishes
+  over skipped builds (an empty release marked Latest).
 
-- Deploy the examples (on hold; "Site plumbing" below).
-- The Sasquatch voice (below): a drawing for the starter's second post, if David wants one.
-- Decide which of the "Later" items under each feature wait for 0.5.
 - **Blog:** after the release, switch to `sitemapPlugin()`, `highlight: true` (dropping Prism)
   and a `posts` schema (`../blog/TODO.md`).
+
+Deferred to 0.5 (decided 2026-11-10): deploying the examples ("Site plumbing" below, and
+restyling them in the Ranger Station palette), a drawing for the starter's second post,
+`ssqch footprint`, "Say ssqch's name for another generator's word", and every unticked "Later"
+and "Not yet" item below.
 
 ## The Sasquatch voice (done, apart from two items)
 
