@@ -19,6 +19,7 @@ pub mod build;
 pub mod cli;
 pub mod config;
 pub mod data;
+pub mod diff;
 pub mod engines;
 #[cfg(feature = "highlight")]
 pub mod highlight;

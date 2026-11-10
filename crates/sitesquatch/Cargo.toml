@@ -35,3 +35,4 @@ clap = { version = "4", features = ["derive", "string"] }
 tiny_http = "0.12"
 notify = "8"
 dunce = "1"
+similar = { version = "2", default-features = false }

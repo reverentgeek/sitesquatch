@@ -520,6 +520,64 @@ fn hooks_run_commands() {
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
     assert!(!ok && log.contains("afterBuild: \"cmd\" isn't an option (use { run: \"command\" })"), "{}", log);
 }
+#[test]
+fn diff_compares_two_builds() {
+    let dir = temp_dir("diff");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    let run = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(args).current_dir(&dir).output().unwrap();
+        (out.status.code(), format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
+    };
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" } };\n");
+    write("src/_includes/layout.edge", "<html><head><title>{{ title }}</title><meta name=\"generator\" content=\"{{ ssqch.generator }}\"></head><body>{{{ content }}}</body></html>");
+    write("src/index.md", "---\ntitle: Home\nlayout: layout.edge\n---\n## Trails\n\nPine trail.\n");
+    write("src/about.md", "---\ntitle: About\nlayout: layout.edge\n---\nAbout.\n");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q", "--output", "before"]);
+    assert!(ok, "{}", log);
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let (code, log) = run(&["diff", "before", "dist"]);
+    assert_eq!(code, Some(0), "{}", log);
+    assert!(log.contains("No differences: 2 pages and 0 other files are the same."), "{}", log);
+
+    write("src/index.md", "---\ntitle: Home\nlayout: layout.edge\n---\n## Paths\n\nCedar trail.\n");
+    write("src/new.md", "---\ntitle: New\nlayout: layout.edge\n---\nNew.\n");
+    std::fs::remove_file(dir.join("src/about.md")).unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d, "-q", "--output", "after"]);
+    assert!(ok, "{}", log);
+    let (code, log) = run(&["diff", "before", "after"]);
+    assert_eq!(code, Some(1), "{}", log);
+    for expected in [
+        "Added (1)\n  + /new/\n",
+        "Removed (1)\n  - /about/\n",
+        "  ~ /  (text and markup)\n      ids removed (links to them break): #trails\n      - <h2 id=\"trails\">\n      - Trails\n      + <h2 id=\"paths\">\n      + Paths\n      - Pine trail.\n      + Cedar trail.\n",
+        "1 changed, 1 added, 1 removed; 0 pages and 0 other files are the same.",
+    ] {
+        assert!(log.contains(expected), "missing {:?} in\n{}", expected, log);
+    }
+    let (code, log) = run(&["diff", "before", "after", "--format", "json", "--only", "index.html"]);
+    assert_eq!(code, Some(1), "{}", log);
+    let json: serde_json::Value = serde_json::from_str(&log).unwrap_or_else(|e| panic!("{}: {}", e, log));
+    assert_eq!(json["schemaVersion"], 1);
+    assert_eq!(json["summary"], serde_json::json!({ "added": 0, "removed": 0, "changed": 1, "unchangedPages": 0, "unchangedFiles": 0 }));
+    assert_eq!(json["changed"][0]["url"], "/");
+    assert_eq!(json["changed"][0]["changes"], serde_json::json!(["text", "markup"]));
+
+    let (code, log) = run(&["diff", "before", "after", "--ignore", "(Pine|Cedar) trail\\.|Trails|Paths|trails|paths", "--only", "index.html"]);
+    assert_eq!(code, Some(0), "{}", log);
+    let (code, log) = run(&["diff", "before", "missing"]);
+    assert_eq!(code, Some(2), "{}", log);
+    assert!(log.contains("missing isn't a folder"), "{}", log);
+    let (code, log) = run(&["diff", "before", "after", "--ignore", "("]);
+    assert_eq!(code, Some(2), "{}", log);
+    assert!(log.contains("--ignore \"(\" isn't a regular expression"), "{}", log);
+}
+
 /// Stops `ssqch serve` when the test ends, pass or fail.
 struct Server(std::process::Child);
 

@@ -48,6 +48,29 @@ enum Command {
         #[arg(long, short, default_value_t = 8080)]
         port: u16,
     },
+    /// Compare two builds of a site: URLs added and removed, and what changed on each page
+    #[command(after_help = "Build the site into one folder before a change and another after it:\n\n  ssqch build --output dist-before\n  (upgrade ssqch, edit a layout, ...)\n  ssqch build\n  ssqch diff dist-before dist\n\nExits with 0 when the builds are the same, 1 when they differ, and 2 on an error.")]
+    Diff {
+        /// The build from before the change
+        before: PathBuf,
+        /// The build from after it
+        after: PathBuf,
+        /// Compare bytes: don't match fingerprinted files or ignore whitespace
+        #[arg(long)]
+        exact: bool,
+        /// Leave out text matching this regular expression before comparing (repeatable)
+        #[arg(long, value_name = "REGEX")]
+        ignore: Vec<String>,
+        /// Only compare files matching this glob, like '**/*.html' (repeatable)
+        #[arg(long, value_name = "GLOB")]
+        only: Vec<String>,
+        /// Changed lines to show for each file (0 for all)
+        #[arg(long, default_value_t = 10)]
+        lines: usize,
+        /// text or json
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
 }
 
 /// A subcommand a binary adds to `build` and `serve`, like `ssqch init`.
@@ -95,6 +118,15 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
         }
     }
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    if let Some(Command::Diff { before, after, exact, ignore, only, lines, format }) = &cli.command {
+        return match run_diff(before, after, *exact, ignore, only, *lines, format) {
+            Ok(same) => ExitCode::from(if same { 0 } else { 1 }),
+            Err(e) => {
+                eprintln!("\x1b[31merror:\x1b[0m {:#}", e);
+                ExitCode::from(2)
+            }
+        };
+    }
     let serving = matches!(cli.command, Some(Command::Serve { .. }));
     let env = cli
         .env
@@ -134,6 +166,33 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
             ExitCode::FAILURE
         }
     }
+}
+
+/// `ssqch diff`: print the comparison; whether the builds are the same.
+fn run_diff(before: &Path, after: &Path, exact: bool, ignore: &[String], only: &[String], lines: usize, format: &str) -> anyhow::Result<bool> {
+    use anyhow::Context;
+    use std::io::IsTerminal;
+    if !matches!(format, "text" | "json") {
+        anyhow::bail!("--format {}: use text or json", format);
+    }
+    let mut options = crate::diff::DiffOptions { exact, ..Default::default() };
+    for pattern in ignore {
+        options.ignore.push(regex::Regex::new(pattern).with_context(|| format!("--ignore {:?} isn't a regular expression", pattern))?);
+    }
+    if !only.is_empty() {
+        let mut set = globset::GlobSetBuilder::new();
+        for glob in only {
+            set.add(globset::GlobBuilder::new(glob.trim_start_matches(['.', '/'])).literal_separator(true).build().with_context(|| format!("--only {:?} isn't a glob", glob))?);
+        }
+        options.only = Some(set.build()?);
+    }
+    let report = crate::diff::compare(before, after, &options)?;
+    if format == "json" {
+        println!("{}", serde_json::to_string_pretty(&report.to_json(lines))?);
+    } else {
+        print!("{}", report.to_text(lines, std::io::stdout().is_terminal()));
+    }
+    Ok(report.is_same())
 }
 
 pub(crate) fn print_report(cfg: &Config, report: &BuildReport) {
