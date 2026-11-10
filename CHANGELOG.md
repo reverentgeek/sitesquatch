@@ -8,7 +8,7 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
-## Unreleased
+## 0.3.2 - 2026-11-09
 
 - Fix unstyled pages when running `ssqch serve` after a production build without the CSS and JS
   watchers. A production build renames `index.css` to `index.<hash>.css`, and development
