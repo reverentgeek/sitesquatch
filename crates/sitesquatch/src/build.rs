@@ -306,10 +306,11 @@ fn builtin_filters(markdown: &Arc<MarkdownEngine>) -> Map {
     // Navigation: navTree(tree, page.url), navPager(tree, page.url),
     // navBreadcrumbs(tree, page.url) and pagesTree(collection).
     let list = |args: &[Value], i: usize| args.get(i).and_then(|v| v.as_array()).map(|a| a.to_vec()).unwrap_or_default();
+    let nav = |args: &[Value]| args.first().cloned().unwrap_or_default();
     let url = |args: &[Value]| args.get(1).map(Value::to_js_string).unwrap_or_default();
-    filters.insert("navTree".into(), Value::func(move |args| Ok(crate::nav::tree(&list(args, 0), &url(args)))));
-    filters.insert("navPager".into(), Value::func(move |args| Ok(crate::nav::pager(&list(args, 0), &url(args)))));
-    filters.insert("navBreadcrumbs".into(), Value::func(move |args| Ok(crate::nav::breadcrumbs(&list(args, 0), &url(args)))));
+    filters.insert("navTree".into(), Value::func(move |args| Ok(crate::nav::tree_of(&nav(args), &url(args)))));
+    filters.insert("navPager".into(), Value::func(move |args| Ok(crate::nav::pager_of(&nav(args), &url(args)))));
+    filters.insert("navBreadcrumbs".into(), Value::func(move |args| Ok(crate::nav::breadcrumbs_of(&nav(args), &url(args)))));
     filters.insert("pagesTree".into(), Value::func(move |args| Ok(crate::nav::from_pages(&list(args, 0)))));
     // highlight(code, lang): highlighted HTML for the inside of <code> (escaped
     // text for a language without a grammar).

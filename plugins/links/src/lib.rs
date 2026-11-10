@@ -193,6 +193,9 @@ pub fn check(ctx: &BuildContext, report: &BuildReport, options: &LinksOptions) -
 
     let mut checked = 0;
     let mut broken = BTreeSet::new();
+    // Most links on a site point at the same few pages (every sidebar lists
+    // them), so each target is looked up on disk once.
+    let mut found: HashMap<String, Option<PathBuf>> = HashMap::new();
     for (path, page) in &scans {
         let page_url = url_of(&ctx.output_dir, path);
         for link in &page.links {
@@ -213,7 +216,10 @@ pub fn check(ctx: &BuildContext, report: &BuildReport, options: &LinksOptions) -
             } else if options.ignore.iter().any(|p| target_path.starts_with(p.as_str())) || redirected(&redirects, &target_path) {
                 None
             } else {
-                match find(&ctx.output_dir, &target_path) {
+                if !found.contains_key(&target_path) {
+                    found.insert(target_path.clone(), find(&ctx.output_dir, &target_path));
+                }
+                match &found[&target_path] {
                     None => Some("not found".to_string()),
                     Some(file) => match (fragment, ids.get(file.as_path())) {
                         (Some(f), Some(target_ids)) if anchors && !target_ids.contains(&f) => Some(format!("no id \"{}\" on that page", f)),
