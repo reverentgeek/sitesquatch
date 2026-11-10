@@ -176,6 +176,7 @@ fn mistakes_in_the_config_say_what_to_fix() {
     for (config, want) in cases {
         let e = load_error(config);
         assert!(e.contains(want), "{}\n  wanted: {}\n  got: {}", config, want, e);
+        assert!(e.starts_with("ssqch.config.js") && !e.contains("ssqch.config.js: ssqch.config.js"), "name the file once: {}", e);
     }
 }
 

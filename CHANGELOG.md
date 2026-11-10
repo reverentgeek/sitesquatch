@@ -8,6 +8,16 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+- A mistake in `ssqch.config.js` names the file once (`ssqch.config.js: dirs.ouput isn't
+  supported`), not twice, and `ssqch.config.mjs` errors name that file.
+- `ssqch --help` describes `--quiet` (only warnings and errors) and `--verbose` (also list the
+  slowest images to encode) correctly.
+- README: the tutorial's code blocks no longer start with a filename comment, which put text
+  before the front matter and broke the build when copied as they were. The Liquid example
+  imports `defineConfig`, and the Netlify example pins a current release.
+
 ## 0.3.2 - 2026-11-09
 
 - Fix unstyled pages when running `ssqch serve` after a production build without the CSS and JS

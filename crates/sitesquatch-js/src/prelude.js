@@ -349,10 +349,10 @@
 			return typeof value === "function" ? await value() : value;
 		},
 
-		async run( module, env, serving ) {
-			"default" in module || fail( "ssqch.config.js needs a default export: export default defineConfig({ ... })" );
+		async run( module, env, serving, file ) {
+			"default" in module || fail( `${ file } needs a default export: export default defineConfig({ ... })` );
 			const { apply, ops, settings } = await collect( env, serving );
-			await apply( module.default, "ssqch.config.js", true );
+			await apply( module.default, file, true );
 			return { ops, settings };
 		}
 	};

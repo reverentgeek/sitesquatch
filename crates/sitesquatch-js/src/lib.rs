@@ -82,13 +82,13 @@ pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)], m
                 .map_err(|e| convert::caught(e))?;
             let run: Function = ctx.globals().get::<_, Object>("__ssqch")?.get("run")?;
             let returned = run
-                .call::<_, rquickjs::Value>((namespace, cfg.env.as_str(), cfg.serving))
+                .call::<_, rquickjs::Value>((namespace, cfg.env.as_str(), cfg.serving, file_name(&path)))
                 .and_then(convert::settle)
                 .catch(&ctx)
                 .map_err(|e| convert::caught(e))?;
             Conv::new(&ctx, &engine)?.from_js(returned)
         })
-        .with_context(|| file_name(&path))?;
+        .map_err(|e| in_file(e, &path))?;
     apply(cfg, &engine, &result, builtins).with_context(|| file_name(&path))
 }
 
@@ -166,6 +166,17 @@ impl DataFiles {
             })
         })()
         .with_context(|| name)
+    }
+}
+
+/// Name the config file in an error, unless the prelude's message already
+/// starts with it (`ssqch.config.js: dirs.ouput isn't supported`).
+fn in_file(e: anyhow::Error, path: &Path) -> anyhow::Error {
+    let name = file_name(path);
+    if e.to_string().starts_with(&format!("{}:", name)) || e.to_string().starts_with(&format!("{} ", name)) {
+        e
+    } else {
+        e.context(name)
     }
 }
 
