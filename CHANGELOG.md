@@ -93,6 +93,14 @@ a `v<version>` tag on a commit where that version matches.
   `file` for a path that has to exist), nested objects, or functions; `unknown: "error"` catches
   misspelled front matter keys. `ssqch types` adds the schemas to `ssqch.d.ts`, so
   `pages.byTag("posts")` is typed. Rust: `Config::add_schema`.
+- `ssqch inspect <url or file>` shows where a page comes from: its template, layouts, date and
+  collections, and for each value in its data, which level of the data cascade set it and
+  which levels it replaced. `--field level` shows one value in full with every level that set
+  it (`--field hero.alt` reaches inside), and `--format json` is for scripts. Nothing is built
+  or written. The README's "Where a value comes from" now gives the cascade's exact order.
+- `pagination: { data: collections }` goes over the collections' names, for a page per tag
+  without a custom collection. It used to fail with "pagination data `collections` is
+  undefined".
 - `ssqch diff <before> <after>` compares two builds: URLs added and removed, and for each
   changed page whether its text or markup changed, a changed title, and `id`s that are gone.
   Asset fingerprints, `integrity` hashes, the generator's version and whitespace between tags

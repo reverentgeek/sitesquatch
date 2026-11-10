@@ -48,6 +48,18 @@ enum Command {
         #[arg(long, short, default_value_t = 8080)]
         port: u16,
     },
+    /// Show where a page comes from, and which level of the data cascade set each value
+    #[command(after_help = "Nothing is built or written, and build hooks don't run.\n\n  ssqch inspect /guides/install/\n  ssqch inspect src/guides/install.md --field title\n  ssqch inspect /guides/install/ --field hero.alt --format json")]
+    Inspect {
+        /// The page: its URL (/about/), or its template's path
+        page: String,
+        /// One field of its data, in full, with every level that set it (a dotted path reaches inside: hero.alt)
+        #[arg(long, value_name = "NAME")]
+        field: Option<String>,
+        /// text or json
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
     /// Compare two builds of a site: URLs added and removed, and what changed on each page
     #[command(after_help = "Build the site into one folder before a change and another after it:\n\n  ssqch build --output dist-before\n  (upgrade ssqch, edit a layout, ...)\n  ssqch build\n  ssqch diff dist-before dist\n\nExits with 0 when the builds are the same, 1 when they differ, and 2 on an error.")]
     Diff {
@@ -155,8 +167,9 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
         Ok(cfg)
     };
 
-    let result = make_config().and_then(|cfg| match cli.command {
-        Some(Command::Serve { port }) => crate::serve::serve_reloading(cfg, port, &make_config),
+    let result = make_config().and_then(|cfg| match &cli.command {
+        Some(Command::Serve { port }) => crate::serve::serve_reloading(cfg, *port, &make_config),
+        Some(Command::Inspect { page, field, format }) => run_inspect(&cfg, page, field.as_deref(), format),
         _ => crate::build(&cfg).map(|report| print_report(&cfg, &report)),
     });
     match result {
@@ -166,6 +179,27 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
             ExitCode::FAILURE
         }
     }
+}
+
+/// `ssqch inspect`: print where a page (or one field of its data) comes from.
+fn run_inspect(cfg: &Config, page: &str, field: Option<&str>, format: &str) -> anyhow::Result<()> {
+    if !matches!(format, "text" | "json") {
+        anyhow::bail!("--format {}: use text or json", format);
+    }
+    let report = crate::inspect::inspect(cfg, page)?;
+    let field = match field {
+        Some(name) => Some(report.field(name).ok_or_else(|| {
+            let names: Vec<&str> = report.fields.iter().map(|f| f.name.as_str()).collect();
+            anyhow::anyhow!("{} has no `{}` in its data (it has: {})", report.url.as_deref().unwrap_or(&report.input_path), name.split('.').next().unwrap_or(name), names.join(", "))
+        })?),
+        None => None,
+    };
+    match (format, &field) {
+        ("json", _) => println!("{}", serde_json::to_string_pretty(&report.to_json(field.as_ref()))?),
+        (_, Some(field)) => print!("{}", crate::inspect::Inspection::field_text(field)),
+        _ => print!("{}", report.to_text()),
+    }
+    Ok(())
 }
 
 /// `ssqch diff`: print the comparison; whether the builds are the same.

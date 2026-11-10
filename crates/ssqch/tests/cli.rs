@@ -1067,3 +1067,75 @@ fn import_moves_a_zola_site() {
     assert!(read("old-pine.html").contains("url=/blog/2024/pine/") && read("robots.txt").contains("User-agent") && read("sitemap.xml").contains("https://example.com/blog/2024/pine/"));
     assert!(!dir.join("public/blog/_index/index.html").exists() && !dir.join("public/_index/index.html").exists());
 }
+
+#[test]
+fn inspect_says_where_a_page_and_its_data_come_from() {
+    let dir = temp_dir("inspect");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, data: { build: () => ({ n: 7 }) } };\n");
+    write("src/_data/site.json", "{ \"name\": \"Trails\", \"author\": { \"name\": \"Sam\" } }");
+    write("src/_includes/base.edge", "---\nsection: none\ntheme: light\n---\n{{{ content }}}");
+    write("src/_includes/guide.edge", "---\nlayout: base.edge\nsection: guides\n---\n{{{ content }}}");
+    write("src/guides/guides.json", "{ \"layout\": \"guide.edge\", \"tags\": \"guides\", \"level\": \"easy\", \"permalink\": \"/guides/{{ page.fileSlug }}/\", \"computed\": { \"label\": \"{{ title }} ({{ level }})\" } }");
+    write("src/guides/2024-03-02-pine.md", "---\ntitle: Pine\nlevel: hard\nhero: { alt: A pine }\n---\nPine.\n");
+    write("src/guides/2024-03-02-pine.json", "{ \"level\": \"medium\", \"reviewed\": true }");
+    write("src/tags.edge", "---\npagination: { data: collections, size: 1, alias: tag }\npermalink: \"/tags/{{ tag }}/\"\n---\n{{ tag }}");
+    let run = |args: &[&str]| {
+        let mut all = vec!["inspect", "--root", d];
+        all.extend(args);
+        ssqch(&all)
+    };
+
+    let (ok, log) = run(&["/guides/pine/"]);
+    assert!(ok, "{}", log);
+    assert!(log.starts_with("/guides/pine/\n  From        src/guides/2024-03-02-pine.md (edge, md)\n  Writes      dist/guides/pine/index.html\n  Layouts     _includes/guide.edge > _includes/base.edge\n  Date        2024-03-02T00:00:00Z (from the file's name)\n  Collections all, guides\n"), "{}", log);
+    // The columns are as wide as the longest name, so compare the rows without their padding.
+    let rows: Vec<String> = log.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect();
+    for expected in [
+        "site {name, author} src/_data/site.json",
+        "build {n} the config's `data`",
+        "ssqch {version, generator, env, serving, …} built in",
+        "section \"guides\" layout _includes/guide.edge (over layout _includes/base.edge)",
+        "theme \"light\" layout _includes/base.edge",
+        "layout \"guide.edge\" src/guides/guides.json",
+        "level \"hard\" front matter (over src/guides/guides.json, src/guides/2024-03-02-pine.json)",
+        "reviewed true src/guides/2024-03-02-pine.json",
+        "hero {alt} front matter",
+        "label \"Pine (hard)\" computed",
+        "page {url, outputPath, inputPath, fileSlug, …} built in",
+    ] {
+        assert!(rows.iter().any(|r| r == expected), "missing {:?} in\n{}", expected, log);
+    }
+    // Nothing was built.
+    assert!(!dir.join("dist").exists() && !dir.join(".cache").exists());
+
+    // One field, by the template's path, with every level that set it.
+    let (ok, log) = run(&["src/guides/2024-03-02-pine.md", "--field", "level"]);
+    assert!(ok, "{}", log);
+    assert_eq!(log, "level = \"hard\"\n\nSet by (the last one wins):\n    src/guides/guides.json                    \"easy\"\n    src/guides/2024-03-02-pine.json           \"medium\"\n  > front matter                              \"hard\"\n");
+    let (ok, log) = run(&["/guides/pine", "--field", "site.author.name", "--format", "json"]);
+    assert!(ok, "{}", log);
+    let json: serde_json::Value = serde_json::from_str(&log).unwrap_or_else(|e| panic!("{}: {}", e, log));
+    assert_eq!(json["schemaVersion"], 1);
+    assert_eq!(json["date"], serde_json::json!({ "value": "2024-03-02T00:00:00Z", "from": "the file's name" }));
+    assert_eq!(json["field"], serde_json::json!({ "name": "site.author.name", "value": "Sam", "from": "src/_data/site.json", "setBy": [{ "from": "src/_data/site.json", "value": "Sam" }] }));
+    let (ok, log) = run(&["/guides/pine/", "--format", "json"]);
+    assert!(ok, "{}", log);
+    let json: serde_json::Value = serde_json::from_str(&log).unwrap();
+    assert_eq!(json["data"]["title"], serde_json::json!({ "value": "Pine", "from": "front matter", "setBy": [{ "from": "front matter", "value": "Pine" }] }));
+
+    // A page of a paginated template, and what goes wrong.
+    let (ok, log) = run(&["/tags/guides/", "--field", "tag"]);
+    assert!(ok && log.contains("tag = \"guides\"") && log.contains("> pagination (its `alias`)"), "{}", log);
+    let (ok, log) = run(&["src/tags.edge"]);
+    assert!(!ok && log.contains("src/tags.edge makes 2 pages; give the URL of one: /tags/all/, /tags/guides/"), "{}", log);
+    let (ok, log) = run(&["/guides/pines/"]);
+    assert!(!ok && log.contains("no page at \"/guides/pines/\""), "{}", log);
+    let (ok, log) = run(&["/guides/pine/", "--field", "titel"]);
+    assert!(!ok && log.contains("/guides/pine/ has no `titel` in its data (it has: "), "{}", log);
+}

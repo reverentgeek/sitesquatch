@@ -63,6 +63,9 @@ struct Tpl {
     plain_copy: bool,
     /// The keys in the file's own front matter, for schemas' `unknown`.
     front_keys: Vec<String>,
+    /// For `ssqch inspect`: each level of the data cascade that set something,
+    /// lowest first, by what to call it. Empty in a build.
+    layers: Vec<(String, Map)>,
 }
 
 struct Page {
@@ -99,120 +102,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     for hook in &cfg.before_build {
         hook(&ctx).context("before_build hook failed")?;
     }
-
-    // ---- engines
-    let markdown = Arc::new(MarkdownEngine::new(cfg.markdown.clone()));
-    let mut globals = builtin_filters(&markdown);
-    // withBase("/feed.xml"): the URL with the site's `base` in front, for
-    // places outside HTML attributes (which the build rewrites itself).
-    let base = ctx.base.clone();
-    globals.insert("withBase".into(), Value::func(move |args| Ok(Value::from(crate::base::with_base(&base, &args.first().map(Value::to_js_string).unwrap_or_default())))));
-    for (name, f) in &cfg.filters {
-        globals.insert(name.clone(), f.clone());
-    }
-    let theme_includes: Vec<PathBuf> = ctx.theme_dirs.iter().map(|t| t.join("_includes")).collect();
-    let env = EngineEnv { includes_dir: ctx.includes_dir.clone(), theme_includes: theme_includes.clone(), globals, build: ctx.clone(), strict: cfg.strict };
-    let edge = Arc::new(EdgeEngine::new(&env));
-    let mut by_name: HashMap<String, Arc<dyn TemplateEngine>> = HashMap::new();
-    by_name.insert("edge".into(), edge.clone());
-    by_name.insert("md".into(), markdown.clone());
-    by_name.insert("html".into(), Arc::new(PlainEngine));
-    by_name.insert("txt".into(), Arc::new(PlainEngine));
-    for (ext, factory) in &cfg.engines {
-        by_name.insert(ext.clone(), factory(&env).with_context(|| format!("setting up the `{}` engine", ext))?);
-    }
-    let engines = Arc::new(Engines { edge, by_name });
-    for f in &cfg.template_formats {
-        engines.get(f).context("check `template_formats`")?;
-    }
-    // A theme's hooks and containers, then the site's own on top of them.
-    let mut hooks = HashMap::new();
-    for dir in theme_includes.iter().rev() {
-        hooks.extend(load_hook_templates(dir, "_includes (theme)", &engines, &|ext| engines_for(cfg, ext))?);
-    }
-    hooks.extend(load_hook_templates(&ctx.includes_dir, &slashes(&cfg.includes), &engines, &|ext| engines_for(cfg, ext))?);
-    markdown.set_hooks(hooks, Arc::downgrade(&engines));
-    crate::markdown::set_current(cfg.markdown.clone());
-
-    timer.lap("setup");
-
-    // ---- global data
-    let (site_data, skipped) = data::load_global_data(&ctx.data_dir, &cfg.data_extensions)?;
-    // Themes' `_data` first (the one on top last), then the site's over it.
-    let mut global = Map::new();
-    for theme in ctx.theme_dirs.iter().rev() {
-        let (theme_data, _) = data::load_global_data(&theme.join("_data"), &cfg.data_extensions)?;
-        merge(&mut global, &theme_data, cfg.data_deep_merge);
-    }
-    merge(&mut global, &site_data, cfg.data_deep_merge);
-    let provided: Vec<(String, Result<Value>)> = cfg
-        .global_data
-        .par_iter()
-        .map(|(name, f)| (name.clone(), f(&ctx).with_context(|| format!("global data `{}` failed", name))))
-        .collect();
-    for (name, value) in provided {
-        global.insert(name, value?);
-    }
-    for file in skipped {
-        let stem = file.rsplit('/').next().unwrap_or(&file).split('.').next().unwrap_or("");
-        if !global.contains_key(stem) && !cfg.quiet {
-            eprintln!("warn: skipped _data/{} (no loader for that format; provide `{}` with Config::add_global_data)", file, stem);
-        }
-    }
-    let version = env!("CARGO_PKG_VERSION");
-    let runtime = Value::from_pairs([
-        ("version", Value::from(version)),
-        ("generator", Value::from(format!("SiteSquatch v{}", version))),
-        ("env", Value::from(ctx.env.as_str())),
-        ("serving", Value::Bool(ctx.serving)),
-        ("base", Value::from(ctx.base.as_str())),
-    ]);
-    global.insert("ssqch".into(), runtime);
-    timer.lap("data");
-
-    // ---- templates
-    let mut files = discover(cfg, &ctx)?;
-    // Pages and files from themes that the site doesn't have itself.
-    let (theme_pages, theme_copies) = theme_files(cfg, &ctx)?;
-    files.extend(theme_pages);
-    let commit_dates = match cfg.last_modified {
-        Some(crate::LastModified::Git) => git_dates(cfg, &ctx),
-        _ => HashMap::new(),
-    };
-    let dir_data = load_directory_data(cfg, &ctx, &files)?;
-    let layouts: Mutex<HashMap<String, Arc<Layout>>> = Mutex::new(HashMap::new());
-    let mut tpls: Vec<Arc<Tpl>> = collect_errors(
-        files.par_iter().map(|path| load_template(cfg, &ctx, path, &global, &dir_data, &layouts, &commit_dates).map(Arc::new)).collect(),
-    )?;
-    // Drafts (`draft: true`) are built in development only.
-    if ctx.env == crate::Environment::Production {
-        tpls.retain(|t| {
-            let draft = t.data.get("draft").is_some_and(Value::truthy);
-            if draft && cfg.verbose {
-                println!("[ssqch] Skipping draft {}", t.rel);
-            }
-            !draft
-        });
-    }
-    timer.lap("read");
-
-    // ---- pagination, computed data and permalinks
-    let (deferred, immediate): (Vec<_>, Vec<_>) = tpls.iter().partition(|t| {
-        t.data.get("pagination").map(|p| p.get("data")).and_then(|d| d.as_str().map(|s| s.starts_with("collections"))).unwrap_or(false)
-    });
-    let mut pages: Vec<Page> = collect_errors(immediate.par_iter().map(|t| expand(&ctx, t, None, &engines)).collect())?
-        .into_iter()
-        .flatten()
-        .collect();
-    if !deferred.is_empty() {
-        let shallow = build_collections(cfg, &pages, &HashMap::new())?;
-        let more: Vec<Page> = collect_errors(deferred.par_iter().map(|t| expand(&ctx, t, Some(&shallow), &engines)).collect())?
-            .into_iter()
-            .flatten()
-            .collect();
-        pages.extend(more);
-    }
-    check_conflicts(&pages)?;
+    let Prepared { markdown, engines, theme_includes, global, files, tpls, mut pages, theme_copies } = prepare(cfg, &ctx, &mut timer, false)?;
     check_schemas(cfg, &ctx, &pages)?;
     timer.lap("paginate");
 
@@ -303,6 +193,181 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     report.duration = started.elapsed();
     report.timings = timer.timings;
     Ok(report)
+}
+
+/// Everything up to the list of pages: engines, global data, templates with
+/// their data, and each page's URL. What `build` renders, and what
+/// [`crate::inspect`] reports on.
+struct Prepared {
+    markdown: Arc<MarkdownEngine>,
+    engines: Arc<Engines>,
+    theme_includes: Vec<PathBuf>,
+    global: Map,
+    files: Vec<PathBuf>,
+    tpls: Vec<Arc<Tpl>>,
+    pages: Vec<Page>,
+    theme_copies: Vec<CopyJob>,
+}
+
+fn prepare(cfg: &Config, ctx: &BuildContext, timer: &mut Timer, keep_layers: bool) -> Result<Prepared> {
+    // ---- engines
+    let markdown = Arc::new(MarkdownEngine::new(cfg.markdown.clone()));
+    let mut globals = builtin_filters(&markdown);
+    // withBase("/feed.xml"): the URL with the site's `base` in front, for
+    // places outside HTML attributes (which the build rewrites itself).
+    let base = ctx.base.clone();
+    globals.insert("withBase".into(), Value::func(move |args| Ok(Value::from(crate::base::with_base(&base, &args.first().map(Value::to_js_string).unwrap_or_default())))));
+    for (name, f) in &cfg.filters {
+        globals.insert(name.clone(), f.clone());
+    }
+    let theme_includes: Vec<PathBuf> = ctx.theme_dirs.iter().map(|t| t.join("_includes")).collect();
+    let env = EngineEnv { includes_dir: ctx.includes_dir.clone(), theme_includes: theme_includes.clone(), globals, build: ctx.clone(), strict: cfg.strict };
+    let edge = Arc::new(EdgeEngine::new(&env));
+    let mut by_name: HashMap<String, Arc<dyn TemplateEngine>> = HashMap::new();
+    by_name.insert("edge".into(), edge.clone());
+    by_name.insert("md".into(), markdown.clone());
+    by_name.insert("html".into(), Arc::new(PlainEngine));
+    by_name.insert("txt".into(), Arc::new(PlainEngine));
+    for (ext, factory) in &cfg.engines {
+        by_name.insert(ext.clone(), factory(&env).with_context(|| format!("setting up the `{}` engine", ext))?);
+    }
+    let engines = Arc::new(Engines { edge, by_name });
+    for f in &cfg.template_formats {
+        engines.get(f).context("check `template_formats`")?;
+    }
+    // A theme's hooks and containers, then the site's own on top of them.
+    let mut hooks = HashMap::new();
+    for dir in theme_includes.iter().rev() {
+        hooks.extend(load_hook_templates(dir, "_includes (theme)", &engines, &|ext| engines_for(cfg, ext))?);
+    }
+    hooks.extend(load_hook_templates(&ctx.includes_dir, &slashes(&cfg.includes), &engines, &|ext| engines_for(cfg, ext))?);
+    markdown.set_hooks(hooks, Arc::downgrade(&engines));
+    crate::markdown::set_current(cfg.markdown.clone());
+
+    timer.lap("setup");
+
+    // ---- global data
+    let (site_data, skipped) = data::load_global_data(&ctx.data_dir, &cfg.data_extensions)?;
+    // Themes' `_data` first (the one on top last), then the site's over it.
+    let mut global = Map::new();
+    for theme in ctx.theme_dirs.iter().rev() {
+        let (theme_data, _) = data::load_global_data(&theme.join("_data"), &cfg.data_extensions)?;
+        merge(&mut global, &theme_data, cfg.data_deep_merge);
+    }
+    merge(&mut global, &site_data, cfg.data_deep_merge);
+    let provided: Vec<(String, Result<Value>)> = cfg
+        .global_data
+        .par_iter()
+        .map(|(name, f)| (name.clone(), f(ctx).with_context(|| format!("global data `{}` failed", name))))
+        .collect();
+    for (name, value) in provided {
+        global.insert(name, value?);
+    }
+    for file in skipped {
+        let stem = file.rsplit('/').next().unwrap_or(&file).split('.').next().unwrap_or("");
+        if !global.contains_key(stem) && !cfg.quiet {
+            eprintln!("warn: skipped _data/{} (no loader for that format; provide `{}` with Config::add_global_data)", file, stem);
+        }
+    }
+    let version = env!("CARGO_PKG_VERSION");
+    let runtime = Value::from_pairs([
+        ("version", Value::from(version)),
+        ("generator", Value::from(format!("SiteSquatch v{}", version))),
+        ("env", Value::from(ctx.env.as_str())),
+        ("serving", Value::Bool(ctx.serving)),
+        ("base", Value::from(ctx.base.as_str())),
+    ]);
+    global.insert("ssqch".into(), runtime);
+    timer.lap("data");
+
+    // ---- templates
+    let mut files = discover(cfg, ctx)?;
+    // Pages and files from themes that the site doesn't have itself.
+    let (theme_pages, theme_copies) = theme_files(cfg, ctx)?;
+    files.extend(theme_pages);
+    let commit_dates = match cfg.last_modified {
+        Some(crate::LastModified::Git) => git_dates(cfg, ctx),
+        _ => HashMap::new(),
+    };
+    let dir_data = load_directory_data(cfg, ctx, &files)?;
+    let layouts: Mutex<HashMap<String, Arc<Layout>>> = Mutex::new(HashMap::new());
+    let shared = Shared { global: &global, dir_data: &dir_data, layouts: &layouts, commit_dates: &commit_dates, keep_layers };
+    let mut tpls: Vec<Arc<Tpl>> = collect_errors(
+        files.par_iter().map(|path| load_template(cfg, ctx, path, &shared).map(Arc::new)).collect(),
+    )?;
+    // Drafts (`draft: true`) are built in development only.
+    if ctx.env == crate::Environment::Production {
+        tpls.retain(|t| {
+            let draft = t.data.get("draft").is_some_and(Value::truthy);
+            if draft && cfg.verbose {
+                println!("[ssqch] Skipping draft {}", t.rel);
+            }
+            !draft
+        });
+    }
+    timer.lap("read");
+
+    // ---- pagination, computed data and permalinks
+    let (deferred, immediate): (Vec<_>, Vec<_>) = tpls.iter().partition(|t| {
+        t.data.get("pagination").map(|p| p.get("data")).and_then(|d| d.as_str().map(|s| s.starts_with("collections"))).unwrap_or(false)
+    });
+    let mut pages: Vec<Page> = collect_errors(immediate.par_iter().map(|t| expand(ctx, t, None, &engines)).collect())?
+        .into_iter()
+        .flatten()
+        .collect();
+    if !deferred.is_empty() {
+        let shallow = build_collections(cfg, &pages, &HashMap::new())?;
+        let more: Vec<Page> = collect_errors(deferred.par_iter().map(|t| expand(ctx, t, Some(&shallow), &engines)).collect())?
+            .into_iter()
+            .flatten()
+            .collect();
+        pages.extend(more);
+    }
+    check_conflicts(&pages)?;
+    Ok(Prepared { markdown, engines, theme_includes, global, files, tpls, pages, theme_copies })
+}
+
+/// A page as `ssqch inspect` sees it.
+pub(crate) struct InspectedPage {
+    pub url: Option<String>,
+    pub input: PathBuf,
+    pub output: Option<PathBuf>,
+    pub engines: Vec<String>,
+    pub layouts: Vec<String>,
+    pub date: DateTime<Utc>,
+    /// Whether the date is the one at the start of the file's name.
+    pub date_from_name: bool,
+    pub in_collections: bool,
+    pub data: Arc<Map>,
+    pub layers: Vec<(String, Map)>,
+}
+
+/// Every page the site would build, with where its data came from. Nothing
+/// is rendered or written, and build hooks don't run.
+pub(crate) fn inspect_pages(cfg: &Config) -> Result<(BuildContext, Map, Vec<InspectedPage>)> {
+    let ctx = cfg.build_context();
+    if !ctx.input_dir.is_dir() {
+        bail!("input directory {} does not exist", ctx.input_dir.display());
+    }
+    let mut timer = Timer { last: Instant::now(), timings: Vec::new() };
+    let prepared = prepare(cfg, &ctx, &mut timer, true)?;
+    let pages = prepared
+        .pages
+        .iter()
+        .map(|p| InspectedPage {
+            url: p.url.clone(),
+            input: p.tpl.input.clone(),
+            output: p.output.clone(),
+            engines: p.tpl.engines.clone(),
+            layouts: p.tpl.layouts.iter().map(|l| l.name.clone()).collect(),
+            date: p.date,
+            date_from_name: p.tpl.file_date.is_some(),
+            in_collections: p.in_collections,
+            data: p.data.clone(),
+            layers: p.tpl.layers.clone(),
+        })
+        .collect();
+    Ok((ctx, prepared.global, pages))
 }
 
 /// Filters every site has: `markdown(text)` (or `markdown(text, "inline")`)
@@ -692,15 +757,18 @@ fn load_layout(cfg: &Config, ctx: &BuildContext, name: &str, cache: &Mutex<HashM
     Ok(layout)
 }
 
-fn load_template(
-    cfg: &Config,
-    ctx: &BuildContext,
-    path: &Path,
-    global: &Map,
-    dir_data: &HashMap<PathBuf, Map>,
-    layouts: &Mutex<HashMap<String, Arc<Layout>>>,
-    commit_dates: &HashMap<PathBuf, DateTime<Utc>>,
-) -> Result<Tpl> {
+/// What every template is loaded with.
+struct Shared<'a> {
+    global: &'a Map,
+    dir_data: &'a HashMap<PathBuf, Map>,
+    layouts: &'a Mutex<HashMap<String, Arc<Layout>>>,
+    commit_dates: &'a HashMap<PathBuf, DateTime<Utc>>,
+    /// Keep each level of the cascade apart as well, for `ssqch inspect`.
+    keep_layers: bool,
+}
+
+fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared) -> Result<Tpl> {
+    let Shared { global, dir_data, layouts, commit_dates, keep_layers } = *shared;
     let root = root_of(ctx, path);
     let rel_path = path.strip_prefix(root).unwrap_or(path);
     let rel = rel_path.to_string_lossy().replace('\\', "/");
@@ -714,9 +782,20 @@ fn load_template(
         let mut own = Map::new();
         let mut dirs: Vec<&Path> = path.ancestors().skip(1).take_while(|d| d.starts_with(root)).collect();
         dirs.reverse();
+        let mut layers: Vec<(String, Map)> = Vec::new();
         for d in dirs {
             if let Some(data) = dir_data.get(d) {
                 merge(&mut own, data, cfg.data_deep_merge);
+                if keep_layers {
+                    // Named by its file, when there's just the one.
+                    let name = d.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    let files: Vec<PathBuf> = std::fs::read_dir(d).map(|entries| entries.flatten().map(|e| e.path()).filter(|p| p.is_file() && p.file_stem().is_some_and(|s| s.to_string_lossy() == name || s.to_string_lossy() == format!("{}.data", name))).collect()).unwrap_or_default();
+                    let label = match files.as_slice() {
+                        [one] => display_path(ctx, one).trim_start_matches("./").to_string(),
+                        _ => format!("directory data in {}/", display_path(ctx, d).trim_start_matches("./")),
+                    };
+                    layers.push((label, data.clone()));
+                }
             }
         }
         let stem = path.file_stem().unwrap().to_string_lossy().to_string();
@@ -726,6 +805,9 @@ fn load_template(
             if candidate.is_file() {
                 if let Some(Value::Obj(o)) = data::load_data_file(&candidate, &cfg.data_extensions)? {
                     merge(&mut own, &o, cfg.data_deep_merge);
+                    if keep_layers {
+                        layers.push((display_path(ctx, &candidate).trim_start_matches("./").to_string(), (*o).clone()));
+                    }
                 }
             }
         }
@@ -733,6 +815,9 @@ fn load_template(
         let front_keys: Vec<String> = front.keys().cloned().collect();
         normalize_tags(&mut front);
         merge(&mut own, &front, cfg.data_deep_merge);
+        if keep_layers && !front.is_empty() {
+            layers.push(("front matter".to_string(), front.clone()));
+        }
 
         // Layout chain; layout front matter sits below template data.
         let mut chain = Vec::new();
@@ -746,8 +831,14 @@ fn load_template(
             chain.push(layout);
         }
         let mut data = global.clone();
+        let mut layout_layers = 0;
         for layout in chain.iter().rev() {
             merge(&mut data, &layout.data, cfg.data_deep_merge);
+            // Layouts sit below everything the page has of its own, outermost first.
+            if keep_layers && !layout.data.is_empty() {
+                layers.insert(layout_layers, (format!("layout {}", layout.name), layout.data.clone()));
+                layout_layers += 1;
+            }
         }
         merge(&mut data, &own, cfg.data_deep_merge);
         normalize_tags(&mut data);
@@ -777,6 +868,7 @@ fn load_template(
 
         let plain_copy = !has_front_matter && engines.iter().all(|e| e == "txt");
         Ok(Tpl {
+            layers,
             front_keys,
             plain_copy,
             input: path.to_path_buf(),
@@ -829,8 +921,10 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
         let mut size = 1;
         if let Some(p) = &pagination {
             let path = p.get("data").as_str().ok_or_else(|| anyhow!("pagination.data must be a string"))?.to_string();
+            // `collections.posts` is a collection's pages; `collections` alone is the collections' names (a page per tag).
             let source = match (path.strip_prefix("collections."), collections) {
                 (Some(rest), Some(c)) => c.get_path(rest),
+                (None, Some(c)) if path == "collections" => c.clone(),
                 _ => Value::object(tpl.data.clone()).get_path(&path),
             };
             let items = pagination_items(p, &path, source)?;

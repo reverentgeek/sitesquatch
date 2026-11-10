@@ -422,13 +422,14 @@ Moved to a later release (decided 2026-11-09); 0.4 ships without it.
 `positioning.md`, `adoption-study.md`, `trial-migrations.md`). Its "first" priorities are done
 in 0.4: reloading the config, cached remote data, `base`, and `ssqch diff`. So are the eight
 gaps in `positioning.md`. What it proposes that isn't built or listed above, in the order
-I'd take them (the first three are small enough for 0.4; decide which go in):
+I'd take them (the first three went into 0.4):
 
-- [ ] **`ssqch inspect <url or file>`:** where a page comes from: its template and layout
-      chain, its collections, and for a data field (`--field title`) the value and which level
-      of the cascade set it (global data, layout, directory data, data file, front matter,
-      `computed`). With `--json`. It answers "why is this value what it is?" and is the
-      documented data-cascade rules ("Possible design changes", at the end) in executable form.
+- [x] **`ssqch inspect <url or file>`:** where a page comes from: its template and layout
+      chain, its date, its collections, and for each value in its data the level of the
+      cascade that set it and the levels it replaced. `--field title` shows one value with
+      every level, and `--format json` is for scripts. The README's "Where a value comes from"
+      documents the cascade's order (the "Clearer, documented data-cascade rules" item).
+      Building it turned up that `pagination: { data: collections }` didn't work; it does now.
 - [ ] **A machine-readable interface for scripts and coding agents:** `ssqch build --format
       json` (errors and warnings with a code, the file, the line when known, and the field for
       schema errors), `ssqch capabilities --json` (version, engines, plugins and JavaScript
@@ -569,5 +570,6 @@ reuse it, and crates.io comes before `cargo binstall`.
       directory data, `_data/site.json`, `ssqch.d.ts`, `jsconfig.json`, `.gitignore`), keeping
       existing files. A test builds what it writes. Released in 0.2.7.
 - [ ] Possible design changes:
-  - Clearer, documented data-cascade rules.
+  - Done: clearer, documented data-cascade rules (README, "Where a value comes from", and
+    `ssqch inspect`).
   - An image API that names its output formats explicitly, instead of an `auto` setting.

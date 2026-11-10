@@ -14,7 +14,7 @@ What's in the box:
 - **A JavaScript config** with filters, global data, custom collections, transforms and build hooks, plus npm packages, `fetch` (with a cache) and the Node built-ins configs usually reach for.
 - **Markdown that does the work of a plugin stack:** heading ids, footnotes, containers, render hooks in any template language, and syntax highlighting at build time.
 - **Responsive images:** every `<img>` becomes a `<picture>` with AVIF, WebP and fallback sources, cached by content so later builds skip the encoding.
-- **Checks that run with every build:** [content schemas](#content-schemas) for front matter, a link checker, and [`ssqch diff`](#comparing-two-builds) to see what a change did to the output.
+- **Checks that run with every build:** [content schemas](#content-schemas) for front matter, a link checker, [`ssqch diff`](#comparing-two-builds) to see what a change did to the output, and [`ssqch inspect`](#where-a-value-comes-from) to see where a page's data came from.
 - **Themes without a package manager, custom elements that load only where they're used**, Sass, a sitemap, redirects, RSS helpers, HTML minification and asset fingerprinting.
 - **A quick start and a way in:** `ssqch init` (a blog, or a docs site with a sidebar and search), `ssqch import` for Eleventy and Zola sites, and a dev server that reloads pages and the config.
 - **A Rust API** for when JavaScript isn't enough: custom template engines, heavy transforms, or a whole site as its own binary.
@@ -176,7 +176,7 @@ ssqch serve
 
 `ssqch serve` rebuilds when your sources change and reloads the browser. It also reloads (without a rebuild) when another tool, like a PostCSS or esbuild watcher, writes a CSS or JavaScript file into the output folder, so the page never reloads before its new CSS is there.
 
-`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode. The other commands are `ssqch init`, `ssqch types`, [`ssqch diff`](#comparing-two-builds) and [`ssqch import`](#moving-from-another-generator).
+`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode. The other commands are `ssqch init`, `ssqch types`, [`ssqch inspect`](#where-a-value-comes-from), [`ssqch diff`](#comparing-two-builds) and [`ssqch import`](#moving-from-another-generator).
 
 ## Configuring a site
 
@@ -374,9 +374,9 @@ Whichever generator you're leaving, build the site with it and with ssqch and ru
 
 Here's what's supported:
 
-- **The data cascade**, from lowest to highest priority: global `_data` files (JSON, YAML, TOML or JavaScript), layout front matter, directory data, template data files, front matter, then `computed`. Objects merge and arrays concatenate, unless `deepMerge` is off.
+- **The data cascade:** a page's data comes from several places, and each one replaces what the ones before it set: global data, the front matter of its layouts, directory data, the page's data file, its front matter, then `computed`. [Where a value comes from](#where-a-value-comes-from) has the exact order, and `ssqch inspect` shows it for any page.
 - **Collections:** tags become collections, sorted by date, plus your custom ones. `excludeFromCollections: true` keeps a page out.
-- **Pagination:** `data`, `size`, `alias`, `reverse`, `filter`, `addAllPagesToCollections` and hrefs.
+- **Pagination:** `data`, `size`, `alias`, `reverse`, `filter`, `addAllPagesToCollections` and hrefs. `data: collections` goes over the collections' names, for a page per tag (`filter: [all]` leaves `all` out).
 - **Permalinks:** dynamic permalinks, `permalink: false` and `dynamicPermalink`. A permalink (or `computed` value) with `{{ }}` renders in the page's own template language, so a Liquid page can write `permalink: "/{{ title | slugify }}/"`; Markdown and HTML pages use their `markdownEngine` or `htmlEngine`, or Edge.
 - **Front matter:** YAML between `---` lines, TOML between `+++` lines, or JSON after `---json` (`---yaml` and `---toml` work too). `.markdown` files are Markdown, like `.md`.
 - **Navigation:** `navTree(nav, page.url)` takes a tree from data (`_data/nav.yml`: entries with `title`, `url`, and children under `children`, `items` or `pages`) and marks each entry `current`, `ancestor` or `open`, for a sidebar that highlights where you are. `navPager(nav, page.url)` returns `{ previous, next }` in reading order, and `navBreadcrumbs(nav, page.url)` the entries from the top down to the page. To build the tree from front matter instead, give pages `nav: { title, parent, order }` (or `nav: true`) and use `pagesTree(collections.docs)`. URLs match with or without `index.html` and the last `/`.
@@ -572,6 +572,62 @@ error: 3 content errors:
 - **Editor types:** `ssqch types` adds the schemas to `ssqch.d.ts`, so `pages.byTag("posts")` in a collection function knows each page's fields.
 
 In `sitesquatch.toml`, a schema is a table: `[schemas.posts]` with `fields = { title = "string", date = "date" }`.
+
+## Where a value comes from
+
+A page's data is a cascade. From the lowest level to the highest:
+
+1. **Global data:** files in a theme's `_data/`, then the site's `_data/` (`site.json` is `site`), then the config's `data`.
+2. **Layouts:** the front matter of the page's layouts, the outermost layout first.
+3. **Directory data:** `posts/posts.json` (or `.yaml`, `.toml`, `posts.data.js`) applies to everything in `posts/` and below it. The outermost folder goes first.
+4. **The page's data file:** `pine.json` or `pine.data.js` next to `pine.md`.
+5. **Front matter.**
+6. **`computed`:** worked out last, from everything above.
+
+A higher level replaces what a lower one set. Objects merge key by key and lists are joined (a post's `tags` add to its folder's), unless `deepMerge` is off. `page` and `ssqch` are built in.
+
+When a value isn't what you expected, `ssqch inspect` says which level set it. Give it a page's URL or its template's path:
+
+```sh
+ssqch inspect /guides/pine/
+```
+
+```text
+/guides/pine/
+  From        src/guides/2024-03-02-pine.md (edge, md)
+  Writes      dist/guides/pine/index.html
+  Layouts     _includes/guide.edge > _includes/base.edge
+  Date        2024-03-02T00:00:00Z (from the file's name)
+  Collections all, guides
+
+  Data (name, value, and the level of the cascade that set it)
+    site       {name, author}        src/_data/site.json
+    section    "guides"              layout _includes/guide.edge (over layout _includes/base.edge)
+    layout     "guide.edge"          src/guides/guides.json
+    level      "hard"                front matter (over src/guides/guides.json, src/guides/2024-03-02-pine.json)
+    title      "Pine"                front matter
+    label      "Pine (hard)"         computed
+```
+
+`--field` shows one value in full, with every level that set it:
+
+```sh
+ssqch inspect src/guides/2024-03-02-pine.md --field level
+```
+
+```text
+level = "hard"
+
+Set by (the last one wins):
+    src/guides/guides.json                    "easy"
+    src/guides/2024-03-02-pine.json           "medium"
+  > front matter                              "hard"
+```
+
+- **Inside a value:** a dotted path reaches into objects (`--field site.author.name`, `--field hero.alt`).
+- **Pages made by pagination:** a template that makes many pages needs the URL of one of them. `ssqch inspect src/tags.edge` lists them.
+- **Scripts and agents:** `--format json` prints the report as JSON (`schemaVersion: 1`), with `value`, `from` and `setBy` for each field.
+- **Nothing is built:** it reads the site as a build would, up to the point of rendering. No file is written, and `beforeBuild` and `afterBuild` don't run.
 
 ## Reading the build summary
 
@@ -805,7 +861,7 @@ A plugin implements `sitesquatch::Plugin` (any `Fn(&mut Config)` works too) and 
 | `add_config_file(path)` | not available (a file `ssqch serve` reads the configuration again for) |
 | `add_summary(label, \|ctx\| ...)` | not available (adds a line to the build summary) |
 
-A site binary whose setup can fail uses `sitesquatch::cli::try_run_with`, whose closure returns a `Result` and is called again by `ssqch serve` when a config file changes. `sitesquatch::diff::compare` is `ssqch diff` as a function.
+A site binary whose setup can fail uses `sitesquatch::cli::try_run_with`, whose closure returns a `Result` and is called again by `ssqch serve` when a config file changes. `sitesquatch::diff::compare` is `ssqch diff` as a function. `sitesquatch::inspect::inspect` is `ssqch inspect`.
 
 Plugins can share services. The image plugin exposes an `ImageProcessor`, and the blog's plugin uses it for its hero image data and its `socialImage` filter.
 
