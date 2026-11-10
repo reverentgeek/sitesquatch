@@ -8,7 +8,7 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
-## Unreleased
+## 0.3.3 - 2026-11-09
 
 - A mistake in `ssqch.config.js` names the file once (`ssqch.config.js: dirs.ouput isn't
   supported`), not twice, and `ssqch.config.mjs` errors name that file.

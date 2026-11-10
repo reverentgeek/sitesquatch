@@ -38,7 +38,7 @@ On **Windows (x86_64)**, use the PowerShell installer:
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.ps1 | iex"
 ```
 
-The installers check the download's SHA-256 checksum, install `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and add that folder to your `PATH`. Every release binary runs a smoke test on its own platform before it's published. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.3.2`. You can also download an archive for your platform from the [releases page](https://github.com/reverentgeek/sitesquatch/releases), or, if you use [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), run `cargo binstall ssqch` to fetch the same archive.
+The installers check the download's SHA-256 checksum, install `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and add that folder to your `PATH`. Every release binary runs a smoke test on its own platform before it's published. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.3.3`. You can also download an archive for your platform from the [releases page](https://github.com/reverentgeek/sitesquatch/releases), or, if you use [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), run `cargo binstall ssqch` to fetch the same archive.
 
 On other platforms (Linux on ARM, say), build it from [crates.io](https://crates.io/crates/ssqch) with a recent stable [Rust toolchain](https://rustup.rs):
 
@@ -51,7 +51,7 @@ In **GitHub Actions**, [`reverentgeek/setup-ssqch`](https://github.com/reverentg
 ```yaml
 - uses: reverentgeek/setup-ssqch@v1
   with:
-    version: 0.3.2
+    version: 0.3.3
 - run: ssqch build
 ```
 
@@ -395,7 +395,7 @@ Netlify can build the site itself, with no deploy token to manage. This is the R
 
 [build.environment]
   NODE_VERSION = "24"
-  SSQCH_VERSION = "0.3.2"
+  SSQCH_VERSION = "0.3.3"
 
 [[plugins]]
   package = "netlify-plugin-cache"
