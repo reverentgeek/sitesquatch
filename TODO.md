@@ -42,6 +42,33 @@ restyling them in the Ranger Station palette), a drawing for the starter's secon
 `ssqch footprint`, "Say ssqch's name for another generator's word", and every unticked "Later"
 and "Not yet" item below.
 
+### CSS and JavaScript (0.5)
+
+Found 2026-11-10: a bare `ssqch serve` on the blog after deleting `dist/` gave an unstyled page,
+because PostCSS and esbuild write `dist/assets/` and only `pnpm run serve` starts them. Nothing
+in the README or the starters says how CSS and JavaScript get into a site, so someone who adds
+a tool finds out the same way. The only clue is a warning that scrolls past.
+
+- [ ] **A "CSS and JavaScript" section in the README:** the three ways today (Sass with
+      `sassPlugin`; plain CSS and ES modules copied with `passthrough`; any other tool from
+      `beforeBuild` with `watch`), how `assetsPlugin` fingerprints the result, and a Tailwind
+      example.
+- [ ] **Companion processes for `ssqch serve`:** long-running watchers ssqch starts with the
+      server, shows the output of, and stops with it (`serve: { run: [ "npx postcss ...
+      --watch", ... ] }`), so one command serves a site that has its own CSS and JS tools.
+      It also lets ssqch say which tool should have written a missing file. Measured on the
+      blog (2026-11-10, ssqch 0.4.0): the tools in `beforeBuild` (with `watch` on
+      `src/assets/`) make `ssqch build` and `ssqch serve` work alone, with production output
+      identical to `pnpm run build`, but every rebuild reruns PostCSS and Tailwind: an edit
+      reaches the browser in about 540 ms instead of 300 ms with the watchers, and the server
+      is ready in 1.1 s instead of 0.6 s. Companion processes would keep the watchers' speed.
+- [ ] **A louder missing asset:** when a linked file never appears, repeat it under the
+      summary and in the browser overlay (`/assets/index.css is linked but nothing wrote it`),
+      pointing at the README section.
+- [ ] **Maybe built-in CSS processing** with Lightning CSS (Rust: `@import` bundling, nesting,
+      minifying, browser targets), only if the items above leave a real gap. It wouldn't
+      replace Tailwind. JavaScript bundling in Rust costs too much binary for what it gives.
+
 ## The Sasquatch voice (done, apart from two items)
 
 Built 2026-11-10, after David's review. ssqch reports like a deadpan park ranger who knows a
