@@ -20,8 +20,10 @@ The order of work:
 Where 0.4 stands (2026-11-10): every phase of the adoption study below is built and tested,
 and so are the features that set ssqch apart (render hooks and containers, content schemas,
 `ssqch diff`, the docs starter, themes, custom elements, and `ssqch import` for Eleventy and
-Zola). The
-blog builds with it, and `ssqch diff` against its 0.3.3 build shows only the new heading `id`s.
+Zola). Three more came from the research: `ssqch inspect`, the JSON interface for scripts and
+coding agents (`build --format json`, `capabilities`, `serve --ready-file`), and `ssqch new`.
+The blog builds with it, `ssqch diff` against its 0.3.3 build shows only the new heading
+`id`s, and `ssqch inspect` and `ssqch build --format json` work on it.
 Left before a release:
 
 - Release 0.3.4 from `main`: the dev server fixes are committed there (2026-11-10) and merged
