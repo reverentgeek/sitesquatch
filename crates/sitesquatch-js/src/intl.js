@@ -173,7 +173,83 @@
 			return new NumberFormat( locales, options );
 		}
 	};
+	// Collation: an approximation of ICU's root order for Latin text, which
+	// `en` uses. Strings compare by base letters first (spaces, then
+	// punctuation, then digits, then letters), then by accents, then by case
+	// (lowercase first), as `"a" < "B" < "b"` and `"resume" < "résumé"`.
+	const COLLATOR_OPTIONS = [ "sensitivity", "numeric", "ignorePunctuation", "usage", "caseFirst", "localeMatcher", "collation" ];
+	const charClass = c => /\s/u.test( c ) ? 0 : /[\p{P}\p{S}]/u.test( c ) ? 1 : /\p{Nd}/u.test( c ) ? 2 : /\p{L}/u.test( c ) ? 3 : 4;
+	class Collator {
+		constructor( locales, options = {} ) {
+			checkLocale( "Intl.Collator", locales );
+			for ( const key of Object.keys( options ) ) {
+				if ( !COLLATOR_OPTIONS.includes( key ) ) throw new RangeError( `Intl.Collator: the "${ key }" option isn't supported in ssqch` );
+			}
+			this.sensitivity = options.sensitivity ?? "variant";
+			this.numeric = Boolean( options.numeric );
+			this.ignorePunctuation = Boolean( options.ignorePunctuation );
+			this.upperFirst = options.caseFirst === "upper";
+			this.compare = ( a, b ) => this.#compare( String( a ), String( b ) );
+		}
+		// [primary keys, accent marks, case flags] for a string.
+		#keys( s ) {
+			const primary = [], accents = [], cases = [];
+			const chars = [ ...s.normalize( "NFD" ) ];
+			for ( let i = 0; i < chars.length; i++ ) {
+				const c = chars[i];
+				if ( /\p{M}/u.test( c ) ) { accents[accents.length - 1] += c; continue; }
+				const cls = charClass( c );
+				if ( this.ignorePunctuation && cls <= 1 ) continue;
+				if ( this.numeric && cls === 2 ) {
+					let j = i;
+					while ( j + 1 < chars.length && charClass( chars[j + 1] ) === 2 ) j++;
+					const digits = chars.slice( i, j + 1 ).join( "" ).replace( /^0+(?=\d)/u, "" );
+					primary.push( [ 2, digits.length, digits ] );
+					accents.push( "" );
+					cases.push( 0 );
+					i = j;
+					continue;
+				}
+				const lower = c.toLowerCase();
+				primary.push( [ cls, 0, lower ] );
+				accents.push( "" );
+				cases.push( c === lower ? 0 : 1 );
+			}
+			return [ primary, accents, cases ];
+		}
+		#compare( a, b ) {
+			const [ pa, aa, ca ] = this.#keys( a ), [ pb, ab, cb ] = this.#keys( b );
+			const cmp = ( x, y ) => ( x < y ? -1 : x > y ? 1 : 0 );
+			for ( let i = 0; i < Math.min( pa.length, pb.length ); i++ ) {
+				const d = cmp( pa[i][0], pb[i][0] ) || cmp( pa[i][1], pb[i][1] ) || cmp( pa[i][2], pb[i][2] );
+				if ( d ) return d;
+			}
+			if ( pa.length !== pb.length ) return cmp( pa.length, pb.length );
+			if ( this.sensitivity === "accent" || this.sensitivity === "variant" ) {
+				for ( let i = 0; i < aa.length; i++ ) {
+					const d = cmp( aa[i], ab[i] );
+					if ( d ) return d;
+				}
+			}
+			if ( this.sensitivity === "case" || this.sensitivity === "variant" ) {
+				for ( let i = 0; i < ca.length; i++ ) {
+					if ( ca[i] !== cb[i] ) return ( ca[i] - cb[i] ) * ( this.upperFirst ? -1 : 1 );
+				}
+			}
+			return 0;
+		}
+		resolvedOptions() {
+			return { locale: "en-US", usage: "sort", sensitivity: this.sensitivity, ignorePunctuation: this.ignorePunctuation, collation: "default", numeric: this.numeric, caseFirst: this.upperFirst ? "upper" : "false" };
+		}
+	}
+	Intl.Collator = function ( locales, options ) {
+		return new Collator( locales, options );
+	};
+
 	const define = ( proto, key, fn ) => Object.defineProperty( proto, key, { value: fn, writable: true, configurable: true } );
+	define( String.prototype, "localeCompare", function ( that, locales, options ) {
+		return new Collator( locales, options ).compare( this, that );
+	} );
 	define( Date.prototype, "toLocaleDateString", function ( locales, options ) {
 		return new DateTimeFormat( locales, options, "date" ).format( this );
 	} );

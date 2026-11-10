@@ -29,6 +29,7 @@ pub struct SiteToml {
     pub input: Option<PathBuf>,
     pub output: Option<PathBuf>,
     pub includes: Option<PathBuf>,
+    pub layouts: Option<PathBuf>,
     pub data: Option<PathBuf>,
     pub template_formats: Option<Vec<String>>,
     pub markdown_engine: Option<String>,
@@ -55,6 +56,7 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
     if let Some(v) = site.input { cfg.input = v; }
     if let Some(v) = site.output { cfg.output = v; }
     if let Some(v) = site.includes { cfg.includes = v; }
+    if let Some(v) = site.layouts { cfg.layouts = Some(v); }
     if let Some(v) = site.data { cfg.data = v; }
     if let Some(v) = site.template_formats { cfg.template_formats = v; }
     if let Some(v) = site.markdown_engine { cfg.markdown_engine = Some(v).filter(|s| !s.is_empty()); }

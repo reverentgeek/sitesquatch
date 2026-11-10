@@ -50,7 +50,9 @@ The config is ESM: `require` and `module.exports` become `import` and `export`, 
 | `permalink`, `layout`, `tags`, `pagination`, `date` | The same |
 | `*.11tydata.js`, `*.11tydata.json` | `*.data.js`, `*.data.json` |
 | `_data/*.js` and directory data (`posts/posts.json`) | The same |
-| `page.url`, `page.fileSlug`, `page.inputPath`, `page.outputPath`, `page.date` | The same, plus `page.headings` and `page.excerpt` in layouts |
+| `page.url`, `page.fileSlug`, `page.inputPath`, `page.outputPath`, `page.date` | The same, plus `page.headings` and `page.excerpt` in layouts. Dates in file names (`2024-06-01-post.md`) work the same way. |
+| `layouts: "_includes/layouts"` and `layout: post` | `dirs: { layouts: "_includes/layouts" }` |
+| `addDataExtension("yml", ...)` with js-yaml | Built in: YAML, TOML and JSON data files load as they are, and `readData(path)` from `ssqch` reads one in code |
 | `eleventyNavigation` | A data file such as `_data/nav.yml` (see the `docs-sidebar` example) |
 | `eleventy.env`, `process.env.ELEVENTY_ENV` | The `ssqch` template global (`ssqch.env`, `ssqch.serving`), and `SSQCH_ENV` |
 
@@ -73,6 +75,14 @@ The config is ESM: `require` and `module.exports` become `import` and `export`, 
 ## Templates
 
 Nunjucks (`.njk`) renders with minijinja, and Liquid with the `liquid` crate. Most templates work unchanged; the README lists what differs (Nunjucks async tags and custom tag extensions aren't supported). JavaScript templates (`.11ty.js`) need rewriting in a template language, or an engine of your own for a new extension: `engines: { page: (source, data) => html }` renders `.page` files. WebC isn't supported.
+
+## Things that work differently
+
+- **Templates in a passthrough folder aren't pages.** Eleventy renders a `feed.njk` inside a copied `static/` folder and also copies it. ssqch only copies it. Move templates out, or use a glob for the files to copy (`{ "src/static/*.{png,ico,svg}": "." }`).
+- **A filter called as a function loses to page data of the same name.** With `image:` in a post's front matter, `image(src)` is that string, not the filter. `src | image` works, or give the filter another name.
+- **A printed date is ISO 8601** (`2024-06-01T00:00:00.000Z`), not JavaScript's `Date.toString()`, which depends on the machine's time zone. Format dates with a filter.
+- **Markdown differs from markdown-it in a few places:** smart punctuation turns every `--` into a dash (markdown-it's typographer only a spaced one), bare domains like `example.com` aren't links (only `https://` and `www.` URLs are, as on GitHub), and with `indentedCode: false`, indented HTML renders as HTML (markdown-it wraps it in `<p>`).
+- **markdown-it-anchor's ids** need a slugger: `markdown: { headingIds: (text) => encodeURIComponent(text.trim().toLowerCase().replace(/\s+/g, "-")) }`, and a heading hook if you want its `tabindex="-1"`.
 
 ## Checking the move
 

@@ -161,7 +161,7 @@ fn mistakes_in_the_config_say_what_to_fix() {
         ("import x from \"left-pad\"; export default {};", "importing npm packages isn't supported"),
         ("import h from \"node:http\"; export default {};", "node:http isn't available in ssqch"),
         ("export const config = {};", "needs a default export: export default defineConfig({ ... })"),
-        ("export default { dirs: { layouts: \"_layouts\" } };", "dirs.layouts isn't supported (use input, output, includes, data)"),
+        ("export default { dirs: { assets: \"_assets\" } };", "dirs.assets isn't supported (use input, output, includes, layouts, data)"),
         ("export default { dir: { input: \"src\" } };", "\"dir\" isn't a config option (options: dirs, templateFormats"),
         ("export default { plugins: [{ builtin: \"test:gretter\" }] };", "unknown plugin \"test:gretter\" (built-in plugins: test:greeter)"),
         ("export default async () => { await new Promise(() => {}); };", "never settled"),

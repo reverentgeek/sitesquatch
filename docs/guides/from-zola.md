@@ -2,7 +2,7 @@
 
 Zola and SiteSquatch are both single Rust binaries, so the move is mostly about templates: Tera becomes Nunjucks or Jinja (minijinja, which reads almost the same), and `config.toml` becomes `ssqch.config.js`. Your content can stay as it is: SiteSquatch reads TOML front matter between `+++` lines.
 
-The [`blog-tags`](../../examples/sites/blog-tags/) example is a small blog laid out like a Zola site (sections, tags with feeds, aliases, highlighting), distilled from blog.rust-lang.org.
+blog.rust-lang.org was ported this way as a trial: all of its URLs and most pages came out the same. The [`blog-tags`](../../examples/sites/blog-tags/) example is a small blog laid out like a Zola site (sections, tags with feeds, aliases, highlighting), distilled from blog.rust-lang.org.
 
 ## The config
 
@@ -15,7 +15,7 @@ The [`blog-tags`](../../examples/sites/blog-tags/) example is a small blog laid 
 | `taxonomies = [{ name = "tags", feed = true }]` | Tags are built in: `tags: [...]` in front matter, `collections.<tag>` in templates. Tag pages and per-tag feeds are a template paginated over the tag list. |
 | Automatic `sitemap.xml` | `sitemapPlugin({ url })` from `ssqch/sitemap` |
 | `insert_anchor_links` | A heading render hook: `_includes/hooks/heading.njk` |
-| `slugify` settings | `markdown: { headingIds: "github" }` (or `"blackfriday"`) |
+| `slugify` settings (Zola's default anchors) | `markdown: { headingIds: "ascii" }`, which transliterates the same way (`🦀` is `crab`) |
 | `compile_sass` | Not built in yet; run Sass before `ssqch build` |
 | `build_search_index` | Not built in yet |
 | `zola check` | `linksPlugin()` checks internal links and anchors on every build. External links aren't checked. |
@@ -29,11 +29,13 @@ The [`blog-tags`](../../examples/sites/blog-tags/) example is a small blog laid 
 | `+++` TOML front matter | Works as is |
 | `title`, `date`, `description` | The same names |
 | `draft = true` | The same: built by `ssqch serve`, left out of `ssqch build` |
-| `aliases = ["/old/"]` | The same, with `redirectsPlugin()` from `ssqch/redirects` |
+| `aliases = ["2019/05/15/post.html"]` | The same, with `redirectsPlugin()` from `ssqch/redirects`. Without a leading `/`, an alias is still from the site's root, and old URLs keep their `#fragment`. |
 | `slug`, `path` | `permalink`, which can use data: `permalink: "/blog/{{ page.date \| datePath }}/{{ page.fileSlug }}/"` |
 | `weight` | Any field; sort by it in a custom collection |
 | `[taxonomies]` `tags = [...]` | `tags = [...]` at the top level of the front matter |
 | `[extra]` fields | Stay where they are: `{{ extra.subtitle }}` |
+| No `date`, with the date in `path` | `computed: { date: (data) => ... }` in a directory data file (`content/content.data.js`); a computed date is the page's date |
+| `_index.md` section front matter | A data file (`_data/sections.json`), and `ignore: ["**/_index.md"]` |
 | `<!-- more -->` summaries | The same: `page.excerpt` is the HTML before it |
 | Internal links (`@/blog/post.md`) | URL paths (`/blog/2024/01/15/post/`); the link checker catches mistakes |
 | Footnotes | Built in |

@@ -254,9 +254,33 @@ migration guides it unblocks.
 
 ### 3. Trial migrations
 
-- [ ] Port eslint.org and blog.rust-lang.org in forks and diff the output with their current
-      builds (the Rust blog snapshot-tests its whole output in `crates/snapshot`). Add what turns
-      up to this list. Decide separately whether to offer either port upstream.
+- [x] Port eslint.org and blog.rust-lang.org (local clones, `ssqch-port` branches in
+      `../trials/`, not pushed) and diff the output with samples of the live sites. Notes in
+      `research/trial-migrations.md`. The Rust blog: all 792 sitemap URLs, 56 of 66 sampled
+      pages identical, 818 pages in 0.33 s. eslint.org (English, no playground): 637 pages in
+      about 1.6 s, 11 of 61 identical, every other difference explained. Fixed along the way:
+      `computed.date`, root-relative and version-number aliases, fragments kept by redirect
+      pages, bundles skipping ignored files, `mailto:` in link hooks, `headingIds: "ascii"` and
+      slugger functions, `dirs.layouts`, `readData()`, `.html`/`.md` layouts through their
+      engines, `/index.html` permalinks, dates from file names, `indentedCode: false`,
+      `Intl.Collator`/`localeCompare`, Nunjucks object literals, `site.404_page`, `===`, macro
+      parameter order, string and `Date` methods, and `--verbose` listing every broken link.
+- [ ] Not yet: offering either port upstream. Both need Sass, and eslint.org its other
+      languages. Their broken internal links (25 on the Rust blog, 28 on eslint.org; lists in
+      `../trials/`) are worth reporting on their own.
+
+Found by the trials, not fixed yet:
+
+- [ ] Footnote markup of a site's own (Zola's `[1]` and `fr-1-1` ids), maybe a hook.
+- [ ] Redirect page markup of a site's own (`_includes/hooks/redirect.*`).
+- [ ] `image()` file names and folders per call (eleventy-img's `filenameFormat`, `outputDir`).
+- [ ] A filter called as a function loses to page data with the same name (`image()` vs an
+      `image:` field). Document it, or keep filters in their own namespace.
+- [ ] Smart punctuation like markdown-it's typographer (only a spaced `--` is a dash).
+- [ ] `ssqch import zola`: `_index.md` front matter to data, `path` to `permalink`,
+      `[taxonomies] tags` to `tags`, Tera components to macros.
+- [ ] `ssqch import eleventy`: CommonJS to ESM, `.11tydata.*` renames, Eleventy front-matter
+      keys, shortcodes to filters, paired shortcodes to containers.
 
 ### 4. Internationalization
 
@@ -264,7 +288,8 @@ migration guides it unblocks.
       `page.translations` grouped by a translation key, a `t(key)` filter over
       `_data/i18n/<lang>.*`, fallback pages for untranslated content, and hreflang.
 - [ ] `Intl` for more locales than en-US (ICU4X with a chosen set of locales). eslint.org's 7
-      other language sites and letsencrypt.org's number formats need it.
+      other language sites and letsencrypt.org's number formats need it, and eslint.org's English
+      site needs `NumberFormat`'s currency style and compact notation.
 - [ ] Example `multilingual-liquid`; guides from Jekyll and from Hugo; trial with letsencrypt.org.
 
 ### 5. Docs-site features
@@ -280,8 +305,10 @@ migration guides it unblocks.
 ### 6. JavaScript ecosystem
 
 - [ ] npm packages, CommonJS and `fetch` (already Known gaps; eslint.org and hexo.io need them).
-- [ ] Nunjucks: `===`/`!==`, and custom tags defined by config functions.
-- [ ] Jinja: minijinja-contrib (`pluralize`, dates), and dates usable in templates.
+- [ ] Nunjucks: custom tags defined by config functions (`{% image %}`). (`===`/`!==` were done
+      in phase 3.)
+- [ ] Jinja: the rest of minijinja-contrib (`pluralize`, dates). (String methods were done in
+      phase 3.)
 - [ ] A synthetic 9,000-page benchmark (kubernetes.io's size).
 - [ ] Example `islands`; guides from Hexo and from component frameworks (Astro, VitePress,
       Next.js, Gatsby: what ports, and what stays client JavaScript).

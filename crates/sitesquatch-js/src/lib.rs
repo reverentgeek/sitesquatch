@@ -196,6 +196,7 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
     if let Some(p) = path_setting("input")? { cfg.input = p; }
     if let Some(p) = path_setting("output")? { cfg.output = p; }
     if let Some(p) = path_setting("includes")? { cfg.includes = p; }
+    if let Some(p) = path_setting("layouts")? { cfg.layouts = Some(p); }
     if let Some(p) = path_setting("data")? { cfg.data = p; }
     match settings.get("templateFormats") {
         Value::Undefined => {}
@@ -214,6 +215,9 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
     match settings.get("markdown") {
         Value::Undefined => {}
         v => cfg.markdown.apply(&v)?,
+    }
+    if let id @ Value::Num(_) = settings.get("markdownSlugger") {
+        cfg.markdown.slugger_fn = Some(engine.value(engine.function(id)?));
     }
     match settings.get("deepMerge") {
         Value::Undefined => {}
@@ -398,6 +402,19 @@ impl Engine {
                 sitesquatch::markdown::render_current(&text, args.get(1).is_some_and(Value::truthy)).map(Value::from)
             });
             config_natives.set("markdown", conv.to_js(&markdown)?)?;
+            // `readData("src/_data/sites/en.yml")`: a JSON, YAML or TOML file, from the project root.
+            let data_root = root.to_path_buf();
+            let read_data = Value::func(move |args| {
+                let rel = args.first().map(Value::to_js_string).unwrap_or_default();
+                let path = data_root.join(&rel);
+                match sitesquatch::data::load_data_file(&path, &[]) {
+                    Ok(Some(v)) => Ok(v),
+                    Ok(None) => anyhow::bail!("readData({:?}): not a JSON, YAML or TOML file", rel),
+                    Err(e) if !path.is_file() => anyhow::bail!("readData({:?}): no such file ({})", rel, e),
+                    Err(e) => Err(e),
+                }
+            });
+            config_natives.set("readData", conv.to_js(&read_data)?)?;
             natives.set("ssqch", config_natives)?;
             for module in modules.iter() {
                 let exports = Object::new(ctx.clone())?;

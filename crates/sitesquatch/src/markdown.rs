@@ -29,6 +29,9 @@ pub enum Slugger {
     /// Hugo's older "blackfriday" style: runs of anything that isn't a letter
     /// or a digit become one `-` (`A -- B` is `a-b`).
     Blackfriday,
+    /// ASCII only: letters are transliterated (`Ünïcödé` is `unicode`, `🦀`
+    /// is `crab`), then like blackfriday. Zola's anchors look like this.
+    Ascii,
 }
 
 impl Slugger {
@@ -36,6 +39,7 @@ impl Slugger {
         match name {
             "github" => Some(Slugger::Github),
             "blackfriday" => Some(Slugger::Blackfriday),
+            "ascii" => Some(Slugger::Ascii),
             _ => None,
         }
     }
@@ -52,6 +56,7 @@ impl Slugger {
                     }
                 }
             }
+            Slugger::Ascii => return Slugger::Blackfriday.slug(&deunicode::deunicode(text)),
             Slugger::Blackfriday => {
                 let mut dash = false;
                 for c in text.chars() {
@@ -72,7 +77,7 @@ impl Slugger {
 }
 
 /// The `markdown` config key.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct MarkdownOptions {
     /// Automatic heading `id`s (GitHub style by default), or `None` for none.
     /// An explicit `{#id}` always wins.
@@ -93,11 +98,17 @@ pub struct MarkdownOptions {
     pub definition_lists: bool,
     /// Curly quotes, dashes and ellipses.
     pub smart_punctuation: bool,
+    /// Lines indented four spaces are code. Off, they're ordinary Markdown
+    /// (handy for HTML indented inside Markdown); fences are still code.
+    pub indented_code: bool,
     /// Highlight fenced code at build time (needs the `highlight` feature).
     pub highlight: bool,
     /// Where the build writes the highlighting stylesheet (a URL path like
     /// `/highlight.css`), or `None` to leave it out.
     pub highlight_css: Option<String>,
+    /// A slugger of the site's own (`headingIds: text => id`), used instead
+    /// of `heading_ids` when set. Repeats still get `-1`, `-2`.
+    pub slugger_fn: Option<Value>,
 }
 
 impl Default for MarkdownOptions {
@@ -112,16 +123,18 @@ impl Default for MarkdownOptions {
             containers: true,
             definition_lists: false,
             smart_punctuation: false,
+            indented_code: true,
             highlight: false,
             highlight_css: Some("/highlight.css".into()),
+            slugger_fn: None,
         }
     }
 }
 
 impl MarkdownOptions {
     /// The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`).
-    pub const KEYS: [&'static str; 10] =
-        ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "highlight"];
+    pub const KEYS: [&'static str; 11] =
+        ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight"];
 
     /// Apply a `markdown` object from the config. Errors start with the key
     /// (`markdown.footnotes must be true or false`).
@@ -135,8 +148,8 @@ impl MarkdownOptions {
                     self.heading_ids = match v {
                         Value::Bool(false) | Value::Null => None,
                         Value::Bool(true) => Some(Slugger::Github),
-                        Value::Str(s) => Some(Slugger::parse(s).ok_or_else(|| anyhow::anyhow!("markdown.headingIds: unknown slugger \"{}\" (use \"github\", \"blackfriday\" or false)", s))?),
-                        other => bail!("markdown.headingIds must be \"github\", \"blackfriday\" or false, not {}", other.type_of()),
+                        Value::Str(s) => Some(Slugger::parse(s).ok_or_else(|| anyhow::anyhow!("markdown.headingIds: unknown slugger \"{}\" (use \"github\", \"blackfriday\", \"ascii\" or false)", s))?),
+                        other => bail!("markdown.headingIds must be \"github\", \"blackfriday\", \"ascii\" or false, not {}", other.type_of()),
                     };
                     continue;
                 }
@@ -169,6 +182,7 @@ impl MarkdownOptions {
                 "containers" => &mut self.containers,
                 "definitionLists" => &mut self.definition_lists,
                 "smartPunctuation" => &mut self.smart_punctuation,
+                "indentedCode" => &mut self.indented_code,
                 other => bail!("markdown.{} isn't an option (options: {})", other, Self::KEYS.join(", ")),
             };
             match v {
@@ -238,8 +252,13 @@ pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -
             other => other,
         })
         .collect();
-    if let Some(slugger) = opts.heading_ids {
-        assign_heading_ids(&mut events, slugger);
+    if let Some(f) = &opts.slugger_fn {
+        assign_heading_ids(&mut events, |text| match f {
+            Value::Func(f) => Ok(f.call(&[Value::from(text)]).map_err(|e| e.context("markdown.headingIds"))?.to_js_string()),
+            _ => Ok(String::new()),
+        })?;
+    } else if let Some(slugger) = opts.heading_ids {
+        assign_heading_ids(&mut events, |text| Ok(slugger.slug(text)))?;
     }
     if opts.autolinks {
         events = autolink(events);
@@ -251,7 +270,7 @@ pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -
             _ => None,
         })
         .collect();
-    let mut w = Writer { hooks, containers: &containers, defined, highlight: opts.highlight, ..Default::default() };
+    let mut w = Writer { hooks, containers: &containers, defined, highlight: opts.highlight, opts: Some(opts), ..Default::default() };
     let mut out = String::with_capacity(source.len() * 3 / 2);
     w.write(&events, &mut out)?;
     w.write_footnotes(&mut out);
@@ -271,7 +290,7 @@ pub fn render_inline(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Ho
 
 // ------------------------------------------------------------- heading IDs
 
-fn assign_heading_ids(events: &mut [Event], slugger: Slugger) {
+fn assign_heading_ids(events: &mut [Event], slug: impl Fn(&str) -> Result<String>) -> Result<()> {
     let mut used: HashSet<String> = events
         .iter()
         .filter_map(|e| match e {
@@ -283,7 +302,7 @@ fn assign_heading_ids(events: &mut [Event], slugger: Slugger) {
     while i < events.len() {
         if let Event::Start(Tag::Heading { id: None, .. }) = &events[i] {
             let end = matching(events, i);
-            let mut base = slugger.slug(&plain_text(&events[i + 1..end]));
+            let mut base = slug(&plain_text(&events[i + 1..end]))?;
             if base.is_empty() {
                 base = "section".into();
             }
@@ -295,6 +314,7 @@ fn assign_heading_ids(events: &mut [Event], slugger: Slugger) {
         }
         i += 1;
     }
+    Ok(())
 }
 
 /// `base`, or `base-1`, `base-2`, ... if it's taken.
@@ -499,6 +519,8 @@ struct Writer<'h, 'c> {
     hooks: Option<&'h dyn Hooks>,
     containers: &'c [Container],
     highlight: bool,
+    /// For `indented_code: false`, which renders the lines again as Markdown.
+    opts: Option<&'c MarkdownOptions>,
     /// Footnote labels with a definition.
     defined: HashSet<String>,
     /// Footnote labels in order of first reference, and how often each was referenced.
@@ -551,11 +573,13 @@ impl Writer<'_, '_> {
                     i = end + 1;
                     continue;
                 }
-                Event::Start(Tag::Link { dest_url, title, .. }) if self.has("hooks/link") => {
+                Event::Start(Tag::Link { link_type, dest_url, title, .. }) if self.has("hooks/link") => {
                     let end = matching(events, i);
                     flush(&mut plain, out);
+                    // `<squatch@example.com>` links to `mailto:squatch@example.com`.
+                    let href = if *link_type == LinkType::Email { format!("mailto:{}", dest_url) } else { dest_url.to_string() };
                     let link = Value::from_pairs([
-                        ("href", Value::from(dest_url.to_string())),
+                        ("href", Value::from(href)),
                         ("title", Value::from(title.to_string())),
                         ("text", Value::from(plain_text(&events[i + 1..end]))),
                         ("content", Value::from(self.inner(&events[i + 1..end])?)),
@@ -592,6 +616,15 @@ impl Writer<'_, '_> {
                         }
                         out.push('>');
                     }
+                    i = end + 1;
+                    continue;
+                }
+                Event::Start(Tag::CodeBlock(CodeBlockKind::Indented)) if self.opts.is_some_and(|o| !o.indented_code) => {
+                    // The parser has taken four spaces off each line; what's left is Markdown.
+                    let end = matching(events, i);
+                    flush(&mut plain, out);
+                    let text: String = events[i + 1..end].iter().map(|e| if let Event::Text(t) = e { t.as_ref() } else { "" }).collect();
+                    out.push_str(&render(&text, self.opts.unwrap(), self.hooks)?);
                     i = end + 1;
                     continue;
                 }
@@ -1023,6 +1056,9 @@ mod tests {
         assert_eq!(Slugger::Blackfriday.slug("A -- B"), "a-b");
         assert_eq!(Slugger::Blackfriday.slug("What's new in 1.2?"), "what-s-new-in-1-2");
         assert_eq!(Slugger::Blackfriday.slug("snake_case"), "snake-case");
+        assert_eq!(Slugger::Ascii.slug("Debugging Aspirations (👩‍💻)"), "debugging-aspirations-woman-computer");
+        assert_eq!(Slugger::Ascii.slug("Fulfill Rust's Promise (🦀)"), "fulfill-rust-s-promise-crab");
+        assert_eq!(Slugger::Ascii.slug("Ünïcödé Straße"), "unicode-strasse");
     }
 
     #[test]
@@ -1105,6 +1141,8 @@ mod tests {
 
     #[test]
     fn hooks_take_over() {
+        let mail = render("Write <squatch@example.com>.\n", &MarkdownOptions::default(), Some(&TestHooks)).unwrap();
+        assert_eq!(mail, "<p>Write <a href=\"mailto:squatch@example.com\" data-text=\"squatch@example.com\">squatch@example.com</a>.</p>\n");
         let html = render(
             "## A [link](/x) *here*\n\n![Alt](/i.png)\n\n```mermaid {theme=dark}\ngraph\n```\n\n```js\nx\n```\n\n::: tip T\nbody\n:::\n\n> [!NOTE]\n> noted\n",
             &MarkdownOptions::default(),
@@ -1150,6 +1188,14 @@ mod tests {
         );
         assert_eq!(toc(&hs, 2, 2, true), "<ol><li><a href=\"#a\">A</a></li><li><a href=\"#b\">B</a></li><li><a href=\"#c\">C</a></li></ol>");
         assert_eq!(toc(&[], 2, 3, false), "");
+    }
+
+    #[test]
+    fn indented_code_can_be_markdown() {
+        let src = "Text\n\n    <div class=\"x\">\n      *hi*\n    </div>\n\n```\n    fenced\n```\n";
+        assert!(md(src).contains("<pre><code>&lt;div class=&quot;x&quot;&gt;"));
+        let opts = MarkdownOptions { indented_code: false, ..Default::default() };
+        assert_eq!(render(src, &opts, None).unwrap(), "<p>Text</p>\n<div class=\"x\">\n  *hi*\n</div>\n<pre><code>    fenced\n</code></pre>\n");
     }
 
     #[test]

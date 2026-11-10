@@ -61,6 +61,8 @@ pub struct BuildContext {
     pub input_dir: PathBuf,
     pub output_dir: PathBuf,
     pub includes_dir: PathBuf,
+    /// Layouts: `includes_dir` unless `dirs.layouts` names another folder.
+    pub layouts_dir: PathBuf,
     pub data_dir: PathBuf,
     pub env: Environment,
     /// True while running the development server.
@@ -175,6 +177,8 @@ pub struct Config {
     pub output: PathBuf,
     /// Layouts, partials and components, relative to `input`.
     pub includes: PathBuf,
+    /// Where layouts are, relative to `input`, when not in `includes`.
+    pub layouts: Option<PathBuf>,
     /// Global data files, relative to `input`.
     pub data: PathBuf,
     /// File extensions treated as templates.
@@ -228,6 +232,7 @@ impl Config {
             input: PathBuf::from("."),
             output: PathBuf::from("_site"),
             includes: PathBuf::from("_includes"),
+            layouts: None,
             data: PathBuf::from("_data"),
             template_formats: ["edge", "md", "html"].map(String::from).to_vec(),
             markdown_engine: Some("edge".into()),
@@ -419,6 +424,7 @@ impl Config {
         BuildContext {
             output_dir: root.join(&self.output),
             includes_dir: input_dir.join(&self.includes),
+            layouts_dir: input_dir.join(self.layouts.as_ref().unwrap_or(&self.includes)),
             data_dir: input_dir.join(&self.data),
             input_dir,
             root,

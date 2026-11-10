@@ -29,7 +29,10 @@ export function markdown(text, options = {}) {
 	}
 	return globalThis.__ssqch.natives.ssqch.markdown(String(text ?? ""), Boolean(options?.inline));
 }
-export default { defineConfig, markdown };
+export function readData(path) {
+	return globalThis.__ssqch.natives.ssqch.readData(String(path));
+}
+export default { defineConfig, markdown, readData };
 "#;
 
 /// Node built-in modules provided by `node.js`.

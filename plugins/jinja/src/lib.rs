@@ -64,6 +64,31 @@ impl JinjaEngine {
     pub fn new(engine_env: &EngineEnv, nunjucks: bool) -> Self {
         let mut env = Environment::new();
         env.set_undefined_behavior(UndefinedBehavior::Chainable);
+        // String and list methods: Python's (`title.startswith("A")`, from
+        // minijinja-contrib), plus the JavaScript names Nunjucks templates use
+        // (`title.startsWith("A")`, `tags.includes("x")`).
+        env.set_unknown_method_callback(|state, value, method, args| {
+            let python = match method {
+                "startsWith" => "startswith",
+                "endsWith" => "endswith",
+                "toLowerCase" => "lower",
+                "toUpperCase" => "upper",
+                "trim" => "strip",
+                "trimStart" => "lstrip",
+                "trimEnd" => "rstrip",
+                "indexOf" if value.as_str().is_some() => "find",
+                "indexOf" => "index",
+                "includes" => {
+                    let needle = args.first().cloned().unwrap_or_default();
+                    if let (Some(hay), Some(n)) = (value.as_str(), needle.as_str()) {
+                        return Ok(minijinja::Value::from(hay.contains(n)));
+                    }
+                    return Ok(minijinja::Value::from(value.try_iter()?.any(|item| item == needle)));
+                }
+                other => other,
+            };
+            minijinja_contrib::pycompat::unknown_method_callback(state, value, python, args)
+        });
         env.set_auto_escape_callback(|_| AutoEscape::Html);
         // Nunjucks keeps a template's last newline; Jinja drops it.
         if let Ok(syntax) = minijinja::syntax::SyntaxConfig::builder().keep_trailing_newline(true).build() {
@@ -144,19 +169,193 @@ impl TemplateEngine for JinjaEngine {
 const PAIRS_FILTER: &str = "__ssqch_pairs";
 
 /// Rewrite the Nunjucks syntax minijinja doesn't know: `{% elseif %}` to
-/// `{% elif %}`, and `{% for key, value in object %}` to iterate the object's
-/// pairs. Line numbers stay the same.
+/// `{% elif %}`, `{% for key, value in object %}` to iterate the object's
+/// pairs, and inside tags (see [`nunjucks_code`]) object literals, `===`,
+/// `site.404_page` and macro parameter order. Line numbers stay the same.
 fn nunjucks_syntax(src: &str) -> String {
     use std::sync::OnceLock;
     static ELSEIF: OnceLock<regex::Regex> = OnceLock::new();
     static FOR_PAIRS: OnceLock<regex::Regex> = OnceLock::new();
-    if !src.contains("{%") {
+    if !src.contains("{%") && !src.contains("{{") {
         return src.to_string();
     }
     let elseif = ELSEIF.get_or_init(|| regex::Regex::new(r"\{%(-?)(\s*)elseif\b").unwrap());
     let for_pairs = FOR_PAIRS.get_or_init(|| regex::Regex::new(r"\{%(-?)(\s*)for\s+(\w+)\s*,\s*(\w+)\s+in\s+(.+?)\s*(-?)%\}").unwrap());
     let src = elseif.replace_all(src, "{%$1${2}elif");
-    for_pairs.replace_all(&src, |c: &regex::Captures| format!("{{%{}{}for {}, {} in ({}) | {} {}%}}", &c[1], &c[2], &c[3], &c[4], &c[5], PAIRS_FILTER, &c[6])).into_owned()
+    let src = for_pairs.replace_all(&src, |c: &regex::Captures| format!("{{%{}{}for {}, {} in ({}) | {} {}%}}", &c[1], &c[2], &c[3], &c[4], &c[5], PAIRS_FILTER, &c[6]));
+    rewrite_tags(&src)
+}
+
+/// Run [`nunjucks_code`] over the code in every `{{ }}` and `{% %}` tag,
+/// leaving `{% raw %}` blocks and `{# #}` comments alone.
+fn rewrite_tags(src: &str) -> String {
+    static ENDRAW: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let endraw = ENDRAW.get_or_init(|| regex::Regex::new(r"\{%-?\s*endraw\s*-?%\}").unwrap());
+    let mut out = String::with_capacity(src.len() + 16);
+    let mut rest = src;
+    while let Some(start) = rest.find('{') {
+        let (before, tail) = rest.split_at(start);
+        out.push_str(before);
+        let close = match tail.get(..2) {
+            Some("{{") => "}}",
+            Some("{%") => "%}",
+            Some("{#") => "#}",
+            _ => {
+                out.push('{');
+                rest = &tail[1..];
+                continue;
+            }
+        };
+        let Some(end) = find_close(&tail[2..], close) else {
+            out.push_str(tail);
+            return out;
+        };
+        let code = &tail[2..2 + end];
+        out.push_str(&tail[..2]);
+        if close == "#}" {
+            out.push_str(code);
+        } else {
+            out.push_str(&nunjucks_code(code));
+        }
+        out.push_str(close);
+        rest = &tail[2 + end + 2..];
+        // `{% raw %}...{% endraw %}` stays as written.
+        if close == "%}" && code.trim().trim_matches('-').trim() == "raw" {
+            if let Some(m) = endraw.find(rest) {
+                out.push_str(&rest[..m.end()]);
+                rest = &rest[m.end()..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Where `close` ends a tag's code, skipping string literals.
+fn find_close(code: &str, close: &str) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            q @ (b'"' | b'\'') => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != q {
+                    i += if bytes[i] == b'\\' { 2 } else { 1 };
+                }
+            }
+            _ if code[i..].starts_with(close) => return Some(i),
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Nunjucks code as minijinja reads it, outside string literals:
+/// - `{ title: x }` has the key `"title"` (unquoted, Jinja would use the
+///   variable `title` as the key);
+/// - `site.404_page` is `site["404_page"]`;
+/// - `===` and `!==` are `==` and `!=`;
+/// - `macro button(behavior="link", params)` lists parameters without
+///   defaults first, as Nunjucks assigns positional arguments to them.
+fn nunjucks_code(code: &str) -> String {
+    let code = reorder_macro_params(code);
+    let chars: Vec<char> = code.chars().collect();
+    let mut out = String::with_capacity(code.len() + 8);
+    let mut i = 0;
+    // The last character outside whitespace, to tell `{ key:` from other colons.
+    let mut prev = ' ';
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '"' || c == '\'' {
+            let start = i;
+            i += 1;
+            while i < chars.len() && chars[i] != c {
+                i += if chars[i] == '\\' { 2 } else { 1 };
+            }
+            i = (i + 1).min(chars.len());
+            out.extend(&chars[start..i]);
+            prev = c;
+            continue;
+        }
+        if (c == '=' || c == '!') && chars.get(i + 1) == Some(&'=') && chars.get(i + 2) == Some(&'=') {
+            out.push(c);
+            out.push('=');
+            i += 3;
+            prev = '=';
+            continue;
+        }
+        // `.404_page`: a property that starts with a digit (but isn't a decimal).
+        if c == '.' && (prev.is_alphanumeric() || prev == '_' || prev == ']' || prev == ')') && chars.get(i + 1).is_some_and(|d| d.is_ascii_digit()) {
+            let start = i + 1;
+            let mut j = start;
+            while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
+                j += 1;
+            }
+            let name: String = chars[start..j].iter().collect();
+            if !prev.is_ascii_digit() && name.chars().any(|ch| !ch.is_ascii_digit()) {
+                out.push_str(&format!("[\"{}\"]", name));
+                i = j;
+                prev = ']';
+                continue;
+            }
+        }
+        // An object key: an identifier after `{` or `,`, then `:`.
+        if (c.is_alphabetic() || c == '_' || c == '$') && (prev == '{' || prev == ',') {
+            let mut j = i;
+            while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '$') {
+                j += 1;
+            }
+            let mut k = j;
+            while k < chars.len() && chars[k].is_whitespace() {
+                k += 1;
+            }
+            if chars.get(k) == Some(&':') && chars.get(k + 1) != Some(&':') {
+                let name: String = chars[i..j].iter().collect();
+                out.push_str(&format!("\"{}\"", name));
+                i = j;
+                prev = '"';
+                continue;
+            }
+        }
+        out.push(c);
+        if !c.is_whitespace() {
+            prev = c;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// `macro name(a="x", b)` to `macro name(b, a="x")`.
+fn reorder_macro_params(code: &str) -> std::borrow::Cow<'_, str> {
+    let trimmed = code.trim_start_matches('-').trim_start();
+    let Some(rest) = trimmed.strip_prefix("macro ") else { return code.into() };
+    let (Some(open), Some(close)) = (rest.find('('), rest.rfind(')')) else { return code.into() };
+    let params = &rest[open + 1..close];
+    // Top-level commas only (defaults can be lists or calls).
+    let mut parts = Vec::new();
+    let (mut depth, mut last) = (0i32, 0usize);
+    for (i, ch) in params.char_indices() {
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(params[last..i].trim());
+                last = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(params[last..].trim());
+    let has_default = |p: &&str| p.contains('=');
+    let first_default = parts.iter().position(has_default);
+    if first_default.is_none_or(|f| parts[f..].iter().all(has_default)) {
+        return code.into();
+    }
+    let reordered: Vec<&str> = parts.iter().filter(|p| !has_default(p)).chain(parts.iter().filter(|p| has_default(p))).copied().collect();
+    let prefix_len = code.len() - trimmed.len() + "macro ".len() + open + 1;
+    format!("{}{}{}", &code[..prefix_len], reordered.join(", "), &code[prefix_len + params.len()..]).into()
 }
 
 /// Nunjucks' `truncate(length=255, killwords=false, end="...")`.
@@ -388,7 +587,53 @@ impl Object for Opaque {
         }
     }
 
+    /// JavaScript's `Date` methods, which Nunjucks templates call
+    /// (`page.date.toISOString()`). Times are UTC.
+    fn call_method(self: &Arc<Self>, _state: &mut State<'_, '_>, method: &str, _args: &[JValue]) -> Result<JValue, Error> {
+        use chrono::{Datelike, Timelike};
+        let Value::Date(d) = &self.0 else {
+            return Err(Error::new(ErrorKind::UnknownMethod, format!("a function has no method named {}", method)));
+        };
+        Ok(match method {
+            "toISOString" | "toJSON" => JValue::from(d.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()),
+            "toUTCString" => JValue::from(d.format("%a, %d %b %Y %H:%M:%S GMT").to_string()),
+            "getTime" | "valueOf" => JValue::from(d.timestamp_millis()),
+            "getFullYear" | "getUTCFullYear" => JValue::from(d.year()),
+            "getMonth" | "getUTCMonth" => JValue::from(d.month0()),
+            "getDate" | "getUTCDate" => JValue::from(d.day()),
+            "getDay" | "getUTCDay" => JValue::from(d.weekday().num_days_from_sunday()),
+            "getHours" | "getUTCHours" => JValue::from(d.hour()),
+            "getMinutes" | "getUTCMinutes" => JValue::from(d.minute()),
+            "getSeconds" | "getUTCSeconds" => JValue::from(d.second()),
+            other => return Err(Error::new(ErrorKind::UnknownMethod, format!("a date has no method named {} (dates have toISOString, getTime, getFullYear, getMonth, getDate, getDay and the like)", other))),
+        })
+    }
+
     fn render(self: &Arc<Self>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0.to_js_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::nunjucks_syntax;
+
+    #[test]
+    fn nunjucks_code_is_rewritten_for_minijinja() {
+        let cases = [
+            ("{{ hero({ title: t, post: { date: d } }) }}", "{{ hero({ \"title\": t, \"post\": { \"date\": d } }) }}"),
+            ("{% set x = { \"a\": 1, b: 2 } %}", "{% set x = { \"a\": 1, \"b\": 2 } %}"),
+            ("{{ site.404_page.title }} {{ 1.5 }} {{ a[1:2] }}", "{{ site[\"404_page\"].title }} {{ 1.5 }} {{ a[1:2] }}"),
+            ("{% if a === b and c !== d %}x{% endif %}", "{% if a == b and c != d %}x{% endif %}"),
+            ("{% macro button(behavior=\"link\", params) %}", "{% macro button(params, behavior=\"link\") %}"),
+            ("{%- macro card(params, size=[1, 2]) -%}", "{%- macro card(params, size=[1, 2]) -%}"),
+            ("{{ \"{ title: x } === .404\" }}", "{{ \"{ title: x } === .404\" }}"),
+            ("{% raw %}{{ { a: 1 } }}{% endraw %}{# { b: 2 } #}", "{% raw %}{{ { a: 1 } }}{% endraw %}{# { b: 2 } #}"),
+            ("{% elseif x %}{% for k, v in o %}", "{% elif x %}{% for k, v in (o) | __ssqch_pairs %}"),
+            ("text { a: b } and site.404_page", "text { a: b } and site.404_page"),
+        ];
+        for (input, want) in cases {
+            assert_eq!(nunjucks_syntax(input), want, "{}", input);
+        }
     }
 }

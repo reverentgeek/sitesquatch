@@ -125,7 +125,8 @@ impl TemplateEngine for MarkdownEngine {
 pub(crate) struct HookTemplate {
     /// `_includes/hooks/heading.edge`, for errors.
     pub name: String,
-    pub ext: String,
+    /// The engines it runs through (`.html` ones get `htmlEngine` first).
+    pub engines: Vec<String>,
     pub body: String,
 }
 
@@ -137,7 +138,7 @@ pub(crate) struct HookTemplates {
 
 /// Read `_includes/hooks/*` and `_includes/containers/*`. Each name can have
 /// one template, in any engine.
-pub(crate) fn load_hook_templates(includes_dir: &Path, includes_name: &str, engines: &Engines) -> Result<HashMap<String, HookTemplate>> {
+pub(crate) fn load_hook_templates(includes_dir: &Path, includes_name: &str, engines: &Engines, chain: &dyn Fn(&str) -> Vec<String>) -> Result<HashMap<String, HookTemplate>> {
     let mut out: HashMap<String, HookTemplate> = HashMap::new();
     for kind in ["hooks", "containers"] {
         let Ok(entries) = std::fs::read_dir(includes_dir.join(kind)) else { continue };
@@ -158,7 +159,7 @@ pub(crate) fn load_hook_templates(includes_dir: &Path, includes_name: &str, engi
             }
             let src = std::fs::read_to_string(&path).with_context(|| format!("reading {}", name))?;
             let (_, body) = crate::data::parse_front_matter(&src).with_context(|| name.clone())?;
-            out.insert(key, HookTemplate { name, ext, body: body.to_string() });
+            out.insert(key, HookTemplate { name, engines: chain(&ext), body: body.to_string() });
         }
     }
     Ok(out)
@@ -180,8 +181,14 @@ impl Hooks for PageHooks<'_> {
         let t = &self.set.templates[name];
         let mut data = self.data.as_object().cloned().unwrap_or_default();
         data.insert(key.to_string(), value);
-        let ctx = RenderContext { name: &t.name, input_path: self.input_path, cache_key: Some(&t.name) };
-        self.engines.get(&t.ext)?.render(&t.body, &Value::object(data), &ctx).with_context(|| format!("rendering {}", t.name))
+        let data = Value::object(data);
+        let mut text = t.body.clone();
+        for engine in &t.engines {
+            let key = format!("{}#{}", t.name, engine);
+            let ctx = RenderContext { name: &t.name, input_path: self.input_path, cache_key: Some(&key) };
+            text = self.engines.get(engine)?.render(&text, &data, &ctx).with_context(|| format!("rendering {}", t.name))?;
+        }
+        Ok(text)
     }
 }
 

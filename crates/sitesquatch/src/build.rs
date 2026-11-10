@@ -26,9 +26,22 @@ use crate::{Map, Value};
 
 struct Layout {
     name: String,
-    ext: String,
+    /// The engines it runs through: `.html` layouts get `htmlEngine` first,
+    /// `.md` layouts `markdownEngine`, like pages.
+    engines: Vec<String>,
     body: String,
     data: Map,
+}
+
+/// The engines a file with extension `ext` runs through, unless its data says otherwise.
+fn engines_for(cfg: &Config, ext: &str) -> Vec<String> {
+    let pre = match ext {
+        "md" | "markdown" => cfg.markdown_engine.clone(),
+        "html" => cfg.html_engine.clone(),
+        _ => None,
+    };
+    let ext = if ext == "markdown" { "md" } else { ext };
+    pre.into_iter().chain(std::iter::once(ext.to_string())).collect()
 }
 
 struct Tpl {
@@ -42,6 +55,8 @@ struct Tpl {
     file_slug: String,
     file_path_stem: String,
     mtime: DateTime<Utc>,
+    /// The date at the start of the file name (`2024-06-01-post.md`).
+    file_date: Option<DateTime<Utc>>,
     /// Plain text with no front matter: copied as-is and kept out of collections.
     plain_copy: bool,
 }
@@ -100,7 +115,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     for f in &cfg.template_formats {
         engines.get(f).context("check `template_formats`")?;
     }
-    let hooks = load_hook_templates(&ctx.includes_dir, &slashes(&cfg.includes), &engines)?;
+    let hooks = load_hook_templates(&ctx.includes_dir, &slashes(&cfg.includes), &engines, &|ext| engines_for(cfg, ext))?;
     markdown.set_hooks(hooks, Arc::downgrade(&engines));
     crate::markdown::set_current(cfg.markdown.clone());
 
@@ -221,7 +236,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     timer.lap("write");
 
     let generated = run_generators(cfg, &ctx, &pages, &written)?;
-    let bundles = if cfg.bundles { bundle_files(&ctx, &pages, &files) } else { Vec::new() };
+    let bundles = if cfg.bundles { bundle_files(cfg, &ctx, &pages, &files)? } else { Vec::new() };
     let copy = passthrough_copy(cfg, &ctx, bundles)?;
     let stylesheet = write_highlight_css(cfg, &ctx)?;
     timer.lap("copy");
@@ -441,7 +456,7 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
     }
     let ignore = glob_set("ignore", cfg.ignore.iter().map(String::as_str))?;
     let passthrough_globs = glob_set("passthrough", cfg.passthrough.iter().map(|(from, _)| from).filter(|f| is_glob(f)).map(|f| f.to_str().unwrap_or("")))?;
-    let skip_dirs: Vec<PathBuf> = [ctx.includes_dir.clone(), ctx.data_dir.clone(), ctx.output_dir.clone()]
+    let skip_dirs: Vec<PathBuf> = [ctx.includes_dir.clone(), ctx.layouts_dir.clone(), ctx.data_dir.clone(), ctx.output_dir.clone()]
         .into_iter()
         .chain(cfg.passthrough.iter().map(|(from, _)| ctx.root.join(from)))
         .map(|p| dunce::canonicalize(&p).unwrap_or(p))
@@ -530,21 +545,21 @@ fn load_layout(cfg: &Config, ctx: &BuildContext, name: &str, cache: &Mutex<HashM
     if let Some(l) = cache.lock().unwrap().get(name) {
         return Ok(l.clone());
     }
-    let direct = ctx.includes_dir.join(name);
+    let direct = ctx.layouts_dir.join(name);
     let path = if direct.is_file() {
         direct
     } else {
         cfg.template_formats
             .iter()
-            .map(|ext| ctx.includes_dir.join(format!("{}.{}", name, ext)))
+            .map(|ext| ctx.layouts_dir.join(format!("{}.{}", name, ext)))
             .find(|p| p.is_file())
-            .ok_or_else(|| anyhow!("layout `{}` not found in {}", name, ctx.includes_dir.display()))?
+            .ok_or_else(|| anyhow!("layout `{}` not found in {}", name, ctx.layouts_dir.display()))?
     };
     let src = std::fs::read_to_string(&path)?;
     let (data, body) = data::parse_front_matter(&src).with_context(|| format!("in layout {}", path.display()))?;
     let layout = Arc::new(Layout {
-        name: format!("{}/{}", cfg.includes.display(), name),
-        ext: path.extension().unwrap().to_string_lossy().to_string(),
+        name: format!("{}/{}", slashes(cfg.layouts.as_ref().unwrap_or(&cfg.includes)), name),
+        engines: engines_for(cfg, &path.extension().unwrap().to_string_lossy().to_ascii_lowercase()),
         body: body.to_string(),
         data,
     });
@@ -618,14 +633,7 @@ fn load_template(
         }
         let engines: Vec<String> = match data.get("render").filter(|v| !v.is_nullish()) {
             Some(v) => render_engines(v)?,
-            None => {
-                let pre = match ext.as_str() {
-                    "md" => cfg.markdown_engine.clone(),
-                    "html" => cfg.html_engine.clone(),
-                    _ => None,
-                };
-                pre.into_iter().chain(std::iter::once(ext.clone())).collect()
-            }
+            None => engines_for(cfg, &ext),
         };
 
         let mut file_slug = stem.clone();
@@ -634,6 +642,7 @@ fn load_template(
         }
         let date_prefix = Regex::new(r"^\d{4}-\d{2}-\d{2}-").unwrap();
         let file_slug = date_prefix.replace(&file_slug, "").to_string();
+        let file_date = (stem.len() >= 10).then(|| &stem[..10]).filter(|d| date_prefix.is_match(&format!("{}-", d))).and_then(|d| Value::from(d).to_date());
         let parent = rel_path.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
         let file_path_stem = if parent.is_empty() { format!("/{}", stem) } else { format!("/{}/{}", parent, stem) };
         let mtime = std::fs::metadata(path)?.modified().unwrap_or(SystemTime::now());
@@ -650,6 +659,7 @@ fn load_template(
             file_slug,
             file_path_stem,
             mtime: DateTime::<Utc>::from(mtime),
+            file_date,
         })
     })()
     .with_context(|| format!("in {}", rel))
@@ -662,9 +672,10 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
         let input_path = display_path(ctx, &tpl.input);
         let date = match tpl.data.get("date") {
             Some(v) if !v.is_nullish() => v.to_date().ok_or_else(|| anyhow!("can't parse date {:?}", v))?,
-            _ => tpl.mtime,
+            // Then the date in the file name, then when the file last changed.
+            _ => tpl.file_date.unwrap_or(tpl.mtime),
         };
-        let base_page = |url: Value, output: Value| {
+        let base_page = |url: Value, output: Value, date: DateTime<Utc>| {
             Value::from_pairs([
                 ("url", url),
                 ("outputPath", output),
@@ -709,7 +720,7 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
             if let Some(c) = collections {
                 data.insert("collections".into(), c.clone());
             }
-            data.insert("page".into(), base_page(Value::Undefined, Value::Undefined));
+            data.insert("page".into(), base_page(Value::Undefined, Value::Undefined, date));
 
             // computed
             if let Some(Value::Obj(computed)) = tpl.data.get("computed").cloned() {
@@ -718,6 +729,14 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
                     data.insert(key.clone(), v);
                 }
             }
+            // A computed `date` (from the URL, say) is the page's date.
+            let date = match tpl.data.get("computed").map(|c| c.get("date")) {
+                Some(c) if !c.is_nullish() => match data.get("date") {
+                    Some(v) if !v.is_nullish() => v.to_date().ok_or_else(|| anyhow!("computed.date: can't parse date {:?}", v))?,
+                    _ => date,
+                },
+                _ => date,
+            };
 
             // permalink
             let page_index = chunk.as_ref().map(|(i, _)| *i).unwrap_or(0);
@@ -756,6 +775,11 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
                 let rel = u.trim_start_matches('/');
                 if u.ends_with('/') { ctx.output_dir.join(rel).join("index.html") } else { ctx.output_dir.join(rel) }
             });
+            // `permalink: /about/index.html` writes that file; its URL is `/about/`.
+            let url = url.map(|u| match u.strip_suffix("index.html") {
+                Some(dir) if dir.ends_with('/') => dir.to_string(),
+                _ => u,
+            });
             if let Some(out) = &output {
                 if !out.starts_with(&ctx.output_dir) || out.components().any(|c| c == std::path::Component::ParentDir) {
                     bail!("permalink {:?} points outside the output directory", url);
@@ -766,6 +790,7 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
                 base_page(
                     url.clone().map(Value::from).unwrap_or(Value::Bool(false)),
                     output.as_ref().map(|o| Value::from(o.to_string_lossy().to_string())).unwrap_or(Value::Bool(false)),
+                    date,
                 ),
             );
             // Like js-yaml, front matter dates become real dates.
@@ -1136,11 +1161,14 @@ fn render_layouts(page: &Page, body: Body, engines: &Engines, collections: &Valu
     let mut content = body.html;
     for layout in &page.tpl.layouts {
         data.insert("content".into(), Value::from(content));
-        let ctx = RenderContext { name: &layout.name, input_path: &page.tpl.input, cache_key: Some(&layout.name) };
-        content = engines
-            .get(&layout.ext)?
-            .render(&layout.body, &Value::object(data.clone()), &ctx)
-            .with_context(|| format!("rendering layout {} for {}", layout.name, page.tpl.rel))?;
+        let value = Value::object(data.clone());
+        let mut text = layout.body.clone();
+        for name in &layout.engines {
+            let key = format!("{}#{}", layout.name, name);
+            let ctx = RenderContext { name: &layout.name, input_path: &page.tpl.input, cache_key: Some(&key) };
+            text = engines.get(name)?.render(&text, &value, &ctx).with_context(|| format!("rendering layout {} for {}", layout.name, page.tpl.rel))?;
+        }
+        content = text;
     }
     Ok(content)
 }
@@ -1181,8 +1209,12 @@ fn glob_jobs(ctx: &BuildContext, glob: &Path, to: Option<&Path>) -> Result<Vec<(
 /// Page bundles: the files next to an `index` page (outside the input
 /// folder's root) that aren't templates or data, copied next to its output.
 /// Subfolders with templates of their own are left out.
-fn bundle_files(ctx: &BuildContext, pages: &[Page], templates: &[PathBuf]) -> Vec<(PathBuf, PathBuf)> {
+fn bundle_files(cfg: &Config, ctx: &BuildContext, pages: &[Page], templates: &[PathBuf]) -> Result<Vec<(PathBuf, PathBuf)>> {
     let templates: HashSet<&Path> = templates.iter().map(PathBuf::as_path).collect();
+    // Template files left out by `ignore` (or not rendered) aren't bundle files either.
+    let ignore = glob_set("ignore", cfg.ignore.iter().map(String::as_str))?;
+    let mut formats: HashSet<String> = cfg.template_formats.iter().map(|f| f.to_ascii_lowercase()).collect();
+    formats.insert("markdown".into());
     let mut seen: HashSet<&Path> = HashSet::new();
     let mut jobs = Vec::new();
     for page in pages {
@@ -1205,13 +1237,15 @@ fn bundle_files(ctx: &BuildContext, pages: &[Page], templates: &[PathBuf]) -> Ve
             let name = entry.file_name().to_string_lossy();
             // Directory data (`my-post/my-post.json`) and the page's own data file (`index.json`).
             let is_data = entry.depth() == 1 && ["json", "yaml", "yml", "toml"].iter().any(|ext| *name == format!("{}.{}", dir_name, ext) || *name == format!("index.{}", ext));
-            if !entry.file_type().is_file() || templates.contains(path) || is_data_file(&name) || is_data {
+            let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            let ignored = ignore.is_match(slashes(path.strip_prefix(&ctx.input_dir).unwrap_or(path)));
+            if !entry.file_type().is_file() || templates.contains(path) || is_data_file(&name) || is_data || ignored || formats.contains(&ext) {
                 continue;
             }
             jobs.push((path.to_path_buf(), out_dir.join(path.strip_prefix(dir).unwrap())));
         }
     }
-    jobs
+    Ok(jobs)
 }
 
 /// Run the generators ([`Config::add_generator`]) over the written pages and

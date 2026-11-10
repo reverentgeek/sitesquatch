@@ -1337,6 +1337,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "minijinja-contrib"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64b62a39daf92d02b89f7888ab57f08d15d22dab862e5c95353253f91e9344f0"
+dependencies = [
+ "minijinja",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2222,6 +2231,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "deunicode",
  "dunce",
  "globset",
  "indexmap",
@@ -2313,7 +2323,9 @@ name = "sitesquatch-plugin-jinja"
 version = "0.3.3"
 dependencies = [
  "anyhow",
+ "chrono",
  "minijinja",
+ "minijinja-contrib",
  "regex",
  "sitesquatch",
 ]

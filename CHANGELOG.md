@@ -17,6 +17,13 @@ a `v<version>` tag on a commit where that version matches.
   sites only gain `id`s on their headings. A site that adds heading `id`s itself (in a transform,
   say) should drop that code or set `markdown: { headingIds: false }`, and one that writes `:::`
   or `[^1]` as plain text can turn `containers` or `footnotes` off the same way.
+- `.html` and `.md` layouts run through `htmlEngine` and `markdownEngine` first, as pages do:
+  a `.html` layout is now an Edge template by default. A site with `.html` layouts that hold
+  literal `{{ }}` can set `htmlEngine: false` or rename them.
+- A page without a `date` takes the date at the start of its file name (`2024-06-01-post.md`)
+  before the file's modification time.
+- A permalink ending in `/index.html` (`/about/index.html`) gives the page the URL `/about/`.
+  It still writes the same file.
 - A permalink or `computed` string with `{{ }}` (or `{% %}`) renders in the page's own template
   language instead of always in Edge: a `.liquid` page's permalink is Liquid, and a Markdown page's
   uses `markdownEngine`. Pages in Edge, and Markdown with the default `markdownEngine`, are
@@ -64,11 +71,30 @@ a `v<version>` tag on a commit where that version matches.
 - Rust: `Config::add_generator` adds files made from the list of written pages (the sitemap and
   redirects plugins use it); the build writes them, records them for `clean`, and reports
   collisions with pages.
+- `markdown.headingIds` also takes `"ascii"` (Unicode transliterated: `🦀` is `crab`, as Zola's
+  anchors are) or a function of the heading's text, for a site's own slugs.
+- `markdown: { indentedCode: false }`: lines indented four spaces are Markdown, not code.
+- `dirs.layouts`: layouts in their own folder (`_includes/layouts`), so `layout: post` finds
+  `_includes/layouts/post.njk`.
+- `readData(path)` from `ssqch` reads a JSON, YAML or TOML file in config and data code.
+- `Intl.Collator` and `String.prototype.localeCompare`, with `sensitivity`, `numeric` and
+  `ignorePunctuation`, matching Node's order for English text.
+- Nunjucks templates can use object literals (`{ title: x }`), properties that start with a
+  digit (`site.404_page`), `===` and `!==`, macros with defaults before other parameters, string
+  methods in JavaScript's or Python's spelling (`title.startsWith("A")`), and JavaScript `Date`
+  methods (`page.date.toISOString()`). Jinja templates get the Python string methods.
+- `ssqch build --verbose` lists every broken link instead of the first 20.
 - Examples in `examples/sites/` (`blog-tags`, `blog-categories`, `docs-sidebar` and
   `glossary-docs`), each built in CI with the link checker, and guides for moving from Zola and
   from Eleventy in `docs/guides/`.
 
 ### Fixed
+
+- `computed.date` is the page's date (in collections, feeds and `page.date`).
+- Redirect pages keep the old URL's `#fragment`, `aliases` without a leading `/` are from the
+  site's root, and an alias like `/releases/1.85.0` is a folder, not a file.
+- Page bundles don't copy ignored files or templates.
+- A `link` render hook gets `mailto:` in `link.href` for `<user@example.com>`.
 
 - Pages paginated over a collection (`pagination: { data: collections.categoryPages }`) see each
   item's `content` and `page.excerpt`. They rendered before any page's content existed.

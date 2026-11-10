@@ -62,6 +62,7 @@ impl Plugin for LinksPlugin {
         let options = self.options.clone();
         let counts = self.counts.clone();
         let quiet = cfg.quiet;
+        let verbose = cfg.verbose;
         cfg.on_after_build(move |ctx, report| {
             let result = check(ctx, report, &options)?;
             *counts.lock().unwrap() = Some((result.checked, result.broken.len()));
@@ -69,7 +70,7 @@ impl Plugin for LinksPlugin {
                 return Ok(());
             }
             let fail = options.fail.unwrap_or(ctx.env == Environment::Production && !ctx.serving);
-            let message = describe(&result.broken);
+            let message = describe(&result.broken, if verbose { usize::MAX } else { 20 });
             if fail {
                 bail!("{}", message);
             }
@@ -99,14 +100,14 @@ pub struct CheckResult {
     pub broken: Vec<Broken>,
 }
 
-fn describe(broken: &[Broken]) -> String {
-    const SHOWN: usize = 20;
+/// The broken links, the first `shown` of them listed (all of them with `--verbose`).
+fn describe(broken: &[Broken], shown: usize) -> String {
     let mut out = format!("{} broken link{}:", broken.len(), if broken.len() == 1 { "" } else { "s" });
-    for b in broken.iter().take(SHOWN) {
+    for b in broken.iter().take(shown) {
         out.push_str(&format!("\n  {} -> {} ({})", b.page, b.link, b.reason));
     }
-    if broken.len() > SHOWN {
-        out.push_str(&format!("\n  ... and {} more", broken.len() - SHOWN));
+    if broken.len() > shown {
+        out.push_str(&format!("\n  ... and {} more (--verbose lists them all)", broken.len() - shown));
     }
     out
 }

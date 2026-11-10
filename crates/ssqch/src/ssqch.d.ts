@@ -44,7 +44,7 @@ declare module "ssqch" {
 	/** How Markdown renders. */
 	export interface MarkdownOptions {
 		/** Automatic heading `id`s: `"github"` (the default), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), or `false` for none. A `{#id}` on the heading always wins. */
-		headingIds?: "github" | "blackfriday" | false;
+		headingIds?: "github" | "blackfriday" | "ascii" | false | ((text: string) => string);
 		/** `## Heading {#id .class key=value}`. Default `true`. */
 		headingAttributes?: boolean;
 		/** `[^1]` references, with the notes at the end of the page. Default `true`. */
@@ -61,6 +61,8 @@ declare module "ssqch" {
 		definitionLists?: boolean;
 		/** Curly quotes, dashes and ellipses. Default `false`. */
 		smartPunctuation?: boolean;
+		/** Lines indented four spaces are code blocks. `false` renders them as ordinary Markdown (HTML indented inside Markdown, say); fences are still code. Default `true`. */
+		indentedCode?: boolean;
 		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. Default `false`. */
 		highlight?: boolean | { css?: string | false };
 	}

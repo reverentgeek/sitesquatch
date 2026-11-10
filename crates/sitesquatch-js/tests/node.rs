@@ -231,6 +231,14 @@ fn intl_dates_and_numbers_match_node() {
 }
 
 #[test]
+fn collation_matches_node() {
+    let root = project(&[("_data/out.mjs", include_str!("fixtures/collation-cases.mjs")), ("index.edge", "{{ out.join(\"\\n\") }}")]);
+    build(&root).unwrap();
+    let got = std::fs::read_to_string(root.join("_site/index.html")).unwrap();
+    assert_eq!(got.trim_end(), include_str!("fixtures/collation-expected.txt").trim_end());
+}
+
+#[test]
 fn intl_refuses_what_it_cant_format() {
     let e = build_error(&[("_data/x.js", "export default new Date(0).toLocaleDateString(\"de-DE\");"), ("index.edge", "")]);
     assert!(e.contains("only \"en-US\" formatting is available in ssqch (got \"de-DE\")"), "{}", e);

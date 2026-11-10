@@ -1,6 +1,7 @@
 //! Redirects for SiteSquatch.
 //!
-//! Old URLs come from each page's `aliases` (a URL path or a list of them)
+//! Old URLs come from each page's `aliases` (a URL path or a list of them;
+//! without a leading `/`, a path is still from the site's root)
 //! and from the `redirects` option (`{ "/old/": "/new/" }`, where the target
 //! can be another site). Each becomes a small page that sends browsers on
 //! (a meta refresh, with a canonical link and `noindex`), a line in a
@@ -51,13 +52,31 @@ fn check_path(path: &str) -> Result<()> {
     Ok(())
 }
 
-/// The redirect page for `to`.
+/// The redirect page for `to`. With JavaScript on, it keeps the old URL's
+/// `#fragment` (`/old/#install` goes to `/new/#install`).
 pub fn redirect_page(to: &str) -> String {
+    let js = js_string(to);
     let to = escape_html(to);
     format!(
-        "<!doctype html>\n<html lang=\"en\">\n<meta charset=\"utf-8\">\n<title>Redirecting to {0}</title>\n<link rel=\"canonical\" href=\"{0}\">\n<meta name=\"robots\" content=\"noindex\">\n<meta http-equiv=\"refresh\" content=\"0; url={0}\">\n<p>This page has moved to <a href=\"{0}\">{0}</a>.</p>\n</html>\n",
-        to
+        "<!doctype html>\n<html lang=\"en\">\n<meta charset=\"utf-8\">\n<title>Redirecting to {0}</title>\n<link rel=\"canonical\" href=\"{0}\">\n<meta name=\"robots\" content=\"noindex\">\n<meta http-equiv=\"refresh\" content=\"0; url={0}\">\n<script>location.replace({1} + location.hash)</script>\n<p>This page has moved to <a href=\"{0}\">{0}</a>.</p>\n</html>\n",
+        to, js
     )
+}
+
+/// `to` as a JavaScript string literal that's safe inside `<script>`.
+fn js_string(to: &str) -> String {
+    let mut out = String::from("\"");
+    for c in to.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '<' => out.push_str("\\u003c"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 impl Plugin for RedirectsPlugin {
@@ -84,8 +103,10 @@ impl Plugin for RedirectsPlugin {
                 };
                 for alias in aliases {
                     let Some(alias) = alias.as_str() else { bail!("{}: aliases must be URL paths, not {}", source, alias.type_of()) };
-                    check_path(alias).map_err(|e| anyhow::anyhow!("{}: aliases: {}", source, e))?;
-                    if let Some((_, other)) = all.insert(alias.to_string(), (page.url.clone(), source.clone())) {
+                    // `2019/05/15/post.html` is from the site's root, like `/2019/05/15/post.html`.
+                    let alias = if alias.starts_with('/') { alias.to_string() } else { format!("/{}", alias) };
+                    check_path(&alias).map_err(|e| anyhow::anyhow!("{}: aliases: {}", source, e))?;
+                    if let Some((_, other)) = all.insert(alias.clone(), (page.url.clone(), source.clone())) {
                         bail!("{} and {} both redirect {}", other, source, alias);
                     }
                 }
@@ -97,8 +118,9 @@ impl Plugin for RedirectsPlugin {
                     bail!("{}: {} is the URL of {}, so it can't redirect to {}", source, from, slashes(page.input_path.strip_prefix(&ctx.root).unwrap_or(&page.input_path)), to);
                 }
                 if options.pages {
-                    // `/old` and `/old/` both become `/old/index.html`; `/old.html` stays a file.
-                    let has_ext = from.rsplit('/').next().is_some_and(|last| last.contains('.'));
+                    // `/old` and `/old/` both become `/old/index.html`; `/old.html` stays a
+                    // file. `/releases/1.85.0` is a folder: an extension has letters.
+                    let has_ext = from.rsplit('/').next().and_then(|last| last.rsplit_once('.')).is_some_and(|(stem, ext)| !stem.is_empty() && (1..=5).contains(&ext.len()) && ext.chars().all(|c| c.is_ascii_alphabetic()));
                     let path = if from.ends_with('/') || has_ext { from.clone() } else { format!("{}/", from) };
                     files.push(GeneratedFile { path, contents: redirect_page(to), append: false });
                 }

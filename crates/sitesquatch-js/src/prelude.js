@@ -91,7 +91,7 @@
 	const PARTS = [ "data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins" ];
 	// Engine names a config can't replace.
 	const CORE_ENGINES = [ "edge", "md", "html", "txt" ];
-	const DIRS = [ "input", "output", "includes", "data" ];
+	const DIRS = [ "input", "output", "includes", "layouts", "data" ];
 
 	const isObject = v => v !== null && typeof v === "object" && !Array.isArray( v );
 	const list = v => v === undefined ? [] : [].concat( v );
@@ -155,6 +155,11 @@
 				}
 				for ( const key of SETTINGS.filter( k => k !== "dirs" ) ) {
 					if ( part[key] !== undefined ) settings[key] = part[key];
+				}
+				// `markdown: { headingIds: text => id }`: a slugger of your own.
+				if ( isObject( part.markdown ) && typeof part.markdown.headingIds === "function" ) {
+					settings.markdownSlugger = keep( part.markdown.headingIds );
+					settings.markdown = { ...part.markdown, headingIds: true };
 				}
 			}
 
