@@ -29,6 +29,6 @@ pub mod serve;
 pub mod site_toml;
 
 pub use build::{build, display_path, slashes};
-pub use config::{BuildContext, BuildReport, CollectionApi, Config, Environment, GeneratedFile, LastModified, PageSummary, Plugin, TransformContext};
+pub use config::{BuildContext, BuildReport, CollectionApi, Config, ConfigFiles, Environment, GeneratedFile, LastModified, PageSummary, Plugin, TransformContext};
 pub use engines::{EngineEnv, RenderContext, TemplateEngine};
 pub use sitesquatch_edge::{escape_html, Args, Func, Map, Value};

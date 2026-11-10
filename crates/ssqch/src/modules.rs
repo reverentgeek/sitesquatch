@@ -26,6 +26,11 @@ pub fn set_image_processor(processor: Arc<ImageProcessor>) -> Result<()> {
     Ok(())
 }
 
+/// Forget the processor, before the configuration is read (again).
+pub fn reset_image_processor() {
+    *IMAGES.lock().unwrap() = None;
+}
+
 /// Give `image()` a processor if the config didn't add the plugin.
 pub fn ensure_image_processor(cfg: &mut Config) {
     let mut slot = IMAGES.lock().unwrap();

@@ -60,6 +60,7 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
     if !path.is_file() {
         return Ok(());
     }
+    cfg.add_config_file(&path);
     let text = std::fs::read_to_string(&path)?;
     let site: SiteToml = toml::from_str(&text).with_context(|| format!("invalid {}", path.display()))?;
     if let Some(v) = site.input { cfg.input = v; }

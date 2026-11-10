@@ -21,6 +21,12 @@ struct Cli {
     /// Override the output directory (relative to the root)
     #[arg(long, short, global = true)]
     output: Option<PathBuf>,
+    /// Serve the site under a path, like /repo/ (overrides the config's `base`)
+    #[arg(long, global = true)]
+    base: Option<String>,
+    /// Don't use the network: `fetch()` answers from the copies its `cache` option saved
+    #[arg(long, global = true)]
+    offline: bool,
     /// development or production (default: $SSQCH_ENV, $NODE_ENV,
     /// then production for `build` and development for `serve`)
     #[arg(long, global = true)]
@@ -58,6 +64,20 @@ pub fn run(configure: impl Fn(&mut Config)) -> ExitCode {
 
 /// [`run`], plus subcommands of the binary's own.
 pub fn run_with(configure: impl Fn(&mut Config), extra: Vec<ExtraCommand>) -> ExitCode {
+    try_run_with(
+        |cfg| {
+            configure(cfg);
+            Ok(())
+        },
+        extra,
+    )
+}
+
+/// [`run_with`] for a `configure` that can fail (reading a config file,
+/// say). `ssqch serve` calls it again when one of the configuration's files
+/// changes (see [`Config::add_config_file`]); a failure then is reported, and
+/// the server carries on with the configuration it had.
+pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra: Vec<ExtraCommand>) -> ExitCode {
     // Named after the running binary (`ssqch`, or a site's own binary), not
     // this library crate, so `--version` and `--help` show the right name.
     let name = std::env::args_os()
@@ -83,20 +103,30 @@ pub fn run_with(configure: impl Fn(&mut Config), extra: Vec<ExtraCommand>) -> Ex
         .and_then(|e| Environment::parse(&e))
         .unwrap_or(if serving { Environment::Development } else { Environment::Production });
 
-    let root = cli.root.clone().unwrap_or_else(|| PathBuf::from("."));
-    let mut cfg = Config::new(root, env);
-    cfg.serving = serving;
-    cfg.quiet = cli.quiet;
-    cfg.verbose = cli.verbose;
-    configure(&mut cfg);
-    if let Some(out) = &cli.output {
-        cfg.output = out.clone();
+    if cli.offline {
+        // Read where requests are made (the JavaScript runtime's `fetch`).
+        std::env::set_var("SSQCH_OFFLINE", "1");
     }
-
-    let result = match cli.command {
-        Some(Command::Serve { port }) => crate::serve::serve(&cfg, port),
-        _ => crate::build(&cfg).map(|report| print_report(&cfg, &report)),
+    let root = cli.root.clone().unwrap_or_else(|| PathBuf::from("."));
+    let make_config = || -> anyhow::Result<Config> {
+        let mut cfg = Config::new(root.clone(), env);
+        cfg.serving = serving;
+        cfg.quiet = cli.quiet;
+        cfg.verbose = cli.verbose;
+        configure(&mut cfg)?;
+        if let Some(out) = &cli.output {
+            cfg.output = out.clone();
+        }
+        if let Some(base) = &cli.base {
+            cfg.set_base(base).map_err(|e| anyhow::anyhow!("--base: {:#}", e))?;
+        }
+        Ok(cfg)
     };
+
+    let result = make_config().and_then(|cfg| match cli.command {
+        Some(Command::Serve { port }) => crate::serve::serve_reloading(cfg, port, &make_config),
+        _ => crate::build(&cfg).map(|report| print_report(&cfg, &report)),
+    });
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

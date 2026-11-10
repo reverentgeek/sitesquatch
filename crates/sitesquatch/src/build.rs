@@ -466,8 +466,11 @@ fn record_outputs(cfg: &Config, ctx: &BuildContext, outputs: &[&PathBuf]) -> Res
     if let Some(parent) = list_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let list = serde_json::json!({ "output": output_name, "files": current });
-    std::fs::write(&list_path, serde_json::to_string_pretty(&list)?).with_context(|| format!("writing {}", list_path.display()))?;
+    let list = serde_json::to_string_pretty(&serde_json::json!({ "output": output_name, "files": current }))?;
+    // Left alone when nothing changed, so a build with nothing new touches no files.
+    if std::fs::read_to_string(&list_path).ok().as_deref() != Some(list.as_str()) {
+        std::fs::write(&list_path, list).with_context(|| format!("writing {}", list_path.display()))?;
+    }
     Ok(removed)
 }
 

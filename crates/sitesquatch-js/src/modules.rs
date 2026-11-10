@@ -128,11 +128,20 @@ pub(crate) fn import_specifier(modules: &[JsModule], name: &str) -> String {
 pub(crate) struct Loader {
     root: PathBuf,
     modules: Arc<[JsModule]>,
+    loaded: sitesquatch::ConfigFiles,
 }
 
 impl Loader {
-    pub(crate) fn new(root: &Path, modules: Arc<[JsModule]>) -> Self {
-        Loader { root: root.to_path_buf(), modules }
+    pub(crate) fn new(root: &Path, modules: Arc<[JsModule]>, loaded: sitesquatch::ConfigFiles) -> Self {
+        Loader { root: root.to_path_buf(), modules, loaded }
+    }
+}
+
+/// Note a file the site's own code was loaded from (not a package's), so
+/// `ssqch serve` reads the configuration again when it changes.
+fn note_loaded(loaded: &sitesquatch::ConfigFiles, path: &Path) {
+    if !path.components().any(|c| c.as_os_str() == "node_modules") {
+        loaded.lock().unwrap().insert(dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()));
     }
 }
 
@@ -150,6 +159,7 @@ impl rquickjs::loader::Loader for Loader {
         let (file, _) = split_query(name);
         let path = self.root.join(file);
         let text = std::fs::read_to_string(&path).map_err(|e| Error::new_loading_message(name, e.to_string()))?;
+        note_loaded(&self.loaded, &path);
         let source = match format(ctx, &path, &text) {
             Format::Json => {
                 // Validate here so a broken file reports its own path.
@@ -211,7 +221,7 @@ fn format(ctx: &Ctx<'_>, path: &Path, source: &str) -> Format {
 }
 
 /// The natives behind `require` in `node.js`.
-pub(crate) fn install_commonjs<'js>(ctx: &Ctx<'js>, root: &Path, modules: Arc<[JsModule]>) -> Result<()> {
+pub(crate) fn install_commonjs<'js>(ctx: &Ctx<'js>, root: &Path, modules: Arc<[JsModule]>, loaded: sitesquatch::ConfigFiles) -> Result<()> {
     let native = Object::new(ctx.clone())?;
     let (r, m) = (root.to_path_buf(), modules.clone());
     native.set(
@@ -229,6 +239,7 @@ pub(crate) fn install_commonjs<'js>(ctx: &Ctx<'js>, root: &Path, modules: Arc<[J
         rquickjs::Function::new(ctx.clone(), move |ctx: Ctx<'js>, name: String| -> Result<Object<'js>> {
             let path = r.join(split_query(&name).0);
             let source = std::fs::read_to_string(&path).map_err(|e| rquickjs::Exception::throw_message(&ctx, &format!("{}: {}", name, e)))?;
+            note_loaded(&loaded, &path);
             let format = match format(&ctx, &path, &source) {
                 Format::Esm => "esm",
                 Format::CommonJs => "cjs",

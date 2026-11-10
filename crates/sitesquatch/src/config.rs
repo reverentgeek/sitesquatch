@@ -263,7 +263,14 @@ pub struct Config {
     pub(crate) summaries: Vec<(String, SummaryFn)>,
     pub(crate) generators: Vec<(String, GeneratorFn)>,
     pub(crate) file_builders: Vec<(String, FileBuilderFn)>,
+    pub(crate) config_files: ConfigFiles,
 }
+
+/// The files a site's configuration was read from: the config file and the
+/// modules it imports, and JavaScript data files and theirs. Shared, because
+/// some are only read during a build. `ssqch serve` reads the configuration
+/// again when one of them changes.
+pub type ConfigFiles = Arc<std::sync::Mutex<std::collections::BTreeSet<PathBuf>>>;
 
 impl Config {
     pub fn new(root: impl Into<PathBuf>, env: Environment) -> Self {
@@ -304,6 +311,7 @@ impl Config {
             summaries: Vec::new(),
             generators: Vec::new(),
             file_builders: Vec::new(),
+            config_files: Default::default(),
         }
     }
 
@@ -468,6 +476,20 @@ impl Config {
     {
         self.file_builders.push((name.into(), Arc::new(f)));
         self
+    }
+
+    /// The list of files the configuration comes from (see [`ConfigFiles`]),
+    /// for code that reads them to add to.
+    pub fn config_files(&self) -> ConfigFiles {
+        self.config_files.clone()
+    }
+
+    /// Note that the configuration depends on `path`, so `ssqch serve` reads
+    /// the configuration again when it changes.
+    pub fn add_config_file(&self, path: impl Into<PathBuf>) {
+        let path = path.into();
+        let path = dunce::canonicalize(&path).unwrap_or(path);
+        self.config_files.lock().unwrap().insert(path);
     }
 
     /// Copy a file or directory into the output. A path inside the input

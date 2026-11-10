@@ -38,18 +38,13 @@ fn main() -> std::process::ExitCode {
         sitesquatch::cli::ExtraCommand { command: init::init_command(), run: Box::new(init::run_init) },
         sitesquatch::cli::ExtraCommand { command: init::types_command(), run: Box::new(init::run_types) },
     ];
-    sitesquatch::cli::run_with(
-        |cfg| {
-            if let Err(e) = configure(cfg) {
-                eprintln!("\x1b[31merror:\x1b[0m {:#}", e);
-                std::process::exit(1);
-            }
-        },
-        extra,
-    )
+    sitesquatch::cli::try_run_with(configure, extra)
 }
 
+/// Read the site's configuration into `cfg`. `ssqch serve` calls this again
+/// (with a fresh `cfg`) when a config file changes.
 fn configure(cfg: &mut Config) -> Result<()> {
+    modules::reset_image_processor();
     // Template engines beyond Edge and Markdown. A site renders their files by
     // listing the extension in `templateFormats`.
     #[cfg(feature = "liquid")]

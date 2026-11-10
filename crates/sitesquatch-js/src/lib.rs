@@ -73,8 +73,9 @@ pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)], m
     let path = dunce::canonicalize(path).with_context(|| format!("reading {}", path.display()))?;
     let root = project_root(cfg);
     let modules: Arc<[JsModule]> = modules.into();
-    let engine = Engine::new(&root, cfg.env.as_str(), modules.clone())?;
-    install_data_files(cfg, DataFiles::new(&root, cfg.env.as_str(), modules, Some(engine.clone())));
+    cfg.add_config_file(&path);
+    let engine = Engine::new(&root, cfg.env.as_str(), modules.clone(), cfg.config_files())?;
+    install_data_files(cfg, DataFiles::new(&root, cfg.env.as_str(), modules, Some(engine.clone()), cfg.config_files()));
     let specifier = modules::specifier(&root, &path);
     let result = engine
         .with(|ctx| {
@@ -100,7 +101,7 @@ pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)], m
 /// costs nothing for a site without JavaScript data files.
 pub fn add_data_files(cfg: &mut Config, modules: &[JsModule]) {
     let root = project_root(cfg);
-    install_data_files(cfg, DataFiles::new(&root, cfg.env.as_str(), modules.into(), None));
+    install_data_files(cfg, DataFiles::new(&root, cfg.env.as_str(), modules.into(), None, cfg.config_files()));
 }
 
 fn install_data_files(cfg: &mut Config, files: DataFiles) {
@@ -120,14 +121,16 @@ struct DataFiles {
     env: String,
     modules: Arc<[JsModule]>,
     engine: Mutex<Option<Arc<Engine>>>,
+    /// The files modules were loaded from (see [`sitesquatch::ConfigFiles`]).
+    loaded: sitesquatch::ConfigFiles,
     /// Modification time and reload count of every data file seen, so a
     /// changed file is imported fresh during `ssqch serve`.
     versions: Mutex<HashMap<PathBuf, (Option<SystemTime>, u32)>>,
 }
 
 impl DataFiles {
-    fn new(root: &Path, env: &str, modules: Arc<[JsModule]>, engine: Option<Arc<Engine>>) -> Self {
-        DataFiles { root: root.to_path_buf(), env: env.to_string(), modules, engine: Mutex::new(engine), versions: Mutex::new(HashMap::new()) }
+    fn new(root: &Path, env: &str, modules: Arc<[JsModule]>, engine: Option<Arc<Engine>>, loaded: sitesquatch::ConfigFiles) -> Self {
+        DataFiles { root: root.to_path_buf(), env: env.to_string(), modules, engine: Mutex::new(engine), loaded, versions: Mutex::new(HashMap::new()) }
     }
 
     fn engine(&self) -> Result<Arc<Engine>> {
@@ -135,7 +138,7 @@ impl DataFiles {
         if let Some(engine) = &*slot {
             return Ok(engine.clone());
         }
-        let engine = Engine::new(&self.root, &self.env, self.modules.clone())?;
+        let engine = Engine::new(&self.root, &self.env, self.modules.clone(), self.loaded.clone())?;
         *slot = Some(engine.clone());
         Ok(engine)
     }
@@ -388,10 +391,10 @@ pub(crate) struct Engine {
 type NativeFn = dyn Fn(&[Value]) -> Result<Value> + Send + Sync;
 
 impl Engine {
-    fn new(root: &Path, env: &str, modules: Arc<[JsModule]>) -> Result<Arc<Engine>> {
+    fn new(root: &Path, env: &str, modules: Arc<[JsModule]>, loaded: sitesquatch::ConfigFiles) -> Result<Arc<Engine>> {
         let runtime = Runtime::new()?;
         runtime.set_max_stack_size(4 * 1024 * 1024);
-        runtime.set_loader(modules::Resolver::new(root, modules.clone()), modules::Loader::new(root, modules.clone()));
+        runtime.set_loader(modules::Resolver::new(root, modules.clone()), modules::Loader::new(root, modules.clone(), loaded.clone()));
         let context = Context::full(&runtime)?;
         let engine = Arc::new(Engine { context, _runtime: runtime, origins: Mutex::new(HashMap::new()), views_used: Default::default() });
         engine.with(|ctx| {
@@ -406,7 +409,7 @@ impl Engine {
             globals.set("__ssqch_print", print)?;
             globals.set("process", process_object(&ctx, root, env)?)?;
             native::install(&ctx, root)?;
-            modules::install_commonjs(&ctx, root, modules.clone())?;
+            modules::install_commonjs(&ctx, root, modules.clone(), loaded.clone())?;
             for source in [include_str!("prelude.js"), include_str!("node.js"), include_str!("intl.js")] {
                 let mut options = rquickjs::context::EvalOptions::default();
                 options.global = true;

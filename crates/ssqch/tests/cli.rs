@@ -520,3 +520,106 @@ fn hooks_run_commands() {
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
     assert!(!ok && log.contains("afterBuild: \"cmd\" isn't an option (use { run: \"command\" })"), "{}", log);
 }
+/// Stops `ssqch serve` when the test ends, pass or fail.
+struct Server(std::process::Child);
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Wait (up to 20 seconds) for `file` to contain `text`.
+fn wait_for(file: &std::path::Path, text: &str) {
+    let started = std::time::Instant::now();
+    loop {
+        let found = std::fs::read_to_string(file).unwrap_or_default();
+        if found.contains(text) {
+            return;
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(20), "{} never had {:?}; it has {:?}", file.display(), text, found);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+/// Write `text` to `source` and wait (up to 40 seconds) for `file` to contain
+/// `expected`. The write is repeated every second: on a busy machine the
+/// server may not be watching yet when the first one lands, and writing the
+/// same contents again doesn't count as another change.
+fn change_and_wait(source: &std::path::Path, text: &str, file: &std::path::Path, expected: &str) {
+    let started = std::time::Instant::now();
+    loop {
+        std::fs::write(source, text).unwrap();
+        let written = std::time::Instant::now();
+        while written.elapsed() < std::time::Duration::from_secs(1) {
+            if std::fs::read_to_string(file).unwrap_or_default().contains(expected) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(40), "{} never had {:?} after writing {}; it has {:?}", file.display(), expected, source.display(), std::fs::read_to_string(file).unwrap_or_default());
+    }
+}
+
+#[test]
+fn serve_reads_a_changed_config_again() {
+    let dir = temp_dir("serve-reload");
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "import { shout } from \"./lib/filters.js\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, filters: { shout }, data: { greeting: \"hello\" } };\n");
+    write("lib/filters.js", "export const shout = (s) => s.toUpperCase() + \"!\";\n");
+    write("src/_data/info.js", "import { n } from \"../util/helper.js\";\nexport default { n };\n");
+    write("src/util/helper.js", "export const n = 1;\n");
+    write("src/index.edge", "{{ shout(greeting) }} {{ info.n }}");
+    let log = dir.join("serve.log");
+    let out = std::fs::File::create(&log).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ssqch"))
+        .args(["serve", "--port", "0", "--root"])
+        .arg(&dir)
+        .stdout(out.try_clone().unwrap())
+        .stderr(out)
+        .spawn()
+        .unwrap();
+    let _server = Server(child);
+    let page = dir.join("dist/index.html");
+    wait_for(&page, "HELLO! 1");
+
+    // A module the config imports, outside the input folder.
+    change_and_wait(&dir.join("lib/filters.js"), "export const shout = (s) => s.toUpperCase() + \"?\";\n", &page, "HELLO? 1");
+    // A module a data file imports.
+    change_and_wait(&dir.join("src/util/helper.js"), "export const n = 2;\n", &page, "HELLO? 2");
+    // A config that doesn't load is reported, and the last good one keeps serving.
+    change_and_wait(&dir.join("ssqch.config.js"), "export default { dirs: { ouput: \"dist\" } };\n", &log, "dirs.ouput isn't supported");
+    wait_for(&log, "still serving with the last configuration that loaded");
+    // Fixed, with a changed setting.
+    change_and_wait(&dir.join("ssqch.config.js"), "import { shout } from \"./lib/filters.js\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, filters: { shout }, data: { greeting: \"howdy\" } };\n", &page, "HOWDY? 2");
+    // Templates still rebuild as before.
+    change_and_wait(&dir.join("src/index.edge"), "plain {{ info.n }}", &page, "plain 2");
+}
+
+/// A site whose input folder is the project root (the default) has ssqch's
+/// own `.cache` and the output inside what's watched. Writing them isn't a change.
+#[test]
+fn serve_does_not_rebuild_for_its_own_files() {
+    let dir = temp_dir("serve-root");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("index.edge"), "one {{ 1 + 1 }}").unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), "export default { clean: true };\n").unwrap();
+    let log = dir.join("serve.log");
+    let out = std::fs::File::create(&log).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(["serve", "--port", "0", "--root"]).arg(&dir).stdout(out.try_clone().unwrap()).stderr(out).spawn().unwrap();
+    let _server = Server(child);
+    let page = dir.join("_site/index.html");
+    wait_for(&page, "one 2");
+    let builds = || std::fs::read_to_string(&log).unwrap_or_default().matches("Built in").count();
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    assert_eq!(builds(), 1, "it rebuilt with nothing changed:\n{}", std::fs::read_to_string(&log).unwrap_or_default());
+    change_and_wait(&dir.join("index.edge"), "two {{ 2 + 2 }}", &page, "two 4");
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    assert_eq!(builds(), 2, "{}", std::fs::read_to_string(&log).unwrap_or_default());
+}
+
