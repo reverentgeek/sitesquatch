@@ -36,12 +36,15 @@ pub trait Loader: Send + Sync {
 /// top of a file are skipped, so layouts with front matter can be included.
 pub struct FsLoader {
     pub root: PathBuf,
+    /// More directories, tried in order when `root` doesn't have the file
+    /// (a theme's templates under a site's own).
+    pub fallbacks: Vec<PathBuf>,
 }
 
 impl Loader for FsLoader {
     fn load(&self, name: &str) -> Result<(String, String)> {
         let rel = if name.ends_with(".edge") { name.to_string() } else { format!("{}.edge", name) };
-        let path = self.root.join(&rel);
+        let path = std::iter::once(&self.root).chain(&self.fallbacks).map(|dir| dir.join(&rel)).find(|p| p.is_file()).unwrap_or_else(|| self.root.join(&rel));
         let src = std::fs::read_to_string(&path).with_context(|| format!("template not found: {}", path.display()))?;
         Ok((rel, strip_front_matter(&src).to_string()))
     }

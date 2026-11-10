@@ -111,7 +111,7 @@ impl JinjaEngine {
         let tags: Arc<std::collections::HashSet<String>> =
             Arc::new(engine_env.globals.iter().filter(|(name, value)| matches!(value, Value::Func(_)) && !BUILT_IN_TAGS.contains(&name.as_str())).map(|(name, _)| name.clone()).collect());
         let sources: Arc<RwLock<HashMap<String, String>>> = Arc::default();
-        let includes: PathBuf = engine_env.includes_dir.clone();
+        let includes: Vec<PathBuf> = engine_env.include_dirs().cloned().collect();
         let pages = sources.clone();
         let loader_tags = tags.clone();
         env.set_loader(move |name: &str| {
@@ -122,7 +122,9 @@ impl JinjaEngine {
             if name.split(['/', '\\']).any(|part| part == ".." || part.is_empty()) {
                 return Ok(None);
             }
-            match std::fs::read_to_string(includes.join(name)) {
+            // The site's includes folder, then each theme's.
+            let Some(path) = includes.iter().map(|dir| dir.join(name)).find(|p| p.is_file()) else { return Ok(None) };
+            match std::fs::read_to_string(path) {
                 Ok(src) if nunjucks => Ok(Some(nunjucks_syntax(&src, &loader_tags))),
                 Ok(src) => Ok(Some(src)),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),

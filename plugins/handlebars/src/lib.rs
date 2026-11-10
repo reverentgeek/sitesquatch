@@ -60,7 +60,11 @@ impl HandlebarsEngine {
     pub fn new(env: &EngineEnv, mustache: bool) -> Result<Self> {
         let mut registry = Handlebars::new();
         registry.set_strict_mode(env.strict);
-        register_partials(&mut registry, &env.includes_dir, mustache)?;
+        // Themes first, so the site's own partial of the same name replaces a theme's.
+        let dirs: Vec<&std::path::PathBuf> = env.include_dirs().collect();
+        for dir in dirs.into_iter().rev() {
+            register_partials(&mut registry, dir, mustache)?;
+        }
         registry.register_helper(SECTION_HELPER, Box::new(SectionHelper));
         let mut helpers = Vec::new();
         for (name, value) in env.globals.iter() {

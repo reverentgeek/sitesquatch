@@ -110,7 +110,8 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     for (name, f) in &cfg.filters {
         globals.insert(name.clone(), f.clone());
     }
-    let env = EngineEnv { includes_dir: ctx.includes_dir.clone(), globals, build: ctx.clone(), strict: cfg.strict };
+    let theme_includes: Vec<PathBuf> = ctx.theme_dirs.iter().map(|t| t.join("_includes")).collect();
+    let env = EngineEnv { includes_dir: ctx.includes_dir.clone(), theme_includes: theme_includes.clone(), globals, build: ctx.clone(), strict: cfg.strict };
     let edge = Arc::new(EdgeEngine::new(&env));
     let mut by_name: HashMap<String, Arc<dyn TemplateEngine>> = HashMap::new();
     by_name.insert("edge".into(), edge.clone());
@@ -124,14 +125,26 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     for f in &cfg.template_formats {
         engines.get(f).context("check `template_formats`")?;
     }
-    let hooks = load_hook_templates(&ctx.includes_dir, &slashes(&cfg.includes), &engines, &|ext| engines_for(cfg, ext))?;
+    // A theme's hooks and containers, then the site's own on top of them.
+    let mut hooks = HashMap::new();
+    for dir in theme_includes.iter().rev() {
+        hooks.extend(load_hook_templates(dir, "_includes (theme)", &engines, &|ext| engines_for(cfg, ext))?);
+    }
+    hooks.extend(load_hook_templates(&ctx.includes_dir, &slashes(&cfg.includes), &engines, &|ext| engines_for(cfg, ext))?);
     markdown.set_hooks(hooks, Arc::downgrade(&engines));
     crate::markdown::set_current(cfg.markdown.clone());
 
     timer.lap("setup");
 
     // ---- global data
-    let (mut global, skipped) = data::load_global_data(&ctx.data_dir, &cfg.data_extensions)?;
+    let (site_data, skipped) = data::load_global_data(&ctx.data_dir, &cfg.data_extensions)?;
+    // Themes' `_data` first (the one on top last), then the site's over it.
+    let mut global = Map::new();
+    for theme in ctx.theme_dirs.iter().rev() {
+        let (theme_data, _) = data::load_global_data(&theme.join("_data"), &cfg.data_extensions)?;
+        merge(&mut global, &theme_data, cfg.data_deep_merge);
+    }
+    merge(&mut global, &site_data, cfg.data_deep_merge);
     let provided: Vec<(String, Result<Value>)> = cfg
         .global_data
         .par_iter()
@@ -158,7 +171,10 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     timer.lap("data");
 
     // ---- templates
-    let files = discover(cfg, &ctx)?;
+    let mut files = discover(cfg, &ctx)?;
+    // Pages and files from themes that the site doesn't have itself.
+    let (theme_pages, theme_copies) = theme_files(cfg, &ctx)?;
+    files.extend(theme_pages);
     let commit_dates = match cfg.last_modified {
         Some(crate::LastModified::Git) => git_dates(cfg, &ctx),
         _ => HashMap::new(),
@@ -201,7 +217,10 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     timer.lap("paginate");
 
     // ---- render bodies
-    let collection_includes = includes_using_collections(&ctx.includes_dir);
+    let mut collection_includes = includes_using_collections(&ctx.includes_dir);
+    for dir in &theme_includes {
+        collection_includes.extend(includes_using_collections(dir));
+    }
     // Pages paginated over a collection render last too: their items are
     // refreshed from the finished collections, so they have `content`.
     let over_collections = |p: &Page| p.data.get("pagination").and_then(|p| p.get("data").as_str().map(|d| d.starts_with("collections."))).unwrap_or(false);
@@ -255,7 +274,8 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     timer.lap("write");
 
     let generated = run_generators(cfg, &ctx, &pages, &written, &markdown, &global)?;
-    let bundles = if cfg.bundles { bundle_files(cfg, &ctx, &pages, &files)? } else { Vec::new() };
+    let mut bundles = if cfg.bundles { bundle_files(cfg, &ctx, &pages, &files)? } else { Vec::new() };
+    bundles.extend(theme_copies);
     let copy = passthrough_copy(cfg, &ctx, bundles)?;
     let stylesheet = write_highlight_css(cfg, &ctx)?;
     timer.lap("copy");
@@ -504,6 +524,8 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
     let passthrough_globs = glob_set("passthrough", cfg.passthrough.iter().map(|(from, _)| from).filter(|f| is_glob(f)).map(|f| f.to_str().unwrap_or("")))?;
     let skip_dirs: Vec<PathBuf> = [ctx.includes_dir.clone(), ctx.layouts_dir.clone(), ctx.data_dir.clone(), ctx.output_dir.clone()]
         .into_iter()
+        // A theme folder inside the input folder is a theme, not pages of the site's own.
+        .chain(ctx.theme_dirs.iter().cloned())
         .chain(cfg.passthrough.iter().map(|(from, _)| ctx.root.join(from)))
         .map(|p| dunce::canonicalize(&p).unwrap_or(p))
         .collect();
@@ -539,6 +561,66 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
+/// A file to copy, and where to.
+type CopyJob = (PathBuf, PathBuf);
+
+/// The folder `path` is a page of: the theme it's in, or the input folder.
+fn root_of<'a>(ctx: &'a BuildContext, path: &Path) -> &'a Path {
+    ctx.theme_dirs.iter().find(|t| path.starts_with(t)).map(PathBuf::as_path).unwrap_or(&ctx.input_dir)
+}
+
+/// Files at the top of a theme's folder that are about the theme, not part of it.
+fn is_theme_meta(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
+    matches!(stem.as_str(), "README" | "LICENSE" | "LICENCE" | "CHANGELOG" | "CONTRIBUTING" | "PACKAGE" | "PACKAGE-LOCK" | "PNPM-LOCK" | "SSQCH") || name == "jsconfig.json"
+}
+
+/// What themes add to the site: (pages to render, files to copy to the
+/// output). A path the site's input folder has is the site's, and a theme
+/// on top hides the same path in a theme below it.
+fn theme_files(cfg: &Config, ctx: &BuildContext) -> Result<(Vec<PathBuf>, Vec<CopyJob>)> {
+    let mut formats: HashSet<String> = cfg.template_formats.iter().map(|f| f.to_ascii_lowercase()).collect();
+    if formats.contains("md") {
+        formats.insert("markdown".into());
+    }
+    let ignore = glob_set("ignore", cfg.ignore.iter().map(String::as_str))?;
+    let (mut pages, mut copies) = (Vec::new(), Vec::new());
+    let mut taken: HashSet<String> = HashSet::new();
+    for theme in &ctx.theme_dirs {
+        let walker = walkdir::WalkDir::new(theme).follow_links(true).sort_by_file_name().into_iter().filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            e.depth() == 0 || !(name.starts_with('.') || name == "node_modules" || (e.depth() == 1 && (name == "_includes" || name == "_data" || is_theme_meta(&name))))
+        });
+        for entry in walker {
+            let entry = entry?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let path = entry.path();
+            let rel = slashes(path.strip_prefix(theme).unwrap_or(path));
+            if ignore.is_match(&rel) || ctx.input_dir.join(&rel).exists() || !taken.insert(rel.clone()) {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy();
+            let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            if formats.contains(&ext) && !is_data_file(&name) {
+                pages.push(path.to_path_buf());
+                continue;
+            }
+            // Data for a page or a folder (`posts/posts.json`, `about.json` next to `about.md`) isn't copied.
+            let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            let dir_name = path.parent().and_then(|d| d.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let is_data_ext = matches!(ext.as_str(), "json" | "yaml" | "yml" | "toml");
+            let beside_page = formats.iter().any(|f| path.with_extension(f).is_file());
+            if is_data_file(&name) || (is_data_ext && (stem == dir_name || beside_page)) {
+                continue;
+            }
+            copies.push((path.to_path_buf(), ctx.output_dir.join(&rel)));
+        }
+    }
+    Ok((pages, copies))
+}
+
 /// Template and directory data files (`hello.data.js`, `posts.data.json`)
 /// sit next to templates, but aren't templates themselves.
 fn is_data_file(name: &str) -> bool {
@@ -550,9 +632,10 @@ fn is_data_file(name: &str) -> bool {
 fn load_directory_data(cfg: &Config, ctx: &BuildContext, files: &[PathBuf]) -> Result<HashMap<PathBuf, Map>> {
     let mut dirs: HashSet<PathBuf> = HashSet::new();
     for f in files {
+        let root = root_of(ctx, f);
         let mut dir = f.parent();
         while let Some(d) = dir {
-            if !d.starts_with(&ctx.input_dir) {
+            if !d.starts_with(root) {
                 break;
             }
             dirs.insert(d.to_path_buf());
@@ -591,16 +674,12 @@ fn load_layout(cfg: &Config, ctx: &BuildContext, name: &str, cache: &Mutex<HashM
     if let Some(l) = cache.lock().unwrap().get(name) {
         return Ok(l.clone());
     }
-    let direct = ctx.layouts_dir.join(name);
-    let path = if direct.is_file() {
-        direct
-    } else {
-        cfg.template_formats
-            .iter()
-            .map(|ext| ctx.layouts_dir.join(format!("{}.{}", name, ext)))
-            .find(|p| p.is_file())
-            .ok_or_else(|| anyhow!("layout `{}` not found in {}", name, ctx.layouts_dir.display()))?
-    };
+    // The site's layouts folder, then each theme's includes.
+    let dirs = std::iter::once(ctx.layouts_dir.clone()).chain(ctx.theme_dirs.iter().map(|t| t.join("_includes")));
+    let path = dirs
+        .flat_map(|dir| std::iter::once(dir.join(name)).chain(cfg.template_formats.iter().map(move |ext| dir.join(format!("{}.{}", name, ext)))).collect::<Vec<_>>())
+        .find(|p| p.is_file())
+        .ok_or_else(|| anyhow!("layout `{}` not found in {}{}", name, ctx.layouts_dir.display(), if ctx.theme_dirs.is_empty() { "" } else { " or the theme" }))?;
     let src = std::fs::read_to_string(&path)?;
     let (data, body) = data::parse_front_matter(&src).with_context(|| format!("in layout {}", path.display()))?;
     let layout = Arc::new(Layout {
@@ -622,7 +701,8 @@ fn load_template(
     layouts: &Mutex<HashMap<String, Arc<Layout>>>,
     commit_dates: &HashMap<PathBuf, DateTime<Utc>>,
 ) -> Result<Tpl> {
-    let rel_path = path.strip_prefix(&ctx.input_dir).unwrap_or(path);
+    let root = root_of(ctx, path);
+    let rel_path = path.strip_prefix(root).unwrap_or(path);
     let rel = rel_path.to_string_lossy().replace('\\', "/");
     (|| {
         let src = std::fs::read_to_string(path)?;
@@ -632,7 +712,7 @@ fn load_template(
         // Template-level data: directory data (outermost first), then the
         // template's own data file, then front matter.
         let mut own = Map::new();
-        let mut dirs: Vec<&Path> = path.ancestors().skip(1).take_while(|d| d.starts_with(&ctx.input_dir)).collect();
+        let mut dirs: Vec<&Path> = path.ancestors().skip(1).take_while(|d| d.starts_with(root)).collect();
         dirs.reverse();
         for d in dirs {
             if let Some(data) = dir_data.get(d) {
@@ -1319,7 +1399,7 @@ fn bundle_files(cfg: &Config, ctx: &BuildContext, pages: &[Page], templates: &[P
     let mut jobs = Vec::new();
     for page in pages {
         let (Some(out), Some(dir)) = (&page.output, page.tpl.input.parent()) else { continue };
-        if page.tpl.input.file_stem().is_none_or(|s| s != "index") || dir == ctx.input_dir || !seen.insert(&page.tpl.input) {
+        if page.tpl.input.file_stem().is_none_or(|s| s != "index") || dir == root_of(ctx, &page.tpl.input) || !seen.insert(&page.tpl.input) {
             continue;
         }
         let Some(out_dir) = out.parent() else { continue };

@@ -70,6 +70,8 @@ pub struct BuildContext {
     /// The path the site is served under: empty for the domain's root, or
     /// `/repo` (no `/` at the end). See [`Config::base`].
     pub base: String,
+    /// The themes' folders, the one on top first (see [`crate::theme`]).
+    pub theme_dirs: Vec<PathBuf>,
 }
 
 impl BuildContext {
@@ -289,6 +291,7 @@ pub struct Config {
     pub(crate) file_builders: Vec<(String, FileBuilderFn)>,
     pub(crate) schemas: Vec<crate::schema::Schema>,
     pub(crate) config_files: ConfigFiles,
+    pub(crate) themes: Vec<PathBuf>,
 }
 
 /// The files a site's configuration was read from: the config file and the
@@ -338,6 +341,7 @@ impl Config {
             file_builders: Vec::new(),
             schemas: Vec::new(),
             config_files: Default::default(),
+            themes: Vec::new(),
         }
     }
 
@@ -518,6 +522,28 @@ impl Config {
         self.config_files.lock().unwrap().insert(path);
     }
 
+    /// Put the site on top of a theme: a folder in the project, or a git
+    /// URL pinned to a commit or tag (see [`crate::theme`]). A theme added
+    /// earlier sits on top of one added later.
+    pub fn add_theme(&mut self, spec: &str) -> Result<&mut Self> {
+        self.add_theme_source(&crate::theme::ThemeSource::parse(spec)?)
+    }
+
+    /// [`add_theme`](Self::add_theme), from a source that's already parsed.
+    pub fn add_theme_source(&mut self, source: &crate::theme::ThemeSource) -> Result<&mut Self> {
+        let dir = source.resolve(&self.root, self.quiet)?;
+        if !self.themes.contains(&dir) {
+            self.add_watch_target(&dir);
+            self.themes.push(dir);
+        }
+        Ok(self)
+    }
+
+    /// The themes' folders, the one on top first.
+    pub fn themes(&self) -> &[PathBuf] {
+        &self.themes
+    }
+
     /// Check pages' data against a schema on every build (see
     /// [`crate::schema`]). A schema with the same name replaces the earlier one.
     pub fn add_schema(&mut self, schema: crate::schema::Schema) -> &mut Self {
@@ -568,6 +594,7 @@ impl Config {
             env: self.env,
             serving: self.serving,
             base: self.base.clone(),
+            theme_dirs: self.themes.clone(),
         }
     }
 

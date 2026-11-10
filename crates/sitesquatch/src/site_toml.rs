@@ -48,6 +48,9 @@ pub struct SiteToml {
     pub before_build: Vec<String>,
     #[serde(default)]
     pub after_build: Vec<String>,
+    /// Themes: folders, or git URLs pinned with `#commit`.
+    #[serde(default)]
+    pub theme: Vec<String>,
     /// `[schemas.posts]` with `fields`, `files` and `unknown`, as in the JavaScript config.
     pub schemas: Option<toml::Table>,
     /// `[markdown]`, with the config's keys in snake case (`heading_ids = "blackfriday"`).
@@ -97,6 +100,9 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
             map.insert(camel, crate::Value::from(serde_json::to_value(value)?));
         }
         cfg.markdown.apply(&crate::Value::object(map)).with_context(|| format!("invalid {}", path.display()))?;
+    }
+    for theme in site.theme {
+        cfg.add_theme(&theme).with_context(|| format!("invalid {}", path.display()))?;
     }
     for (from, to) in site.passthrough {
         if to.is_empty() {

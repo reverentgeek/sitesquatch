@@ -14,11 +14,21 @@ use crate::{Map, Value};
 /// What an engine factory gets to work with.
 pub struct EngineEnv {
     pub includes_dir: PathBuf,
+    /// The themes' `_includes` folders, where an include that isn't in
+    /// `includes_dir` is looked for, in order.
+    pub theme_includes: Vec<PathBuf>,
     /// Every registered filter, shortcode and global.
     pub globals: Map,
     pub build: BuildContext,
     /// The config's `strict`: printing an undefined value is an error.
     pub strict: bool,
+}
+
+impl EngineEnv {
+    /// Every folder includes come from: the site's, then each theme's.
+    pub fn include_dirs(&self) -> impl Iterator<Item = &PathBuf> {
+        std::iter::once(&self.includes_dir).chain(&self.theme_includes)
+    }
 }
 
 pub struct RenderContext<'a> {
@@ -42,7 +52,7 @@ pub struct EdgeEngine {
 
 impl EdgeEngine {
     pub fn new(env: &EngineEnv) -> Self {
-        let mut engine = sitesquatch_edge::Engine::new(FsLoader { root: env.includes_dir.clone() });
+        let mut engine = sitesquatch_edge::Engine::new(FsLoader { root: env.includes_dir.clone(), fallbacks: env.theme_includes.clone() });
         for (name, value) in &env.globals {
             engine.add_global(name.clone(), value.clone());
         }

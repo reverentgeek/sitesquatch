@@ -804,6 +804,115 @@ fn nunjucks_tags_from_config_functions_and_jinja_dates() {
     assert_eq!(read("dates/index.html"), "Mar 14 2026|Saturday, March 14 2026|2026-03-14 09:05|09:05|March 14, 2026|December 25 2024|425|2 pines|2.0 kB|bold");
 }
 
+#[cfg(all(feature = "jinja", feature = "liquid"))]
+#[test]
+fn a_theme_sits_under_the_site_file_by_file() {
+    let dir = temp_dir("theme");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    // The theme: layouts in three engines, a partial, a hook, a container, data, a page and a stylesheet.
+    write("themes/trail/_includes/base.edge", "<html><head><link rel=\"stylesheet\" href=\"/assets/theme.css\"></head><body>\n@include('partials/header')\n<main>{{{ content }}}</main>\n@include('partials/footer')\n</body></html>");
+    write("themes/trail/_includes/partials/header.edge", "<header>{{ site.name }} ({{ site.tagline }})</header>");
+    write("themes/trail/_includes/partials/footer.edge", "<footer>theme footer</footer>");
+    write("themes/trail/_includes/post.njk", "---\nlayout: base.edge\n---\n<article>{% include \"byline.njk\" %}{{ content | safe }}</article>");
+    write("themes/trail/_includes/byline.njk", "<p>theme byline</p>");
+    write("themes/trail/_includes/card.liquid", "<div class=\"card\">{% include \"card-title.liquid\" %}{{ content }}</div>");
+    write("themes/trail/_includes/card-title.liquid", "<b>theme title</b>");
+    write("themes/trail/_includes/hooks/heading.edge", "<h{{ heading.level }} class=\"theme\">{{{ heading.content }}}</h{{ heading.level }}>");
+    write("themes/trail/_includes/containers/note.edge", "<aside class=\"theme-note\">{{{ container.content }}}</aside>");
+    write("themes/trail/_data/site.json", "{ \"name\": \"Theme Name\", \"tagline\": \"from the theme\" }");
+    write("themes/trail/404.md", "---\nlayout: base.edge\npermalink: /404.html\n---\nTheme 404\n");
+    write("themes/trail/about.md", "---\nlayout: base.edge\n---\nTheme about\n");
+    write("themes/trail/assets/theme.css", "body { color: green }");
+    write("themes/trail/assets/logo.svg", "<svg/>");
+    write("themes/trail/README.md", "# Trail theme\n");
+    write("themes/trail/LICENSE", "MIT");
+    // The site: its own name, footer, byline, about page and logo.
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"edge\", \"md\", \"njk\", \"liquid\"], theme: \"themes/trail\" };\n");
+    write("src/_data/site.json", "{ \"name\": \"My Site\" }");
+    write("src/_includes/partials/footer.edge", "<footer>my footer</footer>");
+    write("src/_includes/byline.njk", "<p>my byline</p>");
+    write("src/index.md", "---\nlayout: post.njk\n---\n## Hello\n\n::: note\nNoted.\n:::\n");
+    write("src/card.liquid", "---\nlayout: card.liquid\n---\nCard body");
+    write("src/about.md", "---\nlayout: base.edge\n---\nMy about\n");
+    write("src/assets/logo.svg", "<svg id=\"mine\"/>");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
+    assert_eq!(
+        read("index.html"),
+        "<html><head><link rel=\"stylesheet\" href=\"/assets/theme.css\"></head><body><header>My Site (from the theme)</header>\n<main><article><p>my byline</p><h2 class=\"theme\">Hello</h2>\n<aside class=\"theme-note\"><p>Noted.</p>\n</aside>\n</article></main><footer>my footer</footer>\n</body></html>"
+    );
+    assert_eq!(read("card/index.html"), "<div class=\"card\"><b>theme title</b>Card body</div>");
+    assert!(read("404.html").contains("<main><p>Theme 404</p>\n</main>"), "{}", read("404.html"));
+    assert!(read("about/index.html").contains("My about") && !read("about/index.html").contains("Theme about"));
+    assert_eq!(read("assets/theme.css"), "body { color: green }");
+    // The site has its own logo (and no passthrough for it), so the theme's isn't copied over it.
+    assert!(!dir.join("dist/assets/logo.svg").exists());
+    for not_built in ["README/index.html", "readme/index.html", "LICENSE", "themes"] {
+        assert!(!dir.join("dist").join(not_built).exists(), "{} was built", not_built);
+    }
+
+    write("ssqch.config.js", "export default { theme: \"themes/missing\" };\n");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("ssqch.config.js: theme folder") && log.contains("themes/missing doesn't exist"), "{}", log);
+    write("ssqch.config.js", "export default { theme: \"https://github.com/you/theme\" };\n");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("isn't pinned: add the commit or tag to use"), "{}", log);
+}
+
+#[test]
+fn a_theme_from_git_is_fetched_once() {
+    let git = |dir: &std::path::Path, args: &[&str]| {
+        let out = Command::new("git").arg("-C").arg(dir).args(["-c", "user.name=Squatch", "-c", "user.email=squatch@example.com", "-c", "commit.gpgsign=false"]).args(args).output().unwrap();
+        assert!(out.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    // A repository with the theme in a folder, tagged.
+    let repo = temp_dir("theme-repo");
+    std::fs::create_dir_all(repo.join("theme/_includes")).unwrap();
+    std::fs::write(repo.join("theme/_includes/base.edge"), "<main class=\"v1\">{{{ content }}}</main>").unwrap();
+    git(&repo, &["init", "--quiet", "-b", "main"]);
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "--quiet", "-m", "Theme"]);
+    git(&repo, &["tag", "v1.0.0"]);
+    std::fs::write(repo.join("theme/_includes/base.edge"), "<main class=\"v2\">{{{ content }}}</main>").unwrap();
+    git(&repo, &["commit", "--quiet", "-am", "Change it"]);
+    // `file:///C:/...` on Windows, `file:///tmp/...` elsewhere.
+    let repo_path = repo.to_string_lossy().replace('\\', "/");
+    let url = format!("file://{}{}", if repo_path.starts_with('/') { "" } else { "/" }, repo_path);
+
+    let dir = temp_dir("theme-git");
+    let d = dir.to_str().unwrap();
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), format!("export default {{ dirs: {{ input: \"src\", output: \"dist\" }}, theme: {{ git: \"{}\", ref: \"v1.0.0\", dir: \"theme\" }} }};\n", url)).unwrap();
+    std::fs::write(dir.join("src/index.md"), "---\nlayout: base.edge\n---\nHi\n").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    assert!(log.contains(&format!("[ssqch] Fetching theme {}#v1.0.0", url)), "{}", log);
+    // The tag's version, not the branch's.
+    assert_eq!(std::fs::read_to_string(dir.join("dist/index.html")).unwrap(), "<main class=\"v1\"><p>Hi</p>\n</main>");
+
+    // It's kept: the next build doesn't need the repository.
+    // (Renamed rather than deleted: git's object files are read-only, which Windows minds.)
+    std::fs::rename(&repo, temp_dir("theme-repo-moved")).unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    assert!(!log.contains("Fetching theme"), "{}", log);
+
+    // The same thing as one string, and a ref that doesn't exist.
+    std::fs::write(dir.join("ssqch.config.js"), format!("export default {{ dirs: {{ input: \"src\", output: \"dist\" }}, theme: \"{}#v1.0.0:theme\" }};\n", url)).unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    std::fs::write(dir.join("ssqch.config.js"), format!("export default {{ theme: \"{}#v9\" }};\n", url)).unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("#v9: git fetch failed"), "{}", log);
+}
+
 /// A site whose input folder is the project root (the default) has ssqch's
 /// own `.cache` and the output inside what's watched. Writing them isn't a change.
 #[test]

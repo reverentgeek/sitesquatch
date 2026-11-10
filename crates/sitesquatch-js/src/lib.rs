@@ -265,6 +265,31 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
         }
         other => bail!("base must be a URL path like \"/docs/\", not {}", other.type_of()),
     }
+    // `theme: "themes/docs"`, a pinned git URL, `{ git, ref, dir }`, or a list of them.
+    let theme = settings.get("theme");
+    let themes: Vec<Value> = match &theme {
+        Value::Undefined | Value::Null | Value::Bool(false) => Vec::new(),
+        Value::Arr(list) => list.to_vec(),
+        one => vec![one.clone()],
+    };
+    for theme in themes {
+        match &theme {
+            Value::Str(spec) => {
+                cfg.add_theme(spec)?;
+            }
+            Value::Obj(o) => {
+                if let Some(key) = o.keys().find(|k| !["git", "ref", "dir"].contains(&k.as_str())) {
+                    bail!("theme: \"{}\" isn't an option (options: git, ref, dir)", key);
+                }
+                let text = |key: &str| theme.get(key).as_str().map(String::from).unwrap_or_default();
+                if text("git").is_empty() || text("ref").is_empty() {
+                    bail!("theme: an object needs `git` (the repository's URL) and `ref` (the commit or tag to use)");
+                }
+                cfg.add_theme_source(&sitesquatch::theme::ThemeSource::git(&text("git"), &text("ref"), &text("dir"))?)?;
+            }
+            other => bail!("theme must be a folder, a git URL with #commit, or {{ git, ref, dir }}, not {}", other.type_of()),
+        }
+    }
     match settings.get("schemas") {
         Value::Undefined | Value::Null => {}
         Value::Obj(schemas) => {

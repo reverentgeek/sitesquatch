@@ -29,6 +29,7 @@ pub mod report;
 pub mod schema;
 pub mod serve;
 pub mod site_toml;
+pub mod theme;
 
 pub use build::{build, display_path, slashes};
 pub use config::{BuildContext, BuildReport, CollectionApi, Config, ConfigFiles, Environment, GeneratedFile, LastModified, PageSummary, Plugin, TransformContext};

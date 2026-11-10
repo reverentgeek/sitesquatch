@@ -70,7 +70,7 @@ impl LiquidEngine {
                 builder = builder.filter(ConfigFilter { name: name.clone(), function: value.clone() });
             }
         }
-        let parser = builder.partials(liquid::partials::LazyCompiler::new(Includes::new(env.includes_dir.clone()))).build()?;
+        let parser = builder.partials(liquid::partials::LazyCompiler::new(Includes::new(env.include_dirs()))).build()?;
         Ok(LiquidEngine { parser, strict: env.strict, compiled: RwLock::new(HashMap::new()) })
     }
 
@@ -104,29 +104,36 @@ impl TemplateEngine for LiquidEngine {
 /// The includes folder, as Liquid's partial source.
 #[derive(Debug)]
 struct Includes {
-    dir: PathBuf,
-    names: Vec<String>,
+    /// Each partial's name (its path in an includes folder) and the file it
+    /// is: the site's own, or else a theme's.
+    files: Vec<(String, PathBuf)>,
 }
 
 impl Includes {
-    fn new(dir: PathBuf) -> Self {
-        let mut names = Vec::new();
-        if dir.is_dir() {
-            for entry in walkdir::WalkDir::new(&dir).into_iter().flatten() {
+    fn new<'a>(dirs: impl Iterator<Item = &'a PathBuf>) -> Self {
+        let mut files: Vec<(String, PathBuf)> = Vec::new();
+        for dir in dirs.filter(|d| d.is_dir()) {
+            for entry in walkdir::WalkDir::new(dir).into_iter().flatten() {
                 if entry.file_type().is_file() {
-                    if let Ok(rel) = entry.path().strip_prefix(&dir) {
-                        names.push(rel.to_string_lossy().replace('\\', "/"));
+                    if let Ok(rel) = entry.path().strip_prefix(dir) {
+                        let name = rel.to_string_lossy().replace('\\', "/");
+                        // An earlier folder's file wins.
+                        if !files.iter().any(|(n, _)| *n == name) {
+                            files.push((name, entry.path().to_path_buf()));
+                        }
                     }
                 }
             }
         }
-        names.sort();
-        Includes { dir, names }
+        files.sort();
+        Includes { files }
     }
 
-    fn resolve(&self, name: &str) -> Option<&str> {
+    fn resolve(&self, name: &str) -> Option<&(String, PathBuf)> {
+        // Jekyll's include tag hands over a quoted name with its quotes.
+        let name = name.strip_prefix('"').and_then(|n| n.strip_suffix('"')).or_else(|| name.strip_prefix('\'').and_then(|n| n.strip_suffix('\''))).unwrap_or(name);
         let with_ext = format!("{}.liquid", name);
-        self.names.iter().find(|n| *n == name || **n == with_ext).map(String::as_str)
+        self.files.iter().find(|(n, _)| n == name || *n == with_ext)
     }
 }
 
@@ -136,12 +143,12 @@ impl liquid::partials::PartialSource for Includes {
     }
 
     fn names(&self) -> Vec<&str> {
-        self.names.iter().map(String::as_str).collect()
+        self.files.iter().map(|(name, _)| name.as_str()).collect()
     }
 
     fn try_get<'a>(&'a self, name: &str) -> Option<Cow<'a, str>> {
-        let file = self.resolve(name)?;
-        std::fs::read_to_string(self.dir.join(file)).ok().map(Cow::Owned)
+        let (_, path) = self.resolve(name)?;
+        std::fs::read_to_string(path).ok().map(Cow::Owned)
     }
 }
 
@@ -221,7 +228,10 @@ impl Filter for CallFilter {
     }
 }
 
-/// Copy a Liquid value into a SiteSquatch one (for a config filter's arguments).
+/// Copy a Liquid value into a SiteSquatch one (for a config filter's
+/// arguments). By the time a filter sees a value from the page's data, the
+/// `liquid` crate has already copied it (every variable read does), so a big
+/// list handed to a filter costs two copies and one more for the result.
 fn to_value(v: &dyn ValueView) -> Value {
     if v.is_nil() {
         return Value::Null;
@@ -549,5 +559,28 @@ impl ObjectView for Globals<'_> {
             None if !strict() => Some(&NIL),
             found => found,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Values survive the trip into a filter and back: lists, objects,
+    /// numbers, strings that look like dates (which stay strings) and dates.
+    #[test]
+    fn filters_get_values_as_they_are() {
+        let mut globals = Map::new();
+        globals.insert("describe".into(), Value::func(|args| Ok(Value::from(args.iter().map(|a| format!("{}:{}", a.type_of(), a.to_json())).collect::<Vec<_>>().join(" ")))));
+        let env = EngineEnv { includes_dir: std::env::temp_dir().join("ssqch-liquid-no-includes"), theme_includes: Vec::new(), globals, build: sitesquatch::Config::new(".", sitesquatch::Environment::Production).build_context(), strict: false };
+        let engine = LiquidEngine::new(&env).unwrap();
+        let when = chrono::DateTime::parse_from_rfc3339("2026-03-14T00:00:00Z").unwrap().with_timezone(&chrono::Utc);
+        let data = Value::from_pairs([
+            ("nav", Value::array(vec![Value::from_pairs([("on", Value::from("2026-03-14"))]), Value::from("Intro")])),
+            ("when", Value::Date(when)),
+        ]);
+        let ctx = RenderContext { name: "test.liquid", input_path: std::path::Path::new("test.liquid"), cache_key: None };
+        let out = engine.render("{{ nav | describe: 2, 'x', when }}", &data, &ctx).unwrap();
+        assert_eq!(out, r#"object:[{"on":"2026-03-14"},"Intro"] number:2 string:"x" object:"2026-03-14T00:00:00.000Z""#);
     }
 }
