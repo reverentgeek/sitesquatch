@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>{{ feedTitle }}</title>
+  <link href="{{ feedUrl | absoluteUrl(site.url) }}" rel="self"/>
+  <link href="{{ site.url }}/"/>
+  <updated>{{ posts | getNewestCollectionItemDate | dateToRfc3339 }}</updated>
+  <id>{{ feedUrl | absoluteUrl(site.url) }}</id>
+  <author><name>{{ site.author }}</name></author>
+{% for post in posts | newestFirst %}
+  <entry>
+    <title>{{ post.data.title }}</title>
+    <link href="{{ post.url | absoluteUrl(site.url) }}"/>
+    <updated>{{ post.date | dateToRfc3339 }}</updated>
+    <id>{{ post.url | absoluteUrl(site.url) }}</id>
+    <content type="html">{{ post.content | htmlToAbsoluteUrls(post.url | absoluteUrl(site.url)) }}</content>
+  </entry>
+{% endfor %}
+</feed>

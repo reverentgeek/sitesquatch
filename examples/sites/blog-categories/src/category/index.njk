@@ -1,0 +1,10 @@
+---
+layout: base.njk
+title: Categories
+---
+<h1>Categories</h1>
+<ul>
+{% for item in collections.categoryPages %}{% if item.number == 1 %}
+  <li><a href="{{ item.url }}">{{ item.name }}</a></li>
+{% endif %}{% endfor %}
+</ul>

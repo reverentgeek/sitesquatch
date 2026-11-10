@@ -2,3 +2,5 @@
 /out
 /bench-results
 /research
+/examples/sites/*/dist
+/examples/sites/*/.cache

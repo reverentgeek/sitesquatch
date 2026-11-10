@@ -35,6 +35,9 @@ pub struct SiteToml {
     pub html_engine: Option<String>,
     pub data_deep_merge: Option<bool>,
     pub clean: Option<bool>,
+    pub ignore: Option<Vec<String>>,
+    pub bundles: Option<bool>,
+    pub strict: Option<bool>,
     /// `[markdown]`, with the config's keys in snake case (`heading_ids = "blackfriday"`).
     pub markdown: Option<toml::Table>,
     #[serde(default)]
@@ -58,6 +61,9 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
     if let Some(v) = site.html_engine { cfg.html_engine = Some(v).filter(|s| !s.is_empty()); }
     if let Some(v) = site.data_deep_merge { cfg.data_deep_merge = v; }
     if let Some(v) = site.clean { cfg.clean = v; }
+    if let Some(v) = site.ignore { cfg.ignore = v; }
+    if let Some(v) = site.bundles { cfg.bundles = v; }
+    if let Some(v) = site.strict { cfg.strict = v; }
     if let Some(table) = site.markdown {
         let mut map = crate::Map::new();
         for (key, value) in table {

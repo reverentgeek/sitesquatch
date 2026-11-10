@@ -406,3 +406,63 @@ fn markdown_highlights_code_and_writes_the_stylesheet() {
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
     assert!(!ok && log.contains("markdown.highlight.css must be a path like \"/assets/highlight.css\", or false, not \"code.css\""), "{}", log);
 }
+
+#[test]
+fn site_plumbing() {
+    let dir = temp_dir("plumbing");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write(
+        "ssqch.config.js",
+        "export default {\n  dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"edge\", \"md\", \"liquid\"],\n  ignore: [\"drafts/**\", \"**/README.md\"],\n  bundles: true,\n  passthrough: [{ \"assets/**/*.png\": \"images\" }],\n};\n",
+    );
+    write("src/_includes/post.edge", "<p class=\"x\">{{{ page.excerpt }}}</p><p>{{ readingTime(content) }} min</p>{{{ content }}}");
+    write("src/posts/trip/index.md", "+++\ntitle = \"Trip\"\nlayout = \"post.edge\"\n+++\nIntro *para*.\n\n<!-- more -->\nRest.\n");
+    write("src/posts/trip/photo.jpg", "jpg");
+    write("src/posts/trip/trip.json", "{ \"tags\": \"trips\" }");
+    write("src/posts/old.markdown", "---json\n{ \"title\": \"Old\", \"draft\": true }\n---\n# Old\n");
+    write("src/hi.liquid", "---\ntitle: Hi There\npermalink: \"/{{ title | slugify }}/\"\n---\n{{ title }}\n");
+    write("src/drafts/wip.md", "wip");
+    write("src/README.md", "readme");
+    write("assets/icons/a.png", "png");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let mut files: Vec<String> = walk(&dir.join("dist")).into_iter().filter(|f| !f.starts_with(".cache")).collect();
+    files.sort();
+    assert_eq!(files, ["hi-there/index.html", "images/icons/a.png", "posts/trip/index.html", "posts/trip/photo.jpg"]);
+    assert_eq!(std::fs::read_to_string(dir.join("dist/posts/trip/index.html")).unwrap(), "<p class=\"x\"><p>Intro <em>para</em>.</p></p><p>1 min</p><p>Intro <em>para</em>.</p>\n<!-- more -->\n<p>Rest.</p>");
+    // Drafts build in development.
+    let (ok, log) = ssqch(&["build", "--root", d, "-q", "--env", "development"]);
+    assert!(ok, "{}", log);
+    assert!(std::fs::read_to_string(dir.join("dist/posts/old/index.html")).unwrap().contains("<h1 id=\"old\">Old</h1>"));
+
+    // strict: printing an undefined value fails, in any engine.
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"edge\", \"liquid\"], ignore: [\"posts/**\", \"drafts/**\", \"*.md\"], strict: true };\n");
+    write("src/hi.liquid", "{% if nope %}x{% endif %}{{ titel }}");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("requested variable=titel"), "{}", log);
+    write("src/hi.liquid", "fine");
+    write("src/x.edge", "{{ page.url }} {{ titel }}");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("x.edge:1: `titel` is undefined (strict is on)"), "{}", log);
+}
+
+fn walk(dir: &std::path::Path) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for entry in std::fs::read_dir(&d).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                out.push(path.strip_prefix(dir).unwrap().to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    out
+}

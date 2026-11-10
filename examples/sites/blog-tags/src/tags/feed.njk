@@ -1,0 +1,12 @@
+---
+pagination:
+  data: collections.tagList
+  size: 1
+  alias: tag
+permalink: "/tags/{{ tag }}/feed.xml"
+excludeFromCollections: true
+computed:
+  feedTitle: "The Squatch Blog: {{ tag }}"
+  feedUrl: "/tags/{{ tag }}/feed.xml"
+---
+{% set posts = collections[tag] %}{% include "feed.njk" %}

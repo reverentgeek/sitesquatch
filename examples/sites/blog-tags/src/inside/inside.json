@@ -1,0 +1,7 @@
+{
+  "layout": "post.njk",
+  "tags": "inside",
+  "section": "inside",
+  "sectionTitle": "Inside Squatch",
+  "permalink": "/inside/{{ page.date | datePath }}/{{ page.fileSlug }}/"
+}

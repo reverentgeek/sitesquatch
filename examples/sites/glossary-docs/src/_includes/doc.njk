@@ -1,0 +1,7 @@
+---
+layout: base.njk
+---
+<h1>{{ title }}</h1>
+{% set contents = toc(page.headings) %}
+{% if contents %}<details open><summary>On this page</summary>{{ contents | safe }}</details>{% endif %}
+{{ content | safe }}

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
+<link rel="alternate" type="application/atom+xml" href="/feed.xml" title="{{ site.title }}">
+<link rel="stylesheet" href="/highlight.css">
+<style>
+  body { font: 18px/1.6 system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+  pre { background: #f6f8fa; padding: 1rem; overflow-x: auto; }
+  .anchor { opacity: 0.3; text-decoration: none; margin-left: 0.3em; }
+  .tags a { margin-right: 0.5em; }
+  @media (prefers-color-scheme: dark) { body { background: #0d1117; color: #e6edf3; } a { color: #58a6ff; } pre { background: #161b22; } }
+</style>
+</head>
+<body>
+<header><a href="/">{{ site.title }}</a> · <a href="/blog/">Blog</a> · <a href="/inside/">Inside</a> · <a href="/tags/">Tags</a></header>
+<main>
+{{ content | safe }}
+</main>
+</body>
+</html>

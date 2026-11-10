@@ -220,10 +220,20 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
         Value::Bool(b) => cfg.data_deep_merge = b,
         other => bail!("deepMerge must be true or false, not {}", other.type_of()),
     }
-    match settings.get("clean") {
+    for (key, slot) in [("clean", &mut cfg.clean), ("bundles", &mut cfg.bundles), ("strict", &mut cfg.strict)] {
+        match settings.get(key) {
+            Value::Undefined => {}
+            Value::Bool(b) => *slot = b,
+            other => bail!("{} must be true or false, not {}", key, other.type_of()),
+        }
+    }
+    match settings.get("ignore") {
         Value::Undefined => {}
-        Value::Bool(b) => cfg.clean = b,
-        other => bail!("clean must be true or false, not {}", other.type_of()),
+        Value::Str(s) => cfg.ignore = vec![s.to_string()],
+        Value::Arr(a) => {
+            cfg.ignore = a.iter().map(|g| g.as_str().map(String::from).ok_or_else(|| anyhow::anyhow!("ignore must be a glob or an array of globs, not an array with {}", g.type_of()))).collect::<Result<_>>()?
+        }
+        other => bail!("ignore must be a glob or an array of globs, not {}", other.type_of()),
     }
 
     for op in result.get("ops").as_array().unwrap_or(&[]) {

@@ -1,0 +1,7 @@
+---
+layout: base.njk
+---
+<h1>{{ site.title }}</h1>
+<h2>Latest posts</h2>
+{% set posts = collections.posts | newestFirst %}
+{% include "post-list.njk" %}

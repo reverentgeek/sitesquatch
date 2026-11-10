@@ -1,0 +1,8 @@
+---
+layout: base.njk
+title: Inside Squatch
+permalink: /inside/
+---
+<h1>Inside Squatch</h1>
+{% set posts = collections.inside | newestFirst %}
+{% include "post-list.njk" %}

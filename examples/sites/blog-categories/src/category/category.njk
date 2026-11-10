@@ -1,0 +1,18 @@
+---
+layout: base.njk
+pagination:
+  data: collections.categoryPages
+  size: 1
+  alias: category
+permalink: "{{ category.url }}"
+excludeFromCollections: true
+computed:
+  title: "{{ category.name }}"
+---
+<h1>{{ category.name }}{% if category.pages > 1 %} <small>(page {{ category.number }} of {{ category.pages }})</small>{% endif %}</h1>
+{% set posts = category.posts %}
+{% include "post-list.njk" %}
+<nav>
+  {% if category.previous %}<a href="{{ category.previous }}">Newer posts</a>{% endif %}
+  {% if category.next %}<a href="{{ category.next }}">Older posts</a>{% endif %}
+</nav>

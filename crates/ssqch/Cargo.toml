@@ -50,6 +50,8 @@ sitesquatch-plugin-image.workspace = true
 sitesquatch-plugin-minify.workspace = true
 sitesquatch-plugin-assets.workspace = true
 sitesquatch-plugin-links.workspace = true
+sitesquatch-plugin-sitemap.workspace = true
+sitesquatch-plugin-redirects.workspace = true
 sitesquatch-plugin-liquid = { workspace = true, optional = true }
 sitesquatch-plugin-jinja = { workspace = true, optional = true }
 sitesquatch-plugin-handlebars = { workspace = true, optional = true }

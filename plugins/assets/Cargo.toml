@@ -11,3 +11,4 @@ anyhow.workspace = true
 lol_html.workspace = true
 sitesquatch.workspace = true
 blake3 = "1"
+sha2 = "0.10"

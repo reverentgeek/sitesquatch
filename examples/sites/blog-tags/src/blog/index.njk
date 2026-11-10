@@ -1,0 +1,8 @@
+---
+layout: base.njk
+title: Blog
+permalink: /blog/
+---
+<h1>Blog</h1>
+{% set posts = collections.blog | newestFirst %}
+{% include "post-list.njk" %}

@@ -1,0 +1,7 @@
+{
+  "layout": "post.njk",
+  "tags": "blog",
+  "section": "blog",
+  "sectionTitle": "Blog",
+  "permalink": "/blog/{{ page.date | datePath }}/{{ page.fileSlug }}/"
+}

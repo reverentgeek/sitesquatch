@@ -25,7 +25,8 @@ use crate::Engine;
 #[derive(Debug, Clone)]
 pub enum Node {
     Text(String),
-    Output { expr: Expr, raw: bool, line: usize },
+    /// `source` is the expression as written, for errors.
+    Output { expr: Expr, raw: bool, line: usize, source: String },
     If { branches: Vec<(Expr, Vec<Node>)>, otherwise: Vec<Node>, line: usize },
     Each { item: String, index: Option<String>, iter: Expr, body: Vec<Node>, otherwise: Vec<Node>, line: usize },
     Let { name: String, expr: Expr, assign: bool, line: usize },
@@ -200,7 +201,8 @@ impl<'a> TemplateParser<'a> {
                     bail!("line {}: expected `{}` to close the mustache", line, close);
                 }
                 flush(&mut buf, &mut nodes);
-                nodes.push(Node::Output { expr, raw, line });
+                let source = self.src[self.pos + open..end].trim().to_string();
+                nodes.push(Node::Output { expr, raw, line, source });
                 self.pos = end + close.len();
                 line_start = None;
                 continue;
@@ -440,8 +442,11 @@ pub(crate) fn render_nodes(
     for node in nodes {
         match node {
             Node::Text(t) => out.push_str(t),
-            Node::Output { expr, raw, line } => {
+            Node::Output { expr, raw, line, source } => {
                 let v = eval(expr, scope).with_context(|| at(line))?;
+                if engine.strict && matches!(v, Value::Undefined) {
+                    bail!("{}: `{}` is undefined (strict is on)", at(line), source);
+                }
                 let s = v.to_output();
                 if *raw {
                     out.push_str(&s);

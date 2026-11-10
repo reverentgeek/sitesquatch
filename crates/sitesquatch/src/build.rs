@@ -86,7 +86,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     for (name, f) in &cfg.filters {
         globals.insert(name.clone(), f.clone());
     }
-    let env = EngineEnv { includes_dir: ctx.includes_dir.clone(), globals, build: ctx.clone() };
+    let env = EngineEnv { includes_dir: ctx.includes_dir.clone(), globals, build: ctx.clone(), strict: cfg.strict };
     let edge = Arc::new(EdgeEngine::new(&env));
     let mut by_name: HashMap<String, Arc<dyn TemplateEngine>> = HashMap::new();
     by_name.insert("edge".into(), edge.clone());
@@ -136,9 +136,19 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     let files = discover(cfg, &ctx)?;
     let dir_data = load_directory_data(cfg, &ctx, &files)?;
     let layouts: Mutex<HashMap<String, Arc<Layout>>> = Mutex::new(HashMap::new());
-    let tpls: Vec<Arc<Tpl>> = collect_errors(
+    let mut tpls: Vec<Arc<Tpl>> = collect_errors(
         files.par_iter().map(|path| load_template(cfg, &ctx, path, &global, &dir_data, &layouts).map(Arc::new)).collect(),
     )?;
+    // Drafts (`draft: true`) are built in development only.
+    if ctx.env == crate::Environment::Production {
+        tpls.retain(|t| {
+            let draft = t.data.get("draft").is_some_and(Value::truthy);
+            if draft && cfg.verbose {
+                println!("[ssqch] Skipping draft {}", t.rel);
+            }
+            !draft
+        });
+    }
     timer.lap("read");
 
     // ---- pagination, computed data and permalinks
@@ -161,14 +171,24 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     timer.lap("paginate");
 
     // ---- render bodies
-    let (early, late): (Vec<usize>, Vec<usize>) =
-        (0..pages.len()).filter(|&i| pages[i].output.is_some() || pages[i].in_collections).partition(|&i| !uses_collections(&pages[i].tpl));
+    let collection_includes = includes_using_collections(&ctx.includes_dir);
+    // Pages paginated over a collection render last too: their items are
+    // refreshed from the finished collections, so they have `content`.
+    let over_collections = |p: &Page| p.data.get("pagination").and_then(|p| p.get("data").as_str().map(|d| d.starts_with("collections."))).unwrap_or(false);
+    let (early, late): (Vec<usize>, Vec<usize>) = (0..pages.len())
+        .filter(|&i| pages[i].output.is_some() || pages[i].in_collections)
+        .partition(|&i| !uses_collections(&pages[i].tpl, &collection_includes) && !over_collections(&pages[i]));
     let mut contents: HashMap<usize, Body> = collect_errors(
         early.par_iter().map(|&i| render_body(&pages[i], &engines, None).map(|c| (i, c))).collect(),
     )?
     .into_iter()
     .collect();
     let collections = build_collections(cfg, &pages, &contents)?;
+    for &i in &late {
+        if over_collections(&pages[i]) {
+            refresh_pagination(&mut pages[i], &collections).with_context(|| format!("in {}", pages[i].tpl.rel))?;
+        }
+    }
     let late_contents: Vec<(usize, Body)> =
         collect_errors(late.par_iter().map(|&i| render_body(&pages[i], &engines, Some(&collections)).map(|c| (i, c))).collect())?;
     contents.extend(late_contents);
@@ -200,11 +220,13 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     )?;
     timer.lap("write");
 
-    let copy = passthrough_copy(cfg, &ctx)?;
+    let generated = run_generators(cfg, &ctx, &pages, &written)?;
+    let bundles = if cfg.bundles { bundle_files(&ctx, &pages, &files) } else { Vec::new() };
+    let copy = passthrough_copy(cfg, &ctx, bundles)?;
     let stylesheet = write_highlight_css(cfg, &ctx)?;
     timer.lap("copy");
 
-    let outputs: Vec<&PathBuf> = written.iter().map(|(p, _)| p).chain(&copy.paths).chain(&stylesheet).collect();
+    let outputs: Vec<&PathBuf> = written.iter().map(|(p, _)| p).chain(&generated).chain(&copy.paths).chain(&stylesheet).collect();
     let files_removed = record_outputs(cfg, &ctx, &outputs)?;
 
     let mut report = BuildReport {
@@ -215,7 +237,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
         files_unchanged: copy.unchanged,
         passthrough_bytes: copy.bytes,
         files_removed,
-        written: written.into_iter().map(|(p, _)| p).collect(),
+        written: written.into_iter().map(|(p, _)| p).chain(generated).collect(),
         duration: started.elapsed(),
         ..Default::default()
     };
@@ -245,6 +267,15 @@ fn builtin_filters(markdown: &Arc<MarkdownEngine>) -> Map {
                 _ => false,
             };
             md.render_html(&text, &Value::Undefined, Path::new(""), inline).map(Value::from)
+        }),
+    );
+    filters.insert(
+        "readingTime".into(),
+        Value::func(|args| {
+            let text = args.first().map(Value::to_js_string).unwrap_or_default();
+            let wpm = args.get(1).and_then(Value::as_f64).filter(|w| *w > 0.0).unwrap_or(200.0);
+            let words = crate::markdown::html_text(&text).split_whitespace().count() as f64;
+            Ok(Value::Num((words / wpm).ceil().max(1.0)))
         }),
     );
     filters.insert(
@@ -388,8 +419,28 @@ fn record_outputs(cfg: &Config, ctx: &BuildContext, outputs: &[&PathBuf]) -> Res
 
 // ------------------------------------------------------------------ discover
 
+/// Whether a passthrough entry is a glob (`src/**/*.png`) rather than a path.
+fn is_glob(path: &Path) -> bool {
+    path.to_string_lossy().contains(['*', '?', '[', '{'])
+}
+
+/// A glob set, naming `what` (the config key) in errors.
+fn glob_set<'a>(what: &str, globs: impl IntoIterator<Item = &'a str>) -> Result<globset::GlobSet> {
+    let mut set = globset::GlobSetBuilder::new();
+    for g in globs {
+        let g = g.trim_start_matches("./");
+        set.add(globset::GlobBuilder::new(g).literal_separator(true).build().with_context(|| format!("{}: invalid glob {:?}", what, g))?);
+    }
+    Ok(set.build()?)
+}
+
 fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
-    let formats: HashSet<String> = cfg.template_formats.iter().map(|f| f.to_ascii_lowercase()).collect();
+    let mut formats: HashSet<String> = cfg.template_formats.iter().map(|f| f.to_ascii_lowercase()).collect();
+    if formats.contains("md") {
+        formats.insert("markdown".into());
+    }
+    let ignore = glob_set("ignore", cfg.ignore.iter().map(String::as_str))?;
+    let passthrough_globs = glob_set("passthrough", cfg.passthrough.iter().map(|(from, _)| from).filter(|f| is_glob(f)).map(|f| f.to_str().unwrap_or("")))?;
     let skip_dirs: Vec<PathBuf> = [ctx.includes_dir.clone(), ctx.data_dir.clone(), ctx.output_dir.clone()]
         .into_iter()
         .chain(cfg.passthrough.iter().map(|(from, _)| ctx.root.join(from)))
@@ -414,9 +465,14 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
             continue;
         }
         let ext = entry.path().extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-        if formats.contains(&ext) {
-            files.push(entry.into_path());
+        if !formats.contains(&ext) {
+            continue;
         }
+        let rel = slashes(entry.path().strip_prefix(&ctx.input_dir).unwrap_or(entry.path()));
+        if ignore.is_match(&rel) || passthrough_globs.is_match(slashes(entry.path().strip_prefix(&ctx.root).unwrap_or(entry.path()))) {
+            continue;
+        }
+        files.push(entry.into_path());
     }
     files.sort();
     Ok(files)
@@ -553,7 +609,10 @@ fn load_template(
         merge(&mut data, &own, cfg.data_deep_merge);
         normalize_tags(&mut data);
 
-        let ext = path.extension().unwrap().to_string_lossy().to_ascii_lowercase();
+        let mut ext = path.extension().unwrap().to_string_lossy().to_ascii_lowercase();
+        if ext == "markdown" {
+            ext = "md".into();
+        }
         if data.contains_key("templateEngineOverride") {
             bail!("front matter `templateEngineOverride` is now `render` (for example `render: md`)");
         }
@@ -625,18 +684,7 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
                 (Some(rest), Some(c)) => c.get_path(rest),
                 _ => Value::object(tpl.data.clone()).get_path(&path),
             };
-            let mut items: Vec<Value> = match source {
-                Value::Arr(a) => a.to_vec(),
-                Value::Obj(o) => o.keys().map(Value::str).collect(),
-                v if v.is_nullish() => bail!("pagination data `{}` is undefined", path),
-                other => bail!("pagination data `{}` is a {}, not a list", path, other.type_of()),
-            };
-            if let Some(Value::Arr(filter)) = p.as_object().and_then(|o| o.get("filter")) {
-                items.retain(|i| !filter.iter().any(|f| f.strict_eq(i)));
-            }
-            if p.get("reverse").truthy() {
-                items.reverse();
-            }
+            let items = pagination_items(p, &path, source)?;
             size = p.get("size").as_f64().unwrap_or(1.0).max(1.0) as usize;
             chunks = items.chunks(size).enumerate().map(|(i, c)| Some((i, c.to_vec()))).collect();
             if chunks.is_empty() {
@@ -666,7 +714,7 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
             // computed
             if let Some(Value::Obj(computed)) = tpl.data.get("computed").cloned() {
                 for (key, value) in computed.iter() {
-                    let v = render_computed(value, &data, engines, &tpl.rel).with_context(|| format!("computed.{}", key))?;
+                    let v = render_computed(value, &data, engines, tpl).with_context(|| format!("computed.{}", key))?;
                     data.insert(key.clone(), v);
                 }
             }
@@ -677,8 +725,8 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
                 Some(Value::Bool(false)) => None,
                 Some(Value::Str(s)) => {
                     let dynamic = !matches!(data.get("dynamicPermalink"), Some(Value::Bool(false)));
-                    let rendered = if dynamic && s.contains("{{") {
-                        engines.edge.inner().render_str(&format!("{} (permalink)", tpl.rel), &s, Value::object(data.clone()))?
+                    let rendered = if dynamic && (s.contains("{{") || s.contains("{%")) {
+                        render_data_string(tpl, "permalink", &s, &data, engines)?
                     } else {
                         s.to_string()
                     };
@@ -758,6 +806,48 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
     .with_context(|| format!("in {}", tpl.rel))
 }
 
+/// The items a pagination goes over: `source` as a list (an object's keys),
+/// with `filter` and `reverse` applied.
+fn pagination_items(p: &Value, path: &str, source: Value) -> Result<Vec<Value>> {
+    let mut items: Vec<Value> = match source {
+        Value::Arr(a) => a.to_vec(),
+        Value::Obj(o) => o.keys().map(Value::str).collect(),
+        v if v.is_nullish() => bail!("pagination data `{}` is undefined", path),
+        other => bail!("pagination data `{}` is a {}, not a list", path, other.type_of()),
+    };
+    if let Some(Value::Arr(filter)) = p.as_object().and_then(|o| o.get("filter")) {
+        items.retain(|i| !filter.iter().any(|f| f.strict_eq(i)));
+    }
+    if p.get("reverse").truthy() {
+        items.reverse();
+    }
+    Ok(items)
+}
+
+/// Give a page paginated over a collection the items from the finished
+/// collections, which have each page's `content`. The first pass only had
+/// pages without it, enough to count the pages and work out URLs.
+fn refresh_pagination(page: &mut Page, collections: &Value) -> Result<()> {
+    let Some(p) = page.data.get("pagination").cloned() else { return Ok(()) };
+    let path = p.get("data").as_str().unwrap_or_default().to_string();
+    let Some(rest) = path.strip_prefix("collections.") else { return Ok(()) };
+    let items = pagination_items(&p, &path, collections.get_path(rest))?;
+    let size = p.get("size").as_f64().unwrap_or(1.0).max(1.0) as usize;
+    let number = p.get("pageNumber").as_f64().unwrap_or(0.0) as usize;
+    let chunk: Vec<Value> = items.chunks(size).nth(number).map(|c| c.to_vec()).unwrap_or_default();
+    let all: Vec<Value> = items.chunks(size).map(|c| if size == 1 { c[0].clone() } else { Value::array(c.to_vec()) }).collect();
+    let data = Arc::make_mut(&mut page.data);
+    if let Some(Value::Obj(obj)) = data.get_mut("pagination") {
+        let obj = Arc::make_mut(obj);
+        obj.insert("items".into(), Value::array(chunk.clone()));
+        obj.insert("pages".into(), Value::array(all));
+    }
+    if let (Some(alias), Some(first)) = (p.get("alias").as_str(), chunk.first()) {
+        data.insert(alias.to_string(), if size == 1 { first.clone() } else { Value::array(chunk.clone()) });
+    }
+    Ok(())
+}
+
 /// The engines named by a template's `render` data: one name (`md`), a
 /// comma-separated chain (`"liquid, md"`), a list (`[liquid, md]`), or `false`
 /// to write the body as it is.
@@ -785,16 +875,69 @@ fn render_engines(v: &Value) -> Result<Vec<String>> {
 /// tags for other template languages. A post that merely mentions
 /// "collections" in its text, or is only Markdown (`render: md`), renders in
 /// the first pass so its content can appear in feeds.
-fn uses_collections(tpl: &Tpl) -> bool {
-    if !tpl.body.contains("collections") {
-        return false;
+fn uses_collections(tpl: &Tpl, includes: &HashSet<String>) -> bool {
+    if tpl.body.contains("collections") && code_mentions(&tpl.body, &tpl.engines, "collections") {
+        return true;
     }
-    if tpl.engines.iter().any(|e| e == "edge") && edge_code_mentions(&tpl.body, "collections") {
+    // An include, import or component that reads collections.
+    !includes.is_empty() && quoted_names(&tpl.body).any(|name| includes.contains(&include_key(name)))
+}
+
+/// Whether `word` is in template code (not prose) for a template rendered by `engines`.
+fn code_mentions(body: &str, engines: &[String], word: &str) -> bool {
+    if engines.iter().any(|e| e == "edge") && edge_code_mentions(body, word) {
         return true;
     }
     // Other template languages (Liquid and the like) put code in `{{ }}` and
     // `{% %}`. Markdown and plain files have none.
-    tpl.engines.iter().any(|e| !matches!(e.as_str(), "edge" | "md" | "html" | "txt")) && tag_code_mentions(&tpl.body, "collections")
+    engines.iter().any(|e| !matches!(e.as_str(), "edge" | "md" | "html" | "txt")) && tag_code_mentions(body, word)
+}
+
+/// Quoted strings in a template, the names an `include`, `import`,
+/// `@include` or `{{> partial}}` uses (and any other strings).
+fn quoted_names(body: &str) -> impl Iterator<Item = &str> {
+    static QUOTED: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r#"["']([\w./-]{1,200})["']|\{\{>\s*([\w./-]+)"#).unwrap());
+    QUOTED.captures_iter(body).filter_map(|c| c.get(1).or(c.get(2)).map(|m| m.as_str()))
+}
+
+/// `partials/nav.njk` and `./partials/nav` are both `partials/nav`.
+fn include_key(name: &str) -> String {
+    let name = name.trim_start_matches("./");
+    match name.rsplit_once('.') {
+        Some((stem, ext)) if !ext.contains('/') && !stem.is_empty() => stem.to_string(),
+        _ => name.to_string(),
+    }
+}
+
+/// The files in `_includes` (as [`include_key`]s) whose code reads
+/// `collections`, or that include one that does.
+fn includes_using_collections(dir: &Path) -> HashSet<String> {
+    let mut files: Vec<(String, String)> = Vec::new();
+    for entry in walkdir::WalkDir::new(dir).into_iter().flatten() {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(entry.path()) else { continue };
+        let rel = slashes(entry.path().strip_prefix(dir).unwrap_or(entry.path()));
+        files.push((include_key(&rel), text));
+    }
+    let mut using: HashSet<String> = HashSet::new();
+    for (key, text) in &files {
+        if text.contains("collections") && (edge_code_mentions(text, "collections") || tag_code_mentions(text, "collections")) {
+            using.insert(key.clone());
+        }
+    }
+    loop {
+        let before = using.len();
+        for (key, text) in &files {
+            if !using.contains(key) && quoted_names(text).any(|n| using.contains(&include_key(n))) {
+                using.insert(key.clone());
+            }
+        }
+        if using.len() == before {
+            return using;
+        }
+    }
 }
 
 /// Whether `word` appears inside a `{{ ... }}` or `{% ... %}` tag.
@@ -838,15 +981,26 @@ pub fn slashes(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn render_computed(value: &Value, data: &Map, engines: &Engines, name: &str) -> Result<Value> {
+/// Render a `permalink` or `computed` string with the page's own template
+/// language: the first engine in its chain that isn't Markdown or plain
+/// text, or Edge for those.
+fn render_data_string(tpl: &Tpl, what: &str, s: &str, data: &Map, engines: &Engines) -> Result<String> {
+    let engine = tpl.engines.iter().map(String::as_str).find(|e| !matches!(*e, "md" | "html" | "txt")).unwrap_or("edge");
+    let name = format!("{} ({})", tpl.rel, what);
+    if engine == "edge" {
+        return engines.edge.inner().render_str(&name, s, Value::object(data.clone()));
+    }
+    let ctx = RenderContext { name: &name, input_path: &tpl.input, cache_key: None };
+    engines.get(engine)?.render(s, &Value::object(data.clone()), &ctx)
+}
+
+fn render_computed(value: &Value, data: &Map, engines: &Engines, tpl: &Tpl) -> Result<Value> {
     Ok(match value {
-        Value::Str(s) if s.contains("{{") => {
-            Value::from(engines.edge.inner().render_str(&format!("{} (computed)", name), s, Value::object(data.clone()))?)
-        }
+        Value::Str(s) if s.contains("{{") || s.contains("{%") => Value::from(render_data_string(tpl, "computed", s, data, engines)?),
         Value::Obj(o) => {
             let mut out = Map::new();
             for (k, v) in o.iter() {
-                out.insert(k.clone(), render_computed(v, data, engines, name)?);
+                out.insert(k.clone(), render_computed(v, data, engines, tpl)?);
             }
             Value::object(out)
         }
@@ -933,6 +1087,7 @@ fn with_collections(page: &Page, collections: Option<&Value>) -> Map {
 struct Body {
     html: String,
     headings: Value,
+    excerpt: Value,
 }
 
 fn render_body(page: &Page, engines: &Engines, collections: Option<&Value>) -> Result<Body> {
@@ -943,7 +1098,18 @@ fn render_body(page: &Page, engines: &Engines, collections: Option<&Value>) -> R
         content = engines.get(name)?.render(&content, &data, &ctx).with_context(|| format!("rendering {} with `{}`", page.tpl.rel, name))?;
     }
     let headings = Value::array(crate::markdown::headings(&content).iter().map(|h| h.to_value()).collect());
-    Ok(Body { html: content, headings })
+    let excerpt = excerpt(&content).map(Value::from).unwrap_or_default();
+    Ok(Body { html: content, headings, excerpt })
+}
+
+/// The HTML before a `<!-- more -->` comment, or else the first paragraph.
+fn excerpt(html: &str) -> Option<String> {
+    static MORE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"<!--\s*more\s*-->").unwrap());
+    static PARAGRAPH: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"(?is)<p(?:\s[^>]*)?>.*?</p>").unwrap());
+    if let Some(m) = MORE.find(html) {
+        return Some(html[..m.start()].trim().to_string());
+    }
+    PARAGRAPH.find(html).map(|m| m.as_str().to_string())
 }
 
 /// `page` with `headings` from the rendered body.
@@ -952,6 +1118,7 @@ fn with_headings(page: Value, body: Option<&Body>) -> Value {
         (Value::Obj(map), Some(body)) => {
             let mut map = (*map).clone();
             map.insert("headings".into(), body.headings.clone());
+            map.insert("excerpt".into(), body.excerpt.clone());
             Value::object(map)
         }
         (page, _) => page,
@@ -980,6 +1147,127 @@ fn render_layouts(page: &Page, body: Body, engines: &Engines, collections: &Valu
 
 // --------------------------------------------------------------- passthrough
 
+/// The files a passthrough glob matches (relative to the project root), and
+/// where each goes: under `to` by its path below the glob's fixed prefix, or
+/// by its own path, like a plain passthrough path.
+fn glob_jobs(ctx: &BuildContext, glob: &Path, to: Option<&Path>) -> Result<Vec<(PathBuf, PathBuf)>> {
+    let pattern = slashes(glob);
+    let pattern = pattern.trim_start_matches("./");
+    let set = glob_set("passthrough", [pattern])?;
+    let base: PathBuf = pattern.split('/').take_while(|part| !part.contains(['*', '?', '[', '{'])).collect();
+    let mut jobs = Vec::new();
+    for entry in walkdir::WalkDir::new(ctx.root.join(&base)).follow_links(true) {
+        let Ok(entry) = entry else { continue };
+        if !entry.file_type().is_file() || entry.file_name() == ".DS_Store" {
+            continue;
+        }
+        let path = entry.path();
+        let rel = path.strip_prefix(&ctx.root).unwrap_or(path);
+        if !set.is_match(slashes(rel)) {
+            continue;
+        }
+        let dest = match to {
+            Some(to) => ctx.output_dir.join(to).join(rel.strip_prefix(&base).unwrap_or(rel)),
+            None => ctx.output_dir.join(path.strip_prefix(&ctx.input_dir).unwrap_or(rel)),
+        };
+        jobs.push((path.to_path_buf(), dest));
+    }
+    if jobs.is_empty() && !ctx.serving {
+        eprintln!("warn: passthrough glob {:?} matches no files", pattern);
+    }
+    Ok(jobs)
+}
+
+/// Page bundles: the files next to an `index` page (outside the input
+/// folder's root) that aren't templates or data, copied next to its output.
+/// Subfolders with templates of their own are left out.
+fn bundle_files(ctx: &BuildContext, pages: &[Page], templates: &[PathBuf]) -> Vec<(PathBuf, PathBuf)> {
+    let templates: HashSet<&Path> = templates.iter().map(PathBuf::as_path).collect();
+    let mut seen: HashSet<&Path> = HashSet::new();
+    let mut jobs = Vec::new();
+    for page in pages {
+        let (Some(out), Some(dir)) = (&page.output, page.tpl.input.parent()) else { continue };
+        if page.tpl.input.file_stem().is_none_or(|s| s != "index") || dir == ctx.input_dir || !seen.insert(&page.tpl.input) {
+            continue;
+        }
+        let Some(out_dir) = out.parent() else { continue };
+        let dir_name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let walker = walkdir::WalkDir::new(dir).into_iter().filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            if e.depth() > 0 && (name.starts_with('.') || name == "node_modules") {
+                return false;
+            }
+            // A subfolder with its own templates is its own section.
+            !(e.depth() > 0 && e.file_type().is_dir() && templates.iter().any(|t| t.starts_with(e.path())))
+        });
+        for entry in walker.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy();
+            // Directory data (`my-post/my-post.json`) and the page's own data file (`index.json`).
+            let is_data = entry.depth() == 1 && ["json", "yaml", "yml", "toml"].iter().any(|ext| *name == format!("{}.{}", dir_name, ext) || *name == format!("index.{}", ext));
+            if !entry.file_type().is_file() || templates.contains(path) || is_data_file(&name) || is_data {
+                continue;
+            }
+            jobs.push((path.to_path_buf(), out_dir.join(path.strip_prefix(dir).unwrap())));
+        }
+    }
+    jobs
+}
+
+/// Run the generators ([`Config::add_generator`]) over the written pages and
+/// write their files. Returns the paths written (not counting appends to a
+/// page's own file).
+fn run_generators(cfg: &Config, ctx: &BuildContext, pages: &[Page], written: &[(PathBuf, u64)]) -> Result<Vec<PathBuf>> {
+    if cfg.generators.is_empty() {
+        return Ok(Vec::new());
+    }
+    let summaries: Vec<crate::PageSummary> = pages
+        .iter()
+        .filter_map(|p| {
+            Some(crate::PageSummary { url: p.url.clone()?, output_path: p.output.clone()?, input_path: p.tpl.input.clone(), date: p.date, data: Value::Obj(p.data.clone()) })
+        })
+        .collect();
+    let page_outputs: HashSet<&Path> = written.iter().map(|(p, _)| p.as_path()).collect();
+    let mut owners: HashMap<PathBuf, String> = HashMap::new();
+    let mut out = Vec::new();
+    for (name, generator) in &cfg.generators {
+        for file in generator(ctx, &summaries).with_context(|| format!("{} failed", name))? {
+            let rel = file.path.trim_start_matches('/');
+            if !file.path.starts_with('/') || rel.split('/').any(|p| p == "..") {
+                bail!("{}: {:?} must be a URL path in the output, starting with /", name, file.path);
+            }
+            let path = if rel.is_empty() || rel.ends_with('/') { ctx.output_dir.join(rel).join("index.html") } else { ctx.output_dir.join(rel) };
+            let is_page = page_outputs.contains(path.as_path());
+            if !file.append {
+                if is_page {
+                    bail!("{} and a page both write {}", name, display_path(ctx, &path));
+                }
+                if let Some(other) = owners.get(&path) {
+                    bail!("{} and {} both write {}", other, name, display_path(ctx, &path));
+                }
+            }
+            let mut contents = file.contents;
+            if file.append && (is_page || owners.contains_key(&path)) {
+                let mut existing = std::fs::read_to_string(&path).unwrap_or_default();
+                if !existing.is_empty() && !existing.ends_with('\n') {
+                    existing.push('\n');
+                }
+                contents = existing + &contents;
+            }
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            if std::fs::read_to_string(&path).ok().as_deref() != Some(contents.as_str()) {
+                std::fs::write(&path, &contents).with_context(|| format!("writing {}", path.display()))?;
+            }
+            if !is_page && owners.insert(path.clone(), name.clone()).is_none() {
+                out.push(path);
+            }
+        }
+    }
+    Ok(out)
+}
+
 struct CopyStats {
     copied: usize,
     unchanged: usize,
@@ -988,9 +1276,13 @@ struct CopyStats {
     paths: Vec<PathBuf>,
 }
 
-fn passthrough_copy(cfg: &Config, ctx: &BuildContext) -> Result<CopyStats> {
-    let mut jobs: Vec<(PathBuf, PathBuf)> = Vec::new();
+fn passthrough_copy(cfg: &Config, ctx: &BuildContext, extra: Vec<(PathBuf, PathBuf)>) -> Result<CopyStats> {
+    let mut jobs: Vec<(PathBuf, PathBuf)> = extra;
     for (from, to) in &cfg.passthrough {
+        if is_glob(from) {
+            jobs.extend(glob_jobs(ctx, from, to.as_deref())?);
+            continue;
+        }
         let src = ctx.root.join(from);
         let src = dunce::canonicalize(&src).with_context(|| format!("passthrough source {} does not exist", src.display()))?;
         let dest = match to {

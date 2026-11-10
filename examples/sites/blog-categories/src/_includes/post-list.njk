@@ -1,0 +1,7 @@
+{% for post in posts %}
+<section>
+  <h2><a href="{{ post.url }}">{{ post.data.title }}</a></h2>
+  <p class="meta">{{ post.date | readableDate }} · {{ readingTime(post.content) }} min read</p>
+  {{ post.page.excerpt | safe }}
+</section>
+{% endfor %}

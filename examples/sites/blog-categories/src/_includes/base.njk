@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
+<link rel="alternate" type="application/atom+xml" href="/feed.xml" title="{{ site.title }}">
+<style>
+  body { font: 18px/1.6 system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+  .banner { background: #fff3cd; padding: 0.5rem 1rem; }
+  .meta { color: #666; }
+  @media (prefers-color-scheme: dark) { body { background: #0d1117; color: #e6edf3; } a { color: #58a6ff; } .banner { background: #3b2e00; } .meta { color: #9198a1; } }
+</style>
+</head>
+<body>
+{% if site.banner %}<p class="banner">{{ site.banner }}</p>{% endif %}
+<header><a href="/">{{ site.title }}</a> · <a href="/category/">Categories</a> · <a href="/feed.xml">Feed</a></header>
+<main>
+{{ content | safe }}
+</main>
+</body>
+</html>

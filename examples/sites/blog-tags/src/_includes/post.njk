@@ -1,0 +1,9 @@
+---
+layout: base.njk
+---
+<article>
+  <h1>{{ title }}</h1>
+  <p><time datetime="{{ page.date | dateToRfc3339 }}">{{ page.date | readableDate }}</time> in <a href="/{{ section }}/">{{ sectionTitle }}</a></p>
+  {{ content | safe }}
+  <p class="tags">Tags: {% for tag in tags %}{% if tag != section %}<a href="/tags/{{ tag }}/">{{ tag }}</a> {% endif %}{% endfor %}</p>
+</article>

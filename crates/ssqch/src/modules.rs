@@ -1,5 +1,5 @@
 //! JavaScript modules for the built-in plugins: `ssqch/image`, `ssqch/rss`,
-//! `ssqch/minify`, `ssqch/assets` and `ssqch/links`.
+//! `ssqch/minify`, `ssqch/assets`, `ssqch/links`, `ssqch/sitemap` and `ssqch/redirects`.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -74,6 +74,8 @@ pub fn js_modules() -> Vec<JsModule> {
         ),
         module("ssqch/assets", include_str!("js/assets.js"), vec![]),
         module("ssqch/links", include_str!("js/links.js"), vec![]),
+        module("ssqch/sitemap", include_str!("js/sitemap.js"), vec![]),
+        module("ssqch/redirects", include_str!("js/redirects.js"), vec![]),
         module(
             "ssqch/minify",
             include_str!("js/minify.js"),

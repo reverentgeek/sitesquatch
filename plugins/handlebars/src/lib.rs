@@ -59,7 +59,7 @@ pub struct HandlebarsEngine {
 impl HandlebarsEngine {
     pub fn new(env: &EngineEnv, mustache: bool) -> Result<Self> {
         let mut registry = Handlebars::new();
-        registry.set_strict_mode(false);
+        registry.set_strict_mode(env.strict);
         register_partials(&mut registry, &env.includes_dir, mustache)?;
         registry.register_helper(SECTION_HELPER, Box::new(SectionHelper));
         let mut helpers = Vec::new();

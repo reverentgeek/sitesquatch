@@ -22,12 +22,14 @@ use sitesquatch_plugin_image::{Format, ImageOptions, ImagePlugin};
 use sitesquatch_plugin_assets::{AssetsOptions, AssetsPlugin};
 use sitesquatch_plugin_links::{LinksOptions, LinksPlugin};
 use sitesquatch_plugin_minify::{MinifyOptions, MinifyPlugin};
+use sitesquatch_plugin_redirects::{RedirectsOptions, RedirectsPlugin};
 use sitesquatch_plugin_rss::RssPlugin;
+use sitesquatch_plugin_sitemap::{SitemapOptions, SitemapPlugin};
 
 /// Built-in plugins, which a JavaScript config adds with `imagePlugin()`,
 /// `rssPlugin()`, `minifyPlugin()`, `assetsPlugin()` and `linksPlugin()` from the matching
 /// `ssqch/` modules.
-const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify), ("ssqch/assets", assets), ("ssqch/links", links)];
+const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify), ("ssqch/assets", assets), ("ssqch/links", links), ("ssqch/sitemap", sitemap), ("ssqch/redirects", redirects)];
 
 fn main() -> std::process::ExitCode {
     let extra = vec![
@@ -127,18 +129,46 @@ fn minify(cfg: &mut Config, options: &Json) -> Result<()> {
 }
 
 fn assets(cfg: &mut Config, options: &Json) -> Result<()> {
-    let o = Options::new(options, &["files", "fingerprint"])?;
+    let o = Options::new(options, &["files", "fingerprint", "integrity"])?;
     let files = o.list("files")?.unwrap_or_default();
     if files.is_empty() {
         bail!("files is required: the URL paths of the files to fingerprint, like [\"/assets/index.css\"]");
     }
-    cfg.add_plugin(AssetsPlugin::new(AssetsOptions { files, fingerprint: o.bool("fingerprint")? })?);
+    cfg.add_plugin(AssetsPlugin::new(AssetsOptions { files, fingerprint: o.bool("fingerprint")?, integrity: o.bool("integrity")?.unwrap_or(false) })?);
     Ok(())
 }
 
 fn links(cfg: &mut Config, options: &Json) -> Result<()> {
     let o = Options::new(options, &["anchors", "ignore", "fail"])?;
     cfg.add_plugin(LinksPlugin::new(LinksOptions { anchors: o.bool("anchors")?, ignore: o.list("ignore")?.unwrap_or_default(), fail: o.bool("fail")? })?);
+    Ok(())
+}
+
+fn sitemap(cfg: &mut Config, options: &Json) -> Result<()> {
+    let o = Options::new(options, &["url", "exclude", "lastmod", "output", "paginated"])?;
+    let Some(url) = o.string("url")? else { bail!("url is required: the site's address, like \"https://example.com\"") };
+    let mut opts = SitemapOptions::new(url);
+    opts.exclude = o.list("exclude")?.unwrap_or_default();
+    if let Some(b) = o.bool("lastmod")? { opts.lastmod = b; }
+    if let Some(out) = o.string("output")? { opts.output = out; }
+    if let Some(b) = o.bool("paginated")? { opts.paginated = b; }
+    cfg.add_plugin(SitemapPlugin::new(opts)?);
+    Ok(())
+}
+
+fn redirects(cfg: &mut Config, options: &Json) -> Result<()> {
+    let o = Options::new(options, &["pages", "netlify", "redirects"])?;
+    let mut opts = RedirectsOptions::default();
+    if let Some(b) = o.bool("pages")? { opts.pages = b; }
+    if let Some(b) = o.bool("netlify")? { opts.netlify = b; }
+    if let Some(map) = o.get("redirects") {
+        let Some(map) = map.as_object() else { bail!("redirects must be an object of {{ \"/old/\": \"/new/\" }}") };
+        for (from, to) in map {
+            let Some(to) = to.as_str() else { bail!("redirects.{}: the new URL must be a string", from) };
+            opts.redirects.insert(from.clone(), to.to_string());
+        }
+    }
+    cfg.add_plugin(RedirectsPlugin::new(opts)?);
     Ok(())
 }
 

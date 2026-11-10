@@ -69,6 +69,8 @@ pub fn strip_front_matter(src: &str) -> &str {
 }
 
 pub struct Engine {
+    /// Printing an undefined value (`{{ titel }}`) is an error.
+    pub strict: bool,
     loader: Box<dyn Loader>,
     globals: Arc<Map>,
     cache: RwLock<HashMap<String, Arc<Template>>>,
@@ -76,7 +78,7 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(loader: impl Loader + 'static) -> Self {
-        Engine { loader: Box::new(loader), globals: Arc::new(builtin_globals()), cache: RwLock::new(HashMap::new()) }
+        Engine { strict: false, loader: Box::new(loader), globals: Arc::new(builtin_globals()), cache: RwLock::new(HashMap::new()) }
     }
 
     /// Register a global (filter, shortcode, helper or constant) visible to

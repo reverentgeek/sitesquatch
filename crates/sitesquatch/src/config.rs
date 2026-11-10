@@ -135,6 +135,29 @@ pub struct BuildReport {
     pub summary: Vec<(String, String)>,
 }
 
+/// A page the build wrote, for [`Config::add_generator`].
+#[derive(Clone, Debug)]
+pub struct PageSummary {
+    pub url: String,
+    pub output_path: PathBuf,
+    pub input_path: PathBuf,
+    pub date: chrono::DateTime<chrono::Utc>,
+    /// The page's data (front matter and the rest of the cascade).
+    pub data: Value,
+}
+
+/// A file a generator adds to the output.
+#[derive(Clone, Debug)]
+pub struct GeneratedFile {
+    /// A URL path in the output: `/sitemap.xml`, `/old/index.html`.
+    pub path: String,
+    pub contents: String,
+    /// Add to the end of a file a page wrote at the same path (a
+    /// `_redirects` template, say), instead of it being a conflict.
+    pub append: bool,
+}
+
+pub type GeneratorFn = Arc<dyn Fn(&BuildContext, &[PageSummary]) -> Result<Vec<GeneratedFile>> + Send + Sync>;
 pub type DataFn = Arc<dyn Fn(&BuildContext) -> Result<Value> + Send + Sync>;
 pub type CollectionFn = Arc<dyn Fn(&CollectionApi) -> Result<Value> + Send + Sync>;
 pub type TransformFn = Arc<dyn Fn(&TransformContext, String) -> Result<String> + Send + Sync>;
@@ -169,6 +192,14 @@ pub struct Config {
     /// other tools are never touched: only files listed in
     /// `.cache/ssqch/output-files.json` are candidates.
     pub clean: bool,
+    /// Globs (relative to the input directory) for files and folders that
+    /// aren't templates: `["drafts/**", "**/*.wip.md"]`.
+    pub ignore: Vec<String>,
+    /// Copy the other files in a folder whose page is `index.*` (images,
+    /// downloads) next to that page's output.
+    pub bundles: bool,
+    /// Undefined values in templates are errors, not empty output.
+    pub strict: bool,
     pub env: Environment,
     pub serving: bool,
     pub quiet: bool,
@@ -187,6 +218,7 @@ pub struct Config {
     pub(crate) watch_targets: Vec<PathBuf>,
     pub(crate) plugins: Vec<String>,
     pub(crate) summaries: Vec<(String, SummaryFn)>,
+    pub(crate) generators: Vec<(String, GeneratorFn)>,
 }
 
 impl Config {
@@ -203,6 +235,9 @@ impl Config {
             markdown: MarkdownOptions::default(),
             data_deep_merge: true,
             clean: false,
+            ignore: Vec::new(),
+            bundles: false,
+            strict: false,
             env,
             serving: false,
             quiet: false,
@@ -220,6 +255,7 @@ impl Config {
             watch_targets: Vec::new(),
             plugins: Vec::new(),
             summaries: Vec::new(),
+            generators: Vec::new(),
         }
     }
 
@@ -338,6 +374,18 @@ impl Config {
         F: Fn(&BuildContext) -> Option<String> + Send + Sync + 'static,
     {
         self.summaries.push((label.into(), Arc::new(f)));
+        self
+    }
+
+    /// Add files made from the list of pages (a sitemap, redirect pages),
+    /// after the pages are written and before `after_build` hooks run. The
+    /// build writes them, records them for `clean`, and reports a file that
+    /// collides with a page or another generator's.
+    pub fn add_generator<F>(&mut self, name: impl Into<String>, f: F) -> &mut Self
+    where
+        F: Fn(&BuildContext, &[PageSummary]) -> Result<Vec<GeneratedFile>> + Send + Sync + 'static,
+    {
+        self.generators.push((name.into(), Arc::new(f)));
         self
     }
 

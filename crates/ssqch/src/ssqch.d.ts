@@ -24,7 +24,7 @@ declare module "ssqch" {
 		/** Where the page is written, or `false`. */
 		outputPath: string | false;
 		/** `url`, `inputPath`, `date` and the rest, plus `headings` from the rendered body. */
-		page: Record<string, unknown> & { headings?: Heading[] };
+		page: Record<string, unknown> & { headings?: Heading[]; excerpt?: string };
 		/** The page's data: front matter, data files and the rest of the cascade. */
 		data: Record<string, any>;
 		/** The rendered body, without layouts. */
@@ -162,6 +162,12 @@ declare module "ssqch" {
 		deepMerge?: boolean;
 		/** Delete output files an earlier build wrote or copied that this one didn't (a deleted post's page). Files other tools write are never touched. Default `false`. */
 		clean?: boolean;
+		/** Globs (relative to the input folder) of files that aren't pages, like `["drafts/**", "**/README.md"]`. */
+		ignore?: string | string[];
+		/** Page bundles: copy the other files in a folder whose page is `index.*` (images, downloads) next to the page. Default `false`. */
+		bundles?: boolean;
+		/** Printing an undefined value (`{{ titel }}`) is an error, in every template language. Conditionals and defaults still work. Default `false`. */
+		strict?: boolean;
 	}
 
 	/** Returns its argument. It's there so the config reads as one, and for these types. */
@@ -265,6 +271,8 @@ declare module "ssqch/assets" {
 		files: string[];
 		/** Default: production builds only. */
 		fingerprint?: boolean;
+		/** Add `integrity="sha384-..."` (subresource integrity) to the `<link>` and `<script>` elements that load a fingerprinted file. Default `false`. */
+		integrity?: boolean;
 	}
 
 	/** Renames each file to `name.<hash>.ext` in production builds and rewrites the links to it. */
@@ -285,4 +293,40 @@ declare module "ssqch/links" {
 
 	/** Checks every internal link and anchor after each build. */
 	export function linksPlugin(options?: LinksPluginOptions): BuiltinPlugin;
+}
+
+declare module "ssqch/sitemap" {
+	import type { BuiltinPlugin } from "ssqch";
+
+	export interface SitemapPluginOptions {
+		/** The site's address, like `"https://example.com"`. */
+		url: string;
+		/** URL globs to leave out, like `["/tags/**"]`. Pages with `sitemap: false` and 404 pages are always left out. */
+		exclude?: string[];
+		/** Add `<lastmod>` from each page's date. Default `true`. */
+		lastmod?: boolean;
+		/** Where to write it. Default `"/sitemap.xml"`. */
+		output?: string;
+		/** List every page of a list split into pages (`/2/`, `/3/`), not just the first. Pagination with `size: 1` (a page per tag, say) is always listed. Default `false`. */
+		paginated?: boolean;
+	}
+
+	/** Writes `sitemap.xml` listing every HTML page. */
+	export function sitemapPlugin(options: SitemapPluginOptions): BuiltinPlugin;
+}
+
+declare module "ssqch/redirects" {
+	import type { BuiltinPlugin } from "ssqch";
+
+	export interface RedirectsPluginOptions {
+		/** Write a redirect page (meta refresh, canonical link, `noindex`) at each old URL. Default `true`. */
+		pages?: boolean;
+		/** Add `/old /new 301` lines to `_redirects`, after any your own `_redirects` template writes. Default `false`. */
+		netlify?: boolean;
+		/** Redirects that aren't a page's `aliases`: `{ "/old/": "/new/" }`. The new URL can be on another site. */
+		redirects?: Record<string, string>;
+	}
+
+	/** Redirects from each page's `aliases` front matter and from `redirects`. */
+	export function redirectsPlugin(options?: RedirectsPluginOptions): BuiltinPlugin;
 }

@@ -91,7 +91,11 @@ impl JinjaEngine {
 
         // Escape like Nunjucks (`& < > " '`; minijinja also escapes `/`), and
         // print nothing for none and undefined (minijinja prints `none`).
-        env.set_formatter(|out, state, value| {
+        let strict = engine_env.strict;
+        env.set_formatter(move |out, state, value| {
+            if value.is_undefined() && strict {
+                return Err(Error::new(ErrorKind::UndefinedError, "printed an undefined value (strict is on)"));
+            }
             if value.is_undefined() || value.is_none() {
                 return Ok(());
             }

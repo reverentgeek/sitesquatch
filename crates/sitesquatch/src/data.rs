@@ -7,24 +7,51 @@ use anyhow::{bail, Context, Result};
 
 use crate::{Map, Value};
 
-/// Split `---` YAML front matter from a template body.
+/// Split front matter from a template body: `---` YAML (or `---yaml`,
+/// `---json`, `---toml`), or `+++` TOML.
 pub fn parse_front_matter(src: &str) -> Result<(Map, &str)> {
-    let Some(rest) = src.strip_prefix("---") else { return Ok((Map::new(), src)) };
+    let (format, fence, rest) = if let Some(rest) = src.strip_prefix("+++") {
+        ("toml", "+++", rest)
+    } else if let Some(rest) = src.strip_prefix("---") {
+        let lang_len = rest.find(['\r', '\n']).unwrap_or(rest.len());
+        match rest[..lang_len].trim() {
+            "" | "yaml" | "yml" => ("yaml", "---", &rest[lang_len..]),
+            "json" => ("json", "---", &rest[lang_len..]),
+            "toml" => ("toml", "---", &rest[lang_len..]),
+            _ => return Ok((Map::new(), src)),
+        }
+    } else {
+        return Ok((Map::new(), src));
+    };
     let rest = rest.strip_prefix("\r\n").or_else(|| rest.strip_prefix('\n'));
     let Some(rest) = rest else { return Ok((Map::new(), src)) };
-    // Closing fence: a line that is exactly `---`.
+    // Closing fence: a line that is exactly `---` (or `+++`).
     let mut offset = 0;
     for line in rest.split_inclusive('\n') {
-        if line.trim_end() == "---" {
-            let yaml = &rest[..offset];
+        if line.trim_end() == fence {
+            let text = &rest[..offset];
             // Blank lines right after the fence are dropped, like gray-matter.
             let body = rest[offset + line.len()..].trim_start_matches(['\r', '\n']);
-            let data = parse_yaml(yaml).context("invalid YAML front matter")?;
+            let data = match format {
+                "json" => object(serde_json::from_str::<serde_json::Value>(if text.trim().is_empty() { "{}" } else { text }).map(Value::from).context("invalid JSON front matter")?, "JSON")?,
+                "toml" => {
+                    let t: toml::Table = toml::from_str(text).context("invalid TOML front matter")?;
+                    object(Value::from(serde_json::to_value(t)?), "TOML")?
+                }
+                _ => parse_yaml(text).context("invalid YAML front matter")?,
+            };
             return Ok((data, body));
         }
         offset += line.len();
     }
-    bail!("front matter is missing its closing `---`")
+    bail!("front matter is missing its closing `{}`", fence)
+}
+
+fn object(v: Value, format: &str) -> Result<Map> {
+    match v {
+        Value::Obj(o) => Ok(Arc::try_unwrap(o).unwrap_or_else(|o| (*o).clone())),
+        other => bail!("{} front matter must be an object, not {}", format, other.type_of()),
+    }
 }
 
 pub fn parse_yaml(src: &str) -> Result<Map> {
@@ -151,4 +178,26 @@ pub fn load_global_data(dir: &Path, extra: &[(String, DataLoader)]) -> Result<(M
         }
     }
     Ok((data, skipped))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn front_matter_formats() {
+        let (d, body) = parse_front_matter("---\ntitle: Y\n---\nbody").unwrap();
+        assert_eq!((d.get("title").unwrap().to_js_string(), body), ("Y".into(), "body"));
+        let (d, body) = parse_front_matter("+++\ntitle = \"T\"\ntags = [\"a\"]\n+++\n\nbody").unwrap();
+        assert_eq!((d.get("title").unwrap().to_js_string(), d.get("tags").unwrap().as_array().unwrap().len(), body), ("T".into(), 1, "body"));
+        let (d, body) = parse_front_matter("---json\n{ \"title\": \"J\", \"n\": 2 }\n---\nbody").unwrap();
+        assert_eq!((d.get("title").unwrap().to_js_string(), d.get("n").unwrap().to_number(), body), ("J".into(), 2.0, "body"));
+        let (d, _) = parse_front_matter("---toml\ntitle = \"T2\"\n---\n").unwrap();
+        assert_eq!(d.get("title").unwrap().to_js_string(), "T2");
+        // Not front matter: a rule, or an unknown language.
+        assert_eq!(parse_front_matter("----\nx").unwrap().1, "----\nx");
+        assert_eq!(parse_front_matter("---ruby\nx\n---\n").unwrap().1, "---ruby\nx\n---\n");
+        assert!(parse_front_matter("---json\n[1]\n---\n").unwrap_err().to_string().contains("JSON front matter must be an object"));
+        assert!(parse_front_matter("+++\ntitle = 1\n").unwrap_err().to_string().contains("closing `+++`"));
+    }
 }

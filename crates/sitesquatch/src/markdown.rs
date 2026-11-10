@@ -914,7 +914,7 @@ const VOID: [&str; 14] = ["area", "base", "br", "col", "embed", "hr", "img", "in
 
 /// The text of some HTML: tags removed, entities decoded, whitespace
 /// collapsed, and `aria-hidden="true"` elements left out.
-fn html_text(html: &str) -> String {
+pub(crate) fn html_text(html: &str) -> String {
     let mut text = String::new();
     let mut hidden = 0usize;
     let mut last = 0;

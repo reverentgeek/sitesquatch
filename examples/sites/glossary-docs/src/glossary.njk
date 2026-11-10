@@ -1,0 +1,12 @@
+---
+layout: base.njk
+title: Glossary
+permalink: /glossary/
+---
+<h1>Glossary</h1>
+<dl>
+{% for t in collections.glossary %}
+  <dt id="{{ t.fileSlug }}">{{ t.data.title }}</dt>
+  <dd>{{ t.content | safe }}</dd>
+{% endfor %}
+</dl>

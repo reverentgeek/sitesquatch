@@ -17,6 +17,11 @@ a `v<version>` tag on a commit where that version matches.
   sites only gain `id`s on their headings. A site that adds heading `id`s itself (in a transform,
   say) should drop that code or set `markdown: { headingIds: false }`, and one that writes `:::`
   or `[^1]` as plain text can turn `containers` or `footnotes` off the same way.
+- A permalink or `computed` string with `{{ }}` (or `{% %}`) renders in the page's own template
+  language instead of always in Edge: a `.liquid` page's permalink is Liquid, and a Markdown page's
+  uses `markdownEngine`. Pages in Edge, and Markdown with the default `markdownEngine`, are
+  unchanged. A Liquid, Nunjucks or Handlebars page whose permalink uses Edge syntax needs it
+  rewritten in its own language.
 
 ### Added
 
@@ -39,6 +44,37 @@ a `v<version>` tag on a commit where that version matches.
   turns it into nested links: `{{{ toc(page.headings, { from: 2, to: 3 }) }}}`.
 - A `markdown` filter (`{{{ markdown(summary) }}}`, or `markdown(title, "inline")` without the
   `<p>`), and `markdown(text, { inline })` from `ssqch` for config and data files.
+- `ssqch/sitemap`: `sitemapPlugin({ url })` writes `sitemap.xml` from the pages the build wrote,
+  leaving out `sitemap: false` pages, 404 pages, pages 2 and on of a split list, and `exclude`
+  globs. On the blog it matches the hand-written `sitemap.edge` URL for URL.
+- `ssqch/redirects`: `aliases` front matter and a `redirects` option, as redirect pages (meta
+  refresh, canonical link, `noindex`), Netlify `_redirects` lines (`netlify: true`, added after the
+  site's own `_redirects` template), or both.
+- `assetsPlugin({ integrity: true })` adds `integrity="sha384-..."` to the `<link>` and `<script>`
+  elements that load a fingerprinted file.
+- TOML front matter between `+++` lines, and JSON or TOML after `---json` or `---toml`. `.md` sites
+  also render `.markdown` files.
+- `ignore` (globs of files that aren't pages), `draft: true` (built in development only),
+  `bundles: true` (a folder's `index` page gets its other files copied next to it), and globs in
+  `passthrough` (`{ "assets/**/*.png": "images" }`).
+- `page.excerpt` (the HTML before `<!-- more -->`, or else the first paragraph) and a
+  `readingTime(content)` filter.
+- `strict: true`: printing an undefined value is an error, in Edge, Liquid, Nunjucks, Jinja,
+  Handlebars and Mustache. Conditionals and defaults on missing values still work.
+- Rust: `Config::add_generator` adds files made from the list of written pages (the sitemap and
+  redirects plugins use it); the build writes them, records them for `clean`, and reports
+  collisions with pages.
+- Examples in `examples/sites/` (`blog-tags`, `blog-categories`, `docs-sidebar` and
+  `glossary-docs`), each built in CI with the link checker, and guides for moving from Zola and
+  from Eleventy in `docs/guides/`.
+
+### Fixed
+
+- Pages paginated over a collection (`pagination: { data: collections.categoryPages }`) see each
+  item's `content` and `page.excerpt`. They rendered before any page's content existed.
+- A page that includes or imports a template that reads `collections` (a macro in
+  `_includes/macros.njk`, say) renders after the collections are complete, as a page that reads
+  them itself does. Only the page's own body counted before.
 
 ## 0.3.3 - 2026-11-09
 

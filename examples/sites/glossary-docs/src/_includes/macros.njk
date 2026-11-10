@@ -1,0 +1,10 @@
+{# A glossary term: `{{ term("pod") }}`, or `{{ term("pod", "pods") }}` for other link text. #}
+{% macro term(id, text) %}
+{%- set found = false -%}
+{%- for t in collections.glossary -%}
+{%- if t.fileSlug == id -%}
+<abbr class="term" title="{{ t.data.short }}"><a href="/glossary/#{{ id }}">{{ text or (t.data.title | lower) }}</a></abbr>
+{%- set found = true -%}
+{%- endif -%}
+{%- endfor -%}
+{%- endmacro %}

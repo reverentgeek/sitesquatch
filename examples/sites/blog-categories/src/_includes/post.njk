@@ -1,0 +1,8 @@
+---
+layout: base.njk
+---
+<article>
+  <h1>{{ title }}</h1>
+  <p class="meta">{{ page.date | readableDate }} · {{ readingTime(content) }} min read · {% for name in categories %}<a href="/category/{{ name | slug }}/">{{ name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {{ content | safe }}
+</article>

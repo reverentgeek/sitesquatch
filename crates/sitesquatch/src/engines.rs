@@ -17,6 +17,8 @@ pub struct EngineEnv {
     /// Every registered filter, shortcode and global.
     pub globals: Map,
     pub build: BuildContext,
+    /// The config's `strict`: printing an undefined value is an error.
+    pub strict: bool,
 }
 
 pub struct RenderContext<'a> {
@@ -44,6 +46,7 @@ impl EdgeEngine {
         for (name, value) in &env.globals {
             engine.add_global(name.clone(), value.clone());
         }
+        engine.strict = env.strict;
         EdgeEngine { engine, compiled: RwLock::new(HashMap::new()) }
     }
 

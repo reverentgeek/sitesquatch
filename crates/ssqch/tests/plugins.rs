@@ -278,3 +278,79 @@ fn linked_images_can_be_turned_off() {
     assert!(read(&root, "dist/index.html").starts_with("<a href=\"/img/squatch.png\">"), "{}", read(&root, "dist/index.html"));
 }
 
+
+#[test]
+fn sitemap_and_redirects() {
+    let root = project(&[
+        (
+            "ssqch.config.js",
+            br#"
+import { sitemapPlugin } from "ssqch/sitemap";
+import { redirectsPlugin } from "ssqch/redirects";
+import { linksPlugin } from "ssqch/links";
+export default {
+  dirs: { input: "src", output: "dist" },
+  templateFormats: ["edge", "md", "txt"],
+  plugins: [
+    sitemapPlugin({ url: "https://example.com/", exclude: ["/tags/**"] }),
+    redirectsPlugin({ netlify: true, redirects: { "/feed/": "/feed.xml", "/elsewhere": "https://other.example/" } }),
+    linksPlugin(),
+  ],
+};
+"#,
+        ),
+        ("src/index.md", b"---\ndate: 2024-01-02\n---\nHome, see [the post](/2019/pine/)."),
+        ("src/posts/pine.md", b"---\ndate: 2024-03-04\naliases: [/2019/pine/, /pine.html]\n---\nPine"),
+        ("src/secret.md", b"---\nsitemap: false\n---\nshh"),
+        ("src/tags/x.md", b"tag page"),
+        ("src/404.md", b"---\npermalink: /404.html\n---\nnope"),
+        ("src/feed.edge", b"---\npermalink: /feed.xml\n---\n<rss/>"),
+        ("src/redirects.txt", b"---\npermalink: /_redirects\n---\n/mine  /  302"),
+    ]);
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    let sitemap = read(&root, "dist/sitemap.xml");
+    assert!(sitemap.contains("<loc>https://example.com/</loc>\n    <lastmod>2024-01-02</lastmod>"), "{}", sitemap);
+    assert!(sitemap.contains("<loc>https://example.com/posts/pine/</loc>\n    <lastmod>2024-03-04</lastmod>"), "{}", sitemap);
+    for left_out in ["secret", "tags", "404", "feed", "2019"] {
+        assert!(!sitemap.contains(left_out), "{} in {}", left_out, sitemap);
+    }
+    let page = read(&root, "dist/2019/pine/index.html");
+    assert!(page.contains("<meta http-equiv=\"refresh\" content=\"0; url=/posts/pine/\">") && page.contains("<link rel=\"canonical\" href=\"/posts/pine/\">"), "{}", page);
+    assert!(read(&root, "dist/pine.html").contains("url=/posts/pine/"));
+    assert!(read(&root, "dist/elsewhere/index.html").contains("url=https://other.example/"));
+    assert_eq!(
+        read(&root, "dist/_redirects"),
+        "/mine  /  302\n/2019/pine/  /posts/pine/  301\n/elsewhere  https://other.example/  301\n/feed/  /feed.xml  301\n/pine.html  /posts/pine/  301\n"
+    );
+    // A second build doesn't add the lines twice.
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert_eq!(read(&root, "dist/_redirects").matches("/pine.html").count(), 1);
+
+    // An alias that's another page's URL.
+    std::fs::write(root.join("src/secret.md"), "---\nsitemap: false\naliases: /posts/pine/\n---\nshh").unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(!ok && log.contains("./src/secret.md: /posts/pine/ is the URL of src/posts/pine.md"), "{}", log);
+    std::fs::write(root.join("ssqch.config.js"), "import { sitemapPlugin } from \"ssqch/sitemap\";\nexport default { plugins: [sitemapPlugin({ url: \"example.com\" })] };").unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(!ok && log.contains("url must be the site's address, like \"https://example.com\""), "{}", log);
+}
+
+#[test]
+fn assets_get_integrity_hashes() {
+    let root = project(&[
+        ("ssqch.config.js", b"import { assetsPlugin } from \"ssqch/assets\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [assetsPlugin({ files: [\"/app.css\"], integrity: true })] };"),
+        ("src/index.html", b"<link rel=\"stylesheet\" href=\"/app.css\">"),
+        ("dist/app.css", b"abc"),
+    ]);
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    let html = read(&root, "dist/index.html");
+    assert!(html.contains("integrity=\"sha384-ywB1P0WjXou1oD1pmsZQBycsMqsO3tFjGotgWkP/W+2AhgcroefMI1i67KE0yCWn\""), "{}", html);
+    // Not without fingerprinting (ssqch serve), where a watcher may rewrite the file.
+    std::fs::write(root.join("dist/app.css"), "abc").unwrap();
+    let (ok, log) = ssqch_with(&root, &["--env", "development"]);
+    assert!(ok, "{}", log);
+    assert!(!read(&root, "dist/index.html").contains("integrity"));
+}

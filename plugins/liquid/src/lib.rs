@@ -18,6 +18,7 @@
 #![allow(deprecated)]
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
@@ -48,6 +49,7 @@ impl Plugin for LiquidPlugin {
 
 pub struct LiquidEngine {
     parser: liquid::Parser,
+    strict: bool,
     compiled: RwLock<HashMap<String, Arc<liquid::Template>>>,
 }
 
@@ -69,7 +71,7 @@ impl LiquidEngine {
             }
         }
         let parser = builder.partials(liquid::partials::LazyCompiler::new(Includes::new(env.includes_dir.clone()))).build()?;
-        Ok(LiquidEngine { parser, compiled: RwLock::new(HashMap::new()) })
+        Ok(LiquidEngine { parser, strict: env.strict, compiled: RwLock::new(HashMap::new()) })
     }
 
     fn compiled(&self, source: &str, ctx: &RenderContext) -> Result<Arc<liquid::Template>> {
@@ -90,7 +92,10 @@ impl TemplateEngine for LiquidEngine {
     fn render(&self, source: &str, data: &Value, ctx: &RenderContext) -> Result<String> {
         let template = self.compiled(source, ctx)?;
         let globals = Globals(View::of(data));
-        template.render(&globals).map_err(|e| anyhow!("{}: {}", ctx.name, e))
+        let was = STRICT.replace(self.strict);
+        let result = template.render(&globals).map_err(|e| anyhow!("{}: {}", ctx.name, e));
+        STRICT.set(was);
+        result
     }
 }
 
@@ -259,6 +264,16 @@ fn to_value(v: &dyn ValueView) -> Value {
 pub struct View(Value);
 
 static NIL: View = View(Value::Undefined);
+
+thread_local! {
+    /// The config's `strict`, while a template renders: a missing variable or
+    /// property is an error instead of nil.
+    static STRICT: Cell<bool> = const { Cell::new(false) };
+}
+
+fn strict() -> bool {
+    STRICT.with(Cell::get)
+}
 
 impl View {
     pub fn of(v: &Value) -> &View {
@@ -455,13 +470,20 @@ impl ObjectView for View {
 
     // A missing property is nil rather than an error, as in Jekyll and Shopify
     // (`{{ page.subtitle }}` on a page without one renders nothing).
-    fn contains_key(&self, _index: &str) -> bool {
-        matches!(&self.0, Value::Obj(_))
+    fn contains_key(&self, index: &str) -> bool {
+        match &self.0 {
+            Value::Obj(o) => !strict() || o.contains_key(index),
+            _ => false,
+        }
     }
 
     fn get<'s>(&'s self, index: &str) -> Option<&'s dyn ValueView> {
         match &self.0 {
-            Value::Obj(o) => Some(o.get(index).map(View::of).unwrap_or(&NIL)),
+            Value::Obj(o) => match o.get(index) {
+                Some(v) => Some(View::of(v)),
+                None if strict() => None,
+                None => Some(&NIL),
+            },
             _ => None,
         }
     }
@@ -515,10 +537,13 @@ impl ObjectView for Globals<'_> {
     fn iter<'k>(&'k self) -> Box<dyn Iterator<Item = (KStringCow<'k>, &'k dyn ValueView)> + 'k> {
         ObjectView::iter(self.0)
     }
-    fn contains_key(&self, _index: &str) -> bool {
-        true
+    fn contains_key(&self, index: &str) -> bool {
+        !strict() || ObjectView::contains_key(self.0, index)
     }
     fn get<'s>(&'s self, index: &str) -> Option<&'s dyn ValueView> {
-        Some(ObjectView::get(self.0, index).unwrap_or(&NIL))
+        match ObjectView::get(self.0, index) {
+            None if !strict() => Some(&NIL),
+            found => found,
+        }
     }
 }

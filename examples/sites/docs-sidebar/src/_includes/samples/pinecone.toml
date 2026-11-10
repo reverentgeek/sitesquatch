@@ -1,0 +1,4 @@
+[server]
+port = 8080
+# Trust the proxy's X-Forwarded-For header.
+trust_proxy = true

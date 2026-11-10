@@ -1,0 +1,15 @@
+---
+layout: base.njk
+pagination:
+  data: collections.tagList
+  size: 1
+  alias: tag
+permalink: "/tags/{{ tag }}/"
+excludeFromCollections: true
+computed:
+  title: "Tagged “{{ tag }}”"
+---
+<h1>{{ title }}</h1>
+<p><a href="/tags/{{ tag }}/feed.xml">Feed for this tag</a></p>
+{% set posts = collections[tag] | newestFirst %}
+{% include "post-list.njk" %}

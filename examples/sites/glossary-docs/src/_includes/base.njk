@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
+<style>
+  body { font: 17px/1.6 system-ui, sans-serif; margin: 0; display: grid; grid-template-columns: 14rem 1fr; min-height: 100vh; }
+  nav.docs { background: #f3f4f6; padding: 1rem; }
+  main { padding: 1rem 2rem; max-width: 46rem; }
+  .callout { border-left: 4px solid; padding: 0.25rem 1rem; margin: 1rem 0; }
+  .callout.note { border-color: #326ce5; background: #eef3fd; }
+  .callout.caution { border-color: #d97706; background: #fef6e7; }
+  abbr.term a { text-decoration: underline dotted; }
+  @media (prefers-color-scheme: dark) { body { background: #0d1117; color: #e6edf3; } a { color: #58a6ff; } nav.docs { background: #161b22; } .callout.note { background: #0c2d6b; } .callout.caution { background: #3b2300; } }
+</style>
+</head>
+<body>
+<nav class="docs">
+  <p><a href="/">{{ site.title }}</a></p>
+  <ul>
+  {% for doc in collections.docs %}
+    <li>{% if doc.url == page.url %}<strong>{{ doc.data.title }}</strong>{% else %}<a href="{{ doc.url }}">{{ doc.data.title }}</a>{% endif %}</li>
+  {% endfor %}
+    <li><a href="/glossary/">Glossary</a></li>
+  </ul>
+</nav>
+<main>
+{{ content | safe }}
+</main>
+</body>
+</html>

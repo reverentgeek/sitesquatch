@@ -1,0 +1,10 @@
+---
+layout: base.njk
+---
+<h1>{{ title }}</h1>
+{{ content | safe }}
+{% set pager = nav | navPager(page.url) %}
+<nav class="pager">
+  <span>{% if pager.previous %}<a href="{{ pager.previous.url }}">← {{ pager.previous.title }}</a>{% endif %}</span>
+  <span>{% if pager.next %}<a href="{{ pager.next.url }}">{{ pager.next.title }} →</a>{% endif %}</span>
+</nav>

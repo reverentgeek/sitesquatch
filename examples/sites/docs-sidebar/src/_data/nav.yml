@@ -1,0 +1,8 @@
+- title: Getting started
+  pages:
+    - { title: Introduction, url: /docs/ }
+    - { title: Installation, url: /docs/install/ }
+- title: Guides
+  pages:
+    - { title: Your first server, url: /docs/guides/first-server/ }
+    - { title: Configuration, url: /docs/guides/configuration/ }

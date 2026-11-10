@@ -33,12 +33,18 @@ pub struct AssetsOptions {
     /// Whether to fingerprint. `None` means production builds only (not
     /// `ssqch serve`).
     pub fingerprint: Option<bool>,
+    /// Add `integrity="sha384-..."` to the `<link>` and `<script>` elements
+    /// that load a fingerprinted file. Only fingerprinted builds get it, so a
+    /// watcher rewriting a plain file in `ssqch serve` doesn't break the page.
+    pub integrity: bool,
 }
 
 pub struct AssetsPlugin {
     options: AssetsOptions,
     /// Plain URL path -> the URL to use this build.
     urls: Arc<RwLock<BTreeMap<String, String>>>,
+    /// Plain URL path -> its `integrity` value, with `integrity` on.
+    hashes: Arc<RwLock<BTreeMap<String, String>>>,
     /// Set for the summary when files were fingerprinted.
     fingerprinted: Arc<RwLock<Vec<String>>>,
 }
@@ -50,7 +56,7 @@ impl AssetsPlugin {
                 bail!("files: \"{}\" must be a URL path to a file, starting with / (like \"/assets/index.css\")", file);
             }
         }
-        Ok(AssetsPlugin { options, urls: Default::default(), fingerprinted: Default::default() })
+        Ok(AssetsPlugin { options, urls: Default::default(), hashes: Default::default(), fingerprinted: Default::default() })
     }
 }
 
@@ -62,14 +68,21 @@ impl Plugin for AssetsPlugin {
     fn register(&self, cfg: &mut Config) {
         let options = self.options.clone();
         let urls = self.urls.clone();
+        let hashes = self.hashes.clone();
         let done = self.fingerprinted.clone();
         cfg.on_before_build(move |ctx| {
             let enabled = options.fingerprint.unwrap_or(ctx.env == Environment::Production && !ctx.serving);
             let mut map = BTreeMap::new();
+            let mut sri = BTreeMap::new();
             let mut names = Vec::new();
             for file in &options.files {
                 if enabled {
                     let hashed = fingerprint(&ctx.output_dir, file)?;
+                    if options.integrity {
+                        let path = ctx.output_dir.join(hashed.trim_start_matches('/'));
+                        let bytes = std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+                        sri.insert(file.clone(), integrity(&bytes));
+                    }
                     names.push(hashed.rsplit('/').next().unwrap_or(&hashed).to_string());
                     map.insert(file.clone(), hashed);
                 } else if ctx.output_dir.join(file.trim_start_matches('/')).is_file() {
@@ -83,20 +96,23 @@ impl Plugin for AssetsPlugin {
                 }
             }
             *urls.write().unwrap() = map;
+            *hashes.write().unwrap() = sri;
             *done.write().unwrap() = names;
             Ok(())
         });
 
         let urls = self.urls.clone();
+        let hashes = self.hashes.clone();
         cfg.add_html_transform("assets", move |tctx, html| {
             if !tctx.is_html() {
                 return Ok(html);
             }
             let map = urls.read().unwrap();
-            if map.iter().all(|(plain, url)| plain == url) {
+            let sri = hashes.read().unwrap();
+            if map.iter().all(|(plain, url)| plain == url) && sri.is_empty() {
                 return Ok(html);
             }
-            rewrite_html(&html, &map)
+            rewrite_html(&html, &map, &sri)
         });
 
         let urls = self.urls.clone();
@@ -191,9 +207,33 @@ fn fingerprinted_copies(dir: &Path, stem: &str, ext: &str) -> Result<Vec<PathBuf
     Ok(out)
 }
 
+/// `sha384-<base64>`, for an `integrity` attribute.
+pub fn integrity(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    format!("sha384-{}", base64(&sha2::Sha384::digest(bytes)))
+}
+
+fn base64(bytes: &[u8]) -> String {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = (chunk[0] as u32) << 16 | (*chunk.get(1).unwrap_or(&0) as u32) << 8 | *chunk.get(2).unwrap_or(&0) as u32;
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(ABC[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
 /// Rewrite `href` and `src` attributes that point at a fingerprinted path,
-/// keeping any query string or fragment.
-pub fn rewrite_html(html: &str, urls: &BTreeMap<String, String>) -> Result<String> {
+/// keeping any query string or fragment, and add `integrity` (from `sri`,
+/// by plain path) to the `<link>` and `<script>` elements that load one.
+pub fn rewrite_html(html: &str, urls: &BTreeMap<String, String>, sri: &BTreeMap<String, String>) -> Result<String> {
+    let plain_path = |value: &str| -> String { value[..value.find(['?', '#']).unwrap_or(value.len())].to_string() };
     let rewrite = |value: &str| -> Option<String> {
         let split = value.find(['?', '#']).unwrap_or(value.len());
         let (path, rest) = value.split_at(split);
@@ -203,8 +243,16 @@ pub fn rewrite_html(html: &str, urls: &BTreeMap<String, String>) -> Result<Strin
         html,
         RewriteStrSettings {
             element_content_handlers: vec![element!("[href], [src]", move |el| {
+                let tag = el.tag_name();
                 for attr in ["href", "src"] {
-                    if let Some(new) = el.get_attribute(attr).and_then(|v| rewrite(&v)) {
+                    let Some(value) = el.get_attribute(attr) else { continue };
+                    let loads = (tag == "link" && attr == "href") || (tag == "script" && attr == "src");
+                    if loads && !el.has_attribute("integrity") {
+                        if let Some(hash) = sri.get(&plain_path(&value)) {
+                            el.set_attribute("integrity", hash)?;
+                        }
+                    }
+                    if let Some(new) = rewrite(&value) {
                         el.set_attribute(attr, &new)?;
                     }
                 }
@@ -231,11 +279,20 @@ mod tests {
     fn rewrites_matching_href_and_src_only() {
         let urls = BTreeMap::from([("/assets/index.css".to_string(), "/assets/index.0123abcd.css".to_string()), ("/assets/index.js".to_string(), "/assets/index.89ef4567.js".to_string())]);
         let html = r#"<link rel="stylesheet" href="/assets/index.css"><link rel="preload" href="/assets/index.js?v=2#x"><script src="/assets/index.js" defer></script><a href="/assets/index.css.map">map</a><img src="/assets/other.png"><p>/assets/index.css</p>"#;
-        let out = rewrite_html(html, &urls).unwrap();
+        let out = rewrite_html(html, &urls, &BTreeMap::new()).unwrap();
         assert_eq!(
             out,
             r#"<link rel="stylesheet" href="/assets/index.0123abcd.css"><link rel="preload" href="/assets/index.89ef4567.js?v=2#x"><script src="/assets/index.89ef4567.js" defer></script><a href="/assets/index.css.map">map</a><img src="/assets/other.png"><p>/assets/index.css</p>"#
         );
+    }
+
+    #[test]
+    fn integrity_goes_on_links_and_scripts() {
+        assert_eq!(integrity(b"abc"), "sha384-ywB1P0WjXou1oD1pmsZQBycsMqsO3tFjGotgWkP/W+2AhgcroefMI1i67KE0yCWn");
+        let urls = BTreeMap::from([("/a.css".to_string(), "/a.0123abcd.css".to_string())]);
+        let sri = BTreeMap::from([("/a.css".to_string(), "sha384-x".to_string())]);
+        let out = rewrite_html(r#"<link rel="stylesheet" href="/a.css"><a href="/a.css">a</a><link href="/a.css" integrity="mine">"#, &urls, &sri).unwrap();
+        assert_eq!(out, r#"<link rel="stylesheet" href="/a.0123abcd.css" integrity="sha384-x"><a href="/a.0123abcd.css">a</a><link href="/a.0123abcd.css" integrity="mine">"#);
     }
 
     #[test]
@@ -275,8 +332,8 @@ mod tests {
 
     #[test]
     fn paths_must_be_url_paths() {
-        assert!(AssetsPlugin::new(AssetsOptions { files: vec!["assets/index.css".into()], fingerprint: None }).is_err());
-        assert!(AssetsPlugin::new(AssetsOptions { files: vec!["/../secret".into()], fingerprint: None }).is_err());
-        assert!(AssetsPlugin::new(AssetsOptions { files: vec!["/assets/index.css".into()], fingerprint: None }).is_ok());
+        assert!(AssetsPlugin::new(AssetsOptions { files: vec!["assets/index.css".into()], fingerprint: None, integrity: false }).is_err());
+        assert!(AssetsPlugin::new(AssetsOptions { files: vec!["/../secret".into()], fingerprint: None, integrity: false }).is_err());
+        assert!(AssetsPlugin::new(AssetsOptions { files: vec!["/assets/index.css".into()], fingerprint: None, integrity: false }).is_ok());
     }
 }

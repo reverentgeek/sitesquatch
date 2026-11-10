@@ -218,18 +218,32 @@ migration guides it unblocks.
 
 ### 2. Site plumbing
 
-- [ ] `ssqch/sitemap`: `sitemapPlugin({ exclude })`. **Blog:** could replace `sitemap.edge`.
-- [ ] Front matter `aliases`, and `ssqch/redirects`: meta-refresh pages, a `_redirects` file, or
-      both.
-- [ ] TOML (`+++`) and `---json` front matter; `.markdown` as Markdown.
-- [ ] An `ignore` config key (globs), and `draft: true` pages built only in development.
-- [ ] `page.excerpt` (`<!-- more -->` or the first paragraph) and a `readingTime` filter.
-- [ ] Globs in `passthrough`, and copying the non-template files next to a page (page bundles).
-- [ ] Render a string `permalink` with the page's own engine, not always Edge.
-- [ ] `assetsPlugin({ integrity: true })` for SRI hashes.
-- [ ] `strict: true`: undefined template values are errors.
-- [ ] Examples `blog-categories` and `glossary-docs` (and `blog-tags` and `docs-sidebar` from
-      phase 1); guides from Zola and from Eleventy.
+- [x] `ssqch/sitemap`: `sitemapPlugin({ url, exclude })`. On the blog it lists the same 150 URLs
+      and dates as `sitemap.edge`. **Blog:** can replace `sitemap.edge` (and the `isSiteMapSafe`
+      and `htmlDateString` filters, if nothing else uses them) once 0.4 is released.
+- [x] Front matter `aliases`, and `ssqch/redirects`: meta-refresh pages, Netlify `_redirects`
+      lines (after the site's own `_redirects` template), or both. Built on a new core API,
+      `Config::add_generator`, for files made from the written pages.
+- [x] TOML (`+++`) and `---json` front matter; `.markdown` as Markdown.
+- [x] An `ignore` config key (globs), and `draft: true` pages built only in development.
+- [x] `page.excerpt` (`<!-- more -->` or the first paragraph) and a `readingTime` filter.
+- [x] Globs in `passthrough`, and copying the non-template files next to a page (page bundles,
+      `bundles: true`, off by default: the blog's input root has files next to `index.edge`).
+- [x] Render a string `permalink` (and `computed`) with the page's own engine, not always Edge.
+- [x] `assetsPlugin({ integrity: true })` for SRI hashes (fingerprinted builds only).
+- [x] `strict: true`: printing undefined template values is an error in every engine;
+      conditionals and defaults still work.
+- [x] Examples `blog-categories` and `glossary-docs` (and `blog-tags` and `docs-sidebar` from
+      phase 1), in `examples/sites/`, built by `crates/ssqch/tests/examples.rs`; guides from Zola
+      and from Eleventy in `docs/guides/`. Writing them fixed two bugs: pages paginated over a
+      collection had items without `content`, and pages whose includes read `collections`
+      rendered too early.
+- [ ] Deploy the examples, so each has a live URL. Netlify sites (one per example) or GitHub
+      Pages; Pages under one repository needs a path prefix (`/sitesquatch/blog-tags/`), which
+      ssqch doesn't support yet.
+- [ ] A `pathPrefix`-style setting for sites served below the domain root (GitHub Pages project
+      sites): rewrite root-relative URLs in HTML, and a filter for the rest.
+- [ ] `docs-sidebar` search, once Pagefind is in (phase 5).
 
 ### 3. Trial migrations
 
