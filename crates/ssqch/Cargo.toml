@@ -15,7 +15,7 @@ name = "ssqch"
 path = "src/main.rs"
 
 [features]
-default = ["liquid", "jinja", "handlebars", "sass"]
+default = ["liquid", "jinja", "handlebars", "sass", "fetch"]
 avif = ["sitesquatch-plugin-image/avif"]
 # Liquid templates (`.liquid`).
 liquid = ["dep:sitesquatch-plugin-liquid"]
@@ -25,6 +25,8 @@ jinja = ["dep:sitesquatch-plugin-jinja"]
 handlebars = ["dep:sitesquatch-plugin-handlebars"]
 # Sass (`ssqch/sass`), about 2.7 MB.
 sass = ["dep:sitesquatch-plugin-sass"]
+# `fetch()` in config and data files, about 2.3 MB.
+fetch = ["sitesquatch-js/fetch"]
 
 # Release builds include AVIF support (see dist-workspace.toml).
 [package.metadata.dist]

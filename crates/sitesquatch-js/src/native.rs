@@ -177,7 +177,87 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, root: &Path) -> Result<()> {
         })?,
     )?;
 
+    // Timers wait for real: a site's code may be pacing requests.
+    native.set("sleep", Function::new(ctx.clone(), |ms: f64| {
+        if ms > 0.0 {
+            std::thread::sleep(std::time::Duration::from_secs_f64(ms.min(3_600_000.0) / 1000.0));
+        }
+    })?)?;
+
+    // `URL`: parsing and setters follow the WHATWG URL standard (the `url`
+    // crate's `quirks`). Both return the parts, which `URL` in node.js keeps.
+    native.set(
+        "urlParse",
+        Function::new(ctx.clone(), |ctx: Ctx<'js>, input: String, base: rquickjs::prelude::Opt<String>| -> Result<Object<'js>> {
+            let parsed = match base.0 {
+                Some(base) => url::Url::parse(&base).and_then(|b| b.join(&input)),
+                None => url::Url::parse(&input),
+            };
+            let parsed = parsed.map_err(|_| Exception::throw_type(&ctx, &format!("Invalid URL: {}", input)))?;
+            url_parts(ctx, &parsed)
+        })?,
+    )?;
+    native.set(
+        "urlSet",
+        Function::new(ctx.clone(), |ctx: Ctx<'js>, href: String, part: String, value: String| -> Result<Object<'js>> {
+            use url::quirks;
+            let mut u = url::Url::parse(&href).map_err(|_| Exception::throw_type(&ctx, &format!("Invalid URL: {}", href)))?;
+            let ok = match part.as_str() {
+                "href" => quirks::set_href(&mut u, &value).is_ok(),
+                "protocol" => quirks::set_protocol(&mut u, &value).is_ok(),
+                "username" => quirks::set_username(&mut u, &value).is_ok(),
+                "password" => quirks::set_password(&mut u, &value).is_ok(),
+                "host" => quirks::set_host(&mut u, &value).is_ok(),
+                "hostname" => quirks::set_hostname(&mut u, &value).is_ok(),
+                "port" => quirks::set_port(&mut u, &value).is_ok(),
+                "pathname" => {
+                    quirks::set_pathname(&mut u, &value);
+                    true
+                }
+                "search" => {
+                    quirks::set_search(&mut u, &value);
+                    true
+                }
+                "hash" => {
+                    quirks::set_hash(&mut u, &value);
+                    true
+                }
+                _ => false,
+            };
+            if !ok && part == "href" {
+                return Err(Exception::throw_type(&ctx, &format!("Invalid URL: {}", value)));
+            }
+            url_parts(ctx, &u)
+        })?,
+    )?;
+
+    crate::fetch::install(ctx, &native)?;
+
+    native.set("arch", match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" => "arm64",
+        "x86" => "ia32",
+        other => other,
+    })?;
+
     ctx.globals().set("__ssqch_native", native)
+}
+
+fn url_parts<'js>(ctx: Ctx<'js>, u: &url::Url) -> Result<Object<'js>> {
+    use url::quirks;
+    let parts = Object::new(ctx)?;
+    parts.set("href", quirks::href(u))?;
+    parts.set("origin", quirks::origin(u))?;
+    parts.set("protocol", quirks::protocol(u))?;
+    parts.set("username", quirks::username(u))?;
+    parts.set("password", quirks::password(u))?;
+    parts.set("host", quirks::host(u))?;
+    parts.set("hostname", quirks::hostname(u))?;
+    parts.set("port", quirks::port(u))?;
+    parts.set("pathname", quirks::pathname(u))?;
+    parts.set("search", quirks::search(u))?;
+    parts.set("hash", quirks::hash(u))?;
+    Ok(parts)
 }
 
 /// `crypto.createHash()`'s digests (the list is in node.js).
@@ -204,7 +284,7 @@ fn bytes_of<'js>(ctx: &Ctx<'js>, data: &Value<'js>, encoding: &str) -> Result<Ve
 }
 
 /// Copy a typed array's bytes (its view, not the whole backing buffer).
-fn copy_bytes(arr: &TypedArray<'_, u8>) -> Vec<u8> {
+pub(crate) fn copy_bytes(arr: &TypedArray<'_, u8>) -> Vec<u8> {
     // SAFETY: the slice is copied before any JavaScript can run.
     unsafe { arr.as_bytes() }.map(<[u8]>::to_vec).unwrap_or_default()
 }

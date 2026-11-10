@@ -190,8 +190,25 @@ impl<'js> Conv<'js> {
 /// promise that's still pending once the job queue is empty never settles.
 pub(crate) fn settle(v: rquickjs::Value<'_>) -> rquickjs::Result<rquickjs::Value<'_>> {
     match v.as_promise() {
-        Some(p) => p.finish(),
+        Some(p) => finish(p),
         None => Ok(v),
+    }
+}
+
+/// Wait for a promise, running timers (`setTimeout`) and finishing
+/// `fetch()` requests while nothing else can make progress, as Node's event
+/// loop would.
+pub(crate) fn finish<'js, T: rquickjs::FromJs<'js>>(p: &rquickjs::Promise<'js>) -> rquickjs::Result<T> {
+    loop {
+        match p.finish::<T>() {
+            Err(rquickjs::Error::WouldBlock) => {
+                let run: rquickjs::Function = p.ctx().globals().get::<_, rquickjs::Object>("__ssqch")?.get("wait")?;
+                if !run.call::<_, bool>(())? {
+                    return Err(rquickjs::Error::WouldBlock);
+                }
+            }
+            result => return result,
+        }
     }
 }
 
@@ -201,7 +218,7 @@ pub(crate) fn caught(e: CaughtError<'_>) -> anyhow::Error {
         CaughtError::Exception(ex) => {
             let message = ex.message().unwrap_or_default();
             let stack = ex.stack().unwrap_or_default();
-            let stack = stack.lines().filter(|l| !l.contains(PRELUDE_NAME)).collect::<Vec<_>>().join("\n");
+            let stack = stack.lines().filter(|l| !l.contains(PRELUDE_NAME) && l.trim() != "at call (native)").collect::<Vec<_>>().join("\n");
             let stack = stack.trim_end();
             if stack.is_empty() { anyhow!("{}", message) } else { anyhow!("{}\n{}", message, stack) }
         }
@@ -209,7 +226,7 @@ pub(crate) fn caught(e: CaughtError<'_>) -> anyhow::Error {
             let text = v.get::<rquickjs::Coerced<String>>().map(|s| s.0).unwrap_or_else(|_| "a non-Error value".into());
             anyhow!("uncaught {}", text)
         }
-        CaughtError::Error(rquickjs::Error::WouldBlock) => anyhow!("a Promise never settled (timers and network requests aren't available yet)"),
+        CaughtError::Error(rquickjs::Error::WouldBlock) => anyhow!("a Promise never settled (nothing was left to resolve it: no timers or requests were pending)"),
         CaughtError::Error(e) => anyhow!("{}", e),
     }
 }

@@ -242,20 +242,34 @@ Mistakes get caught early. A misspelled key or option is an error, and so are tw
 
 ### What you can import
 
-Config and data files can import relative files (`./lib/filters.js`, with or without the extension), JSON (`import site from "./site.json"`), the built-in modules (`ssqch`, which has `defineConfig`, `markdown(text, { inline })` and `readData(path)` for JSON, YAML and TOML files, `ssqch/image`, `ssqch/rss`, `ssqch/minify`, `ssqch/assets`, `ssqch/links`, `ssqch/sitemap`, `ssqch/redirects`), and these Node built-ins, with or without the `node:` prefix:
+Config and data files can import relative files (`./lib/filters.js`, with or without the extension), JSON (`import site from "./site.json"`), npm packages from `node_modules`, the built-in modules (`ssqch`, which has `defineConfig`, `markdown(text, { inline })` and `readData(path)` for JSON, YAML and TOML files, `ssqch/image`, `ssqch/rss`, `ssqch/minify`, `ssqch/assets`, `ssqch/links`, `ssqch/sitemap`, `ssqch/redirects`, `ssqch/sass`), and these Node built-ins, with or without the `node:` prefix:
 
 | Module | What's there |
 | --- | --- |
 | `node:fs` | `readFileSync`, `writeFileSync`, `appendFileSync`, `existsSync`, `statSync`, `lstatSync`, `readdirSync` (with `withFileTypes`), `mkdirSync`, `rmSync`, `unlinkSync`, `renameSync`, `copyFileSync`, `realpathSync`, `accessSync`, and `fs.promises` |
 | `node:fs/promises` | The async versions of the above |
 | `node:path` | All of `path.posix`, matching Node's results on [a set of edge cases](crates/sitesquatch-js/tests/fixtures/path-cases.mjs) |
-| `node:url` | `fileURLToPath`, `pathToFileURL` (and `import.meta.url` is set) |
+| `node:url` | `fileURLToPath`, `pathToFileURL`, `URL`, `URLSearchParams`, and the legacy `parse`, `format` and `resolve` (and `import.meta.url` is set) |
 | `node:crypto` | `createHash` with `md5`, `sha1`, `sha256`, `sha384` and `sha512` (`update()` with strings or Buffers, `digest()` to a Buffer or `hex`, `base64`, `base64url` or `latin1`), and `getHashes()` |
-| `node:process`, `node:buffer` | `process.env`, `process.cwd()`, `process.platform`, and `Buffer` (also a global) with `utf8`, `hex`, `base64`, `base64url` and `latin1` |
+| `node:process`, `node:buffer` | `process.env`, `process.cwd()`, `process.platform`, `process.nextTick`, `process.hrtime`, and `Buffer` (also a global) with `utf8`, `hex`, `base64`, `base64url` and `latin1` |
+| `node:module` | `createRequire(import.meta.url)`, `builtinModules`, `isBuiltin` |
+| `node:util` | `format`, `inspect`, `promisify`, `callbackify`, `inherits`, `deprecate`, `isDeepStrictEqual`, `types` |
+| `node:events` | `EventEmitter` (works with `util.inherits` and `EventEmitter.call(this)`) and `once` |
+| `node:timers`, `node:timers/promises` | `setTimeout`, `setInterval`, `setImmediate` and their `clear` functions (also globals), and the promise versions |
+| `node:os`, `node:assert`, `node:string_decoder` | `EOL`, `platform()`, `tmpdir()`, `homedir()` and the like; `assert` and `assert/strict`; `StringDecoder` |
+| `node:http`, `node:https`, `node:stream`, `node:child_process`, and other server modules | Load, so packages that require them at the top still work, but their functions throw. `stream`'s classes can be extended but don't move data. |
 
 Errors carry Node's codes (`err.code === "ENOENT"`), and relative paths resolve against the project root, as if you ran Node from there. Dates and numbers format like Node does for `en-US`: `toLocaleDateString()`, `toLocaleString()`, `Intl.DateTimeFormat` and `Intl.NumberFormat` match Node 24 on [902 cases](crates/sitesquatch-js/tests/fixtures/intl-cases.mjs), and `localeCompare` and `Intl.Collator` sort English text in Node's order. Other locales, and time zones other than UTC and the machine's, throw an error rather than quietly formatting something else.
 
-> **Note:** these aren't supported yet: npm packages, CommonJS (`require`, `module.exports`), other Node built-ins (such as `node:http`), timers and `fetch`. After editing the config, restart `ssqch serve` to pick up the changes.
+> **Note:** after editing the config, restart `ssqch serve` to pick up the changes.
+
+The globals include `fetch` (with `Headers`, `Request`, `Response`, `AbortController` and `AbortSignal.timeout()`), `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`, `EventTarget` and the timers. `fetch` follows redirects, decompresses gzip, and rejects with a `TypeError` naming the URL when a request fails. Requests run on threads of their own (up to 8 at once), so `await Promise.all(urls.map(u => fetch(u)))` fetches them in parallel. Only `http:` and `https:` URLs can be fetched. A data file that fetches runs on every build, including each rebuild in `ssqch serve`.
+
+### npm packages
+
+Install packages with npm, pnpm or yarn as usual, and import them: `import { DateTime } from "luxon"`. ssqch finds them the way Node does: in `node_modules` folders from the importing file's folder up (so monorepos and pnpm's symlinks work), using `package.json`'s `exports` (with the `import`, `require`, `node` and `default` conditions), `imports` (`#internal`), and `main`. CommonJS works too: `.cjs` files, and `.js` files in packages without `"type": "module"`, run with `require`, `module.exports`, `__dirname` and `__filename`, and importing one gives `module.exports` as the default export and its properties as named exports. Your own `.js` files are ES modules if they use `import` or `export`, and CommonJS otherwise, whatever your `package.json` says, so `module.exports = { ... }` in `_data/site.js` works. In an ES module, `createRequire(import.meta.url)` from `node:module` gives you a `require`.
+
+Packages run on QuickJS, not Node, so a package that needs a real server, a child process, native addons or the file system's streams won't work. These do (each checked by building a page with it): luxon, dayjs, date-fns, lodash, lodash-es, slugify, js-yaml, gray-matter, markdown-it and its plugins, marked, highlight.js, prismjs, nunjucks, sanitize-html, html-minifier-terser, clean-css, feed, string-strip-html, chroma-js and dotenv. Some have a faster built-in in ssqch (the `markdown` filter, `readingTime`, `ssqch/minify`, and `markdown: { highlight: true }` for highlighting), so reach for those packages when you need their particular output.
 
 The config runs on [QuickJS](https://github.com/quickjs-ng/quickjs), which adds about 1.2 MB to the binary and supports modern JavaScript: ES modules, `async`/`await`, arrow functions and the standard built-ins. Template values arrive as ordinary-looking objects, arrays and `Date`s. Behind the scenes, big ones (a page's data, a collection) are lazy views that only copy a property from Rust when you read it, so passing `collections.posts` to a filter costs nothing until the filter looks inside. Changes you make stay in JavaScript: a filter that sorts `collections.posts` doesn't reorder it for other pages. Pages render in parallel, but JavaScript runs one call at a time, so module-level state in your config behaves as it would in Node.
 
@@ -596,7 +610,7 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/) from a ve
 
 ## Known gaps
 
-- **JavaScript:** no npm packages or CommonJS yet (see the note under [Configuring a site](#configuring-a-site)). JavaScript is interpreted (QuickJS has no JIT), so heavy collection code is slower than in Node: reading a page in a collection costs about 2 µs the first time, and the blog's `topics` and `postsByYear` collections over 2,000 posts take about 45 ms together.
+- **JavaScript:** npm packages run on QuickJS, not Node, so servers, child processes, streams and native addons aren't there (see [npm packages](#npm-packages)), and regular expressions can't use the `v` flag's set operations (`[\p{L}--\p{ASCII}]`), which breaks `@sindresorhus/slugify`. JavaScript is interpreted (QuickJS has no JIT), so heavy collection code is slower than in Node: reading a page in a collection costs about 2 µs the first time, and the blog's `topics` and `postsByYear` collections over 2,000 posts take about 45 ms together.
 - **Edge:** no `@inject`, `@debugger`, `@svg`, components as tags (`@!card()`), destructuring in `@let`, scoped slots, regex literals, or the `in` operator. Array `reverse` and `sort` return copies instead of changing the array.
 - **Markdown:** containers have to close inside the block they opened in (the same list item, say). Highlighting has no grammars for Edge, Liquid or Handlebars yet (Jinja and Nunjucks work), and parsing is slower than tree-sitter's: the blog's 350 fences add about 60 ms to a build.
 - **Images:** no SVG rasterizing, and HDR photos (the PQ, gain-map profiles of newer iPhones) can't be converted to sRGB, so they look washed out; the build warns about them, and converting the source to sRGB once fixes it. SVGs are served as they are, and GIFs are copied for `auto` output, so animations keep working.

@@ -316,7 +316,18 @@ Moved to a later release (decided 2026-11-09); 0.4 ships without it.
 
 ### 6. JavaScript ecosystem
 
-- [ ] npm packages, CommonJS and `fetch` (already Known gaps; eslint.org and hexo.io need them).
+- [x] npm packages, CommonJS and `fetch`. Resolution follows Node (`exports` conditions and
+      patterns, `imports`, `main`, parent folders, pnpm symlinks); CommonJS by Node's rules, with
+      the site's own `.js` files detected by syntax; `fetch` on ureq (rustls), up to 8 requests
+      in parallel, about 2.3 MB as a default `fetch` feature; timers that wait for real; `URL`
+      from the `url` crate; `util`, `events`, `os`, `assert`, `module`, and loadable stubs for
+      `http`, `stream` and other server modules. 20 popular packages checked (luxon, date-fns,
+      lodash, markdown-it, highlight.js, prismjs, nunjucks, sanitize-html, html-minifier-terser,
+      ...); `@sindresorhus/slugify` fails on QuickJS's regex `v` flag (no set operations).
+  - [ ] A cache for `fetch` (opt-in, like `fetch(url, { cache: "1h" })`, or in `ssqch serve`
+        only), so rebuilds don't hit the network every time.
+  - [ ] Named exports of CommonJS modules are found by running the module, not read from the
+        source as Node does; check that's never visible (order of side effects).
 - [ ] Nunjucks: custom tags defined by config functions (`{% image %}`). (`===`/`!==` were done
       in phase 3.)
 - [ ] Jinja: the rest of minijinja-contrib (`pluralize`, dates). (String methods were done in

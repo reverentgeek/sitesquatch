@@ -32,6 +32,23 @@ a `v<version>` tag on a commit where that version matches.
 
 ### Added
 
+- npm packages: `import` and `require` find packages in `node_modules` the way Node does
+  (`exports` with `import`, `require`, `node` and `default` conditions, `imports`, `main`,
+  folders above the site, pnpm's symlinks). luxon, date-fns, lodash, markdown-it, highlight.js,
+  prismjs, nunjucks, sanitize-html, html-minifier-terser and a dozen more were checked.
+- CommonJS: `.cjs` files, `.js` files in packages without `"type": "module"`, and the site's own
+  `.js` files that don't use `import` or `export` run with `require`, `module.exports`,
+  `__dirname` and `__filename`. `_data/*.cjs` and `*.data.cjs` are data files.
+  `createRequire` from `node:module`.
+- `fetch()`, with `Headers`, `Request`, `Response`, `AbortController` and
+  `AbortSignal.timeout()`. Requests run in parallel (up to 8 at once). A `fetch` cargo feature,
+  on by default, about 2.3 MB.
+- Timers (`setTimeout`, `setInterval`, `setImmediate`, `node:timers/promises`), which wait for
+  real while a promise is waiting, as in Node.
+- `URL` and `URLSearchParams` (WHATWG, from the `url` crate), `TextEncoder`, `TextDecoder`,
+  `EventTarget`, and the Node built-ins `module`, `util`, `events`, `os`, `assert`, `timers`
+  and `string_decoder`. `http`, `https`, `stream`, `child_process` and other server modules load
+  (so packages that require them at the top work) but throw when used.
 - A `markdown` config key (`[markdown]` in `sitesquatch.toml`): `headingIds` (`"github"`, the
   default, `"blackfriday"` to match Hugo's older anchors, or `false`), `headingAttributes`,
   `footnotes`, `taskLists`, `autolinks`, `alerts`, `containers`, `definitionLists`,

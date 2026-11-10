@@ -23,8 +23,10 @@
 //! `process` and `Buffer` that configs and data files commonly use.
 
 mod convert;
+mod fetch;
 mod modules;
 mod native;
+mod packages;
 mod views;
 
 use std::cell::Cell;
@@ -77,7 +79,7 @@ pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)], m
     let result = engine
         .with(|ctx| {
             let namespace = rquickjs::Module::import(&ctx, specifier.as_bytes())
-                .and_then(|p| p.finish::<Object>())
+                .and_then(|p| convert::finish::<Object>(&p))
                 .catch(&ctx)
                 .map_err(|e| convert::caught(e))?;
             let run: Function = ctx.globals().get::<_, Object>("__ssqch")?.get("run")?;
@@ -92,7 +94,7 @@ pub fn load(cfg: &mut Config, path: &Path, builtins: &[(&str, BuiltinPlugin)], m
     apply(cfg, &engine, &result, builtins).with_context(|| file_name(&path))
 }
 
-/// Read `_data/*.js` and `*.data.js` data files (and `.mjs`). A data
+/// Read `_data/*.js` and `*.data.js` data files (and `.mjs`, `.cjs`). A data
 /// file's default export is the data, or a function (sync or async) that
 /// returns it, called on every build. The engine starts on first use, so this
 /// costs nothing for a site without JavaScript data files.
@@ -103,7 +105,7 @@ pub fn add_data_files(cfg: &mut Config, modules: &[JsModule]) {
 
 fn install_data_files(cfg: &mut Config, files: DataFiles) {
     let files = Arc::new(files);
-    for ext in ["js", "mjs"] {
+    for ext in ["js", "mjs", "cjs"] {
         let files = files.clone();
         cfg.add_data_extension(ext, move |path| files.load(path));
     }
@@ -157,7 +159,7 @@ impl DataFiles {
             }
             engine.with(|ctx| {
                 let value = rquickjs::Module::import(&ctx, specifier.as_bytes())
-                    .and_then(|p| p.finish::<Object>())
+                    .and_then(|p| convert::finish::<Object>(&p))
                     .and_then(|namespace| ctx.globals().get::<_, Object>("__ssqch")?.get::<_, Function>("loadData")?.call::<_, rquickjs::Value>((namespace,)))
                     .and_then(convert::settle)
                     .catch(&ctx)
@@ -397,6 +399,7 @@ impl Engine {
             globals.set("__ssqch_print", print)?;
             globals.set("process", process_object(&ctx, root, env)?)?;
             native::install(&ctx, root)?;
+            modules::install_commonjs(&ctx, root, modules.clone())?;
             for source in [include_str!("prelude.js"), include_str!("node.js"), include_str!("intl.js")] {
                 let mut options = rquickjs::context::EvalOptions::default();
                 options.global = true;

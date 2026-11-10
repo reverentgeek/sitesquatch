@@ -158,8 +158,9 @@ fn errors_point_at_the_config_source() {
 #[test]
 fn mistakes_in_the_config_say_what_to_fix() {
     let cases = [
-        ("import x from \"left-pad\"; export default {};", "importing npm packages isn't supported"),
-        ("import h from \"node:http\"; export default {};", "node:http isn't available in ssqch"),
+        ("import x from \"left-pad\"; export default {};", "package \"left-pad\" isn't installed (no node_modules/left-pad folder here or in a parent folder; run npm install)"),
+        ("import h from \"node:http\"; h.request(\"http://localhost\"); export default {};", "node:http isn't available in ssqch"),
+        ("import s from \"node:sqlite\"; export default {};", "node:sqlite isn't available in ssqch (available: node:fs, "),
         ("export const config = {};", "needs a default export: export default defineConfig({ ... })"),
         ("export default { dirs: { assets: \"_assets\" } };", "dirs.assets isn't supported (use input, output, includes, layouts, data)"),
         ("export default { dir: { input: \"src\" } };", "\"dir\" isn't a config option (options: dirs, templateFormats"),

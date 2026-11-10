@@ -16,3 +16,10 @@ sha2 = "0.10"
 sha1 = "0.10"
 md-5 = "0.10"
 dunce = "1"
+url = "2"
+# `fetch()`.
+ureq = { version = "3", optional = true }
+
+[features]
+default = ["fetch"]
+fetch = ["dep:ureq"]

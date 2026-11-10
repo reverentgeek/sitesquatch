@@ -21,7 +21,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 lol_html = "2"
 sitesquatch = { version = "0.3.3", path = "crates/sitesquatch" }
 sitesquatch-edge = { version = "0.3.3", path = "crates/sitesquatch-edge" }
-sitesquatch-js = { version = "0.3.3", path = "crates/sitesquatch-js" }
+sitesquatch-js = { version = "0.3.3", path = "crates/sitesquatch-js", default-features = false }
 sitesquatch-plugin-rss = { version = "0.3.3", path = "plugins/rss" }
 sitesquatch-plugin-image = { version = "0.3.3", path = "plugins/image" }
 sitesquatch-plugin-minify = { version = "0.3.3", path = "plugins/minify" }

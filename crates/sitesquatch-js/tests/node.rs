@@ -206,8 +206,8 @@ fn data_file_errors_name_the_file() {
     let e = build_error(&[("_data/x.js", "import fs from \"node:fs\"; export default fs.readFileSync(\"nope.json\", \"utf8\");"), ("index.edge", "")]);
     assert!(e.contains("ENOENT: no such file or directory, open 'nope.json'"), "{}", e);
 
-    let e = build_error(&[("_data/x.js", "import h from \"node:http\"; export default 1;"), ("index.edge", "")]);
-    assert!(e.contains("node:http isn't available in ssqch (available: node:fs"), "{}", e);
+    let e = build_error(&[("_data/x.js", "import s from \"node:sqlite\"; export default 1;"), ("index.edge", "")]);
+    assert!(e.contains("node:sqlite isn't available in ssqch (available: node:fs"), "{}", e);
 }
 
 #[test]
