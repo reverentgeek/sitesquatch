@@ -145,6 +145,107 @@ Shared work, done with the first engine (Liquid) and reused by the rest:
       **Blog:** one post's front matter uses it (`edgejs-template-plugin-for-11ty.md`). Switch it
       to `render: md` with the release bump. The post's text about Eleventy's key stays.
 
+## Adoption study
+
+The research is in `research/` (gitignored, local only). `adoption-study.md` looks at what it
+would take to move 12 high-profile sites (eslint.org, blog.rust-lang.org, letsencrypt.org,
+opensource.guide, hexo.io, the FastAPI docs, reactnative.dev, typescriptlang.org,
+kubernetes.io, getbootstrap.com, vuejs.org, react.dev) to ssqch. `positioning.md` covers which
+ideas to take from other generators and the gaps none of them fill.
+
+The goal isn't to clone any generator: take the best ideas, fill the gaps, and design each
+feature as ssqch's own. What sets ssqch apart is a single binary that is still flexible (a
+JavaScript config, six template languages, mixed freely). The items below build on that, in the
+order to do them. Each phase adds the examples (`examples/sites/<name>/`, built in CI) and
+migration guides it unblocks.
+
+### What makes ssqch distinct (design these first, build them across the phases)
+
+- [ ] **Render hooks and containers in any engine:** templates in `_includes/hooks/` (`heading`,
+      `link`, `image`, `fence`) decide how Markdown renders, and `::: name args` renders
+      `_includes/containers/name.*`. One idea covers admonitions, tabs, anchors, figures and
+      diagram fences. Hugo's render hooks only work in Go templates.
+- [ ] **Content schemas:** a schema per collection in the config, checked on every build, with
+      errors naming the file and field, and types in `ssqch types`. Only Astro has this; the
+      Rust blog and opensource.guide wrote their own checkers.
+- [ ] **`ssqch diff`:** compare two builds page by page, ignoring noise such as fingerprints.
+      It's the safety net for upgrades, refactors and migrations. No generator has it.
+- [ ] **A docs starter:** sidebar, TOC, search, admonitions, tabs, versions and i18n, as static
+      HTML that needs no JavaScript to read. It's the answer to "why not Docusaurus or
+      VitePress?", and timely while Material for MkDocs is in maintenance mode.
+- [ ] **Themes without a package manager:** a folder or a git URL pinned to a commit, fetched
+      and cached by the binary, and overridden file by file.
+- [ ] **`ssqch import <generator>`:** codemods for the mechanical parts (front matter, data
+      file names, shortcodes into ssqch's syntax), plus a report of what needs a hand. Liquid
+      and Nunjucks templates render as they are, so the first build comes early.
+- [ ] **Interactivity without a framework:** a documented web-components path, with a
+      component's script included only on the pages that use it.
+
+### 1. Markdown core (every site needs something here)
+
+- [ ] Automatic heading IDs, with a choice of slugger (GitHub-style; Hugo's "blackfriday" for
+      letsencrypt.org's anchors).
+- [ ] `{#id}` heading attributes (pulldown-cmark's `ENABLE_HEADING_ATTRIBUTES`).
+- [ ] `page.headings` (level, text, id) and a `toc` filter.
+- [ ] A `markdown: { ... }` config key: footnotes, definition lists, task lists, smart
+      punctuation, autolinked URLs.
+- [ ] A `markdown` filter in every engine, also exported from `ssqch`, for Markdown inside HTML
+      and component bodies (Jekyll's `markdown="1"`, Hexo's `{% note %}`).
+- [ ] Keep a fence's whole info string (`title=`, `{1,3}`) and pass it to the `fence` hook.
+- [ ] The render hooks and containers above (admonitions on Docusaurus, VitePress, MkDocs and
+      Hexo all become containers).
+- [ ] Build-time syntax highlighting: classes, light and dark themes, line highlighting. Evaluate
+      giallo (Zola's; TextMate grammars, VS Code themes), syntect and arborium.
+- [ ] Examples `blog-tags` and `docs-sidebar`.
+
+### 2. Site plumbing
+
+- [ ] `ssqch/sitemap`: `sitemapPlugin({ exclude })`. **Blog:** could replace `sitemap.edge`.
+- [ ] Front matter `aliases`, and `ssqch/redirects`: meta-refresh pages, a `_redirects` file, or
+      both.
+- [ ] TOML (`+++`) and `---json` front matter; `.markdown` as Markdown.
+- [ ] An `ignore` config key (globs), and `draft: true` pages built only in development.
+- [ ] `page.excerpt` (`<!-- more -->` or the first paragraph) and a `readingTime` filter.
+- [ ] Globs in `passthrough`, and copying the non-template files next to a page (page bundles).
+- [ ] Render a string `permalink` with the page's own engine, not always Edge.
+- [ ] `assetsPlugin({ integrity: true })` for SRI hashes.
+- [ ] `strict: true`: undefined template values are errors.
+- [ ] Examples `blog-categories` and `glossary-docs`; guides from Zola and from Eleventy.
+
+### 3. Trial migrations
+
+- [ ] Port eslint.org and blog.rust-lang.org in forks and diff the output with their current
+      builds (the Rust blog snapshot-tests its whole output in `crates/snapshot`). Add what turns
+      up to this list. Decide separately whether to offer either port upstream.
+
+### 4. Internationalization
+
+- [ ] A design write-up first: a `locales` config key, `page.lang` from the folder,
+      `page.translations` grouped by a translation key, a `t(key)` filter over
+      `_data/i18n/<lang>.*`, fallback pages for untranslated content, and hreflang.
+- [ ] `Intl` for more locales than en-US (ICU4X with a chosen set of locales). eslint.org's 7
+      other language sites and letsencrypt.org's number formats need it.
+- [ ] Example `multilingual-liquid`; guides from Jekyll and from Hugo; trial with letsencrypt.org.
+
+### 5. Docs-site features
+
+- [ ] Navigation helpers: a tree from data with current and ancestor flags, and prev/next.
+- [ ] Sass with `grass` (pure Rust), as `ssqch/sass`.
+- [ ] Search: evaluate Pagefind's library API for a `searchPlugin()`, and the binary-size cost.
+- [ ] Decide whether hooks can run other programs, or document running them around the build.
+- [ ] `page.lastModified` from git, opt-in.
+- [ ] Examples `versioned-docs`, `component-docs` and `reference-pages`; guides from Docusaurus
+      and from MkDocs.
+
+### 6. JavaScript ecosystem
+
+- [ ] npm packages, CommonJS and `fetch` (already Known gaps; eslint.org and hexo.io need them).
+- [ ] Nunjucks: `===`/`!==`, and custom tags defined by config functions.
+- [ ] Jinja: minijinja-contrib (`pluralize`, dates), and dates usable in templates.
+- [ ] A synthetic 9,000-page benchmark (kubernetes.io's size).
+- [ ] Example `islands`; guides from Hexo and from component frameworks (Astro, VitePress,
+      Next.js, Gatsby: what ports, and what stays client JavaScript).
+
 ## Prebuilt binaries and easier adoption
 
 Goal: anyone can use `ssqch` without installing Rust or compiling it, and can start a new site

@@ -13,7 +13,11 @@ change affects it.
   that was removed (see "Remove Eleventy" in `TODO.md`). Don't add APIs, names, fields,
   front-matter keys, attributes, env vars or module aliases that mention Eleventy or 11ty, and
   don't add backwards-compatible aliases. Use ssqch's own design and update `../blog` to match.
-  Blog content about Eleventy (posts, their URLs) isn't an API and stays.
+  Blog content about Eleventy (posts, their URLs) isn't an API and stays. The point of this
+  rule is that ssqch isn't a clone of Eleventy or of any other generator. Take the best ideas
+  from existing generators, fill the gaps they leave, and design each feature as ssqch's own, so
+  the result is something unique that appeals to lots of developers. Research on other
+  generators goes in `research/` (gitignored); the work items go in `TODO.md`.
 - After a change that affects output, build the blog and run its smoke tests:
   `cargo build --release -p ssqch --features avif`, then in `../blog`,
   `SSQCH_BIN=../ssqch/target/release/ssqch pnpm test`.
