@@ -26,10 +26,17 @@ The blog builds with it, `ssqch diff` against its 0.3.3 build shows only the new
 `id`s, and `ssqch inspect` and `ssqch build --format json` work on it.
 Left before a release:
 
-- Release 0.3.4 from `main`: the dev server fixes are committed there (2026-11-10) and merged
-  into `release/0.4`, but not pushed, tagged or published. In 0.3.3, `ssqch serve` answers
-  `/%2Fetc/hosts` with that file, and rebuilds in a loop when the input folder is the project
-  root.
+- Run CI for `release/0.4` on Linux and Windows before it merges: it only runs for `main` and
+  pull requests, and the branch's dev server tests haven't run there. The last run on the
+  pushed branch failed on Windows in `collation_matches_node` (the fixture has `\r\n` line
+  endings there).
+- Close the hole in the release workflow that 0.3.4 fell into (2026-11-10): when CI has failed
+  on the tagged commit, `check-ci` fails and the builds are skipped, but dist's `host` and
+  `announce` jobs count a skipped build as fine and publish a GitHub release with no binaries,
+  marked Latest, which breaks `releases/latest/download/...` for everyone. Until it's fixed,
+  tag only after CI is green on the commit. If it happens again: `gh release edit v<previous>
+  --latest`, delete the empty release and its tag, fix CI, and tag the fixed commit. CLAUDE.md's
+  "If CI fails, nothing is published" is wrong until then.
 
 - Deploy the examples (on hold; "Site plumbing" below).
 - Decide which of the "Later" items under each feature wait for 0.5.

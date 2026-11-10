@@ -226,21 +226,9 @@ a `v<version>` tag on a commit where that version matches.
 
 ### Fixed
 
-- **Security:** `ssqch serve` could be asked for any file on the machine: `/%2Fetc/hosts`
-  decoded to a path that replaced the output folder. Request paths are decoded first and have
-  to stay inside the output folder now. The server only listens on localhost, but a web page
-  open in the same browser could have made the request.
-- `ssqch serve` doesn't rebuild again for a source that was written with the same contents, so
-  a `beforeBuild` command that writes into the input folder doesn't rebuild forever.
 - `AbortSignal.timeout(Infinity)` (or any huge number) no longer stops the build with a panic.
-- `ssqch serve` no longer rebuilds in a loop when the input folder is the project root (the
-  default `dirs`). Each build rewrote `.cache/ssqch/output-files.json`, which is inside the
-  watched folder, and that counted as a change. Changes under `.cache`, `.git` and
-  `node_modules` are ignored now, and the list is only written when it changes.
 - A TOML date written without quotes (`date = 2024-01-02`, in `+++` front matter or a `.toml`
   data file) is read as a date. It failed with "can't parse date".
-- Liquid: `{% include "nav.html" %}` with the name in quotes finds the file. Only the unquoted
-  form (`{% include nav.html %}`) did.
 - In Edge, `{{ image(src) }}` calls the `image` filter on a page whose data has an `image`
   field. The field shadowed the filter, and the call failed with "is not a function".
 - `computed.date` is the page's date (in collections, feeds and `page.date`).
@@ -254,6 +242,29 @@ a `v<version>` tag on a commit where that version matches.
 - A page that includes or imports a template that reads `collections` (a macro in
   `_includes/macros.njk`, say) renders after the collections are complete, as a page that reads
   them itself does. Only the page's own body counted before.
+
+## 0.3.4 - 2026-11-10
+
+- **Security:** `ssqch serve` could be asked for any file on the machine: `/%2Fetc/hosts`
+  decoded to a path that replaced the output folder. Request paths are decoded first and have
+  to stay inside the output folder now. The server only listens on localhost, but a web page
+  open in the same browser could have made the request.
+- `ssqch serve` no longer rebuilds in a loop when the input folder is the project root (the
+  default `dirs`). Each build rewrote `.cache/ssqch/output-files.json`, which is inside the
+  watched folder, and that counted as a change. Changes under `.cache`, `.git` and
+  `node_modules` are ignored, the list is only written when it changes, and a source written
+  again with the same contents (by a `beforeBuild` hook, say) isn't a change either.
+- `ssqch serve` on Linux no longer counts reading a file as a change to it. In a site whose
+  input folder is the project root, files that were read all the time (by the server, an
+  editor or an indexer) could hold a rebuild back for as long as the reads went on. A burst of
+  changes is also waited on for a second at most.
+- Liquid: `{% include "nav.html" %}` with the name in quotes finds the file. Only the unquoted
+  form (`{% include nav.html %}`) did.
+- Liquid: a config filter no longer tries to parse every string it's given as a date, which
+  compiled a regular expression each time. Sites that call config filters from Liquid build
+  much faster.
+- A date written without quotes in a `.toml` data file (`updated = 2024-01-02`) is its text
+  (`2024-01-02`) in templates, not an object.
 
 ## 0.3.3 - 2026-11-09
 
