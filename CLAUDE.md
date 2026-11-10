@@ -56,12 +56,15 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configur
    `Cargo.lock`. Update the pinned versions in the README too (`download/v<version>`, the
    `setup-ssqch` example's `version:` and the Netlify example's `SSQCH_VERSION`).
 3. Commit and push to `main`.
-4. Tag and push: `git tag v<version> && git push origin v<version>`. The release workflow
-   waits for CI to pass on the tagged commit (`.github/workflows/check-ci.yml`), builds the
-   archives, refuses a tag that doesn't match a package version, and publishes the GitHub
+4. Wait for CI to pass on that commit, then tag and push: `git tag v<version> && git push
+   origin v<version>`. The release workflow refuses a tag that doesn't match a package
+   version, builds the archives, smoke-tests and notarizes them, waits for CI to pass on the
+   tagged commit (`.github/workflows/check-ci.yml`), and only then publishes the GitHub
    release with that version's changelog section as its notes. If CI fails, nothing is
    published: fix it and tag the fixed commit with the same version (delete the old tag
-   first).
+   first). The CI check runs after the builds on purpose: as a plan job, a failure made the
+   builds skip, and dist publishes when builds are skipped (an empty release marked Latest,
+   which is what happened to 0.3.4).
 5. Publish the crates from the tag: `cargo publish --workspace --locked`. It publishes them in
    dependency order, using the crates.io token in `~/.cargo/credentials.toml`.
 

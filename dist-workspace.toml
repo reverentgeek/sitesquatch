@@ -35,13 +35,16 @@ pr-run-mode = "plan"
 # Keep the Rust build cache in the release builds (dist only caches them by
 # default when pull requests build them too).
 cache-builds = true
-# Run each binary before publishing (.github/workflows/smoke-test.yml), and
-# notarize the macOS ones (.github/workflows/notarize.yml). A failure stops the
-# release.
-global-artifacts-jobs = ["./smoke-test", "./notarize"]
-# On a tag, wait for CI to pass on the tagged commit before building
-# (.github/workflows/check-ci.yml). A failed or missing CI run stops the release.
-plan-jobs = ["./check-ci"]
+# Run each binary before publishing (.github/workflows/smoke-test.yml), notarize
+# the macOS ones (.github/workflows/notarize.yml), and on a tag, wait for CI to
+# pass on the tagged commit (.github/workflows/check-ci.yml). A failure in any of
+# them stops the release.
+#
+# The CI check is here, after the builds, and not in `plan-jobs` before them: a
+# failed plan job makes the builds *skip*, and dist's host job publishes when
+# the builds were skipped, so a red commit got an empty release marked Latest
+# (0.3.4, 2026-11-10). A failed job in this list keeps host from running.
+global-artifacts-jobs = ["./smoke-test", "./notarize", "./check-ci"]
 # Steps to run before building (.github/build-setup.yml): nasm on PATH on Windows.
 github-build-setup = "../build-setup.yml"
 
