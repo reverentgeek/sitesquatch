@@ -93,6 +93,13 @@ a `v<version>` tag on a commit where that version matches.
   `file` for a path that has to exist), nested objects, or functions; `unknown: "error"` catches
   misspelled front matter keys. `ssqch types` adds the schemas to `ssqch.d.ts`, so
   `pages.byTag("posts")` is typed. Rust: `Config::add_schema`.
+- `ssqch new` creates a page from an archetype: a file in `_archetypes/` (in the input folder
+  or a theme) named after the folder its pages go in, such as `_archetypes/posts.md`, then
+  `default`. Only front matter is filled in (`title`, `date` when the archetype has the key,
+  and `--set key=value`); the body is copied as it is. `ssqch new posts --title "Pine cones"`
+  names the file as the folder's other pages are named (a date in front, or a folder with an
+  index file). Both `ssqch init` starters come with an archetype. A folder named
+  `_archetypes` at the top of the input folder is no longer rendered as pages.
 - For scripts and coding agents: `ssqch build --format json` prints one JSON report on standard
   output, with what the build wrote and its warnings and errors as data: each has a `code`, the
   `message`, the `file` and `line` when they're known (the line of the file, front matter

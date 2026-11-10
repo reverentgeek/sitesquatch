@@ -445,8 +445,10 @@ I'd take them (the first three went into 0.4):
         from its message (`diagnostics::locate`). Carry them in the error instead, starting
         with the template engines.
   - [ ] `console.warn` in a config goes to standard error, not into the report's `warnings`.
-- [ ] **`ssqch new <path>`:** a new post or page from an archetype (a file in
-      `_archetypes/`, with the date and slug filled in), as `hexo new` and `hugo new` do.
+- [x] **`ssqch new <path>`:** a new post or page from an archetype (a file in
+      `_archetypes/`, named after the page's folder), with the title and date filled in as
+      front matter keys rather than through a second template syntax. Given a folder and a
+      title, the file is named as the folder's other pages are. Both starters have one.
 - [ ] **References in schemas:** a field that has to name a page in another collection
       (`author: "ref:authors"`), and output checks (every guide has a previous and next link).
 - [ ] **Named data sources:** `sources: { snacks: { url, cache, schema } }` with a

@@ -16,7 +16,7 @@ What's in the box:
 - **Responsive images:** every `<img>` becomes a `<picture>` with AVIF, WebP and fallback sources, cached by content so later builds skip the encoding.
 - **Checks that run with every build:** [content schemas](#content-schemas) for front matter, a link checker, [`ssqch diff`](#comparing-two-builds) to see what a change did to the output, and [`ssqch inspect`](#where-a-value-comes-from) to see where a page's data came from.
 - **Themes without a package manager, custom elements that load only where they're used**, Sass, a sitemap, redirects, RSS helpers, HTML minification and asset fingerprinting.
-- **A quick start and a way in:** `ssqch init` (a blog, or a docs site with a sidebar and search), `ssqch import` for Eleventy and Zola sites, and a dev server that reloads pages and the config.
+- **A quick start and a way in:** `ssqch init` (a blog, or a docs site with a sidebar and search), `ssqch import` for Eleventy and Zola sites, [`ssqch new`](#starting-a-new-page) for the next post, and a dev server that reloads pages and the config.
 - **A Rust API** for when JavaScript isn't enough: custom template engines, heavy transforms, or a whole site as its own binary.
 
 SiteSquatch is young (0.x), so expect some breaking changes between minor versions. Each one is listed in the [changelog](CHANGELOG.md) with what you'd need to change.
@@ -68,7 +68,7 @@ ssqch --version
 
 ## Build your first site
 
-The quickest start is `ssqch init`, which creates a starter site (a config, a layout, a home page, a post, a data file, and editor types) and then gets out of the way:
+The quickest start is `ssqch init`, which creates a starter site (a config, a layout, a home page, a post, a data file, an archetype for the next post, and editor types) and then gets out of the way:
 
 ```sh
 ssqch init my-site
@@ -176,7 +176,7 @@ ssqch serve
 
 `ssqch serve` rebuilds when your sources change and reloads the browser. It also reloads (without a rebuild) when another tool, like a PostCSS or esbuild watcher, writes a CSS or JavaScript file into the output folder, so the page never reloads before its new CSS is there.
 
-`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode. The other commands are `ssqch init`, `ssqch types`, [`ssqch inspect`](#where-a-value-comes-from), [`ssqch diff`](#comparing-two-builds), [`ssqch import`](#moving-from-another-generator) and [`ssqch capabilities`](#scripts-and-coding-agents), and `ssqch build --format json` reports to a [script or a coding agent](#scripts-and-coding-agents).
+`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode. The other commands are `ssqch init`, `ssqch types`, [`ssqch new`](#starting-a-new-page), [`ssqch inspect`](#where-a-value-comes-from), [`ssqch diff`](#comparing-two-builds), [`ssqch import`](#moving-from-another-generator) and [`ssqch capabilities`](#scripts-and-coding-agents), and `ssqch build --format json` reports to a [script or a coding agent](#scripts-and-coding-agents).
 
 ## Configuring a site
 
@@ -573,6 +573,47 @@ error: 3 content errors:
 
 In `sitesquatch.toml`, a schema is a table: `[schemas.posts]` with `fields = { title = "string", date = "date" }`.
 
+## Starting a new page
+
+`ssqch new` creates a page from an archetype: a page to start from, kept in `_archetypes/` in the input folder and named after the folder its pages go in. Here's `src/_archetypes/posts.md`:
+
+```md
+---
+# Fill in the description before publishing.
+title:
+date:
+description:
+draft: true
+---
+Write here. The title is {{ title }}.
+```
+
+```sh
+ssqch new posts --title "Pine cones: a field guide"
+```
+
+```text
+Created src/posts/pine-cones-a-field-guide.md from src/_archetypes/posts.md
+```
+
+The new post:
+
+```md
+---
+# Fill in the description before publishing.
+title: "Pine cones: a field guide"
+date: 2026-11-10
+description:
+draft: true
+---
+Write here. The title is {{ title }}.
+```
+
+- **Only front matter is filled in.** `title` is set, `date` is set to today when the archetype has that key (or you pass `--date`), and `--set key=value` sets anything else (`--set draft=false`, `--set "tags=[news, trails]"`). Comments and the order of the keys stay. The body is copied as it is, so an archetype isn't a template with a syntax of its own: `{{ title }}` in it is for the page.
+- **Which archetype:** the one named after the page's folder, the most specific first. `docs/guides/install.md` uses `_archetypes/docs/guides.md`, then `_archetypes/docs.md`, then `_archetypes/default.md`, and with none of them the page gets a `title` and a `date`. `--archetype notes` picks one by name. An archetype can be in any template language (`posts.edge`), and a [theme](#themes) can bring its own in its `_archetypes/`.
+- **A file, or a folder and a title:** `ssqch new posts/pine-cones.md` names the file itself (the title is then "Pine cones", unless you pass `--title`). Given a folder, the file is named after the title, the way the folder's other pages are: with the date in front (`2026-11-10-pine-cones.md`) when most of them have one, and as `pine-cones/index.md` when most are folders with an index file.
+- **Nothing is overwritten,** and `--format json` prints the new file's `path`, its `archetype`, `title` and `date`.
+
 ## Where a value comes from
 
 A page's data is a cascade. From the lowest level to the highest:
@@ -926,7 +967,7 @@ A plugin implements `sitesquatch::Plugin` (any `Fn(&mut Config)` works too) and 
 | `add_config_file(path)` | not available (a file `ssqch serve` reads the configuration again for) |
 | `add_summary(label, \|ctx\| ...)` | not available (adds a line to the build summary) |
 
-A site binary whose setup can fail uses `sitesquatch::cli::try_run_with`, whose closure returns a `Result` and is called again by `ssqch serve` when a config file changes. `sitesquatch::diff::compare` is `ssqch diff` as a function. `sitesquatch::inspect::inspect` is `ssqch inspect`. A plugin reports a warning with `sitesquatch::diagnostics::warn(Diagnostic::warning("code", message).file(path))`, which prints `warn: ...` and puts it in the JSON report, and fails with a `Diagnostics` error to keep its problems apart there.
+A site binary whose setup can fail uses `sitesquatch::cli::try_run_with`, whose closure returns a `Result` and is called again by `ssqch serve` when a config file changes. `sitesquatch::diff::compare` is `ssqch diff` as a function. `sitesquatch::inspect::inspect` is `ssqch inspect`, and `sitesquatch::archetype::new_page` is `ssqch new`. A plugin reports a warning with `sitesquatch::diagnostics::warn(Diagnostic::warning("code", message).file(path))`, which prints `warn: ...` and puts it in the JSON report, and fails with a `Diagnostics` error to keep its problems apart there.
 
 Plugins can share services. The image plugin exposes an `ImageProcessor`, and the blog's plugin uses it for its hero image data and its `socialImage` filter.
 

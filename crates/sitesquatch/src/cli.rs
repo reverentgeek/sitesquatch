@@ -57,6 +57,27 @@ enum Command {
         #[arg(long, value_name = "FILE")]
         ready_file: Option<PathBuf>,
     },
+    /// Create a page from an archetype (a file in _archetypes/), with its title and date filled in
+    #[command(after_help = "The archetype is named after the page's folder (_archetypes/posts.md for posts/), then `default`.\nIts body is copied as it is; only front matter keys are filled in. Nothing is overwritten.\n\n  ssqch new posts/pine-cones.md\n  ssqch new posts --title \"Pine cones\"      (named like the other pages in posts/)\n  ssqch new docs/guides/install.md --set order=3 --set draft=true")]
+    New {
+        /// The new file, from the input folder (posts/pine-cones.md), or a folder, with --title
+        path: String,
+        /// The page's title (default: from the file's name)
+        #[arg(long)]
+        title: Option<String>,
+        /// The page's date, as it's written in front matter (default: today)
+        #[arg(long)]
+        date: Option<String>,
+        /// The archetype to use (default: the page's folder, then `default`)
+        #[arg(long, value_name = "NAME")]
+        archetype: Option<String>,
+        /// Another front matter key, with its value as it's written there (repeatable)
+        #[arg(long, value_name = "KEY=VALUE")]
+        set: Vec<String>,
+        /// text or json
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
     /// Show where a page comes from, and which level of the data cascade set each value
     #[command(after_help = "Nothing is built or written, and build hooks don't run.\n\n  ssqch inspect /guides/install/\n  ssqch inspect src/guides/install.md --field title\n  ssqch inspect /guides/install/ --field hero.alt --format json")]
     Inspect {
@@ -189,6 +210,7 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
     let result = make_config().and_then(|cfg| match &cli.command {
         Some(Command::Serve { port, ready_file }) => crate::serve::serve_reloading(cfg, &crate::serve::ServeOptions { port: *port, ready_file: ready_file.clone() }, &make_config),
         Some(Command::Inspect { page, field, format }) => run_inspect(&cfg, page, field.as_deref(), format),
+        Some(Command::New { path, title, date, archetype, set, format }) => run_new(&cfg, crate::archetype::NewOptions { path: path.clone(), title: title.clone(), date: date.clone(), archetype: archetype.clone(), set: Vec::new() }, set, format),
         _ => crate::build(&cfg).map(|report| print_report(&cfg, &report)),
     });
     match result {
@@ -236,6 +258,31 @@ fn build_json(make_config: &dyn Fn() -> anyhow::Result<Config>, root: &Path, env
     out["errors"] = errors.iter().map(|e| e.to_json()).collect::<Vec<_>>().into();
     println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
     if errors.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+}
+
+/// `ssqch new`: create a page from an archetype, and say what was made.
+fn run_new(cfg: &Config, mut options: crate::archetype::NewOptions, set: &[String], format: &str) -> anyhow::Result<()> {
+    if !matches!(format, "text" | "json") {
+        anyhow::bail!("--format {}: use text or json", format);
+    }
+    for pair in set {
+        let Some((key, value)) = pair.split_once('=') else { anyhow::bail!("--set {}: give a key and a value, like --set draft=true", pair) };
+        options.set.push((key.trim().to_string(), value.trim().to_string()));
+    }
+    let created = crate::archetype::new_page(cfg, &options)?;
+    let ctx = cfg.build_context();
+    let root = dunce::canonicalize(&ctx.root).unwrap_or_else(|_| ctx.root.clone());
+    let shown = |path: &Path| crate::slashes(path.strip_prefix(&root).unwrap_or(path));
+    if format == "json" {
+        let out = serde_json::json!({ "schemaVersion": 1, "path": shown(&created.path), "archetype": created.archetype.as_deref().map(shown), "title": created.title, "date": created.date });
+        println!("{}", serde_json::to_string_pretty(&out)?);
+    } else {
+        match &created.archetype {
+            Some(archetype) => println!("Created {} from {}", shown(&created.path), shown(archetype)),
+            None => println!("Created {} with a title and a date (there's no archetype for it in {}/_archetypes/)", shown(&created.path), shown(&dunce::canonicalize(&ctx.input_dir).unwrap_or_else(|_| ctx.input_dir.clone()))),
+        }
+    }
+    Ok(())
 }
 
 /// `ssqch inspect`: print where a page (or one field of its data) comes from.

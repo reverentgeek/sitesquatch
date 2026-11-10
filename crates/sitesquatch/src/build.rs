@@ -598,7 +598,8 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
     }
     let ignore = glob_set("ignore", cfg.ignore.iter().map(String::as_str))?;
     let passthrough_globs = glob_set("passthrough", cfg.passthrough.iter().map(|(from, _)| from).filter(|f| is_glob(f)).map(|f| f.to_str().unwrap_or("")))?;
-    let skip_dirs: Vec<PathBuf> = [ctx.includes_dir.clone(), ctx.layouts_dir.clone(), ctx.data_dir.clone(), ctx.output_dir.clone()]
+    // `_archetypes` holds the pages `ssqch new` starts from, which aren't pages of the site.
+    let skip_dirs: Vec<PathBuf> = [ctx.includes_dir.clone(), ctx.layouts_dir.clone(), ctx.data_dir.clone(), ctx.output_dir.clone(), ctx.input_dir.join("_archetypes")]
         .into_iter()
         // A theme folder inside the input folder is a theme, not pages of the site's own.
         .chain(ctx.theme_dirs.iter().cloned())
@@ -665,7 +666,7 @@ fn theme_files(cfg: &Config, ctx: &BuildContext) -> Result<(Vec<PathBuf>, Vec<Co
     for theme in &ctx.theme_dirs {
         let walker = walkdir::WalkDir::new(theme).follow_links(true).sort_by_file_name().into_iter().filter_entry(|e| {
             let name = e.file_name().to_string_lossy();
-            e.depth() == 0 || !(name.starts_with('.') || name == "node_modules" || (e.depth() == 1 && (name == "_includes" || name == "_data" || is_theme_meta(&name))))
+            e.depth() == 0 || !(name.starts_with('.') || name == "node_modules" || (e.depth() == 1 && (name == "_includes" || name == "_data" || name == "_archetypes" || is_theme_meta(&name))))
         });
         for entry in walker {
             let entry = entry?;

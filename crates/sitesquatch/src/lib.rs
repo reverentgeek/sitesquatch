@@ -23,6 +23,7 @@ pub mod diff;
 pub mod engines;
 #[cfg(feature = "highlight")]
 pub mod highlight;
+pub mod archetype;
 pub mod diagnostics;
 pub mod inspect;
 pub mod markdown;

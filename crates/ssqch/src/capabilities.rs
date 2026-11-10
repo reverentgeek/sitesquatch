@@ -69,7 +69,7 @@ pub fn capabilities() -> serde_json::Value {
     json!({
         "schemaVersion": 1,
         "version": env!("CARGO_PKG_VERSION"),
-        "commands": ["build", "serve", "inspect", "diff", "init", "types", "import", "capabilities"],
+        "commands": ["build", "serve", "new", "inspect", "diff", "init", "types", "import", "capabilities"],
         "json": ["build --format json", "inspect --format json", "diff --format json", "capabilities --format json", "serve --ready-file"],
         "features": features.iter().map(|(name, on)| (name.to_string(), json!(on))).collect::<serde_json::Map<_, _>>(),
         "configFiles": sitesquatch_js::CONFIG_FILES.iter().copied().chain(["sitesquatch.toml"]).collect::<Vec<_>>(),
