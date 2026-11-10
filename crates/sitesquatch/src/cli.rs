@@ -25,9 +25,10 @@ struct Cli {
     /// then production for `build` and development for `serve`)
     #[arg(long, global = true)]
     env: Option<String>,
+    /// Print only warnings and errors
     #[arg(long, short, global = true)]
     quiet: bool,
-    /// Print per-phase timings
+    /// Also list the slowest images to encode
     #[arg(long, short, global = true)]
     verbose: bool,
 }

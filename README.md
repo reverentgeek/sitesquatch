@@ -104,10 +104,9 @@ export default defineConfig({
 
 ### Step 2: A layout
 
-Layouts live in `src/_includes`. `{{{ content }}}` (three braces, so it isn't escaped) is where each page's body goes:
+Layouts live in `src/_includes`. In `src/_includes/layout.edge`, `{{{ content }}}` (three braces, so it isn't escaped) is where each page's body goes:
 
 ```html
-<!-- src/_includes/layout.edge -->
 <!doctype html>
 <html lang="en">
   <head><title>{{ title }}</title></head>
@@ -119,10 +118,9 @@ Layouts live in `src/_includes`. `{{{ content }}}` (three braces, so it isn't es
 
 ### Step 3: A post and a home page
 
-Front matter sets each page's data. Tagging the post `posts` puts it in `collections.posts`:
+Front matter sets each page's data, and it has to come first in the file. Tagging the post `posts` puts it in `collections.posts`. Save this as `src/posts/pine-cone-crunch.md`:
 
 ```markdown
-<!-- src/posts/pine-cone-crunch.md -->
 ---
 layout: layout.edge
 title: Pine Cone Crunch
@@ -131,10 +129,9 @@ tags: posts
 Crunchy, foresty, and only slightly sticky.
 ```
 
-The home page uses the filter and loops over the posts:
+The home page, `src/index.edge`, uses the filter and loops over the posts:
 
 ```html
-<!-- src/index.edge -->
 ---
 layout: layout.edge
 title: Squatch Snacks
@@ -323,6 +320,8 @@ Expressions cover object and array literals (with shorthand and spread), templat
 Coming from Jekyll or a Shopify theme? Add `"liquid"` to `templateFormats` and `.liquid` pages and layouts render with [Liquid](https://shopify.github.io/liquid/) (the [`liquid`](https://crates.io/crates/liquid) crate). Use `markdownEngine: "liquid"` to run Markdown through Liquid instead of Edge, or `render: [liquid, md]` for one post.
 
 ```js
+import { defineConfig } from "ssqch";
+
 export default defineConfig({
   templateFormats: ["liquid", "md"],
   markdownEngine: "liquid",
@@ -396,7 +395,7 @@ Netlify can build the site itself, with no deploy token to manage. This is the R
 
 [build.environment]
   NODE_VERSION = "24"
-  SSQCH_VERSION = "0.2.1"
+  SSQCH_VERSION = "0.3.2"
 
 [[plugins]]
   package = "netlify-plugin-cache"
@@ -478,7 +477,7 @@ plugins/links            Link checker: internal links and anchors in the built s
 examples/reverentgeek    The blog's config ported to Rust, as an example of the Rust API
 ```
 
-Run the tests with `cargo test --workspace` (add `--features ssqch/avif` to include the AVIF encoder). [CI](.github/workflows/ci.yml) runs them on Linux and macOS, with and without AVIF, plus `cargo clippy` with warnings as errors.
+Run the tests with `cargo test --workspace` (add `--features ssqch/avif` to include the AVIF encoder). [CI](.github/workflows/ci.yml) runs them on Linux, macOS and Windows (with AVIF on Linux), plus `cargo clippy` with warnings as errors.
 
 The ReverentGeek blog is the real-world test site. To build it with your changes, clone it next to this repository and use its own build script, which also builds the CSS and JavaScript:
 
