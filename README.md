@@ -571,7 +571,7 @@ cargo build --release -p ssqch --features avif
 (cd ../blog && pnpm install && SSQCH_BIN=../ssqch/target/release/ssqch pnpm test)
 ```
 
-`pnpm test` builds the site and runs the blog's smoke tests. The first build encodes every image, so give it a few minutes; later builds reuse them.
+`scripts/examples.sh` builds every site in `examples/sites/` with the checkout's `ssqch`, and `scripts/examples.sh <name>` serves one at <http://localhost:8080>. `pnpm test` builds the site and runs the blog's smoke tests. The first build encodes every image, so give it a few minutes; later builds reuse them.
 
 Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/) from a version tag. The steps are in [`CLAUDE.md`](CLAUDE.md#releasing).
 

@@ -238,7 +238,9 @@ migration guides it unblocks.
       and from Eleventy in `docs/guides/`. Writing them fixed two bugs: pages paginated over a
       collection had items without `content`, and pages whose includes read `collections`
       rendered too early.
-- [ ] Deploy the examples to Netlify, one site each, at `<name>.sitesquatch.dev`.
+- [x] Test the examples locally: `scripts/examples.sh` builds them all (with link checks), and
+      `scripts/examples.sh blog-tags` serves one with live reload.
+- [ ] Later (not now): deploy the examples to Netlify, one site each, at `<name>.sitesquatch.dev`.
       `.github/workflows/examples.yml` builds them with the branch's ssqch and uploads each
       through Netlify's deploy API, from `release/0.4` for now (switch to `main` after 0.4).
   - [ ] Create the four Netlify sites, add the `NETLIFY_AUTH_TOKEN` secret and the
