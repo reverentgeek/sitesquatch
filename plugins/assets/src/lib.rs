@@ -8,8 +8,10 @@
 //! output that points at it is rewritten. Older fingerprinted copies of the
 //! same file are deleted, so the output doesn't collect stale versions.
 //!
-//! In development (`ssqch serve`), nothing is renamed or rewritten, so pages
-//! use the plain paths a watcher keeps updated.
+//! In development (`ssqch serve`), nothing is renamed, and pages use the plain
+//! paths a watcher keeps updated. If a plain file isn't there but the last
+//! production build left one fingerprinted copy of it, pages link to that copy
+//! instead, so serving after a build still has styles and scripts.
 //!
 //! References elsewhere (`url()` in CSS, imports in JavaScript) aren't
 //! rewritten. For a hashed URL outside an HTML attribute, templates can call
@@ -70,10 +72,13 @@ impl Plugin for AssetsPlugin {
                     let hashed = fingerprint(&ctx.output_dir, file)?;
                     names.push(hashed.rsplit('/').next().unwrap_or(&hashed).to_string());
                     map.insert(file.clone(), hashed);
+                } else if ctx.output_dir.join(file.trim_start_matches('/')).is_file() {
+                    map.insert(file.clone(), file.clone());
+                } else if let Some(copy) = built_copy(&ctx.output_dir, file)? {
+                    eprintln!("warn: {} isn't in the output ({}), so pages link to {} from the last production build; run the tool that writes {} to see changes", file, display(ctx, &ctx.output_dir), copy, file);
+                    map.insert(file.clone(), copy);
                 } else {
-                    if !ctx.output_dir.join(file.trim_start_matches('/')).is_file() {
-                        eprintln!("warn: {} isn't in the output yet ({}); its tool may still be building it", file, display(ctx, &ctx.output_dir));
-                    }
+                    eprintln!("warn: {} isn't in the output yet ({}); its tool may still be building it", file, display(ctx, &ctx.output_dir));
                     map.insert(file.clone(), file.clone());
                 }
             }
@@ -148,6 +153,18 @@ fn fingerprint(output: &Path, file: &str) -> Result<String> {
     };
     let base = &file[..file.len() - name.len()];
     Ok(format!("{}{}", base, hashed_name))
+}
+
+/// The URL path of the one fingerprinted copy of `file` in `output`, if there's
+/// exactly one (what a production build leaves behind).
+fn built_copy(output: &Path, file: &str) -> Result<Option<String>> {
+    let plain = output.join(file.trim_start_matches('/'));
+    let (Some(dir), Some(name)) = (plain.parent(), plain.file_name().map(|n| n.to_string_lossy().into_owned())) else { return Ok(None) };
+    let (stem, ext) = split_name(&name);
+    Ok(match fingerprinted_copies(dir, stem, ext)?.as_slice() {
+        [one] => Some(format!("{}{}", &file[..file.len() - name.len()], one.file_name().unwrap().to_string_lossy())),
+        _ => None,
+    })
 }
 
 /// `index.css` -> (`index`, `.css`). A name without an extension has `""`.
@@ -243,6 +260,17 @@ mod tests {
         let out = dir("missing");
         let e = format!("{:#}", fingerprint(&out, "/assets/index.js").unwrap_err());
         assert!(e.contains("index.js doesn't exist; build the CSS and JS before ssqch"), "{}", e);
+    }
+
+    #[test]
+    fn finds_the_copy_a_production_build_left() {
+        let out = dir("copy");
+        assert_eq!(built_copy(&out, "/assets/index.css").unwrap(), None);
+        std::fs::write(out.join("assets/index.0123abcd.css"), "built").unwrap();
+        assert_eq!(built_copy(&out, "/assets/index.css").unwrap().as_deref(), Some("/assets/index.0123abcd.css"));
+        // Two copies: no telling which is current.
+        std::fs::write(out.join("assets/index.89ef4567.css"), "older").unwrap();
+        assert_eq!(built_copy(&out, "/assets/index.css").unwrap(), None);
     }
 
     #[test]
