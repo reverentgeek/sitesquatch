@@ -82,6 +82,7 @@ pub fn js_modules() -> Vec<JsModule> {
         module("ssqch/sitemap", include_str!("js/sitemap.js"), vec![]),
         module("ssqch/redirects", include_str!("js/redirects.js"), vec![]),
         module("ssqch/sass", include_str!("js/sass.js"), vec![]),
+        module("ssqch/elements", include_str!("js/elements.js"), vec![]),
         module(
             "ssqch/minify",
             include_str!("js/minify.js"),

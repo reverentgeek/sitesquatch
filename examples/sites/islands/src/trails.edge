@@ -1,0 +1,15 @@
+---
+title: Trails
+layout: base.edge
+---
+<p>All {{ trails.length }} trails are in the page. The filter box is an island that loads when it scrolls into view.</p>
+
+<trail-filter ssqch:load="visible">
+  <ul>
+    @each(trail in trails)
+    <li data-level="{{ trail.level }}">{{ trail.name }}: {{ trail.miles }} miles, {{ trail.level }}</li>
+    @end
+  </ul>
+</trail-filter>
+
+<like-button key="trails"><a href="/about/">How likes work</a></like-button>

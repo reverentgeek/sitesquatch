@@ -56,6 +56,7 @@ sitesquatch-plugin-assets.workspace = true
 sitesquatch-plugin-links.workspace = true
 sitesquatch-plugin-sitemap.workspace = true
 sitesquatch-plugin-redirects.workspace = true
+sitesquatch-plugin-elements.workspace = true
 sitesquatch-plugin-sass = { workspace = true, optional = true }
 sitesquatch-plugin-liquid = { workspace = true, optional = true }
 sitesquatch-plugin-jinja = { workspace = true, optional = true }

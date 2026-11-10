@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} | Squatch Trails</title>
+<style>
+  body { font: 17px/1.6 system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+  nav a { margin-right: 1rem; }
+  @media (prefers-color-scheme: dark) { body { background: #0d1117; color: #e6edf3; } a { color: #58a6ff; } }
+</style>
+</head>
+<body>
+<nav><a href="/">Home</a> <a href="/trails/">Trails</a> <a href="/about/">About</a></nav>
+<h1>{{ title }}</h1>
+{{{ content }}}
+</body>
+</html>

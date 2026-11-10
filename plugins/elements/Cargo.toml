@@ -1,0 +1,13 @@
+[package]
+name = "sitesquatch-plugin-elements"
+description = "Custom elements for SiteSquatch: a component's script loads only on the pages that use it"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+lol_html.workspace = true
+sitesquatch.workspace = true
+walkdir = "2"

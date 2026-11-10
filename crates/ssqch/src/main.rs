@@ -20,6 +20,7 @@ use sitesquatch::Config;
 use sitesquatch_js::BuiltinPlugin;
 use sitesquatch_plugin_image::{Format, ImageOptions, ImagePlugin};
 use sitesquatch_plugin_assets::{AssetsOptions, AssetsPlugin};
+use sitesquatch_plugin_elements::{ElementsOptions, ElementsPlugin, Load};
 use sitesquatch_plugin_links::{LinksOptions, LinksPlugin};
 use sitesquatch_plugin_minify::{MinifyOptions, MinifyPlugin};
 use sitesquatch_plugin_redirects::{RedirectsOptions, RedirectsPlugin};
@@ -29,9 +30,9 @@ use sitesquatch_plugin_sass::{SassOptions, SassPlugin, Style};
 use sitesquatch_plugin_sitemap::{SitemapOptions, SitemapPlugin};
 
 /// Built-in plugins, which a JavaScript config adds with `imagePlugin()`,
-/// `rssPlugin()`, `minifyPlugin()`, `assetsPlugin()` and `linksPlugin()` from the matching
-/// `ssqch/` modules.
-const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify), ("ssqch/assets", assets), ("ssqch/links", links), ("ssqch/sitemap", sitemap), ("ssqch/redirects", redirects), ("ssqch/sass", sass)];
+/// `rssPlugin()`, `minifyPlugin()`, `assetsPlugin()`, `linksPlugin()` and the rest, from the
+/// matching `ssqch/` modules.
+const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify), ("ssqch/assets", assets), ("ssqch/links", links), ("ssqch/sitemap", sitemap), ("ssqch/redirects", redirects), ("ssqch/sass", sass), ("ssqch/elements", elements)];
 
 fn main() -> std::process::ExitCode {
     let extra = vec![
@@ -166,6 +167,18 @@ fn redirects(cfg: &mut Config, options: &Json) -> Result<()> {
         }
     }
     cfg.add_plugin(RedirectsPlugin::new(opts)?);
+    Ok(())
+}
+
+fn elements(cfg: &mut Config, options: &Json) -> Result<()> {
+    let o = Options::new(options, &["dir", "url", "load"])?;
+    let mut opts = ElementsOptions::default();
+    if let Some(dir) = o.string("dir")? { opts.dir = Some(dir.into()); }
+    if let Some(url) = o.string("url")? { opts.url = url; }
+    if let Some(load) = o.string("load")? {
+        opts.load = Load::parse(&load).ok_or_else(|| anyhow::anyhow!("load must be \"eager\", \"idle\" or \"visible\", not {:?}", load))?;
+    }
+    cfg.add_plugin(ElementsPlugin::new(opts)?);
     Ok(())
 }
 

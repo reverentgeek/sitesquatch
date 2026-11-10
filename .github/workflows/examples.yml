@@ -3,9 +3,11 @@
 #
 # Each example needs a Netlify site, and the repository needs:
 #   - secret NETLIFY_AUTH_TOKEN: a Netlify personal access token
-#   - variables NETLIFY_SITE_BLOG_TAGS, NETLIFY_SITE_BLOG_CATEGORIES,
-#     NETLIFY_SITE_DOCS_SIDEBAR and NETLIFY_SITE_GLOSSARY_DOCS: each site's ID
-#     (Site configuration > General > Site ID in Netlify)
+#   - a variable per example with its site's ID (Site configuration > General
+#     > Site ID in Netlify): NETLIFY_SITE_BLOG_TAGS, NETLIFY_SITE_BLOG_CATEGORIES,
+#     NETLIFY_SITE_DOCS_SIDEBAR, NETLIFY_SITE_GLOSSARY_DOCS,
+#     NETLIFY_SITE_VERSIONED_DOCS, NETLIFY_SITE_COMPONENT_DOCS,
+#     NETLIFY_SITE_REFERENCE_PAGES and NETLIFY_SITE_ISLANDS
 # Until they're set, the workflow builds the examples and skips deploying.
 #
 # The examples use features that aren't released yet, so this deploys from
@@ -51,6 +53,10 @@ jobs:
           SITE_blog_categories: ${{ vars.NETLIFY_SITE_BLOG_CATEGORIES }}
           SITE_docs_sidebar: ${{ vars.NETLIFY_SITE_DOCS_SIDEBAR }}
           SITE_glossary_docs: ${{ vars.NETLIFY_SITE_GLOSSARY_DOCS }}
+          SITE_versioned_docs: ${{ vars.NETLIFY_SITE_VERSIONED_DOCS }}
+          SITE_component_docs: ${{ vars.NETLIFY_SITE_COMPONENT_DOCS }}
+          SITE_reference_pages: ${{ vars.NETLIFY_SITE_REFERENCE_PAGES }}
+          SITE_islands: ${{ vars.NETLIFY_SITE_ISLANDS }}
         run: |
           if [ -z "$NETLIFY_AUTH_TOKEN" ]; then
             echo "::notice::NETLIFY_AUTH_TOKEN isn't set, so the examples were built but not deployed."

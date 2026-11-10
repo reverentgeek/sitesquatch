@@ -2506,6 +2506,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sitesquatch-plugin-elements"
+version = "0.3.3"
+dependencies = [
+ "anyhow",
+ "lol_html",
+ "sitesquatch",
+ "walkdir",
+]
+
+[[package]]
 name = "sitesquatch-plugin-handlebars"
 version = "0.3.3"
 dependencies = [
@@ -2639,6 +2649,7 @@ dependencies = [
  "sitesquatch",
  "sitesquatch-js",
  "sitesquatch-plugin-assets",
+ "sitesquatch-plugin-elements",
  "sitesquatch-plugin-handlebars",
  "sitesquatch-plugin-image",
  "sitesquatch-plugin-jinja",

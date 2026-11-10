@@ -1,0 +1,7 @@
+[
+  { "name": "Cedar Hollow", "miles": 3.2, "level": "easy" },
+  { "name": "Lantern Ridge", "miles": 7.5, "level": "hard" },
+  { "name": "Moss Creek Loop", "miles": 4.8, "level": "moderate" },
+  { "name": "Pine Summit", "miles": 9.1, "level": "hard" },
+  { "name": "Fern Valley", "miles": 2.4, "level": "easy" }
+]

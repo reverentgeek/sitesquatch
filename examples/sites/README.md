@@ -10,6 +10,7 @@ Small, complete sites, each distilled from a real one and written against a feat
 | [`glossary-docs`](glossary-docs/) | Nunjucks | A headless glossary with tooltips, callout containers, a generated `_redirects` | glossary-docs.sitesquatch.dev (soon) |
 | [`versioned-docs`](versioned-docs/) | Edge | Versions as folders with their own sidebars, a version switcher, tabs from containers, a blog with authors | versioned-docs.sitesquatch.dev (soon) |
 | [`component-docs`](component-docs/) | Edge | Edge components in place of MDX, live examples with highlighted source, Sass variables read from the source, `ssqch/sass` | component-docs.sitesquatch.dev (soon) |
+| [`islands`](islands/) | Edge | Custom elements whose scripts load only on the pages that use them, some when idle or visible, each with a fallback | islands.sitesquatch.dev (soon) |
 | [`reference-pages`](reference-pages/) | Handlebars | One page per option, generated from a JSON schema, grouped by category | reference-pages.sitesquatch.dev (soon) |
 
 To try one, copy its folder and run `ssqch serve` in it.
