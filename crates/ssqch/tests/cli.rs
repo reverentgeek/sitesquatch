@@ -364,7 +364,8 @@ fn serve_does_not_rebuild_for_its_own_files() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("index.edge"), "one {{ 1 + 1 }}").unwrap();
     std::fs::write(dir.join("ssqch.config.js"), "export default { clean: true };\n").unwrap();
-    let log = dir.join("serve.log");
+    // The server's output goes outside the folder it watches: a log in there changes with every build.
+    let log = temp_dir("serve-root-log");
     let out = std::fs::File::create(&log).unwrap();
     let child = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(["serve", "--port", "0", "--root"]).arg(&dir).stdout(out.try_clone().unwrap()).stderr(out).spawn().unwrap();
     let _server = Server(child);

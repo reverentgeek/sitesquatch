@@ -35,7 +35,11 @@ pub fn serve(cfg: &Config, port: u16) -> Result<()> {
     let (tx, rx) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if let Ok(event) = res {
-            let _ = tx.send(event.paths);
+            // Reading a file isn't a change. Linux reports each open and close, so the
+            // server's own reads (and an editor's, or an indexer's) would look like one.
+            if !matches!(event.kind, notify::EventKind::Access(_)) {
+                let _ = tx.send(event.paths);
+            }
         }
     })?;
     for path in cfg.watch_paths() {
@@ -53,9 +57,14 @@ pub fn serve(cfg: &Config, port: u16) -> Result<()> {
     let mut contents: std::collections::HashMap<PathBuf, Option<u64>> = Default::default();
     loop {
         let mut paths = rx.recv()?;
-        // Debounce bursts of events (editors often write several times).
-        while let Ok(more) = rx.recv_timeout(Duration::from_millis(120)) {
-            paths.extend(more);
+        // Debounce bursts of events (editors often write several times), for a second at
+        // most: a folder that's written to all the time mustn't hold a rebuild back forever.
+        let burst = std::time::Instant::now();
+        while burst.elapsed() < Duration::from_secs(1) {
+            match rx.recv_timeout(Duration::from_millis(120)) {
+                Ok(more) => paths.extend(more),
+                Err(_) => break,
+            }
         }
         // What a build writes for itself (`.cache`, in a site whose input folder is the
         // project root) isn't a change to the site: rebuilding for it would never end.
