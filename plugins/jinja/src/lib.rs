@@ -54,7 +54,20 @@ pub struct JinjaEngine {
     sources: Arc<RwLock<HashMap<String, String>>>,
     /// Accept Nunjucks syntax minijinja doesn't know (`.njk`).
     nunjucks: bool,
+    /// The config's functions, which `.njk` templates can use as tags:
+    /// `{% image "a.png", "Alt" %}`, or around content with `{% endimage %}`.
+    tags: Arc<std::collections::HashSet<String>>,
 }
+
+/// What a config function is also called, so a tag reaches it even on a page
+/// whose data has a field with the function's name.
+const TAG_PREFIX: &str = "__ssqch_tag_";
+
+/// Tags Jinja and Nunjucks define, which a function of the same name doesn't replace.
+const BUILT_IN_TAGS: &[&str] = &[
+    "if", "elif", "elseif", "else", "endif", "for", "endfor", "set", "endset", "block", "endblock", "extends", "include", "import", "from", "macro", "endmacro", "call", "endcall", "filter", "endfilter", "raw", "endraw", "verbatim", "endverbatim",
+    "with", "endwith", "autoescape", "endautoescape", "do", "break", "continue", "asyncEach", "asyncAll", "ifAsync",
+];
 
 /// Page names get this prefix so a page can't shadow an include with the
 /// same relative path.
@@ -95,9 +108,12 @@ impl JinjaEngine {
             env.set_syntax(syntax);
         }
 
+        let tags: Arc<std::collections::HashSet<String>> =
+            Arc::new(engine_env.globals.iter().filter(|(name, value)| matches!(value, Value::Func(_)) && !BUILT_IN_TAGS.contains(&name.as_str())).map(|(name, _)| name.clone()).collect());
         let sources: Arc<RwLock<HashMap<String, String>>> = Arc::default();
         let includes: PathBuf = engine_env.includes_dir.clone();
         let pages = sources.clone();
+        let loader_tags = tags.clone();
         env.set_loader(move |name: &str| {
             if let Some(src) = pages.read().unwrap().get(name) {
                 return Ok(Some(src.clone()));
@@ -107,7 +123,7 @@ impl JinjaEngine {
                 return Ok(None);
             }
             match std::fs::read_to_string(includes.join(name)) {
-                Ok(src) if nunjucks => Ok(Some(nunjucks_syntax(&src))),
+                Ok(src) if nunjucks => Ok(Some(nunjucks_syntax(&src, &loader_tags))),
                 Ok(src) => Ok(Some(src)),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
                 Err(e) => Err(Error::new(ErrorKind::InvalidOperation, format!("reading {}: {}", name, e))),
@@ -134,6 +150,16 @@ impl JinjaEngine {
         // Nunjucks' name for `tojson`, and its `truncate`.
         env.add_filter("dump", minijinja::filters::tojson);
         env.add_filter("truncate", truncate);
+        // More of Jinja's own (from minijinja-contrib), and dates.
+        env.add_filter("pluralize", minijinja_contrib::filters::pluralize);
+        env.add_filter("filesizeformat", minijinja_contrib::filters::filesizeformat);
+        env.add_filter("striptags", minijinja_contrib::filters::striptags);
+        env.add_function("cycler", minijinja_contrib::globals::cycler);
+        env.add_function("joiner", minijinja_contrib::globals::joiner);
+        env.add_filter("dateformat", |value: JValue, format: Option<String>| format_date(&value, format.as_deref(), DateParts::Date));
+        env.add_filter("timeformat", |value: JValue, format: Option<String>| format_date(&value, format.as_deref(), DateParts::Time));
+        env.add_filter("datetimeformat", |value: JValue, format: Option<String>| format_date(&value, format.as_deref(), DateParts::Both));
+        env.add_function("now", || JValue::from_object(Opaque(Value::Date(chrono::Utc::now()))));
         // `{% for key, value in object %}` in Nunjucks: an object's pairs, a list as it is.
         env.add_filter(PAIRS_FILTER, |value: JValue| if value.kind() == ValueKind::Map { minijinja::filters::items(&value).unwrap_or(value) } else { value });
         for (name, value) in engine_env.globals.iter() {
@@ -142,8 +168,12 @@ impl JinjaEngine {
                 env.add_filter(name.clone(), move |args: Rest<JValue>| call(&filter_name, &function, &args.0));
             }
             env.add_global(name.clone(), to_jinja(value));
+            // A name page data can't shadow, for `{% name %}` tags.
+            if tags.contains(name) {
+                env.add_global(format!("{}{}", TAG_PREFIX, name), to_jinja(value));
+            }
         }
-        JinjaEngine { env, sources, nunjucks }
+        JinjaEngine { env, sources, nunjucks, tags }
     }
 }
 
@@ -154,12 +184,12 @@ impl TemplateEngine for JinjaEngine {
             Some(key) => {
                 let name = format!("{}{}", PAGE_PREFIX, key);
                 if !self.sources.read().unwrap().contains_key(&name) {
-                    let source = if self.nunjucks { nunjucks_syntax(source) } else { source.to_string() };
+                    let source = if self.nunjucks { nunjucks_syntax(source, &self.tags) } else { source.to_string() };
                     self.sources.write().unwrap().insert(name.clone(), source);
                 }
                 self.env.get_template(&name).and_then(|t| t.render(context))
             }
-            None if self.nunjucks => self.env.render_named_str(ctx.name, &nunjucks_syntax(source), context),
+            None if self.nunjucks => self.env.render_named_str(ctx.name, &nunjucks_syntax(source, &self.tags), context),
             None => self.env.render_named_str(ctx.name, source, context),
         };
         result.map_err(|e| anyhow!("{}", describe(&e)))
@@ -172,7 +202,7 @@ const PAIRS_FILTER: &str = "__ssqch_pairs";
 /// `{% elif %}`, `{% for key, value in object %}` to iterate the object's
 /// pairs, and inside tags (see [`nunjucks_code`]) object literals, `===`,
 /// `site.404_page` and macro parameter order. Line numbers stay the same.
-fn nunjucks_syntax(src: &str) -> String {
+fn nunjucks_syntax(src: &str, tags: &std::collections::HashSet<String>) -> String {
     use std::sync::OnceLock;
     static ELSEIF: OnceLock<regex::Regex> = OnceLock::new();
     static FOR_PAIRS: OnceLock<regex::Regex> = OnceLock::new();
@@ -183,7 +213,37 @@ fn nunjucks_syntax(src: &str) -> String {
     let for_pairs = FOR_PAIRS.get_or_init(|| regex::Regex::new(r"\{%(-?)(\s*)for\s+(\w+)\s*,\s*(\w+)\s+in\s+(.+?)\s*(-?)%\}").unwrap());
     let src = elseif.replace_all(src, "{%$1${2}elif");
     let src = for_pairs.replace_all(&src, |c: &regex::Captures| format!("{{%{}{}for {}, {} in ({}) | {} {}%}}", &c[1], &c[2], &c[3], &c[4], &c[5], PAIRS_FILTER, &c[6]));
-    rewrite_tags(&src)
+    rewrite_tags(&custom_tags(&src, tags))
+}
+
+/// Tags named after the config's functions: `{% image "a.png", "Alt" %}`
+/// prints `image("a.png", "Alt")`, and with a `{% endimage %}`, the function
+/// gets what's between them as its first argument. What it returns is
+/// printed as it is (HTML isn't escaped), like a shortcode.
+fn custom_tags<'a>(src: &'a str, tags: &std::collections::HashSet<String>) -> std::borrow::Cow<'a, str> {
+    use std::sync::OnceLock;
+    static TAG: OnceLock<regex::Regex> = OnceLock::new();
+    if tags.is_empty() || !src.contains("{%") {
+        return src.into();
+    }
+    let tag = TAG.get_or_init(|| regex::Regex::new(r"(?s)\{%(-?)\s*([A-Za-z_]\w*)(.*?)(-?)%\}").unwrap());
+    let is_end = |name: &str| name.strip_prefix("end").is_some_and(|n| tags.contains(n));
+    if !tag.captures_iter(src).any(|c| tags.contains(&c[2]) || is_end(&c[2])) {
+        return src.into();
+    }
+    let paired: std::collections::HashSet<&str> = tag.captures_iter(src).filter_map(|c| c.get(2).map(|m| m.as_str())).filter(|n| is_end(n)).map(|n| &n[3..]).collect();
+    tag.replace_all(src, |c: &regex::Captures| {
+        let (open_trim, name, args, close_trim) = (&c[1], &c[2], c[3].trim(), &c[4]);
+        if is_end(name) {
+            format!("{{%{} endfilter {}%}}", open_trim, close_trim)
+        } else if !tags.contains(name) {
+            c[0].to_string()
+        } else if paired.contains(name) {
+            format!("{{%{} filter {}({}) | safe {}%}}", open_trim, name, args, close_trim)
+        } else {
+            format!("{{{{{} {}{}({}) | safe {}}}}}", open_trim, TAG_PREFIX, name, args, close_trim)
+        }
+    })
 }
 
 /// Run [`nunjucks_code`] over the code in every `{{ }}` and `{% %}` tag,
@@ -359,6 +419,50 @@ fn reorder_macro_params(code: &str) -> std::borrow::Cow<'_, str> {
 }
 
 /// Nunjucks' `truncate(length=255, killwords=false, end="...")`.
+#[derive(Clone, Copy)]
+enum DateParts {
+    Date,
+    Time,
+    Both,
+}
+
+/// `dateformat`, `timeformat` and `datetimeformat`: a date (or a string or a
+/// Unix time that reads as one), in UTC, as `short`, `medium` (the default),
+/// `long`, `full`, `iso`, `unix`, or a `strftime` pattern like `%B %-d, %Y`.
+fn format_date(value: &JValue, format: Option<&str>, parts: DateParts) -> Result<String, Error> {
+    let date = match from_jinja(value) {
+        Value::Num(n) => chrono::DateTime::<chrono::Utc>::from_timestamp(n as i64, 0),
+        other => other.to_date(),
+    }
+    .ok_or_else(|| Error::new(ErrorKind::InvalidOperation, format!("not a date: {}", value)))?;
+    let pattern = match (format.unwrap_or("medium"), parts) {
+        ("unix", _) => return Ok(date.timestamp().to_string()),
+        ("iso", DateParts::Date) => "%Y-%m-%d",
+        ("iso", DateParts::Time) => "%H:%M:%S",
+        ("iso", DateParts::Both) => "%Y-%m-%dT%H:%M:%SZ",
+        ("short", DateParts::Date) => "%Y-%m-%d",
+        ("medium", DateParts::Date) => "%b %-d %Y",
+        ("long", DateParts::Date) => "%B %-d %Y",
+        ("full", DateParts::Date) => "%A, %B %-d %Y",
+        ("short" | "medium", DateParts::Time) => "%H:%M",
+        ("long" | "full", DateParts::Time) => "%H:%M:%S",
+        ("short", DateParts::Both) => "%Y-%m-%d %H:%M",
+        ("medium", DateParts::Both) => "%b %-d %Y %H:%M",
+        ("long", DateParts::Both) => "%B %-d %Y %H:%M:%S",
+        ("full", DateParts::Both) => "%A, %B %-d %Y %H:%M:%S",
+        (pattern, _) => pattern,
+    };
+    strftime(&date, pattern)
+}
+
+/// `strftime`, with a bad pattern as an error instead of a panic.
+fn strftime(date: &chrono::DateTime<chrono::Utc>, pattern: &str) -> Result<String, Error> {
+    use std::fmt::Write;
+    let mut out = String::new();
+    write!(out, "{}", date.format(pattern)).map_err(|_| Error::new(ErrorKind::InvalidOperation, format!("{:?} isn't a date format (use short, medium, long, full, iso, unix, or a strftime pattern like \"%B %-d, %Y\")", pattern)))?;
+    Ok(out)
+}
+
 fn truncate(value: String, length: Option<usize>, killwords: Option<bool>, end: Option<String>) -> String {
     let length = length.unwrap_or(255);
     let end = end.unwrap_or_else(|| "...".into());
@@ -589,12 +693,15 @@ impl Object for Opaque {
 
     /// JavaScript's `Date` methods, which Nunjucks templates call
     /// (`page.date.toISOString()`). Times are UTC.
-    fn call_method(self: &Arc<Self>, _state: &mut State<'_, '_>, method: &str, _args: &[JValue]) -> Result<JValue, Error> {
+    fn call_method(self: &Arc<Self>, _state: &mut State<'_, '_>, method: &str, args: &[JValue]) -> Result<JValue, Error> {
         use chrono::{Datelike, Timelike};
         let Value::Date(d) = &self.0 else {
             return Err(Error::new(ErrorKind::UnknownMethod, format!("a function has no method named {}", method)));
         };
         Ok(match method {
+            // Python's, for Jinja templates.
+            "strftime" => JValue::from(strftime(d, args.first().and_then(|a| a.as_str()).unwrap_or("%Y-%m-%d"))?),
+            "isoformat" => JValue::from(d.format("%Y-%m-%dT%H:%M:%S+00:00").to_string()),
             "toISOString" | "toJSON" => JValue::from(d.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()),
             "toUTCString" => JValue::from(d.format("%a, %d %b %Y %H:%M:%S GMT").to_string()),
             "getTime" | "valueOf" => JValue::from(d.timestamp_millis()),
@@ -633,7 +740,7 @@ mod tests {
             ("text { a: b } and site.404_page", "text { a: b } and site.404_page"),
         ];
         for (input, want) in cases {
-            assert_eq!(nunjucks_syntax(input), want, "{}", input);
+            assert_eq!(nunjucks_syntax(input, &Default::default()), want, "{}", input);
         }
     }
 }

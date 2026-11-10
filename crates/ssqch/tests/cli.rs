@@ -730,6 +730,39 @@ fn serve_reads_a_changed_config_again() {
     change_and_wait(&dir.join("src/index.edge"), "plain {{ info.n }}", &page, "plain 2");
 }
 
+#[cfg(feature = "jinja")]
+#[test]
+fn nunjucks_tags_from_config_functions_and_jinja_dates() {
+    let dir = temp_dir("njk-tags");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write(
+        "ssqch.config.js",
+        "export default {\n  dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"njk\", \"jinja\"],\n  filters: {\n    image: (src, alt) => `<img src=\"${src}\" alt=\"${alt}\">`,\n    callout: (content, kind = \"note\") => `<aside class=\"${kind}\">${content.trim()}</aside>`,\n    include: () => \"never called\",\n  },\n};\n",
+    );
+    write("src/_includes/part.njk", "part");
+    write(
+        "src/index.njk",
+        "---\ntitle: Pines\nimage: /hero.png\n---\n{% image \"/a.png\", title %}\n{%- callout \"tip\" -%}\n  Watch for <b>{{ title }}</b>.\n{%- endcallout %}\n{% callout %}Plain{% endcallout %}\n{% markdown %}*md* in a template{% endmarkdown %}{% include \"part.njk\" %} {{ image | upper }} {{ \"/b.png\" | image(\"B\") | safe }}",
+    );
+    write(
+        "src/dates.jinja",
+        "---\nwhen: 2026-03-14T09:05:00Z\ncount: 2\n---\n{{ when | dateformat }}|{{ when | dateformat(\"full\") }}|{{ when | datetimeformat(\"short\") }}|{{ when | timeformat }}|{{ when | dateformat(\"%B %-d, %Y\") }}|{{ \"2024-12-25\" | dateformat(\"long\") }}|{{ now().strftime(\"%Y\") | length }}{{ page.date.isoformat() | length }}|{{ count }} pine{{ count | pluralize }}|{{ 2048 | filesizeformat }}|{{ \"<b>bold</b>\" | striptags }}",
+    );
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
+    assert_eq!(
+        read("index.html"),
+        "<img src=\"/a.png\" alt=\"Pines\"><aside class=\"tip\">Watch for <b>Pines</b>.</aside>\n<aside class=\"note\">Plain</aside>\n<p><em>md</em> in a template</p>\npart /HERO.PNG <img src=\"/b.png\" alt=\"B\">"
+    );
+    assert_eq!(read("dates/index.html"), "Mar 14 2026|Saturday, March 14 2026|2026-03-14 09:05|09:05|March 14, 2026|December 25 2024|425|2 pines|2.0 kB|bold");
+}
+
 /// A site whose input folder is the project root (the default) has ssqch's
 /// own `.cache` and the output inside what's watched. Writing them isn't a change.
 #[test]
