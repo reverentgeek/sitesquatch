@@ -39,9 +39,99 @@ Left before a release:
   "If CI fails, nothing is published" is wrong until then.
 
 - Deploy the examples (on hold; "Site plumbing" below).
+- The Sasquatch voice (below): a drawing for the starter's second post, if David wants one.
 - Decide which of the "Later" items under each feature wait for 0.5.
 - **Blog:** after the release, switch to `sitemapPlugin()`, `highlight: true` (dropping Prism)
   and a `posts` schema (`../blog/TODO.md`).
+
+## The Sasquatch voice (done, apart from two items)
+
+Built 2026-11-10, after David's review. ssqch reports like a deadpan park ranger who knows a
+lot about HTML: what happened comes first, and now and then something large walks through the
+log. The rules are in `CLAUDE.md` ("The Sasquatch voice"), and the shared lines are in
+`crates/sitesquatch/src/voice.rs`. Decided in the review: `leaveNoTrace` with `clean` kept as
+another name (both work), the stump trilogy as the starter, no switch to turn the voice off,
+and `ssqch footprint` in 0.5.
+
+- [x] **Status lines:** `Squatch Watch is on. Serving ...` and `Fresh tracks in <file>` from
+      `ssqch serve`; `First confirmed siting.` before a site's first `Built in`; `Nothing
+      sighted: ...` for a build with no pages; a `Drafts  3 unconfirmed` row (and `drafts` in
+      the JSON report); `the trail goes cold on 4 broken links:`; `The stump has not moved.`
+      from `ssqch diff`; `Camp is set up.` from `ssqch init`; `Welcome to the woods.` from
+      `ssqch import --write`; `living off the cache` with `--offline`.
+- [x] **Errors:** a port something else is squatting on; layout, include and component loops
+      that name the loop (`we've passed this tree before. Layout loop: base.edge -> wrap.edge
+      -> base.edge`; Edge used to print `included from` 64 times); `output conflicts (two sets
+      of tracks lead to the same place)`; a missing layout with `no sightings in` and a "did
+      you mean"; a panic that says something large walked through the build and where to
+      report it; the dev server's own 404 page (footprint, where the trail went cold, the
+      closest URL, back to the trailhead) and `Wrong trailhead` outside `base`.
+- [x] **Names:** `leaveNoTrace` (`leave_no_trace` in Rust and TOML), with `clean` as another
+      name in config files; setting both is an error. That's an exception to "no
+      backwards-compatible aliases", made on purpose. The Rust field is renamed, since a field
+      can't have two names. Squatch Watch, trail mix and Sassquatch are in the README, and
+      `ssqch sighting` is hidden from `--help` and `ssqch capabilities`.
+- [x] **Starters:** the site starter is an investigator's field notes (*I Know What I Saw*,
+      *Upon Further Review, a Stump*, *The Stump Has Moved*, each showing one thing), with a
+      404 page, `Write down what you saw.` in the archetype and `Built with SiteSquatch.
+      Allegedly.` in the footer. The docs starter's 404 has the eyewitness accounts too.
+  - [ ] **Needs David:** a suitably blurry picture for the second post. It explains where a
+        photo goes but has none, because a drawing would beat anything generated.
+- [x] **Small things:** `X-Powered-By: pine cones` from the dev server, and `[ssqch] Fresh
+      tracks. Reloading.` in the browser console.
+- [x] Tests: `the_ranger_reports_what_happened` and the serve tests in
+      `crates/ssqch/tests/cli.rs`, `an_include_loop_is_named` in the Edge tests, and a check
+      that nothing of ssqch's own is in what a build writes.
+- [x] **Blog:** the footer says `Built with SiteSquatch. Allegedly.` Its 404 page ("Oh
+      Noes!") stays. Nothing there reads ssqch's output text, and it doesn't set `clean`.
+      Checked: `pnpm test` passes with the branch, and `ssqch diff` against a 0.3.3 build of
+      the same sources shows no differences once the new heading `id`s are ignored.
+- [ ] **0.5: `ssqch footprint [dir]`**, a new command: the size of a build by kind of file,
+      with `Largest footprints` (the heaviest pages and files) and `--format json`. It reads
+      an output folder, as `ssqch diff` does. Later: budgets in the config, with a
+      `bigfootprint` warning for a page over its budget.
+- Left alone on purpose: front matter errors, Edge expression errors (they copy JavaScript's
+  wording), and option errors, which are already as clear as they get.
+
+### More delight (2026-11-10, done)
+
+The second round, picked because each one also fixes something. All built the same day:
+
+- [x] **Build errors in the page:** `ssqch serve` shows a failed rebuild over the page (it
+      only went to the terminal, while the browser kept the old page), in the tab's title and
+      icon too, and clears it on the next good build.
+- [x] **A footprint favicon** from the dev server for a site without `favicon.ico` (it was a
+      404 on every page load), and a red one while the build is broken.
+- [x] **CSS swaps without a reload,** keeping the scroll position and half-filled forms.
+      Stylesheets and scripts are compared by content, since the tools that write them write
+      them again whether or not anything changed.
+- [x] **Reload only when your page changed:** a rebuild leaves identical pages alone while
+      serving, the browser reloads only for the page it's on (or for a changed script or
+      image), and the summary says how many pages changed.
+- [x] **"Did you mean" everywhere:** broken links and anchors, config keys and `dirs`, plugin
+      and Markdown options, and missing Edge includes (`sitesquatch::suggest`).
+  - [ ] Not yet: `image()` and `minify()` call options (their checks are in JavaScript
+        modules), and includes in Liquid, Nunjucks and Handlebars.
+- [x] **Point at the spot:** a template or schema error prints the lines it's about, with the
+      file's own line number and carets under what the message quotes or the schema field
+      (`diagnostics::frames`). The message itself still counts from the end of the front
+      matter (the item under the JSON interface, below).
+- [x] **No colour codes in logs:** `error:` is red only on a terminal, and never with
+      `NO_COLOR`.
+- [x] **What changed since the last build:** `Pages  170 written ... (2 new, 1 gone)`, and
+      `pages.new` and `pages.gone` in the JSON report. The list of a build's files
+      (`.cache/ssqch/output-files.json`) has its pages now.
+- [x] **`ssqch sighting` earns its keep:** under the drawing, the last build's pages, folder
+      and age.
+- [x] **Uninhabited templates:** `--verbose` names the Edge includes nothing used.
+  - [ ] Not yet: the other template languages' includes (their engines don't say what they
+        loaded).
+- [x] **Shell completions:** `ssqch completions zsh` (and bash, fish, PowerShell, elvish).
+- [x] The README, in the voice: the introduction, the tutorial, each section's opening and
+      the new behaviour. The option tables and reference lists are as they were.
+- Checked in a browser (2026-11-10): editing another post leaves the open page alone, a
+  stylesheet edit swaps in place, a broken post shows the error over the page and a fix clears
+  it, and editing the open post reloads it.
 
 ## Remove Eleventy (done)
 

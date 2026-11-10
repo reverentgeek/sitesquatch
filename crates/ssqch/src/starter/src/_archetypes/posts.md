@@ -2,4 +2,4 @@
 title:
 date:
 ---
-Write your post here.
+Write down what you saw.

@@ -95,3 +95,31 @@ dist tries to sign with it.
 - README paragraphs, list items and callouts are one line each (no hard wrapping). TODO and
   CHANGELOG prose wraps at 100 columns.
 - Error messages name the file and what went wrong (`ssqch.config.js: too many pine cones`).
+
+## The Sasquatch voice
+
+ssqch reports like a deadpan park ranger who knows a lot about HTML: what happened comes first,
+and now and then something large walks through the log (`Fresh tracks in src/posts/hello.md`,
+`we've passed this tree before. Layout loop: ...`). The lines that are shared are in
+`crates/sitesquatch/src/voice.rs`. When adding or changing a message:
+
+- Facts first. A themed line still names the file and what went wrong, and keeps the words
+  people search for (`Built in`, `broken`, `not found`). The joke is a few extra words, never
+  a replacement, and the best ones explain the problem.
+- Machines get plain output: `--format json`, diagnostic codes, exit codes, `--version` and the
+  ready file. `diagnostics::locate` and `code_for` read error text (`in <file>: `, `rendering
+  <file> with`, ``layout ` ``, `output conflicts`, ` loop: `), so keep those parts.
+- Nothing random: a message depends on what happened, so tests, logs and `ssqch diff` repeat.
+- Never in a site's output. A build adds no comments, headers or markup of its own. The
+  starters' files belong to the site, so they can be silly.
+- One per command at most, no emoji, and no switch to turn it off. `--quiet` hides them.
+- Family-friendly, and pop-culture Bigfoot only: blurry photos, footprints, eyewitnesses. No
+  figures from Indigenous traditions and no brands.
+- Examples and fixtures share a canon: pine cones, Squatch Snacks, Pine Cone Crunch, rangers,
+  the Cedar and Old Growth trails, and the starter's stump.
+- Literal names stay literal: commands, hooks, plugin and option names, summary labels.
+  `leaveNoTrace` is the exception, because it describes the option better than `clean` does.
+
+## Finishing work
+
+Do not stop while there is still work left to do that the user asked for. Status notes are fine. If the next step does not need an answer, keep going. For errors, timeouts or failing tools, diagnose first, then retry or use another tool. For a hard blocker (do-not-touch file, safety guardrail), leave it, say/document what you found, and find another safe way. Stop only when there is no work left to do, absolutely need user input, or the blocker is deliberate. This does not skip confirmation on risky or destructive actions.

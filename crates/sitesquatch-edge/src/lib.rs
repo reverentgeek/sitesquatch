@@ -107,6 +107,12 @@ impl Engine {
         Ok(tpl)
     }
 
+    /// The names of the templates loaded so far (includes and components),
+    /// without `.edge`.
+    pub fn loaded(&self) -> Vec<String> {
+        self.cache.read().unwrap().keys().cloned().collect()
+    }
+
     pub fn clear_cache(&self) {
         self.cache.write().unwrap().clear();
     }

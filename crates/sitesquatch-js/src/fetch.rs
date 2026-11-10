@@ -114,8 +114,7 @@ pub(crate) fn take_counts() -> (usize, usize, usize) {
     (COUNTS[0].swap(0, Ordering::Relaxed), COUNTS[1].swap(0, Ordering::Relaxed), COUNTS[2].swap(0, Ordering::Relaxed))
 }
 
-#[cfg(feature = "fetch")]
-fn offline() -> bool {
+pub(crate) fn offline() -> bool {
     std::env::var("SSQCH_OFFLINE").is_ok_and(|v| !matches!(v.as_str(), "" | "0" | "false"))
 }
 

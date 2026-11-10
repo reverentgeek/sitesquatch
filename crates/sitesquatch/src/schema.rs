@@ -292,7 +292,7 @@ impl Schema {
                 if self.fields.iter().any(|f| f.name == *key) || BUILT_IN_KEYS.contains(&key.as_str()) {
                     continue;
                 }
-                let hint = closest(key, self.fields.iter().map(|f| f.name.as_str())).map(|name| format!(" (did you mean `{}`?)", name)).unwrap_or_default();
+                let hint = crate::suggest::closest(key, self.fields.iter().map(|f| f.name.as_str())).map(|name| format!(" (did you mean `{}`?)", name)).unwrap_or_default();
                 problems.push(Problem { field: key.clone(), message: format!("`{}` isn't a field of this schema{}", key, hint), warning: self.unknown == Unknown::Warn });
             }
         }
@@ -479,26 +479,6 @@ fn show(value: &Value) -> String {
         Value::Obj(_) => "an object".into(),
         Value::Func(_) => "a function".into(),
     }
-}
-
-/// The candidate within two edits of `key`, if there's one.
-fn closest<'a>(key: &str, candidates: impl Iterator<Item = &'a str>) -> Option<&'a str> {
-    candidates.map(|c| (edit_distance(key, c), c)).filter(|(d, c)| *d <= 2 && *d < c.len()).min_by_key(|(d, _)| *d).map(|(_, c)| c)
-}
-
-fn edit_distance(a: &str, b: &str) -> usize {
-    let (a, b): (Vec<char>, Vec<char>) = (a.to_lowercase().chars().collect(), b.to_lowercase().chars().collect());
-    let mut row: Vec<usize> = (0..=b.len()).collect();
-    for (i, ca) in a.iter().enumerate() {
-        let mut previous = row[0];
-        row[0] = i + 1;
-        for (j, cb) in b.iter().enumerate() {
-            let current = row[j + 1];
-            row[j + 1] = if ca == cb { previous } else { 1 + previous.min(current).min(row[j]) };
-            previous = current;
-        }
-    }
-    row[b.len()]
 }
 
 // --------------------------------------------------------------- TypeScript

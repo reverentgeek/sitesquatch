@@ -139,6 +139,107 @@ pub fn progress(line: &str) {
     }
 }
 
+/// `label` (`error:`) in red, when standard error is a terminal that takes
+/// colour. A log file or a CI job gets the plain word, and so does anyone who
+/// sets `NO_COLOR`; `FORCE_COLOR` is for a pager that understands the codes.
+pub fn red(label: &str) -> String {
+    use std::io::IsTerminal;
+    let set = |name: &str| std::env::var_os(name).is_some_and(|v| !v.is_empty());
+    let colour = !set("NO_COLOR") && (set("FORCE_COLOR") || (std::io::stderr().is_terminal() && std::env::var("TERM").map_or(true, |term| term != "dumb")));
+    if colour { format!("\x1b[31m{}\x1b[0m", label) } else { label.to_string() }
+}
+
+/// An error as a person reads it: its message, then the lines it's about
+/// ([`frames`]), when they can be found.
+pub fn describe(error: &anyhow::Error, fallback: &str, at: &Locator) -> String {
+    let message = format!("{:#}", error);
+    match frames(error, fallback, at) {
+        Some(lines) => format!("{}\n\n{}", message, lines),
+        None => message,
+    }
+}
+
+/// Print [`describe`] after a red `label` on standard error.
+pub fn print_error(label: &str, error: &anyhow::Error, fallback: &str, at: &Locator) {
+    eprintln!("{} {}", red(label), describe(error, fallback, at));
+}
+
+/// The lines an error points at, for up to three of its problems:
+///
+/// ```text
+///   --> src/index.edge:7
+///    5 | <h1>Guides</h1>
+///    6 | <ul>
+///    7 |   <li>{{ guide.data.name.toUpperCase() }}</li>
+///      |          ^^^^^^^^^^^^^^^
+///    8 | </ul>
+/// ```
+///
+/// The line is the file's own (a template engine counts from the end of the
+/// front matter). The carets go under the part of the line that the message
+/// quotes, when it quotes one; a schema problem points at its field.
+pub fn frames(error: &anyhow::Error, fallback: &str, at: &Locator) -> Option<String> {
+    let found: Vec<String> = from_error(error, fallback, at).iter().filter_map(|problem| frame(problem, at)).take(3).collect();
+    (!found.is_empty()).then(|| found.join("\n\n"))
+}
+
+fn frame(problem: &Diagnostic, at: &Locator) -> Option<String> {
+    const WIDEST: usize = 160;
+    let file = problem.file.as_ref()?;
+    let source = std::fs::read_to_string(at.root.join(file)).ok()?;
+    let lines: Vec<&str> = source.lines().collect();
+    let number = match (problem.line, &problem.field) {
+        (Some(line), _) => line,
+        (None, Some(field)) => field_line(&lines, field)?,
+        _ => return None,
+    };
+    let text = lines.get(number.checked_sub(1)?)?.replace('\t', "    ");
+    // What the message quotes (`in backticks` or 'in quotes') that's on the line: the longest first.
+    let mut quoted: Vec<&str> = Vec::new();
+    for mark in ['`', '\''] {
+        let mut rest = problem.message.as_str();
+        while let Some(start) = rest.find(mark) {
+            let Some(end) = rest[start + 1..].find(mark) else { break };
+            quoted.push(&rest[start + 1..start + 1 + end]);
+            rest = &rest[start + end + 2..];
+        }
+    }
+    quoted.sort_by_key(|part| std::cmp::Reverse(part.len()));
+    let field = problem.field.as_ref().map(|f| f.split('.').next().unwrap_or(f));
+    let under = field.into_iter().chain(quoted).filter(|part| part.trim().len() > 1).find_map(|part| text.find(part).map(|byte| (text[..byte].chars().count(), part.chars().count())));
+    let from = number.saturating_sub(2).max(1);
+    let to = (number + 1).min(lines.len());
+    let width = to.to_string().len().max(2);
+    let mut out = format!("  --> {}:{}", file, number);
+    for n in from..=to {
+        let line = if n == number { text.clone() } else { lines[n - 1].replace('\t', "    ") };
+        let shown: String = line.chars().take(WIDEST).collect();
+        out.push_str(format!("\n  {:>width$} | {}{}", n, shown, if line.chars().count() > WIDEST { "..." } else { "" }, width = width).trim_end());
+        if n == number {
+            if let Some((column, length)) = under.filter(|(column, length)| column + length <= WIDEST) {
+                out.push_str(&format!("\n  {:>width$} | {}{}", "", " ".repeat(column), "^".repeat(length), width = width));
+            }
+        }
+    }
+    Some(out)
+}
+
+/// The line of a file's front matter that sets `field` (the first part of a
+/// dotted path), from 1.
+fn field_line(lines: &[&str], field: &str) -> Option<usize> {
+    let key = field.split('.').next().unwrap_or(field);
+    let fence = lines.first()?.trim_end();
+    let close = match fence {
+        "+++" => "+++",
+        f if f.starts_with("---") => "---",
+        _ => return None,
+    };
+    lines.iter().enumerate().skip(1).take_while(|(_, line)| line.trim_end() != close).find(|(_, line)| {
+        let line = line.trim_start_matches(['"', '\'']);
+        line.strip_prefix(key).is_some_and(|rest| rest.trim_start_matches(['"', '\'']).trim_start().starts_with([':', '=']))
+    }).map(|(i, _)| i + 1)
+}
+
 /// Where the files an error names can be: the project root, then the input
 /// folder and the folders in it that templates and data are named from.
 pub struct Locator {
@@ -150,6 +251,13 @@ impl Locator {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         let root = root.into();
         Locator { dirs: vec![root.clone()], root }
+    }
+
+    /// For a site: its root, its input, includes and data folders, and its themes'.
+    pub fn of(cfg: &crate::Config) -> Self {
+        let ctx = cfg.build_context();
+        let dirs = [ctx.input_dir.clone(), ctx.includes_dir.clone(), ctx.data_dir.clone()].into_iter().chain(ctx.theme_dirs.iter().flat_map(|t| [t.clone(), t.join("_includes")]));
+        Locator::new(&ctx.root).with_dirs(dirs)
     }
 
     pub fn with_dirs(mut self, dirs: impl IntoIterator<Item = PathBuf>) -> Self {
@@ -244,7 +352,7 @@ fn code_for(message: &str, fallback: &str) -> String {
         "front-matter"
     } else if message.starts_with("output conflicts") {
         "conflict"
-    } else if message.contains("rendering ") || message.contains("parse error in ") || message.contains("layout `") {
+    } else if message.contains("rendering ") || message.contains("parse error in ") || message.contains("layout `") || message.contains(" loop: ") {
         "template"
     } else if message.starts_with("invalid JSON in ") || message.starts_with("invalid YAML in ") || message.starts_with("invalid TOML in ") || message.contains("_data/") || message.contains("global data `") {
         "data"
@@ -308,7 +416,8 @@ mod tests {
             ("rendering layout _includes/bad.edge for page.edge: _includes/bad.edge:2: nope", "build", "template", "src/_includes/bad.edge", Some(2)),
             ("in page.edge: invalid YAML front matter: did not find expected ',' or ']' at line 2 column 1, while parsing a flow sequence at line 1 column 8", "build", "front-matter", "src/page.edge", Some(3)),
             ("in page.edge: computed.x: parse error in page.edge (computed): line 1: invalid expression", "build", "template", "src/page.edge", None),
-            ("in page.edge: layout `nope.edge` not found in /site/src/_includes", "build", "template", "src/page.edge", None),
+            ("in page.edge: layout `nope.edge` not found: no sightings in /site/src/_includes", "build", "template", "src/page.edge", None),
+            ("in page.edge: we've passed this tree before. Layout loop: a.edge -> b.edge -> a.edge", "build", "template", "src/page.edge", None),
             (&format!("invalid JSON in {}: trailing comma at line 1 column 11", data.display()), "build", "data", "src/_data/site.json", Some(1)),
             ("ssqch.config.js: nope is not defined\n    at <anonymous> (ssqch.config.js:1:52)", "config", "config", "ssqch.config.js", Some(1)),
             ("ssqch.config.js: \"ouput\" isn't a config option", "config", "config", "ssqch.config.js", None),
@@ -330,6 +439,16 @@ mod tests {
         let found = from_error(&error, "build", &at);
         assert_eq!(found[0].to_json(), serde_json::json!({ "code": "schema", "message": "src/page.edge: `title` is required", "file": "src/page.edge", "field": "title" }));
         assert_eq!(found[1].to_json(), serde_json::json!({ "code": "front-matter", "message": "in page.edge: front matter is missing its closing `---`", "file": "src/page.edge" }));
+
+        // The lines an error is about: the file's own line, with carets under what the message quotes.
+        let shown = |message: &str| frames(&anyhow::anyhow!("{}", message), "build", &at).unwrap_or_default();
+        assert_eq!(shown("rendering page.edge with `edge`: page.edge:2: Cannot read properties of undefined (reading 'x') in `nope`"), "  --> src/page.edge:6\n   4 |\n   5 | <p>\n   6 | {{ nope.x }}\n     |    ^^^^");
+        assert_eq!(shown("rendering page.edge with `edge`: parse error in page.edge: line 1: unclosed @if("), "  --> src/page.edge:5\n   3 | ---\n   4 |\n   5 | <p>\n   6 | {{ nope.x }}");
+        assert_eq!(shown("too many pine cones"), "");
+        // A schema problem points at its field in the front matter.
+        let error = anyhow::Error::new(Diagnostics { message: "1 content error".into(), items: vec![Diagnostic::error("schema", "src/page.edge: `title` must be a string").file("src/page.edge").field("title")] });
+        assert_eq!(frames(&error, "build", &at).unwrap(), "  --> src/page.edge:2\n   1 | ---\n   2 | title: T\n     | ^^^^^\n   3 | ---");
+        assert_eq!(describe(&error, "build", &at), "1 content error\n\n  --> src/page.edge:2\n   1 | ---\n   2 | title: T\n     | ^^^^^\n   3 | ---");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -3,6 +3,7 @@
 //! ```text
 //! Built in 129 ms (production)
 //!   Pages    168 written from 160 templates, 14.2 MB
+//!   Drafts   3 unconfirmed (built in development only)
 //!   Copied   12 files, 3 unchanged, 1.1 MB
 //!   Images   4,689 files from 812 sources, 268 MB: 0 encoded, 4,689 reused
 //!   Output   dist: 4,882 files, 284 MB
@@ -30,7 +31,24 @@ pub fn summary(cfg: &Config, report: &BuildReport) -> String {
     if report.pages_written > 0 {
         pages.push_str(&format!(", {}", bytes(report.page_bytes)));
     }
+    // Since the last build: what's new, what's gone, and (while serving) what changed.
+    let mut since = Vec::new();
+    if let Some(n) = report.pages_new.filter(|n| *n > 0) {
+        since.push(format!("{} new", count(n)));
+    }
+    if let Some(n) = report.pages_gone.filter(|n| *n > 0) {
+        since.push(format!("{} gone", count(n)));
+    }
+    if let Some(n) = report.pages_changed {
+        since.push(format!("{} changed", count(n)));
+    }
+    if !since.is_empty() {
+        pages.push_str(&format!(" ({})", since.join(", ")));
+    }
     lines.push(("Pages".into(), pages));
+    if report.drafts > 0 {
+        lines.push(("Drafts".into(), format!("{} unconfirmed (built in development only)", count(report.drafts))));
+    }
 
     let passthrough = report.files_copied + report.files_unchanged;
     if passthrough > 0 {
@@ -42,7 +60,7 @@ pub fn summary(cfg: &Config, report: &BuildReport) -> String {
         lines.push(("Copied".into(), copied));
     }
     if report.files_removed > 0 {
-        lines.push(("Removed".into(), format!("{} stale file{}", count(report.files_removed), plural(report.files_removed))));
+        lines.push(("Removed".into(), format!("{} stale file{}, {}", count(report.files_removed), plural(report.files_removed), crate::voice::LEFT_NO_TRACE)));
     }
 
     lines.extend(report.summary.iter().cloned());
@@ -57,9 +75,20 @@ pub fn summary(cfg: &Config, report: &BuildReport) -> String {
     }
 
     let width = lines.iter().map(|(label, _)| label.len()).max().unwrap_or(0);
-    let mut out = format!("Built in {} ({})\n", duration(report.duration), cfg.env.as_str());
+    // A site's first build gets a word before the usual line.
+    let first = if report.first_build { format!("{} ", crate::voice::FIRST_SITING) } else { String::new() };
+    let mut out = format!("{}Built in {} ({})\n", first, duration(report.duration), cfg.env.as_str());
     for (label, text) in lines {
         let _ = writeln!(out, "  {:<width$}  {}", label, text, width = width);
+    }
+    if !report.unused.is_empty() {
+        let n = report.unused.len();
+        let _ = writeln!(out, "Uninhabited: {} Edge template{} that nothing used in this build ({}).", count(n), plural(n), report.unused.join(", "));
+    }
+    // Nothing to build is usually a wrong folder or a missing extension.
+    if report.templates == 0 && report.drafts == 0 && report.pages_written == 0 {
+        let input = ctx.input_dir.strip_prefix(&ctx.root).unwrap_or(&ctx.input_dir);
+        let _ = writeln!(out, "Nothing sighted: no file in {} matches templateFormats ({}).", crate::slashes(input), cfg.template_formats.join(", "));
     }
     out
 }

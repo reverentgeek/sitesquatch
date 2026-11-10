@@ -137,3 +137,18 @@ fn a_call_reaches_the_filter_when_data_has_the_same_name() {
     let err = engine(&[]).render_str("test", "{{ nope('x') }}", data(r#"{"nope":"text"}"#)).unwrap_err();
     assert!(format!("{:#}", err).contains("`nope` is not a function"), "{:#}", err);
 }
+
+#[test]
+fn an_include_loop_is_named() {
+    // Two partials that include each other: the error has the loop once, not a line for each lap.
+    let e = engine(&[("a", "A\n@include('b')\n"), ("b", "B\n@include('a')\n")]);
+    let error = format!("{:#}", e.render_str("page", "@include('a')\n", data("{}")).unwrap_err());
+    assert_eq!(error, "b:2: we've passed this tree before. Include loop: a -> b -> a");
+    // A component that uses itself.
+    let e = engine(&[("card", "@!component('card')\n")]);
+    let error = format!("{:#}", e.render_str("page", "@!component('card')\n", data("{}")).unwrap_err());
+    assert_eq!(error, "card:1: we've passed this tree before. Component loop: card -> card");
+    // A partial that includes itself a few levels deep (a tree) is fine, and the trail is empty after.
+    let e = engine(&[("node", "{{ n }}\n@let(n = n - 1)\n@includeIf(n > 0, 'node')\n")]);
+    assert_eq!(e.render_str("page", "@include('node')\n", data(r#"{"n":3}"#)).unwrap().split_whitespace().collect::<String>(), "321");
+}

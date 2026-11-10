@@ -455,7 +455,7 @@ impl DiffReport {
         }
         let unchanged = format!("{} and {}", plural(self.unchanged_pages, "page", "pages"), plural(self.unchanged_files, "other file", "other files"));
         if self.is_same() {
-            out.push_str(&format!("\nNo differences: {} are the same.\n", unchanged));
+            out.push_str(&format!("\nNo differences: {} are the same. The stump has not moved.\n", unchanged));
             return out;
         }
         if !self.added.is_empty() {

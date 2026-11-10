@@ -32,6 +32,7 @@ walkdir = "2"
 globset = "0.4"
 deunicode = "1.6"
 clap = { version = "4", features = ["derive", "string"] }
+clap_complete = "4"
 tiny_http = "0.12"
 notify = "8"
 dunce = "1"

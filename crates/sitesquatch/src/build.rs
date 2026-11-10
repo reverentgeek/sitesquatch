@@ -27,6 +27,8 @@ use crate::{Map, Value};
 
 struct Layout {
     name: String,
+    /// The file.
+    path: PathBuf,
     /// The engines it runs through: `.html` layouts get `htmlEngine` first,
     /// `.md` layouts `markdownEngine`, like pages.
     engines: Vec<String>,
@@ -103,7 +105,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     for hook in &cfg.before_build {
         hook(&ctx).context("before_build hook failed")?;
     }
-    let Prepared { markdown, engines, theme_includes, global, files, tpls, mut pages, theme_copies } = prepare(cfg, &ctx, &mut timer, false)?;
+    let Prepared { markdown, engines, theme_includes, global, files, tpls, mut pages, theme_copies, drafts, layouts_used } = prepare(cfg, &ctx, &mut timer, false)?;
     check_schemas(cfg, &ctx, &pages)?;
     timer.lap("paginate");
 
@@ -136,7 +138,8 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
 
     // ---- layouts, transforms, write
     let outputs: Vec<(usize, PathBuf)> = pages.iter().enumerate().filter_map(|(i, p)| p.output.clone().map(|o| (i, o))).collect();
-    let written: Vec<(PathBuf, u64)> = collect_errors(
+    // (the file, its size, whether its contents changed)
+    let written: Vec<(PathBuf, u64, bool)> = collect_errors(
         outputs
             .par_iter()
             .map(|(i, out)| guard(&pages[*i].tpl.rel, || {
@@ -154,11 +157,16 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
                 if let Some(parent) = out.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                std::fs::write(out, &html).with_context(|| format!("writing {}", out.display()))?;
+                // While serving, a page that comes out the same is left alone, so the
+                // browser only reloads for a page that changed.
+                let changed = !(cfg.serving && same_contents(out, html.as_bytes()));
+                if changed {
+                    std::fs::write(out, &html).with_context(|| format!("writing {}", out.display()))?;
+                }
                 if !cfg.quiet {
                     diagnostics::progress(&format!("[ssqch] Writing {} from {} ({})", display_path(&ctx, out), display_path(&ctx, &page.tpl.input), page.tpl.engines.join(", ")));
                 }
-                Ok((out.clone(), html.len() as u64))
+                Ok((out.clone(), html.len() as u64, changed))
             }))
             .collect(),
     )?;
@@ -171,18 +179,25 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     let stylesheet = write_highlight_css(cfg, &ctx)?;
     timer.lap("copy");
 
-    let outputs: Vec<&PathBuf> = written.iter().map(|(p, _)| p).chain(&generated).chain(&built).chain(&copy.paths).chain(&stylesheet).collect();
-    let files_removed = record_outputs(cfg, &ctx, &outputs)?;
+    let outputs: Vec<&PathBuf> = written.iter().map(|(p, _, _)| p).chain(&generated).chain(&built).chain(&copy.paths).chain(&stylesheet).collect();
+    let page_paths: Vec<&PathBuf> = written.iter().map(|(p, _, _)| p).collect();
+    let recorded = record_outputs(cfg, &ctx, &outputs, &page_paths)?;
 
     let mut report = BuildReport {
         templates: tpls.len(),
         pages_written: written.len(),
-        page_bytes: written.iter().map(|(_, n)| n).sum(),
+        page_bytes: written.iter().map(|(_, n, _)| n).sum(),
+        pages_changed: cfg.serving.then(|| written.iter().filter(|(_, _, changed)| *changed).count()),
+        pages_new: recorded.pages_new,
+        pages_gone: recorded.pages_gone,
         files_copied: copy.copied,
         files_unchanged: copy.unchanged,
         passthrough_bytes: copy.bytes,
-        files_removed,
-        written: written.into_iter().map(|(p, _)| p).chain(generated).collect(),
+        files_removed: recorded.removed,
+        unused: if cfg.verbose { unused_templates(&ctx, &layouts_used, &engines.edge.inner().loaded()) } else { Vec::new() },
+        drafts,
+        first_build: recorded.first_build,
+        written: written.into_iter().map(|(p, _, _)| p).chain(generated).collect(),
         duration: started.elapsed(),
         ..Default::default()
     };
@@ -208,6 +223,10 @@ struct Prepared {
     tpls: Vec<Arc<Tpl>>,
     pages: Vec<Page>,
     theme_copies: Vec<CopyJob>,
+    /// Drafts a production build left out.
+    drafts: usize,
+    /// The files of the layouts the pages use.
+    layouts_used: HashSet<PathBuf>,
 }
 
 fn prepare(cfg: &Config, ctx: &BuildContext, timer: &mut Timer, keep_layers: bool) -> Result<Prepared> {
@@ -298,6 +317,7 @@ fn prepare(cfg: &Config, ctx: &BuildContext, timer: &mut Timer, keep_layers: boo
         files.par_iter().map(|path| load_template(cfg, ctx, path, &shared).map(Arc::new)).collect(),
     )?;
     // Drafts (`draft: true`) are built in development only.
+    let before = tpls.len();
     if ctx.env == crate::Environment::Production {
         tpls.retain(|t| {
             let draft = t.data.get("draft").is_some_and(Value::truthy);
@@ -307,6 +327,7 @@ fn prepare(cfg: &Config, ctx: &BuildContext, timer: &mut Timer, keep_layers: boo
             !draft
         });
     }
+    let drafts = before - tpls.len();
     timer.lap("read");
 
     // ---- pagination, computed data and permalinks
@@ -326,7 +347,8 @@ fn prepare(cfg: &Config, ctx: &BuildContext, timer: &mut Timer, keep_layers: boo
         pages.extend(more);
     }
     check_conflicts(ctx, &pages)?;
-    Ok(Prepared { markdown, engines, theme_includes, global, files, tpls, pages, theme_copies })
+    let layouts_used = layouts.lock().unwrap().values().map(|layout| layout.path.clone()).collect();
+    Ok(Prepared { markdown, engines, theme_includes, global, files, tpls, pages, theme_copies, drafts, layouts_used })
 }
 
 /// A page as `ssqch inspect` sees it.
@@ -458,6 +480,35 @@ fn builtin_filters(markdown: &Arc<MarkdownEngine>) -> Map {
     filters
 }
 
+/// The Edge templates in the includes folder (and the layouts folder, when
+/// it's another one) that this build used neither as a layout nor as an
+/// include or component, from the project root. Other languages' includes
+/// aren't tracked, so only `.edge` files are looked at; render hooks and
+/// containers are found by name, not included, so they're left out.
+fn unused_templates(ctx: &BuildContext, layouts: &HashSet<PathBuf>, included: &[String]) -> Vec<String> {
+    let mut unused = BTreeSet::new();
+    let mut dirs = vec![&ctx.includes_dir];
+    if ctx.layouts_dir != ctx.includes_dir {
+        dirs.push(&ctx.layouts_dir);
+    }
+    for dir in dirs {
+        for entry in walkdir::WalkDir::new(dir).into_iter().filter_map(Result::ok).filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "edge")) {
+            let Ok(rel) = entry.path().strip_prefix(dir).map(slashes) else { continue };
+            let name = rel.trim_end_matches(".edge");
+            let by_name = rel.starts_with("hooks/") || rel.starts_with("containers/");
+            if !by_name && !layouts.contains(entry.path()) && !included.iter().any(|i| i.trim_start_matches("./") == name) {
+                unused.insert(display_path(ctx, entry.path()).trim_start_matches("./").to_string());
+            }
+        }
+    }
+    unused.into_iter().collect()
+}
+
+/// Whether the file at `path` already holds exactly `contents`.
+fn same_contents(path: &Path, contents: &[u8]) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.len() == contents.len() as u64) && std::fs::read(path).is_ok_and(|old| old == contents)
+}
+
 /// Run every job, then report all failures together rather than just the first.
 /// Run `f`, converting a panic into an error so one bad page can't abort the
 /// whole build without context.
@@ -466,7 +517,7 @@ fn guard<T>(what: &str, f: impl FnOnce() -> Result<T>) -> Result<T> {
         Ok(r) => r,
         Err(p) => {
             let msg = p.downcast_ref::<String>().cloned().or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
-            Err(anyhow!("internal error while processing {}: {}", what, msg))
+            Err(anyhow!("{}: internal error while processing {}: {} (this is a bug in ssqch; please report it at {})", crate::voice::SOMETHING_LARGE, what, msg, crate::voice::ISSUES_URL))
         }
     }
 }
@@ -517,26 +568,35 @@ fn write_highlight_css(_cfg: &Config, _ctx: &BuildContext) -> Result<Option<Path
     Ok(None)
 }
 
-// --------------------------------------------------------------------- clean
+// ------------------------------------------------------------- leave no trace
 
 /// Where the build records the files it wrote and copied, relative to the
-/// output folder, so a later build with `clean` knows which ones are its own.
-const OUTPUT_LIST: &str = ".cache/ssqch/output-files.json";
+/// output folder, so a later build with `leave_no_trace` knows which ones are its own.
+pub const OUTPUT_LIST: &str = ".cache/ssqch/output-files.json";
 
 /// Record this build's output files. Files an earlier build recorded that this
-/// one didn't produce are stale: with `clean` they're deleted, and without it
-/// they stay on the list, so turning `clean` on later still finds them.
-/// Returns how many were deleted.
-fn record_outputs(cfg: &Config, ctx: &BuildContext, outputs: &[&PathBuf]) -> Result<usize> {
+/// one didn't produce are stale: with `leave_no_trace` they're deleted, and
+/// without it they stay on the list, so turning it on later still finds them.
+/// The list also has the pages (`pages`), so the next build can say which
+/// are new and which are gone.
+fn record_outputs(cfg: &Config, ctx: &BuildContext, outputs: &[&PathBuf], pages: &[&PathBuf]) -> Result<Recorded> {
     let list_path = ctx.root.join(OUTPUT_LIST);
+    let first_build = !list_path.is_file();
     let output_name = slashes(ctx.output_dir.strip_prefix(&ctx.root).unwrap_or(&ctx.output_dir));
-    let mut current: BTreeSet<String> = outputs.iter().filter_map(|p| p.strip_prefix(&ctx.output_dir).ok()).map(slashes).collect();
-    let previous: Vec<String> = std::fs::read_to_string(&list_path)
-        .ok()
-        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-        .filter(|v| v["output"].as_str() == Some(output_name.as_str()))
-        .and_then(|v| v["files"].as_array().map(|files| files.iter().filter_map(|f| f.as_str().map(String::from)).collect()))
-        .unwrap_or_default();
+    let relative = |paths: &[&PathBuf]| -> BTreeSet<String> { paths.iter().filter_map(|p| p.strip_prefix(&ctx.output_dir).ok()).map(slashes).collect() };
+    let mut current = relative(outputs);
+    let pages = relative(pages);
+    let before = std::fs::read_to_string(&list_path).ok().and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok()).filter(|v| v["output"].as_str() == Some(output_name.as_str()));
+    let names = |key: &str| -> Option<Vec<String>> { before.as_ref().and_then(|v| v[key].as_array().map(|files| files.iter().filter_map(|f| f.as_str().map(String::from)).collect())) };
+    let previous: Vec<String> = names("files").unwrap_or_default();
+    // A list from before 0.4 has no pages: nothing to compare with.
+    let (pages_new, pages_gone) = match names("pages") {
+        Some(old) => {
+            let old: BTreeSet<String> = old.into_iter().collect();
+            (Some(pages.difference(&old).count()), Some(old.difference(&pages).count()))
+        }
+        None => (None, None),
+    };
 
     let mut removed = 0;
     let stale: Vec<String> = previous.into_iter().filter(|r| !current.contains(r)).collect();
@@ -550,8 +610,8 @@ fn record_outputs(cfg: &Config, ctx: &BuildContext, outputs: &[&PathBuf]) -> Res
         if !path.is_file() {
             continue;
         }
-        if !cfg.clean {
-            // Still ours, and stale: remember it for when `clean` is turned on.
+        if !cfg.leave_no_trace {
+            // Still ours, and stale: remember it for when `leave_no_trace` is turned on.
             current.insert(rel);
             continue;
         }
@@ -573,12 +633,24 @@ fn record_outputs(cfg: &Config, ctx: &BuildContext, outputs: &[&PathBuf]) -> Res
     if let Some(parent) = list_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let list = serde_json::to_string_pretty(&serde_json::json!({ "output": output_name, "files": current }))?;
+    let list = serde_json::to_string_pretty(&serde_json::json!({ "output": output_name, "files": current, "pages": pages }))?;
     // Left alone when nothing changed, so a build with nothing new touches no files.
     if std::fs::read_to_string(&list_path).ok().as_deref() != Some(list.as_str()) {
         std::fs::write(&list_path, list).with_context(|| format!("writing {}", list_path.display()))?;
     }
-    Ok(removed)
+    Ok(Recorded { removed, first_build, pages_new, pages_gone })
+}
+
+/// What [`record_outputs`] found.
+struct Recorded {
+    /// Stale files deleted (with `leave_no_trace`).
+    removed: usize,
+    /// There was no list: this is the site's first build.
+    first_build: bool,
+    /// Pages the last build to this folder didn't write, and pages it wrote
+    /// that this one didn't. `None` when the last build's pages aren't known.
+    pages_new: Option<usize>,
+    pages_gone: Option<usize>,
 }
 
 // ------------------------------------------------------------------ discover
@@ -754,6 +826,20 @@ fn load_directory_data(cfg: &Config, ctx: &BuildContext, files: &[PathBuf]) -> R
     Ok(out)
 }
 
+/// ` (did you mean `posts.edge`?)` for a layout name that's nearly the name
+/// of a file in the layouts folder, or nothing.
+fn closest_layout(ctx: &BuildContext, name: &str) -> String {
+    let files: Vec<String> = walkdir::WalkDir::new(&ctx.layouts_dir)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file())
+        .filter_map(|e| e.path().strip_prefix(&ctx.layouts_dir).ok().map(slashes))
+        .collect();
+    // A layout can be named without its extension.
+    let stems: Vec<String> = files.iter().filter_map(|f| f.rsplit_once('.').map(|(stem, _)| stem.to_string())).collect();
+    crate::suggest::closest(name, files.iter().chain(&stems).map(String::as_str).filter(|c| *c != name)).map(|found| format!(" (did you mean `{}`?)", found)).unwrap_or_default()
+}
+
 fn load_layout(cfg: &Config, ctx: &BuildContext, name: &str, cache: &Mutex<HashMap<String, Arc<Layout>>>) -> Result<Arc<Layout>> {
     if let Some(l) = cache.lock().unwrap().get(name) {
         return Ok(l.clone());
@@ -763,7 +849,7 @@ fn load_layout(cfg: &Config, ctx: &BuildContext, name: &str, cache: &Mutex<HashM
     let path = dirs
         .flat_map(|dir| std::iter::once(dir.join(name)).chain(cfg.template_formats.iter().map(move |ext| dir.join(format!("{}.{}", name, ext)))).collect::<Vec<_>>())
         .find(|p| p.is_file())
-        .ok_or_else(|| anyhow!("layout `{}` not found in {}{}", name, ctx.layouts_dir.display(), if ctx.theme_dirs.is_empty() { "" } else { " or the theme" }))?;
+        .ok_or_else(|| anyhow!("layout `{}` not found: no sightings in {}{}{}", name, ctx.layouts_dir.display(), if ctx.theme_dirs.is_empty() { "" } else { " or the theme" }, closest_layout(ctx, name)))?;
     let src = std::fs::read_to_string(&path)?;
     let (data, body) = data::parse_front_matter(&src).with_context(|| format!("in layout {}", path.display()))?;
     let layout = Arc::new(Layout {
@@ -771,6 +857,7 @@ fn load_layout(cfg: &Config, ctx: &BuildContext, name: &str, cache: &Mutex<HashM
         engines: engines_for(cfg, &path.extension().unwrap().to_string_lossy().to_ascii_lowercase()),
         body: body.to_string(),
         data,
+        path,
     });
     cache.lock().unwrap().insert(name.to_string(), layout.clone());
     Ok(layout)
@@ -840,13 +927,16 @@ fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared)
 
         // Layout chain; layout front matter sits below template data.
         let mut chain = Vec::new();
+        let mut names: Vec<String> = Vec::new();
         let mut next = own.get("layout").and_then(|l| l.as_str().map(String::from));
         while let Some(name) = next {
-            if chain.len() > 20 {
-                bail!("layout chain is too deep (circular layouts?)");
+            // A layout that leads back to one already in the chain never ends.
+            if let Some(start) = names.iter().position(|n| *n == name) {
+                bail!("{}. Layout loop: {} -> {}", crate::voice::PASSED_THIS_TREE, names[start..].join(" -> "), name);
             }
             let layout = load_layout(cfg, ctx, &name, layouts)?;
             next = layout.data.get("layout").and_then(|l| l.as_str().map(String::from));
+            names.push(name);
             chain.push(layout);
         }
         let mut data = global.clone();
@@ -1299,7 +1389,7 @@ fn check_conflicts(ctx: &BuildContext, pages: &[Page]) -> Result<()> {
     if errors.is_empty() {
         Ok(())
     } else {
-        let message = format!("output conflicts:\n  - {}", errors.iter().map(|(m, _)| m.as_str()).collect::<Vec<_>>().join("\n  - "));
+        let message = format!("output conflicts (two sets of tracks lead to the same place):\n  - {}", errors.iter().map(|(m, _)| m.as_str()).collect::<Vec<_>>().join("\n  - "));
         let items = errors.into_iter().map(|(m, input)| Diagnostic::error("conflict", m).file(display_path(ctx, &input))).collect();
         Err(Diagnostics { message, items }.into())
     }
@@ -1624,7 +1714,7 @@ fn run_file_builders(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
 /// Run the generators ([`Config::add_generator`]) over the written pages and
 /// write their files. Returns the paths written (not counting appends to a
 /// page's own file).
-fn run_generators(cfg: &Config, ctx: &BuildContext, pages: &[Page], written: &[(PathBuf, u64)], markdown: &MarkdownEngine, global: &Map) -> Result<Vec<PathBuf>> {
+fn run_generators(cfg: &Config, ctx: &BuildContext, pages: &[Page], written: &[(PathBuf, u64, bool)], markdown: &MarkdownEngine, global: &Map) -> Result<Vec<PathBuf>> {
     if cfg.generators.is_empty() {
         return Ok(Vec::new());
     }
@@ -1634,7 +1724,7 @@ fn run_generators(cfg: &Config, ctx: &BuildContext, pages: &[Page], written: &[(
             Some(crate::PageSummary { url: p.url.clone()?, output_path: p.output.clone()?, input_path: p.tpl.input.clone(), date: p.date, data: Value::Obj(p.data.clone()) })
         })
         .collect();
-    let page_outputs: HashSet<&Path> = written.iter().map(|(p, _)| p.as_path()).collect();
+    let page_outputs: HashSet<&Path> = written.iter().map(|(p, _, _)| p.as_path()).collect();
     let mut owners: HashMap<PathBuf, String> = HashMap::new();
     let mut out = Vec::new();
     let mut global_data: Option<Value> = None;

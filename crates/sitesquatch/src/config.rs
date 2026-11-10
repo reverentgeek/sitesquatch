@@ -133,14 +133,29 @@ pub struct BuildReport {
     pub pages_written: usize,
     /// Total size of the pages written.
     pub page_bytes: u64,
+    /// While serving: the pages whose contents changed (the others were left
+    /// as they were). `None` for a build that writes every page.
+    pub pages_changed: Option<usize>,
+    /// Pages the last build to this folder didn't have, and pages it had that
+    /// this one doesn't. `None` when there's no earlier build to compare with.
+    pub pages_new: Option<usize>,
+    pub pages_gone: Option<usize>,
     /// Passthrough files copied because they were new or changed.
     pub files_copied: usize,
     /// Passthrough files already up to date in the output.
     pub files_unchanged: usize,
     /// Total size of every passthrough file, copied or not.
     pub passthrough_bytes: u64,
-    /// Stale files deleted from the output (with `clean`).
+    /// Stale files deleted from the output (with `leave_no_trace`).
     pub files_removed: usize,
+    /// Drafts (`draft: true`) a production build left out.
+    pub drafts: usize,
+    /// With `--verbose`: the Edge templates in the includes folder that
+    /// nothing used in this build, from the project root.
+    pub unused: Vec<String>,
+    /// Whether this is the site's first build: there was no list of an
+    /// earlier build's files (`.cache/ssqch/output-files.json`).
+    pub first_build: bool,
     pub written: Vec<PathBuf>,
     pub duration: std::time::Duration,
     pub timings: Vec<(String, std::time::Duration)>,
@@ -252,8 +267,9 @@ pub struct Config {
     /// Delete output files an earlier build wrote or copied that this build
     /// didn't (a deleted post's page, a removed passthrough file). Files from
     /// other tools are never touched: only files listed in
-    /// `.cache/ssqch/output-files.json` are candidates.
-    pub clean: bool,
+    /// `.cache/ssqch/output-files.json` are candidates. In a config file
+    /// it's `leaveNoTrace` (or `clean`, its other name).
+    pub leave_no_trace: bool,
     /// Globs (relative to the input directory) for files and folders that
     /// aren't templates: `["drafts/**", "**/*.wip.md"]`.
     pub ignore: Vec<String>,
@@ -314,7 +330,7 @@ impl Config {
             html_engine: Some("edge".into()),
             markdown: MarkdownOptions::default(),
             data_deep_merge: true,
-            clean: false,
+            leave_no_trace: false,
             ignore: Vec::new(),
             bundles: false,
             strict: false,
@@ -487,7 +503,7 @@ impl Config {
 
     /// Add files made from the list of pages (a sitemap, redirect pages),
     /// after the pages are written and before `after_build` hooks run. The
-    /// build writes them, records them for `clean`, and reports a file that
+    /// build writes them, records them for `leave_no_trace`, and reports a file that
     /// collides with a page or another generator's.
     pub fn add_generator<F>(&mut self, name: impl Into<String>, f: F) -> &mut Self
     where
@@ -499,7 +515,7 @@ impl Config {
 
     /// Add files built from sources of their own (compiled CSS), written at
     /// the start of each build, before `before_build` hooks run (so asset
-    /// fingerprinting sees them). The build records them for `clean`.
+    /// fingerprinting sees them). The build records them for `leave_no_trace`.
     pub fn add_file_builder<F>(&mut self, name: impl Into<String>, f: F) -> &mut Self
     where
         F: Fn(&BuildContext) -> Result<Vec<GeneratedFile>> + Send + Sync + 'static,

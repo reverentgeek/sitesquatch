@@ -8,6 +8,7 @@ mod capabilities;
 mod import;
 mod init;
 mod modules;
+mod sighting;
 
 // musl's allocator is slow under the many-threaded allocation of a build
 // (rendering pages and encoding images in parallel), so the static Linux
@@ -42,6 +43,7 @@ fn main() -> std::process::ExitCode {
         sitesquatch::cli::ExtraCommand { command: init::types_command(), run: Box::new(init::run_types) },
         sitesquatch::cli::ExtraCommand { command: import::import_command(), run: Box::new(import::run_import) },
         sitesquatch::cli::ExtraCommand { command: capabilities::capabilities_command(), run: Box::new(capabilities::run_capabilities) },
+        sitesquatch::cli::ExtraCommand { command: sighting::sighting_command(), run: Box::new(sighting::run_sighting) },
     ];
     sitesquatch::cli::try_run_with(configure, extra)
 }
@@ -239,7 +241,8 @@ impl<'a> Options<'a> {
             if known.is_empty() {
                 bail!("this plugin takes no options (got \"{}\")", key);
             }
-            bail!("unknown option \"{}\" (options: {})", key, known.join(", "));
+            let hint = sitesquatch::suggest::closest(key, known.iter().copied()).map(|name| format!(" (did you mean \"{}\"?)", name)).unwrap_or_default();
+            bail!("unknown option \"{}\"{} (options: {})", key, hint, known.join(", "));
         }
         Ok(Options(map))
     }

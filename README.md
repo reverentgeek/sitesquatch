@@ -4,22 +4,25 @@
 [![Latest release](https://img.shields.io/github/v/release/reverentgeek/sitesquatch)](https://github.com/reverentgeek/sitesquatch/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-SiteSquatch (`ssqch`) is a static site generator that fits in a single binary. You write templates in [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Jinja](https://jinja.palletsprojects.com/), [Handlebars](https://handlebarsjs.com/) or [Mustache](https://mustache.github.io/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. No Node required at all: the JavaScript runs on an engine built into `ssqch`.
+SiteSquatch (`ssqch`) is a static site generator that fits in a single binary: large, quick, and rarely photographed. You write templates in [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Jinja](https://jinja.palletsprojects.com/), [Handlebars](https://handlebarsjs.com/) or [Mustache](https://mustache.github.io/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. No Node required at all: the JavaScript runs on an engine built into `ssqch`.
 
-It's quick, too. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in about **0.1 s** once its images are cached. See [Benchmarks](#benchmarks) for the details.
+It moves fast for its size. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in about **0.1 s** once its images are cached, which is gone before you've found your camera. [Benchmarks](#benchmarks) has the measurements.
 
-What's in the box:
+It reports like a park ranger who has seen some things. What happened comes first, with the file and the line, and now and then something large walks through the log. The jokes never stand in for the facts, the JSON output has none, and nothing of ssqch's own is ever added to the pages it builds.
+
+What's in the pack:
 
 - **A data cascade, layouts, collections, pagination and permalinks**, so a blog or docs site needs no custom code.
 - **A JavaScript config** with filters, global data, custom collections, transforms and build hooks, plus npm packages, `fetch` (with a cache) and the Node built-ins configs usually reach for.
 - **Markdown that does the work of a plugin stack:** heading ids, footnotes, containers, render hooks in any template language, and syntax highlighting at build time.
 - **Responsive images:** every `<img>` becomes a `<picture>` with AVIF, WebP and fallback sources, cached by content so later builds skip the encoding.
 - **Checks that run with every build:** [content schemas](#content-schemas) for front matter, a link checker, [`ssqch diff`](#comparing-two-builds) to see what a change did to the output, and [`ssqch inspect`](#where-a-value-comes-from) to see where a page's data came from.
-- **Themes without a package manager, custom elements that load only where they're used**, Sass, a sitemap, redirects, RSS helpers, HTML minification and asset fingerprinting.
-- **A quick start and a way in:** `ssqch init` (a blog, or a docs site with a sidebar and search), `ssqch import` for Eleventy and Zola sites, [`ssqch new`](#starting-a-new-page) for the next post, and a dev server that reloads pages and the config.
+- **Errors that point at the spot:** the line a problem is on, with carets under it, and a guess at what you meant (`did you mean /contact/?`) for a link, a layout, an include or an option that's nearly right.
+- **Themes without a package manager, custom elements that load only where they're used**, Sass (yes, Sassquatch), a sitemap, redirects, RSS helpers, HTML minification and asset fingerprinting.
+- **A quick start and a way in:** `ssqch init` (a blog, or a docs site with a sidebar and search), `ssqch import` for Eleventy and Zola sites, [`ssqch new`](#starting-a-new-page) for the next post, and a dev server (it answers to Squatch Watch) that reloads only the page you changed, swaps stylesheets in place, and shows a broken build in the browser.
 - **A Rust API** for when JavaScript isn't enough: custom template engines, heavy transforms, or a whole site as its own binary.
 
-SiteSquatch is young (0.x), so expect some breaking changes between minor versions. Each one is listed in the [changelog](CHANGELOG.md) with what you'd need to change.
+SiteSquatch is a young one (0.x), so expect some breaking changes between minor versions. Each is listed in the [changelog](CHANGELOG.md) with what you'd need to change.
 
 ## Install
 
@@ -60,28 +63,30 @@ In **GitHub Actions**, [`reverentgeek/setup-ssqch`](https://github.com/reverentg
 
 > **Note:** AVIF support on an x86_64 machine needs the [nasm](https://nasm.us) assembler installed first (`brew install nasm`, `apt-get install nasm`, `choco install nasm`). ARM machines don't need it. Leave off `--features avif` to skip AVIF, and the build gets faster too.
 
-Check that it worked:
+Confirm the sighting:
 
 ```sh
 ssqch --version
 ```
 
+For Tab completion of commands and options, `ssqch completions zsh` (or `bash`, `fish`, `powershell`, `elvish`) prints a script for your shell, and `ssqch completions --help` says where each shell wants it.
+
 ## Build your first site
 
-The quickest start is `ssqch init`, which creates a starter site (a config, a layout, a home page, a post, a data file, an archetype for the next post, and editor types) and then gets out of the way:
+The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, three posts, a 404 page, a data file, an archetype for the next post, and editor types) and then leaves you to it:
 
 ```sh
 ssqch init my-site
 cd my-site && ssqch serve
 ```
 
-Open <http://localhost:8080>, edit `src/posts/hello-world.md`, and watch the page reload. `ssqch init` never overwrites a file that's already there, so it's safe to run in a folder you've started.
+Open <http://localhost:8080>, edit `src/posts/i-know-what-i-saw.md`, and watch the page reload. (The starter is an amateur investigator's field notes: a sighting, a correction, and a stump. The posts are short, and each one shows you something.) `ssqch init` never overwrites a file that's already there, so it's safe to run in a folder you've started.
 
 The layout and home page are [Edge](#templates-and-data) templates. To start in another language, pass `--engine liquid`, `--engine njk` (Nunjucks) or `--engine hbs` (Handlebars); the config then lists that engine in `templateFormats` and runs Markdown through it.
 
 Writing documentation? `ssqch init my-docs --starter docs` creates a docs site instead: a sidebar, breadcrumbs and previous/next links from one `nav.yml`, a table of contents on each page, notes and tabs, highlighted code, a schema that checks each page's front matter, the link checker, and Pagefind search with `SEARCH=1`. The pages are plain HTML that reads fine without JavaScript (a small script turns tab sections into tabs), and every file is yours to edit: there's no theme package underneath.
 
-To see how the pieces fit, here's a tiny site built by hand: a home page that lists posts. Here's the whole thing:
+To see how the pieces fit, here's a small site built by hand: a home page that lists posts. This is all of it:
 
 ```text
 ssqch.config.js
@@ -160,13 +165,13 @@ You'll see a line for each page, then a summary:
 ```text
 [ssqch] Writing ./dist/index.html from ./src/index.edge (edge)
 [ssqch] Writing ./dist/posts/pine-cone-crunch/index.html from ./src/posts/pine-cone-crunch.md (edge, md)
-Built in 2.75 ms (production)
+First confirmed siting. Built in 2.75 ms (production)
   Pages   2 written from 2 templates, 401 B
   Output  dist: 2 files, 401 B
   Time    setup 224 µs, data 435 µs, read 1.54 ms, paginate 45 µs, render 205 µs, write 282 µs, copy 0 µs, after 20 µs
 ```
 
-`dist/index.html` has a `SQUATCH SNACKS!` heading and a link to `/posts/pine-cone-crunch/`. You've got a website!
+`dist/index.html` has a `SQUATCH SNACKS!` heading and a link to `/posts/pine-cone-crunch/`. You've got a website! (A site's first build is its first confirmed siting. After that it's plain `Built in`.)
 
 To work on it with live reload, run the dev server and open <http://localhost:8080>:
 
@@ -174,9 +179,22 @@ To work on it with live reload, run the dev server and open <http://localhost:80
 ssqch serve
 ```
 
-`ssqch serve` rebuilds when your sources change and reloads the browser. It also reloads (without a rebuild) when another tool, like a PostCSS or esbuild watcher, writes a CSS or JavaScript file into the output folder, so the page never reloads before its new CSS is there.
+```text
+Squatch Watch is on. Serving dist at http://localhost:8080/
+Fresh tracks in src/posts/pine-cone-crunch.md
+```
 
-`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode. The other commands are `ssqch init`, `ssqch types`, [`ssqch new`](#starting-a-new-page), [`ssqch inspect`](#where-a-value-comes-from), [`ssqch diff`](#comparing-two-builds), [`ssqch import`](#moving-from-another-generator) and [`ssqch capabilities`](#scripts-and-coding-agents), and `ssqch build --format json` reports to a [script or a coding agent](#scripts-and-coding-agents).
+`ssqch serve` (it answers to Squatch Watch) rebuilds when your sources change, and it's careful about what it disturbs:
+
+- **Only the page you're on reloads,** and only if it came out different. Edit another post, and the tab you're looking at stays where it is. The summary says how many pages changed: `Pages  168 written from 140 templates, 6.83 MB (1 changed)`.
+- **A stylesheet is swapped in place,** without a reload, so the page keeps its scroll position and a half-filled form. That goes for CSS another tool writes into the output folder too (a PostCSS watcher, say): the browser hears about it without a rebuild, so a page never reloads before its new CSS is there. A changed script or image reloads the page.
+- **A build that fails shows up in the browser,** over the page, with the error and the lines it's about. The tab's title and icon say so too, which is how you find out from another window. The page underneath is from the last build that worked, and the next good build clears the error.
+- **A URL that isn't there** gets the site's `404.html`, or, when the site has none, a page of the server's own that says where the trail went cold and suggests the closest URL.
+- **A site without a `favicon.ico`** gets a footprint in the tab, where there used to be a 404 on every page load.
+
+None of that is written to the output folder: the server adds it to pages as it sends them.
+
+`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode and the Edge templates nothing used. Errors are red on a terminal and plain in a pipe, a log, or anywhere `NO_COLOR` is set. The other commands are `ssqch init`, `ssqch types`, `ssqch completions`, [`ssqch new`](#starting-a-new-page), [`ssqch inspect`](#where-a-value-comes-from), [`ssqch diff`](#comparing-two-builds), [`ssqch import`](#moving-from-another-generator) and [`ssqch capabilities`](#scripts-and-coding-agents), and `ssqch build --format json` reports to a [script or a coding agent](#scripts-and-coding-agents).
 
 ## Configuring a site
 
@@ -228,7 +246,7 @@ The default export is the config: an object, or a function (sync or async) that 
 | `markdownEngine`, `htmlEngine` | The engine that runs over `.md` and `.html` files first (default `"edge"`; `false` for none). |
 | `markdown` | Heading IDs, footnotes and the other Markdown extensions; see [Markdown](#markdown). |
 | `deepMerge` | Merge objects and concatenate arrays through the data cascade (default `true`). |
-| `clean` | Delete stale files from the output: pages and passthrough files an earlier build wrote that this one didn't, like a deleted post (default `false`). ssqch keeps a list of what it writes in `.cache/ssqch/output-files.json`, so files other tools write into the output (your CSS build, say) are never touched. |
+| `leaveNoTrace` | Delete stale files from the output: pages and passthrough files an earlier build wrote that this one didn't, like a deleted post (default `false`). ssqch keeps a list of what it writes in `.cache/ssqch/output-files.json`, so files other tools write into the output (your CSS build, say) are never touched: it packs out only what it packed in. `clean` is another name for the same option (set one of them). |
 | `filters` | `{ name: function }`, callable from templates: `{{ slug(title) }}`. Async functions are awaited. |
 | `data` | `{ name: value }` for every template. A function (sync or async) is called on each build. |
 | `collections` | `{ name: (pages) => ... }`. `pages` has `all()`, `byTag(tag)`, `byTags(...tags)` and `byGlob(glob or globs)`, oldest first. |
@@ -244,9 +262,9 @@ The default export is the config: an object, or a function (sync or async) that 
 | `schemas` | What each kind of page's data has to look like, checked on every build: `{ posts: { fields: { title: "string", date: "date" } } }`. See [Content schemas](#content-schemas). |
 | `base` | The path the site is served under, when that isn't the root of its domain: `base: "/repo/"` for a GitHub Pages project site at `https://you.github.io/repo/`. Templates, Markdown links and `page.url` stay as they are (`/about/`); ssqch adds the base to every URL from the site's root in the HTML it writes. See [Serving a site under a path](#serving-a-site-under-a-path). |
 | `lastModified` | `page.lastModified`: `"git"` for when the page's file last changed in a commit (its modification time if it has uncommitted changes), or `"file"` for the modification time. Off by default. In CI, check out the full history (`fetch-depth: 0` in GitHub Actions), or every page gets the date of the last commit; the build warns about a shallow clone. |
-| `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `markdown`, `deepMerge`, `clean`, `ignore`, `bundles`, `strict`, `lastModified`, `base`, `schemas`, `theme`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
+| `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `markdown`, `deepMerge`, `leaveNoTrace`, `ignore`, `bundles`, `strict`, `lastModified`, `base`, `schemas`, `theme`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
 
-Mistakes get caught early. A misspelled key or option is an error, and so are two plugins that define the same filter, data or collection name (the message names both). When something in your code throws, you get `ssqch.config.js: too many pine cones` and a stack trace that points at your file, like `at bad (lib/filters.js:3:9)`.
+Mistakes get caught at the trailhead. A misspelled key or option is an error that says what you probably meant (`"templateFormat" isn't a config option (did you mean "templateFormats"?)`, or `unknown option "widhts" (did you mean "widths"?)` for a plugin), and so are two plugins that define the same filter, data or collection name (the message names both). When something in your code throws, you get `ssqch.config.js: too many pine cones` and a stack trace that points at your file, like `at bad (lib/filters.js:3:9)`.
 
 ### What you can import
 
@@ -330,8 +348,8 @@ Data functions run on every build. `ssqch serve` reloads a data file when it cha
 - **`ssqch/minify`:** `minifyPlugin(options)` minifies HTML output, after the image transform. `minify(html, options)` does the same for a string. Options: `collapseWhitespace`, `removeComments`, `shortDoctype` and `shortenAttributes` (all `true` by default). `shortenAttributes` drops the values of boolean attributes (`defer="defer"` becomes `defer`) and whitespace that doesn't matter in `class`, `srcset`, `sizes`, URL attributes and the viewport `<meta>`.
 - **`ssqch/rss`:** `rssPlugin()` adds the filters `getNewestCollectionItemDate`, `dateToRfc3339`, `dateToRfc822`, `absoluteUrl` and `htmlToAbsoluteUrls`. They're also named exports, for your own code.
 - **`ssqch/assets`:** `assetsPlugin({ files })` fingerprints CSS and JS for long-lived caching. Templates link the plain paths (`<link rel="stylesheet" href="/assets/index.css">`). In a production build, each listed file in the output folder (written there by your CSS or JS tool before `ssqch build`) is renamed to `index.<hash>.css`, older fingerprinted copies are deleted, and every `href` and `src` in the HTML that points at it is rewritten, keeping any query string. `ssqch serve` leaves the plain paths alone, unless the plain file isn't there but the last production build left a fingerprinted copy: then pages link to that copy (with a warning), so serving after a build without running your CSS and JS watchers still has styles. A listed file that's missing fails a production build. `assetUrl("/assets/index.css")` returns the URL to use, for places outside an `href` or `src`. `url()` references inside CSS and imports inside JavaScript aren't rewritten. Options: `files` (URL paths, required), `fingerprint` (`true` or `false`; on for production builds by default) and `integrity` (add `integrity="sha384-..."` to the `<link>` and `<script>` elements that load a fingerprinted file; default `false`).
-- **`ssqch/links`:** `linksPlugin(options)` checks the built site's internal links after each build. Every `href` (on `a`, `link` and `area`), `src` (images, scripts, iframes, media) and `srcset` URL has to point at something in the output, and a `#fragment` has to match an `id` on the page it points to. External links aren't checked, and neither are paths a Netlify `_redirects` file in the output covers. Broken links fail production builds, listing each page and link, and are warnings in `ssqch serve`. Options: `anchors` (check `#fragments`; default `true`), `ignore` (URL path prefixes to skip, like `["/downloads/"]`) and `fail` (`true` or `false`; production builds only by default).
-- **`ssqch/sass`:** `sassPlugin({ files: { "src/scss": "/css" } })` compiles Sass with [grass](https://github.com/connorskees/grass) (pure Rust: no Dart Sass or Node). A folder compiles every `.scss` and `.sass` file in it that doesn't start with `_`, keeping their paths; a file (`{ "src/app.scss": "/app.css" }`) compiles to the path given. The CSS is written at the start of each build, so `ssqch/assets` can fingerprint it and the link checker sees it, and `ssqch serve` rebuilds when a source changes. Options: `files` (required), `style` (`"compressed"` for production builds and `"expanded"` otherwise, by default) and `loadPaths`.
+- **`ssqch/links`:** `linksPlugin(options)` checks the built site's internal links after each build. Every `href` (on `a`, `link` and `area`), `src` (images, scripts, iframes, media) and `srcset` URL has to point at something in the output, and a `#fragment` has to match an `id` on the page it points to. External links aren't checked, and neither are paths a Netlify `_redirects` file in the output covers. Broken links fail production builds, listing each page and link, and are warnings in `ssqch serve`. One that's nearly right says what it probably meant: `/about/ -> /contactt/ (not found; did you mean /contact/?)`, and the same for an `id`. Options: `anchors` (check `#fragments`; default `true`), `ignore` (URL path prefixes to skip, like `["/downloads/"]`) and `fail` (`true` or `false`; production builds only by default).
+- **`ssqch/sass`:** `sassPlugin({ files: { "src/scss": "/css" } })` compiles Sass with [grass](https://github.com/connorskees/grass) (pure Rust: no Dart Sass or Node). A folder compiles every `.scss` and `.sass` file in it that doesn't start with `_`, keeping their paths; a file (`{ "src/app.scss": "/app.css" }`) compiles to the path given. The CSS is written at the start of each build, so `ssqch/assets` can fingerprint it and the link checker sees it, and `ssqch serve` rebuilds when a source changes. Options: `files` (required), `style` (`"compressed"` for production builds and `"expanded"` otherwise, by default) and `loadPaths`. (Yes, that makes it Sassquatch.)
 - **`ssqch/sitemap`:** `sitemapPlugin({ url: "https://example.com" })` writes `sitemap.xml` listing every HTML page with its absolute URL and its date as `<lastmod>`. Left out: pages with `sitemap: false` in their data, 404 pages, pages 2 and on of a list split into pages (pagination with a `size` over 1; a page per tag is still listed), and URLs matching `exclude` globs (`["/tags/**"]`). Options: `url` (required), `exclude`, `lastmod` (default `true`), `output` (default `"/sitemap.xml"`) and `paginated` (list every page of a split list).
 - **`ssqch/elements`:** `elementsPlugin()` is interactivity without a framework. A custom element is a tag with a hyphen (`<like-button>`) and a script that defines it. Put `like-button.js` in `src/elements/` (and `like-button.css` next to it, if it has styles), write the tag in any page or layout, and that page gets the script and the stylesheet; pages without the tag get neither, so a page with no elements loads no JavaScript. What's inside the tag is the fallback a visitor sees before the script runs, or without JavaScript: `<like-button><a href="/likes/">3 likes</a></like-button>`. `ssqch:load` on a tag says when its script loads: `eager` (with the page, the default), `idle` (when the browser has a quiet moment) or `visible` (when the element scrolls into view), which is the "islands" idea without a framework to run it. The whole folder is copied to `/elements/`, so elements can import shared modules (a file without a hyphen in its name isn't an element). Options: `dir` (default: `elements` in the input folder), `url` (default `/elements/`) and `load` (the default for tags without `ssqch:load`). The [`islands` example](examples/sites/islands/) has three small elements.
 
@@ -347,6 +365,7 @@ output = "public"
 template_formats = ["edge", "md", "html"]
 
 ignore = ["drafts/**"]
+leave_no_trace = true   # or `clean = true`, its other name
 
 [markdown]
 heading_ids = "blackfriday"
@@ -357,7 +376,7 @@ heading_ids = "blackfriday"
 
 ## Moving from another generator
 
-Guides map another generator's config, front matter and templates onto ssqch's: [from Zola](docs/guides/from-zola.md), [from Eleventy](docs/guides/from-eleventy.md), [from Docusaurus](docs/guides/from-docusaurus.md), [from MkDocs](docs/guides/from-mkdocs.md), [from Hexo](docs/guides/from-hexo.md) and [from component frameworks](docs/guides/from-component-frameworks.md) (Astro, VitePress, Next.js, Gatsby). [`examples/sites/`](examples/sites/) has small, complete sites to start from or copy parts of, each built in CI: `blog-tags`, `blog-categories`, `docs-sidebar`, `glossary-docs`, `versioned-docs`, `component-docs`, `reference-pages` and `islands`.
+Everything migrates eventually. The field guides map another generator's config, front matter and templates onto ssqch's: [from Zola](docs/guides/from-zola.md), [from Eleventy](docs/guides/from-eleventy.md), [from Docusaurus](docs/guides/from-docusaurus.md), [from MkDocs](docs/guides/from-mkdocs.md), [from Hexo](docs/guides/from-hexo.md) and [from component frameworks](docs/guides/from-component-frameworks.md) (Astro, VitePress, Next.js, Gatsby). [`examples/sites/`](examples/sites/) has small, complete sites to start from or copy parts of, each built in CI: `blog-tags`, `blog-categories`, `docs-sidebar`, `glossary-docs`, `versioned-docs`, `component-docs`, `reference-pages` and `islands`.
 
 For a Zola site, `ssqch import zola` moves `tags` out of `[taxonomies]` and turns `path` into `permalink` in each page's front matter, writes a first `ssqch.config.js` from `config.toml` (the site's data, Markdown options, Sass, redirects, a sitemap), and lists what the Tera templates, shortcodes and sections need.
 
@@ -372,7 +391,7 @@ Whichever generator you're leaving, build the site with it and with ssqch and ru
 
 ## Templates and data
 
-Here's what's supported:
+The lay of the land:
 
 - **The data cascade:** a page's data comes from several places, and each one replaces what the ones before it set: global data, the front matter of its layouts, directory data, the page's data file, its front matter, then `computed`. [Where a value comes from](#where-a-value-comes-from) has the exact order, and `ssqch inspect` shows it for any page.
 - **Collections:** tags become collections, sorted by date, plus your custom ones. `excludeFromCollections: true` keeps a page out.
@@ -383,12 +402,27 @@ Here's what's supported:
 - **Dates:** a page's `date` comes from its data, then from the start of its file name (`2024-06-01-post.md`), then from when the file last changed. `computed.date` works too.
 - **Drafts:** `draft: true` builds the page in development (`ssqch serve`, or `--env development`) and leaves it out of production builds, collections included.
 - **Excerpts and reading time:** `page.excerpt` is the HTML before a `<!-- more -->` comment, or else the first paragraph, for layouts and collections (`post.page.excerpt` in a list of posts). `readingTime(content)` is the minutes it takes to read some HTML at 200 words a minute (`readingTime(content, 250)` for another pace), at least 1.
-- **Choosing engines:** `.md` files run through Edge first, then Markdown (change that with `markdownEngine` and `htmlEngine`). Layouts follow the same rules, so a `.html` layout is an Edge template by default. A template's `render` front matter overrides it: `render: md` for Markdown only (handy for a post full of `{{ }}` code samples), `render: [edge, md]` for a chain, or `render: false` to write the body as it is.
+- **Choosing engines:** `.md` files run through Edge first, then Markdown (change that with `markdownEngine` and `htmlEngine`). Layouts follow the same rules, so a `.html` layout is an Edge template by default. A template's `render` front matter overrides it: `render: md` for Markdown only (handy for a post full of `{{ }}` code samples), `render: [edge, md]` for a chain, or `render: false` to write the body as it is. A layout chain can mix languages (a Markdown post in a Liquid layout that sits in an Edge one). Around here that's called trail mix.
 - **Everything else:** layout chaining, `page.*`, `templateContent` in collections, and an error when two pages would write the same file. Every template can read `ssqch.version`, `ssqch.env`, `ssqch.serving` and `ssqch.generator`.
 
 Edge.js support covers `{{ }}`, `{{{ }}}`, `{{-- --}}`, `@{{ }}`, `@if/@elseif/@else/@unless`, `@each` (with index, objects, `@else` and `$loop`), `@let`, `@assign`, `@include`, `@includeIf`, `@component`/`@!component` with named slots and isolated scope, and `~` whitespace control. Newlines and escaping match Edge.js 6.5 on [42 whitespace cases](crates/sitesquatch-edge/tests/fixtures/whitespace-cases.json). One difference: an undefined value prints nothing, where Edge.js prints `undefined`.
 
 Expressions cover object and array literals (with shorthand and spread), template literals, optional chaining, arrow functions, ternaries, `??`, `typeof`, `await` (a no-op), `new Date()`, the common String, Array, Number and Date methods, and the `JSON`, `Object`, `Math` and `Array` globals. Errors report `template:line` through the include and component chain.
+
+When a template fails, the error is followed by the lines it's about, numbered as the file is (front matter included), with carets under the part the message names:
+
+```text
+error: 1 error(s):
+  - rendering posts/pine.md with `edge`: posts/pine.md:9: Cannot read properties of undefined (reading 'total') in `sightings`
+
+  --> src/posts/pine.md:13
+  11 | Crunchy, foresty, and only slightly sticky.
+  12 |
+  13 | The count is {{ sightings.total.toFixed(1) }} so far.
+     |                 ^^^^^^^^^
+```
+
+A layout or an Edge include that isn't there says which one you probably meant (``layout `bse` not found: no sightings in src/_includes (did you mean `base`?)``). One that leads back to itself names the loop instead of running out of patience: `we've passed this tree before. Layout loop: base.edge -> wrap.edge -> base.edge`.
 
 ### Markdown
 
@@ -561,7 +595,16 @@ error: 3 content errors:
   - src/posts/cedar.md: `status` must be "draft" or "published", not "drfat" (schema `posts`)
   - src/posts/cedar.md: `hero.src` is "cedar.jpg", but there's no such file next to the page (schema `posts`)
   - src/posts/cedar.md: `descripton` isn't a field of this schema (did you mean `description`?) (schema `posts`)
+
+  --> src/posts/cedar.md:5
+   3 | date: 2026-03-02
+   4 | tags: posts
+   5 | status: drfat
+     | ^^^^^^
+   6 | hero: { src: cedar.jpg, alt: A cedar }
 ```
+
+(The other two get their lines pointed at too.)
 
 - **Which pages:** a schema covers the pages tagged with its name (the pages in `collections.posts`; `all` is every page in collections), or the files matching `files`, globs relative to the input folder.
 - **What's checked:** each page's data after the data cascade and `computed`, so a value from a directory data file counts. Every problem in every page is reported in one go, with the file and the field.
@@ -627,7 +670,7 @@ A page's data is a cascade. From the lowest level to the highest:
 
 A higher level replaces what a lower one set. Objects merge key by key and lists are joined (a post's `tags` add to its folder's), unless `deepMerge` is off. `page` and `ssqch` are built in.
 
-When a value isn't what you expected, `ssqch inspect` says which level set it. Give it a page's URL or its template's path:
+When a value isn't what you expected, `ssqch inspect` follows its tracks back to the level that set it. Give it a page's URL or its template's path:
 
 ```sh
 ssqch inspect /guides/pine/
@@ -672,7 +715,7 @@ Set by (the last one wins):
 
 ## Reading the build summary
 
-Every build ends with a summary. Here's the ReverentGeek blog with its images cached:
+Every build ends with a ranger's report. Here's the ReverentGeek blog with its images cached:
 
 ```text
 Built in 110 ms (production)
@@ -683,15 +726,21 @@ Built in 110 ms (production)
   Time    setup 1.11 ms, data 1.31 ms, read 32.3 ms, paginate 2.81 ms, render 7.56 ms, write 55.9 ms, copy 193 µs, after 9.21 ms
 ```
 
+- **The first line** is `First confirmed siting. Built in ...` for a site's first build (there's no `.cache/ssqch/output-files.json` yet), which is every build on a CI machine that doesn't keep `.cache`.
+- **Pages** also says what's different from the last build to that folder: `(2 new, 1 gone)` when a page appeared or stopped being written (a post you added, a permalink you changed), and `(3 changed)` in `ssqch serve`, which leaves a page alone when it comes out the same.
+- **Drafts** is in production builds that left `draft: true` pages out: `Drafts  3 unconfirmed (built in development only)`.
+- **Removed** is the stale files `leaveNoTrace` deleted: `Removed  2 stale files, left no trace`.
 - **Images** counts the image files this build used, the source images they came from, and how many had to be encoded. With `prune` on, it also says how many stale files it deleted.
 - **Output** is everything in the output folder, including files left from earlier builds.
 - **Time** splits the build into phases. `write` includes layouts, transforms and image encoding, so a build that encodes images spends most of its time there. `after` is the `afterBuild` hooks.
+
+With `--verbose`, a line under the summary names the Edge templates in the includes folder that nothing used as a layout, an include or a component in this build: `Uninhabited: 1 Edge template that nothing used in this build (src/_includes/cabin.edge).` Includes in the other template languages aren't tracked, so it doesn't speak for them.
 
 `ssqch serve` prints the same summary after every rebuild.
 
 ## Comparing two builds
 
-A build that succeeds isn't proof that an upgrade, a refactor or a migration left the site alone. `ssqch diff` compares two output folders and says what changed:
+A build that succeeds isn't proof that an upgrade, a refactor or a migration left the site alone. `ssqch diff` compares two output folders and says what changed, which is better evidence than most sightings get:
 
 ```sh
 ssqch build --output dist-before   # before the change
@@ -729,13 +778,14 @@ Changed (2)
 - **Your own noise:** `--ignore <regex>` leaves matching text out of both sides, like a build date in the footer: `--ignore 'Built on [^<]+'`. Repeat it for more patterns.
 - **Part of the site:** `--only '**/*.html'` compares only matching files (repeatable).
 - **Longer diffs:** each file shows 10 changed lines; `--lines 0` shows them all.
+- **Nothing to report:** `No differences: 148 pages and 4,730 other files are the same. The stump has not moved.`
 - **Scripts and agents:** `--format json` prints the same report as JSON (`schemaVersion: 1`), and the exit code is 0 when the builds are the same, 1 when they differ and 2 on an error, like `diff`.
 
 It works on any two folders of HTML, so it can also compare another generator's output with ssqch's while you move a site over.
 
 ## Scripts and coding agents
 
-The same commands work for a script, a CI job or a coding agent, with JSON in place of the text a person reads. Every JSON document has a `schemaVersion`, which changes only when a field is removed or changes meaning.
+The voice is for people. The same commands work for a script, a CI job or a coding agent, with JSON in place of the text a person reads, and no jokes in it. Every JSON document has a `schemaVersion`, which changes only when a field is removed or changes meaning.
 
 `ssqch build --format json` prints one report on standard output, whether the build worked or not (the exit code is 0 or 1 as usual):
 
@@ -771,7 +821,7 @@ ssqch build --format json
 - **Each warning and error** has a `code` and the `message` a person would have read. `file` (from the project root) is there when the problem is in a file that exists, `line` when the line is known, `field` for a [schema](#content-schemas) problem, and `url` for a problem in a written page, like a broken link.
 - **`line` is a line of the file.** Template languages count from the end of the front matter, which is the number in the message (`index.edge:4`); the report adds the front matter back (`"line": 7`).
 - **The codes:** `config`, `data`, `front-matter`, `template`, `schema`, `conflict` (two pages write the same file), `links`, `images`, `assets`, `fetch`, `passthrough`, `last-modified`, `hook`, and `build` for anything else.
-- **A build that works** also has `durationMs`, `pages` (`written`, `templates`, `bytes`), `copied`, `removed`, `written` (each page's file, from the output folder), `summary` (the lines plugins add to the [build summary](#reading-the-build-summary)) and `timings`.
+- **A build that works** also has `durationMs`, `pages` (`written`, `templates`, `bytes`, and `new` and `gone` since the last build to that folder, or `null` when there wasn't one), `copied`, `removed`, `drafts` (the `draft: true` pages a production build left out), `written` (each page's file, from the output folder), `summary` (the lines plugins add to the [build summary](#reading-the-build-summary)) and `timings`.
 - **Standard output is only the report.** The lines a person would have read (`[ssqch] Writing ...`), `console.log` from your config and the output of `beforeBuild` commands go to standard error; `--quiet` leaves the progress lines out.
 
 `ssqch capabilities --format json` says what this binary supports, so nothing has to be guessed from the documentation of another version: its `version`, `commands`, optional `features` (`avif`, `fetch`, `sass` and each template language, which a build from source can leave out), `templateLanguages` with their extensions, `configOptions`, the built-in `modules` with what each exports, `nodeModules`, `globals` and `imageFormats`. Without `--format json` it prints the same as text.
@@ -902,7 +952,7 @@ jobs:
 
 ## Benchmarks
 
-These numbers come from building the ReverentGeek blog (161 HTML pages plus a feed, a sitemap and Netlify files) on an Apple M5 Pro (15 cores) in November 2026, in production mode with HTML minification on. Each build wrote to its own output folder, so no image cache was shared.
+No blurry footage here: these numbers come from building the ReverentGeek blog (161 HTML pages plus a feed, a sitemap and Netlify files) on an Apple M5 Pro (15 cores) in November 2026, in production mode with HTML minification on. Each build wrote to its own output folder, so no image cache was shared.
 
 | Build | Rust port (no AVIF) | Rust port, `--features avif` | `ssqch` with the JavaScript config (AVIF) |
 | --- | --- | --- | --- |
@@ -1006,9 +1056,13 @@ cargo build --release -p ssqch --features avif
 
 `scripts/examples.sh` builds every site in `examples/sites/` with the checkout's `ssqch`, and `scripts/examples.sh <name>` serves one at <http://localhost:8080>. `pnpm test` builds the site and runs the blog's smoke tests. The first build encodes every image, so give it a few minutes; later builds reuse them.
 
+Messages follow the rules in [`CLAUDE.md`](CLAUDE.md#the-sasquatch-voice): the facts first, plain output for machines, nothing random, and nothing added to a site's pages. The lines more than one place uses are in `crates/sitesquatch/src/voice.rs`.
+
 Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/) from a version tag. The steps are in [`CLAUDE.md`](CLAUDE.md#releasing).
 
 ## Known gaps
+
+The uncharted parts of the map, as of this release:
 
 - **JavaScript:** npm packages run on QuickJS, not Node, so servers, child processes, streams and native addons aren't there (see [npm packages](#npm-packages)), and regular expressions can't use the `v` flag's set operations (`[\p{L}--\p{ASCII}]`), which breaks `@sindresorhus/slugify`. A CommonJS file imported from an ES module runs when the module is loaded, so it runs before an earlier `import` of a module that's there for its side effects (Node runs them in order). JavaScript is interpreted (QuickJS has no JIT), so heavy collection code is slower than in Node: reading a page in a collection costs about 2 µs the first time, and the blog's `topics` and `postsByYear` collections over 2,000 posts take about 45 ms together.
 - **Edge:** no `@inject`, `@debugger`, `@svg`, components as tags (`@!card()`), destructuring in `@let`, scoped slots, regex literals, or the `in` operator. Array `reverse` and `sort` return copies instead of changing the array.

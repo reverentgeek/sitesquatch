@@ -32,8 +32,72 @@ a `v<version>` tag on a commit where that version matches.
 
 - The `url()` filter that `rssPlugin()` added is gone. It returned its argument, so use the
   path itself (`absoluteUrl(post.url, site.url)`), or `withBase()` with the new `base` setting.
+- The text `ssqch` prints has changed in places (below, "The Sasquatch voice"). A script that
+  reads it should use `ssqch build --format json` or `ssqch serve --ready-file`, which haven't.
+  What it would have matched: `Serving dist at ...` now starts with `Squatch Watch is on.`,
+  `Changed: <file>` is `Fresh tracks in <file>`, `<n> broken links:` is `the trail goes cold on
+  <n> broken links:`, and a site's first build prints `First confirmed siting.` before `Built
+  in`.
+- Rust API: `Config::clean` is `Config::leave_no_trace`, and `BuildReport` has new fields
+  (`drafts`, `first_build`, `pages_changed`, `pages_new`, `pages_gone`, `unused`), so build one
+  with `..Default::default()`. Config files don't have to change: `clean` still works there.
+- Errors are red only on a terminal now. A script that matched the colour codes around
+  `error:` in piped output should match the plain word.
 
 ### Added
+
+- **The Sasquatch voice.** ssqch reports like a deadpan park ranger: what happened comes first,
+  and now and then something large walks through the log. The rules are in `CLAUDE.md`: a
+  themed line still names the file and what went wrong, JSON output and diagnostic codes stay
+  plain, nothing is random, and a build never adds anything of its own to a site's output.
+  - `leaveNoTrace: true` is the new name for `clean` (`leave_no_trace` in `sitesquatch.toml`):
+    it removes only what earlier builds wrote, and leaves other tools' files alone. `clean`
+    stays as another name for it; setting both is an error.
+  - `ssqch serve` is Squatch Watch, and says `Fresh tracks in <file>` when a source changes.
+  - A layout that leads back to itself names the loop instead of `layout chain is too deep`:
+    `in index.md: we've passed this tree before. Layout loop: base.edge -> wrap.edge ->
+    base.edge`. So do Edge includes and components (`Include loop: a -> b -> a`), which used
+    to print `included from` 64 times.
+  - A layout that isn't there says which one you probably meant: ``layout `bse` not found: no
+    sightings in src/_includes (did you mean `base`?)``.
+  - `ssqch serve` answers a URL that isn't there, in a site with no `404.html`, with a page of
+    its own: where the trail went cold, the closest URL in the site, and a way back to the
+    trailhead. It's never written to the output.
+  - A port that's taken: `can't listen on port 8080: something else is squatting on it (--port
+    0 picks a free one)`.
+  - A production build counts the drafts it left out (`Drafts  3 unconfirmed (built in
+    development only)`, and `drafts` in the JSON report), and a build with no pages says why
+    (`Nothing sighted: no file in src matches templateFormats (edge, md).`).
+  - The starter site is an amateur investigator's field notes: three short posts that each
+    show one thing, a 404 page, and a footer that says `Built with SiteSquatch. Allegedly.`
+    The docs starter's 404 page has several eyewitness accounts too.
+  - `ssqch serve` reloads a browser only when the page it's showing came out different (a
+    rebuild leaves identical pages alone, and the summary says how many changed), and swaps a
+    changed stylesheet in place, so the page keeps its scroll position and its forms.
+  - A build that fails while serving is shown in the browser, over the page, with the error
+    and the lines it's about, and in the tab's title and icon. It only went to the terminal
+    before, while the browser kept showing the old page. The next good build clears it.
+  - The dev server gives a site without a `favicon.ico` a footprint for its tab, where there
+    was a 404 on every page load.
+  - "Did you mean" for a broken link (`/about/ -> /contactt/ (not found; did you mean
+    /contact/?)`) and a missing `id`, a config key (`"templateFormat" isn't a config option
+    (did you mean "templateFormats"?)`, and `output` at the top level says it goes in `dirs`),
+    a plugin or Markdown option, and an Edge include that isn't there.
+  - A template or schema error is followed by the lines it's about, numbered as the file is
+    (a template engine counts from the end of the front matter), with carets under what the
+    message names or under the schema field.
+  - The `Pages` row says what's different from the last build to that folder: `(2 new, 1
+    gone)`. The JSON report has them as `pages.new` and `pages.gone`.
+  - `--verbose` names the Edge templates in the includes folder that nothing used in the
+    build: `Uninhabited: 1 Edge template that nothing used in this build (...)`.
+  - `ssqch completions <shell>` prints a completion script for bash, zsh, fish, PowerShell or
+    elvish.
+  - Colour codes are left out of errors when standard error isn't a terminal, or `NO_COLOR` is
+    set (`FORCE_COLOR` keeps them).
+  - Smaller things: `--offline` builds are `living off the cache`, `ssqch diff` with nothing
+    to report adds that the stump has not moved, a panic inside the build says that something
+    large walked through it and where to report the bug, and the dev server's responses are
+    powered by pine cones.
 
 - `base: "/repo/"` (or `ssqch build --base /repo/`) for a site served below the root of its
   domain, like a GitHub Pages project site. Templates and `page.url` stay as they are; ssqch

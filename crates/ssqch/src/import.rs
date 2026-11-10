@@ -42,7 +42,7 @@ pub fn run_import(matches: &clap::ArgMatches) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("\x1b[31merror:\x1b[0m {:#}", e);
+            eprintln!("{} {:#}", sitesquatch::diagnostics::red("error:"), e);
             ExitCode::FAILURE
         }
     }
@@ -115,7 +115,7 @@ impl Plan {
         for (path, _, contents) in &self.new_files {
             std::fs::write(dir.join(path), contents).with_context(|| format!("writing {}", path))?;
         }
-        println!("Done: {} renamed, {} edited, {} created.", self.renames.len(), self.edits.len(), self.new_files.len());
+        println!("Done: {} renamed, {} edited, {} created. Welcome to the woods.", self.renames.len(), self.edits.len(), self.new_files.len());
         Ok(())
     }
 }

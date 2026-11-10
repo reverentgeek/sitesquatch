@@ -32,7 +32,9 @@ pub mod report;
 pub mod schema;
 pub mod serve;
 pub mod site_toml;
+pub mod suggest;
 pub mod theme;
+pub mod voice;
 
 pub use build::{build, display_path, slashes};
 pub use config::{BuildContext, BuildReport, CollectionApi, Config, ConfigFiles, Environment, GeneratedFile, LastModified, PageSummary, Plugin, TransformContext};

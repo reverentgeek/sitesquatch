@@ -183,7 +183,7 @@ impl MarkdownOptions {
                 "definitionLists" => &mut self.definition_lists,
                 "smartPunctuation" => &mut self.smart_punctuation,
                 "indentedCode" => &mut self.indented_code,
-                other => bail!("markdown.{} isn't an option (options: {})", other, Self::KEYS.join(", ")),
+                other => bail!("markdown.{} isn't an option{} (options: {})", other, crate::suggest::closest(other, Self::KEYS.iter().copied()).map(|name| format!(" (did you mean `{}`?)", name)).unwrap_or_default(), Self::KEYS.join(", ")),
             };
             match v {
                 Value::Bool(b) => *flag = *b,

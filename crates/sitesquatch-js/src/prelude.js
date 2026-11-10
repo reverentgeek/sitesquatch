@@ -87,7 +87,7 @@
 	// they're allowed at the top level only. Everything else can also come from
 	// a plugin, and is applied in order: the config's own entries first, then
 	// each plugin's, depth first.
-	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "clean", "ignore", "bundles", "strict", "lastModified", "base", "schemas", "theme" ];
+	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "base", "schemas", "theme" ];
 	const PARTS = [ "data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins" ];
 	// Engine names a config can't replace.
 	const CORE_ENGINES = [ "edge", "md", "html", "txt" ];
@@ -95,6 +95,29 @@
 
 	const isObject = v => v !== null && typeof v === "object" && !Array.isArray( v );
 	const list = v => v === undefined ? [] : [].concat( v );
+
+	// ` (did you mean "dirs"?)` for a key within two edits of an option, or nothing.
+	const meant = ( key, options ) => {
+		const distance = ( a, b ) => {
+			const row = Array.from( { length: b.length + 1 }, ( _, i ) => i );
+			for ( let i = 0; i < a.length; i++ ) {
+				let previous = row[0];
+				row[0] = i + 1;
+				for ( let j = 0; j < b.length; j++ ) {
+					const current = row[j + 1];
+					row[j + 1] = a[i] === b[j] ? previous : 1 + Math.min( previous, current, row[j] );
+					previous = current;
+				}
+			}
+			return row[b.length];
+		};
+		let best;
+		for ( const option of options ) {
+			const edits = distance( String( key ).toLowerCase(), option.toLowerCase() );
+			if ( edits <= 2 && edits < option.length && ( !best || edits < best.edits ) ) best = { edits, option };
+		}
+		return best ? ` (did you mean "${ best.option }"?)` : "";
+	};
 
 	async function collect( env, serving ) {
 		const ops = [];
@@ -149,7 +172,10 @@
 				} else if ( SETTINGS.includes( key ) ) {
 					top || fail( `${ where }: "${ key }" can only be set in the config itself, not in a plugin` );
 				} else if ( !PARTS.includes( key ) ) {
-					fail( `${ where }: "${ key }" isn't a config option (options: ${ ( top ? [ ...SETTINGS, ...PARTS ] : PARTS ).join( ", " ) })` );
+					const options = top ? [ ...SETTINGS, ...PARTS ] : PARTS;
+					// `output: "dist"` at the top is a folder that belongs in `dirs`.
+					const hint = top && DIRS.includes( key ) ? ` (it goes in dirs: { ${ key }: "..." })` : meant( key, options );
+					fail( `${ where }: "${ key }" isn't a config option${ hint } (options: ${ options.join( ", " ) })` );
 				}
 			}
 
@@ -157,7 +183,7 @@
 				if ( part.dirs !== undefined ) {
 					isObject( part.dirs ) || fail( `${ where }: dirs must be an object` );
 					for ( const [ key, value ] of Object.entries( part.dirs ) ) {
-						DIRS.includes( key ) || fail( `${ where }: dirs.${ key } isn't supported (use ${ DIRS.join( ", " ) })` );
+						DIRS.includes( key ) || fail( `${ where }: dirs.${ key } isn't supported${ meant( key, DIRS ) } (use ${ DIRS.join( ", " ) })` );
 						typeof value === "string" || fail( `${ where }: dirs.${ key } must be a string` );
 						settings[key] = value;
 					}

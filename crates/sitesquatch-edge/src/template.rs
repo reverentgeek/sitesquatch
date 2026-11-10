@@ -430,6 +430,58 @@ pub fn escape_html(s: &str) -> String {
 
 const MAX_DEPTH: usize = 64;
 
+thread_local! {
+    /// The partials and components being rendered on this thread, outermost
+    /// first, so an include that never ends can name its loop.
+    static TRAIL: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A partial's place on [`TRAIL`] while it renders.
+struct OnTrail;
+
+impl OnTrail {
+    fn enter(name: &str) -> OnTrail {
+        TRAIL.with(|trail| trail.borrow_mut().push(name.to_string()));
+        OnTrail
+    }
+}
+
+impl Drop for OnTrail {
+    fn drop(&mut self) {
+        TRAIL.with(|trail| {
+            trail.borrow_mut().pop();
+        });
+    }
+}
+
+/// An include or component that leads back to itself. Its message has the
+/// whole loop, so the templates on the way out don't add "included from".
+#[derive(Debug)]
+struct Loop(String);
+
+impl std::fmt::Display for Loop {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Loop {}
+
+/// The error for including `name` at [`MAX_DEPTH`]: the loop it's part of,
+/// from the last time it was included (the wording is `sitesquatch::voice`'s).
+fn loop_error(at: String, kind: &str, name: &str) -> anyhow::Error {
+    let trail = TRAIL.with(|trail| trail.borrow().clone());
+    let from = trail.iter().rposition(|n| n == name).unwrap_or(trail.len().saturating_sub(3));
+    let mut names: Vec<&str> = trail[from..].iter().map(String::as_str).collect();
+    names.push(name);
+    anyhow::Error::new(Loop(format!("{}: we've passed this tree before. {} loop: {}", at, kind, names.join(" -> "))))
+}
+
+/// `context` for an error from inside a partial, unless it's a [`Loop`].
+fn inside(e: anyhow::Error, context: impl FnOnce() -> String) -> anyhow::Error {
+    if e.is::<Loop>() { e } else { e.context(context()) }
+}
+
 pub(crate) fn render_nodes(
     engine: &Engine,
     tpl: &str,
@@ -516,19 +568,19 @@ pub(crate) fn render_nodes(
                         continue;
                     }
                 }
-                if depth >= MAX_DEPTH {
-                    bail!("{}: includes nested too deeply (is there a loop?)", at(line));
-                }
                 let name = eval(path, scope).with_context(|| at(line))?.to_js_string();
+                if depth >= MAX_DEPTH {
+                    return Err(loop_error(at(line), "Include", &name));
+                }
                 let partial = engine.template(&name).with_context(|| format!("{}: @include('{}')", at(line), name))?;
-                render_nodes(engine, &partial.name, &partial.nodes, scope, out, depth + 1)
-                    .with_context(|| format!("included from {}", at(line)))?;
+                let _on_trail = OnTrail::enter(&name);
+                render_nodes(engine, &partial.name, &partial.nodes, scope, out, depth + 1).map_err(|e| inside(e, || format!("included from {}", at(line))))?;
             }
             Node::Component { path, props, main, slots, line } => {
-                if depth >= MAX_DEPTH {
-                    bail!("{}: components nested too deeply (is there a loop?)", at(line));
-                }
                 let name = eval(path, scope).with_context(|| at(line))?.to_js_string();
+                if depth >= MAX_DEPTH {
+                    return Err(loop_error(at(line), "Component", &name));
+                }
                 let props = match props {
                     Some(p) => eval(p, scope).with_context(|| at(line))?,
                     None => Value::Undefined,
@@ -557,8 +609,8 @@ pub(crate) fn render_nodes(
                 data.insert("$props".into(), if props.is_nullish() { Value::object(Map::new()) } else { props.clone() });
                 data.insert("$slots".into(), Value::object(slot_fns));
                 let mut child = Scope::new(Arc::new(data), scope.globals().clone());
-                render_nodes(engine, &component.name, &component.nodes, &mut child, out, depth + 1)
-                    .with_context(|| format!("in component used at {}", at(line)))?;
+                let _on_trail = OnTrail::enter(&name);
+                render_nodes(engine, &component.name, &component.nodes, &mut child, out, depth + 1).map_err(|e| inside(e, || format!("in component used at {}", at(line))))?;
             }
         }
     }

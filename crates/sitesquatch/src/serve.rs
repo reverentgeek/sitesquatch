@@ -1,14 +1,16 @@
 //! Development server: static file server, file watcher and live reload.
 //!
-//! A change to the site's sources rebuilds it and reloads the browser. A CSS
+//! A change to the site's sources rebuilds it, and the browser reloads if
+//! the page it's showing came out different (a rebuild leaves identical pages
+//! alone). A changed stylesheet is swapped in place, without a reload. A CSS
 //! or JavaScript file that another tool writes into the output folder (a
-//! PostCSS or esbuild watcher, say) reloads the browser without a rebuild,
-//! so a page never reloads before its new CSS is there.
+//! PostCSS or esbuild watcher, say) reaches the browser without a rebuild,
+//! so a page never reloads before its new CSS is there. A build that fails
+//! is shown over the page, until one works.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, RwLock};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
@@ -16,16 +18,26 @@ use notify::{RecursiveMode, Watcher};
 
 use crate::config::Config;
 
-const RELOAD_SCRIPT: &str = r#"<script>(()=>{let v;setInterval(async()=>{try{const t=await (await fetch('/__ssqch/build')).text();if(v&&t!==v)location.reload();v=t}catch{}},700)})();</script>"#;
+/// The script added to each HTML page the server sends. It asks
+/// `/__ssqch/build` what changed since it last looked.
+const LIVE_SCRIPT: &str = include_str!("live.js");
+
+/// The footprint in [`NOT_FOUND_PAGE`], as the tab's icon for a site that has
+/// no `favicon.ico`: `{fill}` is its colour.
+const FOOTPRINT_ICON: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 0 200 200" fill="{fill}"><path d="M62 72c27 0 39 22 35 56-4 31-13 64-37 64s-32-33-35-64c-3-34 10-56 37-56z"/><circle cx="20" cy="62" r="8"/><circle cx="37" cy="44" r="9"/><circle cx="57" cy="33" r="10"/><circle cx="79" cy="30" r="11"/><circle cx="102" cy="42" r="14"/></svg>"#;
+
+/// The page for a URL that isn't there, when the site has no `404.html` of
+/// its own. Only the dev server sends it: it's never written to the output.
+const NOT_FOUND_PAGE: &str = include_str!("not-found.html");
 
 /// Serve the site as `cfg` describes it. Changes to its configuration need a
 /// restart; [`serve_reloading`] picks those up too.
 pub fn serve(cfg: &Config, port: u16) -> Result<()> {
-    let build_id = Arc::new(AtomicU64::new(0));
+    let live = Arc::new(Live::default());
     let site = Arc::new(RwLock::new(Site::of(cfg)));
-    let server = listen(port, &site, &build_id)?;
-    println!("Serving {} at http://localhost:{}{}/", site.read().unwrap().output.display(), server, site.read().unwrap().base);
-    watch(cfg, &build_id, &|_| {}, &|| {
+    let server = listen(port, &site, &live)?;
+    println!("{} Serving {} at http://localhost:{}{}/", crate::voice::SQUATCH_WATCH, site.read().unwrap().output.display(), server, site.read().unwrap().base);
+    watch(cfg, &live, &|_| {}, &|| {
         println!("Restart to use the changed configuration.");
         false
     })
@@ -67,7 +79,7 @@ fn write_ready(path: &Path, site: &Site, port: u16, ok: bool) -> Result<()> {
 /// configuration doesn't load, the error is printed and the last good one
 /// keeps serving.
 pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() -> Result<Config>) -> Result<()> {
-    let build_id = Arc::new(AtomicU64::new(0));
+    let live = Arc::new(Live::default());
     let site = Arc::new(RwLock::new(Site::of(&first)));
     if let Some(ready) = &options.ready_file {
         // One from an earlier run would say this server is ready already.
@@ -76,8 +88,8 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
             _ => {}
         }
     }
-    let server = listen(options.port, &site, &build_id)?;
-    println!("Serving {} at http://localhost:{}{}/", site.read().unwrap().output.display(), server, site.read().unwrap().base);
+    let server = listen(options.port, &site, &live)?;
+    println!("{} Serving {} at http://localhost:{}{}/", crate::voice::SQUATCH_WATCH, site.read().unwrap().output.display(), server, site.read().unwrap().base);
     let mut cfg = first;
     loop {
         *site.write().unwrap() = Site::of(&cfg);
@@ -86,17 +98,17 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
         let built = |ok: bool| {
             if let Some(ready) = &options.ready_file {
                 if let Err(e) = write_ready(ready, &site.read().unwrap(), server, ok) {
-                    eprintln!("\x1b[31merror:\x1b[0m {:#}", e);
+                    eprintln!("{} {:#}", crate::diagnostics::red("error:"), e);
                 }
             }
         };
-        let Reloaded = watch(&cfg, &build_id, &built, &|| match reload() {
+        let Reloaded = watch(&cfg, &live, &built, &|| match reload() {
             Ok(new) => {
                 *next.borrow_mut() = Some(new);
                 true
             }
             Err(e) => {
-                eprintln!("\x1b[31mConfig error:\x1b[0m {:#}\n(still serving with the last configuration that loaded)", e);
+                eprintln!("{} {:#}\n(still serving with the last configuration that loaded)", crate::diagnostics::red("Config error:"), e);
                 false
             }
         })?;
@@ -119,17 +131,20 @@ impl Site {
 }
 
 /// Start answering requests on a thread. Returns the port.
-fn listen(port: u16, site: &Arc<RwLock<Site>>, build_id: &Arc<AtomicU64>) -> Result<u16> {
-    let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| anyhow::anyhow!("can't listen on port {}: {}", port, e))?;
+fn listen(port: u16, site: &Arc<RwLock<Site>>, live: &Arc<Live>) -> Result<u16> {
+    let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| match e.downcast_ref::<std::io::Error>() {
+        Some(io) if io.kind() == std::io::ErrorKind::AddrInUse => anyhow::anyhow!("can't listen on port {}: something else is squatting on it (--port 0 picks a free one)", port),
+        _ => anyhow::anyhow!("can't listen on port {}: {}", port, e),
+    })?;
     let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(port);
-    let (site, id) = (site.clone(), build_id.clone());
+    let (site, live) = (site.clone(), live.clone());
     std::thread::spawn(move || {
         for request in server.incoming_requests() {
             let (output, base) = {
                 let site = site.read().unwrap();
                 (site.output.clone(), site.base.clone())
             };
-            let _ = handle(request, &output, &id, &base);
+            let _ = handle(request, &output, &live, &base);
         }
     });
     Ok(port)
@@ -142,11 +157,10 @@ struct Reloaded;
 /// file the configuration came from changes, `reload` is called: if it
 /// returns true, this returns (the caller has a new configuration to watch
 /// with); if not, the watch goes on.
-fn watch(cfg: &Config, build_id: &AtomicU64, first_build: &dyn Fn(bool), reload: &dyn Fn() -> bool) -> Result<Reloaded> {
+fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), reload: &dyn Fn() -> bool) -> Result<Reloaded> {
     let ctx = cfg.build_context();
-    let before = build_id.load(Ordering::SeqCst);
-    let mut built_at = run_build(cfg, build_id);
-    first_build(build_id.load(Ordering::SeqCst) != before);
+    let (mut built_at, ok) = run_build(cfg, live);
+    first_build(ok);
 
     let (tx, rx) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
@@ -214,17 +228,17 @@ fn watch(cfg: &Config, build_id: &AtomicU64, first_build: &dyn Fn(bool), reload:
         let in_sources = |p: &PathBuf| watch_paths.iter().any(|w| p.starts_with(w)) || is_config(p);
         let show = |p: &Path| p.strip_prefix(&ctx.root).unwrap_or(p).display().to_string();
         if let Some(p) = sources.iter().find(|p| is_config(p)) {
-            println!("Changed: {} (reading the configuration again)", show(p));
+            println!("{} {} (reading the configuration again)", crate::voice::FRESH_TRACKS, show(p));
             if reload() {
                 return Ok(Reloaded);
             }
         } else if let Some(p) = sources.iter().find(|p| in_sources(p)) {
-            println!("Changed: {}", show(p));
-            built_at = run_build(cfg, build_id);
+            println!("{} {}", crate::voice::FRESH_TRACKS, show(p));
+            built_at = run_build(cfg, live).0;
             watch_config_files(&mut watcher);
         } else if let Some(p) = outputs.iter().find(|p| written_by_another_tool(p, built_at)) {
-            println!("Changed: {} (reloading)", show(p));
-            build_id.fetch_add(1, Ordering::SeqCst);
+            println!("{} {} (reloading)", crate::voice::FRESH_TRACKS, show(p));
+            live.changed(&ctx.output_dir);
         }
     }
 }
@@ -245,17 +259,130 @@ fn written_by_another_tool(path: &Path, built_at: SystemTime) -> bool {
     asset && std::fs::metadata(path).and_then(|m| m.modified()).is_ok_and(|t| t > built_at)
 }
 
-/// Build, print the summary, and bump the build id the browser polls.
-/// Returns when the build finished.
-fn run_build(cfg: &Config, build_id: &AtomicU64) -> SystemTime {
-    match crate::build(cfg) {
+/// Build, print the summary (or the error), and tell the browsers. Returns
+/// when the build finished, and whether it worked.
+fn run_build(cfg: &Config, live: &Live) -> (SystemTime, bool) {
+    let ok = match crate::build(cfg) {
         Ok(report) => {
             crate::cli::print_report(cfg, &report);
-            build_id.fetch_add(1, Ordering::SeqCst);
+            live.changed(&cfg.build_context().output_dir);
+            true
         }
-        Err(e) => eprintln!("\x1b[31mBuild failed:\x1b[0m {:#}", e),
+        Err(e) => {
+            // With the lines it's about, in the terminal and over the page.
+            let said = crate::diagnostics::describe(&e, "build", &crate::diagnostics::Locator::of(cfg));
+            eprintln!("{} {}", crate::diagnostics::red("Build failed:"), said);
+            live.failed(said);
+            false
+        }
+    };
+    (SystemTime::now(), ok)
+}
+
+/// What the browsers ask about: what changed, and whether the build works.
+#[derive(Default)]
+struct Live(Mutex<LiveState>);
+
+#[derive(Default)]
+struct LiveState {
+    /// Goes up with everything a browser should hear about.
+    id: u64,
+    /// The last build's error, until a build works.
+    error: Option<String>,
+    /// Each file in the output as it was last seen ([`stamp`]), by its path
+    /// from the output folder.
+    seen: HashMap<String, (u64, u64)>,
+    /// The `id` at which each file last changed (or went away).
+    changed_at: HashMap<String, u64>,
+}
+
+impl Live {
+    /// The output may have changed: a build finished, or another tool wrote
+    /// there. Look at every file, and note the ones that differ.
+    fn changed(&self, output: &Path) {
+        let now: HashMap<String, (u64, u64)> = walkdir::WalkDir::new(output)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file())
+            .filter_map(|e| Some((crate::slashes(e.path().strip_prefix(output).ok()?), stamp(e.path(), &e.metadata().ok()?))))
+            .collect();
+        let mut state = self.0.lock().unwrap();
+        state.id += 1;
+        state.error = None;
+        let id = state.id;
+        let differs: Vec<String> = now.iter().filter(|(file, at)| state.seen.get(*file) != Some(at)).map(|(file, _)| file.clone()).chain(state.seen.keys().filter(|file| !now.contains_key(*file)).cloned()).collect();
+        for file in differs {
+            state.changed_at.insert(file, id);
+        }
+        state.seen = now;
     }
-    SystemTime::now()
+
+    /// A build failed: the output is as it was, and browsers show `error`.
+    fn failed(&self, error: String) {
+        let mut state = self.0.lock().unwrap();
+        state.id += 1;
+        state.error = Some(error);
+    }
+
+    /// The answer for a browser that last heard `since` and is showing the
+    /// page in `page` (a file in the output): the `id` now, the build's
+    /// `error`, whether to `reload`, and the stylesheets (`css`, as URLs) to
+    /// fetch again. A page reloads when its own file changed, or a file that
+    /// isn't a page or a stylesheet (a script, an image: any page may use it).
+    fn answer(&self, since: Option<u64>, page: &str, base: &str) -> serde_json::Value {
+        let state = self.0.lock().unwrap();
+        let mut reload = false;
+        let mut css = Vec::new();
+        match since {
+            // A server that started again counts from the beginning.
+            Some(since) if since > state.id => reload = true,
+            Some(since) => {
+                let known = state.seen.contains_key(page);
+                for (file, _) in state.changed_at.iter().filter(|(_, at)| **at > since) {
+                    let kind = file.rsplit_once('.').map(|(_, ext)| ext).unwrap_or("");
+                    if file == page {
+                        reload = true;
+                    } else if kind == "css" {
+                        css.push(format!("{}/{}", base, file));
+                    } else if matches!(kind, "html" | "htm" | "xml" | "txt" | "json" | "map" | "webmanifest") {
+                        // Another page. One that isn't there yet (a 404) reloads to see if it is now.
+                        reload |= !known;
+                    } else {
+                        reload = true;
+                    }
+                }
+            }
+            None => {}
+        }
+        css.sort();
+        serde_json::json!({ "id": state.id, "error": state.error, "reload": reload, "css": css })
+    }
+}
+
+/// What tells one version of an output file from the next: its size, and
+/// when it was written. Stylesheets and scripts are told apart by their
+/// contents instead, since the tools that write them (Sass, PostCSS, esbuild)
+/// write them again whether or not anything changed.
+fn stamp(path: &Path, meta: &std::fs::Metadata) -> (u64, u64) {
+    let by_contents = path.extension().is_some_and(|e| e == "css" || e == "js" || e == "mjs");
+    let mark = if by_contents { fingerprint(path) } else { meta.modified().ok().and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as u64) };
+    (meta.len(), mark.unwrap_or(0))
+}
+
+/// One value from a query string (`v=3&p=%2Fabout%2F`), decoded.
+fn query_value(query: &str, key: &str) -> Option<String> {
+    query.split('&').filter_map(|pair| pair.split_once('=')).find(|(k, _)| *k == key).map(|(_, v)| percent_decode(v))
+}
+
+/// The file in the output that a page's URL path is: `about/index.html` for
+/// `/about/` (under the site's `base`, when it has one).
+fn page_file(path: &str, base: &str) -> String {
+    let path = match mounted(path, base) {
+        Mounted::Path(path) => path,
+        _ => path,
+    };
+    let rel = path.trim_start_matches('/');
+    if rel.is_empty() || rel.ends_with('/') { format!("{}index.html", rel) } else { rel.to_string() }
 }
 
 fn content_type(path: &Path) -> &'static str {
@@ -326,10 +453,24 @@ fn inside(rel: &str) -> bool {
     !rel.contains('\\') && Path::new(rel).components().all(|c| matches!(c, std::path::Component::Normal(_)))
 }
 
-fn handle(request: tiny_http::Request, root: &Path, build_id: &AtomicU64, base: &str) -> Result<()> {
-    let raw_url = request.url().split(['?', '#']).next().unwrap_or("/").to_string();
+fn handle(request: tiny_http::Request, root: &Path, live: &Live, base: &str) -> Result<()> {
+    let (raw_url, query) = request.url().split('#').next().unwrap_or("/").split_once('?').map(|(url, query)| (url.to_string(), query.to_string())).unwrap_or_else(|| (request.url().split('#').next().unwrap_or("/").to_string(), String::new()));
+    let no_cache = || tiny_http::Header::from_bytes("Cache-Control", "no-store").unwrap();
     if raw_url == "/__ssqch/build" {
-        return Ok(request.respond(tiny_http::Response::from_string(build_id.load(Ordering::SeqCst).to_string()))?);
+        let since = query_value(&query, "v").and_then(|v| v.parse::<u64>().ok());
+        let page = page_file(&query_value(&query, "p").unwrap_or_default(), base);
+        let json = tiny_http::Header::from_bytes("Content-Type", "application/json").unwrap();
+        return Ok(request.respond(tiny_http::Response::from_string(live.answer(since, &page, base).to_string()).with_header(json).with_header(no_cache()))?);
+    }
+    // A footprint for the tab of a site without an icon, and a red one while the build is broken.
+    let icon = match raw_url.as_str() {
+        "/favicon.ico" if !root.join("favicon.ico").is_file() => Some("#3f6b3a"),
+        "/__ssqch/favicon-error.svg" => Some("#dc2626"),
+        _ => None,
+    };
+    if let Some(fill) = icon {
+        let svg = tiny_http::Header::from_bytes("Content-Type", "image/svg+xml").unwrap();
+        return Ok(request.respond(tiny_http::Response::from_string(FOOTPRINT_ICON.replace("{fill}", fill)).with_header(svg).with_header(no_cache()))?);
     }
     // Decoded once, before anything looks at the path.
     let full_url = percent_decode(&raw_url);
@@ -340,7 +481,7 @@ fn handle(request: tiny_http::Request, root: &Path, build_id: &AtomicU64, base: 
             return Ok(request.respond(tiny_http::Response::empty(302).with_header(location))?);
         }
         Mounted::Outside => {
-            let body = format!("Not found: this site is served under {}/ (its `base`).", base);
+            let body = format!("Wrong trailhead: this site is served under {}/ (its `base`).", base);
             return Ok(request.respond(tiny_http::Response::from_string(body).with_status_code(404))?);
         }
     };
@@ -357,20 +498,48 @@ fn handle(request: tiny_http::Request, root: &Path, build_id: &AtomicU64, base: 
         path = path.join("index.html");
     }
     let (status, path) = if path.is_file() { (200, path) } else { (404, root.join("404.html")) };
-    let mut body = std::fs::read(&path).unwrap_or_else(|_| b"Not found".to_vec());
-    let ctype = if path.is_file() { content_type(&path) } else { "text/plain" };
+    let (mut body, ctype) = match std::fs::read(&path) {
+        Ok(body) => (body, content_type(&path)),
+        Err(_) => (not_found_page(root, &url, base).into_bytes(), "text/html; charset=utf-8"),
+    };
     if ctype.starts_with("text/html") {
         let html = String::from_utf8_lossy(&body);
         body = match html.rfind("</body>") {
-            Some(i) => format!("{}{}{}", &html[..i], RELOAD_SCRIPT, &html[i..]),
-            None => format!("{}{}", html, RELOAD_SCRIPT),
+            Some(i) => format!("{}<script>{}</script>{}", &html[..i], LIVE_SCRIPT, &html[i..]),
+            None => format!("{}<script>{}</script>", html, LIVE_SCRIPT),
         }
         .into_bytes();
     }
     let header = tiny_http::Header::from_bytes("Content-Type", ctype).unwrap();
-    let no_cache = tiny_http::Header::from_bytes("Cache-Control", "no-store").unwrap();
-    request.respond(tiny_http::Response::from_data(body).with_status_code(status).with_header(header).with_header(no_cache))?;
+    // The dev server's own; a deployed site's headers are its host's.
+    let powered_by = tiny_http::Header::from_bytes("X-Powered-By", "pine cones").unwrap();
+    request.respond(tiny_http::Response::from_data(body).with_status_code(status).with_header(header).with_header(no_cache()).with_header(powered_by))?;
     Ok(())
+}
+
+/// Every page in the output folder, by URL: `/about/` for `about/index.html`.
+fn page_urls(root: &Path) -> Vec<String> {
+    walkdir::WalkDir::new(root)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "html"))
+        .filter_map(|e| e.path().strip_prefix(root).ok().map(crate::slashes))
+        .map(|rel| match rel.strip_suffix("index.html") {
+            Some(dir) => format!("/{}", dir),
+            None => format!("/{}", rel),
+        })
+        .collect()
+}
+
+/// [`NOT_FOUND_PAGE`] for `url`, with the page whose URL is closest to it,
+/// if one is close.
+fn not_found_page(root: &Path, url: &str, base: &str) -> String {
+    let urls = page_urls(root);
+    let suggestion = match crate::suggest::closest_path(url, urls.iter().map(String::as_str)) {
+        Some(found) => format!("<p>Did you mean <a href=\"{0}{1}\">{1}</a>?</p>", crate::escape_html(base), crate::escape_html(found)),
+        None => String::new(),
+    };
+    NOT_FOUND_PAGE.replace("{{url}}", &crate::escape_html(url)).replace("{{suggestion}}", &suggestion).replace("{{home}}", &format!("{}/", crate::escape_html(base)))
 }
 
 #[cfg(test)]
@@ -387,6 +556,88 @@ mod tests {
             assert!(!inside(bad), "{:?}", bad);
         }
         assert_eq!(percent_decode("/%2Fetc/hosts").trim_start_matches('/'), "etc/hosts");
+    }
+
+    #[test]
+    fn browsers_hear_what_changed() {
+        let dir = std::env::temp_dir().join(format!("ssqch-serve-live-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let write = |rel: &str, text: &str| {
+            std::fs::create_dir_all(dir.join(rel).parent().unwrap()).unwrap();
+            std::fs::write(dir.join(rel), text).unwrap();
+        };
+        write("index.html", "home");
+        write("about/index.html", "about");
+        write("assets/index.css", "body{}");
+        write("assets/index.js", "1");
+        write("feed.xml", "<feed/>");
+        let live = Live::default();
+        live.changed(&dir);
+        let answer = |since: Option<u64>, page: &str| live.answer(since, page, "/repo").to_string();
+        // A browser that has just arrived only learns where things stand.
+        assert_eq!(answer(None, "index.html"), r#"{"id":1,"error":null,"reload":false,"css":[]}"#);
+        assert_eq!(answer(Some(1), "index.html"), r#"{"id":1,"error":null,"reload":false,"css":[]}"#);
+
+        // Another page (and the feed) changed: this one stays. Its own page reloads.
+        write("about/index.html", "about us");
+        write("feed.xml", "<feed>more</feed>");
+        live.changed(&dir);
+        assert_eq!(answer(Some(1), "index.html"), r#"{"id":2,"error":null,"reload":false,"css":[]}"#);
+        assert_eq!(answer(Some(1), "about/index.html"), r#"{"id":2,"error":null,"reload":true,"css":[]}"#);
+        // A page that isn't there yet reloads, in case it is now.
+        assert_eq!(answer(Some(1), "contact/index.html"), r#"{"id":2,"error":null,"reload":true,"css":[]}"#);
+
+        // A stylesheet is swapped, under the site's base; a script reloads.
+        write("assets/index.css", "body{color:red}");
+        live.changed(&dir);
+        assert_eq!(answer(Some(2), "index.html"), r#"{"id":3,"error":null,"reload":false,"css":["/repo/assets/index.css"]}"#);
+        // A browser that missed a build hears about both.
+        assert_eq!(answer(Some(1), "about/index.html"), r#"{"id":3,"error":null,"reload":true,"css":["/repo/assets/index.css"]}"#);
+        write("assets/index.js", "22");
+        live.changed(&dir);
+        assert_eq!(answer(Some(3), "index.html"), r#"{"id":4,"error":null,"reload":true,"css":[]}"#);
+
+        // A failed build changes nothing but says so, until one works.
+        live.failed("in index.md: nope".into());
+        assert_eq!(answer(Some(4), "index.html"), r#"{"id":5,"error":"in index.md: nope","reload":false,"css":[]}"#);
+        live.changed(&dir);
+        assert_eq!(answer(Some(5), "index.html"), r#"{"id":6,"error":null,"reload":false,"css":[]}"#);
+        // A page that went away, and a server that started again.
+        std::fs::remove_file(dir.join("about/index.html")).unwrap();
+        live.changed(&dir);
+        assert_eq!(answer(Some(6), "about/index.html"), r#"{"id":7,"error":null,"reload":true,"css":[]}"#);
+        assert_eq!(answer(Some(40), "index.html"), r#"{"id":7,"error":null,"reload":true,"css":[]}"#);
+
+        assert_eq!(page_file("/repo/about/", "/repo"), "about/index.html");
+        assert_eq!(page_file("/", ""), "index.html");
+        assert_eq!(page_file("/notes.html", ""), "notes.html");
+        assert_eq!(query_value("v=3&p=%2Fabout%2F", "p").as_deref(), Some("/about/"));
+        assert_eq!(query_value("v=&p=%2F", "v").as_deref(), Some(""));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_missing_page_names_the_closest_one() {
+        let dir = std::env::temp_dir().join(format!("ssqch-serve-404-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("contact")).unwrap();
+        std::fs::write(dir.join("contact/index.html"), "<p>Hi</p>").unwrap();
+        std::fs::write(dir.join("index.html"), "<p>Home</p>").unwrap();
+        std::fs::write(dir.join("feed.xml"), "<feed/>").unwrap();
+        let mut urls = page_urls(&dir);
+        urls.sort();
+        assert_eq!(urls, ["/", "/contact/"]);
+
+        let page = not_found_page(&dir, "/contactt/", "/repo");
+        assert!(page.contains("The trail goes cold at <code>/contactt/</code>"), "{}", page);
+        assert!(page.contains("Did you mean <a href=\"/repo/contact/\">/contact/</a>?"), "{}", page);
+        assert!(page.contains("<a href=\"/repo/\">Back to the trailhead</a>"), "{}", page);
+        // Nothing close: no guess. And the URL is escaped.
+        let page = not_found_page(&dir, "/<script>alert(1)</script>/", "");
+        assert!(!page.contains("Did you mean"), "{}", page);
+        assert!(!page.contains("<script>alert"), "{}", page);
+        assert!(page.contains("<a href=\"/\">Back to the trailhead</a>"), "{}", page);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

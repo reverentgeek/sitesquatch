@@ -9,14 +9,18 @@ use sitesquatch::cli::clap;
 /// The type definitions for `ssqch.config.js` and the `ssqch/*` modules.
 pub const TYPES: &str = include_str!("ssqch.d.ts");
 
-/// The starter site: (path in the new site, contents). The layout and home page
-/// come from the chosen engine ([`Engine::files`]), and [`Engine::adapt`] fits the
-/// config and `posts.json` to it.
+/// The starter site: (path in the new site, contents). It's an amateur
+/// investigator's field notes: three posts that each show one thing. The
+/// layout and home page come from the chosen engine ([`Engine::files`]), and
+/// [`Engine::adapt`] fits the config, `posts.json` and the 404 page to it.
 const STARTER: &[(&str, &str)] = &[
     ("ssqch.config.js", include_str!("starter/ssqch.config.js")),
     ("src/_data/site.json", include_str!("starter/src/_data/site.json")),
     ("src/posts/posts.json", include_str!("starter/src/posts/posts.json")),
-    ("src/posts/hello-world.md", include_str!("starter/src/posts/hello-world.md")),
+    ("src/posts/i-know-what-i-saw.md", include_str!("starter/src/posts/i-know-what-i-saw.md")),
+    ("src/posts/upon-further-review-a-stump.md", include_str!("starter/src/posts/upon-further-review-a-stump.md")),
+    ("src/posts/the-stump-has-moved.md", include_str!("starter/src/posts/the-stump-has-moved.md")),
+    ("src/404.md", include_str!("starter/src/404.md")),
     ("src/_archetypes/posts.md", include_str!("starter/src/_archetypes/posts.md")),
     ("ssqch.d.ts", TYPES),
     ("jsconfig.json", include_str!("starter/jsconfig.json")),
@@ -99,7 +103,7 @@ impl Engine {
                 let formats = format!("templateFormats: [\"{0}\", \"md\"],\n  markdownEngine: \"{0}\",", self.0);
                 replace_once(&replace_once(contents, "{{ readableDate(post.date) }}", call), "templateFormats: [\"edge\", \"md\"],", &formats)
             }
-            "src/posts/posts.json" => replace_once(contents, "layout.edge", &format!("layout.{}", self.0)),
+            "src/posts/posts.json" | "src/404.md" => replace_once(contents, "layout.edge", &format!("layout.{}", self.0)),
             _ => contents.to_string(),
         }
     }
@@ -113,7 +117,7 @@ fn replace_once(contents: &str, from: &str, to: &str) -> String {
 
 pub fn init_command() -> clap::Command {
     clap::Command::new("init")
-        .about("Create a starter site (config, layout, a post, data and editor types)")
+        .about("Create a starter site (config, layout, three posts, data and editor types)")
         .arg(clap::Arg::new("dir").help("Where to create it (default: the current folder)").default_value("."))
         .arg(clap::Arg::new("starter").long("starter").value_name("NAME").help("What to start with: site (a small blog) or docs (documentation with a sidebar, tabs and search)").default_value("site"))
         .arg(clap::Arg::new("engine").long("engine").value_name("NAME").help("The template language for the site starter's layout and home page: edge, liquid, njk or hbs").default_value("edge"))
@@ -143,11 +147,11 @@ pub fn run_init(matches: &clap::ArgMatches) -> ExitCode {
             println!("  kept    {} (already there)", show(&dir, path));
         }
         if written.is_empty() {
-            println!("Nothing to do: every starter file is already there.");
+            println!("Nothing to do: camp is already set up (every starter file is there).");
             return;
         }
         let cd = if dir == Path::new(".") { String::new() } else { format!("cd {} && ", dir.display()) };
-        println!("\nNext: {}ssqch serve, then open http://localhost:8080", cd);
+        println!("\nCamp is set up. Next: {}ssqch serve, then open http://localhost:8080", cd);
     }))
 }
 
@@ -235,7 +239,7 @@ fn report(result: Result<()>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("\x1b[31merror:\x1b[0m {:#}", e);
+            eprintln!("{} {:#}", sitesquatch::diagnostics::red("error:"), e);
             ExitCode::FAILURE
         }
     }

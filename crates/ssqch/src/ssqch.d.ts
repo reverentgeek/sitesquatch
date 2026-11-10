@@ -190,6 +190,8 @@ declare module "ssqch" {
 		/** Merge objects and concatenate arrays through the data cascade. Default `true`. */
 		deepMerge?: boolean;
 		/** Delete output files an earlier build wrote or copied that this one didn't (a deleted post's page). Files other tools write are never touched. Default `false`. */
+		leaveNoTrace?: boolean;
+		/** Another name for `leaveNoTrace`. Set one of them. */
 		clean?: boolean;
 		/** Globs (relative to the input folder) of files that aren't pages, like `["drafts/**", "notes/*.wip.md"]`. */
 		ignore?: string | string[];

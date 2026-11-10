@@ -35,7 +35,9 @@ pub struct SiteToml {
     pub markdown_engine: Option<String>,
     pub html_engine: Option<String>,
     pub data_deep_merge: Option<bool>,
-    pub clean: Option<bool>,
+    /// `clean` is its other name.
+    #[serde(alias = "clean")]
+    pub leave_no_trace: Option<bool>,
     pub ignore: Option<Vec<String>>,
     pub bundles: Option<bool>,
     pub strict: Option<bool>,
@@ -77,7 +79,7 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
     if let Some(v) = site.markdown_engine { cfg.markdown_engine = Some(v).filter(|s| !s.is_empty()); }
     if let Some(v) = site.html_engine { cfg.html_engine = Some(v).filter(|s| !s.is_empty()); }
     if let Some(v) = site.data_deep_merge { cfg.data_deep_merge = v; }
-    if let Some(v) = site.clean { cfg.clean = v; }
+    if let Some(v) = site.leave_no_trace { cfg.leave_no_trace = v; }
     if let Some(v) = site.ignore { cfg.ignore = v; }
     if let Some(v) = site.bundles { cfg.bundles = v; }
     if let Some(v) = site.strict { cfg.strict = v; }

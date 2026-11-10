@@ -45,6 +45,34 @@ pub trait TemplateEngine: Send + Sync {
 
 // -------------------------------------------------------------------- Edge
 
+/// Edge's includes and components, from the includes folder and the themes'.
+/// One that isn't there is reported with the name it was probably meant to be.
+struct Includes(FsLoader);
+
+impl sitesquatch_edge::Loader for Includes {
+    fn load(&self, name: &str) -> Result<(String, String)> {
+        self.0.load(name).map_err(|e| {
+            let wanted = name.trim_end_matches(".edge");
+            let have: Vec<String> = std::iter::once(&self.0.root)
+                .chain(&self.0.fallbacks)
+                .flat_map(|dir| {
+                    walkdir::WalkDir::new(dir)
+                        .into_iter()
+                        .filter_map(Result::ok)
+                        .filter(|entry| entry.file_type().is_file())
+                        .filter_map(|entry| entry.path().strip_prefix(dir).ok().map(crate::slashes))
+                        .filter_map(|rel| rel.strip_suffix(".edge").map(String::from))
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            match crate::suggest::closest(wanted, have.iter().map(String::as_str).filter(|c| *c != wanted)) {
+                Some(found) => anyhow::anyhow!("{:#} (did you mean `{}`?)", e, found),
+                None => e,
+            }
+        })
+    }
+}
+
 pub struct EdgeEngine {
     engine: sitesquatch_edge::Engine,
     compiled: RwLock<HashMap<String, Arc<Template>>>,
@@ -52,7 +80,7 @@ pub struct EdgeEngine {
 
 impl EdgeEngine {
     pub fn new(env: &EngineEnv) -> Self {
-        let mut engine = sitesquatch_edge::Engine::new(FsLoader { root: env.includes_dir.clone(), fallbacks: env.theme_includes.clone() });
+        let mut engine = sitesquatch_edge::Engine::new(Includes(FsLoader { root: env.includes_dir.clone(), fallbacks: env.theme_includes.clone() }));
         for (name, value) in &env.globals {
             engine.add_global(name.clone(), value.clone());
         }

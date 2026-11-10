@@ -25,7 +25,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use lol_html::{element, rewrite_str, RewriteStrSettings};
 use rayon::prelude::*;
 use sitesquatch::diagnostics::{self, Diagnostic, Diagnostics, Severity};
-use sitesquatch::{BuildContext, BuildReport, Config, Environment, Plugin};
+use sitesquatch::{suggest, BuildContext, BuildReport, Config, Environment, Plugin};
 
 #[derive(Clone, Debug, Default)]
 pub struct LinksOptions {
@@ -109,7 +109,7 @@ pub struct CheckResult {
 
 /// The broken links, the first `shown` of them listed (all of them with `--verbose`).
 fn describe(broken: &[Broken], shown: usize) -> String {
-    let mut out = format!("{} broken link{}:", broken.len(), if broken.len() == 1 { "" } else { "s" });
+    let mut out = format!("{} on {} broken link{}:", sitesquatch::voice::TRAIL_GOES_COLD, broken.len(), if broken.len() == 1 { "" } else { "s" });
     for b in broken.iter().take(shown) {
         out.push_str(&format!("\n  {} -> {} ({})", b.page, b.link, b.reason));
     }
@@ -203,6 +203,10 @@ pub fn check(ctx: &BuildContext, report: &BuildReport, options: &LinksOptions) -
     // Most links on a site point at the same few pages (every sidebar lists
     // them), so each target is looked up on disk once.
     let mut found: HashMap<String, Option<PathBuf>> = HashMap::new();
+    // "Did you mean": the page whose URL is nearly a missing one, looked for once.
+    let urls: Vec<String> = scans.iter().map(|(path, _)| url_of(&ctx.output_dir, path)).collect();
+    let mut meant: HashMap<String, String> = HashMap::new();
+    let did_you_mean = |found: Option<&str>, mark: &str| found.map(|name| format!("; did you mean {}{}?", mark, name)).unwrap_or_default();
     for (path, page) in &scans {
         let page_url = url_of(&ctx.output_dir, path);
         for link in &page.links {
@@ -217,7 +221,7 @@ pub fn check(ctx: &BuildContext, report: &BuildReport, options: &LinksOptions) -
             let reason = if target_path.is_empty() {
                 // `#top`: this page.
                 match fragment {
-                    Some(f) if anchors && !page.ids.contains(&f) => Some(format!("no id \"{}\" on this page", f)),
+                    Some(f) if anchors && !page.ids.contains(&f) => Some(format!("no id \"{}\" on this page{}", f, did_you_mean(suggest::closest(&f, page.ids.iter().map(String::as_str)), "#"))),
                     _ => None,
                 }
             } else if options.ignore.iter().any(|p| target_path.starts_with(p.as_str())) || redirected(&redirects, &target_path) {
@@ -227,9 +231,15 @@ pub fn check(ctx: &BuildContext, report: &BuildReport, options: &LinksOptions) -
                     found.insert(target_path.clone(), find(&ctx.output_dir, &target_path));
                 }
                 match &found[&target_path] {
-                    None => Some("not found".to_string()),
+                    None => {
+                        // A site with hundreds of dead links has a bigger problem than typos.
+                        if !meant.contains_key(&target_path) && meant.len() < 500 {
+                            meant.insert(target_path.clone(), did_you_mean(suggest::closest_path(&target_path, urls.iter().map(String::as_str)), ""));
+                        }
+                        Some(format!("not found{}", meant.get(&target_path).map(String::as_str).unwrap_or("")))
+                    }
                     Some(file) => match (fragment, ids.get(file.as_path())) {
-                        (Some(f), Some(target_ids)) if anchors && !target_ids.contains(&f) => Some(format!("no id \"{}\" on that page", f)),
+                        (Some(f), Some(target_ids)) if anchors && !target_ids.contains(&f) => Some(format!("no id \"{}\" on that page{}", f, did_you_mean(suggest::closest(&f, target_ids.iter().map(String::as_str)), "#"))),
                         _ => None,
                     },
                 }

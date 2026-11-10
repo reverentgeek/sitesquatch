@@ -134,6 +134,9 @@ fn install_data_files(cfg: &mut Config, files: DataFiles) {
         if stale > 0 {
             line.push_str(&format!(" ({} out of date, after a failed request)", stale));
         }
+        if fetch::offline() {
+            line.push_str(" (--offline: living off the cache)");
+        }
         Some(line)
     });
     let files = Arc::new(files);
@@ -260,7 +263,20 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
         Value::Bool(b) => cfg.data_deep_merge = b,
         other => bail!("deepMerge must be true or false, not {}", other.type_of()),
     }
-    for (key, slot) in [("clean", &mut cfg.clean), ("bundles", &mut cfg.bundles), ("strict", &mut cfg.strict)] {
+    // `leaveNoTrace`, or `clean`, its other name.
+    let mut trace = None;
+    for key in ["leaveNoTrace", "clean"] {
+        match settings.get(key) {
+            Value::Undefined => {}
+            Value::Bool(_) if trace.is_some() => bail!("leaveNoTrace and clean are two names for one option; set one of them"),
+            Value::Bool(b) => trace = Some(b),
+            other => bail!("{} must be true or false, not {}", key, other.type_of()),
+        }
+    }
+    if let Some(b) = trace {
+        cfg.leave_no_trace = b;
+    }
+    for (key, slot) in [("bundles", &mut cfg.bundles), ("strict", &mut cfg.strict)] {
         match settings.get(key) {
             Value::Undefined => {}
             Value::Bool(b) => *slot = b,

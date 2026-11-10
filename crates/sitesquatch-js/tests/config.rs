@@ -163,7 +163,7 @@ fn mistakes_in_the_config_say_what_to_fix() {
         ("import s from \"node:sqlite\"; export default {};", "node:sqlite isn't available in ssqch (available: node:fs, "),
         ("export const config = {};", "needs a default export: export default defineConfig({ ... })"),
         ("export default { dirs: { assets: \"_assets\" } };", "dirs.assets isn't supported (use input, output, includes, layouts, data)"),
-        ("export default { dir: { input: \"src\" } };", "\"dir\" isn't a config option (options: dirs, templateFormats"),
+        ("export default { dir: { input: \"src\" } };", "\"dir\" isn't a config option (did you mean \"dirs\"?) (options: dirs, templateFormats"),
         ("export default { plugins: [{ builtin: \"test:gretter\" }] };", "unknown plugin \"test:gretter\" (built-in plugins: test:greeter)"),
         ("export default async () => { await new Promise(() => {}); };", "never settled"),
         ("export default { filters: { x: 1 } };", "filters.x must be a function"),

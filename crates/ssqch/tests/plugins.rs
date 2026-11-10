@@ -234,14 +234,14 @@ fn broken_links_fail_a_production_build_and_warn_in_development() {
     let (ok, log) = ssqch(&root);
     assert!(!ok, "{}", log);
     assert!(log.contains("4 broken links:"), "{}", log);
-    assert!(log.contains("/ -> /abuot/ (not found)"), "{}", log);
-    assert!(log.contains("/ -> /about/#tema (no id \"tema\" on that page)"), "{}", log);
+    assert!(log.contains("/ -> /abuot/ (not found; did you mean /about/?)"), "{}", log);
+    assert!(log.contains("/ -> /about/#tema (no id \"tema\" on that page; did you mean #team?)"), "{}", log);
     assert!(log.contains("/ -> #nowhere (no id \"nowhere\" on this page)"), "{}", log);
     assert!(log.contains("/ -> /img/missing.png (not found)"), "{}", log);
 
     let (ok, log) = ssqch_with(&root, &["--env", "development"]);
     assert!(ok, "{}", log);
-    assert!(log.contains("warn: 4 broken links:") && log.contains("checked, 4 broken"), "{}", log);
+    assert!(log.contains("warn: the trail goes cold on 4 broken links:") && log.contains("checked, 4 broken"), "{}", log);
 }
 
 fn linked_images_site(options: &str) -> PathBuf {

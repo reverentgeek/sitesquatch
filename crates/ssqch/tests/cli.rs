@@ -26,23 +26,30 @@ fn init_creates_a_site_that_builds() {
     let d = dir.to_str().unwrap();
     let (ok, log) = ssqch(&["init", d]);
     assert!(ok, "{}", log);
-    for file in ["ssqch.config.js", "src/_includes/layout.edge", "src/index.edge", "src/posts/hello-world.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore"] {
+    for file in ["ssqch.config.js", "src/_includes/layout.edge", "src/index.edge", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore"] {
         assert!(dir.join(file).is_file(), "{} wasn't created:\n{}", file, log);
     }
-    assert!(log.contains("Next: cd "), "{}", log);
+    assert!(log.contains("Camp is set up. Next: cd "), "{}", log);
 
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok, "{}", log);
-    assert!(log.contains("Links   3 checked, 0 broken"), "{}", log);
+    assert!(log.contains("Links   9 checked, 0 broken"), "{}", log);
     let home = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
-    assert!(home.contains("<a href=\"/posts/hello-world/\">Hello, world</a> (January 1, 2026)"), "{}", home);
+    assert!(home.contains("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), "{}", home);
+    // Newest first.
+    let at = |title: &str| home.find(title).unwrap_or_else(|| panic!("{} isn't on the home page: {}", title, home));
+    assert!(at("The Stump Has Moved") < at("Upon Further Review, a Stump") && at("Upon Further Review, a Stump") < at("I Know What I Saw"), "{}", home);
+    assert!(std::fs::read_to_string(dir.join("dist/404.html")).unwrap().contains("several eyewitness accounts"));
+    // A site's first build says so; the next one doesn't.
+    assert!(log.contains("First confirmed siting. Built in "), "{}", log);
 
     // The next post starts from the starter's archetype, and is on the home page.
     let (ok, log) = ssqch(&["new", "--root", d, "posts", "--title", "My second post", "--date", "2026-02-03"]);
     assert_eq!((ok, log.as_str()), (true, "Created src/posts/my-second-post.md from src/_archetypes/posts.md\n"));
-    assert_eq!(std::fs::read_to_string(dir.join("src/posts/my-second-post.md")).unwrap(), "---\ntitle: My second post\ndate: 2026-02-03\n---\nWrite your post here.\n");
+    assert_eq!(std::fs::read_to_string(dir.join("src/posts/my-second-post.md")).unwrap(), "---\ntitle: My second post\ndate: 2026-02-03\n---\nWrite down what you saw.\n");
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok, "{}", log);
+    assert!(log.contains("Built in ") && !log.contains("First confirmed siting"), "{}", log);
     let home = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
     assert!(home.contains("<a href=\"/posts/my-second-post/\">My second post</a> (February 3, 2026)") && !dir.join("dist/_archetypes").exists(), "{}", home);
 
@@ -70,13 +77,15 @@ fn init_starts_a_site_in_each_engine() {
 
         let (ok, log) = ssqch(&["build", "--root", d]);
         assert!(ok, "{}: {}", engine, log);
-        assert!(log.contains("Links   3 checked, 0 broken"), "{}: {}", engine, log);
+        assert!(log.contains("Links   9 checked, 0 broken"), "{}: {}", engine, log);
         let home = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
-        assert!(home.contains("<a href=\"/posts/hello-world/\">Hello, world</a> (January 1, 2026)"), "{}: {}", engine, home);
-        assert!(home.contains("<title>My Squatch Site</title>"), "{}: {}", engine, home);
-        let post = std::fs::read_to_string(dir.join("dist/posts/hello-world/index.html")).unwrap();
-        assert!(post.contains("<title>Hello, world | My Squatch Site</title>") && post.contains("<h1>Hello, world</h1>") && post.contains("<code>posts.json</code>"), "{}: {}", engine, post);
-        assert!(post.contains(&format!("Built with SiteSquatch {}.", env!("CARGO_PKG_VERSION"))), "{}: {}", engine, post);
+        assert!(home.contains("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), "{}: {}", engine, home);
+        assert!(home.contains("<title>Field Notes</title>"), "{}: {}", engine, home);
+        let post = std::fs::read_to_string(dir.join("dist/posts/i-know-what-i-saw/index.html")).unwrap();
+        assert!(post.contains("<title>I Know What I Saw | Field Notes</title>") && post.contains("<h1>I Know What I Saw</h1>") && post.contains("<code>posts.json</code>"), "{}: {}", engine, post);
+        assert!(post.contains(&format!("Built with SiteSquatch {}. Allegedly.", env!("CARGO_PKG_VERSION"))), "{}: {}", engine, post);
+        let missing = std::fs::read_to_string(dir.join("dist/404.html")).unwrap();
+        assert!(missing.contains("<h1>Page not found</h1>") && missing.contains("<a href=\"/\">Back to the trailhead</a>"), "{}: {}", engine, missing);
     }
 }
 
@@ -216,12 +225,12 @@ fn render_front_matter_picks_the_engines() {
 }
 
 #[test]
-fn clean_removes_only_stale_files_ssqch_wrote() {
-    let dir = temp_dir("clean");
+fn leave_no_trace_removes_only_stale_files_ssqch_wrote() {
+    let dir = temp_dir("leave-no-trace");
     let d = dir.to_str().unwrap();
     std::fs::create_dir_all(dir.join("files")).unwrap();
     let write = |name: &str, body: &str| std::fs::write(dir.join(name), body).unwrap();
-    let config = |clean: bool| format!("export default {{ clean: {}, passthrough: \"files\" }};\n", clean);
+    let config = |on: bool| format!("export default {{ leaveNoTrace: {}, passthrough: \"files\" }};\n", on);
     write("ssqch.config.js", &config(false));
     write("keep.md", "Keep\n");
     write("gone.md", "Gone\n");
@@ -235,7 +244,7 @@ fn clean_removes_only_stale_files_ssqch_wrote() {
     std::fs::remove_file(dir.join("gone.md")).unwrap();
     std::fs::remove_file(dir.join("files/old.txt")).unwrap();
     let site = dir.join("_site");
-    // With clean off, nothing goes.
+    // With it off, nothing goes.
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok, "{}", log);
     assert!(site.join("gone/index.html").is_file() && site.join("files/old.txt").is_file());
@@ -243,7 +252,7 @@ fn clean_removes_only_stale_files_ssqch_wrote() {
     write("ssqch.config.js", &config(true));
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok, "{}", log);
-    assert!(log.contains("Removed  2 stale files"), "{}", log);
+    assert!(log.contains("Removed  2 stale files, left no trace"), "{}", log);
     assert!(!site.join("gone").exists(), "the emptied folder goes too");
     assert!(!site.join("files/old.txt").exists());
     assert!(site.join("keep/index.html").is_file());
@@ -252,6 +261,24 @@ fn clean_removes_only_stale_files_ssqch_wrote() {
     // Nothing stale the next time.
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok && !log.contains("Removed"), "{}", log);
+
+    // `clean` is the option's other name.
+    write("ssqch.config.js", "export default { clean: true, passthrough: \"files\" };\n");
+    std::fs::remove_file(dir.join("keep.md")).unwrap();
+    write("stay.md", "Stay\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && log.contains("Removed  1 stale file, left no trace") && !site.join("keep").exists(), "{}", log);
+    // One name at a time.
+    write("ssqch.config.js", "export default { leaveNoTrace: true, clean: true };\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("leaveNoTrace and clean are two names for one option; set one of them"), "{}", log);
+    // In TOML it's `leave_no_trace`, or `clean`.
+    std::fs::remove_file(dir.join("ssqch.config.js")).unwrap();
+    for key in ["leave_no_trace", "clean"] {
+        write("sitesquatch.toml", &format!("{} = true\n", key));
+        let (ok, log) = ssqch(&["build", "--root", d]);
+        assert!(ok, "{}: {}", key, log);
+    }
 }
 
 #[test]
@@ -437,7 +464,7 @@ fn markdown_options_hooks_containers_and_headings() {
     // Mistakes name the option or the file.
     write("ssqch.config.js", "export default { markdown: { footnote: false } };\n");
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
-    assert!(!ok && log.contains("markdown.footnote isn't an option (options: headingIds,"), "{}", log);
+    assert!(!ok && log.contains("markdown.footnote isn't an option (did you mean `footnotes`?) (options: headingIds,"), "{}", log);
     write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" } };\n");
     write("src/_includes/hooks/link.pug", "a");
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
@@ -607,7 +634,7 @@ fn diff_compares_two_builds() {
     assert!(ok, "{}", log);
     let (code, log) = run(&["diff", "before", "dist"]);
     assert_eq!(code, Some(0), "{}", log);
-    assert!(log.contains("No differences: 2 pages and 0 other files are the same."), "{}", log);
+    assert!(log.contains("No differences: 2 pages and 0 other files are the same. The stump has not moved."), "{}", log);
 
     write("src/index.md", "---\ntitle: Home\nlayout: layout.edge\n---\n## Paths\n\nCedar trail.\n");
     write("src/new.md", "---\ntitle: New\nlayout: layout.edge\n---\nNew.\n");
@@ -1018,7 +1045,12 @@ fn serve_does_not_rebuild_for_its_own_files() {
     assert_eq!(builds(), 1, "it rebuilt with nothing changed:\n{}", std::fs::read_to_string(&log).unwrap_or_default());
     change_and_wait(&dir.join("index.edge"), "two {{ 2 + 2 }}", &page, "two 4");
     std::thread::sleep(std::time::Duration::from_millis(1500));
-    assert_eq!(builds(), 2, "{}", std::fs::read_to_string(&log).unwrap_or_default());
+    let said = std::fs::read_to_string(&log).unwrap_or_default();
+    assert_eq!(builds(), 2, "{}", said);
+    // The server says its name, and what changed.
+    assert!(said.contains("Squatch Watch is on. Serving ") && said.contains("Fresh tracks in index.edge\n"), "{}", said);
+    // The first build is the site's first; the rebuild isn't.
+    assert_eq!(said.matches("First confirmed siting. Built in").count(), 1, "{}", said);
 }
 
 #[cfg(feature = "jinja")]
@@ -1269,7 +1301,7 @@ fn build_reports_in_json() {
     let (ok, stdout, stderr) = ssqch_outputs(&["build", "--root", d]);
     assert!(ok && stdout.contains("from the config") && stdout.contains("from-a-command") && stdout.contains("Built in"), "{}\n{}", stdout, stderr);
     assert_eq!(stderr.matches("warn: ").count(), 3, "{}", stderr);
-    assert!(stderr.contains("warn: 1 broken link:\n  /posts/pine/ -> /nope/ (not found)"), "{}", stderr);
+    assert!(stderr.contains("warn: the trail goes cold on 1 broken link:\n  /posts/pine/ -> /nope/ (not found)"), "{}", stderr);
     let (ok, log) = ssqch(&["build", "--format", "yaml", "--root", d]);
     assert!(!ok && log.contains("--format yaml: use text or json"), "{}", log);
 }
@@ -1382,6 +1414,233 @@ fn serve_writes_a_ready_file() {
     assert!(std::fs::read_to_string(output.join("index.html")).unwrap().contains("Ready <em>now</em>"));
     let page = http_get(port as u16, "/docs/");
     assert!(page.starts_with("HTTP/1.1 200") && page.contains("Ready <em>now</em>"), "{}", page);
+    assert!(page.contains("X-Powered-By: pine cones"), "{}", page);
+
+    // A page that isn't there, in a site with no 404.html: the server's own page, which is never written.
+    std::fs::create_dir_all(output.join("contact")).unwrap();
+    std::fs::write(output.join("contact/index.html"), "<p>Contact</p>").unwrap();
+    let missing = http_get(port as u16, "/docs/contactt/");
+    assert!(missing.starts_with("HTTP/1.1 404") && missing.contains("The trail goes cold at <code>/contactt/</code>"), "{}", missing);
+    assert!(missing.contains("Did you mean <a href=\"/docs/contact/\">/contact/</a>?") && missing.contains("<a href=\"/docs/\">Back to the trailhead</a>"), "{}", missing);
+    assert!(missing.contains("/__ssqch/build") && !output.join("404.html").exists(), "{}", missing);
+    // The site's own 404.html wins.
+    std::fs::write(output.join("404.html"), "<p>Mine</p>").unwrap();
+    let missing = http_get(port as u16, "/docs/contactt/");
+    assert!(missing.starts_with("HTTP/1.1 404") && missing.contains("<p>Mine</p>") && !missing.contains("trail goes cold"), "{}", missing);
+    // Outside the base.
+    let outside = http_get(port as u16, "/contact/");
+    assert!(outside.starts_with("HTTP/1.1 404") && outside.contains("Wrong trailhead: this site is served under /docs/ (its `base`)."), "{}", outside);
+
+    // A port something else has.
+    let (ok, log) = ssqch(&["serve", "--port", &port.to_string(), "--root", dir.to_str().unwrap()]);
+    assert!(!ok && log.contains(&format!("can't listen on port {}: something else is squatting on it (--port 0 picks a free one)", port)), "{}", log);
+}
+
+/// The lines with a Sasquatch in them still say what happened.
+#[test]
+fn the_ranger_reports_what_happened() {
+    let dir = temp_dir("voice");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"edge\", \"md\"] };\n");
+
+    // Nothing to build.
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    write("src/notes.txt", "not a page");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && log.contains("Nothing sighted: no file in src matches templateFormats (edge, md).\n"), "{}", log);
+
+    // Layouts that lead back to each other: the loop is named.
+    write("src/_includes/base.edge", "---\nlayout: wrap.edge\n---\n{{{ content }}}");
+    write("src/_includes/wrap.edge", "---\nlayout: base.edge\n---\n{{{ content }}}");
+    write("src/index.md", "---\nlayout: base.edge\n---\nHi\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("in index.md: we've passed this tree before. Layout loop: base.edge -> wrap.edge -> base.edge"), "{}", log);
+    let (_, stdout, _) = ssqch_outputs(&["build", "--format", "json", "--root", d]);
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("{}: {}", e, stdout));
+    assert_eq!((&report["errors"][0]["code"], &report["errors"][0]["file"]), (&serde_json::json!("template"), &serde_json::json!("src/index.md")), "{}", stdout);
+
+    // A layout that isn't there, with the one it probably meant.
+    write("src/_includes/wrap.edge", "{{{ content }}}");
+    write("src/index.md", "---\nlayout: bse\n---\nHi\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("in index.md: layout `bse` not found: no sightings in ") && log.contains("_includes (did you mean `base`?)"), "{}", log);
+    write("src/index.md", "---\nlayout: nothing-like-it.edge\n---\nHi\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("layout `nothing-like-it.edge` not found: no sightings in ") && !log.contains("did you mean"), "{}", log);
+
+    // An include that isn't there, a config key and a plugin option that are nearly right.
+    write("src/_includes/partials/nav.edge", "<nav></nav>");
+    write("src/index.md", "---\nlayout: wrap.edge\n---\n@include('partials/navv')\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("index.md:1: @include('partials/navv'): template not found: ") && log.contains("(did you mean `partials/nav`?)"), "{}", log);
+    // The line it's about, numbered as the file is, with carets under what the message quotes.
+    assert!(log.contains("\n\n  --> src/index.md:4\n   2 | layout: wrap.edge\n   3 | ---\n   4 | @include('partials/navv')\n     |           ^^^^^^^^^^^^^\n"), "{}", log);
+    // Colour is for terminals, and this is a pipe.
+    assert!(log.starts_with("error: ") && !log.contains('\u{1b}'), "{:?}", log);
+    let config = std::fs::read_to_string(dir.join("ssqch.config.js")).unwrap();
+    for (bad, expected) in [
+        ("export default { templateFormat: [\"md\"] };", "ssqch.config.js: \"templateFormat\" isn't a config option (did you mean \"templateFormats\"?) (options: dirs, "),
+        ("export default { output: \"dist\" };", "ssqch.config.js: \"output\" isn't a config option (it goes in dirs: { output: \"...\" }) (options: dirs, "),
+        ("export default { dirs: { inptu: \"src\" } };", "ssqch.config.js: dirs.inptu isn't supported (did you mean \"input\"?) (use input, "),
+        ("export default { markdown: { footnote: true } };", "markdown.footnote isn't an option (did you mean `footnotes`?) (options: "),
+        ("import { imagePlugin } from \"ssqch/image\";\nexport default { plugins: [imagePlugin({ widhts: [300] })] };", "unknown option \"widhts\" (did you mean \"widths\"?) (options: formats, widths, "),
+        ("export default { pineCones: 3 };", "ssqch.config.js: \"pineCones\" isn't a config option (options: dirs, "),
+    ] {
+        write("ssqch.config.js", bad);
+        let (ok, log) = ssqch(&["build", "--root", d]);
+        assert!(!ok && log.contains(expected), "{}: {}", bad, log);
+    }
+    write("ssqch.config.js", &config);
+
+    // Two pages for one URL.
+    write("src/index.md", "---\nlayout: wrap.edge\n---\nHi\n");
+    write("src/about.md", "About\n");
+    write("src/about/index.md", "About too\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("output conflicts (two sets of tracks lead to the same place):\n  - about") && log.contains(" both write to "), "{}", log);
+    let (_, stdout, _) = ssqch_outputs(&["build", "--format", "json", "--root", d]);
+    assert!(stdout.contains("\"code\": \"conflict\""), "{}", stdout);
+    std::fs::remove_file(dir.join("src/about/index.md")).unwrap();
+
+    // Drafts are counted in production, and built in development.
+    write("src/wip.md", "---\ndraft: true\n---\nNot yet\n");
+    write("src/later.md", "---\ndraft: true\n---\nNot yet either\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && log.contains("  Drafts  2 unconfirmed (built in development only)\n") && !dir.join("dist/wip").exists(), "{}", log);
+    let (ok, stdout, _) = ssqch_outputs(&["build", "--format", "json", "--root", d]);
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("{}: {}", e, stdout));
+    assert!(ok && report["drafts"] == 2, "{}", stdout);
+    let (ok, log) = ssqch(&["build", "--env", "development", "--root", d]);
+    assert!(ok && !log.contains("Drafts") && dir.join("dist/wip/index.html").is_file(), "{}", log);
+
+    // Nothing of ssqch's own is in what a build writes.
+    for page in ["index.html", "about/index.html", "wip/index.html"] {
+        let html = std::fs::read_to_string(dir.join("dist").join(page)).unwrap().to_lowercase();
+        assert!(!html.contains("squatch") && !html.contains("ssqch") && !html.contains("<!--"), "{}: {}", page, html);
+    }
+
+    // What's new and what's gone since the last build (the drafts, which development built).
+    write("src/extra.md", "Extra\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && log.contains(" (1 new, 2 gone)\n") && !log.contains("Uninhabited"), "{}", log);
+    let (ok, stdout, _) = ssqch_outputs(&["build", "--format", "json", "--root", d]);
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("{}: {}", e, stdout));
+    assert!(ok && report["pages"]["new"] == 0 && report["pages"]["gone"] == 0, "{}", stdout);
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && !log.contains(" new") && !log.contains(" gone"), "{}", log);
+
+    // --verbose names the Edge templates nothing used: the layout and the include from above.
+    let (ok, log) = ssqch(&["build", "--verbose", "--root", d]);
+    assert!(ok && log.contains("Uninhabited: 2 Edge templates that nothing used in this build (src/_includes/base.edge, src/_includes/partials/nav.edge).\n"), "{}", log);
+
+    // Completions for a shell, with every command that's in --help.
+    let (ok, script) = ssqch(&["completions", "zsh"]);
+    assert!(ok && script.contains("#compdef ssqch") && script.contains("inspect") && script.contains("capabilities") && !script.contains("sighting"), "{}", script);
+    let (ok, log) = ssqch(&["completions", "klingon"]);
+    assert!(!ok && log.contains("possible values: bash, elvish, fish, powershell, zsh"), "{}", log);
+
+    // `ssqch sighting` is there for whoever finds it, and knows when the site was last built.
+    let (ok, log) = ssqch(&["sighting", "--root", d]);
+    assert!(ok && log.contains("Image quality meets cryptozoological standards.") && log.contains("Last confirmed siting: 3 pages in dist/, just now."), "{}", log);
+    let (_, help) = ssqch(&["--help"]);
+    assert!(help.contains("inspect") && !help.contains("sighting"), "{}", help);
+    let (_, caps) = ssqch(&["capabilities", "--format", "json"]);
+    assert!(!caps.contains("sighting"), "{}", caps);
+}
+
+/// What the dev server tells a browser that last heard `since` and is showing `page`.
+fn live(port: u16, since: &str, page: &str) -> serde_json::Value {
+    let response = http_get(port, &format!("/__ssqch/build?v={}&p={}", since, page.replace('/', "%2F")));
+    let body = response.split("\r\n\r\n").nth(1).unwrap_or("");
+    serde_json::from_str(body).unwrap_or_else(|e| panic!("{}: {}", e, response))
+}
+
+/// The dev server reloads a browser only for the page it's showing, and shows it a build that failed.
+#[test]
+fn serve_tells_the_browser_what_changed() {
+    let dir = temp_dir("serve-live");
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, passthrough: { \"src/site.css\": \"site.css\" } };\n");
+    write("src/index.md", "Home\n");
+    write("src/about.md", "About\n");
+    write("src/site.css", "body { color: green }\n");
+    let ready = dir.join("ready.json");
+    let log = dir.join("serve.log");
+    let out = std::fs::File::create(&log).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(["serve", "--port", "0", "--ready-file"]).arg(&ready).arg("--root").arg(&dir).stdout(out.try_clone().unwrap()).stderr(out).spawn().unwrap();
+    let _server = Server(child);
+    wait_for(&ready, "\"schemaVersion\": 1");
+    let port = serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&ready).unwrap()).unwrap()["port"].as_u64().unwrap() as u16;
+    let said = || std::fs::read_to_string(&log).unwrap_or_default();
+    assert!(said().contains("Pages   2 written from 2 templates, ") && said().contains(" (2 changed)\n"), "{}", said());
+
+    // A browser that has just opened the page learns where things stand.
+    let first = live(port, "", "/");
+    assert_eq!((&first["error"], &first["reload"]), (&serde_json::Value::Null, &serde_json::json!(false)), "{}", first);
+    let since = first["id"].as_u64().unwrap().to_string();
+    // The page it gets has the script, which isn't in the file.
+    assert!(http_get(port, "/").contains("/__ssqch/build?v=") && !std::fs::read_to_string(dir.join("dist/index.html")).unwrap().contains("__ssqch"));
+
+    // Another page changes: only a browser showing that page reloads.
+    change_and_wait(&dir.join("src/about.md"), "About us\n", &dir.join("dist/about/index.html"), "About us");
+    wait_for(&log, " (1 changed)\n");
+    assert_eq!(live(port, &since, "/")["reload"], false);
+    assert_eq!(live(port, &since, "/about/")["reload"], true);
+
+    // A stylesheet is swapped in place.
+    change_and_wait(&dir.join("src/site.css"), "body { color: brown }\n", &dir.join("dist/site.css"), "brown");
+    let started = std::time::Instant::now();
+    loop {
+        let now = live(port, &since, "/");
+        if now["css"] == serde_json::json!(["/site.css"]) {
+            assert_eq!(now["reload"], false, "{}", now);
+            break;
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(20), "the stylesheet never changed: {}\n{}", now, said());
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
+    // A build that fails is the browser's to show, and the page it has stays.
+    let since = live(port, "", "/")["id"].as_u64().unwrap().to_string();
+    std::fs::write(dir.join("src/index.md"), "{{ nope.deeper.still }}\n").unwrap();
+    let started = std::time::Instant::now();
+    let broken = loop {
+        let now = live(port, &since, "/");
+        if !now["error"].is_null() {
+            break now;
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(20), "the build never failed:\n{}", said());
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    assert!(broken["error"].as_str().unwrap().contains("index.md") && broken["reload"] == false, "{}", broken);
+    assert!(http_get(port, "/").contains("Home"));
+    // The tab's icon, for a site without one, and the red one.
+    for icon in ["/favicon.ico", "/__ssqch/favicon-error.svg"] {
+        let response = http_get(port, icon);
+        assert!(response.starts_with("HTTP/1.1 200") && response.contains("image/svg+xml") && response.contains("<svg "), "{}: {}", icon, response);
+    }
+    // Fixed: the error goes, and the page (the same as before it broke) doesn't reload.
+    let since = broken["id"].as_u64().unwrap().to_string();
+    std::fs::write(dir.join("src/index.md"), "Home\n").unwrap();
+    let started = std::time::Instant::now();
+    loop {
+        let now = live(port, &since, "/");
+        if now["error"].is_null() {
+            assert_eq!(now["reload"], false, "{}", now);
+            break;
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(20), "the build never worked again:\n{}", said());
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
 }
 
 /// The whole response (status line, headers and body) to a GET from the dev server.

@@ -90,6 +90,12 @@ enum Command {
         #[arg(long, default_value = "text")]
         format: String,
     },
+    /// Print a completion script for your shell, so Tab finishes commands and options
+    #[command(after_help = "Put the script where your shell looks for completions:\n\n  ssqch completions zsh > ~/.zfunc/_ssqch        (with ~/.zfunc in $fpath, before compinit)\n  ssqch completions bash > ~/.local/share/bash-completion/completions/ssqch\n  ssqch completions fish > ~/.config/fish/completions/ssqch.fish\n  ssqch completions powershell >> $PROFILE")]
+    Completions {
+        /// bash, zsh, fish, powershell or elvish
+        shell: clap_complete::Shell,
+    },
     /// Compare two builds of a site: URLs added and removed, and what changed on each page
     #[command(after_help = "Build the site into one folder before a change and another after it:\n\n  ssqch build --output dist-before\n  (upgrade ssqch, edit a layout, ...)\n  ssqch build\n  ssqch diff dist-before dist\n\nExits with 0 when the builds are the same, 1 when they differ, and 2 on an error.")]
     Diff {
@@ -149,7 +155,7 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
         .next()
         .and_then(|arg| Path::new(&arg).file_stem().map(|s| s.to_string_lossy().into_owned()))
         .unwrap_or_else(|| "ssqch".into());
-    let mut command = Cli::command().name(name);
+    let mut command = Cli::command().name(name.clone());
     for e in &extra {
         command = command.subcommand(e.command.clone());
     }
@@ -160,11 +166,20 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
         }
     }
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    if let Some(Command::Completions { shell }) = &cli.command {
+        // Every command, the binary's own included, except the ones it keeps out of `--help`.
+        let mut command = Cli::command().name(name.clone());
+        for e in extra.iter().filter(|e| !e.command.is_hide_set()) {
+            command = command.subcommand(e.command.clone());
+        }
+        clap_complete::generate(*shell, &mut command, name, &mut std::io::stdout());
+        return ExitCode::SUCCESS;
+    }
     if let Some(Command::Diff { before, after, exact, ignore, only, lines, format }) = &cli.command {
         return match run_diff(before, after, *exact, ignore, only, *lines, format) {
             Ok(same) => ExitCode::from(if same { 0 } else { 1 }),
             Err(e) => {
-                eprintln!("\x1b[31merror:\x1b[0m {:#}", e);
+                eprintln!("{} {:#}", crate::diagnostics::red("error:"), e);
                 ExitCode::from(2)
             }
         };
@@ -207,23 +222,36 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
             "json" => return build_json(&make_config, &root, env),
             "text" => {}
             other => {
-                eprintln!("\x1b[31merror:\x1b[0m --format {}: use text or json", other);
+                eprintln!("{} --format {}: use text or json", crate::diagnostics::red("error:"), other);
                 return ExitCode::FAILURE;
             }
         }
     }
-    let result = make_config().and_then(|cfg| match &cli.command {
-        Some(Command::Serve { port, ready_file }) => crate::serve::serve_reloading(cfg, &crate::serve::ServeOptions { port: *port, ready_file: ready_file.clone() }, &make_config),
-        Some(Command::Inspect { page, field, format }) => run_inspect(&cfg, page, field.as_deref(), format),
-        Some(Command::New { path, title, date, archetype, set, format }) => run_new(&cfg, crate::archetype::NewOptions { path: path.clone(), title: title.clone(), date: date.clone(), archetype: archetype.clone(), set: Vec::new() }, set, format),
-        _ => crate::build(&cfg).map(|report| print_report(&cfg, &report)),
+    // Where an error's files are, once the configuration has said: its lines are printed under it.
+    let located: std::cell::RefCell<Option<crate::diagnostics::Locator>> = Default::default();
+    let result = make_config().and_then(|cfg| {
+        *located.borrow_mut() = Some(crate::diagnostics::Locator::of(&cfg));
+        run_command(&cli, cfg, &make_config)
     });
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("\x1b[31merror:\x1b[0m {:#}", e);
+            match located.into_inner() {
+                Some(at) => crate::diagnostics::print_error("error:", &e, "build", &at),
+                None => crate::diagnostics::print_error("error:", &e, "config", &crate::diagnostics::Locator::new(&root)),
+            }
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Run `serve`, `inspect`, `new` or (by default) `build`.
+fn run_command(cli: &Cli, cfg: Config, make_config: &dyn Fn() -> anyhow::Result<Config>) -> anyhow::Result<()> {
+    match &cli.command {
+        Some(Command::Serve { port, ready_file }) => crate::serve::serve_reloading(cfg, &crate::serve::ServeOptions { port: *port, ready_file: ready_file.clone() }, make_config),
+        Some(Command::Inspect { page, field, format }) => run_inspect(&cfg, page, field.as_deref(), format),
+        Some(Command::New { path, title, date, archetype, set, format }) => run_new(&cfg, crate::archetype::NewOptions { path: path.clone(), title: title.clone(), date: date.clone(), archetype: archetype.clone(), set: Vec::new() }, set, format),
+        _ => crate::build(&cfg).map(|report| print_report(&cfg, &report)),
     }
 }
 
@@ -243,18 +271,16 @@ fn build_json(make_config: &dyn Fn() -> anyhow::Result<Config>, root: &Path, env
                 Ok(report) => {
                     let ms = |d: std::time::Duration| (d.as_secs_f64() * 1e6).round() / 1e3;
                     out["durationMs"] = ms(report.duration).into();
-                    out["pages"] = serde_json::json!({ "written": report.pages_written, "templates": report.templates, "bytes": report.page_bytes });
+                    out["pages"] = serde_json::json!({ "written": report.pages_written, "templates": report.templates, "bytes": report.page_bytes, "new": report.pages_new, "gone": report.pages_gone });
                     out["copied"] = serde_json::json!({ "files": report.files_copied, "unchanged": report.files_unchanged, "bytes": report.passthrough_bytes });
                     out["removed"] = report.files_removed.into();
+                    out["drafts"] = report.drafts.into();
                     out["written"] = report.written.iter().map(|p| shown(p, &ctx.output_dir)).collect::<Vec<_>>().into();
                     out["summary"] = report.summary.iter().map(|(label, value)| serde_json::json!({ "label": label, "value": value })).collect::<Vec<_>>().into();
                     out["timings"] = report.timings.iter().map(|(phase, d)| serde_json::json!({ "phase": phase, "ms": ms(*d) })).collect::<Vec<_>>().into();
                     Vec::new()
                 }
-                Err(e) => {
-                    let dirs = [ctx.input_dir.clone(), ctx.includes_dir.clone(), ctx.data_dir.clone()].into_iter().chain(ctx.theme_dirs.iter().flat_map(|t| [t.clone(), t.join("_includes")]));
-                    diagnostics::from_error(&e, "build", &Locator::new(&ctx.root).with_dirs(dirs))
-                }
+                Err(e) => diagnostics::from_error(&e, "build", &Locator::of(&cfg)),
             }
         }
     };
