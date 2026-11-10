@@ -81,6 +81,37 @@ fn init_rejects_an_unknown_engine() {
 }
 
 #[test]
+fn development_builds_link_the_assets_a_production_build_left() {
+    let dir = temp_dir("assets-after-build");
+    let d = dir.to_str().unwrap();
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), "import { assetsPlugin } from \"ssqch/assets\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [assetsPlugin({ files: [\"/assets/index.css\"] })] };\n").unwrap();
+    std::fs::write(dir.join("src/index.html"), "<link rel=\"stylesheet\" href=\"/assets/index.css\"><p>hi</p>").unwrap();
+    std::fs::create_dir_all(dir.join("dist/assets")).unwrap();
+    std::fs::write(dir.join("dist/assets/index.css"), "p { color: green }").unwrap();
+
+    let (ok, log) = ssqch(&["build", "--root", d, "--env", "production"]);
+    assert!(ok, "{}", log);
+    let built = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
+    let href = built.split("href=\"").nth(1).and_then(|r| r.split('"').next()).unwrap().to_string();
+    assert!(href.starts_with("/assets/index.") && href != "/assets/index.css", "{}", built);
+    assert!(!dir.join("dist/assets/index.css").exists());
+
+    // `ssqch serve` (a development build) without a CSS watcher links the built copy.
+    let (ok, log) = ssqch(&["build", "--root", d, "--env", "development"]);
+    assert!(ok, "{}", log);
+    let page = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
+    assert!(page.contains(&format!("href=\"{}\"", href)), "{}", page);
+    assert!(log.contains("pages link to") && log.contains("from the last production build"), "{}", log);
+
+    // Once a watcher writes the plain file, pages link to it.
+    std::fs::write(dir.join("dist/assets/index.css"), "p { color: blue }").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d, "--env", "development"]);
+    assert!(ok, "{}", log);
+    assert!(std::fs::read_to_string(dir.join("dist/index.html")).unwrap().contains("href=\"/assets/index.css\""));
+}
+
+#[test]
 fn types_writes_the_declarations() {
     let dir = temp_dir("types");
     std::fs::create_dir_all(&dir).unwrap();

@@ -8,6 +8,13 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+- Fix unstyled pages when running `ssqch serve` after a production build without the CSS and JS
+  watchers. A production build renames `index.css` to `index.<hash>.css`, and development
+  pages linked the plain name, which no longer existed. `ssqch/assets` now links to the
+  fingerprinted copy in that case, with a warning that names it.
+
 ## 0.3.1 - 2026-11-09
 
 - `ssqch init --engine liquid` (or `njk`, `hbs`) starts the site with a layout and home page in
