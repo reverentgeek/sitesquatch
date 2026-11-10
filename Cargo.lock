@@ -2442,6 +2442,7 @@ dependencies = [
  "dunce",
  "globset",
  "indexmap",
+ "lol_html",
  "notify",
  "pulldown-cmark",
  "pulldown-cmark-escape",

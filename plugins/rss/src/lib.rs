@@ -19,8 +19,6 @@ impl Plugin for RssPlugin {
         cfg.add_filter("dateToRfc822", |args| date_to_rfc822(&args.arg(0)).map(Value::from));
         cfg.add_filter("absoluteUrl", |args| Ok(Value::from(absolute_url(&args.arg_string(0), &args.arg_string(1)))));
         cfg.add_filter("htmlToAbsoluteUrls", |args| Ok(Value::from(html_to_absolute_urls(&args.arg_string(0), &args.arg_string(1))?)));
-        // `url(path)`: returns the path as it is (no path prefix support yet).
-        cfg.add_filter("url", |args| Ok(args.arg(0)));
     }
 }
 

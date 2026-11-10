@@ -69,8 +69,11 @@ impl Plugin for SitemapPlugin {
     fn register(&self, cfg: &mut Config) {
         let options = self.options.clone();
         let exclude = self.exclude.clone();
-        cfg.add_generator("ssqch/sitemap", move |_, pages| {
-            let base = options.url.trim_end_matches('/');
+        cfg.add_generator("ssqch/sitemap", move |ctx, pages| {
+            // With a `base` of `/repo`, `url` can be the domain or include the base.
+            let url = options.url.trim_end_matches('/');
+            let with_base = if url.ends_with(&ctx.base) { url.to_string() } else { format!("{}{}", url, ctx.base) };
+            let base = with_base.as_str();
             let mut entries: Vec<(&str, String)> = pages
                 .iter()
                 .filter(|p| p.output_path.extension().is_some_and(|e| e == "html"))

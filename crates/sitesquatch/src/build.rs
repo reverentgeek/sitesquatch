@@ -101,6 +101,10 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     // ---- engines
     let markdown = Arc::new(MarkdownEngine::new(cfg.markdown.clone()));
     let mut globals = builtin_filters(&markdown);
+    // withBase("/feed.xml"): the URL with the site's `base` in front, for
+    // places outside HTML attributes (which the build rewrites itself).
+    let base = ctx.base.clone();
+    globals.insert("withBase".into(), Value::func(move |args| Ok(Value::from(crate::base::with_base(&base, &args.first().map(Value::to_js_string).unwrap_or_default())))));
     for (name, f) in &cfg.filters {
         globals.insert(name.clone(), f.clone());
     }
@@ -146,6 +150,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
         ("generator", Value::from(format!("SiteSquatch v{}", version))),
         ("env", Value::from(ctx.env.as_str())),
         ("serving", Value::Bool(ctx.serving)),
+        ("base", Value::from(ctx.base.as_str())),
     ]);
     global.insert("ssqch".into(), runtime);
     timer.lap("data");
@@ -228,6 +233,10 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
                 let tctx = TransformContext { url: page.url.as_deref().unwrap_or(""), output_path: out, input_path: &page.tpl.input, build: &ctx };
                 for (name, transform) in cfg.html_transforms.iter().chain(&cfg.transforms) {
                     html = transform(&tctx, html).with_context(|| format!("transform `{}` failed for {}", name, page.tpl.rel))?;
+                }
+                // Last, so URLs that transforms wrote (images, fingerprinted assets) get it too.
+                if !ctx.base.is_empty() && tctx.is_html() {
+                    html = crate::base::rewrite_html(&html, &ctx.base).with_context(|| format!("in {}", page.tpl.rel))?;
                 }
                 if let Some(parent) = out.parent() {
                     std::fs::create_dir_all(parent)?;

@@ -239,6 +239,13 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
         Value::Str(s) => cfg.last_modified = Some(sitesquatch::LastModified::parse(&s).ok_or_else(|| anyhow!("lastModified must be \"git\", \"file\" or false, not \"{}\"", s))?),
         other => bail!("lastModified must be \"git\", \"file\" or false, not {}", other.type_of()),
     }
+    match settings.get("base") {
+        Value::Undefined | Value::Null => {}
+        Value::Str(s) => {
+            cfg.set_base(&s)?;
+        }
+        other => bail!("base must be a URL path like \"/docs/\", not {}", other.type_of()),
+    }
     match settings.get("ignore") {
         Value::Undefined => {}
         Value::Str(s) => cfg.ignore = vec![s.to_string()],

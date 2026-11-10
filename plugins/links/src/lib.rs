@@ -197,6 +197,12 @@ pub fn check(ctx: &BuildContext, report: &BuildReport, options: &LinksOptions) -
         let page_url = url_of(&ctx.output_dir, path);
         for link in &page.links {
             checked += 1;
+            // With a `base`, the HTML has it in front of every URL from the
+            // site's root. Other paths on the domain aren't this site's.
+            let link = match in_site(link, &ctx.base) {
+                Some(l) => l,
+                None => continue,
+            };
             let Some((target_path, fragment)) = resolve(&page_url, link) else { continue };
             let reason = if target_path.is_empty() {
                 // `#top`: this page.
@@ -216,11 +222,25 @@ pub fn check(ctx: &BuildContext, report: &BuildReport, options: &LinksOptions) -
                 }
             };
             if let Some(reason) = reason {
-                broken.insert(Broken { page: page_url.clone(), link: link.clone(), reason });
+                broken.insert(Broken { page: page_url.clone(), link: link.to_string(), reason });
             }
         }
     }
     Ok(CheckResult { checked, broken: broken.into_iter().collect() })
+}
+
+/// `link` without the site's `base`, or `None` for a path on the same domain
+/// that's outside it (`/other-project/` when the base is `/repo`).
+fn in_site<'a>(link: &'a str, base: &str) -> Option<&'a str> {
+    let trimmed = link.trim();
+    if base.is_empty() || !trimmed.starts_with('/') || trimmed.starts_with("//") {
+        return Some(link);
+    }
+    match trimmed.strip_prefix(base) {
+        Some("") => Some("/"),
+        Some(rest) if rest.starts_with(['/', '#', '?']) => Some(rest),
+        _ => None,
+    }
 }
 
 /// `dist/about/index.html` -> `/about/`, `dist/feed.xml` -> `/feed.xml`.
@@ -361,6 +381,18 @@ mod tests {
             assert_eq!(r(external), None, "{}", external);
         }
         assert_eq!(resolve("/feed.xml", "style.css"), Some(("/style.css".into(), None)));
+    }
+
+    #[test]
+    fn a_base_is_taken_off_links_before_checking() {
+        assert_eq!(in_site("/repo/about/", "/repo"), Some("/about/"));
+        assert_eq!(in_site("/repo", "/repo"), Some("/"));
+        assert_eq!(in_site("/repo#top", "/repo"), Some("#top"));
+        assert_eq!(in_site("/other/", "/repo"), None);
+        assert_eq!(in_site("/repository/", "/repo"), None);
+        assert_eq!(in_site("next/", "/repo"), Some("next/"));
+        assert_eq!(in_site("//cdn.example.com/x.js", "/repo"), Some("//cdn.example.com/x.js"));
+        assert_eq!(in_site("/about/", ""), Some("/about/"));
     }
 
     #[test]

@@ -39,6 +39,8 @@ pub struct SiteToml {
     pub ignore: Option<Vec<String>>,
     pub bundles: Option<bool>,
     pub strict: Option<bool>,
+    /// The path the site is served under, like `/repo/`.
+    pub base: Option<String>,
     /// `"git"` or `"file"`.
     pub last_modified: Option<String>,
     /// Programs to run before and after each build.
@@ -73,6 +75,9 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
     if let Some(v) = site.ignore { cfg.ignore = v; }
     if let Some(v) = site.bundles { cfg.bundles = v; }
     if let Some(v) = site.strict { cfg.strict = v; }
+    if let Some(v) = site.base {
+        cfg.set_base(&v).with_context(|| format!("invalid {}", path.display()))?;
+    }
     for command in site.before_build {
         cfg.run_before_build(command);
     }

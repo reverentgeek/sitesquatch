@@ -67,6 +67,17 @@ pub struct BuildContext {
     pub env: Environment,
     /// True while running the development server.
     pub serving: bool,
+    /// The path the site is served under: empty for the domain's root, or
+    /// `/repo` (no `/` at the end). See [`Config::base`].
+    pub base: String,
+}
+
+impl BuildContext {
+    /// `url` with the site's `base` in front, if it's from the site's root
+    /// (`/about/` becomes `/repo/about/`).
+    pub fn with_base(&self, url: &str) -> String {
+        crate::base::with_base(&self.base, url)
+    }
 }
 
 /// Passed to transforms along with the rendered output.
@@ -227,6 +238,11 @@ pub struct Config {
     pub strict: bool,
     /// Where `page.lastModified` comes from, if anywhere.
     pub last_modified: Option<LastModified>,
+    /// The path the site is served under, for a site that isn't at the root
+    /// of its domain: `/repo` for `https://user.github.io/repo/`. Empty
+    /// otherwise. Set it with [`Config::set_base`]. Templates and `page.url`
+    /// don't include it; the build adds it to URLs in the HTML it writes.
+    pub base: String,
     pub env: Environment,
     pub serving: bool,
     pub quiet: bool,
@@ -268,6 +284,7 @@ impl Config {
             bundles: false,
             strict: false,
             last_modified: None,
+            base: String::new(),
             env,
             serving: false,
             quiet: false,
@@ -288,6 +305,13 @@ impl Config {
             generators: Vec::new(),
             file_builders: Vec::new(),
         }
+    }
+
+    /// Serve the site under a path: `set_base("/repo/")`. `"/"` or `""` means
+    /// the domain's root.
+    pub fn set_base(&mut self, base: &str) -> Result<&mut Self> {
+        self.base = crate::base::normalize(base)?;
+        Ok(self)
     }
 
     pub fn is_production(&self) -> bool {
@@ -482,6 +506,7 @@ impl Config {
             root,
             env: self.env,
             serving: self.serving,
+            base: self.base.clone(),
         }
     }
 
