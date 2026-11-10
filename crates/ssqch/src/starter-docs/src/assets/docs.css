@@ -1,48 +1,191 @@
-/* The docs theme. Colors are custom properties; dark mode follows the system. */
+/* The docs theme, in the Ranger Station '76 palette. Soft white in light mode and a slightly
+   green charcoal in dark mode, with neutral body text. Pine gives headings and navigation their
+   identity; burnt orange is for links and selection markers, avocado for selected navigation
+   and code, and harvest gold for callout borders. The narrow four-color stripe under the header
+   carries the retro theme across both modes.
+
+   Dark mode follows the system, unless the reader picks one with the switch in the header
+   (docs.js sets data-theme on <html>). */
 :root {
-  --text: #1f2328;
-  --muted: #59636e;
-  --background: #ffffff;
-  --surface: #f6f8fa;
-  --border: #d1d9e0;
-  --link: #0969da;
-  --note: #0969da;
-  --tip: #1a7f37;
-  --warning: #9a6700;
-  --caution: #cf222e;
+  color-scheme: light;
   --width: 46rem;
+  --text: #29332c;
+  --heading: #233b2b;
+  --muted: #5e6a61;
+  --background: #fafaf7;
+  --chrome: #f1f1eb;
+  --surface: #eeefe7;
+  --border: #dcddd4;
+  --link: #a23e20;
+  --code: #3f5a2a;
+  --selected: #e6ecda;
+  --marker: #a23e20;
+  --stripe-pine: #233b2b;
+  /* Callouts: the border, the background, and the title. */
+  --note-bar: #e8af43;
+  --note-bg: #f6efdf;
+  --note: #29332c;
+  --tip-bar: #a9b66a;
+  --tip-bg: #eef1e4;
+  --tip: #4e5e24;
+  --warning-bar: #e8af43;
+  --warning-bg: #f6efdf;
+  --warning: #7a500a;
+  --caution-bar: #a23e20;
+  --caution-bg: #f8eae4;
+  --caution: #a23e20;
+  /* Code, over /highlight.css's defaults (this file loads after it). */
+  --hl-comment: #5e6a61;
+  --hl-keyword: #a23e20;
+  --hl-operator: #a23e20;
+  --hl-string: #4e5e24;
+  --hl-regexp: #4e5e24;
+  --hl-escape: #4e5e24;
+  --hl-number: #7a500a;
+  --hl-constant: #7a500a;
+  --hl-builtin: #7a500a;
+  --hl-property: #233b2b;
+  --hl-attribute: #7a500a;
+  --hl-function: #233b2b;
+  --hl-type: #7a500a;
+  --hl-parameter: #7a500a;
+  --hl-tag: #a23e20;
+  --hl-heading: #a23e20;
+  --hl-link: #a23e20;
+  --hl-inserted: #4e5e24;
+  --hl-inserted-bg: #e6ecda;
+  --hl-deleted: #a23e20;
+  --hl-deleted-bg: #f8eae4;
+  --hl-line-bg: rgba(232, 175, 67, 0.25);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --text: #f0f6fc;
-    --muted: #9198a1;
-    --background: #0d1117;
-    --surface: #151b23;
-    --border: #3d444d;
-    --link: #4493f8;
-    --note: #4493f8;
-    --tip: #3fb950;
-    --warning: #d29922;
-    --caution: #f85149;
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --text: #e5e9e1;
+    --heading: #d6e4c8;
+    --muted: #a2aca3;
+    --background: #1b201d;
+    --chrome: #252b27;
+    --surface: #252b27;
+    --border: #3a413b;
+    --link: #f0a17d;
+    --code: #b9c77e;
+    --selected: #2e3f2b;
+    --marker: #f0a17d;
+    --stripe-pine: #2e5a3c;
+    --note-bar: #e8af43;
+    --note-bg: #2e2b21;
+    --note: #e5e9e1;
+    --tip-bar: #a9b66a;
+    --tip-bg: #283023;
+    --tip: #b9c77e;
+    --warning-bar: #e8af43;
+    --warning-bg: #2e2b21;
+    --warning: #e8af43;
+    --caution-bar: #f0a17d;
+    --caution-bg: #33241f;
+    --caution: #f0a17d;
+    --hl-comment: #a2aca3;
+    --hl-keyword: #f0a17d;
+    --hl-operator: #f0a17d;
+    --hl-string: #b9c77e;
+    --hl-regexp: #b9c77e;
+    --hl-escape: #b9c77e;
+    --hl-number: #e8af43;
+    --hl-constant: #e8af43;
+    --hl-builtin: #e8af43;
+    --hl-property: #e5e9e1;
+    --hl-attribute: #e8af43;
+    --hl-function: #d6e4c8;
+    --hl-type: #e8af43;
+    --hl-parameter: #e8af43;
+    --hl-tag: #f0a17d;
+    --hl-heading: #f0a17d;
+    --hl-link: #f0a17d;
+    --hl-inserted: #b9c77e;
+    --hl-inserted-bg: #2e3f2b;
+    --hl-deleted: #f0a17d;
+    --hl-deleted-bg: #33241f;
+    --hl-line-bg: rgba(232, 175, 67, 0.15);
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+    --text: #e5e9e1;
+  --heading: #d6e4c8;
+  --muted: #a2aca3;
+  --background: #1b201d;
+  --chrome: #252b27;
+  --surface: #252b27;
+  --border: #3a413b;
+  --link: #f0a17d;
+  --code: #b9c77e;
+  --selected: #2e3f2b;
+  --marker: #f0a17d;
+  --stripe-pine: #2e5a3c;
+  --note-bar: #e8af43;
+  --note-bg: #2e2b21;
+  --note: #e5e9e1;
+  --tip-bar: #a9b66a;
+  --tip-bg: #283023;
+  --tip: #b9c77e;
+  --warning-bar: #e8af43;
+  --warning-bg: #2e2b21;
+  --warning: #e8af43;
+  --caution-bar: #f0a17d;
+  --caution-bg: #33241f;
+  --caution: #f0a17d;
+  --hl-comment: #a2aca3;
+  --hl-keyword: #f0a17d;
+  --hl-operator: #f0a17d;
+  --hl-string: #b9c77e;
+  --hl-regexp: #b9c77e;
+  --hl-escape: #b9c77e;
+  --hl-number: #e8af43;
+  --hl-constant: #e8af43;
+  --hl-builtin: #e8af43;
+  --hl-property: #e5e9e1;
+  --hl-attribute: #e8af43;
+  --hl-function: #d6e4c8;
+  --hl-type: #e8af43;
+  --hl-parameter: #e8af43;
+  --hl-tag: #f0a17d;
+  --hl-heading: #f0a17d;
+  --hl-link: #f0a17d;
+  --hl-inserted: #b9c77e;
+  --hl-inserted-bg: #2e3f2b;
+  --hl-deleted: #f0a17d;
+  --hl-deleted-bg: #33241f;
+  --hl-line-bg: rgba(232, 175, 67, 0.15);
 }
 
 * { box-sizing: border-box; }
 html { scroll-padding-top: 4rem; }
 body { margin: 0; font: 1.0625rem/1.65 system-ui, sans-serif; color: var(--text); background: var(--background); }
-a { color: var(--link); }
+a { color: var(--link); text-decoration: underline; text-underline-offset: 0.18em; }
+::selection { background: rgba(232, 175, 67, 0.4); }
+h1, h2, h3, h4 { color: var(--heading); }
 img { max-width: 100%; height: auto; }
 
-.site-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 1.5rem; padding: 0.6rem 1.25rem; background: var(--background); border-bottom: 1px solid var(--border); }
+.site-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 1.5rem; padding: 0.75rem 1.25rem; background: var(--chrome); }
+/* The four-color stripe: pine, burnt orange, harvest gold, avocado. */
+.site-header::after { content: ""; position: absolute; left: 0; right: 0; bottom: -5px; height: 5px; background: linear-gradient(to right, var(--stripe-pine) 0 25%, #a23e20 25% 50%, #e8af43 50% 75%, #a9b66a 75%); }
+.theme-switch { margin-left: auto; padding: 0.35rem 0.8rem; border: 1px solid var(--muted); border-radius: 0.375rem; background: none; color: var(--text); font: inherit; font-size: 0.9rem; cursor: pointer; }
+#search + .theme-switch { margin-left: 0; }
+.theme-switch:hover { background: var(--selected); }
+:focus-visible { outline: 2px solid var(--marker); outline-offset: 2px; }
 .site-header nav { display: flex; gap: 1rem; }
-.site-header a { text-decoration: none; }
-.site-name { font-weight: 700; color: var(--text); }
+/* Navigation is pine, like the headings; links in the text are burnt orange. */
+.site-header a { color: var(--heading); text-decoration: none; }
+.site-header nav a:hover { text-decoration: underline; text-decoration-color: var(--marker); text-decoration-thickness: 2px; text-underline-offset: 0.3em; }
+.site-name { font-weight: 700; font-size: 1.15rem; color: var(--heading); }
 .menu-link { display: none; }
 #search { margin-left: auto; min-width: 12rem; }
 
-.docs { display: grid; grid-template-columns: 16rem minmax(0, 1fr) 14rem; grid-template-areas: "sidebar main toc"; }
+/* The sidebar's column is tinted the whole way down, however short the sidebar is. */
+.docs { margin-top: 5px; min-height: calc(100vh - 3.5rem); background: linear-gradient(to right, var(--chrome) 0 16rem, var(--border) 16rem calc(16rem + 1px), transparent calc(16rem + 1px)); display: grid; grid-template-columns: 16rem minmax(0, 1fr) 14rem; grid-template-areas: "sidebar main toc"; }
 .docs > main { grid-area: main; padding: 1.5rem 2.5rem 4rem; max-width: calc(var(--width) + 5rem); }
-.sidebar { grid-area: sidebar; padding: 1.25rem; border-right: 1px solid var(--border); font-size: 0.95rem; }
+.sidebar { grid-area: sidebar; padding: 1.25rem; font-size: 0.95rem; }
 .toc { grid-area: toc; padding: 1.5rem 1.25rem; font-size: 0.9rem; }
 .sidebar, .toc { position: sticky; top: 3.1rem; align-self: start; max-height: calc(100vh - 3.1rem); overflow-y: auto; }
 .sidebar h2 { margin: 1.25rem 0 0.25rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
@@ -50,8 +193,8 @@ img { max-width: 100%; height: auto; }
 .sidebar ul, .toc ul { list-style: none; margin: 0; padding: 0; }
 .toc ul ul { padding-left: 0.9rem; }
 .sidebar a, .toc a { display: block; padding: 0.2rem 0.5rem; border-radius: 0.375rem; color: var(--text); text-decoration: none; }
-.sidebar a:hover, .toc a:hover { background: var(--surface); }
-.sidebar a[aria-current] { background: var(--surface); color: var(--link); font-weight: 600; }
+.sidebar a:hover, .toc a:hover { background: var(--selected); }
+.sidebar a[aria-current] { border-radius: 0; border-left: 4px solid var(--marker); padding-left: calc(0.5rem - 4px); background: var(--selected); color: var(--heading); font-weight: 600; }
 .toc-title { margin: 0 0 0.25rem; padding: 0 0.5rem; font-weight: 600; }
 .toc a { color: var(--muted); }
 
@@ -62,20 +205,20 @@ main h2 { margin-top: 2.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid v
 .anchor { margin-left: 0.25rem; color: var(--muted); text-decoration: none; opacity: 0; }
 :is(h2, h3, h4):hover .anchor, .anchor:focus { opacity: 1; }
 
-code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surface); font-size: 0.9em; }
+code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surface); color: var(--code); font-size: 0.9em; }
 pre { padding: 1rem; overflow-x: auto; border-radius: 0.5rem; background: var(--surface); line-height: 1.5; }
-pre code { padding: 0; background: none; }
+pre code { padding: 0; background: none; color: var(--text); }
 table { border-collapse: collapse; display: block; overflow-x: auto; }
-th, td { padding: 0.4rem 0.8rem; border: 1px solid var(--border); }
-th { background: var(--surface); }
+th, td { padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); text-align: left; }
+th { background: var(--chrome); border-bottom: 0; }
 .task-list-item { list-style: none; margin-left: -1.25rem; }
 blockquote { margin-inline: 0; padding-left: 1rem; border-left: 4px solid var(--border); color: var(--muted); }
 
 /* :::note, :::tip, :::warning and :::caution, and GitHub's > [!NOTE] alerts. */
-.note, .tip, .warning, .caution, .markdown-alert { --accent: var(--note); margin: 1.25rem 0; padding: 0.5rem 1rem; border-left: 4px solid var(--accent); border-radius: 0 0.5rem 0.5rem 0; background: var(--surface); }
-.tip, .markdown-alert-tip { --accent: var(--tip); }
-.warning, .markdown-alert-warning, .markdown-alert-important { --accent: var(--warning); }
-.caution, .markdown-alert-caution { --accent: var(--caution); }
+.note, .tip, .warning, .caution, .markdown-alert { --accent: var(--note); --bar: var(--note-bar); --tint: var(--note-bg); margin: 1.25rem 0; padding: 0.5rem 1.25rem; border-left: 5px solid var(--bar); background: var(--tint); }
+.tip, .markdown-alert-tip { --accent: var(--tip); --bar: var(--tip-bar); --tint: var(--tip-bg); }
+.warning, .markdown-alert-warning, .markdown-alert-important { --accent: var(--warning); --bar: var(--warning-bar); --tint: var(--warning-bg); }
+.caution, .markdown-alert-caution { --accent: var(--caution); --bar: var(--caution-bar); --tint: var(--caution-bg); }
 .container-title, .markdown-alert-title { margin: 0.25rem 0; font-weight: 700; color: var(--accent); }
 details { margin: 1.25rem 0; padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 0.5rem; }
 summary { font-weight: 600; cursor: pointer; }
@@ -87,7 +230,7 @@ summary { font-weight: 600; cursor: pointer; }
 .tab-label { margin: 0.75rem 0 0; font-weight: 700; }
 .tabs [role="tablist"] { display: flex; gap: 0.25rem; padding: 0.4rem 0.4rem 0; border-bottom: 1px solid var(--border); background: var(--surface); border-radius: 0.5rem 0.5rem 0 0; }
 .tabs [role="tab"] { padding: 0.35rem 0.9rem; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font: inherit; cursor: pointer; }
-.tabs [role="tab"][aria-selected="true"] { border-color: var(--link); color: var(--text); font-weight: 600; }
+.tabs [role="tab"][aria-selected="true"] { border-color: var(--marker); color: var(--heading); font-weight: 600; }
 .tabs [role="tablist"] ~ .tab { border-top: 0; }
 
 .page-footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); }
@@ -101,6 +244,11 @@ summary { font-weight: 600; cursor: pointer; }
 @media (max-width: 50rem) {
   .docs { display: block; }
   .docs > main { padding: 1.25rem; }
-  .sidebar { position: static; max-height: none; border-right: 0; border-top: 1px solid var(--border); }
+  .docs { background: none; }
+  .sidebar { position: static; max-height: none; border-top: 1px solid var(--border); background: var(--chrome); }
+  .site-header { gap: 0.9rem; padding: 0.6rem 1rem; }
+  .site-name, .site-header nav, .theme-switch { white-space: nowrap; }
+  .site-name { font-size: 1.05rem; }
+  .theme-switch { padding: 0.25rem 0.6rem; font-size: 0.85rem; }
   .menu-link { display: inline; }
 }

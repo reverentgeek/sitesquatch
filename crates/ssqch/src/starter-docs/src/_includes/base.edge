@@ -13,6 +13,8 @@
   <script src="/pagefind/pagefind-ui.js" defer></script>
   @end
   <script src="/assets/docs.js" defer></script>
+  {{-- Before the page is drawn, so a reader who picked a theme doesn't see the other one first. --}}
+  <script>try { const theme = localStorage.getItem("theme"); if (theme) document.documentElement.dataset.theme = theme; } catch {}</script>
 </head>
 <body>
   <header class="site-header">
@@ -26,6 +28,8 @@
     @if(search)
     <div id="search"></div>
     @end
+    {{-- docs.js shows it. Without JavaScript, the theme follows the system. --}}
+    <button class="theme-switch" type="button" hidden>Switch theme</button>
   </header>
   {{{ content }}}
 </body>

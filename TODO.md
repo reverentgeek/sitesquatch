@@ -26,10 +26,9 @@ The blog builds with it, `ssqch diff` against its 0.3.3 build shows only the new
 `id`s, and `ssqch inspect` and `ssqch build --format json` work on it.
 Left before a release:
 
-- Run CI for `release/0.4` on Linux and Windows before it merges: it only runs for `main` and
-  pull requests, and the branch's dev server tests haven't run there. The last run on the
-  pushed branch failed on Windows in `collation_matches_node` (the fixture has `\r\n` line
-  endings there).
+- ~~Run CI for `release/0.4` on Linux and Windows.~~ It runs on pushes to the branch, and is
+  green on every platform since `.gitattributes` pins LF line endings (2026-11-10; Windows
+  checked out CRLF, which broke `collation_matches_node` and the starter's archetype).
 - Close the hole in the release workflow that 0.3.4 fell into (2026-11-10): when CI has failed
   on the tagged commit, `check-ci` fails and the builds are skipped, but dist's `host` and
   `announce` jobs count a skipped build as fine and publish a GitHub release with no binaries,
@@ -557,6 +556,34 @@ I'd take them (the first three went into 0.4):
       index, an app, or `llms.txt`), from explicitly listed collections and fields.
 - [ ] **A searchable-directory example:** structured data, one page per record, filters as a
       custom element, Pagefind for search.
+- [ ] **Say ssqch's name for another generator's word** (decided 2026-11-10; the design and
+      what each case prints today are in `research/exact-agent-first.md`). Where a command,
+      flag, config option, filter or front-matter key is common in other generators and ssqch
+      has the same thing under its own name, the error says the equivalent and where to read
+      about it, so people and agents learn as they go. It teaches and never accepts: no
+      foreign name starts working, so the "no Eleventy" rule stands. Not scheduled: 0.4 or 0.5
+      is David's call.
+  - [ ] One table of equivalents (the word, its kind, whose it is, ssqch's name, the docs
+        topic), replacing the constants in `crates/ssqch/src/import.rs` and tested against the
+        tables in `docs/guides/`. Every row is tested: the word is refused, and what the hint
+        names is in `capabilities`.
+  - [ ] First slice: commands and flags (`dev`, `start`, `server`, `check`, `clean`,
+        `--watch`, `--drafts`, `-d`, `--pathprefix`, `--minify`, `--incremental`), config
+        options that aren't close in spelling (`pathPrefix`, `addPassthroughCopy`,
+        `publishDir`, `outDir`), all unknown config keys in one run, and a folder with another
+        generator's config and none of ssqch's (it builds 0 pages into `_site` today, and
+        should name `ssqch import` and the guide).
+  - [ ] Then: filters and globals in each template language (`slugify` and `url` in Nunjucks,
+        `relative_url` in Liquid, `eleventy.generator`, `site.posts`), a warning for
+        front-matter keys that can't be a site's own (`eleventyComputed`, `redirect_from`,
+        `published: false`, which is published today), `hint` fields in the JSON report, and
+        `ssqch docs <foreign name>` and `ssqch docs --from <generator>` once `ssqch docs`
+        exists.
+  - [ ] With it: a sentence under "No Eleventy compatibility" in `CLAUDE.md` saying a hint
+        that names another generator's word isn't an API.
+  - [ ] Found on the way: Liquid's `Unknown filter` doesn't name the filter. (`Nothing
+        sighted` had an empty folder name when the input folder is the project root; fixed:
+        it says `.`.)
 - [ ] Not for now: a page inspector in the browser, a component workbench, an MCP server (after
       the JSON interface exists, as a thin layer over it), preview at a future date, a local
       form editor for front matter, diagnostic bundles.

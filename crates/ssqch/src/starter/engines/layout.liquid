@@ -6,9 +6,18 @@
     <title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
     <meta name="description" content="{{ description | default: site.description }}">
     <style>
-      body { font-family: system-ui, sans-serif; line-height: 1.6; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; color: #1f2937; }
-      a { color: #1d4ed8; }
+      /* Ranger Station '76: soft white (or green charcoal in dark mode), neutral text, pine
+         headings, burnt orange links, and a four-color stripe under the header. */
+      :root { color-scheme: light dark; --page: #fafaf7; --text: #29332c; --heading: #233b2b; --muted: #5e6a61; --link: #a23e20; --rule: #dcddd4; --stripe-pine: #233b2b; }
+      @media (prefers-color-scheme: dark) { :root { --page: #1b201d; --text: #e5e9e1; --heading: #d6e4c8; --muted: #a2aca3; --link: #f0a17d; --rule: #3a413b; --stripe-pine: #2e5a3c; } }
+      body { font-family: system-ui, sans-serif; line-height: 1.6; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; color: var(--text); background: var(--page); }
+      h1, h2, h3 { color: var(--heading); }
+      a { color: var(--link); text-decoration: underline; text-underline-offset: 0.18em; }
+      header { padding-bottom: 0.75rem; border-bottom: 5px solid; border-image: linear-gradient(to right, var(--stripe-pine) 0 25%, #a23e20 25% 50%, #e8af43 50% 75%, #a9b66a 75%) 1; }
+      header a { color: var(--heading); font-weight: 700; font-size: 1.15rem; text-decoration: none; }
+      footer { margin-top: 3rem; padding-top: 0.75rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.9rem; }
       img { max-width: 100%; height: auto; }
+      :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
     </style>
   </head>
   <body>

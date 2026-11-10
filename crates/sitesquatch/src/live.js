@@ -20,13 +20,13 @@
 		if (!panel) {
 			panel = document.createElement("div");
 			panel.attachShadow({ mode: "open" }).innerHTML = `<style>
-				section { position: fixed; inset: 0; z-index: 2147483647; overflow: auto; box-sizing: border-box; padding: 2rem 1rem; background: rgba(21, 26, 22, 0.94); color: #e5e7eb; font: 16px/1.5 system-ui, sans-serif; }
+				section { position: fixed; inset: 0; z-index: 2147483647; overflow: auto; box-sizing: border-box; padding: 2rem 1rem; background: rgba(27, 32, 29, 0.97); color: #e5e9e1; font: 16px/1.5 system-ui, sans-serif; }
 				div { max-width: 60rem; margin: 0 auto; }
-				h1 { margin: 0 0 0.25rem; font-size: 1.4rem; color: #fca5a5; }
-				p { margin: 0 0 1rem; color: #9ca3af; }
-				pre { margin: 0 0 1rem; padding: 1rem; border-left: 4px solid #f87171; background: #0b0f0c; color: #f3f4f6; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-				button { padding: 0.35rem 0.9rem; border: 1px solid #6b7280; border-radius: 4px; background: none; color: inherit; font: inherit; cursor: pointer; }
-				small { margin-left: 0.75rem; color: #6b7280; }
+				h1 { margin: 0 0 0.25rem; font-size: 1.4rem; color: #f0a17d; }
+				p { margin: 0 0 1rem; color: #a2aca3; }
+				pre { margin: 0 0 1rem; padding: 1rem; border-left: 5px solid #e8af43; background: #252b27; color: #e5e9e1; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+				button { padding: 0.35rem 0.9rem; border: 0; border-radius: 4px; background: #a23e20; color: #fafaf7; font: inherit; cursor: pointer; }
+				small { margin-left: 0.75rem; color: #a2aca3; }
 			</style><section role="alert"><div><h1>Build failed</h1><p>This page is from the last build that worked. Fix the error and this goes away.</p><pre></pre><button type="button">Hide</button><small>Squatch Watch (ssqch serve)</small></div></section>`;
 			panel.shadowRoot.querySelector("button").addEventListener("click", () => {
 				hidden = panel.shadowRoot.querySelector("pre").textContent;

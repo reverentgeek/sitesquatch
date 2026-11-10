@@ -88,7 +88,9 @@ pub fn summary(cfg: &Config, report: &BuildReport) -> String {
     // Nothing to build is usually a wrong folder or a missing extension.
     if report.templates == 0 && report.drafts == 0 && report.pages_written == 0 {
         let input = ctx.input_dir.strip_prefix(&ctx.root).unwrap_or(&ctx.input_dir);
-        let _ = writeln!(out, "Nothing sighted: no file in {} matches templateFormats ({}).", crate::slashes(input), cfg.template_formats.join(", "));
+        // The project root itself is `.`, not an empty name.
+        let folder = Some(crate::slashes(input)).filter(|f| !f.is_empty()).unwrap_or_else(|| ".".into());
+        let _ = writeln!(out, "Nothing sighted: no file in {} matches templateFormats ({}).", folder, cfg.template_formats.join(", "));
     }
     out
 }

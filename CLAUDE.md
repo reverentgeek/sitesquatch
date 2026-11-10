@@ -117,6 +117,18 @@ and now and then something large walks through the log (`Fresh tracks in src/pos
   figures from Indigenous traditions and no brands.
 - Examples and fixtures share a canon: pine cones, Squatch Snacks, Pine Cone Crunch, rangers,
   the Cedar and Old Growth trails, and the starter's stump.
+- The palette is Ranger Station '76: pine `#233B2B`, burnt orange `#A23E20`, harvest gold
+  `#E8AF43`, avocado `#A9B66A` and map paper `#FFF3D6`. On pages (the starters, the dev
+  server's pages, sitesquatch.dev): soft white `#FAFAF7` in light mode and a slightly green
+  charcoal `#1B201D` in dark mode, with neutral body text (`#29332C`, `#E5E9E1`). Pine gives
+  headings and navigation their identity (`#D6E4C8` in dark mode), and the bright colors take
+  small areas: burnt orange for underlined links and selection markers (`#F0A17D` in dark
+  mode), avocado for selected navigation and code, harvest gold for callout borders. A narrow
+  four-color stripe (pine, burnt orange, gold, avocado, in equal widths) under the header
+  carries the retro theme in both modes. Navigation links are pine, not burnt orange. Gold and avocado are never text on a light page. Merchandise (stickers,
+  shirts) puts broad gold and avocado stripes behind the footprint, the trail patch. Small
+  sizes (the tab icon) use a map-paper footprint on a solid pine circle instead: the stripes
+  don't read at 16 pixels.
 - Literal names stay literal: commands, hooks, plugin and option names, summary labels.
   `leaveNoTrace` is the exception, because it describes the option better than `clean` does.
 

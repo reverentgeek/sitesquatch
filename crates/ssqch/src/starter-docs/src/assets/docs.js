@@ -40,6 +40,25 @@ try {
 } catch {}
 choose(remembered);
 
+// The light and dark switch. It starts with the system's choice, and remembers the reader's.
+const themeSwitch = document.querySelector(".theme-switch");
+if (themeSwitch) {
+  const dark = matchMedia("(prefers-color-scheme: dark)");
+  const current = () => document.documentElement.dataset.theme ?? (dark.matches ? "dark" : "light");
+  const label = () => (themeSwitch.textContent = current() === "dark" ? "Switch to light" : "Switch to dark");
+  themeSwitch.addEventListener("click", () => {
+    const next = current() === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem("theme", next);
+    } catch {}
+    label();
+  });
+  dark.addEventListener("change", label);
+  label();
+  themeSwitch.hidden = false;
+}
+
 // Search, when the site was built with SEARCH=1.
 if (window.PagefindUI && document.getElementById("search")) {
   new PagefindUI({ element: "#search", showSubResults: true });

@@ -22,9 +22,26 @@ use crate::config::Config;
 /// `/__ssqch/build` what changed since it last looked.
 const LIVE_SCRIPT: &str = include_str!("live.js");
 
-/// The footprint in [`NOT_FOUND_PAGE`], as the tab's icon for a site that has
-/// no `favicon.ico`: `{fill}` is its colour.
-const FOOTPRINT_ICON: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 0 200 200" fill="{fill}"><path d="M62 72c27 0 39 22 35 56-4 31-13 64-37 64s-32-33-35-64c-3-34 10-56 37-56z"/><circle cx="20" cy="62" r="8"/><circle cx="37" cy="44" r="9"/><circle cx="57" cy="33" r="10"/><circle cx="79" cy="30" r="11"/><circle cx="102" cy="42" r="14"/></svg>"#;
+/// The footprint as a 1970s trail patch: broad harvest-gold and avocado
+/// stripes behind it, in a pine ring. The picture on the dev server's 404 page.
+const PATCH: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="A trail patch with one very large footprint"><defs><clipPath id="ssqch-patch"><circle cx="100" cy="100" r="96"/></clipPath></defs><g clip-path="url(#ssqch-patch)"><rect width="200" height="200" fill="#e8af43"/><rect y="40" width="200" height="40" fill="#a9b66a"/><rect y="120" width="200" height="40" fill="#a9b66a"/></g><circle cx="100" cy="100" r="92" fill="none" stroke="#233b2b" stroke-width="8"/><g fill="#233b2b" transform="rotate(12 100 100) translate(48 20) scale(0.8)">"##;
+
+/// The tab icon: a map-paper footprint on a solid circle, big enough to read
+/// at 16 pixels. `{circle}` is pine, or burnt orange while the build is broken.
+const ICON: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><circle cx="100" cy="100" r="100" fill="{circle}"/><g fill="#fff3d6" transform="rotate(10 100 100) translate(42 5) scale(0.9)">"##;
+
+/// The footprint itself, from the 404 page's patch and the tab icon.
+const FOOTPRINT: &str = r#"<path d="M62 72c27 0 39 22 35 56-4 31-13 64-37 64s-32-33-35-64c-3-34 10-56 37-56z"/><circle cx="20" cy="62" r="8"/><circle cx="37" cy="44" r="9"/><circle cx="57" cy="33" r="10"/><circle cx="79" cy="30" r="11"/><circle cx="102" cy="42" r="14"/></g></svg>"#;
+
+/// The 404 page's trail patch.
+fn patch() -> String {
+    format!("{}{}", PATCH, FOOTPRINT)
+}
+
+/// The tab icon, pine or (while the build is broken) burnt orange.
+fn icon(broken: bool) -> String {
+    format!("{}{}", ICON.replace("{circle}", if broken { "#a23e20" } else { "#233b2b" }), FOOTPRINT)
+}
 
 /// The page for a URL that isn't there, when the site has no `404.html` of
 /// its own. Only the dev server sends it: it's never written to the output.
@@ -36,8 +53,8 @@ pub fn serve(cfg: &Config, port: u16) -> Result<()> {
     let live = Arc::new(Live::default());
     let site = Arc::new(RwLock::new(Site::of(cfg)));
     let server = listen(port, &site, &live)?;
-    println!("{} Serving {} at http://localhost:{}{}/", crate::voice::SQUATCH_WATCH, site.read().unwrap().output.display(), server, site.read().unwrap().base);
-    watch(cfg, &live, &|_| {}, &|| {
+    let say_where = || println!("{}", banner(&site.read().unwrap(), server));
+    watch(cfg, &live, &|_| {}, &say_where, &|| {
         println!("Restart to use the changed configuration.");
         false
     })
@@ -89,7 +106,7 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
         }
     }
     let server = listen(options.port, &site, &live)?;
-    println!("{} Serving {} at http://localhost:{}{}/", crate::voice::SQUATCH_WATCH, site.read().unwrap().output.display(), server, site.read().unwrap().base);
+    let say_where = || println!("{}", banner(&site.read().unwrap(), server));
     let mut cfg = first;
     loop {
         *site.write().unwrap() = Site::of(&cfg);
@@ -102,7 +119,7 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
                 }
             }
         };
-        let Reloaded = watch(&cfg, &live, &built, &|| match reload() {
+        let Reloaded = watch(&cfg, &live, &built, &say_where, &|| match reload() {
             Ok(new) => {
                 *next.borrow_mut() = Some(new);
                 true
@@ -153,14 +170,26 @@ fn listen(port: u16, site: &Arc<RwLock<Site>>, live: &Arc<Live>) -> Result<u16> 
 /// Returned by [`watch`] when the configuration changed and loaded again.
 struct Reloaded;
 
+/// `Squatch Watch is on. Serving dist at http://localhost:8080/`: the last
+/// line after every build, so a long build's output doesn't bury the address.
+fn banner(site: &Site, port: u16) -> String {
+    // The output folder from where the command was run (`dist`), when it's below it.
+    let here = std::env::current_dir().ok().and_then(|dir| dunce::canonicalize(dir).ok());
+    let output = dunce::canonicalize(&site.output).unwrap_or_else(|_| site.output.clone());
+    let shown = here.and_then(|dir| output.strip_prefix(dir).ok().map(crate::slashes)).filter(|rel| !rel.is_empty()).unwrap_or_else(|| site.output.display().to_string());
+    format!("{} Serving {} at http://localhost:{}{}/", crate::voice::SQUATCH_WATCH, shown, port, site.base)
+}
+
 /// Build, then watch the site's sources and rebuild when they change. When a
 /// file the configuration came from changes, `reload` is called: if it
 /// returns true, this returns (the caller has a new configuration to watch
-/// with); if not, the watch goes on.
-fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), reload: &dyn Fn() -> bool) -> Result<Reloaded> {
+/// with); if not, the watch goes on. `say_where` prints the site's address,
+/// after each build.
+fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn Fn(), reload: &dyn Fn() -> bool) -> Result<Reloaded> {
     let ctx = cfg.build_context();
     let (mut built_at, ok) = run_build(cfg, live);
     first_build(ok);
+    say_where();
 
     let (tx, rx) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
@@ -235,6 +264,7 @@ fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), reload: &dyn Fn(
         } else if let Some(p) = sources.iter().find(|p| in_sources(p)) {
             println!("{} {}", crate::voice::FRESH_TRACKS, show(p));
             built_at = run_build(cfg, live).0;
+            say_where();
             watch_config_files(&mut watcher);
         } else if let Some(p) = outputs.iter().find(|p| written_by_another_tool(p, built_at)) {
             println!("{} {} (reloading)", crate::voice::FRESH_TRACKS, show(p));
@@ -462,15 +492,16 @@ fn handle(request: tiny_http::Request, root: &Path, live: &Live, base: &str) -> 
         let json = tiny_http::Header::from_bytes("Content-Type", "application/json").unwrap();
         return Ok(request.respond(tiny_http::Response::from_string(live.answer(since, &page, base).to_string()).with_header(json).with_header(no_cache()))?);
     }
-    // A footprint for the tab of a site without an icon, and a red one while the build is broken.
-    let icon = match raw_url.as_str() {
-        "/favicon.ico" if !root.join("favicon.ico").is_file() => Some("#3f6b3a"),
-        "/__ssqch/favicon-error.svg" => Some("#dc2626"),
+    // A footprint for the tab of a site without an icon, and a burnt orange one while the build is broken.
+    let wanted = match raw_url.as_str() {
+        "/__ssqch/favicon.svg" => Some(false),
+        "/favicon.ico" if !root.join("favicon.ico").is_file() => Some(false),
+        "/__ssqch/favicon-error.svg" => Some(true),
         _ => None,
     };
-    if let Some(fill) = icon {
+    if let Some(broken) = wanted {
         let svg = tiny_http::Header::from_bytes("Content-Type", "image/svg+xml").unwrap();
-        return Ok(request.respond(tiny_http::Response::from_string(FOOTPRINT_ICON.replace("{fill}", fill)).with_header(svg).with_header(no_cache()))?);
+        return Ok(request.respond(tiny_http::Response::from_string(icon(broken)).with_header(svg).with_header(no_cache()))?);
     }
     // Decoded once, before anything looks at the path.
     let full_url = percent_decode(&raw_url);
@@ -503,7 +534,16 @@ fn handle(request: tiny_http::Request, root: &Path, live: &Live, base: &str) -> 
         Err(_) => (not_found_page(root, &url, base).into_bytes(), "text/html; charset=utf-8"),
     };
     if ctype.starts_with("text/html") {
-        let html = String::from_utf8_lossy(&body);
+        let mut html = String::from_utf8_lossy(&body).into_owned();
+        // Browsers only look for an SVG icon when a page links to one: `/favicon.ico` has to be
+        // an ICO or a PNG. So a page of a site without an icon of its own is pointed at the patch.
+        if !root.join("favicon.ico").is_file() && !links_an_icon(&html) {
+            let link = r#"<link rel="icon" href="/__ssqch/favicon.svg" type="image/svg+xml">"#;
+            html = match html.find("</head>") {
+                Some(i) => format!("{}{}{}", &html[..i], link, &html[i..]),
+                None => format!("{}{}", link, html),
+            };
+        }
         body = match html.rfind("</body>") {
             Some(i) => format!("{}<script>{}</script>{}", &html[..i], LIVE_SCRIPT, &html[i..]),
             None => format!("{}<script>{}</script>", html, LIVE_SCRIPT),
@@ -515,6 +555,12 @@ fn handle(request: tiny_http::Request, root: &Path, live: &Live, base: &str) -> 
     let powered_by = tiny_http::Header::from_bytes("X-Powered-By", "pine cones").unwrap();
     request.respond(tiny_http::Response::from_data(body).with_status_code(status).with_header(header).with_header(no_cache()).with_header(powered_by))?;
     Ok(())
+}
+
+/// Whether a page has an icon of its own: a `<link>` whose `rel` has `icon`.
+fn links_an_icon(html: &str) -> bool {
+    static ICON: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    ICON.get_or_init(|| regex::Regex::new(r#"(?is)<link\b[^>]*\brel\s*=\s*["']?[^"'>]*\bicon\b"#).unwrap()).is_match(html)
 }
 
 /// Every page in the output folder, by URL: `/about/` for `about/index.html`.
@@ -539,7 +585,7 @@ fn not_found_page(root: &Path, url: &str, base: &str) -> String {
         Some(found) => format!("<p>Did you mean <a href=\"{0}{1}\">{1}</a>?</p>", crate::escape_html(base), crate::escape_html(found)),
         None => String::new(),
     };
-    NOT_FOUND_PAGE.replace("{{url}}", &crate::escape_html(url)).replace("{{suggestion}}", &suggestion).replace("{{home}}", &format!("{}/", crate::escape_html(base)))
+    NOT_FOUND_PAGE.replace("{{patch}}", &patch()).replace("{{url}}", &crate::escape_html(url)).replace("{{suggestion}}", &suggestion).replace("{{home}}", &format!("{}/", crate::escape_html(base)))
 }
 
 #[cfg(test)]
@@ -607,6 +653,11 @@ mod tests {
         live.changed(&dir);
         assert_eq!(answer(Some(6), "about/index.html"), r#"{"id":7,"error":null,"reload":true,"css":[]}"#);
         assert_eq!(answer(Some(40), "index.html"), r#"{"id":7,"error":null,"reload":true,"css":[]}"#);
+
+        assert!(links_an_icon(r#"<head><link rel="icon" href="/i.png"></head>"#));
+        assert!(links_an_icon(r#"<LINK href="/i.ico" REL='shortcut icon'>"#));
+        assert!(links_an_icon("<link rel=apple-touch-icon href=/a.png>"));
+        assert!(!links_an_icon(r#"<link rel="stylesheet" href="/icons.css"><p>icon</p>"#));
 
         assert_eq!(page_file("/repo/about/", "/repo"), "about/index.html");
         assert_eq!(page_file("/", ""), "index.html");

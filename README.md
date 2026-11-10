@@ -84,7 +84,7 @@ Open <http://localhost:8080>, edit `src/posts/i-know-what-i-saw.md`, and watch t
 
 The layout and home page are [Edge](#templates-and-data) templates. To start in another language, pass `--engine liquid`, `--engine njk` (Nunjucks) or `--engine hbs` (Handlebars); the config then lists that engine in `templateFormats` and runs Markdown through it.
 
-Writing documentation? `ssqch init my-docs --starter docs` creates a docs site instead: a sidebar, breadcrumbs and previous/next links from one `nav.yml`, a table of contents on each page, notes and tabs, highlighted code, a schema that checks each page's front matter, the link checker, and Pagefind search with `SEARCH=1`. The pages are plain HTML that reads fine without JavaScript (a small script turns tab sections into tabs), and every file is yours to edit: there's no theme package underneath.
+Writing documentation? `ssqch init my-docs --starter docs` creates a docs site instead: a light and dark switch, a sidebar, breadcrumbs and previous/next links from one `nav.yml`, a table of contents on each page, notes and tabs, highlighted code, a schema that checks each page's front matter, the link checker, and Pagefind search with `SEARCH=1`. The pages are plain HTML that reads fine without JavaScript (a small script turns tab sections into tabs), and every file is yours to edit: there's no theme package underneath.
 
 To see how the pieces fit, here's a small site built by hand: a home page that lists posts. This is all of it:
 
@@ -180,9 +180,16 @@ ssqch serve
 ```
 
 ```text
+First confirmed siting. Built in 2.75 ms (development)
+  ...
 Squatch Watch is on. Serving dist at http://localhost:8080/
 Fresh tracks in src/posts/pine-cone-crunch.md
+Built in 1.92 ms (development)
+  ...
+Squatch Watch is on. Serving dist at http://localhost:8080/
 ```
+
+The address comes after each build's report, so it's on the last line however long the build was.
 
 `ssqch serve` (it answers to Squatch Watch) rebuilds when your sources change, and it's careful about what it disturbs:
 
@@ -190,7 +197,7 @@ Fresh tracks in src/posts/pine-cone-crunch.md
 - **A stylesheet is swapped in place,** without a reload, so the page keeps its scroll position and a half-filled form. That goes for CSS another tool writes into the output folder too (a PostCSS watcher, say): the browser hears about it without a rebuild, so a page never reloads before its new CSS is there. A changed script or image reloads the page.
 - **A build that fails shows up in the browser,** over the page, with the error and the lines it's about. The tab's title and icon say so too, which is how you find out from another window. The page underneath is from the last build that worked, and the next good build clears the error.
 - **A URL that isn't there** gets the site's `404.html`, or, when the site has none, a page of the server's own that says where the trail went cold and suggests the closest URL.
-- **A site without a `favicon.ico`** gets a footprint in the tab, where there used to be a 404 on every page load.
+- **A site without a `favicon.ico`** gets a map-paper footprint on a pine circle in the tab, where there used to be a 404 on every page load. While the build is broken, the circle turns burnt orange.
 
 None of that is written to the output folder: the server adds it to pages as it sends them.
 

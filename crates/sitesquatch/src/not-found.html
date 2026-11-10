@@ -5,27 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Page not found</title>
 <style>
-  :root { color-scheme: light dark; --ink: #1f2937; --soft: #6b7280; --paper: #f8f7f2; --moss: #3f6b3a; }
-  @media (prefers-color-scheme: dark) { :root { --ink: #e5e7eb; --soft: #9ca3af; --paper: #151a16; --moss: #8fbf7f; } }
+  /* Ranger Station '76: soft white (or green charcoal), neutral text, pine headings, burnt orange links. */
+  :root { color-scheme: light dark; --ink: #29332c; --heading: #233b2b; --soft: #5e6a61; --paper: #fafaf7; --link: #a23e20; --gold: #e8af43; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #e5e9e1; --heading: #d6e4c8; --soft: #a2aca3; --paper: #1b201d; --link: #f0a17d; } }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--paper); color: var(--ink); font: 1rem/1.6 system-ui, sans-serif; }
   main { max-width: 32rem; padding: 2rem 1rem; text-align: center; }
-  svg { width: 7rem; height: auto; fill: var(--moss); transform: rotate(12deg); }
-  h1 { font-size: 1.5rem; margin: 1rem 0 0.5rem; }
+  svg { width: 9rem; height: auto; }
+  h1 { font-size: 1.5rem; margin: 1rem 0 0.5rem; color: var(--heading); }
   code { font-size: 0.95em; overflow-wrap: anywhere; }
-  a { color: var(--moss); }
+  a { color: var(--link); text-decoration: underline; text-underline-offset: 0.18em; }
+  h1::after { content: ""; display: block; width: 4rem; height: 4px; margin: 0.6rem auto 0; background: var(--gold); }
   small { display: block; margin-top: 2rem; color: var(--soft); }
 </style>
 </head>
 <body>
 <main>
-  <svg viewBox="0 0 120 200" role="img" aria-label="One very large footprint">
-    <path d="M62 72c27 0 39 22 35 56-4 31-13 64-37 64s-32-33-35-64c-3-34 10-56 37-56z"/>
-    <circle cx="20" cy="62" r="8"/>
-    <circle cx="37" cy="44" r="9"/>
-    <circle cx="57" cy="33" r="10"/>
-    <circle cx="79" cy="30" r="11"/>
-    <circle cx="102" cy="42" r="14"/>
-  </svg>
+  {{patch}}
   <h1>Page not found</h1>
   <p>The trail goes cold at <code>{{url}}</code>. We have several eyewitness accounts of this page, but no page.</p>
   {{suggestion}}

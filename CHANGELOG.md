@@ -78,7 +78,8 @@ a `v<version>` tag on a commit where that version matches.
     and the lines it's about, and in the tab's title and icon. It only went to the terminal
     before, while the browser kept showing the old page. The next good build clears it.
   - The dev server gives a site without a `favicon.ico` a footprint for its tab, where there
-    was a 404 on every page load.
+    was a 404 on every page load. Each page links it as an SVG icon, since browsers only take an
+    ICO or PNG from `/favicon.ico`.
   - "Did you mean" for a broken link (`/about/ -> /contactt/ (not found; did you mean
     /contact/?)`) and a missing `id`, a config key (`"templateFormat" isn't a config option
     (did you mean "templateFormats"?)`, and `output` at the top level says it goes in `dirs`),
@@ -94,6 +95,17 @@ a `v<version>` tag on a commit where that version matches.
     elvish.
   - Colour codes are left out of errors when standard error isn't a terminal, or `NO_COLOR` is
     set (`FORCE_COLOR` keeps them).
+  - The starters and the dev server's own pages use the Ranger Station '76 palette: soft
+    white (or a green charcoal in dark mode) with neutral text, pine headings and navigation,
+    burnt orange links and selection markers, avocado for selected navigation and code,
+    harvest gold callout borders, a narrow four-color stripe under the header, and focus rings
+    to match. The docs
+    starter has a light and dark switch (it follows the system until the reader picks one),
+    and its code highlighting matches. The dev server's 404 page shows the footprint as a trail
+    patch (broad gold and avocado stripes in a pine ring), and a site without an icon gets a
+    map-paper footprint on a pine circle in the tab (burnt orange while the build is broken).
+  - `ssqch serve` prints the site's address after each build's report, not before the first
+    one, so a long build doesn't push it out of sight.
   - Smaller things: `--offline` builds are `living off the cache`, `ssqch diff` with nothing
     to report adds that the stump has not moved, a panic inside the build says that something
     large walked through it and where to report the bug, and the dev server's responses are

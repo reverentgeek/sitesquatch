@@ -1453,6 +1453,12 @@ fn the_ranger_reports_what_happened() {
     write("src/notes.txt", "not a page");
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok && log.contains("Nothing sighted: no file in src matches templateFormats (edge, md).\n"), "{}", log);
+    // A site whose input folder is the project root.
+    let root_site = temp_dir("voice-root");
+    std::fs::create_dir_all(&root_site).unwrap();
+    std::fs::write(root_site.join("notes.txt"), "not a page").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", root_site.to_str().unwrap()]);
+    assert!(ok && log.contains("Nothing sighted: no file in . matches templateFormats (edge, md, html).\n"), "{}", log);
 
     // Layouts that lead back to each other: the loop is named.
     write("src/_includes/base.edge", "---\nlayout: wrap.edge\n---\n{{{ content }}}");
@@ -1582,6 +1588,9 @@ fn serve_tells_the_browser_what_changed() {
     let port = serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&ready).unwrap()).unwrap()["port"].as_u64().unwrap() as u16;
     let said = || std::fs::read_to_string(&log).unwrap_or_default();
     assert!(said().contains("Pages   2 written from 2 templates, ") && said().contains(" (2 changed)\n"), "{}", said());
+    // The address comes after the build's report, so a long build doesn't bury it.
+    let report = said();
+    assert!(report.find("Built in").unwrap() < report.find("Squatch Watch is on. Serving ").unwrap(), "{}", report);
 
     // A browser that has just opened the page learns where things stand.
     let first = live(port, "", "/");
@@ -1593,6 +1602,13 @@ fn serve_tells_the_browser_what_changed() {
     // Another page changes: only a browser showing that page reloads.
     change_and_wait(&dir.join("src/about.md"), "About us\n", &dir.join("dist/about/index.html"), "About us");
     wait_for(&log, " (1 changed)\n");
+    // And again after each rebuild.
+    wait_for(&log, "Fresh tracks in src");
+    let started = std::time::Instant::now();
+    while said().matches("Squatch Watch is on. Serving ").count() < 2 {
+        assert!(started.elapsed() < std::time::Duration::from_secs(20), "{}", said());
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
     assert_eq!(live(port, &since, "/")["reload"], false);
     assert_eq!(live(port, &since, "/about/")["reload"], true);
 
@@ -1623,8 +1639,10 @@ fn serve_tells_the_browser_what_changed() {
     };
     assert!(broken["error"].as_str().unwrap().contains("index.md") && broken["reload"] == false, "{}", broken);
     assert!(http_get(port, "/").contains("Home"));
-    // The tab's icon, for a site without one, and the red one.
-    for icon in ["/favicon.ico", "/__ssqch/favicon-error.svg"] {
+    // The tab's icon, for a site without one: each page links to it. And the broken-build one.
+    let page = http_get(port, "/");
+    assert!(page.contains(r#"<link rel="icon" href="/__ssqch/favicon.svg" type="image/svg+xml">"#), "{}", page);
+    for icon in ["/__ssqch/favicon.svg", "/favicon.ico", "/__ssqch/favicon-error.svg"] {
         let response = http_get(port, icon);
         assert!(response.starts_with("HTTP/1.1 200") && response.contains("image/svg+xml") && response.contains("<svg "), "{}: {}", icon, response);
     }
