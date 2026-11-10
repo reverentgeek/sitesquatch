@@ -263,6 +263,7 @@ pub struct Config {
     pub(crate) summaries: Vec<(String, SummaryFn)>,
     pub(crate) generators: Vec<(String, GeneratorFn)>,
     pub(crate) file_builders: Vec<(String, FileBuilderFn)>,
+    pub(crate) schemas: Vec<crate::schema::Schema>,
     pub(crate) config_files: ConfigFiles,
 }
 
@@ -311,6 +312,7 @@ impl Config {
             summaries: Vec::new(),
             generators: Vec::new(),
             file_builders: Vec::new(),
+            schemas: Vec::new(),
             config_files: Default::default(),
         }
     }
@@ -490,6 +492,19 @@ impl Config {
         let path = path.into();
         let path = dunce::canonicalize(&path).unwrap_or(path);
         self.config_files.lock().unwrap().insert(path);
+    }
+
+    /// Check pages' data against a schema on every build (see
+    /// [`crate::schema`]). A schema with the same name replaces the earlier one.
+    pub fn add_schema(&mut self, schema: crate::schema::Schema) -> &mut Self {
+        self.schemas.retain(|s| s.name != schema.name);
+        self.schemas.push(schema);
+        self
+    }
+
+    /// The content schemas, in the order they were added.
+    pub fn schemas(&self) -> &[crate::schema::Schema] {
+        &self.schemas
     }
 
     /// Copy a file or directory into the output. A path inside the input

@@ -249,6 +249,15 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
         }
         other => bail!("base must be a URL path like \"/docs/\", not {}", other.type_of()),
     }
+    match settings.get("schemas") {
+        Value::Undefined | Value::Null => {}
+        Value::Obj(schemas) => {
+            for (name, spec) in schemas.iter() {
+                cfg.add_schema(sitesquatch::schema::Schema::parse(name, spec)?);
+            }
+        }
+        other => bail!("schemas must be an object of {{ name: {{ fields }} }}, not {}", other.type_of()),
+    }
     match settings.get("ignore") {
         Value::Undefined => {}
         Value::Str(s) => cfg.ignore = vec![s.to_string()],

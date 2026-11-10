@@ -87,7 +87,7 @@
 	// they're allowed at the top level only. Everything else can also come from
 	// a plugin, and is applied in order: the config's own entries first, then
 	// each plugin's, depth first.
-	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "clean", "ignore", "bundles", "strict", "lastModified", "base" ];
+	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "clean", "ignore", "bundles", "strict", "lastModified", "base", "schemas" ];
 	const PARTS = [ "data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins" ];
 	// Engine names a config can't replace.
 	const CORE_ENGINES = [ "edge", "md", "html", "txt" ];

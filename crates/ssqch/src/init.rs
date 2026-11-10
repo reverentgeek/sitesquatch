@@ -112,8 +112,49 @@ pub fn run_init(matches: &clap::ArgMatches) -> ExitCode {
 }
 
 pub fn run_types(matches: &clap::ArgMatches) -> ExitCode {
+    let root = matches.try_get_one::<PathBuf>("root").ok().flatten().cloned();
     let out = PathBuf::from(matches.get_one::<String>("out").expect("has a default"));
-    report(write(&out, TYPES).map(|()| println!("Wrote {}. List it in jsconfig.json's \"include\" so editors pick it up.", out.display())))
+    let out = match &root {
+        Some(root) if out.is_relative() => root.join(out),
+        _ => out,
+    };
+    // A site's schemas become types too. Without a config (or with one that
+    // doesn't load), the types are the same for every site.
+    let mut types = TYPES.to_string();
+    let mut schemas = 0;
+    let mut cfg = sitesquatch::Config::new(root.unwrap_or_else(|| PathBuf::from(".")), sitesquatch::Environment::Development);
+    cfg.quiet = true;
+    match crate::configure(&mut cfg) {
+        Ok(()) => {
+            schemas = cfg.schemas().len();
+            types.push_str(&schema_types(cfg.schemas()));
+        }
+        Err(e) => eprintln!("warn: couldn't read the site's config, so its schemas aren't in the types: {:#}", e),
+    }
+    report(write(&out, &types).map(|()| {
+        let with = match schemas {
+            0 => String::new(),
+            1 => " (with 1 schema)".into(),
+            n => format!(" (with {} schemas)", n),
+        };
+        println!("Wrote {}{}. List it in jsconfig.json's \"include\" so editors pick it up.", out.display(), with)
+    }))
+}
+
+/// The site's schemas as an addition to the `Schemas` interface, so
+/// `pages.byTag("posts")` knows each page's fields.
+fn schema_types(schemas: &[sitesquatch::schema::Schema]) -> String {
+    if schemas.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from("\n// This site's `schemas`. Run `ssqch types` again after changing them.\ndeclare module \"ssqch\" {\n\tinterface Schemas {\n");
+    for schema in schemas {
+        let plain = schema.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && !schema.name.starts_with(|c: char| c.is_ascii_digit());
+        let key = if plain { schema.name.clone() } else { format!("{:?}", schema.name) };
+        out.push_str(&format!("\t\t{}: {};\n", key, schema.typescript()));
+    }
+    out.push_str("\t}\n}\n");
+    out
 }
 
 /// Write the starter files into `dir`, keeping any that already exist.

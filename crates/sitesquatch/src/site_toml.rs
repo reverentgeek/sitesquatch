@@ -48,6 +48,8 @@ pub struct SiteToml {
     pub before_build: Vec<String>,
     #[serde(default)]
     pub after_build: Vec<String>,
+    /// `[schemas.posts]` with `fields`, `files` and `unknown`, as in the JavaScript config.
+    pub schemas: Option<toml::Table>,
     /// `[markdown]`, with the config's keys in snake case (`heading_ids = "blackfriday"`).
     pub markdown: Option<toml::Table>,
     #[serde(default)]

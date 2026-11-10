@@ -26,6 +26,7 @@ pub mod highlight;
 pub mod markdown;
 pub mod nav;
 pub mod report;
+pub mod schema;
 pub mod serve;
 pub mod site_toml;
 

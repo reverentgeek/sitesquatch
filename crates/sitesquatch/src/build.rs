@@ -61,6 +61,8 @@ struct Tpl {
     last_modified: Option<DateTime<Utc>>,
     /// Plain text with no front matter: copied as-is and kept out of collections.
     plain_copy: bool,
+    /// The keys in the file's own front matter, for schemas' `unknown`.
+    front_keys: Vec<String>,
 }
 
 struct Page {
@@ -195,6 +197,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
         pages.extend(more);
     }
     check_conflicts(&pages)?;
+    check_schemas(cfg, &ctx, &pages)?;
     timer.lap("paginate");
 
     // ---- render bodies
@@ -646,6 +649,7 @@ fn load_template(
             }
         }
         let mut front = front;
+        let front_keys: Vec<String> = front.keys().cloned().collect();
         normalize_tags(&mut front);
         merge(&mut own, &front, cfg.data_deep_merge);
 
@@ -692,6 +696,7 @@ fn load_template(
 
         let plain_copy = !has_front_matter && engines.iter().all(|e| e == "txt");
         Ok(Tpl {
+            front_keys,
             plain_copy,
             input: path.to_path_buf(),
             rel: rel.clone(),
@@ -1102,6 +1107,48 @@ fn check_conflicts(pages: &[Page]) -> Result<()> {
     } else {
         bail!("output conflicts:\n  - {}", errors.join("\n  - "))
     }
+}
+
+/// Check every page's data against the schemas that cover it. Warnings are
+/// printed; errors fail the build, listed together.
+fn check_schemas(cfg: &Config, ctx: &BuildContext, pages: &[Page]) -> Result<()> {
+    if cfg.schemas.is_empty() {
+        return Ok(());
+    }
+    // A template that makes many pages reports each problem once.
+    let found: Vec<Vec<(bool, String)>> = pages
+        .par_iter()
+        .map(|page| {
+            let tags: Vec<&str> = page.data.get("tags").and_then(|t| t.as_array()).map(|a| a.iter().filter_map(|t| t.as_str()).collect()).unwrap_or_default();
+            let files = crate::schema::PageFiles { input_dir: &ctx.input_dir, page_dir: page.tpl.input.parent().unwrap_or(&ctx.input_dir) };
+            let file = display_path(ctx, &page.tpl.input);
+            let mut out = Vec::new();
+            for schema in cfg.schemas.iter().filter(|s| s.covers(&page.tpl.rel, &tags, page.in_collections)) {
+                for problem in schema.check(&page.data, &page.tpl.front_keys, &files) {
+                    out.push((problem.warning, format!("{}: {} (schema `{}`)", file.trim_start_matches("./"), problem.message, schema.name)));
+                }
+            }
+            out
+        })
+        .collect();
+    let mut seen = HashSet::new();
+    let (mut warnings, mut errors) = (Vec::new(), Vec::new());
+    for (warning, message) in found.into_iter().flatten() {
+        if seen.insert(message.clone()) {
+            if warning { warnings.push(message) } else { errors.push(message) }
+        }
+    }
+    for w in &warnings {
+        eprintln!("warn: {}", w);
+    }
+    if errors.is_empty() {
+        return Ok(());
+    }
+    let count = errors.len();
+    let shown = if cfg.verbose { usize::MAX } else { 30 };
+    let more = if count > shown { format!("\n  ... and {} more (--verbose lists them all)", count - shown) } else { String::new() };
+    errors.truncate(shown);
+    bail!("{} content {}:\n  - {}{}", count, if count == 1 { "error" } else { "errors" }, errors.join("\n  - "), more)
 }
 
 // --------------------------------------------------------------- collections
