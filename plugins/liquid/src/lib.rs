@@ -120,6 +120,8 @@ impl Includes {
     }
 
     fn resolve(&self, name: &str) -> Option<&str> {
+        // Jekyll's include tag hands over a quoted name with its quotes.
+        let name = name.strip_prefix('"').and_then(|n| n.strip_suffix('"')).or_else(|| name.strip_prefix('\'').and_then(|n| n.strip_suffix('\''))).unwrap_or(name);
         let with_ext = format!("{}.liquid", name);
         self.names.iter().find(|n| *n == name || **n == with_ext).map(String::as_str)
     }
@@ -231,10 +233,14 @@ fn to_value(v: &dyn ValueView) -> Value {
         if let Some(f) = s.to_float() {
             return Value::Num(f);
         }
-        if let Some(d) = s.to_date_time() {
-            let ns = d.unix_timestamp_nanos();
-            if let Some(dt) = chrono::DateTime::from_timestamp((ns / 1_000_000_000) as i64, (ns % 1_000_000_000) as u32) {
-                return Value::Date(dt);
+        // Only for a date: asked of a string, Liquid parses it as one, and
+        // compiles a regular expression to do it, every time.
+        if !matches!(s.type_name(), "string") {
+            if let Some(d) = s.to_date_time() {
+                let ns = d.unix_timestamp_nanos();
+                if let Some(dt) = chrono::DateTime::from_timestamp((ns / 1_000_000_000) as i64, (ns % 1_000_000_000) as u32) {
+                    return Value::Date(dt);
+                }
             }
         }
         return Value::from(s.to_kstr().as_str());

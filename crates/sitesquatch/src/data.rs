@@ -27,6 +27,21 @@ pub fn parse_front_matter(src: &str) -> Result<(Map, &str)> {
     bail!("front matter is missing its closing `---`")
 }
 
+/// A TOML value as a template value. A date or time (`2024-01-02`, without
+/// quotes) is its text, as a date in YAML is.
+pub fn toml_to_value(v: toml::Value) -> Value {
+    use toml::Value as T;
+    match v {
+        T::String(s) => Value::from(s),
+        T::Integer(i) => Value::Num(i as f64),
+        T::Float(f) => Value::Num(f),
+        T::Boolean(b) => Value::Bool(b),
+        T::Datetime(d) => Value::from(d.to_string()),
+        T::Array(items) => Value::array(items.into_iter().map(toml_to_value).collect()),
+        T::Table(table) => Value::object(table.into_iter().map(|(k, v)| (k, toml_to_value(v))).collect()),
+    }
+}
+
 pub fn parse_yaml(src: &str) -> Result<Map> {
     if src.trim().is_empty() {
         return Ok(Map::new());
@@ -75,7 +90,7 @@ pub fn load_data_file(path: &Path, extra: &[(String, DataLoader)]) -> Result<Opt
         "yaml" | "yml" => yaml_to_value(serde_yaml::from_str(&read()?).with_context(|| format!("invalid YAML in {}", path.display()))?),
         "toml" => {
             let t: toml::Value = toml::from_str(&read()?).with_context(|| format!("invalid TOML in {}", path.display()))?;
-            Value::from(serde_json::to_value(t)?)
+            toml_to_value(t)
         }
         _ => match extra.iter().find(|(e, _)| e == ext) {
             Some((_, load)) => load(path)?,

@@ -43,18 +43,27 @@ pub fn serve(cfg: &Config, port: u16) -> Result<()> {
             watcher.watch(&path, RecursiveMode::Recursive).with_context(|| format!("watching {}", path.display()))?;
         }
     }
-    let output = ctx.output_dir.clone();
+    // As the watcher reports paths: resolved, for an output that's a link or `../public`.
+    let output = dunce::canonicalize(&ctx.output_dir).unwrap_or_else(|_| ctx.output_dir.clone());
     // The output too, for CSS and JavaScript other tools write there.
     if output.exists() && !cfg.watch_paths().iter().any(|p| output.starts_with(p)) {
         watcher.watch(&output, RecursiveMode::Recursive).with_context(|| format!("watching {}", output.display()))?;
     }
+    // What each changed source held the last time it was seen.
+    let mut contents: std::collections::HashMap<PathBuf, Option<u64>> = Default::default();
     loop {
         let mut paths = rx.recv()?;
         // Debounce bursts of events (editors often write several times).
         while let Ok(more) = rx.recv_timeout(Duration::from_millis(120)) {
             paths.extend(more);
         }
-        let (outputs, sources): (Vec<PathBuf>, Vec<PathBuf>) = paths.into_iter().partition(|p| p.starts_with(&output));
+        // What a build writes for itself (`.cache`, in a site whose input folder is the
+        // project root) isn't a change to the site: rebuilding for it would never end.
+        let own = |p: &PathBuf| p.strip_prefix(&ctx.root).is_ok_and(|rel| rel.components().any(|c| matches!(c.as_os_str().to_str(), Some(".cache" | ".git" | "node_modules"))));
+        let (outputs, sources): (Vec<PathBuf>, Vec<PathBuf>) = paths.into_iter().map(|p| dunce::canonicalize(&p).unwrap_or(p)).filter(|p| !own(p)).partition(|p| p.starts_with(&output));
+        // A source written again with the same contents hasn't changed: a hook that writes
+        // into the input folder on every build would rebuild forever.
+        let sources: Vec<PathBuf> = sources.into_iter().filter(|p| contents.insert(p.clone(), fingerprint(p)) != Some(fingerprint(p))).collect();
         if let Some(p) = sources.first() {
             println!("Changed: {}", p.strip_prefix(&ctx.root).unwrap_or(p).display());
             built_at = run_build(cfg, &build_id);
@@ -63,6 +72,15 @@ pub fn serve(cfg: &Config, port: u16) -> Result<()> {
             build_id.fetch_add(1, Ordering::SeqCst);
         }
     }
+}
+
+/// A hash of a file's contents, or `None` for a folder or a file that's gone.
+fn fingerprint(path: &Path) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+    let bytes = std::fs::read(path).ok()?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    Some(hasher.finish())
 }
 
 /// A CSS or JavaScript file in the output that changed after the last build
@@ -125,19 +143,28 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).to_string()
 }
 
+/// Whether a decoded request path (without its leading `/`) can only name
+/// something inside the folder it's joined to: plain names, so no `..`, no
+/// second leading `/` (`/%2Fetc/hosts`), no drive letter and no backslash.
+fn inside(rel: &str) -> bool {
+    !rel.contains('\\') && Path::new(rel).components().all(|c| matches!(c, std::path::Component::Normal(_)))
+}
+
 fn handle(request: tiny_http::Request, root: &Path, build_id: &AtomicU64) -> Result<()> {
-    let url = request.url().split(['?', '#']).next().unwrap_or("/").to_string();
-    if url == "/__ssqch/build" {
+    let raw_url = request.url().split(['?', '#']).next().unwrap_or("/").to_string();
+    if raw_url == "/__ssqch/build" {
         return Ok(request.respond(tiny_http::Response::from_string(build_id.load(Ordering::SeqCst).to_string()))?);
     }
-    let rel = percent_decode(url.trim_start_matches('/'));
-    if rel.split('/').any(|seg| seg == "..") {
+    // Decoded once, before anything looks at the path.
+    let url = percent_decode(&raw_url);
+    let rel = url.trim_start_matches('/');
+    if !inside(rel) {
         return Ok(request.respond(tiny_http::Response::empty(400))?);
     }
-    let mut path = root.join(&rel);
+    let mut path = root.join(rel);
     if path.is_dir() {
         if !url.ends_with('/') {
-            let location = tiny_http::Header::from_bytes("Location", format!("{}/", url)).unwrap();
+            let location = tiny_http::Header::from_bytes("Location", format!("{}/", raw_url)).unwrap();
             return Ok(request.respond(tiny_http::Response::empty(301).with_header(location))?);
         }
         path = path.join("index.html");
@@ -157,4 +184,21 @@ fn handle(request: tiny_http::Request, root: &Path, build_id: &AtomicU64) -> Res
     let no_cache = tiny_http::Header::from_bytes("Cache-Control", "no-store").unwrap();
     request.respond(tiny_http::Response::from_data(body).with_status_code(status).with_header(header).with_header(no_cache))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_paths_stay_inside_the_output() {
+        for ok in ["", "about/", "posts/pine/index.html", "my file.pdf", "a..b/c"] {
+            assert!(inside(ok), "{:?}", ok);
+        }
+        // `/%2Fetc/hosts` decodes to a second leading slash, which would replace the folder.
+        for bad in ["/etc/hosts", "../secret", "a/../../b", "./x", "..\\..\\x", "C:\\Windows"] {
+            assert!(!inside(bad), "{:?}", bad);
+        }
+        assert_eq!(percent_decode("/%2Fetc/hosts").trim_start_matches('/'), "etc/hosts");
+    }
 }

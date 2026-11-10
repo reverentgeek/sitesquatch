@@ -242,7 +242,7 @@ fn liquid_templates_get_filters_includes_and_collections() {
         "ssqch.config.js",
         "export default {\n  dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"liquid\", \"md\", \"edge\"],\n  filters: { shout: (s) => String(s).toUpperCase(), wrap: (s, l, r) => l + s + r },\n  collections: { posts: (pages) => pages.byTag(\"post\") },\n};\n",
     );
-    write("src/_includes/base.liquid", "<title>{{ title | shout }}</title>{% include nav.html section=\"home\" %}{{ content }}{% render \"footer\", year: 2026 %}");
+    write("src/_includes/base.liquid", "<title>{{ title | shout }}</title>{% include nav.html section=\"home\" %}{% include \"nav.html\" section=\"quoted\" %}{{ content }}{% render \"footer\", year: 2026 %}");
     write("src/_includes/nav.html", "<nav>{{ include.section }}</nav>");
     write("src/_includes/footer.liquid", "<footer>{{ year }}</footer>");
     write("src/_includes/edge.edge", "<edge>{{ content }}</edge>");
@@ -256,10 +256,10 @@ fn liquid_templates_get_filters_includes_and_collections() {
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok, "{}", log);
     let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
-    assert_eq!(read("index.html"), "<title>SIGHTINGS</title><nav>home</nav>2 [x] [] pine-cone-crunch@2026-01-02 bigfoot-brittle@2026-03-04 4 2.5<footer>2026</footer>");
+    assert_eq!(read("index.html"), "<title>SIGHTINGS</title><nav>home</nav><nav>quoted</nav>2 [x] [] pine-cone-crunch@2026-01-02 bigfoot-brittle@2026-03-04 4 2.5<footer>2026</footer>");
     assert_eq!(read("edge-layout/index.html"), "<edge>LIQUID</edge>");
     // Markdown runs through Edge first by default; a Liquid layout wraps it.
-    assert_eq!(read("posts/pine/index.html"), "<title>PINE CONE CRUNCH</title><nav>home</nav><p><em>Pine Cone Crunch</em></p>\n<footer>2026</footer>");
+    assert_eq!(read("posts/pine/index.html"), "<title>PINE CONE CRUNCH</title><nav>home</nav><nav>quoted</nav><p><em>Pine Cone Crunch</em></p>\n<footer>2026</footer>");
     assert_eq!(read("posts/brittle/index.html"), "<p>bigfoot brittle</p>\n");
 
     // Liquid errors name the template.
@@ -331,4 +331,50 @@ fn handlebars_and_mustache_templates_render() {
     write("src/broken.hbs", "ok\n{{#if}}");
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(!ok && log.contains("broken.hbs"), "{}", log);
+}
+
+/// Stops `ssqch serve` when the test ends, pass or fail.
+struct Server(std::process::Child);
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Wait (up to 20 seconds) for `file` to contain `text`.
+fn wait_for(file: &std::path::Path, text: &str) {
+    let started = std::time::Instant::now();
+    loop {
+        let found = std::fs::read_to_string(file).unwrap_or_default();
+        if found.contains(text) {
+            return;
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(20), "{} never had {:?}; it has {:?}", file.display(), text, found);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+/// A site whose input folder is the project root (the default) has ssqch's
+/// own `.cache` and the output inside what's watched. Writing them isn't a change.
+#[test]
+fn serve_does_not_rebuild_for_its_own_files() {
+    let dir = temp_dir("serve-root");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("index.edge"), "one {{ 1 + 1 }}").unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), "export default { clean: true };\n").unwrap();
+    let log = dir.join("serve.log");
+    let out = std::fs::File::create(&log).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(["serve", "--port", "0", "--root"]).arg(&dir).stdout(out.try_clone().unwrap()).stderr(out).spawn().unwrap();
+    let _server = Server(child);
+    let page = dir.join("_site/index.html");
+    wait_for(&page, "one 2");
+    let builds = || std::fs::read_to_string(&log).unwrap_or_default().matches("Built in").count();
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    assert_eq!(builds(), 1, "it rebuilt with nothing changed:\n{}", std::fs::read_to_string(&log).unwrap_or_default());
+    std::fs::write(dir.join("index.edge"), "two {{ 2 + 2 }}").unwrap();
+    wait_for(&page, "two 4");
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    assert_eq!(builds(), 2, "{}", std::fs::read_to_string(&log).unwrap_or_default());
 }
