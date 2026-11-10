@@ -8,7 +8,7 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
-## Unreleased
+## 0.3.4 - 2026-11-10
 
 - **Security:** `ssqch serve` could be asked for any file on the machine: `/%2Fetc/hosts`
   decoded to a path that replaced the output folder. Request paths are decoded first and have
