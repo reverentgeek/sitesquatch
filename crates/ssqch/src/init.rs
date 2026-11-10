@@ -22,6 +22,36 @@ const STARTER: &[(&str, &str)] = &[
     (".gitignore", include_str!("starter/gitignore")),
 ];
 
+/// The documentation starter (`ssqch init --starter docs`): a sidebar, a table
+/// of contents, previous and next links, notes, tabs, highlighting, a schema
+/// and the link checker. It's written in Edge.
+const DOCS_STARTER: &[(&str, &str)] = &[
+    ("ssqch.config.js", include_str!("starter-docs/ssqch.config.js")),
+    ("src/_data/site.json", include_str!("starter-docs/src/_data/site.json")),
+    ("src/_data/nav.yml", include_str!("starter-docs/src/_data/nav.yml")),
+    ("src/_includes/base.edge", include_str!("starter-docs/src/_includes/base.edge")),
+    ("src/_includes/doc.edge", include_str!("starter-docs/src/_includes/doc.edge")),
+    ("src/_includes/hooks/heading.edge", include_str!("starter-docs/src/_includes/hooks/heading.edge")),
+    ("src/_includes/containers/tabs.edge", include_str!("starter-docs/src/_includes/containers/tabs.edge")),
+    ("src/_includes/containers/tab.edge", include_str!("starter-docs/src/_includes/containers/tab.edge")),
+    ("src/_includes/containers/details.edge", include_str!("starter-docs/src/_includes/containers/details.edge")),
+    ("src/assets/docs.css", include_str!("starter-docs/src/assets/docs.css")),
+    ("src/assets/docs.js", include_str!("starter-docs/src/assets/docs.js")),
+    ("src/index.md", include_str!("starter-docs/src/index.md")),
+    ("src/404.md", include_str!("starter-docs/src/404.md")),
+    ("src/docs/docs.json", include_str!("starter-docs/src/docs/docs.json")),
+    ("src/docs/index.md", include_str!("starter-docs/src/docs/index.md")),
+    ("src/docs/install.md", include_str!("starter-docs/src/docs/install.md")),
+    ("src/docs/guides/writing.md", include_str!("starter-docs/src/docs/guides/writing.md")),
+    ("src/docs/guides/deploying.md", include_str!("starter-docs/src/docs/guides/deploying.md")),
+    ("ssqch.d.ts", TYPES),
+    ("jsconfig.json", include_str!("starter/jsconfig.json")),
+    (".gitignore", include_str!("starter-docs/gitignore")),
+];
+
+/// What `ssqch init --starter` can create.
+const STARTERS: &[&str] = &["site", "docs"];
+
 /// The template languages `ssqch init --engine` can start a site in.
 const ENGINES: &[&str] = &["edge", "liquid", "njk", "hbs"];
 
@@ -83,7 +113,8 @@ pub fn init_command() -> clap::Command {
     clap::Command::new("init")
         .about("Create a starter site (config, layout, a post, data and editor types)")
         .arg(clap::Arg::new("dir").help("Where to create it (default: the current folder)").default_value("."))
-        .arg(clap::Arg::new("engine").long("engine").value_name("NAME").help("The template language for the layout and home page: edge, liquid, njk or hbs").default_value("edge"))
+        .arg(clap::Arg::new("starter").long("starter").value_name("NAME").help("What to start with: site (a small blog) or docs (documentation with a sidebar, tabs and search)").default_value("site"))
+        .arg(clap::Arg::new("engine").long("engine").value_name("NAME").help("The template language for the site starter's layout and home page: edge, liquid, njk or hbs").default_value("edge"))
 }
 
 pub fn types_command() -> clap::Command {
@@ -95,7 +126,14 @@ pub fn types_command() -> clap::Command {
 pub fn run_init(matches: &clap::ArgMatches) -> ExitCode {
     let dir = PathBuf::from(matches.get_one::<String>("dir").expect("has a default"));
     let engine = matches.get_one::<String>("engine").expect("has a default");
-    report(Engine::named(engine).and_then(|engine| init(&dir, engine)).map(|(written, skipped)| {
+    let starter = matches.get_one::<String>("starter").expect("has a default");
+    let result = match starter.as_str() {
+        "site" => Engine::named(engine).and_then(|engine| init(&dir, engine)),
+        "docs" if engine != "edge" => Err(anyhow::anyhow!("--starter docs is written in Edge, so it can't take --engine {}", engine)),
+        "docs" => init_files(&dir, DOCS_STARTER.iter().map(|(rel, contents)| (rel.to_string(), contents.to_string()))),
+        other => Err(anyhow::anyhow!("--starter {}: not a starter (use {})", other, STARTERS.join(" or "))),
+    };
+    report(result.map(|(written, skipped)| {
         for path in &written {
             println!("  created {}", show(&dir, path));
         }
@@ -160,8 +198,14 @@ fn schema_types(schemas: &[sitesquatch::schema::Schema]) -> String {
 /// Write the starter files into `dir`, keeping any that already exist.
 /// Returns (written, skipped).
 pub fn init(dir: &Path, engine: Engine) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
-    let (mut written, mut skipped) = (Vec::new(), Vec::new());
     let files = STARTER.iter().map(|(rel, contents)| (rel.to_string(), engine.adapt(rel, contents))).chain(engine.files().map(|(rel, contents)| (rel, contents.to_string())));
+    init_files(dir, files)
+}
+
+/// Write `files` (path in the site, contents) into `dir`, keeping any that
+/// already exist. Returns (written, skipped).
+fn init_files(dir: &Path, files: impl Iterator<Item = (String, String)>) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
+    let (mut written, mut skipped) = (Vec::new(), Vec::new());
     for (rel, contents) in files {
         let path = dir.join(&rel);
         if path.exists() {

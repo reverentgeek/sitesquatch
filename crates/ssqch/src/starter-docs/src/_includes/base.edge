@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title ? title + ' | ' : '' }}{{ site.name }}</title>
+  <meta name="description" content="{{ description || site.description }}">
+  <meta name="generator" content="{{ ssqch.generator }}">
+  <link rel="stylesheet" href="/highlight.css">
+  <link rel="stylesheet" href="/assets/docs.css">
+  @if(search)
+  <link rel="stylesheet" href="/pagefind/pagefind-ui.css">
+  <script src="/pagefind/pagefind-ui.js" defer></script>
+  @end
+  <script src="/assets/docs.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="site-name" href="/">{{ site.name }}</a>
+    <nav aria-label="Site">
+      <a href="/docs/">Docs</a>
+      @if(sidebar)
+      <a class="menu-link" href="#sidebar">Menu</a>
+      @end
+    </nav>
+    @if(search)
+    <div id="search"></div>
+    @end
+  </header>
+  {{{ content }}}
+</body>
+</html>

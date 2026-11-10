@@ -72,6 +72,47 @@ fn init_starts_a_site_in_each_engine() {
 }
 
 #[test]
+fn init_starts_a_docs_site() {
+    let dir = temp_dir("init-docs");
+    let d = dir.to_str().unwrap();
+    let (ok, log) = ssqch(&["init", d, "--starter", "docs"]);
+    assert!(ok, "{}", log);
+    for file in ["ssqch.config.js", "src/_data/nav.yml", "src/_includes/doc.edge", "src/assets/docs.css", "src/docs/guides/writing.md", "ssqch.d.ts", ".gitignore"] {
+        assert!(dir.join(file).is_file(), "{} wasn't created:\n{}", file, log);
+    }
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    assert!(log.contains(", 0 broken") && !log.contains("warn"), "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
+    let page = read("docs/guides/writing/index.html");
+    for expected in [
+        "<title>Writing pages | Squatch Docs</title>",
+        "<span>Guides</span> › <span aria-current=\"page\">Writing pages</span>",
+        "<a href=\"/docs/guides/writing/\" aria-current=\"page\">Writing pages</a>",
+        "<a rel=\"prev\" href=\"/docs/install/\">← Installation</a>",
+        "<a rel=\"next\" href=\"/docs/guides/deploying/\">Deploying →</a>",
+        "<a href=\"#tabs\">Tabs</a>",
+        "<h2 id=\"notes\">Notes <a class=\"anchor\" href=\"#notes\"",
+        "<div class=\"tabs\"><section class=\"tab\" data-label=\"npm\"><p class=\"tab-label\">npm</p>",
+        "<div class=\"warning\"><p class=\"container-title\">Check twice</p>",
+        "<details><summary>How do these work?</summary>",
+        "<span class=\"line highlighted\">",
+        "this site is called Squatch Docs.",
+    ] {
+        assert!(page.contains(expected), "missing {:?} in\n{}", expected, page);
+    }
+    assert!(read("404.html").contains("Page not found") && read("index.html").contains("Read the docs"));
+    assert!(dir.join("dist/assets/docs.js").is_file() && dir.join("dist/highlight.css").is_file());
+
+    let other = temp_dir("init-docs-liquid");
+    let (ok, log) = ssqch(&["init", other.to_str().unwrap(), "--starter", "docs", "--engine", "liquid"]);
+    assert!(!ok && log.contains("--starter docs is written in Edge"), "{}", log);
+    let (ok, log) = ssqch(&["init", other.to_str().unwrap(), "--starter", "shop"]);
+    assert!(!ok && log.contains("--starter shop: not a starter (use site or docs)"), "{}", log);
+    assert!(!other.exists());
+}
+
+#[test]
 fn init_rejects_an_unknown_engine() {
     let dir = temp_dir("init-pug");
     let (ok, log) = ssqch(&["init", dir.to_str().unwrap(), "--engine", "pug"]);

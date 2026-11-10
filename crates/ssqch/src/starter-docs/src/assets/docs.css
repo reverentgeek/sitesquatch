@@ -1,0 +1,106 @@
+/* The docs theme. Colors are custom properties; dark mode follows the system. */
+:root {
+  --text: #1f2328;
+  --muted: #59636e;
+  --background: #ffffff;
+  --surface: #f6f8fa;
+  --border: #d1d9e0;
+  --link: #0969da;
+  --note: #0969da;
+  --tip: #1a7f37;
+  --warning: #9a6700;
+  --caution: #cf222e;
+  --width: 46rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #f0f6fc;
+    --muted: #9198a1;
+    --background: #0d1117;
+    --surface: #151b23;
+    --border: #3d444d;
+    --link: #4493f8;
+    --note: #4493f8;
+    --tip: #3fb950;
+    --warning: #d29922;
+    --caution: #f85149;
+  }
+}
+
+* { box-sizing: border-box; }
+html { scroll-padding-top: 4rem; }
+body { margin: 0; font: 1.0625rem/1.65 system-ui, sans-serif; color: var(--text); background: var(--background); }
+a { color: var(--link); }
+img { max-width: 100%; height: auto; }
+
+.site-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 1.5rem; padding: 0.6rem 1.25rem; background: var(--background); border-bottom: 1px solid var(--border); }
+.site-header nav { display: flex; gap: 1rem; }
+.site-header a { text-decoration: none; }
+.site-name { font-weight: 700; color: var(--text); }
+.menu-link { display: none; }
+#search { margin-left: auto; min-width: 12rem; }
+
+.docs { display: grid; grid-template-columns: 16rem minmax(0, 1fr) 14rem; grid-template-areas: "sidebar main toc"; }
+.docs > main { grid-area: main; padding: 1.5rem 2.5rem 4rem; max-width: calc(var(--width) + 5rem); }
+.sidebar { grid-area: sidebar; padding: 1.25rem; border-right: 1px solid var(--border); font-size: 0.95rem; }
+.toc { grid-area: toc; padding: 1.5rem 1.25rem; font-size: 0.9rem; }
+.sidebar, .toc { position: sticky; top: 3.1rem; align-self: start; max-height: calc(100vh - 3.1rem); overflow-y: auto; }
+.sidebar h2 { margin: 1.25rem 0 0.25rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.sidebar h2:first-child { margin-top: 0; }
+.sidebar ul, .toc ul { list-style: none; margin: 0; padding: 0; }
+.toc ul ul { padding-left: 0.9rem; }
+.sidebar a, .toc a { display: block; padding: 0.2rem 0.5rem; border-radius: 0.375rem; color: var(--text); text-decoration: none; }
+.sidebar a:hover, .toc a:hover { background: var(--surface); }
+.sidebar a[aria-current] { background: var(--surface); color: var(--link); font-weight: 600; }
+.toc-title { margin: 0 0 0.25rem; padding: 0 0.5rem; font-weight: 600; }
+.toc a { color: var(--muted); }
+
+.home { max-width: var(--width); margin: 0 auto; padding: 3rem 1.25rem; }
+.breadcrumbs { color: var(--muted); font-size: 0.9rem; }
+h1 { margin: 0.25rem 0 1rem; font-size: 2.25rem; line-height: 1.2; }
+main h2 { margin-top: 2.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+.anchor { margin-left: 0.25rem; color: var(--muted); text-decoration: none; opacity: 0; }
+:is(h2, h3, h4):hover .anchor, .anchor:focus { opacity: 1; }
+
+code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surface); font-size: 0.9em; }
+pre { padding: 1rem; overflow-x: auto; border-radius: 0.5rem; background: var(--surface); line-height: 1.5; }
+pre code { padding: 0; background: none; }
+table { border-collapse: collapse; display: block; overflow-x: auto; }
+th, td { padding: 0.4rem 0.8rem; border: 1px solid var(--border); }
+th { background: var(--surface); }
+.task-list-item { list-style: none; margin-left: -1.25rem; }
+blockquote { margin-inline: 0; padding-left: 1rem; border-left: 4px solid var(--border); color: var(--muted); }
+
+/* :::note, :::tip, :::warning and :::caution, and GitHub's > [!NOTE] alerts. */
+.note, .tip, .warning, .caution, .markdown-alert { --accent: var(--note); margin: 1.25rem 0; padding: 0.5rem 1rem; border-left: 4px solid var(--accent); border-radius: 0 0.5rem 0.5rem 0; background: var(--surface); }
+.tip, .markdown-alert-tip { --accent: var(--tip); }
+.warning, .markdown-alert-warning, .markdown-alert-important { --accent: var(--warning); }
+.caution, .markdown-alert-caution { --accent: var(--caution); }
+.container-title, .markdown-alert-title { margin: 0.25rem 0; font-weight: 700; color: var(--accent); }
+details { margin: 1.25rem 0; padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 0.5rem; }
+summary { font-weight: 600; cursor: pointer; }
+
+/* Tabs: labeled sections, until docs.js makes the labels buttons. */
+.tabs { margin: 1.25rem 0; border: 1px solid var(--border); border-radius: 0.5rem; }
+.tab { padding: 0 1rem; }
+.tab + .tab { border-top: 1px solid var(--border); }
+.tab-label { margin: 0.75rem 0 0; font-weight: 700; }
+.tabs [role="tablist"] { display: flex; gap: 0.25rem; padding: 0.4rem 0.4rem 0; border-bottom: 1px solid var(--border); background: var(--surface); border-radius: 0.5rem 0.5rem 0 0; }
+.tabs [role="tab"] { padding: 0.35rem 0.9rem; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font: inherit; cursor: pointer; }
+.tabs [role="tab"][aria-selected="true"] { border-color: var(--link); color: var(--text); font-weight: 600; }
+.tabs [role="tablist"] ~ .tab { border-top: 0; }
+
+.page-footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.pager { display: flex; justify-content: space-between; gap: 1rem; }
+.footnotes { margin-top: 2.5rem; font-size: 0.9rem; color: var(--muted); }
+
+@media (max-width: 72rem) {
+  .docs { grid-template-columns: 16rem minmax(0, 1fr); grid-template-areas: "sidebar main"; }
+  .toc { display: none; }
+}
+@media (max-width: 50rem) {
+  .docs { display: block; }
+  .docs > main { padding: 1.25rem; }
+  .sidebar { position: static; max-height: none; border-right: 0; border-top: 1px solid var(--border); }
+  .menu-link { display: inline; }
+}

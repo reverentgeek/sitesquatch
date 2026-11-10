@@ -1,0 +1,59 @@
+---
+layout: base.edge
+sidebar: true
+---
+<div class="docs">
+  <main data-pagefind-body>
+    @let(crumbs = navBreadcrumbs(nav, page.url))
+    @if(crumbs.length > 1)
+    <nav class="breadcrumbs" aria-label="Breadcrumbs">
+      @each(crumb in crumbs.slice(0, -1))
+      <span>{{ crumb.title }}</span> ›
+      @end
+      <span aria-current="page">{{ title }}</span>
+    </nav>
+    @end
+    <h1>{{ title }}</h1>
+    {{{ content }}}
+
+    <footer class="page-footer">
+      @if(site.editUrl)
+      <p><a href="{{ site.editUrl }}{{ page.inputPath.replace('./', '') }}">Edit this page</a></p>
+      @end
+      @let(pager = navPager(nav, page.url))
+      <nav class="pager" aria-label="Previous and next pages">
+        <span>
+          @if(pager.previous)
+          <a rel="prev" href="{{ pager.previous.url }}">← {{ pager.previous.title }}</a>
+          @end
+        </span>
+        <span>
+          @if(pager.next)
+          <a rel="next" href="{{ pager.next.url }}">{{ pager.next.title }} →</a>
+          @end
+        </span>
+      </nav>
+    </footer>
+  </main>
+
+  @let(contents = toc(page.headings))
+  <aside class="toc" aria-label="On this page">
+    @if(contents)
+    <p class="toc-title">On this page</p>
+    {{{ contents }}}
+    @end
+  </aside>
+
+  {{-- After the content in the HTML, so a phone (and a screen reader) gets
+       the page first. The stylesheet puts it on the left on wide screens. --}}
+  <nav class="sidebar" id="sidebar" aria-label="Documentation">
+    @each(section in navTree(nav, page.url))
+    <h2>{{ section.title }}</h2>
+    <ul>
+      @each(item in section.pages)
+      <li><a href="{{ item.url }}"{{{ item.current ? ' aria-current="page"' : '' }}}>{{ item.title }}</a></li>
+      @end
+    </ul>
+    @end
+  </nav>
+</div>
