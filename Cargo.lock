@@ -2645,6 +2645,7 @@ version = "0.3.3"
 dependencies = [
  "anyhow",
  "mimalloc",
+ "regex",
  "serde_json",
  "sitesquatch",
  "sitesquatch-js",
@@ -2660,6 +2661,8 @@ dependencies = [
  "sitesquatch-plugin-rss",
  "sitesquatch-plugin-sass",
  "sitesquatch-plugin-sitemap",
+ "toml",
+ "walkdir",
 ]
 
 [[package]]

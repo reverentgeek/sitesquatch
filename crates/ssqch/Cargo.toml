@@ -46,7 +46,10 @@ bin-dir = "{ bin }{ binary-ext }"
 
 [dependencies]
 anyhow.workspace = true
+regex.workspace = true
 serde_json.workspace = true
+toml = "0.8"
+walkdir = "2"
 sitesquatch.workspace = true
 sitesquatch-js.workspace = true
 sitesquatch-plugin-rss.workspace = true

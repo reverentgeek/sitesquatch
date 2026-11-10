@@ -4,6 +4,7 @@
 //! `sitesquatch.toml` in the project root. Sites that want to
 //! extend SiteSquatch in Rust build their own binary with `sitesquatch::cli::run`.
 
+mod import;
 mod init;
 mod modules;
 
@@ -38,6 +39,7 @@ fn main() -> std::process::ExitCode {
     let extra = vec![
         sitesquatch::cli::ExtraCommand { command: init::init_command(), run: Box::new(init::run_init) },
         sitesquatch::cli::ExtraCommand { command: init::types_command(), run: Box::new(init::run_types) },
+        sitesquatch::cli::ExtraCommand { command: import::import_command(), run: Box::new(import::run_import) },
     ];
     sitesquatch::cli::try_run_with(configure, extra)
 }

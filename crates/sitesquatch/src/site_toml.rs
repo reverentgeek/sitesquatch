@@ -97,12 +97,16 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
         let mut map = crate::Map::new();
         for (key, value) in table {
             let camel: String = key.split('_').enumerate().map(|(i, w)| match w.chars().next() { Some(c) if i > 0 => c.to_uppercase().collect::<String>() + &w[c.len_utf8()..], _ => w.to_string() }).collect();
-            map.insert(camel, crate::Value::from(serde_json::to_value(value)?));
+            map.insert(camel, crate::data::toml_to_value(value));
         }
         cfg.markdown.apply(&crate::Value::object(map)).with_context(|| format!("invalid {}", path.display()))?;
     }
     for theme in site.theme {
         cfg.add_theme(&theme).with_context(|| format!("invalid {}", path.display()))?;
+    }
+    for (name, spec) in site.schemas.unwrap_or_default() {
+        let schema = crate::schema::Schema::parse(&name, &crate::data::toml_to_value(spec)).with_context(|| format!("invalid {}", path.display()))?;
+        cfg.add_schema(schema);
     }
     for (from, to) in site.passthrough {
         if to.is_empty() {

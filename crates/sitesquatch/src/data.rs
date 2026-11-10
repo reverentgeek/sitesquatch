@@ -36,7 +36,7 @@ pub fn parse_front_matter(src: &str) -> Result<(Map, &str)> {
                 "json" => object(serde_json::from_str::<serde_json::Value>(if text.trim().is_empty() { "{}" } else { text }).map(Value::from).context("invalid JSON front matter")?, "JSON")?,
                 "toml" => {
                     let t: toml::Table = toml::from_str(text).context("invalid TOML front matter")?;
-                    object(Value::from(serde_json::to_value(t)?), "TOML")?
+                    object(toml_to_value(toml::Value::Table(t)), "TOML")?
                 }
                 _ => parse_yaml(text).context("invalid YAML front matter")?,
             };
@@ -51,6 +51,22 @@ fn object(v: Value, format: &str) -> Result<Map> {
     match v {
         Value::Obj(o) => Ok(Arc::try_unwrap(o).unwrap_or_else(|o| (*o).clone())),
         other => bail!("{} front matter must be an object, not {}", format, other.type_of()),
+    }
+}
+
+/// A TOML value as a template value. A date or time (`2024-01-02`, without
+/// quotes) is its text, as a date in YAML front matter is; the page's `date`
+/// becomes a real date either way.
+pub fn toml_to_value(v: toml::Value) -> Value {
+    use toml::Value as T;
+    match v {
+        T::String(s) => Value::from(s),
+        T::Integer(i) => Value::Num(i as f64),
+        T::Float(f) => Value::Num(f),
+        T::Boolean(b) => Value::Bool(b),
+        T::Datetime(d) => Value::from(d.to_string()),
+        T::Array(items) => Value::array(items.into_iter().map(toml_to_value).collect()),
+        T::Table(table) => Value::object(table.into_iter().map(|(k, v)| (k, toml_to_value(v))).collect()),
     }
 }
 
@@ -102,7 +118,7 @@ pub fn load_data_file(path: &Path, extra: &[(String, DataLoader)]) -> Result<Opt
         "yaml" | "yml" => yaml_to_value(serde_yaml::from_str(&read()?).with_context(|| format!("invalid YAML in {}", path.display()))?),
         "toml" => {
             let t: toml::Value = toml::from_str(&read()?).with_context(|| format!("invalid TOML in {}", path.display()))?;
-            Value::from(serde_json::to_value(t)?)
+            toml_to_value(t)
         }
         _ => match extra.iter().find(|(e, _)| e == ext) {
             Some((_, load)) => load(path)?,
@@ -192,6 +208,12 @@ mod tests {
         assert_eq!((d.get("title").unwrap().to_js_string(), d.get("tags").unwrap().as_array().unwrap().len(), body), ("T".into(), 1, "body"));
         let (d, body) = parse_front_matter("---json\n{ \"title\": \"J\", \"n\": 2 }\n---\nbody").unwrap();
         assert_eq!((d.get("title").unwrap().to_js_string(), d.get("n").unwrap().to_number(), body), ("J".into(), 2.0, "body"));
+        // A TOML date without quotes is its text, which reads as a date.
+        let (d, _) = parse_front_matter("+++\ndate = 2024-01-02\nupdated = 2024-03-04T10:00:00Z\n[extra]\nwhen = 2020-05-06\n+++\n").unwrap();
+        assert_eq!(d["date"].as_str(), Some("2024-01-02"));
+        assert_eq!(d["date"].to_date().map(|d| d.format("%Y-%m-%d").to_string()).as_deref(), Some("2024-01-02"));
+        assert_eq!(d["updated"].as_str(), Some("2024-03-04T10:00:00Z"));
+        assert_eq!(d["extra"].get("when").as_str(), Some("2020-05-06"));
         let (d, _) = parse_front_matter("---toml\ntitle = \"T2\"\n---\n").unwrap();
         assert_eq!(d.get("title").unwrap().to_js_string(), "T2");
         // Not front matter: a rule, or an unknown language.

@@ -913,6 +913,69 @@ fn a_theme_from_git_is_fetched_once() {
     assert!(!ok && log.contains("#v9: git fetch failed"), "{}", log);
 }
 
+#[cfg(feature = "jinja")]
+#[test]
+fn import_moves_an_eleventy_site() {
+    let dir = temp_dir("import");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write(
+        ".eleventy.js",
+        "const pluginRss = require(\"@11ty/eleventy-plugin-rss\");\nmodule.exports = function (eleventyConfig) {\n  eleventyConfig.addPlugin(pluginRss);\n  eleventyConfig.addPassthroughCopy(\"src/css\");\n  eleventyConfig.addFilter(\"shout\", (s) => s.toUpperCase());\n  return { dir: { input: \"src\", output: \"_site\" }, markdownTemplateEngine: \"njk\", htmlTemplateEngine: \"njk\" };\n};\n",
+    );
+    write("src/_includes/base.njk", "<title>{{ label or title }}</title>{{ content | safe }}");
+    write("src/index.njk", "---\ntitle: Home\neleventyExcludeFromCollections: true\n---\n{% for post in collections.post %}<a href=\"{{ post.url }}\">{{ post.data.label }}</a>{% endfor %} {{ collections.all | length }}");
+    write("src/posts/posts.11tydata.json", "{ \"layout\": \"base.njk\", \"tags\": \"post\", \"eleventyComputed\": { \"label\": \"Post: {{ title }}\" } }");
+    write("src/posts/pine.md", "---\ntitle: Pine\ntemplateEngineOverride: njk,md\n---\n*{{ title }}* <img src=\"/css/x.png\" eleventy:ignore>\n");
+    write("src/feed.11ty.js", "module.exports = class {};");
+    write("src/css/site.css", "body {}");
+    write("_site/old/index.html", "from the last Eleventy build");
+    let before = std::fs::read_to_string(dir.join("src/index.njk")).unwrap();
+
+    // A dry run says what it would do, and does nothing.
+    let (ok, log) = ssqch(&["import", "eleventy", d]);
+    assert!(ok, "{}", log);
+    for expected in [
+        "(a dry run: nothing is changed; add --write to make the changes)",
+        "Rename (1)\n  src/posts/posts.11tydata.json -> src/posts/posts.data.json\n",
+        "  src/index.njk: eleventyExcludeFromCollections -> excludeFromCollections\n",
+        "  src/posts/pine.md: templateEngineOverride -> render, eleventy:widths/ignore -> ssqch:widths/ignore\n",
+        "  src/posts/posts.11tydata.json: eleventyComputed -> computed\n",
+        "Create (1)\n  ssqch.config.js (a first draft, from .eleventy.js)\n",
+        "  src/feed.11ty.js: JavaScript templates don't run in ssqch",
+        "  .eleventy.js:5: addFilter(\"shout\") -> `filters: { shout: ... }`",
+        "  .eleventy.js: @11ty/eleventy-plugin-rss -> `rssPlugin()` from \"ssqch/rss\"",
+    ] {
+        assert!(log.contains(expected), "missing {:?} in\n{}", expected, log);
+    }
+    assert!(!log.contains("_site/old"), "{}", log);
+    assert_eq!(std::fs::read_to_string(dir.join("src/index.njk")).unwrap(), before);
+    assert!(!dir.join("ssqch.config.js").exists() && dir.join("src/posts/posts.11tydata.json").exists());
+
+    // With --write, the site builds with ssqch.
+    let (ok, log) = ssqch(&["import", "eleventy", d, "--write"]);
+    assert!(ok && log.contains("Done: 1 renamed, 3 edited, 1 created."), "{}", log);
+    assert!(std::fs::read_to_string(dir.join("src/posts/posts.data.json")).unwrap().contains("\"computed\""));
+    let config = std::fs::read_to_string(dir.join("ssqch.config.js")).unwrap();
+    assert!(config.contains("dirs: { input: \"src\", output: \"_site\" },") && config.contains("markdownEngine: \"njk\",\n  htmlEngine: \"njk\",") && config.contains("passthrough: [\"src/css\"],"), "{}", config);
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("_site").join(path)).unwrap();
+    assert_eq!(read("index.html"), "<a href=\"/posts/pine/\">Post: Pine</a> 1");
+    assert_eq!(read("posts/pine/index.html"), "<title>Post: Pine</title><p><em>Pine</em> <img src=\"/css/x.png\" ssqch:ignore></p>\n");
+    assert!(dir.join("_site/css/site.css").is_file());
+
+    // A second run has nothing left to change, and keeps the config that's there.
+    let (ok, log) = ssqch(&["import", "eleventy", d]);
+    assert!(ok && log.contains("Nothing to rename, edit or create.") && log.contains("ssqch.config.js: it's already there"), "{}", log);
+    let (ok, log) = ssqch(&["import", "hugo", d]);
+    assert!(!ok && log.contains("there's no importer for hugo yet (only eleventy and zola)"), "{}", log);
+}
+
 /// A site whose input folder is the project root (the default) has ssqch's
 /// own `.cache` and the output inside what's watched. Writing them isn't a change.
 #[test]
@@ -935,3 +998,64 @@ fn serve_does_not_rebuild_for_its_own_files() {
     assert_eq!(builds(), 2, "{}", std::fs::read_to_string(&log).unwrap_or_default());
 }
 
+#[cfg(feature = "jinja")]
+#[test]
+fn import_moves_a_zola_site() {
+    let dir = temp_dir("import-zola");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("config.toml", "base_url = \"https://example.com\"\ntitle = \"Trail Notes\"\ngenerate_feeds = true\ntaxonomies = [{ name = \"tags\" }]\n\n[markdown]\nhighlight_code = true\n\n[extra]\nauthor = \"Sam\"\n");
+    write("content/_index.md", "+++\ntitle = \"Home\"\n+++\n");
+    write("content/blog/_index.md", "+++\ntitle = \"Blog\"\nsort_by = \"date\"\npage_template = \"page.html\"\n+++\n");
+    write("content/blog/pine.md", "+++\ntitle = \"Pine\"\ndate = 2024-01-02\npath = \"blog/2024/pine\"\naliases = [\"old-pine.html\"]\n\n[taxonomies]\ntags = [\"trees\"]\n+++\nA *pine*. {{ youtube(id=\"abc\") }}\n");
+    write("templates/page.html", "<h1>{{ page.title }}</h1>{{ page.content | safe }}{{ get_url(path=\"@/blog/pine.md\") }}{{ page.date | date(format=\"%Y\") }}");
+    write("templates/shortcodes/youtube.html", "<iframe src=\"https://www.youtube.com/embed/{{ id }}\"></iframe>");
+    write("static/robots.txt", "User-agent: *\n");
+
+    let (ok, log) = ssqch(&["import", "zola", d]);
+    assert!(ok, "{}", log);
+    for expected in [
+        "Importing the Zola site in",
+        "Edit (1)\n  content/blog/pine.md: path -> permalink, [taxonomies] tags -> tags\n",
+        "Create (1)\n  ssqch.config.js (a first draft, from config.toml)\n",
+        "  content/blog/_index.md: a section: its settings",
+        "(content/blog/blog.json: `layout`, `tags`, `permalink`)",
+        "  templates/shortcodes/youtube.html: a shortcode used in content",
+        "  templates/: 2 Tera templates: they run as Jinja",
+        "  templates/: 1 x Tera functions (get_url",
+        "  templates/: 1 x filters with named arguments",
+        "  templates/: 1 x `page.content`, `section.content`: `content` in a layout",
+        "  config.toml: generate_feeds: a feed template",
+        "compare with the site Zola built: `ssqch diff <Zola's output> <ssqch's output>`",
+    ] {
+        assert!(log.contains(expected), "missing {:?} in\n{}", expected, log);
+    }
+    assert!(!dir.join("ssqch.config.js").exists());
+
+    let (ok, log) = ssqch(&["import", "zola", d, "--write"]);
+    assert!(ok && log.contains("Done: 0 renamed, 1 edited, 1 created."), "{}", log);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("content/blog/pine.md")).unwrap(),
+        "+++\ntitle = \"Pine\"\ndate = 2024-01-02\npermalink = \"/blog/2024/pine/\"\naliases = [\"old-pine.html\"]\ntags = [\"trees\"]\n+++\nA *pine*. {{ youtube(id=\"abc\") }}\n"
+    );
+    let config = std::fs::read_to_string(dir.join("ssqch.config.js")).unwrap();
+    for expected in ["dirs: { input: \"content\", output: \"public\", includes: \"../templates\" },", "ignore: [\"**/_index.md\"],", "markdown: { headingIds: \"ascii\", highlight: true },", "passthrough: [{ static: \".\" }],", "\"title\": \"Trail Notes\"", "\"author\": \"Sam\"", "plugins: [sitemapPlugin({ url: \"https://example.com\" }), redirectsPlugin(), linksPlugin()],"] {
+        assert!(config.contains(expected), "missing {:?} in\n{}", expected, config);
+    }
+
+    // The by-hand part, done: the template, the shortcode as a filter, and the section's data.
+    write("templates/page.html", "<h1>{{ title }}</h1>{{ content | safe }}{{ config.title }} by {{ config.extra.author }}, {{ page.date | dateformat(\"%Y\") }}, {{ tags | join(\",\") }}");
+    write("content/blog/blog.json", "{ \"layout\": \"page.html\" }");
+    std::fs::write(dir.join("ssqch.config.js"), config.replace("    // Port shortcodes and Tera functions here: name: (...args) => result\n", "    youtube: () => \"<iframe></iframe>\",\n")).unwrap();
+    write("content/blog/pine.md", "+++\ntitle = \"Pine\"\ndate = 2024-01-02\npermalink = \"/blog/2024/pine/\"\naliases = [\"old-pine.html\"]\ntags = [\"trees\"]\n+++\nA *pine*. {{ youtube() | safe }}\n");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("public").join(path)).unwrap();
+    assert_eq!(read("blog/2024/pine/index.html"), "<h1>Pine</h1><p>A <em>pine</em>. <iframe></iframe></p>\nTrail Notes by Sam, 2024, trees");
+    assert!(read("old-pine.html").contains("url=/blog/2024/pine/") && read("robots.txt").contains("User-agent") && read("sitemap.xml").contains("https://example.com/blog/2024/pine/"));
+    assert!(!dir.join("public/blog/_index/index.html").exists() && !dir.join("public/_index/index.html").exists());
+}
