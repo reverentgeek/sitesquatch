@@ -11,8 +11,11 @@ declare module "ssqch" {
 		serving: boolean;
 	}
 
+	/** The data of the pages each schema covers, by schema name. `ssqch types` fills this in from the config's `schemas`. */
+	export interface Schemas {}
+
 	/** A page in a collection, oldest first. */
-	export interface CollectionItem {
+	export interface CollectionItem<Data = Record<string, any>> {
 		/** The page's URL, or `false` for `permalink: false`. */
 		url: string | false;
 		date: Date;
@@ -26,7 +29,7 @@ declare module "ssqch" {
 		/** `url`, `inputPath`, `date` and the rest, plus `headings` from the rendered body. */
 		page: Record<string, unknown> & { headings?: Heading[]; excerpt?: string; lastModified?: Date };
 		/** The page's data: front matter, data files and the rest of the cascade. */
-		data: Record<string, any>;
+		data: Data & Record<string, any>;
 		/** The rendered body, without layouts. */
 		templateContent: string;
 		content: string;
@@ -71,7 +74,8 @@ declare module "ssqch" {
 	export interface Pages {
 		/** Every page in collections, oldest first. */
 		all(): CollectionItem[];
-		/** Pages with this tag. */
+		/** Pages with this tag. A tag with a schema gives pages with that schema's fields. */
+		byTag<Tag extends keyof Schemas>(tag: Tag): CollectionItem<Schemas[Tag]>[];
 		byTag(tag: string): CollectionItem[];
 		/** Pages with all of these tags. */
 		byTags(...tags: string[]): CollectionItem[];
@@ -101,6 +105,28 @@ declare module "ssqch" {
 	type Hook = ((event: BuildEvent) => MaybePromise<void>) | { run: string };
 	/** Renders a template's body (front matter removed) with the page's data. */
 	type EngineRender = (source: string, data: Record<string, any>) => MaybePromise<string>;
+
+	/**
+	 * A field's type: `"string"`, `"number"`, `"integer"`, `"boolean"`, `"date"`, `"file"` (a path to a file that exists), `"object"`, `"array"` or `"any"`;
+	 * a literal (`"'draft'"`, `"1"`, `"true"`, `"null"`); a union (`"'draft' | 'published'"`); a list (`"string[]"`); and `?` at the end for optional (`"string?"`).
+	 * Or an object of fields, a one-item array (`[{ name: "string" }]` is a list of objects), or a function that returns `true`, `false` or what's wrong.
+	 */
+	export type SchemaType = string | ((value: any, page: Record<string, any>) => boolean | string | void) | SchemaFields | [SchemaType];
+	/** `{ field: type }`. A key ending in `?` is optional too: `"author?": { name: "string" }`. */
+	export interface SchemaFields {
+		[field: string]: SchemaType;
+	}
+	/** What a kind of page's data has to look like. Checked on every build; a problem names the file and the field. */
+	export interface Schema {
+		fields: SchemaFields;
+		/** Globs (relative to the input folder) of the files this covers. Without it, the schema covers the pages tagged with its name (`all` is every page in collections). */
+		files?: string | string[];
+		/** Front matter keys that aren't fields: `"allow"` (the default), `"warn"` or `"error"`. */
+		unknown?: "allow" | "warn" | "error";
+	}
+
+	/** Where a theme comes from: a folder, a pinned git URL, or the same as an object. */
+	export type ThemeSource = string | { git: string; ref: string; dir?: string };
 
 	/** A built-in plugin, as returned by `imagePlugin()` and the others. */
 	export interface BuiltinPlugin {
@@ -165,7 +191,7 @@ declare module "ssqch" {
 		deepMerge?: boolean;
 		/** Delete output files an earlier build wrote or copied that this one didn't (a deleted post's page). Files other tools write are never touched. Default `false`. */
 		clean?: boolean;
-		/** Globs (relative to the input folder) of files that aren't pages, like `["drafts/**", "**/README.md"]`. */
+		/** Globs (relative to the input folder) of files that aren't pages, like `["drafts/**", "notes/*.wip.md"]`. */
 		ignore?: string | string[];
 		/** Page bundles: copy the other files in a folder whose page is `index.*` (images, downloads) next to the page. Default `false`. */
 		bundles?: boolean;
@@ -173,6 +199,12 @@ declare module "ssqch" {
 		strict?: boolean;
 		/** `page.lastModified`: `"git"` for the last commit that changed the page's file (its modification time when it has uncommitted changes), or `"file"` for the modification time. Off by default. Needs the full history in CI (`fetch-depth: 0`). */
 		lastModified?: "git" | "file" | false;
+		/** The path the site is served under, when that isn't the root of its domain: `"/repo/"` for `https://you.github.io/repo/`. Templates and `page.url` stay as they are; ssqch adds the base to URLs from the site's root in the HTML it writes. Use the `withBase()` filter outside HTML attributes. */
+		base?: string;
+		/** A theme under the site: a folder (`"themes/docs"`), or a git repository pinned to a tag or a commit's full hash (`"https://github.com/you/theme#v1.2.0"`, with `#v1.2.0:folder` for a theme in a folder of its repository), fetched once and kept in `.cache/ssqch/themes/`. The site's own includes, data, pages and files win over the theme's, one by one. In a list, earlier themes sit on top of later ones. */
+		theme?: ThemeSource | ThemeSource[];
+		/** Content schemas, by name: `{ posts: { fields: { title: "string", date: "date" } } }` checks every page tagged `posts`. */
+		schemas?: Record<string, Schema>;
 	}
 
 	/** Returns its argument. It's there so the config reads as one, and for these types. */
@@ -234,7 +266,17 @@ declare module "ssqch/image" {
 	export function imagePlugin(options?: ImagePluginOptions): BuiltinPlugin;
 
 	/** Generate one image's files with the plugin's settings and cache. Keyed by format, smallest first. */
-	export function image(src: string, options?: { widths?: Array<number | "auto">; formats?: FormatName[] }): Promise<Record<string, ImageEntry[]>>;
+	export function image(src: string, options?: ImageCallOptions): Promise<Record<string, ImageEntry[]>>;
+
+	/** What `image()` takes for one image. Encoder settings go on `imagePlugin()`. */
+	export interface ImageCallOptions {
+		/** Widths to generate; `"auto"` is the original's. Default `["auto"]`. */
+		widths?: Array<number | "auto">;
+		/** Output formats. Default `["webp", "jpeg"]`. */
+		formats?: FormatName[];
+		/** The output's URL path without the width and extension, instead of a name from a hash: `"/assets/sponsors/acme"` writes `/assets/sponsors/acme-200.webp`. Without a leading `/`, it's inside the image output folder. */
+		name?: string;
+	}
 }
 
 declare module "ssqch/rss" {
@@ -318,6 +360,22 @@ declare module "ssqch/sitemap" {
 
 	/** Writes `sitemap.xml` listing every HTML page. */
 	export function sitemapPlugin(options: SitemapPluginOptions): BuiltinPlugin;
+}
+
+declare module "ssqch/elements" {
+	import type { BuiltinPlugin } from "ssqch";
+
+	export interface ElementsPluginOptions {
+		/** The folder with the elements' files, relative to the project root. Default: `elements` in the input folder. */
+		dir?: string;
+		/** Where that folder goes in the output. Default `"/elements/"`. */
+		url?: string;
+		/** When scripts load, for tags without `ssqch:load`: with the page (`"eager"`, the default), when the browser is idle, or when the element scrolls into view. */
+		load?: "eager" | "idle" | "visible";
+	}
+
+	/** Custom elements: `like-button.js` in the elements folder loads on the pages that have a `<like-button>`, and nowhere else. */
+	export function elementsPlugin(options?: ElementsPluginOptions): BuiltinPlugin;
 }
 
 declare module "ssqch/redirects" {

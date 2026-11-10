@@ -4,11 +4,15 @@ Zola and SiteSquatch are both single Rust binaries, so the move is mostly about 
 
 blog.rust-lang.org was ported this way as a trial: all of its URLs and most pages came out the same. The [`blog-tags`](../../examples/sites/blog-tags/) example is a small blog laid out like a Zola site (sections, tags with feeds, aliases, highlighting), distilled from blog.rust-lang.org.
 
+## Importing
+
+`ssqch import zola` does the mechanical part of this guide. In each page's `+++` front matter it moves `tags` out of `[taxonomies]` to the top level and turns `path` into a `permalink`. It writes a first `ssqch.config.js` from `config.toml`: `content/` as the input and `templates/` for layouts, `config.title` and `config.extra` as data so templates keep reading them, the Markdown options, Sass, a sitemap, redirects for `aliases`, and `static/` copied as it is. Then it lists what's left with where it is: each section (`_index.md`), each shortcode used in the content, and counts of the Tera constructs in your templates that read differently in Jinja. Run it once to read the list (it changes nothing), then with `--write` in a clean git checkout.
+
 ## The config
 
 | Zola (`config.toml`) | SiteSquatch (`ssqch.config.js`) |
 | --- | --- |
-| `base_url` | Data: `data: { site: { url: "https://example.com" } }`, then `{{ site.url }}` |
+| `base_url` | Data: `data: { site: { url: "https://example.com" } }`, then `{{ site.url }}`. For a site under a path, `base: "/repo/"`. |
 | `title`, `description`, `[extra]` | The same `site` data, or `_data/site.toml` (TOML data files work) |
 | `highlight_code = true`, `highlight_theme` | `markdown: { highlight: true }`. Colors come from `/highlight.css` and its `--hl-*` properties instead of a theme name. |
 | `generate_feeds = true` | `rssPlugin()` from `ssqch/rss`, plus a feed template (see `blog-tags/src/feed.njk`) |
@@ -16,8 +20,8 @@ blog.rust-lang.org was ported this way as a trial: all of its URLs and most page
 | Automatic `sitemap.xml` | `sitemapPlugin({ url })` from `ssqch/sitemap` |
 | `insert_anchor_links` | A heading render hook: `_includes/hooks/heading.njk` |
 | `slugify` settings (Zola's default anchors) | `markdown: { headingIds: "ascii" }`, which transliterates the same way (`🦀` is `crab`) |
-| `compile_sass` | Not built in yet; run Sass before `ssqch build` |
-| `build_search_index` | Not built in yet |
+| `compile_sass` | `sassPlugin({ files: { "sass": "/" } })` from `ssqch/sass` |
+| `build_search_index` | Not built in; Pagefind after the build |
 | `zola check` | `linksPlugin()` checks internal links and anchors on every build. External links aren't checked. |
 
 ## Content
@@ -62,4 +66,6 @@ Config filters are JavaScript functions with positional arguments: Tera's `date(
 
 ## What's missing
 
-Sass, a search index, translations and external link checking aren't built in yet; they're planned (see `TODO.md`). Until then, Sass and Pagefind run fine before and after `ssqch build` in the same build command.
+A search index, translations and external link checking aren't built in; search works with Pagefind after the build (`afterBuild: { run: "npx -y pagefind --site dist" }`). Sass is `sassPlugin()` from `ssqch/sass`, and Zola's footnote markup can be kept with the `footnote-ref` and `footnotes` render hooks.
+
+To check the move, build with Zola and with ssqch and run `ssqch diff public dist`: it lists the pages that differ and how.

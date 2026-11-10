@@ -47,4 +47,8 @@ Two examples are distilled from reactnative.dev: [`versioned-docs`](../../exampl
 
 ## React pages
 
-Pages in `src/pages/*.js` become templates in any of ssqch's languages. Interactive parts (a playground, a live demo) stay JavaScript: ship them as a script on the page that needs them, or as a web component.
+Pages in `src/pages/*.js` become templates in any of ssqch's languages. Interactive parts (a playground, a live demo) stay JavaScript: ship them as custom elements with `elementsPlugin()` from `ssqch/elements`, which loads each one's script only on the pages that use it (the [`islands`](../../examples/sites/islands/) example).
+
+## Starting point
+
+`ssqch init --starter docs` creates a docs site with a sidebar, a table of contents, tabs, notes and search, to move your pages into. To check the move, build both sites and run `ssqch diff build dist`.

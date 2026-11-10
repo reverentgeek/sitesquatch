@@ -40,4 +40,6 @@ The [`docs-sidebar`](../../examples/sites/docs-sidebar/) example is distilled fr
 
 ## Pages
 
-Front matter (`title`, `description`, and anything else) is the same YAML. MkDocs reads a page's title from its first heading when there's no `title`; in ssqch, give each page a `title` or use `page.headings[0].text` in the layout.
+Front matter (`title`, `description`, and anything else) is the same YAML. MkDocs reads a page's title from its first heading when there's no `title`; in ssqch, give each page a `title` or use `page.headings[0].text` in the layout. A schema makes the first a rule: `schemas: { docs: { files: "docs/**/*.md", fields: { title: "string" } } }` fails the build for a page without one.
+
+`ssqch init --starter docs` creates a docs site with a sidebar from `nav.yml`, a table of contents, notes, tabs and search, to move your pages into. To check the move, build both sites and run `ssqch diff site dist`.

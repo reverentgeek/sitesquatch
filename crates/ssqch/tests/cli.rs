@@ -163,6 +163,14 @@ fn types_writes_the_declarations() {
     for module in ["\"ssqch\"", "\"ssqch/image\"", "\"ssqch/rss\"", "\"ssqch/minify\"", "\"ssqch/assets\"", "\"ssqch/links\""] {
         assert!(types.contains(&format!("declare module {}", module)), "missing {}", module);
     }
+    // A glob like `**/README.md` in a doc comment ends the comment early, and
+    // the rest of the file stops parsing.
+    for (n, line) in types.lines().enumerate() {
+        let line = line.trim();
+        if line.contains("*/") {
+            assert!(line.matches("*/").count() == 1 && line.ends_with("*/"), "ssqch.d.ts line {}: a `*/` inside the comment closes it early: {}", n + 1, line);
+        }
+    }
 }
 
 #[test]

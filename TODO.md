@@ -13,8 +13,26 @@ The order of work:
 1. ~~**Remove Eleventy**, and convert the blog to a native `ssqch.config.js`.~~ Done (below).
 2. ~~**A Linux x86_64 release and an install script**, so the blog can go back to Netlify
    builds.~~ Done: v0.2.1, and the blog builds on Netlify (2026-11-08).
-3. **The blog's other requests** (fingerprinting, color profiles, link checking).
-4. **The rest of the release and adoption work.**
+3. ~~**The blog's other requests** (fingerprinting, color profiles, link checking).~~ Done, apart
+   from HDR photos (below).
+4. **The rest of the release and adoption work**: 0.4, on `release/0.4`.
+
+Where 0.4 stands (2026-11-10): every phase of the adoption study below is built and tested,
+and so are the features that set ssqch apart (render hooks and containers, content schemas,
+`ssqch diff`, the docs starter, themes, custom elements, and `ssqch import` for Eleventy and
+Zola). The
+blog builds with it, and `ssqch diff` against its 0.3.3 build shows only the new heading `id`s.
+Left before a release:
+
+- Backport to 0.3 (on `main`, then merge): the dev server fixes. In 0.3.3, `ssqch serve`
+  answers `/%2Fetc/hosts` with that file, and rebuilds in a loop when the input folder is the
+  project root. Both are fixed here (`crates/sitesquatch/src/serve.rs`, and `record_outputs`
+  in `build.rs`).
+
+- Deploy the examples (on hold; "Site plumbing" below).
+- Decide which of the "Later" items under each feature wait for 0.5.
+- **Blog:** after the release, switch to `sitemapPlugin()`, `highlight: true` (dropping Prism)
+  and a `posts` schema (`../blog/TODO.md`).
 
 ## Remove Eleventy (done)
 
@@ -169,21 +187,47 @@ migration guides it unblocks.
       `link`, `image`, `fence`) decide how Markdown renders, and `::: name args` renders
       `_includes/containers/name.*`. One idea covers admonitions, tabs, anchors, figures and
       diagram fences. Hugo's render hooks only work in Go templates.
-- [ ] **Content schemas:** a schema per collection in the config, checked on every build, with
-      errors naming the file and field, and types in `ssqch types`. Only Astro has this; the
-      Rust blog and opensource.guide wrote their own checkers.
-- [ ] **`ssqch diff`:** compare two builds page by page, ignoring noise such as fingerprints.
-      It's the safety net for upgrades, refactors and migrations. No generator has it.
-- [ ] **A docs starter:** sidebar, TOC, search, admonitions, tabs, versions and i18n, as static
-      HTML that needs no JavaScript to read. It's the answer to "why not Docusaurus or
-      VitePress?", and timely while Material for MkDocs is in maintenance mode.
-- [ ] **Themes without a package manager:** a folder or a git URL pinned to a commit, fetched
-      and cached by the binary, and overridden file by file.
+- [x] **Content schemas:** `schemas` in the config, one per collection (tag) or set of files,
+      checked on every build, with errors naming the file and field, and types in `ssqch types`
+      (`sitesquatch::schema`). Only Astro has this; the Rust blog and opensource.guide wrote
+      their own checkers.
+  - [ ] Later: references between pages (an `author` that has to be a page in `authors`), and
+        checks on the rendered output (every guide has a previous and next link).
+  - [ ] **Blog:** could add a `posts` schema (title, date, `feature_image` as a `file`).
+- [x] **`ssqch diff`:** compares two builds page by page, ignoring noise such as fingerprints
+      (`sitesquatch::diff`). It's the safety net for upgrades, refactors and migrations. Each
+      changed page says whether its text or markup changed, and which `id`s are gone;
+      `--format json` for scripts and agents.
+  - [ ] Later: changed canonical links, redirects and feed entries called out the way titles
+        and `id`s are, and image ids from `imagePlugin()` matched like fingerprints.
+- [x] **A docs starter:** `ssqch init --starter docs`: sidebar, breadcrumbs, pager, TOC,
+      admonitions, tabs, highlighting, a schema, the link checker and opt-in Pagefind search, as
+      static HTML that needs no JavaScript to read (looked at in a browser, wide and phone
+      width). It's the answer to "why not Docusaurus or VitePress?", and timely while Material
+      for MkDocs is in maintenance mode.
+  - [ ] Versions (the `versioned-docs` example shows how) and i18n (after the i18n release) as
+        options of the starter.
+- [x] **Themes without a package manager:** `theme` is a folder or a git URL pinned to a commit
+      or tag, fetched with `git` and cached in `.cache/ssqch/themes/`, and overridden file by
+      file: includes (in every engine), layouts, hooks, containers, data, pages and static files
+      (`sitesquatch::theme`).
+  - [ ] Later: a theme's own config (filters, plugins), `ssqch theme` to list a theme's files
+        and copy one into the site, a report of upstream changes that overlap the site's
+        overrides, and the docs starter published as a theme.
 - [ ] **`ssqch import <generator>`:** codemods for the mechanical parts (front matter, data
       file names, shortcodes into ssqch's syntax), plus a report of what needs a hand. Liquid
       and Nunjucks templates render as they are, so the first build comes early.
-- [ ] **Interactivity without a framework:** a documented web-components path, with a
-      component's script included only on the pages that use it.
+  - [x] The command, as a dry run with `--write` to apply, and `eleventy` as the first
+        generator (`crates/ssqch/src/import.rs`): renames, front matter keys, image
+        attributes, a drafted config, and a by-hand list with file and line.
+  - [x] `zola`: front matter (`[taxonomies] tags`, `path`), a config drafted from
+        `config.toml`, and a list for sections, shortcodes and Tera constructs.
+  - [ ] `jekyll` and `hugo`.
+- [x] **Interactivity without a framework:** `ssqch/elements` (`plugins/elements`): a custom
+      element's script and stylesheet are included only on the pages that have its tag, with
+      `ssqch:load="idle"` or `"visible"` for islands. Checked in a browser with the `islands`
+      example.
+  - [ ] Later: fingerprint the elements' files, and `modulepreload` for eager ones.
 
 ### 1. Markdown core (every site needs something here)
 
@@ -208,13 +252,13 @@ migration guides it unblocks.
       two-face's grammars adds 1.7 MB for about 200, pure Rust, but parses about 7x slower (the
       blog's 350 fences add 60 ms). Went with syntect, mapping scopes to a small set of `hl-*`
       classes so the HTML stays small.
-  - [ ] Grammars for Edge, Liquid and Handlebars (two-face has none). Add `.sublime-syntax`
-        files of our own.
+  - [x] Edge, Liquid, Handlebars and Mustache fences highlight (two-face has no grammars for
+        them): a small lexer for the template tags, over the HTML grammar with the tags blanked
+        out, so no grammar files and no extra parse of the syntax set.
   - [ ] A cache for highlighted fences, if big sites find it slow.
-  - [ ] **Blog:** could switch from Prism (`prism.js`, 20 KB) to `highlight: true`, once Edge
-        fences highlight.
-- [ ] Examples `blog-tags` and `docs-sidebar`. Both need phase 2 and 5 work first (alias
-      redirects, per-tag feeds, navigation from data), so they move to the end of phase 2.
+  - [ ] **Blog:** can switch from Prism (`prism.js`, 20 KB) to `highlight: true` once 0.4 is
+        released: its 9 `edge` fences highlight now (checked on the Edge.js plugin post).
+- [x] Examples `blog-tags` and `docs-sidebar` (done at the end of phase 2).
 
 ### 2. Site plumbing
 
@@ -243,14 +287,20 @@ migration guides it unblocks.
 - [ ] Later (not now): deploy the examples to Netlify, one site each, at `<name>.sitesquatch.dev`.
       `.github/workflows/examples.yml` builds them with the branch's ssqch and uploads each
       through Netlify's deploy API, from `release/0.4` for now (switch to `main` after 0.4).
-  - [ ] Create the four Netlify sites, add the `NETLIFY_AUTH_TOKEN` secret and the
-        `NETLIFY_SITE_*` variables (the workflow lists them), and run the workflow.
+  - [ ] Create a Netlify site per example (eight now), add the `NETLIFY_AUTH_TOKEN` secret and
+        the `NETLIFY_SITE_*` variables (the workflow lists them), and run the workflow.
   - [ ] DNS: `sitesquatch.dev` is on Namecheap's DNS. Add a CNAME per example to its
         `.netlify.app` name, and the custom domain in each Netlify site.
   - [ ] Link the live URLs from `examples/sites/README.md` and the README.
-- [ ] A `pathPrefix`-style setting for sites served below the domain root (GitHub Pages project
-      sites): rewrite root-relative URLs in HTML, and a filter for the rest.
-- [ ] `docs-sidebar` search, once Pagefind is in (phase 5).
+- [x] `base: "/repo/"` (and `--base`) for sites served below the domain root (GitHub Pages
+      project sites): the build puts it in front of root-relative URLs in the HTML it writes,
+      `withBase()` and `ssqch.base` cover the rest, and `ssqch serve` mounts the site under it.
+      Left: a root-relative link to something outside the base needs the full address.
+- [x] `docs-sidebar` search: it uses Pagefind with `SEARCH=1` (phase 5).
+- [x] The `url()` filter from `rssPlugin()` (an identity function left over from the Eleventy
+      days) is removed. **Blog:** `feed.edge` and `sitemap.edge` used it; they pass the URL
+      straight to `absoluteUrl()` now, which works with 0.3 too. `ssqch diff` of the blog built
+      by 0.3.3 and by this branch: 72 pages and the feed differ, only by the new heading `id`s.
 
 ### 3. Trial migrations
 
@@ -271,16 +321,26 @@ migration guides it unblocks.
 
 Found by the trials, not fixed yet:
 
-- [ ] Footnote markup of a site's own (Zola's `[1]` and `fr-1-1` ids), maybe a hook.
-- [ ] Redirect page markup of a site's own (`_includes/hooks/redirect.*`).
-- [ ] `image()` file names and folders per call (eleventy-img's `filenameFormat`, `outputDir`).
-- [ ] A filter called as a function loses to page data with the same name (`image()` vs an
-      `image:` field). Document it, or keep filters in their own namespace.
-- [ ] Smart punctuation like markdown-it's typographer (only a spaced `--` is a dash).
-- [ ] `ssqch import zola`: `_index.md` front matter to data, `path` to `permalink`,
-      `[taxonomies] tags` to `tags`, Tera components to macros.
-- [ ] `ssqch import eleventy`: CommonJS to ESM, `.11tydata.*` renames, Eleventy front-matter
-      keys, shortcodes to filters, paired shortcodes to containers.
+- [x] Footnote markup of a site's own (Zola's `[1]` and `fr-1-1` ids): the `footnote-ref` and
+      `footnotes` hooks.
+- [x] Redirect page markup of a site's own: `_includes/hooks/redirect.*` (a generator's file
+      can name a hook template, `GeneratedFile::with_hook`).
+- [x] `image()` file names and folders per call: `name: "/assets/sponsors/acme"`.
+- [x] A filter called as a function lost to page data with the same name (`image()` vs an
+      `image:` field). In Edge, a call now reaches the filter when the data isn't callable.
+      Nunjucks and Jinja still look in the page's data first; the filter form
+      (`{{ src | image }}`) always works there.
+- [x] Smart punctuation leaves `--flag` alone, as markdown-it's typographer does.
+- [x] `ssqch import zola`: `path` to `permalink`, `[taxonomies] tags` to `tags`, a drafted
+      config, and a by-hand list for `_index.md` sections, shortcodes and Tera templates.
+      Writing it found that an unquoted TOML date (`date = 2024-01-02`) failed to parse; fixed.
+  - [ ] Write each section's directory data from its `_index.md`, and rewrite the Tera
+        constructs that map one to one (`page.content`, named filter arguments).
+- [x] `ssqch import eleventy`: `.11tydata.*` renames, Eleventy front-matter keys, a drafted
+      config and a list of filters, shortcodes and plugins to port. CommonJS needs no change
+      (ssqch loads it), and Nunjucks shortcodes keep their `{% name %}` form.
+  - [ ] Port simple `addFilter` and `addShortcode` bodies into the drafted config instead of
+        listing them.
 
 ### 4. Internationalization (not in 0.4)
 
@@ -316,6 +376,10 @@ Moved to a later release (decided 2026-11-09); 0.4 ships without it.
 
 ### 6. JavaScript ecosystem
 
+- [x] `ssqch serve` reads the configuration again when the config file changes, or a module
+      it or a data file imports (a new engine each time, so nothing stays cached). A config
+      that fails to load keeps the last good one serving.
+
 - [x] npm packages, CommonJS and `fetch`. Resolution follows Node (`exports` conditions and
       patterns, `imports`, `main`, parent folders, pnpm symlinks); CommonJS by Node's rules, with
       the site's own `.js` files detected by syntax; `fetch` on ureq (rustls), up to 8 requests
@@ -324,17 +388,33 @@ Moved to a later release (decided 2026-11-09); 0.4 ships without it.
       `http`, `stream` and other server modules. 20 popular packages checked (luxon, date-fns,
       lodash, markdown-it, highlight.js, prismjs, nunjucks, sanitize-html, html-minifier-terser,
       ...); `@sindresorhus/slugify` fails on QuickJS's regex `v` flag (no set operations).
-  - [ ] A cache for `fetch` (opt-in, like `fetch(url, { cache: "1h" })`, or in `ssqch serve`
-        only), so rebuilds don't hit the network every time.
+  - [x] A cache for `fetch`: `fetch(url, { cache: "1h" })` saves responses in
+        `.cache/ssqch/fetch/`, falls back to an older copy when a refresh fails, and `--offline`
+        builds from saved copies only.
+  - [ ] Later: named data sources with a schema for the response, and a `refresh` command.
   - [ ] Named exports of CommonJS modules are found by running the module, not read from the
-        source as Node does; check that's never visible (order of side effects).
-- [ ] Nunjucks: custom tags defined by config functions (`{% image %}`). (`===`/`!==` were done
-      in phase 3.)
-- [ ] Jinja: the rest of minijinja-contrib (`pluralize`, dates). (String methods were done in
-      phase 3.)
-- [ ] A synthetic 9,000-page benchmark (kubernetes.io's size).
-- [ ] Example `islands`; guides from Hexo and from component frameworks (Astro, VitePress,
-      Next.js, Gatsby: what ports, and what stays client JavaScript).
+        source as Node does. Checked (2026-11-10): it is visible. An ES module that imports a
+        side-effect module and then a CommonJS file runs the CommonJS file first (Node runs
+        them in import order), because the file runs while the module graph loads. Fix: read
+        the names from the source for the plain forms (`exports.x =`, `module.exports = { a, b
+        }`, `Object.defineProperty(exports, "x"`), as Node's lexer does, and only run the file
+        early when it assigns something else to `module.exports`.
+- [x] Nunjucks: config functions as tags (`{% image "a.png", "Alt" %}`, and around content
+      with `{% endimage %}`), rewritten to calls before minijinja parses the template.
+- [x] Jinja: `pluralize`, `filesizeformat`, `striptags`, `cycler`, `joiner` from
+      minijinja-contrib, and date filters of our own on chrono (contrib's need `jiff`).
+- [x] A synthetic 9,000-page benchmark (kubernetes.io's size): `scripts/synthetic-site.py`
+      (Edge, Nunjucks or Liquid). It found three things, now fixed: the nav helpers walked the
+      whole tree for every page (5.2 s to 1.5 s), the link checker hit the disk for every link,
+      and Liquid filters compiled a regex for every string argument (7m 17s to 12 s).
+  - [ ] Liquid is still 8x slower there: the `liquid` crate copies a variable's value on
+        every read (`Runtime::get` calls `into_owned`). Fixing it means a patch upstream or a
+        runtime of our own over liquid-core.
+  - [ ] Peak memory is about 0.5 GB for 9,000 pages (every page's HTML is held until it's
+        written); stream pages out if a bigger site needs it.
+- [x] Example `islands` (custom elements with `ssqch/elements`).
+- [x] Guides from Hexo and from component frameworks (Astro, VitePress, Next.js, Gatsby: what
+      ports, and what stays client JavaScript), in `docs/guides/`.
 
 ## Prebuilt binaries and easier adoption
 

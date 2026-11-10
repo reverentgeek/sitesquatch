@@ -11,9 +11,12 @@ It's quick, too. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed
 What's in the box:
 
 - **A data cascade, layouts, collections, pagination and permalinks**, so a blog or docs site needs no custom code.
-- **A JavaScript config** with filters, global data, custom collections, transforms and build hooks, plus the Node built-ins configs usually reach for (`fs`, `path`, `url`, `process`, `Buffer`).
+- **A JavaScript config** with filters, global data, custom collections, transforms and build hooks, plus npm packages, `fetch` (with a cache) and the Node built-ins configs usually reach for.
+- **Markdown that does the work of a plugin stack:** heading ids, footnotes, containers, render hooks in any template language, and syntax highlighting at build time.
 - **Responsive images:** every `<img>` becomes a `<picture>` with AVIF, WebP and fallback sources, cached by content so later builds skip the encoding.
-- **RSS helpers, HTML minification, asset fingerprinting, a link checker** and a dev server with live reload.
+- **Checks that run with every build:** [content schemas](#content-schemas) for front matter, a link checker, and [`ssqch diff`](#comparing-two-builds) to see what a change did to the output.
+- **Themes without a package manager, custom elements that load only where they're used**, Sass, a sitemap, redirects, RSS helpers, HTML minification and asset fingerprinting.
+- **A quick start and a way in:** `ssqch init` (a blog, or a docs site with a sidebar and search), `ssqch import` for Eleventy and Zola sites, and a dev server that reloads pages and the config.
 - **A Rust API** for when JavaScript isn't enough: custom template engines, heavy transforms, or a whole site as its own binary.
 
 SiteSquatch is young (0.x), so expect some breaking changes between minor versions. Each one is listed in the [changelog](CHANGELOG.md) with what you'd need to change.
@@ -75,6 +78,8 @@ cd my-site && ssqch serve
 Open <http://localhost:8080>, edit `src/posts/hello-world.md`, and watch the page reload. `ssqch init` never overwrites a file that's already there, so it's safe to run in a folder you've started.
 
 The layout and home page are [Edge](#templates-and-data) templates. To start in another language, pass `--engine liquid`, `--engine njk` (Nunjucks) or `--engine hbs` (Handlebars); the config then lists that engine in `templateFormats` and runs Markdown through it.
+
+Writing documentation? `ssqch init my-docs --starter docs` creates a docs site instead: a sidebar, breadcrumbs and previous/next links from one `nav.yml`, a table of contents on each page, notes and tabs, highlighted code, a schema that checks each page's front matter, the link checker, and Pagefind search with `SEARCH=1`. The pages are plain HTML that reads fine without JavaScript (a small script turns tab sections into tabs), and every file is yours to edit: there's no theme package underneath.
 
 To see how the pieces fit, here's a tiny site built by hand: a home page that lists posts. Here's the whole thing:
 
@@ -171,7 +176,7 @@ ssqch serve
 
 `ssqch serve` rebuilds when your sources change and reloads the browser. It also reloads (without a rebuild) when another tool, like a PostCSS or esbuild watcher, writes a CSS or JavaScript file into the output folder, so the page never reloads before its new CSS is there.
 
-`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--port N` for `serve`, `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode.
+`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode. The other commands are `ssqch init`, `ssqch types`, [`ssqch diff`](#comparing-two-builds) and [`ssqch import`](#moving-from-another-generator).
 
 ## Configuring a site
 
@@ -235,8 +240,11 @@ The default export is the config: an object, or a function (sync or async) that 
 | `passthrough` | Files or folders to copy: a path, or `{ from: to }`, or an array of them. A path can be a glob: `"src/**/*.pdf"` keeps each file's own path, and `{ "assets/**/*.png": "images" }` puts them under `images/` by their path below `assets/`. |
 | `watch` | More paths for `ssqch serve` to watch. |
 | `beforeBuild`, `afterBuild` | Build hooks (a function or an array). They get `{ env, serving, dirs }`, plus `written` (the files written) after the build. Async works. A hook can also run a program: `afterBuild: { run: "npx -y pagefind --site dist" }` runs it in the project root (through `sh -c`, or `cmd /C` on Windows) with its output shown, and a failure fails the build. It gets `SSQCH_ENV`, `SSQCH_SERVING`, `SSQCH_INPUT` and `SSQCH_OUTPUT`. In `sitesquatch.toml`, `before_build` and `after_build` take lists of commands. |
+| `theme` | A theme under the site: a folder (`"themes/docs"`), or a git repository pinned to a commit or tag (`"https://github.com/you/theme#v1.2.0"`). The site's own files win over the theme's, one by one. See [Themes](#themes). |
+| `schemas` | What each kind of page's data has to look like, checked on every build: `{ posts: { fields: { title: "string", date: "date" } } }`. See [Content schemas](#content-schemas). |
+| `base` | The path the site is served under, when that isn't the root of its domain: `base: "/repo/"` for a GitHub Pages project site at `https://you.github.io/repo/`. Templates, Markdown links and `page.url` stay as they are (`/about/`); ssqch adds the base to every URL from the site's root in the HTML it writes. See [Serving a site under a path](#serving-a-site-under-a-path). |
 | `lastModified` | `page.lastModified`: `"git"` for when the page's file last changed in a commit (its modification time if it has uncommitted changes), or `"file"` for the modification time. Off by default. In CI, check out the full history (`fetch-depth: 0` in GitHub Actions), or every page gets the date of the last commit; the build warns about a shallow clone. |
-| `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `markdown`, `deepMerge`, `clean`, `ignore`, `bundles`, `strict`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
+| `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `markdown`, `deepMerge`, `clean`, `ignore`, `bundles`, `strict`, `lastModified`, `base`, `schemas`, `theme`), or functions that return one. `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
 
 Mistakes get caught early. A misspelled key or option is an error, and so are two plugins that define the same filter, data or collection name (the message names both). When something in your code throws, you get `ssqch.config.js: too many pine cones` and a stack trace that points at your file, like `at bad (lib/filters.js:3:9)`.
 
@@ -261,9 +269,27 @@ Config and data files can import relative files (`./lib/filters.js`, with or wit
 
 Errors carry Node's codes (`err.code === "ENOENT"`), and relative paths resolve against the project root, as if you ran Node from there. Dates and numbers format like Node does for `en-US`: `toLocaleDateString()`, `toLocaleString()`, `Intl.DateTimeFormat` and `Intl.NumberFormat` match Node 24 on [902 cases](crates/sitesquatch-js/tests/fixtures/intl-cases.mjs), and `localeCompare` and `Intl.Collator` sort English text in Node's order. Other locales, and time zones other than UTC and the machine's, throw an error rather than quietly formatting something else.
 
-> **Note:** after editing the config, restart `ssqch serve` to pick up the changes.
+> **Note:** `ssqch serve` reads the config again when it changes, or when a module it imports does (your own files, not packages in `node_modules`). If the new config has a mistake, the error is printed and the server carries on with the last one that loaded.
 
-The globals include `fetch` (with `Headers`, `Request`, `Response`, `AbortController` and `AbortSignal.timeout()`), `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`, `EventTarget` and the timers. `fetch` follows redirects, decompresses gzip, and rejects with a `TypeError` naming the URL when a request fails. Requests run on threads of their own (up to 8 at once), so `await Promise.all(urls.map(u => fetch(u)))` fetches them in parallel. Only `http:` and `https:` URLs can be fetched. A data file that fetches runs on every build, including each rebuild in `ssqch serve`.
+The globals include `fetch` (with `Headers`, `Request`, `Response`, `AbortController` and `AbortSignal.timeout()`), `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`, `EventTarget` and the timers. `fetch` follows redirects, decompresses gzip, and rejects with a `TypeError` naming the URL when a request fails. Requests run on threads of their own (up to 8 at once), so `await Promise.all(urls.map(u => fetch(u)))` fetches them in parallel. Only `http:` and `https:` URLs can be fetched.
+
+A data file that fetches runs on every build, including each rebuild in `ssqch serve`. To keep an API from being asked every time, give the request a `cache`:
+
+```js
+// src/_data/snacks.js
+export default async function () {
+  const response = await fetch("https://api.example.com/snacks", { cache: "1h" });
+  return response.json();
+}
+```
+
+- **A duration** (`"90s"`, `"30m"`, `"1h"`, `"7d"`, `"2w"`, or seconds as a number): a successful response is saved in `.cache/ssqch/fetch/`, and requests reuse it until it's that old. The key is the method, URL, request headers and body, so another query or token is another entry. The URL, request headers and cookies aren't written to disk (an API key is usually in one of them), only the response.
+- **When a refresh fails** (the network is down, or the server answers 5xx or 429) and there's an older copy, the build uses it and warns: `warn: fetch: https://api.example.com/snacks answered 503; using the copy saved 3 hours ago`. Without a copy, the failure is the response, as usual. `cache: "0s"` asks every time and keeps the copy only for that.
+- **The standard modes** work too: `"force-cache"` (a copy of any age, else ask), `"reload"` (ask, and save), `"only-if-cached"` (a copy, or fail) and `"no-store"` (the default).
+- **Offline:** `ssqch build --offline` (or `SSQCH_OFFLINE=1`) answers every request from its saved copy, whatever its age, and fails a request that has none, so a build on a plane or in a sandbox never touches the network.
+- **Seeing it:** a response from a copy has an `x-ssqch-cache` header (`hit`, or `stale` after a failed refresh), and the build summary counts them: `Fetch   12 requests, 9 from the cache`.
+
+CI starts without `.cache/`, so production builds fetch fresh data unless you restore that folder.
 
 ### npm packages
 
@@ -296,18 +322,20 @@ export default {
 };
 ```
 
-Data functions run on every build. `ssqch serve` reloads a data file when it changes (the files it imports stay cached until you restart). Data files work in TOML-configured sites too.
+Data functions run on every build. `ssqch serve` reloads a data file when it changes, and the modules it imports too. Data files work in TOML-configured sites too.
 
 ### Built-in plugins
 
-- **`ssqch/image`:** `imagePlugin(options)` turns every local `<img>` in HTML output into a `<picture>`. Options: `formats` (`avif`, `webp`, `jpeg`, `png`, `auto`), `widths`, `defaultAttributes`, `outputDir`, `urlPath`, `webpQuality`, `avifQuality`, `avifSpeed`, `jpegQuality`, `minimumThreshold`, `prune`, `hashCache` and `linkedImages`. On an `<img>`, `ssqch:widths="300,600"` picks that image's widths, a plain `width` attribute pins it to one width, and `ssqch:ignore` leaves it alone. Images with a color profile other than sRGB (Display P3, Adobe RGB) are converted to sRGB first, so their colors stay true. A link to a local image (`<a href="/photos/big.jpg">`, the click-to-enlarge pattern) is pointed at a generated copy in the image's own format, at its own width capped at the largest of `widths`, so the link works without publishing the source file; `ssqch:ignore` on the `<a>`, or `linkedImages: false`, leaves links alone. `image(src, { widths, formats })` makes one image's files with the same settings and cache, returning `{ webp: [{ url, width, height, srcset, sourceType, ... }] }`. Data files can call it even without the plugin.
+- **`ssqch/image`:** `imagePlugin(options)` turns every local `<img>` in HTML output into a `<picture>`. Options: `formats` (`avif`, `webp`, `jpeg`, `png`, `auto`), `widths`, `defaultAttributes`, `outputDir`, `urlPath`, `webpQuality`, `avifQuality`, `avifSpeed`, `jpegQuality`, `minimumThreshold`, `prune`, `hashCache` and `linkedImages`. On an `<img>`, `ssqch:widths="300,600"` picks that image's widths, a plain `width` attribute pins it to one width, and `ssqch:ignore` leaves it alone. Images with a color profile other than sRGB (Display P3, Adobe RGB) are converted to sRGB first, so their colors stay true. A link to a local image (`<a href="/photos/big.jpg">`, the click-to-enlarge pattern) is pointed at a generated copy in the image's own format, at its own width capped at the largest of `widths`, so the link works without publishing the source file; `ssqch:ignore` on the `<a>`, or `linkedImages: false`, leaves links alone. `image(src, { widths, formats })` makes one image's files with the same settings and cache, returning `{ webp: [{ url, width, height, srcset, sourceType, ... }] }`. Its files are named after a hash of the source; `name` gives them a name and folder of your own, for URLs other things link to (`image("logos/acme.png", { widths: [200], name: "/assets/sponsors/acme" })` writes `/assets/sponsors/acme-200.webp`, and a name without a leading `/` is inside the image folder). Data files can call it even without the plugin.
 - **`ssqch/minify`:** `minifyPlugin(options)` minifies HTML output, after the image transform. `minify(html, options)` does the same for a string. Options: `collapseWhitespace`, `removeComments`, `shortDoctype` and `shortenAttributes` (all `true` by default). `shortenAttributes` drops the values of boolean attributes (`defer="defer"` becomes `defer`) and whitespace that doesn't matter in `class`, `srcset`, `sizes`, URL attributes and the viewport `<meta>`.
-- **`ssqch/rss`:** `rssPlugin()` adds the filters `getNewestCollectionItemDate`, `dateToRfc3339`, `dateToRfc822`, `absoluteUrl`, `htmlToAbsoluteUrls` and `url`. They're also named exports, for your own code.
+- **`ssqch/rss`:** `rssPlugin()` adds the filters `getNewestCollectionItemDate`, `dateToRfc3339`, `dateToRfc822`, `absoluteUrl` and `htmlToAbsoluteUrls`. They're also named exports, for your own code.
 - **`ssqch/assets`:** `assetsPlugin({ files })` fingerprints CSS and JS for long-lived caching. Templates link the plain paths (`<link rel="stylesheet" href="/assets/index.css">`). In a production build, each listed file in the output folder (written there by your CSS or JS tool before `ssqch build`) is renamed to `index.<hash>.css`, older fingerprinted copies are deleted, and every `href` and `src` in the HTML that points at it is rewritten, keeping any query string. `ssqch serve` leaves the plain paths alone, unless the plain file isn't there but the last production build left a fingerprinted copy: then pages link to that copy (with a warning), so serving after a build without running your CSS and JS watchers still has styles. A listed file that's missing fails a production build. `assetUrl("/assets/index.css")` returns the URL to use, for places outside an `href` or `src`. `url()` references inside CSS and imports inside JavaScript aren't rewritten. Options: `files` (URL paths, required), `fingerprint` (`true` or `false`; on for production builds by default) and `integrity` (add `integrity="sha384-..."` to the `<link>` and `<script>` elements that load a fingerprinted file; default `false`).
 - **`ssqch/links`:** `linksPlugin(options)` checks the built site's internal links after each build. Every `href` (on `a`, `link` and `area`), `src` (images, scripts, iframes, media) and `srcset` URL has to point at something in the output, and a `#fragment` has to match an `id` on the page it points to. External links aren't checked, and neither are paths a Netlify `_redirects` file in the output covers. Broken links fail production builds, listing each page and link, and are warnings in `ssqch serve`. Options: `anchors` (check `#fragments`; default `true`), `ignore` (URL path prefixes to skip, like `["/downloads/"]`) and `fail` (`true` or `false`; production builds only by default).
 - **`ssqch/sass`:** `sassPlugin({ files: { "src/scss": "/css" } })` compiles Sass with [grass](https://github.com/connorskees/grass) (pure Rust: no Dart Sass or Node). A folder compiles every `.scss` and `.sass` file in it that doesn't start with `_`, keeping their paths; a file (`{ "src/app.scss": "/app.css" }`) compiles to the path given. The CSS is written at the start of each build, so `ssqch/assets` can fingerprint it and the link checker sees it, and `ssqch serve` rebuilds when a source changes. Options: `files` (required), `style` (`"compressed"` for production builds and `"expanded"` otherwise, by default) and `loadPaths`.
 - **`ssqch/sitemap`:** `sitemapPlugin({ url: "https://example.com" })` writes `sitemap.xml` listing every HTML page with its absolute URL and its date as `<lastmod>`. Left out: pages with `sitemap: false` in their data, 404 pages, pages 2 and on of a list split into pages (pagination with a `size` over 1; a page per tag is still listed), and URLs matching `exclude` globs (`["/tags/**"]`). Options: `url` (required), `exclude`, `lastmod` (default `true`), `output` (default `"/sitemap.xml"`) and `paginated` (list every page of a split list).
-- **`ssqch/redirects`:** `redirectsPlugin(options)` keeps old URLs working. A page lists its old URLs in front matter (`aliases: [/2019/pine-cones/, /pine.html]`), and the `redirects` option adds others (`{ "/feed/": "/feed.xml" }`, where the new URL can be on another site). Each old URL gets a small page that sends visitors on (a meta refresh, a canonical link and `noindex`), and with `netlify: true`, a `/old  /new  301` line in `_redirects`, after any lines your own `_redirects` template writes. An old URL that's another page's URL is an error. Options: `pages` (default `true`), `netlify` (default `false`) and `redirects`.
+- **`ssqch/elements`:** `elementsPlugin()` is interactivity without a framework. A custom element is a tag with a hyphen (`<like-button>`) and a script that defines it. Put `like-button.js` in `src/elements/` (and `like-button.css` next to it, if it has styles), write the tag in any page or layout, and that page gets the script and the stylesheet; pages without the tag get neither, so a page with no elements loads no JavaScript. What's inside the tag is the fallback a visitor sees before the script runs, or without JavaScript: `<like-button><a href="/likes/">3 likes</a></like-button>`. `ssqch:load` on a tag says when its script loads: `eager` (with the page, the default), `idle` (when the browser has a quiet moment) or `visible` (when the element scrolls into view), which is the "islands" idea without a framework to run it. The whole folder is copied to `/elements/`, so elements can import shared modules (a file without a hyphen in its name isn't an element). Options: `dir` (default: `elements` in the input folder), `url` (default `/elements/`) and `load` (the default for tags without `ssqch:load`). The [`islands` example](examples/sites/islands/) has three small elements.
+
+- **`ssqch/redirects`:** `redirectsPlugin(options)` keeps old URLs working. A page lists its old URLs in front matter (`aliases: [/2019/pine-cones/, /pine.html]`), and the `redirects` option adds others (`{ "/feed/": "/feed.xml" }`, where the new URL can be on another site). Each old URL gets a small page that sends visitors on (a meta refresh, a canonical link and `noindex`), and with `netlify: true`, a `/old  /new  301` line in `_redirects`, after any lines your own `_redirects` template writes. An old URL that's another page's URL is an error. For redirect pages in your own markup, add `_includes/hooks/redirect.*` (any engine): it gets `redirect.from` and `redirect.to` with the site's global data. Options: `pages` (default `true`), `netlify` (default `false`) and `redirects`.
 
 ### Configuring with TOML
 
@@ -329,7 +357,18 @@ heading_ids = "blackfriday"
 
 ## Moving from another generator
 
-Guides map another generator's config, front matter and templates onto ssqch's: [from Zola](docs/guides/from-zola.md), [from Eleventy](docs/guides/from-eleventy.md), [from Docusaurus](docs/guides/from-docusaurus.md) and [from MkDocs](docs/guides/from-mkdocs.md). [`examples/sites/`](examples/sites/) has small, complete sites to start from or copy parts of, each built in CI: `blog-tags`, `blog-categories`, `docs-sidebar`, `glossary-docs`, `versioned-docs`, `component-docs` and `reference-pages`.
+Guides map another generator's config, front matter and templates onto ssqch's: [from Zola](docs/guides/from-zola.md), [from Eleventy](docs/guides/from-eleventy.md), [from Docusaurus](docs/guides/from-docusaurus.md), [from MkDocs](docs/guides/from-mkdocs.md), [from Hexo](docs/guides/from-hexo.md) and [from component frameworks](docs/guides/from-component-frameworks.md) (Astro, VitePress, Next.js, Gatsby). [`examples/sites/`](examples/sites/) has small, complete sites to start from or copy parts of, each built in CI: `blog-tags`, `blog-categories`, `docs-sidebar`, `glossary-docs`, `versioned-docs`, `component-docs`, `reference-pages` and `islands`.
+
+For a Zola site, `ssqch import zola` moves `tags` out of `[taxonomies]` and turns `path` into `permalink` in each page's front matter, writes a first `ssqch.config.js` from `config.toml` (the site's data, Markdown options, Sass, redirects, a sitemap), and lists what the Tera templates, shortcodes and sections need.
+
+For an Eleventy site, `ssqch import eleventy` does the mechanical part. It renames `*.11tydata.*` files, rewrites front matter keys and image attributes to ssqch's names, writes a first `ssqch.config.js` from what it can read in the Eleventy config (folders, passthrough copies, template engines, `pathPrefix`), and lists what's left to port by hand, each with its file and line and what it becomes: filters, shortcodes, collections, plugins and their ssqch equivalents. Without `--write` it only prints the list, so run it in a clean git checkout, read it, then run it again with `--write`:
+
+```sh
+ssqch import eleventy            # what would change, and what's left (or: ssqch import zola)
+ssqch import eleventy --write    # make the changes
+```
+
+Whichever generator you're leaving, build the site with it and with ssqch and run [`ssqch diff`](#comparing-two-builds) on the two output folders: it shows which pages differ and how, so you know when the move is done.
 
 ## Templates and data
 
@@ -374,11 +413,11 @@ export default defineConfig({
 | `alerts` | `true` | GitHub's `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` and `[!CAUTION]`, as `<div class="markdown-alert markdown-alert-note">` with a title, the same markup GitHub uses (or a container template of that name, below). |
 | `containers` | `true` | `::: name args` blocks (below). |
 | `definitionLists` | `false` | A term, then `: definition` lines, as `<dl>`. |
-| `smartPunctuation` | `false` | Curly quotes, `--` and `---` as dashes, `...` as an ellipsis. |
+| `smartPunctuation` | `false` | Curly quotes, `--` and `---` as dashes, `...` as an ellipsis. A `--` that follows a space and runs into a word stays as it is, so `run it with --fix` keeps its flag. |
 | `indentedCode` | `true` | Lines indented four spaces are code. `false` makes them ordinary Markdown, for HTML indented inside Markdown; fences are still code. |
 | `highlight` | `false` | Syntax highlighting at build time (below). `true`, or `{ css: "/assets/code.css" }` to put the stylesheet somewhere else, or `{ css: false }` to leave it out. |
 
-**Syntax highlighting:** with `highlight: true`, fenced code is highlighted while the site builds, so pages need no highlighting script. The grammars are Sublime Text's and TextMate's (about 200 languages, from [syntect](https://github.com/trishume/syntect) and [bat](https://github.com/sharkdp/bat)), and each token gets one class for what it is: `hl-keyword`, `hl-string`, `hl-comment`, `hl-function`, `hl-type`, `hl-number` and so on. The build writes a stylesheet for them to `/highlight.css` (link it from your layout) with GitHub's colors, light and dark. Each color is a CSS custom property, like `--hl-keyword`, so a theme switch or your own palette only has to set those. Mark lines with braces in the fence's info string, ```` ```js {1,4-6} ````, and those lines get `class="line highlighted"`. A language without a grammar renders as plain `<pre><code class="language-x">`.
+**Syntax highlighting:** with `highlight: true`, fenced code is highlighted while the site builds, so pages need no highlighting script. The grammars are Sublime Text's and TextMate's (about 200 languages, from [syntect](https://github.com/trishume/syntect) and [bat](https://github.com/sharkdp/bat)), plus ssqch's own for the template languages those don't cover (`edge`, `liquid`, `hbs` and `mustache`: the tags, over highlighted HTML), and each token gets one class for what it is: `hl-keyword`, `hl-string`, `hl-comment`, `hl-function`, `hl-type`, `hl-number` and so on. The build writes a stylesheet for them to `/highlight.css` (link it from your layout) with GitHub's colors, light and dark. Each color is a CSS custom property, like `--hl-keyword`, so a theme switch or your own palette only has to set those. Mark lines with braces in the fence's info string, ```` ```js {1,4-6} ````, and those lines get `class="line highlighted"`. A language without a grammar renders as plain `<pre><code class="language-x">`.
 
 **A table of contents:** after a page's content renders, `page.headings` lists its headings (`level`, `id` and `text`), so its layouts can build a table of contents. The built-in `toc` filter does it for you: `{{{ toc(page.headings) }}}` writes nested `<ul>` links to the `h2` and `h3` headings, and `toc(page.headings, { from: 2, to: 4, ordered: true })` changes the levels or uses `<ol>`. In Liquid that's `{{ page.headings | toc: 2, 4 }}`, and in Nunjucks, `{{ toc(page.headings) | safe }}`. The headings come from the HTML, so they work for pages in any template language. Collections have them too (`post.page.headings`).
 
@@ -411,6 +450,8 @@ Containers nest: an outer one opens with more colons (`::::`) and closes with as
 | `heading.*` | `heading.level`, `id`, `text`, `content` (the inner HTML) and `attrs` | Anchor links next to headings |
 | `link.*` | `link.href`, `title`, `text` and `content` | `target="_blank"` and an icon on external links |
 | `image.*` | `image.src`, `alt` and `title` | `<figure>` with a caption |
+| `footnote-ref.*` | `footnote.number`, `label`, `id` (the note's), `refId` (this reference's) and `index` (1 for a note's first reference) | Footnote links in another generator's markup |
+| `footnotes.*` | `footnotes`: a list of `number`, `label`, `id`, `content` (the note's HTML) and `refs` (the ids of its references) | The notes as a `<div>` each, or as sidenotes |
 | `fence.*`, or `fence-<lang>.*` for one language | `fence.lang`, `info` (the whole line after the backticks, like `js {1,3} title="app.js"`), `code`, and `highlighted` (the highlighted HTML, with `highlight` on) | Diagrams from `mermaid` fences, titled code blocks |
 
 ```edge
@@ -445,9 +486,11 @@ Add `"njk"` (Nunjucks) or `"jinja"` / `"j2"` (Jinja) to `templateFormats`, and t
 
 - **Data:** the same as Edge and Liquid. Undefined values, and properties of undefined values, print nothing.
 - **Escaping:** output is HTML-escaped, as in Nunjucks and Jinja; use `| safe` to opt out. A layout's `content` is already marked safe, so `{{ content }}` works.
-- **Filters and functions:** Jinja's built-in filters, plus Nunjucks' `dump` and `truncate`. Your config `filters` work both ways: `{{ title | shout }}` and `{{ shout(title) }}`.
+- **Filters and functions:** Jinja's built-in filters, plus Nunjucks' `dump` and `truncate`, and `pluralize`, `filesizeformat`, `striptags`, `cycler()` and `joiner()`. Your config `filters` work both ways: `{{ title | shout }}` and `{{ shout(title) }}`. On a page whose data has a field with a function's name, the call finds the field first, so use the filter form there.
+- **Dates:** `{{ page.date | dateformat }}` prints `Mar 14 2026`. `dateformat`, `timeformat` and `datetimeformat` take `"short"`, `"medium"`, `"long"`, `"full"`, `"iso"`, `"unix"`, or a `strftime` pattern (`dateformat("%B %-d, %Y")`), in UTC. Dates also have Python's `strftime()` and `isoformat()` and JavaScript's `toISOString()` and friends, and `now()` is the build's time.
+- **Your own tags:** in `.njk` files, a config filter is a tag too. `{% image "/a.png", "A pine" %}` prints what `image("/a.png", "A pine")` returns, without escaping it. With a closing tag, the function gets what's between them first: `{% callout "tip" %}...{% endcallout %}` calls `callout(content, "tip")`. That covers the built-in filters as well, so `{% markdown %}...{% endmarkdown %}` renders Markdown inside a template.
 - **Includes and inheritance:** `{% include %}`, `{% extends %}` with `{% block %}`, `{% import %}` and `{% from ... import %}` read from `_includes`. Front-matter `layout` works too.
-- **Nunjucks syntax:** in `.njk` files, `{% elseif %}` and `{% for key, value in object %}` work as in Nunjucks. Not supported: Nunjucks' async tags (`asyncEach`, `asyncAll`) and its custom tag extensions.
+- **Nunjucks syntax:** in `.njk` files, `{% elseif %}` and `{% for key, value in object %}` work as in Nunjucks. Not supported: Nunjucks' async tags (`asyncEach`, `asyncAll`) and extensions that parse a tag's arguments themselves.
 - **Errors** name the template and line: `broken.njk:2: syntax error`.
 
 ### Handlebars and Mustache
@@ -459,6 +502,76 @@ Add `"hbs"` (or `"handlebars"`) or `"mustache"` to `templateFormats`, and those 
 - **Helpers:** Handlebars' built-ins (`if`, `unless`, `each`, `with`, `lookup`, `len`, `eq` and the other comparisons). Your config `filters` are helpers: `{{shout title}}`, `{{wrap title "[" "]"}}`, and hash arguments (`size=2`) arrive as a trailing object. Use `{{len list}}`, not `list.length`.
 - **Partials:** every file in `_includes`, by its path with or without the extension: `{{> nav}}` or `{{> nav.hbs}}`.
 - **Mustache:** variables, `{{{ }}}`, partials, sections over lists and truthy values (`{{#items}}{{.}}{{/items}}`) and inverted sections (`{{^items}}none{{/items}}`). Inside a section, reach outer values with `../name`, as in Handlebars. Not supported: lambdas and changing delimiters.
+
+## Themes
+
+A theme is a folder shaped like a site's input folder: `_includes/` (layouts, partials, render hooks, containers), `_data/`, pages, and files to copy, like stylesheets and fonts. Your site sits on top of it:
+
+```js
+export default defineConfig({
+  theme: "themes/trail",
+});
+```
+
+```text
+themes/trail/                 src/                        what the build uses
+  _includes/base.edge                                     the theme's layout
+  _includes/footer.edge       _includes/footer.edge       your footer
+  _data/site.json             _data/site.json             both, merged; your values win
+  404.md                                                  the theme's 404 page
+  about.md                    about.md                    your about page
+  assets/theme.css                                        copied to /assets/theme.css
+```
+
+- **File by file:** an include, layout, hook or container you have wins over the theme's at the same path, so changing a theme's footer means adding one file, not forking the theme. Data is merged, with your values winning. A page or file in the theme is built or copied unless your input folder has a file at that path.
+- **Any engine:** the fallback works for Edge, Liquid, Nunjucks, Jinja and Handlebars includes alike, and a theme can mix them.
+- **No package manager:** a theme can be a git repository pinned to a tag or a commit (its full 40-character hash): `theme: "https://github.com/you/trail-theme#v1.2.0"`, or `#v1.2.0:theme` when the theme is in a folder of its repository (`{ git, ref, dir }` says the same as an object). ssqch fetches it once with `git` and keeps it in `.cache/ssqch/themes/`, so later builds don't touch the network; changing the commit or tag fetches the new one. An unpinned URL is an error, so a build next year gets the theme you tested with.
+- **Layers:** `theme` takes a list, and earlier themes sit on top of later ones.
+- **Not part of a theme:** the files about it at the top of its folder (`README`, `LICENSE`, `CHANGELOG`, `package.json`).
+
+To change something in a git theme, copy that one file from `.cache/ssqch/themes/` to the same path in your input folder and edit it there. In `sitesquatch.toml`, it's `theme = ["themes/trail"]`.
+
+## Content schemas
+
+Front matter is easy to get wrong: a misspelled key, a date that isn't one, a hero image that was renamed. A schema says what a kind of page's data has to look like, and every build checks it:
+
+```js
+export default defineConfig({
+  schemas: {
+    posts: {
+      fields: {
+        title: "string",
+        date: "date",
+        description: "string?",
+        status: "'draft' | 'published'",
+        topics: "string[]",
+        hero: { src: "file", alt: "string" },
+        "author?": { name: "string", url: "string?" },
+        slug: (value) => /^[a-z0-9-]+$/.test(value) || "must be lowercase letters, digits and dashes",
+      },
+      unknown: "error",
+    },
+    docs: { files: "docs/**/*.md", fields: { title: "string", order: "integer?" } },
+  },
+});
+```
+
+```text
+error: 3 content errors:
+  - src/posts/cedar.md: `status` must be "draft" or "published", not "drfat" (schema `posts`)
+  - src/posts/cedar.md: `hero.src` is "cedar.jpg", but there's no such file next to the page (schema `posts`)
+  - src/posts/cedar.md: `descripton` isn't a field of this schema (did you mean `description`?) (schema `posts`)
+```
+
+- **Which pages:** a schema covers the pages tagged with its name (the pages in `collections.posts`; `all` is every page in collections), or the files matching `files`, globs relative to the input folder.
+- **What's checked:** each page's data after the data cascade and `computed`, so a value from a directory data file counts. Every problem in every page is reported in one go, with the file and the field.
+- **Types:** `string`, `number`, `integer`, `boolean`, `date` (a date, or a string that reads as one), `file` (a path to a file that exists: next to the page, or from the input folder with a leading `/`), `object`, `array` and `any`. A quoted value, number, `true`, `false` or `null` is that exact value, `|` is either-or, `[]` is a list, and a `?` at the end makes the field optional.
+- **Nested data:** an object of fields, or a one-item array for a list of them: `links: [{ href: "string", text: "string" }]`. A key that ends in `?` is optional too.
+- **Your own rules:** a function gets the value and the page's data, and returns `true`, `false`, or what's wrong (`` `slug` must be lowercase letters, digits and dashes ``).
+- **`unknown`:** what to do about keys in a page's own front matter that aren't fields: `"allow"` (the default), `"warn"` or `"error"`. Keys ssqch reads itself (`layout`, `tags`, `permalink`, `date` and the like) are always fine, and so is data from the rest of the cascade.
+- **Editor types:** `ssqch types` adds the schemas to `ssqch.d.ts`, so `pages.byTag("posts")` in a collection function knows each page's fields.
+
+In `sitesquatch.toml`, a schema is a table: `[schemas.posts]` with `fields = { title = "string", date = "date" }`.
 
 ## Reading the build summary
 
@@ -479,6 +592,50 @@ Built in 110 ms (production)
 
 `ssqch serve` prints the same summary after every rebuild.
 
+## Comparing two builds
+
+A build that succeeds isn't proof that an upgrade, a refactor or a migration left the site alone. `ssqch diff` compares two output folders and says what changed:
+
+```sh
+ssqch build --output dist-before   # before the change
+# upgrade ssqch, edit a layout, move to another template language...
+ssqch build
+ssqch diff dist-before dist
+```
+
+```text
+Comparing dist-before with dist
+Ignoring asset fingerprints, integrity hashes, the generator's version, and whitespace between tags (--exact compares bytes).
+
+Added (1)
+  + /trails/cedar/
+
+Removed (1)
+  - /trails/old-growth/
+
+Changed (2)
+  ~ /trails/  (text and markup)
+      ids removed (links to them break): #old-growth
+      - <h2 id="old-growth">
+      - Old growth
+      + <h2 id="cedar">
+      + Cedar
+  ~ /assets/index.css  (index.3f2a1b4c.css -> index.9d8e7f6a.css)
+      - body { color: #222 }
+      + body { color: #111 }
+
+2 changed, 1 added, 1 removed; 148 pages and 4,730 other files are the same.
+```
+
+- **What's ignored:** differences that don't change what a visitor gets. A fingerprinted file (`index.3f2a1b4c.css`: eight hex digits before the extension, unless they read as a date) is matched with its counterpart and compared by content, `integrity` hashes and the generator's version are left out, and HTML is compared as a list of tags and text, so whitespace between block tags doesn't count. A space next to an inline tag (`a <b>b</b>`) does, and so does whitespace inside `<pre>`, `<script>`, `<style>` and `<textarea>`. `--exact` compares bytes instead.
+- **What each page says:** whether its text, its markup or both changed, a changed `<title>`, and any `id`s that are gone (links to those anchors break).
+- **Your own noise:** `--ignore <regex>` leaves matching text out of both sides, like a build date in the footer: `--ignore 'Built on [^<]+'`. Repeat it for more patterns.
+- **Part of the site:** `--only '**/*.html'` compares only matching files (repeatable).
+- **Longer diffs:** each file shows 10 changed lines; `--lines 0` shows them all.
+- **Scripts and agents:** `--format json` prints the same report as JSON (`schemaVersion: 1`), and the exit code is 0 when the builds are the same, 1 when they differ and 2 on an error, like `diff`.
+
+It works on any two folders of HTML, so it can also compare another generator's output with ssqch's while you move a site over.
+
 ## Deploying
 
 ### Keep the image cache between builds
@@ -488,6 +645,25 @@ Encoding images is by far the slowest part of a build, so it's worth never doing
 ssqch also remembers each source image's hash, size and modification time in `.cache/ssqch/image-hashes.json`, so unchanged images aren't read again. Cache that folder too. (A fresh clone gives every file a new modification time, so its first build re-hashes everything, which takes about 20 ms on the blog's 420 MB of images.) Add `.cache/` to your `.gitignore`, or turn the hash cache off with `hashCache: false`. It's kept outside the output folder because it names your source paths, and the output gets published.
 
 Set `prune: true` on `imagePlugin()` to delete image files the build didn't use, so the cache doesn't keep growing as images change. Only turn it on for full builds, where every image goes through the image plugin.
+
+### Serving a site under a path
+
+A GitHub Pages project site lives at `https://you.github.io/repo/`, not at the root of a domain, so a link to `/about/` would miss. Set `base` and leave the templates alone:
+
+```js
+export default defineConfig({
+  base: "/repo/",
+});
+```
+
+- **HTML:** in every page ssqch writes, a URL that starts with `/` gets the base in front: `href`, `src`, `srcset`, `action`, `poster` and the other URL attributes, a meta refresh, and `url()` in `style` attributes and `<style>` elements. That covers Markdown links, images from `imagePlugin()`, fingerprinted assets, redirect pages and Sass output. Relative URLs, `#fragments` and URLs with a domain aren't changed, so a link to something else on the same domain needs the whole address (`https://you.github.io/other-project/`).
+- **Everywhere else:** in an inline script, a JSON file or a feed, call `withBase("/search.json")`, or print `ssqch.base` (`/repo`, or an empty string without a base). Don't use `withBase()` inside an HTML attribute, or the URL gets the base twice (the link checker reports it).
+- **`page.url` and collections:** unchanged, so `page.url == item.url` and the navigation helpers work the same with or without a base.
+- **The output folder:** unchanged too. `dist/about/index.html` is what the host serves at `/repo/about/`.
+- **Plugins:** `linksPlugin()` checks links under the base (other paths on the domain count as external), and `sitemapPlugin({ url })` takes the address with or without the base in it.
+- **`ssqch serve`:** serves the site at `http://localhost:8080/repo/`, so what you click through locally is what the host will serve.
+
+`ssqch build --base /repo/` sets it from the command line (for a preview deployed under another path, say) and wins over the config. In `sitesquatch.toml` it's `base = "/repo/"`.
 
 ### Search
 
@@ -546,7 +722,17 @@ These numbers come from building the ReverentGeek blog (161 HTML pages plus a fe
 
 On a 4-core GitHub Actions runner, the v0.2.1 release builds the blog in about 0.3 s warm and 4m 45s cold.
 
-To reproduce the table on macOS, run `scripts/bench.sh [path/to/blog] [warm-runs]` (the blog defaults to `../blog`). It works on a copy-on-write clone of the blog in a temporary folder, so your copy is never touched, and writes `results.csv`, `bench.log` and `summary.txt` to `bench-results/<timestamp>/`.
+For a bigger site, `scripts/synthetic-site.py <folder> [pages] [engine]` writes a synthetic documentation site: 9,001 Markdown pages by default (about the size of kubernetes.io's English docs) in 60 sections, each page with a 9,000-entry sidebar from a data file, a table of contents, a highlighted code fence, a schema check and the link checker. On the same machine, production builds of it take:
+
+| Layout in | Build | CPU time | Peak memory |
+| --- | --- | --- | --- |
+| Edge | **1.5 s** | 11 s | 0.5 GB |
+| Nunjucks | **1.4 s** | 11 s | 0.6 GB |
+| Liquid | **12 s** | 159 s | 1.1 GB |
+
+Each build writes 156 MB of HTML and checks 1.4 million links. Liquid is slower because the `liquid` crate copies a value each time a template reads it, and this layout hands the whole sidebar to a filter on every page (see [Known gaps](#known-gaps)).
+
+To reproduce the blog's table on macOS, run `scripts/bench.sh [path/to/blog] [warm-runs]` (the blog defaults to `../blog`). It works on a copy-on-write clone of the blog in a temporary folder, so your copy is never touched, and writes `results.csv`, `bench.log` and `summary.txt` to `bench-results/<timestamp>/`.
 
 ## Extending SiteSquatch in Rust
 
@@ -572,10 +758,18 @@ A plugin implements `sitesquatch::Plugin` (any `Fn(&mut Config)` works too) and 
 | `add_global_data(name, \|ctx\| ...)` | `data`, or a JavaScript file in `_data/` |
 | `add_collection(name, \|api\| ...)` | `collections` (`all`, `by_tag`, `by_tags`) |
 | `add_transform(name, \|ctx, html\| ...)` | `transforms` |
-| `add_template_engine(ext, factory)` | not available (Markdown and Edge use this same trait) |
-| `on_before_build`, `on_after_build` | `beforeBuild`, `afterBuild` |
+| `add_template_engine(ext, factory)` | `engines` (Markdown and Edge use this same trait) |
+| `on_before_build`, `on_after_build`, `run_before_build`, `run_after_build` | `beforeBuild`, `afterBuild` |
 | `add_passthrough_copy[_to]`, `add_watch_target` | `passthrough`, `watch` |
+| `set_base("/repo/")` | `base` |
+| `add_schema(Schema::parse(name, &spec)?)` | `schemas` |
+| `add_theme("themes/trail")` | `theme` |
+| `add_generator(name, \|ctx, pages\| ...)` | not available (files made from the pages that were written: a sitemap, redirect pages) |
+| `add_file_builder(name, \|ctx\| ...)` | not available (files built from their own sources before the pages: compiled CSS) |
+| `add_config_file(path)` | not available (a file `ssqch serve` reads the configuration again for) |
 | `add_summary(label, \|ctx\| ...)` | not available (adds a line to the build summary) |
+
+A site binary whose setup can fail uses `sitesquatch::cli::try_run_with`, whose closure returns a `Result` and is called again by `ssqch serve` when a config file changes. `sitesquatch::diff::compare` is `ssqch diff` as a function.
 
 Plugins can share services. The image plugin exposes an `ImageProcessor`, and the blog's plugin uses it for its hero image data and its `socialImage` filter.
 
@@ -586,11 +780,19 @@ crates/ssqch             The `ssqch` command-line tool
 crates/sitesquatch       Generator core, CLI and dev server, as a library
 crates/sitesquatch-edge  Edge.js template engine (parser + JavaScript expression evaluator)
 crates/sitesquatch-js    ssqch.config.js support, on an embedded QuickJS engine
-plugins/rss              Feed filters: getNewestCollectionItemDate, dateToRfc3339/822, absoluteUrl, htmlToAbsoluteUrls, url
+plugins/rss              Feed filters: getNewestCollectionItemDate, dateToRfc3339/822, absoluteUrl, htmlToAbsoluteUrls
 plugins/image            <img> -> responsive <picture>, and image() for data files
 plugins/minify           Conservative HTML minifier
 plugins/assets           Asset fingerprinting: content-hashed names and rewritten references
 plugins/links            Link checker: internal links and anchors in the built site
+plugins/sitemap          sitemap.xml from the pages a build writes
+plugins/redirects        Redirect pages and Netlify rules from `aliases`
+plugins/sass             Sass, compiled with grass
+plugins/elements         Custom elements: scripts loaded only on the pages that use them
+plugins/liquid           Liquid templates
+plugins/jinja            Nunjucks and Jinja templates
+plugins/handlebars       Handlebars and Mustache templates
+examples/sites           Example sites, built by the tests
 examples/reverentgeek    The blog's config ported to Rust, as an example of the Rust API
 ```
 
@@ -610,10 +812,11 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/) from a ve
 
 ## Known gaps
 
-- **JavaScript:** npm packages run on QuickJS, not Node, so servers, child processes, streams and native addons aren't there (see [npm packages](#npm-packages)), and regular expressions can't use the `v` flag's set operations (`[\p{L}--\p{ASCII}]`), which breaks `@sindresorhus/slugify`. JavaScript is interpreted (QuickJS has no JIT), so heavy collection code is slower than in Node: reading a page in a collection costs about 2 µs the first time, and the blog's `topics` and `postsByYear` collections over 2,000 posts take about 45 ms together.
+- **JavaScript:** npm packages run on QuickJS, not Node, so servers, child processes, streams and native addons aren't there (see [npm packages](#npm-packages)), and regular expressions can't use the `v` flag's set operations (`[\p{L}--\p{ASCII}]`), which breaks `@sindresorhus/slugify`. A CommonJS file imported from an ES module runs when the module is loaded, so it runs before an earlier `import` of a module that's there for its side effects (Node runs them in order). JavaScript is interpreted (QuickJS has no JIT), so heavy collection code is slower than in Node: reading a page in a collection costs about 2 µs the first time, and the blog's `topics` and `postsByYear` collections over 2,000 posts take about 45 ms together.
 - **Edge:** no `@inject`, `@debugger`, `@svg`, components as tags (`@!card()`), destructuring in `@let`, scoped slots, regex literals, or the `in` operator. Array `reverse` and `sort` return copies instead of changing the array.
-- **Markdown:** containers have to close inside the block they opened in (the same list item, say). Highlighting has no grammars for Edge, Liquid or Handlebars yet (Jinja and Nunjucks work), and parsing is slower than tree-sitter's: the blog's 350 fences add about 60 ms to a build.
+- **Markdown:** containers have to close inside the block they opened in (the same list item, say). Highlighting parses more slowly than tree-sitter would: the blog's 350 fences add about 60 ms to a build.
 - **Images:** no SVG rasterizing, and HDR photos (the PQ, gain-map profiles of newer iPhones) can't be converted to sRGB, so they look washed out; the build warns about them, and converting the source to sRGB once fixes it. SVGs are served as they are, and GIFs are copied for `auto` output, so animations keep working.
+- **Liquid:** the `liquid` crate copies a value every time a template reads it, so a template that reads a big list on every page (`for post in collections.posts`, or a whole sidebar passed to `navTree`) pays for the copy each time. A 9,000-page site with a 9,000-entry sidebar builds in 12 s in Liquid and 1.5 s in Edge or Nunjucks. `{% render %}` partials are strict about unknown variables, and errors name the template but not the line.
 - **Collections:** custom collections don't see pages that are paginated over collections. Those pages are added to `all` and their tags afterwards.
 - **Platforms:** prebuilt binaries cover Linux x86_64, macOS and Windows x86_64, but not Linux on ARM yet; see [TODO.md](TODO.md) for what's next.
 

@@ -30,8 +30,74 @@ a `v<version>` tag on a commit where that version matches.
   unchanged. A Liquid, Nunjucks or Handlebars page whose permalink uses Edge syntax needs it
   rewritten in its own language.
 
+- The `url()` filter that `rssPlugin()` added is gone. It returned its argument, so use the
+  path itself (`absoluteUrl(post.url, site.url)`), or `withBase()` with the new `base` setting.
+
 ### Added
 
+- `base: "/repo/"` (or `ssqch build --base /repo/`) for a site served below the root of its
+  domain, like a GitHub Pages project site. Templates and `page.url` stay as they are; ssqch
+  puts the base in front of every URL from the site's root in the HTML it writes (attributes,
+  `srcset`, meta refreshes, `url()` in styles), in redirect pages and in Sass output. The link
+  checker and the sitemap know about it, `ssqch serve` serves the site under it, and
+  `withBase(path)` and `ssqch.base` cover scripts, JSON and feeds.
+- `ssqch import eleventy` does the mechanical part of moving an Eleventy site: it renames
+  `*.11tydata.*` files, rewrites front matter keys and image attributes, drafts
+  `ssqch.config.js` from the Eleventy config, and lists what's left to port with file and line.
+  `ssqch import zola` does the same for a Zola site: `tags` out of `[taxonomies]`, `path` to
+  `permalink`, a config drafted from `config.toml`, and a list for the Tera templates,
+  shortcodes and sections. Both are dry runs unless `--write` is given.
+- Themes: `theme: "themes/trail"` puts the site on top of a folder of includes, data, pages
+  and files, and the site's own file wins at each path, in every template language. A theme
+  can be a git repository pinned to a commit or tag (`"https://github.com/you/theme#v1.2.0"`),
+  fetched once with `git` into `.cache/ssqch/themes/`: no package manager. Rust:
+  `Config::add_theme`.
+- `ssqch/elements`: `elementsPlugin()` loads a custom element's script (and stylesheet) only on
+  the pages that have its tag. `like-button.js` in `src/elements/` is `<like-button>`, the tag's
+  content is its fallback, and `ssqch:load="idle"` or `"visible"` delays the script until the
+  browser is idle or the element is in view. The `islands` example uses it.
+- `ssqch init --starter docs` creates a documentation site: a sidebar, breadcrumbs and
+  previous/next links from `nav.yml`, a table of contents per page, notes, tabs, highlighted
+  code, a front matter schema, the link checker, and optional Pagefind search. It reads without
+  JavaScript, in light and dark.
+- Nunjucks: a config filter is a tag too. `{% image "/a.png", "Alt" %}` prints what the
+  function returns, and `{% callout "tip" %}...{% endcallout %}` passes it the content first
+  (`{% markdown %}...{% endmarkdown %}` works the same way).
+- Jinja and Nunjucks: `dateformat`, `timeformat` and `datetimeformat` filters (named formats or
+  a `strftime` pattern), `now()`, `strftime()` and `isoformat()` on dates, and `pluralize`,
+  `filesizeformat`, `striptags`, `cycler()` and `joiner()`.
+- Highlighting for `edge`, `liquid`, `hbs`/`handlebars` and `mustache` fences: the template
+  tags (keywords, filters, strings, comments) over highlighted HTML.
+- More render hooks: `_includes/hooks/footnote-ref.*` and `footnotes.*` write footnote
+  references and the notes in a site's own markup, and `hooks/redirect.*` writes the redirect
+  pages of `ssqch/redirects`.
+- `image(src, { name: "/assets/sponsors/acme" })` names an image's files and folder
+  (`/assets/sponsors/acme-200.webp`) instead of using a hash of the source. A named file is
+  encoded again when its source is newer.
+- `smartPunctuation` leaves a `--` in front of a word alone, so command-line flags in running
+  text (`--fix`) aren't turned into dashes.
+- `ssqch serve` reads the configuration again when `ssqch.config.js` (or `sitesquatch.toml`)
+  changes, or a module the config or a data file imports, so there's no need to restart it. A
+  config that doesn't load is reported, and the last good one keeps serving. `--port 0` picks
+  a free port. Rust: `cli::try_run_with` (a `configure` that can fail), `serve::serve_reloading`
+  and `Config::add_config_file`.
+- `fetch(url, { cache: "1h" })` saves a successful response in `.cache/ssqch/fetch/` and reuses
+  it until it's that old, so rebuilds (and `ssqch serve`) don't ask the API every time. When a
+  refresh fails and an older copy is there, the build uses it and warns. `"force-cache"`,
+  `"reload"` and `"only-if-cached"` work, `ssqch build --offline` (or `SSQCH_OFFLINE=1`) answers
+  only from saved copies, and the build summary has a `Fetch` line.
+- Content schemas: `schemas: { posts: { fields: { title: "string", date: "date", status:
+  "'draft' | 'published'", hero: { src: "file", alt: "string" } } } }` checks the data of every
+  page tagged `posts` (or matching `files` globs) on each build, and reports every problem with
+  its file and field. Types are short strings (`string?`, `string[]`, unions and literals,
+  `file` for a path that has to exist), nested objects, or functions; `unknown: "error"` catches
+  misspelled front matter keys. `ssqch types` adds the schemas to `ssqch.d.ts`, so
+  `pages.byTag("posts")` is typed. Rust: `Config::add_schema`.
+- `ssqch diff <before> <after>` compares two builds: URLs added and removed, and for each
+  changed page whether its text or markup changed, a changed title, and `id`s that are gone.
+  Asset fingerprints, `integrity` hashes, the generator's version and whitespace between tags
+  are ignored (`--exact` compares bytes), `--ignore <regex>` drops a site's own noise, and
+  `--format json` is for scripts. Exits with 1 when the builds differ. Rust: `sitesquatch::diff`.
 - npm packages: `import` and `require` find packages in `node_modules` the way Node does
   (`exports` with `import`, `require`, `node` and `default` conditions, `imports`, `main`,
   folders above the site, pnpm's symlinks). luxon, date-fns, lodash, markdown-it, highlight.js,
@@ -116,12 +182,41 @@ a `v<version>` tag on a commit where that version matches.
   container templates. `:::tip[Title]` gives the arguments `Title`.
 - Rust: `Config::add_file_builder` for files built from their own sources at the start of a
   build, and `Config::run_before_build`/`run_after_build`.
-- Examples in `examples/sites/` (`blog-tags`, `blog-categories`, `docs-sidebar` and
-  `glossary-docs`), each built in CI with the link checker, and guides for moving from Zola and
-  from Eleventy in `docs/guides/`.
+- Examples in `examples/sites/` (`blog-tags`, `blog-categories`, `docs-sidebar`,
+  `glossary-docs`, `versioned-docs`, `component-docs`, `reference-pages` and `islands`), each
+  built in CI with the link checker, and guides in `docs/guides/` for moving from Zola,
+  Eleventy, Docusaurus, MkDocs, Hexo and component frameworks (Astro, VitePress, Next.js,
+  Gatsby).
+
+### Faster
+
+- `navTree`, `navPager` and `navBreadcrumbs` index a tree once instead of walking all of it
+  for every page. A 9,000-page site with a 9,000-entry sidebar went from 5.2 s to 1.5 s.
+- The link checker looks each target up on disk once, not once per link (1.6 s to 0.5 s for
+  1.4 million links).
+- Liquid: a config filter no longer tries to parse every string it's given as a date, which
+  compiled a regular expression each time. The same site in Liquid went from over 7 minutes
+  to 12 s, and any Liquid site that calls config filters gains.
 
 ### Fixed
 
+- **Security:** `ssqch serve` could be asked for any file on the machine: `/%2Fetc/hosts`
+  decoded to a path that replaced the output folder. Request paths are decoded first and have
+  to stay inside the output folder now. The server only listens on localhost, but a web page
+  open in the same browser could have made the request.
+- `ssqch serve` doesn't rebuild again for a source that was written with the same contents, so
+  a `beforeBuild` command that writes into the input folder doesn't rebuild forever.
+- `AbortSignal.timeout(Infinity)` (or any huge number) no longer stops the build with a panic.
+- `ssqch serve` no longer rebuilds in a loop when the input folder is the project root (the
+  default `dirs`). Each build rewrote `.cache/ssqch/output-files.json`, which is inside the
+  watched folder, and that counted as a change. Changes under `.cache`, `.git` and
+  `node_modules` are ignored now, and the list is only written when it changes.
+- A TOML date written without quotes (`date = 2024-01-02`, in `+++` front matter or a `.toml`
+  data file) is read as a date. It failed with "can't parse date".
+- Liquid: `{% include "nav.html" %}` with the name in quotes finds the file. Only the unquoted
+  form (`{% include nav.html %}`) did.
+- In Edge, `{{ image(src) }}` calls the `image` filter on a page whose data has an `image`
+  field. The field shadowed the filter, and the call failed with "is not a function".
 - `computed.date` is the page's date (in collections, feeds and `page.date`).
 - Redirect pages keep the old URL's `#fragment`, `aliases` without a leading `/` are from the
   site's root, and an alias like `/releases/1.85.0` is a folder, not a file.

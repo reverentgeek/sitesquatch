@@ -4,6 +4,10 @@ SiteSquatch keeps many of the same ideas as Eleventy (a data cascade, collection
 
 The [ReverentGeek blog](https://github.com/reverentgeek/blog) made this move (from Eleventy with Edge templates), and the [`blog-categories`](../../examples/sites/blog-categories/) example is distilled from eslint.org, an Eleventy site.
 
+## Importing
+
+`ssqch import eleventy` does the mechanical part of what this guide describes: it renames `*.11tydata.*` data files, rewrites the front matter keys and `eleventy:` image attributes below, writes a first `ssqch.config.js` from the Eleventy config (folders, passthrough copies, watch targets, template engines, `pathPrefix`), and lists what's left, each with its file and line: every filter, shortcode, collection, transform and plugin, and what it becomes. Run it once to read the list (it changes nothing), then with `--write` in a clean git checkout.
+
 ## The config
 
 `.eleventy.js` becomes `ssqch.config.js`, an ES module whose default export is the config: an object, or a function of `{ env, serving }` that returns one.
@@ -24,8 +28,9 @@ export default defineConfig(({ env }) => ({
 
 | Eleventy | SiteSquatch |
 | --- | --- |
-| `addFilter`, `addShortcode`, `addNunjucksFilter` | `filters: { name: fn }`, callable from every template language (`{{ name(x) }}` in Edge, `{{ x \| name }}` in Nunjucks and Liquid). Async functions are awaited. |
-| `addPairedShortcode` | A `::: name` container (`_includes/containers/name.*`), or an Edge component |
+| `addFilter`, `addNunjucksFilter` | `filters: { name: fn }`, callable from every template language (`{{ name(x) }}` in Edge, `{{ x \| name }}` in Nunjucks and Liquid). Async functions are awaited. |
+| `addShortcode` | A filter too. In Nunjucks, a config filter is also a tag, so `{% image "a.png", "Alt" %}` keeps working as it is. |
+| `addPairedShortcode` | In Nunjucks, the same filter with a closing tag: `{% callout "tip" %}...{% endcallout %}` calls `callout(content, "tip")`. In Markdown, a `::: name` container (`_includes/containers/name.*`). In Edge, a component. |
 | `addCollection(name, api => ...)` | `collections: { name: (pages) => ... }`. `getAll()` is `pages.all()`, `getFilteredByTag(t)` is `pages.byTag(t)`, `getFilteredByGlob(g)` is `pages.byGlob(g)`. |
 | `addGlobalData` | `data: { name: value or function }` |
 | `addTransform` | `transforms: { name: (content, page) => content }` |
@@ -36,9 +41,11 @@ export default defineConfig(({ env }) => ({
 | `dir` | `dirs` |
 | `markdownTemplateEngine`, `htmlTemplateEngine` | `markdownEngine`, `htmlEngine` |
 | `setLibrary("md", markdownIt(...).use(...))` | `markdown: { ... }` options, render hooks and containers (below) |
-| `pathPrefix` | Not supported yet |
+| `pathPrefix` | `base: "/repo/"`. Links in templates stay as they are (no `url` filter): ssqch adds the base to every URL from the site's root in the HTML it writes, and `withBase()` covers scripts and JSON. |
 
-The config is ESM: `require` and `module.exports` become `import` and `export`, and npm packages can't be imported yet (relative files, JSON and `node:fs`, `node:path` and other built-ins can).
+The config is ESM, though your own CommonJS files (`require`, `module.exports`) load too. npm packages import from `node_modules` as they do in Node, as long as they don't need a server, child processes or native addons: luxon, date-fns, lodash, markdown-it and slugify-style helpers work.
+
+`ssqch serve` reads the config again when it changes, so there's no restart while you port it.
 
 ## Front matter and data
 
@@ -53,7 +60,7 @@ The config is ESM: `require` and `module.exports` become `import` and `export`, 
 | `page.url`, `page.fileSlug`, `page.inputPath`, `page.outputPath`, `page.date` | The same, plus `page.headings` and `page.excerpt` in layouts. Dates in file names (`2024-06-01-post.md`) work the same way. |
 | `layouts: "_includes/layouts"` and `layout: post` | `dirs: { layouts: "_includes/layouts" }` |
 | `addDataExtension("yml", ...)` with js-yaml | Built in: YAML, TOML and JSON data files load as they are, and `readData(path)` from `ssqch` reads one in code |
-| `eleventyNavigation` | A data file such as `_data/nav.yml` (see the `docs-sidebar` example) |
+| `eleventyNavigation` | `nav` front matter with the same `key`, `parent`, `order` and `title`, turned into a tree with `pagesTree(collections.all)`; or a data file such as `_data/nav.yml`. `navTree`, `navPager` and `navBreadcrumbs` mark the current page, and give previous/next and the trail. |
 | `eleventy.env`, `process.env.ELEVENTY_ENV` | The `ssqch` template global (`ssqch.env`, `ssqch.serving`), and `SSQCH_ENV` |
 
 ## Plugins
@@ -74,16 +81,24 @@ The config is ESM: `require` and `module.exports` become `import` and `export`, 
 
 ## Templates
 
-Nunjucks (`.njk`) renders with minijinja, and Liquid with the `liquid` crate. Most templates work unchanged; the README lists what differs (Nunjucks async tags and custom tag extensions aren't supported). JavaScript templates (`.11ty.js`) need rewriting in a template language, or an engine of your own for a new extension: `engines: { page: (source, data) => html }` renders `.page` files. WebC isn't supported.
+Nunjucks (`.njk`) renders with minijinja, and Liquid with the `liquid` crate. Most templates work unchanged, shortcodes included; the README lists what differs (Nunjucks async tags aren't supported, and Liquid shortcodes become filters). JavaScript templates (`.11ty.js`) need rewriting in a template language, or an engine of your own for a new extension: `engines: { page: (source, data) => html }` renders `.page` files. WebC isn't supported.
 
 ## Things that work differently
 
 - **Templates in a passthrough folder aren't pages.** Eleventy renders a `feed.njk` inside a copied `static/` folder and also copies it. ssqch only copies it. Move templates out, or use a glob for the files to copy (`{ "src/static/*.{png,ico,svg}": "." }`).
-- **A filter called as a function loses to page data of the same name.** With `image:` in a post's front matter, `image(src)` is that string, not the filter. `src | image` works, or give the filter another name.
+- **In Nunjucks, a filter called as a function loses to page data of the same name.** With `image:` in a post's front matter, `image(src)` is that string, not the filter. `src | image` and the tag form (`{% image src %}`) always reach the filter, and Edge's `image(src)` does too.
 - **A printed date is ISO 8601** (`2024-06-01T00:00:00.000Z`), not JavaScript's `Date.toString()`, which depends on the machine's time zone. Format dates with a filter.
-- **Markdown differs from markdown-it in a few places:** smart punctuation turns every `--` into a dash (markdown-it's typographer only a spaced one), bare domains like `example.com` aren't links (only `https://` and `www.` URLs are, as on GitHub), and with `indentedCode: false`, indented HTML renders as HTML (markdown-it wraps it in `<p>`).
+- **Markdown differs from markdown-it in a few places:** bare domains like `example.com` aren't links (only `https://` and `www.` URLs are, as on GitHub), and with `indentedCode: false`, indented HTML renders as HTML (markdown-it wraps it in `<p>`).
 - **markdown-it-anchor's ids** need a slugger: `markdown: { headingIds: (text) => encodeURIComponent(text.trim().toLowerCase().replace(/\s+/g, "-")) }`, and a heading hook if you want its `tabindex="-1"`.
 
 ## Checking the move
 
-Build the old site and the new one, and compare the output folders with a diff tool: the differences should be ones you meant. The link checker (`linksPlugin()`) catches pages and anchors that moved.
+Build the old site with Eleventy and the new one with ssqch, and compare the two output folders:
+
+```sh
+ssqch diff _site-eleventy dist
+```
+
+It lists the URLs that were added and removed and what changed on each page, ignoring whitespace between tags and fingerprinted file names; `--ignore <regex>` drops differences you expect (a generator meta tag, say). The link checker (`linksPlugin()`) catches pages and anchors that moved, and a `schemas` entry catches front matter that didn't survive the trip.
+
+`ssqch import eleventy` does the mechanical renames above for you; see [Importing](#importing).
