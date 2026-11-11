@@ -410,6 +410,20 @@ pub(crate) fn inspect_pages(cfg: &Config) -> Result<(BuildContext, Map, Vec<Insp
     Ok((ctx, prepared.global, pages))
 }
 
+/// The functions every template has, with what each does, for `ssqch docs`.
+/// A test keeps it the same as what [`builtin_filters`] and `withBase` add.
+pub const BUILTIN_FILTERS: &[(&str, &str)] = &[
+    ("markdown", "`markdown(text)` renders Markdown with the site's options; `markdown(text, \"inline\")` without the `<p>`."),
+    ("toc", "`toc(page.headings)` is a table of contents; `toc(page.headings, { from: 2, to: 4, ordered: true })` picks the levels."),
+    ("navTree", "`navTree(nav, page.url)` marks a navigation tree's entries `current`, `ancestor` or `open`."),
+    ("navPager", "`navPager(nav, page.url)` is `{ previous, next }` in reading order."),
+    ("navBreadcrumbs", "`navBreadcrumbs(nav, page.url)` is the entries from the top down to the page."),
+    ("pagesTree", "`pagesTree(collections.docs)` builds a navigation tree from pages' `nav` front matter."),
+    ("highlight", "`highlight(code, lang)` is highlighted HTML for inside a `<code>`, with `hl-*` classes."),
+    ("readingTime", "`readingTime(content)` is the minutes it takes to read some HTML, at 200 words a minute."),
+    ("withBase", "`withBase(\"/feed.xml\")` puts the site's `base` in front of a URL, for places outside HTML attributes."),
+];
+
 /// Filters every site has: `markdown(text)` (or `markdown(text, "inline")`)
 /// and `toc(page.headings)` (or `toc(page.headings, { from: 2, to: 4, ordered: true })`).
 /// A config filter with the same name replaces one.
@@ -1950,6 +1964,17 @@ fn passthrough_copy(cfg: &Config, ctx: &BuildContext, extra: Vec<(PathBuf, PathB
 #[cfg(test)]
 mod tests {
     use super::edge_code_mentions;
+
+    #[test]
+    fn the_filter_list_names_every_builtin_filter() {
+        let markdown = std::sync::Arc::new(crate::engines::MarkdownEngine::new(Default::default()));
+        let mut have: Vec<String> = super::builtin_filters(&markdown).keys().cloned().collect();
+        have.push("withBase".into());
+        have.sort();
+        let mut listed: Vec<String> = super::BUILTIN_FILTERS.iter().map(|(name, _)| name.to_string()).collect();
+        listed.sort();
+        assert_eq!(have, listed);
+    }
 
     #[test]
     fn collections_in_prose_is_not_code() {

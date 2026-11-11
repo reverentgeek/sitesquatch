@@ -100,6 +100,10 @@ dist tries to sign with it.
 
 - Commit subjects are short, imperative, in sentence case (`Fix unstyled pages when serving
   after a production build`).
+- The README is built into the binary for `ssqch docs`, which answers a name with the table row
+  or list item that starts with it in backticks. A new config option, module export or template
+  function needs one, and a description where it's defined (`ssqch.d.ts`, or `BUILTIN_FILTERS`
+  in `build.rs`); `docs_answer_for_every_name` checks.
 - README paragraphs, list items and callouts are one line each (no hard wrapping). TODO and
   CHANGELOG prose wraps at 100 columns.
 - Error messages name the file and what went wrong (`ssqch.config.js: too many pine cones`).

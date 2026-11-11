@@ -693,13 +693,28 @@ I'd take them (the first three went into 0.4):
   - [x] Template globals: `eleventy.*`, and Jekyll's `site.posts` and `site.pages` (unless the
         site's `site` data has them), read in template code in pages, layouts and includes:
         a warning, `foreign-global`.
-  - [ ] Not yet: `ssqch docs <foreign name>` and `ssqch docs --from <generator>` once `ssqch
-        docs` exists (hints say `More: README: "..."` until then).
+  - [x] `ssqch docs <foreign name>` and `ssqch docs --from <generator>`: each row's `More:`
+        is an `ssqch docs` lookup now (or a command's `--help`, for flags), and the test checks
+        it answers.
   - [x] With it: a sentence in `CLAUDE.md` saying a hint that names another generator's word
         isn't an API.
   - [x] Found on the way: Liquid's `Unknown filter` didn't name the filter; it does now, with a
         "did you mean". (`Nothing sighted` had an empty folder name when the input folder is
         the project root; fixed: it says `.`.)
+- [x] **`ssqch docs`: the documentation of the installed version, from the binary** (item 2 in
+      `research/exact-agent-first.md`). The README and the guides in `docs/guides/` are built
+      in (`crates/ssqch/build.rs`; a crate from crates.io has only the README, and `--from`
+      links to the guide for that version). `ssqch docs` alone is a card: every command, config
+      option, template function and module export, one line each, from where they're defined
+      (clap, `ssqch.d.ts`, `BUILTIN_FILTERS`). `ssqch docs <name>` prints the table row or list
+      item that defines it and where else it comes up; another generator's word says ssqch's
+      first; heading words print a section; anything else searches the text. `--format json`
+      for agents. `docs_answer_for_every_name` checks that every name `capabilities` lists has
+      a line and an answer. Found on the way: `ssqch.d.ts` didn't declare `readData`, and the
+      rss functions, `minify`, `beforeBuild` and `afterBuild` had no descriptions.
+  - [ ] Next: `ssqch init` writes an `AGENTS.md` that points at `ssqch docs` (item 3 in the
+        research), and `ssqch docs agents` prints the block for a site that exists already.
+  - [ ] Maybe: explain each diagnostic code (`ssqch docs links`), once errors carry a finer id.
 - [ ] Not for now: a page inspector in the browser, a component workbench, an MCP server (after
       the JSON interface exists, as a thin layer over it), preview at a future date, a local
       form editor for front matter, diagnostic bundles.

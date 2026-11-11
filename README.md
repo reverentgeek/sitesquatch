@@ -201,7 +201,7 @@ The address comes after each build's report, so it's on the last line however lo
 
 None of that is written to the output folder: the server adds it to pages as it sends them.
 
-`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode and the templates nothing used. Errors are red on a terminal and plain in a pipe, a log, or anywhere `NO_COLOR` is set. The other commands are `ssqch init`, `ssqch types`, `ssqch completions`, [`ssqch new`](#starting-a-new-page), [`ssqch inspect`](#where-a-value-comes-from), [`ssqch diff`](#comparing-two-builds), [`ssqch footprint`](#a-builds-footprint), [`ssqch import`](#moving-from-another-generator) and [`ssqch capabilities`](#scripts-and-coding-agents), and `ssqch build --format json` reports to a [script or a coding agent](#scripts-and-coding-agents).
+`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode and the templates nothing used. Errors are red on a terminal and plain in a pipe, a log, or anywhere `NO_COLOR` is set. The other commands are `ssqch init`, `ssqch types`, `ssqch completions`, [`ssqch new`](#starting-a-new-page), [`ssqch inspect`](#where-a-value-comes-from), [`ssqch diff`](#comparing-two-builds), [`ssqch footprint`](#a-builds-footprint), [`ssqch import`](#moving-from-another-generator), [`ssqch capabilities`](#scripts-and-coding-agents) and [`ssqch docs`](#scripts-and-coding-agents), and `ssqch build --format json` reports to a [script or a coding agent](#scripts-and-coding-agents).
 
 ## Configuring a site
 
@@ -438,10 +438,10 @@ $ ssqch dev
 error: unrecognized subcommand 'dev'
 
   ssqch's dev server is `ssqch serve`: it builds, watches and reloads the browser.
-  More: ssqch serve --help
+  More: ssqch docs serve
 ```
 
-`pathPrefix`, `addPassthroughCopy`, `--drafts`, `{{ "/x/" | url }}`, `{{ eleventy.generator }}`, `site.posts`, `redirect_from` and `published: false` get the same treatment (every unknown config option is listed in one go), and `ssqch build --format json` carries the answer as data, in a `hint` with `use` (ssqch's name) and `more`. A folder that has another generator's config and no ssqch config gets a warning naming the importer or guide, instead of a build with ssqch's defaults that nobody asked for.
+`pathPrefix`, `addPassthroughCopy`, `--drafts`, `{{ "/x/" | url }}`, `{{ eleventy.generator }}`, `site.posts`, `redirect_from` and `published: false` get the same treatment (every unknown config option is listed in one go), and `ssqch build --format json` carries the answer as data, in a `hint` with `use` (ssqch's name) and `more`. A folder that has another generator's config and no ssqch config gets a warning naming the importer and `ssqch docs --from`, instead of a build with ssqch's defaults that nobody asked for. `ssqch docs --from eleventy` (or `hugo`, `jekyll`, `zola`, ...) lists that generator's words with ssqch's for each, then prints its field guide, and `ssqch docs pathPrefix` answers for one word.
 
 Whichever generator you're leaving, build the site with it and with ssqch and run [`ssqch diff`](#comparing-two-builds) on the two output folders: it shows which pages differ and how, so you know when the move is done.
 
@@ -950,6 +950,8 @@ ssqch build --format json
 - **Standard output is only the report.** The lines a person would have read (`[ssqch] Writing ...`), `console.log` from your config and the output of `beforeBuild` commands go to standard error; `--quiet` leaves the progress lines out.
 
 `ssqch capabilities --format json` says what this binary supports, so nothing has to be guessed from the documentation of another version: its `version`, `commands`, optional `features` (`avif`, `fetch`, `sass` and each template language, which a build from source can leave out), `templateLanguages` with their extensions, `configOptions`, the built-in `modules` with what each exports, `nodeModules`, `globals` and `imageFormats`. Without `--format json` it prints the same as text.
+
+`ssqch docs` is this documentation, from the binary, so it matches the version that's installed and works without the network. Alone, it lists every command, config option, template function and module export with one line each. `ssqch docs base` (or `imagePlugin`, `toc`, `serve`) prints what this README says about that name and which other sections mention it, `ssqch docs "content schemas"` prints a section, and other words search the text. Another generator's word gets ssqch's (`ssqch docs pathPrefix`), and `ssqch docs --from eleventy` lists that generator's words with ssqch's for each, then its field guide. `--format json` has the same, with each answer's `names`, `section` and `also`.
 
 `ssqch serve --ready-file <file>` writes a file once the first build is done and the site is being served, so a script can wait for the file instead of reading the server's output or sleeping:
 

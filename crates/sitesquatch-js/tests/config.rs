@@ -165,9 +165,9 @@ fn mistakes_in_the_config_say_what_to_fix() {
         ("export default { dirs: { assets: \"_assets\" } };", "dirs.assets isn't supported (use input, output, includes, layouts, data)"),
         ("export default { dirz: { input: \"src\" } };", "\"dirz\" isn't a config option (did you mean \"dirs\"?) (options: dirs, templateFormats"),
         // Another generator's word gets ssqch's, from the table, instead of a guess.
-        ("export default { dir: { input: \"src\" } };", "\"dir\" isn't a config option. In ssqch it's `dirs`: dirs: { input: \"src\", output: \"dist\" }.\n  More: README: \"Configuring a site\""),
+        ("export default { dir: { input: \"src\" } };", "\"dir\" isn't a config option. In ssqch it's `dirs`: dirs: { input: \"src\", output: \"dist\" }.\n  More: ssqch docs dirs"),
         // Every unknown option in one run.
-        ("export default { pathPrefix: \"/x/\", tittle: \"x\" };", "\"pathPrefix\" isn't a config option. In ssqch it's `base`: base: \"/repo/\".\n  More: README: \"Serving a site under a path\"\nssqch.config.js: \"tittle\" isn't a config option (options: dirs,"),
+        ("export default { pathPrefix: \"/x/\", tittle: \"x\" };", "\"pathPrefix\" isn't a config option. In ssqch it's `base`: base: \"/repo/\".\n  More: ssqch docs base\nssqch.config.js: \"tittle\" isn't a config option (options: dirs,"),
         ("export default { plugins: [{ builtin: \"test:gretter\" }] };", "unknown plugin \"test:gretter\" (built-in plugins: test:greeter)"),
         ("export default async () => { await new Promise(() => {}); };", "never settled"),
         ("export default { filters: { x: 1 } };", "filters.x must be a function"),

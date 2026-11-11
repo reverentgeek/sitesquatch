@@ -5,6 +5,7 @@
 //! extend SiteSquatch in Rust build their own binary with `sitesquatch::cli::run`.
 
 mod capabilities;
+mod docs;
 mod import;
 mod init;
 mod modules;
@@ -38,14 +39,19 @@ use sitesquatch_plugin_sitemap::{SitemapOptions, SitemapPlugin};
 const BUILTINS: &[(&str, BuiltinPlugin)] = &[("ssqch/rss", rss), ("ssqch/image", image), ("ssqch/minify", minify), ("ssqch/assets", assets), ("ssqch/links", links), ("ssqch/sitemap", sitemap), ("ssqch/redirects", redirects), ("ssqch/sass", sass), ("ssqch/elements", elements)];
 
 fn main() -> std::process::ExitCode {
-    let extra = vec![
+    sitesquatch::cli::try_run_with(configure, extra_commands())
+}
+
+/// The commands this binary adds to the library's (`build`, `serve` and the rest).
+pub(crate) fn extra_commands() -> Vec<sitesquatch::cli::ExtraCommand> {
+    vec![
         sitesquatch::cli::ExtraCommand { command: init::init_command(), run: Box::new(init::run_init) },
         sitesquatch::cli::ExtraCommand { command: init::types_command(), run: Box::new(init::run_types) },
         sitesquatch::cli::ExtraCommand { command: import::import_command(), run: Box::new(import::run_import) },
         sitesquatch::cli::ExtraCommand { command: capabilities::capabilities_command(), run: Box::new(capabilities::run_capabilities) },
+        sitesquatch::cli::ExtraCommand { command: docs::docs_command(), run: Box::new(docs::run_docs) },
         sitesquatch::cli::ExtraCommand { command: sighting::sighting_command(), run: Box::new(sighting::run_sighting) },
-    ];
-    sitesquatch::cli::try_run_with(configure, extra)
+    ]
 }
 
 /// Read the site's configuration into `cfg`. `ssqch serve` calls this again

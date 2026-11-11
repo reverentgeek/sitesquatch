@@ -27,6 +27,13 @@ a `v<version>` tag on a commit where that version matches.
 
 ### Added
 
+- `ssqch docs`: the documentation of the installed version, from the binary, with no network
+  or README on disk. Alone, it lists every command, config option, template function and module
+  export with one line each. `ssqch docs base` (or `imagePlugin`, `toc`, `serve`, `--starter`)
+  prints what the README says about it, `ssqch docs "content schemas"` prints a section, and
+  other words search the text. Another generator's word says ssqch's: `ssqch docs pathPrefix`.
+  `ssqch docs --from eleventy` (or `hugo`, `jekyll`, `zola`, ...) lists that generator's words
+  with ssqch's for each, then its field guide. `--format json` is for scripts and agents.
 - `ssqch init --starter docs` takes `--engine` too: `jinja` (the default), `njk`, `edge`,
   `liquid`, `hbs` or `ejs`. Each one builds the same pages. The site starter gains `--engine jinja`,
   and `--engine njk` writes the Jinja templates as `.njk` files.
@@ -63,9 +70,10 @@ a `v<version>` tag on a commit where that version matches.
   config option (`pathPrefix`, `publishDir`, `config.addPassthroughCopy()`), filter (`url`,
   `relative_url`, `slugify` in Nunjucks) or front-matter key (`eleventyComputed`,
   `redirect_from`, `published: false`) from another generator is refused or warned about as
-  before, now with ssqch's name for it and where to read more, and a `hint` in the JSON report.
-  Every unknown config option is reported in one run. A folder with another generator's config
-  and none of ssqch's gets a warning (`other-generator`) naming `ssqch import` or the guide.
+  before, now with ssqch's name for it and where to read more (`More: ssqch docs base`), and a
+  `hint` in the JSON report. Every unknown config option is reported in one run. A folder with
+  another generator's config and none of ssqch's gets a warning (`other-generator`) naming
+  `ssqch import` (for Eleventy and Zola) and `ssqch docs --from <generator>`.
   Front-matter keys are warnings (`foreign-key`); they used to be ignored without a word. So are
   templates that read `eleventy.*` or Jekyll's `site.posts` (`foreign-global`), which print
   nothing or an empty list.

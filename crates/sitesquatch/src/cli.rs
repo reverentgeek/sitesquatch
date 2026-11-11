@@ -145,6 +145,16 @@ pub fn run(configure: impl Fn(&mut Config)) -> ExitCode {
     run_with(configure, Vec::new())
 }
 
+/// The whole command line, `extra` commands included, named `name`: what
+/// `--help` describes (and `ssqch docs` lists).
+pub fn command(name: &str, extra: &[ExtraCommand]) -> clap::Command {
+    let mut command = Cli::command().name(name.to_string());
+    for e in extra {
+        command = command.subcommand(e.command.clone());
+    }
+    command
+}
+
 /// [`run`], plus subcommands of the binary's own.
 pub fn run_with(configure: impl Fn(&mut Config), extra: Vec<ExtraCommand>) -> ExitCode {
     try_run_with(
@@ -167,11 +177,7 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
         .next()
         .and_then(|arg| Path::new(&arg).file_stem().map(|s| s.to_string_lossy().into_owned()))
         .unwrap_or_else(|| "ssqch".into());
-    let mut command = Cli::command().name(name.clone());
-    for e in &extra {
-        command = command.subcommand(e.command.clone());
-    }
-    let matches = command.try_get_matches().unwrap_or_else(|e| refused(e));
+    let matches = command(&name, &extra).try_get_matches().unwrap_or_else(|e| refused(e));
     if let Some((sub, sub_matches)) = matches.subcommand() {
         if let Some(e) = extra.iter().find(|e| e.command.get_name() == sub) {
             return (e.run)(sub_matches);

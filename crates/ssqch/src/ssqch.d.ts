@@ -172,7 +172,9 @@ declare module "ssqch" {
 		passthrough?: string | Record<string, string> | Array<string | Record<string, string>>;
 		/** More paths for `ssqch serve` to watch. */
 		watch?: string | string[];
+		/** Run before each build: a function, `{ run: "command" }`, or a list of them. */
 		beforeBuild?: Hook | Hook[];
+		/** Run after each build, with `written` (the files the build wrote). */
 		afterBuild?: Hook | Hook[];
 		/** More config, from plugins. `false`, `null` and `undefined` are skipped. */
 		plugins?: Plugin[];
@@ -239,7 +241,9 @@ declare module "ssqch" {
 	export function defineConfig<T extends Config | ((context: ConfigContext) => MaybePromise<Config>)>(config: T): T;
 	/** Render Markdown with the site's `markdown` options (render hooks and containers are for templates). `inline` drops the `<p>` around a single paragraph. */
 	export function markdown(text: string, options?: { inline?: boolean }): string;
-	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown };
+	/** Read a JSON, YAML or TOML file (from the project root) into data: `readData("src/_data/sites/en.yml")`. */
+	export function readData(path: string): any;
+	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown; readData: typeof readData };
 	export default ssqch;
 }
 
@@ -312,10 +316,15 @@ declare module "ssqch/rss" {
 
 	/** Adds the filters getNewestCollectionItemDate, dateToRfc3339, dateToRfc822, absoluteUrl, htmlToAbsoluteUrls and url. */
 	export function rssPlugin(): BuiltinPlugin;
+	/** The newest `date` in a collection, for a feed's `updated`. */
 	export function getNewestCollectionItemDate(collection: unknown[]): Date | undefined;
+	/** A date as RFC 3339 (`2024-06-01T00:00:00Z`), for Atom feeds. */
 	export function dateToRfc3339(date: Date | string): string;
+	/** A date as RFC 822 (`Sat, 01 Jun 2024 00:00:00 +0000`), for RSS feeds. */
 	export function dateToRfc822(date: Date | string): string;
+	/** A URL made absolute against the site's address: `absoluteUrl(post.url, "https://example.com")`. */
 	export function absoluteUrl(url: string, base: string): string;
+	/** Every link and image in some HTML made absolute, for a feed's content. */
 	export function htmlToAbsoluteUrls(html: string, base: string): string;
 }
 
@@ -335,6 +344,7 @@ declare module "ssqch/minify" {
 
 	/** Minifies HTML output, after the image transform. */
 	export function minifyPlugin(options?: MinifyOptions): BuiltinPlugin;
+	/** Minify one string of HTML, with the plugin's options. */
 	export function minify(html: string, options?: MinifyOptions): string;
 }
 

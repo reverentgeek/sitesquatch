@@ -1761,6 +1761,101 @@ fn capabilities_match_what_a_config_can_use() {
     assert!(!ok && log.contains("--format xml: use text or json"), "{}", log);
 }
 
+/// `ssqch docs` keeps up with `ssqch capabilities`: every command, config option and module export
+/// it lists has a line on the card and an answer by name, and so does every word in the table of
+/// other generators' words, with its hint's `More: ssqch docs ...` answered too.
+#[test]
+fn docs_answer_for_every_name() {
+    let json = |args: &[&str]| -> serde_json::Value {
+        let (_, stdout, stderr) = ssqch_outputs(&[&["docs", "--format", "json"][..], args].concat());
+        serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("{:?}: {}: {}{}", args, e, stdout, stderr))
+    };
+    let (_, caps, _) = ssqch_outputs(&["capabilities", "--format", "json"]);
+    let caps: serde_json::Value = serde_json::from_str(&caps).unwrap();
+    let names = |value: &serde_json::Value, key: &str| -> Vec<String> { value.as_array().unwrap().iter().map(|v| v[key].as_str().or(v.as_str()).unwrap().to_string()).collect() };
+
+    // The card has everything capabilities lists, each with a line.
+    let card = json(&[]);
+    assert_eq!(card["version"], env!("CARGO_PKG_VERSION"));
+    let mut commands = names(&card["commands"], "name");
+    let mut listed = names(&caps["commands"], "name");
+    commands.sort();
+    listed.sort();
+    assert_eq!(commands, listed);
+    assert_eq!(names(&card["configOptions"], "name"), names(&caps["configOptions"], "name"));
+    for module in caps["modules"].as_array().unwrap() {
+        let on_card = card["modules"].as_array().unwrap().iter().find(|m| m["name"] == module["name"]).unwrap_or_else(|| panic!("the card lacks {}", module["name"]));
+        let mut exports = names(&on_card["exports"], "name");
+        let mut expected = names(&module["exports"], "name");
+        exports.sort();
+        expected.sort();
+        assert_eq!(exports, expected, "{}", module["name"]);
+    }
+    for key in ["commands", "configOptions", "templateFunctions"] {
+        for row in card[key].as_array().unwrap() {
+            assert!(!row["summary"].as_str().unwrap().is_empty(), "{} {} has no description", key, row["name"]);
+        }
+    }
+    for module in card["modules"].as_array().unwrap() {
+        for row in module["exports"].as_array().unwrap() {
+            assert!(!row["summary"].as_str().unwrap().is_empty(), "{} {} has no description in ssqch.d.ts", module["name"], row["name"]);
+        }
+    }
+
+    // Each name has an answer: a command its --help, the rest a part of the README that writes it as code.
+    for command in names(&card["commands"], "name") {
+        let a = json(&[&command]);
+        assert!(a["help"].as_str().is_some_and(|h| h.contains(&format!("Usage: ssqch {}", command))), "{}: {}", command, a);
+    }
+    let mut documented: Vec<String> = names(&card["configOptions"], "name");
+    documented.extend(names(&card["templateFunctions"], "name"));
+    for module in card["modules"].as_array().unwrap() {
+        documented.extend(names(&module["exports"], "name"));
+    }
+    for name in documented {
+        let a = json(&[&name]);
+        assert!(a["found"] == true && a["names"].as_array().is_some_and(|n| !n.is_empty()), "{}: {}", name, a);
+        assert!(a["section"]["text"].as_str().is_some_and(|t| t.contains(&format!("`{}", name))), "the README doesn't document `{}`: {}", name, a);
+    }
+
+    // Another generator's word says ssqch's, and its hint's `More:` answers.
+    for row in sitesquatch::equivalents::TABLE {
+        let a = json(&["--", row.word]);
+        // A word that's ssqch's too, as something else (`watch`, a command elsewhere, is a config option), answers as ssqch's.
+        assert!(a["equivalent"]["word"] == row.word || a["names"].as_array().is_some_and(|n| !n.is_empty()), "{}: {}", row.word, a);
+        if let Some(query) = row.more.strip_prefix("ssqch docs ") {
+            let more = json(&["--", query.trim_matches('"')]);
+            assert!(more["help"].is_string() || more["section"]["text"].is_string(), "{}: More: {} has no answer: {}", row.word, row.more, more);
+        } else {
+            assert!(row.more.ends_with("--help"), "{}: More: {} is neither `ssqch docs` nor --help", row.word, row.more);
+        }
+    }
+
+    // As text.
+    let (ok, text) = ssqch(&["docs", "pathPrefix"]);
+    assert!(ok && text.starts_with("`pathPrefix` (Eleventy) isn't ssqch's word. In ssqch it's `base`") && text.contains("| `base` |"), "{}", text);
+    let (ok, text) = ssqch(&["docs", "content", "schemas"]);
+    assert!(ok && text.starts_with("## Content schemas\n"), "{}", text);
+    let (ok, text) = ssqch(&["docs"]);
+    assert!(ok && text.contains("\n  leaveNoTrace ") && text.contains("\n    imagePlugin ") && text.contains("\nTopics\n  Install, "), "{}", text);
+    let (ok, log) = ssqch(&["docs", "pinecone", "crunch", "sightings"]);
+    assert!(!ok && log.contains("no tracks of \"pinecone crunch sightings\" in the docs"), "{}", log);
+    let (ok, log) = ssqch(&["docs", "leaveNoTrance"]);
+    assert!(!ok && log.contains("(did you mean `leaveNoTrace`?)"), "{}", log);
+
+    // Every generator that has a row or a config ssqch recognizes has field notes.
+    let mut generators: Vec<&str> = sitesquatch::equivalents::TABLE.iter().flat_map(|e| e.from.iter().copied()).collect();
+    generators.extend(sitesquatch::equivalents::OTHER_CONFIGS.iter().map(|(_, g, ..)| *g));
+    for generator in generators {
+        let (ok, text) = ssqch(&["docs", "--from", &generator.to_lowercase()]);
+        assert!(ok && text.starts_with(&format!("{}'s words", generator)), "{}: {}", generator, text);
+    }
+    let (ok, text) = ssqch(&["docs", "--from", "eleventy"]);
+    assert!(ok && text.contains("\n  pathPrefix ") && text.contains("The field guide (docs/guides/from-eleventy.md):\n\n# "), "{}", text);
+    let (ok, log) = ssqch(&["docs", "--from", "hugoo"]);
+    assert!(!ok && log.contains("--from hugoo: no field notes on that generator (did you mean `hugo`?)"), "{}", log);
+}
+
 #[test]
 fn serve_writes_a_ready_file() {
     let dir = temp_dir("serve-ready");
