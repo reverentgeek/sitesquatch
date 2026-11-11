@@ -25,6 +25,13 @@ use crate::config::Config;
 
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
+pub struct ServeToml {
+    #[serde(default)]
+    pub run: Vec<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SiteToml {
     pub input: Option<PathBuf>,
     pub output: Option<PathBuf>,
@@ -50,6 +57,10 @@ pub struct SiteToml {
     pub before_build: Vec<String>,
     #[serde(default)]
     pub after_build: Vec<String>,
+    /// `[budgets]`: sizes by kind of file (`pages = "150 KB"`).
+    pub budgets: Option<toml::Table>,
+    /// `[serve]` with `run`: programs `ssqch serve` runs alongside.
+    pub serve: Option<ServeToml>,
     /// Themes: folders, or git URLs pinned with `#commit`.
     #[serde(default)]
     pub theme: Vec<String>,
@@ -85,6 +96,19 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
     if let Some(v) = site.strict { cfg.strict = v; }
     if let Some(v) = site.base {
         cfg.set_base(&v).with_context(|| format!("invalid {}", path.display()))?;
+    }
+    if let Some(table) = site.budgets {
+        for (name, value) in table {
+            let size = match value {
+                toml::Value::Integer(n) => crate::Value::Num(n as f64),
+                toml::Value::String(s) => crate::Value::from(s.as_str()),
+                other => crate::Value::from(other.to_string().as_str()),
+            };
+            cfg.budgets.push(crate::footprint::budget(&name, &size).with_context(|| format!("invalid {}", path.display()))?);
+        }
+    }
+    if let Some(serve) = site.serve {
+        cfg.serve_run = serve.run;
     }
     for command in site.before_build {
         cfg.run_before_build(command);

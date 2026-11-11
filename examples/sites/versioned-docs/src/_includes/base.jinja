@@ -6,19 +6,36 @@
 <title>{% if title %}{{ title }} | {% endif %}Pinecone Native</title>
 <link rel="stylesheet" href="/highlight.css">
 <style>
+  /* Ranger Station '76: soft white (green charcoal in dark mode), pine headings and navigation,
+     burnt orange links, avocado for what's selected and for code, harvest gold callouts, and
+     the four-color stripe under the header. */
+  :root { color-scheme: light dark; --page: #fafaf7; --text: #29332c; --heading: #233b2b; --muted: #5e6a61; --link: #a23e20; --rule: #dcddd4; --panel: #f1f1eb; --surface: #eeefe7; --code: #3f5a2a; --selected: #e6ecda; --callout: #f6efdf; --stripe-pine: #233b2b; }
+  @media (prefers-color-scheme: dark) { :root { --page: #1b201d; --text: #e5e9e1; --heading: #d6e4c8; --muted: #a2aca3; --link: #f0a17d; --rule: #3a413b; --panel: #222924; --surface: #252b27; --code: #b9c77e; --selected: #2e3f2b; --callout: #2e2b21; --stripe-pine: #2e5a3c; } }
+  body { color: var(--text); background: var(--page); }
+  h1, h2, h3 { color: var(--heading); }
+  a { color: var(--link); text-underline-offset: 0.18em; }
+  code { color: var(--code); }
+  pre code { color: inherit; }
+  pre { background: var(--surface); border-left: 3px solid #a9b66a; }
+  .stripe, body > header { border-bottom: 5px solid; border-image: linear-gradient(to right, var(--stripe-pine) 0 25%, #a23e20 25% 50%, #e8af43 50% 75%, #a9b66a 75%) 1; }
   body { font: 17px/1.6 system-ui, sans-serif; margin: 0; }
-  header { display: flex; gap: 1rem; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid #ddd; }
+  header { display: flex; gap: 1rem; align-items: center; padding: 0.75rem 1rem; }
+  header a { color: var(--heading); }
   .layout { display: grid; grid-template-columns: 15rem 1fr; }
-  aside { padding: 1rem; background: #f6f8fa; min-height: 100vh; }
+  aside { padding: 1rem; background: var(--panel); min-height: 100vh; }
   aside ul { list-style: none; padding-left: 0.75rem; }
-  aside a[aria-current] { font-weight: bold; }
+  aside a { color: var(--heading); text-decoration: none; }
+  aside a[aria-current] { font-weight: bold; background: var(--selected); border-left: 3px solid #a9b66a; padding-left: 0.4rem; }
   main { padding: 1rem 2rem; max-width: 46rem; }
-  pre { background: #f6f8fa; padding: 1rem; overflow-x: auto; }
-  .banner { background: #fff3cd; padding: 0.5rem 1rem; }
-  .tabs [role=tablist] button[aria-selected=true] { font-weight: bold; }
+  pre { padding: 1rem; overflow-x: auto; }
+  .banner { background: var(--callout); border-left: 4px solid #e8af43; padding: 0.5rem 1rem; }
+  .tabs [role=tablist] button { background: none; border: 0; border-bottom: 3px solid transparent; padding: 0.25rem 0.75rem; font: inherit; color: var(--muted); cursor: pointer; }
+  .tabs [role=tablist] button[aria-selected=true] { font-weight: bold; color: var(--heading); border-bottom-color: #a9b66a; }
   .pager { display: flex; justify-content: space-between; margin-top: 3rem; }
   @media (max-width: 50rem) { .layout { display: block; } aside { min-height: 0; } }
-  @media (prefers-color-scheme: dark) { body { background: #0d1117; color: #e6edf3; } a { color: #58a6ff; } aside, pre { background: #161b22; } .banner { background: #3b2e00; } header { border-color: #30363d; } }
+  /* Code in the palette, over /highlight.css's colors. */
+  html:root { --hl-comment: #5e6a61; --hl-keyword: #a23e20; --hl-operator: #a23e20; --hl-string: #4e5e24; --hl-regexp: #4e5e24; --hl-escape: #4e5e24; --hl-number: #7a500a; --hl-constant: #7a500a; --hl-builtin: #7a500a; --hl-property: #233b2b; --hl-attribute: #7a500a; --hl-function: #233b2b; --hl-type: #7a500a; --hl-parameter: #7a500a; --hl-tag: #a23e20; --hl-heading: #a23e20; --hl-link: #a23e20; --hl-inserted: #4e5e24; --hl-inserted-bg: #e6ecda; --hl-deleted: #a23e20; --hl-deleted-bg: #f8eae4; --hl-line-bg: rgba(232, 175, 67, 0.25); }
+  @media (prefers-color-scheme: dark) { html:root { --hl-comment: #a2aca3; --hl-keyword: #f0a17d; --hl-operator: #f0a17d; --hl-string: #b9c77e; --hl-regexp: #b9c77e; --hl-escape: #b9c77e; --hl-number: #e8af43; --hl-constant: #e8af43; --hl-builtin: #e8af43; --hl-property: #e5e9e1; --hl-attribute: #e8af43; --hl-function: #d6e4c8; --hl-type: #e8af43; --hl-parameter: #e8af43; --hl-tag: #f0a17d; --hl-heading: #f0a17d; --hl-link: #f0a17d; --hl-inserted: #b9c77e; --hl-inserted-bg: #2e3f2b; --hl-deleted: #f0a17d; --hl-deleted-bg: #33241f; --hl-line-bg: rgba(232, 175, 67, 0.15); } }
 </style>
 </head>
 <body>

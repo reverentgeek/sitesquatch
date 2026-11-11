@@ -87,7 +87,7 @@
 	// they're allowed at the top level only. Everything else can also come from
 	// a plugin, and is applied in order: the config's own entries first, then
 	// each plugin's, depth first.
-	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "base", "schemas", "theme" ];
+	const SETTINGS = [ "dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "base", "schemas", "theme", "serve", "budgets" ];
 	const PARTS = [ "data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins" ];
 	// Engine names a config can't replace.
 	const CORE_ENGINES = [ "edge", "md", "html", "txt" ];
@@ -123,7 +123,14 @@
 		const ops = [];
 		const settings = {};
 		const names = { data: new Map(), filters: new Map(), collections: new Map(), transforms: new Map(), engines: new Map() };
-		const context = Object.freeze( { env, serving } );
+		// A config written as calls (`config.addPassthroughCopy("src/fonts")`) gets ssqch's name for each.
+		const context = new Proxy( Object.freeze( { env, serving } ), {
+			get( target, key ) {
+				const equivalent = typeof key === "string" && !( key in target ) ? globalThis.__ssqch_equivalents?.[key] : undefined;
+				if ( equivalent ) fail( `the config function's argument has no ${ key }(): an ssqch config returns an object. ${ equivalent.say }\n  More: ${ equivalent.more }` );
+				return Reflect.get( target, key );
+			}
+		} );
 
 		const claim = ( kind, singular, name, where ) => {
 			const earlier = names[kind].get( name );
@@ -166,6 +173,10 @@
 				return;
 			}
 
+			// Every key that isn't an option, in one error. Another generator's word (`pathPrefix`)
+			// gets ssqch's name for it; anything else, the closest option and the list.
+			const unknown = [];
+			let guessed = false;
 			for ( const key of Object.keys( part ) ) {
 				if ( key === "name" && !top ) {
 					continue;
@@ -173,10 +184,20 @@
 					top || fail( `${ where }: "${ key }" can only be set in the config itself, not in a plugin` );
 				} else if ( !PARTS.includes( key ) ) {
 					const options = top ? [ ...SETTINGS, ...PARTS ] : PARTS;
+					const equivalent = globalThis.__ssqch_equivalents?.[key];
+					if ( equivalent ) {
+						unknown.push( `${ where }: "${ key }" isn't a config option. ${ equivalent.say }\n  More: ${ equivalent.more }` );
+						continue;
+					}
 					// `output: "dist"` at the top is a folder that belongs in `dirs`.
 					const hint = top && DIRS.includes( key ) ? ` (it goes in dirs: { ${ key }: "..." })` : meant( key, options );
-					fail( `${ where }: "${ key }" isn't a config option${ hint } (options: ${ options.join( ", " ) })` );
+					unknown.push( `${ where }: "${ key }" isn't a config option${ hint }` );
+					guessed = true;
 				}
+			}
+			if ( unknown.length ) {
+				const options = top ? [ ...SETTINGS, ...PARTS ] : PARTS;
+				fail( unknown.join( "\n" ) + ( guessed ? ` (options: ${ options.join( ", " ) })` : "" ) );
 			}
 
 			if ( top ) {
@@ -368,6 +389,8 @@
 	globalThis.__ssqch = {
 		fns,
 		keep,
+		// ` (did you mean "x"?)`, for the built-in modules' option checks.
+		meant,
 		dateMs: v => v instanceof Date ? v.getTime() : undefined,
 		makeDate: ms => new Date( ms ),
 		isArray: v => Array.isArray( v ),

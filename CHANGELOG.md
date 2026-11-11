@@ -28,7 +28,7 @@ a `v<version>` tag on a commit where that version matches.
 ### Added
 
 - `ssqch init --starter docs` takes `--engine` too: `jinja` (the default), `njk`, `edge`,
-  `liquid` or `hbs`. Each one builds the same pages. The site starter gains `--engine jinja`,
+  `liquid`, `hbs` or `ejs`. Each one builds the same pages. The site starter gains `--engine jinja`,
   and `--engine njk` writes the Jinja templates as `.njk` files.
 - A build warns about files in a template language the site has but doesn't list in
   `templateFormats`, which it leaves out, instead of leaving them out without a word:
@@ -36,9 +36,65 @@ a `v<version>` tag on a commit where that version matches.
   list it in ignore.` (diagnostic code `template-formats`).
 - `ssqch capabilities` reports the `defaults` (`templateFormats`, `markdownEngine`,
   `htmlEngine`) and the `starterEngines` that `ssqch init --engine` takes.
+- EJS templates (`.ejs`): add `"ejs"` to `templateFormats` (and `markdownEngine: "ejs"` for
+  Markdown). They run on the JavaScript engine built into ssqch, so no npm install, with
+  EJS 3's tags and output, `include()` from `_includes`, and config filters and ssqch's
+  functions in scope by name. `ssqch init --engine ejs` starts either starter in EJS, `ssqch import eleventy`
+  carries `.ejs` templates over, and
+  ` ```ejs ` fences are highlighted.
+- `ssqch footprint [dir]`: what a build weighs, by kind of file (pages, images, CSS,
+  JavaScript, fonts, ...), and its largest footprints, the heaviest pages and the heaviest other
+  files. It reads the site's output folder or any build folder, with `--top N` and
+  `--format json`.
+- `budgets: { pages: "150 KB", images: "500 KB", total: "300 MB" }` (`[budgets]` in
+  `sitesquatch.toml`): after each build, files over their kind's budget are a warning
+  (`bigfootprint`).
+- `serve: { run: [...] }` (`[serve] run` in `sitesquatch.toml`): programs `ssqch serve` starts
+  with the server and stops with it, such as `npx @tailwindcss/cli ... --watch`. Their output
+  is shown with the tool's name in front (`[tailwindcss] Done in 16ms`), they keep running
+  across a config reload that doesn't change them, and stopping the server (Ctrl-C, SIGTERM)
+  stops them and whatever they started. One that stops early is a warning. Builds don't run
+  them. The README has a new "CSS and JavaScript" section, with a Tailwind example.
+- When a page `ssqch serve` sends links a stylesheet or script that isn't in the output, a
+  note on the page and a warning in the terminal say so (diagnostic code `missing-asset`),
+  naming the `serve.run` tool that should have written it, and the warning repeats after each
+  build until the file is there.
+- Other generators' words get ssqch's: a command (`ssqch dev`), flag (`--drafts`, `--pathprefix`),
+  config option (`pathPrefix`, `publishDir`, `config.addPassthroughCopy()`), filter (`url`,
+  `relative_url`, `slugify` in Nunjucks) or front-matter key (`eleventyComputed`,
+  `redirect_from`, `published: false`) from another generator is refused or warned about as
+  before, now with ssqch's name for it and where to read more, and a `hint` in the JSON report.
+  Every unknown config option is reported in one run. A folder with another generator's config
+  and none of ssqch's gets a warning (`other-generator`) naming `ssqch import` or the guide.
+  Front-matter keys are warnings (`foreign-key`); they used to be ignored without a word. So are
+  templates that read `eleventy.*` or Jekyll's `site.posts` (`foreign-global`), which print
+  nothing or an empty list.
+- Liquid's unknown-filter error names the filter (``unknown filter `upcse` (did you mean
+  `upcase`?)``) instead of listing every filter there is.
+- `image()` and `minify()` say which option or image format was probably meant
+  (``unknown option "removeComment" (did you mean "removeComments"?)``).
+- `console.warn` in a config or data file is one of the JSON report's `warnings` (code
+  `console`) in `ssqch build --format json`.
+- `--verbose`'s `Uninhabited` line covers Jinja, Nunjucks and EJS includes as well as Edge's,
+  and says `templates` instead of `Edge templates`.
+- Jinja and Nunjucks errors say which name was probably meant: a template that isn't there
+  (`include`, `extends`, `import`) suggests a file in the includes folders (``can't include
+  `partials/navv.jinja` (did you mean `partials/nav.jinja`?)``), and an unknown filter, test
+  or function suggests one that exists, the config's own included. The name is quoted, so the
+  lines under the error get carets under it.
+
+### Fixed
+
+- A template error's message gives the file's own line (`posts/pine.md:8:`), as the lines
+  printed under it and the JSON report's `line` already did. Template engines count from the
+  end of the front matter, so it used to say `posts/pine.md:3:` for the same line.
+- `ssqch.d.ts` declares `process` (`env`, `cwd()`, `platform`), so a config that reads
+  `process.env` type-checks without `@types/node` (and still does with it). The docs starter's
+  `docs.js` type-checks too.
 
 ### Changed
 
+- The examples are in the Ranger Station '76 palette, light and dark, like the starters.
 - The `versioned-docs` and `islands` examples are written in Jinja. `component-docs` stays in
   Edge for its components with slots, and sets `markdownEngine: "edge"`.
 

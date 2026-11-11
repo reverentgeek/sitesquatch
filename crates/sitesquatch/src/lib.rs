@@ -17,10 +17,13 @@
 pub mod base;
 pub mod build;
 pub mod cli;
+pub mod companions;
 pub mod config;
 pub mod data;
 pub mod diff;
 pub mod engines;
+pub mod equivalents;
+pub mod footprint;
 #[cfg(feature = "highlight")]
 pub mod highlight;
 pub mod archetype;

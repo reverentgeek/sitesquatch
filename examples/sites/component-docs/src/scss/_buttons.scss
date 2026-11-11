@@ -10,6 +10,9 @@ $btn-bg: $pine !default;
   border: 0;
   border-radius: $btn-radius;
   background: $btn-bg;
-  color: white;
+  color: #fafaf7;
+  text-decoration: none;
   &.btn-outline { background: transparent; color: $btn-bg; border: 2px solid $btn-bg; }
+  // Pine doesn't show on a dark page: the outline takes pine's light shade there.
+  @media (prefers-color-scheme: dark) { background: #2e5a3c; &.btn-outline { background: transparent; color: #d6e4c8; border-color: #d6e4c8; } }
 }

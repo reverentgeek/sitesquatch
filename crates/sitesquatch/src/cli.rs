@@ -119,6 +119,18 @@ enum Command {
         #[arg(long, default_value = "text")]
         format: String,
     },
+    /// Show how much a build weighs: its files by kind, and the heaviest pages and files
+    #[command(after_help = "It reads a build folder, so build first:\n\n  ssqch build\n  ssqch footprint                 (the site's output folder)\n  ssqch footprint dist-before     (any build)\n  ssqch footprint --top 20 --format json")]
+    Footprint {
+        /// The build folder (default: the site's output folder)
+        dir: Option<PathBuf>,
+        /// How many of the heaviest pages and files to list (0 for none)
+        #[arg(long, default_value_t = 5)]
+        top: usize,
+        /// text or json
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
 }
 
 /// A subcommand a binary adds to `build` and `serve`, like `ssqch init`.
@@ -159,7 +171,7 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
     for e in &extra {
         command = command.subcommand(e.command.clone());
     }
-    let matches = command.get_matches();
+    let matches = command.try_get_matches().unwrap_or_else(|e| refused(e));
     if let Some((sub, sub_matches)) = matches.subcommand() {
         if let Some(e) = extra.iter().find(|e| e.command.get_name() == sub) {
             return (e.run)(sub_matches);
@@ -183,6 +195,10 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
                 ExitCode::from(2)
             }
         };
+    }
+    // A folder of its own needs no config.
+    if let Some(Command::Footprint { dir: Some(dir), top, format }) = &cli.command {
+        return report_errors(run_footprint(dir, &dir.to_string_lossy(), *top, format));
     }
     let serving = matches!(cli.command, Some(Command::Serve { .. }));
     let env = cli
@@ -250,6 +266,11 @@ fn run_command(cli: &Cli, cfg: Config, make_config: &dyn Fn() -> anyhow::Result<
     match &cli.command {
         Some(Command::Serve { port, ready_file }) => crate::serve::serve_reloading(cfg, &crate::serve::ServeOptions { port: *port, ready_file: ready_file.clone() }, make_config),
         Some(Command::Inspect { page, field, format }) => run_inspect(&cfg, page, field.as_deref(), format),
+        Some(Command::Footprint { top, format, .. }) => {
+            let ctx = cfg.build_context();
+            let shown = crate::slashes(ctx.output_dir.strip_prefix(&ctx.root).unwrap_or(&ctx.output_dir));
+            run_footprint(&ctx.output_dir, &shown, *top, format)
+        }
         Some(Command::New { path, title, date, archetype, set, format }) => run_new(&cfg, crate::archetype::NewOptions { path: path.clone(), title: title.clone(), date: date.clone(), archetype: archetype.clone(), set: Vec::new() }, set, format),
         _ => crate::build(&cfg).map(|report| print_report(&cfg, &report)),
     }
@@ -366,6 +387,55 @@ fn run_diff(before: &Path, after: &Path, exact: bool, ignore: &[String], only: &
         print!("{}", report.to_text(lines, std::io::stdout().is_terminal()));
     }
     Ok(report.is_same())
+}
+
+/// A command line clap refused. When the word it refused is another
+/// generator's (`ssqch dev`, `--drafts`), ssqch's name for it goes under the
+/// error, before the usage line. Exits as clap does.
+fn refused(error: clap::Error) -> ! {
+    use clap::error::{ContextKind, ContextValue, ErrorKind};
+    let word = match error.kind() {
+        ErrorKind::InvalidSubcommand => error.get(ContextKind::InvalidSubcommand).map(|v| (v.to_string(), crate::equivalents::Kind::Command)),
+        ErrorKind::UnknownArgument => match error.get(ContextKind::InvalidArg) {
+            Some(ContextValue::String(arg)) => Some((arg.split('=').next().unwrap_or(arg).to_string(), crate::equivalents::Kind::Flag)),
+            _ => None,
+        },
+        _ => None,
+    };
+    let Some(equivalent) = word.and_then(|(word, kind)| crate::equivalents::find(&word, kind)) else { error.exit() };
+    let rendered = error.render().to_string();
+    let (head, usage) = rendered.split_once("\nUsage:").map(|(h, u)| (h.to_string(), format!("Usage:{}", u))).unwrap_or((rendered.clone(), String::new()));
+    // clap's own tips guess (`a similar subcommand exists`, `use '-- --template'`); the hint knows.
+    let mut head: Vec<&str> = head.lines().filter(|l| !l.trim_start().starts_with("tip:")).collect();
+    head.dedup_by(|a, b| a.trim().is_empty() && b.trim().is_empty());
+    let hint: String = equivalent.hint().lines().map(|l| format!("  {}\n", l)).collect();
+    eprint!("{}\n\n{}{}", head.join("\n").trim_end(), hint, if usage.is_empty() { String::new() } else { format!("\n{}", usage) });
+    std::process::exit(error.exit_code());
+}
+
+/// `ssqch footprint`: what the build in `dir` weighs.
+fn run_footprint(dir: &Path, shown: &str, top: usize, format: &str) -> anyhow::Result<()> {
+    if !matches!(format, "text" | "json") {
+        anyhow::bail!("--format {}: use text or json", format);
+    }
+    let footprint = crate::footprint::measure(dir)?;
+    if format == "json" {
+        println!("{}", serde_json::to_string_pretty(&footprint.to_json(shown, top))?);
+    } else {
+        print!("{}", footprint.to_text(shown, top));
+    }
+    Ok(())
+}
+
+/// Exit 0, or print the error and exit 1.
+fn report_errors(result: anyhow::Result<()>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{} {:#}", crate::diagnostics::red("error:"), e);
+            ExitCode::FAILURE
+        }
+    }
 }
 
 pub(crate) fn print_report(cfg: &Config, report: &BuildReport) {

@@ -49,11 +49,12 @@ because PostCSS and esbuild write `dist/assets/` and only `pnpm run serve` start
 in the README or the starters says how CSS and JavaScript get into a site, so someone who adds
 a tool finds out the same way. The only clue is a warning that scrolls past.
 
-- [ ] **A "CSS and JavaScript" section in the README:** the three ways today (Sass with
+- [x] **A "CSS and JavaScript" section in the README:** the three ways today (Sass with
       `sassPlugin`; plain CSS and ES modules copied with `passthrough`; any other tool from
       `beforeBuild` with `watch`), how `assetsPlugin` fingerprints the result, and a Tailwind
-      example.
-- [ ] **Companion processes for `ssqch serve`:** long-running watchers ssqch starts with the
+      example. Done: the four ways (with `serve.run`), and a Tailwind example checked end to
+      end with Tailwind 4.1.11 (a production build fingerprints it; serving rebuilds it).
+- [x] **Companion processes for `ssqch serve`:** long-running watchers ssqch starts with the
       server, shows the output of, and stops with it (`serve: { run: [ "npx postcss ...
       --watch", ... ] }`), so one command serves a site that has its own CSS and JS tools.
       It also lets ssqch say which tool should have written a missing file. Measured on the
@@ -62,12 +63,23 @@ a tool finds out the same way. The only clue is a warning that scrolls past.
       identical to `pnpm run build`, but every rebuild reruns PostCSS and Tailwind: an edit
       reaches the browser in about 540 ms instead of 300 ms with the watchers, and the server
       is ready in 1.1 s instead of 0.6 s. Companion processes would keep the watchers' speed.
-- [ ] **A louder missing asset:** when a linked file never appears, repeat it under the
+      Done: `serve: { run }` (`crates/sitesquatch/src/companions.rs`). Each runs in its own
+      process group (a tree on Windows, stopped with `taskkill /T`), with standard input held
+      open (Tailwind's and esbuild's `--watch` quit when it closes), and Ctrl-C, SIGTERM and
+      SIGHUP stop them (`ctrlc`). Test: `serve_runs_companion_processes` (Unix).
+  - [ ] **Blog:** after the 0.5 release, `serve: { run: ["pnpm run serve:css", "pnpm run
+        serve:js"] }`, so a bare `ssqch serve` has styles (0.4.0 rejects the key).
+- [x] **A louder missing asset:** when a linked file never appears, repeat it under the
       summary and in the browser overlay (`/assets/index.css is linked but nothing wrote it`),
-      pointing at the README section.
+      pointing at the README section. Done: the dev server's page script checks the page's
+      own stylesheets and scripts, a corner note says what's missing, and the terminal warning
+      (`missing-asset`) names the `serve.run` tool or suggests one, repeated after each build.
+      Checked in a browser (2026-11-10): the note shows, then clears and the stylesheet swaps
+      in when the tool writes it. Test: `serve_says_when_a_linked_file_is_missing`.
 - [ ] **Maybe built-in CSS processing** with Lightning CSS (Rust: `@import` bundling, nesting,
       minifying, browser targets), only if the items above leave a real gap. It wouldn't
       replace Tailwind. JavaScript bundling in Rust costs too much binary for what it gives.
+      Not started: with `serve.run` and the missing-file note, no gap has shown up yet.
 
 ### Jinja by default (0.5)
 
@@ -87,15 +99,20 @@ Jinja2, Nunjucks, Rust's Tera and MiniJinja) and the most capable of the ones ss
       whitespace). `component-docs` stays Edge, for its components with slots.
 - [x] **Blog:** stays in Edge, so its config sets `markdownEngine: "edge"` and
       `htmlEngine: "edge"` (it already listed `edge` in `templateFormats`).
-- [ ] Jinja errors as good as Edge's: a missing `{% include %}` says which include it probably
-      meant (`did you mean partials/nav.jinja?`), and the error's source lines get carets
-      under what it quotes. Today a Jinja error names the file and line only.
-- [ ] `--verbose`'s "Uninhabited" line covers Jinja includes, now that most new sites have them
-      (see "Not yet" under Uninhabited templates).
-- [ ] Found while checking the docs starter's types (2026-11-10, already so in 0.4.0): `tsc`
+- [x] Jinja errors as good as Edge's: a missing `include`, `extends` or `import` says which
+      file it probably meant (`did you mean `partials/nav.jinja`?`), and so does an unknown
+      filter, test or function. The name is in backticks, so the frame's carets go under it
+      (they went under nothing, or under the engine's name). Nunjucks gets the same.
+      Test: `jinja_errors_point_at_the_name_and_say_what_was_meant`.
+- [x] `--verbose`'s "Uninhabited" line covers Jinja includes, now that most new sites have them:
+      `TemplateEngine::included()` (Edge, Jinja and Nunjucks, EJS), and an include counts
+      whichever engine read it. Liquid and Handlebars still don't say.
+- [x] Found while checking the docs starter's types (2026-11-10, already so in 0.4.0): `tsc`
       on the docs starter reports 9 errors, in `src/assets/docs.js` (DOM `Element` lacks
       `dataset` and `hidden`, and `PagefindUI` is unknown) and `process` in `ssqch.config.js`.
       JSDoc casts, a `PagefindUI` declaration, and `process` in `ssqch.d.ts` would fix them.
+      Done: no errors, with or without `@types/node` installed (`process` is declared as
+      `NodeJS.Process`, the way those types declare it, so the two merge).
 
 ## The Sasquatch voice (done, apart from two items)
 
@@ -139,10 +156,13 @@ and `ssqch footprint` in 0.5.
       Noes!") stays. Nothing there reads ssqch's output text, and it doesn't set `clean`.
       Checked: `pnpm test` passes with the branch, and `ssqch diff` against a 0.3.3 build of
       the same sources shows no differences once the new heading `id`s are ignored.
-- [ ] **0.5: `ssqch footprint [dir]`**, a new command: the size of a build by kind of file,
+- [x] **0.5: `ssqch footprint [dir]`**, a new command: the size of a build by kind of file,
       with `Largest footprints` (the heaviest pages and files) and `--format json`. It reads
-      an output folder, as `ssqch diff` does. Later: budgets in the config, with a
-      `bigfootprint` warning for a page over its budget.
+      an output folder, as `ssqch diff` does. Done (`crates/sitesquatch/src/footprint.rs`); on
+      the blog, 4,965 files, 302 MB, 96% of it images.
+  - [x] Budgets in the config, with a `bigfootprint` warning for a page over its budget:
+        `budgets: { pages: "150 KB", ... }` by kind of file, and `total`, checked after the
+        after-build hooks.
 - Left alone on purpose: front matter errors, Edge expression errors (they copy JavaScript's
   wording), and option errors, which are already as clear as they get.
 
@@ -163,8 +183,9 @@ The second round, picked because each one also fixes something. All built the sa
       image), and the summary says how many pages changed.
 - [x] **"Did you mean" everywhere:** broken links and anchors, config keys and `dirs`, plugin
       and Markdown options, and missing Edge includes (`sitesquatch::suggest`).
-  - [ ] Not yet: `image()` and `minify()` call options (their checks are in JavaScript
-        modules), and includes in Liquid, Nunjucks and Handlebars.
+  - [x] `image()` and `minify()` call options and image formats (0.5: the prelude's `meant`
+        is shared with the built-in modules). Jinja and Nunjucks includes too (0.5, above).
+  - [ ] Not yet: includes in Liquid and Handlebars.
 - [x] **Point at the spot:** a template or schema error prints the lines it's about, with the
       file's own line number and carets under what the message quotes or the schema field
       (`diagnostics::frames`). The message itself still counts from the end of the front
@@ -177,8 +198,8 @@ The second round, picked because each one also fixes something. All built the sa
 - [x] **`ssqch sighting` earns its keep:** under the drawing, the last build's pages, folder
       and age.
 - [x] **Uninhabited templates:** `--verbose` names the Edge includes nothing used.
-  - [ ] Not yet: the other template languages' includes (their engines don't say what they
-        loaded).
+  - [ ] Not yet: Liquid and Handlebars includes (their crates don't say what they loaded).
+        Jinja, Nunjucks and EJS are covered since 0.5.
 - [x] **Shell completions:** `ssqch completions zsh` (and bash, fish, PowerShell, elvish).
 - [x] The README, in the voice: the introduction, the tutorial, each section's opening and
       the new behaviour. The option tables and reference lists are as they were.
@@ -294,8 +315,31 @@ In priority order, by how widely each is used across static site generators and 
       changes, and `.length` on lists (use `len`).
 - [x] **JavaScript engines from the config**: `engines: { ext: (source, data) => html }` or
       `{ render(source, data) }`, sync or async, on QuickJS. Page data arrives as lazy views, so
-      passing it costs little. Libraries like EJS or Pug still need npm packages or CommonJS,
-      which ssqch doesn't load yet (README, Known gaps).
+      passing it costs little. Libraries like Pug still need npm packages or CommonJS, which
+      ssqch doesn't load yet (README, Known gaps).
+- [x] **EJS** (`.ejs`, 0.5): `crates/sitesquatch-js/src/ejs.{js,rs}`, a compiler for EJS 3's
+      tags on the config's QuickJS engine, so config filters are called directly and page data
+      is lazy views. Output is byte-for-byte EJS 3.1.10's on the test cases. Names are
+      parameters, not `with ( locals )` (which made each name a Proxy lookup); pages without
+      tags skip compiling. Measured (2026-11-10, 2,000 posts): 216 ms against Jinja's 168 ms
+      with prose posts, 290 ms against 182 ms with tags in every post. What's left is QuickJS
+      compiling each page (about 10 µs) and JavaScript running one call at a time.
+  - [x] `ssqch init --engine ejs` for both starters (the same pages as Jinja's, apart from
+        whitespace and the file names they mention), and highlighting for ` ```ejs ` fences.
+  - [x] EJS in `ssqch import`: an Eleventy site's `.ejs` files get their front matter
+        rewritten and `"ejs"` in `templateFormats`, and render as they are
+        (`import_carries_over_ejs_templates`).
+  - [ ] Maybe: an opt-in Bun runtime (a project's own `node_modules/.bin/bun`). Measured
+        (2026-11-10, the real `ejs` package, a layout with small data): 22 µs per render
+        sent to Bun one at a time (Node 12 µs), against about 8 µs for a call into QuickJS
+        in-process, before copying any collections (views can't cross a process). Batched,
+        3 µs. So Bun only pays if a whole render stage goes over at once, and templates
+        calling ssqch's Rust functions (`markdown`, `highlight`, `image`) would each be a
+        round trip back. Its better use is Node compatibility for config and data files
+        that need npm packages QuickJS can't load, which run once per build.
+  - [ ] A Rust function that calls back into JavaScript from inside an EJS template (say
+        `markdown()` on a site with EJS render hooks) is an error ("called from inside another
+        JavaScript call"), like a config filter doing the same today.
 - [ ] Not planned unless someone asks: Go templates (Hugo; no Rust implementation matches Go's
       `text/template` closely) and MDX/JSX (needs a JavaScript toolchain and a component model).
 
@@ -436,6 +480,11 @@ migration guides it unblocks.
       rendered too early.
 - [x] Test the examples locally: `scripts/examples.sh` builds them all (with link checks), and
       `scripts/examples.sh blog-tags` serves one with live reload.
+- [x] The examples in the Ranger Station '76 palette (0.5): soft white and green charcoal
+      pages, pine headings and navigation, burnt orange links, avocado for the selected page,
+      tabs and code, harvest gold callouts, the four-color stripe, and highlighting and
+      Pagefind's search box in the same colors. `component-docs`' own library colors moved to
+      the palette too. Checked in a browser in light and dark mode (2026-11-10).
 - [ ] Later (not now): deploy the examples to Netlify, one site each, at `<name>.sitesquatch.dev`.
       `.github/workflows/examples.yml` builds them with the branch's ssqch and uploads each
       through Netlify's deploy API, from `release/0.4` for now (switch to `main` after 0.4).
@@ -590,13 +639,15 @@ I'd take them (the first three went into 0.4):
       (URL, port, output folder and pid, written once the first build is done). With
       `inspect --format json` and `diff --format json`, every command a script needs speaks
       JSON. Left to do:
-  - [ ] Error messages from templates count lines from the end of the front matter
+  - [x] Error messages from templates count lines from the end of the front matter
         (`index.edge:4` for line 7 of the file). The JSON report's `line` is right; make the
-        text say the file's line too.
+        text say the file's line too. Done: `diagnostics::file_lines`, after the file and line
+        are located, for the terminal, the dev server's overlay and the JSON `message`.
   - [ ] The file and line of an error that isn't a schema, link or conflict problem are read
         from its message (`diagnostics::locate`). Carry them in the error instead, starting
         with the template engines.
-  - [ ] `console.warn` in a config goes to standard error, not into the report's `warnings`.
+  - [x] `console.warn` in a config goes to standard error, not into the report's `warnings`.
+        Done: in a JSON build it's a warning with the code `console` (the terminal is as it was).
 - [x] **`ssqch new <path>`:** a new post or page from an archetype (a file in
       `_archetypes/`, named after the page's folder), with the title and date filled in as
       front matter keys rather than through a second template syntax. Given a folder and a
@@ -610,34 +661,45 @@ I'd take them (the first three went into 0.4):
       index, an app, or `llms.txt`), from explicitly listed collections and fields.
 - [ ] **A searchable-directory example:** structured data, one page per record, filters as a
       custom element, Pagefind for search.
-- [ ] **Say ssqch's name for another generator's word** (decided 2026-11-10; the design and
-      what each case prints today are in `research/exact-agent-first.md`). Where a command,
+- [x] **Say ssqch's name for another generator's word** (decided 2026-11-10; the design and
+      what each case printed before is in `research/exact-agent-first.md`). Where a command,
       flag, config option, filter or front-matter key is common in other generators and ssqch
       has the same thing under its own name, the error says the equivalent and where to read
       about it, so people and agents learn as they go. It teaches and never accepts: no
-      foreign name starts working, so the "no Eleventy" rule stands. Not scheduled: 0.4 or 0.5
-      is David's call.
-  - [ ] One table of equivalents (the word, its kind, whose it is, ssqch's name, the docs
-        topic), replacing the constants in `crates/ssqch/src/import.rs` and tested against the
-        tables in `docs/guides/`. Every row is tested: the word is refused, and what the hint
-        names is in `capabilities`.
-  - [ ] First slice: commands and flags (`dev`, `start`, `server`, `check`, `clean`,
-        `--watch`, `--drafts`, `-d`, `--pathprefix`, `--minify`, `--incremental`), config
-        options that aren't close in spelling (`pathPrefix`, `addPassthroughCopy`,
-        `publishDir`, `outDir`), all unknown config keys in one run, and a folder with another
-        generator's config and none of ssqch's (it builds 0 pages into `_site` today, and
-        should name `ssqch import` and the guide).
-  - [ ] Then: filters and globals in each template language (`slugify` and `url` in Nunjucks,
-        `relative_url` in Liquid, `eleventy.generator`, `site.posts`), a warning for
-        front-matter keys that can't be a site's own (`eleventyComputed`, `redirect_from`,
-        `published: false`, which is published today), `hint` fields in the JSON report, and
-        `ssqch docs <foreign name>` and `ssqch docs --from <generator>` once `ssqch docs`
-        exists.
-  - [ ] With it: a sentence under "No Eleventy compatibility" in `CLAUDE.md` saying a hint
-        that names another generator's word isn't an API.
-  - [ ] Found on the way: Liquid's `Unknown filter` doesn't name the filter. (`Nothing
-        sighted` had an empty folder name when the input folder is the project root; fixed:
-        it says `.`.)
+      foreign name starts working, so the "no Eleventy" rule stands. Built for 0.5.
+  - [x] One table of equivalents (the word, its kind, whose it is, ssqch's name, what to say,
+        where to read more): `crates/sitesquatch/src/equivalents.rs`. `ssqch import` reads its
+        front-matter renames from it. Every row is tested
+        (`other_generators_words_get_ssqch_names`): the word is refused or warned about, the
+        message is the row's, and the name it gives is in `capabilities`, `--help` or the
+        README.
+    - [ ] Not yet: checking the table against the tables in `docs/guides/`, and moving
+          `import`'s method and package hints (`CALL`, `replacement`) into it.
+  - [x] First slice: commands and flags (`dev`, `start`, `server`, `preview`, `check`, `clean`,
+        `generate`, `version`, `deploy`, `--watch`, `--drafts`, `-D`, `-d`, `--destination`,
+        `--input`, `--pathprefix`, `--baseURL`, `--minify`, `--incremental`, `init
+        --template`), under clap's error in place of its spelling guess; config options
+        (`pathPrefix`, `dir`, `publishDir`, `outDir`, `integrations`, `baseURL`, `title`, the
+        `*TemplateEngine` options and the `add*` methods), all unknown keys in one run, and a
+        config written as calls (`config.addPassthroughCopy()`); a folder with another
+        generator's config and none of ssqch's (Eleventy, Hugo, Zola, Jekyll, Hexo, MkDocs,
+        Docusaurus, Astro, Gatsby, VitePress): a warning, `other-generator`.
+  - [x] Then: filters in Jinja, Nunjucks and Liquid (`url`, `relative_url`, `absolute_url`,
+        `slugify`, `markdownify`, `jsonify`), warnings for front-matter keys that can't be a
+        site's own (`foreign-key`: `eleventyComputed`, `eleventyExcludeFromCollections`,
+        `eleventyNavigation`, `redirect_from`, `published: false`; `templateEngineOverride`
+        stays an error), and a `hint` in the JSON report (`word`, `kind`, `use`, `from`,
+        `more`).
+  - [x] Template globals: `eleventy.*`, and Jekyll's `site.posts` and `site.pages` (unless the
+        site's `site` data has them), read in template code in pages, layouts and includes:
+        a warning, `foreign-global`.
+  - [ ] Not yet: `ssqch docs <foreign name>` and `ssqch docs --from <generator>` once `ssqch
+        docs` exists (hints say `More: README: "..."` until then).
+  - [x] With it: a sentence in `CLAUDE.md` saying a hint that names another generator's word
+        isn't an API.
+  - [x] Found on the way: Liquid's `Unknown filter` didn't name the filter; it does now, with a
+        "did you mean". (`Nothing sighted` had an empty folder name when the input folder is
+        the project root; fixed: it says `.`.)
 - [ ] Not for now: a page inspector in the browser, a component workbench, an MCP server (after
       the JSON interface exists, as a thin layer over it), preview at a future date, a local
       form editor for front matter, diagnostic bundles.

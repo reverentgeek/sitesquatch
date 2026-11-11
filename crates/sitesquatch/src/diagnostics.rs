@@ -70,6 +70,10 @@ impl Diagnostic {
     /// `code` and `message` always; the rest when known.
     pub fn to_json(&self) -> serde_json::Value {
         let mut out = serde_json::json!({ "code": self.code, "message": self.message });
+        // Another generator's word, and ssqch's name for it, as data.
+        if let Some(equivalent) = crate::equivalents::in_message(&self.message) {
+            out["hint"] = equivalent.to_json();
+        }
         if let Some(file) = &self.file {
             out["file"] = file.as_str().into();
         }
@@ -152,7 +156,7 @@ pub fn red(label: &str) -> String {
 /// An error as a person reads it: its message, then the lines it's about
 /// ([`frames`]), when they can be found.
 pub fn describe(error: &anyhow::Error, fallback: &str, at: &Locator) -> String {
-    let message = format!("{:#}", error);
+    let message = file_lines(&format!("{:#}", error), at);
     match frames(error, fallback, at) {
         Some(lines) => format!("{}\n\n{}", message, lines),
         None => message,
@@ -381,8 +385,32 @@ pub fn from_error(error: &anyhow::Error, fallback: &str, at: &Locator) -> Vec<Di
         if item.file.is_none() {
             (item.file, item.line) = locate(&item.message, at);
         }
+        item.message = file_lines(&item.message, at);
     }
     items
+}
+
+/// `message` with each template line it names counted as the file counts
+/// them: template engines count from the end of the front matter, so
+/// `page.jinja:2:` is `page.jinja:5:` in a page with two lines of it.
+pub fn file_lines(message: &str, at: &Locator) -> String {
+    static PLACE: OnceLock<Regex> = OnceLock::new();
+    static PARSE: OnceLock<Regex> = OnceLock::new();
+    let place = PLACE.get_or_init(|| Regex::new(r"(^|[\s:(])([^\s:()]+\.[A-Za-z0-9]+):(\d+): ").unwrap());
+    let parse = PARSE.get_or_init(|| Regex::new(r"(parse error in )(\S+): line (\d+)").unwrap());
+    let shift = |name: &str, n: &str| -> Option<usize> {
+        let (path, _) = at.find(name)?;
+        let before = lines_before_body(&path).filter(|b| *b > 0)?;
+        Some(before + n.parse::<usize>().ok()?)
+    };
+    let message = place.replace_all(message, |c: &regex::Captures| match shift(&c[2], &c[3]) {
+        Some(line) => format!("{}{}:{}: ", &c[1], &c[2], line),
+        None => c[0].to_string(),
+    });
+    parse.replace_all(&message, |c: &regex::Captures| match shift(&c[2], &c[3]) {
+        Some(line) => format!("{}{}: line {}", &c[1], &c[2], line),
+        None => c[0].to_string(),
+    }).into_owned()
 }
 
 #[cfg(test)]

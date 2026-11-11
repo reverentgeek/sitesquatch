@@ -10,6 +10,7 @@ repository.workspace = true
 anyhow.workspace = true
 sitesquatch.workspace = true
 regex.workspace = true
+walkdir = "2"
 minijinja = { version = "3", features = ["json", "urlencode", "loop_controls", "preserve_order", "speedups"] }
 chrono.workspace = true
 minijinja-contrib = { version = "3", features = ["pycompat"] }

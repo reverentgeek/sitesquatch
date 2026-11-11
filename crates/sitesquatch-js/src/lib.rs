@@ -23,6 +23,7 @@
 //! `process` and `Buffer` that configs and data files commonly use.
 
 mod convert;
+mod ejs;
 mod fetch;
 mod modules;
 mod native;
@@ -144,13 +145,15 @@ fn install_data_files(cfg: &mut Config, files: DataFiles) {
         let files = files.clone();
         cfg.add_data_extension(ext, move |path| files.load(path));
     }
+    // EJS templates, on the same engine (started on the first `.ejs` render).
+    cfg.add_template_engine("ejs", move |env| Ok(Arc::new(ejs::EjsEngine::new(files.clone(), env)) as Arc<dyn sitesquatch::TemplateEngine>));
 }
 
 fn project_root(cfg: &Config) -> PathBuf {
     dunce::canonicalize(&cfg.root).unwrap_or_else(|_| cfg.root.clone())
 }
 
-struct DataFiles {
+pub(crate) struct DataFiles {
     root: PathBuf,
     env: String,
     modules: Arc<[JsModule]>,
@@ -167,7 +170,7 @@ impl DataFiles {
         DataFiles { root: root.to_path_buf(), env: env.to_string(), modules, engine: Mutex::new(engine), loaded, versions: Mutex::new(HashMap::new()) }
     }
 
-    fn engine(&self) -> Result<Arc<Engine>> {
+    pub(crate) fn engine(&self) -> Result<Arc<Engine>> {
         let mut slot = self.engine.lock().unwrap();
         if let Some(engine) = &*slot {
             return Ok(engine.clone());
@@ -330,6 +333,30 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
         }
         other => bail!("schemas must be an object of {{ name: {{ fields }} }}, not {}", other.type_of()),
     }
+    // `budgets: { pages: "150 KB", total: "300 MB" }`: sizes a build is checked against.
+    match settings.get("budgets") {
+        Value::Undefined | Value::Null => {}
+        Value::Obj(o) => {
+            cfg.budgets = o.iter().map(|(name, size)| sitesquatch::footprint::budget(name, size)).collect::<Result<_>>()?;
+        }
+        other => bail!("budgets must be an object, like {{ pages: \"150 KB\", images: \"1 MB\" }}, not {}", other.type_of()),
+    }
+    // `serve: { run: ["npx postcss ... --watch"] }`: programs `ssqch serve` runs alongside.
+    match settings.get("serve") {
+        Value::Undefined | Value::Null => {}
+        Value::Obj(o) => {
+            if let Some(key) = o.keys().find(|k| k.as_str() != "run") {
+                bail!("serve: \"{}\" isn't an option (options: run)", key);
+            }
+            cfg.serve_run = match settings.get("serve").get("run") {
+                Value::Undefined | Value::Null => Vec::new(),
+                Value::Str(s) => vec![s.to_string()],
+                Value::Arr(a) => a.iter().map(|c| c.as_str().filter(|c| !c.trim().is_empty()).map(String::from).ok_or_else(|| anyhow!("serve.run must be a command or an array of commands, like [\"npx postcss src/app.css -o dist/app.css --watch\"]"))).collect::<Result<_>>()?,
+                other => bail!("serve.run must be a command or an array of commands, not {}", other.type_of()),
+            };
+        }
+        other => bail!("serve must be an object, like {{ run: [\"npx postcss ... --watch\"] }}, not {}", other.type_of()),
+    }
     match settings.get("ignore") {
         Value::Undefined => {}
         Value::Str(s) => cfg.ignore = vec![s.to_string()],
@@ -484,11 +511,23 @@ impl Engine {
                 if level == 0 {
                     // Standard error when standard output is kept for a JSON report.
                     sitesquatch::diagnostics::progress(&message);
+                } else if level == 1 && sitesquatch::diagnostics::capturing() {
+                    // `console.warn` is one of the JSON report's warnings.
+                    sitesquatch::diagnostics::warn(sitesquatch::diagnostics::Diagnostic::warning("console", message));
                 } else {
                     eprintln!("{}", message);
                 }
             })?;
             globals.set("__ssqch_print", print)?;
+            // Other generators' config options and methods, and what ssqch calls them (see sitesquatch::equivalents).
+            let equivalents = Object::new(ctx.clone())?;
+            for e in sitesquatch::equivalents::TABLE.iter().filter(|e| e.kind == sitesquatch::equivalents::Kind::Config) {
+                let row = Object::new(ctx.clone())?;
+                row.set("say", e.say)?;
+                row.set("more", e.more)?;
+                equivalents.set(e.word, row)?;
+            }
+            globals.set("__ssqch_equivalents", equivalents)?;
             globals.set("process", process_object(&ctx, root, env)?)?;
             native::install(&ctx, root)?;
             modules::install_commonjs(&ctx, root, modules.clone(), loaded.clone())?;

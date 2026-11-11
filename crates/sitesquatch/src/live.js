@@ -41,6 +41,50 @@
 		}
 		panel.shadowRoot.querySelector("pre").textContent = error;
 	};
+	// Stylesheets and scripts the page links that aren't in the output: a note in the corner (the
+	// page is there, just unstyled or without its script), and the server says so in the terminal.
+	let note;
+	let missing = new Map();
+	const assets = () => [...document.querySelectorAll('link[rel~="stylesheet"][href], script[src]')]
+		.map(el => new URL(el.getAttribute("href") ?? el.getAttribute("src"), location.href))
+		.filter(url => url.origin === location.origin && !url.pathname.startsWith("/__ssqch/"))
+		.map(url => url.pathname);
+	const notice = () => {
+		if (!missing.size) {
+			note?.remove();
+			note = null;
+			return;
+		}
+		if (!note) {
+			note = document.createElement("div");
+			note.attachShadow({ mode: "open" }).innerHTML = `<style>
+				aside { position: fixed; right: 1rem; bottom: 1rem; z-index: 2147483646; max-width: 32rem; box-sizing: border-box; padding: 0.75rem 1rem; border-left: 5px solid #e8af43; background: #1b201d; color: #e5e9e1; font: 14px/1.5 system-ui, sans-serif; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
+				strong { display: block; color: #f0a17d; }
+				p { margin: 0.35rem 0 0; overflow-wrap: anywhere; }
+				button { margin-top: 0.5rem; padding: 0.2rem 0.7rem; border: 0; border-radius: 4px; background: #a23e20; color: #fafaf7; font: inherit; cursor: pointer; }
+			</style><aside role="status"><strong>Missing from the output</strong><div></div><button type="button">Hide</button></aside>`;
+			note.shadowRoot.querySelector("button").addEventListener("click", () => note.remove());
+			document.body.append(note);
+		}
+		const list = note.shadowRoot.querySelector("div");
+		list.replaceChildren(...[...missing.values()].map(message => Object.assign(document.createElement("p"), { textContent: message })));
+	};
+	const check = async paths => {
+		for (const path of paths) {
+			try {
+				const found = (await fetch(path, { method: "HEAD", cache: "no-store" })).ok;
+				if (found) {
+					missing.delete(path);
+					continue;
+				}
+				const { message } = await (await fetch(`/__ssqch/missing?path=${encodeURIComponent(path)}`)).json();
+				if (message) missing.set(path, message);
+				else missing.delete(path);
+			} catch {}
+		}
+		notice();
+	};
+	check(assets());
 	// A changed stylesheet is fetched again in place: the page keeps its scroll position and its forms.
 	const swap = (path, id) => {
 		for (const link of document.querySelectorAll('link[rel~="stylesheet"]')) {
@@ -62,6 +106,8 @@
 					return;
 				}
 				for (const path of now.css) swap(path, now.id);
+				// A file that was missing may be there now.
+				if (missing.size) check([...missing.keys()]);
 			}
 			seen = now.id;
 		} catch {}

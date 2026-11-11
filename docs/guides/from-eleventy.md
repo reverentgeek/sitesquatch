@@ -81,7 +81,7 @@ The config is ESM, though your own CommonJS files (`require`, `module.exports`) 
 
 ## Templates
 
-Nunjucks (`.njk`) renders with minijinja, and Liquid with the `liquid` crate. Most templates work unchanged, shortcodes included; the README lists what differs (Nunjucks async tags aren't supported, and Liquid shortcodes become filters). JavaScript templates (`.11ty.js`) need rewriting in a template language, or an engine of your own for a new extension: `engines: { page: (source, data) => html }` renders `.page` files. WebC isn't supported.
+Nunjucks (`.njk`) renders with minijinja, Liquid with the `liquid` crate, and EJS (`.ejs`) with ssqch's own EJS on its built-in JavaScript engine (`include()` reads from `_includes`, as in Eleventy). Most templates work unchanged, shortcodes included; the README lists what differs (Nunjucks async tags aren't supported, and Liquid shortcodes become filters). JavaScript templates (`.11ty.js`) need rewriting in a template language, or an engine of your own for a new extension: `engines: { page: (source, data) => html }` renders `.page` files. WebC isn't supported.
 
 ## Things that work differently
 

@@ -63,7 +63,7 @@ fn init_creates_a_site_that_builds() {
 
 #[test]
 fn init_starts_a_site_in_each_engine() {
-    for engine in ["njk", "edge", "liquid", "hbs"] {
+    for engine in ["njk", "edge", "liquid", "hbs", "ejs"] {
         let dir = temp_dir(&format!("init-{}", engine));
         let d = dir.to_str().unwrap();
         let (ok, log) = ssqch(&["init", d, "--engine", engine]);
@@ -136,7 +136,7 @@ fn init_starts_a_docs_site() {
     assert!(ok && !log.contains("warn") && read("docs/guides/search/index.html").contains("<title>Search | Squatch Docs</title>"), "{}", log);
     assert!(dir.join("dist/assets/docs.js").is_file() && dir.join("dist/highlight.css").is_file());
 
-    for engine in ["njk", "edge", "liquid", "hbs"] {
+    for engine in ["njk", "edge", "liquid", "hbs", "ejs"] {
         let other = temp_dir(&format!("init-docs-{}", engine));
         let (ok, log) = ssqch(&["init", other.to_str().unwrap(), "--starter", "docs", "--engine", engine]);
         assert!(ok, "{}: {}", engine, log);
@@ -157,7 +157,7 @@ fn init_rejects_an_unknown_engine() {
     let dir = temp_dir("init-pug");
     let (ok, log) = ssqch(&["init", dir.to_str().unwrap(), "--engine", "pug"]);
     assert!(!ok);
-    assert!(log.contains("--engine pug: not a starter engine (use jinja, njk, edge, liquid, hbs)"), "{}", log);
+    assert!(log.contains("--engine pug: not a starter engine (use jinja, njk, edge, liquid, hbs, ejs)"), "{}", log);
     assert!(!dir.exists());
 }
 
@@ -200,6 +200,92 @@ fn jinja_is_the_default_and_other_templates_are_named() {
     write("ssqch.config.js", "export default { ignore: [\"old.edge\"] };\n");
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok && !log.contains("warn"), "{}", log);
+}
+
+#[cfg(feature = "jinja")]
+#[test]
+fn jinja_errors_point_at_the_name_and_say_what_was_meant() {
+    let dir = temp_dir("jinja-errors");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "export default { filters: { shout: s => s } };\n");
+    write("_includes/partials/nav.jinja", "<nav></nav>");
+    write("_includes/base.jinja", "{{ content }}");
+    // The line, the message, and what the carets go under.
+    let cases = [
+        ("{% include \"partials/navv.jinja\" %}", "template not found: can't include `partials/navv.jinja` (did you mean `partials/nav.jinja`?)", "partials/navv.jinja"),
+        ("{% extends \"bse.jinja\" %}", "template not found: no template named `bse.jinja` (did you mean `base.jinja`?)", "bse.jinja"),
+        ("{{ title | uper }}", "unknown filter `uper` (did you mean `upper`?)", "uper"),
+        ("{{ title | shot }}", "unknown filter `shot` (did you mean `shout`?)", "shot"),
+        ("{{ shoutt(title) }}", "unknown function `shoutt` (did you mean `shout`?)", "shoutt"),
+        ("{% if 3 is od %}{% endif %}", "unknown test `od` (did you mean `odd`?)", "od"),
+        ("{{ title | frobnicate }}", "unknown filter `frobnicate`\n", "frobnicate"),
+    ];
+    for (line, message, under) in cases {
+        write("index.jinja", &format!("---\ntitle: Camp\n---\n{}\n", line));
+        let (ok, log) = ssqch(&["build", "--root", d]);
+        // The file's own line, as the frame below numbers it.
+        assert!(!ok && log.contains(&format!("index.jinja:4: {}", message)), "{}\n{}", line, log);
+        let column = line.rfind(under).unwrap();
+        let frame = format!("  --> index.jinja:4\n   2 | title: Camp\n   3 | ---\n   4 | {}\n     | {}{}", line, " ".repeat(column), "^".repeat(under.len()));
+        assert!(log.contains(&frame), "{}\n{}\nwanted:\n{}", line, log, frame);
+    }
+}
+
+#[test]
+fn ejs_templates_render_as_ejs_does() {
+    let dir = temp_dir("ejs");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    let read = |path: &str| std::fs::read_to_string(dir.join("_site").join(path)).unwrap_or_else(|e| panic!("{}: {}", path, e));
+    write("ssqch.config.js", "export default { templateFormats: [\"ejs\", \"md\"], markdownEngine: \"ejs\", filters: { shout: s => String(s).toUpperCase() + \"!\" } };\n");
+    write("_includes/partials/card.ejs", "<div class=\"card\"><%= name %><% if (typeof extra !== \"undefined\") { %> (<%= extra %>)<% } %></div>\n");
+    // The output of EJS 3.1.10 for each template, with the same data.
+    let cases = [
+        ("<h1><%= title %></h1>\n<p><%- html %></p>\n<p><%= html %></p>\n", "<h1>Squatch &lt;Snacks&gt;</h1>\n<p><b>bold</b></p>\n<p>&lt;b&gt;bold&lt;/b&gt;</p>\n"),
+        ("<ul>\n<% items.forEach(function (item) { -%>\n  <li><%= item.name %> is <%= item.n * 2 %></li>\n<% }) -%>\n</ul>\n", "<ul>\n  <li>pine cone is 4</li>\n  <li>Crunch is 6</li>\n</ul>\n"),
+        ("<ul>\n  <%_ for (const item of items) { _%>\n    <li><%= item.name %></li>\n  <%_ } _%>\n</ul>\n", "<ul>\n    <li>pine cone</li>\n    <li>Crunch</li>\n</ul>\n"),
+        ("a <%# a comment %> b <%% literal %> c\n<%= undefined %>|<%= null %>|<%- null %>|<%= 0 %>|<%= false %>\n", "a  b <% literal %> c\n|||0|false\n"),
+        ("<%- include('partials/card', { name: 'Cedar' }) %>\n<%- include('partials/card', { name: 'Old Growth', extra: 'x' }) %>\n", "<div class=\"card\">Cedar</div>\n\n<div class=\"card\">Old Growth (x)</div>\n\n"),
+        ("<% const shout = s => s.toUpperCase(); %><%= shout(title) %>\n<%= locals.title %> <%= typeof missing %>\n", "SQUATCH &lt;SNACKS&gt;\nSquatch &lt;Snacks&gt; undefined\n"),
+        ("<%= title; %>\n<%\n  let total = 0;\n  for (const i of items) total += i.n;\n%>\nTotal: <%= total %>\n", "Squatch &lt;Snacks&gt;\n\nTotal: 5\n"),
+        ("Quotes: <%= q %>\n<% if (items.length > 1) { %>many<% } else { %>one<% } %>\n", "Quotes: &#34;a&#34; &amp; &#39;b&#39;\nmany\n")
+    ];
+    let data = "---\ntitle: \"Squatch <Snacks>\"\nhtml: \"<b>bold</b>\"\nq: \"\\\"a\\\" & 'b'\"\nitems:\n  - { name: pine cone, n: 2 }\n  - { name: Crunch, n: 3 }\n";
+    for (i, (source, _)) in cases.iter().enumerate() {
+        write(&format!("cases/c{}.ejs", i), &format!("{}permalink: /c{}.html\n---\n{}", data, i, source));
+    }
+    // A Markdown post in an EJS layout, with a config filter, one of ssqch's functions and collections.
+    write("_includes/base.ejs", "<main><%- content %></main><footer><%= shout(\"stump\") %> <%- markdown(\"*Pine*\", \"inline\") %> <%= page.url %></footer>\n");
+    write("trail.md", "---\nlayout: base.ejs\ntitle: Trail\n---\n# <%= title %>\n\n<%= collections.all.length %> pages.\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && !log.contains("warn"), "{}", log);
+    for (i, (source, want)) in cases.iter().enumerate() {
+        assert_eq!(read(&format!("c{}.html", i)), *want, "{}", source);
+    }
+    assert_eq!(read("trail/index.html"), "<main><h1 id=\"trail\">Trail</h1>\n<p>9 pages.</p>\n</main><footer>STUMP! <em>Pine</em> /trail/</footer>\n");
+
+    // Errors name the template and line, and the frame shows the file's own lines.
+    let fails = |source: &str, message: &str| {
+        write("bad.ejs", &format!("---\ntitle: x\n---\nline one\n{}\n", source));
+        let (ok, log) = ssqch(&["build", "--root", d]);
+        assert!(!ok && log.contains(&format!("rendering bad.ejs with `ejs`: bad.ejs:5: {}", message)) && log.contains("  --> bad.ejs:5\n"), "{}\n{}", source, log);
+        log
+    };
+    fails("<%= nope.x %>", "nope is not defined");
+    fails("<% if (true) { %>open", "a block opened in a <% %> tag isn't closed (a `}` is missing)");
+    fails("<% if (x) {", "this <% tag is never closed (with %>)");
+    let log = fails("<%- include('partials/crd') %>", "template not found: can't include `partials/crd`: no sightings in _includes (did you mean `partials/card`?)");
+    assert!(log.contains("   5 | <%- include('partials/crd') %>\n     |              ^^^^^^^^^^^^\n"), "{}", log);
+    std::fs::remove_file(dir.join("bad.ejs")).unwrap();
 }
 
 #[test]
@@ -274,7 +360,7 @@ fn render_front_matter_picks_the_engines() {
 
     write("old.md", "---\ntemplateEngineOverride: md\n---\nHi\n");
     let (ok, log) = ssqch(&["build", "--root", d]);
-    assert!(!ok && log.contains("front matter `templateEngineOverride` is now `render`"), "{}", log);
+    assert!(!ok && log.contains("front matter `templateEngineOverride` isn't read. ssqch's name is `render`"), "{}", log);
     std::fs::remove_file(dir.join("old.md")).unwrap();
 
     write("bad.md", "---\nrender: 3\n---\nHi\n");
@@ -807,6 +893,201 @@ impl Drop for Server {
     }
 }
 
+/// `serve.run` starts a watcher with the server, shows its output under its
+/// name, and stops it (and what it started) when the server stops.
+#[cfg(unix)]
+#[test]
+fn serve_runs_companion_processes() {
+    let dir = temp_dir("serve-companions");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::create_dir_all(dir.join("bin")).unwrap();
+    // A stand-in for a CSS watcher: it writes the stylesheet, says so, records its pid and keeps
+    // watching until its standard input closes, as Tailwind's and esbuild's `--watch` do.
+    let script = "#!/bin/sh\necho $$ > \"$SSQCH_INPUT/../watcher.pid\"\nmkdir -p \"$SSQCH_OUTPUT/assets\"\necho 'body { color: pine; }' > \"$SSQCH_OUTPUT/assets/app.css\"\necho \"wrote app.css, serving=$SSQCH_SERVING\"\ncat > /dev/null\nwhile true; do sleep 0.2; done\n";
+    std::fs::write(dir.join("bin/pinecss"), script).unwrap();
+    std::process::Command::new("chmod").arg("+x").arg(dir.join("bin/pinecss")).status().unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), "export default { dirs: { input: \"src\" }, serve: { run: [\"./bin/pinecss --watch\"] } };\n").unwrap();
+    std::fs::write(dir.join("src/index.html"), "<link rel=\"stylesheet\" href=\"/assets/app.css\"><p>camp</p>").unwrap();
+    let log = temp_dir("serve-companions-log");
+    let out = std::fs::File::create(&log).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(["serve", "--port", "0", "--root"]).arg(&dir).stdout(out.try_clone().unwrap()).stderr(out).spawn().unwrap();
+    let server = Server(child);
+    wait_for(&log, "[pinecss] wrote app.css, serving=true");
+    wait_for(&dir.join("_site/assets/app.css"), "color: pine");
+    wait_for(&dir.join("watcher.pid"), "\n");
+    let pid = std::fs::read_to_string(dir.join("watcher.pid")).unwrap().trim().to_string();
+    let alive = |pid: &str| std::process::Command::new("kill").args(["-0", pid]).stderr(std::process::Stdio::null()).status().unwrap().success();
+    // Still watching a moment later: its standard input is held open.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert!(alive(&pid) && !std::fs::read_to_string(&log).unwrap().contains("warn:"), "{}", std::fs::read_to_string(&log).unwrap());
+    // A build doesn't run them.
+    assert!(std::fs::read_to_string(&log).unwrap().contains("[ssqch] serve.run: ./bin/pinecss --watch\n"));
+    // Stopping the server stops the watcher.
+    std::process::Command::new("kill").args(["-TERM", &server.0.id().to_string()]).status().unwrap();
+    let started = std::time::Instant::now();
+    while alive(&pid) {
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "the watcher outlived the server:\n{}", std::fs::read_to_string(&log).unwrap_or_default());
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(!std::fs::read_to_string(&log).unwrap().contains("warn:"), "{}", std::fs::read_to_string(&log).unwrap());
+    // Not an option it knows: an error that says so.
+    std::fs::write(dir.join("ssqch.config.js"), "export default { serve: { runs: [\"x\"] } };\n").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", dir.to_str().unwrap()]);
+    assert!(!ok && log.contains("serve: \"runs\" isn't an option (options: run)"), "{}", log);
+}
+
+/// A stylesheet a page links that nothing wrote: the page asks the server, which says so once,
+/// names what could have written it, and says it again after each build until it's there.
+#[test]
+fn serve_says_when_a_linked_file_is_missing() {
+    let dir = temp_dir("serve-missing");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), "export default { dirs: { input: \"src\" } };\n").unwrap();
+    std::fs::write(dir.join("src/index.html"), "<link rel=\"stylesheet\" href=\"/assets/app.css\"><p>camp</p>").unwrap();
+    let log = temp_dir("serve-missing-log");
+    let ready = temp_dir("serve-missing-ready");
+    let out = std::fs::File::create(&log).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(["serve", "--port", "0", "--root"]).arg(&dir).arg("--ready-file").arg(&ready).stdout(out.try_clone().unwrap()).stderr(out).spawn().unwrap();
+    let _server = Server(child);
+    wait_for(&ready, "\"ok\": true");
+    let info: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&ready).unwrap()).unwrap();
+    let port = info["port"].as_u64().unwrap();
+    let ask = |path: &str| -> serde_json::Value {
+        use std::io::{Read, Write};
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", port as u16)).unwrap();
+        write!(stream, "GET /__ssqch/missing?path={} HTTP/1.0\r\n\r\n", path).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        serde_json::from_str(response.split("\r\n\r\n").nth(1).unwrap_or("")).unwrap_or_else(|e| panic!("{}: {}", e, response))
+    };
+    let said = "/assets/app.css is linked but nothing wrote it to _site. If a tool makes it, run its watcher with `serve.run` (see \"CSS and JavaScript\" in the README)";
+    assert_eq!(ask("%2Fassets%2Fapp.css")["message"], said);
+    ask("%2Fassets%2Fapp.css");
+    // Said once, however many pages ask.
+    wait_for(&log, said);
+    assert_eq!(std::fs::read_to_string(&log).unwrap().matches(said).count(), 1);
+    // Said again after the next build, while it's still missing.
+    change_and_wait(&dir.join("src/index.html"), "<link rel=\"stylesheet\" href=\"/assets/app.css\"><p>camp two</p>", &dir.join("_site/index.html"), "camp two");
+    let started = std::time::Instant::now();
+    while std::fs::read_to_string(&log).unwrap().matches(said).count() < 2 {
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "{}", std::fs::read_to_string(&log).unwrap());
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    // There now: nothing to say.
+    std::fs::create_dir_all(dir.join("_site/assets")).unwrap();
+    std::fs::write(dir.join("_site/assets/app.css"), "body {}").unwrap();
+    assert_eq!(ask("%2Fassets%2Fapp.css")["message"], serde_json::Value::Null);
+    assert_eq!(ask("%2F..%2Fetc%2Fpasswd")["message"], serde_json::Value::Null);
+}
+
+#[test]
+fn footprint_weighs_a_build() {
+    let dir = temp_dir("footprint");
+    let d = dir.to_str().unwrap();
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), "export default { dirs: { input: \"src\", output: \"dist\" }, passthrough: [{ \"src/big.bin\": \"big.bin\" }] };\n").unwrap();
+    std::fs::write(dir.join("src/index.html"), "<p>camp</p>").unwrap();
+    std::fs::write(dir.join("src/big.bin"), vec![0u8; 5000]).unwrap();
+    // Before a build: nothing to weigh.
+    let (ok, log) = ssqch(&["footprint", "--root", d]);
+    assert!(!ok && log.contains("isn't a folder; build the site first"), "{}", log);
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    // The site's output folder, from its config.
+    let (ok, stdout, _) = ssqch_outputs(&["footprint", "--root", d]);
+    assert!(ok && stdout.starts_with("Footprint of dist: 2 files, 5.01 KB\n") && stdout.contains("\nLargest footprints: other files\n  5.00 KB  /big.bin\n"), "{}", stdout);
+    // Any folder, as JSON, without a config.
+    let (ok, stdout, _) = ssqch_outputs(&["footprint", dir.join("dist").to_str().unwrap(), "--format", "json", "--top", "0"]);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("{}: {}", e, stdout));
+    assert!(ok && json["files"] == 2 && json["kinds"][0]["kind"] == "Pages" && json["largest"]["pages"] == serde_json::json!([]), "{}", stdout);
+
+    // Budgets: a file over its kind's budget is a warning after the build.
+    std::fs::write(dir.join("ssqch.config.js"), "export default { dirs: { input: \"src\", output: \"dist\" }, passthrough: [{ \"src/big.bin\": \"big.bin\" }], budgets: { other: \"4 KB\", pages: 1000 } };\n").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok && log.contains("warn: /big.bin (5.00 KB) is over the other budget of 4.00 KB\n") && !log.contains("pages budget"), "{}", log);
+    let (_, stdout, _) = ssqch_outputs(&["build", "--root", d, "--format", "json"]);
+    assert!(stdout.contains("\"code\": \"bigfootprint\""), "{}", stdout);
+    std::fs::write(dir.join("ssqch.config.js"), "export default { budgets: { page: \"100 KB\" } };\n").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("budgets.page isn't a kind of file (did you mean `pages`?)"), "{}", log);
+}
+
+/// Every row of the table of other generators' words: the word is refused (or, in front matter,
+/// warned about), what's said is the row's, and the name it gives is one ssqch has.
+#[cfg(feature = "jinja")]
+#[test]
+fn other_generators_words_get_ssqch_names() {
+    use sitesquatch::equivalents::{Kind, TABLE};
+    let (_, capabilities, _) = ssqch_outputs(&["capabilities", "--format", "json"]);
+    let mut known = capabilities.clone();
+    for help in [&["build", "--help"][..], &["serve", "--help"], &["init", "--help"], &["--help"]] {
+        known.push_str(&ssqch(help).1);
+    }
+    let readme = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../README.md")).unwrap();
+    let dir = temp_dir("equivalents");
+    std::fs::create_dir_all(&dir).unwrap();
+    let d = dir.to_str().unwrap();
+    for row in TABLE {
+        // The name it gives exists.
+        let name = row.ssqch;
+        assert!(known.contains(&format!("\"{}\"", name)) || known.contains(&format!("{} ", name)) || readme.contains(&format!("`{}", name)), "{}: ssqch has no {:?}", row.word, name);
+        assert!(!row.say.is_empty() && !row.more.is_empty(), "{}", row.word);
+        let (ok, log) = match row.kind {
+            Kind::Command => ssqch(&[row.word]),
+            Kind::Flag => {
+                let command = if row.word == "--template" { "init" } else { "build" };
+                ssqch(&[command, row.word, "--root", d])
+            }
+            Kind::Config => {
+                std::fs::write(dir.join("ssqch.config.js"), format!("export default {{ {}: \"x\" }};\n", row.word)).unwrap();
+                ssqch(&["build", "--root", d])
+            }
+            Kind::FrontMatter => {
+                std::fs::write(dir.join("ssqch.config.js"), "export default {};\n").unwrap();
+                std::fs::write(dir.join("page.md"), format!("---\n{}: false\n---\nPine.\n", row.word)).unwrap();
+                let (ok, log) = ssqch(&["build", "--root", d]);
+                std::fs::remove_file(dir.join("page.md")).unwrap();
+                // A warning, except for the one that would render the page wrong.
+                if row.word == "templateEngineOverride" {
+                    (ok, log)
+                } else {
+                    assert!(ok && log.contains("warn: page.md sets"), "{}: {}", row.word, log);
+                    (false, log)
+                }
+            }
+            Kind::Global => {
+                std::fs::write(dir.join("ssqch.config.js"), "export default {};\n").unwrap();
+                std::fs::write(dir.join("page.jinja"), format!("{{{{ {}.x }}}}", row.word.trim_end_matches('.'))).unwrap();
+                let (ok, log) = ssqch(&["build", "--root", d]);
+                std::fs::remove_file(dir.join("page.jinja")).unwrap();
+                assert!(ok && log.contains("warn: page.jinja uses"), "{}: {}", row.word, log);
+                (false, log)
+            }
+            Kind::Filter => {
+                std::fs::write(dir.join("ssqch.config.js"), "export default {};\n").unwrap();
+                std::fs::write(dir.join("page.jinja"), format!("{{{{ \"/x/\" | {} }}}}", row.word)).unwrap();
+                let result = ssqch(&["build", "--root", d]);
+                std::fs::remove_file(dir.join("page.jinja")).unwrap();
+                result
+            }
+        };
+        assert!(!ok, "{} worked: {}", row.word, log);
+        assert!(log.contains(row.say) && log.contains(&format!("More: {}", row.more)), "{}: {}", row.word, log);
+    }
+    // A config written as calls gets the same answer.
+    std::fs::write(dir.join("ssqch.config.js"), "export default function (config) { config.addPassthroughCopy(\"src/fonts\"); return {}; }\n").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("the config function's argument has no addPassthroughCopy()"), "{}", log);
+    // So does a folder with another generator's config and none of ssqch's.
+    std::fs::remove_file(dir.join("ssqch.config.js")).unwrap();
+    std::fs::write(dir.join(".eleventy.js"), "module.exports = {};\n").unwrap();
+    let (ok, stdout, stderr) = ssqch_outputs(&["build", "--root", d, "--format", "json"]);
+    assert!(ok && stderr.is_empty(), "{}", stderr);
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(report["warnings"][0]["code"], "other-generator", "{}", stdout);
+    assert!(report["warnings"][0]["message"].as_str().unwrap().starts_with("this folder has an Eleventy config (.eleventy.js) and no ssqch.config.js"), "{}", stdout);
+}
+
 /// Wait (up to 20 seconds) for `file` to contain `text`.
 fn wait_for(file: &std::path::Path, text: &str) {
     let started = std::time::Instant::now();
@@ -1083,6 +1364,32 @@ fn import_moves_an_eleventy_site() {
     assert!(!ok && log.contains("there's no importer for hugo yet (only eleventy and zola)"), "{}", log);
 }
 
+/// Eleventy's EJS templates render in ssqch as they are: `include()` reads from `_includes` in both.
+#[test]
+fn import_carries_over_ejs_templates() {
+    let dir = temp_dir("import-ejs");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("eleventy.config.js", "module.exports = function (eleventyConfig) {\n  return { dir: { input: \"src\" }, markdownTemplateEngine: false };\n};\n");
+    write("src/_includes/base.ejs", "<%- include(\"nav\") %><main><%- content %></main>");
+    write("src/_includes/nav.ejs", "<nav><%= title %></nav>");
+    write("src/index.ejs", "---\nlayout: base.ejs\ntitle: Camp\neleventyExcludeFromCollections: true\n---\n<% for (const post of collections.all) { %><a href=\"<%= post.url %>\"><%= post.data.title %></a><% } %>");
+    write("src/trail.md", "---\nlayout: base.ejs\ntitle: Trail\n---\nOld Growth.\n");
+    let (ok, log) = ssqch(&["import", "eleventy", d, "--write"]);
+    assert!(ok && log.contains("  src/index.ejs: eleventyExcludeFromCollections -> excludeFromCollections\n"), "{}", log);
+    let config = std::fs::read_to_string(dir.join("ssqch.config.js")).unwrap();
+    assert!(config.contains("templateFormats: [\"ejs\", \"md\"],"), "{}", config);
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("_site").join(path)).unwrap();
+    assert_eq!(read("index.html"), "<nav>Camp</nav><main><a href=\"/trail/\">Trail</a></main>");
+    assert_eq!(read("trail/index.html"), "<nav>Trail</nav><main><p>Old Growth.</p>\n</main>");
+}
+
 /// A site whose input folder is the project root (the default) has ssqch's
 /// own `.cache` and the output inside what's watched. Writing them isn't a change.
 #[test]
@@ -1274,7 +1581,7 @@ fn build_reports_in_json() {
     };
     let config = |schema: &str| {
         format!(
-            "import {{ linksPlugin }} from \"ssqch/links\";\nconsole.log(\"from the config\");\nexport default {{\n  dirs: {{ input: \"src\", output: \"dist\" }},\n  templateFormats: [\"edge\", \"md\"],\n  passthrough: [\"nothing/**\"],\n  schemas: {{ posts: {{ unknown: \"warn\", fields: {{ {} }} }} }},\n  beforeBuild: {{ run: \"echo from-a-command\" }},\n  plugins: [linksPlugin({{ fail: false }})],\n}};\n",
+            "import {{ linksPlugin }} from \"ssqch/links\";\nconsole.log(\"from the config\");\nconsole.warn(\"pine cones are low\");\nexport default {{\n  dirs: {{ input: \"src\", output: \"dist\" }},\n  templateFormats: [\"edge\", \"md\"],\n  passthrough: [\"nothing/**\"],\n  schemas: {{ posts: {{ unknown: \"warn\", fields: {{ {} }} }} }},\n  beforeBuild: {{ run: \"echo from-a-command\" }},\n  plugins: [linksPlugin({{ fail: false }})],\n}};\n",
             schema
         )
     };
@@ -1308,6 +1615,8 @@ fn build_reports_in_json() {
     assert_eq!(
         json["warnings"],
         serde_json::json!([
+            // console.warn in the config is one of the warnings.
+            { "code": "console", "message": "pine cones are low" },
             { "code": "schema", "message": "src/posts/pine.md: `extra` isn't a field of this schema (schema `posts`)", "file": "src/posts/pine.md", "field": "extra" },
             { "code": "passthrough", "message": "passthrough glob \"nothing/**\" matches no files" },
             { "code": "links", "message": "/posts/pine/ -> /nope/ (not found)", "url": "/posts/pine/" },
@@ -1325,7 +1634,7 @@ fn build_reports_in_json() {
     write("ssqch.config.js", &config("title: \"string\", hero: \"string\""));
     let (json, _) = report(&[]);
     assert_eq!(json["errors"], serde_json::json!([{ "code": "schema", "message": "src/posts/pine.md: `hero` is required (a string) (schema `posts`)", "file": "src/posts/pine.md", "field": "hero" }]));
-    assert_eq!(json["warnings"][0]["field"], "extra");
+    assert_eq!(json["warnings"][1]["field"], "extra");
     assert!(json.get("pages").is_none(), "{}", json);
     write("ssqch.config.js", &config("title: \"string\""));
 
@@ -1547,7 +1856,7 @@ fn the_ranger_reports_what_happened() {
     write("src/_includes/partials/nav.edge", "<nav></nav>");
     write("src/index.md", "---\nlayout: wrap.edge\n---\n@include('partials/navv')\n");
     let (ok, log) = ssqch(&["build", "--root", d]);
-    assert!(!ok && log.contains("index.md:1: @include('partials/navv'): template not found: ") && log.contains("(did you mean `partials/nav`?)"), "{}", log);
+    assert!(!ok && log.contains("index.md:4: @include('partials/navv'): template not found: ") && log.contains("(did you mean `partials/nav`?)"), "{}", log);
     // The line it's about, numbered as the file is, with carets under what the message quotes.
     assert!(log.contains("\n\n  --> src/index.md:4\n   2 | layout: wrap.edge\n   3 | ---\n   4 | @include('partials/navv')\n     |           ^^^^^^^^^^^^^\n"), "{}", log);
     // Colour is for terminals, and this is a pipe.
@@ -1604,9 +1913,31 @@ fn the_ranger_reports_what_happened() {
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok && !log.contains(" new") && !log.contains(" gone"), "{}", log);
 
-    // --verbose names the Edge templates nothing used: the layout and the include from above.
+    // --verbose names the templates nothing used: the layout and the include from above.
     let (ok, log) = ssqch(&["build", "--verbose", "--root", d]);
-    assert!(ok && log.contains("Uninhabited: 2 Edge templates that nothing used in this build (src/_includes/base.edge, src/_includes/partials/nav.edge).\n"), "{}", log);
+    assert!(ok && log.contains("Uninhabited: 2 templates that nothing used in this build (src/_includes/base.edge, src/_includes/partials/nav.edge).\n"), "{}", log);
+
+    // Jinja, Nunjucks and EJS includes count too, whichever engine read them.
+    let other = temp_dir("uninhabited");
+    let o = other.to_str().unwrap();
+    for (path, text) in [
+        ("ssqch.config.js", "export default { templateFormats: [\"jinja\", \"njk\", \"ejs\"] };\n"),
+        ("_includes/nav.jinja", "<nav></nav>"),
+        ("_includes/card.jinja", "<div></div>"),
+        ("_includes/old.jinja", "old"),
+        ("_includes/footer.ejs", "<footer></footer>"),
+        ("_includes/spare.ejs", "spare"),
+        ("_includes/hooks/heading.jinja", "<h{{ heading.level }}>{{ heading.text }}</h{{ heading.level }}>"),
+        ("index.jinja", "{% include \"nav.jinja\" %}"),
+        ("about.njk", "{% include \"card.jinja\" %}"),
+        ("trail.ejs", "<%- include(\"footer\") %>"),
+    ] {
+        let path = other.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    let (ok, log) = ssqch(&["build", "--verbose", "--root", o]);
+    assert!(ok && log.contains("Uninhabited: 2 templates that nothing used in this build (_includes/old.jinja, _includes/spare.ejs).\n"), "{}", log);
 
     // Completions for a shell, with every command that's in --help.
     let (ok, script) = ssqch(&["completions", "zsh"]);

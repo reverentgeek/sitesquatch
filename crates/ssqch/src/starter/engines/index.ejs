@@ -1,0 +1,11 @@
+---
+layout: layout.jinja
+---
+<p><%= site.description %></p>
+
+<h2>Posts</h2>
+<ul>
+  <%_ for (const post of collections.newestPosts) { _%>
+    <li><a href="<%= post.url %>"><%= post.data.title %></a> (<%= readableDate(post.date) %>)</li>
+  <%_ } _%>
+</ul>

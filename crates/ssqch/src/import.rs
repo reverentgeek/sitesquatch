@@ -122,10 +122,14 @@ impl Plan {
 
 const ELEVENTY_CONFIGS: [&str; 4] = [".eleventy.js", "eleventy.config.js", "eleventy.config.mjs", "eleventy.config.cjs"];
 /// Files whose front matter and markup are rewritten.
-const TEMPLATE_EXTENSIONS: [&str; 9] = ["md", "markdown", "njk", "liquid", "html", "hbs", "handlebars", "mustache", "edge"];
+const TEMPLATE_EXTENSIONS: [&str; 10] = ["md", "markdown", "njk", "liquid", "html", "hbs", "handlebars", "mustache", "edge", "ejs"];
 
-/// Front matter keys, and their names in data files: (Eleventy's, ssqch's).
-const KEYS: [(&str, &str); 4] = [("eleventyExcludeFromCollections", "excludeFromCollections"), ("eleventyComputed", "computed"), ("eleventyNavigation", "nav"), ("templateEngineOverride", "render")];
+/// Front matter keys, and their names in data files: (Eleventy's, ssqch's), from
+/// the table of other generators' words.
+fn keys() -> impl Iterator<Item = (&'static str, &'static str)> {
+    use sitesquatch::equivalents::{Kind, TABLE};
+    TABLE.iter().filter(|e| e.kind == Kind::FrontMatter && e.from.contains(&"Eleventy")).map(|e| (e.word, e.ssqch))
+}
 
 static DATA_FILE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.11tydata\.(js|cjs|mjs|json|ya?ml|toml)$").unwrap());
 static IMAGE_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\beleventy:(widths|ignore)\b").unwrap());
@@ -218,7 +222,7 @@ fn rewrite_template(text: &str, markdown: bool) -> (String, Vec<String>) {
         None => (String::new(), text),
     };
     let mut front = front;
-    for (from, to) in KEYS {
+    for (from, to) in keys() {
         let key = Regex::new(&format!(r#"(?m)^(\s*["']?){}(["']?\s*:)"#, from)).unwrap();
         if key.is_match(&front) {
             front = key.replace_all(&front, format!("${{1}}{}${{2}}", to)).into_owned();
@@ -302,7 +306,7 @@ fn change_prose(prose: &str, change: &mut impl FnMut(&str) -> String) -> String 
 fn rewrite_data(text: &str) -> (String, Vec<String>) {
     let mut out = text.to_string();
     let mut changes = Vec::new();
-    for (from, to) in KEYS {
+    for (from, to) in keys() {
         // Quoted (JSON), at the start of a line (YAML, JavaScript), or right after `{{` or `,`.
         let key = Regex::new(&format!(r#"(?m)(["']){0}(["']\s*:)|(^[ \t]*|[{{,][ \t]*){0}(\s*:)"#, from)).unwrap();
         if key.is_match(&out) {

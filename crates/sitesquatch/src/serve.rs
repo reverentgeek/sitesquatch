@@ -53,6 +53,8 @@ pub fn serve(cfg: &Config, port: u16) -> Result<()> {
     let live = Arc::new(Live::default());
     let site = Arc::new(RwLock::new(Site::of(cfg)));
     let server = listen(port, &site, &live)?;
+    let _companions = crate::companions::Companions::start(&cfg.build_context(), &cfg.serve_run)?;
+    live.set_site(_companions.names(), output_name(cfg));
     let say_where = || println!("{}", banner(&site.read().unwrap(), server));
     watch(cfg, &live, &|_| {}, &say_where, &|| {
         println!("Restart to use the changed configuration.");
@@ -108,8 +110,15 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
     let server = listen(options.port, &site, &live)?;
     let say_where = || println!("{}", banner(&site.read().unwrap(), server));
     let mut cfg = first;
+    let mut companions = crate::companions::Companions::none();
     loop {
         *site.write().unwrap() = Site::of(&cfg);
+        // The configuration's companion processes, kept running across a reload that doesn't change them.
+        if !companions.runs(&cfg.serve_run) {
+            drop(std::mem::replace(&mut companions, crate::companions::Companions::none()));
+            companions = crate::companions::Companions::start(&cfg.build_context(), &cfg.serve_run)?;
+        }
+        live.set_site(companions.names(), output_name(&cfg));
         let next: std::cell::RefCell<Option<Config>> = Default::default();
         // Returns once a changed configuration has loaded.
         let built = |ok: bool| {
@@ -131,6 +140,12 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
         })?;
         cfg = next.into_inner().expect("watch returns after a reload");
     }
+}
+
+/// The output folder as messages show it: `dist`, from the project root.
+fn output_name(cfg: &Config) -> String {
+    let ctx = cfg.build_context();
+    crate::slashes(ctx.output_dir.strip_prefix(&ctx.root).unwrap_or(&ctx.output_dir))
 }
 
 /// What the HTTP server needs to know about the site, which a reloaded
@@ -295,7 +310,9 @@ fn run_build(cfg: &Config, live: &Live) -> (SystemTime, bool) {
     let ok = match crate::build(cfg) {
         Ok(report) => {
             crate::cli::print_report(cfg, &report);
-            live.changed(&cfg.build_context().output_dir);
+            let output = cfg.build_context().output_dir;
+            live.repeat_missing(&output);
+            live.changed(&output);
             true
         }
         Err(e) => {
@@ -324,9 +341,52 @@ struct LiveState {
     seen: HashMap<String, (u64, u64)>,
     /// The `id` at which each file last changed (or went away).
     changed_at: HashMap<String, u64>,
+    /// Stylesheets and scripts a page linked that weren't in the output, by
+    /// their path from the output folder, with the URL a page used.
+    missing: std::collections::BTreeMap<String, String>,
+    /// The `serve.run` tools (`tailwindcss`), and the output folder as shown, for what's said about a missing file.
+    tools: Vec<String>,
+    output_name: String,
+}
+
+/// What's said about a stylesheet or script a page links that isn't in the output.
+fn missing_message(url: &str, tools: &[String], output: &str) -> String {
+    match tools {
+        [] => format!("{} is linked but nothing wrote it to {}. If a tool makes it, run its watcher with `serve.run` (see \"CSS and JavaScript\" in the README)", url, output),
+        [one] => format!("{} is linked but isn't in {}: serve.run's {} hasn't written it (its output is in the terminal)", url, output, one),
+        [rest @ .., last] => format!("{} is linked but isn't in {}: none of serve.run's {} or {} has written it (their output is in the terminal)", url, output, rest.join(", "), last),
+    }
 }
 
 impl Live {
+    /// Who could write a missing file: the `serve.run` tools, and the output folder's name.
+    fn set_site(&self, tools: Vec<String>, output_name: String) {
+        let mut state = self.0.lock().unwrap();
+        state.tools = tools;
+        state.output_name = output_name;
+    }
+
+    /// A page linked `url` (the file `rel` in the output), and it wasn't there.
+    /// The message, said in the terminal the first time.
+    fn missing(&self, rel: &str, url: &str) -> String {
+        let mut state = self.0.lock().unwrap();
+        let message = missing_message(url, &state.tools, &state.output_name);
+        if state.missing.insert(rel.to_string(), url.to_string()).is_none() {
+            crate::diagnostics::warn(crate::diagnostics::Diagnostic::warning("missing-asset", message.clone()));
+        }
+        message
+    }
+
+    /// After a build: the files pages linked that still aren't in `output`, said again
+    /// (so they don't scroll away); the ones that turned up are forgotten.
+    fn repeat_missing(&self, output: &Path) {
+        let mut state = self.0.lock().unwrap();
+        state.missing.retain(|rel, _| !output.join(rel).is_file());
+        for url in state.missing.values() {
+            crate::diagnostics::warn(crate::diagnostics::Diagnostic::warning("missing-asset", missing_message(url, &state.tools, &state.output_name)));
+        }
+    }
+
     /// The output may have changed: a build finished, or another tool wrote
     /// there. Look at every file, and note the ones that differ.
     fn changed(&self, output: &Path) {
@@ -486,6 +546,17 @@ fn inside(rel: &str) -> bool {
 fn handle(request: tiny_http::Request, root: &Path, live: &Live, base: &str) -> Result<()> {
     let (raw_url, query) = request.url().split('#').next().unwrap_or("/").split_once('?').map(|(url, query)| (url.to_string(), query.to_string())).unwrap_or_else(|| (request.url().split('#').next().unwrap_or("/").to_string(), String::new()));
     let no_cache = || tiny_http::Header::from_bytes("Cache-Control", "no-store").unwrap();
+    // A page's stylesheet or script answered 404: say so, and what could have written it.
+    if raw_url == "/__ssqch/missing" {
+        let url = query_value(&query, "path").unwrap_or_default();
+        let rel = match mounted(&url, base) {
+            Mounted::Path(path) => path.trim_start_matches('/').to_string(),
+            _ => String::new(),
+        };
+        let message = (inside(&rel) && !root.join(&rel).is_file()).then(|| live.missing(&rel, &url));
+        let json = tiny_http::Header::from_bytes("Content-Type", "application/json").unwrap();
+        return Ok(request.respond(tiny_http::Response::from_string(serde_json::json!({ "message": message }).to_string()).with_header(json).with_header(no_cache()))?);
+    }
     if raw_url == "/__ssqch/build" {
         let since = query_value(&query, "v").and_then(|v| v.parse::<u64>().ok());
         let page = page_file(&query_value(&query, "p").unwrap_or_default(), base);

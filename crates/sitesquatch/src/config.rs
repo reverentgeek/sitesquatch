@@ -285,6 +285,13 @@ pub struct Config {
     /// otherwise. Set it with [`Config::set_base`]. Templates and `page.url`
     /// don't include it; the build adds it to URLs in the HTML it writes.
     pub base: String,
+    /// Programs `ssqch serve` starts with the server and stops with it, such as
+    /// watchers that write CSS and JavaScript (`npx postcss ... --watch`). Their
+    /// output is shown with the tool's name in front. Builds don't run them.
+    pub serve_run: Vec<String>,
+    /// Size budgets by kind of file (`pages`, `images`, ..., `total`), in bytes:
+    /// a file over its budget is a `bigfootprint` warning after each build.
+    pub budgets: Vec<(String, u64)>,
     pub env: Environment,
     pub serving: bool,
     pub quiet: bool,
@@ -336,6 +343,8 @@ impl Config {
             strict: false,
             last_modified: None,
             base: String::new(),
+            serve_run: Vec::new(),
+            budgets: Vec::new(),
             env,
             serving: false,
             quiet: false,

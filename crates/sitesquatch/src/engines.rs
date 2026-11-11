@@ -41,6 +41,13 @@ pub struct RenderContext<'a> {
 
 pub trait TemplateEngine: Send + Sync {
     fn render(&self, source: &str, data: &Value, ctx: &RenderContext) -> Result<String>;
+
+    /// The includes this engine has read so far, by their paths in the
+    /// includes folder (with or without the extension), for `--verbose`'s
+    /// list of templates nothing used. `None` when it doesn't keep track.
+    fn included(&self) -> Option<Vec<String>> {
+        None
+    }
 }
 
 // -------------------------------------------------------------------- Edge
@@ -110,6 +117,10 @@ impl TemplateEngine for EdgeEngine {
     fn render(&self, source: &str, data: &Value, ctx: &RenderContext) -> Result<String> {
         let tpl = self.compiled(source, ctx)?;
         self.engine.render(&tpl, data.clone())
+    }
+
+    fn included(&self) -> Option<Vec<String>> {
+        Some(self.engine.loaded())
     }
 }
 

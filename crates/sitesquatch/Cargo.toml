@@ -37,3 +37,7 @@ tiny_http = "0.12"
 notify = "8"
 dunce = "1"
 similar = { version = "2", default-features = false }
+ctrlc = { version = "3", features = ["termination"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

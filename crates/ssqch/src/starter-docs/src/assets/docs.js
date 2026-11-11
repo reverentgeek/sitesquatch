@@ -3,7 +3,7 @@
 // Tabs: turn each group's labeled sections into buttons, and remember the
 // choice, so picking "pnpm" once picks it in every group.
 const groups = [...document.querySelectorAll(".tabs")].map((tabs) => {
-  const panels = [...tabs.querySelectorAll(":scope > .tab")];
+  const panels = /** @type {HTMLElement[]} */ ([...tabs.querySelectorAll(":scope > .tab")]);
   const list = document.createElement("div");
   list.setAttribute("role", "tablist");
   for (const panel of panels) {
@@ -17,7 +17,7 @@ const groups = [...document.querySelectorAll(".tabs")].map((tabs) => {
     panel.setAttribute("role", "tabpanel");
   }
   tabs.prepend(list);
-  return { panels, buttons: [...list.children] };
+  return { panels, buttons: /** @type {HTMLElement[]} */ ([...list.children]) };
 });
 
 function choose(label) {
@@ -41,6 +41,7 @@ try {
 choose(remembered);
 
 // The light and dark switch. It starts with the system's choice, and remembers the reader's.
+/** @type {HTMLElement | null} */
 const themeSwitch = document.querySelector(".theme-switch");
 if (themeSwitch) {
   const dark = matchMedia("(prefers-color-scheme: dark)");
@@ -59,7 +60,8 @@ if (themeSwitch) {
   themeSwitch.hidden = false;
 }
 
-// Search, when the site was built with SEARCH=1.
-if (window.PagefindUI && document.getElementById("search")) {
+// Search, when the site was built with SEARCH=1 (Pagefind's script defines PagefindUI).
+const { PagefindUI } = /** @type {any} */ (window);
+if (PagefindUI && document.getElementById("search")) {
   new PagefindUI({ element: "#search", showSubResults: true });
 }

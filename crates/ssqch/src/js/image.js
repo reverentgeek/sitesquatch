@@ -26,7 +26,7 @@ export function imagePlugin( options = {} ) {
 function checkFormats( formats ) {
 	Array.isArray( formats ) || fail( "formats must be an array" );
 	for ( const f of formats ) {
-		FORMATS.includes( f ) || fail( `unknown format "${ f }" (use ${ FORMATS.join( ", " ) })` );
+		FORMATS.includes( f ) || fail( `unknown format "${ f }"${ globalThis.__ssqch.meant( f, FORMATS ) } (use ${ FORMATS.join( ", " ) })` );
 	}
 	return formats.map( f => f === "jpg" ? "jpeg" : f );
 }
@@ -56,7 +56,7 @@ export async function image( src, options = {} ) {
 	typeof src === "string" || fail( "the source must be a file path" );
 	/^https?:\/\//.test( src ) && fail( `remote images aren't supported (${ src })` );
 	for ( const key of Object.keys( options ) ) {
-		IMAGE_OPTIONS.includes( key ) || fail( `unknown option "${ key }" (options: ${ IMAGE_OPTIONS.join( ", " ) }; encoder settings go on imagePlugin())` );
+		IMAGE_OPTIONS.includes( key ) || fail( `unknown option "${ key }"${ globalThis.__ssqch.meant( key, IMAGE_OPTIONS ) } (options: ${ IMAGE_OPTIONS.join( ", " ) }; encoder settings go on imagePlugin())` );
 	}
 	const { formats = [ "webp", "jpeg" ], widths = [ "auto" ], name } = options;
 	name === undefined || typeof name === "string" && name.trim() || fail( "name must be a URL path without the width and extension, like \"/assets/sponsors/acme\"" );

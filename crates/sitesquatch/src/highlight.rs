@@ -196,11 +196,13 @@ enum Templates {
     Edge,
     Liquid,
     Handlebars,
+    Ejs,
 }
 
 const EDGE_WORDS: &[&str] = &["in", "of", "await", "typeof", "new", "instanceof"];
 const LIQUID_WORDS: &[&str] = &["in", "and", "or", "not", "contains", "with", "as", "for", "reversed", "limit", "offset", "by"];
 const HANDLEBARS_WORDS: &[&str] = &["as", "else"];
+const EJS_WORDS: &[&str] = &["if", "else", "for", "of", "in", "while", "do", "const", "let", "var", "function", "return", "new", "typeof", "instanceof", "await", "async", "break", "continue", "switch", "case", "default", "try", "catch", "finally", "throw"];
 const CONSTANTS: &[&str] = &["true", "false", "null", "undefined", "nil", "empty", "blank"];
 
 impl Templates {
@@ -209,6 +211,7 @@ impl Templates {
             "edge" | "edgejs" => Some(Templates::Edge),
             "liquid" => Some(Templates::Liquid),
             "hbs" | "handlebars" | "mustache" => Some(Templates::Handlebars),
+            "ejs" => Some(Templates::Ejs),
             _ => None,
         }
     }
@@ -218,7 +221,13 @@ impl Templates {
             Templates::Edge => EDGE_WORDS,
             Templates::Liquid => LIQUID_WORDS,
             Templates::Handlebars => HANDLEBARS_WORDS,
+            Templates::Ejs => EJS_WORDS,
         }
+    }
+
+    /// Code in its tags is JavaScript (Edge and EJS): `-` isn't part of a name, `:` is an operator.
+    fn javascript(self) -> bool {
+        matches!(self, Templates::Edge | Templates::Ejs)
     }
 
     fn classes(self, code: &str) -> Option<Vec<&'static str>> {
@@ -298,7 +307,9 @@ impl Lexer<'_> {
         while i < self.bytes.len() {
             let b = self.bytes[i];
             let rest = &self.bytes[i..];
-            let next = if rest.starts_with(b"{{") {
+            let next = if self.templates == Templates::Ejs {
+                if rest.starts_with(b"<%") { self.ejs_tag(i) } else { None }
+            } else if rest.starts_with(b"{{") {
                 // `@{{ }}` in Edge is literal text.
                 if self.templates == Templates::Edge && i > 0 && self.bytes[i - 1] == b'@' { None } else { self.mustache(i) }
             } else if rest.starts_with(b"{%") && self.templates == Templates::Liquid {
@@ -379,6 +390,27 @@ impl Lexer<'_> {
             None => return start,
         }
         word_end
+    }
+
+    /// An EJS tag from `i`: `<% code %>`, `<%= %>`, `<%- %>`, `<%_ _%>`, `-%>`, and
+    /// `<%# comments %>`. `<%%` is a literal `<%`, which is text.
+    fn ejs_tag(&mut self, i: usize) -> Option<usize> {
+        let rest = &self.code[i..];
+        if rest.starts_with("<%%") {
+            return None;
+        }
+        let open = if rest[2..].starts_with(['=', '-', '_', '#']) { 3 } else { 2 };
+        let end = self.close(i + open, "%>")?;
+        if rest.starts_with("<%#") {
+            self.mark(i, end + 2, "comment");
+            return Some(end + 2);
+        }
+        let close = if end > i + open && matches!(self.bytes[end - 1], b'-' | b'_') { end - 1 } else { end };
+        self.mark(i, i + open, "operator");
+        self.mark(i + open, close, "");
+        self.mark(close, end + 2, "operator");
+        self.expression(i + open, close);
+        Some(end + 2)
     }
 
     /// `{% tag ... %}` from `i`, with `comment` and `raw` blocks.
@@ -502,12 +534,12 @@ impl Lexer<'_> {
                 i = e;
             } else if b.is_ascii_alphabetic() || b == b'_' || b == b'$' || b == b'@' || b >= 0x80 {
                 let mut e = i + 1;
-                while e < end && (self.bytes[e].is_ascii_alphanumeric() || matches!(self.bytes[e], b'_' | b'$') || self.bytes[e] >= 0x80 || (self.bytes[e] == b'-' && self.templates != Templates::Edge && e + 1 < end && self.bytes[e + 1].is_ascii_alphabetic())) {
+                while e < end && (self.bytes[e].is_ascii_alphanumeric() || matches!(self.bytes[e], b'_' | b'$') || self.bytes[e] >= 0x80 || (self.bytes[e] == b'-' && !self.templates.javascript() && e + 1 < end && self.bytes[e + 1].is_ascii_alphabetic())) {
                     e += 1;
                 }
                 let word = &self.code[i..e];
                 let calls = self.code[e..end].trim_start().starts_with('(');
-                let named = self.templates != Templates::Edge && e < end && (self.bytes[e] == b'=' || (self.bytes[e] == b':' && self.templates == Templates::Liquid)) && !self.code[e..end].starts_with("==");
+                let named = !self.templates.javascript() && e < end && (self.bytes[e] == b'=' || (self.bytes[e] == b':' && self.templates == Templates::Liquid)) && !self.code[e..end].starts_with("==");
                 let class = if b == b'@' {
                     "builtin"
                 } else if after_dot {
@@ -533,7 +565,7 @@ impl Lexer<'_> {
                 }
                 i = e;
             } else {
-                if matches!(b, b'=' | b'!' | b'<' | b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'?' | b'~' | b'^') || (b == b':' && self.templates == Templates::Edge) {
+                if matches!(b, b'=' | b'!' | b'<' | b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'?' | b'~' | b'^') || (b == b':' && self.templates.javascript()) {
                     self.mark(i, i + 1, "operator");
                 }
                 after_pipe = b == b'|' && !(i + 1 < end && self.bytes[i + 1] == b'|') && !(i > start && self.bytes[i - 1] == b'|');
@@ -715,6 +747,15 @@ mod tests {
     }
 
     #[test]
+    fn ejs_templates() {
+        let code = "<%# a note %>\n<%_ for (const post of posts) { _%>\n  <a href=\"<%= post.url %>\"><%- shout(post.data.title) %></a>\n<% } -%>\n<%% literal %>\n";
+        assert_eq!(
+            tokens("ejs", code),
+            "comment:&lt;%# a note %&gt; operator:&lt;%_ keyword:for keyword:const keyword:of operator:_%&gt; tag:a attribute:href string:&quot; operator:&lt;%= property:url operator:%&gt; string:&quot; operator:&lt;%- function:shout property:data property:title operator:%&gt; tag:a operator:&lt;% operator:-%&gt;"
+        );
+    }
+
+    #[test]
     fn marked_lines_and_unknown_languages() {
         assert_eq!(marked_lines("js {1,3-5}"), vec![1, 3, 4, 5]);
         assert_eq!(marked_lines("js{2}"), vec![2]);
@@ -722,7 +763,7 @@ mod tests {
         let html = highlight("sh", "echo hi\nls\n", &[2]).unwrap();
         assert_eq!(html, "<span class=\"line\"><span class=\"hl-function\">echo</span> hi</span>\n<span class=\"line highlighted\"><span class=\"hl-function\">ls</span></span>\n");
         assert!(highlight("not-a-language", "x", &[]).is_none());
-        for lang in ["edge", "liquid", "hbs", "handlebars", "mustache"] {
+        for lang in ["edge", "liquid", "hbs", "handlebars", "mustache", "ejs"] {
             assert!(supports(lang), "{}", lang);
         }
         assert!(highlight("text", "x", &[]).is_none());

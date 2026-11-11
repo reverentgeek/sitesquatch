@@ -18,6 +18,11 @@ change affects it.
   from existing generators, fill the gaps they leave, and design each feature as ssqch's own, so
   the result is something unique that appeals to lots of developers. Research on other
   generators goes in `research/` (gitignored); the work items go in `TODO.md`.
+- Errors and warnings may name another generator's word to say ssqch's (`"pathPrefix" isn't a
+  config option. In ssqch it's base`). That's teaching, not compatibility: the word is still
+  refused, and a hint that names it isn't an API. They come from one table,
+  `crates/sitesquatch/src/equivalents.rs`, and each row is tested
+  (`other_generators_words_get_ssqch_names`).
 - After a change that affects output, build the blog and run its smoke tests:
   `cargo build --release -p ssqch --features avif`, then in `../blog`,
   `SSQCH_BIN=../ssqch/target/release/ssqch pnpm test`.

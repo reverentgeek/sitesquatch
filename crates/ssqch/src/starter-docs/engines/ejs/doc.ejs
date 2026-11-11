@@ -1,0 +1,59 @@
+---
+layout: base.jinja
+sidebar: true
+---
+<div class="docs">
+  <main data-pagefind-body>
+    <%_ const crumbs = navBreadcrumbs(nav, page.url); _%>
+    <%_ if (crumbs.length > 1) { _%>
+    <nav class="breadcrumbs" aria-label="Breadcrumbs">
+      <%_ for (const crumb of crumbs.slice(0, -1)) { _%>
+      <span><%= crumb.title %></span> ›
+      <%_ } _%>
+      <span aria-current="page"><%= title %></span>
+    </nav>
+    <%_ } _%>
+    <h1><%= title %></h1>
+    <%- content %>
+
+    <footer class="page-footer">
+      <%_ if (site.editUrl) { _%>
+      <p><a href="<%= site.editUrl %><%= page.inputPath.replace("./", "") %>">Edit this page</a></p>
+      <%_ } _%>
+      <%_ const pager = navPager(nav, page.url); _%>
+      <nav class="pager" aria-label="Previous and next pages">
+        <span>
+          <%_ if (pager.previous) { _%>
+          <a rel="prev" href="<%= pager.previous.url %>">← <%= pager.previous.title %></a>
+          <%_ } _%>
+        </span>
+        <span>
+          <%_ if (pager.next) { _%>
+          <a rel="next" href="<%= pager.next.url %>"><%= pager.next.title %> →</a>
+          <%_ } _%>
+        </span>
+      </nav>
+    </footer>
+  </main>
+
+  <%_ const contents = toc(page.headings); _%>
+  <aside class="toc" aria-label="On this page">
+    <%_ if (contents) { _%>
+    <p class="toc-title">On this page</p>
+    <%- contents %>
+    <%_ } _%>
+  </aside>
+
+  <%_ /* After the content in the HTML, so a phone (and a screen reader) gets
+     the page first. The stylesheet puts it on the left on wide screens. */ _%>
+  <nav class="sidebar" id="sidebar" aria-label="Documentation">
+    <%_ for (const section of navTree(nav, page.url)) { _%>
+    <h2><%= section.title %></h2>
+    <ul>
+      <%_ for (const item of section.pages) { _%>
+      <li><a href="<%= item.url %>"<% if (item.current) { %> aria-current="page"<% } %>><%= item.title %></a></li>
+      <%_ } _%>
+    </ul>
+    <%_ } _%>
+  </nav>
+</div>

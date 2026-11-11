@@ -55,7 +55,7 @@ const STARTERS: &[&str] = &["site", "docs"];
 
 /// The template languages `ssqch init --engine` can start a site in. `njk`
 /// uses the Jinja templates, which are Nunjucks too.
-const ENGINES: &[&str] = &["jinja", "njk", "edge", "liquid", "hbs"];
+const ENGINES: &[&str] = &["jinja", "njk", "edge", "liquid", "hbs", "ejs"];
 
 /// The engine a starter is in without `--engine`: Jinja, the CLI's default
 /// template language, or Edge in a build without it.
@@ -70,6 +70,7 @@ const SITE_JINJA: Templates = &[("src/_includes/layout", include_str!("starter/s
 const SITE_EDGE: Templates = &[("src/_includes/layout", include_str!("starter/engines/layout.edge")), ("src/index", include_str!("starter/engines/index.edge"))];
 const SITE_LIQUID: Templates = &[("src/_includes/layout", include_str!("starter/engines/layout.liquid")), ("src/index", include_str!("starter/engines/index.liquid"))];
 const SITE_HBS: Templates = &[("src/_includes/layout", include_str!("starter/engines/layout.hbs")), ("src/index", include_str!("starter/engines/index.hbs"))];
+const SITE_EJS: Templates = &[("src/_includes/layout", include_str!("starter/engines/layout.ejs")), ("src/index", include_str!("starter/engines/index.ejs"))];
 
 /// The documentation starter's templates, in the same order in each language.
 macro_rules! docs_templates {
@@ -88,6 +89,7 @@ const DOCS_JINJA: Templates = docs_templates!("starter-docs/src/_includes/", "ji
 const DOCS_EDGE: Templates = docs_templates!("starter-docs/engines/edge/", "edge");
 const DOCS_LIQUID: Templates = docs_templates!("starter-docs/engines/liquid/", "liquid");
 const DOCS_HBS: Templates = docs_templates!("starter-docs/engines/hbs/", "hbs");
+const DOCS_EJS: Templates = docs_templates!("starter-docs/engines/ejs/", "ejs");
 
 /// The engines this build can start a site in, the default first.
 pub fn starter_engines() -> Vec<&'static str> {
@@ -116,10 +118,12 @@ impl Engine {
             ("docs", "edge") => DOCS_EDGE,
             ("docs", "liquid") => DOCS_LIQUID,
             ("docs", "hbs") => DOCS_HBS,
+            ("docs", "ejs") => DOCS_EJS,
             ("docs", _) => DOCS_JINJA,
             (_, "edge") => SITE_EDGE,
             (_, "liquid") => SITE_LIQUID,
             (_, "hbs") => SITE_HBS,
+            (_, "ejs") => SITE_EJS,
             _ => SITE_JINJA,
         };
         set.iter().map(|(rel, contents)| (format!("{}.{}", rel, self.0), self.rename(contents))).collect()
@@ -149,6 +153,7 @@ impl Engine {
                     let call = match self.0 {
                         "liquid" => "{{ post.date | readableDate }}",
                         "hbs" => "{{readableDate post.date}}",
+                        "ejs" => "<%= readableDate(post.date) %>",
                         _ => "{{ readableDate(post.date) }}",
                     };
                     config = replace_once(&config, "{{ readableDate(post.date) }}", call);
@@ -158,6 +163,11 @@ impl Engine {
                     config = replace_once(&config, "  data: { search },", "  // The path after `site.editUrl` in each page's \"Edit this page\" link.\n  filters: {\n    sourcePath: (inputPath) => inputPath.replace(\"./\", \"\"),\n  },\n\n  data: { search },");
                 }
                 config
+            }
+            _ if rel.ends_with(".md") && self.0 == "ejs" => {
+                // The pages' `{{ site.name }}` works in every other language; EJS prints with `<%= %>`.
+                let print = regex::Regex::new(r"\{\{ ([\w.]+) \}\}").expect("valid regex");
+                print.replace_all(&self.rename(contents), "<%= $1 %>").into_owned()
             }
             _ if rel.ends_with(".md") || rel.ends_with(".json") => self.rename(contents),
             _ => contents.to_string(),
@@ -176,7 +186,7 @@ pub fn init_command() -> clap::Command {
         .about("Create a starter site (config, layout, three posts, data and editor types)")
         .arg(clap::Arg::new("dir").help("Where to create it (default: the current folder)").default_value("."))
         .arg(clap::Arg::new("starter").long("starter").value_name("NAME").help("What to start with: site (a small blog) or docs (documentation with a sidebar, tabs and search)").default_value("site"))
-        .arg(clap::Arg::new("engine").long("engine").value_name("NAME").help("The template language for the starter's layouts and templates: jinja, njk, edge, liquid or hbs").default_value(DEFAULT_ENGINE))
+        .arg(clap::Arg::new("engine").long("engine").value_name("NAME").help("The template language for the starter's layouts and templates: jinja, njk, edge, liquid, hbs or ejs").default_value(DEFAULT_ENGINE))
 }
 
 pub fn types_command() -> clap::Command {

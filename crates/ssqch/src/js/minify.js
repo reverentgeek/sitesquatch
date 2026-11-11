@@ -21,7 +21,7 @@ export function minifyPlugin( options = {} ) {
 
 export function minify( html, options = {} ) {
 	for ( const key of Object.keys( options ) ) {
-		if ( !OPTIONS.includes( key ) ) throw new TypeError( `minify(): unknown option "${ key }" (options: ${ OPTIONS.join( ", " ) })` );
+		if ( !OPTIONS.includes( key ) ) throw new TypeError( `minify(): unknown option "${ key }"${ globalThis.__ssqch.meant( key, OPTIONS ) } (options: ${ OPTIONS.join( ", " ) })` );
 	}
 	const { collapseWhitespace = true, removeComments = true, shortDoctype = true, shortenAttributes = true } = options;
 	return native.minify( String( html ), Boolean( collapseWhitespace ), Boolean( removeComments ), Boolean( shortDoctype ), Boolean( shortenAttributes ) );

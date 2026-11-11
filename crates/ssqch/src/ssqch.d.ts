@@ -2,6 +2,25 @@
 // Written by `ssqch types`. Editors use them for autocomplete and checking;
 // the build doesn't read them. Regenerate after upgrading ssqch.
 
+// The parts of Node's `process` that ssqch provides to configs and data files. Declared
+// the way @types/node declares it, so a project that installs those types gets theirs too.
+declare namespace NodeJS {
+	interface ProcessEnv {
+		/** The build's environment (`--env`): `"production"` for `ssqch build`, `"development"` for `ssqch serve`. */
+		SSQCH_ENV?: string;
+		[name: string]: string | undefined;
+	}
+	interface Process {
+		/** The environment variables, with `SSQCH_ENV` set to the build's environment when it isn't set. */
+		env: ProcessEnv;
+		/** The project root. */
+		cwd(): string;
+		/** `"darwin"`, `"linux"` or `"win32"`. */
+		platform: string;
+	}
+}
+declare var process: NodeJS.Process;
+
 declare module "ssqch" {
 	/** What a config function gets: which build this is. */
 	export interface ConfigContext {
@@ -179,9 +198,9 @@ declare module "ssqch" {
 			/** Default `_data`. */
 			data?: string;
 		};
-		/** File extensions to render. Default `["jinja", "md", "html"]`. Add `"edge"` for Edge, `"liquid"` for Liquid, `"njk"` for Nunjucks, `"j2"` for Jinja in `.j2` files, `"hbs"` / `"handlebars"` for Handlebars, or `"mustache"`. */
+		/** File extensions to render. Default `["jinja", "md", "html"]`. Add `"edge"` for Edge, `"liquid"` for Liquid, `"njk"` for Nunjucks, `"j2"` for Jinja in `.j2` files, `"hbs"` / `"handlebars"` for Handlebars, `"mustache"`, or `"ejs"` for EJS. */
 		templateFormats?: string[];
-		/** The engine that runs over `.md` files first: `"jinja"` (the default), `"edge"`, `"liquid"`, `"njk"`, `"hbs"`, or `false` for none. */
+		/** The engine that runs over `.md` files first: `"jinja"` (the default), `"edge"`, `"liquid"`, `"njk"`, `"hbs"`, `"ejs"`, or `false` for none. */
 		markdownEngine?: string | false;
 		/** The engine that runs over `.html` files first. Default `"jinja"`; `false` for none. */
 		htmlEngine?: string | false;
@@ -207,6 +226,13 @@ declare module "ssqch" {
 		theme?: ThemeSource | ThemeSource[];
 		/** Content schemas, by name: `{ posts: { fields: { title: "string", date: "date" } } }` checks every page tagged `posts`. */
 		schemas?: Record<string, Schema>;
+		/** Size budgets by kind of file, checked after each build: a file over its kind's budget is a `bigfootprint` warning. Sizes are bytes or strings like `"150 KB"` and `"1.5 MB"` (powers of 1,000). */
+		budgets?: Partial<Record<"pages" | "images" | "css" | "javascript" | "fonts" | "media" | "documents" | "data" | "other" | "total", number | string>>;
+		/** What `ssqch serve` runs besides the server. */
+		serve?: {
+			/** Programs to start with the server and stop with it, like the watchers of your CSS and JavaScript tools: `["npx postcss src/app.css -o dist/app.css --watch"]`. Their output is shown with the tool's name in front. Builds don't run them. */
+			run?: string | string[];
+		};
 	}
 
 	/** Returns its argument. It's there so the config reads as one, and for these types. */

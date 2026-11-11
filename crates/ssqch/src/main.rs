@@ -68,6 +68,12 @@ fn configure(cfg: &mut Config) -> Result<()> {
         Some(js) => sitesquatch_js::load(cfg, &js, BUILTINS, &js_modules)?,
         None => {
             sitesquatch_js::add_data_files(cfg, &js_modules);
+            // Another generator's site: say what to do, rather than building it as ssqch's.
+            if !toml.is_file() {
+                if let Some(message) = sitesquatch::equivalents::other_generator(&cfg.root) {
+                    sitesquatch::diagnostics::warn(sitesquatch::diagnostics::Diagnostic::warning("other-generator", message));
+                }
+            }
             sitesquatch::site_toml::apply(cfg)?;
         }
     }

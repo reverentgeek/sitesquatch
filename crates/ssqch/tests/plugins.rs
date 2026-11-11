@@ -111,7 +111,7 @@ fn the_built_in_plugins_work_together() {
 
 #[test]
 fn bad_plugin_options_fail_clearly() {
-    let cases: [(&str, &[u8], &str); 4] = [
+    let cases: [(&str, &[u8], &str); 6] = [
         (
             "ssqch.config.js",
             b"import { imagePlugin } from \"ssqch/image\"; export default { plugins: [imagePlugin({ sharpWebpOptions: { quality: 80 } })] };",
@@ -124,6 +124,9 @@ fn bad_plugin_options_fail_clearly() {
         ),
         ("src/_data/hero.js", b"import { image } from \"ssqch/image\"; export default () => image(\"https://example.com/a.png\");", "image(): remote images aren't supported"),
         ("src/_data/hero.js", b"import { minify } from \"ssqch/minify\"; export default () => minify(\"<p>\", { useShortDoctype: true });", "minify(): unknown option \"useShortDoctype\""),
+        // Nearly right: what it probably meant.
+        ("src/_data/hero.js", b"import { minify } from \"ssqch/minify\"; export default () => minify(\"<p>\", { removeComment: false });", "minify(): unknown option \"removeComment\" (did you mean \"removeComments\"?)"),
+        ("src/_data/hero.js", b"import { image } from \"ssqch/image\"; export default () => image(\"src/img/squatch.png\", { width: [100], formats: [\"webpp\"] });", "image(): unknown option \"width\" (did you mean \"widths\"?)"),
     ];
     for (file, source, want) in cases {
         let mut files: Vec<(&str, &[u8])> = vec![("src/img/squatch.png", PNG), ("src/index.edge", b"{{ hero }}")];

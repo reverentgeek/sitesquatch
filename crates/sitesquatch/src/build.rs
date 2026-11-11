@@ -107,6 +107,8 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     }
     let Prepared { markdown, engines, theme_includes, global, files, tpls, mut pages, theme_copies, drafts, layouts_used } = prepare(cfg, &ctx, &mut timer, false)?;
     check_schemas(cfg, &ctx, &pages)?;
+    check_foreign_keys(&ctx, &pages);
+    check_foreign_globals(&ctx, &tpls, &theme_includes, &global);
     timer.lap("paginate");
 
     // ---- render bodies
@@ -194,7 +196,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
         files_unchanged: copy.unchanged,
         passthrough_bytes: copy.bytes,
         files_removed: recorded.removed,
-        unused: if cfg.verbose { unused_templates(&ctx, &layouts_used, &engines.edge.inner().loaded()) } else { Vec::new() },
+        unused: if cfg.verbose { unused_templates(&ctx, &layouts_used, &engines) } else { Vec::new() },
         drafts,
         first_build: recorded.first_build,
         written: written.into_iter().map(|(p, _, _)| p).chain(generated).collect(),
@@ -203,6 +205,13 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     };
     for hook in &cfg.after_build {
         hook(&ctx, &report).context("after_build hook failed")?;
+    }
+    // After the hooks, which can fingerprint or minify what's measured.
+    if !cfg.budgets.is_empty() {
+        let footprint = crate::footprint::measure(&ctx.output_dir)?;
+        for warning in crate::footprint::over_budget(&footprint, &cfg.budgets) {
+            diagnostics::warn(warning);
+        }
     }
     report.summary = cfg.summaries.iter().filter_map(|(label, f)| f(&ctx).map(|line| (label.clone(), line))).collect();
     timer.lap("after");
@@ -480,23 +489,31 @@ fn builtin_filters(markdown: &Arc<MarkdownEngine>) -> Map {
     filters
 }
 
-/// The Edge templates in the includes folder (and the layouts folder, when
-/// it's another one) that this build used neither as a layout nor as an
-/// include or component, from the project root. Other languages' includes
-/// aren't tracked, so only `.edge` files are looked at; render hooks and
-/// containers are found by name, not included, so they're left out.
-fn unused_templates(ctx: &BuildContext, layouts: &HashSet<PathBuf>, included: &[String]) -> Vec<String> {
+/// The templates in the includes folder (and the layouts folder, when it's
+/// another one) that this build used neither as a layout nor as an include
+/// or component, from the project root. Only the languages whose engine keeps
+/// track of its includes are looked at (Edge, Jinja and Nunjucks, EJS); render
+/// hooks and containers are found by name, not included, so they're left out.
+/// An include counts whichever engine read it (a `.jinja` file a `.njk` page
+/// includes).
+fn unused_templates(ctx: &BuildContext, layouts: &HashSet<PathBuf>, engines: &Engines) -> Vec<String> {
     let mut unused = BTreeSet::new();
+    let tracked: HashSet<&str> = engines.by_name.iter().filter(|(_, e)| e.included().is_some()).map(|(ext, _)| ext.as_str()).collect();
+    let included: HashSet<String> = engines.by_name.values().filter_map(|e| e.included()).flatten().map(|name| name.trim_start_matches("./").to_string()).collect();
     let mut dirs = vec![&ctx.includes_dir];
     if ctx.layouts_dir != ctx.includes_dir {
         dirs.push(&ctx.layouts_dir);
     }
     for dir in dirs {
-        for entry in walkdir::WalkDir::new(dir).into_iter().filter_map(Result::ok).filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "edge")) {
+        for entry in walkdir::WalkDir::new(dir).into_iter().filter_map(Result::ok).filter(|e| e.file_type().is_file()) {
+            let Some(ext) = entry.path().extension().map(|e| e.to_string_lossy().to_ascii_lowercase()) else { continue };
+            if !tracked.contains(ext.as_str()) {
+                continue;
+            }
             let Ok(rel) = entry.path().strip_prefix(dir).map(slashes) else { continue };
-            let name = rel.trim_end_matches(".edge");
+            let name = &rel[..rel.len() - ext.len() - 1];
             let by_name = rel.starts_with("hooks/") || rel.starts_with("containers/");
-            if !by_name && !layouts.contains(entry.path()) && !included.iter().any(|i| i.trim_start_matches("./") == name) {
+            if !by_name && !layouts.contains(entry.path()) && !included.contains(&rel) && !included.contains(name) {
                 unused.insert(display_path(ctx, entry.path()).trim_start_matches("./").to_string());
             }
         }
@@ -975,8 +992,9 @@ fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared)
         if ext == "markdown" {
             ext = "md".into();
         }
-        if data.contains_key("templateEngineOverride") {
-            bail!("front matter `templateEngineOverride` is now `render` (for example `render: md`)");
+        // An error, not a warning: rendering the page with the usual engines would be wrong.
+        if let Some(row) = data.contains_key("templateEngineOverride").then(|| crate::equivalents::find("templateEngineOverride", crate::equivalents::Kind::FrontMatter)).flatten() {
+            bail!("front matter `templateEngineOverride` isn't read. {}\n  More: {}", row.say, row.more);
         }
         let engines: Vec<String> = match data.get("render").filter(|v| !v.is_nullish()) {
             Some(v) => render_engines(v)?,
@@ -1256,8 +1274,8 @@ fn render_engines(v: &Value) -> Result<Vec<String>> {
 
 /// Whether a template's body reads `collections`, so it must render after
 /// every other page (whose `templateContent` it may show). Only template code
-/// counts: `{{ ... }}` and `@directive` lines for Edge, `{{ }}` and `{% %}`
-/// tags for other template languages. A post that merely mentions
+/// counts: `{{ ... }}` and `@directive` lines for Edge, `{{ }}`, `{% %}` and
+/// `<% %>` tags for other template languages. A post that merely mentions
 /// "collections" in its text, or is only Markdown (`render: md`), renders in
 /// the first pass so its content can appear in feeds.
 fn uses_collections(tpl: &Tpl, includes: &HashSet<String>) -> bool {
@@ -1325,11 +1343,11 @@ fn includes_using_collections(dir: &Path) -> HashSet<String> {
     }
 }
 
-/// Whether `word` appears inside a `{{ ... }}` or `{% ... %}` tag.
+/// Whether `word` appears inside a `{{ ... }}`, `{% ... %}` or EJS `<% ... %>` tag.
 fn tag_code_mentions(body: &str, word: &str) -> bool {
     body.match_indices(word).any(|(pos, _)| {
         let before = &body[..pos];
-        [("{{", "}}"), ("{%", "%}")].iter().any(|(open, close)| before.rfind(open).is_some_and(|o| !before[o..].contains(close)))
+        [("{{", "}}"), ("{%", "%}"), ("<%", "%>")].iter().any(|(open, close)| before.rfind(open).is_some_and(|o| !before[o..].contains(close)))
     })
 }
 
@@ -1411,6 +1429,87 @@ fn check_conflicts(ctx: &BuildContext, pages: &[Page]) -> Result<()> {
         let message = format!("output conflicts (two sets of tracks lead to the same place):\n  - {}", errors.iter().map(|(m, _)| m.as_str()).collect::<Vec<_>>().join("\n  - "));
         let items = errors.into_iter().map(|(m, input)| Diagnostic::error("conflict", m).file(display_path(ctx, &input))).collect();
         Err(Diagnostics { message, items }.into())
+    }
+}
+
+/// Warn about data keys that are another generator's name for something ssqch
+/// calls otherwise (`eleventyComputed`, `redirect_from`, `published: false`):
+/// any key is valid data, so these do nothing, quietly. One warning per key.
+fn check_foreign_keys(ctx: &BuildContext, pages: &[Page]) {
+    use crate::equivalents::{Kind, TABLE};
+    // `templateEngineOverride` is an error (see `load_template`).
+    for row in TABLE.iter().filter(|e| e.kind == Kind::FrontMatter && e.word != "templateEngineOverride") {
+        let setting = |page: &&Page| match page.data.get(row.word) {
+            None => false,
+            // `published` is a site's own word too; only `false`, which means something elsewhere, is news.
+            Some(value) if row.word == "published" => matches!(value, Value::Bool(false)),
+            Some(_) => true,
+        };
+        let mut files: Vec<String> = pages.iter().filter(setting).map(|p| display_path(ctx, &p.tpl.input).trim_start_matches("./").to_string()).collect();
+        files.dedup();
+        let (first, n) = match files.as_slice() {
+            [] => continue,
+            [one] => (one.clone(), 1),
+            many => (many[0].clone(), many.len()),
+        };
+        let shown = if n == 1 { format!("{} sets", first) } else { format!("{} pages set `{}` ({}{}):", n, row.word, files.iter().take(3).cloned().collect::<Vec<_>>().join(", "), if n > 3 { ", ..." } else { "" }) };
+        let message = if n == 1 { format!("{} `{}`{}. {}\n  More: {}", shown, row.word, row.from.first().map(|g| format!(" ({}'s name)", g)).unwrap_or_default(), row.say, row.more) } else { format!("{} {}\n  More: {}", shown, row.say, row.more) };
+        let mut found = Diagnostic::warning("foreign-key", message).field(row.word);
+        if n == 1 {
+            found = found.file(first.as_str());
+        }
+        diagnostics::warn(found);
+    }
+}
+
+/// Warn about template code that reads another generator's globals
+/// (`eleventy.generator`, Jekyll's `site.posts`), which print nothing or an
+/// empty list here, quietly. Pages, their layouts and the includes are read.
+/// `site.posts` is the site's own when its `site` data has `posts`.
+fn check_foreign_globals(ctx: &BuildContext, tpls: &[Arc<Tpl>], theme_includes: &[PathBuf], global: &Map) {
+    use crate::equivalents::{Kind, TABLE};
+    let rows: Vec<_> = TABLE
+        .iter()
+        .filter(|e| e.kind == Kind::Global)
+        .filter(|e| match e.word.strip_prefix("site.") {
+            Some(key) => global.get("site").map(|site| matches!(site.get(key), Value::Undefined)).unwrap_or(true),
+            None => true,
+        })
+        .collect();
+    let mut sources: Vec<(String, String)> = Vec::new();
+    let mut seen = HashSet::new();
+    for tpl in tpls {
+        sources.push((display_path(ctx, &tpl.input), tpl.body.clone()));
+        for layout in &tpl.layouts {
+            if seen.insert(layout.path.clone()) {
+                sources.push((display_path(ctx, &layout.path), layout.body.clone()));
+            }
+        }
+    }
+    for dir in std::iter::once(&ctx.includes_dir).chain(theme_includes) {
+        for entry in walkdir::WalkDir::new(dir).into_iter().filter_map(Result::ok).filter(|e| e.file_type().is_file()) {
+            if seen.insert(entry.path().to_path_buf()) {
+                if let Ok(text) = std::fs::read_to_string(entry.path()) {
+                    sources.push((display_path(ctx, entry.path()), text));
+                }
+            }
+        }
+    }
+    for row in rows {
+        let mut files: Vec<String> = sources.iter().filter(|(_, text)| text.contains(row.word) && (tag_code_mentions(text, row.word) || edge_code_mentions(text, row.word))).map(|(file, _)| file.trim_start_matches("./").to_string()).collect();
+        files.sort();
+        files.dedup();
+        let shown = row.word.trim_end_matches('.');
+        let message = match files.as_slice() {
+            [] => continue,
+            [one] => format!("{} uses `{}` ({}'s). {}\n  More: {}", one, shown, row.from.first().copied().unwrap_or("another generator"), row.say, row.more),
+            many => format!("{} templates use `{}` ({}{}): {}\n  More: {}", many.len(), shown, many.iter().take(3).cloned().collect::<Vec<_>>().join(", "), if many.len() > 3 { ", ..." } else { "" }, row.say, row.more),
+        };
+        let mut found = Diagnostic::warning("foreign-global", message);
+        if files.len() == 1 {
+            found = found.file(files[0].as_str());
+        }
+        diagnostics::warn(found);
     }
 }
 

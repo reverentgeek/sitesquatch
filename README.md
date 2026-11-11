@@ -4,7 +4,7 @@
 [![Latest release](https://img.shields.io/github/v/release/reverentgeek/sitesquatch)](https://github.com/reverentgeek/sitesquatch/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-SiteSquatch (`ssqch`) is a static site generator that fits in a single binary: large, quick, and rarely photographed. You write templates in [Jinja](https://jinja.palletsprojects.com/) (the default), [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Handlebars](https://handlebarsjs.com/) or [Mustache](https://mustache.github.io/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. No Node required at all: the JavaScript runs on an engine built into `ssqch`.
+SiteSquatch (`ssqch`) is a static site generator that fits in a single binary: large, quick, and rarely photographed. You write templates in [Jinja](https://jinja.palletsprojects.com/) (the default), [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Handlebars](https://handlebarsjs.com/), [Mustache](https://mustache.github.io/) or [EJS](https://ejs.co/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. No Node required at all: the JavaScript runs on an engine built into `ssqch`.
 
 It moves fast for its size. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in about **0.1 s** once its images are cached, which is gone before you've found your camera. [Benchmarks](#benchmarks) has the measurements.
 
@@ -201,7 +201,7 @@ The address comes after each build's report, so it's on the last line however lo
 
 None of that is written to the output folder: the server adds it to pages as it sends them.
 
-`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode and the Edge templates nothing used. Errors are red on a terminal and plain in a pipe, a log, or anywhere `NO_COLOR` is set. The other commands are `ssqch init`, `ssqch types`, `ssqch completions`, [`ssqch new`](#starting-a-new-page), [`ssqch inspect`](#where-a-value-comes-from), [`ssqch diff`](#comparing-two-builds), [`ssqch import`](#moving-from-another-generator) and [`ssqch capabilities`](#scripts-and-coding-agents), and `ssqch build --format json` reports to a [script or a coding agent](#scripts-and-coding-agents).
+`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode and the templates nothing used. Errors are red on a terminal and plain in a pipe, a log, or anywhere `NO_COLOR` is set. The other commands are `ssqch init`, `ssqch types`, `ssqch completions`, [`ssqch new`](#starting-a-new-page), [`ssqch inspect`](#where-a-value-comes-from), [`ssqch diff`](#comparing-two-builds), [`ssqch footprint`](#a-builds-footprint), [`ssqch import`](#moving-from-another-generator) and [`ssqch capabilities`](#scripts-and-coding-agents), and `ssqch build --format json` reports to a [script or a coding agent](#scripts-and-coding-agents).
 
 ## Configuring a site
 
@@ -264,6 +264,8 @@ The default export is the config: an object, or a function (sync or async) that 
 | `strict` | Printing an undefined value (`{{ titel }}`) is an error that names the template and line, in every template language. Conditionals and defaults (`@if(subtitle)`, `{% if subtitle %}`, `x ?? "none"`) still work (default `false`). |
 | `passthrough` | Files or folders to copy: a path, or `{ from: to }`, or an array of them. A path can be a glob: `"src/**/*.pdf"` keeps each file's own path, and `{ "assets/**/*.png": "images" }` puts them under `images/` by their path below `assets/`. |
 | `watch` | More paths for `ssqch serve` to watch. |
+| `budgets` | Size budgets by kind of file, checked after each build: `budgets: { pages: "150 KB", images: "500 KB", total: "300 MB" }`. A file over its kind's budget is a warning (`bigfootprint`). The kinds are `ssqch footprint`'s: `pages`, `images`, `css`, `javascript`, `fonts`, `media`, `documents`, `data` and `other`, plus `total`. See [A build's footprint](#a-builds-footprint). |
+| `serve` | `serve: { run: ["npx postcss src/app.css -o dist/app.css --watch"] }`: programs `ssqch serve` starts with the server and stops with it, such as the watchers of your CSS and JavaScript tools. Their output is shown with the tool's name in front (`[postcss] ...`). Builds don't run them. See [CSS and JavaScript](#css-and-javascript). In `sitesquatch.toml`, `[serve]` with `run = [...]`. |
 | `beforeBuild`, `afterBuild` | Build hooks (a function or an array). They get `{ env, serving, dirs }`, plus `written` (the files written) after the build. Async works. A hook can also run a program: `afterBuild: { run: "npx -y pagefind --site dist" }` runs it in the project root (through `sh -c`, or `cmd /C` on Windows) with its output shown, and a failure fails the build. It gets `SSQCH_ENV`, `SSQCH_SERVING`, `SSQCH_INPUT` and `SSQCH_OUTPUT`. In `sitesquatch.toml`, `before_build` and `after_build` take lists of commands. |
 | `theme` | A theme under the site: a folder (`"themes/docs"`), or a git repository pinned to a commit or tag (`"https://github.com/you/theme#v1.2.0"`). The site's own files win over the theme's, one by one. See [Themes](#themes). |
 | `schemas` | What each kind of page's data has to look like, checked on every build: `{ posts: { fields: { title: "string", date: "date" } } }`. See [Content schemas](#content-schemas). |
@@ -374,12 +376,47 @@ template_formats = ["jinja", "md", "html"]
 ignore = ["drafts/**"]
 leave_no_trace = true   # or `clean = true`, its other name
 
+[serve]
+run = ["npx postcss src/app.css -o public/app.css --watch"]
+
 [markdown]
 heading_ids = "blackfriday"
 
 [passthrough]
 "src/robots.txt" = ""   # empty keeps the path relative to the input directory
 ```
+
+## CSS and JavaScript
+
+ssqch doesn't bundle CSS or JavaScript. It gets them into a site in one of four ways, and the tools you already use stay in charge of the rest:
+
+- **Plain CSS and ES modules:** copy them with `passthrough` (`passthrough: [{ "src/assets": "assets" }]`). Browsers load modules and `@import` without a bundler, which is often all a small site needs.
+- **Sass:** `sassPlugin()` from `ssqch/sass` compiles it on each build, in Rust ([Built-in plugins](#built-in-plugins)).
+- **Any other tool, for builds:** run it in `beforeBuild` (`{ run: "npx esbuild src/app.js --bundle --outfile=dist/app.js" }`), so `ssqch build` writes the CSS and JavaScript before it checks links and fingerprints them.
+- **Any other tool, while serving:** list its watcher in `serve.run`. `ssqch serve` starts it with the server, shows its output, and stops it (and whatever it started) when the server stops. When the watcher writes a file, the page picks it up: stylesheets swap without a reload.
+
+`assetsPlugin()` from `ssqch/assets` then fingerprints what the tools wrote, for production builds (`app.css` becomes `app.3dc88db1.css`, and every link to it is rewritten).
+
+Tailwind, for example, built once for `ssqch build` and watched for `ssqch serve`:
+
+```js
+import { defineConfig } from "ssqch";
+import { assetsPlugin } from "ssqch/assets";
+
+const tailwind = "npx @tailwindcss/cli -i src/app.css -o dist/assets/app.css";
+
+export default defineConfig(({ serving }) => ({
+  dirs: { input: "src", output: "dist" },
+  // A build runs it once; the server keeps it watching instead of running it on every rebuild.
+  beforeBuild: serving ? [] : { run: `${tailwind} --minify` },
+  serve: { run: [`${tailwind} --watch`] },
+  plugins: [assetsPlugin({ files: ["/assets/app.css"] })],
+}));
+```
+
+The layout links `/assets/app.css`. Tailwind reads the templates for class names on its own; `@source "../src";` in `app.css` tells it where they are if it doesn't find them.
+
+When a page links a stylesheet or script that isn't in the output, `ssqch serve` says so instead of leaving an unstyled page to explain itself: a note in the corner of the page, and a warning in the terminal that names the `serve.run` tool that should have written it (or suggests one), repeated after each build until the file turns up.
 
 ## Moving from another generator
 
@@ -393,6 +430,18 @@ For an Eleventy site, `ssqch import eleventy` does the mechanical part. It renam
 ssqch import eleventy            # what would change, and what's left (or: ssqch import zola)
 ssqch import eleventy --write    # make the changes
 ```
+
+Habits come along too, and ssqch answers them. A command, flag, config option, filter or front-matter key from another generator is refused as before, with ssqch's name for it and where to read more:
+
+```text
+$ ssqch dev
+error: unrecognized subcommand 'dev'
+
+  ssqch's dev server is `ssqch serve`: it builds, watches and reloads the browser.
+  More: ssqch serve --help
+```
+
+`pathPrefix`, `addPassthroughCopy`, `--drafts`, `{{ "/x/" | url }}`, `{{ eleventy.generator }}`, `site.posts`, `redirect_from` and `published: false` get the same treatment (every unknown config option is listed in one go), and `ssqch build --format json` carries the answer as data, in a `hint` with `use` (ssqch's name) and `more`. A folder that has another generator's config and no ssqch config gets a warning naming the importer or guide, instead of a build with ssqch's defaults that nobody asked for.
 
 Whichever generator you're leaving, build the site with it and with ssqch and run [`ssqch diff`](#comparing-two-builds) on the two output folders: it shows which pages differ and how, so you know when the move is done.
 
@@ -412,21 +461,22 @@ The lay of the land:
 - **Choosing engines:** pages are Jinja (`.jinja`) unless you list other languages in `templateFormats`, and `.md` files run through Jinja first, then Markdown (change that with `markdownEngine` and `htmlEngine`). Layouts follow the same rules, so a `.html` layout is a Jinja template by default. A template's `render` front matter overrides it: `render: md` for Markdown only (handy for a post full of `{{ }}` code samples), `render: [edge, md]` for a chain, or `render: false` to write the body as it is. A layout chain can mix languages (a Markdown post in a Liquid layout that sits in an Edge one). Around here that's called trail mix.
 - **Everything else:** layout chaining, `page.*`, `templateContent` in collections, and an error when two pages would write the same file. Every template can read `ssqch.version`, `ssqch.env`, `ssqch.serving` and `ssqch.generator`.
 
-Templates are [Jinja](#jinja-and-nunjucks) by default; [Edge](#edge), [Liquid](#liquid), [Nunjucks](#jinja-and-nunjucks) and [Handlebars and Mustache](#handlebars-and-mustache) are a `templateFormats` entry away, and one site can use several.
+Templates are [Jinja](#jinja-and-nunjucks) by default; [Edge](#edge), [Liquid](#liquid), [Nunjucks](#jinja-and-nunjucks), [Handlebars and Mustache](#handlebars-and-mustache) and [EJS](#ejs) are a `templateFormats` entry away, and one site can use several.
 
-When a template fails, the error is followed by the lines it's about, numbered as the file is (front matter included), with carets under the part the message names when it quotes one:
+When a template fails, the error names the file and line (counted as the file is, front matter included) and is followed by the lines it's about, with carets under the part the message names when it quotes one:
 
 ```text
 error: 1 error(s):
-  - rendering posts/pine.md with `jinja`: posts/pine.md:3: unknown filter: filter rnd is unknown
+  - rendering posts/pine.md with `jinja`: posts/pine.md:8: unknown filter `rnd` (did you mean `round`?)
 
   --> src/posts/pine.md:8
    6 | Crunchy, foresty, and only slightly sticky.
    7 |
    8 | The count is {{ sightings.total | rnd(1) }} so far.
+     |                                   ^^^
 ```
 
-A layout or an Edge include that isn't there says which one you probably meant (``layout `bse` not found: no sightings in src/_includes (did you mean `base`?)``). One that leads back to itself names the loop instead of running out of patience: `we've passed this tree before. Layout loop: base.edge -> wrap.edge -> base.edge`.
+A Jinja filter, test or function that doesn't exist says which one you probably meant, and so does a layout, a Jinja or Nunjucks template (`include`, `extends`, `import`) or an Edge include that isn't there (``layout `bse` not found: no sightings in src/_includes (did you mean `base`?)``). One that leads back to itself names the loop instead of running out of patience: `we've passed this tree before. Layout loop: base.edge -> wrap.edge -> base.edge`.
 
 ### Markdown
 
@@ -455,7 +505,7 @@ export default defineConfig({
 | `indentedCode` | `true` | Lines indented four spaces are code. `false` makes them ordinary Markdown, for HTML indented inside Markdown; fences are still code. |
 | `highlight` | `false` | Syntax highlighting at build time (below). `true`, or `{ css: "/assets/code.css" }` to put the stylesheet somewhere else, or `{ css: false }` to leave it out. |
 
-**Syntax highlighting:** with `highlight: true`, fenced code is highlighted while the site builds, so pages need no highlighting script. The grammars are Sublime Text's and TextMate's (about 200 languages, from [syntect](https://github.com/trishume/syntect) and [bat](https://github.com/sharkdp/bat)), plus ssqch's own for the template languages those don't cover (`edge`, `liquid`, `hbs` and `mustache`: the tags, over highlighted HTML), and each token gets one class for what it is: `hl-keyword`, `hl-string`, `hl-comment`, `hl-function`, `hl-type`, `hl-number` and so on. The build writes a stylesheet for them to `/highlight.css` (link it from your layout) with GitHub's colors, light and dark. Each color is a CSS custom property, like `--hl-keyword`, so a theme switch or your own palette only has to set those. Mark lines with braces in the fence's info string, ```` ```js {1,4-6} ````, and those lines get `class="line highlighted"`. A language without a grammar renders as plain `<pre><code class="language-x">`.
+**Syntax highlighting:** with `highlight: true`, fenced code is highlighted while the site builds, so pages need no highlighting script. The grammars are Sublime Text's and TextMate's (about 200 languages, from [syntect](https://github.com/trishume/syntect) and [bat](https://github.com/sharkdp/bat)), plus ssqch's own for the template languages those don't cover (`edge`, `liquid`, `hbs`, `mustache` and `ejs`: the tags, over highlighted HTML), and each token gets one class for what it is: `hl-keyword`, `hl-string`, `hl-comment`, `hl-function`, `hl-type`, `hl-number` and so on. The build writes a stylesheet for them to `/highlight.css` (link it from your layout) with GitHub's colors, light and dark. Each color is a CSS custom property, like `--hl-keyword`, so a theme switch or your own palette only has to set those. Mark lines with braces in the fence's info string, ```` ```js {1,4-6} ````, and those lines get `class="line highlighted"`. A language without a grammar renders as plain `<pre><code class="language-x">`.
 
 **A table of contents:** after a page's content renders, `page.headings` lists its headings (`level`, `id` and `text`), so its layouts can build a table of contents. The built-in `toc` filter does it for you: `{{{ toc(page.headings) }}}` writes nested `<ul>` links to the `h2` and `h3` headings, and `toc(page.headings, { from: 2, to: 4, ordered: true })` changes the levels or uses `<ol>`. In Liquid that's `{{ page.headings | toc: 2, 4 }}`, and in Nunjucks, `{{ toc(page.headings) | safe }}`. The headings come from the HTML, so they work for pages in any template language. Collections have them too (`post.page.headings`).
 
@@ -566,6 +616,25 @@ Add `"hbs"` (or `"handlebars"`) or `"mustache"` to `templateFormats`, and those 
 - **Helpers:** Handlebars' built-ins (`if`, `unless`, `each`, `with`, `lookup`, `len`, `eq` and the other comparisons). Your config `filters` are helpers: `{{shout title}}`, `{{wrap title "[" "]"}}`, and hash arguments (`size=2`) arrive as a trailing object. Use `{{len list}}`, not `list.length`.
 - **Partials:** every file in `_includes`, by its path with or without the extension: `{{> nav}}` or `{{> nav.hbs}}`.
 - **Mustache:** variables, `{{{ }}}`, partials, sections over lists and truthy values (`{{#items}}{{.}}{{/items}}`) and inverted sections (`{{^items}}none{{/items}}`). Inside a section, reach outer values with `../name`, as in Handlebars. Not supported: lambdas and changing delimiters.
+
+### EJS
+
+[EJS](https://ejs.co/) templates (`.ejs`) are plain JavaScript between tags, so they run on the JavaScript engine built into ssqch (the one your config runs on), with no npm install. Add `"ejs"` to `templateFormats`, and `markdownEngine: "ejs"` to run Markdown through it. The output matches EJS 3's, whitespace included.
+
+```ejs
+<ul>
+  <%_ for (const post of collections.posts) { _%>
+    <li><a href="<%= post.url %>"><%= post.data.title %></a></li>
+  <%_ } _%>
+</ul>
+```
+
+- **Tags:** `<% code %>`, `<%= escaped %>`, `<%- raw %>` (a layout writes `<%- content %>`), `<%# comment %>` and `<%%` for a literal `<%`. `-%>` drops the newline after a tag, and `<%_`/`_%>` the spaces and tabs around it too.
+- **Data:** the page's data, as variables (`title`, `page`, `collections`, and `locals` for all of it). Your config `filters` and ssqch's functions (`markdown`, `highlight`, `navTree`, ...) are functions by the same names: `<%= shout(title) %>`. A config filter is called directly, without converting anything.
+- **Includes:** `<%- include("partials/nav") %>` reads `_includes/partials/nav.ejs` (and the themes'), `include("./card")` reads from the template's own folder, and a second argument adds variables: `include("card", { post })`. One that isn't there says which file you probably meant.
+- **Errors** name the template and line, and the lines under them are the file's own. A variable nothing defines is a `ReferenceError`, as in EJS (`typeof x` is still safe).
+- **Starters:** `ssqch init --engine ejs` (and `--starter docs --engine ejs`) writes the starters' layouts, render hook and containers in EJS.
+- **Speed:** JavaScript runs one call at a time, so EJS pages don't render in parallel as Jinja, Edge and Liquid pages do. On 2,000 Markdown posts in an EJS layout, the build took 216 ms against Jinja's 168 ms, and 290 ms against 182 ms when every post had EJS tags of its own.
 
 ## Themes
 
@@ -764,7 +833,7 @@ Built in 110 ms (production)
 - **Output** is everything in the output folder, including files left from earlier builds.
 - **Time** splits the build into phases. `write` includes layouts, transforms and image encoding, so a build that encodes images spends most of its time there. `after` is the `afterBuild` hooks.
 
-With `--verbose`, a line under the summary names the Edge templates in the includes folder that nothing used as a layout, an include or a component in this build: `Uninhabited: 1 Edge template that nothing used in this build (src/_includes/cabin.edge).` Includes in the other template languages aren't tracked, so it doesn't speak for them.
+With `--verbose`, a line under the summary names the templates in the includes folder that nothing used as a layout, an include or a component in this build: `Uninhabited: 1 template that nothing used in this build (src/_includes/cabin.jinja).` It covers Jinja, Nunjucks, Edge and EJS. Liquid and Handlebars don't say what they read, so it doesn't speak for their files.
 
 `ssqch serve` prints the same summary after every rebuild.
 
@@ -812,6 +881,32 @@ Changed (2)
 - **Scripts and agents:** `--format json` prints the same report as JSON (`schemaVersion: 1`), and the exit code is 0 when the builds are the same, 1 when they differ and 2 on an error, like `diff`.
 
 It works on any two folders of HTML, so it can also compare another generator's output with ssqch's while you move a site over.
+
+## A build's footprint
+
+`ssqch footprint` says how much the last build weighs, by kind of file, and which pages and files leave the largest footprints:
+
+```text
+$ ssqch footprint
+Footprint of dist: 4,965 files, 302 MB
+  Pages             163 files  6.91 MB  2%
+  Images          4,782 files   291 MB  96%
+  CSS                 1 file   58.2 KB  <1%
+  JavaScript          2 files  7.61 KB  <1%
+  Fonts               9 files   708 KB  <1%
+
+Largest footprints: pages
+   108 KB  /build-a-secure-node-js-application-with-javascript-async-await-using-hapi/
+   104 KB  /avatars/
+
+Largest footprints: other files
+  3.15 MB  /static/job-hunt-ai-cheat-sheet.pdf
+  2.10 MB  /img/ElD54Br0Nm-1200.png
+```
+
+It reads the site's output folder, or any build folder you name (`ssqch footprint dist-before`), so build first. `--top 20` lists more of the heaviest (0 for none), and `--format json` gives the same as data: `files`, `bytes`, `kinds` and `largest.pages` and `largest.files`, each with its `path` and `bytes`.
+
+To keep a site light, give the config `budgets`. Every build then checks the output against them, after plugins like `assetsPlugin()` have run, and warns about whatever is over: `warn: 2 pages are over the pages budget of 100 KB: /build-a-secure-node-js-application-with-javascript-async-await-using-hapi/ (108 KB), /avatars/ (104 KB)`.
 
 ## Scripts and coding agents
 

@@ -57,7 +57,26 @@ pub struct JinjaEngine {
     /// The config's functions, which `.njk` templates can use as tags:
     /// `{% image "a.png", "Alt" %}`, or around content with `{% endimage %}`.
     tags: Arc<std::collections::HashSet<String>>,
+    /// The config's functions (filters too), for "did you mean".
+    functions: Vec<String>,
+    /// The includes folders, for "did you mean" on a template that isn't there.
+    includes: Vec<PathBuf>,
+    /// The includes read so far (minijinja reads each one once), for `--verbose`.
+    loaded: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
+
+/// minijinja's own filters, tests and functions, and the ones this plugin adds,
+/// for "did you mean".
+const FILTERS: &[&str] = &[
+    "abs", "attr", "batch", "bool", "capitalize", "chain", "count", "d", "default", "dictsort", "e", "escape", "first", "float", "format", "groupby", "indent", "int", "items", "join", "last", "length", "lines", "list", "lower", "map", "max", "min", "pprint",
+    "reject", "rejectattr", "replace", "reverse", "round", "safe", "select", "selectattr", "slice", "sort", "split", "string", "sum", "title", "tojson", "trim", "unique", "upper", "urlencode", "zip", "dump", "truncate", "pluralize", "filesizeformat",
+    "striptags", "dateformat", "timeformat", "datetimeformat",
+];
+const TESTS: &[&str] = &[
+    "boolean", "defined", "divisibleby", "endingwith", "eq", "equalto", "escaped", "even", "false", "filter", "float", "ge", "greaterthan", "gt", "in", "int", "integer", "iterable", "le", "lessthan", "lower", "lt", "mapping", "ne", "none", "number", "odd",
+    "safe", "sameas", "sequence", "startingwith", "string", "test", "true", "undefined", "upper",
+];
+const FUNCTIONS: &[&str] = &["debug", "dict", "namespace", "range", "cycler", "joiner", "now"];
 
 /// What a config function is also called, so a tag reaches it even on a page
 /// whose data has a field with the function's name.
@@ -112,8 +131,11 @@ impl JinjaEngine {
             Arc::new(engine_env.globals.iter().filter(|(name, value)| matches!(value, Value::Func(_)) && !BUILT_IN_TAGS.contains(&name.as_str())).map(|(name, _)| name.clone()).collect());
         let sources: Arc<RwLock<HashMap<String, String>>> = Arc::default();
         let includes: Vec<PathBuf> = engine_env.include_dirs().cloned().collect();
+        let include_dirs = includes.clone();
         let pages = sources.clone();
         let loader_tags = tags.clone();
+        let loaded: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::default();
+        let loader_loaded = loaded.clone();
         env.set_loader(move |name: &str| {
             if let Some(src) = pages.read().unwrap().get(name) {
                 return Ok(Some(src.clone()));
@@ -124,6 +146,7 @@ impl JinjaEngine {
             }
             // The site's includes folder, then each theme's.
             let Some(path) = includes.iter().map(|dir| dir.join(name)).find(|p| p.is_file()) else { return Ok(None) };
+            loader_loaded.lock().unwrap().insert(name.replace('\\', "/"));
             match std::fs::read_to_string(path) {
                 Ok(src) if nunjucks => Ok(Some(nunjucks_syntax(&src, &loader_tags))),
                 Ok(src) => Ok(Some(src)),
@@ -175,8 +198,85 @@ impl JinjaEngine {
                 env.add_global(format!("{}{}", TAG_PREFIX, name), to_jinja(value));
             }
         }
-        JinjaEngine { env, sources, nunjucks, tags }
+        let functions = engine_env.globals.iter().filter(|(_, value)| matches!(value, Value::Func(_))).map(|(name, _)| name.clone()).collect();
+        JinjaEngine { env, sources, nunjucks, tags, functions, includes: include_dirs, loaded }
     }
+
+    /// minijinja's message, with where it happened (`index.jinja:3`). A name
+    /// it doesn't know is quoted (so the error's frame puts carets under it),
+    /// with the name it was probably meant to be.
+    fn describe(&self, e: &Error) -> String {
+        let place = match (e.name(), e.line()) {
+            (Some(name), Some(line)) => format!("{}:{}: ", name.trim_start_matches(PAGE_PREFIX), line),
+            (Some(name), None) => format!("{}: ", name.trim_start_matches(PAGE_PREFIX)),
+            _ => String::new(),
+        };
+        let mut out = place + &self.what(e);
+        let mut source = std::error::Error::source(e);
+        while let Some(s) = source {
+            out.push_str(&format!(" ({})", s));
+            source = s.source();
+        }
+        out
+    }
+
+    /// The error itself: `unknown filter `upcase` (did you mean `upper`?)`.
+    fn what(&self, e: &Error) -> String {
+        let detail = e.detail().unwrap_or_default();
+        let config = self.functions.iter().map(String::as_str);
+        let unknown = |prefix: &str| detail.strip_prefix(prefix).and_then(|d| d.strip_suffix(" is unknown")).filter(|name| !name.contains(' '));
+        let (name, candidates): (Option<&str>, Vec<&str>) = match e.kind() {
+            ErrorKind::UnknownFilter => (unknown("filter "), FILTERS.iter().copied().chain(config).collect()),
+            ErrorKind::UnknownTest => (unknown("test "), TESTS.to_vec()),
+            ErrorKind::UnknownFunction => (unknown(""), FUNCTIONS.iter().copied().chain(config).collect()),
+            ErrorKind::TemplateNotFound => {
+                let Some(wanted) = quoted(detail) else { return format!("{}: {}", e.kind(), detail) };
+                let hint = self.closest_include(wanted).map(|found| format!(" (did you mean `{}`?)", found)).unwrap_or_default();
+                let verb = if detail.starts_with("tried to include") { "can't include" } else { "no template named" };
+                return format!("{}: {} `{}`{}", e.kind(), verb, wanted, hint);
+            }
+            _ => (None, Vec::new()),
+        };
+        // Another generator's filter (`url`, `slugify`): ssqch's way, instead of a guess from the spelling.
+        if let (Some(name), ErrorKind::UnknownFilter) = (name, e.kind()) {
+            if let Some(equivalent) = sitesquatch::equivalents::find(name, sitesquatch::equivalents::Kind::Filter) {
+                return format!("{} `{}`. {}\n  More: {}", e.kind(), name, equivalent.say, equivalent.more);
+            }
+        }
+        match name {
+            Some(name) => {
+                let hint = sitesquatch::suggest::closest(name, candidates.into_iter().filter(|c| *c != name)).map(|found| format!(" (did you mean `{}`?)", found)).unwrap_or_default();
+                format!("{} `{}`{}", e.kind(), name, hint)
+            }
+            None if detail.is_empty() => e.kind().to_string(),
+            None => format!("{}: {}", e.kind(), detail),
+        }
+    }
+
+    /// The file in the includes folders whose path is closest to `wanted`.
+    fn closest_include(&self, wanted: &str) -> Option<String> {
+        let have: Vec<String> = self
+            .includes
+            .iter()
+            .flat_map(|dir| {
+                walkdir::WalkDir::new(dir)
+                    .into_iter()
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.file_type().is_file())
+                    .filter_map(|entry| entry.path().strip_prefix(dir).ok().map(|rel| rel.to_string_lossy().replace('\\', "/")))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        sitesquatch::suggest::closest_path(wanted, have.iter().map(String::as_str)).map(String::from)
+    }
+}
+
+/// The first `"quoted"` or `'quoted'` part of `text`.
+fn quoted(text: &str) -> Option<&str> {
+    let start = text.find(['"', '\''])?;
+    let mark = text[start..].chars().next()?;
+    let rest = &text[start + 1..];
+    rest.find(mark).map(|end| &rest[..end])
 }
 
 impl TemplateEngine for JinjaEngine {
@@ -194,7 +294,11 @@ impl TemplateEngine for JinjaEngine {
             None if self.nunjucks => self.env.render_named_str(ctx.name, &nunjucks_syntax(source, &self.tags), context),
             None => self.env.render_named_str(ctx.name, source, context),
         };
-        result.map_err(|e| anyhow!("{}", describe(&e)))
+        result.map_err(|e| anyhow!("{}", self.describe(&e)))
+    }
+
+    fn included(&self) -> Option<Vec<String>> {
+        Some(self.loaded.lock().unwrap().iter().cloned().collect())
     }
 }
 
@@ -493,25 +597,6 @@ fn escape(s: &str) -> String {
             '\'' => out.push_str("&#39;"),
             c => out.push(c),
         }
-    }
-    out
-}
-
-/// minijinja's message, with where it happened (`index.njk:3`).
-fn describe(e: &Error) -> String {
-    let mut out = match (e.name(), e.line()) {
-        (Some(name), Some(line)) => format!("{}:{}: {}", name.trim_start_matches(PAGE_PREFIX), line, e.kind()),
-        (Some(name), None) => format!("{}: {}", name.trim_start_matches(PAGE_PREFIX), e.kind()),
-        _ => e.kind().to_string(),
-    };
-    if let Some(detail) = e.detail() {
-        out.push_str(": ");
-        out.push_str(detail);
-    }
-    let mut source = std::error::Error::source(e);
-    while let Some(s) = source {
-        out.push_str(&format!(" ({})", s));
-        source = s.source();
     }
     out
 }

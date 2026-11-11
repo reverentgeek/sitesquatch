@@ -37,6 +37,7 @@ pub fn capabilities() -> serde_json::Value {
         json!({ "name": "edge", "extensions": ["edge"] }),
         json!({ "name": "markdown", "extensions": ["md", "markdown"] }),
         json!({ "name": "html", "extensions": ["html"] }),
+        json!({ "name": "ejs", "extensions": ["ejs"] }),
     ];
     #[cfg(feature = "liquid")]
     languages.push(json!({ "name": "liquid", "extensions": ["liquid"] }));
@@ -74,7 +75,7 @@ pub fn capabilities() -> serde_json::Value {
     json!({
         "schemaVersion": 1,
         "version": env!("CARGO_PKG_VERSION"),
-        "commands": ["build", "serve", "new", "inspect", "diff", "completions", "init", "types", "import", "capabilities"],
+        "commands": ["build", "serve", "new", "inspect", "diff", "footprint", "completions", "init", "types", "import", "capabilities"],
         "json": ["build --format json", "inspect --format json", "diff --format json", "capabilities --format json", "serve --ready-file"],
         "features": features.iter().map(|(name, on)| (name.to_string(), json!(on))).collect::<serde_json::Map<_, _>>(),
         "configFiles": sitesquatch_js::CONFIG_FILES.iter().copied().chain(["sitesquatch.toml"]).collect::<Vec<_>>(),

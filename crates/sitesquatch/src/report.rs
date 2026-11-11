@@ -83,7 +83,7 @@ pub fn summary(cfg: &Config, report: &BuildReport) -> String {
     }
     if !report.unused.is_empty() {
         let n = report.unused.len();
-        let _ = writeln!(out, "Uninhabited: {} Edge template{} that nothing used in this build ({}).", count(n), plural(n), report.unused.join(", "));
+        let _ = writeln!(out, "Uninhabited: {} template{} that nothing used in this build ({}).", count(n), plural(n), report.unused.join(", "));
     }
     // Nothing to build is usually a wrong folder or a missing extension.
     if report.templates == 0 && report.drafts == 0 && report.pages_written == 0 {

@@ -80,7 +80,7 @@ impl LiquidEngine {
                 return Ok(t.clone());
             }
         }
-        let template = Arc::new(self.parser.parse(source).map_err(|e| anyhow!("{}: {}", ctx.name, e))?);
+        let template = Arc::new(self.parser.parse(source).map_err(|e| anyhow!("{}: {}", ctx.name, describe(&e.to_string())))?);
         if let Some(key) = ctx.cache_key {
             self.compiled.write().unwrap().insert(key.to_string(), template.clone());
         }
@@ -93,7 +93,7 @@ impl TemplateEngine for LiquidEngine {
         let template = self.compiled(source, ctx)?;
         let globals = Globals(View::of(data));
         let was = STRICT.replace(self.strict);
-        let result = template.render(&globals).map_err(|e| anyhow!("{}: {}", ctx.name, e));
+        let result = template.render(&globals).map_err(|e| anyhow!("{}: {}", ctx.name, describe(&e.to_string())));
         STRICT.set(was);
         result
     }
@@ -560,6 +560,25 @@ impl ObjectView for Globals<'_> {
             found => found,
         }
     }
+}
+
+/// The `liquid` crate's message, shorter where it's long: an unknown filter is
+/// named, with ssqch's name for another generator's filter (`relative_url`) or
+/// the closest filter there is, instead of every filter there is.
+fn describe(message: &str) -> String {
+    let field = |key: &str| message.lines().find_map(|l| l.trim().strip_prefix(key)).map(str::trim);
+    if !message.contains("Unknown filter") {
+        return message.to_string();
+    }
+    let Some(name) = field("requested filter=") else { return message.to_string() };
+    let hint = match sitesquatch::equivalents::find(name, sitesquatch::equivalents::Kind::Filter) {
+        Some(equivalent) => format!(". {}\n  More: {}", equivalent.say, equivalent.more),
+        None => {
+            let available: Vec<&str> = field("available filters=").map(|list| list.split(", ").collect()).unwrap_or_default();
+            sitesquatch::suggest::closest(name, available.into_iter().filter(|f| *f != name)).map(|f| format!(" (did you mean `{}`?)", f)).unwrap_or_default()
+        }
+    };
+    format!("unknown filter `{}`{}", name, hint)
 }
 
 #[cfg(test)]

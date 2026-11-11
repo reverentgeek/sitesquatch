@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><% if (locals.title) { %><%= title %> | <% } %><%= site.name %></title>
+  <meta name="description" content="<%= locals.description || site.description %>">
+  <meta name="generator" content="<%= ssqch.generator %>">
+  <link rel="stylesheet" href="/highlight.css">
+  <link rel="stylesheet" href="/assets/docs.css">
+  <%_ if (locals.search) { _%>
+  <link rel="stylesheet" href="/pagefind/pagefind-ui.css">
+  <script src="/pagefind/pagefind-ui.js" defer></script>
+  <%_ } _%>
+  <script src="/assets/docs.js" defer></script>
+  <%_ /* Before the page is drawn, so a reader who picked a theme doesn't see the other one first. */ _%>
+  <script>try { const theme = localStorage.getItem("theme"); if (theme) document.documentElement.dataset.theme = theme; } catch {}</script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="site-name" href="/"><%= site.name %></a>
+    <nav aria-label="Site">
+      <a href="/docs/">Docs</a>
+      <%_ if (locals.sidebar) { _%>
+      <a class="menu-link" href="#sidebar">Menu</a>
+      <%_ } _%>
+    </nav>
+    <%_ if (locals.search) { _%>
+    <div id="search"></div>
+    <%_ } _%>
+    <%_ /* docs.js shows it. Without JavaScript, the theme follows the system. */ _%>
+    <button class="theme-switch" type="button" hidden>Switch theme</button>
+  </header>
+  <%- content %>
+</body>
+</html>
