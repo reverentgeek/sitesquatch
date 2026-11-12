@@ -272,10 +272,12 @@ fn ejs_templates_render_as_ejs_does() {
         ("Quotes: <%= q %>\n<% if (items.length > 1) { %>many<% } else { %>one<% } %>\n", "Quotes: &#34;a&#34; &amp; &#39;b&#39;\nmany\n"),
         // An include inside an include gets its parent's data too, and names can be Unicode.
         ("<%- include('outer', { animal: 'fox' }) %>\n<%= café %>\n", "[fox|fox|undefined][fox|fox|string]\nowl\n"),
+        // A name used only after `...` is a variable, not a property.
+        ("<%= [...animals].join(\",\") %>|<%= Object.keys({...trailInfo}).join() %>|<%= Math.max(...nums) %>\n", "fox,owl|name|2\n"),
     ];
     write("_includes/outer.ejs", "[<%- include(\"inner\") %>][<%- include(\"inner\", { trail: \"Cedar\" }) %>]");
     write("_includes/inner.ejs", "<%= animal %>|<%= locals.animal %>|<%= typeof trail %>");
-    let data = "---\ncafé: owl\ntitle: \"Squatch <Snacks>\"\nhtml: \"<b>bold</b>\"\nq: \"\\\"a\\\" & 'b'\"\nitems:\n  - { name: pine cone, n: 2 }\n  - { name: Crunch, n: 3 }\n";
+    let data = "---\ncafé: owl\nanimals: [fox, owl]\ntrailInfo: { name: Cedar }\nnums: [1, 2]\ntitle: \"Squatch <Snacks>\"\nhtml: \"<b>bold</b>\"\nq: \"\\\"a\\\" & 'b'\"\nitems:\n  - { name: pine cone, n: 2 }\n  - { name: Crunch, n: 3 }\n";
     for (i, (source, _)) in cases.iter().enumerate() {
         write(&format!("cases/c{}.ejs", i), &format!("{}permalink: /c{}.html\n---\n{}", data, i, source));
     }
@@ -287,7 +289,7 @@ fn ejs_templates_render_as_ejs_does() {
     for (i, (source, want)) in cases.iter().enumerate() {
         assert_eq!(read(&format!("c{}.html", i)), *want, "{}", source);
     }
-    assert_eq!(read("trail/index.html"), "<main><h1 id=\"trail\">Trail</h1>\n<p>10 pages.</p>\n</main><footer>STUMP! <em>Pine</em> /trail/</footer>\n");
+    assert_eq!(read("trail/index.html"), "<main><h1 id=\"trail\">Trail</h1>\n<p>11 pages.</p>\n</main><footer>STUMP! <em>Pine</em> /trail/</footer>\n");
 
     // Errors name the template and line, and the frame shows the file's own lines.
     let fails = |source: &str, message: &str| {
@@ -2323,4 +2325,74 @@ fn chrono_free_today() -> String {
     let date = json["date"].as_str().unwrap().to_string();
     assert!(date.len() == 10 && date.starts_with("20"), "{}", date);
     date
+}
+
+/// EJS tags in `permalink` and `computed` are rendered, and a relative include in a theme's page
+/// or layout starts from that file's folder.
+#[test]
+fn ejs_data_strings_and_theme_includes() {
+    let dir = temp_dir("ejs-data-strings");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "export default { theme: \"themes/trail\", dirs: { input: \"src\" }, templateFormats: [\"ejs\"] };\n");
+    write("src/index.ejs", "---\ntitle: pine\npermalink: /<%= title %>/\ncomputed:\n  label: \"<%= title %> trail\"\nlayout: frame.ejs\n---\n<%= label %>\n");
+    write("themes/trail/cones.ejs", "<%- include(\"./card.ejs\") %>\n");
+    write("themes/trail/card.ejs", "Pine cones");
+    write("themes/trail/_includes/frame.ejs", "<main><%- content %></main><%- include(\"./frame-footer\") %>");
+    write("themes/trail/_includes/frame-footer.ejs", "<footer>stump</footer>");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("_site").join(path)).unwrap_or_else(|e| panic!("{}: {}\n{}", path, e, log));
+    assert_eq!(read("pine/index.html"), "<main>pine trail\n</main><footer>stump</footer>");
+    assert_eq!(read("cones/index.html").trim(), "Pine cones");
+}
+
+/// A page bundle leaves out a template in a language the site doesn't render (it could be a
+/// draft), and a file name that isn't ASCII doesn't trip the check for a date in it.
+#[test]
+fn bundles_leave_out_unrendered_templates() {
+    let dir = temp_dir("bundles-unrendered");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, bundles: true };\n");
+    write("src/trail/index.md", "# Trail\n");
+    write("src/trail/private.edge", "---\ndraft: true\ninternalNote: not ready to publish\n---\nUnpublished trail notes: {{ internalNote }}\n");
+    write("src/trail/notes.md", "---\npermalink: false\n---\nnot rendered here\n");
+    write("src/trail/map.svg", "<svg/>");
+    write("src/森林步道.md", "# Pine cones\n");
+    let (ok, log) = ssqch(&["build", "--root", d, "--env", "production", "--format", "json"]);
+    assert!(ok, "{}", log);
+    assert!(log.contains("private.edge isn't rendered"), "{}", log);
+    let files = walk(&dir.join("dist"));
+    assert!(files.iter().any(|f| f.ends_with("trail/map.svg")), "{:?}", files);
+    assert!(!files.iter().any(|f| f.ends_with(".edge") || f.ends_with(".md")), "{:?}", files);
+    assert!(files.iter().any(|f| f.contains("森林步道")), "{:?}", files);
+}
+
+/// A Sass file's partials beside it, outside the input folder, rebuild its CSS when they change.
+#[test]
+fn serve_rebuilds_sass_when_a_partial_changes() {
+    let dir = temp_dir("serve-sass-partial");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::create_dir_all(dir.join("styles")).unwrap();
+    std::fs::write(dir.join("src/index.html"), "<p>camp</p>").unwrap();
+    std::fs::write(dir.join("styles/main.scss"), "@use \"colors\";\nbody { color: colors.$pine; }\n").unwrap();
+    std::fs::write(dir.join("styles/_colors.scss"), "$pine: green;\n").unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), "import { sassPlugin } from \"ssqch/sass\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [sassPlugin({ files: { \"styles/main.scss\": \"/app.css\" } })] };\n").unwrap();
+    let log = temp_dir("serve-sass-partial-log");
+    let out = std::fs::File::create(&log).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(["serve", "--port", "0", "--root"]).arg(&dir).stdout(out.try_clone().unwrap()).stderr(out).spawn().unwrap();
+    let _server = Server(child);
+    wait_for(&dir.join("dist/app.css"), "green");
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::fs::write(dir.join("styles/_colors.scss"), "$pine: orange;\n").unwrap();
+    wait_for(&dir.join("dist/app.css"), "orange");
 }

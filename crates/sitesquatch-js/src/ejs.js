@@ -49,8 +49,9 @@
 	const RESERVED = new Set( ( "break case catch class const continue debugger default delete do else enum export extends false finally for function if import in instanceof " +
 		"new null return super switch this throw true try typeof var void while with yield let static implements interface package private protected public await " +
 		"arguments eval undefined NaN Infinity include" ).split( " " ) );
-	// JavaScript's identifiers, Unicode ones included (`café`).
-	const IDENTIFIER = /(?<![\p{ID_Continue}$\u200c\u200d.])[\p{ID_Start}_$][\p{ID_Continue}$\u200c\u200d]*/gu;
+	// JavaScript's identifiers, Unicode ones included (`café`). A name after one dot is a
+	// property (`trail.animals`); after three it's spread (`...animals`), so it's a variable.
+	const IDENTIFIER = /(?<![\p{ID_Continue}$\u200c\u200d])(?<!(?<!\.\.)\.)[\p{ID_Start}_$][\p{ID_Continue}$\u200c\u200d]*/gu;
 
 	// A template as code: the statements that build `__out` (with `__line`
 	// following the template's line for errors), and the names its code uses.

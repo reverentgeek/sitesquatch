@@ -28,6 +28,12 @@ a `v<version>` tag on a commit where that version matches.
 - `ssqch init` starts a site in Jinja (`src/_includes/layout.jinja`, `src/index.jinja`), and
   `ssqch init --starter docs` writes its layouts, render hook and containers in Jinja. Pass
   `--engine edge` for the starters as they were.
+- Page bundles (`bundles: true`) no longer copy a template the site doesn't render: a file in a
+  template language that isn't in `templateFormats` (`private.edge` next to `index.md`), or a
+  `.md` file, stays out of the output, since its front matter could be a draft. Copy one on
+  purpose with `passthrough`.
+- Rust library: `MarkdownEngine::render_html` doesn't take the page's path any more, and a
+  layout's or hook template's `RenderContext::input_path` is that file, not the page's.
 
 ### Added
 
@@ -101,6 +107,15 @@ a `v<version>` tag on a commit where that version matches.
 
 ### Fixed
 
+- A page bundle copied a template in a language the site doesn't render as it was, front
+  matter and all, so a draft beside a page was published (see Breaking).
+- A file name that isn't ASCII (`森林步道.md`) crashed the build while looking for a date in it.
+- EJS: a variable used only after `...` (`[...animals]`) wasn't defined; EJS tags in
+  `permalink` and `computed` strings weren't rendered (`permalink: /<%= title %>/`); and a
+  relative include (`./card.ejs`) in a theme's page or in a layout looked in the input folder
+  instead of beside the file.
+- `sassPlugin`: editing a partial beside a Sass file outside the input folder, or in a
+  `loadPaths` folder, didn't rebuild the CSS while serving.
 - A template error's message gives the file's own line (`posts/pine.md:8:`), as the lines
   printed under it and the JSON report's `line` already did. Template engines count from the
   end of the front matter, so it used to say `posts/pine.md:3:` for the same line.

@@ -89,8 +89,16 @@ impl Plugin for SassPlugin {
     }
 
     fn register(&self, cfg: &mut Config) {
+        // A file's partials are usually beside it (`_colors.scss` next to `main.scss`), so
+        // its folder is watched too, unless that's the project root. So are the load paths.
         for (from, _) in &self.options.files {
             cfg.add_watch_target(from);
+            if let Some(dir) = Path::new(from).parent().filter(|d| !d.as_os_str().is_empty() && is_sass(Path::new(from))) {
+                cfg.add_watch_target(dir);
+            }
+        }
+        for dir in &self.options.load_paths {
+            cfg.add_watch_target(dir);
         }
         let options = self.options.clone();
         let count = self.count.clone();

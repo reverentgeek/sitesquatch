@@ -34,6 +34,8 @@ impl EngineEnv {
 pub struct RenderContext<'a> {
     /// Name used in error messages (path relative to the input directory).
     pub name: &'a str,
+    /// The template's own file: the page's, or the layout's or include's being rendered
+    /// (a relative include starts from its folder).
     pub input_path: &'a Path,
     /// When set, the engine may cache the compiled template under this key.
     pub cache_key: Option<&'a str>,
@@ -147,9 +149,9 @@ impl MarkdownEngine {
     /// Render `source` for the page with `data` (which hook templates see),
     /// or for no page with `Value::Undefined`. `inline` drops the `<p>`
     /// around a single paragraph.
-    pub fn render_html(&self, source: &str, data: &Value, input_path: &Path, inline: bool) -> Result<String> {
+    pub fn render_html(&self, source: &str, data: &Value, inline: bool) -> Result<String> {
         let engines = self.hooks.get().and_then(|h| h.engines.upgrade().map(|e| (h, e)));
-        let page_hooks = engines.as_ref().map(|(set, engines)| PageHooks { set, engines, data, input_path });
+        let page_hooks = engines.as_ref().map(|(set, engines)| PageHooks { set, engines, data });
         let hooks = page_hooks.as_ref().filter(|h| !h.set.templates.is_empty()).map(|h| h as &dyn Hooks);
         if inline {
             markdown::render_inline(source, &self.options, hooks)
@@ -167,7 +169,7 @@ impl MarkdownEngine {
         if !set.templates.contains_key(&key) {
             return None;
         }
-        let hooks = PageHooks { set, engines: &engines, data, input_path: Path::new("") };
+        let hooks = PageHooks { set, engines: &engines, data };
         Some(hooks.render(&key, name, value))
     }
 
@@ -177,8 +179,8 @@ impl MarkdownEngine {
 }
 
 impl TemplateEngine for MarkdownEngine {
-    fn render(&self, source: &str, data: &Value, ctx: &RenderContext) -> Result<String> {
-        self.render_html(source, data, ctx.input_path, false)
+    fn render(&self, source: &str, data: &Value, _ctx: &RenderContext) -> Result<String> {
+        self.render_html(source, data, false)
     }
 }
 
@@ -190,6 +192,8 @@ pub(crate) struct HookTemplate {
     /// The engines it runs through (`.html` ones get `htmlEngine` first).
     pub engines: Vec<String>,
     pub body: String,
+    /// The file, for includes relative to it.
+    pub path: PathBuf,
 }
 
 pub(crate) struct HookTemplates {
@@ -221,7 +225,7 @@ pub(crate) fn load_hook_templates(includes_dir: &Path, includes_name: &str, engi
             }
             let src = std::fs::read_to_string(&path).with_context(|| format!("reading {}", name))?;
             let (_, body) = crate::data::parse_front_matter(&src).with_context(|| name.clone())?;
-            out.insert(key, HookTemplate { name, engines: chain(&ext), body: body.to_string() });
+            out.insert(key, HookTemplate { name, engines: chain(&ext), body: body.to_string(), path });
         }
     }
     Ok(out)
@@ -231,7 +235,6 @@ struct PageHooks<'a> {
     set: &'a HookTemplates,
     engines: &'a Arc<Engines>,
     data: &'a Value,
-    input_path: &'a Path,
 }
 
 impl Hooks for PageHooks<'_> {
@@ -247,7 +250,7 @@ impl Hooks for PageHooks<'_> {
         let mut text = t.body.clone();
         for engine in &t.engines {
             let key = format!("{}#{}", t.name, engine);
-            let ctx = RenderContext { name: &t.name, input_path: self.input_path, cache_key: Some(&key) };
+            let ctx = RenderContext { name: &t.name, input_path: &t.path, cache_key: Some(&key) };
             text = self.engines.get(engine)?.render(&text, &data, &ctx).with_context(|| format!("rendering {}", t.name))?;
         }
         Ok(text)

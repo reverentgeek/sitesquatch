@@ -439,7 +439,7 @@ fn builtin_filters(markdown: &Arc<MarkdownEngine>) -> Map {
                 Some(v @ Value::Obj(_)) => v.get("inline").truthy(),
                 _ => false,
             };
-            md.render_html(&text, &Value::Undefined, Path::new(""), inline).map(Value::from)
+            md.render_html(&text, &Value::Undefined, inline).map(Value::from)
         }),
     );
     // Navigation: navTree(tree, page.url), navPager(tree, page.url),
@@ -1021,7 +1021,7 @@ fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared)
         }
         let date_prefix = Regex::new(r"^\d{4}-\d{2}-\d{2}-").unwrap();
         let file_slug = date_prefix.replace(&file_slug, "").to_string();
-        let file_date = (stem.len() >= 10).then(|| &stem[..10]).filter(|d| date_prefix.is_match(&format!("{}-", d))).and_then(|d| Value::from(d).to_date());
+        let file_date = stem.get(..10).filter(|d| date_prefix.is_match(&format!("{}-", d))).and_then(|d| Value::from(d).to_date());
         let parent = rel_path.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
         let file_path_stem = if parent.is_empty() { format!("/{}", stem) } else { format!("/{}/{}", parent, stem) };
         let mtime = std::fs::metadata(path)?.modified().unwrap_or(SystemTime::now());
@@ -1136,7 +1136,7 @@ fn expand(ctx: &BuildContext, tpl: &Arc<Tpl>, collections: Option<&Value>, engin
                 Some(Value::Bool(false)) => None,
                 Some(Value::Str(s)) => {
                     let dynamic = !matches!(data.get("dynamicPermalink"), Some(Value::Bool(false)));
-                    let rendered = if dynamic && (s.contains("{{") || s.contains("{%")) {
+                    let rendered = if dynamic && has_tags(tpl, &s) {
                         render_data_string(tpl, "permalink", &s, &data, engines)?
                     } else {
                         s.to_string()
@@ -1401,8 +1401,21 @@ pub fn slashes(path: &Path) -> String {
 /// Render a `permalink` or `computed` string with the page's own template
 /// language: the first engine in its chain that isn't Markdown or plain
 /// text, or Edge for those.
+/// The template language a page's data strings (`permalink`, `computed`) are written in.
+fn data_string_engine(tpl: &Tpl) -> &str {
+    tpl.engines.iter().map(String::as_str).find(|e| !matches!(*e, "md" | "html" | "txt")).unwrap_or("edge")
+}
+
+/// Whether a data string has tags in that language, so it needs rendering.
+fn has_tags(tpl: &Tpl, s: &str) -> bool {
+    match data_string_engine(tpl) {
+        "ejs" => s.contains("<%"),
+        _ => s.contains("{{") || s.contains("{%"),
+    }
+}
+
 fn render_data_string(tpl: &Tpl, what: &str, s: &str, data: &Map, engines: &Engines) -> Result<String> {
-    let engine = tpl.engines.iter().map(String::as_str).find(|e| !matches!(*e, "md" | "html" | "txt")).unwrap_or("edge");
+    let engine = data_string_engine(tpl);
     let name = format!("{} ({})", tpl.rel, what);
     if engine == "edge" {
         return engines.edge.inner().render_str(&name, s, Value::object(data.clone()));
@@ -1413,7 +1426,7 @@ fn render_data_string(tpl: &Tpl, what: &str, s: &str, data: &Map, engines: &Engi
 
 fn render_computed(value: &Value, data: &Map, engines: &Engines, tpl: &Tpl) -> Result<Value> {
     Ok(match value {
-        Value::Str(s) if s.contains("{{") || s.contains("{%") => Value::from(render_data_string(tpl, "computed", s, data, engines)?),
+        Value::Str(s) if has_tags(tpl, s) => Value::from(render_data_string(tpl, "computed", s, data, engines)?),
         Value::Obj(o) => {
             let mut out = Map::new();
             for (k, v) in o.iter() {
@@ -1691,7 +1704,7 @@ fn render_layouts(page: &Page, body: Body, engines: &Engines, collections: &Valu
         let mut text = layout.body.clone();
         for name in &layout.engines {
             let key = format!("{}#{}", layout.name, name);
-            let ctx = RenderContext { name: &layout.name, input_path: &page.tpl.input, cache_key: Some(&key) };
+            let ctx = RenderContext { name: &layout.name, input_path: &layout.path, cache_key: Some(&key) };
             text = engines.get(name)?.render(&text, &value, &ctx).with_context(|| format!("rendering layout {} for {}", layout.name, page.tpl.rel))?;
         }
         content = text;
@@ -1739,8 +1752,10 @@ fn bundle_files(cfg: &Config, ctx: &BuildContext, pages: &[Page], templates: &[P
     let templates: HashSet<&Path> = templates.iter().map(PathBuf::as_path).collect();
     // Template files left out by `ignore` (or not rendered) aren't bundle files either.
     let ignore = glob_set("ignore", cfg.ignore.iter().map(String::as_str))?;
-    let mut formats: HashSet<String> = cfg.template_formats.iter().map(|f| f.to_ascii_lowercase()).collect();
-    formats.insert("markdown".into());
+    // Every template language the site has counts, listed in `templateFormats` or not: a
+    // template that isn't rendered isn't copied as it is either (its front matter may be a draft).
+    let mut formats: HashSet<String> = cfg.template_formats.iter().chain(cfg.engines.iter().map(|(name, _)| name)).map(|f| f.to_ascii_lowercase()).collect();
+    formats.extend(["markdown".to_string(), "md".to_string(), "edge".to_string()]);
     let mut seen: HashSet<&Path> = HashSet::new();
     let mut jobs = Vec::new();
     for page in pages {

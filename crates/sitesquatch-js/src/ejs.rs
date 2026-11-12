@@ -54,7 +54,8 @@ impl EjsEngine {
 impl TemplateEngine for EjsEngine {
     fn render(&self, source: &str, data: &Value, ctx: &RenderContext) -> Result<String> {
         let engine = self.files.engine()?;
-        let file = self.input_dir.join(ctx.name);
+        // The template's own file, for relative includes: a theme's page or a layout isn't in the input folder.
+        let file = if ctx.input_path.is_absolute() { ctx.input_path.to_path_buf() } else { self.input_dir.join(ctx.input_path) };
         engine.with(|js| {
             let globals = js.globals();
             if !globals.contains_key("__ssqch_ejs")? {
