@@ -1,4 +1,4 @@
-# Moving from Zola
+# Trailhead: moving from Zola
 
 Zola and SiteSquatch are both single Rust binaries, so the move is mostly about templates: Tera becomes Nunjucks or Jinja (minijinja, which reads almost the same), and `config.toml` becomes `ssqch.config.js`. Your content can stay as it is: SiteSquatch reads TOML front matter between `+++` lines.
 

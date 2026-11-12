@@ -22,4 +22,8 @@ Welcome! This is a documentation site built with [SiteSquatch](https://github.co
 
 That's it. Run `ssqch serve` and it's at `/docs/guides/my-page/`.
 
+:::tip[Owl's field guide]
+Owl reads the sidebar from the top: install first, then [Writing pages](/docs/guides/writing/), whose source uses every kind of block once, so it doubles as a cheat sheet.
+:::
+
 Next: [install ssqch](/docs/install/), or see [what a page can do](/docs/guides/writing/).

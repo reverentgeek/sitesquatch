@@ -1,4 +1,4 @@
-# Moving from Docusaurus
+# Trailhead: moving from Docusaurus
 
 Docusaurus sites are React apps that happen to render documentation; ssqch builds the same documentation as static HTML that needs no JavaScript to read. The move is mostly mechanical for Markdown pages, and takes a decision for each React component: an Edge component, a container, or client-side JavaScript that stays.
 

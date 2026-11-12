@@ -1797,7 +1797,7 @@ fn capabilities_match_what_a_config_can_use() {
     }
 
     let (ok, text, _) = ssqch_outputs(&["capabilities"]);
-    assert!(ok && text.starts_with(&format!("ssqch {}\n  Commands           build, serve, ", env!("CARGO_PKG_VERSION"))) && text.contains("\n  Template languages edge (.edge), markdown (.md, .markdown), html (.html)"), "{}", text);
+    assert!(ok && text.starts_with(&format!("What's in the pack: ssqch {}\n  Commands           build, serve, ", env!("CARGO_PKG_VERSION"))) && text.contains("\n  Template languages edge (.edge), markdown (.md, .markdown), html (.html)"), "{}", text);
     assert!(text.contains(&format!("\n  Defaults           templateFormats {0}, md, html; Markdown and HTML through {0}\n", default)), "{}", text);
     let (ok, log) = ssqch(&["capabilities", "--format", "xml"]);
     assert!(!ok && log.contains("--format xml: use text or json"), "{}", log);
@@ -1893,9 +1893,9 @@ fn docs_answer_for_every_name() {
         assert!(ok && text.starts_with(&format!("{}'s words", generator)), "{}: {}", generator, text);
     }
     let (ok, text) = ssqch(&["docs", "--from", "eleventy"]);
-    assert!(ok && text.contains("\n  pathPrefix ") && text.contains("The field guide (docs/guides/from-eleventy.md):\n\n# "), "{}", text);
+    assert!(ok && text.contains("\n  pathPrefix ") && text.contains("The trailhead (docs/trailheads/from-eleventy.md):\n\n# Trailhead: moving from Eleventy"), "{}", text);
     let (ok, log) = ssqch(&["docs", "--from", "hugoo"]);
-    assert!(!ok && log.contains("--from hugoo: no field notes on that generator (did you mean `hugo`?)"), "{}", log);
+    assert!(!ok && log.contains("--from hugoo: no trailhead for that generator (did you mean `hugo`?)"), "{}", log);
 }
 
 #[test]

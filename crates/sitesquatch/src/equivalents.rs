@@ -8,7 +8,7 @@
 //! never in the table.
 //!
 //! The table is curated: the words people and agents reach for, from the
-//! migration guides in `docs/guides/`, not every option of every generator.
+//! trailheads (migration guides) in `docs/trailheads/`, not every option of every generator.
 //! Each row is tested: the word is refused, and the name it gives exists.
 
 /// Where a word can turn up.
@@ -159,7 +159,7 @@ pub fn in_message(message: &str) -> Option<&'static Equivalent> {
 }
 
 /// Another generator's config, in a folder without ssqch's: (file, generator,
-/// importer, the guide in `docs/guides/` that `ssqch docs --from` prints).
+/// importer, the trailhead in `docs/trailheads/` that `ssqch docs --from` prints).
 pub const OTHER_CONFIGS: &[(&str, &str, Option<&str>, Option<&str>)] = &[
     (".eleventy.js", "Eleventy", Some("eleventy"), Some("from-eleventy.md")),
     ("eleventy.config.js", "Eleventy", Some("eleventy"), Some("from-eleventy.md")),

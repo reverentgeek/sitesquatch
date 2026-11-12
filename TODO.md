@@ -673,7 +673,7 @@ I'd take them (the first three went into 0.4):
         (`other_generators_words_get_ssqch_names`): the word is refused or warned about, the
         message is the row's, and the name it gives is in `capabilities`, `--help` or the
         README.
-    - [ ] Not yet: checking the table against the tables in `docs/guides/`, and moving
+    - [ ] Not yet: checking the table against the tables in `docs/trailheads/`, and moving
           `import`'s method and package hints (`CALL`, `replacement`) into it.
   - [x] First slice: commands and flags (`dev`, `start`, `server`, `preview`, `check`, `clean`,
         `generate`, `version`, `deploy`, `--watch`, `--drafts`, `-D`, `-d`, `--destination`,
@@ -702,7 +702,7 @@ I'd take them (the first three went into 0.4):
         "did you mean". (`Nothing sighted` had an empty folder name when the input folder is
         the project root; fixed: it says `.`.)
 - [x] **`ssqch docs`: the documentation of the installed version, from the binary** (item 2 in
-      `research/exact-agent-first.md`). The README and the guides in `docs/guides/` are built
+      `research/exact-agent-first.md`). The README and the trailheads in `docs/trailheads/` are built
       in (`crates/ssqch/build.rs`; a crate from crates.io has only the README, and `--from`
       links to the guide for that version). `ssqch docs` alone is a card: every command, config
       option, template function and module export, one line each, from where they're defined
@@ -715,6 +715,8 @@ I'd take them (the first three went into 0.4):
   - [ ] Next: `ssqch init` writes an `AGENTS.md` that points at `ssqch docs` (item 3 in the
         research), and `ssqch docs agents` prints the block for a site that exists already.
   - [ ] Maybe: explain each diagnostic code (`ssqch docs links`), once errors carry a finer id.
+- [ ] **When troubleshooting docs get written:** call the section (or page) "Ranger station:
+      troubleshooting", so it's where to go for help and still says what it is.
 - [ ] Not for now: a page inspector in the browser, a component workbench, an MCP server (after
       the JSON interface exists, as a thin layer over it), preview at a future date, a local
       form editor for front matter, diagnostic bundles.

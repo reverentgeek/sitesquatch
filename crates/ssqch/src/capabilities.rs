@@ -96,7 +96,7 @@ pub fn capabilities() -> serde_json::Value {
 
 fn text(caps: &serde_json::Value) -> String {
     let list = |key: &str| caps[key].as_array().map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_default();
-    let mut out = format!("ssqch {}\n", caps["version"].as_str().unwrap_or(""));
+    let mut out = format!("What's in the pack: ssqch {}\n", caps["version"].as_str().unwrap_or(""));
     let mut row = |label: &str, value: String| out.push_str(&format!("  {:<19}{}\n", label, value));
     row("Commands", list("commands"));
     let features = caps["features"].as_object().map(|f| f.iter().map(|(name, on)| format!("{} {}", name, if on.as_bool() == Some(true) { "yes" } else { "no" })).collect::<Vec<_>>().join(", ")).unwrap_or_default();

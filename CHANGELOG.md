@@ -37,7 +37,7 @@ a `v<version>` tag on a commit where that version matches.
   prints what the README says about it, `ssqch docs "content schemas"` prints a section, and
   other words search the text. Another generator's word says ssqch's: `ssqch docs pathPrefix`.
   `ssqch docs --from eleventy` (or `hugo`, `jekyll`, `zola`, ...) lists that generator's words
-  with ssqch's for each, then its field guide. `--format json` is for scripts and agents.
+  with ssqch's for each, then its trailhead. `--format json` is for scripts and agents.
 - `ssqch init --starter docs` takes `--engine` too: `jinja` (the default), `njk`, `edge`,
   `liquid`, `hbs` or `ejs`. Each one builds the same pages. The site starter gains `--engine jinja`,
   and `--engine njk` writes the Jinja templates as `.njk` files.
@@ -106,6 +106,14 @@ a `v<version>` tag on a commit where that version matches.
 
 ### Changed
 
+- The migration guides are trailheads, in `docs/trailheads/` ("Trailhead: moving from
+  Eleventy"), and `ssqch docs --from <generator>` prints them. `ssqch import` points at
+  `ssqch docs --from` instead of a file in the repository. The README's getting-started
+  section is "Field guide: build your first site", and `ssqch capabilities` says "What's in
+  the pack".
+- The starters and examples have forest creatures in them: Owl's field guide, Beaver's build
+  notes and Deer's shortcut in the docs starter, Raccoon's cache in the site starter's second
+  post, and Owl, Beaver, Raccoon and Squirrel in the examples.
 - The examples are in the Ranger Station '76 palette, light and dark, like the starters.
 - The `versioned-docs` and `islands` examples are written in Jinja. `component-docs` stays in
   Edge for its components with slots, and sets `markdownEngine: "edge"`.

@@ -633,22 +633,22 @@ fn generators() -> Vec<&'static str> {
 fn guide(generator: &str) -> Option<(String, Option<&'static str>)> {
     let file = equivalents::OTHER_CONFIGS.iter().find(|(_, g, ..)| *g == generator).and_then(|(.., guide)| *guide).map(String::from).or_else(|| {
         let file = format!("from-{}.md", generator.to_lowercase());
-        text::GUIDES.iter().any(|(name, _)| *name == file).then_some(file)
+        text::TRAILHEADS.iter().any(|(name, _)| *name == file).then_some(file)
     })?;
-    let text = text::GUIDES.iter().find(|(name, _)| *name == file).map(|(_, text)| *text);
+    let text = text::TRAILHEADS.iter().find(|(name, _)| *name == file).map(|(_, text)| *text);
     Some((file, text))
 }
 
 fn guide_url(file: &str) -> String {
-    format!("{}/v{}/docs/guides/{}", GUIDES_URL, env!("CARGO_PKG_VERSION"), file)
+    format!("{}/v{}/docs/trailheads/{}", GUIDES_URL, env!("CARGO_PKG_VERSION"), file)
 }
 
-/// `ssqch docs --from <generator>`: its words, ssqch's names for them, and the field guide.
+/// `ssqch docs --from <generator>`: its words, ssqch's names for them, and its trailhead.
 fn from(generator: &str, json: bool) -> Result<String, String> {
     let known = generators();
     let Some(generator) = known.iter().find(|g| g.eq_ignore_ascii_case(generator) || g.replace('.', "").eq_ignore_ascii_case(generator)).copied() else {
         let hint = sitesquatch::suggest::closest(&generator.to_lowercase(), known.iter().map(|g| g.to_lowercase()).collect::<Vec<_>>().iter().map(String::as_str)).map(|g| format!(" (did you mean `{}`?)", g)).unwrap_or_default();
-        return Err(format!("--from {}: no field notes on that generator{}. There are: {}", generator, hint, known.iter().map(|g| g.to_lowercase()).collect::<Vec<_>>().join(", ")));
+        return Err(format!("--from {}: no trailhead for that generator{}. There are: {}", generator, hint, known.iter().map(|g| g.to_lowercase()).collect::<Vec<_>>().join(", ")));
     };
     let theirs: Vec<&Equivalent> = equivalents::TABLE.iter().filter(|e| e.from.contains(&generator)).collect();
     let everyone: Vec<&Equivalent> = equivalents::TABLE.iter().filter(|e| e.from.is_empty()).collect();
@@ -663,7 +663,7 @@ fn from(generator: &str, json: bool) -> Result<String, String> {
             "generator": generator,
             "words": rows(&theirs),
             "common": rows(&everyone),
-            "guide": guide.as_ref().map(|(file, text)| json!({ "file": format!("docs/guides/{}", file), "url": guide_url(file), "text": text })),
+            "trailhead": guide.as_ref().map(|(file, text)| json!({ "file": format!("docs/trailheads/{}", file), "url": guide_url(file), "text": text })),
         });
         return Ok(serde_json::to_string_pretty(&value).unwrap_or_default() + "\n");
     }
@@ -684,9 +684,9 @@ fn from(generator: &str, json: bool) -> Result<String, String> {
         out.push_str(&format!("\nWords most generators use\n{}", rows(&everyone.iter().collect::<Vec<_>>())));
     }
     match guide {
-        Some((file, Some(text))) => out.push_str(&format!("\nThe field guide (docs/guides/{}):\n\n{}\n", file, text.trim_end())),
-        Some((file, None)) => out.push_str(&format!("\nThe field guide: {}\n", guide_url(&file))),
-        None => out.push_str("\nThere's no field guide for it yet; `ssqch docs \"Moving from another generator\"` has the general route.\n"),
+        Some((file, Some(text))) => out.push_str(&format!("\nThe trailhead (docs/trailheads/{}):\n\n{}\n", file, text.trim_end())),
+        Some((file, None)) => out.push_str(&format!("\nThe trailhead: {}\n", guide_url(&file))),
+        None => out.push_str("\nThere's no trailhead for it yet; `ssqch docs trailheads` has the general route.\n"),
     }
     Ok(out)
 }

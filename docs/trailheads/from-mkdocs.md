@@ -1,4 +1,4 @@
-# Moving from MkDocs
+# Trailhead: moving from MkDocs
 
 MkDocs and SiteSquatch both build a site from a folder of Markdown and one config file. MkDocs' theme templates are Jinja, which ssqch renders as it is (`.jinja` files), so a custom theme or `overrides/` folder ports with few changes; Material for MkDocs' features map onto containers, hooks and the navigation helpers.
 

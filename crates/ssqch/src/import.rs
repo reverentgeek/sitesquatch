@@ -20,7 +20,7 @@ pub fn import_command() -> clap::Command {
         .arg(clap::Arg::new("generator").help("The generator the site is built with: eleventy or zola").required(true))
         .arg(clap::Arg::new("dir").help("The site's folder (default: the current folder)").default_value("."))
         .arg(clap::Arg::new("write").long("write").action(clap::ArgAction::SetTrue).help("Make the changes (without it, only list them)"))
-        .after_help("Run it in a clean git checkout, read the list, then run it again with --write. Guides for each generator are in docs/guides/.")
+        .after_help("Run it in a clean git checkout, read the list, then run it again with --write. `ssqch docs --from <generator>` prints the trailhead for each generator.")
 }
 
 pub fn run_import(matches: &clap::ArgMatches) -> ExitCode {
@@ -36,7 +36,7 @@ pub fn run_import(matches: &clap::ArgMatches) -> ExitCode {
             print!("{}", plan.describe(&dir, write));
             if write { plan.apply(&dir) } else { Ok(()) }
         }),
-        "jekyll" | "hugo" | "docusaurus" | "mkdocs" | "hexo" | "astro" | "vitepress" => Err(anyhow::anyhow!("there's no importer for {} yet (only eleventy and zola); docs/guides/ has guides for moving from Docusaurus, MkDocs, Hexo and component frameworks by hand", generator)),
+        "jekyll" | "hugo" | "docusaurus" | "mkdocs" | "hexo" | "astro" | "vitepress" => Err(anyhow::anyhow!("there's no importer for {} yet (only eleventy and zola); `ssqch docs --from <generator>` has trailheads for moving from Docusaurus, MkDocs, Hexo and component frameworks by hand", generator)),
         other => Err(anyhow::anyhow!("{}: not a generator ssqch can import from (use eleventy or zola)", other)),
     };
     match result {
@@ -332,7 +332,7 @@ fn replacement(package: &str) -> Option<&'static str> {
         "markdown-it-footnote" => "built in (`markdown: { footnotes: true }`, the default)",
         "markdown-it-container" => "built in: `::: name` renders `_includes/containers/name.*`",
         "markdown-it-attrs" => "`{#id .class}` on headings is built in",
-        _ => "check whether it's needed: see docs/guides/from-eleventy.md",
+        _ => "check whether it's needed: see `ssqch docs --from eleventy`",
     })
 }
 
@@ -407,7 +407,7 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
             dirs.push(format!("{}: \"{}\"", key, value));
         }
     }
-    let mut out = format!("// A first draft, written by `ssqch import eleventy` from {}.\n// What it couldn't carry over is listed at the end; docs/guides/from-eleventy.md\n// (in the sitesquatch repository) has the whole mapping.\nimport {{ defineConfig }} from \"ssqch\";\n\nexport default defineConfig({{\n", name);
+    let mut out = format!("// A first draft, written by `ssqch import eleventy` from {}.\n// What it couldn't carry over is listed at the end; `ssqch docs --from eleventy` has the whole\n// mapping.\nimport {{ defineConfig }} from \"ssqch\";\n\nexport default defineConfig({{\n", name);
     if !dirs.is_empty() {
         out.push_str(&format!("  dirs: {{ {} }},\n", dirs.join(", ")));
     }
@@ -618,7 +618,7 @@ pub fn zola(dir: &Path) -> Result<Plan> {
     if flag("smart_punctuation") {
         markdown.push("smartPunctuation: true".into());
     }
-    let mut out = format!("// A first draft, written by `ssqch import zola` from config.toml.\n// docs/guides/from-zola.md (in the sitesquatch repository) has the whole mapping.\n{}\n\nexport default defineConfig({{\n", imports.join("\n"));
+    let mut out = format!("// A first draft, written by `ssqch import zola` from config.toml.\n// `ssqch docs --from zola` has the whole mapping.\n{}\n\nexport default defineConfig({{\n", imports.join("\n"));
     out.push_str(&format!("  dirs: {{ input: \"content\", output: {}, includes: \"../templates\" }},\n", serde_json::to_string(&text("output_dir").unwrap_or_else(|| "public".into()))?));
     out.push_str("  // Tera templates are close to Jinja: Markdown and the .html templates run through it.\n  templateFormats: [\"md\"],\n  markdownEngine: \"jinja\",\n  htmlEngine: \"jinja\",\n");
     if !sections.is_empty() {

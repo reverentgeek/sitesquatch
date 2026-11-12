@@ -1,4 +1,4 @@
-# Moving from Astro, VitePress, Next.js or Gatsby
+# Trailhead: moving from Astro, VitePress, Next.js or Gatsby
 
 These are component frameworks: a page is a tree of components, rendered on a server or at build time and, for some of them, run again in the browser. ssqch is a template-and-Markdown generator that ships HTML and only the JavaScript you write. So this move isn't a port of the framework. It's a sort of what you have into three piles:
 

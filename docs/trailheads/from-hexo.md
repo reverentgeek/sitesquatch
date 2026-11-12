@@ -1,4 +1,4 @@
-# Moving from Hexo
+# Trailhead: moving from Hexo
 
 Hexo sites are Markdown posts, a theme of templates (often Nunjucks, sometimes EJS or Pug) and tag plugins inside the posts. Nunjucks themes render in ssqch as they are, posts keep their front matter, and tag plugins become filters that keep the same `{% tag %}` syntax. What takes work is the theme's helpers and anything that leans on Hexo's `site` object.
 

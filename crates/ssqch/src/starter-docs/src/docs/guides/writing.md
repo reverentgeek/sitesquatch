@@ -15,7 +15,7 @@ Give a block a title in brackets.
 :::
 
 > [!TIP]
-> GitHub's alert syntax works as well, which keeps a README readable in both places.
+> **Deer's shortcut:** GitHub's alert syntax works as well, which keeps a README readable in both places.
 
 :::details How do these work?
 Each `:::name` block renders through `src/_includes/containers/name.jinja` if there is one (like this one, `details.jinja`), or as a `<div class="name">`.

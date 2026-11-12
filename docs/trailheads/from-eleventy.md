@@ -1,4 +1,4 @@
-# Moving from Eleventy
+# Trailhead: moving from Eleventy
 
 SiteSquatch keeps many of the same ideas as Eleventy (a data cascade, collections, pagination, layouts) but isn't a drop-in replacement: the config is one object instead of method calls, and names are SiteSquatch's own. Nunjucks and Liquid templates render as they are, so the first build usually comes early, and what's left is the config and a few front-matter keys.
 

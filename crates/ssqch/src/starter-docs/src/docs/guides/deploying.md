@@ -39,3 +39,7 @@ ssqch diff dist-before dist
 ```
 
 It lists the pages that were added, removed and changed, and ignores what doesn't matter.
+
+:::note[Beaver's build notes]
+Beaver keeps `dist-before/` until the diff shows only what she meant to change. A dam is easier to fix before the water arrives.
+:::
