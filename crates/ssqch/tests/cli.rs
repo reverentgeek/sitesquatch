@@ -376,9 +376,14 @@ fn render_front_matter_picks_the_engines() {
     assert_eq!(read("chain"), "<p><em>Bigfoot</em></p>\n");
     assert_eq!(read("raw"), "*{{ name }}*\n");
 
-    write("old.md", "---\ntemplateEngineOverride: md\n---\nHi\n");
+    // Eleventy's name for it works too, and so does its comma-separated list.
+    write("old.md", "---\nname: Bigfoot\ntemplateEngineOverride: \"edge,md\"\n---\n*{{ name }}*\n");
     let (ok, log) = ssqch(&["build", "--root", d]);
-    assert!(!ok && log.contains("front matter `templateEngineOverride` isn't read. ssqch's name is `render`"), "{}", log);
+    assert!(ok && log.contains("note: templateEngineOverride works; ssqch calls it render (ssqch docs render)"), "{}", log);
+    assert_eq!(read("old"), "<p><em>Bigfoot</em></p>\n");
+    write("old.md", "---\ntemplateEngineOverride: md\nrender: md\n---\nHi\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("`templateEngineOverride` and `render` are two names for one key; set one of them"), "{}", log);
     std::fs::remove_file(dir.join("old.md")).unwrap();
 
     write("bad.md", "---\nrender: 3\n---\nHi\n");
@@ -1063,6 +1068,77 @@ fn footprint_weighs_a_build() {
     assert!(!ok && log.contains("budgets.page isn't a kind of file (did you mean `pages`?)"), "{}", log);
 }
 
+/// An alias works as ssqch's word does, and says ssqch's name once.
+#[cfg(feature = "jinja")]
+fn alias_works(row: &sitesquatch::equivalents::Equivalent, dir: &std::path::Path) {
+    use sitesquatch::equivalents::Kind;
+    let d = dir.to_str().unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+    std::fs::create_dir_all(dir).unwrap();
+    let write = |path: &str, text: &str| std::fs::write(dir.join(path), text).unwrap();
+    write("ssqch.config.js", "export default {};\n");
+    write("index.md", "# Pine\n");
+    let read = |path: &str| std::fs::read_to_string(dir.join(path)).unwrap_or_else(|e| panic!("{}: {}: {}", row.word, path, e));
+    let (ok, log) = match (row.kind, row.word) {
+        // The serving ones are checked in `aliases_rewrite_the_command_line`, without a server.
+        (Kind::Command | Kind::Flag, _) if row.ssqch == "serve" => return,
+        (Kind::Command, word) => ssqch(&[word, "--root", d]),
+        (Kind::Flag, "--pathprefix") => {
+            let result = ssqch(&["build", "--pathprefix", "/trail/", "--root", d]);
+            assert!(read("_site/index.html").contains("Pine"), "{}", row.word);
+            result
+        }
+        (Kind::Flag, word) => {
+            let result = ssqch(&["build", word, "camp", "--root", d]);
+            read("camp/index.html");
+            result
+        }
+        (Kind::Config, word) => {
+            let value = match word {
+                "pathPrefix" => "\"/trail/\"",
+                "dir" => "{ output: \"camp\" }",
+                "markdownTemplateEngine" | "htmlTemplateEngine" => "\"jinja\"",
+                _ => "\"camp\"",
+            };
+            write("ssqch.config.js", &format!("export default {{ {}: {} }};\n", word, value));
+            let result = ssqch(&["build", "--root", d]);
+            if !matches!(word, "pathPrefix" | "markdownTemplateEngine" | "htmlTemplateEngine") {
+                read("camp/index.html");
+            }
+            // Both names: an error.
+            write("ssqch.config.js", &format!("export default {{ {}: {}, {} }};\n", word, value, match row.ssqch { "dirs" | "dirs.output" => "dirs: { output: \"x\" }".to_string(), name => format!("{}: {}", name, value) }));
+            let (both, log) = ssqch(&["build", "--root", d]);
+            assert!(!both && log.contains("are two names for one option; set one of them"), "{}: {}", row.word, log);
+            result
+        }
+        (Kind::FrontMatter, word) => {
+            let (value, body, want) = match word {
+                "eleventyComputed" => ("\n  label: \"{{ title }} trail\"", "{{ label }}", "Pine trail"),
+                "eleventyExcludeFromCollections" => (" true", "{{ collections.all | length }}", "<p>0</p>"),
+                "redirect_from" => (" [/old/]", "{{ aliases[0] }}", "/old/"),
+                _ => (" md", "{{ title }}", "<p>{{ title }}</p>"),
+            };
+            write("index.md", &format!("---\ntitle: Pine\n{}:{}\n---\n{}\n", word, value, body));
+            let result = ssqch(&["build", "--root", d]);
+            assert!(read("_site/index.html").contains(want), "{}: {}", row.word, read("_site/index.html"));
+            result
+        }
+        (Kind::Filter, word) => {
+            std::fs::remove_file(dir.join("index.md")).unwrap();
+            write("index.jinja", &format!("{{{{ \"/x/\" | {} }}}}", word));
+            let result = ssqch(&["build", "--root", d]);
+            assert!(read("_site/index.html").starts_with(if word == "markdownify" { "&lt;p&gt;/x/" } else { "/x/" }), "{}: {}", row.word, read("_site/index.html"));
+            std::fs::remove_file(dir.join("index.jinja")).unwrap();
+            result
+        }
+        (Kind::Global, _) => panic!("{}: a template global can't be an alias", row.word),
+    };
+    assert!(ok, "{}: {}", row.word, log);
+    let note = format!("note: {}\n", row.note());
+    assert_eq!(log.matches(&note).count(), 1, "{}: {}", row.word, log);
+    assert!(!log.contains("warn:"), "{}: {}", row.word, log);
+}
+
 /// Every row of the table of other generators' words: the word is refused (or, in front matter,
 /// warned about), what's said is the row's, and the name it gives is one ssqch has.
 #[cfg(feature = "jinja")]
@@ -1079,10 +1155,14 @@ fn other_generators_words_get_ssqch_names() {
     std::fs::create_dir_all(&dir).unwrap();
     let d = dir.to_str().unwrap();
     for row in TABLE {
-        // The name it gives exists.
-        let name = row.ssqch;
+        // The name it gives exists (`dirs.output` is in `dirs`).
+        let name = row.ssqch.split('.').next().unwrap();
         assert!(known.contains(&format!("\"{}\"", name)) || known.contains(&format!("{} ", name)) || readme.contains(&format!("`{}", name)), "{}: ssqch has no {:?}", row.word, name);
         assert!(!row.say.is_empty() && !row.more.is_empty(), "{}", row.word);
+        if row.alias {
+            alias_works(row, &dir);
+            continue;
+        }
         let (ok, log) = match row.kind {
             Kind::Command => ssqch(&[row.word]),
             Kind::Flag => {
@@ -1103,13 +1183,8 @@ fn other_generators_words_get_ssqch_names() {
                 std::fs::write(dir.join("page.md"), format!("---\n{}: false\n---\nPine.\n", row.word)).unwrap();
                 let (ok, log) = ssqch(&["build", "--root", d]);
                 std::fs::remove_file(dir.join("page.md")).unwrap();
-                // A warning, except for the one that would render the page wrong.
-                if row.word == "templateEngineOverride" {
-                    (ok, log)
-                } else {
-                    assert!(ok && log.contains("warn: page.md sets"), "{}: {}", row.word, log);
-                    (false, log)
-                }
+                assert!(ok && log.contains("warn: page.md sets"), "{}: {}", row.word, log);
+                (false, log)
             }
             Kind::Global => {
                 std::fs::write(dir.join("ssqch.config.js"), "export default {};\n").unwrap();
@@ -1889,7 +1964,9 @@ fn docs_answer_for_every_name() {
 
     // As text.
     let (ok, text) = ssqch(&["docs", "pathPrefix"]);
-    assert!(ok && text.starts_with("`pathPrefix` (Eleventy) isn't ssqch's word. In ssqch it's `base`") && text.contains("| `base` |"), "{}", text);
+    assert!(ok && text.starts_with("`pathPrefix` (Eleventy) works in ssqch too. In ssqch it's `base`") && text.contains("| `base` |"), "{}", text);
+    let (ok, text) = ssqch(&["docs", "baseURL"]);
+    assert!(ok && text.starts_with("`baseURL` (Hugo) isn't ssqch's word."), "{}", text);
     let (ok, text) = ssqch(&["docs", "content", "schemas"]);
     assert!(ok && text.starts_with("## Content schemas\n"), "{}", text);
     let (ok, text) = ssqch(&["docs"]);

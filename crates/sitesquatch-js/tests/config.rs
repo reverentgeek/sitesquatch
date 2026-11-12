@@ -165,9 +165,12 @@ fn mistakes_in_the_config_say_what_to_fix() {
         ("export default { dirs: { assets: \"_assets\" } };", "dirs.assets isn't supported (use input, output, includes, layouts, data)"),
         ("export default { dirz: { input: \"src\" } };", "\"dirz\" isn't a config option (did you mean \"dirs\"?) (options: dirs, templateFormats"),
         // Another generator's word gets ssqch's, from the table, instead of a guess.
-        ("export default { dir: { input: \"src\" } };", "\"dir\" isn't a config option. In ssqch it's `dirs`: dirs: { input: \"src\", output: \"dist\" }.\n  More: ssqch docs dirs"),
+        ("export default { integrations: [] };", "\"integrations\" isn't a config option. In ssqch it's `plugins`: plugins: [imagePlugin()].\n  More: ssqch docs plugins"),
         // Every unknown option in one run.
-        ("export default { pathPrefix: \"/x/\", tittle: \"x\" };", "\"pathPrefix\" isn't a config option. In ssqch it's `base`: base: \"/repo/\".\n  More: ssqch docs base\nssqch.config.js: \"tittle\" isn't a config option (options: dirs,"),
+        ("export default { baseURL: \"/x/\", tittle: \"x\" };", "\"baseURL\" isn't a config option. ssqch's `base` is the path only (base: \"/repo/\"); the site's full URL goes in your data, for sitemapPlugin({ url }).\n  More: ssqch docs base\nssqch.config.js: \"tittle\" isn't a config option (options: dirs,"),
+        // An alias (`dir` for `dirs`) works, but not with ssqch's name too.
+        ("export default { dir: { input: \"src\" }, dirs: { input: \"site\" } };", "dir.input and dirs.input are two names for one option; set one of them"),
+        ("export default { publishDir: \"a\", outDir: \"b\" };", "outDir and publishDir are two names for one option; set one of them"),
         ("export default { plugins: [{ builtin: \"test:gretter\" }] };", "unknown plugin \"test:gretter\" (built-in plugins: test:greeter)"),
         ("export default async () => { await new Promise(() => {}); };", "never settled"),
         ("export default { filters: { x: 1 } };", "filters.x must be a function"),

@@ -65,7 +65,7 @@ impl LiquidEngine {
             .filter(liquid_lib::jekyll::Shift)
             .filter(liquid_lib::jekyll::ArrayToSentenceString)
             .filter(liquid_lib::shopify::Pluralize);
-        for (name, value) in env.globals.iter() {
+        for (name, value) in env.globals.iter().chain(env.pipe_filters.iter()) {
             if let Value::Func(_) = value {
                 builder = builder.filter(ConfigFilter { name: name.clone(), function: value.clone() });
             }
@@ -591,7 +591,7 @@ mod tests {
     fn filters_get_values_as_they_are() {
         let mut globals = Map::new();
         globals.insert("describe".into(), Value::func(|args| Ok(Value::from(args.iter().map(|a| format!("{}:{}", a.type_of(), a.to_json())).collect::<Vec<_>>().join(" ")))));
-        let env = EngineEnv { includes_dir: std::env::temp_dir().join("ssqch-liquid-no-includes"), theme_includes: Vec::new(), globals, build: sitesquatch::Config::new(".", sitesquatch::Environment::Production).build_context(), strict: false };
+        let env = EngineEnv { includes_dir: std::env::temp_dir().join("ssqch-liquid-no-includes"), theme_includes: Vec::new(), globals, pipe_filters: Default::default(), build: sitesquatch::Config::new(".", sitesquatch::Environment::Production).build_context(), strict: false };
         let engine = LiquidEngine::new(&env).unwrap();
         let when = chrono::DateTime::parse_from_rfc3339("2026-03-14T00:00:00Z").unwrap().with_timezone(&chrono::Utc);
         let data = Value::from_pairs([

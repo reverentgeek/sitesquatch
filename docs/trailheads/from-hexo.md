@@ -26,7 +26,7 @@ The [`docs-sidebar`](../../examples/sites/docs-sidebar/) example is distilled fr
 | `hexo-generator-alias` (`alias:` front matter) | `redirectsPlugin()` and `aliases` front matter |
 | `hexo-generator-search`, a build-time lunr index | Pagefind after the build: `afterBuild: { run: "npx -y pagefind --site public" }` |
 | `hexo-renderer-sass` / `stylus` | `sassPlugin()` from `ssqch/sass`. Stylus needs converting, or running as a `beforeBuild` command. |
-| `hexo server` | `ssqch serve` |
+| `hexo server`, `hexo generate` | `ssqch serve`, `ssqch build` (`ssqch server` and `ssqch generate` work too) |
 
 ## Posts and pages
 
@@ -52,7 +52,7 @@ Nunjucks templates render with minijinja. Most theme code works; these are the d
 | `partial('_partial/header', { ... })` | `{% include "_partial/header.njk" %}`, or a macro for a partial that takes arguments |
 | `page.title`, `page.content`, `page.date` | `title`, `content` and `page.date`: front matter is at the top level, and `page` has the URL, the date and the file's details |
 | `site.posts`, `site.pages`, `site.tags` | `collections.posts`, `collections.all`, and one collection per tag. Collections are oldest first: `collections.posts \| reverse`. |
-| `url_for(path)`, `relative_url` | The path itself; with `base` set, ssqch adds it to links in the HTML |
+| `url_for(path)`, `relative_url` | The path itself; with `base` set, ssqch adds it to links in the HTML (`relative_url` works, and gives the path back as it is) |
 | `full_url_for(path)` | `absoluteUrl(path, config.url)` from `rssPlugin()` |
 | `date(post.date, "YYYY-MM-DD")` (Moment formats) | `post.date \| dateformat("%Y-%m-%d")`, or a config filter that uses luxon or date-fns from `node_modules` |
 | `css('css/style')`, `js('js/app')` | Plain `<link>` and `<script>` tags |

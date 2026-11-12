@@ -309,7 +309,8 @@ pub fn agents_md(site: Option<(&str, &str)>) -> String {
 - Why a page's value is what it is: `ssqch inspect <url or file> --format json`.\n\
 - Before changing layouts or the config: `ssqch build --output {1}-before`, and afterwards `ssqch build` and `ssqch diff {1}-before {1}`.\n\
 - A new page: {2}.\n\
-- `ssqch serve` is for a person watching the browser. Check with `ssqch build`.\n",
+- `ssqch serve` is for a person watching the browser. Check with `ssqch build`.\n\
+- A `note:` or hint naming another generator's word (`pathPrefix`): use ssqch's name.\n",
         files,
         if site.is_some() { "dist" } else { "<output>" },
         new_page

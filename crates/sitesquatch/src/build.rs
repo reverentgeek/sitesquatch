@@ -246,11 +246,31 @@ fn prepare(cfg: &Config, ctx: &BuildContext, timer: &mut Timer, keep_layers: boo
     // places outside HTML attributes (which the build rewrites itself).
     let base = ctx.base.clone();
     globals.insert("withBase".into(), Value::func(move |args| Ok(Value::from(crate::base::with_base(&base, &args.first().map(Value::to_js_string).unwrap_or_default())))));
+    // Other generators' filters that are aliases here: `url` and `relative_url` give the URL
+    // back (the build adds `base` itself), and `markdownify` is `markdown`. A config filter
+    // with the same name replaces one.
+    let mut pipe_filters = Map::new();
+    for row in crate::equivalents::TABLE.iter().filter(|e| e.kind == crate::equivalents::Kind::Filter && e.alias) {
+        let target = globals.get(row.ssqch).cloned();
+        let noted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let filter = Value::func(move |args| {
+            if !noted.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                diagnostics::alias_used(row);
+            }
+            match &target {
+                Some(Value::Func(f)) => f.call(args),
+                _ => Ok(args.first().cloned().unwrap_or_default()),
+            }
+        });
+        if !cfg.filters.iter().any(|(name, _)| name == row.word) {
+            pipe_filters.insert(row.word.into(), filter);
+        }
+    }
     for (name, f) in &cfg.filters {
         globals.insert(name.clone(), f.clone());
     }
     let theme_includes: Vec<PathBuf> = ctx.theme_dirs.iter().map(|t| t.join("_includes")).collect();
-    let env = EngineEnv { includes_dir: ctx.includes_dir.clone(), theme_includes: theme_includes.clone(), globals, build: ctx.clone(), strict: cfg.strict };
+    let env = EngineEnv { includes_dir: ctx.includes_dir.clone(), theme_includes: theme_includes.clone(), globals, pipe_filters, build: ctx.clone(), strict: cfg.strict };
     let edge = Arc::new(EdgeEngine::new(&env));
     let mut by_name: HashMap<String, Arc<dyn TemplateEngine>> = HashMap::new();
     by_name.insert("edge".into(), edge.clone());
@@ -422,6 +442,7 @@ pub const BUILTIN_FILTERS: &[(&str, &str)] = &[
     ("highlight", "`highlight(code, lang)` is highlighted HTML for inside a `<code>`, with `hl-*` classes."),
     ("readingTime", "`readingTime(content)` is the minutes it takes to read some HTML, at 200 words a minute."),
     ("withBase", "`withBase(\"/feed.xml\")` puts the site's `base` in front of a URL, for places outside HTML attributes."),
+    ("slugify", "`slugify(\"Pine Cone Crunch!\")` is `pine-cone-crunch`: lowercase letters and digits, with a dash for each run of anything else."),
 ];
 
 /// Filters every site has: `markdown(text)` (or `markdown(text, "inline")`)
@@ -466,6 +487,7 @@ fn builtin_filters(markdown: &Arc<MarkdownEngine>) -> Map {
             Ok(Value::from(crate::markdown::escape_text(&code)))
         }),
     );
+    filters.insert("slugify".into(), Value::func(|args| Ok(Value::from(crate::blueprint::slug(&args.first().map(Value::to_js_string).unwrap_or_default())))));
     filters.insert(
         "readingTime".into(),
         Value::func(|args| {
@@ -1006,10 +1028,7 @@ fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared)
         if ext == "markdown" {
             ext = "md".into();
         }
-        // An error, not a warning: rendering the page with the usual engines would be wrong.
-        if let Some(row) = data.contains_key("templateEngineOverride").then(|| crate::equivalents::find("templateEngineOverride", crate::equivalents::Kind::FrontMatter)).flatten() {
-            bail!("front matter `templateEngineOverride` isn't read. {}\n  More: {}", row.say, row.more);
-        }
+        alias_data_keys(&mut data, cfg.data_deep_merge)?;
         let engines: Vec<String> = match data.get("render").filter(|v| !v.is_nullish()) {
             Some(v) => render_engines(v)?,
             None => engines_for(cfg, &ext),
@@ -1459,13 +1478,36 @@ fn check_conflicts(ctx: &BuildContext, pages: &[Page]) -> Result<()> {
     }
 }
 
+/// Other generators' front-matter keys that are aliases here, as ssqch's:
+/// `eleventyComputed` is `computed`, `redirect_from` is `aliases`, and so on.
+/// When the data has both (a layout's `computed` and a page's
+/// `eleventyComputed`), objects are merged, the alias's values on top, and
+/// anything else is an error.
+fn alias_data_keys(data: &mut Map, deep: bool) -> Result<()> {
+    use crate::equivalents::{Kind, TABLE};
+    for row in TABLE.iter().filter(|e| e.kind == Kind::FrontMatter && e.alias) {
+        let Some(value) = data.shift_remove(row.word) else { continue };
+        let value = match (data.shift_remove(row.ssqch), value) {
+            (None, value) => value,
+            (Some(Value::Obj(mut theirs)), Value::Obj(ours)) => {
+                merge(Arc::make_mut(&mut theirs), &ours, deep);
+                Value::Obj(theirs)
+            }
+            (Some(_), _) => bail!("`{}` and `{}` are two names for one key; set one of them", row.word, row.ssqch),
+        };
+        data.insert(row.ssqch.into(), value);
+        diagnostics::alias_used(row);
+    }
+    Ok(())
+}
+
 /// Warn about data keys that are another generator's name for something ssqch
 /// calls otherwise (`eleventyComputed`, `redirect_from`, `published: false`):
 /// any key is valid data, so these do nothing, quietly. One warning per key.
 fn check_foreign_keys(ctx: &BuildContext, pages: &[Page]) {
     use crate::equivalents::{Kind, TABLE};
-    // `templateEngineOverride` is an error (see `load_template`).
-    for row in TABLE.iter().filter(|e| e.kind == Kind::FrontMatter && e.word != "templateEngineOverride") {
+    // Aliases are read as ssqch's keys (see `alias_data_keys`).
+    for row in TABLE.iter().filter(|e| e.kind == Kind::FrontMatter && !e.alias) {
         let setting = |page: &&Page| match page.data.get(row.word) {
             None => false,
             // `published` is a site's own word too; only `false`, which means something elsewhere, is news.

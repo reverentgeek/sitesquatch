@@ -119,6 +119,43 @@
 		return best ? ` (did you mean "${ best.option }"?)` : "";
 	};
 
+	// The config with its aliases as ssqch's names: `pathPrefix` as `base`, `publishDir` and
+	// `outDir` as `dirs.output`, `dir` as `dirs`.
+	const aliased = ( part, where ) => {
+		const words = Object.keys( part ).filter( key => globalThis.__ssqch_equivalents?.[key]?.alias );
+		if ( !words.length ) return part;
+		const out = { ...part };
+		const dirs = isObject( part.dirs ) ? { ...part.dirs } : part.dirs;
+		const named = {}; // which word set each name, for the error when two do
+		const twice = ( name, word ) => fail( `${ where }: ${ word } and ${ named[name] ?? name } are two names for one option; set one of them` );
+		for ( const word of words ) {
+			const name = globalThis.__ssqch_equivalents[word].ssqch;
+			const value = part[word];
+			delete out[word];
+			if ( name === "dirs" ) {
+				isObject( value ) || fail( `${ where }: ${ word } must be an object, like ${ word }: { input: "src", output: "dist" }` );
+				for ( const [ key, folder ] of Object.entries( value ) ) {
+					if ( ( isObject( dirs ) && dirs[key] !== undefined ) || named[`dirs.${ key }`] ) twice( `dirs.${ key }`, `${ word }.${ key }` );
+					out.dirs = isObject( out.dirs ) ? out.dirs : { ...( isObject( dirs ) ? dirs : {} ) };
+					out.dirs[key] = folder;
+					named[`dirs.${ key }`] = `${ word }.${ key }`;
+				}
+			} else if ( name.startsWith( "dirs." ) ) {
+				const key = name.slice( 5 );
+				if ( ( isObject( dirs ) && dirs[key] !== undefined ) || named[name] ) twice( name, word );
+				out.dirs = isObject( out.dirs ) ? out.dirs : { ...( isObject( dirs ) ? dirs : {} ) };
+				out.dirs[key] = value;
+				named[name] = word;
+			} else {
+				if ( part[name] !== undefined || named[name] ) twice( name, word );
+				out[name] = value;
+				named[name] = word;
+			}
+			globalThis.__ssqch_alias( word );
+		}
+		return out;
+	};
+
 	async function collect( env, serving ) {
 		const ops = [];
 		const settings = {};
@@ -173,6 +210,10 @@
 				return;
 			}
 
+			// Another generator's word that's an alias here (`pathPrefix`, `publishDir`, `dir`) is
+			// read as ssqch's, and setting both names is an error.
+			if ( top ) part = aliased( part, where );
+
 			// Every key that isn't an option, in one error. Another generator's word (`pathPrefix`)
 			// gets ssqch's name for it; anything else, the closest option and the list.
 			const unknown = [];
@@ -185,6 +226,10 @@
 				} else if ( !PARTS.includes( key ) ) {
 					const options = top ? [ ...SETTINGS, ...PARTS ] : PARTS;
 					const equivalent = globalThis.__ssqch_equivalents?.[key];
+					if ( equivalent?.alias ) {
+						unknown.push( `${ where }: "${ key }" can only be set in the config itself, not in a plugin (ssqch calls it ${ equivalent.ssqch })` );
+						continue;
+					}
 					if ( equivalent ) {
 						unknown.push( `${ where }: "${ key }" isn't a config option. ${ equivalent.say }\n  More: ${ equivalent.more }` );
 						continue;

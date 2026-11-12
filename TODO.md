@@ -702,7 +702,7 @@ I'd take them (the first three went into 0.4):
   - [x] Found on the way: Liquid's `Unknown filter` didn't name the filter; it does now, with a
         "did you mean". (`Nothing sighted` had an empty folder name when the input folder is
         the project root; fixed: it says `.`.)
-- [ ] **Aliases for other generators' words** (decided 2026-11-11: familiar and inviting is
+- [x] **Aliases for other generators' words** (decided 2026-11-11: familiar and inviting is
       the goal, and an alias that eases the move is welcome; copying a generator wholesale
       isn't). The rows of the equivalents table whose word means the same in ssqch start
       working. An alias works and prints one line, once per build, naming ssqch's word and
@@ -710,28 +710,39 @@ I'd take them (the first three went into 0.4):
       base)`). `--quiet` hides it, and it isn't a warning in the JSON report. The docs keep
       teaching ssqch's names. The row says whether it's an alias, and the test checks that
       an alias works and a hint still refuses.
-  - [ ] Commands: `dev`, `start`, `server` (Hugo) and `watch` run `ssqch serve`; `generate`
+  - [x] Commands: `dev`, `start`, `server` (Hugo) and `watch` run `ssqch serve`; `generate`
         (Hexo) runs `ssqch build`.
-  - [ ] Flags: `--watch` and `--serve` serve, `-d` and `--destination` are `--output`, and
+  - [x] Flags: `--watch` and `--serve` serve, `-d` and `--destination` are `--output`, and
         `--pathprefix` is `--base`.
-  - [ ] Config: `pathPrefix` is `base`, `dir` is `dirs` (Eleventy's keys are the same),
+  - [x] Config: `pathPrefix` is `base`, `dir` is `dirs` (Eleventy's keys are the same),
         `publishDir` and `outDir` are `dirs.output`, and `markdownTemplateEngine` and
         `htmlTemplateEngine` are `markdownEngine` and `htmlEngine`.
-  - [ ] Front matter: `eleventyComputed` is `computed`, `eleventyExcludeFromCollections` is
+  - [x] Front matter: `eleventyComputed` is `computed`, `eleventyExcludeFromCollections` is
         `excludeFromCollections`, `redirect_from` is `aliases`, and `templateEngineOverride`
         is `render` (its `njk,md` string becomes the list).
-  - [ ] Filters: `url` and `relative_url` return the URL as it is (the build adds `base`
+  - [x] Filters: `url` and `relative_url` return the URL as it is (the build adds `base`
         already), `markdownify` is `markdown`, and a real `slugify` filter in every template
         language.
-  - [ ] Stay hints, since they mean something else in ssqch: `check` (sounds like it doesn't
+  - [x] Stay hints, since they mean something else in ssqch: `check` (sounds like it doesn't
         write, but `build` does), Jekyll's `published: false` (never built; ssqch's drafts
         build in development), Hugo's `baseURL` (a full URL; `base` is a path), `--drafts`,
         `-D` and `--buildDrafts` (they'd switch the whole environment, not just drafts),
         `site.posts` and `site.pages` (they can clash with a site's own `site` data),
         `eleventyNavigation` (its fields don't match `nav`'s), and the `add*` method calls (a
         different shape of config).
-  - [ ] With it: the README's "Trailheads" section says which words work, AGENTS.md's line on
+  - [x] With it: the README's "Trailheads" section says which words work, AGENTS.md's line on
         the table, and the trailheads' tables.
+  - Built 2026-11-12. The command line is rewritten before clap reads it (`cli::aliased`; the
+    binary's own commands, like `docs`, and anything after `--` are left alone), config aliases
+    are read in the prelude, front-matter ones in `alias_data_keys`, and the filters go only to
+    Jinja, Nunjucks and Liquid (`EngineEnv::pipe_filters`): in Handlebars, Edge and EJS a
+    filter shares its name with page data, so `{{url}}` there stays the data. `slugify` is
+    ssqch's own (in every language), so its row left the table. JSON reports list the aliases
+    used in `aliases`. Tests: `other_generators_words_get_ssqch_names` (each alias works, says
+    its note once and can't be set with ssqch's name), `aliases_rewrite_the_command_line`.
+  - [ ] Not yet: aliases in `sitesquatch.toml` (its keys are snake_case, so Eleventy's words
+        don't apply), and in `ssqch.d.ts` (a typed config that uses `pathPrefix` gets a type
+        error, which keeps the docs on ssqch's names).
 - [x] **`ssqch docs`: the documentation of the installed version, from the binary** (item 2 in
       `research/exact-agent-first.md`). The README and the trailheads in `docs/trailheads/` are built
       in (`crates/ssqch/build.rs`; a crate from crates.io has only the README, and `--from`

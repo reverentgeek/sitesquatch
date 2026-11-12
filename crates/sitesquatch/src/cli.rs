@@ -177,13 +177,23 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
         .next()
         .and_then(|arg| Path::new(&arg).file_stem().map(|s| s.to_string_lossy().into_owned()))
         .unwrap_or_else(|| "ssqch".into());
-    let matches = command(&name, &extra).try_get_matches().unwrap_or_else(|e| refused(e));
+    let extra_names: Vec<&str> = extra.iter().map(|e| e.command.get_name()).collect();
+    let (args, aliases) = aliased(std::env::args_os().collect(), &extra_names);
+    let matches = command(&name, &extra).try_get_matches_from(args).unwrap_or_else(|e| refused(e));
     if let Some((sub, sub_matches)) = matches.subcommand() {
         if let Some(e) = extra.iter().find(|e| e.command.get_name() == sub) {
             return (e.run)(sub_matches);
         }
     }
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    crate::diagnostics::set_quiet(cli.quiet);
+    // A JSON build keeps its notes for the report.
+    if matches!(&cli.command, Some(Command::Build { format }) if format == "json") {
+        crate::diagnostics::capture();
+    }
+    for row in aliases {
+        crate::diagnostics::alias_used(row);
+    }
     if let Some(Command::Completions { shell }) = &cli.command {
         // Every command, the binary's own included, except the ones it keeps out of `--help`.
         let mut command = Cli::command().name(name.clone());
@@ -313,6 +323,8 @@ fn build_json(make_config: &dyn Fn() -> anyhow::Result<Config>, root: &Path, env
     };
     out["ok"] = errors.is_empty().into();
     out["warnings"] = diagnostics::take_warnings().iter().map(|w| w.to_json()).collect::<Vec<_>>().into();
+    // Other generators' words the site used that work as ssqch's (`pathPrefix`): not warnings.
+    out["aliases"] = diagnostics::aliases_used().iter().map(|row| row.to_json()).collect::<Vec<_>>().into();
     out["errors"] = errors.iter().map(|e| e.to_json()).collect::<Vec<_>>().into();
     println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
     if errors.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
@@ -395,6 +407,83 @@ fn run_diff(before: &Path, after: &Path, exact: bool, ignore: &[String], only: &
     Ok(report.is_same())
 }
 
+/// The command line with other generators' words that are aliases in ssqch
+/// (`ssqch dev`, `build --watch`, `-d dist`, `--pathprefix /x/`) put as
+/// ssqch's, and the rows used. The binary's own commands (`extra`) are left
+/// as they are, and so is everything after `--`.
+fn aliased(mut args: Vec<std::ffi::OsString>, extra: &[&str]) -> (Vec<std::ffi::OsString>, Vec<&'static crate::equivalents::Equivalent>) {
+    use crate::equivalents::{find, Kind};
+    use std::ffi::OsString;
+    // The options that take a value, so it isn't taken for the command.
+    const VALUED: &[&str] = &["--root", "--output", "-o", "--base", "--env", "-d", "--destination", "--pathprefix", "--port", "-p", "--ready-file", "--format", "--title", "--date", "--blueprint", "--set", "--field", "--ignore", "--only", "--lines", "--top", "--starter", "--engine"];
+    let text = |a: &OsString| a.to_str().map(String::from);
+    let end = args.iter().position(|a| a == "--").unwrap_or(args.len());
+    let mut command = None;
+    let mut i = 1;
+    while i < end {
+        match text(&args[i]) {
+            Some(arg) if arg.starts_with('-') => i += if VALUED.contains(&arg.as_str()) { 2 } else { 1 },
+            _ => {
+                command = Some(i);
+                break;
+            }
+        }
+    }
+    let mut used = Vec::new();
+    let name = command.and_then(|i| text(&args[i]));
+    if name.as_deref().is_some_and(|n| extra.contains(&n)) {
+        return (args, used);
+    }
+    if let (Some(i), Some(row)) = (command, name.as_deref().and_then(|n| find(n, Kind::Command)).filter(|r| r.alias)) {
+        args[i] = OsString::from(row.ssqch);
+        used.push(row);
+    }
+    let mut serve = false;
+    let mut i = 1;
+    let mut end = end;
+    while i < end {
+        let Some(arg) = text(&args[i]) else {
+            i += 1;
+            continue;
+        };
+        let (flag, value) = match arg.split_once('=') {
+            Some((flag, value)) if flag.starts_with("--") => (flag.to_string(), Some(value.to_string())),
+            _ => (arg.clone(), None),
+        };
+        let building = command.is_none_or(|c| args[c] == "build" || args[c] == "serve");
+        match find(&flag, Kind::Flag).filter(|r| r.alias && flag.starts_with('-')) {
+            // `--watch` and `--serve` are `ssqch serve`, from `build` (another command refuses them).
+            Some(row) if row.ssqch == "serve" && !building => i += 1,
+            Some(row) if row.ssqch == "serve" => {
+                serve = true;
+                used.push(row);
+                args.remove(i);
+                end -= 1;
+                if command.is_some_and(|c| c > i) {
+                    command = command.map(|c| c - 1);
+                }
+                continue;
+            }
+            Some(row) => {
+                // `-d dist` is `--output dist`, and `--destination=dist` is `--output=dist`.
+                let step = if value.is_some() { 1 } else { 2 };
+                args[i] = OsString::from(value.map(|v| format!("{}={}", row.ssqch, v)).unwrap_or_else(|| row.ssqch.to_string()));
+                used.push(row);
+                i += step;
+            }
+            None => i += if value.is_none() && VALUED.contains(&flag.as_str()) && Some(i) != command { 2 } else { 1 },
+        }
+    }
+    if serve {
+        match command {
+            Some(c) if args[c] == "build" => args[c] = OsString::from("serve"),
+            Some(_) => {}
+            None => args.insert(1, OsString::from("serve")),
+        }
+    }
+    (args, used)
+}
+
 /// A command line clap refused. When the word it refused is another
 /// generator's (`ssqch dev`, `--drafts`), ssqch's name for it goes under the
 /// error, before the usage line. Exits as clap does.
@@ -447,5 +536,44 @@ fn report_errors(result: anyhow::Result<()>) -> ExitCode {
 pub(crate) fn print_report(cfg: &Config, report: &BuildReport) {
     if !cfg.quiet {
         print!("{}", crate::report::summary(cfg, report));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Other generators' commands and flags that are aliases become ssqch's before clap reads them.
+    #[test]
+    fn aliases_rewrite_the_command_line() {
+        let run = |line: &str| {
+            let args = std::iter::once("ssqch").chain(line.split_whitespace()).map(std::ffi::OsString::from).collect();
+            let (args, used) = super::aliased(args, &["docs", "init"]);
+            let args: Vec<String> = args.iter().skip(1).map(|a| a.to_string_lossy().into_owned()).collect();
+            (args.join(" "), used.iter().map(|r| r.word).collect::<Vec<_>>().join(" "))
+        };
+        let cases = [
+            ("dev", "serve", "dev"),
+            ("start --port 0", "serve --port 0", "start"),
+            ("--root site server", "--root site serve", "server"),
+            ("watch", "serve", "watch"),
+            ("generate --env production", "build --env production", "generate"),
+            ("--watch", "serve", "--watch"),
+            ("build --serve --port 8081", "serve --port 8081", "--serve"),
+            ("--root site --watch", "serve --root site", "--watch"),
+            ("serve --watch", "serve", "--watch"),
+            ("build -d dist", "build --output dist", "-d"),
+            ("build --destination=dist --pathprefix /trail/", "build --output=dist --base /trail/", "--destination --pathprefix"),
+            ("-d dev build", "--output dev build", "-d"),
+            ("--root dev", "--root dev", ""),
+            // A hint, not an alias, and another command's flag: left for clap to refuse with the hint.
+            ("check", "check", ""),
+            ("new --watch posts/x.md", "new --watch posts/x.md", ""),
+            // The binary's own commands, and anything after `--`, as they are.
+            ("docs dev", "docs dev", ""),
+            ("docs -- --watch", "docs -- --watch", ""),
+            ("build -- -d", "build -- -d", ""),
+        ];
+        for (line, want, used) in cases {
+            assert_eq!(run(line), (want.to_string(), used.to_string()), "{}", line);
+        }
     }
 }

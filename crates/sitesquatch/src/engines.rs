@@ -19,6 +19,11 @@ pub struct EngineEnv {
     pub theme_includes: Vec<PathBuf>,
     /// Every registered filter, shortcode and global.
     pub globals: Map,
+    /// Filters only for the languages that write them after a pipe (Jinja,
+    /// Nunjucks, Liquid): other generators' filters that work as aliases
+    /// (`url`, `markdownify`). Where filters share names with page data
+    /// (Edge, Handlebars, EJS), `{{ url }}` stays the data.
+    pub pipe_filters: Map,
     pub build: BuildContext,
     /// The config's `strict`: printing an undefined value is an error.
     pub strict: bool,

@@ -22,8 +22,10 @@ change affects it.
 - Other generators' words come from one table, `crates/sitesquatch/src/equivalents.rs`: ssqch's
   name for each, what to say, and where to read more. Errors and warnings use it to name
   ssqch's word (`"pathPrefix" isn't a config option. In ssqch it's base`), and each row is
-  tested (`other_generators_words_get_ssqch_names`). A row that becomes an alias belongs there
-  too.
+  tested (`other_generators_words_get_ssqch_names`). A row is an alias (`alias: true`: the word
+  works and says ssqch's name once, `note: pathPrefix works; ssqch calls it base`) when it means
+  the same thing in ssqch, and a hint (refused, with ssqch's name) when it would mean something
+  else; the test checks that an alias works and a hint refuses.
 - After a change that affects output, build the blog and run its smoke tests:
   `cargo build --release -p ssqch --features avif`, then in `../blog`,
   `SSQCH_BIN=../ssqch/target/release/ssqch pnpm test`.

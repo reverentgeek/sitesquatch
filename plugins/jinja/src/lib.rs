@@ -187,6 +187,10 @@ impl JinjaEngine {
         env.add_function("now", || JValue::from_object(Opaque(Value::Date(chrono::Utc::now()))));
         // `{% for key, value in object %}` in Nunjucks: an object's pairs, a list as it is.
         env.add_filter(PAIRS_FILTER, |value: JValue| if value.kind() == ValueKind::Map { minijinja::filters::items(&value).unwrap_or(value) } else { value });
+        for (name, value) in engine_env.pipe_filters.iter() {
+            let (filter_name, function) = (name.clone(), value.clone());
+            env.add_filter(name.clone(), move |args: Rest<JValue>| call(&filter_name, &function, &args.0));
+        }
         for (name, value) in engine_env.globals.iter() {
             if let Value::Func(_) = value {
                 let (filter_name, function) = (name.clone(), value.clone());

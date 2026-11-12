@@ -494,7 +494,8 @@ fn answer_text(sections: &[Section], a: &Answer) -> String {
             [one] => format!(" ({})", one),
             _ => String::new(),
         };
-        out.push_str(&format!("`{}`{} isn't ssqch's word. {}\n\n", e.word.trim_end_matches('.'), from, e.say));
+        let verdict = if e.alias { "works in ssqch too" } else { "isn't ssqch's word" };
+        out.push_str(&format!("`{}`{} {}. {}\n\n", e.word.trim_end_matches('.'), from, verdict, e.say));
     }
     if let Some(help) = &a.help {
         out.push_str(help);
@@ -667,9 +668,12 @@ fn from(generator: &str, json: bool) -> Result<String, String> {
         });
         return Ok(serde_json::to_string_pretty(&value).unwrap_or_default() + "\n");
     }
-    let mut out = format!("{}'s words, and ssqch's names for them. Each one is refused with this hint.\n", generator);
+    let mut out = format!("{}'s words, and ssqch's names for them. The ones marked (works) are aliases: they do the same as ssqch's name, and say it once. The others are refused with this hint.\n", generator);
     let kinds = [(Kind::Command, "Commands"), (Kind::Flag, "Flags"), (Kind::Config, "Config"), (Kind::FrontMatter, "Front matter"), (Kind::Filter, "Filters"), (Kind::Global, "In templates")];
-    let shown = |e: &Equivalent| if e.kind == Kind::Global && e.word.ends_with('.') { format!("{}*", e.word) } else { e.word.to_string() };
+    let shown = |e: &Equivalent| {
+        let word = if e.kind == Kind::Global && e.word.ends_with('.') { format!("{}*", e.word) } else { e.word.to_string() };
+        if e.alias { format!("{} (works)", word) } else { word }
+    };
     let rows = |list: &[&&Equivalent]| {
         let width = list.iter().map(|e| shown(e).len()).max().unwrap_or(0);
         list.iter().map(|e| format!("  {:<width$}  {}\n", shown(e), e.say, width = width)).collect::<String>()

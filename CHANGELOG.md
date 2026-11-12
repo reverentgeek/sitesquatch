@@ -80,12 +80,23 @@ a `v<version>` tag on a commit where that version matches.
   note on the page and a warning in the terminal say so (diagnostic code `missing-asset`),
   naming the `serve.run` tool that should have written it, and the warning repeats after each
   build until the file is there.
-- Other generators' words get ssqch's: a command (`ssqch dev`), flag (`--drafts`, `--pathprefix`),
-  config option (`pathPrefix`, `publishDir`, `config.addPassthroughCopy()`), filter (`url`,
-  `relative_url`, `slugify` in Nunjucks) or front-matter key (`eleventyComputed`,
-  `redirect_from`, `published: false`) from another generator is refused or warned about as
-  before, now with ssqch's name for it and where to read more (`More: ssqch docs base`), and a
-  `hint` in the JSON report. Every unknown config option is reported in one run. A folder with
+- Other generators' words that mean the same thing in ssqch work, as aliases, and say ssqch's
+  name once (`note: pathPrefix works; ssqch calls it base (ssqch docs base)`; `--quiet` hides
+  it, and a JSON report lists them in `aliases`, not `warnings`): the commands `dev`, `start`,
+  `server`, `watch` and `generate`; the flags `--watch` and `--serve` (they serve), `-d`,
+  `--destination` and `--pathprefix`; the config options `pathPrefix`, `dir`, `publishDir`,
+  `outDir`, `markdownTemplateEngine` and `htmlTemplateEngine`; the front-matter keys
+  `eleventyComputed`, `eleventyExcludeFromCollections`, `redirect_from` and
+  `templateEngineOverride` (which used to be an error); and the filters `url`, `relative_url`
+  and `markdownify` in Jinja, Nunjucks and Liquid. Setting an alias and ssqch's name together is
+  an error. `ssqch docs --from <generator>` marks the ones that work.
+- A `slugify` filter in every template language: `{{ "Pine Cone Crunch!" | slugify }}` is
+  `pine-cone-crunch`. In Liquid it replaces Jekyll's, which turned an apostrophe into a dash.
+- The other words from other generators get ssqch's name for them: a command (`ssqch check`),
+  flag (`--drafts`), config option (`baseURL`, `config.addPassthroughCopy()`), filter
+  (`absolute_url`, `jsonify`) or front-matter key (`eleventyNavigation`, `published: false`)
+  is refused or warned about as before, now with ssqch's name for it and where to read more
+  (`More: ssqch docs base`), and a `hint` in the JSON report. Every unknown config option is reported in one run. A folder with
   another generator's config and none of ssqch's gets a warning (`other-generator`) naming
   `ssqch import` (for Eleventy and Zola) and `ssqch docs --from <generator>`.
   Front-matter keys are warnings (`foreign-key`); they used to be ignored without a word. So are

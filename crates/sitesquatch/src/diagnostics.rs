@@ -133,6 +133,34 @@ pub fn warn(diagnostic: Diagnostic) {
     }
 }
 
+static QUIET: AtomicBool = AtomicBool::new(false);
+static ALIASES: Mutex<Vec<&'static crate::equivalents::Equivalent>> = Mutex::new(Vec::new());
+
+/// `--quiet`: aliases don't say what ssqch calls them.
+pub fn set_quiet(quiet: bool) {
+    QUIET.store(quiet, Ordering::SeqCst);
+}
+
+/// Another generator's word was used as an alias (`pathPrefix`): say ssqch's
+/// name for it, once a run (`note: pathPrefix works; ssqch calls it base ...`),
+/// on standard error. Not a warning: when capturing, it's kept for the JSON
+/// report's `aliases`. `--quiet` hides it.
+pub fn alias_used(row: &'static crate::equivalents::Equivalent) {
+    let mut seen = ALIASES.lock().unwrap();
+    if seen.iter().any(|r| std::ptr::eq(*r, row)) {
+        return;
+    }
+    seen.push(row);
+    if !capturing() && !QUIET.load(Ordering::SeqCst) {
+        eprintln!("note: {}", row.note());
+    }
+}
+
+/// The aliases used so far, for the JSON report.
+pub fn aliases_used() -> Vec<&'static crate::equivalents::Equivalent> {
+    ALIASES.lock().unwrap().clone()
+}
+
 /// A line of progress (`[ssqch] Writing ...`): standard output, or standard
 /// error when that's kept for a JSON report.
 pub fn progress(line: &str) {

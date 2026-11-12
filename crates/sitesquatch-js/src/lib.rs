@@ -525,9 +525,18 @@ impl Engine {
                 let row = Object::new(ctx.clone())?;
                 row.set("say", e.say)?;
                 row.set("more", e.more)?;
+                row.set("alias", e.alias)?;
+                row.set("ssqch", e.ssqch)?;
                 equivalents.set(e.word, row)?;
             }
             globals.set("__ssqch_equivalents", equivalents)?;
+            // An alias in the config (`pathPrefix`) says ssqch's name once.
+            let alias = Function::new(ctx.clone(), |word: String| {
+                if let Some(row) = sitesquatch::equivalents::find(&word, sitesquatch::equivalents::Kind::Config) {
+                    sitesquatch::diagnostics::alias_used(row);
+                }
+            })?;
+            globals.set("__ssqch_alias", alias)?;
             globals.set("process", process_object(&ctx, root, env)?)?;
             native::install(&ctx, root)?;
             modules::install_commonjs(&ctx, root, modules.clone(), loaded.clone())?;

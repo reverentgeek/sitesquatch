@@ -38,12 +38,14 @@ export default defineConfig(({ env }) => ({
 | `addWatchTarget` | `watch` |
 | `addPlugin` | `plugins`: objects with any of these keys, or functions that return one |
 | `on("eleventy.before")`, `on("eleventy.after")` | `beforeBuild`, `afterBuild` |
-| `dir` | `dirs` |
-| `markdownTemplateEngine`, `htmlTemplateEngine` | `markdownEngine`, `htmlEngine` |
+| `dir` | `dirs` (`dir` works too) |
+| `markdownTemplateEngine`, `htmlTemplateEngine` | `markdownEngine`, `htmlEngine` (Eleventy's names work too) |
 | `setLibrary("md", markdownIt(...).use(...))` | `markdown: { ... }` options, render hooks and containers (below) |
-| `pathPrefix` | `base: "/repo/"`. Links in templates stay as they are (no `url` filter): ssqch adds the base to every URL from the site's root in the HTML it writes, and `withBase()` covers scripts and JSON. |
+| `pathPrefix` | `base: "/repo/"` (`pathPrefix` works too). Links in templates need no `url` filter (it works, and gives the URL back as it is): ssqch adds the base to every URL from the site's root in the HTML it writes, and `withBase()` covers scripts and JSON. |
 
 The config is ESM, though your own CommonJS files (`require`, `module.exports`) load too. npm packages import from `node_modules` as they do in Node, as long as they don't need a server, child processes or native addons: luxon, date-fns, lodash, markdown-it and slugify-style helpers work.
+
+Where Eleventy's word means the same thing in ssqch, it works as it is: `ssqch dev` and `ssqch build --serve` serve, `--pathprefix` is `--base`, and the config options and front matter keys marked "works too" in these tables do what ssqch's names do, so a site can move first and rename later. Each one says ssqch's name once (`note: pathPrefix works; ssqch calls it base`), and setting both names is an error. Filters too: `url`, and a `slugify` that's the same in every template language.
 
 `ssqch serve` reads the config again when it changes, so there's no restart while you port it.
 
@@ -51,9 +53,9 @@ The config is ESM, though your own CommonJS files (`require`, `module.exports`) 
 
 | Eleventy | SiteSquatch |
 | --- | --- |
-| `eleventyComputed` | `computed` |
-| `eleventyExcludeFromCollections` | `excludeFromCollections` |
-| `templateEngineOverride: md` | `render: md` (or a list, or `false`) |
+| `eleventyComputed` | `computed` (`eleventyComputed` works too) |
+| `eleventyExcludeFromCollections` | `excludeFromCollections` (Eleventy's name works too) |
+| `templateEngineOverride: md` | `render: md` (or a list, or `false`). `templateEngineOverride` works too, `"njk,md"` included. |
 | `permalink`, `layout`, `tags`, `pagination`, `date` | The same |
 | `*.11tydata.js`, `*.11tydata.json` | `*.data.js`, `*.data.json` |
 | `_data/*.js` and directory data (`posts/posts.json`) | The same |
