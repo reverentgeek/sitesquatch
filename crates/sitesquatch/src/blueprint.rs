@@ -1,13 +1,13 @@
-//! `ssqch new`: a new page from an archetype.
+//! `ssqch new`: a new page from a blueprint.
 //!
-//! An archetype is a page to start from: a file in `_archetypes/` in the
+//! A blueprint is a page to start from: a file in `_blueprints/` in the
 //! input folder (or a theme's), named after the folder its pages go in.
-//! `ssqch new posts/pine.md` copies `_archetypes/posts.md` (or
-//! `_archetypes/default.md`, or a title and a date when there's neither)
+//! `ssqch new posts/pine.md` copies `_blueprints/posts.md` (or
+//! `_blueprints/default.md`, or a title and a date when there's neither)
 //! and fills in its front matter: the `title`, the `date` when the
-//! archetype has that key, and anything given with `--set`.
+//! blueprint has that key, and anything given with `--set`.
 //!
-//! An archetype isn't a template. Its body is copied as it is, so it can
+//! A blueprint isn't a template. Its body is copied as it is, so it can
 //! hold `{{ }}` for the page itself, and only front matter keys are filled
 //! in: there's no second template syntax to learn or to clash with.
 //!
@@ -33,8 +33,8 @@ pub struct NewOptions {
     pub title: Option<String>,
     /// The page's date, as it's written in front matter (default: today).
     pub date: Option<String>,
-    /// The archetype's name (default: the page's folders, then `default`).
-    pub archetype: Option<String>,
+    /// The blueprint's name (default: the page's folders, then `default`).
+    pub blueprint: Option<String>,
     /// More front matter: each key and the value as it's written (`draft`, `true`).
     pub set: Vec<(String, String)>,
 }
@@ -43,8 +43,8 @@ pub struct NewOptions {
 #[derive(Debug, Clone)]
 pub struct Created {
     pub path: PathBuf,
-    /// The archetype it came from; `None` for the built-in one.
-    pub archetype: Option<PathBuf>,
+    /// The blueprint it came from; `None` for the built-in one.
+    pub blueprint: Option<PathBuf>,
     pub title: String,
     pub date: String,
 }
@@ -96,10 +96,10 @@ fn pages_in(cfg: &Config, dir: &Path) -> (Vec<PathBuf>, Vec<PathBuf>) {
     (files, folders)
 }
 
-/// The archetype for a page in `folders` (`docs/guides`), with `ext` when
+/// The blueprint for a page in `folders` (`docs/guides`), with `ext` when
 /// there's a choice: the most specific folder's, then `default`.
-fn find_archetype(ctx: &BuildContext, named: Option<&str>, folders: &str, ext: Option<&str>) -> Result<Option<PathBuf>> {
-    let dirs: Vec<PathBuf> = std::iter::once(ctx.input_dir.join("_archetypes")).chain(ctx.theme_dirs.iter().map(|t| t.join("_archetypes"))).collect();
+fn find_blueprint(ctx: &BuildContext, named: Option<&str>, folders: &str, ext: Option<&str>) -> Result<Option<PathBuf>> {
+    let dirs: Vec<PathBuf> = std::iter::once(ctx.input_dir.join("_blueprints")).chain(ctx.theme_dirs.iter().map(|t| t.join("_blueprints"))).collect();
     let mut names: Vec<String> = Vec::new();
     match named {
         Some(name) => names.push(name.trim_matches('/').to_string()),
@@ -135,7 +135,7 @@ fn find_archetype(ctx: &BuildContext, named: Option<&str>, folders: &str, ext: O
         have.sort();
         have.dedup();
         let shown = slashes(dirs[0].strip_prefix(&ctx.root).unwrap_or(&dirs[0]));
-        bail!("no archetype named {:?} in {}/ ({})", name, shown, if have.is_empty() { "there are none".to_string() } else { format!("there's {}", have.join(", ")) });
+        bail!("no blueprint named {:?} in {}/ ({})", name, shown, if have.is_empty() { "there are none".to_string() } else { format!("there's {}", have.join(", ")) });
     }
     Ok(None)
 }
@@ -244,7 +244,7 @@ fn fill_front_matter(source: &str, fills: &[(&str, Fill, bool)]) -> Result<Strin
     Ok(lines.concat())
 }
 
-/// Whether the archetype's front matter has `key` (so it's filled in).
+/// Whether the blueprint's front matter has `key` (so it's filled in).
 fn has_key(source: &str, key: &str) -> bool {
     crate::data::parse_front_matter(source).map(|(data, _)| data.contains_key(key)).unwrap_or(false)
 }
@@ -284,7 +284,7 @@ pub fn new_page(cfg: &Config, options: &NewOptions) -> Result<Created> {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let date = options.date.clone().unwrap_or(today);
     let is_folder = given.ends_with('/') || target.is_dir() || target.extension().is_none();
-    let (path, archetype, title) = if is_folder {
+    let (path, blueprint, title) = if is_folder {
         let Some(title) = options.title.clone().filter(|t| !t.trim().is_empty()) else {
             bail!("{} is a folder, so give the page a title to name its file after: ssqch new {} --title \"Pine cones\"", options.path, options.path.trim_end_matches('/'))
         };
@@ -292,11 +292,11 @@ pub fn new_page(cfg: &Config, options: &NewOptions) -> Result<Created> {
         if name.is_empty() {
             bail!("--title {:?} has no letters or digits to name the file after", title);
         }
-        let archetype = find_archetype(&ctx, options.archetype.as_deref(), &rel, None)?;
+        let blueprint = find_blueprint(&ctx, options.blueprint.as_deref(), &rel, None)?;
         // Named as the folder's other pages are.
         let (files, folders) = pages_in(cfg, &target);
         let ext = |path: &PathBuf| path.extension().map(|e| e.to_string_lossy().to_string());
-        // The archetype's extension, or the one most of the folder's pages have.
+        // The blueprint's extension, or the one most of the folder's pages have.
         let mut counts: Vec<(usize, String)> = Vec::new();
         for found in files.iter().chain(&folders).filter_map(ext) {
             match counts.iter_mut().find(|(_, e)| *e == found) {
@@ -305,31 +305,31 @@ pub fn new_page(cfg: &Config, options: &NewOptions) -> Result<Created> {
             }
         }
         counts.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-        let ext = archetype.as_ref().and_then(ext).or_else(|| counts.first().map(|(_, e)| e.clone())).unwrap_or_else(|| "md".into());
+        let ext = blueprint.as_ref().and_then(ext).or_else(|| counts.first().map(|(_, e)| e.clone())).unwrap_or_else(|| "md".into());
         let dated = files.iter().chain(&folders).filter(|p| if p.file_stem().is_some_and(|s| s == "index") { p.parent().and_then(|d| d.file_name()) } else { p.file_name() }.is_some_and(|n| date_prefix().is_match(&n.to_string_lossy()))).count();
         let stem = if dated * 2 > files.len() + folders.len() && date_prefix().is_match(&format!("{}-", date.get(..10).unwrap_or(""))) { format!("{}-{}", &date[..10], name) } else { name };
         let path = if folders.len() > files.len() { target.join(&stem).join(format!("index.{}", ext)) } else { target.join(format!("{}.{}", stem, ext)) };
-        (path, archetype, title)
+        (path, blueprint, title)
     } else {
         let folders = rel.rsplit_once('/').map(|(folders, _)| folders).unwrap_or("");
         let ext = target.extension().map(|e| e.to_string_lossy().to_string());
         let stem = target.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        // `pine/index.md` is named by its folder, and for the archetype it's a page of the folder above.
+        // `pine/index.md` is named by its folder, and for the blueprint it's a page of the folder above.
         let (name, folders) = if stem == "index" { (folders.rsplit('/').next().unwrap_or("").to_string(), folders.rsplit_once('/').map(|(up, _)| up).unwrap_or("")) } else { (stem, folders) };
-        let archetype = find_archetype(&ctx, options.archetype.as_deref(), folders, ext.as_deref())?;
+        let blueprint = find_blueprint(&ctx, options.blueprint.as_deref(), folders, ext.as_deref())?;
         let title = options.title.clone().unwrap_or_else(|| title_from(&date_prefix().replace(&name, "")));
-        (target.clone(), archetype, title)
+        (target.clone(), blueprint, title)
     };
     if path.exists() {
         bail!("{} is already there", slashes(path.strip_prefix(&root).unwrap_or(&path)));
     }
 
-    let source = match &archetype {
+    let source = match &blueprint {
         Some(file) => std::fs::read_to_string(file).with_context(|| format!("reading {}", file.display()))?,
         None => "---\ntitle:\ndate:\n---\n\n".to_string(),
     };
     let mut fills: Vec<(&str, Fill, bool)> = vec![("title", Fill::Text(&title), true)];
-    // A date only where the archetype asks for one: a page whose file name has the date doesn't need it.
+    // A date only where the blueprint asks for one: a page whose file name has the date doesn't need it.
     if has_key(&source, "date") || options.date.is_some() {
         fills.push(("date", Fill::Raw(&date), false));
     }
@@ -340,15 +340,15 @@ pub fn new_page(cfg: &Config, options: &NewOptions) -> Result<Created> {
         fills.push((key, Fill::Raw(value), false));
     }
     let shown = |p: &Path| slashes(p.strip_prefix(&root).unwrap_or(p));
-    let text = fill_front_matter(&source, &fills).with_context(|| match &archetype {
+    let text = fill_front_matter(&source, &fills).with_context(|| match &blueprint {
         Some(file) => format!("in {}", shown(&dunce::canonicalize(file).unwrap_or_else(|_| file.clone()))),
-        None => "in the built-in archetype".to_string(),
+        None => "in the built-in blueprint".to_string(),
     })?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
     }
     std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
-    Ok(Created { path, archetype: archetype.map(|a| dunce::canonicalize(&a).unwrap_or(a)), title, date })
+    Ok(Created { path, blueprint: blueprint.map(|a| dunce::canonicalize(&a).unwrap_or(a)), title, date })
 }
 
 #[cfg(test)]

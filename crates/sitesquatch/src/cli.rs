@@ -57,8 +57,8 @@ enum Command {
         #[arg(long, value_name = "FILE")]
         ready_file: Option<PathBuf>,
     },
-    /// Create a page from an archetype (a file in _archetypes/), with its title and date filled in
-    #[command(after_help = "The archetype is named after the page's folder (_archetypes/posts.md for posts/), then `default`.\nIts body is copied as it is; only front matter keys are filled in. Nothing is overwritten.\n\n  ssqch new posts/pine-cones.md\n  ssqch new posts --title \"Pine cones\"      (named like the other pages in posts/)\n  ssqch new docs/guides/install.md --set order=3 --set draft=true")]
+    /// Create a page from a blueprint (a file in _blueprints/), with its title and date filled in
+    #[command(after_help = "The blueprint is named after the page's folder (_blueprints/posts.md for posts/), then `default`.\nIts body is copied as it is; only front matter keys are filled in. Nothing is overwritten.\n\n  ssqch new posts/pine-cones.md\n  ssqch new posts --title \"Pine cones\"      (named like the other pages in posts/)\n  ssqch new docs/guides/install.md --set order=3 --set draft=true")]
     New {
         /// The new file, from the input folder (posts/pine-cones.md), or a folder, with --title
         path: String,
@@ -68,9 +68,9 @@ enum Command {
         /// The page's date, as it's written in front matter (default: today)
         #[arg(long)]
         date: Option<String>,
-        /// The archetype to use (default: the page's folder, then `default`)
+        /// The blueprint to use (default: the page's folder, then `default`)
         #[arg(long, value_name = "NAME")]
-        archetype: Option<String>,
+        blueprint: Option<String>,
         /// Another front matter key, with its value as it's written there (repeatable)
         #[arg(long, value_name = "KEY=VALUE")]
         set: Vec<String>,
@@ -277,7 +277,7 @@ fn run_command(cli: &Cli, cfg: Config, make_config: &dyn Fn() -> anyhow::Result<
             let shown = crate::slashes(ctx.output_dir.strip_prefix(&ctx.root).unwrap_or(&ctx.output_dir));
             run_footprint(&ctx.output_dir, &shown, *top, format)
         }
-        Some(Command::New { path, title, date, archetype, set, format }) => run_new(&cfg, crate::archetype::NewOptions { path: path.clone(), title: title.clone(), date: date.clone(), archetype: archetype.clone(), set: Vec::new() }, set, format),
+        Some(Command::New { path, title, date, blueprint, set, format }) => run_new(&cfg, crate::blueprint::NewOptions { path: path.clone(), title: title.clone(), date: date.clone(), blueprint: blueprint.clone(), set: Vec::new() }, set, format),
         _ => crate::build(&cfg).map(|report| print_report(&cfg, &report)),
     }
 }
@@ -318,8 +318,8 @@ fn build_json(make_config: &dyn Fn() -> anyhow::Result<Config>, root: &Path, env
     if errors.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
 
-/// `ssqch new`: create a page from an archetype, and say what was made.
-fn run_new(cfg: &Config, mut options: crate::archetype::NewOptions, set: &[String], format: &str) -> anyhow::Result<()> {
+/// `ssqch new`: create a page from a blueprint, and say what was made.
+fn run_new(cfg: &Config, mut options: crate::blueprint::NewOptions, set: &[String], format: &str) -> anyhow::Result<()> {
     if !matches!(format, "text" | "json") {
         anyhow::bail!("--format {}: use text or json", format);
     }
@@ -327,17 +327,17 @@ fn run_new(cfg: &Config, mut options: crate::archetype::NewOptions, set: &[Strin
         let Some((key, value)) = pair.split_once('=') else { anyhow::bail!("--set {}: give a key and a value, like --set draft=true", pair) };
         options.set.push((key.trim().to_string(), value.trim().to_string()));
     }
-    let created = crate::archetype::new_page(cfg, &options)?;
+    let created = crate::blueprint::new_page(cfg, &options)?;
     let ctx = cfg.build_context();
     let root = dunce::canonicalize(&ctx.root).unwrap_or_else(|_| ctx.root.clone());
     let shown = |path: &Path| crate::slashes(path.strip_prefix(&root).unwrap_or(path));
     if format == "json" {
-        let out = serde_json::json!({ "schemaVersion": 1, "path": shown(&created.path), "archetype": created.archetype.as_deref().map(shown), "title": created.title, "date": created.date });
+        let out = serde_json::json!({ "schemaVersion": 1, "path": shown(&created.path), "blueprint": created.blueprint.as_deref().map(shown), "title": created.title, "date": created.date });
         println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
-        match &created.archetype {
-            Some(archetype) => println!("Created {} from {}", shown(&created.path), shown(archetype)),
-            None => println!("Created {} with a title and a date (there's no archetype for it in {}/_archetypes/)", shown(&created.path), shown(&dunce::canonicalize(&ctx.input_dir).unwrap_or_else(|_| ctx.input_dir.clone()))),
+        match &created.blueprint {
+            Some(blueprint) => println!("Created {} from {}", shown(&created.path), shown(blueprint)),
+            None => println!("Created {} with a title and a date (there's no blueprint for it in {}/_blueprints/)", shown(&created.path), shown(&dunce::canonicalize(&ctx.input_dir).unwrap_or_else(|_| ctx.input_dir.clone()))),
         }
     }
     Ok(())

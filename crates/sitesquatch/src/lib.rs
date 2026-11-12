@@ -26,7 +26,7 @@ pub mod equivalents;
 pub mod footprint;
 #[cfg(feature = "highlight")]
 pub mod highlight;
-pub mod archetype;
+pub mod blueprint;
 pub mod diagnostics;
 pub mod inspect;
 pub mod markdown;

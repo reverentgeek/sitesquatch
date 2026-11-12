@@ -143,7 +143,7 @@ and `ssqch footprint` in 0.5.
       `ssqch sighting` is hidden from `--help` and `ssqch capabilities`.
 - [x] **Starters:** the site starter is an investigator's field notes (*I Know What I Saw*,
       *Upon Further Review, a Stump*, *The Stump Has Moved*, each showing one thing), with a
-      404 page, `Write down what you saw.` in the archetype and `Built with SiteSquatch.
+      404 page, `Write down what you saw.` in the blueprint and `Built with SiteSquatch.
       Allegedly.` in the footer. The docs starter's 404 has the eyewitness accounts too.
   - [ ] **Needs David:** a suitably blurry picture for the second post. It explains where a
         photo goes but has none, because a drawing would beat anything generated.
@@ -648,9 +648,9 @@ I'd take them (the first three went into 0.4):
         with the template engines.
   - [x] `console.warn` in a config goes to standard error, not into the report's `warnings`.
         Done: in a JSON build it's a warning with the code `console` (the terminal is as it was).
-- [x] **`ssqch new <path>`:** a new post or page from an archetype (a file in
-      `_archetypes/`, named after the page's folder), with the title and date filled in as
-      front matter keys rather than through a second template syntax. Given a folder and a
+- [x] **`ssqch new <path>`:** a new post or page from a blueprint (a file in `_blueprints/`,
+      named after the page's folder; "archetypes" until 0.5), with the title and date filled in
+      as front matter keys rather than through a second template syntax. Given a folder and a
       title, the file is named as the folder's other pages are. Both starters have one.
 - [ ] **References in schemas:** a field that has to name a page in another collection
       (`author: "ref:authors"`), and output checks (every guide has a previous and next link).

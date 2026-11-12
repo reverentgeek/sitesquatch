@@ -73,7 +73,7 @@ For Tab completion of commands and options, `ssqch completions zsh` (or `bash`, 
 
 ## Build your first site
 
-The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, three posts, a 404 page, a data file, an archetype for the next post, and editor types) and then leaves you to it:
+The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, three posts, a 404 page, a data file, a blueprint for the next post, and editor types) and then leaves you to it:
 
 ```sh
 ssqch init my-site
@@ -717,7 +717,7 @@ In `sitesquatch.toml`, a schema is a table: `[schemas.posts]` with `fields = { t
 
 ## Starting a new page
 
-`ssqch new` creates a page from an archetype: a page to start from, kept in `_archetypes/` in the input folder and named after the folder its pages go in. Here's `src/_archetypes/posts.md`:
+`ssqch new` creates a page from a blueprint: a page to start from, kept in `_blueprints/` in the input folder and named after the folder its pages go in. Here's `src/_blueprints/posts.md`:
 
 ```md
 ---
@@ -735,7 +735,7 @@ ssqch new posts --title "Pine cones: a field guide"
 ```
 
 ```text
-Created src/posts/pine-cones-a-field-guide.md from src/_archetypes/posts.md
+Created src/posts/pine-cones-a-field-guide.md from src/_blueprints/posts.md
 ```
 
 The new post:
@@ -751,10 +751,10 @@ draft: true
 Write here. The title is {{ title }}.
 ```
 
-- **Only front matter is filled in.** `title` is set, `date` is set to today when the archetype has that key (or you pass `--date`), and `--set key=value` sets anything else (`--set draft=false`, `--set "tags=[news, trails]"`). Comments and the order of the keys stay. The body is copied as it is, so an archetype isn't a template with a syntax of its own: `{{ title }}` in it is for the page.
-- **Which archetype:** the one named after the page's folder, the most specific first. `docs/guides/install.md` uses `_archetypes/docs/guides.md`, then `_archetypes/docs.md`, then `_archetypes/default.md`, and with none of them the page gets a `title` and a `date`. `--archetype notes` picks one by name. An archetype can be in any template language (`posts.jinja`), and a [theme](#themes) can bring its own in its `_archetypes/`.
+- **Only front matter is filled in.** `title` is set, `date` is set to today when the blueprint has that key (or you pass `--date`), and `--set key=value` sets anything else (`--set draft=false`, `--set "tags=[news, trails]"`). Comments and the order of the keys stay. The body is copied as it is, so a blueprint isn't a template with a syntax of its own: `{{ title }}` in it is for the page.
+- **Which blueprint:** the one named after the page's folder, the most specific first. `docs/guides/install.md` uses `_blueprints/docs/guides.md`, then `_blueprints/docs.md`, then `_blueprints/default.md`, and with none of them the page gets a `title` and a `date`. `--blueprint notes` picks one by name. A blueprint can be in any template language (`posts.jinja`), and a [theme](#themes) can bring its own in its `_blueprints/`.
 - **A file, or a folder and a title:** `ssqch new posts/pine-cones.md` names the file itself (the title is then "Pine cones", unless you pass `--title`). Given a folder, the file is named after the title, the way the folder's other pages are: with the date in front (`2026-11-10-pine-cones.md`) when most of them have one, and as `pine-cones/index.md` when most are folders with an index file.
-- **Nothing is overwritten,** and `--format json` prints the new file's `path`, its `archetype`, `title` and `date`.
+- **Nothing is overwritten,** and `--format json` prints the new file's `path`, its `blueprint`, `title` and `date`.
 
 ## Where a value comes from
 
@@ -1144,7 +1144,7 @@ A plugin implements `sitesquatch::Plugin` (any `Fn(&mut Config)` works too) and 
 | `add_config_file(path)` | not available (a file `ssqch serve` reads the configuration again for) |
 | `add_summary(label, \|ctx\| ...)` | not available (adds a line to the build summary) |
 
-A site binary whose setup can fail uses `sitesquatch::cli::try_run_with`, whose closure returns a `Result` and is called again by `ssqch serve` when a config file changes. `sitesquatch::diff::compare` is `ssqch diff` as a function. `sitesquatch::inspect::inspect` is `ssqch inspect`, and `sitesquatch::archetype::new_page` is `ssqch new`. A plugin reports a warning with `sitesquatch::diagnostics::warn(Diagnostic::warning("code", message).file(path))`, which prints `warn: ...` and puts it in the JSON report, and fails with a `Diagnostics` error to keep its problems apart there.
+A site binary whose setup can fail uses `sitesquatch::cli::try_run_with`, whose closure returns a `Result` and is called again by `ssqch serve` when a config file changes. `sitesquatch::diff::compare` is `ssqch diff` as a function. `sitesquatch::inspect::inspect` is `ssqch inspect`, and `sitesquatch::blueprint::new_page` is `ssqch new`. A plugin reports a warning with `sitesquatch::diagnostics::warn(Diagnostic::warning("code", message).file(path))`, which prints `warn: ...` and puts it in the JSON report, and fails with a `Diagnostics` error to keep its problems apart there.
 
 Plugins can share services. The image plugin exposes an `ImageProcessor`, and the blog's plugin uses it for its hero image data and its `socialImage` filter.
 

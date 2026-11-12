@@ -86,6 +86,7 @@ pub const TABLE: &[Equivalent] = &[
     Equivalent { word: "--baseURL", kind: Kind::Flag, from: &["Hugo"], ssqch: "--base", say: "The path a site is served under is `--base /repo/` (or `base` in the config); the domain isn't needed.", more: "ssqch docs base" },
     Equivalent { word: "--minify", kind: Kind::Flag, from: &["Hugo"], ssqch: "minifyPlugin", say: "Minifying is `minifyPlugin()` from \"ssqch/minify\", in the config's `plugins`.", more: "ssqch docs minifyPlugin" },
     Equivalent { word: "--incremental", kind: Kind::Flag, from: &["Eleventy", "Jekyll"], ssqch: "serve", say: "There's nothing to turn on: a whole build is quick, and `ssqch serve` reloads only the pages that changed.", more: "ssqch docs serve" },
+    Equivalent { word: "--kind", kind: Kind::Flag, from: &["Hugo"], ssqch: "--blueprint", say: "What Hugo calls an archetype is a blueprint in ssqch: `ssqch new posts/pine.md --blueprint notes` starts from `_blueprints/notes.md`.", more: "ssqch new --help" },
     Equivalent { word: "--template", kind: Kind::Flag, from: &[], ssqch: "--starter", say: "`ssqch init --starter site|docs` picks the starter, and `--engine` its template language.", more: "ssqch init --help" },
     // Config options (and the methods of a config written as calls).
     Equivalent { word: "pathPrefix", kind: Kind::Config, from: &["Eleventy"], ssqch: "base", say: "In ssqch it's `base`: base: \"/repo/\".", more: "ssqch docs base" },

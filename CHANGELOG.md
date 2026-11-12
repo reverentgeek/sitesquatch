@@ -12,6 +12,10 @@ a `v<version>` tag on a commit where that version matches.
 
 ### Breaking
 
+- Archetypes are blueprints now: `ssqch new` starts a page from a file in `_blueprints/`
+  (`_blueprints/posts.md`), and `--archetype` is `--blueprint`. Rename a site's `_archetypes/`
+  folder (and a theme's) to `_blueprints/`. The JSON from `ssqch new --format json` has
+  `blueprint` in place of `archetype`. Hugo's `--kind` gets a hint naming `--blueprint`.
 - Jinja is the default template language of the `ssqch` command, in place of Edge: the
   defaults are `templateFormats: ["jinja", "md", "html"]`, `markdownEngine: "jinja"` and
   `htmlEngine: "jinja"`. A site in Edge that relied on the defaults keeps working by setting

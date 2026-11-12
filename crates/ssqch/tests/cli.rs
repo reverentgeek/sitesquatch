@@ -43,15 +43,15 @@ fn init_creates_a_site_that_builds() {
     // A site's first build says so; the next one doesn't.
     assert!(log.contains("First confirmed siting. Built in "), "{}", log);
 
-    // The next post starts from the starter's archetype, and is on the home page.
+    // The next post starts from the starter's blueprint, and is on the home page.
     let (ok, log) = ssqch(&["new", "--root", d, "posts", "--title", "My second post", "--date", "2026-02-03"]);
-    assert_eq!((ok, log.as_str()), (true, "Created src/posts/my-second-post.md from src/_archetypes/posts.md\n"));
+    assert_eq!((ok, log.as_str()), (true, "Created src/posts/my-second-post.md from src/_blueprints/posts.md\n"));
     assert_eq!(std::fs::read_to_string(dir.join("src/posts/my-second-post.md")).unwrap(), "---\ntitle: My second post\ndate: 2026-02-03\n---\nWrite down what you saw.\n");
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok, "{}", log);
     assert!(log.contains("Built in ") && !log.contains("First confirmed siting"), "{}", log);
     let home = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
-    assert!(home.contains("<a href=\"/posts/my-second-post/\">My second post</a> (February 3, 2026)") && !dir.join("dist/_archetypes").exists(), "{}", home);
+    assert!(home.contains("<a href=\"/posts/my-second-post/\">My second post</a> (February 3, 2026)") && !dir.join("dist/_blueprints").exists(), "{}", home);
 
     // Running it again keeps what's there.
     std::fs::write(dir.join("src/index.jinja"), "mine").unwrap();
@@ -129,9 +129,9 @@ fn init_starts_a_docs_site() {
     };
     check(&dir, "jinja");
     let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
-    // A new page from the starter's archetype passes the starter's schema.
+    // A new page from the starter's blueprint passes the starter's schema.
     let (ok, log) = ssqch(&["new", "--root", d, "docs/guides", "--title", "Search"]);
-    assert_eq!((ok, log.as_str()), (true, "Created src/docs/guides/search.md from src/_archetypes/docs.md\n"));
+    assert_eq!((ok, log.as_str()), (true, "Created src/docs/guides/search.md from src/_blueprints/docs.md\n"));
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok && !log.contains("warn") && read("docs/guides/search/index.html").contains("<title>Search | Squatch Docs</title>"), "{}", log);
     assert!(dir.join("dist/assets/docs.js").is_file() && dir.join("dist/highlight.css").is_file());
@@ -1020,7 +1020,7 @@ fn other_generators_words_get_ssqch_names() {
     use sitesquatch::equivalents::{Kind, TABLE};
     let (_, capabilities, _) = ssqch_outputs(&["capabilities", "--format", "json"]);
     let mut known = capabilities.clone();
-    for help in [&["build", "--help"][..], &["serve", "--help"], &["init", "--help"], &["--help"]] {
+    for help in [&["build", "--help"][..], &["serve", "--help"], &["init", "--help"], &["new", "--help"], &["--help"]] {
         known.push_str(&ssqch(help).1);
     }
     let readme = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../README.md")).unwrap();
@@ -1035,8 +1035,13 @@ fn other_generators_words_get_ssqch_names() {
         let (ok, log) = match row.kind {
             Kind::Command => ssqch(&[row.word]),
             Kind::Flag => {
-                let command = if row.word == "--template" { "init" } else { "build" };
-                ssqch(&[command, row.word, "--root", d])
+                let command = match row.word { "--template" => "init", "--kind" => "new", _ => "build" };
+                let mut args = vec![command, row.word];
+                if command == "new" {
+                    args.extend(["posts/pine.md", "notes"]);
+                }
+                args.extend(["--root", d]);
+                ssqch(&args)
             }
             Kind::Config => {
                 std::fs::write(dir.join("ssqch.config.js"), format!("export default {{ {}: \"x\" }};\n", row.word)).unwrap();
@@ -2163,7 +2168,7 @@ fn http_get(port: u16, path: &str) -> String {
 }
 
 #[test]
-fn new_creates_a_page_from_an_archetype() {
+fn new_creates_a_page_from_an_blueprint() {
     let dir = temp_dir("new");
     let d = dir.to_str().unwrap();
     let write = |path: &str, text: &str| {
@@ -2174,7 +2179,7 @@ fn new_creates_a_page_from_an_archetype() {
     let read = |path: &str| std::fs::read_to_string(dir.join(path)).unwrap_or_else(|e| panic!("{}: {}", path, e));
     write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, theme: \"theme\" };\n");
     write("src/index.md", "Home\n");
-    write("theme/_archetypes/notes.md", "---\ntitle:\nkind: note\n---\n\nFrom the theme.\n");
+    write("theme/_blueprints/notes.md", "---\ntitle:\nkind: note\n---\n\nFrom the theme.\n");
     let new = |args: &[&str]| {
         let mut all = vec!["new", "--root", d];
         all.extend(args);
@@ -2182,55 +2187,55 @@ fn new_creates_a_page_from_an_archetype() {
     };
     let today = chrono_free_today();
 
-    // No archetype: a title from the file's name, and today's date.
+    // No blueprint: a title from the file's name, and today's date.
     let (ok, log) = new(&["posts/pine-cone-crunch.md"]);
     assert!(ok, "{}", log);
-    assert_eq!(log, "Created src/posts/pine-cone-crunch.md with a title and a date (there's no archetype for it in src/_archetypes/)\n");
+    assert_eq!(log, "Created src/posts/pine-cone-crunch.md with a title and a date (there's no blueprint for it in src/_blueprints/)\n");
     assert_eq!(read("src/posts/pine-cone-crunch.md"), format!("---\ntitle: Pine cone crunch\ndate: {}\n---\n\n", today));
     // Nothing is overwritten.
     let (ok, log) = new(&["posts/pine-cone-crunch.md", "--title", "Other"]);
     assert!(!ok && log.contains("src/posts/pine-cone-crunch.md is already there"), "{}", log);
     assert!(read("src/posts/pine-cone-crunch.md").contains("title: Pine cone crunch"));
 
-    // The folder's archetype: its front matter is filled in, and its body is copied as it is.
-    write("src/_archetypes/posts.md", "---\n# Fill in the description.\ntitle:\ndate:\ndescription:\ndraft: true\n---\n\nThe title is {{ title }}.\n");
-    write("src/_archetypes/docs.md", "---\ntitle:\norder: 0\n---\n\nA doc.\n");
-    write("src/_archetypes/docs/guides.jinja", "---\ntitle:\n---\n<p>A guide.</p>\n");
-    write("src/_archetypes/default.md", "---\ntitle:\n---\n\nA page.\n");
+    // The folder's blueprint: its front matter is filled in, and its body is copied as it is.
+    write("src/_blueprints/posts.md", "---\n# Fill in the description.\ntitle:\ndate:\ndescription:\ndraft: true\n---\n\nThe title is {{ title }}.\n");
+    write("src/_blueprints/docs.md", "---\ntitle:\norder: 0\n---\n\nA doc.\n");
+    write("src/_blueprints/docs/guides.jinja", "---\ntitle:\n---\n<p>A guide.</p>\n");
+    write("src/_blueprints/default.md", "---\ntitle:\n---\n\nA page.\n");
     let (ok, log) = new(&["src/posts/2026-01-05-winter-trails.md", "--title", "Winter trails: a guide", "--set", "tags=[news, trails]", "--set", "draft=false"]);
-    assert_eq!((ok, log.as_str()), (true, "Created src/posts/2026-01-05-winter-trails.md from src/_archetypes/posts.md\n"));
+    assert_eq!((ok, log.as_str()), (true, "Created src/posts/2026-01-05-winter-trails.md from src/_blueprints/posts.md\n"));
     assert_eq!(read("src/posts/2026-01-05-winter-trails.md"), format!("---\n# Fill in the description.\ntitle: \"Winter trails: a guide\"\ndate: {}\ndescription:\ndraft: false\ntags: [news, trails]\n---\n\nThe title is {{{{ title }}}}.\n", today));
 
-    // The most specific folder's archetype, by the new file's extension; then the folders above; then `default`.
+    // The most specific folder's blueprint, by the new file's extension; then the folders above; then `default`.
     let (ok, log) = new(&["docs/guides/install.jinja"]);
-    assert!(ok && log.ends_with("from src/_archetypes/docs/guides.jinja\n"), "{}", log);
+    assert!(ok && log.ends_with("from src/_blueprints/docs/guides.jinja\n"), "{}", log);
     assert_eq!(read("src/docs/guides/install.jinja"), "---\ntitle: Install\n---\n<p>A guide.</p>\n");
     let (ok, log) = new(&["docs/reference/cli/index.md", "--date", "2026-03-02"]);
-    assert!(ok && log.ends_with("from src/_archetypes/docs.md\n"), "{}", log);
-    // An index page is named by its folder, and --date adds a date the archetype doesn't have.
+    assert!(ok && log.ends_with("from src/_blueprints/docs.md\n"), "{}", log);
+    // An index page is named by its folder, and --date adds a date the blueprint doesn't have.
     assert_eq!(read("src/docs/reference/cli/index.md"), "---\ntitle: Cli\norder: 0\ndate: 2026-03-02\n---\n\nA doc.\n");
     let (ok, log) = new(&["about.md"]);
-    assert!(ok && log.ends_with("from src/_archetypes/default.md\n"), "{}", log);
+    assert!(ok && log.ends_with("from src/_blueprints/default.md\n"), "{}", log);
     assert_eq!(read("src/about.md"), "---\ntitle: About\n---\n\nA page.\n");
     // By name, and from a theme.
-    let (ok, log) = new(&["ideas/cedar.md", "--archetype", "notes", "--format", "json"]);
+    let (ok, log) = new(&["ideas/cedar.md", "--blueprint", "notes", "--format", "json"]);
     assert!(ok, "{}", log);
     let json: serde_json::Value = serde_json::from_str(&log).unwrap_or_else(|e| panic!("{}: {}", e, log));
-    assert_eq!(json, serde_json::json!({ "schemaVersion": 1, "path": "src/ideas/cedar.md", "archetype": "theme/_archetypes/notes.md", "title": "Cedar", "date": today }));
+    assert_eq!(json, serde_json::json!({ "schemaVersion": 1, "path": "src/ideas/cedar.md", "blueprint": "theme/_blueprints/notes.md", "title": "Cedar", "date": today }));
     assert_eq!(read("src/ideas/cedar.md"), "---\ntitle: Cedar\nkind: note\n---\n\nFrom the theme.\n");
 
     // A folder and a title: the file is named as the folder's other pages are.
     let (ok, log) = new(&["docs", "--title", "Getting started"]);
-    assert_eq!((ok, log.as_str()), (true, "Created src/docs/getting-started.md from src/_archetypes/docs.md\n"));
+    assert_eq!((ok, log.as_str()), (true, "Created src/docs/getting-started.md from src/_blueprints/docs.md\n"));
     // Most of the pages in posts/ have the date in front now.
     write("src/posts/2026-01-09-snow.md", "---\ntitle: Snow\n---\n");
     let (ok, log) = new(&["posts/", "--title", "What's new in 0.4?", "--date", "2026-03-02"]);
-    assert_eq!((ok, log.as_str()), (true, "Created src/posts/2026-03-02-whats-new-in-0-4.md from src/_archetypes/posts.md\n"));
+    assert_eq!((ok, log.as_str()), (true, "Created src/posts/2026-03-02-whats-new-in-0-4.md from src/_blueprints/posts.md\n"));
     assert!(read("src/posts/2026-03-02-whats-new-in-0-4.md").contains("title: What's new in 0.4?\ndate: 2026-03-02\n"));
     // Folders with an index file.
     write("src/trails/cedar/index.jinja", "---\ntitle: Cedar\n---\n");
     write("src/trails/fir/index.jinja", "---\ntitle: Fir\n---\n");
-    std::fs::remove_file(dir.join("src/_archetypes/default.md")).unwrap();
+    std::fs::remove_file(dir.join("src/_blueprints/default.md")).unwrap();
     let (ok, log) = new(&["trails", "--title", "Old Growth Loop"]);
     assert!(ok && log.starts_with("Created src/trails/old-growth-loop/index.jinja with a title and a date"), "{}", log);
 
@@ -2240,7 +2245,7 @@ fn new_creates_a_page_from_an_archetype() {
         (vec!["posts", "--title", "!!!"], "--title \"!!!\" has no letters or digits to name the file after"),
         (vec!["../outside.md"], "../outside.md: a new page goes in the input folder (src/), so give a path from there"),
         (vec!["_data/x.md"], "_data/x.md: _data/ isn't a folder for pages"),
-        (vec!["x.md", "--archetype", "nope"], "no archetype named \"nope\" in src/_archetypes/ (there's docs, docs/guides, notes, posts)"),
+        (vec!["x.md", "--blueprint", "nope"], "no blueprint named \"nope\" in src/_blueprints/ (there's docs, docs/guides, notes, posts)"),
         (vec!["x.md", "--set", "draft"], "--set draft: give a key and a value, like --set draft=true"),
         (vec!["x.md", "--format", "yaml"], "--format yaml: use text or json"),
     ] {
@@ -2249,10 +2254,10 @@ fn new_creates_a_page_from_an_archetype() {
     }
     assert!(!dir.join("src/x.md").exists() && !dir.join("outside.md").exists());
 
-    // The archetypes aren't pages of the site (the site's or the theme's), and the new pages are.
+    // The blueprints aren't pages of the site (the site's or the theme's), and the new pages are.
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok, "{}", log);
-    assert!(!dir.join("dist/_archetypes").exists() && !log.contains("_archetypes"), "{}", log);
+    assert!(!dir.join("dist/_blueprints").exists() && !log.contains("_blueprints"), "{}", log);
     assert!(read("dist/about/index.html").contains("A page."));
     assert!(dir.join("dist/posts/pine-cone-crunch/index.html").is_file() && dir.join("dist/trails/old-growth-loop/index.html").is_file());
     // A draft isn't built in production.
