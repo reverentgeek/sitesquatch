@@ -704,9 +704,34 @@ I'd take them (the first three went into 0.4):
         the project root; fixed: it says `.`.)
 - [ ] **Aliases for other generators' words** (decided 2026-11-11: familiar and inviting is
       the goal, and an alias that eases the move is welcome; copying a generator wholesale
-      isn't). Pick the rows of the equivalents table whose word means the same in ssqch and
-      make them work, saying ssqch's name once so it's learned. Not the ones that mean
-      something else here (`check`, `published: false`, Hugo's `baseURL`, `site.posts`).
+      isn't). The rows of the equivalents table whose word means the same in ssqch start
+      working. An alias works and prints one line, once per build, naming ssqch's word and
+      where to read about it (`note: pathPrefix works; ssqch calls it base (ssqch docs
+      base)`). `--quiet` hides it, and it isn't a warning in the JSON report. The docs keep
+      teaching ssqch's names. The row says whether it's an alias, and the test checks that
+      an alias works and a hint still refuses.
+  - [ ] Commands: `dev`, `start`, `server` (Hugo) and `watch` run `ssqch serve`; `generate`
+        (Hexo) runs `ssqch build`.
+  - [ ] Flags: `--watch` and `--serve` serve, `-d` and `--destination` are `--output`, and
+        `--pathprefix` is `--base`.
+  - [ ] Config: `pathPrefix` is `base`, `dir` is `dirs` (Eleventy's keys are the same),
+        `publishDir` and `outDir` are `dirs.output`, and `markdownTemplateEngine` and
+        `htmlTemplateEngine` are `markdownEngine` and `htmlEngine`.
+  - [ ] Front matter: `eleventyComputed` is `computed`, `eleventyExcludeFromCollections` is
+        `excludeFromCollections`, `redirect_from` is `aliases`, and `templateEngineOverride`
+        is `render` (its `njk,md` string becomes the list).
+  - [ ] Filters: `url` and `relative_url` return the URL as it is (the build adds `base`
+        already), `markdownify` is `markdown`, and a real `slugify` filter in every template
+        language.
+  - [ ] Stay hints, since they mean something else in ssqch: `check` (sounds like it doesn't
+        write, but `build` does), Jekyll's `published: false` (never built; ssqch's drafts
+        build in development), Hugo's `baseURL` (a full URL; `base` is a path), `--drafts`,
+        `-D` and `--buildDrafts` (they'd switch the whole environment, not just drafts),
+        `site.posts` and `site.pages` (they can clash with a site's own `site` data),
+        `eleventyNavigation` (its fields don't match `nav`'s), and the `add*` method calls (a
+        different shape of config).
+  - [ ] With it: the README's "Trailheads" section says which words work, AGENTS.md's line on
+        the table, and the trailheads' tables.
 - [x] **`ssqch docs`: the documentation of the installed version, from the binary** (item 2 in
       `research/exact-agent-first.md`). The README and the trailheads in `docs/trailheads/` are built
       in (`crates/ssqch/build.rs`; a crate from crates.io has only the README, and `--from`
