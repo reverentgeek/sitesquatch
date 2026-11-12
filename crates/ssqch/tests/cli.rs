@@ -71,6 +71,11 @@ fn init_creates_a_site_that_builds() {
     assert!(ok, "{}", log);
     assert!(log.contains("Nothing to do"), "{}", log);
     assert_eq!(std::fs::read_to_string(dir.join("src/index.jinja")).unwrap(), "mine");
+
+    // --quiet prints only warnings and errors.
+    let quiet = temp_dir("init-quiet");
+    let (ok, log) = ssqch(&["init", quiet.to_str().unwrap(), "--quiet"]);
+    assert!(ok && log.is_empty() && quiet.join("src/index.jinja").is_file(), "{}", log);
 }
 
 #[test]
@@ -1544,7 +1549,7 @@ fn serve_does_not_rebuild_for_its_own_files() {
     let said = std::fs::read_to_string(&log).unwrap_or_default();
     assert_eq!(builds(), 2, "{}", said);
     // The server says its name, and what changed.
-    assert!(said.contains("Squatch Watch is on. Serving ") && said.contains("Fresh tracks in index.jinja\n"), "{}", said);
+    assert!(said.contains("Serving ") && said.contains("/. Squatch Watch is on.\n") && said.contains("Fresh tracks in index.jinja\n"), "{}", said);
     // The first build is the site's first; the rebuild isn't.
     assert_eq!(said.matches("First confirmed siting. Built in").count(), 1, "{}", said);
 }
@@ -2151,9 +2156,10 @@ fn the_ranger_reports_what_happened() {
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok && !log.contains(" new") && !log.contains(" gone"), "{}", log);
 
-    // --verbose names the templates nothing used: the layout and the include from above.
+    // --verbose names the templates nothing used: the layout and the include from above. The
+    // report has one themed line, and the drafts' comes first, so this one is plain.
     let (ok, log) = ssqch(&["build", "--verbose", "--root", d]);
-    assert!(ok && log.contains("Uninhabited: 2 templates that nothing used in this build (src/_includes/base.edge, src/_includes/partials/nav.edge).\n"), "{}", log);
+    assert!(ok && log.contains("  Drafts  2 unconfirmed (built in development only)\n") && log.contains("Unused: 2 templates that nothing used in this build (src/_includes/base.edge, src/_includes/partials/nav.edge).\n"), "{}", log);
 
     // Jinja, Nunjucks and EJS includes count too, whichever engine read them.
     let other = temp_dir("uninhabited");
@@ -2174,6 +2180,9 @@ fn the_ranger_reports_what_happened() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, text).unwrap();
     }
+    // The site's first build: that's the report's themed line. The second's is this one.
+    let (ok, log) = ssqch(&["build", "--verbose", "--root", o]);
+    assert!(ok && log.contains("First confirmed siting.") && log.contains("Unused: 2 templates that nothing used in this build (_includes/old.jinja, _includes/spare.ejs).\n"), "{}", log);
     let (ok, log) = ssqch(&["build", "--verbose", "--root", o]);
     assert!(ok && log.contains("Uninhabited: 2 templates that nothing used in this build (_includes/old.jinja, _includes/spare.ejs).\n"), "{}", log);
 
@@ -2223,7 +2232,7 @@ fn serve_tells_the_browser_what_changed() {
     assert!(said().contains("Pages   2 written from 2 templates, ") && said().contains(" (2 changed)\n"), "{}", said());
     // The address comes after the build's report, so a long build doesn't bury it.
     let report = said();
-    assert!(report.find("Built in").unwrap() < report.find("Squatch Watch is on. Serving ").unwrap(), "{}", report);
+    assert!(report.find("Built in").unwrap() < report.find("Serving ").unwrap(), "{}", report);
 
     // A browser that has just opened the page learns where things stand.
     let first = live(port, "", "/");
@@ -2238,7 +2247,7 @@ fn serve_tells_the_browser_what_changed() {
     // And again after each rebuild.
     wait_for(&log, "Fresh tracks in src");
     let started = std::time::Instant::now();
-    while said().matches("Squatch Watch is on. Serving ").count() < 2 {
+    while said().matches(". Squatch Watch is on.").count() < 2 {
         assert!(started.elapsed() < std::time::Duration::from_secs(20), "{}", said());
         std::thread::sleep(std::time::Duration::from_millis(50));
     }

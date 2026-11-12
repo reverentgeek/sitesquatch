@@ -22,6 +22,18 @@ use crate::config::{BuildReport, Config};
 /// The whole summary, ending in a newline.
 pub fn summary(cfg: &Config, report: &BuildReport) -> String {
     let ctx = cfg.build_context();
+    // One themed line at most, the one that says the most, in this order; the rest are plain.
+    let nothing = report.templates == 0 && report.drafts == 0 && report.pages_written == 0;
+    let aside = [
+        (nothing, Aside::NothingSighted),
+        (report.first_build, Aside::FirstSiting),
+        (report.files_removed > 0, Aside::LeftNoTrace),
+        (report.drafts > 0, Aside::Unconfirmed),
+        (!report.unused.is_empty(), Aside::Uninhabited),
+    ]
+    .into_iter()
+    .find_map(|(happened, aside)| happened.then_some(aside));
+    let themed = |which: Aside| aside == Some(which);
     let mut lines: Vec<(String, String)> = Vec::new();
 
     let mut pages = format!("{} written", count(report.pages_written));
@@ -47,7 +59,8 @@ pub fn summary(cfg: &Config, report: &BuildReport) -> String {
     }
     lines.push(("Pages".into(), pages));
     if report.drafts > 0 {
-        lines.push(("Drafts".into(), format!("{} unconfirmed (built in development only)", count(report.drafts))));
+        let unconfirmed = if themed(Aside::Unconfirmed) { " unconfirmed" } else { " left out" };
+        lines.push(("Drafts".into(), format!("{}{} (built in development only)", count(report.drafts), unconfirmed)));
     }
 
     let passthrough = report.files_copied + report.files_unchanged;
@@ -60,7 +73,8 @@ pub fn summary(cfg: &Config, report: &BuildReport) -> String {
         lines.push(("Copied".into(), copied));
     }
     if report.files_removed > 0 {
-        lines.push(("Removed".into(), format!("{} stale file{}, {}", count(report.files_removed), plural(report.files_removed), crate::voice::LEFT_NO_TRACE)));
+        let trace = if themed(Aside::LeftNoTrace) { format!(", {}", crate::voice::LEFT_NO_TRACE) } else { String::new() };
+        lines.push(("Removed".into(), format!("{} stale file{}{}", count(report.files_removed), plural(report.files_removed), trace)));
     }
 
     lines.extend(report.summary.iter().cloned());
@@ -76,23 +90,34 @@ pub fn summary(cfg: &Config, report: &BuildReport) -> String {
 
     let width = lines.iter().map(|(label, _)| label.len()).max().unwrap_or(0);
     // A site's first build gets a word before the usual line.
-    let first = if report.first_build { format!("{} ", crate::voice::FIRST_SITING) } else { String::new() };
+    let first = if themed(Aside::FirstSiting) { format!("{} ", crate::voice::FIRST_SITING) } else { String::new() };
     let mut out = format!("{}Built in {} ({})\n", first, duration(report.duration), cfg.env.as_str());
     for (label, text) in lines {
         let _ = writeln!(out, "  {:<width$}  {}", label, text, width = width);
     }
     if !report.unused.is_empty() {
         let n = report.unused.len();
-        let _ = writeln!(out, "Uninhabited: {} template{} that nothing used in this build ({}).", count(n), plural(n), report.unused.join(", "));
+        let label = if themed(Aside::Uninhabited) { "Uninhabited" } else { "Unused" };
+        let _ = writeln!(out, "{}: {} template{} that nothing used in this build ({}).", label, count(n), plural(n), report.unused.join(", "));
     }
     // Nothing to build is usually a wrong folder or a missing extension.
-    if report.templates == 0 && report.drafts == 0 && report.pages_written == 0 {
+    if nothing {
         let input = ctx.input_dir.strip_prefix(&ctx.root).unwrap_or(&ctx.input_dir);
         // The project root itself is `.`, not an empty name.
         let folder = Some(crate::slashes(input)).filter(|f| !f.is_empty()).unwrap_or_else(|| ".".into());
         let _ = writeln!(out, "Nothing sighted: no file in {} matches templateFormats ({}).", folder, cfg.template_formats.join(", "));
     }
     out
+}
+
+/// The summary's themed lines, of which it says one.
+#[derive(Clone, Copy, PartialEq)]
+enum Aside {
+    NothingSighted,
+    FirstSiting,
+    LeftNoTrace,
+    Unconfirmed,
+    Uninhabited,
 }
 
 /// Every file under `dir` (recursively) and their total size.

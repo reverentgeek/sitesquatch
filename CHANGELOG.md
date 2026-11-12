@@ -144,9 +144,19 @@ a `v<version>` tag on a commit where that version matches.
 - `ssqch.d.ts` declares `process` (`env`, `cwd()`, `platform`), so a config that reads
   `process.env` type-checks without `@types/node` (and still does with it). The docs starter's
   `docs.js` type-checks too.
+- `--quiet` quiets `ssqch init` (it listed the files and said camp is set up) and `ssqch serve`
+  (it said `Squatch Watch is on.` and `Fresh tracks in ...` for every change): `serve --quiet`
+  prints the address once, and then only warnings and errors.
 
 ### Changed
 
+- `ssqch serve` says where first: `Serving dist at http://localhost:8080/. Squatch Watch is
+  on.` A script that waits for the line can match `Serving ` again, as it could before 0.4 (the
+  ready file, `--ready-file`, is still the way to wait).
+- A build's report has one themed line at most, the one that matters most: nothing to build, a
+  first build (`First confirmed siting.`), files removed (`left no trace`), drafts
+  (`unconfirmed`), then unused templates (`Uninhabited:`). The others say it plainly
+  (`Drafts  3 left out`, `Unused: 2 templates ...`).
 - The migration guides are trailheads, in `docs/trailheads/` ("Trailhead: moving from
   Eleventy"), and `ssqch docs --from <generator>` prints them. `ssqch import` points at
   `ssqch docs --from` instead of a file in the repository. The README's getting-started

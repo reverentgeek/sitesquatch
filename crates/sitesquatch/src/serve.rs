@@ -55,7 +55,7 @@ pub fn serve(cfg: &Config, port: u16) -> Result<()> {
     let server = listen(port, &site, &live)?;
     let _companions = crate::companions::Companions::start(&cfg.build_context(), &cfg.serve_run)?;
     live.set_site(_companions.names(), output_name(cfg));
-    let say_where = || println!("{}", banner(&site.read().unwrap(), server));
+    let say_where = || println!("{}", banner(&site.read().unwrap(), server, cfg.quiet));
     watch(cfg, &live, &|_| {}, &say_where, &|| {
         println!("Restart to use the changed configuration.");
         false
@@ -108,7 +108,9 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
         }
     }
     let server = listen(options.port, &site, &live)?;
-    let say_where = || println!("{}", banner(&site.read().unwrap(), server));
+    // `--quiet` is the command line's, which a changed configuration doesn't change.
+    let quiet = first.quiet;
+    let say_where = || println!("{}", banner(&site.read().unwrap(), server, quiet));
     let mut cfg = first;
     let mut companions = crate::companions::Companions::none();
     loop {
@@ -186,14 +188,16 @@ fn listen(port: u16, site: &Arc<RwLock<Site>>, live: &Arc<Live>) -> Result<u16> 
 /// Returned by [`watch`] when the configuration changed and loaded again.
 struct Reloaded;
 
-/// `Squatch Watch is on. Serving dist at http://localhost:8080/`: the last
+/// `Serving dist at http://localhost:8080/. Squatch Watch is on.`: the last
 /// line after every build, so a long build's output doesn't bury the address.
-fn banner(site: &Site, port: u16) -> String {
+/// With `--quiet`, just the address, after the first build.
+fn banner(site: &Site, port: u16, quiet: bool) -> String {
     // The output folder from where the command was run (`dist`), when it's below it.
     let here = std::env::current_dir().ok().and_then(|dir| dunce::canonicalize(dir).ok());
     let output = dunce::canonicalize(&site.output).unwrap_or_else(|_| site.output.clone());
     let shown = here.and_then(|dir| output.strip_prefix(dir).ok().map(crate::slashes)).filter(|rel| !rel.is_empty()).unwrap_or_else(|| site.output.display().to_string());
-    format!("{} Serving {} at http://localhost:{}{}/", crate::voice::SQUATCH_WATCH, shown, port, site.base)
+    let serving = format!("Serving {} at http://localhost:{}{}/", shown, port, site.base);
+    if quiet { serving } else { format!("{}. {}", serving, crate::voice::SQUATCH_WATCH) }
 }
 
 /// Build, then watch the site's sources and rebuild when they change. When a
@@ -273,17 +277,25 @@ fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn 
         let in_sources = |p: &PathBuf| watch_paths.iter().any(|w| p.starts_with(w)) || is_config(p);
         let show = |p: &Path| p.strip_prefix(&ctx.root).unwrap_or(p).display().to_string();
         if let Some(p) = sources.iter().find(|p| is_config(p)) {
-            println!("{} {} (reading the configuration again)", crate::voice::FRESH_TRACKS, show(p));
+            if !cfg.quiet {
+                println!("{} {} (reading the configuration again)", crate::voice::FRESH_TRACKS, show(p));
+            }
             if reload() {
                 return Ok(Reloaded);
             }
         } else if let Some(p) = sources.iter().find(|p| in_sources(p)) {
-            println!("{} {}", crate::voice::FRESH_TRACKS, show(p));
+            if !cfg.quiet {
+                println!("{} {}", crate::voice::FRESH_TRACKS, show(p));
+            }
             built_at = run_build(cfg, live).0;
-            say_where();
+            if !cfg.quiet {
+                say_where();
+            }
             watch_config_files(&mut watcher);
         } else if let Some(p) = outputs.iter().find(|p| written_by_another_tool(p, built_at)) {
-            println!("{} {} (reloading)", crate::voice::FRESH_TRACKS, show(p));
+            if !cfg.quiet {
+                println!("{} {} (reloading)", crate::voice::FRESH_TRACKS, show(p));
+            }
             live.changed(&ctx.output_dir);
         }
     }

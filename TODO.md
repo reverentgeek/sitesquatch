@@ -129,6 +129,17 @@ and `ssqch footprint` in 0.5.
       the JSON report); `the trail goes cold on 4 broken links:`; `The stump has not moved.`
       from `ssqch diff`; `Camp is set up.` from `ssqch init`; `Welcome to the woods.` from
       `ssqch import --write`; `living off the cache` with `--offline`.
+- [x] **One aside, and `--quiet` everywhere** (from `REVIEW-0.5-code-and-character.md`, built
+      2026-11-12): a build's report picks one themed line (nothing to build, first build, files
+      removed, drafts, unused templates, in that order); `init --quiet` and `serve --quiet`
+      print only warnings and errors (and the address once); the banner is `Serving dist at
+      ... Squatch Watch is on.`
+- [ ] **From the same review, not decided:** `Build recovered. Back on the trail.` when a
+      failing build works again while serving; "Copy diagnostic" and Escape in the error
+      overlay; `Field notes started.` after `ssqch new`, naming the built-in blueprint as one;
+      a next step for an empty `ssqch docs` search and for `ssqch new`'s taken name;
+      `Changes found: 2 pages. The stump has moved.` from `ssqch diff`; a skip link in the
+      docs starter; example posts (*The Cache of the Wild*, *Raiders of the Lost Path*).
 - [x] **Errors:** a port something else is squatting on; layout, include and component loops
       that name the loop (`we've passed this tree before. Layout loop: base.edge -> wrap.edge
       -> base.edge`; Edge used to print `included from` 64 times); `output conflicts (two sets

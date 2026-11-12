@@ -182,14 +182,14 @@ ssqch serve
 ```text
 First confirmed siting. Built in 2.75 ms (development)
   ...
-Squatch Watch is on. Serving dist at http://localhost:8080/
+Serving dist at http://localhost:8080/. Squatch Watch is on.
 Fresh tracks in src/posts/pine-cone-crunch.md
 Built in 1.92 ms (development)
   ...
-Squatch Watch is on. Serving dist at http://localhost:8080/
+Serving dist at http://localhost:8080/. Squatch Watch is on.
 ```
 
-The address comes after each build's report, so it's on the last line however long the build was.
+The address comes after each build's report, so it's on the last line however long the build was. With `--quiet`, the server prints the address once, without its name, and then only warnings and errors.
 
 `ssqch serve` (it answers to Squatch Watch) rebuilds when your sources change, and it's careful about what it disturbs:
 
@@ -837,13 +837,14 @@ Built in 110 ms (production)
 
 - **The first line** is `First confirmed siting. Built in ...` for a site's first build (there's no `.cache/ssqch/output-files.json` yet), which is every build on a CI machine that doesn't keep `.cache`.
 - **Pages** also says what's different from the last build to that folder: `(2 new, 1 gone)` when a page appeared or stopped being written (a post you added, a permalink you changed), and `(3 changed)` in `ssqch serve`, which leaves a page alone when it comes out the same.
-- **Drafts** is in production builds that left `draft: true` pages out: `Drafts  3 unconfirmed (built in development only)`.
-- **Removed** is the stale files `leaveNoTrace` deleted: `Removed  2 stale files, left no trace`.
+- **Drafts** is in production builds that left `draft: true` pages out: `Drafts  3 unconfirmed (built in development only)`, or `3 left out` when the report's themed line is another one.
+- **Removed** is the stale files `leaveNoTrace` deleted: `Removed  2 stale files, left no trace`, or just `2 stale files`.
+- **One themed line at most:** a report says one thing in the ranger's voice, the one that matters most (in this order: nothing to build, a first build, files removed, drafts, unused templates), and says the rest plainly.
 - **Images** counts the image files this build used, the source images they came from, and how many had to be encoded. With `prune` on, it also says how many stale files it deleted.
 - **Output** is everything in the output folder, including files left from earlier builds.
 - **Time** splits the build into phases. `write` includes layouts, transforms and image encoding, so a build that encodes images spends most of its time there. `after` is the `afterBuild` hooks.
 
-With `--verbose`, a line under the summary names the templates in the includes folder that nothing used as a layout, an include or a component in this build: `Uninhabited: 1 template that nothing used in this build (src/_includes/cabin.jinja).` It covers Jinja, Nunjucks, Edge and EJS. Liquid and Handlebars don't say what they read, so it doesn't speak for their files.
+With `--verbose`, a line under the summary names the templates in the includes folder that nothing used as a layout, an include or a component in this build: `Uninhabited: 1 template that nothing used in this build (src/_includes/cabin.jinja).` (`Unused:` when the report's themed line is another one.) It covers Jinja, Nunjucks, Edge and EJS. Liquid and Handlebars don't say what they read, so it doesn't speak for their files.
 
 `ssqch serve` prints the same summary after every rebuild.
 

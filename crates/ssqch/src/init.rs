@@ -203,7 +203,12 @@ pub fn run_init(matches: &clap::ArgMatches) -> ExitCode {
         "site" | "docs" => Engine::named(engine).and_then(|engine| init_starter(&dir, starter, engine)),
         other => Err(anyhow::anyhow!("--starter {}: not a starter (use {})", other, STARTERS.join(" or "))),
     };
+    // `--quiet`: only warnings and errors.
+    let quiet = matches.try_get_one::<bool>("quiet").ok().flatten().copied().unwrap_or(false);
     report(result.map(|(written, skipped)| {
+        if quiet {
+            return;
+        }
         for path in &written {
             println!("  created {}", show(&dir, path));
         }

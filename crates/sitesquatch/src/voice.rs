@@ -9,7 +9,7 @@
 //!
 //! The lines more than one place uses (or a test names) are here.
 
-/// The dev server's name, at the start of the line that says where it serves.
+/// The dev server's name, after the line that says where it serves.
 pub const SQUATCH_WATCH: &str = "Squatch Watch is on.";
 
 /// A source file changed while serving: `Fresh tracks in src/posts/hello.md`.
