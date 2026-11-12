@@ -59,7 +59,7 @@ a `v<version>` tag on a commit where that version matches.
   `--format json`.
 - `budgets: { pages: "150 KB", images: "500 KB", total: "300 MB" }` (`[budgets]` in
   `sitesquatch.toml`): after each build, files over their kind's budget are a warning
-  (`bigfootprint`).
+  (`over-budget`).
 - `serve: { run: [...] }` (`[serve] run` in `sitesquatch.toml`): programs `ssqch serve` starts
   with the server and stops with it, such as `npx @tailwindcss/cli ... --watch`. Their output
   is shown with the tool's name in front (`[tailwindcss] Done in 16ms`), they keep running

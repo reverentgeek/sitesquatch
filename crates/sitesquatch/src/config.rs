@@ -290,7 +290,7 @@ pub struct Config {
     /// output is shown with the tool's name in front. Builds don't run them.
     pub serve_run: Vec<String>,
     /// Size budgets by kind of file (`pages`, `images`, ..., `total`), in bytes:
-    /// a file over its budget is a `bigfootprint` warning after each build.
+    /// a file over its budget is an `over-budget` warning after each build.
     pub budgets: Vec<(String, u64)>,
     pub env: Environment,
     pub serving: bool,

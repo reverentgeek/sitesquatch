@@ -228,7 +228,7 @@ declare module "ssqch" {
 		theme?: ThemeSource | ThemeSource[];
 		/** Content schemas, by name: `{ posts: { fields: { title: "string", date: "date" } } }` checks every page tagged `posts`. */
 		schemas?: Record<string, Schema>;
-		/** Size budgets by kind of file, checked after each build: a file over its kind's budget is a `bigfootprint` warning. Sizes are bytes or strings like `"150 KB"` and `"1.5 MB"` (powers of 1,000). */
+		/** Size budgets by kind of file, checked after each build: a file over its kind's budget is an `over-budget` warning. Sizes are bytes or strings like `"150 KB"` and `"1.5 MB"` (powers of 1,000). */
 		budgets?: Partial<Record<"pages" | "images" | "css" | "javascript" | "fonts" | "media" | "documents" | "data" | "other" | "total", number | string>>;
 		/** What `ssqch serve` runs besides the server. */
 		serve?: {

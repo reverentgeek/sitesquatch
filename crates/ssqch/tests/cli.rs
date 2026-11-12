@@ -257,9 +257,13 @@ fn ejs_templates_render_as_ejs_does() {
         ("<%- include('partials/card', { name: 'Cedar' }) %>\n<%- include('partials/card', { name: 'Old Growth', extra: 'x' }) %>\n", "<div class=\"card\">Cedar</div>\n\n<div class=\"card\">Old Growth (x)</div>\n\n"),
         ("<% const shout = s => s.toUpperCase(); %><%= shout(title) %>\n<%= locals.title %> <%= typeof missing %>\n", "SQUATCH &lt;SNACKS&gt;\nSquatch &lt;Snacks&gt; undefined\n"),
         ("<%= title; %>\n<%\n  let total = 0;\n  for (const i of items) total += i.n;\n%>\nTotal: <%= total %>\n", "Squatch &lt;Snacks&gt;\n\nTotal: 5\n"),
-        ("Quotes: <%= q %>\n<% if (items.length > 1) { %>many<% } else { %>one<% } %>\n", "Quotes: &#34;a&#34; &amp; &#39;b&#39;\nmany\n")
+        ("Quotes: <%= q %>\n<% if (items.length > 1) { %>many<% } else { %>one<% } %>\n", "Quotes: &#34;a&#34; &amp; &#39;b&#39;\nmany\n"),
+        // An include inside an include gets its parent's data too, and names can be Unicode.
+        ("<%- include('outer', { animal: 'fox' }) %>\n<%= café %>\n", "[fox|fox|undefined][fox|fox|string]\nowl\n"),
     ];
-    let data = "---\ntitle: \"Squatch <Snacks>\"\nhtml: \"<b>bold</b>\"\nq: \"\\\"a\\\" & 'b'\"\nitems:\n  - { name: pine cone, n: 2 }\n  - { name: Crunch, n: 3 }\n";
+    write("_includes/outer.ejs", "[<%- include(\"inner\") %>][<%- include(\"inner\", { trail: \"Cedar\" }) %>]");
+    write("_includes/inner.ejs", "<%= animal %>|<%= locals.animal %>|<%= typeof trail %>");
+    let data = "---\ncafé: owl\ntitle: \"Squatch <Snacks>\"\nhtml: \"<b>bold</b>\"\nq: \"\\\"a\\\" & 'b'\"\nitems:\n  - { name: pine cone, n: 2 }\n  - { name: Crunch, n: 3 }\n";
     for (i, (source, _)) in cases.iter().enumerate() {
         write(&format!("cases/c{}.ejs", i), &format!("{}permalink: /c{}.html\n---\n{}", data, i, source));
     }
@@ -271,7 +275,7 @@ fn ejs_templates_render_as_ejs_does() {
     for (i, (source, want)) in cases.iter().enumerate() {
         assert_eq!(read(&format!("c{}.html", i)), *want, "{}", source);
     }
-    assert_eq!(read("trail/index.html"), "<main><h1 id=\"trail\">Trail</h1>\n<p>9 pages.</p>\n</main><footer>STUMP! <em>Pine</em> /trail/</footer>\n");
+    assert_eq!(read("trail/index.html"), "<main><h1 id=\"trail\">Trail</h1>\n<p>10 pages.</p>\n</main><footer>STUMP! <em>Pine</em> /trail/</footer>\n");
 
     // Errors name the template and line, and the frame shows the file's own lines.
     let fails = |source: &str, message: &str| {
@@ -936,6 +940,39 @@ fn serve_runs_companion_processes() {
     assert!(!ok && log.contains("serve: \"runs\" isn't an option (options: run)"), "{}", log);
 }
 
+/// A companion that stopped starts again when the config is saved, and all of them start again
+/// when the folders they were given change.
+#[cfg(unix)]
+#[test]
+fn serve_restarts_companions_on_reload() {
+    let dir = temp_dir("serve-companions-reload");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/index.html"), "<p>camp</p>").unwrap();
+    let config = |extra: &str| format!("export default {{ dirs: {{ input: \"src\"{} }}, serve: {{ run: [\"echo out=$SSQCH_OUTPUT\"] }} }};\n", extra);
+    std::fs::write(dir.join("ssqch.config.js"), config("")).unwrap();
+    let log = temp_dir("serve-companions-reload-log");
+    let out = std::fs::File::create(&log).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(["serve", "--port", "0", "--root"]).arg(&dir).stdout(out.try_clone().unwrap()).stderr(out).spawn().unwrap();
+    let _server = Server(child);
+    let read = || std::fs::read_to_string(&log).unwrap_or_default();
+    let wait_count = |text: &str, n: usize| {
+        let started = std::time::Instant::now();
+        while read().matches(text).count() < n {
+            assert!(started.elapsed() < std::time::Duration::from_secs(15), "waiting for {} of {:?}:\n{}", n, text, read());
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    };
+    wait_count("warn: serve.run: `echo out=$SSQCH_OUTPUT` finished. The server keeps going without it; save the config file to start it again.", 1);
+    assert!(read().contains("[echo] out=") && read().contains("_site\n"), "{}", read());
+    // Saved as it was: the one that finished starts again.
+    std::fs::write(dir.join("ssqch.config.js"), config("")).unwrap();
+    wait_count("[ssqch] serve.run: echo out=$SSQCH_OUTPUT", 2);
+    // Another output folder: started again, with it.
+    std::fs::write(dir.join("ssqch.config.js"), config(", output: \"dist\"")).unwrap();
+    wait_count("[ssqch] serve.run: echo out=$SSQCH_OUTPUT", 3);
+    wait_count("dist\n", 1);
+}
+
 /// A stylesheet a page links that nothing wrote: the page asks the server, which says so once,
 /// names what could have written it, and says it again after each build until it's there.
 #[test]
@@ -1006,7 +1043,7 @@ fn footprint_weighs_a_build() {
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok && log.contains("warn: /big.bin (5.00 KB) is over the other budget of 4.00 KB\n") && !log.contains("pages budget"), "{}", log);
     let (_, stdout, _) = ssqch_outputs(&["build", "--root", d, "--format", "json"]);
-    assert!(stdout.contains("\"code\": \"bigfootprint\""), "{}", stdout);
+    assert!(stdout.contains("\"code\": \"over-budget\""), "{}", stdout);
     std::fs::write(dir.join("ssqch.config.js"), "export default { budgets: { page: \"100 KB\" } };\n").unwrap();
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(!ok && log.contains("budgets.page isn't a kind of file (did you mean `pages`?)"), "{}", log);

@@ -28,11 +28,11 @@ const GUIDES_URL: &str = "https://github.com/reverentgeek/sitesquatch/blob";
 pub fn docs_command() -> clap::Command {
     clap::Command::new("docs")
         .about("Read the documentation for this version: a command, config option, function or topic")
-        .arg(clap::Arg::new("query").num_args(0..).allow_hyphen_values(true).trailing_var_arg(true).value_name("NAME OR WORDS").help("A name (base, imagePlugin, toc, serve), another generator's word (pathPrefix), or words from a heading (\"content schemas\")"))
+        .arg(clap::Arg::new("query").num_args(0..).value_name("NAME OR WORDS").help("A name (base, imagePlugin, toc, serve), another generator's word (pathPrefix), or words from a heading (\"content schemas\")"))
         .arg(clap::Arg::new("from").long("from").value_name("GENERATOR").help("Another generator's words and ssqch's names for them: eleventy, hugo, jekyll, zola, ..."))
         .arg(clap::Arg::new("format").long("format").value_name("FORMAT").help("text or json").default_value("text"))
         .after_help(
-            "Without a name, it lists everything, one line each.\n\n  ssqch docs\n  ssqch docs base\n  ssqch docs \"content schemas\"\n  ssqch docs pathPrefix          (another generator's word: says ssqch's)\n  ssqch docs --from eleventy\n\nThe text is this version's README, built into the binary.",
+            "Without a name, it lists everything, one line each.\n\n  ssqch docs\n  ssqch docs base\n  ssqch docs \"content schemas\"\n  ssqch docs pathPrefix          (another generator's word: says ssqch's)\n  ssqch docs --from eleventy\n  ssqch docs -- --starter        (a flag: after --)\n\nThe text is this version's README, built into the binary.",
         )
 }
 

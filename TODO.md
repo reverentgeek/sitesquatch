@@ -160,7 +160,7 @@ and `ssqch footprint` in 0.5.
       with `Largest footprints` (the heaviest pages and files) and `--format json`. It reads
       an output folder, as `ssqch diff` does. Done (`crates/sitesquatch/src/footprint.rs`); on
       the blog, 4,965 files, 302 MB, 96% of it images.
-  - [x] Budgets in the config, with a `bigfootprint` warning for a page over its budget:
+  - [x] Budgets in the config, with an `over-budget` warning for a page over its budget:
         `budgets: { pages: "150 KB", ... }` by kind of file, and `total`, checked after the
         after-build hooks.
 - Left alone on purpose: front matter errors, Edge expression errors (they copy JavaScript's

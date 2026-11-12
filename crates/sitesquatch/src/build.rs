@@ -108,7 +108,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
     let Prepared { markdown, engines, theme_includes, global, files, tpls, mut pages, theme_copies, drafts, layouts_used } = prepare(cfg, &ctx, &mut timer, false)?;
     check_schemas(cfg, &ctx, &pages)?;
     check_foreign_keys(&ctx, &pages);
-    check_foreign_globals(&ctx, &tpls, &theme_includes, &global);
+    check_foreign_globals(&ctx, &tpls, &theme_includes, &global, &pages);
     timer.lap("paginate");
 
     // ---- render bodies
@@ -1480,23 +1480,20 @@ fn check_foreign_keys(ctx: &BuildContext, pages: &[Page]) {
 /// (`eleventy.generator`, Jekyll's `site.posts`), which print nothing or an
 /// empty list here, quietly. Pages, their layouts and the includes are read.
 /// `site.posts` is the site's own when its `site` data has `posts`.
-fn check_foreign_globals(ctx: &BuildContext, tpls: &[Arc<Tpl>], theme_includes: &[PathBuf], global: &Map) {
+fn check_foreign_globals(ctx: &BuildContext, tpls: &[Arc<Tpl>], theme_includes: &[PathBuf], global: &Map, pages: &[Page]) {
     use crate::equivalents::{Kind, TABLE};
-    let rows: Vec<_> = TABLE
-        .iter()
-        .filter(|e| e.kind == Kind::Global)
-        .filter(|e| match e.word.strip_prefix("site.") {
-            Some(key) => global.get("site").map(|site| matches!(site.get(key), Value::Undefined)).unwrap_or(true),
-            None => true,
-        })
-        .collect();
-    let mut sources: Vec<(String, String)> = Vec::new();
+    // `site.posts` is Jekyll's only where nothing gives `site` a `posts`: not the
+    // global data, and not a page's own data (front matter, directory data).
+    let defines = |data: &Map, key: &str| data.get("site").is_some_and(|site| !matches!(site.get(key), Value::Undefined));
+    let rows: Vec<_> = TABLE.iter().filter(|e| e.kind == Kind::Global).filter(|e| e.word.strip_prefix("site.").is_none_or(|key| !defines(global, key))).collect();
+    // Each template's text, with the pages it makes (none for layouts and includes).
+    let mut sources: Vec<(String, String, Option<&Arc<Tpl>>)> = Vec::new();
     let mut seen = HashSet::new();
     for tpl in tpls {
-        sources.push((display_path(ctx, &tpl.input), tpl.body.clone()));
+        sources.push((display_path(ctx, &tpl.input), tpl.body.clone(), Some(tpl)));
         for layout in &tpl.layouts {
             if seen.insert(layout.path.clone()) {
-                sources.push((display_path(ctx, &layout.path), layout.body.clone()));
+                sources.push((display_path(ctx, &layout.path), layout.body.clone(), None));
             }
         }
     }
@@ -1504,13 +1501,21 @@ fn check_foreign_globals(ctx: &BuildContext, tpls: &[Arc<Tpl>], theme_includes: 
         for entry in walkdir::WalkDir::new(dir).into_iter().filter_map(Result::ok).filter(|e| e.file_type().is_file()) {
             if seen.insert(entry.path().to_path_buf()) {
                 if let Ok(text) = std::fs::read_to_string(entry.path()) {
-                    sources.push((display_path(ctx, entry.path()), text));
+                    sources.push((display_path(ctx, entry.path()), text, None));
                 }
             }
         }
     }
+    // Whether the pages a source renders for have the value: its own pages, or any page for a layout or include.
+    let has_value = |key: &str, tpl: Option<&Arc<Tpl>>| pages.iter().filter(|p| tpl.is_none_or(|t| Arc::ptr_eq(&p.tpl, t))).any(|p| defines(&p.data, key));
     for row in rows {
-        let mut files: Vec<String> = sources.iter().filter(|(_, text)| text.contains(row.word) && (tag_code_mentions(text, row.word) || edge_code_mentions(text, row.word))).map(|(file, _)| file.trim_start_matches("./").to_string()).collect();
+        let key = row.word.strip_prefix("site.");
+        let mut files: Vec<String> = sources
+            .iter()
+            .filter(|(_, text, _)| text.contains(row.word) && (tag_code_mentions(text, row.word) || edge_code_mentions(text, row.word)))
+            .filter(|(_, _, tpl)| key.is_none_or(|key| !has_value(key, *tpl)))
+            .map(|(file, ..)| file.trim_start_matches("./").to_string())
+            .collect();
         files.sort();
         files.dedup();
         let shown = row.word.trim_end_matches('.');

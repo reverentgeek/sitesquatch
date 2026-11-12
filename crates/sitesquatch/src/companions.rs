@@ -26,12 +26,17 @@ static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 /// The companions of one configuration. Dropping it stops them.
 pub struct Companions {
     commands: Vec<String>,
+    /// What they were started with (root, env, input and output folders), so
+    /// a reload that changes those starts them again.
+    started_with: Vec<String>,
     running: Vec<Running>,
 }
 
 struct Running {
     pid: u32,
     stopping: Arc<AtomicBool>,
+    /// Set when the process exits, so the next reload starts it again.
+    exited: Arc<AtomicBool>,
     /// Held open: Tailwind's and esbuild's `--watch` stop when their standard
     /// input closes, which a null one does at once.
     stdin: Option<std::process::ChildStdin>,
@@ -40,13 +45,13 @@ struct Running {
 impl Companions {
     /// No companions.
     pub fn none() -> Self {
-        Companions { commands: Vec::new(), running: Vec::new() }
+        Companions { commands: Vec::new(), started_with: Vec::new(), running: Vec::new() }
     }
 
     /// Start `commands`. One that can't start is an error naming it (the ones
     /// before it are stopped again).
     pub fn start(ctx: &BuildContext, commands: &[String]) -> Result<Self> {
-        let mut companions = Companions { commands: commands.to_vec(), running: Vec::new() };
+        let mut companions = Companions { commands: commands.to_vec(), started_with: environment(ctx), running: Vec::new() };
         if commands.is_empty() {
             return Ok(companions);
         }
@@ -77,17 +82,21 @@ impl Companions {
                 std::thread::spawn(move || relay(err, &name, true));
             }
             let stopping = Arc::new(AtomicBool::new(false));
-            let flag = stopping.clone();
+            let exited = Arc::new(AtomicBool::new(false));
+            let (flag, done) = (stopping.clone(), exited.clone());
             let shown = command.clone();
-            std::thread::spawn(move || wait(child, &shown, &flag));
-            companions.running.push(Running { pid, stopping, stdin });
+            std::thread::spawn(move || wait(child, &shown, &flag, &done));
+            companions.running.push(Running { pid, stopping, exited, stdin });
         }
         Ok(companions)
     }
 
-    /// Whether these are the companions `commands` would start.
-    pub fn runs(&self, commands: &[String]) -> bool {
-        self.commands == commands
+    /// Whether these are the companions `commands` would start in `ctx`, all
+    /// still running. A reload keeps them only then: one that stopped starts
+    /// again, and so do all of them when the output folder or the environment
+    /// they were given changed.
+    pub fn runs(&self, ctx: &BuildContext, commands: &[String]) -> bool {
+        self.commands == commands && self.started_with == environment(ctx) && !self.running.iter().any(|r| r.exited.load(Ordering::SeqCst))
     }
 
     /// The tools' names (`postcss`, `esbuild`), for messages about a file one of them should have written.
@@ -106,6 +115,11 @@ impl Drop for Companions {
         }
         RUNNING.lock().unwrap().retain(|pid| !self.running.iter().any(|r| r.pid == *pid));
     }
+}
+
+/// What a companion is given: its folder and its `SSQCH_*` variables.
+fn environment(ctx: &BuildContext) -> Vec<String> {
+    [ctx.root.display().to_string(), ctx.env.as_str().to_string(), ctx.input_dir.display().to_string(), ctx.output_dir.display().to_string()].to_vec()
 }
 
 /// `sh -c command` (`cmd /C` on Windows), in a process group of its own.
@@ -165,8 +179,9 @@ fn relay(stream: impl std::io::Read, name: &str, error: bool) {
 }
 
 /// Wait for a companion, and say so if it stops while the server is still up.
-fn wait(mut child: Child, command: &str, stopping: &AtomicBool) {
+fn wait(mut child: Child, command: &str, stopping: &AtomicBool, exited: &AtomicBool) {
     let status = child.wait();
+    exited.store(true, Ordering::SeqCst);
     if stopping.load(Ordering::SeqCst) || SHUTTING_DOWN.load(Ordering::SeqCst) {
         return;
     }
@@ -175,7 +190,7 @@ fn wait(mut child: Child, command: &str, stopping: &AtomicBool) {
         Ok(s) => s.code().map(|c| format!("exited with status {}", c)).unwrap_or_else(|| "was stopped".into()),
         Err(e) => format!("couldn't be waited for ({})", e),
     };
-    eprintln!("warn: serve.run: `{}` {}. The server keeps going without it; save ssqch.config.js to start it again.", command, how);
+    eprintln!("warn: serve.run: `{}` {}. The server keeps going without it; save the config file to start it again.", command, how);
 }
 
 /// Stop the companions on Ctrl-C (and on SIGTERM or SIGHUP), then exit.

@@ -197,13 +197,13 @@ pub fn budget(name: &str, size: &crate::Value) -> anyhow::Result<(String, u64)> 
 }
 
 /// The files in `footprint` over their kind's budget (and the build, over
-/// `total`), each kind as one `bigfootprint` warning.
+/// `total`), each kind as one `over-budget` warning.
 pub fn over_budget(footprint: &Footprint, budgets: &[(String, u64)]) -> Vec<crate::diagnostics::Diagnostic> {
     let mut out = Vec::new();
     for (name, limit) in budgets {
         if name == "total" {
             if footprint.bytes > *limit {
-                out.push(crate::diagnostics::Diagnostic::warning("bigfootprint", format!("the build is {}, over its total budget of {}", bytes(footprint.bytes), bytes(*limit))));
+                out.push(crate::diagnostics::Diagnostic::warning("over-budget", format!("the build is {}, over its total budget of {}", bytes(footprint.bytes), bytes(*limit))));
             }
             continue;
         }
@@ -217,7 +217,7 @@ pub fn over_budget(footprint: &Footprint, budgets: &[(String, u64)]) -> Vec<crat
             [one] => format!("{} is over the {} budget of {}", shown(one), name, bytes(*limit)),
             many => format!("{} {}s are over the {} budget of {}: {}{}", many.len(), what, name, bytes(*limit), many.iter().take(5).map(|f| shown(f)).collect::<Vec<_>>().join(", "), if many.len() > 5 { ", ..." } else { "" }),
         };
-        out.push(crate::diagnostics::Diagnostic::warning("bigfootprint", message));
+        out.push(crate::diagnostics::Diagnostic::warning("over-budget", message));
     }
     out
 }

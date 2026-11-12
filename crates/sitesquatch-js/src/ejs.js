@@ -49,7 +49,8 @@
 	const RESERVED = new Set( ( "break case catch class const continue debugger default delete do else enum export extends false finally for function if import in instanceof " +
 		"new null return super switch this throw true try typeof var void while with yield let static implements interface package private protected public await " +
 		"arguments eval undefined NaN Infinity include" ).split( " " ) );
-	const IDENTIFIER = /(?<![\w$.])[A-Za-z_$][\w$]*/g;
+	// JavaScript's identifiers, Unicode ones included (`café`).
+	const IDENTIFIER = /(?<![\p{ID_Continue}$\u200c\u200d.])[\p{ID_Start}_$][\p{ID_Continue}$\u200c\u200d]*/gu;
 
 	// A template as code: the statements that build `__out` (with `__line`
 	// following the template's line for errors), and the names its code uses.
@@ -195,15 +196,22 @@
 				const found = load( file, String( wanted ) );
 				if ( found.length === 1 ) throw new Error( found[0] );
 				const [ path, shown, text ] = found;
-				return run( template( "include:" + path, text, shown ), path, data ?? {}, depth + 1 );
+				// As in EJS, an include gets what its parent had, with its own data on top.
+				return run( template( "include:" + path, text, shown ), path, data ? { ...extra, ...data } : extra, depth + 1 );
 			};
+			// `locals` is the page's data with the includes' data on top. It's a view,
+			// so the page's data isn't copied.
+			const view = () => Object.keys( extra ).length === 0 ? locals : new Proxy( locals, {
+				get: ( target, key ) => key in extra ? extra[key] : target[key],
+				has: ( target, key ) => key in extra || key in target,
+			} );
 			// What each name is: an include's data, then the page's, then a filter or
 			// function. Values are read, not tested with `in`, which would make a view
 			// list every key of the page's data. A name nothing defines is left out, so
 			// using it is a ReferenceError, as in EJS (and `typeof` it is "undefined").
 			const present = [], values = [];
 			for ( const n of parsed.names ) {
-				let v = n === "locals" ? locals : n in extra ? extra[n] : locals[n];
+				let v = n === "locals" ? view() : n in extra ? extra[n] : locals[n];
 				if ( v === undefined ) v = globals[n];
 				if ( v !== undefined || n in extra ) {
 					present.push( n );

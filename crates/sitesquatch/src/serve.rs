@@ -113,8 +113,9 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
     let mut companions = crate::companions::Companions::none();
     loop {
         *site.write().unwrap() = Site::of(&cfg);
-        // The configuration's companion processes, kept running across a reload that doesn't change them.
-        if !companions.runs(&cfg.serve_run) {
+        // The configuration's companion processes, kept running across a reload that doesn't change
+        // them (or their folders), and started again if one has stopped.
+        if !companions.runs(&cfg.build_context(), &cfg.serve_run) {
             drop(std::mem::replace(&mut companions, crate::companions::Companions::none()));
             companions = crate::companions::Companions::start(&cfg.build_context(), &cfg.serve_run)?;
         }
