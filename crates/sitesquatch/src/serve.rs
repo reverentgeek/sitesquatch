@@ -207,7 +207,7 @@ fn banner(site: &Site, port: u16, quiet: bool) -> String {
 /// after each build.
 fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn Fn(), reload: &dyn Fn() -> bool) -> Result<Reloaded> {
     let ctx = cfg.build_context();
-    let (mut built_at, ok) = run_build(cfg, live);
+    let ok = run_build(cfg, live);
     first_build(ok);
     say_where();
 
@@ -287,16 +287,21 @@ fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn 
             if !cfg.quiet {
                 println!("{} {}", crate::voice::FRESH_TRACKS, show(p));
             }
-            built_at = run_build(cfg, live).0;
+            run_build(cfg, live);
             if !cfg.quiet {
                 say_where();
             }
             watch_config_files(&mut watcher);
-        } else if let Some(p) = outputs.iter().find(|p| written_by_another_tool(p, built_at)) {
-            if !cfg.quiet {
-                println!("{} {} (reloading)", crate::voice::FRESH_TRACKS, show(p));
+        } else if outputs.iter().any(|p| is_asset(p)) {
+            // Another tool (PostCSS, esbuild) wrote a stylesheet or a script, or ssqch's own
+            // write is late to arrive: the contents say which, so a tool's write that landed
+            // during a build isn't missed.
+            let changed = live.changed(&ctx.output_dir);
+            if let Some(file) = changed.iter().find(|f| is_asset(Path::new(f))) {
+                if !cfg.quiet {
+                    println!("{} {} (reloading)", crate::voice::FRESH_TRACKS, show(&ctx.output_dir.join(file)));
+                }
             }
-            live.changed(&ctx.output_dir);
         }
     }
 }
@@ -310,16 +315,37 @@ fn fingerprint(path: &Path) -> Option<u64> {
     Some(hasher.finish())
 }
 
-/// A CSS or JavaScript file in the output that changed after the last build
-/// finished, so another tool wrote it (ssqch's own copies are older).
-fn written_by_another_tool(path: &Path, built_at: SystemTime) -> bool {
-    let asset = path.extension().is_some_and(|e| e == "css" || e == "js" || e == "mjs");
-    asset && std::fs::metadata(path).and_then(|m| m.modified()).is_ok_and(|t| t > built_at)
+/// A stylesheet or a script: what other tools write into the output while serving.
+fn is_asset(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e == "css" || e == "js" || e == "mjs")
+}
+
+/// The stamps of files another tool may still be writing, once they have stopped changing:
+/// two looks 40 ms apart that agree, and not empty (PostCSS empties a file before it writes the
+/// new one) unless it stays that way for a second. `None` for one that's gone.
+fn settled(paths: &[PathBuf]) -> Vec<Option<(u64, u64)>> {
+    let look = |path: &PathBuf| std::fs::metadata(path).ok().map(|meta| stamp(path, &meta));
+    let start = std::time::Instant::now();
+    let mut last: Vec<Option<(u64, u64)>> = paths.iter().map(look).collect();
+    let mut done = vec![false; paths.len()];
+    while done.iter().any(|d| !d) {
+        std::thread::sleep(Duration::from_millis(40));
+        let late = start.elapsed() > Duration::from_secs(1);
+        for (i, path) in paths.iter().enumerate() {
+            if done[i] {
+                continue;
+            }
+            let now = look(path);
+            done[i] = late || now.is_none() || (now == last[i] && now.is_some_and(|(len, _)| len > 0));
+            last[i] = now;
+        }
+    }
+    last
 }
 
 /// Build, print the summary (or the error), and tell the browsers. Returns
-/// when the build finished, and whether it worked.
-fn run_build(cfg: &Config, live: &Live) -> (SystemTime, bool) {
+/// whether it worked.
+fn run_build(cfg: &Config, live: &Live) -> bool {
     let ok = match crate::build(cfg) {
         Ok(report) => {
             crate::cli::print_report(cfg, &report);
@@ -336,7 +362,7 @@ fn run_build(cfg: &Config, live: &Live) -> (SystemTime, bool) {
             false
         }
     };
-    (SystemTime::now(), ok)
+    ok
 }
 
 /// What the browsers ask about: what changed, and whether the build works.
@@ -401,23 +427,43 @@ impl Live {
     }
 
     /// The output may have changed: a build finished, or another tool wrote
-    /// there. Look at every file, and note the ones that differ.
-    fn changed(&self, output: &Path) {
-        let now: HashMap<String, (u64, u64)> = walkdir::WalkDir::new(output)
+    /// there. Look at every file, and note the ones that differ (which this
+    /// returns). A stylesheet or script that differs is looked at again once
+    /// it has stopped changing, so browsers never fetch one half written.
+    fn changed(&self, output: &Path) -> Vec<String> {
+        let mut now: HashMap<String, (u64, u64)> = walkdir::WalkDir::new(output)
             .into_iter()
             .filter_map(Result::ok)
             .filter(|e| e.file_type().is_file())
             .filter_map(|e| Some((crate::slashes(e.path().strip_prefix(output).ok()?), stamp(e.path(), &e.metadata().ok()?))))
             .collect();
+        let differs = |seen: &HashMap<String, (u64, u64)>, now: &HashMap<String, (u64, u64)>| -> Vec<String> {
+            now.iter().filter(|(file, at)| seen.get(*file) != Some(at)).map(|(file, _)| file.clone()).chain(seen.keys().filter(|file| !now.contains_key(*file)).cloned()).collect()
+        };
+        // Without holding the lock, so browsers' questions are answered meanwhile (with the
+        // last state: they don't hear of a change until it has settled).
+        let first = differs(&self.0.lock().unwrap().seen, &now);
+        let writing: Vec<String> = first.into_iter().filter(|f| now.contains_key(f) && is_asset(Path::new(f))).collect();
+        let paths: Vec<PathBuf> = writing.iter().map(|file| output.join(file)).collect();
+        for (file, at) in writing.iter().zip(settled(&paths)) {
+            match at {
+                Some(at) => now.insert(file.clone(), at),
+                None => now.remove(file),
+            };
+        }
         let mut state = self.0.lock().unwrap();
+        let differs = differs(&state.seen, &now);
+        if differs.is_empty() && state.error.is_none() {
+            return differs;
+        }
         state.id += 1;
         state.error = None;
         let id = state.id;
-        let differs: Vec<String> = now.iter().filter(|(file, at)| state.seen.get(*file) != Some(at)).map(|(file, _)| file.clone()).chain(state.seen.keys().filter(|file| !now.contains_key(*file)).cloned()).collect();
-        for file in differs {
-            state.changed_at.insert(file, id);
+        for file in &differs {
+            state.changed_at.insert(file.clone(), id);
         }
         state.seen = now;
+        differs
     }
 
     /// A build failed: the output is as it was, and browsers show `error`.
@@ -737,6 +783,20 @@ mod tests {
         live.changed(&dir);
         assert_eq!(answer(Some(6), "about/index.html"), r#"{"id":7,"error":null,"reload":true,"css":[]}"#);
         assert_eq!(answer(Some(40), "index.html"), r#"{"id":7,"error":null,"reload":true,"css":[]}"#);
+
+        // A stylesheet a tool empties and then writes (as PostCSS does) is heard about once it's
+        // written: browsers don't fetch it empty. Looking again with nothing new says nothing.
+        write("assets/index.css", "");
+        let css = dir.join("assets/index.css");
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            std::fs::write(css, "body{color:green}").unwrap();
+        });
+        assert_eq!(live.changed(&dir), ["assets/index.css"]);
+        writer.join().unwrap();
+        assert_eq!(live.0.lock().unwrap().seen["assets/index.css"].0, 17);
+        assert!(live.changed(&dir).is_empty());
+        assert_eq!(answer(Some(7), "index.html"), r#"{"id":8,"error":null,"reload":false,"css":["/repo/assets/index.css"]}"#);
 
         assert!(links_an_icon(r#"<head><link rel="icon" href="/i.png"></head>"#));
         assert!(links_an_icon(r#"<LINK href="/i.ico" REL='shortcut icon'>"#));

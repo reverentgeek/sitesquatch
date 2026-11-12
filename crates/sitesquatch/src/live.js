@@ -86,13 +86,37 @@
 	};
 	check(assets());
 	// A changed stylesheet is fetched again in place: the page keeps its scroll position and its forms.
-	const swap = (path, id) => {
+	// The new one loads next to the old, which goes once it's there, so the page is never unstyled
+	// in between. One that doesn't load, or comes back empty where the old one had rules (a tool
+	// still writing it), leaves the old one in place and is tried again.
+	const loading = new Map();
+	const rules = link => {
+		try {
+			return link.sheet?.cssRules.length ?? 0;
+		} catch {
+			return 1;
+		}
+	};
+	const swap = (path, id, tries = 0) => {
+		const replacements = new Set(loading.values());
 		for (const link of document.querySelectorAll('link[rel~="stylesheet"]')) {
 			const url = new URL(link.href, location.href);
-			if (url.origin === location.origin && url.pathname === path) {
-				url.searchParams.set("ssqch", id);
-				link.href = url.href;
-			}
+			if (replacements.has(link) || url.origin !== location.origin || url.pathname !== path) continue;
+			url.searchParams.set("ssqch", tries ? `${id}.${tries}` : id);
+			// A newer change replaces one still loading.
+			loading.get(link)?.remove();
+			const next = link.cloneNode();
+			next.href = url.href;
+			const done = ok => {
+				if (loading.get(link) !== next) return;
+				loading.delete(link);
+				(ok ? link : next).remove();
+				if (!ok && tries < 5) setTimeout(() => swap(path, id, tries + 1), 300);
+			};
+			next.addEventListener("load", () => done(rules(next) > 0 || rules(link) === 0), { once: true });
+			next.addEventListener("error", () => done(false), { once: true });
+			loading.set(link, next);
+			link.after(next);
 		}
 	};
 	setInterval(async () => {

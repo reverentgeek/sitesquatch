@@ -144,6 +144,13 @@ a `v<version>` tag on a commit where that version matches.
 - `ssqch.d.ts` declares `process` (`env`, `cwd()`, `platform`), so a config that reads
   `process.env` type-checks without `@types/node` (and still does with it). The docs starter's
   `docs.js` type-checks too.
+- `ssqch serve` could leave a page unstyled after a CSS change until it was reloaded by hand.
+  Swapping a stylesheet dropped the old one before the new one loaded, so a request that got
+  an empty or half-written file (PostCSS empties the file before it writes it) left the page
+  without CSS. Now the old stylesheet stays until the new one has loaded with rules, and one
+  that doesn't load or is empty is tried again. The server also waits for a stylesheet or
+  script another tool is writing to stop changing before telling browsers, and no longer
+  misses one written while a build was running.
 - `--quiet` quiets `ssqch init` (it listed the files and said camp is set up) and `ssqch serve`
   (it said `Squatch Watch is on.` and `Fresh tracks in ...` for every change): `serve --quiet`
   prints the address once, and then only warnings and errors.
