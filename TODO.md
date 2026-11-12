@@ -665,8 +665,9 @@ I'd take them (the first three went into 0.4):
       what each case printed before is in `research/exact-agent-first.md`). Where a command,
       flag, config option, filter or front-matter key is common in other generators and ssqch
       has the same thing under its own name, the error says the equivalent and where to read
-      about it, so people and agents learn as they go. It teaches and never accepts: no
-      foreign name starts working, so the "no Eleventy" rule stands. Built for 0.5.
+      about it, so people and agents learn as they go. Every row refuses its word
+      (aliases were decided against at first; that changed on 2026-11-11, see below). Built for
+      0.5.
   - [x] One table of equivalents (the word, its kind, whose it is, ssqch's name, what to say,
         where to read more): `crates/sitesquatch/src/equivalents.rs`. `ssqch import` reads its
         front-matter renames from it. Every row is tested
@@ -701,6 +702,11 @@ I'd take them (the first three went into 0.4):
   - [x] Found on the way: Liquid's `Unknown filter` didn't name the filter; it does now, with a
         "did you mean". (`Nothing sighted` had an empty folder name when the input folder is
         the project root; fixed: it says `.`.)
+- [ ] **Aliases for other generators' words** (decided 2026-11-11: familiar and inviting is
+      the goal, and an alias that eases the move is welcome; copying a generator wholesale
+      isn't). Pick the rows of the equivalents table whose word means the same in ssqch and
+      make them work, saying ssqch's name once so it's learned. Not the ones that mean
+      something else here (`check`, `published: false`, Hugo's `baseURL`, `site.posts`).
 - [x] **`ssqch docs`: the documentation of the installed version, from the binary** (item 2 in
       `research/exact-agent-first.md`). The README and the trailheads in `docs/trailheads/` are built
       in (`crates/ssqch/build.rs`; a crate from crates.io has only the README, and `--from`

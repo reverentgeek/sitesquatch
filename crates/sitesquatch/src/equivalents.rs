@@ -2,14 +2,15 @@
 //!
 //! When someone (or a coding agent) arriving from another generator types
 //! its command, flag, config option, front-matter key or filter, ssqch
-//! refuses it as before, and says its own name for it and where to read
-//! more, so the right spelling is learned on the first try. It teaches and
-//! never accepts: no word here starts working. A word ssqch has itself is
-//! never in the table.
+//! says its own name for it and where to read more, so the right spelling is
+//! learned on the first try. Every row refuses its word today; one can become
+//! an alias where accepting the word makes moving easier (see AGENTS.md). A
+//! word ssqch has itself is never in the table.
 //!
 //! The table is curated: the words people and agents reach for, from the
-//! trailheads (migration guides) in `docs/trailheads/`, not every option of every generator.
-//! Each row is tested: the word is refused, and the name it gives exists.
+//! trailheads (migration guides) in `docs/trailheads/`, not every option of
+//! every generator. Each row is tested: the word is refused, and the name it
+//! gives exists.
 
 /// Where a word can turn up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

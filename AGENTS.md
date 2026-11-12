@@ -9,20 +9,21 @@ The ReverentGeek blog in `../blog` (github.com/reverentgeek/blog) is the main re
 the integration test. Start sessions with `--add-dir ../blog` (or `/add-dir ../blog`) when a
 change affects it.
 
-- No Eleventy compatibility. ssqch started as an Eleventy-compatible build for the blog, and
-  that was removed (see "Remove Eleventy" in `TODO.md`). Don't add APIs, names, fields,
-  front-matter keys, attributes, env vars or module aliases that mention Eleventy or 11ty, and
-  don't add backwards-compatible aliases. Use ssqch's own design and update `../blog` to match.
-  Blog content about Eleventy (posts, their URLs) isn't an API and stays. The point of this
-  rule is that ssqch isn't a clone of Eleventy or of any other generator. Take the best ideas
-  from existing generators, fill the gaps they leave, and design each feature as ssqch's own, so
-  the result is something unique that appeals to lots of developers. Research on other
-  generators goes in `research/` (gitignored); the work items go in `TODO.md`.
-- Errors and warnings may name another generator's word to say ssqch's (`"pathPrefix" isn't a
-  config option. In ssqch it's base`). That's teaching, not compatibility: the word is still
-  refused, and a hint that names it isn't an API. They come from one table,
-  `crates/sitesquatch/src/equivalents.rs`, and each row is tested
-  (`other_generators_words_get_ssqch_names`).
+- Not a clone of Eleventy or of any other generator. ssqch started as an Eleventy-compatible
+  build for the blog, and that was removed (see "Remove Eleventy" in `TODO.md`): ssqch has its
+  own design, and doesn't copy another generator's API wholesale. Take the best ideas from
+  existing generators, fill the gaps they leave, and design each feature as ssqch's own, so the
+  result is something unique that appeals to lots of developers. Making the move easy is part
+  of that: things should feel familiar and inviting, so an alias for a word people bring from
+  another generator (Eleventy's included: `ssqch dev`, `pathPrefix`) is welcome where it makes
+  moving easier and doesn't mean something else in ssqch. ssqch's own name stays the one the
+  docs teach. Blog content about Eleventy (posts, their URLs) isn't an API and stays. Research
+  on other generators goes in `research/` (gitignored); the work items go in `TODO.md`.
+- Other generators' words come from one table, `crates/sitesquatch/src/equivalents.rs`: ssqch's
+  name for each, what to say, and where to read more. Errors and warnings use it to name
+  ssqch's word (`"pathPrefix" isn't a config option. In ssqch it's base`), and each row is
+  tested (`other_generators_words_get_ssqch_names`). A row that becomes an alias belongs there
+  too.
 - After a change that affects output, build the blog and run its smoke tests:
   `cargo build --release -p ssqch --features avif`, then in `../blog`,
   `SSQCH_BIN=../ssqch/target/release/ssqch pnpm test`.
@@ -138,9 +139,9 @@ and now and then something large walks through the log (`Fresh tracks in src/pos
   documentation headings and messages. Until developers depend on ssqch, breaking changes are
   fine (with a "Breaking" changelog entry), so anything is fair game when it improves the
   experience. A themed name has to stay predictable for people and coding agents: it says what
-  the thing does (`footprint`, `leaveNoTrace`, `_blueprints/`), there's one name for each
-  thing (no aliases), and the machine-facing parts stay plain (diagnostic codes, JSON keys,
-  exit codes). Suggest the bigger renames before making them.
+  the thing does (`footprint`, `leaveNoTrace`, `_blueprints/`), a rename replaces the old
+  name rather than keeping both (aliases are for words people bring from other generators),
+  and the machine-facing parts stay plain (diagnostic codes, JSON keys, exit codes). Suggest the bigger renames before making them.
 - The palette is Ranger Station '76: pine `#233B2B`, burnt orange `#A23E20`, harvest gold
   `#E8AF43`, avocado `#A9B66A` and map paper `#FFF3D6`. On pages (the starters, the dev
   server's pages, sitesquatch.dev): soft white `#FAFAF7` in light mode and a slightly green
