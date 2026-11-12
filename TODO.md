@@ -712,8 +712,9 @@ I'd take them (the first three went into 0.4):
       for agents. `docs_answer_for_every_name` checks that every name `capabilities` lists has
       a line and an answer. Found on the way: `ssqch.d.ts` didn't declare `readData`, and the
       rss functions, `minify`, `beforeBuild` and `afterBuild` had no descriptions.
-  - [ ] Next: `ssqch init` writes an `AGENTS.md` that points at `ssqch docs` (item 3 in the
-        research), and `ssqch docs agents` prints the block for a site that exists already.
+  - [x] `ssqch init` writes an `AGENTS.md` that points at `ssqch docs` (item 3 in the
+        research), with a one-line `CLAUDE.md` (`@AGENTS.md`), and `ssqch docs agents` prints
+        it for a site that exists already. A test holds both to 1,536 bytes.
   - [ ] Maybe: explain each diagnostic code (`ssqch docs links`), once errors carry a finer id.
 - [ ] **When troubleshooting docs get written:** call the section (or page) "Ranger station:
       troubleshooting", so it's where to go for help and still says what it is.

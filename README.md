@@ -73,7 +73,7 @@ For Tab completion of commands and options, `ssqch completions zsh` (or `bash`, 
 
 ## Field guide: build your first site
 
-The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, three posts, a 404 page, a data file, a blueprint for the next post, and editor types) and then leaves you to it:
+The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, three posts, a 404 page, a data file, a blueprint for the next post, editor types, and an `AGENTS.md` for coding agents) and then leaves you to it:
 
 ```sh
 ssqch init my-site
@@ -952,6 +952,8 @@ ssqch build --format json
 `ssqch capabilities --format json` says what this binary supports, so nothing has to be guessed from the documentation of another version: its `version`, `commands`, optional `features` (`avif`, `fetch`, `sass` and each template language, which a build from source can leave out), `templateLanguages` with their extensions, `configOptions`, the built-in `modules` with what each exports, `nodeModules`, `globals` and `imageFormats`. Without `--format json` it prints the same as text, under "What's in the pack".
 
 `ssqch docs` is this documentation, from the binary, so it matches the version that's installed and works without the network. Alone, it lists every command, config option, template function and module export with one line each. `ssqch docs base` (or `imagePlugin`, `toc`, `serve`) prints what this README says about that name and which other sections mention it, `ssqch docs "content schemas"` prints a section, and other words search the text. Another generator's word gets ssqch's (`ssqch docs pathPrefix`), and `ssqch docs --from eleventy` lists that generator's words with ssqch's for each, then its trailhead. `--format json` has the same, with each answer's `names`, `section` and `also`.
+
+`ssqch init` writes an `AGENTS.md` for coding agents, with a one-line `CLAUDE.md` that imports it: what each file is, and the commands above for looking a name up, checking a change and comparing builds. It's about 1 KB, since an agent carries it through a whole session, and `init` never replaces one a site already has. For a site that doesn't have one, `ssqch docs agents > AGENTS.md` writes it.
 
 `ssqch serve --ready-file <file>` writes a file once the first build is done and the site is being served, so a script can wait for the file instead of reading the server's output or sleeping:
 

@@ -32,7 +32,7 @@ pub fn docs_command() -> clap::Command {
         .arg(clap::Arg::new("from").long("from").value_name("GENERATOR").help("Another generator's words and ssqch's names for them: eleventy, hugo, jekyll, zola, ..."))
         .arg(clap::Arg::new("format").long("format").value_name("FORMAT").help("text or json").default_value("text"))
         .after_help(
-            "Without a name, it lists everything, one line each.\n\n  ssqch docs\n  ssqch docs base\n  ssqch docs \"content schemas\"\n  ssqch docs pathPrefix          (another generator's word: says ssqch's)\n  ssqch docs --from eleventy\n  ssqch docs -- --starter        (a flag: after --)\n\nThe text is this version's README, built into the binary.",
+            "Without a name, it lists everything, one line each.\n\n  ssqch docs\n  ssqch docs base\n  ssqch docs \"content schemas\"\n  ssqch docs pathPrefix          (another generator's word: says ssqch's)\n  ssqch docs --from eleventy\n  ssqch docs -- --starter        (a flag: after --)\n  ssqch docs agents > AGENTS.md  (instructions for coding agents)\n\nThe text is this version's README, built into the binary.",
         )
 }
 
@@ -558,7 +558,7 @@ fn answer_json(sections: &[Section], a: &Answer) -> Json {
 
 /// `ssqch docs` alone: everything, one line each.
 fn card(sections: &[Section], names: &[Name]) -> String {
-    let mut out = format!("ssqch {}. `ssqch docs <name>` for one, `ssqch docs --from <generator>` for another generator's words.\n", env!("CARGO_PKG_VERSION"));
+    let mut out = format!("ssqch {}. `ssqch docs <name>` for one, `ssqch docs --from <generator>` for another generator's words, `ssqch docs agents` for an AGENTS.md.\n", env!("CARGO_PKG_VERSION"));
     let mut group = |title: &str, rows: Vec<(&str, &str)>, indent: usize| {
         if rows.is_empty() {
             return;
@@ -726,6 +726,16 @@ pub fn run_docs(matches: &clap::ArgMatches) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let query = query.join(" ");
+    // The AGENTS.md a starter has, for a site that doesn't have one yet.
+    if query == "agents" {
+        let text = crate::init::agents_md(None);
+        if json {
+            println!("{}", serde_json::to_string_pretty(&json!({ "query": query, "found": true, "agentsMd": text })).unwrap_or_default());
+        } else {
+            print!("{}", text);
+        }
+        return ExitCode::SUCCESS;
+    }
     match answer(&sections, &names, &query) {
         Some(a) if json => println!("{}", serde_json::to_string_pretty(&answer_json(&sections, &a)).unwrap_or_default()),
         Some(a) => print!("{}", answer_text(&sections, &a)),

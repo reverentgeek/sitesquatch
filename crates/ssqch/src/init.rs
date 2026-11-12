@@ -269,8 +269,51 @@ fn schema_types(schemas: &[sitesquatch::schema::Schema]) -> String {
 /// keeping any files that already exist. Returns (written, skipped).
 pub fn init_starter(dir: &Path, starter: &str, engine: Engine) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
     let common = if starter == "docs" { DOCS_STARTER } else { STARTER };
-    let files = common.iter().map(|(rel, contents)| (rel.to_string(), engine.adapt(rel, contents))).chain(engine.templates(starter));
+    let agents = [("AGENTS.md".to_string(), agents_md(Some((starter, engine.0)))), ("CLAUDE.md".to_string(), "@AGENTS.md\n".to_string())];
+    let files = common.iter().map(|(rel, contents)| (rel.to_string(), engine.adapt(rel, contents))).chain(engine.templates(starter)).chain(agents);
     init_files(dir, files)
+}
+
+/// The `AGENTS.md` for a site: what each file is, how to look a name up and
+/// how to check a change, for a coding agent. It's plain, not in the voice,
+/// and short, since an agent carries it through a whole session. For a
+/// starter, it names the starter's folders (`starter`, `engine`); without one
+/// (`ssqch docs agents`, for a site that exists already) it says where the
+/// config says they are. `CLAUDE.md` is one line, `@AGENTS.md`.
+pub fn agents_md(site: Option<(&str, &str)>) -> String {
+    let files = match site {
+        Some((starter, engine)) => {
+            let language = match engine {
+                "njk" => "Nunjucks",
+                "edge" => "Edge",
+                "liquid" => "Liquid",
+                "hbs" => "Handlebars",
+                "ejs" => "EJS",
+                _ => "Jinja",
+            };
+            let pages = if starter == "docs" { "`src/docs/` has the pages (Markdown, with `src/_data/nav.yml` for the sidebar)" } else { "`src/posts/` has the posts and `src/` the other pages (Markdown)" };
+            format!("`ssqch.config.js` is the config. {}, `src/_includes/` the layouts and templates ({}), `src/_data/` the global data and `src/_blueprints/` the blueprints for new pages. `dist/` is the build: don't edit it.", pages, language)
+        }
+        None => "`ssqch.config.js` (or `sitesquatch.toml`) is the config, and its `dirs` say where the pages, layouts (`_includes/`), global data (`_data/`) and the build are. Don't edit the build.".to_string(),
+    };
+    let new_page = match site {
+        Some(("docs", _)) => "`ssqch new docs/guides --title \"...\"` (then list it in `src/_data/nav.yml`)",
+        Some(_) => "`ssqch new posts --title \"...\"`",
+        None => "`ssqch new <folder> --title \"...\"`, from a blueprint in `_blueprints/`",
+    };
+    format!(
+        "# A SiteSquatch site\n\nThis site is built with SiteSquatch (`ssqch`), a static site generator. {0}\n\n\
+- How to use something: `ssqch docs <name>` (a config option, template function, command or topic) answers for the installed version, and `ssqch docs` lists everything.\n\
+- What this ssqch supports: `ssqch capabilities --format json`.\n\
+- Check a change: `ssqch build --format json`. `ok` is the result, and each problem has a `code`, a `file` and a `line`.\n\
+- Why a page's value is what it is: `ssqch inspect <url or file> --format json`.\n\
+- Before changing layouts or the config: `ssqch build --output {1}-before`, and afterwards `ssqch build` and `ssqch diff {1}-before {1}`.\n\
+- A new page: {2}.\n\
+- `ssqch serve` is for a person watching the browser. Check with `ssqch build`.\n",
+        files,
+        if site.is_some() { "dist" } else { "<output>" },
+        new_page
+    )
 }
 
 /// Write `files` (path in the site, contents) into `dir`, keeping any that

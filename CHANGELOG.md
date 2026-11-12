@@ -31,6 +31,10 @@ a `v<version>` tag on a commit where that version matches.
 
 ### Added
 
+- `ssqch init` writes an `AGENTS.md` for coding agents (and a one-line `CLAUDE.md`,
+  `@AGENTS.md`): what each file in the starter is, how to look a name up (`ssqch docs`), how to
+  check a change (`ssqch build --format json`) and how to compare builds. It never replaces one
+  that's there. `ssqch docs agents` prints it for a site that already exists.
 - `ssqch docs`: the documentation of the installed version, from the binary, with no network
   or README on disk. Alone, it lists every command, config option, template function and module
   export with one line each. `ssqch docs base` (or `imagePlugin`, `toc`, `serve`, `--starter`)

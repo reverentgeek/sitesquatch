@@ -26,10 +26,22 @@ fn init_creates_a_site_that_builds() {
     let d = dir.to_str().unwrap();
     let (ok, log) = ssqch(&["init", d]);
     assert!(ok, "{}", log);
-    for file in ["ssqch.config.js", "src/_includes/layout.jinja", "src/index.jinja", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore"] {
+    for file in ["ssqch.config.js", "src/_includes/layout.jinja", "src/index.jinja", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore", "AGENTS.md", "CLAUDE.md"] {
         assert!(dir.join(file).is_file(), "{} wasn't created:\n{}", file, log);
     }
     assert!(log.contains("Camp is set up. Next: cd "), "{}", log);
+    // Instructions for coding agents: short, since an agent carries them through a session, and
+    // pointing at what answers for this version. CLAUDE.md is the one-line import.
+    let agents = std::fs::read_to_string(dir.join("AGENTS.md")).unwrap();
+    assert!(agents.len() <= 1536 && agents.contains("`ssqch docs <name>`") && agents.contains("`src/posts/` has the posts") && agents.contains("(Jinja)") && agents.contains("`ssqch new posts --title"), "{} bytes:\n{}", agents.len(), agents);
+    assert_eq!(std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap(), "@AGENTS.md\n");
+    let (ok, generic) = ssqch(&["docs", "agents"]);
+    assert!(ok && generic.len() <= 1536 && generic.starts_with("# A SiteSquatch site\n") && generic.contains("its `dirs` say where"), "{}", generic);
+    // A site's own AGENTS.md is never replaced.
+    std::fs::write(dir.join("AGENTS.md"), "Ours.\n").unwrap();
+    let (ok, log) = ssqch(&["init", d]);
+    assert!(ok && log.contains("kept    AGENTS.md (already there)"), "{}", log);
+    assert_eq!(std::fs::read_to_string(dir.join("AGENTS.md")).unwrap(), "Ours.\n");
 
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok, "{}", log);
