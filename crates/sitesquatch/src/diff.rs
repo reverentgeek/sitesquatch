@@ -10,8 +10,8 @@
 //! - asset fingerprints (`index.3f2a1b4c.css` and `index.9d8e7f6a.css` are
 //!   the same file, compared by content) and `integrity` hashes,
 //! - the generator's version (`SiteSquatch v0.4.0`),
-//! - whitespace between tags and inside text (but not in `<pre>`, `<script>`,
-//!   `<style>` or `<textarea>`),
+//! - whitespace between tags, inside text and between attributes (but not in
+//!   `<pre>`, `<script>`, `<style>` or `<textarea>`, or in an attribute's value),
 //! - anything matching one of the `ignore` patterns.
 //!
 //! HTML is compared as a list of tags and pieces of text, so a minified page
@@ -208,6 +208,34 @@ fn collapse(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// A tag with its whitespace collapsed, except inside quoted attribute values
+/// (`title="pine  cone"` isn't `title="pine cone"`).
+fn collapse_tag(tag: &str) -> String {
+    let (mut out, mut quote, mut space) = (String::with_capacity(tag.len()), None, false);
+    for c in tag.chars() {
+        match quote {
+            Some(q) => {
+                out.push(c);
+                if c == q {
+                    quote = None;
+                }
+            }
+            None if c.is_whitespace() => space = true,
+            None => {
+                if space && !out.is_empty() && !matches!(c, '>' | '/') {
+                    out.push(' ');
+                }
+                space = false;
+                if c == '"' || c == '\'' {
+                    quote = Some(c);
+                }
+                out.push(c);
+            }
+        }
+    }
+    out
+}
+
 /// HTML as a list of tags and pieces of text. Whitespace is collapsed, except
 /// in elements where it matters, whose content is kept line by line.
 fn tokens(html: &str) -> Vec<Token> {
@@ -254,24 +282,22 @@ fn tokens(html: &str) -> Vec<Token> {
         };
         let tag = &rest[..end];
         push_text(&mut out, &html[text_start..i], Some(tag));
-        out.push(Token { tag: true, text: collapse(tag) });
+        out.push(Token { tag: true, text: collapse_tag(tag) });
         i += end;
         text_start = i;
-        // Raw content: kept as it is, a line at a time.
+        // Raw content: kept exactly as it is (blank lines, indents), a line at a time. Tags
+        // inside <pre> (highlighting spans) are markup like any other, but the diff is easier
+        // to read with the line whole.
         let name: String = tag[1..].chars().take_while(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
         if matches!(name.as_str(), "script" | "style" | "pre" | "textarea") && !tag.ends_with("/>") {
             let close = format!("</{}", name);
             let lower = html[i..].to_ascii_lowercase();
             let len = lower.find(&close).unwrap_or(lower.len());
             let raw = &html[i..i + len];
-            let is_pre = name == "pre";
-            for line in raw.lines() {
-                let line = line.trim_end();
-                if !line.trim().is_empty() {
-                    // Tags inside <pre> (highlighting spans) are markup like any other,
-                    // but the diff is easier to read with the line whole.
-                    out.push(Token { tag: false, text: if is_pre { line.to_string() } else { line.trim_start().to_string() } });
-                }
+            // A browser drops the newline right after `<pre>` and `<textarea>`.
+            let raw = if matches!(name.as_str(), "pre" | "textarea") { raw.strip_prefix("\r\n").or_else(|| raw.strip_prefix('\n')).unwrap_or(raw) } else { raw };
+            if !raw.is_empty() {
+                out.extend(raw.split('\n').map(|line| Token { tag: false, text: line.strip_suffix('\r').unwrap_or(line).to_string() }));
             }
             i += len;
             text_start = i;
@@ -621,6 +647,13 @@ mod tests {
         assert_ne!(texts("<p>a<b>b</b></p>"), texts("<p>a <b>b</b></p>"));
         assert_ne!(texts("<a>x</a><a>y</a>"), texts("<a>x</a> <a>y</a>"));
         assert_eq!(texts("<div><p>a</p><p>b</p></div>"), texts("<div>\n  <p>a</p>\n  <p>\n    b\n  </p>\n</div>\n"));
+        // Whitespace that shows: in a field's value, a <pre>'s blank line, an attribute's value.
+        assert_ne!(texts("<textarea>  pine</textarea>"), texts("<textarea>pine</textarea>"));
+        assert_ne!(texts("<pre>pine\n\ncone</pre>"), texts("<pre>pine\ncone</pre>"));
+        assert_ne!(texts("<p title=\"pine  cone\">Trail</p>"), texts("<p title=\"pine cone\">Trail</p>"));
+        // Whitespace between attributes doesn't, and neither does the newline after <pre>.
+        assert_eq!(texts("<p  class=\"a\"\n   id=\"b\" >x</p><br />"), texts("<p class=\"a\" id=\"b\">x</p><br/>"));
+        assert_eq!(texts("<pre>\npine</pre>"), texts("<pre>pine</pre>"));
         // A fingerprint goes; a date in a file's name stays.
         assert_eq!(without_fingerprints("/assets/index.3f2a1b4c.css /a/app.00112233.js"), "/assets/index.css /a/app.js");
         assert_eq!(without_fingerprints("/files/report.20240101.pdf /files/notes.19991231.txt"), "/files/report.20240101.pdf /files/notes.19991231.txt");

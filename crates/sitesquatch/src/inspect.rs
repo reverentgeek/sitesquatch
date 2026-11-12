@@ -111,8 +111,11 @@ fn fields(cfg: &Config, ctx: &BuildContext, global: &Map, page: &InspectedPage) 
 /// (`src/guides/install.md`, from the project root or the input folder).
 pub fn inspect(cfg: &Config, target: &str) -> Result<Inspection> {
     let (ctx, global, pages) = inspect_pages(cfg)?;
-    let trim = |u: &str| u.trim_end_matches("index.html").trim_end_matches('/').to_string();
-    let by_url: Vec<&InspectedPage> = pages.iter().filter(|p| p.url.as_deref().is_some_and(|u| trim(u) == trim(target))).collect();
+    // `/trail/`, `/trail/index.html` and `/trail` are one page; `/trailindex.html` isn't. The
+    // exact URL first.
+    let trim = |u: &str| u.strip_suffix("index.html").filter(|rest| rest.ends_with('/')).unwrap_or(u).trim_end_matches('/').to_string();
+    let exact: Vec<&InspectedPage> = pages.iter().filter(|p| p.url.as_deref() == Some(target)).collect();
+    let by_url: Vec<&InspectedPage> = if exact.is_empty() { pages.iter().filter(|p| p.url.as_deref().is_some_and(|u| trim(u) == trim(target))).collect() } else { exact };
     let wanted: Vec<_> = [ctx.root.join(target), ctx.input_dir.join(target)].into_iter().map(|p| dunce::canonicalize(&p).unwrap_or(p)).collect();
     let by_file: Vec<&InspectedPage> = pages.iter().filter(|p| wanted.contains(&p.input)).collect();
     let page: &InspectedPage = if target.starts_with('/') && !by_url.is_empty() {

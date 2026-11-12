@@ -28,10 +28,11 @@ a `v<version>` tag on a commit where that version matches.
 - `ssqch init` starts a site in Jinja (`src/_includes/layout.jinja`, `src/index.jinja`), and
   `ssqch init --starter docs` writes its layouts, render hook and containers in Jinja. Pass
   `--engine edge` for the starters as they were.
-- Page bundles (`bundles: true`) no longer copy a template the site doesn't render: a file in a
-  template language that isn't in `templateFormats` (`private.edge` next to `index.md`), or a
-  `.md` file, stays out of the output, since its front matter could be a draft. Copy one on
-  purpose with `passthrough`.
+- Page bundles (`bundles: true`) and themes no longer copy a template the site doesn't render: a
+  file in a template language that isn't in `templateFormats` (`private.edge` next to
+  `index.md`, or in a theme), or a `.md` file, stays out of the output, since its front matter
+  could be a draft. A theme's gets the same warning as the site's own. Copy one on purpose with
+  `passthrough`.
 - Rust library: `MarkdownEngine::render_html` doesn't take the page's path any more, and a
   layout's or hook template's `RenderContext::input_path` is that file, not the page's.
 
@@ -88,8 +89,10 @@ a `v<version>` tag on a commit where that version matches.
   `outDir`, `markdownTemplateEngine` and `htmlTemplateEngine`; the front-matter keys
   `eleventyComputed`, `eleventyExcludeFromCollections`, `redirect_from` and
   `templateEngineOverride` (which used to be an error); and the filters `url`, `relative_url`
-  and `markdownify` in Jinja, Nunjucks and Liquid. Setting an alias and ssqch's name together is
-  an error. `ssqch docs --from <generator>` marks the ones that work.
+  and `markdownify` in Jinja, Nunjucks and Liquid. A front-matter alias takes ssqch's key's
+  place in the cascade (a page's `computed` is above its folder's `eleventyComputed`), and a
+  schema with `unknown: "error"` reads it as that key. Setting an alias and ssqch's name
+  together, in one file, is an error. `ssqch docs --from <generator>` marks the ones that work.
 - A `slugify` filter in every template language: `{{ "Pine Cone Crunch!" | slugify }}` is
   `pine-cone-crunch`. In Liquid it replaces Jekyll's, which turned an apostrophe into a dash.
 - The other words from other generators get ssqch's name for them: a command (`ssqch check`),
@@ -127,6 +130,14 @@ a `v<version>` tag on a commit where that version matches.
   instead of beside the file.
 - `sassPlugin`: editing a partial beside a Sass file outside the input folder, or in a
   `loadPaths` folder, didn't rebuild the CSS while serving.
+- `ssqch new --set draft=true` from a TOML blueprint with a table (`[extra]`) put the key in
+  the table, so the page wasn't a draft. Keys go above the first table now, a key of the same
+  name in a table stays the table's, and a value over several lines is replaced whole.
+- `ssqch inspect /myindex.html` could show the page at `/my/`: `index.html` only ends a URL
+  when it's a whole part of it, and the exact URL wins.
+- `ssqch diff` called pages the same when whitespace that shows had changed: in an attribute's
+  value (`title="pine  cone"`), or a blank line or indent in `<pre>`, `<textarea>`, `<script>`
+  or `<style>`.
 - A template error's message gives the file's own line (`posts/pine.md:8:`), as the lines
   printed under it and the JSON report's `line` already did. Template engines count from the
   end of the front matter, so it used to say `posts/pine.md:3:` for the same line.

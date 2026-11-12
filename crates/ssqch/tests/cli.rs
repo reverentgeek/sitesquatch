@@ -1693,6 +1693,16 @@ fn inspect_says_where_a_page_and_its_data_come_from() {
     assert!(!ok && log.contains("no page at \"/guides/pines/\""), "{}", log);
     let (ok, log) = run(&["/guides/pine/", "--field", "titel"]);
     assert!(!ok && log.contains("/guides/pine/ has no `titel` in its data (it has: "), "{}", log);
+
+    // `index.html` is only the end of a URL when it's a whole part of it.
+    write("src/a.md", "---\npermalink: /my/\ntitle: Cedar\n---\n");
+    write("src/b.md", "---\npermalink: /myindex.html\ntitle: Pine\n---\n");
+    for (url, title) in [("/myindex.html", "\"Pine\""), ("/my/", "\"Cedar\""), ("/my/index.html", "\"Cedar\""), ("/my", "\"Cedar\"")] {
+        let (ok, log) = run(&[url, "--field", "title", "--format", "json"]);
+        assert!(ok, "{}", log);
+        let json: serde_json::Value = serde_json::from_str(&log).unwrap();
+        assert_eq!(json["field"]["value"].to_string(), title, "{}: {}", url, log);
+    }
 }
 
 /// Run `ssqch` and keep its two outputs apart.
@@ -2428,8 +2438,8 @@ fn ejs_data_strings_and_theme_includes() {
     assert_eq!(read("cones/index.html").trim(), "Pine cones");
 }
 
-/// A page bundle leaves out a template in a language the site doesn't render (it could be a
-/// draft), and a file name that isn't ASCII doesn't trip the check for a date in it.
+/// A page bundle and a theme leave out a template in a language the site doesn't render (it
+/// could be a draft), and a file name that isn't ASCII doesn't trip the check for a date in it.
 #[test]
 fn bundles_leave_out_unrendered_templates() {
     let dir = temp_dir("bundles-unrendered");
@@ -2452,6 +2462,25 @@ fn bundles_leave_out_unrendered_templates() {
     assert!(files.iter().any(|f| f.ends_with("trail/map.svg")), "{:?}", files);
     assert!(!files.iter().any(|f| f.ends_with(".edge") || f.ends_with(".md")), "{:?}", files);
     assert!(files.iter().any(|f| f.contains("森林步道")), "{:?}", files);
+
+    // A theme's are left out the same way.
+    let dir = temp_dir("theme-unrendered");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, theme: \"themes/trail\" };\n");
+    write("src/index.md", "# Trail\n");
+    write("themes/trail/private.edge", "---\ndraft: true\ninternalNote: unpublished\n---\nUnpublished trail notes: {{ internalNote }}\n");
+    write("themes/trail/cones.svg", "<svg/>");
+    let (ok, log) = ssqch(&["build", "--root", d, "--env", "production", "--format", "json"]);
+    assert!(ok, "{}", log);
+    assert!(log.contains("themes/trail/private.edge isn't rendered"), "{}", log);
+    let files = walk(&dir.join("dist"));
+    assert!(files.iter().any(|f| f.ends_with("cones.svg")), "{:?}", files);
+    assert!(!files.iter().any(|f| f.ends_with(".edge")), "{:?}", files);
 }
 
 /// A Sass file's partials beside it, outside the input folder, rebuild its CSS when they change.
@@ -2472,4 +2501,31 @@ fn serve_rebuilds_sass_when_a_partial_changes() {
     std::thread::sleep(std::time::Duration::from_millis(300));
     std::fs::write(dir.join("styles/_colors.scss"), "$pine: orange;\n").unwrap();
     wait_for(&dir.join("dist/app.css"), "orange");
+}
+
+/// An alias is read as ssqch's key in its own layer of the cascade, so a page's `computed` is
+/// still above its folder's `eleventyComputed`; and a schema that flags unknown keys knows it.
+#[test]
+fn aliases_keep_their_place_in_the_cascade() {
+    let dir = temp_dir("alias-cascade");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, schemas: { pages: { files: [\"**/*.md\"], fields: {}, unknown: \"error\" } } };\n");
+    write("src/posts/posts.json", "{ \"eleventyComputed\": { \"title\": \"Directory\" }, \"redirect_from\": [\"/old-trail/\"] }\n");
+    write("src/posts/pine.md", "---\ncomputed:\n  title: Page\n---\n{{ title }}\n");
+    write("src/posts/cedar.md", "---\neleventyComputed:\n  title: Cedar\nredirect_from: []\n---\n{{ title }}\n");
+    let (ok, log) = ssqch(&["build", "--root", d, "--format", "json"]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap_or_else(|e| panic!("{}: {}\n{}", path, e, log));
+    assert_eq!(read("posts/pine/index.html").trim(), "<p>Page</p>");
+    assert_eq!(read("posts/cedar/index.html").trim(), "<p>Cedar</p>");
+
+    // Both names in one layer is still an error, naming the file.
+    write("src/posts/posts.json", "{ \"eleventyComputed\": {}, \"computed\": {} }\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("posts.json") && log.contains("`eleventyComputed` and `computed` are two names for one key"), "{}", log);
 }

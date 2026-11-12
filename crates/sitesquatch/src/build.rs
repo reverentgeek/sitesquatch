@@ -312,6 +312,7 @@ fn prepare(cfg: &Config, ctx: &BuildContext, timer: &mut Timer, keep_layers: boo
     for (name, value) in provided {
         global.insert(name, value?);
     }
+    alias_data_keys(&mut global).context("in global data")?;
     for file in skipped {
         let stem = file.rsplit('/').next().unwrap_or(&file).split('.').next().unwrap_or("");
         if !global.contains_key(stem) && !cfg.quiet {
@@ -740,8 +741,8 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
         .collect();
     // Files in a template language the site has but doesn't render, by
     // extension: usually a missing `templateFormats` entry.
-    let engines: HashSet<String> = cfg.engines.iter().map(|(name, _)| name.to_ascii_lowercase()).chain(["edge".to_string()]).collect();
-    let mut unrendered: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    let engines = engine_languages(cfg);
+    let mut unrendered: Unrendered = Default::default();
     let mut files = Vec::new();
     let walker = walkdir::WalkDir::new(&ctx.input_dir).follow_links(true).into_iter().filter_entry(|e| {
         let name = e.file_name().to_string_lossy();
@@ -774,6 +775,32 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
         }
         files.push(entry.into_path());
     }
+    warn_unrendered(cfg, unrendered);
+    files.sort();
+    Ok(files)
+}
+
+/// Files in a template language the site doesn't render, by extension.
+type Unrendered = std::collections::BTreeMap<String, Vec<String>>;
+
+/// The template languages the site has engines for, rendered or not: the
+/// plugins' and Edge.
+fn engine_languages(cfg: &Config) -> HashSet<String> {
+    cfg.engines.iter().map(|(name, _)| name.to_ascii_lowercase()).chain(["edge".to_string()]).collect()
+}
+
+/// Every template language the site has, listed in `templateFormats` or not,
+/// Markdown included. A file in one isn't copied as it is (from a theme or a
+/// page bundle) when it isn't rendered: its front matter may be a draft.
+fn template_languages(cfg: &Config) -> HashSet<String> {
+    let mut formats: HashSet<String> = cfg.template_formats.iter().map(|f| f.to_ascii_lowercase()).chain(engine_languages(cfg)).collect();
+    formats.extend(["markdown".to_string(), "md".to_string()]);
+    formats
+}
+
+/// Warn about templates the site doesn't render: usually a missing
+/// `templateFormats` entry.
+fn warn_unrendered(cfg: &Config, unrendered: Unrendered) {
     for (ext, mut paths) in unrendered {
         paths.sort();
         let (n, first) = (paths.len(), paths[0].clone());
@@ -785,8 +812,6 @@ fn discover(cfg: &Config, ctx: &BuildContext) -> Result<Vec<PathBuf>> {
         let message = format!("{}: templateFormats is {}. Add \"{}\" to render {them}, or list {them} in `ignore`.", which, cfg.template_formats.join(", "), ext);
         diagnostics::warn(Diagnostic::warning("template-formats", message).file(first));
     }
-    files.sort();
-    Ok(files)
 }
 
 /// A file to copy, and where to.
@@ -811,6 +836,8 @@ fn theme_files(cfg: &Config, ctx: &BuildContext) -> Result<(Vec<PathBuf>, Vec<Co
     if formats.contains("md") {
         formats.insert("markdown".into());
     }
+    let (languages, engines) = (template_languages(cfg), engine_languages(cfg));
+    let mut unrendered: Unrendered = Default::default();
     let ignore = glob_set("ignore", cfg.ignore.iter().map(String::as_str))?;
     let (mut pages, mut copies) = (Vec::new(), Vec::new());
     let mut taken: HashSet<String> = HashSet::new();
@@ -835,6 +862,13 @@ fn theme_files(cfg: &Config, ctx: &BuildContext) -> Result<(Vec<PathBuf>, Vec<Co
                 pages.push(path.to_path_buf());
                 continue;
             }
+            // A template that isn't rendered isn't copied as it is either: it may be a draft.
+            if languages.contains(&ext) && !is_data_file(&name) {
+                if engines.contains(&ext) {
+                    unrendered.entry(ext).or_default().push(slashes(path.strip_prefix(&ctx.root).unwrap_or(path)));
+                }
+                continue;
+            }
             // Data for a page or a folder (`posts/posts.json`, `about.json` next to `about.md`) isn't copied.
             let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
             let dir_name = path.parent().and_then(|d| d.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -846,6 +880,7 @@ fn theme_files(cfg: &Config, ctx: &BuildContext) -> Result<(Vec<PathBuf>, Vec<Co
             copies.push((path.to_path_buf(), ctx.output_dir.join(&rel)));
         }
     }
+    warn_unrendered(cfg, unrendered);
     Ok((pages, copies))
 }
 
@@ -885,7 +920,8 @@ fn load_directory_data(cfg: &Config, ctx: &BuildContext, files: &[PathBuf]) -> R
         for candidate in candidates {
             let path = dir.join(&candidate);
             if path.is_file() {
-                if let Some(Value::Obj(o)) = data::load_data_file(&path, &cfg.data_extensions)? {
+                if let Some(Value::Obj(mut o)) = data::load_data_file(&path, &cfg.data_extensions)? {
+                    alias_data_keys(Arc::make_mut(&mut o)).with_context(|| format!("in {}", display_path(ctx, &path).trim_start_matches("./")))?;
                     merge(&mut data, &o, true);
                 }
             }
@@ -923,7 +959,8 @@ fn load_layout(cfg: &Config, ctx: &BuildContext, name: &str, cache: &Mutex<HashM
         .find(|p| p.is_file())
         .ok_or_else(|| anyhow!("layout `{}` not found: no sightings in {}{}{}", name, ctx.layouts_dir.display(), if ctx.theme_dirs.is_empty() { "" } else { " or the theme" }, closest_layout(ctx, name)))?;
     let src = std::fs::read_to_string(&path)?;
-    let (data, body) = data::parse_front_matter(&src).with_context(|| format!("in layout {}", path.display()))?;
+    let (mut data, body) = data::parse_front_matter(&src).with_context(|| format!("in layout {}", path.display()))?;
+    alias_data_keys(&mut data).with_context(|| format!("in layout {}", path.display()))?;
     let layout = Arc::new(Layout {
         name: format!("{}/{}", slashes(cfg.layouts.as_ref().unwrap_or(&cfg.includes)), name),
         engines: engines_for(cfg, &path.extension().unwrap().to_string_lossy().to_ascii_lowercase()),
@@ -952,7 +989,9 @@ fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared)
     let rel = rel_path.to_string_lossy().replace('\\', "/");
     (|| {
         let src = std::fs::read_to_string(path)?;
-        let (front, body) = data::parse_front_matter(&src)?;
+        let (mut front, body) = data::parse_front_matter(&src)?;
+        let front_keys: Vec<String> = front.keys().cloned().collect();
+        alias_data_keys(&mut front)?;
         let has_front_matter = body.len() != src.len();
 
         // Template-level data: directory data (outermost first), then the
@@ -981,7 +1020,8 @@ fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared)
         for suffix in suffixes {
             let candidate = path.with_file_name(format!("{}.{}", stem, suffix));
             if candidate.is_file() {
-                if let Some(Value::Obj(o)) = data::load_data_file(&candidate, &cfg.data_extensions)? {
+                if let Some(Value::Obj(mut o)) = data::load_data_file(&candidate, &cfg.data_extensions)? {
+                    alias_data_keys(Arc::make_mut(&mut o)).with_context(|| format!("in {}", display_path(ctx, &candidate).trim_start_matches("./")))?;
                     merge(&mut own, &o, cfg.data_deep_merge);
                     if keep_layers {
                         layers.push((display_path(ctx, &candidate).trim_start_matches("./").to_string(), (*o).clone()));
@@ -989,8 +1029,6 @@ fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared)
                 }
             }
         }
-        let mut front = front;
-        let front_keys: Vec<String> = front.keys().cloned().collect();
         normalize_tags(&mut front);
         merge(&mut own, &front, cfg.data_deep_merge);
         if keep_layers && !front.is_empty() {
@@ -1028,7 +1066,6 @@ fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared)
         if ext == "markdown" {
             ext = "md".into();
         }
-        alias_data_keys(&mut data, cfg.data_deep_merge)?;
         let engines: Vec<String> = match data.get("render").filter(|v| !v.is_nullish()) {
             Some(v) => render_engines(v)?,
             None => engines_for(cfg, &ext),
@@ -1480,21 +1517,16 @@ fn check_conflicts(ctx: &BuildContext, pages: &[Page]) -> Result<()> {
 
 /// Other generators' front-matter keys that are aliases here, as ssqch's:
 /// `eleventyComputed` is `computed`, `redirect_from` is `aliases`, and so on.
-/// When the data has both (a layout's `computed` and a page's
-/// `eleventyComputed`), objects are merged, the alias's values on top, and
-/// anything else is an error.
-fn alias_data_keys(data: &mut Map, deep: bool) -> Result<()> {
+/// One layer of the cascade at a time (a data file, front matter), before it's
+/// merged, so a page's `computed` is still above its folder's
+/// `eleventyComputed`. Both names in one layer is an error.
+fn alias_data_keys(data: &mut Map) -> Result<()> {
     use crate::equivalents::{Kind, TABLE};
     for row in TABLE.iter().filter(|e| e.kind == Kind::FrontMatter && e.alias) {
         let Some(value) = data.shift_remove(row.word) else { continue };
-        let value = match (data.shift_remove(row.ssqch), value) {
-            (None, value) => value,
-            (Some(Value::Obj(mut theirs)), Value::Obj(ours)) => {
-                merge(Arc::make_mut(&mut theirs), &ours, deep);
-                Value::Obj(theirs)
-            }
-            (Some(_), _) => bail!("`{}` and `{}` are two names for one key; set one of them", row.word, row.ssqch),
-        };
+        if data.contains_key(row.ssqch) {
+            bail!("`{}` and `{}` are two names for one key; set one of them", row.word, row.ssqch);
+        }
         data.insert(row.ssqch.into(), value);
         diagnostics::alias_used(row);
     }
@@ -1794,10 +1826,8 @@ fn bundle_files(cfg: &Config, ctx: &BuildContext, pages: &[Page], templates: &[P
     let templates: HashSet<&Path> = templates.iter().map(PathBuf::as_path).collect();
     // Template files left out by `ignore` (or not rendered) aren't bundle files either.
     let ignore = glob_set("ignore", cfg.ignore.iter().map(String::as_str))?;
-    // Every template language the site has counts, listed in `templateFormats` or not: a
-    // template that isn't rendered isn't copied as it is either (its front matter may be a draft).
-    let mut formats: HashSet<String> = cfg.template_formats.iter().chain(cfg.engines.iter().map(|(name, _)| name)).map(|f| f.to_ascii_lowercase()).collect();
-    formats.extend(["markdown".to_string(), "md".to_string(), "edge".to_string()]);
+    // A template that isn't rendered isn't copied as it is either (it may be a draft).
+    let formats = template_languages(cfg);
     let mut seen: HashSet<&Path> = HashSet::new();
     let mut jobs = Vec::new();
     for page in pages {

@@ -101,8 +101,9 @@ pub struct PageFiles<'a> {
 }
 
 /// Front matter keys ssqch and its plugins read, which `unknown` never flags.
-const BUILT_IN_KEYS: [&str; 17] = [
-    "layout", "permalink", "dynamicPermalink", "tags", "date", "pagination", "computed", "render", "draft", "aliases", "excludeFromCollections", "sitemap", "nav", "title", "description", "templateEngineOverride", "lang",
+/// Another generator's word for one (`eleventyComputed`) is that key.
+const BUILT_IN_KEYS: [&str; 16] = [
+    "layout", "permalink", "dynamicPermalink", "tags", "date", "pagination", "computed", "render", "draft", "aliases", "excludeFromCollections", "sitemap", "nav", "title", "description", "lang",
 ];
 
 // ------------------------------------------------------------------ parsing
@@ -289,7 +290,8 @@ impl Schema {
         check_fields(&self.fields, data, "", &page, files, &mut problems);
         if self.unknown != Unknown::Allow {
             for key in front_keys {
-                if self.fields.iter().any(|f| f.name == *key) || BUILT_IN_KEYS.contains(&key.as_str()) {
+                let read_as = crate::equivalents::find(key, crate::equivalents::Kind::FrontMatter).filter(|row| row.alias).map(|row| row.ssqch).unwrap_or(key.as_str());
+                if self.fields.iter().any(|f| f.name == *key || f.name == read_as) || BUILT_IN_KEYS.contains(&read_as) {
                     continue;
                 }
                 let hint = crate::suggest::closest(key, self.fields.iter().map(|f| f.name.as_str())).map(|name| format!(" (did you mean `{}`?)", name)).unwrap_or_default();
@@ -569,7 +571,9 @@ mod tests {
         }));
         let schema = Schema::parse("posts", &spec).unwrap();
         let good = serde_json::json!({ "title": "Pine", "date": "2026-03-14", "status": "draft", "topics": ["trees"], "hero": { "src": "/a.png", "alt": "A" }, "links": [], "site": { "name": "global data is fine" } });
-        assert_eq!(problems(&schema, good, &["title", "date", "layout", "tags"]), Vec::<String>::new());
+        assert_eq!(problems(&schema, good.clone(), &["title", "date", "layout", "tags"]), Vec::<String>::new());
+        // Another generator's word for a key ssqch reads is that key.
+        assert_eq!(problems(&schema, good, &["eleventyComputed", "redirect_from", "templateEngineOverride"]), Vec::<String>::new());
 
         let bad = serde_json::json!({ "title": 7, "date": "tomorrow", "description": null, "status": "drfat", "topics": ["trees", 2], "weight": 1.5, "hero": { "src": "/a.png" }, "author": "Sam", "links": [{ "href": 1 }], "descripton": "x" });
         assert_eq!(

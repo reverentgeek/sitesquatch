@@ -212,10 +212,36 @@ fn fill_front_matter(source: &str, fills: &[(&str, Fill, bool)]) -> Result<Strin
     let mut at_top = 1;
     for (key, fill, first) in fills {
         let starts = |line: &str| {
+            let line = line.trim_start_matches([' ', '\t']);
             let rest = line.strip_prefix(key).or_else(|| line.strip_prefix(&format!("\"{}\"", key)));
             rest.is_some_and(|r| r.trim_start().starts_with(if format == Format::Toml { '=' } else { ':' }))
         };
-        match lines[1..close].iter().position(|l| starts(l)).map(|i| i + 1) {
+        if format == Format::Toml {
+            // Only the keys above the first table are the page's own: `draft` under `[extra]` isn't.
+            let (entries, root_end) = toml_entries(&lines, close);
+            let line = match entries.iter().find(|(at, _)| starts(&lines[*at])) {
+                Some(&(at, end)) => {
+                    lines.splice(at..end, [written(key, fill)]);
+                    close -= end - at - 1;
+                    continue;
+                }
+                None if *first => at_top,
+                None => entries.last().map(|&(_, end)| end).unwrap_or_else(|| {
+                    let mut at = root_end;
+                    while at > 1 && lines[at - 1].trim().is_empty() {
+                        at -= 1;
+                    }
+                    at
+                }),
+            };
+            if *first {
+                at_top += 1;
+            }
+            lines.insert(line, written(key, fill));
+            close += 1;
+            continue;
+        }
+        match lines[1..close].iter().position(|l| !l.starts_with([' ', '\t']) && starts(l)).map(|i| i + 1) {
             Some(at) => {
                 // The lines of a value that goes on below its key (a YAML block, a TOML multi-line string's rest).
                 let mut end = at + 1;
@@ -242,6 +268,63 @@ fn fill_front_matter(source: &str, fills: &[(&str, Fill, bool)]) -> Result<Strin
         }
     }
     Ok(lines.concat())
+}
+
+/// TOML front matter's top-level entries, as the lines each takes (`start..end`: a multi-line
+/// array or string takes several), and the line the first table (`[extra]`) starts on, or
+/// `close`.
+fn toml_entries(lines: &[String], close: usize) -> (Vec<(usize, usize)>, usize) {
+    let (mut entries, mut depth, mut multi, mut start) = (Vec::new(), 0i32, None::<&[u8]>, None);
+    for (i, line) in lines.iter().enumerate().take(close).skip(1) {
+        if depth == 0 && multi.is_none() {
+            let text = line.trim_start();
+            if text.starts_with('[') {
+                return (entries, i);
+            }
+            if !text.is_empty() && !text.starts_with('#') {
+                start = Some(i);
+            }
+        }
+        let b = line.as_bytes();
+        let mut j = 0;
+        while j < b.len() {
+            if let Some(end) = multi {
+                if b[j..].starts_with(end) {
+                    multi = None;
+                    j += 3;
+                } else {
+                    j += if end == b"\"\"\"" && b[j] == b'\\' { 2 } else { 1 };
+                }
+                continue;
+            }
+            match b[j] {
+                b'#' => break,
+                q @ (b'"' | b'\'') => {
+                    let triple: &[u8] = if q == b'"' { b"\"\"\"" } else { b"'''" };
+                    if b[j..].starts_with(triple) {
+                        multi = Some(triple);
+                        j += 3;
+                        continue;
+                    }
+                    j += 1;
+                    while j < b.len() && b[j] != q {
+                        j += if q == b'"' && b[j] == b'\\' { 2 } else { 1 };
+                    }
+                }
+                b'[' | b'{' => depth += 1,
+                b']' | b'}' => depth -= 1,
+                _ => {}
+            }
+            j += 1;
+        }
+        if depth <= 0 && multi.is_none() {
+            depth = 0;
+            if let Some(at) = start.take() {
+                entries.push((at, i + 1));
+            }
+        }
+    }
+    (entries, close)
 }
 
 /// Whether the blueprint's front matter has `key` (so it's filled in).
@@ -383,6 +466,17 @@ mod tests {
         assert_eq!(fill("Just a body\n"), "---\ntitle: \"Pines: a guide\"\ndate: 2026-03-02\ndraft: true\n---\nJust a body\n");
         // TOML and JSON.
         assert_eq!(fill("+++\ntitle = \"\"\nweight = 3\n+++\nBody\n"), "+++\ntitle = \"Pines: a guide\"\nweight = 3\ndate = 2026-03-02\ndraft = true\n+++\nBody\n");
+        // Keys are the page's own, above its tables: one missing goes before `[extra]`, and a
+        // table's key of the same name stays the table's.
+        assert_eq!(
+            fill("+++\ntitle = \"New post\"\n[extra]\nanimal = \"owl\"\ndraft = false\n+++\n\n# Trail\n"),
+            "+++\ntitle = \"Pines: a guide\"\ndate = 2026-03-02\ndraft = true\n[extra]\nanimal = \"owl\"\ndraft = false\n+++\n\n# Trail\n"
+        );
+        // A value over several lines is replaced whole, and brackets in strings aren't tables.
+        assert_eq!(
+            fill("+++\ntags = [\n  \"a\",\n  \"[b]\",\n]\ndraft = \"\"\"\n[x]\n\"\"\"\n# pine\n\n[[cones]]\nn = 1\n+++\n"),
+            "+++\ntitle = \"Pines: a guide\"\ntags = [\n  \"a\",\n  \"[b]\",\n]\ndraft = true\ndate = 2026-03-02\n# pine\n\n[[cones]]\nn = 1\n+++\n"
+        );
         assert_eq!(fill("---json\n{ \"layout\": \"a.edge\", \"title\": \"\" }\n---\nBody\n"), "---json\n{\n  \"layout\": \"a.edge\",\n  \"title\": \"Pines: a guide\",\n  \"date\": \"2026-03-02\",\n  \"draft\": true\n}\n---\nBody\n");
         // Windows line endings stay.
         assert_eq!(fill("---\r\ntitle:\r\n---\r\nBody\r\n"), "---\r\ntitle: \"Pines: a guide\"\r\ndate: 2026-03-02\r\ndraft: true\r\n---\r\nBody\r\n");
