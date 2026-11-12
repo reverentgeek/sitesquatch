@@ -118,7 +118,7 @@ Jinja2, Nunjucks, Rust's Tera and MiniJinja) and the most capable of the ones ss
 
 Built 2026-11-10, after David's review. ssqch reports like a deadpan park ranger who knows a
 lot about HTML: what happened comes first, and now and then something large walks through the
-log. The rules are in `CLAUDE.md` ("The Sasquatch voice"), and the shared lines are in
+log. The rules are in `AGENTS.md` ("The Sasquatch voice"), and the shared lines are in
 `crates/sitesquatch/src/voice.rs`. Decided in the review: `leaveNoTrace` with `clean` kept as
 another name (both work), the stump trilogy as the starter, no switch to turn the voice off,
 and `ssqch footprint` in 0.5.
@@ -696,7 +696,7 @@ I'd take them (the first three went into 0.4):
   - [x] `ssqch docs <foreign name>` and `ssqch docs --from <generator>`: each row's `More:`
         is an `ssqch docs` lookup now (or a command's `--help`, for flags), and the test checks
         it answers.
-  - [x] With it: a sentence in `CLAUDE.md` saying a hint that names another generator's word
+  - [x] With it: a sentence in `AGENTS.md` saying a hint that names another generator's word
         isn't an API.
   - [x] Found on the way: Liquid's `Unknown filter` didn't name the filter; it does now, with a
         "did you mean". (`Nothing sighted` had an empty folder name when the input folder is
@@ -765,7 +765,7 @@ Settle this before the first tag, since the release workflow keys off it.
 - [x] Semver from 0.x, with a `CHANGELOG.md` whose **Breaking** sections say what a site has to
       change. Removing Eleventy is the first entry.
 - [x] Release by bumping `[workspace.package] version` (still `0.1.0`) and tagging to match; the
-      steps are in `CLAUDE.md`. `ssqch --version` and the template global's `version` already
+      steps are in `AGENTS.md`. `ssqch --version` and the template global's `version` already
       report the workspace version.
 - [x] The release workflow fails if the tag doesn't match a package version (`dist` checks).
 
@@ -813,7 +813,7 @@ Order matters here: the install script comes first because the Netlify recipe an
 reuse it, and crates.io comes before `cargo binstall`.
 
 - [x] Publish the crates to crates.io (`cargo install ssqch`), from 0.2.6. Each release runs
-      `cargo publish --workspace` after the tag (see `CLAUDE.md`).
+      `cargo publish --workspace` after the tag (see `AGENTS.md`).
 - [x] Support `cargo binstall ssqch`: `[package.metadata.binstall]` in `crates/ssqch/Cargo.toml`
       points at the release archives (the Windows zip has no folder inside). It takes effect from
       the first release published with it; check `cargo binstall ssqch` then.

@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 SiteSquatch (`ssqch`) is a static site generator in Rust. The README covers usage, the workspace
 layout and the known gaps; `TODO.md` has the plan.
@@ -127,7 +127,11 @@ and now and then something large walks through the log (`Fresh tracks in src/pos
 - One per command at most, no emoji, and no switch to turn it off. `--quiet` hides them.
 - Family-friendly. The theme is pop-culture Bigfoot (blurry photos, footprints, eyewitnesses),
   the forest and its creatures, forest rangers, and the outdoors: camping and hiking. No figures
-  from Indigenous traditions and no brands.
+  from Indigenous traditions.
+- Puns on and parodies of popular adventure and outdoor books, movies and brands are a good
+  source of names and examples (a trail guide called *Into the Mild*, a pack from *The North
+  Fake*). Parody, not the real thing: no real product names, logos or trademarks as they are,
+  and nothing that reads as an endorsement.
 - Examples and fixtures share a canon: pine cones, Squatch Snacks, Pine Cone Crunch, rangers,
   the Cedar and Old Growth trails, the starter's stump, and forest creatures.
 - Look for chances to suggest puns, humor and themed renames in that theme: commands, options,

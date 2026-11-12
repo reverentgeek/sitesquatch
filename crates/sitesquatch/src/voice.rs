@@ -2,7 +2,7 @@
 //!
 //! ssqch reports like a deadpan park ranger: what happened comes first, and
 //! now and then something large walks through the log. The rules (also in
-//! `CLAUDE.md`): a themed line still names the file and what went wrong, and
+//! `AGENTS.md`): a themed line still names the file and what went wrong, and
 //! keeps the words people search for; `--format json`, diagnostic codes and
 //! exit codes stay plain; nothing is random; and a build never adds anything
 //! of its own to a site's output.
