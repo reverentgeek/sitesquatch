@@ -964,6 +964,38 @@ fn serve_runs_companion_processes() {
     assert!(!ok && log.contains("serve: \"runs\" isn't an option (options: run)"), "{}", log);
 }
 
+/// Another build into the output folder (a production build, which cleans it and renames the
+/// stylesheet to a fingerprinted name) deletes what a `serve.run` watcher wrote. The watcher
+/// would only write it again when its source changes, so the server starts it again and
+/// rebuilds, and the page links the plain file again.
+#[cfg(unix)]
+#[test]
+fn serve_recovers_when_another_build_deletes_a_watchers_file() {
+    let dir = temp_dir("serve-companions-trampled");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::create_dir_all(dir.join("bin")).unwrap();
+    let script = "#!/bin/sh\necho start >> \"$SSQCH_INPUT/../starts\"\nmkdir -p \"$SSQCH_OUTPUT/assets\"\necho 'body { color: pine; }' > \"$SSQCH_OUTPUT/assets/app.css\"\ncat > /dev/null\nwhile true; do sleep 0.2; done\n";
+    std::fs::write(dir.join("bin/pinecss"), script).unwrap();
+    std::process::Command::new("chmod").arg("+x").arg(dir.join("bin/pinecss")).status().unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), "import { assetsPlugin } from \"ssqch/assets\";\nexport default { dirs: { input: \"src\" }, serve: { run: [\"./bin/pinecss --watch\"] }, plugins: [assetsPlugin({ files: [\"/assets/app.css\"] })] };\n").unwrap();
+    std::fs::write(dir.join("src/index.html"), "<link rel=\"stylesheet\" href=\"/assets/app.css\"><p>camp</p>").unwrap();
+    let log = temp_dir("serve-companions-trampled-log");
+    let out = std::fs::File::create(&log).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(["serve", "--port", "0", "--root"]).arg(&dir).stdout(out.try_clone().unwrap()).stderr(out).spawn().unwrap();
+    let _server = Server(child);
+    wait_for(&dir.join("_site/assets/app.css"), "color: pine");
+    wait_for(&log, "Squatch Watch is on.");
+    // Past the server's one-second wait for more changes, so it has seen the file before it goes.
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    // What a production build leaves: the plain file renamed, and a page linking the copy.
+    std::fs::rename(dir.join("_site/assets/app.css"), dir.join("_site/assets/app.0123abcd.css")).unwrap();
+    std::fs::write(dir.join("_site/index.html"), "<link rel=\"stylesheet\" href=\"/assets/app.0123abcd.css\"><p>camp</p>").unwrap();
+    wait_for(&log, "Campsite disturbed: _site/assets/app.css deleted by something other than ssqch serve (another build into _site?). Starting serve.run's pinecss again and rebuilding.");
+    wait_for(&dir.join("starts"), "start\nstart\n");
+    wait_for(&dir.join("_site/assets/app.css"), "color: pine");
+    wait_for(&dir.join("_site/index.html"), "href=\"/assets/app.css\"");
+}
+
 /// A companion that stopped starts again when the config is saved, and all of them start again
 /// when the folders they were given change.
 #[cfg(unix)]

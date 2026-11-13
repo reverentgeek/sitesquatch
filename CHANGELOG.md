@@ -8,6 +8,16 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Fixed
+
+- `ssqch serve` no longer leaves pages unstyled after another build writes into its output
+  folder (a production build cleans it and renames the CSS and JavaScript to fingerprinted
+  names, and a `serve.run` watcher only writes again when a source changes). When a stylesheet
+  or script it has seen is deleted by something else, the server waits for the output to go
+  quiet, starts the `serve.run` tools again, waits for them to write their files, and rebuilds.
+
 ## 0.5.0 - 2026-11-12
 
 ### Breaking

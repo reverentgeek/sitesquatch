@@ -53,10 +53,11 @@ pub fn serve(cfg: &Config, port: u16) -> Result<()> {
     let live = Arc::new(Live::default());
     let site = Arc::new(RwLock::new(Site::of(cfg)));
     let server = listen(port, &site, &live)?;
-    let _companions = crate::companions::Companions::start(&cfg.build_context(), &cfg.serve_run)?;
-    live.set_site(_companions.names(), output_name(cfg));
+    let companions = std::cell::RefCell::new(crate::companions::Companions::start(&cfg.build_context(), &cfg.serve_run)?);
+    live.set_site(companions.borrow().names(), output_name(cfg));
     let say_where = || println!("{}", banner(&site.read().unwrap(), server, cfg.quiet));
-    watch(cfg, &live, &|_| {}, &say_where, &|| {
+    let restart = || restart_companions(&companions, cfg);
+    watch(cfg, &live, &|_| {}, &say_where, &restart, &|| {
         println!("Restart to use the changed configuration.");
         false
     })
@@ -112,16 +113,16 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
     let quiet = first.quiet;
     let say_where = || println!("{}", banner(&site.read().unwrap(), server, quiet));
     let mut cfg = first;
-    let mut companions = crate::companions::Companions::none();
+    let companions = std::cell::RefCell::new(crate::companions::Companions::none());
     loop {
         *site.write().unwrap() = Site::of(&cfg);
         // The configuration's companion processes, kept running across a reload that doesn't change
         // them (or their folders), and started again if one has stopped.
-        if !companions.runs(&cfg.build_context(), &cfg.serve_run) {
-            drop(std::mem::replace(&mut companions, crate::companions::Companions::none()));
-            companions = crate::companions::Companions::start(&cfg.build_context(), &cfg.serve_run)?;
+        if !companions.borrow().runs(&cfg.build_context(), &cfg.serve_run) {
+            *companions.borrow_mut() = crate::companions::Companions::none();
+            *companions.borrow_mut() = crate::companions::Companions::start(&cfg.build_context(), &cfg.serve_run)?;
         }
-        live.set_site(companions.names(), output_name(&cfg));
+        live.set_site(companions.borrow().names(), output_name(&cfg));
         let next: std::cell::RefCell<Option<Config>> = Default::default();
         // Returns once a changed configuration has loaded.
         let built = |ok: bool| {
@@ -131,7 +132,8 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
                 }
             }
         };
-        let Reloaded = watch(&cfg, &live, &built, &say_where, &|| match reload() {
+        let restart = || restart_companions(&companions, &cfg);
+        let Reloaded = watch(&cfg, &live, &built, &say_where, &restart, &|| match reload() {
             Ok(new) => {
                 *next.borrow_mut() = Some(new);
                 true
@@ -142,6 +144,20 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
             }
         })?;
         cfg = next.into_inner().expect("watch returns after a reload");
+    }
+}
+
+/// Stop `serve.run`'s tools and start them again, so they write their files into the output again
+/// (a `--watch` tool writes when it starts, and then only when a source changes).
+fn restart_companions(companions: &std::cell::RefCell<crate::companions::Companions>, cfg: &Config) {
+    if cfg.serve_run.is_empty() {
+        return;
+    }
+    // The old ones stop first, so two of a tool never write the same file.
+    *companions.borrow_mut() = crate::companions::Companions::none();
+    match crate::companions::Companions::start(&cfg.build_context(), &cfg.serve_run) {
+        Ok(started) => *companions.borrow_mut() = started,
+        Err(e) => eprintln!("{} {:#}", crate::diagnostics::red("error:"), e),
     }
 }
 
@@ -204,8 +220,9 @@ fn banner(site: &Site, port: u16, quiet: bool) -> String {
 /// file the configuration came from changes, `reload` is called: if it
 /// returns true, this returns (the caller has a new configuration to watch
 /// with); if not, the watch goes on. `say_where` prints the site's address,
-/// after each build.
-fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn Fn(), reload: &dyn Fn() -> bool) -> Result<Reloaded> {
+/// after each build. `restart` starts `serve.run`'s tools again, when
+/// something else deleted what they wrote.
+fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn Fn(), restart: &dyn Fn(), reload: &dyn Fn() -> bool) -> Result<Reloaded> {
     let ctx = cfg.build_context();
     let ok = run_build(cfg, live);
     first_build(ok);
@@ -252,6 +269,9 @@ fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn 
         }
     };
     watch_config_files(&mut watcher);
+    // What a `serve.run` tool wrote since the build looked, before the watch began, so it's
+    // known (and missed if something else deletes it).
+    live.changed(&ctx.output_dir);
     // What each changed source held the last time it was seen.
     let mut contents: std::collections::HashMap<PathBuf, Option<u64>> = Default::default();
     loop {
@@ -292,18 +312,79 @@ fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn 
                 say_where();
             }
             watch_config_files(&mut watcher);
-        } else if outputs.iter().any(|p| is_asset(p)) {
+        } else if outputs.iter().any(|p| is_asset(p) || !p.exists()) {
             // Another tool (PostCSS, esbuild) wrote a stylesheet or a script, or ssqch's own
             // write is late to arrive: the contents say which, so a tool's write that landed
             // during a build isn't missed.
             let changed = live.changed(&ctx.output_dir);
-            if let Some(file) = changed.iter().find(|f| is_asset(Path::new(f))) {
+            let mut gone: Vec<&String> = changed.iter().filter(|f| is_asset(Path::new(f)) && !ctx.output_dir.join(f).exists()).collect();
+            // Still gone once the output is quiet: not a tool that deletes a file before it
+            // writes the new one (which is then seen like any of its writes).
+            if !gone.is_empty() && quiet(&rx)? {
+                gone.retain(|f| !ctx.output_dir.join(f).exists());
+                if gone.is_empty() {
+                    live.changed(&ctx.output_dir);
+                }
+            }
+            if !gone.is_empty() {
+                // ssqch serve deletes no stylesheets or scripts, and the tools that write them
+                // don't either: something else did, like a production build into the same
+                // folder (which cleans it, and renames them to fingerprinted names). A tool's
+                // `--watch` only writes when a source changes, so they'd stay gone.
+                let tools = live.0.lock().unwrap().tools.clone();
+                let shown: Vec<String> = gone.iter().take(3).map(|f| show(&ctx.output_dir.join(f))).collect();
+                let more = if gone.len() > 3 { format!(" and {} more", gone.len() - 3) } else { String::new() };
+                let then = match tools.as_slice() {
+                    [] => "Rebuilding".to_string(),
+                    [one] => format!("Starting serve.run's {} again and rebuilding", one),
+                    [rest @ .., last] => format!("Starting serve.run's {} and {} again and rebuilding", rest.join(", "), last),
+                };
+                println!("{} {}{} deleted by something other than ssqch serve (another build into {}?). {}.", crate::voice::CAMPSITE_DISTURBED, shown.join(", "), more, output_name(cfg), then);
+                let gone: Vec<PathBuf> = gone.iter().map(|f| ctx.output_dir.join(f)).collect();
+                recover(&rx, &gone, restart);
+                // A folder that was deleted and made again isn't watched any more (on Linux).
+                let _ = watcher.unwatch(&output);
+                if output.exists() && !watch_paths.iter().any(|p| output.starts_with(p)) {
+                    let _ = watcher.watch(&output, RecursiveMode::Recursive);
+                }
+                run_build(cfg, live);
+                say_where();
+            } else if let Some(file) = changed.iter().find(|f| is_asset(Path::new(f))) {
                 if !cfg.quiet {
                     println!("{} {} (reloading)", crate::voice::FRESH_TRACKS, show(&ctx.output_dir.join(file)));
                 }
             }
         }
     }
+}
+
+/// Wait until nothing has changed for two seconds (a minute at most), so a build that's writing
+/// to the output has finished. Whether it went quiet. What changed meanwhile is rebuilt for by
+/// the caller, or seen by its contents.
+fn quiet(rx: &mpsc::Receiver<Vec<PathBuf>>) -> Result<bool> {
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(60) {
+        match rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(_) => continue,
+            Err(mpsc::RecvTimeoutError::Timeout) => return Ok(true),
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(false)
+}
+
+/// After something else deleted `gone` from the output: start the `serve.run` tools again and
+/// give them up to 15 seconds to write `gone` again. A page built before then would link a
+/// fingerprinted copy a production build left.
+fn recover(rx: &mpsc::Receiver<Vec<PathBuf>>, gone: &[PathBuf], restart: &dyn Fn()) {
+    restart();
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(15) && !gone.iter().all(|p| p.is_file()) {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    // What the tools wrote meanwhile is told apart from the build's own writes by contents,
+    // like any of their writes; the events themselves aren't news.
+    while rx.try_recv().is_ok() {}
 }
 
 /// A hash of a file's contents, or `None` for a folder or a file that's gone.

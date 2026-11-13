@@ -27,6 +27,10 @@ pub const FIELD_NOTES: &str = "Field notes started.";
 /// After the stale files `leaveNoTrace` removed.
 pub const LEFT_NO_TRACE: &str = "left no trace";
 
+/// While serving, something else (another build into the output folder) deleted a stylesheet or
+/// script, in front of which ones.
+pub const CAMPSITE_DISTURBED: &str = "Campsite disturbed:";
+
 /// A layout, include or component that leads back to itself. The names of the
 /// loop follow it.
 pub const PASSED_THIS_TREE: &str = "we've passed this tree before";
