@@ -404,7 +404,8 @@ pub fn new_page(cfg: &Config, options: &NewOptions) -> Result<Created> {
         (target.clone(), blueprint, title)
     };
     if path.exists() {
-        bail!("{} is already there", slashes(path.strip_prefix(&root).unwrap_or(&path)));
+        let another = if is_folder { "give it another --title" } else { "choose another file name" };
+        bail!("{} already exists. Those tracks are taken; {} (the file is left as it is)", slashes(path.strip_prefix(&root).unwrap_or(&path)), another);
     }
 
     let source = match &blueprint {

@@ -3,7 +3,7 @@ layout: base.hbs
 sidebar: true
 ---
 <div class="docs">
-  <main data-pagefind-body>
+  <main id="content" data-pagefind-body>
     {{#if (gt (len (navBreadcrumbs nav page.url)) 1)}}
     <nav class="breadcrumbs" aria-label="Breadcrumbs">
       {{#each (navBreadcrumbs nav page.url)}}{{#unless @last}}

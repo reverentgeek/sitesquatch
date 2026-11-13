@@ -18,6 +18,12 @@ pub const FRESH_TRACKS: &str = "Fresh tracks in";
 /// A site's first build, in front of `Built in ...`.
 pub const FIRST_SITING: &str = "First confirmed siting.";
 
+/// While serving, a build that works after one that failed, in front of `Built in ...`.
+pub const RECOVERED: &str = "Build recovered. Back on the trail.";
+
+/// After `ssqch new` says which page it created, and from what.
+pub const FIELD_NOTES: &str = "Field notes started.";
+
 /// After the stale files `leaveNoTrace` removed.
 pub const LEFT_NO_TRACE: &str = "left no trace";
 

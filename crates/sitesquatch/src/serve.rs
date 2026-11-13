@@ -346,9 +346,10 @@ fn settled(paths: &[PathBuf]) -> Vec<Option<(u64, u64)>> {
 /// Build, print the summary (or the error), and tell the browsers. Returns
 /// whether it worked.
 fn run_build(cfg: &Config, live: &Live) -> bool {
+    let recovered = live.0.lock().unwrap().error.is_some();
     let ok = match crate::build(cfg) {
         Ok(report) => {
-            crate::cli::print_report(cfg, &report);
+            crate::cli::print_report_after(cfg, &report, recovered);
             let output = cfg.build_context().output_dir;
             live.repeat_missing(&output);
             live.changed(&output);

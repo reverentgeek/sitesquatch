@@ -73,14 +73,14 @@ For Tab completion of commands and options, `ssqch completions zsh` (or `bash`, 
 
 ## Field guide: build your first site
 
-The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, three posts, a 404 page, a data file, a blueprint for the next post, editor types, and an `AGENTS.md` for coding agents) and then leaves you to it:
+The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, five posts, a 404 page, a data file, a blueprint for the next post, editor types, and an `AGENTS.md` for coding agents) and then leaves you to it:
 
 ```sh
 ssqch init my-site
 cd my-site && ssqch serve
 ```
 
-Open <http://localhost:8080>, edit `src/posts/i-know-what-i-saw.md`, and watch the page reload. (The starter is an amateur investigator's field notes: a sighting, a correction, and a stump. The posts are short, and each one shows you something.) `ssqch init` never overwrites a file that's already there, so it's safe to run in a folder you've started.
+Open <http://localhost:8080>, edit `src/posts/i-know-what-i-saw.md`, and watch the page reload. (The starter is an amateur investigator's field notes: a sighting, a correction, a stump, an old map and a raccoon's cache. The posts are short, and each one shows you something.) `ssqch init` never overwrites a file that's already there, so it's safe to run in a folder you've started.
 
 The layout and home page are [Jinja](#jinja-and-nunjucks) templates, ssqch's default language. To start in another one, pass `--engine edge`, `--engine liquid`, `--engine njk` (Nunjucks) or `--engine hbs` (Handlebars); the config then lists that engine in `templateFormats` and runs Markdown through it. `--engine` works with `--starter docs` too.
 
@@ -195,7 +195,7 @@ The address comes after each build's report, so it's on the last line however lo
 
 - **Only the page you're on reloads,** and only if it came out different. Edit another post, and the tab you're looking at stays where it is. The summary says how many pages changed: `Pages  168 written from 140 templates, 6.83 MB (1 changed)`.
 - **A stylesheet is swapped in place,** without a reload, so the page keeps its scroll position and a half-filled form. That goes for CSS another tool writes into the output folder too (a PostCSS watcher, say): the browser hears about it without a rebuild, once the tool has finished writing it, so a page never reloads before its new CSS is there. The old stylesheet stays until the new one has loaded, so the page is never unstyled in between, and a new one that doesn't load (or comes back empty) leaves the old one in place. A changed script or image reloads the page.
-- **A build that fails shows up in the browser,** over the page, with the error and the lines it's about. The tab's title and icon say so too, which is how you find out from another window. The page underneath is from the last build that worked, and the next good build clears the error.
+- **A build that fails shows up in the browser,** over the page, with the error and the lines it's about. The tab's title and icon say so too, which is how you find out from another window. "Copy diagnostic" copies the error to paste into an issue or a chat, and Escape (or "Hide") puts it away until the error changes. The page underneath is from the last build that worked, and the next good build clears the error and says so in the terminal: `Build recovered. Back on the trail.`
 - **A URL that isn't there** gets the site's `404.html`, or, when the site has none, a page of the server's own that says where the trail went cold and suggests the closest URL.
 - **A site without a `favicon.ico`** gets a map-paper footprint on a pine circle in the tab, where there used to be a 404 on every page load. While the build is broken, the circle turns burnt orange.
 
@@ -745,7 +745,7 @@ ssqch new posts --title "Pine cones: a field guide"
 ```
 
 ```text
-Created src/posts/pine-cones-a-field-guide.md from src/_blueprints/posts.md
+Created src/posts/pine-cones-a-field-guide.md from src/_blueprints/posts.md. Field notes started.
 ```
 
 The new post:
@@ -880,7 +880,7 @@ Changed (2)
       - body { color: #222 }
       + body { color: #111 }
 
-2 changed, 1 added, 1 removed; 148 pages and 4,730 other files are the same.
+Changes found: 3 pages and 1 other file (2 changed, 1 added, 1 removed); 148 pages and 4,730 other files are the same. The stump has moved.
 ```
 
 - **What's ignored:** differences that don't change what a visitor gets. A fingerprinted file (`index.3f2a1b4c.css`: eight hex digits before the extension, unless they read as a date) is matched with its counterpart and compared by content, `integrity` hashes and the generator's version are left out, and HTML is compared as a list of tags and text, so whitespace between block tags doesn't count. A space next to an inline tag (`a <b>b</b>`) does, and so does whitespace inside `<pre>`, `<script>`, `<style>` and `<textarea>` (blank lines and indents included) and inside an attribute's value. `--exact` compares bytes instead.

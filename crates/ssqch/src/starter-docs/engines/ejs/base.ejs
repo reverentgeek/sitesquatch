@@ -17,6 +17,7 @@
   <script>try { const theme = localStorage.getItem("theme"); if (theme) document.documentElement.dataset.theme = theme; } catch {}</script>
 </head>
 <body>
+  <a class="skip-link" href="#content">Skip to content</a>
   <header class="site-header">
     <a class="site-name" href="/"><%= site.name %></a>
     <nav aria-label="Site">
@@ -31,6 +32,10 @@
     <%_ /* docs.js shows it. Without JavaScript, the theme follows the system. */ _%>
     <button class="theme-switch" type="button" hidden>Switch theme</button>
   </header>
+  <%_ if (locals.sidebar) { _%>
   <%- content %>
+  <%_ } else { _%>
+  <main id="content"><%- content %></main>
+  <%_ } _%>
 </body>
 </html>

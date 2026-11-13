@@ -21,10 +21,17 @@ use crate::config::{BuildReport, Config};
 
 /// The whole summary, ending in a newline.
 pub fn summary(cfg: &Config, report: &BuildReport) -> String {
+    summary_after(cfg, report, false)
+}
+
+/// The summary, for a build that worked after one that `recovered` from failing (while serving):
+/// that's the aside then.
+pub(crate) fn summary_after(cfg: &Config, report: &BuildReport, recovered: bool) -> String {
     let ctx = cfg.build_context();
     // One themed line at most, the one that says the most, in this order; the rest are plain.
     let nothing = report.templates == 0 && report.drafts == 0 && report.pages_written == 0;
     let aside = [
+        (recovered, Aside::Recovered),
         (nothing, Aside::NothingSighted),
         (report.first_build, Aside::FirstSiting),
         (report.files_removed > 0, Aside::LeftNoTrace),
@@ -89,8 +96,12 @@ pub fn summary(cfg: &Config, report: &BuildReport) -> String {
     }
 
     let width = lines.iter().map(|(label, _)| label.len()).max().unwrap_or(0);
-    // A site's first build gets a word before the usual line.
-    let first = if themed(Aside::FirstSiting) { format!("{} ", crate::voice::FIRST_SITING) } else { String::new() };
+    // A site's first build, or one that works again, gets a word before the usual line.
+    let first = match aside {
+        Some(Aside::FirstSiting) => format!("{} ", crate::voice::FIRST_SITING),
+        Some(Aside::Recovered) => format!("{} ", crate::voice::RECOVERED),
+        _ => String::new(),
+    };
     let mut out = format!("{}Built in {} ({})\n", first, duration(report.duration), cfg.env.as_str());
     for (label, text) in lines {
         let _ = writeln!(out, "  {:<width$}  {}", label, text, width = width);
@@ -113,6 +124,7 @@ pub fn summary(cfg: &Config, report: &BuildReport) -> String {
 /// The summary's themed lines, of which it says one.
 #[derive(Clone, Copy, PartialEq)]
 enum Aside {
+    Recovered,
     NothingSighted,
     FirstSiting,
     LeftNoTrace,

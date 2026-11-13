@@ -26,7 +26,7 @@ fn init_creates_a_site_that_builds() {
     let d = dir.to_str().unwrap();
     let (ok, log) = ssqch(&["init", d]);
     assert!(ok, "{}", log);
-    for file in ["ssqch.config.js", "src/_includes/layout.jinja", "src/index.jinja", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore", "AGENTS.md", "CLAUDE.md"] {
+    for file in ["ssqch.config.js", "src/_includes/layout.jinja", "src/index.jinja", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/posts/raiders-of-the-lost-path.md", "src/posts/the-cache-of-the-wild.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore", "AGENTS.md", "CLAUDE.md"] {
         assert!(dir.join(file).is_file(), "{} wasn't created:\n{}", file, log);
     }
     assert!(log.contains("Camp is set up. Next: cd "), "{}", log);
@@ -45,7 +45,7 @@ fn init_creates_a_site_that_builds() {
 
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok, "{}", log);
-    assert!(log.contains("Links   9 checked, 0 broken"), "{}", log);
+    assert!(log.contains("Links   14 checked, 0 broken"), "{}", log);
     let home = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
     assert!(home.contains("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), "{}", home);
     // Newest first.
@@ -57,7 +57,7 @@ fn init_creates_a_site_that_builds() {
 
     // The next post starts from the starter's blueprint, and is on the home page.
     let (ok, log) = ssqch(&["new", "--root", d, "posts", "--title", "My second post", "--date", "2026-02-03"]);
-    assert_eq!((ok, log.as_str()), (true, "Created src/posts/my-second-post.md from src/_blueprints/posts.md\n"));
+    assert_eq!((ok, log.as_str()), (true, "Created src/posts/my-second-post.md from src/_blueprints/posts.md. Field notes started.\n"));
     assert_eq!(std::fs::read_to_string(dir.join("src/posts/my-second-post.md")).unwrap(), "---\ntitle: My second post\ndate: 2026-02-03\n---\nWrite down what you saw.\n");
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok, "{}", log);
@@ -94,7 +94,7 @@ fn init_starts_a_site_in_each_engine() {
 
         let (ok, log) = ssqch(&["build", "--root", d]);
         assert!(ok, "{}: {}", engine, log);
-        assert!(log.contains("Links   9 checked, 0 broken") && !log.contains("warn"), "{}: {}", engine, log);
+        assert!(log.contains("Links   14 checked, 0 broken") && !log.contains("warn"), "{}: {}", engine, log);
         let home = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
         assert!(home.contains("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), "{}: {}", engine, home);
         assert!(home.contains("<title>Field Notes</title>"), "{}: {}", engine, home);
@@ -148,7 +148,7 @@ fn init_starts_a_docs_site() {
     let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
     // A new page from the starter's blueprint passes the starter's schema.
     let (ok, log) = ssqch(&["new", "--root", d, "docs/guides", "--title", "Search"]);
-    assert_eq!((ok, log.as_str()), (true, "Created src/docs/guides/search.md from src/_blueprints/docs.md\n"));
+    assert_eq!((ok, log.as_str()), (true, "Created src/docs/guides/search.md from src/_blueprints/docs.md. Field notes started.\n"));
     let (ok, log) = ssqch(&["build", "--root", d]);
     assert!(ok && !log.contains("warn") && read("docs/guides/search/index.html").contains("<title>Search | Squatch Docs</title>"), "{}", log);
     assert!(dir.join("dist/assets/docs.js").is_file() && dir.join("dist/highlight.css").is_file());
@@ -819,7 +819,7 @@ fn diff_compares_two_builds() {
         "Added (1)\n  + /new/\n",
         "Removed (1)\n  - /about/\n",
         "  ~ /  (text and markup)\n      ids removed (links to them break): #trails\n      - <h2 id=\"trails\">\n      - Trails\n      + <h2 id=\"paths\">\n      + Paths\n      - Pine trail.\n      + Cedar trail.\n",
-        "1 changed, 1 added, 1 removed; 0 pages and 0 other files are the same.",
+        "Changes found: 3 pages (1 changed, 1 added, 1 removed); 0 pages and 0 other files are the same. The stump has moved.\n",
     ] {
         assert!(log.contains(expected), "missing {:?} in\n{}", expected, log);
     }
@@ -1552,6 +1552,18 @@ fn serve_does_not_rebuild_for_its_own_files() {
     assert!(said.contains("Serving ") && said.contains("/. Squatch Watch is on.\n") && said.contains("Fresh tracks in index.jinja\n"), "{}", said);
     // The first build is the site's first; the rebuild isn't.
     assert_eq!(said.matches("First confirmed siting. Built in").count(), 1, "{}", said);
+    // A build that works after one that failed says so, once.
+    std::fs::write(dir.join("index.jinja"), "three {{ 2 + }}").unwrap();
+    let start = std::time::Instant::now();
+    while !std::fs::read_to_string(&log).unwrap_or_default().contains("Build failed") && start.elapsed() < std::time::Duration::from_secs(20) {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    change_and_wait(&dir.join("index.jinja"), "three {{ 2 + 1 }}", &page, "three 3");
+    change_and_wait(&dir.join("index.jinja"), "four {{ 2 + 2 }}", &page, "four 4");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let said = std::fs::read_to_string(&log).unwrap_or_default();
+    assert!(said.contains("Build failed"), "{}", said);
+    assert_eq!(said.matches("Build recovered. Back on the trail. Built in").count(), 1, "{}", said);
 }
 
 #[cfg(feature = "jinja")]
@@ -1990,6 +2002,11 @@ fn docs_answer_for_every_name() {
     assert!(!ok && log.contains("no tracks of \"pinecone crunch sightings\" in the docs"), "{}", log);
     let (ok, log) = ssqch(&["docs", "leaveNoTrance"]);
     assert!(!ok && log.contains("(did you mean `leaveNoTrace`?)"), "{}", log);
+    // Words that miss can still point somewhere: a generator's card, or one word that has an answer.
+    let (ok, log) = ssqch(&["docs", "eleventy", "shortcode", "sightings"]);
+    assert!(!ok && log.contains("in the docs. Try `ssqch docs --from eleventy`, or `ssqch docs` for everything."), "{}", log);
+    let (ok, log) = ssqch(&["docs", "pinecone", "base", "sightings"]);
+    assert!(!ok && log.contains("in the docs. Try `ssqch docs base`, or `ssqch docs` for everything."), "{}", log);
 
     // Every generator that has a row or a config ssqch recognizes has field notes.
     let mut generators: Vec<&str> = sitesquatch::equivalents::TABLE.iter().flat_map(|e| e.from.iter().copied()).collect();
@@ -2337,11 +2354,11 @@ fn new_creates_a_page_from_an_blueprint() {
     // No blueprint: a title from the file's name, and today's date.
     let (ok, log) = new(&["posts/pine-cone-crunch.md"]);
     assert!(ok, "{}", log);
-    assert_eq!(log, "Created src/posts/pine-cone-crunch.md with a title and a date (there's no blueprint for it in src/_blueprints/)\n");
+    assert_eq!(log, "Created src/posts/pine-cone-crunch.md from the built-in blueprint (a title and a date; src/_blueprints/ has none for it). Field notes started.\n");
     assert_eq!(read("src/posts/pine-cone-crunch.md"), format!("---\ntitle: Pine cone crunch\ndate: {}\n---\n\n", today));
     // Nothing is overwritten.
     let (ok, log) = new(&["posts/pine-cone-crunch.md", "--title", "Other"]);
-    assert!(!ok && log.contains("src/posts/pine-cone-crunch.md is already there"), "{}", log);
+    assert!(!ok && log.contains("src/posts/pine-cone-crunch.md already exists. Those tracks are taken; choose another file name (the file is left as it is)"), "{}", log);
     assert!(read("src/posts/pine-cone-crunch.md").contains("title: Pine cone crunch"));
 
     // The folder's blueprint: its front matter is filled in, and its body is copied as it is.
@@ -2350,19 +2367,19 @@ fn new_creates_a_page_from_an_blueprint() {
     write("src/_blueprints/docs/guides.jinja", "---\ntitle:\n---\n<p>A guide.</p>\n");
     write("src/_blueprints/default.md", "---\ntitle:\n---\n\nA page.\n");
     let (ok, log) = new(&["src/posts/2026-01-05-winter-trails.md", "--title", "Winter trails: a guide", "--set", "tags=[news, trails]", "--set", "draft=false"]);
-    assert_eq!((ok, log.as_str()), (true, "Created src/posts/2026-01-05-winter-trails.md from src/_blueprints/posts.md\n"));
+    assert_eq!((ok, log.as_str()), (true, "Created src/posts/2026-01-05-winter-trails.md from src/_blueprints/posts.md. Field notes started.\n"));
     assert_eq!(read("src/posts/2026-01-05-winter-trails.md"), format!("---\n# Fill in the description.\ntitle: \"Winter trails: a guide\"\ndate: {}\ndescription:\ndraft: false\ntags: [news, trails]\n---\n\nThe title is {{{{ title }}}}.\n", today));
 
     // The most specific folder's blueprint, by the new file's extension; then the folders above; then `default`.
     let (ok, log) = new(&["docs/guides/install.jinja"]);
-    assert!(ok && log.ends_with("from src/_blueprints/docs/guides.jinja\n"), "{}", log);
+    assert!(ok && log.ends_with("from src/_blueprints/docs/guides.jinja. Field notes started.\n"), "{}", log);
     assert_eq!(read("src/docs/guides/install.jinja"), "---\ntitle: Install\n---\n<p>A guide.</p>\n");
     let (ok, log) = new(&["docs/reference/cli/index.md", "--date", "2026-03-02"]);
-    assert!(ok && log.ends_with("from src/_blueprints/docs.md\n"), "{}", log);
+    assert!(ok && log.ends_with("from src/_blueprints/docs.md. Field notes started.\n"), "{}", log);
     // An index page is named by its folder, and --date adds a date the blueprint doesn't have.
     assert_eq!(read("src/docs/reference/cli/index.md"), "---\ntitle: Cli\norder: 0\ndate: 2026-03-02\n---\n\nA doc.\n");
     let (ok, log) = new(&["about.md"]);
-    assert!(ok && log.ends_with("from src/_blueprints/default.md\n"), "{}", log);
+    assert!(ok && log.ends_with("from src/_blueprints/default.md. Field notes started.\n"), "{}", log);
     assert_eq!(read("src/about.md"), "---\ntitle: About\n---\n\nA page.\n");
     // By name, and from a theme.
     let (ok, log) = new(&["ideas/cedar.md", "--blueprint", "notes", "--format", "json"]);
@@ -2373,18 +2390,18 @@ fn new_creates_a_page_from_an_blueprint() {
 
     // A folder and a title: the file is named as the folder's other pages are.
     let (ok, log) = new(&["docs", "--title", "Getting started"]);
-    assert_eq!((ok, log.as_str()), (true, "Created src/docs/getting-started.md from src/_blueprints/docs.md\n"));
+    assert_eq!((ok, log.as_str()), (true, "Created src/docs/getting-started.md from src/_blueprints/docs.md. Field notes started.\n"));
     // Most of the pages in posts/ have the date in front now.
     write("src/posts/2026-01-09-snow.md", "---\ntitle: Snow\n---\n");
     let (ok, log) = new(&["posts/", "--title", "What's new in 0.4?", "--date", "2026-03-02"]);
-    assert_eq!((ok, log.as_str()), (true, "Created src/posts/2026-03-02-whats-new-in-0-4.md from src/_blueprints/posts.md\n"));
+    assert_eq!((ok, log.as_str()), (true, "Created src/posts/2026-03-02-whats-new-in-0-4.md from src/_blueprints/posts.md. Field notes started.\n"));
     assert!(read("src/posts/2026-03-02-whats-new-in-0-4.md").contains("title: What's new in 0.4?\ndate: 2026-03-02\n"));
     // Folders with an index file.
     write("src/trails/cedar/index.jinja", "---\ntitle: Cedar\n---\n");
     write("src/trails/fir/index.jinja", "---\ntitle: Fir\n---\n");
     std::fs::remove_file(dir.join("src/_blueprints/default.md")).unwrap();
     let (ok, log) = new(&["trails", "--title", "Old Growth Loop"]);
-    assert!(ok && log.starts_with("Created src/trails/old-growth-loop/index.jinja with a title and a date"), "{}", log);
+    assert!(ok && log.starts_with("Created src/trails/old-growth-loop/index.jinja from the built-in blueprint (a title and a date"), "{}", log);
 
     // What goes wrong.
     for (args, expected) in [

@@ -10,7 +10,7 @@ use sitesquatch::cli::clap;
 pub const TYPES: &str = include_str!("ssqch.d.ts");
 
 /// The starter site: (path in the new site, contents). It's an amateur
-/// investigator's field notes: three posts that each show one thing. The
+/// investigator's field notes: five posts that each show one thing. The
 /// layout and home page come from the chosen engine ([`Engine::templates`]),
 /// and [`Engine::adapt`] fits the config, `posts.json` and the 404 page to it.
 const STARTER: &[(&str, &str)] = &[
@@ -20,6 +20,8 @@ const STARTER: &[(&str, &str)] = &[
     ("src/posts/i-know-what-i-saw.md", include_str!("starter/src/posts/i-know-what-i-saw.md")),
     ("src/posts/upon-further-review-a-stump.md", include_str!("starter/src/posts/upon-further-review-a-stump.md")),
     ("src/posts/the-stump-has-moved.md", include_str!("starter/src/posts/the-stump-has-moved.md")),
+    ("src/posts/raiders-of-the-lost-path.md", include_str!("starter/src/posts/raiders-of-the-lost-path.md")),
+    ("src/posts/the-cache-of-the-wild.md", include_str!("starter/src/posts/the-cache-of-the-wild.md")),
     ("src/404.md", include_str!("starter/src/404.md")),
     ("src/_blueprints/posts.md", include_str!("starter/src/_blueprints/posts.md")),
     ("ssqch.d.ts", TYPES),
@@ -183,7 +185,7 @@ fn replace_once(contents: &str, from: &str, to: &str) -> String {
 
 pub fn init_command() -> clap::Command {
     clap::Command::new("init")
-        .about("Create a starter site (config, layout, three posts, data and editor types)")
+        .about("Create a starter site (config, layout, five posts, data and editor types)")
         .arg(clap::Arg::new("dir").help("Where to create it (default: the current folder)").default_value("."))
         .arg(clap::Arg::new("starter").long("starter").value_name("NAME").help("What to start with: site (a small blog) or docs (documentation with a sidebar, tabs and search)").default_value("site"))
         .arg(clap::Arg::new("engine").long("engine").value_name("NAME").help("The template language for the starter's layouts and templates: jinja, njk, edge, liquid, hbs or ejs").default_value(DEFAULT_ENGINE))

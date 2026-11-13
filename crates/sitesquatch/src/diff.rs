@@ -533,8 +533,18 @@ impl DiffReport {
                 out.push_str(&format!("      ... {} more changed {} (--lines 0 shows all)\n", crate::report::count(total - shown), if total - shown == 1 { "line" } else { "lines" }));
             }
         }
+        // How many pages and other files differ, before the detail.
+        let page_url = |url: &String| url.ends_with('/') || is_page(url);
+        let pages = self.added.iter().chain(&self.removed).filter(|u| page_url(u)).count() + self.changed.iter().filter(|f| is_page(&f.path)).count();
+        let others = self.added.len() + self.removed.len() + self.changed.len() - pages;
+        let found = match (pages, others) {
+            (_, 0) => plural(pages, "page", "pages"),
+            (0, _) => plural(others, "other file", "other files"),
+            _ => format!("{} and {}", plural(pages, "page", "pages"), plural(others, "other file", "other files")),
+        };
         out.push_str(&format!(
-            "\n{} changed, {} added, {} removed; {} are the same.\n",
+            "\nChanges found: {} ({} changed, {} added, {} removed); {} are the same. The stump has moved.\n",
+            found,
             crate::report::count(self.changed.len()),
             crate::report::count(self.added.len()),
             crate::report::count(self.removed.len()),
@@ -704,7 +714,7 @@ mod tests {
         let text = report.to_text(10, false);
         assert!(text.contains("  ~ /  (text and markup)\n      ids removed (links to them break): #team\n      - <h2 id=\"team\">\n      + <h2>\n      - Old text\n      + New text\n"), "{}", text);
         assert!(text.contains("  ~ /assets/index.css  (index.11111111.css -> index.22222222.css)"), "{}", text);
-        assert!(text.ends_with("3 changed, 1 added, 1 removed; 1 page and 2 other files are the same.\n"), "{}", text);
+        assert!(text.ends_with("Changes found: 4 pages and 1 other file (3 changed, 1 added, 1 removed); 1 page and 2 other files are the same. The stump has moved.\n"), "{}", text);
         let json = report.to_json(1);
         assert_eq!(json["same"], false);
         assert_eq!(json["summary"]["changed"], 3);

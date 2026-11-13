@@ -5,14 +5,27 @@
 	let panel;
 	let icon;
 	let hidden;
+	// Where the keyboard was before the overlay took it, to give it back.
+	let before;
 	const title = document.title;
+	const hide = () => {
+		hidden = panel.shadowRoot.querySelector("pre").textContent;
+		show(hidden);
+	};
+	const escape = event => {
+		if (event.key === "Escape" && panel) hide();
+	};
 	const show = error => {
 		if (!error || error === hidden) {
 			if (panel) {
+				const had = panel.shadowRoot.activeElement || document.activeElement === panel;
 				panel.remove();
 				icon.remove();
 				panel = icon = null;
 				document.title = title;
+				document.removeEventListener("keydown", escape);
+				if (had && before?.isConnected) before.focus();
+				before = null;
 			}
 			if (!error) hidden = null;
 			return;
@@ -25,14 +38,36 @@
 				h1 { margin: 0 0 0.25rem; font-size: 1.4rem; color: #f0a17d; }
 				p { margin: 0 0 1rem; color: #a2aca3; }
 				pre { margin: 0 0 1rem; padding: 1rem; border-left: 5px solid #e8af43; background: #252b27; color: #e5e9e1; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-				button { padding: 0.35rem 0.9rem; border: 0; border-radius: 4px; background: #a23e20; color: #fafaf7; font: inherit; cursor: pointer; }
-				small { margin-left: 0.75rem; color: #a2aca3; }
-			</style><section role="alert"><div><h1>Build failed</h1><p>This page is from the last build that worked. Fix the error and this goes away.</p><pre></pre><button type="button">Hide</button><small>Squatch Watch (ssqch serve)</small></div></section>`;
-			panel.shadowRoot.querySelector("button").addEventListener("click", () => {
-				hidden = panel.shadowRoot.querySelector("pre").textContent;
-				show(hidden);
+				section:focus { outline: none; }
+				button { margin-right: 0.5rem; padding: 0.35rem 0.9rem; border: 0; border-radius: 4px; background: #a23e20; color: #fafaf7; font: inherit; cursor: pointer; }
+				button:focus-visible { outline: 3px solid #e8af43; outline-offset: 2px; }
+				small { margin-left: 0.25rem; color: #a2aca3; }
+			</style><section role="alert" aria-labelledby="ssqch-title" tabindex="-1"><div><h1 id="ssqch-title">Build failed</h1><p>This page is from the last build that worked. Fix the error and this goes away.</p><pre></pre><button type="button" data-copy>Copy diagnostic</button><button type="button" data-hide>Hide</button><small>Escape hides it. Squatch Watch (ssqch serve)</small></div></section>`;
+			const root = panel.shadowRoot;
+			const copy = root.querySelector("[data-copy]");
+			copy.addEventListener("click", async () => {
+				const text = root.querySelector("pre").textContent;
+				try {
+					await navigator.clipboard.writeText(text);
+					copy.textContent = "Copied";
+				} catch {
+					// No clipboard (a page served over plain HTTP to another device): select it to copy by hand.
+					const range = document.createRange();
+					range.selectNodeContents(root.querySelector("pre"));
+					getSelection().removeAllRanges();
+					getSelection().addRange(range);
+					copy.textContent = "Selected: copy it with your keyboard";
+				}
+				setTimeout(() => {
+					copy.textContent = "Copy diagnostic";
+				}, 2000);
 			});
+			root.querySelector("[data-hide]").addEventListener("click", hide);
+			document.addEventListener("keydown", escape);
 			document.body.append(panel);
+			// The keyboard goes to the overlay (Tab reaches its buttons), and comes back when it goes.
+			before = document.activeElement;
+			root.querySelector("section").focus({ preventScroll: true });
 			icon = document.createElement("link");
 			icon.rel = "icon";
 			icon.href = "/__ssqch/favicon-error.svg";

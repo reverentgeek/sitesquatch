@@ -134,12 +134,14 @@ and `ssqch footprint` in 0.5.
       removed, drafts, unused templates, in that order); `init --quiet` and `serve --quiet`
       print only warnings and errors (and the address once); the banner is `Serving dist at
       ... Squatch Watch is on.`
-- [ ] **From the same review, not decided:** `Build recovered. Back on the trail.` when a
-      failing build works again while serving; "Copy diagnostic" and Escape in the error
+- [x] **From the same review, built 2026-11-12:** `Build recovered. Back on the trail.` when a
+      failing build works again while serving; "Copy diagnostic", Escape and focus in the error
       overlay; `Field notes started.` after `ssqch new`, naming the built-in blueprint as one;
       a next step for an empty `ssqch docs` search and for `ssqch new`'s taken name;
-      `Changes found: 2 pages. The stump has moved.` from `ssqch diff`; a skip link in the
-      docs starter; example posts (*The Cache of the Wild*, *Raiders of the Lost Path*).
+      `Changes found: ... The stump has moved.` from `ssqch diff`; a skip link in the docs
+      starter; *Raiders of the Lost Path* and *The Cache of the Wild* in the site starter.
+  - [ ] Not yet: "Copy link" on the docs starter's headings, and the review's other example
+        posts (*The stump has a forwarding address*, *Honey, I Shrunk the Site*).
 - [x] **Errors:** a port something else is squatting on; layout, include and component loops
       that name the loop (`we've passed this tree before. Layout loop: base.edge -> wrap.edge
       -> base.edge`; Edge used to print `included from` 64 times); `output conflicts (two sets

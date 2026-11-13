@@ -154,6 +154,11 @@ a `v<version>` tag on a commit where that version matches.
 - `--quiet` quiets `ssqch init` (it listed the files and said camp is set up) and `ssqch serve`
   (it said `Squatch Watch is on.` and `Fresh tracks in ...` for every change): `serve --quiet`
   prints the address once, and then only warnings and errors.
+- The error overlay in `ssqch serve` has a "Copy diagnostic" button (it says "Copied"), and
+  Escape hides it like "Hide" does. It takes the keyboard focus when it opens, so Tab reaches
+  its buttons, and gives it back when it goes.
+- The docs starter has a "Skip to content" link, the first thing Tab reaches on each page, in
+  every engine.
 
 ### Changed
 
@@ -172,6 +177,21 @@ a `v<version>` tag on a commit where that version matches.
 - The starters and examples have forest creatures in them: Owl's field guide, Beaver's build
   notes and Deer's shortcut in the docs starter, Raccoon's cache in the site starter's second
   post, and Owl, Beaver, Raccoon and Squirrel in the examples.
+- While serving, the first build that works after one that failed says so: `Build recovered.
+  Back on the trail. Built in ...`. It's the build's one themed line.
+- `ssqch new` says which blueprint it used, or `the built-in blueprint` when the folder has
+  none, and ends with `Field notes started.` (left out with `--quiet`). A page that's already
+  there is refused as before: `src/posts/cedar.md already exists. Those tracks are taken;
+  choose another file name (the file is left as it is)`.
+- `ssqch docs` with words that find nothing suggests a next step when one of them leads
+  somewhere: a generator's trailhead (`Try ssqch docs --from eleventy`), or a word that's a
+  name or another generator's word (`Try ssqch docs base`). The JSON has it as `tryInstead`.
+- `ssqch diff` ends a report that found differences with `Changes found: 3 pages and 1 other
+  file (2 changed, 1 added, 1 removed); ... The stump has moved.`, to go with `The stump has
+  not moved.`
+- The site starter has two more field notes: *Raiders of the Lost Path* (the link checker, an
+  old map and a renamed heading) and *The Cache of the Wild* (a data file that fetches with
+  `cache`, and `--offline`).
 - The examples are in the Ranger Station '76 palette, light and dark, like the starters.
 - The `versioned-docs` and `islands` examples are written in Jinja. `component-docs` stays in
   Edge for its components with slots, and sets `markdownEngine: "edge"`.

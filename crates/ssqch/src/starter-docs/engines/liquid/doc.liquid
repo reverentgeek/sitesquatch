@@ -3,7 +3,7 @@ layout: base.liquid
 sidebar: true
 ---
 <div class="docs">
-  <main data-pagefind-body>
+  <main id="content" data-pagefind-body>
     {% assign crumbs = nav | navBreadcrumbs: page.url %}
     {% if crumbs.size > 1 %}
     <nav class="breadcrumbs" aria-label="Breadcrumbs">

@@ -347,10 +347,12 @@ fn run_new(cfg: &Config, mut options: crate::blueprint::NewOptions, set: &[Strin
         let out = serde_json::json!({ "schemaVersion": 1, "path": shown(&created.path), "blueprint": created.blueprint.as_deref().map(shown), "title": created.title, "date": created.date });
         println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
-        match &created.blueprint {
-            Some(blueprint) => println!("Created {} from {}", shown(&created.path), shown(blueprint)),
-            None => println!("Created {} with a title and a date (there's no blueprint for it in {}/_blueprints/)", shown(&created.path), shown(&dunce::canonicalize(&ctx.input_dir).unwrap_or_else(|_| ctx.input_dir.clone()))),
-        }
+        let from = match &created.blueprint {
+            Some(blueprint) => shown(blueprint),
+            None => format!("the built-in blueprint (a title and a date; {}/_blueprints/ has none for it)", shown(&dunce::canonicalize(&ctx.input_dir).unwrap_or_else(|_| ctx.input_dir.clone()))),
+        };
+        let aside = if cfg.quiet { String::new() } else { format!(" {}", crate::voice::FIELD_NOTES) };
+        println!("Created {} from {}.{}", shown(&created.path), from, aside);
     }
     Ok(())
 }
@@ -534,8 +536,13 @@ fn report_errors(result: anyhow::Result<()>) -> ExitCode {
 }
 
 pub(crate) fn print_report(cfg: &Config, report: &BuildReport) {
+    print_report_after(cfg, report, false);
+}
+
+/// The build summary, for a build that worked after one that failed when `recovered`.
+pub(crate) fn print_report_after(cfg: &Config, report: &BuildReport, recovered: bool) {
     if !cfg.quiet {
-        print!("{}", crate::report::summary(cfg, report));
+        print!("{}", crate::report::summary_after(cfg, report, recovered));
     }
 }
 

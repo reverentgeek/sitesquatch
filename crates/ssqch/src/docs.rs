@@ -617,6 +617,21 @@ fn card_json(sections: &[Section], names: &[Name]) -> Json {
     })
 }
 
+/// Where to look after a search found nothing: the card for a generator the words name
+/// (`ssqch docs --from eleventy`), or one of the words that's a name or another generator's word.
+fn next_step(sections: &[Section], names: &[Name], query: &str) -> Option<String> {
+    let words: Vec<&str> = query.split(|c: char| !c.is_alphanumeric() && c != '.' && c != '-').filter(|w| !w.is_empty()).collect();
+    let known = generators();
+    if let Some(generator) = words.iter().find_map(|w| known.iter().find(|g| g.eq_ignore_ascii_case(w) || g.replace('.', "").eq_ignore_ascii_case(w))) {
+        return Some(format!("ssqch docs --from {}", generator.to_lowercase()));
+    }
+    if words.len() < 2 {
+        return None;
+    }
+    // A name (a command, an option, a function) or another generator's word, not any word in the text.
+    words.iter().find(|w| names.iter().any(|n| n.name == **w) || answer(sections, names, w).is_some_and(|a| a.equivalent.is_some())).map(|w| format!("ssqch docs {}", w))
+}
+
 /// The generators the table and the guides know, by name.
 fn generators() -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
@@ -745,11 +760,13 @@ pub fn run_docs(matches: &clap::ArgMatches) -> ExitCode {
         Some(a) => print!("{}", answer_text(&sections, &a)),
         None => {
             let hint = closest(&sections, &names, &query);
+            let next = hint.is_none().then(|| next_step(&sections, &names, &query)).flatten();
             if json {
-                println!("{}", serde_json::to_string_pretty(&json!({ "query": query, "found": false, "didYouMean": hint })).unwrap_or_default());
+                println!("{}", serde_json::to_string_pretty(&json!({ "query": query, "found": false, "didYouMean": hint, "tryInstead": next })).unwrap_or_default());
             } else {
                 let hint = hint.map(|h| format!(" (did you mean `{}`?)", h)).unwrap_or_default();
-                eprintln!("{} no tracks of \"{}\" in the docs{}. `ssqch docs` lists everything.", sitesquatch::diagnostics::red("error:"), query, hint);
+                let next = next.map(|n| format!("Try `{}`, or `ssqch docs` for everything.", n)).unwrap_or_else(|| "`ssqch docs` lists everything.".into());
+                eprintln!("{} no tracks of \"{}\" in the docs{}. {}", sitesquatch::diagnostics::red("error:"), query, hint, next);
             }
             return ExitCode::FAILURE;
         }
