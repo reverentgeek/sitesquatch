@@ -10,13 +10,12 @@
 #     NETLIFY_SITE_REFERENCE_PAGES and NETLIFY_SITE_ISLANDS
 # Until they're set, the workflow builds the examples and skips deploying.
 #
-# The examples use features that aren't released yet, so this deploys from
-# release/0.4. When 0.4 is merged and released, switch the branch to main.
+# The examples deploy from main, built with the ssqch in the same commit.
 name: Examples
 
 on:
   push:
-    branches: [release/0.4]
+    branches: [main]
     paths: [examples/sites/**, crates/**, plugins/**, Cargo.toml, Cargo.lock, .github/workflows/examples.yml]
   workflow_dispatch:
 
