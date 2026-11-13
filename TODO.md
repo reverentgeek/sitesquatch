@@ -256,6 +256,12 @@ Follow-ups:
       `ssqch init` includes it with a `jsconfig.json`. Checked with `tsc` against the starter,
       the README's example and the blog's config. Not released yet.
 
+- [ ] **`ssqch serve` misses a config save during a reload:** the watcher is set up again after
+      the reload's first build, so a save that lands in between isn't seen until the next one
+      (CI caught it on Linux in `serve_restarts_companions_on_reload`, now made to save again).
+      Compare the config files' contents once the new watcher is up, and reload again if they
+      changed.
+
 ## What else the blog is waiting on
 
 - [x] **Asset fingerprinting in `ssqch`:** `assetsPlugin({ files })` from `ssqch/assets`

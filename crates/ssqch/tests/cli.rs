@@ -988,12 +988,23 @@ fn serve_restarts_companions_on_reload() {
     };
     wait_count("warn: serve.run: `echo out=$SSQCH_OUTPUT` finished. The server keeps going without it; save the config file to start it again.", 1);
     assert!(read().contains("[echo] out=") && read().contains("_site\n"), "{}", read());
+    // Saved again until the server notices: a save that lands while it's still reloading from
+    // the last one, before it watches the files again, isn't seen (on Linux, now and then).
+    let save_until = |text: &str, n: usize| {
+        let started = std::time::Instant::now();
+        while read().matches("[ssqch] serve.run: echo out=$SSQCH_OUTPUT").count() < n {
+            std::fs::write(dir.join("ssqch.config.js"), config(text)).unwrap();
+            let written = std::time::Instant::now();
+            while read().matches("[ssqch] serve.run: echo out=$SSQCH_OUTPUT").count() < n && written.elapsed() < std::time::Duration::from_secs(2) {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            assert!(started.elapsed() < std::time::Duration::from_secs(20), "waiting for start {}:\n{}", n, read());
+        }
+    };
     // Saved as it was: the one that finished starts again.
-    std::fs::write(dir.join("ssqch.config.js"), config("")).unwrap();
-    wait_count("[ssqch] serve.run: echo out=$SSQCH_OUTPUT", 2);
+    save_until("", 2);
     // Another output folder: started again, with it.
-    std::fs::write(dir.join("ssqch.config.js"), config(", output: \"dist\"")).unwrap();
-    wait_count("[ssqch] serve.run: echo out=$SSQCH_OUTPUT", 3);
+    save_until(", output: \"dist\"", 3);
     wait_count("dist\n", 1);
 }
 
