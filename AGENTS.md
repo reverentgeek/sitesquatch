@@ -103,12 +103,17 @@ new package is published by hand once:
    registry answers 404, npm installs `ssqch` without its platform package (it skips an
    optional dependency it can't download), and each package lists a `0.0.0-stage`
    placeholder version, which stays (`latest` is the real one).
-4. For each package, in its settings on npmjs.com, add a trusted publisher: GitHub Actions,
-   repository `reverentgeek/sitesquatch`, workflow `release.yml` (npm checks the calling
-   workflow, not `publish-npm.yml`), no environment. Then set publishing access to require
-   two-factor authentication and disallow tokens. A trusted publisher that hasn't published
-   within two days of being added expires (delete it and add it again), so add them shortly
-   before a release.
+4. Add a trusted publisher to each package: GitHub Actions, repository
+   `reverentgeek/sitesquatch`, workflow `release.yml` (npm checks the calling workflow, not
+   `publish-npm.yml`), no environment. `npm trust` does it from the terminal (each call signs
+   in with 2FA in the browser):
+   `for p in ssqch @ssqch/darwin-arm64 @ssqch/darwin-x64 @ssqch/linux-x64 @ssqch/win32-x64; do
+   npm trust github "$p" --repo reverentgeek/sitesquatch --file release.yml --allow-publish
+   --yes; done`, and `npm trust list <package>` checks it. A trusted publisher that hasn't
+   published within two days of being added expires (revoke it and add it again), so add them
+   shortly before a release.
+5. In each package's settings on npmjs.com, set publishing access to require two-factor
+   authentication and disallow tokens. Trusted publishing still works; a token doesn't.
 
 ### macOS signing and notarization
 
