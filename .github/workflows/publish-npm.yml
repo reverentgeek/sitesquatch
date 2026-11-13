@@ -23,6 +23,7 @@ on:
 jobs:
   publish-npm:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: read
       id-token: write
@@ -59,12 +60,23 @@ jobs:
           # ssqch` keeps getting the latest release.
           tag=latest
           case "$version" in *-*) tag=next ;; esac
-          # The platform packages first: the wrapper depends on them.
-          for dir in npm-out/*-* npm-out/ssqch; do
-            name=$(jq -r .name "$dir/package.json")
-            if [ "$(npm view "$name@$version" version 2>/dev/null)" = "$version" ]; then
+          on_npm() { [ "$(npm view "$1@$version" version --prefer-online 2>/dev/null)" = "$version" ]; }
+          publish() {
+            name=$(jq -r .name "$1/package.json")
+            if on_npm "$name"; then
               echo "$name@$version is already on npm"
-              continue
+            else
+              (cd "$1" && npm publish --access public --tag "$tag")
             fi
-            (cd "$dir" && npm publish --access public --tag "$tag")
+          }
+          # The platform packages first, and the wrapper only once the registry serves
+          # them: npm takes minutes to process a 12 MB binary (the 2 kB wrapper is
+          # quicker), and until then it installs the wrapper without one.
+          for dir in npm-out/*-*; do publish "$dir"; done
+          for dir in npm-out/*-*; do
+            name=$(jq -r .name "$dir/package.json")
+            for i in $(seq 1 90); do on_npm "$name" && break; sleep 20; done
+            on_npm "$name" || { echo "::error::$name@$version still isn't on npm after 30 minutes, so ssqch@$version wasn't published. Rerun this job once it is."; exit 1; }
+            echo "$name@$version is on npm"
           done
+          publish npm-out/ssqch

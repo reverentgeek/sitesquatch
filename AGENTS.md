@@ -84,7 +84,7 @@ The `ssqch` npm package is a small Node wrapper (`npm/ssqch/bin/ssqch.js`) that 
 from one of its optional dependencies, `@ssqch/<platform>-<arch>`, one per release binary
 (`npm/ssqch/platforms.json`). `scripts/npm-packages.mjs` builds all five from the release
 archives, the smoke test installs each platform's package with npm, and `publish-npm.yml`
-publishes them with npm's trusted publishing (OIDC, no token), which adds provenance. A version
+publishes them with npm's trusted publishing (OIDC, no token), which adds provenance. It publishes the wrapper only once the registry serves all four platform packages (npm takes minutes to process a binary, and until then `ssqch` would install without one). A version
 that's already on npm is skipped, so a failed run can be rerun. A new target means a row in
 `platforms.json` and in the smoke test's matrix, and a first publish by hand.
 
