@@ -44,7 +44,7 @@ On **Windows (x86_64)**, use the PowerShell installer:
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.ps1 | iex"
 ```
 
-The installers check the download's SHA-256 checksum, install `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and add that folder to your `PATH`. Every release binary runs a smoke test on its own platform before it's published. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.5.1`. You can also download an archive for your platform from the [releases page](https://github.com/reverentgeek/sitesquatch/releases), or, if you use [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), run `cargo binstall ssqch` to fetch the same archive.
+The installers check the download's SHA-256 checksum, install `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and add that folder to your `PATH`. Every release binary runs a smoke test on its own platform before it's published. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.5.2`. You can also download an archive for your platform from the [releases page](https://github.com/reverentgeek/sitesquatch/releases), or, if you use [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), run `cargo binstall ssqch` to fetch the same archive.
 
 In a site with a `package.json`, install it from **npm** as a dev dependency, so the lockfile pins the version: `npm install --save-dev ssqch` (or `pnpm add -D ssqch`, `yarn add -D ssqch`), then run `npx ssqch build`, or `ssqch build` in a `package.json` script. The `ssqch` package runs the binary from an optional dependency for your platform (`@ssqch/darwin-arm64`, `@ssqch/darwin-x64`, `@ssqch/linux-x64` or `@ssqch/win32-x64`), so installing runs no install scripts and downloads nothing from GitHub. It covers the same platforms as the installers.
 
@@ -59,7 +59,7 @@ In **GitHub Actions**, [`reverentgeek/setup-ssqch`](https://github.com/reverentg
 ```yaml
 - uses: reverentgeek/setup-ssqch@v1
   with:
-    version: 0.5.1
+    version: 0.5.2
 - run: ssqch build
 ```
 
@@ -1049,10 +1049,10 @@ Netlify can build the site itself, with no deploy token to manage. With `ssqch` 
     paths = ["dist/img", ".cache/ssqch"]
 ```
 
-- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.5.1`) and bump it when you're ready.
+- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.5.2`) and bump it when you're ready.
 - **[`netlify-plugin-cache`](https://github.com/jakejarvis/netlify-plugin-cache)** carries the image files and the hash cache over to the next build. Add it to your `devDependencies`.
 
-A site without a `package.json` can install the release in the build command instead, with `SSQCH_VERSION = "0.5.1"` under `[build.environment]` to pin it. `SSQCH_UNMANAGED_INSTALL=.cache/bin` installs the binary into that folder and leaves shell profiles alone:
+A site without a `package.json` can install the release in the build command instead, with `SSQCH_VERSION = "0.5.2"` under `[build.environment]` to pin it. `SSQCH_UNMANAGED_INSTALL=.cache/bin` installs the binary into that folder and leaves shell profiles alone:
 
 ```toml
 [build]

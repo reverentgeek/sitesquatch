@@ -8,7 +8,7 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
-## Unreleased
+## 0.5.2 - 2026-11-13
 
 ### Added
 
