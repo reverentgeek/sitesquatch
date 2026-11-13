@@ -8,6 +8,18 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Added
+
+- ssqch is on npm: `npm install --save-dev ssqch` (or `pnpm add -D ssqch`) pins it in a site's
+  lockfile, and `npx ssqch build` runs it. The `ssqch` package runs the binary from an optional
+  dependency for the platform (`@ssqch/darwin-arm64`, `@ssqch/darwin-x64`, `@ssqch/linux-x64`,
+  `@ssqch/win32-x64`), so installing runs no install scripts and downloads nothing from GitHub.
+  On Netlify, a site with ssqch in its `devDependencies` gets it from the install step, with no
+  installer in the build command. Each release publishes them after the GitHub release, with
+  provenance.
+
 ## 0.5.1 - 2026-11-13
 
 ### Fixed
