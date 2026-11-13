@@ -883,10 +883,25 @@ reuse it, and crates.io comes before `cargo binstall`.
 - [x] A Homebrew tap (`brew install reverentgeek/tap/ssqch`): dist's `homebrew` installer
       writes the formula, and its publish job pushes it to `reverentgeek/homebrew-tap` with the
       `HOMEBREW_TAP_TOKEN` secret. First published with the next release.
-- [ ] Consider an npm package that downloads the matching binary (like esbuild's platform
-      packages), so a site with a `package.json` can pin ssqch as a dev dependency and run
-      `npx ssqch build`. That would also make a Netlify build pick up ssqch from `pnpm install`,
-      with no install script.
+- [x] An npm package, so a site with a `package.json` can pin ssqch as a dev dependency and
+      run `npx ssqch build`. Like esbuild's: `ssqch` is a small Node wrapper
+      (`npm/ssqch/bin/ssqch.js`) whose optional dependencies are one `@ssqch/<platform>-<arch>`
+      package per release binary, limited by `os` and `cpu`, so installing runs no scripts and
+      downloads nothing from GitHub (pnpm 10 and later skip install scripts by default).
+      `scripts/npm-packages.mjs` builds them from the release archives, the smoke test installs
+      each platform's package with npm and builds a site, and `publish-npm.yml` (a dist publish
+      job, after the release) publishes them with npm trusted publishing.
+  - [x] Publish 0.5.1 to npm by hand, in the `@ssqch` organization (`ssqch` itself is
+        unscoped, under the reverentgeek account). Done 2026-11-13; a clean install works.
+  - [ ] Add a trusted publisher to each of the five packages (GitHub Actions,
+        `reverentgeek/sitesquatch`, `release.yml`) shortly before the next release, and
+        disallow tokens (the steps are in `AGENTS.md`, "npm"). Until then the publish job fails
+        on a release.
+  - [x] **Blog:** `ssqch` 0.5.1 is a dev dependency, pinned exactly, and `netlify.toml` lost
+        the installer and `SSQCH_VERSION` (2026-11-13). `scripts/ssqch.sh` looks in
+        `node_modules/.bin` first. `pnpm test` passes with the npm binary. pnpm 12 put the new
+        packages in the blog's `minimumReleaseAgeExclude` (less than a day old), and will
+        likely do the same for each release.
 
 ### Using it in CI
 

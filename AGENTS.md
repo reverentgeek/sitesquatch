@@ -62,7 +62,8 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configur
 2. Set `[workspace.package] version` in `Cargo.toml` to match, along with the `version` of each
    `sitesquatch*` entry in `[workspace.dependencies]`, and run `cargo build` to update
    `Cargo.lock`. Update the pinned versions in the README too (`download/v<version>`, the
-   `setup-ssqch` example's `version:` and the Netlify example's `SSQCH_VERSION`).
+   `setup-ssqch` example's `version:`, and the Netlify section's `ssqch@<version>` and
+   `SSQCH_VERSION`).
 3. Commit and push to `main`.
 4. Wait for CI to pass on that commit, then tag and push: `git tag v<version> && git push
    origin v<version>`. The release workflow refuses a tag that doesn't match a package
@@ -72,9 +73,47 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configur
    published: fix it and tag the fixed commit with the same version (delete the old tag
    first). The CI check runs after the builds on purpose: as a plan job, a failure made the
    builds skip, and dist publishes when builds are skipped (an empty release marked Latest,
-   which is what happened to 0.3.4).
+   which is what happened to 0.3.4). After the GitHub release, the same workflow publishes
+   the Homebrew formula and the npm packages (`.github/workflows/publish-npm.yml`).
 5. Publish the crates from the tag: `cargo publish --workspace --locked`. It publishes them in
    dependency order, using the crates.io token in `~/.cargo/credentials.toml`.
+
+### npm
+
+The `ssqch` npm package is a small Node wrapper (`npm/ssqch/bin/ssqch.js`) that runs the binary
+from one of its optional dependencies, `@ssqch/<platform>-<arch>`, one per release binary
+(`npm/ssqch/platforms.json`). `scripts/npm-packages.mjs` builds all five from the release
+archives, the smoke test installs each platform's package with npm, and `publish-npm.yml`
+publishes them with npm's trusted publishing (OIDC, no token), which adds provenance. A version
+that's already on npm is skipped, so a failed run can be rerun. A new target means a row in
+`platforms.json` and in the smoke test's matrix, and a first publish by hand.
+
+Trusted publishing is set per package on npmjs.com, and only for a package that exists, so a
+new package is published by hand once:
+
+1. Create the `@ssqch` organization on npmjs.com (free, for public packages), and sign in:
+   `npm login`.
+2. Build the packages from a release:
+   `gh release download v<version> -p 'ssqch-*.tar.gz' -p 'ssqch-*.zip' -D /tmp/ssqch-archives`,
+   then `node scripts/npm-packages.mjs --archives /tmp/ssqch-archives --out /tmp/ssqch-npm
+   --version <version>`.
+3. Publish the platform packages first, then the wrapper: in each of
+   `/tmp/ssqch-npm/{darwin-arm64,darwin-x64,linux-x64,win32-x64,ssqch}`, run
+   `npm publish --access public`. A new package takes a few minutes to appear: until then the
+   registry answers 404, npm installs `ssqch` without its platform package (it skips an
+   optional dependency it can't download), and each package lists a `0.0.0-stage`
+   placeholder version, which stays (`latest` is the real one).
+4. Add a trusted publisher to each package: GitHub Actions, repository
+   `reverentgeek/sitesquatch`, workflow `release.yml` (npm checks the calling workflow, not
+   `publish-npm.yml`), no environment. `npm trust` does it from the terminal (each call signs
+   in with 2FA in the browser):
+   `for p in ssqch @ssqch/darwin-arm64 @ssqch/darwin-x64 @ssqch/linux-x64 @ssqch/win32-x64; do
+   npm trust github "$p" --repo reverentgeek/sitesquatch --file release.yml --allow-publish
+   --yes; done`, and `npm trust list <package>` checks it. A trusted publisher that hasn't
+   published within two days of being added expires (revoke it and add it again), so add them
+   shortly before a release.
+5. In each package's settings on npmjs.com, set publishing access to require two-factor
+   authentication and disallow tokens. Trusted publishing still works; a token doesn't.
 
 ### macOS signing and notarization
 

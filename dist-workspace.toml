@@ -14,7 +14,9 @@ installers = ["shell", "powershell", "homebrew"]
 # The Homebrew formula goes to this tap (`brew install reverentgeek/tap/ssqch`). Publishing
 # it needs a HOMEBREW_TAP_TOKEN repository secret that can push to the tap; see AGENTS.md.
 tap = "reverentgeek/homebrew-tap"
-publish-jobs = ["homebrew"]
+# The npm packages (`ssqch` and `@ssqch/<platform>`) are published after the release by
+# .github/workflows/publish-npm.yml, with npm trusted publishing; see AGENTS.md.
+publish-jobs = ["homebrew", "./publish-npm"]
 # Target platforms to build apps for (Rust target-triple syntax). Linux is a
 # static musl binary, so it runs on any distro (and Netlify's build image).
 targets = ["x86_64-unknown-linux-musl", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"]
@@ -61,3 +63,5 @@ nasm = "*"
 # The CI check reads workflow runs.
 [dist.github-custom-job-permissions]
 check-ci = { actions = "read" }
+# Trusted publishing to npm signs in with the workflow's OIDC token.
+publish-npm = { contents = "read", id-token = "write" }

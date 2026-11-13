@@ -19,17 +19,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-unknown-linux-musl, runner: ubuntu-latest, archive: tar.gz }
-          - { target: aarch64-apple-darwin, runner: macos-15, archive: tar.gz }
-          - { target: x86_64-apple-darwin, runner: macos-15-intel, archive: tar.gz }
-          - { target: x86_64-pc-windows-msvc, runner: windows-latest, archive: zip }
+          - { target: x86_64-unknown-linux-musl, runner: ubuntu-latest, archive: tar.gz, npm: linux-x64 }
+          - { target: aarch64-apple-darwin, runner: macos-15, archive: tar.gz, npm: darwin-arm64 }
+          - { target: x86_64-apple-darwin, runner: macos-15-intel, archive: tar.gz, npm: darwin-x64 }
+          - { target: x86_64-pc-windows-msvc, runner: windows-latest, archive: zip, npm: win32-x64 }
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v6
         with:
-          sparse-checkout: crates/ssqch/tests/fixtures
+          sparse-checkout: |
+            crates/ssqch/tests/fixtures
+            npm
+            scripts
       - uses: actions/download-artifact@v8
         with:
           name: artifacts-build-local-${{ matrix.target }}
@@ -79,3 +82,28 @@ jobs:
           grep -q "<picture>" site/dist/index.html
           ls site/dist/img
           ls site/dist/img/*.avif site/dist/img/*.webp > /dev/null
+      - name: The npm package installs and runs it
+        run: |
+          # Build the wrapper and this platform's package from the archive (the publish
+          # job builds all four), then install them the way a site would.
+          version=$(./ssqch --version | cut -d' ' -f2)
+          node scripts/npm-packages.mjs --archives artifacts --out npm-out --version "$version" --only "${{ matrix.npm }}"
+          mkdir tarballs
+          for pkg in npm-out/*; do (cd "$pkg" && npm pack --silent --pack-destination ../../tarballs); done
+          ls -l tarballs
+          tarballs=$(cd tarballs && { pwd -W 2>/dev/null || pwd; })
+          mkdir npm-site
+          cat > npm-site/package.json <<JSON
+          {
+            "private": true,
+            "devDependencies": { "ssqch": "file:$tarballs/ssqch-$version.tgz" },
+            "overrides": { "@ssqch/${{ matrix.npm }}": "file:$tarballs/ssqch-${{ matrix.npm }}-$version.tgz" }
+          }
+          JSON
+          cat npm-site/package.json
+          cp -r site/src site/ssqch.config.js npm-site/
+          cd npm-site
+          npm install --no-audit --no-fund
+          npx ssqch --version | grep -E "^ssqch [0-9]+\.[0-9]+\.[0-9]+"
+          npx ssqch build --quiet
+          grep -q "<h1>SMOKE TEST</h1>" dist/index.html
