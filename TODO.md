@@ -891,9 +891,12 @@ reuse it, and crates.io comes before `cargo binstall`.
       `scripts/npm-packages.mjs` builds them from the release archives, the smoke test installs
       each platform's package with npm and builds a site, and `publish-npm.yml` (a dist publish
       job, after the release) publishes them with npm trusted publishing.
-  - [ ] Publish 0.5.1 to npm by hand, create the `@ssqch` organization, and set up trusted
-        publishing for each package (the steps are in `AGENTS.md`, "npm"). Until then the
-        publish job fails on a release.
+  - [x] Publish 0.5.1 to npm by hand, in the `@ssqch` organization (`ssqch` itself is
+        unscoped, under the reverentgeek account). Done 2026-11-13; a clean install works.
+  - [ ] Add a trusted publisher to each of the five packages (GitHub Actions,
+        `reverentgeek/sitesquatch`, `release.yml`) shortly before the next release, and
+        disallow tokens (the steps are in `AGENTS.md`, "npm"). Until then the publish job fails
+        on a release.
   - [ ] **Blog:** put `ssqch` in `devDependencies` and drop the installer and `SSQCH_VERSION`
         from `netlify.toml` (`scripts/ssqch.sh` finds `node_modules/.bin/ssqch` on the PATH
         pnpm scripts get).
