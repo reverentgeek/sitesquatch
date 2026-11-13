@@ -67,8 +67,9 @@ a tool finds out the same way. The only clue is a warning that scrolls past.
       process group (a tree on Windows, stopped with `taskkill /T`), with standard input held
       open (Tailwind's and esbuild's `--watch` quit when it closes), and Ctrl-C, SIGTERM and
       SIGHUP stop them (`ctrlc`). Test: `serve_runs_companion_processes` (Unix).
-  - [ ] **Blog:** after the 0.5 release, `serve: { run: ["pnpm run serve:css", "pnpm run
-        serve:js"] }`, so a bare `ssqch serve` has styles (0.4.0 rejects the key).
+  - [x] **Blog:** `serve: { run: ["pnpm run serve:css", "pnpm run serve:js"] }`, with 0.5.0
+        (2026-11-12), and `watch` narrowed to its passthrough sources, so a CSS save swaps the
+        stylesheet without rebuilding every page.
 - [x] **A louder missing asset:** when a linked file never appears, repeat it under the
       summary and in the browser overlay (`/assets/index.css is linked but nothing wrote it`),
       pointing at the README section. Done: the dev server's page script checks the page's
