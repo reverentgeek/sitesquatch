@@ -1033,16 +1033,15 @@ Then load `/pagefind/pagefind-ui.js` and `pagefind-ui.css` in your layout and ad
 
 ### Netlify
 
-Netlify can build the site itself, with no deploy token to manage. This is the ReverentGeek blog's `netlify.toml` (it builds its CSS and JavaScript with npm scripts first, so it runs `pnpm run build`; a site without that step can run `.cache/bin/ssqch build` instead):
+Netlify can build the site itself, with no deploy token to manage. With `ssqch` in the site's `devDependencies` (see [Install](#install)), Netlify installs it with the site's other packages, at the version in the lockfile. This is the ReverentGeek blog's `netlify.toml` (it builds its CSS and JavaScript with npm scripts first, so it runs `pnpm run build`; a site without that step can run `npx ssqch build` instead):
 
 ```toml
 [build]
-  command = "curl --proto '=https' --tlsv1.2 -fsSL https://github.com/reverentgeek/sitesquatch/releases/download/v$SSQCH_VERSION/ssqch-installer.sh | SSQCH_UNMANAGED_INSTALL=.cache/bin sh && SSQCH_BIN=.cache/bin/ssqch pnpm run build && node --test test/smoke.test.js"
+  command = "pnpm run build && node --test test/smoke.test.js"
   publish = "dist/"
 
 [build.environment]
   NODE_VERSION = "24"
-  SSQCH_VERSION = "0.5.1"
 
 [[plugins]]
   package = "netlify-plugin-cache"
@@ -1050,11 +1049,15 @@ Netlify can build the site itself, with no deploy token to manage. This is the R
     paths = ["dist/img", ".cache/ssqch"]
 ```
 
-- **`SSQCH_VERSION`** pins the release, so a new SiteSquatch version can't surprise a deploy. Bump it when you're ready.
-- **`SSQCH_UNMANAGED_INSTALL=.cache/bin`** installs the binary into that folder and leaves shell profiles alone.
+- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.5.1`) and bump it when you're ready.
 - **[`netlify-plugin-cache`](https://github.com/jakejarvis/netlify-plugin-cache)** carries the image files and the hash cache over to the next build. Add it to your `devDependencies`.
 
-A site that has `ssqch` in its `devDependencies` doesn't need the installer or `SSQCH_VERSION`: Netlify installs ssqch with the site's other packages, at the version in the lockfile, so the command is `pnpm run build` (or `npx ssqch build`).
+A site without a `package.json` can install the release in the build command instead, with `SSQCH_VERSION = "0.5.1"` under `[build.environment]` to pin it. `SSQCH_UNMANAGED_INSTALL=.cache/bin` installs the binary into that folder and leaves shell profiles alone:
+
+```toml
+[build]
+  command = "curl --proto '=https' --tlsv1.2 -fsSL https://github.com/reverentgeek/sitesquatch/releases/download/v$SSQCH_VERSION/ssqch-installer.sh | SSQCH_UNMANAGED_INSTALL=.cache/bin sh && .cache/bin/ssqch build"
+```
 
 On the blog, the first Netlify build (which encoded every image) took about 4 minutes, and the next one took 18 seconds, including Netlify's own setup.
 

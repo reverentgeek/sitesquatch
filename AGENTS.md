@@ -62,7 +62,8 @@ Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configur
 2. Set `[workspace.package] version` in `Cargo.toml` to match, along with the `version` of each
    `sitesquatch*` entry in `[workspace.dependencies]`, and run `cargo build` to update
    `Cargo.lock`. Update the pinned versions in the README too (`download/v<version>`, the
-   `setup-ssqch` example's `version:` and the Netlify example's `SSQCH_VERSION`).
+   `setup-ssqch` example's `version:`, and the Netlify section's `ssqch@<version>` and
+   `SSQCH_VERSION`).
 3. Commit and push to `main`.
 4. Wait for CI to pass on that commit, then tag and push: `git tag v<version> && git push
    origin v<version>`. The release workflow refuses a tag that doesn't match a package

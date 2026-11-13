@@ -897,9 +897,11 @@ reuse it, and crates.io comes before `cargo binstall`.
         `reverentgeek/sitesquatch`, `release.yml`) shortly before the next release, and
         disallow tokens (the steps are in `AGENTS.md`, "npm"). Until then the publish job fails
         on a release.
-  - [ ] **Blog:** put `ssqch` in `devDependencies` and drop the installer and `SSQCH_VERSION`
-        from `netlify.toml` (`scripts/ssqch.sh` finds `node_modules/.bin/ssqch` on the PATH
-        pnpm scripts get).
+  - [x] **Blog:** `ssqch` 0.5.1 is a dev dependency, pinned exactly, and `netlify.toml` lost
+        the installer and `SSQCH_VERSION` (2026-11-13). `scripts/ssqch.sh` looks in
+        `node_modules/.bin` first. `pnpm test` passes with the npm binary. pnpm 12 put the new
+        packages in the blog's `minimumReleaseAgeExclude` (less than a day old), and will
+        likely do the same for each release.
 
 ### Using it in CI
 
