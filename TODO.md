@@ -4,43 +4,12 @@ The ReverentGeek blog (`../blog`) is the main real-world site. Its own tasks are
 `../blog/TODO.md`. Items here that the blog is waiting on say **Blog:**, and blog items that need
 a change here say **Needs ssqch:**. When one side finishes, tick it and update the other list.
 
-0.4 (the adoption work below) is built on the `release/0.4` branch, not `main`. Don't tag or
-release it until all of it is done and tested, and its examples are deployed. Fixes for 0.3 still
-go to `main` (and merge into `release/0.4`).
+The current release is 0.5.2 (2026-11-13; `CHANGELOG.md` has every release). Work goes to
+`main`; the `release/0.4` and `release/0.5` branches are merged and finished. The blog builds
+with the npm package, pinned exactly.
 
-The order of work:
-
-1. ~~**Remove Eleventy**, and convert the blog to a native `ssqch.config.js`.~~ Done (below).
-2. ~~**A Linux x86_64 release and an install script**, so the blog can go back to Netlify
-   builds.~~ Done: v0.2.1, and the blog builds on Netlify (2026-11-08).
-3. ~~**The blog's other requests** (fingerprinting, color profiles, link checking).~~ Done, apart
-   from HDR photos (below).
-4. **The rest of the release and adoption work**: 0.4, on `release/0.4`.
-
-Where 0.4 stands (2026-11-10): every phase of the adoption study below is built and tested,
-and so are the features that set ssqch apart (render hooks and containers, content schemas,
-`ssqch diff`, the docs starter, themes, custom elements, and `ssqch import` for Eleventy and
-Zola). Three more came from the research: `ssqch inspect`, the JSON interface for scripts and
-coding agents (`build --format json`, `capabilities`, `serve --ready-file`), and `ssqch new`.
-The blog builds with it, `ssqch diff` against its 0.3.3 build shows only the new heading
-`id`s, and `ssqch inspect` and `ssqch build --format json` work on it.
-Left before a release:
-
-- ~~Run CI for `release/0.4` on Linux and Windows.~~ It runs on pushes to the branch, and is
-  green on every platform since `.gitattributes` pins LF line endings (2026-11-10; Windows
-  checked out CRLF, which broke `collation_matches_node` and the starter's archetype).
-- ~~Close the hole in the release workflow that 0.3.4 fell into.~~ Done (2026-11-10): the CI
-  check is a `global-artifacts-jobs` job now, after the builds, and dist's host job doesn't
-  publish when it fails. As a plan job, its failure made the builds skip, and host publishes
-  over skipped builds (an empty release marked Latest).
-
-- **Blog:** after the release, switch to `sitemapPlugin()`, `highlight: true` (dropping Prism)
-  and a `posts` schema (`../blog/TODO.md`).
-
-Deferred to 0.5 (decided 2026-11-10): deploying the examples ("Site plumbing" below, and
-restyling them in the Ranger Station palette), a drawing for the starter's second post,
-`ssqch footprint`, "Say ssqch's name for another generator's word", and every unticked "Later"
-and "Not yet" item below.
+Carried past 0.5: deploying the examples ("Site plumbing" below), a drawing for the starter's
+second post, and every unticked "Later" and "Not yet" item below.
 
 ### CSS and JavaScript (0.5)
 
@@ -115,7 +84,7 @@ Jinja2, Nunjucks, Rust's Tera and MiniJinja) and the most capable of the ones ss
       Done: no errors, with or without `@types/node` installed (`process` is declared as
       `NodeJS.Process`, the way those types declare it, so the two merge).
 
-## The Sasquatch voice (done, apart from two items)
+## The Sasquatch voice (done, apart from a few items)
 
 Built 2026-11-10, after David's review. ssqch reports like a deadpan park ranger who knows a
 lot about HTML: what happened comes first, and now and then something large walks through the
@@ -130,7 +99,7 @@ and `ssqch footprint` in 0.5.
       the JSON report); `the trail goes cold on 4 broken links:`; `The stump has not moved.`
       from `ssqch diff`; `Camp is set up.` from `ssqch init`; `Welcome to the woods.` from
       `ssqch import --write`; `living off the cache` with `--offline`.
-- [x] **One aside, and `--quiet` everywhere** (from `REVIEW-0.5-code-and-character.md`, built
+- [x] **One aside, and `--quiet` everywhere** (from `research/reviews/REVIEW-0.5-code-and-character.md`, built
       2026-11-12): a build's report picks one themed line (nothing to build, first build, files
       removed, drafts, unused templates, in that order); `init --quiet` and `serve --quiet`
       print only warnings and errors (and the address once); the banner is `Serving dist at
@@ -143,6 +112,11 @@ and `ssqch footprint` in 0.5.
       starter; *Raiders of the Lost Path* and *The Cache of the Wild* in the site starter.
   - [ ] Not yet: "Copy link" on the docs starter's headings, and the review's other example
         posts (*The stump has a forwarding address*, *Honey, I Shrunk the Site*).
+  - [ ] Proposed in the 0.5 reviews, not decided: renaming `ssqch inspect` to `ssqch trace`
+        (Breaking, if taken), and display titles for the docs ("SiteSquatch Field Guide",
+        "Trail log" for release notes, "Travel light: build size and budgets", "Connecting
+        trails" for the trailheads). The reviews are in `research/reviews/`; all their
+        correctness findings are fixed (`47471f5`, `e8b36de`).
 - [x] **Errors:** a port something else is squatting on; layout, include and component loops
       that name the loop (`we've passed this tree before. Layout loop: base.edge -> wrap.edge
       -> base.edge`; Edge used to print `included from` 64 times); `output conflicts (two sets
@@ -250,12 +224,12 @@ were edited). What changed, for the changelog's first "Breaking" entry:
 Follow-ups:
 
 - [x] Write the `CHANGELOG.md` entry above (under "Unreleased" until the first release).
-- [x] **Blog:** pin the ssqch it builds with. It now installs a pinned release instead
-      (`SSQCH_VERSION` in its `netlify.toml`).
+- [x] **Blog:** pin the ssqch it builds with. It's an exact npm dev dependency now (it was
+      `SSQCH_VERSION` in `netlify.toml` until 2026-11-13).
 - [x] Type definitions for `defineConfig` and the `ssqch/*` modules: `ssqch types` writes
       `ssqch.d.ts` (ambient `declare module` declarations, so no npm package is needed), and
       `ssqch init` includes it with a `jsconfig.json`. Checked with `tsc` against the starter,
-      the README's example and the blog's config. Not released yet.
+      the README's example and the blog's config. Released in 0.2.7.
 
 - [ ] **`ssqch serve` misses a config save during a reload:** the watcher is set up again after
       the reload's first build, so a save that lands in between isn't seen until the next one
@@ -268,8 +242,8 @@ Follow-ups:
 - [x] **Asset fingerprinting in `ssqch`:** `assetsPlugin({ files })` from `ssqch/assets`
       (`plugins/assets`). Templates link plain paths; production builds rename the files to
       content-hashed names and rewrite `href` and `src` references. Released in 0.2.3.
-      **Blog:** switched over locally (templates use plain paths; `hash-assets.js`,
-      `_data/assets.js` and `build:hash` are gone), waiting for the release.
+      **Blog:** switched over (templates use plain paths; `hash-assets.js`, `_data/assets.js`
+      and `build:hash` are gone).
 - [x] `node:crypto` (`createHash` with md5, sha1, sha256, sha384, sha512) for user code in
       configs and data files. Released in 0.2.4.
 - [x] **Color profiles in the image plugin.** Images with a non-sRGB RGB profile are converted
@@ -284,8 +258,7 @@ Follow-ups:
       converted: `moxcms` fails with `InvalidAtoBLut`, and they need HDR-to-SDR tone mapping, not
       a color conversion. They're encoded as they are, with a warning. Doing it properly means
       reading the gain map (ISO 21496-1) or tone-mapping PQ to SDR the way ColorSync does.
-      **Blog:** has 4 (the Helix roller case post); converting those sources once with `sips`
-      fixes them now.
+      **Blog:** its 4 (the Helix roller case post) were converted to sRGB once with `sips`.
 - [x] **A built-in link checker:** `linksPlugin()` from `ssqch/links` (`plugins/links`). Released
       in 0.2.4.
       **Blog:** it found 413 broken links on 8 pages, all to full-size originals under
@@ -380,8 +353,8 @@ Shared work, done with the first engine (Liquid) and reused by the rest:
 - [x] Rename the `templateEngineOverride` front-matter key to `render` (`render: md`,
       `render: [liquid, md]`, `render: false`). Breaking; the old key is an error that names the
       new one.
-      **Blog:** one post's front matter uses it (`edgejs-template-plugin-for-11ty.md`). Switch it
-      to `render: md` with the release bump. The post's text about Eleventy's key stays.
+      **Blog:** done: `edgejs-template-plugin-for-11ty.md` has `render: md`. The post's text
+      about Eleventy's key stays.
 
 ## Adoption study
 
@@ -409,7 +382,7 @@ migration guides it unblocks.
       their own checkers.
   - [ ] Later: references between pages (an `author` that has to be a page in `authors`), and
         checks on the rendered output (every guide has a previous and next link).
-  - [ ] **Blog:** could add a `posts` schema (title, date, `feature_image` as a `file`).
+  - [x] **Blog:** a `posts` schema (with 0.4); it replaced a smoke test.
 - [x] **`ssqch diff`:** compares two builds page by page, ignoring noise such as fingerprints
       (`sitesquatch::diff`). It's the safety net for upgrades, refactors and migrations. Each
       changed page says whether its text or markup changed, and which `id`s are gone;
@@ -472,15 +445,15 @@ migration guides it unblocks.
         them): a small lexer for the template tags, over the HTML grammar with the tags blanked
         out, so no grammar files and no extra parse of the syntax set.
   - [ ] A cache for highlighted fences, if big sites find it slow.
-  - [ ] **Blog:** can switch from Prism (`prism.js`, 20 KB) to `highlight: true` once 0.4 is
-        released: its 9 `edge` fences highlight now (checked on the Edge.js plugin post).
+  - [x] **Blog:** switched from Prism to `highlight: { css: false }` with 0.4, coloring the
+        `hl-*` classes in Prism's Okaidia palette.
 - [x] Examples `blog-tags` and `docs-sidebar` (done at the end of phase 2).
 
 ### 2. Site plumbing
 
 - [x] `ssqch/sitemap`: `sitemapPlugin({ url, exclude })`. On the blog it lists the same 150 URLs
-      and dates as `sitemap.edge`. **Blog:** can replace `sitemap.edge` (and the `isSiteMapSafe`
-      and `htmlDateString` filters, if nothing else uses them) once 0.4 is released.
+      and dates as `sitemap.edge`. **Blog:** switched with 0.4; `sitemap.edge` and
+      `isSiteMapSafe` are gone (`htmlDateString` stays for the JSON-LD).
 - [x] Front matter `aliases`, and `ssqch/redirects`: meta-refresh pages, Netlify `_redirects`
       lines (after the site's own `_redirects` template), or both. Built on a new core API,
       `Config::add_generator`, for files made from the written pages.
@@ -495,7 +468,7 @@ migration guides it unblocks.
       conditionals and defaults still work.
 - [x] Examples `blog-categories` and `glossary-docs` (and `blog-tags` and `docs-sidebar` from
       phase 1), in `examples/sites/`, built by `crates/ssqch/tests/examples.rs`; guides from Zola
-      and from Eleventy in `docs/guides/`. Writing them fixed two bugs: pages paginated over a
+      and from Eleventy in `docs/trailheads/`. Writing them fixed two bugs: pages paginated over a
       collection had items without `content`, and pages whose includes read `collections`
       rendered too early.
 - [x] Test the examples locally: `scripts/examples.sh` builds them all (with link checks), and
@@ -506,8 +479,8 @@ migration guides it unblocks.
       Pagefind's search box in the same colors. `component-docs`' own library colors moved to
       the palette too. Checked in a browser in light and dark mode (2026-11-10).
 - [ ] Later (not now): deploy the examples to Netlify, one site each, at `<name>.sitesquatch.dev`.
-      `.github/workflows/examples.yml` builds them with the branch's ssqch and uploads each
-      through Netlify's deploy API, from `release/0.4` for now (switch to `main` after 0.4).
+      `.github/workflows/examples.yml` builds them with the same commit's ssqch and uploads
+      each through Netlify's deploy API, on pushes to `main`.
   - [ ] Create a Netlify site per example (eight now), add the `NETLIFY_AUTH_TOKEN` secret and
         the `NETLIFY_SITE_*` variables (the workflow lists them), and run the workflow.
   - [ ] DNS: `sitesquatch.dev` is on Namecheap's DNS. Add a CNAME per example to its
@@ -536,9 +509,10 @@ migration guides it unblocks.
       engines, `/index.html` permalinks, dates from file names, `indentedCode: false`,
       `Intl.Collator`/`localeCompare`, Nunjucks object literals, `site.404_page`, `===`, macro
       parameter order, string and `Date` methods, and `--verbose` listing every broken link.
-- [ ] Not yet: offering either port upstream. Both need Sass, and eslint.org its other
-      languages. Their broken internal links (25 on the Rust blog, 28 on eslint.org; lists in
-      `../trials/`) are worth reporting on their own.
+- [ ] Not yet: offering either port upstream. Sass no longer stands in the way (`ssqch/sass`;
+      the eslint.org clone has an uncommitted switch to `sassPlugin`), but eslint.org still
+      needs its other languages (phase 4). Their broken internal links (25 on the Rust blog, 28
+      on eslint.org; lists in `../trials/`) are worth reporting on their own.
 
 Found by the trials, not fixed yet:
 
@@ -635,7 +609,7 @@ Moved to a later release (decided 2026-11-09); 0.4 ships without it.
         written); stream pages out if a bigger site needs it.
 - [x] Example `islands` (custom elements with `ssqch/elements`).
 - [x] Guides from Hexo and from component frameworks (Astro, VitePress, Next.js, Gatsby: what
-      ports, and what stays client JavaScript), in `docs/guides/`.
+      ports, and what stays client JavaScript), in `docs/trailheads/`.
 
 ## From the research, not planned yet
 
@@ -792,7 +766,7 @@ in a couple of minutes.
 ### Netlify first
 
 The smallest part of this section that lets the blog go back to Netlify building the site
-itself (**Blog:** "Step 2" in `../blog/TODO.md`):
+itself (done; the blog's notes on it are in its `TODO.md` history):
 
 - [x] A release workflow (`dist`, see `dist-workspace.toml`) that builds Linux x86_64 with AVIF
       as a musl static binary, with SHA-256 checksums and build attestations. Pull requests run
@@ -827,7 +801,7 @@ Settle this before the first tag, since the release workflow keys off it.
 
 - [x] Semver from 0.x, with a `CHANGELOG.md` whose **Breaking** sections say what a site has to
       change. Removing Eleventy is the first entry.
-- [x] Release by bumping `[workspace.package] version` (still `0.1.0`) and tagging to match; the
+- [x] Release by bumping `[workspace.package] version` and tagging to match; the
       steps are in `AGENTS.md`. `ssqch --version` and the template global's `version` already
       report the workspace version.
 - [x] The release workflow fails if the tag doesn't match a package version (`dist` checks).
@@ -835,8 +809,7 @@ Settle this before the first tag, since the release workflow keys off it.
 ### CI
 
 - [x] A test workflow on pushes and pull requests (`.github/workflows/ci.yml`): `cargo test`
-      with and without AVIF on Linux and macOS, and clippy with `-D warnings`. Windows isn't
-      tested yet; add it with the Windows release build.
+      on Linux, macOS and Windows, with and without AVIF, and clippy with `-D warnings`.
 - [ ] Optionally build the blog and compare it against a known-good output, as a regression
       test.
 
@@ -882,7 +855,7 @@ reuse it, and crates.io comes before `cargo binstall`.
       the first release published with it; check `cargo binstall ssqch` then.
 - [x] A Homebrew tap (`brew install reverentgeek/tap/ssqch`): dist's `homebrew` installer
       writes the formula, and its publish job pushes it to `reverentgeek/homebrew-tap` with the
-      `HOMEBREW_TAP_TOKEN` secret. First published with the next release.
+      `HOMEBREW_TAP_TOKEN` secret. Published by every release since 0.3.1.
 - [x] An npm package, so a site with a `package.json` can pin ssqch as a dev dependency and
       run `npx ssqch build`. Like esbuild's: `ssqch` is a small Node wrapper
       (`npm/ssqch/bin/ssqch.js`) whose optional dependencies are one `@ssqch/<platform>-<arch>`
