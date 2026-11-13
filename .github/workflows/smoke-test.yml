@@ -73,7 +73,7 @@ jobs:
             plugins: [imagePlugin({ formats: ["avif", "webp", "auto"], widths: [16, 32] }), linksPlugin()],
           });
           JS
-          printf -- '---\ntitle: smoke test\n---\n<h1>{{ shout(title) }}</h1>\n<a href="/img/squatch.png"><img src="/img/squatch.png" alt="Squatch"></a>\n' > site/src/index.edge
+          printf -- '---\ntitle: smoke test\n---\n<h1>{{ shout(title) }}</h1>\n<a href="/img/squatch.png"><img src="/img/squatch.png" alt="Squatch"></a>\n' > site/src/index.jinja
           ./ssqch build --root site
           grep -q "<h1>SMOKE TEST</h1>" site/dist/index.html
           grep -q "<picture>" site/dist/index.html
