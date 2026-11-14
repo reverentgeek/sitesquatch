@@ -279,6 +279,83 @@ Follow-ups:
     `content`). Fixed: `shortenAttributes` (about 4 KB less on the blog).
   - `feed.xml` keeps `<br />` and `<img ... />` as written. That's fine.
 
+### Image URLs outside `<img>` (found 2026-11-14)
+
+A review of the blog found two bugs no build caught: all 75 feed images and every post's JSON-LD
+publisher logo pointed at originals under `/content/images/` that the build never publishes. The
+image plugin only rewrites `<img>` in HTML pages, and the link checker only reads HTML
+attributes, so URLs in a feed's escaped HTML, in JSON-LD and in `<meta>` are the site's problem.
+**Blog:** fixed in `ddd0ab1f` with its own `feedImages` and `publishedImage` filters
+(`src/utils/site/published-image.js`) and two smoke tests. The write-up is in the blog's
+`reports/ssqch-feature-requests.md` (gitignored, local only).
+
+- [ ] **Feed-ready content in `ssqch/rss`:** `feedHtml(html, base)`, or
+      `htmlToAbsoluteUrls(html, base, { images: true })`, that does for a feed what
+      `linkedImages` does for links: each local `<img src>` (and `<a href>` to a local image)
+      points at one generated copy in the source's format (one URL, not `<picture>`, which many
+      readers drop), `loading`, `decoding`, `sizes="auto"` and `ssqch:*` attributes go, and every
+      URL is made absolute. Options `width` (default 1200, never wider than the original) and
+      `format` (default `"auto"`). Going through the image processor puts the files in `used`,
+      so `prune` keeps them. **Blog:** would replace `feedImages`.
+  - [ ] Maybe later: `feedPlugin({ collection, limit, format: "atom" | "rss" | "json" })`, which
+        writes the feed with that content. Matters more for new sites than for the blog's
+        30-line `feed.edge`.
+- [ ] **The link checker reads every URL the build writes:** same-site URLs (root-relative, or
+      absolute on the sitemap's `url` or a new `url` option) in `.xml` output, including escaped
+      HTML inside it; `<meta>` values that are URLs (`og:image`, `twitter:image`, `og:url`);
+      string values in `application/ld+json` blocks; and `<link rel="preload" imagesrcset>`.
+      This alone would have caught both blog bugs. **Blog:** could then drop the two smoke tests
+      that check feed images and publisher logos.
+- [ ] **`imageUrl(src, { width, format })` template function:** `{ url, width, height, type }`
+      for one generated copy, resolved against the input folder the way `<img>` is, cached, with
+      the plugin's encoder settings. **Blog:** three helpers do this by hand around `image()`
+      (`social-image.js`, `publishedImage`, and most of `_data/heroImage.js`), each with its own
+      cache.
+- [ ] **`image()` with `formats: ["auto"]`** returns the result keyed by the resolved format
+      (`png`), not `auto`. The blog's first `publishedImage` read `derivatives.auto[0]` and failed
+      the build. Add an `auto` key aliasing the resolved one, or document it on
+      `ImageCallOptions.formats`.
+- [ ] **Preload hints from the image plugin:** `ssqch:preload` (or `fetchpriority="high"` as
+      the hint) on an `<img>` adds `<link rel="preload" as="image" imagesrcset imagesizes type>`
+      to `<head>` for the first format, and drops `loading="lazy"` from that image. **Blog:**
+      `partials/header.edge` hand-writes the banner's `<picture>` (against its own CLAUDE.md)
+      only so `default.edge` can preload a matching `srcset`.
+- [ ] **The image cache outside the output:** derivatives in `.cache/ssqch/img`, copied (or
+      hard-linked) into the output each build, so the output folder can be deleted freely and a
+      deploy cache needs only `.cache/ssqch`. `prune` would apply to the cache. **Blog:**
+      `netlify.toml` caches both `dist/img` and `.cache/ssqch`, and `dist/` can't be deleted
+      without re-encoding every image. Since 2026-11-14 it uses `leaveNoTrace` and `prune`
+      (production only) in place of its own clean and prune scripts.
+- [ ] **Fingerprint imports in inline module scripts:** rewrite static `import ... from
+      "/assets/x.js"` specifiers in `<script type="module">` for files in `assetsPlugin({ files
+      })`. Inline scripts are in HTML ssqch already rewrites, so no bundling is involved.
+      Rewriting imports inside `.js` files stays out. **Blog:** `pco.js` keeps a stable name
+      and its own `Cache-Control` rule because `pages/pco.md` imports it that way.
+  - [ ] **Bug, blocks the above:** a passthrough file can't be fingerprinted. `assetsPlugin`
+        runs in `before_build`, before passthrough copies are written, so listing one fails a
+        clean production build (`.../dist/assets/pco.js doesn't exist; build the CSS and JS
+        before ssqch`, which points at the wrong cause). A build over an earlier output
+        "works" by fingerprinting the previous build's copy, so the hash can be one build
+        stale, and the plain file stays next to it. `ssqch serve` has the same ordering: it
+        warns the passthrough file "isn't in the output" and links pages to the last production
+        build's fingerprinted copy. Found 2026-11-14 trying `files: [..., "/assets/pco.js"]`
+        with `assetUrl()` on the blog (0.5.2). Fix: copy passthrough files before fingerprinting,
+        or fingerprint passthrough files after they're copied.
+- [ ] **Serve a production build as it is:** something like `ssqch serve --dist` (no build, no
+      live-reload script, compression on), for Lighthouse and checking a deploy locally. The
+      agent-first `preview` alias could point at it. **Blog:** `scripts/lighthouse-local.js`
+      has its own static server for this.
+- [ ] **ESLint and the `ssqch/*` modules:** an `exports` map in the npm package for
+      `ssqch/image`, `ssqch/rss` and the rest, with type stubs from `ssqch.d.ts`, so
+      `n/no-missing-import` resolves them and editors get types without `ssqch types`. And a
+      README note that `n/no-unpublished-import` flags them in build-time files now that `ssqch`
+      is a dev dependency. **Blog:** `eslint.config.js` sets `allowModules: ["ssqch"]` and
+      exempts `ssqch.config.js`, `src/site/_data/` and `src/utils/`; lint was failing on `main`
+      until `ddd0ab1f` added the last two.
+- [ ] Not yet, lower priority: an `ssqch/seo` plugin for Open Graph, Twitter cards, canonical
+      links and JSON-LD `Article`, which every blog writes by hand (the blog's
+      `partials/head.edge` and `jsonLdArticle`). `imageUrl()` removes the hardest part.
+
 ## More template languages
 
 Goal: people coming from another generator can keep the template language they already know.
@@ -866,10 +943,9 @@ reuse it, and crates.io comes before `cargo binstall`.
       job, after the release) publishes them with npm trusted publishing.
   - [x] Publish 0.5.1 to npm by hand, in the `@ssqch` organization (`ssqch` itself is
         unscoped, under the reverentgeek account). Done 2026-11-13; a clean install works.
-  - [ ] Add a trusted publisher to each of the five packages (GitHub Actions,
-        `reverentgeek/sitesquatch`, `release.yml`) shortly before the next release, and
-        disallow tokens (the steps are in `AGENTS.md`, "npm"). Until then the publish job fails
-        on a release.
+  - [x] Add a trusted publisher to each of the five packages (GitHub Actions,
+        `reverentgeek/sitesquatch`, `release.yml`), and disallow tokens (the steps are in
+        `AGENTS.md`, "npm"). Done, and a release has published from the workflow.
   - [x] **Blog:** `ssqch` 0.5.2 is a dev dependency, pinned exactly, and `netlify.toml` lost
         the installer and `SSQCH_VERSION` (2026-11-13). `scripts/ssqch.sh` looks in
         `node_modules/.bin` first. `pnpm test` passes with the npm binary. pnpm 12 put the new
