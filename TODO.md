@@ -289,13 +289,11 @@ attributes, so URLs in a feed's escaped HTML, in JSON-LD and in `<meta>` are the
 (`src/utils/site/published-image.js`) and two smoke tests. The write-up is in the blog's
 `reports/ssqch-feature-requests.md` (gitignored, local only).
 
-Built 2026-11-14 (unreleased; `CHANGELOG.md` has it under Unreleased, two of them Breaking).
-**Blog:** switched over on the `ssqch-next` branch (a worktree in `../blog-ssqch-next`, not
-committed), which needs the release: `feedHtml`, `imageUrl`, `ssqch:preload` and the `exports`
-map don't exist in 0.5.2. Checked there with this build: `pnpm test` passes, `pnpm run lint`
-passes with the new npm package, `ssqch diff` against `main` on 0.5.2 shows only the banner's
-markup, the fingerprinted `pco.js` and one post's dead links, and Lighthouse's LCP is the same
-(1.8 to 2.0 s).
+Released in 0.6.0 (2026-11-14; two of the changes are Breaking). **Blog:** switched over in
+`4747d8ed` (on `main`, built with 0.6.0): `pnpm test` and `pnpm run lint` pass, `ssqch diff`
+against 0.5.2 showed only the banner's markup, the fingerprinted `pco.js` and one post's dead
+links, and Lighthouse's LCP is the same (1.8 to 2.0 s). After the first deploy, `d328c087`
+dropped `dist/img` from `netlify.toml`'s cache.
 
 - [x] **Feed-ready content in `ssqch/rss`:** `feedHtml(html, base, { width, format })`, a
       named export and a filter with `rssPlugin()`. Each local `<img src>` points at one
