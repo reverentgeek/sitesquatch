@@ -380,8 +380,8 @@ shows ChordPro, and none of the 213 grammars from two-face (bat 0.26.1) is Chord
 fences render as plain `<pre><code class="language-text">`. There's also no way for a site to add
 a language or replace one. Do it in this order: the config option first, a ChordPro highlighter
 written for it in the blog's config to prove the option works, then the same highlighter moved
-into ssqch as a built-in language. **Blog:** waiting on the release to change its ChordPro fence
-from `text` to `chordpro`.
+into ssqch as a built-in language. **Blog:** done 2026-11-15, on 0.6.1 (its fence was already
+`cho`).
 
 - [x] **Custom highlighters in `ssqch.config.js`:** (done 2026-11-15:
       `markdown: { highlight: { languages } }`, with functions, aliases and `.sublime-syntax`
@@ -427,9 +427,9 @@ from `text` to `chordpro`.
   - Chords in brackets anywhere in a lyric line: `A[G]mazing [G7]grace`, `[D/F#]`, `[Asus4]`.
   - Line comments starting with `#`.
   - Lyrics stay uncolored.
-- [ ] **Ship ChordPro as a built-in language:** (ported 2026-11-15, with unit tests, README and
-      CHANGELOG; its HTML for the blog's post matches the config highlighter's byte for byte.
-      Left: the release, then the blog's side below) port the proven highlighter to Rust in
+- [x] **Ship ChordPro as a built-in language:** (released in 0.6.1 on 2026-11-15; its HTML for the
+      blog's post matches the config highlighter's byte for byte. The blog is on 0.6.1 with the
+      config highlighter taken out, `pnpm test` passing) port the proven highlighter to Rust in
       `highlight.rs`, a small lexer like the one `Templates` uses (no grammar file), for the
       fence names `chordpro` and `cho`. Unit tests in `highlight.rs`, a README mention next to
       the template languages ssqch adds itself, and a CHANGELOG entry. Then take the blog's
