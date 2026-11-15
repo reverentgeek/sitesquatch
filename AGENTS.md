@@ -146,6 +146,15 @@ dist tries to sign with it.
   or list item that starts with it in backticks. A new config option, module export or template
   function needs one, and a description where it's defined (`ssqch.d.ts`, or `BUILTIN_FILTERS`
   in `build.rs`); `docs_answer_for_every_name` checks.
+- Every new feature ships discoverable, with enough documentation that another coding agent could
+  understand it and use it without reading the code: what it's for, its exact shape (names,
+  arguments, return values), an example that works, what happens when it's used wrong, and how
+  it interacts with what's already there. At minimum: a README entry that `ssqch docs <name>`
+  finds (check it answers with the full explanation, not only a table row, and add the query to
+  `docs_answer_for_every_name`), types and descriptions where they're defined (`ssqch.d.ts`,
+  `BUILTIN_FILTERS`), and a CHANGELOG entry. Then add a task to `TODO.md`, in the feature's
+  section, to document it fully: a how-to or worked example, the trailheads in `docs/trailheads/`
+  and starters that could use it, and the blog or examples that could show it off.
 - README paragraphs, list items and callouts are one line each (no hard wrapping). TODO and
   CHANGELOG prose wraps at 100 columns.
 - Error messages name the file and what went wrong (`ssqch.config.js: too many pine cones`).

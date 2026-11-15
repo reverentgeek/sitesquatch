@@ -368,7 +368,11 @@ fn search(sections: &[Section], query: &str) -> Vec<(usize, String)> {
             let text = words(&block);
             let hits: Vec<usize> = q.iter().map(|w| text.iter().chain(&title).filter(|t| t.starts_with(w.as_str())).count()).collect();
             if hits.iter().all(|n| *n > 0) {
-                let score = hits.iter().sum::<usize>() * 100_000 / (block.len() + 400);
+                // A paragraph's bold label is a small heading (`**Your own languages:**`): one
+                // that has every word of the query is the answer.
+                let label = block.strip_prefix("**").and_then(|b| b.split_once(":**")).map(|(label, _)| words(label)).unwrap_or_default();
+                let labeled = q.iter().all(|w| label.iter().any(|t| t.starts_with(w.as_str())));
+                let score = hits.iter().sum::<usize>() * 100_000 / (block.len() + 400) + if labeled { 1_000_000 } else { 0 };
                 found.push((i, block, score));
             }
         }

@@ -15,6 +15,7 @@ Two examples are distilled from reactnative.dev: [`versioned-docs`](../../exampl
 | `@docusaurus/plugin-client-redirects` | `redirectsPlugin({ redirects })` from `ssqch/redirects` (real pages or `_redirects` lines, not client-side redirects) |
 | Algolia DocSearch, or a local search plugin | [Pagefind](https://pagefind.app) after the build: `afterBuild: { run: "npx -y pagefind --site dist" }` (see the `docs-sidebar` example) |
 | `themeConfig.prism` | `markdown: { highlight: true }`; colors from `/highlight.css` and its `--hl-*` properties |
+| `prism.additionalLanguages` | Nothing to list: about 200 languages are built in. One that isn't goes in `markdown: { highlight: { languages } }`, as a function that returns tokens, an alias or a `.sublime-syntax` file (`ssqch docs languages`) |
 | `onBrokenLinks: "throw"` | `linksPlugin()`: broken links and anchors fail production builds |
 | `i18n` | Not yet |
 

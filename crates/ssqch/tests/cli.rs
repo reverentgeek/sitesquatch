@@ -2098,6 +2098,11 @@ fn docs_answer_for_every_name() {
     assert!(ok && text.starts_with("`baseURL` (Hugo) isn't ssqch's word."), "{}", text);
     let (ok, text) = ssqch(&["docs", "content", "schemas"]);
     assert!(ok && text.starts_with("## Content schemas\n"), "{}", text);
+    // A paragraph's bold label answers its words; a sub-option it defines, its name.
+    for query in [&["your", "own", "languages"][..], &["languages"], &["custom", "syntax", "highlighter"]] {
+        let (ok, text) = ssqch(&[&["docs"][..], query].concat());
+        assert!(ok && text.contains("**Your own languages:**"), "{:?}: {}", query, text);
+    }
     let (ok, text) = ssqch(&["docs"]);
     assert!(ok && text.contains("\n  leaveNoTrace ") && text.contains("\n    imagePlugin ") && text.contains("\nTopics\n  Install, "), "{}", text);
     let (ok, log) = ssqch(&["docs", "pinecone", "crunch", "sightings"]);

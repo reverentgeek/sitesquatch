@@ -72,6 +72,7 @@ Where Eleventy's word means the same thing in ssqch, it works as it is: `ssqch d
 | `@11ty/eleventy-img` | `imagePlugin()` from `ssqch/image`: every `<img>` becomes a `<picture>` |
 | `@11ty/eleventy-plugin-rss` | `rssPlugin()` from `ssqch/rss` |
 | `@11ty/eleventy-plugin-syntaxhighlight` | `markdown: { highlight: true }` |
+| A Prism language added in the plugin's `init({ Prism })`, or its `alias` option | `markdown: { highlight: { languages } }`: a function that returns `[text, kind]` tokens, another language's name (`cho: "chordpro"`), or a `.sublime-syntax` file (`ssqch docs languages`) |
 | markdown-it-anchor | Heading IDs are built in; add anchor links with a heading render hook |
 | markdown-it-footnote | Built in |
 | markdown-it-container | Built in: `::: name` |

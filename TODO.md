@@ -435,6 +435,20 @@ into ssqch as a built-in language. **Blog:** done 2026-11-15, on 0.6.1 (its fenc
       the template languages ssqch adds itself, and a CHANGELOG entry. Then take the blog's
       config highlighter out, release, bump the blog (`pnpm add -D ssqch@<version>` after a
       local `pnpm test` passes) and switch its fence to `chordpro`.
+- [ ] **Document custom highlighters fully** (added 2026-11-15). Done so far: the README's "Your
+      own languages" paragraph (`ssqch docs languages` finds it), the `highlight` row, the types
+      in `ssqch.d.ts`, CHANGELOG, and a row in the Eleventy, Docusaurus and component-framework
+      trailheads. Left:
+  - A how-to: a highlighter in its own file (`src/utils/highlight/<lang>.js`), imported into
+    `ssqch.config.js`; the token shape and kinds; checking it with `{1,2}` line marking and the
+    warning a bad one gives; when to reach for an alias or a `.sublime-syntax` file instead. The
+    blog's ChordPro highlighter (before it was built in, `../blog` history around 2026-11-15) is
+    a worked example.
+  - The other trailheads: Hexo (highlight.js and Prism languages), MkDocs (Pygments lexers), Zola
+    (`extra_syntaxes_and_themes`, which are `.sublime-syntax` files that load as they are).
+  - The docs starter's writing guide (`starter-docs/src/docs/guides/writing.md`) could mention it
+    next to the line-marking example.
+  - An example site, or the `component-docs` example, with a small custom language.
 - [ ] Maybe: a fence with no grammar still gets `class="highlight"` on its `<pre>`, so a site's
       code block styling covers it. The blog worked around it on 2026-11-15 by styling
       `.content-body pre` like `pre.highlight` in its own CSS.

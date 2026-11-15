@@ -8,6 +8,16 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Changed
+
+- `ssqch docs` answers a search with the paragraph whose bold label has every word of it
+  (`ssqch docs "your own languages"`), and `ssqch docs languages` with the paragraph on adding
+  highlighting languages, not only the options table's row.
+- The Eleventy, Docusaurus and component-framework trailheads say where a custom highlighting
+  language goes (`markdown: { highlight: { languages } }`).
+
 ## 0.6.1 - 2026-11-15
 
 ### Added

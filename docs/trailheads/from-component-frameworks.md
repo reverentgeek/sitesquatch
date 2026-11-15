@@ -34,6 +34,7 @@ Moving one section at a time works: build the docs or blog with ssqch into a fol
 | `:::tip` containers (VitePress, Starlight) | The same syntax, built in |
 | `{#custom-id}` on headings, `[[toc]]` | `{#custom-id}` works; the table of contents is `toc(page.headings)` in the layout |
 | Code blocks with Shiki, line highlighting `{1,3}`, titles | `markdown: { highlight: true }`, `{1,3}` in the fence's info string; a `fence` render hook for titles and copy buttons |
+| Extra Shiki languages (VitePress `markdown.languages` and `languageAlias`, Astro `shikiConfig.langs`) | `markdown: { highlight: { languages } }`: an alias (`mdx: "markdown"`), a function that returns tokens, or a `.sublime-syntax` file. Shiki's TextMate JSON grammars don't load as they are (`ssqch docs languages`) |
 | Twoslash, or anything that needs a compiler at build time | A `beforeBuild` command that writes HTML or JSON for templates to include |
 | `<Image>` / `gatsby-plugin-image` | `imagePlugin()`: every `<img>`, including Markdown images, becomes a responsive `<picture>` |
 | i18n routing | Not yet |
