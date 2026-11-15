@@ -49,10 +49,14 @@ enum Command {
         format: String,
     },
     /// Build, serve, watch for changes and live-reload the browser
+    #[command(after_help = "With --built, it serves the output folder as the last build left it, the way a host would: no build, no\nwatching, no reload script, and text compressed with gzip. For checking a production build (Lighthouse,\na deploy's files) before it goes out:\n\n  ssqch build\n  ssqch serve --built")]
     Serve {
         /// The port to listen on (0 picks a free one)
         #[arg(long, short, default_value_t = 8080)]
         port: u16,
+        /// Serve the output folder as it was built: no build, no watching, no reload script, gzip on
+        #[arg(long)]
+        built: bool,
         /// Write this file once the first build is done: JSON with the url, port and output folder
         #[arg(long, value_name = "FILE")]
         ready_file: Option<PathBuf>,
@@ -280,7 +284,8 @@ pub fn try_run_with(configure: impl Fn(&mut Config) -> anyhow::Result<()>, extra
 /// Run `serve`, `inspect`, `new` or (by default) `build`.
 fn run_command(cli: &Cli, cfg: Config, make_config: &dyn Fn() -> anyhow::Result<Config>) -> anyhow::Result<()> {
     match &cli.command {
-        Some(Command::Serve { port, ready_file }) => crate::serve::serve_reloading(cfg, &crate::serve::ServeOptions { port: *port, ready_file: ready_file.clone() }, make_config),
+        Some(Command::Serve { port, ready_file, built: true }) => crate::serve::serve_built(&cfg, &crate::serve::ServeOptions { port: *port, ready_file: ready_file.clone() }),
+        Some(Command::Serve { port, ready_file, built: false }) => crate::serve::serve_reloading(cfg, &crate::serve::ServeOptions { port: *port, ready_file: ready_file.clone() }, make_config),
         Some(Command::Inspect { page, field, format }) => run_inspect(&cfg, page, field.as_deref(), format),
         Some(Command::Footprint { top, format, .. }) => {
             let ctx = cfg.build_context();
@@ -419,7 +424,7 @@ fn aliased(mut args: Vec<std::ffi::OsString>, extra: &[&str]) -> (Vec<std::ffi::
     // The options that take a value, so it isn't taken for the command.
     const VALUED: &[&str] = &["--root", "--output", "-o", "--base", "--env", "-d", "--destination", "--pathprefix", "--port", "-p", "--ready-file", "--format", "--title", "--date", "--blueprint", "--set", "--field", "--ignore", "--only", "--lines", "--top", "--starter", "--engine"];
     let text = |a: &OsString| a.to_str().map(String::from);
-    let end = args.iter().position(|a| a == "--").unwrap_or(args.len());
+    let mut end = args.iter().position(|a| a == "--").unwrap_or(args.len());
     let mut command = None;
     let mut i = 1;
     while i < end {
@@ -437,12 +442,17 @@ fn aliased(mut args: Vec<std::ffi::OsString>, extra: &[&str]) -> (Vec<std::ffi::
         return (args, used);
     }
     if let (Some(i), Some(row)) = (command, name.as_deref().and_then(|n| find(n, Kind::Command)).filter(|r| r.alias)) {
-        args[i] = OsString::from(row.ssqch);
+        // `preview` is `serve --built`: the command, then its flags.
+        let mut words = row.ssqch.split(' ');
+        args[i] = OsString::from(words.next().unwrap_or(row.ssqch));
+        for (k, word) in words.enumerate() {
+            args.insert(i + 1 + k, OsString::from(word));
+            end += 1;
+        }
         used.push(row);
     }
     let mut serve = false;
     let mut i = 1;
-    let mut end = end;
     while i < end {
         let Some(arg) = text(&args[i]) else {
             i += 1;
@@ -562,6 +572,7 @@ mod tests {
             ("start --port 0", "serve --port 0", "start"),
             ("--root site server", "--root site serve", "server"),
             ("watch", "serve", "watch"),
+            ("preview --port 4173", "serve --built --port 4173", "preview"),
             ("generate --env production", "build --env production", "generate"),
             ("--watch", "serve", "--watch"),
             ("build --serve --port 8081", "serve --port 8081", "--serve"),

@@ -8,6 +8,53 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Breaking
+
+- The link checker (`linksPlugin()`) reads every URL the build writes on the site, not only
+  HTML attributes: `.xml` output (feeds and the sitemap, including the escaped HTML of a feed
+  entry's content), `<meta>` values that are URLs (`og:image`, `og:url`, `twitter:image`),
+  strings in JSON-LD blocks, `imagesrcset`, and absolute links on the site's own address (the
+  new `url` option, or the address `sitemap.xml` uses). A production build that passed before
+  can fail on a link it never looked at. Fix the link, or skip its path with `ignore`.
+- Generated images are encoded into `.cache/ssqch/img/` and linked (or copied) into the
+  output's `img/` folder on each build, so deleting the output folder no longer means encoding
+  every image again. Cache `.cache/ssqch` between deploys instead of `<output>/img` (on Netlify,
+  `paths = [".cache/ssqch"]` for `netlify-plugin-cache`). Nothing is encoded again on the way:
+  a build takes in the files already in `<output>/img` (from before, or a deploy cache) when
+  the cache doesn't have them, so keep caching both for the first deploy. `cacheDir` on
+  `imagePlugin()` moves the cache, and `cacheDir: false` keeps the old behaviour.
+
+### Added
+
+- `imageUrl(src, { width, format })`, a template function on every site and an export of
+  `ssqch/image`: the URL, size and type of one generated copy of an image, for `og:image`,
+  JSON-LD and feeds, where the image plugin's `<picture>` doesn't reach. The default is the
+  original's width in the source's own format.
+- `feedHtml(html, base, { width, format })` from `ssqch/rss` (and a filter with
+  `rssPlugin()`): a post's HTML for a feed, with each local image pointing at one generated
+  copy (1200 pixels wide at most by default), page-only attributes removed, and every URL
+  absolute.
+- `ssqch:preload` on an `<img>` adds a `<link rel="preload" as="image">` for it to `<head>`,
+  before the first stylesheet, and loads it eagerly with `fetchpriority="high"`.
+- `ssqch serve --built` serves the output folder as the last build left it, the way a host
+  would: no build, no watching, nothing added to pages, and gzip for text. `ssqch preview`
+  (Vite's and Astro's word) is the same command.
+- `assetsPlugin()` rewrites imports in inline module scripts (`import { setup } from
+  "/assets/pco.js"`), and a listed file can be a passthrough copy: it's copied into the output
+  before it's fingerprinted. Listing one used to fail a clean build.
+- The npm package has an `exports` map for `ssqch` and the `ssqch/*` modules, with their types,
+  so ESLint's `n/no-missing-import` and TypeScript resolve them without `ssqch types`. (Running
+  one with plain Node says to build with ssqch instead.)
+- `BuildContext::passthrough_source`, for a Rust plugin that needs a passthrough file before
+  it's copied.
+
+### Fixed
+
+- `image()` with `formats: ["auto"]` returns the files under `auto` too, next to the format it
+  became (`png`), so `derivatives.auto[0]` works.
+
 ## 0.5.2 - 2026-11-13
 
 ### Added

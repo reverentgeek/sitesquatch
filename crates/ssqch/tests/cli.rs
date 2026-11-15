@@ -1129,7 +1129,7 @@ fn alias_works(row: &sitesquatch::equivalents::Equivalent, dir: &std::path::Path
     let read = |path: &str| std::fs::read_to_string(dir.join(path)).unwrap_or_else(|e| panic!("{}: {}: {}", row.word, path, e));
     let (ok, log) = match (row.kind, row.word) {
         // The serving ones are checked in `aliases_rewrite_the_command_line`, without a server.
-        (Kind::Command | Kind::Flag, _) if row.ssqch == "serve" => return,
+        (Kind::Command | Kind::Flag, _) if row.ssqch == "serve" || row.ssqch.starts_with("serve ") => return,
         (Kind::Command, word) => ssqch(&[word, "--root", d]),
         (Kind::Flag, "--pathprefix") => {
             let result = ssqch(&["build", "--pathprefix", "/trail/", "--root", d]);
@@ -1204,7 +1204,7 @@ fn other_generators_words_get_ssqch_names() {
     let d = dir.to_str().unwrap();
     for row in TABLE {
         // The name it gives exists (`dirs.output` is in `dirs`).
-        let name = row.ssqch.split('.').next().unwrap();
+        let name = row.ssqch.split(['.', ' ']).next().unwrap();
         assert!(known.contains(&format!("\"{}\"", name)) || known.contains(&format!("{} ", name)) || readme.contains(&format!("`{}", name)), "{}: ssqch has no {:?}", row.word, name);
         assert!(!row.say.is_empty() && !row.more.is_empty(), "{}", row.word);
         if row.alias {
@@ -2361,6 +2361,45 @@ fn serve_tells_the_browser_what_changed() {
         assert!(started.elapsed() < std::time::Duration::from_secs(20), "the build never worked again:\n{}", said());
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
+}
+
+/// `ssqch serve --built` (and `ssqch preview`) serves the output as it is: no build, no reload
+/// script, gzip for text.
+#[test]
+fn serve_built_serves_the_output_as_it_is() {
+    let dir = temp_dir("serve-built");
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" } };\n");
+    write("src/index.md", "Home\n");
+    let (ok, log) = ssqch(&["serve", "--built", "--root", dir.to_str().unwrap()]);
+    assert!(!ok && log.contains("dist doesn't exist: build the site first (ssqch build), then serve it with ssqch serve --built"), "{}", log);
+    write("dist/index.html", &format!("<html><head></head><body>{}</body></html>", "Pine cones. ".repeat(60)));
+    write("dist/404.html", "Lost");
+    let ready = dir.join("ready.json");
+    let log = dir.join("serve.log");
+    let out = std::fs::File::create(&log).unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_ssqch")).args(["preview", "--port", "0", "--ready-file"]).arg(&ready).arg("--root").arg(&dir).stdout(out.try_clone().unwrap()).stderr(out).spawn().unwrap();
+    let _server = Server(child);
+    wait_for(&ready, "\"schemaVersion\": 1");
+    let port = serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&ready).unwrap()).unwrap()["port"].as_u64().unwrap() as u16;
+    let page = http_get(port, "/");
+    assert!(page.starts_with("HTTP/1.1 200") && page.contains("Pine cones.") && !page.contains("<script") && !page.contains("__ssqch"), "{}", page);
+    assert!(http_get(port, "/nope/").starts_with("HTTP/1.1 404") && http_get(port, "/nope/").ends_with("Lost"));
+    let gzipped = {
+        use std::io::{Read, Write};
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        write!(stream, "GET / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip, br\r\nConnection: close\r\n\r\n").unwrap();
+        let mut response = Vec::new();
+        let _ = stream.read_to_end(&mut response);
+        String::from_utf8_lossy(&response).into_owned()
+    };
+    assert!(gzipped.contains("Content-Encoding: gzip") && !gzipped.contains("Pine cones."), "{}", gzipped);
+    let said = std::fs::read_to_string(&log).unwrap();
+    assert!(said.contains("note: preview works; ssqch calls it serve --built") && said.contains("Serving dist as built at http://localhost:") && !said.contains("Built in"), "{}", said);
 }
 
 /// The whole response (status line, headers and body) to a GET from the dev server.

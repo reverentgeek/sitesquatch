@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 lol_html.workspace = true
+regex.workspace = true
 sitesquatch.workspace = true
 blake3 = "1"
 sha2 = "0.10"

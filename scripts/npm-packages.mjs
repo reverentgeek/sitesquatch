@@ -74,17 +74,51 @@ const main = join(out, "ssqch");
 cpSync(join(root, "npm/ssqch"), main, { recursive: true });
 chmodSync(join(main, "bin/ssqch.js"), 0o755);
 copyFileSync(join(root, "LICENSE"), join(main, "LICENSE"));
+const modules = writeModules(main);
 writeJson(join(main, "package.json"), {
   name: "ssqch",
   description: "SiteSquatch, a fast static site generator configured with JavaScript",
   ...common,
   keywords: ["static site generator", "ssg", "blog", "markdown", "jinja", "liquid"],
   bin: { ssqch: "bin/ssqch.js" },
-  files: ["bin", "platforms.json"],
+  types: "./types/index.d.ts",
+  exports: {
+    ...Object.fromEntries(modules.map((m) => [m === "index" ? "." : `./${m}`, { types: `./types/${m}.d.ts`, default: `./lib/${m}.js` }])),
+    "./package.json": "./package.json",
+  },
+  files: ["bin", "lib", "types", "platforms.json"],
   engines: { node: ">=18" },
   optionalDependencies: Object.fromEntries(Object.keys(platforms).map((p) => [`@ssqch/${p}`, version])),
 });
 console.log(`${main}: ssqch@${version}`);
+
+// The modules built into the binary (`ssqch`, `ssqch/image`, ...), so editors and linters
+// that resolve imports through node_modules (ESLint's n/no-missing-import, TypeScript) find
+// them: each gets types, cut from crates/ssqch/src/ssqch.d.ts (what `ssqch types` writes),
+// and a stub that says to run the file with ssqch, since only ssqch can run them. ssqch
+// itself never loads these: its own modules come first. Returns the names written.
+function writeModules(dir) {
+  const dts = readFileSync(join(root, "crates/ssqch/src/ssqch.d.ts"), "utf8").split("\n");
+  const first = dts.findIndex((line) => line.startsWith("declare module "));
+  mkdirSync(join(dir, "types"), { recursive: true });
+  mkdirSync(join(dir, "lib"), { recursive: true });
+  // What comes before the modules (the parts of Node's `process` ssqch has) is global.
+  writeFileSync(join(dir, "types/globals.d.ts"), `${dts.slice(0, first).join("\n").trimEnd()}\n`);
+  const names = [];
+  for (let i = first; i < dts.length; i++) {
+    const open = dts[i].match(/^declare module "([^"]+)" \{$/);
+    if (!open) continue;
+    const end = dts.findIndex((line, j) => j > i && line === "}");
+    if (end < 0) throw new Error(`ssqch.d.ts: declare module "${open[1]}" has no closing brace`);
+    const name = open[1] === "ssqch" ? "index" : open[1].replace(/^ssqch\//, "");
+    const body = dts.slice(i + 1, end).map((line) => line.replace(/^\t/, "")).join("\n");
+    writeFileSync(join(dir, `types/${name}.d.ts`), `// ${open[1]}: from ssqch.d.ts, the types \`ssqch types\` writes.\n/// <reference path="./globals.d.ts" />\n${body}\n`);
+    writeFileSync(join(dir, `lib/${name}.js`), `// ${open[1]} is built into the ssqch binary, which runs ssqch.config.js and data files itself.\n// This file is here so editors and linters can find the module (its types are in ../types).\nthrow new Error(${JSON.stringify(`${open[1]} only works in files ssqch runs (ssqch.config.js, data files): build with ssqch, not node`)});\n`);
+    names.push(name);
+    i = end;
+  }
+  return names;
+}
 
 function workspaceVersion() {
   const toml = readFileSync(join(root, "Cargo.toml"), "utf8");

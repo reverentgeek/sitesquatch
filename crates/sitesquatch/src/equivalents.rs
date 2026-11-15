@@ -72,7 +72,7 @@ pub const TABLE: &[Equivalent] = &[
     Equivalent { word: "dev", kind: Kind::Command, alias: true, from: &[], ssqch: "serve", say: SERVE, more: "ssqch docs serve" },
     Equivalent { word: "start", kind: Kind::Command, alias: true, from: &[], ssqch: "serve", say: SERVE, more: "ssqch docs serve" },
     Equivalent { word: "server", kind: Kind::Command, alias: true, from: &["Hugo", "Hexo", "Jekyll"], ssqch: "serve", say: SERVE, more: "ssqch docs serve" },
-    Equivalent { word: "preview", kind: Kind::Command, alias: false, from: &[], ssqch: "serve", say: SERVE, more: "ssqch docs serve" },
+    Equivalent { word: "preview", kind: Kind::Command, alias: true, from: &["Astro", "VitePress"], ssqch: "serve --built", say: "Serving a production build as it is, without building or reloading, is `ssqch serve --built`.", more: "ssqch docs serve" },
     Equivalent { word: "watch", kind: Kind::Command, alias: true, from: &[], ssqch: "serve", say: SERVE, more: "ssqch docs serve" },
     Equivalent { word: "check", kind: Kind::Command, alias: false, from: &["Zola", "Astro"], ssqch: "build", say: "`ssqch build` checks as it builds: content schemas on every build, and internal links with `linksPlugin()`.", more: "ssqch docs \"Content schemas\"" },
     Equivalent { word: "clean", kind: Kind::Command, alias: false, from: &["Hexo", "Jekyll", "Gatsby"], ssqch: "leaveNoTrace", say: "ssqch has no clean command: `leaveNoTrace: true` in the config deletes what an earlier build wrote and this one didn't.", more: "ssqch docs leaveNoTrace" },

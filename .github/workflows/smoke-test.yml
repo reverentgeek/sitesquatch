@@ -105,5 +105,7 @@ jobs:
           cd npm-site
           npm install --no-audit --no-fund
           npx ssqch --version | grep -E "^ssqch [0-9]+\.[0-9]+\.[0-9]+"
+          # Editors and linters find the built-in modules and their types through the exports map.
+          node -e 'for (const m of ["ssqch", "ssqch/image", "ssqch/rss", "ssqch/links"]) require.resolve(m); require("fs").statSync("node_modules/ssqch/types/image.d.ts")'
           npx ssqch build --quiet
           grep -q "<h1>SMOKE TEST</h1>" dist/index.html

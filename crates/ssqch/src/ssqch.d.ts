@@ -277,6 +277,8 @@ declare module "ssqch/image" {
 		hashCache?: boolean;
 		/** Point links to local images at a generated copy. Default `true`. */
 		linkedImages?: boolean;
+		/** Where images are encoded and kept between builds, from the project root; the output gets links to them. Default `.cache/ssqch/img`. `false` encodes straight into the output. */
+		cacheDir?: string | false;
 	}
 
 	/** One generated file. */
@@ -297,8 +299,22 @@ declare module "ssqch/image" {
 	/** Turns every local `<img>` in HTML output into a `<picture>`. */
 	export function imagePlugin(options?: ImagePluginOptions): BuiltinPlugin;
 
-	/** Generate one image's files with the plugin's settings and cache. Keyed by format, smallest first. */
+	/** Generate one image's files with the plugin's settings and cache. Keyed by format, smallest first; with `"auto"` in `formats`, its files are under `auto` too. */
 	export function image(src: string, options?: ImageCallOptions): Promise<Record<string, ImageEntry[]>>;
+
+	/** One generated copy of an image, from `imageUrl()`. A remote URL comes back as only `{ url }`. */
+	export interface ImageUrl {
+		url: string;
+		width?: number;
+		height?: number;
+		/** The MIME type, like `image/png`. */
+		type?: string;
+		/** The format it's in, like `png`. */
+		format?: string;
+	}
+
+	/** The URL (and size and type) of one generated copy of an image, for `og:image`, JSON-LD and feeds: `imageUrl("/content/logo.png", { width: 1200 })`. `src` is a site path, from the input folder. Also a template function. */
+	export function imageUrl(src: string, options?: { width?: number | "auto"; format?: FormatName }): ImageUrl;
 
 	/** What `image()` takes for one image. Encoder settings go on `imagePlugin()`. */
 	export interface ImageCallOptions {
@@ -314,7 +330,7 @@ declare module "ssqch/image" {
 declare module "ssqch/rss" {
 	import type { BuiltinPlugin } from "ssqch";
 
-	/** Adds the filters getNewestCollectionItemDate, dateToRfc3339, dateToRfc822, absoluteUrl, htmlToAbsoluteUrls and url. */
+	/** Adds the filters getNewestCollectionItemDate, dateToRfc3339, dateToRfc822, absoluteUrl, htmlToAbsoluteUrls and feedHtml. */
 	export function rssPlugin(): BuiltinPlugin;
 	/** The newest `date` in a collection, for a feed's `updated`. */
 	export function getNewestCollectionItemDate(collection: unknown[]): Date | undefined;
@@ -326,6 +342,8 @@ declare module "ssqch/rss" {
 	export function absoluteUrl(url: string, base: string): string;
 	/** Every link and image in some HTML made absolute, for a feed's content. */
 	export function htmlToAbsoluteUrls(html: string, base: string): string;
+	/** A post's HTML for a feed: each local image points at one generated copy (`width` 1200 and the source's format by default), page-only attributes go, and every URL is made absolute against `base`, the post's address. */
+	export function feedHtml(html: string, base: string, options?: { width?: number | "auto"; format?: string }): string;
 }
 
 declare module "ssqch/minify" {
@@ -374,9 +392,11 @@ declare module "ssqch/links" {
 		ignore?: string[];
 		/** Fail the build on a broken link. Default: production builds only. */
 		fail?: boolean;
+		/** The site's address, like `"https://example.com"`, so absolute links to it are checked too. Default: the address `sitemap.xml` uses. */
+		url?: string;
 	}
 
-	/** Checks every internal link and anchor after each build. */
+	/** Checks every internal link and anchor after each build: in HTML attributes, `<meta>` URLs, JSON-LD, and feeds and other XML. */
 	export function linksPlugin(options?: LinksPluginOptions): BuiltinPlugin;
 }
 

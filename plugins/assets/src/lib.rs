@@ -13,9 +13,15 @@
 //! production build left one fingerprinted copy of it, pages link to that copy
 //! instead, so serving after a build still has styles and scripts.
 //!
-//! References elsewhere (`url()` in CSS, imports in JavaScript) aren't
-//! rewritten. For a hashed URL outside an HTML attribute, templates can call
-//! `assetUrl("/assets/index.css")`.
+//! A listed file can be a passthrough copy (`passthrough: [{ "src/pco.js":
+//! "assets/pco.js" }]`): it's copied into the output before it's
+//! fingerprinted, since passthrough files are otherwise copied after pages.
+//!
+//! Static imports in inline module scripts (`<script type="module">import
+//! { setup } from "/assets/pco.js"</script>`) are rewritten too, and so are
+//! `import("...")` calls with a plain string. Other references (`url()` in
+//! CSS, imports inside JavaScript files) aren't. For a hashed URL outside an
+//! HTML attribute, templates can call `assetUrl("/assets/index.css")`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -77,6 +83,14 @@ impl Plugin for AssetsPlugin {
             let mut names = Vec::new();
             for file in &options.files {
                 if enabled {
+                    // A passthrough file isn't in the output until after pages are written.
+                    if let Some(src) = ctx.passthrough_source(file) {
+                        let plain = ctx.output_dir.join(file.trim_start_matches('/'));
+                        if let Some(dir) = plain.parent() {
+                            std::fs::create_dir_all(dir)?;
+                        }
+                        std::fs::copy(&src, &plain).with_context(|| format!("copying {} to {}", src.display(), plain.display()))?;
+                    }
                     let hashed = fingerprint(&ctx.output_dir, file)?;
                     if options.integrity {
                         let path = ctx.output_dir.join(hashed.trim_start_matches('/'));
@@ -85,7 +99,7 @@ impl Plugin for AssetsPlugin {
                     }
                     names.push(hashed.rsplit('/').next().unwrap_or(&hashed).to_string());
                     map.insert(file.clone(), hashed);
-                } else if ctx.output_dir.join(file.trim_start_matches('/')).is_file() {
+                } else if ctx.output_dir.join(file.trim_start_matches('/')).is_file() || ctx.passthrough_source(file).is_some() {
                     map.insert(file.clone(), file.clone());
                 } else if let Some(copy) = built_copy(&ctx.output_dir, file)? {
                     sitesquatch::diagnostics::warn(sitesquatch::diagnostics::Diagnostic::warning("assets", format!("{} isn't in the output ({}), so pages link to {} from the last production build; run the tool that writes {} to see changes", file, display(ctx, &ctx.output_dir), copy, file)));
@@ -239,10 +253,30 @@ pub fn rewrite_html(html: &str, urls: &BTreeMap<String, String>, sri: &BTreeMap<
         let (path, rest) = value.split_at(split);
         urls.get(path).filter(|url| url.as_str() != path).map(|url| format!("{}{}", url, rest))
     };
-    rewrite_str(
+    let script = std::cell::RefCell::new(String::new());
+    let module = std::cell::Cell::new(false);
+    let out = rewrite_str(
         html,
         RewriteStrSettings {
-            element_content_handlers: vec![element!("[href], [src]", move |el| {
+            element_content_handlers: vec![
+                element!("script", |el| {
+                    module.set(!el.has_attribute("src") && el.get_attribute("type").is_some_and(|t| t.trim().eq_ignore_ascii_case("module")));
+                    Ok(())
+                }),
+                lol_html::text!("script", |t| {
+                    if !module.get() {
+                        return Ok(());
+                    }
+                    script.borrow_mut().push_str(t.as_str());
+                    if t.last_in_text_node() {
+                        let text = std::mem::take(&mut *script.borrow_mut());
+                        t.replace(&rewrite_imports(&text, urls), lol_html::html_content::ContentType::Html);
+                    } else {
+                        t.remove();
+                    }
+                    Ok(())
+                }),
+                element!("[href], [src]", move |el| {
                 let tag = el.tag_name();
                 for attr in ["href", "src"] {
                     let Some(value) = el.get_attribute(attr) else { continue };
@@ -257,11 +291,39 @@ pub fn rewrite_html(html: &str, urls: &BTreeMap<String, String>, sri: &BTreeMap<
                     }
                 }
                 Ok(())
-            })],
+            }),
+            ],
             ..RewriteStrSettings::new()
         },
     )
-    .map_err(|e| anyhow!("assets transform: {}", e))
+    .map_err(|e| anyhow!("assets transform: {}", e));
+    out
+}
+
+/// A module script with its imports of fingerprinted files pointed at them:
+/// `import ... from "/assets/pco.js"`, `import "/assets/pco.js"`,
+/// `export ... from "..."` and `import("...")` with a plain string.
+fn rewrite_imports(js: &str, urls: &BTreeMap<String, String>) -> String {
+    use std::sync::OnceLock;
+    static IMPORT: OnceLock<regex::Regex> = OnceLock::new();
+    if !js.contains("import") && !js.contains("export") {
+        return js.to_string();
+    }
+    let re = IMPORT.get_or_init(|| regex::Regex::new(r#"(\bfrom\s*|\bimport\s*(?:\(\s*)?)(?:"([^"\n]*)"|'([^'\n]*)')"#).unwrap());
+    re.replace_all(js, |c: &regex::Captures| {
+        let (quote, spec) = match (c.get(2), c.get(3)) {
+            (Some(m), _) => ('"', m.as_str()),
+            (_, Some(m)) => ('\'', m.as_str()),
+            _ => return c[0].to_string(),
+        };
+        let split = spec.find(['?', '#']).unwrap_or(spec.len());
+        let (path, rest) = spec.split_at(split);
+        match urls.get(path).filter(|url| url.as_str() != path) {
+            Some(url) => format!("{}{}{}{}{}", &c[1], quote, url, rest, quote),
+            None => c[0].to_string(),
+        }
+    })
+    .into_owned()
 }
 
 #[cfg(test)]
@@ -283,6 +345,31 @@ mod tests {
         assert_eq!(
             out,
             r#"<link rel="stylesheet" href="/assets/index.0123abcd.css"><link rel="preload" href="/assets/index.89ef4567.js?v=2#x"><script src="/assets/index.89ef4567.js" defer></script><a href="/assets/index.css.map">map</a><img src="/assets/other.png"><p>/assets/index.css</p>"#
+        );
+    }
+
+    #[test]
+    fn rewrites_imports_in_inline_module_scripts() {
+        let urls = BTreeMap::from([("/assets/pco.js".to_string(), "/assets/pco.0123abcd.js".to_string())]);
+        let html = r#"<script type="module">
+ import { setup } from "/assets/pco.js";
+import '/assets/pco.js?v=1';
+export { x } from "/assets/pco.js";
+const m = await import( "/assets/pco.js" );
+import other from "/assets/other.js";
+const s = "/assets/pco.js";
+</script><script>import x from "/assets/pco.js"</script><script type="module" src="/assets/pco.js"></script>"#;
+        let out = rewrite_html(html, &urls, &BTreeMap::new()).unwrap();
+        assert_eq!(
+            out,
+            r#"<script type="module">
+ import { setup } from "/assets/pco.0123abcd.js";
+import '/assets/pco.0123abcd.js?v=1';
+export { x } from "/assets/pco.0123abcd.js";
+const m = await import( "/assets/pco.0123abcd.js" );
+import other from "/assets/other.js";
+const s = "/assets/pco.js";
+</script><script>import x from "/assets/pco.js"</script><script type="module" src="/assets/pco.0123abcd.js"></script>"#
         );
     }
 

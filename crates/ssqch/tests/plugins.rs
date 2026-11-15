@@ -514,3 +514,170 @@ export default { urls: [...named.webp, ...named.png, ...inside.webp].map((e) => 
     assert!(ok, "{}", log);
     assert!(std::fs::metadata(root.join("dist/assets/sponsors/acme-16.webp")).unwrap().modified().unwrap() > before, "a changed source wasn't encoded again");
 }
+
+/// What's outside `<img>` gets published copies: `imageUrl()` for metadata, `feedHtml()` for a
+/// feed's content, `image()`'s `auto` key, and `ssqch:preload` for the banner.
+#[test]
+fn images_outside_img_tags_point_at_generated_copies() {
+    let root = project(&[
+        (
+            "ssqch.config.js",
+            br#"import { imagePlugin } from "ssqch/image";
+import { rssPlugin } from "ssqch/rss";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge", "md"], markdownEngine: "edge",
+  plugins: [rssPlugin(), imagePlugin({ formats: ["webp", "auto"], widths: [16, 32], defaultAttributes: { loading: "lazy", sizes: "auto" } })] };"#,
+        ),
+        ("src/img/squatch.png", PNG),
+        ("src/posts/hike/map.png", PNG),
+        (
+            "src/_data/logo.js",
+            br#"import { image, imageUrl } from "ssqch/image";
+const d = await image("src/img/squatch.png", { formats: ["auto"], widths: [20] });
+export default { keys: Object.keys(d).join(","), same: d.auto[0].url === d.png[0].url, url: imageUrl("/img/squatch.png", { width: 10, format: "webp" }).url };
+"#,
+        ),
+        ("src/posts/hike/index.md", b"---\ntags: posts\n---\n<img src=\"./map.png\" alt=\"Map\" loading=\"lazy\" ssqch:widths=\"16\"> <a href=\"/img/squatch.png\">big</a> <img src=\"/img/squatch.png\" width=\"20\" alt=\"Small\">\n"),
+        (
+            "src/feed.edge",
+            b"---\npermalink: feed.xml\n---\n@each(post in collections.posts)\n<content>{{ feedHtml(post.templateContent, \"https://example.com\" + post.url) }}</content>\n@end\n",
+        ),
+        (
+            "src/index.edge",
+            b"<html><head><meta property=\"og:image\" content=\"{{ imageUrl('/img/squatch.png', { width: 1200 }).url }}\"><link rel=\"stylesheet\" href=\"/s.css\"></head><body><img src=\"/img/squatch.png\" alt=\"Banner\" ssqch:preload sizes=\"auto, 50vw\"><p>{{ logo.keys }} {{ logo.same }} {{ logo.url }} {{ JSON.stringify(imageUrl('https://cdn.example.com/a.png')) }}</p></body></html>",
+        ),
+        ("src/bad.edge", b"---\npermalink: false\n---\n"),
+    ]);
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    let html = read(&root, "dist/index.html");
+    // The source is 64 px wide, so the 1200 px copy is the original's width, as a PNG.
+    let og = html.split("og:image\" content=\"").nth(1).unwrap().split('"').next().unwrap().to_string();
+    assert!(og.starts_with("/img/") && og.ends_with("-64.png") && root.join("dist").join(og.trim_start_matches('/')).is_file(), "{}", html);
+    assert!(html.contains("<p>png,auto true /img/") && html.contains("-10.webp {&quot;url&quot;:&quot;https://cdn.example.com/a.png&quot;}</p>"), "{}", html);
+    // The preload goes before the stylesheet, for the first format, without `auto` in its sizes;
+    // the image loads eagerly with a high priority.
+    let preload = html.find("<link rel=\"preload\" as=\"image\" type=\"image/webp\" fetchpriority=\"high\" imagesrcset=\"/img/").unwrap();
+    assert!(preload < html.find("<link rel=\"stylesheet\"").unwrap(), "{}", html);
+    assert!(html.contains("-32.webp 32w\" imagesizes=\"50vw\">"), "{}", html);
+    let banner = html.split("alt=\"Banner\"").next().unwrap().rsplit("<img").next().unwrap().to_string() + &html.split("alt=\"Banner\"").nth(1).unwrap()[..80];
+    assert!(!banner.contains("lazy") && banner.contains("fetchpriority=\"high\"") && !banner.contains("ssqch:"), "{}", banner);
+
+    let feed = read(&root, "dist/feed.xml");
+    // One absolute URL per image (the page's own width when it has one), no srcset or lazy loading,
+    // and a link to an image goes to its published copy.
+    assert!(!feed.contains("srcset") && !feed.contains("loading") && !feed.contains("ssqch:") && !feed.contains("picture"), "{}", feed);
+    assert!(feed.contains("&lt;img src=&quot;https://example.com/img/") && feed.contains("-64.png&quot; alt=&quot;Map&quot;&gt;"), "{}", feed);
+    assert!(feed.contains("-20.png&quot; width=&quot;20&quot; alt=&quot;Small&quot;&gt;"), "{}", feed);
+    assert!(feed.contains("&lt;a href=&quot;https://example.com/img/") && !feed.contains("/img/squatch.png"), "{}", feed);
+
+    // Mistakes are named.
+    std::fs::write(root.join("src/bad.edge"), "---\npermalink: /bad/\n---\n{{ imageUrl('/img/nope.png').url }}").unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(!ok && log.contains("imageUrl(): image not found: /img/nope.png (looked for ./src/img/nope.png)") && !log.contains("imageUrl(): imageUrl()"), "{}", log);
+    std::fs::write(root.join("src/bad.edge"), "---\npermalink: /bad/\n---\n{{ imageUrl('/img/squatch.png', { size: 3 }).url }}").unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(!ok && log.contains("imageUrl(): unknown option \"size\" (options: width, format)"), "{}", log);
+}
+
+/// Images are encoded into `.cache/ssqch/img` and linked into the output, so the output folder
+/// can go without encoding anything again, and an output from before the cache is kept.
+#[test]
+fn images_are_kept_in_the_cache_outside_the_output() {
+    let config = br#"import { imagePlugin } from "ssqch/image";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge"], plugins: [imagePlugin({ formats: ["webp", "auto"], widths: [16, 32], prune: true })] };"#;
+    let root = project(&[("ssqch.config.js", config), ("src/img/squatch.png", PNG), ("src/index.edge", b"<img src=\"/img/squatch.png\" alt=\"\">")]);
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert!(log.contains("4 files from 1 source") && log.contains("4 encoded, 0 reused"), "{}", log);
+    let cached: Vec<String> = std::fs::read_dir(root.join(".cache/ssqch/img")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(cached.len(), 4, "{:?}", cached);
+
+    std::fs::remove_dir_all(root.join("dist")).unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert!(log.contains("0 encoded, 4 reused"), "{}", log);
+    for name in &cached {
+        assert!(root.join("dist/img").join(name).is_file(), "{} is in the output", name);
+    }
+
+    // An output from before the cache (or a deploy that only kept dist/img): its files are taken in.
+    std::fs::remove_dir_all(root.join(".cache")).unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert!(log.contains("0 encoded, 4 reused"), "{}", log);
+    assert_eq!(std::fs::read_dir(root.join(".cache/ssqch/img")).unwrap().count(), 4);
+
+    // `prune` cleans the cache too.
+    std::fs::write(root.join("src/index.edge"), "<img src=\"/img/squatch.png\" alt=\"\" ssqch:widths=\"16\">").unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert_eq!(std::fs::read_dir(root.join(".cache/ssqch/img")).unwrap().count(), 2);
+    assert_eq!(std::fs::read_dir(root.join("dist/img")).unwrap().count(), 2);
+}
+
+/// The link checker reads URLs outside HTML attributes: a feed's escaped HTML, `<meta>` values,
+/// JSON-LD and `imagesrcset`, and absolute links on the site's own address.
+#[test]
+fn the_link_checker_reads_feeds_meta_and_json_ld() {
+    let root = project(&[
+        ("ssqch.config.js", br#"import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge"], passthrough: ["src/content"], plugins: [linksPlugin({ url: "https://example.com" })] };"#),
+        ("src/content/logo.png", PNG),
+        ("src/about.edge", b"---\npermalink: /about/\n---\n<p>About</p>"),
+        (
+            "src/index.edge",
+            br#"<head><meta property="og:image" content="https://example.com/content/missing.png"><meta property="og:url" content="https://example.com/"><meta name="twitter:image" content="/content/logo.png"><meta name="description" content="/not/a/link"><link rel="preload" as="image" imagesrcset="/img/gone-300.webp 300w"><script type="application/ld+json">{"@context":"https://schema.org","@id":"https://example.com/#org","logo":{"url":"https://example.com/content/images/logo.png"},"url":"https://example.com/about/"}</script></head><a href="http://example.com/wp-content/talk.pdf">old</a><a href="https://other.example/x">elsewhere</a>"#,
+        ),
+        (
+            "src/feed.edge",
+            b"---\npermalink: feed.xml\n---\n<feed><link href=\"https://example.com/feed.xml\" rel=\"self\"/><entry><id>https://example.com/about/</id><content type=\"html\">{{ '<p><img src=\"https://example.com/content/images/a.png\"><a href=\"/about/\">a</a></p>' }}</content></entry></feed>",
+        ),
+    ]);
+    let (ok, log) = ssqch(&root);
+    assert!(!ok, "{}", log);
+    assert!(log.contains("5 broken links:"), "{}", log);
+    for line in [
+        "/ -> https://example.com/content/missing.png (not found)",
+        "/ -> https://example.com/content/images/logo.png (not found)",
+        "/ -> /img/gone-300.webp (not found)",
+        "/ -> http://example.com/wp-content/talk.pdf (not found)",
+        "/feed.xml -> https://example.com/content/images/a.png (not found)",
+    ] {
+        assert!(log.contains(line), "{}: {}", line, log);
+    }
+
+    // Without `url`, the sitemap's address is the site's.
+    std::fs::write(root.join("ssqch.config.js"), r#"import { linksPlugin } from "ssqch/links";
+import { sitemapPlugin } from "ssqch/sitemap";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge"], passthrough: ["src/content"], plugins: [sitemapPlugin({ url: "https://example.com" }), linksPlugin()] };"#).unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(!ok && log.contains("5 broken links:"), "{}", log);
+}
+
+/// A listed asset can be a passthrough copy, and imports in inline module scripts are rewritten.
+#[test]
+fn assets_rewrite_inline_module_imports_of_passthrough_files() {
+    let root = project(&[
+        ("ssqch.config.js", br#"import { assetsPlugin } from "ssqch/assets";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge"], passthrough: [{ "js/pco.js": "assets/pco.js" }], plugins: [assetsPlugin({ files: ["/assets/pco.js"] })] };"#),
+        ("js/pco.js", b"export function setup() {}"),
+        ("src/index.edge", b"<script type=\"module\">\n import { setup } from \"/assets/pco.js\";\nsetup();\n</script>"),
+    ]);
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    let html = read(&root, "dist/index.html");
+    let hashed = html.split("from \"").nth(1).unwrap().split('"').next().unwrap().to_string();
+    assert!(hashed.starts_with("/assets/pco.") && hashed.ends_with(".js") && hashed.len() == "/assets/pco.12345678.js".len(), "{}", html);
+    assert!(root.join("dist").join(hashed.trim_start_matches('/')).is_file(), "{}", hashed);
+    // Built again, the passthrough copy and the fingerprinted one agree.
+    std::fs::write(root.join("js/pco.js"), "export function setup() { return 1; }").unwrap();
+    let (ok, log) = ssqch(&root);
+    assert!(ok, "{}", log);
+    assert!(!read(&root, "dist/index.html").contains(&hashed), "a changed file gets a new name");
+
+    // In development, the plain path, with no warning about a tool that hasn't written it.
+    std::fs::remove_dir_all(root.join("dist")).unwrap();
+    let (ok, log) = ssqch_with(&root, &["--env", "development"]);
+    assert!(ok && !log.contains("isn't in the output"), "{}", log);
+    assert!(read(&root, "dist/index.html").contains("from \"/assets/pco.js\""));
+}

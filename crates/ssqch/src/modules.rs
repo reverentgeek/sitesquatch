@@ -61,6 +61,13 @@ pub fn js_modules() -> Vec<JsModule> {
             include_str!("js/image.js"),
             vec![
                 ("generate", Value::func(generate_image)),
+                (
+                    "imageUrl",
+                    Value::func(|args| {
+                        let (width, format) = sitesquatch_plugin_image::image_url_options(args.get(1))?;
+                        processor()?.image_url(&arg(args, 0).to_js_string(), width, format)
+                    }),
+                ),
             ],
         ),
         module(
@@ -71,6 +78,7 @@ pub fn js_modules() -> Vec<JsModule> {
                 ("dateToRfc3339", Value::func(|args| sitesquatch_plugin_rss::date_to_rfc3339(&arg(args, 0)).map(Value::from))),
                 ("dateToRfc822", Value::func(|args| sitesquatch_plugin_rss::date_to_rfc822(&arg(args, 0)).map(Value::from))),
                 ("absoluteUrl", Value::func(|args| Ok(Value::from(sitesquatch_plugin_rss::absolute_url(&arg(args, 0).to_js_string(), &arg(args, 1).to_js_string()))))),
+                ("feedHtml", Value::func(feed_html)),
                 (
                     "htmlToAbsoluteUrls",
                     Value::func(|args| sitesquatch_plugin_rss::html_to_absolute_urls(&arg(args, 0).to_js_string(), &arg(args, 1).to_js_string()).map(Value::from)),
@@ -95,6 +103,19 @@ pub fn js_modules() -> Vec<JsModule> {
             )],
         ),
     ]
+}
+
+/// `feedHtml(html, base, { width, format })`: HTML for a feed's content.
+/// Each local image points at one generated copy (1200 pixels wide at most,
+/// by default, in the source's format), and every URL is made absolute
+/// against `base`, the page's address.
+pub fn feed_html(args: &[Value]) -> Result<Value> {
+    let html = arg(args, 0);
+    let html = if html.is_nullish() { String::new() } else { html.to_js_string() };
+    let base = arg(args, 1).to_js_string();
+    let (width, format) = sitesquatch_plugin_image::image_options_for("feedHtml()", args.get(2), 1200)?;
+    let html = processor()?.feed_images(&html, &base, width, format)?;
+    Ok(Value::from(sitesquatch_plugin_rss::html_to_absolute_urls(&html, &base)?))
 }
 
 fn arg(args: &[Value], i: usize) -> Value {
@@ -134,6 +155,12 @@ fn generate_image(args: &[Value]) -> Result<Value> {
             })
             .collect();
         out.insert(format.ext().to_string(), Value::array(items));
+    }
+    // `formats: ["auto"]` is also there as `auto`, next to the format it became.
+    if let Some(resolved) = meta.auto {
+        if let Some(items) = out.get(resolved.ext()).cloned() {
+            out.insert("auto".to_string(), items);
+        }
     }
     Ok(Value::object(out))
 }

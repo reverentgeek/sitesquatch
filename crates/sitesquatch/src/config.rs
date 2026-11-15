@@ -72,9 +72,35 @@ pub struct BuildContext {
     pub base: String,
     /// The themes' folders, the one on top first (see [`crate::theme`]).
     pub theme_dirs: Vec<PathBuf>,
+    /// The config's passthrough copies, as given: (source from the root,
+    /// where it goes in the output). See [`BuildContext::passthrough_source`].
+    pub passthrough: Vec<(PathBuf, Option<PathBuf>)>,
 }
 
 impl BuildContext {
+    /// The file a passthrough copy puts at `url_path` in the output
+    /// (`/assets/pco.js`), from a file's or a folder's copy (not a glob's).
+    /// Passthrough files are copied after pages are written, so a plugin
+    /// that needs one sooner (to fingerprint it) can read it from here.
+    pub fn passthrough_source(&self, url_path: &str) -> Option<PathBuf> {
+        let want = self.output_dir.join(url_path.trim_start_matches('/'));
+        for (from, to) in &self.passthrough {
+            if from.to_string_lossy().contains(['*', '?', '[', '{']) {
+                continue;
+            }
+            let src = self.root.join(from);
+            let dest = match to {
+                Some(to) => self.output_dir.join(to),
+                None => self.output_dir.join(src.strip_prefix(&self.input_dir).or_else(|_| src.strip_prefix(&self.root)).unwrap_or(&src)),
+            };
+            let found = if want == dest { Some(src) } else { want.strip_prefix(&dest).ok().map(|rest| src.join(rest)) };
+            if let Some(found) = found.filter(|f| f.is_file()) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
     /// `url` with the site's `base` in front, if it's from the site's root
     /// (`/about/` becomes `/repo/about/`).
     pub fn with_base(&self, url: &str) -> String {
@@ -620,6 +646,7 @@ impl Config {
             serving: self.serving,
             base: self.base.clone(),
             theme_dirs: self.themes.clone(),
+            passthrough: self.passthrough.clone(),
         }
     }
 

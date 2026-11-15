@@ -103,13 +103,16 @@ pub(crate) fn default_engines(cfg: &mut Config) {
 fn rss(cfg: &mut Config, options: &Json) -> Result<()> {
     Options::new(options, &[])?;
     cfg.add_plugin(RssPlugin);
+    // It needs the image processor, which only the ssqch binary has with the rss plugin.
+    // Template engines name the function in front of its errors already.
+    cfg.add_filter("feedHtml", |args| modules::feed_html(args).map_err(|e| anyhow::anyhow!("{}", format!("{:#}", e).trim_start_matches("feedHtml(): "))));
     Ok(())
 }
 
 fn image(cfg: &mut Config, options: &Json) -> Result<()> {
     let o = Options::new(
         options,
-        &["formats", "widths", "defaultAttributes", "outputDir", "urlPath", "webpQuality", "avifQuality", "avifSpeed", "jpegQuality", "minimumThreshold", "prune", "hashCache", "linkedImages"],
+        &["formats", "widths", "defaultAttributes", "outputDir", "urlPath", "webpQuality", "avifQuality", "avifSpeed", "jpegQuality", "minimumThreshold", "prune", "hashCache", "linkedImages", "cacheDir"],
     )?;
     let mut opts = ImageOptions::default();
     if let Some(list) = o.list("formats")? {
@@ -140,6 +143,12 @@ fn image(cfg: &mut Config, options: &Json) -> Result<()> {
     if let Some(p) = o.bool("prune")? { opts.prune = p; }
     if let Some(c) = o.bool("hashCache")? { opts.hash_cache = c; }
     if let Some(l) = o.bool("linkedImages")? { opts.linked_images = l; }
+    match o.get("cacheDir") {
+        None => {}
+        Some(Json::Bool(false)) => opts.cache_dir = None,
+        Some(Json::String(dir)) if !dir.trim().is_empty() => opts.cache_dir = Some(dir.clone()),
+        Some(_) => bail!("cacheDir must be a folder from the project root, like \".cache/ssqch/img\", or false"),
+    }
     let plugin = ImagePlugin::new(opts);
     modules::set_image_processor(plugin.processor.clone())?;
     cfg.add_plugin(plugin);
@@ -168,8 +177,8 @@ fn assets(cfg: &mut Config, options: &Json) -> Result<()> {
 }
 
 fn links(cfg: &mut Config, options: &Json) -> Result<()> {
-    let o = Options::new(options, &["anchors", "ignore", "fail"])?;
-    cfg.add_plugin(LinksPlugin::new(LinksOptions { anchors: o.bool("anchors")?, ignore: o.list("ignore")?.unwrap_or_default(), fail: o.bool("fail")? })?);
+    let o = Options::new(options, &["anchors", "ignore", "fail", "url"])?;
+    cfg.add_plugin(LinksPlugin::new(LinksOptions { anchors: o.bool("anchors")?, ignore: o.list("ignore")?.unwrap_or_default(), fail: o.bool("fail")?, url: o.string("url")? })?);
     Ok(())
 }
 
@@ -244,16 +253,10 @@ fn sass(cfg: &mut Config, options: &Json) -> Result<()> {
 }
 
 pub(crate) fn parse_format(name: &str) -> Result<Format> {
-    Ok(match name {
-        "avif" => Format::Avif,
-        "webp" => Format::Webp,
-        "jpeg" | "jpg" => Format::Jpeg,
-        "png" => Format::Png,
-        "gif" => Format::Gif,
-        "svg" => Format::Svg,
-        "auto" => Format::Auto,
-        other => bail!("unknown image format \"{}\" (use avif, webp, jpeg, png, gif, svg or auto)", other),
-    })
+    match Format::parse(name) {
+        Some(format) => Ok(format),
+        None => bail!("unknown image format \"{}\" (use avif, webp, jpeg, png, gif, svg or auto)", name),
+    }
 }
 
 /// A plugin's options object, rejecting misspelled keys.

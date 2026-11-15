@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use notify::{RecursiveMode, Watcher};
 
 use crate::config::Config;
@@ -199,6 +199,103 @@ fn listen(port: u16, site: &Arc<RwLock<Site>>, live: &Arc<Live>) -> Result<u16> 
         }
     });
     Ok(port)
+}
+
+/// Serve the output folder as the last build left it, the way a host
+/// would (`ssqch serve --built`, or `ssqch preview`): no build, no watching,
+/// no reload script or icon added to pages, and text compressed with gzip
+/// when the browser takes it. For checking a production build locally
+/// (Lighthouse, say) before deploying it. Runs until stopped.
+pub fn serve_built(cfg: &Config, options: &ServeOptions) -> Result<()> {
+    let site = Site::of(cfg);
+    let ctx = cfg.build_context();
+    let shown = crate::slashes(site.output.strip_prefix(&ctx.root).unwrap_or(&site.output));
+    if !site.output.is_dir() {
+        bail!("{} doesn't exist: build the site first (ssqch build), then serve it with ssqch serve --built", shown);
+    }
+    if let Some(ready) = &options.ready_file {
+        let _ = std::fs::remove_file(ready);
+    }
+    let server = tiny_http::Server::http(("127.0.0.1", options.port)).map_err(|e| match e.downcast_ref::<std::io::Error>() {
+        Some(io) if io.kind() == std::io::ErrorKind::AddrInUse => anyhow::anyhow!("can't listen on port {}: something else is squatting on it (--port 0 picks a free one)", options.port),
+        _ => anyhow::anyhow!("can't listen on port {}: {}", options.port, e),
+    })?;
+    let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(options.port);
+    if let Some(ready) = &options.ready_file {
+        write_ready(ready, &site, port, true)?;
+    }
+    let url = format!("http://localhost:{}{}/", port, site.base);
+    if cfg.quiet {
+        println!("{}", url);
+    } else {
+        println!("Serving {} as built at {}. It stays as it is until the next ssqch build.", shown, url);
+    }
+    let server = Arc::new(server);
+    let site = Arc::new(site);
+    let workers: Vec<_> = (0..4)
+        .map(|_| {
+            let (server, site) = (server.clone(), site.clone());
+            std::thread::spawn(move || {
+                for request in server.incoming_requests() {
+                    let _ = handle_built(request, &site.output, &site.base);
+                }
+            })
+        })
+        .collect();
+    for worker in workers {
+        let _ = worker.join();
+    }
+    Ok(())
+}
+
+/// One request to [`serve_built`].
+fn handle_built(request: tiny_http::Request, root: &Path, base: &str) -> Result<()> {
+    let raw_url = request.url().split(['?', '#']).next().unwrap_or("/").to_string();
+    let full_url = percent_decode(&raw_url);
+    let url = match mounted(&full_url, base) {
+        Mounted::Path(path) => path.to_string(),
+        Mounted::Redirect(to) => {
+            let location = tiny_http::Header::from_bytes("Location", to).unwrap();
+            return Ok(request.respond(tiny_http::Response::empty(302).with_header(location))?);
+        }
+        Mounted::Outside => return Ok(request.respond(tiny_http::Response::from_string(format!("Not found: {} (this site is served under {}/)", full_url, base)).with_status_code(404))?),
+    };
+    let rel = url.trim_start_matches('/');
+    if !inside(rel) {
+        return Ok(request.respond(tiny_http::Response::empty(400))?);
+    }
+    let mut path = root.join(rel);
+    if path.is_dir() {
+        if !url.ends_with('/') {
+            let location = tiny_http::Header::from_bytes("Location", format!("{}/", raw_url)).unwrap();
+            return Ok(request.respond(tiny_http::Response::empty(301).with_header(location))?);
+        }
+        path = path.join("index.html");
+    }
+    let (status, path) = if path.is_file() { (200, path) } else { (404, root.join("404.html")) };
+    let (body, ctype) = match std::fs::read(&path) {
+        Ok(body) => (body, content_type(&path)),
+        Err(_) => (format!("Not found: {}", full_url).into_bytes(), "text/plain; charset=utf-8"),
+    };
+    let compressible = ctype.starts_with("text/") || ctype.starts_with("application/json") || ctype.starts_with("application/xml") || ctype == "image/svg+xml";
+    let gzip = compressible && body.len() > 256 && request.headers().iter().any(|h| h.field.equiv("Accept-Encoding") && h.value.as_str().split(',').any(|e| e.trim().split(';').next() == Some("gzip")));
+    let body = if gzip {
+        use std::io::Write;
+        let mut encoder = flate2::write::GzEncoder::new(Vec::with_capacity(body.len() / 3), flate2::Compression::default());
+        encoder.write_all(&body)?;
+        encoder.finish()?
+    } else {
+        body
+    };
+    let mut response = tiny_http::Response::from_data(body).with_status_code(status).with_header(tiny_http::Header::from_bytes("Content-Type", ctype).unwrap());
+    if compressible {
+        response = response.with_header(tiny_http::Header::from_bytes("Vary", "Accept-Encoding").unwrap());
+    }
+    if gzip {
+        response = response.with_header(tiny_http::Header::from_bytes("Content-Encoding", "gzip").unwrap());
+    }
+    request.respond(response)?;
+    Ok(())
 }
 
 /// Returned by [`watch`] when the configuration changed and loaded again.

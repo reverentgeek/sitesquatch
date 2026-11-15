@@ -2522,6 +2522,7 @@ dependencies = [
  "ctrlc",
  "deunicode",
  "dunce",
+ "flate2",
  "globset",
  "indexmap",
  "libc",
@@ -2579,6 +2580,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "lol_html",
+ "regex",
  "sha2",
  "sitesquatch",
 ]
@@ -2643,6 +2645,8 @@ dependencies = [
  "anyhow",
  "lol_html",
  "rayon",
+ "regex",
+ "serde_json",
  "sitesquatch",
 ]
 

@@ -2,14 +2,18 @@
 //!
 //! Every local `<img>` in HTML output becomes a `<picture>` with one
 //! `<source>` per modern format and a fallback `<img>`. Derivatives are
-//! written to `<output>/img/` and named by a hash of the source file's
-//! contents (and the encoder settings), so anything already generated is
-//! reused on later builds, including fresh CI checkouts that restore
-//! `<output>/img/` from a cache.
+//! encoded into `.cache/ssqch/img/`, named by a hash of the source file's
+//! contents (and the encoder settings), and hard-linked (or copied) into
+//! `<output>/img/` on each build. So anything already generated is reused on
+//! later builds, including fresh CI checkouts that restore `.cache/ssqch`,
+//! and the output folder can be deleted without encoding anything again.
 //!
 //! Per-image overrides:
 //! - `ssqch:widths="300,600"` sets the widths for that image
 //! - `ssqch:ignore` leaves the tag untouched
+//! - `ssqch:preload` preloads it: a `<link rel="preload" as="image">` for its
+//!   first format goes in `<head>`, and the image loads eagerly with
+//!   `fetchpriority="high"` (for the banner that's the page's largest paint)
 //! - a plain `width` attribute pins the image to that one width
 //!
 //! Images with an RGB color profile other than sRGB (Display P3, Adobe RGB)
@@ -72,6 +76,20 @@ impl Format {
         }
     }
 
+    /// A format by name: `avif`, `webp`, `jpeg` (or `jpg`), `png`, `gif`, `svg` or `auto`.
+    pub fn parse(name: &str) -> Option<Format> {
+        Some(match name {
+            "avif" => Format::Avif,
+            "webp" => Format::Webp,
+            "jpeg" | "jpg" => Format::Jpeg,
+            "png" => Format::Png,
+            "gif" => Format::Gif,
+            "svg" => Format::Svg,
+            "auto" => Format::Auto,
+            _ => return None,
+        })
+    }
+
     fn from_path(path: &Path) -> Option<Format> {
         match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
             "jpg" | "jpeg" => Some(Format::Jpeg),
@@ -93,6 +111,11 @@ pub struct ImageOptions {
     pub default_attributes: Vec<(String, String)>,
     /// Output folder (relative to the output directory) and its public URL.
     pub output_subdir: String,
+    /// Where derivatives are encoded and kept between builds, relative to the
+    /// project root (default `.cache/ssqch/img`). Each build links (or copies)
+    /// the ones it uses into the output. `None` encodes straight into the
+    /// output, which then has to be kept to keep the images.
+    pub cache_dir: Option<String>,
     pub url_path: String,
     pub webp_quality: f32,
     pub avif_quality: f32,
@@ -123,6 +146,7 @@ impl Default for ImageOptions {
             widths: vec![300, 600, 900, 1200, 1500],
             default_attributes: vec![("loading".into(), "lazy".into()), ("decoding".into(), "async".into()), ("sizes".into(), "auto".into())],
             output_subdir: "img".into(),
+            cache_dir: Some(".cache/ssqch/img".into()),
             url_path: "/img/".into(),
             webp_quality: 75.0,
             avif_quality: 50.0,
@@ -152,6 +176,8 @@ pub struct ImageEntry {
 #[derive(Clone, Debug, Default)]
 pub struct ImageMetadata {
     pub formats: IndexMap<Format, Vec<ImageEntry>>,
+    /// The format `Format::Auto` became (the source's own), when it was asked for.
+    pub auto: Option<Format>,
 }
 
 impl ImageMetadata {
@@ -244,6 +270,45 @@ impl ImageProcessor {
         Some(path)
     }
 
+    /// Resolve a site path to a file in the input folder, the way an `<img src>`
+    /// starting with `/` is: `/content/logo.png` (or `content/logo.png`) is
+    /// `<input>/content/logo.png`. `None` for a remote or `data:` URL.
+    pub fn resolve_site_src(&self, src: &str) -> Option<PathBuf> {
+        if src.contains("://") || src.starts_with("//") || src.starts_with("data:") {
+            return None;
+        }
+        let ctx = self.ctx().ok()?;
+        let clean = percent_decode(src.split(['?', '#']).next().unwrap_or(src));
+        Some(ctx.input_dir.join(clean.trim_start_matches('/')))
+    }
+
+    /// One generated copy of the image at `src` (a site path, see
+    /// [`resolve_site_src`](Self::resolve_site_src)): `width` pixels wide at
+    /// most (0 is the original's), in `format` (`Auto` keeps the source's).
+    /// What `imageUrl()` returns. A remote URL is only `{ url }`.
+    pub fn image_url(&self, src: &str, width: u32, format: Format) -> Result<sitesquatch::Value> {
+        use sitesquatch::Value;
+        if src.trim().is_empty() {
+            bail!("imageUrl(): no image given");
+        }
+        let Some(path) = self.resolve_site_src(src) else { return Ok(Value::from_pairs([("url", Value::from(src))])) };
+        if !path.is_file() {
+            let ctx = self.ctx()?;
+            bail!("imageUrl(): image not found: {} (looked for {})", src, sitesquatch::display_path(&ctx, &path));
+        }
+        let meta = self.generate(&path, &[width], &[format])?;
+        let resolved = if format == Format::Auto { meta.auto } else { Some(format) };
+        let entries = resolved.and_then(|f| meta.formats.get(&f)).or_else(|| meta.formats.values().next());
+        let e = entries.and_then(|e| e.iter().max_by_key(|e| e.width)).ok_or_else(|| anyhow!("imageUrl(): no image generated for {}", src))?;
+        Ok(Value::from_pairs([
+            ("url", Value::from(e.url.as_str())),
+            ("width", Value::Num(e.width as f64)),
+            ("height", Value::Num(e.height as f64)),
+            ("type", Value::from(e.source_type)),
+            ("format", Value::from(e.format.ext())),
+        ]))
+    }
+
     /// The URL a link to the image at `src` should point to: one copy in the
     /// source's own format (so it opens anywhere), at the image's width capped
     /// at the largest configured width. GIFs and SVGs are their copied files.
@@ -304,6 +369,24 @@ impl ImageProcessor {
             }
         };
         std::fs::create_dir_all(&out_dir)?;
+        // Encoded files live in the cache; the output gets links to them.
+        // Names of the site's own get a folder there that mirrors the output.
+        let cache_dir = self.options.cache_dir.as_ref().map(|c| {
+            let root = ctx.root.join(c);
+            match name {
+                None => root,
+                Some(_) => root.join("named").join(out_dir.strip_prefix(&ctx.output_dir).unwrap_or(Path::new(""))),
+            }
+        });
+        if let Some(c) = &cache_dir {
+            std::fs::create_dir_all(c).with_context(|| format!("creating the image cache {}", c.display()))?;
+        }
+        let cached = |e: &ImageEntry| -> PathBuf {
+            match (&cache_dir, e.path.file_name()) {
+                (Some(c), Some(file)) => c.join(file),
+                _ => e.path.clone(),
+            }
+        };
         // A hashed name says what's in the file. A name of the site's own
         // doesn't, so its file is stale when the source is newer.
         let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
@@ -331,7 +414,7 @@ impl ImageProcessor {
                 std::fs::copy(src, &e.path)?;
                 self.generated.fetch_add(1, Ordering::Relaxed);
             }
-            let mut meta = ImageMetadata::default();
+            let mut meta = ImageMetadata { auto: formats.contains(&Format::Auto).then_some(src_format), ..ImageMetadata::default() };
             meta.formats.insert(src_format, vec![e]);
             return Ok(meta);
         }
@@ -339,7 +422,7 @@ impl ImageProcessor {
         let ((w0, h0), _) = header_dimensions(src)?;
         let targets = valid_widths(w0, widths, self.options.minimum_threshold);
 
-        let mut meta = ImageMetadata::default();
+        let mut meta = ImageMetadata { auto: formats.contains(&Format::Auto).then_some(src_format), ..ImageMetadata::default() };
         let mut jobs = Vec::new();
         for &f in formats {
             let f = if f == Format::Auto { src_format } else { f };
@@ -355,8 +438,15 @@ impl ImageProcessor {
                 // Heights round down.
                 let h = ((h0 as f64) * (w as f64) / (w0 as f64)).floor().max(1.0) as u32;
                 let e = entry(f, w, h, format!("{}-{}.{}", id, w, f.ext()));
-                if !fresh(&e.path) {
-                    jobs.push(e.clone());
+                let in_cache = cached(&e);
+                if !fresh(&in_cache) {
+                    if in_cache != e.path && fresh(&e.path) {
+                        // Encoded into the output before there was a cache
+                        // (or restored there by a deploy's cache): keep it.
+                        link_or_copy(&e.path, &in_cache)?;
+                    } else {
+                        jobs.push(ImageEntry { path: in_cache, ..e.clone() });
+                    }
                 }
                 entries.push(e);
             }
@@ -392,6 +482,11 @@ impl ImageProcessor {
                 ));
             }
             self.timings.lock().unwrap().push((src.to_path_buf(), jobs.len(), took));
+        }
+        if cache_dir.is_some() {
+            for e in meta.formats.values().flatten() {
+                publish(&cached(e), &e.path).with_context(|| format!("copying {} into the output", e.path.display()))?;
+            }
         }
         Ok(meta)
     }
@@ -497,16 +592,30 @@ impl ImageProcessor {
         Some(line)
     }
 
-    /// Delete files in `dir` that this build didn't produce or reuse.
-    fn prune(&self, dir: &Path) -> Result<usize> {
+    /// Delete files in `dir` that this build didn't produce or reuse, and
+    /// their copies in the cache. Counts the output's files.
+    fn prune(&self, ctx: &BuildContext, dir: &Path) -> Result<usize> {
         let used = self.used.lock().unwrap();
-        let Ok(entries) = std::fs::read_dir(dir) else { return Ok(0) };
         let mut removed = 0;
-        for entry in entries {
-            let path = entry?.path();
-            if path.is_file() && !used.contains(&path) {
-                std::fs::remove_file(&path).with_context(|| format!("pruning {}", path.display()))?;
-                removed += 1;
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries {
+                let path = entry?.path();
+                if path.is_file() && !used.contains(&path) {
+                    std::fs::remove_file(&path).with_context(|| format!("pruning {}", path.display()))?;
+                    removed += 1;
+                }
+            }
+        }
+        // The cache's hashed files (its `named/` folder isn't pruned).
+        if let Some(cache) = &self.options.cache_dir {
+            let names: HashSet<&std::ffi::OsStr> = used.iter().filter(|p| p.parent() == Some(dir)).filter_map(|p| p.file_name()).collect();
+            if let Ok(entries) = std::fs::read_dir(ctx.root.join(cache)) {
+                for entry in entries {
+                    let path = entry?.path();
+                    if path.is_file() && !path.file_name().is_some_and(|n| names.contains(n)) {
+                        std::fs::remove_file(&path).with_context(|| format!("pruning {}", path.display()))?;
+                    }
+                }
             }
         }
         Ok(removed)
@@ -531,13 +640,22 @@ impl ImageProcessor {
 
     /// Build `<picture>` markup for generated images and `<img>` attributes.
     pub fn picture_html(&self, meta: &ImageMetadata, attrs: &[(String, String)]) -> String {
+        self.picture_markup(meta, attrs, false).0
+    }
+
+    /// [`picture_html`](Self::picture_html), and with `preload`, the
+    /// `<link rel="preload">` for it: the image loads eagerly with
+    /// `fetchpriority="high"`, and `sizes="auto"` (which only works for lazy
+    /// images) is left out.
+    fn picture_markup(&self, meta: &ImageMetadata, attrs: &[(String, String)], preload: bool) -> (String, Option<String>) {
         let fallback = meta.fallback();
-        let (Some(low), Some(high)) = (fallback.first(), fallback.last()) else { return String::new() };
+        let (Some(low), Some(high)) = (fallback.first(), fallback.last()) else { return (String::new(), None) };
         let mut sizes = None;
         let mut img_attrs: Vec<(String, String)> = Vec::new();
         for (k, v) in &self.options.default_attributes {
             if k == "sizes" {
                 sizes = Some(v.clone());
+            } else if preload && k == "loading" {
             } else if !attrs.iter().any(|(a, _)| a == k) {
                 img_attrs.push((k.clone(), v.clone()));
             }
@@ -547,7 +665,14 @@ impl ImageProcessor {
                 "width" | "height" => {}
                 "sizes" => sizes = Some(v.clone()),
                 "src" => img_attrs.push(("src".into(), low.url.clone())),
+                "loading" if preload && v.eq_ignore_ascii_case("lazy") => {}
                 _ => img_attrs.push((k.clone(), v.clone())),
+            }
+        }
+        if preload {
+            sizes = sizes.map(|s| without_auto(&s)).filter(|s| !s.is_empty());
+            if !attrs.iter().any(|(a, _)| a == "fetchpriority") {
+                img_attrs.push(("fetchpriority".into(), "high".into()));
             }
         }
         if fallback.len() > 1 {
@@ -568,8 +693,23 @@ impl ImageProcessor {
         }
         img.push('>');
 
+        let preload = preload.then(|| {
+            let (format, entries) = meta.formats.iter().next().expect("a format");
+            let mut link = format!("<link rel=\"preload\" as=\"image\" type=\"{}\" fetchpriority=\"high\"", format.mime());
+            match entries.as_slice() {
+                [one] => link.push_str(&format!(" href=\"{}\"", escape_html(&one.url))),
+                many => {
+                    link.push_str(&format!(" imagesrcset=\"{}\"", escape_html(&srcset_attr(many))));
+                    if let Some(s) = &sizes {
+                        link.push_str(&format!(" imagesizes=\"{}\"", s.replace('"', "&quot;")));
+                    }
+                }
+            }
+            link.push('>');
+            link
+        });
         if meta.formats.len() < 2 {
-            return img;
+            return (img, preload);
         }
         let mut html = String::from("<picture>");
         for (format, entries) in meta.formats.iter().take(meta.formats.len() - 1) {
@@ -582,7 +722,86 @@ impl ImageProcessor {
         }
         html.push_str(&img);
         html.push_str("</picture>");
-        html
+        (html, preload)
+    }
+
+    /// Some HTML made ready for a feed (what `feedHtml()` does before making
+    /// URLs absolute): each local `<img src>` points at one generated copy
+    /// (`width` pixels wide at most, or less when the tag's own `width` says
+    /// so, in `format`), since feed readers drop `<picture>` and `srcset`; a
+    /// link to a local image points at the copy a page's link would; and
+    /// `srcset`, `sizes`, `loading`, `decoding`, `fetchpriority` and `ssqch:*`
+    /// attributes go. `page_url` is the page the HTML is from (a path or a
+    /// whole URL), for relative image paths.
+    pub fn feed_images(&self, html: &str, page_url: &str, width: u32, format: Format) -> Result<String> {
+        if !html.contains("<img") && !html.contains("<a") {
+            return Ok(html.to_string());
+        }
+        let page_path = match page_url.split_once("://") {
+            Some((_, rest)) => rest.find('/').map(|i| &rest[i..]).unwrap_or("/"),
+            None => page_url,
+        };
+        let site_path = |src: &str| -> Option<PathBuf> {
+            if src.starts_with('/') || src.contains("://") || src.starts_with("data:") {
+                return self.resolve_site_src(src);
+            }
+            self.resolve_site_src(&join_url_path(page_path, src))
+        };
+        let site_path = &site_path;
+        let img = element!("img[src]", move |el| {
+            let ignored = el.has_attribute("ssqch:ignore");
+            let names: Vec<String> = el.attributes().iter().map(|a| a.name()).filter(|n| n.starts_with("ssqch:")).collect();
+            for n in names {
+                el.remove_attribute(&n);
+            }
+            if ignored {
+                return Ok(());
+            }
+            let src = el.get_attribute("src").unwrap_or_default();
+            let Some(path) = site_path(&src) else { return Ok(()) };
+            if !path.is_file() {
+                self.warn_once(format!("feedHtml(): image not found: {}", src));
+                return Ok(());
+            }
+            let own = el.get_attribute("width").and_then(|w| w.trim().parse::<u32>().ok()).filter(|w| *w > 0);
+            let w = match own {
+                Some(own) if width == 0 || own < width => own,
+                _ => width,
+            };
+            let meta = match self.generate(&path, &[w], &[format]) {
+                Ok(m) => m,
+                Err(e) => {
+                    self.warn_once(format!("{:#}", e));
+                    return Ok(());
+                }
+            };
+            let resolved = if format == Format::Auto { meta.auto } else { Some(format) };
+            if let Some(e) = resolved.and_then(|f| meta.formats.get(&f)).or_else(|| meta.formats.values().next()).and_then(|e| e.iter().max_by_key(|e| e.width)) {
+                el.set_attribute("src", &e.url)?;
+            }
+            for attr in ["srcset", "sizes", "loading", "decoding", "fetchpriority"] {
+                el.remove_attribute(attr);
+            }
+            Ok(())
+        });
+        let link = element!("a[href]", move |el| {
+            if el.has_attribute("ssqch:ignore") {
+                el.remove_attribute("ssqch:ignore");
+                return Ok(());
+            }
+            let href = el.get_attribute("href").unwrap_or_default();
+            let Some(path) = site_path(&href) else { return Ok(()) };
+            if Format::from_path(&path).is_none() || !path.is_file() {
+                return Ok(());
+            }
+            match self.link_target(&path) {
+                Ok(url) => el.set_attribute("href", &url)?,
+                Err(e) => self.warn_once(format!("{:#}", e)),
+            }
+            Ok(())
+        });
+        let out = rewrite_str(html, RewriteStrSettings { element_content_handlers: vec![img, link], ..RewriteStrSettings::new() });
+        out.map_err(|e| anyhow!("feedHtml(): {}", e))
     }
 
     /// Rewrite every local `<img>` in an HTML document.
@@ -591,6 +810,8 @@ impl ImageProcessor {
         if !html.contains("<img") && !links {
             return Ok(html.to_string());
         }
+        let preloads: Mutex<Vec<String>> = Mutex::new(Vec::new());
+        let preloads_ref = &preloads;
         // Links to local images (click-to-enlarge), rewritten to a generated copy.
         let link_handler = element!("a[href]", move |el| {
             if el.has_attribute("ssqch:ignore") {
@@ -615,14 +836,16 @@ impl ImageProcessor {
             }
             Ok(())
         });
-        rewrite_str(
+        let out = rewrite_str(
             html,
             RewriteStrSettings {
                 element_content_handlers: vec![link_handler, element!("img[src]", |el| {
                     if el.has_attribute("ssqch:ignore") {
                         el.remove_attribute("ssqch:ignore");
+                        el.remove_attribute("ssqch:preload");
                         return Ok(());
                     }
+                    let preload = el.has_attribute("ssqch:preload");
                     let src = el.get_attribute("src").unwrap_or_default();
                     let Some(path) = self.resolve_src(&src, page_input) else { return Ok(()) };
                     if !path.is_file() {
@@ -644,14 +867,58 @@ impl ImageProcessor {
                     };
                     let attrs: Vec<(String, String)> =
                         el.attributes().iter().filter(|a| !a.name().starts_with("ssqch:")).map(|a| (a.name(), a.value())).collect();
-                    el.replace(&self.picture_html(&meta, &attrs), ContentType::Html);
+                    let (markup, link) = self.picture_markup(&meta, &attrs, preload);
+                    el.replace(&markup, ContentType::Html);
+                    preloads_ref.lock().unwrap().extend(link);
                     Ok(())
                 })],
                 ..RewriteStrSettings::new()
             },
         )
-        .map_err(|e| anyhow!("image transform: {}", e))
+        .map_err(|e| anyhow!("image transform: {}", e))?;
+        let preloads = preloads.into_inner().unwrap();
+        if preloads.is_empty() {
+            return Ok(out);
+        }
+        insert_preloads(&out, &preloads.join("")).ok_or_else(|| anyhow!("ssqch:preload in {}: the page has no <head> to put the preload in", page_input.display()))
     }
+}
+
+/// `imageUrl()`'s options: `{ width, format }`, where `width` is a number or
+/// `"auto"` (the original's, the default) and `format` a format name
+/// (default `"auto"`, the source's).
+pub fn image_url_options(options: Option<&sitesquatch::Value>) -> Result<(u32, Format)> {
+    image_options_for("imageUrl()", options, 0)
+}
+
+/// [`image_url_options`] for another function: `who` names it in errors,
+/// and `default_width` is used when there's no `width`.
+pub fn image_options_for(who: &str, options: Option<&sitesquatch::Value>, default_width: u32) -> Result<(u32, Format)> {
+    let Some(o) = options.filter(|v| !v.is_nullish()) else { return Ok((default_width, Format::Auto)) };
+    if o.as_object().is_none() {
+        bail!("{}: options must be an object like {{ width: 1200, format: \"png\" }}", who);
+    }
+    for key in o.as_object().map(|m| m.keys().cloned().collect::<Vec<_>>()).unwrap_or_default() {
+        if key != "width" && key != "format" {
+            bail!("{}: unknown option \"{}\" (options: width, format)", who, key);
+        }
+    }
+    let width = match o.get("width") {
+        v if v.is_nullish() => default_width,
+        v if v.as_str() == Some("auto") => 0,
+        v => {
+            let n = v.to_number();
+            if !(n.is_finite() && n >= 1.0 && n.fract() == 0.0) {
+                bail!("{}: width must be a whole number of pixels or \"auto\", got {}", who, v.to_js_string());
+            }
+            n as u32
+        }
+    };
+    let format = match o.get("format") {
+        v if v.is_nullish() => Format::Auto,
+        v => Format::parse(&v.to_js_string()).ok_or_else(|| anyhow!("{}: unknown format \"{}\" (use avif, webp, jpeg, png, gif, svg or auto)", who, v.to_js_string()))?,
+    };
+    Ok((width, format))
 }
 
 /// The widths to generate for an image `original` pixels wide: never wider
@@ -748,6 +1015,101 @@ fn decode(src: &Path) -> Result<(DynamicImage, color::Plan)> {
     Ok((img, plan))
 }
 
+/// Put the cached file at `out` in the output, unless it's already there: a
+/// hard link (no extra space), or a copy where links don't work (another
+/// drive). A copy that's older or a different size is replaced.
+fn publish(cache: &Path, out: &Path) -> Result<()> {
+    if let (Ok(a), Ok(b)) = (std::fs::metadata(cache), std::fs::metadata(out)) {
+        if a.len() == b.len() && b.modified().ok() >= a.modified().ok() {
+            return Ok(());
+        }
+    }
+    let _ = std::fs::remove_file(out);
+    link_or_copy(cache, out)
+}
+
+fn link_or_copy(from: &Path, to: &Path) -> Result<()> {
+    if std::fs::hard_link(from, to).is_err() {
+        // Another build thread may have just put the same file there.
+        if to.exists() && std::fs::metadata(from)?.len() == std::fs::metadata(to)?.len() {
+            return Ok(());
+        }
+        std::fs::copy(from, to)?;
+    }
+    Ok(())
+}
+
+/// `sizes` without `auto`, which only lazy images can use: `auto, 50vw` is
+/// `50vw`, and `auto` alone is nothing (the browser's default, `100vw`).
+fn without_auto(sizes: &str) -> String {
+    sizes.split(',').map(str::trim).filter(|s| !s.eq_ignore_ascii_case("auto")).collect::<Vec<_>>().join(", ")
+}
+
+/// `html` with `links` in its `<head>`, before the first stylesheet or
+/// script there (so the browser asks for the image early), or at the end of
+/// `<head>`. `None` when there's no `<head>`.
+fn insert_preloads(html: &str, links: &str) -> Option<String> {
+    use std::cell::Cell;
+    use std::rc::Rc;
+    let (seen, done) = (Cell::new(false), Rc::new(Cell::new(false)));
+    let out = rewrite_str(
+        html,
+        RewriteStrSettings {
+            element_content_handlers: vec![
+                element!("head", |el| {
+                    seen.set(true);
+                    let (done, links) = (done.clone(), links.to_string());
+                    if let Some(handlers) = el.end_tag_handlers() {
+                        let handler: lol_html::EndTagHandler<'static> = Box::new(move |end| {
+                            if !done.get() {
+                                end.before(&links, ContentType::Html);
+                                done.set(true);
+                            }
+                            Ok(())
+                        });
+                        handlers.push(handler);
+                    }
+                    Ok(())
+                }),
+                element!("head link[rel], head script", |el| {
+                    // A script that runs (not JSON-LD or another data block), or a stylesheet.
+                    let script = el.tag_name() == "script" && el.get_attribute("type").is_none_or(|t| {
+                        let t = t.trim().to_ascii_lowercase();
+                        t.is_empty() || t == "module" || t.contains("javascript")
+                    });
+                    let stylesheet = script || el.get_attribute("rel").is_some_and(|r| r.to_ascii_lowercase().split_whitespace().any(|r| r == "stylesheet"));
+                    if stylesheet && !done.get() {
+                        el.before(links, ContentType::Html);
+                        done.set(true);
+                    }
+                    Ok(())
+                }),
+            ],
+            ..RewriteStrSettings::new()
+        },
+    )
+    .ok()?;
+    (seen.get() && done.get()).then_some(out)
+}
+
+/// A relative URL path resolved against a page's path:
+/// `("/posts/hike/", "./map.png")` is `/posts/hike/map.png`.
+fn join_url_path(page: &str, rel: &str) -> String {
+    let page = page.split(['?', '#']).next().unwrap_or(page);
+    let dir = &page[..page.rfind('/').map(|i| i + 1).unwrap_or(0)];
+    let mut parts: Vec<&str> = Vec::new();
+    for part in dir.split('/').chain(rel.split('/')) {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            p => parts.push(p),
+        }
+    }
+    format!("/{}", parts.join("/"))
+}
+
 fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -808,6 +1170,15 @@ impl Plugin for ImagePlugin {
             p.pruned.store(0, Ordering::Relaxed);
             Ok(())
         });
+        // imageUrl(src, { width, format }): one generated copy, for templates.
+        let p = self.processor.clone();
+        cfg.add_filter("imageUrl", move |args| {
+            let src = args.first().filter(|v| !v.is_nullish()).map(|v| v.to_js_string()).unwrap_or_default();
+            // Template engines name the function in front of its errors already.
+            let unnamed = |e: anyhow::Error| anyhow!("{}", format!("{:#}", e).trim_start_matches("imageUrl(): "));
+            let (width, format) = image_url_options(args.get(1)).map_err(unnamed)?;
+            p.image_url(&src, width, format).map_err(unnamed)
+        });
         if self.transform {
             let p = self.processor.clone();
             cfg.add_html_transform("image", move |ctx, html| if ctx.is_html() { p.transform_html(&html, ctx.input_path) } else { Ok(html) });
@@ -817,7 +1188,7 @@ impl Plugin for ImagePlugin {
         let verbose = cfg.verbose;
         self.processor.quiet.store(quiet, Ordering::Relaxed);
         cfg.on_after_build(move |ctx, _| {
-            let pruned = if p.options.prune { p.prune(&ctx.output_dir.join(&p.options.output_subdir))? } else { 0 };
+            let pruned = if p.options.prune { p.prune(ctx, &ctx.output_dir.join(&p.options.output_subdir))? } else { 0 };
             p.pruned.store(pruned, Ordering::Relaxed);
             if p.options.hash_cache {
                 // A cache that can't be written only costs speed, so warn and carry on.
@@ -911,6 +1282,31 @@ mod tests {
         fourth.hashes.lock().unwrap().load(cache.clone());
         assert_eq!(fourth.hash_id(&img).unwrap(), id);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn preloads_go_before_the_first_stylesheet_in_head() {
+        let link = "<link rel=\"preload\" as=\"image\">";
+        assert_eq!(
+            insert_preloads("<html><head><meta charset=\"utf-8\"><link rel=\"icon\" href=\"/i.png\"><link rel=\"stylesheet\" href=\"/s.css\"></head><body></body></html>", link).unwrap(),
+            "<html><head><meta charset=\"utf-8\"><link rel=\"icon\" href=\"/i.png\"><link rel=\"preload\" as=\"image\"><link rel=\"stylesheet\" href=\"/s.css\"></head><body></body></html>"
+        );
+        assert_eq!(insert_preloads("<head><title>x</title></head><body><script></script></body>", link).unwrap(), "<head><title>x</title><link rel=\"preload\" as=\"image\"></head><body><script></script></body>");
+        assert_eq!(insert_preloads("<p>no head</p>", link), None);
+        assert_eq!(
+            insert_preloads("<head><script type=\"application/ld+json\">{}</script><script type=\"module\" src=\"/a.js\"></script></head>", link).unwrap(),
+            "<head><script type=\"application/ld+json\">{}</script><link rel=\"preload\" as=\"image\"><script type=\"module\" src=\"/a.js\"></script></head>"
+        );
+        assert_eq!(without_auto("auto, (min-width: 896px) 832px, 100vw"), "(min-width: 896px) 832px, 100vw");
+        assert_eq!(without_auto("auto"), "");
+    }
+
+    #[test]
+    fn relative_paths_join_the_page_path() {
+        assert_eq!(join_url_path("/posts/hike/", "./map.png"), "/posts/hike/map.png");
+        assert_eq!(join_url_path("/posts/hike/index.html", "map.png"), "/posts/hike/map.png");
+        assert_eq!(join_url_path("/posts/hike/", "../shared/a.png"), "/posts/shared/a.png");
+        assert_eq!(join_url_path("/", "a.png"), "/a.png");
     }
 
     #[test]

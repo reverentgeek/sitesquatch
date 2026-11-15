@@ -10,4 +10,6 @@ repository.workspace = true
 anyhow.workspace = true
 lol_html.workspace = true
 rayon.workspace = true
+regex.workspace = true
+serde_json.workspace = true
 sitesquatch.workspace = true

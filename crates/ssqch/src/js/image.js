@@ -48,7 +48,8 @@ function fail( message ) {
 /**
  * Generate an image's derivatives. Returns `{ [format]: [entry] }`, smallest
  * first, where each entry has format, width, height, url, sourceType, srcset,
- * filename, outputPath and size. Files are named after a hash of the source,
+ * filename, outputPath and size. With "auto" in `formats`, the files are
+ * under the format it became (`png`) and under `auto` too. Files are named after a hash of the source,
  * in the plugin's output folder; `name` gives them a name and folder of your
  * own ("/assets/sponsors/acme" writes /assets/sponsors/acme-200.webp).
  */
@@ -61,4 +62,17 @@ export async function image( src, options = {} ) {
 	const { formats = [ "webp", "jpeg" ], widths = [ "auto" ], name } = options;
 	name === undefined || typeof name === "string" && name.trim() || fail( "name must be a URL path without the width and extension, like \"/assets/sponsors/acme\"" );
 	return native.generate( path.resolve( src ), checkWidths( widths ), checkFormats( formats ), name );
+}
+
+/**
+ * One generated copy of an image: `{ url, width, height, type, format }`.
+ * `src` is a site path, from the input folder the way an <img src> starting
+ * with / is ("/content/logo.png"). `width` is at most that many pixels
+ * ("auto", the default, is the original's), and `format` defaults to "auto",
+ * the source's own. A remote URL comes back as `{ url }`. The same function
+ * is `imageUrl()` in templates.
+ */
+export function imageUrl( src, options ) {
+	typeof src === "string" || ( () => { throw new TypeError( "imageUrl(): the source must be a site path like \"/content/logo.png\"" ); } )();
+	return native.imageUrl( src, options );
 }
