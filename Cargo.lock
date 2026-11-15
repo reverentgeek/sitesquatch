@@ -2207,7 +2207,7 @@ dependencies = [
 
 [[package]]
 name = "reverentgeek"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2513,7 +2513,7 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "sitesquatch"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2546,7 +2546,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-edge"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2557,7 +2557,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-js"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2575,7 +2575,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-assets"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2587,7 +2587,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-elements"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "lol_html",
@@ -2597,7 +2597,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-handlebars"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "handlebars",
@@ -2609,7 +2609,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-image"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2627,7 +2627,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-jinja"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2640,7 +2640,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-links"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "lol_html",
@@ -2652,7 +2652,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-liquid"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2666,7 +2666,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-minify"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "sitesquatch",
@@ -2674,7 +2674,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-redirects"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "sitesquatch",
@@ -2682,7 +2682,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-rss"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2693,7 +2693,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-sass"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "grass",
@@ -2703,7 +2703,7 @@ dependencies = [
 
 [[package]]
 name = "sitesquatch-plugin-sitemap"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "globset",
@@ -2724,7 +2724,7 @@ checksum = "d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8"
 
 [[package]]
 name = "ssqch"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "mimalloc",
