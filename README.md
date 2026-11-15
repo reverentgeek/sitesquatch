@@ -44,7 +44,7 @@ On **Windows (x86_64)**, use the PowerShell installer:
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.ps1 | iex"
 ```
 
-The installers check the download's SHA-256 checksum, install `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and add that folder to your `PATH`. Every release binary runs a smoke test on its own platform before it's published. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.6.0`. You can also download an archive for your platform from the [releases page](https://github.com/reverentgeek/sitesquatch/releases), or, if you use [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), run `cargo binstall ssqch` to fetch the same archive.
+The installers check the download's SHA-256 checksum, install `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and add that folder to your `PATH`. Every release binary runs a smoke test on its own platform before it's published. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.6.1`. You can also download an archive for your platform from the [releases page](https://github.com/reverentgeek/sitesquatch/releases), or, if you use [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), run `cargo binstall ssqch` to fetch the same archive.
 
 In a site with a `package.json`, install it from **npm** as a dev dependency, so the lockfile pins the version: `npm install --save-dev ssqch` (or `pnpm add -D ssqch`, `yarn add -D ssqch`), then run `npx ssqch build`, or `ssqch build` in a `package.json` script. The `ssqch` package runs the binary from an optional dependency for your platform (`@ssqch/darwin-arm64`, `@ssqch/darwin-x64`, `@ssqch/linux-x64` or `@ssqch/win32-x64`), so installing runs no install scripts and downloads nothing from GitHub. It covers the same platforms as the installers.
 
@@ -61,7 +61,7 @@ In **GitHub Actions**, [`reverentgeek/setup-ssqch`](https://github.com/reverentg
 ```yaml
 - uses: reverentgeek/setup-ssqch@v1
   with:
-    version: 0.6.0
+    version: 0.6.1
 - run: ssqch build
 ```
 
@@ -519,9 +519,17 @@ export default defineConfig({
 | `definitionLists` | `false` | A term, then `: definition` lines, as `<dl>`. |
 | `smartPunctuation` | `false` | Curly quotes, `--` and `---` as dashes, `...` as an ellipsis. A `--` that follows a space and runs into a word stays as it is, so `run it with --fix` keeps its flag. |
 | `indentedCode` | `true` | Lines indented four spaces are code. `false` makes them ordinary Markdown, for HTML indented inside Markdown; fences are still code. |
-| `highlight` | `false` | Syntax highlighting at build time (below). `true`, or `{ css: "/assets/code.css" }` to put the stylesheet somewhere else, or `{ css: false }` to leave it out. |
+| `highlight` | `false` | Syntax highlighting at build time (below). `true`, or `{ css: "/assets/code.css" }` to put the stylesheet somewhere else, or `{ css: false }` to leave it out. `languages` adds languages or replaces built-in ones: `{ languages: { chordpro: code => tokens, cho: "chordpro", snack: "grammars/snack.sublime-syntax" } }` (below). |
 
-**Syntax highlighting:** with `highlight: true`, fenced code is highlighted while the site builds, so pages need no highlighting script. The grammars are Sublime Text's and TextMate's (about 200 languages, from [syntect](https://github.com/trishume/syntect) and [bat](https://github.com/sharkdp/bat)), plus ssqch's own for the template languages those don't cover (`edge`, `liquid`, `hbs`, `mustache` and `ejs`: the tags, over highlighted HTML), and each token gets one class for what it is: `hl-keyword`, `hl-string`, `hl-comment`, `hl-function`, `hl-type`, `hl-number` and so on. The build writes a stylesheet for them to `/highlight.css` (link it from your layout) with GitHub's colors, light and dark. Each color is a CSS custom property, like `--hl-keyword`, so a theme switch or your own palette only has to set those. Mark lines with braces in the fence's info string, ```` ```js {1,4-6} ````, and those lines get `class="line highlighted"`. A language without a grammar renders as plain `<pre><code class="language-x">`.
+**Syntax highlighting:** with `highlight: true`, fenced code is highlighted while the site builds, so pages need no highlighting script. The grammars are Sublime Text's and TextMate's (about 200 languages, from [syntect](https://github.com/trishume/syntect) and [bat](https://github.com/sharkdp/bat)), plus ssqch's own for the template languages those don't cover (`edge`, `liquid`, `hbs`, `mustache` and `ejs`: the tags, over highlighted HTML) and for ChordPro songs (`chordpro` and `cho`: directives, `[G7]` chords and comments), and each token gets one class for what it is: `hl-keyword`, `hl-string`, `hl-comment`, `hl-function`, `hl-type`, `hl-number` and so on. The build writes a stylesheet for them to `/highlight.css` (link it from your layout) with GitHub's colors, light and dark. Each color is a CSS custom property, like `--hl-keyword`, so a theme switch or your own palette only has to set those. Mark lines with braces in the fence's info string, ```` ```js {1,4-6} ````, and those lines get `class="line highlighted"`. A language without a grammar renders as plain `<pre><code class="language-x">`.
+
+**Your own languages:** `highlight: { languages: { ... } }` gives a highlighter for a language ssqch doesn't have, or replaces a built-in one. Each name is a fence's language, matched in any case, and it comes before the built-in grammars. A highlighter can be a function, `(code, lang) => tokens`, that returns the code cut into tokens, as `[text, kind]` pairs or `{ text, kind }` objects, where `kind` is one of the `hl-*` names without the prefix (`comment`, `keyword`, `operator`, `string`, `regexp`, `escape`, `number`, `constant`, `builtin`, `property`, `attribute`, `function`, `type`, `parameter`, `tag`, `heading`, `strong`, `emphasis`, `link`, `inserted` or `deleted`) and a token without one (or a plain string) is plain text. ssqch escapes the text and writes the spans, so marked lines and `/highlight.css` work as they do for the built-in languages. The tokens' text has to add up to the code; when it doesn't, or the function throws or returns another kind, the build warns (naming the page) and that fence is plain text. A highlighter can also be another language's name, an alias (`cho: "chordpro"`, `jsx: "js"`), or the path of a Sublime Text `.sublime-syntax` grammar from the project root, for a language that has one. A replacement only takes the name it's given: `js: fn` leaves `javascript` fences to the built-in grammar, unless you add `javascript: "js"`. The languages apply everywhere highlighting does: fences, `highlight(code, lang)` and a fence hook's `highlighted`.
+
+```js
+// Trail notes: a line that starts with `!` is a warning, and `@Cedar` names a trail.
+const trailnotes = code => code.split( /(^!.*$|@\w+)/m ).filter( Boolean ).map( text => text.startsWith( "!" ) ? [ text, "deleted" ] : text.startsWith( "@" ) ? [ text, "type" ] : [ text ] );
+export default { markdown: { highlight: { languages: { trailnotes, trail: "trailnotes" } } } };
+```
 
 **A table of contents:** after a page's content renders, `page.headings` lists its headings (`level`, `id` and `text`), so its layouts can build a table of contents. The built-in `toc` filter does it for you: `{{{ toc(page.headings) }}}` writes nested `<ul>` links to the `h2` and `h3` headings, and `toc(page.headings, { from: 2, to: 4, ordered: true })` changes the levels or uses `<ol>`. In Liquid that's `{{ page.headings | toc: 2, 4 }}`, and in Nunjucks, `{{ toc(page.headings) | safe }}`. The headings come from the HTML, so they work for pages in any template language. Collections have them too (`post.page.headings`).
 
@@ -1053,10 +1061,10 @@ Netlify can build the site itself, with no deploy token to manage. With `ssqch` 
     paths = [".cache/ssqch"]
 ```
 
-- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.6.0`) and bump it when you're ready.
+- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.6.1`) and bump it when you're ready.
 - **[`netlify-plugin-cache`](https://github.com/jakejarvis/netlify-plugin-cache)** carries the image cache (the encoded images and their hashes) over to the next build. Add it to your `devDependencies`.
 
-A site without a `package.json` can install the release in the build command instead, with `SSQCH_VERSION = "0.6.0"` under `[build.environment]` to pin it. `SSQCH_UNMANAGED_INSTALL=.cache/bin` installs the binary into that folder and leaves shell profiles alone:
+A site without a `package.json` can install the release in the build command instead, with `SSQCH_VERSION = "0.6.1"` under `[build.environment]` to pin it. `SSQCH_UNMANAGED_INSTALL=.cache/bin` installs the binary into that folder and leaves shell profiles alone:
 
 ```toml
 [build]

@@ -261,6 +261,14 @@ fn apply(cfg: &mut Config, engine: &Arc<Engine>, result: &Value, builtins: &[(&s
     if let id @ Value::Num(_) = settings.get("markdownSlugger") {
         cfg.markdown.slugger_fn = Some(engine.value(engine.function(id)?));
     }
+    // `markdown: { highlight: { languages: { chordpro: (code, lang) => tokens } } }`
+    if let Value::Obj(highlighters) = settings.get("markdownHighlighters") {
+        for (name, id) in highlighters.iter() {
+            cfg.markdown.languages.set(name, sitesquatch::markdown::Language::Tokens(engine.value(engine.function(id.clone())?)))?;
+        }
+    }
+    let root = cfg.root.clone();
+    cfg.markdown.languages.load(&root)?;
     match settings.get("deepMerge") {
         Value::Undefined => {}
         Value::Bool(b) => cfg.data_deep_merge = b,

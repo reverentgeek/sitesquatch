@@ -6,11 +6,15 @@
 //! ...), so the HTML stays small and one stylesheet ([`CSS`]) covers every
 //! language, in light and dark.
 
-use std::sync::LazyLock;
+use std::path::Path;
+use std::sync::{Arc, LazyLock};
 
-use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet};
+use anyhow::{bail, Context, Result};
+use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxDefinition, SyntaxReference, SyntaxSet};
 
-use crate::markdown::escape_text;
+use crate::diagnostics::{warn, Diagnostic};
+use crate::markdown::{escape_text, Language, Languages};
+use crate::Value;
 
 static SYNTAXES: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_newlines);
 
@@ -77,26 +81,78 @@ fn class_for(stack: &[Scope]) -> &'static str {
     ""
 }
 
-fn syntax(lang: &str) -> Option<&'static SyntaxReference> {
+/// The `hl-*` names a site's highlighter can give a token, the ones [`CSS`] colors.
+pub const KINDS: &[&str] = &[
+    "comment", "keyword", "operator", "string", "regexp", "escape", "number", "constant", "builtin", "property", "attribute", "function", "type", "parameter", "tag", "heading", "strong", "emphasis", "link", "inserted", "deleted",
+];
+
+/// The built-in grammar's name for a fence language, or `None` for plain text.
+fn grammar_token(lang: &str) -> Option<String> {
     let lang = lang.to_ascii_lowercase();
-    let token = match lang.as_str() {
+    Some(match lang.as_str() {
         "" | "text" | "txt" | "plain" | "plaintext" => return None,
-        "sh" | "shell" | "zsh" | "console" | "shellsession" => "bash",
-        "js" | "mjs" | "cjs" | "javascript" => "js",
-        "ts" | "mts" | "cts" => "ts",
-        "py" => "python",
-        "rs" => "rust",
-        "yml" => "yaml",
-        "md" => "markdown",
-        "njk" | "nunjucks" | "jinja" | "jinja2" | "j2" => "jinja2",
-        other => other,
-    };
-    SYNTAXES.find_syntax_by_token(token)
+        "sh" | "shell" | "zsh" | "console" | "shellsession" => "bash".into(),
+        "js" | "mjs" | "cjs" | "javascript" => "js".into(),
+        "ts" | "mts" | "cts" => "ts".into(),
+        "py" => "python".into(),
+        "rs" => "rust".into(),
+        "yml" => "yaml".into(),
+        "md" => "markdown".into(),
+        "njk" | "nunjucks" | "jinja" | "jinja2" | "j2" => "jinja2".into(),
+        _ => lang,
+    })
+}
+
+/// How a fence's language is highlighted.
+enum Resolved<'a> {
+    /// A site's function, under its configured name.
+    Tokens(&'a Value, &'a str),
+    Grammar(&'a SyntaxSet, &'a SyntaxReference),
+    Templates(Templates),
+    ChordPro,
+    Plain,
+}
+
+/// A site's languages first (following aliases), then the built-in ones.
+fn resolve<'a>(languages: &'a Languages, lang: &str) -> Resolved<'a> {
+    let mut name = lang.to_ascii_lowercase();
+    // An alias's chain is checked for loops when the config loads; this is a backstop.
+    for _ in 0..16 {
+        match languages.entries.iter().find(|(n, _)| *n == name) {
+            Some((n, Language::Tokens(f))) => return Resolved::Tokens(f, n),
+            Some((_, Language::Grammar { scope: Some(scope), .. })) => {
+                let set = languages.grammars.as_deref();
+                let found = set.zip(Scope::new(scope).ok()).and_then(|(set, scope)| set.find_syntax_by_scope(scope).map(|s| (set, s)));
+                return found.map_or(Resolved::Plain, |(set, s)| Resolved::Grammar(set, s));
+            }
+            Some((_, Language::Grammar { scope: None, .. })) => return Resolved::Plain,
+            Some((_, Language::Alias(target))) => name = target.clone(),
+            None => break,
+        }
+    }
+    if let Some(templates) = Templates::named(&name) {
+        return Resolved::Templates(templates);
+    }
+    if matches!(name.as_str(), "chordpro" | "cho") {
+        return Resolved::ChordPro;
+    }
+    match grammar_token(&name) {
+        Some(token) => match languages.grammars.as_deref() {
+            Some(set) => set.find_syntax_by_token(&token).map_or(Resolved::Plain, |s| Resolved::Grammar(set, s)),
+            None => SYNTAXES.find_syntax_by_token(&token).map_or(Resolved::Plain, |s| Resolved::Grammar(&SYNTAXES, s)),
+        },
+        None => Resolved::Plain,
+    }
 }
 
 /// Whether there's a grammar for `lang` (`js`, `rust`, `bash`, ...).
 pub fn supports(lang: &str) -> bool {
-    Templates::named(lang).is_some() || syntax(lang).is_some()
+    supports_in(&Languages::default(), lang)
+}
+
+/// Whether `lang` is highlighted, with a site's languages too.
+pub fn supports_in(languages: &Languages, lang: &str) -> bool {
+    !matches!(resolve(languages, lang), Resolved::Plain)
 }
 
 /// The highlighted HTML for the inside of `<code>`, or `None` for a
@@ -104,21 +160,136 @@ pub fn supports(lang: &str) -> bool {
 /// wrapped in `<span class="line highlighted">`, and the others in
 /// `<span class="line">`, when there are any.
 pub fn highlight(lang: &str, code: &str, marked: &[usize]) -> Option<String> {
-    let classes = match Templates::named(lang) {
-        Some(templates) => templates.classes(code)?,
-        None => classes(syntax(lang)?, code)?,
+    highlight_in(&Languages::default(), lang, code, marked)
+}
+
+/// [`highlight`], with a site's languages before the built-in ones. When a
+/// site's highlighter fails, it warns and the code is plain text (`None`).
+pub fn highlight_in(languages: &Languages, lang: &str, code: &str, marked: &[usize]) -> Option<String> {
+    let classes = match resolve(languages, lang) {
+        Resolved::Tokens(f, name) => match tokens(f, lang, code) {
+            Ok(classes) => classes,
+            Err(problem) => {
+                let page = crate::markdown::current_page();
+                let message = format!("{}a `{}` fence is plain text: markdown.highlight.languages.{} {}", page.as_deref().map(|p| format!("{}: ", p)).unwrap_or_default(), lang, name, problem);
+                let mut diagnostic = Diagnostic::warning("config", message);
+                if let Some(page) = page {
+                    diagnostic = diagnostic.file(page);
+                }
+                warn(diagnostic);
+                return None;
+            }
+        },
+        Resolved::Grammar(set, syntax) => classes(set, syntax, code)?,
+        Resolved::Templates(templates) => templates.classes(code)?,
+        Resolved::ChordPro => chordpro(code),
+        Resolved::Plain => return None,
     };
     Some(render(code, &classes, marked))
 }
 
+/// The class of each byte of `code`, from a site's highlighter, or what's
+/// wrong with what it returned.
+fn tokens(f: &Value, lang: &str, code: &str) -> std::result::Result<Vec<&'static str>, String> {
+    let Value::Func(func) = f else { return Err("isn't a function".into()) };
+    let out = func.call(&[Value::from(code), Value::from(lang)]).map_err(|e| format!("failed: {:#}", e))?;
+    let Some(list) = out.as_array() else {
+        return Err(format!("returned {}, not a list of tokens ([text, kind] pairs or {{ text, kind }} objects)", out.type_of()));
+    };
+    let mut classes: Vec<&'static str> = Vec::with_capacity(code.len());
+    let mut text = String::with_capacity(code.len());
+    for (i, token) in list.iter().enumerate() {
+        let (t, kind) = match token {
+            Value::Arr(pair) => (pair.first().cloned().unwrap_or_default(), pair.get(1).cloned().unwrap_or_default()),
+            Value::Obj(_) => (token.get("text"), token.get("kind")),
+            Value::Str(_) => (token.clone(), Value::Undefined),
+            other => return Err(format!("returned {} as token {}, not [text, kind] or {{ text, kind }}", other.type_of(), i)),
+        };
+        let Value::Str(t) = t else { return Err(format!("returned token {} without its text (a string)", i)) };
+        let class = match &kind {
+            Value::Undefined | Value::Null => "",
+            Value::Str(k) if k.is_empty() => "",
+            Value::Str(k) => match KINDS.iter().find(|known| ***known == **k) {
+                Some(known) => known,
+                None => return Err(format!("returned the kind \"{}\", which isn't one of {}", k, KINDS.join(", "))),
+            },
+            other => return Err(format!("returned {} as token {}'s kind, not a string", other.type_of(), i)),
+        };
+        text.push_str(&t);
+        classes.extend(std::iter::repeat_n(class, t.len()));
+    }
+    // A missing last newline is fine; anything else has to be the code.
+    if text.len() + 1 == code.len() && code.ends_with('\n') && code.starts_with(&text) {
+        classes.push("");
+    } else if text != code {
+        let line = text.lines().zip(code.lines()).position(|(a, b)| a != b).unwrap_or_else(|| text.lines().count().min(code.lines().count())) + 1;
+        return Err(format!("returned tokens whose text isn't the code (they differ from line {})", line));
+    }
+    Ok(classes)
+}
+
+impl Languages {
+    /// Read the site's `.sublime-syntax` files (from `root`) into a set
+    /// with the built-in grammars, and check that each alias names a
+    /// language. Run once the config is applied.
+    pub fn load(&mut self, root: &Path) -> Result<()> {
+        let mut definitions = Vec::new();
+        for (name, language) in &self.entries {
+            if let Language::Grammar { path, .. } = language {
+                let file = root.join(path);
+                let text = std::fs::read_to_string(&file).with_context(|| format!("markdown.highlight.languages.{}: reading {}", name, path))?;
+                let definition = SyntaxDefinition::load_from_str(&text, true, Some(name)).with_context(|| format!("markdown.highlight.languages.{}: {} isn't a grammar ssqch can read", name, path))?;
+                definitions.push((name.clone(), definition));
+            }
+        }
+        self.grammars = None;
+        if !definitions.is_empty() {
+            let mut builder = SYNTAXES.clone().into_builder();
+            let mut scopes = Vec::new();
+            for (name, definition) in definitions {
+                scopes.push((name, definition.scope.build_string()));
+                builder.add(definition);
+            }
+            self.grammars = Some(Arc::new(builder.build()));
+            for (name, language) in &mut self.entries {
+                if let Language::Grammar { scope, .. } = language {
+                    *scope = scopes.iter().find(|(n, _)| n == name).map(|(_, s)| s.clone());
+                }
+            }
+        }
+        for (name, language) in &self.entries {
+            let Language::Alias(_) = language else { continue };
+            let mut seen = vec![name.as_str()];
+            let mut current = language;
+            while let Language::Alias(target) = current {
+                if seen.contains(&target.as_str()) {
+                    seen.push(target);
+                    bail!("markdown.highlight.languages: these aliases go in a circle: {}", seen.join(" -> "));
+                }
+                seen.push(target);
+                match self.entries.iter().find(|(n, _)| n == target) {
+                    Some((_, next)) => current = next,
+                    None => {
+                        if grammar_token(target).is_some() && !supports_in(self, target) {
+                            bail!("markdown.highlight.languages.{}: \"{}\" isn't a language ssqch highlights; give it a highlighter of its own", name, target);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// The class of each byte of `code` (empty for none), from a grammar.
-fn classes(syntax: &SyntaxReference, code: &str) -> Option<Vec<&'static str>> {
+fn classes(set: &SyntaxSet, syntax: &SyntaxReference, code: &str) -> Option<Vec<&'static str>> {
     let mut state = ParseState::new(syntax);
     let mut stack = ScopeStack::new();
     let mut out: Vec<&'static str> = vec![""; code.len()];
     let mut offset = 0;
     for line in code.split_inclusive('\n') {
-        let ops = state.parse_line(line, &SYNTAXES).ok()?;
+        let ops = state.parse_line(line, set).ok()?;
         let body_len = line.strip_suffix('\n').map_or(line.len(), str::len);
         let mut pos = 0;
         let mut current = class_for(stack.as_slice());
@@ -237,7 +408,7 @@ impl Templates {
         let mut lexer = Lexer { code, bytes: code.as_bytes(), out: &mut tags, mask: &mut masked, templates: self };
         lexer.run();
         let masked = String::from_utf8(masked).ok()?;
-        let mut classes = classes(SYNTAXES.find_syntax_by_token("html")?, &masked)?;
+        let mut classes = classes(&SYNTAXES, SYNTAXES.find_syntax_by_token("html")?, &masked)?;
         for (i, (class, original)) in tags.iter().zip(code.bytes()).enumerate() {
             if masked.as_bytes()[i] != original || !class.is_empty() {
                 classes[i] = class;
@@ -579,6 +750,74 @@ impl Lexer<'_> {
     }
 }
 
+// ---------------------------------------------------------------- ChordPro
+
+/// Directives whose value is a comment, not text: `{c: Softly}`.
+const CHORDPRO_COMMENTS: &[&str] = &["comment", "c", "comment_italic", "ci", "comment_box", "cb", "highlight"];
+
+/// ChordPro (<https://www.chordpro.org/chordpro/>), a song's lyrics with its
+/// chords: `{title: Amazing Grace}` directives (the name a keyword, the value
+/// a string, the braces and colon operators), `[G7]` chords anywhere in a
+/// lyric line (functions), and `#` comment lines. Lyrics stay plain.
+fn chordpro(code: &str) -> Vec<&'static str> {
+    let mut out = vec![""; code.len()];
+    let mut offset = 0;
+    for line in code.split_inclusive('\n') {
+        let body = line.strip_suffix('\n').unwrap_or(line);
+        let out = &mut out[offset..offset + body.len()];
+        let trimmed = body.trim_start();
+        let lead = body.len() - trimmed.len();
+        if trimmed.starts_with('#') {
+            out.fill("comment");
+        } else if let Some(close) = trimmed.starts_with('{').then(|| trimmed.find('}')).flatten() {
+            let inside = &trimmed[1..close];
+            let name_start = 1 + inside.len() - inside.trim_start().len();
+            let name_len = trimmed[name_start..close].find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-')).unwrap_or(close - name_start);
+            let name = &trimmed[name_start..name_start + name_len];
+            if name.is_empty() {
+                chords(body, out);
+            } else {
+                let at = |i: usize| lead + i;
+                out[at(0)] = "operator";
+                out[at(name_start)..at(name_start + name_len)].fill("keyword");
+                let after = name_start + name_len;
+                let rest = &trimmed[after..close];
+                let value_from = match rest.trim_start().strip_prefix(':') {
+                    Some(_) => {
+                        let colon = after + rest.find(':').unwrap_or(0);
+                        out[at(colon)] = "operator";
+                        colon + 1
+                    }
+                    None => after,
+                };
+                let value = trimmed[value_from..close].trim();
+                if !value.is_empty() {
+                    let start = value_from + trimmed[value_from..close].find(value).unwrap_or(0);
+                    let kind = if CHORDPRO_COMMENTS.iter().any(|c| c.eq_ignore_ascii_case(name)) { "comment" } else { "string" };
+                    out[at(start)..at(start + value.len())].fill(kind);
+                }
+                out[at(close)] = "operator";
+                let after_close = at(close + 1);
+                chords(&body[after_close..], &mut out[after_close..]);
+            }
+        } else {
+            chords(body, out);
+        }
+        offset += line.len();
+    }
+    out
+}
+
+/// `[G7]` chords in a lyric line.
+fn chords(line: &str, out: &mut [&'static str]) {
+    let mut from = 0;
+    while let Some(open) = line[from..].find('[').map(|i| from + i) {
+        let Some(close) = line[open..].find(']').map(|i| open + i) else { break };
+        out[open..=close].fill("function");
+        from = close + 1;
+    }
+}
+
 /// Line numbers from a fence's info string: `{1,3-5}` (`js {1,3-5}` or
 /// `js{1,3-5}`) is lines 1, 3, 4 and 5.
 pub fn marked_lines(info: &str) -> Vec<usize> {
@@ -756,6 +995,18 @@ mod tests {
     }
 
     #[test]
+    fn chordpro_songs() {
+        let code = "{title: Amazing Grace}\n{soc}\n{ c : Softly }\n# capo 2\n{key:G} [G]x\nA[G]mazing [D/F#]grace, how [Asus4]sweet\n{}\nno [chord\n";
+        assert_eq!(
+            tokens("chordpro", code),
+            "operator:{ keyword:title operator:: string:Amazing Grace operator:} operator:{ keyword:soc operator:} operator:{ keyword:c operator:: comment:Softly operator:} comment:# capo 2 operator:{ keyword:key operator:: string:G operator:} function:[G] function:[G] function:[D/F#] function:[Asus4]"
+        );
+        assert_eq!(tokens("CHO", "[C]é\n"), "function:[C]");
+        let html = highlight("cho", "{t: Trail}\nA[G]mazing\n", &[2]).unwrap();
+        assert_eq!(html, "<span class=\"line\"><span class=\"hl-operator\">{</span><span class=\"hl-keyword\">t</span><span class=\"hl-operator\">:</span> <span class=\"hl-string\">Trail</span><span class=\"hl-operator\">}</span></span>\n<span class=\"line highlighted\">A<span class=\"hl-function\">[G]</span>mazing</span>\n");
+    }
+
+    #[test]
     fn marked_lines_and_unknown_languages() {
         assert_eq!(marked_lines("js {1,3-5}"), vec![1, 3, 4, 5]);
         assert_eq!(marked_lines("js{2}"), vec![2]);
@@ -763,7 +1014,7 @@ mod tests {
         let html = highlight("sh", "echo hi\nls\n", &[2]).unwrap();
         assert_eq!(html, "<span class=\"line\"><span class=\"hl-function\">echo</span> hi</span>\n<span class=\"line highlighted\"><span class=\"hl-function\">ls</span></span>\n");
         assert!(highlight("not-a-language", "x", &[]).is_none());
-        for lang in ["edge", "liquid", "hbs", "handlebars", "mustache", "ejs"] {
+        for lang in ["edge", "liquid", "hbs", "handlebars", "mustache", "ejs", "chordpro", "cho"] {
             assert!(supports(lang), "{}", lang);
         }
         assert!(highlight("text", "x", &[]).is_none());

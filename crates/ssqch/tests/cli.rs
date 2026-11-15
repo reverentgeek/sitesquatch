@@ -670,6 +670,63 @@ fn markdown_highlights_code_and_writes_the_stylesheet() {
 }
 
 #[test]
+fn sites_add_and_replace_highlighted_languages() {
+    let dir = temp_dir("highlight-languages");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    // Chords in brackets are keywords; the rest is plain. `js` is replaced: every line is a comment.
+    write(
+        "ssqch.config.js",
+        "const chords = code => code.split(/(\\[[^\\]]*\\])/).filter(Boolean).map(t => t.startsWith(\"[\") ? [t, \"keyword\"] : [t]);\n\
+         export default {\n  dirs: { input: \"src\", output: \"dist\" },\n  markdown: { highlight: { css: false, languages: {\n    chordpro: chords,\n    cho: \"chordpro\",\n    js: code => [{ text: code, kind: \"comment\" }],\n    snack: \"grammars/snack.sublime-syntax\",\n    broken: () => { throw new Error(\"no pine cones\"); },\n    wrong: () => [[\"x\", \"chord\"]],\n    short: () => [[\"half\"]],\n  } } },\n};\n",
+    );
+    write("grammars/snack.sublime-syntax", "%YAML 1.2\n---\nname: Snack\nscope: source.snack\ncontexts:\n  main:\n    - match: '\\bcrunch\\b'\n      scope: keyword.control.snack\n");
+    write(
+        "src/index.md",
+        "```ChordPro {2}\n{title: Trail}\nA[G]mazing [D/F#]grace\n```\n\n```cho\n[C]x\n```\n\n```js\nlet a = 1;\n```\n\n```javascript\nlet a = 1;\n```\n\n```snack\nPine Cone crunch\n```\n\n{{ highlight(\"[Am]y\", \"chordpro\") | safe }}\n",
+    );
+    write("src/bad.md", "```broken\nx\n```\n\n```wrong\nx\n```\n\n```short\nwhole\n```\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    let page = std::fs::read_to_string(dir.join("dist/index.html")).unwrap();
+    assert!(
+        page.contains("<pre class=\"highlight\"><code class=\"language-ChordPro\"><span class=\"line\">{title: Trail}</span>\n<span class=\"line highlighted\">A<span class=\"hl-keyword\">[G]</span>mazing <span class=\"hl-keyword\">[D/F#]</span>grace</span>\n</code></pre>"),
+        "{}",
+        page
+    );
+    assert!(page.contains("<code class=\"language-cho\"><span class=\"hl-keyword\">[C]</span>x\n</code>"), "{}", page);
+    assert!(page.contains("<code class=\"language-js\"><span class=\"hl-comment\">let a = 1;</span>\n</code>"), "{}", page);
+    // Only the name that's configured: `javascript` is still the built-in grammar.
+    assert!(page.contains("<code class=\"language-javascript\"><span class=\"hl-keyword\">let</span>"), "{}", page);
+    assert!(page.contains("<code class=\"language-snack\">Pine Cone <span class=\"hl-keyword\">crunch</span>\n</code>"), "{}", page);
+    assert!(page.contains("<p><span class=\"hl-keyword\">[Am]</span>y</p>"), "{}", page);
+    let bad = std::fs::read_to_string(dir.join("dist/bad/index.html")).unwrap();
+    assert_eq!(bad, "<pre><code class=\"language-broken\">x\n</code></pre>\n<pre><code class=\"language-wrong\">x\n</code></pre>\n<pre><code class=\"language-short\">whole\n</code></pre>\n");
+    for expected in [
+        "warn: src/bad.md: a `broken` fence is plain text: markdown.highlight.languages.broken failed: no pine cones\n    at broken (ssqch.config.js:9:31)",
+        "warn: src/bad.md: a `wrong` fence is plain text: markdown.highlight.languages.wrong returned the kind \"chord\", which isn't one of comment, keyword,",
+        "warn: src/bad.md: a `short` fence is plain text: markdown.highlight.languages.short returned tokens whose text isn't the code (they differ from line 1)",
+    ] {
+        assert!(log.contains(expected), "{}\n{}", expected, log);
+    }
+
+    for (config, error) in [
+        ("languages: { a: \"b\", b: \"a\" }", "markdown.highlight.languages: these aliases go in a circle: a -> b -> a"),
+        ("languages: { cone: \"pinecone\" }", "markdown.highlight.languages.cone: \"pinecone\" isn't a language ssqch highlights; give it a highlighter of its own"),
+        ("languages: { x: 3 }", "markdown.highlight.languages.x must be a function (code, lang) => tokens, another language's name, or a path to a .sublime-syntax file, not number"),
+        ("languages: { x: \"grammars/missing.sublime-syntax\" }", "markdown.highlight.languages.x: reading grammars/missing.sublime-syntax"),
+    ] {
+        write("ssqch.config.js", &format!("export default {{ markdown: {{ highlight: {{ {} }} }} }};\n", config));
+        let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+        assert!(!ok && log.contains(error), "{}\n{}", error, log);
+    }
+}
+
+#[test]
 fn site_plumbing() {
     let dir = temp_dir("plumbing");
     let d = dir.to_str().unwrap();
@@ -1307,7 +1364,7 @@ fn serve_reads_a_changed_config_again() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, text).unwrap();
     };
-    write("ssqch.config.js", "import { shout } from \"./lib/filters.js\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, filters: { shout }, data: { greeting: \"hello\" } };\n");
+    write("ssqch.config.js", "import { shout } from \"./lib/filters.js\";\nimport { rssPlugin } from \"ssqch/rss\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, filters: { shout }, data: { greeting: \"hello\" }, plugins: [rssPlugin()] };\n");
     write("lib/filters.js", "export const shout = (s) => s.toUpperCase() + \"!\";\n");
     write("src/_data/info.js", "import { n } from \"../util/helper.js\";\nexport default { n };\n");
     write("src/util/helper.js", "export const n = 1;\n");
@@ -1332,8 +1389,10 @@ fn serve_reads_a_changed_config_again() {
     // A config that doesn't load is reported, and the last good one keeps serving.
     change_and_wait(&dir.join("ssqch.config.js"), "export default { dirs: { ouput: \"dist\" } };\n", &log, "dirs.ouput isn't supported");
     wait_for(&log, "still serving with the last configuration that loaded");
+    // The last good one's image processor is still there for feedHtml().
+    change_and_wait(&dir.join("src/index.jinja"), "{{ shout(greeting) }} {{ info.n }} {{ feedHtml(\"<p>trail</p>\", \"https://example.com/\") }}", &page, "HELLO? 2 &lt;p&gt;trail");
     // Fixed, with a changed setting.
-    change_and_wait(&dir.join("ssqch.config.js"), "import { shout } from \"./lib/filters.js\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, filters: { shout }, data: { greeting: \"howdy\" } };\n", &page, "HOWDY? 2");
+    change_and_wait(&dir.join("ssqch.config.js"), "import { shout } from \"./lib/filters.js\";\nimport { rssPlugin } from \"ssqch/rss\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, filters: { shout }, data: { greeting: \"howdy\" }, plugins: [rssPlugin()] };\n", &page, "HOWDY? 2");
     // Templates still rebuild as before.
     change_and_wait(&dir.join("src/index.jinja"), "plain {{ info.n }}", &page, "plain 2");
 }

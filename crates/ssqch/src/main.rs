@@ -57,7 +57,15 @@ pub(crate) fn extra_commands() -> Vec<sitesquatch::cli::ExtraCommand> {
 /// Read the site's configuration into `cfg`. `ssqch serve` calls this again
 /// (with a fresh `cfg`) when a config file changes.
 fn configure(cfg: &mut Config) -> Result<()> {
-    modules::reset_image_processor();
+    let previous = modules::reset_image_processor();
+    let loaded = load_config(cfg);
+    if loaded.is_err() {
+        modules::restore_image_processor(previous);
+    }
+    loaded
+}
+
+fn load_config(cfg: &mut Config) -> Result<()> {
     // Template engines beyond Edge and Markdown. A site renders their files by
     // listing the extension in `templateFormats`.
     #[cfg(feature = "liquid")]

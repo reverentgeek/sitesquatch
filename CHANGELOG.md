@@ -8,6 +8,28 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## 0.6.1 - 2026-11-15
+
+### Added
+
+- Sites can add highlighting for a language ssqch doesn't have, or replace a built-in one, with
+  `markdown: { highlight: { languages } }`. A language is a function, `(code, lang) => tokens`
+  (`[text, kind]` pairs or `{ text, kind }` objects, where `kind` is an `hl-*` name like
+  `keyword`), another language's name (`cho: "chordpro"`), or a `.sublime-syntax` grammar file.
+  A site's languages come before the built-in ones, keep line marking (`{1,4-6}`) and the
+  `hl-*` classes, and apply to fences, `highlight(code, lang)` and the fence hook's
+  `highlighted`. A highlighter that throws, returns an unknown kind or tokens that aren't the
+  code gets a warning naming the page, and that fence is plain text.
+- ChordPro is highlighted (`chordpro` and `cho` fences): directive names as keywords, their
+  values as strings (comments for `{comment: ...}`), `[G7]` chords anywhere in a lyric line, and
+  `#` comment lines. Lyrics stay plain.
+
+### Fixed
+
+- `ssqch serve` kept serving with the last good configuration after a changed one failed to
+  load, but without its image processor, so the next rebuild failed in `feedHtml()` and
+  `imageUrl()` ("the image processor isn't set up"). The processor is put back too.
+
 ## 0.6.0 - 2026-11-14
 
 ### Breaking

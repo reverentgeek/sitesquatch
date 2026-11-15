@@ -63,6 +63,15 @@ declare module "ssqch" {
 		text: string;
 	}
 
+	/** What a token is: its `hl-*` class without the prefix. */
+	export type TokenKind = "comment" | "keyword" | "operator" | "string" | "regexp" | "escape" | "number" | "constant" | "builtin" | "property" | "attribute" | "function" | "type" | "parameter" | "tag" | "heading" | "strong" | "emphasis" | "link" | "inserted" | "deleted";
+
+	/** A piece of highlighted code. Without a `kind` (or as a string), it's plain text. */
+	export type Token = [text: string, kind?: TokenKind | null] | { text: string; kind?: TokenKind | null } | string;
+
+	/** A site's language for `markdown.highlight.languages`: a function that cuts the code into tokens whose text adds up to the code, another language's name (`"chordpro"`, an alias), or the path of a `.sublime-syntax` grammar from the project root. */
+	export type Highlighter = ((code: string, lang: string) => Token[]) | string;
+
 	/** How Markdown renders. */
 	export interface MarkdownOptions {
 		/** Automatic heading `id`s: `"github"` (the default), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), or `false` for none. A `{#id}` on the heading always wins. */
@@ -85,8 +94,8 @@ declare module "ssqch" {
 		smartPunctuation?: boolean;
 		/** Lines indented four spaces are code blocks. `false` renders them as ordinary Markdown (HTML indented inside Markdown, say); fences are still code. Default `true`. */
 		indentedCode?: boolean;
-		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. Default `false`. */
-		highlight?: boolean | { css?: string | false };
+		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. `languages` adds languages or replaces built-in ones. Default `false`. */
+		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter> };
 	}
 
 	/** What a collection function gets. */

@@ -123,7 +123,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
         .filter(|&i| pages[i].output.is_some() || pages[i].in_collections)
         .partition(|&i| !uses_collections(&pages[i].tpl, &collection_includes) && !over_collections(&pages[i]));
     let mut contents: HashMap<usize, Body> = collect_errors(
-        early.par_iter().map(|&i| render_body(&pages[i], &engines, None).map(|c| (i, c))).collect(),
+        early.par_iter().map(|&i| render_body(&ctx, &pages[i], &engines, None).map(|c| (i, c))).collect(),
     )?
     .into_iter()
     .collect();
@@ -134,7 +134,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
         }
     }
     let late_contents: Vec<(usize, Body)> =
-        collect_errors(late.par_iter().map(|&i| render_body(&pages[i], &engines, Some(&collections)).map(|c| (i, c))).collect())?;
+        collect_errors(late.par_iter().map(|&i| render_body(&ctx, &pages[i], &engines, Some(&collections)).map(|c| (i, c))).collect())?;
     contents.extend(late_contents);
     timer.lap("render");
 
@@ -147,7 +147,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
             .map(|(i, out)| guard(&pages[*i].tpl.rel, || {
                 let page = &pages[*i];
                 let body = contents.get(i).cloned().unwrap_or_default();
-                let mut html = render_layouts(page, body, &engines, &collections)?;
+                let mut html = render_layouts(&ctx, page, body, &engines, &collections)?;
                 let tctx = TransformContext { url: page.url.as_deref().unwrap_or(""), output_path: out, input_path: &page.tpl.input, build: &ctx };
                 for (name, transform) in cfg.html_transforms.iter().chain(&cfg.transforms) {
                     html = transform(&tctx, html).with_context(|| format!("transform `{}` failed for {}", name, page.tpl.rel))?;
@@ -475,16 +475,17 @@ fn builtin_filters(markdown: &Arc<MarkdownEngine>) -> Map {
     filters.insert("pagesTree".into(), Value::func(move |args| Ok(crate::nav::from_pages(&list(args, 0)))));
     // highlight(code, lang): highlighted HTML for the inside of <code> (escaped
     // text for a language without a grammar).
+    let md = markdown.clone();
     filters.insert(
         "highlight".into(),
-        Value::func(|args| {
+        Value::func(move |args| {
             let code = args.first().map(Value::to_js_string).unwrap_or_default();
             let lang = args.get(1).map(Value::to_js_string).unwrap_or_default();
             #[cfg(feature = "highlight")]
-            if let Some(html) = crate::highlight::highlight(&lang, &code, &[]) {
+            if let Some(html) = crate::highlight::highlight_in(&md.options.languages, &lang, &code, &[]) {
                 return Ok(Value::from(html));
             }
-            let _ = lang;
+            let _ = (lang, &md);
             Ok(Value::from(crate::markdown::escape_text(&code)))
         }),
     );
@@ -1728,7 +1729,8 @@ struct Body {
     excerpt: Value,
 }
 
-fn render_body(page: &Page, engines: &Engines, collections: Option<&Value>) -> Result<Body> {
+fn render_body(build: &BuildContext, page: &Page, engines: &Engines, collections: Option<&Value>) -> Result<Body> {
+    let _rendering = rendering(build, page);
     let data = Value::object(with_collections(page, collections));
     let mut content = page.tpl.body.clone();
     for name in &page.tpl.engines {
@@ -1738,6 +1740,11 @@ fn render_body(page: &Page, engines: &Engines, collections: Option<&Value>) -> R
     let headings = Value::array(crate::markdown::headings(&content).iter().map(|h| h.to_value()).collect());
     let excerpt = excerpt(&content).map(Value::from).unwrap_or_default();
     Ok(Body { html: content, headings, excerpt })
+}
+
+/// Name `page` (from the project root) in warnings from code that runs while it renders.
+fn rendering(build: &BuildContext, page: &Page) -> crate::markdown::Rendering {
+    crate::markdown::rendering(display_path(build, &page.tpl.input).trim_start_matches("./"))
 }
 
 /// The HTML before a `<!-- more -->` comment, or else the first paragraph.
@@ -1763,10 +1770,11 @@ fn with_headings(page: Value, body: Option<&Body>) -> Value {
     }
 }
 
-fn render_layouts(page: &Page, body: Body, engines: &Engines, collections: &Value) -> Result<String> {
+fn render_layouts(build: &BuildContext, page: &Page, body: Body, engines: &Engines, collections: &Value) -> Result<String> {
     if page.tpl.layouts.is_empty() {
         return Ok(body.html);
     }
+    let _rendering = rendering(build, page);
     let mut data = with_collections(page, Some(collections));
     if let Some(p) = data.get("page").cloned() {
         data.insert("page".into(), with_headings(p, Some(&body)));

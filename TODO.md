@@ -4,7 +4,7 @@ The ReverentGeek blog (`../blog`) is the main real-world site. Its own tasks are
 `../blog/TODO.md`. Items here that the blog is waiting on say **Blog:**, and blog items that need
 a change here say **Needs ssqch:**. When one side finishes, tick it and update the other list.
 
-The current release is 0.6.0 (2026-11-14; `CHANGELOG.md` has every release). Work goes to
+The current release is 0.6.1 (2026-11-15; `CHANGELOG.md` has every release). Work goes to
 `main`; the `release/0.4` and `release/0.5` branches are merged and finished. The blog builds
 with the npm package, pinned exactly.
 
@@ -372,6 +372,72 @@ dropped `dist/img` from `netlify.toml`'s cache.
       to a page that didn't ask. Open: which page fields it reads by default, and whether the
       blog's extras (`og:image:alt`, `article:author`, `rel="author"`) are options or left to
       the template.
+
+### Custom highlighters and ChordPro (added 2026-11-15)
+
+The blog's post on the Charter web app (`make-chord-charts-in-your-browser-with-charter.md`)
+shows ChordPro, and none of the 213 grammars from two-face (bat 0.26.1) is ChordPro, so those
+fences render as plain `<pre><code class="language-text">`. There's also no way for a site to add
+a language or replace one. Do it in this order: the config option first, a ChordPro highlighter
+written for it in the blog's config to prove the option works, then the same highlighter moved
+into ssqch as a built-in language. **Blog:** waiting on the release to change its ChordPro fence
+from `text` to `chordpro`.
+
+- [x] **Custom highlighters in `ssqch.config.js`:** (done 2026-11-15:
+      `markdown: { highlight: { languages } }`, with functions, aliases and `.sublime-syntax`
+      files; no per-build cache, since a call per fence was fast enough for the blog) a site gives a highlighter for any language
+      ssqch doesn't have, or replaces a built-in one, under `markdown.highlight` (for example
+      `highlight: { css: false, languages: { chordpro: fn } }`; the name and shape are open).
+  - Precedence: a configured language wins over `Templates::named` and the syntect grammars in
+    `crates/sitesquatch/src/highlight.rs` (`syntax()`, `supports()`, `highlight()`), and the
+    fence name matches case-insensitively, like the built-ins.
+  - The highlighter runs on QuickJS like other config functions. Suggested shape: it gets the
+    code (and the language) and returns tokens, `[{ text, kind }]` or `[text, kind]` pairs,
+    where `kind` is one of the existing `hl-*` names (`keyword`, `string`, `comment`, ...). ssqch
+    escapes the text and builds the spans with its `render()`, so line marking (`{1,4-6}`) and
+    `class="line"` keep working, the HTML stays as small as the built-ins', and `highlight.css`
+    already covers every class. The tokens' text has to add up to the code; if it doesn't, or
+    the function throws or returns an unknown kind, warn (naming the page and the language) and
+    render the fence as plain text, the way a language without a grammar does today.
+  - Optional, if it's cheap: a value that's a path to a `.sublime-syntax` file, loaded into a
+    syntax set alongside two-face's, for languages that already have a grammar. And aliases
+    (`languages: { cho: "chordpro" }`).
+  - It applies everywhere highlighting does: Markdown fences (`highlight_code` in
+    `markdown.rs`), the `highlight(code, lang)` template function, and `highlighted` in the
+    `fence` render hook.
+  - Cache the fence results per build if a JavaScript call per fence turns out slow (the blog
+    has about 350 fences, a handful of them ChordPro).
+  - Tests: next to `markdown_highlights_code_and_writes_the_stylesheet` in
+    `crates/ssqch/tests/cli.rs`: a configured language highlights, an override replaces a
+    built-in (`js`, say), line marking works with a custom one, and a bad highlighter warns and
+    falls back to plain text. README: the "Syntax highlighting" paragraph and the `highlight`
+    row of the markdown options table. CHANGELOG entry.
+- [x] **Prove it with ChordPro in the blog's config.** (done 2026-11-15:
+      `../blog/src/utils/site/chordpro.js`, checked in the browser; chords are `function`,
+      yellow in Okaidia) Write a ChordPro highlighter in
+      `../blog/ssqch.config.js` with the new option (or a file it imports under
+      `src/utils/site/`), build the blog with the local binary
+      (`SSQCH_BIN=../ssqch/target/release/ssqch pnpm test`), and check the post's fences in the
+      browser, in the blog's Okaidia colors. What to color (from the ChordPro spec,
+      <https://www.chordpro.org/chordpro/>, and Charter's parser, `../charter/src/chordpro.js`):
+  - Directives: `{title: Amazing Grace}`, `{key: G}`, `{section:Verse 1}`, also with no value
+    (`{start_of_chorus}`, `{soc}`) and short names (`{t:}`, `{c:}`). The name as a keyword, the
+    value as a string, and the braces and colon as punctuation.
+  - The value of `{comment: ...}` / `{c: ...}` as a comment, if it reads well.
+  - Chords in brackets anywhere in a lyric line: `A[G]mazing [G7]grace`, `[D/F#]`, `[Asus4]`.
+  - Line comments starting with `#`.
+  - Lyrics stay uncolored.
+- [ ] **Ship ChordPro as a built-in language:** (ported 2026-11-15, with unit tests, README and
+      CHANGELOG; its HTML for the blog's post matches the config highlighter's byte for byte.
+      Left: the release, then the blog's side below) port the proven highlighter to Rust in
+      `highlight.rs`, a small lexer like the one `Templates` uses (no grammar file), for the
+      fence names `chordpro` and `cho`. Unit tests in `highlight.rs`, a README mention next to
+      the template languages ssqch adds itself, and a CHANGELOG entry. Then take the blog's
+      config highlighter out, release, bump the blog (`pnpm add -D ssqch@<version>` after a
+      local `pnpm test` passes) and switch its fence to `chordpro`.
+- [ ] Maybe: a fence with no grammar still gets `class="highlight"` on its `<pre>`, so a site's
+      code block styling covers it. The blog worked around it on 2026-11-15 by styling
+      `.content-body pre` like `pre.highlight` in its own CSS.
 
 ## More template languages
 

@@ -262,6 +262,18 @@
 					settings.markdownSlugger = keep( part.markdown.headingIds );
 					settings.markdown = { ...part.markdown, headingIds: true };
 				}
+				// `markdown: { highlight: { languages: { chordpro: ( code, lang ) => tokens } } }`: the
+				// functions go to Rust by id, the other languages (aliases, grammar files) as they are.
+				const languages = settings.markdown?.highlight?.languages;
+				if ( isObject( languages ) && Object.values( languages ).some( v => typeof v === "function" ) ) {
+					settings.markdownHighlighters = {};
+					const rest = {};
+					for ( const [ name, value ] of Object.entries( languages ) ) {
+						if ( typeof value === "function" ) settings.markdownHighlighters[name] = keep( value );
+						else rest[name] = value;
+					}
+					settings.markdown = { ...settings.markdown, highlight: { ...settings.markdown.highlight, languages: rest } };
+				}
 			}
 
 			if ( part.data !== undefined ) {

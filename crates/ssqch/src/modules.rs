@@ -26,9 +26,17 @@ pub fn set_image_processor(processor: Arc<ImageProcessor>) -> Result<()> {
     Ok(())
 }
 
-/// Forget the processor, before the configuration is read (again).
-pub fn reset_image_processor() {
-    *IMAGES.lock().unwrap() = None;
+/// Forget the processor, before the configuration is read (again), and
+/// return it, for [`restore_image_processor`] if the new one doesn't load.
+pub fn reset_image_processor() -> Option<Arc<ImageProcessor>> {
+    IMAGES.lock().unwrap().take()
+}
+
+/// Put back the processor of the last configuration that loaded: `ssqch
+/// serve` keeps serving with it when a changed one has an error, and its
+/// `imageUrl()` and `feedHtml()` need it.
+pub fn restore_image_processor(processor: Option<Arc<ImageProcessor>>) {
+    *IMAGES.lock().unwrap() = processor;
 }
 
 /// Give `image()` a processor if the config didn't add the plugin.

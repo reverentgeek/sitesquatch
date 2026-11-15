@@ -126,6 +126,8 @@ pub fn apply(cfg: &mut Config) -> Result<()> {
             map.insert(camel, crate::data::toml_to_value(value));
         }
         cfg.markdown.apply(&crate::Value::object(map)).with_context(|| format!("invalid {}", path.display()))?;
+        let root = cfg.root.clone();
+        cfg.markdown.languages.load(&root).with_context(|| format!("invalid {}", path.display()))?;
     }
     for theme in site.theme {
         cfg.add_theme(&theme).with_context(|| format!("invalid {}", path.display()))?;

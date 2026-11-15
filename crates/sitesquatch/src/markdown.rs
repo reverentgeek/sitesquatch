@@ -76,6 +76,104 @@ impl Slugger {
     }
 }
 
+/// Languages a site adds to highlighting, or replaces
+/// (`markdown: { highlight: { languages: { chordpro: fn, cho: "chordpro" } } }`).
+/// They come before the built-in ones, and their names match fences in any case.
+#[derive(Clone, Debug, Default)]
+pub struct Languages {
+    /// Lowercase names, in the order they were configured.
+    pub entries: Vec<(String, Language)>,
+    /// The built-in grammars with the site's `.sublime-syntax` files added,
+    /// once [`Languages::load`] has read them.
+    #[cfg(feature = "highlight")]
+    pub(crate) grammars: Option<std::sync::Arc<syntect::parsing::SyntaxSet>>,
+}
+
+/// One of a site's languages.
+#[derive(Clone, Debug)]
+pub enum Language {
+    /// A function, `(code, lang) => tokens`: `[text, kind]` pairs or
+    /// `{ text, kind }` objects, where `kind` is an `hl-*` name without the
+    /// prefix (`keyword`, `string`, ...), or nothing for plain text.
+    Tokens(Value),
+    /// Another language's name: `cho: "chordpro"`, `jsx: "js"`.
+    Alias(String),
+    /// A `.sublime-syntax` file, from the project root, and the scope it
+    /// names once it's loaded.
+    Grammar { path: String, scope: Option<String> },
+}
+
+impl Language {
+    /// A language from the config: a function (already a [`Value::Func`]),
+    /// another language's name, or a path to a `.sublime-syntax` file.
+    pub fn parse(name: &str, value: &Value) -> Result<Language> {
+        Ok(match value {
+            Value::Func(_) => Language::Tokens(value.clone()),
+            Value::Str(s) if s.ends_with(".sublime-syntax") => Language::Grammar { path: s.to_string(), scope: None },
+            Value::Str(s) if s.contains(['/', '\\']) => bail!("markdown.highlight.languages.{}: \"{}\" isn't a .sublime-syntax file (a grammar's file name ends with .sublime-syntax)", name, s),
+            Value::Str(s) if !s.trim().is_empty() => Language::Alias(s.trim().to_ascii_lowercase()),
+            other => bail!("markdown.highlight.languages.{} must be a function (code, lang) => tokens, another language's name, or a path to a .sublime-syntax file, not {}", name, other.type_of()),
+        })
+    }
+}
+
+impl Languages {
+    /// Add `name` (or replace it). A name is the first word of a fence's
+    /// info string, so it can't have spaces, braces or commas.
+    pub fn set(&mut self, name: &str, language: Language) -> Result<()> {
+        if name.is_empty() || name.contains(|c: char| c.is_whitespace() || c == '{' || c == '}' || c == ',' || c == '`') {
+            bail!("markdown.highlight.languages: \"{}\" can't be a language's name; a fence's language is one word (`chordpro`, `cho`)", name);
+        }
+        let name = name.to_ascii_lowercase();
+        match self.entries.iter_mut().find(|(n, _)| *n == name) {
+            Some(entry) => entry.1 = language,
+            None => self.entries.push((name, language)),
+        }
+        Ok(())
+    }
+
+    /// The site's language called `name`, in any case.
+    pub fn get(&self, name: &str) -> Option<&Language> {
+        self.entries.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, l)| l)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Without the `highlight` feature there's nothing to load: the config
+    /// can't turn highlighting on.
+    #[cfg(not(feature = "highlight"))]
+    pub fn load(&mut self, _root: &std::path::Path) -> Result<()> {
+        Ok(())
+    }
+}
+
+thread_local! {
+    /// The page being rendered on this thread, for warnings from code that
+    /// doesn't know it (a site's highlighter).
+    static PAGE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// While it's kept, warnings name `page` (the input file, from the project root).
+pub(crate) struct Rendering(Option<String>);
+
+pub(crate) fn rendering(page: &str) -> Rendering {
+    Rendering(PAGE.with(|p| p.replace(Some(page.to_string()))))
+}
+
+impl Drop for Rendering {
+    fn drop(&mut self) {
+        let previous = self.0.take();
+        PAGE.with(|p| *p.borrow_mut() = previous);
+    }
+}
+
+/// The page being rendered on this thread, if any.
+pub(crate) fn current_page() -> Option<String> {
+    PAGE.with(|p| p.borrow().clone())
+}
+
 /// The `markdown` config key.
 #[derive(Clone, Debug)]
 pub struct MarkdownOptions {
@@ -106,6 +204,8 @@ pub struct MarkdownOptions {
     /// Where the build writes the highlighting stylesheet (a URL path like
     /// `/highlight.css`), or `None` to leave it out.
     pub highlight_css: Option<String>,
+    /// Languages the site adds or replaces (`highlight: { languages }`).
+    pub languages: Languages,
     /// A slugger of the site's own (`headingIds: text => id`), used instead
     /// of `heading_ids` when set. Repeats still get `-1`, `-2`.
     pub slugger_fn: Option<Value>,
@@ -126,6 +226,7 @@ impl Default for MarkdownOptions {
             indented_code: true,
             highlight: false,
             highlight_css: Some("/highlight.css".into()),
+            languages: Languages::default(),
             slugger_fn: None,
         }
     }
@@ -163,11 +264,17 @@ impl MarkdownOptions {
                                     ("css", Value::Bool(false) | Value::Null) => self.highlight_css = None,
                                     ("css", Value::Str(s)) if s.starts_with('/') && !s.contains("..") => self.highlight_css = Some(s.to_string()),
                                     ("css", other) => bail!("markdown.highlight.css must be a path like \"/assets/highlight.css\", or false, not {}", if let Value::Str(s) = other { format!("\"{}\"", s) } else { other.type_of().to_string() }),
-                                    (other, _) => bail!("markdown.highlight.{} isn't an option (options: css)", other),
+                                    ("languages", Value::Obj(languages)) => {
+                                        for (name, language) in languages.iter() {
+                                            self.languages.set(name, Language::parse(name, language)?)?;
+                                        }
+                                    }
+                                    ("languages", other) => bail!("markdown.highlight.languages must be an object of {{ name: highlighter }}, not {}", other.type_of()),
+                                    (other, _) => bail!("markdown.highlight.{} isn't an option (options: css, languages)", other),
                                 }
                             }
                         }
-                        other => bail!("markdown.highlight must be true, false or {{ css }}, not {}", other.type_of()),
+                        other => bail!("markdown.highlight must be true, false or {{ css, languages }}, not {}", other.type_of()),
                     }
                     if self.highlight && !cfg!(feature = "highlight") {
                         bail!("markdown.highlight: this ssqch was built without the `highlight` feature");
@@ -826,7 +933,10 @@ impl Writer<'_, '_> {
 
     fn fence(&mut self, info: &str, code: &str, out: &mut String) -> Result<()> {
         let lang = info.split(|c: char| c.is_whitespace() || c == '{' || c == ',').next().unwrap_or("");
-        let highlighted = if self.highlight { highlight_code(lang, code, info) } else { None };
+        let highlighted = match self.opts {
+            Some(opts) if self.highlight => highlight_code(&opts.languages, lang, code, info),
+            _ => None,
+        };
         let specific = format!("hooks/fence-{}", lang);
         let hook = if !lang.is_empty() && self.has(&specific) {
             Some(specific)
@@ -925,12 +1035,12 @@ impl Writer<'_, '_> {
 }
 
 #[cfg(feature = "highlight")]
-fn highlight_code(lang: &str, code: &str, info: &str) -> Option<String> {
-    crate::highlight::highlight(lang, code, &crate::highlight::marked_lines(info))
+fn highlight_code(languages: &Languages, lang: &str, code: &str, info: &str) -> Option<String> {
+    crate::highlight::highlight_in(languages, lang, code, &crate::highlight::marked_lines(info))
 }
 
 #[cfg(not(feature = "highlight"))]
-fn highlight_code(_lang: &str, _code: &str, _info: &str) -> Option<String> {
+fn highlight_code(_languages: &Languages, _lang: &str, _code: &str, _info: &str) -> Option<String> {
     None
 }
 
