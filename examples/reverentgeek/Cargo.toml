@@ -20,7 +20,7 @@ sitesquatch-plugin-rss.workspace = true
 sitesquatch-plugin-image.workspace = true
 sitesquatch-plugin-minify.workspace = true
 regex.workspace = true
-sha2 = "0.10"
+sha2 = "0.11"
 
 [features]
 avif = ["sitesquatch-plugin-image/avif"]

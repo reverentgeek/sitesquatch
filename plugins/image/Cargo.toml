@@ -21,6 +21,6 @@ sitesquatch.workspace = true
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 webp = { version = "0.3", default-features = false }
 blake3 = "1"
-ravif = { version = "0.12", optional = true }
+ravif = { version = "0.13", optional = true }
 rgb = { version = "0.8", optional = true }
 moxcms = "0.8"

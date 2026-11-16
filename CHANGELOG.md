@@ -17,6 +17,11 @@ a `v<version>` tag on a commit where that version matches.
   highlighting languages, not only the options table's row.
 - The Eleventy, Docusaurus and component-framework trailheads say where a custom highlighting
   language goes (`markdown: { highlight: { languages } }`).
+- TOML front matter and `site.toml` are read as TOML 1.1, so an inline table can span lines and
+  end with a comma (`snack = { name = "Pine Cone Crunch", count = 3, }`). Everything that read
+  before still reads the same.
+- Updated dependencies: toml 1, similar 3, sha1, sha2 and md-5 0.11, and ravif 0.13. The blog's
+  pages, feed and AVIF images build byte-for-byte the same as with 0.6.1.
 
 ## 0.6.1 - 2026-11-15
 
