@@ -13,12 +13,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { bail, progress } from "./diagnostics.ts";
+import { realPath } from "./paths.ts";
 
 /** Where a theme comes from: a folder from the project root, or a git repository at a commit, tag or branch, and the folder inside it that's the theme (empty for the repository's root). */
 export type ThemeSource = { folder: string } | { url: string; reference: string; dir: string };
 
 const isGitUrl = (s: string) => ["https://", "http://", "ssh://", "git://", "file://", "git@"].some((p) => s.startsWith(p));
-const real = (p: string) => { try { return fs.realpathSync(p); } catch { return p; } };
 /** A string in quotes, as these errors show what was given. */
 const q = (s: string) => JSON.stringify(s);
 
@@ -48,12 +48,12 @@ export function resolveTheme(root: string, theme: string | { git: string; ref: s
 	if ("folder" in source) {
 		const dir = path.resolve(root, source.folder);
 		if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) bail(`theme folder ${dir} doesn't exist`);
-		return real(dir);
+		return realPath(dir);
 	}
 	const checkout = fetch(root, source.url, source.reference, quiet);
 	const dir = path.join(checkout, source.dir);
 	if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) bail(`theme ${source.url}#${source.reference}: there's no folder ${q(source.dir)} in it`);
-	return real(dir);
+	return realPath(dir);
 }
 
 /** A name for a checkout's folder: the repository's name and a hash of where it's from. */

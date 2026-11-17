@@ -21,6 +21,7 @@ import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options
 import type { MarkdownOptions } from "./markdown-options.ts";
 import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
 import { resolveTheme } from "./theme.ts";
+import { realPath } from "./paths.ts";
 
 export type Environment = "production" | "development";
 
@@ -149,11 +150,10 @@ export interface ConfigOptions {
 	base?: string;
 }
 
-const real = (p: string) => { try { return fs.realpathSync(p); } catch { return p; } };
 
 function emptyConfig(options: ConfigOptions): Config {
 	return {
-		root: real(path.resolve(options.root)),
+		root: realPath(path.resolve(options.root)),
 		file: null,
 		env: options.env,
 		serving: options.serving ?? false,

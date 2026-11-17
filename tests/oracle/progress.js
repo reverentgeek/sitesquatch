@@ -63,7 +63,15 @@ const fresh = [...results].filter(([key, outcome]) => outcome === "pass" && !lis
 if (fresh.length) process.stdout.write(`\nPassing now, and not in node-passing.txt (node progress.js --update adds them):\n${fresh.map((key) => `  ${key}`).join("\n")}\n`);
 if (gone.length) process.stdout.write(`\nIn node-passing.txt, and not in the oracle any more (renamed?):\n${gone.map((key) => `  ${key}`).join("\n")}\n`);
 if (broken.length) {
-	process.stdout.write(`\nThese passed before and fail now:\n${broken.map((key) => `  ${key}`).join("\n")}\n\nRun one file to see why: SSQCH_BIN=packages/ssqch/bin/ssqch.ts node --test <file>\n`);
+	process.stdout.write(`\nThese passed before and fail now:\n${broken.map((key) => `  ${key}`).join("\n")}\n`);
+	// Why, from running those tests again (where this runs may not be where it can be run by hand: CI).
+	for (const file of new Set(broken.map((key) => key.slice(0, key.indexOf(": "))))) {
+		const names = broken.filter((key) => key.startsWith(`${file}: `)).map((key) => key.slice(file.length + 2));
+		const pattern = `^(${names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$`;
+		const again = spawnSync(process.execPath, ["--test", "--test-reporter=spec", `--test-name-pattern=${pattern}`, file], { cwd: ORACLE, encoding: "utf8", env: { ...process.env, SSQCH_BIN: process.env.SSQCH_BIN ?? "packages/ssqch/bin/ssqch.ts" }, maxBuffer: 1 << 28 });
+		const lines = again.stdout.split("\n").filter((line) => !/^\s+at |^ℹ/.test(line));
+		process.stdout.write(`\n---- ${file}\n${lines.slice(0, 120).join("\n")}${lines.length > 120 ? "\n..." : ""}\n`);
+	}
 	process.exit(1);
 }
 process.exit(gone.length ? 1 : 0);

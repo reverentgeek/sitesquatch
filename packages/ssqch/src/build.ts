@@ -933,8 +933,10 @@ function recordOutputs(config: Config, dirs: Dirs, outputs: string[], pagePaths:
 	const previous = names("files") ?? [];
 	// A list from before 0.4 has no pages: nothing to compare with.
 	const old = names("pages");
-	const pagesNew = old ? [...pages].filter((p) => !old.includes(p)).length : undefined;
-	const pagesGone = old ? [...new Set(old)].filter((p) => !pages.has(p)).length : undefined;
+	// (Sets: a list searched once for each page is a second and more on a big site.)
+	const oldPages = old ? new Set(old) : undefined;
+	const pagesNew = oldPages ? [...pages].filter((p) => !oldPages.has(p)).length : undefined;
+	const pagesGone = oldPages ? [...oldPages].filter((p) => !pages.has(p)).length : undefined;
 
 	let removed = 0;
 	for (const stale of previous.filter((f) => !current.has(f))) {

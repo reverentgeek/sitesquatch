@@ -58,7 +58,7 @@ The core is in `packages/ssqch/src/`, ported from `crates/sitesquatch/src/build.
 
 | Check | Result |
 | --- | --- |
-| The 10,000-page site, one thread | **1.41 s, 370 MB** (0.7.0 on one thread: 2.67 s). The limit is 2 s, or 0.72 of 0.7's time on the same machine, which is how CI sets it. All 10,001 pages are byte-identical to 0.7.0's. |
+| The 10,000-page site, one thread | **1.41 s, 370 MB** on the laptop the limit was set on (0.7.0 on one thread: 2.67 s; the limit is 2 s). All 10,001 pages are byte-identical to 0.7.0's. On CI's Linux runner the same build takes 3.75 s and 0.7.0 3.42 s on one thread: the cores are slower, and 0.7's one-thread run isn't held up by the file system there. So CI compares a commit with its parent on the same runner and fails above 15% slower, and the times are checked on the laptop. |
 | v8.dev's exact port | **0.57 s** whole (the limit is 0.72 s); rendering takes 0.27 s where 0.7.0 takes 1.5 s. Its frozen output (929 files), JSON report and summary match 0.7.0's on Node 22.18.0, 24 and 26. |
 | The oracle | 61 of 184 tests pass, the same on the three Node versions: the config's checks and messages, data files, collections, transforms, hooks, `leaveNoTrace`, the cascade's aliases, bundles, the diagnostic codes. The rest wait for engines (stage 3), tools and starters (4), plugins (5), the server (6) and the importers (7). `tests/oracle/node-passing.txt` holds the build to what passes. |
 | The same output everywhere | A site with pagination, collections, themes, bundles and passthrough copies builds to the same bytes on Node 22.18.0, 24 and 26, with `TZ` at UTC and Los Angeles. |

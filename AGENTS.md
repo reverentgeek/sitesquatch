@@ -79,9 +79,10 @@ Run from `packages/ssqch/` unless it says otherwise.
   runs it against the Node build and fails if a test in `node-passing.txt` fails (a file's path
   runs only that file). When a stage makes more tests pass, `node progress.js --update` adds
   them, on Node 22.18, 24 and 26 alike; a test leaves the list only with a reason in the commit.
-- `node bench/bench.ts` is the speed check (10,000 pages in 2 s on one thread, v8.dev in 0.72 s);
-  with `--reference target/release/ssqch` the limit comes from 0.7 on the same machine, as in
-  CI. Run it alone, with nothing compiling beside it.
+- `node bench/bench.ts` is the speed check: 10,000 pages in 2 s on one thread and v8.dev in
+  0.72 s, on the machine those limits were set on (an Apple M-series laptop). Run it alone,
+  with nothing compiling beside it. With `--baseline <another checkout's packages/ssqch>` it
+  compares two builds instead, which is what CI does.
 - `cargo build --release -p ssqch` still builds 0.7, the oracle's reference. To see what 0.7
   does, run it, not its source: `ssqch build`, then `ssqch diff <0.7 output> <0.8 output>`.
 
@@ -107,10 +108,12 @@ Run from `packages/ssqch/` unless it says otherwise.
   locale, the order the file system lists files in, the number of threads, or the Node version.
   ssqch's own date filters and sorting don't use `Intl` (its results change between Node
   releases); a site's code may.
-- **Speed is part of done.** The benchmark (`bench/bench.ts`, and CI's `node-benchmark` job)
-  fails a change that makes the 10,000-page site slower than 2 s on one thread (in CI: 0.72 of
-  0.7.0's time on the same runner), or v8.dev slower than 0.72 s (where a copy is at hand). Write pages as they render,
-  through a queue with back-pressure, and don't copy per page what can be shared.
+- **Speed is part of done.** CI's `node-benchmark` job builds the 10,000-page site with a
+  commit and with its parent on the same runner, and fails a change that makes it more than
+  15% slower (a time measured on one machine doesn't hold on another). The times themselves,
+  2 s on one thread and 0.72 s for v8.dev, are checked with `bench/bench.ts` before a stage is
+  called done. Write pages as they render, through a queue with back-pressure, and don't copy
+  per page what can be shared.
 - **Errors point at the spot.** A library's error (nunjucks, liquidjs, edge.js, markdown-it, a
   site's filter) becomes ssqch's: the site's file and line, an excerpt, the diagnostic code, and
   "did you mean". Each engine gets a test for an unknown filter and for a filter that throws.

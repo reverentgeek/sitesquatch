@@ -21,7 +21,12 @@ export const shown = (root: string, file: string) => displayPath(root, file).rep
 /** `file` from `dir`, with `/` separators. */
 export const relative = (dir: string, file: string) => slashes(path.relative(dir, file));
 
-export const realPath = (p: string) => { try { return fs.realpathSync(p); } catch { return p; } };
+/**
+ * A path with its links followed, as the system itself names it. (The system's own answer, not
+ * Node's reading of the path: on Windows that's the one with a folder's long name where the
+ * path had its short one, `RUNNER~1`, which is how Node names a module's file in a stack.)
+ */
+export const realPath = (p: string) => { try { return fs.realpathSync.native(p); } catch { return p; } };
 export const isFile = (p: string) => fs.statSync(p, { throwIfNoEntry: false })?.isFile() ?? false;
 export const isDir = (p: string) => fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() ?? false;
 

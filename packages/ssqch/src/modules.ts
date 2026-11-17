@@ -11,6 +11,7 @@ import os from "node:os";
 import { registerHooks } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BuildError } from "./diagnostics.ts";
+import { realPath } from "./paths.ts";
 
 /** This package's folder: frames inside it are ssqch's own, not the site's. */
 const SELF = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -118,11 +119,10 @@ export function settle<T>(value: T | Promise<T>): T | Promise<T> {
 
 // ---- a site's errors, as ssqch says them -----------------------------------------------------
 
-const real = (p: string) => { try { return fs.realpathSync(p); } catch { return p; } };
 
 /** A file as errors name it: from the project root with forward slashes, or the whole path outside it. */
 export function shownPath(file: string, root: string): string {
-	const rel = path.relative(real(root), real(file));
+	const rel = path.relative(realPath(root), realPath(file));
 	return rel.startsWith("..") || path.isAbsolute(rel) ? file : rel.split(path.sep).join("/");
 }
 
@@ -201,8 +201,7 @@ function syntaxFrames(e: SyntaxError, root: string): string[] {
 	if (first && fs.existsSync(first[1])) return [`    at ${shownPath(first[1], root)}:${first[2]}:1`];
 	let tmp: string | undefined;
 	try {
-		// The real path: Node names the file by it (macOS keeps its temporary folder behind a link).
-		tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-check-")));
+		tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-check-"));
 		for (const file of [...loadedFiles].reverse().slice(0, 8)) {
 			// As a module, whatever the file's name and its package say.
 			const ext = /\.(m|c)?ts$/.test(file) ? ".mts" : ".mjs";
@@ -212,8 +211,9 @@ function syntaxFrames(e: SyntaxError, root: string): string[] {
 				execFileSync(process.execPath, ["--check", copy], { stdio: ["ignore", "ignore", "pipe"], encoding: "utf8", timeout: 20_000 });
 			} catch (failed: any) {
 				const lines = String(failed.stderr ?? "").split("\n");
-				const at = lines.findIndex((l) => l.startsWith(copy) || l.startsWith(pathToFileURL(copy).href));
-				const row = at === -1 ? undefined : /:(\d+)$/.exec(lines[at])?.[1];
+				// Node names the copy by its real path, however that's spelled here: the file's name is enough.
+				const at = lines.findIndex((l) => /[\\/]check\.m[jt]s:\d+$/.test(l.trimEnd()));
+				const row = at === -1 ? undefined : /:(\d+)$/.exec(lines[at].trimEnd())?.[1];
 				if (row === undefined) continue;
 				const caret = lines[at + 2]?.indexOf("^") ?? -1;
 				return [`    at ${shownPath(file, root)}:${row}:${caret === -1 ? 1 : caret + 1}`];

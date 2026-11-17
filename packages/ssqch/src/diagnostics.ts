@@ -10,6 +10,7 @@ import path from "node:path";
 import { parseFrontMatter } from "./data.ts";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
+import { realPath } from "./paths.ts";
 
 /**
  * One problem. The codes: `config`, `data`, `front-matter`, `template`, `schema`, `conflict`,
@@ -192,15 +193,14 @@ export class Locator {
 		for (const dir of this.dirs) {
 			let file = path.resolve(dir, name);
 			if (!fs.statSync(file, { throwIfNoEntry: false })?.isFile()) continue;
-			file = real(file);
-			const shown = path.relative(real(this.root), file).split(path.sep).join("/");
+			file = realPath(file);
+			const shown = path.relative(realPath(this.root), file).split(path.sep).join("/");
 			return { path: file, shown };
 		}
 		return undefined;
 	}
 }
 
-const real = (p: string) => { try { return fs.realpathSync(p); } catch { return p; } };
 
 /** The lines of a template before its body: its front matter, and the blank lines after it. Template engines count lines from the body. */
 function linesBeforeBody(file: string): number | undefined {
