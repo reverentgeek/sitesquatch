@@ -8,6 +8,53 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## 0.8.0 (not released: the move to Node, in progress)
+
+ssqch 0.8 is a TypeScript program on Node, being built in `packages/ssqch/` beside 0.7 (the
+plan is `docs/node-migration.md`). Nothing here is published yet. This section collects what a
+site will have to change, as each stage of the move finds it; it's rewritten as one entry before
+the release.
+
+### Breaking
+
+- **A site's JavaScript runs on Node.** The config and data files are loaded by Node, by its
+  rules for ES modules and CommonJS, with every package and built-in Node has. What 0.7's own
+  runtime did differently goes:
+  - A CommonJS package's exports are imported by name only where Node can read the names from
+    its source. `import legacy, { twice } from "legacy"` fails for a package that writes
+    `module.exports = { name: "legacy", twice }` with other values in it; import the default and
+    take it apart (`import legacy from "legacy"; const { twice } = legacy;`).
+  - `fs.createReadStream` and the other functions 0.7 only pretended to have are Node's own: a
+    stream for a file that isn't there fails later, as an error of the build, where 0.7 threw
+    when it was called.
+  - `console.log` prints objects as Node prints them, where 0.7 printed JSON.
+- **Filters and templates get your real objects.** 0.7 handed them copies that kept writes to
+  themselves; now a filter that sorts or changes what it's given changes it for the pages
+  rendered after it. Copy first (`[...posts].sort()`). Data that refers to itself (`a.self = a`)
+  is only data now; 0.7 refused it as "nested too deeply".
+- **An object's keys that look like whole numbers come first, in number order**, as JavaScript
+  keeps them: paginating over `{ "2024": ..., "b": ..., "2023": ... }` makes the pages for 2023,
+  2024, then b, where 0.7 kept the file's order. Use a list where the order matters.
+- **YAML dates are dates in every key**, as js-yaml (and so Eleventy) reads them: `updated:
+  2026-03-14` is a `Date`, where 0.7 kept it as text for every key but `date`. A template that
+  printed the text gets the date printed (ISO 8601 in Jinja and Nunjucks); quote the value to
+  keep it as text.
+- **A page's `templateContent` is rendered when it's first read.** In 0.7 a page read before it
+  had rendered gave an empty string. A page whose own templates are async (an async filter or
+  engine) can't be rendered on demand, and reading it too early is an error that names it.
+
+### Changed
+
+- The config can be `ssqch.config.cjs`, `ssqch.config.ts` or `ssqch.config.mts`, besides `.js`
+  and `.mjs`.
+- A warning a package raises with `process.emitWarning` is one of the build's warnings (`code:
+  "console"` in the JSON report), like `console.warn`.
+- Messages that quote a parser are that parser's: YAML, JSON and TOML errors keep `at line N
+  column M` (which the JSON report's `line` comes from), with js-yaml's, Node's and smol-toml's
+  words before it. The error for a permalink outside the output folder names the permalink
+  (`"/../up.html"`, where 0.7 printed `Some("/../up.html")`), and the warning for a data file
+  nothing can read says to provide it in the config's `data` (0.7 named the Rust API).
+
 ## 0.7.0 - 2026-11-17
 
 Found moving lit.dev from Eleventy.

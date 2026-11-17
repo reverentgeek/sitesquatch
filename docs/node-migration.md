@@ -52,6 +52,32 @@ The full write-up, with every number and how to rerun it, is `research/architect
 
 Found on the way, for stage 2: a config that imports JSON without `with { type: "json" }` (the blog's does) fails on Node, and the spike's module hook now adds the attribute; folder data's `"tags": "posts"` has to join a page's own `tags` list, not be replaced by it; and edge.js's `renderRawSync` compiles on every call (the blog took 2 to 3 s in the spike, 0.1 s of it highlighting), so the Edge engine caches templates by file.
 
+## Stage 2, so far (2026-11-17)
+
+The core is in `packages/ssqch/src/`, ported from `crates/sitesquatch/src/build.rs`, `config.rs`, `data.rs`, `diagnostics.rs`, `report.rs`, `cli.rs`, `base.rs`, `theme.rs`, `equivalents.rs` and `voice.rs`, and from the config checks in `crates/sitesquatch-js/src/prelude.js`. `TODO.md` has what's left of the stage.
+
+| Check | Result |
+| --- | --- |
+| The 10,000-page site, one thread | **1.41 s, 370 MB** (0.7.0 on one thread: 2.67 s). The limit is 2 s, or 0.72 of 0.7's time on the same machine, which is how CI sets it. All 10,001 pages are byte-identical to 0.7.0's. |
+| v8.dev's exact port | **0.57 s** whole (the limit is 0.72 s); rendering takes 0.27 s where 0.7.0 takes 1.5 s. Its frozen output (929 files), JSON report and summary match 0.7.0's on Node 22.18.0, 24 and 26. |
+| The oracle | 61 of 184 tests pass, the same on the three Node versions: the config's checks and messages, data files, collections, transforms, hooks, `leaveNoTrace`, the cascade's aliases, bundles, the diagnostic codes. The rest wait for engines (stage 3), tools and starters (4), plugins (5), the server (6) and the importers (7). `tests/oracle/node-passing.txt` holds the build to what passes. |
+| The same output everywhere | A site with pagination, collections, themes, bundles and passthrough copies builds to the same bytes on Node 22.18.0, 24 and 26, with `TZ` at UTC and Los Angeles. |
+| Messages | Of 50 small sites that are broken or unusual in one way each, 33 print exactly what 0.7.0 prints. The others differ in a parser's own words (js-yaml, V8's JSON, smol-toml), in a path that's now absolute, or in a JavaScript error V8 words better. |
+
+What the stage decided, or found:
+
+- **Most of the oracle's core tests render with Edge**, so the core couldn't be checked without an Edge engine. edge.js is in, called plainly, a stage early; stage 3 finishes it (templates kept by file, async functions, themes' includes, errors as ssqch says them). Markdown is markdown-it for now, as in the spike core, so sites could be built and timed; stage 3 replaces it with ssqch's own as `.wasm` (D2).
+- **`templateContent` is rendered on demand.** Pages are written as they render, one at a time; a page whose templates read `collections` renders last, as in 0.7, so the bodies it shows are ready and kept. A body that isn't ready is rendered when it's read, and a page that reads its own gets nothing, as before. Bodies are kept from the start when a template mentions `templateContent` or `.content`, and from the first read otherwise.
+- **A site's code runs in its project root** (`process.chdir`), as 0.7 ran it: `process.cwd()`, `fs.readFileSync("x")` and `readData("x")` are from there.
+- **A promise that never settles is caught on `beforeExit`.** Node would end the build without a word; the build fails with 0.7's message instead.
+- **A syntax error's line comes from `node --check`.** Node gives the place only when it prints an uncaught error, so the files the site loaded are checked again, the last one first, in a copy.
+- **Node's package errors are put in 0.7's words** (a package that isn't installed, a subpath `exports` doesn't have), and its warnings (`process.emitWarning`) are the build's warnings, without the process id.
+- **Nunjucks prints a `Date` as ISO 8601**, as 0.7 did: JavaScript's own `String(date)` is in the machine's time zone, and a build's output may not depend on that.
+- **Numbers in the summary round as Rust rounds them** (a tie goes to the even digit), so `12.2 KB` doesn't become `12.3 KB`.
+- **No worker threads yet.** One thread meets the limit with room. A worker loads the config itself, so module-level state in a config (a counter in a filter) would be split between workers, which 0.7 never did; that needs deciding before they're added.
+- **An independent review found 17 differences from 0.7**, by reading the Rust and the TypeScript side by side and building about 30 small sites with both. Fixed: a date in `tags` named its tag in the machine's time zone; a linked folder in the input folder was built under one of its names, and a link back up or to nothing was skipped without a word; pages without a date were ordered by their files' times to the millisecond, where 0.7 has nanoseconds; a page that failed was reported once for each page that showed its content; `base` dropped a repeated attribute, lowercased a changed one's name and rewrote inside `<noscript>`; a file that isn't UTF-8 was built with replacement characters; `2024-1-5` wasn't a date; a glob that can't be read was matched as text, and `a**` crossed folders; a page's own data file wasn't found on a disk that doesn't tell `Page.md` from `page.md`; a JSON error could lose its line; and several flags' refusals. Recorded as deliberate, in the changelog: an object's keys that look like whole numbers come first, in number order, as JavaScript has them.
+- **Four oracle tests record a deliberate difference** (each says why, and `CHANGELOG.md` has them under 0.8.0): data that refers to itself is allowed; filters get real objects, so there are no views to check; a CommonJS package's exports are named only where Node can read them; `fs.createReadStream` is Node's own.
+
 ## Stages
 
 Weeks are focused work for one person with coding agents, from the study's estimate. Stages 3 to 7 can run in parallel once stage 2 has fixed the core's interfaces.

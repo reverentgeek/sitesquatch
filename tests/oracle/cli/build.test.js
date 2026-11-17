@@ -146,7 +146,7 @@ export default {
     fs.rmSync("link.js", { force: true });
     fs.symlinkSync("helper.js", "link.js");
     let stream;
-    try { createReadStream("x"); } catch (e) { stream = e.message.split(":")[0]; }
+    ${RUST_07 ? 'try { createReadStream("x"); } catch (e) { stream = e.message.split(":")[0]; }' : "stream = typeof createReadStream;"}
     return [process.versions.node.split(".")[0], helper.pines, names.length, missing, fs.readlinkSync("link.js"), fs.lstatSync("link.js").isSymbolicLink(), stream].join(" ");
   } },
 };
@@ -172,8 +172,9 @@ export default {
 	assert.equal(rd("articles/a/index.html"), "<article><p>Pine cones</p>\n</article>");
 	assert.equal(rd("stump/index.html"), "<bare>stump</bare>");
 	assert.equal(rd("keywords.json"), "\n[\"pine\"]");
-	// QuickJS reports Node 24 and has no fs.createReadStream; on Node both are Node's own, so only
-	// the rest is the contract.
+	// DELIBERATE (0.8): QuickJS reports Node 24 and has no fs.createReadStream (calling it throws);
+	// on Node both are Node's own, so the config only looks at the function there, and only the
+	// rest is the contract.
 	if (RUST_07) assert.equal(rd("checks/index.html"), "24 7 8 ENOENT helper.js true fs.createReadStream isn&#39;t available in ssqch");
 	else assert.match(rd("checks/index.html"), /^\d+ 7 8 ENOENT helper\.js true /);
 	if (unix) assert.equal(rd("samples/js/a.ts"), "export {};\n");

@@ -1,0 +1,164 @@
+// Rewriting HTML without parsing it into a tree: start tags are found as a browser's tokenizer
+// finds them, a handler may change their attributes, and every other byte of the page is passed
+// through as it was. `base`, and the plugins that rewrite URLs, are built on this.
+
+/** A start tag's attribute: its name in lowercase and as written, its value as written (entities undecoded), and its source text. */
+interface Attribute {
+	name: string;
+	rawName: string;
+	value: string | null;
+	raw: string;
+	changed: boolean;
+	/** A second attribute with a name the tag already has: browsers ignore it, so handlers don't see it, and it's written as it was. */
+	repeat: boolean;
+}
+
+/** A start tag a handler can read and change. */
+export class StartTag {
+	/** The tag's name, in lowercase. */
+	name: string;
+	private rawName: string;
+	private attributes: Attribute[];
+	private selfClosing: boolean;
+	changed = false;
+
+	constructor(rawName: string, attributes: Attribute[], selfClosing: boolean) {
+		this.rawName = rawName;
+		this.name = rawName.toLowerCase();
+		this.attributes = attributes;
+		this.selfClosing = selfClosing;
+	}
+
+	/** An attribute's value as it's written (not decoded), `""` for one without a value, or `undefined`. */
+	get(name: string): string | undefined {
+		const found = this.attributes.find((a) => a.name === name && !a.repeat);
+		return found ? found.value ?? "" : undefined;
+	}
+
+	set(name: string, value: string): void {
+		const found = this.attributes.find((a) => a.name === name && !a.repeat);
+		if (found) { found.value = value; found.changed = true; }
+		else this.attributes.push({ name, rawName: name, value, raw: "", changed: true, repeat: false });
+		this.changed = true;
+	}
+
+	/** The tag as text: attributes that weren't changed as they were written, one space between them. */
+	toString(): string {
+		// A changed attribute keeps its name as it was written (`SRC`), with its value in double quotes.
+		const attributes = this.attributes.map((a) => (a.changed ? `${a.rawName}="${(a.value ?? "").replaceAll("\"", "&quot;")}"` : a.raw));
+		return `<${this.rawName}${attributes.length ? ` ${attributes.join(" ")}` : ""}${this.selfClosing ? " />" : ">"}`;
+	}
+}
+
+/** Elements whose content is text, not markup, until their own end tag. */
+const RAW_TEXT = new Set(["script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript", "plaintext"]);
+const SPACE = /[\t\n\f\r ]/;
+
+export interface Handlers {
+	/** Called for each start tag; change it with `tag.set()`. */
+	tag?(tag: StartTag): void;
+	/** Called with the text inside each `<style>`; what it returns replaces the text. */
+	style?(css: string): string;
+}
+
+/** `html` with its start tags (and the text of `<style>` elements) passed through `handlers`. A tag that wasn't changed keeps every byte. */
+export function rewriteHtml(html: string, handlers: Handlers): string {
+	let out = "";
+	let copied = 0;
+	let i = 0;
+	const n = html.length;
+	while (i < n) {
+		const lt = html.indexOf("<", i);
+		if (lt === -1) break;
+		const next = html[lt + 1];
+		if (next === "!") {
+			// A comment runs to `-->`; a doctype or anything else in `<!...>` to the next `>`.
+			if (html.startsWith("<!--", lt)) {
+				const end = html.indexOf("-->", lt + 4);
+				i = end === -1 ? n : end + 3;
+			} else {
+				const end = html.indexOf(">", lt + 2);
+				i = end === -1 ? n : end + 1;
+			}
+			continue;
+		}
+		if (next === "/" || next === "?") {
+			const end = html.indexOf(">", lt + 2);
+			i = end === -1 ? n : end + 1;
+			continue;
+		}
+		if (next === undefined || !/[A-Za-z]/.test(next)) {
+			i = lt + 1;
+			continue;
+		}
+		// A start tag: its name, then its attributes, to `>`.
+		let p = lt + 1;
+		while (p < n && !SPACE.test(html[p]) && html[p] !== "/" && html[p] !== ">") p++;
+		const rawName = html.slice(lt + 1, p);
+		const attributes: Attribute[] = [];
+		let selfClosing = false;
+		let closed = false;
+		while (p < n) {
+			while (p < n && SPACE.test(html[p])) p++;
+			if (p >= n) break;
+			if (html[p] === ">") { p++; closed = true; break; }
+			if (html[p] === "/") {
+				if (html[p + 1] === ">") { selfClosing = true; p += 2; closed = true; break; }
+				p++;
+				continue;
+			}
+			const start = p;
+			// A name runs to whitespace, `/`, `>` or `=` (a leading `=` is part of the name).
+			if (html[p] === "=") p++;
+			while (p < n && !SPACE.test(html[p]) && html[p] !== "/" && html[p] !== ">" && html[p] !== "=") p++;
+			const rawName = html.slice(start, p);
+			const name = rawName.toLowerCase();
+			let q = p;
+			while (q < n && SPACE.test(html[q])) q++;
+			let value: string | null = null;
+			if (html[q] === "=") {
+				q++;
+				while (q < n && SPACE.test(html[q])) q++;
+				const quote = html[q];
+				if (quote === "\"" || quote === "'") {
+					const end = html.indexOf(quote, q + 1);
+					value = html.slice(q + 1, end === -1 ? n : end);
+					p = end === -1 ? n : end + 1;
+				} else {
+					const from = q;
+					while (q < n && !SPACE.test(html[q]) && html[q] !== ">") q++;
+					value = html.slice(from, q);
+					p = q;
+				}
+			}
+			// The first of two attributes with one name is the one that counts.
+			attributes.push({ name, rawName, value, raw: html.slice(start, p), changed: false, repeat: attributes.some((a) => a.name === name) });
+		}
+		if (!closed) break;
+		const tag = new StartTag(rawName, attributes, selfClosing);
+		handlers.tag?.(tag);
+		if (tag.changed) {
+			out += html.slice(copied, lt) + tag.toString();
+			copied = p;
+		}
+		i = p;
+		if (RAW_TEXT.has(tag.name) && !selfClosing) {
+			// Text to this element's own end tag.
+			const close = new RegExp(`</${tag.name}(?=[\\t\\n\\f\\r />])`, "ig");
+			close.lastIndex = p;
+			const found = close.exec(html);
+			const end = found ? found.index : n;
+			if (tag.name === "style" && handlers.style && end > p) {
+				const css = html.slice(p, end);
+				const changed = handlers.style(css);
+				if (changed !== css) {
+					out += html.slice(copied, p) + changed;
+					copied = end;
+				}
+			}
+			i = end;
+			if (tag.name === "plaintext") break;
+		}
+	}
+	return copied === 0 ? html : out + html.slice(copied);
+}

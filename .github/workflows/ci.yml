@@ -50,6 +50,56 @@ jobs:
           SSQCH_BIN: target/debug/ssqch${{ runner.os == 'Windows' && '.exe' || '' }}
         run: node --test --test-concurrency=4
 
+  # The Node implementation (packages/ssqch), being built beside the Rust one until the release
+  # that switches (docs/node-migration.md). On the lowest Node it supports and the two after it.
+  node:
+    name: node ${{ matrix.node }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    # Windows hasn't run this yet: until its first run is clean, it reports without failing the
+    # workflow (the release checks this workflow). TODO.md has the item.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [22.18.0, 24, 26]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+        working-directory: packages/ssqch
+      - name: type check
+        if: runner.os == 'Linux' && matrix.node == 24
+        working-directory: packages/ssqch
+        run: npx tsc --noEmit
+      - name: unit tests
+        working-directory: packages/ssqch
+        run: node --test
+      # The oracle's tests that the Node build passes so far (tests/oracle/node-passing.txt):
+      # each stage of the move adds to the list, and nothing on it may fail again.
+      - name: oracle
+        working-directory: tests/oracle
+        run: node progress.js
+
+  # Speed is part of done: the 10,000-page site on one thread, against ssqch 0.7.0 from npm on
+  # the same runner (packages/ssqch/bench/bench.ts says how the limit is set).
+  node-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.18.0
+      - run: npm ci
+        working-directory: packages/ssqch
+      - run: npm install --prefix "$RUNNER_TEMP/ssqch-07" ssqch@0.7.0
+      - working-directory: packages/ssqch
+        run: node bench/bench.ts --reference "$RUNNER_TEMP/ssqch-07/node_modules/@ssqch/linux-x64/bin/ssqch"
+
   clippy:
     runs-on: ubuntu-latest
     timeout-minutes: 30

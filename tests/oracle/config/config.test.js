@@ -177,8 +177,15 @@ test("filter_errors_carry_the_javascript_stack", () => {
 test("circular_data_is_an_error_not_a_hang", () => {
 	const root = project({
 		"ssqch.config.js": "const a = {}; a.self = a; export default { templateFormats: [\"edge\"], data: { loop: () => a } };",
-		"index.edge": "{{ loop }}",
+		"index.edge": "{{ loop.self === loop }}",
 	});
+	// DELIBERATE (0.8): 0.7 copies a config's values out of QuickJS, and refuses one that refers to
+	// itself. On Node, templates get the config's own objects, so circular data is only data.
+	if (!RUST_07) {
+		buildOk(root);
+		assert.equal(read(root, "_site/index.html"), "true");
+		return;
+	}
 	const e = buildError(root);
 	assert.ok(e.includes("nested too deeply"), e);
 });

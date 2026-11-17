@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, project, read, FIXTURES } from "../lib/ssqch.js";
+import { ssqch, project, read, FIXTURES, RUST_07 } from "../lib/ssqch.js";
 
 /** Builds `root` the way the Rust tests did: production, quiet. */
 function build(root) {
@@ -150,7 +150,10 @@ test("hook_errors_stop_the_build", () => {
 	assert.ok(e.includes("\"beforeWatch\" isn't a config option"), e);
 });
 
-test("views_behave_like_plain_objects", () => {
+// DELIBERATE (0.8): 0.7 hands filters copy-on-write views of the site's data, so a filter that
+// writes to its argument changes nothing. On Node, filters get the objects themselves (the
+// changelog's "Breaking"), and there are no views to check.
+test("views_behave_like_plain_objects", { skip: !RUST_07 && "0.7 only: filters get views of the site's data; on Node they get the objects themselves" }, () => {
 	const root = project({
 		"battery.js": fs.readFileSync(path.join(FIXTURES, "js/view-battery.js")),
 		"ssqch.config.js": `import { battery, copy } from "./battery.js";

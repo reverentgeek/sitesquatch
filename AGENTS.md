@@ -70,11 +70,18 @@ Run from `packages/ssqch/` unless it says otherwise.
 - `node bin/ssqch.ts build --root <site>` runs ssqch from its source, with no build step: Node
   strips the types. Every command and flag is the 0.7 binary's.
 - `node --test` runs the package's own unit tests (`*.test.ts` next to the code they test).
-- `npx tsc --noEmit` type-checks. Keep it clean; stage 2 adds it to CI.
+- `npx tsc --noEmit` type-checks. Keep it clean; CI runs it.
 - The oracle is the definition of done: from `tests/oracle/`,
   `SSQCH_BIN=packages/ssqch/bin/ssqch.ts node --test` (the path is from the repository root;
   one file: add its path, such as `cli/init.test.js`). It expects `packages/ssqch/package.json`'s version. Run it on Node 22.18
   (the lowest supported), 24 and 26 before calling a feature done.
+- While the Node build passes only part of the oracle: from `tests/oracle/`, `node progress.js`
+  runs it against the Node build and fails if a test in `node-passing.txt` fails (a file's path
+  runs only that file). When a stage makes more tests pass, `node progress.js --update` adds
+  them, on Node 22.18, 24 and 26 alike; a test leaves the list only with a reason in the commit.
+- `node bench/bench.ts` is the speed check (10,000 pages in 2 s on one thread, v8.dev in 0.72 s);
+  with `--reference target/release/ssqch` the limit comes from 0.7 on the same machine, as in
+  CI. Run it alone, with nothing compiling beside it.
 - `cargo build --release -p ssqch` still builds 0.7, the oracle's reference. To see what 0.7
   does, run it, not its source: `ssqch build`, then `ssqch diff <0.7 output> <0.8 output>`.
 
@@ -100,8 +107,9 @@ Run from `packages/ssqch/` unless it says otherwise.
   locale, the order the file system lists files in, the number of threads, or the Node version.
   ssqch's own date filters and sorting don't use `Intl` (its results change between Node
   releases); a site's code may.
-- **Speed is part of done.** The CI benchmark (stage 2 adds it) fails a change that makes the
-  10,000-page site slower than 2 s on one thread, or v8.dev slower than 0.72 s. Write pages as they render,
+- **Speed is part of done.** The benchmark (`bench/bench.ts`, and CI's `node-benchmark` job)
+  fails a change that makes the 10,000-page site slower than 2 s on one thread (in CI: 0.72 of
+  0.7.0's time on the same runner), or v8.dev slower than 0.72 s (where a copy is at hand). Write pages as they render,
   through a queue with back-pressure, and don't copy per page what can be shared.
 - **Errors point at the spot.** A library's error (nunjucks, liquidjs, edge.js, markdown-it, a
   site's filter) becomes ssqch's: the site's file and line, an excerpt, the diagnostic code, and

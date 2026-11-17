@@ -1,0 +1,729 @@
+// A site's configuration: `ssqch.config.js` (or `.mjs`, `.cjs`, `.ts`, `.mts`), or
+// `sitesquatch.toml`, read into one `Config` that the build works from.
+//
+// The contract is `ssqch.d.ts`, and the checks and their messages are 0.7's: a config (or a
+// plugin) is a plain object, or a function returning one (sync or async) that gets
+// `{ env, serving }`. Settings only make sense once, so they're allowed at the top level only.
+// Everything else can also come from a plugin, and is applied in order: the config's own entries
+// first, then each plugin's, depth first.
+import fs from "node:fs";
+import path from "node:path";
+import { parse as parseToml } from "smol-toml";
+import * as api from "./api.ts";
+import { normalizeBase } from "./base.ts";
+import { budget } from "./budgets.ts";
+import { BuildError, aliasUsed, bail, context, messageOf, warn, warning } from "./diagnostics.ts";
+import type { Data, DataLoader } from "./data.ts";
+import { isPlainObject, tomlValue } from "./data.ts";
+import * as equivalents from "./equivalents.ts";
+import type { Equivalent } from "./equivalents.ts";
+import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
+import type { MarkdownOptions } from "./markdown-options.ts";
+import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
+import { resolveTheme } from "./theme.ts";
+
+export type Environment = "production" | "development";
+
+/** `dev` and `development`, `prod` and `production`, in any case. */
+export function parseEnvironment(s: string): Environment | undefined {
+	const name = s.toLowerCase();
+	if (name === "dev" || name === "development") return "development";
+	if (name === "prod" || name === "production") return "production";
+	return undefined;
+}
+
+export type Filter = (...args: any[]) => unknown;
+export type EngineFn = (source: string, data: Data, inputPath: string) => string | Promise<string>;
+export type TransformFn = (content: string, page: { url: string; inputPath: string; outputPath: string }) => string | Promise<string>;
+export type CollectionFn = (items: any[]) => unknown;
+/** A hook: the site's function (told about the build), or a command to run. */
+export type Hook = { label: string; fn: (event: Data) => unknown } | { run: string };
+
+/** A file a plugin adds to the output: a URL path (`/sitemap.xml`) and its contents. */
+export interface GeneratedFile {
+	path: string;
+	contents: string;
+	/** Add to the end of a file a page wrote at the same path, instead of it being a conflict. */
+	append?: boolean;
+}
+
+/** A page the build wrote, as generators see it. */
+export interface PageSummary {
+	url: string;
+	outputPath: string;
+	inputPath: string;
+	date: Date;
+	data: Data;
+}
+
+export interface Config {
+	/** The project root, absolute and real; every relative path is from here. */
+	root: string;
+	/** The file the configuration came from, if any. */
+	file: string | null;
+	env: Environment;
+	/** True while running the development server. */
+	serving: boolean;
+	quiet: boolean;
+	verbose: boolean;
+	/** The folders as the config gives them: `input` and `output` from the root, the rest from the input folder. */
+	input: string;
+	output: string;
+	includes: string;
+	layouts: string | null;
+	data: string;
+	templateFormats: string[];
+	/** The engine that pre-processes Markdown files before Markdown renders them. */
+	markdownEngine: string | null;
+	/** The engine that pre-processes `.html` files. */
+	htmlEngine: string | null;
+	markdown: MarkdownOptions;
+	deepMerge: boolean;
+	leaveNoTrace: boolean;
+	ignore: string[];
+	bundles: boolean;
+	strict: boolean;
+	lastModified: "git" | "file" | null;
+	/** The path the site is served under: empty for the domain's root, or `/repo` (no `/` at the end). */
+	base: string;
+	serveRun: string[];
+	/** Size budgets by kind of file, in bytes. */
+	budgets: Array<[string, number]>;
+	/** Content schemas, as the config wrote them (checked by the schema module). */
+	schemas: Array<[string, unknown]>;
+	/** The themes' folders, the one on top first. */
+	themes: string[];
+
+	passthrough: Array<{ from: string; to?: string }>;
+	/** Functions every template can call, by name, in the order they were added. */
+	filters: Map<string, Filter>;
+	globalData: Array<{ name: string; value?: unknown; fn?: () => unknown }>;
+	dataExtensions: Map<string, DataLoader>;
+	collections: Array<[string, CollectionFn]>;
+	transforms: Array<[string, TransformFn]>;
+	/** Transforms that run before every other, whatever order plugins were added in (images). */
+	htmlTransforms: Array<[string, TransformFn]>;
+	engines: Map<string, EngineFn>;
+	beforeBuild: Hook[];
+	afterBuild: Hook[];
+	watch: string[];
+	plugins: string[];
+	/** Lines plugins add to the build summary; a function that answers nothing leaves its line out. */
+	summaries: Array<[string, (config: Config) => string | undefined]>;
+	generators: Array<[string, (config: Config, pages: PageSummary[]) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
+	fileBuilders: Array<[string, (config: Config) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
+}
+
+/** The folders of a build, absolute. */
+export interface Dirs {
+	root: string;
+	input: string;
+	output: string;
+	includes: string;
+	/** Layouts: the includes folder unless `dirs.layouts` names another. */
+	layouts: string;
+	data: string;
+}
+
+export function dirsOf(config: Config): Dirs {
+	const input = path.resolve(config.root, config.input);
+	return {
+		root: config.root,
+		input,
+		output: path.resolve(config.root, config.output),
+		includes: path.resolve(input, config.includes),
+		layouts: path.resolve(input, config.layouts ?? config.includes),
+		data: path.resolve(input, config.data),
+	};
+}
+
+export interface ConfigOptions {
+	root: string;
+	env: Environment;
+	serving?: boolean;
+	quiet?: boolean;
+	verbose?: boolean;
+	/** `--output`: overrides the config's output folder. */
+	output?: string;
+	/** `--base`: overrides the config's `base`. */
+	base?: string;
+}
+
+const real = (p: string) => { try { return fs.realpathSync(p); } catch { return p; } };
+
+function emptyConfig(options: ConfigOptions): Config {
+	return {
+		root: real(path.resolve(options.root)),
+		file: null,
+		env: options.env,
+		serving: options.serving ?? false,
+		quiet: options.quiet ?? false,
+		verbose: options.verbose ?? false,
+		input: ".",
+		output: "_site",
+		includes: "_includes",
+		layouts: null,
+		data: "_data",
+		// Jinja is the default template language: pages in `.jinja`, and Markdown and HTML through it first.
+		templateFormats: ["jinja", "md", "html"],
+		markdownEngine: "jinja",
+		htmlEngine: "jinja",
+		markdown: defaultMarkdownOptions(),
+		deepMerge: true,
+		leaveNoTrace: false,
+		ignore: [],
+		bundles: false,
+		strict: false,
+		lastModified: null,
+		base: "",
+		serveRun: [],
+		budgets: [],
+		schemas: [],
+		themes: [],
+		passthrough: [],
+		filters: new Map(),
+		globalData: [],
+		dataExtensions: new Map(),
+		collections: [],
+		transforms: [],
+		htmlTransforms: [],
+		engines: new Map(),
+		beforeBuild: [],
+		afterBuild: [],
+		watch: [],
+		plugins: [],
+		summaries: [],
+		generators: [],
+		fileBuilders: [],
+	};
+}
+
+/** Config file names looked for in the project root, in order. */
+export const CONFIG_FILES = ["ssqch.config.js", "ssqch.config.mjs", "ssqch.config.cjs", "ssqch.config.ts", "ssqch.config.mts"];
+
+/** The config file in `root`, if there is one. */
+export function findConfig(root: string): string | undefined {
+	return CONFIG_FILES.map((name) => path.join(root, name)).find((file) => fs.statSync(file, { throwIfNoEntry: false })?.isFile());
+}
+
+/** Reads the site's configuration. `ssqch serve` calls this again when a config file changes. */
+export async function loadConfig(options: ConfigOptions): Promise<Config> {
+	const config = emptyConfig(options);
+	hookModules();
+	// A site's code runs in its project root, as 0.7 ran it: `process.cwd()`, `fs.readFileSync("x")`
+	// and `readData("x")` are all from there.
+	// (A root that isn't there is the build's to report: nothing can be read from it.)
+	if (fs.statSync(config.root, { throwIfNoEntry: false })?.isDirectory()) process.chdir(config.root);
+	Object.assign(api.site, { root: config.root, input: null, markdown: null });
+	// JavaScript data files (`_data/*.js`, `*.data.js`): the default export is the data, or a
+	// function (sync or async) that returns it, called on every build.
+	for (const ext of ["js", "mjs", "cjs", "ts", "mts"]) config.dataExtensions.set(ext, (file) => loadJsData(file, config.root));
+
+	const toml = path.join(config.root, "sitesquatch.toml");
+	const hasToml = fs.statSync(toml, { throwIfNoEntry: false })?.isFile() ?? false;
+	const js = findConfig(config.root);
+	if (js && hasToml) bail(`found both ${path.basename(js)} and sitesquatch.toml; keep one of them`);
+	if (js) {
+		config.file = js;
+		await loadJs(config, js);
+	} else {
+		// Another generator's site: say what to do, rather than building it as ssqch's.
+		if (!hasToml) {
+			const message = equivalents.otherGenerator(config.root);
+			if (message) warn(warning("other-generator", message));
+		} else {
+			config.file = toml;
+			applyToml(config, toml);
+		}
+	}
+	if (options.output !== undefined) config.output = options.output;
+	if (options.base !== undefined) {
+		try { config.base = normalizeBase(options.base); } catch (e) { throw context(e, "--base"); }
+	}
+	return config;
+}
+
+/** A JavaScript data file's value: its default export, called if it's a function. */
+async function loadJsData(file: string, root: string): Promise<unknown> {
+	const name = path.relative(root, file).split(path.sep).join("/");
+	try {
+		const module = await importFile(file);
+		if (!("default" in module)) bail("a data file needs a default export: the data, or a function that returns it");
+		const value = module.default;
+		return typeof value === "function" ? await settle(value()) : value;
+	} catch (e) {
+		throw new BuildError(`${name}: ${describeThrown(e, root)}`);
+	}
+}
+
+// ---- ssqch.config.js -------------------------------------------------------------------------
+
+const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "base", "schemas", "theme", "serve", "budgets"];
+const PARTS = ["data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins"];
+/** Engine names a config can't replace. */
+const CORE_ENGINES = ["edge", "md", "html", "txt"];
+const DIRS = ["input", "output", "includes", "layouts", "data"];
+
+/** The options a config can set, in the order its errors list them. */
+export const configOptions = (): string[] => [...SETTINGS, ...PARTS];
+
+const isObject = (v: unknown): v is Data => v !== null && typeof v === "object" && !Array.isArray(v);
+const list = (v: unknown): unknown[] => (v === undefined ? [] : ([] as unknown[]).concat(v));
+
+/** ` (did you mean "dirs"?)` for a key within two edits of an option, or nothing. */
+export function meant(key: unknown, options: readonly string[]): string {
+	const distance = (a: string, b: string) => {
+		const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+		for (let i = 0; i < a.length; i++) {
+			let previous = row[0];
+			row[0] = i + 1;
+			for (let j = 0; j < b.length; j++) {
+				const current = row[j + 1];
+				row[j + 1] = a[i] === b[j] ? previous : 1 + Math.min(previous, current, row[j]);
+				previous = current;
+			}
+		}
+		return row[b.length];
+	};
+	let best: { edits: number; option: string } | undefined;
+	for (const option of options) {
+		const edits = distance(String(key).toLowerCase(), option.toLowerCase());
+		if (edits <= 2 && edits < option.length && (!best || edits < best.edits)) best = { edits, option };
+	}
+	return best ? ` (did you mean "${best.option}"?)` : "";
+}
+
+const configWord = (key: string): Equivalent | undefined => equivalents.find(key, "config");
+
+/** A check that failed: the message is the whole error (`ssqch.config.js: ...`). */
+const fail = (message: string): never => { throw new TypeError(message); };
+
+/**
+ * The config with its aliases as ssqch's names: `pathPrefix` as `base`, `publishDir` and
+ * `outDir` as `dirs.output`, `dir` as `dirs`.
+ */
+function aliased(part: Data, where: string): Data {
+	const words = Object.keys(part).filter((key) => configWord(key)?.alias);
+	if (!words.length) return part;
+	const out: Data = { ...part };
+	const dirs = isObject(part.dirs) ? { ...part.dirs } : part.dirs;
+	const named: Record<string, string> = {}; // which word set each name, for the error when two do
+	const twice = (name: string, word: string) => fail(`${where}: ${word} and ${named[name] ?? name} are two names for one option; set one of them`);
+	for (const word of words) {
+		const row = configWord(word)!;
+		const name = row.ssqch;
+		const value = part[word];
+		delete out[word];
+		if (name === "dirs") {
+			if (!isObject(value)) fail(`${where}: ${word} must be an object, like ${word}: { input: "src", output: "dist" }`);
+			for (const [key, folder] of Object.entries(value as Data)) {
+				if ((isObject(dirs) && dirs[key] !== undefined) || named[`dirs.${key}`]) twice(`dirs.${key}`, `${word}.${key}`);
+				out.dirs = isObject(out.dirs) ? out.dirs : { ...(isObject(dirs) ? dirs : {}) };
+				out.dirs[key] = folder;
+				named[`dirs.${key}`] = `${word}.${key}`;
+			}
+		} else if (name.startsWith("dirs.")) {
+			const key = name.slice(5);
+			if ((isObject(dirs) && dirs[key] !== undefined) || named[name]) twice(name, word);
+			out.dirs = isObject(out.dirs) ? out.dirs : { ...(isObject(dirs) ? dirs : {}) };
+			out.dirs[key] = value;
+			named[name] = word;
+		} else {
+			if (part[name] !== undefined || named[name]) twice(name, word);
+			out[name] = value;
+			named[name] = word;
+		}
+		aliasUsed(row);
+	}
+	return out;
+}
+
+/** A plugin built into ssqch, which a config adds as `{ builtin: "ssqch/image", options }` (what `imagePlugin()` returns). */
+export type BuiltinPlugin = (config: Config, options: Data) => void | Promise<void>;
+
+/** The built-in plugins, by the module that makes them. The plugins register themselves here as they're ported. */
+export const BUILTINS = new Map<string, BuiltinPlugin>();
+/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
+const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements"];
+
+async function loadJs(config: Config, file: string): Promise<void> {
+	const name = path.basename(file);
+	const { root, env, serving } = config;
+	loadedFiles.add(file);
+	const settings: Data = {};
+	// What the config and its plugins add, in call order: applied after the settings.
+	const ops: Array<() => void | Promise<void>> = [];
+	const names = { data: new Map<string, string>(), filters: new Map<string, string>(), collections: new Map<string, string>(), transforms: new Map<string, string>(), engines: new Map<string, string>() };
+
+	// A config written as calls (`config.addPassthroughCopy("src/fonts")`) gets ssqch's name for each.
+	const argument = new Proxy(Object.freeze({ env, serving }), {
+		get(target, key, receiver) {
+			const equivalent = typeof key === "string" && !(key in target) ? configWord(key) : undefined;
+			if (equivalent) fail(`the config function's argument has no ${String(key)}(): an ssqch config returns an object. ${equivalent.say}\n  More: ${equivalent.more}`);
+			return Reflect.get(target, key, receiver);
+		},
+	});
+
+	const claim = (kind: keyof typeof names, singular: string, key: string, where: string) => {
+		const earlier = names[kind].get(key);
+		if (earlier) fail(`${where}: ${singular} "${key}" is already defined by ${earlier}`);
+		names[kind].set(key, where);
+	};
+	const functions = (kind: "filters" | "collections" | "transforms", singular: string, value: unknown, where: string, add: (key: string, fn: (...args: any[]) => any) => void) => {
+		if (value === undefined) return;
+		if (!isObject(value)) fail(`${where}: ${kind} must be an object of { name: function }`);
+		for (const [key, fn] of Object.entries(value as Data)) {
+			if (typeof fn !== "function") fail(`${where}: ${kind}.${key} must be a function`);
+			claim(kind, singular, key, where);
+			add(key, fn);
+		}
+	};
+	// A hook is a function, or `{ run: "command" }` to run a program.
+	const hooks = (event: "beforeBuild" | "afterBuild", value: unknown, where: string) => {
+		for (const hook of list(value)) {
+			if (isObject(hook)) {
+				for (const key of Object.keys(hook)) {
+					if (key !== "run") fail(`${where}: ${event}: "${key}" isn't an option (use { run: "command" })`);
+				}
+				if (!(typeof hook.run === "string" && hook.run.trim())) fail(`${where}: ${event}: run must be a command, like { run: "pagefind --site dist" }`);
+				const run: string = hook.run;
+				ops.push(() => { config[event].push({ run }); });
+				continue;
+			}
+			if (typeof hook !== "function") fail(`${where}: ${event} must be a function or { run: "command" } (or an array of them)`);
+			const fn = hook as (event: Data) => unknown;
+			ops.push(() => { config[event].push({ label: `${event} (${where})`, fn }); });
+		}
+	};
+
+	async function apply(part: any, where: string, top: boolean): Promise<void> {
+		if (typeof part === "function") part = await settle(part(argument));
+		if (part === undefined || part === null || part === false) return;
+		if (!isObject(part)) fail(`${where} must be an object (or a function that returns one)`);
+
+		// A built-in plugin, such as imagePlugin() from "ssqch/image".
+		if ("builtin" in part) {
+			const builtin = String(part.builtin);
+			const options = part.options ?? {};
+			ops.push(async () => {
+				const register = BUILTINS.get(builtin);
+				if (!register) {
+					if (BUILTIN_NAMES.includes(builtin)) bail(`plugin "${builtin}": this plugin isn't in the Node build of ssqch yet (the move to Node, stage 5)`);
+					bail(`unknown plugin "${builtin}" (built-in plugins: ${BUILTIN_NAMES.join(", ")})`);
+				}
+				config.plugins.push(builtin);
+				try { await register(config, options); } catch (e) { throw context(e, `plugin "${builtin}"`); }
+			});
+			return;
+		}
+
+		// Another generator's word that's an alias here (`pathPrefix`, `publishDir`, `dir`) is read
+		// as ssqch's, and setting both names is an error.
+		if (top) part = aliased(part, where);
+
+		// Every key that isn't an option, in one error. Another generator's word (`pathPrefix`) gets
+		// ssqch's name for it; anything else, the closest option and the list.
+		const unknown: string[] = [];
+		let guessed = false;
+		for (const key of Object.keys(part)) {
+			if (key === "name" && !top) continue;
+			if (SETTINGS.includes(key)) {
+				if (!top) fail(`${where}: "${key}" can only be set in the config itself, not in a plugin`);
+			} else if (!PARTS.includes(key)) {
+				const options = top ? [...SETTINGS, ...PARTS] : PARTS;
+				const equivalent = configWord(key);
+				if (equivalent?.alias) {
+					unknown.push(`${where}: "${key}" can only be set in the config itself, not in a plugin (ssqch calls it ${equivalent.ssqch})`);
+					continue;
+				}
+				if (equivalent) {
+					unknown.push(`${where}: "${key}" isn't a config option. ${equivalent.say}\n  More: ${equivalent.more}`);
+					continue;
+				}
+				// `output: "dist"` at the top is a folder that belongs in `dirs`.
+				const hint = top && DIRS.includes(key) ? ` (it goes in dirs: { ${key}: "..." })` : meant(key, options);
+				unknown.push(`${where}: "${key}" isn't a config option${hint}`);
+				guessed = true;
+			}
+		}
+		if (unknown.length) {
+			const options = top ? [...SETTINGS, ...PARTS] : PARTS;
+			fail(unknown.join("\n") + (guessed ? ` (options: ${options.join(", ")})` : ""));
+		}
+
+		if (top) {
+			if (part.dirs !== undefined) {
+				if (!isObject(part.dirs)) fail(`${where}: dirs must be an object`);
+				for (const [key, value] of Object.entries(part.dirs)) {
+					if (!DIRS.includes(key)) fail(`${where}: dirs.${key} isn't supported${meant(key, DIRS)} (use ${DIRS.join(", ")})`);
+					if (typeof value !== "string") fail(`${where}: dirs.${key} must be a string`);
+					settings[key] = value;
+				}
+			}
+			for (const key of SETTINGS.filter((k) => k !== "dirs")) {
+				if (part[key] !== undefined) settings[key] = part[key];
+			}
+		}
+
+		if (part.data !== undefined) {
+			if (!isObject(part.data)) fail(`${where}: data must be an object of { name: value or function }`);
+			for (const [key, value] of Object.entries(part.data)) {
+				claim("data", "data", key, where);
+				ops.push(() => { config.globalData.push(typeof value === "function" ? { name: key, fn: value as () => unknown } : { name: key, value }); });
+			}
+		}
+		functions("filters", "filter", part.filters, where, (key, fn) => ops.push(() => { config.filters.set(key, fn); }));
+		functions("collections", "collection", part.collections, where, (key, fn) => ops.push(() => { config.collections.push([key, fn]); }));
+		functions("transforms", "transform", part.transforms, where, (key, fn) => {
+			const run: TransformFn = async (content, page) => {
+				const out = await settle(fn(content, page));
+				if (typeof out !== "string") {
+					throw new TypeError(`transform "${key}" returned ${out === undefined ? "undefined" : typeof out} for ${page.outputPath}; return the content (unchanged if there's nothing to do)`);
+				}
+				return out;
+			};
+			ops.push(() => { config.transforms.push([key, run]); });
+		});
+		if (part.engines !== undefined) {
+			if (!isObject(part.engines)) fail(`${where}: engines must be an object of { extension: function or { render } }`);
+			for (const [key, engine] of Object.entries<any>(part.engines)) {
+				const render = typeof engine === "function" ? engine : engine?.render;
+				if (typeof render !== "function") fail(`${where}: engines.${key} must be a function (source, data) or an object with a render(source, data) method`);
+				if (!/^[A-Za-z0-9_-]+$/.test(key)) fail(`${where}: engines.${key}: an engine's name is a file extension (letters, digits, - and _)`);
+				if (CORE_ENGINES.includes(key)) fail(`${where}: engines.${key}: "${key}" is built in and can't be replaced`);
+				claim("engines", "engine", key, where);
+				// Synchronous until the site's function answers with a promise, so a page whose
+				// engines are all synchronous can be rendered on demand (`templateContent`).
+				const checked = (out: unknown, inputPath: string): string => {
+					if (typeof out !== "string") throw new TypeError(`engine "${key}" returned ${out === undefined ? "undefined" : typeof out} for ${inputPath}; return the rendered text`);
+					return out;
+				};
+				const run: EngineFn = (source, data, inputPath) => {
+					const out = render.call(engine, source, data);
+					return out instanceof Promise ? watchSettle(out).then((v) => checked(v, inputPath)) : checked(out, inputPath);
+				};
+				ops.push(() => { config.engines.set(key, run); });
+			}
+		}
+
+		for (const entry of list(part.passthrough)) {
+			if (typeof entry === "string") {
+				ops.push(() => { config.passthrough.push({ from: entry }); });
+			} else if (isObject(entry)) {
+				for (const [from, to] of Object.entries(entry)) {
+					if (typeof to !== "string") fail(`${where}: passthrough destination for "${from}" must be a string`);
+					ops.push(() => { config.passthrough.push({ from, to }); });
+				}
+			} else {
+				fail(`${where}: passthrough entries must be paths or { from: to } objects`);
+			}
+		}
+		for (const target of list(part.watch)) {
+			if (typeof target !== "string") fail(`${where}: watch must be a path or an array of paths`);
+			ops.push(() => { config.watch.push(target as string); });
+		}
+		hooks("beforeBuild", part.beforeBuild, where);
+		hooks("afterBuild", part.afterBuild, where);
+
+		const plugins = list(part.plugins) as any[];
+		for (let i = 0; i < plugins.length; i++) {
+			const plugin = plugins[i];
+			const label = plugin?.name ? `plugin "${plugin.name}"` : `plugins[${i}]`;
+			await apply(plugin, top ? label : `${where} > ${label}`, false);
+		}
+	}
+
+	// Name the config file in an error, unless the message already starts with it
+	// (`ssqch.config.js: dirs.ouput isn't supported`).
+	const inFile = (e: unknown): BuildError => {
+		const message = describeThrown(e, root);
+		return new BuildError(message.startsWith(`${name}:`) || message.startsWith(`${name} `) ? message : `${name}: ${message}`);
+	};
+	try {
+		const module = await importFile(file);
+		if (!("default" in module)) fail(`${name} needs a default export: export default defineConfig({ ... })`);
+		await apply(module.default, name, true);
+	} catch (e) {
+		throw inFile(e);
+	}
+	try {
+		applySettings(config, settings);
+		for (const op of ops) await op();
+	} catch (e) {
+		throw new BuildError(`${name}: ${e instanceof BuildError ? e.message : describeThrown(e, root)}`);
+	}
+}
+
+/** The settings a config made, checked and put in `config`. */
+function applySettings(config: Config, settings: Data): void {
+	for (const key of DIRS) {
+		const value = settings[key];
+		if (value === undefined || value === null) continue;
+		if (typeof value !== "string") bail(`dirs.${key} must be a string, not ${typeof value}`);
+		(config as any)[key] = value;
+	}
+	const formats = settings.templateFormats;
+	if (typeof formats === "string") config.templateFormats = formats.split(",").map((f) => f.trim()).filter(Boolean);
+	else if (Array.isArray(formats)) config.templateFormats = formats.map(String);
+	else if (formats !== undefined) bail(`templateFormats must be an array or a comma-separated string, not ${typeof formats}`);
+	for (const key of ["markdownEngine", "htmlEngine"] as const) {
+		const value = settings[key];
+		if (value === undefined) continue;
+		if (value === false || value === null) config[key] = null;
+		else if (typeof value === "string") config[key] = value === "" ? null : value;
+		else bail(`${key} must be a string or false, not ${typeof value}`);
+	}
+	if (settings.markdown !== undefined) applyMarkdownOptions(config.markdown, settings.markdown);
+	if (settings.deepMerge !== undefined) {
+		if (typeof settings.deepMerge !== "boolean") bail(`deepMerge must be true or false, not ${typeof settings.deepMerge}`);
+		config.deepMerge = settings.deepMerge;
+	}
+	// `leaveNoTrace`, or `clean`, its other name.
+	let trace: boolean | undefined;
+	for (const key of ["leaveNoTrace", "clean"]) {
+		const value = settings[key];
+		if (value === undefined) continue;
+		if (typeof value !== "boolean") bail(`${key} must be true or false, not ${typeof value}`);
+		if (trace !== undefined) bail("leaveNoTrace and clean are two names for one option; set one of them");
+		trace = value;
+	}
+	if (trace !== undefined) config.leaveNoTrace = trace;
+	for (const key of ["bundles", "strict"] as const) {
+		const value = settings[key];
+		if (value === undefined) continue;
+		if (typeof value !== "boolean") bail(`${key} must be true or false, not ${typeof value}`);
+		config[key] = value;
+	}
+	const modified = settings.lastModified;
+	if (modified === true) config.lastModified = "git";
+	else if (modified === "git" || modified === "file") config.lastModified = modified;
+	else if (typeof modified === "string") bail(`lastModified must be "git", "file" or false, not "${modified}"`);
+	else if (modified !== undefined && modified !== null && modified !== false) bail(`lastModified must be "git", "file" or false, not ${typeof modified}`);
+	if (typeof settings.base === "string") config.base = normalizeBase(settings.base);
+	else if (settings.base !== undefined && settings.base !== null) bail(`base must be a URL path like "/docs/", not ${typeof settings.base}`);
+	// `theme: "themes/docs"`, a pinned git URL, `{ git, ref, dir }`, or a list of them.
+	const theme = settings.theme;
+	const themes = theme === undefined || theme === null || theme === false ? [] : Array.isArray(theme) ? theme : [theme];
+	for (const one of themes) addTheme(config, one);
+	if (isObject(settings.schemas)) {
+		for (const [name, spec] of Object.entries(settings.schemas)) {
+			config.schemas = config.schemas.filter(([n]) => n !== name);
+			config.schemas.push([name, spec]);
+		}
+	} else if (settings.schemas !== undefined && settings.schemas !== null) bail(`schemas must be an object of { name: { fields } }, not ${typeof settings.schemas}`);
+	// `budgets: { pages: "150 KB", total: "300 MB" }`: sizes a build is checked against.
+	if (isObject(settings.budgets)) config.budgets = Object.entries(settings.budgets).map(([name, size]) => budget(name, size));
+	else if (settings.budgets !== undefined && settings.budgets !== null) bail(`budgets must be an object, like { pages: "150 KB", images: "1 MB" }, not ${typeof settings.budgets}`);
+	// `serve: { run: ["npx postcss ... --watch"] }`: programs `ssqch serve` runs alongside.
+	const serve = settings.serve;
+	if (isObject(serve)) {
+		const unknown = Object.keys(serve).find((k) => k !== "run");
+		if (unknown !== undefined) bail(`serve: "${unknown}" isn't an option (options: run)`);
+		const run = serve.run;
+		if (run === undefined || run === null) config.serveRun = [];
+		else if (typeof run === "string") config.serveRun = [run];
+		else if (Array.isArray(run)) {
+			config.serveRun = run.map((c) => (typeof c === "string" && c.trim() !== "" ? c : bail("serve.run must be a command or an array of commands, like [\"npx postcss src/app.css -o dist/app.css --watch\"]")));
+		} else bail(`serve.run must be a command or an array of commands, not ${typeof run}`);
+	} else if (serve !== undefined && serve !== null) bail(`serve must be an object, like { run: ["npx postcss ... --watch"] }, not ${typeof serve}`);
+	const ignore = settings.ignore;
+	if (typeof ignore === "string") config.ignore = [ignore];
+	else if (Array.isArray(ignore)) config.ignore = ignore.map((g) => (typeof g === "string" ? g : bail(`ignore must be a glob or an array of globs, not an array with ${typeof g}`)));
+	else if (ignore !== undefined) bail(`ignore must be a glob or an array of globs, not ${typeof ignore}`);
+}
+
+function addTheme(config: Config, theme: unknown): void {
+	let dir: string;
+	if (typeof theme === "string") dir = resolveTheme(config.root, theme, config.quiet);
+	else if (isObject(theme)) {
+		const unknown = Object.keys(theme).find((k) => !["git", "ref", "dir"].includes(k));
+		if (unknown !== undefined) bail(`theme: "${unknown}" isn't an option (options: git, ref, dir)`);
+		const text = (key: string) => (typeof theme[key] === "string" ? theme[key] as string : "");
+		if (text("git") === "" || text("ref") === "") bail("theme: an object needs `git` (the repository's URL) and `ref` (the commit or tag to use)");
+		dir = resolveTheme(config.root, { git: text("git"), ref: text("ref"), dir: text("dir") }, config.quiet);
+	} else bail(`theme must be a folder, a git URL with #commit, or { git, ref, dir }, not ${typeof theme}`);
+	if (!config.themes.includes(dir)) {
+		config.watch.push(dir);
+		config.themes.push(dir);
+	}
+}
+
+// ---- sitesquatch.toml ------------------------------------------------------------------------
+
+const TOML_KEYS = ["input", "output", "includes", "layouts", "data", "template_formats", "markdown_engine", "html_engine", "data_deep_merge", "clean", "leave_no_trace", "ignore", "bundles", "strict", "base", "last_modified", "before_build", "after_build", "budgets", "serve", "theme", "schemas", "markdown", "passthrough"];
+
+/** Applies `sitesquatch.toml`: the config's settings in snake case, for a site with no JavaScript of its own. */
+function applyToml(config: Config, file: string): void {
+	loadedFiles.add(file);
+	const invalid = (e: unknown): never => { throw new BuildError(`invalid ${file}: ${messageOf(e)}`); };
+	let site: Data;
+	try { site = tomlValue(parseToml(fs.readFileSync(file, "utf8"))) as Data; } catch (e) { return invalid(e); }
+	try {
+		const unknown = Object.keys(site).find((k) => !TOML_KEYS.includes(k));
+		if (unknown !== undefined) bail(`unknown field \`${unknown}\`, expected one of ${TOML_KEYS.map((k) => `\`${k}\``).join(", ")}`);
+		const text = (key: string): string | undefined => (site[key] === undefined ? undefined : typeof site[key] === "string" ? site[key] : bail(`${key} must be a string`));
+		const flag = (key: string): boolean | undefined => (site[key] === undefined ? undefined : typeof site[key] === "boolean" ? site[key] : bail(`${key} must be true or false`));
+		const texts = (key: string): string[] | undefined => (site[key] === undefined ? undefined : Array.isArray(site[key]) && site[key].every((v: unknown) => typeof v === "string") ? site[key] : bail(`${key} must be an array of strings`));
+		config.input = text("input") ?? config.input;
+		config.output = text("output") ?? config.output;
+		config.includes = text("includes") ?? config.includes;
+		config.layouts = text("layouts") ?? config.layouts;
+		config.data = text("data") ?? config.data;
+		config.templateFormats = texts("template_formats") ?? config.templateFormats;
+		for (const [key, slot] of [["markdown_engine", "markdownEngine"], ["html_engine", "htmlEngine"]] as const) {
+			const value = text(key);
+			if (value !== undefined) config[slot] = value === "" ? null : value;
+		}
+		config.deepMerge = flag("data_deep_merge") ?? config.deepMerge;
+		if (site.leave_no_trace !== undefined && site.clean !== undefined) bail("duplicate field `leave_no_trace`");
+		config.leaveNoTrace = flag("leave_no_trace") ?? flag("clean") ?? config.leaveNoTrace;
+		config.ignore = texts("ignore") ?? config.ignore;
+		config.bundles = flag("bundles") ?? config.bundles;
+		config.strict = flag("strict") ?? config.strict;
+		const base = text("base");
+		if (base !== undefined) config.base = normalizeBase(base);
+		if (site.budgets !== undefined) {
+			if (!isPlainObject(site.budgets)) bail("budgets must be a table");
+			// A whole number is bytes; anything else is read as a size is written (`1.5` is 2 bytes, rounded).
+			for (const [name, value] of Object.entries(site.budgets)) config.budgets.push(budget(name, Number.isInteger(value) || typeof value === "string" ? value : String(value)));
+		}
+		if (site.serve !== undefined) {
+			if (!isPlainObject(site.serve)) bail("serve must be a table");
+			const unknownServe = Object.keys(site.serve).find((k) => k !== "run");
+			if (unknownServe !== undefined) bail(`unknown field \`${unknownServe}\`, expected \`run\``);
+			const run = site.serve.run ?? [];
+			if (!Array.isArray(run) || !run.every((command: unknown) => typeof command === "string")) bail("serve.run must be an array of commands, like run = [\"npx postcss src/app.css -o dist/app.css --watch\"]");
+			config.serveRun = run;
+		}
+		for (const command of texts("before_build") ?? []) config.beforeBuild.push({ run: command });
+		for (const command of texts("after_build") ?? []) config.afterBuild.push({ run: command });
+		const modified = text("last_modified");
+		if (modified !== undefined) {
+			if (modified !== "git" && modified !== "file") bail("last_modified must be \"git\" or \"file\"");
+			config.lastModified = modified;
+		}
+		if (site.markdown !== undefined) {
+			if (!isPlainObject(site.markdown)) bail("markdown must be a table");
+			// The config's keys in snake case: `heading_ids = "blackfriday"`.
+			const camel: Data = {};
+			for (const [key, value] of Object.entries(site.markdown)) camel[key.replace(/_(.)/g, (_, c: string) => c.toUpperCase())] = value;
+			applyMarkdownOptions(config.markdown, camel);
+		}
+		for (const theme of texts("theme") ?? []) addTheme(config, theme);
+		if (site.schemas !== undefined) {
+			if (!isPlainObject(site.schemas)) bail("schemas must be a table");
+			for (const [name, spec] of Object.entries(site.schemas)) config.schemas.push([name, spec]);
+		}
+		if (site.passthrough !== undefined) {
+			if (!isPlainObject(site.passthrough)) bail("passthrough must be a table");
+			// In the order of their names, as 0.7 read them.
+			for (const from of Object.keys(site.passthrough).sort()) {
+				const to = site.passthrough[from];
+				if (typeof to !== "string") bail(`passthrough: the destination for "${from}" must be a string`);
+				config.passthrough.push(to === "" ? { from } : { from, to });
+			}
+		}
+	} catch (e) {
+		invalid(e);
+	}
+}

@@ -1,0 +1,64 @@
+# The oracle tests the Node implementation passes today (see progress.js). A stage that makes more
+# pass adds them with `node progress.js --update`; a test never leaves this list without a reason
+# in the commit that takes it out.
+cli/build-more.test.js: aliases_keep_their_place_in_the_cascade
+cli/build-more.test.js: bundles_leave_out_unrendered_templates
+cli/build.test.js: leave_no_trace_removes_only_stale_files_ssqch_wrote
+cli/data.test.js: a_byte_order_mark_is_skipped_in_data_pages_and_scripts
+cli/data.test.js: length_counts_lists_and_strings_in_nunjucks_and_jinja
+cli/engines.test.js: jinja_is_the_default_and_other_templates_are_named
+cli/engines.test.js: render_front_matter_picks_the_engines
+cli/engines.test.js: the_config_can_define_template_engines
+cli/themes.test.js: a_theme_from_git_is_fetched_once
+cli/version.test.js: version_names_the_binary
+config/collections.test.js: a_transform_must_return_content
+config/collections.test.js: build_hooks_run_before_and_after
+config/collections.test.js: hook_errors_stop_the_build
+config/collections.test.js: the_collection_api
+config/collections.test.js: transforms_get_the_content_and_the_page
+config/config.test.js: circular_data_is_an_error_not_a_hang
+config/config.test.js: development_env_is_visible_to_the_config
+config/config.test.js: errors_point_at_the_config_source
+config/config.test.js: filter_errors_carry_the_javascript_stack
+config/config.test.js: javascript_calls_are_serialized_across_parallel_pages
+config/config.test.js: mistakes_in_the_config_say_what_to_fix
+config/node.test.js: changed_data_files_reload_between_builds
+config/node.test.js: collation_matches_node
+config/node.test.js: crypto_create_hash_matches_node
+config/node.test.js: data_file_errors_name_the_file
+config/node.test.js: data_files_can_be_values_functions_or_async
+config/node.test.js: fs_buffer_and_url_behave_like_node
+config/node.test.js: intl_dates_and_numbers_match_node
+config/node.test.js: path_matches_node
+config/node.test.js: relative_fs_paths_resolve_against_the_project_root
+config/node.test.js: template_and_directory_data_files_with_computed_functions
+config/packages.test.js: changed_commonjs_data_files_reload_between_builds
+config/packages.test.js: commonjs_data_files_and_configs
+config/packages.test.js: node_built_ins_for_packages
+config/packages.test.js: package_errors_say_what_to_fix
+config/packages.test.js: packages_resolve_from_a_parent_folder
+config/packages.test.js: packages_resolve_like_node
+config/packages.test.js: symlinked_packages_resolve_their_own_dependencies
+config/packages.test.js: timers_run_while_a_promise_waits
+config/packages.test.js: urls_follow_the_whatwg_standard
+contract/codes.test.js: the build code
+contract/codes.test.js: the config code
+contract/codes.test.js: the conflict code
+contract/codes.test.js: the console code
+contract/codes.test.js: the data code
+contract/codes.test.js: the foreign-global code
+contract/codes.test.js: the foreign-key code
+contract/codes.test.js: the front-matter code
+contract/codes.test.js: the hook code
+contract/codes.test.js: the last-modified code
+contract/codes.test.js: the other-generator code
+contract/codes.test.js: the passthrough code
+contract/codes.test.js: the template code
+contract/codes.test.js: the template-formats code
+edge/edge.test.js: conditionals_loops_and_whitespace
+edge/edge.test.js: errors_report_template_and_line
+edge/edge.test.js: escapes_like_edge_js
+edge/edge.test.js: let_and_assign_with_multiline_args
+edge/edge.test.js: text_files_keep_their_lines
+edge/edge.test.js: unknown_at_words_are_text
+sites.test.js: trial-v8.dev builds as 0.7.0 did

@@ -4,3 +4,4 @@
 /research
 /examples/sites/*/dist
 /examples/sites/*/.cache
+/packages/*/node_modules

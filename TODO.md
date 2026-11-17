@@ -33,10 +33,10 @@ until 0.8 ships.
       G3 passes on size (sharp's AVIF 16% smaller at equal SSIMULACRA2) and takes 1.2 times
       ssqch's time; G4 fails (minijinja-js 4.8 to 5.4 times Nunjucks with ssqch's escaping); G5
       passes (128 of 128 of the blog's Markdown files byte-identical as `.wasm`).
-- [ ] **For stage 2, from G2:** JSON imports without `with { type: "json" }` (the blog's config has
-      one; the spike's module hook adds the attribute), folder data's `"tags": "posts"` joined with
-      a page's own `tags`, and the oracle on the lowest supported Node too (ICU 77.1 against 78.3
-      changed one of 91 `Intl` results).
+- [x] **For stage 2, from G2** (2026-11-17): JSON imports without `with { type: "json" }` (the
+      module hook adds the attribute), folder data's `"tags": "posts"` joined with a page's own
+      `tags`, and the oracle on the lowest supported Node too (CI runs the Node build on 22.18.0,
+      24 and 26).
 - [ ] **For stage 3, from G2 and G5:** cache edge.js templates by file (`renderRawSync` compiles
       every call); render hooks and custom highlighters from the Markdown `.wasm`, which ABI v1
       can't call back for; a cache for highlighted fences (syntect is 0.1 s of the blog on one
@@ -56,15 +56,52 @@ until 0.8 ships.
       lit.dev's own SSR build (`rollupout/server/ssr.js`), which the trial checkout doesn't have.
 - [ ] Three oracle tests skip because they need the Rust API (a `BuiltinPlugin` registered from
       Rust, `JsModule` native functions). Replace them when 0.8's plugin API is settled.
-- [ ] `cli/aliases.test.js` holds a copy of the equivalents table (57 rows from
-      `equivalents.rs`); it moves to TypeScript with the table in stage 2.
-- [ ] `AGENTS.md`: a section for `packages/ssqch/` (commands, `node --test`, `tsc --noEmit`,
+- [x] `cli/aliases.test.js` holds a copy of the equivalents table (57 rows from
+      `equivalents.rs`), since the oracle may not import ssqch's code. The table is in TypeScript
+      now (`packages/ssqch/src/equivalents.ts`), and `equivalents.test.ts` fails when the three
+      copies differ.
+- [x] `AGENTS.md`: a section for `packages/ssqch/` (commands, `node --test`, `tsc --noEmit`,
       conventions) before stage 2.
-- [ ] **Stage 2, the core** in `packages/ssqch/`, from the spike core: config and validation, data,
-      the cascade (with what `inspect` needs), computed data, collections, pagination, permalinks,
-      layouts, transforms, hooks, passthrough, drafts, `base`, `leaveNoTrace`, the summary,
-      `--format json`, diagnostics with file and line for every engine, the voice. A CI benchmark:
-      10,000 pages in 2 s or less on one thread, v8.dev in 0.72 s or less.
+- [ ] **Stage 2, the core** in `packages/ssqch/`, from the spike core. Started 2026-11-17; the
+      results so far are in `docs/node-migration.md` ("Stage 2, so far").
+  - [x] Config and validation (`config.ts`: 0.7's checks and messages, aliases, plugins as parts of
+        config, `sitesquatch.toml`), the `ssqch` module, the module hook, errors from a site's
+        JavaScript with its own file and line.
+  - [x] Data files, front matter (YAML, TOML, JSON), the cascade with the layers `inspect` needs,
+        computed data, pagination, permalinks, collections, layouts, drafts, themes, bundles,
+        `lastModified`, transforms, hooks (functions and commands), passthrough with links,
+        conflicts, `base`, `leaveNoTrace`, the summary, `--format json`, diagnostics (`locate`,
+        `code_for`, frames), the voice, the command line (0.7's flags, aliases and refusals).
+  - [x] `templateContent` rendered on demand, and pages written as they render through a queue
+        with back-pressure.
+  - [x] The benchmark (`packages/ssqch/bench/bench.ts`, and CI's `node-benchmark` job): 10,000
+        pages in 1.41 s on one thread (0.7.0: 2.67 s on one thread; the limit is 2 s, or 0.72 of
+        0.7's time on the same machine), 370 MB, the output byte-identical to 0.7.0's; v8.dev in
+        0.57 s (the limit is 0.72 s).
+  - [x] The oracle against the Node build: `node progress.js` in `tests/oracle/` runs it and holds
+        the build to `node-passing.txt` (61 of 184 today, the same on Node 22.18.0, 24 and 26,
+        v8.dev's frozen site among them). Each stage adds to the list.
+  - [ ] **Windows:** the Node build hasn't run there. CI's `node` job runs it and doesn't fail
+        the workflow on Windows yet (`continue-on-error`); read its first run, fix what it finds,
+        and take that line out.
+  - [x] The navigation functions (`navTree`, `navPager`, `navBreadcrumbs`, `pagesTree`):
+        `nav.ts`, from `nav.rs` with its tests; the same answers as 0.7.0 on a site that uses all
+        four.
+  - [ ] Worker threads, or the decision not to have them. One thread meets the limit with room,
+        and a worker loads the config itself, so a filter that counts (`let n = 0`) would count
+        apart in each worker, which 0.7 never did
+        (`javascript_calls_are_serialized_across_parallel_pages`). If they come: only above a
+        page count, never for a config with state they'd split, and with the benchmark recording
+        memory (about 140 MB each in the spike).
+  - [x] An independent review of the core against the Rust (a fresh agent, reading both and
+        building about 30 small sites with each): 17 differences, fixed or recorded
+        (`docs/node-migration.md`, "Stage 2, so far"). It didn't read `args.ts` beyond the lines
+        it ran, `modules.ts`, `api.ts`, `content.ts` or the engines; review those with stage 3.
+  - [ ] Stand-ins that stage 3 replaces, so the core could be run and measured: Markdown is
+        markdown-it (D2 is ssqch's own as `.wasm`), Edge is edge.js called plainly (no cache by
+        file, no async functions, no themes' includes, its own error wording), and Nunjucks is
+        the library as published (D1 forks it: it gives no line for an unknown filter or a filter
+        that throws, and a runtime error's line is one short).
 - [ ] **Stage 3, engines:** Nunjucks or Jinja (D1), liquidjs, edge.js, handlebars, mustache, ejs;
       Markdown (D2); front matter in YAML, TOML and JSON; async filters.
 - [ ] **Stage 4, checks and tools:** schemas and `types`, links, `diff`, `inspect`, footprint and

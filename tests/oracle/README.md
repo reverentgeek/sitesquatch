@@ -20,6 +20,7 @@ node --test cli/init.test.js                     # one file
 | `lib/sites.js` | The frozen sites: building in a copy, normalizing, snapshots |
 | `sites.test.js` | Every example, starter and (where present) the blog and trial ports build to 0.7.0's output |
 | `freeze.js` | Makes the snapshots (`node freeze.js [site...]`) |
+| `progress.js`, `node-passing.txt` | The oracle against the Node implementation while it's being built: `node progress.js` runs it and checks that every test in the list still passes (see "The Node build's progress") |
 | `snapshots/` | Committed: `<site>/manifest.json` (the normalized JSON report, the build summary, every output file's kind or hash) and the text files under `output/` (and `source/`, what `ssqch init` wrote) |
 | `snapshots-local/` | Gitignored: the same for sites outside this repository (`../blog`, `../trials/*`) |
 | `cli/`, `config/`, `edge/` | Tests converted from the Rust integration tests (`crates/ssqch/tests/`, `crates/sitesquatch-js/tests/`, `crates/sitesquatch-edge/tests/`) |
@@ -30,6 +31,10 @@ node --test cli/init.test.js                     # one file
 Each site is copied to a temporary folder (an example's folder; a starter from `ssqch init --starter <s> --engine <e>`; a local site's files as git would commit them, plus the ignored paths it needs, with `node_modules` linked). Every file gets the same time (2026-01-01 UTC), since undated pages take their dates from file times, and builds run with `TZ=UTC`. A site is built once with `--format json` and once in a second copy for the text summary.
 
 Compared, after normalizing: every output file (text byte for byte, binaries by SHA-256, links by target), the JSON report without `durationMs`, `timings` and absolute paths and with `written` sorted, the summary without `Writing` lines, the `Time` line and durations, and for starters the files `init` wrote. The implementation's version becomes `{{version}}` wherever it follows `SiteSquatch `, `ssqch ` or `ssqch@`, so 0.7.0's snapshots fit 0.8.0. `freeze.js` builds every site twice and refuses one whose builds differ.
+
+## The Node build's progress
+
+Until the release that switches, the Node implementation (`packages/ssqch/`) passes only part of the oracle, and each stage of the move adds to it. `node-passing.txt` is the list of tests it passes today, as `file: name`, and `node progress.js` runs the whole oracle against it (or the files you name) and fails if one of them fails. It also names tests that pass and aren't in the list; `node progress.js --update` writes the list again. CI runs it on Linux, macOS and Windows, on Node 22.18.0, 24 and 26. A test leaves the list only with a reason in the commit that takes it out. When the list is the whole oracle, `progress.js` and the list go, and CI runs `node --test` with `SSQCH_BIN=packages/ssqch/bin/ssqch.ts`.
 
 ## Rules for tests
 

@@ -56,9 +56,13 @@ const PACKAGES = {
 const withPackages = (files) => ({ ...PACKAGES, ...files });
 
 test("packages_resolve_like_node", () => {
+	// DELIBERATE (0.8): 0.7 runs a CommonJS file to see its exports, so any property of
+	// `module.exports` can be imported by name. Node reads the names from the source, and finds
+	// none in `module.exports = { name: "legacy", ... }`: the default export has them.
+	const legacy = RUST_07 ? "import legacy, { twice } from \"legacy\";" : "import legacy from \"legacy\";\nconst { twice } = legacy;";
 	const root = site(withPackages({
 		"_data/out.js":
-			"import run, { kind } from \"dual\";\nimport shout from \"dual/tools/shout\";\nimport legacy, { twice } from \"legacy\";\nimport slug from \"@squatch/cjs-fn\";\nimport { createRequire } from \"node:module\";\nconst require = createRequire(import.meta.url);\nexport default [run(), kind, require(\"dual\").kind, shout(\"hi\"), legacy.version, twice(4), legacy.dir, legacy.file, slug(\"Pine Cone\"), typeof slug.extend, require(\"dual/package.json\").name].join(\"|\");\n",
+			"import run, { kind } from \"dual\";\nimport shout from \"dual/tools/shout\";\n" + legacy + "\nimport slug from \"@squatch/cjs-fn\";\nimport { createRequire } from \"node:module\";\nconst require = createRequire(import.meta.url);\nexport default [run(), kind, require(\"dual\").kind, shout(\"hi\"), legacy.version, twice(4), legacy.dir, legacy.file, slug(\"Pine Cone\"), typeof slug.extend, require(\"dual/package.json\").name].join(\"|\");\n",
 		"index.edge": "{{ out }}",
 	}));
 	buildOk(root);
