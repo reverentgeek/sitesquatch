@@ -44,9 +44,19 @@ until 0.8 ships.
 - [ ] **Decide** D1 to D7 in `docs/node-migration.md`: the default template language, ssqch's
       Markdown and highlighter as `.wasm` or markdown-it, the minifier, images, the lowest Node
       version (22.18 proposed), the version and the last Rust release, the standalone executable.
-- [ ] **Stage 1, the oracle:** `cli.rs` as black-box tests run against `SSQCH_BIN`, and 0.7.0's
-      output frozen for every example, the starters, the blog and the trial ports; in CI on Linux,
-      macOS and Windows.
+- [x] **Stage 1, the oracle** (`tests/oracle/`, 2026-11-17): `cli.rs`, `plugins.rs`,
+      `examples.rs` and the `sitesquatch-js` and `sitesquatch-edge` suites as 132 black-box tests
+      run against `SSQCH_BIN`; the diagnostic codes and every JSON document's shape as contract
+      tests; 0.7.0's output frozen for the 10 example builds, the 12 starters, the blog,
+      a11yproject.com and v8.dev. 180 pass on 0.7.0 in 24 s; 4 skipped (below).
+- [ ] The oracle in CI on Linux, macOS and Windows (the job is in `ci.yml`, after `cargo test`, on
+      Node 22.18.0): check its first run, Windows especially.
+- [ ] Freeze lit.dev (`node freeze.js trial-lit.dev`): its exact port's `beforeBuild` helper needs
+      lit.dev's own SSR build (`rollupout/server/ssr.js`), which the trial checkout doesn't have.
+- [ ] Three oracle tests skip because they need the Rust API (a `BuiltinPlugin` registered from
+      Rust, `JsModule` native functions). Replace them when 0.8's plugin API is settled.
+- [ ] `cli/aliases.test.js` holds a copy of the equivalents table (57 rows from
+      `equivalents.rs`); it moves to TypeScript with the table in stage 2.
 - [ ] `AGENTS.md`: a section for `packages/ssqch/` (commands, `node --test`, `tsc --noEmit`,
       conventions) before stage 2.
 - [ ] **Stage 2, the core** in `packages/ssqch/`, from the spike core: config and validation, data,

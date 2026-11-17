@@ -1,0 +1,75 @@
+{
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 4,
+      "templates": 4,
+      "bytes": 12265,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 11,
+      "unchanged": 0,
+      "bytes": 34893
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "about/index.html",
+      "index.html",
+      "sitemap.xml",
+      "trail-cam/index.html",
+      "trails/index.html"
+    ],
+    "summary": [
+      {
+        "label": "Elements",
+        "value": "4 defined, 4 used on 3 pages"
+      },
+      {
+        "label": "Links",
+        "value": "35 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed siting. Built in <time> (production)\n  Pages     4 written from 4 templates, 12.3 KB\n  Copied    11 files, 34.9 KB\n  Elements  4 defined, 4 used on 3 pages\n  Links     35 checked, 0 broken\n  Output    dist: 16 files, 47.7 KB\n",
+  "files": {
+    "about/index.html": "text",
+    "elements/like-button.css": "text",
+    "elements/like-button.js": "text",
+    "elements/local-time.js": "text",
+    "elements/photo-gallery.css": "text",
+    "elements/photo-gallery.js": "text",
+    "elements/shared/storage.js": "text",
+    "elements/trail-filter.js": "text",
+    "images/trail-cam/20260614_01.png": {
+      "sha256": "7c849e19b46ee21d672c6abbaec9d20df0d0d572c947f442d5760a711a5c9df6",
+      "bytes": 9307
+    },
+    "images/trail-cam/20260614_02.png": {
+      "sha256": "cf55fe10e07b65a5b9130cb51ac496eab6a4fa43df49e8de250612f27372a7f2",
+      "bytes": 4652
+    },
+    "images/trail-cam/20260615_01.png": {
+      "sha256": "30dbe8d5abd290f59d9df97601bf8cafb6a8e06ba1ca5d2b4f7b2ccb55fa5703",
+      "bytes": 8471
+    },
+    "images/trail-cam/20260616_01.png": {
+      "sha256": "a70f65de4e8a64d171a83874c853cd564ef29fbfb58ec2e208a52727c1861073",
+      "bytes": 6409
+    },
+    "index.html": "text",
+    "sitemap.xml": "text",
+    "trail-cam/index.html": "text",
+    "trails/index.html": "text"
+  }
+}

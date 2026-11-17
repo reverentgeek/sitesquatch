@@ -1,0 +1,50 @@
+{
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 3,
+      "templates": 3,
+      "bytes": 3532,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 0,
+      "unchanged": 0,
+      "bytes": 0
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "docs/buttons/index.html",
+      "docs/colors/index.html",
+      "index.html"
+    ],
+    "summary": [
+      {
+        "label": "Sass",
+        "value": "1 file (compressed)"
+      },
+      {
+        "label": "Links",
+        "value": "17 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed siting. Built in <time> (production)\n  Pages   3 written from 3 templates, 3.53 KB\n  Sass    1 file (compressed)\n  Links   17 checked, 0 broken\n  Output  dist: 5 files, 8.67 KB\n",
+  "files": {
+    "css/pinecone.css": "text",
+    "docs/buttons/index.html": "text",
+    "docs/colors/index.html": "text",
+    "highlight.css": "text",
+    "index.html": "text"
+  }
+}

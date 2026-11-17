@@ -1,0 +1,11 @@
+{
+  "name": "ssqch-oracle",
+  "private": true,
+  "type": "module",
+  "description": "Black-box tests for any ssqch, given by SSQCH_BIN: arguments in; files, output and exit code out.",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "test": "node --test --test-concurrency=4",
+    "freeze": "node freeze.js"
+  }
+}

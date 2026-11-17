@@ -1,0 +1,54 @@
+{
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 8,
+      "templates": 3,
+      "bytes": 17470,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 0,
+      "unchanged": 0,
+      "bytes": 0
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "index.html",
+      "reference/camera/index.html",
+      "reference/forest/index.html",
+      "reference/index.html",
+      "reference/nightVision/index.html",
+      "reference/radius/index.html",
+      "reference/reportTo/index.html",
+      "reference/snacks/index.html"
+    ],
+    "summary": [
+      {
+        "label": "Links",
+        "value": "18 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed siting. Built in <time> (production)\n  Pages   8 written from 3 templates, 17.5 KB\n  Links   18 checked, 0 broken\n  Output  dist: 8 files, 17.5 KB\n",
+  "files": {
+    "index.html": "text",
+    "reference/camera/index.html": "text",
+    "reference/forest/index.html": "text",
+    "reference/index.html": "text",
+    "reference/nightVision/index.html": "text",
+    "reference/radius/index.html": "text",
+    "reference/reportTo/index.html": "text",
+    "reference/snacks/index.html": "text"
+  }
+}

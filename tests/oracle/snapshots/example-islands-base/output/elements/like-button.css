@@ -1,0 +1,9 @@
+like-button button {
+	padding: 0.4rem 0.9rem;
+	border: 1px solid currentColor;
+	border-radius: 999px;
+	background: none;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}

@@ -27,6 +27,8 @@ Layout during the move: `packages/ssqch/` (new), `crates/ssqch-plugin/` (new, pu
 
 Each is a product choice. A recommendation is given; the gate in brackets is the evidence to collect first.
 
+**Decided 2026-11-17, after stage 0, as recommended:** D1 Nunjucks for `.jinja` and `.njk` (G4 failed), with a fork of nunjucks owned by ssqch; D2 ssqch's Markdown and highlighter as a built-in `.wasm` (G5); D3 ssqch's minifier as a built-in `.wasm`; D4 sharp, with its quality defaults chosen again from G3; D5 Node 22.18 as the lowest version; D6 0.8.0, with one last 0.7.x; D7 at stage 8, with both executables measured.
+
 | # | Decision | Recommendation |
 | --- | --- | --- |
 | D1 | The default template language. ssqch teaches Jinja, on Rust's MiniJinja. | Keep Jinja if `minijinja-js` (MiniJinja as WebAssembly) renders a real layout within about twice Nunjucks' time [G4]. Otherwise make Nunjucks the default for `.jinja` files and list the differences; nunjucks was last published in April 2023, so plan to own a fork. |

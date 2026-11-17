@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>The Cache of the Wild | Field Notes</title><meta name="description" content="A raccoon, the trail conditions, and a copy for when the network is down."><style>/* Ranger Station '76: soft white (or green charcoal in dark mode), neutral text, pine
+         headings, burnt orange links, and a four-color stripe under the header. */
+      :root { color-scheme: light dark; --page: #fafaf7; --text: #29332c; --heading: #233b2b; --muted: #5e6a61; --link: #a23e20; --rule: #dcddd4; --stripe-pine: #233b2b; }
+      @media (prefers-color-scheme: dark) { :root { --page: #1b201d; --text: #e5e9e1; --heading: #d6e4c8; --muted: #a2aca3; --link: #f0a17d; --rule: #3a413b; --stripe-pine: #2e5a3c; } }
+      body { font-family: system-ui, sans-serif; line-height: 1.6; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; color: var(--text); background: var(--page); }
+      h1, h2, h3 { color: var(--heading); }
+      a { color: var(--link); text-decoration: underline; text-underline-offset: 0.18em; }
+      header { padding-bottom: 0.75rem; border-bottom: 5px solid; border-image: linear-gradient(to right, var(--stripe-pine) 0 25%, #a23e20 25% 50%, #e8af43 50% 75%, #a9b66a 75%) 1; }
+      header a { color: var(--heading); font-weight: 700; font-size: 1.15rem; text-decoration: none; }
+      footer { margin-top: 3rem; padding-top: 0.75rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.9rem; }
+      img { max-width: 100%; height: auto; }
+      :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }</style></head><body><header><a href="/">Field Notes</a></header><main><h1>The Cache of the Wild</h1><p>The raccoon keeps a dated copy of the trail conditions. He checks the ranger station once a day, and the rest of the time he reads you his copy. When the station doesn't answer, he reads you his copy anyway and mentions how old it is.</p><p>A data file that asks a server for something can do the same. Save this as <code>src/_data/conditions.js</code>, and every page has <code>conditions</code>:</p><pre><code class="language-js">export default async function () {
+  // Asked once a day; until then, the saved copy in .cache/ssqch/fetch/.
+  const response = await fetch(&quot;https://api.example.com/trails/cedar&quot;, { cache: &quot;1d&quot; });
+  return response.json();
+}
+</code></pre><ul><li>While <code>ssqch serve</code> rebuilds on every save, the server is asked once a day, not once a save.</li><li>When the server is down and there's a copy, the build uses it and says how old it is.</li><li><code>ssqch build --offline</code> uses only the saved copies, whatever their age, so a build on a plane never touches the network.</li></ul><p>The raccoon has never been on a plane. He has opinions about the Old Growth trail.</p></main><footer><p>Built with SiteSquatch {{version}}. Allegedly.</p></footer></body></html>

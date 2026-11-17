@@ -1,0 +1,63 @@
+{
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 11,
+      "templates": 11,
+      "bytes": 62414,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 0,
+      "unchanged": 0,
+      "bytes": 0
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "blog/hello-1-0/index.html",
+      "blog/index.html",
+      "blog/next-architecture/index.html",
+      "docs/1.0/animations/index.html",
+      "docs/1.0/index.html",
+      "docs/1.0/install/index.html",
+      "docs/next/animations/index.html",
+      "docs/next/index.html",
+      "docs/next/install/index.html",
+      "docs/next/new-architecture/index.html",
+      "index.html",
+      "sitemap.xml"
+    ],
+    "summary": [
+      {
+        "label": "Links",
+        "value": "116 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed siting. Built in <time> (production)\n  Pages   11 written from 11 templates, 62.4 KB\n  Links   116 checked, 0 broken\n  Output  dist: 13 files, 66.4 KB\n",
+  "files": {
+    "blog/hello-1-0/index.html": "text",
+    "blog/index.html": "text",
+    "blog/next-architecture/index.html": "text",
+    "docs/1.0/animations/index.html": "text",
+    "docs/1.0/index.html": "text",
+    "docs/1.0/install/index.html": "text",
+    "docs/next/animations/index.html": "text",
+    "docs/next/index.html": "text",
+    "docs/next/install/index.html": "text",
+    "docs/next/new-architecture/index.html": "text",
+    "highlight.css": "text",
+    "index.html": "text",
+    "sitemap.xml": "text"
+  }
+}

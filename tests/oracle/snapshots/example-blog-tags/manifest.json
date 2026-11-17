@@ -1,0 +1,71 @@
+{
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 14,
+      "templates": 10,
+      "bytes": 49847,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 0,
+      "unchanged": 0,
+      "bytes": 0
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "2024/01/15/hello-squatch.html",
+      "blog/2024/01/15/hello-squatch/index.html",
+      "blog/2024/06/01/crunchy-season/index.html",
+      "blog/index.html",
+      "feed.xml",
+      "index.html",
+      "inside/2024/03/02/new-tooling/index.html",
+      "inside/index.html",
+      "sitemap.xml",
+      "tags/announcements/feed.xml",
+      "tags/announcements/index.html",
+      "tags/index.html",
+      "tags/pine-cones/feed.xml",
+      "tags/pine-cones/index.html",
+      "tags/tooling/feed.xml",
+      "tags/tooling/index.html"
+    ],
+    "summary": [
+      {
+        "label": "Links",
+        "value": "143 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed siting. Built in <time> (production)\n  Pages   14 written from 10 templates, 49.8 KB\n  Links   143 checked, 0 broken\n  Output  dist: 17 files, 54.1 KB\n",
+  "files": {
+    "2024/01/15/hello-squatch.html": "text",
+    "blog/2024/01/15/hello-squatch/index.html": "text",
+    "blog/2024/06/01/crunchy-season/index.html": "text",
+    "blog/index.html": "text",
+    "feed.xml": "text",
+    "highlight.css": "text",
+    "index.html": "text",
+    "inside/2024/03/02/new-tooling/index.html": "text",
+    "inside/index.html": "text",
+    "sitemap.xml": "text",
+    "tags/announcements/feed.xml": "text",
+    "tags/announcements/index.html": "text",
+    "tags/index.html": "text",
+    "tags/pine-cones/feed.xml": "text",
+    "tags/pine-cones/index.html": "text",
+    "tags/tooling/feed.xml": "text",
+    "tags/tooling/index.html": "text"
+  }
+}

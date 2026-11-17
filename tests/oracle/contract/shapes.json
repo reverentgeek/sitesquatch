@@ -1,0 +1,406 @@
+{
+  "build": {
+    "schemaVersion": "number",
+    "ok": "boolean",
+    "environment": "string",
+    "output": "string",
+    "durationMs": "number",
+    "pages": {
+      "written": "number",
+      "templates": "number",
+      "bytes": "number",
+      "new": "null|number",
+      "gone": "null|number"
+    },
+    "copied": {
+      "files": "number",
+      "unchanged": "number",
+      "bytes": "number"
+    },
+    "removed": "number",
+    "drafts": "number",
+    "written": [
+      "string"
+    ],
+    "summary": [
+      {
+        "label": "string",
+        "value": "string"
+      }
+    ],
+    "timings": [
+      {
+        "phase": "string",
+        "ms": "number"
+      }
+    ],
+    "warnings": [
+      {
+        "code": "string",
+        "message": "string",
+        "hint": {
+          "word": "string",
+          "kind": "string",
+          "use": "string",
+          "alias": "boolean",
+          "from": [
+            "string"
+          ],
+          "more": "string"
+        },
+        "file": "string",
+        "field": "string"
+      }
+    ],
+    "aliases": [
+      {
+        "word": "string",
+        "kind": "string",
+        "use": "string",
+        "alias": "boolean",
+        "from": [
+          "string"
+        ],
+        "more": "string"
+      }
+    ],
+    "errors": [
+      "empty"
+    ]
+  },
+  "build (failed)": {
+    "schemaVersion": "number",
+    "ok": "boolean",
+    "environment": "string",
+    "warnings": [
+      {
+        "code": "string",
+        "message": "string",
+        "file": "string"
+      }
+    ],
+    "aliases": [
+      "empty"
+    ],
+    "errors": [
+      {
+        "code": "string",
+        "message": "string",
+        "file": "string"
+      }
+    ],
+    "output": "string",
+    "durationMs": "number",
+    "pages": {
+      "written": "number",
+      "templates": "number",
+      "bytes": "number",
+      "new": "null",
+      "gone": "null"
+    },
+    "copied": {
+      "files": "number",
+      "unchanged": "number",
+      "bytes": "number"
+    },
+    "removed": "number",
+    "drafts": "number",
+    "written": [
+      "empty"
+    ],
+    "summary": [
+      "empty"
+    ],
+    "timings": [
+      {
+        "phase": "string",
+        "ms": "number"
+      }
+    ]
+  },
+  "inspect": {
+    "schemaVersion": "number",
+    "url": "string",
+    "inputPath": "string",
+    "outputPath": "string",
+    "engines": [
+      "string"
+    ],
+    "layouts": [
+      "empty"
+    ],
+    "date": {
+      "value": "string",
+      "from": "string"
+    },
+    "collections": [
+      "string"
+    ],
+    "data": {
+      "ssqch": {
+        "value": {
+          "version": "string",
+          "generator": "string",
+          "env": "string",
+          "serving": "boolean",
+          "base": "string"
+        },
+        "from": "string",
+        "setBy": [
+          {
+            "from": "string",
+            "value": {
+              "version": "string",
+              "generator": "string",
+              "env": "string",
+              "serving": "boolean",
+              "base": "string"
+            }
+          }
+        ]
+      },
+      "title": {
+        "value": "string",
+        "from": "string",
+        "setBy": [
+          {
+            "from": "string",
+            "value": "string"
+          }
+        ]
+      },
+      "published": {
+        "value": "boolean",
+        "from": "string",
+        "setBy": [
+          {
+            "from": "string",
+            "value": "boolean"
+          }
+        ]
+      },
+      "page": {
+        "value": {
+          "url": "string",
+          "outputPath": "string",
+          "inputPath": "string",
+          "fileSlug": "string",
+          "filePathStem": "string",
+          "date": "string"
+        },
+        "from": "string",
+        "setBy": [
+          {
+            "from": "string",
+            "value": {
+              "url": "string",
+              "outputPath": "string",
+              "inputPath": "string",
+              "fileSlug": "string",
+              "filePathStem": "string",
+              "date": "string"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "inspect --field": {
+    "schemaVersion": "number",
+    "url": "string",
+    "inputPath": "string",
+    "outputPath": "string",
+    "engines": [
+      "string"
+    ],
+    "layouts": [
+      "empty"
+    ],
+    "date": {
+      "value": "string",
+      "from": "string"
+    },
+    "collections": [
+      "string"
+    ],
+    "field": {
+      "name": "string",
+      "value": "string",
+      "from": "string",
+      "setBy": [
+        {
+          "from": "string",
+          "value": "string"
+        }
+      ]
+    }
+  },
+  "diff": {
+    "schemaVersion": "number",
+    "before": "string",
+    "after": "string",
+    "exact": "boolean",
+    "same": "boolean",
+    "summary": {
+      "added": "number",
+      "removed": "number",
+      "changed": "number",
+      "unchangedPages": "number",
+      "unchangedFiles": "number"
+    },
+    "added": [
+      "string"
+    ],
+    "removed": [
+      "empty"
+    ],
+    "changed": [
+      {
+        "url": "string",
+        "path": "string",
+        "kind": "string",
+        "changes": [
+          "string"
+        ],
+        "notes": [
+          "empty"
+        ],
+        "changedLines": "number",
+        "onlyDates": "boolean",
+        "sizeBefore": "number",
+        "sizeAfter": "number",
+        "hunks": [
+          {
+            "removed": [
+              "string"
+            ],
+            "added": [
+              "string"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footprint": {
+    "schemaVersion": "number",
+    "output": "string",
+    "files": "number",
+    "bytes": "number",
+    "kinds": [
+      {
+        "kind": "string",
+        "files": "number",
+        "bytes": "number"
+      }
+    ],
+    "largest": {
+      "pages": [
+        {
+          "path": "string",
+          "bytes": "number",
+          "url": "string"
+        }
+      ],
+      "files": [
+        {
+          "path": "string",
+          "bytes": "number",
+          "kind": "string"
+        }
+      ]
+    }
+  },
+  "new": {
+    "schemaVersion": "number",
+    "path": "string",
+    "blueprint": "string",
+    "title": "string",
+    "date": "string"
+  },
+  "capabilities": {
+    "schemaVersion": "number",
+    "version": "string",
+    "commands": [
+      "string"
+    ],
+    "json": [
+      "string"
+    ],
+    "features": {
+      "avif": "boolean",
+      "fetch": "boolean",
+      "sass": "boolean",
+      "liquid": "boolean",
+      "jinja": "boolean",
+      "handlebars": "boolean"
+    },
+    "configFiles": [
+      "string"
+    ],
+    "configOptions": [
+      "string"
+    ],
+    "templateLanguages": [
+      {
+        "name": "string",
+        "extensions": [
+          "string"
+        ]
+      }
+    ],
+    "defaults": {
+      "templateFormats": [
+        "string"
+      ],
+      "markdownEngine": "string",
+      "htmlEngine": "string"
+    },
+    "frontMatter": [
+      "string"
+    ],
+    "dataFiles": [
+      "string"
+    ],
+    "modules": [
+      {
+        "name": "string",
+        "exports": [
+          "string"
+        ]
+      }
+    ],
+    "nodeModules": {
+      "available": [
+        "string"
+      ],
+      "stubs": [
+        "string"
+      ]
+    },
+    "globals": [
+      "string"
+    ],
+    "imageFormats": [
+      "string"
+    ],
+    "starters": [
+      "string"
+    ],
+    "starterEngines": [
+      "string"
+    ],
+    "importers": [
+      "string"
+    ]
+  },
+  "serve ready file": {
+    "schemaVersion": "number",
+    "url": "string",
+    "port": "number",
+    "base": "string",
+    "output": "string",
+    "pid": "number",
+    "ok": "boolean"
+  }
+}

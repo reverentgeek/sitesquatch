@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buttons | Pinecone CSS</title>
+<link rel="stylesheet" href="/css/pinecone.css">
+<link rel="stylesheet" href="/highlight.css">
+</head>
+<body>
+<nav class="site"><a href="/">Pinecone CSS</a> · <a href="/docs/buttons/">Buttons</a> · <a href="/docs/colors/">Colors</a></nav>
+<h1>Buttons</h1>
+<p>Use <code>.btn</code> on a <code>&lt;button&gt;</code> or a link.</p>
+<div class="example">
+<button class="btn" type="button">Gather cones</button>
+<a class="btn btn-outline" href="/docs/colors/">See the colors</a>
+
+</div>
+<pre class="highlight"><code class="language-html">&lt;<span class="hl-tag">button</span> <span class="hl-attribute">class</span>=<span class="hl-string">&quot;btn&quot;</span> <span class="hl-attribute">type</span>=<span class="hl-string">&quot;button&quot;</span>&gt;Gather cones&lt;/<span class="hl-tag">button</span>&gt;
+&lt;<span class="hl-tag">a</span> <span class="hl-attribute">class</span>=<span class="hl-string">&quot;btn btn-outline&quot;</span> <span class="hl-attribute">href</span>=<span class="hl-string">&quot;/docs/colors/&quot;</span>&gt;See the colors&lt;/<span class="hl-tag">a</span>&gt;</code></pre>
+<div class="callout callout-warning">
+<p>A link styled as a button still needs a real <code>href</code>.</p>
+</div>
+<h2 id="sass-variables">Sass variables</h2>
+<p>Set these before importing Pinecone to change every button:</p>
+<pre class="highlight"><code class="language-scss">$btn-padding: <span class="hl-number">0.5rem</span> <span class="hl-number">1rem</span> <span class="hl-keyword">!default</span>;
+$btn-radius: <span class="hl-number">0.375rem</span> <span class="hl-keyword">!default</span>;
+$btn-bg: $pine <span class="hl-keyword">!default</span>;
+</code></pre>
+
+</body>
+</html>

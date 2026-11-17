@@ -39,6 +39,16 @@ jobs:
       - if: matrix.avif && runner.os == 'Linux'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq nasm
       - run: cargo test --workspace --locked --no-fail-fast ${{ matrix.avif && '--features ssqch/avif' || '' }}
+      # The oracle (tests/oracle): black-box tests and 0.7.0's frozen output, run against the
+      # binary cargo test just built. On the lowest Node ssqch 0.8 will support.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.18.0
+      - name: oracle
+        working-directory: tests/oracle
+        env:
+          SSQCH_BIN: target/debug/ssqch${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: node --test --test-concurrency=4
 
   clippy:
     runs-on: ubuntu-latest

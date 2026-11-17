@@ -1,0 +1,52 @@
+{
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 5,
+      "templates": 8,
+      "bytes": 15373,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 0,
+      "unchanged": 0,
+      "bytes": 0
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "_redirects",
+      "docs/concepts/nodes/index.html",
+      "docs/concepts/pods/index.html",
+      "docs/tasks/deploy/index.html",
+      "glossary/index.html",
+      "index.html",
+      "sitemap.xml"
+    ],
+    "summary": [
+      {
+        "label": "Links",
+        "value": "43 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed siting. Built in <time> (production)\n  Pages   5 written from 8 templates, 15.4 KB\n  Links   43 checked, 0 broken\n  Output  dist: 7 files, 16.2 KB\n",
+  "files": {
+    "_redirects": "text",
+    "docs/concepts/nodes/index.html": "text",
+    "docs/concepts/pods/index.html": "text",
+    "docs/tasks/deploy/index.html": "text",
+    "glossary/index.html": "text",
+    "index.html": "text",
+    "sitemap.xml": "text"
+  }
+}

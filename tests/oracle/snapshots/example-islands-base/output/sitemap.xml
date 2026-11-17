@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://islands.sitesquatch.dev/repo/</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+  <url>
+    <loc>https://islands.sitesquatch.dev/repo/about/</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+  <url>
+    <loc>https://islands.sitesquatch.dev/repo/trail-cam/</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+  <url>
+    <loc>https://islands.sitesquatch.dev/repo/trails/</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+</urlset>

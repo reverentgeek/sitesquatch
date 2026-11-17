@@ -1,0 +1,67 @@
+// From crates/ssqch/tests/cli.rs.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { ssqch, tempDir, write, read } from "../lib/ssqch.js";
+
+test("schemas_check_every_page", () => {
+	const dir = tempDir("schemas");
+	const d = dir;
+	write(dir, {
+		"ssqch.config.js": `import { defineConfig } from "ssqch";
+export default defineConfig({
+  dirs: { input: "src", output: "dist" },
+  schemas: {
+    posts: {
+      fields: {
+        title: (value) => typeof value === "string" && value.length <= 20 || "must be a string of 20 characters or fewer",
+        date: "date",
+        description: "string?",
+        status: "'draft' | 'published'",
+        hero: { src: "file", alt: "string" },
+        slug: "string",
+      },
+      unknown: "error",
+    },
+    guides: { files: "guides/**", fields: { order: "integer" }, unknown: "warn" },
+  },
+});
+`,
+	});
+	write(dir, { "src/posts/posts.json": "{ \"tags\": \"posts\", \"computed\": { \"slug\": \"{{ page.fileSlug }}\" } }" });
+	write(dir, { "src/posts/pine.md": "---\ntitle: Pine\ndate: 2026-03-14\nstatus: published\nhero: { src: pine.jpg, alt: A pine }\n---\nPine.\n" });
+	write(dir, { "src/posts/pine.jpg": "jpg" });
+	write(dir, { "src/guides/start.md": "---\norder: 1\n---\nStart.\n" });
+	let r = ssqch(["build", "--root", d, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.ok(!r.log.includes("warn"), r.log);
+
+	write(dir, { "src/posts/cedar.md": "---\ntitle: A title that goes on for far too long\nstatus: drfat\ndescripton: Typo\nhero: { src: cedar.jpg }\n---\nCedar.\n" });
+	write(dir, { "src/guides/next.md": "---\norder: second\nlevel: 2\n---\nNext.\n" });
+	r = ssqch(["build", "--root", d, "-q"]);
+	assert.ok(!r.ok, r.log);
+	for (const expected of [
+		"7 content errors:",
+		"  - src/posts/cedar.md: `date` is required (a date, like 2026-03-14) (schema `posts`)",
+		"  - src/posts/cedar.md: `title` must be a string of 20 characters or fewer (schema `posts`)",
+		"  - src/posts/cedar.md: `status` must be \"draft\" or \"published\", not \"drfat\" (schema `posts`)",
+		"  - src/posts/cedar.md: `hero.src` is \"cedar.jpg\", but there's no such file next to the page (schema `posts`)",
+		"  - src/posts/cedar.md: `hero.alt` is required (a string) (schema `posts`)",
+		"  - src/posts/cedar.md: `descripton` isn't a field of this schema (did you mean `description`?) (schema `posts`)",
+		"  - src/guides/next.md: `order` must be a whole number, not \"second\" (schema `guides`)",
+		"warn: src/guides/next.md: `level` isn't a field of this schema (schema `guides`)",
+	]) {
+		assert.ok(r.log.includes(expected), `missing ${JSON.stringify(expected)} in\n${r.log}`);
+	}
+
+	// The schemas become types.
+	r = ssqch(["types", "--root", d]);
+	assert.ok(r.ok, r.log);
+	assert.ok(r.log.includes("(with 2 schemas)"), r.log);
+	const types = read(dir, "ssqch.d.ts");
+	assert.ok(types.includes("\tinterface Schemas {\n\t\tposts: {\n\t\t\ttitle: any;\n\t\t\tdate: Date | string;\n\t\t\tdescription?: string;\n\t\t\tstatus: \"draft\" | \"published\";\n"), types);
+	assert.ok(types.includes("\t\tguides: {\n\t\t\torder: number;\n\t\t};\n"), types);
+
+	write(dir, { "ssqch.config.js": "export default { schemas: { posts: { title: \"string\" } } };\n" });
+	r = ssqch(["build", "--root", d, "-q"]);
+	assert.ok(!r.ok && r.log.includes("ssqch.config.js: schemas.posts: \"title\" isn't an option (options: fields, files, unknown); a schema's fields go in `fields`"), r.log);
+});

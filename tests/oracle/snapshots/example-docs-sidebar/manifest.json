@@ -1,0 +1,51 @@
+{
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 5,
+      "templates": 5,
+      "bytes": 31646,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 0,
+      "unchanged": 0,
+      "bytes": 0
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "docs/guides/configuration/index.html",
+      "docs/guides/first-server/index.html",
+      "docs/index.html",
+      "docs/install/index.html",
+      "index.html",
+      "sitemap.xml"
+    ],
+    "summary": [
+      {
+        "label": "Links",
+        "value": "68 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed siting. Built in <time> (production)\n  Pages   5 written from 5 templates, 31.6 KB\n  Links   68 checked, 0 broken\n  Output  dist: 7 files, 34.8 KB\n",
+  "files": {
+    "docs/guides/configuration/index.html": "text",
+    "docs/guides/first-server/index.html": "text",
+    "docs/index.html": "text",
+    "docs/install/index.html": "text",
+    "highlight.css": "text",
+    "index.html": "text",
+    "sitemap.xml": "text"
+  }
+}

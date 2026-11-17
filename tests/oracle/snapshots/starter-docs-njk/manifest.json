@@ -1,0 +1,79 @@
+{
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 6,
+      "templates": 6,
+      "bytes": 19793,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 2,
+      "unchanged": 0,
+      "bytes": 14302
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "404.html",
+      "docs/guides/deploying/index.html",
+      "docs/guides/writing/index.html",
+      "docs/index.html",
+      "docs/install/index.html",
+      "index.html"
+    ],
+    "summary": [
+      {
+        "label": "Links",
+        "value": "100 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed siting. Built in <time> (production)\n  Pages   6 written from 6 templates, 19.8 KB\n  Copied  2 files, 14.3 KB\n  Links   100 checked, 0 broken\n  Output  dist: 9 files, 36.6 KB\n",
+  "files": {
+    "404.html": "text",
+    "assets/docs.css": "text",
+    "assets/docs.js": "text",
+    "docs/guides/deploying/index.html": "text",
+    "docs/guides/writing/index.html": "text",
+    "docs/index.html": "text",
+    "docs/install/index.html": "text",
+    "highlight.css": "text",
+    "index.html": "text"
+  },
+  "source": {
+    ".gitignore": "text",
+    "AGENTS.md": "text",
+    "CLAUDE.md": "text",
+    "jsconfig.json": "text",
+    "src/404.md": "text",
+    "src/_blueprints/docs.md": "text",
+    "src/_data/nav.yml": "text",
+    "src/_data/site.json": "text",
+    "src/_includes/base.njk": "text",
+    "src/_includes/containers/details.njk": "text",
+    "src/_includes/containers/tab.njk": "text",
+    "src/_includes/containers/tabs.njk": "text",
+    "src/_includes/doc.njk": "text",
+    "src/_includes/hooks/heading.njk": "text",
+    "src/assets/docs.css": "text",
+    "src/assets/docs.js": "text",
+    "src/docs/docs.json": "text",
+    "src/docs/guides/deploying.md": "text",
+    "src/docs/guides/writing.md": "text",
+    "src/docs/index.md": "text",
+    "src/docs/install.md": "text",
+    "src/index.md": "text",
+    "ssqch.config.js": "text",
+    "ssqch.d.ts": "text"
+  }
+}

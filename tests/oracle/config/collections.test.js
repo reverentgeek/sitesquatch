@@ -1,0 +1,183 @@
+// From crates/sitesquatch-js/tests/collections.rs.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { ssqch, project, read, FIXTURES } from "../lib/ssqch.js";
+
+/** Builds `root` the way the Rust tests did: production, quiet. */
+function build(root) {
+	return ssqch(["build", "--root", root, "--quiet"]);
+}
+
+function buildOk(root) {
+	const r = build(root);
+	assert.ok(r.ok, r.log);
+	return r;
+}
+
+/** The error text of a build that must fail (the binary's `error: ` prefix removed). */
+function buildError(root) {
+	const r = build(root);
+	assert.ok(!r.ok, `expected an error, but the build worked:\n${r.log}`);
+	return r.log.replace(/^error: /, "");
+}
+
+// The Rust API's default template formats (edge, md, html) are not the command line's: say so.
+const FORMATS = `templateFormats: ["edge", "md", "html"],`;
+
+const POSTS = {
+	"src/posts/pine.md": "---\ntitle: Pine Cone Crunch\ndate: 2024-06-01\ntags: [posts, snacks]\n---\n# Pine\n",
+	"src/posts/brittle.md": "---\ntitle: Bigfoot Brittle\ndate: 2025-02-03\ntags: [posts, snacks, sweet]\n---\n# Brittle\n",
+	"src/posts/yogurt.md": "---\ntitle: Yeti Yogurt\ndate: 2025-07-04\ntags: [posts, dairy]\n---\n# Yogurt\n",
+	"src/notes/a.md": "---\ntitle: Note A\ndate: 2023-01-01\n---\nnote\n",
+	"src/notes/deep/b.txt.md": "---\ntitle: Note B\ndate: 2023-01-02\n---\nnote\n",
+};
+
+function site(config, index) {
+	return project({ ...POSTS, "ssqch.config.js": config, "src/index.edge": index });
+}
+
+test("the_collection_api", () => {
+	const root = site(
+		`export default {
+  dirs: { input: "src" },
+  ${FORMATS}
+  collections: {
+    all2: (pages) => pages.all(),
+    sorted: (pages) => pages.all().map((p) => p.fileSlug),
+    snacks: (pages) => pages.byTag("snacks"),
+    sweetSnacks: (pages) => pages.byTags("snacks", "sweet"),
+    notes: (pages) => pages.byGlob("./src/notes/**/*.md"),
+    shallowNotes: (pages) => pages.byGlob("src/notes/*.md"),
+    either: (pages) => pages.byGlob(["src/posts/{pine,yogurt}.md", "src/notes/?.md"]),
+    newestFirst: (pages) => pages.byTag("posts").sort((a, b) => b.date - a.date),
+    summary: (pages) => pages.byTag("snacks").map((p) => ({ title: p.data.title, year: p.date.getUTCFullYear(), html: p.templateContent.trim() })),
+  },
+};`,
+		`all2={{ collections.all2.length }}/{{ collections.all.length }}
+sorted={{ collections.sorted.join(",") }}
+snacks={{ collections.snacks.map(p => p.data.title).join(",") }}
+sweet={{ collections.sweetSnacks.map(p => p.fileSlug).join(",") }}
+notes={{ collections.notes.map(p => p.inputPath).join(",") }}
+shallow={{ collections.shallowNotes.map(p => p.fileSlug).join(",") }}
+either={{ collections.either.map(p => p.fileSlug).join(",") }}
+newest={{ collections.newestFirst.map(p => p.fileSlug).join(",") }}
+summary={{ JSON.stringify(collections.summary) }}
+original={{ collections.posts.map(p => p.fileSlug).join(",") }}`,
+	);
+	buildOk(root);
+	const html = read(root, "_site/index.html");
+	const lines = html.split("\n");
+	assert.equal(lines[0], "all2=6/6");
+	assert.equal(lines[1], "sorted=a,b.txt,pine,brittle,yogurt,", "oldest first; a root index has an empty fileSlug");
+	assert.equal(lines[2], "snacks=Pine Cone Crunch,Bigfoot Brittle");
+	assert.equal(lines[3], "sweet=brittle");
+	assert.equal(lines[4], "notes=./src/notes/a.md,./src/notes/deep/b.txt.md");
+	assert.equal(lines[5], "shallow=a");
+	assert.equal(lines[6], "either=a,pine,yogurt");
+	assert.equal(lines[7], "newest=yogurt,brittle,pine");
+	assert.equal(
+		lines[8],
+		String.raw`summary=[{&quot;title&quot;:&quot;Pine Cone Crunch&quot;,&quot;year&quot;:2024,&quot;html&quot;:&quot;&lt;h1 id=\&quot;pine\&quot;&gt;Pine&lt;/h1&gt;&quot;},{&quot;title&quot;:&quot;Bigfoot Brittle&quot;,&quot;year&quot;:2025,&quot;html&quot;:&quot;&lt;h1 id=\&quot;brittle\&quot;&gt;Brittle&lt;/h1&gt;&quot;}]`,
+	);
+	assert.equal(lines[9], "original=pine,brittle,yogurt", "sorting in a collection must not reorder collections.posts");
+});
+
+test("transforms_get_the_content_and_the_page", () => {
+	const root = site(
+		`export default {
+  dirs: { input: "src" },
+  ${FORMATS}
+  transforms: {
+    upper: async (content, page) => {
+      if (page.outputPath.endsWith(".html")) return content.replace(/<h1( [^>]*)?>(.*?)<\\/h1>/g, (_, a, t) => \`<h1>\${t.toUpperCase()}</h1>\`);
+      return content;
+    },
+    stamp: (content, { url, inputPath, outputPath }) => outputPath.endsWith(".html") ? \`\${content}<!-- \${url} \${inputPath} -->\` : content,
+  },
+};`,
+		"home",
+	);
+	buildOk(root);
+	assert.equal(read(root, "_site/posts/pine/index.html"), "<h1>PINE</h1>\n<!-- /posts/pine/ ./src/posts/pine.md -->");
+});
+
+test("a_transform_must_return_content", () => {
+	const root = site(
+		`export default {
+  dirs: { input: "src" },
+  ${FORMATS}
+  transforms: { forgetful: (content, page) => { if (page.url === "/never/") return content; } },
+};`,
+		"home",
+	);
+	const e = buildError(root);
+	assert.ok(e.includes("transform `forgetful` failed"), e);
+	assert.ok(e.includes("transform \"forgetful\" returned undefined") && e.includes("return the content (unchanged if there's nothing to do)"), e);
+});
+
+test("build_hooks_run_before_and_after", () => {
+	const root = site(
+		`import fs from "node:fs";
+const log = [];
+export default {
+  dirs: { input: "src", output: "public" },
+  ${FORMATS}
+  beforeBuild: async ({ env, serving, dirs }) => {
+    await null;
+    log.push(\`before \${env} \${serving} \${dirs.input} \${dirs.output} \${dirs.includes} \${dirs.data}\`);
+  },
+  afterBuild: ({ written }) => {
+    log.push(\`after \${written.length} \${written.every((p) => p.endsWith(".html"))}\`);
+    fs.writeFileSync("hooks.txt", log.join("\\n"));
+  },
+  plugins: [{ name: "second", beforeBuild: [() => log.push("plugin before")] }],
+};`,
+		"home",
+	);
+	buildOk(root);
+	assert.equal(read(root, "hooks.txt"), "before production false ./src/ ./public/ ./src/_includes/ ./src/_data/\nplugin before\nafter 6 true");
+});
+
+test("hook_errors_stop_the_build", () => {
+	let root = site(`export default { dirs: { input: "src" }, ${FORMATS} plugins: [{ name: "grumpy", beforeBuild: () => { throw new Error("no snacks today"); } }] };`, "home");
+	let e = buildError(root);
+	assert.ok(e.includes("beforeBuild (plugin \"grumpy\")") && e.includes("no snacks today"), e);
+
+	root = site(`export default { beforeWatch: () => {} };`, "home");
+	e = buildError(root);
+	assert.ok(e.includes("\"beforeWatch\" isn't a config option"), e);
+});
+
+test("views_behave_like_plain_objects", () => {
+	const root = project({
+		"battery.js": fs.readFileSync(path.join(FIXTURES, "js/view-battery.js")),
+		"ssqch.config.js": `import { battery, copy } from "./battery.js";
+export default {
+  ${FORMATS}
+  filters: {
+    viaView: (d) => JSON.stringify(battery(d)),
+    viaCopy: (d) => JSON.stringify(battery(copy(d))),
+  },
+};`,
+		"_data/site.json": `{ "title": "Squatch Snacks", "author": "Sasquatch" }`,
+		"_data/posts.js": `export default [
+  { title: "Pine Cone Crunch", stars: 4, tags: ["snacks", "forest"], date: new Date("2026-01-02") },
+  { title: "Bigfoot Brittle", stars: 5, tags: ["snacks"], date: new Date("2026-02-03") },
+  { title: "Yeti Yogurt", stars: 2, tags: ["dairy", "cold", "snowy"], date: new Date("2026-03-04") },
+  { title: "Mothman Mints", stars: 3, tags: ["snacks", "night"], date: new Date("2026-04-05") },
+];`,
+		"index.edge": "{{{ viaView({ site, posts }) }}}\n{{{ viaCopy({ site, posts }) }}}\n{{ site.title }}|{{ posts[0].title }}|{{ posts.length }}",
+	});
+	buildOk(root);
+	const html = read(root, "_site/index.html");
+	const lines = html.split("\n");
+	const view = JSON.parse(lines[0]);
+	const copy = JSON.parse(lines[1]);
+	for (const [key, want] of Object.entries(copy)) {
+		assert.deepEqual(view[key], want, `${key} differs between a view and a plain copy`);
+	}
+	assert.ok(Object.keys(copy).length >= 40);
+	assert.equal(lines[2], "Squatch Snacks|Pine Cone Crunch|4", "writes in JavaScript must not change the site's data");
+});

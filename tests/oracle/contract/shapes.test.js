@@ -1,0 +1,141 @@
+// The shape of every JSON document ssqch prints with --format json (and the ready file): its keys
+// and their types, recursively, as ssqch 0.7.0 printed them. `schemaVersion` changes only when a
+// field is removed or changes meaning (README, "Scripts and coding agents"), so a new key is
+// allowed and a missing or retyped one isn't. Values are checked by the behavior tests in cli/.
+//
+//   SSQCH_FREEZE_SHAPES=1 node --test contract/shapes.test.js   rewrites shapes.json (0.7.0 only)
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { ORACLE, project, ssqch, write } from "../lib/ssqch.js";
+import { serveSite } from "../lib/serve.js";
+
+const FILE = path.join(ORACLE, "contract/shapes.json");
+const frozen = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, "utf8")) : {};
+const freezing = process.env.SSQCH_FREEZE_SHAPES === "1";
+const shapes = {};
+
+/** A value's shape: "string", "number", "boolean", "null", { key: shape }, or [shape of every element merged]. */
+export function shapeOf(v) {
+	if (v === null) return "null";
+	if (Array.isArray(v)) return [v.reduce((acc, x) => merge(acc, shapeOf(x)), undefined) ?? "empty"];
+	if (typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shapeOf(x)]));
+	return typeof v;
+}
+// Two shapes of the same field: objects merge their keys; different scalar types join as "a|b".
+function merge(a, b) {
+	if (a === undefined) return b;
+	if (Array.isArray(a) && Array.isArray(b)) return [a[0] === "empty" ? b[0] : b[0] === "empty" ? a[0] : merge(a[0], b[0])];
+	if (a && b && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b)) {
+		const out = { ...a };
+		for (const [k, v] of Object.entries(b)) out[k] = k in out ? merge(out[k], v) : v;
+		return out;
+	}
+	if (JSON.stringify(a) === JSON.stringify(b)) return a;
+	const parts = new Set([...String(typeof a === "string" ? a : JSON.stringify(a)).split("|"), ...String(typeof b === "string" ? b : JSON.stringify(b)).split("|")]);
+	return [...parts].sort().join("|");
+}
+
+/** Every path in `expected` must be in `actual` with the same type; `actual` may have more. */
+function missing(expected, actual, at = "") {
+	const out = [];
+	if (typeof expected === "string") {
+		if (expected === "empty") return out;
+		const allowed = expected.split("|");
+		const got = typeof actual === "string" ? actual.split("|") : [Array.isArray(actual) ? "array" : "object"];
+		for (const g of got) if (g !== "empty" && !allowed.includes(g) && !(allowed.includes("null") && g === "null")) out.push(`${at || "(top)"}: was ${expected}, now ${typeof actual === "string" ? actual : JSON.stringify(actual)}`);
+		return out;
+	}
+	if (Array.isArray(expected)) {
+		if (!Array.isArray(actual)) return [`${at}: was a list, now ${JSON.stringify(actual)}`];
+		if (actual[0] === "empty") return out;
+		return missing(expected[0], actual[0], `${at}[]`);
+	}
+	if (typeof actual !== "object" || actual === null || Array.isArray(actual)) return [`${at}: was an object, now ${JSON.stringify(actual)}`];
+	for (const [k, v] of Object.entries(expected)) {
+		if (!(k in actual)) out.push(`${at}.${k}: missing`);
+		else out.push(...missing(v, actual[k], `${at}.${k}`));
+	}
+	return out;
+}
+
+function check(name, ...documents) {
+	const shape = documents.map(shapeOf).reduce((a, b) => merge(a, b));
+	shapes[name] = shape;
+	if (freezing) return;
+	assert.ok(frozen[name], `no frozen shape for ${name}: run SSQCH_FREEZE_SHAPES=1 against 0.7.0`);
+	const problems = missing(frozen[name], shape);
+	assert.deepEqual(problems, [], `${name} lost or changed fields:\n  ${problems.join("\n  ")}`);
+}
+
+const json = (args, options) => {
+	const r = ssqch([...args, "--format", "json"], options);
+	try { return JSON.parse(r.stdout); } catch { throw new Error(`ssqch ${args.join(" ")} --format json printed no JSON:\n${r.log}`); }
+};
+
+// A site that fills every part of a build report: warnings with hints, aliases, a summary, copies.
+const site = () => project({
+	"ssqch.config.js": `import { linksPlugin } from "ssqch/links";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["md", "njk"], pathPrefix: "/", passthrough: ["./src/cones.txt"], plugins: [linksPlugin()] };\n`,
+	"src/index.md": "---\ntitle: Trailhead\npublished: false\n---\n# Hello\n\n[About](/about/)\n",
+	"src/about.md": "---\ntitle: About\n---\nThe stump.\n",
+	"src/cones.txt": "pine\n",
+	"src/_blueprints/posts.md": "---\ntitle: {{ title }}\ndate: {{ date }}\n---\n",
+}, "shapes");
+
+test("build report", () => {
+	const dir = site();
+	const ok = json(["build", "--root", dir]);
+	// A second build has counts for new and gone pages where the first has null.
+	write(dir, { "src/new.md": "New\n" });
+	const again = json(["build", "--root", dir]);
+	const failed = json(["build", "--root", project({ "ssqch.config.js": "export default { pineCones: 1 };\n" })]);
+	const broken = json(["build", "--root", project({ "ssqch.config.js": "export default { dirs: { input: \"src\" } };\n", "src/index.njk": "line\n{{ x | nope }}\n" })]);
+	assert.equal(ok.schemaVersion, 1);
+	check("build", ok, again);
+	check("build (failed)", failed, broken);
+});
+
+test("inspect report", () => {
+	const dir = site();
+	ssqch(["build", "--root", dir]);
+	check("inspect", json(["inspect", "/", "--root", dir]));
+	check("inspect --field", json(["inspect", "/", "--field", "title", "--root", dir]));
+});
+
+test("diff report", () => {
+	const dir = site();
+	ssqch(["build", "--root", dir, "--output", "before"]);
+	write(dir, { "src/about.md": "---\ntitle: About us\n---\nThe stump moved.\n", "src/new.md": "New\n" });
+	ssqch(["build", "--root", dir, "--output", "after"]);
+	check("diff", json(["diff", path.join(dir, "before"), path.join(dir, "after")]));
+});
+
+test("footprint report", () => {
+	const dir = site();
+	ssqch(["build", "--root", dir]);
+	check("footprint", json(["footprint", "--root", dir]));
+});
+
+test("new report", () => {
+	const dir = site();
+	check("new", json(["new", "posts", "--title", "Pine cones", "--date", "2026-02-03", "--root", dir]));
+});
+
+test("capabilities report", () => {
+	check("capabilities", json(["capabilities"]));
+});
+
+test("serve ready file", async () => {
+	const dir = site();
+	const { server, info } = await serveSite(dir);
+	try {
+		check("serve ready file", info);
+	} finally {
+		await server.stop();
+	}
+});
+
+test.after(() => {
+	if (freezing) fs.writeFileSync(FILE, JSON.stringify(shapes, null, 2) + "\n");
+});

@@ -46,6 +46,10 @@ change affects it.
   blog in `examples/reverentgeek`, an example of the Rust API (it doesn't have to match the
   blog's config).
 - `scripts/bench.sh` runs the benchmarks in the README; results go to `bench-results/`.
+- The oracle (`tests/oracle/`, see its README) is the black-box test suite for the move to Node:
+  `cd tests/oracle && node --test` runs it against `target/release/ssqch` (or `SSQCH_BIN`), and
+  `node freeze.js [site...]` freezes a site's output. A change to 0.7's output means freezing
+  again, or a deliberate difference recorded in the test.
 - CI (`.github/workflows/ci.yml`) runs the tests on Linux, macOS and Windows (with AVIF on
   Linux only), and `cargo clippy --workspace --all-targets --features ssqch/avif -- -D
   warnings`. Keep clippy clean. Pull requests don't build the release binaries

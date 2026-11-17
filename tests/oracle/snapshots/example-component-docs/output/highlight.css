@@ -1,0 +1,74 @@
+/* Syntax highlighting for ssqch (markdown.highlight). Override the --hl-* properties to change colors. */
+:root {
+  --hl-comment: #59636e;
+  --hl-keyword: #cf222e;
+  --hl-operator: #cf222e;
+  --hl-string: #0a3069;
+  --hl-regexp: #116329;
+  --hl-escape: #116329;
+  --hl-number: #0550ae;
+  --hl-constant: #0550ae;
+  --hl-builtin: #0550ae;
+  --hl-property: #0550ae;
+  --hl-attribute: #0550ae;
+  --hl-function: #6639ba;
+  --hl-type: #953800;
+  --hl-parameter: #953800;
+  --hl-tag: #116329;
+  --hl-heading: #0550ae;
+  --hl-link: #0a3069;
+  --hl-inserted: #116329;
+  --hl-inserted-bg: #dafbe1;
+  --hl-deleted: #82071e;
+  --hl-deleted-bg: #ffebe9;
+  --hl-line-bg: rgba(212, 167, 44, 0.2);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hl-comment: #9198a1;
+    --hl-keyword: #ff7b72;
+    --hl-operator: #ff7b72;
+    --hl-string: #a5d6ff;
+    --hl-regexp: #7ee787;
+    --hl-escape: #7ee787;
+    --hl-number: #79c0ff;
+    --hl-constant: #79c0ff;
+    --hl-builtin: #79c0ff;
+    --hl-property: #79c0ff;
+    --hl-attribute: #79c0ff;
+    --hl-function: #d2a8ff;
+    --hl-type: #ffa657;
+    --hl-parameter: #ffa657;
+    --hl-tag: #7ee787;
+    --hl-heading: #1f6feb;
+    --hl-link: #a5d6ff;
+    --hl-inserted: #aff5b4;
+    --hl-inserted-bg: #033a16;
+    --hl-deleted: #ffdcd7;
+    --hl-deleted-bg: #67060c;
+    --hl-line-bg: rgba(187, 128, 9, 0.25);
+  }
+}
+.hl-comment { color: var(--hl-comment); font-style: italic; }
+.hl-keyword { color: var(--hl-keyword); }
+.hl-operator { color: var(--hl-operator); }
+.hl-string { color: var(--hl-string); }
+.hl-regexp { color: var(--hl-regexp); }
+.hl-escape { color: var(--hl-escape); font-weight: bold; }
+.hl-number { color: var(--hl-number); }
+.hl-constant { color: var(--hl-constant); }
+.hl-builtin { color: var(--hl-builtin); }
+.hl-property { color: var(--hl-property); }
+.hl-attribute { color: var(--hl-attribute); }
+.hl-function { color: var(--hl-function); }
+.hl-type { color: var(--hl-type); }
+.hl-parameter { color: var(--hl-parameter); }
+.hl-tag { color: var(--hl-tag); }
+.hl-heading { color: var(--hl-heading); font-weight: bold; }
+.hl-strong { font-weight: bold; }
+.hl-emphasis { font-style: italic; }
+.hl-link { color: var(--hl-link); text-decoration: underline; }
+.hl-inserted { color: var(--hl-inserted); background: var(--hl-inserted-bg); }
+.hl-deleted { color: var(--hl-deleted); background: var(--hl-deleted-bg); }
+pre.highlight .line { display: inline-block; min-width: 100%; }
+pre.highlight .line.highlighted { background: var(--hl-line-bg); }
