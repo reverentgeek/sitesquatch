@@ -56,9 +56,6 @@ jobs:
     name: node ${{ matrix.node }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    # Windows hasn't run this yet: until its first run is clean, it reports without failing the
-    # workflow (the release checks this workflow). TODO.md has the item.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:

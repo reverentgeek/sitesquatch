@@ -84,9 +84,13 @@ until 0.8 ships.
   - [x] The oracle against the Node build: `node progress.js` in `tests/oracle/` runs it and holds
         the build to `node-passing.txt` (61 of 184 today, the same on Node 22.18.0, 24 and 26,
         v8.dev's frozen site among them). Each stage adds to the list.
-  - [ ] **Windows:** the Node build hasn't run there. CI's `node` job runs it and doesn't fail
-        the workflow on Windows yet (`continue-on-error`); read its first run, fix what it finds,
-        and take that line out.
+  - [x] **Windows** (2026-11-17): CI's `node` job passes there on Node 22.18.0, 24 and 26, and
+        fails the workflow like the others. Its first runs found real paths that Node spells
+        differently from the system (a folder's short name in the temporary folder), edge.js
+        ending lines with `\r\n`, and three places where Node on Windows is Windows' own
+        (`node:path`, `__dirname`, a missing file's error), which the oracle and the changelog
+        record. 58 of the list's tests run there; the others are unix-only or need a site
+        that isn't in the repository.
   - [x] The navigation functions (`navTree`, `navPager`, `navBreadcrumbs`, `pagesTree`):
         `nav.ts`, from `nav.rs` with its tests; the same answers as 0.7.0 on a site that uses all
         four.
