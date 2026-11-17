@@ -16,6 +16,17 @@ a `v<version>` tag on a commit where that version matches.
   when it ported every filter and shortcode, and puts it after the ported ones when some are
   left (the list at the end names them).
 
+### Fixed
+
+- An apostrophe in a Nunjucks or Jinja comment (`{# we don't #}`) no longer turns off
+  ssqch's rewrites for the rest of the file. Below it, `.length` printed nothing, `===` and
+  `!==` were syntax errors, and `{% for k, v in obj %}` and config tags weren't rewritten.
+  Found moving a11yproject.com, where it removed the table of contents from 35 pages.
+- A quoted word in a page's text that names an include (`The "footer" of your page`) no
+  longer moves the page to the second render pass when that include reads `collections`.
+  Before, that left the page's `templateContent` empty in a feed or any other page that showed
+  it. Only names inside template code count now.
+
 ## 0.6.4 - 2026-11-17
 
 ### Added

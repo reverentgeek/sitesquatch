@@ -348,6 +348,177 @@ Left over:
       Done 2026-11-17: left out when everything was ported, after the ported filters
       otherwise. Gahlee's draft has no placeholder now.
 
+### Moving a11yproject.com from Eleventy (found 2026-11-17)
+
+Found moving a11yproject.com (`../trials/a11yproject.com`: Eleventy 1.0, 78 Nunjucks files, 89
+Markdown files through Liquid, markdown-it with plugins, html-minifier, gulp for assets) to
+ssqch 0.6.3 with byte-identical output. The case study, with repros and measurements, is in
+`../trials/a11yproject.com/ssqch-case-study/` (numbers below are its issue numbers). All 139
+files matched. The build took 0.86 s against Eleventy's 0.62 s, on 119 MB against 248 MB: byte
+parity meant markdown-it, Prism and posthtml in QuickJS. The importer and `ssqch diff` did their
+jobs; the costly problems were silent ones.
+
+Bugs:
+
+- [x] **An apostrophe in a Nunjucks comment turned off the rewrites** (#14, #4). `rewrite_tags()`
+      used `find_close()` for `{# #}` too, so `don't` started a "string" that ran to the next
+      quote in the file, and `.length`, `===`, `for k, v` and custom tags weren't rewritten in
+      between. It removed the TOC from 35 pages, and gave a `!==` syntax error four lines below
+      the comment. Done 2026-11-17: a comment ends at the first `#}`. Tests:
+      `a_quote_in_a_comment_doesnt_stop_the_rewrites`,
+      `quotes_in_prose_and_comments_dont_change_the_output`.
+- [x] **A quoted word in a post's text emptied its `templateContent` in the feed** (#17).
+      `uses_collections()` ran `quoted_names()` over the whole body, so `The "footer" of your
+      page` matched an include that reads `collections`, and the post rendered in the second
+      pass, after the feed. Done 2026-11-17: only names in template code count (`in_code`), in
+      pages and in includes. Test: `quotes_in_prose_and_comments_dont_change_the_output`.
+- [ ] **Warn when a page reads the `templateContent` of a page that hasn't rendered yet** (#17).
+      An empty `templateContent` is always a wrong answer; a warning naming both pages would
+      have turned #17 into a one-line fix. Better: render it on demand, or order the passes
+      from the reads.
+- [ ] **`Intl.DateTimeFormat` throws on an option that doesn't exist** (#8). The site passes
+      `timezone` (a misspelling); ECMA-402 and Node ignore unknown keys. Ignore them (warn
+      once); keep refusing a known option ssqch can't honor.
+- [ ] **`Date#toString()` leaves out the zone name** (#13): `GMT-0500` without
+      ` (Eastern Standard Time)`. Also `timeZoneName` in `Intl.DateTimeFormat` and
+      `resolvedOptions().timeZone` (`undefined` today). The README says dates format like Node.
+- [ ] **The importer rewrote `npm run eleventy-watch` to `npm run ssqch build-watch`** (#2),
+      which broke `npm start`. Rewrite only the command word (at the start, or after `&&`, `&`,
+      `;`, `npx`), and rename `eleventy-*` scripts consistently or leave them alone.
+- [ ] **`ssqch serve` sometimes missed an edit made right after startup** (#21, 2 of 17 runs,
+      while `serve.run`'s gulp was still on its first pass). One change event logged, the page
+      never updated. Write a stress test that edits within a second of ready. May be related to
+      "`serve.run` races the build" above.
+- [ ] `minify()` shortens `checked="checked"` with `shortenAttributes: false` (#24). Make it part
+      of that option, or document that boolean attributes are always shortened.
+- [ ] The build summary's `Pages` size is measured before `afterBuild` (4.43 MB against 4.07 MB
+      on disk after minifying, #20). Measure after the hooks, or label it.
+
+Importer (`ssqch import eleventy`), most of it silent before:
+
+- [ ] **Find filters templates use that nothing defines** (#5): scan for filter and function
+      names, subtract the built-ins and the config's, and name what's left: Eleventy 1.0's
+      built-ins (`slug`, `getPreviousCollectionItem`, `getNextCollectionItem`,
+      `getCollectionItem`, `log`) and plugin filters (`eleventyNavigation`,
+      `eleventyNavigationBreadcrumb`, `rssLastUpdatedDate`, `rssDate`, `dateToRfc3339`,
+      `absoluteUrl`, `htmlToAbsoluteUrls`). Write ports of the small ones into the draft.
+- [ ] **`addLayoutAlias`** (#9): rewrite the `layout` values and list templates that compare
+      `layout == "post"`, or emit `layoutAliases` (below). `layout: post` silently picked an
+      unused `_includes/post.njk`. Also warn when a layout has no `{{ content }}`, or is
+      `include`d elsewhere.
+- [ ] `.eleventyignore` becomes `ignore` globs (#6).
+- [ ] `dataTemplateEngine` (#15): list data files with `{{ }}` or `{% %}` in their values, and
+      unwrap `{{ '/x/' | url }}` when `pathPrefix` is `/`.
+- [ ] Packages that came with `@11ty/eleventy` (#19): before removing it, check the project's own
+      `require`/`import`s (gulpfile, config, data) for packages that resolve only through it
+      (`browser-sync`, `slugify`, `markdown-it`, `luxon`), and add them to `package.json`.
+- [ ] List the edits that change output apart from the mechanical ones (#3:
+      `eleventy.generator` becomes `ssqch.generator`, which adds a `content` to every page).
+- [ ] Flag `{{ date }}`-style printing of Dates (#13: Eleventy printed `Date#toString()` in local
+      time) and YAML timestamps in keys other than `date`, which arrive as strings (#11).
+- [ ] Name the markdown-it options and plugins with no ssqch equivalent (`breaks`, `linkify`'s
+      bare domains, `typographer`, markdown-it-anchor) instead of "ssqch renders Markdown
+      itself", with the trailhead's recipe where there is one (#12, #25).
+- [ ] Maybe: `ssqch import eleventy --verify`: build with the project's own Eleventy into a
+      temporary folder (`TZ` pinned), build with ssqch, and run `ssqch diff`.
+
+Features for any site:
+
+- [ ] **`ssqch build --profile`** (#28): time per config filter (calls, total), per template,
+      per page, and layouts apart from writing (the summary's `write 1.42 s` was layout
+      filters). Finding `toc` (830 ms) and `eleventyNavigation` (550 ms) meant wrapping every
+      filter by hand. Worth doing before "Faster JavaScript" below, to measure it.
+- [ ] **Native HTML helpers, `ssqch/html`** (#24): `parse(html).queryAll("h2[id]")` with
+      `text()` and attributes, `rewriteUrls(html, fn)` (`htmlToAbsoluteUrls`),
+      `headings(html, { tags })`, and `toc()` taking an HTML string as well as `page.headings`
+      (that would have replaced eleventy-plugin-nesting-toc).
+- [ ] `markdown.breaks` (a single newline becomes `<br>`; 374 of them on this site, #12, #25).
+- [ ] `markdown.autolinks: "fuzzy"` to link bare domains, as markdown-it's `linkify` does (#25).
+- [ ] Replacing the Markdown engine once (`engines.md`, or `markdown: { render }`) instead of a
+      custom engine plus `render: ["liquid", "mdit"]` in every directory's data (#12).
+- [ ] `ssqch serve --host 0.0.0.0`, printing the LAN URL (#20).
+- [ ] `ssqch serve` ignores editor temp files (`.!*!*`, `*~`, `.#*`, `*.swp`, files that vanish
+      within the debounce), and says an unchanged warning once per session (#20).
+- [ ] YAML timestamps as Dates in every key, as js-yaml does (#11).
+- [ ] `pagesTree`: parents that are only a key (`parent: Feature`), `nav.url`, `title` falling
+      back to `key`, and docs on what `parent` matches (#23). Then
+      `pagesTree(collections.all, { root: "Feature" })` replaces `eleventyNavigation`.
+- [ ] Incremental rebuilds in `ssqch serve` (#20: 460 ms for all 115 pages, Eleventy 1.0 350 ms).
+- [ ] Maybe: `minify()` options for html-minifier's habits (closing unclosed elements, the
+      viewport `<meta>`, `class` whitespace), or document the differences (#24).
+- [ ] Maybe: `afterBuild` `run` hooks get the written files in `SSQCH_WRITTEN` (a JSON file), so
+      post-processing doesn't need a function hook to write the list (#24).
+- [ ] Nunjucks `striptags(preserveLinebreaks)` (#7).
+
+Familiar words for sites from Eleventy (`equivalents.rs` where they're names):
+
+- [ ] `layoutAliases: { post: "layouts/post.njk" }`, with `page.layout` staying `post` (#9).
+- [ ] The `url` filter normalizes as Eleventy's does, or warns on a non-string (#16: `false`
+      from a `permalink: false` page printed `/false` in the sitemap).
+- [ ] `rssPlugin()` gives the Eleventy plugin's filter names (`absoluteUrl`,
+      `htmlToAbsoluteUrls`, `dateToRfc3339`/`rssDate`,
+      `getNewestCollectionItemDate`/`rssLastUpdatedDate`), so feeds from its sample work (#5).
+- [ ] `slug`, `getPreviousCollectionItem`, `getNextCollectionItem` as aliases (#5).
+- [ ] Maybe: `collections: { sort: "eleventy" }` (date, then `inputPath` as a string), or
+      document the tie-break and that defining `collections.all` replaces it (#18).
+- [ ] Maybe: `date: "created"` for undated pages (#22).
+
+Docs (`docs/trailheads/from-eleventy.md` and the README):
+
+- [ ] "Eleventy's implicit behaviors": built-in filters, `url`'s normalizing, `addLayoutAlias`,
+      `dataTemplateEngine`, `.eleventyignore`, creation-time dates, the `inputPath` tie-break,
+      Dates printed in local time, YAML timestamps in every key, and the packages
+      `@11ty/eleventy` installs.
+- [ ] "Matching Eleventy's output byte for byte": baseline from a worktree, `TZ` pinned, the same
+      `src/` timestamps, unminified first, `ssqch diff` to "No differences", then `diff -r` on
+      the minified builds; bisect what's silent.
+- [ ] QuickJS speed for Eleventy-era packages, with numbers (html-minifier about 80x slower than
+      Node, cheerio about 12x, posthtml, markdown-it with Prism), and what to use instead. The
+      README lists html-minifier-terser under "these work" without saying it's too slow.
+- [ ] markdown-it as an engine (`engines` plus `render` chains; `render` takes custom names),
+      Prism through a fence hook, and `pagesTree` against `eleventyNavigation` side by side.
+- [ ] README: overriding `collections.all` (document it or refuse it), the `afterBuild` event's
+      `written` (pages only, absolute) and mixing function and `{ run }` hooks, `.length` and
+      `===` being rewrites of the template text, and the known gaps (`Date#toString()`'s zone
+      name, `timeZoneName`, `--host`, string-slicing parsers in QuickJS).
+- [ ] An agent checklist for Eleventy moves (the case study's `ssqch-improvements.md` has a
+      draft), in the trailhead or `ssqch docs`.
+
+### Faster JavaScript: an opt-in Node or Bun runtime (2026-11-17)
+
+QuickJS is small and starts fast, but it's 10-100x slower than V8 or JavaScriptCore on code that
+parses HTML in JavaScript: it copies substrings (`html = html.substring(n)` per token goes
+quadratic), and it has no JIT. On a11yproject.com, html-minifier took 66 s for 112 pages (about
+240 ms per page; Node 2-3 ms), cheerio's TOC 830 ms (Node about 70 ms), and markdown-it with
+Prism about 220 ms. Sites moving from Node generators bring these packages. The measurements
+from 2026-11-10 (the Bun item under "More template languages") say per-call IPC costs more than a
+QuickJS call (Bun 22 µs, Node 12 µs, QuickJS 8 µs; batched 3 µs), and lazy views can't cross a
+process. So an external runtime pays only for coarse work: whole passes, or JavaScript that runs
+long per call.
+
+- [ ] Research first (notes in `research/js-runtimes.md`): where config JavaScript spends its
+      time on real sites (the blog, a11yproject.com, Gahlee House, eslint.org), with
+      `--profile`. Compare: QuickJS with fixes (rope or shared substrings, if upstream or
+      `rquickjs` allows), QuickJS-ng, an embedded V8 (`deno_core`/`rusty_v8`: binary size,
+      build time, Windows), and an external Node or Bun (the project's own, found on `PATH` or
+      `node_modules/.bin`).
+- [ ] Decide the shape. Candidates, coarsest first:
+  - A **transform/afterBuild worker**: `transforms` or hooks marked to run in Node or Bun get
+    every page at once (or in batches), so html-minifier runs as fast as in Node with no
+    per-call cost. a11yproject.com does this by hand today (an `afterBuild` hook writes the
+    list, a `run` hook runs `scripts/htmlmin.js`).
+  - **Config and data files in Node or Bun**: `_data` files and the config's setup run there
+    once per build; values come back as JSON (functions in the config stay in QuickJS, or the
+    whole config moves).
+  - **Filters and engines in Node or Bun**: `engines.mdit` and heavy filters, batched per render
+    pass; a template calling ssqch's Rust functions would be a round trip.
+  - Something like `js: { runtime: "node" | "bun" | "quickjs" }` (default `quickjs`), per
+    function or per file, with a clear error when the runtime isn't installed, and the same
+    output whichever runs.
+- [ ] Measure each against a11yproject.com (its config has `HTMLMIN=node|quickjs|native`) and
+      the blog before building it. Keep QuickJS the default: no install, and the same output
+      on every machine.
+
 ### Jinja by default (0.5)
 
 Decided 2026-11-10: Jinja is the most familiar template language across ecosystems (Python's

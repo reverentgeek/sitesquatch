@@ -565,6 +565,30 @@ fn nunjucks_templates_get_filters_includes_and_collections() {
     assert!(!ok && log.contains("broken.njk:2: syntax error"), "{}", log);
 }
 
+/// Two silent bugs found moving a11yproject.com: a quoted word in a post's text that names an
+/// include reading `collections` emptied the post's `templateContent` in the feed, and an
+/// apostrophe in a Nunjucks comment turned off `.length` for the rest of the file.
+#[test]
+fn quotes_in_prose_and_comments_dont_change_the_output() {
+    let dir = temp_dir("quotes-in-prose");
+    let d = dir.to_str().unwrap();
+    for sub in ["src/_includes", "src/posts"] {
+        std::fs::create_dir_all(dir.join(sub)).unwrap();
+    }
+    let write = |name: &str, body: &str| std::fs::write(dir.join(name), body).unwrap();
+    write("ssqch.config.js", "export default {\n  dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"njk\", \"md\"],\n  collections: { posts: (pages) => pages.byTag(\"post\") },\n};\n");
+    write("src/_includes/footer.njk", "FOOT {{ collections.posts | length }}");
+    write("src/_includes/base.njk", "{{ content | safe }}{% include \"footer.njk\" %}");
+    write("src/posts/a.md", "---\nlayout: base.njk\ntags: post\nrender: [njk, md]\n---\nThe \"footer\" of a page.\n");
+    write("src/feed.njk", "---\npermalink: feed.xml\n---\n{% for post in collections.posts %}[{{ post.templateContent | length }}]{% endfor %}");
+    write("src/comment.njk", "{% set y = 'abc' %}A[{{ y.length }}]\n{# we don't #}\nB[{{ y.length }}]{% if 1 !== 2 %} ok{% endif %}");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
+    assert_eq!(read("feed.xml"), "[41]");
+    assert_eq!(read("comment/index.html"), "A[3]\n\nB[3] ok");
+}
+
 #[cfg(feature = "handlebars")]
 #[test]
 fn handlebars_and_mustache_templates_render() {

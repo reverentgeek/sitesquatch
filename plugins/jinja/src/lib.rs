@@ -458,7 +458,9 @@ fn rewrite_tags(src: &str, rewrite: impl Fn(&str) -> String) -> String {
                 continue;
             }
         };
-        let Some(end) = find_close(&tail[2..], close) else {
+        // A comment has no strings: `don't` in `{# ... #}` mustn't start one.
+        let end = if close == "#}" { tail[2..].find(close) } else { find_close(&tail[2..], close) };
+        let Some(end) = end else {
             out.push_str(tail);
             return out;
         };
@@ -931,5 +933,16 @@ mod tests {
         for (input, want) in cases {
             assert_eq!(nunjucks_syntax(input, &Default::default()), want, "{}", input);
         }
+    }
+
+    /// An apostrophe in a comment turned off every rewrite until the next quote in the file
+    /// (a11yproject.com: the table of contents went missing from 35 pages).
+    #[test]
+    fn a_quote_in_a_comment_doesnt_stop_the_rewrites() {
+        let input = "{% set y = 'abc' %}A[{{ y.length }}]\n{# we don't #}\nB[{{ y.length }}] {% if a !== b %}{% endif %}";
+        let want = "{% set y = 'abc' %}A[{{ y | __ssqch_length }}]\n{# we don't #}\nB[{{ y | __ssqch_length }}] {% if a != b %}{% endif %}";
+        assert_eq!(nunjucks_syntax(input, &Default::default()), want);
+        let input = "{# \"x #}{{ y.length }}";
+        assert_eq!(jinja_syntax(input), "{# \"x #}{{ y | __ssqch_length }}");
     }
 }

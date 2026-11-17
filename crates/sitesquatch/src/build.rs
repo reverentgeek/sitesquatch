@@ -1388,7 +1388,9 @@ fn uses_collections(tpl: &Tpl, includes: &HashSet<String>) -> bool {
         return true;
     }
     // An include, import or component that reads collections.
-    !includes.is_empty() && quoted_names(&tpl.body).any(|name| includes.contains(&include_key(name)))
+    // Only names in template code: `The "footer" of a page` in a post's text isn't an include,
+    // and moving the post to the second pass emptied its `templateContent` in the feed.
+    !includes.is_empty() && quoted_names(&tpl.body).any(|(pos, name)| includes.contains(&include_key(name)) && in_code(&tpl.body, &tpl.engines, pos))
 }
 
 /// Whether `word` is in template code (not prose) for a template rendered by `engines`.
@@ -1401,11 +1403,16 @@ fn code_mentions(body: &str, engines: &[String], word: &str) -> bool {
     engines.iter().any(|e| !matches!(e.as_str(), "edge" | "md" | "html" | "txt")) && tag_code_mentions(body, word)
 }
 
+/// Whether the byte at `pos` is in template code for a template rendered by `engines`.
+fn in_code(body: &str, engines: &[String], pos: usize) -> bool {
+    (engines.iter().any(|e| e == "edge") && in_edge_code(body, pos)) || (engines.iter().any(|e| !matches!(e.as_str(), "edge" | "md" | "html" | "txt")) && in_tag_code(body, pos))
+}
+
 /// Quoted strings in a template, the names an `include`, `import`,
-/// `@include` or `{{> partial}}` uses (and any other strings).
-fn quoted_names(body: &str) -> impl Iterator<Item = &str> {
+/// `@include` or `{{> partial}}` uses (and any other strings), with where each starts.
+fn quoted_names(body: &str) -> impl Iterator<Item = (usize, &str)> {
     static QUOTED: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r#"["']([\w./-]{1,200})["']|\{\{>\s*([\w./-]+)"#).unwrap());
-    QUOTED.captures_iter(body).filter_map(|c| c.get(1).or(c.get(2)).map(|m| m.as_str()))
+    QUOTED.captures_iter(body).filter_map(|c| c.get(1).or(c.get(2)).map(|m| (m.start(), m.as_str())))
 }
 
 /// `partials/nav.njk` and `./partials/nav` are both `partials/nav`.
@@ -1438,7 +1445,7 @@ fn includes_using_collections(dir: &Path) -> HashSet<String> {
     loop {
         let before = using.len();
         for (key, text) in &files {
-            if !using.contains(key) && quoted_names(text).any(|n| using.contains(&include_key(n))) {
+            if !using.contains(key) && quoted_names(text).any(|(pos, n)| using.contains(&include_key(n)) && (in_edge_code(text, pos) || in_tag_code(text, pos))) {
                 using.insert(key.clone());
             }
         }
@@ -1450,28 +1457,31 @@ fn includes_using_collections(dir: &Path) -> HashSet<String> {
 
 /// Whether `word` appears inside a `{{ ... }}`, `{% ... %}` or EJS `<% ... %>` tag.
 fn tag_code_mentions(body: &str, word: &str) -> bool {
-    body.match_indices(word).any(|(pos, _)| {
-        let before = &body[..pos];
-        [("{{", "}}"), ("{%", "%}"), ("<%", "%>")].iter().any(|(open, close)| before.rfind(open).is_some_and(|o| !before[o..].contains(close)))
-    })
+    body.match_indices(word).any(|(pos, _)| in_tag_code(body, pos))
+}
+
+/// Whether `pos` is inside a `{{ }}`, `{% %}` or `<% %>` tag.
+fn in_tag_code(body: &str, pos: usize) -> bool {
+    let before = &body[..pos];
+    [("{{", "}}"), ("{%", "%}"), ("<%", "%>")].iter().any(|(open, close)| before.rfind(open).is_some_and(|o| !before[o..].contains(close)))
 }
 
 fn edge_code_mentions(body: &str, word: &str) -> bool {
-    for (pos, _) in body.match_indices(word) {
-        let before = &body[..pos];
-        // Inside an interpolation: the last `{{` comes after the last `}}`.
-        if let Some(open) = before.rfind("{{") {
-            if before[open..].find("}}").is_none() && !before[open..].starts_with("{{--") {
-                return true;
-            }
-        }
-        // On a directive line such as `@each(post in collections.posts)`.
-        let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
-        if body[line_start..].trim_start().starts_with('@') {
+    body.match_indices(word).any(|(pos, _)| in_edge_code(body, pos))
+}
+
+/// Whether `pos` is inside an Edge interpolation or on a directive line.
+fn in_edge_code(body: &str, pos: usize) -> bool {
+    let before = &body[..pos];
+    // Inside an interpolation: the last `{{` comes after the last `}}`.
+    if let Some(open) = before.rfind("{{") {
+        if before[open..].find("}}").is_none() && !before[open..].starts_with("{{--") {
             return true;
         }
     }
-    false
+    // On a directive line such as `@each(post in collections.posts)`.
+    let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
+    body[line_start..].trim_start().starts_with('@')
 }
 
 /// `./dist/about/index.html` for a path inside the project, else the full
