@@ -1055,6 +1055,34 @@ reuse it, and crates.io comes before `cargo binstall`.
       version (or the latest) on Linux, macOS and Windows runners, checking the archive's
       checksum and using the tool cache. The blog doesn't need it (it builds on Netlify).
 
+### Deploy guides
+
+The README's "Deploying" section has a Netlify recipe and a GitHub Pages workflow, but nothing
+for Cloudflare, and a recipe isn't a guide. Write one guide per host, each a page someone can
+follow from an empty account to a live site, and link them from "Deploying" (which keeps a short
+summary of each, so `ssqch docs netlify` and `ssqch docs cloudflare` still answer). Each guide
+covers: installing a pinned ssqch (the npm dev dependency, or the installer script with
+`SSQCH_VERSION` for a site without a `package.json`), the build command and output folder,
+keeping `.cache/ssqch` between builds (the first build of the blog takes minutes, a warm one
+seconds), redirects, custom headers, preview deploys, a custom domain, and what goes wrong
+(a missing `publish` folder, a stale image cache, the wrong Node version).
+
+- [ ] Netlify: grow the README's recipe into a guide, using the blog's `netlify.toml` as the
+      worked example. Cover `netlify-plugin-cache`, `redirectsPlugin({ netlify: true })` and
+      `_redirects`, a `_headers` file (cache headers for `/img/`), deploy previews and branch
+      deploys, and how to bump the pinned version.
+- [ ] Cloudflare: work out the recommended path first (Workers static assets or Pages; a Git
+      integration build or `wrangler` from GitHub Actions with `setup-ssqch`), and whether
+      Cloudflare's build cache can keep `.cache/ssqch`; if it can't, say so and recommend building
+      in Actions with `actions/cache`. Check that the `_redirects` lines `redirectsPlugin` writes
+      work there (Cloudflare reads `_redirects` and `_headers` too, with its own limits), and
+      decide whether the option needs a host-neutral name (`netlify: true` would then be a
+      misleading name for it). Deploy an example to prove each step.
+- [ ] Decide where guides live (`docs/deploying/` beside `docs/trailheads/`, or the README), and
+      whether `ssqch docs` should answer from them.
+- [ ] Link the guides from the trailheads and the starters' READMEs, and from the "Later: deploy
+      the examples" item in "Site plumbing", whichever host the examples end up on.
+
 ### Getting started
 
 - [x] Rewrite the README's "Try it" around installing a prebuilt binary and `ssqch init`: the
