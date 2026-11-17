@@ -67,6 +67,17 @@ jobs:
           # app, so `--type execute` always rejects it; Gatekeeper checks a
           # downloaded tool's primary signature, which must be notarized.
           xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;" ssqch
-          result=$(spctl --assess --type open --context context:primary-signature --verbose=4 ssqch 2>&1) || true
-          echo "$result"
-          echo "$result" | grep -q "accepted" && echo "$result" | grep -q "source=Notarized Developer ID" || { echo "::error::Gatekeeper doesn't accept the binary as notarized"; exit 1; }
+          # Apple can take a few minutes to publish the ticket after notarytool
+          # says "Accepted" (0.6.4's Intel build was "Unnotarized" 4 seconds
+          # later), so check again for up to five minutes before failing.
+          for attempt in $(seq 1 15); do
+            result=$(spctl --assess --type open --context context:primary-signature --verbose=4 ssqch 2>&1) || true
+            echo "$result"
+            if echo "$result" | grep -q "accepted" && echo "$result" | grep -q "source=Notarized Developer ID"; then
+              exit 0
+            fi
+            echo "Attempt $attempt: not accepted as notarized yet; checking again in 20 seconds."
+            sleep 20
+          done
+          echo "::error::Gatekeeper doesn't accept the binary as notarized"
+          exit 1
