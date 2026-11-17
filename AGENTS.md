@@ -10,15 +10,16 @@ the integration test. Start sessions with `--add-dir ../blog` (or `/add-dir ../b
 change affects it.
 
 - Not a clone of Eleventy or of any other generator. ssqch started as an Eleventy-compatible
-  build for the blog, and that was removed (see "Remove Eleventy" in `TODO.md`): ssqch has its
-  own design, and doesn't copy another generator's API wholesale. Take the best ideas from
-  existing generators, fill the gaps they leave, and design each feature as ssqch's own, so the
-  result is something unique that appeals to lots of developers. Making the move easy is part
-  of that: things should feel familiar and inviting, so an alias for a word people bring from
-  another generator (Eleventy's included: `ssqch dev`, `pathPrefix`) is welcome where it makes
-  moving easier and doesn't mean something else in ssqch. ssqch's own name stays the one the
-  docs teach. Blog content about Eleventy (posts, their URLs) isn't an API and stays. Research
-  on other generators goes in `research/` (gitignored); the work items go in `TODO.md`.
+  build for the blog, and that was removed (see "Remove Eleventy" in
+  `docs/archive/todo-2026-11-17.md`): ssqch has its own design, and doesn't copy another
+  generator's API wholesale. Take the best ideas from existing generators, fill the gaps they
+  leave, and design each feature as ssqch's own, so the result is something unique that appeals
+  to lots of developers. Making the move easy is part of that: things should feel familiar and
+  inviting, so an alias for a word people bring from another generator (Eleventy's included:
+  `ssqch dev`, `pathPrefix`) is welcome where it makes moving easier and doesn't mean something
+  else in ssqch. ssqch's own name stays the one the docs teach. Blog content about Eleventy
+  (posts, their URLs) isn't an API and stays. Research on other generators goes in `research/`
+  (gitignored); the work items go in `TODO.md`.
 - Other generators' words come from one table, `crates/sitesquatch/src/equivalents.rs`: ssqch's
   name for each, what to say, and where to read more. Errors and warnings use it to name
   ssqch's word (`"pathPrefix" isn't a config option. In ssqch it's base`), and each row is
