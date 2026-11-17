@@ -66,7 +66,10 @@ test("packages_resolve_like_node", () => {
 		"index.edge": "{{ out }}",
 	}));
 	buildOk(root);
-	assert.equal(read(root, "_site/index.html"), "helped legacy|esm|cjs|HI|1.2.3|8|true|true|pine-cone|function|dual");
+	// DELIBERATE (0.8): `__dirname` and `__filename` are Node's own, which on Windows have `\`, so the
+	// package's two checks for `/legacy/lib` are false there. 0.7 gave paths with `/` on every system.
+	const posix = RUST_07 || process.platform !== "win32";
+	assert.equal(read(root, "_site/index.html"), `helped legacy|esm|cjs|HI|1.2.3|8|${posix}|${posix}|pine-cone|function|dual`);
 });
 
 test("packages_resolve_from_a_parent_folder", () => {

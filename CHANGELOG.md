@@ -28,6 +28,11 @@ the release.
     stream for a file that isn't there fails later, as an error of the build, where 0.7 threw
     when it was called.
   - `console.log` prints objects as Node prints them, where 0.7 printed JSON.
+  - On Windows, paths are Windows' own, as in Node: `node:path` joins with `\`, and
+    `process.cwd()`, `__dirname` and `__filename` have drive letters and `\`, where 0.7 gave
+    POSIX paths on every system. Code that builds URLs from paths should use `node:path/posix`
+    or replace the separators. What ssqch itself hands a site (`page.inputPath`, `page.url`,
+    a hook's `dirs`) still has `/` everywhere.
 - **Filters and templates get your real objects.** 0.7 handed them copies that kept writes to
   themselves; now a filter that sorts or changes what it's given changes it for the pages
   rendered after it. Copy first (`[...posts].sort()`). Data that refers to itself (`a.self = a`)

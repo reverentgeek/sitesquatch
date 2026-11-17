@@ -83,7 +83,9 @@ test("changed_data_files_reload_between_builds", () => {
 	assert.equal(read(root, "_site/index.html"), "Yeti Yogurt");
 });
 
-test("path_matches_node", () => {
+// DELIBERATE (0.8): `node:path` is Node's own, which on Windows is Windows' (`a\b`, `C:\a`). 0.7's
+// was the POSIX one on every system, and the expected values are POSIX Node's.
+test("path_matches_node", { skip: !RUST_07 && process.platform === "win32" && "0.8 on Windows: node:path is Windows' own, as in Node" }, () => {
 	const root = project({
 		...EDGE_ONLY,
 		"_data/out.mjs": fixture("path-cases.mjs"),
@@ -206,7 +208,9 @@ test("data_file_errors_name_the_file", () => {
 	assert.ok(e.includes("_data/x.js: bad snack") && e.includes("at default (_data/x.js:1:"), e);
 
 	e = buildError({ "_data/x.js": "import fs from \"node:fs\"; export default fs.readFileSync(\"nope.json\", \"utf8\");", "index.edge": "" });
-	assert.ok(e.includes("ENOENT: no such file or directory, open 'nope.json'"), e);
+	// DELIBERATE (0.8): the message is Node's own, and on Windows Node names the whole path.
+	if (RUST_07 || process.platform !== "win32") assert.ok(e.includes("ENOENT: no such file or directory, open 'nope.json'"), e);
+	else assert.ok(e.includes("ENOENT: no such file or directory, open '") && e.includes("nope.json'"), e);
 });
 
 test("data_file_errors_name_the_file (node:sqlite)", { skip: !RUST_07 && "QuickJS only: the list of node: modules ssqch shims" }, () => {
