@@ -17,6 +17,7 @@ import type { Data, DataLoader } from "./data.ts";
 import { isPlainObject, tomlValue } from "./data.ts";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
+import { checkLanguages } from "./engines/markdown.ts";
 import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
 import type { MarkdownOptions } from "./markdown-options.ts";
 import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
@@ -574,6 +575,7 @@ function applySettings(config: Config, settings: Data): void {
 		else bail(`${key} must be a string or false, not ${typeof value}`);
 	}
 	if (settings.markdown !== undefined) applyMarkdownOptions(config.markdown, settings.markdown);
+	checkLanguages(config.markdown, config.root);
 	if (settings.deepMerge !== undefined) {
 		if (typeof settings.deepMerge !== "boolean") bail(`deepMerge must be true or false, not ${typeof settings.deepMerge}`);
 		config.deepMerge = settings.deepMerge;
@@ -708,6 +710,7 @@ function applyToml(config: Config, file: string): void {
 			const camel: Data = {};
 			for (const [key, value] of Object.entries(site.markdown)) camel[key.replace(/_(.)/g, (_, c: string) => c.toUpperCase())] = value;
 			applyMarkdownOptions(config.markdown, camel);
+			checkLanguages(config.markdown, config.root);
 		}
 		for (const theme of texts("theme") ?? []) addTheme(config, theme);
 		if (site.schemas !== undefined) {

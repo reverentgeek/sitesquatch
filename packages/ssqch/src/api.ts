@@ -11,7 +11,7 @@ import { slugify as slug } from "./slug.ts";
 
 function defaultMarkdown() {
 	const engine = markdownEngine(defaultMarkdownOptions());
-	return (text: string, inline: boolean) => engine.html(text, inline);
+	return (text: string, inline: boolean) => engine.plain(text, inline);
 }
 
 /**

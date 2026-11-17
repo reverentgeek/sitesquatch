@@ -2,7 +2,7 @@
 // name replaces one.
 import { withBase } from "./base.ts";
 import type { Config, Filter } from "./config.ts";
-import { htmlText, splitWhitespace, toc } from "./content.ts";
+import { escapeText, htmlText, splitWhitespace, toc } from "./content.ts";
 import { isPlainObject } from "./data.ts";
 import { BuildError } from "./diagnostics.ts";
 import type { Markdown } from "./engines/markdown.ts";
@@ -23,18 +23,19 @@ export const BUILTIN_FILTERS: ReadonlyArray<readonly [string, string]> = [
 	["slugify", "`slugify(\"Pine Cone Crunch!\")` is `pine-cone-crunch`: lowercase letters and digits, with a dash for each run of anything else; `slugify(title, { separator: \"_\" })` uses another separator, and `apostrophes: \"separate\"` splits words at an apostrophe instead of dropping it."],
 ];
 
-/** The ones that arrive with later stages of the move to Node: they say so when they're called. */
-const NOT_YET: Record<string, string> = { highlight: "stage 3" };
-
 export function builtinFilters(markdown: Markdown, config: Config): Map<string, Filter> {
 	const filters = new Map<string, Filter>();
 	filters.set("markdown", (text: unknown, option?: unknown) => {
 		const inline = option === "inline" || (isPlainObject(option) && Boolean(option.inline));
 		return markdown.html(text === undefined || text === null ? "" : String(text), inline);
 	});
-	for (const [name, stage] of Object.entries(NOT_YET)) {
-		filters.set(name, () => { throw new BuildError(`${name}() isn't in the Node build of ssqch yet (the move to Node, ${stage})`); });
-	}
+	// highlight(code, lang): highlighted HTML for the inside of <code> (escaped text for a
+	// language without a highlighter).
+	filters.set("highlight", (...args: unknown[]) => {
+		const code = args.length > 0 ? String(args[0]) : "";
+		const lang = args.length > 1 ? String(args[1]) : "";
+		return markdown.highlight(code, lang) ?? escapeText(code);
+	});
 	// The page's URL is the second argument as a string, as a template would print it.
 	const urlArg = (args: unknown[]) => (args.length > 1 ? String(args[1]) : "");
 	filters.set("navTree", (...args: unknown[]) => treeOf(args[0], urlArg(args)));

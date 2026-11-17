@@ -59,6 +59,13 @@ the release.
   words before it. The error for a permalink outside the output folder names the permalink
   (`"/../up.html"`, where 0.7 printed `Some("/../up.html")`), and the warning for a data file
   nothing can read says to provide it in the config's `data` (0.7 named the Rust API).
+- A stack frame in an error or a warning has the column Node gives: `throw new Error("...")` is
+  at `new`, where 0.7 (on QuickJS) pointed at `Error`.
+- Markdown is still ssqch's own, 0.7's Rust built as WebAssembly, so pages come out as they did.
+  A render hook or container whose template answers with a promise (an async filter, function
+  or engine) is an error that names the template: hooks render while the Markdown around them
+  does, so make what they call synchronous. A highlighter in `markdown.highlight.languages`
+  that's async gets the warning that it returned an object, not a list of tokens.
 
 ## 0.7.0 - 2026-11-17
 
