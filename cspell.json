@@ -25,6 +25,7 @@
 		"ENOENT",
 		"esac",
 		"filesizeformat",
+		"finalizer",
 		"foresty",
 		"Gahlee",
 		"getbootstrap",
@@ -36,6 +37,7 @@
 		"libaom",
 		"libclang",
 		"libwebp",
+		"liquidjs",
 		"llms",
 		"luxon",
 		"lychee",
@@ -43,6 +45,7 @@
 		"mimalloc",
 		"minijinja",
 		"moxcms",
+		"mozjpeg",
 		"Namecheap",
 		"nasm",
 		"npmjs",
@@ -64,6 +67,8 @@
 		"sindresorhus",
 		"sitesquatch",
 		"Squatch",
+		"SSIM",
+		"SSIMULACRA",
 		"ssqch",
 		"strikethrough",
 		"striptags",
@@ -75,6 +80,8 @@
 		"typescriptlang",
 		"ureq",
 		"vuejs",
-		"xattr"
+		"wasip",
+		"xattr",
+		"xhigh"
 	]
 }

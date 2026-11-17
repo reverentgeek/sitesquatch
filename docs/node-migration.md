@@ -37,6 +37,19 @@ Each is a product choice. A recommendation is given; the gate in brackets is the
 | D6 | The version and the Rust line | 0.8.0, a "Breaking" release. One last 0.7.x of the binary and the crates with a note; no second line of development. |
 | D7 | The standalone executable for Homebrew and the install script | `bun build --compile` (85 MB, measured in the study) or Node's single-executable feature (still "active development" in Node 26). Decide at stage 8 with both measured, including notarization and whether `.wasm` plugins run the same in it. |
 
+## Stage 0 results (2026-11-17)
+
+The full write-up, with every number and how to rerun it, is `research/architecture/stage-0-gates.md`; the scripts are in `research/architecture/spikes/` (`g2-blog/`, `images/g3.mjs`, `g4-jinja/`, `g5-markdown/` and `hybrid/plugins/markdown/`).
+
+| Gate | Result | What it means for the decisions |
+| --- | --- | --- |
+| G2, the same output on every Node | **Pass.** The blog's 175 pages and 34 other files, built by a copy of the spike core with edge.js and G5's Markdown from the unchanged config, are byte-identical on Node 22.18.0, 22.23.5, 24.22.3 and 26.13.1, and with `TZ` at UTC, Los Angeles and Tokyo. | D5: 22.18 holds. The current Node releases all ship ICU 78.3, but 22.18.0 ships 77.1, and one of 91 `Intl` results differs between them (en-GB compact numbers). ssqch's own helpers stay off `Intl`, and the oracle runs on the lowest supported Node too. |
+| G3, picture quality | **Pass on size, close on time.** At equal SSIMULACRA2, sharp's AVIF is 16% smaller than ssqch's, WebP 5% larger, JPEG 6% larger (3% smaller with mozjpeg). The blog's 531 files take sharp 17.4 s against ssqch's 14.4 s at AVIF effort 4 (1.2 times; effort 2 halves AVIF's time). | D4: sharp. Its quality numbers aren't ssqch's: ssqch's AVIF 60 matches sharp's 47, JPEG 80 matches 88, so the defaults are chosen again. |
+| G4, Jinja through `minijinja-js` | **Fail.** 4.8 to 5.4 times Nunjucks with ssqch's (Nunjucks-style) escaping, because minijinja-js has no formatter and escaping runs in a JavaScript finalizer; 2.0 to 2.6 times with MiniJinja's own escaping (which changes output). Passing `collections` in each page's context is quadratic (350 to 525 times on 1,000 pages): page data is copied into WebAssembly on every render. | D1: Nunjucks for `.jinja` and `.njk`, by the fallback above. |
+| G5, ssqch's Markdown and highlighter as `.wasm` | **Pass.** `markdown.rs` and `highlight.rs`, compiled unchanged through the plugin ABI (3.5 MB), give 0.7.0's bytes for all 128 of the blog's Markdown files on every Node version. Markdown runs 3.5 times faster than markdown-it; the highlighter (syntect) is 5 to 6 times slower than markdown-it with Prism, as it is natively (0.1 s for the blog on one thread). | D2: keep them as `.wasm`. Two things to design in stage 3: render hooks and custom highlighters call back into JavaScript, which ABI v1 can't do; and a cache for highlighted fences. |
+
+Found on the way, for stage 2: a config that imports JSON without `with { type: "json" }` (the blog's does) fails on Node, and the spike's module hook now adds the attribute; folder data's `"tags": "posts"` has to join a page's own `tags` list, not be replaced by it; and edge.js's `renderRawSync` compiles on every call (the blog took 2 to 3 s in the spike, 0.1 s of it highlighting), so the Edge engine caches templates by file.
+
 ## Stages
 
 Weeks are focused work for one person with coding agents, from the study's estimate. Stages 3 to 7 can run in parallel once stage 2 has fixed the core's interfaces.

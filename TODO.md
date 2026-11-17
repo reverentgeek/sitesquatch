@@ -28,11 +28,19 @@ ARM builds, and it settles several "Silent wrong answers" (YAML dates as js-yaml
 and `Intl` time zones, `templateContent` read before its page renders). Those stay listed for 0.7.x
 until 0.8 ships.
 
-- [ ] **Stage 0, gates:** G2, the blog on Node 22, 24 and 26 with `ssqch diff --exact` (the spike is
-      already byte-identical on all three for the scale site and v8.dev); G3, sharp against ssqch's
-      encoders at equal measured quality on the blog's photos; G4, Jinja through `minijinja-js`
-      against Nunjucks; G5, ssqch's Markdown and highlighter built as `.wasm` and run in V8,
-      byte-identical to 0.7.0 on the blog's posts.
+- [x] **Stage 0, gates** (2026-11-17; results in `docs/node-migration.md`, "Stage 0 results"): G2
+      passes (the blog byte-identical on Node 22.18.0, 22.23, 24 and 26 and in three time zones);
+      G3 passes on size (sharp's AVIF 16% smaller at equal SSIMULACRA2) and takes 1.2 times
+      ssqch's time; G4 fails (minijinja-js 4.8 to 5.4 times Nunjucks with ssqch's escaping); G5
+      passes (128 of 128 of the blog's Markdown files byte-identical as `.wasm`).
+- [ ] **For stage 2, from G2:** JSON imports without `with { type: "json" }` (the blog's config has
+      one; the spike's module hook adds the attribute), folder data's `"tags": "posts"` joined with
+      a page's own `tags`, and the oracle on the lowest supported Node too (ICU 77.1 against 78.3
+      changed one of 91 `Intl` results).
+- [ ] **For stage 3, from G2 and G5:** cache edge.js templates by file (`renderRawSync` compiles
+      every call); render hooks and custom highlighters from the Markdown `.wasm`, which ABI v1
+      can't call back for; a cache for highlighted fences (syntect is 0.1 s of the blog on one
+      thread).
 - [ ] **Decide** D1 to D7 in `docs/node-migration.md`: the default template language, ssqch's
       Markdown and highlighter as `.wasm` or markdown-it, the minifier, images, the lowest Node
       version (22.18 proposed), the version and the last Rust release, the standalone executable.
