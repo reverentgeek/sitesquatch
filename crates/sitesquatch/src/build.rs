@@ -293,6 +293,7 @@ fn prepare(cfg: &Config, ctx: &BuildContext, timer: &mut Timer, keep_layers: boo
     hooks.extend(load_hook_templates(&ctx.includes_dir, &slashes(&cfg.includes), &engines, &|ext| engines_for(cfg, ext))?);
     markdown.set_hooks(hooks, Arc::downgrade(&engines));
     crate::markdown::set_current(cfg.markdown.clone());
+    data::set_input_dir(&ctx.input_dir);
 
     timer.lap("setup");
 
@@ -444,8 +445,27 @@ pub const BUILTIN_FILTERS: &[(&str, &str)] = &[
     ("highlight", "`highlight(code, lang)` is highlighted HTML for inside a `<code>`, with `hl-*` classes."),
     ("readingTime", "`readingTime(content)` is the minutes it takes to read some HTML, at 200 words a minute."),
     ("withBase", "`withBase(\"/feed.xml\")` puts the site's `base` in front of a URL, for places outside HTML attributes."),
-    ("slugify", "`slugify(\"Pine Cone Crunch!\")` is `pine-cone-crunch`: lowercase letters and digits, with a dash for each run of anything else."),
+    ("slugify", "`slugify(\"Pine Cone Crunch!\")` is `pine-cone-crunch`: lowercase letters and digits, with a dash for each run of anything else; `slugify(title, { separator: \"_\" })` uses another separator."),
 ];
+
+/// `slugify`'s separator: `"_"`, or `{ separator: "_" }` (a dash without one).
+pub fn slug_separator(option: Option<&Value>) -> Result<String> {
+    match option {
+        None => Ok("-".into()),
+        Some(v) if v.is_nullish() => Ok("-".into()),
+        Some(Value::Str(s)) => Ok(s.to_string()),
+        Some(v @ Value::Obj(o)) => {
+            if let Some(key) = o.keys().find(|k| *k != "separator") {
+                bail!("slugify: unknown option `{}` (options: separator)", key);
+            }
+            Ok(match v.get("separator") {
+                s if s.is_nullish() => "-".into(),
+                s => s.to_js_string(),
+            })
+        }
+        Some(other) => bail!("slugify: the second argument is a separator (\"_\") or {{ separator }}, not a {}", other.type_of()),
+    }
+}
 
 /// Filters every site has: `markdown(text)` (or `markdown(text, "inline")`)
 /// and `toc(page.headings)` (or `toc(page.headings, { from: 2, to: 4, ordered: true })`).
@@ -490,7 +510,7 @@ fn builtin_filters(markdown: &Arc<MarkdownEngine>) -> Map {
             Ok(Value::from(crate::markdown::escape_text(&code)))
         }),
     );
-    filters.insert("slugify".into(), Value::func(|args| Ok(Value::from(crate::blueprint::slug(&args.first().map(Value::to_js_string).unwrap_or_default())))));
+    filters.insert("slugify".into(), Value::func(|args| Ok(Value::from(crate::blueprint::slug_with(&args.first().map(Value::to_js_string).unwrap_or_default(), &slug_separator(args.get(1))?)))));
     filters.insert(
         "readingTime".into(),
         Value::func(|args| {
@@ -960,7 +980,7 @@ fn load_layout(cfg: &Config, ctx: &BuildContext, name: &str, cache: &Mutex<HashM
         .flat_map(|dir| std::iter::once(dir.join(name)).chain(cfg.template_formats.iter().map(move |ext| dir.join(format!("{}.{}", name, ext)))).collect::<Vec<_>>())
         .find(|p| p.is_file())
         .ok_or_else(|| anyhow!("layout `{}` not found: no sightings in {}{}{}", name, ctx.layouts_dir.display(), if ctx.theme_dirs.is_empty() { "" } else { " or the theme" }, closest_layout(ctx, name)))?;
-    let src = std::fs::read_to_string(&path)?;
+    let src = data::read_text(&path)?;
     let (mut data, body) = data::parse_front_matter(&src).with_context(|| format!("in layout {}", path.display()))?;
     alias_data_keys(&mut data).with_context(|| format!("in layout {}", path.display()))?;
     let layout = Arc::new(Layout {
@@ -990,7 +1010,7 @@ fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared)
     let rel_path = path.strip_prefix(root).unwrap_or(path);
     let rel = rel_path.to_string_lossy().replace('\\', "/");
     (|| {
-        let src = std::fs::read_to_string(path)?;
+        let src = data::read_text(path)?;
         let (mut front, body) = data::parse_front_matter(&src)?;
         let front_keys: Vec<String> = front.keys().cloned().collect();
         alias_data_keys(&mut front)?;

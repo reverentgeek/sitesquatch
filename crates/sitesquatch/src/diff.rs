@@ -76,6 +76,8 @@ pub struct FileDiff {
     /// For a page: a changed title, ids that are gone.
     pub notes: Vec<String>,
     pub hunks: Vec<Hunk>,
+    /// Every change is a date or a year (`2025` to `2026`): the first one.
+    pub only_dates: Option<(String, String)>,
     pub size_before: u64,
     pub size_after: u64,
 }
@@ -380,6 +382,7 @@ fn compare_pair(before_dir: &Path, after_dir: &Path, pair: &Pair, options: &Diff
         what: Vec::new(),
         notes: Vec::new(),
         hunks: Vec::new(),
+        only_dates: None,
         size_before: a.len() as u64,
         size_after: b.len() as u64,
     };
@@ -413,6 +416,10 @@ fn compare_pair(before_dir: &Path, after_dir: &Path, pair: &Pair, options: &Diff
             let shown = gone.iter().take(8).cloned().collect::<Vec<_>>().join(", ");
             let more = if gone.len() > 8 { format!(" and {} more", gone.len() - 8) } else { String::new() };
             diff.notes.push(format!("ids removed (links to them break): {}{}", shown, more));
+        }
+        diff.only_dates = only_dates(&found);
+        if let Some((old, new)) = &diff.only_dates {
+            diff.notes.push(format!("only dates changed ({} -> {})", old, new));
         }
         diff.hunks = found;
     } else {
@@ -451,6 +458,32 @@ pub fn compare(before: &Path, after: &Path, options: &DiffOptions) -> Result<Dif
         }
     }
     Ok(report)
+}
+
+static DATE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?x)
+        \d{4}-\d{2}-\d{2}(?:[T\ ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?   # 2026-03-14T09:05:00Z
+        | \b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b   # March 14, 2026
+        | \b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b   # 14 March 2026
+        | \b\d{1,2}/\d{1,2}/\d{2,4}\b   # 3/14/2026
+        | \b(?:19|20)\d{2}\b   # 2026
+    ").unwrap()
+});
+
+/// When every changed line is the same apart from its dates and years: the
+/// first date that changed, before and after.
+fn only_dates(hunks: &[Hunk]) -> Option<(String, String)> {
+    let blank = |lines: &[String]| lines.iter().map(|l| DATE.replace_all(l, "\u{0}").into_owned()).collect::<Vec<_>>();
+    let mut first = None;
+    for hunk in hunks {
+        if hunk.removed.len() != hunk.added.len() || blank(&hunk.removed) != blank(&hunk.added) {
+            return None;
+        }
+        if first.is_none() {
+            first = hunk.removed.iter().zip(&hunk.added).find_map(|(old, new)| DATE.find_iter(old).zip(DATE.find_iter(new)).find(|(a, b)| a.as_str() != b.as_str()).map(|(a, b)| (a.as_str().to_string(), b.as_str().to_string())));
+        }
+    }
+    first
 }
 
 // ------------------------------------------------------------------- output
@@ -542,6 +575,11 @@ impl DiffReport {
             (0, _) => plural(others, "other file", "other files"),
             _ => format!("{} and {}", plural(pages, "page", "pages"), plural(others, "other file", "other files")),
         };
+        let dated = self.changed.iter().filter(|f| f.only_dates.is_some()).count();
+        if dated > 0 {
+            let which = if dated == self.changed.len() { format!("All {}", plural(dated, "changed file", "changed files")) } else { format!("{} of the {}", crate::report::count(dated), plural(self.changed.len(), "changed file", "changed files")) };
+            out.push_str(&format!("\n{} differ only in dates or years. See `ssqch docs \"dates that changed\"`: a page with no date of its own gets its file's modification time.\n", which));
+        }
         out.push_str(&format!(
             "\nChanges found: {} ({} changed, {} added, {} removed); {} are the same. The stump has moved.\n",
             found,
@@ -579,6 +617,7 @@ impl DiffReport {
                     "changes": f.what,
                     "notes": f.notes,
                     "changedLines": f.changed_lines(),
+                    "onlyDates": f.only_dates.is_some(),
                     "sizeBefore": f.size_before,
                     "sizeAfter": f.size_after,
                     "hunks": hunks,
@@ -733,6 +772,21 @@ mod tests {
         assert_eq!(report.changed.len(), 1);
         assert_eq!(report.changed[0].what, ["markup"]);
         assert!(report.added.is_empty() && report.removed.is_empty());
+
+        // Pages that differ only in a date or a year say so.
+        let dated_before = build("dated-before", &[("index.html", "<footer>&copy; 2025, March 14, 2025</footer>"), ("a/index.html", "<time>2025-03-14</time>")]);
+        let dated_after = build("dated-after", &[("index.html", "<footer>&copy; 2026, March 14, 2026</footer>"), ("a/index.html", "<time>2026-01-02T10:00:00Z</time>")]);
+        let report = compare(&dated_before, &dated_after, &DiffOptions::default()).unwrap();
+        let home = report.changed.iter().find(|f| f.url == "/").unwrap();
+        assert_eq!(home.only_dates, Some(("2025".into(), "2026".into())));
+        assert_eq!(home.notes, ["only dates changed (2025 -> 2026)"]);
+        let text = report.to_text(10, false);
+        assert!(text.contains("\nAll 2 changed files differ only in dates or years. See `ssqch docs \"dates that changed\"`"), "{}", text);
+        assert_eq!(report.to_json(0)["changed"][0]["onlyDates"], true);
+        // Text that changed too isn't only dates.
+        let words = build("dated-words", &[("index.html", "<footer>&copy; 2026, Cedar</footer>"), ("a/index.html", "<time>2025-03-14</time>")]);
+        let report = compare(&dated_before, &words, &DiffOptions::default()).unwrap();
+        assert!(report.changed.iter().all(|f| f.only_dates.is_none()) && !report.to_text(10, false).contains("only in dates"));
 
         assert!(compare(&before, &before, &DiffOptions::default()).unwrap().is_same());
         assert!(compare(&before.join("nope"), &after, &DiffOptions::default()).is_err());

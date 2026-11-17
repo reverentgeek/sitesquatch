@@ -69,7 +69,7 @@ fn islands_load_scripts_only_where_they_are_used() {
     copy_dir(&site, &copy);
     let (ok, log) = build(&copy, &[]);
     assert!(ok, "{}", log);
-    assert!(log.contains("Elements  3 defined, 3 used on 2 pages"), "{}", log);
+    assert!(log.contains("Elements  4 defined, 4 used on 3 pages"), "{}", log);
     let read = |path: &str| std::fs::read_to_string(copy.join("dist").join(path)).unwrap();
     let home = read("index.html");
     assert!(home.contains("<link rel=\"stylesheet\" href=\"/elements/like-button.css\">\n</head>"), "{}", home);
@@ -79,7 +79,12 @@ fn islands_load_scripts_only_where_they_are_used() {
     assert!(trails.contains("[\"trail-filter\",\"/elements/trail-filter.js\",\"visible\"]") && trails.contains("like-button.js") && !trails.contains("local-time"), "{}", trails);
     assert!(trails.contains("<li data-level=\"easy\">Cedar Hollow: 3.2 miles, easy</li>"), "{}", trails);
     assert!(!read("about/index.html").contains("<script"), "the about page has no islands, so no scripts");
-    for file in ["like-button.js", "like-button.css", "local-time.js", "trail-filter.js", "shared/storage.js"] {
+    // The trail cam's photos come from a folder, through files(), with their sizes and dates.
+    let cam = read("trail-cam/index.html");
+    assert!(cam.contains("[\"photo-gallery\",\"/elements/photo-gallery.js\",\"idle\"]") && cam.contains("href=\"/elements/photo-gallery.css\"") && !cam.contains("like-button"), "{}", cam);
+    assert!(cam.contains("<a href=\"/images/trail-cam/20260616_01.png\" data-caption=\"The stump, which has moved.\">\n        <img src=\"/images/trail-cam/20260616_01.png\" width=\"320\" height=\"240\"") && cam.contains("<time datetime=\"2026-06-14\">June 14</time>"), "{}", cam);
+    assert!(copy.join("dist/images/trail-cam/20260614_01.png").is_file());
+    for file in ["like-button.js", "like-button.css", "local-time.js", "trail-filter.js", "photo-gallery.js", "photo-gallery.css", "shared/storage.js"] {
         assert!(copy.join("dist/elements").join(file).is_file(), "{} wasn't copied", file);
     }
 

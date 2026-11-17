@@ -110,6 +110,131 @@ fingerprinted `index.<hash>.css`, since PostCSS hadn't written `index.css` yet.
 - [ ] **A long first compile:** a tool slower than 2 s to start (a big `tsc --watch`) still
       races the first build. If one shows up, add `serve: { run: [{ command, waitFor }] }`.
 
+### Moving Gahlee House from Eleventy (found 2026-11-16)
+
+Found moving the Gahlee House site (`../gahlee`: Nunjucks, 146 pages, 92 photo albums paginated
+from two JSON table exports plus a folder scan, 51 recipes, 3,036 copied images) from Eleventy
+3.1.8 to ssqch 0.6.2 with `ssqch import eleventy --write`. The import plus four fixes by hand
+gave the same output: `ssqch diff` against Eleventy's build reported no differences apart
+from the footer year. The diff was the hero. It caught the one bug that would have shipped.
+
+The migration's rough edges, worst first:
+
+- [x] **`.length` on a list prints nothing in Nunjucks.** `{{ albums.length }}` and
+      `{{ recipes.length }}` printed empty strings with no warning (Eleventy printed 92 and 51).
+      Only `ssqch diff` found it. `.length` is everywhere in Eleventy's Nunjucks templates, since
+      Nunjucks passes through JavaScript properties. It's the same in `.jinja` (checked on 0.6.2:
+      `{{ xs.length }}` prints nothing, `{{ xs | length }}` prints 3), so a fix belongs in the
+      shared minijinja layer. Options, best first: make `.length` on lists and strings work in
+      Jinja and Nunjucks (as `length`/`len`); have `ssqch import eleventy` rewrite `.length` to
+      `| length` in `.njk` files, or list each one under "By hand"; or suggest `strict: true`
+      for the first build after an import (it already catches this: the build fails and shows
+      the line). (Handlebars already documents "`.length` on lists (use `len`)"; Nunjucks
+      doesn't say.)
+      Done 2026-11-17: `.length` is rewritten to a length filter in `.njk` and `.jinja` code
+      (lists, strings; `loop.length` and an object's own `length` key stay). Test:
+      `length_counts_lists_and_strings_in_nunjucks_and_jinja`.
+- [x] **A UTF-8 BOM in a `_data` JSON file stops the build.** Both table exports
+      (`tblPhoto.json`, `tblPhotoAlbum.json`, from SQL Server) start with `EF BB BF`:
+      `error: invalid JSON in src/_data/tblPhoto.json: expected value at line 1 column 1`, over
+      a frame that looks like a valid `[`. Eleventy reads them. Nothing in `crates/` handles a
+      BOM. Skip a leading BOM in JSON, YAML and TOML data files (and in `readData()`), or at
+      least name it in the error: "the file starts with a byte-order mark". Check pages too: a
+      BOM before `---` may hide a page's front matter (not tested yet).
+      Done 2026-11-17: `data::read_text` skips it for data files, `readData()`, JS and JSON
+      modules, pages and layouts (a BOM did hide front matter). Test:
+      `a_byte_order_mark_is_skipped_in_data_pages_and_scripts`.
+- [x] **The importer could port more of the config.** `addPassthroughCopy( { "images":
+      "images" } )` was listed as "an object or a variable", but an object literal maps
+      straight to `passthrough: [ { images: "images" } ]`. Leave only variables and computed
+      values to a person. (The other by-hand item, a self-contained `addFilter( "snake_case",
+      ( str ) => { ... } )`, is the unticked "Port simple `addFilter` and `addShortcode`
+      bodies" under "3. Trial migrations".)
+      Done 2026-11-17: object literals become `passthrough` entries, and self-contained filters
+      and shortcodes are copied into the draft (the item under "3. Trial migrations" too).
+- [x] **The importer leaves out the package files.** After `--write`, `package.json` still had
+      `@11ty/eleventy` and scripts running `eleventy` and `eleventy --serve`, and a stale
+      `package-lock.json` beside `pnpm-lock.yaml` still listed Eleventy and not ssqch (a host
+      that installs from it gets no `ssqch`). Rewrite or list: the dependency swap, the scripts
+      (`eleventy` to `ssqch build`, `eleventy --serve` to `ssqch serve`), and a lockfile from
+      another package manager than `packageManager` names.
+      Done 2026-11-17: `package.json`'s dependency and scripts are rewritten (unknown flags
+      listed), and lockfiles are listed: update the site's own, delete another manager's.
+- [x] **A fresh release and pnpm's release age.** pnpm 12's `minimumReleaseAgeExclude` needed
+      `ssqch` and the four `@ssqch/*` platform packages listed by hand to install a release
+      that came out that day. Say so in the README's "Install" section, with the lines to add.
+      Done 2026-11-17: a paragraph in "Install" (`ssqch docs "release age"`).
+- [x] **The drafted config contradicts itself.** It says `// Eleventy's defaults: Markdown and
+      HTML run through Liquid first.` right above `markdownEngine: "njk"` and
+      `htmlEngine: "njk"`, which came from the site's own `markdownTemplateEngine` and
+      `htmlTemplateEngine`. Write that comment only when the values are Eleventy's defaults.
+      Also, the draft isn't in the site's code style (2-space indents and no spaces inside
+      brackets, where the site's ESLint wants tabs and spaces). Copy the indentation of the
+      Eleventy config it came from.
+      Done 2026-11-17: the comment says where the engines came from, and the draft takes the
+      config's indentation and bracket spacing.
+- [x] **Explain `page.date` changing in the diff.** The footer prints
+      `{{ page.date.getFullYear() }}`, and every page went from 2025 (Eleventy: the file's
+      creation time) to 2026 (ssqch: the last time it changed, `file_date.unwrap_or(mtime)` in
+      `build.rs`). The diff shows 94 changed pages and no reason. `ssqch diff` could note when a
+      change is only a year or a date (the trailhead side is the next item).
+      Done 2026-11-17: `only dates changed (2025 -> 2026)` on each page, a count in the summary,
+      `onlyDates` in the JSON, and "Dates that changed" in the README.
+- [x] **What the site didn't know ssqch has: pointers in `docs/trailheads/from-eleventy.md`.**
+      - a page's fallback `date` is the last time it changed, not Eleventy's creation time;
+      - `{{ now() | dateformat("%Y") }}` for a copyright year, instead of `page.date`
+        (`albums.js` also formats dates with `toLocaleDateString` in three places, where
+        `dateformat` would do);
+      - `| length`, not `.length`, in Nunjucks;
+      - `imagePlugin()` for a site that is mostly a folder of full-size JPEGs (123 MB here).
+      Done 2026-11-17: in "Things that work differently", with the BOM and the importer's new
+      steps.
+
+What the site does with its own code that ssqch could do (`src/_data/albums.js`, about 190
+lines):
+
+- [x] **Files as data.** The "Gahlee v1" album is a folder scan of `images/albums/v1/`
+      (1,043 photos): `readdirSync`, an extension filter, a sort, and a date parsed from names
+      like `20011222_08.JPG`. ssqch already parses dates from page file names. A helper that
+      lists files matching a glob, such as `files("images/albums/v1/*.{jpg,png}")` returning
+      `{ path, url, name, date, width, height }`, would replace about 50 lines and fill in the
+      dimensions the site leaves `null`. It could live beside `readData()` in `ssqch`. As a new
+      module export it needs a `ssqch.d.ts` entry, a README entry `ssqch docs files` finds, and
+      a CHANGELOG entry. Reading sizes opens every image's header (1,043 here), so make
+      `width` and `height` lazy or opt-in.
+      Done 2026-11-17: `files(pattern, { dimensions })`, also returning `stem`, `ext` and
+      `size`; dimensions are opt-in. Test: `files_lists_a_folder_as_data`.
+- [x] **Unique slugs for paginated pages.** `albums.js` adds `-1`, `-2` to repeated album names
+      ("Benjamin's Birthday", "Caleb's Birthday", "Misc Pictures") so the pages don't overwrite
+      each other. Without that, ssqch already stops with a clear error (`output conflicts`, both
+      pages and the URL they share; `crates/ssqch/tests/cli.rs`). An option could make the slugs
+      unique instead: `pagination: { ..., uniqueSlugs: true }`, or a `slugify` that counts.
+      Done 2026-11-17 as `slugger()` from `ssqch`, in the data: a pagination option would change
+      the page's URL but not the links to it, which come from the same data.
+- [x] **`slugify` with a separator.** The site keeps its own `snake_case` filter only because its
+      recipe URLs use underscores (`/recipes/taco_bake/`), and `slugify` makes hyphens:
+      `slugify(title, { separator: "_" })`.
+      Done 2026-11-17: `{ separator }` or a string, in templates and from `ssqch`.
+- [x] **Maybe: a photo gallery element.** Each album page carries about 70 lines of inline
+      lightbox script (previous and next, arrow keys, Escape, captions from `data-*`).
+      `elementsPlugin()` would suit an official `<photo-gallery>` that loads only where it's
+      used, alongside `imagePlugin()` for the sizes. A component more than a generator
+      feature, so an example site might be enough.
+      Done 2026-11-17 as an example: the `islands` example's trail cam page, with
+      `<photo-gallery>` and `files()`. Not an official element.
+
+Documenting what came of it fully (each has a README entry `ssqch docs` finds and a CHANGELOG
+entry):
+
+- [ ] `files()`: a how-to for a photo album from a folder (`files()`, `imagePlugin()` for the
+      sizes, a paginated page per album), and Gahlee House's `albums.js` moved onto it as the
+      worked example; mention it in the Hexo and Jekyll trailheads (folders of assets as data).
+- [ ] `slugger()` and `slugify`'s separator: a pagination how-to with repeated titles, and the
+      Eleventy trailhead's pagination notes; `blog-tags` could use `slugger()` for its tag pages.
+- [ ] `ssqch diff`'s `only dates changed`: the "Checking the move" sections of every trailhead.
+- [ ] The importer's package files and ported filters: the worked Eleventy import in the docs,
+      rerun on Gahlee House and the `blog-categories` source.
+
 ### Jinja by default (0.5)
 
 Decided 2026-11-10: Jinja is the most familiar template language across ecosystems (Python's
@@ -129,7 +254,7 @@ Jinja2, Nunjucks, Rust's Tera and MiniJinja) and the most capable of the ones ss
 - [x] **Blog:** stays in Edge, so its config sets `markdownEngine: "edge"` and
       `htmlEngine: "edge"` (it already listed `edge` in `templateFormats`).
 - [x] Jinja errors as good as Edge's: a missing `include`, `extends` or `import` says which
-      file it probably meant (`did you mean `partials/nav.jinja`?`), and so does an unknown
+      file it probably meant (``did you mean `partials/nav.jinja`?``), and so does an unknown
       filter, test or function. The name is in backticks, so the frame's carets go under it
       (they went under nothing, or under the engine's name). Nunjucks gets the same.
       Test: `jinja_errors_point_at_the_name_and_say_what_was_meant`.
@@ -158,11 +283,11 @@ and `ssqch footprint` in 0.5.
       the JSON report); `the trail goes cold on 4 broken links:`; `The stump has not moved.`
       from `ssqch diff`; `Camp is set up.` from `ssqch init`; `Welcome to the woods.` from
       `ssqch import --write`; `living off the cache` with `--offline`.
-- [x] **One aside, and `--quiet` everywhere** (from `research/reviews/REVIEW-0.5-code-and-character.md`, built
-      2026-11-12): a build's report picks one themed line (nothing to build, first build, files
-      removed, drafts, unused templates, in that order); `init --quiet` and `serve --quiet`
-      print only warnings and errors (and the address once); the banner is `Serving dist at
-      ... Squatch Watch is on.`
+- [x] **One aside, and `--quiet` everywhere** (from
+      `research/reviews/REVIEW-0.5-code-and-character.md`, built 2026-11-12): a build's report
+      picks one themed line (nothing to build, first build, files removed, drafts, unused
+      templates, in that order); `init --quiet` and `serve --quiet` print only warnings and
+      errors (and the address once); the banner is `Serving dist at ... Squatch Watch is on.`
 - [x] **From the same review, built 2026-11-12:** `Build recovered. Back on the trail.` when a
       failing build works again while serving; "Copy diagnostic", Escape and focus in the error
       overlay; `Field notes started.` after `ssqch new`, naming the built-in blueprint as one;
@@ -444,9 +569,10 @@ into ssqch as a built-in language. **Blog:** done 2026-11-15, on 0.6.1 (its fenc
 
 - [x] **Custom highlighters in `ssqch.config.js`:** (done 2026-11-15:
       `markdown: { highlight: { languages } }`, with functions, aliases and `.sublime-syntax`
-      files; no per-build cache, since a call per fence was fast enough for the blog) a site gives a highlighter for any language
-      ssqch doesn't have, or replaces a built-in one, under `markdown.highlight` (for example
-      `highlight: { css: false, languages: { chordpro: fn } }`; the name and shape are open).
+      files; no per-build cache, since a call per fence was fast enough for the blog) a site
+      gives a highlighter for any language ssqch doesn't have, or replaces a built-in one,
+      under `markdown.highlight` (for example `highlight: { css: false, languages: { chordpro:
+      fn } }`; the name and shape are open).
   - Precedence: a configured language wins over `Templates::named` and the syntect grammars in
     `crates/sitesquatch/src/highlight.rs` (`syntax()`, `supports()`, `highlight()`), and the
     fence name matches case-insensitively, like the built-ins.
@@ -793,8 +919,9 @@ Found by the trials, not fixed yet:
 - [x] `ssqch import eleventy`: `.11tydata.*` renames, Eleventy front-matter keys, a drafted
       config and a list of filters, shortcodes and plugins to port. CommonJS needs no change
       (ssqch loads it), and Nunjucks shortcodes keep their `{% name %}` form.
-  - [ ] Port simple `addFilter` and `addShortcode` bodies into the drafted config instead of
-        listing them.
+  - [x] Port simple `addFilter` and `addShortcode` bodies into the drafted config instead of
+        listing them (done 2026-11-17: a function that uses only its own arguments). Gahlee House's `addFilter( "snake_case", ( str ) => { ... } )`, a
+        self-contained arrow function, is an example (see "Moving Gahlee House from Eleventy").
 
 ### 4. Internationalization (not in 0.4)
 
@@ -997,8 +1124,8 @@ I'd take them (the first three went into 0.4):
         don't apply), and in `ssqch.d.ts` (a typed config that uses `pathPrefix` gets a type
         error, which keeps the docs on ssqch's names).
 - [x] **`ssqch docs`: the documentation of the installed version, from the binary** (item 2 in
-      `research/exact-agent-first.md`). The README and the trailheads in `docs/trailheads/` are built
-      in (`crates/ssqch/build.rs`; a crate from crates.io has only the README, and `--from`
+      `research/exact-agent-first.md`). The README and the trailheads in `docs/trailheads/` are
+      built in (`crates/ssqch/build.rs`; a crate from crates.io has only the README, and `--from`
       links to the guide for that version). `ssqch docs` alone is a card: every command, config
       option, template function and module export, one line each, from where they're defined
       (clap, `ssqch.d.ts`, `BUILTIN_FILTERS`). `ssqch docs <name>` prints the table row or list

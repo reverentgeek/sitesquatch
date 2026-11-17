@@ -252,7 +252,34 @@ declare module "ssqch" {
 	export function markdown(text: string, options?: { inline?: boolean }): string;
 	/** Read a JSON, YAML or TOML file (from the project root) into data: `readData("src/_data/sites/en.yml")`. */
 	export function readData(path: string): any;
-	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown; readData: typeof readData };
+	/** A file that `files()` found. */
+	export interface FoundFile {
+		/** From the project root, with `/`: `"images/albums/v1/20011222_08.JPG"`. */
+		path: string;
+		/** Where a passthrough copy to the same path is served: from the input folder when the file is inside it (`src/images/a.jpg` is `/images/a.jpg`), otherwise from the project root (`/images/albums/v1/20011222_08.JPG`). */
+		url: string;
+		/** The file name: `"20011222_08.JPG"`. */
+		name: string;
+		/** The name without its extension: `"20011222_08"`. */
+		stem: string;
+		/** The extension, lowercase, without the dot: `"jpg"`. */
+		ext: string;
+		/** From the start of the name (`20011222_08.JPG`, `2001-12-22-camp.jpg`, at midnight UTC), or the file's modification time. */
+		date: Date;
+		/** Bytes. */
+		size: number;
+		/** Pixels, with `{ dimensions: true }`; `null` for a file that isn't an image ssqch can read the size of. */
+		width?: number | null;
+		/** Pixels, with `{ dimensions: true }`; `null` for a file that isn't an image ssqch can read the size of. */
+		height?: number | null;
+	}
+	/** The files a glob matches, from the project root and ignoring case, sorted by path, as data: `files("images/albums/v1/*.{jpg,png}")`. `{ dimensions: true }` reads each image's width and height from its header. No match is an empty list. */
+	export function files(pattern: string, options?: { dimensions?: boolean }): FoundFile[];
+	/** The `slugify` template filter, for data files: `slugify("Taco Bake", { separator: "_" })` is `"taco_bake"`. Lowercase letters and digits, with `separator` (a dash by default) for each run of anything else. */
+	export function slugify(text: string, options?: { separator?: string } | string): string;
+	/** A `slugify` that counts, so every slug it makes is different: the first "Misc Pictures" is `misc-pictures`, the next `misc-pictures-1`, then `misc-pictures-2`. Make one per list, in a data file, and store the slug with each item, so a paginated page's permalink and the links to it agree. */
+	export function slugger(options?: { separator?: string }): (text: string) => string;
+	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown; readData: typeof readData; files: typeof files; slugify: typeof slugify; slugger: typeof slugger };
 	export default ssqch;
 }
 

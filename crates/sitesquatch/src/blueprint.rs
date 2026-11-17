@@ -51,15 +51,26 @@ pub struct Created {
 
 /// Lowercase letters and digits, with a dash for each run of anything else.
 pub fn slug(text: &str) -> String {
+    slug_with(text, "-")
+}
+
+/// [`slug`] with `separator` for each run of anything else: `slug_with("Taco
+/// Bake", "_")` is `taco_bake`.
+pub fn slug_with(text: &str, separator: &str) -> String {
     let mut out = String::new();
+    let mut gap = false;
     for c in text.chars().flat_map(char::to_lowercase) {
         if c.is_alphanumeric() {
+            if gap && !out.is_empty() {
+                out.push_str(separator);
+            }
+            gap = false;
             out.push(c);
-        } else if c != '\'' && c != '\u{2019}' && !out.ends_with('-') {
-            out.push('-');
+        } else if c != '\'' && c != '\u{2019}' {
+            gap = true;
         }
     }
-    out.trim_matches('-').to_string()
+    out
 }
 
 /// `pine-cone_crunch` as a title: "Pine cone crunch".

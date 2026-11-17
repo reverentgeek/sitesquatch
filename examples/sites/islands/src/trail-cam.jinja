@@ -1,0 +1,18 @@
+---
+title: Trail cam
+layout: base.jinja
+---
+<p>{{ trailCam | length }} photos from the trail camera, listed from the folder by <code>files()</code> in <code>src/_data/trailCam.js</code>. The gallery is an island: click a photo to see it larger, then use the arrow keys, and Escape to close.</p>
+
+<photo-gallery ssqch:load="idle">
+  <ul>
+    {% for photo in trailCam %}
+    <li>
+      <a href="{{ photo.url }}" data-caption="{{ photo.caption }}">
+        <img src="{{ photo.url }}" width="{{ photo.width }}" height="{{ photo.height }}" alt="{{ photo.caption }}" loading="lazy">
+      </a>
+      <p>{{ photo.caption }} <time datetime="{{ photo.date | dateformat("iso") }}">{{ photo.date | dateformat("%B %-d") }}</time></p>
+    </li>
+    {% endfor %}
+  </ul>
+</photo-gallery>

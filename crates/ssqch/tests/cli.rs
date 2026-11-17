@@ -1430,6 +1430,117 @@ fn nunjucks_tags_from_config_functions_and_jinja_dates() {
     assert_eq!(read("dates/index.html"), "Mar 14 2026|Saturday, March 14 2026|2026-03-14 09:05|09:05|March 14, 2026|December 25 2024|425|2 pines|2.0 kB|bold");
 }
 
+#[test]
+fn slugs_take_a_separator_and_a_slugger_counts() {
+    let dir = temp_dir("slugger");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"njk\", \"liquid\"] };\n");
+    write(
+        "src/_data/albums.js",
+        "import { slugger, slugify } from \"ssqch\";\nconst slug = slugger();\nconst names = [\"Misc Pictures\", \"Cedar Trail\", \"Misc Pictures\", \"Misc Pictures 1\", \"Misc Pictures\"];\nexport default names.map((name) => ({ name, slug: slug(name), snake: slugify(name, { separator: \"_\" }) }));\n",
+    );
+    write("src/album.njk", "---\npagination:\n  data: albums\n  size: 1\n  alias: album\npermalink: \"photos/{{ album.slug }}/\"\n---\n{{ album.name }}");
+    write("src/index.njk", "{% for a in albums %}/photos/{{ a.slug }}/ {{ a.snake }}\n{% endfor %}{{ \"Taco Bake!\" | slugify({ separator: \"_\" }) }} {{ slugify(\"Pine Cone Crunch\", \"\") }} {{ \"Old Growth\" | slugify }}");
+    write("src/liquid.liquid", "{{ \"Taco Bake\" | slugify: \"_\" }}");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
+    assert_eq!(read("index.html"), "/photos/misc-pictures/ misc_pictures\n/photos/cedar-trail/ cedar_trail\n/photos/misc-pictures-1/ misc_pictures\n/photos/misc-pictures-1-1/ misc_pictures_1\n/photos/misc-pictures-2/ misc_pictures\ntaco_bake pineconecrunch old-growth");
+    assert_eq!(read("photos/misc-pictures-2/index.html"), "Misc Pictures");
+    assert_eq!(read("liquid/index.html"), "taco_bake");
+    // Another option is an error.
+    write("src/liquid.liquid", "{{ \"Taco Bake\" | slugify }}");
+    write("src/index.njk", "{{ \"x\" | slugify({ sep: \"_\" }) }}");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("slugify: unknown option `sep` (options: separator)"), "{}", log);
+}
+
+#[test]
+fn files_lists_a_folder_as_data() {
+    let dir = temp_dir("files");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, bytes: &[u8]| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    };
+    // A 3x2 PNG: the signature, then an IHDR chunk with the width and height.
+    let png: Vec<u8> = [&b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR"[..], &3u32.to_be_bytes(), &2u32.to_be_bytes(), b"\x08\x06\0\0\0\0\0\0\0"].concat();
+    write("images/camp/20011222_08.PNG", &png);
+    write("images/camp/2002-01-05-stump.png", &png);
+    write("images/camp/notes.txt", b"not a photo");
+    write("images/camp/old/20000101_01.png", &png);
+    write("src/downloads/trail-map.png", b"not really");
+    write("ssqch.config.js", b"export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"jinja\"] };\n");
+    write(
+        "src/_data/photos.js",
+        b"import { files } from \"ssqch\";\nexport default { camp: files(\"images/camp/*.png\", { dimensions: true }), deep: files(\"images/**/*.png\").length, maps: files(\"src/downloads/*\") };\n",
+    );
+    write("src/index.jinja", b"{% for p in photos.camp %}{{ p.path }} {{ p.url }} {{ p.name }} {{ p.stem }} {{ p.ext }} {{ p.date | dateformat(\"%Y-%m-%d\") }} {{ p.width }}x{{ p.height }} {{ p.size }}\n{% endfor %}{{ photos.deep }} {{ photos.maps[0].url }} {{ photos.maps[0].width is undefined }}");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("dist/index.html")).unwrap(),
+        "images/camp/20011222_08.PNG /images/camp/20011222_08.PNG 20011222_08.PNG 20011222_08 png 2001-12-22 3x2 33\nimages/camp/2002-01-05-stump.png /images/camp/2002-01-05-stump.png 2002-01-05-stump.png 2002-01-05-stump png 2002-01-05 3x2 33\n3 /downloads/trail-map.png True"
+    );
+    // Used wrong: an unknown option, and a glob that leaves the project.
+    write("src/_data/photos.js", b"import { files } from \"ssqch\";\nexport default files(\"images/*.jpg\", { size: true });\n");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("files(): unknown option \"size\" (options: dimensions)"), "{}", log);
+    write("src/_data/photos.js", b"import { files } from \"ssqch\";\nexport default files(\"../*.jpg\");\n");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("files(\"../*.jpg\"): the glob is from the project root, and can't leave it"), "{}", log);
+}
+
+#[test]
+fn a_byte_order_mark_is_skipped_in_data_pages_and_scripts() {
+    let dir = temp_dir("bom");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, format!("\u{feff}{}", text)).unwrap();
+    };
+    // Each file starts with EF BB BF, as SQL Server's and Windows editors' exports do.
+    write("ssqch.config.js", "import { readData } from \"ssqch\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, data: { ranger: readData(\"ranger.yml\") } };\n");
+    write("ranger.yml", "name: Ranger Rick\n");
+    write("src/_data/snacks.json", "[\"Squatch Snacks\", \"Pine Cone Crunch\"]");
+    write("src/_data/trail.toml", "name = \"Cedar\"\n");
+    write("src/_data/creatures.js", "export default [\"owl\", \"elk\"];\n");
+    write("src/_includes/base.jinja", "---\nsite: Old Growth\n---\n<main>{{ content }}</main>");
+    write("src/index.jinja", "---\nlayout: base.jinja\ntitle: Camp\n---\n{{ title }}|{{ site }}|{{ snacks[1] }}|{{ trail.name }}|{{ creatures[0] }}|{{ ranger.name }}");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    assert_eq!(std::fs::read_to_string(dir.join("dist/index.html")).unwrap(), "<main>Camp|Old Growth|Pine Cone Crunch|Cedar|owl|Ranger Rick</main>");
+}
+
+#[cfg(feature = "jinja")]
+#[test]
+fn length_counts_lists_and_strings_in_nunjucks_and_jinja() {
+    let dir = temp_dir("jinja-length");
+    let d = dir.to_str().unwrap();
+    let write = |path: &str, text: &str| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write("ssqch.config.js", "export default {\n  dirs: { input: \"src\", output: \"dist\" },\n  templateFormats: [\"njk\", \"jinja\"],\n  strict: true,\n};\n");
+    write("src/_data/trail.json", "{ \"snacks\": [\"Squatch Snacks\", \"Pine Cone Crunch\"], \"sign\": { \"length\": \"3 miles\" } }");
+    let page = "{{ trail.snacks.length }}|{{ trail.snacks[1].length }}|{% set xs = [1, 2, 3] %}{{ xs.length }}|{% for s in trail.snacks %}{{ loop.length }}{% endfor %}|{{ trail.sign.length }}|{% if trail.snacks.length > 1 %}more{% endif %}|{{ \"a.length\" }}";
+    write("src/index.njk", page);
+    write("src/jinja.jinja", page);
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    let want = "2|16|3|22|3 miles|more|a.length";
+    assert_eq!(std::fs::read_to_string(dir.join("dist/index.html")).unwrap(), want);
+    assert_eq!(std::fs::read_to_string(dir.join("dist/jinja/index.html")).unwrap(), want);
+}
+
 #[cfg(all(feature = "jinja", feature = "liquid"))]
 #[test]
 fn a_theme_sits_under_the_site_file_by_file() {
@@ -1560,6 +1671,9 @@ fn import_moves_an_eleventy_site() {
     write("src/feed.11ty.js", "module.exports = class {};");
     write("src/css/site.css", "body {}");
     write("_site/old/index.html", "from the last Eleventy build");
+    write("package.json", "{\n  \"scripts\": {\n    \"build\": \"eleventy\",\n    \"start\": \"eleventy --serve\"\n  },\n  \"dependencies\": {\n    \"@11ty/eleventy\": \"^3.1.8\"\n  },\n  \"packageManager\": \"pnpm@12.21.0\"\n}\n");
+    write("pnpm-lock.yaml", "packages:\n  '@11ty/eleventy@3.1.8': {}\n");
+    write("package-lock.json", "{ \"packages\": { \"node_modules/@11ty/eleventy\": {} } }");
     let before = std::fs::read_to_string(dir.join("src/index.njk")).unwrap();
 
     // A dry run says what it would do, and does nothing.
@@ -1573,21 +1687,29 @@ fn import_moves_an_eleventy_site() {
         "  src/posts/posts.11tydata.json: eleventyComputed -> computed\n",
         "Create (1)\n  ssqch.config.js (a first draft, from .eleventy.js)\n",
         "  src/feed.11ty.js: JavaScript templates don't run in ssqch",
-        "  .eleventy.js:5: addFilter(\"shout\") -> `filters: { shout: ... }`",
+        &format!("  package.json: @11ty/eleventy -> ssqch@^{}, scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve\n", env!("CARGO_PKG_VERSION")),
+        "  pnpm-lock.yaml: run `pnpm install` to update it for ssqch\n",
+        "  package-lock.json: npm's lockfile, but the site uses pnpm: delete it (a host that installs from it gets Eleventy and no ssqch)\n",
         "  .eleventy.js: @11ty/eleventy-plugin-rss -> `rssPlugin()` from \"ssqch/rss\"",
     ] {
         assert!(log.contains(expected), "missing {:?} in\n{}", expected, log);
     }
+    // The filter moves to the draft as written, so it isn't on the list.
+    assert!(!log.contains("addFilter(\"shout\")"), "{}", log);
     assert!(!log.contains("_site/old"), "{}", log);
     assert_eq!(std::fs::read_to_string(dir.join("src/index.njk")).unwrap(), before);
     assert!(!dir.join("ssqch.config.js").exists() && dir.join("src/posts/posts.11tydata.json").exists());
 
     // With --write, the site builds with ssqch.
     let (ok, log) = ssqch(&["import", "eleventy", d, "--write"]);
-    assert!(ok && log.contains("Done: 1 renamed, 3 edited, 1 created."), "{}", log);
+    assert!(ok && log.contains("Done: 1 renamed, 4 edited, 1 created."), "{}", log);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("package.json")).unwrap(),
+        format!("{{\n  \"scripts\": {{\n    \"build\": \"ssqch build\",\n    \"start\": \"ssqch serve\"\n  }},\n  \"dependencies\": {{\n    \"ssqch\": \"^{}\"\n  }},\n  \"packageManager\": \"pnpm@12.21.0\"\n}}\n", env!("CARGO_PKG_VERSION"))
+    );
     assert!(std::fs::read_to_string(dir.join("src/posts/posts.data.json")).unwrap().contains("\"computed\""));
     let config = std::fs::read_to_string(dir.join("ssqch.config.js")).unwrap();
-    assert!(config.contains("dirs: { input: \"src\", output: \"_site\" },") && config.contains("markdownEngine: \"njk\",\n  htmlEngine: \"njk\",") && config.contains("passthrough: [\"src/css\"],"), "{}", config);
+    assert!(config.contains("dirs: { input: \"src\", output: \"_site\" },") && config.contains("markdownEngine: \"njk\",\n  htmlEngine: \"njk\",") && config.contains("passthrough: [\"src/css\"],") && config.contains("    shout: (s) => s.toUpperCase(),\n"), "{}", config);
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
     assert!(ok, "{}", log);
     let read = |path: &str| std::fs::read_to_string(dir.join("_site").join(path)).unwrap();
@@ -2102,6 +2224,11 @@ fn docs_answer_for_every_name() {
     for query in [&["your", "own", "languages"][..], &["languages"], &["custom", "syntax", "highlighter"]] {
         let (ok, text) = ssqch(&[&["docs"][..], query].concat());
         assert!(ok && text.contains("**Your own languages:**"), "{:?}: {}", query, text);
+    }
+    // New features answer with their whole explanation, not only a line.
+    for (query, want) in [(&["files"][..], "**Files as data:**"), (&["files"], "{ dimensions: true }` adds `width`"), (&["dates", "that", "changed"], "**Dates that changed:**"), (&["release", "age"], "under `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`"), (&["javascript", "properties", "and", "methods"], "`.length` counts a list's items")] {
+        let (ok, text) = ssqch(&[&["docs"][..], query].concat());
+        assert!(ok && text.contains(want), "{:?}: {}", query, text);
     }
     let (ok, text) = ssqch(&["docs"]);
     assert!(ok && text.contains("\n  leaveNoTrace ") && text.contains("\n    imagePlugin ") && text.contains("\nTopics\n  Install, "), "{}", text);

@@ -10,7 +10,54 @@ a `v<version>` tag on a commit where that version matches.
 
 ## Unreleased
 
+### Added
+
+- `files(pattern, { dimensions })` from `ssqch` lists the files a glob matches, for data files:
+  `{ path, url, name, stem, ext, date, size }` for each, sorted by path, with `width` and
+  `height` from the image's header when `dimensions` is on. The glob ignores case (`*.jpg` finds
+  `.JPG`), `date` comes from the start of the name (`20011222_08.JPG`, `2001-12-22-camp.jpg`) or
+  the modification time, and `url` is from the input folder for a file inside it. It replaces
+  `readdirSync`, an extension filter and a date parser in a data file.
+- `slugify` takes a separator: `slugify(title, { separator: "_" })` (or `slugify(title, "_")`,
+  `{{ title | slugify: "_" }}` in Liquid) is `taco_bake`. Another option is an error. Data files
+  can import `slugify` from `ssqch`, and `slugger()`, a `slugify` that counts, so two albums
+  called "Misc Pictures" get `misc-pictures` and `misc-pictures-1` in the data, and a paginated
+  page's permalink and the links to it agree.
+- `ssqch diff` notes a page whose changes are all dates or years (`only dates changed (2025 ->
+  2026)`), says how many changed files differ only that way, and has `onlyDates` in the JSON. A
+  page with no date of its own gets its file's modification time, which another generator or a
+  fresh checkout sets differently; `ssqch docs "dates that changed"` explains.
+- `ssqch import eleventy` carries more over:
+  - `addPassthroughCopy({ "images": "images" })` with keys and values written out becomes a
+    `passthrough` entry; only variables and computed values are left to a person.
+  - Filters and shortcodes whose function uses only its own arguments are copied into the
+    draft's `filters` as written, instead of being listed.
+  - `package.json`: `@11ty/eleventy` becomes `ssqch`, and scripts that run `eleventy` run
+    `ssqch build` (`eleventy --serve` is `ssqch serve`; `--port`, `--quiet`, `--output` and
+    `--pathprefix` carry over, and other flags are listed). A lockfile from another package
+    manager than the one `packageManager` names is listed to delete, and the site's own to
+    update.
+  - The draft config is written in the Eleventy config's style: its indentation (tabs, or its
+    number of spaces) and spaces inside brackets.
+- The README's Install section says how to install a release on the day it comes out with
+  pnpm 11 and later, which wait a day: list `ssqch` and the four `@ssqch/*` platform packages
+  under `minimumReleaseAgeExclude`.
+- The `islands` example has a trail cam page: photos listed from a folder with `files()`, in a
+  `<photo-gallery>` element, a lightbox with previous and next, the arrow keys, Escape and
+  captions.
+
 ### Fixed
+
+- `.length` printed nothing in Nunjucks and Jinja templates (`{{ albums.length }}`), with no
+  warning. It counts a list's items or a string's characters now, like `| length`, in `.njk`
+  and `.jinja` files; `loop.length` and an object's own `length` key keep their meaning.
+- A UTF-8 byte-order mark at the start of a file stopped the build (`invalid JSON in
+  src/_data/tblPhoto.json: expected value at line 1 column 1`, from SQL Server's JSON exports).
+  It's skipped in JSON, YAML and TOML data files, `readData()`, JavaScript and JSON modules,
+  and pages and layouts, where it hid the front matter.
+- The config `ssqch import eleventy` drafts said `Eleventy's defaults: Markdown and HTML run
+  through Liquid first.` above engines that came from the site's own config. It says where
+  they came from.
 
 - `ssqch serve` with `serve.run` tools updates the browser once where it used to update it
   twice. The first build waits for the tools' first compile (up to 2 seconds), so its pages link

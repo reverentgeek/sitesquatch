@@ -105,6 +105,30 @@ pub fn yaml_to_value(v: serde_yaml::Value) -> Value {
     }
 }
 
+static INPUT_DIR: std::sync::RwLock<Option<std::path::PathBuf>> = std::sync::RwLock::new(None);
+
+/// Record the input folder of the build that's running, for [`input_dir`].
+pub(crate) fn set_input_dir(dir: &Path) {
+    *INPUT_DIR.write().unwrap() = Some(dir.to_path_buf());
+}
+
+/// The input folder of the latest build (`None` before the first one): for
+/// code outside templates, like `files()` from `ssqch` in a data file.
+pub fn input_dir() -> Option<std::path::PathBuf> {
+    INPUT_DIR.read().unwrap().clone()
+}
+
+/// Read a text file without its UTF-8 byte-order mark, which editors and
+/// database exports (SQL Server's JSON, Excel's CSV) put at the start, and
+/// which JSON, YAML and TOML parsers, front matter and scripts don't expect.
+pub fn read_text(path: &Path) -> std::io::Result<String> {
+    let text = std::fs::read_to_string(path)?;
+    Ok(match text.strip_prefix('\u{feff}') {
+        Some(rest) => rest.to_string(),
+        None => text,
+    })
+}
+
 /// Loads a data file in a format added with `Config::add_data_extension`.
 pub type DataLoader = Arc<dyn Fn(&Path) -> Result<Value> + Send + Sync>;
 
@@ -112,7 +136,7 @@ pub type DataLoader = Arc<dyn Fn(&Path) -> Result<Value> + Send + Sync>;
 /// value. `None` means the format isn't known.
 pub fn load_data_file(path: &Path, extra: &[(String, DataLoader)]) -> Result<Option<Value>> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let read = || std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()));
+    let read = || read_text(path).with_context(|| format!("reading {}", path.display()));
     let value = match ext {
         "json" => Value::from(serde_json::from_str::<serde_json::Value>(&read()?).with_context(|| format!("invalid JSON in {}", path.display()))?),
         "yaml" | "yml" => yaml_to_value(serde_yaml::from_str(&read()?).with_context(|| format!("invalid YAML in {}", path.display()))?),

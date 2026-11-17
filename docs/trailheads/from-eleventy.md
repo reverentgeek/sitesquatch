@@ -6,7 +6,7 @@ The [ReverentGeek blog](https://github.com/reverentgeek/blog) made this move (fr
 
 ## Importing
 
-`ssqch import eleventy` does the mechanical part of what this guide describes: it renames `*.11tydata.*` data files, rewrites the front matter keys and `eleventy:` image attributes below, writes a first `ssqch.config.js` from the Eleventy config (folders, passthrough copies, watch targets, template engines, `pathPrefix`), and lists what's left, each with its file and line: every filter, shortcode, collection, transform and plugin, and what it becomes. Run it once to read the list (it changes nothing), then with `--write` in a clean git checkout.
+`ssqch import eleventy` does the mechanical part of what this guide describes: it renames `*.11tydata.*` data files, rewrites the front matter keys and `eleventy:` image attributes below, writes a first `ssqch.config.js` from the Eleventy config (folders, passthrough copies, watch targets, template engines, `pathPrefix`, and filters and shortcodes that use only their own arguments, copied as written, in the config's own indentation), swaps `@11ty/eleventy` for `ssqch` in `package.json` and its scripts (`eleventy` is `ssqch build`, `eleventy --serve` is `ssqch serve`), and lists what's left, including a lockfile to update or a stale one from another package manager, each with its file and line: every filter, shortcode, collection, transform and plugin, and what it becomes. Run it once to read the list (it changes nothing), then with `--write` in a clean git checkout.
 
 ## The config
 
@@ -90,6 +90,10 @@ Nunjucks (`.njk`) renders with minijinja, Liquid with the `liquid` crate, and EJ
 
 - **Templates in a passthrough folder aren't pages.** Eleventy renders a `feed.njk` inside a copied `static/` folder and also copies it. ssqch only copies it. Move templates out, or use a glob for the files to copy (`{ "src/static/*.{png,ico,svg}": "." }`).
 - **In Nunjucks, a filter called as a function loses to page data of the same name.** With `image:` in a post's front matter, `image(src)` is that string, not the filter. `src | image` and the tag form (`{% image src %}`) always reach the filter, and Edge's `image(src)` does too.
+- **A page without a date has its file's modification time,** not its creation time as in Eleventy. A footer with `{{ page.date.getFullYear() }}` can print a different year on every page, and `ssqch diff` says `differ only in dates or years`. For a copyright year, use the build's time: `{{ now() | dateformat("%Y") }}`. In data files, `dateformat` also saves formatting dates by hand (`toLocaleDateString`).
+- **`.length` works in Nunjucks,** on lists and strings, as in Eleventy (`{{ collections.post.length }}`); `| length` is the Jinja way and does the same.
+- **A data file can start with a byte-order mark** (SQL Server's and Excel's exports do): ssqch skips it in JSON, YAML, TOML, JavaScript and templates, as Node does.
+- **A folder of full-size photos** is what `imagePlugin()` from `ssqch/image` is for: every `<img>` gets sized, modern-format copies in a `<picture>`, and `image()` in a data file gives the URLs and dimensions without markup.
 - **A printed date is ISO 8601** (`2024-06-01T00:00:00.000Z`), not JavaScript's `Date.toString()`, which depends on the machine's time zone. Format dates with a filter.
 - **Markdown differs from markdown-it in a few places:** bare domains like `example.com` aren't links (only `https://` and `www.` URLs are, as on GitHub), and with `indentedCode: false`, indented HTML renders as HTML (markdown-it wraps it in `<p>`).
 - **markdown-it-anchor's ids** need a slugger: `markdown: { headingIds: (text) => encodeURIComponent(text.trim().toLowerCase().replace(/\s+/g, "-")) }`, and a heading hook if you want its `tabindex="-1"`.

@@ -4,9 +4,10 @@ Interactivity without a framework, in Jinja. It's what an Astro or Eleventy "isl
 
 What it shows:
 
-- `elementsPlugin()` from `ssqch/elements`: each file in `src/elements/` named like a custom element (`like-button.js`) is that element's script, and `like-button.css` next to it is its stylesheet. A page gets the scripts and stylesheets of the tags it has. The home page loads two elements, the trails page two, and the about page loads no JavaScript at all.
+- `elementsPlugin()` from `ssqch/elements`: each file in `src/elements/` named like a custom element (`like-button.js`) is that element's script, and `like-button.css` next to it is its stylesheet. A page gets the scripts and stylesheets of the tags it has. The home page loads two elements, the trails page two, the trail cam page one, and the about page loads no JavaScript at all.
 - When a script loads: `ssqch:load="idle"` on `<local-time>` waits for a quiet moment, and `ssqch:load="visible"` on `<trail-filter>` waits until the list scrolls into view. Without the attribute, a script loads with the page.
 - Fallbacks: what's inside each tag is what a visitor without JavaScript sees (a time in UTC, a link, the whole list), and the element replaces or adds to it.
+- A photo gallery: `src/_data/trailCam.js` lists the photos in `images/trail-cam/` with `files()` from `ssqch` (their size, and the day from the file name, `20260614_01.png`), and `<photo-gallery>` turns the list of linked photos into a lightbox, with previous and next, the arrow keys, Escape and captions from `data-caption`. Without JavaScript, each photo links to the full image.
 - Shared code: `src/elements/shared/storage.js` has no hyphen in its name, so it isn't an element; `like-button.js` imports it, and the whole folder is copied to `/elements/`.
 
 Build it with `ssqch build`, or `ssqch serve` to click the buttons.

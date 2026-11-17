@@ -23,6 +23,7 @@
 //! `process` and `Buffer` that configs and data files commonly use.
 
 mod convert;
+mod files;
 mod ejs;
 mod fetch;
 mod modules;
@@ -580,6 +581,20 @@ impl Engine {
                 }
             });
             config_natives.set("readData", conv.to_js(&read_data)?)?;
+            // `files("images/albums/v1/*.{jpg,png}", { dimensions })`: the files a glob matches, from the project root.
+            let files_root = root.to_path_buf();
+            let files = Value::func(move |args| {
+                let pattern = args.first().map(Value::to_js_string).unwrap_or_default();
+                let dimensions = args.get(1).is_some_and(Value::truthy);
+                crate::files::list(&files_root, &pattern, dimensions)
+            });
+            config_natives.set("files", conv.to_js(&files)?)?;
+            // `slugify(text, { separator })`, the template filter, for data files.
+            let slugify = Value::func(|args| {
+                let text = args.first().map(|v| if v.is_nullish() { String::new() } else { v.to_js_string() }).unwrap_or_default();
+                Ok(Value::from(sitesquatch::blueprint::slug_with(&text, &sitesquatch::build::slug_separator(args.get(1))?)))
+            });
+            config_natives.set("slugify", conv.to_js(&slugify)?)?;
             natives.set("ssqch", config_natives)?;
             for module in modules.iter() {
                 let exports = Object::new(ctx.clone())?;

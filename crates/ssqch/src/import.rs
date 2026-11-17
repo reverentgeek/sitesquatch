@@ -198,6 +198,7 @@ pub fn eleventy(dir: &Path) -> Result<Plan> {
         }
     }
 
+    package_files(dir, &mut plan)?;
     match config {
         Some(name) => {
             let (source, by_hand) = draft_config(name, &config_text, &extensions);
@@ -336,38 +337,250 @@ fn replacement(package: &str) -> Option<&'static str> {
     })
 }
 
+/// How a config is written, so the draft reads like the site's own code.
+struct Style {
+    /// One level of indentation: a tab, or the config's number of spaces.
+    indent: String,
+    /// Spaces inside brackets and parentheses: `[ "md" ]`, `defineConfig( {`.
+    padded: bool,
+}
+
+impl Style {
+    fn of(text: &str) -> Style {
+        let indents: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).map(|l| &l[..l.len() - l.trim_start().len()]).filter(|i| !i.is_empty()).collect();
+        let indent = match indents.first() {
+            Some(first) if first.starts_with('\t') => "\t".to_string(),
+            Some(_) => " ".repeat(indents.iter().filter(|i| !i.contains('\t')).map(|i| i.len()).min().unwrap_or(2).clamp(1, 8)),
+            None => "  ".to_string(),
+        };
+        static PADDED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[(\[][ \t]+[^\s)\]]").unwrap());
+        static TIGHT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[(\[][^\s)\]]").unwrap());
+        let padded = PADDED.find_iter(text).count() > TIGHT.find_iter(text).count();
+        Style { indent, padded }
+    }
+
+    /// `[a, b]` or `[ a, b ]`.
+    fn list(&self, items: &[String]) -> String {
+        if self.padded { format!("[ {} ]", items.join(", ")) } else { format!("[{}]", items.join(", ")) }
+    }
+}
+
+/// Where the bracket that opens at `open` closes, skipping strings, template
+/// literals and comments.
+fn closing_bracket(text: &str, open: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut depth = 0i32;
+    let mut i = open;
+    while i < bytes.len() {
+        match bytes[i] {
+            q @ (b'"' | b'\'' | b'`') => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != q {
+                    i += if bytes[i] == b'\\' { 2 } else { 1 };
+                }
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                i = text[i + 2..].find("*/").map_or(bytes.len(), |end| i + 2 + end + 1);
+            }
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// `code` split at its top-level commas.
+fn top_level_args(code: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let (mut start, mut i) = (0, 0);
+    let bytes = code.as_bytes();
+    while i < bytes.len() {
+        match bytes[i] {
+            b'(' | b'[' | b'{' | b'"' | b'\'' | b'`' => {
+                i = if matches!(bytes[i], b'"' | b'\'' | b'`') {
+                    let q = bytes[i];
+                    let mut j = i + 1;
+                    while j < bytes.len() && bytes[j] != q {
+                        j += if bytes[j] == b'\\' { 2 } else { 1 };
+                    }
+                    j
+                } else {
+                    closing_bracket(code, i).unwrap_or(bytes.len())
+                };
+            }
+            b',' => {
+                parts.push(code[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    parts.push(code[start.min(code.len())..].trim());
+    parts.retain(|p| !p.is_empty());
+    parts
+}
+
+/// A JavaScript string literal's text (`"images"`, `'images'`), without escapes.
+fn string_literal(code: &str) -> Option<&str> {
+    let code = code.trim();
+    let quote = code.chars().next().filter(|c| matches!(c, '"' | '\'' | '`'))?;
+    let inner = code.strip_prefix(quote)?.strip_suffix(quote)?;
+    (!inner.contains(['\\', quote]) && !(quote == '`' && inner.contains("${"))).then_some(inner)
+}
+
+/// `{ "src/static": "/", images: "images" }` as passthrough entries, if every
+/// key and value is written out (no variables or computed values).
+fn passthrough_object(code: &str) -> Option<Vec<(String, String)>> {
+    let inner = code.trim().strip_prefix('{')?.strip_suffix('}')?;
+    let pairs: Option<Vec<(String, String)>> = top_level_args(inner)
+        .into_iter()
+        .map(|pair| {
+            let (key, value) = pair.split_once(':')?;
+            let key = key.trim();
+            let key = string_literal(key).map(String::from).or_else(|| (!key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')).then(|| key.to_string()))?;
+            Some((key, string_literal(value)?.to_string()))
+        })
+        .collect();
+    pairs.filter(|p| !p.is_empty())
+}
+
+static FUNCTION_EXPR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:async\s+)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)").unwrap());
+static DECLARED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:const|let|var|function|class|import)\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)").unwrap());
+static DESTRUCTURED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:const|let|var|import)\s*\{([^}]*)\}").unwrap());
+
+/// The names a config declares (imports, requires, functions, variables), to
+/// tell a function that only uses its own arguments from one that needs
+/// something else in the file.
+fn declared_names(text: &str) -> BTreeSet<String> {
+    let mut names: BTreeSet<String> = DECLARED.captures_iter(text).map(|c| c[1].to_string()).collect();
+    for c in DESTRUCTURED.captures_iter(text) {
+        for part in c[1].split(',') {
+            let name = part.rsplit([':', ' ']).find(|w| !w.trim().is_empty()).unwrap_or("").trim();
+            if !name.is_empty() {
+                names.insert(name.to_string());
+            }
+        }
+    }
+    names.insert("eleventyConfig".into());
+    names
+}
+
+/// A filter's or shortcode's function, if it can move to `filters` as written:
+/// a function expression that uses nothing from the rest of the config (no
+/// imports, no variables, no `eleventyConfig`, no `this`, which is Eleventy's
+/// page context).
+fn portable_function<'a>(source: &'a str, config: &str, declared: &BTreeSet<String>) -> Option<&'a str> {
+    if !FUNCTION_EXPR.is_match(source) || source.contains("this") {
+        return None;
+    }
+    // Names the function declares itself (its parameters, its own variables) are fine.
+    let own = declared_names(source);
+    let params: BTreeSet<&str> = FUNCTION_EXPR.find(source).map(|m| m.as_str()).unwrap_or("").split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$')).collect();
+    let rest = config.replacen(source, "", 1);
+    let outside = declared_names(&rest);
+    let uses = |name: &str| Regex::new(&format!(r"(^|[^\w$.]){}([^\w$]|$)", regex::escape(name))).unwrap().is_match(source);
+    let foreign = declared.iter().filter(|n| outside.contains(*n) && !own.contains(*n) && !params.contains(n.as_str())).any(|n| uses(n));
+    (!foreign).then_some(source)
+}
+
+/// `source` moved from `from_indent` to `to_indent`: its first line as it is,
+/// the others with `from_indent` swapped for `to_indent`.
+fn reindent(source: &str, from_indent: &str, to_indent: &str) -> String {
+    let mut lines = source.lines();
+    let mut out = lines.next().unwrap_or("").to_string();
+    for line in lines {
+        out.push('\n');
+        if !line.trim().is_empty() {
+            out.push_str(to_indent);
+            out.push_str(line.strip_prefix(from_indent).unwrap_or(line.trim_start()));
+        }
+    }
+    out
+}
+
 /// A first `ssqch.config.js` from an Eleventy config, and what in it needs porting.
 fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (String, Vec<(String, String)>) {
     let setting = |key: &str| SETTING.captures_iter(text).find(|c| &c[1] == key).map(|c| c[2].to_string());
     let line_of = |offset: usize| text[..offset].matches('\n').count() + 1;
+    let style = Style::of(text);
+    let ind = style.indent.as_str();
+    let declared = declared_names(text);
     let mut by_hand: Vec<(String, String)> = Vec::new();
     let mut passthrough: Vec<String> = Vec::new();
     let mut watch: Vec<String> = Vec::new();
     let mut todo: Vec<String> = Vec::new();
+    // Filters and shortcodes moved as written: (name, function source).
+    let mut ported: Vec<(String, String)> = Vec::new();
     for c in CALL.captures_iter(text) {
         let (method, quoted, bare) = (&c[1], c.get(2).map(|m| m.as_str()), c.get(3).map(|m| m.as_str()));
-        let at = format!("{}:{}", name, line_of(c.get(0).unwrap().start()));
+        let whole = c.get(0).unwrap();
+        let at = format!("{}:{}", name, line_of(whole.start()));
         let arg = quoted.or(bare).unwrap_or("...");
+        // The call's arguments, as written.
+        let open = whole.start() + whole.as_str().find('(').unwrap_or(0);
+        let args: Vec<&str> = closing_bracket(text, open).map(|close| top_level_args(&text[open + 1..close])).unwrap_or_default();
+        let call_indent = text[..whole.start()].rsplit('\n').next().map(|l| &l[..l.len() - l.trim_start().len()]).unwrap_or("");
+        let port = |ported: &mut Vec<(String, String)>| -> bool {
+            let (Some(name), Some(function)) = (quoted, args.get(1)) else { return false };
+            if args.len() != 2 {
+                return false;
+            }
+            match portable_function(function, text, &declared) {
+                Some(source) => {
+                    ported.push((name.to_string(), reindent(source, call_indent, &ind.repeat(2))));
+                    true
+                }
+                None => false,
+            }
+        };
         match method {
-            "addPassthroughCopy" => match quoted {
-                Some(path) => passthrough.push(path.to_string()),
-                None => by_hand.push((at, "addPassthroughCopy with an object or a variable -> `passthrough: [{ from: to }]`".into())),
+            "addPassthroughCopy" => match (quoted, args.first().and_then(|a| passthrough_object(a))) {
+                (Some(path), _) => passthrough.push(format!("\"{}\"", path)),
+                (None, Some(pairs)) => {
+                    for (from, to) in pairs {
+                        passthrough.push(format!("{{ \"{}\": \"{}\" }}", from, to));
+                    }
+                }
+                (None, None) => by_hand.push((at, "addPassthroughCopy with a variable or a computed value -> `passthrough: [{ from: to }]`".into())),
             },
             "addWatchTarget" => match quoted {
-                Some(path) => watch.push(path.to_string()),
+                Some(path) => watch.push(format!("\"{}\"", path)),
                 None => by_hand.push((at, "addWatchTarget -> `watch`".into())),
             },
-            "addFilter" | "addAsyncFilter" | "addNunjucksFilter" | "addLiquidFilter" | "addNunjucksAsyncFilter" => {
+            "addFilter" | "addAsyncFilter" | "addNunjucksFilter" | "addLiquidFilter" => {
+                if !port(&mut ported) {
+                    todo.push(format!("filters: {}", arg));
+                    by_hand.push((at, format!("{}(\"{}\") -> `filters: {{ {}: ... }}` (async functions are awaited)", method, arg, arg)));
+                }
+            }
+            "addNunjucksAsyncFilter" => {
                 todo.push(format!("filters: {}", arg));
-                by_hand.push((at, format!("{}(\"{}\") -> `filters: {{ {}: ... }}` (async functions are awaited)", method, arg, arg)));
+                by_hand.push((at, format!("{}(\"{}\") -> `filters: {{ {}: async (value) => ... }}`: return the result instead of calling the callback", method, arg, arg)));
             }
             "addShortcode" | "addAsyncShortcode" | "addNunjucksShortcode" | "addLiquidShortcode" => {
-                todo.push(format!("filters: {}", arg));
-                by_hand.push((at, format!("{}(\"{}\") -> a filter: `filters: {{ {}: ... }}`. Nunjucks keeps `{{% {} ... %}}`; in Liquid it's `{{{{ x | {} }}}}`", method, arg, arg, arg, arg)));
+                if !port(&mut ported) {
+                    todo.push(format!("filters: {}", arg));
+                    by_hand.push((at, format!("{}(\"{}\") -> a filter: `filters: {{ {}: ... }}`. Nunjucks keeps `{{% {} ... %}}`; in Liquid it's `{{{{ x | {} }}}}`", method, arg, arg, arg, arg)));
+                }
             }
             "addPairedShortcode" | "addPairedAsyncShortcode" => {
-                todo.push(format!("filters: {}", arg));
-                by_hand.push((at, format!("{}(\"{}\") -> a filter that gets the content first. Nunjucks keeps `{{% {} %}}...{{% end{} %}}`; in Markdown, a `::: {}` container", method, arg, arg, arg, arg)));
+                if !port(&mut ported) {
+                    todo.push(format!("filters: {}", arg));
+                    by_hand.push((at, format!("{}(\"{}\") -> a filter that gets the content first. Nunjucks keeps `{{% {} %}}...{{% end{} %}}`; in Markdown, a `::: {}` container", method, arg, arg, arg, arg)));
+                }
             }
             "addCollection" => {
                 todo.push(format!("collections: {}", arg));
@@ -390,41 +603,58 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
 
     // Eleventy runs Markdown and HTML through Liquid unless told otherwise.
     let engine = |key: &str| match setting(key).as_deref() {
-        Some("njk") => "\"njk\"".to_string(),
-        Some("false") | Some("") => "false".to_string(),
-        Some(other) => format!("\"{}\"", other),
-        None if text.contains(&format!("{}: false", key)) => "false".to_string(),
-        None => "\"liquid\"".to_string(),
+        Some("njk") => Some("\"njk\"".to_string()),
+        Some("false") | Some("") => Some("false".to_string()),
+        Some(other) => Some(format!("\"{}\"", other)),
+        None if text.contains(&format!("{}: false", key)) => Some("false".to_string()),
+        None => None,
     };
+    let (markdown_engine, html_engine) = (engine("markdownTemplateEngine"), engine("htmlTemplateEngine"));
+    let engines_comment = match (&markdown_engine, &html_engine) {
+        (None, None) => "Eleventy's defaults: Markdown and HTML run through Liquid first.",
+        (Some(_), None) => "From the Eleventy config's markdownTemplateEngine; HTML runs through Liquid first, Eleventy's default.",
+        (None, Some(_)) => "From the Eleventy config's htmlTemplateEngine; Markdown runs through Liquid first, Eleventy's default.",
+        (Some(_), Some(_)) => "From the Eleventy config's markdownTemplateEngine and htmlTemplateEngine.",
+    };
+    let liquid = || "\"liquid\"".to_string();
     let formats: Vec<String> = match FORMATS.captures(text) {
         Some(c) => c[1].split(',').map(|f| f.trim().trim_matches(['"', '\'', '`']).to_string()).filter(|f| !f.is_empty() && f != "11ty.js").collect(),
         None => extensions.iter().filter(|e| e.as_str() != "edge").cloned().collect(),
     };
-    let quoted = |items: &[String]| items.iter().map(|i| format!("\"{}\"", i)).collect::<Vec<_>>().join(", ");
+    let quoted = |items: &[String]| style.list(&items.iter().map(|i| format!("\"{}\"", i)).collect::<Vec<_>>());
     let mut dirs: Vec<String> = Vec::new();
     for key in ["input", "output", "includes", "layouts", "data"] {
         if let Some(value) = setting(key) {
             dirs.push(format!("{}: \"{}\"", key, value));
         }
     }
-    let mut out = format!("// A first draft, written by `ssqch import eleventy` from {}.\n// What it couldn't carry over is listed at the end; `ssqch docs --from eleventy` has the whole\n// mapping.\nimport {{ defineConfig }} from \"ssqch\";\n\nexport default defineConfig({{\n", name);
+    let (open, close) = if style.padded { ("( {", "} )") } else { ("({", "})") };
+    let mut out = format!("// A first draft, written by `ssqch import eleventy` from {}.\n// What it couldn't carry over is listed at the end; `ssqch docs --from eleventy` has the whole\n// mapping.\nimport {{ defineConfig }} from \"ssqch\";\n\nexport default defineConfig{}\n", name, open);
     if !dirs.is_empty() {
-        out.push_str(&format!("  dirs: {{ {} }},\n", dirs.join(", ")));
+        out.push_str(&format!("{}dirs: {{ {} }},\n", ind, dirs.join(", ")));
     }
     if !formats.is_empty() {
-        out.push_str(&format!("  templateFormats: [{}],\n", quoted(&formats)));
+        out.push_str(&format!("{}templateFormats: {},\n", ind, quoted(&formats)));
     }
-    out.push_str(&format!("  // Eleventy's defaults: Markdown and HTML run through Liquid first.\n  markdownEngine: {},\n  htmlEngine: {},\n", engine("markdownTemplateEngine"), engine("htmlTemplateEngine")));
+    out.push_str(&format!("{0}// {1}\n{0}markdownEngine: {2},\n{0}htmlEngine: {3},\n", ind, engines_comment, markdown_engine.unwrap_or_else(liquid), html_engine.unwrap_or_else(liquid)));
     if let Some(prefix) = setting("pathPrefix").filter(|p| p != "/") {
-        out.push_str(&format!("  base: \"{}\",\n", prefix));
+        out.push_str(&format!("{}base: \"{}\",\n", ind, prefix));
     }
     if !passthrough.is_empty() {
-        out.push_str(&format!("  passthrough: [{}],\n", quoted(&passthrough)));
+        out.push_str(&format!("{}passthrough: {},\n", ind, style.list(&passthrough)));
     }
     if !watch.is_empty() {
-        out.push_str(&format!("  watch: [{}],\n", quoted(&watch)));
+        out.push_str(&format!("{}watch: {},\n", ind, style.list(&watch)));
     }
-    out.push_str("\n  filters: {\n    // Port each filter and shortcode here: name: (value, ...args) => result\n  },\n  collections: {\n    // name: (pages) => pages.byTag(\"post\")\n  },\n  plugins: [],\n});\n");
+    out.push_str(&format!("\n{}filters: {{\n", ind));
+    if !ported.is_empty() {
+        out.push_str(&format!("{0}{0}// From {1}, as written.\n", ind, name));
+        for (filter, source) in &ported {
+            let key = if filter.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$') && !filter.starts_with(|c: char| c.is_ascii_digit()) { filter.clone() } else { format!("\"{}\"", filter) };
+            out.push_str(&format!("{0}{0}{1}: {2},\n", ind, key, source));
+        }
+    }
+    out.push_str(&format!("{0}{0}// Port each filter and shortcode here: name: (value, ...args) => result\n{0}}},\n{0}collections: {{\n{0}{0}// name: (pages) => pages.byTag(\"post\")\n{0}}},\n{0}plugins: [],\n{1};\n", ind, close));
     if !todo.is_empty() {
         out.push_str(&format!("\n// To port from {}:\n", name));
         for item in &todo {
@@ -432,6 +662,134 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
         }
     }
     (out, by_hand)
+}
+
+/// The package manager a site uses: `packageManager` in package.json, or the
+/// lockfile that's there.
+fn package_manager(dir: &Path, package: &serde_json::Value) -> &'static str {
+    let named = package["packageManager"].as_str().unwrap_or("");
+    if let Some((pm, _)) = LOCKFILES.iter().find(|(pm, _)| named.split('@').next() == Some(pm)) {
+        return pm;
+    }
+    LOCKFILES.iter().find(|(_, lockfiles)| lockfiles.iter().any(|l| dir.join(l).is_file())).map_or("npm", |(pm, _)| pm)
+}
+
+const LOCKFILES: [(&str, &[&str]); 4] = [("pnpm", &["pnpm-lock.yaml"]), ("yarn", &["yarn.lock"]), ("bun", &["bun.lock", "bun.lockb"]), ("npm", &["package-lock.json", "npm-shrinkwrap.json"])];
+
+static ELEVENTY_COMMAND: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:\bnpx\s+(?:-y\s+)?)?(?:@11ty/)?\beleventy\b((?:\s+--?[\w-]+(?:[= ](?:\x22[^\x22]*\x22|'[^']*'|[^\s&|;\x22-][^\s&|;\x22]*))?)*)").unwrap());
+
+/// An npm script with ssqch's commands for Eleventy's (`eleventy --serve` is
+/// `ssqch serve`), and the flags it couldn't carry over.
+fn rewrite_script(script: &str) -> (String, Vec<String>) {
+    let mut unknown = Vec::new();
+    let out = ELEVENTY_COMMAND.replace_all(script, |c: &regex::Captures| {
+        let mut command = "build";
+        let mut flags: Vec<String> = Vec::new();
+        let mut parts = c[1].split_whitespace().peekable();
+        while let Some(part) = parts.next() {
+            let (flag, value) = match part.split_once('=') {
+                Some((f, v)) => (f, Some(v.to_string())),
+                None => (part, None),
+            };
+            match flag {
+                "--serve" | "--watch" => command = "serve",
+                "--quiet" => flags.push("--quiet".into()),
+                "--port" => {
+                    let value = value.or_else(|| parts.next_if(|p| !p.starts_with('-')).map(String::from));
+                    if let Some(port) = value {
+                        flags.push(format!("--port {}", port));
+                    }
+                }
+                "--output" => {
+                    let value = value.or_else(|| parts.next_if(|p| !p.starts_with('-')).map(String::from));
+                    if let Some(output) = value {
+                        flags.push(format!("--output {}", output));
+                    }
+                }
+                "--pathprefix" | "--pathPrefix" => {
+                    let value = value.or_else(|| parts.next_if(|p| !p.starts_with('-')).map(String::from));
+                    if let Some(base) = value {
+                        flags.push(format!("--base {}", base));
+                    }
+                }
+                "--incremental" => {}
+                other => unknown.push(other.to_string()),
+            }
+        }
+        if command == "build" {
+            flags.retain(|f| !f.starts_with("--port"));
+        }
+        let mut out = format!("ssqch {}", command);
+        for flag in flags {
+            out.push(' ');
+            out.push_str(&flag);
+        }
+        out
+    });
+    (out.into_owned(), unknown)
+}
+
+/// package.json with ssqch for Eleventy, in the dependencies and the scripts,
+/// and what's left: lockfiles to update or remove.
+fn package_files(dir: &Path, plan: &mut Plan) -> Result<()> {
+    let path = dir.join("package.json");
+    let Ok(text) = std::fs::read_to_string(&path) else { return Ok(()) };
+    let Ok(package) = serde_json::from_str::<serde_json::Value>(&text) else {
+        plan.by_hand.push(("package.json".into(), "isn't valid JSON, so its Eleventy dependency and scripts weren't changed".into()));
+        return Ok(());
+    };
+    let mut new = text.clone();
+    let mut changes = Vec::new();
+    // The dependency, where Eleventy's was.
+    static DEPENDENCY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""@11ty/eleventy"(\s*:\s*)"[^"]*""#).unwrap());
+    let has_ssqch = ["dependencies", "devDependencies"].iter().any(|k| package[k].get("ssqch").is_some());
+    if DEPENDENCY.is_match(&new) {
+        if has_ssqch {
+            static WITH_COMMA: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?m)^[ \t]*"@11ty/eleventy"\s*:\s*"[^"]*",?[ \t]*\r?\n"#).unwrap());
+            new = WITH_COMMA.replace(&new, "").into_owned();
+        } else {
+            new = DEPENDENCY.replace(&new, format!("\"ssqch\"${{1}}\"^{}\"", env!("CARGO_PKG_VERSION"))).into_owned();
+        }
+        changes.push(format!("@11ty/eleventy -> ssqch@^{}", env!("CARGO_PKG_VERSION")));
+    }
+    // The scripts: each string value in the `scripts` object.
+    if let Some(scripts) = package["scripts"].as_object() {
+        let mut changed = false;
+        for (name, script) in scripts {
+            let Some(script) = script.as_str() else { continue };
+            let (rewritten, unknown) = rewrite_script(script);
+            if rewritten != script {
+                let encoded = |s: &str| serde_json::to_string(s).unwrap_or_default();
+                // Replace the value after this script's key, keeping the spacing.
+                let key = Regex::new(&format!(r#"({}\s*:\s*){}"#, regex::escape(&encoded(name)), regex::escape(&encoded(script)))).unwrap();
+                new = key.replace(&new, |c: &regex::Captures| format!("{}{}", &c[1], encoded(&rewritten))).into_owned();
+                changed = true;
+            }
+            if !unknown.is_empty() {
+                plan.by_hand.push(("package.json".into(), format!("the `{}` script's {} {} Eleventy's: check what ssqch has (`ssqch build --help`, `ssqch serve --help`)", name, unknown.join(", "), if unknown.len() == 1 { "flag is" } else { "flags are" })));
+            }
+        }
+        if changed {
+            changes.push("scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve".into());
+        }
+    }
+    let edited = !changes.is_empty();
+    if edited {
+        plan.edits.push(("package.json".into(), changes, new));
+    }
+    // Lockfiles: the package manager's needs updating, another one's is stale.
+    let pm = package_manager(dir, &package);
+    for (manager, lockfiles) in LOCKFILES {
+        for lockfile in lockfiles.iter().filter(|l| dir.join(l).is_file()) {
+            let mentions = std::fs::read(dir.join(lockfile)).is_ok_and(|b| String::from_utf8_lossy(&b).contains("@11ty/eleventy"));
+            if manager != pm {
+                plan.by_hand.push(((*lockfile).into(), format!("{}'s lockfile, but the site uses {}: delete it (a host that installs from it gets {} and no ssqch)", manager, pm, if mentions { "Eleventy" } else { "old packages" })));
+            } else if mentions || edited {
+                plan.by_hand.push(((*lockfile).into(), format!("run `{} install` to update it for ssqch", pm)));
+            }
+        }
+    }
+    Ok(())
 }
 
 // --------------------------------------------------------------------- Zola
@@ -700,6 +1058,22 @@ mod tests {
     }
 
     #[test]
+    fn package_scripts_run_ssqch() {
+        let cases = [
+            ("eleventy", "ssqch build", ""),
+            ("npm run clean && eleventy --serve", "npm run clean && ssqch serve", ""),
+            ("npx @11ty/eleventy --serve --port=8081 --quiet", "ssqch serve --port 8081 --quiet", ""),
+            ("ELEVENTY_ENV=production eleventy --pathprefix=/gahlee/ --output dist", "ELEVENTY_ENV=production ssqch build --base /gahlee/ --output dist", ""),
+            ("eleventy --formats=md,njk", "ssqch build", "--formats"),
+            ("eslint src/**/*.js", "eslint src/**/*.js", ""),
+        ];
+        for (script, want, unknown) in cases {
+            let (out, flags) = rewrite_script(script);
+            assert_eq!((out.as_str(), flags.join(" ").as_str()), (want, unknown), "{}", script);
+        }
+    }
+
+    #[test]
     fn a_config_becomes_a_draft_and_a_list() {
         let config = r#"const pluginRss = require("@11ty/eleventy-plugin-rss");
 const markdownItAnchor = require("markdown-it-anchor");
@@ -725,28 +1099,34 @@ module.exports = function (eleventyConfig) {
         for expected in [
             "dirs: { input: \"src\", output: \"public\", includes: \"_includes\" },",
             "templateFormats: [\"md\", \"njk\"],",
-            "markdownEngine: \"njk\",\n  htmlEngine: \"liquid\",",
+            "  // From the Eleventy config's markdownTemplateEngine; HTML runs through Liquid first, Eleventy's default.\n  markdownEngine: \"njk\",\n  htmlEngine: \"liquid\",",
             "base: \"/blog/\",",
-            "passthrough: [\"src/assets\"],",
+            "passthrough: [\"src/assets\", { \"src/static\": \"/\" }],",
             "watch: [\"./src/css/\"],",
-            "//   filters: readableDate\n//   filters: year\n//   filters: callout\n//   collections: posts\n",
+            // Self-contained functions move as written; shortcodes are filters.
+            "  filters: {\n    // From .eleventy.js, as written.\n    readableDate: (d) => d.toDateString(),\n    year: () => `${new Date().getFullYear()}`,\n    callout: (content) => content,\n",
+            "//   collections: posts\n",
+        ] {
+            assert!(draft.contains(expected), "missing {:?} in\n{}", expected, draft);
+        }
+        assert!(!draft.contains("//   filters:"), "{}", draft);
+        let list: Vec<String> = by_hand.iter().map(|(at, what)| format!("{}: {}", at, what.split(" -> ").next().unwrap_or(""))).collect();
+        assert_eq!(list, [".eleventy.js:4: addPlugin(pluginRss)", ".eleventy.js:11: addCollection(\"posts\")", ".eleventy.js:12: on(\"eleventy.after\")", ".eleventy.js: @11ty/eleventy-plugin-rss", ".eleventy.js: markdown-it-anchor"]);
+
+        // Tabs and spaces inside brackets, as the config has them; a function that needs
+        // something else in the config stays for a person, and so does a variable.
+        let config = "import { DateTime } from \"luxon\";\nconst assets = { \"images\": \"images\" };\nexport default function ( eleventyConfig ) {\n\televentyConfig.addPassthroughCopy( assets );\n\televentyConfig.addPassthroughCopy( { \"images\": \"images\", fonts: 'static/fonts' } );\n\televentyConfig.addFilter( \"snake_case\", ( str ) => {\n\t\treturn str\n\t\t\t.toLowerCase()\n\t\t\t.replace( /[^a-z0-9]+/g, \"_\" );\n\t} );\n\televentyConfig.addFilter( \"year\", ( d ) => DateTime.fromJSDate( d ).year );\n\televentyConfig.addShortcode( \"url\", function ( path ) { return this.page.url + path; } );\n\treturn { templateFormats: [ \"njk\", \"md\" ] };\n}\n";
+        let (draft, by_hand) = draft_config("eleventy.config.js", config, &extensions);
+        for expected in [
+            "export default defineConfig( {\n\ttemplateFormats: [ \"njk\", \"md\" ],\n\t// Eleventy's defaults: Markdown and HTML run through Liquid first.\n\tmarkdownEngine: \"liquid\",\n\thtmlEngine: \"liquid\",\n",
+            "\tpassthrough: [ { \"images\": \"images\" }, { \"fonts\": \"static/fonts\" } ],\n",
+            "\t\tsnake_case: ( str ) => {\n\t\t\treturn str\n\t\t\t\t.toLowerCase()\n\t\t\t\t.replace( /[^a-z0-9]+/g, \"_\" );\n\t\t},\n",
+            "} );\n",
+            "//   filters: year\n//   filters: url\n",
         ] {
             assert!(draft.contains(expected), "missing {:?} in\n{}", expected, draft);
         }
         let list: Vec<String> = by_hand.iter().map(|(at, what)| format!("{}: {}", at, what.split(" -> ").next().unwrap_or(""))).collect();
-        assert_eq!(
-            list,
-            [
-                ".eleventy.js:4: addPlugin(pluginRss)",
-                ".eleventy.js:6: addPassthroughCopy with an object or a variable",
-                ".eleventy.js:8: addFilter(\"readableDate\")",
-                ".eleventy.js:9: addShortcode(\"year\")",
-                ".eleventy.js:10: addPairedShortcode(\"callout\")",
-                ".eleventy.js:11: addCollection(\"posts\")",
-                ".eleventy.js:12: on(\"eleventy.after\")",
-                ".eleventy.js: @11ty/eleventy-plugin-rss",
-                ".eleventy.js: markdown-it-anchor",
-            ]
-        );
+        assert_eq!(list, ["eleventy.config.js:4: addPassthroughCopy with a variable or a computed value", "eleventy.config.js:11: addFilter(\"year\")", "eleventy.config.js:12: addShortcode(\"url\")"]);
     }
 }

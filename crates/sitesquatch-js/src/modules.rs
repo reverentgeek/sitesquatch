@@ -34,7 +34,36 @@ export function markdown(text, options = {}) {
 export function readData(path) {
 	return globalThis.__ssqch.natives.ssqch.readData(String(path));
 }
-export default { defineConfig, markdown, readData };
+export function files(pattern, options = {}) {
+	for (const key of Object.keys(options ?? {})) {
+		if (key !== "dimensions") throw new TypeError(`files(): unknown option "${key}" (options: dimensions)`);
+	}
+	return globalThis.__ssqch.natives.ssqch.files(String(pattern ?? ""), Boolean(options?.dimensions));
+}
+export function slugify(text, options) {
+	return globalThis.__ssqch.natives.ssqch.slugify(String(text ?? ""), options);
+}
+export function slugger(options = {}) {
+	const separator = slugify("a b", options).slice(1, -1);
+	const seen = new Map();
+	return (text) => {
+		const base = slugify(text, options);
+		if (!seen.has(base)) {
+			seen.set(base, 0);
+			return base;
+		}
+		let n = seen.get(base);
+		let slug;
+		do {
+			n++;
+			slug = `${base}${separator}${n}`;
+		} while (seen.has(slug));
+		seen.set(base, n);
+		seen.set(slug, 0);
+		return slug;
+	};
+}
+export default { defineConfig, markdown, readData, files, slugify, slugger };
 "#;
 
 /// Node built-in modules provided by `node.js`.
@@ -52,7 +81,7 @@ pub fn node_modules() -> (&'static [&'static str], &'static [&'static str]) {
 }
 
 /// The names `ssqch` itself exports.
-pub const CONFIG_MODULE_EXPORTS: [&str; 3] = ["defineConfig", "markdown", "readData"];
+pub const CONFIG_MODULE_EXPORTS: [&str; 6] = ["defineConfig", "markdown", "readData", "files", "slugify", "slugger"];
 
 /// The module name for `path`: relative to the project root when it's
 /// inside it, absolute otherwise.
@@ -168,7 +197,7 @@ impl rquickjs::loader::Loader for Loader {
         }
         let (file, _) = split_query(name);
         let path = self.root.join(file);
-        let text = std::fs::read_to_string(&path).map_err(|e| Error::new_loading_message(name, e.to_string()))?;
+        let text = sitesquatch::data::read_text(&path).map_err(|e| Error::new_loading_message(name, e.to_string()))?;
         note_loaded(&self.loaded, &path);
         let source = match format(ctx, &path, &text) {
             Format::Json => {

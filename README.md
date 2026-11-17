@@ -48,6 +48,17 @@ The installers check the download's SHA-256 checksum, install `ssqch` into `$CAR
 
 In a site with a `package.json`, install it from **npm** as a dev dependency, so the lockfile pins the version: `npm install --save-dev ssqch` (or `pnpm add -D ssqch`, `yarn add -D ssqch`), then run `npx ssqch build`, or `ssqch build` in a `package.json` script. The `ssqch` package runs the binary from an optional dependency for your platform (`@ssqch/darwin-arm64`, `@ssqch/darwin-x64`, `@ssqch/linux-x64` or `@ssqch/win32-x64`), so installing runs no install scripts and downloads nothing from GitHub. It covers the same platforms as the installers.
 
+**A release from today and pnpm's release age:** pnpm 11 and later wait a day (`minimumReleaseAge`) before installing a new version, so `pnpm add -D ssqch` on the day of a release fails, or settles for the version before it. To take a fresh release, list the wrapper and its four platform packages, `ssqch`, `@ssqch/darwin-arm64`, `@ssqch/darwin-x64`, `@ssqch/linux-x64` and `@ssqch/win32-x64`, under `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` (add `@<version>` to each to trust only that release):
+
+```yaml
+minimumReleaseAgeExclude:
+  - ssqch
+  - '@ssqch/darwin-arm64'
+  - '@ssqch/darwin-x64'
+  - '@ssqch/linux-x64'
+  - '@ssqch/win32-x64'
+```
+
 The npm package also carries the modules built into ssqch (`ssqch`, `ssqch/image` and the rest) in its `exports` map, with their types, so editors, TypeScript and ESLint's `n/no-missing-import` find them without `ssqch types`. Only ssqch can run them: importing one with plain Node says to build with ssqch. ESLint's `n/no-unpublished-import` flags imports of a dev dependency in files a package publishes, so turn it off for build-time files (`ssqch.config.js`, data files, and modules they import), which a site never ships.
 
 On other platforms (Linux on ARM, say), build it from [crates.io](https://crates.io/crates/ssqch) with a recent stable [Rust toolchain](https://rustup.rs):
@@ -283,7 +294,7 @@ Mistakes get caught at the trailhead. A misspelled key or option is an error tha
 
 ### What you can import
 
-Config and data files can import relative files (`./lib/filters.js`, with or without the extension), JSON (`import site from "./site.json"`), npm packages from `node_modules`, the built-in modules (`ssqch`, which has `defineConfig`, `markdown(text, { inline })` and `readData(path)` for JSON, YAML and TOML files, `ssqch/image`, `ssqch/rss`, `ssqch/minify`, `ssqch/assets`, `ssqch/links`, `ssqch/sitemap`, `ssqch/redirects`, `ssqch/sass`), and these Node built-ins, with or without the `node:` prefix:
+Config and data files can import relative files (`./lib/filters.js`, with or without the extension), JSON (`import site from "./site.json"`), npm packages from `node_modules`, the built-in modules (`ssqch`, which has `defineConfig`, `markdown(text, { inline })`, `readData(path)` for JSON, YAML and TOML files, and `files(pattern)` for the files a glob matches, `ssqch/image`, `ssqch/rss`, `ssqch/minify`, `ssqch/assets`, `ssqch/links`, `ssqch/sitemap`, `ssqch/redirects`, `ssqch/sass`), and these Node built-ins, with or without the `node:` prefix:
 
 | Module | What's there |
 | --- | --- |
@@ -356,6 +367,34 @@ export default {
 ```
 
 Data functions run on every build. `ssqch serve` reloads a data file when it changes, and the modules it imports too. Data files work in TOML-configured sites too.
+
+**Files as data:** `files()` from `ssqch` lists the files a glob matches, for a photo album made from a folder or a page of downloads, without `readdirSync` and a date parser of your own:
+
+```js
+// src/_data/campPhotos.js
+import { files } from "ssqch";
+
+export default files("images/camp/*.{jpg,png}", { dimensions: true }).map((photo) => ({
+  src: photo.url,
+  width: photo.width,
+  height: photo.height,
+  taken: photo.date,
+}));
+```
+
+- `files(pattern, { dimensions })`: the files `pattern` matches, from the project root, sorted by path. Each is `{ path, url, name, stem, ext, date, size }`: `path` from the project root (`images/camp/20011222_08.JPG`); `url` where a passthrough copy to the same path is served, from the input folder when the file is inside it (`src/images/a.jpg` is `/images/a.jpg`), otherwise from the project root (`/images/camp/20011222_08.JPG`); `name` (`20011222_08.JPG`), `stem` (`20011222_08`) and `ext` (`jpg`, lowercase); `date`, a date from the start of the name (`20011222_08.JPG` or `2001-12-22-camp.jpg`, at midnight UTC) or else the file's modification time; and `size` in bytes. The glob ignores case, so `*.jpg` finds `.JPG`, and `*` stops at `/` (`**` crosses folders). `{ dimensions: true }` adds `width` and `height`, read from each image's header (`null` for a file that isn't an image), which takes a moment for a thousand photos, so it's off by default. No match is an empty list; a glob that isn't one, or that leaves the project (`../`, an absolute path), is an error naming the call. It lists files, nothing more: copy them to the output with `passthrough`, and resize them with `imagePlugin()`. In `ssqch.config.js` before the first build, `url` is from the project root, since the input folder isn't known yet.
+
+**Unique slugs:** two items with the same title (two albums called "Misc Pictures") give a paginated template the same permalink, and the build stops with `output conflicts`, naming both. Make the slugs different in the data, with `slugger()` from `ssqch`, so the page's permalink and every link to it use the same one:
+
+```js
+// src/_data/albums.js
+import { readData, slugger } from "ssqch";
+
+const slug = slugger();
+export default readData("data/albums.json").map((album) => ({ ...album, slug: slug(album.name) }));
+```
+
+- `slugger({ separator })`: a function that slugifies like `slugify(text, { separator })` and counts what it has made: the first `Misc Pictures` is `misc-pictures`, the next `misc-pictures-1`, then `misc-pictures-2`, skipping a number another title already took. Each `slugger()` counts on its own, so make one per list. In the template, `permalink: "photos/{{ album.slug }}/"` and the index page's `<a href="/photos/{{ album.slug }}/">` agree. `slugify(text, { separator })` from `ssqch` is the template filter, for data files.
 
 ### Built-in plugins
 
@@ -473,7 +512,7 @@ The lay of the land:
 - **Dates:** a page's `date` comes from its data, then from the start of its file name (`2024-06-01-post.md`), then from when the file last changed. `computed.date` works too.
 - **Drafts:** `draft: true` builds the page in development (`ssqch serve`, or `--env development`) and leaves it out of production builds, collections included.
 - **Excerpts and reading time:** `page.excerpt` is the HTML before a `<!-- more -->` comment, or else the first paragraph, for layouts and collections (`post.page.excerpt` in a list of posts). `readingTime(content)` is the minutes it takes to read some HTML at 200 words a minute (`readingTime(content, 250)` for another pace), at least 1.
-- **Slugs:** `slugify("Pine Cone Crunch!")` is `pine-cone-crunch`: lowercase letters and digits, with a dash for each run of anything else (apostrophes are dropped, and letters outside ASCII are kept). It's the same function in every template language (`{{ title | slugify }}` in Jinja, Nunjucks and Liquid), and a config filter named `slugify` replaces it.
+- **Slugs:** `slugify("Pine Cone Crunch!")` is `pine-cone-crunch`: lowercase letters and digits, with a dash for each run of anything else (apostrophes are dropped, and letters outside ASCII are kept). It's the same function in every template language (`{{ title | slugify }}` in Jinja, Nunjucks and Liquid), and a config filter named `slugify` replaces it. `slugify(title, { separator: "_" })` (or `slugify(title, "_")`, `{{ title | slugify: "_" }}` in Liquid) puts another separator between the words, for URLs like `/recipes/taco_bake/`; another option is an error. Data files can import it, and `slugger()`, from `ssqch`.
 - **Choosing engines:** pages are Jinja (`.jinja`) unless you list other languages in `templateFormats`, and `.md` files run through Jinja first, then Markdown (change that with `markdownEngine` and `htmlEngine`). Layouts follow the same rules, so a `.html` layout is a Jinja template by default. A template's `render` front matter overrides it: `render: md` for Markdown only (handy for a post full of `{{ }}` code samples), `render: [edge, md]` for a chain, or `render: false` to write the body as it is. A layout chain can mix languages (a Markdown post in a Liquid layout that sits in an Edge one). Around here that's called trail mix.
 - **Everything else:** layout chaining, `page.*`, `templateContent` in collections, and an error when two pages would write the same file. Every template can read `ssqch.version`, `ssqch.env`, `ssqch.serving` and `ssqch.generator`.
 
@@ -591,6 +630,7 @@ title: Squatch Snacks
 - **Data:** front matter, the cascade, `page`, `collections` and `content` in layouts, the same as in the other engines. Undefined values, and properties of undefined values, print nothing (`strict: true` makes printing one an error).
 - **Escaping:** output is HTML-escaped, as in Nunjucks and Jinja; use `| safe` to opt out. A layout's `content` is already marked safe, so `{{ content }}` works.
 - **Filters and functions:** Jinja's built-in filters, plus Nunjucks' `dump` and `truncate`, and `pluralize`, `filesizeformat`, `striptags`, `cycler()` and `joiner()`. Your config `filters` work both ways: `{{ title | shout }}` and `{{ shout(title) }}`. On a page whose data has a field with a function's name, the call finds the field first, so use the filter form there.
+- **JavaScript properties and methods:** Nunjucks templates use JavaScript's, and they work in `.njk` and `.jinja` files alike. `.length` counts a list's items or a string's characters (`{{ collections.posts.length }}`, the same as `| length`); `loop.length` and an object's own `length` key keep their meaning, and on any other object `.length` is undefined, as in JavaScript. Strings and lists also have `startsWith()`, `endsWith()`, `includes()`, `indexOf()`, `toLowerCase()`, `toUpperCase()` and `trim()`, beside Python's (`startswith()`, `lower()`).
 - **Dates:** `{{ page.date | dateformat }}` prints `Mar 14 2026`. `dateformat`, `timeformat` and `datetimeformat` take `"short"`, `"medium"`, `"long"`, `"full"`, `"iso"`, `"unix"`, or a `strftime` pattern (`dateformat("%B %-d, %Y")`), in UTC. Dates also have Python's `strftime()` and `isoformat()` and JavaScript's `toISOString()` and friends, and `now()` is the build's time.
 - **Your own tags:** in `.njk` files, a config filter is a tag too. `{% image "/a.png", "A pine" %}` prints what `image("/a.png", "A pine")` returns, without escaping it. With a closing tag, the function gets what's between them first: `{% callout "tip" %}...{% endcallout %}` calls `callout(content, "tip")`. That covers the built-in filters as well, so `{% markdown %}...{% endmarkdown %}` renders Markdown inside a template.
 - **Includes and inheritance:** `{% include %}`, `{% extends %}` with `{% block %}`, `{% import %}` and `{% from ... import %}` read from `_includes`. Front-matter `layout` works too.
@@ -898,7 +938,8 @@ Changes found: 3 pages and 1 other file (2 changed, 1 added, 1 removed); 148 pag
 ```
 
 - **What's ignored:** differences that don't change what a visitor gets. A fingerprinted file (`index.3f2a1b4c.css`: eight hex digits before the extension, unless they read as a date) is matched with its counterpart and compared by content, `integrity` hashes and the generator's version are left out, and HTML is compared as a list of tags and text, so whitespace between block tags doesn't count. A space next to an inline tag (`a <b>b</b>`) does, and so does whitespace inside `<pre>`, `<script>`, `<style>` and `<textarea>` (blank lines and indents included) and inside an attribute's value. `--exact` compares bytes instead.
-- **What each page says:** whether its text, its markup or both changed, a changed `<title>`, and any `id`s that are gone (links to those anchors break).
+- **What each page says:** whether its text, its markup or both changed, a changed `<title>`, any `id`s it no longer has (links to those anchors break), and `only dates changed (2025 -> 2026)` when every change on it is a date or a year.
+- **Dates that changed:** when changed files differ only in dates or years, the summary says how many (`All 94 changed files differ only in dates or years`), and the JSON has `onlyDates: true` for each. The usual cause is a page with no `date` of its own (none in front matter or the file name): its date is the file's modification time, which a fresh checkout, a copy or another generator sets differently (Eleventy uses the file's creation time), so a footer with `{{ page.date.getFullYear() }}` changes on every page. Give pages that print it a `date`, use `{{ now() | dateformat("%Y") }}` for a copyright year, or `--ignore` the pattern while comparing.
 - **Your own noise:** `--ignore <regex>` leaves matching text out of both sides, like a build date in the footer: `--ignore 'Built on [^<]+'`. Repeat it for more patterns.
 - **Part of the site:** `--only '**/*.html'` compares only matching files (repeatable).
 - **Longer diffs:** each file shows 10 changed lines; `--lines 0` shows them all.

@@ -20,6 +20,8 @@ dunce = "1"
 url = "2"
 # `fetch()`.
 ureq = { version = "3", optional = true }
+imagesize = "0.15.0"
+globset = "0.4"
 
 [features]
 default = ["fetch"]

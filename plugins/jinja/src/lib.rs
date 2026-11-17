@@ -12,6 +12,8 @@
 //!   layout's `content` is already safe, so `{{ content }}` works.
 //! - Undefined values and their properties print nothing, as in Nunjucks.
 //! - `dump` is an alias for `tojson`, and `truncate` works as in Nunjucks.
+//! - JavaScript's `.length` counts a list or a string, in `.njk` and `.jinja`
+//!   (it's rewritten to a filter), and `startsWith()` and the like work.
 //! - In `.njk` files, Nunjucks' `{% elseif %}` and `{% for key, value in
 //!   object %}` work too (they're rewritten to `elif` and a pairs filter).
 
@@ -149,7 +151,7 @@ impl JinjaEngine {
             loader_loaded.lock().unwrap().insert(name.replace('\\', "/"));
             match std::fs::read_to_string(path) {
                 Ok(src) if nunjucks => Ok(Some(nunjucks_syntax(&src, &loader_tags))),
-                Ok(src) => Ok(Some(src)),
+                Ok(src) => Ok(Some(jinja_syntax(&src))),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
                 Err(e) => Err(Error::new(ErrorKind::InvalidOperation, format!("reading {}: {}", name, e))),
             }
@@ -186,6 +188,7 @@ impl JinjaEngine {
         env.add_filter("datetimeformat", |value: JValue, format: Option<String>| format_date(&value, format.as_deref(), DateParts::Both));
         env.add_function("now", || JValue::from_object(Opaque(Value::Date(chrono::Utc::now()))));
         // `{% for key, value in object %}` in Nunjucks: an object's pairs, a list as it is.
+        env.add_filter(LENGTH_FILTER, js_length);
         env.add_filter(PAIRS_FILTER, |value: JValue| if value.kind() == ValueKind::Map { minijinja::filters::items(&value).unwrap_or(value) } else { value });
         for (name, value) in engine_env.pipe_filters.iter() {
             let (filter_name, function) = (name.clone(), value.clone());
@@ -290,13 +293,13 @@ impl TemplateEngine for JinjaEngine {
             Some(key) => {
                 let name = format!("{}{}", PAGE_PREFIX, key);
                 if !self.sources.read().unwrap().contains_key(&name) {
-                    let source = if self.nunjucks { nunjucks_syntax(source, &self.tags) } else { source.to_string() };
+                    let source = if self.nunjucks { nunjucks_syntax(source, &self.tags) } else { jinja_syntax(source) };
                     self.sources.write().unwrap().insert(name.clone(), source);
                 }
                 self.env.get_template(&name).and_then(|t| t.render(context))
             }
             None if self.nunjucks => self.env.render_named_str(ctx.name, &nunjucks_syntax(source, &self.tags), context),
-            None => self.env.render_named_str(ctx.name, source, context),
+            None => self.env.render_named_str(ctx.name, &jinja_syntax(source), context),
         };
         result.map_err(|e| anyhow!("{}", self.describe(&e)))
     }
@@ -307,6 +310,23 @@ impl TemplateEngine for JinjaEngine {
 }
 
 const PAIRS_FILTER: &str = "__ssqch_pairs";
+const LENGTH_FILTER: &str = "__ssqch_length";
+
+/// JavaScript's `.length`: an attribute named `length` if the value has one
+/// (`loop.length`, an object with a `length` key), otherwise how many items
+/// a list has or characters a string has. Anything else is undefined, as in
+/// JavaScript (an object without a `length` key has none).
+fn js_length(value: JValue) -> JValue {
+    if let Ok(attr) = value.get_attr("length") {
+        if !attr.is_undefined() {
+            return attr;
+        }
+    }
+    match value.kind() {
+        ValueKind::String | ValueKind::Seq | ValueKind::Iterable => value.len().map(JValue::from).unwrap_or(JValue::UNDEFINED),
+        _ => JValue::UNDEFINED,
+    }
+}
 
 /// Rewrite the Nunjucks syntax minijinja doesn't know: `{% elseif %}` to
 /// `{% elif %}`, `{% for key, value in object %}` to iterate the object's
@@ -323,7 +343,69 @@ fn nunjucks_syntax(src: &str, tags: &std::collections::HashSet<String>) -> Strin
     let for_pairs = FOR_PAIRS.get_or_init(|| regex::Regex::new(r"\{%(-?)(\s*)for\s+(\w+)\s*,\s*(\w+)\s+in\s+(.+?)\s*(-?)%\}").unwrap());
     let src = elseif.replace_all(src, "{%$1${2}elif");
     let src = for_pairs.replace_all(&src, |c: &regex::Captures| format!("{{%{}{}for {}, {} in ({}) | {} {}%}}", &c[1], &c[2], &c[3], &c[4], &c[5], PAIRS_FILTER, &c[6]));
-    rewrite_tags(&custom_tags(&src, tags))
+    rewrite_tags(&custom_tags(&src, tags), |code| length_code(&nunjucks_code(code)).into_owned())
+}
+
+/// Jinja templates get one rewrite: `.length` (see [`length_code`]).
+fn jinja_syntax(src: &str) -> String {
+    if !src.contains(".length") {
+        return src.to_string();
+    }
+    rewrite_tags(src, |code| length_code(code).into_owned())
+}
+
+/// `xs.length` to `xs | __ssqch_length`, outside string literals, so the
+/// JavaScript property Nunjucks templates use counts a list or a string (in
+/// `.jinja` too). The filter reads a `length` attribute first, so
+/// `loop.length` and an object's own `length` key stay what they were. Left
+/// alone when something follows it (`.length.x`, `.length[0]`, `.length()`)
+/// or it's assigned (`{% set ns.length = 3 %}`).
+fn length_code(code: &str) -> std::borrow::Cow<'_, str> {
+    if !code.contains(".length") {
+        return code.into();
+    }
+    let chars: Vec<char> = code.chars().collect();
+    let mut out = String::with_capacity(code.len() + 16);
+    let mut i = 0;
+    let mut prev = ' ';
+    let word = ['l', 'e', 'n', 'g', 't', 'h'];
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '"' || c == '\'' {
+            let start = i;
+            i += 1;
+            while i < chars.len() && chars[i] != c {
+                i += if chars[i] == '\\' { 2 } else { 1 };
+            }
+            i = (i + 1).min(chars.len());
+            out.extend(&chars[start..i]);
+            prev = c;
+            continue;
+        }
+        if c == '.' && (prev.is_alphanumeric() || prev == '_' || prev == ']' || prev == ')') && chars.get(i + 1..i + 7) == Some(&word[..]) {
+            let end = i + 7;
+            let ident = |ch: &char| ch.is_alphanumeric() || *ch == '_' || *ch == '$';
+            let mut k = end;
+            while k < chars.len() && chars[k].is_whitespace() {
+                k += 1;
+            }
+            let next = chars.get(k).copied();
+            let assigned = next == Some('=') && chars.get(k + 1) != Some(&'=');
+            if !chars.get(end).is_some_and(ident) && !matches!(next, Some('.' | '[' | '(')) && !assigned {
+                out.push_str(" | ");
+                out.push_str(LENGTH_FILTER);
+                i = end;
+                prev = 'h';
+                continue;
+            }
+        }
+        out.push(c);
+        if !c.is_whitespace() {
+            prev = c;
+        }
+        i += 1;
+    }
+    out.into()
 }
 
 /// Tags named after the config's functions: `{% image "a.png", "Alt" %}`
@@ -356,9 +438,9 @@ fn custom_tags<'a>(src: &'a str, tags: &std::collections::HashSet<String>) -> st
     })
 }
 
-/// Run [`nunjucks_code`] over the code in every `{{ }}` and `{% %}` tag,
-/// leaving `{% raw %}` blocks and `{# #}` comments alone.
-fn rewrite_tags(src: &str) -> String {
+/// Run `rewrite` ([`nunjucks_code`], [`length_code`]) over the code in every
+/// `{{ }}` and `{% %}` tag, leaving `{% raw %}` blocks and `{# #}` comments alone.
+fn rewrite_tags(src: &str, rewrite: impl Fn(&str) -> String) -> String {
     static ENDRAW: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let endraw = ENDRAW.get_or_init(|| regex::Regex::new(r"\{%-?\s*endraw\s*-?%\}").unwrap());
     let mut out = String::with_capacity(src.len() + 16);
@@ -385,7 +467,7 @@ fn rewrite_tags(src: &str) -> String {
         if close == "#}" {
             out.push_str(code);
         } else {
-            out.push_str(&nunjucks_code(code));
+            out.push_str(&rewrite(code));
         }
         out.push_str(close);
         rest = &tail[2 + end + 2..];
@@ -814,7 +896,23 @@ impl Object for Opaque {
 
 #[cfg(test)]
 mod tests {
-    use super::nunjucks_syntax;
+    use super::{jinja_syntax, nunjucks_syntax};
+
+    #[test]
+    fn length_becomes_a_filter() {
+        let cases = [
+            ("{{ albums.length }}", "{{ albums | __ssqch_length }}"),
+            ("{% if site.posts.length > 0 and x[0].length %}", "{% if site.posts | __ssqch_length > 0 and x[0] | __ssqch_length %}"),
+            ("{{ (xs | sort).length - 1 }}", "{{ (xs | sort) | __ssqch_length - 1 }}"),
+            ("{{ \"a.length\" }} {# xs.length #} {% raw %}{{ xs.length }}{% endraw %}", "{{ \"a.length\" }} {# xs.length #} {% raw %}{{ xs.length }}{% endraw %}"),
+            ("{{ xs.lengthy }} {{ xs.length.x }} {{ xs.length[0] }} {% set ns.length = 3 %} {{ x.length == 2 }}", "{{ xs.lengthy }} {{ xs.length.x }} {{ xs.length[0] }} {% set ns.length = 3 %} {{ x | __ssqch_length == 2 }}"),
+            ("text xs.length", "text xs.length"),
+        ];
+        for (input, want) in cases {
+            assert_eq!(jinja_syntax(input), want, "{}", input);
+            assert_eq!(nunjucks_syntax(input, &Default::default()), want, "{}", input);
+        }
+    }
 
     #[test]
     fn nunjucks_code_is_rewritten_for_minijinja() {
