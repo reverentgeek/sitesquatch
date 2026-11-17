@@ -4,7 +4,7 @@ The ReverentGeek blog (`../blog`) is the main real-world site. Its own tasks are
 `../blog/TODO.md`. Items here that the blog is waiting on say **Blog:**, and blog items that need
 a change here say **Needs ssqch:**. When one side finishes, tick it and update the other list.
 
-The current release is 0.6.2 (2026-11-16; `CHANGELOG.md` has every release). Work goes to
+The current release is 0.6.3 (2026-11-17; `CHANGELOG.md` has every release). Work goes to
 `main`; the `release/0.4` and `release/0.5` branches are merged and finished. The blog builds
 with the npm package, pinned exactly.
 
