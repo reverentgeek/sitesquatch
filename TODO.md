@@ -312,6 +312,42 @@ output, uncommitted in `../gahlee` until 0.6.3 is on npm), which covers the work
       Done 2026-11-17: the README recommends the names without versions, and gives the
       add-install-remove steps for version-pinned lines.
 
+Checked on 0.6.4 (2026-11-17, a local release build, then the npm packages once they were out).
+Every fix above held up:
+
+- A fresh `ssqch import eleventy --write` on Gahlee's last Eleventy commit: ssqch exactly
+  `0.6.4` in `devDependencies` with the emptied `dependencies` gone, the five release-age names
+  under "By hand", and a draft config with no errors under the site's ESLint config. The
+  untouched site built the same as Eleventy apart from the footer year.
+- Gahlee itself (pushed as `30e52dc`): `albums.js` tests `file.dateFrom === "name"` instead of
+  its own `/^\d{8}_/`, and the `snake_case` filter is now `slugify(str, { separator: "_",
+  apostrophes: "separate" })` from `ssqch` instead of a regex. All 51 recipe URLs, the three
+  with apostrophes included, and every v1 caption came out the same (`ssqch diff`: no
+  differences apart from the footer year).
+- The size cache, on the 1,043 v1 photos: the data step was 41 ms with an empty
+  `image-sizes.json` (82 KB once written) and 25 to 26 ms after, the same as without
+  `dimensions`. So about 15 ms cold and nothing warm, down from about 150 ms on 0.6.3. Gahlee
+  still leaves it off, since no template uses the sizes.
+- Release age: with Gahlee's `pnpm-workspace.yaml` switched to the five names without versions,
+  `pnpm install` went from 0.6.3 (under a day old) to 0.6.4 with no extra steps, and the
+  lockfile has no 0.6.3 entries left.
+
+Left over:
+
+- [x] **The placeholder comment lands above a ported filter.** When the importer copies a
+      filter into the draft, the `filters` block reads:
+      ```js
+      filters: {
+      	// Port each filter and shortcode here: name: (value, ...args) => result
+      	// From eleventy.config.js, as written.
+      	snake_case: ( str ) => {
+      ```
+      The "Port each…" line asks for work that's already done. Leave it out when every filter
+      was ported, or put it after the ported ones when some are still by hand (that list says
+      which).
+      Done 2026-11-17: left out when everything was ported, after the ported filters
+      otherwise. Gahlee's draft has no placeholder now.
+
 ### Jinja by default (0.5)
 
 Decided 2026-11-10: Jinja is the most familiar template language across ecosystems (Python's

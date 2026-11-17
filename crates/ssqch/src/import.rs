@@ -681,21 +681,16 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
     if !watch.is_empty() {
         entries.push(format!("{}watch: {}", ind, style.list(&watch)));
     }
-    let port_here = format!("{0}{0}// Port each filter and shortcode here: name: (value, ...args) => result\n", ind);
     let mut filters = format!("\n{}filters: {{\n", ind);
-    if ported.is_empty() {
-        filters.push_str(&port_here);
-    } else {
-        // Without trailing commas, the last filter ends the object, so the comment goes first.
-        if !style.dangle {
-            filters.push_str(&port_here);
-        }
+    if !ported.is_empty() {
         filters.push_str(&format!("{0}{0}// From {1}, as written.\n", ind, name));
         let items: Vec<String> = ported.iter().map(|(filter, source)| format!("{0}{0}{1}: {2}", ind, style.key(filter), source)).collect();
         filters.push_str(&style.items(&items));
-        if style.dangle {
-            filters.push_str(&port_here);
-        }
+    }
+    // The placeholder, unless every filter and shortcode was ported (the list at the end names
+    // the ones left). After the last filter, a comment doesn't count as a trailing comma.
+    if ported.is_empty() || todo.iter().any(|t| t.starts_with("filters:")) {
+        filters.push_str(&format!("{0}{0}// Port each filter and shortcode here: name: (value, ...args) => result\n", ind));
     }
     filters.push_str(&format!("{}}}", ind));
     entries.push(filters);
@@ -1199,7 +1194,8 @@ module.exports = function (eleventyConfig) {
             "passthrough: [\"src/assets\", { \"src/static\": \"/\" }],",
             "watch: [\"./src/css/\"],",
             // Self-contained functions move as written; shortcodes are filters.
-            "  filters: {\n    // From .eleventy.js, as written.\n    readableDate: (d) => d.toDateString(),\n    year: () => `${new Date().getFullYear()}`,\n    callout: (content) => content,\n",
+            // Everything was ported, so there's no placeholder.
+            "  filters: {\n    // From .eleventy.js, as written.\n    readableDate: (d) => d.toDateString(),\n    year: () => `${new Date().getFullYear()}`,\n    callout: (content) => content,\n  },\n",
             "//   collections: posts\n",
         ] {
             assert!(draft.contains(expected), "missing {:?} in\n{}", expected, draft);
@@ -1215,7 +1211,8 @@ module.exports = function (eleventyConfig) {
         for expected in [
             "export default defineConfig( {\n\ttemplateFormats: [ \"njk\", \"md\" ],\n\t// Eleventy's defaults: Markdown and HTML run through Liquid first.\n\tmarkdownEngine: \"liquid\",\n\thtmlEngine: \"liquid\",\n",
             "\tpassthrough: [ { images: \"images\" }, { fonts: \"static/fonts\" } ],\n",
-            "\t\tsnake_case: ( str ) => {\n\t\t\treturn str\n\t\t\t\t.toLowerCase()\n\t\t\t\t.replace( /[^a-z0-9]+/g, \"_\" );\n\t\t},\n",
+            // Some are left by hand, so the placeholder follows the ported ones.
+            "\t\tsnake_case: ( str ) => {\n\t\t\treturn str\n\t\t\t\t.toLowerCase()\n\t\t\t\t.replace( /[^a-z0-9]+/g, \"_\" );\n\t\t},\n\t\t// Port each filter and shortcode here: name: (value, ...args) => result\n\t},\n",
             "} );\n",
             "//   filters: year\n//   filters: url\n",
         ] {
@@ -1226,7 +1223,7 @@ module.exports = function (eleventyConfig) {
         let gahlee = "export default function ( eleventyConfig ) {\n\televentyConfig.addPassthroughCopy( { \"images\": \"images\" } );\n\televentyConfig.addFilter( \"snake_case\", ( str ) => {\n\t\treturn str.toLowerCase();\n\t} );\n\treturn {\n\t\tdir: {\n\t\t\tinput: \"src\",\n\t\t\toutput: \"_site\"\n\t\t},\n\t\thtmlTemplateEngine: \"njk\"\n\t};\n}\n";
         let (draft, _) = draft_config("eleventy.config.js", gahlee, &extensions);
         assert!(draft.contains("\tpassthrough: [ { images: \"images\" } ],\n"), "{}", draft);
-        assert!(draft.contains("\tfilters: {\n\t\t// Port each filter and shortcode here: name: (value, ...args) => result\n\t\t// From eleventy.config.js, as written.\n\t\tsnake_case: ( str ) => {\n\t\t\treturn str.toLowerCase();\n\t\t}\n\t},\n"), "{}", draft);
+        assert!(draft.contains("\tfilters: {\n\t\t// From eleventy.config.js, as written.\n\t\tsnake_case: ( str ) => {\n\t\t\treturn str.toLowerCase();\n\t\t}\n\t},\n"), "{}", draft);
         assert!(draft.contains("\tplugins: []\n} );\n") && !draft.contains(",\n}"), "{}", draft);
         let list: Vec<String> = by_hand.iter().map(|(at, what)| format!("{}: {}", at, what.split(" -> ").next().unwrap_or(""))).collect();
         assert_eq!(list, ["eleventy.config.js:4: addPassthroughCopy with a variable or a computed value", "eleventy.config.js:11: addFilter(\"year\")", "eleventy.config.js:12: addShortcode(\"url\")"]);

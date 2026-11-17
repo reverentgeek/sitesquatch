@@ -8,6 +8,14 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Changed
+
+- The config `ssqch import eleventy` drafts leaves out `// Port each filter and shortcode here`
+  when it ported every filter and shortcode, and puts it after the ported ones when some are
+  left (the list at the end names them).
+
 ## 0.6.4 - 2026-11-17
 
 ### Added
