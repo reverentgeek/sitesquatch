@@ -66,6 +66,13 @@ the release.
   nothing can read says to provide it in the config's `data` (0.7 named the Rust API).
 - A YAML integer too big for 128 bits (`123456789012345678901234567890`) is a rounded number,
   where 0.7 refused the file. TOML's integers past 2^53 are rounded numbers, as in 0.7.
+- A stack frame in an error or a warning has the column Node gives: `throw new Error("...")` is
+  at `new`, where 0.7 (on QuickJS) pointed at `Error`.
+- Markdown is still ssqch's own, 0.7's Rust built as WebAssembly, so pages come out as they did.
+  A render hook or container whose template answers with a promise (an async filter, function
+  or engine) is an error that names the template: hooks render while the Markdown around them
+  does, so make what they call synchronous. A highlighter in `markdown.highlight.languages`
+  that's async gets the warning that it returned an object, not a list of tokens.
 
 ## 0.7.0 - 2026-11-17
 

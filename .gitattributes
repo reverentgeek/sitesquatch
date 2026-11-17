@@ -1,3 +1,5 @@
 # Check out text files with LF everywhere. Starter files, fixtures and templates are
 # embedded with include_str!, so a CRLF checkout on Windows would change what ssqch writes.
 * text=auto eol=lf
+# The Node build's Markdown (packages/ssqch/wasm/markdown.wasm) is committed as it was built.
+*.wasm binary
