@@ -62,7 +62,7 @@ Where Eleventy's word means the same thing in ssqch, it works as it is: `ssqch d
 | `page.url`, `page.fileSlug`, `page.inputPath`, `page.outputPath`, `page.date` | The same, plus `page.headings` and `page.excerpt` in layouts. Dates in file names (`2024-06-01-post.md`) work the same way. |
 | `layouts: "_includes/layouts"` and `layout: post` | `dirs: { layouts: "_includes/layouts" }` |
 | `addDataExtension("yml", ...)` with js-yaml | Built in: YAML, TOML and JSON data files load as they are, and `readData(path)` from `ssqch` reads one in code |
-| `eleventyNavigation` | `nav` front matter with the same `key`, `parent`, `order` and `title`, turned into a tree with `pagesTree(collections.all)`; or a data file such as `_data/nav.yml`. `navTree`, `navPager` and `navBreadcrumbs` mark the current page, and give previous/next and the trail. |
+| `eleventyNavigation` | `nav` front matter with the same `key`, `parent`, `order` and `title` (for now, `parent` has to be another page's `key` or title, and `title` doesn't fall back to `key`), turned into a tree with `pagesTree(collections.all)`; or a data file such as `_data/nav.yml`. `navTree`, `navPager` and `navBreadcrumbs` mark the current page, and give previous/next and the trail. To keep eleventy-navigation's filter instead, leave the front matter as it is and define the filter with the package's function: `import navigation from "@11ty/eleventy-navigation/eleventy-navigation.js"`, then `filters: { eleventyNavigation: (pages, key) => navigation.findNavigationEntries(pages, key) }` (`ssqch import eleventy` leaves the front matter alone when templates call that filter). |
 | `eleventy.env`, `process.env.ELEVENTY_ENV` | The `ssqch` template global (`ssqch.env`, `ssqch.serving`), and `SSQCH_ENV` |
 
 ## Plugins
@@ -97,7 +97,36 @@ Nunjucks (`.njk`) renders with minijinja, Liquid with the `liquid` crate, and EJ
 - **A folder of full-size photos** is what `imagePlugin()` from `ssqch/image` is for: every `<img>` gets sized, modern-format copies in a `<picture>`, and `image()` in a data file gives the URLs and dimensions without markup.
 - **A printed date is ISO 8601** (`2024-06-01T00:00:00.000Z`), not JavaScript's `Date.toString()`, which depends on the machine's time zone. Format dates with a filter.
 - **Markdown differs from markdown-it in a few places:** bare domains like `example.com` aren't links (only `https://` and `www.` URLs are, as on GitHub), and with `indentedCode: false`, indented HTML renders as HTML (markdown-it wraps it in `<p>`).
+- **The layout is chosen before `computed` runs.** A computed `layout` that's plain text (`eleventyComputed: { layout: "article" }`) is used; one that depends on the page is an error. Set it in the front matter or a data file.
+- **`computed` doesn't see `collections`.** Build lists that need collections in a filter or a collection instead.
+- **Includes come from `_includes`** (and themes), not from the project root as in Eleventy's Nunjucks. To show a source file in a page, read it in a filter: `filters: { readFile: (p) => fs.readFileSync(p, "utf8") }`.
+- **A filter's result is copied into the template,** so it can't be circular: nav items whose `prev` and `next` point at each other fail with `value is nested too deeply`. Return copies a level or two deep.
+- **`{#id}` at the end of a Markdown line is a heading attribute,** not a Nunjucks comment, even though Markdown runs through Nunjucks or Jinja first.
 - **markdown-it-anchor's ids** need a slugger: `markdown: { headingIds: (text) => encodeURIComponent(text.trim().toLowerCase().replace(/\s+/g, "-")) }`, and a heading hook if you want its `tabindex="-1"`.
+
+## Moving with identical output first
+
+A big site moves most safely in two steps: first the same pages, byte for byte, then ssqch's own features one at a time. For the first step, keep Eleventy's template libraries and let ssqch do the rest (finding pages, the data cascade, pagination, collections, layouts, transforms, writing):
+
+- **Markdown and HTML:** an engine of your own (`engines` in the config) that runs liquidjs and then your markdown-it for `.md`, and your Nunjucks for `.njk` and `.html`, set for every page with one line, `data: { render: "eleventy" }` (global data reaches every page), and for layouts with `htmlEngine: "eleventy"`. Branch on `data.page.inputPath`. Eleventy's defaults: Markdown runs through Liquid first, and markdown-it has `code` (indented code blocks) turned off.
+- **Front matter strings:** the same engine renders `computed` strings and permalinks before the page has a URL (`data.page.url` is undefined): render those with the template language only, not Markdown.
+- **Install what Eleventy brought along:** liquidjs, nunjucks, gray-matter and luxon came with `@11ty/eleventy`, and a site's data files often import them without listing them. Pin the versions Eleventy had (`npm ls liquidjs nunjucks`), since the output depends on them.
+- **Compare bytes:** `ssqch diff --exact`. Without `--exact`, whitespace between tags is ignored.
+
+Then move one feature at a time to ssqch's (Markdown, highlighting, minifying, the table of contents), with `ssqch diff` after each.
+
+## Packages that are slow or don't load
+
+The config runs on QuickJS, an interpreter without a JIT. Most packages load; some are much slower than in Node:
+
+| Package | On ssqch | Instead |
+| --- | --- | --- |
+| html-minifier, html-minifier-terser | Hundreds of times slower on large pages (5 s for a 200 KB page), because each `html.substring(i)` copies the rest of the page | `minifyPlugin()` from `ssqch/minify` |
+| cheerio | About 15x slower | `page.headings`, `toc()`, transforms on strings |
+| @lit-labs/ssr | Works, about 15x slower | Server rendering in a `beforeBuild` step with Node, for a big site |
+| Anything that drives a browser (Playwright, Puppeteer) | Doesn't run | A `beforeBuild` `run:` step, or a small local server your config `fetch`es |
+
+If a build is much slower than with Eleventy, time the filters and transforms with `console.time`: one slow package is usually most of it.
 
 ## Checking the move
 

@@ -289,6 +289,7 @@ fn quoted(text: &str) -> Option<&str> {
 impl TemplateEngine for JinjaEngine {
     fn render(&self, source: &str, data: &Value, ctx: &RenderContext) -> Result<String> {
         let context = page_context(data);
+        let source = &*markdown_attributes(source, ctx.input_path);
         let result = match ctx.cache_key {
             Some(key) => {
                 let name = format!("{}{}", PAGE_PREFIX, key);
@@ -344,6 +345,20 @@ fn nunjucks_syntax(src: &str, tags: &std::collections::HashSet<String>) -> Strin
     let src = elseif.replace_all(src, "{%$1${2}elif");
     let src = for_pairs.replace_all(&src, |c: &regex::Captures| format!("{{%{}{}for {}, {} in ({}) | {} {}%}}", &c[1], &c[2], &c[3], &c[4], &c[5], PAIRS_FILTER, &c[6]));
     rewrite_tags(&custom_tags(&src, tags), |code| length_code(&nunjucks_code(code)).into_owned())
+}
+
+/// In Markdown, `{#id}` at the end of a line is a heading attribute
+/// (`## Install {#setup .wide}`), not the start of a comment: it's wrapped in
+/// `{% raw %}` so it reaches the Markdown renderer as written. A comment that
+/// ends on the same line (`{# note #}`) stays a comment.
+fn markdown_attributes<'a>(src: &'a str, path: &std::path::Path) -> std::borrow::Cow<'a, str> {
+    static ATTRIBUTES: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let markdown = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"));
+    if !markdown || !src.contains("{#") {
+        return std::borrow::Cow::Borrowed(src);
+    }
+    let attributes = ATTRIBUTES.get_or_init(|| regex::Regex::new(r"(?m)\{#(?:[A-Za-z_][^}\n]*[^#}\n]|[A-Za-z_])\}[ \t]*\r?$").unwrap());
+    attributes.replace_all(src, "{% raw %}${0}{% endraw %}")
 }
 
 /// Jinja templates get one rewrite: `.length` (see [`length_code`]).
@@ -497,7 +512,7 @@ fn find_close(code: &str, close: &str) -> Option<usize> {
                     i += if bytes[i] == b'\\' { 2 } else { 1 };
                 }
             }
-            _ if code[i..].starts_with(close) => return Some(i),
+            _ if bytes[i..].starts_with(close.as_bytes()) => return Some(i),
             _ => {}
         }
         i += 1;
@@ -900,7 +915,7 @@ impl Object for Opaque {
 
 #[cfg(test)]
 mod tests {
-    use super::{jinja_syntax, nunjucks_syntax};
+    use super::{find_close, jinja_syntax, markdown_attributes, nunjucks_syntax};
 
     #[test]
     fn length_becomes_a_filter() {
@@ -946,5 +961,17 @@ mod tests {
         assert_eq!(nunjucks_syntax(input, &Default::default()), want);
         let input = "{# \"x #}{{ y.length }}";
         assert_eq!(jinja_syntax(input), "{# \"x #}{{ y | __ssqch_length }}");
+    }
+
+    /// `{#id}` ends a Markdown heading (lit.dev: 45 pages swallowed by a
+    /// comment, or a panic on the `’` inside it), and isn't a comment there.
+    #[test]
+    fn heading_attributes_in_markdown_arent_comments() {
+        let md = std::path::Path::new("a.md");
+        let input = "## Install {#setup .wide}\n\nIt’s here {# a note #}\n## Later {#later}\r\n{#- trimmed -#}\n{#x} not at the end #}";
+        let want = "## Install {% raw %}{#setup .wide}{% endraw %}\n\nIt’s here {# a note #}\n## Later {% raw %}{#later}\r{% endraw %}\n{#- trimmed -#}\n{#x} not at the end #}";
+        assert_eq!(markdown_attributes(input, md), want);
+        assert_eq!(markdown_attributes(input, std::path::Path::new("a.html")), input);
+        assert_eq!(find_close("“é” }}", "}}"), Some(9));
     }
 }

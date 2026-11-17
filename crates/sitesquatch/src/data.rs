@@ -30,8 +30,9 @@ pub fn parse_front_matter(src: &str) -> Result<(Map, &str)> {
     for line in rest.split_inclusive('\n') {
         if line.trim_end() == fence {
             let text = &rest[..offset];
-            // Blank lines right after the fence are dropped, like gray-matter.
-            let body = rest[offset + line.len()..].trim_start_matches(['\r', '\n']);
+            // The body starts on the line after the fence, and blank lines
+            // there are kept, as gray-matter keeps them.
+            let body = &rest[offset + line.len()..];
             let data = match format {
                 "json" => object(serde_json::from_str::<serde_json::Value>(if text.trim().is_empty() { "{}" } else { text }).map(Value::from).context("invalid JSON front matter")?, "JSON")?,
                 "toml" => {
@@ -237,7 +238,9 @@ mod tests {
         let (d, body) = parse_front_matter("---\ntitle: Y\n---\nbody").unwrap();
         assert_eq!((d.get("title").unwrap().to_js_string(), body), ("Y".into(), "body"));
         let (d, body) = parse_front_matter("+++\ntitle = \"T\"\ntags = [\"a\"]\n+++\n\nbody").unwrap();
-        assert_eq!((d.get("title").unwrap().to_js_string(), d.get("tags").unwrap().as_array().unwrap().len(), body), ("T".into(), 1, "body"));
+        assert_eq!((d.get("title").unwrap().to_js_string(), d.get("tags").unwrap().as_array().unwrap().len(), body), ("T".into(), 1, "\nbody"));
+        // Only the fence's own line ending goes, as in gray-matter (lit.dev's JSON pages lost a line).
+        assert_eq!(parse_front_matter("---\nx: 1\n---\r\n\r\n\n[1]").unwrap().1, "\r\n\n[1]");
         let (d, body) = parse_front_matter("---json\n{ \"title\": \"J\", \"n\": 2 }\n---\nbody").unwrap();
         assert_eq!((d.get("title").unwrap().to_js_string(), d.get("n").unwrap().to_number(), body), ("J".into(), 2.0, "body"));
         // A TOML date without quotes is its text, which reads as a date.

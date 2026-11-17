@@ -137,6 +137,13 @@ pub(crate) fn resolve(root: &Path, modules: &[JsModule], base: &str, name: &str,
     if name.starts_with("node:") {
         return Err(format!("{} isn't available in ssqch (available: {})", name, NODE_MODULES.map(|m| format!("node:{}", m)).join(", ")));
     }
+    // `import(pathToFileURL(file).href)`, Node's way to import an absolute path.
+    let from_url = name.starts_with("file:").then(|| url::Url::parse(name).ok().and_then(|u| u.to_file_path().ok())).flatten();
+    let from_url = match (name.starts_with("file:"), from_url) {
+        (true, None) => return Err(format!("{} isn't a file URL ssqch can read", name)),
+        (_, path) => path.map(|p| p.to_string_lossy().into_owned()),
+    };
+    let name = from_url.as_deref().unwrap_or(name);
     let (name, query) = split_query(name);
     let (base, _) = split_query(base);
     let base_dir = Path::new(base).parent().map(|d| root.join(d)).unwrap_or_else(|| root.to_path_buf());

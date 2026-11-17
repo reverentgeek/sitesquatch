@@ -482,14 +482,56 @@
 		},
 		realpathSync( p ) {
 			return call( native.realpath, pathArg( p ) );
+		},
+		readlinkSync( p ) {
+			return call( native.readlink, pathArg( p ) );
+		},
+		symlinkSync( target, p, type ) {
+			call( native.symlink, pathArg( target ), pathArg( p ), type === "dir" || type === "junction" );
 		}
 	};
+	fs.realpathSync.native = fs.realpathSync;
 	const promises = {};
 	for ( const [ name, sync ] of Object.entries( fs ) ) {
 		if ( name === "existsSync" ) continue;
 		promises[name.replace( /Sync$/, "" )] = async ( ...args ) => sync( ...args );
 	}
 	promises.access = async p => fs.accessSync( p );
+	// Callback versions (`fs.readdir( dir, options, callback )`), as older
+	// packages and fast-glob's async API use them. The work is done right
+	// away, and the callback is called once the current code has finished.
+	for ( const [ name, sync ] of Object.entries( fs ) ) {
+		const callbackName = name.replace( /Sync$/, "" );
+		if ( callbackName === name ) continue;
+		fs[callbackName] = ( ...args ) => {
+			const callback = args.pop();
+			if ( typeof callback !== "function" ) {
+				throw Object.assign( new TypeError( `The "cb" argument must be of type function. Received ${ typeof callback }` ), { code: "ERR_INVALID_ARG_TYPE" } );
+			}
+			let result, error = null;
+			try {
+				result = sync( ...args );
+			} catch ( e ) {
+				error = e;
+			}
+			// `fs.exists` is the one whose callback gets only the answer.
+			queueMicrotask( () => name === "existsSync" ? callback( result ) : callback( error, result ) );
+		};
+	}
+	fs.realpath.native = fs.realpath;
+	// Streams and watching load (so node-fetch and friends can be imported)
+	// and throw when called.
+	const noStreams = name => () => {
+		throw new Error( `fs.${ name } isn't available in ssqch: fs streams and watching aren't supported. Use fs.readFileSync, fs.writeFileSync or fs.promises` );
+	};
+	for ( const name of [ "createReadStream", "createWriteStream", "watch", "watchFile", "unwatchFile" ] ) fs[name] = noStreams( name );
+	for ( const name of [ "ReadStream", "WriteStream" ] ) {
+		fs[name] = class {
+			constructor() {
+				noStreams( name )();
+			}
+		};
+	}
 	fs.promises = promises;
 	fs.constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 };
 
@@ -618,8 +660,11 @@
 	globalThis.global = globalThis;
 	process.nextTick = ( fn, ...args ) => queueMicrotask( () => fn( ...args ) );
 	process.argv ??= [ "ssqch" ];
+	// The Node version the shims follow (`Intl` matches Node 24), for
+	// packages that check it when they load (fast-glob).
 	process.versions ??= {};
-	process.version ??= "";
+	process.versions.node ??= "24.0.0";
+	process.version ||= `v${ process.versions.node }`;
 	process.exitCode = undefined;
 	process.stdout ??= { write: s => ( console.log( String( s ).replace( /\n$/, "" ) ), true ), isTTY: false };
 	process.stderr ??= { write: s => ( console.error( String( s ).replace( /\n$/, "" ) ), true ), isTTY: false };

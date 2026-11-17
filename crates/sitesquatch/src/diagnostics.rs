@@ -465,8 +465,8 @@ mod tests {
         let data = dir.join("src/_data/site.json");
         for (message, fallback, code, file, line) in [
             // A template's lines count from its body.
-            ("rendering page.edge with `edge`: page.edge:2: Cannot read properties of undefined", "build", "template", "src/page.edge", Some(6)),
-            ("rendering page.edge with `edge`: parse error in page.edge: line 1: unclosed @if(", "build", "template", "src/page.edge", Some(5)),
+            ("rendering page.edge with `edge`: page.edge:3: Cannot read properties of undefined", "build", "template", "src/page.edge", Some(6)),
+            ("rendering page.edge with `edge`: parse error in page.edge: line 2: unclosed @if(", "build", "template", "src/page.edge", Some(5)),
             // The innermost file.
             ("rendering page.edge with `edge`: page.edge:1: @include('bad.edge'): parse error in bad.edge: line 3: invalid @if arguments", "build", "template", "src/_includes/bad.edge", Some(3)),
             ("rendering layout _includes/bad.edge for page.edge: _includes/bad.edge:2: nope", "build", "template", "src/_includes/bad.edge", Some(2)),
@@ -498,8 +498,8 @@ mod tests {
 
         // The lines an error is about: the file's own line, with carets under what the message quotes.
         let shown = |message: &str| frames(&anyhow::anyhow!("{}", message), "build", &at).unwrap_or_default();
-        assert_eq!(shown("rendering page.edge with `edge`: page.edge:2: Cannot read properties of undefined (reading 'x') in `nope`"), "  --> src/page.edge:6\n   4 |\n   5 | <p>\n   6 | {{ nope.x }}\n     |    ^^^^");
-        assert_eq!(shown("rendering page.edge with `edge`: parse error in page.edge: line 1: unclosed @if("), "  --> src/page.edge:5\n   3 | ---\n   4 |\n   5 | <p>\n   6 | {{ nope.x }}");
+        assert_eq!(shown("rendering page.edge with `edge`: page.edge:3: Cannot read properties of undefined (reading 'x') in `nope`"), "  --> src/page.edge:6\n   4 |\n   5 | <p>\n   6 | {{ nope.x }}\n     |    ^^^^");
+        assert_eq!(shown("rendering page.edge with `edge`: parse error in page.edge: line 2: unclosed @if("), "  --> src/page.edge:5\n   3 | ---\n   4 |\n   5 | <p>\n   6 | {{ nope.x }}");
         assert_eq!(shown("too many pine cones"), "");
         // A schema problem points at its field in the front matter.
         let error = anyhow::Error::new(Diagnostics { message: "1 content error".into(), items: vec![Diagnostic::error("schema", "src/page.edge: `title` must be a string").file("src/page.edge").field("title")] });

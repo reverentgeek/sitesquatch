@@ -148,6 +148,32 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, root: &Path) -> Result<()> {
 
     let r = root.to_path_buf();
     native.set(
+        "readlink",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, path: String| -> Result<String> {
+            std::fs::read_link(at(&r, &path)).map(|p| p.to_string_lossy().into_owned()).map_err(|e| throw(&ctx, e, "readlink", &path))
+        })?,
+    )?;
+
+    // A link's target is stored as written: a relative one is relative to
+    // the link's folder, as in Node.
+    let r = root.to_path_buf();
+    native.set(
+        "symlink",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, target: String, path: String, dir: bool| -> Result<()> {
+            let link = at(&r, &path);
+            #[cfg(unix)]
+            let result = {
+                let _ = dir;
+                std::os::unix::fs::symlink(&target, &link)
+            };
+            #[cfg(windows)]
+            let result = if dir || link.parent().map(|p| p.join(&target)).is_some_and(|t| t.is_dir()) { std::os::windows::fs::symlink_dir(&target, &link) } else { std::os::windows::fs::symlink_file(&target, &link) };
+            result.map_err(|e| throw(&ctx, e, "symlink", &path))
+        })?,
+    )?;
+
+    let r = root.to_path_buf();
+    native.set(
         "realpath",
         Function::new(ctx.clone(), move |ctx: Ctx<'js>, path: String| -> Result<String> {
             dunce::canonicalize(at(&r, &path)).map(|p| p.to_string_lossy().into_owned()).map_err(|e| throw(&ctx, e, "realpath", &path))

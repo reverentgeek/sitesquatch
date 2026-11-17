@@ -131,15 +131,68 @@ fn keys() -> impl Iterator<Item = (&'static str, &'static str)> {
     TABLE.iter().filter(|e| e.kind == Kind::FrontMatter && e.from.contains(&"Eleventy")).map(|e| (e.word, e.ssqch))
 }
 
+static NAVIGATION_FILTER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\|\s*eleventyNavigation(?:Breadcrumb|ToHtml|ToMarkdown)?\b|\beleventyNavigation(?:Breadcrumb|ToHtml|ToMarkdown)?\s*\(").unwrap());
 static DATA_FILE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.11tydata\.(js|cjs|mjs|json|ya?ml|toml)$").unwrap());
 static IMAGE_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\beleventy:(widths|ignore)\b").unwrap());
 static TEMPLATE_GLOBAL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\beleventy\.(generator|version)\b").unwrap());
 static CALL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"\.\s*(addFilter|addAsyncFilter|addNunjucksFilter|addLiquidFilter|addNunjucksAsyncFilter|addShortcode|addAsyncShortcode|addNunjucksShortcode|addLiquidShortcode|addPairedShortcode|addPairedAsyncShortcode|addCollection|addTransform|addGlobalData|addPlugin|addPassthroughCopy|addWatchTarget|setLibrary|addDataExtension|addTemplateFormats|setTemplateFormats|on)\s*\(\s*(?:["'`]([^"'`]*)["'`]|([A-Za-z_$][\w$.]*))?"#).unwrap()
+    Regex::new(r#"\.\s*(addFilter|addAsyncFilter|addNunjucksFilter|addLiquidFilter|addNunjucksAsyncFilter|addShortcode|addAsyncShortcode|addNunjucksShortcode|addNunjucksAsyncShortcode|addLiquidShortcode|addPairedShortcode|addPairedAsyncShortcode|addPairedNunjucksShortcode|addPairedNunjucksAsyncShortcode|addPairedLiquidShortcode|addNunjucksTag|addLiquidTag|addNunjucksGlobal|addMarkdownHighlighter|addCollection|addTransform|addGlobalData|addPlugin|addPassthroughCopy|addWatchTarget|setLibrary|addDataExtension|addTemplateFormats|setTemplateFormats|on)\s*\(\s*(?:["'`]([^"'`]*)["'`]|([A-Za-z_$][\w$.]*))?"#).unwrap()
 });
 static SETTING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\b(input|output|includes|layouts|data|markdownTemplateEngine|htmlTemplateEngine|pathPrefix)\s*:\s*["'`]([^"'`]*)["'`]"#).unwrap());
 static FORMATS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"templateFormats\s*:\s*\[([^\]]*)\]"#).unwrap());
 static REQUIRE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?:require\(\s*|from\s+)["'](@11ty/[\w./-]+|markdown-it[\w-]*|eleventy-[\w-]+|@[\w-]+/eleventy-[\w-]+)["']"#).unwrap());
+
+/// JavaScript with its comments blanked out (same length, newlines kept), so
+/// a commented-out `// markdownTemplateEngine: "njk"` or `addFilter` isn't read
+/// as config, and offsets and line numbers still match the source.
+fn blank_comments(js: &str) -> String {
+    let bytes = js.as_bytes();
+    let mut out = bytes.to_vec();
+    let mut i = 0;
+    let blank = |out: &mut Vec<u8>, from: usize, to: usize| {
+        for b in &mut out[from..to] {
+            if *b != b'\n' {
+                *b = b' ';
+            }
+        }
+    };
+    while i < bytes.len() {
+        match bytes[i] {
+            q @ (b'"' | b'\'' | b'`') => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != q && (q == b'`' || bytes[i] != b'\n') {
+                    i += if bytes[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                let end = js[i..].find('\n').map_or(bytes.len(), |n| i + n);
+                blank(&mut out, i, end);
+                i = end;
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                let end = js[i + 2..].find("*/").map_or(bytes.len(), |n| i + 2 + n + 2);
+                blank(&mut out, i, end);
+                i = end;
+            }
+            _ => i += 1,
+        }
+    }
+    // Only ASCII bytes were replaced, and whole comments at that, so it's still UTF-8.
+    String::from_utf8(out).unwrap_or_else(|_| js.to_string())
+}
+
+/// The package (or file) a config's `name` comes from: `const name = require("x")`,
+/// `import name from "x"`, or `const { name } = require("x")`.
+fn plugin_package(code: &str, name: &str) -> Option<String> {
+    let base = name.split('.').next().unwrap_or(name);
+    if !base.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$') || base.is_empty() {
+        return None;
+    }
+    let ident = regex::escape(base);
+    let re = Regex::new(&format!(r#"(?:\b(?:const|let|var)\s+(?:{0}|\{{[^}}]*\b{0}\b[^}}]*\}})\s*=\s*(?:await\s+)?(?:require|import)\(\s*|\bimport\s+(?:{0}|\{{[^}}]*\b{0}\b[^}}]*\}}|\*\s+as\s+{0})\s+from\s+)["'`]([^"'`]+)["'`]"#, ident)).ok()?;
+    re.captures(code).map(|c| c[1].to_string())
+}
 
 /// The plan for the Eleventy site in `dir`.
 pub fn eleventy(dir: &Path) -> Result<Plan> {
@@ -151,7 +204,8 @@ pub fn eleventy(dir: &Path) -> Result<Plan> {
         Some(name) => std::fs::read_to_string(dir.join(name)).with_context(|| format!("reading {}", name))?,
         None => String::new(),
     };
-    let setting = |key: &str| SETTING.captures_iter(&config_text).find(|c| &c[1] == key).map(|c| c[2].to_string());
+    let config_code = blank_comments(&config_text);
+    let setting = |key: &str| SETTING.captures_iter(&config_code).find(|c| &c[1] == key).map(|c| c[2].to_string());
     let output = setting("output").unwrap_or_else(|| "_site".into());
     let mut plan = Plan { from: "Eleventy", ..Default::default() };
     let mut extensions: BTreeSet<String> = BTreeSet::new();
@@ -160,8 +214,15 @@ pub fn eleventy(dir: &Path) -> Result<Plan> {
         let name = e.file_name().to_string_lossy();
         e.depth() == 0 || !(name.starts_with(".git") || name == "node_modules" || name == ".cache" || e.path().strip_prefix(dir).is_ok_and(|rel| rel == Path::new(&output)))
     });
-    for entry in walker {
-        let entry = entry?;
+    let entries: Vec<walkdir::DirEntry> = walker.collect::<Result<_, _>>()?;
+    // Templates that call eleventy-navigation's filter read `eleventyNavigation`
+    // themselves: renaming it to `nav` would empty their navigation (lit.dev).
+    let reads_navigation = entries.iter().filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|x| TEMPLATE_EXTENSIONS.contains(&x.to_string_lossy().to_ascii_lowercase().as_str()))).any(|e| std::fs::read_to_string(e.path()).is_ok_and(|t| NAVIGATION_FILTER.is_match(&t)));
+    let keep: Vec<&str> = if reads_navigation { vec!["eleventyNavigation"] } else { Vec::new() };
+    if reads_navigation {
+        plan.by_hand.push((".".into(), "`eleventyNavigation` front matter was left as it is, because templates call the `eleventyNavigation` filter, which reads it. To keep that filter, define it with the package's own function: `import navigation from \"@11ty/eleventy-navigation/eleventy-navigation.js\"`, then `filters: { eleventyNavigation: (pages, key) => navigation.findNavigationEntries(pages, key) }`. To move to ssqch's navigation instead (`pagesTree`), rename it to `nav` (`ssqch docs nav`)".into()));
+    }
+    for entry in entries {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -189,7 +250,7 @@ pub fn eleventy(dir: &Path) -> Result<Plan> {
         if is_template {
             extensions.insert(if ext == "markdown" { "md".into() } else { ext.clone() });
         }
-        let (new, changes) = if is_template { rewrite_template(&text, matches!(ext.as_str(), "md" | "markdown")) } else { rewrite_data(&text) };
+        let (new, changes) = if is_template { rewrite_template_keeping(&text, matches!(ext.as_str(), "md" | "markdown"), &keep) } else { rewrite_data_keeping(&text, &keep) };
         if !changes.is_empty() {
             plan.edits.push((rel.clone(), changes, new));
         }
@@ -215,7 +276,13 @@ pub fn eleventy(dir: &Path) -> Result<Plan> {
 }
 
 /// A template with ssqch's front matter keys, image attributes and globals.
+#[cfg(test)]
 fn rewrite_template(text: &str, markdown: bool) -> (String, Vec<String>) {
+    rewrite_template_keeping(text, markdown, &[])
+}
+
+/// [`rewrite_template`], leaving the front matter keys in `keep` as they are.
+fn rewrite_template_keeping(text: &str, markdown: bool, keep: &[&str]) -> (String, Vec<String>) {
     let mut changes = Vec::new();
     // Front matter: the keys at the start of a line, in the block at the top.
     let (front, body) = match text.strip_prefix("---").and_then(|rest| rest.find("\n---").map(|end| text.split_at(end + 3 + 4))) {
@@ -223,7 +290,7 @@ fn rewrite_template(text: &str, markdown: bool) -> (String, Vec<String>) {
         None => (String::new(), text),
     };
     let mut front = front;
-    for (from, to) in keys() {
+    for (from, to) in keys().filter(|(from, _)| !keep.contains(from)) {
         let key = Regex::new(&format!(r#"(?m)^(\s*["']?){}(["']?\s*:)"#, from)).unwrap();
         if key.is_match(&front) {
             front = key.replace_all(&front, format!("${{1}}{}${{2}}", to)).into_owned();
@@ -304,10 +371,16 @@ fn change_prose(prose: &str, change: &mut impl FnMut(&str) -> String) -> String 
 
 /// A data file with ssqch's names for the keys Eleventy reads: only where
 /// they're keys (`"eleventyComputed":`, `eleventyComputed:`), not in values.
+#[cfg(test)]
 fn rewrite_data(text: &str) -> (String, Vec<String>) {
+    rewrite_data_keeping(text, &[])
+}
+
+/// [`rewrite_data`], leaving the keys in `keep` as they are.
+fn rewrite_data_keeping(text: &str, keep: &[&str]) -> (String, Vec<String>) {
     let mut out = text.to_string();
     let mut changes = Vec::new();
-    for (from, to) in keys() {
+    for (from, to) in keys().filter(|(from, _)| !keep.contains(from)) {
         // Quoted (JSON), at the start of a line (YAML, JavaScript), or right after `{{` or `,`.
         let key = Regex::new(&format!(r#"(?m)(["']){0}(["']\s*:)|(^[ \t]*|[{{,][ \t]*){0}(\s*:)"#, from)).unwrap();
         if key.is_match(&out) {
@@ -546,7 +619,8 @@ fn reindent(source: &str, from_indent: &str, to_indent: &str) -> String {
 
 /// A first `ssqch.config.js` from an Eleventy config, and what in it needs porting.
 fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (String, Vec<(String, String)>) {
-    let setting = |key: &str| SETTING.captures_iter(text).find(|c| &c[1] == key).map(|c| c[2].to_string());
+    let code = blank_comments(text);
+    let setting = |key: &str| SETTING.captures_iter(&code).find(|c| &c[1] == key).map(|c| c[2].to_string());
     let line_of = |offset: usize| text[..offset].matches('\n').count() + 1;
     let style = Style::of(text);
     let ind = style.indent.as_str();
@@ -557,14 +631,14 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
     let mut todo: Vec<String> = Vec::new();
     // Filters and shortcodes moved as written: (name, function source).
     let mut ported: Vec<(String, String)> = Vec::new();
-    for c in CALL.captures_iter(text) {
+    for c in CALL.captures_iter(&code) {
         let (method, quoted, bare) = (&c[1], c.get(2).map(|m| m.as_str()), c.get(3).map(|m| m.as_str()));
         let whole = c.get(0).unwrap();
         let at = format!("{}:{}", name, line_of(whole.start()));
         let arg = quoted.or(bare).unwrap_or("...");
         // The call's arguments, as written.
         let open = whole.start() + whole.as_str().find('(').unwrap_or(0);
-        let args: Vec<&str> = closing_bracket(text, open).map(|close| top_level_args(&text[open + 1..close])).unwrap_or_default();
+        let args: Vec<&str> = closing_bracket(&code, open).map(|close| top_level_args(&text[open + 1..close])).unwrap_or_default();
         let call_indent = text[..whole.start()].rsplit('\n').next().map(|l| &l[..l.len() - l.trim_start().len()]).unwrap_or("");
         let port = |ported: &mut Vec<(String, String)>| -> bool {
             let (Some(name), Some(function)) = (quoted, args.get(1)) else { return false };
@@ -579,6 +653,13 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
                 None => false,
             }
         };
+        // A name from a variable (`addShortcode(name, ...)` in a helper that
+        // registers several): there's no one name to list.
+        let registers = method.starts_with("add") && (method.contains("Filter") || method.contains("Shortcode") || method.contains("Tag") || method == "addNunjucksGlobal");
+        if registers && quoted.is_none() {
+            by_hand.push((at, format!("{}({}, ...) takes its name from a variable: find the names it's called with, and port each one to `filters`", method, arg)));
+            continue;
+        }
         match method {
             "addPassthroughCopy" => match (quoted, args.first().and_then(|a| passthrough_object(a))) {
                 (Some(path), _) => passthrough.push(format!("\"{}\"", path)),
@@ -603,13 +684,13 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
                 todo.push(format!("filters: {}", arg));
                 by_hand.push((at, format!("{}(\"{}\") -> `filters: {{ {}: async (value) => ... }}`: return the result instead of calling the callback", method, arg, arg)));
             }
-            "addShortcode" | "addAsyncShortcode" | "addNunjucksShortcode" | "addLiquidShortcode" => {
+            "addShortcode" | "addAsyncShortcode" | "addNunjucksShortcode" | "addNunjucksAsyncShortcode" | "addLiquidShortcode" => {
                 if !port(&mut ported) {
                     todo.push(format!("filters: {}", arg));
                     by_hand.push((at, format!("{}(\"{}\") -> a filter: `filters: {{ {}: ... }}`. Nunjucks keeps `{{% {} ... %}}`; in Liquid it's `{{{{ x | {} }}}}`", method, arg, arg, arg, arg)));
                 }
             }
-            "addPairedShortcode" | "addPairedAsyncShortcode" => {
+            "addPairedShortcode" | "addPairedAsyncShortcode" | "addPairedNunjucksShortcode" | "addPairedNunjucksAsyncShortcode" | "addPairedLiquidShortcode" => {
                 if !port(&mut ported) {
                     todo.push(format!("filters: {}", arg));
                     by_hand.push((at, format!("{}(\"{}\") -> a filter that gets the content first. Nunjucks keeps `{{% {} %}}...{{% end{} %}}`; in Markdown, a `::: {}` container", method, arg, arg, arg, arg)));
@@ -621,14 +702,30 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
             }
             "addTransform" => by_hand.push((at, format!("addTransform(\"{}\") -> `transforms: {{ {}: (content, page) => content }}` (an HTML minifier is `minifyPlugin()`)", arg, arg))),
             "addGlobalData" => by_hand.push((at, format!("addGlobalData(\"{}\") -> `data: {{ {}: value or function }}`", arg, arg))),
-            "addPlugin" => by_hand.push((at, format!("addPlugin({}) -> see its package below, or `plugins: [...]` for one of your own", arg))),
+            "addNunjucksTag" | "addLiquidTag" => {
+                todo.push(format!("filters: {}", arg));
+                by_hand.push((at, format!("{}(\"{}\") -> a custom tag is a filter in ssqch: `filters: {{ {}: ... }}`, and `{{% {} ... %}}` keeps working in Nunjucks", method, arg, arg, arg)));
+            }
+            "addNunjucksGlobal" => by_hand.push((at, format!("addNunjucksGlobal(\"{}\") -> `data: {{ {}: value }}`, or a filter for a function", arg, arg))),
+            "addMarkdownHighlighter" => by_hand.push((at, "addMarkdownHighlighter -> `markdown: { highlight: true }`, or a fence hook for a highlighter of your own".into())),
+            "addPlugin" => {
+                // A plugin from a package ssqch knows is listed below; one of the site's own isn't read.
+                let package = plugin_package(&code, arg);
+                let known = package.as_deref().is_some_and(|p| REQUIRE.is_match(&format!("require(\"{}\")", p)) && replacement(p).is_some());
+                let from = package.map(|p| format!(" (from {})", p)).unwrap_or_default();
+                if known {
+                    by_hand.push((at, format!("addPlugin({}){} -> see its package below", arg, from)));
+                } else {
+                    by_hand.push((at, format!("addPlugin({}){}: a plugin ssqch doesn't know, so the filters, shortcodes and transforms it adds aren't listed here. Read its source and port them, or put it in `plugins: [...]` if it's written for ssqch", arg, from)));
+                }
+            }
             "setLibrary" => by_hand.push((at, "setLibrary -> ssqch renders Markdown itself: `markdown: { ... }` options, render hooks and containers".into())),
             "addDataExtension" => by_hand.push((at, "addDataExtension -> YAML, TOML and JSON data files load as they are".into())),
             "on" if quoted.is_some_and(|e| e.starts_with("eleventy.")) => by_hand.push((at, format!("on(\"{}\") -> `beforeBuild` or `afterBuild`", arg))),
             _ => {}
         }
     }
-    let mut packages: BTreeSet<&str> = REQUIRE.captures_iter(text).filter_map(|c| c.get(1).map(|m| m.as_str())).collect();
+    let mut packages: BTreeSet<&str> = REQUIRE.captures_iter(&code).filter_map(|c| c.get(1).map(|m| m.as_str())).collect();
     packages.retain(|p| replacement(p).is_some());
     for package in &packages {
         by_hand.push((name.to_string(), format!("{} -> {}", package, replacement(package).unwrap_or_default())));
@@ -639,7 +736,7 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
         Some("njk") => Some("\"njk\"".to_string()),
         Some("false") | Some("") => Some("false".to_string()),
         Some(other) => Some(format!("\"{}\"", other)),
-        None if text.contains(&format!("{}: false", key)) => Some("false".to_string()),
+        None if code.contains(&format!("{}: false", key)) => Some("false".to_string()),
         None => None,
     };
     let (markdown_engine, html_engine) = (engine("markdownTemplateEngine"), engine("htmlTemplateEngine"));
@@ -650,7 +747,7 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
         (Some(_), Some(_)) => "From the Eleventy config's markdownTemplateEngine and htmlTemplateEngine.",
     };
     let liquid = || "\"liquid\"".to_string();
-    let formats: Vec<String> = match FORMATS.captures(text) {
+    let formats: Vec<String> = match FORMATS.captures(&code) {
         Some(c) => c[1].split(',').map(|f| f.trim().trim_matches(['"', '\'', '`']).to_string()).filter(|f| !f.is_empty() && f != "11ty.js").collect(),
         None => extensions.iter().filter(|e| e.as_str() != "edge").cloned().collect(),
     };
@@ -852,6 +949,28 @@ fn package_files(dir: &Path, plan: &mut Plan) -> Result<()> {
         }
         if changed {
             changes.push("scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve".into());
+        }
+    }
+    // wireit runs a script's `command` from its own block, which monorepos use
+    // instead of `scripts` (lit.dev).
+    let names: Vec<String> = package.get("scripts").and_then(|s| s.as_object()).map(|s| s.keys().cloned().collect()).unwrap_or_default();
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    if let Some(wireit) = package.get_mut("wireit").and_then(|w| w.as_object_mut()) {
+        let mut changed = false;
+        for (name, task) in wireit.iter_mut() {
+            let Some(command) = task.get_mut("command") else { continue };
+            let Some(text) = command.as_str() else { continue };
+            let (rewritten, unknown) = rewrite_script(text, &names);
+            if rewritten != text {
+                *command = serde_json::Value::String(rewritten);
+                changed = true;
+            }
+            if !unknown.is_empty() {
+                unknown_flags.push(format!("wireit's `{}` command's {} {} Eleventy's: check what ssqch has (`ssqch build --help`, `ssqch serve --help`)", name, unknown.join(", "), if unknown.len() == 1 { "flag is" } else { "flags are" }));
+            }
+        }
+        if changed {
+            changes.push("wireit commands: eleventy -> ssqch build, eleventy --serve -> ssqch serve".into());
         }
     }
     plan.by_hand.extend(unknown_flags.into_iter().map(|what| ("package.json".to_string(), what)));
@@ -1174,6 +1293,63 @@ mod tests {
         assert_eq!(changes.len(), 2);
     }
 
+    /// lit.dev's config: a commented-out setting, Nunjucks-only calls, a helper that registers
+    /// shortcodes by name, and a plugin from the site's own monorepo.
+    #[test]
+    fn comments_helpers_and_local_plugins() {
+        let config = r#"const { playgroundPlugin } = require("lit-dev-tools-cjs/lib/playground-plugin/plugin.js");
+const pluginRss = require("@11ty/eleventy-plugin-rss");
+module.exports = function (eleventyConfig) {
+  // markdownTemplateEngine: 'njk',
+  /* eleventyConfig.addFilter("ghost", (x) => x); */
+  eleventyConfig.addPlugin(playgroundPlugin);
+  eleventyConfig.addPlugin(pluginRss);
+  eleventyConfig.addNunjucksAsyncShortcode("algoliaid", async () => "id");
+  const api = (shortcodeName) => eleventyConfig.addShortcode(shortcodeName, (x) => x);
+  eleventyConfig.addPairedNunjucksShortcode("aside", (content) => content);
+  eleventyConfig.addMarkdownHighlighter((code) => code);
+  return { dir: { input: "site" } };
+};
+"#;
+        let (draft, by_hand) = draft_config(".eleventy.js", config, &BTreeSet::new());
+        assert!(draft.contains("markdownEngine: \"liquid\""), "{}", draft);
+        assert!(!draft.contains("ghost"), "{}", draft);
+        let list: Vec<String> = by_hand.iter().map(|(at, what)| format!("{}: {}", at, what.split([':', '-']).next().unwrap_or("").trim())).collect();
+        assert_eq!(list, [
+            ".eleventy.js:6: addPlugin(playgroundPlugin) (from lit",
+            ".eleventy.js:7: addPlugin(pluginRss) (from @11ty/eleventy",
+            ".eleventy.js:9: addShortcode(shortcodeName, ...) takes its name from a variable",
+            ".eleventy.js:11: addMarkdownHighlighter",
+            ".eleventy.js: @11ty/eleventy",
+        ]);
+        // Self-contained, so they move as written.
+        assert!(draft.contains("algoliaid: async () => \"id\"") && draft.contains("aside: (content) => content"), "{}", draft);
+        assert!(by_hand[0].1.contains("a plugin ssqch doesn't know"), "{:?}", by_hand[0]);
+        assert!(by_hand[1].1.ends_with("see its package below"), "{:?}", by_hand[1]);
+        assert_eq!(blank_comments("a // b\nc /* d\ne */ \"//\" `/*`"), "a     \nc     \n     \"//\" `/*`");
+    }
+
+    /// wireit's commands run Eleventy in monorepos, and templates that call eleventy-navigation's
+    /// filter keep their `eleventyNavigation` front matter (lit.dev).
+    #[test]
+    fn wireit_commands_and_navigation_filters() {
+        let dir = std::env::temp_dir().join(format!("ssqch-import-wireit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("site/_includes")).unwrap();
+        std::fs::write(dir.join(".eleventy.js"), "module.exports = () => ({ dir: { input: \"site\" } });\n").unwrap();
+        std::fs::write(dir.join("package.json"), "{\n  \"scripts\": { \"build\": \"wireit\" },\n  \"wireit\": { \"build\": { \"command\": \"eleventy --config .eleventy.js\" } },\n  \"devDependencies\": { \"@11ty/eleventy\": \"^2.0.1\" }\n}\n").unwrap();
+        std::fs::write(dir.join("site/a.md"), "---\neleventyNavigation:\n  key: A\neleventyComputed:\n  x: 1\n---\nA\n").unwrap();
+        std::fs::write(dir.join("site/_includes/nav.html"), "{% set nav = collections.all | eleventyNavigation('docs') %}\n").unwrap();
+        let plan = eleventy(&dir).unwrap();
+        let package = plan.edits.iter().find(|(p, _, _)| p == "package.json").unwrap();
+        assert!(package.2.contains("\"command\": \"ssqch build --config .eleventy.js\"") || package.2.contains("\"command\": \"ssqch build"), "{}", package.2);
+        assert!(package.1.iter().any(|c| c.starts_with("wireit commands")), "{:?}", package.1);
+        let page = plan.edits.iter().find(|(p, _, _)| p == "site/a.md").unwrap();
+        assert!(page.2.contains("eleventyNavigation:") && page.2.contains("computed:"), "{}", page.2);
+        assert!(plan.by_hand.iter().any(|(_, what)| what.contains("findNavigationEntries")), "{:?}", plan.by_hand);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn package_scripts_run_ssqch() {
         let cases = [
@@ -1238,7 +1414,7 @@ module.exports = function (eleventyConfig) {
         }
         assert!(!draft.contains("//   filters:"), "{}", draft);
         let list: Vec<String> = by_hand.iter().map(|(at, what)| format!("{}: {}", at, what.split(" -> ").next().unwrap_or(""))).collect();
-        assert_eq!(list, [".eleventy.js:4: addPlugin(pluginRss)", ".eleventy.js:11: addCollection(\"posts\")", ".eleventy.js:12: on(\"eleventy.after\")", ".eleventy.js: @11ty/eleventy-plugin-rss", ".eleventy.js: markdown-it-anchor"]);
+        assert_eq!(list, [".eleventy.js:4: addPlugin(pluginRss) (from @11ty/eleventy-plugin-rss)", ".eleventy.js:11: addCollection(\"posts\")", ".eleventy.js:12: on(\"eleventy.after\")", ".eleventy.js: @11ty/eleventy-plugin-rss", ".eleventy.js: markdown-it-anchor"]);
 
         // Tabs and spaces inside brackets, as the config has them; a function that needs
         // something else in the config stays for a person, and so does a variable.

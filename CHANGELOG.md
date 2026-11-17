@@ -8,6 +8,59 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+Found moving lit.dev from Eleventy.
+
+### Breaking
+
+- A `layout` in `computed` that depends on the page (a function, or a string with template
+  tags) is an error: the layout is chosen before `computed` runs, so it was ignored without a
+  word, and the page was built without it. Set `layout` in the front matter or a data file. A
+  computed `layout` that's plain text (`computed: { layout: "article" }`) is now applied.
+
+### Changed
+
+- Blank lines after the front matter's closing `---` stay in the page's body, as gray-matter
+  (and so Eleventy) keeps them; only the fence's own line ending goes. A JSON or text page
+  written from a template that starts with a blank line used to lose it. Markdown renders the
+  same; an HTML page keeps the blank lines at its top.
+- Passthrough copies of a folder follow links (symlinks) and copy the files they point at,
+  as globs already did. A link was skipped without a word (lit.dev lost 360 sample files),
+  and a link to nothing is now an error that names it.
+- `process.versions.node` is `24.0.0` (and `process.version` is `v24.0.0`), the Node version
+  the shims follow. Packages that check it when they load, fast-glob among them, crashed.
+- `node:fs` has the callback versions of its functions (`fs.readdir(dir, options, callback)`,
+  `fs.stat`, `fs.readFile`, `fs.exists`, ...), which older packages and fast-glob's async API
+  use; `readlinkSync` and `symlinkSync`; and `createReadStream`, `createWriteStream`,
+  `ReadStream`, `WriteStream` and `watch`, which throw when called, so packages that import
+  them by name (node-fetch 3, and with it Lit's server rendering) load.
+- `import(pathToFileURL(file).href)` works: `import` and `require` take `file:` URLs, as in
+  Node.
+- `ssqch import eleventy` doesn't read settings or calls from comments (a commented-out
+  `markdownTemplateEngine: 'njk'` set the wrong engine); lists `addNunjucksAsyncShortcode`,
+  the paired Nunjucks and Liquid shortcodes, `addNunjucksTag`, `addLiquidTag`,
+  `addNunjucksGlobal` and `addMarkdownHighlighter`; says when a shortcode's name comes from a
+  variable instead of listing the variable as a shortcode; says when a plugin is one ssqch
+  doesn't know (the site's own), instead of pointing at a package list it isn't in; rewrites
+  `eleventy` in wireit's `command`s; and leaves `eleventyNavigation` front matter alone when
+  templates call the `eleventyNavigation` filter, which reads it (renaming it emptied
+  lit.dev's navigation), with how to keep that filter.
+- The warning for `eleventyNavigation` front matter says that templates and filters that
+  read it still can, instead of "it isn't in the navigation".
+
+### Fixed
+
+- `## Install {#setup}` in Markdown no longer starts a Jinja comment: Markdown runs through
+  Jinja (or Nunjucks) first by default, and `{#` opened a comment that swallowed the page up
+  to the next `#}`. `{#...}` at the end of a line, closed by `}`, is left for the Markdown
+  heading attributes ssqch documents.
+- `layout: ""` means no layout, as `false` and `null` do (and as in Eleventy). It was an
+  error, `layout `` not found`.
+- A layout file named only `.html` no longer panics ssqch.
+- The Nunjucks and Jinja rewriter no longer panics on a character like `’` or `—` inside a
+  tag.
+
 ## 0.6.5 - 2026-11-17
 
 ### Changed

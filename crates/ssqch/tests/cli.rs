@@ -598,6 +598,77 @@ fn quotes_in_prose_and_comments_dont_change_the_output() {
     assert_eq!(read("slash2/index.html"), "C:\\trail &lt;a&gt;");
 }
 
+/// What moving lit.dev found: heading ids through the default Jinja, `layout: ""`, a computed
+/// layout, a layout file with no stem, linked passthrough files, the blank line after front
+/// matter, and the Node functions fast-glob, node-fetch and Lit's plugin load.
+#[test]
+fn lit_dev_layouts_links_and_front_matter() {
+    let dir = temp_dir("lit-dev");
+    let d = dir.to_str().unwrap();
+    for sub in ["src/_includes", "src/articles", "src/samples/js", "src/samples/ts"] {
+        std::fs::create_dir_all(dir.join(sub)).unwrap();
+    }
+    let write = |name: &str, body: &str| std::fs::write(dir.join(name), body).unwrap();
+    write(
+        "ssqch.config.js",
+        r#"import { pathToFileURL } from "node:url";
+import path from "node:path";
+import fs, { createReadStream } from "node:fs";
+export default {
+  dirs: { input: "src", output: "dist" },
+  passthrough: ["src/samples"],
+  data: { checks: async () => {
+    const helper = await import(pathToFileURL(path.resolve("helper.js")).href);
+    const names = await new Promise((resolve, reject) => fs.readdir("src", (err, list) => err ? reject(err) : resolve(list)));
+    const missing = await new Promise((resolve) => fs.stat("nope", (err) => resolve(err.code)));
+    fs.rmSync("link.js", { force: true });
+    fs.symlinkSync("helper.js", "link.js");
+    let stream;
+    try { createReadStream("x"); } catch (e) { stream = e.message.split(":")[0]; }
+    return [process.versions.node.split(".")[0], helper.pines, names.length, missing, fs.readlinkSync("link.js"), fs.lstatSync("link.js").isSymbolicLink(), stream].join(" ");
+  } },
+};
+"#,
+    );
+    write("helper.js", "export const pines = 7;\n");
+    write("src/index.md", "---\ntitle: Trails\n---\n## Cedar {#cedar .wide}\n\nIt’s {# a ranger's note #}open.\n\n## Old Growth {#old-growth}\n");
+    write("src/robots.html", "---\nlayout: \"\"\n---\nUser-agent: *\n");
+    write("src/_includes/article.html", "<article>{{ content }}</article>");
+    write("src/_includes/.html", "<bare>{{ content }}</bare>");
+    write("src/articles/articles.data.js", "export default { computed: { layout: \"article\" } };\n");
+    write("src/articles/a.md", "Pine cones\n");
+    write("src/stump.html", "---\nlayout: .html\n---\nstump");
+    write("src/keywords.json.html", "---\npermalink: keywords.json\n---\n\n[\"pine\"]");
+    write("src/checks.html", "{{ checks }}");
+    write("src/samples/ts/a.ts", "export {};\n");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink("../ts/a.ts", dir.join("src/samples/js/a.ts")).unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
+    assert_eq!(read("index.html"), "<h2 id=\"cedar\" class=\"wide\">Cedar</h2>\n<p>It’s open.</p>\n<h2 id=\"old-growth\">Old Growth</h2>\n");
+    assert_eq!(read("robots/index.html"), "User-agent: *\n");
+    assert_eq!(read("articles/a/index.html"), "<article><p>Pine cones</p>\n</article>");
+    assert_eq!(read("stump/index.html"), "<bare>stump</bare>");
+    assert_eq!(read("keywords.json"), "\n[\"pine\"]");
+    assert_eq!(read("checks/index.html"), "24 7 8 ENOENT helper.js true fs.createReadStream isn&#39;t available in ssqch");
+    #[cfg(unix)]
+    assert_eq!(read("samples/js/a.ts"), "export {};\n");
+
+    // A computed layout that depends on the page can't be applied, so it's an error.
+    write("src/articles/articles.data.js", "export default { computed: { layout: (data) => \"article\" } };\n");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(!ok && log.contains("`layout` in computed isn't applied"), "{}", log);
+    write("src/articles/articles.data.js", "export default {};\n");
+    // A link to nothing is named, not skipped.
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink("gone.ts", dir.join("src/samples/js/b.ts")).unwrap();
+        let (ok, log) = ssqch(&["build", "--root", d]);
+        assert!(!ok && log.contains("src/samples/js/b.ts is a link to gone.ts, which doesn't exist"), "{}", log);
+    }
+}
+
 #[cfg(feature = "handlebars")]
 #[test]
 fn handlebars_and_mustache_templates_render() {

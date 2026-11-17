@@ -983,6 +983,13 @@ fn closest_layout(ctx: &BuildContext, name: &str) -> String {
     crate::suggest::closest(name, files.iter().chain(&stems).map(String::as_str).filter(|c| *c != name)).map(|found| format!(" (did you mean `{}`?)", found)).unwrap_or_default()
 }
 
+/// A template's format from its extension; a file named only `.html` has no
+/// stem, so its whole name is the extension.
+fn template_extension(path: &Path) -> String {
+    let ext = path.extension().or_else(|| path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_prefix('.')).map(std::ffi::OsStr::new));
+    ext.map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default()
+}
+
 fn load_layout(cfg: &Config, ctx: &BuildContext, name: &str, cache: &Mutex<HashMap<String, Arc<Layout>>>) -> Result<Arc<Layout>> {
     if let Some(l) = cache.lock().unwrap().get(name) {
         return Ok(l.clone());
@@ -998,7 +1005,7 @@ fn load_layout(cfg: &Config, ctx: &BuildContext, name: &str, cache: &Mutex<HashM
     alias_data_keys(&mut data).with_context(|| format!("in layout {}", path.display()))?;
     let layout = Arc::new(Layout {
         name: format!("{}/{}", slashes(cfg.layouts.as_ref().unwrap_or(&cfg.includes)), name),
-        engines: engines_for(cfg, &path.extension().unwrap().to_string_lossy().to_ascii_lowercase()),
+        engines: engines_for(cfg, &template_extension(&path)),
         body: body.to_string(),
         data,
         path,
@@ -1073,7 +1080,20 @@ fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared)
         // Layout chain; layout front matter sits below template data.
         let mut chain = Vec::new();
         let mut names: Vec<String> = Vec::new();
-        let mut next = own.get("layout").and_then(|l| l.as_str().map(String::from));
+        // The chain is chosen here, before `computed` runs: a computed layout
+        // that's plain text is used as written, and one that depends on the
+        // page's data is refused rather than ignored.
+        let computed_layout = own.get("computed").map(|c| c.get("layout")).filter(|l| !l.is_nullish());
+        if let Some(layout) = &computed_layout {
+            match layout.as_str() {
+                Some(name) if !name.contains("{{") && !name.contains("{%") && !name.contains("<%") => {
+                    own.insert("layout".into(), Value::from(name.to_string()));
+                }
+                _ => bail!("`layout` in computed isn't applied, because the layout is chosen before computed runs. Set `layout` in the front matter or a data file"),
+            }
+        }
+        // `layout: ""`, like `false` and `null`, means no layout.
+        let mut next = own.get("layout").and_then(|l| l.as_str().filter(|n| !n.is_empty()).map(String::from));
         while let Some(name) = next {
             // A layout that leads back to one already in the chain never ends.
             if let Some(start) = names.iter().position(|n| *n == name) {
@@ -1097,7 +1117,7 @@ fn load_template(cfg: &Config, ctx: &BuildContext, path: &Path, shared: &Shared)
         merge(&mut data, &own, cfg.data_deep_merge);
         normalize_tags(&mut data);
 
-        let mut ext = path.extension().unwrap().to_string_lossy().to_ascii_lowercase();
+        let mut ext = template_extension(path);
         if ext == "markdown" {
             ext = "md".into();
         }
@@ -2071,8 +2091,13 @@ fn passthrough_copy(cfg: &Config, ctx: &BuildContext, extra: Vec<(PathBuf, PathB
             None => ctx.output_dir.join(src.strip_prefix(&ctx.input_dir).or_else(|_| src.strip_prefix(&ctx.root)).unwrap_or(&src)),
         };
         if src.is_dir() {
-            for entry in walkdir::WalkDir::new(&src) {
-                let entry = entry?;
+            // Links are followed, as in a glob: a linked file is copied, and a
+            // link to nothing is an error rather than a file that goes missing.
+            for entry in walkdir::WalkDir::new(&src).follow_links(true) {
+                let entry = entry.map_err(|e| match e.path().filter(|p| p.is_symlink()) {
+                    Some(link) => anyhow!("passthrough {}: {} is a link to {}, which doesn't exist", from.display(), display_path(ctx, link).trim_start_matches("./"), std::fs::read_link(link).map(|t| t.display().to_string()).unwrap_or_default()),
+                    None => anyhow!("passthrough {}: {}", from.display(), e),
+                })?;
                 if entry.file_type().is_file() && entry.file_name() != ".DS_Store" {
                     let rel = entry.path().strip_prefix(&src).unwrap();
                     jobs.push((entry.path().to_path_buf(), dest.join(rel)));

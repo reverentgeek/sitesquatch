@@ -685,6 +685,114 @@ Docs:
 - [ ] A migration recipe in `ssqch docs agents` (v8 F6): baseline with `TZ=UTC` from fresh
       copies, `ssqch diff`, fix the largest group, repeat, finish with `--exact`.
 
+### Moving lit.dev from Eleventy (found 2026-11-17)
+
+lit.dev (Eleventy 2.0.1 in a wireit monorepo, 332 pages, 2,634 output files: Lit server rendering,
+CodeMirror highlighting in headless Chromium, Liquid and Nunjucks with 400+ paired shortcodes,
+markdown-it, html-minifier), moved with ssqch 0.6.4 in `../trials/lit.dev` (notes:
+`../trials/lit.dev/ssqch-case-study/`, issue numbers below as `lit A1`). The exact port is
+byte-identical to Eleventy's most common output, but only by keeping Eleventy's template libraries,
+a Node helper and Chromium, and it's slower (generator step 32.9 s, Eleventy 24.9 s). The idiomatic
+port builds in 4.2 s with 0.9 GB (Eleventy 4.5 GB), and 2.9 s from saving a page to its new HTML in
+`ssqch serve` (Eleventy 22.0 s), but loses Lit's server rendering and the site's highlighting
+styles. Its verdict: don't move yet. What would change it: server rendering of custom elements,
+highlighting with another highlighter's class names, and QuickJS that isn't quadratic on HTML
+strings.
+
+Done in this session:
+
+- [x] Heading attributes (`## Declare {#declare}`) no longer open a Jinja comment when Markdown runs
+      through Jinja first (lit B11; 45 pages swallowed), and `find_close` compares bytes, so `’` in
+      a tag doesn't panic (lit B10).
+- [x] Passthrough folders follow links, and a link to nothing is an error (lit B5: 360 sample files
+      skipped silently).
+- [x] `layout: ""` is no layout (lit B1); a layout file named `.html` doesn't panic (lit B2); a
+      plain-text computed `layout` is applied and one that depends on the page is an error (lit B3).
+- [x] The body keeps blank lines after the front matter, as gray-matter does (lit B7).
+- [x] `process.versions.node`, callback `fs`, `readlinkSync`/`symlinkSync`, `fs` streams that load
+      and throw, and `file:` URLs in `import()` (lit A1, A2, A4, A7, A8).
+- [x] Importer: no settings or calls read from comments (lit D1), more Eleventy calls listed (D2),
+      names from variables (D3), unknown plugins said so (D4), wireit commands (D8),
+      `eleventyNavigation` kept when templates call its filter (D6); the hint says templates can
+      still read it (C1), and the trailhead and README agree on `nav` (C2).
+
+Left:
+
+- [ ] **`computed` sees `collections`** (lit B4): lit.dev's learn page lists articles from
+      `data.collections.articles` in `eleventyComputed`. Evaluate computed values that read
+      `collections` after collections are built (Eleventy passes collections built without the
+      computed values), or at least an error that says computed can't see them.
+- [ ] **A computed `layout` that depends on the page** (lit B3, the rest): resolve the layout chain
+      after `computed`, instead of refusing it.
+- [ ] **Custom engines get context** (lit B8): a third argument, `{ kind: "body" | "layout" |
+      "permalink" | "computed", path }`. lit.dev's engine guessed (`data.page.url` undefined means a
+      front matter string, layouts found by matching their body). Related to "A dynamic permalink
+      rendered by a Markdown engine" above.
+- [ ] **Document `data: { render: "x" }`** in the config as the one-line way to send every page
+      through an engine (lit B9: no content changed, where v8.dev changed nine files). Until
+      "Replacing the Markdown engine once" lands.
+- [ ] **A filter's result can be circular** (lit B12): `flattenNavigationAndAddNextPrev` links
+      `prev` and `next` both ways and fails `value is nested too deeply`. Keep JavaScript objects as
+      lazy views toward templates too, or copy with cycle detection.
+- [ ] **Includes from the project root, or a `readFile` built-in** (lit B13): Eleventy's Nunjucks
+      loader searches `_includes` and the root, and lit.dev includes sample sources into code
+      blocks.
+- [ ] **Working `node:stream`** (lit A3): a minimal `Readable`/`PassThrough`/`Writable` (object
+      mode, `push`, `write`, `data`/`end` events, async iteration) is enough for fast-glob's async
+      API, globby and "stream an array" code. Until then, name fast-glob's async API in the known
+      gaps (`fastGlob.sync` works).
+- [ ] **Time per filter, transform and engine** in `ssqch build --format json` (`timings.filters`,
+      `timings.transforms`), and a warning when one JavaScript call takes over a second, naming the
+      function (lit A5, agent experience 2: the first build took 9 min 8 s, and `write 23 s` named
+      nothing). Same work as `--profile` in the research item below.
+- [ ] **A stability check**: build N times and report the files that vary and the most common
+      variant (`ssqch diff --runs`, or a command). Eleventy's lit.dev output differs on 11 pages
+      between builds (its highlighter), and finding the target took 20 builds and
+      `scripts/stability.py`.
+- [ ] **Precompression**: a plugin that writes `.br` and `.gz` next to each file over a size
+      (lit.dev's `preCompress`: 1,435 files, 9.7 s of Node after each build). Common for sites
+      served by Node or nginx.
+- [ ] **Highlighting with another highlighter's class names**: a class map (`highlight: { classes: {
+      keyword: "tok-keyword" } }`) so a site's CSS for CodeMirror or Prism keeps working (263
+      lit.dev pages).
+- [ ] **A CSS minifier for inline CSS** (`minifyCss()`; grass already writes compressed CSS):
+      lit.dev inlines 30 to 60 KB per page (234 pages).
+- [ ] **`minifyPlugin()` against html-minifier's common options**, or the differences documented
+      (`initial-scale=1.0` kept where html-minifier writes `1`): 309 lit.dev pages differ only in
+      that.
+- [ ] **`markdown(text, { html: false })`**: lit.dev's API pages render doc comments with HTML
+      turned off (41 pages).
+- [ ] **Server rendering of custom elements** (declarative shadow DOM), or a documented recipe for
+      `@lit-labs/ssr` as a transform (it works on QuickJS at 15x Node's time, now that node-fetch
+      loads): lit.dev's header, drawer and asides (273 pages).
+- [ ] **`ssqch diff` compares symlinks by target** (it follows them): lit.dev's output has 33 links
+      whose targets matter.
+- [ ] **The importer and Eleventy's dependencies** (lit D9, E6): liquidjs, nunjucks, moo,
+      gray-matter, markdown-it and luxon come with `@11ty/eleventy`, and data files import them
+      without listing them (lit.dev's `videos.js` imports gray-matter). Grep for them and add them
+      to `package.json`. Also map `@lit-labs/eleventy-plugin-lit` (no equivalent: keep it as a
+      transform) and `eleventy-plugin-nesting-toc` (`toc(page.headings)`, and how it differs), say
+      when `setLibrary("md", ...)` configures markdown-it (point at "Moving with identical output
+      first"), and follow the site's own plugins to list their calls (lit D4, the rest).
+- [ ] **Importer: don't edit front matter for aliases** (lit D7: `eleventyComputed` and
+      `eleventyExcludeFromCollections` work as they are, and the renames touched 6 files), or put
+      those edits behind a flag. Keep `if (!DEV)` conditions on passthrough copies, and drop dead
+      globs (lit D10).
+- [ ] **A warning, not silence**, for each difference lit.dev found by diffing: YAML timestamps
+      outside `date` reaching a date filter (lit B6, the item above), `ssqch diff` without `--exact`
+      hiding blank-line differences (say so in its first line, and in the trailhead).
+- [ ] **Docs, fully** (per AGENTS.md): a how-to for moving with identical output (the trailhead
+      section added now), a worked example of keeping eleventy-navigation's filter, the callback
+      `fs` and `fs` stream stubs in a page about which packages load, and the trailheads that could
+      use them.
+
+Shared with the sections above, with lit.dev's numbers: `Date#toString()` without the zone name (lit
+A6, worked around in the config), YAML timestamps as Dates in every key (lit B6: `publishDate`
+printed `Invalid DateTime`), replacing the Markdown engine once (lit B9), `pagesTree` replacing
+eleventy-navigation (the idiomatic port kept the package's filter; sidebar and previous/next match
+on all 213 and 202 pages with it), `toc()` from HTML (matched 150 of 193 pages from
+`page.headings`), and QuickJS speed (lit A5, below).
+
 ### Faster JavaScript: an opt-in Node or Bun runtime (2026-11-17)
 
 QuickJS is small and starts fast, but it's 10-100x slower than V8 or JavaScriptCore on code that
@@ -696,11 +804,13 @@ that Eleventy does in 0.70 s. With ssqch's own Markdown and hooks instead, v8.de
 s with Prism through a fence hook and 0.61 s with ssqch's highlighter (285 of 323 pages identical
 already; the Markdown items in the section above close most of the rest). So two routes compete for
 the same time: a faster JavaScript runtime, and native features that make the JavaScript
-unnecessary. The research should weigh both per site. Sites moving from Node generators bring these
-packages. The measurements from 2026-11-10 (the Bun item under "More template languages") say
-per-call IPC costs more than a QuickJS call (Bun 22 µs, Node 12 µs, QuickJS 8 µs; batched 3 µs), and
-lazy views can't cross a process. So an external runtime pays only for coarse work: whole passes, or
-JavaScript that runs long per call.
+unnecessary. lit.dev (200 KB pages) shows the worst case: html-minifier took 5,224 ms per page
+against 12.6 ms in Node (415x), Lit SSR 15x, cheerio 15x, markdown-it 10x, clean-css 5x, Nunjucks
+6x; the first build took 9 min 8 s, Eleventy 25 s. The research should weigh both per site. Sites
+moving from Node generators bring these packages. The measurements from 2026-11-10 (the Bun item
+under "More template languages") say per-call IPC costs more than a QuickJS call (Bun 22 µs, Node 12
+µs, QuickJS 8 µs; batched 3 µs), and lazy views can't cross a process. So an external runtime pays
+only for coarse work: whole passes, or JavaScript that runs long per call.
 
 - [ ] Research first (notes in `research/js-runtimes.md`): where config JavaScript spends its
       time on real sites (the blog, a11yproject.com, v8.dev, Gahlee House, eslint.org), with
