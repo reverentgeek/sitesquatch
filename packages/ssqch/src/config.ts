@@ -8,13 +8,12 @@
 // first, then each plugin's, depth first.
 import fs from "node:fs";
 import path from "node:path";
-import { parse as parseToml } from "smol-toml";
 import * as api from "./api.ts";
 import { normalizeBase } from "./base.ts";
 import { budget } from "./budgets.ts";
 import { BuildError, aliasUsed, bail, context, messageOf, warn, warning } from "./diagnostics.ts";
 import type { Data, DataLoader } from "./data.ts";
-import { isPlainObject, tomlValue } from "./data.ts";
+import { isPlainObject, readToml } from "./data.ts";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
 import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
@@ -657,7 +656,7 @@ function applyToml(config: Config, file: string): void {
 	loadedFiles.add(file);
 	const invalid = (e: unknown): never => { throw new BuildError(`invalid ${file}: ${messageOf(e)}`); };
 	let site: Data;
-	try { site = tomlValue(parseToml(fs.readFileSync(file, "utf8"))) as Data; } catch (e) { return invalid(e); }
+	try { site = readToml(fs.readFileSync(file, "utf8")) as Data; } catch (e) { return invalid(e); }
 	try {
 		const unknown = Object.keys(site).find((k) => !TOML_KEYS.includes(k));
 		if (unknown !== undefined) bail(`unknown field \`${unknown}\`, expected one of ${TOML_KEYS.map((k) => `\`${k}\``).join(", ")}`);
