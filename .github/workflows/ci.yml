@@ -84,21 +84,29 @@ jobs:
         working-directory: tests/oracle
         run: node progress.js
 
-  # Speed is part of done: the 10,000-page site on one thread, against ssqch 0.7.0 from npm on
-  # the same runner (packages/ssqch/bench/bench.ts says how the limit is set).
+  # Speed is part of done: this commit's Node build against its parent's (a pull request's
+  # merge against its base), on the same runner, building the 10,000-page site on one thread.
+  # A change that makes it more than 15% slower fails. ssqch 0.7.0 from npm is timed for the
+  # record. packages/ssqch/bench/bench.ts says why CI compares rather than checks a time.
   node-benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v6
         with:
           node-version: 22.18.0
       - run: npm ci
         working-directory: packages/ssqch
+      - name: the parent commit's Node build
+        run: |
+          git worktree add "$RUNNER_TEMP/before" HEAD^1
+          if [ -f "$RUNNER_TEMP/before/packages/ssqch/package-lock.json" ]; then npm ci --prefix "$RUNNER_TEMP/before/packages/ssqch"; fi
       - run: npm install --prefix "$RUNNER_TEMP/ssqch-07" ssqch@0.7.0
       - working-directory: packages/ssqch
-        run: node bench/bench.ts --reference "$RUNNER_TEMP/ssqch-07/node_modules/@ssqch/linux-x64/bin/ssqch"
+        run: node bench/bench.ts --baseline "$RUNNER_TEMP/before/packages/ssqch" --reference "$RUNNER_TEMP/ssqch-07/node_modules/@ssqch/linux-x64/bin/ssqch"
 
   clippy:
     runs-on: ubuntu-latest

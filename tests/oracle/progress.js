@@ -14,7 +14,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ORACLE = path.dirname(fileURLToPath(import.meta.url));
 const LIST = path.join(ORACLE, "node-passing.txt");
@@ -22,7 +22,9 @@ const args = process.argv.slice(2);
 const update = args.includes("--update");
 const files = args.filter((arg) => !arg.startsWith("--"));
 
-const ran = spawnSync(process.execPath, ["--test", "--test-concurrency=4", `--test-reporter=${path.join(ORACLE, "lib/names-reporter.js")}`, ...files], {
+// The reporter as a URL: on Windows, Node takes `D:\...` for a URL with the scheme `d:`.
+const reporter = pathToFileURL(path.join(ORACLE, "lib/names-reporter.js")).href;
+const ran = spawnSync(process.execPath, ["--test", "--test-concurrency=4", `--test-reporter=${reporter}`, ...files], {
 	cwd: ORACLE,
 	encoding: "utf8",
 	env: { ...process.env, SSQCH_BIN: process.env.SSQCH_BIN ?? "packages/ssqch/bin/ssqch.ts" },
