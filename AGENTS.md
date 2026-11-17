@@ -56,6 +56,61 @@ change affects it.
   (`pr-run-mode = "plan"`); version tags do. When a pull request changes how releases are
   built, set `pr-run-mode = "upload"` in it (and run `dist generate`) to build them there. The code isn't formatted with rustfmt (it uses long lines), so don't run `cargo fmt`.
 
+## The Node implementation (`packages/ssqch/`)
+
+ssqch 0.8 is a TypeScript program on Node, being built in `packages/ssqch/` beside the Rust
+implementation, which stays as it is until the release that switches. The plan, the decisions
+(D1 to D7) and the model to use for each stage are in `docs/node-migration.md`; the stages'
+checkboxes are at the top of `TODO.md`. Start a session there.
+
+### Commands
+
+Run from `packages/ssqch/` unless it says otherwise.
+
+- `node bin/ssqch.ts build --root <site>` runs ssqch from its source, with no build step: Node
+  strips the types. Every command and flag is the 0.7 binary's.
+- `node --test` runs the package's own unit tests (`*.test.ts` next to the code they test).
+- `npx tsc --noEmit` type-checks. Keep it clean; stage 2 adds it to CI.
+- The oracle is the definition of done: from `tests/oracle/`,
+  `SSQCH_BIN=packages/ssqch/bin/ssqch.ts node --test` (the path is from the repository root;
+  one file: add its path, such as `cli/init.test.js`). It expects `packages/ssqch/package.json`'s version. Run it on Node 22.18
+  (the lowest supported), 24 and 26 before calling a feature done.
+- `cargo build --release -p ssqch` still builds 0.7, the oracle's reference. To see what 0.7
+  does, run it, not its source: `ssqch build`, then `ssqch diff <0.7 output> <0.8 output>`.
+
+### Rules
+
+- **The contract doesn't change.** `ssqch.d.ts`, the commands and flags, the JSON reports
+  (`tests/oracle/contract/shapes.json`), the diagnostic codes, exit codes, folder conventions,
+  the build summary's lines and the voice are 0.7's. A deliberate difference is recorded in the
+  oracle test that checks it (`DELIBERATE` in `sites.test.js`, or a `RUST_07` condition) with
+  its reason, and under "Breaking" in `CHANGELOG.md`. Never edit a snapshot or `shapes.json` by
+  hand to make a test pass.
+- **Port, don't redesign.** ssqch's own designs (the cascade, schemas, the link checker, `diff`,
+  `inspect`, the importers, the equivalents table, the voice lines) move as they are. Read the
+  Rust module and its tests for the behavior and the messages word for word; a subagent can
+  brief you on a module (see "Where subagents help" in the plan).
+- **TypeScript with erasable syntax only** (`erasableSyntaxOnly` in `tsconfig.json`): no
+  `enum`, `namespace` or constructor parameter properties, and `import type` for types.
+  Relative imports name the `.ts` file. ES modules throughout.
+- **Dependencies:** the template and Markdown libraries pinned exactly, and sharp. Nothing else
+  at run time without a reason in the commit message; the published package bundles them.
+  ssqch's own Markdown, highlighter and minifier are `.wasm` built from the Rust (D2, D3).
+- **Same output everywhere.** Nothing a build writes may depend on the machine's time zone, the
+  locale, the order the file system lists files in, the number of threads, or the Node version.
+  ssqch's own date filters and sorting don't use `Intl` (its results change between Node
+  releases); a site's code may.
+- **Speed is part of done.** The CI benchmark (stage 2 adds it) fails a change that makes the
+  10,000-page site slower than 2 s on one thread, or v8.dev slower than 0.72 s. Write pages as they render,
+  through a queue with back-pressure, and don't copy per page what can be shared.
+- **Errors point at the spot.** A library's error (nunjucks, liquidjs, edge.js, markdown-it, a
+  site's filter) becomes ssqch's: the site's file and line, an excerpt, the diagnostic code, and
+  "did you mean". Each engine gets a test for an unknown filter and for a filter that throws.
+- **Windows:** paths through `node:path`, URLs and output paths with forward slashes, and no
+  shell-only commands in code or tests.
+- **Style:** tabs, double quotes and semicolons, as the rest of the repository's JavaScript;
+  long lines are fine. Comments say why, in the voice of the README.
+
 ## Releasing
 
 Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configured in

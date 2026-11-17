@@ -5,11 +5,11 @@ Black-box tests for any ssqch: arguments in; files, standard output, standard er
 ```sh
 cargo build --release -p ssqch --features avif   # the implementation under test
 cd tests/oracle && node --test                   # everything (Node 22.18 or newer, no dependencies)
-SSQCH_BIN=../../packages/ssqch/bin/ssqch.ts node --test   # another ssqch; a .js or .ts file runs with this Node
+SSQCH_BIN=packages/ssqch/bin/ssqch.ts node --test   # another ssqch (from the repository root); a .js or .ts file runs with this Node
 node --test cli/init.test.js                     # one file
 ```
 
-`SSQCH_BIN` is the ssqch under test (default `target/release/ssqch`, from the repository root). `SSQCH_EXPECT_VERSION` overrides the version the tests expect (otherwise Cargo.toml's, or `packages/ssqch/package.json`'s when `SSQCH_BIN` points there). `SSQCH_KEEP=1` keeps the temporary folders.
+`SSQCH_BIN` is the ssqch under test, as a path from the repository root (default `target/release/ssqch`). `SSQCH_EXPECT_VERSION` overrides the version the tests expect (otherwise Cargo.toml's, or `packages/ssqch/package.json`'s when `SSQCH_BIN` points there). `SSQCH_KEEP=1` keeps the temporary folders.
 
 ## What's here
 
