@@ -592,7 +592,8 @@ impl Engine {
             // `slugify(text, { separator })`, the template filter, for data files.
             let slugify = Value::func(|args| {
                 let text = args.first().map(|v| if v.is_nullish() { String::new() } else { v.to_js_string() }).unwrap_or_default();
-                Ok(Value::from(sitesquatch::blueprint::slug_with(&text, &sitesquatch::build::slug_separator(args.get(1))?)))
+                let (separator, apostrophes) = sitesquatch::build::slug_options(args.get(1))?;
+                Ok(Value::from(sitesquatch::blueprint::slug_with(&text, &separator, apostrophes)))
             });
             config_natives.set("slugify", conv.to_js(&slugify)?)?;
             natives.set("ssqch", config_natives)?;

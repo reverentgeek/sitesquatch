@@ -343,6 +343,10 @@ struct Style {
     indent: String,
     /// Spaces inside brackets and parentheses: `[ "md" ]`, `defineConfig( {`.
     padded: bool,
+    /// A comma after the last item of a multi-line object or list.
+    dangle: bool,
+    /// Quotes around every key (`"input": "src"`), not only the ones that need them.
+    quote_keys: bool,
 }
 
 impl Style {
@@ -356,7 +360,36 @@ impl Style {
         static PADDED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[(\[][ \t]+[^\s)\]]").unwrap());
         static TIGHT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[(\[][^\s)\]]").unwrap());
         let padded = PADDED.find_iter(text).count() > TIGHT.find_iter(text).count();
-        Style { indent, padded }
+        // A closing bracket on its own line, after a comma or after a value (not after a
+        // statement's `;`, which ends a function body).
+        static DANGLING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r",[ \t]*\r?\n[ \t]*[}\]]").unwrap());
+        static CLOSED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^\s,;{\[(][ \t]*\r?\n[ \t]*[}\]]").unwrap());
+        let (dangling, closed) = (DANGLING.find_iter(text).count(), CLOSED.find_iter(text).count());
+        let dangle = dangling >= closed;
+        static BARE_KEY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[{,]\s*[A-Za-z_$][\w$]*\s*:").unwrap());
+        static QUOTED_KEY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"[{,]\s*["'][^"'\n]*["']\s*:"#).unwrap());
+        let quote_keys = !BARE_KEY.is_match(text) && QUOTED_KEY.is_match(text);
+        Style { indent, padded, dangle, quote_keys }
+    }
+
+    /// An object key: quoted when it isn't an identifier, or when the config quotes every key.
+    fn key(&self, key: &str) -> String {
+        let identifier = !key.is_empty() && !key.starts_with(|c: char| c.is_ascii_digit()) && key.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$');
+        if identifier && !self.quote_keys { key.to_string() } else { format!("\"{}\"", key) }
+    }
+
+    /// Multi-line items (each already indented, without a comma), with commas
+    /// between them and, if the config has them, after the last.
+    fn items(&self, items: &[String]) -> String {
+        let mut out = String::new();
+        for (i, item) in items.iter().enumerate() {
+            out.push_str(item);
+            if i + 1 < items.len() || self.dangle {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out
     }
 
     /// `[a, b]` or `[ a, b ]`.
@@ -551,7 +584,7 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
                 (Some(path), _) => passthrough.push(format!("\"{}\"", path)),
                 (None, Some(pairs)) => {
                     for (from, to) in pairs {
-                        passthrough.push(format!("{{ \"{}\": \"{}\" }}", from, to));
+                        passthrough.push(format!("{{ {}: \"{}\" }}", style.key(&from), to));
                     }
                 }
                 (None, None) => by_hand.push((at, "addPassthroughCopy with a variable or a computed value -> `passthrough: [{ from: to }]`".into())),
@@ -630,31 +663,46 @@ fn draft_config(name: &str, text: &str, extensions: &BTreeSet<String>) -> (Strin
     }
     let (open, close) = if style.padded { ("( {", "} )") } else { ("({", "})") };
     let mut out = format!("// A first draft, written by `ssqch import eleventy` from {}.\n// What it couldn't carry over is listed at the end; `ssqch docs --from eleventy` has the whole\n// mapping.\nimport {{ defineConfig }} from \"ssqch\";\n\nexport default defineConfig{}\n", name, open);
+    let mut entries: Vec<String> = Vec::new();
     if !dirs.is_empty() {
-        out.push_str(&format!("{}dirs: {{ {} }},\n", ind, dirs.join(", ")));
+        entries.push(format!("{}dirs: {{ {} }}", ind, dirs.join(", ")));
     }
     if !formats.is_empty() {
-        out.push_str(&format!("{}templateFormats: {},\n", ind, quoted(&formats)));
+        entries.push(format!("{}templateFormats: {}", ind, quoted(&formats)));
     }
-    out.push_str(&format!("{0}// {1}\n{0}markdownEngine: {2},\n{0}htmlEngine: {3},\n", ind, engines_comment, markdown_engine.unwrap_or_else(liquid), html_engine.unwrap_or_else(liquid)));
+    entries.push(format!("{0}// {1}\n{0}markdownEngine: {2}", ind, engines_comment, markdown_engine.unwrap_or_else(liquid)));
+    entries.push(format!("{}htmlEngine: {}", ind, html_engine.unwrap_or_else(liquid)));
     if let Some(prefix) = setting("pathPrefix").filter(|p| p != "/") {
-        out.push_str(&format!("{}base: \"{}\",\n", ind, prefix));
+        entries.push(format!("{}base: \"{}\"", ind, prefix));
     }
     if !passthrough.is_empty() {
-        out.push_str(&format!("{}passthrough: {},\n", ind, style.list(&passthrough)));
+        entries.push(format!("{}passthrough: {}", ind, style.list(&passthrough)));
     }
     if !watch.is_empty() {
-        out.push_str(&format!("{}watch: {},\n", ind, style.list(&watch)));
+        entries.push(format!("{}watch: {}", ind, style.list(&watch)));
     }
-    out.push_str(&format!("\n{}filters: {{\n", ind));
-    if !ported.is_empty() {
-        out.push_str(&format!("{0}{0}// From {1}, as written.\n", ind, name));
-        for (filter, source) in &ported {
-            let key = if filter.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$') && !filter.starts_with(|c: char| c.is_ascii_digit()) { filter.clone() } else { format!("\"{}\"", filter) };
-            out.push_str(&format!("{0}{0}{1}: {2},\n", ind, key, source));
+    let port_here = format!("{0}{0}// Port each filter and shortcode here: name: (value, ...args) => result\n", ind);
+    let mut filters = format!("\n{}filters: {{\n", ind);
+    if ported.is_empty() {
+        filters.push_str(&port_here);
+    } else {
+        // Without trailing commas, the last filter ends the object, so the comment goes first.
+        if !style.dangle {
+            filters.push_str(&port_here);
+        }
+        filters.push_str(&format!("{0}{0}// From {1}, as written.\n", ind, name));
+        let items: Vec<String> = ported.iter().map(|(filter, source)| format!("{0}{0}{1}: {2}", ind, style.key(filter), source)).collect();
+        filters.push_str(&style.items(&items));
+        if style.dangle {
+            filters.push_str(&port_here);
         }
     }
-    out.push_str(&format!("{0}{0}// Port each filter and shortcode here: name: (value, ...args) => result\n{0}}},\n{0}collections: {{\n{0}{0}// name: (pages) => pages.byTag(\"post\")\n{0}}},\n{0}plugins: [],\n{1};\n", ind, close));
+    filters.push_str(&format!("{}}}", ind));
+    entries.push(filters);
+    entries.push(format!("{0}collections: {{\n{0}{0}// name: (pages) => pages.byTag(\"post\")\n{0}}}", ind));
+    entries.push(format!("{}plugins: []", ind));
+    out.push_str(&style.items(&entries));
+    out.push_str(&format!("{};\n", close));
     if !todo.is_empty() {
         out.push_str(&format!("\n// To port from {}:\n", name));
         for item in &todo {
@@ -734,47 +782,74 @@ fn rewrite_script(script: &str) -> (String, Vec<String>) {
 fn package_files(dir: &Path, plan: &mut Plan) -> Result<()> {
     let path = dir.join("package.json");
     let Ok(text) = std::fs::read_to_string(&path) else { return Ok(()) };
-    let Ok(package) = serde_json::from_str::<serde_json::Value>(&text) else {
+    let Ok(mut package) = serde_json::from_str::<serde_json::Value>(&text) else {
         plan.by_hand.push(("package.json".into(), "isn't valid JSON, so its Eleventy dependency and scripts weren't changed".into()));
         return Ok(());
     };
-    let mut new = text.clone();
+    let version = env!("CARGO_PKG_VERSION");
     let mut changes = Vec::new();
-    // The dependency, where Eleventy's was.
-    static DEPENDENCY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""@11ty/eleventy"(\s*:\s*)"[^"]*""#).unwrap());
+    // The dependency: Eleventy's goes, and ssqch is a dev dependency (it builds the site; the
+    // site doesn't import it at run time), pinned exactly, as the README's Install says.
     let has_ssqch = ["dependencies", "devDependencies"].iter().any(|k| package[k].get("ssqch").is_some());
-    if DEPENDENCY.is_match(&new) {
-        if has_ssqch {
-            static WITH_COMMA: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?m)^[ \t]*"@11ty/eleventy"\s*:\s*"[^"]*",?[ \t]*\r?\n"#).unwrap());
-            new = WITH_COMMA.replace(&new, "").into_owned();
-        } else {
-            new = DEPENDENCY.replace(&new, format!("\"ssqch\"${{1}}\"^{}\"", env!("CARGO_PKG_VERSION"))).into_owned();
+    let mut removed = false;
+    for section in ["dependencies", "devDependencies"] {
+        if let Some(deps) = package.get_mut(section).and_then(|d| d.as_object_mut()) {
+            removed |= deps.shift_remove("@11ty/eleventy").is_some();
+            if deps.is_empty() && section == "dependencies" {
+                package.as_object_mut().map(|p| p.shift_remove(section));
+            }
         }
-        changes.push(format!("@11ty/eleventy -> ssqch@^{}", env!("CARGO_PKG_VERSION")));
+    }
+    if removed {
+        if has_ssqch {
+            changes.push("@11ty/eleventy removed (ssqch is already there)".to_string());
+        } else {
+            let root = package.as_object_mut().expect("package.json is an object");
+            let dev = root.entry("devDependencies").or_insert_with(|| serde_json::json!({}));
+            if let Some(dev) = dev.as_object_mut() {
+                dev.insert("ssqch".into(), serde_json::Value::String(version.into()));
+                dev.sort_keys();
+            }
+            changes.push(format!("@11ty/eleventy -> ssqch {} in devDependencies", version));
+        }
     }
     // The scripts: each string value in the `scripts` object.
-    if let Some(scripts) = package["scripts"].as_object() {
+    let mut unknown_flags = Vec::new();
+    if let Some(scripts) = package.get_mut("scripts").and_then(|s| s.as_object_mut()) {
         let mut changed = false;
-        for (name, script) in scripts {
-            let Some(script) = script.as_str() else { continue };
-            let (rewritten, unknown) = rewrite_script(script);
-            if rewritten != script {
-                let encoded = |s: &str| serde_json::to_string(s).unwrap_or_default();
-                // Replace the value after this script's key, keeping the spacing.
-                let key = Regex::new(&format!(r#"({}\s*:\s*){}"#, regex::escape(&encoded(name)), regex::escape(&encoded(script)))).unwrap();
-                new = key.replace(&new, |c: &regex::Captures| format!("{}{}", &c[1], encoded(&rewritten))).into_owned();
+        for (name, script) in scripts.iter_mut() {
+            let Some(text) = script.as_str() else { continue };
+            let (rewritten, unknown) = rewrite_script(text);
+            if rewritten != text {
+                *script = serde_json::Value::String(rewritten);
                 changed = true;
             }
             if !unknown.is_empty() {
-                plan.by_hand.push(("package.json".into(), format!("the `{}` script's {} {} Eleventy's: check what ssqch has (`ssqch build --help`, `ssqch serve --help`)", name, unknown.join(", "), if unknown.len() == 1 { "flag is" } else { "flags are" })));
+                unknown_flags.push(format!("the `{}` script's {} {} Eleventy's: check what ssqch has (`ssqch build --help`, `ssqch serve --help`)", name, unknown.join(", "), if unknown.len() == 1 { "flag is" } else { "flags are" }));
             }
         }
         if changed {
             changes.push("scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve".into());
         }
     }
+    plan.by_hand.extend(unknown_flags.into_iter().map(|what| ("package.json".to_string(), what)));
     let edited = !changes.is_empty();
     if edited {
+        // Written the way npm writes it: the file's own indentation, and its last line break.
+        let indent: String = text.lines().nth(1).map(|l| l[..l.len() - l.trim_start().len()].to_string()).filter(|i| !i.is_empty()).unwrap_or_else(|| "  ".into());
+        // serde_json indents by two spaces; line breaks inside strings are escaped, so each
+        // line's leading spaces are indentation.
+        let mut new = serde_json::to_string_pretty(&package)?
+            .lines()
+            .map(|line| {
+                let depth = (line.len() - line.trim_start_matches(' ').len()) / 2;
+                format!("{}{}", indent.repeat(depth), line.trim_start_matches(' '))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if text.ends_with('\n') {
+            new.push('\n');
+        }
         plan.edits.push(("package.json".into(), changes, new));
     }
     // Lockfiles: the package manager's needs updating, another one's is stale.
@@ -789,7 +864,27 @@ fn package_files(dir: &Path, plan: &mut Plan) -> Result<()> {
             }
         }
     }
+    // pnpm 11 and later wait a day before installing a release.
+    if pm == "pnpm" && edited && waits_for_release_age(dir, &package) {
+        plan.by_hand.push((
+            "pnpm-workspace.yaml".into(),
+            format!("pnpm waits a day before installing a new release, so if ssqch {} came out today, the install fails: add `ssqch` and `@ssqch/darwin-arm64`, `@ssqch/darwin-x64`, `@ssqch/linux-x64` and `@ssqch/win32-x64` under `minimumReleaseAgeExclude` (`ssqch docs \"release age\"`)", version),
+        ));
+    }
     Ok(())
+}
+
+/// Whether pnpm would hold back a release made today: pnpm 11 or later (or a version
+/// `packageManager` doesn't say), and ssqch not already excluded from `minimumReleaseAge`.
+fn waits_for_release_age(dir: &Path, package: &serde_json::Value) -> bool {
+    let major = package["packageManager"].as_str().and_then(|pm| pm.strip_prefix("pnpm@")).and_then(|v| v.split('.').next()).and_then(|m| m.parse::<u32>().ok());
+    if major.is_some_and(|m| m < 11) {
+        return false;
+    }
+    let workspace = std::fs::read_to_string(dir.join("pnpm-workspace.yaml")).unwrap_or_default();
+    let excluded = workspace.lines().any(|l| l.trim_start().trim_start_matches('-').trim().trim_matches(['\'', '"']).split('@').next() == Some("ssqch"));
+    let off = workspace.lines().any(|l| l.trim().replace(' ', "") == "minimumReleaseAge:0");
+    !excluded && !off
 }
 
 // --------------------------------------------------------------------- Zola
@@ -1119,13 +1214,20 @@ module.exports = function (eleventyConfig) {
         let (draft, by_hand) = draft_config("eleventy.config.js", config, &extensions);
         for expected in [
             "export default defineConfig( {\n\ttemplateFormats: [ \"njk\", \"md\" ],\n\t// Eleventy's defaults: Markdown and HTML run through Liquid first.\n\tmarkdownEngine: \"liquid\",\n\thtmlEngine: \"liquid\",\n",
-            "\tpassthrough: [ { \"images\": \"images\" }, { \"fonts\": \"static/fonts\" } ],\n",
+            "\tpassthrough: [ { images: \"images\" }, { fonts: \"static/fonts\" } ],\n",
             "\t\tsnake_case: ( str ) => {\n\t\t\treturn str\n\t\t\t\t.toLowerCase()\n\t\t\t\t.replace( /[^a-z0-9]+/g, \"_\" );\n\t\t},\n",
             "} );\n",
             "//   filters: year\n//   filters: url\n",
         ] {
             assert!(draft.contains(expected), "missing {:?} in\n{}", expected, draft);
         }
+        // Gahlee House's config: no trailing commas, so the draft has none, and only the keys
+        // that need them are quoted.
+        let gahlee = "export default function ( eleventyConfig ) {\n\televentyConfig.addPassthroughCopy( { \"images\": \"images\" } );\n\televentyConfig.addFilter( \"snake_case\", ( str ) => {\n\t\treturn str.toLowerCase();\n\t} );\n\treturn {\n\t\tdir: {\n\t\t\tinput: \"src\",\n\t\t\toutput: \"_site\"\n\t\t},\n\t\thtmlTemplateEngine: \"njk\"\n\t};\n}\n";
+        let (draft, _) = draft_config("eleventy.config.js", gahlee, &extensions);
+        assert!(draft.contains("\tpassthrough: [ { images: \"images\" } ],\n"), "{}", draft);
+        assert!(draft.contains("\tfilters: {\n\t\t// Port each filter and shortcode here: name: (value, ...args) => result\n\t\t// From eleventy.config.js, as written.\n\t\tsnake_case: ( str ) => {\n\t\t\treturn str.toLowerCase();\n\t\t}\n\t},\n"), "{}", draft);
+        assert!(draft.contains("\tplugins: []\n} );\n") && !draft.contains(",\n}"), "{}", draft);
         let list: Vec<String> = by_hand.iter().map(|(at, what)| format!("{}: {}", at, what.split(" -> ").next().unwrap_or(""))).collect();
         assert_eq!(list, ["eleventy.config.js:4: addPassthroughCopy with a variable or a computed value", "eleventy.config.js:11: addFilter(\"year\")", "eleventy.config.js:12: addShortcode(\"url\")"]);
     }

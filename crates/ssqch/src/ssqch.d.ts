@@ -266,6 +266,8 @@ declare module "ssqch" {
 		ext: string;
 		/** From the start of the name (`20011222_08.JPG`, `2001-12-22-camp.jpg`, at midnight UTC), or the file's modification time. */
 		date: Date;
+		/** Where `date` came from: `"name"`, or `"modified"` (the modification time, which says when the file was copied or edited, not when a photo was taken). */
+		dateFrom: "name" | "modified";
 		/** Bytes. */
 		size: number;
 		/** Pixels, with `{ dimensions: true }`; `null` for a file that isn't an image ssqch can read the size of. */
@@ -273,12 +275,19 @@ declare module "ssqch" {
 		/** Pixels, with `{ dimensions: true }`; `null` for a file that isn't an image ssqch can read the size of. */
 		height?: number | null;
 	}
-	/** The files a glob matches, from the project root and ignoring case, sorted by path, as data: `files("images/albums/v1/*.{jpg,png}")`. `{ dimensions: true }` reads each image's width and height from its header. No match is an empty list. */
+	/** The files a glob matches, from the project root and ignoring case, sorted by path, as data: `files("images/albums/v1/*.{jpg,png}")`. `{ dimensions: true }` reads each image's width and height from its header, once: they're kept in `.cache/ssqch/image-sizes.json` until the file changes. No match is an empty list. */
 	export function files(pattern: string, options?: { dimensions?: boolean }): FoundFile[];
-	/** The `slugify` template filter, for data files: `slugify("Taco Bake", { separator: "_" })` is `"taco_bake"`. Lowercase letters and digits, with `separator` (a dash by default) for each run of anything else. */
-	export function slugify(text: string, options?: { separator?: string } | string): string;
+	/** How `slugify` writes a slug. */
+	export interface SlugifyOptions {
+		/** Between words: a dash by default, `"_"` for `taco_bake`. */
+		separator?: string;
+		/** `"drop"` (the default): `Drew's Brownies` is `drews-brownies`. `"separate"`: an apostrophe splits words like other punctuation, `drew-s-brownies`, to keep a site's existing URLs. */
+		apostrophes?: "drop" | "separate";
+	}
+	/** The `slugify` template filter, for data files: `slugify("Taco Bake", { separator: "_" })` is `"taco_bake"`. Lowercase letters and digits, with `separator` (a dash by default) for each run of anything else. A string is the separator. */
+	export function slugify(text: string, options?: SlugifyOptions | string): string;
 	/** A `slugify` that counts, so every slug it makes is different: the first "Misc Pictures" is `misc-pictures`, the next `misc-pictures-1`, then `misc-pictures-2`. Make one per list, in a data file, and store the slug with each item, so a paginated page's permalink and the links to it agree. */
-	export function slugger(options?: { separator?: string }): (text: string) => string;
+	export function slugger(options?: SlugifyOptions): (text: string) => string;
 	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown; readData: typeof readData; files: typeof files; slugify: typeof slugify; slugger: typeof slugger };
 	export default ssqch;
 }

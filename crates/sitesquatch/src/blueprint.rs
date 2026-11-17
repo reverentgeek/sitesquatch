@@ -51,12 +51,14 @@ pub struct Created {
 
 /// Lowercase letters and digits, with a dash for each run of anything else.
 pub fn slug(text: &str) -> String {
-    slug_with(text, "-")
+    slug_with(text, "-", false)
 }
 
 /// [`slug`] with `separator` for each run of anything else: `slug_with("Taco
-/// Bake", "_")` is `taco_bake`.
-pub fn slug_with(text: &str, separator: &str) -> String {
+/// Bake", "_", false)` is `taco_bake`. With `apostrophes_separate`, an
+/// apostrophe separates words like any other punctuation (`drew_s_brownies`)
+/// instead of being dropped (`drews_brownies`).
+pub fn slug_with(text: &str, separator: &str, apostrophes_separate: bool) -> String {
     let mut out = String::new();
     let mut gap = false;
     for c in text.chars().flat_map(char::to_lowercase) {
@@ -66,7 +68,7 @@ pub fn slug_with(text: &str, separator: &str) -> String {
             }
             gap = false;
             out.push(c);
-        } else if c != '\'' && c != '\u{2019}' {
+        } else if apostrophes_separate || (c != '\'' && c != '\u{2019}') {
             gap = true;
         }
     }

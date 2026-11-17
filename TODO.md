@@ -235,6 +235,83 @@ entry):
 - [ ] The importer's package files and ported filters: the worked Eleventy import in the docs,
       rerun on Gahlee House and the `blog-categories` source.
 
+Checked on 0.6.3 (2026-11-17, a local release build before the npm packages were out). A fresh
+`ssqch import eleventy --write` on Gahlee House's last Eleventy commit, with the BOMs and
+`albums.length` left in, built output identical to Eleventy's apart from the footer year, and
+`ssqch diff` called all 146 changed pages "only dates changed". Every fix above showed up. Then
+`albums.js` moved onto `readData()`, `files()` and `slugger()` (about 40 lines fewer, the same
+output, uncommitted in `../gahlee` until 0.6.3 is on npm), which covers the worked example the
+`files()` item above wants. Still rough:
+
+- [x] **The draft config fails the site's own lint.** It has the site's indentation and bracket
+      spacing now, but `eslint-config-reverentgeek` still reports three errors, all
+      `--fix`able: `{ "images": "images" }` keeps the quotes as the Eleventy config wrote them
+      (`@stylistic/quote-props`: unneeded quotes), and the draft's own `},` after the filters
+      comment and `plugins: [],` have trailing commas (`@stylistic/comma-dangle`) that the
+      Eleventy config didn't use. Copy the source's trailing-comma habit too, and drop quotes
+      around keys that are plain identifiers, unless the source quotes every key.
+      Done 2026-11-17: trailing commas and key quotes follow the source. Gahlee's draft now
+      fails only `n/no-unpublished-import` (the dev-dependency import, which the README covers).
+- [x] **`files()` can't say where a `date` came from.** About half of the 1,043 v1 photos have
+      no date in their names (`andrew_bday_2000_1.jpg`), so their `date` is the modification
+      time, which says nothing about when the photo was taken. Captioning those "Photo from
+      November 17, 2026" would be wrong, so `albums.js` still tests `/^\d{8}_/` itself before
+      using `file.date`, which is the date parser `files()` was meant to replace. Options: a
+      `dateFrom` field (`"name"` or `"modified"`), or `files(pattern, { date: "name" })`, which
+      gives `null` when the name has none.
+      Done 2026-11-17: a `dateFrom` field, `"name"` or `"modified"`.
+- [x] **`slugify` drops apostrophes, so it can't stand in for a site's own slugger.** Gahlee
+      keeps its `snake_case` filter: `slugify("Drew's Brownies", "_")` is `drews_brownies`,
+      but the live URL is `/recipes/drew_s_brownies/` (an apostrophe is a separator there).
+      Swapping filters would break 3 recipe URLs. Dropping apostrophes is the better default;
+      an option for sites with URLs to keep might be worth it
+      (`slugify(title, { separator: "_", apostrophes: "separate" })`), or at least a line in
+      the Eleventy trailhead: check URLs with `ssqch diff` before replacing a slug filter.
+      Done 2026-11-17: `apostrophes: "separate"`, and a line in the Eleventy trailhead and the
+      README to check URLs with `ssqch diff` first.
+- [x] **`{ dimensions: true }` costs about 150 µs an image.** The data step went from 23 ms to
+      176 ms for 1,043 photos (the build took 377 ms with it). It's opt-in and
+      documented as taking "a moment", which is right. Worth checking whether a header read
+      can be cut short (the JPEG `SOF` marker is usually near the start), or cached in
+      `.cache/ssqch/` by path, size and mtime, as image encodes are. Gahlee turned it off
+      because no template uses the sizes.
+      Done 2026-11-17: cached in `.cache/ssqch/image-sizes.json` by path, size and mtime, and
+      read on up to 8 threads. Gahlee's 1,043: 5 ms cached, 18 ms warm before (13 ms of it
+      sizes); a cold disk was the 150 µs.
+- [x] **The importer's `package.json` edits differ from the README.** It writes
+      `"ssqch": "^0.6.3"` where `@11ty/eleventy` was, which was `dependencies` in Gahlee. The
+      README's "Install" says to add ssqch as a dev dependency, and Hendricks Truss and Gahlee
+      (by hand) have it in `devDependencies`, pinned exactly, as the blog pins it. Move it to
+      `devDependencies` when the site has that section, or say why not. An exact version is a
+      matter of taste, since the lockfile pins it anyway. It leaves the `start` script's
+      `npm run clean && ...` alone, which is right.
+      Done 2026-11-17: `devDependencies`, exact, the file's indentation kept.
+- [x] **The import output doesn't mention pnpm's release age.** The README's "Install" covers
+      `minimumReleaseAgeExclude` now, but the import is where a site first installs ssqch. When
+      `packageManager` is pnpm 11 or later and the release is less than a day old, the
+      "By hand" list could say to add the five lines (the importer knows the version it
+      wrote).
+      Done 2026-11-17: listed under "By hand" for pnpm 11+ (or a pnpm without a version)
+      unless ssqch is excluded or `minimumReleaseAge: 0`. It can't tell a release's age, so it
+      says "if it came out today".
+- [x] **Upgrading within a day of the last release locks pnpm out.** Found updating Gahlee
+      from 0.6.2 to 0.6.3 on 2026-11-17, with pnpm 12.21.0 and the README's version-pinned
+      `minimumReleaseAgeExclude` lines (`ssqch@0.6.2` and the four `@ssqch/*@0.6.2`). Moving
+      the five lines to `@0.6.3` makes every install fail before it resolves anything:
+      `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`, "5 lockfile entries failed verification", because
+      the lockfile still has 0.6.2, which was also under a day old and no longer excluded.
+      `pnpm install` and `pnpm add -D --save-exact ssqch@0.6.3` both fail the same way. pnpm's
+      hint, `pnpm clean --lockfile`, re-resolves every dependency, not just ssqch. What worked:
+      list both versions for one install, then remove the old one's lines (the lockfile then has
+      no 0.6.2 and passes with the 0.6.3 lines alone). Two releases a day apart (0.6.2 on
+      2026-11-16, 0.6.3 on 2026-11-17) will keep making this happen. The README's "A release
+      from today" paragraph could say: when upgrading, add the new version's lines beside the
+      old ones, install, then delete the old ones. Or suggest the five names without
+      `@<version>` for sites that follow every release, which trusts every future version but
+      never locks out.
+      Done 2026-11-17: the README recommends the names without versions, and gives the
+      add-install-remove steps for version-pinned lines.
+
 ### Jinja by default (0.5)
 
 Decided 2026-11-10: Jinja is the most familiar template language across ecosystems (Python's

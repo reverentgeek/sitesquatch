@@ -445,25 +445,35 @@ pub const BUILTIN_FILTERS: &[(&str, &str)] = &[
     ("highlight", "`highlight(code, lang)` is highlighted HTML for inside a `<code>`, with `hl-*` classes."),
     ("readingTime", "`readingTime(content)` is the minutes it takes to read some HTML, at 200 words a minute."),
     ("withBase", "`withBase(\"/feed.xml\")` puts the site's `base` in front of a URL, for places outside HTML attributes."),
-    ("slugify", "`slugify(\"Pine Cone Crunch!\")` is `pine-cone-crunch`: lowercase letters and digits, with a dash for each run of anything else; `slugify(title, { separator: \"_\" })` uses another separator."),
+    ("slugify", "`slugify(\"Pine Cone Crunch!\")` is `pine-cone-crunch`: lowercase letters and digits, with a dash for each run of anything else; `slugify(title, { separator: \"_\" })` uses another separator, and `apostrophes: \"separate\"` splits words at an apostrophe instead of dropping it."),
 ];
 
-/// `slugify`'s separator: `"_"`, or `{ separator: "_" }` (a dash without one).
-pub fn slug_separator(option: Option<&Value>) -> Result<String> {
+/// `slugify`'s options: a separator (`"_"`), or `{ separator, apostrophes }`,
+/// where `apostrophes` is `"drop"` (the default: `drews-brownies`) or
+/// `"separate"` (`drew-s-brownies`). Returns the separator and whether
+/// apostrophes separate words.
+pub fn slug_options(option: Option<&Value>) -> Result<(String, bool)> {
     match option {
-        None => Ok("-".into()),
-        Some(v) if v.is_nullish() => Ok("-".into()),
-        Some(Value::Str(s)) => Ok(s.to_string()),
+        None => Ok(("-".into(), false)),
+        Some(v) if v.is_nullish() => Ok(("-".into(), false)),
+        Some(Value::Str(s)) => Ok((s.to_string(), false)),
         Some(v @ Value::Obj(o)) => {
-            if let Some(key) = o.keys().find(|k| *k != "separator") {
-                bail!("slugify: unknown option `{}` (options: separator)", key);
+            if let Some(key) = o.keys().find(|k| *k != "separator" && *k != "apostrophes") {
+                bail!("slugify: unknown option `{}` (options: separator, apostrophes)", key);
             }
-            Ok(match v.get("separator") {
+            let separator = match v.get("separator") {
                 s if s.is_nullish() => "-".into(),
                 s => s.to_js_string(),
-            })
+            };
+            let separate = match v.get("apostrophes") {
+                a if a.is_nullish() => false,
+                Value::Str(a) if &*a == "drop" => false,
+                Value::Str(a) if &*a == "separate" => true,
+                other => bail!("slugify: `apostrophes` is \"drop\" or \"separate\", not {}", other.to_js_string()),
+            };
+            Ok((separator, separate))
         }
-        Some(other) => bail!("slugify: the second argument is a separator (\"_\") or {{ separator }}, not a {}", other.type_of()),
+        Some(other) => bail!("slugify: the second argument is a separator (\"_\") or {{ separator, apostrophes }}, not a {}", other.type_of()),
     }
 }
 
@@ -510,7 +520,10 @@ fn builtin_filters(markdown: &Arc<MarkdownEngine>) -> Map {
             Ok(Value::from(crate::markdown::escape_text(&code)))
         }),
     );
-    filters.insert("slugify".into(), Value::func(|args| Ok(Value::from(crate::blueprint::slug_with(&args.first().map(Value::to_js_string).unwrap_or_default(), &slug_separator(args.get(1))?)))));
+    filters.insert("slugify".into(), Value::func(|args| Ok(Value::from({
+        let (separator, apostrophes) = slug_options(args.get(1))?;
+        crate::blueprint::slug_with(&args.first().map(Value::to_js_string).unwrap_or_default(), &separator, apostrophes)
+    }))));
     filters.insert(
         "readingTime".into(),
         Value::func(|args| {

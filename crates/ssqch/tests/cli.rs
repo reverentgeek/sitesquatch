@@ -1445,19 +1445,22 @@ fn slugs_take_a_separator_and_a_slugger_counts() {
         "import { slugger, slugify } from \"ssqch\";\nconst slug = slugger();\nconst names = [\"Misc Pictures\", \"Cedar Trail\", \"Misc Pictures\", \"Misc Pictures 1\", \"Misc Pictures\"];\nexport default names.map((name) => ({ name, slug: slug(name), snake: slugify(name, { separator: \"_\" }) }));\n",
     );
     write("src/album.njk", "---\npagination:\n  data: albums\n  size: 1\n  alias: album\npermalink: \"photos/{{ album.slug }}/\"\n---\n{{ album.name }}");
-    write("src/index.njk", "{% for a in albums %}/photos/{{ a.slug }}/ {{ a.snake }}\n{% endfor %}{{ \"Taco Bake!\" | slugify({ separator: \"_\" }) }} {{ slugify(\"Pine Cone Crunch\", \"\") }} {{ \"Old Growth\" | slugify }}");
+    write("src/index.njk", "{% for a in albums %}/photos/{{ a.slug }}/ {{ a.snake }}\n{% endfor %}{{ \"Taco Bake!\" | slugify({ separator: \"_\" }) }} {{ slugify(\"Pine Cone Crunch\", \"\") }} {{ \"Old Growth\" | slugify }} {{ \"Drew's Brownies\" | slugify(\"_\") }} {{ \"Drew's Brownies\" | slugify({ separator: \"_\", apostrophes: \"separate\" }) }}");
     write("src/liquid.liquid", "{{ \"Taco Bake\" | slugify: \"_\" }}");
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
     assert!(ok, "{}", log);
     let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
-    assert_eq!(read("index.html"), "/photos/misc-pictures/ misc_pictures\n/photos/cedar-trail/ cedar_trail\n/photos/misc-pictures-1/ misc_pictures\n/photos/misc-pictures-1-1/ misc_pictures_1\n/photos/misc-pictures-2/ misc_pictures\ntaco_bake pineconecrunch old-growth");
+    assert_eq!(read("index.html"), "/photos/misc-pictures/ misc_pictures\n/photos/cedar-trail/ cedar_trail\n/photos/misc-pictures-1/ misc_pictures\n/photos/misc-pictures-1-1/ misc_pictures_1\n/photos/misc-pictures-2/ misc_pictures\ntaco_bake pineconecrunch old-growth drews_brownies drew_s_brownies");
     assert_eq!(read("photos/misc-pictures-2/index.html"), "Misc Pictures");
     assert_eq!(read("liquid/index.html"), "taco_bake");
     // Another option is an error.
     write("src/liquid.liquid", "{{ \"Taco Bake\" | slugify }}");
     write("src/index.njk", "{{ \"x\" | slugify({ sep: \"_\" }) }}");
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
-    assert!(!ok && log.contains("slugify: unknown option `sep` (options: separator)"), "{}", log);
+    assert!(!ok && log.contains("slugify: unknown option `sep` (options: separator, apostrophes)"), "{}", log);
+    write("src/index.njk", "{{ \"x\" | slugify({ apostrophes: \"keep\" }) }}");
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(!ok && log.contains("slugify: `apostrophes` is \"drop\" or \"separate\", not keep"), "{}", log);
 }
 
 #[test]
@@ -1481,13 +1484,21 @@ fn files_lists_a_folder_as_data() {
         "src/_data/photos.js",
         b"import { files } from \"ssqch\";\nexport default { camp: files(\"images/camp/*.png\", { dimensions: true }), deep: files(\"images/**/*.png\").length, maps: files(\"src/downloads/*\") };\n",
     );
-    write("src/index.jinja", b"{% for p in photos.camp %}{{ p.path }} {{ p.url }} {{ p.name }} {{ p.stem }} {{ p.ext }} {{ p.date | dateformat(\"%Y-%m-%d\") }} {{ p.width }}x{{ p.height }} {{ p.size }}\n{% endfor %}{{ photos.deep }} {{ photos.maps[0].url }} {{ photos.maps[0].width is undefined }}");
+    write("src/index.jinja", b"{% for p in photos.camp %}{{ p.path }} {{ p.url }} {{ p.name }} {{ p.stem }} {{ p.ext }} {{ p.date | dateformat(\"%Y-%m-%d\") }} {{ p.dateFrom }} {{ p.width }}x{{ p.height }} {{ p.size }}\n{% endfor %}{{ photos.maps[0].dateFrom }} {{ photos.deep }} {{ photos.maps[0].url }} {{ photos.maps[0].width is undefined }}");
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
     assert!(ok, "{}", log);
     assert_eq!(
         std::fs::read_to_string(dir.join("dist/index.html")).unwrap(),
-        "images/camp/20011222_08.PNG /images/camp/20011222_08.PNG 20011222_08.PNG 20011222_08 png 2001-12-22 3x2 33\nimages/camp/2002-01-05-stump.png /images/camp/2002-01-05-stump.png 2002-01-05-stump.png 2002-01-05-stump png 2002-01-05 3x2 33\n3 /downloads/trail-map.png True"
+        "images/camp/20011222_08.PNG /images/camp/20011222_08.PNG 20011222_08.PNG 20011222_08 png 2001-12-22 name 3x2 33\nimages/camp/2002-01-05-stump.png /images/camp/2002-01-05-stump.png 2002-01-05-stump.png 2002-01-05-stump png 2002-01-05 name 3x2 33\nmodified 3 /downloads/trail-map.png True"
     );
+    // Sizes are kept between builds, and read again when a file changes.
+    let cache = std::fs::read_to_string(dir.join(".cache/ssqch/image-sizes.json")).unwrap();
+    assert!(cache.contains("\"images/camp/20011222_08.PNG\"") && !cache.contains("trail-map"), "{}", cache);
+    let wide: Vec<u8> = [&b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR"[..], &30u32.to_be_bytes(), &20u32.to_be_bytes(), b"\x08\x06\0\0\0\0\0\0\0\0"].concat();
+    write("images/camp/20011222_08.PNG", &wide);
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    assert!(std::fs::read_to_string(dir.join("dist/index.html")).unwrap().starts_with("images/camp/20011222_08.PNG /images/camp/20011222_08.PNG 20011222_08.PNG 20011222_08 png 2001-12-22 name 30x20 34\n"));
     // Used wrong: an unknown option, and a glob that leaves the project.
     write("src/_data/photos.js", b"import { files } from \"ssqch\";\nexport default files(\"images/*.jpg\", { size: true });\n");
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
@@ -1687,7 +1698,8 @@ fn import_moves_an_eleventy_site() {
         "  src/posts/posts.11tydata.json: eleventyComputed -> computed\n",
         "Create (1)\n  ssqch.config.js (a first draft, from .eleventy.js)\n",
         "  src/feed.11ty.js: JavaScript templates don't run in ssqch",
-        &format!("  package.json: @11ty/eleventy -> ssqch@^{}, scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve\n", env!("CARGO_PKG_VERSION")),
+        &format!("  package.json: @11ty/eleventy -> ssqch {} in devDependencies, scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve\n", env!("CARGO_PKG_VERSION")),
+        "  pnpm-workspace.yaml: pnpm waits a day before installing a new release, so if ssqch ",
         "  pnpm-lock.yaml: run `pnpm install` to update it for ssqch\n",
         "  package-lock.json: npm's lockfile, but the site uses pnpm: delete it (a host that installs from it gets Eleventy and no ssqch)\n",
         "  .eleventy.js: @11ty/eleventy-plugin-rss -> `rssPlugin()` from \"ssqch/rss\"",
@@ -1705,7 +1717,7 @@ fn import_moves_an_eleventy_site() {
     assert!(ok && log.contains("Done: 1 renamed, 4 edited, 1 created."), "{}", log);
     assert_eq!(
         std::fs::read_to_string(dir.join("package.json")).unwrap(),
-        format!("{{\n  \"scripts\": {{\n    \"build\": \"ssqch build\",\n    \"start\": \"ssqch serve\"\n  }},\n  \"dependencies\": {{\n    \"ssqch\": \"^{}\"\n  }},\n  \"packageManager\": \"pnpm@12.21.0\"\n}}\n", env!("CARGO_PKG_VERSION"))
+        format!("{{\n  \"scripts\": {{\n    \"build\": \"ssqch build\",\n    \"start\": \"ssqch serve\"\n  }},\n  \"packageManager\": \"pnpm@12.21.0\",\n  \"devDependencies\": {{\n    \"ssqch\": \"{}\"\n  }}\n}}\n", env!("CARGO_PKG_VERSION"))
     );
     assert!(std::fs::read_to_string(dir.join("src/posts/posts.data.json")).unwrap().contains("\"computed\""));
     let config = std::fs::read_to_string(dir.join("ssqch.config.js")).unwrap();

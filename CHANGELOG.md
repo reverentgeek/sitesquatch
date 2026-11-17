@@ -8,6 +8,35 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Added
+
+- `files()` gives each file a `dateFrom`, `"name"` or `"modified"`, so a data file can tell a
+  photo's date from its name from a modification time, which only says when the file was copied.
+- `slugify(title, { apostrophes: "separate" })` splits words at an apostrophe
+  (`drew-s-brownies`) instead of dropping it (`drews-brownies`, still the default), for a site
+  whose URLs were made that way. `slugger()` takes it too.
+
+### Changed
+
+- `files(pattern, { dimensions: true })` keeps image sizes in `.cache/ssqch/image-sizes.json` by
+  path, size and modification time, so a build reads only new and changed images, and reads
+  them on several threads. 1,043 photos: 5 ms with the cache, from about 18 ms (warm) or 110 ms
+  (cold) before.
+- `ssqch import eleventy` puts ssqch in `devDependencies`, pinned exactly, as the README says,
+  instead of where `@11ty/eleventy` was (an emptied `dependencies` goes). For a pnpm 11 site
+  without ssqch in `minimumReleaseAgeExclude`, it lists the five names to add.
+- The draft config follows the Eleventy config's trailing commas (none if it has none) and
+  quotes only the keys that need them (`{ images: "images" }`), unless the config quotes every
+  key. Gahlee House's draft passes its own ESLint config apart from `n/no-unpublished-import`,
+  which the README covers.
+- The README's Install section recommends excluding the five packages from pnpm's release age
+  by name, and says how to upgrade when they're excluded by version: add the new version's
+  lines beside the old ones, install, then remove the old ones. Swapping them locks every
+  install out (`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`) while the old version is under a day
+  old.
+
 ## 0.6.3 - 2026-11-17
 
 ### Added
