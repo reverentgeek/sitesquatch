@@ -687,6 +687,32 @@ migration guides it unblocks.
       the eslint.org clone has an uncommitted switch to `sassPlugin`), but eslint.org still
       needs its other languages (phase 4). Their broken internal links (25 on the Rust blog, 28
       on eslint.org; lists in `../trials/`) are worth reporting on their own.
+- [ ] **Migrating from WordPress:** WordPress runs a large share of the web and isn't a static
+      site generator, so the move is a bigger one than from Eleventy or Zola: content lives in a
+      database, URLs come from permalink settings, and themes and plugins do work a static site
+      has to replace. Research first, then write the guide (`docs/trailheads/from-wordpress.md`,
+      beside the others) from a real migration.
+  - [ ] Research (notes in `research/wordpress.md`): how people move today (the WXR export from
+        Tools > Export, the REST API, existing converters such as `wordpress-export-to-markdown`
+        and the Jekyll and Hugo exporters) and where they get stuck. List what a typical blog
+        has: posts and pages, categories and tags, authors, drafts and scheduled posts, featured
+        images and the `wp-content/uploads/` media library (with WordPress's resized copies),
+        Gutenberg block markup and classic HTML, shortcodes, embeds (YouTube, tweets), galleries,
+        comments, and plugins (SEO meta, redirects, contact forms, search).
+  - [ ] Decide what ssqch provides itself: an `ssqch import wordpress <export.xml>` that turns a
+        WXR file into Markdown (or HTML) pages with front matter, downloads or copies the media
+        into the site for `imagePlugin()`, and writes `aliases` for the old permalinks and
+        `?p=123` URLs, plus a by-hand list (shortcodes, embeds, forms, comments); or a guide
+        that leans on an existing converter. Weigh it against `jekyll` and `hugo` in the
+        `ssqch import` item above.
+  - [ ] Migrate a real WordPress site end to end (a local WordPress with a theme's sample
+        content, or a volunteer's blog) and compare the URLs, feed and sitemap with the live
+        site, as the trial migrations did. Record the gaps here.
+  - [ ] Write the guide: export, convert, images, keeping URLs (permalinks, `/category/` and
+        `/tag/` archives, the feed at `/feed/`), templates for the theme's layouts, replacing
+        plugins (search with Pagefind, forms and comments with a hosted service), and
+        deploying (link the deploy guides). Add a README pointer, an `ssqch docs wordpress`
+        answer and a CHANGELOG entry.
 
 Found by the trials, not fixed yet:
 
