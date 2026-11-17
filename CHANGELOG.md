@@ -8,6 +8,20 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## Unreleased
+
+### Fixed
+
+- `ssqch serve` with `serve.run` tools updates the browser once where it used to update it
+  twice. The first build waits for the tools' first compile (up to 2 seconds), so its pages link
+  the tools' files instead of a production build's fingerprinted ones, and the first page served
+  has its CSS. After a rebuild, the browser's update waits until the tools have stopped writing
+  (150 ms of quiet), so a template edit that adds Tailwind classes is one reload with the new
+  CSS. A tab left open from an earlier `ssqch serve` reloads once, after the new server's first
+  build.
+- `ssqch serve` says `swapping it in` for a stylesheet another tool wrote, instead of
+  `reloading`: the page swaps it without a reload.
+
 ## 0.6.2 - 2026-11-16
 
 ### Changed

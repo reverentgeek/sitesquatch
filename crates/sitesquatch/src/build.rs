@@ -199,6 +199,7 @@ pub fn build(cfg: &Config) -> Result<BuildReport> {
         unused: if cfg.verbose { unused_templates(&ctx, &layouts_used, &engines) } else { Vec::new() },
         drafts,
         first_build: recorded.first_build,
+        outputs: outputs.iter().map(|p| p.to_path_buf()).collect(),
         written: written.into_iter().map(|(p, _, _)| p).chain(generated).collect(),
         duration: started.elapsed(),
         ..Default::default()

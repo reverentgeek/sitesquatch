@@ -183,6 +183,10 @@ pub struct BuildReport {
     /// earlier build's files (`.cache/ssqch/output-files.json`).
     pub first_build: bool,
     pub written: Vec<PathBuf>,
+    /// Every file this build put in the output: pages, generated files,
+    /// bundles and passthrough copies (written or already up to date).
+    /// `ssqch serve` tells these from what its `serve.run` tools write.
+    pub outputs: Vec<PathBuf>,
     pub duration: std::time::Duration,
     pub timings: Vec<(String, std::time::Duration)>,
     /// Lines plugins add to the build summary (see [`Config::add_summary`]),

@@ -51,6 +51,65 @@ a tool finds out the same way. The only clue is a warning that scrolls past.
       replace Tailwind. JavaScript bundling in Rust costs too much binary for what it gives.
       Not started: with `serve.run` and the missing-file note, no gap has shown up yet.
 
+### `serve.run` races the build (found 2026-11-16)
+
+Found moving the Hendricks Truss site (`../hendrickstruss`, one Edge page, Tailwind 4.3.5's
+standalone CLI) from Eleventy to ssqch 0.6.2, using the README's Tailwind example as written:
+`beforeBuild` runs `tailwindcss --minify` for `ssqch build`, and `serve.run` runs
+`tailwindcss --watch` for `ssqch serve`. Every `pnpm dev` updates the browser a second time
+right after it starts, because ssqch starts the companion and builds without waiting for it:
+
+```text
+[ssqch] serve.run: pnpm exec tailwindcss -i src/css/styles.css -o _site/css/styles.css --watch
+[ssqch] Writing ./_site/index.html from ./src/index.edge (edge)
+Serving _site at http://localhost:8080/. Squatch Watch is on.
+[tailwindcss] ≈ tailwindcss v4.3.5
+[tailwindcss] Done in 36ms
+```
+
+The site is built and served in about 40 ms. Tailwind starts more slowly (`pnpm exec` adds
+its own startup), and a `--watch` run always compiles once and writes the file, even when it's
+the same CSS the last build left. ssqch sees the write and updates the page. A template edit
+has the same race: ssqch rebuilds the HTML and reloads, then Tailwind's watcher sees the same
+edit, writes the new classes, and the page updates again. Any site that copies the README's
+example gets this.
+
+Workaround (checked 2026-11-16 in a copy of the site): leave `serve.run` out and run
+`node_modules/.bin/tailwindcss` (no `--watch`) in `beforeBuild` on every build, serving
+included. ssqch waits for the hook, so the first page has its CSS and an edit is one update
+(a rebuild took about 110 ms, Tailwind about 20 ms of it). Tailwind writing into `_site/`
+during the hook didn't start another rebuild. The cost is the one the blog measured above:
+the tool reruns on every rebuild, which is fine for a small site and slow for the blog's
+PostCSS.
+
+What it was (checked 2026-11-16): Tailwind's first `--watch` write is told apart from the last
+build's by its contents, so it only counts when the CSS differs, and after `pnpm build` it does
+(the build left minified CSS; the watcher writes it unminified). A tab left open from the last
+`ssqch serve` also reloaded when the new server started, before Tailwind had written, and again
+for the CSS. On the blog the same race made the first build link the production build's
+fingerprinted `index.<hash>.css`, since PostCSS hadn't written `index.css` yet.
+
+- [x] **Combine updates that land close together:** after a rebuild, the browser's update waits
+      until the `serve.run` tools have stopped writing stylesheets and scripts to the output
+      (150 ms of quiet, 2 s more at most), and goes out as one: a template edit that adds
+      Tailwind classes is one reload with the new CSS (`settle` in `serve.rs`).
+- [x] **Skip writes that don't change a file:** already so; stylesheets and scripts are compared
+      by contents (`stamp`). The startup update came from contents that did differ.
+- [x] **Let a companion hold the first build:** freshly started tools get up to 2 s for their
+      first compile before the first build (`first_compile`), without a setting: a watcher
+      writes when it starts. Tools that write nothing at startup hold it the 2 s, and ssqch says
+      so. Update ids count from the server's start time, so a tab from an earlier server
+      reloads once, after the first build. A `waitFor` or `ready` option can still come if a
+      slower tool needs more than 2 s.
+- [x] **Check why it's a reload and not a swap:** it was both: the restart's reload, then a swap
+      of the changed CSS. The terminal said `(reloading)` for a swap; it says `(swapping it in)`
+      now. Editing `src/css/styles.css` (in the input folder) runs a build, which writes no
+      pages when nothing changed, and its update now waits for Tailwind's write.
+- [x] **The README's Tailwind example:** the watcher setup stays the recommended one; "CSS and
+      JavaScript" and the `serve` row say how the server waits for the tools.
+- [ ] **A long first compile:** a tool slower than 2 s to start (a big `tsc --watch`) still
+      races the first build. If one shows up, add `serve: { run: [{ command, waitFor }] }`.
+
 ### Jinja by default (0.5)
 
 Decided 2026-11-10: Jinja is the most familiar template language across ecosystems (Python's

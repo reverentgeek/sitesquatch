@@ -50,14 +50,14 @@ const NOT_FOUND_PAGE: &str = include_str!("not-found.html");
 /// Serve the site as `cfg` describes it. Changes to its configuration need a
 /// restart; [`serve_reloading`] picks those up too.
 pub fn serve(cfg: &Config, port: u16) -> Result<()> {
-    let live = Arc::new(Live::default());
+    let live = Arc::new(Live::starting_now());
     let site = Arc::new(RwLock::new(Site::of(cfg)));
     let server = listen(port, &site, &live)?;
     let companions = std::cell::RefCell::new(crate::companions::Companions::start(&cfg.build_context(), &cfg.serve_run)?);
     live.set_site(companions.borrow().names(), output_name(cfg));
     let say_where = || println!("{}", banner(&site.read().unwrap(), server, cfg.quiet));
     let restart = || restart_companions(&companions, cfg);
-    watch(cfg, &live, &|_| {}, &say_where, &restart, &|| {
+    watch(cfg, &live, true, &|_| {}, &say_where, &restart, &|| {
         println!("Restart to use the changed configuration.");
         false
     })
@@ -99,7 +99,7 @@ fn write_ready(path: &Path, site: &Site, port: u16, ok: bool) -> Result<()> {
 /// configuration doesn't load, the error is printed and the last good one
 /// keeps serving.
 pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() -> Result<Config>) -> Result<()> {
-    let live = Arc::new(Live::default());
+    let live = Arc::new(Live::starting_now());
     let site = Arc::new(RwLock::new(Site::of(&first)));
     if let Some(ready) = &options.ready_file {
         // One from an earlier run would say this server is ready already.
@@ -118,7 +118,8 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
         *site.write().unwrap() = Site::of(&cfg);
         // The configuration's companion processes, kept running across a reload that doesn't change
         // them (or their folders), and started again if one has stopped.
-        if !companions.borrow().runs(&cfg.build_context(), &cfg.serve_run) {
+        let started_tools = !companions.borrow().runs(&cfg.build_context(), &cfg.serve_run);
+        if started_tools {
             *companions.borrow_mut() = crate::companions::Companions::none();
             *companions.borrow_mut() = crate::companions::Companions::start(&cfg.build_context(), &cfg.serve_run)?;
         }
@@ -133,7 +134,7 @@ pub fn serve_reloading(first: Config, options: &ServeOptions, reload: &dyn Fn() 
             }
         };
         let restart = || restart_companions(&companions, &cfg);
-        let Reloaded = watch(&cfg, &live, &built, &say_where, &restart, &|| match reload() {
+        let Reloaded = watch(&cfg, &live, started_tools, &built, &say_where, &restart, &|| match reload() {
             Ok(new) => {
                 *next.borrow_mut() = Some(new);
                 true
@@ -319,11 +320,26 @@ fn banner(site: &Site, port: u16, quiet: bool) -> String {
 /// with); if not, the watch goes on. `say_where` prints the site's address,
 /// after each build. `restart` starts `serve.run`'s tools again, when
 /// something else deleted what they wrote.
-fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn Fn(), restart: &dyn Fn(), reload: &dyn Fn() -> bool) -> Result<Reloaded> {
+/// `started_tools` says the `serve.run` tools have just started (not kept across a reload), so the
+/// first build waits for their first compile ([`first_compile`]).
+fn watch(cfg: &Config, live: &Live, started_tools: bool, first_build: &dyn Fn(bool), say_where: &dyn Fn(), restart: &dyn Fn(), reload: &dyn Fn() -> bool) -> Result<Reloaded> {
     let ctx = cfg.build_context();
-    let ok = run_build(cfg, live);
-    first_build(ok);
-    say_where();
+    let tools = !live.0.lock().unwrap().tools.is_empty();
+    if tools && started_tools {
+        first_compile(&ctx.output_dir, cfg.quiet);
+    }
+    // What the build left, to tell a tool's write from the build's own: the output as it was,
+    // with the files the build put there as it left them.
+    let mut after_build = asset_stamps(&ctx.output_dir);
+    let report = build_and_report(cfg, live);
+    let ok = report.is_some();
+    for path in report.iter().flat_map(|r| &r.outputs).filter(|p| is_asset(p)) {
+        let path = dunce::canonicalize(path).unwrap_or_else(|_| path.clone());
+        match std::fs::metadata(&path) {
+            Ok(meta) => after_build.insert(path, (meta.len(), meta.modified().ok())),
+            Err(_) => after_build.remove(&path),
+        };
+    }
 
     let (tx, rx) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
@@ -366,13 +382,24 @@ fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn 
         }
     };
     watch_config_files(&mut watcher);
-    // What a `serve.run` tool wrote since the build looked, before the watch began, so it's
-    // known (and missed if something else deletes it).
-    live.changed(&ctx.output_dir);
+    // Changes seen while an update was held, for the loop to look at next.
+    let mut carried: Vec<PathBuf> = Vec::new();
+    if ok {
+        // What the tools write for the build (a Tailwind that scans the pages), so browsers get
+        // the page and its CSS as one update, and the ready file means they're both there. What
+        // a tool wrote before the watch began is in the output, and known from here (so it's
+        // missed if something else deletes it).
+        if tools {
+            settle(&rx, &output, &after_build, QUIET, &mut carried);
+        }
+        publish(cfg, live);
+    }
+    first_build(ok);
+    say_where();
     // What each changed source held the last time it was seen.
     let mut contents: std::collections::HashMap<PathBuf, Option<u64>> = Default::default();
     loop {
-        let mut paths = rx.recv()?;
+        let mut paths = if carried.is_empty() { rx.recv()? } else { std::mem::take(&mut carried) };
         // Debounce bursts of events (editors often write several times), for a second at
         // most: a folder that's written to all the time mustn't hold a rebuild back forever.
         let burst = std::time::Instant::now();
@@ -404,7 +431,13 @@ fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn 
             if !cfg.quiet {
                 println!("{} {}", crate::voice::FRESH_TRACKS, show(p));
             }
-            run_build(cfg, live);
+            // The tools watch the same sources, and write what this edit changes for them (new
+            // classes, say) a moment later: the update waits for that, so it's one.
+            run_build(cfg, live, &mut || {
+                if tools {
+                    settle(&rx, &output, &asset_stamps(&output), QUIET, &mut carried);
+                }
+            });
             if !cfg.quiet {
                 say_where();
             }
@@ -444,11 +477,13 @@ fn watch(cfg: &Config, live: &Live, first_build: &dyn Fn(bool), say_where: &dyn 
                 if output.exists() && !watch_paths.iter().any(|p| output.starts_with(p)) {
                     let _ = watcher.watch(&output, RecursiveMode::Recursive);
                 }
-                run_build(cfg, live);
+                run_build(cfg, live, &mut || {});
                 say_where();
             } else if let Some(file) = changed.iter().find(|f| is_asset(Path::new(f))) {
                 if !cfg.quiet {
-                    println!("{} {} (reloading)", crate::voice::FRESH_TRACKS, show(&ctx.output_dir.join(file)));
+                    // A stylesheet is swapped in place; a script reloads the page.
+                    let how = if changed.iter().all(|f| f.ends_with(".css")) { "swapping it in" } else { "reloading" };
+                    println!("{} {} ({})", crate::voice::FRESH_TRACKS, show(&ctx.output_dir.join(file)), how);
                 }
             }
         }
@@ -521,27 +556,131 @@ fn settled(paths: &[PathBuf]) -> Vec<Option<(u64, u64)>> {
     last
 }
 
-/// Build, print the summary (or the error), and tell the browsers. Returns
-/// whether it worked.
-fn run_build(cfg: &Config, live: &Live) -> bool {
+/// Build, print the summary (or the error), and tell the browsers. `hold` runs between a build
+/// that worked and telling them, to wait for what the `serve.run` tools write ([`settle`]).
+/// Returns whether it worked.
+fn run_build(cfg: &Config, live: &Live, hold: &mut dyn FnMut()) -> bool {
+    let ok = build_and_report(cfg, live).is_some();
+    if ok {
+        hold();
+        publish(cfg, live);
+    }
+    ok
+}
+
+/// Build and print the summary, or the error (which browsers are told at once). The report of
+/// a build that worked.
+fn build_and_report(cfg: &Config, live: &Live) -> Option<crate::config::BuildReport> {
     let recovered = live.0.lock().unwrap().error.is_some();
-    let ok = match crate::build(cfg) {
+    match crate::build(cfg) {
         Ok(report) => {
             crate::cli::print_report_after(cfg, &report, recovered);
-            let output = cfg.build_context().output_dir;
-            live.repeat_missing(&output);
-            live.changed(&output);
-            true
+            Some(report)
         }
         Err(e) => {
             // With the lines it's about, in the terminal and over the page.
             let said = crate::diagnostics::describe(&e, "build", &crate::diagnostics::Locator::of(cfg));
             eprintln!("{} {}", crate::diagnostics::red("Build failed:"), said);
             live.failed(said);
-            false
+            None
         }
-    };
-    ok
+    }
+}
+
+/// After a build that worked: tell the browsers what changed in the output.
+fn publish(cfg: &Config, live: &Live) {
+    let output = cfg.build_context().output_dir;
+    live.repeat_missing(&output);
+    live.changed(&output);
+}
+
+/// How long the `serve.run` tools have to start writing after a rebuild, and how long the output
+/// has to stay quiet once they have.
+const QUIET: Duration = Duration::from_millis(150);
+/// How long the tools have for their first compile when they've just started (`pnpm exec` and
+/// `npx` take a moment before the tool runs). Tools that write no CSS or JavaScript at startup
+/// hold the first build this long.
+const FIRST_COMPILE: Duration = Duration::from_secs(2);
+/// How much longer a tool that keeps writing can hold an update.
+const KEEPS_WRITING: Duration = Duration::from_secs(2);
+
+/// Wait for the `serve.run` tools' first compile, so the first build finds their files (a page
+/// links `/assets/index.css`, not the fingerprinted copy a production build left) and the first
+/// page served has its CSS: until a stylesheet or script in `output` changes, for
+/// [`FIRST_COMPILE`] at most, and then until they stay the same for [`QUIET`]. A watcher writes
+/// when it starts, even the contents that are there already.
+fn first_compile(output: &Path, quiet: bool) {
+    let started = std::time::Instant::now();
+    let mut last = asset_stamps(output);
+    let mut wrote_at: Option<std::time::Instant> = None;
+    while started.elapsed() < FIRST_COMPILE + KEEPS_WRITING {
+        std::thread::sleep(Duration::from_millis(40));
+        let now = asset_stamps(output);
+        if now != last {
+            last = now;
+            wrote_at = Some(std::time::Instant::now());
+        } else if let Some(at) = wrote_at {
+            if at.elapsed() >= QUIET {
+                return;
+            }
+        } else if started.elapsed() >= FIRST_COMPILE {
+            if !quiet {
+                crate::diagnostics::progress(&format!("[ssqch] serve.run's tools wrote no CSS or JavaScript in {} s; building without it", FIRST_COMPILE.as_secs()));
+            }
+            return;
+        }
+    }
+}
+
+/// Each stylesheet and script in `output`, by its resolved path, with its size and when it was
+/// written: what a build left, so a tool's write (even of the same contents) is told from it.
+fn asset_stamps(output: &Path) -> HashMap<PathBuf, (u64, Option<SystemTime>)> {
+    let output = dunce::canonicalize(output).unwrap_or_else(|_| output.to_path_buf());
+    walkdir::WalkDir::new(&output)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file() && is_asset(e.path()))
+        .filter_map(|e| Some((e.path().to_path_buf(), e.metadata().ok().map(|m| (m.len(), m.modified().ok()))?)))
+        .collect()
+}
+
+/// Hold an update until the `serve.run` tools have written what they write for it: until a
+/// stylesheet or script in `output` (resolved) differs from `before`, for `first` at most, and
+/// then until the output has been quiet for [`QUIET`] ([`KEEPS_WRITING`] more at most). Then
+/// browsers hear about the page and its new CSS at once, instead of the page first and its CSS
+/// a moment later. Other changes seen meanwhile go in `carried`.
+fn settle(rx: &mpsc::Receiver<Vec<PathBuf>>, output: &Path, before: &HashMap<PathBuf, (u64, Option<SystemTime>)>, first: Duration, carried: &mut Vec<PathBuf>) {
+    let started = std::time::Instant::now();
+    let cap = started + first + KEEPS_WRITING;
+    // A tool may have written already, between the build and now.
+    let mut wrote = asset_stamps(output) != *before;
+    let mut until = if wrote { started + QUIET } else { started + first };
+    loop {
+        let now = std::time::Instant::now();
+        let Some(left) = until.min(cap).checked_duration_since(now).filter(|d| !d.is_zero()) else { return };
+        match rx.recv_timeout(left) {
+            Ok(paths) => {
+                for path in paths {
+                    let path = dunce::canonicalize(&path).unwrap_or(path);
+                    if !path.starts_with(output) {
+                        carried.push(path);
+                        continue;
+                    }
+                    if !is_asset(&path) {
+                        continue;
+                    }
+                    // The build's own copy of a script (a passthrough file) reports a write too.
+                    let now = std::fs::metadata(&path).ok().map(|m| (m.len(), m.modified().ok()));
+                    if wrote || before.get(&path) != now.as_ref() {
+                        wrote = true;
+                        until = std::time::Instant::now() + QUIET;
+                    }
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => return,
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        }
+    }
 }
 
 /// What the browsers ask about: what changed, and whether the build works.
@@ -577,6 +716,14 @@ fn missing_message(url: &str, tools: &[String], output: &str) -> String {
 }
 
 impl Live {
+    /// Counting from now, in milliseconds since 1970: a browser that was watching an earlier
+    /// server holds a smaller number, so it reloads once this one has built (with the new
+    /// server's CSS), even when it had seen as many updates as this one has made.
+    fn starting_now() -> Self {
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        Live(Mutex::new(LiveState { id: now, ..Default::default() }))
+    }
+
     /// Who could write a missing file: the `serve.run` tools, and the output folder's name.
     fn set_site(&self, tools: Vec<String>, output_name: String) {
         let mut state = self.0.lock().unwrap();
@@ -987,6 +1134,74 @@ mod tests {
         assert_eq!(page_file("/notes.html", ""), "notes.html");
         assert_eq!(query_value("v=3&p=%2Fabout%2F", "p").as_deref(), Some("/about/"));
         assert_eq!(query_value("v=&p=%2F", "v").as_deref(), Some(""));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_update_waits_for_the_tools_writes() {
+        let dir = std::env::temp_dir().join(format!("ssqch-serve-settle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("css")).unwrap();
+        let dir = dunce::canonicalize(&dir).unwrap();
+        let css = dir.join("css/styles.css");
+        std::fs::write(&css, "a{}").unwrap();
+        std::fs::write(dir.join("index.html"), "home").unwrap();
+        let (tx, rx) = mpsc::channel();
+
+        // Nothing written: a rebuild's update waits the quiet window, no more.
+        let before = asset_stamps(&dir);
+        let mut carried = Vec::new();
+        let started = std::time::Instant::now();
+        settle(&rx, &dir, &before, QUIET, &mut carried);
+        assert!(started.elapsed() < QUIET * 3, "{:?}", started.elapsed());
+
+        // The build's own write of a page, and a source edit, don't count as the tool's; the
+        // edit is kept for later. The tool's write does, and the window starts again from it.
+        let source = dir.with_file_name("src-index.edge");
+        let writer = {
+            let (tx, css) = (tx.clone(), css.clone());
+            let page = dir.join("index.html");
+            std::thread::spawn(move || {
+                tx.send(vec![page, source]).unwrap();
+                std::thread::sleep(Duration::from_millis(400));
+                std::fs::write(&css, "a{color:red}").unwrap();
+                tx.send(vec![css]).unwrap();
+            })
+        };
+        let started = std::time::Instant::now();
+        settle(&rx, &dir, &before, Duration::from_secs(2), &mut carried);
+        let waited = started.elapsed();
+        writer.join().unwrap();
+        assert!(waited >= Duration::from_millis(400) + QUIET && waited < Duration::from_secs(1), "{:?}", waited);
+        assert_eq!(carried, [dir.with_file_name("src-index.edge")]);
+
+        // A tool that wrote before the wait began (during the build) is seen at once.
+        std::fs::write(&css, "a{color:green}").unwrap();
+        let started = std::time::Instant::now();
+        settle(&rx, &dir, &before, Duration::from_secs(2), &mut Vec::new());
+        assert!(started.elapsed() < QUIET * 3, "{:?}", started.elapsed());
+        drop(tx);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_browser_from_an_earlier_server_reloads_once_this_one_builds() {
+        let dir = std::env::temp_dir().join(format!("ssqch-serve-restart-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("index.html"), "home").unwrap();
+        // The earlier server had made one update; so has this one.
+        let earlier = Live::starting_now();
+        earlier.changed(&dir);
+        let seen = earlier.answer(None, "index.html", "")["id"].as_u64().unwrap();
+        std::thread::sleep(Duration::from_millis(5));
+        let live = Live::starting_now();
+        // Before the first build is told (it waits for the tools), nothing to do yet.
+        assert_eq!(live.answer(Some(seen), "index.html", "")["reload"], false);
+        live.changed(&dir);
+        assert_eq!(live.answer(Some(seen), "index.html", "")["reload"], true);
+        let now = live.answer(None, "index.html", "")["id"].as_u64().unwrap();
+        assert_eq!(live.answer(Some(now), "index.html", "")["reload"], false);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
