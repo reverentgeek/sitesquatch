@@ -154,14 +154,22 @@ pub fn load_data_file(path: &Path, extra: &[(String, DataLoader)]) -> Result<Opt
 
 /// Deep-merge `over` into `base`: objects merge recursively and arrays
 /// concatenate; everything else, or
-/// everything when `deep` is false, is replaced.
+/// everything when `deep` is false, is replaced. `render` is an engine chain, not a list to
+/// add to, so a page's `render: [njk]` replaces its folder's `[mdit]` (it was `mdit, njk`).
 pub fn merge(base: &mut Map, over: &Map, deep: bool) {
+    merge_level(base, over, deep, true);
+}
+
+/// Top-level keys that a deeper level replaces even when they're lists.
+const REPLACED: [&str; 1] = ["render"];
+
+fn merge_level(base: &mut Map, over: &Map, deep: bool, top: bool) {
     for (key, value) in over {
         match (base.get_mut(key), value) {
             (Some(Value::Obj(existing)), Value::Obj(incoming)) if deep => {
-                merge(Arc::make_mut(existing), incoming, deep);
+                merge_level(Arc::make_mut(existing), incoming, deep, false);
             }
-            (Some(Value::Arr(existing)), Value::Arr(incoming)) if deep => {
+            (Some(Value::Arr(existing)), Value::Arr(incoming)) if deep && !(top && REPLACED.contains(&key.as_str())) => {
                 Arc::make_mut(existing).extend(incoming.iter().cloned());
             }
             _ => {
@@ -245,5 +253,28 @@ mod tests {
         assert_eq!(parse_front_matter("---ruby\nx\n---\n").unwrap().1, "---ruby\nx\n---\n");
         assert!(parse_front_matter("---json\n[1]\n---\n").unwrap_err().to_string().contains("JSON front matter must be an object"));
         assert!(parse_front_matter("+++\ntitle = 1\n").unwrap_err().to_string().contains("closing `+++`"));
+    }
+
+    /// A page's `render` replaces its folder's (v8.dev: `[njk]` over `["mdit"]` was `mdit, njk`),
+    /// while `tags` and lists inside objects still join.
+    #[test]
+    fn render_replaces_and_tags_join() {
+        let (mut folder, _) = parse_front_matter("---
+render: [mdit]
+tags: [posts]
+site: { links: [a] }
+---
+").unwrap();
+        let (page, _) = parse_front_matter("---
+render: [njk]
+tags: [snacks]
+site: { links: [b] }
+---
+").unwrap();
+        merge(&mut folder, &page, true);
+        let list = |v: &Value| v.as_array().unwrap().iter().map(|x| x.to_js_string()).collect::<Vec<_>>().join(",");
+        assert_eq!(list(&folder["render"]), "njk");
+        assert_eq!(list(&folder["tags"]), "posts,snacks");
+        assert_eq!(list(&folder["site"].get("links")), "a,b");
     }
 }

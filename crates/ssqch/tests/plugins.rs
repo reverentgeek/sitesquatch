@@ -217,7 +217,7 @@ fn links_site(index: &[u8]) -> PathBuf {
     project(&[
         ("ssqch.config.js", LINKS_CONFIG),
         ("src/index.edge", index),
-        ("src/about.edge", b"---\npermalink: /about/\n---\n<h2 id=\"team\">Team</h2>"),
+        ("src/about.edge", "---\npermalink: /about/\n---\n<h2 id=\"team\">Team</h2><h2 id=\"tl%3Bdr\">tl;dr</h2><h2 id=\"café\">Café</h2>".as_bytes()),
         ("src/feed.xml", b"<feed/>"),
         ("src/_redirects", b"/old-post /about/ 301\n/archive/* /about/ 301\n"),
     ])
@@ -226,7 +226,7 @@ fn links_site(index: &[u8]) -> PathBuf {
 #[test]
 fn the_link_checker_passes_a_clean_site() {
     let root = links_site(
-        b"<h1 id=\"top\">Hi</h1><a href=\"/about/\">about</a><a href=\"/about/#team\">team</a><a href=\"about/\">relative</a><a href=\"#top\">top</a><a href=\"/feed.xml\">feed</a><a href=\"/old-post\">redirected</a><a href=\"/archive/2019/\">archived</a><a href=\"/downloads/missing.zip\">ignored</a><a href=\"https://example.com/nope\">external</a><a href=\"mailto:squatch@example.com\">mail</a>",
+        b"<h1 id=\"top\">Hi</h1><a href=\"/about/\">about</a><a href=\"/about/#team\">team</a><a href=\"/about/#tl%3Bdr\">as written</a><a href=\"/about/#caf%C3%A9\">decoded</a><a href=\"about/\">relative</a><a href=\"#top\">top</a><a href=\"/feed.xml\">feed</a><a href=\"/old-post\">redirected</a><a href=\"/archive/2019/\">archived</a><a href=\"/downloads/missing.zip\">ignored</a><a href=\"https://example.com/nope\">external</a><a href=\"mailto:squatch@example.com\">mail</a>",
     );
     std::fs::write(root.join("src/_redirects"), "/old-post /about/ 301\n/archive/* /about/ 301\n").unwrap();
     let config = String::from_utf8_lossy(LINKS_CONFIG).replace("  templateFormats: [\"edge\", \"md\"],", "  templateFormats: [\"edge\"],\n  passthrough: [\"src/_redirects\", \"src/feed.xml\"],");

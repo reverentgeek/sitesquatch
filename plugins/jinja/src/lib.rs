@@ -157,7 +157,7 @@ impl JinjaEngine {
             }
         });
 
-        // Escape like Nunjucks (`& < > " '`; minijinja also escapes `/`), and
+        // Escape like Nunjucks (`& < > " '`, and `\` in `.njk`; minijinja also escapes `/`), and
         // print nothing for none and undefined (minijinja prints `none`).
         let strict = engine_env.strict;
         env.set_formatter(move |out, state, value| {
@@ -168,11 +168,11 @@ impl JinjaEngine {
                 return Ok(());
             }
             let text = value.to_string();
-            let text = if value.is_safe() || matches!(state.auto_escape(), AutoEscape::None) { text } else { escape(&text) };
+            let text = if value.is_safe() || matches!(state.auto_escape(), AutoEscape::None) { text } else { escape(&text, nunjucks) };
             out.write_str(&text).map_err(|_| Error::new(ErrorKind::WriteFailure, "failed to write output"))
         });
         for name in ["escape", "e"] {
-            env.add_filter(name, |value: JValue| if value.is_safe() { value } else { JValue::from_safe_string(escape(&value.to_string())) });
+            env.add_filter(name, move |value: JValue| if value.is_safe() { value } else { JValue::from_safe_string(escape(&value.to_string(), nunjucks)) });
         }
         // Nunjucks' name for `tojson`, and its `truncate`.
         env.add_filter("dump", minijinja::filters::tojson);
@@ -673,11 +673,13 @@ fn truncate(value: String, length: Option<usize>, killwords: Option<bool>, end: 
     }
 }
 
-/// HTML-escape text the way Nunjucks does.
-fn escape(s: &str) -> String {
+/// HTML-escape text the way Nunjucks does: `&`, `<`, `>`, `"`, `'`, and for Nunjucks
+/// (`nunjucks`), `\` as `&#92;` too (Jinja leaves it).
+fn escape(s: &str, nunjucks: bool) -> String {
     let mut out = String::with_capacity(s.len() + 8);
     for c in s.chars() {
         match c {
+            '\\' if nunjucks => out.push_str("&#92;"),
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),

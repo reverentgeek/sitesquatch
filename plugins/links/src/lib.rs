@@ -387,7 +387,7 @@ pub fn check(ctx: &BuildContext, report: &BuildReport, options: &LinksOptions) -
             let reason = if target_path.is_empty() {
                 // `#top`: this page.
                 match fragment {
-                    Some(f) if anchors && !page.ids.contains(&f) => Some(format!("no id \"{}\" on this page{}", f, did_you_mean(suggest::closest(&f, page.ids.iter().map(String::as_str)), "#"))),
+                    Some(f) if anchors && !has_id(&page.ids, &f) => Some(format!("no id \"{}\" on this page{}", f, did_you_mean(suggest::closest(&f, page.ids.iter().map(String::as_str)), "#"))),
                     _ => None,
                 }
             } else if options.ignore.iter().any(|p| target_path.starts_with(p.as_str())) || redirected(&redirects, &target_path) {
@@ -405,7 +405,7 @@ pub fn check(ctx: &BuildContext, report: &BuildReport, options: &LinksOptions) -
                         Some(format!("not found{}", meant.get(&target_path).map(String::as_str).unwrap_or("")))
                     }
                     Some(file) => match (fragment, ids.get(file.as_path())) {
-                        (Some(f), Some(target_ids)) if anchors && !target_ids.contains(&f) => Some(format!("no id \"{}\" on that page{}", f, did_you_mean(suggest::closest(&f, target_ids.iter().map(String::as_str)), "#"))),
+                        (Some(f), Some(target_ids)) if anchors && !has_id(target_ids, &f) => Some(format!("no id \"{}\" on that page{}", f, did_you_mean(suggest::closest(&f, target_ids.iter().map(String::as_str)), "#"))),
                         _ => None,
                     },
                 }
@@ -478,6 +478,13 @@ fn url_of(output: &Path, file: &Path) -> String {
     }
 }
 
+/// Whether a `#fragment` names one of `ids`, as a browser finds it: the fragment as written
+/// first, then percent-decoded (`#caf%C3%A9` reaches `id="café"`, `#tl%3Bdr` reaches
+/// `id="tl%3Bdr"`).
+fn has_id(ids: &HashSet<String>, fragment: &str) -> bool {
+    ids.contains(fragment) || ids.contains(&percent_decode(fragment))
+}
+
 /// The URL path and fragment `link` points to, from a page at `page_url`.
 /// `None` for links that aren't checked (external, or nothing to check).
 /// An empty path means the page itself (`#top`).
@@ -487,7 +494,8 @@ fn resolve(page_url: &str, link: &str) -> Option<(String, Option<String>)> {
         return None;
     }
     let (rest, fragment) = match link.split_once('#') {
-        Some((r, f)) => (r, Some(percent_decode(f)).filter(|f| !f.is_empty())),
+        // As written: an id can hold `%` (markdown-it-anchor's `tl%3Bdr`); `has_id` decodes too.
+        Some((r, f)) => (r, Some(f.to_string()).filter(|f| !f.is_empty())),
         None => (link, None),
     };
     let path = rest.split('?').next().unwrap_or("");

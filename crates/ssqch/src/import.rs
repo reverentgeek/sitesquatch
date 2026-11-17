@@ -723,9 +723,13 @@ static ELEVENTY_COMMAND: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:\bnp
 
 /// An npm script with ssqch's commands for Eleventy's (`eleventy --serve` is
 /// `ssqch serve`), and the flags it couldn't carry over.
-fn rewrite_script(script: &str) -> (String, Vec<String>) {
+fn rewrite_script(script: &str, names: &[&str]) -> (String, Vec<String>) {
     let mut unknown = Vec::new();
     let out = ELEVENTY_COMMAND.replace_all(script, |c: &regex::Captures| {
+        let whole = c.get(0).unwrap();
+        if !is_eleventy_command(script, whole.start(), c.get(1).unwrap().start(), names) {
+            return whole.as_str().to_string();
+        }
         let mut command = "build";
         let mut flags: Vec<String> = Vec::new();
         let mut parts = c[1].split_whitespace().peekable();
@@ -772,6 +776,27 @@ fn rewrite_script(script: &str) -> (String, Vec<String>) {
     (out.into_owned(), unknown)
 }
 
+/// Whether the `eleventy` matched from `start` (to `word_end`, the end of the word) runs
+/// Eleventy, rather than being part of a name (`eleventy-watch`, `build:eleventy`,
+/// `eleventy.config.js`) or a script that a package manager runs (`npm run eleventy`,
+/// `run-s clean eleventy`, and `pnpm eleventy` or `yarn eleventy` when there's such a script).
+fn is_eleventy_command(script: &str, start: usize, word_end: usize, names: &[&str]) -> bool {
+    let part_of_name = |c: char| c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.' | '/' | '@' | '$');
+    if script[..start].chars().next_back().is_some_and(part_of_name) || script[word_end..].chars().next().is_some_and(part_of_name) {
+        return false;
+    }
+    // The words of this command before the match, after any `NAME=value` settings.
+    let command = script[..start].rsplit(['&', '|', ';']).next().unwrap_or("");
+    let words: Vec<&str> = command.split_whitespace().skip_while(|w| w.contains('=') && !w.starts_with('-')).collect();
+    match words.as_slice() {
+        [] => true,
+        ["npm" | "pnpm" | "yarn" | "bun", "run" | "run-script", ..] => false,
+        ["run-s" | "run-p" | "npm-run-all" | "npm-run-all2", ..] => false,
+        ["pnpm" | "yarn"] => !names.contains(&"eleventy"),
+        _ => true,
+    }
+}
+
 /// package.json with ssqch for Eleventy, in the dependencies and the scripts,
 /// and what's left: lockfiles to update or remove.
 fn package_files(dir: &Path, plan: &mut Plan) -> Result<()> {
@@ -812,9 +837,11 @@ fn package_files(dir: &Path, plan: &mut Plan) -> Result<()> {
     let mut unknown_flags = Vec::new();
     if let Some(scripts) = package.get_mut("scripts").and_then(|s| s.as_object_mut()) {
         let mut changed = false;
+        let names: Vec<String> = scripts.keys().cloned().collect();
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
         for (name, script) in scripts.iter_mut() {
             let Some(text) = script.as_str() else { continue };
-            let (rewritten, unknown) = rewrite_script(text);
+            let (rewritten, unknown) = rewrite_script(text, &names);
             if rewritten != text {
                 *script = serde_json::Value::String(rewritten);
                 changed = true;
@@ -1156,9 +1183,18 @@ mod tests {
             ("ELEVENTY_ENV=production eleventy --pathprefix=/gahlee/ --output dist", "ELEVENTY_ENV=production ssqch build --base /gahlee/ --output dist", ""),
             ("eleventy --formats=md,njk", "ssqch build", "--formats"),
             ("eslint src/**/*.js", "eslint src/**/*.js", ""),
+            // Script names stay: a11yproject.com's `start`, the blog's `run-s` and v8.dev's
+            // `npm run eleventy` all pointed at scripts that didn't exist after the import.
+            ("npm run eleventy-watch & npm run gulp-watch", "npm run eleventy-watch & npm run gulp-watch", ""),
+            ("run-s clean build:css build:eleventy build:prune", "run-s clean build:css build:eleventy build:prune", ""),
+            ("npm run clean && npm run eleventy && npm run html", "npm run clean && npm run eleventy && npm run html", ""),
+            ("pnpm run eleventy; yarn eleventy", "pnpm run eleventy; yarn eleventy", ""),
+            ("run-p eleventy watch:css", "run-p eleventy watch:css", ""),
+            ("eslint eleventy.config.js && DEBUG=Eleventy* eleventy", "eslint eleventy.config.js && DEBUG=Eleventy* ssqch build", ""),
+            ("npm run css && npx eleventy --serve", "npm run css && ssqch serve", ""),
         ];
         for (script, want, unknown) in cases {
-            let (out, flags) = rewrite_script(script);
+            let (out, flags) = rewrite_script(script, &["eleventy"]);
             assert_eq!((out.as_str(), flags.join(" ").as_str()), (want, unknown), "{}", script);
         }
     }

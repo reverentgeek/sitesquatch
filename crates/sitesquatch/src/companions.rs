@@ -65,6 +65,7 @@ impl Companions {
                 .env("SSQCH_SERVING", "true")
                 .env("SSQCH_INPUT", &ctx.input_dir)
                 .env("SSQCH_OUTPUT", &ctx.output_dir)
+                .env("PATH", crate::config::tool_path(&ctx.root))
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())

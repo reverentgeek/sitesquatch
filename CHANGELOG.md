@@ -15,6 +15,17 @@ a `v<version>` tag on a commit where that version matches.
 - The config `ssqch import eleventy` drafts leaves out `// Port each filter and shortcode here`
   when it ported every filter and shortcode, and puts it after the ported ones when some are
   left (the list at the end names them).
+- Commands in `beforeBuild`, `afterBuild` and `serve.run` find the tools a site installed: each
+  `node_modules/.bin` from the project's folder up goes in front of their `PATH`, as npm, pnpm
+  and yarn do for scripts. `{ run: "postcss ..." }` used to work under `npm run build` and fail
+  with `postcss: not found` under `ssqch build` (found moving the ReverentGeek blog and v8.dev).
+- A page's `render` replaces its folder's instead of joining it: `render: [njk]` over a
+  folder's `render: [mdit]` is `njk`, not `mdit, njk`. `render` is an engine chain, so the list
+  form now behaves like the string form. `tags` and other lists still join. A site that relied
+  on the joined chain lists every engine in the page's `render`.
+- `{{ title | slug }}`, Eleventy's filter, is refused with what differs: ssqch's `slugify` turns
+  `.` into `-` (`Node.js` is `node-js`, Eleventy's `slug` gives `node.js`), and how to keep the
+  old URLs with the `slugify` package. It used to suggest `sum`.
 
 ### Fixed
 
@@ -26,6 +37,15 @@ a `v<version>` tag on a commit where that version matches.
   longer moves the page to the second render pass when that include reads `collections`.
   Before, that left the page's `templateContent` empty in a feed or any other page that showed
   it. Only names inside template code count now.
+- `ssqch import eleventy` leaves script names alone in `package.json`: `npm run eleventy-watch`,
+  `npm run eleventy` and `run-s clean build:eleventy` stay as they are (the scripts they name
+  keep their names). It turned them into `npm run ssqch build` and the like, which pointed at
+  scripts that didn't exist. Only the `eleventy` command itself becomes `ssqch build`.
+- Nunjucks escapes `\` as `&#92;`, as Nunjucks does (`.njk` only; Jinja leaves it), so feeds and
+  pages with a backslash in escaped text match Eleventy's.
+- The link checker matches a `#fragment` as written before decoding it, as browsers do, so
+  `#tl%3Bdr` reaches markdown-it-anchor's `id="tl%3Bdr"`. It reported every such link as
+  broken (150 on v8.dev).
 
 ## 0.6.4 - 2026-11-17
 

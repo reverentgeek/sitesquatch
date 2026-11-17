@@ -382,9 +382,11 @@ Bugs:
 - [ ] **`Date#toString()` leaves out the zone name** (#13): `GMT-0500` without
       ` (Eastern Standard Time)`. Also `timeZoneName` in `Intl.DateTimeFormat` and
       `resolvedOptions().timeZone` (`undefined` today). The README says dates format like Node.
-- [ ] **The importer rewrote `npm run eleventy-watch` to `npm run ssqch build-watch`** (#2),
-      which broke `npm start`. Rewrite only the command word (at the start, or after `&&`, `&`,
-      `;`, `npx`), and rename `eleventy-*` scripts consistently or leave them alone.
+- [x] **The importer rewrote `npm run eleventy-watch` to `npm run ssqch build-watch`** (#2),
+      which broke `npm start`. The blog (`run-s ... build:eleventy`) and v8.dev
+      (`npm run eleventy`) hit it too. Done 2026-11-17: only the command is rewritten; a word
+      inside a name, or a script name after `npm run`, `pnpm`, `yarn`, `bun run`, `run-s`,
+      `run-p` or `npm-run-all`, stays (`is_eleventy_command`; test: `package_scripts_run_ssqch`).
 - [ ] **`ssqch serve` sometimes missed an edit made right after startup** (#21, 2 of 17 runs,
       while `serve.run`'s gulp was still on its first pass). One change event logged, the page
       never updated. Write a stress test that edits within a second of ready. May be related to
@@ -406,12 +408,15 @@ Importer (`ssqch import eleventy`), most of it silent before:
       `layout == "post"`, or emit `layoutAliases` (below). `layout: post` silently picked an
       unused `_includes/post.njk`. Also warn when a layout has no `{{ content }}`, or is
       `include`d elsewhere.
-- [ ] `.eleventyignore` becomes `ignore` globs (#6).
+- [ ] `.eleventyignore` becomes `ignore` globs (#6; v8.dev too: `**/_*.md` would have built a
+      partial as a page). Also `eleventyConfig.ignores.add()`, with paths resolved from the
+      project root to globs relative to the input folder.
 - [ ] `dataTemplateEngine` (#15): list data files with `{{ }}` or `{% %}` in their values, and
       unwrap `{{ '/x/' | url }}` when `pathPrefix` is `/`.
 - [ ] Packages that came with `@11ty/eleventy` (#19): before removing it, check the project's own
       `require`/`import`s (gulpfile, config, data) for packages that resolve only through it
       (`browser-sync`, `slugify`, `markdown-it`, `luxon`), and add them to `package.json`.
+      v8.dev lost `slugify` the same way.
 - [ ] List the edits that change output apart from the mechanical ones (#3:
       `eleventy.generator` becomes `ssqch.generator`, which adds a `content` to every page).
 - [ ] Flag `{{ date }}`-style printing of Dates (#13: Eleventy printed `Date#toString()` in local
@@ -419,8 +424,10 @@ Importer (`ssqch import eleventy`), most of it silent before:
 - [ ] Name the markdown-it options and plugins with no ssqch equivalent (`breaks`, `linkify`'s
       bare domains, `typographer`, markdown-it-anchor) instead of "ssqch renders Markdown
       itself", with the trailhead's recipe where there is one (#12, #25).
-- [ ] Maybe: `ssqch import eleventy --verify`: build with the project's own Eleventy into a
-      temporary folder (`TZ` pinned), build with ssqch, and run `ssqch diff`.
+- [ ] `ssqch import eleventy --verify` (or `--compare`): build with the project's own Eleventy
+      into a fresh copy (`TZ=UTC`, files written in checkout order, as `git archive` gives),
+      build with ssqch, and run `ssqch diff`. All three migrations ran this loop by hand
+      (v8.dev's `scripts/parity.sh`); it's what tells a person or an agent the move is done.
 
 Features for any site:
 
@@ -432,18 +439,28 @@ Features for any site:
       `text()` and attributes, `rewriteUrls(html, fn)` (`htmlToAbsoluteUrls`),
       `headings(html, { tags })`, and `toc()` taking an HTML string as well as `page.headings`
       (that would have replaced eleventy-plugin-nesting-toc).
-- [ ] `markdown.breaks` (a single newline becomes `<br>`; 374 of them on this site, #12, #25).
+- [ ] `markdown.breaks` (a single newline becomes `<br>`; 374 of them on this site, #12, #25;
+      24 pages on v8.dev). pulldown-cmark's `SoftBreak` becomes `HardBreak`, in lists and every
+      other block too (v8.dev's transform stand-in only handled `<p>`).
 - [ ] `markdown.autolinks: "fuzzy"` to link bare domains, as markdown-it's `linkify` does (#25).
-- [ ] Replacing the Markdown engine once (`engines.md`, or `markdown: { render }`) instead of a
-      custom engine plus `render: ["liquid", "mdit"]` in every directory's data (#12).
+- [ ] **Replacing the Markdown engine once** (`engines.md`, or `markdown: { render }`) instead of
+      a custom engine plus `render: ["liquid", "mdit"]` in every directory's data (#12). v8.dev
+      changed nine content files for it, because `render` from a folder's data reaches its
+      `.njk` pages too. Then `ssqch import eleventy` can carry a `setLibrary("md", ...)` over as
+      written: move with identical output first, switch to ssqch's Markdown page by page later.
 - [ ] `ssqch serve --host 0.0.0.0`, printing the LAN URL (#20).
 - [ ] `ssqch serve` ignores editor temp files (`.!*!*`, `*~`, `.#*`, `*.swp`, files that vanish
       within the debounce), and says an unchanged warning once per session (#20).
-- [ ] YAML timestamps as Dates in every key, as js-yaml does (#11).
+- [ ] YAML timestamps as Dates in every key, as js-yaml does (#11; v8.dev's `updated:` printed
+      `Invalid DateTime` with no warning). Or warn when a date-looking string reaches a date
+      filter.
 - [ ] `pagesTree`: parents that are only a key (`parent: Feature`), `nav.url`, `title` falling
       back to `key`, and docs on what `parent` matches (#23). Then
       `pagesTree(collections.all, { root: "Feature" })` replaces `eleventyNavigation`.
-- [ ] Incremental rebuilds in `ssqch serve` (#20: 460 ms for all 115 pages, Eleventy 1.0 350 ms).
+- [ ] Incremental rebuilds in `ssqch serve` (#20: 460 ms for all 115 pages, Eleventy 1.0 350 ms;
+      v8.dev 1.8 s, 0.28 s with a render cache in its config, Eleventy `--incremental` 0.05 s).
+      At least cache custom engines' output by source (`engines: { mdit: { render, cache: true }
+      }`).
 - [ ] Maybe: `minify()` options for html-minifier's habits (closing unclosed elements, the
       viewport `<meta>`, `class` whitespace), or document the differences (#24).
 - [ ] Maybe: `afterBuild` `run` hooks get the written files in `SSQCH_WRITTEN` (a JSON file), so
@@ -458,7 +475,11 @@ Familiar words for sites from Eleventy (`equivalents.rs` where they're names):
 - [ ] `rssPlugin()` gives the Eleventy plugin's filter names (`absoluteUrl`,
       `htmlToAbsoluteUrls`, `dateToRfc3339`/`rssDate`,
       `getNewestCollectionItemDate`/`rssLastUpdatedDate`), so feeds from its sample work (#5).
-- [ ] `slug`, `getPreviousCollectionItem`, `getNextCollectionItem` as aliases (#5).
+- [ ] `getPreviousCollectionItem`, `getNextCollectionItem` as aliases (#5).
+- [x] `slug`: an `equivalents.rs` hint, not an alias, since it differs from `slugify` (`Node.js`
+      is `node.js` in Eleventy, `node-js` in ssqch; 8 tag URLs on v8.dev). Done 2026-11-17.
+  - [ ] A `slugify` option that keeps what Eleventy's `slug` keeps (`.` and the like), so a site
+        keeps its URLs with a built-in.
 - [ ] Maybe: `collections: { sort: "eleventy" }` (date, then `inputPath` as a string), or
       document the tie-break and that defining `collections.all` replaces it (#18).
 - [ ] Maybe: `date: "created"` for undated pages (#22).
@@ -484,20 +505,205 @@ Docs (`docs/trailheads/from-eleventy.md` and the README):
 - [ ] An agent checklist for Eleventy moves (the case study's `ssqch-improvements.md` has a
       draft), in the trailhead or `ssqch docs`.
 
+### Moving the ReverentGeek blog and v8.dev from Eleventy (found 2026-11-17)
+
+Two more moves, after a11yproject.com. Items they share with it are in its section above, with
+their numbers added there.
+
+- **The ReverentGeek blog** at its last Eleventy commit (`3e708f20`: Eleventy 4.0 alpha, Edge
+  through `eleventy-plugin-edgejs`, eleventy-img, the RSS plugin, html-minifier-terser), moved
+  with ssqch 0.6.4 in `../trials/reverentgeek-blog` (notes:
+  `../trials/reverentgeek-blog-ssqch-migration-notes.md`, gotcha numbers below as `blog #n`).
+  Same URL set; visible text, `<meta>`, `<link>` and JSON-LD identical on all 161 pages. The 13
+  differences are improvements (GIFs keep animating, SVGs aren't rasterized) and one sitemap
+  swap from file times. A cold build took 21 s against 94 s.
+- **v8.dev** (Eleventy 3.1.8, 323 pages, markdown-it with eight plugins, Prism with custom
+  grammars, Nunjucks), moved with ssqch 0.6.4 in `../trials/v8.dev` (case study:
+  `../trials/v8.dev/ssqch-case-study/`, issue numbers as `v8 #n`, suggestions as `v8 A1`).
+  Byte-identical: `ssqch diff --exact` finds nothing in 929 files. Site generation 1.88 s against
+  0.70 s, on 103 MB against 289 MB: markdown-it and Prism on QuickJS are 85% of it. ssqch's
+  output was the same in 15 of 15 builds; Eleventy's sitemap changed in 1 of 15.
+
+Fixed 2026-11-17 (CHANGELOG, Unreleased):
+
+- [x] The importer's script rewriting (blog #1, v8 #1): see a11yproject.com's #2 above.
+- [x] Hook and `serve.run` commands get each `node_modules/.bin` from the project's folder up on
+      their `PATH` (blog #7, v8 #16; `config::tool_path`; test: `hooks_run_commands`).
+- [x] `render` replaces through the cascade instead of joining (v8 #7: `render: [njk]` over a
+      folder's `[mdit]` was `mdit, njk`). `data::merge`; test: `render_replaces_and_tags_join`.
+      `layout` and `permalink` are strings already. `pagination` is an object that still
+      merges, as in Eleventy.
+- [x] Nunjucks escapes `\` as `&#92;` (`.njk` only; v8 #11).
+- [x] The link checker matches a `#fragment` as written, then decoded (v8 #21: 150 false reports
+      for markdown-it-anchor's `id="tl%3Bdr"`). `has_id`; test:
+      `the_link_checker_passes_a_clean_site`.
+- [x] A `slug` row in `equivalents.rs` (v8 #20): see a11yproject.com's familiar words above.
+
+Bugs and messages:
+
+- [ ] **A dynamic permalink rendered by a Markdown engine** (v8 #6): with `render: mdit` from a
+      folder's data, `blog/tag.njk`'s permalink came back as `<p>/blog/tags/{{ tag | slug }}/</p>`.
+      Render permalinks with the first template language in the chain (or `markdownEngine`),
+      never a Markdown renderer or a custom engine that isn't one. Say so when a permalink still
+      has `{{`/`{%` or starts with `<p>` after rendering.
+- [ ] **Group output conflicts by path** (v8 #6): one line with a count, not 58 lines of
+      `blog/tag.njk and blog/tag.njk both write to ...`.
+- [ ] **`ssqch inspect` answers when the build would fail** (v8 #8, v8 A6): report conflicts and
+      the like as warnings, then the page's data. The tool for finding out why data is wrong has
+      to work when it is.
+- [ ] **Name the missing Node API** (v8 #9): `fs.openSync isn't available in ssqch` instead of
+      QuickJS's `not a function`. And add what header readers need: `fs.openSync`, `fstatSync`,
+      `readSync`, `closeSync`, `fs.promises.open` with `FileHandle.read`/`close` (image-size,
+      file-type).
+- [ ] **`punycode` (and `node:punycode`) as a built-in module** (v8 #4): markdown-it 13 and older
+      and many URL packages require it. Until then the error could say `npm install punycode`.
+- [ ] **When a package fails to load, name the package that was imported** (blog #3:
+      `@11ty/eleventy-img` failed as `brotli-size/dist/index.js: cannot read property
+      'nodejs.util.promisify.custom'`), and for known Eleventy packages, ssqch's replacement
+      (`image()` from "ssqch/image").
+- [ ] **`url` in Edge** (blog #4): the trailhead and `ssqch docs url` say `url` works, but in an
+      Edge template it's `` `url` is not a function``. Add it to Edge, or fix both docs.
+- [ ] **`ssqch diff` treats `'` and `&#39;` in an id as different ids** (v8 #23, "links to them
+      break"). Decode character references in attribute values before comparing.
+- [ ] **Warn when two passthrough sources write one file** (v8 #19), unless they're identical.
+- [ ] Copied GIFs and SVGs count as "encoded" on every build and aren't kept in
+      `.cache/ssqch/img` (blog #10): cache them, and count them as copied.
+- [ ] `image()` and `imageUrl()` take different kinds of path; say which `image()` takes, next to
+      `imageUrl()`'s (blog #15).
+- [ ] The wait for `serve.run`'s first compile is 2 s (blog #14: Tailwind took longer and the
+      first page warned). Wait while a watcher is still on its first build, or make it a
+      setting.
+- [ ] Don't rebuild for files nothing in the build reads (v8 #18: saving a stylesheet only
+      PostCSS reads rebuilt the site, 1.6 s, 0 pages changed), or a `watchIgnore`.
+
+Importer (`ssqch import eleventy`), beyond the items above:
+
+- [ ] **Follow `config` into helper modules** (blog #2): `.eleventy.js` called
+      `registerSiteFilters(config)`, and none of its 11 filters, 2 collections or the transform
+      were listed. At least list the call under "By hand"; better, follow the import and list
+      the `addFilter`/`addCollection`/`addTransform` calls with file and line.
+- [ ] **The draft's header promises a list that isn't there** (blog #2: "What it couldn't carry
+      over is listed at the end"). Write the list into the config, or drop the sentence.
+- [ ] Scan `_data/**/*.js` and other modules for Eleventy packages (blog #3): eleventy-img in a
+      data file becomes `image()`/`imageUrl()`, eleventy-fetch becomes `fetch(..., { cache })`.
+- [ ] Concrete answers for more plugins (blog): `eleventy-plugin-edgejs` isn't needed (Edge is
+      built in), `eleventy-plugin-broken-links` is `linksPlugin()`, an html-minifier-terser
+      transform is `minifyPlugin()`, `setDataDeepMerge(true)` is the default.
+- [ ] Markdown defaults that change markup (blog #5, #6): write `markdown: { headingIds: false }`
+      when the site uses markdown-it without markdown-it-anchor (380 headings changed on the
+      blog), and say what `linkedImages` does when the site links to images.
+- [ ] What Eleventy does to a `setLibrary("md", ...)` library (v8 #3): `md.disable("code")`
+      (ssqch's `indentedCode: false`), and the syntax-highlight plugin's `highlight` with
+      `lineSeparator: "<br>"`. Say that `markdown: { highlight: true }` changes the markup and
+      class names, so a Prism theme stops applying.
+- [ ] Flag templates inside `addPassthroughCopy` folders (v8 #12: Eleventy renders and copies
+      `src/_img/avatars/README.md`, ssqch only copies it).
+- [ ] Note date code that uses the machine's time zone (luxon's `fromJSDate` without `zone`,
+      `toLocaleDateString` without `timeZone`), and `pagination: { data: collections }`, whose
+      names come in another order (v8 #13).
+- [ ] `ELEVENTY_ENV=` prefixes in scripts (blog #1): say ssqch reads `SSQCH_ENV` or `--env`,
+      or map it.
+- [ ] `ssqch import --format json` (each item with `file`, `line`, `kind` and the ssqch
+      equivalent), and `--help` without the build-only options (`--base`, `--offline`,
+      `--env`, `--verbose`; v8 #26).
+
+Markdown, so a site can drop markdown-it (v8 B2; with them v8.dev would generate in 0.6-0.85 s,
+and 285 of 323 pages already match with hooks):
+
+- [ ] **Implicit figures** (74 pages): an image alone in a paragraph becomes `<figure>` with a
+      `<figcaption>` from its alt text (markdown-it-implicit-figures), as `markdown: { figures:
+      true }` or an image hook that knows it's alone. A transform can't do it: it doesn't reach
+      `templateContent`, so feeds differ (v8 #24).
+- [ ] **The alt text as HTML in the image hook** (`image.altHtml`, 25 pages): links and code in
+      a caption.
+- [ ] Attributes on images, links and blocks (`![](a.png){.no-darkening}`, `{#id}` after a
+      paragraph; markdown-it-attrs, which ssqch has for headings only; 3 pages).
+- [ ] markdown-it-multimd-table's tables (`^^` rowspan, multi-line cells holding code fences),
+      or a table and cell hook (3 pages).
+- [ ] markdown-it's URL normalization (`%` becomes `%25`, as mdurl does; 1 page).
+- [ ] **Prism-compatible highlighting** (v8 B3): `markdown: { highlight: { classes: "prism" } }`,
+      Prism's `token keyword` classes and `language-x` on `<pre>` and `<code>`, line marks, and
+      `lineSeparator`, so a site keeps its Prism theme. Most Eleventy sites with code use the
+      syntax-highlight plugin; the importer could map it exactly.
+
+Features for any site:
+
+- [ ] **`pagination.before(data, fullData)`** (v8 #13): sort, filter or map before chunking, in
+      data files and the config.
+- [ ] **`ssqch diff` for migrations** (blog #8, v8 C10): it wasn't usable as is for the blog
+      (161 pages, about 25,000 lines of serialization noise). Treat as equal what browsers do:
+      attribute order, `defer` and `defer="defer"`, `<path/>` and `<path></path>`, spacing in
+      `srcset` and `sizes`. Recognize eleventy-img names (`/img/<10 chars>-<width>.<ext>`) as it
+      does 8-hex fingerprints. Compare a feed's escaped `<content>` as HTML. Say "same entries
+      in another order" for reordered XML and lists. Add `--exclude` (the blog needed nine
+      `--only`s). And `--format json` with a kind per change (`order`, `dates`, `entities`,
+      `whitespace`, `content`) for agents (v8 F4).
+- [ ] Link checker: read redirects from `firebase.json` and `vercel.json` (v8 #21: 324 false
+      reports), and let `ignore` take fragments a script handles (`ignore:
+      ["#navigation-toggle"]`, 322 reports). `redirectsPlugin({ firebase: true })` could write
+      them.
+- [ ] SVG sizes in `files({ dimensions: true })`, from `width`/`height` or the `viewBox` (v8 #22).
+- [ ] Image sizes without re-encoding (v8 C7): `width`, `height` and `loading="lazy"` on every
+      local `<img>`, an `@2x` file as `srcset`, and inline SVG on request, for sites that
+      already ship optimized images.
+- [ ] URLs without the trailing slash (`trailingSlash: false`, v8 C5): `page.url` is
+      `/blog/foo`, and `ssqch serve` answers it from `blog/foo/index.html` without a redirect,
+      as Firebase's `cleanUrls` and Netlify's pretty URLs do.
+- [ ] A time zone for the build's JavaScript and date filters (`timeZone: "UTC"`, v8 C11): 137 of
+      v8.dev's pages differ between a laptop in EST and CI in UTC.
+- [ ] A fixed date for undated pages (`dateFallback: "git"`, v8 C9), so their order and
+      `<lastmod>` don't depend on when a checkout wrote the files. All three moves had a sitemap
+      that changed with file times.
+- [ ] HTML minifying with html-minifier-terser's common options (v8 C3: `removeOptionalTags`,
+      `removeAttributeQuotes`, `collapseBooleanAttributes`, `decodeEntities`, `sortAttributes`,
+      inline CSS and JS), and CSS, XML and JSON minifying (v8 C4: Lightning CSS, feeds,
+      manifests). html-minifier-terser was 1.1 s of v8.dev's 3.5 s build.
+- [ ] Build-time components for custom tags in Markdown and HTML (v8 C8:
+      `<feature-support chrome="71">` rendered by `_includes/components/feature-support.*`, 45
+      pages). `elementsPlugin` is the client-side half.
+
+Docs:
+
+- [ ] Trailhead, "Things that work differently": the defaults that change markup (heading ids,
+      `linkedImages`, GIFs kept animated, SVGs not rasterized, `defer="defer"`-style differences
+      that come from eleventy-img's rewriter); only `date` is a date; `pagination: { data:
+      collections }` order; removing `@11ty/eleventy` removes what came with it; a file in a
+      passthrough folder is copied, not rendered. v8.dev's `suggestions.md` (E) has text to
+      start from.
+- [ ] Trailhead, "Keeping markdown-it": the engine, `render` in folder data and `render: njk` on
+      their other templates (string form until the cascade fix shipped; now either), what
+      Eleventy does to the library, `npm install punycode`, and the speed to expect (v8.dev:
+      1.9 s against 0.7 s). Shorter once `markdown: { render }` lands.
+- [ ] Trailhead, Plugins table: eleventy-img in data files (`Image(src, opts)` becomes
+      `await image(src, { widths, formats })`, with the result's shape), and an `Image()`-based
+      social image as `imageUrl(src, { width: 1200, format: "png" })`; the RSS plugin 1.x names.
+- [ ] Trailhead, "Checking the move": `TZ=UTC`, fresh copies (`git archive HEAD | tar -xmf -`),
+      the `--ignore` pattern for eleventy-img names, `--exact` last.
+- [ ] README: hook commands should write to `$SSQCH_OUTPUT` so `--output` works (v8 #17); what
+      `node:fs` doesn't have; transforms don't reach `templateContent`, so Markdown features
+      belong in render hooks (v8 #24).
+- [ ] A migration recipe in `ssqch docs agents` (v8 F6): baseline with `TZ=UTC` from fresh
+      copies, `ssqch diff`, fix the largest group, repeat, finish with `--exact`.
+
 ### Faster JavaScript: an opt-in Node or Bun runtime (2026-11-17)
 
 QuickJS is small and starts fast, but it's 10-100x slower than V8 or JavaScriptCore on code that
 parses HTML in JavaScript: it copies substrings (`html = html.substring(n)` per token goes
-quadratic), and it has no JIT. On a11yproject.com, html-minifier took 66 s for 112 pages (about
-240 ms per page; Node 2-3 ms), cheerio's TOC 830 ms (Node about 70 ms), and markdown-it with
-Prism about 220 ms. Sites moving from Node generators bring these packages. The measurements
-from 2026-11-10 (the Bun item under "More template languages") say per-call IPC costs more than a
-QuickJS call (Bun 22 µs, Node 12 µs, QuickJS 8 µs; batched 3 µs), and lazy views can't cross a
-process. So an external runtime pays only for coarse work: whole passes, or JavaScript that runs
-long per call.
+quadratic), and it has no JIT. On a11yproject.com, html-minifier took 66 s for 112 pages (about 240
+ms per page; Node 2-3 ms), cheerio's TOC 830 ms (Node about 70 ms), and markdown-it with Prism about
+220 ms. On v8.dev (323 pages), markdown-it took about 1.1 s and Prism 0.3 s: 85% of a 1.88 s build
+that Eleventy does in 0.70 s. With ssqch's own Markdown and hooks instead, v8.dev generates in 0.85
+s with Prism through a fence hook and 0.61 s with ssqch's highlighter (285 of 323 pages identical
+already; the Markdown items in the section above close most of the rest). So two routes compete for
+the same time: a faster JavaScript runtime, and native features that make the JavaScript
+unnecessary. The research should weigh both per site. Sites moving from Node generators bring these
+packages. The measurements from 2026-11-10 (the Bun item under "More template languages") say
+per-call IPC costs more than a QuickJS call (Bun 22 µs, Node 12 µs, QuickJS 8 µs; batched 3 µs), and
+lazy views can't cross a process. So an external runtime pays only for coarse work: whole passes, or
+JavaScript that runs long per call.
 
 - [ ] Research first (notes in `research/js-runtimes.md`): where config JavaScript spends its
-      time on real sites (the blog, a11yproject.com, Gahlee House, eslint.org), with
+      time on real sites (the blog, a11yproject.com, v8.dev, Gahlee House, eslint.org), with
       `--profile`. Compare: QuickJS with fixes (rope or shared substrings, if upstream or
       `rquickjs` allows), QuickJS-ng, an embedded V8 (`deno_core`/`rusty_v8`: binary size,
       build time, Windows), and an external Node or Bun (the project's own, found on `PATH` or
@@ -515,8 +721,11 @@ long per call.
   - Something like `js: { runtime: "node" | "bun" | "quickjs" }` (default `quickjs`), per
     function or per file, with a clear error when the runtime isn't installed, and the same
     output whichever runs.
-- [ ] Measure each against a11yproject.com (its config has `HTMLMIN=node|quickjs|native`) and
-      the blog before building it. Keep QuickJS the default: no install, and the same output
+- [ ] Measure each against a11yproject.com (its config has `HTMLMIN=node|quickjs|native`),
+      v8.dev (its `scripts/bench.py`, and `native-experiment/` for the native route) and the
+      blog before building it. The cheapest test of the coarse shape: v8.dev's `mdit` engine
+      batched to one Node process per build (every page's source in, every page's HTML out)
+      against 1.1 s in QuickJS. Keep QuickJS the default: no install, and the same output
       on every machine.
 
 ### Jinja by default (0.5)

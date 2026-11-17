@@ -667,6 +667,16 @@ impl Config {
 /// `SSQCH_SERVING` (`true` or `false`), `SSQCH_INPUT` and `SSQCH_OUTPUT` (the
 /// folders, absolute). A failure (or a program that can't start) is an error
 /// naming the command.
+/// `PATH` for a command a site runs (hooks, `serve.run`): each `node_modules/.bin` from the
+/// project's folder up, first, as npm, pnpm and yarn give their scripts, so `postcss` works
+/// under `ssqch build` as it does under `npm run build`.
+pub fn tool_path(root: &std::path::Path) -> std::ffi::OsString {
+    let root = std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf());
+    let bins = root.ancestors().map(|dir| dir.join("node_modules").join(".bin")).filter(|bin| bin.is_dir());
+    let rest: Vec<std::path::PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    std::env::join_paths(bins.chain(rest)).unwrap_or_else(|_| std::env::var_os("PATH").unwrap_or_default())
+}
+
 pub fn run_command(ctx: &BuildContext, event: &str, command: &str, quiet: bool) -> Result<()> {
     if !quiet {
         crate::diagnostics::progress(&format!("[ssqch] {}: {}", event, command));
@@ -690,6 +700,7 @@ pub fn run_command(ctx: &BuildContext, event: &str, command: &str, quiet: bool) 
         .env("SSQCH_SERVING", if ctx.serving { "true" } else { "false" })
         .env("SSQCH_INPUT", &ctx.input_dir)
         .env("SSQCH_OUTPUT", &ctx.output_dir)
+        .env("PATH", tool_path(&ctx.root))
         .status()
         .map_err(|e| anyhow::anyhow!("{}: couldn't run `{}`: {}", event, command, e))?;
     if !status.success() {

@@ -587,6 +587,15 @@ fn quotes_in_prose_and_comments_dont_change_the_output() {
     let read = |path: &str| std::fs::read_to_string(dir.join("dist").join(path)).unwrap();
     assert_eq!(read("feed.xml"), "[41]");
     assert_eq!(read("comment/index.html"), "A[3]\n\nB[3] ok");
+
+    // Nunjucks escapes `\` as `&#92;` (v8.dev's feeds); Jinja leaves it.
+    write("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"njk\", \"jinja\"] };\n");
+    write("src/slash.njk", "---\nwin: 'C:\\trail <a>'\n---\n{{ win }} {{ win | escape }} {{ win | safe }}");
+    write("src/slash2.jinja", "---\nwin: 'C:\\trail <a>'\n---\n{{ win }}");
+    let (ok, log) = ssqch(&["build", "--root", d]);
+    assert!(ok, "{}", log);
+    assert_eq!(read("slash/index.html"), "C:&#92;trail &lt;a&gt; C:&#92;trail &lt;a&gt; C:\\trail <a>");
+    assert_eq!(read("slash2/index.html"), "C:\\trail &lt;a&gt;");
 }
 
 #[cfg(feature = "handlebars")]
@@ -855,6 +864,15 @@ fn hooks_run_commands() {
     assert!(ok, "{}", log);
     assert!(log.contains("[ssqch] afterBuild: mkdir -p"), "{}", log);
     assert_eq!(std::fs::read_to_string(dir.join("dist/search/index.js")).unwrap(), "production false\n");
+
+    // A tool installed in the project's node_modules runs by name, as in an npm script.
+    std::fs::create_dir_all(dir.join("node_modules/.bin")).unwrap();
+    std::fs::write(dir.join("node_modules/.bin/pinecone"), "#!/bin/sh\necho crunch > \"$SSQCH_OUTPUT/snack.txt\"\n").unwrap();
+    std::process::Command::new("chmod").arg("755").arg(dir.join("node_modules/.bin/pinecone")).status().unwrap();
+    std::fs::write(dir.join("ssqch.config.js"), "export default { dirs: { input: \"src\", output: \"dist\" }, afterBuild: { run: \"pinecone\" } };\n").unwrap();
+    let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
+    assert!(ok, "{}", log);
+    assert_eq!(std::fs::read_to_string(dir.join("dist/snack.txt")).unwrap(), "crunch\n");
 
     std::fs::write(dir.join("ssqch.config.js"), "export default { beforeBuild: { run: \"exit 3\" } };\n").unwrap();
     let (ok, log) = ssqch(&["build", "--root", d, "-q"]);
