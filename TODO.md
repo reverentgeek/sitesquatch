@@ -11,6 +11,56 @@ Finished work, and the reasons and measurements behind it, are in `docs/archive/
 (everything up to 0.7.0) and the changelog. When a section here is done, move it to the archive
 rather than letting ticked items pile up.
 
+## The move to Node (decided 2026-11-17)
+
+ssqch becomes a TypeScript program on Node, using the JavaScript libraries themselves for templates
+and front matter, with Rust plugins as `.wasm` files. The plan, the decisions and how to
+run the work with coding agents are in `docs/node-migration.md`; the study and the two spikes are in
+`research/architecture/` (`round-3-spikes.md`). Why: a spike core builds 10,000 pages in 1.30 s on
+one thread (0.7.0: 1.15 s on 15 cores; Eleventy 7.78 s) and v8.dev's exact port in 0.54 s from its
+unchanged config (0.7.0: 1.72 s), byte-identical; Node runs all 21 tools the next migrations bring
+(QuickJS runs 4); and a Rust core under Node added 0.2 s or less except on heavy transforms. The
+contract (`ssqch.d.ts`, commands, JSON reports, diagnostic codes, the voice) doesn't change. The
+release is 0.8.0, "Breaking" in full; 0.7.x gets fixes until then.
+
+This replaces "2. Faster JavaScript" and "Node compatibility (QuickJS)" below, and the parked Linux
+ARM builds, and it settles several "Silent wrong answers" (YAML dates as js-yaml makes them, `Date`
+and `Intl` time zones, `templateContent` read before its page renders). Those stay listed for 0.7.x
+until 0.8 ships.
+
+- [ ] **Stage 0, gates:** G2, the blog on Node 22, 24 and 26 with `ssqch diff --exact` (the spike is
+      already byte-identical on all three for the scale site and v8.dev); G3, sharp against ssqch's
+      encoders at equal measured quality on the blog's photos; G4, Jinja through `minijinja-js`
+      against Nunjucks; G5, ssqch's Markdown and highlighter built as `.wasm` and run in V8,
+      byte-identical to 0.7.0 on the blog's posts.
+- [ ] **Decide** D1 to D7 in `docs/node-migration.md`: the default template language, ssqch's
+      Markdown and highlighter as `.wasm` or markdown-it, the minifier, images, the lowest Node
+      version (22.18 proposed), the version and the last Rust release, the standalone executable.
+- [ ] **Stage 1, the oracle:** `cli.rs` as black-box tests run against `SSQCH_BIN`, and 0.7.0's
+      output frozen for every example, the starters, the blog and the trial ports; in CI on Linux,
+      macOS and Windows.
+- [ ] `AGENTS.md`: a section for `packages/ssqch/` (commands, `node --test`, `tsc --noEmit`,
+      conventions) before stage 2.
+- [ ] **Stage 2, the core** in `packages/ssqch/`, from the spike core: config and validation, data,
+      the cascade (with what `inspect` needs), computed data, collections, pagination, permalinks,
+      layouts, transforms, hooks, passthrough, drafts, `base`, `leaveNoTrace`, the summary,
+      `--format json`, diagnostics with file and line for every engine, the voice. A CI benchmark:
+      10,000 pages in 2 s or less on one thread, v8.dev in 0.72 s or less.
+- [ ] **Stage 3, engines:** Nunjucks or Jinja (D1), liquidjs, edge.js, handlebars, mustache, ejs;
+      Markdown (D2); front matter in YAML, TOML and JSON; async filters.
+- [ ] **Stage 4, checks and tools:** schemas and `types`, links, `diff`, `inspect`, footprint and
+      budgets, `docs`, `new`, `init` and the starters, `capabilities`.
+- [ ] **Stage 5, plugins:** images (D4), rss, minify (D3), assets, sitemap, redirects, Sass,
+      elements, themes; the Rust plugin SDK (`ssqch-plugin` crate, the `.wasm` loader, an example,
+      and docs on when a Rust plugin pays).
+- [ ] **Stage 6, the dev server**, reloading a changed config from a bundled temporary copy.
+- [ ] **Stage 7, importers:** Eleventy and Zola.
+- [ ] **Stage 8, distribution:** the compiled, bundled npm package (sharp its only dependency), the
+      standalone executable (D7) for Homebrew and the install script, `setup-ssqch`, Netlify; retire
+      `dist` and the binary-only release steps; CI installs the packed tarball.
+- [ ] **Stage 9, Blog:** move the blog, then the examples, starters and trial ports; the README,
+      trailheads, changelog and benchmarks; `AGENTS.md` for the TypeScript codebase. Release 0.8.0.
+
 ## How this list works
 
 **Now** is what to work on next, in order. **Next** follows it. The **Backlog** is grouped by area,
@@ -49,6 +99,8 @@ Lit's server rendering or the site's highlighting styles.
 - [ ] Document both, and use them to measure the sites in "Faster JavaScript" below.
 
 ### 2. Faster JavaScript: an opt-in Node or Bun runtime
+
+Superseded by "The move to Node" above. Kept for 0.7.x until 0.8 ships.
 
 QuickJS is small and starts fast, but it's 10-100x slower than V8 or JavaScriptCore on code that
 parses HTML in JavaScript: it copies substrings (`html = html.substring(n)` per token goes
@@ -288,6 +340,8 @@ diff, fix the biggest group, repeat.
       stream pages out if a bigger site needs it.
 
 ### Node compatibility (QuickJS)
+
+Superseded by "The move to Node" above: on Node, every Node API and package works. For 0.7.x only.
 
 - [ ] Name the missing Node API (v8 #9): `fs.openSync isn't available in ssqch` instead of QuickJS's
       `not a function`. Add what header readers need: `fs.openSync`, `fstatSync`, `readSync`,
