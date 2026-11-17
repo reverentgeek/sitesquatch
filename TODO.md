@@ -49,8 +49,9 @@ until 0.8 ships.
       run against `SSQCH_BIN`; the diagnostic codes and every JSON document's shape as contract
       tests; 0.7.0's output frozen for the 10 example builds, the 12 starters, the blog,
       a11yproject.com and v8.dev. 180 pass on 0.7.0 in 24 s; 4 skipped (below).
-- [ ] The oracle in CI on Linux, macOS and Windows (the job is in `ci.yml`, after `cargo test`, on
-      Node 22.18.0): check its first run, Windows especially.
+- [x] The oracle in CI on Linux, macOS and Windows (`ci.yml`, after `cargo test`, on Node
+      22.18.0). First run on `0a6c172`: 177 pass on Linux and macOS, 172 on Windows (5 more are
+      unix only), none fail; the blog and trial ports skip there, being outside the repository.
 - [ ] Freeze lit.dev (`node freeze.js trial-lit.dev`): its exact port's `beforeBuild` helper needs
       lit.dev's own SSR build (`rollupout/server/ssr.js`), which the trial checkout doesn't have.
 - [ ] Three oracle tests skip because they need the Rust API (a `BuiltinPlugin` registered from
