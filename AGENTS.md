@@ -85,6 +85,11 @@ Run from `packages/ssqch/` unless it says otherwise.
   compares two builds instead, which is what CI does.
 - `cargo build --release -p ssqch` still builds 0.7, the oracle's reference. To see what 0.7
   does, run it, not its source: `ssqch build`, then `ssqch diff <0.7 output> <0.8 output>`.
+- `node scripts/build-wasm.ts` builds ssqch's Markdown and highlighter (`crates/ssqch-markdown`,
+  which compiles 0.7's `markdown.rs` and `highlight.rs`) as `wasm/markdown.wasm`, which is
+  committed so the Node build needs no Rust. Run it after changing that Rust (the list is in
+  `scripts/wasm-inputs.ts`); `scripts/wasm-inputs.test.ts` fails until then. It needs
+  `rustup target add wasm32-wasip1`.
 
 ### Rules
 
