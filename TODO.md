@@ -94,21 +94,18 @@ until 0.8 ships.
   - [x] The navigation functions (`navTree`, `navPager`, `navBreadcrumbs`, `pagesTree`):
         `nav.ts`, from `nav.rs` with its tests; the same answers as 0.7.0 on a site that uses all
         four.
-  - [ ] Worker threads, or the decision not to have them. One thread meets the limit with room,
-        and a worker loads the config itself, so a filter that counts (`let n = 0`) would count
-        apart in each worker, which 0.7 never did
-        (`javascript_calls_are_serialized_across_parallel_pages`). If they come: only above a
-        page count, never for a config with state they'd split, and with the benchmark recording
-        memory (about 140 MB each in the spike).
+  - [x] Worker threads: left out for now (decided 2026-11-17; "Parked" has why, and what
+        they'd need).
   - [x] An independent review of the core against the Rust (a fresh agent, reading both and
         building about 30 small sites with each): 17 differences, fixed or recorded
         (`docs/node-migration.md`, "Stage 2, so far"). It didn't read `args.ts` beyond the lines
         it ran, `modules.ts`, `api.ts`, `content.ts` or the engines; review those with stage 3.
-  - [ ] Stand-ins that stage 3 replaces, so the core could be run and measured: Markdown is
+  - [ ] Stage 3 replaces the stand-ins the core was run and measured with: Markdown is
         markdown-it (D2 is ssqch's own as `.wasm`), Edge is edge.js called plainly (no cache by
         file, no async functions, no themes' includes, its own error wording), and Nunjucks is
         the library as published (D1 forks it: it gives no line for an unknown filter or a filter
-        that throws, and a runtime error's line is one short).
+        that throws, and a runtime error's line is one short). That's the stage's last open
+        line, and it's stage 3's work: tick the stage with it.
 - [ ] **Stage 3, engines:** Nunjucks or Jinja (D1), liquidjs, edge.js, handlebars, mustache, ejs;
       Markdown (D2); front matter in YAML, TOML and JSON; async filters.
 - [ ] **Stage 4, checks and tools:** schemas and `types`, links, `diff`, `inspect`, footprint and
@@ -664,6 +661,15 @@ write-ups that are still owed.
 ## Parked
 
 Decided against for now, or waiting for someone to need it. Move an item up when that changes.
+
+- Worker threads for the Node build's rendering (left out 2026-11-17, at stage 2 of the move to
+  Node). One thread builds the 10,000-page site in 1.41 s against a limit of 2 s. A worker
+  loads the config itself, so a config's own state (a counter in a filter, `let n = 0`) would be
+  kept apart in each worker, which 0.7 never did
+  (`javascript_calls_are_serialized_across_parallel_pages` in the oracle). The spike's workers
+  took about 140 MB each and helped only where JavaScript is the cost (v8.dev: 0.54 s to
+  0.45 s). If a site needs them: only above a page count, never for a config with state they'd
+  split, and with the benchmark recording memory.
 
 - Built-in CSS processing with Lightning CSS (`@import` bundling, nesting, minifying, browser
   targets): only if a real gap shows up; `serve.run` and the missing-file note have covered every
