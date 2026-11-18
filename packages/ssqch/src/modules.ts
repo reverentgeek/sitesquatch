@@ -35,41 +35,48 @@ let hooked = false;
 export function hookModules(): void {
 	if (hooked) return;
 	hooked = true;
+	// Only a `resolve` hook: on Node 22.18 any `load` hook gives every CommonJS module a `require`
+	// without `require.cache` (fixed by 22.23), and packages use it (Prism's language loader,
+	// which a11yproject.com's highlighting calls). The site's files are noted as they resolve.
+	const note = (resolved: { url: string }) => {
+		if (isSiteUrl(resolved.url)) loadedFiles.add(fileURLToPath(resolved.url));
+		return resolved;
+	};
 	registerHooks({
 		resolve(specifier, context, next) {
-			if (specifier === "ssqch") return { url: API, shortCircuit: true };
-			if (specifier.startsWith("ssqch/")) {
-				const url = new URL(`./modules/${specifier.slice(6)}.ts`, import.meta.url);
-				if (BUILT_IN.includes(specifier) && fs.existsSync(url)) return { url: url.href, shortCircuit: true };
-			}
-			const fromSite = isSiteUrl(context.parentURL);
-			// 0.7 let a config import JSON without `with { type: "json" }`, and Node doesn't; supplying
-			// the attribute keeps such configs working (the blog's has one).
-			const attempt = (name: string) => {
-				if (fromSite && /\.json(\?.*)?$/i.test(name) && !context.importAttributes?.type) {
-					const importAttributes = { ...context.importAttributes, type: "json" };
-					return { ...next(name, { ...context, importAttributes }), importAttributes };
-				}
-				return next(name, context);
-			};
-			try {
-				return attempt(specifier);
-			} catch (e: any) {
-				// `import { shout } from "./lib/text"`: the file with an extension, or a folder's index.
-				const relative = specifier.startsWith("./") || specifier.startsWith("../") || path.isAbsolute(specifier) || specifier.startsWith("file:");
-				if (!fromSite || !relative || !["ERR_MODULE_NOT_FOUND", "ERR_UNSUPPORTED_DIR_IMPORT"].includes(e?.code)) throw e;
-				const [bare, query = ""] = specifier.split(/(?=\?)/, 2);
-				for (const ending of ENDINGS) {
-					try { return attempt(bare.replace(/\/$/, "") + ending + query); } catch { /* the next ending */ }
-				}
-				throw e;
-			}
-		},
-		load(url, context, next) {
-			if (isSiteUrl(url)) loadedFiles.add(fileURLToPath(url));
-			return next(url, context);
+			return note(resolveFor(specifier, context, next));
 		},
 	});
+	type Resolve = NonNullable<Parameters<typeof registerHooks>[0]["resolve"]>;
+	function resolveFor(...[specifier, context, next]: Parameters<Resolve>): ReturnType<Resolve> {
+		if (specifier === "ssqch") return { url: API, shortCircuit: true };
+		if (specifier.startsWith("ssqch/")) {
+			const url = new URL(`./modules/${specifier.slice(6)}.ts`, import.meta.url);
+			if (BUILT_IN.includes(specifier) && fs.existsSync(url)) return { url: url.href, shortCircuit: true };
+		}
+		const fromSite = isSiteUrl(context.parentURL);
+		// 0.7 let a config import JSON without `with { type: "json" }`, and Node doesn't; supplying
+		// the attribute keeps such configs working (the blog's has one).
+		const attempt = (name: string) => {
+			if (fromSite && /\.json(\?.*)?$/i.test(name) && !context.importAttributes?.type) {
+				const importAttributes = { ...context.importAttributes, type: "json" };
+				return { ...next(name, { ...context, importAttributes }), importAttributes };
+			}
+			return next(name, context);
+		};
+		try {
+			return attempt(specifier);
+		} catch (e: any) {
+			// `import { shout } from "./lib/text"`: the file with an extension, or a folder's index.
+			const relative = specifier.startsWith("./") || specifier.startsWith("../") || path.isAbsolute(specifier) || specifier.startsWith("file:");
+			if (!fromSite || !relative || !["ERR_MODULE_NOT_FOUND", "ERR_UNSUPPORTED_DIR_IMPORT"].includes(e?.code)) throw e;
+			const [bare, query = ""] = specifier.split(/(?=\?)/, 2);
+			for (const ending of ENDINGS) {
+				try { return attempt(bare.replace(/\/$/, "") + ending + query); } catch { /* the next ending */ }
+			}
+			throw e;
+		}
+	}
 }
 
 const versions = new Map<string, { mtimeMs: number; version: number }>();
