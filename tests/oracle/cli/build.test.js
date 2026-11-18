@@ -321,3 +321,18 @@ test("js_templates_render_and_the_configs_modules_are_not_pages", () => {
 	assert.equal(read(root, "_site/assets/js/app.js"), "const snack = \"Pine Cone Crunch\";\n");
 	assert.ok(!exists(root, "_site/ssqch.config") && !exists(root, "_site/lib"), r.log);
 });
+
+// a11yproject.com (a11y #16): `{{ p.url | url }}` for a page with `permalink: false` printed `/false`
+// in its sitemap (`false`, with the base in front). It prints nothing, and says so once.
+test("url_of_a_page_without_a_url_prints_nothing", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\"] };\n",
+		"stash.njk": "---\npermalink: false\n---\nSquatch Snacks\n",
+		"cache.njk": "---\npermalink: false\n---\nPine Cone Crunch\n",
+		"index.njk": "{% for p in collections.all %}[{{ p.url | url }}]{% endfor %}\n",
+	});
+	const r = ssqch(["build", "--root", root]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/index.html"), "[][][/]\n");
+	assert.equal(r.log.split("`url` got false, the url of a page with `permalink: false`, and printed nothing instead of \"false\"").length - 1, 1, r.log);
+});

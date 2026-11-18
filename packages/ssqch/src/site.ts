@@ -192,8 +192,19 @@ export class Site {
 		for (const row of equivalents.TABLE) {
 			if (row.kind !== "filter" || !row.alias || config.filters.has(row.word)) continue;
 			const target = globals.get(row.ssqch);
+			// `url` on a page with `permalink: false` (its url is `false`) printed `/false` in a11y's
+			// sitemap: it prints nothing, and says so once.
+			const takesUrl = row.ssqch === "base";
+			let warned = false;
 			pipeFilters.set(row.word, (...args: unknown[]) => {
 				aliasUsed(row);
+				if (takesUrl && args[0] === false) {
+					if (!warned) {
+						warned = true;
+						warn(warning("template", `\`${row.word}\` got false, the url of a page with \`permalink: false\`, and printed nothing instead of "false". Leave such pages out first: \`{% if p.url %}\``));
+					}
+					return "";
+				}
 				return target ? target(...args) : args[0];
 			});
 		}

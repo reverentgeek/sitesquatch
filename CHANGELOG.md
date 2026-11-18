@@ -83,6 +83,9 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Fixed
 
+- `url` and `relative_url` on the url of a page with `permalink: false` printed `false` (a sitemap
+  got `/false`). They print nothing, with one warning.
+
 - With `"js"` in `templateFormats` (for `.js` files with front matter), the config and the modules
   it imports were built as pages (`_site/ssqch.config/index.html`). They're code, and skipped. The
   README has the recipe for text files with front matter.

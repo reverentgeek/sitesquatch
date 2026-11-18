@@ -486,8 +486,8 @@ clear; otherwise warn.
     `SOURCE_DATE_EPOCH` as the fallback date and build time, which Jekyll's `time:` does for a
     pinned baseline (osg #14; done 2026-11-18, and with it undated pages sort by path; without it
     they still sort by file time, which changes frozen output and wants its own change).
-- [ ] **The `url` filter on a non-string** (a11y #16: `false` from a `permalink: false` page printed
-      `/false` in the sitemap): normalize as Eleventy does, or warn.
+- [x] **The `url` filter on a non-string** (a11y #16; done 2026-11-18: `false` prints nothing, with a
+      warning): `false` from a `permalink: false` page printed `/false` in the sitemap.
 - [ ] **Two passthrough sources that write one file** (v8 #19): warn unless they're identical.
 - [ ] **`minify()` shortens `checked="checked"` with `shortenAttributes: false`** (a11y #24): make
       it part of that option, or document that boolean attributes are always shortened.
