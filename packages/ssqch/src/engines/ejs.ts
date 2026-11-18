@@ -21,8 +21,15 @@ interface Compiled {
 	fn?: (locals: Data, print: Print, include: (name: string, data?: Data) => unknown, rethrow: Rethrow) => string | Promise<string>;
 }
 
-/** How a value is printed: escaped for `<%=`, as it is (`raw`) for `<%-`. Its `globals` are the config's functions, in scope by name. */
-type Print = ((value: unknown, raw?: boolean) => string) & { globals: Data };
+/** An include as it was found: its file, its source, and its name in errors (from the project root). */
+interface Included { file: string; source: string; name: string }
+
+/**
+ * How a value is printed: escaped for `<%=`, as it is (`raw`) for `<%-`, with the template and
+ * line it's printed at. Its `globals` are the config's functions, in scope by name, and `scope`
+ * makes the variables a template sees.
+ */
+type Print = ((value: unknown, raw?: boolean, line?: number, name?: string) => string) & { globals: Data; scope: (locals: Data) => Data };
 type Rethrow = (e: unknown, lines: string, name: string, line: number) => never;
 
 /** An error that says which template and line it's from (`index.ejs:3: ...`); an include's error keeps its own place. */
@@ -33,9 +40,17 @@ const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;"
 // The code around a template's own, in place of ejs' (`Template.compile` uses a source it's
 // given): what `<%-` prints goes through `print` too, so a date prints in UTC; and the config's
 // functions are a scope under the page's data, so a page's own `title` comes first and nothing is
-// copied.
-const BEFORE = "  var __output = \"\";\n  function __append(s) { if (s !== undefined && s !== null) __output += escapeFn(s, true) }\n  with (escapeFn.globals) { with (locals || {}) {\n";
+// copied. The variables are the page's data seen through `scope`, which keeps the names the
+// code itself uses (`include`, `locals`) the engine's, as 0.7 did: a page with `include:` in its
+// front matter can still include.
+const BEFORE = "  var __output = \"\", __scope = escapeFn.scope(locals || {});\n  function __append(s) { if (s !== undefined && s !== null) __output += escapeFn(s, true, __line, __filename) }\n  with (escapeFn.globals) { with (__scope) {\n";
 const AFTER = "  } }\n  return __output;\n";
+
+/** The names a page's data can't take over (`with` skips them), as 0.7 reserved them. */
+const RESERVED: Record<string, boolean> = Object.assign(Object.create(null), Object.fromEntries(["include", "locals", "escapeFn", "rethrow", "__output", "__append", "__line", "__lines", "__filename", "__scope", "arguments", "eval", "undefined", "NaN", "Infinity"].map((name) => [name, true])));
+
+/** Marks a printed promise's place in the output until it settles. */
+const MARK = "\u0000ssqch-ejs-";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -52,6 +67,20 @@ function showDate(d: Date): string {
 	return `${DAYS[d.getUTCDay()]} ${MONTHS[d.getUTCMonth()]} ${two(d.getUTCDate())} ${year < 0 ? "-" : ""}${String(Math.abs(year)).padStart(4, "0")} ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())} GMT+0000`;
 }
 
+/** A value as JavaScript prints it (`String(value)`), with dates, in a list too, at UTC. */
+function text(value: unknown): string {
+	if (value instanceof Date) return showDate(value);
+	if (Array.isArray(value) && value.some((item) => item instanceof Date || Array.isArray(item))) return value.map((item) => (item === undefined || item === null ? "" : text(item))).join(",");
+	return String(value);
+}
+
+/** The data a template's code sees, the engine's own names left out (see `RESERVED`). */
+function scope(locals: Data): Data {
+	const seen = Object.create(locals);
+	seen[Symbol.unscopables] = RESERVED;
+	return seen;
+}
+
 // ejs is loaded with the first EJS template, not when ssqch starts (`require`, since rendering is synchronous).
 let library: typeof EjsLib | undefined;
 const ejsLib = () => (library ??= createRequire(import.meta.url)("ejs") as typeof EjsLib);
@@ -66,6 +95,7 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 	const loaded = new Set<string>();
 	const globals: Data = Object.create(null);
 	for (const [name, fn] of env.globals) globals[name] = siteFunction(name, fn, root);
+	globals[Symbol.unscopables as any] = RESERVED;
 	const compiled = new Map<string, Compiled>();
 
 	const shown = (file: string) => shownPath(file, root);
@@ -86,7 +116,7 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 			// A syntax error in the template's code, at the last tag (JavaScript can't say which line
 			// of the template it was). An unclosed block runs into the code around the template.
 			const said = String((e as Error).message ?? e).replace(/(?: in \S+)? while compiling ejs[\s\S]*$/, "");
-			const block = /Unexpected end of input|Unexpected token '(?:\)|catch|\})'/.test(said);
+			const block = /Unexpected end of input|Unexpected token 'catch'/.test(said);
 			const message = block ? "a block opened in a <% %> tag isn't closed (a `}` is missing)" : `syntax error in the template's code: ${said}`;
 			throw new Located(`${name}:${lastTagLine(source)}: ${message}`);
 		}
@@ -100,21 +130,32 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 		return found;
 	};
 
-	/** The include `wanted` from the template at `from`: its file and source, as 0.7 found them. */
-	const findInclude = (from: string, wanted: string): { file: string; source: string } => {
+	// Includes found so far, by the folder a relative one is looked for in (none for the includes
+	// folders) and the name asked for: an include used on every page is looked for, read and named
+	// once a build.
+	const found = new Map<string, Included>();
+	/** The include `wanted` from the template at `from`, as 0.7 found it. */
+	const findInclude = (from: string, wanted: string): Included => {
 		const name = path.extname(wanted) ? wanted : `${wanted}.ejs`;
 		const relative = name.startsWith("./") || name.startsWith("../");
+		const key = `${relative ? path.dirname(from) : ""}\0${name}`;
+		const known = found.get(key);
+		if (known) return known;
 		const dirs = relative ? [path.dirname(from)] : env.includeDirs;
 		for (const dir of dirs) {
 			const file = path.join(dir, name);
 			if (!(fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false)) continue;
 			const base = [...env.includeDirs, dir].find((d) => isInsideDir(d, file));
 			if (base) loaded.add(path.relative(base, file).split(path.sep).join("/"));
+			let source: string;
 			try {
-				return { file, source: fs.readFileSync(file, "utf8") };
+				source = fs.readFileSync(file, "utf8");
 			} catch (e) {
 				throw new Error(`reading ${shown(file)}: ${(e as Error).message}`);
 			}
+			const include = { file, source, name: shown(file) };
+			found.set(key, include);
+			return include;
 		}
 		// Not found: the closest file name in the same folders.
 		const have = dirs.flatMap((dir) => filesUnder(dir, "", relative ? 1 : Infinity));
@@ -134,24 +175,30 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 			if (template.text !== undefined) return template.text;
 			// A promise printed by `<%= %>` (an async function's answer) is awaited, and its answer
 			// takes the place it was printed in.
-			const waiting: Array<{ mark: string; raw: boolean; promise: Promise<unknown> }> = [];
-			const print = ((value: unknown, raw?: boolean) => {
-				if (value instanceof Date) value = showDate(value);
-				else if (value instanceof Promise) {
-					const mark = `\u0000ssqch-ejs-${waiting.length}\u0000`;
-					waiting.push({ mark, raw: Boolean(raw), promise: watchSettle(value) });
+			const waiting: Array<{ mark: string; raw: boolean; promise: Promise<unknown>; name?: string; line?: number }> = [];
+			const print = ((value: unknown, raw?: boolean, line?: number, name?: string) => {
+				if (value instanceof Promise) {
+					const mark = `${MARK}${waiting.length}\u0000`;
+					waiting.push({ mark, raw: Boolean(raw), promise: watchSettle(value), name, line });
 					return mark;
 				}
-				if (raw) return String(value);
-				return value === undefined || value === null ? "" : String(value).replace(/[&<>"']/g, (c) => ESCAPES[c]);
+				if (!raw) return value === undefined || value === null ? "" : text(value).replace(/[&<>"']/g, (c) => ESCAPES[c]);
+				if (typeof value !== "string") return text(value);
+				// `<%= %>` has printed it already; this is where it goes, for a promise's error to name.
+				if (value.startsWith(MARK)) {
+					const w = waiting[Number.parseInt(value.slice(MARK.length), 10)];
+					if (w && w.line === undefined) Object.assign(w, { line, name });
+				}
+				return value;
 			}) as Print;
 			print.globals = globals;
+			print.scope = scope;
 			const run = (template: Compiled, locals: Data, file: string, depth: number): string | Promise<string> => {
 				if (template.text !== undefined) return template.text;
 				const include = (wanted: string, extra?: Data) => {
 					if (depth > 64) throw new Error(`we've passed this tree before. Include loop: ${wanted} includes itself`);
 					const found = findInclude(file, String(wanted));
-					const inner = cached(`include:${found.file}`, found.source, shown(found.file));
+					const inner = cached(`include:${found.file}`, found.source, found.name);
 					// As in EJS, an include gets what its parent had, with its own data on top.
 					return run(inner, extra ? Object.assign(Object.create(locals), extra) : locals, found.file, depth + 1);
 				};
@@ -159,10 +206,12 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 			};
 			const finish = (out: string): string | Promise<string> => {
 				if (!waiting.length) return out;
-				return Promise.all(waiting.map((w) => w.promise)).then((values) => {
-					for (const [i, w] of waiting.entries()) out = out.replace(w.mark, () => (w.raw ? String(values[i] ?? "") : print(values[i])));
+				return Promise.all(waiting.map((w) => w.promise.catch((e) => {
+					throw new BuildError(`${w.name ?? ctx.name}${w.line === undefined ? "" : `:${w.line}`}: ${describeThrown(e, root)}`);
+				}))).then((values) => {
+					for (const [i, w] of waiting.entries()) out = out.replace(w.mark, () => (w.raw && (values[i] === undefined || values[i] === null) ? "" : print(values[i], w.raw)));
 					return out;
-				}, (e) => { throw new BuildError(`${ctx.name}: ${describeThrown(e, root)}`); });
+				});
 			};
 			const file = path.resolve(env.dirs.input, ctx.inputPath);
 			const out = run(template, data, file, 0);

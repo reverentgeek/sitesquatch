@@ -60,9 +60,32 @@ test("printed_promises_are_awaited", async () => {
 	assert.equal(await ejs.render("<% const v = await later('z') %><%= v %>", {}, site.ctx("await.ejs")), "later:z");
 });
 
-test("a_date_prints_as_0_7_printed_it_at_utc", () => {
-	const site = testSite({});
+test("a_date_prints_as_0_7_printed_it_at_utc", async () => {
+	const site = testSite({}, { later: async (v: unknown) => v });
 	const ejs = ejsEngine(site.env);
 	const when = new Date("2026-01-02T10:20:30Z");
-	assert.equal(ejs.render("<%= when %>|<%- when %>", { when }, site.ctx("page.ejs")), "Fri Jan 02 2026 10:20:30 GMT+0000|Fri Jan 02 2026 10:20:30 GMT+0000");
+	const shown = "Fri Jan 02 2026 10:20:30 GMT+0000";
+	assert.equal(ejs.render("<%= when %>|<%- when %>|<%= [when, 1] %>|<%- [[when]] %>", { when }, site.ctx("page.ejs")), `${shown}|${shown}|${shown},1|${shown}`);
+	// A promise's answer too.
+	assert.equal(await ejs.render("<%- later(when) %>|<%= later(when) %>|<%- later(null) %>", { when }, site.ctx("page.ejs")), `${shown}|${shown}|`);
+});
+
+test("the_engines_names_stay_its_own", () => {
+	// 0.7 kept `include` (and its own names) out of the variables: a page can have an `include` key.
+	const site = testSite({ "_includes/nav.ejs": "<nav><%= include.length %></nav>" });
+	const ejs = ejsEngine(site.env);
+	const data = { include: ["a", "b"], escapeFn: 1, __append: 2, locals: "mine", title: "T" };
+	assert.equal(ejs.render("<%- include('nav') %><%= title %><%= typeof locals %>", data, site.ctx("page.ejs")), "<nav>2</nav>Tobject");
+	// Its own variables are its own, and the page's data isn't changed.
+	assert.equal(ejs.render("<% title = 'changed' %><%= title %>", data, site.ctx("page.ejs")), "changed");
+	assert.equal(data.title, "T");
+});
+
+test("a_printed_promise_that_fails_names_its_line", async () => {
+	const site = testSite({ "_includes/inc.ejs": "a\n<%= laterboom() %>" }, { laterboom: async () => { throw new Error("late snack"); } });
+	const ejs = ejsEngine(site.env);
+	assert.ok((await failure(() => ejs.render("one\n<%= laterboom() %>", {}, site.ctx("page.ejs")))).startsWith("page.ejs:2: laterboom(): late snack"));
+	assert.ok((await failure(() => ejs.render("one\n\n<%- include('inc') %>", {}, site.ctx("page.ejs")))).startsWith("_includes/inc.ejs:2: laterboom(): late snack"));
+	// A syntax error that isn't an unclosed block says what JavaScript said.
+	assert.equal(await failure(() => ejs.render("<%= ) %>", {}, site.ctx("bad.ejs"))), "bad.ejs:1: syntax error in the template's code: Unexpected token ')'");
 });

@@ -25,7 +25,7 @@ const BUILTIN_HELPERS = ["if", "unless", "each", "with", "lookup", "log", "raw",
 
 /** Where in a template something happened, from handlebars.js' `options.loc`. */
 interface Loc { start: { line: number; column: number } }
-interface HelperOptions { name: string; hash: Data; loc?: Loc; fn: (context: unknown, options?: unknown) => string; inverse: (context: unknown, options?: unknown) => string }
+interface HelperOptions { name: string; hash: Data; loc?: Loc; ids?: unknown[]; fn: (context: unknown, options?: unknown) => string; inverse: (context: unknown, options?: unknown) => string }
 
 /** An error that already says where it happened: the template's line, and the partial's file when it was in one. */
 class Located extends Error {
@@ -62,9 +62,29 @@ function handlebarsLib(): typeof HandlebarsLib {
 
 function printable(value: unknown): unknown {
 	if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+	if (typeof value === "number") return jsonNumber(value);
 	if (Array.isArray(value)) return `[${value.map((item) => { const s = printable(item); return s === undefined || s === null ? "" : String(s); }).join(", ")}]`;
 	if (isPlainObject(value)) return "[object]";
 	return value;
+}
+
+/**
+ * A number as 0.7 printed it, from JSON: a whole number below 9e15 as it is, anything else the
+ * shortest way that reads back (as JavaScript finds it), laid out as Rust's `ryu` lays it out
+ * (`1e-6`, `1.2345678901234567e+19`, `0.00001`).
+ */
+function jsonNumber(n: number): string | null {
+	if (!Number.isFinite(n)) return null;
+	if (Number.isInteger(n) && Math.abs(n) < 9e15) return String(n);
+	const [mantissa, exponent] = n.toExponential().split("e");
+	const digits = mantissa.replace("-", "").replace(".", "");
+	const sign = n < 0 ? "-" : "";
+	const point = Number(exponent) + 1;
+	if (digits.length <= point && point <= 16) return `${sign}${digits}${"0".repeat(point - digits.length)}.0`;
+	if (point > 0 && point <= 16) return `${sign}${digits.slice(0, point)}.${digits.slice(point)}`;
+	if (point > -5 && point <= 0) return `${sign}0.${"0".repeat(-point)}${digits}`;
+	const e = point - 1;
+	return `${sign}${digits.length === 1 ? digits : `${digits[0]}.${digits.slice(1)}`}e${e < 0 ? "-" : "+"}${Math.abs(e)}`;
 }
 
 /** handlebars.js' compiler, with `{{{ }}}` printing through `printable` as `{{ }}` does. */
@@ -115,6 +135,9 @@ export function handlebarsEngine(env: EngineEnv): TemplateEngine {
 	return lazyEngine(() => makeHandlebars(env));
 }
 
+/** A value as a helper gets it, as 0.7 gave it after turning the data into JSON: a date as ISO 8601 text, a missing value as `null`. */
+const given = (v: unknown) => (v === undefined ? null : v instanceof Date ? (Number.isNaN(v.getTime()) ? null : v.toISOString()) : v);
+
 function makeHandlebars(env: EngineEnv): TemplateEngine {
 	const root = env.config.root;
 	const hb = handlebarsLib().create();
@@ -122,47 +145,89 @@ function makeHandlebars(env: EngineEnv): TemplateEngine {
 	// `{{log}}` says nothing, as in 0.7.
 	(hb as any).logger.level = "error";
 	const loaded = new Set<string>();
-	const compileOptions = { strict: env.strict };
+	// With `strict`, helpers learn their arguments' names (`ids`), to say which one isn't there.
+	const compileOptions = { strict: env.strict, trackIds: env.strict };
 	const runtimeOptions = { allowProtoPropertiesByDefault: true };
 
-	// A helper that answers with a promise is awaited: the template is rendered again with the
-	// answer, until nothing new is waited for. Templates whose helpers all answer at once render
-	// once, synchronously.
-	let round: Round | undefined;
+	// A helper that answers with a promise is awaited: the rendering stops there, and once the
+	// promise settles the template renders again, every call before it answered as it was the
+	// first time, so each helper runs once a page. Templates whose helpers all answer at once
+	// render once, synchronously.
+	let answers: Answers | undefined;
 	/** The partials being rendered, innermost last: an error in a helper names the one it's in. */
 	const inside: string[] = [];
+	const at = (options: HelperOptions) => options.loc?.start.line;
+	/** A value that isn't there while `strict` is on, named as the template names it (0.7 refused it too). */
+	const missing = (options: HelperOptions, index: number) => new Located(`\`${typeof options.ids?.[index] === "string" ? options.ids[index] : `${options.name}'s argument ${index + 1}`}\` is undefined (strict is on)`, at(options), inside.at(-1));
 
 	// The handlebars crate's helpers, which 0.7 had: comparisons (as blocks too), `len` and `raw`.
-	const boolean = (name: string, test: (args: unknown[]) => boolean) => {
+	// They see a date as its ISO 8601 text, as 0.7's did, and need their arguments.
+	const boolean = (name: string, arity: number | undefined, test: (args: unknown[]) => boolean) => {
 		hb.registerHelper(name, function (this: unknown, ...args: unknown[]) {
 			const options = args.pop() as HelperOptions;
-			const value = test(args);
+			if (arity !== undefined) {
+				if (args.length < arity) throw new Located(`\`${name}\` needs ${arity === 1 ? "an argument" : `${arity} arguments`}`, at(options), inside.at(-1));
+				if (env.strict) for (let i = 0; i < arity; i++) if (args[i] === undefined) throw missing(options, i);
+			}
+			const value = test(args.map(given));
 			if (options.fn === undefined) return value;
 			return value ? options.fn(this) : options.inverse(this);
 		});
 	};
-	boolean("eq", ([a, b]) => same(a, b));
-	boolean("ne", ([a, b]) => !same(a, b));
-	boolean("gt", ([a, b]) => compare(a, b) === 1);
-	boolean("gte", ([a, b]) => { const c = compare(a, b); return c !== undefined && c !== -1; });
-	boolean("lt", ([a, b]) => compare(a, b) === -1);
-	boolean("lte", ([a, b]) => { const c = compare(a, b); return c !== undefined && c !== 1; });
-	boolean("and", (args) => args.every(truthy));
-	boolean("or", (args) => args.some(truthy));
-	boolean("not", ([a]) => !truthy(a));
+	boolean("eq", 2, ([a, b]) => same(a, b));
+	boolean("ne", 2, ([a, b]) => !same(a, b));
+	boolean("gt", 2, ([a, b]) => compare(a, b) === 1);
+	boolean("gte", 2, ([a, b]) => { const c = compare(a, b); return c !== undefined && c !== -1; });
+	boolean("lt", 2, ([a, b]) => compare(a, b) === -1);
+	boolean("lte", 2, ([a, b]) => { const c = compare(a, b); return c !== undefined && c !== 1; });
+	boolean("and", undefined, (args) => args.every(truthy));
+	boolean("or", undefined, (args) => args.some(truthy));
+	boolean("not", 1, ([a]) => !truthy(a));
 	// `if` and `unless` tell truth as the crate does, so `{{#if settings}}` is false for `{}` as in 0.7.
 	for (const [name, wanted] of [["if", true], ["unless", false]] as const) {
 		hb.registerHelper(name, function (this: unknown, ...args: unknown[]) {
 			const options = args.pop() as HelperOptions;
-			if (args.length !== 1) throw new Located(`#${name} requires exactly one argument`, options.loc?.start.line, inside.at(-1));
+			if (args.length !== 1) throw new Located(`#${name} requires exactly one argument`, at(options), inside.at(-1));
 			let value = args[0];
 			if (typeof value === "function") value = value.call(this);
 			const truth = (options.hash?.includeZero && value === 0) || truthy(value);
 			return truth === wanted ? options.fn(this) : options.inverse(this);
 		});
 	}
-	hb.registerHelper("len", (value: unknown) => (Array.isArray(value) ? value.length : typeof value === "string" ? Buffer.byteLength(value) : isPlainObject(value) ? Object.keys(value).length : 0));
-	hb.registerHelper("raw", (options: HelperOptions) => options.fn(undefined));
+	hb.registerHelper("len", function (this: unknown, ...args: unknown[]) {
+		const options = args.pop() as HelperOptions;
+		if (!args.length) throw new Located("`len` needs an argument", at(options), inside.at(-1));
+		if (env.strict && args[0] === undefined) throw missing(options, 0);
+		const value = given(args[0]);
+		return Array.isArray(value) ? value.length : typeof value === "string" ? Buffer.byteLength(value) : isPlainObject(value) ? Object.keys(value).length : 0;
+	});
+	// The crate's raw block leaves out the space it starts with.
+	hb.registerHelper("raw", (options: HelperOptions) => options.fn(undefined).replace(/^\s+/, ""));
+	// `each`, `with` and `lookup` as the crate had them: they need their argument, a list has no
+	// `@key`, and with `strict` on a value that isn't there is an error.
+	const builtin = { each: hb.helpers.each, with: hb.helpers.with, lookup: hb.helpers.lookup } as Record<string, (...args: unknown[]) => unknown>;
+	hb.registerHelper("each", function (this: unknown, ...args: unknown[]) {
+		let options = args[args.length - 1] as HelperOptions;
+		if (args.length < 2) throw new Located("Must pass iterator to #each", at(options), inside.at(-1));
+		if (env.strict && args[0] === undefined) throw missing(options, 0);
+		if (Array.isArray(args[0])) {
+			const fn = options.fn;
+			options = { ...options, fn: (value: unknown, frame?: any) => { if (frame?.data) frame.data.key = undefined; return fn(value, frame); } };
+		}
+		return builtin.each.call(this, args[0], options);
+	});
+	hb.registerHelper("with", function (this: unknown, ...args: unknown[]) {
+		const options = args[args.length - 1] as HelperOptions;
+		if (args.length !== 2) throw new Located("#with requires exactly one argument", at(options), inside.at(-1));
+		if (env.strict && args[0] === undefined) throw missing(options, 0);
+		return builtin.with.apply(this, args);
+	});
+	hb.registerHelper("lookup", function (this: unknown, ...args: unknown[]) {
+		const options = args[args.length - 1] as HelperOptions;
+		const found = builtin.lookup.apply(this, args);
+		if (env.strict && found === undefined) throw new Located(`\`${typeof options.ids?.[0] === "string" ? options.ids[0] : "the value"}\` has no \`${String(args[1])}\` (strict is on)`, at(options), inside.at(-1));
+		return found;
+	});
 	// Mustache's sections, as 0.7 had them: `{{#items}}` goes over a list, renders once with any
 	// other value that isn't false or empty, and `{{^items}}` renders when the value is false.
 	const noop = (hb as any).VM.noop;
@@ -176,39 +241,46 @@ function makeHandlebars(env: EngineEnv): TemplateEngine {
 	hb.registerHelper("helperMissing", (...args: unknown[]) => {
 		const options = args[args.length - 1] as HelperOptions;
 		if (args.length === 1) return undefined;
-		throw new Located(unknownHelper(options.name, [...BUILTIN_HELPERS, ...env.globals.keys()]), options.loc?.start.line, inside.at(-1));
+		throw new Located(unknownHelper(options.name, [...BUILTIN_HELPERS, ...env.globals.keys()]), at(options), inside.at(-1));
 	});
 
 	// The config's functions are helpers: `{{shout title}}`, `{{wrap title "[" "]"}}`, and hash
-	// arguments (`size=2`) arrive as one object at the end.
+	// arguments (`size=2`) arrive as one object at the end, its keys in order as the crate kept them.
 	for (const [name, fn] of env.globals) {
 		hb.registerHelper(name, function (this: unknown, ...params: unknown[]) {
 			const options = params.pop() as HelperOptions;
-			const args = Object.keys(options.hash ?? {}).length ? [...params, { ...options.hash }] : params;
-			const line = options.loc?.start.line;
-			const known = round?.answer(fn, args);
-			if (known) return known.value;
-			let out: unknown;
+			const hash = Object.entries(options.hash ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+			const args = params.map(given);
+			if (hash.length) args.push(Object.fromEntries(hash.map(([k, v]) => [k, given(v)])));
+			const line = at(options);
 			const file = inside.at(-1);
+			const position = answers ? answers.at++ : -1;
+			const known = answers?.calls[position];
+			if (known?.fn === fn) return known.value;
+			let out: unknown;
 			try { out = fn.apply(this, args); } catch (e) { throw new Located(`${name}(): ${describeThrown(e, root)}`, line, file); }
-			if (out instanceof Promise) {
-				round!.wait(fn, args, watchSettle(out).catch((e) => { throw new Located(`${name}(): ${describeThrown(e, root)}`, line, file); }));
-				return "";
+			if (out instanceof Promise && answers) {
+				answers.waiting = { at: position, fn, promise: watchSettle(out).catch((e) => { throw new Located(`${name}(): ${describeThrown(e, root)}`, line, file); }) };
+				throw new Waiting();
 			}
+			answers?.calls.splice(position, Infinity, { fn, value: out });
 			return out;
 		});
 	}
 
 	// Every file in the includes folders is a partial, by its path with and without the
-	// extension (`{{> nav}}` or `{{> nav.hbs}}`); the site's own replaces a theme's. Read when the
-	// first template renders.
+	// extension (`{{> nav}}` or `{{> nav.hbs}}`); the site's own replaces a theme's. A name
+	// without the extension is the Handlebars file's when there's one (`nav` is `nav.hbs`, not
+	// `nav.njk`), the site's before a theme's. Read when the first template renders.
 	let partialsReady = false;
 	const registerPartials = () => {
 		partialsReady = true;
 		let broken: BuildError | undefined;
-		for (const dir of [...env.includeDirs].reverse()) {
-			for (const rel of filesUnder(dir)) {
-				const file = path.join(dir, rel);
+		const stems = new Map<string, { rank: number; partial: unknown }>();
+		const dirs = env.includeDirs;
+		for (let d = dirs.length - 1; d >= 0; d--) {
+			for (const rel of filesUnder(dirs[d])) {
+				const file = path.join(dirs[d], rel);
 				let source: string;
 				try { source = fs.readFileSync(file, "utf8"); } catch { continue; }
 				const ext = path.extname(rel).slice(1).toLowerCase();
@@ -231,6 +303,7 @@ function makeHandlebars(env: EngineEnv): TemplateEngine {
 					try {
 						return compiled(context, options as any);
 					} catch (e) {
+						if (e instanceof Waiting) throw e;
 						// An error in a partial names the partial's file and its line.
 						throw located(e, source, file, Object.keys(hb.partials));
 					} finally {
@@ -239,9 +312,18 @@ function makeHandlebars(env: EngineEnv): TemplateEngine {
 				};
 				hb.registerPartial(rel, partial as any);
 				const dot = rel.lastIndexOf(".");
-				if (dot > 0 && !rel.slice(dot).includes("/")) hb.registerPartial(rel.slice(0, dot), partial as any);
+				if (dot > 0 && !rel.slice(dot).includes("/")) {
+					// Lower is better: a Handlebars file, then the folder (the site's is 0), then `.hbs`
+					// before `.handlebars` before `.mustache`. Among other files, the first by name.
+					const kind = EXTENSIONS.indexOf(ext);
+					const rank = (kind === -1 ? 1_000_000 : 0) + d * 10 + (kind === -1 ? 9 : kind);
+					const stem = rel.slice(0, dot);
+					const had = stems.get(stem);
+					if (!had || rank < had.rank) stems.set(stem, { rank, partial });
+				}
 			}
 		}
+		for (const [stem, { partial }] of stems) hb.registerPartial(stem, partial as any);
 		if (broken) throw broken;
 	};
 
@@ -256,77 +338,61 @@ function makeHandlebars(env: EngineEnv): TemplateEngine {
 	};
 	const fail = (e: unknown, source: string, ctx: RenderContext): never => {
 		if (e instanceof BuildError) throw e;
-		const at = located(e, source, undefined, Object.keys(hb.partials));
-		throw new BuildError(`${at.file ? shownPath(at.file, root) : ctx.name}${at.line === undefined ? "" : `:${at.line}`}: ${at.message}`);
+		const found = located(e, source, undefined, Object.keys(hb.partials));
+		throw new BuildError(`${found.file ? shownPath(found.file, root) : ctx.name}${found.line === undefined ? "" : `:${found.line}`}: ${found.message}`);
 	};
-	const once = (source: string, data: Data, ctx: RenderContext, now: Round): string => {
-		// Another page's `templateContent` can render in the middle of this one: its round is put back after.
-		const was = round;
-		round = now;
+	/** One rendering, with the answers so far; it throws `Waiting` where a helper's promise has to settle first. */
+	const once = (source: string, data: Data, ctx: RenderContext, now: Answers): string => {
+		// Another page's `templateContent` can render in the middle of this one: its answers are put back after.
+		const was = answers;
+		answers = now;
+		now.at = 0;
+		now.waiting = undefined;
 		try {
 			return template(source, ctx)(data, runtimeOptions);
 		} catch (e) {
+			if (e instanceof Waiting) throw e;
 			return fail(e, source, ctx);
 		} finally {
-			round = was;
+			answers = was;
 		}
 	};
 	return {
 		render(source, data, ctx) {
 			if (!partialsReady) registerPartials();
 			if (!source.includes("{{")) return source;
-			const first = new Round();
-			const out = once(source, data, ctx, first);
-			if (!first.waiting.length) return out;
-			const again = async (last: Round): Promise<string> => {
-				await last.settle();
-				const next = last.next();
-				const text = once(source, data, ctx, next);
-				return next.waiting.length ? again(next) : text;
+			const now = new Answers();
+			try {
+				return once(source, data, ctx, now);
+			} catch (e) {
+				if (!(e instanceof Waiting)) throw e;
+			}
+			const later = async (): Promise<string> => {
+				for (;;) {
+					const { at: position, fn, promise } = now.waiting!;
+					now.calls.splice(position, Infinity, { fn, value: await promise });
+					try {
+						return once(source, data, ctx, now);
+					} catch (e) {
+						if (!(e instanceof Waiting)) throw e;
+					}
+				}
 			};
-			return again(first).catch((e) => fail(e, source, ctx));
+			return later().catch((e) => fail(e, source, ctx));
 		},
 		included: () => [...loaded],
 	};
 }
 
-/** One rendering of a template: the answers async helpers gave before it, and what it's waiting for. */
-class Round {
-	answers: Array<{ fn: Filter; args: unknown[]; value: unknown }>;
-	waiting: Array<{ fn: Filter; args: unknown[]; promise: Promise<unknown> }> = [];
-	count: number;
-	constructor(answers: Round["answers"] = [], count = 0) {
-		this.answers = answers;
-		this.count = count;
-	}
-	answer(fn: Filter, args: unknown[]): { value: unknown } | undefined {
-		return this.answers.find((a) => a.fn === fn && sameArgs(a.args, args));
-	}
-	wait(fn: Filter, args: unknown[], promise: Promise<unknown>): void {
-		if (!this.waiting.some((w) => w.fn === fn && sameArgs(w.args, args))) this.waiting.push({ fn, args, promise });
-	}
-	async settle(): Promise<void> {
-		for (const w of this.waiting) this.answers.push({ fn: w.fn, args: w.args, value: await w.promise });
-	}
-	next(): Round {
-		// Each round answers something new, so this ends unless a helper's arguments are new every time.
-		if (this.count >= 50) throw new Located("an async helper got new arguments each time the template rendered (50 times)");
-		return new Round(this.answers, this.count + 1);
-	}
+/** What the config's helpers answered in one page's rendering, in the order they were called, and the promise the last rendering stopped at. */
+class Answers {
+	calls: Array<{ fn: Filter; value: unknown }> = [];
+	at = 0;
+	waiting?: { at: number; fn: Filter; promise: Promise<unknown> };
 }
 
-/** The same arguments: the same values, or objects (a hash) with the same values. */
-function sameArgs(a: unknown[], b: unknown[]): boolean {
-	const one = (x: unknown, y: unknown, depth: number): boolean => {
-		if (x === y || (Number.isNaN(x) && Number.isNaN(y))) return true;
-		if (depth > 2 || typeof x !== "object" || typeof y !== "object" || x === null || y === null) return false;
-		if (x instanceof Date && y instanceof Date) return x.getTime() === y.getTime();
-		if (Array.isArray(x) !== Array.isArray(y)) return false;
-		const keys = Object.keys(x);
-		return keys.length === Object.keys(y).length && keys.every((k) => one((x as Data)[k], (y as Data)[k], depth + 1));
-	};
-	return a.length === b.length && a.every((x, i) => one(x, b[i], 0));
-}
+/** Thrown where a helper answered with a promise: the rendering stops there, and goes again once the promise has settled. */
+class Waiting extends Error {}
 
 function unknownHelper(name: string, helpers: string[]): string {
 	const near = closest(name, helpers.filter((h) => h !== name));
@@ -387,6 +453,14 @@ function located(e: unknown, source: string, file: string | undefined, partials:
 		const others = partials.filter((p) => p !== wanted);
 		const near = closestPath(wanted, others) ?? closest(wanted, others);
 		message = `template not found: can't include \`${wanted}\`${near ? ` (did you mean \`${near}\`?)` : ""}`;
+	} else if ((found = /^Cannot use 'in' operator to search for '([^']+)' in /.exec(message))) {
+		// `strict` with `this` a plain value (`{{#each names}}{{nope}}{{/each}}`): handlebars.js tries `in` on it.
+		const wanted = found[1];
+		if (line === undefined) {
+			const index = lines.findIndex((text) => new RegExp(`\\{\\{[{~#^&]?\\s*(?:[\\w@$-]+[./])*${word(wanted)}\\s*~?\\}`).test(text));
+			if (index !== -1) line = index + 1;
+		}
+		message = `\`${wanted}\` is undefined (strict is on)`;
 	} else if ((found = /^"([^"]+)" not defined in /.exec(message))) {
 		// The whole path, from the line handlebars.js names (it says only the last part).
 		const text = line === undefined ? "" : lines[line - 1] ?? "";
