@@ -47,6 +47,19 @@ the release.
 - **A page's `templateContent` is rendered when it's first read.** In 0.7 a page read before it
   had rendered gave an empty string. A page whose own templates are async (an async filter or
   engine) can't be rendered on demand, and reading it too early is an error that names it.
+- **Edge templates are edge.js 6.5's**, with what 0.7's own Edge did kept around it (an undefined
+  value prints nothing, a call reaches the filter beside a page field of the same name,
+  `$loop`, `reverse()` and `sort()` giving copies). What changes:
+  - A `@let` in an include sets the variable for that include only, as edge.js scopes it; 0.7 set
+    it for the template that included it too. Set it before the `@include`, or make the include
+    a component and pass it as a prop.
+  - An async function (an async filter) called inside a callback is awaited in `map`
+    (`posts.map(p => cover(p))`), and is an error that says to call it first with `@let` in
+    `filter`, `find` and the others, where 0.7 awaited it anywhere.
+  - Node's globals are there in expressions (`process`, `URL`), as in any JavaScript; a page's
+    value or a config function of the same name still wins, as in 0.7.
+  - A parse error is in edge.js's words (`parse error in page.edge: line 2: Unexpected token`),
+    with the file and line as before.
 
 ### Changed
 
@@ -59,6 +72,11 @@ the release.
   words before it. The error for a permalink outside the output folder names the permalink
   (`"/../up.html"`, where 0.7 printed `Some("/../up.html")`), and the warning for a data file
   nothing can read says to provide it in the config's `data` (0.7 named the Rust API).
+- Edge has what edge.js has: destructuring in `@let`, block-bodied arrow functions, regular
+  expressions, the `in` operator, `@eval`, `@inject`, `@stack` and `@pushTo`, and edge.js's
+  helpers (`nl2br`, `excerpt`, `html.attrs`). `await` waits for a promise. A function that
+  isn't there says which one was probably meant (``index.edge:2: `uper` is not a function
+  (did you mean `upper`?)``), or ssqch's name for another generator's (`slug`).
 
 ## 0.7.0 - 2026-11-17
 
