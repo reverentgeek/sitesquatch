@@ -4,6 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { blake3Hex } from "../blake3.ts";
+import { BUILTINS } from "../config.ts";
+import type { Config } from "../config.ts";
 import { builtCopy, fingerprint, integrity, rewriteAssets } from "./assets.ts";
 
 // From the tests in 0.7's plugins/assets/src/lib.rs.
@@ -73,4 +75,25 @@ test("finds the copy a production build left", () => {
 	fs.writeFileSync(path.join(out, "assets/index.89ef4567.css"), "older");
 	assert.equal(builtCopy(out, "/assets/index.css"), undefined);
 	fs.rmSync(out, { recursive: true });
+});
+
+test("assetsPlugin() rewrites the pages that name a file, and assetUrl() names what it was asked", async () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-assets-plugin-"));
+	fs.mkdirSync(path.join(root, "dist/assets"), { recursive: true });
+	fs.writeFileSync(path.join(root, "dist/assets/site.css"), "body { color: green }");
+	const config = { root, input: "src", output: "dist", env: "production", serving: false, passthrough: [], beforeBuild: [], htmlTransforms: [], filters: new Map(), summaries: [] } as unknown as Config;
+	await BUILTINS.get("ssqch/assets")!(config, { files: ["/assets/site.css"] } as never);
+	const hook = config.beforeBuild[0] as { fn: (event: unknown) => unknown };
+	await hook.fn({});
+	const [[, transform]] = config.htmlTransforms;
+	const info = { url: "/", inputPath: "./index.md", outputPath: path.join(root, "dist/index.html") };
+	const hashed = `/assets/site.${blake3Hex(Buffer.from("body { color: green }")).slice(0, 8)}.css`;
+	assert.equal(await transform("<link rel=\"stylesheet\" href=\"/assets/site.css\">", info), `<link rel="stylesheet" href="${hashed}">`);
+	assert.equal(await transform("<link rel=\"stylesheet\" href=\"/other.css\">", info), "<link rel=\"stylesheet\" href=\"/other.css\">");
+	const assetUrl = config.filters.get("assetUrl")!;
+	assert.equal(assetUrl("/assets/site.css"), hashed);
+	// Called with nothing, as 0.7 said it.
+	assert.throws(() => assetUrl(), { message: "assetUrl(\"\"): not one of the assets plugin's files (/assets/site.css)" });
+	assert.throws(() => assetUrl(undefined), { message: "assetUrl(\"undefined\"): not one of the assets plugin's files (/assets/site.css)" });
+	fs.rmSync(root, { recursive: true });
 });

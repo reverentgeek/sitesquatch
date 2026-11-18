@@ -180,6 +180,8 @@ BUILTINS.set("ssqch/assets", (config, given) => {
 	let urls = new Map<string, string>();
 	let sri = new Map<string, string>();
 	let names: string[] = [];
+	// The plain paths a page has to mention for this build to change it: one that's fingerprinted or gets an `integrity`.
+	let changing: string[] = [];
 
 	config.beforeBuild.push({ label: "", fn: () => {
 		const output = path.resolve(config.root, config.output);
@@ -222,16 +224,20 @@ BUILTINS.set("ssqch/assets", (config, given) => {
 		urls = map;
 		sri = hashes;
 		names = done;
+		changing = [...new Set([...[...map].filter(([plain, url]) => plain !== url).map(([plain]) => plain), ...hashes.keys()])];
 	} });
 
 	config.htmlTransforms.push(["assets", (content, info) => {
 		if (path.extname(info.outputPath) !== ".html") return content;
-		if ([...urls].every(([plain, url]) => plain === url) && sri.size === 0) return content;
+		// Every change is to an attribute or an import that has one of those paths as it's
+		// written, so a page that doesn't have one is left as it is without reading its tags.
+		if (!changing.some((plain) => content.includes(plain))) return content;
 		return rewriteAssets(content, urls, sri);
 	}]);
 
-	config.filters.set("assetUrl", (file?: unknown) => {
-		const p = String(file);
+	// Called with nothing, it's asked about "", as in 0.7.
+	config.filters.set("assetUrl", (...given: unknown[]) => {
+		const p = given.length === 0 ? "" : String(given[0]);
 		const url = urls.get(p);
 		// The files by path, as 0.7 listed them.
 		if (url === undefined) bail(`assetUrl("${p}"): not one of the assets plugin's files (${[...urls.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(", ")})`);
