@@ -931,7 +931,7 @@ function packageFiles(dir: string, plan: Plan): void {
 	}
 	// pnpm 11 and later wait a day before installing a release.
 	if (pm === "pnpm" && edited && waitsForReleaseAge(dir, pkg)) {
-		plan.byHand.push(["pnpm-workspace.yaml", `pnpm waits a day before installing a new release, so if ssqch ${version} came out today, the install fails: add \`ssqch\` and \`@ssqch/darwin-arm64\`, \`@ssqch/darwin-x64\`, \`@ssqch/linux-x64\` and \`@ssqch/win32-x64\` under \`minimumReleaseAgeExclude\` (\`ssqch docs "release age"\`)`]);
+		plan.byHand.push(["pnpm-workspace.yaml", `pnpm waits a day before installing a new release, so if ssqch ${version} came out today, the install fails: add \`ssqch\` under \`minimumReleaseAgeExclude\` (\`ssqch docs "release age"\`)`]);
 	}
 }
 

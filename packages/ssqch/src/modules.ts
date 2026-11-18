@@ -15,9 +15,16 @@ import { realPath } from "./paths.ts";
 
 /** This package's folder: frames inside it are ssqch's own, not the site's. */
 const SELF = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const API = new URL("./api.ts", import.meta.url).href;
 /** The modules a site imports from ssqch itself, besides `ssqch`. */
 export const BUILT_IN = ["ssqch/image", "ssqch/rss", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/minify"];
+/**
+ * Where `ssqch` and `ssqch/image` are, as Node loads them: from source, `src/api.ts` and
+ * `src/modules/image.ts`; in the npm package, compiled to `lib/ssqch.js` and `lib/image.js`
+ * (`scripts/build.ts`), the files its `exports` name, so a config's `ssqch` is the build's.
+ */
+const COMPILED = fs.existsSync(path.join(SELF, "lib", "ssqch.js"));
+const API = COMPILED ? pathToFileURL(path.join(SELF, "lib", "ssqch.js")).href : new URL("./api.ts", import.meta.url).href;
+const builtInUrl = (specifier: string): URL => (COMPILED ? pathToFileURL(path.join(SELF, "lib", `${specifier.slice(6)}.js`)) : new URL(`./modules/${specifier.slice(6)}.ts`, import.meta.url));
 
 /** The site's own files that were loaded as modules (not packages'), in the order they loaded: `ssqch serve` reads the configuration again when one changes. */
 export const loadedFiles = new Set<string>();
@@ -52,7 +59,7 @@ export function hookModules(): void {
 		if (specifier.startsWith("file:") && specifier.endsWith(FORCE_ESM)) return { ...next(specifier, context), format: "module" };
 		if (specifier === "ssqch") return { url: API, shortCircuit: true };
 		if (specifier.startsWith("ssqch/")) {
-			const url = new URL(`./modules/${specifier.slice(6)}.ts`, import.meta.url);
+			const url = builtInUrl(specifier);
 			if (BUILT_IN.includes(specifier) && fs.existsSync(url)) return { url: url.href, shortCircuit: true };
 		}
 		const fromSite = isSiteUrl(context.parentURL);
@@ -252,7 +259,8 @@ function syntaxFrames(e: SyntaxError, root: string): string[] {
 			const copy = path.join(tmp, `check${ext}`);
 			fs.copyFileSync(file, copy);
 			try {
-				execFileSync(process.execPath, ["--check", copy], { stdio: ["ignore", "ignore", "pipe"], encoding: "utf8", timeout: 20_000 });
+				// In the standalone executable, Node is ssqch: the variable asks it to be `node --check` (scripts/sea-main.ts).
+				execFileSync(process.execPath, ["--check", copy], { stdio: ["ignore", "ignore", "pipe"], encoding: "utf8", timeout: 20_000, env: { ...process.env, SSQCH_SYNTAX_CHECK: "1" } });
 			} catch (failed: any) {
 				const lines = String(failed.stderr ?? "").split("\n");
 				// Node names the copy by its real path, however that's spelled here: the file's name is enough.
