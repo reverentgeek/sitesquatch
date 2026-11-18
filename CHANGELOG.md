@@ -74,6 +74,9 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Fixed
 
+- The hint for Jekyll's `jsonify` in a Jinja or Nunjucks template said Liquid's is `json`; it says
+  `jsonify` works in Liquid.
+
 - An error that many pages hit at one spot (a broken include in a layout) shows that spot's lines
   once, not up to three times, so a second, different error gets its own.
 
