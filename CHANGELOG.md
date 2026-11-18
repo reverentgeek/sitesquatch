@@ -90,6 +90,13 @@ the release.
     `4`, where 0.7 printed `2.0` and `4.0`.
   - `+` and `*` are JavaScript's: `xs + ys` joins two lists as text (use `xs | chain(ys)`), and
     `"ab" * 3` isn't `"ababab"`.
+- **Markdown is ssqch's own, as in 0.7** (its Rust, built as WebAssembly), so pages come out as
+  they did. A page's own Markdown waits for an async `headingIds` function or highlighter in
+  `markdown.highlight.languages`, as 0.7 did. Markdown made while a template renders doesn't:
+  where such a function answers with a promise, `markdown()` and `highlight()` in a template and
+  `markdown()` from `"ssqch"` are errors that name the function, and so is a render hook or
+  container template whose engine answers with one (an async filter, function or engine), where
+  0.7 waited for them. Make those functions synchronous.
 
 ### Changed
 
@@ -110,11 +117,6 @@ the release.
   where 0.7 refused the file. TOML's integers past 2^53 are rounded numbers, as in 0.7.
 - A stack frame in an error or a warning has the column Node gives: `throw new Error("...")` is
   at `new`, where 0.7 (on QuickJS) pointed at `Error`.
-- Markdown is still ssqch's own, 0.7's Rust built as WebAssembly, so pages come out as they did.
-  A render hook or container whose template answers with a promise (an async filter, function
-  or engine) is an error that names the template: hooks render while the Markdown around them
-  does, so make what they call synchronous. A highlighter in `markdown.highlight.languages`
-  that's async gets the warning that it returned an object, not a list of tokens.
 - Edge has what edge.js has: destructuring in `@let`, block-bodied arrow functions, regular
   expressions, the `in` operator, `@eval`, `@inject`, `@stack` and `@pushTo`, and edge.js's
   helpers (`nl2br`, `excerpt`, `html.attrs`). `await` waits for a promise. A function that
