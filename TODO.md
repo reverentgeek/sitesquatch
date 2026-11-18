@@ -127,7 +127,7 @@ until 0.8 ships.
         (`cli/front-matter.test.js`).
   - [x] Node 22.18 gave CommonJS modules no `require.cache` while ssqch's `load` hook was
         registered (fixed in 22.23); the hook is gone, and a11yproject.com builds there.
-  - [x] The oracle: 95 of 195 on Node 22.18, 24 and 26 (61 before), a11yproject.com's frozen
+  - [x] The oracle: 96 of 196 on Node 22.18, 24 and 26 (61 before), a11yproject.com's frozen
         site and the review's new tests among them. The benchmark, alone on the laptop: 10,000
         pages in 1.14 s on one thread, 366 MB (1.42 s before the stage; the limit is 2 s);
         v8.dev in 0.58 s (0.72 s).

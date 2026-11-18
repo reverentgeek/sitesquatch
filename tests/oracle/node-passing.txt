@@ -21,6 +21,7 @@ cli/engines.test.js: jinja_keeps_its_meaning_in_every_corner
 cli/engines.test.js: liquid_numbers_dates_and_functions_are_0_7s_in_any_time_zone
 cli/engines.test.js: liquid_templates_get_filters_includes_and_collections
 cli/engines.test.js: nunjucks_templates_get_filters_includes_and_collections
+cli/engines.test.js: printing_tags_and_sentences_as_0_8_decided
 cli/engines.test.js: quotes_in_prose_and_comments_dont_change_the_output
 cli/engines.test.js: render_front_matter_picks_the_engines
 cli/engines.test.js: the_config_can_define_template_engines

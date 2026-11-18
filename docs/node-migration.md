@@ -88,7 +88,7 @@ Four ports ran in parallel, each in its own git worktree with its oracle tests a
 | --- | --- |
 | The 10,000-page site, one thread | **1.14 s, 366 MB** (1.42 s before the stage, measured with it; the limit is 2 s). Rendering went from markdown-it to the `.wasm`. |
 | v8.dev's exact port | **0.58 s** (the limit is 0.72 s); it brings its own markdown-it, which still works. |
-| The oracle | 95 of 195 tests pass, the same on Node 22.18, 24 and 26 (61 before): every engine's tests, the Markdown tests, front matter, a11yproject.com's frozen site, and the tests the review added. What fails waits for `init` and the tools (stage 4), plugins (5), the server (6) and the importers (7). |
+| The oracle | 96 of 196 tests pass, the same on Node 22.18, 24 and 26 (61 before): every engine's tests, the Markdown tests, front matter, a11yproject.com's frozen site, and the tests the review added. What fails waits for `init` and the tools (stage 4), plugins (5), the server (6) and the importers (7). |
 | Real sites, plugins taken out of both builds' copies | The 12 starters match 0.7 but for the version in their footers; the six Jinja and Nunjucks examples match; the blog's Edge pages and its 128 Markdown files (172 highlighted fences) match. |
 
 What the stage decided, or found:
