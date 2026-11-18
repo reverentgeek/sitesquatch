@@ -53,6 +53,16 @@ function hasExtension(from: string): boolean {
 
 const trimSlashes = (url: string) => url.replace(/\/+$/, "");
 
+/**
+ * An alias that YAML read as a date (`aliases: 2024-01-01`), as it was written, which is how 0.7
+ * kept it: the date, or the date and time (`2020-02-03T04:05:06Z`) when it has one.
+ */
+function asWritten(alias: unknown): unknown {
+	if (!(alias instanceof Date) || Number.isNaN(alias.getTime())) return alias;
+	const iso = alias.toISOString();
+	return iso.endsWith("T00:00:00.000Z") ? iso.slice(0, 10) : iso.replace(/\.000Z$/, "Z");
+}
+
 BUILTINS.set("ssqch/redirects", (config: Config, given) => {
 	const o = new Options(given, ["pages", "netlify", "redirects"]);
 	const pages = o.bool("pages") ?? true;
@@ -80,11 +90,11 @@ BUILTINS.set("ssqch/redirects", (config: Config, given) => {
 		for (const [from, to] of redirects) all.set(from, [to, "the redirects option"]);
 		for (const page of summaries) {
 			const source = displayPath(config.root, page.inputPath);
-			const given = page.data.aliases;
+			const given = asWritten(page.data.aliases);
 			if (given === undefined || given === null) continue;
 			let aliases: unknown[];
 			if (typeof given === "string") aliases = [given];
-			else if (Array.isArray(given)) aliases = given;
+			else if (Array.isArray(given)) aliases = given.map(asWritten);
 			else bail(`${source}: aliases must be a URL path or a list of them, not ${typeOf(given)}`);
 			for (const each of aliases) {
 				if (typeof each !== "string") bail(`${source}: aliases must be URL paths, not ${typeOf(each)}`);

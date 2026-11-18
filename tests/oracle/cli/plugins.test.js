@@ -658,6 +658,21 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["html
 	assert.ok(log.includes("Links   7 checked, 4 broken"), log);
 });
 
+// Not from a Rust test: an alias YAML reads as a date is the path it looks like.
+test("aliases_that_look_like_dates_are_paths", () => {
+	const root = project({
+		"ssqch.config.js": `import { redirectsPlugin } from "ssqch/redirects";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], plugins: [redirectsPlugin({ netlify: true })] };`,
+		"src/a.md": "---\naliases: 2024-01-01\n---\nA\n",
+		"src/b.md": "---\naliases: [2019-05-15, /old/]\n---\nB\n",
+	});
+	const { ok, log } = build(root);
+	assert.ok(ok, log);
+	assert.equal(read(root, "dist/_redirects"), "/2019-05-15  /b/  301\n/2024-01-01  /a/  301\n/old/  /b/  301\n");
+	assert.ok(read(root, "dist/2024-01-01/index.html").includes("url=/a/"));
+	assert.ok(read(root, "dist/2019-05-15/index.html").includes("url=/b/"));
+});
+
 // Not from a Rust test: a link to a path the system can't look up (a NUL byte, from `%00`, or a
 // name too long) is broken, not an error of the build.
 test("a_link_the_system_cant_look_up_is_not_found", () => {

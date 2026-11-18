@@ -161,12 +161,25 @@ the release.
   `ssqch-x86_64-unknown-linux-gnu.tar.gz` (0.7's was `-musl`). The installer script puts `ssqch`
   in `~/.local/bin`, or replaces it in `~/.cargo/bin` where 0.7's put it. `cargo install ssqch`
   and `cargo binstall ssqch` end at 0.7.
+- **`dateToRfc3339` and `dateToRfc822` refuse an invalid date.** An invalid `Date` (`new
+  Date("2024-13-45")`) or `NaN` is an error, `dateToRfc3339: not a date: Invalid Date` (or
+  `NaN`), as it is for ssqch's other date filters, where 0.7 wrote `1970-01-01T00:00:00Z` into
+  the feed without a word. Fix the date, or leave the element out when there's none.
 
 ### Changed
 
 - **`import "ssqch"` works from plain Node too.** The npm package's `exports` map names ssqch's
   own modules, which a config, a test or a script can import, where 0.7's package had stubs that
   said to build with ssqch.
+- `base` and the plugins read a page's HTML where 0.7's HTML rewriter (lol_html) read it, except
+  where lol_html wasn't the same from one use to the next, and there they read it as browsers
+  do: after a tag that ends in `=>` (`<script src=>`), the element's content is text, where some
+  of 0.7's plugins read it as markup; and SVG's `<title>`, `<desc>`, `<foreignObject>` and
+  `<font>`, and MathML's `<mi>`, `<mo>`, `<mn>`, `<ms>` and `<mtext>`, are seen right after an
+  end tag (`<path></path><title id="t">`), where 0.7 skipped them, so the link checker finds an
+  `id` there. A `<style>`, `<title>`, `<textarea>` or `<iframe>` inside a `<select>`, or after a
+  `<frameset>`, holds text, where 0.7 refused the page ("The parser has encountered a text
+  content tag").
 
 - `ssqch/minify` and `ssqch/sass` are 0.7's minifier and 0.7's Sass compiler (grass 0.13.4),
   built as WebAssembly, so pages and stylesheets come out as 0.7 wrote them. A Sass error's last

@@ -17,11 +17,12 @@ export function rssPlugin(_options?: unknown) {
 /** How a value prints in a template's `{{ }}`: nothing for `null` and `undefined`, a date as ISO 8601. */
 const output = (v: unknown): string => (v === undefined || v === null ? "" : v instanceof Date ? v.toISOString() : String(v));
 
-/** A value as 0.7's error messages showed it. */
+/** A value as 0.7's error messages showed it. An invalid `Date` and `NaN` (which 0.7 took for 1970) are shown as JavaScript writes them. */
 function shown(v: unknown): string {
 	if (v === undefined) return "undefined";
 	if (typeof v === "function") return "[Function]";
-	if (v instanceof Date) return `Date(${v.toISOString().replace(/\.\d+Z$/, "+00:00")})`;
+	if (v instanceof Date) return Number.isNaN(v.getTime()) ? "Invalid Date" : `Date(${v.toISOString().replace(/\.\d+Z$/, "+00:00")})`;
+	if (typeof v === "number" && !Number.isFinite(v)) return String(v);
 	try { return JSON.stringify(v) ?? "null"; } catch { return "null"; }
 }
 
@@ -53,7 +54,12 @@ export function dateToRfc822(date?: unknown): string {
 	return `${DAYS[d.getUTCDay()]}, ${two(d.getUTCDate())} ${MONTHS[d.getUTCMonth()]} ${year(d)} ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())} +0000`;
 }
 
-const year = (d: Date) => String(d.getUTCFullYear()).padStart(4, "0");
+/** The year as 0.7 (chrono's `%Y`) wrote it: four digits, with a sign before 0 and after 9999 (`-0001`, `+10000`). */
+function year(d: Date): string {
+	const y = d.getUTCFullYear();
+	if (y < 0) return `-${String(-y).padStart(4, "0")}`;
+	return y > 9999 ? `+${y}` : String(y).padStart(4, "0");
+}
 
 /** `url` made absolute against `base`, as `new URL(url, base).toString()` does; a URL that can't be resolved comes back unchanged. */
 export function absoluteUrl(url: unknown, base: unknown): string {
