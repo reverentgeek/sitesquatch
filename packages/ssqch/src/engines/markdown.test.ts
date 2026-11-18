@@ -11,7 +11,7 @@ import type { MarkdownOptions } from "../markdown-options.ts";
 import { capture, takeWarnings } from "../diagnostics.ts";
 import { Engines, plainEngine } from "./engine.ts";
 import type { TemplateEngine } from "./engine.ts";
-import { checkLanguages, loadHookTemplates, markdownEngine, rendering } from "./markdown.ts";
+import { checkLanguages, crashForTest, loadHookTemplates, markdownEngine, rendering } from "./markdown.ts";
 import type { HookTemplate } from "./markdown.ts";
 
 const options = (change: Partial<MarkdownOptions> = {}): MarkdownOptions => ({ ...defaultMarkdownOptions(), ...change });
@@ -27,8 +27,8 @@ function tiny(markdown: () => ReturnType<typeof markdownEngine>): TemplateEngine
 	};
 }
 
-function hooked(templates: Record<string, string>, engine: (md: () => ReturnType<typeof markdownEngine>) => TemplateEngine = tiny) {
-	const md = markdownEngine(options());
+function hooked(templates: Record<string, string>, engine: (md: () => ReturnType<typeof markdownEngine>) => TemplateEngine = tiny, change: Partial<MarkdownOptions> = {}) {
+	const md = markdownEngine(options(change));
 	const engines = new Engines();
 	engines.byName.set("t", engine(() => md));
 	engines.byName.set("md", md);
@@ -83,6 +83,56 @@ test("the_sites_functions_are_called_back", () => {
 	}
 	const throwing = markdownEngine(options({ sluggerFn: () => { throw new Error("no ids"); } }));
 	assert.throws(() => throwing.render("# Hi\n", {}, ctx), { message: /^markdown\.headingIds: no ids/ });
+});
+
+test("a_pages_markdown_waits_for_async_functions_and_calls_each_once", async () => {
+	const calls: string[] = [];
+	const md = markdownEngine(options({
+		highlight: true,
+		sluggerFn: async (text) => { calls.push(`id ${text}`); await new Promise((r) => setTimeout(r, 1)); return text === "Same" ? "same" : `id-${calls.length}`; },
+		languages: [["trail", async (code: string) => { calls.push(`trail ${code}`); return [[code, "keyword"]]; }], ["late", async () => { throw new Error("no pine cones"); }]],
+	}));
+	const out = md.render("# Same\n\n# Same\n\n## Other\n\n```trail\nA b\n```\n", {}, ctx);
+	assert.ok(out instanceof Promise, "an async function makes the render async");
+	assert.equal(await out, "<h1 id=\"same\">Same</h1>\n<h1 id=\"same-1\">Same</h1>\n<h2 id=\"id-3\">Other</h2>\n<pre class=\"highlight\"><code class=\"language-trail\"><span class=\"hl-keyword\">A b</span>\n</code></pre>\n");
+	assert.deepEqual(calls, ["id Same", "id Same", "id Other", "trail A b\n"], "each called once, in 0.7's order");
+	capture();
+	try {
+		assert.equal(await md.render("```late\nx\n```\n", {}, ctx), "<pre><code class=\"language-late\">x\n</code></pre>\n");
+		assert.match(takeWarnings()[0].message, /a `late` fence is plain text: markdown\.highlight\.languages\.late failed: no pine cones/);
+	} finally {
+		capture(false);
+	}
+	const rejecting = markdownEngine(options({ sluggerFn: async () => { throw new Error("no ids"); } }));
+	await assert.rejects(async () => rejecting.render("# Hi\n", {}, ctx), { message: /^markdown\.headingIds: no ids/ });
+});
+
+test("synchronous_functions_and_hooks_run_once_and_the_render_stays_synchronous", () => {
+	let ids = 0;
+	let hooks = 0;
+	const md = hooked({ "hooks/heading": "<h{{ heading.level }} id=\"{{ heading.id }}\">{{ heading.text }}</h{{ heading.level }}>" }, (markdown) => {
+		const engine = tiny(markdown);
+		return { render: (source, data, c) => { hooks++; return engine.render(source, data, c); } };
+	}, { sluggerFn: (text) => `${text}-${++ids}` });
+	// A string, not a promise: a page that another reads (`templateContent`) can render on demand.
+	assert.equal(md.render("# A\n\n# B\n", {}, ctx), "<h1 id=\"A-1\">A</h1>\n<h1 id=\"B-2\">B</h1>\n");
+	assert.equal(ids, 2, "the slugger ran once a heading");
+	assert.equal(hooks, 2, "the hook ran once a heading");
+});
+
+test("markdown_made_inside_a_template_says_it_cant_wait", () => {
+	const md = markdownEngine(options({ sluggerFn: async () => "x", languages: [["trail", async (code: string) => [[code, "keyword"]]]] }));
+	assert.throws(() => md.html("# Hi", false), { message: "markdown.headingIds answered with a promise, and markdown() in a template can't wait for one: it's made at once, while the template around it renders. Make the function synchronous (a page's own Markdown waits for it)" });
+	assert.throws(() => md.plain("# Hi", false), { message: /^markdown\.headingIds answered with a promise, and markdown\(\) from "ssqch" can't wait for one/ });
+	assert.throws(() => md.highlight("x", "trail"), { message: /^markdown\.highlight\.languages\.trail answered with a promise, and highlight\(\) in a template can't wait for one/ });
+	// What has no function in it still renders.
+	assert.equal(md.html("*a*", true), "<em>a</em>");
+});
+
+test("a_crash_in_the_wasm_names_the_page_and_the_next_render_starts_afresh", () => {
+	const md = markdownEngine(options());
+	assert.throws(() => crashForTest(md, "src/posts/trail.md"), { message: /^something large walked through the build: internal error while processing src\/posts\/trail\.md: it crashed \(.+\) \(this is a bug in ssqch; please report it at / });
+	assert.equal(md.render("# Hi\n", {}, ctx), "<h1 id=\"hi\">Hi</h1>\n");
 });
 
 test("grammars_and_aliases_are_checked_with_the_config", () => {

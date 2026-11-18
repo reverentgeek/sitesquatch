@@ -23,7 +23,7 @@ import type { Data } from "../data.ts";
 import { isPlainObject, parseFrontMatter, readText } from "../data.ts";
 import { BuildError, Diagnostics, context, messageOf, warn, warning } from "../diagnostics.ts";
 import type { MarkdownOptions } from "../markdown-options.ts";
-import { describeThrown } from "../modules.ts";
+import { describeThrown, settle } from "../modules.ts";
 import { comparePaths } from "../paths.ts";
 import * as voice from "../voice.ts";
 import type { Engines, RenderContext, TemplateEngine } from "./engine.ts";
@@ -144,13 +144,30 @@ export function checkLanguages(options: MarkdownOptions, root: string): void {
 	engine.close();
 }
 
+/** One of the config's functions, and how errors name it (`markdown.headingIds`). */
+interface SiteFunction {
+	fn: (...args: unknown[]) => unknown;
+	name: string;
+	/** `headingIds`: when it fails, the page fails, so nothing after it is called. */
+	slugger: boolean;
+}
+
+/** A call the wasm made to a site's function: which, and its arguments as JSON. */
+interface Asked {
+	n: number;
+	args: string;
+}
+
+/** What a site's function gave for one call, worked out before the render that uses it. */
+type Answer = Asked & ({ value: unknown } | { error: unknown });
+
 class WasmMarkdown implements Markdown {
 	#options: MarkdownOptions;
 	#root: string;
 	#hooks = new Map<string, HookTemplate>();
 	#engines: Engines | undefined;
 	/** The config's functions, by the numbers the wasm calls them with. */
-	#functions: Array<(...args: unknown[]) => unknown> = [];
+	#functions: SiteFunction[] = [];
 	#setup: { json: string; files: Map<string, Buffer> } | undefined;
 	#handle = -1;
 	#wasm: Wasm | undefined;
@@ -160,22 +177,42 @@ class WasmMarkdown implements Markdown {
 		this.#root = root;
 	}
 
-	render(source: string, data: Data, _ctx: RenderContext): string {
-		return this.#markdown(source, HOOKS, data, page ?? pageOf(data));
+	/**
+	 * A page's Markdown. 0.7 waited for a site's function that answered with a promise
+	 * (`headingIds: async (text) => id`), but the wasm calls back synchronously. So when the
+	 * config has functions, a first render runs nothing of the site's (no hooks, a stand-in for
+	 * each function) and notes the calls it makes; each function is then called once, in order,
+	 * waiting for each promise as 0.7 did; and the render that counts takes those answers. A
+	 * function or a hook never runs twice. Without functions, it's one render.
+	 */
+	render(source: string, data: Data, _ctx: RenderContext): string | Promise<string> {
+		const file = page ?? pageOf(data);
+		this.#ready();
+		if (!this.#functions.length) return this.#markdown(source, HOOKS, data, file);
+		let asked: Asked[];
+		try {
+			asked = this.#dryRun(source, file);
+		} catch {
+			// The render that counts says what's wrong.
+			return this.#markdown(source, HOOKS, data, file);
+		}
+		return this.#answer(asked, (answers) => this.#markdown(source, HOOKS, data, file, answers));
 	}
 
 	html(text: string, inline: boolean): string {
-		return this.#markdown(text, HOOKS | (inline ? INLINE : 0), {}, page);
+		return this.#markdown(text, HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template");
 	}
 
 	plain(text: string, inline: boolean): string {
-		return this.#markdown(text, inline ? INLINE : 0, {}, page);
+		return this.#markdown(text, inline ? INLINE : 0, {}, page, undefined, "markdown() from \"ssqch\"");
 	}
 
 	highlight(code: string, lang: string): string | undefined {
 		const wasm = this.#ready();
 		const [ptr, lens] = wasm.input([code, lang, page ?? ""]);
-		const [status, text, thrown] = wasm.run(this, {}, () => wasm.x.md_highlight(this.#handle, ptr, lens[0], lens[1], lens[2]));
+		const frame = wasm.frame(this, {});
+		const [status, text, thrown] = wasm.run(frame, () => wasm.x.md_highlight(this.#handle, ptr, lens[0], lens[1], lens[2]), page);
+		this.#waited(frame, "highlight() in a template");
 		if (status === NOTHING) return undefined;
 		if (status !== DONE) throw failure(text, thrown);
 		return text;
@@ -183,7 +220,7 @@ class WasmMarkdown implements Markdown {
 
 	css(): string {
 		const wasm = this.#ready();
-		const [status, text] = wasm.run(this, {}, () => wasm.x.md_css());
+		const [status, text] = wasm.run(wasm.frame(this, {}), () => wasm.x.md_css(), undefined);
 		return status === DONE ? text : "";
 	}
 
@@ -200,6 +237,12 @@ class WasmMarkdown implements Markdown {
 		this.#ready();
 	}
 
+	/** For tests: a render that makes the wasm read past its memory, as a bug in it would. */
+	crash(file: string): void {
+		const wasm = this.#ready();
+		wasm.run(wasm.frame(this, {}), () => wasm.x.md_render(this.#handle, 0xffffff00, 16, 0, 0), file);
+	}
+
 	/** Lets the wasm forget this setup. */
 	close(): void {
 		if (this.#wasm && this.#handle >= 0 && !this.#wasm.dead) this.#wasm.x.md_drop(this.#handle);
@@ -208,12 +251,71 @@ class WasmMarkdown implements Markdown {
 		this.#wasm = undefined;
 	}
 
-	#markdown(source: string, flags: number, data: Data, file: string | undefined): string {
+	/**
+	 * One render. `answers` are what the site's functions gave, worked out before it; without
+	 * them they're called as the wasm asks, and one that answers with a promise is an error for
+	 * `what` (Markdown that's made at once, inside a template, can't wait for it).
+	 */
+	#markdown(source: string, flags: number, data: Data, file: string | undefined, answers?: Answer[], what = "this Markdown"): string {
 		const wasm = this.#ready();
 		const [ptr, lens] = wasm.input([source, file ?? ""]);
-		const [status, text, thrown] = wasm.run(this, data, () => wasm.x.md_render(this.#handle, ptr, lens[0], lens[1], flags));
+		const frame = wasm.frame(this, data);
+		frame.answers = answers;
+		const [status, text, thrown] = wasm.run(frame, () => wasm.x.md_render(this.#handle, ptr, lens[0], lens[1], flags), file);
+		this.#waited(frame, what);
 		if (status !== DONE) throw failure(text, thrown);
 		return text;
+	}
+
+	/** A render that runs nothing of the site's: the calls to its functions it would make, in order. */
+	#dryRun(source: string, file: string | undefined): Asked[] {
+		const wasm = this.#ready();
+		const [ptr, lens] = wasm.input([source, file ?? ""]);
+		const frame = wasm.frame(this, {});
+		frame.asked = [];
+		const [status, text] = wasm.run(frame, () => wasm.x.md_render(this.#handle, ptr, lens[0], lens[1], 0), file);
+		if (status !== DONE) throw new BuildError(text);
+		return frame.asked;
+	}
+
+	/**
+	 * Calls the site's functions as a render will, one at a time, waiting for each promise
+	 * before the next call, as 0.7 did; then `then` with what they gave. At once while nothing
+	 * answers with a promise. After `headingIds` fails nothing more is called: the render
+	 * stops there.
+	 */
+	#answer<T>(asked: Asked[], then: (answers: Answer[]) => T): T | Promise<T> {
+		const answers: Answer[] = [];
+		const from = (i: number): T | Promise<T> => {
+			for (; i < asked.length; i++) {
+				const call = asked[i];
+				const site = this.#functions[call.n];
+				let out: unknown;
+				try {
+					out = site.fn(...(JSON.parse(call.args) as unknown[]));
+				} catch (error) {
+					answers.push({ ...call, error });
+					if (site.slugger) break;
+					continue;
+				}
+				if (isThenable(out)) {
+					const waited = settle(Promise.resolve(out)) as Promise<unknown>;
+					return waited.then(
+						(value: unknown) => { answers.push({ ...call, value }); return from(i + 1); },
+						(error: unknown) => { answers.push({ ...call, error }); return site.slugger ? then(answers) : from(i + 1); },
+					);
+				}
+				answers.push({ ...call, value: out });
+			}
+			return then(answers);
+		};
+		return from(0);
+	}
+
+	/** After a render without answers: a function that answered with a promise is an error for `what`. */
+	#waited(frame: Frame, what: string): void {
+		if (frame.waited === undefined) return;
+		throw new BuildError(`${frame.waited} answered with a promise, and ${what} can't wait for one: it's made at once, while the template around it renders. Make the function synchronous (a page's own Markdown waits for it)`);
 	}
 
 	/** The wasm, with this setup made in it. */
@@ -227,7 +329,7 @@ class WasmMarkdown implements Markdown {
 		const [ptr, [len]] = wasm.input([this.#setup.json]);
 		let handle: number;
 		try {
-			[handle] = wasm.run(this, {}, () => wasm.x.md_new(ptr, len));
+			[handle] = wasm.run(wasm.frame(this, {}), () => wasm.x.md_new(ptr, len), "markdown options");
 		} finally {
 			wasm.files = new Map();
 		}
@@ -242,14 +344,14 @@ class WasmMarkdown implements Markdown {
 	#describe(): { json: string; files: Map<string, Buffer> } {
 		const o = this.#options;
 		this.#functions = [];
-		const number = (fn: (...args: unknown[]) => unknown) => this.#functions.push(fn) - 1;
+		const number = (fn: (...args: unknown[]) => unknown, name: string, slugger = false) => this.#functions.push({ fn, name, slugger }) - 1;
 		const files = new Map<string, Buffer>();
 		// The same languages and grammars make the same key: their fences are shared between builds.
 		const key: unknown[] = [];
 		const languages = o.languages.map(([name, language]) => {
 			if (typeof language === "function") {
 				key.push([name]);
-				return [name, { function: number(language as (...args: unknown[]) => unknown) }];
+				return [name, { function: number(language as (...args: unknown[]) => unknown, `markdown.highlight.languages.${name}`) }];
 			}
 			if ("alias" in language) {
 				key.push([name, language.alias]);
@@ -274,7 +376,7 @@ class WasmMarkdown implements Markdown {
 			highlight: o.highlight,
 			highlightCss: o.highlightCss,
 			languages,
-			headingIdsFunction: o.sluggerFn ? number(o.sluggerFn as (...args: unknown[]) => unknown) : null,
+			headingIdsFunction: o.sluggerFn ? number(o.sluggerFn as (...args: unknown[]) => unknown, "markdown.headingIds", true) : null,
 			hooks: [...this.#hooks.keys()],
 			languagesKey: JSON.stringify(key),
 		});
@@ -302,13 +404,27 @@ class WasmMarkdown implements Markdown {
 		return text;
 	}
 
-	/** One of the config's functions, for the wasm. */
-	call(n: number, args: unknown[]): unknown {
-		const fn = this.#functions[n];
-		if (!fn) throw new BuildError(`no function ${n}`);
-		const out = fn(...args);
-		// 0.7 ran functions synchronously: a promise is what an async one returns, and its result is lost.
-		if (out instanceof Promise) out.catch(() => {});
+	/** One of the config's functions, for the wasm: called, answered from `frame`'s answers, or (a dry run) noted and stood in for. */
+	call(n: number, args: string, frame: Frame): unknown {
+		const site = this.#functions[n];
+		if (!site) throw new BuildError(`no function ${n}`);
+		if (frame.asked) {
+			frame.asked.push({ n, args });
+			return standIn(site, args);
+		}
+		const answer = frame.answers?.[frame.next];
+		if (answer && answer.n === n && answer.args === args) {
+			frame.next++;
+			if ("error" in answer) throw answer.error;
+			return answer.value;
+		}
+		const out = site.fn(...(JSON.parse(args) as unknown[]));
+		if (isThenable(out)) {
+			// It can't be waited for here: the render finishes with a stand-in, and then fails.
+			Promise.resolve(out).catch(() => {});
+			frame.waited ??= site.name;
+			return standIn(site, args);
+		}
 		return out;
 	}
 
@@ -316,6 +432,11 @@ class WasmMarkdown implements Markdown {
 	thrown(e: unknown): string {
 		return describeThrown(e, this.#root);
 	}
+}
+
+/** For tests: what a crash in the wasm (a panic, a bad read) throws while it renders `file`. */
+export function crashForTest(markdown: Markdown, file: string): void {
+	(markdown as WasmMarkdown).crash(file);
 }
 
 /** Lets the wasm forget a setup whose engine is gone (each build makes one). */
@@ -406,6 +527,13 @@ interface Frame {
 	owner: WasmMarkdown;
 	data: Data;
 	thrown?: unknown;
+	/** A dry run's: the calls to the site's functions, noted instead of made. */
+	asked?: Asked[];
+	/** What the site's functions gave, in the order the render asks, and how many it has taken. */
+	answers?: Answer[];
+	next: number;
+	/** The function that answered with a promise, when nothing could wait for it. */
+	waited?: string;
 }
 
 const WASI_EBADF = 8;
@@ -459,16 +587,21 @@ class Wasm {
 	}
 
 	/** Makes a call for `owner`, whose hooks get `data`: its status, its result, and what a call back threw. */
-	run(owner: WasmMarkdown, data: Data, call: () => number): [number, string, unknown] {
-		if (this.dead) throw internal("its WebAssembly stopped");
-		const frame: Frame = { owner, data };
+	/** A call for `owner`, whose hooks get `data`. */
+	frame(owner: WasmMarkdown, data: Data): Frame {
+		return { owner, data, next: 0 };
+	}
+
+	/** Makes a call in `frame`: its status, its result, and what a call back threw. `what` names the page (or the setup) if the wasm crashes. */
+	run(frame: Frame, call: () => number, what: string | undefined): [number, string, unknown] {
+		if (this.dead) throw internal("its WebAssembly stopped", what);
 		this.#frames.push(frame);
 		try {
 			const status = call();
-			if (this.dead) throw internal("its WebAssembly stopped");
+			if (this.dead) throw internal("its WebAssembly stopped", what);
 			return [status, this.result(), frame.thrown];
 		} catch (e) {
-			if (e instanceof WebAssembly.RuntimeError) throw this.#trapped(e);
+			if (e instanceof WebAssembly.RuntimeError) throw this.#trapped(e, what);
 			// Anything else that came out through the wasm (a stack overflow) left it in a state
 			// nothing can rely on.
 			this.#stop();
@@ -483,14 +616,14 @@ class Wasm {
 		if (current === this) current = undefined;
 	}
 
-	#trapped(e: Error): Error {
+	#trapped(e: Error, what: string | undefined): Error {
 		this.#stop();
 		let message = "";
 		try {
 			this.x.md_panic();
 			message = this.result();
 		} catch {}
-		return internal(message || `it crashed (${e.message})`);
+		return internal(message || `it crashed (${e.message})`, what);
 	}
 
 	/** Leaves Node's answer to a call back where the wasm reads it. */
@@ -524,8 +657,7 @@ class Wasm {
 			call: (n: number, argsPtr: number, argsLen: number, out: number) => {
 				const frame = this.#frames[this.#frames.length - 1];
 				try {
-					const args = JSON.parse(this.#text(argsPtr, argsLen)) as unknown[];
-					return this.#reply(out, DONE, toWasm(frame.owner.call(n, args)));
+					return this.#reply(out, DONE, toWasm(frame.owner.call(n, this.#text(argsPtr, argsLen), frame)));
 				} catch (e) {
 					frame.thrown = e;
 					return this.#reply(out, ERROR, frame.owner.thrown(e));
@@ -533,6 +665,8 @@ class Wasm {
 			},
 			warn: (codePtr: number, codeLen: number, messagePtr: number, messageLen: number, filePtr: number, fileLen: number) => {
 				try {
+					// A dry run's warnings are the real render's to give.
+					if (this.#frames[this.#frames.length - 1]?.asked) return;
 					const file = this.#text(filePtr, fileLen);
 					warn(warning(this.#text(codePtr, codeLen), this.#text(messagePtr, messageLen), file === "" ? {} : { file }));
 				} catch {}
@@ -645,9 +779,18 @@ class Wasm {
 }
 
 /** A panic in the Rust: a bug in ssqch, said as 0.7 said one (with the panic's message). */
-function internal(message: string): BuildError {
-	return new BuildError(`${voice.SOMETHING_LARGE}: internal error while processing ${page ?? "Markdown"}: ${message} (this is a bug in ssqch; please report it at ${voice.ISSUES_URL})`);
+function internal(message: string, what: string | undefined): BuildError {
+	return new BuildError(`${voice.SOMETHING_LARGE}: internal error while processing ${what ?? page ?? "Markdown"}: ${message} (this is a bug in ssqch; please report it at ${voice.ISSUES_URL})`);
 }
+
+/** What a dry run gives the wasm for a call it notes: an id of nothing, or the code as plain text. */
+function standIn(site: SiteFunction, args: string): unknown {
+	if (site.slugger) return "";
+	const [code] = JSON.parse(args) as unknown[];
+	return [[String(code)]];
+}
+
+const isThenable = (v: unknown): v is PromiseLike<unknown> => (typeof v === "object" || typeof v === "function") && v !== null && typeof (v as PromiseLike<unknown>).then === "function";
 
 // What JSON loses that 0.7's messages name (`returned undefined, not a list of tokens`), marked
 // as `crates/ssqch-markdown/src/json.rs` reads it.
