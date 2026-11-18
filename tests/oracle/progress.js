@@ -24,16 +24,20 @@ const files = args.filter((arg) => !arg.startsWith("--"));
 
 // The reporter as a URL: on Windows, Node takes `D:\...` for a URL with the scheme `d:`.
 const reporter = pathToFileURL(path.join(ORACLE, "lib/names-reporter.js")).href;
-const ran = spawnSync(process.execPath, ["--test", "--test-concurrency=4", `--test-reporter=${reporter}`, ...files], {
+// A test that's stuck fails, with its name, after 3 minutes (the slowest take about 30 s on CI).
+const ran = spawnSync(process.execPath, ["--test", "--test-concurrency=4", "--test-timeout=180000", `--test-reporter=${reporter}`, ...files], {
 	cwd: ORACLE,
 	encoding: "utf8",
 	env: { ...process.env, SSQCH_BIN: process.env.SSQCH_BIN ?? "packages/ssqch/bin/ssqch.ts" },
 	maxBuffer: 1 << 28,
 });
 const results = new Map();
+/** Each failure's time and error in this run, by test. */
+const failures = new Map();
 for (const line of ran.stdout.split("\n")) {
-	const [outcome, file, name] = line.split("\t");
+	const [outcome, file, name, failure] = line.split("\t");
 	if (name !== undefined) results.set(`${file}: ${name}`, outcome);
+	if (failure !== undefined) failures.set(`${file}: ${name}`, JSON.parse(failure));
 }
 if (!results.size) {
 	process.stderr.write(`the oracle didn't run:\n${ran.stdout}\n${ran.stderr}\n`);
@@ -64,6 +68,12 @@ if (fresh.length) process.stdout.write(`\nPassing now, and not in node-passing.t
 if (gone.length) process.stdout.write(`\nIn node-passing.txt, and not in the oracle any more (renamed?):\n${gone.map((key) => `  ${key}`).join("\n")}\n`);
 if (broken.length) {
 	process.stdout.write(`\nThese passed before and fail now:\n${broken.map((key) => `  ${key}`).join("\n")}\n`);
+	// Why each failed in the run itself: a test that fails only under the whole suite's load
+	// passes when it's run again on its own, below.
+	for (const key of broken) {
+		const failure = failures.get(key);
+		if (failure) process.stdout.write(`\n---- ${key} (${(failure.ms / 1000).toFixed(1)} s)\n${failure.why.split("\n").slice(0, 60).join("\n")}\n`);
+	}
 	// Why, from running those tests again (where this runs may not be where it can be run by hand: CI).
 	for (const file of new Set(broken.map((key) => key.slice(0, key.indexOf(": "))))) {
 		const names = broken.filter((key) => key.startsWith(`${file}: `)).map((key) => key.slice(file.length + 2));
