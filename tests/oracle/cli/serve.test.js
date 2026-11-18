@@ -276,8 +276,7 @@ test("serve_shows_a_syntax_error_in_an_include", async () => {
 		await waitFor(ready, "\"ok\": true");
 		const port = JSON.parse(fs.readFileSync(ready, "utf8")).port;
 		const page = path.join(dir, "_site/index.html");
-		fs.writeFileSync(path.join(dir, "src/_includes/nav.njk"), "<nav>\n{% if %}</nav>");
-		await waitFor(log, "Build failed:");
+		await changeAndWait(path.join(dir, "src/_includes/nav.njk"), "<nav>\n{% if %}</nav>", log, "Build failed:");
 		await waitFor(log, "nav.njk:2: syntax error: unexpected end of block");
 		const state = await buildState(port);
 		assert.ok(state.error?.includes("nav.njk:2: syntax error: unexpected end of block"), JSON.stringify(state));

@@ -86,9 +86,10 @@ test("serve_tells_the_browser_what_changed", async () => {
 		await waitFor(ready, READY);
 		const port = JSON.parse(fs.readFileSync(ready, "utf8")).port;
 		const said = () => readOr(log);
-		assert.ok(said().includes("Pages   2 written from 2 templates, ") && said().includes(" (2 changed)\n"), said());
+		// The log comes through a pipe, so its last line may arrive after the ready file.
+		const report = await waitFor(log, "Serving ");
+		assert.ok(report.includes("Pages   2 written from 2 templates, ") && report.includes(" (2 changed)\n"), report);
 		// The address comes after the build's report, so a long build doesn't bury it.
-		const report = said();
 		assert.ok(report.indexOf("Built in") !== -1 && report.indexOf("Built in") < report.indexOf("Serving "), report);
 
 		// A browser that has just opened the page learns where things stand.
@@ -172,7 +173,7 @@ test("serve_built_serves_the_output_as_it_is", async () => {
 		assert.ok((await httpGet(port, "/nope/")).startsWith("HTTP/1.1 404") && (await httpGet(port, "/nope/")).endsWith("Lost"));
 		const gzipped = await httpGet(port, "/", { "Accept-Encoding": "gzip, br" });
 		assert.ok(gzipped.includes("Content-Encoding: gzip") && !gzipped.includes("Pine cones."), gzipped);
-		const said = readOr(log);
+		const said = await waitFor(log, "Serving dist as built at http://localhost:");
 		assert.ok(said.includes("note: preview works; ssqch calls it serve --built") && said.includes("Serving dist as built at http://localhost:") && !said.includes("Built in"), said);
 	} finally {
 		await server.stop();
@@ -192,9 +193,8 @@ test("serve_rebuilds_sass_when_a_partial_changes", async () => {
 	const server = start(["serve", "--port", "0", "--root", dir], { logFile: path.join(logDir, "serve.log") });
 	try {
 		await waitFor(path.join(dir, "dist/app.css"), "green");
-		await sleep(300);
-		fs.writeFileSync(path.join(dir, "styles/_colors.scss"), "$pine: orange;\n");
-		await waitFor(path.join(dir, "dist/app.css"), "orange");
+		// Written again each second: the server may not be watching yet on a busy machine.
+		await changeAndWait(path.join(dir, "styles/_colors.scss"), "$pine: orange;\n", path.join(dir, "dist/app.css"), "orange");
 	} finally {
 		await server.stop();
 	}
