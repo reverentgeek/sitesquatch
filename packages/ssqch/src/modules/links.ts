@@ -1,7 +1,502 @@
-// `ssqch/links`. Its plugin is ported with stage 5 of the move to Node (docs/node-migration.md); until
-// then the module is here so a config that imports it loads, and the build says what's missing.
-import { notYet } from "./not-yet.ts";
+// `ssqch/links`: a link checker. After a build, every internal link in the HTML it wrote has to
+// point at something in the output folder, and a `#fragment` has to match an `id` (or `<a name>`)
+// on the page it points to. Checked: `href` on `a`, `link` and `area`; `src` on `img`, `script`,
+// `iframe`, `source`, `video`, `audio`, `track` and `embed`; and each URL in `srcset`.
+//
+// Pages also link with URLs outside those attributes, so these are checked too, when they're on
+// the site (from its root, or absolute on its address): `<meta>` values that are URLs
+// (`og:image`, `twitter:image`, `og:url`), strings in `application/ld+json` blocks, `imagesrcset`
+// on a preload `<link>`, and in `.xml` output (feeds, the sitemap), URLs in attributes and
+// elements, including the escaped HTML of a feed entry's content.
+//
+// External links (anything with a scheme, like `https:` or `mailto:`, or starting with `//`)
+// aren't checked, unless they're on the site's own address: the `url` option, or the one
+// `sitemap.xml` uses. Neither are paths a Netlify `_redirects` file in the output covers, or
+// paths under an `ignore` prefix.
+//
+// A path matches a file (`/feed.xml`), `name.html` (`/about` for `/about.html`) or `index.html`
+// in a folder (`/about/`, or `/about`, which hosts redirect to `/about/`).
+//
+// Broken links fail production builds; in `ssqch serve` and development builds they're printed
+// as warnings. Ported from `plugins/links`.
+import fs from "node:fs";
+import path from "node:path";
+import { BUILTINS, dirsOf } from "../config.ts";
+import type { Config } from "../config.ts";
+import { Diagnostics, bail, error, isCapturing, warn, warning } from "../diagnostics.ts";
+import type { Diagnostic } from "../diagnostics.ts";
+import { rewriteHtml } from "../html.ts";
+import { compareText } from "../paths.ts";
+import { count } from "../report.ts";
+import { closest, closestPath } from "../suggest.ts";
+import * as voice from "../voice.ts";
+import { Options } from "./options.ts";
 
 export function linksPlugin(options: Record<string, unknown> = {}) {
 	return { name: "ssqch/links", builtin: "ssqch/links", options };
 }
+
+interface LinksOptions {
+	/** Check `#fragments` against the target page's ids (default true). */
+	anchors?: boolean;
+	/** URL path prefixes not to check, like `/downloads/`. */
+	ignore: string[];
+	/** Fail the build on a broken link. `undefined` means production builds only (not `ssqch serve`); otherwise broken links are warnings. */
+	fail?: boolean;
+	/** The site's address (`https://example.com`), so absolute links to it are checked like links from its root. `undefined`: the address the output's `sitemap.xml` uses, if there is one. */
+	url?: string;
+}
+
+/** A link that doesn't resolve: the page it's on, the link as written, why. */
+interface Broken {
+	page: string;
+	link: string;
+	reason: string;
+}
+
+/** What one page contains: the ids it defines and the links it makes. */
+interface PageScan {
+	ids: Set<string>;
+	links: string[];
+	/** URLs that are only checked when they're on the site (from its root, or absolute on its address): `<meta>` values, JSON-LD strings, and everything in XML, where a relative URL's base isn't the file's own. */
+	siteLinks: string[];
+	/** JSON-LD strings: their `#fragment` names a thing, not an id on a page. */
+	sitePaths: string[];
+}
+
+const asciiLower = (s: string) => s.replace(/[A-Z]+/g, (m) => m.toLowerCase());
+const SPACES = /\s+/;
+/** Rust's `trim()` and `split_whitespace()` cut at Unicode White_Space, which a few characters JavaScript's `\s` has don't belong to. */
+const trim = (s: string) => s.trim();
+const firstWord = (s: string): string | undefined => s.trim().split(SPACES)[0] || undefined;
+
+/** `<meta>` names and properties whose `content` is a URL. */
+function metaIsUrl(given: string): boolean {
+	const name = asciiLower(given);
+	if (name === "og:url" || name === "twitter:url" || name === "msapplication-tileimage" || name === "thumbnail") return true;
+	return ["og:image", "og:video", "og:audio", "twitter:image", "twitter:player"].some((p) => {
+		if (name === p) return true;
+		if (!name.startsWith(p)) return false;
+		const rest = name.slice(p.length);
+		return rest === ":url" || rest === ":secure_url" || rest === ":src";
+	});
+}
+
+/** Every string in a JSON value that could be a URL on this site. */
+function jsonUrls(value: unknown, out: string[]): void {
+	if (typeof value === "string") {
+		if (value !== "" && !/\p{White_Space}/u.test(value) && (value.startsWith("/") || value.startsWith("http://") || value.startsWith("https://"))) out.push(value);
+	} else if (Array.isArray(value)) {
+		for (const v of value) jsonUrls(v, out);
+	} else if (value !== null && typeof value === "object") {
+		for (const v of Object.values(value)) jsonUrls(v, out);
+	}
+}
+
+/** The candidates' URLs in a `srcset`. */
+function srcsetUrls(srcset: string, out: string[]): void {
+	for (const candidate of srcset.split(",")) {
+		const url = firstWord(candidate);
+		if (url !== undefined) out.push(url);
+	}
+}
+
+const XML_ATTR = /[\s<](?:href|src|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+const XML_SRCSET = /[\s<](?:srcset|imagesrcset)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+const XML_TEXT = />\s*((?:https?:\/\/|\/)[^<>\s]*)\s*</g;
+
+/**
+ * The URLs in an XML file (a feed, a sitemap): attribute values (`href`, `src`, `srcset`...) and
+ * elements that hold only a URL (`<loc>`, `<link>`, `<id>`), including those in escaped HTML (a
+ * feed entry's content), which is unescaped first.
+ */
+function scanXml(xml: string): string[] {
+	const unescaped = unescapeXml(xml);
+	const out: string[] = [];
+	for (const c of unescaped.matchAll(XML_ATTR)) out.push(unescapeXml(c[1] ?? c[2] ?? ""));
+	for (const c of unescaped.matchAll(XML_SRCSET)) {
+		for (const candidate of (c[1] ?? c[2] ?? "").split(",")) {
+			const url = firstWord(candidate);
+			if (url !== undefined) out.push(unescapeXml(url));
+		}
+	}
+	for (const c of unescaped.matchAll(XML_TEXT)) out.push(unescapeXml(c[1]));
+	return out;
+}
+
+const NAMED: Record<string, string> = { lt: "<", gt: ">", quot: "\"", apos: "'", amp: "&" };
+
+/** XML's five entities and numeric references, and CDATA markers (whose contents are already plain). */
+function unescapeXml(given: string): string {
+	if (!given.includes("&") && !given.includes("<![CDATA[")) return given;
+	const s = given.replaceAll("<![CDATA[", "").replaceAll("]]>", "");
+	let out = "";
+	let rest = s;
+	for (let i = rest.indexOf("&"); i !== -1; i = rest.indexOf("&")) {
+		out += rest.slice(0, i);
+		const after = rest.slice(i + 1);
+		const end = after.indexOf(";");
+		let decoded: string | undefined;
+		if (end !== -1 && end <= 8) {
+			const name = after.slice(0, end);
+			if (Object.hasOwn(NAMED, name)) decoded = NAMED[name];
+			else {
+				const hex = /^#[xX]([0-9a-fA-F]+)$/.exec(name);
+				const dec = /^#([0-9]+)$/.exec(name);
+				const code = hex ? Number.parseInt(hex[1], 16) : dec ? Number.parseInt(dec[1], 10) : undefined;
+				if (code !== undefined && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff)) decoded = String.fromCodePoint(code);
+			}
+		}
+		if (decoded !== undefined) {
+			out += decoded;
+			rest = after.slice(end + 1);
+		} else {
+			out += "&";
+			rest = after;
+		}
+	}
+	return out + rest;
+}
+
+function scanHtml(html: string): PageScan {
+	const found: PageScan = { ids: new Set(), links: [], siteLinks: [], sitePaths: [] };
+	rewriteHtml(html, {
+		tag(el) {
+			const id = el.get("id");
+			if (id !== undefined) found.ids.add(id);
+			switch (el.name) {
+				case "a": {
+					const name = el.get("name");
+					if (name !== undefined) found.ids.add(name);
+					const href = el.get("href");
+					if (href !== undefined) found.links.push(href);
+					break;
+				}
+				case "area": {
+					const href = el.get("href");
+					if (href !== undefined) found.links.push(href);
+					break;
+				}
+				case "link": {
+					const href = el.get("href");
+					if (href !== undefined) {
+						// Hints to other origins, not resources on this site.
+						const rel = asciiLower(el.get("rel") ?? "");
+						if (!rel.trim().split(SPACES).some((r) => r === "preconnect" || r === "dns-prefetch")) found.links.push(href);
+					}
+					const srcset = el.get("imagesrcset");
+					if (srcset !== undefined) srcsetUrls(srcset, found.links);
+					break;
+				}
+				case "meta": {
+					const content = el.get("content");
+					if (content === undefined) break;
+					const name = el.get("property") ?? el.get("name") ?? el.get("itemprop") ?? "";
+					if (metaIsUrl(name)) found.siteLinks.push(content);
+					break;
+				}
+				case "img":
+				case "source": {
+					const src = el.get("src");
+					if (src !== undefined) found.links.push(src);
+					const srcset = el.get("srcset");
+					if (srcset !== undefined) srcsetUrls(srcset, found.links);
+					break;
+				}
+				case "script":
+				case "iframe":
+				case "video":
+				case "audio":
+				case "track":
+				case "embed": {
+					const src = el.get("src");
+					if (src !== undefined) found.links.push(src);
+					break;
+				}
+			}
+		},
+		rawText(tag, text) {
+			if (tag.name !== "script" || tag.get("type") !== "application/ld+json") return;
+			let value: unknown;
+			try { value = JSON.parse(text); } catch { return; }
+			jsonUrls(value, found.sitePaths);
+		},
+	});
+	return found;
+}
+
+/** `https://example.com` from a site's address (`https://example.com/blog/`): the scheme and host, lowercase. `undefined` when it isn't an http(s) address. */
+function originOf(given: string): string | undefined {
+	const url = trim(given);
+	const at = url.indexOf("://");
+	if (at === -1) return undefined;
+	const scheme = asciiLower(url.slice(0, at));
+	if (scheme !== "http" && scheme !== "https") return undefined;
+	const rest = url.slice(at + 3);
+	const host = asciiLower(rest.split(/[/?#]/)[0]);
+	return host === "" ? undefined : `${scheme}://${host}`;
+}
+
+/** The address the output's `sitemap.xml` uses, from its first `<loc>`. */
+function sitemapOrigin(output: string): string | undefined {
+	let xml: string;
+	try { xml = fs.readFileSync(path.join(output, "sitemap.xml"), "utf8"); } catch { return undefined; }
+	const open = xml.indexOf("<loc>");
+	if (open === -1) return undefined;
+	const start = open + 5;
+	const close = xml.indexOf("</loc>", start);
+	if (close === -1) return undefined;
+	return originOf(unescapeXml(trim(xml.slice(start, close))));
+}
+
+/** The path of an absolute URL on the site's address (`https://example.com/about/` is `/about/`), whether it's `http` or `https`. `undefined` for other URLs. */
+function stripOrigin(given: string, origin: string): string | undefined {
+	const link = trim(given);
+	const host = origin.slice(origin.indexOf("://") + 3);
+	let rest: string | undefined;
+	for (const scheme of ["https://", "http://"]) {
+		if (asciiLower(link.slice(0, scheme.length)) === scheme) { rest = link.slice(scheme.length); break; }
+	}
+	if (rest === undefined || asciiLower(rest.slice(0, host.length)) !== host) return undefined;
+	const after = rest.slice(host.length);
+	if (after === "") return "/";
+	return after.startsWith("/") || after.startsWith("?") || after.startsWith("#") ? after : undefined;
+}
+
+/** `link` without the site's `base`, or `undefined` for a path on the same domain that's outside it (`/other-project/` when the base is `/repo`). */
+function inSite(link: string, base: string): string | undefined {
+	const trimmed = trim(link);
+	if (base === "" || !trimmed.startsWith("/") || trimmed.startsWith("//")) return link;
+	if (!trimmed.startsWith(base)) return undefined;
+	const rest = trimmed.slice(base.length);
+	if (rest === "") return "/";
+	return rest.startsWith("/") || rest.startsWith("#") || rest.startsWith("?") ? rest : undefined;
+}
+
+/** `dist/about/index.html` -> `/about/`, `dist/feed.xml` -> `/feed.xml`. */
+function urlOf(output: string, file: string): string {
+	const rel = path.relative(output, file).split(path.sep).join("/");
+	const url = `/${rel}`;
+	return url.endsWith("index.html") ? url.slice(0, -"index.html".length) : url;
+}
+
+/** Whether a `#fragment` names one of `ids`, as a browser finds it: the fragment as written first, then percent-decoded (`#caf%C3%A9` reaches `id="café"`, `#tl%3Bdr` reaches `id="tl%3Bdr"`). */
+function hasId(ids: Set<string>, fragment: string): boolean {
+	return ids.has(fragment) || ids.has(percentDecode(fragment));
+}
+
+/** `mailto:`, `https:`, `data:`... A scheme comes before any `/`, `?` or `#`. */
+function hasScheme(link: string): boolean {
+	const i = link.indexOf(":");
+	return i !== -1 && /^[A-Za-z][A-Za-z0-9+.-]*$/.test(link.slice(0, i));
+}
+
+/**
+ * The URL path and fragment `link` points to, from a page at `pageUrl`. `undefined` for links
+ * that aren't checked (external, or nothing to check). An empty path means the page itself
+ * (`#top`).
+ */
+function resolve(pageUrl: string, given: string): [string, string | undefined] | undefined {
+	const link = trim(given);
+	if (link === "" || link.startsWith("//") || hasScheme(link)) return undefined;
+	// The fragment as written: an id can hold `%` (markdown-it-anchor's `tl%3Bdr`); `hasId` decodes too.
+	const hash = link.indexOf("#");
+	const rest = hash === -1 ? link : link.slice(0, hash);
+	const fragment = hash === -1 || hash === link.length - 1 ? undefined : link.slice(hash + 1);
+	const query = rest.indexOf("?");
+	const target = query === -1 ? rest : rest.slice(0, query);
+	if (target === "") return fragment === undefined ? undefined : ["", fragment];
+	const joined = target.startsWith("/") ? target : pageUrl.slice(0, pageUrl.lastIndexOf("/") + 1) + target;
+	return [normalize(percentDecode(joined)), fragment];
+}
+
+/** Resolves `.` and `..` segments, keeping a trailing slash. */
+function normalize(p: string): string {
+	const parts: string[] = [];
+	for (const seg of p.split("/")) {
+		if (seg === "" || seg === ".") continue;
+		if (seg === "..") parts.pop();
+		else parts.push(seg);
+	}
+	const out = `/${parts.join("/")}`;
+	return p.endsWith("/") && out !== "/" ? `${out}/` : out;
+}
+
+const isFile = (p: string) => fs.statSync(p, { throwIfNoEntry: false })?.isFile() ?? false;
+
+/** The output file a URL path serves, if any. */
+function find(output: string, urlPath: string): string | undefined {
+	const rel = urlPath.replace(/^\/+/, "");
+	const base = path.join(output, rel);
+	if (urlPath.endsWith("/")) {
+		const index = path.join(base, "index.html");
+		return isFile(index) ? index : undefined;
+	}
+	if (isFile(base)) return base;
+	const html = path.join(output, `${rel}.html`);
+	if (isFile(html)) return html;
+	const index = path.join(base, "index.html");
+	return isFile(index) ? index : undefined;
+}
+
+/** The source paths of a Netlify `_redirects` file in the output: exact paths, and prefixes for ones ending in `*`. */
+function redirectSources(output: string): string[] {
+	let text: string;
+	try { text = fs.readFileSync(path.join(output, "_redirects"), "utf8"); } catch { return []; }
+	const sources: string[] = [];
+	for (const line of text.split(/\r?\n/)) {
+		const l = trim(line);
+		if (l === "" || l.startsWith("#")) continue;
+		const from = firstWord(l);
+		if (from !== undefined && from.startsWith("/")) sources.push(from);
+	}
+	return sources;
+}
+
+function redirected(sources: string[], p: string): boolean {
+	return sources.some((from) => (from.endsWith("*") ? p.startsWith(from.slice(0, -1)) : from === p || from.replace(/\/+$/, "") === p.replace(/\/+$/, "")));
+}
+
+const HEX2 = /^[0-9a-fA-F]{2}$/;
+
+function percentDecode(s: string): string {
+	if (!s.includes("%")) return s;
+	const bytes = Buffer.from(s, "utf8");
+	const out: number[] = [];
+	for (let i = 0; i < bytes.length; i++) {
+		if (bytes[i] === 0x25 && i + 2 < bytes.length) {
+			const hex = bytes.toString("latin1", i + 1, i + 3);
+			if (HEX2.test(hex)) {
+				out.push(Number.parseInt(hex, 16));
+				i += 2;
+				continue;
+			}
+		}
+		out.push(bytes[i]);
+	}
+	return Buffer.from(out).toString("utf8");
+}
+
+interface Checked {
+	checked: number;
+	broken: Broken[];
+}
+
+/** Checks every HTML and XML page the build wrote. */
+function check(config: Config, output: string, written: string[], options: LinksOptions): Checked {
+	const scans: Array<[string, PageScan]> = [];
+	for (const file of written) {
+		const ext = path.extname(file);
+		if (ext !== ".html" && ext !== ".xml") continue;
+		const text = fs.readFileSync(file, "utf8");
+		scans.push([file, ext === ".xml" ? { ids: new Set(), links: [], siteLinks: scanXml(text), sitePaths: [] } : scanHtml(text)]);
+	}
+	// The site's address, so absolute links to it are checked.
+	const origin = (options.url === undefined ? undefined : originOf(options.url)) ?? sitemapOrigin(output);
+	const ids = new Map<string, Set<string>>(scans.map(([file, scan]) => [file, scan.ids]));
+	const redirects = redirectSources(output);
+	const anchors = options.anchors ?? true;
+
+	let checked = 0;
+	const seen = new Set<string>();
+	const broken: Broken[] = [];
+	// Most links on a site point at the same few pages (every sidebar lists them), so each target is looked up on disk once.
+	const found = new Map<string, string | undefined>();
+	// "Did you mean": the page whose URL is nearly a missing one, looked for once.
+	const urls = scans.map(([file]) => urlOf(output, file));
+	const meant = new Map<string, string>();
+	const didYouMean = (name: string | undefined, mark: string) => (name === undefined ? "" : `; did you mean ${mark}${name}?`);
+	for (const [file, page] of scans) {
+		const pageUrl = urlOf(output, file);
+		// Links in attributes as written; the others only when they're on the site; JSON-LD's without their #fragment.
+		const all: Array<[string, boolean, boolean]> = [];
+		for (const l of page.links) all.push([l, true, false]);
+		for (const l of page.siteLinks) all.push([l, false, false]);
+		for (const l of page.sitePaths) all.push([l, false, true]);
+		for (const [written, relativeOk, ignoreFragment] of all) {
+			const onSite = origin === undefined ? undefined : stripOrigin(written, origin);
+			let link: string;
+			if (onSite !== undefined) link = onSite;
+			else if (relativeOk) link = written;
+			else if (trim(written).startsWith("/") && !trim(written).startsWith("//")) link = written;
+			else continue;
+			checked++;
+			// With a `base`, the HTML has it in front of every URL from the site's root. Other paths on the domain aren't this site's.
+			const inside = inSite(link, config.base);
+			if (inside === undefined) continue;
+			// Reported as the template has it: from the root without the base, or the whole address.
+			const shown = onSite !== undefined ? trim(written) : inside;
+			const resolved = resolve(pageUrl, inside);
+			if (resolved === undefined) continue;
+			const [targetPath, anchor] = resolved;
+			const fragment = ignoreFragment ? undefined : anchor;
+			if (targetPath === "" && fragment === undefined) continue;
+			let reason: string | undefined;
+			if (targetPath === "") {
+				// `#top`: this page.
+				if (anchors && !hasId(page.ids, fragment!)) reason = `no id "${fragment}" on this page${didYouMean(closest(fragment!, page.ids), "#")}`;
+			} else if (options.ignore.some((p) => targetPath.startsWith(p)) || redirected(redirects, targetPath)) {
+				reason = undefined;
+			} else {
+				if (!found.has(targetPath)) found.set(targetPath, find(output, targetPath));
+				const target = found.get(targetPath);
+				if (target === undefined) {
+					// A site with hundreds of dead links has a bigger problem than typos.
+					if (!meant.has(targetPath) && meant.size < 500) meant.set(targetPath, didYouMean(closestPath(targetPath, urls), ""));
+					reason = `not found${meant.get(targetPath) ?? ""}`;
+				} else {
+					const targetIds = ids.get(target);
+					if (fragment !== undefined && targetIds !== undefined && anchors && !hasId(targetIds, fragment)) {
+						reason = `no id "${fragment}" on that page${didYouMean(closest(fragment, targetIds), "#")}`;
+					}
+				}
+			}
+			if (reason !== undefined) {
+				const key = `${pageUrl}\0${shown}\0${reason}`;
+				if (!seen.has(key)) {
+					seen.add(key);
+					broken.push({ page: pageUrl, link: shown, reason });
+				}
+			}
+		}
+	}
+	// A set of (page, link, reason) in the order of the three, each compared by its bytes.
+	broken.sort((a, b) => compareText(a.page, b.page) || compareText(a.link, b.link) || compareText(a.reason, b.reason));
+	return { checked, broken };
+}
+
+/** The broken links, the first `shown` of them listed (all of them with `--verbose`). */
+function describe(broken: Broken[], shown: number): string {
+	let out = `${voice.TRAIL_GOES_COLD} on ${broken.length} broken link${broken.length === 1 ? "" : "s"}:`;
+	for (const b of broken.slice(0, shown)) out += `\n  ${b.page} -> ${b.link} (${b.reason})`;
+	if (broken.length > shown) out += `\n  ... and ${broken.length - shown} more (--verbose lists them all)`;
+	return out;
+}
+
+BUILTINS.set("ssqch/links", (config: Config, given) => {
+	const o = new Options(given, ["anchors", "ignore", "fail", "url"]);
+	const options: LinksOptions = { anchors: o.bool("anchors"), ignore: o.list("ignore") ?? [], fail: o.bool("fail"), url: o.string("url") };
+	const bad = options.ignore.find((p) => !p.startsWith("/"));
+	if (bad !== undefined) bail(`ignore: "${bad}" must be a URL path starting with / (like "/downloads/")`);
+	if (options.url !== undefined && originOf(options.url) === undefined) bail(`url: "${options.url}" must be the site's address, like "https://example.com"`);
+
+	// (links checked, broken) from the last build, for the summary.
+	let counts: [number, number] | undefined;
+	config.afterBuild.push({
+		label: "",
+		fn: (event) => {
+			const output = dirsOf(config).output;
+			const result = check(config, output, event.written as string[], options);
+			counts = [result.checked, result.broken.length];
+			if (result.broken.length === 0) return;
+			const fail = options.fail ?? (config.env === "production" && !config.serving);
+			const message = describe(result.broken, config.verbose ? Infinity : 20);
+			// One for each link, for `ssqch build --format json`.
+			const each = (severity: "error" | "warning"): Diagnostic[] => result.broken.map((b) => ({ ...(severity === "error" ? error : warning)("links", `${b.page} -> ${b.link} (${b.reason})`), url: b.page }));
+			if (fail) throw new Diagnostics(message, each("error"));
+			if (isCapturing()) each("warning").forEach(warn);
+			else if (!config.quiet) warn(warning("links", message));
+		},
+	});
+	config.summaries.push(["Links", () => (counts === undefined ? undefined : `${count(counts[0])} checked, ${count(counts[1])} broken`)]);
+});

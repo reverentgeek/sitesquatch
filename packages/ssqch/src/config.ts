@@ -46,6 +46,8 @@ export interface GeneratedFile {
 	contents: string;
 	/** Add to the end of a file a page wrote at the same path, instead of it being a conflict. */
 	append?: boolean;
+	/** A site's `_includes/hooks/<name>.*` template that writes this file instead of `contents`, if it has one: it gets `value` as `<name>`, next to the global data. Generators' files only. */
+	hook?: { name: string; value: unknown };
 }
 
 /** A page the build wrote, as generators see it. */

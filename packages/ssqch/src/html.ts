@@ -11,6 +11,7 @@ interface Attribute {
 	changed: boolean;
 	/** A second attribute with a name the tag already has: browsers ignore it, so handlers don't see it, and it's written as it was. */
 	repeat: boolean;
+	removed?: boolean;
 }
 
 /** A start tag a handler can read and change. */
@@ -31,12 +32,18 @@ export class StartTag {
 
 	/** An attribute's value as it's written (not decoded), `""` for one without a value, or `undefined`. */
 	get(name: string): string | undefined {
-		const found = this.attributes.find((a) => a.name === name && !a.repeat);
+		const found = this.attributes.find((a) => a.name === name && !a.repeat && !a.removed);
 		return found ? found.value ?? "" : undefined;
 	}
 
+	/** Takes every attribute with this name off the tag. */
+	remove(name: string): void {
+		for (const a of this.attributes) if (a.name === name) a.removed = true;
+		this.changed = true;
+	}
+
 	set(name: string, value: string): void {
-		const found = this.attributes.find((a) => a.name === name && !a.repeat);
+		const found = this.attributes.find((a) => a.name === name && !a.repeat && !a.removed);
 		if (found) { found.value = value; found.changed = true; }
 		else this.attributes.push({ name, rawName: name, value, raw: "", changed: true, repeat: false });
 		this.changed = true;
@@ -45,7 +52,7 @@ export class StartTag {
 	/** The tag as text: attributes that weren't changed as they were written, one space between them. */
 	toString(): string {
 		// A changed attribute keeps its name as it was written (`SRC`), with its value in double quotes.
-		const attributes = this.attributes.map((a) => (a.changed ? `${a.rawName}="${(a.value ?? "").replaceAll("\"", "&quot;")}"` : a.raw));
+		const attributes = this.attributes.filter((a) => !a.removed).map((a) => (a.changed ? `${a.rawName}="${(a.value ?? "").replaceAll("\"", "&quot;")}"` : a.raw));
 		return `<${this.rawName}${attributes.length ? ` ${attributes.join(" ")}` : ""}${this.selfClosing ? " />" : ">"}`;
 	}
 }
@@ -59,6 +66,8 @@ export interface Handlers {
 	tag?(tag: StartTag): void;
 	/** Called with the text inside each `<style>`; what it returns replaces the text. */
 	style?(css: string): string;
+	/** Called with the text inside each element whose content is text (`<script>`, `<title>`...), to read it. */
+	rawText?(tag: StartTag, text: string): void;
 }
 
 /** `html` with its start tags (and the text of `<style>` elements) passed through `handlers`. A tag that wasn't changed keeps every byte. */
@@ -148,6 +157,7 @@ export function rewriteHtml(html: string, handlers: Handlers): string {
 			close.lastIndex = p;
 			const found = close.exec(html);
 			const end = found ? found.index : n;
+			if (handlers.rawText && end > p) handlers.rawText(tag, html.slice(p, end));
 			if (tag.name === "style" && handlers.style && end > p) {
 				const css = html.slice(p, end);
 				const changed = handlers.style(css);

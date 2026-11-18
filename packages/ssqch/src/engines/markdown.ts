@@ -12,6 +12,12 @@ import type { TemplateEngine } from "./engine.ts";
 export interface Markdown extends TemplateEngine {
 	/** Markdown as HTML with the site's options, or without the `<p>` when `inline`. */
 	html(text: string, inline: boolean): string;
+	/**
+	 * Renders the site's `_includes/hooks/<name>.*` template with `value` as `<name>` next to the
+	 * global data, or answers `undefined` when the site has no such hook. Generators' files use it
+	 * (a redirect page); the stand-in has no hooks.
+	 */
+	renderHook?(name: string, value: unknown, data: Record<string, any>): string | undefined | Promise<string | undefined>;
 }
 
 export function markdownEngine(options: MarkdownOptions): Markdown {
