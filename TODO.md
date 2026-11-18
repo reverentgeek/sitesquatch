@@ -163,6 +163,15 @@ until 0.8 ships.
         and stage 9 rewrites the README's Edge and Jinja sections, which describe 0.7.
 - [ ] **Stage 4, checks and tools:** schemas and `types`, links, `diff`, `inspect`, footprint and
       budgets, `docs`, `new`, `init` and the starters, `capabilities`.
+  - [x] Content schemas (`schema.ts`), `inspect`, `diff` and footprint with budgets (2026-11-18),
+        with 0.7's messages and reports: 27 broken schemas, 35 `inspect` cases, the footprint and
+        budget cases and 240 random pairs of builds give 0.7's output through the binary. `diff`
+        ports what 0.7 diffed with, the `similar` crate's Myers (`myers.ts`), so hunks split as
+        0.7's do. On two builds of the 10,000-page site it takes 0.44 s (0.7.0: 0.5 s on every
+        core) at 150 MB; with every page changed, 2.1 s on one thread, where 0.7.0 takes 0.7 s on
+        15 cores. Worker threads for the comparison would close that, if wanted (no site code runs
+        in `diff`). `cli/report.test.js` and the shapes of the build, inspect, diff and footprint
+        reports wait for `ssqch/links`; they pass with the plugin taken out of their sites.
 - [ ] **Stage 5, plugins:** images (D4), rss, minify (D3), assets, sitemap, redirects, Sass,
       elements, themes; the Rust plugin SDK (`ssqch-plugin` crate, the `.wasm` loader, an example,
       and docs on when a Rust plugin pays).
@@ -214,7 +223,15 @@ until 0.8 ships.
         merged. Starting to serve a one-page site takes 0.26 s (0.7: 0.07 s).
   - [ ] Windows and Linux: the server's own unit tests run both ways of watching on each, but
         the oracle's serve tests have only run on macOS. Watch CI's first run.
-- [ ] **Stage 7, importers:** Eleventy and Zola.
+- [x] **Stage 7, importers:** Eleventy and Zola (2026-11-18): `src/import.ts`, from `import.rs`
+      with its tests. 0.7's importer reads a site's files as text and runs none of them, so it had
+      nothing for QuickJS to drop. On the Eleventy sources of a11yproject.com, v8.dev, lit.dev,
+      Gahlee House, eslint.org and the blog's trial, and on the Rust blog's Zola source (776
+      edits), the dry run prints what 0.7's prints and `--write` writes the same files (but the
+      version). The drafts then build as 0.7's do: Gahlee House with no differences, the others
+      stopping at what the list leaves by hand (a missing `},` in a11yproject.com's `team.json`,
+      v8.dev's `slug`, lit.dev's `LITDEV_ENV`). The oracle's 3 import tests pass on Node 22.18,
+      24 and 26.
 - [ ] **Stage 8, distribution:** the compiled, bundled npm package (sharp its only dependency), the
       standalone executable (D7) for Homebrew and the install script, `setup-ssqch`, Netlify; retire
       `dist` and the binary-only release steps; CI installs the packed tarball.

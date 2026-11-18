@@ -183,7 +183,13 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 	// The options given so far, as clap listed them in the usage line after an unknown flag or a
 	// missing argument (`Usage: ssqch build --root <ROOT> --quiet`).
 	const used: string[] = [];
-	const usageUsed = () => (command && used.length ? `Usage: ${grammar.name} ${command.name} ${used.join(" ")}` : usage());
+	// Once something is given, the options so far and every argument, the ones given as if they were
+	// required (`Usage: ssqch import --write <generator> [dir]`, `ssqch import <generator> <dir>`).
+	const usageUsed = () => {
+		if (!command || (!used.length && !out.positionals.length)) return usage();
+		const args = command.positionals.map((p, i) => (p.required || i < out.positionals.length ? `<${p.name}>` : `[${p.name}]`));
+		return `Usage: ${grammar.name} ${command.name} ${[...used, ...args].join(" ")}`;
+	};
 	const required = (option: Option) => new UsageError(`error: a value is required for '--${option.long} <${option.value}>' but none was supplied\n\n${tail}`);
 	const set = (option: Option, value: string | true, shown: string) => {
 		if (option === HELP) throw new Printed(help(grammar, command));
@@ -208,7 +214,7 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 	const unexpected = (arg: string, tips: string[] = []): never => {
 		const flag = arg.split("=")[0];
 		const body = tips.length ? `${tips.map((t) => `  tip: ${t}`).join("\n")}\n\n` : "";
-		throw new UsageError(`error: unexpected argument '${arg.startsWith("-") ? flag : arg}' found\n\n${body}${arg.startsWith("-") ? usageUsed() : usage()}\n\n${tail}`, arg.startsWith("-") ? { word: flag, kind: "flag" } : undefined);
+		throw new UsageError(`error: unexpected argument '${arg.startsWith("-") ? flag : arg}' found\n\n${body}${arg.startsWith("--") ? usageUsed() : usage()}\n\n${tail}`, arg.startsWith("-") ? { word: flag, kind: "flag" } : undefined);
 	};
 
 	/** The value of `option` from the word after it (at `at + 1`). A word that starts with a dash isn't a value: it's another option, or one nobody knows. */
@@ -244,6 +250,8 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 					throw new UsageError(`error: unrecognized subcommand '${arg}'\n\n${tip}${usage()}\n\n${tail}`, { word: arg, kind: "command" });
 				}
 				out.command = command.name;
+				// What came before the command's name isn't the command's, in its usage line.
+				used.length = 0;
 				continue;
 			}
 			if (!command || (out.positionals.length >= command.positionals.length && !command.positionals.at(-1)?.many)) unexpected(arg);
@@ -264,7 +272,11 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 				unexpected(arg, like ? [`a similar argument exists: '--${like}'`] : command?.positionals.length ? [`to pass '${arg}' as a value, use '-- ${arg}'`] : []);
 			}
 			if (!option!.value) {
-				if (eq !== -1) throw new UsageError(`error: unexpected value '${arg.slice(eq + 1)}' for '--${name}' found; no more were expected\n\n${usage()}\n\n${tail}`);
+				if (eq !== -1) {
+					// The flag counts as given, in the usage line.
+					if (!used.includes(`--${name}`)) used.push(`--${name}`);
+					throw new UsageError(`error: unexpected value '${arg.slice(eq + 1)}' for '--${name}' found; no more were expected\n\n${usageUsed()}\n\n${tail}`);
+				}
 				set(option!, true, `--${name}`);
 				continue;
 			}
@@ -277,7 +289,10 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 		for (let j = 1; j < arg.length; j++) {
 			const letter = arg[j];
 			const option = find((o) => o.short === letter);
-			if (!option) unexpected(j === 1 ? arg : `-${letter}`);
+			if (!option) {
+				const word = j === 1 ? arg : `-${letter}`;
+				unexpected(word, command?.positionals.length ? [`to pass '${word}' as a value, use '-- ${word}'`] : []);
+			}
 			if (!option!.value) { set(option!, true, `--${option!.long}`); continue; }
 			let value: string | undefined = arg.slice(j + 1);
 			if (value.startsWith("=")) value = value.slice(1);

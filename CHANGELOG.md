@@ -143,6 +143,11 @@ the release.
   runs on every platform, shipped in an npm package whose function returns `{ name, rust: { wasm,
   options } }`. It can have a transform, filters and engines; `crates/ssqch-plugin/README.md`
   and `examples/rust-plugin` show how.
+- **`ssqch diff --ignore` takes a JavaScript regular expression** (in its Unicode mode), where 0.7
+  took Rust's. Most patterns are the same in both, and flags at the start (`(?i)`) and named
+  groups written `(?P<name>...)` still work, but Rust's own syntax JavaScript doesn't have
+  (`(?x)`, `\A`, `\z`, an escaped `-` outside `[...]`) is refused with JavaScript's words. `\d` and
+  `\w` are ASCII in JavaScript; write `\p{Nd}` or `\p{L}` for other scripts' digits and letters.
 
 ### Changed
 
@@ -156,6 +161,11 @@ the release.
   and `.mjs`.
 - `ssqch capabilities` lists `ssqch.config.cjs`, `.ts` and `.mts` under `configFiles`, and says
   `avif` and `sass` only when this build can do them (sharp writes the AVIF files).
+- `ssqch import eleventy` and `ssqch import zola` do what 0.7's did, word for word. Two things
+  follow from the rest of 0.8: a draft config isn't written where one of the new config names is
+  already there, and a date in a Zola site's `[extra]` (`founded = 2019-05-01`) goes into the
+  draft as its text, `"2019-05-01"`, where 0.7 wrote an object with a `$__toml_private_datetime`
+  key that no template could print.
 - A warning a package raises with `process.emitWarning` is one of the build's warnings (`code:
   "console"` in the JSON report), like `console.warn`.
 - Messages that quote a parser are that parser's: YAML, JSON and TOML errors keep `at line N

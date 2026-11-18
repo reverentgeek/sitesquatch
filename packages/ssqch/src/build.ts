@@ -21,9 +21,11 @@ import { BuildError, Diagnostics, bail, context, isCapturing, messageOf, progres
 import type { RenderContext } from "./engines/engine.ts";
 import { rendering as markdownRendering, writeHighlightCss } from "./engines/markdown.ts";
 import * as equivalents from "./equivalents.ts";
+import { measure, overBudget } from "./footprint.ts";
 import { globBase, globSet, isGlob } from "./glob.ts";
 import { describeThrown, settle } from "./modules.ts";
 import { compareText, isDir, isFile, isInside, readFollowing, realPath, relative, shown, slashes, walkFiles } from "./paths.ts";
+import { checkPages } from "./schema.ts";
 import type { CopyJob, Page, Tpl } from "./site.ts";
 import { Site, Timer, errorsTogether } from "./site.ts";
 import * as voice from "./voice.ts";
@@ -77,7 +79,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	const built = await runFileBuilders(config, dirs);
 	await runHooks(config, dirs, "beforeBuild", config.beforeBuild, undefined);
 	await site.prepare(timer);
-	checkSchemas(config);
+	await checkPages(site);
 	checkForeignKeys(site);
 	checkForeignGlobals(site);
 	timer.lap("paginate");
@@ -95,7 +97,7 @@ export async function build(config: Config): Promise<BuildReport> {
 			try { site.refreshPagination(page); } catch (e) { throw context(e, `in ${page.tpl.rel}`); }
 		}
 	}
-	await renderer.renderAll([...wanted.filter((p) => !late.has(p)), ...wanted.filter((p) => late.has(p))]);
+	await renderer.renderAll([...wanted.filter((p) => !late.has(p)), ...wanted.filter((p) => late.has(p))], late);
 	timer.timings.push(["render", renderer.renderMs], ["write", performance.now() - timer.last - renderer.renderMs]);
 	timer.last = performance.now();
 
@@ -133,6 +135,8 @@ export async function build(config: Config): Promise<BuildReport> {
 		summary: [],
 	};
 	await runHooks(config, dirs, "afterBuild", config.afterBuild, report);
+	// After the hooks, which can fingerprint or minify what's measured.
+	if (config.budgets.length) for (const found of overBudget(await measure(dirs.output), config.budgets)) warn(found);
 	for (const [label, line] of config.summaries) {
 		const value = line(config);
 		if (value !== undefined) report.summary.push([label, value]);
@@ -211,7 +215,15 @@ class Renderer {
 	written = new Map<number, Written>();
 	/** Time spent rendering bodies, as the summary's `render`. */
 	renderMs = 0;
-	private errors: unknown[] = [];
+	/**
+	 * What failed, with the phase it failed in, as 0.7 ran them one after another: 0 the bodies of
+	 * the pages that don't read `collections`, 1 those that do, 2 layouts, transforms and writes.
+	 * Only the first phase that failed is reported, as 0.7 stopped there: a broken filter in a
+	 * page's body is one error, not one more for each layout that would have shown it.
+	 */
+	private errors: Array<{ error: unknown; phase: number }> = [];
+	/** Errors that came from rendering a page's own body (not its layouts or what follows). */
+	private bodyErrors = new WeakSet<object>();
 	/** Set when a body that another page asked for failed to render: the page that asked fails too, and only for that. */
 	private borrowedFailure = false;
 	private pending = new Set<Promise<void>>();
@@ -281,7 +293,7 @@ class Renderer {
 		return out;
 	}
 
-	async renderAll(pages: Page[]): Promise<void> {
+	async renderAll(pages: Page[], late: Set<Page> = new Set()): Promise<void> {
 		for (const page of pages) {
 			this.borrowedFailure = false;
 			// Markdown's warnings (a site's highlighter that failed) name the page.
@@ -291,13 +303,18 @@ class Renderer {
 			} catch (e) {
 				// A page that failed because a body it shows failed isn't reported: that body's page is.
 				if (this.borrowedFailure) continue;
-				this.errors.push(e instanceof BuildError || e instanceof Diagnostics ? e : internal(e, page.tpl.rel));
+				const error = e instanceof BuildError || e instanceof Diagnostics ? e : internal(e, page.tpl.rel);
+				const inBody = typeof e === "object" && e !== null && this.bodyErrors.has(e);
+				this.errors.push({ error, phase: inBody ? (late.has(page) ? 1 : 0) : 2 });
 			}
 		}
 		markdownRendering(undefined);
 		await Promise.all(this.pending);
-		if (this.writeError !== undefined) this.errors.push(this.writeError);
-		if (this.errors.length) throw errorsTogether(this.errors);
+		if (this.writeError !== undefined) this.errors.push({ error: this.writeError, phase: 2 });
+		if (this.errors.length) {
+			const first = Math.min(...this.errors.map((f) => f.phase));
+			throw errorsTogether(this.errors.filter((f) => f.phase === first).map((f) => f.error));
+		}
 	}
 
 	private async render(page: Page): Promise<void> {
@@ -313,6 +330,9 @@ class Renderer {
 			try {
 				const out = this.body(page);
 				content = typeof out === "string" ? out : await out;
+			} catch (e) {
+				if (typeof e === "object" && e !== null) this.bodyErrors.add(e);
+				throw e;
 			} finally {
 				this.bodies.delete(page.index);
 			}
@@ -542,16 +562,6 @@ export function inEdgeCode(body: string, at: number): boolean {
 export const edgeCodeMentionsForTest = edgeCodeMentions;
 
 // ---- checks ----------------------------------------------------------------------------------
-
-/**
- * Content schemas and budgets arrive with stage 4 of the move to Node: until then, a site that
- * has them is told they weren't checked. (With the `build` code, not their own, so the notice
- * can't be taken for the check.)
- */
-function checkSchemas(config: Config): void {
-	if (config.schemas.length && !config.quiet) warn(warning("build", "content schemas aren't checked by the Node build of ssqch yet (the move to Node, stage 4)"));
-	if (config.budgets.length && !config.quiet) warn(warning("build", "budgets aren't checked by the Node build of ssqch yet (the move to Node, stage 4)"));
-}
 
 /**
  * Warns about data keys that are another generator's name for something ssqch calls otherwise
