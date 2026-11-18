@@ -186,16 +186,21 @@ setTimeout(() => order.push("a"), 10);
 const cleared = setTimeout(() => order.push("never"), 5);
 clearTimeout(cleared);
 let ticks = 0;
-const interval = setInterval(() => { if (++ticks === 3) clearInterval(interval); }, 1);
-setImmediate(() => order.push("now"));
+const counted = new Promise((resolve) => { const interval = setInterval(() => { if (++ticks === 3) { clearInterval(interval); resolve(); } }, 1); });
+let immediate = false;
+setImmediate(() => { immediate = true; });
 const started = Date.now();
-await new Promise(resolve => setTimeout(resolve, 30));
-export default \`\${order.join(",")} \${ticks} \${Date.now() - started >= 25}\`;
+await Promise.all([counted, new Promise(resolve => setTimeout(resolve, 30))]);
+export default \`\${order.join(",")} \${immediate} \${ticks} \${Date.now() - started >= 25}\`;
 `,
 		"index.edge": "{{ out }}",
 	});
 	buildOk(root);
-	assert.equal(read(root, "_site/index.html"), "now,a,b 3 true");
+	// What Node promises, whatever else the machine is doing: timers in the order they're due,
+	// a cleared one never, the immediate, and the interval's three ticks (waited for: a busy event
+	// loop can be held up past 30 ms, and the 30 ms timer is then due before the third tick). Not
+	// where the immediate falls among the timers: when the loop starts late, they're due first.
+	assert.equal(read(root, "_site/index.html"), "a,b true 3 true");
 
 	// An unref'd timer doesn't keep anything waiting, as in Node.
 	const e = buildError({ "_data/x.js": "export default await new Promise(r => setTimeout(r, 10).unref());", "index.edge": "" });
