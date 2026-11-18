@@ -100,7 +100,7 @@ export async function build(config: Config): Promise<BuildReport> {
 
 	// In the order of the pages, whatever order they were rendered in.
 	const written = pages.flatMap((p) => (renderer.written.has(p.index) ? [renderer.written.get(p.index)!] : []));
-	const generated = await runGenerators(config, dirs, pages, new Set(written.map((w) => w.file)));
+	const generated = await runGenerators(config, dirs, pages, new Set(written.map((w) => w.file)), site);
 	const bundles = config.bundles ? bundleFiles(site) : [];
 	bundles.push(...site.themeCopies);
 	const copy = await passthroughCopy(config, dirs, bundles);
@@ -649,7 +649,8 @@ async function runHooks(config: Config, dirs: Dirs, event: "beforeBuild" | "afte
 		try {
 			if ("run" in hook) runCommand(config, dirs, event, hook.run);
 			else {
-				try { await settle(hook.fn(hookEvent(config, dirs, report))); } catch (e) { throw new BuildError(`${hook.label}: ${describeThrown(e, dirs.root)}`); }
+				// A built-in plugin's hook has no label: its errors already say who it is.
+				try { await settle(hook.fn(hookEvent(config, dirs, report))); } catch (e) { throw hook.label === "" && e instanceof Error ? e : new BuildError(`${hook.label}: ${describeThrown(e, dirs.root)}`); }
 			}
 		} catch (e) {
 			throw context(e, failed);
@@ -731,7 +732,7 @@ const displayOf = (dirs: Dirs, file: string) => (isInside(dirs.root, file) ? `./
  * written pages and writes their files. Returns the paths written (not counting appends to a
  * page's own file).
  */
-async function runGenerators(config: Config, dirs: Dirs, pages: Page[], pageOutputs: Set<string>): Promise<string[]> {
+async function runGenerators(config: Config, dirs: Dirs, pages: Page[], pageOutputs: Set<string>, site: Site): Promise<string[]> {
 	if (!config.generators.length) return [];
 	const summaries: PageSummary[] = pages.flatMap((p) => (p.url !== null && p.output !== null ? [{ url: p.url, outputPath: p.output, inputPath: p.tpl.input, date: p.date, data: p.data }] : []));
 	const owners = new Map<string, string>();
@@ -750,6 +751,12 @@ async function runGenerators(config: Config, dirs: Dirs, pages: Page[], pageOutp
 				if (other !== undefined) bail(`${other} and ${name} both write ${displayOf(dirs, target)}`);
 			}
 			let contents = file.contents;
+			// The site's own template for this kind of file, if it has one.
+			if (file.hook) {
+				let rendered: string | undefined;
+				try { rendered = site.markdown.hookFile(file.hook.name, file.hook.value, site.global); } catch (e) { throw context(e, `${name}: writing ${file.path}`); }
+				if (rendered !== undefined) contents = rendered;
+			}
 			if (file.append && (isPage || owners.has(target))) {
 				let existing = "";
 				try { existing = fs.readFileSync(target, "utf8"); } catch { /* nothing there yet */ }

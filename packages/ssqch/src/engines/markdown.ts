@@ -41,6 +41,11 @@ export interface Markdown extends TemplateEngine {
 	css(): string;
 	/** The site's render hooks and containers, and the engines that render them. */
 	useHooks(hooks: Map<string, HookTemplate>, engines: Engines): void;
+	/**
+	 * A generator's file (a redirect page) through the site's `_includes/hooks/<name>.*` template,
+	 * with `value` as `<name>` next to the global data, or `undefined` when the site has none.
+	 */
+	hookFile(name: string, value: unknown, data: Data): string | undefined;
 }
 
 /** A render hook or container template from `_includes/hooks/` or `_includes/containers/`. */
@@ -381,6 +386,11 @@ class WasmMarkdown implements Markdown {
 			languagesKey: JSON.stringify(key),
 		});
 		return { json, files };
+	}
+
+	hookFile(name: string, value: unknown, data: Data): string | undefined {
+		// 0.7's `render_hook`: `hooks/redirect`, with the value in the data as `redirect`.
+		return this.#hooks.has(`hooks/${name}`) ? this.renderHook(`hooks/${name}`, name, value, data) : undefined;
 	}
 
 	/** A render hook for the wasm: the template `name` with the page's data and `value` as `key`. */
