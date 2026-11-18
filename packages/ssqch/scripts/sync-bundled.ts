@@ -1,6 +1,5 @@
 // The files the package needs at run time and that live elsewhere while both implementations
-// do: the README (`ssqch docs`), the trailheads, `ssqch.d.ts` (`ssqch types`, `ssqch init`) and
-// the starters' files (`ssqch init`). Stage 8 publishes this package alone, so it carries its
+// do: the README (`ssqch docs`), the trailheads and the starters' files (`ssqch init`). Stage 8 publishes this package alone, so it carries its
 // own copies in `bundled/`; `bundled.test.ts` fails when one differs from its original.
 //
 //   node scripts/sync-bundled.ts     copies the originals over the copies
@@ -30,7 +29,6 @@ function walk(dir: string, within = ""): string[] {
 /** The originals' folders and files, and where each is copied to in `bundled/`. */
 const SOURCES: Array<[from: string, to: string]> = [
 	["README.md", "README.md"],
-	["crates/ssqch/src/ssqch.d.ts", "ssqch.d.ts"],
 	["docs/trailheads", "trailheads"],
 	["crates/ssqch/src/starter", "starter"],
 	["crates/ssqch/src/starter-docs", "starter-docs"],
@@ -50,8 +48,11 @@ export function pairs(): Array<{ original: string; copy: string }> {
 	return out;
 }
 
-/** Folders in `bundled/` that are the package's own, with no original elsewhere: 0.7's completion scripts. */
-const OWN = ["completions/"];
+/**
+ * What in `bundled/` is the package's own, with no original elsewhere: 0.7's completion scripts,
+ * and `ssqch.d.ts`, whose 0.8 types differ from what 0.7's binary writes (`crates/ssqch/src/`).
+ */
+const OWN = ["completions/", "ssqch.d.ts"];
 
 /** Every copy in `bundled/` (not the package's own files), as absolute paths. */
 export function copies(): string[] {

@@ -322,6 +322,30 @@ until 0.8 ships.
         starters and the blog's frozen output, which match 0.7.0 byte for byte with the package's
         version at `0.8.0` (at `0.8.0-dev` the JSON report's byte counts include the longer
         version). The examples, a11yproject.com and v8.dev match now.
+  - [ ] The owner's answers (2026-11-18), to act on:
+    - Pushed `main`; CI's first run failed. Fixed: three tests that assumed macOS, and 0.7's
+      `ssqch.d.ts` (restored; the package's is its own now). Still to fix: on Windows with the
+      tarball on Node 22.18, `a_theme_sits_under_the_site_file_by_file` (the message has `\`
+      where the test wants `themes/missing`) and `fetch_sends_requests_as_written` (`10+20`
+      where 0.7 gave `8+22`).
+    - 0.7.1 from the `v0.7.0` tag: only the version and a note pointing to 0.8.
+    - Remove the Rust implementation before 0.8.0, on a branch, and check everything again.
+    - Publish the `ssqch-plugin` crate with 0.8.0; keep the example plugin in the repository.
+    - npm only: drop the standalone executable (build-sea, sea-main, signing, notarizing, the
+      `standalone` job) and the install scripts. The Homebrew formula depends on Homebrew's
+      node and installs the npm package. Retire `setup-ssqch` (the README shows
+      `actions/setup-node` and `npm install -g ssqch@<version>`). The `package` job runs on
+      Linux only, on the three Node versions.
+    - Images: quality options on sharp's own scale, with defaults that encode as 0.7's did
+      (Breaking; the blog's config changes with its move to 0.8.0). AVIF speed 4 stays effort 3.
+      One encode per core. PNG adaptive filtering off. An image that fails after its page is
+      written fails the build.
+    - Before 0.8.0: a disk cache for highlighted fences in `.cache/ssqch/`, keyed by the
+      highlighter's version.
+    - After 0.8.0 (backlog): worker threads for `diff`; faster dev-server rebuilds on big sites;
+      a time limit for a stuck build; the config-save gap while a builder restarts (accepted).
+    - Kept: a late error in `serve` fails the next build, as in 0.7; the importer edits
+      `package.json` in place. After 0.8.0, deprecate the `@ssqch/<platform>` packages.
   - [ ] **Needs the owner:** push, and watch CI on Linux and Windows (everything since stage 2's
         Windows fixes has run on macOS only).
   - [ ] **Needs the owner:** the last 0.7.x, from `release/0.7` (cut before stage 8's workflows,

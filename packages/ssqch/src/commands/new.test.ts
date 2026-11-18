@@ -59,7 +59,8 @@ test("a json blueprint keeps its order and its numbers", () => {
 });
 
 test("new's blueprints and files fail as 0.7's did", async () => {
-	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-new-")));
+	// The system's spelling of the folder (Windows' temporary folder has a short name JavaScript's realpath keeps).
+	const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-new-")));
 	// Loading a config moves into the site's folder; the test goes back before removing it.
 	const cwd = process.cwd();
 	const config = await loadConfig({ root: dir, env: "development", quiet: true });

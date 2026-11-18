@@ -4,16 +4,18 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { importFile, siteFrames } from "./modules.ts";
 
 test("frames_keep_folders_with_parentheses", () => {
-	const root = "/camp/paren site (copy)";
+	// The system's own paths (a drive letter and `\` on Windows), and a file URL for one of them.
+	const root = path.resolve("/camp/paren site (copy)");
 	const stack = [
 		"Error: the snack drawer is empty",
-		"    at boom (/camp/paren site (copy)/ssqch.config.js:2:27)",
-		"    at /camp/paren site (copy)/lib/a.js:4:1",
+		`    at boom (${path.join(root, "ssqch.config.js")}:2:27)`,
+		`    at ${path.join(root, "lib", "a.js")}:4:1`,
 		"    at async Promise.all (index 0)",
-		"    at Object.<anonymous> (file:///camp/paren%20site%20(copy)/b.js:1:2)",
+		`    at Object.<anonymous> (${pathToFileURL(path.join(root, "b.js")).href}:1:2)`,
 	].join("\n");
 	assert.deepEqual(siteFrames(stack, root), ["    at boom (ssqch.config.js:2:27)", "    at <anonymous> (lib/a.js:4:1)", "    at <anonymous> (b.js:1:2)"]);
 });

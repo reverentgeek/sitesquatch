@@ -8,7 +8,21 @@ import path from "node:path";
 import { sites, buildSite, snapshotOf, loadSnapshot, differences, SNAPSHOTS, LOCAL_SNAPSHOTS } from "./lib/sites.js";
 
 /** `{ "<site>": { "<path or 'report' or 'log'>": "why it differs on purpose" } }`. */
-const DELIBERATE = {};
+const STARTER_TYPES = "0.8's editor types describe 0.8 (its Rust plugins, fetch, serve, images), so the ssqch.d.ts that init writes isn't 0.7's";
+const DELIBERATE = {
+	"starter-site-jinja": { "init wrote ssqch.d.ts": STARTER_TYPES },
+	"starter-site-njk": { "init wrote ssqch.d.ts": STARTER_TYPES },
+	"starter-site-edge": { "init wrote ssqch.d.ts": STARTER_TYPES },
+	"starter-site-liquid": { "init wrote ssqch.d.ts": STARTER_TYPES },
+	"starter-site-hbs": { "init wrote ssqch.d.ts": STARTER_TYPES },
+	"starter-site-ejs": { "init wrote ssqch.d.ts": STARTER_TYPES },
+	"starter-docs-jinja": { "init wrote ssqch.d.ts": STARTER_TYPES },
+	"starter-docs-njk": { "init wrote ssqch.d.ts": STARTER_TYPES },
+	"starter-docs-edge": { "init wrote ssqch.d.ts": STARTER_TYPES },
+	"starter-docs-liquid": { "init wrote ssqch.d.ts": STARTER_TYPES },
+	"starter-docs-hbs": { "init wrote ssqch.d.ts": STARTER_TYPES },
+	"starter-docs-ejs": { "init wrote ssqch.d.ts": STARTER_TYPES },
+};
 
 for (const site of sites()) {
 	const dir = path.join(site.local ? LOCAL_SNAPSHOTS : SNAPSHOTS, site.name);

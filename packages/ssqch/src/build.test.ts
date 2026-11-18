@@ -56,9 +56,11 @@ test("a_sites_commands_get_the_environment_ssqch_was_given", () => {
 		// The pool ssqch sized for itself (bin/ssqch.ts) isn't the command's.
 		process.env.UV_THREADPOOL_SIZE = String(os.availableParallelism() + 4);
 		assert.equal(run(show), "pool=%UV_THREADPOOL_SIZE% serving=true");
-		// One the person running ssqch set is.
-		process.env.UV_THREADPOOL_SIZE = "7";
-		assert.equal(run(show), "pool=7 serving=true");
+		// One the person running ssqch set is (any other number than ssqch's own: on a machine with
+		// three cores, 7 is ssqch's).
+		const theirs = String(os.availableParallelism() + 11);
+		process.env.UV_THREADPOOL_SIZE = theirs;
+		assert.equal(run(show), `pool=${theirs} serving=true`);
 		// The project's tools come first.
 		const { options } = commandLine("x", dir, {});
 		assert.equal(options.env.PATH!.split(path.delimiter)[0], path.join(dir, "node_modules", ".bin"));
