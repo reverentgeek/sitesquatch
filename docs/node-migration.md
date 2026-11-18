@@ -80,6 +80,27 @@ What the stage decided, or found:
 - **CI's benchmark compares, and doesn't check a time.** A commit's build against its parent's on the same runner, failing above 15% slower. Its phase line found a real cost on its second run: comparing a build's pages with the last build's searched a list for each page (1.8 s for 10,000 pages on the runner; 28 ms as two sets).
 - **Four oracle tests record a deliberate difference** (each says why, and `CHANGELOG.md` has them under 0.8.0): data that refers to itself is allowed; filters get real objects, so there are no views to check; a CommonJS package's exports are named only where Node can read them; `fs.createReadStream` is Node's own.
 
+## Stage 3, so far (2026-11-17)
+
+Four ports ran in parallel, each in its own git worktree with its oracle tests as the definition of done, and were merged one by one: ssqch's Markdown as `.wasm`, Jinja and Nunjucks on a fork, Edge, and Liquid, Handlebars, Mustache and EJS. `TODO.md` has what's left of the stage.
+
+| Check | Result |
+| --- | --- |
+| The 10,000-page site, one thread | **1.10 s, 363 MB** (1.45 s before the stage, measured with it; the limit is 2 s). Rendering went from markdown-it to the `.wasm`. |
+| v8.dev's exact port | **0.59 s** (the limit is 0.72 s); it brings its own markdown-it, which still works. |
+| The oracle | 86 of 186 tests pass, the same on Node 22.18, 24 and 26 (61 before): every engine's tests, the Markdown tests, front matter, and a11yproject.com's frozen site. What fails waits for `init` and the tools (stage 4), plugins (5), the server (6) and the importers (7). |
+| Real sites, plugins taken out of both builds' copies | The 12 starters match 0.7 but for the version in their footers; the six Jinja and Nunjucks examples match; the blog's Edge pages and its 128 Markdown files (172 highlighted fences) match. |
+
+What the stage decided, or found:
+
+- **The Markdown `.wasm` is committed** (`packages/ssqch/wasm/markdown.wasm`, 3.76 MB, from `crates/ssqch-markdown/`, which compiles 0.7's `markdown.rs` and `highlight.rs` unchanged), so the Node build runs from a clone with `npm ci` and CI's Node jobs need no Rust. It carries a hash of its Rust inputs, and a unit test fails when they've changed without a rebuild. Its interface is its own, not plugin ABI v1: render hooks, containers, `headingIds` functions and custom highlighters are synchronous calls back into JavaScript, and a hook whose template answers with a promise is an error. Highlighted fences are cached in it across a process's builds; a process's first highlighting is slow (syntect compiles each grammar's patterns on first use: about 0.3 s of the blog's first build).
+- **The nunjucks fork is in the repository** (`packages/ssqch/vendor/nunjucks/`, installed as `file:vendor/nunjucks`): its first commit is 3.2.4 as published, so `git diff` of the next shows the whole fork (about 60 lines, each marked `ssqch:`). `.jinja` keeps 0.7's MiniJinja library (filters, tests, Python's string methods, dates), and what Nunjucks does differently (scoping, `break`, floats) is in the changelog.
+- **Edge stays edge.js**, with its parser hooked for ssqch's own engine's instances: what 0.7's Edge did that edge.js doesn't (an undefined value prints nothing, a call reaches the filter beside a field of the same name, object literals in mustaches, `@let` that reads what it replaces) and async rendering that starts synchronous. Templates and includes are compiled once.
+- **Liquid, Handlebars and EJS load with their first template**, with `require` because rendering is synchronous: loading all three took about 12 ms of every build. liquidjs names months through `Intl` and reads dates in the machine's time zone, so the Liquid engine has a port of 0.7's `strftime`.
+- **Node 22.18 has a bug the others don't:** with any `load` hook registered (`module.registerHooks`), a CommonJS module's `require` has no `cache` (fixed by 22.23). Prism's language loader uses it, so a11yproject.com failed only there. ssqch's module hooks have no `load` hook now.
+- **Front matter** was checked with 24 unusual cases on both builds: TOML's integers past 2^53 are rounded numbers again; js-yaml's numbers (`017` is 17) and merge keys, and smol-toml's millisecond dates, are recorded in `cli/front-matter.test.js` and the changelog.
+- **The examples can't pass yet:** all eight use `ssqch/links`, a stage 5 plugin, so the stage's "done when" for them moves with stage 5.
+
 ## Stages
 
 Weeks are focused work for one person with coding agents, from the study's estimate. Stages 3 to 7 can run in parallel once stage 2 has fixed the core's interfaces.
