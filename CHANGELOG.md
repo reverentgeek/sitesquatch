@@ -54,10 +54,12 @@ the release.
   engine) can't be rendered on demand, and reading it too early is an error that names it.
 - **Edge templates are edge.js 6.5's**, with what 0.7's own Edge did kept around it (an undefined
   value prints nothing, a call reaches the filter beside a page field of the same name,
-  `$loop`, `reverse()` and `sort()` giving copies). What changes:
-  - A `@let` in an include sets the variable for that include only, as edge.js scopes it; 0.7 set
-    it for the template that included it too. Set it before the `@include`, or make the include
-    a component and pass it as a prop.
+  `$loop`, `reverse()` and `sort()` giving copies, dates in UTC and as ISO 8601 text, strings
+  indexed by character, numbers never in exponent notation). What changes:
+  - A variable an include declares with `@let`, that the template including it doesn't have,
+    is the include's only, as edge.js scopes it; 0.7 declared it in the including template too.
+    Declare it before the `@include` (an `@assign` or `@let` of a variable the including template
+    has reaches it, as in 0.7), or make the include a component and pass it as a prop.
   - An async function (an async filter) called inside a callback is awaited in `map`
     (`posts.map(p => cover(p))`), and is an error that says to call it first with `@let` in
     `filter`, `find` and the others, where 0.7 awaited it anywhere.
@@ -114,9 +116,13 @@ the release.
   that's async gets the warning that it returned an object, not a list of tokens.
 - Edge has what edge.js has: destructuring in `@let`, block-bodied arrow functions, regular
   expressions, the `in` operator, `@eval`, `@inject`, `@stack` and `@pushTo`, and edge.js's
-  helpers (`nl2br`, `excerpt`, `html.attrs`). `await` waits for a promise. A function that
-  isn't there says which one was probably meant (``index.edge:2: `uper` is not a function
-  (did you mean `upper`?)``), or ssqch's name for another generator's (`slug`).
+  helpers (`excerpt`, `html.attrs`, and `nl2br`, which gives HTML to print as it is, so escape
+  what it's given: `{{{ nl2br(html.escape(text)) }}}`). `await` waits for a promise. A number's
+  `toString(16)` uses its radix, which 0.7 ignored, and a date's `toLocaleString()` and
+  `toLocaleTimeString()`, which 0.7 didn't have, are `Intl`'s, in UTC unless they're given a
+  `timeZone`. A function that isn't there says which one was probably meant (``index.edge:2:
+  `uper` is not a function (did you mean `upper`?)``), or ssqch's name for another generator's
+  (`slug`).
 - Liquid, Handlebars, Mustache and EJS templates render with liquidjs 10.30, handlebars.js 4.7 (for
   Mustache too, as 0.7 did with its Rust port) and ejs 3.1.10, and their output is 0.7's (the
   Liquid, Handlebars and EJS starters build to the same bytes). Their errors name the line now
