@@ -1,4 +1,5 @@
 {
+  "version": "0.8.0-dev",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -8,7 +9,7 @@
     "pages": {
       "written": 6,
       "templates": 6,
-      "bytes": 19801,
+      "bytes": 22243,
       "new": null,
       "gone": null
     },
@@ -30,7 +31,7 @@
     "summary": [
       {
         "label": "Links",
-        "value": "100 checked, 0 broken"
+        "value": "101 checked, 0 broken"
       }
     ],
     "warnings": [],
@@ -38,7 +39,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed siting. Built in <time> (production)\n  Pages   6 written from 6 templates, 19.8 KB\n  Copied  2 files, 14.3 KB\n  Links   100 checked, 0 broken\n  Output  dist: 9 files, 36.6 KB\n",
+  "log": "First confirmed siting. Built in <time> (production)\n  Pages   6 written from 6 templates, 22.2 KB\n  Copied  2 files, 14.3 KB\n  Links   101 checked, 0 broken\n  Output  dist: 9 files, 39.0 KB\n",
   "files": {
     "404.html": "text",
     "assets/docs.css": "text",

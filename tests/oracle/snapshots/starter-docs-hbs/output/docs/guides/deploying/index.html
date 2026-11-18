@@ -1,12 +1,41 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Deploying | Squatch Docs</title><meta name="description" content="Publish the built site on any static host."><meta name="generator" content="SiteSquatch {{version}}"><link rel="stylesheet" href="/highlight.css"><link rel="stylesheet" href="/assets/docs.css"><script src="/assets/docs.js" defer></script><script>try { const theme = localStorage.getItem("theme"); if (theme) document.documentElement.dataset.theme = theme; } catch {}</script></head><body><a class="skip-link" href="#content">Skip to content</a><header class="site-header"><a class="site-name" href="/">Squatch Docs</a><nav aria-label="Site"><a href="/docs/">Docs</a> <a class="menu-link" href="#sidebar">Menu</a></nav><button class="theme-switch" type="button" hidden>Switch theme</button></header><div class="docs"><main id="content" data-pagefind-body><nav class="breadcrumbs" aria-label="Breadcrumbs"><span>Guides</span> › <span aria-current="page">Deploying</span></nav><h1>Deploying</h1><p><code>ssqch build</code> writes plain files to <code>dist/</code>. Any static host can serve them.</p><h2 id="netlify">Netlify <a class="anchor" href="#netlify" aria-hidden="true" tabindex="-1">#</a></h2><pre class="highlight"><code class="language-toml"><span class="hl-comment"># netlify.toml</span>
 [<span class="hl-type">build</span>]
   <span class="hl-tag">publish</span> = <span class="hl-string">&quot;dist&quot;</span>
-  <span class="hl-tag">command</span> = <span class="hl-string">&quot;curl -fsSL https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.sh | SSQCH_UNMANAGED_INSTALL=.cache/bin sh &amp;&amp; .cache/bin/ssqch build&quot;</span>
-</code></pre><p>Pin a version in that URL (<code>download/v0.4.0/</code>) so a build next year uses the ssqch you tested with.</p><h2 id="github-pages">GitHub Pages <a class="anchor" href="#github-pages" aria-hidden="true" tabindex="-1">#</a></h2><p>A project site is served under its repository's name, like <code>https://you.github.io/repo/</code>. Set that path in <code>ssqch.config.js</code>, and leave the links in your pages as they are:</p><pre class="highlight"><code class="language-js"><span class="hl-keyword">export</span> <span class="hl-keyword">default</span> <span class="hl-function">defineConfig</span>({
+  <span class="hl-tag">command</span> = <span class="hl-string">&quot;npx ssqch build&quot;</span>
+
+[<span class="hl-type">build</span>.<span class="hl-type">environment</span>]
+  <span class="hl-tag">NODE_VERSION</span> = <span class="hl-string">&quot;24&quot;</span>
+</code></pre><p>With <code>ssqch</code> in the site's <code>devDependencies</code> (see <a href="/docs/install/">Installation</a>), Netlify installs it at the version in the lockfile, so a build next year uses the ssqch you tested with. <code>NODE_VERSION</code> can be any Node from 22.18 on.</p><h2 id="github-pages">GitHub Pages <a class="anchor" href="#github-pages" aria-hidden="true" tabindex="-1">#</a></h2><p>A project site is served under its repository's name, like <code>https://you.github.io/repo/</code>. Set that path in <code>ssqch.config.js</code>, and leave the links in your pages as they are:</p><pre class="highlight"><code class="language-js"><span class="hl-keyword">export</span> <span class="hl-keyword">default</span> <span class="hl-function">defineConfig</span>({
   base: <span class="hl-string">&quot;/repo/&quot;</span>,
 });
-</code></pre><p>Then build with the <a href="https://github.com/reverentgeek/setup-ssqch"><code>setup-ssqch</code></a> action and upload <code>dist/</code>.</p><h2 id="check-before-you-publish">Check before you publish <a class="anchor" href="#check-before-you-publish" aria-hidden="true" tabindex="-1">#</a></h2><p>Build the site before and after a big change, and compare the two:</p><pre class="highlight"><code class="language-sh"><span class="hl-function">ssqch</span> build <span class="hl-parameter">--output</span> dist-before
+</code></pre><p>Then build it in a workflow with <code>actions/setup-node</code>, and deploy <code>dist/</code> with GitHub's own Pages actions (in the repository's settings, set Pages' source to &quot;GitHub Actions&quot;):</p><pre class="highlight"><code class="language-yaml"><span class="hl-comment"># .github/workflows/pages.yml</span>
+<span class="hl-tag">name</span>: <span class="hl-string">Deploy to GitHub Pages</span>
+<span class="hl-constant">on</span>:
+  <span class="hl-tag">push</span>:
+    <span class="hl-tag">branches</span>: [<span class="hl-string">main</span>]
+<span class="hl-tag">permissions</span>:
+  <span class="hl-tag">contents</span>: <span class="hl-string">read</span>
+  <span class="hl-tag">pages</span>: <span class="hl-string">write</span>
+  <span class="hl-tag">id-token</span>: <span class="hl-string">write</span>
+<span class="hl-tag">jobs</span>:
+  <span class="hl-tag">deploy</span>:
+    <span class="hl-tag">runs-on</span>: <span class="hl-string">ubuntu-latest</span>
+    <span class="hl-tag">environment</span>: <span class="hl-string">github-pages</span>
+    <span class="hl-tag">steps</span>:
+      - <span class="hl-tag">uses</span>: <span class="hl-string">actions/checkout@v4</span>
+      - <span class="hl-tag">uses</span>: <span class="hl-string">actions/setup-node@v4</span>
+        <span class="hl-tag">with</span>:
+          <span class="hl-tag">node-version</span>: <span class="hl-number">24</span>
+          <span class="hl-tag">cache</span>: <span class="hl-string">npm</span>
+      - <span class="hl-tag">run</span>: <span class="hl-string">npm ci</span>
+      - <span class="hl-tag">run</span>: <span class="hl-string">npx ssqch build</span>
+      - <span class="hl-tag">uses</span>: <span class="hl-string">actions/upload-pages-artifact@v3</span>
+        <span class="hl-tag">with</span>:
+          <span class="hl-tag">path</span>: <span class="hl-string">dist</span>
+      - <span class="hl-tag">id</span>: <span class="hl-string">deployment</span>
+        <span class="hl-tag">uses</span>: <span class="hl-string">actions/deploy-pages@v4</span>
+</code></pre><h2 id="check-before-you-publish">Check before you publish <a class="anchor" href="#check-before-you-publish" aria-hidden="true" tabindex="-1">#</a></h2><p>Build the site before and after a big change, and compare the two:</p><pre class="highlight"><code class="language-sh"><span class="hl-function">npx</span> ssqch build <span class="hl-parameter">--output</span> dist-before
 <span class="hl-comment"># ...make the change...</span>
-<span class="hl-function">ssqch</span> build
-<span class="hl-function">ssqch</span> diff dist-before dist
+<span class="hl-function">npx</span> ssqch build
+<span class="hl-function">npx</span> ssqch diff dist-before dist
 </code></pre><p>It lists the pages that were added, removed and changed, and ignores what doesn't matter.</p><div class="note"><p class="container-title">Beaver&#39;s build notes</p><p>Beaver keeps <code>dist-before/</code> until the diff shows only what she meant to change. A dam is easier to fix before the water arrives.</p></div><footer class="page-footer"><nav class="pager" aria-label="Previous and next pages"><span><a rel="prev" href="/docs/guides/writing/">← Writing pages</a></span><span></span></nav></footer></main><aside class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#netlify">Netlify</a></li><li><a href="#github-pages">GitHub Pages</a></li><li><a href="#check-before-you-publish">Check before you publish</a></li></ul></aside><nav class="sidebar" id="sidebar" aria-label="Documentation"><h2>Getting started</h2><ul><li><a href="/docs/">Introduction</a></li><li><a href="/docs/install/">Installation</a></li></ul><h2>Guides</h2><ul><li><a href="/docs/guides/writing/">Writing pages</a></li><li><a href="/docs/guides/deploying/" aria-current="page">Deploying</a></li></ul></nav></div></body></html>

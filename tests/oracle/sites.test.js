@@ -11,6 +11,8 @@ import { sites, buildSite, snapshotOf, loadSnapshot, differences, SNAPSHOTS, LOC
 
 /** `{ "<site>": { "<path or 'report' or 'log'>": "why it differs on purpose" } }`. */
 const STARTER_TYPES = "0.8's editor types describe 0.8 (its Rust plugins, fetch, serve, images), so the ssqch.d.ts that init writes isn't 0.7's";
+// The docs starters aren't here: their Install and Deploying pages show 0.8's npm, so they were
+// frozen again with 0.8 (CHANGELOG.md, 0.8.0), editor types and all.
 const DELIBERATE = {
 	"starter-site-jinja": { "init wrote ssqch.d.ts": STARTER_TYPES },
 	"starter-site-njk": { "init wrote ssqch.d.ts": STARTER_TYPES },
@@ -18,12 +20,6 @@ const DELIBERATE = {
 	"starter-site-liquid": { "init wrote ssqch.d.ts": STARTER_TYPES },
 	"starter-site-hbs": { "init wrote ssqch.d.ts": STARTER_TYPES },
 	"starter-site-ejs": { "init wrote ssqch.d.ts": STARTER_TYPES },
-	"starter-docs-jinja": { "init wrote ssqch.d.ts": STARTER_TYPES },
-	"starter-docs-njk": { "init wrote ssqch.d.ts": STARTER_TYPES },
-	"starter-docs-edge": { "init wrote ssqch.d.ts": STARTER_TYPES },
-	"starter-docs-liquid": { "init wrote ssqch.d.ts": STARTER_TYPES },
-	"starter-docs-hbs": { "init wrote ssqch.d.ts": STARTER_TYPES },
-	"starter-docs-ejs": { "init wrote ssqch.d.ts": STARTER_TYPES },
 };
 
 for (const site of sites()) {
