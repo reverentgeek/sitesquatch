@@ -10,9 +10,9 @@ import type { Config } from "../config.ts";
 import { colorPlan } from "./color.ts";
 import { CACHE_FILE } from "./hashes.ts";
 import { probe } from "./header.ts";
-import { capture, takeWarnings } from "../diagnostics.ts";
-import { ImageProcessor, defaultImageOptions, f32String, imageOptionsFor, insertPreloads, joinUrlPath, mayLinkImages, validWidths, withoutAuto } from "./processor.ts";
-import { encodeSettings, lookup, AVIF } from "./quality.ts";
+import { BuildError, capture, takeWarnings } from "../diagnostics.ts";
+import { ImageProcessor, defaultImageOptions, imageOptionsFor, insertPreloads, joinUrlPath, mayLinkImages, validWidths, withoutAuto } from "./processor.ts";
+import { AVIF, DEFAULTS, JPEG, WEBP, effortFromSpeed, encodeSettings, fromLegacy, legacySettings, lookup } from "./quality.ts";
 
 const sharp = createRequire(import.meta.url)("sharp") as typeof import("sharp").default;
 
@@ -51,14 +51,6 @@ test("preloads go before the first stylesheet in head", () => {
 	assert.equal(withoutAuto("auto"), "");
 });
 
-test("encoder settings are written as Rust wrote an f32", () => {
-	assert.equal(f32String(75), "75");
-	assert.equal(f32String(60.5), "60.5");
-	assert.equal(f32String(60.3), "60.3");
-	assert.equal(f32String(0.1), "0.1");
-	assert.equal(f32String(1e-7), "0.0000001");
-});
-
 test("imageUrl() and feedHtml() options name what's wrong", () => {
 	assert.deepEqual(imageOptionsFor("imageUrl()", undefined, 0), [0, "auto"]);
 	assert.deepEqual(imageOptionsFor("feedHtml()", { format: "jpg" }, 1200), [1200, "jpeg"]);
@@ -69,19 +61,41 @@ test("imageUrl() and feedHtml() options name what's wrong", () => {
 	assert.throws(() => imageOptionsFor("imageUrl()", "big", 0), { message: "imageUrl(): options must be an object like { width: 1200, format: \"png\" }" });
 });
 
-test("0.7's quality numbers become sharp's", () => {
-	const png = { adaptiveFiltering: true, compressionLevel: 6 };
+// The changelog's conversion, for a site moving from 0.7: the same numbers as its table.
+const CONVERSION = {
+	jpeg: [[50, 66], [60, 72], [70, 80], [75, 85], [80, 89], [85, 93], [90, 97], [92, 100], [95, 100]],
+	avif: [[30, 28], [40, 34], [45, 38], [50, 41], [55, 45], [60, 48], [65, 52], [70, 55], [75, 58], [80, 61], [85, 74], [90, 86], [95, 96], [98, 100]],
+	speed: [[1, 5], [2, 4], [3, 4], [4, 3], [5, 3], [6, 3], [7, 2], [8, 2], [9, 1], [10, 0]],
+};
+
+test("the quality options are sharp's numbers, and the defaults encode as 0.7's did", () => {
+	assert.deepEqual({ ...DEFAULTS }, { webpQuality: 75, avifQuality: 41, avifEffort: 2, jpegQuality: 89 });
+	assert.deepEqual({ ...DEFAULTS }, { webpQuality: fromLegacy(WEBP, 75), avifQuality: fromLegacy(AVIF, 50), avifEffort: effortFromSpeed(8), jpegQuality: fromLegacy(JPEG, 80) }, "0.7's defaults, converted");
+	// sharp's numbers go to sharp as they are; PNGs without adaptive filtering (decided 2026-11-18).
+	const png = { adaptiveFiltering: false, compressionLevel: 6 };
 	assert.deepEqual(encodeSettings(defaultImageOptions()), { jpeg: { quality: 89, mozjpeg: true }, png, webp: { quality: 75 }, avif: { quality: 41, effort: 2 } });
-	// The blog's: AVIF 60 at speed 4.
-	assert.deepEqual(encodeSettings({ ...defaultImageOptions(), avifQuality: 60, avifSpeed: 4 }).avif, { quality: 48, effort: 3 });
-	assert.deepEqual(encodeSettings({ ...defaultImageOptions(), avifQuality: 0, avifSpeed: 10, jpegQuality: 100, webpQuality: 100 }), { jpeg: { quality: 100, mozjpeg: true }, png, webp: { quality: 100 }, avif: { quality: 10, effort: 0 } });
+	assert.deepEqual(encodeSettings({ ...defaultImageOptions(), avifQuality: 48, avifEffort: 3 }).avif, { quality: 48, effort: 3 });
 	assert.equal(lookup(AVIF, 55), 44.5);
-	// Where sharp's best falls short of 0.7's, as the comments and the changelog say: its 100, from
-	// about 0.7's JPEG 92 and AVIF 98 up, and on the line to it just below.
-	const jpeg = (q: number) => encodeSettings({ ...defaultImageOptions(), jpegQuality: q }).jpeg.quality;
-	const avif = (q: number) => encodeSettings({ ...defaultImageOptions(), avifQuality: q }).avif.quality;
-	assert.deepEqual([90, 91, 92, 95, 100].map(jpeg), [97, 99, 100, 100, 100]);
-	assert.deepEqual([95, 97, 98, 99, 100].map(avif), [96, 99, 100, 100, 100]);
+	for (const [from, to] of CONVERSION.jpeg) assert.equal(fromLegacy(JPEG, from), to, `JPEG ${from}`);
+	for (const [from, to] of CONVERSION.avif) assert.equal(fromLegacy(AVIF, from), to, `AVIF ${from}`);
+	for (const [from, to] of CONVERSION.speed) assert.equal(effortFromSpeed(from), to, `speed ${from}`);
+	for (const q of [1, 50, 75, 100]) assert.equal(fromLegacy(WEBP, q), q, "WebP's numbers are the same");
+});
+
+// A file's name has the settings in it as 0.7 wrote them, so a site that converts its numbers
+// with the table keeps its names and its image cache.
+test("converted settings keep 0.7's names", () => {
+	assert.equal(legacySettings(DEFAULTS), "75|50|8|80");
+	// The blog's: AVIF 60 at speed 4 in 0.7, 48 at effort 3 now.
+	assert.equal(legacySettings({ ...DEFAULTS, avifQuality: 48, avifEffort: 3 }), "75|60|4|80");
+	for (const [from, to] of CONVERSION.jpeg.filter(([, q]) => q < 100)) assert.equal(legacySettings({ ...DEFAULTS, jpegQuality: to }).split("|")[3], String(from));
+	for (const [from, to] of CONVERSION.avif.filter(([, q]) => q < 100)) assert.equal(legacySettings({ ...DEFAULTS, avifQuality: to }).split("|")[1], String(from));
+	// sharp's 100 is where 0.7's JPEG 92 and up and AVIF 98 and up all land: named as 0.7's 100.
+	assert.equal(legacySettings({ ...DEFAULTS, avifQuality: 100, jpegQuality: 100 }), "75|100|8|100");
+	for (const speed of [1, 4, 8, 9, 10]) assert.equal(legacySettings({ ...DEFAULTS, avifEffort: effortFromSpeed(speed) }).split("|")[2], String(speed));
+	for (let q = 5; q <= 100; q += 5) assert.equal(legacySettings({ ...DEFAULTS, webpQuality: q }).split("|")[0], String(q));
+	// A number no 0.7 number converts to is sharp's, marked so it can't be taken for one.
+	assert.equal(legacySettings({ ...DEFAULTS, avifQuality: 5, avifEffort: 7, jpegQuality: 98 }), "75|s5|s7|s98");
 });
 
 /** A project with `files`, and a processor started on it as a build would. */
@@ -271,17 +285,26 @@ test("a JPEG that ends too soon is made, padded with grey, as 0.7 made it", asyn
 
 // What the check can't see (sharp failing on a source that read whole, a full disk) is found
 // after pages that point at its files were written, so the build fails rather than ship them.
-test("a file that fails after its markup is out fails the build, naming the source", async () => {
-	const { root, p } = project({ "src/pics/a.png": await noise(40, 20) }, { ...defaultImageOptions(), formats: ["webp"], widths: [20] });
+test("a file that fails after its markup is out fails the build, naming the source and the page", async () => {
+	const { root, p } = project({ "src/pics/a.png": await noise(40, 20), "src/pics/b.png": await noise(30, 20) }, { ...defaultImageOptions(), formats: ["webp"], widths: [20] });
 	// The cache folder is a file now: nothing can be written there.
-	const html = p.transformHtml("<img src=\"/pics/a.png\" alt=\"a\">", path.join(root, "src/index.html"));
+	const html = p.transformHtml("<img src=\"/pics/a.png\" alt=\"a\">", path.join(root, "src/index.html"), "/");
 	assert.match(html, /<img [^>]*src="\/img\/[\w-]{10}-20\.webp"/);
+	p.transformHtml("<img src=\"/pics/a.png\" alt=\"a\"><img src=\"/pics/b.png\" alt=\"b\">", path.join(root, "src/hike.html"), "/hike/");
+	p.imageUrl("/pics/a.png", 20, "webp");
 	const cache = path.join(root, ".cache/ssqch/img");
 	fs.rmSync(cache, { recursive: true });
 	fs.writeFileSync(cache, "not a folder");
-	await assert.rejects(p.settle(), (e: Error) => {
-		assert.match(e.message, /^images: encoding \.\/dist\/img\/[\w-]{10}-20\.webp from \.\/src\/pics\/a\.png: .+\. Pages that point at its files were written before it failed, so the build stops here rather than leave them pointing at files that aren't there$/);
+	await assert.rejects(p.settle(), (e: BuildError) => {
+		assert.match(e.message, /^images: encoding \.\/dist\/img\/[\w-]{10}-20\.webp from \.\/src\/pics\/a\.png: .+\. \.\/src\/index\.html and 2 more already point at it, so the build stops here rather than publish tracks that lead nowhere \(and 1 more image that failed\)$/);
 		assert.ok(!e.message.includes("\n"), "one line of libvips's: the rest of its buffer can be another encode's");
+		// For `--format json`: an `images` error for each source, with the source and the first page.
+		const items = (e.items ?? []).map(({ severity, code, file, url }) => ({ severity, code, file, url }));
+		assert.deepEqual(items, [
+			{ severity: "error", code: "images", file: "src/pics/a.png", url: "/" },
+			{ severity: "error", code: "images", file: "src/pics/b.png", url: "/hike/" },
+		]);
+		assert.match(e.items![1].message, /^images: encoding \.\/dist\/img\/[\w-]{10}-20\.webp from \.\/src\/pics\/b\.png: .+\. \.\/src\/hike\.html already points at it, so the build stops here/);
 		return true;
 	});
 	fs.rmSync(root, { recursive: true });
