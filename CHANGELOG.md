@@ -211,7 +211,14 @@ the release.
   follow from the rest of 0.8: a draft config isn't written where one of the new config names is
   already there, and a date in a Zola site's `[extra]` (`founded = 2019-05-01`) goes into the
   draft as its text, `"2019-05-01"`, where 0.7 wrote an object with a `$__toml_private_datetime`
-  key that no template could print.
+  key that no template could print. Three things are fixed. `package.json` is edited where it
+  changes and kept as it's written everywhere else, where 0.7 printed the whole file again (a
+  list on several lines, `1e5` as `100000.0`, escapes written out, the dev dependencies sorted).
+  A template literal with `${...}` in it (`` addPassthroughCopy(`${dir}/img`) ``) and a filter
+  whose default value reads the config (`(value, format = dateFormat) => ...`) are left for a
+  person to port, where 0.7 put them in the draft as they were, a path and a name that don't
+  exist and a function that needs a variable the draft doesn't have. A Zola `config.toml` that
+  isn't TOML shows its line and the spot, as 0.7's did, with smol-toml's words for what's wrong.
 - A warning a package raises with `process.emitWarning` is one of the build's warnings (`code:
   "console"` in the JSON report), like `console.warn`.
 - Messages that quote a parser are that parser's: YAML, JSON and TOML errors keep `at line N
