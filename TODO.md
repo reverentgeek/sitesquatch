@@ -197,10 +197,43 @@ until 0.8 ships.
         makes 7% fewer bytes. `files(pattern, { dimensions: true })` reads sizes too.
   - [ ] Document for stage 9: the quality numbers are 0.7's scale on sharp, AVIF needs no
         feature now, and `[ssqch] Encoded` lines come while pages render.
-- [ ] **Stage 6, the dev server**, reloading a changed config from a bundled temporary copy.
-      `importFile` (`modules.ts`) imports a changed file fresh but not the modules it imports,
-      so a filter in the config's `./lib/filters.js` (the blog has one) stays the old one on a
-      rebuild in the same process (found by stage 3's review).
+- [ ] **Stage 6, the dev server.** Started 2026-11-18; the results are in
+      `docs/node-migration.md` ("Stage 6, so far").
+  - [x] `ssqch serve` (`packages/ssqch/src/serve/`), from `serve.rs` and `companions.rs`:
+        watching, rebuilding, what browsers hear (a page reloads for its own change, a
+        stylesheet is swapped), a failed build over the page, the 404 page and the tab icon,
+        `--ready-file`, `--port`, `--built` and `preview`, `serve.run`'s tools (started, waited
+        for, started again), and the voice's lines. Checked in Chromium.
+  - [x] A changed config is read again by a new process, not from a bundled copy: the build runs
+        in a process of its own, which the server starts again when the config, a module it
+        imports, a JavaScript data file or a module that imports changes. That fixes what stage
+        3's review found (`importFile` imports a changed file fresh but not the modules it
+        imports, so a filter in the config's `./lib/filters.js`, as the blog has, stayed the old
+        one), for CommonJS files too, which a new URL doesn't reload.
+  - [x] Watching with `node:fs` alone: one watcher for a tree on macOS and Windows, one for each
+        folder on Linux (without `node_modules`, `.git` and `.cache`). No dependency.
+  - [x] A rebuild keeps what each page's file held when it was last compared, and doesn't read
+        it again. Without its plugins the blog rebuilds in 95 ms after one edit (0.7: 175 ms).
+  - [ ] The blog as it is rebuilds in 0.31 s after one edit (0.7: 0.23 s). A fifth of that is
+        `stat` calls from the image plugin and the link checker, which ask the disk about every
+        file they know on every build: what they found can be kept from one build to the next
+        while serving, as the page comparison is now.
+  - [x] What a plugin read for the last build is watched too (`filesRead` in
+        `src/plugin-files.ts`, which `ssqch/sass` fills), besides what it lists in the config's
+        `watch`: a partial in a folder the config never named rebuilds the site.
+  - [x] The oracle: all ten tests in `cli/serve.test.js` and `cli/serve-browser.test.js`, and
+        "serve ready file", on Node 22.18, 24 and 26, with stage 5's plugins merged in (four of
+        the tests' configs use one).
+  - [ ] **Decide:** a rebuild of 10,000 pages takes 0.97 s after one edit, twice 0.7's (which
+        used every core). Worker threads, or rendering only the pages an edit can reach, would
+        change that; the second needs the plugins that count across pages to take part. Both
+        are described in "Stage 6, so far".
+  - [ ] The server spends about 60 ms of its start loading the build's modules, which only the
+        process that builds uses (`cli.ts` imports `build.ts`, and so every engine). Import
+        them when a command needs them, once the stages that add commands to `cli.ts` have
+        merged. Starting to serve a one-page site takes 0.26 s (0.7: 0.07 s).
+  - [ ] Windows and Linux: the server's own unit tests run both ways of watching on each, but
+        the oracle's serve tests have only run on macOS. Watch CI's first run.
 - [x] **Stage 7, importers:** Eleventy and Zola (2026-11-18): `src/import.ts`, from `import.rs`
       with its tests. 0.7's importer reads a site's files as text and runs none of them, so it had
       nothing for QuickJS to drop. On the Eleventy sources of a11yproject.com, v8.dev, lit.dev,

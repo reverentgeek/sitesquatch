@@ -133,6 +133,11 @@ Run from `packages/ssqch/` unless it says otherwise.
   "did you mean". Each engine gets a test for an unknown filter and for a filter that throws.
 - **Windows:** paths through `node:path`, URLs and output paths with forward slashes, and no
   shell-only commands in code or tests.
+- **`ssqch serve` builds in a second process** (`src/serve/builder.ts`), which it starts again
+  when the config or a module it loaded changes. What a module keeps between builds (a cache)
+  lasts until then, and is never the server's: the server learns about a build from what the
+  builder sends it. A plugin that reads files of its own lists them (`config.watch`, or
+  `startReading` in `src/plugin-files.ts`) so a change to one rebuilds.
 - **Style:** tabs, double quotes and semicolons, as the rest of the repository's JavaScript;
   long lines are fine. Comments say why, in the voice of the README.
 
