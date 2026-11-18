@@ -65,12 +65,26 @@ the release.
     value or a config function of the same name still wins, as in 0.7.
   - A parse error is in edge.js's words (`parse error in page.edge: line 2: Unexpected token`),
     with the file and line as before.
-- **Liquid is liquidjs**, the library 0.7's Rust crate followed, with 0.7's filters kept where
-  the two differ (`capitalize`, `url_encode`, `split`, `divided_by`, `modulo`,
-  `array_to_sentence_string`, dates). What's liquidjs' own: `{{ some_object }}` prints `[object
-  Object]`, where 0.7 printed JSON with its keys in no fixed order (write `{{ some_object | json
-  }}`); `size` counts a string as JavaScript does, where 0.7 counted UTF-8 bytes (`café` is 4,
-  not 5), and is 0 for a number.
+- **Liquid is liquidjs**, the library 0.7's Rust crate followed, with 0.7's own behavior kept where
+  the two differ: dates print as 0.7 printed them (`2026-01-02 00:00:00 +0000`, in UTC) in every
+  filter; numbers keep the crate's whole numbers and floats (`10 | times: 1.0 | divided_by: 4` is
+  2.5, `7 | divided_by: 2` is 3, and a missing or non-numeric operand, or dividing by zero, is an
+  error); a missing value reaches a config function as `null`; and `capitalize`, `escape`,
+  `escape_once`, `url_encode`, `url_decode`, `split`, `truncate`, `truncatewords`, `map`, `uniq`,
+  `size` and `array_to_sentence_string` give 0.7's output. What's liquidjs' own: `{{ some_object }}`
+  prints `[object Object]`, where 0.7 ran its keys and values together in no fixed order (`{z: 1, a:
+  "two"}` printed `z1atwo`), so write `{{ some_object | json }}`; `{{ some_object.size }}` is its
+  number of keys, where 0.7 printed nothing; a string's `size` counts as JavaScript does, where 0.7
+  counted UTF-8 bytes (`café` is 4, not 5); and a variable named `empty` or `blank` is Liquid's
+  keyword (`{% if empty %}`), so rename it.
+- **EJS prints a date at UTC** (`Sun Apr 05 2026 06:07:08 GMT+0000`), in `<%= %>`, `<%- %>`, a list
+  and a promise's answer, where 0.7 printed it in the machine's time zone (the two agree on a
+  machine set to UTC). Format the date in the template to show it otherwise
+  (`date.toLocaleString("en-US", { timeZone: "America/New_York" })`).
+- **A Handlebars helper gets a date inside an object as a `Date`.** 0.7 turned the page's data into
+  JSON first, so every date was ISO 8601 text; a date passed to a helper itself (`{{year date}}`)
+  still arrives as that text, but one inside an object it's given (`{{byline post}}`) is a `Date`
+  now.
 - **Jinja (`.jinja`, `.j2`) and Nunjucks (`.njk`) render with Nunjucks**, ssqch's own fork of
   it, where 0.7 used MiniJinja. Jinja's filters, tests and functions, Python's string, list and
   dict methods, slices, the date filters, tags from your functions and the escaping are kept, so
@@ -118,15 +132,22 @@ the release.
   isn't there says which one was probably meant (``index.edge:2: `uper` is not a function
   (did you mean `upper`?)``), or ssqch's name for another generator's (`slug`).
 - Liquid, Handlebars, Mustache and EJS templates render with liquidjs 10.30, handlebars.js 4.7 (for
-  Mustache too, as 0.7 did with its Rust port) and ejs 3.1.10, and their output is 0.7's (the
-  Liquid, Handlebars and EJS starters build to the same bytes). Their errors name the line now
-  (0.7's Liquid and Handlebars errors named only the file), an unknown helper or filter gets the
-  closest name ("did you mean"), and an error in an include or partial names that file. A function's
-  error starts with its name (`boom(): ...`), as in the other languages. What 0.7 refused or got
-  wrong that works now: an EJS function's promise that's printed (`<%= later(x) %>`) is awaited
-  where 0.7 printed `[object Promise]`, and an EJS template can `await`; Liquid's `{% render %}`
-  partials print nothing for an unknown variable, where 0.7 failed; Liquid's `date` reads ISO 8601
-  text (`2024-03-04`), Jekyll's `date_to_xmlschema`, `date_to_rfc822`, `date_to_string` and
+  Mustache too, as 0.7 did with its Rust port) and ejs 3.1.10, and their output is 0.7's apart from
+  what's under Breaking (the Liquid, Handlebars and EJS starters build to the same bytes). Each
+  function a template calls runs once a page, an async one included. Their errors say `file:line` as
+  the other engines' do, and the JSON report has the `line` (0.7's Liquid parse errors drew an
+  excerpt with a line of their own, its Handlebars errors said `line 2, column 1:`, and its other
+  Liquid errors named only the file); an unknown helper or filter gets the closest name ("did you
+  mean"), and an error in an include or partial names that file. A function's error starts with its
+  name (`boom(): ...`), as in the other languages. `strict` refuses what 0.7 refused: in Liquid a
+  missing variable anywhere but `{% if %}` and `{% unless %}` asking whether it's there, and in
+  Handlebars a missing argument to `each`, `with`, `lookup` and the comparisons. A Handlebars
+  partial named without its extension (`{{> nav}}`) is the Handlebars file when there's one, where
+  0.7 took whichever file of that name the folder listed last. What 0.7 refused or got wrong that
+  works now: an EJS function's promise that's printed (`<%= later(x) %>`) is awaited where 0.7
+  printed `[object Promise]`, and an EJS template can `await`; Liquid's `{% render %}` partials
+  print nothing for an unknown variable, where 0.7 failed; Liquid's `date` reads ISO 8601 text
+  (`2024-03-04`), Jekyll's `date_to_xmlschema`, `date_to_rfc822`, `date_to_string` and
   `date_to_long_string` are there, and so are liquidjs' other filters and tags (`where_exp`, `sum`,
   `{% liquid %}`, `{% echo %}`); a Mustache-style section in a `.hbs` file (`{{#items}}`) works,
   where 0.7 said "Helper not found"; and `--verbose`'s list of templates nothing used covers Liquid,

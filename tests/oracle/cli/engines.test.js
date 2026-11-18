@@ -291,3 +291,48 @@ test("handlebars_and_mustache_templates_render", () => {
 	r = ssqch(["build", "--root", d]);
 	assert.ok(!r.ok && r.log.includes("broken.hbs"), r.log);
 });
+
+// Found reviewing the Node build: Liquid's own filters printed a date in the machine's time zone,
+// whole numbers and floats divided alike, a missing value reached a function as `undefined`, and
+// an async function made the template (and every other function in it) run again.
+test("liquid_numbers_dates_and_functions_are_0_7s_in_any_time_zone", () => {
+	const dir = tempDir("liquid-values");
+	write(dir, {
+		"ssqch.config.js": "let n = 0;\nexport default { templateFormats: [\"liquid\"], filters: { count: () => ++n, show: (v) => v === null ? \"null\" : typeof v, later: async (s) => \"later:\" + s } };\n",
+		"index.liquid": "---\ndate: 2026-01-02\nratio: 2.5\n---\n[{{ date | append: \"x\" }}] [{{ date | truncate: 15 }}] [{{ date | size }}] [{{ date }}]\n[{{ 10 | times: 1.0 | divided_by: 4 }}] [{{ ratio | times: 2 | divided_by: 2 }}] [{{ 10.0 | divided_by: 4 }}] [{{ 7 | divided_by: 2 }}]\n[{{ nope | show }}] [{{ 1 | count }} {{ \"x\" | later }} {{ 1 | count }}]\n",
+	});
+	const r = ssqch(["build", "--root", dir], { env: { TZ: "America/Los_Angeles" } });
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "[2026-01-02 00:00:00 +0000x] [2026-01-02 0...] [25] [2026-01-02 00:00:00 +0000]\n[2.5] [2.5] [2.5] [3]\n[null] [1 later:x 2]\n");
+});
+
+// The same review, for Handlebars: helpers got dates as `Date`s and missing values as
+// `undefined`, ran again after an async helper, and `{{> nav}}` could be another engine's file.
+test("handlebars_helpers_get_0_7s_values_and_run_once", () => {
+	const dir = tempDir("handlebars-values");
+	write(dir, {
+		"ssqch.config.js": "let n = 0;\nexport default { templateFormats: [\"hbs\", \"njk\"], filters: { count: () => ++n, kind: (v) => v === null ? \"null\" : Object.prototype.toString.call(v), later: async (s) => \"later:\" + s } };\n",
+		"_includes/nav.hbs": "<nav>hbs {{title}}</nav>",
+		"index.hbs": "---\ntitle: T\ndate: 2026-01-02\n---\n{{> nav}} [{{kind date}}] [{{kind nope}}] [{{count}} {{later title}} {{count}}] [{{#each list}}{{@key}}{{/each}}]\n",
+	});
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<nav>hbs T</nav> [[object String]] [null] [1 later:T 2] []\n");
+	// With `strict` on, a block helper's argument that isn't there is an error, as it was.
+	write(dir, { "ssqch.config.js": "export default { strict: true, templateFormats: [\"hbs\"] };\n", "index.hbs": "---\ntitle: T\n---\nline\n{{#each nolist}}x{{/each}}\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("index.hbs") && r.log.includes("nolist"), r.log);
+});
+
+// The same review, for EJS: the page's data shadowed the names the engine's code uses.
+test("ejs_keeps_its_own_names_when_the_data_has_them", () => {
+	const dir = tempDir("ejs-names");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"ejs\"] };\n",
+		"_includes/p/nav.ejs": "<nav><%= title %></nav>",
+		"a.ejs": "---\ntitle: A\ninclude: [a, b]\nescapeFn: 1\n---\n<%- include(\"p/nav\") %> <%= title %>\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/a/index.html"), "<nav>A</nav> A\n");
+});
