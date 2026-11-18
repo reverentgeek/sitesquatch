@@ -159,6 +159,15 @@ until 0.8 ships.
         and stage 9 rewrites the README's Edge and Jinja sections, which describe 0.7.
 - [ ] **Stage 4, checks and tools:** schemas and `types`, links, `diff`, `inspect`, footprint and
       budgets, `docs`, `new`, `init` and the starters, `capabilities`.
+  - [x] Content schemas (`schema.ts`), `inspect`, `diff` and footprint with budgets (2026-11-18),
+        with 0.7's messages and reports: 27 broken schemas, 35 `inspect` cases, the footprint and
+        budget cases and 240 random pairs of builds give 0.7's output through the binary. `diff`
+        ports what 0.7 diffed with, the `similar` crate's Myers (`myers.ts`), so hunks split as
+        0.7's do. On two builds of the 10,000-page site it takes 0.44 s (0.7.0: 0.5 s on every
+        core) at 150 MB; with every page changed, 2.1 s on one thread, where 0.7.0 takes 0.7 s on
+        15 cores. Worker threads for the comparison would close that, if wanted (no site code runs
+        in `diff`). `cli/report.test.js` and the shapes of the build, inspect, diff and footprint
+        reports wait for `ssqch/links`; they pass with the plugin taken out of their sites.
 - [ ] **Stage 5, plugins:** images (D4), rss, minify (D3), assets, sitemap, redirects, Sass,
       elements, themes; the Rust plugin SDK (`ssqch-plugin` crate, the `.wasm` loader, an example,
       and docs on when a Rust plugin pays).

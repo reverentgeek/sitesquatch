@@ -356,7 +356,7 @@ function checkValue(type: Type, value: unknown, fieldPath: string, at: Checking,
 				out.push(failed(e));
 				return;
 			}
-			// A check may be async: 0.7 called them synchronously, and Node can wait.
+			// A check may be async, as in 0.7: its answer is waited for.
 			if (answer instanceof Promise) out.push(answer.then(judge, failed));
 			else {
 				const found = judge(answer);

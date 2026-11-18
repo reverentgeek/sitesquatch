@@ -182,12 +182,16 @@ function isSpace(c: number): boolean {
 const SPACE_CHARS = "\\t\\n\\v\\f\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
 const SPACE_RUN = new RegExp(`[${SPACE_CHARS}]+`, "g");
 const ALL_SPACE = new RegExp(`^[${SPACE_CHARS}]*$`);
+/** Text that collapsing would change: any space but a plain one, two together, or one at an end. */
+const UNCOLLAPSED = new RegExp(`[${SPACE_CHARS.replace(" ", "")}]|  |^ | $|^$`);
 /** Whitespace a tag can't keep as it is: any but a plain space, two together, or a space before its end. */
 const TAG_SPACE = new RegExp(`[${SPACE_CHARS.replace(" ", "")}]|  | [>/]`);
 
 /** Words with one space between them, and none at either end (Rust's `split_whitespace` and `join(" ")`). */
 function collapse(s: string): string {
-	// Most text between a page's tags is only the indentation of the next one.
+	// Most text between a page's tags is only the indentation of the next one, and most of the
+	// rest has single spaces already.
+	if (!UNCOLLAPSED.test(s)) return s;
 	if (ALL_SPACE.test(s)) return "";
 	const t = s.replace(SPACE_RUN, " ");
 	const start = t.charCodeAt(0) === 32 ? 1 : 0;

@@ -371,23 +371,20 @@ async function runDiff(before: string, after: string, options: { exact: boolean;
 }
 
 /**
- * A pattern as Rust's `regex` crate read it, as nearly as JavaScript can: Unicode-aware, and
- * flags at its start (`(?i)`, `(?s)`, `(?m)`) as JavaScript's flags.
+ * A pattern as Rust's `regex` crate read it, as nearly as JavaScript can: in Unicode mode, with
+ * flags at its start (`(?i)`, `(?s)`, `(?m)`) as JavaScript's flags and `(?P<name>...)` as
+ * `(?<name>...)`. Without Unicode mode JavaScript would take some of Rust's escapes for letters
+ * (`\A` for `A`), so a pattern it can't read that way is refused rather than read as something else.
  */
 function rustRegExp(pattern: string): RegExp {
 	let flags = "gu";
-	let source = pattern;
+	let source = pattern.replaceAll("(?P<", "(?<");
 	const lead = /^\(\?([ims]+)\)/.exec(source);
 	if (lead) {
 		flags += [...new Set(lead[1])].join("");
 		source = source.slice(lead[0].length);
 	}
-	try {
-		return new RegExp(source, flags);
-	} catch (e) {
-		// Some patterns Rust takes are only valid without JavaScript's Unicode mode (`\-` outside a class).
-		try { return new RegExp(source, flags.replace("u", "")); } catch { throw e; }
-	}
+	return new RegExp(source, flags);
 }
 
 /** `ssqch footprint`: what the build in `dir` weighs. `shown` is how the report names the folder. */

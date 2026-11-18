@@ -7,7 +7,7 @@ import path from "node:path";
 import { BUDGETS } from "./budgets.ts";
 import type { Diagnostic } from "./diagnostics.ts";
 import { BuildError, bail, warning } from "./diagnostics.ts";
-import { compareText } from "./paths.ts";
+import { compareText, realPath } from "./paths.ts";
 import { padEnd, padStart } from "./quote.ts";
 import { bytes, count, fixed } from "./report.ts";
 
@@ -86,7 +86,7 @@ interface Folder {
  */
 export function buildFiles(dir: string, sizes: boolean): Promise<Array<[path: string, bytes: number]>> {
 	const out: Array<[string, number]> = [];
-	const folders: Folder[] = [{ path: dir, rel: "", real: fs.realpathSync(dir), parent: undefined }];
+	const folders: Folder[] = [{ path: dir, rel: "", real: realPath(dir), parent: undefined }];
 	const files: Array<[string, string]> = [];
 	let active = 0;
 	let failure: Error | undefined;
@@ -114,7 +114,7 @@ export function buildFiles(dir: string, sizes: boolean): Promise<Array<[path: st
 						}
 						[isDir, isFile] = [stat.isDirectory(), stat.isFile()];
 						if (isDir) {
-							const real = fs.realpathSync(file);
+							const real = realPath(file);
 							let loop = folder as Folder | undefined;
 							while (loop && loop.real !== real) loop = loop.parent;
 							if (loop) {

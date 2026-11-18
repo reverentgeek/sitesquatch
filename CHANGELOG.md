@@ -128,6 +128,11 @@ the release.
   `markdown()` from `"ssqch"` are errors that name the function, and so is a render hook or
   container template whose engine answers with one (an async filter, function or engine), where
   0.7 waited for them. Make those functions synchronous.
+- **`ssqch diff --ignore` takes a JavaScript regular expression** (in its Unicode mode), where 0.7
+  took Rust's. Most patterns are the same in both, and flags at the start (`(?i)`) and named
+  groups written `(?P<name>...)` still work, but Rust's own syntax JavaScript doesn't have
+  (`(?x)`, `\A`, `\z`, an escaped `-` outside `[...]`) is refused with JavaScript's words. `\d` and
+  `\w` are ASCII in JavaScript; write `\p{Nd}` or `\p{L}` for other scripts' digits and letters.
 
 ### Changed
 

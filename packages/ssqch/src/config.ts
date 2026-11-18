@@ -23,7 +23,7 @@ import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options
 import type { MarkdownOptions } from "./markdown-options.ts";
 import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
 import { resolveTheme } from "./theme.ts";
-import { realPath } from "./paths.ts";
+import { compareText, realPath } from "./paths.ts";
 
 export type Environment = "production" | "development";
 
@@ -656,6 +656,16 @@ function addTheme(config: Config, theme: unknown): void {
 
 const TOML_KEYS = ["input", "output", "includes", "layouts", "data", "template_formats", "markdown_engine", "html_engine", "data_deep_merge", "clean", "leave_no_trace", "ignore", "bundles", "strict", "base", "last_modified", "before_build", "after_build", "budgets", "serve", "theme", "schemas", "markdown", "passthrough"];
 
+/** A TOML table with its keys (and its tables' keys) in the order of their names, as 0.7's TOML library kept them. */
+function byName(table: Data): Data {
+	const out: Data = {};
+	for (const key of Object.keys(table).sort(compareText)) {
+		const value = table[key];
+		out[key] = isPlainObject(value) ? byName(value) : Array.isArray(value) ? value.map((v) => (isPlainObject(v) ? byName(v) : v)) : value;
+	}
+	return out;
+}
+
 /** Applies `sitesquatch.toml`: the config's settings in snake case, for a site with no JavaScript of its own. */
 function applyToml(config: Config, file: string): void {
 	loadedFiles.add(file);
@@ -688,8 +698,9 @@ function applyToml(config: Config, file: string): void {
 		if (base !== undefined) config.base = normalizeBase(base);
 		if (site.budgets !== undefined) {
 			if (!isPlainObject(site.budgets)) bail("budgets must be a table");
-			// A whole number is bytes; anything else is read as a size is written (`1.5` is 2 bytes, rounded).
-			for (const [name, value] of Object.entries(site.budgets)) config.budgets.push(budget(name, Number.isInteger(value) || typeof value === "string" ? value : String(value)));
+			// A whole number is bytes; anything else is read as a size is written (`1.5` is 2 bytes,
+			// rounded). In the order of their names, as 0.7 read them.
+			for (const [name, value] of Object.entries(byName(site.budgets))) config.budgets.push(budget(name, Number.isInteger(value) || typeof value === "string" ? value : String(value)));
 		}
 		if (site.serve !== undefined) {
 			if (!isPlainObject(site.serve)) bail("serve must be a table");
@@ -717,7 +728,8 @@ function applyToml(config: Config, file: string): void {
 		for (const theme of texts("theme") ?? []) addTheme(config, theme);
 		if (site.schemas !== undefined) {
 			if (!isPlainObject(site.schemas)) bail("schemas must be a table");
-			for (const [name, spec] of Object.entries(site.schemas)) {
+			// Schemas and their fields in the order of their names, as 0.7 read every table here.
+			for (const [name, spec] of Object.entries(byName(site.schemas))) {
 				const schema = parseSchema(name, spec);
 				config.schemas = config.schemas.filter((s) => s.name !== name);
 				config.schemas.push(schema);
