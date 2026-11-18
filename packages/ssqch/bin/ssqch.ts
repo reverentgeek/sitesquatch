@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 // ssqch: TypeScript that Node 22.18 and newer runs as it is.
 import module from "node:module";
+import os from "node:os";
 
+// sharp encodes images on libuv's thread pool, one encode per core (`src/image/processor.ts`),
+// and page writes go there too: a pool of four would leave pages waiting behind photos. Libuv
+// reads this when the pool first starts, so it's set before anything uses it.
+process.env.UV_THREADPOOL_SIZE ??= String(os.availableParallelism() + 4);
 // Node keeps compiled code for ssqch and its libraries on disk, so the next start skips compiling them.
 module.enableCompileCache?.();
 const { main, crashed } = await import("../src/cli.ts");

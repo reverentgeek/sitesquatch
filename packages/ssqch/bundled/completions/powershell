@@ -1,0 +1,318 @@
+
+using namespace System.Management.Automation
+using namespace System.Management.Automation.Language
+
+Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+
+    $commandElements = $commandAst.CommandElements
+    $command = @(
+        'ssqch'
+        for ($i = 1; $i -lt $commandElements.Count; $i++) {
+            $element = $commandElements[$i]
+            if ($element -isnot [StringConstantExpressionAst] -or
+                $element.StringConstantType -ne [StringConstantType]::BareWord -or
+                $element.Value.StartsWith('-') -or
+                $element.Value -eq $wordToComplete) {
+                break
+        }
+        $element.Value
+    }) -join ';'
+
+    $completions = @(switch ($command) {
+        'ssqch' {
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('build', 'build', [CompletionResultType]::ParameterValue, 'Build the site (default)')
+            [CompletionResult]::new('serve', 'serve', [CompletionResultType]::ParameterValue, 'Build, serve, watch for changes and live-reload the browser')
+            [CompletionResult]::new('new', 'new', [CompletionResultType]::ParameterValue, 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in')
+            [CompletionResult]::new('inspect', 'inspect', [CompletionResultType]::ParameterValue, 'Show where a page comes from, and which level of the data cascade set each value')
+            [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Print a completion script for your shell, so Tab finishes commands and options')
+            [CompletionResult]::new('diff', 'diff', [CompletionResultType]::ParameterValue, 'Compare two builds of a site: URLs added and removed, and what changed on each page')
+            [CompletionResult]::new('footprint', 'footprint', [CompletionResultType]::ParameterValue, 'Show how much a build weighs: its files by kind, and the heaviest pages and files')
+            [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create a starter site (config, layout, five posts, data and editor types)')
+            [CompletionResult]::new('types', 'types', [CompletionResultType]::ParameterValue, 'Write ssqch.d.ts, the types editors use for ssqch.config.js')
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Move a site from another generator: rename and rewrite what''s mechanical, and list the rest')
+            [CompletionResult]::new('capabilities', 'capabilities', [CompletionResultType]::ParameterValue, 'Say what this binary supports: template languages, modules, config options and optional features')
+            [CompletionResult]::new('docs', 'docs', [CompletionResultType]::ParameterValue, 'Read the documentation for this version: a command, config option, function or topic')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'ssqch;build' {
+            [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;serve' {
+            [CompletionResult]::new('-p', '-p', [CompletionResultType]::ParameterName, 'The port to listen on (0 picks a free one)')
+            [CompletionResult]::new('--port', '--port', [CompletionResultType]::ParameterName, 'The port to listen on (0 picks a free one)')
+            [CompletionResult]::new('--ready-file', '--ready-file', [CompletionResultType]::ParameterName, 'Write this file once the first build is done: JSON with the url, port and output folder')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--built', '--built', [CompletionResultType]::ParameterName, 'Serve the output folder as it was built: no build, no watching, no reload script, gzip on')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;new' {
+            [CompletionResult]::new('--title', '--title', [CompletionResultType]::ParameterName, 'The page''s title (default: from the file''s name)')
+            [CompletionResult]::new('--date', '--date', [CompletionResultType]::ParameterName, 'The page''s date, as it''s written in front matter (default: today)')
+            [CompletionResult]::new('--blueprint', '--blueprint', [CompletionResultType]::ParameterName, 'The blueprint to use (default: the page''s folder, then `default`)')
+            [CompletionResult]::new('--set', '--set', [CompletionResultType]::ParameterName, 'Another front matter key, with its value as it''s written there (repeatable)')
+            [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;inspect' {
+            [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'One field of its data, in full, with every level that set it (a dotted path reaches inside: hero.alt)')
+            [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;completions' {
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;diff' {
+            [CompletionResult]::new('--ignore', '--ignore', [CompletionResultType]::ParameterName, 'Leave out text matching this regular expression before comparing (repeatable)')
+            [CompletionResult]::new('--only', '--only', [CompletionResultType]::ParameterName, 'Only compare files matching this glob, like ''**/*.html'' (repeatable)')
+            [CompletionResult]::new('--lines', '--lines', [CompletionResultType]::ParameterName, 'Changed lines to show for each file (0 for all)')
+            [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--exact', '--exact', [CompletionResultType]::ParameterName, 'Compare bytes: don''t match fingerprinted files or ignore whitespace')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;footprint' {
+            [CompletionResult]::new('--top', '--top', [CompletionResultType]::ParameterName, 'How many of the heaviest pages and files to list (0 for none)')
+            [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;init' {
+            [CompletionResult]::new('--starter', '--starter', [CompletionResultType]::ParameterName, 'What to start with: site (a small blog) or docs (documentation with a sidebar, tabs and search)')
+            [CompletionResult]::new('--engine', '--engine', [CompletionResultType]::ParameterName, 'The template language for the starter''s layouts and templates: jinja, njk, edge, liquid, hbs or ejs')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;types' {
+            [CompletionResult]::new('--out', '--out', [CompletionResultType]::ParameterName, 'Where to write it')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;import' {
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--write', '--write', [CompletionResultType]::ParameterName, 'Make the changes (without it, only list them)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;capabilities' {
+            [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;docs' {
+            [CompletionResult]::new('--from', '--from', [CompletionResultType]::ParameterName, 'Another generator''s words and ssqch''s names for them: eleventy, hugo, jekyll, zola, ...')
+            [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;help' {
+            [CompletionResult]::new('build', 'build', [CompletionResultType]::ParameterValue, 'Build the site (default)')
+            [CompletionResult]::new('serve', 'serve', [CompletionResultType]::ParameterValue, 'Build, serve, watch for changes and live-reload the browser')
+            [CompletionResult]::new('new', 'new', [CompletionResultType]::ParameterValue, 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in')
+            [CompletionResult]::new('inspect', 'inspect', [CompletionResultType]::ParameterValue, 'Show where a page comes from, and which level of the data cascade set each value')
+            [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Print a completion script for your shell, so Tab finishes commands and options')
+            [CompletionResult]::new('diff', 'diff', [CompletionResultType]::ParameterValue, 'Compare two builds of a site: URLs added and removed, and what changed on each page')
+            [CompletionResult]::new('footprint', 'footprint', [CompletionResultType]::ParameterValue, 'Show how much a build weighs: its files by kind, and the heaviest pages and files')
+            [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create a starter site (config, layout, five posts, data and editor types)')
+            [CompletionResult]::new('types', 'types', [CompletionResultType]::ParameterValue, 'Write ssqch.d.ts, the types editors use for ssqch.config.js')
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Move a site from another generator: rename and rewrite what''s mechanical, and list the rest')
+            [CompletionResult]::new('capabilities', 'capabilities', [CompletionResultType]::ParameterValue, 'Say what this binary supports: template languages, modules, config options and optional features')
+            [CompletionResult]::new('docs', 'docs', [CompletionResultType]::ParameterValue, 'Read the documentation for this version: a command, config option, function or topic')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'ssqch;help;build' {
+            break
+        }
+        'ssqch;help;serve' {
+            break
+        }
+        'ssqch;help;new' {
+            break
+        }
+        'ssqch;help;inspect' {
+            break
+        }
+        'ssqch;help;completions' {
+            break
+        }
+        'ssqch;help;diff' {
+            break
+        }
+        'ssqch;help;footprint' {
+            break
+        }
+        'ssqch;help;init' {
+            break
+        }
+        'ssqch;help;types' {
+            break
+        }
+        'ssqch;help;import' {
+            break
+        }
+        'ssqch;help;capabilities' {
+            break
+        }
+        'ssqch;help;docs' {
+            break
+        }
+        'ssqch;help;help' {
+            break
+        }
+    })
+
+    $completions.Where{ $_.CompletionText -like "$wordToComplete*" } |
+        Sort-Object -Property ListItemText
+}

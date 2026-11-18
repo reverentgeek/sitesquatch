@@ -189,6 +189,14 @@ until 0.8 ships.
   - [ ] Document Rust plugins in the README (stage 9, from `docs/rust-plugins.md`), and add
         `{ name, rust }` to `ssqch.d.ts`'s `Plugin` type if wanted; publish `ssqch-plugin` to
         crates.io with 0.8.0, and the example's npm package if it's to be installable.
+  - [x] Images on sharp 0.35.5 and assets (2026-11-18), with 0.7's names (BLAKE3 in TypeScript),
+        so a site's image cache and asset URLs carry over: a copy of the blog with its cache
+        builds its 4,985 image files byte for byte as frozen. The quality options keep 0.7's
+        numbers, turned into sharp's from a calibration at equal SSIMULACRA2
+        (`src/image/quality.ts`); a cold build of the blog's images takes 28 s (0.7: 68 s) and
+        makes 7% fewer bytes. `files(pattern, { dimensions: true })` reads sizes too.
+  - [ ] Document for stage 9: the quality numbers are 0.7's scale on sharp, AVIF needs no
+        feature now, and `[ssqch] Encoded` lines come while pages render.
 - [ ] **Stage 6, the dev server.** Started 2026-11-18; the results are in
       `docs/node-migration.md` ("Stage 6, so far").
   - [x] `ssqch serve` (`packages/ssqch/src/serve/`), from `serve.rs` and `companions.rs`:

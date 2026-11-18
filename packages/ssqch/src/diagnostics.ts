@@ -199,7 +199,11 @@ export class Locator {
 			let file = path.resolve(dir, name);
 			if (!fs.statSync(file, { throwIfNoEntry: false })?.isFile()) continue;
 			file = realPath(file);
-			const shown = path.relative(realPath(this.root), file).split(path.sep).join("/");
+			// From the root when it's inside it, otherwise the whole path, as 0.7 showed it (a
+			// linked package's file isn't `../../../..` from the site).
+			const rel = path.relative(realPath(this.root), file);
+			const outside = rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel);
+			const shown = (outside ? file : rel).split(path.sep).join("/");
 			return { path: file, shown };
 		}
 		return undefined;
@@ -347,7 +351,7 @@ function frame(problem: Diagnostic, at: Locator): string | undefined {
 	const WIDEST = 160;
 	if (problem.file === undefined) return undefined;
 	let source: string;
-	try { source = fs.readFileSync(path.join(at.root, problem.file), "utf8"); } catch { return undefined; }
+	try { source = fs.readFileSync(path.resolve(at.root, problem.file), "utf8"); } catch { return undefined; }
 	const lines = splitLines(source);
 	let number: number | undefined = problem.line;
 	if (number === undefined) {
