@@ -17,6 +17,7 @@ import { isPlainObject, readToml } from "./data.ts";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
 import { checkLanguages } from "./engines/markdown.ts";
+import { installFetch, summary as fetchSummary } from "./fetch.ts";
 import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
 import type { MarkdownOptions } from "./markdown-options.ts";
 import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
@@ -154,6 +155,9 @@ export interface ConfigOptions {
 }
 
 
+/** What a site gets without setting them: Jinja is the default template language, so pages are `.jinja` and Markdown and HTML go through it first (`ssqch capabilities` says so). */
+export const DEFAULTS = { templateFormats: ["jinja", "md", "html"], markdownEngine: "jinja", htmlEngine: "jinja" } as const;
+
 function emptyConfig(options: ConfigOptions): Config {
 	return {
 		root: realPath(path.resolve(options.root)),
@@ -167,10 +171,9 @@ function emptyConfig(options: ConfigOptions): Config {
 		includes: "_includes",
 		layouts: null,
 		data: "_data",
-		// Jinja is the default template language: pages in `.jinja`, and Markdown and HTML through it first.
-		templateFormats: ["jinja", "md", "html"],
-		markdownEngine: "jinja",
-		htmlEngine: "jinja",
+		templateFormats: [...DEFAULTS.templateFormats],
+		markdownEngine: DEFAULTS.markdownEngine,
+		htmlEngine: DEFAULTS.htmlEngine,
 		markdown: defaultMarkdownOptions(),
 		deepMerge: true,
 		leaveNoTrace: false,
@@ -218,6 +221,9 @@ export async function loadConfig(options: ConfigOptions): Promise<Config> {
 	// (A root that isn't there is the build's to report: nothing can be read from it.)
 	if (fs.statSync(config.root, { throwIfNoEntry: false })?.isDirectory()) process.chdir(config.root);
 	Object.assign(api.site, { root: config.root, input: null, markdown: null });
+	// `fetch` gets 0.7's error words and its `cache` option, before any of the site's code runs.
+	installFetch(config.root);
+	config.summaries.push(["Fetch", fetchSummary]);
 	// JavaScript data files (`_data/*.js`, `*.data.js`): the default export is the data, or a
 	// function (sync or async) that returns it, called on every build.
 	for (const ext of ["js", "mjs", "cjs", "ts", "mts"]) config.dataExtensions.set(ext, (file) => loadJsData(file, config.root));
@@ -345,8 +351,7 @@ function aliased(part: Data, where: string): Data {
 export type BuiltinPlugin = (config: Config, options: Data) => void | Promise<void>;
 
 /** The built-in plugins, by the module that makes them. The plugins register themselves here as they're ported. */
-export const BUILTINS = new Map<string, BuiltinPlugin>();
-/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
+export const BUILTINS = new Map<string, BuiltinPlugin>();/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
 const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements"];
 
 async function loadJs(config: Config, file: string): Promise<void> {
