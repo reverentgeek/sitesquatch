@@ -1,7 +1,7 @@
 // From crates/ssqch/tests/cli.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ssqch, tempDir, write, read, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read } from "../lib/ssqch.js";
 
 test("markdown_options_hooks_containers_and_headings", () => {
 	const dir = tempDir("markdown");
@@ -92,8 +92,8 @@ test("sites_add_and_replace_highlighted_languages", () => {
 	const bad = read(dir, "dist/bad/index.html");
 	assert.equal(bad, "<pre><code class=\"language-broken\">x\n</code></pre>\n<pre><code class=\"language-wrong\">x\n</code></pre>\n<pre><code class=\"language-short\">whole\n</code></pre>\n");
 	// DELIBERATE (0.8): the column in a stack frame is where Node (V8) says the error was made,
-	// at `new` in `throw new Error(...)`; 0.7 ran the config on QuickJS, which says `Error`.
-	const column = RUST_07 ? 31 : 27;
+	// at `new` in `throw new Error(...)`; 0.7 ran the config on QuickJS, which said `Error` (31).
+	const column = 27;
 	for (const expected of [
 		`warn: src/bad.md: a \`broken\` fence is plain text: markdown.highlight.languages.broken failed: no pine cones\n    at broken (ssqch.config.js:9:${column})`,
 		"warn: src/bad.md: a `wrong` fence is plain text: markdown.highlight.languages.wrong returned the kind \"chord\", which isn't one of comment, keyword,",

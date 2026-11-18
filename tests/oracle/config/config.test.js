@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { ssqch, project, read, exists, tempDir, REPO, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, project, read, exists, tempDir, REPO } from "../lib/ssqch.js";
 
 /** Builds `root` the way the Rust tests did: production, quiet. */
 function build(root, extra = []) {
@@ -95,12 +95,10 @@ test("builds_a_site_configured_in_javascript", () => {
 
 // The Rust test registered "test:greeter" from Rust: a plugin that isn't JavaScript, made from its
 // options, whose filter reads them. In 0.8 that's a plugin written in Rust, a .wasm file (the
-// example in examples/rust-plugin, whose `greet` filter says its `greeting` option). 0.7 has no
-// way to load one from the command line.
+// example in examples/rust-plugin, whose `greet` filter says its `greeting` option).
 const TRAIL_GUIDE = JSON.stringify(pathToFileURL(path.join(REPO, "examples/rust-plugin/index.js")).href);
-const RUST_PLUGINS = { skip: RUST_07 && "0.8 only: plugins written in Rust are .wasm files; 0.7 linked them into a Rust program" };
 
-test("builds_a_site_configured_in_javascript (built-in plugin)", RUST_PLUGINS, () => {
+test("builds_a_site_configured_in_javascript (built-in plugin)", () => {
 	const config = SITE_CONFIG
 		.replace("import { shout } from \"./lib/text\";", `import { shout } from "./lib/text";\nimport trailGuide from ${TRAIL_GUIDE};`)
 		.replace(/^const greeter = .*$/m, "const greeter = (greeting) => trailGuide({ greeting });");
@@ -164,11 +162,10 @@ test("errors_point_at_the_config_source", () => {
 });
 
 test("mistakes_in_the_config_say_what_to_fix", () => {
-	// [config, wanted, skip reason]: a "QuickJS only" case runs only on 0.7; a "needs the Rust API" case is covered by the skipped test below.
+	// [config, wanted]. The Rust test's cases for 0.7's stand-ins for node:http and node:sqlite are
+	// gone with QuickJS: on Node, every node: module is Node's own.
 	const cases = [
 		["import x from \"left-pad\"; export default {};", "package \"left-pad\" isn't installed (no node_modules/left-pad folder here or in a parent folder; run npm install)"],
-		["import h from \"node:http\"; h.request(\"http://localhost\"); export default {};", "node:http isn't available in ssqch", "QuickJS only: node:http is a stub that throws"],
-		["import s from \"node:sqlite\"; export default {};", "node:sqlite isn't available in ssqch (available: node:fs, ", "QuickJS only: the list of node: modules ssqch shims"],
 		["export const config = {};", "needs a default export: export default defineConfig({ ... })"],
 		["export default { dirs: { assets: \"_assets\" } };", "dirs.assets isn't supported (use input, output, includes, layouts, data)"],
 		["export default { dirz: { input: \"src\" } };", "\"dirz\" isn't a config option (did you mean \"dirs\"?) (options: dirs, templateFormats"],
@@ -190,8 +187,7 @@ test("mistakes_in_the_config_say_what_to_fix", () => {
 		],
 		["export default { plugins: [() => ({ plugins: [{ beforeBuild: 1 }] })] };", "plugins[0] > plugins[0]: beforeBuild must be a function"],
 	];
-	for (const [config, want, skip] of cases) {
-		if (skip && (skip.startsWith("needs the Rust API") || !RUST_07)) continue;
+	for (const [config, want] of cases) {
 		const e = loadError(config);
 		assert.ok(e.includes(want), `${config}\n  wanted: ${want}\n  got: ${e}`);
 		assert.ok(e.startsWith("ssqch.config.js") && !e.includes("ssqch.config.js: ssqch.config.js"), `name the file once: ${e}`);
@@ -201,7 +197,7 @@ test("mistakes_in_the_config_say_what_to_fix", () => {
 // The Rust test's mistake was a plugin that isn't there. In 0.8 the plugins that aren't
 // JavaScript are .wasm files: one that isn't there, isn't a plugin, or was built for another
 // plugin ABI is refused, and so are options it doesn't take.
-test("mistakes_in_the_config_say_what_to_fix (unknown built-in plugin)", RUST_PLUGINS, () => {
+test("mistakes_in_the_config_say_what_to_fix (unknown built-in plugin)", () => {
 	const wasm = path.join(REPO, "examples/rust-plugin/trail_guide.wasm");
 	const dir = tempDir("wasm");
 	const bytes = fs.readFileSync(wasm);
@@ -244,13 +240,9 @@ test("circular_data_is_an_error_not_a_hang", () => {
 		"ssqch.config.js": "const a = {}; a.self = a; export default { templateFormats: [\"edge\"], data: { loop: () => a } };",
 		"index.edge": "{{ loop.self === loop }}",
 	});
-	// DELIBERATE (0.8): 0.7 copies a config's values out of QuickJS, and refuses one that refers to
-	// itself. On Node, templates get the config's own objects, so circular data is only data.
-	if (!RUST_07) {
-		buildOk(root);
-		assert.equal(read(root, "_site/index.html"), "true");
-		return;
-	}
-	const e = buildError(root);
-	assert.ok(e.includes("nested too deeply"), e);
+	// DELIBERATE (0.8): 0.7 copied a config's values out of QuickJS, and refused one that referred
+	// to itself ("nested too deeply"). On Node, templates get the config's own objects, so
+	// circular data is only data.
+	buildOk(root);
+	assert.equal(read(root, "_site/index.html"), "true");
 });

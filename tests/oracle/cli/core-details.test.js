@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write, read, exists, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, exists } from "../lib/ssqch.js";
 
 const unix = { skip: process.platform === "win32" && "a backslash in a glob is a folder separator on Windows, and links need privileges there" };
 
@@ -22,14 +22,10 @@ test("an_output_folder_outside_the_root_given_from_it", () => {
 	const dir = tempDir("output-outside");
 	write(dir, { "site/src/a.html": "hi" });
 	const r = ssqch(["build", "-o", "../out"], { cwd: path.join(dir, "site") });
-	if (RUST_07) {
-		// 0.7 refused it, by mistake: its check for a permalink that leaves the output folder
-		// counted the `..` in the folder's own name. An absolute path worked.
-		assert.ok(!r.ok && r.log.includes("points outside the output directory"), r.log);
-	} else {
-		assert.ok(r.ok, r.log);
-		assert.equal(read(dir, "out/src/a/index.html"), "hi");
-	}
+	// 0.7 refused it, by mistake: its check for a permalink that leaves the output folder counted
+	// the `..` in the folder's own name. An absolute path worked.
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "out/src/a/index.html"), "hi");
 });
 
 test("diff_only_reads_globs_as_globset_did", () => {
@@ -76,7 +72,7 @@ test("toml_dates_and_numbers_are_checked_as_0_7_checked_them", () => {
 	write(dir, { "src/index.html": "+++\ndate = 1979-05-27T07:32:60Z\n+++\n{{ page.date }}" });
 	r = ssqch(["build", "-q"], { cwd: dir });
 	assert.ok(r.ok, r.log);
-	assert.equal(read(dir, "dist/index.html"), RUST_07 ? "1979-05-27T07:32:60.000Z" : "1979-05-27T07:32:59.000Z");
+	assert.equal(read(dir, "dist/index.html"), "1979-05-27T07:32:59.000Z");
 	r = page("d = 9223372036854775808");
 	assert.ok(!r.ok && r.log.includes("invalid TOML front matter"), r.log);
 	r = page("d = 1e400");
@@ -203,5 +199,5 @@ test("inspect_prints_numbers_as_0_7_did", () => {
 	// showed the start of 1970.
 	r = ssqch(["inspect", "/", "--field", "when", "--format", "json"], { cwd: dir });
 	assert.ok(r.ok, r.log);
-	assert.equal(JSON.parse(r.stdout).field.value, RUST_07 ? "1970-01-01T00:00:00.000Z" : null);
+	assert.equal(JSON.parse(r.stdout).field.value, null);
 });

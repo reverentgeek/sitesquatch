@@ -2,7 +2,7 @@
 // stage 3 of the move to Node, to pin what changes on purpose (CHANGELOG.md, 0.8.0) and what doesn't.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ssqch, tempDir, write, read, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read } from "../lib/ssqch.js";
 
 const CONFIG = "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"edge\"], filters: { json: (v) => JSON.stringify(v) } };\n";
 const PRINT = "\n{{{ json([a, b, c, d]) }}}";
@@ -28,15 +28,10 @@ test("front_matter_reads_yaml_toml_and_json", () => {
 	assert.equal(out("json"), "[[1,2],{\"x\":null},\"three\",false]");
 	assert.equal(out("crlf"), "[\"one\",\"two\",3,4]");
 	assert.equal(out("micro"), "[\"1979-05-27T00:32:00.999999-07:00\",1,2,3]");
-	if (RUST_07) {
-		assert.equal(out("numbers"), "[15,31,\"017\",\"1_000\"]");
-		assert.equal(out("merge"), "[{\"x\":1,\"y\":2},{\"<<\":{\"x\":1,\"y\":2},\"y\":3},1,2]");
-	} else {
-		// 0.8 reads YAML as js-yaml does (and so Eleventy): `017` and `1_000` are numbers, and `<<`
-		// merges.
-		assert.equal(out("numbers"), "[15,31,17,1000]");
-		assert.equal(out("merge"), "[{\"x\":1,\"y\":2},{\"x\":1,\"y\":3},1,2]");
-	}
+	// 0.8 reads YAML as js-yaml does (and so Eleventy): `017` and `1_000` are numbers, and `<<`
+	// merges. 0.7 kept the first two as text, and `<<` as a key.
+	assert.equal(out("numbers"), "[15,31,17,1000]");
+	assert.equal(out("merge"), "[{\"x\":1,\"y\":2},{\"x\":1,\"y\":3},1,2]");
 });
 
 test("front_matter_errors_name_the_page", () => {

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
-import { ssqch, project, read, FIXTURES, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, project, read, FIXTURES } from "../lib/ssqch.js";
 
 const PNG = fs.readFileSync(path.join(FIXTURES, "cli/squatch.png"));
 
@@ -605,7 +605,7 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge
 // 0.8's quality options are sharp's own numbers (CHANGELOG.md, "Breaking"), and `avifEffort`
 // replaces 0.7's `avifSpeed`. The defaults are 0.7's converted, so setting them changes nothing,
 // names included.
-test("image_quality_options_are_sharps_numbers", { skip: RUST_07 && "0.8's scale: 0.7 reads its own numbers and has avifSpeed" }, () => {
+test("image_quality_options_are_sharps_numbers", () => {
 	const config = (options) => `import { imagePlugin } from "ssqch/image";
 export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge"], plugins: [imagePlugin({ formats: ["avif", "webp", "jpeg"], widths: [16]${options} })] };`;
 	const root = project({ "ssqch.config.js": config(""), "src/img/squatch.png": PNG, "src/index.edge": "<img src=\"/img/squatch.png\" alt=\"\">" });

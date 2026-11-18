@@ -1,7 +1,9 @@
-// The oracle's way of running ssqch: any implementation, as a black box.
+// The oracle's way of running ssqch, as a black box.
 //
-//   SSQCH_BIN=target/release/ssqch node --test        (the default: the Rust build)
-//   SSQCH_BIN=packages/ssqch/bin/ssqch.ts node --test (a .js or .ts file runs with this Node)
+//   node --test                          ssqch from its source (packages/ssqch/bin/ssqch.ts)
+//   SSQCH_BIN=<path> node --test         another ssqch, from the repository's root or absolute:
+//                                        an installed package's bin/ssqch.js, say (a .js or .ts
+//                                        file runs with this Node)
 //
 // Every run gets TZ=UTC, so dates don't depend on the machine.
 import { spawnSync } from "node:child_process";
@@ -17,11 +19,10 @@ export const ORACLE = path.join(REPO, "tests/oracle");
 /** Files the tests read: `tests/oracle/fixtures`. */
 export const FIXTURES = path.join(ORACLE, "fixtures");
 
-const exe = process.platform === "win32" ? ".exe" : "";
 /** The ssqch under test, as an absolute path. */
-export const BIN = path.resolve(REPO, process.env.SSQCH_BIN ?? `target/release/ssqch${exe}`);
+export const BIN = path.resolve(REPO, process.env.SSQCH_BIN ?? "packages/ssqch/bin/ssqch.ts");
 if (!fs.existsSync(BIN)) {
-	throw new Error(`${BIN} doesn't exist. Build it (cargo build --release -p ssqch) or set SSQCH_BIN to the ssqch to test.`);
+	throw new Error(`${BIN} doesn't exist. Set SSQCH_BIN to the ssqch to test (a path from the repository's root, or absolute).`);
 }
 const SCRIPT = /\.(c|m)?(j|t)s$/.test(BIN);
 
@@ -53,15 +54,11 @@ export function ssqchFails(args, options) {
 }
 
 /**
- * The version the implementation under test should report: SSQCH_EXPECT_VERSION, or
- * `packages/ssqch/package.json` once it exists, or Cargo.toml's workspace version.
+ * The version the ssqch under test should report: SSQCH_EXPECT_VERSION, or
+ * `packages/ssqch/package.json`'s.
  */
 export function expectedVersion() {
-	if (process.env.SSQCH_EXPECT_VERSION) return process.env.SSQCH_EXPECT_VERSION;
-	const pkg = path.join(REPO, "packages/ssqch/package.json");
-	if (process.env.SSQCH_BIN?.includes("packages/ssqch") && fs.existsSync(pkg)) return JSON.parse(fs.readFileSync(pkg, "utf8")).version;
-	const cargo = fs.readFileSync(path.join(REPO, "Cargo.toml"), "utf8");
-	return /\[workspace\.package\][^[]*?\nversion = "([^"]+)"/.exec(cargo)[1];
+	return process.env.SSQCH_EXPECT_VERSION || JSON.parse(fs.readFileSync(path.join(REPO, "packages/ssqch/package.json"), "utf8")).version;
 }
 
 let counter = 0;
@@ -136,13 +133,6 @@ export function fixTimes(dir) {
 	}
 	fs.utimesSync(dir, FIXED_TIME, FIXED_TIME);
 }
-
-/**
- * True while the oracle runs against ssqch 0.7 (the Rust build). A test of behavior that 0.8
- * changes on purpose (QuickJS's limits, say) runs only then:
- * `test("...", { skip: !RUST_07 && "QuickJS only: ..." }, ...)`.
- */
-export const RUST_07 = expectedVersion().startsWith("0.7.");
 
 /** What `ssqch capabilities` reports (cached): use it to skip a test of an optional feature. */
 let capabilities;

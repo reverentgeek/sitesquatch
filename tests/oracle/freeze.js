@@ -1,9 +1,14 @@
-// Freezes the expected output: builds every site with the ssqch under test (ssqch 0.7.0 while the
-// move to Node runs) and writes snapshots/ (committed) and snapshots-local/ (the blog and the
+// Freezes the expected output: builds sites with the ssqch under test (SSQCH_BIN, ssqch from its
+// source by default) and writes snapshots/ (committed) and snapshots-local/ (the blog and the
 // trial ports, gitignored).
 //
-//   node freeze.js              every site that's available
 //   node freeze.js blog example-islands
+//   node freeze.js              every site that's available
+//
+// The committed snapshots are 0.7.0's output, the reference 0.8 was held to, except where 0.8
+// changed a site's output on purpose. Freezing a site again is how a change like that is accepted:
+// freeze only the sites it changes, read the snapshot's diff in git, and say what changed and why
+// in the commit and the changelog. Never edit a snapshot by hand.
 //
 // Each site is built twice; a site whose two builds differ is reported and not frozen, since its
 // snapshot couldn't be checked.
