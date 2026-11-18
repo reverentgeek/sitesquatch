@@ -14,8 +14,9 @@ where that version matches.
 ssqch 0.8 is a TypeScript program on Node (22.18 or newer), installed from npm. The contract is
 0.7's: the commands and flags, the config, `ssqch.d.ts`, the JSON reports, the diagnostic codes and
 the voice. Rendering, Markdown, minify and Sass give 0.7's output, and the blog, the examples and
-the starters build to the same bytes, image bytes apart (sharp encodes the images now). Most sites
-change nothing. Breaking lists what a site might have to change, by theme: installing, a site's
+the starters build to the same bytes, apart from image bytes (sharp encodes the images now), the
+starters' editor types and the docs starter's Install and Deploying pages. Most sites change
+nothing. Breaking lists what a site might have to change, by theme: installing, a site's
 JavaScript, data, templates, Markdown, images and feeds, builds, `serve.run` tools, `diff` and Rust
 plugins. Changed lists what's new, what works now that didn't, and the messages that read
 differently.
@@ -275,6 +276,12 @@ differently.
   runs on every platform, shipped in an npm package whose function returns `{ name, rust: { wasm,
   options } }`. It can have a transform, filters and engines; `crates/ssqch-plugin/README.md`
   and `examples/rust-plugin` show how.
+- **The Rust API is gone for good.** The Rust implementation isn't in the repository any more:
+  the `sitesquatch`, `sitesquatch-edge` and `sitesquatch-js` crates, the `sitesquatch-plugin-*`
+  crates and the `ssqch` crate end at 0.7.x on crates.io, and their source is on the
+  `release/0.7` branch. `ssqch-plugin` is the one crate 0.8 publishes. What 0.8 kept of 0.7's
+  Rust is built as WebAssembly inside the npm package: the Markdown and highlighter, the minifier
+  and Sass (grass), so their output doesn't change.
 
 ### Changed
 
@@ -440,6 +447,11 @@ differently.
 
 #### The tools
 
+- `ssqch init --starter docs` writes Install and Deploying pages for 0.8: ssqch as a dev
+  dependency from npm or pnpm, run with `npx ssqch`; Netlify running `npx ssqch build` with
+  `NODE_VERSION`; and a GitHub Pages workflow with `actions/setup-node`. 0.7's pages showed the
+  installer script, `cargo install` and `setup-ssqch`, and its Netlify command fetched
+  `latest/download/ssqch-installer.sh`, which 0.8.0's release doesn't have.
 - `ssqch capabilities` lists `ssqch.config.cjs`, `.ts` and `.mts` under `configFiles`, and says
   `avif` and `sass` only when this build can do them (sharp writes the AVIF files).
 - `ssqch inspect` shows a date that isn't one (`new Date(NaN)` in the config's `data`) as `null`,
