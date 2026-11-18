@@ -172,7 +172,7 @@ until 0.8 ships.
   - [x] Sass: grass at 0.7's version as `wasm/sass.wasm` (`crates/ssqch-sass`, 2 MB), reading
         files through Node. 0.7's bytes for the oracle's, component-docs' and eslint.org's 47
         stylesheets in both styles; Dart Sass differs on 15 of eslint.org's 43 compressed.
-        `filesRead(config)` in `modules/sass.ts` lists what the last build read, for stage 6.
+        `filesRead(config)` (`src/plugin-files.ts`) lists what the last build read, for stage 6.
   - [x] The Rust plugin SDK: `crates/ssqch-plugin` (ABI v1, `publish = false` until 0.8.0's
         release), `src/rust-plugin.ts` (a config's `{ name, rust: { wasm, options } }`), and
         `examples/rust-plugin` (trail-guide: an engine, three filters and a transform),

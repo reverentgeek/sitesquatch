@@ -6,7 +6,8 @@ import path from "node:path";
 import { BUILTINS } from "../config.ts";
 import type { Config } from "../config.ts";
 import { realPath } from "../paths.ts";
-import { filesRead } from "./sass.ts";
+import { filesRead } from "../plugin-files.ts";
+import "./sass.ts";
 
 function site(files: Record<string, string>): string {
 	const root = realPath(fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-sass-")));
@@ -49,6 +50,8 @@ test("folders and files compile as 0.7 compiled them, partials only where they'r
 	assert.deepEqual(filesRead(config).map((f) => path.relative(root, f).split(path.sep).join("/")).sort(), ["print.sass", "styles/_colors.scss", "styles/app.scss", "styles/pages/blog.scss", "vendor/_trail.scss"]);
 	// The folders 0.7 watched: each source, a file's folder, and the load paths.
 	assert.deepEqual(config.watch, ["styles", "print.sass", "vendor"]);
+	const files = await plugin(root, { files: { "styles/app.scss": "/app.css", "./print.sass": "/print.css" } });
+	assert.deepEqual(files.config.watch, ["styles/app.scss", "styles", "./print.sass", "."]);
 });
 
 test("development builds are expanded, and a base goes in front of URLs from the root", async () => {

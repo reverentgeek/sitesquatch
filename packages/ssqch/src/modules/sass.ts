@@ -8,8 +8,8 @@
 //
 // A folder compiles every .scss and .sass file in it whose name doesn't start with `_` (those
 // are partials), keeping their paths; a file compiles to the path given. The wasm reads files
-// through Node, so the build knows every file a stylesheet used (`filesRead`), for `ssqch serve`
-// to rebuild when a partial changes.
+// through Node, so the build knows every file a stylesheet used (`filesRead` in
+// plugin-files.ts), for `ssqch serve` to rebuild when a partial changes.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,7 @@ import { BuildError, bail, messageOf } from "../diagnostics.ts";
 import { WebAssembly } from "../engines/webassembly.ts";
 import type { WasmMemory, WasmModule } from "../engines/webassembly.ts";
 import { comparePaths, displayPath, isInside, realPath, slashes } from "../paths.ts";
+import { startReading } from "../plugin-files.ts";
 import { wasi } from "../rust-plugin.ts";
 import { Options } from "./options.ts";
 import { debugString } from "./plugin-util.ts";
@@ -28,12 +29,6 @@ type Style = "compressed" | "expanded";
 
 export function sassPlugin(options: Record<string, unknown> = {}) {
 	return { name: "ssqch/sass", builtin: "ssqch/sass", options };
-}
-
-/** The files the last build of `config` read for its stylesheets (absolute, real paths): sources, partials and anything they loaded. */
-const read = new WeakMap<Config, Set<string>>();
-export function filesRead(config: Config): string[] {
-	return [...(read.get(config) ?? [])];
 }
 
 const isSass = (file: string) => file.endsWith(".scss") || file.endsWith(".sass");
@@ -86,16 +81,18 @@ BUILTINS.set("ssqch/sass", (config: Config, given) => {
 	// is watched too, unless that's the project root. So are the load paths.
 	for (const [from] of files) {
 		config.watch.push(from);
-		const dir = path.dirname(from);
-		if (isSass(from) && dir !== "." && dir !== "") config.watch.push(dir);
+		// The folder as Rust's `Path::parent` has it: none for a bare name (`app.scss`), `.` for `./app.scss`.
+		const slash = Math.max(from.lastIndexOf("/"), from.lastIndexOf(path.sep));
+		const dir = slash < 0 ? "" : slash === 0 ? from.slice(0, 1) : from.slice(0, slash);
+		if (isSass(from) && dir !== "") config.watch.push(dir);
 	}
 	for (const dir of loadPaths) config.watch.push(dir);
 
 	let count: [number, Style] | undefined;
 	config.fileBuilders.push(["ssqch/sass", (config) => {
 		const chosen: Style = (style as Style | undefined) ?? (config.env === "production" && !config.serving ? "compressed" : "expanded");
-		const used = new Set<string>();
-		read.set(config, used);
+		// Sources, partials and anything they load (`filesRead` in plugin-files.ts).
+		const used = startReading(config, "ssqch/sass");
 		const compiler = new Compiler(config.root, used);
 		const options = JSON.stringify({ style: chosen, loadPaths: loadPaths.map((dir) => compiler.name(path.resolve(config.root, dir))) });
 		const out: GeneratedFile[] = [];
