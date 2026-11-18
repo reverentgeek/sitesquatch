@@ -336,10 +336,17 @@ until 0.8 ships.
       node and installs the npm package. Retire `setup-ssqch` (the README shows
       `actions/setup-node` and `npm install -g ssqch@<version>`). The `package` job runs on
       Linux only, on the three Node versions.
-    - Images: quality options on sharp's own scale, with defaults that encode as 0.7's did
+    - [x] Images: quality options on sharp's own scale, with defaults that encode as 0.7's did
       (Breaking; the blog's config changes with its move to 0.8.0). AVIF speed 4 stays effort 3.
       One encode per core. PNG adaptive filtering off. An image that fails after its page is
-      written fails the build.
+      written fails the build. Done 2026-11-18: `webpQuality`, `avifQuality` and `jpegQuality` go
+      to sharp as they are (defaults 75, 41 and 89), `avifEffort` (default 2) replaces
+      `avifSpeed`, which fails with the conversion; names keep 0.7's settings (`legacySettings`
+      in `src/image/quality.ts`), so a converted config keeps its cache. `ENCODES` is
+      `os.availableParallelism()`, each encode on one libvips thread (AVIF's bytes change with
+      libaom's threads). The late failure is an `images` error naming the source and the pages.
+      **Blog:** `src/utils/site/image-options.js` becomes `avifQuality: 48, avifEffort: 3` with
+      its move to 0.8.0.
     - Before 0.8.0: a disk cache for highlighted fences in `.cache/ssqch/`, keyed by the
       highlighter's version.
     - After 0.8.0 (backlog): worker threads for `diff`; faster dev-server rebuilds on big sites;
@@ -703,6 +710,11 @@ Superseded by "The move to Node" above: on Node, every Node API and package work
 
 ### Images
 
+- [ ] Document the quality options on sharp's scale fully (2026-11-18): a how-to for moving a 0.7
+      site's numbers (the changelog's table, and that converted numbers keep the cache), what
+      `avifEffort` costs and saves on a cold build, the trailheads in `docs/trailheads/` (none
+      says yet what Eleventy Image's `sharpAvifOptions` or Hugo's and Astro's `quality` become),
+      and the blog's config as the worked example.
 - [ ] Copied GIFs and SVGs count as "encoded" on every build and aren't kept in `.cache/ssqch/img`
       (blog #10): cache them, and count them as copied.
 - [ ] `image()` and `imageUrl()` take different kinds of path; say which `image()` takes, next to

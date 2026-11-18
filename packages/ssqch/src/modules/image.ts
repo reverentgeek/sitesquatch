@@ -22,7 +22,7 @@ import { Options } from "./options.ts";
 
 const FORMATS = ["avif", "webp", "jpeg", "jpg", "png", "gif", "svg", "auto"];
 const IMAGE_OPTIONS = ["widths", "formats", "name"];
-const PLUGIN_OPTIONS = ["formats", "widths", "defaultAttributes", "outputDir", "urlPath", "webpQuality", "avifQuality", "avifSpeed", "jpegQuality", "minimumThreshold", "prune", "hashCache", "linkedImages", "cacheDir"];
+const PLUGIN_OPTIONS = ["formats", "widths", "defaultAttributes", "outputDir", "urlPath", "webpQuality", "avifQuality", "avifEffort", "jpegQuality", "minimumThreshold", "prune", "hashCache", "linkedImages", "cacheDir"];
 
 /** The <img> transform, with the encoder settings image() also uses. */
 export function imagePlugin(options: Record<string, unknown> = {}) {
@@ -132,6 +132,10 @@ export function feedImages(html: string, base: string, options?: unknown): strin
 }
 
 BUILTINS.set("ssqch/image", (config, given) => {
+	// 0.7's AVIF speed is sharp's effort now, which counts the other way.
+	if (typeof given === "object" && given !== null && (given as Record<string, unknown>).avifSpeed !== undefined) {
+		bail("avifSpeed is 0.7's option: ssqch 0.8 has avifEffort, sharp's AVIF effort from 0 (fastest) to 9 (smallest files). 0.7's speed 8 is effort 2 (the default) and speed 4 is effort 3");
+	}
 	const o = new Options(given, PLUGIN_OPTIONS);
 	const opts = defaultImageOptions();
 	const formats = o.list("formats");
@@ -153,15 +157,17 @@ BUILTINS.set("ssqch/image", (config, given) => {
 	if (outputDir !== undefined) opts.outputSubdir = outputDir;
 	const urlPath = o.string("urlPath");
 	if (urlPath !== undefined) opts.urlPath = urlPath.endsWith("/") ? urlPath : `${urlPath}/`;
-	const clamp = (n: number, low: number, high: number) => Math.trunc(Math.min(high, Math.max(low, n)));
-	const webp = o.number("webpQuality");
-	if (webp !== undefined) opts.webpQuality = Math.fround(webp);
-	const avif = o.number("avifQuality");
-	if (avif !== undefined) opts.avifQuality = Math.fround(avif);
-	const speed = o.number("avifSpeed");
-	if (speed !== undefined) opts.avifSpeed = clamp(speed, 1, 10);
-	const jpeg = o.number("jpegQuality");
-	if (jpeg !== undefined) opts.jpegQuality = clamp(jpeg, 1, 100);
+	// sharp's own numbers, as sharp takes them: whole, and in its range.
+	const whole = (key: "webpQuality" | "avifQuality" | "jpegQuality" | "avifEffort", low: number, high: number, what: string) => {
+		const n = o.number(key);
+		if (n === undefined) return;
+		if (!(Number.isInteger(n) && n >= low && n <= high)) bail(`${key} must be a whole number from ${low} to ${high} (${what}), got ${n}`);
+		opts[key] = n;
+	};
+	whole("webpQuality", 1, 100, "sharp's quality");
+	whole("avifQuality", 1, 100, "sharp's quality");
+	whole("jpegQuality", 1, 100, "sharp's quality");
+	whole("avifEffort", 0, 9, "0 is fastest, 9 makes the smallest files");
 	const threshold = o.number("minimumThreshold");
 	if (threshold !== undefined) opts.minimumThreshold = threshold;
 	opts.prune = o.bool("prune") ?? opts.prune;

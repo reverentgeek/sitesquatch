@@ -21,16 +21,16 @@
 // a file to encode is read through first (`undecodable` in `header.ts`): one that 0.7 couldn't
 // decode is a warning and its tag as written, as in 0.7, before any page points at a file of it.
 // What's left (sharp failing on a source that read well, a full disk) can't take back the pages
-// already written, so it fails the build, naming the source.
+// already written, so it fails the build, naming the source and the pages that point at it.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { blake3 } from "../blake3.ts";
 import type { Config } from "../config.ts";
-import { BuildError, progress, warn, warning } from "../diagnostics.ts";
+import { BuildError, error, progress, warn, warning } from "../diagnostics.ts";
 import { rewriteHtml } from "../html.ts";
-import { displayPath } from "../paths.ts";
+import { displayPath, shown } from "../paths.ts";
 import { bytes, count } from "../report.ts";
 import { debugString, escapeHtml } from "../modules/plugin-util.ts";
 import { colorPlan } from "./color.ts";
@@ -38,7 +38,7 @@ import type { ColorPlan } from "./color.ts";
 import { CACHE_FILE, HashCache, stamp } from "./hashes.ts";
 import { oriented, probeFile, undecodable } from "./header.ts";
 import type { Decodable, Probe } from "./header.ts";
-import { encodeSettings } from "./quality.ts";
+import { DEFAULTS, encodeSettings, legacySettings } from "./quality.ts";
 import type { EncodeSettings } from "./quality.ts";
 
 export type Format = "avif" | "webp" | "jpeg" | "png" | "gif" | "svg" | "auto";
@@ -76,11 +76,11 @@ export interface ImageOptions {
 	/** Where files are encoded and kept between builds, from the project root; `null` encodes straight into the output. */
 	cacheDir: string | null;
 	urlPath: string;
-	/** 0.7's scales: `quality.ts` turns them into sharp's. */
+	/** sharp's numbers, 1 to 100; the defaults encode as 0.7's did (`quality.ts`). */
 	webpQuality: number;
 	avifQuality: number;
-	/** 1 (slowest, smallest) to 10 (fastest). */
-	avifSpeed: number;
+	/** sharp's AVIF effort: 0 (fastest) to 9 (slowest, smallest). */
+	avifEffort: number;
 	jpegQuality: number;
 	/** A too-large width is clamped to the original only when the previous width is this many times smaller than it. */
 	minimumThreshold: number;
@@ -100,10 +100,7 @@ export function defaultImageOptions(): ImageOptions {
 		outputSubdir: "img",
 		cacheDir: ".cache/ssqch/img",
 		urlPath: "/img/",
-		webpQuality: 75,
-		avifQuality: 50,
-		avifSpeed: 8,
-		jpegQuality: 80,
+		...DEFAULTS,
 		minimumThreshold: 1.25,
 		prune: false,
 		hashCache: true,
@@ -332,23 +329,6 @@ function rustFloat(s: string): number | undefined {
 /** `as u32` in Rust: saturating, NaN is 0. */
 const toU32 = (n: number) => (Number.isNaN(n) ? 0 : Math.min(0xffffffff, Math.max(0, Math.trunc(n))));
 
-/** An `f32` as Rust's `Display` writes it: the shortest digits that read back as the same `f32`, never with an exponent. */
-export function f32String(n: number): string {
-	const f = Math.fround(n);
-	if (!Number.isFinite(f)) return Number.isNaN(f) ? "NaN" : f > 0 ? "inf" : "-inf";
-	let digits = "";
-	for (let p = 1; p <= 9; p++) {
-		digits = f.toPrecision(p);
-		if (Math.fround(Number(digits)) === f) break;
-	}
-	const value = Number(digits);
-	if (Number.isInteger(value)) return BigInt(value).toString();
-	// No exponent: as many decimals as the digits need.
-	const [mantissa, exp = "0"] = value.toExponential().split("e");
-	const decimals = Math.max(0, (mantissa.split(".")[1]?.length ?? 0) - Number(exp));
-	return value.toFixed(Math.min(decimals, 100));
-}
-
 /** A duration as Rust's `{:.2?}` writes it: `498.00µs`, `12.34ms`, `1.23s`. */
 function rustDuration(ms: number): string {
 	if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
@@ -394,6 +374,19 @@ function linkOrCopy(from: string, to: string): void {
 	}
 }
 
+/** What points at a source's files: a page (its path, and URL), a feed's `feedHtml()`, or `imageUrl()`. */
+interface Pointer {
+	name: string;
+	url?: string;
+}
+
+/** A source whose files are being made, what points at them (in the order they asked), and what went wrong, if anything did. */
+interface Watched {
+	src: string;
+	by: Map<string, Pointer>;
+	error?: Error;
+}
+
 /** What a build answers when nothing has to wait. */
 const READY: Promise<Error | undefined> = Promise.resolve(undefined);
 
@@ -411,7 +404,8 @@ function loadSharp(): Sharp {
 	if (!sharpModule) {
 		sharpModule = createRequire(import.meta.url)("sharp") as Sharp;
 		// One libvips thread for each encode, and as many encodes at once as there are cores:
-		// throughput without each encode's own threads fighting the others'.
+		// throughput without each encode's own threads fighting the others'. It keeps the bytes
+		// the same on every machine too: libaom's AVIF changes with the threads it's given.
 		sharpModule.concurrency(1);
 		// The operation cache keeps decoded images for repeats a build doesn't make.
 		sharpModule.cache(false);
@@ -420,10 +414,13 @@ function loadSharp(): Sharp {
 }
 
 /**
- * Encodes at once, at most: one per core. sharp runs each on libuv's thread pool, which the
- * command line makes bigger than this (`bin/ssqch.ts`), so page writes still get threads.
+ * Encodes at once: one per core (decided 2026-11-18). sharp runs each on libuv's thread pool,
+ * which the command line makes four threads bigger than this (`bin/ssqch.ts`), so page writes
+ * still get threads; a smaller `UV_THREADPOOL_SIZE` makes encodes wait their turn there. Each
+ * file is one encode on one libvips thread, so how many run at once changes when files are
+ * done, never their bytes.
  */
-export const ENCODES = Math.max(1, Math.min(os.availableParallelism(), Number(process.env.UV_THREADPOOL_SIZE ?? 4) - 2));
+export const ENCODES = os.availableParallelism();
 
 class Queue {
 	private running = 0;
@@ -478,8 +475,8 @@ export class ImageProcessor {
 	private sizes = new Map<string, number>();
 	/** Everything this build is still waiting for, settled or not. */
 	private pending: Array<Promise<unknown>> = [];
-	/** Files that couldn't be made after something pointed at them, which fails the build. */
-	private failures: Error[] = [];
+	/** Each source with files still to make that something points at, by its path: one that fails fails the build. */
+	private watched = new Map<string, Watched>();
 	private generated = 0;
 	private pruned = 0;
 	private converted = new Set<string>();
@@ -491,10 +488,13 @@ export class ImageProcessor {
 	private warned = new Set<string>();
 	private queue = new Queue(ENCODES);
 	private settings: EncodeSettings;
+	/** The settings as image names hold them (`legacySettings`). */
+	private named: string;
 
 	constructor(options: ImageOptions) {
 		this.options = options;
 		this.settings = encodeSettings(options);
+		this.named = legacySettings(options);
 	}
 
 	/** The project root, once the build has started. */
@@ -529,7 +529,7 @@ export class ImageProcessor {
 		this.made.clear();
 		this.sizes.clear();
 		this.pending = [];
-		this.failures = [];
+		this.watched.clear();
 		this.used.clear();
 		this.sources.clear();
 		this.converted.clear();
@@ -541,7 +541,10 @@ export class ImageProcessor {
 
 	/**
 	 * After the pages: every encode they asked for, done. A file that couldn't be made, after a
-	 * page, a feed or `imageUrl()` pointed at it, fails the build here: they're written already.
+	 * page, a feed or `imageUrl()` pointed at it, fails the build here (decided 2026-11-18):
+	 * they're written already, and a site shouldn't ship markup for a file that isn't there. The
+	 * error names the source and what points at it, and in `--format json` each source is an
+	 * `images` error with the source as its `file` and the first page's URL as its `url`.
 	 */
 	async settle(): Promise<void> {
 		while (this.pending.length) {
@@ -549,10 +552,17 @@ export class ImageProcessor {
 			this.pending = [];
 			await Promise.all(waiting);
 		}
-		if (!this.failures.length) return;
-		const [first, ...rest] = this.failures;
-		const more = rest.length ? ` (and ${count(rest.length)} more)` : "";
-		throw new BuildError(`images: ${first.message}${more}. Pages that point at its files were written before it failed, so the build stops here rather than leave them pointing at files that aren't there`);
+		const root = this.context().root;
+		// By the source's path, as plain text: the same order on every machine.
+		const failures = [...this.watched.values()].filter((w) => w.error !== undefined).map((w) => ({ ...w, file: shown(root, w.src) })).sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+		if (!failures.length) return;
+		const said = (f: Watched) => {
+			const [first, ...others] = f.by.values();
+			return `images: ${f.error!.message}. ${first.name}${others.length ? ` and ${count(others.length)} more` : ""} already ${others.length ? "point" : "points"} at it, so the build stops here rather than publish tracks that lead nowhere`;
+		};
+		const items = failures.map((f) => error("images", said(f), { file: f.file, url: [...f.by.values()].find((b) => b.url !== undefined)?.url }));
+		const more = failures.length > 1 ? ` (and ${count(failures.length - 1)} more ${failures.length === 2 ? "image" : "images"} that failed)` : "";
+		throw new BuildError(`${said(failures[0])}${more}`, items);
 	}
 
 	/** After the build: `prune`, the hash cache, and with `--verbose` the slowest encodes. */
@@ -593,7 +603,7 @@ export class ImageProcessor {
 		if (!this.isSource(file)) throw new BuildError(`imageUrl(): image not found: ${src} (looked for ${this.display(file)})`);
 		const meta = this.generate(file, [width], [format]);
 		// The page uses the URL now; the file has to be there by the end of the build.
-		this.watch(meta);
+		this.watch(meta, file, { name: "imageUrl()" });
 		const resolved = format === "auto" ? meta.auto : format;
 		const entries = (resolved !== undefined ? meta.formats.get(resolved) : undefined) ?? [...meta.formats.values()][0];
 		const e = widest(entries);
@@ -602,18 +612,29 @@ export class ImageProcessor {
 	}
 
 	/** The URL a link to `src` should point to: one copy in the source's own format, at its width capped at the largest of `widths`. GIFs and SVGs are their copied files. */
-	private linkTarget(src: string): string {
+	private linkTarget(src: string, by: Pointer): string {
 		const cap = this.options.widths.length ? Math.max(...this.options.widths) : 0;
 		const meta = this.generate(src, [cap], ["auto"]);
-		this.watch(meta);
+		this.watch(meta, src, by);
 		const entry = widest([...meta.formats.values()].flat());
 		if (!entry) throw new Error(`no image generated for ${src}`);
 		return entry.url;
 	}
 
-	/** Waits, before the build ends, for files that something already points at. One that can't be made fails the build (see `settle`). */
-	private watch(meta: ImageMetadata): void {
-		if (meta.ready !== READY) this.pending.push(meta.ready.then((e) => { if (e && !this.failures.some((f) => f.message === e.message)) this.failures.push(e); }));
+	/** Waits, before the build ends, for files of `src` that `by` already points at. One that can't be made fails the build (see `settle`). */
+	private watch(meta: ImageMetadata, src: string, by: Pointer): void {
+		if (meta.ready === READY) return;
+		// What points at it is noted now, in the order the build asked: the encodes finish in
+		// any order, and the error has to read the same every time.
+		const key = samePath(src);
+		let watched = this.watched.get(key);
+		if (!watched) this.watched.set(key, watched = { src, by: new Map() });
+		if (!watched.by.has(by.name)) watched.by.set(by.name, by);
+		const noted = watched;
+		this.pending.push(meta.ready.then((e) => {
+			// A source with several files that fail: the same one named every time, whichever failed first.
+			if (e && (noted.error === undefined || e.message < noted.error.message)) noted.error = e;
+		}));
 	}
 
 	/** Makes (or reuses) `src` at `widths` in `formats`. */
@@ -890,14 +911,15 @@ export class ImageProcessor {
 
 	/**
 	 * A short, URL-safe id from the source's contents and the encoder settings, as 0.7 made it
-	 * (BLAKE3, so the names don't change with the upgrade). Not the path or the modification
-	 * time: a fresh clone gives every file a new one, which would make every CI build a cold one.
-	 * The hash cache only saves reading files whose size and time haven't changed. An image that
+	 * (BLAKE3, and the settings written as the 0.7 numbers they convert from, `legacySettings`,
+	 * so the names don't change with the upgrade). Not the path or the modification time: a
+	 * fresh clone gives every file a new one, which would make every CI build a cold one. The
+	 * hash cache only saves reading files whose size and time haven't changed. An image that
 	 * gets converted to sRGB has that in its id too.
 	 */
 	private hashId(src: string, header: (() => Probe) | undefined, read?: (contents: Buffer) => void): string {
 		const o = this.options;
-		const settings = `${f32String(o.webpQuality)}|${f32String(o.avifQuality)}|${o.avifSpeed}|${o.jpegQuality}`;
+		const settings = this.named;
 		const cacheKey = `${settings}|color1`;
 		let size: number;
 		let mtime: string;
@@ -1081,6 +1103,7 @@ export class ImageProcessor {
 	feedImages(html: string, pageUrl: string, width: number, format: Format): string {
 		if (!html.includes("<img") && !html.includes("<a")) return html;
 		const pagePath = pagePathOf(pageUrl);
+		const by: Pointer = { name: `feedHtml() for ${pageUrl}` };
 		const sitePath = (src: string) => (src.startsWith("/") || src.includes("://") || src.startsWith("data:") ? this.resolveSiteSrc(src) : this.resolveSiteSrc(joinUrlPath(pagePath, src)));
 		return rewriteHtml(html, {
 			tag: (el) => {
@@ -1102,7 +1125,7 @@ export class ImageProcessor {
 						this.warnOnce((e as Error).message);
 						return;
 					}
-					this.watch(meta);
+					this.watch(meta, file, by);
 					const resolved = format === "auto" ? meta.auto : format;
 					const e = widest((resolved !== undefined ? meta.formats.get(resolved) : undefined) ?? [...meta.formats.values()][0]);
 					if (e) el.set("src", e.url);
@@ -1115,19 +1138,20 @@ export class ImageProcessor {
 					const href = el.get("href") ?? "";
 					const file = sitePath(href);
 					if (file === undefined || fromPath(file) === undefined || !this.isSource(file)) return;
-					try { el.set("href", this.linkTarget(file)); } catch (e) { this.warnOnce((e as Error).message); }
+					try { el.set("href", this.linkTarget(file, by)); } catch (e) { this.warnOnce((e as Error).message); }
 				}
 			},
 		});
 	}
 
-	/** Every local `<img>` in an HTML page made a `<picture>`, and links to local images pointed at a copy. */
-	transformHtml(html: string, pageInput: string): string {
+	/** Every local `<img>` in an HTML page made a `<picture>`, and links to local images pointed at a copy. `url` is the page's, for an error. */
+	transformHtml(html: string, pageInput: string, url?: string): string {
 		// Most pages link to other pages, not images: one that names no image file (an extension,
 		// or a %-escape that could spell one) and no `ssqch:ignore` to take off isn't read for links.
 		const links = this.options.linkedImages && mayLinkImages(html);
 		if (!html.includes("<img") && !links) return html;
 		const preloads: string[] = [];
+		const by: Pointer = { name: this.display(pageInput), url };
 		const out = rewriteHtml(html, {
 			tag: (el) => {
 				if (el.name === "a" && el.get("href") !== undefined) {
@@ -1144,7 +1168,7 @@ export class ImageProcessor {
 						this.warnOnce(`linked image not found: ${href} (in ${pageInput})`);
 						return;
 					}
-					try { el.set("href", this.linkTarget(file)); } catch (e) { this.warnOnce((e as Error).message); }
+					try { el.set("href", this.linkTarget(file, by)); } catch (e) { this.warnOnce((e as Error).message); }
 				} else if (el.name === "img" && el.get("src") !== undefined) {
 					if (el.get("ssqch:ignore") !== undefined) {
 						el.remove("ssqch:ignore");
@@ -1168,7 +1192,7 @@ export class ImageProcessor {
 						this.warnOnce((e as Error).message);
 						return;
 					}
-					this.watch(meta);
+					this.watch(meta, file, by);
 					const attrs = el.entries().filter(([name]) => !name.startsWith("ssqch:"));
 					const [markup, link] = this.pictureMarkup(meta, attrs, preload);
 					el.replaceWith(markup);
@@ -1316,7 +1340,7 @@ function register(config: Config, p: ImageProcessor, transform: boolean): void {
 		}
 	});
 	if (transform) {
-		config.htmlTransforms.push(["image", (content, info) => (path.extname(info.outputPath) === ".html" ? p.transformHtml(content, path.resolve(config.root, info.inputPath)) : content)]);
+		config.htmlTransforms.push(["image", (content, info) => (path.extname(info.outputPath) === ".html" ? p.transformHtml(content, path.resolve(config.root, info.inputPath), info.url) : content)]);
 	}
 	// The encodes the pages asked for, done before anything reads the output: generators (a
 	// sitemap, the link checker), `afterBuild` hooks and the summary. Waiting for them is part of

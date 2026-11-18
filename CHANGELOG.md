@@ -176,6 +176,44 @@ now that didn't, and the messages that read differently.
   Date("2024-13-45")`) or `NaN` is an error, `dateToRfc3339: not a date: Invalid Date` (or
   `NaN`), as it is for ssqch's other date filters, where 0.7 wrote `1970-01-01T00:00:00Z` into
   the feed without a word. Fix the date, or leave the element out when there's none.
+- **The image plugin's quality options are sharp's numbers, and `avifEffort` replaces
+  `avifSpeed`.** 0.7's numbers were its own encoders', which read them differently: its AVIF 50
+  looks like sharp's 41, and its JPEG 80 like sharp's 89 with mozjpeg. `webpQuality`,
+  `avifQuality` and `jpegQuality` now go to sharp as they are, as whole numbers from 1 to 100,
+  and `avifEffort` is sharp's AVIF effort, from 0 (fastest) to 9 (slowest, with the smallest
+  files). The defaults are 0.7's converted (WebP 75, AVIF 41 at effort 2, JPEG 89), so a site
+  that sets none encodes as it did. A site that set one converts it with this table, from the
+  calibration at equal SSIMULACRA2 (between rows, along the line; `src/image/quality.ts` has the
+  measurements). WebP's numbers are the same in both.
+
+  | 0.7's number | `avifQuality` | `jpegQuality` |
+  | --- | --- | --- |
+  | 30 | 28 | 54 |
+  | 40 | 34 | 60 |
+  | 45 | 38 | 63 |
+  | 50 | 41 (0.7's AVIF default) | 66 |
+  | 55 | 45 | 69 |
+  | 60 | 48 | 72 |
+  | 65 | 52 | 76 |
+  | 70 | 55 | 80 |
+  | 75 | 58 | 85 |
+  | 80 | 61 | 89 (0.7's JPEG default) |
+  | 85 | 74 | 93 |
+  | 90 | 86 | 97 |
+  | 92 | 90 | 100 |
+  | 95 | 96 | 100 |
+  | 98 and up | 100 | 100 |
+
+  | 0.7's `avifSpeed` | 1 | 2, 3 | 4, 5, 6 | 7, 8 (the default) | 9 | 10 |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | `avifEffort` | 5 | 4 | 3 | 2 | 1 | 0 |
+
+  So 0.7's `avifQuality: 60, avifSpeed: 4` is `avifQuality: 48, avifEffort: 3`. A converted
+  number keeps 0.7's image names (each file's name holds the settings as the 0.7 number they
+  convert from), so the image cache carries over and nothing encodes again. `avifSpeed` fails the
+  build with the conversion, and so does a number that isn't whole or is out of range (0.7
+  clamped it). At the top of the scale sharp can't match 0.7: from JPEG 92 and AVIF 98 up,
+  sharp's best (100) is a little below what 0.7 made there.
 - **An image that can't be encoded after its markup is written fails the build.** The image
   plugin writes a page's `<picture>` (and a link's copy, a feed's copy, `imageUrl()`'s URL) from
   the image's header while sharp encodes the files beside the build, so it reads a source through
@@ -183,8 +221,12 @@ now that didn't, and the messages that read differently.
   warning that leaves the tag as written, in 0.7's words (a file that ends too soon, a damaged
   chunk, a header that doesn't read). What that can't see, such as a PNG whose compressed data is
   damaged under correct checksums, or a cache folder that can't be written, comes to light after
-  the pages are written, and the build fails naming the source, where 0.7 warned. Fix or replace
-  the image, or leave it out with `ssqch:ignore`.
+  the pages are written, and the build fails where 0.7 warned, rather than publish markup for a
+  file that isn't there: `images: encoding ./dist/img/<id>-300.webp from ./src/hike.png: <why>.
+  ./src/posts/hike.md already points at it, so the build stops here rather than publish tracks
+  that lead nowhere`. With `--format json` each source is an `images` error, with the source as
+  its `file` and the page's address as its `url`. Fix or replace the image, or leave it out with
+  `ssqch:ignore`.
 - **`files(pattern, { dimensions: true })` reads the sizes of PNG, JPEG, GIF, TIFF, WebP, HEIF and
   AVIF, BMP, PSD, ICO and QOI files.** 0.7 also read EXR, Radiance HDR, JPEG XL, KTX2, DDS, TGA,
   PNM, farbfeld, Aseprite, ILBM and VTF files, whose `width` and `height` are `null` now.
@@ -298,19 +340,22 @@ now that didn't, and the messages that read differently.
 
 - **Images are encoded by sharp** (libvips, with libaom for AVIF, libwebp and mozjpeg), where 0.7
   had encoders of its own, so an image file's bytes aren't 0.7's. The rest is: the markup, the
-  files' names, widths and heights, the cache, and the quality options, whose numbers still mean
-  what they meant in 0.7 (ssqch turns them into sharp's, measured to give pictures as good). At
-  those settings the files are smaller and quicker to make: AVIF about a quarter smaller at the
-  default speed (11 to 19% at speed 4) in well under half the time, WebP 1% smaller, and JPEG a
-  tenth smaller at quality 80. At the top of the scale sharp can't match 0.7: from JPEG quality
-  92 and AVIF quality 98 up, ssqch asks sharp for its best (100), which is a little below what
-  0.7 made there. PNG files are filtered row by row and compressed
-  at zlib's level 6, as 0.7's were, and stay grey or 16 bits when the source is: each within 3%
-  of 0.7's size on the blog's PNGs, and 13% smaller in all. A JPEG of a transparent image keeps
-  the colour under the transparency, as 0.7's did. A site changes nothing. Its image
-  cache from 0.7 is used as it is, since the names are the same, so the output has 0.7's files
-  next to sharp's until the cache goes: delete `.cache/ssqch/img` to encode every file again.
-  AVIF is always there, where 0.7 needed its `avif` feature.
+  files' names, widths and heights, and the cache. At the defaults, which are 0.7's converted
+  (Breaking has the table), the files are smaller and quicker to make: AVIF about a quarter
+  smaller at effort 2 (11 to 19% at effort 3, 0.7's speed 4) in well under half the time, WebP 1%
+  smaller, and JPEG a tenth smaller at 0.7's quality 80. PNG files are compressed at zlib's level
+  6, as 0.7's were, without its row-by-row filters (sharp's default): 18% smaller in all on the
+  blog's PNGs, and a tenth less CPU time for a cold build, though a few photos from an iPhone are
+  up to a fifth bigger. They stay grey or 16 bits when the source is. A JPEG of a transparent
+  image keeps the colour under the transparency, as 0.7's did. A site's image cache from 0.7 is
+  used as it is, since the names are the same, so the output has 0.7's files next to sharp's
+  until the cache goes: delete `.cache/ssqch/img` to encode every file again. AVIF is always
+  there, where 0.7 needed its `avif` feature.
+- Images are encoded as many at once as there are cores (`os.availableParallelism()`), on libuv's
+  thread pool, which the `ssqch` command sizes to the cores plus 4 so page writes keep threads.
+  Each file is encoded on one thread, since libaom's AVIF bytes change with the threads it's
+  given, so a file comes out the same on every machine, whatever its cores or
+  `UV_THREADPOOL_SIZE`.
 - `[ssqch] Encoded ...` lines come as each image's files are done, while pages go on rendering,
   so they're among the `Writing` lines, not before the page that shows the image. The build waits
   for every file before the link checker, the other plugins' files, `afterBuild` hooks and the

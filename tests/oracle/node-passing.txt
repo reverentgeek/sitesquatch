@@ -86,6 +86,7 @@ cli/plugins.test.js: assets_rewrite_inline_module_imports_of_passthrough_files
 cli/plugins.test.js: bad_plugin_options_fail_clearly
 cli/plugins.test.js: broken_links_fail_a_production_build_and_warn_in_development
 cli/plugins.test.js: development_builds_use_the_plain_paths
+cli/plugins.test.js: image_quality_options_are_sharps_numbers
 cli/plugins.test.js: image_takes_a_name_for_its_files
 cli/plugins.test.js: images_are_kept_in_the_cache_outside_the_output
 cli/plugins.test.js: images_outside_img_tags_point_at_generated_copies

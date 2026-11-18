@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
-import { ssqch, project, read, FIXTURES } from "../lib/ssqch.js";
+import { ssqch, project, read, FIXTURES, RUST_07 } from "../lib/ssqch.js";
 
 const PNG = fs.readFileSync(path.join(FIXTURES, "cli/squatch.png"));
 
@@ -600,6 +600,31 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge
 	assert.ok(ok, log);
 	assert.equal(fs.readdirSync(path.join(root, ".cache/ssqch/img")).length, 2);
 	assert.equal(fs.readdirSync(path.join(root, "dist/img")).length, 2);
+});
+
+// 0.8's quality options are sharp's own numbers (CHANGELOG.md, "Breaking"), and `avifEffort`
+// replaces 0.7's `avifSpeed`. The defaults are 0.7's converted, so setting them changes nothing,
+// names included.
+test("image_quality_options_are_sharps_numbers", { skip: RUST_07 && "0.8's scale: 0.7 reads its own numbers and has avifSpeed" }, () => {
+	const config = (options) => `import { imagePlugin } from "ssqch/image";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge"], plugins: [imagePlugin({ formats: ["avif", "webp", "jpeg"], widths: [16]${options} })] };`;
+	const root = project({ "ssqch.config.js": config(""), "src/img/squatch.png": PNG, "src/index.edge": "<img src=\"/img/squatch.png\" alt=\"\">" });
+	let { ok, log } = build(root);
+	assert.ok(ok, log);
+	const defaults = read(root, "dist/index.html");
+	fs.writeFileSync(path.join(root, "ssqch.config.js"), config(", webpQuality: 75, avifQuality: 41, avifEffort: 2, jpegQuality: 89"));
+	({ ok, log } = build(root));
+	assert.ok(ok && log.includes("0 encoded, 3 reused"), log);
+	assert.equal(read(root, "dist/index.html"), defaults, "the defaults, written out, are the same files");
+	for (const [options, want] of [
+		[", avifSpeed: 4", "plugin \"ssqch/image\": avifSpeed is 0.7's option: ssqch 0.8 has avifEffort, sharp's AVIF effort from 0 (fastest) to 9 (smallest files). 0.7's speed 8 is effort 2 (the default) and speed 4 is effort 3"],
+		[", avifQuality: 60.5", "plugin \"ssqch/image\": avifQuality must be a whole number from 1 to 100 (sharp's quality), got 60.5"],
+		[", avifEffort: 10", "plugin \"ssqch/image\": avifEffort must be a whole number from 0 to 9 (0 is fastest, 9 makes the smallest files), got 10"],
+	]) {
+		fs.writeFileSync(path.join(root, "ssqch.config.js"), config(options));
+		({ ok, log } = build(root));
+		assert.ok(!ok && log.includes(want), `wanted: ${want}\n  got: ${log}`);
+	}
 });
 
 // The link checker reads URLs outside HTML attributes: a feed's escaped HTML, `<meta>` values,

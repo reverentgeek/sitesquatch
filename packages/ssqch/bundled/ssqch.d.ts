@@ -324,13 +324,13 @@ declare module "ssqch/image" {
 		outputDir?: string;
 		/** URL path they're served from. Default `/img/`. */
 		urlPath?: string;
-		/** WebP quality, 0.7's scale (ssqch turns it into the number sharp reads for the same picture). Default 75. */
+		/** WebP quality, sharp's: a whole number from 1 to 100. Default 75 (0.7's 75 too: WebP's numbers didn't change). */
 		webpQuality?: number;
-		/** AVIF quality, 0.7's scale (ssqch turns it into sharp's: 50 looks like it did in 0.7). Default 50. */
+		/** AVIF quality, sharp's: a whole number from 1 to 100. Default 41, which looks like 0.7's default of 50 (0.7's 60 is 48; the changelog has the table). */
 		avifQuality?: number;
-		/** 1 (slowest, smallest) to 10 (fastest); becomes sharp's AVIF effort. Default 8. */
-		avifSpeed?: number;
-		/** JPEG quality, 1 to 100, 0.7's scale (encoded with mozjpeg). Default 80. */
+		/** sharp's AVIF effort: a whole number from 0 (fastest) to 9 (slowest, smallest files). Default 2. Replaces 0.7's `avifSpeed`: speed 8 is effort 2, speed 4 is effort 3. */
+		avifEffort?: number;
+		/** JPEG quality, sharp's (mozjpeg): a whole number from 1 to 100. Default 89, which looks like 0.7's default of 80. */
 		jpegQuality?: number;
 		/** A width larger than the original is clamped to it only when the width before it is this many times smaller. Default 1.25. */
 		minimumThreshold?: number;
