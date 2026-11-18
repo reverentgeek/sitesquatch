@@ -5,6 +5,7 @@ import path from "node:path";
 import { BuildError } from "./diagnostics.ts";
 import { loadStaticDataFile } from "./data.ts";
 import { globBase, globProblem, globToRegExp, isGlob } from "./glob.ts";
+import { imageSize } from "./image/header.ts";
 import { markdownEngine } from "./engines/markdown.ts";
 import { defaultMarkdownOptions } from "./markdown-options.ts";
 import { slugify as slug } from "./slug.ts";
@@ -72,7 +73,6 @@ export function files(pattern: unknown, options: { dimensions?: boolean } | null
 	if (path.isAbsolute(glob) || glob.split("/").includes("..")) throw new BuildError(`${call}: the glob is from the project root, and can't leave it`);
 	const problem = globProblem(glob);
 	if (problem) throw new BuildError(`${call}: not a glob (error parsing glob '${glob}': ${problem})`);
-	if (options?.dimensions) throw new BuildError(`${call}: { dimensions } isn't in this build yet (it arrives with images, stage 5 of the move to Node)`);
 	const matches = globToRegExp(glob, { ignoreCase: true });
 	// Walk only below the part of the pattern without wildcards.
 	const base = isGlob(glob) ? globBase(glob) : path.posix.dirname(glob) === "." ? "" : path.posix.dirname(glob);
@@ -91,15 +91,59 @@ export function files(pattern: unknown, options: { dimensions?: boolean } | null
 	};
 	walk(path.join(site.root, base), base);
 	found.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-	return found.map(([rel, abs, stat]) => {
+	const sizes = options?.dimensions ? imageSizes(found) : [];
+	return found.map(([rel, abs, stat], i) => {
 		const name = path.basename(abs);
 		const dot = name.lastIndexOf(".");
 		const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot + 1).toLowerCase()] : [name, ""];
 		// The URL a passthrough copy to the same path gets: from the input folder when it's inside it.
 		const fromInput = site.input && abs.startsWith(site.input + path.sep) ? path.relative(site.input, abs).split(path.sep).join("/") : rel;
 		const named = dateInName(name);
-		return { path: rel, url: `/${fromInput}`, name, stem, ext, date: named ?? stat.mtime, dateFrom: named ? "name" : "modified", size: stat.size };
+		const info: FileInfo = { path: rel, url: `/${fromInput}`, name, stem, ext, date: named ?? stat.mtime, dateFrom: named ? "name" : "modified", size: stat.size };
+		if (options?.dimensions) [info.width, info.height] = sizes[i] ?? [null, null];
+		return info;
 	});
+}
+
+/** Where image sizes are kept between builds, by path, size and modification time (0.7's file and format). */
+const SIZES_CACHE = ".cache/ssqch/image-sizes.json";
+
+/**
+ * Each file's width and height, from the cache when its size and modification time haven't
+ * changed, otherwise from its header. New sizes go back in the cache. `undefined` for a file
+ * that isn't an image.
+ */
+function imageSizes(found: Array<[string, string, fs.Stats]>): Array<[number, number] | undefined> {
+	const file = path.join(site.root, SIZES_CACHE);
+	// `[size, modified, [width, height] or null]` by path. The modification time is in
+	// nanoseconds, past what a JavaScript number holds, so numbers are kept as their digits.
+	let cache: Record<string, [string, string, [string, string] | null]> = {};
+	try {
+		const parsed = JSON.parse(fs.readFileSync(file, "utf8"), (_key, value, context?: { source?: string }) => (typeof value === "number" ? context?.source ?? String(value) : value));
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) cache = parsed;
+	} catch { /* no cache yet, or a broken one: read every file */ }
+	let changed = false;
+	const sizes = found.map(([rel, abs]) => {
+		const stat = fs.statSync(abs, { bigint: true, throwIfNoEntry: false });
+		const stamp: [string, string] = [String(stat?.size ?? 0), String(stat?.mtimeNs ?? 0)];
+		const kept = cache[rel];
+		if (Array.isArray(kept) && kept[0] === stamp[0] && kept[1] === stamp[1]) {
+			const size = kept[2];
+			return Array.isArray(size) ? ([Number(size[0]), Number(size[1])] as [number, number]) : undefined;
+		}
+		const size = imageSize(abs);
+		cache[rel] = [stamp[0], stamp[1], size ? [String(size[0]), String(size[1])] : null];
+		changed = true;
+		return size;
+	});
+	if (changed) {
+		const json = `{${Object.entries(cache).map(([rel, [size, modified, dims]]) => `${JSON.stringify(rel)}:[${size},${modified},${dims ? `[${dims[0]},${dims[1]}]` : "null"}]`).join(",")}}`;
+		try {
+			fs.mkdirSync(path.dirname(file), { recursive: true });
+			fs.writeFileSync(file, json);
+		} catch { /* a cache that can't be written only costs time */ }
+	}
+	return sizes;
 }
 
 /** A date at the start of a file name: `2001-12-22-camp.jpg` or `20011222_08.JPG`, at midnight UTC. */

@@ -17,6 +17,7 @@ import { isPlainObject, readToml } from "./data.ts";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
 import { checkLanguages } from "./engines/markdown.ts";
+import { useImages } from "./image/processor.ts";
 import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
 import type { MarkdownOptions } from "./markdown-options.ts";
 import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
@@ -240,6 +241,8 @@ export async function loadConfig(options: ConfigOptions): Promise<Config> {
 	if (options.base !== undefined) {
 		try { config.base = normalizeBase(options.base); } catch (e) { throw context(e, "--base"); }
 	}
+	// JavaScript data files and templates can make images even without the plugin.
+	useImages(config);
 	return config;
 }
 
