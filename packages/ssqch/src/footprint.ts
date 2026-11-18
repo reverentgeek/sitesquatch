@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { BUDGETS } from "./budgets.ts";
 import type { Diagnostic } from "./diagnostics.ts";
-import { bail, warning } from "./diagnostics.ts";
+import { BuildError, bail, warning } from "./diagnostics.ts";
 import { compareText } from "./paths.ts";
 import { padEnd, padStart } from "./quote.ts";
 import { bytes, count, fixed } from "./report.ts";
@@ -66,46 +66,95 @@ export function urlOf(file: string): string {
 	return `/${file}`;
 }
 
+/** How many folder reads (or a file's size) wait at once: enough to keep Node's file threads busy, and few enough that a big build doesn't fill memory with requests. */
+const AT_ONCE = 32;
+
+/** A folder to read: where it is, its path from the build folder, its real path, and the folder it's in (for a link that leads back up). */
+interface Folder {
+	path: string;
+	rel: string;
+	real: string;
+	parent: Folder | undefined;
+}
+
 /**
  * Every file in a build folder, following links, as paths from it with `/`, in no particular
  * order; with their sizes when `sizes` is set. A Finder's `.DS_Store` isn't part of a build. A
- * link that leads back up the folders, or to nothing, fails as 0.7's walk did.
+ * link that leads back up the folders, or to nothing, fails as 0.7's walk did. Folders are read
+ * in parallel: a build with a folder per page has as many folders as pages, and reading them one
+ * at a time was most of the time `diff` took.
  */
-export function buildFiles(dir: string, sizes: boolean): Array<[path: string, bytes: number]> {
+export function buildFiles(dir: string, sizes: boolean): Promise<Array<[path: string, bytes: number]>> {
 	const out: Array<[string, number]> = [];
-	const failed = (detail: string): never => bail(`reading ${dir}: ${detail}`);
-	const walk = (folder: string, rel: string, above: string[]) => {
-		let entries: fs.Dirent[];
-		try { entries = fs.readdirSync(folder, { withFileTypes: true }); } catch (e) { return failed(`IO error for operation on ${folder}: ${(e as Error).message}`); }
-		for (const entry of entries) {
-			const file = path.join(folder, entry.name);
-			const name = rel === "" ? entry.name : `${rel}/${entry.name}`;
-			let isDir = entry.isDirectory(), isFile = entry.isFile();
-			let size = -1;
-			if (entry.isSymbolicLink()) {
-				const stat = fs.statSync(file, { throwIfNoEntry: false });
-				if (!stat) failed(`IO error for operation on ${file}: No such file or directory (os error 2)`);
-				isDir = stat!.isDirectory();
-				isFile = stat!.isFile();
-				size = stat!.size;
-				if (isDir) {
-					const real = fs.realpathSync(file);
-					const loop = above.find((a) => a === real);
-					if (loop !== undefined) failed(`File system loop found: ${file} points to an ancestor ${loop}`);
-					walk(file, name, [...above, real]);
-					continue;
+	const folders: Folder[] = [{ path: dir, rel: "", real: fs.realpathSync(dir), parent: undefined }];
+	const files: Array<[string, string]> = [];
+	let active = 0;
+	let failure: Error | undefined;
+	return new Promise((resolve, reject) => {
+		const fail = (detail: string) => {
+			failure ??= new BuildError(`reading ${dir}: ${detail}`);
+		};
+		const done = () => {
+			active--;
+			pump();
+		};
+		const read = (folder: Folder) => {
+			fs.readdir(folder.path, { withFileTypes: true }, (e, entries) => {
+				if (e) fail(`IO error for operation on ${folder.path}: ${e.message}`);
+				else for (const entry of entries) {
+					const file = folder.path + path.sep + entry.name;
+					const rel = folder.rel === "" ? entry.name : `${folder.rel}/${entry.name}`;
+					let isDir = entry.isDirectory(), isFile = entry.isFile();
+					// A link is followed (they're rare in a build, so this asks the disk as it goes).
+					if (entry.isSymbolicLink()) {
+						const stat = fs.statSync(file, { throwIfNoEntry: false });
+						if (!stat) {
+							fail(`IO error for operation on ${file}: No such file or directory (os error 2)`);
+							break;
+						}
+						[isDir, isFile] = [stat.isDirectory(), stat.isFile()];
+						if (isDir) {
+							const real = fs.realpathSync(file);
+							let loop = folder as Folder | undefined;
+							while (loop && loop.real !== real) loop = loop.parent;
+							if (loop) {
+								fail(`File system loop found: ${file} points to an ancestor ${loop.real}`);
+								break;
+							}
+							folders.push({ path: file, rel, real, parent: folder });
+							continue;
+						}
+					}
+					// A folder's real path is its parent's and its name (asking the disk for each is slow).
+					if (isDir) folders.push({ path: file, rel, real: folder.real + path.sep + entry.name, parent: folder });
+					else if (isFile && entry.name !== ".DS_Store") {
+						if (sizes) files.push([file, rel]);
+						else out.push([rel, 0]);
+					}
 				}
+				done();
+			});
+		};
+		const size = (file: string, rel: string) => {
+			fs.stat(file, (e, stat) => {
+				if (e) fail(`IO error for operation on ${file}: ${e.message}`);
+				else out.push([rel, stat.size]);
+				done();
+			});
+		};
+		const pump = () => {
+			while (!failure && active < AT_ONCE && (folders.length || files.length)) {
+				active++;
+				if (folders.length) read(folders.pop()!);
+				else size(...files.pop()!);
 			}
-			// A folder's real path is its parent's and its name (asking the disk for each is slow).
-			if (isDir) walk(file, name, [...above, path.join(above[above.length - 1], entry.name)]);
-			else if (isFile && entry.name !== ".DS_Store") {
-				if (sizes && size === -1) size = fs.statSync(file, { throwIfNoEntry: false })?.size ?? 0;
-				out.push([name, sizes ? size : 0]);
+			if (active === 0) {
+				if (failure) reject(failure);
+				else resolve(out);
 			}
-		}
-	};
-	walk(dir, "", [fs.realpathSync(dir)]);
-	return out;
+		};
+		pump();
+	});
 }
 
 /** Measures the build in `dir`. */
@@ -113,7 +162,7 @@ export async function measure(dir: string): Promise<Footprint> {
 	if (!(fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory() ?? false)) bail(`${dir} isn't a folder; build the site first, or give \`ssqch footprint\` a build folder (\`ssqch footprint dist\`)`);
 	const pages: File[] = [];
 	const others: File[] = [];
-	for (const [file, size] of buildFiles(dir, true)) (kindOf(file) === "Pages" ? pages : others).push({ path: file, bytes: size });
+	for (const [file, size] of await buildFiles(dir, true)) (kindOf(file) === "Pages" ? pages : others).push({ path: file, bytes: size });
 	const heaviest = (a: File, b: File) => b.bytes - a.bytes || compareText(a.path, b.path);
 	pages.sort(heaviest);
 	others.sort(heaviest);

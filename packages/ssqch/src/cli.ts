@@ -8,11 +8,17 @@ import type { BuildReport } from "./build.ts";
 import { dirsOf, loadConfig, parseEnvironment } from "./config.ts";
 import type { Config, Environment } from "./config.ts";
 import * as diagnostics from "./diagnostics.ts";
-import { Locator } from "./diagnostics.ts";
+import { Locator, bail } from "./diagnostics.ts";
+import { compare, diffJson, diffText, isSame } from "./diff.ts";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
+import { footprintJson, footprintText, measure } from "./footprint.ts";
+import { globProblem, globToRegExp } from "./glob.ts";
+import { field, fieldText, inspect, inspectionJson, inspectionText } from "./inspect.ts";
+import type { Field as InspectedField, Inspection } from "./inspect.ts";
 import { describeThrown } from "./modules.ts";
 import { relative } from "./paths.ts";
+import { quoted } from "./quote.ts";
 import { summary } from "./report.ts";
 import { VERSION } from "./version.ts";
 
@@ -75,7 +81,6 @@ const COMMANDS: Array<Command & { stage?: number }> = [
 		options: [{ long: "field", value: "NAME", help: "One field of its data, in full, with every level that set it (a dotted path reaches inside: hero.alt)" }, FORMAT],
 		positionals: [{ name: "PAGE", help: "The page: its URL (/about/), or its template's path", required: true }],
 		afterHelp: "The site is read as a build reads it, up to rendering: beforeBuild hooks run (data can depend on them),\nbut no page is rendered or written, and afterBuild hooks don't run. Standard output is only the report.\n\n  ssqch inspect /guides/install/\n  ssqch inspect src/guides/install.md --field title\n  ssqch inspect /guides/install/ --field hero.alt --format json",
-		stage: 4,
 	},
 	{
 		name: "completions",
@@ -97,7 +102,6 @@ const COMMANDS: Array<Command & { stage?: number }> = [
 		],
 		positionals: [{ name: "BEFORE", help: "The build from before the change", required: true, path: true }, { name: "AFTER", help: "The build from after it", required: true, path: true }],
 		afterHelp: "Build the site into one folder before a change and another after it:\n\n  ssqch build --output dist-before\n  (upgrade ssqch, edit a layout, ...)\n  ssqch build\n  ssqch diff dist-before dist\n\nExits with 0 when the builds are the same, 1 when they differ, and 2 on an error.",
-		stage: 4,
 	},
 	{
 		name: "footprint",
@@ -105,7 +109,6 @@ const COMMANDS: Array<Command & { stage?: number }> = [
 		options: [{ long: "top", value: "TOP", help: "How many of the heaviest pages and files to list (0 for none)", default: "5", check: number }, FORMAT],
 		positionals: [{ name: "DIR", help: "The build folder (default: the site's output folder)", required: false, path: true }],
 		afterHelp: "It reads a build folder, so build first:\n\n  ssqch build\n  ssqch footprint                 (the site's output folder)\n  ssqch footprint dist-before     (any build)\n  ssqch footprint --top 20 --format json",
-		stage: 4,
 	},
 	// The rest read their own arguments, with the code that runs them (stages 4 and 7).
 	{ name: "init", about: "Create a starter site (config, layout, five posts, data and editor types)", options: [], positionals: [], raw: true, stage: 4 },
@@ -260,6 +263,23 @@ export async function main(argv: string[]): Promise<number> {
 		return 1;
 	}
 
+	const many = (name: string) => (Array.isArray(cli.options[name]) ? cli.options[name] as string[] : typeof cli.options[name] === "string" ? [cli.options[name] as string] : []);
+	const top = Number(value("top") ?? "5");
+	// Two build folders need no config, and neither does a folder given to `footprint`.
+	if (command === "diff") return runDiff(cli.positionals[0], cli.positionals[1], { exact: flag("exact"), ignore: many("ignore"), only: many("only"), lines: Number(value("lines") ?? "10"), format });
+	if (command === "footprint" && cli.positionals[0] !== undefined) {
+		try {
+			await runFootprint(cli.positionals[0], cli.positionals[0], top, format);
+			return 0;
+		} catch (e) {
+			process.stderr.write(`${diagnostics.red("error:")} ${describeThrown(e, process.cwd())}\n`);
+			return 1;
+		}
+	}
+	// `ssqch inspect` prints a report: what its hooks and `console.log` say goes to standard error.
+	const inspecting = command === "inspect";
+	if (inspecting) diagnostics.capture();
+
 	const serving = command === "serve";
 	// The first of --env, $SSQCH_ENV and $NODE_ENV that's set; a word that's neither environment is the command's default.
 	const given = value("env") ?? process.env.SSQCH_ENV ?? process.env.NODE_ENV;
@@ -271,10 +291,10 @@ export async function main(argv: string[]): Promise<number> {
 	const root = path.resolve(value("root") ?? ".");
 	siteRoot = root;
 	routeConsole();
-	const makeConfig = () => loadConfig({ root, env, serving, quiet: flag("quiet"), verbose: flag("verbose"), output: value("output"), base: value("base") });
+	const makeConfig = () => loadConfig({ root, env, serving, quiet: flag("quiet") || inspecting, verbose: flag("verbose"), output: value("output"), base: value("base") });
 
-	if (format === "json") return buildJson(makeConfig, root, env);
-	if (format !== "text") {
+	if (command === "build" && format === "json") return buildJson(makeConfig, root, env);
+	if (command === "build" && format !== "text") {
 		process.stderr.write(`${diagnostics.red("error:")} --format ${format}: use text or json\n`);
 		return 1;
 	}
@@ -287,6 +307,15 @@ export async function main(argv: string[]): Promise<number> {
 		return 1;
 	}
 	try {
+		if (inspecting) {
+			await runInspect(config, cli.positionals[0], value("field"), format);
+			return 0;
+		}
+		if (command === "footprint") {
+			const dirs = dirsOf(config);
+			await runFootprint(dirs.output, relative(dirs.root, dirs.output), top, format);
+			return 0;
+		}
 		const report = await build(config);
 		if (!config.quiet) process.stdout.write(summary(config, report));
 		return 0;
@@ -294,6 +323,79 @@ export async function main(argv: string[]): Promise<number> {
 		diagnostics.printError("error:", e, "build", locatorOf(config));
 		return 1;
 	}
+}
+
+const checkFormat = (format: string) => {
+	if (format !== "text" && format !== "json") bail(`--format ${format}: use text or json`);
+};
+
+/** `ssqch inspect`: prints where a page (or one field of its data) comes from. */
+async function runInspect(config: Config, target: string, name: string | undefined, format: string): Promise<void> {
+	checkFormat(format);
+	let report: Inspection;
+	try {
+		report = await inspect(config, target);
+	} finally {
+		for (const found of diagnostics.takeWarnings()) process.stderr.write(`warn: ${found.message}\n`);
+	}
+	let one: InspectedField | undefined;
+	if (name !== undefined) {
+		one = field(report, name);
+		if (!one) bail(`${report.url ?? report.inputPath} has no \`${name.split(".")[0]}\` in its data (it has: ${report.fields.map((f) => f.name).join(", ")})`);
+	}
+	if (format === "json") process.stdout.write(JSON.stringify(inspectionJson(report, one), null, 2) + "\n");
+	else process.stdout.write(one ? fieldText(one) : inspectionText(report));
+}
+
+/** `ssqch diff`: prints the comparison, and answers 0 when the builds are the same, 1 when they differ and 2 on an error. */
+async function runDiff(before: string, after: string, options: { exact: boolean; ignore: string[]; only: string[]; lines: number; format: string }): Promise<number> {
+	try {
+		checkFormat(options.format);
+		const ignore = options.ignore.map((pattern) => {
+			try { return rustRegExp(pattern); } catch (e) { return bail(`--ignore ${quoted(pattern)} isn't a regular expression: ${(e as Error).message}`); }
+		});
+		const only = options.only.length ? options.only.map((given) => {
+			const glob = given.replace(/^[./]+/, "");
+			const problem = globProblem(glob);
+			if (problem !== undefined) bail(`--only ${quoted(given)} isn't a glob: error parsing glob '${glob}': ${problem}`);
+			return globToRegExp(glob);
+		}) : undefined;
+		const report = await compare(before, after, { exact: options.exact, ignore, only, lines: options.lines });
+		if (options.format === "json") process.stdout.write(JSON.stringify(diffJson(report, options.lines), null, 2) + "\n");
+		else process.stdout.write(diffText(report, options.lines, process.stdout.isTTY === true));
+		return isSame(report) ? 0 : 1;
+	} catch (e) {
+		process.stderr.write(`${diagnostics.red("error:")} ${describeThrown(e, process.cwd())}\n`);
+		return 2;
+	}
+}
+
+/**
+ * A pattern as Rust's `regex` crate read it, as nearly as JavaScript can: Unicode-aware, and
+ * flags at its start (`(?i)`, `(?s)`, `(?m)`) as JavaScript's flags.
+ */
+function rustRegExp(pattern: string): RegExp {
+	let flags = "gu";
+	let source = pattern;
+	const lead = /^\(\?([ims]+)\)/.exec(source);
+	if (lead) {
+		flags += [...new Set(lead[1])].join("");
+		source = source.slice(lead[0].length);
+	}
+	try {
+		return new RegExp(source, flags);
+	} catch (e) {
+		// Some patterns Rust takes are only valid without JavaScript's Unicode mode (`\-` outside a class).
+		try { return new RegExp(source, flags.replace("u", "")); } catch { throw e; }
+	}
+}
+
+/** `ssqch footprint`: what the build in `dir` weighs. `shown` is how the report names the folder. */
+async function runFootprint(dir: string, shown: string, top: number, format: string): Promise<void> {
+	checkFormat(format);
+	const measured = await measure(dir);
+	if (format === "json") process.stdout.write(JSON.stringify(footprintJson(measured, shown, top), null, 2) + "\n");
+	else process.stdout.write(footprintText(measured, shown, top));
 }
 
 /** Where a site's files can be named from: its root, its input, includes and data folders, and its themes'. */
