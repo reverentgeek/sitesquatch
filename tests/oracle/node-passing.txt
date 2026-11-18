@@ -74,6 +74,16 @@ cli/plugins.test.js: the_link_checker_passes_a_clean_site
 cli/plugins.test.js: the_link_checker_reads_feeds_meta_and_json_ld
 cli/report.test.js: build_reports_in_json
 cli/schemas.test.js: schemas_check_every_page
+cli/serve-browser.test.js: serve_built_serves_the_output_as_it_is
+cli/serve-browser.test.js: serve_rebuilds_sass_when_a_partial_changes
+cli/serve-browser.test.js: serve_tells_the_browser_what_changed
+cli/serve-browser.test.js: serve_writes_a_ready_file
+cli/serve.test.js: serve_does_not_rebuild_for_its_own_files
+cli/serve.test.js: serve_reads_a_changed_config_again
+cli/serve.test.js: serve_recovers_when_another_build_deletes_a_watchers_file
+cli/serve.test.js: serve_restarts_companions_on_reload
+cli/serve.test.js: serve_runs_companion_processes
+cli/serve.test.js: serve_says_when_a_linked_file_is_missing
 cli/themes.test.js: a_theme_from_git_is_fetched_once
 cli/themes.test.js: a_theme_sits_under_the_site_file_by_file
 cli/version.test.js: version_names_the_binary
@@ -140,6 +150,7 @@ contract/shapes.test.js: diff report
 contract/shapes.test.js: footprint report
 contract/shapes.test.js: inspect report
 contract/shapes.test.js: new report
+contract/shapes.test.js: serve ready file
 edge/edge.test.js: a_call_reaches_the_filter_when_data_has_the_same_name
 edge/edge.test.js: a_tag_out_of_place_is_an_error_with_its_line
 edge/edge.test.js: an_assign_in_an_include_reaches_the_template_that_included_it
