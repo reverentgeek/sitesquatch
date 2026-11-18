@@ -213,14 +213,17 @@ until 0.8 ships.
   - [x] Watching with `node:fs` alone: one watcher for a tree on macOS and Windows, one for each
         folder on Linux (without `node_modules`, `.git` and `.cache`). No dependency.
   - [x] A rebuild keeps what each page's file held when it was last compared, and doesn't read
-        it again. The blog rebuilds in 95 ms after one edit (0.7: 175 ms).
+        it again. Without its plugins the blog rebuilds in 95 ms after one edit (0.7: 175 ms).
+  - [ ] The blog as it is rebuilds in 0.31 s after one edit (0.7: 0.23 s). A fifth of that is
+        `stat` calls from the image plugin and the link checker, which ask the disk about every
+        file they know on every build: what they found can be kept from one build to the next
+        while serving, as the page comparison is now.
   - [x] What a plugin read for the last build is watched too (`filesRead` in
         `src/plugin-files.ts`, which `ssqch/sass` fills), besides what it lists in the config's
         `watch`: a partial in a folder the config never named rebuilds the site.
-  - [ ] Two oracle tests wait for stage 5: `serve_recovers_when_another_build_deletes_a_watchers_file`
-        (its config has `ssqch/assets`) and `serve_reads_a_changed_config_again` (it calls
-        `feedHtml()`, which comes with images). With the plugin taken out of a copy, and a plain
-        filter for `feedHtml`, both pass; run them when those merge.
+  - [x] The oracle: all ten tests in `cli/serve.test.js` and `cli/serve-browser.test.js`, and
+        "serve ready file", on Node 22.18, 24 and 26, with stage 5's plugins merged in (four of
+        the tests' configs use one).
   - [ ] **Decide:** a rebuild of 10,000 pages takes 0.97 s after one edit, twice 0.7's (which
         used every core). Worker threads, or rendering only the pages an edit can reach, would
         change that; the second needs the plugins that count across pages to take part. Both

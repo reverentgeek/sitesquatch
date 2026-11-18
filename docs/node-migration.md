@@ -109,9 +109,10 @@ What the stage decided, or found:
 
 | Check | Result |
 | --- | --- |
-| The oracle | `cli/serve.test.js` and `cli/serve-browser.test.js`: 8 of 10 pass on Node 22.18, 24 and 26, and so does "serve ready file" in `contract/shapes.test.js`. The other two wait for stage 5: one's config has `ssqch/assets`, and the other calls `feedHtml()`, which comes with images. With the plugin taken out of a copy of the test, and a plain filter for `feedHtml`, both pass. |
+| The oracle | All ten tests in `cli/serve.test.js` and `cli/serve-browser.test.js`, and "serve ready file" in `contract/shapes.test.js`, on Node 22.18, 24 and 26 (macOS). Four of them have a stage 5 plugin in their config (`ssqch/assets`, `ssqch/rss`, `ssqch/sass`, `ssqch/links`), and passed once those were merged in. |
 | In a browser | Chromium on a small site: a stylesheet is swapped with a half-filled form kept, another page's change leaves the tab alone, the page's own change reloads it, and a build that fails shows the error over the page, with the title and the icon, until one works. |
-| A rebuild after one edit, the blog (169 pages, its plugins taken out of both builds) | **95 ms** built, 240 ms from the save to the address line (0.7: 175 ms and 330 ms). |
+| A rebuild after one edit, the blog as it is (176 pages, 4,985 image files, its CSS and JavaScript watchers running) | **0.31 s** built, 0.68 s from the save to the address line (0.7: 0.23 s and 0.57 s). A fifth of the build is `stat` calls: the image plugin and the link checker ask the disk about every file they know on every build. |
+| The same, with the blog's plugins taken out of both builds | **95 ms** built, 240 ms from the save to the address line (0.7: 175 ms and 330 ms). |
 | A rebuild after one edit, 10,000 pages | **0.97 s** built, 1.55 s from the save to the address line (0.7, on 15 cores: 0.47 s and 0.98 s). Measured beside other work on the laptop, so both are slow by the same amount. |
 | From the command to the ready file, a one-page site | 0.26 s (0.7: 0.07 s). Two processes start, each loading ssqch. |
 
