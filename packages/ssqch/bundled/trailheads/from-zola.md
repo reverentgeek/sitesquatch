@@ -1,6 +1,6 @@
 # Trailhead: moving from Zola
 
-Zola and SiteSquatch are both single Rust binaries, so the move is mostly about templates: Tera becomes Nunjucks or Jinja (minijinja, which reads almost the same), and `config.toml` becomes `ssqch.config.js`. Your content can stay as it is: SiteSquatch reads TOML front matter between `+++` lines.
+Zola is a single Rust binary, and SiteSquatch runs on Node (from npm, or as a standalone executable with Node inside), so the move is mostly about templates: Tera becomes Nunjucks or Jinja (which read almost the same), and `config.toml` becomes `ssqch.config.js`. Your content can stay as it is: SiteSquatch reads TOML front matter between `+++` lines.
 
 blog.rust-lang.org was ported this way as a trial: all of its URLs and most pages came out the same. The [`blog-tags`](../../examples/sites/blog-tags/) example is a small blog laid out like a Zola site (sections, tags with feeds, aliases, highlighting), distilled from blog.rust-lang.org.
 

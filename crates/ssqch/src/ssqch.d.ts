@@ -2,8 +2,9 @@
 // Written by `ssqch types`. Editors use them for autocomplete and checking;
 // the build doesn't read them. Regenerate after upgrading ssqch.
 
-// The parts of Node's `process` that ssqch provides to configs and data files. Declared
-// the way @types/node declares it, so a project that installs those types gets theirs too.
+// A config and its data files run on Node, so `process` is Node's own. These are the parts
+// they most often use, declared the way @types/node declares them, so a project that installs
+// those types gets theirs too.
 declare namespace NodeJS {
 	interface ProcessEnv {
 		/** The build's environment (`--env`): `"production"` for `ssqch build`, `"development"` for `ssqch serve`. */
@@ -163,6 +164,18 @@ declare module "ssqch" {
 		options?: Record<string, unknown>;
 	}
 
+	/** A plugin written in Rust: one `.wasm` file built with the `ssqch-plugin` crate, which ssqch runs in Node's WebAssembly on every platform. An npm package's default export returns this: `export default (options) => ({ name: "hello", rust: { wasm: fileURLToPath(new URL("./hello.wasm", import.meta.url)), options } })`. Its transform, filters and engines come from the manifest inside the file, so none are listed here; a name the config already uses is an error, and so is a file built for another plugin ABI. */
+	export interface RustPlugin {
+		/** Shows up in error messages. */
+		name: string;
+		rust: {
+			/** The absolute path to the plugin's `.wasm` file. */
+			wasm: string;
+			/** The plugin's options, as JSON. The plugin checks them when the config loads (an unknown or misspelled option fails the build, and says which fields it has). */
+			options?: unknown;
+		};
+	}
+
 	/** Everything a plugin can add. The config itself can set these too. */
 	export interface ConfigParts {
 		/** Shows up in error messages. */
@@ -185,14 +198,15 @@ declare module "ssqch" {
 		beforeBuild?: Hook | Hook[];
 		/** Run after each build, with `written` (the files the build wrote). */
 		afterBuild?: Hook | Hook[];
-		/** More config, from plugins. `false`, `null` and `undefined` are skipped. */
+		/** More config, from plugins. A plugin is an object with any of these keys, a function that returns one, a built-in plugin (`imagePlugin()`), and plugins written in Rust (`{ name, rust: { wasm, options } }`). `false`, `null` and `undefined` are skipped. */
 		plugins?: Plugin[];
 	}
 
 	export type Plugin =
 		| ConfigParts
 		| BuiltinPlugin
-		| ((context: ConfigContext) => MaybePromise<ConfigParts | BuiltinPlugin | false | null | undefined>)
+		| RustPlugin
+		| ((context: ConfigContext) => MaybePromise<ConfigParts | BuiltinPlugin | RustPlugin | false | null | undefined>)
 		| false
 		| null
 		| undefined;
@@ -239,7 +253,7 @@ declare module "ssqch" {
 		schemas?: Record<string, Schema>;
 		/** Size budgets by kind of file, checked after each build: a file over its kind's budget is an `over-budget` warning. Sizes are bytes or strings like `"150 KB"` and `"1.5 MB"` (powers of 1,000). */
 		budgets?: Partial<Record<"pages" | "images" | "css" | "javascript" | "fonts" | "media" | "documents" | "data" | "other" | "total", number | string>>;
-		/** What `ssqch serve` runs besides the server. */
+		/** What `ssqch serve` runs besides the server. (The server builds in a process of its own, starts it again when the config or a module it imports changes, and listens on 127.0.0.1 only.) */
 		serve?: {
 			/** Programs to start with the server and stop with it, like the watchers of your CSS and JavaScript tools: `["npx postcss src/app.css -o dist/app.css --watch"]`. Their output is shown with the tool's name in front. Builds don't run them. */
 			run?: string | string[];
@@ -270,9 +284,9 @@ declare module "ssqch" {
 		dateFrom: "name" | "modified";
 		/** Bytes. */
 		size: number;
-		/** Pixels, with `{ dimensions: true }`; `null` for a file that isn't an image ssqch can read the size of. */
+		/** Pixels, with `{ dimensions: true }`; `null` for a file whose size ssqch can't read (it reads PNG, JPEG, GIF, TIFF, WebP, HEIF, AVIF, BMP, PSD, ICO and QOI). */
 		width?: number | null;
-		/** Pixels, with `{ dimensions: true }`; `null` for a file that isn't an image ssqch can read the size of. */
+		/** Pixels, with `{ dimensions: true }`; `null` for a file whose size ssqch can't read (it reads PNG, JPEG, GIF, TIFF, WebP, HEIF, AVIF, BMP, PSD, ICO and QOI). */
 		height?: number | null;
 	}
 	/** The files a glob matches, from the project root and ignoring case, sorted by path, as data: `files("images/albums/v1/*.{jpg,png}")`. `{ dimensions: true }` reads each image's width and height from its header, once: they're kept in `.cache/ssqch/image-sizes.json` until the file changes. No match is an empty list. */
@@ -310,11 +324,15 @@ declare module "ssqch/image" {
 		outputDir?: string;
 		/** URL path they're served from. Default `/img/`. */
 		urlPath?: string;
+		/** WebP quality, 0.7's scale (ssqch turns it into the number sharp reads for the same picture). Default 75. */
 		webpQuality?: number;
+		/** AVIF quality, 0.7's scale (ssqch turns it into sharp's: 50 looks like it did in 0.7). Default 50. */
 		avifQuality?: number;
-		/** 1 (slowest, smallest) to 10 (fastest). Default 8. */
+		/** 1 (slowest, smallest) to 10 (fastest); becomes sharp's AVIF effort. Default 8. */
 		avifSpeed?: number;
+		/** JPEG quality, 1 to 100, 0.7's scale (encoded with mozjpeg). Default 80. */
 		jpegQuality?: number;
+		/** A width larger than the original is clamped to it only when the width before it is this many times smaller. Default 1.25. */
 		minimumThreshold?: number;
 		/** Delete generated images the build didn't use. Only for full builds. */
 		prune?: boolean;
@@ -341,7 +359,7 @@ declare module "ssqch/image" {
 		size: number;
 	}
 
-	/** Turns every local `<img>` in HTML output into a `<picture>`. */
+	/** Turns every local `<img>` in HTML output into a `<picture>`, encoded by sharp (AVIF needs no build feature). `[ssqch] Encoded ...` lines come as each image's files are done, while pages go on rendering. */
 	export function imagePlugin(options?: ImagePluginOptions): BuiltinPlugin;
 
 	/** Generate one image's files with the plugin's settings and cache. Keyed by format, smallest first; with `"auto"` in `formats`, its files are under `auto` too. */
@@ -387,7 +405,7 @@ declare module "ssqch/rss" {
 	export function absoluteUrl(url: string, base: string): string;
 	/** Every link and image in some HTML made absolute, for a feed's content. */
 	export function htmlToAbsoluteUrls(html: string, base: string): string;
-	/** A post's HTML for a feed: each local image points at one generated copy (`width` 1200 and the source's format by default), page-only attributes go, and every URL is made absolute against `base`, the post's address. */
+	/** A post's HTML for a feed: each local image points at one generated copy (`width` 1200 and the source's format by default), page-only attributes go, and every URL is made absolute against `base`, the post's address. The images are made by the image plugin, so the config needs `imagePlugin()` too. */
 	export function feedHtml(html: string, base: string, options?: { width?: number | "auto"; format?: string }): string;
 }
 
@@ -405,7 +423,7 @@ declare module "ssqch/minify" {
 		shortenAttributes?: boolean;
 	}
 
-	/** Minifies HTML output, after the image transform. */
+	/** Minifies HTML output, after the image transform, with ssqch's own minifier (Rust, as WebAssembly): it doesn't write html-minifier-terser's bytes. */
 	export function minifyPlugin(options?: MinifyOptions): BuiltinPlugin;
 	/** Minify one string of HTML, with the plugin's options. */
 	export function minify(html: string, options?: MinifyOptions): string;
@@ -435,7 +453,7 @@ declare module "ssqch/links" {
 		anchors?: boolean;
 		/** URL path prefixes to skip, like `["/downloads/"]`. */
 		ignore?: string[];
-		/** Fail the build on a broken link. Default: production builds only. */
+		/** Fail the build on a broken link. Default: production builds only. A build lists the first 20 broken links; `--verbose` lists them all. */
 		fail?: boolean;
 		/** The site's address, like `"https://example.com"`, so absolute links to it are checked too. Default: the address `sitemap.xml` uses. */
 		url?: string;
@@ -509,6 +527,6 @@ declare module "ssqch/sass" {
 		loadPaths?: string[];
 	}
 
-	/** Compiles Sass at the start of each build, so fingerprinting and the link checker see the CSS. */
+	/** Compiles Sass at the start of each build, with grass (Rust, as WebAssembly: no Dart Sass), so fingerprinting and the link checker see the CSS. */
 	export function sassPlugin(options: SassPluginOptions): BuiltinPlugin;
 }
