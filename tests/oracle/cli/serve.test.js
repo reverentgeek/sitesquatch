@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, RUST_07 } from "../lib/ssqch.js";
 import { start, sleep, waitFor, changeAndWait, httpGet, body } from "../lib/serve.js";
 
 const unixOnly = { skip: process.platform === "win32" && "unix only" };
@@ -241,5 +241,225 @@ test("serve_does_not_rebuild_for_its_own_files", async () => {
 		assert.equal(count(said, "Build recovered. Back on the trail. Built in"), 1, said);
 	} finally {
 		await server.stop();
+	}
+});
+
+/** Waits (up to 20 s) until `log` has `text` `n` times. */
+async function waitCount(log, text, n) {
+	const started = Date.now();
+	while (count(readOr(log), text) < n) {
+		assert.ok(Date.now() - started < 20_000, `waiting for ${n} of ${JSON.stringify(text)}:\n${readOr(log)}`);
+		await sleep(50);
+	}
+}
+
+/** The dev server's build state for the browser (`/__ssqch/build`). */
+async function buildState(port) {
+	const response = await httpGet(port, "/__ssqch/build?v=&p=%2F");
+	try { return JSON.parse(body(response)); } catch (e) { throw new Error(`${e.message}: ${response}`); }
+}
+
+// The half-typed tag a dev server sees most, in an include: an error at the include's line, and
+// the server builds again once it's fixed.
+test("serve_shows_a_syntax_error_in_an_include", async () => {
+	const dir = tempDir("serve-include-syntax");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\" }, templateFormats: [\"md\", \"njk\"] };\n",
+		"src/_includes/layout.njk": "<html><body>{% include \"nav.njk\" %}<main>{{ content }}</main></body></html>",
+		"src/_includes/nav.njk": "<nav>Cedar Trail</nav>",
+		"src/index.md": "---\nlayout: layout.njk\n---\nPine Cone Crunch\n",
+	});
+	const log = path.join(tempDir("serve-include-syntax-log"), "serve.log");
+	const ready = path.join(tempDir("serve-include-syntax-ready"), "ready.json");
+	const server = start(["serve", "--port", "0", "--root", dir, "--ready-file", ready], { logFile: log });
+	try {
+		await waitFor(ready, "\"ok\": true");
+		const port = JSON.parse(fs.readFileSync(ready, "utf8")).port;
+		const page = path.join(dir, "_site/index.html");
+		fs.writeFileSync(path.join(dir, "src/_includes/nav.njk"), "<nav>\n{% if %}</nav>");
+		await waitFor(log, "Build failed:");
+		await waitFor(log, "nav.njk:2: syntax error: unexpected end of block");
+		const state = await buildState(port);
+		assert.ok(state.error?.includes("nav.njk:2: syntax error: unexpected end of block"), JSON.stringify(state));
+		// Still serving the page it had.
+		assert.ok((await httpGet(port, "/")).includes("Cedar Trail"));
+		await changeAndWait(path.join(dir, "src/_includes/nav.njk"), "<nav>Old Growth Trail</nav>", page, "Old Growth Trail");
+		await waitFor(log, "Build recovered. Back on the trail. Built in");
+		assert.equal((await buildState(port)).error, null);
+		assert.ok(!readOr(log).includes("something large walked through"), readOr(log));
+	} finally {
+		await server.stop();
+	}
+});
+
+// The site's code ends the build (`process.exit`), then the config is saved half-written: the
+// last config that loaded goes on building.
+test("serve_keeps_building_with_the_last_config_after_its_code_ends_the_build", async () => {
+	const dir = tempDir("serve-exit");
+	write(dir, {
+		"ssqch.config.js": "export default { filters: { snack: (s) => { if (s === \"exit\") process.exit(3); return s + \" Squatch Snacks\"; } } };\n",
+		"_data/flag.json": "{ \"v\": \"ok\" }",
+		"index.jinja": "<p>{{ flag.v | snack }}</p>",
+	});
+	const log = path.join(tempDir("serve-exit-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "_site/index.html");
+		await waitFor(page, "ok Squatch Snacks");
+		fs.writeFileSync(path.join(dir, "_data/flag.json"), "{ \"v\": \"exit\" }");
+		await waitFor(log, "Build failed:");
+		// The config is saved a moment later, as a person would: in the Node build, another
+		// process has loaded the last one by then.
+		await sleep(3000);
+		await changeAndWait(path.join(dir, "ssqch.config.js"), "export default { filters: ", log, "Config error:");
+		await waitFor(log, "(still serving with the last configuration that loaded)");
+		await changeAndWait(path.join(dir, "_data/flag.json"), "{ \"v\": \"fixed\" }", page, "fixed Squatch Snacks");
+		await waitFor(log, "Build recovered. Back on the trail. Built in");
+	} finally {
+		await server.stop();
+	}
+});
+
+// What the site's code throws after a build has reported (in a timer) fails the next build, with
+// that error, and the one after builds.
+test("serve_fails_the_next_build_with_an_error_thrown_after_one", async () => {
+	const dir = tempDir("serve-timer");
+	write(dir, {
+		// `nap` waits on a timer of its own, so 0.7 (whose timers ran only while a build waited)
+		// runs the one `ranger` left in the build before.
+		"ssqch.config.js": "export default { filters: {\n  ranger: (s) => { if (s === \"timer\") setTimeout(() => { throw new Error(\"thrown from a ranger's timer\"); }, 1000); return s; },\n  nap: async (s) => { await new Promise((r) => setTimeout(r, 1)); return s; },\n} };\n",
+		"_data/flag.json": "{ \"v\": \"ok\" }",
+		"index.jinja": "<p>{{ flag.v | ranger }} {{ \"camp\" | nap }}</p>",
+	});
+	const log = path.join(tempDir("serve-timer-log"), "serve.log");
+	const ready = path.join(tempDir("serve-timer-ready"), "ready.json");
+	const server = start(["serve", "--port", "0", "--root", dir, "--ready-file", ready], { logFile: log });
+	try {
+		await waitFor(ready, "\"ok\": true");
+		const port = JSON.parse(fs.readFileSync(ready, "utf8")).port;
+		const page = path.join(dir, "_site/index.html");
+		await changeAndWait(path.join(dir, "_data/flag.json"), "{ \"v\": \"timer\" }", page, "<p>timer camp</p>");
+		// The timer has gone off.
+		await sleep(2000);
+		assert.ok(!readOr(log).includes("Build failed"), readOr(log));
+		fs.writeFileSync(path.join(dir, "_data/flag.json"), "{ \"v\": \"later\" }");
+		await waitFor(log, "Build failed:");
+		await waitFor(log, "thrown from a ranger's timer");
+		const state = await buildState(port);
+		assert.ok(state.error?.includes("thrown from a ranger's timer"), JSON.stringify(state));
+		await changeAndWait(path.join(dir, "_data/flag.json"), "{ \"v\": \"fixed\" }", page, "<p>fixed camp</p>");
+		await waitFor(log, "Build recovered. Back on the trail. Built in");
+		assert.equal(count(readOr(log), "Build failed:"), 1, readOr(log));
+	} finally {
+		await server.stop();
+	}
+});
+
+// Ctrl-C reaches every process in the terminal's group. With a `serve.run` tool running and a
+// build under way, ssqch stops it and says nothing more about the build or where it's serving.
+// The tool and the hooks get the environment ssqch was given.
+test("serve_stops_quietly_on_ctrl_c_during_a_build", unixOnly, async () => {
+	const dir = tempDir("serve-ctrl-c");
+	write(dir, {
+		"bin/pinecss": "#!/bin/sh\necho \"pool=${UV_THREADPOOL_SIZE:-unset}\"\ncat > /dev/null\nwhile true; do sleep 0.2; done\n",
+		"ssqch.config.js": "import fs from \"node:fs\";\nexport default {\n  dirs: { input: \"src\" },\n  serve: { run: [\"./bin/pinecss --watch\"] },\n  beforeBuild: async () => { if (fs.existsSync(\"slow\")) await new Promise((r) => setTimeout(r, 3000)); },\n  afterBuild: { run: \"echo hook pool=${UV_THREADPOOL_SIZE:-unset}\" },\n};\n",
+		"src/index.html": "<p>camp</p>",
+	});
+	fs.chmodSync(path.join(dir, "bin/pinecss"), 0o755);
+	const log = path.join(tempDir("serve-ctrl-c-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { cwd: dir, logFile: log, detached: true, env: { UV_THREADPOOL_SIZE: undefined } });
+	try {
+		await waitFor(log, "[pinecss] pool=unset");
+		await waitFor(log, "Squatch Watch is on.");
+		assert.ok(readOr(log).includes("hook pool=unset"), readOr(log));
+		write(dir, { slow: "" });
+		await changeAndWait(path.join(dir, "src/index.html"), "<p>camp two</p>", log, "Fresh tracks in src");
+		const before = readOr(log).length;
+		await sleep(1000);
+		process.kill(-server.pid, "SIGINT");
+		const { code, signal } = await server.exited;
+		assert.ok(code === 130 || signal === "SIGINT", `${code} ${signal}`);
+		const after = readOr(log).slice(before);
+		assert.ok(!after.includes("Build failed") && !after.includes("Serving "), after);
+	} finally {
+		await server.stop();
+	}
+});
+
+// A folder renamed away and back again (an undo, a `git stash`) rebuilds each time.
+test("serve_rebuilds_for_a_folder_renamed_back", { skip: RUST_07 && "0.7 took a folder renamed back for no change: it hashed a folder's contents as nothing, the same each time" }, async () => {
+	const dir = tempDir("serve-renamed");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\" } };\n",
+		"src/index.jinja": "{% for p in collections.all %}{{ p.url }} {% endfor %}",
+		"src/trails/cedar.md": "Cedar\n",
+	});
+	const log = path.join(tempDir("serve-renamed-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "_site/index.html");
+		await waitFor(page, "/trails/cedar/");
+		// Past the server's wait for more changes after its first build.
+		await sleep(1500);
+		fs.renameSync(path.join(dir, "src/trails"), path.join(dir, "src/paths"));
+		await waitFor(page, "/paths/cedar/");
+		await sleep(1500);
+		fs.renameSync(path.join(dir, "src/paths"), path.join(dir, "src/trails"));
+		await waitFor(page, "/trails/cedar/");
+		await sleep(1500);
+		fs.renameSync(path.join(dir, "src/trails"), path.join(dir, "src/paths"));
+		await waitFor(page, "/paths/cedar/");
+	} finally {
+		await server.stop();
+	}
+});
+
+// A config file that's deleted leaves the defaults building; one that's put back is read again.
+test("serve_reads_a_config_file_put_back", { skip: RUST_07 && "0.7 didn't watch for a config file that wasn't loaded, so one put back went unread" }, async () => {
+	for (const input of ["src", "."]) {
+		const dir = tempDir("serve-config-back");
+		const config = (greeting) => `export default { dirs: { input: ${JSON.stringify(input)} }, data: { greeting: "${greeting}" } };\n`;
+		write(dir, { "ssqch.config.js": config("howdy"), [path.join(input, "index.jinja")]: "{{ greeting }}, ranger" });
+		const log = path.join(tempDir("serve-config-back-log"), "serve.log");
+		const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+		try {
+			const page = path.join(dir, "_site/index.html");
+			await waitFor(page, "howdy, ranger");
+			await sleep(1500);
+			fs.rmSync(path.join(dir, "ssqch.config.js"));
+			await waitCount(log, "(reading the configuration again)", 1);
+			await waitCount(log, "Built in", 2);
+			await changeAndWait(path.join(dir, "ssqch.config.js"), config("hello"), page, "hello, ranger");
+		} finally {
+			await server.stop();
+		}
+	}
+});
+
+// What the server answers for what it can't serve: 0.7's statuses, types and lengths.
+test("serve_answers_what_it_cant_serve_as_it_did", async () => {
+	const dir = tempDir("serve-answers");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, base: \"/trail/\" };\n",
+		"src/index.html": "<p>camp</p>",
+	});
+	for (const built of [false, true]) {
+		if (built) ssqch(["build", "--root", dir]);
+		const ready = path.join(tempDir("serve-answers-ready"), "ready.json");
+		const server = start(["serve", ...(built ? ["--built"] : []), "--port", "0", "--root", dir, "--ready-file", ready], { logFile: path.join(tempDir("serve-answers-log"), "serve.log") });
+		try {
+			await waitFor(ready, "\"schemaVersion\"");
+			const port = JSON.parse(fs.readFileSync(ready, "utf8")).port;
+			const outside = await httpGet(port, "/other/");
+			assert.ok(outside.startsWith("HTTP/1.1 404") && /\r\nContent-Type: text\/plain; charset=UTF-8\r\n/i.test(outside), outside);
+			// No file has a NUL in its name: a page that isn't there.
+			const nul = await httpGet(port, "/trail/%00");
+			assert.ok(nul.startsWith("HTTP/1.1 404") && nul.includes(built ? "Not found: /trail/\0" : "The trail goes cold"), nul);
+			// A request Node or 0.7 can't read: a 400 that says how long it is.
+			const spaced = await httpGet(port, "/trail/a b");
+			assert.ok(spaced.startsWith("HTTP/1.1 400") && /\r\nContent-Length: 0\r\n/i.test(spaced), spaced);
+		} finally {
+			await server.stop();
+		}
 	}
 });

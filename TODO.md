@@ -236,6 +236,28 @@ until 0.8 ships.
         merged. Starting to serve a one-page site takes 0.26 s (0.7: 0.07 s).
   - [ ] Windows and Linux: the server's own unit tests run both ways of watching on each, but
         the oracle's serve tests have only run on macOS. Watch CI's first run.
+  - [x] The review's findings (2026-11-18), each with a unit test or an oracle test in
+        `cli/serve.test.js`: a syntax error in an included Jinja or Nunjucks template is an
+        error at its line (the fork answered later, with `null`, and the build process died);
+        deleting a tree of thousands of watched folders on Linux takes time in step with it
+        (it was minutes: every folder asked about every other); after the build process ends,
+        another loads the last configuration at once; the ES module retry for Node 22.18 only
+        follows a CommonJS compile error, so a file isn't run twice; the written-pages cache
+        compares the change time too; an error thrown after a build fails the next one; Ctrl-C
+        says nothing false; the site's commands don't get ssqch's `UV_THREADPOOL_SIZE` and
+        run through `cmd /C` with AutoRun; the 404 and 400 answers have 0.7's types and
+        lengths. And two of 0.7's own bugs: a folder renamed back rebuilds, and a config file
+        that's put back is read.
+  - [ ] A promise in the site's code that never settles wedges every rebuild for good when
+        something keeps the event loop busy (a `setInterval` in the config), as in 0.7: the
+        "never settled" check only fires when nothing is left to run. Now that the build runs in
+        a process of its own, the server could give a build a time limit, end its process, and
+        say which hook or filter it was in. Needs a limit that a slow first build (images)
+        doesn't hit: count from the last thing the build did, not from its start.
+  - [ ] The process that replaces one that ended loads the config's files as they are then: a
+        config saved in the instant between (the oracle waits 3 s) can't be the last one that
+        loaded, and nothing builds until one loads. A spare process, loaded beside the one that
+        builds, would close that, at the cost of running the config's top-level code twice.
 - [x] **Stage 7, importers:** Eleventy and Zola (2026-11-18): `src/import.ts`, from `import.rs`
       with its tests. 0.7's importer reads a site's files as text and runs none of them, so it had
       nothing for QuickJS to drop. On the Eleventy sources of a11yproject.com, v8.dev, lit.dev,

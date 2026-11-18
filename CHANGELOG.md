@@ -149,6 +149,15 @@ the release.
   groups written `(?P<name>...)` still work, but Rust's own syntax JavaScript doesn't have
   (`(?x)`, `\A`, `\z`, an escaped `-` outside `[...]`) is refused with JavaScript's words. `\d` and
   `\w` are ASCII in JavaScript; write `\p{Nd}` or `\p{L}` for other scripts' digits and letters.
+- **A `serve.run` tool has no terminal on Linux and macOS, and hears Ctrl-C on Windows.** 0.7
+  started each in a process group of its own, so stopping it stopped what it started, and Ctrl-C
+  was ssqch's to pass on. Node can only do that by giving the tool a session of its own too
+  (Linux, macOS), where nothing opens `/dev/tty`, or a console of its own too (Windows), where
+  each program the tool starts opens a window. So on Linux and macOS a tool that asks something
+  through the terminal (a password, `npx`'s "Ok to proceed?") can't: give it what it needs on
+  its command line (`npx --yes`). On Windows a tool shares ssqch's console and gets Ctrl-C
+  itself, as it would from a terminal; what it says once ssqch is stopping isn't shown (cmd.exe's
+  "Terminate batch job (Y/N)?"), and ssqch still stops it and what it started.
 - **How ssqch is installed.** The npm package is ssqch itself, JavaScript that runs on Node 22.18
   or newer, with sharp as its one dependency; the `@ssqch/<platform>` packages are gone, so a
   `pnpm-workspace.yaml` that lists them under `minimumReleaseAgeExclude` needs only `ssqch`. The
@@ -257,8 +266,14 @@ the release.
   change to one of their files still isn't watched. The commands, the messages and the ready
   file are 0.7's, and so is the reload script the browser gets.
   - A site whose code ends the process (`process.exit()`, or an error nothing catches in a
-    timer) fails that build, shown in the browser like any other, and the next change builds in
-    a new process. The server stays up.
+    timer) fails that build, shown in the browser like any other, with what was thrown. Another
+    process loads the configuration at once, so the server goes on building with the last one
+    that loaded, as 0.7 did, unless the config's files changed in that moment: then nothing
+    builds until one loads, and the config's error says so. An error thrown after a build has
+    reported fails the next build, with that error, as in 0.7 (where timers ran during the next
+    build). The server stays up, and Ctrl-C in the middle of a build says nothing about it.
+  - A folder renamed away and back again rebuilds both times, and a config file that's deleted
+    and put back (or made while the defaults build) is read again. 0.7 missed both.
   - A rebuild compares each page with what the last build found in its file, from memory, and
     reads the file again only when its size, its modification time or its change time is
     different, or it's another file. So a page that something else rewrote is written again

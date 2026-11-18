@@ -11,12 +11,15 @@ process.on("exit", () => { for (const child of running) try { child.kill("SIGKIL
 /**
  * Starts `ssqch <args>` (usually `serve ...`) in the background, with stdout and stderr going to
  * `logFile` when it's given. Returns `{ child, pid, log(), stop() }`; `stop()` ends it and waits.
- * Every server a test starts is killed when the test process exits, whatever happens.
+ * Every server a test starts is killed when the test process exits, whatever happens. With
+ * `detached` (not on Windows), it leads a process group of its own, as a terminal's foreground job
+ * does, so `process.kill(-pid, "SIGINT")` is Ctrl-C. A variable set to `undefined` in `env` isn't
+ * passed on at all.
  */
-export function start(args, { cwd, env = {}, logFile } = {}) {
+export function start(args, { cwd, env = {}, logFile, detached = false } = {}) {
 	const out = logFile ? fs.openSync(logFile, "w") : "ignore";
 	const [command, argv] = SCRIPT ? [process.execPath, [BIN, ...args]] : [BIN, args];
-	const child = spawn(command, argv, { cwd, env: { ...process.env, TZ: "UTC", NO_COLOR: "1", ...env }, stdio: ["ignore", out, out] });
+	const child = spawn(command, argv, { cwd, env: { ...process.env, TZ: "UTC", NO_COLOR: "1", ...env }, stdio: ["ignore", out, out], detached });
 	running.add(child);
 	const exited = new Promise((resolve) => child.on("exit", (code, signal) => { running.delete(child); resolve({ code, signal }); }));
 	return {
