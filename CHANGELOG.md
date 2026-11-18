@@ -42,7 +42,16 @@ the release.
 - **`fetch` is Node's own, with 0.7's error words and `cache` option on top.** The reason after
   `fetch failed: <url>:` is Node's (`connect ECONNREFUSED 127.0.0.1:9`, `getaddrinfo ENOTFOUND
   ...`), where 0.7 gave its HTTP library's (`io: Connection refused`); a script that matched that
-  text should match the `cause` or the URL.
+  text should match the `cause` or the URL. Requests go out as 0.7 sent them, where the Fetch
+  standard would refuse or change them: credentials in the URL are Basic auth, the user agent is
+  `ssqch/<version>`, and a request for a port the standard blocks (6000, 6665 to 6669, 10080 and
+  the others) or with a `Host`, `Keep-Alive`, `Transfer-Encoding`, `Upgrade` or `Expect` header
+  goes out through `node:http`. Three things are Node's: a response's `statusText` is the server's
+  own (`"Pine OK"`), where 0.7 gave the standard words for its status (`"OK"`, and `""` for a
+  status without any); a response's `url` has no credentials in it, where 0.7 kept them; and an
+  error names the URL without its password. A response saved with `cache` lists its headers in
+  name order, with repeated ones joined (`"a, b"`), as Node's `Headers` gives them, where 0.7's
+  file had the server's order; a site reads them the same either way.
 - **Filters and templates get your real objects.** 0.7 handed them copies that kept writes to
   themselves; now a filter that sorts or changes what it's given changes it for the pages
   rendered after it. Copy first (`[...posts].sort()`). Data that refers to itself (`a.self = a`)
@@ -142,11 +151,16 @@ the release.
   runs on every platform, shipped in an npm package whose function returns `{ name, rust: { wasm,
   options } }`. It can have a transform, filters and engines; `crates/ssqch-plugin/README.md`
   and `examples/rust-plugin` show how.
-- **`ssqch diff --ignore` takes a JavaScript regular expression** (in its Unicode mode), where 0.7
-  took Rust's. Most patterns are the same in both, and flags at the start (`(?i)`) and named
-  groups written `(?P<name>...)` still work, but Rust's own syntax JavaScript doesn't have
-  (`(?x)`, `\A`, `\z`, an escaped `-` outside `[...]`) is refused with JavaScript's words. `\d` and
-  `\w` are ASCII in JavaScript; write `\p{Nd}` or `\p{L}` for other scripts' digits and letters.
+- **`ssqch diff --ignore` refuses two kinds of pattern JavaScript can't match.** Patterns are still
+  in the syntax of Rust's regex crate, read as 0.7 read them (`\w`, `\d`, `\s` and `\b` in every
+  script, `.` up to a `\n` only, flags partway through, `(?x)`, `\A`, `\z`, `[a-z&&[^aeiou]]`, and
+  the crate's error messages) and matched by JavaScript. What's refused, with a message that says
+  so: the Unicode properties JavaScript doesn't have (`Age`, `Grapheme_Cluster_Break`,
+  `Word_Break`, `Sentence_Break`, `Hyphen`, `Grapheme_Link`, `IDS_Unary_Operator`,
+  `ID_Compat_Math_Start` and `_Continue`, `Modifier_Combining_Mark`,
+  `Prepended_Concatenation_Mark` and the `Other_` ones), and, on Node 22, a property in a
+  case-insensitive group that's only part of the pattern (`(?i:\p{Lu})x`). Write the property's
+  characters out, or put `(?i)` at the start of the pattern (or use Node 23 or newer).
 - **How ssqch is installed.** The npm package is ssqch itself, JavaScript that runs on Node 22.18
   or newer, with sharp as its one dependency; the `@ssqch/<platform>` packages are gone, so a
   `pnpm-workspace.yaml` that lists them under `minimumReleaseAgeExclude` needs only `ssqch`. The
@@ -204,6 +218,9 @@ the release.
 
 ### Changed
 
+- `ssqch diff` compares every file when a fingerprinted name is another file's name without its
+  last fingerprint (`x.11111111.22222222.css` beside `x.11111111.css` and `x.css`). 0.7 lost one
+  of the two from the report.
 - `[ssqch] Encoded ...` lines come as each image's files are done, while pages go on rendering,
   so they're among the `Writing` lines, not before the page that shows the image. The build waits
   for every file before the link checker, the other plugins' files, `afterBuild` hooks and the
@@ -221,7 +238,14 @@ the release.
   follow from the rest of 0.8: a draft config isn't written where one of the new config names is
   already there, and a date in a Zola site's `[extra]` (`founded = 2019-05-01`) goes into the
   draft as its text, `"2019-05-01"`, where 0.7 wrote an object with a `$__toml_private_datetime`
-  key that no template could print.
+  key that no template could print. Three things are fixed. `package.json` is edited where it
+  changes and kept as it's written everywhere else, where 0.7 printed the whole file again (a
+  list on several lines, `1e5` as `100000.0`, escapes written out, the dev dependencies sorted).
+  A template literal with `${...}` in it (`` addPassthroughCopy(`${dir}/img`) ``) and a filter
+  whose default value reads the config (`(value, format = dateFormat) => ...`) are left for a
+  person to port, where 0.7 put them in the draft as they were, a path and a name that don't
+  exist and a function that needs a variable the draft doesn't have. A Zola `config.toml` that
+  isn't TOML shows its line and the spot, as 0.7's did, with smol-toml's words for what's wrong.
 - A warning a package raises with `process.emitWarning` is one of the build's warnings (`code:
   "console"` in the JSON report), like `console.warn`.
 - Messages that quote a parser are that parser's: YAML, JSON and TOML errors keep `at line N

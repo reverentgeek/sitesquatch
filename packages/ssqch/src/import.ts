@@ -9,12 +9,15 @@
 // that a site's packages run on Node.
 import fs from "node:fs";
 import path from "node:path";
+import { TomlError } from "smol-toml";
 import { findConfig } from "./config.ts";
 import { isPlainObject, readToml, tomlReason } from "./data.ts";
 import type { Data } from "./data.ts";
 import { red } from "./diagnostics.ts";
 import { TABLE } from "./equivalents.ts";
+import { JsonText } from "./json-edit.ts";
 import { compareText, isDir, isFile } from "./paths.ts";
+import { rustRegExp } from "./rust-regex.ts";
 import { VERSION } from "./version.ts";
 
 /** What an import would do to a site. Paths are relative to its folder. */
@@ -144,6 +147,14 @@ function trimMatches(s: string, chars: string): string {
 	return s.slice(start, end);
 }
 
+// Rust's `trim`, `trim_start` and `split_whitespace`: Unicode's White_Space, which keeps a
+// byte-order mark (U+FEFF) that JavaScript's `trim` takes off, and takes U+0085 it keeps.
+const trim = (s: string) => s.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "");
+const trimStart = (s: string) => s.replace(/^\p{White_Space}+/u, "");
+const splitWhitespace = (s: string) => s.split(/\p{White_Space}+/u).filter((w) => w !== "");
+/** A line's indentation, as Rust's `&l[..l.len() - l.trim_start().len()]`. */
+const indentOf = (line: string) => line.slice(0, line.length - trimStart(line).length);
+
 const occurrences = (text: string, word: string) => text.split(word).length - 1;
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\#&~-]/g, "\\$&");
 /** Letters and digits in any script, as Rust's `char::is_alphanumeric`. */
@@ -161,16 +172,19 @@ interface Entry {
  * Every file and folder under `root`, each folder's entries in the order of their names' bytes,
  * a folder before what's in it (walkdir's `sort_by_file_name`). Links aren't followed. `skip`
  * leaves an entry out, with what's under it. `strict` stops at a folder that can't be read; else
- * it's passed over.
+ * it's passed over. A `root` that's a file is the one entry, as walkdir has it (Zola's
+ * `templates` can be a file).
  */
 function walk(root: string, skip: (name: string, rel: string) => boolean, strict: boolean): Entry[] {
 	const out: Entry[] = [];
+	if (isFile(root)) return [{ rel: "", abs: root, name: path.basename(root), isFile: true }];
 	const visit = (abs: string, rel: string) => {
 		let dirents: fs.Dirent[];
 		try {
 			dirents = fs.readdirSync(abs, { withFileTypes: true });
 		} catch (e) {
-			if (strict) fail(`IO error for operation on ${abs}: ${reason(e)}`);
+			// anyhow printed walkdir's error and then its cause, the same reason again.
+			if (strict) fail(`IO error for operation on ${abs}: ${reason(e)}: ${reason(e)}`);
 			return;
 		}
 		dirents.sort((a, b) => compareText(a.name, b.name));
@@ -204,14 +218,16 @@ const TEMPLATE_EXTENSIONS = ["md", "markdown", "njk", "liquid", "html", "hbs", "
 /** Front matter keys, and their names in data files: [Eleventy's, ssqch's], from the table of other generators' words. */
 const keys = (): Array<[string, string]> => TABLE.filter((e) => e.kind === "frontMatter" && e.from.includes("Eleventy")).map((e) => [e.word, e.ssqch]);
 
-const NAVIGATION_FILTER = /\|\s*eleventyNavigation(?:Breadcrumb|ToHtml|ToMarkdown)?\b|\beleventyNavigation(?:Breadcrumb|ToHtml|ToMarkdown)?\s*\(/;
-const DATA_FILE = /\.11tydata\.(js|cjs|mjs|json|ya?ml|toml)$/;
-const IMAGE_ATTR = /\beleventy:(widths|ignore)\b/g;
-const TEMPLATE_GLOBAL = /\beleventy\.(generator|version)\b/g;
-const CALL = /\.\s*(addFilter|addAsyncFilter|addNunjucksFilter|addLiquidFilter|addNunjucksAsyncFilter|addShortcode|addAsyncShortcode|addNunjucksShortcode|addNunjucksAsyncShortcode|addLiquidShortcode|addPairedShortcode|addPairedAsyncShortcode|addPairedNunjucksShortcode|addPairedNunjucksAsyncShortcode|addPairedLiquidShortcode|addNunjucksTag|addLiquidTag|addNunjucksGlobal|addMarkdownHighlighter|addCollection|addTransform|addGlobalData|addPlugin|addPassthroughCopy|addWatchTarget|setLibrary|addDataExtension|addTemplateFormats|setTemplateFormats|on)\s*\(\s*(?:["'`]([^"'`]*)["'`]|([A-Za-z_$][\w$.]*))?/g;
-const SETTING = /\b(input|output|includes|layouts|data|markdownTemplateEngine|htmlTemplateEngine|pathPrefix)\s*:\s*["'`]([^"'`]*)["'`]/g;
-const FORMATS = /templateFormats\s*:\s*\[([^\]]*)\]/;
-const REQUIRE = /(?:require\(\s*|from\s+)["'](@11ty\/[\w./-]+|markdown-it[\w-]*|eleventy-[\w-]+|@[\w-]+\/eleventy-[\w-]+)["']/g;
+// The patterns are 0.7's, in Rust's regex syntax, where `\w`, `\s` and `\b` know every script
+// (`pluginÉté` is one name).
+const NAVIGATION_FILTER = rustRegExp(String.raw`\|\s*eleventyNavigation(?:Breadcrumb|ToHtml|ToMarkdown)?\b|\beleventyNavigation(?:Breadcrumb|ToHtml|ToMarkdown)?\s*\(`);
+const DATA_FILE = rustRegExp(String.raw`\.11tydata\.(js|cjs|mjs|json|ya?ml|toml)$`);
+const IMAGE_ATTR = rustRegExp(String.raw`\beleventy:(widths|ignore)\b`, "g");
+const TEMPLATE_GLOBAL = rustRegExp(String.raw`\beleventy\.(generator|version)\b`, "g");
+const CALL = rustRegExp(String.raw`\.\s*(addFilter|addAsyncFilter|addNunjucksFilter|addLiquidFilter|addNunjucksAsyncFilter|addShortcode|addAsyncShortcode|addNunjucksShortcode|addNunjucksAsyncShortcode|addLiquidShortcode|addPairedShortcode|addPairedAsyncShortcode|addPairedNunjucksShortcode|addPairedNunjucksAsyncShortcode|addPairedLiquidShortcode|addNunjucksTag|addLiquidTag|addNunjucksGlobal|addMarkdownHighlighter|addCollection|addTransform|addGlobalData|addPlugin|addPassthroughCopy|addWatchTarget|setLibrary|addDataExtension|addTemplateFormats|setTemplateFormats|on)\s*\(\s*(?:["'\x60]([^"'\x60]*)["'\x60]|([A-Za-z_$][\w$.]*))?`, "g");
+const SETTING = rustRegExp(String.raw`\b(input|output|includes|layouts|data|markdownTemplateEngine|htmlTemplateEngine|pathPrefix)\s*:\s*["'\x60]([^"'\x60]*)["'\x60]`, "g");
+const FORMATS = rustRegExp(String.raw`templateFormats\s*:\s*\[([^\]]*)\]`);
+const REQUIRE = rustRegExp(String.raw`(?:require\(\s*|from\s+)["'](@11ty/[\w./-]+|markdown-it[\w-]*|eleventy-[\w-]+|@[\w-]+/eleventy-[\w-]+)["']`, "g");
 
 /** A setting's value from the config, written as a string: `output: "dist"`. */
 const setting = (code: string, key: string) => [...code.matchAll(SETTING)].find((c) => c[1] === key)?.[2];
@@ -253,7 +269,7 @@ function pluginPackage(code: string, name: string): string | undefined {
 	const base = name.split(".")[0];
 	if (base === "" || !IDENTIFIER.test(base)) return undefined;
 	const id = escapeRegex(base);
-	const re = new RegExp(`(?:\\b(?:const|let|var)\\s+(?:${id}|\\{[^}]*\\b${id}\\b[^}]*\\})\\s*=\\s*(?:await\\s+)?(?:require|import)\\(\\s*|\\bimport\\s+(?:${id}|\\{[^}]*\\b${id}\\b[^}]*\\}|\\*\\s+as\\s+${id})\\s+from\\s+)["'\`]([^"'\`]+)["'\`]`);
+	const re = rustRegExp(String.raw`(?:\b(?:const|let|var)\s+(?:${id}|\{[^}]*\b${id}\b[^}]*\})\s*=\s*(?:await\s+)?(?:require|import)\(\s*|\bimport\s+(?:${id}|\{[^}]*\b${id}\b[^}]*\}|\*\s+as\s+${id})\s+from\s+)["'\x60]([^"'\x60]+)["'\x60]`);
 	return re.exec(code)?.[1];
 }
 
@@ -328,7 +344,7 @@ export function rewriteTemplate(text: string, markdown: boolean, keep: readonly 
 	}
 	for (const [from, to] of keys()) {
 		if (keep.includes(from)) continue;
-		const key = new RegExp(`^(\\s*["']?)${from}(["']?\\s*:)`, "gm");
+		const key = rustRegExp(String.raw`(?m)^(\s*["']?)${from}(["']?\s*:)`, "g");
 		if (front.search(key) !== -1) {
 			front = front.replace(key, (_, before: string, after: string) => `${before}${to}${after}`);
 			changes.push(`${from} -> ${to}`);
@@ -368,7 +384,7 @@ function outsideCode(text: string, markdown: boolean, change: (part: string) => 
 		const end = nl === -1 ? text.length : nl + 1;
 		const line = text.slice(start, end);
 		start = end;
-		const trimmed = line.trimStart();
+		const trimmed = trimStart(line);
 		const marker = trimmed.startsWith("```") ? "```" : trimmed.startsWith("~~~") ? "~~~" : undefined;
 		if (fence === undefined && marker !== undefined) {
 			out += changeProse(prose, change);
@@ -400,7 +416,7 @@ export function rewriteData(text: string, keep: readonly string[] = []): [string
 	for (const [from, to] of keys()) {
 		if (keep.includes(from)) continue;
 		// Quoted (JSON), at the start of a line (YAML, JavaScript), or right after `{` or `,`.
-		const key = new RegExp(`(["'])${from}(["']\\s*:)|(^[ \\t]*|[{,][ \\t]*)${from}(\\s*:)`, "gm");
+		const key = rustRegExp(String.raw`(?m)(["'])${from}(["']\s*:)|(^[ \t]*|[{,][ \t]*)${from}(\s*:)`, "g");
 		if (out.search(key) !== -1) {
 			out = out.replace(key, (_, open?: string, close?: string, before?: string, after?: string) => `${open ?? ""}${before ?? ""}${to}${close ?? ""}${after ?? ""}`);
 			changes.push(`${from} -> ${to}`);
@@ -440,8 +456,15 @@ interface Style {
 	quoteKeys: boolean;
 }
 
+const PADDED = rustRegExp(String.raw`[(\[][ \t]+[^\s)\]]`, "g");
+const TIGHT = rustRegExp(String.raw`[(\[][^\s)\]]`, "g");
+const DANGLING = rustRegExp(String.raw`,[ \t]*\r?\n[ \t]*[}\]]`, "g");
+const CLOSED = rustRegExp(String.raw`[^\s,;{\[(][ \t]*\r?\n[ \t]*[}\]]`, "g");
+const BARE_KEY = rustRegExp(String.raw`[{,]\s*[A-Za-z_$][\w$]*\s*:`);
+const QUOTED_KEY = rustRegExp(String.raw`[{,]\s*["'][^"'\n]*["']\s*:`);
+
 function styleOf(text: string): Style {
-	const indents = lines(text).filter((l) => l.trim() !== "").map((l) => l.slice(0, l.length - l.trimStart().length)).filter((i) => i !== "");
+	const indents = lines(text).filter((l) => trim(l) !== "").map(indentOf).filter((i) => i !== "");
 	let indent = "  ";
 	if (indents.length && indents[0].startsWith("\t")) indent = "\t";
 	else if (indents.length) {
@@ -450,11 +473,11 @@ function styleOf(text: string): Style {
 		indent = " ".repeat(Math.min(8, Math.max(1, smallest)));
 	}
 	const count = (re: RegExp) => text.match(re)?.length ?? 0;
-	const padded = count(/[(\[][ \t]+[^\s)\]]/g) > count(/[(\[][^\s)\]]/g);
+	const padded = count(PADDED) > count(TIGHT);
 	// A closing bracket on its own line, after a comma or after a value (not after a statement's
 	// `;`, which ends a function body).
-	const dangle = count(/,[ \t]*\r?\n[ \t]*[}\]]/g) >= count(/[^\s,;{\[(][ \t]*\r?\n[ \t]*[}\]]/g);
-	const quoteKeys = !/[{,]\s*[A-Za-z_$][\w$]*\s*:/.test(text) && /[{,]\s*["'][^"'\n]*["']\s*:/.test(text);
+	const dangle = count(DANGLING) >= count(CLOSED);
+	const quoteKeys = !BARE_KEY.test(text) && QUOTED_KEY.test(text);
 	return { indent, padded, dangle, quoteKeys };
 }
 
@@ -510,18 +533,18 @@ function topLevelArgs(code: string): string[] {
 		} else if (c === "(" || c === "[" || c === "{") {
 			i = closingBracket(code, i) ?? code.length;
 		} else if (c === ",") {
-			parts.push(code.slice(start, i).trim());
+			parts.push(trim(code.slice(start, i)));
 			start = i + 1;
 		}
 		i++;
 	}
-	parts.push(code.slice(Math.min(start, code.length)).trim());
+	parts.push(trim(code.slice(Math.min(start, code.length))));
 	return parts.filter((p) => p !== "");
 }
 
 /** A JavaScript string literal's text (`"images"`, `'images'`), without escapes. */
 function stringLiteral(code: string): string | undefined {
-	const s = code.trim();
+	const s = trim(code);
 	const quote = s[0];
 	if ((quote !== "\"" && quote !== "'" && quote !== "`") || s.length < 2 || !s.endsWith(quote)) return undefined;
 	const inner = s.slice(1, -1);
@@ -531,13 +554,13 @@ function stringLiteral(code: string): string | undefined {
 
 /** `{ "src/static": "/", images: "images" }` as passthrough entries, if every key and value is written out (no variables or computed values). */
 function passthroughObject(code: string): Array<[string, string]> | undefined {
-	const s = code.trim();
+	const s = trim(code);
 	if (!s.startsWith("{") || !s.endsWith("}") || s.length < 2) return undefined;
 	const pairs: Array<[string, string]> = [];
 	for (const pair of topLevelArgs(s.slice(1, -1))) {
 		const colon = pair.indexOf(":");
 		if (colon === -1) return undefined;
-		const rawKey = pair.slice(0, colon).trim();
+		const rawKey = trim(pair.slice(0, colon));
 		const key = stringLiteral(rawKey) ?? (IDENTIFIER.test(rawKey) ? rawKey : undefined);
 		const value = stringLiteral(pair.slice(colon + 1));
 		if (key === undefined || value === undefined) return undefined;
@@ -546,9 +569,9 @@ function passthroughObject(code: string): Array<[string, string]> | undefined {
 	return pairs.length ? pairs : undefined;
 }
 
-const FUNCTION_EXPR = /^(?:async\s+)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/;
-const DECLARED = /\b(?:const|let|var|function|class|import)\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)/g;
-const DESTRUCTURED = /\b(?:const|let|var|import)\s*\{([^}]*)\}/g;
+const FUNCTION_EXPR = rustRegExp(String.raw`^(?:async\s+)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)`);
+const DECLARED = rustRegExp(String.raw`\b(?:const|let|var|function|class|import)\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)`, "g");
+const DESTRUCTURED = rustRegExp(String.raw`\b(?:const|let|var|import)\s*\{([^}]*)\}`, "g");
 
 /** The names a config declares (imports, requires, functions, variables), to tell a function that only uses its own arguments from one that needs something else in the file. */
 function declaredNames(text: string): Set<string> {
@@ -556,12 +579,65 @@ function declaredNames(text: string): Set<string> {
 	for (const c of text.matchAll(DECLARED)) names.add(c[1]);
 	for (const c of text.matchAll(DESTRUCTURED)) {
 		for (const part of c[1].split(",")) {
-			const name = (part.split(/[: ]/).reverse().find((w) => w.trim() !== "") ?? "").trim();
+			const name = trim(part.split(/[: ]/).reverse().find((w) => trim(w) !== "") ?? "");
 			if (name !== "") names.add(name);
 		}
 	}
 	names.add("eleventyConfig");
 	return names;
+}
+
+/**
+ * The names a function's parameters declare: `(value, { a, b } = {}, ...rest) =>` declares
+ * value, a, b and rest. A default value's names are what it reads, from the config
+ * (`format = dateFormat`), so they aren't the function's; 0.7 counted them, and moved such a
+ * function into the draft without the variable it needs.
+ */
+function parameterNames(head: string): Set<string> {
+	const names = new Set<string>();
+	const add = (text: string) => {
+		for (const word of text.split(/[^\p{Alphabetic}\p{N}_$]/u)) if (word !== "") names.add(word);
+	};
+	const open = head.indexOf("("), close = head.lastIndexOf(")");
+	// `name =>` and `function`, which has its parameters after the match.
+	if (open === -1 || close < open) {
+		add(head);
+		return names;
+	}
+	for (const param of topLevelArgs(head.slice(open + 1, close))) add(withoutDefaults(param));
+	return names;
+}
+
+/** A parameter without its default values (`{ a = 1, b } = {}` is `{ a, b }`). */
+function withoutDefaults(param: string): string {
+	let out = "";
+	// The depth of the brackets a default value is being skipped at, or -1.
+	let skipping = -1;
+	let depth = 0;
+	for (let i = 0; i < param.length; i++) {
+		const c = param[i];
+		if (c === "\"" || c === "'" || c === "`") {
+			let j = i + 1;
+			while (j < param.length && param[j] !== c) j += param[j] === "\\" ? 2 : 1;
+			if (skipping === -1) out += param.slice(i, j + 1);
+			i = j;
+		} else if (c === "{" || c === "[") {
+			depth++;
+			if (skipping === -1) out += c;
+		} else if (c === "}" || c === "]") {
+			if (skipping === depth) skipping = -1;
+			depth--;
+			if (skipping === -1) out += c;
+		} else if (c === "," && skipping === depth) {
+			skipping = -1;
+			out += c;
+		} else if (c === "=" && param[i + 1] !== ">" && skipping === -1) {
+			skipping = depth;
+		} else if (skipping === -1) {
+			out += c;
+		}
+	}
+	return out;
 }
 
 /**
@@ -573,9 +649,9 @@ function portableFunction(source: string, config: string, declared: ReadonlySet<
 	if (!FUNCTION_EXPR.test(source) || source.includes("this")) return undefined;
 	// Names the function declares itself (its parameters, its own variables) are fine.
 	const own = declaredNames(source);
-	const params = new Set((FUNCTION_EXPR.exec(source)?.[0] ?? "").split(/[^\p{Alphabetic}\p{N}_$]/u));
+	const params = parameterNames(FUNCTION_EXPR.exec(source)?.[0] ?? "");
 	const outside = declaredNames(config.replace(source, () => ""));
-	const uses = (name: string) => new RegExp(`(^|[^\\w$.])${escapeRegex(name)}([^\\w$]|$)`).test(source);
+	const uses = (name: string) => rustRegExp(String.raw`(^|[^\w$.])${escapeRegex(name)}([^\w$]|$)`).test(source);
 	const foreign = [...declared].some((n) => outside.has(n) && !own.has(n) && !params.has(n) && uses(n));
 	return foreign ? undefined : source;
 }
@@ -586,7 +662,7 @@ function reindent(source: string, fromIndent: string, toIndent: string): string 
 	let out = first;
 	for (const line of rest) {
 		out += "\n";
-		if (line.trim() !== "") out += toIndent + (line.startsWith(fromIndent) ? line.slice(fromIndent.length) : line.trimStart());
+		if (trim(line) !== "") out += toIndent + (line.startsWith(fromIndent) ? line.slice(fromIndent.length) : trimStart(line));
 	}
 	return out;
 }
@@ -603,7 +679,10 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 	// Filters and shortcodes moved as written: [name, function source].
 	const ported: Array<[string, string]> = [];
 	for (const c of code.matchAll(CALL)) {
-		const [whole, method, quoted, bare] = c;
+		const [whole, method, given, bare] = c;
+		// A template literal with `${...}` in it is worked out when the config runs, like a
+		// variable. 0.7 took its text for a name or a path (`passthrough: ["${dir}/img"]`).
+		const quoted = given !== undefined && whole[whole.length - given.length - 2] === "`" && given.includes("${") ? undefined : given;
 		const at = `${name}:${lineOf(c.index)}`;
 		const arg = quoted ?? bare ?? "...";
 		// The call's arguments, as written.
@@ -612,7 +691,7 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 		const args = close === undefined ? [] : topLevelArgs(text.slice(open + 1, close));
 		const before = text.slice(0, c.index);
 		const lastLine = before.slice(before.lastIndexOf("\n") + 1);
-		const callIndent = lastLine.slice(0, lastLine.length - lastLine.trimStart().length);
+		const callIndent = indentOf(lastLine);
 		const port = (): boolean => {
 			if (quoted === undefined || args.length !== 2) return false;
 			const source = portableFunction(args[1], text, declared);
@@ -718,7 +797,7 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 		: htmlEngine === undefined ? "From the Eleventy config's markdownTemplateEngine; HTML runs through Liquid first, Eleventy's default." : "From the Eleventy config's markdownTemplateEngine and htmlTemplateEngine.";
 	const listed = FORMATS.exec(code);
 	const formats = listed
-		? listed[1].split(",").map((f) => trimMatches(f.trim(), "\"'`")).filter((f) => f !== "" && f !== "11ty.js")
+		? listed[1].split(",").map((f) => trimMatches(trim(f), "\"'`")).filter((f) => f !== "" && f !== "11ty.js")
 		: [...extensions].sort(compareText).filter((e) => e !== "edge");
 	const quotedList = (items: readonly string[]) => styleList(style, items.map((i) => `"${i}"`));
 	const dirs: string[] = [];
@@ -771,7 +850,7 @@ function packageManager(dir: string, pkg: unknown): string {
 	return LOCKFILES.find(([, lockfiles]) => lockfiles.some((l) => isFile(path.join(dir, l))))?.[0] ?? "npm";
 }
 
-const ELEVENTY_COMMAND = /(?:\bnpx\s+(?:-y\s+)?)?(?:@11ty\/)?\beleventy\b((?:\s+--?[\w-]+(?:[= ](?:"[^"]*"|'[^']*'|[^\s&|;"-][^\s&|;"]*))?)*)/g;
+const ELEVENTY_COMMAND = rustRegExp(String.raw`(?:\bnpx\s+(?:-y\s+)?)?(?:@11ty/)?\beleventy\b((?:\s+--?[\w-]+(?:[= ](?:\x22[^\x22]*\x22|'[^']*'|[^\s&|;\x22-][^\s&|;\x22]*))?)*)`, "g");
 
 /** An npm script with ssqch's commands for Eleventy's (`eleventy --serve` is `ssqch serve`), and the flags it couldn't carry over. */
 export function rewriteScript(script: string, names: readonly string[]): [string, string[]] {
@@ -780,7 +859,7 @@ export function rewriteScript(script: string, names: readonly string[]): [string
 		if (!isEleventyCommand(script, start, start + whole.length - given.length, names)) return whole;
 		let command = "build";
 		const flags: string[] = [];
-		const parts = given.split(/\s+/).filter((p) => p !== "");
+		const parts = splitWhitespace(given);
 		for (let i = 0; i < parts.length; i++) {
 			const part = parts[i];
 			const eq = part.indexOf("=");
@@ -818,7 +897,7 @@ function isEleventyCommand(script: string, start: number, wordEnd: number, names
 	if (partOfName(lastChar(script.slice(0, start))) || partOfName(firstChar(script.slice(wordEnd)))) return false;
 	// The words of this command before the match, after any `NAME=value` settings.
 	const command = script.slice(0, start).split(/[&|;]/).pop() ?? "";
-	const all = command.split(/\s+/).filter((w) => w !== "");
+	const all = splitWhitespace(command);
 	let skip = 0;
 	while (skip < all.length && all[skip].includes("=") && !all[skip].startsWith("-")) skip++;
 	const words = all.slice(skip);
@@ -841,6 +920,8 @@ function packageFiles(dir: string, plan: Plan): void {
 		return;
 	}
 	const root: Data = isPlainObject(pkg) ? pkg : {};
+	// The file is changed where it changes, and kept as it's written everywhere else.
+	const edits = new JsonText(text);
 	const version = VERSION;
 	const changes: string[] = [];
 	// The dependency: Eleventy's goes, and ssqch is a dev dependency (it builds the site; the site
@@ -852,19 +933,26 @@ function packageFiles(dir: string, plan: Plan): void {
 		if (!isPlainObject(deps)) continue;
 		if (Object.hasOwn(deps, "@11ty/eleventy")) {
 			delete deps["@11ty/eleventy"];
+			edits.remove([section], "@11ty/eleventy");
 			removed = true;
 		}
-		if (Object.keys(deps).length === 0 && section === "dependencies") delete root[section];
+		if (Object.keys(deps).length === 0 && section === "dependencies") {
+			delete root[section];
+			edits.remove([], section);
+		}
 	}
 	if (removed) {
 		if (hasSsqch) {
 			changes.push("@11ty/eleventy removed (ssqch is already there)");
 		} else {
-			if (!Object.hasOwn(root, "devDependencies")) root.devDependencies = {};
-			const dev = root.devDependencies;
-			if (isPlainObject(dev)) {
-				dev.ssqch = version;
-				root.devDependencies = Object.fromEntries(Object.entries(dev).sort(([a], [b]) => compareText(a, b)));
+			const pinned = JSON.stringify(version);
+			if (!Object.hasOwn(root, "devDependencies")) {
+				root.devDependencies = { ssqch: version };
+				edits.insert([], "devDependencies", edits.object([["ssqch", pinned]], 1));
+			} else if (isPlainObject(root.devDependencies)) {
+				root.devDependencies.ssqch = version;
+				// In its place in the sorted list, leaving the others where they are.
+				edits.insert(["devDependencies"], "ssqch", pinned, (other) => compareText(other, "ssqch") > 0);
 			}
 			changes.push(`@11ty/eleventy -> ssqch ${version} in devDependencies`);
 		}
@@ -881,6 +969,7 @@ function packageFiles(dir: string, plan: Plan): void {
 			const [rewritten, unknown] = rewriteScript(script, names);
 			if (rewritten !== script) {
 				scripts[name] = rewritten;
+				edits.replace(["scripts", name], JSON.stringify(rewritten));
 				changed = true;
 			}
 			if (unknown.length) unknownFlags.push(`the \`${name}\` script's ${flagsAre(unknown)}`);
@@ -896,6 +985,7 @@ function packageFiles(dir: string, plan: Plan): void {
 			const [rewritten, unknown] = rewriteScript(task.command, names);
 			if (rewritten !== task.command) {
 				task.command = rewritten;
+				edits.replace(["wireit", name, "command"], JSON.stringify(rewritten));
 				changed = true;
 			}
 			if (unknown.length) unknownFlags.push(`wireit's \`${name}\` command's ${flagsAre(unknown)}`);
@@ -904,19 +994,7 @@ function packageFiles(dir: string, plan: Plan): void {
 	}
 	for (const what of unknownFlags) plan.byHand.push(["package.json", what]);
 	const edited = changes.length > 0;
-	if (edited) {
-		// Written the way npm writes it: the file's own indentation, and its last line break.
-		const second = lines(text)[1];
-		const lead = second === undefined ? "" : second.slice(0, second.length - second.trimStart().length);
-		const indent = lead === "" ? "  " : lead;
-		// Line breaks inside strings are escaped, so each line's leading spaces are indentation.
-		let json = JSON.stringify(root, null, 2).split("\n").map((line) => {
-			const spaces = line.length - line.replace(/^ +/, "").length;
-			return indent.repeat(Math.floor(spaces / 2)) + line.slice(spaces);
-		}).join("\n");
-		if (text.endsWith("\n")) json += "\n";
-		plan.edits.push(["package.json", changes, json]);
-	}
+	if (edited) plan.edits.push(["package.json", changes, edits.text]);
 	// Lockfiles: the package manager's needs updating, another one's is stale.
 	const pm = packageManager(dir, pkg);
 	for (const [manager, lockfiles] of LOCKFILES) {
@@ -941,16 +1019,16 @@ function waitsForReleaseAge(dir: string, pkg: unknown): boolean {
 	const major = field?.startsWith("pnpm@") ? field.slice(5).split(".")[0] : undefined;
 	if (major !== undefined && /^\+?\d+$/.test(major) && Number(major) <= 0xffff_ffff && Number(major) < 11) return false;
 	const workspace = lines(readUtf8(path.join(dir, "pnpm-workspace.yaml")) ?? "");
-	const excluded = workspace.some((l) => trimMatches(l.trimStart().replace(/^-+/, "").trim(), "'\"").split("@")[0] === "ssqch");
-	const off = workspace.some((l) => l.trim().replaceAll(" ", "") === "minimumReleaseAge:0");
+	const excluded = workspace.some((l) => trimMatches(trim(trimStart(l).replace(/^-+/, "")), "'\"").split("@")[0] === "ssqch");
+	const off = workspace.some((l) => trim(l).replaceAll(" ", "") === "minimumReleaseAge:0");
 	return !excluded && !off;
 }
 
 // ---- Zola ----------------------------------------------------------------------------------
 
-const TERA_CALLS = /\b(get_url|get_section|get_page|get_taxonomy|get_taxonomy_url|get_image_metadata|resize_image|load_data|trans|get_hash)\s*\(/g;
-const NAMED_ARGUMENT = /\|\s*\w+\(\s*\w+\s*=/g;
-const SHORTCODE_CALL = /\{[{%]\s*([a-z_][a-z0-9_]*)\s*\(/g;
+const TERA_CALLS = rustRegExp(String.raw`\b(get_url|get_section|get_page|get_taxonomy|get_taxonomy_url|get_image_metadata|resize_image|load_data|trans|get_hash)\s*\(`, "g");
+const NAMED_ARGUMENT = rustRegExp(String.raw`\|\s*\w+\(\s*\w+\s*=`, "g");
+const SHORTCODE_CALL = rustRegExp(String.raw`\{[{%]\s*([a-z_][a-z0-9_]*)\s*\(`, "g");
 
 /** A Zola page's front matter with ssqch's names: `tags` out of `[taxonomies]` to the top level, and `path` as a `permalink`. */
 export function rewriteZolaFrontMatter(text: string): [string, string[]] {
@@ -966,20 +1044,20 @@ export function rewriteZolaFrontMatter(text: string): [string, string[]] {
 	let table = "";
 	for (let i = 0; i < all.length; i++) {
 		const line = all[i];
-		const trimmed = line.trim();
+		const trimmed = trim(line);
 		if (trimmed.startsWith("[") && !trimmed.startsWith("[[") && trimmed.endsWith("]")) {
-			table = trimMatches(trimmed, "[]").trim();
+			table = trim(trimMatches(trimmed, "[]"));
 			tables.push(line);
-		} else if (table === "taxonomies" && trimmed.startsWith("tags") && trimmed.slice(4).trimStart().startsWith("=")) {
+		} else if (table === "taxonomies" && trimmed.startsWith("tags") && trimStart(trimmed.slice(4)).startsWith("=")) {
 			// The array can run over several lines.
 			let value = line;
 			while (occurrences(value, "[") > occurrences(value, "]") && i + 1 < all.length) {
 				i++;
 				value += newline + all[i];
 			}
-			tags.push(value.trimStart());
-		} else if (table === "" && trimmed.startsWith("path") && trimmed.slice(4).trimStart().startsWith("=")) {
-			const value = trimmed.slice(4).trimStart().replace(/^=+/, "").trim();
+			tags.push(trimStart(value));
+		} else if (table === "" && trimmed.startsWith("path") && trimStart(trimmed.slice(4)).startsWith("=")) {
+			const value = trim(trimStart(trimmed.slice(4)).replace(/^=+/, ""));
 			const quote = value[0] === "\"" || value[0] === "'" ? value[0] : undefined;
 			const close = quote === undefined ? -1 : value.indexOf(quote, 1);
 			if (close !== -1) {
@@ -1000,17 +1078,17 @@ export function rewriteZolaFrontMatter(text: string): [string, string[]] {
 		// Above the tables, after the last line that isn't blank.
 		let at = 0;
 		for (let k = top.length - 1; k >= 0; k--) {
-			if (top[k].trim() !== "") { at = k + 1; break; }
+			if (trim(top[k]) !== "") { at = k + 1; break; }
 		}
 		top.splice(at, 0, ...tags);
 		// A `[taxonomies]` table with nothing left in it goes too.
-		const header = tables.findIndex((l) => l.trim() === "[taxonomies]");
+		const header = tables.findIndex((l) => trim(l) === "[taxonomies]");
 		if (header !== -1) {
-			let next = tables.findIndex((l, k) => k > header && l.trim().startsWith("["));
+			let next = tables.findIndex((l, k) => k > header && trim(l).startsWith("["));
 			if (next === -1) next = tables.length;
-			if (tables.slice(header + 1, next).every((l) => l.trim() === "")) {
+			if (tables.slice(header + 1, next).every((l) => trim(l) === "")) {
 				tables.splice(header, next - header);
-				while (top.length && top[top.length - 1].trim() === "" && !tables.length) top.pop();
+				while (top.length && trim(top[top.length - 1]) === "" && !tables.length) top.pop();
 			}
 		}
 	}
@@ -1026,13 +1104,25 @@ function sortedKeys(value: unknown): unknown {
 	return value;
 }
 
+/**
+ * A TOML error as 0.7's TOML library wrote it: where, the line with a caret under the spot, and
+ * what's wrong (in smol-toml's words), then a line break.
+ */
+export function tomlError(e: unknown, text: string): string {
+	if (!(e instanceof TomlError)) return tomlReason(e);
+	const what = e.message.split("\n")[0].replace(/^Invalid TOML document: /, "");
+	const gutter = " ".repeat(String(e.line).length + 1);
+	const content = text.split("\n")[e.line - 1] ?? "";
+	return `TOML parse error at line ${e.line}, column ${e.column}\n${gutter}|\n${e.line} | ${content}\n${gutter}|${" ".repeat(e.column)}^\n${what}\n`;
+}
+
 /** The plan for the Zola site in `dir`. */
 export function zola(dir: string): Plan {
 	const configPath = path.join(dir, "config.toml");
 	if (!isFile(configPath)) fail(`there's no config.toml in ${dir}: is this the Zola site's folder?`);
 	const configText = readStrict(configPath);
 	let config: Data = {};
-	try { config = readToml(configText) as Data; } catch (e) { fail(`config.toml: ${tomlReason(e)}`); }
+	try { config = readToml(configText) as Data; } catch (e) { fail(`config.toml: ${tomlError(e, configText)}`); }
 	const plan: Plan = { from: "Zola", renames: [], edits: [], newFiles: [], byHand: [] };
 	const sections: string[] = [];
 	const shortcodes = new Set<string>();
