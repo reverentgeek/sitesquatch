@@ -14,9 +14,9 @@
 #   SSQCH_VERSION            another release (0.8.0)
 #   SSQCH_DOWNLOAD_URL       where the archives are, instead of the release's page on GitHub
 #
-# The executable is Node.js with ssqch inside it; it unpacks itself on its first run (see
-# `ssqch docs standalone`). With Node 22.18 or newer, `npm install --save-dev ssqch` in a site
-# is the other way.
+# The executable is Node.js with ssqch inside it; it unpacks itself on its first run, into
+# ~/Library/Caches/ssqch on macOS or ~/.cache/ssqch on Linux (SSQCH_UNPACK_DIR chooses another
+# folder). With Node 22.18 or newer, `npm install --save-dev ssqch` in a site is the other way.
 set -eu
 
 REPO=reverentgeek/sitesquatch

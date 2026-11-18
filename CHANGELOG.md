@@ -149,8 +149,24 @@ the release.
   groups written `(?P<name>...)` still work, but Rust's own syntax JavaScript doesn't have
   (`(?x)`, `\A`, `\z`, an escaped `-` outside `[...]`) is refused with JavaScript's words. `\d` and
   `\w` are ASCII in JavaScript; write `\p{Nd}` or `\p{L}` for other scripts' digits and letters.
+- **How ssqch is installed.** The npm package is ssqch itself, JavaScript that runs on Node 22.18
+  or newer, with sharp as its one dependency; the `@ssqch/<platform>` packages are gone, so a
+  `pnpm-workspace.yaml` that lists them under `minimumReleaseAgeExclude` needs only `ssqch`. The
+  standalone executable (the installers, Homebrew, `setup-ssqch`, the release archives) is Node
+  26 with the package inside it: 174 MB, where 0.7's binary was 29 MB, and it unpacks itself on
+  its first run into a folder of its own (`~/Library/Caches/ssqch` on macOS, `%LOCALAPPDATA%\ssqch`
+  on Windows, `~/.cache/ssqch` on Linux; `SSQCH_UNPACK_DIR` chooses another). The Linux
+  executable is Node's own build, so it needs glibc 2.28 or newer: on Alpine, where 0.7's static
+  binary ran, install Node and the npm package. Its archive is
+  `ssqch-x86_64-unknown-linux-gnu.tar.gz` (0.7's was `-musl`). The installer script puts `ssqch`
+  in `~/.local/bin`, or replaces it in `~/.cargo/bin` where 0.7's put it. `cargo install ssqch`
+  and `cargo binstall ssqch` end at 0.7.
 
 ### Changed
+
+- **`import "ssqch"` works from plain Node too.** The npm package's `exports` map names ssqch's
+  own modules, which a config, a test or a script can import, where 0.7's package had stubs that
+  said to build with ssqch.
 
 - `ssqch/minify` and `ssqch/sass` are 0.7's minifier and 0.7's Sass compiler (grass 0.13.4),
   built as WebAssembly, so pages and stylesheets come out as 0.7 wrote them. A Sass error's last

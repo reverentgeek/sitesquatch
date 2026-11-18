@@ -159,8 +159,8 @@ until 0.8 ships.
         filter stays random.
   - [ ] A cache of highlighted fences on disk (`.cache/ssqch/`, keyed by the `.wasm`'s inputs):
         a process's first build of the blog spends about 0.3 s compiling syntect's grammars.
-  - [ ] Stage 8 ships `wasm/markdown.wasm` in the package (the loader finds it next to `src/`),
-        and stage 9 rewrites the README's Edge and Jinja sections, which describe 0.7.
+  - [x] Stage 8 ships `wasm/markdown.wasm` in the package (the loader finds it next to `src/`).
+  - [ ] Stage 9 rewrites the README's Edge and Jinja sections, which describe 0.7.
 - [ ] **Stage 4, checks and tools:** schemas and `types`, links, `diff`, `inspect`, footprint and
       budgets, `docs`, `new`, `init` and the starters, `capabilities`.
   - [x] Content schemas (`schema.ts`), `inspect`, `diff` and footprint with budgets (2026-11-18),
@@ -246,6 +246,31 @@ until 0.8 ships.
 - [ ] **Stage 8, distribution:** the compiled, bundled npm package (sharp its only dependency), the
       standalone executable (D7) for Homebrew and the install script, `setup-ssqch`, Netlify; retire
       `dist` and the binary-only release steps; CI installs the packed tarball.
+  - [x] The npm package (`scripts/build.ts`), the standalone executable (`scripts/build-sea.ts`,
+        D7 decided: Node's single executable, unpacking the package on its first run), and their
+        check (`scripts/check-package.ts`), which builds every example, a starter and a site with
+        images, Markdown, minify, Sass and a Rust plugin to the source's bytes, and runs the
+        oracle's list (2026-11-18). `release.yml` written by hand, with `notarize.yml`,
+        `check-ci.yml` and `publish-npm.yml` for one package; the installers
+        (`scripts/install.sh`, `install.ps1`); CI's `package` and `standalone` jobs. dist, the npm
+        wrapper and the platform packages are gone. `docs/node-migration.md` ("Stage 8") has the
+        numbers.
+  - [ ] Watch the first runs on Linux and Windows: the executable and the package were checked on
+        macOS only. Windows: whether `--build-sea` leaves Node's Authenticode signature invalid
+        (then strip it before building, or sign), and long paths in the unpack folder.
+  - [ ] A pull request that touches `release.yml` (it runs the release unsigned) before the first
+        tag, and the first notarization of a Node executable: the entitlements in
+        `scripts/sea-entitlements.plist` are Node's own, untried with the notary service here.
+  - [ ] `setup-ssqch` for 0.8: the branch `ssqch-0.8` in `../setup-ssqch` (Linux's target is
+        `x86_64-unknown-linux-gnu` from 0.8), merged and tagged once 0.8.0 is out.
+  - [ ] Release the last 0.7.x from `release/0.7` before 0.8.0 (`docs/node-migration.md`, "One
+        last 0.7.x"), then deprecate the `@ssqch/<platform>` packages after 0.8.0 (`AGENTS.md`).
+  - [ ] Stage 9: the README's Install, Netlify and GitHub Pages sections, and `ssqch docs
+        standalone` (the unpack folder, `SSQCH_UNPACK_DIR`, glibc), from the draft in the stage's
+        report; `import "ssqch"` from plain Node now works (the README says it throws).
+  - [ ] A Linux arm64 executable (`ubuntu-24.04-arm`) and a musl one (Node's unofficial musl
+        builds), so Alpine and ARM servers have the executable too. The npm package covers both
+        today.
 - [ ] **Stage 9, Blog:** move the blog, then the examples, starters and trial ports; the README,
       trailheads, changelog and benchmarks; `AGENTS.md` for the TypeScript codebase. Release 0.8.0.
 

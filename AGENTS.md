@@ -52,9 +52,9 @@ change affects it.
   again, or a deliberate difference recorded in the test.
 - CI (`.github/workflows/ci.yml`) runs the tests on Linux, macOS and Windows (with AVIF on
   Linux only), and `cargo clippy --workspace --all-targets --features ssqch/avif -- -D
-  warnings`. Keep clippy clean. Pull requests don't build the release binaries
-  (`pr-run-mode = "plan"`); version tags do. When a pull request changes how releases are
-  built, set `pr-run-mode = "upload"` in it (and run `dist generate`) to build them there. The code isn't formatted with rustfmt (it uses long lines), so don't run `cargo fmt`.
+  warnings`. Keep clippy clean. It also builds the npm package and the standalone executable
+  and checks them (`package` and `standalone`, see "Releasing"). A pull request that changes
+  the release's own files runs `release.yml` up to the release, unsigned. The code isn't formatted with rustfmt (it uses long lines), so don't run `cargo fmt`.
 
 ## The Node implementation (`packages/ssqch/`)
 
@@ -143,73 +143,80 @@ Run from `packages/ssqch/` unless it says otherwise.
 
 ## Releasing
 
-Releases are built by [`dist`](https://opensource.axo.dev/cargo-dist/), configured in
-`dist-workspace.toml`. `.github/workflows/release.yml` is generated: change the config and run
-`dist generate` instead of editing it. `dist plan` shows what a release would contain.
+A release is ssqch's npm package and its standalone executable, from `packages/ssqch/`, built
+and published by `.github/workflows/release.yml` (written by hand) from a version tag. dist,
+which built the Rust binaries, is retired, and so are the npm wrapper and its platform packages
+(`npm/ssqch`, `@ssqch/<platform>`, `scripts/npm-packages.mjs`): the package is JavaScript, the
+same on every platform. `docs/node-migration.md` ("Stage 8") says why each piece is as it is.
+
+- **The npm package:** `node scripts/build.ts` in `packages/ssqch/` builds it in `dist/` (esbuild
+  bundles the code and the template libraries; sharp is the one dependency), and `npm pack
+  ./dist` packs it. It's private until `--release`, which the release workflow passes.
+- **The standalone executable:** `node scripts/build-sea.ts` builds `dist-sea/ssqch` for the
+  machine it runs on: Node's single executable, with the installed package inside it, which it
+  unpacks on its first run (`scripts/sea-main.ts`). The Node that runs the script is the Node
+  inside, so it needs Node 25.5 or newer; the release workflow pins it (`SEA_NODE`). On macOS
+  it's signed ad hoc, or with `--sign <identity>` for a release.
+- **The check:** `node scripts/check-package.ts` (or `--tarball <tgz>`, or `--exe <ssqch>`)
+  installs it in an empty folder outside the repository, builds every example, a starter, and a
+  site with images, Markdown, minify, Sass and the example Rust plugin, and compares the output
+  with the source's, byte for byte. `--oracle` runs the oracle's list with it too. CI runs it on
+  Linux, macOS and Windows; the release runs it on each executable and each tarball.
+- **The installers** are `scripts/install.sh` and `scripts/install.ps1`; `scripts/release-files.mjs`
+  writes each release's copy (`ssqch-installer.sh`, `.ps1`) with its version in it, the
+  Homebrew formula and `sha256.sum`.
+
+To release:
 
 1. In `CHANGELOG.md`, rename `## Unreleased` to `## <version> - <YYYY-MM-DD>` (semver; while
-   0.x, a breaking change bumps the minor version).
-2. Set `[workspace.package] version` in `Cargo.toml` to match, along with the `version` of each
-   `sitesquatch*` entry in `[workspace.dependencies]`, and run `cargo build` to update
-   `Cargo.lock`. Update the pinned versions in the README too (`download/v<version>`, the
-   `setup-ssqch` example's `version:`, and the Netlify section's `ssqch@<version>` and
+   0.x, a breaking change bumps the minor version). The workflow refuses a tag whose version
+   has no section, which becomes the release's notes.
+2. Set `version` in `packages/ssqch/package.json` to match (and run `npm install` there, so
+   `package-lock.json` has it). Update the pinned versions in the README too (`download/v<version>`,
+   the `setup-ssqch` example's `version:`, and the Netlify section's `ssqch@<version>` and
    `SSQCH_VERSION`).
 3. Commit and push to `main`.
-4. Wait for CI to pass on that commit, then tag and push: `git tag v<version> && git push
-   origin v<version>`. The release workflow refuses a tag that doesn't match a package
-   version, builds the archives, smoke-tests and notarizes them, waits for CI to pass on the
-   tagged commit (`.github/workflows/check-ci.yml`), and only then publishes the GitHub
-   release with that version's changelog section as its notes. If CI fails, nothing is
-   published: fix it and tag the fixed commit with the same version (delete the old tag
-   first). The CI check runs after the builds on purpose: as a plan job, a failure made the
-   builds skip, and dist publishes when builds are skipped (an empty release marked Latest,
-   which is what happened to 0.3.4). After the GitHub release, the same workflow publishes
-   the Homebrew formula and the npm packages (`.github/workflows/publish-npm.yml`).
-5. Publish the crates from the tag: `cargo publish --workspace --locked`. It publishes them in
-   dependency order, using the crates.io token in `~/.cargo/credentials.toml`.
+4. Wait for CI to pass on that commit, then tag and push: `git tag v<version> && git push origin
+   v<version>`. The release workflow refuses a tag that isn't the package's version; builds the
+   package and the four executables (macOS arm64 and x64, Linux x64, Windows x64), signing the
+   macOS ones; smoke-tests each executable on its own platform and the tarball on Node 22.18,
+   24 and 26 on all three systems (`check-package.ts`, with the oracle's list); notarizes the
+   macOS executables (`notarize.yml`); waits for CI to pass on the tagged commit
+   (`check-ci.yml`); and only then publishes the GitHub release, with the archives, the
+   installers, the npm tarball and checksums. Then it publishes the package to npm
+   (`publish-npm.yml`) and the formula to `reverentgeek/homebrew-tap` (not for a prerelease,
+   which goes to npm's `next` tag). If anything fails, nothing is published: fix it and tag the
+   fixed commit with the same version (delete the old tag first). The job that publishes names
+   every job before it in `needs` and has no `always()`, on purpose: dist's published when its
+   builds were skipped, and a red commit got an empty release marked Latest (0.3.4). Keep it so.
+
+The 0.7 line is released from `release/0.7` (cut before these workflows), with dist, as it
+always was; see "One last 0.7.x" in `docs/node-migration.md`. The crates end at 0.7: nothing
+is published to crates.io from `main`.
 
 ### npm
 
-The `ssqch` npm package is a small Node wrapper (`npm/ssqch/bin/ssqch.js`) that runs the binary
-from one of its optional dependencies, `@ssqch/<platform>-<arch>`, one per release binary
-(`npm/ssqch/platforms.json`). `scripts/npm-packages.mjs` builds all five from the release
-archives, the smoke test installs each platform's package with npm, and `publish-npm.yml`
-publishes them with npm's trusted publishing (OIDC, no token), which adds provenance. It publishes the wrapper only once the registry serves all four platform packages (npm takes minutes to process a binary, and until then `ssqch` would install without one). A version
-that's already on npm is skipped, so a failed run can be rerun. A new target means a row in
-`platforms.json` and in the smoke test's matrix, and a first publish by hand.
+`ssqch` is one package, published with npm's trusted publishing (OIDC, no token), which adds
+provenance. Its trusted publisher on npmjs.com is GitHub Actions, repository
+`reverentgeek/sitesquatch`, workflow `release.yml` (npm checks the calling workflow, not
+`publish-npm.yml`), no environment; it's set already. A trusted publisher that hasn't
+published within two days of being added expires; if it has, revoke it and add it again
+shortly before the release: `npm trust github ssqch --repo reverentgeek/sitesquatch --file
+release.yml --allow-publish --yes`, and `npm trust list ssqch` checks it. In the package's
+settings, publishing requires two-factor authentication and disallows tokens. A version that's
+already on npm is skipped, so a failed run can be rerun.
 
-Trusted publishing is set per package on npmjs.com, and only for a package that exists, so a
-new package is published by hand once:
-
-1. Create the `@ssqch` organization on npmjs.com (free, for public packages), and sign in:
-   `npm login`.
-2. Build the packages from a release:
-   `gh release download v<version> -p 'ssqch-*.tar.gz' -p 'ssqch-*.zip' -D /tmp/ssqch-archives`,
-   then `node scripts/npm-packages.mjs --archives /tmp/ssqch-archives --out /tmp/ssqch-npm
-   --version <version>`.
-3. Publish the platform packages first, then the wrapper: in each of
-   `/tmp/ssqch-npm/{darwin-arm64,darwin-x64,linux-x64,win32-x64,ssqch}`, run
-   `npm publish --access public`. A new package takes a few minutes to appear: until then the
-   registry answers 404, npm installs `ssqch` without its platform package (it skips an
-   optional dependency it can't download), and each package lists a `0.0.0-stage`
-   placeholder version, which stays (`latest` is the real one).
-4. Add a trusted publisher to each package: GitHub Actions, repository
-   `reverentgeek/sitesquatch`, workflow `release.yml` (npm checks the calling workflow, not
-   `publish-npm.yml`), no environment. `npm trust` does it from the terminal (each call signs
-   in with 2FA in the browser):
-   `for p in ssqch @ssqch/darwin-arm64 @ssqch/darwin-x64 @ssqch/linux-x64 @ssqch/win32-x64; do
-   npm trust github "$p" --repo reverentgeek/sitesquatch --file release.yml --allow-publish
-   --yes; done`, and `npm trust list <package>` checks it. A trusted publisher that hasn't
-   published within two days of being added expires (revoke it and add it again), so add them
-   shortly before a release.
-5. In each package's settings on npmjs.com, set publishing access to require two-factor
-   authentication and disallow tokens. Trusted publishing still works; a token doesn't.
+The `@ssqch/<platform>` packages get no new versions. After 0.8.0, deprecate them so an old
+lockfile says why: `npm deprecate '@ssqch/darwin-arm64@*' "ssqch 0.8 is JavaScript and needs no
+platform package"` (and the same for `darwin-x64`, `linux-x64` and `win32-x64`).
 
 ### macOS signing and notarization
 
-dist signs the macOS binaries (`macos-sign`, hardened runtime from `.github/build-setup.yml`),
-and `.github/workflows/notarize.yml` notarizes them before a release is published. They need
-these repository secrets (`gh secret set NAME < file`):
+The release workflow signs the macOS executables (`build-sea.ts --sign`, with the hardened
+runtime and `packages/ssqch/scripts/sea-entitlements.plist`, which V8 needs) with a certificate
+it imports into a keychain of its own, and `.github/workflows/notarize.yml` notarizes them
+before a release is published. They need these repository secrets (`gh secret set NAME <
+file`):
 
 - `CODESIGN_CERTIFICATE`: a Developer ID Application certificate exported from Keychain Access
   as a `.p12`, base64-encoded (`base64 -i cert.p12`).
@@ -220,13 +227,13 @@ these repository secrets (`gh secret set NAME < file`):
   app-specific password for it (appleid.apple.com, Sign-In and Security), and the 10-character
   Developer Team ID. These are the same names as in `reverentgeek/metermaid`, whose
   `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` and `APPLE_SIGNING_IDENTITY` hold the
-  same values as the three `CODESIGN_*` secrets here (dist needs those names).
+  same values as the three `CODESIGN_*` secrets here.
 - `HOMEBREW_TAP_TOKEN`: a fine-grained personal access token with Contents read and write
-  access to `reverentgeek/homebrew-tap`. dist's `publish-homebrew-formula` job uses it to push
-  `Formula/ssqch.rb` after each release.
+  access to `reverentgeek/homebrew-tap`. The `homebrew` job uses it to push `Formula/ssqch.rb`
+  after each release.
 
-Without them, the release builds fail: GitHub passes a missing secret as an empty string, and
-dist tries to sign with it.
+Without them, a tagged release fails before it publishes anything: the signing step checks
+that each secret is set.
 
 ## Conventions
 
