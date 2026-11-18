@@ -461,8 +461,9 @@ clear; otherwise warn.
       `eleventyComputed`). Evaluate computed values that read `collections` after collections are
       built (Eleventy passes collections built without the computed values), or at least an error
       that says computed can't see them.
-- [ ] **`computed.page` is dropped without a word** (osg #5): `site.ts:760` sets `page` after
-      `computed` runs. Make it an error that says `page` is built in and names another key.
+- [x] **`computed.page` is dropped without a word** (osg #5; done 2026-11-18): `site.ts:760` sets
+      `page` after `computed` runs. Make it an error that says `page` is built in and names another
+      key.
 - [x] **`page.headings` read before the page renders is `[]` for good** (ex #2; fixed 2026-11-18):
       `pageWithBody()` (`site.ts:864-872`) memoizes `headings(contentOf(page) ?? "")` with `found
       ??=`, so a `computed` value that reads it caches the empty list, and every table of contents

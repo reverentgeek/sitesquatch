@@ -13,6 +13,12 @@ where that version matches.
 
 Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
+### Breaking
+
+- A `computed` value named `page` is an error (`` `page` in computed isn't applied, because `page`
+  is ssqch's ``). It was thrown away without a word, since ssqch sets `page` after `computed` runs.
+  A site that has one: give it another name (`computed: { meta: ... }`) and use that in templates.
+
 ### Faster
 
 - Liquid's `where` and `reject` don't run liquidjs' generator and new scope for every item when

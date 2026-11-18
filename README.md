@@ -797,7 +797,7 @@ A page's data is a cascade. From the lowest level to the highest:
 3. **Directory data:** `posts/posts.json` (or `.yaml`, `.toml`, `posts.data.js`) applies to everything in `posts/` and below it. The outermost folder goes first.
 4. **The page's data file:** `pine.json` or `pine.data.js` next to `pine.md`.
 5. **Front matter.**
-6. **`computed`:** worked out last, from everything above.
+6. **`computed`:** worked out last, from everything above. It can't set `layout` from the page's data (the layout is chosen first) or `page` (ssqch's own: a computed `page` is an error); both name the file.
 
 A higher level replaces what a lower one set. Objects merge key by key and lists are joined (a post's `tags` add to its folder's), unless `deepMerge` is off. `page` and `ssqch` are built in.
 

@@ -607,6 +607,10 @@ export class Site {
 				if (typeof computedLayout === "string" && !computedLayout.includes("{{") && !computedLayout.includes("{%") && !computedLayout.includes("<%")) own.layout = computedLayout;
 				else bail("`layout` in computed isn't applied, because the layout is chosen before computed runs. Set `layout` in the front matter or a data file");
 			}
+			// `page` is ssqch's (url, inputPath, date, headings), set after computed: a computed `page`
+			// would be thrown away, so it's refused (opensource.guide set one to give templates
+			// Jekyll's `page.title`, and nothing said it didn't take).
+			if (isPlainObject(own.computed) && Object.hasOwn(own.computed, "page")) bail("`page` in computed isn't applied, because `page` is ssqch's: its url, inputPath, date and headings. Give the value another name (`computed: { meta: ... }`); front matter is at the top level already (`title`, not `page.title`)");
 			// Layout chain; layout front matter sits below template data. `layout: ""`, like `false`
 			// and `null`, means no layout.
 			const chain: Layout[] = [];

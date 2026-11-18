@@ -181,6 +181,11 @@ export default {
 	w("src/articles/articles.data.js", "export default { computed: { layout: (data) => \"article\" } };\n");
 	r = ssqch(["build", "--root", d]);
 	assert.ok(!r.ok && r.log.includes("`layout` in computed isn't applied"), r.log);
+	// DELIBERATE (after 0.8.0): a computed `page` is refused too. It was thrown away without a word
+	// (`page` is set after computed runs), and opensource.guide lost time to it (osg #5).
+	w("src/articles/articles.data.js", "export default { computed: { page: (data) => ({ ...data.page, title: data.title }) } };\n");
+	r = ssqch(["build", "--root", d]);
+	assert.ok(!r.ok && r.log.includes("`page` in computed isn't applied, because `page` is ssqch's"), r.log);
 	w("src/articles/articles.data.js", "export default {};\n");
 	// A link to nothing is named, not skipped.
 	if (unix) {
