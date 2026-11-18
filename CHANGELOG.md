@@ -70,6 +70,9 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Fixed
 
+- An error that many pages hit at one spot (a broken include in a layout) shows that spot's lines
+  once, not up to three times, so a second, different error gets its own.
+
 - `ssqch/sass` finds an `@import`, `@use` or `@forward` that names its extension
   (`"primer-core/index.scss"`) in the load paths, as Dart Sass and Ruby Sass do; it looked only
   beside the importing file, so GitHub's primer, whose files all import that way, didn't compile.

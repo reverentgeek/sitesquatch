@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { ssqch, tempDir, write, read, exists, isFile } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, exists, isFile, project } from "../lib/ssqch.js";
 
 const unixOnly = { skip: process.platform === "win32" && "unix only" };
 
@@ -287,4 +287,21 @@ test("hooks_run_commands", unixOnly, () => {
 	w("ssqch.config.js", "export default { afterBuild: { cmd: \"x\" } };\n");
 	r = ssqch(["build", "--root", d, "-q"]);
 	assert.ok(!r.ok && r.log.includes("afterBuild: \"cmd\" isn't an option (use { run: \"command\" })"), r.log);
+});
+
+// expressjs.com (ex #11): a broken include in a layout failed 222 pages, and the error printed the
+// same lines three times. Each place is shown once, so a second, different one gets a frame too.
+test("each_error_location_is_shown_once", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\"] };\n",
+		"_includes/trail.njk": "{{ nope() }}\n",
+		"cedar.njk": "{% include \"trail.njk\" %}\n",
+		"old-growth.njk": "{% include \"trail.njk\" %}\n",
+		"ridge.njk": "{% include \"trail.njk\" %}\n",
+		"stump.njk": "{{ nah() }}\n",
+	});
+	const r = ssqch(["build", "--root", root]);
+	assert.ok(!r.ok);
+	assert.equal(r.log.split("--> _includes/trail.njk:1").length - 1, 1, r.log);
+	assert.match(r.log, /--> stump\.njk:1/);
 });

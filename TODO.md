@@ -687,7 +687,7 @@ trailhead.
       `ogImagePlugin({ render: (page) => element })`.
 - [ ] **`quiet` and `verbose` in `BuildEvent`** (ex #11; done 2026-11-18, and `SSQCH_QUIET` for
       build commands, not yet `serve.run`), and one code frame per distinct error location (a
-      222-page error printed the same frame three times).
+      222-page error printed the same frame three times; done 2026-11-18).
 - [ ] **Docs** (ex #12; `containers`, `pagination` and `data` done 2026-11-18): `ssqch docs
       containers`, `pagination` and `data` answer with a table row or a feature list instead of the
       explanation (add them to `docs_answer_for_every_name`); when `page.headings`, `page.excerpt`

@@ -324,7 +324,7 @@ export function fileLines(message: string, at: Locator): string {
 }
 
 /**
- * The lines an error points at, for up to three of its problems:
+ * The lines an error points at, for up to three of its problems, each place once:
  *
  *     --> src/index.edge:7
  *      5 | <h1>Guides</h1>
@@ -341,7 +341,8 @@ export function frames(e: unknown, fallback: string, at: Locator): string | unde
 	const found: string[] = [];
 	for (const problem of fromError(e, fallback, at)) {
 		const shown = frame(problem, at);
-		if (shown !== undefined) found.push(shown);
+		// Many pages that include one broken partial fail at the same spot: show it once.
+		if (shown !== undefined && !found.includes(shown)) found.push(shown);
 		if (found.length === 3) break;
 	}
 	return found.length ? found.join("\n\n") : undefined;
