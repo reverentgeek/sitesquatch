@@ -12,7 +12,8 @@
 //   lib/cli.js       the CLI, and lib/ssqch.js, lib/image.js, ...: the modules a config imports
 //                    (from src/exports/, so each has ssqch.d.ts's exports and no others)
 //   lib/chunk-*.js   the code they share, so a config's `ssqch` and the build's are one module
-//   wasm/, bundled/  the files ssqch reads beside its code, as they are in packages/ssqch
+//   wasm/, bundled/  the files ssqch reads beside its code, as they are in packages/ssqch, and in
+//                    bundled/ the README and the trailheads from the repository (src/bundled.ts)
 //   src/             the same for the files under src/ that aren't TypeScript (serve/live.js)
 //   types/           the types, one file a module, cut from ssqch.d.ts (the `exports` map)
 //
@@ -29,6 +30,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import type { Plugin } from "esbuild";
+import { FROM_REPOSITORY } from "../src/bundled.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const PACKAGE = path.dirname(here);
@@ -136,6 +138,12 @@ export async function buildPackage({ out, release = false, quiet = false }: { ou
 	// 404 page), where the rewritten `import.meta.url` looks for them.
 	copyTree(path.join(PACKAGE, "src"), path.join(out, "src"), (name) => !name.endsWith(".ts"));
 	copyTree(path.join(PACKAGE, "bundled"), path.join(out, "bundled"));
+	// The README and the trailheads are the repository's (src/bundled.ts says why).
+	for (const [rel, original] of FROM_REPOSITORY) {
+		const from = path.join(REPO, original);
+		if (fs.statSync(from).isDirectory()) copyTree(from, path.join(out, "bundled", rel));
+		else fs.copyFileSync(from, path.join(out, "bundled", rel));
+	}
 	fs.copyFileSync(path.join(REPO, "LICENSE"), path.join(out, "LICENSE"));
 	fs.copyFileSync(path.join(PACKAGE, "README.md"), path.join(out, "README.md"));
 	writeTypes(path.join(out, "types"));

@@ -1,5 +1,5 @@
 // `ssqch docs`: the documentation of the installed version, from the package. The README is
-// bundled (`bundled/README.md`), so an answer always matches the version, with no network and no
+// bundled (`bundled/README.md` in the package, the repository's README from the source), so an answer always matches the version, with no network and no
 // README on disk. `ssqch docs` alone is a card: every command, config option, template function
 // and module export, one line each. `ssqch docs <name>` prints the section that answers, found
 // by name (`base`, `imagePlugin`, `toc`), by another generator's word (`pathPrefix`, which says
