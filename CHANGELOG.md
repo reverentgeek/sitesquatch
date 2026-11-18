@@ -83,6 +83,9 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Fixed
 
+- Two passthrough sources copied to one file raced, so either could be written. The one listed
+  later is written every time, with a warning naming both when they differ.
+
 - `url` and `relative_url` on the url of a page with `permalink: false` printed `false` (a sitemap
   got `/false`). They print nothing, with one warning.
 

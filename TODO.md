@@ -488,7 +488,8 @@ clear; otherwise warn.
     they still sort by file time, which changes frozen output and wants its own change).
 - [x] **The `url` filter on a non-string** (a11y #16; done 2026-11-18: `false` prints nothing, with a
       warning): `false` from a `permalink: false` page printed `/false` in the sitemap.
-- [ ] **Two passthrough sources that write one file** (v8 #19): warn unless they're identical.
+- [x] **Two passthrough sources that write one file** (v8 #19; done 2026-11-18, and the later one
+      wins every time; they raced): warn unless they're identical.
 - [ ] **`minify()` shortens `checked="checked"` with `shortenAttributes: false`** (a11y #24): make
       it part of that option, or document that boolean attributes are always shortened.
 

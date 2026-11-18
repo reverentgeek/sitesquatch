@@ -909,6 +909,29 @@ interface CopyStats {
 	paths: string[];
 }
 
+/**
+ * Two sources copied to one file (two passthrough folders with a `favicon.ico` each, v8 #19) raced,
+ * so either could win. The one listed later wins, every time, and when they differ that's a
+ * warning naming both. Identical files are copied once. Changes `jobs` in place.
+ */
+function sameDestinations(jobs: CopyJob[], dirs: Dirs): void {
+	const at = new Map<string, number>();
+	const kept: CopyJob[] = [];
+	const same = (a: string, b: string) => {
+		if (realPath(a) === realPath(b)) return true;
+		const [x, y] = [fs.statSync(a), fs.statSync(b)];
+		return x.size === y.size && fs.readFileSync(a).equals(fs.readFileSync(b));
+	};
+	for (const job of jobs) {
+		const earlier = at.get(job[1]);
+		if (earlier === undefined) { at.set(job[1], kept.length); kept.push(job); continue; }
+		const [first] = kept[earlier];
+		if (!same(first, job[0])) warn(warning("passthrough", `${shown(dirs.root, first)} and ${shown(dirs.root, job[0])} are both copied to ${shown(dirs.root, job[1])}, and they differ: the one listed later (${shown(dirs.root, job[0])}) is the one written. Remove one, or give one another \`to\``, { file: shown(dirs.root, job[0]) }));
+		kept[earlier] = job;
+	}
+	jobs.splice(0, jobs.length, ...kept);
+}
+
 async function passthroughCopy(config: Config, dirs: Dirs, extra: CopyJob[]): Promise<CopyStats> {
 	const jobs: CopyJob[] = [...extra];
 	for (const { from, to } of config.passthrough) {
@@ -928,6 +951,7 @@ async function passthroughCopy(config: Config, dirs: Dirs, extra: CopyJob[]): Pr
 			jobs.push([src, dest]);
 		}
 	}
+	sameDestinations(jobs, dirs);
 	// Copies go through Node's thread pool, 32 at a time. A file whose copy is as new and as big is left alone.
 	const stats: CopyStats = { copied: 0, unchanged: 0, bytes: 0, paths: jobs.map(([, to]) => to) };
 	const folders = new Map<string, Promise<unknown>>();

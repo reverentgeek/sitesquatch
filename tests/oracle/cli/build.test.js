@@ -336,3 +336,25 @@ test("url_of_a_page_without_a_url_prints_nothing", () => {
 	assert.equal(read(root, "_site/index.html"), "[][][/]\n");
 	assert.equal(r.log.split("`url` got false, the url of a page with `permalink: false`, and printed nothing instead of \"false\"").length - 1, 1, r.log);
 });
+
+// v8.dev (v8 #19): two passthrough folders with a file of the same name copied to one place, and
+// whichever copy finished last won. The one listed later wins every time, with a warning when the
+// two differ; identical files say nothing.
+test("passthrough_sources_that_write_one_file", () => {
+	const root = project({
+		"ssqch.config.js": "export default { passthrough: [{ \"cedar\": \"trail\" }, { \"ridge\": \"trail\" }] };\n",
+		"cedar/map.txt": "the Cedar Trail\n",
+		"ridge/map.txt": "the Old Growth Trail\n",
+		"cedar/rules.txt": "Leave no trace.\n",
+		"ridge/rules.txt": "Leave no trace.\n",
+		"index.html": "<p>Squatch Snacks</p>\n",
+	});
+	for (let i = 0; i < 3; i++) {
+		const r = ssqch(["build", "--root", root]);
+		assert.ok(r.ok, r.log);
+		assert.equal(read(root, "_site/trail/map.txt"), "the Old Growth Trail\n");
+		assert.equal(read(root, "_site/trail/rules.txt"), "Leave no trace.\n");
+		assert.match(r.log, /cedar\/map\.txt and ridge\/map\.txt are both copied to _site\/trail\/map\.txt, and they differ: the one listed later \(ridge\/map\.txt\) is the one written/);
+		assert.ok(!r.log.includes("rules.txt"), r.log);
+	}
+});
