@@ -75,7 +75,7 @@ declare module "ssqch" {
 
 	/** How Markdown renders. */
 	export interface MarkdownOptions {
-		/** Automatic heading `id`s: `"github"` (the default), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), or `false` for none. A `{#id}` on the heading always wins. */
+		/** Automatic heading `id`s: `"github"` (the default: GitHub's and github-slugger's anchors, character for character), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), or `false` for none. A `{#id}` on the heading always wins. */
 		headingIds?: "github" | "blackfriday" | "ascii" | false | ((text: string) => string);
 		/** `## Heading {#id .class key=value}`. Default `true`. */
 		headingAttributes?: boolean;
@@ -123,6 +123,10 @@ declare module "ssqch" {
 	export interface BuildEvent {
 		env: "production" | "development";
 		serving: boolean;
+		/** The build was run with `--quiet`: print only warnings and errors. */
+		quiet: boolean;
+		/** The build was run with `--verbose`. */
+		verbose: boolean;
 		/** Folders relative to the project root, like `./src/`. */
 		dirs: { input: string; output: string; includes: string; data: string };
 		/** The files the build wrote (`afterBuild` only). */
@@ -130,7 +134,7 @@ declare module "ssqch" {
 	}
 
 	type MaybePromise<T> = T | Promise<T>;
-	/** A function, or `{ run: "command" }` to run a program in the project root (through `sh -c`, or `cmd /C` on Windows). It gets `SSQCH_ENV`, `SSQCH_SERVING`, `SSQCH_INPUT` and `SSQCH_OUTPUT`; a failure fails the build. */
+	/** A function, or `{ run: "command" }` to run a program in the project root (through `sh -c`, or `cmd /C` on Windows). It gets `SSQCH_ENV`, `SSQCH_SERVING`, `SSQCH_QUIET`, `SSQCH_INPUT` and `SSQCH_OUTPUT`; a failure fails the build. */
 	type Hook = ((event: BuildEvent) => MaybePromise<void>) | { run: string };
 	/** Renders a template's body (front matter removed) with the page's data. */
 	type EngineRender = (source: string, data: Record<string, any>) => MaybePromise<string>;
