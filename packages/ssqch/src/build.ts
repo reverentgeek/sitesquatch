@@ -426,11 +426,13 @@ function internal(e: unknown, what: string): BuildError {
 
 /**
  * What each page's file held when a build last read it and found it the same as what it had
- * rendered: its size, when it was written, and a hash of the contents. While serving, the next
- * build compares with this instead of reading the file again (a sixth of a rebuild on a big
- * site), as long as the file hasn't been written since.
+ * rendered: the file (its inode), its size, its modification and change times, and a hash of the
+ * contents. While serving, the next build compares with this instead of reading the file again
+ * (a sixth of a rebuild on a big site), as long as none of them is different. The change time is
+ * the one a tool can't put back: `cp -p`, `rsync -a` and `touch -r` keep a modification time, and
+ * a write with the same number of bytes would look like no write at all.
  */
-const found = new Map<string, { size: number; mtimeMs: number; hash: string; at: number }>();
+const found = new Map<string, { ino: number; size: number; mtimeMs: number; ctimeMs: number; hash: string; at: number }>();
 
 /** Whether the file at `file` already holds exactly `contents`. */
 function sameContents(file: string, contents: string): boolean {
@@ -442,15 +444,15 @@ function sameContents(file: string, contents: string): boolean {
 	const hash = crypto.hash("sha1", contents, "base64");
 	const known = found.get(file);
 	// A file written in the last moments before it was read may have been written again since
-	// without its time changing (some disks keep times to the second): that one is read again.
-	if (known && known.size === stat.size && known.mtimeMs === stat.mtimeMs && known.at - known.mtimeMs > 2500) {
+	// without its times changing (some disks keep times to the second): that one is read again.
+	if (known && known.ino === stat.ino && known.size === stat.size && known.mtimeMs === stat.mtimeMs && known.ctimeMs === stat.ctimeMs && known.at - Math.max(known.mtimeMs, known.ctimeMs) > 2500) {
 		if (known.hash === hash) return true;
 		found.delete(file);
 		return false;
 	}
 	let same = false;
 	try { same = fs.readFileSync(file, "utf8") === contents; } catch { /* gone, or not a file */ }
-	if (same) found.set(file, { size: stat.size, mtimeMs: stat.mtimeMs, hash, at: Date.now() });
+	if (same) found.set(file, { ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, hash, at: Date.now() });
 	else found.delete(file);
 	return same;
 }
@@ -579,6 +581,7 @@ export function inEdgeCode(body: string, at: number): boolean {
 
 export const edgeCodeMentionsForTest = edgeCodeMentions;
 export const asTextForTest = asText;
+export const sameContentsForTest = sameContents;
 
 // ---- checks ----------------------------------------------------------------------------------
 

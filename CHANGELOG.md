@@ -259,8 +259,11 @@ the release.
   - A site whose code ends the process (`process.exit()`, or an error nothing catches in a
     timer) fails that build, shown in the browser like any other, and the next change builds in
     a new process. The server stays up.
-  - A rebuild compares each page with the last build's from memory, and reads a page's file
-    again only when something else has written it since.
+  - A rebuild compares each page with what the last build found in its file, from memory, and
+    reads the file again only when its size, its modification time or its change time is
+    different, or it's another file. So a page that something else rewrote is written again
+    even when that kept the modification time (`cp -p`, `rsync -a`, `touch -r`), as in 0.7,
+    which read every page.
   - On Linux, the server watches each folder itself and leaves out the ones named `.cache`,
     `.git` and `node_modules` (0.7 watched them and ignored what they reported), so a site whose
     input folder is the project root doesn't spend a watch on every folder of its packages.
