@@ -225,8 +225,8 @@ the release.
 - A YAML integer too big for 128 bits (`123456789012345678901234567890`) is a rounded number,
   where 0.7 refused the file. TOML's integers past 2^53 are rounded numbers, as in 0.7.
 - A leap second in a page's `date` (`2016-12-31T23:59:60Z`, which TOML can write) is the
-  second before it, since a JavaScript date has no 60th second; 0.7 kept it. The text of a TOML
-  date is 0.7's either way.
+  second before it, since a JavaScript date has no 60th second; 0.7 kept it. In any other key a
+  TOML date is its text, as 0.7 wrote it, the 60th second included.
 - `--output ../public`, an output folder outside the project given from it, builds there. 0.7
   refused it with `permalink Some("/src/") points outside the output directory`, by mistake: its
   check for a permalink that leaves the output folder counted the folder's own `..` (an absolute
