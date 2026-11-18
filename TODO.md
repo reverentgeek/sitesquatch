@@ -484,7 +484,8 @@ clear; otherwise warn.
   - A fixed date for undated pages (`dateFallback: "git"`), so their order and `<lastmod>` don't
     depend on when a checkout wrote the files: every move's sitemap changed with file times (v8 C9).
     Maybe `date: "created"` too (a11y #22). Undated pages also sort by file time, so one edit
-    reorders a collection: sort them by path, as Jekyll does (osg #13). And honor
+    reorders a collection: sort them by path, as Jekyll does (osg #13; decided 2026-11-18: always by
+    path, the date itself still the file's time, a Breaking entry). And honor
     `SOURCE_DATE_EPOCH` as the fallback date and build time, which Jekyll's `time:` does for a
     pinned baseline (osg #14; done 2026-11-18, and with it undated pages sort by path; without it
     they still sort by file time, which changes frozen output and wants its own change).
@@ -555,7 +556,10 @@ diff, fix the biggest group, repeat.
       (v8.dev's `scripts/parity.sh`).
 - [ ] **A stability check**: build N times and report the files that vary and the most common
       variant (`ssqch diff --runs`, or a command). Eleventy's lit.dev output differs on 11 pages
-      between builds, and finding the target took 20 builds and `scripts/stability.py`.
+      between builds, and finding the target took 20 builds and `scripts/stability.py`. Decided
+      2026-11-18: `ssqch diff a b c` (three or more folders) lists the files that vary and the most
+      common version of each, with `--format json`. A JSON document that didn't exist in 0.7 gets
+      its shape frozen by the version that adds it; the 0.7 shapes stay as they are.
 - [ ] **A migration recipe for agents** in `ssqch docs agents` and the trailhead (a11y's
       `ssqch-improvements.md` has a draft checklist; v8 F6): baseline with `TZ=UTC` from fresh
       copies, `ssqch diff`, fix the largest group, repeat, finish with `--exact`.
@@ -627,10 +631,14 @@ From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
       trailing empty strings and splits `" "` on whitespace; `sort` on a hash gives `[key, value]`
       pairs, with missing values first by property; a block of only `assign`s renders nothing; the
       blank line after front matter goes with it. Deliberate changes with oracle entries, or a
-      `liquid: { flavor: "jekyll" }`.
+      `liquid: { flavor: "jekyll" }`. Decided 2026-11-18: Ruby's behavior by default, each checked
+      against Ruby and liquidjs first, recorded as DELIBERATE with a Breaking entry; no flavor
+      switch.
 - [ ] **`page.<front matter key>` in Liquid** (osg #5): fall back to the page's data for keys `page`
       doesn't have, as Jekyll templates expect (42 edits in 7 templates, and a collision with the
-      site's own `lang` variable). A design note first.
+      site's own `lang` variable). A design note first. Decided 2026-11-18: no fallback. A warning
+      names the rename (`page.title` is `title`), and `ssqch import jekyll` rewrites the templates;
+      `page` means the same in every engine.
 - [x] **Config functions as Liquid tags** (osg #6; done 2026-11-18): `{% seo %}`, as Nunjucks
       already does.
 - [x] **`{% include_relative %}`** (osg #8; done 2026-11-18), reading beside the template.
