@@ -1,6 +1,6 @@
 // `ssqch capabilities`: what this build can do. A script or a coding agent asks instead of
 // guessing from documentation for another version. Ported from `crates/ssqch/src/capabilities.rs`.
-import { BUILTINS, CONFIG_FILES, DEFAULTS, configOptions } from "../config.ts";
+import { CONFIG_FILES, DEFAULTS, configOptions } from "../config.ts";
 import { red } from "../diagnostics.ts";
 import { VERSION } from "../version.ts";
 import { starterEngines } from "./init.ts";
@@ -22,9 +22,9 @@ export const MODULE_EXPORTS: ReadonlyArray<readonly [name: string, exports: read
 /** The Node modules a config, a data file or a package can import. They are Node's own, so every one works (0.7's QuickJS had stand-ins for some that threw when used, listed as `stubs`). */
 const NODE_MODULES = ["fs", "fs/promises", "path", "path/posix", "url", "process", "buffer", "crypto", "module", "util", "events", "os", "assert", "assert/strict", "timers", "timers/promises", "string_decoder", "http", "https", "http2", "net", "tls", "dns", "child_process", "worker_threads", "cluster", "readline", "zlib", "vm", "stream", "tty", "perf_hooks"];
 
-/** The modules this build has, with their exports. A plugin's module lists itself in `BUILTINS` when it's ported (`config.ts`); the module file is there either way, so a config that imports one that isn't gets a clear error, and it is left off this list. */
+/** The modules this build has, with their exports: all of 0.7's, Sass included (0.7's own compiler, as WebAssembly). */
 export function modules(): Array<{ name: string; exports: string[] }> {
-	return MODULE_EXPORTS.filter(([name]) => name !== "ssqch/sass" || BUILTINS.has("ssqch/sass")).map(([name, exports]) => ({ name, exports: [...exports] }));
+	return MODULE_EXPORTS.map(([name, exports]) => ({ name, exports: [...exports] }));
 }
 
 /** Whether sharp, which encodes the images, can write AVIF here. */
@@ -62,7 +62,7 @@ export interface Capabilities {
 /** `commands` are the ones `--help` lists. */
 export async function capabilities(commands: string[]): Promise<Capabilities> {
 	const avif = await avifWorks();
-	const features: Record<string, boolean> = { avif, fetch: true, sass: BUILTINS.has("ssqch/sass"), liquid: true, jinja: true, handlebars: true };
+	const features: Record<string, boolean> = { avif, fetch: true, sass: true, liquid: true, jinja: true, handlebars: true };
 	const globals = ["console", "process", "Buffer", "URL", "URLSearchParams", "TextEncoder", "TextDecoder", "EventTarget", "Intl", "setTimeout", "setInterval", "setImmediate", "fetch", "Headers", "Request", "Response", "AbortController", "AbortSignal"];
 	return {
 		schemaVersion: 1,
