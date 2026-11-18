@@ -28,7 +28,7 @@ SiteSquatch is a young one (0.x), so expect some breaking changes between minor 
 
 ssqch is a program for [Node.js](https://nodejs.org) 22.18 or newer, published on npm. In a site with a `package.json`, install it from **npm** as a dev dependency, so the lockfile pins the version: `npm install --save-dev ssqch` (or `pnpm add -D ssqch`, `yarn add -D ssqch`), then run `npx ssqch build`, or `ssqch build` in a `package.json` script. [sharp](https://sharp.pixelplumbing.com), which encodes images, is the package's one dependency: ssqch's template libraries are inside it, and so are its Markdown, highlighter, minifier and Sass, which are WebAssembly, so the package is the same on every platform, Alpine and Linux on ARM included.
 
-**Without a `package.json`:** `npm install --global ssqch` puts `ssqch` on your `PATH`, and `npx ssqch@0.7.0 build` runs one version without installing it. With [Homebrew](https://brew.sh) (macOS or Linux), `brew install reverentgeek/tap/ssqch` installs the npm package with Homebrew's own Node, which it brings along if you don't have it.
+**Without a `package.json`:** `npm install --global ssqch` puts `ssqch` on your `PATH`, and `npx ssqch@0.8.0 build` runs one version without installing it. With [Homebrew](https://brew.sh) (macOS or Linux), `brew install reverentgeek/tap/ssqch` installs the npm package with Homebrew's own Node, which it brings along if you don't have it.
 
 **npm is the only way it ships:** there's no standalone executable for 0.8 and no installer script. 0.7's were a Rust binary; 0.8 is JavaScript, and it runs on the Node you have. If 0.7's installer put `ssqch` in `~/.cargo/bin`, delete it there, so the old one doesn't stand in front of the new one on your `PATH` (`which ssqch` says which one answers). There is no `cargo install ssqch` for 0.8 either: the crates end at 0.7, apart from [`ssqch-plugin`](#plugins-in-rust), which is for writing plugins.
 
@@ -49,7 +49,7 @@ In **GitHub Actions**, set up Node with `actions/setup-node` and install ssqch f
 - uses: actions/setup-node@v4
   with:
     node-version: 24
-- run: npm install --global ssqch@0.7.0
+- run: npm install --global ssqch@0.8.0
 - run: ssqch build
 ```
 
@@ -1077,11 +1077,11 @@ Netlify can build the site itself, with no deploy token to manage. With `ssqch` 
     paths = [".cache/ssqch"]
 ```
 
-- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.7.0`) and bump it when you're ready. On the day of a release, pnpm's release age holds a new version back: list `ssqch` (the only package of ssqch's own) under `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`, as [Install](#install) shows.
+- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.8.0`) and bump it when you're ready. On the day of a release, pnpm's release age holds a new version back: list `ssqch` (the only package of ssqch's own) under `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`, as [Install](#install) shows.
 - **`NODE_VERSION`** is the Node that runs the build: anything from 22.18 on. ssqch builds to the same bytes on 22.18, 24 and 26, so pick the one your other build tools like.
 - **[`netlify-plugin-cache`](https://github.com/jakejarvis/netlify-plugin-cache)** carries `.cache/ssqch` (the encoded images and their hashes, highlighted code, and any `fetch` copies) over to the next build. Add it to your `devDependencies`.
 
-A site without a `package.json` can run a pinned release straight from npm in the build command, with `SSQCH_VERSION = "0.7.0"` under `[build.environment]` to pin it (and `NODE_VERSION` there as well):
+A site without a `package.json` can run a pinned release straight from npm in the build command, with `SSQCH_VERSION = "0.8.0"` under `[build.environment]` to pin it (and `NODE_VERSION` there as well):
 
 ```toml
 [build]
@@ -1126,7 +1126,7 @@ jobs:
 ```
 
 - **`--base`** takes the repository's name from the workflow, so the config doesn't have to know it and `ssqch serve` on your machine still serves the site at `/`. A user site (`you.github.io`) or one with a custom domain is at the root: leave `--base` off.
-- **The version** is the site's `ssqch` dev dependency, pinned by its lockfile, so a new release can't surprise a deploy. `node-version` can be any Node from 22.18 on. A site without a `package.json` replaces `npm ci` with `npm install --global ssqch@0.7.0` (drop `cache: npm`, which looks for a lockfile) and runs `ssqch build` instead of `npx ssqch build`.
+- **The version** is the site's `ssqch` dev dependency, pinned by its lockfile, so a new release can't surprise a deploy. `node-version` can be any Node from 22.18 on. A site without a `package.json` replaces `npm ci` with `npm install --global ssqch@0.8.0` (drop `cache: npm`, which looks for a lockfile) and runs `ssqch build` instead of `npx ssqch build`.
 - **A 404 page:** GitHub Pages serves `404.html` from the site's root, so give your 404 page `permalink: /404.html`.
 - **Images:** to keep encoded images between builds, cache `.cache/ssqch` with `actions/cache` (see [Keep the image cache between builds](#keep-the-image-cache-between-builds)).
 

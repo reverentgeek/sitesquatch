@@ -2,8 +2,8 @@
 # 0.8 runs in Node's WebAssembly, on every platform. ssqch's own minifier is built with it
 # (crates/ssqch-minify), and so is the example in examples/rust-plugin.
 #
-# It's published to crates.io with ssqch 0.8.0 (the workspace's version goes to 0.8.0 then). Until
-# then `publish = false` keeps it from being published early: remove that line at the release.
+# It's published to crates.io with each ssqch release, at ssqch's version (by hand, from the tag:
+# `cargo publish -p ssqch-plugin`; AGENTS.md, "Releasing").
 [package]
 name = "ssqch-plugin"
 description = "Write ssqch plugins in Rust: transforms, filters and template engines, built as one .wasm file that runs everywhere"
@@ -17,7 +17,6 @@ keywords = ["ssqch", "static-site", "plugin", "wasm"]
 categories = ["wasm", "web-programming", "template-engine"]
 # `#[unsafe(no_mangle)]` in what `export!` writes, and `&mut` in the manifest's const fns.
 rust-version = "1.83"
-publish = false
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

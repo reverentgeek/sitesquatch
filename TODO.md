@@ -4,7 +4,7 @@ The ReverentGeek blog (`../blog`) is the main real-world site. Its own tasks are
 `../blog/TODO.md`. Items here that the blog is waiting on say **Blog:**, and blog items that need a
 change here say **Needs ssqch:**. When one side finishes, tick it and update the other list.
 
-The current release is 0.7.0 (2026-11-17; `CHANGELOG.md` has every release). Work goes to `main`.
+The current release is 0.8.0 (2026-11-18), on Node; 0.7.1 was the last of the Rust implementation (`CHANGELOG.md` has every release). Work goes to `main`.
 The blog builds with the npm package, pinned exactly.
 
 Finished work, and the reasons and measurements behind it, are in `docs/archive/todo-2026-11-17.md`

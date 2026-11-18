@@ -161,7 +161,7 @@ platform. `docs/node-migration.md` ("Stage 8") says why each piece is as it is.
 - **The check:** `node scripts/check-package.ts` (or `--tarball <tgz>`) installs it in an empty
   folder outside the repository, builds every example, a starter, and a site with images,
   Markdown, minify, Sass and the example Rust plugin, and compares the output with the source's,
-  byte for byte. `--oracle` runs the oracle's list with it too. CI and the release run it on
+  byte for byte. `--oracle` runs the oracle with it too. CI and the release run it on
   Linux, on Node 22.18, 24 and 26.
 - **The Homebrew formula:** `scripts/release-files.mjs` writes it (`ssqch.rb`) and `sha256.sum`
   from the packed tarball. The formula is Homebrew's pattern for an npm package: `depends_on
@@ -182,7 +182,7 @@ To release:
 4. Wait for CI to pass on that commit, then tag and push: `git tag v<version> && git push origin
    v<version>`. The release workflow refuses a tag that isn't the package's version; builds and
    packs the package; checks the tarball on Linux on Node 22.18, 24 and 26 (`check-package.ts`,
-   with the oracle's list); waits for CI to pass on the tagged commit (`check-ci.yml`); and
+   with the oracle); waits for CI to pass on the tagged commit (`check-ci.yml`); and
    only then publishes the GitHub release, with the npm tarball and its checksum. Then it
    publishes the package to npm (`publish-npm.yml`) and, once it's there, the formula to
    `reverentgeek/homebrew-tap` (not for a prerelease, which goes to npm's `next` tag). If
