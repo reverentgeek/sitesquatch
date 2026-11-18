@@ -43,14 +43,15 @@ test("`**` as globset reads it", () => {
 	assert.ok(globToRegExp("/**").test("/a") && !globToRegExp("/**").test("a"));
 });
 
-test("a path is matched as its UTF-8 bytes, as in 0.7", () => {
-	// `?` is one byte, so a two-byte letter takes two.
-	assert.deepEqual(matching("?.txt"), ["a.txt"]);
-	assert.deepEqual(matching("??.txt"), ["é.txt", "ä.txt", "x*.txt", "]x.txt"]);
-	// A class's members are bytes too, so a letter of two bytes never matches one.
-	assert.deepEqual(matching("[é].txt"), []);
-	assert.deepEqual(matching("[à-é].txt"), []);
-	// Case is ignored for ASCII letters only.
+test("a path is matched by its characters", () => {
+	// `?` is one character, a letter of two UTF-8 bytes too (0.7 matched bytes: decided 2026-11-18).
+	assert.deepEqual(matching("?.txt"), ["a.txt", "é.txt", "ä.txt"]);
+	assert.deepEqual(matching("??.txt"), ["x*.txt", "]x.txt"]);
+	// A class's members are characters, and so are its ranges.
+	assert.deepEqual(matching("[é].txt"), ["é.txt"]);
+	assert.deepEqual(matching("[à-é].txt"), ["é.txt", "ä.txt"]);
+	assert.ok(globToRegExp("?.png").test("😀.png"));
+	// Case is ignored for ASCII letters only, as in 0.7.
 	assert.ok(globToRegExp("[A-B].JPG", { ignoreCase: true }).test("b.jpg"));
 	assert.ok(!globToRegExp("É.jpg", { ignoreCase: true }).test("é.jpg"));
 });

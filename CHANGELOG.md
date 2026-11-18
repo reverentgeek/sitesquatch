@@ -171,6 +171,11 @@ the release.
 
 ### Changed
 
+- **A glob matches a path by its characters.** `?` is one character and a class's members are
+  characters, so `?.jpg` matches `é.jpg` and `[é]` matches `é`; 0.7 matched UTF-8 bytes, where
+  neither did. That's every glob: `diff --only`, schemas' `files`, the config's `ignore` and
+  `passthrough`, the sitemap's `exclude`, and `files()`. Ignoring case is still for ASCII letters
+  only.
 - **`import "ssqch"` works from plain Node too.** The npm package's `exports` map names ssqch's
   own modules, which a config, a test or a script can import, where 0.7's package had stubs that
   said to build with ssqch.

@@ -5,8 +5,9 @@ import { quoted } from "./quote.ts";
 // slashes. `*` and `?` stay inside one path segment; `**` crosses them. They read as 0.7's did,
 // where the globset crate read them (with `literal_separator`), so this is a port of its parser:
 // `\` escapes the next character (on Windows it's a folder separator instead, as it was there),
-// `**` crosses folders only as a whole part of the path, and a path is matched as its UTF-8
-// bytes, so `?` and each member of a class are one byte, as they were in 0.7.
+// `**` crosses folders only as a whole part of the path. A path is matched by its characters:
+// `?` and each member of a class are one character (0.7 matched UTF-8 bytes, so `?` didn't match
+// `é` and `[é]` matched nothing; decided 2026-11-18, and in the changelog).
 
 const stripDot = (p: string) => p.replace(/^(\.\/)+/, "");
 
@@ -142,30 +143,17 @@ function parse(glob: string, windows: boolean): Token[] {
 	return branches[0];
 }
 
-const utf8 = (c: string) => [...Buffer.from(c, "utf8")];
-const hex = (b: number) => `\\x${b.toString(16).padStart(2, "0")}`;
-const isAsciiLetter = (b: number) => (b >= 0x41 && b <= 0x5a) || (b >= 0x61 && b <= 0x7a);
+const code = (c: string) => c.codePointAt(0)!;
+const isAsciiLetter = (n: number) => (n >= 0x41 && n <= 0x5a) || (n >= 0x61 && n <= 0x7a);
+/** A character in a pattern (the expression has the `u` flag): letters and digits as they are, the rest by code. */
+const charCode = (n: number) => (/[0-9A-Za-z]/.test(String.fromCodePoint(n)) ? String.fromCodePoint(n) : `\\u{${n.toString(16)}}`);
 
-/** A byte as a pattern: `[aA]` for a letter when case doesn't count (ASCII only, as in 0.7). */
-const byteLiteral = (b: number, ignoreCase: boolean) => (ignoreCase && isAsciiLetter(b) ? `[${String.fromCharCode(b | 0x20)}${String.fromCharCode(b & ~0x20)}]` : /[0-9A-Za-z]/.test(String.fromCharCode(b)) ? String.fromCharCode(b) : hex(b));
+/** A character as a pattern: `[aA]` for a letter when case doesn't count (ASCII only, as in 0.7). */
+const charLiteral = (n: number, ignoreCase: boolean) => (ignoreCase && isAsciiLetter(n) ? `[${String.fromCharCode(n | 0x20)}${String.fromCharCode(n & ~0x20)}]` : charCode(n));
 
-/**
- * A class as globset wrote it, a byte at a time: a range between two characters of more than one
- * byte runs from the last byte of the first to the first byte of the second, which is what 0.7
- * matched. Without case, ASCII letters in the class bring their other case along.
- */
+/** A class of characters. Without case, ASCII letters in the class bring their other case along. */
 function classPattern(negated: boolean, ranges: Array<[string, string]>, ignoreCase: boolean): string {
-	const items: Array<[number, number]> = [];
-	for (const [from, to] of ranges) {
-		if (from === to) {
-			for (const b of utf8(from)) items.push([b, b]);
-			continue;
-		}
-		const a = utf8(from), z = utf8(to);
-		for (const b of a.slice(0, -1)) items.push([b, b]);
-		items.push([a[a.length - 1], z[0]]);
-		for (const b of z.slice(1)) items.push([b, b]);
-	}
+	const items: Array<[number, number]> = ranges.map(([from, to]) => [code(from), code(to)]);
 	if (ignoreCase) {
 		for (const [lo, hi] of [...items]) {
 			for (const [start, end, shift] of [[0x41, 0x5a, 0x20], [0x61, 0x7a, -0x20]]) {
@@ -174,14 +162,14 @@ function classPattern(negated: boolean, ranges: Array<[string, string]>, ignoreC
 			}
 		}
 	}
-	return `[${negated ? "^" : ""}${items.map(([lo, hi]) => (lo === hi ? hex(lo) : `${hex(lo)}-${hex(hi)}`)).join("")}]`;
+	return `[${negated ? "^" : ""}${items.map(([lo, hi]) => (lo === hi ? charCode(lo) : `${charCode(lo)}-${charCode(hi)}`)).join("")}]`;
 }
 
 function tokensPattern(tokens: Token[], ignoreCase: boolean): string {
 	let re = "";
 	for (const token of tokens) {
 		switch (token.kind) {
-			case "literal": re += utf8(token.char).map((b) => byteLiteral(b, ignoreCase)).join(""); break;
+			case "literal": re += [...token.char].map((c) => charLiteral(code(c), ignoreCase)).join(""); break;
 			case "any": re += "[^/]"; break;
 			case "zeroOrMore": re += "[^/]*"; break;
 			case "recursivePrefix": re += "(?:/?|.*/)"; break;
@@ -198,16 +186,6 @@ function tokensPattern(tokens: Token[], ignoreCase: boolean): string {
 	return re;
 }
 
-/** A path as globset read it, as its UTF-8 bytes (one character each). */
-const asBytes = (text: string) => (/^[\x00-\x7f]*$/.test(text) ? text : Buffer.from(text, "utf8").toString("latin1"));
-
-/** A glob's expression: it reads a path as its UTF-8 bytes, as globset's did. */
-class GlobRegExp extends RegExp {
-	exec(text: string): RegExpExecArray | null {
-		return super.exec(asBytes(String(text)));
-	}
-}
-
 /** Whether `\` is a folder separator in globs, as globset had it: on Windows. */
 const WINDOWS = process.platform === "win32";
 
@@ -222,7 +200,7 @@ export function globToRegExp(glob: string, { ignoreCase = false, loose = false, 
 	const tokens = parse(stripDot(glob), windows);
 	// The whole glob `**` matches every path, the empty one included.
 	const re = tokens.length === 1 && tokens[0].kind === "recursivePrefix" ? ".*" : tokensPattern(tokens, ignoreCase);
-	return new GlobRegExp(`^${re}$`, "s");
+	return new RegExp(`^${re}$`, "su");
 }
 
 /** `byGlob`'s reading of a glob: 0.7's collection API's own, kept as it was. */
