@@ -184,7 +184,7 @@ export async function buildPackage({ out, release = false, quiet = false }: { ou
 	}
 
 	const { files, bytes } = sizeOf(out);
-	if (!quiet) console.log(`Built ${path.relative(process.cwd(), out) || "."}: ssqch ${version}${release ? "" : " (private)"}, ${files} files, ${(bytes / 1e6).toFixed(2)} MB`);
+	if (!quiet) console.log(`Built ${shown(out)}: ssqch ${version}${release ? "" : " (private)"}, ${files} files, ${(bytes / 1e6).toFixed(2)} MB`);
 	return { out, version, files, bytes };
 }
 
@@ -200,6 +200,12 @@ const KNOWN_LOOKUPS = [
 	// `require.extensions` for `.hbs` files, which ssqch never requires.
 	"node_modules/handlebars/",
 ];
+
+/** A path as a message shows it: from here when it's below here, whole otherwise. */
+export function shown(file: string): string {
+	const rel = path.relative(process.cwd(), file);
+	return rel === "" ? "." : rel.startsWith("..") || path.isAbsolute(rel) ? file : rel;
+}
 
 function copyTree(from: string, to: string, keep: (name: string) => boolean = () => true): void {
 	for (const entry of fs.readdirSync(from, { withFileTypes: true })) {

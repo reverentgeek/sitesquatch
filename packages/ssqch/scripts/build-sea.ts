@@ -112,6 +112,7 @@ if (said.status !== 0 || said.stdout.trim() !== `ssqch ${version}`) {
 	process.exit(1);
 }
 const unpackedBytes = keys.reduce((sum, key) => sum + fs.statSync(assets[key]).size, 0);
-console.log(`Built ${path.relative(process.cwd(), exe) || exe}: ssqch ${version} on Node ${process.versions.node}, ${(fs.statSync(exe).size / 1e6).toFixed(1)} MB (${keys.length} files, ${(unpackedBytes / 1e6).toFixed(1)} MB unpacked, as ${id}), in ${((performance.now() - started) / 1000).toFixed(1)} s`);
+const { shown } = await import("./build.ts");
+console.log(`Built ${shown(exe)}: ssqch ${version} on Node ${process.versions.node}, ${(fs.statSync(exe).size / 1e6).toFixed(1)} MB (${keys.length} files, ${(unpackedBytes / 1e6).toFixed(1)} MB unpacked, as ${id}), in ${((performance.now() - started) / 1000).toFixed(1)} s`);
 if (values.keep) console.log(`Kept ${work}`);
 else fs.rmSync(work, { recursive: true, force: true, maxRetries: 3 });

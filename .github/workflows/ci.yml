@@ -111,7 +111,8 @@ jobs:
           node scripts/build.ts
           npm pack ./dist --pack-destination "$RUNNER_TEMP"
       - name: install the tarball and build with it
-        run: node packages/ssqch/scripts/check-package.ts --tarball "$(ls "$RUNNER_TEMP"/ssqch-*.tgz)" ${{ matrix.node == '22.18.0' && '--oracle' || '' }}
+        # By name, not a glob: on Windows the folder is D:\a\_temp, whose backslashes a glob reads as escapes.
+        run: node packages/ssqch/scripts/check-package.ts --tarball "$RUNNER_TEMP/ssqch-$(node -p 'require("./packages/ssqch/package.json").version').tgz" ${{ matrix.node == '22.18.0' && '--oracle' || '' }}
 
   # The standalone executable (packages/ssqch/scripts/build-sea.ts), built from this commit as the
   # release builds it, with the same checks and the oracle's list. Unsigned: release.yml signs.
@@ -137,7 +138,7 @@ jobs:
       - name: build the executable
         run: node packages/ssqch/scripts/build-sea.ts --out "$RUNNER_TEMP/sea"
       - name: build with it
-        run: node packages/ssqch/scripts/check-package.ts --exe "$(ls "$RUNNER_TEMP"/sea/ssqch*)" --oracle
+        run: node packages/ssqch/scripts/check-package.ts --exe "$RUNNER_TEMP/sea/ssqch${{ runner.os == 'Windows' && '.exe' || '' }}" --oracle
 
   # Speed is part of done: this commit's Node build against its parent's (a pull request's
   # merge against its base), on the same runner, building the 10,000-page site on one thread.
