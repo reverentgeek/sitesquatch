@@ -640,7 +640,8 @@ From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
       any folder with `ruby/<version>/gems/`).
 - [ ] **Text templates in other formats** (`.js` with front matter): a recipe in the README, or
       `templateFormats: ["js:liquid"]` (osg #9).
-- [ ] **`toc` options** for the list's, items' and links' classes and the list's `id` (osg #11).
+- [x] **`toc` options** for the list's, items' and links' classes and the list's `id` (osg #11;
+      done 2026-11-18).
 - [ ] **`ssqch import jekyll`** (moved up from "Importer, the rest"): 9 of the move's 13 kinds of
       edit were mechanical (osg `edits.md`): `exclude`, collections and their permalinks,
       `defaults`, `site` and `site.data`, static files, front matter on `.js`/`.scss`, `page.`

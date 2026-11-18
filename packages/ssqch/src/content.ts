@@ -88,8 +88,14 @@ export function excerpt(html: string): string | undefined {
 }
 
 /** A nested list of links to the headings with an `id` from level `from` to `to`, for the `toc` filter. */
-export function toc(list: unknown[], from: number, to: number, ordered: boolean): string {
+/** The classes and `id` a table of contents' markup gets (`toc`'s options). */
+export interface TocMarkup { id?: string; class?: string; sublistClass?: string; itemClass?: string; linkClass?: string }
+
+export function toc(list: unknown[], from: number, to: number, ordered: boolean, markup: TocMarkup = {}): string {
 	const tag = ordered ? "ol" : "ul";
+	const attr = (name: string, value: string | undefined) => (value ? ` ${name}="${escapeHtml(value)}"` : "");
+	const open = (outer: boolean) => `<${tag}${outer ? attr("id", markup.id) + attr("class", markup.class) : attr("class", markup.sublistClass)}>`;
+	const link = attr("class", markup.linkClass);
 	const items: Heading[] = [];
 	for (const v of list) {
 		const h = v as Partial<Heading> | null | undefined;
@@ -102,7 +108,7 @@ export function toc(list: unknown[], from: number, to: number, ordered: boolean)
 	const stack: number[] = [];
 	for (const h of items) {
 		if (!stack.length) {
-			out += `<${tag}>`;
+			out += open(true);
 			stack.push(h.level);
 		} else {
 			while (stack.length > 1 && h.level < stack[stack.length - 1]) {
@@ -110,13 +116,13 @@ export function toc(list: unknown[], from: number, to: number, ordered: boolean)
 				stack.pop();
 			}
 			if (h.level > stack[stack.length - 1]) {
-				out += `<${tag}>`;
+				out += open(false);
 				stack.push(h.level);
 			} else {
 				out += "</li>";
 			}
 		}
-		out += `<li><a href="#${escapeHtml(h.id ?? "")}">${escapeText(h.text)}</a>`;
+		out += `<li${attr("class", markup.itemClass?.replaceAll("{level}", String(h.level)))}><a href="#${escapeHtml(h.id ?? "")}"${link}>${escapeText(h.text)}</a>`;
 	}
 	for (const _ of stack) out += `</li></${tag}>`;
 	return out;

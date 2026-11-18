@@ -3,6 +3,7 @@
 import { withBase } from "./base.ts";
 import type { Config, Filter } from "./config.ts";
 import { escapeText, htmlText, splitWhitespace, toc } from "./content.ts";
+import type { TocMarkup } from "./content.ts";
 import { isPlainObject } from "./data.ts";
 import { BuildError } from "./diagnostics.ts";
 import type { Markdown } from "./engines/markdown.ts";
@@ -12,7 +13,7 @@ import { slugOptions, slugWith } from "./slug.ts";
 /** The built-in functions, with what each does, for `ssqch docs`. A test keeps it the same as what `builtinFilters` makes. */
 export const BUILTIN_FILTERS: ReadonlyArray<readonly [string, string]> = [
 	["markdown", "`markdown(text)` renders Markdown with the site's options; `markdown(text, \"inline\")` without the `<p>`."],
-	["toc", "`toc(page.headings)` is a table of contents; `toc(page.headings, { from: 2, to: 4, ordered: true })` picks the levels."],
+	["toc", "`toc(page.headings)` is a table of contents; `toc(page.headings, { from: 2, to: 4, ordered: true })` picks the levels, and `id`, `class`, `sublistClass`, `itemClass` (`{level}` is the heading's) and `linkClass` set the markup's."],
 	["navTree", "`navTree(nav, page.url)` marks a navigation tree's entries `current`, `ancestor` or `open`."],
 	["navPager", "`navPager(nav, page.url)` is `{ previous, next }` in reading order."],
 	["navBreadcrumbs", "`navBreadcrumbs(nav, page.url)` is the entries from the top down to the page."],
@@ -51,12 +52,17 @@ export function builtinFilters(markdown: Markdown, config: Config): Map<string, 
 		const words = splitWhitespace(htmlText(String(text))).length;
 		return Math.max(Math.ceil(words / wpm), 1);
 	});
+	const TOC_MARKUP = ["id", "class", "sublistClass", "itemClass", "linkClass"];
 	filters.set("toc", (list: unknown, option?: unknown, last?: unknown) => {
 		const headings = Array.isArray(list) ? list : [];
 		let [from, to, ordered] = [2, 3, false];
+		const markup: TocMarkup = {};
 		if (isPlainObject(option)) {
-			for (const key of Object.keys(option)) {
-				if (!["from", "to", "ordered"].includes(key)) throw new BuildError(`toc: unknown option \`${key}\` (options: from, to, ordered)`);
+			for (const [key, value] of Object.entries(option)) {
+				if (TOC_MARKUP.includes(key)) {
+					if (value !== undefined && value !== null && typeof value !== "string") throw new BuildError(`toc: \`${key}\` must be text (a class name, or names with spaces between)`);
+					if (value) markup[key as keyof TocMarkup] = value;
+				} else if (!["from", "to", "ordered"].includes(key)) throw new BuildError(`toc: unknown option \`${key}\` (options: from, to, ordered, ${TOC_MARKUP.join(", ")})`);
 			}
 			if (typeof option.from === "number") from = option.from;
 			if (typeof option.to === "number") to = option.to;
@@ -66,7 +72,7 @@ export function builtinFilters(markdown: Markdown, config: Config): Map<string, 
 			to = typeof last === "number" ? last : Math.max(to, from);
 		}
 		const level = (n: number) => Math.trunc(Math.min(Math.max(n, 1), 6));
-		return toc(headings, level(from), level(to), ordered);
+		return toc(headings, level(from), level(to), ordered, markup);
 	});
 	// withBase("/feed.xml"): the URL with the site's `base` in front, for places outside HTML
 	// attributes (which the build rewrites itself).

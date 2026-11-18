@@ -30,6 +30,9 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Added
 
+- `toc` takes `id`, `class`, `sublistClass`, `itemClass` (`{level}` is the heading's level) and
+  `linkClass`, so a table of contents can keep another generator's markup and CSS (jekyll-toc's
+  `section-nav` and `toc-entry toc-h2`).
 - Containers get `container.props`, their arguments read as a component's attributes
   (`::: card type="tip" open items='["a","b"]'`), and named slots: a `::: slot title` block inside
   a container is its `container.slots.title`, left out of `container.content`, as MDX's

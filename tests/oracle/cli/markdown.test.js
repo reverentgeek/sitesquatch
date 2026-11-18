@@ -202,3 +202,21 @@ test("containers_get_props_and_named_slots", () => {
 	assert.ok(!b.ok);
 	assert.match(b.log, /containers\/slot\.njk: `slot` is ssqch's container for a named slot/);
 });
+
+// opensource.guide (osg #11): jekyll-toc's markup (`<ul class="section-nav">`, `toc-entry toc-h2`)
+// is CSS a site keeps, so `toc` can write it.
+test("toc_sets_the_lists_items_and_links_classes", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\", \"liquid\"] };\n",
+		"_includes/trail.njk": "{{ toc(page.headings, { id: \"toc\", class: \"section-nav\", sublistClass: \"sub\", itemClass: \"toc-entry toc-h{level}\", linkClass: \"jump\" }) | safe }}\n",
+		"_includes/trail.liquid": "{{ page.headings | toc: class: \"section-nav\", itemClass: \"toc-entry toc-h{level}\" }}\n",
+		"cedar.md": "---\nlayout: trail.njk\n---\n## Pine cones\n### Crunch\n## Stumps\n",
+		"ridge.md": "---\nlayout: trail.liquid\n---\n## Pine cones\n### Crunch\n",
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/cedar/index.html"), "<ul id=\"toc\" class=\"section-nav\"><li class=\"toc-entry toc-h2\"><a href=\"#pine-cones\" class=\"jump\">Pine cones</a><ul class=\"sub\"><li class=\"toc-entry toc-h3\"><a href=\"#crunch\" class=\"jump\">Crunch</a></li></ul></li><li class=\"toc-entry toc-h2\"><a href=\"#stumps\" class=\"jump\">Stumps</a></li></ul>\n");
+	assert.equal(read(root, "_site/ridge/index.html"), "<ul class=\"section-nav\"><li class=\"toc-entry toc-h2\"><a href=\"#pine-cones\">Pine cones</a><ul><li class=\"toc-entry toc-h3\"><a href=\"#crunch\">Crunch</a></li></ul></li></ul>\n");
+	const bad = project({ "ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"] };\n", "_includes/t.njk": "{{ toc(page.headings, { klass: \"x\" }) | safe }}\n", "a.md": "---\nlayout: t.njk\n---\n## A\n" });
+	assert.match(ssqch(["build", "--root", bad]).log, /unknown option `klass` \(options: from, to, ordered, id, class, sublistClass, itemClass, linkClass\)/);
+});
