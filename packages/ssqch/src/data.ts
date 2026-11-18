@@ -201,7 +201,7 @@ export function jsonErrorOffset(text: string): number | undefined {
 	return i < text.length ? i : undefined;
 }
 
-function tomlReason(e: unknown): string {
+export function tomlReason(e: unknown): string {
 	if (e instanceof TomlError) {
 		// The message is what's wrong, then a blank line and the lines around it.
 		const what = e.message.split("\n")[0].replace(/^Invalid TOML document: /, "");

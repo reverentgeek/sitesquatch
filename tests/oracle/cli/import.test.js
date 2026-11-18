@@ -1,7 +1,7 @@
 // From crates/ssqch/tests/cli.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ssqch, tempDir, write, read, exists, isFile, expectedVersion } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, exists, isFile, expectedVersion, RUST_07 } from "../lib/ssqch.js";
 
 test("import_moves_an_eleventy_site", () => {
 	const dir = tempDir("import");
@@ -96,7 +96,7 @@ test("import_moves_a_zola_site", () => {
 	const dir = tempDir("import-zola");
 	const d = dir;
 	write(dir, {
-		"config.toml": "base_url = \"https://example.com\"\ntitle = \"Trail Notes\"\ngenerate_feeds = true\ntaxonomies = [{ name = \"tags\" }]\n\n[markdown]\nhighlight_code = true\n\n[extra]\nauthor = \"Sam\"\n",
+		"config.toml": "base_url = \"https://example.com\"\ntitle = \"Trail Notes\"\ngenerate_feeds = true\ntaxonomies = [{ name = \"tags\" }]\n\n[markdown]\nhighlight_code = true\n\n[extra]\nauthor = \"Sam\"\nfounded = 2019-05-01\n",
 		"content/_index.md": "+++\ntitle = \"Home\"\n+++\n",
 		"content/blog/_index.md": "+++\ntitle = \"Blog\"\nsort_by = \"date\"\npage_template = \"page.html\"\n+++\n",
 		"content/blog/pine.md": "+++\ntitle = \"Pine\"\ndate = 2024-01-02\npath = \"blog/2024/pine\"\naliases = [\"old-pine.html\"]\n\n[taxonomies]\ntags = [\"trees\"]\n+++\nA *pine*. {{ youtube(id=\"abc\") }}\n",
@@ -135,6 +135,10 @@ test("import_moves_a_zola_site", () => {
 	for (const expected of ["dirs: { input: \"content\", output: \"public\", includes: \"../templates\" },", "ignore: [\"**/_index.md\"],", "markdown: { headingIds: \"ascii\", highlight: true },", "passthrough: [{ static: \".\" }],", "\"title\": \"Trail Notes\"", "\"author\": \"Sam\"", "plugins: [sitemapPlugin({ url: \"https://example.com\" }), redirectsPlugin(), linksPlugin()],"]) {
 		assert.ok(config.includes(expected), `missing ${JSON.stringify(expected)} in\n${config}`);
 	}
+	// A date in `[extra]` is its text. 0.7 wrote the TOML library's own object for it, which no
+	// template could print (a deliberate difference: 0.7 was wrong).
+	const founded = RUST_07 ? "\"founded\": {\n          \"$__toml_private_datetime\": \"2019-05-01\"\n        }" : "\"founded\": \"2019-05-01\"";
+	assert.ok(config.includes(founded), `missing ${JSON.stringify(founded)} in\n${config}`);
 
 	// The by-hand part, done: the template, the shortcode as a filter, and the section's data.
 	write(dir, {

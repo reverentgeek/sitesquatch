@@ -123,8 +123,14 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		own: true,
 	},
 	{ name: "types", about: "Write ssqch.d.ts, the types editors use for ssqch.config.js", options: [{ long: "out", value: "out", help: "Where to write it", default: "ssqch.d.ts" }], positionals: [], own: true },
-	// Reads its own arguments, with the code that runs it (stage 7).
-	{ name: "import", about: "Move a site from another generator: rename and rewrite what's mechanical, and list the rest", options: [], positionals: [], raw: true, stage: 7 },
+	{
+		name: "import",
+		about: "Move a site from another generator: rename and rewrite what's mechanical, and list the rest",
+		options: [{ long: "write", help: "Make the changes (without it, only list them)" }],
+		positionals: [{ name: "generator", help: "The generator the site is built with: eleventy or zola", required: true }, { name: "dir", help: "The site's folder (default: the current folder) [default: .]", required: false }],
+		afterHelp: "Run it in a clean git checkout, read the list, then run it again with --write. `ssqch docs --from <generator>` prints the trailhead for each generator.",
+		own: true,
+	},
 	{ name: "capabilities", about: "Say what this binary supports: template languages, modules, config options and optional features", options: [FORMAT], positionals: [], own: true },
 	{
 		name: "docs",
@@ -144,7 +150,7 @@ export const GRAMMAR: Grammar = { name: "ssqch", about: "SiteSquatch (ssqch): a 
 
 /** The options that take a value, so it isn't taken for the command. */
 const VALUED = ["--root", "--output", "-o", "--base", "--env", "-d", "--destination", "--pathprefix", "--port", "-p", "--ready-file", "--format", "--title", "--date", "--blueprint", "--set", "--field", "--ignore", "--only", "--lines", "--top", "--starter", "--engine"];
-/** The commands that read their own arguments: left as they are. */
+/** The commands that read their own arguments, and `import` (0.7 read its line apart from the build's too): left as they are, so `-d` there is refused with its hint. */
 const OWN = COMMANDS.filter((c) => c.raw || c.own).map((c) => c.name);
 
 /**
@@ -283,6 +289,8 @@ export async function main(argv: string[]): Promise<number> {
 		process.stderr.write(`${diagnostics.red("error:")} \`ssqch ${command}\` isn't in the Node build of ssqch yet (the move to Node, stage ${later}); ssqch 0.7 has it\n`);
 		return 1;
 	}
+	// It reads the site's files as text and runs none of them, so nothing below applies.
+	if (command === "import") return (await import("./import.ts")).runImport(cli.positionals[0], cli.positionals[1] ?? ".", flag("write"));
 
 	// The commands that don't build the site.
 	switch (command) {

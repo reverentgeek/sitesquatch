@@ -156,6 +156,11 @@ the release.
   and `.mjs`.
 - `ssqch capabilities` lists `ssqch.config.cjs`, `.ts` and `.mts` under `configFiles`, and says
   `avif` and `sass` only when this build can do them (sharp writes the AVIF files).
+- `ssqch import eleventy` and `ssqch import zola` do what 0.7's did, word for word. Two things
+  follow from the rest of 0.8: a draft config isn't written where one of the new config names is
+  already there, and a date in a Zola site's `[extra]` (`founded = 2019-05-01`) goes into the
+  draft as its text, `"2019-05-01"`, where 0.7 wrote an object with a `$__toml_private_datetime`
+  key that no template could print.
 - A warning a package raises with `process.emitWarning` is one of the build's warnings (`code:
   "console"` in the JSON report), like `console.warn`.
 - Messages that quote a parser are that parser's: YAML, JSON and TOML errors keep `at line N

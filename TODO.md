@@ -184,7 +184,15 @@ until 0.8 ships.
       `importFile` (`modules.ts`) imports a changed file fresh but not the modules it imports,
       so a filter in the config's `./lib/filters.js` (the blog has one) stays the old one on a
       rebuild in the same process (found by stage 3's review).
-- [ ] **Stage 7, importers:** Eleventy and Zola.
+- [x] **Stage 7, importers:** Eleventy and Zola (2026-11-18): `src/import.ts`, from `import.rs`
+      with its tests. 0.7's importer reads a site's files as text and runs none of them, so it had
+      nothing for QuickJS to drop. On the Eleventy sources of a11yproject.com, v8.dev, lit.dev,
+      Gahlee House, eslint.org and the blog's trial, and on the Rust blog's Zola source (776
+      edits), the dry run prints what 0.7's prints and `--write` writes the same files (but the
+      version). The drafts then build as 0.7's do: Gahlee House with no differences, the others
+      stopping at what the list leaves by hand (a missing `},` in a11yproject.com's `team.json`,
+      v8.dev's `slug`, lit.dev's `LITDEV_ENV`). The oracle's 3 import tests pass on Node 22.18,
+      24 and 26.
 - [ ] **Stage 8, distribution:** the compiled, bundled npm package (sharp its only dependency), the
       standalone executable (D7) for Homebrew and the install script, `setup-ssqch`, Netlify; retire
       `dist` and the binary-only release steps; CI installs the packed tarball.
