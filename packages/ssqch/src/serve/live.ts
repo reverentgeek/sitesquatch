@@ -1,0 +1,236 @@
+// What the browsers ask about: what changed in the output, and whether the build works.
+//
+// A page reloads when its own file changed, or a file any page may use (a script, an image). A
+// stylesheet is swapped in place, and another page's change is no news. The reload script asks
+// `/__ssqch/build?v=<the id it last heard>&p=<its page>` and gets `answer`.
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+import * as diagnostics from "../diagnostics.ts";
+import { compareText, realPath } from "../paths.ts";
+
+/** What tells one version of an output file from the next: its size, and a mark (see `stamp`). */
+type Stamp = readonly [size: number, mark: number | string];
+
+const sameStamp = (a: Stamp | undefined, b: Stamp | undefined) => (a === undefined || b === undefined ? a === b : a[0] === b[0] && a[1] === b[1]);
+
+/** A stylesheet or a script: what other tools write into the output while serving. */
+export function isAsset(file: string): boolean {
+	const ext = path.extname(file);
+	return ext === ".css" || ext === ".js" || ext === ".mjs";
+}
+
+/** A hash of a file's contents, or nothing for a folder or a file that's gone. */
+export function fingerprint(file: string): string | undefined {
+	try { return crypto.createHash("sha1").update(fs.readFileSync(file)).digest("base64"); } catch { return undefined; }
+}
+
+/**
+ * What tells one version of an output file from the next: its size, and when it was written.
+ * Stylesheets and scripts are told apart by their contents instead, since the tools that write
+ * them (Sass, PostCSS, esbuild) write them again whether or not anything changed.
+ */
+function stamp(file: string, stat: fs.Stats): Stamp {
+	return [stat.size, isAsset(file) ? fingerprint(file) ?? 0 : stat.mtimeMs];
+}
+
+/** Every file under `dir` with what `fs.stat` says of it, by its path from `dir` with `/`. Links aren't followed. */
+function walk(dir: string, each: (rel: string, file: string, stat: fs.Stats) => void): void {
+	const visit = (folder: string, prefix: string) => {
+		let entries: fs.Dirent[];
+		try { entries = fs.readdirSync(folder, { withFileTypes: true }); } catch { return; }
+		for (const entry of entries) {
+			const file = path.join(folder, entry.name);
+			if (entry.isDirectory()) visit(file, `${prefix}${entry.name}/`);
+			else if (entry.isFile()) {
+				// A file that went between the listing and the look isn't there.
+				const stat = fs.statSync(file, { throwIfNoEntry: false });
+				if (stat) each(`${prefix}${entry.name}`, file, stat);
+			}
+		}
+	};
+	visit(dir, "");
+}
+
+/** A file's size and when it was written: what a build left, so a tool's write (even of the same contents) is told from it. */
+export type Written = readonly [size: number, mtimeMs: number];
+
+/** Each stylesheet and script in `output`, by its resolved path, with its size and when it was written. */
+export function assetStamps(output: string): Map<string, Written> {
+	const found = new Map<string, Written>();
+	walk(realPath(output), (_, file, stat) => { if (isAsset(file)) found.set(file, [stat.size, stat.mtimeMs]); });
+	return found;
+}
+
+export function sameStamps(a: Map<string, Written>, b: Map<string, Written>): boolean {
+	if (a.size !== b.size) return false;
+	for (const [file, at] of a) {
+		const other = b.get(file);
+		if (!other || other[0] !== at[0] || other[1] !== at[1]) return false;
+	}
+	return true;
+}
+
+/**
+ * The stamps of files another tool may still be writing, once they have stopped changing: two
+ * looks 40 ms apart that agree, and not empty (PostCSS empties a file before it writes the new
+ * one) unless it stays that way for a second. Nothing for one that's gone.
+ */
+async function settled(files: string[]): Promise<Array<Stamp | undefined>> {
+	const look = (file: string) => { const stat = fs.statSync(file, { throwIfNoEntry: false }); return stat ? stamp(file, stat) : undefined; };
+	const start = performance.now();
+	const last = files.map(look);
+	const done = files.map(() => false);
+	while (done.includes(false)) {
+		await sleep(40);
+		const late = performance.now() - start > 1000;
+		files.forEach((file, i) => {
+			if (done[i]) return;
+			const now = look(file);
+			done[i] = late || now === undefined || (sameStamp(now, last[i]) && now[0] > 0);
+			last[i] = now;
+		});
+	}
+	return last;
+}
+
+/** What's said about a stylesheet or script a page links that isn't in the output. */
+export function missingMessage(url: string, tools: string[], output: string): string {
+	if (tools.length === 0) return `${url} is linked but nothing wrote it to ${output}. If a tool makes it, run its watcher with \`serve.run\` (see "CSS and JavaScript" in the README)`;
+	if (tools.length === 1) return `${url} is linked but isn't in ${output}: serve.run's ${tools[0]} hasn't written it (its output is in the terminal)`;
+	return `${url} is linked but isn't in ${output}: none of serve.run's ${tools.slice(0, -1).join(", ")} or ${tools[tools.length - 1]} has written it (their output is in the terminal)`;
+}
+
+/** What `/__ssqch/build` answers with. */
+export interface Answer {
+	id: number;
+	error: string | null;
+	reload: boolean;
+	css: string[];
+}
+
+/** Another page, a feed, a map: what a page doesn't load, so its change is no reason to reload. */
+const PAGES = new Set(["html", "htm", "xml", "txt", "json", "map", "webmanifest"]);
+
+export class Live {
+	/** Goes up with everything a browser should hear about. */
+	id: number;
+	/** The last build's error, until a build works. */
+	error: string | null = null;
+	/** Each file in the output as it was last seen (`stamp`), by its path from the output folder. */
+	private seen = new Map<string, Stamp>();
+	/** The `id` at which each file last changed (or went away). */
+	private changedAt = new Map<string, number>();
+	/** Stylesheets and scripts a page linked that weren't in the output, by their path from the output folder, with the URL a page used. */
+	private missingFiles = new Map<string, string>();
+	/** The `serve.run` tools (`tailwindcss`), and the output folder as shown, for what's said about a missing file. */
+	tools: string[] = [];
+	private outputName = "";
+
+	/**
+	 * Counting from `id`: by default from now, in milliseconds since 1970. A browser that was
+	 * watching an earlier server holds a smaller number, so it reloads once this one has built
+	 * (with the new server's CSS), even when it had seen as many updates as this one has made.
+	 */
+	constructor(id: number = Date.now()) {
+		this.id = id;
+	}
+
+	/** Who could write a missing file: the `serve.run` tools, and the output folder's name. */
+	setSite(tools: string[], outputName: string): void {
+		this.tools = tools;
+		this.outputName = outputName;
+	}
+
+	/** A page linked `url` (the file `rel` in the output), and it wasn't there. The message, said in the terminal the first time. */
+	missing(rel: string, url: string): string {
+		const message = missingMessage(url, this.tools, this.outputName);
+		if (!this.missingFiles.has(rel)) diagnostics.warn(diagnostics.warning("missing-asset", message));
+		this.missingFiles.set(rel, url);
+		return message;
+	}
+
+	/** After a build: the files pages linked that still aren't in `output`, said again (so they don't scroll away); the ones that turned up are forgotten. */
+	repeatMissing(output: string): void {
+		for (const rel of [...this.missingFiles.keys()]) {
+			if (fs.statSync(path.join(output, rel), { throwIfNoEntry: false })?.isFile()) this.missingFiles.delete(rel);
+		}
+		// In the order of their names, as 0.7 kept them.
+		for (const rel of [...this.missingFiles.keys()].sort(compareText)) {
+			diagnostics.warn(diagnostics.warning("missing-asset", missingMessage(this.missingFiles.get(rel)!, this.tools, this.outputName)));
+		}
+	}
+
+	/**
+	 * The output may have changed: a build finished, or another tool wrote there. Look at every
+	 * file, and note the ones that differ (which this returns). A stylesheet or script that
+	 * differs is looked at again once it has stopped changing, so browsers never fetch one half
+	 * written.
+	 */
+	async changed(output: string): Promise<string[]> {
+		const now = new Map<string, Stamp>();
+		walk(output, (rel, file, stat) => now.set(rel, stamp(file, stat)));
+		const differs = () => {
+			const out: string[] = [];
+			for (const [file, at] of now) if (!sameStamp(this.seen.get(file), at)) out.push(file);
+			for (const file of this.seen.keys()) if (!now.has(file)) out.push(file);
+			return out;
+		};
+		// Browsers' questions are answered meanwhile, with the last state: they don't hear of a
+		// change until it has settled.
+		const writing = differs().filter((file) => now.has(file) && isAsset(file));
+		const stamps = await settled(writing.map((file) => path.join(output, file)));
+		writing.forEach((file, i) => {
+			const at = stamps[i];
+			if (at) now.set(file, at);
+			else now.delete(file);
+		});
+		const changed = differs();
+		if (!changed.length && this.error === null) return changed;
+		this.id += 1;
+		this.error = null;
+		for (const file of changed) this.changedAt.set(file, this.id);
+		this.seen = now;
+		return changed;
+	}
+
+	/** A build failed: the output is as it was, and browsers show `error`. */
+	failed(error: string): void {
+		this.id += 1;
+		this.error = error;
+	}
+
+	/** The size the file `rel` had when it was last looked at. */
+	sizeSeen(rel: string): number | undefined {
+		return this.seen.get(rel)?.[0];
+	}
+
+	/**
+	 * The answer for a browser that last heard `since` and is showing the page in `page` (a file
+	 * in the output): the `id` now, the build's `error`, whether to `reload`, and the stylesheets
+	 * (`css`, as URLs) to fetch again. A page reloads when its own file changed, or a file that
+	 * isn't a page or a stylesheet (a script, an image: any page may use it).
+	 */
+	answer(since: number | undefined, page: string, base: string): Answer {
+		let reload = false;
+		const css: string[] = [];
+		// A server that started again counts from the beginning.
+		if (since !== undefined && since > this.id) reload = true;
+		else if (since !== undefined) {
+			const known = this.seen.has(page);
+			for (const [file, at] of this.changedAt) {
+				if (at <= since) continue;
+				const dot = file.lastIndexOf(".");
+				const kind = dot === -1 ? "" : file.slice(dot + 1);
+				if (file === page) reload = true;
+				else if (kind === "css") css.push(`${base}/${file}`);
+				// Another page. One that isn't there yet (a 404) reloads to see if it is now.
+				else if (PAGES.has(kind)) reload ||= !known;
+				else reload = true;
+			}
+		}
+		css.sort(compareText);
+		return { id: this.id, error: this.error, reload, css };
+	}
+}

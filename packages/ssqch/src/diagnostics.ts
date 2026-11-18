@@ -146,6 +146,11 @@ export function aliasUsed(row: Equivalent): void {
 	if (!capturing && !quiet) process.stderr.write(`note: ${equivalents.note(row)}\n`);
 }
 
+/** Aliases that have been said already, by the server a build is for: they aren't said again. */
+export function aliasesKnown(rows: Equivalent[]): void {
+	for (const row of rows) if (!aliases.includes(row)) aliases.push(row);
+}
+
 /** The aliases used so far, for the JSON report. */
 export function aliasesUsed(): Equivalent[] {
 	return [...aliases];
