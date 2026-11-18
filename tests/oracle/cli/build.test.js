@@ -305,3 +305,19 @@ test("each_error_location_is_shown_once", () => {
 	assert.equal(r.log.split("--> _includes/trail.njk:1").length - 1, 1, r.log);
 	assert.match(r.log, /--> stump\.njk:1/);
 });
+
+// opensource.guide (osg #9): Jekyll renders a `.js` file with front matter. The recipe is an engine
+// for `js` that gives the text back, and Liquid first; with "js" in templateFormats, the config and
+// the modules it imports were built as pages too (`_site/ssqch.config/index.html`).
+test("js_templates_render_and_the_configs_modules_are_not_pages", () => {
+	const root = project({
+		"ssqch.config.js": "import { snack } from \"./lib/snack.js\";\nexport default { templateFormats: [\"liquid\", \"js\"], engines: { js: (s) => s }, data: { snack } };\n",
+		"lib/snack.js": "export const snack = \"Pine Cone Crunch\";\n",
+		"assets/js/app.js": "---\n---\nconst snack = \"{{ snack }}\";\n",
+		"assets/js/js.json": "{ \"render\": \"liquid,js\", \"permalink\": \"/{{ page.filePathStem }}.js\" }\n",
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/assets/js/app.js"), "const snack = \"Pine Cone Crunch\";\n");
+	assert.ok(!exists(root, "_site/ssqch.config") && !exists(root, "_site/lib"), r.log);
+});

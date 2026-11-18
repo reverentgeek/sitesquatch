@@ -27,7 +27,7 @@ import { nunjucksEngine } from "./engines/nunjucks.ts";
 import * as equivalents from "./equivalents.ts";
 import { builtinFilters } from "./filters.ts";
 import { globSet, globToRegExp, isGlob } from "./glob.ts";
-import { describeThrown, settle } from "./modules.ts";
+import { describeThrown, loadedFiles, settle } from "./modules.ts";
 import { comparePaths, displayPath, isDir, isFile, isInside, readFollowing, realPath, relative, shown, slashes, walkFiles } from "./paths.ts";
 import { closest } from "./suggest.ts";
 import { VERSION } from "./version.ts";
@@ -365,6 +365,9 @@ export class Site {
 				if (!entry.isFile) continue;
 				this.seen.add(file);
 				if (isDataFile(name)) continue;
+				// The config and the modules it (or a data file) imported are code, not pages, even
+				// when `templateFormats` has "js" for a site's `.js` templates.
+				if (file === config.file || loadedFiles.has(file)) continue;
 				const ext = path.extname(name).slice(1).toLowerCase();
 				if (!formats.has(ext) && !engines.has(ext)) continue;
 				const rel = relative(dirs.input, file);

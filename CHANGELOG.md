@@ -74,6 +74,10 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Fixed
 
+- With `"js"` in `templateFormats` (for `.js` files with front matter), the config and the modules
+  it imports were built as pages (`_site/ssqch.config/index.html`). They're code, and skipped. The
+  README has the recipe for text files with front matter.
+
 - The hint for Jekyll's `jsonify` in a Jinja or Nunjucks template said Liquid's is `json`; it says
   `jsonify` works in Liquid.
 

@@ -638,8 +638,9 @@ From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
       **`code` render hook** for code spans (Rouge's `highlighter-rouge` classes) (osg #4).
 - [x] **Skip `vendor/bundle` and `vendor/gems`** when walking the site (osg #12; done 2026-11-18,
       any folder with `ruby/<version>/gems/`).
-- [ ] **Text templates in other formats** (`.js` with front matter): a recipe in the README, or
-      `templateFormats: ["js:liquid"]` (osg #9).
+- [x] **Text templates in other formats** (`.js` with front matter; the recipe done 2026-11-18, and
+      the config is no longer a page): a recipe in the README, or `templateFormats: ["js:liquid"]`
+      (osg #9).
 - [x] **`toc` options** for the list's, items' and links' classes and the list's `id` (osg #11;
       done 2026-11-18).
 - [ ] **`ssqch import jekyll`** (moved up from "Importer, the rest"): 9 of the move's 13 kinds of
