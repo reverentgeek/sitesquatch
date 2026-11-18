@@ -38,6 +38,8 @@ npm install --save-dev ssqch
 
 (Or `pnpm add -D ssqch`, or `yarn add -D ssqch`.) Then run `npx ssqch build`, or `ssqch build` from a `package.json` script.
 
+A site whose `.npmrc` holds new releases back (`min-release-age=2`, a supply-chain cooldown) gets a new ssqch that many days after it's published, and until then npm says `ETARGET No matching version found for ssqch@<version> with a date before ...`: install the version before it, or wait. `ignore-scripts=true` is fine: ssqch runs no install script, and sharp, its one dependency, comes with its binaries prebuilt.
+
 To have `ssqch` everywhere instead, install it globally with `npm install --global ssqch`, or with [Homebrew](https://brew.sh) on macOS or Linux: `brew install reverentgeek/tap/ssqch` (it brings Node along if you don't have it).
 
 Confirm the sighting:
@@ -590,6 +592,18 @@ Pine Cone Crunch
 ```
 
 Put `aria-hidden="true"` on decoration like that `#`, and `page.headings` leaves it out of the heading's text.
+
+A fence hook writes the whole block, so it has to write `<pre><code>` itself: `fence.highlighted` is only what goes inside it (spans, already escaped), and `fence.code` is the raw text, which the template escapes (Nunjucks and Jinja do it by themselves; in Liquid write `{{ fence.code | escape }}`). With `highlight` off, `highlighted` is empty:
+
+```njk
+{# src/_includes/hooks/fence.njk #}
+<div class="code-block">
+  <button class="copy" data-code="{{ fence.code }}">Copy</button>
+  <pre><code class="language-{{ fence.lang }}">
+    {%- if fence.highlighted %}{{ fence.highlighted | safe }}{% else %}{{ fence.code }}{% endif -%}
+  </code></pre>
+</div>
+```
 
 ### Jinja and Nunjucks
 

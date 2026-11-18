@@ -692,13 +692,12 @@ trailhead.
 - [x] **`quiet` and `verbose` in `BuildEvent`** (ex #11; done 2026-11-18, and `SSQCH_QUIET` for
       build commands; `serve.run` too), and one code frame per distinct error location (a 222-page
       error printed the same frame three times; done 2026-11-18).
-- [ ] **Docs** (ex #12; `containers`, `pagination` and `data` done 2026-11-18): `ssqch docs
-      containers`, `pagination` and `data` answer with a table row or a feature list instead of the
-      explanation (add them to `docs_answer_for_every_name`); when `page.headings`, `page.excerpt`
-      and `templateContent` are available (after the page renders, not in `computed`); a fence hook
-      example that writes `highlighted` (HTML) and escapes `code` (raw text); a release-age cooldown
-      (`min-release-age` in `.npmrc`) holding back a new ssqch release, and sharp installing with
-      `ignore-scripts`.
+- [x] **Docs** (ex #12; done 2026-11-18): `ssqch docs containers`, `pagination` and `data` answer
+      with a table row or a feature list instead of the explanation (add them to
+      `docs_answer_for_every_name`); when `page.headings`, `page.excerpt` and `templateContent` are
+      available (after the page renders, not in `computed`); a fence hook example that writes
+      `highlighted` (HTML) and escapes `code` (raw text); a release-age cooldown (`min-release-age`
+      in `.npmrc`) holding back a new ssqch release, and sharp installing with `ignore-scripts`.
 - [ ] Report the site's bugs upstream (ex `issues.md`, last section): 345 alerts with a translated
       `type`, ids from `Math.random()`, `llms` files without their `import` lines.
 
