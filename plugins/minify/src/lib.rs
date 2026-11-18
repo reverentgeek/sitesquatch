@@ -180,9 +180,22 @@ pub fn minify(html: &str, opts: &MinifyOptions) -> String {
     out
 }
 
+/// The first place `needle` (ASCII) appears in `hay`, ignoring ASCII case. It compares in place:
+/// lowercasing the rest of the page at every raw block made a page of thousands of them quadratic.
 fn find_ci(hay: &str, needle: &str) -> Option<usize> {
-    let lower = hay.to_ascii_lowercase();
-    lower.find(&needle.to_ascii_lowercase())
+    let (h, n) = (hay.as_bytes(), needle.as_bytes());
+    let Some(&first) = n.first() else { return Some(0) };
+    let (lo, up) = (first.to_ascii_lowercase(), first.to_ascii_uppercase());
+    let mut i = 0;
+    while i + n.len() <= h.len() {
+        let skip = h[i..=h.len() - n.len()].iter().position(|&c| c == lo || c == up)?;
+        i += skip;
+        if h[i..i + n.len()].eq_ignore_ascii_case(n) {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
 }
 
 fn collapse_ws(s: &str) -> String {
@@ -365,5 +378,14 @@ mod tests {
         assert_eq!(m("<input value=\" keep \" hidden=\"until-found\">"), "<input value=\" keep \" hidden=\"until-found\">");
         let off = MinifyOptions { shorten_attributes: false, ..MinifyOptions::default() };
         assert_eq!(minify("<script defer=\"defer\"></script>", &off), "<script defer=\"defer\"></script>");
+    }
+
+    #[test]
+    fn finds_a_closing_tag_in_any_case_without_copying() {
+        assert_eq!(find_ci("a</Script>b</script>", "</script"), Some(1));
+        assert_eq!(find_ci("<<<//<", "</script"), None);
+        assert_eq!(find_ci("x</scrip", "</script"), None);
+        assert_eq!(find_ci("é</STYLE>", "</style"), Some(2));
+        assert_eq!(m("<pre>a</PRE>  <b>x</b>\n<style>p{}</STYLE> z"), "<pre>a</PRE><b>x</b><style>p{}</STYLE>z");
     }
 }
