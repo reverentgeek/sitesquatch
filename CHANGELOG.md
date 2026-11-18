@@ -155,6 +155,27 @@ the release.
   built as WebAssembly, so pages and stylesheets come out as 0.7 wrote them. A Sass error's last
   line names the file from the project root (`./styles/blog.scss:1:16`), where 0.7 printed its
   absolute path after `./`.
+- **Images are encoded by sharp** (libvips, with libaom for AVIF, libwebp and mozjpeg), where 0.7
+  had encoders of its own, so an image file's bytes aren't 0.7's. The rest is: the markup, the
+  files' names, widths and heights, the cache, and the quality options, whose numbers still mean
+  what they meant in 0.7 (ssqch turns them into sharp's, measured to give pictures as good). At
+  those settings the files are smaller and quicker to make: AVIF about a quarter smaller at the
+  default speed (11 to 19% at speed 4) in well under half the time, WebP 1% smaller, and JPEG a
+  tenth smaller at quality 80 (sharp's best JPEG and AVIF fall short of 0.7's above about JPEG
+  91 and AVIF 98, and are sharp's 100 there). A site changes nothing. Its image
+  cache from 0.7 is used as it is, since the names are the same, so the output has 0.7's files
+  next to sharp's until the cache goes: delete `.cache/ssqch/img` to encode every file again.
+  AVIF is always there, where 0.7 needed its `avif` feature.
+- **`files(pattern, { dimensions: true })` reads the sizes of PNG, JPEG, GIF, TIFF, WebP, HEIF and
+  AVIF, BMP, PSD, ICO and QOI files.** 0.7 also read EXR, Radiance HDR, JPEG XL, KTX2, DDS, TGA,
+  PNM, farbfeld, Aseprite, ILBM and VTF files, whose `width` and `height` are `null` now.
+
+### Changed
+
+- `[ssqch] Encoded ...` lines come as each image's files are done, while pages go on rendering,
+  so they're among the `Writing` lines, not before the page that shows the image. The build waits
+  for every file before the link checker, the other plugins' files, `afterBuild` hooks and the
+  summary.
 - Tags from the config's functions (`{% image "/a.png", "A pine" %}`, and paired with `{% endimage
   %}`) work in `.jinja` files too, where 0.7 had them in `.njk` only.
 - The config can be `ssqch.config.cjs`, `ssqch.config.ts` or `ssqch.config.mts`, besides `.js`
