@@ -26,6 +26,11 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
   the heading its id (`## x² {#x2}`). expressjs.com had 29 pages linking to ids ssqch wrote
   differently.
 
+### Added
+
+- Build hooks get `quiet` and `verbose` (whether the build was run with `--quiet` or
+  `--verbose`), and a hook's command gets `SSQCH_QUIET`, so a hook's own messages can follow `-q`.
+
 ### Faster
 
 - Liquid's `where` and `reject` don't run liquidjs' generator and new scope for every item when

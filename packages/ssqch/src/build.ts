@@ -701,7 +701,9 @@ function unusedTemplates(site: Site): string[] {
 /** The argument to `beforeBuild` and `afterBuild` hooks. Folders are from the project root; `written` (after the build) lists the files it wrote. */
 function hookEvent(config: Config, dirs: Dirs, report: BuildReport | undefined): Data {
 	const rel = (dir: string) => (dir === dirs.root ? "./" : isInside(dirs.root, dir) ? `./${relative(dirs.root, dir)}/` : `${dir}/`);
-	const event: Data = { env: config.env, serving: config.serving, dirs: { input: rel(dirs.input), output: rel(dirs.output), includes: rel(dirs.includes), data: rel(dirs.data) } };
+	// `quiet` and `verbose` say what the build was asked to print, so a hook's own messages can follow
+	// `-q` (expressjs.com's social-image hook read process.argv for it, ex #11).
+	const event: Data = { env: config.env, serving: config.serving, quiet: config.quiet, verbose: config.verbose, dirs: { input: rel(dirs.input), output: rel(dirs.output), includes: rel(dirs.includes), data: rel(dirs.data) } };
 	if (report) event.written = [...report.written];
 	return event;
 }
@@ -723,13 +725,13 @@ async function runHooks(config: Config, dirs: Dirs, event: "beforeBuild" | "afte
 
 /**
  * Runs `command` through the shell (`sh -c`, or `cmd /C` on Windows) in the project root, with
- * its output passed through. It gets `SSQCH_ENV`, `SSQCH_SERVING` (`true` or `false`),
- * `SSQCH_INPUT` and `SSQCH_OUTPUT` (the folders, absolute). A failure (or a program that can't
+ * its output passed through. It gets `SSQCH_ENV`, `SSQCH_SERVING` and `SSQCH_QUIET` (`true` or
+ * `false`), `SSQCH_INPUT` and `SSQCH_OUTPUT` (the folders, absolute). A failure (or a program that can't
  * start) is an error naming the command.
  */
 export function runCommand(config: Config, dirs: Dirs, event: string, command: string): void {
 	if (!config.quiet) progress(`[ssqch] ${event}: ${command}`);
-	const { file, args, options } = commandLine(command, dirs.root, { SSQCH_ENV: config.env, SSQCH_SERVING: config.serving ? "true" : "false", SSQCH_INPUT: dirs.input, SSQCH_OUTPUT: dirs.output });
+	const { file, args, options } = commandLine(command, dirs.root, { SSQCH_ENV: config.env, SSQCH_SERVING: config.serving ? "true" : "false", SSQCH_QUIET: config.quiet ? "true" : "false", SSQCH_INPUT: dirs.input, SSQCH_OUTPUT: dirs.output });
 	const ran = spawnSync(file, args, {
 		...options,
 		// Standard output is kept for the JSON report, so the command's goes to standard error.

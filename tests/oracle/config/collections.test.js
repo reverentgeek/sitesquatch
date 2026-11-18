@@ -180,3 +180,24 @@ test("a_bundler_install_folder_is_not_the_sites_pages", () => {
 	assert.match(read(root, "_site/vendor/notes/index.html"), /Our own vendor notes/);
 	assert.throws(() => read(root, "_site/vendor/bundle/ruby/3.3.0/gems/jekyll-3.10.0/lib/site_template/about/index.html"));
 });
+
+// expressjs.com (ex #11): a hook that prints had to read process.argv to follow `-q`. Hooks are
+// told what the build was asked to print: `quiet` and `verbose`, and SSQCH_QUIET for commands.
+test("build_hooks_are_told_quiet_and_verbose", () => {
+	const root = project({
+		"ssqch.config.js": `import fs from "node:fs";
+export default {
+  templateFormats: ["md"],
+  ignore: ["quiet.txt", "hooks.txt"],
+  beforeBuild: [({ quiet, verbose }) => fs.writeFileSync("hooks.txt", \`\${quiet} \${verbose}\`), { run: "node -e \\"require('fs').writeFileSync('quiet.txt', process.env.SSQCH_QUIET)\\"" }],
+};
+`,
+		"index.md": "# Home\n",
+	});
+	assert.ok(ssqch(["build", "--root", root, "--quiet"]).ok);
+	assert.equal(read(root, "hooks.txt"), "true false");
+	assert.equal(read(root, "quiet.txt"), "true");
+	assert.ok(ssqch(["build", "--root", root, "--verbose"]).ok);
+	assert.equal(read(root, "hooks.txt"), "false true");
+	assert.equal(read(root, "quiet.txt"), "false");
+});
