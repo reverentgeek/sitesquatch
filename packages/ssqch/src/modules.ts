@@ -85,11 +85,13 @@ export function hookModules(): void {
 		try {
 			return attempt(specifier);
 		} catch (e: any) {
-			// A `#…` alias with no package.json `imports` is Node's ERR_PACKAGE_IMPORT_NOT_DEFINED.
-			if (!fromSite || !["ERR_MODULE_NOT_FOUND", "ERR_UNSUPPORTED_DIR_IMPORT", "ERR_PACKAGE_IMPORT_NOT_DEFINED"].includes(e?.code)) throw e;
+			// A `#…` alias with no package.json `imports` is Node's ERR_PACKAGE_IMPORT_NOT_DEFINED, and
+			// `#/…` is ERR_INVALID_MODULE_SPECIFIER on Node 22 (later Nodes allow it in `imports`).
+			const hashAlias = specifier.startsWith("#") && ["ERR_PACKAGE_IMPORT_NOT_DEFINED", "ERR_INVALID_MODULE_SPECIFIER"].includes(e?.code);
+			if (!fromSite || (!hashAlias && !["ERR_MODULE_NOT_FOUND", "ERR_UNSUPPORTED_DIR_IMPORT"].includes(e?.code))) throw e;
 			// `import { shout } from "./lib/text"`: the file with an extension, or a folder's index.
 			const relative = specifier.startsWith("./") || specifier.startsWith("../") || path.isAbsolute(specifier) || specifier.startsWith("file:");
-			if (relative) return (e.code !== "ERR_PACKAGE_IMPORT_NOT_DEFINED" && withEndings(specifier)) || (() => { throw e; })();
+			if (relative) return withEndings(specifier) ?? (() => { throw e; })();
 			// `import { menu } from "@/config/menu"`: tsconfig.json's (or jsconfig.json's) `paths`,
 			// which Astro, Vite and Next.js sites import their own files through (expressjs.com, ex #5).
 			for (const file of aliasTargets(specifier, path.dirname(fileURLToPath(context.parentURL!)))) {
