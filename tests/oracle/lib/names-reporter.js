@@ -10,16 +10,19 @@ export default async function* names(source) {
 	for await (const event of source) {
 		if (event.type !== "test:pass" && event.type !== "test:fail") continue;
 		const { name, file, skip, todo, details } = event.data;
-		// A file's own entry (the runner adds one for each file) isn't a test.
-		if (details?.type === "suite" || !file || name === file) continue;
-		const outcome = skip !== undefined || todo !== undefined ? "skip" : event.type === "test:pass" ? "pass" : "fail";
-		const where = `${outcome}\t${path.relative(ORACLE, file).split(path.sep).join("/")}\t${name}`;
-		if (outcome !== "fail") {
-			yield `${where}\n`;
+		if (details?.type === "suite" || !file) continue;
+		const relative = path.relative(ORACLE, file).split(path.sep).join("/");
+		const error = details?.error;
+		const failure = () => JSON.stringify({ ms: Math.round(details?.duration_ms ?? 0), why: String(error?.cause?.message ?? error?.cause ?? error?.message ?? error ?? "") });
+		// A file's own entry (the runner adds one for each file) isn't a test. Node names it with
+		// the path as found (relative on 22.18), and a failed one says why the file failed.
+		if (name === file || path.resolve(ORACLE, name) === file) {
+			// Failing because its tests did is said by those tests.
+			if (event.type === "test:fail" && error?.failureType !== "subtestsFailed") yield `file\t${relative}\t${failure()}\n`;
 			continue;
 		}
-		const error = details?.error;
-		const why = String(error?.cause?.message ?? error?.cause ?? error?.message ?? error ?? "");
-		yield `${where}\t${JSON.stringify({ ms: Math.round(details?.duration_ms ?? 0), why })}\n`;
+		const outcome = skip !== undefined || todo !== undefined ? "skip" : event.type === "test:pass" ? "pass" : "fail";
+		const where = `${outcome}\t${relative}\t${name}`;
+		yield outcome === "fail" ? `${where}\t${failure()}\n` : `${where}\n`;
 	}
 }

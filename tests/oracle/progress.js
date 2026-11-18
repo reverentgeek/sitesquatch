@@ -24,8 +24,9 @@ const files = args.filter((arg) => !arg.startsWith("--"));
 
 // The reporter as a URL: on Windows, Node takes `D:\...` for a URL with the scheme `d:`.
 const reporter = pathToFileURL(path.join(ORACLE, "lib/names-reporter.js")).href;
-// A test that's stuck fails, with its name, after 3 minutes (the slowest take about 30 s on CI).
-const ran = spawnSync(process.execPath, ["--test", "--test-concurrency=4", "--test-timeout=180000", `--test-reporter=${reporter}`, ...files], {
+// No --test-timeout: on Node 22.18 it limits each file, not each test, and a file that runs over
+// reports none of its tests. CI's jobs have time limits of their own.
+const ran = spawnSync(process.execPath, ["--test", "--test-concurrency=4", `--test-reporter=${reporter}`, ...files], {
 	cwd: ORACLE,
 	encoding: "utf8",
 	env: { ...process.env, SSQCH_BIN: process.env.SSQCH_BIN ?? "packages/ssqch/bin/ssqch.ts" },
@@ -34,8 +35,14 @@ const ran = spawnSync(process.execPath, ["--test", "--test-concurrency=4", "--te
 const results = new Map();
 /** Each failure's time and error in this run, by test. */
 const failures = new Map();
+/** Files that failed as a whole (they didn't load, or ended early), with why. */
+const fileFailures = [];
 for (const line of ran.stdout.split("\n")) {
 	const [outcome, file, name, failure] = line.split("\t");
+	if (outcome === "file") {
+		fileFailures.push([file, JSON.parse(name)]);
+		continue;
+	}
 	if (name !== undefined) results.set(`${file}: ${name}`, outcome);
 	if (failure !== undefined) failures.set(`${file}: ${name}`, JSON.parse(failure));
 }
@@ -64,6 +71,7 @@ if (update) {
 const broken = listed.filter((key) => inScope(key) && results.get(key) === "fail");
 const gone = listed.filter((key) => inScope(key) && !results.has(key));
 const fresh = [...results].filter(([key, outcome]) => outcome === "pass" && !listed.includes(key)).map(([key]) => key);
+for (const [file, failure] of fileFailures) process.stdout.write(`\n${file} failed as a whole (${(failure.ms / 1000).toFixed(1)} s), so its tests have no results:\n${failure.why.split("\n").slice(0, 60).join("\n")}\n`);
 if (fresh.length) process.stdout.write(`\nPassing now, and not in node-passing.txt (node progress.js --update adds them):\n${fresh.map((key) => `  ${key}`).join("\n")}\n`);
 if (gone.length) process.stdout.write(`\nIn node-passing.txt, and not in the oracle any more (renamed?):\n${gone.map((key) => `  ${key}`).join("\n")}\n`);
 if (broken.length) {

@@ -6,3 +6,6 @@
 /examples/sites/*/.cache
 /packages/*/node_modules
 /packages/ssqch/dist
+
+# The Playwright browser tool's logs and page snapshots
+/.playwright-mcp/
