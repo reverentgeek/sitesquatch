@@ -671,12 +671,13 @@ trailhead.
       `scripts/codemod.mjs` (183 lines) converted 663 files and about 2,600 component uses with no
       hand edits; with a report of `getStaticPaths` files, path aliases, integrations and their
       ssqch answers, and env variables read at build.
-- [ ] **`headingIds: "github"` byte for byte as github-slugger** (ex #6a): it keeps an emoji's
-      variation selector (`#️-what-you-should-do`) and numbers punctuation-only headings (`#-1`),
-      and ssqch's ids don't, so 29 expressjs.com pages link to anchors that aren't there.
-      rehype-slug, Astro, VitePress and Docusaurus all use github-slugger. Also say in the
-      component-frameworks trailhead that remark-gfm links a bare URL after a quote and GFM's spec
-      (and ssqch) doesn't (11 pages).
+- [x] **`headingIds: "github"` byte for byte as github-slugger** (ex #6a; done 2026-11-18, from its
+      own table; repeated empty slugs stay `section`, `section-1`): it keeps an emoji's variation
+      selector (`#️-what-you-should-do`) and numbers punctuation-only headings (`#-1`), and ssqch's
+      ids don't, so 29 expressjs.com pages link to anchors that aren't there. rehype-slug, Astro,
+      VitePress and Docusaurus all use github-slugger. Also say in the component-frameworks
+      trailhead that remark-gfm links a bare URL after a quote and GFM's spec (and ssqch) doesn't
+      (11 pages).
 - [ ] **A cache for generated images** (ex benchmarks.md): social images from a function (satori),
       kept by their inputs; the port's own `.cache/og` took the build from 6.3 to 2.0 s. Maybe an
       `ogImagePlugin({ render: (page) => element })`.

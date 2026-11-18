@@ -18,6 +18,13 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 - A `computed` value named `page` is an error (`` `page` in computed isn't applied, because `page`
   is ssqch's ``). It was thrown away without a word, since ssqch sets `page` after `computed` runs.
   A site that has one: give it another name (`computed: { meta: ... }`) and use that in templates.
+- `headingIds: "github"` (the default) follows github-slugger 2.0.0 character for character, the
+  slugger rehype-slug uses (so Astro's, VitePress's and Docusaurus's anchors) and GitHub's anchors
+  match. A heading's id changes when it has a combining accent (`e` + U+0301, which stays), an
+  emoji's variation selector or a zero-width joiner (which stay), or a superscript or fraction
+  (`x²`, `½`, which go). A site linking to such a heading's old id: link to the new one, or give
+  the heading its id (`## x² {#x2}`). expressjs.com had 29 pages linking to ids ssqch wrote
+  differently.
 
 ### Faster
 

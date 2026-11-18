@@ -47,12 +47,16 @@ impl Slugger {
     pub fn slug(self, text: &str) -> String {
         let mut out = String::with_capacity(text.len());
         match self {
+            // github-slugger's: lowercase, then remove what its table lists (punctuation, symbols,
+            // controls; it keeps letters, numbers, combining marks, joiners and `_`), spaces as `-`.
+            // rehype-slug uses it, so remark and rehype sites (Astro, VitePress, Docusaurus) have
+            // these anchors, and GitHub's are the same.
             Slugger::Github => {
-                for c in text.chars() {
+                for c in text.to_lowercase().chars() {
                     if c == ' ' {
                         out.push('-');
-                    } else if c.is_alphanumeric() || c == '-' || c == '_' {
-                        out.extend(c.to_lowercase());
+                    } else if !crate::github_slugger::removes(c) {
+                        out.push(c);
                     }
                 }
             }
@@ -1244,6 +1248,11 @@ mod tests {
         assert_eq!(Slugger::Github.slug("A -- B"), "a----b");
         assert_eq!(Slugger::Github.slug("The foo() function"), "the-foo-function");
         assert_eq!(Slugger::Github.slug("Ünïcödé snake_case"), "ünïcödé-snake_case");
+        // As github-slugger 2.0.0 writes them (expressjs.com's anchors): an emoji's variation
+        // selector and a combining accent stay; superscripts and fractions go.
+        assert_eq!(Slugger::Github.slug("\u{26A0}\u{FE0F} What you should do"), "\u{FE0F}-what-you-should-do");
+        assert_eq!(Slugger::Github.slug("Cafe\u{301} x\u{B2} \u{BD}"), "cafe\u{301}-x-");
+        assert_eq!(Slugger::Github.slug("\u{130}stanbul"), "i\u{307}stanbul");
         assert_eq!(Slugger::Blackfriday.slug("A -- B"), "a-b");
         assert_eq!(Slugger::Blackfriday.slug("What's new in 1.2?"), "what-s-new-in-1-2");
         assert_eq!(Slugger::Blackfriday.slug("snake_case"), "snake-case");
