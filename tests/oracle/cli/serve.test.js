@@ -309,10 +309,34 @@ test("serve_keeps_building_with_the_last_config_after_its_code_ends_the_build", 
 		fs.writeFileSync(path.join(dir, "_data/flag.json"), "{ \"v\": \"exit\" }");
 		await waitFor(log, "Build failed:");
 		// The config is saved a moment later, as a person would: in the Node build, another
-		// process has loaded the last one by then.
-		await sleep(3000);
-		await changeAndWait(path.join(dir, "ssqch.config.js"), "export default { filters: ", log, "Config error:");
-		await waitFor(log, "(still serving with the last configuration that loaded)");
+		// process has loaded the last one by then. On a busy machine it may not have (the gap is
+		// accepted: TODO.md), and the log says nothing builds until the config loads. Then the
+		// good config goes back, its build ends its process again, and the save is tried again.
+		const config = path.join(dir, "ssqch.config.js");
+		const good = fs.readFileSync(config, "utf8");
+		const since = (mark) => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").slice(mark) : "");
+		for (let attempt = 1; ; attempt++) {
+			await sleep(3000);
+			const mark = since(0).length;
+			const answer = await (async () => {
+				for (const started = Date.now(); Date.now() - started < 40_000;) {
+					fs.writeFileSync(config, "export default { filters: ");
+					for (const written = Date.now(); Date.now() - written < 1000; await sleep(50)) {
+						const said = since(mark);
+						if (said.includes("(still serving with the last configuration that loaded)")) return "kept";
+						if (said.includes("(nothing builds until it loads")) return "gap";
+					}
+				}
+				throw new Error(`no config error after saving a broken config; the log has ${JSON.stringify(since(0))}`);
+			})();
+			if (answer === "kept") break;
+			assert.ok(attempt < 3, `saved in the gap three times: ${since(0)}`);
+			const again = since(0).length;
+			fs.writeFileSync(config, good);
+			for (const started = Date.now(); !since(again).includes("Build failed:"); await sleep(50)) {
+				if (Date.now() - started > 40_000) throw new Error(`the good config didn't build again; the log has ${JSON.stringify(since(0))}`);
+			}
+		}
 		await changeAndWait(path.join(dir, "_data/flag.json"), "{ \"v\": \"fixed\" }", page, "fixed Squatch Snacks");
 		await waitFor(log, "Build recovered. Back on the trail. Built in");
 	} finally {
