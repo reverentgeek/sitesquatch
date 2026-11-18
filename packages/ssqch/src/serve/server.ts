@@ -285,7 +285,9 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 		// so this runs after each one.
 		const watchedFiles = new Set<string>();
 		const watchConfigFiles = () => {
-			for (const file of builder.files) {
+			// And what the plugins read for the last build that no watched folder holds (a
+			// stylesheet's partial in a folder of its own).
+			for (const file of [...builder.files, ...builder.read]) {
 				if (isInside(output, file) || watchPaths.some((p) => isInside(p, file)) || watchedFiles.has(file)) continue;
 				watchedFiles.add(file);
 				try { watcher.watch(path.dirname(file), false); } catch { /* a folder that's gone */ }
@@ -333,7 +335,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 			});
 			const isConfig = (file: string) => builder.files.has(file);
 			// Folders watched for a config file see their other files change too.
-			const inSources = (file: string) => watchPaths.some((p) => isInside(p, file)) || isConfig(file);
+			const inSources = (file: string) => watchPaths.some((p) => isInside(p, file)) || isConfig(file) || builder.read.has(file);
 			const config = sources.find(isConfig);
 			const source = config === undefined ? sources.find(inSources) : undefined;
 			if (config !== undefined) {

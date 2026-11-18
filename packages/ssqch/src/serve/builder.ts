@@ -26,6 +26,7 @@ import * as diagnostics from "../diagnostics.ts";
 import { Locator } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { loadedFiles } from "../modules.ts";
+import { filesRead } from "../plugin-files.ts";
 import { isInside, realPath, relative, slashes } from "../paths.ts";
 import { summary } from "../report.ts";
 import { isAsset } from "./live.ts";
@@ -62,6 +63,8 @@ export interface SiteInfo {
 interface State {
 	/** The site's own files that were loaded as modules: a change to one reads the configuration again. */
 	files: string[];
+	/** The files the plugins read for the last build, beyond the pages and the data (a stylesheet's partials): a change to one rebuilds the site. */
+	read: string[];
 	said: string[];
 }
 
@@ -107,7 +110,7 @@ const flushed = () => Promise.all([process.stdout, process.stderr].map((stream) 
  */
 export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<Config>, root: string): Promise<number> {
 	const send = (message: FromBuilder) => new Promise<void>((resolve) => { process.send!(message, undefined, undefined, () => resolve()); });
-	const state = (): State => ({ files: [...loadedFiles].map(realPath), said: diagnostics.aliasesUsed().map(key) });
+	const state = (config: Config): State => ({ files: [...loadedFiles].map(realPath), read: filesRead(config), said: diagnostics.aliasesUsed().map(key) });
 	diagnostics.aliasesKnown(equivalents.TABLE.filter((row) => start.said.includes(key(row))));
 	// The server went away without stopping this (it was killed): nothing to build for.
 	process.on("disconnect", () => process.exit(0));
@@ -133,7 +136,7 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 	const asked: ToBuilder[] = [];
 	let wake: (() => void) | undefined;
 	process.on("message", (message: ToBuilder) => { asked.push(message); wake?.(); });
-	await send({ type: "loaded", site: siteInfo(config), ...state() });
+	await send({ type: "loaded", site: siteInfo(config), ...state(config) });
 
 	for (;;) {
 		while (!asked.length) await new Promise<void>((resolve) => { wake = resolve; });
@@ -151,7 +154,7 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 			result = { ok: false, error: said, assets: [] };
 		}
 		await flushed();
-		await send({ type: "built", ...result, ...state() });
+		await send({ type: "built", ...result, ...state(config) });
 	}
 }
 
@@ -179,6 +182,8 @@ export class Builder {
 	site!: SiteInfo;
 	/** The configuration's files, as of the last build. */
 	files = new Set<string>();
+	/** What the plugins read for the last build. */
+	read = new Set<string>();
 	/** Other generators' words noted so far. */
 	said: string[] = [];
 	private args: string[];
@@ -234,6 +239,7 @@ export class Builder {
 
 	private note(state: State): void {
 		this.files = new Set(state.files);
+		this.read = new Set(state.read);
 		this.said = state.said;
 	}
 

@@ -189,6 +189,34 @@ test("a file a plugin watches rebuilds the site", async () => {
 	remove(dir);
 });
 
+// What a plugin read for the last build is watched too, wherever it is: a stylesheet's partial
+// in a folder the config never named.
+test("a file a plugin read rebuilds the site", async () => {
+	const dir = tempDir("serve-read");
+	write(dir, {
+		"ssqch.config.js": "import { sassPlugin } from \"ssqch/sass\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [sassPlugin({ files: { \"styles/main.scss\": \"/app.css\" } })] };\n",
+		"styles/main.scss": "@use \"../shared/colors\";\nbody { color: colors.$pine; }\n",
+		"shared/_colors.scss": "$pine: green;\n",
+		"shared/notes.txt": "not a stylesheet's\n",
+		"src/index.html": "<link rel=\"stylesheet\" href=\"/app.css\"><p>camp</p>",
+	});
+	const server = await serve(dir);
+	try {
+		assert.ok(readOr(path.join(dir, "dist/app.css")).includes("green"), server.said());
+		await server.change("shared/_colors.scss", "$pine: orange;\n", "dist/app.css", "orange");
+		assert.ok(server.said().includes(`Fresh tracks in ${path.join("shared", "_colors.scss")}\n`), server.said());
+		// A file beside it that nothing read isn't the site's.
+		const builds = () => server.said().split("Built in").length - 1;
+		const before = builds();
+		fs.writeFileSync(path.join(dir, "shared/notes.txt"), "still not\n");
+		await sleep(1500);
+		assert.equal(builds(), before, server.said());
+	} finally {
+		await server.stop();
+	}
+	remove(dir);
+});
+
 // A configuration that waits for something that never comes is an error like any other of its
 // errors (in `ssqch build` too), and the last one that loaded keeps serving.
 test("a configuration that never finishes loading is an error", async () => {

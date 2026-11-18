@@ -197,13 +197,13 @@ until 0.8 ships.
         folder on Linux (without `node_modules`, `.git` and `.cache`). No dependency.
   - [x] A rebuild keeps what each page's file held when it was last compared, and doesn't read
         it again. The blog rebuilds in 95 ms after one edit (0.7: 175 ms).
-  - [ ] Four oracle tests wait for stage 5's plugins, which their configs use:
-        `serve_recovers_when_another_build_deletes_a_watchers_file` (`ssqch/assets`),
-        `serve_reads_a_changed_config_again` (`ssqch/rss`),
-        `serve_rebuilds_sass_when_a_partial_changes` (`ssqch/sass`) and "serve ready file"
-        (`ssqch/links`). With the plugin taken out of a copy, each passes; run them when the
-        plugins merge. The Sass plugin has to list its files' folders in `config.watch`, as
-        0.7's did (`add_watch_target`).
+  - [x] What a plugin read for the last build is watched too (`filesRead` in
+        `src/plugin-files.ts`, which `ssqch/sass` fills), besides what it lists in the config's
+        `watch`: a partial in a folder the config never named rebuilds the site.
+  - [ ] Two oracle tests wait for stage 5: `serve_recovers_when_another_build_deletes_a_watchers_file`
+        (its config has `ssqch/assets`) and `serve_reads_a_changed_config_again` (it calls
+        `feedHtml()`, which comes with images). With the plugin taken out of a copy, and a plain
+        filter for `feedHtml`, both pass; run them when those merge.
   - [ ] **Decide:** a rebuild of 10,000 pages takes 0.97 s after one edit, twice 0.7's (which
         used every core). Worker threads, or rendering only the pages an edit can reach, would
         change that; the second needs the plugins that count across pages to take part. Both
