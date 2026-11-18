@@ -3,7 +3,7 @@
 //
 //   node scripts/check-package.ts                    builds the package, packs it, installs it, checks it
 //   node scripts/check-package.ts --tarball <tgz>    installs that tarball and checks it
-//   --oracle                                         also runs the oracle's list (tests/oracle/progress.js) with it
+//   --oracle                                         also runs the oracle (tests/oracle) with it
 //   --keep                                           keeps the temporary folder, and says where
 //
 // Everything runs in a temporary folder outside the repository, with copies of the sites, so
@@ -117,7 +117,7 @@ check("images, Markdown, minify, Sass and a Rust plugin build as from source", (
 	fs.mkdirSync(path.join(dir, "src/img"), { recursive: true });
 	fs.mkdirSync(path.join(dir, "src/scss"), { recursive: true });
 	fs.mkdirSync(path.join(dir, "plugins/trail-guide"), { recursive: true });
-	fs.copyFileSync(path.join(REPO, "crates/ssqch/tests/fixtures/squatch.png"), path.join(dir, "src/img/squatch.png"));
+	fs.copyFileSync(path.join(REPO, "tests/oracle/fixtures/cli/squatch.png"), path.join(dir, "src/img/squatch.png"));
 	for (const file of ["index.js", "trail_guide.wasm"]) fs.copyFileSync(path.join(REPO, "examples/rust-plugin", file), path.join(dir, "plugins/trail-guide", file));
 	fs.writeFileSync(path.join(dir, "ssqch.config.js"), [
 		`import { defineConfig } from "ssqch";`,
@@ -155,10 +155,9 @@ check("Node finds every module in the exports map, and its types", () => {
 });
 
 if (values.oracle) {
-	// Every test the source passes (node-passing.txt), with this ssqch: progress.js fails on one
-	// that doesn't, and says why.
-	console.log("The oracle's list, with this ssqch:");
-	const r = spawnSync(process.execPath, ["progress.js"], { cwd: path.join(REPO, "tests/oracle"), stdio: "inherit", env: { ...process.env, SSQCH_BIN: bin, SSQCH_EXPECT_VERSION: version } });
+	// The whole oracle, with this ssqch.
+	console.log("The oracle, with this ssqch:");
+	const r = spawnSync(process.execPath, ["--test", "--test-concurrency=4", "--test-reporter=dot"], { cwd: path.join(REPO, "tests/oracle"), stdio: "inherit", env: { ...process.env, SSQCH_BIN: bin, SSQCH_EXPECT_VERSION: version } });
 	if (r.status !== 0) failures++;
 }
 

@@ -1,6 +1,6 @@
 // The Node side of ssqch's Markdown: what goes into the wasm and what comes back. The Markdown
-// itself is 0.7's, tested in crates/sitesquatch/src/markdown.rs (and again in
-// crates/ssqch-markdown); the oracle compares whole sites with 0.7's.
+// itself is 0.7's, tested in crates/ssqch-markdown (`cargo test -p ssqch-markdown`); the oracle
+// compares whole sites with their frozen output.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

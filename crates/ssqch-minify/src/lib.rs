@@ -1,7 +1,7 @@
 //! ssqch's own HTML minifier, for the Node build (0.8).
 //!
-//! [`html`] is 0.7's `plugins/minify/src/lib.rs`, compiled by path and unchanged, so a page
-//! comes out as 0.7 minified it. It registers itself with 0.7's `sitesquatch::{Config,
+//! [`html`] is 0.7's `plugins/minify/src/lib.rs`, moved here unchanged when the Rust
+//! implementation was removed, so a page comes out as 0.7 minified it. It registers itself with 0.7's `sitesquatch::{Config,
 //! Plugin}`; the stand-ins below take their place (`extern crate self as sitesquatch` is what
 //! its `use sitesquatch::...` finds), and the Node build calls [`html::minify`] itself.
 //!
@@ -15,16 +15,15 @@ extern crate self as sitesquatch;
 
 use ssqch_plugin::{export, Hooks, Page, Value};
 
-#[path = "../../../plugins/minify/src/lib.rs"]
 pub mod html;
 
-/// 0.7's `sitesquatch::Plugin`, as `plugins/minify` uses it.
+/// 0.7's `sitesquatch::Plugin`, as [`html`] uses it.
 pub trait Plugin {
     fn name(&self) -> &str;
     fn register(&self, config: &mut Config);
 }
 
-/// 0.7's `sitesquatch::Config`, as far as `plugins/minify` uses it.
+/// 0.7's `sitesquatch::Config`, as far as [`html`] uses it.
 pub struct Config;
 
 impl Config {
@@ -35,7 +34,7 @@ impl Config {
     }
 }
 
-/// 0.7's `sitesquatch::TransformContext`, as far as `plugins/minify` uses it.
+/// 0.7's `sitesquatch::TransformContext`, as far as [`html`] uses it.
 pub struct TransformContext;
 
 impl TransformContext {

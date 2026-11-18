@@ -14,7 +14,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# As plugins/sass has it.
+# As 0.7's plugins/sass had it.
 grass = { version = "0.13", default-features = false }
 serde = { version = "1", features = ["derive"] }
 

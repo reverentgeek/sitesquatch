@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Benchmark ssqch building the ReverentGeek blog: the npm package as it's published (built
 # from packages/ssqch with scripts/build.ts) on this machine's Node, and ssqch 0.7's binary
-# beside it when target/release/ssqch is there (cargo build --release -p ssqch --features avif),
-# for comparison while 0.7 is in the repository.
+# beside it when SSQCH_07 names one, for comparison (0.7 isn't in the repository any more:
+# `npm install --prefix /tmp/ssqch-07 ssqch@0.7.0` installs it, and on Apple silicon
+# SSQCH_07=/tmp/ssqch-07/node_modules/@ssqch/darwin-arm64/bin/ssqch).
 #
 # Usage: scripts/bench.sh [path/to/blog] [warm-runs]
 #
@@ -29,7 +30,7 @@ echo "Building the npm package..."
 NODE_SSQCH="$REPO/packages/ssqch/dist/bin/ssqch.js"
 # The package's sharp is the one in packages/ssqch/node_modules, found from dist/.
 TOOLS=("ssqch-0.8")
-[ -x "$REPO/target/release/ssqch" ] && TOOLS+=("ssqch-0.7")
+[ -n "${SSQCH_07:-}" ] && [ -x "$SSQCH_07" ] && TOOLS+=("ssqch-0.7")
 
 echo "Cloning blog..."
 cp -cR "$BLOG" "$WORK/blog" 2>/dev/null || cp -R "$BLOG" "$WORK/blog"
@@ -68,7 +69,7 @@ for tool in "${TOOLS[@]}"; do
 	echo "$tool"
 	case $tool in
 		ssqch-0.8) cmd=(node "$NODE_SSQCH") ;;
-		ssqch-0.7) cmd=("$REPO/target/release/ssqch") ;;
+		ssqch-0.7) cmd=("$SSQCH_07") ;;
 	esac
 	# Each tool gets its own image cache: the cold run starts without one.
 	rm -rf "$B/.cache"

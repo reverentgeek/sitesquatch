@@ -1,5 +1,5 @@
 // Numbers in reports as 0.7 printed them (serde_json, with `Value::to_json` in
-// crates/sitesquatch-edge/src/value.rs): the expected text is 0.7's `inspect --format json`.
+// 0.7's sitesquatch-edge, now crates/ssqch-markdown/src/value.rs): the expected text is 0.7's `inspect --format json`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { prettyJson, serdeFloat, toJsonValue } from "./quote.ts";

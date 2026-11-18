@@ -1,5 +1,5 @@
 # ssqch's own Markdown and highlighter for the Node build (0.8): 0.7's markdown.rs and
-# highlight.rs, compiled by path for wasm32-wasip1 and committed as
+# highlight.rs (src/syntax.rs here), built for wasm32-wasip1 and committed as
 # packages/ssqch/wasm/markdown.wasm. Rebuild it with `node packages/ssqch/scripts/build-wasm.ts`.
 [package]
 name = "ssqch-markdown"
@@ -15,15 +15,17 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["highlight"]
-# markdown.rs and highlight.rs gate the highlighter on this feature, as the sitesquatch crate does.
+# markdown.rs and syntax.rs gate the highlighter on this feature, as 0.7's sitesquatch crate did.
 highlight = ["dep:syntect", "dep:two-face"]
 
-# The same versions and features as crates/sitesquatch, so the output is 0.7's.
+# The same versions and features as 0.7's sitesquatch and sitesquatch-edge crates had, so the
+# output is 0.7's.
 [dependencies]
 anyhow.workspace = true
+chrono.workspace = true
+indexmap.workspace = true
 regex.workspace = true
 serde_json.workspace = true
-sitesquatch-edge.workspace = true
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 pulldown-cmark-escape = "0.11"
 deunicode = "1.6"

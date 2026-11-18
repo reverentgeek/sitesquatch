@@ -7,7 +7,7 @@ import { BUILDS, REBUILD, REPO, builtHash, inputsHash, withSection } from "./was
 for (const build of BUILDS) {
 	test(`the committed ${path.basename(build.file)} is built from the Rust as it is`, () => {
 		const built = builtHash(fs.readFileSync(path.join(REPO, build.file)), build.section);
-		assert.equal(built, inputsHash(build), `${build.file} wasn't built from the Rust in the repository as it is now (${build.crate}, what it compiles by path, or Cargo.lock changed): rebuild the wasm: ${REBUILD} ${build.name}`);
+		assert.equal(built, inputsHash(build), `${build.file} wasn't built from the Rust in the repository as it is now (${build.crate} or Cargo.lock changed): rebuild the wasm: ${REBUILD} ${build.name}`);
 	});
 }
 

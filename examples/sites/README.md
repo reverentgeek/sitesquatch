@@ -1,6 +1,6 @@
 # Example sites
 
-Small, complete sites, each distilled from a real one and written against a feature of ssqch, so each doubles as that feature's test. `crates/ssqch/tests/examples.rs` builds every one with the link checker on, and `.github/workflows/examples.yml` deploys them to Netlify.
+Small, complete sites, each distilled from a real one and written against a feature of ssqch, so each doubles as that feature's test. The oracle builds every one with the link checker on (`tests/oracle/cli/examples.test.js`) and compares it with its frozen output (`tests/oracle/sites.test.js`), and `.github/workflows/examples.yml` deploys them to Netlify.
 
 | Example | Engine | Shows | Live |
 | --- | --- | --- | --- |
