@@ -162,8 +162,8 @@ until 0.8 ships.
   - [x] Stage 8 ships `wasm/markdown.wasm` in the package (the loader finds it next to `src/`).
   - [x] The README's Edge, Jinja and Nunjucks, Liquid, Handlebars and EJS sections describe 0.8
         (2026-11-18).
-- [ ] **Stage 4, checks and tools:** schemas and `types`, links, `diff`, `inspect`, footprint and
-      budgets, `docs`, `new`, `init` and the starters, `capabilities`.
+- [x] **Stage 4, checks and tools:** schemas and `types`, links, `diff`, `inspect`, footprint and
+      budgets, `docs`, `new`, `init` and the starters, `capabilities` (2026-11-18).
   - [x] Content schemas (`schema.ts`), `inspect`, `diff` and footprint with budgets (2026-11-18),
         with 0.7's messages and reports: 27 broken schemas, 35 `inspect` cases, the footprint and
         budget cases and 240 random pairs of builds give 0.7's output through the binary. `diff`
@@ -171,9 +171,17 @@ until 0.8 ships.
         0.7's do. On two builds of the 10,000-page site it takes 0.44 s (0.7.0: 0.5 s on every
         core) at 150 MB; with every page changed, 2.1 s on one thread, where 0.7.0 takes 0.7 s on
         15 cores. Worker threads for the comparison would close that, if wanted (no site code runs
-        in `diff`). `cli/report.test.js` and the shapes of the build, inspect, diff and footprint
-        reports wait for `ssqch/links`; they pass with the plugin taken out of their sites.
-- [ ] **Stage 5, plugins:** images (D4), rss, minify (D3), assets, sitemap, redirects, Sass,
+        in `diff`). `cli/report.test.js` and the report shapes pass now that `ssqch/links` is in.
+  - [x] `init` and the starters (all 12 byte for byte), `new` with blueprints, `types`, `docs`
+        (the README bundled in `packages/ssqch/bundled/`), `capabilities`, `completions` (0.7's
+        five scripts, bundled) and `sighting`.
+  - [x] An independent review (2026-11-18), with the importers and `fetch`: `build -o .` wrote
+        over the site's source; globs read `\` and `**/` otherwise than globset; impossible TOML
+        dates rolled over; `ssqch new` rewrote a blueprint's JSON values and a non-UTF-8 one's
+        bytes; slugs lowercased Greek's final sigma; `fetch` refused requests 0.7 made. Each fixed
+        with a test (`cli/core-details.test.js`), or recorded in the changelog. Globs now match
+        by character, not by byte (decided 2026-11-18).
+- [x] **Stage 5, plugins:** images (D4), rss, minify (D3), assets, sitemap, redirects, Sass,
       elements, themes; the Rust plugin SDK (`ssqch-plugin` crate, the `.wasm` loader, an example,
       and docs on when a Rust plugin pays).
   - [x] minify (D3): 0.7's `plugins/minify` compiled by path into `crates/ssqch-minify`, an ABI v1
@@ -199,7 +207,16 @@ until 0.8 ships.
         makes 7% fewer bytes. `files(pattern, { dimensions: true })` reads sizes too.
   - [x] Documented in the README (2026-11-18): the quality numbers are 0.7's scale on sharp,
         AVIF needs no feature now, and `[ssqch] Encoded` lines come while pages render.
-- [ ] **Stage 6, the dev server.** Started 2026-11-18; the results are in
+  - [x] links, rss, sitemap, redirects and elements (2026-11-18), on ssqch's own HTML tokenizer.
+  - [x] An independent review (2026-11-18): a failed image encode left markup pointing at files
+        never written; a JPEG of a transparent PNG went black; the HTML tokenizer read malformed
+        HTML (`<iframe ... />`, SVG's `<title>`, `<!-->`) otherwise than lol_html, for `base` and
+        every plugin; the link checker crashed on `%00` and held every page's HTML; minify was
+        quadratic on raw blocks in WebAssembly; the modules exported their helpers. Each fixed
+        with a test, or recorded. The tokenizer, rewritten after lol_html 2.9.0, agrees with it
+        on all 778 frozen pages and about 400,000 random ones, apart from three recorded cases.
+  - [x] Decided 2026-11-18: an invalid date in the rss date filters is an error (0.7 wrote 1970).
+- [x] **Stage 6, the dev server** (2026-11-18); the results are in
       `docs/node-migration.md` ("Stage 6, so far").
   - [x] `ssqch serve` (`packages/ssqch/src/serve/`), from `serve.rs` and `companions.rs`:
         watching, rebuilding, what browsers hear (a page reloads for its own change, a
@@ -267,7 +284,7 @@ until 0.8 ships.
       stopping at what the list leaves by hand (a missing `},` in a11yproject.com's `team.json`,
       v8.dev's `slug`, lit.dev's `LITDEV_ENV`). The oracle's 3 import tests pass on Node 22.18,
       24 and 26.
-- [ ] **Stage 8, distribution:** the compiled, bundled npm package (sharp its only dependency), the
+- [x] **Stage 8, distribution:** the compiled, bundled npm package (sharp its only dependency), the
       standalone executable (D7) for Homebrew and the install script, `setup-ssqch`, Netlify; retire
       `dist` and the binary-only release steps; CI installs the packed tarball.
   - [x] The npm package (`scripts/build.ts`), the standalone executable (`scripts/build-sea.ts`,
@@ -297,6 +314,25 @@ until 0.8 ships.
         today.
 - [ ] **Stage 9, Blog:** move the blog, then the examples, starters and trial ports; the README,
       trailheads, changelog and benchmarks; `AGENTS.md` for the TypeScript codebase. Release 0.8.0.
+  - [x] The README for 0.8, the trailheads, `ssqch.d.ts`'s `RustPlugin`, `AGENTS.md` for the
+        TypeScript codebase, the changelog as one entry (`## Unreleased`), and the benchmarks,
+        measured alone (2026-11-18): the blog 25.6 s cold and 0.92 s warm (0.7: 60.2 s and
+        0.38 s), the 10,000-page site 1.12 s on one thread, v8.dev 0.58 s.
+  - [x] The oracle: 212 of 230 pass on Node 22.18, 24 and 26. The 13 that fail are the 12
+        starters and the blog's frozen output, which match 0.7.0 byte for byte with the package's
+        version at `0.8.0` (at `0.8.0-dev` the JSON report's byte counts include the longer
+        version). The examples, a11yproject.com and v8.dev match now.
+  - [ ] **Needs the owner:** push, and watch CI on Linux and Windows (everything since stage 2's
+        Windows fixes has run on macOS only).
+  - [ ] **Needs the owner:** the last 0.7.x, from `release/0.7` (cut before stage 8's workflows,
+        at `6c48669`, or from `v0.7.0`), released before 0.8.0.
+  - [ ] **Needs the owner:** the switch: remove 0.7 (`crates/sitesquatch*`, `crates/ssqch`,
+        `plugins/` but what the `.wasm` crates compile, which moves into them), the oracle's
+        reference to the Rust build and `bundled/`'s sync (the copies become the originals).
+  - [ ] **Needs the owner:** release 0.8.0 (`AGENTS.md`, "Releasing"), publish `ssqch-plugin`,
+        merge and tag `setup-ssqch`'s `ssqch-0.8`, then move the blog's `package.json` to
+        `ssqch@0.8.0` and deploy it.
+  - [ ] lit.dev's frozen output (`node freeze.js trial-lit.dev`), which needs lit.dev's SSR build.
 
 ## How this list works
 
