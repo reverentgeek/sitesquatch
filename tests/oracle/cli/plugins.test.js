@@ -613,3 +613,47 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge
 	assert.ok(ok && !log.includes("isn't in the output"), log);
 	assert.ok(read(root, "dist/index.html").includes("from \"/assets/pco.js\""));
 });
+
+// Not from a Rust test: the plugins and `base` find URLs where 0.7's lol_html found them, which is
+// where browsers do, in HTML that's written oddly.
+test("urls_in_odd_html_are_found_where_browsers_find_them", () => {
+	const root = project({
+		"ssqch.config.js": `import { linksPlugin } from "ssqch/links";
+import { imagePlugin } from "ssqch/image";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["html"], base: "/repo/", plugins: [imagePlugin({ formats: ["webp"], widths: [16] }), linksPlugin({ fail: false })] };`,
+		"src/img/squatch.png": PNG,
+		"src/index.html": `<!doctype html><html><head><title>Probe</title></head><body>
+<iframe src="https://www.youtube.com/embed/abc" />
+<p><img src="/img/squatch.png" alt="Pine"> <a href="/next/">Next</a></p>
+</iframe>
+<p><img src="/img/squatch.png" alt="After"> <a href="/">Home</a></p>
+<svg><title><a href="/b6/">x</a></title><style>.a{fill:url(/grad.svg#g)}</style></svg>
+<!--><a href="/b3/">x</a><!-- -->
+<script><!--<script></script><a href="/in-script/"></script>--><a href="/after-script/">after</a>
+<p></p data-x="><a href='/in-end-tag/'>"><a href="/after-end-tag/">e</a>
+<textarea/><a href="/in-textarea/"></textarea>
+</body></html>
+`,
+	});
+	const { ok, log } = build(root);
+	assert.ok(ok, log);
+	const html = read(root, "dist/index.html");
+	for (const expected of [
+		// A self-closed <iframe /> holds text to its end tag: HTML ignores the slash.
+		"<p><img src=\"/img/squatch.png\" alt=\"Pine\"> <a href=\"/next/\">Next</a></p>",
+		"alt=\"After\" width=\"16\" height=\"8\"> <a href=\"/repo/\">Home</a>",
+		// In SVG, <title> holds markup, and <style> is still a style.
+		"<svg><title><a href=\"/repo/b6/\">x</a></title><style>.a{fill:url(/repo/grad.svg#g)}</style></svg>",
+		// <!--> is a whole comment.
+		"<!--><a href=\"/repo/b3/\">x</a><!-- -->",
+		// <!--<script> in a script starts a part that the next </script> doesn't end.
+		"<a href=\"/in-script/\"></script>--><a href=\"/repo/after-script/\">after</a>",
+		// A > in an end tag's quoted attribute doesn't end the tag.
+		"<a href='/in-end-tag/'>\"><a href=\"/repo/after-end-tag/\">e</a>",
+		"<textarea/><a href=\"/in-textarea/\"></textarea>",
+	]) {
+		assert.ok(html.includes(expected), `missing ${expected}\nin ${html}`);
+	}
+	assert.ok(log.includes("4 broken links:\n  / -> /after-end-tag/ (not found)\n  / -> /after-script/ (not found)\n  / -> /b3/ (not found)\n  / -> /b6/ (not found)"), log);
+	assert.ok(log.includes("Links   7 checked, 4 broken"), log);
+});
