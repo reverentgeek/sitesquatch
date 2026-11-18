@@ -490,8 +490,9 @@ clear; otherwise warn.
       warning): `false` from a `permalink: false` page printed `/false` in the sitemap.
 - [x] **Two passthrough sources that write one file** (v8 #19; done 2026-11-18, and the later one
       wins every time; they raced): warn unless they're identical.
-- [ ] **`minify()` shortens `checked="checked"` with `shortenAttributes: false`** (a11y #24): make
-      it part of that option, or document that boolean attributes are always shortened.
+- [x] **`minify()` shortens `checked="checked"` with `shortenAttributes: false`** (a11y #24; fine in
+      0.8, checked 2026-11-18, with a test): make it part of that option, or document that boolean
+      attributes are always shortened.
 
 ### 3. One Markdown engine
 
