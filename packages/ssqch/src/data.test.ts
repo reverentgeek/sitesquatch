@@ -20,6 +20,9 @@ test("front_matter_formats", () => {
 	assert.equal(d.extra.when, "2020-05-06");
 	({ data: d } = parseFrontMatter("---toml\ntitle = \"T2\"\n---\n"));
 	assert.equal(d.title, "T2");
+	// An integer past 2^53 is a rounded number, as 0.7 read it, not a refusal of the whole page.
+	({ data: d } = parseFrontMatter("+++\nid = 9007199254740993\nsmall = 0xDEAD\n+++\n"));
+	assert.deepEqual([d.id, d.small], [9007199254740992, 57005]);
 	// Not front matter: a rule, or an unknown language.
 	assert.equal(parseFrontMatter("----\nx").body, "----\nx");
 	assert.equal(parseFrontMatter("---ruby\nx\n---\n").body, "---ruby\nx\n---\n");

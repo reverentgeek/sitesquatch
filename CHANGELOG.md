@@ -44,6 +44,11 @@ the release.
   2026-03-14` is a `Date`, where 0.7 kept it as text for every key but `date`. A template that
   printed the text gets the date printed (ISO 8601 in Jinja and Nunjucks); quote the value to
   keep it as text.
+- **YAML numbers and merge keys are js-yaml's too.** `017` is the number 17 and `1_000` is 1000,
+  where 0.7 kept both as text, so a value with a leading zero that matters (a ZIP code, `007`)
+  needs quotes. `<<: *defaults` merges the anchored mapping in, where 0.7 kept a key named `<<`.
+- **A TOML date's fraction of a second keeps three digits**: `07:32:00.999999` is
+  `07:32:00.999`, since smol-toml reads dates as JavaScript dates. Quote it to keep every digit.
 - **A page's `templateContent` is rendered when it's first read.** In 0.7 a page read before it
   had rendered gave an empty string. A page whose own templates are async (an async filter or
   engine) can't be rendered on demand, and reading it too early is an error that names it.
@@ -79,6 +84,15 @@ the release.
   `{ title: x }`, `forceescape`, `nl2br`, `urlize`, `wordcount`, `center`, `random`), and
   `{% for key, value in object %}` works there. A Jinja or Nunjucks error in an include points
   at the include's own line, where 0.7 pointed at the `{% include %}` in the page.
+- A YAML integer too big for 128 bits (`123456789012345678901234567890`) is a rounded number,
+  where 0.7 refused the file. TOML's integers past 2^53 are rounded numbers, as in 0.7.
+- A stack frame in an error or a warning has the column Node gives: `throw new Error("...")` is
+  at `new`, where 0.7 (on QuickJS) pointed at `Error`.
+- Markdown is still ssqch's own, 0.7's Rust built as WebAssembly, so pages come out as they did.
+  A render hook or container whose template answers with a promise (an async filter, function
+  or engine) is an error that names the template: hooks render while the Markdown around them
+  does, so make what they call synchronous. A highlighter in `markdown.highlight.languages`
+  that's async gets the warning that it returned an object, not a list of tokens.
 
 ## 0.7.0 - 2026-11-17
 
