@@ -154,3 +154,112 @@ test("heading_attributes_in_markdown_arent_comments", () => {
 	const e = engine("njk");
 	assert.equal(e.render("## Install {#setup}\n{{ 'x' }} {# gone #}", {}, { name: "a.md", inputPath: "/site/a.md" }), "## Install {#setup}\nx ");
 });
+
+// ---- from the stage 3 review: what 0.7 gave, kept --------------------------------------------
+
+test("async_functions_work_anywhere_and_run_once", async () => {
+	const seen: string[] = [];
+	const e = engine("njk", { later: async (s) => `L:${s}`, nope: async () => false, note: (s) => { seen.push(String(s)); return s; } }, { "m.njk": "{% macro tag(x) %}<t>{{ x | later }}</t>{% endmacro %}" });
+	const cases: Array<[string, string]> = [
+		["[{{ later('b') }}]|{% set v = later('c') %}[{{ v }}]|{% if nope() %}t{% else %}f{% endif %}|{{ later('d') | upper }}", "[L:b]|[L:c]|f|L:D"],
+		["{% macro local(x) %}<l>{{ x | later }}</l>{% endmacro %}{{ local('b') }} after", "<l>L:b</l> after"],
+		["{% from 'm.njk' import tag %}{{ tag('a') }}", "<t>L:a</t>"],
+		["{% set cap %}{{ 'e' | later }}{% endset %}[{{ cap }}]|{% filter upper %}{{ 'd' | later }}{% endfilter %}", "[L:e]|L:D"],
+		["{% macro w() %}<w>{{ caller() }}</w>{% endmacro %}{% call w() %}{{ 'f' | later }}{% endcall %}|{{ ['i', 'j'] | map('later') | join(',') }}", "<w>L:f</w>|L:i,L:j"],
+		["{% later 'g' %}|{{ later(later('h')) }}", "L:g|L:L:h"],
+	];
+	for (const [source, want] of cases) assert.equal(await e.render(source, {}, ctx()), want, source);
+	// Each function runs once, even though the template renders again for the async one.
+	assert.equal(await e.render("{{ 'a' | note }} {{ 'b' | later }} {{ 'c' | note }}", {}, ctx()), "a L:b c");
+	assert.deepEqual(seen, ["a", "c"]);
+	// A template with nothing async in it is still a string at once, whatever others did.
+	assert.equal(e.render("{{ 'x' | upper }}", {}, ctx()), "X");
+	// An async function that rejects names its line.
+	const bad = engine("njk", { later: async () => { throw new Error("not yet"); } });
+	assert.match(await error(() => bad.render("a\n{% macro m() %}{{ later() }}{% endmacro %}\n{{ m() }}", {}, ctx())), /^page\.njk:2: later\(\): not yet/);
+});
+
+test("truth_is_jinjas", () => {
+	const e = engine("jinja");
+	const data = { empty: [], obj0: {}, xs: ["a"] };
+	assert.equal(e.render("{% if empty %}T{% else %}F{% endif %}|{% if obj0 %}T{% else %}F{% endif %}|{{ empty or 'default' }}|{{ 'yes' if empty else 'no' }}|{{ empty | default('d', true) }}|{% if not empty %}none{% endif %}", data, ctx()), "F|F|default|no|d|none");
+	assert.equal(e.render("{{ empty and 'x' }}|{{ 0 or 'z' }}|{{ '' or 0 }}|{{ xs and 'has' }}|{{ none or false }}|{% if '0' %}s{% endif %}", data, ctx()), "[]|z|0|has|False|s");
+});
+
+test("tilde_joins_text_as_values_print", () => {
+	const e = engine("njk");
+	assert.equal(e.render("[{{ missing ~ ' | ' ~ missing2 }}]|{{ 'a' ~ none }}|{{ true ~ '' }}|{{ [1, 2] ~ '' }}|{{ '<b>' | safe ~ '<i>' }}|{{ '\\\\' | safe ~ '\\\\' }}", {}, ctx()), "[ | ]|aNone|True|[1, 2]|<b>&lt;i&gt;|\\&#92;");
+});
+
+test("an_import_sees_the_pages_data", () => {
+	const e = engine("njk", {}, { "macros.njk": "{% macro link(path) %}<a href=\"{{ site.url }}{{ path }}\">{{ site.title }} / {{ page.url }}</a>{% endmacro %}" });
+	const data = { site: { title: "Pine Cone Crunch", url: "https://example.com" }, page: { url: "/a/" } };
+	assert.equal(e.render("{% import 'macros.njk' as m %}{{ m.link('/x/') }}|{% from 'macros.njk' import link %}{{ link('/y/') }}", data, ctx()), "<a href=\"https://example.com/x/\">Pine Cone Crunch / /a/</a>|<a href=\"https://example.com/y/\">Pine Cone Crunch / /a/</a>");
+	assert.equal(e.render("{% import 'macros.njk' as m without context %}{{ m.link('/x/') }}", data, ctx()), "<a href=\"/x/\"> / </a>");
+});
+
+test("tuples_are_tuples", () => {
+	const e = engine("jinja");
+	assert.equal(e.render("{% for label, url in [('Home', '/'), ('Blog', '/blog/')] %}<a href=\"{{ url }}\">{{ label }}</a>{% endfor %}|{{ (1, 2) }}|{{ (1) }}|{{ {'a': 1} | items | list }}|{% set a, b = 1, 2 %}{{ a }}{{ b }}|{% set c, d = 3 %}{{ c }}{{ d }}", {}, ctx()), "<a href=\"/\">Home</a><a href=\"/blog/\">Blog</a>|(1, 2)|1|[(&#39;a&#39;, 1)]|12|33");
+});
+
+test("set_changes_only_a_namespace", async () => {
+	const e = engine("jinja");
+	const site = { title: "Pine" };
+	assert.equal(await error(() => e.render("a\n{% set site.title = 'Changed' %}", { site }, ctx("p.jinja"))), "p.jinja:2: invalid operation: can only assign to namespaces, not map");
+	assert.equal(site.title, "Pine");
+	assert.equal(e.render("{% set ns = namespace(found=false) %}{% for x in xs %}{% if x == 'b' %}{% set ns.found = true %}{% endif %}{% endfor %}{{ ns.found }}", { xs: ["a", "b"] }, ctx()), "True");
+});
+
+test("comparisons_and_modulo_are_jinjas", async () => {
+	const e = engine("jinja");
+	assert.equal(e.render("{{ 0 == '' }}|{{ 1 == '1' }}|{{ [] == false }}|{{ '' == false }}|{{ [1] == [1] }}|{{ {'a': 1} == {'a': 1} }}|{{ 1 == 1.0 }}|{{ true == 1 }}|{{ none == none }}|{{ missing == none }}|{{ 1 != 2 }}|{{ 'a' != 'a' }}", {}, ctx()), "False|False|False|False|True|True|True|True|True|False|True|False");
+	assert.equal(e.render("{{ -7 % 3 }}|{{ 7 % -3 }}|{{ 3 > 2 > 1 }}|{{ 1 < 3 > 2 }}|{{ 1 < 2 < 3 }}|{% if page.fileSlug == 0 %}zero{% endif %}", { page: { fileSlug: "" } }, ctx()), "2|-2|True|True|True|");
+	assert.equal(await error(() => e.render("{{ 'Hello %s' % 'x' }}", {}, ctx("p.jinja"))), "p.jinja:1: invalid operation: tried to use % operator on unsupported types string and string");
+});
+
+test("a_missing_value_in_a_filter_is_empty", () => {
+	const e = engine("njk");
+	assert.equal(e.render("[{{ m | first }}][{{ m | last }}][{{ m | batch(2) | length }}][{{ m | slice(2) | length }}][{{ m | reverse }}][{{ m | sort | length }}][{{ m | sum }}][{{ m | join(',') }}][{{ m | length }}][{{ m | int }}][{{ m | upper }}]", {}, ctx()), "[][][0][2][][0][0][][0][0][]");
+	assert.equal(e.render("{% for post in posts %}{{ post.tags | first }}{% endfor %}", { posts: [{}, { tags: ["pine"] }] }, ctx()), "pine");
+});
+
+test("title_starts_words_where_jinja_does", () => {
+	assert.equal(engine("jinja").render("{{ \"don't stop | the trail's end\" | title }}|{{ \"it's\".title() }}|{{ 'hello-world foo_bar' | title }}", {}, ctx()), "Don&#39;t Stop | The Trail&#39;s End|It&#39;s|Hello-World Foo_bar");
+});
+
+test("jinja_syntax_nunjucks_lacked", async () => {
+	const e = engine("jinja", {}, { "part.jinja": "PART" });
+	assert.equal(e.render("{% for i in [3, 6, 7] %}{% if i is divisibleby 3 %}{{ i }}{% endif %}{% endfor %}|{{ 'abc' is startingwith 'a' }}|{% include 'part.jinja' with context %}|{% include 'part.jinja' without context %}|{% include ['nope.jinja', 'part.jinja'] %}", {}, ctx()), "36|True|PART|PART|PART");
+	assert.equal(await error(() => e.render("{% include ['nope.jinja', 'nope2.jinja'] %}", {}, ctx("p.jinja"))), "p.jinja:1: template not found: can't include `nope.jinja`");
+	// What isn't supported says so, at its line, with what to write instead.
+	assert.match(await error(() => e.render("a\n{% for i in xs recursive %}{% endfor %}", {}, ctx("p.jinja"))), /^p\.jinja:2: syntax error: a recursive loop .* write a macro that calls itself/);
+	assert.match(await error(() => e.render("a\n{% for x in xs %}{% break %}{% endfor %}", {}, ctx("p.jinja"))), /^p\.jinja:2: syntax error: `\{% break %\}` isn't supported: /);
+	assert.match(await error(() => e.render("{% with a = 1 %}{% endwith %}", {}, ctx("p.jinja"))), /^p\.jinja:1: syntax error: `\{% with %\}` isn't supported: use `\{% set %\}`/);
+	assert.equal(await error(() => e.render("l1\n{% if true %}\nline", {}, ctx("p.jinja"))), "p.jinja:2: syntax error: the `{% if %}` here is never closed (`{% endif %}` is missing before the end of the template)");
+	assert.equal(await error(() => e.render("l1\n{% for x in xs %}\n{% if x %}{% endif %}", {}, ctx("p.jinja"))), "p.jinja:2: syntax error: the `{% for %}` here is never closed (`{% endfor %}` is missing before the end of the template)");
+	assert.equal(await error(() => e.render("{% for x in 5 %}{% endfor %}", {}, ctx("p.jinja"))), "p.jinja:1: invalid operation: number is not iterable");
+	assert.equal(await error(() => e.render("a\n{{ 'abc'[::0] }}", {}, ctx("p.jinja"))), "p.jinja:2: invalid operation: cannot slice by step size of 0");
+});
+
+test("an_include_loop_is_named", async () => {
+	const e = engine("njk", {}, { "a.njk": "{% include 'b.njk' %}", "b.njk": "{% include 'a.njk' %}" });
+	assert.match(await error(() => e.render("{% include 'a.njk' %}", {}, ctx())), /we've passed this tree before\. Include loop: (a\.njk -> b\.njk -> a\.njk|b\.njk -> a\.njk -> b\.njk)$/);
+});
+
+test("strings_count_characters_not_halves", () => {
+	assert.equal(engine("jinja").render("{{ t | length }}|{{ t.length }}|{{ t[0] }}|{{ t | first }}|{{ t | reverse }}|{{ t | last }}|{{ t[-1] }}|{{ t[1:] }}", { t: "🌲🌲a" }, ctx()), "3|3|🌲|🌲|a🌲🌲|a|a|🌲a");
+});
+
+test("urlencode_keeps_slashes", () => {
+	assert.equal(engine("jinja").render("{{ '/a/b/' | urlencode }}|{{ 'https://example.com/a b/' | urlencode }}|{{ ['x', 'y'] | urlencode }}|{{ {'a': 'x y', 'b': 1, 'c': none} | urlencode }}|{{ 'a&b=c?d#e+f~g_h.i-j' | urlencode }}|{{ 'é' | urlencode }}", {}, ctx()), "/a/b/|https%3A//example.com/a%20b/|%5B%27x%27%2C%20%27y%27%5D|a=x%20y&amp;b=1|a%26b%3Dc%3Fd%23e%2Bf%7Eg_h.i-j|%C3%A9");
+});
+
+test("small_things_print_as_in_0_7", async () => {
+	const e = engine("jinja", { shout: (s) => String(s).toUpperCase() });
+	assert.equal(e.render("{{ shout }}|{{ [none, 1] }}|{{ none | string }}|{{ none | upper }}|{{ '%s' | format(none) }}|{{ [none, 1] | join(',') }}|{{ [when] }}|{{ o.items() | length }}|{{ 'a\\nb' | nl2br }}", { when: new Date("2024-03-04T00:00:00Z"), o: { items: [1, 2, 3] } }, ctx()), "function () { [native code] }|[None, 1]|None|NONE|None|None,1|[2024-03-04T00:00:00.000Z]|1|a<br />\nb");
+	assert.equal(await error(() => e.render("{{ none | dateformat }}", {}, ctx("p.jinja"))), "p.jinja:1: invalid operation: not a date: None");
+	// A function's own stack frame, as 0.7 named it.
+	const boom = engine("jinja", { boom: function boom() { throw new Error("kaboom"); } });
+	assert.doesNotMatch(await error(() => boom.render("{{ boom() }}", {}, ctx("p.jinja"))), /Context\.boom/);
+});

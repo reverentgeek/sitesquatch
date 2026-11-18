@@ -109,18 +109,25 @@ function fixed(d: Date, spec: string): string {
 	}
 }
 
+/** Midnight UTC of a day, for any year: `Date.UTC` reads the years 0 to 99 as 1900 to 1999. */
+function utc(year: number, month: number, day: number): number {
+	const d = new Date(0);
+	d.setUTCFullYear(year, month, day);
+	return d.getTime();
+}
+
 /** The day of the year, from 1. */
 function dayOfYear(d: Date): number {
-	return Math.floor((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86_400_000) + 1;
+	return Math.floor((utc(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - utc(d.getUTCFullYear(), 0, 1)) / 86_400_000) + 1;
 }
 
 /** The ISO 8601 week and the year it belongs to: weeks start on Monday, and week 1 has the year's first Thursday. */
 function isoWeek(d: Date): { year: number; week: number } {
-	const day = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+	const day = new Date(utc(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 	const weekday = day.getUTCDay() || 7;
 	// The Thursday of this week decides the year.
 	day.setUTCDate(day.getUTCDate() + 4 - weekday);
 	const year = day.getUTCFullYear();
-	const week = Math.ceil(((day.getTime() - Date.UTC(year, 0, 1)) / 86_400_000 + 1) / 7);
+	const week = Math.ceil(((day.getTime() - utc(year, 0, 1)) / 86_400_000 + 1) / 7);
 	return { year, week };
 }

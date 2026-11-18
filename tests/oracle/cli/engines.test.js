@@ -270,6 +270,32 @@ test("quotes_in_prose_and_comments_dont_change_the_output", () => {
 	assert.equal(rd("slash2/index.html"), "C:\\trail &lt;a&gt;");
 });
 
+// What a stage 3 review of the Node build found it doing differently from 0.7, without a word:
+// async functions outside a plain `{{ }}`, Jinja's truth, `~`, `==` and `%`, tuples, macros that
+// see the page's data, and `set` on shared data.
+test("jinja_keeps_its_meaning_in_every_corner", () => {
+	const dir = tempDir("jinja-corners");
+	const d = dir;
+	const w = (p, t) => write(dir, { [p]: t });
+	const rd = (p) => read(dir, `_site/${p}`);
+	w("ssqch.config.js", "export default { templateFormats: [\"njk\", \"jinja\"], filters: { later: async (s) => `L:${s}`, nope: async () => false } };\n");
+	w("_data/site.json", "{ \"title\": \"Pine Cone Crunch\", \"url\": \"https://example.com\", \"empty\": [] }");
+	w("_includes/macros.njk", "{% macro link(path) %}<a href=\"{{ site.url }}{{ path }}\">{{ site.title }}</a>{% endmacro %}{% macro tag(x) %}<t>{{ x | later }}</t>{% endmacro %}");
+	w("async.njk", "[{{ later(\"b\") }}]{% set v = later(\"c\") %}[{{ v }}]{% if nope() %}t{% else %}f{% endif %}|{% from \"macros.njk\" import tag %}{{ tag(\"a\") }}|{% set cap %}{{ \"e\" | later }}{% endset %}[{{ cap }}]|{% filter upper %}{{ \"d\" | later }}{% endfilter %}|{{ [\"i\", \"j\"] | map(\"later\") | join(\",\") }}");
+	w("truth.jinja", "{% if site.empty %}T{% else %}F{% endif %}|{{ site.empty or \"default\" }}|{{ \"yes\" if site.empty else \"no\" }}|{{ site.empty | default(\"d\", true) }}|[{{ missing ~ \" | \" ~ missing }}]|{{ \"a\" ~ none }}|{{ 0 == \"\" }}|{{ [1] == [1] }}|{{ -7 % 3 }}|{{ 3 > 2 > 1 }}");
+	w("tuples.jinja", "{% for label, url in [(\"Home\", \"/\"), (\"Blog\", \"/blog/\")] %}<a href=\"{{ url }}\">{{ label }}</a>{% endfor %}|{{ (1, 2) }}|{% import \"macros.njk\" as m %}{{ m.link(\"/x/\") }}");
+	let r = ssqch(["build", "--root", d]);
+	assert.ok(r.ok, r.log);
+	assert.equal(rd("async/index.html"), "[L:b][L:c]f|<t>L:a</t>|[L:e]|L:D|L:i,L:j");
+	assert.equal(rd("truth/index.html"), "F|default|no|d|[ | ]|aNone|False|True|2|True");
+	assert.equal(rd("tuples/index.html"), "<a href=\"/\">Home</a><a href=\"/blog/\">Blog</a>|(1, 2)|<a href=\"https://example.com/x/\">Pine Cone Crunch</a>");
+
+	// Data the site shares isn't a template's to change.
+	w("set.njk", "a\n{% set site.title = \"Changed\" %}");
+	r = ssqch(["build", "--root", d]);
+	assert.ok(!r.ok && r.log.includes("set.njk:2: invalid operation: can only assign to namespaces, not map"), r.log);
+});
+
 test("handlebars_and_mustache_templates_render", () => {
 	const dir = tempDir("handlebars");
 	const d = dir;

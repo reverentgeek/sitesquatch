@@ -14,8 +14,17 @@ interface Runtime {
 	memberLookup(obj: unknown, val: unknown, ...slice: unknown[]): unknown;
 	contextOrFrameLookup(context: unknown, frame: unknown, name: string): unknown;
 	ensureDefined(value: unknown, lineno: number, colno: number): unknown;
+	// The fork's hooks (vendor/nunjucks/src/runtime.js).
+	methodLookup(obj: unknown, val: unknown): unknown;
+	truthy(value: unknown): boolean;
+	eq(a: unknown, b: unknown): boolean;
+	mod(a: unknown, b: unknown): unknown;
+	concat(a: unknown, b: unknown, autoescape: unknown): unknown;
+	tuple(items: unknown[]): unknown[];
+	setAttribute(obj: unknown, key: unknown, value: unknown): void;
 }
 const runtime = nunjucks.runtime as unknown as Runtime;
+const SURROGATES = /[\uD800-\uDFFF]/;
 const lib = nunjucks.lib as unknown as { escape(text: string): string; TemplateError: new (message: string, lineno?: number, colno?: number) => Error };
 const SafeString = runtime.SafeString;
 const safe = (text: string) => new SafeString(text);
@@ -64,12 +73,54 @@ function withoutMarker(kwargs: unknown): Record<string, unknown> {
 }
 
 /** Python's (and Jinja's) truth: an empty list, dict or string is false. */
-function truthy(v: unknown): boolean {
+export function truthy(v: unknown): boolean {
+	if (!v) return false;
+	if (v === true || typeof v === "string" || typeof v === "number") return true;
 	if (Array.isArray(v)) return v.length > 0;
-	if (isString(v)) return String(v).length > 0;
+	if (v instanceof SafeString) return String(v).length > 0;
 	if (isPlain(v)) return Object.keys(v).length > 0;
-	return Boolean(v);
+	if (v instanceof Map || v instanceof Set) return v.size > 0;
+	return true;
 }
+
+/** Jinja's `==`: by value for lists and dicts, numbers with numbers, text with text (`0 == ""` is false). */
+export function equal(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	const ta = typeof a, tb = typeof b;
+	if ((ta === "number" || ta === "boolean") && (tb === "number" || tb === "boolean")) return Number(a) === Number(b);
+	if (isString(a) || isString(b)) return isString(a) && isString(b) && String(a) === String(b);
+	if (a instanceof Date || b instanceof Date) return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+	if (Array.isArray(a) || Array.isArray(b)) return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, i) => equal(item, b[i]));
+	if (isPlain(a) && isPlain(b)) {
+		const keys = Object.keys(a);
+		return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && equal(a[key], b[key]));
+	}
+	return false;
+}
+
+/** What Jinja calls a value's type, in its messages. */
+function kind(v: unknown): string {
+	if (v === undefined) return "undefined";
+	if (v === null) return "none";
+	if (typeof v === "boolean") return "bool";
+	if (typeof v === "number") return "number";
+	if (isString(v)) return "string";
+	if (Array.isArray(v)) return "sequence";
+	if (typeof v === "function") return "function";
+	return "map";
+}
+
+// Tuples (`(a, b)`, a dict's items) are lists that print as `(a, b)`; a `namespace()` is the one
+// thing `{% set ns.x = ... %}` may change.
+const tuples = new WeakSet<object>();
+const namespaces = new WeakSet<object>();
+const tuple = <T extends unknown[]>(items: T): T => {
+	tuples.add(items);
+	return items;
+};
+
+/** How 0.7 printed a function. */
+const FUNCTION = "function () { [native code] }";
 
 /** An attribute or a dotted path (`author.name`, `tags.0`) of a value. */
 function attribute(value: unknown, path: unknown): unknown {
@@ -82,13 +133,16 @@ function attribute(value: unknown, path: unknown): unknown {
 }
 
 /**
- * A value as Jinja prints it: `True`, `None`, `['a', 'b']`, `{'a': 1}`. Dates are ISO 8601 (a
- * JavaScript date would print in the machine's time zone).
+ * A value as Jinja makes it text (`str()`): `True`, `None`, `['a', 'b']`, `{'a': 1}`, `(1, 2)`.
+ * Dates are ISO 8601 (a JavaScript date would print in the machine's time zone). Printed on its
+ * own, `none` is nothing; that's `suppressValue`'s.
  */
 export function pyString(v: unknown): string {
 	if (typeof v === "string") return v;
-	if (v === undefined || v === null) return "";
+	if (v === undefined) return "";
+	if (v === null) return "None";
 	if (typeof v === "boolean") return v ? "True" : "False";
+	if (typeof v === "function") return FUNCTION;
 	if (v instanceof Date) return Number.isNaN(v.getTime()) ? String(v) : v.toISOString();
 	if (Array.isArray(v) || isPlain(v)) return pyRepr(v, new Set());
 	return String(v);
@@ -96,17 +150,19 @@ export function pyString(v: unknown): string {
 
 function pyRepr(v: unknown, seen: Set<unknown>, indent?: number, depth = 0): string {
 	if (v === undefined) return "undefined";
-	if (v === null) return "none";
+	if (v === null) return "None";
 	if (typeof v === "boolean") return v ? "True" : "False";
 	if (typeof v === "string" || v instanceof SafeString) return quote(String(v));
-	if (v instanceof Date) return quote(pyString(v));
+	// A date is ISO 8601, as 0.7 printed it (unquoted).
+	if (v instanceof Date || typeof v === "function") return pyString(v);
 	if (!(Array.isArray(v) || isPlain(v))) return String(v);
 	if (seen.has(v)) return "...";
 	seen.add(v);
 	const items = Array.isArray(v) ? v.map((item) => pyRepr(item, seen, indent, depth + 1)) : Object.entries(v).map(([k, item]) => `${quote(k)}: ${pyRepr(item, seen, indent, depth + 1)}`);
 	seen.delete(v);
-	const [open, close] = Array.isArray(v) ? ["[", "]"] : ["{", "}"];
+	const [open, close] = tuples.has(v) ? ["(", ")"] : Array.isArray(v) ? ["[", "]"] : ["{", "}"];
 	if (!items.length) return open + close;
+	if (tuples.has(v) && items.length === 1 && indent === undefined) return `(${items[0]},)`;
 	// `pprint`: Rust's `{:#?}`, an item a line with a comma after each.
 	if (indent !== undefined) {
 		const pad = " ".repeat(indent * (depth + 1));
@@ -295,6 +351,13 @@ export function installRuntime(): void {
 		// `memberLookup(obj, start, stop, step)` is a slice.
 		if (arguments.length === 4) return sliceOf(obj, val, stop, step);
 		if (obj === undefined || obj === null) return undefined;
+		// A string counts and indexes by character, as Python (and 0.7) do: JavaScript counts
+		// UTF-16 units, so an emoji was two, and `title[0]` half of one.
+		if (typeof obj === "string" && (val === "length" || typeof val === "number") && SURROGATES.test(obj)) {
+			const chars = [...obj];
+			if (val === "length") return chars.length;
+			return chars[(val as number) < 0 ? chars.length + (val as number) : (val as number)];
+		}
 		const found = (obj as Record<string, unknown>)[val as string];
 		if (typeof found === "function") {
 			const utc = obj instanceof Date ? DATE_UTC[val as string] : undefined;
@@ -321,6 +384,34 @@ export function installRuntime(): void {
 		const text = typeof value === "string" ? value : pyString(value);
 		if (!autoescape) return text;
 		return autoescape === JINJA_ESCAPE ? escapeJinja(text) : lib.escape(text);
+	};
+
+	// `obj.items()` is the method even where `obj` has an `items` key that isn't one, as in Jinja.
+	runtime.methodLookup = function methodLookup(obj: unknown, val: unknown) {
+		const found = runtime.memberLookup(obj, val);
+		if (typeof found === "function" || typeof val !== "string" || obj === undefined || obj === null) return found;
+		return pythonMethod(obj, val) ?? found;
+	};
+
+	// Jinja's truth, `==`, `%` and `~`, and its tuples and namespaces, where the fork asks.
+	runtime.truthy = truthy;
+	runtime.eq = equal;
+	runtime.mod = function mod(a: unknown, b: unknown) {
+		if (typeof a !== "number" || typeof b !== "number") throw invalid(`tried to use % operator on unsupported types ${kind(a)} and ${kind(b)}`);
+		if (b === 0) throw invalid("tried to use % operator with a divisor of 0");
+		return a - b * Math.floor(a / b);
+	};
+	// `~` joins values as they'd print (an undefined value is nothing, `none` is `None`). With a
+	// safe side, the result is safe and the other side is escaped, as in Jinja.
+	runtime.concat = function concat(a: unknown, b: unknown, autoescape: unknown) {
+		if (!(a instanceof SafeString) && !(b instanceof SafeString)) return pyString(a) + pyString(b);
+		const part = (v: unknown) => (v instanceof SafeString ? String(v) : autoescape === JINJA_ESCAPE ? escapeJinja(pyString(v)) : lib.escape(pyString(v)));
+		return safe(part(a) + part(b));
+	};
+	runtime.tuple = tuple;
+	runtime.setAttribute = function setAttribute(obj: unknown, key: unknown, value: unknown) {
+		if (typeof obj !== "object" || obj === null || !namespaces.has(obj)) throw invalid(`can only assign to namespaces, not ${kind(obj)}`);
+		(obj as Record<string, unknown>)[String(key)] = value;
 	};
 
 	// `strict: true` makes printing an undefined value an error. `none` prints nothing, as in 0.7.
@@ -357,13 +448,31 @@ function replaceCount(s: string, from: string, to: string, count?: unknown): str
 
 /** Each word's first letter upper case and the rest lower case, a word being letters and digits. */
 function titleCase(s: string): string {
-	let out = "", inWord = false;
+	// MiniJinja's: a word starts after whitespace, `-`, `(`, `{`, `[` or `<`, so `don't` stays `Don't`.
+	let out = "", start = true;
 	for (const c of s) {
-		const word = /[\p{L}\p{N}]/u.test(c);
-		out += word ? (inWord ? c.toLowerCase() : c.toUpperCase()) : c;
-		inWord = word;
+		const separator = /\s/u.test(c) || "-({[<".includes(c);
+		out += separator ? c : start ? c.toUpperCase() : c.toLowerCase();
+		start = separator;
 	}
 	return out;
+}
+
+/** A string filter's text: a missing value is an error, as in 0.7. */
+function text(v: unknown): string {
+	if (!isString(v)) throw invalid("value is not a string");
+	return String(v);
+}
+
+/** A string's characters, as Python counts them (an emoji is one). */
+const chars = (s: string) => (SURROGATES.test(s) ? [...s] : s.split(""));
+
+/** MiniJinja's `urlencode`: everything but letters, digits and `/ . - _` percent-encoded, a dict as a query string. */
+function urlencode(v: unknown): string {
+	const encode = (text: string) => encodeURIComponent(text).replace(/[!'()*~]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`).replaceAll("%2F", "/");
+	if (v === undefined || v === null) return "";
+	if (isPlain(v)) return Object.entries(v).filter(([, item]) => item !== undefined && item !== null).map(([key, item]) => `${encode(key)}=${encode(pyString(item))}`).join("&");
+	return encode(pyString(v));
 }
 
 /** Python's `str.split`: on runs of whitespace (dropping empty parts) with no separator. */
@@ -573,6 +682,7 @@ export function jinjaFilters(escape: (text: string) => string): Record<string, F
 		filesizeformat: (v: unknown, ...args: unknown[]) => {
 			const [binary] = named(args, ["binary"]);
 			const [prefixes, base] = binary ? [["KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"], 1024] : [["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"], 1000];
+			if (typeof v !== "number" && !isString(v)) throw invalid(`cannot convert ${kind(v)} to f64`);
 			let n = Number(v);
 			if (n === 1) return "1 Byte";
 			const sign = n < 0 ? "-" : "";
@@ -593,9 +703,9 @@ export function jinjaFilters(escape: (text: string) => string): Record<string, F
 		datetimeformat: (v: unknown, format?: unknown) => formatDate(v, format, "both"),
 		items: (v: unknown) => {
 			if (v === undefined || v === null) return [];
-			if (v instanceof Map) return [...v.entries()];
-			if (typeof v === "object" && !Array.isArray(v)) return Object.entries(v);
-			throw invalid("cannot convert value into pairs");
+			if (v instanceof Map) return [...v.entries()].map(tuple);
+			if (typeof v === "object" && !Array.isArray(v)) return Object.entries(v).map(tuple);
+			throw invalid("cannot convert value into pair list");
 		},
 		map: function (this: { env: nunjucks.Environment }, v: unknown, ...args: unknown[]) {
 			const kwargs = isKwargs(args[args.length - 1]) ? (args.pop() as Kwargs) : undefined;
@@ -624,17 +734,31 @@ export function jinjaFilters(escape: (text: string) => string): Record<string, F
 		max: (v: unknown, ...args: unknown[]) => extreme(v, args, 1),
 		split: (v: unknown, ...args: unknown[]) => {
 			const [sep, max] = named(args, ["split", "maxsplits"]);
-			return pySplit(v === undefined || v === null ? "" : String(v), sep, max);
+			return pySplit(text(v), sep, max);
 		},
-		lines: (v: unknown) => lines(v === undefined || v === null ? "" : String(v)),
-		format: (v: unknown, ...args: unknown[]) => printf(String(v), args.filter((a) => !isKwargs(a))),
+		lines: (v: unknown) => lines(text(v)),
+		format: (v: unknown, ...args: unknown[]) => printf(text(v), args.filter((a) => !isKwargs(a))),
+		int: (v: unknown, ...args: unknown[]) => {
+			const [fallback, base] = named(args, ["default", "base"]);
+			const n = typeof v === "number" ? Math.trunc(v) : typeof v === "boolean" ? Number(v) : isString(v) ? Number.parseInt(String(v), base === undefined || base === null ? 10 : Number(base)) : Number.NaN;
+			return Number.isNaN(n) ? (fallback === undefined || fallback === null ? 0 : fallback) : n;
+		},
+		float: (v: unknown, ...args: unknown[]) => {
+			const [fallback] = named(args, ["default"]);
+			const n = typeof v === "number" ? v : typeof v === "boolean" ? Number(v) : isString(v) ? Number.parseFloat(String(v)) : Number.NaN;
+			return Number.isNaN(n) ? (fallback === undefined || fallback === null ? 0 : fallback) : n;
+		},
+		abs: (v: unknown) => {
+			if (typeof v !== "number") throw invalid("cannot get absolute value");
+			return Math.abs(v);
+		},
 		attr: (v: unknown, name: unknown) => (v === undefined || v === null ? undefined : (v as Record<string, unknown>)[String(name)]),
 		bool: (v: unknown) => truthy(v),
 		count: (v: unknown) => (v === undefined || v === null ? 0 : isPlain(v) ? Object.keys(v).length : (v as { length?: number }).length ?? 0),
 		zip: (v: unknown, ...others: unknown[]) => {
 			const lists = [itemsOf(v), ...others.filter((o) => !isKwargs(o)).map(itemsOf)];
 			const n = Math.min(...lists.map((l) => l.length));
-			return Array.from({ length: n }, (_, i) => lists.map((l) => l[i]));
+			return Array.from({ length: n }, (_, i) => tuple(lists.map((l) => l[i])));
 		},
 		chain: (v: unknown, ...others: unknown[]) => [v, ...others.filter((o) => !isKwargs(o))].flatMap(itemsOf),
 		groupby: (v: unknown, ...args: unknown[]) => {
@@ -661,7 +785,8 @@ export function jinjaFilters(escape: (text: string) => string): Record<string, F
 			const [precision, method] = named(args, ["precision", "method"]);
 			const p = precision === undefined || precision === null ? 0 : Number(precision);
 			const how = method === undefined || method === null ? "common" : String(method);
-			const n = Number(v);
+			if (typeof v !== "number") throw invalid(`cannot round value (${kind(v)})`);
+			const n = v;
 			if (how === "ceil" || how === "floor") return Math[how](n * 10 ** p) / 10 ** p;
 			if (how !== "common") throw invalid("method must be common, ceil or floor");
 			return roundHalfEven(n, p);
@@ -672,9 +797,9 @@ export function jinjaFilters(escape: (text: string) => string): Record<string, F
 		},
 		dictsort: (v: unknown, ...args: unknown[]) => {
 			const [caseSensitive, by, reverse] = named(args, ["case_sensitive", "by", "reverse"]);
-			if (v === undefined || v === null || typeof v !== "object") throw invalid("cannot convert value into pairs");
+			if (v === undefined || v === null || typeof v !== "object") throw invalid("cannot convert value into pair list");
 			const at = by === "value" ? 1 : 0;
-			const pairs = Object.entries(v);
+			const pairs = Object.entries(v).map(tuple);
 			pairs.sort((a, b) => compare(sortKey(a[at], caseSensitive), sortKey(b[at], caseSensitive)));
 			return reverse ? pairs.reverse() : pairs;
 		},
@@ -684,7 +809,44 @@ export function jinjaFilters(escape: (text: string) => string): Record<string, F
 			const parts = String(v ?? "").split("\n");
 			return parts.map((line, i) => ((i === 0 && !first) || (!blank && line.trim() === "") ? line : pad + line)).join("\n");
 		},
-		title: (v: unknown) => titleCase(v === undefined || v === null ? "" : String(v)),
+		title: (v: unknown) => titleCase(pyString(v)),
+		upper: (v: unknown) => pyString(v).toUpperCase(),
+		lower: (v: unknown) => pyString(v).toLowerCase(),
+		capitalize: (v: unknown) => STRING_METHODS.capitalize(pyString(v)),
+		urlencode,
+		// `default(x, true)` replaces a false value by Jinja's truth (an empty list is false).
+		default: (v: unknown, fallback: unknown = "", boolean?: unknown) => (boolean ? (truthy(v) ? v : fallback) : v === undefined ? fallback : v),
+		// Nunjucks' `nl2br`, with what it's given escaped and its own `<br />` kept.
+		nl2br: (v: unknown) => (v instanceof SafeString ? safe(String(v).replace(/\r\n|\n/g, "<br />\n")) : safe(escape(pyString(v)).replace(/\r\n|\n/g, "<br />\n"))),
+		// A missing value is an empty list here, as in 0.7 (nunjucks' own filters failed on it), and
+		// a string is its characters, emoji and all.
+		length: (v: unknown) => (v === undefined || v === null ? 0 : isString(v) ? chars(String(v)).length : v instanceof Map || v instanceof Set ? v.size : isPlain(v) ? Object.keys(v).length : (v as { length?: number }).length ?? 0),
+		first: (v: unknown) => (isString(v) ? chars(String(v))[0] : Array.isArray(v) ? v[0] : v === undefined || v === null ? undefined : itemsOf(v)[0]),
+		last: (v: unknown) => {
+			const items = isString(v) ? chars(String(v)) : Array.isArray(v) ? v : v === undefined || v === null ? [] : itemsOf(v);
+			return items[items.length - 1];
+		},
+		reverse: (v: unknown) => (v === undefined || v === null ? undefined : isString(v) ? chars(String(v)).reverse().join("") : [...itemsOf(v)].reverse()),
+		batch: (v: unknown, size: unknown, fill?: unknown) => {
+			const items = itemsOf(v), n = Math.max(Number(size) || 1, 1), out: unknown[][] = [];
+			for (let i = 0; i < items.length; i += n) out.push(items.slice(i, i + n));
+			const last = out[out.length - 1];
+			if (last && fill !== undefined && fill !== null) while (last.length < n) last.push(fill);
+			return out;
+		},
+		slice: (v: unknown, count: unknown, fill?: unknown) => {
+			const items = itemsOf(v), n = Math.max(Number(count) || 1, 1), out: unknown[][] = [];
+			const per = Math.floor(items.length / n), extra = items.length % n;
+			let at = 0;
+			for (let i = 0; i < n; i++) {
+				const size = per + (i < extra ? 1 : 0);
+				const part = items.slice(at, at + size);
+				at += size;
+				if (fill !== undefined && fill !== null && i >= extra) part.push(fill);
+				out.push(part);
+			}
+			return out;
+		},
 		trim: (v: unknown, chars?: unknown) => trimChars(String(v ?? ""), chars === undefined || chars === null ? undefined : String(chars), true, true),
 		list: (v: unknown) => [...itemsOf(v)],
 		string: (v: unknown) => (v instanceof SafeString ? v : pyString(v)),
@@ -727,6 +889,8 @@ function selectBy(context: unknown, v: unknown, args: unknown[], keep: boolean, 
 export function jinjaTests(env: nunjucks.Environment): Record<string, Fn> {
 	const all = env as unknown as { filters: Record<string, unknown>; tests: Record<string, unknown> };
 	return {
+		truthy: (v: unknown) => truthy(v),
+		falsy: (v: unknown) => !truthy(v),
 		boolean: (v: unknown) => typeof v === "boolean",
 		true: (v: unknown) => v === true,
 		false: (v: unknown) => v === false,
@@ -747,13 +911,15 @@ export function jinjaTests(env: nunjucks.Environment): Record<string, Fn> {
 	};
 }
 
-/** The functions 0.7's Jinja had that nunjucks hasn't: `dict()`, `namespace()`, `now()`, and Python's names for true, false and none. */
+/** The functions 0.7's Jinja had that nunjucks hasn't: `dict()`, `namespace()`, and Python's names for true, false and none (`now()` is the engine's). */
 export function jinjaGlobals(): Record<string, unknown> {
 	return {
 		dict: (...args: unknown[]) => Object.assign({}, ...args.filter((a) => typeof a === "object" && a !== null).map(withoutMarker)),
-		namespace: (...args: unknown[]) => Object.assign({}, ...args.filter((a) => typeof a === "object" && a !== null).map(withoutMarker)),
-		// The build's time.
-		now: () => new Date(),
+		namespace: (...args: unknown[]) => {
+			const ns = Object.assign({}, ...args.filter((a) => typeof a === "object" && a !== null).map(withoutMarker));
+			namespaces.add(ns);
+			return ns;
+		},
 		True: true,
 		False: false,
 		None: null,
