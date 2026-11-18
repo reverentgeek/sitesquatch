@@ -19,9 +19,11 @@ import { STATIC_DATA_EXTENSIONS } from "./data.ts";
 import { BuildError, Diagnostics, bail, context, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import type { RenderContext } from "./engines/engine.ts";
 import * as equivalents from "./equivalents.ts";
+import { measure, overBudget } from "./footprint.ts";
 import { globBase, globSet, isGlob } from "./glob.ts";
 import { describeThrown, settle } from "./modules.ts";
 import { compareText, isDir, isFile, isInside, readFollowing, realPath, relative, shown, slashes, walkFiles } from "./paths.ts";
+import { checkPages } from "./schema.ts";
 import type { CopyJob, Page, Tpl } from "./site.ts";
 import { Site, Timer, errorsTogether } from "./site.ts";
 import * as voice from "./voice.ts";
@@ -75,7 +77,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	const built = await runFileBuilders(config, dirs);
 	await runHooks(config, dirs, "beforeBuild", config.beforeBuild, undefined);
 	await site.prepare(timer);
-	checkSchemas(config);
+	await checkPages(site);
 	checkForeignKeys(site);
 	checkForeignGlobals(site);
 	timer.lap("paginate");
@@ -130,6 +132,8 @@ export async function build(config: Config): Promise<BuildReport> {
 		summary: [],
 	};
 	await runHooks(config, dirs, "afterBuild", config.afterBuild, report);
+	// After the hooks, which can fingerprint or minify what's measured.
+	if (config.budgets.length) for (const found of overBudget(await measure(dirs.output), config.budgets)) warn(found);
 	for (const [label, line] of config.summaries) {
 		const value = line(config);
 		if (value !== undefined) report.summary.push([label, value]);
@@ -511,16 +515,6 @@ export function inEdgeCode(body: string, at: number): boolean {
 export const edgeCodeMentionsForTest = edgeCodeMentions;
 
 // ---- checks ----------------------------------------------------------------------------------
-
-/**
- * Content schemas and budgets arrive with stage 4 of the move to Node: until then, a site that
- * has them is told they weren't checked. (With the `build` code, not their own, so the notice
- * can't be taken for the check.)
- */
-function checkSchemas(config: Config): void {
-	if (config.schemas.length && !config.quiet) warn(warning("build", "content schemas aren't checked by the Node build of ssqch yet (the move to Node, stage 4)"));
-	if (config.budgets.length && !config.quiet) warn(warning("build", "budgets aren't checked by the Node build of ssqch yet (the move to Node, stage 4)"));
-}
 
 /**
  * Warns about data keys that are another generator's name for something ssqch calls otherwise

@@ -12,6 +12,8 @@ import { parse as parseToml } from "smol-toml";
 import * as api from "./api.ts";
 import { normalizeBase } from "./base.ts";
 import { budget } from "./budgets.ts";
+import { parseSchema } from "./schema.ts";
+import type { Schema } from "./schema.ts";
 import { BuildError, aliasUsed, bail, context, messageOf, warn, warning } from "./diagnostics.ts";
 import type { Data, DataLoader } from "./data.ts";
 import { isPlainObject, tomlValue } from "./data.ts";
@@ -90,8 +92,8 @@ export interface Config {
 	serveRun: string[];
 	/** Size budgets by kind of file, in bytes. */
 	budgets: Array<[string, number]>;
-	/** Content schemas, as the config wrote them (checked by the schema module). */
-	schemas: Array<[string, unknown]>;
+	/** Content schemas, in the order they were added; one with the same name replaces the earlier one. */
+	schemas: Schema[];
 	/** The themes' folders, the one on top first. */
 	themes: string[];
 
@@ -607,8 +609,9 @@ function applySettings(config: Config, settings: Data): void {
 	for (const one of themes) addTheme(config, one);
 	if (isObject(settings.schemas)) {
 		for (const [name, spec] of Object.entries(settings.schemas)) {
-			config.schemas = config.schemas.filter(([n]) => n !== name);
-			config.schemas.push([name, spec]);
+			const schema = parseSchema(name, spec);
+			config.schemas = config.schemas.filter((s) => s.name !== name);
+			config.schemas.push(schema);
 		}
 	} else if (settings.schemas !== undefined && settings.schemas !== null) bail(`schemas must be an object of { name: { fields } }, not ${typeof settings.schemas}`);
 	// `budgets: { pages: "150 KB", total: "300 MB" }`: sizes a build is checked against.
@@ -712,7 +715,11 @@ function applyToml(config: Config, file: string): void {
 		for (const theme of texts("theme") ?? []) addTheme(config, theme);
 		if (site.schemas !== undefined) {
 			if (!isPlainObject(site.schemas)) bail("schemas must be a table");
-			for (const [name, spec] of Object.entries(site.schemas)) config.schemas.push([name, spec]);
+			for (const [name, spec] of Object.entries(site.schemas)) {
+				const schema = parseSchema(name, spec);
+				config.schemas = config.schemas.filter((s) => s.name !== name);
+				config.schemas.push(schema);
+			}
 		}
 		if (site.passthrough !== undefined) {
 			if (!isPlainObject(site.passthrough)) bail("passthrough must be a table");
