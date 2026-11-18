@@ -2,6 +2,7 @@
 // folder (Linux). Both run on every system, so each is tested wherever the tests run.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -109,6 +110,54 @@ for (const strategy of ["tree", "folders"] as Strategy[]) {
 		}
 	});
 }
+
+test("deleting a tree of thousands of watched folders takes time in step with it (folders)", (t) => {
+	// The system's own watchers stand aside, so what's timed is the watcher's own bookkeeping:
+	// closing thousands of real ones costs what the system makes it cost (on macOS, where this
+	// strategy isn't used, more than everything else here).
+	const fake = new Map<string, { listener: (event: string, name: string) => void; closed: boolean }>();
+	t.mock.method(fs, "watch", (dir: string, _options: unknown, listener: (event: string, name: string) => void) => {
+		const watcher = Object.assign(new EventEmitter(), { close() { fake.get(dir)!.closed = true; } });
+		fake.set(dir, { listener, closed: false });
+		return watcher;
+	});
+	const dir = tempDir("watch-many");
+	const posts = path.join(dir, "_site", "posts");
+	const n = 3000;
+	for (let i = 0; i < n; i++) {
+		fs.mkdirSync(path.join(posts, `p${i}`), { recursive: true });
+		fs.writeFileSync(path.join(posts, `p${i}`, "index.html"), "<h1>Pine Cone Crunch</h1>");
+	}
+	let seen = 0;
+	const watcher = new Watcher(() => { seen++; }, "folders");
+	try {
+		watcher.watch(dir, true);
+		assert.equal(watcher.size, n + 3);
+		fs.rmSync(path.join(dir, "_site"), { recursive: true });
+		// What inotify says as `rm -rf` goes: each page's file, then its folder, to the folder it was in.
+		const started = performance.now();
+		const fire = (folder: string, name: string) => fake.get(folder)!.listener("rename", name);
+		for (let i = 0; i < n; i++) {
+			fire(path.join(posts, `p${i}`), "index.html");
+			fire(posts, `p${i}`);
+		}
+		fire(path.join(dir, "_site"), "posts");
+		fire(dir, "_site");
+		const took = performance.now() - started;
+		assert.equal(seen, 2 * n + 2);
+		assert.equal(watcher.size, 1, "only the top is left");
+		assert.equal([...fake.values()].filter((w) => !w.closed).length, 1);
+		// It was minutes: every folder that went asked the file system about every one left.
+		assert.ok(took < 3000, `${n} folders took ${Math.round(took)} ms`);
+		// A folder made again under a name that's gone is watched again.
+		fs.mkdirSync(path.join(posts, "p0"), { recursive: true });
+		fire(dir, "_site");
+		assert.equal(watcher.size, 4);
+	} finally {
+		watcher.close();
+		remove(dir);
+	}
+});
 
 test("a folder that isn't there can't be watched", () => {
 	for (const strategy of ["tree", "folders"] as Strategy[]) {

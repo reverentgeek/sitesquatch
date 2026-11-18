@@ -68,10 +68,19 @@ export const defaultStrategy = (): Strategy => (process.platform === "darwin" ||
  */
 const SKIPPED = new Set([".cache", ".git", "node_modules"]);
 
+/** A folder with a watcher of its own. */
+interface Folder {
+	watcher: fs.FSWatcher;
+	/** Its real path, as it was when the watch began (it can't be asked once the folder's gone). */
+	real?: string;
+	/** The folders below it that have watchers, so forgetting it costs what's below it and no more. */
+	children: Set<string>;
+}
+
 interface Watched {
 	recursive: boolean;
-	/** The watcher of each folder, by its path. With `tree`, the one for the top. */
-	folders: Map<string, fs.FSWatcher>;
+	/** Each folder with a watcher, by its path. With `tree`, the top. */
+	folders: Map<string, Folder>;
 	/** The folders' real paths, so a link that leads back up isn't followed around again. */
 	real: Set<string>;
 	/** A folder below the top couldn't be watched, and that's been said. */
@@ -108,7 +117,7 @@ export class Watcher {
 	unwatch(dir: string): void {
 		const top = this.watched.get(dir);
 		if (!top) return;
-		for (const watcher of top.folders.values()) watcher.close();
+		for (const folder of top.folders.values()) folder.watcher.close();
 		this.watched.delete(dir);
 	}
 
@@ -123,11 +132,13 @@ export class Watcher {
 		return n;
 	}
 
-	private listen(top: Watched, dir: string, tree: boolean): void {
+	private listen(top: Watched, dir: string, tree: boolean, real?: string): void {
 		const watcher = fs.watch(dir, { recursive: tree }, (event, name) => this.changed(top, dir, name === null ? undefined : String(name), tree, event === "rename"));
 		// A folder that's deleted ends its watch, on Windows with an error.
 		watcher.on("error", () => this.forget(top, dir));
-		top.folders.set(dir, watcher);
+		top.folders.set(dir, { watcher, real, children: new Set() });
+		// Every folder below the top is found from the one it's in (`walk`).
+		if (path.dirname(dir) !== dir) top.folders.get(path.dirname(dir))?.children.add(dir);
 	}
 
 	/** A watcher for `dir` and each folder below it. Linked folders are followed, as the build follows them. */
@@ -136,7 +147,7 @@ export class Watcher {
 		const real = realPath(dir);
 		if (top.real.has(real)) return;
 		try {
-			this.listen(top, dir, false);
+			this.listen(top, dir, false, real);
 		} catch (e) {
 			if (first) throw e;
 			// Said once for a tree: when the system has no watches left, every folder after
@@ -176,15 +187,23 @@ export class Watcher {
 		}
 	}
 
-	/** `dir` is gone: so are its watcher and those of the folders that were in it. */
+	/**
+	 * `dir` is gone: so are its watcher and those of the folders that were in it. It costs only
+	 * what was below it, and asks the file system nothing: when a tree of thousands of folders is
+	 * deleted (`rm -rf dist`, a production build cleaning the output), this runs for each of them.
+	 */
 	private forget(top: Watched, dir: string): void {
-		for (const [folder, watcher] of [...top.folders]) {
-			if (folder !== dir && !folder.startsWith(dir + path.sep)) continue;
-			watcher.close();
+		const below = [dir];
+		for (let folder = below.pop(); folder !== undefined; folder = below.pop()) {
+			const gone = top.folders.get(folder);
+			if (!gone) continue;
+			gone.watcher.close();
 			top.folders.delete(folder);
+			// Its real path is free again, for a folder made again under the same name.
+			if (gone.real !== undefined) top.real.delete(gone.real);
+			below.push(...gone.children);
 		}
-		// Its real path is free again, for a folder made again under the same name.
-		top.real = new Set([...top.folders.keys()].map(realPath));
+		top.folders.get(path.dirname(dir))?.children.delete(dir);
 	}
 }
 
