@@ -49,6 +49,9 @@ the release.
   needs quotes. `<<: *defaults` merges the anchored mapping in, where 0.7 kept a key named `<<`.
 - **A TOML date's fraction of a second keeps three digits**: `07:32:00.999999` is
   `07:32:00.999`, since smol-toml reads dates as JavaScript dates. Quote it to keep every digit.
+- **A build that fails can leave pages in the output folder.** Pages are written as they render,
+  so the ones rendered before the error are there; 0.7 wrote nothing when any page failed. The
+  exit code still says the build failed: don't deploy the folder of a build that failed.
 - **A page's `templateContent` is rendered when it's first read.** In 0.7 a page read before it
   had rendered gave an empty string. A page whose own templates are async (an async filter or
   engine) can't be rendered on demand, and reading it too early is an error that names it.

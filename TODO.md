@@ -152,6 +152,9 @@ until 0.8 ships.
       elements, themes; the Rust plugin SDK (`ssqch-plugin` crate, the `.wasm` loader, an example,
       and docs on when a Rust plugin pays).
 - [ ] **Stage 6, the dev server**, reloading a changed config from a bundled temporary copy.
+      `importFile` (`modules.ts`) imports a changed file fresh but not the modules it imports,
+      so a filter in the config's `./lib/filters.js` (the blog has one) stays the old one on a
+      rebuild in the same process (found by stage 3's review).
 - [ ] **Stage 7, importers:** Eleventy and Zola.
 - [ ] **Stage 8, distribution:** the compiled, bundled npm package (sharp its only dependency), the
       standalone executable (D7) for Homebrew and the install script, `setup-ssqch`, Netlify; retire

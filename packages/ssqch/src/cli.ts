@@ -23,8 +23,8 @@ const number = (value: string) => digits(value) ?? (BigInt(value) > 0xffff_ffff_
 const port = (value: string) => digits(value) ?? (BigInt(value) > 0x7fff_ffff_ffff_ffffn ? "number too large to fit in target type" : BigInt(value) > 65535n ? `${BigInt(value)} is not in 0..=65535` : undefined);
 
 const GLOBALS: Option[] = [
-	{ long: "root", value: "ROOT", help: "Project root (defaults to the current directory)" },
-	{ long: "output", short: "o", value: "OUTPUT", help: "Override the output directory (relative to the root)" },
+	{ long: "root", value: "ROOT", path: true, help: "Project root (defaults to the current directory)" },
+	{ long: "output", short: "o", value: "OUTPUT", path: true, help: "Override the output directory (relative to the root)" },
 	{ long: "base", value: "BASE", help: "Serve the site under a path, like /repo/ (overrides the config's `base`)" },
 	{ long: "offline", help: "Don't use the network: `fetch()` answers from the copies its `cache` option saved" },
 	{ long: "env", value: "ENV", help: "development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)" },
@@ -49,7 +49,7 @@ const COMMANDS: Array<Command & { stage?: number }> = [
 		options: [
 			{ long: "port", short: "p", value: "PORT", help: "The port to listen on (0 picks a free one)", default: "8080", check: port },
 			{ long: "built", help: "Serve the output folder as it was built: no build, no watching, no reload script, gzip on" },
-			{ long: "ready-file", value: "FILE", help: "Write this file once the first build is done: JSON with the url, port and output folder" },
+			{ long: "ready-file", value: "FILE", path: true, help: "Write this file once the first build is done: JSON with the url, port and output folder" },
 		],
 		positionals: [],
 		afterHelp: "With --built, it serves the output folder as the last build left it, the way a host would: no build, no\nwatching, no reload script, and text compressed with gzip. For checking a production build (Lighthouse,\na deploy's files) before it goes out:\n\n  ssqch build\n  ssqch serve --built",
@@ -95,7 +95,7 @@ const COMMANDS: Array<Command & { stage?: number }> = [
 			{ long: "lines", value: "LINES", help: "Changed lines to show for each file (0 for all)", default: "10", check: number },
 			FORMAT,
 		],
-		positionals: [{ name: "BEFORE", help: "The build from before the change", required: true }, { name: "AFTER", help: "The build from after it", required: true }],
+		positionals: [{ name: "BEFORE", help: "The build from before the change", required: true, path: true }, { name: "AFTER", help: "The build from after it", required: true, path: true }],
 		afterHelp: "Build the site into one folder before a change and another after it:\n\n  ssqch build --output dist-before\n  (upgrade ssqch, edit a layout, ...)\n  ssqch build\n  ssqch diff dist-before dist\n\nExits with 0 when the builds are the same, 1 when they differ, and 2 on an error.",
 		stage: 4,
 	},
@@ -103,7 +103,7 @@ const COMMANDS: Array<Command & { stage?: number }> = [
 		name: "footprint",
 		about: "Show how much a build weighs: its files by kind, and the heaviest pages and files",
 		options: [{ long: "top", value: "TOP", help: "How many of the heaviest pages and files to list (0 for none)", default: "5", check: number }, FORMAT],
-		positionals: [{ name: "DIR", help: "The build folder (default: the site's output folder)", required: false }],
+		positionals: [{ name: "DIR", help: "The build folder (default: the site's output folder)", required: false, path: true }],
 		afterHelp: "It reads a build folder, so build first:\n\n  ssqch build\n  ssqch footprint                 (the site's output folder)\n  ssqch footprint dist-before     (any build)\n  ssqch footprint --top 20 --format json",
 		stage: 4,
 	},
@@ -116,7 +116,7 @@ const COMMANDS: Array<Command & { stage?: number }> = [
 	{ name: "sighting", about: "Report a sighting", options: [], positionals: [], raw: true, hidden: true, stage: 4 },
 ];
 
-const GRAMMAR: Grammar = { name: "ssqch", about: "SiteSquatch (ssqch): a fast, pluggable static site generator", version: VERSION, globals: GLOBALS, commands: COMMANDS };
+export const GRAMMAR: Grammar = { name: "ssqch", about: "SiteSquatch (ssqch): a fast, pluggable static site generator", version: VERSION, globals: GLOBALS, commands: COMMANDS };
 
 /** The options that take a value, so it isn't taken for the command. */
 const VALUED = ["--root", "--output", "-o", "--base", "--env", "-d", "--destination", "--pathprefix", "--port", "-p", "--ready-file", "--format", "--title", "--date", "--blueprint", "--set", "--field", "--ignore", "--only", "--lines", "--top", "--starter", "--engine"];

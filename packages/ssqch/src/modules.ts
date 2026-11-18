@@ -182,12 +182,37 @@ function packageMessage(e: Error, root: string): string | undefined {
 const safeString = (v: unknown) => { try { return String(v); } catch { return "a non-Error value"; } };
 
 /** The stack's frames outside Node and ssqch, as `    at name (file:line:column)`. */
+/**
+ * A stack line's function, file, line and column: `at boom (/site/ssqch.config.js:2:27)` or
+ * `at /site/ssqch.config.js:2:27`. The place is the last parenthesized part, found from the end,
+ * since a folder's name can have parentheses in it (`paren site (copy)`).
+ */
+function frameOf(line: string): [name: string | undefined, where: string, row: string, column: string] | undefined {
+	const at = /^\s+at /.exec(line);
+	if (!at) return undefined;
+	let rest = line.slice(at[0].length);
+	let name: string | undefined;
+	if (rest.endsWith(")")) {
+		let depth = 0;
+		let open = -1;
+		for (let i = rest.length - 1; i >= 0; i--) {
+			if (rest[i] === ")") depth++;
+			else if (rest[i] === "(" && --depth === 0) { open = i; break; }
+		}
+		if (open <= 0 || rest[open - 1] !== " ") return undefined;
+		name = rest.slice(0, open - 1);
+		rest = rest.slice(open + 1, -1);
+	}
+	const place = /^((?:file:\/\/|\/|[A-Za-z]:[\\/]).*?):(\d+):(\d+)$/.exec(rest);
+	return place ? [name, place[1], place[2], place[3]] : undefined;
+}
+
 export function siteFrames(stack: string, root: string): string[] {
 	const out: string[] = [];
 	for (const line of stack.split("\n")) {
-		const found = /^\s+at (?:(.*?) \()?((?:file:\/\/|\/|[A-Za-z]:[\\/])[^()]*?):(\d+):(\d+)\)?$/.exec(line);
+		const found = frameOf(line);
 		if (!found) continue;
-		const [, name, where, row, column] = found;
+		const [name, where, row, column] = found;
 		let file: string;
 		try { file = where.startsWith("file:") ? fileURLToPath(where.split("?")[0]) : where; } catch { continue; }
 		if (file.startsWith(SELF + path.sep)) continue;

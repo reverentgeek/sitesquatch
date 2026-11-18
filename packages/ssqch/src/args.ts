@@ -18,6 +18,8 @@ export interface Option {
 	check?: (value: string) => string | undefined;
 	/** The values it takes, listed in help and in the error for another. */
 	values?: string[];
+	/** A path: an empty value is refused, as clap refused one for a `PathBuf`. */
+	path?: boolean;
 }
 
 export interface Positional {
@@ -26,6 +28,8 @@ export interface Positional {
 	help: string;
 	required: boolean;
 	values?: string[];
+	/** A path: an empty value is refused. */
+	path?: boolean;
 }
 
 export interface Command {
@@ -144,17 +148,29 @@ function similar(word: string, candidates: string[]): string[] {
 const tail = "For more information, try '--help'.\n";
 
 /** Reads a command line (without the program's name). Throws `Printed` for `--help` and `--version`, and `UsageError` for a line that doesn't fit. */
+/** clap's tip for a value close to one of `values` (`tcsh` for `zsh`), with the blank line after it, or nothing. */
+function similarValue(value: string, values: string[]): string {
+	const like = similar(value, values).pop();
+	return like ? `  tip: a similar value exists: '${like}'\n\n` : "";
+}
+
 export function parse(grammar: Grammar, argv: string[]): Parsed {
 	const out: Parsed = { command: undefined, options: {}, positionals: [] };
 	let command: Command | undefined;
 	const find = (test: (o: Option) => boolean): Option | undefined => command?.options.find(test) ?? grammar.globals.find(test) ?? [HELP, ...(command ? [] : [VERSION])].find(test);
 	const usage = () => usageOf(grammar, command);
+	// The options given so far, as clap listed them in the usage line after an unknown flag or a
+	// missing argument (`Usage: ssqch build --root <ROOT> --quiet`).
+	const used: string[] = [];
+	const usageUsed = () => (command && used.length ? `Usage: ${grammar.name} ${command.name} ${used.join(" ")}` : usage());
+	const required = (option: Option) => new UsageError(`error: a value is required for '--${option.long} <${option.value}>' but none was supplied\n\n${tail}`);
 	const set = (option: Option, value: string | true, shown: string) => {
 		if (option === HELP) throw new Printed(help(grammar, command));
 		if (option === VERSION) throw new Printed(`${grammar.name} ${grammar.version}\n`);
 		if (typeof value === "string") {
 			const label = `'--${option.long} <${option.value}>'`;
-			if (option.values && !option.values.includes(value)) throw new UsageError(`error: invalid value '${value}' for ${label}\n  [possible values: ${option.values.join(", ")}]\n\n${tail}`);
+			if (value === "" && option.path) throw required(option);
+			if (option.values && !option.values.includes(value)) throw new UsageError(`error: invalid value '${value}' for ${label}\n  [possible values: ${option.values.join(", ")}]\n\n${similarValue(value, option.values)}${tail}`);
 			const wrong = option.check?.(value);
 			if (wrong !== undefined) throw new UsageError(`error: invalid value '${value}' for ${label}: ${wrong}\n\n${tail}`);
 		}
@@ -165,21 +181,22 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 			if (option.long in out.options) throw new UsageError(`error: the argument '${shown}' cannot be used multiple times\n\n${usage()}\n\n${tail}`);
 			out.options[option.long] = value;
 		}
+		const named = `--${option.long}${option.value ? ` <${option.value}>` : ""}`;
+		if (!used.includes(named)) used.push(named);
 	};
 	const unexpected = (arg: string, tips: string[] = []): never => {
 		const flag = arg.split("=")[0];
 		const body = tips.length ? `${tips.map((t) => `  tip: ${t}`).join("\n")}\n\n` : "";
-		throw new UsageError(`error: unexpected argument '${arg.startsWith("-") ? flag : arg}' found\n\n${body}${usage()}\n\n${tail}`, arg.startsWith("-") ? { word: flag, kind: "flag" } : undefined);
+		throw new UsageError(`error: unexpected argument '${arg.startsWith("-") ? flag : arg}' found\n\n${body}${arg.startsWith("-") ? usageUsed() : usage()}\n\n${tail}`, arg.startsWith("-") ? { word: flag, kind: "flag" } : undefined);
 	};
 
 	/** The value of `option` from the word after it (at `at + 1`). A word that starts with a dash isn't a value: it's another option, or one nobody knows. */
 	const valueAfter = (option: Option, at: number): string => {
 		const next = argv[at + 1];
-		const required = () => new UsageError(`error: a value is required for '--${option.long} <${option.value}>' but none was supplied\n\n${tail}`);
-		if (next === undefined) throw required();
+		if (next === undefined) throw required(option);
 		if (!next.startsWith("-") || next === "-") return next;
 		const name = next.split("=")[0];
-		if (find((o) => (name.startsWith("--") ? o.long === name.slice(2) : o.short === name[1]))) throw required();
+		if (find((o) => (name.startsWith("--") ? o.long === name.slice(2) : o.short === name[1]))) throw required(option);
 		return unexpected(next, command?.positionals.length ? [`to pass '${next}' as a value, use '-- ${next}'`] : []);
 	};
 
@@ -191,8 +208,12 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 			if (!command && !onlyPositionals) {
 				if (arg === "help") {
 					const name = argv[i + 1];
+					if (name === "help") throw new Printed(`Print this message or the help of the given subcommand(s)\n\nUsage: ${grammar.name} help [COMMAND]...\n\nArguments:\n  [COMMAND]...  Print help for the subcommand(s)\n`);
 					const about = name === undefined ? undefined : grammar.commands.find((c) => c.name === name);
 					if (name !== undefined && !about) throw new UsageError(`error: unrecognized subcommand '${name}'\n\n${usage()}\n\n${tail}`);
+					// A command has no subcommands, so a word after its name is one it doesn't have.
+					const more = argv[i + 2];
+					if (about && more !== undefined) throw new UsageError(`error: unrecognized subcommand '${more}'\n\n${usageOf(grammar, about)}\n\n${tail}`);
 					throw new Printed(help(grammar, about));
 				}
 				command = grammar.commands.find((c) => c.name === arg);
@@ -206,7 +227,8 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 			}
 			if (!command || out.positionals.length >= command.positionals.length) unexpected(arg);
 			const positional = command!.positionals[out.positionals.length];
-			if (positional.values && !positional.values.includes(arg)) throw new UsageError(`error: invalid value '${arg}' for '<${positional.name}>'\n  [possible values: ${positional.values.join(", ")}]\n\n${tail}`);
+			if (arg === "" && positional.path) throw new UsageError(`error: a value is required for '${positional.required ? `<${positional.name}>` : `[${positional.name}]`}' but none was supplied\n\n${tail}`);
+			if (positional.values && !positional.values.includes(arg)) throw new UsageError(`error: invalid value '${arg}' for '<${positional.name}>'\n  [possible values: ${positional.values.join(", ")}]\n\n${similarValue(arg, positional.values)}${tail}`);
 			out.positionals.push(arg);
 			continue;
 		}
@@ -235,7 +257,7 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 			const letter = arg[j];
 			const option = find((o) => o.short === letter);
 			if (!option) unexpected(j === 1 ? arg : `-${letter}`);
-			if (!option!.value) { set(option!, true, `-${letter}`); continue; }
+			if (!option!.value) { set(option!, true, `--${option!.long}`); continue; }
 			let value: string | undefined = arg.slice(j + 1);
 			if (value.startsWith("=")) value = value.slice(1);
 			if (value === "") value = valueAfter(option!, i++);
@@ -245,8 +267,8 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 	}
 	if (command && !command.raw) {
 		const missing = command.positionals.slice(out.positionals.length).filter((p) => p.required);
-		// The usage line here is the arguments alone, as 0.7 printed it.
-		const needed = `Usage: ${grammar.name} ${command.name} ${command.positionals.map((p) => (p.required ? `<${p.name}>` : `[${p.name}]`)).join(" ")}`;
+		// The usage line here is the options given, then the arguments, as 0.7 printed it.
+		const needed = `Usage: ${grammar.name} ${command.name} ${[...used, ...command.positionals.map((p) => (p.required ? `<${p.name}>` : `[${p.name}]`))].join(" ")}`;
 		if (missing.length) throw new UsageError(`error: the following required arguments were not provided:\n${missing.map((p) => `  <${p.name}>`).join("\n")}\n\n${needed}\n\n${tail}`);
 	}
 	return out;

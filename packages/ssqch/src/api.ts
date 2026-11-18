@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { BuildError } from "./diagnostics.ts";
 import { loadStaticDataFile } from "./data.ts";
-import { globBase, globToRegExp, isGlob } from "./glob.ts";
+import { globBase, globProblem, globToRegExp, isGlob } from "./glob.ts";
 import { markdownEngine } from "./engines/markdown.ts";
 import { defaultMarkdownOptions } from "./markdown-options.ts";
 import { slugify as slug } from "./slug.ts";
@@ -35,9 +35,12 @@ export function markdown(text: unknown, options: { inline?: boolean } | null = {
 export function readData(file: unknown): unknown {
 	const rel = String(file);
 	const abs = path.resolve(site.root, rel);
-	if (!fs.statSync(abs, { throwIfNoEntry: false })?.isFile()) throw new BuildError(`readData(${JSON.stringify(rel)}): no such file`);
+	const call = `readData(${JSON.stringify(rel)})`;
+	// The kind of file first, as 0.7 checked it: a folder, or a name without one of these endings, isn't data.
+	if (!/\.(json|ya?ml|toml)$/i.test(rel)) throw new BuildError(`${call}: not a JSON, YAML or TOML file`);
+	if (!fs.statSync(abs, { throwIfNoEntry: false })?.isFile()) throw new BuildError(`${call}: no such file (reading ${abs})`);
 	const value = loadStaticDataFile(abs);
-	if (value === undefined) throw new BuildError(`readData(${JSON.stringify(rel)}): not a JSON, YAML or TOML file`);
+	if (value === undefined) throw new BuildError(`${call}: not a JSON, YAML or TOML file`);
 	return value;
 }
 
@@ -67,6 +70,8 @@ export function files(pattern: unknown, options: { dimensions?: boolean } | null
 	const glob = given.trim().replace(/^(\.\/)+/, "");
 	if (glob === "") throw new BuildError(`${call}: give a glob, like files("images/*.jpg")`);
 	if (path.isAbsolute(glob) || glob.split("/").includes("..")) throw new BuildError(`${call}: the glob is from the project root, and can't leave it`);
+	const problem = globProblem(glob);
+	if (problem) throw new BuildError(`${call}: not a glob (error parsing glob '${glob}': ${problem})`);
 	if (options?.dimensions) throw new BuildError(`${call}: { dimensions } isn't in this build yet (it arrives with images, stage 5 of the move to Node)`);
 	const matches = globToRegExp(glob, { ignoreCase: true });
 	// Walk only below the part of the pattern without wildcards.
