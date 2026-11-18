@@ -78,9 +78,14 @@ the release.
   - A variable set inside a loop or an `if` keeps its value after it, as in Nunjucks:
     `{% set total = 0 %}{% for x in xs %}{% set total = total + x %}{% endfor %}` ends with the
     sum, where Jinja's scoping left it at 0 (`namespace()` still works).
-  - `{% break %}`, `{% continue %}`, `{% with %}`, `{% autoescape %}`, `{% set a, b = 1, 2 %}`
-    and the loop filter `{% for x in xs if x.ok %}` are errors that name their line. Put an
-    `{% if %}` inside the loop, or filter the list first (`xs | selectattr("ok")`).
+  - A variable set in an include stays in the include: `{% set shared = "changed" %}` in
+    `_includes/i.jinja` doesn't change the page's `shared`, and a name it sets isn't the page's.
+    0.7 let both out. Set the value in the page, or have the include print it.
+  - `{% break %}`, `{% continue %}`, `{% with %}`, `{% autoescape %}`, the loop filter
+    `{% for x in xs if x.ok %}` and recursive loops (`{% for x in xs recursive %}` with
+    `loop(...)`) are errors that name their line and say what to write instead. Put an
+    `{% if %}` inside the loop, filter the list first (`xs | selectattr("ok")`), or write a
+    macro that calls itself for a tree.
   - `loop.previtem`, `loop.nextitem` and `loop.depth` are undefined (`loop.cycle()` and
     `loop.changed()` work).
   - Numbers have no separate float type: `{{ 4 / 2 }}` and `{{ 3.5 | round }}` print `2` and
