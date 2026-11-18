@@ -42,7 +42,16 @@ the release.
 - **`fetch` is Node's own, with 0.7's error words and `cache` option on top.** The reason after
   `fetch failed: <url>:` is Node's (`connect ECONNREFUSED 127.0.0.1:9`, `getaddrinfo ENOTFOUND
   ...`), where 0.7 gave its HTTP library's (`io: Connection refused`); a script that matched that
-  text should match the `cause` or the URL.
+  text should match the `cause` or the URL. Requests go out as 0.7 sent them, where the Fetch
+  standard would refuse or change them: credentials in the URL are Basic auth, the user agent is
+  `ssqch/<version>`, and a request for a port the standard blocks (6000, 6665 to 6669, 10080 and
+  the others) or with a `Host`, `Keep-Alive`, `Transfer-Encoding`, `Upgrade` or `Expect` header
+  goes out through `node:http`. Three things are Node's: a response's `statusText` is the server's
+  own (`"Pine OK"`), where 0.7 gave the standard words for its status (`"OK"`, and `""` for a
+  status without any); a response's `url` has no credentials in it, where 0.7 kept them; and an
+  error names the URL without its password. A response saved with `cache` lists its headers in
+  name order, with repeated ones joined (`"a, b"`), as Node's `Headers` gives them, where 0.7's
+  file had the server's order; a site reads them the same either way.
 - **Filters and templates get your real objects.** 0.7 handed them copies that kept writes to
   themselves; now a filter that sorts or changes what it's given changes it for the pages
   rendered after it. Copy first (`[...posts].sort()`). Data that refers to itself (`a.self = a`)

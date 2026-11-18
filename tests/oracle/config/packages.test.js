@@ -235,6 +235,8 @@ http.createServer((req, res) => {
     if (p === "/data.json") { status = 200; extra = { "content-type": "application/json" }; text = '{"snacks":["pine cones","berries"]}'; }
     else if (p === "/echo") { status = 201; extra = { "set-cookie": ["a=1", "b=2"] }; text = req.method + " " + body + " " + header("content-type") + " " + header("x-squatch"); }
     else if (p === "/moved") { status = 301; extra = { location: "/data.json" }; text = ""; }
+    // The headers that arrived, as JSON after a word.
+    else if (p === "/headers") { status = 200; text = "headers " + JSON.stringify({ ...req.headers, ua: header("user-agent") }); }
     // A different answer each time, to tell a request from a saved copy.
     else if (p.startsWith("/count")) { status = 200; extra = { "set-cookie": "a=1" }; text = String(++count); }
     // Works once, then fails.
@@ -297,6 +299,55 @@ export default out.join("\\n");
 			"404 false false nope true",
 			"TimeoutError",
 			"fetch failed: file:///etc/hosts: only http: and https: URLs can be fetched",
+		]);
+	} finally {
+		stop();
+	}
+});
+
+// Requests went out as a site wrote them in 0.7, where the Fetch standard (Node's fetch) refuses
+// or changes some: credentials in the URL, a `Host` header, the headers it won't send, a blocked
+// port. And calls for one URL with `cache` took turns, so the later ones found the saved copy.
+test("fetch_sends_requests_as_written", FETCH, async () => {
+	const { base, stop } = await serve();
+	try {
+		const data = `const base = "${base}";
+const out = [];
+const seen = async (url, init) => { const r = await fetch(url, init); return JSON.parse((await r.text()).replace(/^\\S+ /, "")); };
+const credentialed = base.replace("http://", "http://ranger:pinecone@") + "/headers";
+out.push((await seen(credentialed)).authorization);
+out.push((await seen(base + "/headers")).ua.startsWith("ssqch/"));
+for (const [k, v] of [["Host", "example.com"], ["Keep-Alive", "timeout=5"], ["Upgrade", "websocket"], ["Expect", "100-continue"]]) out.push((await seen(base + "/headers", { method: "POST", body: "x", headers: { [k]: v } }))[k.toLowerCase()]);
+try { await fetch("http://127.0.0.1:6666/"); } catch (e) { out.push(e.message.startsWith("fetch failed: http://127.0.0.1:6666/: ") && !e.message.endsWith("bad port")); }
+const cookies = await fetch(base + "/echo", { method: "POST", body: "x", cache: "1h" });
+out.push(cookies.headers.getSetCookie().join(";"), cookies.type);
+const nul = await fetch(base + "/data.json", { cache: null });
+out.push(nul.status);
+const request = new Request(base + "/count?request", { cache: "1h" });
+out.push(request.cache, (await fetch(request)).headers.get("x-ssqch-cache") ?? "network", (await fetch(new Request(base + "/count?request", { cache: "1h" }))).headers.get("x-ssqch-cache"));
+const turns = await Promise.all(Array.from({ length: 30 }, () => fetch(base + "/count?together", { cache: "1d" }).then((r) => r.headers.get("x-ssqch-cache") ?? "network")));
+out.push(turns.filter((x) => x === "network").length + "+" + turns.filter((x) => x === "hit").length);
+try { await fetch("not a url"); } catch (e) { out.push(e.message); }
+export default out.join("\\n");
+`;
+		const root = site({ "_data/out.js": data, "index.edge": "{{{ out }}}" });
+		buildOk(root);
+		assert.deepEqual(read(root, "_site/index.html").split("\n"), [
+			"Basic cmFuZ2VyOnBpbmVjb25l",
+			"true",
+			"example.com",
+			"timeout=5",
+			"websocket",
+			"100-continue",
+			"true",
+			"a=1;b=2",
+			"basic",
+			"200",
+			"1h",
+			"network",
+			"hit",
+			"8+22",
+			"Invalid URL: not a url",
 		]);
 	} finally {
 		stop();
