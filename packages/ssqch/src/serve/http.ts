@@ -158,6 +158,9 @@ export function notFoundPage(root: string, url: string, base: string): string {
 
 type Headers = Record<string, string>;
 
+/** The type 0.7's server (tiny_http) gave the text it answered with, spelled as it spelled it. */
+const PLAIN: Headers = { "Content-Type": "text/plain; charset=UTF-8" };
+
 /** Answers with `body` and its length, so the response isn't sent in chunks and ends with the body. */
 function respond(res: http.ServerResponse, status: number, headers: Headers, body: string | Buffer = ""): void {
 	const bytes = typeof body === "string" ? Buffer.from(body) : body;
@@ -175,6 +178,9 @@ function split(url: string | undefined): [path: string, query: string] {
 /** The file a request path names in `root`, or what to answer instead. */
 function locate(res: http.ServerResponse, root: string, rawUrl: string, url: string): { status: number; file: string } | undefined {
 	const rel = url.replace(/^\/+/, "");
+	// No file has a NUL in its name, so that's a page that isn't there, as 0.7 answered (Node's
+	// file functions refuse the name, where 0.7's found nothing).
+	if (rel.includes("\0") && inside(rel.replaceAll("\0", "_"))) return { status: 404, file: path.join(root, "404.html") };
 	if (!inside(rel)) { respond(res, 400, {}); return undefined; }
 	let file = path.join(root, rel);
 	if (isDir(file)) {
@@ -210,7 +216,7 @@ export function handle(req: http.IncomingMessage, res: http.ServerResponse, root
 	// Decoded once, before anything looks at the path.
 	const fullUrl = percentDecode(rawUrl);
 	const at = mounted(fullUrl, base);
-	if (at === "outside") return respond(res, 404, {}, `Wrong trailhead: this site is served under ${base}/ (its \`base\`).`);
+	if (at === "outside") return respond(res, 404, PLAIN, `Wrong trailhead: this site is served under ${base}/ (its \`base\`).`);
 	if ("redirect" in at) return respond(res, 302, { Location: at.redirect });
 	const url = at.path;
 	const found = locate(res, root, rawUrl, url);
@@ -247,7 +253,7 @@ export function handleBuilt(req: http.IncomingMessage, res: http.ServerResponse,
 	const [rawUrl] = split(req.url);
 	const fullUrl = percentDecode(rawUrl);
 	const at = mounted(fullUrl, base);
-	if (at === "outside") return respond(res, 404, {}, `Not found: ${fullUrl} (this site is served under ${base}/)`);
+	if (at === "outside") return respond(res, 404, PLAIN, `Not found: ${fullUrl} (this site is served under ${base}/)`);
 	if ("redirect" in at) return respond(res, 302, { Location: at.redirect });
 	const found = locate(res, root, rawUrl, at.path);
 	if (!found) return;

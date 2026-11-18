@@ -82,6 +82,13 @@ function listen(port: number, answer: (req: http.IncomingMessage, res: http.Serv
 			else res.writeHead(500, { "Content-Length": "0" }).end();
 		}
 	});
+	// A request Node can't read (a space in its path): the status Node would send, with a length,
+	// as 0.7 answered, so a client knows the answer is over.
+	server.on("clientError", (e: NodeJS.ErrnoException, socket) => {
+		if (e.code === "ECONNRESET" || !socket.writable) return socket.destroy();
+		const status = e.code === "HPE_HEADER_OVERFLOW" ? "431 Request Header Fields Too Large" : e.code === "HPE_CHUNK_EXTENSIONS_OVERFLOW" ? "413 Payload Too Large" : "400 Bad Request";
+		socket.end(`HTTP/1.1 ${status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n`);
+	});
 	return new Promise((resolve, reject) => {
 		server.once("error", (e: NodeJS.ErrnoException) => {
 			reject(new BuildError(e.code === "EADDRINUSE" ? `can't listen on port ${port}: something else is squatting on it (--port 0 picks a free one)` : `can't listen on port ${port}: ${e.message}`));
