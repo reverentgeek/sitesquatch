@@ -49,6 +49,7 @@ export function hookModules(): void {
 	});
 	type Resolve = NonNullable<Parameters<typeof registerHooks>[0]["resolve"]>;
 	function resolveFor(...[specifier, context, next]: Parameters<Resolve>): ReturnType<Resolve> {
+		if (specifier.startsWith("file:") && specifier.endsWith(FORCE_ESM)) return { ...next(specifier, context), format: "module" };
 		if (specifier === "ssqch") return { url: API, shortCircuit: true };
 		if (specifier.startsWith("ssqch/")) {
 			const url = new URL(`./modules/${specifier.slice(6)}.ts`, import.meta.url);
@@ -92,8 +93,19 @@ export async function importFile(file: string): Promise<Record<string, unknown>>
 	if (!entry) versions.set(file, entry = { mtimeMs, version: 0 });
 	else if (entry.mtimeMs !== mtimeMs) { entry.mtimeMs = mtimeMs; entry.version++; }
 	const url = pathToFileURL(file).href + (entry.version ? `?v=${entry.version}` : "");
-	return watchSettle(import(url));
+	try {
+		return await watchSettle(import(url));
+	} catch (e) {
+		// Node 22.18 only retries a file as an ES module when its first syntax error is one of the
+		// module kind, so `[await get()]` above an `export` fails as CommonJS (`Unexpected token`, `missing )`).
+		// A file that exports or imports is a module: say so, as later Nodes do.
+		if (!(e instanceof SyntaxError) || !MODULE_SYNTAX.test(fs.readFileSync(file, "utf8"))) throw e;
+		return watchSettle(import(url + (url.includes("?") ? "&" : "?") + FORCE_ESM));
+	}
 }
+
+const FORCE_ESM = "ssqch-esm";
+const MODULE_SYNTAX = /^[ \t]*(export\s|import\s*[\w{*'"]|import\.meta)/m;
 
 // ---- promises that never settle --------------------------------------------------------------
 
