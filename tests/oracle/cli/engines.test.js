@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write, read, exists } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, exists, RUST_07 } from "../lib/ssqch.js";
 
 test("jinja_is_the_default_and_other_templates_are_named", () => {
 	const dir = tempDir("default-engine");
@@ -270,6 +270,32 @@ test("quotes_in_prose_and_comments_dont_change_the_output", () => {
 	assert.equal(rd("slash2/index.html"), "C:\\trail &lt;a&gt;");
 });
 
+// What a stage 3 review of the Node build found it doing differently from 0.7, without a word:
+// async functions outside a plain `{{ }}`, Jinja's truth, `~`, `==` and `%`, tuples, macros that
+// see the page's data, and `set` on shared data.
+test("jinja_keeps_its_meaning_in_every_corner", () => {
+	const dir = tempDir("jinja-corners");
+	const d = dir;
+	const w = (p, t) => write(dir, { [p]: t });
+	const rd = (p) => read(dir, `_site/${p}`);
+	w("ssqch.config.js", "export default { templateFormats: [\"njk\", \"jinja\"], filters: { later: async (s) => `L:${s}`, nope: async () => false } };\n");
+	w("_data/site.json", "{ \"title\": \"Pine Cone Crunch\", \"url\": \"https://example.com\", \"empty\": [] }");
+	w("_includes/macros.njk", "{% macro link(path) %}<a href=\"{{ site.url }}{{ path }}\">{{ site.title }}</a>{% endmacro %}{% macro tag(x) %}<t>{{ x | later }}</t>{% endmacro %}");
+	w("async.njk", "[{{ later(\"b\") }}]{% set v = later(\"c\") %}[{{ v }}]{% if nope() %}t{% else %}f{% endif %}|{% from \"macros.njk\" import tag %}{{ tag(\"a\") }}|{% set cap %}{{ \"e\" | later }}{% endset %}[{{ cap }}]|{% filter upper %}{{ \"d\" | later }}{% endfilter %}|{{ [\"i\", \"j\"] | map(\"later\") | join(\",\") }}");
+	w("truth.jinja", "{% if site.empty %}T{% else %}F{% endif %}|{{ site.empty or \"default\" }}|{{ \"yes\" if site.empty else \"no\" }}|{{ site.empty | default(\"d\", true) }}|[{{ missing ~ \" | \" ~ missing }}]|{{ \"a\" ~ none }}|{{ 0 == \"\" }}|{{ [1] == [1] }}|{{ -7 % 3 }}|{{ 3 > 2 > 1 }}");
+	w("tuples.jinja", "{% for label, url in [(\"Home\", \"/\"), (\"Blog\", \"/blog/\")] %}<a href=\"{{ url }}\">{{ label }}</a>{% endfor %}|{{ (1, 2) }}|{% import \"macros.njk\" as m %}{{ m.link(\"/x/\") }}");
+	let r = ssqch(["build", "--root", d]);
+	assert.ok(r.ok, r.log);
+	assert.equal(rd("async/index.html"), "[L:b][L:c]f|<t>L:a</t>|[L:e]|L:D|L:i,L:j");
+	assert.equal(rd("truth/index.html"), "F|default|no|d|[ | ]|aNone|False|True|2|True");
+	assert.equal(rd("tuples/index.html"), "<a href=\"/\">Home</a><a href=\"/blog/\">Blog</a>|(1, 2)|<a href=\"https://example.com/x/\">Pine Cone Crunch</a>");
+
+	// Data the site shares isn't a template's to change.
+	w("set.njk", "a\n{% set site.title = \"Changed\" %}");
+	r = ssqch(["build", "--root", d]);
+	assert.ok(!r.ok && r.log.includes("set.njk:2: invalid operation: can only assign to namespaces, not map"), r.log);
+});
+
 test("handlebars_and_mustache_templates_render", () => {
 	const dir = tempDir("handlebars");
 	const d = dir;
@@ -290,4 +316,84 @@ test("handlebars_and_mustache_templates_render", () => {
 	w("src/broken.hbs", "ok\n{{#if}}");
 	r = ssqch(["build", "--root", d]);
 	assert.ok(!r.ok && r.log.includes("broken.hbs"), r.log);
+});
+
+// Found reviewing the Node build: Liquid's own filters printed a date in the machine's time zone,
+// whole numbers and floats divided alike, a missing value reached a function as `undefined`, and
+// an async function made the template (and every other function in it) run again.
+test("liquid_numbers_dates_and_functions_are_0_7s_in_any_time_zone", () => {
+	const dir = tempDir("liquid-values");
+	write(dir, {
+		"ssqch.config.js": "let n = 0;\nexport default { templateFormats: [\"liquid\"], filters: { count: () => ++n, show: (v) => v === null ? \"null\" : typeof v, later: async (s) => \"later:\" + s } };\n",
+		"index.liquid": "---\ndate: 2026-01-02\nratio: 2.5\n---\n[{{ date | append: \"x\" }}] [{{ date | truncate: 15 }}] [{{ date | size }}] [{{ date }}]\n[{{ 10 | times: 1.0 | divided_by: 4 }}] [{{ ratio | times: 2 | divided_by: 2 }}] [{{ 10.0 | divided_by: 4 }}] [{{ 7 | divided_by: 2 }}]\n[{{ nope | show }}] [{{ 1 | count }} {{ \"x\" | later }} {{ 1 | count }}]\n",
+	});
+	const r = ssqch(["build", "--root", dir], { env: { TZ: "America/Los_Angeles" } });
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "[2026-01-02 00:00:00 +0000x] [2026-01-02 0...] [25] [2026-01-02 00:00:00 +0000]\n[2.5] [2.5] [2.5] [3]\n[null] [1 later:x 2]\n");
+});
+
+// The same review, for Handlebars: helpers got dates as `Date`s and missing values as
+// `undefined`, ran again after an async helper, and `{{> nav}}` could be another engine's file.
+test("handlebars_helpers_get_0_7s_values_and_run_once", () => {
+	const dir = tempDir("handlebars-values");
+	write(dir, {
+		"ssqch.config.js": "let n = 0;\nexport default { templateFormats: [\"hbs\", \"njk\"], filters: { count: () => ++n, kind: (v) => v === null ? \"null\" : Object.prototype.toString.call(v), later: async (s) => \"later:\" + s } };\n",
+		"_includes/nav.hbs": "<nav>hbs {{title}}</nav>",
+		"index.hbs": "---\ntitle: T\ndate: 2026-01-02\n---\n{{> nav}} [{{kind date}}] [{{kind nope}}] [{{count}} {{later title}} {{count}}] [{{#each list}}{{@key}}{{/each}}]\n",
+	});
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<nav>hbs T</nav> [[object String]] [null] [1 later:T 2] []\n");
+	// With `strict` on, a block helper's argument that isn't there is an error, as it was.
+	write(dir, { "ssqch.config.js": "export default { strict: true, templateFormats: [\"hbs\"] };\n", "index.hbs": "---\ntitle: T\n---\nline\n{{#each nolist}}x{{/each}}\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("index.hbs") && r.log.includes("nolist"), r.log);
+});
+
+// The same review, for EJS: the page's data shadowed the names the engine's code uses.
+test("ejs_keeps_its_own_names_when_the_data_has_them", () => {
+	const dir = tempDir("ejs-names");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"ejs\"] };\n",
+		"_includes/p/nav.ejs": "<nav><%= title %></nav>",
+		"a.ejs": "---\ntitle: A\ninclude: [a, b]\nescapeFn: 1\n---\n<%- include(\"p/nav\") %> <%= title %>\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/a/index.html"), "<nav>A</nav> A\n");
+});
+
+// Decided for 0.8 (CHANGELOG.md, 0.8.0): `.njk` prints values as Nunjucks does, as a site from
+// Eleventy expects; Edge's `safe()` prints raw HTML; tags from functions work in `.jinja`; and
+// Liquid splits by nothing and joins two items as Shopify and Jekyll do. 0.7's answers are kept
+// here, for the 0.7 build.
+test("printing_tags_and_sentences_as_0_8_decided", () => {
+	const dir = tempDir("decided");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\" }, templateFormats: [\"njk\", \"jinja\", \"edge\", \"liquid\"], filters: { image: (src) => `<img src=\"${src}\">` } };\n",
+		"src/n.njk": "---\nok: true\ntags: [a, b]\n---\n{{ ok }}|{{ tags }}|{{ tags | dump | safe }}",
+		"src/j.jinja": "---\nok: true\ntags: [a, b]\n---\n{{ ok }}|{{ tags }}",
+		"src/t.jinja": "{% image \"/a.png\" %}",
+		"src/e.edge": "---\nhtml: <b>pine</b>\n---\n{{ safe(html) }}",
+		"src/l.liquid": "---\ntwo: [pine, cedar]\n---\n{{ \"abc\" | split: \"\" | size }}|{{ two | array_to_sentence_string }}",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	const out = (name) => read(dir, `_site/${name}/index.html`);
+	if (RUST_07) {
+		// 0.7 had no tags in `.jinja`: that page is the error here.
+		assert.ok(!r.ok && r.log.includes("t.jinja"), r.log);
+		write(dir, { "src/t.jinja": "" });
+		const again = ssqch(["build", "--root", dir, "-q"]);
+		assert.ok(again.ok, again.log);
+		assert.equal(out("n"), "True|[&#39;a&#39;, &#39;b&#39;]|[\"a\", \"b\"]");
+		assert.equal(out("e"), "&lt;b&gt;pine&lt;/b&gt;");
+		assert.equal(out("l"), "5|pine, and cedar");
+	} else {
+		assert.ok(r.ok, r.log);
+		assert.equal(out("n"), "true|a,b|[\"a\",\"b\"]");
+		assert.equal(out("t"), "<img src=\"/a.png\">");
+		assert.equal(out("e"), "<b>pine</b>");
+		assert.equal(out("l"), "3|pine and cedar");
+	}
+	assert.equal(out("j"), "True|[&#39;a&#39;, &#39;b&#39;]");
 });

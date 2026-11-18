@@ -35,41 +35,48 @@ let hooked = false;
 export function hookModules(): void {
 	if (hooked) return;
 	hooked = true;
+	// Only a `resolve` hook: on Node 22.18 any `load` hook gives every CommonJS module a `require`
+	// without `require.cache` (fixed by 22.23), and packages use it (Prism's language loader,
+	// which a11yproject.com's highlighting calls). The site's files are noted as they resolve.
+	const note = (resolved: { url: string }) => {
+		if (isSiteUrl(resolved.url)) loadedFiles.add(fileURLToPath(resolved.url));
+		return resolved;
+	};
 	registerHooks({
 		resolve(specifier, context, next) {
-			if (specifier === "ssqch") return { url: API, shortCircuit: true };
-			if (specifier.startsWith("ssqch/")) {
-				const url = new URL(`./modules/${specifier.slice(6)}.ts`, import.meta.url);
-				if (BUILT_IN.includes(specifier) && fs.existsSync(url)) return { url: url.href, shortCircuit: true };
-			}
-			const fromSite = isSiteUrl(context.parentURL);
-			// 0.7 let a config import JSON without `with { type: "json" }`, and Node doesn't; supplying
-			// the attribute keeps such configs working (the blog's has one).
-			const attempt = (name: string) => {
-				if (fromSite && /\.json(\?.*)?$/i.test(name) && !context.importAttributes?.type) {
-					const importAttributes = { ...context.importAttributes, type: "json" };
-					return { ...next(name, { ...context, importAttributes }), importAttributes };
-				}
-				return next(name, context);
-			};
-			try {
-				return attempt(specifier);
-			} catch (e: any) {
-				// `import { shout } from "./lib/text"`: the file with an extension, or a folder's index.
-				const relative = specifier.startsWith("./") || specifier.startsWith("../") || path.isAbsolute(specifier) || specifier.startsWith("file:");
-				if (!fromSite || !relative || !["ERR_MODULE_NOT_FOUND", "ERR_UNSUPPORTED_DIR_IMPORT"].includes(e?.code)) throw e;
-				const [bare, query = ""] = specifier.split(/(?=\?)/, 2);
-				for (const ending of ENDINGS) {
-					try { return attempt(bare.replace(/\/$/, "") + ending + query); } catch { /* the next ending */ }
-				}
-				throw e;
-			}
-		},
-		load(url, context, next) {
-			if (isSiteUrl(url)) loadedFiles.add(fileURLToPath(url));
-			return next(url, context);
+			return note(resolveFor(specifier, context, next));
 		},
 	});
+	type Resolve = NonNullable<Parameters<typeof registerHooks>[0]["resolve"]>;
+	function resolveFor(...[specifier, context, next]: Parameters<Resolve>): ReturnType<Resolve> {
+		if (specifier === "ssqch") return { url: API, shortCircuit: true };
+		if (specifier.startsWith("ssqch/")) {
+			const url = new URL(`./modules/${specifier.slice(6)}.ts`, import.meta.url);
+			if (BUILT_IN.includes(specifier) && fs.existsSync(url)) return { url: url.href, shortCircuit: true };
+		}
+		const fromSite = isSiteUrl(context.parentURL);
+		// 0.7 let a config import JSON without `with { type: "json" }`, and Node doesn't; supplying
+		// the attribute keeps such configs working (the blog's has one).
+		const attempt = (name: string) => {
+			if (fromSite && /\.json(\?.*)?$/i.test(name) && !context.importAttributes?.type) {
+				const importAttributes = { ...context.importAttributes, type: "json" };
+				return { ...next(name, { ...context, importAttributes }), importAttributes };
+			}
+			return next(name, context);
+		};
+		try {
+			return attempt(specifier);
+		} catch (e: any) {
+			// `import { shout } from "./lib/text"`: the file with an extension, or a folder's index.
+			const relative = specifier.startsWith("./") || specifier.startsWith("../") || path.isAbsolute(specifier) || specifier.startsWith("file:");
+			if (!fromSite || !relative || !["ERR_MODULE_NOT_FOUND", "ERR_UNSUPPORTED_DIR_IMPORT"].includes(e?.code)) throw e;
+			const [bare, query = ""] = specifier.split(/(?=\?)/, 2);
+			for (const ending of ENDINGS) {
+				try { return attempt(bare.replace(/\/$/, "") + ending + query); } catch { /* the next ending */ }
+			}
+			throw e;
+		}
+	}
 }
 
 const versions = new Map<string, { mtimeMs: number; version: number }>();
@@ -175,12 +182,37 @@ function packageMessage(e: Error, root: string): string | undefined {
 const safeString = (v: unknown) => { try { return String(v); } catch { return "a non-Error value"; } };
 
 /** The stack's frames outside Node and ssqch, as `    at name (file:line:column)`. */
+/**
+ * A stack line's function, file, line and column: `at boom (/site/ssqch.config.js:2:27)` or
+ * `at /site/ssqch.config.js:2:27`. The place is the last parenthesized part, found from the end,
+ * since a folder's name can have parentheses in it (`paren site (copy)`).
+ */
+function frameOf(line: string): [name: string | undefined, where: string, row: string, column: string] | undefined {
+	const at = /^\s+at /.exec(line);
+	if (!at) return undefined;
+	let rest = line.slice(at[0].length);
+	let name: string | undefined;
+	if (rest.endsWith(")")) {
+		let depth = 0;
+		let open = -1;
+		for (let i = rest.length - 1; i >= 0; i--) {
+			if (rest[i] === ")") depth++;
+			else if (rest[i] === "(" && --depth === 0) { open = i; break; }
+		}
+		if (open <= 0 || rest[open - 1] !== " ") return undefined;
+		name = rest.slice(0, open - 1);
+		rest = rest.slice(open + 1, -1);
+	}
+	const place = /^((?:file:\/\/|\/|[A-Za-z]:[\\/]).*?):(\d+):(\d+)$/.exec(rest);
+	return place ? [name, place[1], place[2], place[3]] : undefined;
+}
+
 export function siteFrames(stack: string, root: string): string[] {
 	const out: string[] = [];
 	for (const line of stack.split("\n")) {
-		const found = /^\s+at (?:(.*?) \()?((?:file:\/\/|\/|[A-Za-z]:[\\/])[^()]*?):(\d+):(\d+)\)?$/.exec(line);
+		const found = frameOf(line);
 		if (!found) continue;
-		const [, name, where, row, column] = found;
+		const [name, where, row, column] = found;
 		let file: string;
 		try { file = where.startsWith("file:") ? fileURLToPath(where.split("?")[0]) : where; } catch { continue; }
 		if (file.startsWith(SELF + path.sep)) continue;

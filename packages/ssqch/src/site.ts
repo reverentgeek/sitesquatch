@@ -16,10 +16,13 @@ import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, norm
 import type { Diagnostic } from "./diagnostics.ts";
 import { BuildError, Diagnostics, aliasUsed, bail, context, error as errorOf, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import { edgeEngine } from "./engines/edge.ts";
+import { ejsEngine } from "./engines/ejs.ts";
 import { Engines, plainEngine } from "./engines/engine.ts";
 import type { EngineEnv, RenderContext } from "./engines/engine.ts";
-import { markdownEngine } from "./engines/markdown.ts";
-import type { Markdown } from "./engines/markdown.ts";
+import { handlebarsEngine } from "./engines/handlebars.ts";
+import { liquidEngine } from "./engines/liquid.ts";
+import { loadHookTemplates, markdownEngine } from "./engines/markdown.ts";
+import type { HookTemplate, Markdown } from "./engines/markdown.ts";
 import { nunjucksEngine } from "./engines/nunjucks.ts";
 import * as equivalents from "./equivalents.ts";
 import { builtinFilters } from "./filters.ts";
@@ -101,9 +104,6 @@ function templateExtension(file: string): string {
 /** Template and directory data files (`hello.data.js`, `posts.data.json`) sit next to templates, but aren't templates themselves. */
 const isDataFile = (name: string) => name.includes(".data.");
 
-/** The engines that arrive with stage 3 of the move to Node: named, so an error can say so. */
-const LATER_ENGINES = ["liquid", "hbs", "handlebars", "mustache", "ejs"];
-
 export class Timer {
 	last = performance.now();
 	timings: Array<[string, number]> = [];
@@ -181,8 +181,9 @@ export class Site {
 
 	async prepare(timer: Timer): Promise<void> {
 		const { config, dirs } = this;
-		this.markdown = markdownEngine(config.markdown);
-		Object.assign(api.site, { root: dirs.root, input: dirs.input, markdown: (text: string, inline: boolean) => this.markdown.html(text, inline) });
+		this.markdown = markdownEngine(config.markdown, dirs.root);
+		// The `ssqch` module's `markdown()` has the site's options and no render hooks.
+		Object.assign(api.site, { root: dirs.root, input: dirs.input, markdown: (text: string, inline: boolean) => this.markdown.plain(text, inline) });
 		const globals = builtinFilters(this.markdown, config);
 		// Other generators' filters that are aliases here: `url` and `relative_url` give the URL
 		// back (the build adds `base` itself), and `markdownify` is `markdown`. A config filter with
@@ -204,8 +205,14 @@ export class Site {
 		byName.set("html", plainEngine);
 		byName.set("txt", plainEngine);
 		byName.set("edge", edgeEngine(env));
-		const jinja = nunjucksEngine(env);
-		for (const name of ["jinja", "njk", "j2"]) byName.set(name, jinja);
+		byName.set("njk", nunjucksEngine(env, "njk"));
+		const jinja = nunjucksEngine(env, "jinja");
+		for (const name of ["jinja", "j2"]) byName.set(name, jinja);
+		byName.set("liquid", liquidEngine(env));
+		// Mustache templates render as Handlebars, which reads Mustache's tags, as in 0.7.
+		const hbs = handlebarsEngine(env);
+		for (const name of ["hbs", "handlebars", "mustache"]) byName.set(name, hbs);
+		byName.set("ejs", ejsEngine(env));
 		for (const [name, fn] of config.engines) {
 			byName.set(name, {
 				render: (source, data, ctx) => {
@@ -219,9 +226,14 @@ export class Site {
 			});
 		}
 		for (const format of config.templateFormats) {
-			if (!byName.has(format) && LATER_ENGINES.includes(format)) bail(`check \`template_formats\`: the \`${format}\` engine isn't in the Node build of ssqch yet (the move to Node, stage 3)`);
 			try { this.engines.get(format); } catch (e) { throw context(e, "check `template_formats`"); }
 		}
+		// Markdown's render hooks and containers: a theme's, then the site's own on top of them.
+		const hooks = new Map<string, HookTemplate>();
+		const chain = (ext: string) => enginesFor(config, ext);
+		for (const dir of [...this.themeIncludes].reverse()) for (const [name, t] of loadHookTemplates(dir, "_includes (theme)", this.engines, chain)) hooks.set(name, t);
+		for (const [name, t] of loadHookTemplates(dirs.includes, slashes(config.includes), this.engines, chain)) hooks.set(name, t);
+		this.markdown.useHooks(hooks, this.engines);
 		timer.lap("setup");
 
 		// ---- global data
@@ -311,7 +323,7 @@ export class Site {
 
 	/** The template languages the site has engines for, rendered or not. */
 	private engineLanguages(): Set<string> {
-		return new Set([...this.engines.byName.keys(), ...LATER_ENGINES].filter((name) => !["md", "html", "txt"].includes(name)).map((name) => name.toLowerCase()));
+		return new Set([...this.engines.byName.keys()].filter((name) => !["md", "html", "txt"].includes(name)).map((name) => name.toLowerCase()));
 	}
 
 	/**
