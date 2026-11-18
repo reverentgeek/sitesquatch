@@ -648,11 +648,10 @@ From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
       `defaults`, `site` and `site.data`, static files, front matter on `.js`/`.scss`, `page.`
       renames (listing collisions), the plugins (seo, sitemap, redirect-from, feed, github-metadata,
       github-pages' implicit ones and default theme), unknown tags, and a count of kramdown syntax.
-- [ ] **`docs/trailheads/from-jekyll.md`** from the draft in osg `suggestions.md`, and the rows
-      `ssqch docs --from jekyll` lacks (osg #16): `page.title`, `site.data`, `site.<collection>`,
-      `collections`, `defaults`, `exclude`, `{% seo %}`, `include_relative`, jekyll-sitemap,
-      `markdown="1"`, kramdown, Rouge, `site.time`. `jsonify` works in Liquid but its row says it's
-      refused (`equivalents.ts:97`).
+- [ ] **`docs/trailheads/from-jekyll.md`** from the draft in osg `suggestions.md` (done 2026-11-18),
+      and the rows `ssqch docs --from jekyll` lacks (osg #16): `page.title`, `site.data`,
+      `site.<collection>`, `collections`, `defaults`, `exclude`, `{% seo %}`, `include_relative`,
+      jekyll-sitemap, `markdown="1"`, kramdown, Rouge, `site.time`. (`jsonify`'s row fixed.)
 - [ ] Report the site's own bugs upstream (osg `issues.md`, last section): dead search, the
       language menu on one-word URLs, the breadcrumb, jekyll-toc's missing last heading, and the 21
       drifted untranslated copies.

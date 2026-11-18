@@ -30,6 +30,9 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Added
 
+- A trailhead for Jekyll (`docs/trailheads/from-jekyll.md`, `ssqch docs --from jekyll`): the config,
+  `page` and `site`, includes and plugin tags, Ruby Liquid's differences, the plugins, and kramdown,
+  from moving opensource.guide.
 - `toc` takes `id`, `class`, `sublistClass`, `itemClass` (`{level}` is the heading's level) and
   `linkClass`, so a table of contents can keep another generator's markup and CSS (jekyll-toc's
   `section-nav` and `toc-entry toc-h2`).

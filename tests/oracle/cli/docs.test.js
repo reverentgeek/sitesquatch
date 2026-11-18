@@ -120,6 +120,9 @@ test("docs_answer_for_every_name", () => {
 	r = ssqch(["docs", "--from", "eleventy"]);
 	assert.ok(r.ok && r.log.includes("\n  pathPrefix ") && r.log.includes("The trailhead (docs/trailheads/from-eleventy.md):\n\n# Trailhead: moving from Eleventy"), r.log);
 	r = ssqch(["docs", "--from", "hugoo"]);
+	// Jekyll's trailhead (2026-11-18, from the opensource.guide study).
+	const jekyll = ssqch(["docs", "--from", "jekyll"]);
+	assert.ok(jekyll.ok && jekyll.log.includes("The trailhead (docs/trailheads/from-jekyll.md):\n\n# Trailhead: moving from Jekyll"), jekyll.log);
 	assert.ok(!r.ok && r.log.includes("--from hugoo: no trailhead for that generator (did you mean `hugo`?)"), r.log);
 });
 
