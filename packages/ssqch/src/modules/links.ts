@@ -110,7 +110,7 @@ const XML_TEXT = />\s*((?:https?:\/\/|\/)[^<>\s]*)\s*</g;
  * elements that hold only a URL (`<loc>`, `<link>`, `<id>`), including those in escaped HTML (a
  * feed entry's content), which is unescaped first.
  */
-function scanXml(xml: string): string[] {
+export function scanXml(xml: string): string[] {
 	const unescaped = unescapeXml(xml);
 	const out: string[] = [];
 	for (const c of unescaped.matchAll(XML_ATTR)) out.push(unescapeXml(c[1] ?? c[2] ?? ""));
@@ -127,7 +127,7 @@ function scanXml(xml: string): string[] {
 const NAMED: Record<string, string> = { lt: "<", gt: ">", quot: "\"", apos: "'", amp: "&" };
 
 /** XML's five entities and numeric references, and CDATA markers (whose contents are already plain). */
-function unescapeXml(given: string): string {
+export function unescapeXml(given: string): string {
 	if (!given.includes("&") && !given.includes("<![CDATA[")) return given;
 	const s = given.replaceAll("<![CDATA[", "").replaceAll("]]>", "");
 	let out = "";
@@ -158,7 +158,7 @@ function unescapeXml(given: string): string {
 	return out + rest;
 }
 
-function scanHtml(html: string): PageScan {
+export function scanHtml(html: string): PageScan {
 	const found: PageScan = { ids: new Set(), links: [], siteLinks: [], sitePaths: [] };
 	rewriteHtml(html, {
 		tag(el) {
@@ -216,7 +216,8 @@ function scanHtml(html: string): PageScan {
 			}
 		},
 		rawText(tag, text) {
-			if (tag.name !== "script" || tag.get("type") !== "application/ld+json") return;
+			// A `type` attribute's value is matched without regard to case, as a CSS selector does for it in HTML.
+			if (tag.name !== "script" || asciiLower(tag.get("type") ?? "") !== "application/ld+json") return;
 			let value: unknown;
 			try { value = JSON.parse(text); } catch { return; }
 			jsonUrls(value, found.sitePaths);
@@ -226,7 +227,7 @@ function scanHtml(html: string): PageScan {
 }
 
 /** `https://example.com` from a site's address (`https://example.com/blog/`): the scheme and host, lowercase. `undefined` when it isn't an http(s) address. */
-function originOf(given: string): string | undefined {
+export function originOf(given: string): string | undefined {
 	const url = trim(given);
 	const at = url.indexOf("://");
 	if (at === -1) return undefined;
@@ -250,7 +251,7 @@ function sitemapOrigin(output: string): string | undefined {
 }
 
 /** The path of an absolute URL on the site's address (`https://example.com/about/` is `/about/`), whether it's `http` or `https`. `undefined` for other URLs. */
-function stripOrigin(given: string, origin: string): string | undefined {
+export function stripOrigin(given: string, origin: string): string | undefined {
 	const link = trim(given);
 	const host = origin.slice(origin.indexOf("://") + 3);
 	let rest: string | undefined;
@@ -264,7 +265,7 @@ function stripOrigin(given: string, origin: string): string | undefined {
 }
 
 /** `link` without the site's `base`, or `undefined` for a path on the same domain that's outside it (`/other-project/` when the base is `/repo`). */
-function inSite(link: string, base: string): string | undefined {
+export function inSite(link: string, base: string): string | undefined {
 	const trimmed = trim(link);
 	if (base === "" || !trimmed.startsWith("/") || trimmed.startsWith("//")) return link;
 	if (!trimmed.startsWith(base)) return undefined;
@@ -296,7 +297,7 @@ function hasScheme(link: string): boolean {
  * that aren't checked (external, or nothing to check). An empty path means the page itself
  * (`#top`).
  */
-function resolve(pageUrl: string, given: string): [string, string | undefined] | undefined {
+export function resolve(pageUrl: string, given: string): [string, string | undefined] | undefined {
 	const link = trim(given);
 	if (link === "" || link.startsWith("//") || hasScheme(link)) return undefined;
 	// The fragment as written: an id can hold `%` (markdown-it-anchor's `tl%3Bdr`); `hasId` decodes too.
@@ -353,7 +354,7 @@ function redirectSources(output: string): string[] {
 	return sources;
 }
 
-function redirected(sources: string[], p: string): boolean {
+export function redirected(sources: string[], p: string): boolean {
 	return sources.some((from) => (from.endsWith("*") ? p.startsWith(from.slice(0, -1)) : from === p || from.replace(/\/+$/, "") === p.replace(/\/+$/, "")));
 }
 
@@ -383,13 +384,17 @@ interface Checked {
 }
 
 /** Checks every HTML and XML page the build wrote. */
-function check(config: Config, output: string, written: string[], options: LinksOptions): Checked {
+async function check(config: Config, output: string, written: string[], options: LinksOptions): Promise<Checked> {
 	const scans: Array<[string, PageScan]> = [];
-	for (const file of written) {
-		const ext = path.extname(file);
-		if (ext !== ".html" && ext !== ".xml") continue;
-		const text = fs.readFileSync(file, "utf8");
-		scans.push([file, ext === ".xml" ? { ids: new Set(), links: [], siteLinks: scanXml(text), sitePaths: [] } : scanHtml(text)]);
+	// The files are read ahead, a few at a time, so reading (on Node's thread pool) goes on while this thread scans.
+	const pages = written.filter((file) => { const ext = path.extname(file); return ext === ".html" || ext === ".xml"; });
+	const reading = new Map<number, Promise<string>>();
+	const AHEAD = 32;
+	for (let i = 0; i < pages.length; i++) {
+		for (let j = i; j < Math.min(i + AHEAD, pages.length); j++) if (!reading.has(j)) reading.set(j, fs.promises.readFile(pages[j], "utf8"));
+		const text = await reading.get(i)!;
+		reading.delete(i);
+		scans.push([pages[i], path.extname(pages[i]) === ".xml" ? { ids: new Set(), links: [], siteLinks: scanXml(text), sitePaths: [] } : scanHtml(text)]);
 	}
 	// The site's address, so absolute links to it are checked.
 	const origin = (options.url === undefined ? undefined : originOf(options.url)) ?? sitemapOrigin(output);
@@ -406,59 +411,66 @@ function check(config: Config, output: string, written: string[], options: Links
 	const urls = scans.map(([file]) => urlOf(output, file));
 	const meant = new Map<string, string>();
 	const didYouMean = (name: string | undefined, mark: string) => (name === undefined ? "" : `; did you mean ${mark}${name}?`);
+	/** Why `inside` (a link with the base off) is broken from a page, or `undefined`. */
+	const reasonFor = (pageUrl: string, page: PageScan, inside: string, ignoreFragment: boolean): string | undefined => {
+		const resolved = resolve(pageUrl, inside);
+		if (resolved === undefined) return undefined;
+		const [targetPath, anchor] = resolved;
+		const fragment = ignoreFragment ? undefined : anchor;
+		if (targetPath === "" && fragment === undefined) return undefined;
+		if (targetPath === "") {
+			// `#top`: this page.
+			return anchors && !hasId(page.ids, fragment!) ? `no id "${fragment}" on this page${didYouMean(closest(fragment!, page.ids), "#")}` : undefined;
+		}
+		if (options.ignore.some((p) => targetPath.startsWith(p)) || redirected(redirects, targetPath)) return undefined;
+		if (!found.has(targetPath)) found.set(targetPath, find(output, targetPath));
+		const target = found.get(targetPath);
+		if (target === undefined) {
+			// A site with hundreds of dead links has a bigger problem than typos.
+			if (!meant.has(targetPath) && meant.size < 500) meant.set(targetPath, didYouMean(closestPath(targetPath, urls), ""));
+			return `not found${meant.get(targetPath) ?? ""}`;
+		}
+		const targetIds = ids.get(target);
+		if (fragment !== undefined && targetIds !== undefined && anchors && !hasId(targetIds, fragment)) {
+			return `no id "${fragment}" on that page${didYouMean(closest(fragment, targetIds), "#")}`;
+		}
+		return undefined;
+	};
+	// A link from the site's root with no `#fragment` leads to the same place from every page (every sidebar lists the same pages), so its answer is kept.
+	const fromRoot = new Map<string, string | undefined>();
+	const one = (pageUrl: string, page: PageScan, written: string, relativeOk: boolean, ignoreFragment: boolean) => {
+		const onSite = origin === undefined ? undefined : stripOrigin(written, origin);
+		let link: string;
+		if (onSite !== undefined) link = onSite;
+		else if (relativeOk) link = written;
+		else if (trim(written).startsWith("/") && !trim(written).startsWith("//")) link = written;
+		else return;
+		checked++;
+		// With a `base`, the HTML has it in front of every URL from the site's root. Other paths on the domain aren't this site's.
+		const inside = inSite(link, config.base);
+		if (inside === undefined) return;
+		let reason: string | undefined;
+		if (inside.charCodeAt(0) === 47 && inside.charCodeAt(1) !== 47 && !inside.includes("#")) {
+			if (fromRoot.has(inside)) reason = fromRoot.get(inside);
+			else fromRoot.set(inside, (reason = reasonFor(pageUrl, page, inside, ignoreFragment)));
+		} else {
+			reason = reasonFor(pageUrl, page, inside, ignoreFragment);
+		}
+		if (reason === undefined) return;
+		// Reported as the template has it: from the root without the base, or the whole address.
+		const shown = onSite !== undefined ? trim(written) : inside;
+		const key = `${pageUrl}\0${shown}\0${reason}`;
+		if (!seen.has(key)) {
+			seen.add(key);
+			broken.push({ page: pageUrl, link: shown, reason });
+		}
+	};
 	for (const [file, page] of scans) {
 		const pageUrl = urlOf(output, file);
 		// Links in attributes as written; the others only when they're on the site; JSON-LD's without their #fragment.
-		const all: Array<[string, boolean, boolean]> = [];
-		for (const l of page.links) all.push([l, true, false]);
-		for (const l of page.siteLinks) all.push([l, false, false]);
-		for (const l of page.sitePaths) all.push([l, false, true]);
-		for (const [written, relativeOk, ignoreFragment] of all) {
-			const onSite = origin === undefined ? undefined : stripOrigin(written, origin);
-			let link: string;
-			if (onSite !== undefined) link = onSite;
-			else if (relativeOk) link = written;
-			else if (trim(written).startsWith("/") && !trim(written).startsWith("//")) link = written;
-			else continue;
-			checked++;
-			// With a `base`, the HTML has it in front of every URL from the site's root. Other paths on the domain aren't this site's.
-			const inside = inSite(link, config.base);
-			if (inside === undefined) continue;
-			// Reported as the template has it: from the root without the base, or the whole address.
-			const shown = onSite !== undefined ? trim(written) : inside;
-			const resolved = resolve(pageUrl, inside);
-			if (resolved === undefined) continue;
-			const [targetPath, anchor] = resolved;
-			const fragment = ignoreFragment ? undefined : anchor;
-			if (targetPath === "" && fragment === undefined) continue;
-			let reason: string | undefined;
-			if (targetPath === "") {
-				// `#top`: this page.
-				if (anchors && !hasId(page.ids, fragment!)) reason = `no id "${fragment}" on this page${didYouMean(closest(fragment!, page.ids), "#")}`;
-			} else if (options.ignore.some((p) => targetPath.startsWith(p)) || redirected(redirects, targetPath)) {
-				reason = undefined;
-			} else {
-				if (!found.has(targetPath)) found.set(targetPath, find(output, targetPath));
-				const target = found.get(targetPath);
-				if (target === undefined) {
-					// A site with hundreds of dead links has a bigger problem than typos.
-					if (!meant.has(targetPath) && meant.size < 500) meant.set(targetPath, didYouMean(closestPath(targetPath, urls), ""));
-					reason = `not found${meant.get(targetPath) ?? ""}`;
-				} else {
-					const targetIds = ids.get(target);
-					if (fragment !== undefined && targetIds !== undefined && anchors && !hasId(targetIds, fragment)) {
-						reason = `no id "${fragment}" on that page${didYouMean(closest(fragment, targetIds), "#")}`;
-					}
-				}
-			}
-			if (reason !== undefined) {
-				const key = `${pageUrl}\0${shown}\0${reason}`;
-				if (!seen.has(key)) {
-					seen.add(key);
-					broken.push({ page: pageUrl, link: shown, reason });
-				}
-			}
-		}
+		for (const l of page.links) one(pageUrl, page, l, true, false);
+		for (const l of page.siteLinks) one(pageUrl, page, l, false, false);
+		for (const l of page.sitePaths) one(pageUrl, page, l, false, true);
 	}
 	// A set of (page, link, reason) in the order of the three, each compared by its bytes.
 	broken.sort((a, b) => compareText(a.page, b.page) || compareText(a.link, b.link) || compareText(a.reason, b.reason));
@@ -484,9 +496,9 @@ BUILTINS.set("ssqch/links", (config: Config, given) => {
 	let counts: [number, number] | undefined;
 	config.afterBuild.push({
 		label: "",
-		fn: (event) => {
+		fn: async (event) => {
 			const output = dirsOf(config).output;
-			const result = check(config, output, event.written as string[], options);
+			const result = await check(config, output, event.written as string[], options);
 			counts = [result.checked, result.broken.length];
 			if (result.broken.length === 0) return;
 			const fail = options.fail ?? (config.env === "production" && !config.serving);

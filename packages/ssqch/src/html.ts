@@ -53,13 +53,15 @@ export class StartTag {
 	toString(): string {
 		// A changed attribute keeps its name as it was written (`SRC`), with its value in double quotes.
 		const attributes = this.attributes.filter((a) => !a.removed).map((a) => (a.changed ? `${a.rawName}="${(a.value ?? "").replaceAll("\"", "&quot;")}"` : a.raw));
-		return `<${this.rawName}${attributes.length ? ` ${attributes.join(" ")}` : ""}${this.selfClosing ? " />" : ">"}`;
+		// With no attributes left, the slash closes the name: `<x-a/>`.
+		return `<${this.rawName}${attributes.length ? ` ${attributes.join(" ")}` : ""}${this.selfClosing ? (attributes.length ? " />" : "/>") : ">"}`;
 	}
 }
 
 /** Elements whose content is text, not markup, until their own end tag. */
 const RAW_TEXT = new Set(["script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript", "plaintext"]);
-const SPACE = /[\t\n\f\r ]/;
+// A function, not a regular expression: this runs for every character of every tag.
+const SPACE = { test: (c: string | undefined) => c === " " || c === "\n" || c === "\t" || c === "\r" || c === "\f" };
 
 export interface Handlers {
 	/** Called for each start tag; change it with `tag.set()`. */
@@ -96,7 +98,7 @@ export function rewriteHtml(html: string, handlers: Handlers): string {
 			i = end === -1 ? n : end + 1;
 			continue;
 		}
-		if (next === undefined || !/[A-Za-z]/.test(next)) {
+		if (next === undefined || !((next >= "a" && next <= "z") || (next >= "A" && next <= "Z"))) {
 			i = lt + 1;
 			continue;
 		}

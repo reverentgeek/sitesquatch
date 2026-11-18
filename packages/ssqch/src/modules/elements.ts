@@ -37,7 +37,7 @@ interface Element {
 }
 
 /** Whether `name` can be a custom element's: lowercase, with a hyphen. */
-function isElementName(name: string): boolean {
+export function isElementName(name: string): boolean {
 	return name.includes("-") && /^[a-z][a-z0-9_.-]*$/.test(name);
 }
 
@@ -71,7 +71,7 @@ function scan(root: string, dir: string, url: string): Map<string, Element> {
 type Used = Map<string, Load>;
 
 /** Finds the known elements in `html`, taking `ssqch:load` off their tags. */
-function findUsed(html: string, known: Map<string, Element>, fallback: Load): { html: string; used: Used } {
+export function findUsed(html: string, known: Map<string, Element>, fallback: Load): { html: string; used: Used } {
 	const used: Used = new Map();
 	let problem: string | undefined;
 	const out = rewriteHtml(html, {
@@ -98,7 +98,7 @@ function findUsed(html: string, known: Map<string, Element>, fallback: Load): { 
 const jsString = (s: string) => `"${s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("<", "\\u003c")}"`;
 
 /** The tags to add for what a page uses: for the head, and for the end of the body. */
-function tags(used: Used, known: Map<string, Element>, base: string): [string, string] {
+export function tags(used: Used, known: Map<string, Element>, base: string): [string, string] {
 	let head = "";
 	let body = "";
 	const lazy: string[] = [];
@@ -118,7 +118,7 @@ function tags(used: Used, known: Map<string, Element>, base: string): [string, s
 const asciiLower = (s: string) => s.replace(/[A-Z]+/g, (m) => m.toLowerCase());
 
 /** `html` with `addition` before the first (or last) `close` tag (`</body>`), or at the end. */
-function insertBefore(html: string, close: string, addition: string, last: boolean): string {
+export function insertBefore(html: string, close: string, addition: string, last: boolean): string {
 	if (addition === "") return html;
 	const lower = asciiLower(html);
 	const at = last ? lower.lastIndexOf(close) : lower.indexOf(close);
