@@ -43,7 +43,7 @@ export default defineConfig(({ env }) => ({
 | `setLibrary("md", markdownIt(...).use(...))` | `markdown: { ... }` options, render hooks and containers (below) |
 | `pathPrefix` | `base: "/repo/"` (`pathPrefix` works too). Links in templates need no `url` filter (it works, and gives the URL back as it is): ssqch adds the base to every URL from the site's root in the HTML it writes, and `withBase()` covers scripts and JSON. |
 
-The config is ESM, though your own CommonJS files (`require`, `module.exports`) load too. npm packages import from `node_modules` as they do in Node, as long as they don't need a server, child processes or native addons: luxon, date-fns, lodash, markdown-it and slugify-style helpers work.
+The config is ESM, though your own CommonJS files (`require`, `module.exports`) load too. ssqch runs on Node, like Eleventy, so a site's packages run as they are: luxon, date-fns, lodash, markdown-it, slugify-style helpers and the libraries Eleventy brought along all work, and so do servers, child processes and native addons.
 
 Where Eleventy's word means the same thing in ssqch, it works as it is: `ssqch dev` and `ssqch build --serve` serve, `--pathprefix` is `--base`, and the config options and front matter keys marked "works too" in these tables do what ssqch's names do, so a site can move first and rename later. Each one says ssqch's name once (`note: pathPrefix works; ssqch calls it base`), and setting both names is an error. Filters too: `url`, and a `slugify` that's the same in every template language.
 
@@ -84,7 +84,7 @@ Where Eleventy's word means the same thing in ssqch, it works as it is: `ssqch d
 
 ## Templates
 
-Nunjucks (`.njk`) renders with minijinja, Liquid with the `liquid` crate, and EJS (`.ejs`) with ssqch's own EJS on its built-in JavaScript engine (`include()` reads from `_includes`, as in Eleventy). Most templates work unchanged, shortcodes included; the README lists what differs (Nunjucks async tags aren't supported, and Liquid shortcodes become filters). JavaScript templates (`.11ty.js`) need rewriting in a template language, or an engine of your own for a new extension: `engines: { page: (source, data) => html }` renders `.page` files. WebC isn't supported.
+Nunjucks (`.njk`) renders with Nunjucks, the library Eleventy uses (ssqch's fork of it, which prints values as Nunjucks does: `true`, `a,b`), Liquid with liquidjs, Eleventy's Liquid library, and EJS (`.ejs`) with ejs (`include()` reads from `_includes`, as in Eleventy). Most templates work unchanged, shortcodes included; the README lists what differs (Liquid shortcodes become filters, for one). JavaScript templates (`.11ty.js`) need rewriting in a template language, or an engine of your own for a new extension: `engines: { page: (source, data) => html }` renders `.page` files. WebC isn't supported.
 
 ## Things that work differently
 
@@ -100,7 +100,7 @@ Nunjucks (`.njk`) renders with minijinja, Liquid with the `liquid` crate, and EJ
 - **The layout is chosen before `computed` runs.** A computed `layout` that's plain text (`eleventyComputed: { layout: "article" }`) is used; one that depends on the page is an error. Set it in the front matter or a data file.
 - **`computed` doesn't see `collections`.** Build lists that need collections in a filter or a collection instead.
 - **Includes come from `_includes`** (and themes), not from the project root as in Eleventy's Nunjucks. To show a source file in a page, read it in a filter: `filters: { readFile: (p) => fs.readFileSync(p, "utf8") }`.
-- **A filter's result is copied into the template,** so it can't be circular: nav items whose `prev` and `next` point at each other fail with `value is nested too deeply`. Return copies a level or two deep.
+- **Filters get your real objects,** as in Eleventy, not copies: a filter that sorts or changes what it's given changes it for the pages rendered after it. Copy first (`[...posts].sort()`). Data that refers to itself (nav items whose `prev` and `next` point at each other) is fine.
 - **`{#id}` at the end of a Markdown line is a heading attribute,** not a Nunjucks comment, even though Markdown runs through Nunjucks or Jinja first.
 - **markdown-it-anchor's ids** need a slugger: `markdown: { headingIds: (text) => encodeURIComponent(text.trim().toLowerCase().replace(/\s+/g, "-")) }`, and a heading hook if you want its `tabindex="-1"`.
 
@@ -115,18 +115,17 @@ A big site moves most safely in two steps: first the same pages, byte for byte, 
 
 Then move one feature at a time to ssqch's (Markdown, highlighting, minifying, the table of contents), with `ssqch diff` after each.
 
-## Packages that are slow or don't load
+## Packages
 
-The config runs on QuickJS, an interpreter without a JIT. Most packages load; some are much slower than in Node:
+ssqch runs a site's JavaScript on Node, so every package that worked with Eleventy works here, at Node's speed, with nothing to port. A few notes:
 
 | Package | On ssqch | Instead |
 | --- | --- | --- |
-| html-minifier, html-minifier-terser | Hundreds of times slower on large pages (5 s for a 200 KB page), because each `html.substring(i)` copies the rest of the page | `minifyPlugin()` from `ssqch/minify` |
-| cheerio | About 15x slower | `page.headings`, `toc()`, transforms on strings |
-| @lit-labs/ssr | Works, about 15x slower | Server rendering in a `beforeBuild` step with Node, for a big site |
-| Anything that drives a browser (Playwright, Puppeteer) | Doesn't run | A `beforeBuild` `run:` step, or a small local server your config `fetch`es |
+| html-minifier, html-minifier-terser | Works, as a transform of your own (`transforms: { minify: async (content, page) => page.outputPath.endsWith(".html") ? await minify(content, options) : content }`). It gives Eleventy's bytes, which is what you want while the move is checked with `ssqch diff --exact` | `minifyPlugin()` from `ssqch/minify`, several times faster, with bytes of its own; switch when the bytes stop mattering |
+| cheerio, @lit-labs/ssr | Work | `page.headings`, `toc()` and transforms on strings are cheaper for a little work |
+| Anything that drives a browser (Playwright, Puppeteer) | Works, but a build that opens a browser is slow | A `beforeBuild` `run:` step that renders once, or a small local server your config `fetch`es |
 
-If a build is much slower than with Eleventy, time the filters and transforms with `console.time`: one slow package is usually most of it.
+Pages render one at a time on one thread (there are no worker threads), so if a build is much slower than with Eleventy, time the filters and transforms with `console.time`: one slow package is usually most of it.
 
 ## Checking the move
 

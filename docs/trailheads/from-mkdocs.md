@@ -1,6 +1,6 @@
 # Trailhead: moving from MkDocs
 
-MkDocs and SiteSquatch both build a site from a folder of Markdown and one config file. MkDocs' theme templates are Jinja, which ssqch renders as it is (`.jinja` files), so a custom theme or `overrides/` folder ports with few changes; Material for MkDocs' features map onto containers, hooks and the navigation helpers.
+MkDocs and SiteSquatch both build a site from a folder of Markdown and one config file. MkDocs' theme templates are Jinja, which ssqch renders with Jinja's filters, tests and methods on a fork of Nunjucks (`.jinja` files), so a custom theme or `overrides/` folder ports with few changes (the README's "Jinja and Nunjucks" section lists where Nunjucks isn't Jinja: a `{% set %}` inside a loop keeps its value, and there is no `{% break %}`); Material for MkDocs' features map onto containers, hooks and the navigation helpers.
 
 The [`docs-sidebar`](../../examples/sites/docs-sidebar/) example is distilled from the FastAPI docs (and hexo.io): a sidebar from a YAML nav, a table of contents, admonitions, code from files and Pagefind search.
 

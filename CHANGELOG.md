@@ -169,7 +169,7 @@ the release.
 - `ssqch/minify` and `ssqch/sass` are 0.7's minifier and 0.7's Sass compiler (grass 0.13.4),
   built as WebAssembly, so pages and stylesheets come out as 0.7 wrote them. A Sass error's last
   line names the file from the project root (`./styles/blog.scss:1:16`), where 0.7 printed its
-  absolute path after `./`.
+  absolute path after `./`; so do the paths in `@warn` and `@debug` lines.
 - **Images are encoded by sharp** (libvips, with libaom for AVIF, libwebp and mozjpeg), where 0.7
   had encoders of its own, so an image file's bytes aren't 0.7's. The rest is: the markup, the
   files' names, widths and heights, the cache, and the quality options, whose numbers still mean
