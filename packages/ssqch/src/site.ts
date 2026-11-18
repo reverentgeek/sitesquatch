@@ -21,8 +21,8 @@ import { Engines, plainEngine } from "./engines/engine.ts";
 import type { EngineEnv, RenderContext } from "./engines/engine.ts";
 import { handlebarsEngine } from "./engines/handlebars.ts";
 import { liquidEngine } from "./engines/liquid.ts";
-import { markdownEngine } from "./engines/markdown.ts";
-import type { Markdown } from "./engines/markdown.ts";
+import { loadHookTemplates, markdownEngine } from "./engines/markdown.ts";
+import type { HookTemplate, Markdown } from "./engines/markdown.ts";
 import { nunjucksEngine } from "./engines/nunjucks.ts";
 import * as equivalents from "./equivalents.ts";
 import { builtinFilters } from "./filters.ts";
@@ -181,8 +181,9 @@ export class Site {
 
 	async prepare(timer: Timer): Promise<void> {
 		const { config, dirs } = this;
-		this.markdown = markdownEngine(config.markdown);
-		Object.assign(api.site, { root: dirs.root, input: dirs.input, markdown: (text: string, inline: boolean) => this.markdown.html(text, inline) });
+		this.markdown = markdownEngine(config.markdown, dirs.root);
+		// The `ssqch` module's `markdown()` has the site's options and no render hooks.
+		Object.assign(api.site, { root: dirs.root, input: dirs.input, markdown: (text: string, inline: boolean) => this.markdown.plain(text, inline) });
 		const globals = builtinFilters(this.markdown, config);
 		// Other generators' filters that are aliases here: `url` and `relative_url` give the URL
 		// back (the build adds `base` itself), and `markdownify` is `markdown`. A config filter with
@@ -226,6 +227,12 @@ export class Site {
 		for (const format of config.templateFormats) {
 			try { this.engines.get(format); } catch (e) { throw context(e, "check `template_formats`"); }
 		}
+		// Markdown's render hooks and containers: a theme's, then the site's own on top of them.
+		const hooks = new Map<string, HookTemplate>();
+		const chain = (ext: string) => enginesFor(config, ext);
+		for (const dir of [...this.themeIncludes].reverse()) for (const [name, t] of loadHookTemplates(dir, "_includes (theme)", this.engines, chain)) hooks.set(name, t);
+		for (const [name, t] of loadHookTemplates(dirs.includes, slashes(config.includes), this.engines, chain)) hooks.set(name, t);
+		this.markdown.useHooks(hooks, this.engines);
 		timer.lap("setup");
 
 		// ---- global data
