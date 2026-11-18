@@ -71,12 +71,16 @@ export function readManifest(module: WasmModule, file: string): Manifest {
 	} catch (e) {
 		throw new BuildError(`${file}: not an ssqch plugin (its ssqch_plugin section isn't JSON: ${messageOf(e)})`);
 	}
+	// The section is JSON a build tool wrote, but a hand-made or damaged file can hold anything.
+	if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) throw new BuildError(`${file}: not an ssqch plugin (its ssqch_plugin section isn't a manifest object)`);
+	if (typeof manifest.abi !== "number") throw new BuildError(`${file}: not an ssqch plugin (its manifest has no abi number)`);
 	if (manifest.abi !== ABI_VERSION) {
-		const hint = typeof manifest.abi === "number" && manifest.abi > ABI_VERSION ? `update ssqch, or use a version of the plugin built for ABI ${ABI_VERSION}` : "rebuild it with a current ssqch-plugin";
+		const hint = manifest.abi > ABI_VERSION ? `update ssqch, or use a version of the plugin built for ABI ${ABI_VERSION}` : "rebuild it with a current ssqch-plugin";
 		throw new BuildError(`${file}: built for plugin ABI ${manifest.abi}, and this ssqch loads ABI ${ABI_VERSION}: ${hint}`);
 	}
 	for (const key of ["hooks", "filters", "engines"] as const) {
 		if (!Array.isArray(manifest[key])) throw new BuildError(`${file}: not an ssqch plugin (its manifest has no ${key} list)`);
+		if (!manifest[key].every((entry: unknown) => typeof entry === "string")) throw new BuildError(`${file}: not an ssqch plugin (its manifest's ${key} must all be names, as text)`);
 	}
 	if (typeof manifest.name !== "string" || manifest.name === "") throw new BuildError(`${file}: not an ssqch plugin (its manifest has no name)`);
 	return manifest;
@@ -169,7 +173,8 @@ export class RustPlugin {
 			throw new BuildError(`${this.name}: crashed while starting (${messageOf(e)})`);
 		}
 		this.#slot = x.ssqch_result();
-		const status = this.#call([this.#options], (l) => x.ssqch_init(l[0]), () => "options");
+		// No label: a panic in `new` is the plugin's, not the options' (an options error says `options:` itself).
+		const status = this.#call([this.#options], (l) => x.ssqch_init(l[0]), () => "");
 		if (status !== OK && status !== UNCHANGED) {
 			const message = status === ERROR ? this.#result() : `answered with status ${status}`;
 			this.#x = null;

@@ -120,7 +120,9 @@ impl<'a> Page<'a> {
         self.input_path
     }
 
-    /// The file the page is written to (`_site/posts/hello/index.html`).
+    /// The file the page is written to, as a path on the machine that builds it (absolute, like
+    /// `/home/ranger/site/_site/posts/hello/index.html`; it differs from machine to machine, so
+    /// don't write it into the output).
     pub fn output_path(&self) -> &'a str {
         self.output_path
     }
