@@ -91,3 +91,21 @@ test("its options are checked with 0.7's messages", async () => {
 	const css = site({ "plain.css": "a{}" });
 	await assert.rejects((await plugin(css, { files: { "plain.css": "/plain.css" } })).build, { message: "files: plain.css isn't a .scss or .sass file" });
 });
+
+// opensource.guide (osg #9, #10): its stylesheet starts with Jekyll's empty front matter, and
+// imports primer from node_modules by names with `.scss` (`@import "primer-core/index.scss"`),
+// as primer's own files import each other. grass looked for those only beside the importer.
+test("jekyll_front_matter_and_load_path_imports_that_name_their_extension", async () => {
+	const root = site({
+		"assets/css/index.scss": "---\n---\n\n@import \"primer-core/index.scss\";\n@import \"custom.scss\";\n",
+		"assets/css/custom.scss": ".custom { color: red; }\n",
+		"node_modules/primer-core/index.scss": "@import \"primer-support/index.scss\";\n.core { margin: 0; }\n",
+		"node_modules/primer-support/index.scss": "@import \"lib/variables.scss\";\n.support { padding: $space; }\n",
+		"node_modules/primer-support/lib/_variables.scss": "$space: 4px;\n",
+	});
+	const { build } = await plugin(root, { files: { "assets/css/index.scss": "/assets/css/index.css" }, loadPaths: ["node_modules"] });
+	assert.deepEqual(await build(), { "/assets/css/index.css": ".support{padding:4px}.core{margin:0}.custom{color:red}" });
+	// The front matter's lines stay, blank, so an error's line is the file's.
+	fs.writeFileSync(path.join(root, "assets/css/index.scss"), "---\ntitle: x\n---\n.a { color: $nope; }\n");
+	await assert.rejects(build, (e: Error) => /index\.scss:4/.test(e.message));
+});

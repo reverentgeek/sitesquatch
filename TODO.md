@@ -627,9 +627,11 @@ From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
       site's own `lang` variable). A design note first.
 - [ ] **Config functions as Liquid tags** (osg #6): `{% seo %}`, as Nunjucks already does.
 - [ ] **`{% include_relative %}`** (osg #8), reading beside the template.
-- [ ] **ssqch/sass:** patch grass' `find_import` to search load paths for an import that names its
-      extension (`visitor.rs:829-837`, "todo: consider load paths"; every primer file does it), and
-      strip a leading empty front matter (osg #9, #10). Until then, an error that says so.
+- [x] **ssqch/sass** (osg #9, #10; done 2026-11-18, in the file bridge rather than a grass patch):
+      an import that names its extension is found in the load paths, and leading front matter is
+      blanked. Left: grass's warnings print `./` before an absolute path (`.//Users/…`, its
+      StdLogger, `logger.rs:33`); a logger of ssqch's own in `crates/ssqch-sass` would name the file
+      as the rest of the build does.
 - [ ] **`headingIds: "kramdown"`** (kramdown's GFM ids, and its own ASCII ones inside HTML) and a
       **`code` render hook** for code spans (Rouge's `highlighter-rouge` classes) (osg #4).
 - [x] **Skip `vendor/bundle` and `vendor/gems`** when walking the site (osg #12; done 2026-11-18,

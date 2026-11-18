@@ -29,6 +29,11 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Fixed
 
+- `ssqch/sass` finds an `@import`, `@use` or `@forward` that names its extension
+  (`"primer-core/index.scss"`) in the load paths, as Dart Sass and Ruby Sass do; it looked only
+  beside the importing file, so GitHub's primer, whose files all import that way, didn't compile.
+  And a stylesheet that starts with front matter (Jekyll's `---` lines) compiles, the lines left
+  blank so error lines still match.
 - A folder Bundler installed gems into (`bundle install --path vendor/bundle`, which Jekyll
   sites do) isn't read as the site's pages: its gems' templates were built, and failed.
 - A page's `page.headings` read before the page had rendered (from a `computed` value, say) stayed
