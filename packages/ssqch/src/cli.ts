@@ -27,6 +27,7 @@ import { relative } from "./paths.ts";
 import { quoted } from "./quote.ts";
 import { summary } from "./report.ts";
 import { VERSION } from "./version.ts";
+import { bundled } from "./bundled.ts";
 
 const FORMAT: Option = { long: "format", value: "FORMAT", help: "text or json", default: "text" };
 // What 0.7 said for a number it couldn't read, word for word.
@@ -93,7 +94,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		options: [],
 		positionals: [{ name: "SHELL", help: "bash, zsh, fish, powershell or elvish", required: true, values: SHELLS }],
 		afterHelp: "Put the script where your shell looks for completions:\n\n  ssqch completions zsh > ~/.zfunc/_ssqch        (with ~/.zfunc in $fpath, before compinit)\n  ssqch completions bash > ~/.local/share/bash-completion/completions/ssqch\n  ssqch completions fish > ~/.config/fish/completions/ssqch.fish\n  ssqch completions powershell >> $PROFILE",
-		stage: 4,
+		own: true,
 	},
 	{
 		name: "diff",
@@ -301,6 +302,12 @@ export async function main(argv: string[]): Promise<number> {
 		case "capabilities": return runCapabilities(format, COMMANDS.filter((c) => !c.hidden).map((c) => c.name));
 		case "docs": return runDocs(GRAMMAR, { query: cli.positionals, from: value("from"), format });
 		case "sighting": return runSighting(path.resolve(value("root") ?? "."));
+		case "completions": {
+			// 0.7's scripts, which clap made from the same grammar (bundled/completions/; a test
+			// checks they name every command and option this grammar has).
+			process.stdout.write(bundled(`completions/${cli.positionals[0]}`));
+			return 0;
+		}
 		case "types": {
 			routeConsole();
 			return runTypes({ root: value("root"), out: value("out") ?? "ssqch.d.ts" });

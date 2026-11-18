@@ -1,0 +1,510 @@
+#compdef ssqch
+
+autoload -U is-at-least
+
+_ssqch() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+":: :_ssqch_commands" \
+"*::: :->ssqch" \
+&& ret=0
+    case $state in
+    (ssqch)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:ssqch-command-$line[1]:"
+        case $line[1] in
+            (build)
+_arguments "${_arguments_options[@]}" : \
+'--format=[text or json]:FORMAT:_default' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(serve)
+_arguments "${_arguments_options[@]}" : \
+'-p+[The port to listen on (0 picks a free one)]:PORT:_default' \
+'--port=[The port to listen on (0 picks a free one)]:PORT:_default' \
+'--ready-file=[Write this file once the first build is done\: JSON with the url, port and output folder]:FILE:_files' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--built[Serve the output folder as it was built\: no build, no watching, no reload script, gzip on]' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(new)
+_arguments "${_arguments_options[@]}" : \
+'--title=[The page'\''s title (default\: from the file'\''s name)]:TITLE:_default' \
+'--date=[The page'\''s date, as it'\''s written in front matter (default\: today)]:DATE:_default' \
+'--blueprint=[The blueprint to use (default\: the page'\''s folder, then \`default\`)]:NAME:_default' \
+'*--set=[Another front matter key, with its value as it'\''s written there (repeatable)]:KEY=VALUE:_default' \
+'--format=[text or json]:FORMAT:_default' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':path -- The new file, from the input folder (posts/pine-cones.md), or a folder, with --title:_default' \
+&& ret=0
+;;
+(inspect)
+_arguments "${_arguments_options[@]}" : \
+'--field=[One field of its data, in full, with every level that set it (a dotted path reaches inside\: hero.alt)]:NAME:_default' \
+'--format=[text or json]:FORMAT:_default' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':page -- The page\: its URL (/about/), or its template'\''s path:_default' \
+&& ret=0
+;;
+(completions)
+_arguments "${_arguments_options[@]}" : \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':shell -- bash, zsh, fish, powershell or elvish:(bash elvish fish powershell zsh)' \
+&& ret=0
+;;
+(diff)
+_arguments "${_arguments_options[@]}" : \
+'*--ignore=[Leave out text matching this regular expression before comparing (repeatable)]:REGEX:_default' \
+'*--only=[Only compare files matching this glob, like '\''**/*.html'\'' (repeatable)]:GLOB:_default' \
+'--lines=[Changed lines to show for each file (0 for all)]:LINES:_default' \
+'--format=[text or json]:FORMAT:_default' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--exact[Compare bytes\: don'\''t match fingerprinted files or ignore whitespace]' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':before -- The build from before the change:_files' \
+':after -- The build from after it:_files' \
+&& ret=0
+;;
+(footprint)
+_arguments "${_arguments_options[@]}" : \
+'--top=[How many of the heaviest pages and files to list (0 for none)]:TOP:_default' \
+'--format=[text or json]:FORMAT:_default' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::dir -- The build folder (default\: the site'\''s output folder):_files' \
+&& ret=0
+;;
+(init)
+_arguments "${_arguments_options[@]}" : \
+'--starter=[What to start with\: site (a small blog) or docs (documentation with a sidebar, tabs and search)]:NAME:_default' \
+'--engine=[The template language for the starter'\''s layouts and templates\: jinja, njk, edge, liquid, hbs or ejs]:NAME:_default' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::dir -- Where to create it (default\: the current folder):_default' \
+&& ret=0
+;;
+(types)
+_arguments "${_arguments_options[@]}" : \
+'--out=[Where to write it]: :_default' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(import)
+_arguments "${_arguments_options[@]}" : \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--write[Make the changes (without it, only list them)]' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':generator -- The generator the site is built with\: eleventy or zola:_default' \
+'::dir -- The site'\''s folder (default\: the current folder):_default' \
+&& ret=0
+;;
+(capabilities)
+_arguments "${_arguments_options[@]}" : \
+'--format=[text or json]:FORMAT:_default' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(docs)
+_arguments "${_arguments_options[@]}" : \
+'--from=[Another generator'\''s words and ssqch'\''s names for them\: eleventy, hugo, jekyll, zola, ...]:GENERATOR:_default' \
+'--format=[text or json]:FORMAT:_default' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'*::query -- A name (base, imagePlugin, toc, serve), another generator'\''s word (pathPrefix), or words from a heading ("content schemas"):_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_ssqch__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:ssqch-help-command-$line[1]:"
+        case $line[1] in
+            (build)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(serve)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(new)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(inspect)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(completions)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(diff)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(footprint)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(init)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(types)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(import)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(capabilities)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(docs)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+}
+
+(( $+functions[_ssqch_commands] )) ||
+_ssqch_commands() {
+    local commands; commands=(
+'build:Build the site (default)' \
+'serve:Build, serve, watch for changes and live-reload the browser' \
+'new:Create a page from a blueprint (a file in _blueprints/), with its title and date filled in' \
+'inspect:Show where a page comes from, and which level of the data cascade set each value' \
+'completions:Print a completion script for your shell, so Tab finishes commands and options' \
+'diff:Compare two builds of a site\: URLs added and removed, and what changed on each page' \
+'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
+'init:Create a starter site (config, layout, five posts, data and editor types)' \
+'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
+'import:Move a site from another generator\: rename and rewrite what'\''s mechanical, and list the rest' \
+'capabilities:Say what this binary supports\: template languages, modules, config options and optional features' \
+'docs:Read the documentation for this version\: a command, config option, function or topic' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'ssqch commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__build_commands] )) ||
+_ssqch__subcmd__build_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch build commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__capabilities_commands] )) ||
+_ssqch__subcmd__capabilities_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch capabilities commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__completions_commands] )) ||
+_ssqch__subcmd__completions_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch completions commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__diff_commands] )) ||
+_ssqch__subcmd__diff_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch diff commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__docs_commands] )) ||
+_ssqch__subcmd__docs_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch docs commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__footprint_commands] )) ||
+_ssqch__subcmd__footprint_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch footprint commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help_commands] )) ||
+_ssqch__subcmd__help_commands() {
+    local commands; commands=(
+'build:Build the site (default)' \
+'serve:Build, serve, watch for changes and live-reload the browser' \
+'new:Create a page from a blueprint (a file in _blueprints/), with its title and date filled in' \
+'inspect:Show where a page comes from, and which level of the data cascade set each value' \
+'completions:Print a completion script for your shell, so Tab finishes commands and options' \
+'diff:Compare two builds of a site\: URLs added and removed, and what changed on each page' \
+'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
+'init:Create a starter site (config, layout, five posts, data and editor types)' \
+'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
+'import:Move a site from another generator\: rename and rewrite what'\''s mechanical, and list the rest' \
+'capabilities:Say what this binary supports\: template languages, modules, config options and optional features' \
+'docs:Read the documentation for this version\: a command, config option, function or topic' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'ssqch help commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__build_commands] )) ||
+_ssqch__subcmd__help__subcmd__build_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help build commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__capabilities_commands] )) ||
+_ssqch__subcmd__help__subcmd__capabilities_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help capabilities commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__completions_commands] )) ||
+_ssqch__subcmd__help__subcmd__completions_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help completions commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__diff_commands] )) ||
+_ssqch__subcmd__help__subcmd__diff_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help diff commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__docs_commands] )) ||
+_ssqch__subcmd__help__subcmd__docs_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help docs commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__footprint_commands] )) ||
+_ssqch__subcmd__help__subcmd__footprint_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help footprint commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__help_commands] )) ||
+_ssqch__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help help commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__import_commands] )) ||
+_ssqch__subcmd__help__subcmd__import_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help import commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__init_commands] )) ||
+_ssqch__subcmd__help__subcmd__init_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help init commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__inspect_commands] )) ||
+_ssqch__subcmd__help__subcmd__inspect_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help inspect commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__new_commands] )) ||
+_ssqch__subcmd__help__subcmd__new_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help new commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__serve_commands] )) ||
+_ssqch__subcmd__help__subcmd__serve_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help serve commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__types_commands] )) ||
+_ssqch__subcmd__help__subcmd__types_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help types commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__import_commands] )) ||
+_ssqch__subcmd__import_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch import commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__init_commands] )) ||
+_ssqch__subcmd__init_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch init commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__inspect_commands] )) ||
+_ssqch__subcmd__inspect_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch inspect commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__new_commands] )) ||
+_ssqch__subcmd__new_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch new commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__serve_commands] )) ||
+_ssqch__subcmd__serve_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch serve commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__types_commands] )) ||
+_ssqch__subcmd__types_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch types commands' commands "$@"
+}
+
+if [ "$funcstack[1]" = "_ssqch" ]; then
+    _ssqch "$@"
+else
+    compdef _ssqch ssqch
+fi

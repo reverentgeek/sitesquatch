@@ -1,0 +1,182 @@
+# Print an optspec for argparse to handle cmd's options that are independent of any subcommand.
+function __fish_ssqch_global_optspecs
+    string join \n root= o/output= base= offline env= q/quiet v/verbose h/help V/version
+end
+
+function __fish_ssqch_needs_command
+    # Figure out if the current invocation already has a command.
+    set -l cmd (commandline -opc)
+    set -e cmd[1]
+    argparse -s (__fish_ssqch_global_optspecs) -- $cmd 2>/dev/null
+    or return
+    if set -q argv[1]
+        # Also print the command, so this can be used to figure out what it is.
+        echo $argv[1]
+        return 1
+    end
+    return 0
+end
+
+function __fish_ssqch_using_subcommand
+    set -l cmd (__fish_ssqch_needs_command)
+    test -z "$cmd"
+    and return 1
+    contains -- $cmd[1] $argv
+end
+
+complete -c ssqch -n "__fish_ssqch_needs_command" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_needs_command" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_needs_command" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_needs_command" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_needs_command" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_needs_command" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_needs_command" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_needs_command" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_needs_command" -s V -l version -d 'Print version'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "build" -d 'Build the site (default)'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "serve" -d 'Build, serve, watch for changes and live-reload the browser'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "new" -d 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "inspect" -d 'Show where a page comes from, and which level of the data cascade set each value'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "completions" -d 'Print a completion script for your shell, so Tab finishes commands and options'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "diff" -d 'Compare two builds of a site: URLs added and removed, and what changed on each page'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "footprint" -d 'Show how much a build weighs: its files by kind, and the heaviest pages and files'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "init" -d 'Create a starter site (config, layout, five posts, data and editor types)'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "types" -d 'Write ssqch.d.ts, the types editors use for ssqch.config.js'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "import" -d 'Move a site from another generator: rename and rewrite what\'s mechanical, and list the rest'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "capabilities" -d 'Say what this binary supports: template languages, modules, config options and optional features'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "docs" -d 'Read the documentation for this version: a command, config option, function or topic'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c ssqch -n "__fish_ssqch_using_subcommand build" -l format -d 'text or json' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand build" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand build" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand build" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand build" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand build" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand build" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand build" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand build" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s p -l port -d 'The port to listen on (0 picks a free one)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l ready-file -d 'Write this file once the first build is done: JSON with the url, port and output folder' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l built -d 'Serve the output folder as it was built: no build, no watching, no reload script, gzip on'
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l title -d 'The page\'s title (default: from the file\'s name)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l date -d 'The page\'s date, as it\'s written in front matter (default: today)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l blueprint -d 'The blueprint to use (default: the page\'s folder, then `default`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l set -d 'Another front matter key, with its value as it\'s written there (repeatable)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l format -d 'text or json' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand inspect" -l field -d 'One field of its data, in full, with every level that set it (a dotted path reaches inside: hero.alt)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand inspect" -l format -d 'text or json' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand inspect" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand inspect" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand inspect" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand inspect" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand inspect" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand inspect" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand inspect" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand inspect" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l ignore -d 'Leave out text matching this regular expression before comparing (repeatable)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l only -d 'Only compare files matching this glob, like \'**/*.html\' (repeatable)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l lines -d 'Changed lines to show for each file (0 for all)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l format -d 'text or json' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l exact -d 'Compare bytes: don\'t match fingerprinted files or ignore whitespace'
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l top -d 'How many of the heaviest pages and files to list (0 for none)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l format -d 'text or json' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand init" -l starter -d 'What to start with: site (a small blog) or docs (documentation with a sidebar, tabs and search)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand init" -l engine -d 'The template language for the starter\'s layouts and templates: jinja, njk, edge, liquid, hbs or ejs' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand init" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand init" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand init" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand init" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand init" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand init" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand init" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand init" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l out -d 'Where to write it' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand import" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand import" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand import" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand import" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand import" -l write -d 'Make the changes (without it, only list them)'
+complete -c ssqch -n "__fish_ssqch_using_subcommand import" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand import" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand import" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand import" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l format -d 'text or json' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l from -d 'Another generator\'s words and ssqch\'s names for them: eleventy, hugo, jekyll, zola, ...' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l format -d 'text or json' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
+complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "build" -d 'Build the site (default)'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "serve" -d 'Build, serve, watch for changes and live-reload the browser'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "new" -d 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "inspect" -d 'Show where a page comes from, and which level of the data cascade set each value'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "completions" -d 'Print a completion script for your shell, so Tab finishes commands and options'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "diff" -d 'Compare two builds of a site: URLs added and removed, and what changed on each page'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "footprint" -d 'Show how much a build weighs: its files by kind, and the heaviest pages and files'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "init" -d 'Create a starter site (config, layout, five posts, data and editor types)'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "types" -d 'Write ssqch.d.ts, the types editors use for ssqch.config.js'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "import" -d 'Move a site from another generator: rename and rewrite what\'s mechanical, and list the rest'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "capabilities" -d 'Say what this binary supports: template languages, modules, config options and optional features'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "docs" -d 'Read the documentation for this version: a command, config option, function or topic'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
