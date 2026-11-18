@@ -139,6 +139,9 @@ the release.
   cache from 0.7 is used as it is, since the names are the same, so the output has 0.7's files
   next to sharp's until the cache goes: delete `.cache/ssqch/img` to encode every file again.
   AVIF is always there, where 0.7 needed its `avif` feature.
+- **`files(pattern, { dimensions: true })` reads the sizes of PNG, JPEG, GIF, TIFF, WebP, HEIF and
+  AVIF, BMP, PSD, ICO and QOI files.** 0.7 also read EXR, Radiance HDR, JPEG XL, KTX2, DDS, TGA,
+  PNM, farbfeld, Aseprite, ILBM and VTF files, whose `width` and `height` are `null` now.
 
 ### Changed
 
