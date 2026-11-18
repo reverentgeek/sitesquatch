@@ -18,6 +18,7 @@ import type { Data } from "./data.ts";
 import { STATIC_DATA_EXTENSIONS } from "./data.ts";
 import { BuildError, Diagnostics, bail, context, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import type { RenderContext } from "./engines/engine.ts";
+import { rendering as markdownRendering, writeHighlightCss } from "./engines/markdown.ts";
 import * as equivalents from "./equivalents.ts";
 import { measure, overBudget } from "./footprint.ts";
 import { globBase, globSet, isGlob } from "./glob.ts";
@@ -105,10 +106,11 @@ export async function build(config: Config): Promise<BuildReport> {
 	const bundles = config.bundles ? bundleFiles(site) : [];
 	bundles.push(...site.themeCopies);
 	const copy = await passthroughCopy(config, dirs, bundles);
+	const stylesheet = writeHighlightCss(config.markdown, dirs.output, site.markdown);
 	timer.lap("copy");
 
 	const pagePaths = written.map((w) => w.file);
-	const outputs = [...pagePaths, ...generated, ...built, ...copy.paths];
+	const outputs = [...pagePaths, ...generated, ...built, ...copy.paths, ...stylesheet];
 	const recorded = recordOutputs(config, dirs, outputs, pagePaths);
 
 	const report: BuildReport = {
@@ -261,6 +263,7 @@ class Renderer {
 		if (kept !== undefined) return kept;
 		this.bodies.set(page.index, RENDERING);
 		let out: string | Promise<string>;
+		const before = markdownRendering(this.site.display(page.tpl.input));
 		try {
 			out = this.body(page);
 		} catch (e) {
@@ -268,6 +271,8 @@ class Renderer {
 			// That page's own turn reports this; the page that asked isn't a second error.
 			this.borrowedFailure = true;
 			throw e;
+		} finally {
+			markdownRendering(before);
 		}
 		if (typeof out !== "string") {
 			this.bodies.delete(page.index);
@@ -282,6 +287,8 @@ class Renderer {
 	async renderAll(pages: Page[]): Promise<void> {
 		for (const page of pages) {
 			this.borrowedFailure = false;
+			// Markdown's warnings (a site's highlighter that failed) name the page.
+			markdownRendering(this.site.display(page.tpl.input));
 			try {
 				await this.render(page);
 			} catch (e) {
@@ -290,6 +297,7 @@ class Renderer {
 				this.errors.push(e instanceof BuildError || e instanceof Diagnostics ? e : internal(e, page.tpl.rel));
 			}
 		}
+		markdownRendering(undefined);
 		await Promise.all(this.pending);
 		if (this.writeError !== undefined) this.errors.push(this.writeError);
 		if (this.errors.length) throw errorsTogether(this.errors);

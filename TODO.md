@@ -37,10 +37,11 @@ until 0.8 ships.
       module hook adds the attribute), folder data's `"tags": "posts"` joined with a page's own
       `tags`, and the oracle on the lowest supported Node too (CI runs the Node build on 22.18.0,
       24 and 26).
-- [ ] **For stage 3, from G2 and G5:** cache edge.js templates by file (`renderRawSync` compiles
-      every call); render hooks and custom highlighters from the Markdown `.wasm`, which ABI v1
-      can't call back for; a cache for highlighted fences (syntect is 0.1 s of the blog on one
-      thread).
+- [x] **For stage 3, from G2 and G5** (2026-11-17): edge.js templates kept by file and includes
+      by file and scope; render hooks, containers, `headingIds` functions and custom
+      highlighters call back from the Markdown `.wasm` through synchronous imports (its own
+      interface, not ABI v1); highlighted fences cached in the `.wasm` across a process's
+      builds. A cache on disk is below.
 - [ ] **Decide** D1 to D7 in `docs/node-migration.md`: the default template language, ssqch's
       Markdown and highlighter as `.wasm` or markdown-it, the minifier, images, the lowest Node
       version (22.18 proposed), the version and the last Rust release, the standalone executable.
@@ -62,8 +63,8 @@ until 0.8 ships.
       copies differ.
 - [x] `AGENTS.md`: a section for `packages/ssqch/` (commands, `node --test`, `tsc --noEmit`,
       conventions) before stage 2.
-- [ ] **Stage 2, the core** in `packages/ssqch/`, from the spike core. Started 2026-11-17; the
-      results so far are in `docs/node-migration.md` ("Stage 2, so far").
+- [x] **Stage 2, the core** in `packages/ssqch/`, from the spike core (2026-11-17; the results
+      are in `docs/node-migration.md`, "Stage 2, so far").
   - [x] Config and validation (`config.ts`: 0.7's checks and messages, aliases, plugins as parts of
         config, `sitesquatch.toml`), the `ssqch` module, the module hook, errors from a site's
         JavaScript with its own file and line.
@@ -94,29 +95,77 @@ until 0.8 ships.
   - [x] The navigation functions (`navTree`, `navPager`, `navBreadcrumbs`, `pagesTree`):
         `nav.ts`, from `nav.rs` with its tests; the same answers as 0.7.0 on a site that uses all
         four.
-  - [ ] Worker threads, or the decision not to have them. One thread meets the limit with room,
-        and a worker loads the config itself, so a filter that counts (`let n = 0`) would count
-        apart in each worker, which 0.7 never did
-        (`javascript_calls_are_serialized_across_parallel_pages`). If they come: only above a
-        page count, never for a config with state they'd split, and with the benchmark recording
-        memory (about 140 MB each in the spike).
+  - [x] Worker threads: left out for now (decided 2026-11-17; "Parked" has why, and what
+        they'd need).
   - [x] An independent review of the core against the Rust (a fresh agent, reading both and
         building about 30 small sites with each): 17 differences, fixed or recorded
         (`docs/node-migration.md`, "Stage 2, so far"). It didn't read `args.ts` beyond the lines
         it ran, `modules.ts`, `api.ts`, `content.ts` or the engines; review those with stage 3.
-  - [ ] Stand-ins that stage 3 replaces, so the core could be run and measured: Markdown is
-        markdown-it (D2 is ssqch's own as `.wasm`), Edge is edge.js called plainly (no cache by
-        file, no async functions, no themes' includes, its own error wording), and Nunjucks is
-        the library as published (D1 forks it: it gives no line for an unknown filter or a filter
-        that throws, and a runtime error's line is one short).
+  - [x] Stage 3 replaced the stand-ins the core was run and measured with (markdown-it, edge.js
+        called plainly, nunjucks as published).
 - [ ] **Stage 3, engines:** Nunjucks or Jinja (D1), liquidjs, edge.js, handlebars, mustache, ejs;
-      Markdown (D2); front matter in YAML, TOML and JSON; async filters.
+      Markdown (D2); front matter in YAML, TOML and JSON; async filters. Started 2026-11-17 as
+      four ports in parallel worktrees; the results are in `docs/node-migration.md` ("Stage 3,
+      so far").
+  - [x] Markdown (D2): 0.7's `markdown.rs` and `highlight.rs`, unchanged, as
+        `packages/ssqch/wasm/markdown.wasm` (3.76 MB, committed; `crates/ssqch-markdown/`,
+        rebuilt by `node packages/ssqch/scripts/build-wasm.ts`, and a unit test fails when it's
+        older than its Rust). The blog's 128 Markdown files are byte-identical to 0.7's on Node
+        22.18, 24 and 26; 3.5 to 3.9 times markdown-it's speed. markdown-it left the package.
+  - [x] Jinja and Nunjucks (D1) on ssqch's fork, `packages/ssqch/vendor/nunjucks/` (3.2.4 as
+        published, then about 60 lines: errors with their lines, `for` over an object's keys,
+        `set ns.x`). `.njk` and `.jinja` keep 0.7's two flavors. What MiniJinja did that
+        Nunjucks doesn't is in the changelog.
+  - [x] Edge on edge.js with its parser hooked for what 0.7's own Edge did; async as 0.7
+        awaited it; includes kept by file. A 3,000-page Edge site builds in 405 ms (0.7 on one
+        thread: 738 ms).
+  - [x] Liquid (liquidjs 10.30.1, with 0.7's filters and a port of its `strftime`), Handlebars
+        and Mustache (handlebars.js 4.7.10, as 0.7 used one engine for both), EJS (ejs 3.1.10).
+        Their libraries load with their first template.
+  - [x] Front matter: 24 unusual cases built with both; TOML's integers past 2^53 fixed, and
+        js-yaml's numbers and merge keys and smol-toml's milliseconds recorded
+        (`cli/front-matter.test.js`).
+  - [x] Node 22.18 gave CommonJS modules no `require.cache` while ssqch's `load` hook was
+        registered (fixed in 22.23); the hook is gone, and a11yproject.com builds there.
+  - [x] The oracle: 96 of 196 on Node 22.18, 24 and 26 (61 before), a11yproject.com's frozen
+        site and the review's new tests among them. The benchmark, alone on the laptop: 10,000
+        pages in 1.14 s on one thread, 366 MB (1.42 s before the stage; the limit is 2 s);
+        v8.dev in 0.58 s (0.72 s).
+  - [x] An independent review (two fresh agents, reading the ports beside the Rust and building
+        small sites with both builds, under three time zones and on three Node versions), with
+        `args.ts`, `modules.ts`, `api.ts` and `content.ts`, which stage 2's review left: 36
+        findings, fixed by the agents that wrote each port or recorded in the changelog. The
+        worst gave wrong output with no warning: async functions called as functions printed
+        `[object Promise]` in Jinja; empty lists were true; `~`, tuples and `==` were
+        JavaScript's; dates in Edge and in Liquid's own filters followed the machine's time zone;
+        an async function made Liquid and Handlebars run every other function twice; a site's
+        `set site.title` changed it for every later page. Also: EJS includes went from 1.68 s
+        to 0.36 s on 2,000 pages of 20 (0.7: 1.47 s), and YAML dates before the year 100 keep
+        their century.
+  - [ ] Every example site and the starters, the stage's "done when": they wait for stage 5's
+        plugins (all eight examples use `ssqch/links`) and stage 4's `init`. Built with the
+        plugins taken out of both builds' copies, the 12 starters match 0.7 except the version in
+        their footers, and so do all eight examples (the six in Jinja and Nunjucks, and
+        `component-docs` and `reference-pages` in Handlebars).
+  - [x] Decided 2026-11-17: Edge's `safe()` prints raw HTML, as edge.js's `html.safe` does;
+        `.njk` prints as Nunjucks does (`true`, `a,b`, a compact `dump`), as a site from Eleventy
+        expects, until someone reports otherwise, while `.jinja` keeps Jinja's printing; tags
+        from functions work in `.jinja` too; Liquid's `split: ""` and two-item
+        `array_to_sentence_string` follow Shopify and Jekyll instead of 0.7; Nunjucks' `random`
+        filter stays random.
+  - [ ] A cache of highlighted fences on disk (`.cache/ssqch/`, keyed by the `.wasm`'s inputs):
+        a process's first build of the blog spends about 0.3 s compiling syntect's grammars.
+  - [ ] Stage 8 ships `wasm/markdown.wasm` in the package (the loader finds it next to `src/`),
+        and stage 9 rewrites the README's Edge and Jinja sections, which describe 0.7.
 - [ ] **Stage 4, checks and tools:** schemas and `types`, links, `diff`, `inspect`, footprint and
       budgets, `docs`, `new`, `init` and the starters, `capabilities`.
 - [ ] **Stage 5, plugins:** images (D4), rss, minify (D3), assets, sitemap, redirects, Sass,
       elements, themes; the Rust plugin SDK (`ssqch-plugin` crate, the `.wasm` loader, an example,
       and docs on when a Rust plugin pays).
 - [ ] **Stage 6, the dev server**, reloading a changed config from a bundled temporary copy.
+      `importFile` (`modules.ts`) imports a changed file fresh but not the modules it imports,
+      so a filter in the config's `./lib/filters.js` (the blog has one) stays the old one on a
+      rebuild in the same process (found by stage 3's review).
 - [ ] **Stage 7, importers:** Eleventy and Zola.
 - [ ] **Stage 8, distribution:** the compiled, bundled npm package (sharp its only dependency), the
       standalone executable (D7) for Homebrew and the install script, `setup-ssqch`, Netlify; retire
@@ -664,6 +713,15 @@ write-ups that are still owed.
 ## Parked
 
 Decided against for now, or waiting for someone to need it. Move an item up when that changes.
+
+- Worker threads for the Node build's rendering (left out 2026-11-17, at stage 2 of the move to
+  Node). One thread builds the 10,000-page site in 1.41 s against a limit of 2 s. A worker
+  loads the config itself, so a config's own state (a counter in a filter, `let n = 0`) would be
+  kept apart in each worker, which 0.7 never did
+  (`javascript_calls_are_serialized_across_parallel_pages` in the oracle). The spike's workers
+  took about 140 MB each and helped only where JavaScript is the cost (v8.dev: 0.54 s to
+  0.45 s). If a site needs them: only above a page count, never for a config with state they'd
+  split, and with the benchmark recording memory.
 
 - Built-in CSS processing with Lightning CSS (`@import` bundling, nesting, minifying, browser
   targets): only if a real gap shows up; `serve.run` and the missing-file note have covered every

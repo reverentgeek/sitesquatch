@@ -28,11 +28,11 @@ function files(src, data, partials, { inConfig = false } = {}) {
 	return out;
 }
 
-/** Renders `src` with `data` (an object) and `partials`; returns the output. */
-function render(src, data = "{}", partials = {}) {
+/** Renders `src` with `data` (an object) and `partials`; returns the output. `env` is added to ssqch's environment (`TZ`). */
+function render(src, data = "{}", partials = {}, env = {}) {
 	if (typeof data === "string") data = JSON.parse(data);
 	const root = project(files(src, data, partials));
-	const r = ssqch(["build", "--root", root, "--quiet"]);
+	const r = ssqch(["build", "--root", root, "--quiet"], { env });
 	assert.ok(r.ok, r.log);
 	const url = data.page?.url ?? "/out.html";
 	return read(root, url.endsWith("/") ? `_site${url}index.html` : `_site${url}`);
@@ -164,4 +164,48 @@ test("an_include_loop_is_named", () => {
 	// A partial that includes itself a few levels deep (a tree) is fine, and the trail is empty after.
 	const out = render("@include('node')\n", `{"n":3}`, { node: "{{ n }}\n@let(n = n - 1)\n@includeIf(n > 0, 'node')\n" });
 	assert.equal(out.split(/\s+/).join(""), "321");
+});
+
+test("dates_are_utc_whatever_the_time_zone", () => {
+	// 0.7's Edge answered in UTC on every machine; a build's output may not depend on its time zone.
+	const src = [
+		"{{ page.date.getFullYear() }}-{{ page.date.getMonth() }}-{{ page.date.getDate() }} {{ page.date.getDay() }} {{ page.date.getHours() }}",
+		"{{ page.date.toString() }}|{{ [page.date] }}|{{ String(page.date) }}|{{ `${page.date}` }}|{{ 'on ' + page.date }}",
+		"{{ page.date.toDateString() }}|{{ page.date.toLocaleDateString('en-US', { month: 'long' }) }}",
+		"{{ new Date(2024, 0, 5).toISOString() }}|{{ new Date('2024-01-05 10:00').toISOString() }}",
+	].join("\n");
+	const want = [
+		"2024-2-4 1 23",
+		"2024-03-04T23:30:00.000Z|2024-03-04T23:30:00.000Z|2024-03-04T23:30:00.000Z|2024-03-04T23:30:00.000Z|on 2024-03-04T23:30:00.000Z",
+		"Mon Mar 04 2024|March 4, 2024",
+		"2024-01-05T00:00:00.000Z|2024-01-05T10:00:00.000Z",
+	].join("\n");
+	for (const TZ of ["UTC", "America/Los_Angeles", "Asia/Tokyo"]) {
+		assert.equal(render(src, { date: "2024-03-04T23:30:00Z" }, {}, { TZ }), want, TZ);
+	}
+});
+
+test("an_assign_in_an_include_reaches_the_template_that_included_it", () => {
+	const partials = { inc: "@assign(counter = counter + 1)" };
+	assert.equal(render("@let(counter = 0)\n@include('inc')\n@include('inc')\n[{{ counter }}]", "{}", partials).trim(), "[2]");
+	assert.equal(render("@include('inc')\n[{{ counter }}]", `{"counter":10}`, partials).trim(), "[11]");
+});
+
+test("a_tag_out_of_place_is_an_error_with_its_line", () => {
+	let error = renderError("before\n@end\nafter\n");
+	assert.ok(error.includes("index.edge: line 2: unexpected @end"), error);
+	error = renderError("x\n@else\ny\n");
+	assert.ok(error.includes("index.edge: line 2: unexpected @else"), error);
+	error = renderError("x\n@let(= 1)\n");
+	assert.ok(error.includes("index.edge: line 2: invalid @let arguments: expected an identifier but found `=`"), error);
+});
+
+test("strings_are_indexed_by_character", () => {
+	assert.equal(render("{{ t[0] }}|{{ t.slice(0, 1) }}|{{ t.charAt(1) }}|{{ t.indexOf('a') }}", `{"t":"🌲🌲a"}`), "🌲|🌲|🌲|2");
+});
+
+test("values_print_as_0_7_printed_them", () => {
+	assert.equal(render("{{ 1e21 }}|{{ -0 }}|{{ 'n' + 1e21 }}|{{{ stringify(nope) }}}|{{ upper }}"), "1000000000000000000000|-0|n1000000000000000000000|null|function () { [native code] }");
+	const error = renderError("x\n{{ a.b.c }}");
+	assert.ok(error.includes("index.edge:2: Cannot read properties of undefined (reading 'b') in `a`"), error);
 });

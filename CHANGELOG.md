@@ -44,12 +44,95 @@ the release.
   2026-03-14` is a `Date`, where 0.7 kept it as text for every key but `date`. A template that
   printed the text gets the date printed (ISO 8601 in Jinja and Nunjucks); quote the value to
   keep it as text.
+- **YAML numbers and merge keys are js-yaml's too.** `017` is the number 17 and `1_000` is 1000,
+  where 0.7 kept both as text, so a value with a leading zero that matters (a ZIP code, `007`)
+  needs quotes. `<<: *defaults` merges the anchored mapping in, where 0.7 kept a key named `<<`.
+- **A TOML date's fraction of a second keeps three digits**: `07:32:00.999999` is
+  `07:32:00.999`, since smol-toml reads dates as JavaScript dates. Quote it to keep every digit.
+- **A build that fails can leave pages in the output folder.** Pages are written as they render,
+  so the ones rendered before the error are there; 0.7 wrote nothing when any page failed. The
+  exit code still says the build failed: don't deploy the folder of a build that failed.
 - **A page's `templateContent` is rendered when it's first read.** In 0.7 a page read before it
   had rendered gave an empty string. A page whose own templates are async (an async filter or
   engine) can't be rendered on demand, and reading it too early is an error that names it.
+- **Edge templates are edge.js 6.5's**, with what 0.7's own Edge did kept around it (an undefined
+  value prints nothing, a call reaches the filter beside a page field of the same name,
+  `$loop`, `reverse()` and `sort()` giving copies, dates in UTC and as ISO 8601 text, strings
+  indexed by character, numbers never in exponent notation). What changes:
+  - `{{ safe(html) }}` prints `html` as it is, as edge.js's `html.safe` does. 0.7's `safe()`
+    changed nothing, so the value was escaped anyway; drop `safe()` where the escaping was wanted.
+  - A variable an include declares with `@let`, that the template including it doesn't have,
+    is the include's only, as edge.js scopes it; 0.7 declared it in the including template too.
+    Declare it before the `@include` (an `@assign` or `@let` of a variable the including template
+    has reaches it, as in 0.7), or make the include a component and pass it as a prop.
+  - An async function (an async filter) called inside a callback is awaited in `map`
+    (`posts.map(p => cover(p))`), and is an error that says to call it first with `@let` in
+    `filter`, `find` and the others, where 0.7 awaited it anywhere.
+  - Node's globals are there in expressions (`process`, `URL`), as in any JavaScript; a page's
+    value or a config function of the same name still wins, as in 0.7.
+  - A parse error is in edge.js's words (`parse error in page.edge: line 2: Unexpected token`),
+    with the file and line as before.
+- **Liquid is liquidjs**, the library 0.7's Rust crate followed, with 0.7's own behavior kept where
+  the two differ: dates print as 0.7 printed them (`2026-01-02 00:00:00 +0000`, in UTC) in every
+  filter; numbers keep the crate's whole numbers and floats (`10 | times: 1.0 | divided_by: 4` is
+  2.5, `7 | divided_by: 2` is 3, and a missing or non-numeric operand, or dividing by zero, is an
+  error); a missing value reaches a config function as `null`; and `capitalize`, `escape`,
+  `escape_once`, `url_encode`, `url_decode`, `split`, `truncate`, `truncatewords`, `map`, `uniq`
+  and `size` give 0.7's output. Two of 0.7's answers are Shopify's and Jekyll's now: `"abc" |
+  split: ""` is `a`, `b`, `c` (0.7 put an empty string at each end), and `array_to_sentence_string`
+  joins two items as `pine and cedar` (0.7 wrote `pine, and cedar`; three or more still have the
+  comma). What's liquidjs' own: `{{ some_object }}`
+  prints `[object Object]`, where 0.7 ran its keys and values together in no fixed order (`{z: 1, a:
+  "two"}` printed `z1atwo`), so write `{{ some_object | json }}`; `{{ some_object.size }}` is its
+  number of keys, where 0.7 printed nothing; a string's `size` counts as JavaScript does, where 0.7
+  counted UTF-8 bytes (`café` is 4, not 5); and a variable named `empty` or `blank` is Liquid's
+  keyword (`{% if empty %}`), so rename it.
+- **EJS prints a date at UTC** (`Sun Apr 05 2026 06:07:08 GMT+0000`), in `<%= %>`, `<%- %>`, a list
+  and a promise's answer, where 0.7 printed it in the machine's time zone (the two agree on a
+  machine set to UTC). Format the date in the template to show it otherwise
+  (`date.toLocaleString("en-US", { timeZone: "America/New_York" })`).
+- **A Handlebars helper gets a date inside an object as a `Date`.** 0.7 turned the page's data into
+  JSON first, so every date was ISO 8601 text; a date passed to a helper itself (`{{year date}}`)
+  still arrives as that text, but one inside an object it's given (`{{byline post}}`) is a `Date`
+  now.
+- **Jinja (`.jinja`, `.j2`) and Nunjucks (`.njk`) render with Nunjucks**, ssqch's own fork of
+  it, where 0.7 used MiniJinja. Jinja's filters, tests and functions, Python's string, list and
+  dict methods, slices, the date filters, tags from your functions and the escaping are kept, so
+  most templates render as they did. What doesn't:
+  - **`.njk` prints values as Nunjucks does**, as a site from Eleventy expects: `true`, a list as
+    `a,b`, an object as `[object Object]` and `none` as nothing, and `dump` is compact JSON
+    (`dump(2)` indents it), escaped unless it's followed by `| safe`. 0.7 printed `True`,
+    `['a', 'b']` and a spaced, unescaped `dump`, as Jinja does, which `.jinja` still does. A date
+    prints as ISO 8601 in both, whatever the machine's time zone.
+  - A variable set inside a loop or an `if` keeps its value after it, as in Nunjucks:
+    `{% set total = 0 %}{% for x in xs %}{% set total = total + x %}{% endfor %}` ends with the
+    sum, where Jinja's scoping left it at 0 (`namespace()` still works).
+  - A variable set in an include stays in the include: `{% set shared = "changed" %}` in
+    `_includes/i.jinja` doesn't change the page's `shared`, and a name it sets isn't the page's.
+    0.7 let both out. Set the value in the page, or have the include print it.
+  - `{% break %}`, `{% continue %}`, `{% with %}`, `{% autoescape %}`, the loop filter
+    `{% for x in xs if x.ok %}` and recursive loops (`{% for x in xs recursive %}` with
+    `loop(...)`) are errors that name their line and say what to write instead. Put an
+    `{% if %}` inside the loop, filter the list first (`xs | selectattr("ok")`), or write a
+    macro that calls itself for a tree.
+  - `loop.previtem`, `loop.nextitem` and `loop.depth` are undefined (`loop.cycle()` and
+    `loop.changed()` work).
+  - Numbers have no separate float type: `{{ 4 / 2 }}` and `{{ 3.5 | round }}` print `2` and
+    `4`, where 0.7 printed `2.0` and `4.0`.
+  - `+` and `*` are JavaScript's: `xs + ys` joins two lists as text (use `xs | chain(ys)`), and
+    `"ab" * 3` isn't `"ababab"`.
+- **Markdown is ssqch's own, as in 0.7** (its Rust, built as WebAssembly), so pages come out as
+  they did. A page's own Markdown waits for an async `headingIds` function or highlighter in
+  `markdown.highlight.languages`, as 0.7 did. Markdown made while a template renders doesn't:
+  where such a function answers with a promise, `markdown()` and `highlight()` in a template and
+  `markdown()` from `"ssqch"` are errors that name the function, and so is a render hook or
+  container template whose engine answers with one (an async filter, function or engine), where
+  0.7 waited for them. Make those functions synchronous.
 
 ### Changed
 
+- Tags from the config's functions (`{% image "/a.png", "A pine" %}`, and paired with `{% endimage
+  %}`) work in `.jinja` files too, where 0.7 had them in `.njk` only.
 - The config can be `ssqch.config.cjs`, `ssqch.config.ts` or `ssqch.config.mts`, besides `.js`
   and `.mjs`.
 - A warning a package raises with `process.emitWarning` is one of the build's warnings (`code:
@@ -59,6 +142,45 @@ the release.
   words before it. The error for a permalink outside the output folder names the permalink
   (`"/../up.html"`, where 0.7 printed `Some("/../up.html")`), and the warning for a data file
   nothing can read says to provide it in the config's `data` (0.7 named the Rust API).
+- Nunjucks' own syntax and filters work in `.jinja` files too (`{% elseif %}`, `===`,
+  `{ title: x }`, `forceescape`, `nl2br`, `urlize`, `wordcount`, `center`, `random`), and
+  `{% for key, value in object %}` works there. A Jinja or Nunjucks error in an include points
+  at the include's own line, where 0.7 pointed at the `{% include %}` in the page.
+- A YAML integer too big for 128 bits (`123456789012345678901234567890`) is a rounded number,
+  where 0.7 refused the file. TOML's integers past 2^53 are rounded numbers, as in 0.7.
+- A stack frame in an error or a warning has the column Node gives: `throw new Error("...")` is
+  at `new`, where 0.7 (on QuickJS) pointed at `Error`.
+- Edge has what edge.js has: destructuring in `@let`, block-bodied arrow functions, regular
+  expressions, the `in` operator, `@eval`, `@inject`, `@stack` and `@pushTo`, and edge.js's
+  helpers (`excerpt`, `html.attrs`, and `nl2br`, which gives HTML to print as it is, so escape
+  what it's given: `{{{ nl2br(html.escape(text)) }}}`). `await` waits for a promise. A number's
+  `toString(16)` uses its radix, which 0.7 ignored; `new Date(2024, 0, 5, 9)` keeps its hours
+  (in UTC), where 0.7 dropped everything after the day; and a date's `toLocaleString()` and
+  `toLocaleTimeString()`, which 0.7 didn't have, are `Intl`'s, in UTC unless they're given a
+  `timeZone`. A function that isn't there says which one was probably meant (``index.edge:2:
+  `uper` is not a function (did you mean `upper`?)``), or ssqch's name for another generator's
+  (`slug`).
+- Liquid, Handlebars, Mustache and EJS templates render with liquidjs 10.30, handlebars.js 4.7 (for
+  Mustache too, as 0.7 did with its Rust port) and ejs 3.1.10, and their output is 0.7's apart from
+  what's under Breaking (the Liquid, Handlebars and EJS starters build to the same bytes). Each
+  function a template calls runs once a page, an async one included. Their errors say `file:line` as
+  the other engines' do, and the JSON report has the `line` (0.7's Liquid parse errors drew an
+  excerpt with a line of their own, its Handlebars errors said `line 2, column 1:`, and its other
+  Liquid errors named only the file); an unknown helper or filter gets the closest name ("did you
+  mean"), and an error in an include or partial names that file. A function's error starts with its
+  name (`boom(): ...`), as in the other languages. `strict` refuses what 0.7 refused: in Liquid a
+  missing variable anywhere but `{% if %}` and `{% unless %}` asking whether it's there, and in
+  Handlebars a missing argument to `each`, `with`, `lookup` and the comparisons. A Handlebars
+  partial named without its extension (`{{> nav}}`) is the Handlebars file when there's one, where
+  0.7 took whichever file of that name the folder listed last. What 0.7 refused or got wrong that
+  works now: an EJS function's promise that's printed (`<%= later(x) %>`) is awaited where 0.7
+  printed `[object Promise]`, and an EJS template can `await`; Liquid's `{% render %}` partials
+  print nothing for an unknown variable, where 0.7 failed; Liquid's `date` reads ISO 8601 text
+  (`2024-03-04`), Jekyll's `date_to_xmlschema`, `date_to_rfc822`, `date_to_string` and
+  `date_to_long_string` are there, and so are liquidjs' other filters and tags (`where_exp`, `sum`,
+  `{% liquid %}`, `{% echo %}`); a Mustache-style section in a `.hbs` file (`{{#items}}`) works,
+  where 0.7 said "Helper not found"; and `--verbose`'s list of templates nothing used covers Liquid,
+  Handlebars and Mustache too.
 
 ## 0.7.0 - 2026-11-17
 

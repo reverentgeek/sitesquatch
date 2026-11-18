@@ -13,5 +13,5 @@
 		"skipLibCheck": true,
 		"noFallthroughCasesInSwitch": true
 	},
-	"include": ["bin", "src"]
+	"include": ["bin", "src", "scripts"]
 }
