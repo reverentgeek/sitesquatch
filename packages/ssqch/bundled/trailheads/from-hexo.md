@@ -44,7 +44,7 @@ The [`docs-sidebar`](../../examples/sites/docs-sidebar/) example is distilled fr
 
 ## Themes and helpers
 
-Nunjucks templates render with minijinja. Most theme code works; these are the differences that come up:
+Nunjucks templates render with Nunjucks (ssqch's fork of it), the library Hexo's Nunjucks renderer uses, so most theme code works; these are the differences that come up:
 
 | Hexo | SiteSquatch |
 | --- | --- |
@@ -64,7 +64,7 @@ Nunjucks templates render with minijinja. Most theme code works; these are the d
 | `__('key')`, `_p('key', n)` | A config filter over `_data/languages/<lang>.yml`: `t: (key) => strings[key] ?? key` |
 | Helpers in `scripts/*.js` (`hexo.extend.helper.register`) | `filters` in the config. The function bodies usually move over unchanged; `this.page` becomes an argument. |
 | Generators (`hexo.extend.generator.register`) | Pagination over data or a collection, with a `permalink` per page |
-| EJS, Pug or Swig themes | Rewrite the theme in Nunjucks (Swig is close already). An engine of your own is possible too, `engines: { ejs: (source, data) => ejs.render(source, data) }`, if the package runs on ssqch's JavaScript engine (it isn't Node). |
+| EJS, Pug or Swig themes | EJS renders as it is: add `"ejs"` to `templateFormats`. For Pug or Swig, rewrite the theme in Nunjucks (Swig is close already), or give ssqch an engine of your own, `engines: { pug: (source, data) => pug.render(source, data) }`: ssqch runs on Node, so the package runs as it does in Hexo. |
 
 ## Tag plugins
 

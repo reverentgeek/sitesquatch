@@ -160,7 +160,8 @@ until 0.8 ships.
   - [ ] A cache of highlighted fences on disk (`.cache/ssqch/`, keyed by the `.wasm`'s inputs):
         a process's first build of the blog spends about 0.3 s compiling syntect's grammars.
   - [x] Stage 8 ships `wasm/markdown.wasm` in the package (the loader finds it next to `src/`).
-  - [ ] Stage 9 rewrites the README's Edge and Jinja sections, which describe 0.7.
+  - [x] The README's Edge, Jinja and Nunjucks, Liquid, Handlebars and EJS sections describe 0.8
+        (2026-11-18).
 - [ ] **Stage 4, checks and tools:** schemas and `types`, links, `diff`, `inspect`, footprint and
       budgets, `docs`, `new`, `init` and the starters, `capabilities`.
   - [x] Content schemas (`schema.ts`), `inspect`, `diff` and footprint with budgets (2026-11-18),
@@ -186,17 +187,18 @@ until 0.8 ships.
         release), `src/rust-plugin.ts` (a config's `{ name, rust: { wasm, options } }`), and
         `examples/rust-plugin` (trail-guide: an engine, three filters and a transform),
         committed built. `docs/rust-plugins.md` is the README section's draft, for stage 9.
-  - [ ] Document Rust plugins in the README (stage 9, from `docs/rust-plugins.md`), and add
-        `{ name, rust }` to `ssqch.d.ts`'s `Plugin` type if wanted; publish `ssqch-plugin` to
-        crates.io with 0.8.0, and the example's npm package if it's to be installable.
+  - [x] Rust plugins are in the README ("Plugins in Rust", `ssqch docs plugin sdk`), and
+        `ssqch.d.ts` has `RustPlugin` in the `Plugin` type (2026-11-18).
+  - [ ] Publish `ssqch-plugin` to crates.io with 0.8.0, and the example's npm package if it's to
+        be installable.
   - [x] Images on sharp 0.35.5 and assets (2026-11-18), with 0.7's names (BLAKE3 in TypeScript),
         so a site's image cache and asset URLs carry over: a copy of the blog with its cache
         builds its 4,985 image files byte for byte as frozen. The quality options keep 0.7's
         numbers, turned into sharp's from a calibration at equal SSIMULACRA2
         (`src/image/quality.ts`); a cold build of the blog's images takes 28 s (0.7: 68 s) and
         makes 7% fewer bytes. `files(pattern, { dimensions: true })` reads sizes too.
-  - [ ] Document for stage 9: the quality numbers are 0.7's scale on sharp, AVIF needs no
-        feature now, and `[ssqch] Encoded` lines come while pages render.
+  - [x] Documented in the README (2026-11-18): the quality numbers are 0.7's scale on sharp,
+        AVIF needs no feature now, and `[ssqch] Encoded` lines come while pages render.
 - [ ] **Stage 6, the dev server.** Started 2026-11-18; the results are in
       `docs/node-migration.md` ("Stage 6, so far").
   - [x] `ssqch serve` (`packages/ssqch/src/serve/`), from `serve.rs` and `companions.rs`:
@@ -265,9 +267,9 @@ until 0.8 ships.
         `x86_64-unknown-linux-gnu` from 0.8), merged and tagged once 0.8.0 is out.
   - [ ] Release the last 0.7.x from `release/0.7` before 0.8.0 (`docs/node-migration.md`, "One
         last 0.7.x"), then deprecate the `@ssqch/<platform>` packages after 0.8.0 (`AGENTS.md`).
-  - [ ] Stage 9: the README's Install, Netlify and GitHub Pages sections, and `ssqch docs
-        standalone` (the unpack folder, `SSQCH_UNPACK_DIR`, glibc), from the draft in the stage's
-        report; `import "ssqch"` from plain Node now works (the README says it throws).
+  - [x] Stage 9: the README's Install, Netlify and GitHub Pages sections, and `ssqch docs
+        standalone` (the unpack folder, `SSQCH_UNPACK_DIR`, glibc); `import "ssqch"` from plain
+        Node works (2026-11-18). The version numbers in them are for the release step.
   - [ ] A Linux arm64 executable (`ubuntu-24.04-arm`) and a musl one (Node's unofficial musl
         builds), so Alpine and ARM servers have the executable too. The npm package covers both
         today.
