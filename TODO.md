@@ -664,10 +664,11 @@ trailhead.
       Next.js sites import their own helpers through `@/` aliases, and ssqch says the package isn't
       installed; the port copied a helper with relative imports. Read `compilerOptions.paths` (and
       `jsconfig.json`).
-- [ ] **Named slots in containers** (ex #4): `container.slots.<name>` from nested `::: slot
-      name="…"` blocks, as MDX's `<Fragment slot>` and Edge components have them; the port marks
-      slot output with comments and splits it in the parent's template. And `container.props` parsed
-      from the arguments (`a="b" c='{"x":1}' flag`), which every container template here needed.
+- [x] **Named slots in containers** (ex #4; done 2026-11-18, and `container.props`):
+      `container.slots.<name>` from nested `::: slot name="…"` blocks, as MDX's `<Fragment slot>`
+      and Edge components have them; the port marks slot output with comments and splits it in the
+      parent's template. And `container.props` parsed from the arguments (`a="b" c='{"x":1}' flag`),
+      which every container template here needed.
 - [ ] **`ssqch import mdx`** (ex `edits.md`): component tags to containers by a map in the config,
       imports and `{/* */}` out, JSX props as arguments, fences left alone (indented ones in list
       items included), bodies dedented, links around cards folded in. The study's

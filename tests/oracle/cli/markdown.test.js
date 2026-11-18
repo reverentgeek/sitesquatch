@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write, read } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, project } from "../lib/ssqch.js";
 
 test("markdown_options_hooks_containers_and_headings", () => {
 	const dir = tempDir("markdown");
@@ -154,4 +154,51 @@ test("highlighted_fences_are_cached_between_builds_and_never_change_a_page", () 
 	fs.rmSync(path.join(dir, "src/more.md"));
 	build();
 	assert.ok(!fs.readFileSync(cache, "utf8").includes("\"bash\""));
+});
+
+// expressjs.com (ex #4): MDX components take props and named slots (`<Fragment slot="title">`), and
+// every container template in the port parsed `container.args` and split marked slots itself.
+test("containers_get_props_and_named_slots", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"] };\n",
+		"_includes/containers/card.njk": "<div class=\"card {{ container.props.type }}\" data-open=\"{{ container.props.open }}\" data-size=\"{{ container.props.size }}\" data-n=\"{{ container.props.items | length }}\"><h3>{{ container.slots.title | safe }}</h3>{{ container.content | safe }}<footer>{{ container.slots.footer | safe }}</footer></div>\n",
+		"index.md": [
+			":::: card type=\"tip\" open size=3 items='[\"Cedar\",\"Old Growth\"]'",
+			"Squatch Snacks, **crunchy**.",
+			"",
+			"::: slot title",
+			"Pine *Cone* Crunch",
+			":::",
+			"",
+			"::: slot name=\"footer\"",
+			"Leave no trace.",
+			":::",
+			"::::",
+			"",
+			"::: note",
+			"::: slot aside",
+			"No template takes this slot, so it stays where it is.",
+			":::",
+			":::",
+			"",
+		].join("\n"),
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/index.html"), [
+		"<div class=\"card tip\" data-open=\"true\" data-size=\"3\" data-n=\"2\"><h3><p>Pine <em>Cone</em> Crunch</p>",
+		"</h3><p>Squatch Snacks, <strong>crunchy</strong>.</p>",
+		"<footer><p>Leave no trace.</p>",
+		"</footer></div>",
+		"<div class=\"note\">",
+		"<p>No template takes this slot, so it stays where it is.</p>",
+		"</div>",
+		"",
+	].join("\n"));
+
+	// `slot` is ssqch's, so a template for it is refused.
+	const own = project({ "ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"] };\n", "_includes/containers/slot.njk": "x", "index.md": "hi\n" });
+	const b = ssqch(["build", "--root", own]);
+	assert.ok(!b.ok);
+	assert.match(b.log, /containers\/slot\.njk: `slot` is ssqch's container for a named slot/);
 });

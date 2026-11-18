@@ -25,9 +25,15 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
   (`x²`, `½`, which go). A site linking to such a heading's old id: link to the new one, or give
   the heading its id (`## x² {#x2}`). expressjs.com had 29 pages linking to ids ssqch wrote
   differently.
+- `slot` is ssqch's container name (named slots, below), so `_includes/containers/slot.*` is an
+  error. A site that has one: rename the container.
 
 ### Added
 
+- Containers get `container.props`, their arguments read as a component's attributes
+  (`::: card type="tip" open items='["a","b"]'`), and named slots: a `::: slot title` block inside
+  a container is its `container.slots.title`, left out of `container.content`, as MDX's
+  `<Fragment slot>` is. A slot with no template around it to take it renders where it is.
 - The config's functions are Liquid tags, as they are in Nunjucks, so a Jekyll plugin's tag can be a
   function: `{% seo title=false %}` calls `seo({ title: false })` and prints its answer unescaped,
   and `{% callout "tip" %}...{% endcallout %}` passes what's between first. Liquid's own tags keep
