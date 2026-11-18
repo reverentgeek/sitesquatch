@@ -37,7 +37,7 @@ fn from_json(j: J) -> Value {
             Some("NaN") => Value::Num(f64::NAN),
             Some("Infinity") => Value::Num(f64::INFINITY),
             Some("-Infinity") => Value::Num(f64::NEG_INFINITY),
-            Some("date") => o.get("v").and_then(J::as_str).and_then(sitesquatch_edge::value::parse_date).map(Value::Date).unwrap_or(Value::Null),
+            Some("date") => o.get("v").and_then(J::as_str).and_then(crate::value::parse_date).map(Value::Date).unwrap_or(Value::Null),
             _ => Value::object(o.into_iter().map(|(k, v)| (k, from_json(v))).collect()),
         },
     }

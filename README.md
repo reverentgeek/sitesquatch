@@ -1206,7 +1206,7 @@ examples/rust-plugin    A plugin written in Rust with all three hooks, and its n
 tests/oracle            Black-box tests that run any ssqch (SSQCH_BIN) against frozen output
 ```
 
-The Rust crates exist to build the `.wasm` files, which are committed (so a clone needs `npm ci` and nothing else, and CI's Node jobs have no Rust); `node packages/ssqch/scripts/build-wasm.ts` builds them again after the Rust changes (`rustup target add wasm32-wasip1` first), and a test fails until you do.
+The Rust crates exist to build the `.wasm` files, which are committed (so a clone needs `npm ci` and nothing else, and CI's Node jobs have no Rust); `node packages/ssqch/scripts/build-wasm.ts` builds them again after the Rust changes (`rustup target add wasm32-wasip1` first), and a test fails until you do. `cargo test --workspace` tests them as plain Rust. ssqch 0.7, the Rust implementation, isn't in this repository any more: it's on the `release/0.7` branch and the `v0.7.x` tags.
 
 From `packages/ssqch/`, after `npm ci`:
 
@@ -1216,7 +1216,7 @@ node --test                                                     # the package's 
 npx tsc --noEmit                                                # type-checks; keep it clean
 ```
 
-The oracle is the definition of done for the commands and the output. From `tests/oracle/`, `SSQCH_BIN=packages/ssqch/bin/ssqch.ts node --test` (the path is from the repository root; add a test file's path to run only that one). [CI](.github/workflows/ci.yml) runs it, the unit tests and the type check on Linux, macOS and Windows, on Node 22.18, 24 and 26.
+The oracle is the definition of done for the commands and the output: from `tests/oracle/`, `node --test` runs it with ssqch from its source (add a test file's path to run only that one; `SSQCH_BIN` runs another ssqch). Its frozen output is what 0.7.0 built, and a site whose output changes on purpose is frozen again with `node freeze.js <site>` ([its README](tests/oracle/README.md) says how). [CI](.github/workflows/ci.yml) runs it, the unit tests and the type check on Linux, macOS and Windows, on Node 22.18, 24 and 26.
 
 The ReverentGeek blog is the real-world test site. To build it with your changes, clone it next to this repository and point its build script at your checkout's `ssqch` (the script runs `$SSQCH_BIN` when it is set), which also builds the CSS and JavaScript:
 

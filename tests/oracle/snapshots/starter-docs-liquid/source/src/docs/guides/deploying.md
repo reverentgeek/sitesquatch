@@ -10,10 +10,13 @@ description: Publish the built site on any static host.
 # netlify.toml
 [build]
   publish = "dist"
-  command = "curl -fsSL https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.sh | SSQCH_UNMANAGED_INSTALL=.cache/bin sh && .cache/bin/ssqch build"
+  command = "npx ssqch build"
+
+[build.environment]
+  NODE_VERSION = "24"
 ```
 
-Pin a version in that URL (`download/v0.4.0/`) so a build next year uses the ssqch you tested with.
+With `ssqch` in the site's `devDependencies` (see [Installation](/docs/install/)), Netlify installs it at the version in the lockfile, so a build next year uses the ssqch you tested with. `NODE_VERSION` can be any Node from 22.18 on.
 
 ## GitHub Pages
 
@@ -25,17 +28,46 @@ export default defineConfig({
 });
 ```
 
-Then build with the [`setup-ssqch`](https://github.com/reverentgeek/setup-ssqch) action and upload `dist/`.
+Then build it in a workflow with `actions/setup-node`, and deploy `dist/` with GitHub's own Pages actions (in the repository's settings, set Pages' source to "GitHub Actions"):
+
+```yaml
+# .github/workflows/pages.yml
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx ssqch build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
+```
 
 ## Check before you publish
 
 Build the site before and after a big change, and compare the two:
 
 ```sh
-ssqch build --output dist-before
+npx ssqch build --output dist-before
 # ...make the change...
-ssqch build
-ssqch diff dist-before dist
+npx ssqch build
+npx ssqch diff dist-before dist
 ```
 
 It lists the pages that were added, removed and changed, and ignores what doesn't matter.

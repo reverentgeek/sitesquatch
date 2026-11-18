@@ -16,15 +16,12 @@ name: Examples
 on:
   push:
     branches: [main]
-    paths: [examples/sites/**, crates/**, plugins/**, Cargo.toml, Cargo.lock, .github/workflows/examples.yml]
+    paths: [examples/sites/**, packages/ssqch/**, .github/workflows/examples.yml]
   workflow_dispatch:
 
 concurrency:
   group: examples
   cancel-in-progress: true
-
-env:
-  CARGO_TERM_COLOR: always
 
 jobs:
   deploy:
@@ -32,17 +29,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v6
         with:
-          key: examples
-      # No AVIF: the examples have no images to encode.
-      - run: cargo build --release --locked -p ssqch
+          node-version: 24
+      - run: npm ci
+        working-directory: packages/ssqch
       - name: Build the examples
         run: |
           for site in examples/sites/*/; do
             echo "::group::$site"
-            target/release/ssqch build --root "$site"
+            node packages/ssqch/bin/ssqch.ts build --root "$site"
             echo "::endgroup::"
           done
       - name: Deploy to Netlify

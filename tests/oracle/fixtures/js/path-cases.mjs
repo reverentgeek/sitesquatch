@@ -1,5 +1,5 @@
 // `path` cases checked against Node. Regenerate the expected output with:
-//   node crates/sitesquatch-js/tests/fixtures/path-cases.mjs > crates/sitesquatch-js/tests/fixtures/path-expected.json
+//   node tests/oracle/fixtures/js/path-cases.mjs > tests/oracle/fixtures/js/path-expected.json
 import path from "node:path";
 const inputs = ["", ".", "..", "/", "//", "a", "a/", "/a", "/a/", "a/b/c", "/a/b/c/", "a//b", "./a/./b/../c", "../a/../../b", "/../a", "a/b/../..", "a/b/../../..", "foo.txt", ".bashrc", "a/b.c.d", "a.b/c", "/x/y.tar.gz", "dir/.hidden", "file.", "a/b/"];
 const out = {};

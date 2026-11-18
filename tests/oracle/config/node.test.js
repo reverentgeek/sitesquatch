@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { ssqch, project, read, write, FIXTURES, REPO, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, project, read, write, FIXTURES, REPO } from "../lib/ssqch.js";
 
 // The Rust tests built "a site without ssqch.config.js" through the library, whose default
 // template formats include edge. The command line's don't, so each project gets this config, which
@@ -86,7 +86,7 @@ test("changed_data_files_reload_between_builds", () => {
 
 // DELIBERATE (0.8): `node:path` is Node's own, which on Windows is Windows' (`a\b`, `C:\a`). 0.7's
 // was the POSIX one on every system, and the expected values are POSIX Node's.
-test("path_matches_node", { skip: !RUST_07 && process.platform === "win32" && "0.8 on Windows: node:path is Windows' own, as in Node" }, () => {
+test("path_matches_node", { skip: process.platform === "win32" && "on Windows, node:path is Windows' own, as in Node" }, () => {
 	const root = project({
 		...EDGE_ONLY,
 		"_data/out.mjs": fixture("path-cases.mjs"),
@@ -210,14 +210,12 @@ test("data_file_errors_name_the_file", () => {
 
 	e = buildError({ "_data/x.js": "import fs from \"node:fs\"; export default fs.readFileSync(\"nope.json\", \"utf8\");", "index.edge": "" });
 	// DELIBERATE (0.8): the message is Node's own, and on Windows Node names the whole path.
-	if (RUST_07 || process.platform !== "win32") assert.ok(e.includes("ENOENT: no such file or directory, open 'nope.json'"), e);
+	if (process.platform !== "win32") assert.ok(e.includes("ENOENT: no such file or directory, open 'nope.json'"), e);
 	else assert.ok(e.includes("ENOENT: no such file or directory, open '") && e.includes("nope.json'"), e);
 });
 
-test("data_file_errors_name_the_file (node:sqlite)", { skip: !RUST_07 && "QuickJS only: the list of node: modules ssqch shims" }, () => {
-	const e = buildError({ "_data/x.js": "import s from \"node:sqlite\"; export default 1;", "index.edge": "" });
-	assert.ok(e.includes("node:sqlite isn't available in ssqch (available: node:fs"), e);
-});
+// The Rust test's node:sqlite case checked 0.7's list of the node: modules it shimmed. On Node,
+// every node: module is Node's own.
 
 test("intl_dates_and_numbers_match_node", () => {
 	const root = project({
@@ -244,20 +242,14 @@ test("collation_matches_node", () => {
 	assert.equal(got.trimEnd(), fixture("collation-expected.txt").trimEnd());
 });
 
-test("intl_refuses_what_it_cant_format", { skip: !RUST_07 && "QuickJS only: ssqch 0.7's Intl only formats en-US, UTC or local time and plain numbers" }, () => {
-	let e = buildError({ "_data/x.js": "export default new Date(0).toLocaleDateString(\"de-DE\");", "index.edge": "" });
-	assert.ok(e.includes("only \"en-US\" formatting is available in ssqch (got \"de-DE\")"), e);
-	e = buildError({ "_data/x.js": "export default new Date(0).toLocaleDateString(\"en-US\", { timeZone: \"America/Chicago\" });", "index.edge": "" });
-	assert.ok(e.includes("only the UTC and local time zones are available in ssqch"), e);
-	e = buildError({ "_data/x.js": "export default (1).toLocaleString(\"en-US\", { style: \"currency\", currency: \"USD\" });", "index.edge": "" });
-	assert.ok(e.includes("the \"style\" option isn't supported in ssqch"), e);
-});
+// The Rust test intl_refuses_what_it_cant_format checked 0.7's Intl, which formatted only en-US,
+// UTC or local time and plain numbers. On Node, Intl is Node's own.
 
 // The Rust test added a module of Rust functions for a site's JavaScript to call, and checked
 // what they gave back. In 0.8 Rust functions come in a plugin, a .wasm file (the example in
 // examples/rust-plugin): its filters take a template's values and give values back, in every
 // template language, and its engine renders its own kind of file.
-test("programs_can_add_modules_with_native_functions", { skip: RUST_07 && "0.8 only: plugins written in Rust are .wasm files; 0.7 took Rust functions from a Rust program" }, () => {
+test("programs_can_add_modules_with_native_functions", () => {
 	const plugin = JSON.stringify(pathToFileURL(path.join(REPO, "examples/rust-plugin/index.js")).href);
 	const root = project({
 		"ssqch.config.js": `import trailGuide from ${plugin};\nexport default { templateFormats: ["edge", "njk", "trail"], plugins: [trailGuide({ greeting: "Howdy", wordsPerMinute: 2 })] };\n`,
@@ -312,15 +304,8 @@ export default {
 	assert.equal(lines[5], "LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ=");
 	assert.equal(lines[6], "qvTGHdzF6KLavt4PO0gs2a6pQ00");
 	assert.equal(lines[7], "true");
-	// QuickJS only: ssqch 0.7 lists just the five digests it supports; Node lists many more.
-	if (RUST_07) assert.equal(lines[8], "md5,sha1,sha256,sha384,sha512");
+	// 0.7 listed the five digests it had in lines[8]; Node lists its own, which vary with OpenSSL.
 
-	let e;
-	if (RUST_07) {
-		// QuickJS only: ssqch 0.7's own wording for a digest it doesn't have.
-		e = buildError({ "_data/x.js": "import { createHash } from \"node:crypto\"; export default createHash(\"whirlpool\");", "index.edge": "" });
-		assert.ok(e.includes("Digest method not supported: whirlpool (ssqch supports md5, sha1, sha256, sha384, sha512)"), e);
-	}
-	e = buildError({ "_data/x.js": "import { createHash } from \"node:crypto\"; const h = createHash(\"md5\"); h.digest(); export default h.digest();", "index.edge": "" });
+	const e = buildError({ "_data/x.js": "import { createHash } from \"node:crypto\"; const h = createHash(\"md5\"); h.digest(); export default h.digest();", "index.edge": "" });
 	assert.ok(e.includes("Digest already called"), e);
 });

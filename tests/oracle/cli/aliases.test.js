@@ -1,9 +1,10 @@
 // From crates/ssqch/tests/cli.rs.
 //
 // `other_generators_words_get_ssqch_names` walks the table of other generators' words
-// (`equivalents::TABLE` in crates/sitesquatch/src/equivalents.rs), which the Rust test reads
-// from the crate. A black-box test can't, so TABLE below is a copy of its rows (word, kind,
-// alias, ssqch, say, more). When the table changes, update the copy.
+// (`TABLE` in packages/ssqch/src/equivalents.ts; 0.7's was `equivalents.rs`), which the Rust test
+// read from the crate. A black-box test can't, so TABLE below is a copy of its rows (word, kind,
+// alias, ssqch, say, more), in 0.7's names for the kinds. When the table changes, update the
+// copy: packages/ssqch/src/equivalents.test.ts fails until they're the same.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

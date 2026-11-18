@@ -2,30 +2,29 @@
 title: Installation
 description: Install ssqch and run this site.
 ---
-`ssqch` is a single program. Install it once, with whichever of these you like:
+`ssqch` runs on [Node.js](https://nodejs.org) 22.18 or newer, and comes from npm. Install it in the site as a dev dependency, so the lockfile pins the version:
 
 ::::tabs
-:::tab Homebrew
+:::tab npm
 ```sh
-brew install reverentgeek/tap/ssqch
+npm init -y
+npm install --save-dev ssqch
 ```
 :::
-:::tab Shell
+:::tab pnpm
 ```sh
-curl -fsSL https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.sh | sh
-```
-:::
-:::tab Cargo
-```sh
-cargo install ssqch
+pnpm init
+pnpm add -D ssqch
 ```
 :::
 ::::
 
+Then run it with `npx ssqch` (or `pnpm ssqch`), or by name in a `package.json` script: `"build": "ssqch build"`. To have `ssqch` on your `PATH` for every site, `npm install --global ssqch` or `brew install reverentgeek/tap/ssqch`.
+
 ## Run the site
 
 ```sh
-ssqch serve
+npx ssqch serve
 ```
 
 Open <http://localhost:8080>. Pages rebuild and the browser reloads as you save, and that includes `ssqch.config.js`.
@@ -33,11 +32,11 @@ Open <http://localhost:8080>. Pages rebuild and the browser reloads as you save,
 ## Build it
 
 ```sh
-ssqch build
+npx ssqch build
 ```
 
 The site is in `dist/`, ready for any static host. A broken link or a page without a `title` stops the build and says where.
 
 :::tip
-`SEARCH=1 ssqch build` also builds a search index with [Pagefind](https://pagefind.app) and adds a search box to the header. It needs `npx` (Node.js) for that one step.
+`SEARCH=1 npx ssqch build` also builds a search index with [Pagefind](https://pagefind.app) and adds a search box to the header. Pagefind is a program of its own, which `npx` fetches for that one step.
 :::

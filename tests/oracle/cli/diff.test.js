@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, tempDir, write } from "../lib/ssqch.js";
 
 test("diff_compares_two_builds", () => {
 	const dir = tempDir("diff");
@@ -107,7 +107,6 @@ test("diff_keeps_files_whose_fingerprinted_names_collide", () => {
 	assert.equal(r.code, 1, r.log);
 	const json = JSON.parse(r.stdout);
 	const removed = [...json.removed].sort();
-	if (RUST_07) assert.equal(removed.length, 1, r.stdout);
-	else assert.deepEqual(removed, ["/x.11111111.22222222.css", "/x.11111111.css"]);
+	assert.deepEqual(removed, ["/x.11111111.22222222.css", "/x.11111111.css"]);
 	assert.equal(json.summary.unchangedFiles, 1);
 });

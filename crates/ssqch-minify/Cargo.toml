@@ -1,5 +1,6 @@
-# ssqch's own HTML minifier for the Node build (0.8): 0.7's plugins/minify, compiled by path for
-# wasm32-wasip1 as an ssqch-plugin (ABI v1) and committed as packages/ssqch/wasm/minify.wasm.
+# ssqch's own HTML minifier for the Node build (0.8): 0.7's plugins/minify (src/html.rs here),
+# built for wasm32-wasip1 as an ssqch-plugin (ABI v1) and committed as
+# packages/ssqch/wasm/minify.wasm.
 # Rebuild it with `node packages/ssqch/scripts/build-wasm.ts`.
 [package]
 name = "ssqch-minify"

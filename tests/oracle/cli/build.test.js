@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { ssqch, tempDir, write, read, exists, isFile, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, exists, isFile } from "../lib/ssqch.js";
 
 const unixOnly = { skip: process.platform === "win32" && "unix only" };
 
@@ -146,7 +146,7 @@ export default {
     fs.rmSync("link.js", { force: true });
     fs.symlinkSync("helper.js", "link.js");
     let stream;
-    ${RUST_07 ? 'try { createReadStream("x"); } catch (e) { stream = e.message.split(":")[0]; }' : "stream = typeof createReadStream;"}
+    stream = typeof createReadStream;
     return [process.versions.node.split(".")[0], helper.pines, names.length, missing, fs.readlinkSync("link.js"), fs.lstatSync("link.js").isSymbolicLink(), stream].join(" ");
   } },
 };
@@ -172,11 +172,9 @@ export default {
 	assert.equal(rd("articles/a/index.html"), "<article><p>Pine cones</p>\n</article>");
 	assert.equal(rd("stump/index.html"), "<bare>stump</bare>");
 	assert.equal(rd("keywords.json"), "\n[\"pine\"]");
-	// DELIBERATE (0.8): QuickJS reports Node 24 and has no fs.createReadStream (calling it throws);
-	// on Node both are Node's own, so the config only looks at the function there, and only the
-	// rest is the contract.
-	if (RUST_07) assert.equal(rd("checks/index.html"), "24 7 8 ENOENT helper.js true fs.createReadStream isn&#39;t available in ssqch");
-	else assert.match(rd("checks/index.html"), /^\d+ 7 8 ENOENT helper\.js true /);
+	// DELIBERATE (0.8): 0.7's QuickJS reported Node 24 and had no fs.createReadStream (calling it
+	// threw); on Node both are Node's own.
+	assert.match(rd("checks/index.html"), /^\d+ 7 8 ENOENT helper\.js true function$/);
 	if (unix) assert.equal(rd("samples/js/a.ts"), "export {};\n");
 
 	// A computed layout that depends on the page can't be applied, so it's an error.

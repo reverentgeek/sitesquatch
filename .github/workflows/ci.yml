@@ -15,43 +15,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    name: test (${{ matrix.os }}${{ matrix.avif && ', avif' || '' }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        avif: [false]
-        # The AVIF encoder is slow to compile, so only Linux tests it here. The
-        # release builds include it on every platform and smoke-test it there.
-        include:
-          - os: ubuntu-latest
-            avif: true
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.avif && 'avif' || 'default' }}
-      # The AVIF encoder (rav1e) needs the nasm assembler on x86_64.
-      - if: matrix.avif && runner.os == 'Linux'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq nasm
-      - run: cargo test --workspace --locked --no-fail-fast ${{ matrix.avif && '--features ssqch/avif' || '' }}
-      # The oracle (tests/oracle): black-box tests and 0.7.0's frozen output, run against the
-      # binary cargo test just built. On the lowest Node ssqch 0.8 will support.
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22.18.0
-      - name: oracle
-        working-directory: tests/oracle
-        env:
-          SSQCH_BIN: target/debug/ssqch${{ runner.os == 'Windows' && '.exe' || '' }}
-        run: node --test --test-concurrency=4
-
-  # The Node implementation (packages/ssqch), being built beside the Rust one until the release
-  # that switches (docs/node-migration.md). On the lowest Node it supports and the two after it.
+  # ssqch (packages/ssqch), on the lowest Node it supports and the two after it: the type check,
+  # the unit tests, and the oracle (tests/oracle), black-box tests and the sites' frozen output.
   node:
     name: node ${{ matrix.node }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -75,19 +40,17 @@ jobs:
       - name: unit tests
         working-directory: packages/ssqch
         run: node --test
-      # The oracle's tests that the Node build passes so far (tests/oracle/node-passing.txt):
-      # each stage of the move adds to the list, and nothing on it may fail again.
       - name: oracle
         working-directory: tests/oracle
-        run: node progress.js
+        run: node --test --test-concurrency=4
 
   # The npm package as a site gets it (packages/ssqch/scripts/build.ts, then `npm pack`), installed
   # from its tarball into an empty folder: every example, a starter, and a site with images, the
   # .wasm files and a Rust plugin build to the bytes the source builds (scripts/check-package.ts).
-  # On the lowest Node, the oracle's list runs against it too. Node doesn't strip types under
+  # On the lowest Node, the oracle runs against it too. Node doesn't strip types under
   # node_modules, so this is what catches a package that works from the repository and not from npm.
   # Linux only: the package is the same JavaScript everywhere, and the `node` job already runs the
-  # code and the oracle's list on macOS and Windows.
+  # code and the oracle on macOS and Windows.
   package:
     name: package (node ${{ matrix.node }})
     runs-on: ubuntu-latest
@@ -135,7 +98,13 @@ jobs:
       - working-directory: packages/ssqch
         run: node bench/bench.ts --baseline "$RUNNER_TEMP/before/packages/ssqch" --reference "$RUNNER_TEMP/ssqch-07/node_modules/@ssqch/linux-x64/bin/ssqch"
 
-  clippy:
+  # The Rust that's left: ssqch's Markdown, minifier and Sass (crates/ssqch-markdown,
+  # ssqch-minify, ssqch-sass), the plugin SDK (crates/ssqch-plugin) and its example
+  # (examples/rust-plugin). Their tests run natively; clippy checks them natively and for
+  # wasm32-wasip1, which is the code the .wasm files are built from (the exports Node calls are
+  # compiled only there). That the committed .wasm files are built from this Rust is checked by
+  # the `node` job, without Rust (scripts/wasm-inputs.test.ts).
+  rust:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -143,6 +112,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+          targets: wasm32-wasip1
       - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq nasm
-      - run: cargo clippy --workspace --all-targets --locked --features ssqch/avif -- -D warnings
+      - run: cargo test --workspace --locked --no-fail-fast
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy --workspace --lib --locked --target wasm32-wasip1 -- -D warnings

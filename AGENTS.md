@@ -4,10 +4,13 @@ SiteSquatch (`ssqch`) is a static site generator: a TypeScript program on Node, 
 `packages/ssqch/`, with ssqch's own Markdown, highlighter, minifier and Sass as `.wasm` files
 built from Rust. The README covers usage and the known gaps; `TODO.md` has the plan.
 
-ssqch 0.7, the Rust binary, is still in `crates/` and `plugins/`: it's the oracle's reference
-until the release that switches removes it (`docs/node-migration.md` has the move's plan, its
-decisions D1 to D7, and what each stage found). Until then, keep it building, and don't change
-its behavior.
+ssqch 0.7, the Rust binary, was removed from `main` before 0.8.0 (it lives on in the
+`release/0.7` branch and the `v0.7.x` tags). What it was is frozen in the oracle (`tests/oracle/`):
+its black-box tests and the output 0.7.0 built for every example and starter.
+`docs/node-migration.md` has the move's plan, its decisions D1 to D7, what each stage found, and
+the switch. The Rust left in `crates/` is what the `.wasm` files are built from, and the plugin
+SDK. Comments that say a file is "from" or "ported from" `crates/...` or `plugins/...` name 0.7's
+source, on `release/0.7`.
 
 ## Working with the blog
 
@@ -33,12 +36,11 @@ change affects it.
   and says ssqch's name once, `note: pathPrefix works; ssqch calls it base`) when it means the
   same thing in ssqch, and a hint (refused, with ssqch's name) when it would mean something
   else; the test checks that an alias works and a hint refuses. `equivalents.test.ts` keeps it
-  equal to 0.7's copy and the oracle's while those exist.
+  equal to the oracle's copy (`tests/oracle/cli/aliases.test.js`).
 - After a change that affects output, build the blog with the Node build and run its smoke tests:
   in `../blog`, `SSQCH_BIN=../ssqch/packages/ssqch/bin/ssqch.ts pnpm test`. The oracle has the
   blog's frozen output too (`node --test --test-name-pattern="^blog builds" sites.test.js` in
-  `tests/oracle/`); it matches only when the package's version is as long as 0.7.0, because the
-  JSON report's byte counts include the version.
+  `tests/oracle/`, where `../blog` and the local snapshot are there).
 - The two TODO lists coordinate the work. This repository's `TODO.md` marks what the blog is
   waiting on with **Blog:**, and `../blog/TODO.md` marks what needs a change here with
   **Needs ssqch:**. When work lands on one side, update both lists.
@@ -56,13 +58,11 @@ Run from `packages/ssqch/` unless it says otherwise.
 - `node --test` runs the package's own unit tests (`*.test.ts` next to the code they test).
 - `npx tsc --noEmit` type-checks. Keep it clean; CI runs it.
 - The oracle (`tests/oracle/`, see its README) is the black-box suite: arguments in; files,
-  output and exit codes out. From `tests/oracle/`, `SSQCH_BIN=packages/ssqch/bin/ssqch.ts node
-  --test` runs it (the path is from the repository root; one file: add its path, such as
-  `cli/init.test.js`). Run it on Node 22.18 (the lowest supported), 24 and 26 before calling
-  something done. `node progress.js` holds the Node build to `node-passing.txt`, the tests it
-  passes; `node progress.js --update` adds new ones, on all three Node versions alike, and a
-  test leaves the list only with a reason in the commit. `node freeze.js [site...]` freezes a
-  site's output from 0.7.
+  output and exit codes out. From `tests/oracle/`, `node --test` runs all of it with ssqch from
+  its source (one file: add its path, such as `cli/init.test.js`; `SSQCH_BIN` runs another
+  ssqch). Run it on Node 22.18 (the lowest supported), 24 and 26 before calling something done;
+  every test passes. `node freeze.js <site>...` freezes a site's output again, which is how a
+  deliberate change to it is accepted (the oracle's README, "Changing a site's output").
 - `node bench/bench.ts` is the speed check: 10,000 pages in 2 s on one thread and v8.dev in
   0.72 s, on the machine those limits were set on (an Apple M-series laptop). Run it alone,
   with nothing compiling beside it. With `--baseline <another checkout's packages/ssqch>` it
@@ -70,15 +70,15 @@ Run from `packages/ssqch/` unless it says otherwise.
 - `node scripts/build.ts` builds the npm package into `dist/` (bundled with esbuild; sharp is its
   one dependency), and `node scripts/check-package.ts` installs that tarball in an empty folder
   and builds every example with it. "Releasing" has the rest.
-- `packages/ssqch/bundled/` holds copies of what the package needs at run time that live
-  elsewhere while 0.7 does: the README for `ssqch docs`, `ssqch.d.ts`, the trailheads, the
-  starters' files. After editing an original, run `node scripts/sync-bundled.ts`;
-  `bundled.test.ts` fails when a copy differs. (`bundled/completions/`, 0.7's completion
-  scripts, is the package's own.)
+- `packages/ssqch/bundled/` holds what the package reads at run time beside its code:
+  `ssqch.d.ts`, the starters (`starter/`, `starter-docs/`) and the completion scripts. Edit them
+  there. The README (`ssqch docs`) and the trailheads (`docs/trailheads/`, `ssqch docs --from`)
+  stay where GitHub shows them: from the source, `src/bundled.ts` reads them there, and
+  `scripts/build.ts` copies them into the package's `bundled/`.
 - `node scripts/build-wasm.ts` builds the Rust the Node build runs as WebAssembly: ssqch's
-  Markdown and highlighter (`crates/ssqch-markdown`, which compiles 0.7's `markdown.rs` and
-  `highlight.rs`) as `wasm/markdown.wasm`, its minifier (`crates/ssqch-minify`, 0.7's
-  `plugins/minify`) as `wasm/minify.wasm`, its Sass (`crates/ssqch-sass`, grass at 0.7's
+  Markdown and highlighter (`crates/ssqch-markdown`, 0.7's `markdown.rs` and `highlight.rs`,
+  moved there) as `wasm/markdown.wasm`, its minifier (`crates/ssqch-minify`, 0.7's
+  `plugins/minify`, moved there) as `wasm/minify.wasm`, its Sass (`crates/ssqch-sass`, grass at 0.7's
   version) as `wasm/sass.wasm`, and the example Rust plugin
   (`examples/rust-plugin/trail_guide.wasm`). They're committed so the Node build needs no Rust.
   Run it after changing that Rust (`node scripts/build-wasm.ts minify` builds one; the lists are
@@ -86,29 +86,32 @@ Run from `packages/ssqch/` unless it says otherwise.
   `rustup target add wasm32-wasip1`.
 - Plugins written in Rust are `.wasm` files built with `crates/ssqch-plugin` (ABI v1, its
   README), loaded by `src/rust-plugin.ts` from a config's `{ name, rust: { wasm, options } }`.
-- 0.7, until the switch: `cargo build --release -p ssqch --features avif` builds it (the
-  oracle's reference), and `cargo test --workspace` runs its tests and the `.wasm` crates'
-  (AVIF on x86_64 needs `nasm`). To see what 0.7 does, run it, not its source: `ssqch build`,
-  then `ssqch diff <0.7 output> <0.8 output>`.
-- CI (`.github/workflows/ci.yml`) runs the Node build's unit tests and the oracle's list on Linux,
-  macOS and Windows on Node 22.18, 24 and 26; builds and checks the npm package on Linux on
-  the same three (`package`, see "Releasing"); runs `node-benchmark` (below); and, while 0.7 is here, `cargo test` and `cargo clippy --workspace --all-targets
-  --features ssqch/avif -- -D warnings`. Keep clippy clean. A pull request that changes the
+- The Rust, from the repository's root: `cargo test --workspace` runs the `.wasm` crates', the
+  SDK's and the example plugin's tests, and `cargo clippy --workspace --all-targets -- -D
+  warnings` (and again with `--lib --target wasm32-wasip1`) lints them. To see what 0.7 did,
+  read the oracle; to run it, install it (`npm install --prefix <dir> ssqch@0.7.0`, then
+  `<dir>/node_modules/@ssqch/<platform>/bin/ssqch`) and compare with `ssqch diff <0.7 output>
+  <0.8 output>`.
+- CI (`.github/workflows/ci.yml`) runs the Node build's unit tests and the whole oracle on
+  Linux, macOS and Windows on Node 22.18, 24 and 26; builds and checks the npm package on Linux
+  on the same three (`package`, see "Releasing"); runs `node-benchmark` (below); and runs the
+  Rust's tests and clippy, natively and for `wasm32-wasip1` (`rust`). Keep clippy clean. A pull request that changes the
   release's own files runs `release.yml` up to the release, unsigned. The Rust isn't formatted
   with rustfmt (it uses long lines), so don't run `cargo fmt`.
 
 ## Rules
 
-- **The contract is 0.7's.** `ssqch.d.ts`, the commands and flags, the JSON reports
-  (`tests/oracle/contract/shapes.json`), the diagnostic codes, exit codes, folder conventions,
-  the build summary's lines and the voice. A deliberate difference is recorded in the oracle
-  test that checks it (`DELIBERATE` in `sites.test.js`, or a `RUST_07` condition) with its
-  reason, and in `CHANGELOG.md` (under "Breaking" when a site has to change). Never edit a
-  snapshot or `shapes.json` by hand to make a test pass.
+- **The contract is frozen in the oracle.** `ssqch.d.ts`, the commands and flags, the JSON
+  reports (`tests/oracle/contract/shapes.json`), the diagnostic codes, exit codes, folder
+  conventions, the build summary's lines and the voice: 0.7's, as 0.8 kept them, with 0.8's
+  deliberate differences. A change to any of them is deliberate, and recorded where it's
+  tested (a `DELIBERATE (0.8)` comment, `DELIBERATE` in `sites.test.js`, or a site frozen again
+  with `node freeze.js <site>`) with its reason, and in `CHANGELOG.md` (under "Breaking" when a
+  site has to change). Never edit a snapshot or `shapes.json` by hand to make a test pass.
 - **ssqch's own designs stay ssqch's** (the cascade, schemas, the link checker, `diff`,
-  `inspect`, the importers, the equivalents table, the voice lines). To see what one does, run
-  0.7 or read its Rust module and tests while they're here; a subagent can brief you on a
-  module.
+  `inspect`, the importers, the equivalents table, the voice lines). To see what one does, read
+  its module and its tests here and in the oracle; 0.7's Rust is on `release/0.7`, and a
+  subagent can brief you on a module.
 - **TypeScript with erasable syntax only** (`erasableSyntaxOnly` in `tsconfig.json`): no
   `enum`, `namespace` or constructor parameter properties, and `import type` for types.
   Relative imports name the `.ts` file. ES modules throughout.
@@ -189,8 +192,11 @@ To release:
    were skipped, and a red commit got an empty release marked Latest (0.3.4). Keep it so.
 
 The 0.7 line is released from `release/0.7` (cut before these workflows), with dist, as it
-always was; see "One last 0.7.x" in `docs/node-migration.md`. The crates end at 0.7: nothing
-is published to crates.io from `main`.
+always was; see "One last 0.7.x" in `docs/node-migration.md`. The `sitesquatch` crates and the
+`ssqch` crate end at 0.7. From `main`, only `ssqch-plugin` goes to crates.io: with 0.8.0, set
+the workspace's version in `Cargo.toml` to the release's, remove `publish = false` from
+`crates/ssqch-plugin/Cargo.toml`, and `cargo publish -p ssqch-plugin` from the tag (by hand; no
+workflow does it).
 
 ### npm
 
@@ -222,7 +228,7 @@ held back.
 
 - Commit subjects are short, imperative, in sentence case (`Fix unstyled pages when serving
   after a production build`).
-- The README ships with the package for `ssqch docs` (`bundled/README.md`), which answers a name
+- The README ships with the package for `ssqch docs` (as `bundled/README.md`), which answers a name
   with the table row or list item that starts with it in backticks. A new config option, module
   export or template function needs one, and a description where it's defined (`ssqch.d.ts`, or
   `BUILTIN_FILTERS` in `src/filters.ts`); `docs_answer_for_every_name` checks.

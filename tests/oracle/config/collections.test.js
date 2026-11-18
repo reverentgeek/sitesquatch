@@ -1,9 +1,7 @@
 // From crates/sitesquatch-js/tests/collections.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { ssqch, project, read, FIXTURES, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, project, read } from "../lib/ssqch.js";
 
 /** Builds `root` the way the Rust tests did: production, quiet. */
 function build(root) {
@@ -150,37 +148,6 @@ test("hook_errors_stop_the_build", () => {
 	assert.ok(e.includes("\"beforeWatch\" isn't a config option"), e);
 });
 
-// DELIBERATE (0.8): 0.7 hands filters copy-on-write views of the site's data, so a filter that
-// writes to its argument changes nothing. On Node, filters get the objects themselves (the
-// changelog's "Breaking"), and there are no views to check.
-test("views_behave_like_plain_objects", { skip: !RUST_07 && "0.7 only: filters get views of the site's data; on Node they get the objects themselves" }, () => {
-	const root = project({
-		"battery.js": fs.readFileSync(path.join(FIXTURES, "js/view-battery.js")),
-		"ssqch.config.js": `import { battery, copy } from "./battery.js";
-export default {
-  ${FORMATS}
-  filters: {
-    viaView: (d) => JSON.stringify(battery(d)),
-    viaCopy: (d) => JSON.stringify(battery(copy(d))),
-  },
-};`,
-		"_data/site.json": `{ "title": "Squatch Snacks", "author": "Sasquatch" }`,
-		"_data/posts.js": `export default [
-  { title: "Pine Cone Crunch", stars: 4, tags: ["snacks", "forest"], date: new Date("2026-01-02") },
-  { title: "Bigfoot Brittle", stars: 5, tags: ["snacks"], date: new Date("2026-02-03") },
-  { title: "Yeti Yogurt", stars: 2, tags: ["dairy", "cold", "snowy"], date: new Date("2026-03-04") },
-  { title: "Mothman Mints", stars: 3, tags: ["snacks", "night"], date: new Date("2026-04-05") },
-];`,
-		"index.edge": "{{{ viaView({ site, posts }) }}}\n{{{ viaCopy({ site, posts }) }}}\n{{ site.title }}|{{ posts[0].title }}|{{ posts.length }}",
-	});
-	buildOk(root);
-	const html = read(root, "_site/index.html");
-	const lines = html.split("\n");
-	const view = JSON.parse(lines[0]);
-	const copy = JSON.parse(lines[1]);
-	for (const [key, want] of Object.entries(copy)) {
-		assert.deepEqual(view[key], want, `${key} differs between a view and a plain copy`);
-	}
-	assert.ok(Object.keys(copy).length >= 40);
-	assert.equal(lines[2], "Squatch Snacks|Pine Cone Crunch|4", "writes in JavaScript must not change the site's data");
-});
+// The Rust test views_behave_like_plain_objects checked 0.7's copy-on-write views of the site's
+// data, which filters got. On Node, filters get the objects themselves (the changelog's
+// "Breaking"), so there are no views to check.

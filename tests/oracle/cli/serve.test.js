@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, tempDir, write } from "../lib/ssqch.js";
 import { start, sleep, waitFor, changeAndWait, httpGet, body } from "../lib/serve.js";
 
 const unixOnly = { skip: process.platform === "win32" && "unix only" };
@@ -409,7 +409,9 @@ test("serve_stops_quietly_on_ctrl_c_during_a_build", unixOnly, async () => {
 });
 
 // A folder renamed away and back again (an undo, a `git stash`) rebuilds each time.
-test("serve_rebuilds_for_a_folder_renamed_back", { skip: RUST_07 && "0.7 took a folder renamed back for no change: it hashed a folder's contents as nothing, the same each time" }, async () => {
+// 0.7 took a folder renamed back for no change: it hashed a folder's contents as nothing, the same
+// each time.
+test("serve_rebuilds_for_a_folder_renamed_back", async () => {
 	const dir = tempDir("serve-renamed");
 	write(dir, {
 		"ssqch.config.js": "export default { dirs: { input: \"src\" } };\n",
@@ -437,7 +439,8 @@ test("serve_rebuilds_for_a_folder_renamed_back", { skip: RUST_07 && "0.7 took a 
 });
 
 // A config file that's deleted leaves the defaults building; one that's put back is read again.
-test("serve_reads_a_config_file_put_back", { skip: RUST_07 && "0.7 didn't watch for a config file that wasn't loaded, so one put back went unread" }, async () => {
+// 0.7 didn't watch for a config file that wasn't loaded, so one put back went unread.
+test("serve_reads_a_config_file_put_back", async () => {
 	for (const input of ["src", "."]) {
 		const dir = tempDir("serve-config-back");
 		const config = (greeting) => `export default { dirs: { input: ${JSON.stringify(input)} }, data: { greeting: "${greeting}" } };\n`;

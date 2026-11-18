@@ -3,7 +3,9 @@
 //
 // Each site is built in a copy whose files all have FIXED_TIME, with TZ=UTC and --format json, so
 // dates that come from file times repeat. The output, the normalized JSON report and the build
-// summary are compared with the snapshot that `node freeze.js` made with ssqch 0.7.0.
+// summary are compared with the snapshot that `node freeze.js` made: with ssqch 0.7.0 (the Rust
+// implementation, until 0.8 replaced it), or with the Node build for a site whose output changed
+// on purpose since. The manifest says which version froze it.
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -113,13 +115,15 @@ export function buildSite(site) {
 
 // ---- normalizing ------------------------------------------------------------------------------
 
+/** Where the implementation's version is in a site's text. */
+const versionPattern = (version) => new RegExp(`(SiteSquatch |SiteSquatch</a> |ssqch |ssqch@|ssqch/|"version": "|version: ")v?${version.replaceAll(".", "\\.")}\\b`, "g");
+
 /** The implementation's version in text becomes `{{version}}`, so 0.7.0's snapshot fits 0.8.0. */
 export function normalizeText(text, version = expectedVersion()) {
-	const v = version.replaceAll(".", "\\.");
-	return text.replace(new RegExp(`(SiteSquatch |SiteSquatch</a> |ssqch |ssqch@|ssqch/|"version": "|version: ")v?${v}\\b`, "g"), "$1{{version}}");
+	return text.replace(versionPattern(version), "$1{{version}}");
 }
 
-/** The version the snapshots were frozen with: what the patterns `freeze.js` didn't know yet left in them is normalized when they load. */
+/** The version a snapshot without one in its manifest was frozen with (all of them, before 0.8 froze any). */
 const FROZEN = "0.7.0";
 
 /** The JSON report without what changes from run to run: times, absolute paths, the order of `written`. */
@@ -160,10 +164,18 @@ export function listFiles(dir, rel = "") {
 }
 
 /**
- * The snapshot of a built site, as `{ files: { path: { text } | { sha256, bytes } | { link } }, report, log }`.
+ * The snapshot of a built site, as `{ version, files: { path: { text } | { sha256, bytes } | { link } }, report, log }`.
  * `starter` sites also record the files `ssqch init` wrote.
+ *
+ * The JSON report counts the bytes of the pages written, and those include the version wherever a
+ * page prints it (a starter's footer, the blog's generator tag): with `asVersion`, the count is
+ * the one a version as long as that one would have given, so a snapshot frozen with 0.7.0 fits
+ * 0.8.0-dev. (The build summary's sizes, in tenths of a kilobyte, aren't adjusted.)
  */
-export function snapshotOf(build, site) {
+export function snapshotOf(build, site, asVersion) {
+	const version = expectedVersion();
+	const written = new Set(Array.isArray(build.report?.written) ? build.report.written : []);
+	let printed = 0;
 	const files = {};
 	if (build.out && fs.existsSync(build.out)) {
 		for (const file of listFiles(build.out)) {
@@ -171,6 +183,7 @@ export function snapshotOf(build, site) {
 			if (fs.lstatSync(abs).isSymbolicLink()) { files[file] = { link: fs.readlinkSync(abs) }; continue; }
 			const buf = fs.readFileSync(abs);
 			const text = asText(buf);
+			if (text !== null && written.has(file)) printed += text.match(versionPattern(version))?.length ?? 0;
 			files[file] = text === null ? { sha256: crypto.createHash("sha256").update(buf).digest("hex"), bytes: buf.length } : { text: normalizeText(text) };
 		}
 	}
@@ -185,7 +198,9 @@ export function snapshotOf(build, site) {
 			source[file] = text === null ? { sha256: crypto.createHash("sha256").update(buf).digest("hex"), bytes: buf.length } : normalizeText(text);
 		}
 	}
-	return { ok: build.ok, report: normalizeReport(build.report, build), log: build.summary, files, source };
+	const report = normalizeReport(build.report, build);
+	if (asVersion && typeof report?.pages?.bytes === "number") report.pages.bytes += printed * (asVersion.length - version.length);
+	return { version, ok: build.ok, report, log: build.summary, files, source };
 }
 
 // ---- storing ----------------------------------------------------------------------------------
@@ -196,7 +211,7 @@ export function snapshotOf(build, site) {
 export function saveSnapshot(dir, snap) {
 	fs.rmSync(dir, { recursive: true, force: true });
 	fs.mkdirSync(dir, { recursive: true });
-	const manifest = { ok: snap.ok, report: snap.report, log: snap.log, files: {}, source: snap.source ? {} : undefined };
+	const manifest = { version: snap.version, ok: snap.ok, report: snap.report, log: snap.log, files: {}, source: snap.source ? {} : undefined };
 	for (const [file, entry] of Object.entries(snap.files)) {
 		if ("text" in entry) {
 			fs.mkdirSync(path.dirname(path.join(dir, "output", file)), { recursive: true });
@@ -215,16 +230,18 @@ export function saveSnapshot(dir, snap) {
 
 export function loadSnapshot(dir) {
 	const manifest = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"));
+	// What the patterns `freeze.js` didn't know yet left in the text is normalized as it loads.
+	const version = manifest.version ?? FROZEN;
 	const files = {};
-	for (const [file, kind] of Object.entries(manifest.files)) files[file] = kind === "text" ? { text: normalizeText(fs.readFileSync(path.join(dir, "output", file), "utf8"), FROZEN) } : kind;
-	const source = manifest.source ? Object.fromEntries(Object.entries(manifest.source).map(([f, kind]) => [f, kind === "text" ? normalizeText(fs.readFileSync(path.join(dir, "source", f), "utf8"), FROZEN) : kind])) : null;
-	return { ok: manifest.ok, report: manifest.report, log: manifest.log, files, source };
+	for (const [file, kind] of Object.entries(manifest.files)) files[file] = kind === "text" ? { text: normalizeText(fs.readFileSync(path.join(dir, "output", file), "utf8"), version) } : kind;
+	const source = manifest.source ? Object.fromEntries(Object.entries(manifest.source).map(([f, kind]) => [f, kind === "text" ? normalizeText(fs.readFileSync(path.join(dir, "source", f), "utf8"), version) : kind])) : null;
+	return { version, ok: manifest.ok, report: manifest.report, log: manifest.log, files, source };
 }
 
 /** What differs between two snapshots, as lines a person reads (empty when they're the same). */
 export function differences(expected, actual) {
 	const out = [];
-	if (expected.ok !== actual.ok) out.push(`the build ${expected.ok ? "failed" : "succeeded"}, and 0.7.0's ${expected.ok ? "succeeded" : "failed"}`);
+	if (expected.ok !== actual.ok) out.push(`the build ${expected.ok ? "failed" : "succeeded"}, and the snapshot's (${expected.version}) ${expected.ok ? "succeeded" : "failed"}`);
 	const compareMaps = (label, a, b, same) => {
 		for (const f of Object.keys(a)) if (!(f in b)) out.push(`${label}${f}: missing`);
 		for (const f of Object.keys(b)) if (!(f in a)) out.push(`${label}${f}: not in the snapshot`);

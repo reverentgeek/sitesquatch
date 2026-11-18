@@ -12,7 +12,6 @@
 		"node": ">=22.18"
 	},
 	"scripts": {
-		"sync-bundled": "node scripts/sync-bundled.ts",
 		"test": "node --test",
 		"typecheck": "tsc --noEmit"
 	},

@@ -1,6 +1,5 @@
-// What each committed `.wasm` file is built from, as one hash: the Rust files (for Markdown,
-// 0.7's markdown.rs, highlight.rs and suggest.rs, the crate around them, and sitesquatch-edge,
-// whose Value they use), the wasm profile, and the versions of the crates in Cargo.lock it
+// What each committed `.wasm` file is built from, as one hash: the Rust files (the crate's own,
+// and the SDK's for the crates built with it), the wasm profile, and the versions of the crates in Cargo.lock it
 // depends on. The build script puts the hash in the file (a custom section), and a test
 // compares it with the files, so a change to the Rust that isn't built into the committed file
 // fails without needing Rust.
@@ -49,8 +48,8 @@ export const BUILDS: WasmBuild[] = [
 		file: "packages/ssqch/wasm/markdown.wasm",
 		section: "ssqch_markdown_inputs",
 		env: "SSQCH_MARKDOWN_INPUTS",
-		files: ["crates/sitesquatch/src/markdown.rs", "crates/sitesquatch/src/highlight.rs", "crates/sitesquatch/src/suggest.rs", "crates/ssqch-markdown/Cargo.toml", "crates/sitesquatch-edge/Cargo.toml"],
-		folders: ["crates/ssqch-markdown/src", "crates/sitesquatch-edge/src"],
+		files: ["crates/ssqch-markdown/Cargo.toml"],
+		folders: ["crates/ssqch-markdown/src"],
 		profile: "wasm",
 	},
 	{
@@ -59,7 +58,7 @@ export const BUILDS: WasmBuild[] = [
 		file: "packages/ssqch/wasm/minify.wasm",
 		section: "ssqch_minify_inputs",
 		env: "SSQCH_MINIFY_INPUTS",
-		files: ["plugins/minify/src/lib.rs", "crates/ssqch-minify/Cargo.toml", "crates/ssqch-plugin/Cargo.toml"],
+		files: ["crates/ssqch-minify/Cargo.toml", "crates/ssqch-plugin/Cargo.toml"],
 		folders: ["crates/ssqch-minify/src", "crates/ssqch-plugin/src"],
 		profile: "wasm",
 	},

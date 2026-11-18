@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write, read, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read } from "../lib/ssqch.js";
 
 test("markdown_options_hooks_containers_and_headings", () => {
 	const dir = tempDir("markdown");
@@ -94,8 +94,8 @@ test("sites_add_and_replace_highlighted_languages", () => {
 	const bad = read(dir, "dist/bad/index.html");
 	assert.equal(bad, "<pre><code class=\"language-broken\">x\n</code></pre>\n<pre><code class=\"language-wrong\">x\n</code></pre>\n<pre><code class=\"language-short\">whole\n</code></pre>\n");
 	// DELIBERATE (0.8): the column in a stack frame is where Node (V8) says the error was made,
-	// at `new` in `throw new Error(...)`; 0.7 ran the config on QuickJS, which says `Error`.
-	const column = RUST_07 ? 31 : 27;
+	// at `new` in `throw new Error(...)`; 0.7 ran the config on QuickJS, which said `Error` (31).
+	const column = 27;
 	for (const expected of [
 		`warn: src/bad.md: a \`broken\` fence is plain text: markdown.highlight.languages.broken failed: no pine cones\n    at broken (ssqch.config.js:9:${column})`,
 		"warn: src/bad.md: a `wrong` fence is plain text: markdown.highlight.languages.wrong returned the kind \"chord\", which isn't one of comment, keyword,",
@@ -118,7 +118,7 @@ test("sites_add_and_replace_highlighted_languages", () => {
 
 // 0.8: highlighted fences are kept in .cache/ssqch/highlight/ for the next process, which then
 // doesn't load the grammars. 0.7 kept them in memory only.
-test("highlighted_fences_are_cached_between_builds_and_never_change_a_page", { skip: RUST_07 && "0.7 kept highlighted fences in memory only" }, () => {
+test("highlighted_fences_are_cached_between_builds_and_never_change_a_page", () => {
 	const dir = tempDir("highlight-cache");
 	const w = (p, t) => write(dir, { [p]: t });
 	const cache = path.join(dir, ".cache/ssqch/highlight/fences.json");

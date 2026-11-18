@@ -1,6 +1,6 @@
 // en-US date and number formatting cases checked against Node. Regenerate the
 // expected output with:
-//   node crates/sitesquatch-js/tests/fixtures/intl-cases.mjs > crates/sitesquatch-js/tests/fixtures/intl-expected.json
+//   node tests/oracle/fixtures/js/intl-cases.mjs > tests/oracle/fixtures/js/intl-expected.json
 const dates = [Date.UTC(2026, 2, 14), Date.UTC(2026, 2, 14, 13, 5, 9), Date.UTC(1999, 11, 31, 23, 59, 59), Date.UTC(2024, 0, 1, 0, 0, 0), Date.UTC(2025, 6, 4, 12, 30, 0), Date.UTC(2003, 8, 9, 7, 8, 0)].map((t) => new Date(t));
 const U = { timeZone: "UTC" };
 const optionSets = [

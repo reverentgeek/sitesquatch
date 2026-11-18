@@ -1,7 +1,7 @@
 // From crates/ssqch/tests/cli.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ssqch, tempDir, write, read, exists, isFile, expectedVersion, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, exists, isFile, expectedVersion } from "../lib/ssqch.js";
 
 test("import_moves_an_eleventy_site", () => {
 	const dir = tempDir("import");
@@ -110,9 +110,7 @@ test("import_keeps_package_json_as_written", () => {
 	const r = ssqch(["import", "eleventy", dir, "--write"]);
 	assert.ok(r.ok, r.log);
 	const v = expectedVersion();
-	assert.equal(read(dir, "package.json"), RUST_07
-		? `{\n\t"name": "trail-guide",\n\t"weight": 1.0,\n\t"exp": 100000.0,\n\t"keywords": [\n\t\t"pine",\n\t\t"cone"\n\t],\n\t"scripts": {\n\t\t"build": "ssqch build"\n\t},\n\t"devDependencies": {\n\t\t"ssqch": "${v}",\n\t\t"zed": "1"\n\t}\n}\n`
-		: `{\n\t"name": "trail-guide",\n\t"weight": 1.0,\n\t"exp": 1e5,\n\t"keywords": ["pine", "cone"],\n\t"scripts": { "build": "ssqch build" },\n\t"devDependencies": {\n\t\t"ssqch": "${v}",\n\t\t"zed": "1"\n\t}\n}\n`);
+	assert.equal(read(dir, "package.json"), `{\n\t"name": "trail-guide",\n\t"weight": 1.0,\n\t"exp": 1e5,\n\t"keywords": ["pine", "cone"],\n\t"scripts": { "build": "ssqch build" },\n\t"devDependencies": {\n\t\t"ssqch": "${v}",\n\t\t"zed": "1"\n\t}\n}\n`);
 });
 
 // A template literal with `${...}` is worked out when the config runs, and a default value that
@@ -123,10 +121,6 @@ test("import_leaves_computed_names_and_config_defaults_for_a_person", () => {
 	const r = ssqch(["import", "eleventy", dir, "--write"]);
 	assert.ok(r.ok, r.log);
 	const config = read(dir, "ssqch.config.js");
-	if (RUST_07) {
-		assert.ok(config.includes("passthrough: [\"${dir}/img\"]") && config.includes("year: (value, format = dateFormat) => format + value,"), config);
-		return;
-	}
 	assert.ok(!config.includes("${dir}") && !config.includes("dateFormat") && config.includes("//   filters: year\n"), config);
 	for (const expected of ["  eleventy.config.js:4: addPassthroughCopy with a variable or a computed value -> ", "  eleventy.config.js:5: addFilter(\"year\") -> "]) {
 		assert.ok(r.log.includes(expected), `missing ${JSON.stringify(expected)} in\n${r.log}`);
@@ -200,7 +194,7 @@ test("import_moves_a_zola_site", () => {
 	}
 	// A date in `[extra]` is its text. 0.7 wrote the TOML library's own object for it, which no
 	// template could print (a deliberate difference: 0.7 was wrong).
-	const founded = RUST_07 ? "\"founded\": {\n          \"$__toml_private_datetime\": \"2019-05-01\"\n        }" : "\"founded\": \"2019-05-01\"";
+	const founded = "\"founded\": \"2019-05-01\"";
 	assert.ok(config.includes(founded), `missing ${JSON.stringify(founded)} in\n${config}`);
 
 	// The by-hand part, done: the template, the shortcode as a filter, and the section's data.

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { ssqch, project, read, hasCapability, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, project, read, hasCapability } from "../lib/ssqch.js";
 
 // The Rust tests built through the library, whose default template formats include edge. The
 // command line's don't, so a project without an ssqch.config.js gets this one, which does nothing
@@ -56,10 +56,10 @@ const PACKAGES = {
 const withPackages = (files) => ({ ...PACKAGES, ...files });
 
 test("packages_resolve_like_node", () => {
-	// DELIBERATE (0.8): 0.7 runs a CommonJS file to see its exports, so any property of
-	// `module.exports` can be imported by name. Node reads the names from the source, and finds
+	// DELIBERATE (0.8): 0.7 ran a CommonJS file to see its exports, so any property of
+	// `module.exports` could be imported by name. Node reads the names from the source, and finds
 	// none in `module.exports = { name: "legacy", ... }`: the default export has them.
-	const legacy = RUST_07 ? "import legacy, { twice } from \"legacy\";" : "import legacy from \"legacy\";\nconst { twice } = legacy;";
+	const legacy = "import legacy from \"legacy\";\nconst { twice } = legacy;";
 	const root = site(withPackages({
 		"_data/out.js":
 			"import run, { kind } from \"dual\";\nimport shout from \"dual/tools/shout\";\n" + legacy + "\nimport slug from \"@squatch/cjs-fn\";\nimport { createRequire } from \"node:module\";\nconst require = createRequire(import.meta.url);\nexport default [run(), kind, require(\"dual\").kind, shout(\"hi\"), legacy.version, twice(4), legacy.dir, legacy.file, slug(\"Pine Cone\"), typeof slug.extend, require(\"dual/package.json\").name].join(\"|\");\n",
@@ -68,7 +68,7 @@ test("packages_resolve_like_node", () => {
 	buildOk(root);
 	// DELIBERATE (0.8): `__dirname` and `__filename` are Node's own, which on Windows have `\`, so the
 	// package's two checks for `/legacy/lib` are false there. 0.7 gave paths with `/` on every system.
-	const posix = RUST_07 || process.platform !== "win32";
+	const posix = process.platform !== "win32";
 	assert.equal(read(root, "_site/index.html"), `helped legacy|esm|cjs|HI|1.2.3|8|${posix}|${posix}|pine-cone|function|dual`);
 });
 
@@ -159,10 +159,8 @@ export default [
 	assert.equal(read(root, "_site/index.html"), "3|Squatch has 3 snacks {\"a\":1}|{ a: [ 1, { b: 'c' } ] }|true|string|function|42|✓|object");
 });
 
-test("stub_built_ins_load_but_throw_when_used", { skip: !RUST_07 && "QuickJS only: node:http is a stub that throws when used" }, () => {
-	const e = buildError({ "_data/x.js": "const http = require(\"http\");\nmodule.exports = http.get(\"http://localhost\");\n", "index.edge": "" });
-	assert.ok(e.includes("_data/x.js") && e.includes("node:http isn't available in ssqch"), e);
-});
+// The Rust test stub_built_ins_load_but_throw_when_used checked 0.7's stand-in for node:http,
+// which loaded and threw when used. On Node, node:http is Node's own.
 
 test("package_errors_say_what_to_fix", () => {
 	let e = buildError(withPackages({ "_data/x.js": "import x from \"dual/secret\"; export default x;", "index.edge": "" }));

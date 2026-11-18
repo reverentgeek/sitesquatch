@@ -87,11 +87,3 @@ test("a_browsers_questions_are_read", () => {
 	assert.equal(contentType("a/app.mjs"), "text/javascript; charset=utf-8");
 	assert.equal(contentType("a/photo.JPG"), "application/octet-stream");
 });
-
-// While both implementations live, the script and the page the server sends are 0.7's.
-const rust = new URL("../../../../crates/sitesquatch/src/", import.meta.url);
-test("the reload script and the 404 page are 0.7's", { skip: !fs.existsSync(rust) && "the Rust implementation is gone" }, () => {
-	for (const name of ["live.js", "not-found.html"]) {
-		assert.equal(fs.readFileSync(new URL(name, import.meta.url), "utf8"), fs.readFileSync(new URL(name, rust), "utf8"), name);
-	}
-});

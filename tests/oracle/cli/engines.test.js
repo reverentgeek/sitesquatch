@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write, read, exists, RUST_07 } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, exists } from "../lib/ssqch.js";
 
 test("jinja_is_the_default_and_other_templates_are_named", () => {
 	const dir = tempDir("default-engine");
@@ -365,8 +365,9 @@ test("ejs_keeps_its_own_names_when_the_data_has_them", () => {
 
 // Decided for 0.8 (CHANGELOG.md, 0.8.0): `.njk` prints values as Nunjucks does, as a site from
 // Eleventy expects; Edge's `safe()` prints raw HTML; tags from functions work in `.jinja`; and
-// Liquid splits by nothing and joins two items as Shopify and Jekyll do. 0.7's answers are kept
-// here, for the 0.7 build.
+// Liquid splits by nothing and joins two items as Shopify and Jekyll do. 0.7 had no tags in
+// `.jinja`, printed `True` and `['a', 'b']` in `.njk`, escaped `safe()`'s HTML, counted 5 and
+// wrote "pine, and cedar".
 test("printing_tags_and_sentences_as_0_8_decided", () => {
 	const dir = tempDir("decided");
 	write(dir, {
@@ -379,21 +380,10 @@ test("printing_tags_and_sentences_as_0_8_decided", () => {
 	});
 	const r = ssqch(["build", "--root", dir, "-q"]);
 	const out = (name) => read(dir, `_site/${name}/index.html`);
-	if (RUST_07) {
-		// 0.7 had no tags in `.jinja`: that page is the error here.
-		assert.ok(!r.ok && r.log.includes("t.jinja"), r.log);
-		write(dir, { "src/t.jinja": "" });
-		const again = ssqch(["build", "--root", dir, "-q"]);
-		assert.ok(again.ok, again.log);
-		assert.equal(out("n"), "True|[&#39;a&#39;, &#39;b&#39;]|[\"a\", \"b\"]");
-		assert.equal(out("e"), "&lt;b&gt;pine&lt;/b&gt;");
-		assert.equal(out("l"), "5|pine, and cedar");
-	} else {
-		assert.ok(r.ok, r.log);
-		assert.equal(out("n"), "true|a,b|[\"a\",\"b\"]");
-		assert.equal(out("t"), "<img src=\"/a.png\">");
-		assert.equal(out("e"), "<b>pine</b>");
-		assert.equal(out("l"), "3|pine and cedar");
-	}
+	assert.ok(r.ok, r.log);
+	assert.equal(out("n"), "true|a,b|[\"a\",\"b\"]");
+	assert.equal(out("t"), "<img src=\"/a.png\">");
+	assert.equal(out("e"), "<b>pine</b>");
+	assert.equal(out("l"), "3|pine and cedar");
 	assert.equal(out("j"), "True|[&#39;a&#39;, &#39;b&#39;]");
 });
