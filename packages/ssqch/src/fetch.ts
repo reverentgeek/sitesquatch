@@ -13,12 +13,10 @@
 
 import { createHash } from "node:crypto";
 import fs from "node:fs";
-import http from "node:http";
-import https from "node:https";
-import net from "node:net";
+import type { IncomingMessage } from "node:http";
+import type { RequestOptions } from "node:https";
 import path from "node:path";
-import { Readable, pipeline } from "node:stream";
-import zlib from "node:zlib";
+import type { Readable } from "node:stream";
 import { warn, warning } from "./diagnostics.ts";
 import { VERSION } from "./version.ts";
 
@@ -284,13 +282,23 @@ async function answer(request: Request, ask: Ask, shown: string, cache: Cache, i
 // ---- requests through node:http --------------------------------------------------------------
 
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
-const DECODERS: Record<string, () => NodeJS.ReadWriteStream> = {
-	// As Node's fetch decodes: a body cut short gives what arrived.
-	gzip: () => zlib.createGunzip({ flush: zlib.constants.Z_SYNC_FLUSH, finishFlush: zlib.constants.Z_SYNC_FLUSH }),
-	"x-gzip": () => zlib.createGunzip({ flush: zlib.constants.Z_SYNC_FLUSH, finishFlush: zlib.constants.Z_SYNC_FLUSH }),
-	deflate: () => zlib.createInflate(),
-	br: () => zlib.createBrotliDecompress(),
-};
+
+/** Node's modules for these requests, loaded the first time one goes out: most builds never need them. */
+const load = () => Promise.all([import("node:http"), import("node:https"), import("node:net"), import("node:stream"), import("node:zlib")]).then(([http, https, net, stream, zlib]) => ({ http: http.default, https: https.default, net: net.default, stream: stream.default, zlib: zlib.default }));
+let loaded: ReturnType<typeof load> | undefined;
+const nodeModules = () => (loaded ??= load());
+type Modules = Awaited<ReturnType<typeof load>>;
+
+/** A decoder for a content coding, as Node's fetch decodes (a gzip body cut short gives what arrived). */
+function decoder(zlib: Modules["zlib"], coding: string): NodeJS.ReadWriteStream | undefined {
+	const sync = { flush: zlib.constants.Z_SYNC_FLUSH, finishFlush: zlib.constants.Z_SYNC_FLUSH };
+	switch (coding) {
+		case "gzip": case "x-gzip": return zlib.createGunzip(sync);
+		case "deflate": return zlib.createInflate();
+		case "br": return zlib.createBrotliDecompress();
+	}
+	return undefined;
+}
 
 const failed = (reason: string) => new TypeError("fetch failed", { cause: new Error(reason) });
 
@@ -300,6 +308,7 @@ const failed = (reason: string) => new TypeError("fetch failed", { cause: new Er
  * says), the body decoded, and an abort heard.
  */
 async function nodeHttpFetch(request: Request): Promise<Response> {
+	const modules = await nodeModules();
 	let body: Buffer | undefined = request.body === null ? undefined : Buffer.from(await request.arrayBuffer());
 	let url = new URL(request.url);
 	let method = request.method;
@@ -309,10 +318,10 @@ async function nodeHttpFetch(request: Request): Promise<Response> {
 	}
 	let redirected = false;
 	for (let hops = 0; ; hops++) {
-		const res = await exchange(url, method, headers, body, request.signal);
+		const res = await exchange(modules, url, method, headers, body, request.signal);
 		const status = res.statusCode ?? 0;
 		const location = res.headers.location;
-		if (!REDIRECTS.has(status) || location === undefined || request.redirect === "manual") return toResponse(res, url, redirected, method, request.signal);
+		if (!REDIRECTS.has(status) || location === undefined || request.redirect === "manual") return toResponse(modules, res, url, redirected, method, request.signal);
 		res.resume();
 		if (request.redirect === "error") throw failed("unexpected redirect");
 		if (hops >= 20) throw failed("redirect count exceeded");
@@ -331,13 +340,13 @@ async function nodeHttpFetch(request: Request): Promise<Response> {
 	}
 }
 
-function exchange(url: URL, method: string, headers: Headers, body: Buffer | undefined, signal: AbortSignal): Promise<http.IncomingMessage> {
+function exchange({ http, https, net }: Modules, url: URL, method: string, headers: Headers, body: Buffer | undefined, signal: AbortSignal): Promise<IncomingMessage> {
 	return new Promise((resolve, reject) => {
 		if (signal.aborted) return reject(signal.reason);
 		const outgoing: Record<string, string> = {};
 		for (const [name, value] of headers) outgoing[name] = value;
 		if (body !== undefined && !headers.has("content-length") && !headers.has("transfer-encoding")) outgoing["content-length"] = String(body.length);
-		const options: https.RequestOptions = { method, headers: outgoing };
+		const options: RequestOptions = { method, headers: outgoing };
 		// The server's name for TLS is the URL's, whatever the `Host` header says (Node would take that).
 		if (url.protocol === "https:" && net.isIP(url.hostname.replace(/^\[|\]$/g, "")) === 0) options.servername = url.hostname;
 		const req = (url.protocol === "https:" ? https : http).request(url, options);
@@ -361,7 +370,7 @@ function exchange(url: URL, method: string, headers: Headers, body: Buffer | und
 	});
 }
 
-function toResponse(res: http.IncomingMessage, url: URL, redirected: boolean, method: string, signal: AbortSignal): Response {
+function toResponse({ stream: { Readable, pipeline }, zlib }: Modules, res: IncomingMessage, url: URL, redirected: boolean, method: string, signal: AbortSignal): Response {
 	const status = res.statusCode ?? 0;
 	const headers = new Headers();
 	for (let i = 0; i < res.rawHeaders.length; i += 2) headers.append(res.rawHeaders[i], res.rawHeaders[i + 1]);
@@ -369,7 +378,7 @@ function toResponse(res: http.IncomingMessage, url: URL, redirected: boolean, me
 	if (method === "HEAD" || [101, 103, 204, 205, 304].includes(status)) res.resume();
 	else {
 		const codings = String(res.headers["content-encoding"] ?? "").toLowerCase().split(",").map((c) => c.trim()).filter((c) => c !== "");
-		const decoders = codings.length > 0 && codings.every((c) => DECODERS[c]) ? codings.reverse().map((c) => DECODERS[c]()) : [];
+		const decoders = codings.length > 0 && codings.every((c) => DECODED.has(c)) ? codings.reverse().map((c) => decoder(zlib, c)!) : [];
 		const stream = decoders.length ? (pipeline([res, ...decoders], () => {}) as unknown as Readable) : res;
 		body = Readable.toWeb(stream) as ReadableStream;
 		signal.addEventListener("abort", () => res.destroy(signal.reason), { once: true });

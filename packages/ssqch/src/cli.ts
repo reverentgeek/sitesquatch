@@ -26,7 +26,6 @@ import { describeThrown } from "./modules.ts";
 import { relative } from "./paths.ts";
 import { quoted } from "./quote.ts";
 import { summary } from "./report.ts";
-import { rustRegExp } from "./rust-regex.ts";
 import { BUILDER, runBuilder } from "./serve/builder.ts";
 import type { BuilderStart } from "./serve/builder.ts";
 import { serve, serveBuilt } from "./serve/server.ts";
@@ -459,6 +458,8 @@ async function runInspect(config: Config, target: string, name: string | undefin
 async function runDiff(before: string, after: string, options: { exact: boolean; ignore: string[]; only: string[]; lines: number; format: string }): Promise<number> {
 	try {
 		checkFormat(options.format);
+		// Only `diff` reads Rust's regex syntax, so the translator loads with it.
+		const { rustRegExp } = await import("./rust-regex.ts");
 		const ignore = options.ignore.map((pattern) => {
 			try { return rustRegExp(pattern, "g"); } catch (e) { return bail(`--ignore ${quoted(pattern)} isn't a regular expression: ${(e as Error).message}`); }
 		});
