@@ -324,13 +324,13 @@ declare module "ssqch/image" {
 		outputDir?: string;
 		/** URL path they're served from. Default `/img/`. */
 		urlPath?: string;
-		/** WebP quality, sharp's: a whole number from 1 to 100. Default 75 (0.7's 75 too: WebP's numbers didn't change). */
+		/** WebP quality, sharp's: a whole number from 1 to 100. Default 75. */
 		webpQuality?: number;
-		/** AVIF quality, sharp's: a whole number from 1 to 100. Default 41, which looks like 0.7's default of 50 (0.7's 60 is 48; the changelog has the table). */
+		/** AVIF quality, sharp's: a whole number from 1 to 100. Default 41. */
 		avifQuality?: number;
-		/** sharp's AVIF effort: a whole number from 0 (fastest) to 9 (slowest, smallest files). Default 2. Replaces 0.7's `avifSpeed`: speed 8 is effort 2, speed 4 is effort 3. */
+		/** sharp's AVIF effort: a whole number from 0 (fastest) to 9 (slowest, smallest files). Default 2. */
 		avifEffort?: number;
-		/** JPEG quality, sharp's (mozjpeg): a whole number from 1 to 100. Default 89, which looks like 0.7's default of 80. */
+		/** JPEG quality, sharp's (mozjpeg): a whole number from 1 to 100. Default 89. */
 		jpegQuality?: number;
 		/** A width larger than the original is clamped to it only when the width before it is this many times smaller. Default 1.25. */
 		minimumThreshold?: number;
@@ -359,7 +359,7 @@ declare module "ssqch/image" {
 		size: number;
 	}
 
-	/** Turns every local `<img>` in HTML output into a `<picture>`, encoded by sharp (AVIF needs no build feature). `[ssqch] Encoded ...` lines come as each image's files are done, while pages go on rendering. */
+	/** Turns every local `<img>` in HTML output into a `<picture>`, with AVIF, WebP and fallback sources encoded by sharp. `[ssqch] Encoded ...` lines come as each image's files are done, while pages go on rendering. */
 	export function imagePlugin(options?: ImagePluginOptions): BuiltinPlugin;
 
 	/** Generate one image's files with the plugin's settings and cache. Keyed by format, smallest first; with `"auto"` in `formats`, its files are under `auto` too. */

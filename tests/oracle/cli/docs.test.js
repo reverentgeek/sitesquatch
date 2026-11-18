@@ -101,9 +101,9 @@ test("docs_answer_for_every_name", () => {
 		r = ssqch(["docs", ...query]);
 		assert.ok(r.ok && r.log.includes(want), `${JSON.stringify(query)}: ${r.log}`);
 	}
-	// 0.8's image quality options, on sharp's scale, with the conversion from 0.7's.
+	// The image quality options, on sharp's scale, with their defaults.
 	r = ssqch(["docs", "avifEffort"]);
-	assert.ok(r.ok && r.log.includes("`avifQuality` 41") && r.log.includes("speed 4 is effort 3"), r.log);
+	assert.ok(r.ok && r.log.includes("`avifQuality` 41") && r.log.includes("`avifEffort` 2"), r.log);
 	r = ssqch(["docs"]);
 	assert.ok(r.ok && r.log.includes("\n  leaveNoTrace ") && r.log.includes("\n    imagePlugin ") && r.log.includes("\nTopics\n  Install, "), r.log);
 	r = ssqch(["docs", "pinecone", "crunch", "sightings"]);
