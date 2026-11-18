@@ -113,6 +113,13 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/out"
           npm pack ./dist --pack-destination "$GITHUB_WORKSPACE/out"
           ls -l "$GITHUB_WORKSPACE/out"
+      # The release writes the formula again from this tarball; here a pull request tries it too.
+      - name: The Homebrew formula is written and parses
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          node scripts/release-files.mjs --version "$VERSION" --tarball "out/ssqch-$VERSION.tgz" --out "$RUNNER_TEMP/formula"
+          ruby -c "$RUNNER_TEMP/formula/ssqch.rb"
       - uses: actions/upload-artifact@v7
         with:
           name: npm-package
