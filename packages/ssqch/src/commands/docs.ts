@@ -35,7 +35,10 @@ export interface Section {
 const byteLength = (text: string) => Buffer.byteLength(text);
 const ALNUM = /[\p{Alphabetic}\p{N}]/u;
 
-/** The README's sections, in order. `#` lines in code blocks aren't headings. */
+/** A line that's only an HTML image, perhaps in a `<p>` of its own. */
+const IMAGE_LINE = /^\s*(<p\b[^>]*>\s*)?<img\b[^>]*>(\s*<\/p>)?\s*$/i;
+
+/** The README's sections, in order. `#` lines in code blocks aren't headings, and a line that's only an image is left out. */
 export function sections(readme: string = bundled("README.md")): Section[] {
 	const out: Section[] = [];
 	let fence: string | null = null;
@@ -47,6 +50,8 @@ export function sections(readme: string = bundled("README.md")): Section[] {
 			// A closing fence is the marker alone; an opening one can name a language.
 			else if (fence === marker && trimmed.trimEnd().replace(new RegExp(`^\\${marker[0]}+`), "") === "") fence = null;
 		}
+		// A line that's only an image (the README's stickers) is for the page, not the terminal.
+		if (fence === null && marker === undefined && IMAGE_LINE.test(line)) continue;
 		const hashes = line.length - line.replace(/^#+/, "").length;
 		if (fence === null && marker === undefined && hashes >= 1 && hashes <= 4 && line[hashes] === " ") {
 			out.push({ level: hashes, title: line.slice(hashes).trim(), body: "" });

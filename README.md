@@ -4,6 +4,8 @@
 [![Latest release](https://img.shields.io/github/v/release/reverentgeek/sitesquatch)](https://github.com/reverentgeek/sitesquatch/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
+<img align="right" src="docs/assets/stickers/sitesquatch.svg" alt="SiteSquatch, a Sasquatch with a deadpan stare" width="180">
+
 SiteSquatch (`ssqch`) is a static site generator for Node.js: large, quick, and rarely photographed. Write your pages in Markdown and [Jinja](https://jinja.palletsprojects.com/) (the default), [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Handlebars](https://handlebarsjs.com/), [Mustache](https://mustache.github.io/) or [EJS](https://ejs.co/), configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. Your config runs on Node, so any npm package you already know works in it.
 
 It moves fast for its size. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in **under a second** once its images are cached, which is gone before you've found your camera. [Benchmarks](#benchmarks) has the measurements.
@@ -26,6 +28,8 @@ SiteSquatch is a young one (0.x), so expect some breaking changes between minor 
 
 ## Install
 
+<img align="right" src="docs/assets/stickers/backpack.svg" alt="" width="96">
+
 You'll need [Node.js](https://nodejs.org) 22.18 or newer. In a site with a `package.json`, add ssqch as a dev dependency, so the lockfile pins the version you built with:
 
 ```sh
@@ -47,6 +51,8 @@ ssqch --version
 For Tab completion of commands and options, `ssqch completions zsh` (or `bash`, `fish`, `powershell`, `elvish`) prints a script for your shell, and `ssqch completions --help` says where each shell wants it.
 
 ## Field guide: build your first site
+
+<img align="right" src="docs/assets/stickers/compass.svg" alt="" width="96">
 
 The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, five posts, a 404 page, a data file, a blueprint for the next post, editor types, and an `AGENTS.md` for coding agents) and then leaves you to it:
 
@@ -660,6 +666,8 @@ Add `"hbs"` (or `"handlebars"`) or `"mustache"` to `templateFormats`, and those 
 
 ## Themes
 
+<img align="right" src="docs/assets/stickers/tent.svg" alt="" width="96">
+
 A theme is a folder shaped like a site's input folder: `_includes/` (layouts, partials, render hooks, containers), `_data/`, pages, and files to copy, like stylesheets and fonts. Your site sits on top of it:
 
 ```js
@@ -687,6 +695,8 @@ themes/trail/                 src/                        what the build uses
 To change something in a git theme, copy that one file from `.cache/ssqch/themes/` to the same path in your input folder and edit it there. In `sitesquatch.toml`, it's `theme = ["themes/trail"]`.
 
 ## Content schemas
+
+<img align="right" src="docs/assets/stickers/ranger-mary.svg" alt="" width="96">
 
 Front matter is easy to get wrong: a misspelled key, a date that isn't one, a hero image that was renamed. A schema says what a kind of page's data has to look like, and every build checks it:
 
@@ -862,6 +872,8 @@ With `--verbose`, a line under the summary names the templates in the includes f
 
 ## Comparing two builds
 
+<img align="right" src="docs/assets/stickers/footprint.svg" alt="" width="96">
+
 A build that succeeds isn't proof that an upgrade, a refactor or a migration left the site alone. `ssqch diff` compares two output folders and says what changed, which is better evidence than most sightings get:
 
 ```sh
@@ -1002,6 +1014,8 @@ ssqch serve --port 0 --ready-file .cache/ready.json &
 The other commands with JSON are [`ssqch inspect --format json`](#where-a-value-comes-from) (where a page's data came from) and [`ssqch diff --format json`](#comparing-two-builds) (what a change did to the output; it exits with 0, 1 or 2 like `diff`).
 
 ## Deploying
+
+<img align="right" src="docs/assets/stickers/canoe.svg" alt="" width="96">
 
 ### Keep the image cache between builds
 
@@ -1171,6 +1185,8 @@ Each call copies its text into the plugin's memory and the answer back out, and 
 
 ## Working on SiteSquatch
 
+<img align="right" src="docs/assets/stickers/axe-stump.svg" alt="" width="96">
+
 ```text
 packages/ssqch          ssqch itself: TypeScript on Node (src/, bin/, scripts/, bundled/ and wasm/)
 packages/ssqch/vendor   The Nunjucks fork that renders Jinja and Nunjucks
@@ -1209,6 +1225,8 @@ Messages follow the rules in [`AGENTS.md`](AGENTS.md#the-sasquatch-voice): the f
 Releases are built by a hand-written workflow (`.github/workflows/release.yml`) from a version tag: the npm package, with provenance, and the Homebrew formula that installs it. The steps are in [`AGENTS.md`](AGENTS.md#releasing).
 
 ## Known gaps
+
+<img align="right" src="docs/assets/stickers/direction-sign.svg" alt="" width="96">
 
 The uncharted parts of the map, as of this release:
 

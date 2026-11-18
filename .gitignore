@@ -9,3 +9,6 @@
 
 # The Playwright browser tool's logs and page snapshots
 /.playwright-mcp/
+
+# macOS Finder
+.DS_Store

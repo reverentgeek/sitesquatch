@@ -84,6 +84,13 @@ Run from `packages/ssqch/` unless it says otherwise.
   Run it after changing that Rust (`node scripts/build-wasm.ts minify` builds one; the lists are
   in `scripts/wasm-inputs.ts`); `scripts/wasm-inputs.test.ts` fails until then. It needs
   `rustup target add wasm32-wasip1`.
+- `docs/assets/` holds the drawings (black line art, SVG) for the README, examples, guides and
+  website, and `docs/assets/stickers/` a sticker of each: the drawing on a white shape with a
+  border, so it reads on a light page and a dark one. After adding or editing a drawing, run
+  `node scripts/stickers.mjs` from the repository root (or name the drawings to make); `HULL` in it
+  lists drawings whose outline is open, like the mountain. The README floats a sticker beside a
+  section with `<img align="right" ... alt="" width="96">` on a line of its own, which
+  `ssqch docs` leaves out.
 - Plugins written in Rust are `.wasm` files built with `crates/ssqch-plugin` (ABI v1, its
   README), loaded by `src/rust-plugin.ts` from a config's `{ name, rust: { wasm, options } }`.
 - The Rust, from the repository's root: `cargo test --workspace` runs the `.wasm` crates', the
