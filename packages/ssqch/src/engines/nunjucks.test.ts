@@ -62,7 +62,24 @@ test("runtime_errors_arent_a_line_short", async () => {
 	const e = engine("jinja");
 	assert.equal(await error(() => e.render("a\nb\n{% if 3 is od %}{% endif %}", {}, ctx("p.jinja"))), "p.jinja:3: unknown test `od` (did you mean `odd`?)");
 	assert.equal(await error(() => e.render("a\n{{ shoutt(1) }}", {}, ctx("p.jinja"))), "p.jinja:2: unknown function `shoutt`");
-	assert.equal(await error(() => e.render("ok\n{% if %}", {}, ctx("p.jinja"))), "p.jinja:2: syntax error: unexpected token: %}");
+	assert.equal(await error(() => e.render("ok\n{% if %}", {}, ctx("p.jinja"))), "p.jinja:2: syntax error: unexpected end of block");
+	assert.equal(await error(() => e.render("{{ 1 + }}", {}, ctx("p.jinja"))), "p.jinja:1: syntax error: unexpected end of variable block");
+});
+
+test("an_include_that_doesnt_parse_is_an_error_at_its_line", async () => {
+	// The half-typed tag a dev server sees most. nunjucks answered a synchronous render with
+	// `null` for it and threw the error later, where nothing caught it.
+	const includes = { "nav.njk": "<nav>\n{% if %}</nav>", "deeper.njk": "a {% include \"nav.njk\" %}", "macros.njk": "{% macro x() %}\n{% if %}{% endmacro %}", "base.njk": "{% block a %}{% endblock %}\n\n{% if %}" };
+	for (const flavor of ["njk", "jinja"] as const) {
+		const e = engine(flavor, { later: async (s) => `${s}!` }, includes);
+		for (const source of ["{% include \"nav.njk\" %}", "{% include \"deeper.njk\" %}", "{% for i in [1, 2] %}{% include \"nav.njk\" %}{% endfor %}", "{{ 'x' | later }}{% include \"nav.njk\" %}"]) {
+			assert.equal(await error(() => e.render(source, {}, ctx())), "nav.njk:2: syntax error: unexpected end of block", source);
+		}
+		// A macro file names itself, not the template that imported it.
+		assert.equal(await error(() => e.render("{% import \"macros.njk\" as m %}{{ m.x() }}", {}, ctx())), "macros.njk:2: syntax error: unexpected end of block");
+		assert.equal(await error(() => e.render("{% from \"macros.njk\" import x %}{{ x() }}", {}, ctx())), "macros.njk:2: syntax error: unexpected end of block");
+		assert.equal(await error(() => e.render("{% extends \"base.njk\" %}{% block a %}hi{% endblock %}", {}, ctx())), "base.njk:3: syntax error: unexpected end of block");
+	}
 });
 
 test("a_missing_template_names_its_tag_and_what_was_meant", async () => {

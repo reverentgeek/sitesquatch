@@ -451,6 +451,12 @@ var Template = /*#__PURE__*/function (_Obj2) {
     } catch (e) {
       var err = lib._prettifyError(this.path, this.env.opts.dev, e);
       if (cb) {
+        // ssqch: an include that doesn't parse answers the template that included it at once,
+        // as its other errors do. Answering later (`asap`) left a synchronous render with
+        // nothing to give back (`null`), and the error thrown afterwards, where nothing caught it.
+        if (!forceAsync) {
+          return cb(err);
+        }
         return callbackAsap(cb, err);
       } else {
         throw err;
@@ -504,10 +510,14 @@ var Template = /*#__PURE__*/function (_Obj2) {
     try {
       this.compile();
     } catch (e) {
+      // ssqch: a macro file that doesn't parse is named in the error, as an include is (`render`
+      // above). Without its path, the error read as the importing template's, at the macro
+      // file's line and column.
+      var err = lib._prettifyError(this.path, this.env.opts.dev, e);
       if (cb) {
-        return cb(e);
+        return cb(err);
       } else {
-        throw e;
+        throw err;
       }
     }
     var frame = parentFrame ? parentFrame.push() : new Frame();

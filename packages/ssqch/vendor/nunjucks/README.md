@@ -12,6 +12,7 @@ Errors that point at the spot:
 - **A template that isn't there names the line of the tag that wanted it** (`_compileGetTemplate`), and an error that arrives through a callback (a missing include, an async filter that failed) gets a line at all (`_makeCallback`, which now passes it through `runtime.handleError`).
 - **A runtime error's line isn't one short** (`runtime.js`, `handleError`). The compiled code counts lines from 0 and a `TemplateError` from 1, as the parser's errors do; runtime errors were reported a line early.
 - **A block the file ends inside is reported at the tag that opened it** (`parser.js`: `parseStatement` keeps the tags being parsed, and `fail` uses the innermost when it has no place). It had no line at all.
+- **An include that doesn't parse is an error of the render that included it** (`environment.js`, `Template.render`). Its error was handed back later (`asap`), so a synchronous render returned `null` and the error was thrown afterwards, where nothing caught it: a crash. An imported macro file that doesn't parse names itself (`getExported`), where its line and column were reported as the importing template's.
 - **A slice that can't be taken names its line** (`compileLookupVal`), and so does a loop over a number (`compileFor`), which is now an error, as in Jinja, where it went through nothing.
 
 Jinja that read as something else:

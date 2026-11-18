@@ -1,7 +1,8 @@
 // From crates/sitesquatch/src/build.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { edgeCodeMentionsForTest as edgeCodeMentions } from "./build.ts";
+import { asTextForTest as asText, edgeCodeMentionsForTest as edgeCodeMentions } from "./build.ts";
+import { BuildError } from "./diagnostics.ts";
 import { BUILTIN_FILTERS, builtinFilters } from "./filters.ts";
 import { markdownEngine } from "./engines/markdown.ts";
 import { defaultMarkdownOptions } from "./markdown-options.ts";
@@ -26,4 +27,13 @@ test("collections_in_prose_is_not_code", () => {
 		"Use `collections.posts` in a template.",
 	];
 	for (const body of prose) assert.ok(!edgeCodeMentions(body, "collections"), body);
+});
+
+test("an_engine_that_answers_with_something_other_than_text_is_one_clear_error", async () => {
+	// What nunjucks gave for an include that didn't parse: `null`, then a crash in what read it.
+	for (const [out, said] of [[null, "null"], [undefined, "undefined"], [5, "number"]] as const) {
+		assert.throws(() => asText(out, "njk", "index.njk"), (e: unknown) => e instanceof BuildError && e.message.includes(`internal error while processing index.njk: the \`njk\` engine gave ${said} instead of text`));
+	}
+	await assert.rejects(asText(Promise.resolve(null), "liquid", "_includes/base.liquid"), (e: unknown) => e instanceof BuildError && e.message.includes("the `liquid` engine gave null instead of text"));
+	assert.equal(await asText(Promise.resolve("<p>Pine Cone Crunch</p>"), "edge", "index.edge"), "<p>Pine Cone Crunch</p>");
 });

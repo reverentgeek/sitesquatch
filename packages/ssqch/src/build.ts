@@ -252,7 +252,10 @@ class Renderer {
 				const name = tpl.engines[i];
 				const engine = this.site.engines.get(name);
 				let out: string | Promise<string>;
-				try { out = engine.render(content, data, ctx); } catch (e) { throw rendering(e, tpl, name); }
+				try {
+					out = engine.render(content, data, ctx);
+					if (typeof out !== "string") out = asText(out, name, tpl.rel);
+				} catch (e) { throw rendering(e, tpl, name); }
 				if (typeof out !== "string") return out.then((text) => run(i + 1, text), (e) => { throw rendering(e, tpl, name); });
 				content = out;
 			}
@@ -354,7 +357,10 @@ class Renderer {
 					for (const name of layout.engines) {
 						const ctx: RenderContext = { name: layout.name, inputPath: layout.path, cacheKey: `${layout.name}#${name}` };
 						const engine = site.engines.get(name);
-						try { text = await engine.render(text, data, ctx); } catch (e) { throw context(e, `rendering layout ${layout.name} for ${tpl.rel}`); }
+						try {
+							const out = engine.render(text, data, ctx);
+							text = typeof out === "string" ? out : await asText(out, name, layout.name);
+						} catch (e) { throw context(e, `rendering layout ${layout.name} for ${tpl.rel}`); }
 					}
 					content = text;
 				}
@@ -399,6 +405,18 @@ class Renderer {
 }
 
 const rendering = (e: unknown, tpl: Tpl, engine: string) => context(e, `rendering ${tpl.rel} with \`${engine}\``);
+
+/**
+ * An engine's answer that isn't a string: a promise of one. Anything else (a `null` from a
+ * library that answered later than it should) is a bug in that engine, said here and as one
+ * build error, where it would otherwise crash whatever read it next. A site's own engines are
+ * checked where they're made (`engine "x" returned number`), as in 0.7.
+ */
+function asText(out: unknown, engine: string, what: string): Promise<string> {
+	const notText = (value: unknown) => new BuildError(`${voice.SOMETHING_LARGE}: internal error while processing ${what}: the \`${engine}\` engine gave ${value === null ? "null" : typeof value} instead of text (this is a bug in ssqch; please report it at ${voice.ISSUES_URL})`);
+	if (typeof (out as { then?: unknown } | null)?.then !== "function") throw notText(out);
+	return (out as Promise<unknown>).then((text) => (typeof text === "string" ? text : Promise.reject(notText(text))));
+}
 
 /** An error that isn't the site's: a bug in ssqch, named so one bad page doesn't end the build without context. */
 function internal(e: unknown, what: string): BuildError {
@@ -560,6 +578,7 @@ export function inEdgeCode(body: string, at: number): boolean {
 }
 
 export const edgeCodeMentionsForTest = edgeCodeMentions;
+export const asTextForTest = asText;
 
 // ---- checks ----------------------------------------------------------------------------------
 

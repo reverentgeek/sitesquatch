@@ -346,6 +346,10 @@ const UNSUPPORTED: Record<string, string> = {
 function syntax(message: string, source: string, column?: number): string {
 	const unknown = /^unknown block tag: (\w+)/.exec(message);
 	if (unknown) return UNSUPPORTED[unknown[1]] ?? `unknown statement ${unknown[1]}`;
+	// A tag that closes where its expression should be (`{% if %}`, `{{ 1 + }}`), as 0.7 said it:
+	// the half-typed tag a dev server sees most.
+	const early = /^unexpected token: -?(%\}|\}\})$/.exec(message);
+	if (early) return early[1] === "%}" ? "unexpected end of block" : "unexpected end of variable block";
 	// The file ended inside a block: the parser names the line of the tag that opened it.
 	if (/end of file|got EOF/.test(message)) {
 		const tag = (column === undefined ? undefined : /^\w+/.exec(source.slice(column - 1))?.[0]) ?? /\{%-?\s*(\w+)/.exec(source)?.[1];
