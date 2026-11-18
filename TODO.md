@@ -484,11 +484,10 @@ clear; otherwise warn.
   - A fixed date for undated pages (`dateFallback: "git"`), so their order and `<lastmod>` don't
     depend on when a checkout wrote the files: every move's sitemap changed with file times (v8 C9).
     Maybe `date: "created"` too (a11y #22). Undated pages also sort by file time, so one edit
-    reorders a collection: sort them by path, as Jekyll does (osg #13; decided 2026-11-18: always by
-    path, the date itself still the file's time, a Breaking entry). And honor
+    reorders a collection: sort them by path, as Jekyll does (osg #13; done 2026-11-18: after the
+    dated pages, by path, the date itself still the file's time, a Breaking entry). And honor
     `SOURCE_DATE_EPOCH` as the fallback date and build time, which Jekyll's `time:` does for a
-    pinned baseline (osg #14; done 2026-11-18, and with it undated pages sort by path; without it
-    they still sort by file time, which changes frozen output and wants its own change).
+    pinned baseline (osg #14; done 2026-11-18).
 - [x] **The `url` filter on a non-string** (a11y #16; done 2026-11-18: `false` prints nothing, with a
       warning): `false` from a `permalink: false` page printed `/false` in the sitemap.
 - [x] **Two passthrough sources that write one file** (v8 #19; done 2026-11-18, and the later one

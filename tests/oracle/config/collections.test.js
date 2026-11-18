@@ -1,6 +1,8 @@
 // From crates/sitesquatch-js/tests/collections.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { ssqch, project, read } from "../lib/ssqch.js";
 
 /** Builds `root` the way the Rust tests did: production, quiet. */
@@ -221,4 +223,22 @@ test("source_date_epoch_pins_the_build_time_and_undated_pages", () => {
 	const bad = ssqch(["build", "--root", root], { env: { SOURCE_DATE_EPOCH: "soon" } });
 	assert.ok(!bad.ok);
 	assert.equal(bad.log.split("SOURCE_DATE_EPOCH must be whole seconds since 1970").length - 1, 1, bad.log);
+});
+
+// opensource.guide (osg #13, v8 C9): undated pages sorted by their files' times, so a fresh clone
+// or one edit reordered a collection. They sort by path, after the dated pages.
+test("undated_pages_sort_by_path_after_dated_ones", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"] };\n",
+		"trails/old-growth.md": "---\ntags: trails\n---\nOld Growth\n",
+		"trails/cedar.md": "---\ntags: trails\n---\nCedar\n",
+		"trails/ridge.md": "---\ntags: trails\ndate: 2024-05-01\n---\nRidge\n",
+		"index.njk": "{% for p in collections.trails %}{{ p.url }} {% endfor %}\n",
+	});
+	// Old Growth was edited last, Cedar long ago: neither changes the order.
+	fs.utimesSync(path.join(root, "trails/cedar.md"), new Date("2020-01-01"), new Date("2020-01-01"));
+	fs.utimesSync(path.join(root, "trails/old-growth.md"), new Date("2026-03-01"), new Date("2026-03-01"));
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/index.html"), "/trails/ridge/ /trails/cedar/ /trails/old-growth/ \n");
 });

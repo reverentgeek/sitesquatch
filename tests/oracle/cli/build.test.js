@@ -333,7 +333,8 @@ test("url_of_a_page_without_a_url_prints_nothing", () => {
 	});
 	const r = ssqch(["build", "--root", root]);
 	assert.ok(r.ok, r.log);
-	assert.equal(read(root, "_site/index.html"), "[][][/]\n");
+	// By path: cache, index, stash.
+	assert.equal(read(root, "_site/index.html"), "[][/][]\n");
 	assert.equal(r.log.split("`url` got false, the url of a page with `permalink: false`, and printed nothing instead of \"false\"").length - 1, 1, r.log);
 });
 

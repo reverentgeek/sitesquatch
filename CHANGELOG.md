@@ -15,6 +15,10 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Breaking
 
+- Pages without a date sort after the dated ones in a collection, in path order, not by their
+  files' times. A fresh clone or an edit gives files new times, so a collection's order changed
+  with them (opensource.guide, v8.dev). Their `date` is still the file's time. A site that relied
+  on the old order: give those pages dates, or sort the collection itself.
 - A `computed` value named `page` is an error (`` `page` in computed isn't applied, because `page`
   is ssqch's ``). It was thrown away without a word, since ssqch sets `page` after `computed` runs.
   A site that has one: give it another name (`computed: { meta: ... }`) and use that in templates.
@@ -34,7 +38,7 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
   local methods and libraries like luxon, so a laptop and CI build the same pages. v8.dev's dates
   differed on 137 pages between EST and UTC. ssqch's own date filters stay UTC.
 - `SOURCE_DATE_EPOCH` pins the build's time: `now()`, Liquid's `"now"`, Edge's `new Date()`, and
-  the date of every page without one (which then sort by path), as Jekyll's `time:` does. A
+  the date of every page without one, as Jekyll's `time:` does. A
   reference build that's the same every time took pinning in both 2026-11-18 studies.
 - `sitemapPlugin({ alternates })`: a function that returns a page's translations, written as
   `<xhtml:link rel="alternate" hreflang>` under its `<loc>`, as @astrojs/sitemap and Google list

@@ -57,8 +57,6 @@ export interface Tpl {
 	fileSlug: string;
 	filePathStem: string;
 	mtime: Date;
-	/** The same time in nanoseconds: pages without a date are ordered by it, and two files written in one millisecond still have an order. */
-	mtimeNs: bigint;
 	/** The date at the start of the file name (`2024-06-01-post.md`). */
 	fileDate: Date | undefined;
 	/** `page.lastModified`, with the `lastModified` setting. */
@@ -80,7 +78,7 @@ export interface Page {
 	/** The file it's written to, absolute. */
 	output: string | null;
 	date: Date;
-	/** The date as collections order by it, in nanoseconds: the file's own time when that's where the date came from. */
+	/** The date as collections order by it, in nanoseconds; `UNDATED` for a page whose date is its file's time. */
 	when: bigint;
 	inCollections: boolean;
 	/** What collections hold for it (made once, when collections are first built). */
@@ -673,7 +671,6 @@ export class Site {
 				fileSlug,
 				filePathStem: parent === "" ? `/${stem}` : `/${parent}/${stem}`,
 				mtime,
-				mtimeNs: stat.mtimeNs,
 				fileDate,
 				lastModified: config.lastModified === "git" ? commitDates.get(file) ?? mtime : config.lastModified === "file" ? mtime : undefined,
 			};
@@ -785,7 +782,7 @@ export class Site {
 
 			const excluded = Boolean(data.excludeFromCollections);
 			const inCollections = !excluded && !tpl.plainCopy && (index === 0 || Boolean(pagination?.addAllPagesToCollections));
-			pages.push({ index: -1, tpl, data, url, output, date: pageDate, when: fromFile ? tpl.mtimeNs : BigInt(pageDate.getTime()) * 1_000_000n, inCollections });
+			pages.push({ index: -1, tpl, data, url, output, date: pageDate, when: fromFile ? UNDATED : BigInt(pageDate.getTime()) * 1_000_000n, inCollections });
 		}
 
 		// Fill in pagination hrefs now that every page has a URL.
@@ -939,6 +936,14 @@ function collectionApi(items: Data[]) {
 }
 
 // ---- helpers ---------------------------------------------------------------------------------
+
+/**
+ * Where an undated page sorts: after every dated one (its date is its file's time, which is nearly
+ * always the newest, so a list in date order still reads in date order), and among the undated by
+ * path, as Jekyll sorts them. A fresh checkout or one edit gives files new times, and collections
+ * ordered by them changed with every clone (osg #13, v8 C9).
+ */
+const UNDATED = 1n << 80n;
 
 /**
  * A folder Bundler installed gems into (`bundle install --path vendor/bundle`): `ruby/<version>/gems/`
