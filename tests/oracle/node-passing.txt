@@ -1,6 +1,7 @@
 # The oracle tests the Node implementation passes today (see progress.js). A stage that makes more
 # pass adds them with `node progress.js --update`; a test never leaves this list without a reason
 # in the commit that takes it out.
+cli/aliases.test.js: other_generators_words_get_ssqch_names
 cli/build-more.test.js: aliases_keep_their_place_in_the_cascade
 cli/build-more.test.js: bundles_leave_out_unrendered_templates
 cli/build-more.test.js: ejs_data_strings_and_theme_includes
@@ -9,10 +10,13 @@ cli/build.test.js: last_modified_from_git
 cli/build.test.js: leave_no_trace_removes_only_stale_files_ssqch_wrote
 cli/build.test.js: lit_dev_layouts_links_and_front_matter
 cli/build.test.js: site_plumbing
+cli/build.test.js: types_writes_the_declarations
+cli/capabilities.test.js: capabilities_match_what_a_config_can_use
 cli/data.test.js: a_byte_order_mark_is_skipped_in_data_pages_and_scripts
 cli/data.test.js: length_counts_lists_and_strings_in_nunjucks_and_jinja
 cli/data.test.js: nunjucks_tags_from_config_functions_and_jinja_dates
 cli/data.test.js: slugs_take_a_separator_and_a_slugger_counts
+cli/docs.test.js: docs_answer_for_every_name
 cli/engines.test.js: ejs_keeps_its_own_names_when_the_data_has_them
 cli/engines.test.js: ejs_templates_render_as_ejs_does
 cli/engines.test.js: handlebars_and_mustache_templates_render
@@ -30,9 +34,11 @@ cli/engines.test.js: the_config_can_define_template_engines
 cli/examples.test.js: blog_categories_builds_the_staging_site
 cli/front-matter.test.js: front_matter_errors_name_the_page
 cli/front-matter.test.js: front_matter_reads_yaml_toml_and_json
+cli/init.test.js: init_rejects_an_unknown_engine
 cli/markdown.test.js: markdown_highlights_code_and_writes_the_stylesheet
 cli/markdown.test.js: markdown_options_hooks_containers_and_headings
 cli/markdown.test.js: sites_add_and_replace_highlighted_languages
+cli/new.test.js: new_creates_a_page_from_an_blueprint
 cli/plugins.test.js: a_hook_template_writes_redirect_pages_and_footnotes
 cli/plugins.test.js: broken_links_fail_a_production_build_and_warn_in_development
 cli/plugins.test.js: sitemap_and_redirects
@@ -88,6 +94,8 @@ contract/codes.test.js: the passthrough code
 contract/codes.test.js: the template code
 contract/codes.test.js: the template-formats code
 contract/shapes.test.js: build report
+contract/shapes.test.js: capabilities report
+contract/shapes.test.js: new report
 edge/edge.test.js: a_call_reaches_the_filter_when_data_has_the_same_name
 edge/edge.test.js: a_tag_out_of_place_is_an_error_with_its_line
 edge/edge.test.js: an_assign_in_an_include_reaches_the_template_that_included_it
