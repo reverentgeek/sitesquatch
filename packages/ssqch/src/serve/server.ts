@@ -257,7 +257,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 
 	const rx = new Channel<string[]>();
 	const watcher = new Watcher((file) => rx.send([file]));
-	watcher.onError = (dir, e) => diagnostics.warn(diagnostics.warning("build", `can't watch ${dir}: ${messageOf(e)}`));
+	watcher.onError = (dir, e) => diagnostics.warn(diagnostics.warning("build", `can't watch ${dir}, or some of the folders beside it: ${messageOf(e)}. A change there won't be seen until the server starts again`));
 	try {
 		const watching = (dir: string, recursive: boolean) => {
 			try { watcher.watch(dir, recursive); } catch (e) { throw new BuildError(`watching ${dir}: ${messageOf(e)}`); }

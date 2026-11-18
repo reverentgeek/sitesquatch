@@ -74,6 +74,8 @@ interface Watched {
 	folders: Map<string, fs.FSWatcher>;
 	/** The folders' real paths, so a link that leads back up isn't followed around again. */
 	real: Set<string>;
+	/** A folder below the top couldn't be watched, and that's been said. */
+	failed?: boolean;
 }
 
 export class Watcher {
@@ -137,7 +139,11 @@ export class Watcher {
 			this.listen(top, dir, false);
 		} catch (e) {
 			if (first) throw e;
-			return this.onError(dir, e);
+			// Said once for a tree: when the system has no watches left, every folder after
+			// this one fails the same way.
+			if (!top.failed) this.onError(dir, e);
+			top.failed = true;
+			return;
 		}
 		top.real.add(real);
 		let entries: fs.Dirent[];

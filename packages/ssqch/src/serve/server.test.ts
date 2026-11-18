@@ -184,6 +184,36 @@ test("a file a plugin watches rebuilds the site", async () => {
 	fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// A rebuild leaves a page alone when it comes out the same, and knows that without reading the
+// file again when the file hasn't been written since. A page something else wrote over is
+// still found out, and written again.
+test("a page something else wrote over is written again", async () => {
+	const dir = tempDir("serve-overwritten");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n",
+		"src/index.md": "Home\n",
+		"src/about.md": "About\n",
+	});
+	const server = await serve(dir);
+	try {
+		const home = path.join(dir, "dist/index.html");
+		assert.equal(readOr(home), "<p>Home</p>\n");
+		// Long enough for the next build to trust what it finds on the disk.
+		await sleep(2700);
+		await server.change("src/about.md", "About us\n", "dist/about/index.html", "About us");
+		await server.change("src/about.md", "About them\n", "dist/about/index.html", "About them");
+		await server.until(() => server.said().split("(1 changed)").length - 1 >= 2, "two rebuilds of one page");
+		// The same size, other words.
+		fs.writeFileSync(home, "<p>Hoax</p>\n");
+		await server.change("src/about.md", "About it\n", "dist/about/index.html", "About it");
+		await server.until(() => readOr(home) === "<p>Home</p>\n", "the page was left as something else wrote it");
+		assert.ok(server.said().includes("(2 changed)"), server.said());
+	} finally {
+		await server.stop();
+	}
+	fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // The server answers while a build runs: a page from the last build, and the browser's question.
 test("the server answers during a build, and survives a site that ends its process", async () => {
 	const dir = tempDir("serve-busy");

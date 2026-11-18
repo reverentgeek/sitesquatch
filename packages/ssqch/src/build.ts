@@ -9,6 +9,7 @@
 //    already rendered; a body that isn't is rendered when it's first read.
 // 4. Run generators, copy bundles and passthrough files, record what was written, run
 //    `afterBuild` hooks.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -385,13 +386,35 @@ function internal(e: unknown, what: string): BuildError {
 	return new BuildError(`${voice.SOMETHING_LARGE}: internal error while processing ${what}: ${detail} (this is a bug in ssqch; please report it at ${voice.ISSUES_URL})`);
 }
 
+/**
+ * What each page's file held when a build last read it and found it the same as what it had
+ * rendered: its size, when it was written, and a hash of the contents. While serving, the next
+ * build compares with this instead of reading the file again (a sixth of a rebuild on a big
+ * site), as long as the file hasn't been written since.
+ */
+const found = new Map<string, { size: number; mtimeMs: number; hash: string; at: number }>();
+
 /** Whether the file at `file` already holds exactly `contents`. */
 function sameContents(file: string, contents: string): boolean {
-	try {
-		return fs.statSync(file).size === Buffer.byteLength(contents) && fs.readFileSync(file, "utf8") === contents;
-	} catch {
+	const stat = fs.statSync(file, { throwIfNoEntry: false });
+	if (!stat || stat.size !== Buffer.byteLength(contents)) {
+		found.delete(file);
 		return false;
 	}
+	const hash = crypto.hash("sha1", contents, "base64");
+	const known = found.get(file);
+	// A file written in the last moments before it was read may have been written again since
+	// without its time changing (some disks keep times to the second): that one is read again.
+	if (known && known.size === stat.size && known.mtimeMs === stat.mtimeMs && known.at - known.mtimeMs > 2500) {
+		if (known.hash === hash) return true;
+		found.delete(file);
+		return false;
+	}
+	let same = false;
+	try { same = fs.readFileSync(file, "utf8") === contents; } catch { /* gone, or not a file */ }
+	if (same) found.set(file, { size: stat.size, mtimeMs: stat.mtimeMs, hash, at: Date.now() });
+	else found.delete(file);
+	return same;
 }
 
 /** Whether any template, layout or include reads a page's rendered content (cheap: it decides whether bodies are kept from the start). */
