@@ -186,7 +186,7 @@ until 0.8 ships.
   - [x] The Rust plugin SDK: `crates/ssqch-plugin` (ABI v1, `publish = false` until 0.8.0's
         release), `src/rust-plugin.ts` (a config's `{ name, rust: { wasm, options } }`), and
         `examples/rust-plugin` (trail-guide: an engine, three filters and a transform),
-        committed built. `docs/rust-plugins.md` is the README section's draft, for stage 9.
+        committed built; the README has its section ("Plugins in Rust").
   - [x] Rust plugins are in the README ("Plugins in Rust", `ssqch docs plugin sdk`), and
         `ssqch.d.ts` has `RustPlugin` in the `Plugin` type (2026-11-18).
   - [ ] Publish `ssqch-plugin` to crates.io with 0.8.0, and the example's npm package if it's to
