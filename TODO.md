@@ -200,8 +200,8 @@ until the switch removed 0.7 from `main`; they're in `docs/archive/todo-0.7-only
         committed built; the README has its section ("Plugins in Rust").
   - [x] Rust plugins are in the README ("Plugins in Rust", `ssqch docs plugin sdk`), and
         `ssqch.d.ts` has `RustPlugin` in the `Plugin` type (2026-11-18).
-  - [ ] Publish `ssqch-plugin` to crates.io with 0.8.0, and the example's npm package if it's to
-        be installable.
+  - [x] `ssqch-plugin` 0.8.0 is on crates.io (2026-11-18). The example plugin stays in the
+        repository, not on npm.
   - [x] Images on sharp 0.35.5 and assets (2026-11-18), with 0.7's names (BLAKE3 in TypeScript),
         so a site's image cache and asset URLs carry over: a copy of the blog with its cache
         builds its 4,985 image files byte for byte as frozen. The quality options keep 0.7's
@@ -321,8 +321,9 @@ until the switch removed 0.7 from `main`; they're in `docs/archive/todo-0.7-only
         `NODE_VERSION`, and a GitHub Pages workflow with `actions/setup-node`. 0.7's showed the
         installer script, `cargo install` and `setup-ssqch`. The six docs starters' snapshots were
         frozen again with the Node build (`node freeze.js`), and the changelog says so.
-  - [ ] Release the last 0.7.x from `release/0.7` before 0.8.0 (`docs/node-migration.md`, "One
-        last 0.7.x"), then deprecate the `@ssqch/<platform>` packages after 0.8.0 (`AGENTS.md`).
+  - [x] The last 0.7.x, 0.7.1, from `release/0.7` (2026-11-18): the binaries, npm, Homebrew and
+        the 16 crates.
+  - [ ] Deprecate the `@ssqch/<platform>` packages, now that 0.8.0 is out (`AGENTS.md`, "npm").
   - [x] Stage 9: the README's Install, Netlify and GitHub Pages sections; `import "ssqch"` from
         plain Node works (2026-11-18). The version numbers in them are for the release step.
   - [x] ~~A Linux arm64 executable and a musl one~~: there's no executable (npm only). The npm
@@ -338,15 +339,16 @@ until the switch removed 0.7 from `main`; they're in `docs/archive/todo-0.7-only
         version at `0.8.0` (at `0.8.0-dev` the JSON report's byte counts include the longer
         version). The examples, a11yproject.com and v8.dev match now.
   - [ ] The owner's answers (2026-11-18), to act on:
-    - Pushed `main`; CI's first run failed. Fixed: three tests that assumed macOS, and 0.7's
+    - [x] Pushed `main`; CI's first run failed. Fixed: three tests that assumed macOS, and 0.7's
       `ssqch.d.ts` (restored; the package's is its own now). Still to fix: on Windows with the
       tarball on Node 22.18, `a_theme_sits_under_the_site_file_by_file` (the message has `\`
       where the test wants `themes/missing`) and `fetch_sends_requests_as_written` (`10+20`
-      where 0.7 gave `8+22`). CI's `package` job no longer runs on Windows, so check them there
-      by hand.
-    - 0.7.1 from the `v0.7.0` tag: only the version and a note pointing to 0.8.
-    - Remove the Rust implementation before 0.8.0, on a branch, and check everything again.
-    - Publish the `ssqch-plugin` crate with 0.8.0; keep the example plugin in the repository.
+      where 0.7 gave `8+22`). Fixed: the message names the folder with the system's separator,
+      and a build's saved `fetch` replies are found in memory (Windows couldn't read a cache file
+      while another request moved its copy into place). CI is green on every system.
+    - [x] 0.7.1 from the `v0.7.0` tag: only the version and a note pointing to 0.8.
+    - [x] Remove the Rust implementation before 0.8.0, on a branch, and check everything again.
+    - [x] Publish the `ssqch-plugin` crate with 0.8.0; keep the example plugin in the repository.
     - [x] npm only: drop the standalone executable (build-sea, sea-main, signing, notarizing, the
       `standalone` job) and the install scripts. The Homebrew formula depends on Homebrew's
       node and installs the npm package. Retire `setup-ssqch` (the README shows
@@ -363,16 +365,15 @@ until the switch removed 0.7 from `main`; they're in `docs/archive/todo-0.7-only
       libaom's threads). The late failure is an `images` error naming the source and the pages.
       **Blog:** `src/utils/site/image-options.js` becomes `avifQuality: 48, avifEffort: 3` with
       its move to 0.8.0.
-    - Before 0.8.0: a disk cache for highlighted fences in `.cache/ssqch/`, keyed by the
+    - [x] Before 0.8.0: a disk cache for highlighted fences in `.cache/ssqch/`, keyed by the
       highlighter's version. Done 2026-11-18 (stage 3's item).
     - After 0.8.0 (backlog): worker threads for `diff`; faster dev-server rebuilds on big sites;
       a time limit for a stuck build; the config-save gap while a builder restarts (accepted).
     - Kept: a late error in `serve` fails the next build, as in 0.7; the importer edits
       `package.json` in place. After 0.8.0, deprecate the `@ssqch/<platform>` packages.
-  - [ ] **Needs the owner:** push, and watch CI on Linux and Windows (everything since stage 2's
-        Windows fixes has run on macOS only).
-  - [ ] **Needs the owner:** the last 0.7.x, from `release/0.7` (cut before stage 8's workflows,
-        at `6c48669`, or from `v0.7.0`), released before 0.8.0.
+  - [x] Pushed, and CI watched on Linux and Windows (2026-11-18): the Windows tests above, and a
+        dozen timing races in the serve and timer tests that only busy runners showed.
+  - [x] The last 0.7.x: 0.7.1, from `v0.7.0`, released before 0.8.0 (2026-11-18).
   - [x] The switch (2026-11-18, on a branch, for the owner to merge): 0.7 is gone from `main`
         (`crates/sitesquatch*`, `crates/ssqch`, `plugins/`, `examples/reverentgeek`); what the
         `.wasm` crates compiled moved into them, and the `.wasm` files give the same output. The
@@ -384,10 +385,16 @@ until the switch removed 0.7 from `main`; they're in `docs/archive/todo-0.7-only
   - [ ] **Needs the owner:** after merging the switch, update the branch protection's required
         checks if it names CI's old jobs (`test (...)`, `clippy`): CI's jobs are `node`,
         `package`, `node-benchmark` and `rust` now.
-  - [ ] **Needs the owner:** release 0.8.0 (`AGENTS.md`, "Releasing"), publish `ssqch-plugin`
-        (the workspace's version to 0.8.0, `publish = false` off, `cargo publish -p ssqch-plugin`),
-        then move the blog's `package.json` to
-        `ssqch@0.8.0` and deploy it.
+  - [x] 0.8.0 released (2026-11-18): npm with provenance, the GitHub release, Homebrew (a formula
+        on Homebrew's Node), and `ssqch-plugin` on crates.io. A rehearsal pull request (#29) ran the
+        release up to publishing first; the tag's first run still failed at npm (`npm publish
+        npm-package/x.tgz` read the path as a GitHub repository), so the release and tag were
+        deleted and `v0.8.0` tagged on the fix (`193b407`).
+  - [x] **Blog:** moved to `ssqch@0.8.0` and deployed (2026-11-18, `7fdba164`): the image options
+        in sharp's numbers, `pnpm test` and lint pass, every image reused from its cache, the
+        oracle's blog test passes, and Netlify built and published it.
+  - [ ] Check the new Homebrew formula: `brew install reverentgeek/tap/ssqch`, `brew test ssqch`,
+        `brew audit --strict --online ssqch`.
   - [ ] lit.dev's frozen output (`node freeze.js trial-lit.dev`), which needs lit.dev's SSR build.
 
 ## How this list works
@@ -576,9 +583,8 @@ diff, fix the biggest group, repeat.
 - [ ] Document the highlighting cache fully (done so far: the README paragraph, the Netlify
       recipe's list of what `.cache/ssqch` holds, the changelog): the GitHub Pages recipe's
       "Images" bullet becomes one about `.cache/ssqch` as a whole, and the README's benchmarks
-      give a first build with and without it. **Blog:** its `netlify.toml` restores
-      `.cache/ssqch` already, so its deploys get it with 0.8; the comment there names only the
-      images.
+      give a first build with and without it. (The blog's `netlify.toml` restores `.cache/ssqch`
+      already, and its comment names the highlighted code now.)
 
 ### Templates, data and navigation
 
