@@ -134,7 +134,8 @@ test("the_command_line_reads_as_clap_did", () => {
 	const usage = (args) => {
 		const r = ssqch(args, { cwd: dir });
 		assert.equal(r.code, 2, r.log);
-		return r.stderr;
+		// clap names the program as it was run: `ssqch.exe` on Windows, where 0.7 is that file.
+		return r.stderr.replaceAll("Usage: ssqch.exe ", "Usage: ssqch ");
 	};
 	assert.ok(usage(["build", "--verbos"]).includes("tip: a similar argument exists: '--verbose'\n\nUsage: ssqch build --verbose\n"));
 	assert.ok(usage(["inspect", "--formt", "json", "x"]).includes("\n\nUsage: ssqch inspect --format <FORMAT> <PAGE>\n"));
