@@ -259,7 +259,7 @@ declare module "ssqch" {
 		budgets?: Partial<Record<"pages" | "images" | "css" | "javascript" | "fonts" | "media" | "documents" | "data" | "other" | "total", number | string>>;
 		/** What `ssqch serve` runs besides the server. (The server builds in a process of its own, starts it again when the config or a module it imports changes, and listens on 127.0.0.1 only.) */
 		serve?: {
-			/** Programs to start with the server and stop with it, like the watchers of your CSS and JavaScript tools: `["npx postcss src/app.css -o dist/app.css --watch"]`. Their output is shown with the tool's name in front. Builds don't run them. */
+			/** Programs to start with the server and stop with it, like the watchers of your CSS and JavaScript tools: `["npx postcss src/app.css -o dist/app.css --watch"]`. Their output is shown with the tool's name in front. They get `SSQCH_ENV`, `SSQCH_SERVING` (`true`), `SSQCH_QUIET`, `SSQCH_INPUT` and `SSQCH_OUTPUT`, as build commands do. Builds don't run them. */
 			run?: string | string[];
 		};
 	}

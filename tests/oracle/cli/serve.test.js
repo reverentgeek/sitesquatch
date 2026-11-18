@@ -17,7 +17,7 @@ test("serve_runs_companion_processes", unixOnly, async () => {
 	const dir = tempDir("serve-companions");
 	// A stand-in for a CSS watcher: it writes the stylesheet, says so, records its pid and keeps
 	// watching until its standard input closes, as Tailwind's and esbuild's `--watch` do.
-	const script = "#!/bin/sh\necho $$ > \"$SSQCH_INPUT/../watcher.pid\"\nmkdir -p \"$SSQCH_OUTPUT/assets\"\necho 'body { color: pine; }' > \"$SSQCH_OUTPUT/assets/app.css\"\necho \"wrote app.css, serving=$SSQCH_SERVING\"\ncat > /dev/null\nwhile true; do sleep 0.2; done\n";
+	const script = "#!/bin/sh\necho $$ > \"$SSQCH_INPUT/../watcher.pid\"\nmkdir -p \"$SSQCH_OUTPUT/assets\"\necho 'body { color: pine; }' > \"$SSQCH_OUTPUT/assets/app.css\"\necho \"wrote app.css, serving=$SSQCH_SERVING quiet=$SSQCH_QUIET\"\ncat > /dev/null\nwhile true; do sleep 0.2; done\n";
 	write(dir, { "bin/pinecss": script });
 	fs.chmodSync(path.join(dir, "bin/pinecss"), 0o755);
 	write(dir, {
@@ -27,7 +27,7 @@ test("serve_runs_companion_processes", unixOnly, async () => {
 	const log = path.join(tempDir("serve-companions-log"), "serve.log");
 	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
 	try {
-		await waitFor(log, "[pinecss] wrote app.css, serving=true");
+		await waitFor(log, "[pinecss] wrote app.css, serving=true quiet=false");
 		await waitFor(path.join(dir, "_site/assets/app.css"), "color: pine");
 		await waitFor(path.join(dir, "watcher.pid"), "\n");
 		const pid = fs.readFileSync(path.join(dir, "watcher.pid"), "utf8").trim();
@@ -46,6 +46,14 @@ test("serve_runs_companion_processes", unixOnly, async () => {
 		assert.ok(!readOr(log).includes("warn:"), readOr(log));
 	} finally {
 		await server.stop();
+	}
+	// With --quiet, SSQCH_QUIET says so, as it does for build hooks.
+	const quietLog = path.join(tempDir("serve-companions-quiet-log"), "serve.log");
+	const quiet = start(["serve", "--port", "0", "--root", dir, "--quiet"], { logFile: quietLog });
+	try {
+		await waitFor(quietLog, "[pinecss] wrote app.css, serving=true quiet=true");
+	} finally {
+		await quiet.stop();
 	}
 	// Not an option it knows: an error that says so.
 	write(dir, { "ssqch.config.js": "export default { serve: { runs: [\"x\"] } };\n" });

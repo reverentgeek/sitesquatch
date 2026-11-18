@@ -53,7 +53,8 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
   thing, not the filter, and printed `function () { [native code] }` without a word. It names the
   file and line.
 - Build hooks get `quiet` and `verbose` (whether the build was run with `--quiet` or
-  `--verbose`), and a hook's command gets `SSQCH_QUIET`, so a hook's own messages can follow `-q`.
+  `--verbose`), and a hook's command and `serve.run` commands get `SSQCH_QUIET`, so their own
+  messages can follow `-q`.
 
 ### Changed
 

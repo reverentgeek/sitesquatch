@@ -204,7 +204,7 @@ async function serving(first: Builder, { args, options, live, site, port, quiet 
 	let builder = first;
 	let companions = Companions.none();
 	for (;;) {
-		const info = builder.site;
+		const info = { ...builder.site, quiet };
 		Object.assign(site, { output: info.output, base: info.base });
 		// The configuration's companion processes, kept running across a reload that doesn't
 		// change them (or their folders), and started again if one has stopped.
