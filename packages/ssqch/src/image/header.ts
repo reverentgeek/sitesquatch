@@ -28,7 +28,7 @@ class FileBytes {
 
 	/** Exactly `length` bytes at `at`, or an error past the end. */
 	read(at: number, length: number): Buffer {
-		if (at < 0 || at + length > this.size) throw new Error("unexpected end of file");
+		if (at < 0 || at + length > this.size) throw new Error(UNEXPECTED_END);
 		if (at + length <= this.head.length) return this.head.subarray(at, at + length);
 		const out = Buffer.alloc(length);
 		fs.readSync(this.fd, out, 0, length, at);
@@ -73,7 +73,18 @@ export interface Probe {
 	orientation: number;
 	/** The embedded ICC profile, if any. */
 	icc?: Buffer;
+	/** Shades of grey (with alpha or without): 0.7 wrote a PNG of it in grey too. */
+	grey?: boolean;
+	/** 16 bits a channel (a PNG): 0.7 wrote a PNG of it in 16 bits too. */
+	sixteen?: boolean;
 }
+
+/** A decoder's complaint as 0.7's put it, through the `image` crate: `Format error decoding Png: Invalid PNG signature.` */
+const formatError = (format: string, message: string) => new Error(`Format error decoding ${format}: ${message}`);
+/** What 0.7's PNG and GIF decoders said of a file that ends too soon. */
+const UNEXPECTED_END = "unexpected end of file";
+/** And its WebP decoder, which read with `read_exact`. */
+const UNFILLED = "failed to fill whole buffer";
 
 /**
  * The real format of `file` from its first bytes (a `.png` may hold a JPEG), or `named` (from its
@@ -97,35 +108,76 @@ function probeBytes(bytes: FileBytes, format: Decodable): Probe {
 	switch (format) {
 		case "jpeg": return probeJpeg(bytes);
 		case "png": return probePng(bytes);
-		case "gif": return { format, width: bytes.read(6, 2).readUInt16LE(0), height: bytes.read(8, 2).readUInt16LE(0), orientation: 1 };
+		case "gif": return probeGif(bytes);
 		case "webp": return probeWebp(bytes);
 	}
 }
+
+/** A GIF's size from its logical screen; its signature, and its global colour table, have to be all there, as 0.7's decoder read them. */
+function probeGif(bytes: FileBytes): Probe {
+	const eof = () => formatError("Gif", "Unexpected End of File");
+	if (bytes.size < 6) throw eof();
+	const magic = bytes.read(0, 6).toString("latin1");
+	if (magic !== "GIF87a" && magic !== "GIF89a") throw formatError("Gif", "malformed GIF header");
+	if (bytes.size < 13 + gifTableSize(bytes.read(6, Math.min(7, bytes.size - 6))[4] ?? 0)) throw eof();
+	return { format: "gif", width: bytes.read(6, 2).readUInt16LE(0), height: bytes.read(8, 2).readUInt16LE(0), orientation: 1 };
+}
+
+/** A GIF colour table's size in bytes, from the flags byte before it. */
+const gifTableSize = (flags: number) => (flags & 0x80 ? 3 * 2 ** ((flags & 7) + 1) : 0);
 
 /** The width and height once the orientation is applied: turned a quarter for 5 to 8. */
 export function oriented(p: Probe): [number, number] {
 	return p.orientation >= 5 && p.orientation <= 8 ? [p.height, p.width] : [p.width, p.height];
 }
 
+/**
+ * A JPEG's headers, read up to the start of its image data (SOS) as 0.7's decoder (zune-jpeg) read
+ * them: a file without all of them is broken, with zune's words for it. The image data itself
+ * isn't read: a JPEG that ends inside it decodes padded with grey, in 0.7 and in sharp alike.
+ */
 function probeJpeg(bytes: FileBytes): Probe {
+	const end = bytes.size;
+	const short = (expected: number, at: number) => formatError("Jpeg", `I/O errors Not enough bytes, expected ${expected} but found ${Math.max(0, Math.min(expected, end - at))}`);
+	if (end < 2) throw short(2, 0);
+	const magic = bytes.read(0, 2).readUInt16BE(0);
+	if (magic !== 0xffd8) throw formatError("Jpeg", `Error parsing image. Illegal start bytes:${magic.toString(16).toUpperCase()}`);
 	let at = 2;
 	let size: [number, number] | undefined;
+	let grey = false;
 	let exif: Buffer | undefined;
 	const icc: Array<[number, Buffer]> = [];
-	while (at + 4 <= bytes.size) {
-		const head = bytes.read(at, 2);
-		if (head[0] !== 0xff) throw new Error("not a JPEG marker");
-		const marker = head[1];
-		// Fill bytes, and markers without a length.
-		if (marker === 0xff) { at += 1; continue; }
-		if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) { at += 2; continue; }
-		if (marker === 0xd9 || marker === 0xda) break;
-		const length = bytes.read(at + 2, 2).readUInt16BE(0);
-		const body = at + 4;
+	for (;;) {
+		// A marker is 0xFF and its code; bytes between segments, and fill bytes, are passed over.
+		if (at >= end) throw short(1, at);
+		if (bytes.read(at++, 1)[0] !== 0xff) continue;
+		let marker: number;
+		do {
+			if (at >= end) throw short(1, at);
+			marker = bytes.read(at++, 1)[0];
+		} while (marker === 0xff || marker === 0);
+		// Markers without a length.
+		if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) continue;
+		if (marker === 0xd9) throw formatError("Jpeg", "Premature End of image");
+		if (at + 2 > end) throw short(2, at);
+		const length = bytes.read(at, 2).readUInt16BE(0);
+		if (length < 2) throw formatError("Jpeg", `Found a marker with invalid length : ${length}`);
+		const body = at + 2;
+		if (body + length - 2 > end) {
+			// A quantization table is read 64 values (128 at 16 bits) at a time, after its id.
+			if (marker === 0xdb) throw short(body < end && bytes.read(body, 1)[0] >> 4 ? 128 : 64, body + 1);
+			// The segments zune passes over (APP0 after its first five bytes, APP3 to APP15,
+			// comments, ones it doesn't know) end the file at the next marker.
+			const skipped = marker === 0xe0 || (marker >= 0xe3 && marker <= 0xef) || marker === 0xfe || !(marker >= 0xc0 && marker <= 0xe2);
+			if (marker === 0xe0 && length > 5 && body + 5 > end) throw short(5, body);
+			throw skipped ? short(1, end) : short(length - 2, body);
+		}
+		if (marker === 0xda) break;
 		if ((marker >= 0xc0 && marker <= 0xcf) && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-			if (!size) {
-				const sof = bytes.read(body, 5);
+			if (!size && length >= 8) {
+				const sof = bytes.read(body, 6);
 				size = [sof.readUInt16BE(3), sof.readUInt16BE(1)];
+				grey = sof[5] === 1;
 			}
 		} else if (marker === 0xe1 && length >= 8) {
 			const data = bytes.read(body, length - 2);
@@ -138,19 +190,26 @@ function probeJpeg(bytes: FileBytes): Probe {
 	}
 	if (!size) throw new Error("no frame header (SOF) found");
 	icc.sort((a, b) => a[0] - b[0]);
-	return { format: "jpeg", width: size[0], height: size[1], orientation: exif ? exifOrientation(exif) : 1, icc: icc.length ? Buffer.concat(icc.map(([, part]) => part)) : undefined };
+	return { format: "jpeg", width: size[0], height: size[1], orientation: exif ? exifOrientation(exif) : 1, icc: icc.length ? Buffer.concat(icc.map(([, part]) => part)) : undefined, grey };
 }
 
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** A PNG's header (IHDR) and the chunks up to its image data, which has to start, as 0.7's decoder read them. */
 function probePng(bytes: FileBytes): Probe {
-	const ihdr = bytes.read(16, 8);
-	const out: Probe = { format: "png", width: ihdr.readUInt32BE(0), height: ihdr.readUInt32BE(4), orientation: 1 };
+	const signature = bytes.read(0, Math.min(8, bytes.size));
+	if (!signature.equals(PNG_SIGNATURE.subarray(0, signature.length))) throw formatError("Png", "Invalid PNG signature.");
+	const ihdr = bytes.read(16, 10);
+	const [depth, colour] = [ihdr[8], ihdr[9]];
+	const out: Probe = { format: "png", width: ihdr.readUInt32BE(0), height: ihdr.readUInt32BE(4), orientation: 1, grey: colour === 0 || colour === 4, sixteen: depth === 16 };
 	// The chunks before the image data: iCCP (the profile) and eXIf.
 	let at = 8;
-	while (at + 8 <= bytes.size) {
+	for (;;) {
 		const head = bytes.read(at, 8);
 		const length = head.readUInt32BE(0);
 		const type = head.subarray(4, 8).toString("latin1");
-		if (type === "IDAT" || type === "IEND") break;
+		if (type === "IDAT") break;
+		if (type === "IEND") throw formatError("Png", "IDAT or fdAT chunk is missing.");
 		if (type === "iCCP" && !out.icc) {
 			const data = bytes.read(at + 8, length);
 			const name = data.indexOf(0);
@@ -163,7 +222,22 @@ function probePng(bytes: FileBytes): Probe {
 	return out;
 }
 
+/** A WebP's size and profile, from its chunks; the RIFF header and the image's own header have to be there, as 0.7's decoder read them. */
 function probeWebp(bytes: FileBytes): Probe {
+	if (bytes.size < 8) throw new Error(UNFILLED);
+	if (bytes.read(0, 4).toString("latin1") !== "RIFF") throw formatError("WebP", "Invalid Chunk header: [52, 49, 46, 46]");
+	if (bytes.size < 20) throw new Error(UNFILLED);
+	const signature = bytes.read(8, 4);
+	if (signature.toString("latin1") !== "WEBP") throw formatError("WebP", `Invalid WebP signature: [${[...signature].map((b) => b.toString(16)).join(", ")}]`);
+	try {
+		return webpChunks(bytes);
+	} catch (e) {
+		if ((e as Error).message === UNEXPECTED_END) throw new Error(UNFILLED);
+		throw e;
+	}
+}
+
+function webpChunks(bytes: FileBytes): Probe {
 	const out: Probe = { format: "webp", width: 0, height: 0, orientation: 1 };
 	let at = 12;
 	let sized = false;
@@ -191,8 +265,95 @@ function probeWebp(bytes: FileBytes): Probe {
 		// are of the image as it's stored.
 		at = body + length + (length & 1);
 	}
-	if (!sized) throw new Error("no image data in the WebP file");
+	if (!sized) throw new Error(UNFILLED);
 	return out;
+}
+
+/**
+ * Why an image whose header read well still can't be decoded, as 0.7's decoders found it before
+ * they encoded anything, or `undefined`. `contents` is the whole file, in `format` (its header's).
+ *
+ * This is what lets the markup come from the header before sharp has made a file: a page, a
+ * feed or `imageUrl()` points at an image's files only once this has passed, so a broken image
+ * is a warning and its tag as it was written (an error, for `imageUrl()`), with 0.7's words,
+ * before anything points at a file that won't be made. It reads what 0.7's decoders would have
+ * failed on: a PNG that ends before its last chunk or has a damaged critical chunk (by its CRC),
+ * a GIF whose first frame ends too soon, a WebP whose image data does. A JPEG's image data isn't
+ * read: one that ends inside it decodes padded with grey, as in 0.7.
+ */
+export function undecodable(contents: Buffer, format: Decodable): string | undefined {
+	switch (format) {
+		case "png": return pngDamage(contents);
+		case "gif": return gifDamage(contents);
+		case "webp": return webpDamage(contents);
+		case "jpeg": return undefined;
+	}
+}
+
+function pngDamage(png: Buffer): string | undefined {
+	let at = 8;
+	for (;;) {
+		if (at + 12 > png.length) return UNEXPECTED_END;
+		const length = png.readUInt32BE(at);
+		if (at + 12 + length > png.length) return UNEXPECTED_END;
+		const type = png.subarray(at + 4, at + 8);
+		// 0.7's decoder checked the CRC of the chunks a decoder needs (critical: the name's
+		// first letter in capitals) and passed over a damaged ancillary one.
+		if ((type[0] & 32) === 0) {
+			const [stored, sum] = [png.readUInt32BE(at + 8 + length), zlib.crc32(png.subarray(at + 4, at + 8 + length)) >>> 0];
+			if (stored !== sum) {
+				const flag = (i: number) => (type[i] & 32) !== 0;
+				const name = [...type].map((c) => String.fromCharCode(c)).join("");
+				return `Format error decoding Png: CRC error: expected 0x${stored.toString(16)} have 0x${sum.toString(16)} while decoding ChunkType { type: ${name}, critical: ${!flag(0)}, private: ${flag(1)}, reserved: ${flag(2)}, safecopy: ${flag(3)} } chunk.`;
+			}
+		}
+		if (type.toString("latin1") === "IEND") return undefined;
+		at += 12 + length;
+	}
+}
+
+function gifDamage(gif: Buffer): string | undefined {
+	const eof = "Format error decoding Gif: Unexpected End of File";
+	let at = 13 + gifTableSize(gif[10]);
+	// Sub-blocks: a length byte, that many bytes, and a 0 at the end.
+	const blocks = (from: number): number => {
+		let i = from;
+		for (;;) {
+			if (i >= gif.length) return -1;
+			const n = gif[i];
+			i += 1 + n;
+			if (n === 0) return i;
+		}
+	};
+	// Extensions, then the first frame: its descriptor, its own colour table, and its data.
+	for (;;) {
+		if (at >= gif.length) return eof;
+		const kind = gif[at];
+		if (kind === 0x21) {
+			if (at + 2 > gif.length) return eof;
+			at = blocks(at + 2);
+			if (at === -1) return eof;
+		} else if (kind === 0x2c) {
+			if (at + 10 > gif.length) return eof;
+			at = blocks(at + 11 + gifTableSize(gif[at + 9]));
+			return at === -1 || at > gif.length ? eof : undefined;
+		} else {
+			// The end, or something 0.7's decoder didn't know: sharp's to judge.
+			return undefined;
+		}
+	}
+}
+
+function webpDamage(webp: Buffer): string | undefined {
+	let at = 12;
+	while (at < webp.length) {
+		if (at + 8 > webp.length) return UNFILLED;
+		const type = webp.toString("latin1", at, at + 4);
+		const length = webp.readUInt32LE(at + 4);
+		if (at + 8 + length > webp.length) return type === "VP8 " || type === "VP8L" || type === "ALPH" || type === "ANMF" ? "Format error decoding WebP: Corrupt bitstream" : UNFILLED;
+		at += 8 + length + (length & 1);
+	}
+	return undefined;
 }
 
 /** The orientation (tag 0x0112) in an EXIF block's first IFD, or 1. */

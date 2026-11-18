@@ -161,6 +161,15 @@ the release.
   `ssqch-x86_64-unknown-linux-gnu.tar.gz` (0.7's was `-musl`). The installer script puts `ssqch`
   in `~/.local/bin`, or replaces it in `~/.cargo/bin` where 0.7's put it. `cargo install ssqch`
   and `cargo binstall ssqch` end at 0.7.
+- **An image that can't be encoded after its markup is written fails the build.** The image
+  plugin writes a page's `<picture>` (and a link's copy, a feed's copy, `imageUrl()`'s URL) from
+  the image's header while sharp encodes the files beside the build, so it reads a source through
+  before anything points at a file it has to make, and what 0.7 couldn't decode is still a
+  warning that leaves the tag as written, in 0.7's words (a file that ends too soon, a damaged
+  chunk, a header that doesn't read). What that can't see, such as a PNG whose compressed data is
+  damaged under correct checksums, or a cache folder that can't be written, comes to light after
+  the pages are written, and the build fails naming the source, where 0.7 warned. Fix or replace
+  the image, or leave it out with `ssqch:ignore`.
 
 ### Changed
 
@@ -178,8 +187,11 @@ the release.
   what they meant in 0.7 (ssqch turns them into sharp's, measured to give pictures as good). At
   those settings the files are smaller and quicker to make: AVIF about a quarter smaller at the
   default speed (11 to 19% at speed 4) in well under half the time, WebP 1% smaller, and JPEG a
-  tenth smaller at quality 80 (sharp's best JPEG and AVIF fall short of 0.7's above about JPEG
-  91 and AVIF 98, and are sharp's 100 there). A site changes nothing. Its image
+  tenth smaller at quality 80 (sharp's best JPEG and AVIF fall short of 0.7's from about JPEG 92
+  and AVIF 98 up, and are sharp's 100 there). PNG files are filtered row by row and compressed
+  at zlib's level 6, as 0.7's were, and stay grey or 16 bits when the source is: each within 3%
+  of 0.7's size on the blog's PNGs, and 13% smaller in all. A JPEG of a transparent image keeps
+  the colour under the transparency, as 0.7's did. A site changes nothing. Its image
   cache from 0.7 is used as it is, since the names are the same, so the output has 0.7's files
   next to sharp's until the cache goes: delete `.cache/ssqch/img` to encode every file again.
   AVIF is always there, where 0.7 needed its `avif` feature.
@@ -192,7 +204,10 @@ the release.
 - `[ssqch] Encoded ...` lines come as each image's files are done, while pages go on rendering,
   so they're among the `Writing` lines, not before the page that shows the image. The build waits
   for every file before the link checker, the other plugins' files, `afterBuild` hooks and the
-  summary.
+  summary, and the `Time` line counts the wait under `write`, as 0.7 did.
+- A warning about an image that can't be read gives the decoder's reason once, where 0.7 repeated
+  it (`reading <file>: Format error decoding Png: Invalid PNG signature.`, without 0.7's second
+  `: Invalid PNG signature.`).
 - Tags from the config's functions (`{% image "/a.png", "A pine" %}`, and paired with `{% endimage
   %}`) work in `.jinja` files too, where 0.7 had them in `.njk` only.
 - The config can be `ssqch.config.cjs`, `ssqch.config.ts` or `ssqch.config.mts`, besides `.js`

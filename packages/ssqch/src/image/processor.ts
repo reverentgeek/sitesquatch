@@ -14,7 +14,14 @@
 // names, widths and heights) comes from the source's header and the hash, at once; the encodes
 // are queued for sharp, which runs them on libuv's thread pool while pages go on rendering, and
 // the build waits for them after the last page (before generators, `afterBuild` hooks and the
-// summary). `image()` waits for its own files, since it reports their sizes.
+// summary, and counted as writing). `image()` waits for its own files, since it reports their
+// sizes.
+//
+// Markup that points at files before they're made has to be right about them, so a source with
+// a file to encode is read through first (`undecodable` in `header.ts`): one that 0.7 couldn't
+// decode is a warning and its tag as written, as in 0.7, before any page points at a file of it.
+// What's left (sharp failing on a source that read well, a full disk) can't take back the pages
+// already written, so it fails the build, naming the source.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -29,7 +36,7 @@ import { debugString, escapeHtml } from "../modules/plugin-util.ts";
 import { colorPlan } from "./color.ts";
 import type { ColorPlan } from "./color.ts";
 import { CACHE_FILE, HashCache, stamp } from "./hashes.ts";
-import { oriented, probeFile } from "./header.ts";
+import { oriented, probeFile, undecodable } from "./header.ts";
 import type { Decodable, Probe } from "./header.ts";
 import { encodeSettings } from "./quality.ts";
 import type { EncodeSettings } from "./quality.ts";
@@ -131,6 +138,10 @@ const fallbackOf = (meta: ImageMetadata): ImageEntry[] => [...meta.formats.value
 /** One file to encode. */
 interface Job {
 	src: string;
+	/** The source's format, from its contents. */
+	source: Decodable;
+	/** What its header says about its pixels (grey, 16 bits). */
+	probe: Probe;
 	format: Format;
 	width: number;
 	height: number;
@@ -146,6 +157,43 @@ interface Job {
 	/** When the first encode of the request that made this job started, for its `Encoded` line. */
 	started: { at?: number };
 }
+
+/** A source decoded once, turned and in sRGB, for all of a request's files. */
+interface Pixels {
+	data: Buffer;
+	info: { width: number; height: number; channels: 1 | 2 | 3 | 4 };
+}
+
+/** What a build knows of a source once it's read its header. */
+interface Source {
+	format: Decodable | "svg";
+	probe?: Probe;
+	id?: string;
+	/** Why it can't be decoded (`null` when it can), once something of it had to be encoded. */
+	damage?: string | null;
+	/** Its bytes, while a request that read them for its id still needs them for `damage`. */
+	contents?: Buffer;
+}
+
+/**
+ * How sensitive sharp is to a broken file, as 0.7's decoders were: a JPEG that ends too soon is
+ * padded with grey (0.7's decoder and libjpeg both do), and anything else that's broken is
+ * refused rather than padded with black. A file that ends too soon was found by `undecodable`
+ * already, so what sharp refuses here is damage in data that read whole.
+ */
+const failOn = (source: Decodable) => (source === "jpeg" ? "none" : "truncated");
+
+/** The first line of a libvips error: its error buffer is shared, and the lines after it can be another encode's. */
+function libvips(e: unknown): string {
+	const lines = (e instanceof Error ? e.message : String(e)).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+	if (!lines.length) return "unknown error";
+	return lines[0].endsWith(":") && lines.length > 1 ? `${lines[0]} ${lines[1]}` : lines[0];
+}
+
+/** The most pixels sharp decodes (its `limitInputPixels`). */
+const PIXEL_LIMIT = 0x3fff * 0x3fff;
+/** The widest and tallest image each of sharp's encoders writes. */
+const LARGEST: Partial<Record<Format, number>> = { avif: 16384, webp: 16383, jpeg: 65535 };
 
 /**
  * Each EXIF orientation as sharp's steps: an explicit turn from the orientation ssqch read, not
@@ -386,8 +434,9 @@ class Queue {
 		this.limit = limit;
 	}
 
-	async run<T>(task: () => Promise<T>): Promise<T> {
-		if (this.running >= this.limit) await new Promise<void>((resolve) => this.waiting.push(resolve));
+	/** `task`, once a place is free; `first` goes ahead of everything waiting (the files of a source already decoded, so its pixels are let go of soon). */
+	async run<T>(task: () => Promise<T>, first = false): Promise<T> {
+		if (this.running >= this.limit) await new Promise<void>((resolve) => (first ? this.waiting.unshift(resolve) : this.waiting.push(resolve)));
 		this.running++;
 		try {
 			return await task();
@@ -420,7 +469,7 @@ export class ImageProcessor {
 	/** Each file this build makes or reuses, by where it's kept: a file two requests share is made once. */
 	private files = new Map<string, "reused" | Promise<"encoded" | "reused">>();
 	/** What each source's first bytes said this build, by its path as given. */
-	private headers = new Map<string, { format: Decodable | "svg"; probe?: Probe; id?: string }>();
+	private headers = new Map<string, Source>();
 	/** Which paths are files, as the transform asks, once a build each. */
 	private found = new Map<string, boolean>();
 	/** The folders made this build. */
@@ -429,7 +478,7 @@ export class ImageProcessor {
 	private sizes = new Map<string, number>();
 	/** Everything this build is still waiting for, settled or not. */
 	private pending: Array<Promise<unknown>> = [];
-	/** Failures that fail the build (an `imageUrl()` whose file couldn't be made). */
+	/** Files that couldn't be made after something pointed at them, which fails the build. */
 	private failures: Error[] = [];
 	private generated = 0;
 	private pruned = 0;
@@ -490,14 +539,20 @@ export class ImageProcessor {
 		this.pruned = 0;
 	}
 
-	/** After the pages: every encode they asked for, done. An `imageUrl()` whose file couldn't be made fails the build here. */
+	/**
+	 * After the pages: every encode they asked for, done. A file that couldn't be made, after a
+	 * page, a feed or `imageUrl()` pointed at it, fails the build here: they're written already.
+	 */
 	async settle(): Promise<void> {
 		while (this.pending.length) {
 			const waiting = this.pending;
 			this.pending = [];
 			await Promise.all(waiting);
 		}
-		if (this.failures.length) throw this.failures[0];
+		if (!this.failures.length) return;
+		const [first, ...rest] = this.failures;
+		const more = rest.length ? ` (and ${count(rest.length)} more)` : "";
+		throw new BuildError(`images: ${first.message}${more}. Pages that point at its files were written before it failed, so the build stops here rather than leave them pointing at files that aren't there`);
 	}
 
 	/** After the build: `prune`, the hash cache, and with `--verbose` the slowest encodes. */
@@ -538,7 +593,7 @@ export class ImageProcessor {
 		if (!this.isSource(file)) throw new BuildError(`imageUrl(): image not found: ${src} (looked for ${this.display(file)})`);
 		const meta = this.generate(file, [width], [format]);
 		// The page uses the URL now; the file has to be there by the end of the build.
-		if (meta.ready !== READY) this.pending.push(meta.ready.then((e) => { if (e) this.failures.push(new BuildError(`imageUrl(): ${e.message}`)); }));
+		this.watch(meta);
 		const resolved = format === "auto" ? meta.auto : format;
 		const entries = (resolved !== undefined ? meta.formats.get(resolved) : undefined) ?? [...meta.formats.values()][0];
 		const e = widest(entries);
@@ -556,9 +611,9 @@ export class ImageProcessor {
 		return entry.url;
 	}
 
-	/** A failure of a file the page already points at: a warning, as 0.7 gave. */
+	/** Waits, before the build ends, for files that something already points at. One that can't be made fails the build (see `settle`). */
 	private watch(meta: ImageMetadata): void {
-		if (meta.ready !== READY) this.pending.push(meta.ready.then((e) => { if (e) this.warnOnce(e.message); }));
+		if (meta.ready !== READY) this.pending.push(meta.ready.then((e) => { if (e && !this.failures.some((f) => f.message === e.message)) this.failures.push(e); }));
 	}
 
 	/** Makes (or reuses) `src` at `widths` in `formats`. */
@@ -588,6 +643,10 @@ export class ImageProcessor {
 				this.sources.add(samePath(src));
 			} catch (e) {
 				found = e instanceof Error ? e : new Error(String(e));
+			} finally {
+				// The bytes read for the id were for this request's check only.
+				const source = this.headers.get(src);
+				if (source) source.contents = undefined;
 			}
 			this.memo.set(key, found);
 		}
@@ -599,7 +658,7 @@ export class ImageProcessor {
 	 * A source's format (the real one, from its contents: a `.png` may hold a JPEG; an SVG by its
 	 * name), its header and its id, read once a build however many requests name it.
 	 */
-	private header(src: string): { format: Decodable | "svg"; probe?: Probe; id?: string } {
+	private header(src: string): Source {
 		let found = this.headers.get(src);
 		if (!found) {
 			const named = fromPath(src);
@@ -641,7 +700,7 @@ export class ImageProcessor {
 		if (name === undefined) {
 			outDir = path.join(ctx.output, this.options.outputSubdir);
 			urlPath = this.options.urlPath;
-			id = source.id ??= this.hashId(src, srcFormat === "svg" || srcFormat === "gif" ? undefined : readHeader);
+			id = source.id ??= this.hashId(src, srcFormat === "svg" || srcFormat === "gif" ? undefined : readHeader, (contents) => { source.contents = contents; });
 		} else {
 			const rel = name.replace(/^\//, "");
 			const slash = rel.lastIndexOf("/");
@@ -687,11 +746,11 @@ export class ImageProcessor {
 		const meta: ImageMetadata = { formats: new Map(), auto: formats.includes("auto") ? srcFormat : undefined, ready: READY };
 		const plan = colorPlan(probed.icc);
 		const started: { at?: number } = {};
-		// The files this request is the first to ask for (it makes them, and says so), and the
-		// ones others asked for first.
-		const mine: Array<Promise<"encoded" | "reused">> = [];
-		const theirs: Array<Promise<unknown>> = [];
-		let failed: Error | undefined;
+		const fresh = (st: fs.BigIntStats | undefined) => st !== undefined && (sourceTime === undefined || st.mtimeNs >= sourceTime);
+		// Each file: made or found already this build, being made for another request, or new to
+		// this build: kept from the cache, taken in from the output (encoded there before there
+		// was a cache, or restored there by a deploy's cache), or to encode.
+		const steps: Array<{ e: ImageEntry; file: string; earlier?: "reused" | Promise<"encoded" | "reused">; found?: "cache" | "output"; stat?: fs.BigIntStats }> = [];
 		for (const asked of formats) {
 			const f = asked === "auto" ? srcFormat : asked;
 			if (meta.formats.has(f)) continue;
@@ -701,35 +760,56 @@ export class ImageProcessor {
 				const h = Math.max(1, Math.floor((h0 * w) / w0));
 				const e = entry(f, w, h, `${id}-${w}.${f}`);
 				const file = cacheDir === undefined ? e.path : path.join(cacheDir, path.basename(e.path));
-				const earlier = this.files.get(file);
-				if (earlier === "reused") {
-					// Made or found already this build.
-				} else if (earlier) theirs.push(earlier);
-				else {
-					let made: "reused" | Promise<"encoded" | "reused">;
-					try {
-						made = this.materialize({ src, format: f, width: w, height: h, file, orientation: probed.orientation, out: e.path, sourceTime, plan, started });
-					} catch (err) {
-						failed ??= err as Error;
-						made = Promise.reject(err);
-						made.catch(() => {});
-					}
-					this.files.set(file, made);
-					if (made !== "reused") mine.push(made);
+				const step: (typeof steps)[number] = { e, file, earlier: this.files.get(file) };
+				if (step.earlier === undefined) {
+					const inCache = statOf(file);
+					const inOutput = file !== e.path && !fresh(inCache) ? statOf(e.path) : undefined;
+					if (fresh(inCache)) [step.found, step.stat] = ["cache", inCache];
+					else if (fresh(inOutput)) [step.found, step.stat] = ["output", inOutput];
 				}
+				steps.push(step);
 				entries.push(e);
 			}
 			meta.formats.set(f, entries);
 		}
-		if (failed) {
-			meta.ready = Promise.resolve(failed);
-			return meta;
+		const encodes = steps.filter((s) => s.earlier === undefined && s.found === undefined);
+		// Before anything points at a file that has to be made: whether it can be, as 0.7 decoded
+		// the source first. If not, nothing of this request is used, and its tag stays as written.
+		if (encodes.length) {
+			this.check(src, source, probed);
+			for (const { e } of encodes) {
+				const largest = LARGEST[e.format];
+				if (largest !== undefined && (e.width > largest || e.height > largest)) throw new Error(`encoding ${this.display(e.path)} from ${src}: ${e.width}x${e.height} is larger than ${e.format.toUpperCase()} allows (${largest} pixels a side)`);
+			}
 		}
-		if (!mine.length && !theirs.length) return meta;
-		meta.ready = Promise.all([Promise.all(mine), ...theirs]).then(
-			([made]) => {
-				const encoded = made.filter((m) => m === "encoded").length;
-				if (encoded) this.encoded(src, encoded, meta, performance.now() - (started.at ?? performance.now()));
+		// The files found, then the ones to make: one that can't be put in the output fails the
+		// request before any encoding starts for it.
+		for (const s of steps) {
+			if (s.found === undefined) continue;
+			const cached = s.file !== s.e.path;
+			if (s.found === "cache") {
+				if (cached) {
+					try { this.sizes.set(s.e.path, publish(s.file, s.e.path, s.stat)); } catch (e) { throw new Error(`copying ${s.e.path} into the output: ${(e as Error).message}`); }
+				} else this.sizes.set(s.e.path, Number(s.stat!.size));
+			} else {
+				try { linkOrCopy(s.e.path, s.file); } catch (e) { throw new Error(`copying ${s.e.path} into the image cache: ${(e as Error).message}`); }
+				this.sizes.set(s.e.path, Number(s.stat!.size));
+			}
+			this.files.set(s.file, "reused");
+		}
+		const jobs: Job[] = encodes.map(({ e, file }) => ({ src, source: probed.format, probe: probed, format: e.format, width: e.width, height: e.height, file, orientation: probed.orientation, out: e.path, sourceTime, plan, started }));
+		const made = this.encodeAll(jobs);
+		jobs.forEach((job, i) => this.files.set(job.file, made[i]));
+		// Others asked for these first; this request waits for them too.
+		const theirs = steps.flatMap((s) => (s.earlier !== undefined && s.earlier !== "reused" ? [s.earlier] : []));
+		if (!made.length && !theirs.length) return meta;
+		meta.ready = Promise.all([Promise.all(made), ...theirs]).then(
+			([done]) => {
+				const encoded = done.filter((m) => m === "encoded").length;
+				if (encoded) {
+					if (plan.kind === "convert") this.converted.add(samePath(src));
+					this.encoded(src, encoded, meta, performance.now() - (started.at ?? performance.now()));
+				}
 				return undefined;
 			},
 			(e) => e as Error,
@@ -738,43 +818,66 @@ export class ImageProcessor {
 	}
 
 	/**
-	 * One file in the output: kept from the cache, taken in from the output (encoded there before
-	 * there was a cache, or restored there by a deploy's cache), or encoded, which is the only
-	 * part that waits; then linked into the output.
+	 * Whether `src` can be decoded, as 0.7's decoders would have found (see `undecodable`), read
+	 * once a build. Throws 0.7's warning for one that can't: `decoding <file>: <why>`.
 	 */
-	private materialize(job: Job): "reused" | Promise<"encoded" | "reused"> {
-		const fresh = (st: fs.BigIntStats | undefined) => st !== undefined && (job.sourceTime === undefined || st.mtimeNs >= job.sourceTime);
-		const cached = job.file !== job.out;
-		const inCache = statOf(job.file);
-		if (fresh(inCache)) {
-			if (cached) {
-				try { this.sizes.set(job.out, publish(job.file, job.out, inCache)); } catch (e) { throw new Error(`copying ${job.out} into the output: ${(e as Error).message}`); }
-			} else this.sizes.set(job.out, Number(inCache!.size));
-			return "reused";
+	private check(src: string, source: Source, probed: Probe): void {
+		if (source.damage === undefined) {
+			if (probed.width * probed.height > PIXEL_LIMIT) source.damage = `${probed.width}x${probed.height} is more pixels than ssqch decodes (${count(PIXEL_LIMIT)})`;
+			else if (probed.format === "jpeg") source.damage = null;
+			else {
+				let contents = source.contents;
+				if (!contents) {
+					try { contents = fs.readFileSync(src); } catch (e) { throw new Error(`reading ${src}: ${(e as Error).message}`); }
+				}
+				source.damage = undecodable(contents, probed.format) ?? null;
+			}
 		}
-		const inOutput = cached ? statOf(job.out) : undefined;
-		if (cached && fresh(inOutput)) {
-			try { linkOrCopy(job.out, job.file); } catch (e) { throw new Error(`copying ${job.out} into the image cache: ${(e as Error).message}`); }
-			this.sizes.set(job.out, Number(inOutput!.size));
-			return "reused";
+		if (source.damage !== null) throw new Error(`decoding ${src}: ${source.damage}`);
+	}
+
+	/**
+	 * A request's files to encode, each made into the cache and linked into the output (or made
+	 * there without a cache). A PNG's are made from its pixels decoded once, since sharp can't
+	 * shrink a PNG while it decodes it the way it does a JPEG or a WebP; a JPEG's and a WebP's are
+	 * each made from the file, which is quicker for them.
+	 */
+	private encodeAll(jobs: Job[]): Array<Promise<"encoded">> {
+		if (!jobs.length) return [];
+		// A 16-bit PNG's PNG files are made in 16 bits, from the file.
+		const shared = jobs.filter((j) => j.source === "png" && !(j.format === "png" && j.probe.sixteen));
+		let pixels: Promise<Pixels> | undefined;
+		if (shared.length > 1) {
+			const first = shared[0];
+			pixels = this.queue.run(() => {
+				first.started.at ??= performance.now();
+				this.notePlan(first.src, first.plan);
+				return this.decode(first);
+			});
+			// Each file's encode waits for them, and reports the failure.
+			pixels.catch(() => {});
 		}
-		return this.queue.run(() => {
-			job.started.at ??= performance.now();
-			this.notePlan(job.src, job.plan);
-			return this.encode(job);
-		}).then(() => {
-			this.generated++;
-			if (cached) {
-				try { this.sizes.set(job.out, publish(job.file, job.out)); } catch (e) { throw new Error(`copying ${job.out} into the output: ${(e as Error).message}`); }
-			} else this.sizes.set(job.out, Number(statOf(job.out)?.size ?? 0));
-			return "encoded" as const;
+		return jobs.map((job) => {
+			const done = pixels && shared.includes(job)
+				? pixels.then((p) => this.queue.run(() => this.encodeFrom(job, p), true))
+				: this.queue.run(() => {
+					job.started.at ??= performance.now();
+					this.notePlan(job.src, job.plan);
+					return this.encodeFrom(job);
+				});
+			return done.then(() => {
+				this.generated++;
+				if (job.file !== job.out) {
+					try { this.sizes.set(job.out, publish(job.file, job.out)); } catch (e) { throw new Error(`copying ${job.out} into the output: ${(e as Error).message}`); }
+				} else this.sizes.set(job.out, Number(statOf(job.out)?.size ?? 0));
+				return "encoded" as const;
+			});
 		});
 	}
 
-	/** A source converted to sRGB is counted; one whose profile can't be is named, once. */
+	/** A source whose profile can't be converted to sRGB is named, once, when it's first encoded. */
 	private notePlan(src: string, plan: ColorPlan): void {
-		if (plan.kind === "convert") this.converted.add(samePath(src));
-		else if (plan.kind === "unsupported") {
+		if (plan.kind === "unsupported") {
 			this.warnOnce(`${this.display(src)} has a color profile ssqch can't convert to sRGB (${plan.why}), so its colors may look washed out. HDR photos from newer iPhones do this; converting the source to sRGB once fixes it (on macOS: sips -m "/System/Library/ColorSync/Profiles/sRGB Profile.icc" <file>)`);
 		}
 	}
@@ -792,7 +895,7 @@ export class ImageProcessor {
 	 * The hash cache only saves reading files whose size and time haven't changed. An image that
 	 * gets converted to sRGB has that in its id too.
 	 */
-	private hashId(src: string, header: (() => Probe) | undefined): string {
+	private hashId(src: string, header: (() => Probe) | undefined, read?: (contents: Buffer) => void): string {
 		const o = this.options;
 		const settings = `${f32String(o.webpQuality)}|${f32String(o.avifQuality)}|${o.avifSpeed}|${o.jpegQuality}`;
 		const cacheKey = `${settings}|color1`;
@@ -805,6 +908,7 @@ export class ImageProcessor {
 		}
 		let contents: Buffer;
 		try { contents = fs.readFileSync(src); } catch (e) { throw new Error(`reading ${src}: ${(e as Error).message}`); }
+		read?.(contents);
 		const parts = [contents, Buffer.from(settings)];
 		if (header && colorPlan(header().icc).kind === "convert") parts.push(Buffer.from("|srgb"));
 		const hash = blake3(Buffer.concat(parts));
@@ -814,17 +918,42 @@ export class ImageProcessor {
 		return id;
 	}
 
-	private async encode(job: Job): Promise<void> {
+	/**
+	 * A source's pixels, turned by its EXIF orientation and converted to sRGB from its colour
+	 * profile (which sharp does for any profile): what a PNG's files are made from.
+	 */
+	private async decode(job: Job): Promise<Pixels> {
+		const sharp = loadSharp();
+		try {
+			const image = (ORIENT[job.orientation] ?? ((i) => i))(sharp(job.src, { failOn: failOn(job.source) }));
+			return await image.raw().toBuffer({ resolveWithObject: true }) as Pixels;
+		} catch (e) {
+			throw new Error(`decoding ${this.display(job.src)}: ${libvips(e)}`);
+		}
+	}
+
+	/**
+	 * One file, from the source's decoded `pixels`, or from the file: turned, in sRGB, resized
+	 * with Catmull-Rom (the filter 0.7 used), and encoded as 0.7 wrote it. A JPEG has no alpha, and
+	 * 0.7 dropped it keeping the colour under it, so that's done before the resize: sharp resizes
+	 * with the colour weighted by the alpha, which is black where it's clear. A PNG of a grey
+	 * source is grey, and of a 16-bit one 16 bits, as 0.7's were.
+	 */
+	private async encodeFrom(job: Job, pixels?: Pixels): Promise<void> {
 		if (job.format === "gif" || job.format === "svg" || job.format === "auto") throw new Error(`encoding ${job.file}: cannot encode ${debugName(job.format)}`);
 		const sharp = loadSharp();
+		const settings = this.settings;
 		// A name of its own: two requests can share a file (the same source, overlapping widths).
 		const tmp = `${job.file.slice(0, job.file.length - path.extname(job.file).length)}.${job.format}.${temporary++}.tmp`;
 		try {
-			// Turned by its EXIF orientation, converted to sRGB from its colour profile (which sharp
-			// does for any profile), and resized with Catmull-Rom, the filter 0.7 used.
-			let image = sharp(job.src, { failOn: "error" });
-			image = (ORIENT[job.orientation] ?? ((i) => i))(image).resize(job.width, job.height, { fit: "fill", kernel: "cubic" });
-			const settings = this.settings;
+			const fromFile = () => (ORIENT[job.orientation] ?? ((i) => i))(sharp(job.src, { failOn: failOn(job.source) }));
+			let image: import("sharp").Sharp;
+			if (job.format === "jpeg" && job.source !== "jpeg" && (!pixels || pixels.info.channels % 2 === 0)) {
+				const opaque = await (pixels ? sharp(pixels.data, { raw: pixels.info }) : fromFile()).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+				image = sharp(opaque.data, { raw: opaque.info as Pixels["info"] });
+			} else image = pixels ? sharp(pixels.data, { raw: pixels.info }) : fromFile();
+			image = image.resize(job.width, job.height, { fit: "fill", kernel: "cubic" });
+			if (job.format === "png" && (job.probe.grey || job.probe.sixteen)) image = image.toColourspace(job.probe.grey ? (job.probe.sixteen ? "grey16" : "b-w") : "rgb16");
 			if (job.format === "jpeg") image = image.jpeg(settings.jpeg);
 			else if (job.format === "png") image = image.png(settings.png);
 			else if (job.format === "webp") image = image.webp(settings.webp);
@@ -832,8 +961,8 @@ export class ImageProcessor {
 			await image.toFile(tmp);
 			fs.renameSync(tmp, job.file);
 		} catch (e) {
-			fs.rmSync(tmp, { force: true });
-			throw new Error(`encoding ${job.file}: ${(e as Error).message}`);
+			try { fs.rmSync(tmp, { force: true }); } catch { /* not there, or nowhere it could be */ }
+			throw new Error(`encoding ${this.display(job.out)} from ${this.display(job.src)}: ${libvips(e)}`);
 		}
 	}
 
@@ -994,7 +1123,9 @@ export class ImageProcessor {
 
 	/** Every local `<img>` in an HTML page made a `<picture>`, and links to local images pointed at a copy. */
 	transformHtml(html: string, pageInput: string): string {
-		const links = this.options.linkedImages && html.includes("<a");
+		// Most pages link to other pages, not images: one that names no image file (an extension,
+		// or a %-escape that could spell one) and no `ssqch:ignore` to take off isn't read for links.
+		const links = this.options.linkedImages && mayLinkImages(html);
 		if (!html.includes("<img") && !links) return html;
 		const preloads: string[] = [];
 		const out = rewriteHtml(html, {
@@ -1051,6 +1182,12 @@ export class ImageProcessor {
 		return placed;
 	}
 }
+
+/** What a page that links to an image has somewhere in it: the extensions `fromPath` knows, a %-escape that could spell one, or `ssqch:ignore` to take off a link. */
+const MAY_LINK_IMAGES = /\.(?:png|jpe?g|gif|svg|webp)|%[0-9a-f]{2}|ssqch:ignore/i;
+
+/** Whether the transform has to read a page's links: a cheap look first, since reading every tag of every page that has a link costs a big site a tenth of its build. */
+export const mayLinkImages = (html: string): boolean => html.includes("<a") && MAY_LINK_IMAGES.test(html);
 
 /** A whole number as Rust's `trim().parse::<u32>()` reads it. */
 function parseU32(v: string | undefined): number | undefined {
@@ -1182,12 +1319,9 @@ function register(config: Config, p: ImageProcessor, transform: boolean): void {
 		config.htmlTransforms.push(["image", (content, info) => (path.extname(info.outputPath) === ".html" ? p.transformHtml(content, path.resolve(config.root, info.inputPath)) : content)]);
 	}
 	// The encodes the pages asked for, done before anything reads the output: generators (a
-	// sitemap, the link checker), `afterBuild` hooks and the summary. First of the generators,
-	// whatever order the plugins came in.
-	config.generators.unshift(["ssqch/image", async () => {
-		await p.settle();
-		return [];
-	}]);
+	// sitemap, the link checker), `afterBuild` hooks and the summary. Waiting for them is part of
+	// writing, as 0.7's `Time` line had it, where they were encoded with the pages.
+	config.settle.push(() => p.settle());
 	config.afterBuild.push({ label: "", fn: () => p.finishBuild() });
 	config.summaries.push(["Images", () => p.summary()]);
 }

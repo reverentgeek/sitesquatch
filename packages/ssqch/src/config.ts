@@ -120,6 +120,8 @@ export interface Config {
 	summaries: Array<[string, (config: Config) => string | undefined]>;
 	generators: Array<[string, (config: Config, pages: PageSummary[]) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
 	fileBuilders: Array<[string, (config: Config) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
+	/** What the build waits for once every page is written (the image files they point at), before the generators; counted as writing. */
+	settle: Array<() => Promise<void>>;
 }
 
 /** The folders of a build, absolute. */
@@ -204,6 +206,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		summaries: [],
 		generators: [],
 		fileBuilders: [],
+		settle: [],
 	};
 }
 
