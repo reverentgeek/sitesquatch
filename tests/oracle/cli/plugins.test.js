@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 import { ssqch, project, read, FIXTURES } from "../lib/ssqch.js";
 
 const PNG = fs.readFileSync(path.join(FIXTURES, "cli/squatch.png"));
@@ -251,6 +252,52 @@ test("linked_images_can_be_turned_off", () => {
 	const { ok, log } = build(root);
 	assert.ok(ok, log);
 	assert.ok(read(root, "dist/index.html").startsWith("<a href=\"/img/squatch.png\">"), read(root, "dist/index.html"));
+});
+
+/** A PNG of noise (it doesn't compress away, so a third of it ends inside the image data), made without an image library. */
+function noisePng(width, height) {
+	const chunk = (type, data) => {
+		const named = Buffer.concat([Buffer.from(type, "latin1"), data]);
+		const out = Buffer.alloc(named.length + 8);
+		out.writeUInt32BE(data.length, 0);
+		named.copy(out, 4);
+		out.writeUInt32BE(zlib.crc32(named) >>> 0, named.length + 4);
+		return out;
+	};
+	const header = Buffer.alloc(13);
+	header.writeUInt32BE(width, 0);
+	header.writeUInt32BE(height, 4);
+	header.set([8, 2, 0, 0, 0], 8);
+	// Each row: filter 0, then its pixels.
+	const rows = Buffer.alloc(height * (1 + width * 3));
+	let s = 76;
+	for (let i = 0; i < rows.length; i++) if (i % (1 + width * 3)) rows[i] = (s = (s * 1103515245 + 12345) & 0x7fffffff) >> 23;
+	return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", zlib.deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+// An image that can't be decoded is a warning, and the tags that name it stay as they were
+// written: no markup points at files that weren't made, and the summary counts what was.
+// `imageUrl()` of it is the page's error, with the decoder's words and not an encoder's.
+test("an_image_that_cant_be_decoded_is_left_as_written", () => {
+	const whole = noisePng(120, 80);
+	const root = project({
+		"ssqch.config.js": `import { imagePlugin } from "ssqch/image";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge", "html"], htmlEngine: "edge", plugins: [imagePlugin({ formats: ["webp"], widths: [60] })] };`,
+		"src/pics/t.png": whole.subarray(0, Math.floor(whole.length / 3)),
+		"src/pics/ok.png": whole,
+		"src/index.html": "<p><img src=\"/pics/t.png\" alt=\"t\"><a href=\"/pics/t.png\">big</a> <img src=\"/pics/ok.png\" alt=\"ok\"></p>\n",
+	});
+	let { ok, log } = build(root);
+	assert.ok(ok, log);
+	const html = read(root, "dist/index.html");
+	assert.ok(html.startsWith("<p><img src=\"/pics/t.png\" alt=\"t\"><a href=\"/pics/t.png\">big</a> <img "), html);
+	assert.ok(log.includes(`warn: decoding `) && log.includes(`pics/t.png: unexpected end of file\n`), log);
+	assert.ok(!/vips|\.tmp/.test(log), log);
+	assert.ok(log.includes("  Images  1 file from 1 source, ") && log.includes(": 1 encoded, 0 reused"), log);
+	assert.equal(fs.readdirSync(path.join(root, "dist/img")).length, 1);
+
+	fs.writeFileSync(path.join(root, "src/meta.edge"), "---\npermalink: /meta/\n---\n<meta property=\"og:image\" content=\"{{ imageUrl('/pics/t.png', { width: 60 }).url }}\">\n");
+	({ ok, log } = build(root));
+	assert.ok(!ok && log.includes("meta.edge") && log.includes("pics/t.png: unexpected end of file") && !/vips|\.tmp|\.cache/.test(log), log);
 });
 
 test("sitemap_and_redirects", () => {

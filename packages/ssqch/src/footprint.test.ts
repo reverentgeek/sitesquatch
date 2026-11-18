@@ -42,6 +42,22 @@ test("links_are_followed_and_loops_refused", { skip: process.platform === "win32
 	fs.rmSync(dir, { recursive: true });
 });
 
+// The walk is in parallel, so problems are found in any order: the one reported is the first by
+// path, every time. Paths are named as 0.7's walk named them, from the folder as it was given.
+test("a_walk_reports_the_same_problem_every_time", { skip: process.platform === "win32" && "links need privileges on Windows" }, async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-footprint-"));
+	for (const name of ["b", "c", "d"]) fs.mkdirSync(path.join(dir, name, "deep"), { recursive: true });
+	for (const name of ["c", "d"]) fs.symlinkSync("nowhere", path.join(dir, name, "deep", "dead"));
+	fs.symlinkSync("..", path.join(dir, "b", "deep", "up"));
+	const given = `${dir}${path.sep}`;
+	for (let i = 0; i < 5; i++) {
+		await assert.rejects(measure(given), (e: Error) => e.message === `reading ${given}: File system loop found: ${path.join(dir, "b", "deep", "up")} points to an ancestor ${path.join(dir, "b")}`);
+	}
+	fs.rmSync(path.join(dir, "b"), { recursive: true });
+	await assert.rejects(measure(given), (e: Error) => e.message === `reading ${given}: IO error for operation on ${path.join(dir, "c", "deep", "dead")}: No such file or directory (os error 2): No such file or directory (os error 2)`);
+	fs.rmSync(dir, { recursive: true });
+});
+
 test("urls_of_pages", () => {
 	assert.equal(urlOf("index.html"), "/");
 	assert.equal(urlOf("about/index.html"), "/about/");

@@ -70,6 +70,69 @@ test("import_moves_an_eleventy_site", () => {
 	assert.ok(!r.ok && r.log.includes("there's no importer for hugo yet (only eleventy and zola)"), r.log);
 });
 
+// A config's names, a script's flags and its indentation, in any script and after a byte-order
+// mark, read as 0.7's Rust patterns read them.
+test("import_reads_names_in_any_script", () => {
+	const dir = tempDir("import-unicode");
+	write(dir, {
+		"eleventy.config.js": "﻿const pluginÉté = require(\"@11ty/eleventy-plugin-rss\");\nmodule.exports = function (eleventyConfig) {\n\televentyConfig.addPlugin(pluginÉté);\n\televentyConfig.addFilter(\"shout\", (value) => {\n\t\treturn value;\n\t});\n};\n",
+		"package.json": "{\n  \"scripts\": {\n    \"build\": \"eleventy --pathprefix /x/ --verbosé\"\n  }\n}\n",
+	});
+	let r = ssqch(["import", "eleventy", dir, "--write"]);
+	assert.ok(r.ok, r.log);
+	for (const expected of ["  eleventy.config.js:3: addPlugin(pluginÉté) (from @11ty/eleventy-plugin-rss) -> see its package below\n", "  package.json: the `build` script's --verbosé flag is Eleventy's"]) {
+		assert.ok(r.log.includes(expected), `missing ${JSON.stringify(expected)} in\n${r.log}`);
+	}
+	assert.equal(read(dir, "package.json"), "{\n  \"scripts\": {\n    \"build\": \"ssqch build --base /x/\"\n  }\n}\n");
+	const config = read(dir, "ssqch.config.js");
+	assert.ok(config.includes("\n\tmarkdownEngine: \"liquid\",\n") && config.includes("\t\tshout: (value) => {\n\t\t\treturn value;\n\t\t},\n"), config);
+
+	// A Zola config that isn't TOML shows the line and the spot, in TOML's words.
+	const zola = tempDir("import-zola-error");
+	write(zola, { "config.toml": "title = \"x\"\n= 2\n", "templates": "{{ page.title }}" });
+	r = ssqch(["import", "zola", zola]);
+	assert.equal(r.code, 1, r.log);
+	assert.ok(r.stderr.startsWith("error: config.toml: TOML parse error at line 2, column 1\n  |\n2 | = 2\n  | ^\n"), r.stderr);
+	// `templates` can be a file, and it's a template.
+	write(zola, { "config.toml": "title = \"x\"\n" });
+	r = ssqch(["import", "zola", zola]);
+	assert.ok(r.ok && r.log.includes("  templates/: 1 Tera templates: ") && r.log.includes("  templates/: 1 x `page.title`"), r.log);
+});
+
+// package.json changes where it changes. 0.7 printed the whole file again (a list on several
+// lines, `1e5` as `100000.0`, its dev dependencies sorted); the Node build edits the text in place.
+test("import_keeps_package_json_as_written", () => {
+	const dir = tempDir("import-package");
+	write(dir, {
+		"eleventy.config.js": "module.exports = () => ({});\n",
+		"package.json": "{\n\t\"name\": \"trail-guide\",\n\t\"weight\": 1.0,\n\t\"exp\": 1e5,\n\t\"keywords\": [\"pine\", \"cone\"],\n\t\"scripts\": { \"build\": \"eleventy\" },\n\t\"devDependencies\": {\n\t\t\"@11ty/eleventy\": \"^3.0.0\",\n\t\t\"zed\": \"1\"\n\t}\n}\n",
+	});
+	const r = ssqch(["import", "eleventy", dir, "--write"]);
+	assert.ok(r.ok, r.log);
+	const v = expectedVersion();
+	assert.equal(read(dir, "package.json"), RUST_07
+		? `{\n\t"name": "trail-guide",\n\t"weight": 1.0,\n\t"exp": 100000.0,\n\t"keywords": [\n\t\t"pine",\n\t\t"cone"\n\t],\n\t"scripts": {\n\t\t"build": "ssqch build"\n\t},\n\t"devDependencies": {\n\t\t"ssqch": "${v}",\n\t\t"zed": "1"\n\t}\n}\n`
+		: `{\n\t"name": "trail-guide",\n\t"weight": 1.0,\n\t"exp": 1e5,\n\t"keywords": ["pine", "cone"],\n\t"scripts": { "build": "ssqch build" },\n\t"devDependencies": {\n\t\t"ssqch": "${v}",\n\t\t"zed": "1"\n\t}\n}\n`);
+});
+
+// A template literal with `${...}` is worked out when the config runs, and a default value that
+// reads the config needs it: 0.7 put both in the draft as they were, the Node build lists them.
+test("import_leaves_computed_names_and_config_defaults_for_a_person", () => {
+	const dir = tempDir("import-computed");
+	write(dir, { "eleventy.config.js": "const dir = \"static\";\nconst dateFormat = \"%Y\";\nmodule.exports = function (eleventyConfig) {\n\televentyConfig.addPassthroughCopy(`${dir}/img`);\n\televentyConfig.addFilter(\"year\", (value, format = dateFormat) => format + value);\n};\n" });
+	const r = ssqch(["import", "eleventy", dir, "--write"]);
+	assert.ok(r.ok, r.log);
+	const config = read(dir, "ssqch.config.js");
+	if (RUST_07) {
+		assert.ok(config.includes("passthrough: [\"${dir}/img\"]") && config.includes("year: (value, format = dateFormat) => format + value,"), config);
+		return;
+	}
+	assert.ok(!config.includes("${dir}") && !config.includes("dateFormat") && config.includes("//   filters: year\n"), config);
+	for (const expected of ["  eleventy.config.js:4: addPassthroughCopy with a variable or a computed value -> ", "  eleventy.config.js:5: addFilter(\"year\") -> "]) {
+		assert.ok(r.log.includes(expected), `missing ${JSON.stringify(expected)} in\n${r.log}`);
+	}
+});
+
 // Eleventy's EJS templates render in ssqch as they are: `include()` reads from `_includes` in both.
 test("import_carries_over_ejs_templates", () => {
 	const dir = tempDir("import-ejs");

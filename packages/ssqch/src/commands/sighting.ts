@@ -20,7 +20,8 @@ export function lastSiting(root: string, now: number): string {
 	const none = "No confirmed sitings here yet. `ssqch build` would be the first.";
 	let list: { output?: unknown; pages?: unknown; files?: unknown };
 	try {
-		list = JSON.parse(fs.readFileSync(path.join(root, OUTPUT_LIST), "utf8"));
+		// Whatever JSON it is: `null` has no keys either, as 0.7 read it.
+		list = JSON.parse(fs.readFileSync(path.join(root, OUTPUT_LIST), "utf8")) ?? {};
 	} catch {
 		return none;
 	}
@@ -31,7 +32,7 @@ export function lastSiting(root: string, now: number): string {
 	let newest: number | undefined;
 	for (const page of pages) {
 		try {
-			const time = fs.statSync(path.join(root, output, page)).mtimeMs;
+			const time = fs.statSync(path.resolve(root, output, page)).mtimeMs;
 			if (newest === undefined || time > newest) newest = time;
 		} catch { /* a page that's gone */ }
 	}

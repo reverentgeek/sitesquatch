@@ -13,9 +13,10 @@ import { normalizeBase } from "./base.ts";
 import { budget } from "./budgets.ts";
 import { parseSchema } from "./schema.ts";
 import type { Schema } from "./schema.ts";
-import { BuildError, aliasUsed, bail, context, messageOf, warn, warning } from "./diagnostics.ts";
+import { BuildError, aliasUsed, bail, context, error, messageOf, warn, warning } from "./diagnostics.ts";
 import type { Data, DataLoader } from "./data.ts";
-import { isPlainObject, readToml } from "./data.ts";
+import { isPlainObject, readToml, tomlReason } from "./data.ts";
+import { TomlError } from "smol-toml";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
 import { checkLanguages } from "./engines/markdown.ts";
@@ -26,7 +27,7 @@ import type { MarkdownOptions } from "./markdown-options.ts";
 import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
 import { loadRustPart } from "./rust-plugin.ts";
 import { resolveTheme } from "./theme.ts";
-import { compareText, realPath } from "./paths.ts";
+import { compareText, realPath, slashes } from "./paths.ts";
 
 export type Environment = "production" | "development";
 
@@ -67,6 +68,8 @@ export interface PageSummary {
 export interface Config {
 	/** The project root, absolute and real; every relative path is from here. */
 	root: string;
+	/** The root as the command line gave it (`--root site`), which 0.7's messages named paths from when it isn't there. */
+	rootGiven: string;
 	/** The file the configuration came from, if any. */
 	file: string | null;
 	env: Environment;
@@ -120,6 +123,8 @@ export interface Config {
 	summaries: Array<[string, (config: Config) => string | undefined]>;
 	generators: Array<[string, (config: Config, pages: PageSummary[]) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
 	fileBuilders: Array<[string, (config: Config) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
+	/** What the build waits for once every page is written (the image files they point at), before the generators; counted as writing. */
+	settle: Array<() => Promise<void>>;
 }
 
 /** The folders of a build, absolute. */
@@ -145,8 +150,33 @@ export function dirsOf(config: Config): Dirs {
 	};
 }
 
+/**
+ * A folder of the site as 0.7's messages named it: the root (as it was given, when there's no
+ * such folder) and the folder as the config gives it, joined as Rust joins paths, without
+ * tidying them: `--root nope` and the input folder `.` are `nope/.`.
+ */
+export function shownDir(config: Config, configured: string): string {
+	if (path.isAbsolute(configured)) return configured;
+	const base = fs.existsSync(config.root) ? config.root : config.rootGiven;
+	return /[\\/]$/.test(base) ? base + configured : base + path.sep + configured;
+}
+
+/**
+ * The output folder as 0.7's reports named it: from the root (`dist`, or `../elsewhere` given
+ * that way), or its whole path when it was given as one outside the root (`/srv/www`). With `/`,
+ * or with the system's separator for the build summary, as 0.7 printed that one.
+ */
+export function shownOutput(config: Config, native = false): string {
+	const output = path.resolve(config.root, config.output);
+	const inside = output === config.root || output.startsWith(config.root + path.sep);
+	const shown = path.isAbsolute(config.output) && !inside ? output : path.relative(config.root, output);
+	return native ? shown : slashes(shown);
+}
+
 export interface ConfigOptions {
 	root: string;
+	/** `--root` as it was given, for messages (default: `root`). */
+	rootGiven?: string;
 	env: Environment;
 	serving?: boolean;
 	quiet?: boolean;
@@ -164,6 +194,7 @@ export const DEFAULTS = { templateFormats: ["jinja", "md", "html"], markdownEngi
 function emptyConfig(options: ConfigOptions): Config {
 	return {
 		root: realPath(path.resolve(options.root)),
+		rootGiven: options.rootGiven ?? options.root,
 		file: null,
 		env: options.env,
 		serving: options.serving ?? false,
@@ -204,6 +235,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		summaries: [],
 		generators: [],
 		fileBuilders: [],
+		settle: [],
 	};
 }
 
@@ -698,18 +730,74 @@ function byName(table: Data): Data {
 	return out;
 }
 
+/**
+ * A TOML value as 0.7's TOML library wrote it (`toml::Value`'s `Display`), which is how 0.7 quoted
+ * a budget that's neither a number nor a string: `[10, 20]`, `{ a = 1 }`, `inf`.
+ */
+function tomlText(v: unknown): string {
+	if (Array.isArray(v)) return `[${v.map(tomlText).join(", ")}]`;
+	if (isPlainObject(v)) {
+		const keys = Object.keys(v);
+		return keys.length ? `{ ${keys.map((k) => `${/^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k)} = ${tomlText(v[k])}`).join(", ")} }` : "{}";
+	}
+	if (typeof v === "string") return JSON.stringify(v);
+	if (typeof v === "number" && !Number.isFinite(v)) return Number.isNaN(v) ? "nan" : v > 0 ? "inf" : "-inf";
+	return String(v);
+}
+
+/**
+ * The line of a key in a TOML file, for an error's excerpt: `["budgets", "pages"]` is `pages`
+ * under `[budgets]` (or `budgets` itself, when it's written another way), and `["input"]` is the
+ * top-level `input`.
+ */
+export function tomlKeyLine(text: string, at: string[]): number | undefined {
+	const lines = text.split(/\r?\n/);
+	const escaped = (k: string) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const isKey = (line: string, k: string) => new RegExp(`^\\s*(?:${escaped(k)}|"${escaped(k)}"|'${escaped(k)}')\\s*[=.]`).test(line);
+	const header = (line: string) => /^\s*\[\[?\s*([^\]]*?)\s*\]/.exec(line)?.[1].replace(/["'\s]/g, "");
+	let table = "";
+	let found: number | undefined;
+	for (let i = 0; i < lines.length && found === undefined; i++) {
+		const name = header(lines[i]);
+		if (name !== undefined) {
+			table = name;
+			if (name === at[0] || name.startsWith(`${at[0]}.`)) found = i + 1;
+			continue;
+		}
+		if (table === "" && isKey(lines[i], at[0])) found = i + 1;
+	}
+	if (found !== undefined && at.length > 1) {
+		for (let i = found; i < lines.length && header(lines[i]) === undefined; i++) if (isKey(lines[i], at[1])) return i + 1;
+	}
+	return found;
+}
+
 /** Applies `sitesquatch.toml`: the config's settings in snake case, for a site with no JavaScript of its own. */
 function applyToml(config: Config, file: string): void {
 	loadedFiles.add(file);
-	const invalid = (e: unknown): never => { throw new BuildError(`invalid ${file}: ${messageOf(e)}`); };
+	// Named as 0.7 named it, from the root as it was given (`./sitesquatch.toml`), with the line of
+	// what's wrong when it's known, for the excerpt.
+	const shown = /[\\/]$/.test(config.rootGiven) ? config.rootGiven + "sitesquatch.toml" : config.rootGiven + path.sep + "sitesquatch.toml";
+	let source = "";
+	// The key being read, for the line of an error in it.
+	let at: string[] = [];
+	const invalid = (e: unknown): never => {
+		const message = `invalid ${shown}: ${e instanceof TomlError ? tomlReason(e) : messageOf(e)}`;
+		const line = e instanceof TomlError ? e.line : at.length ? tomlKeyLine(source, at) : undefined;
+		throw new BuildError(message, [error("config", message, { file: path.relative(config.root, file), line })]);
+	};
 	let site: Data;
-	try { site = readToml(fs.readFileSync(file, "utf8")) as Data; } catch (e) { return invalid(e); }
+	try {
+		source = fs.readFileSync(file, "utf8");
+		site = readToml(source) as Data;
+	} catch (e) { return invalid(e); }
 	try {
 		const unknown = Object.keys(site).find((k) => !TOML_KEYS.includes(k));
+		at = unknown === undefined ? [] : [unknown];
 		if (unknown !== undefined) bail(`unknown field \`${unknown}\`, expected one of ${TOML_KEYS.map((k) => `\`${k}\``).join(", ")}`);
-		const text = (key: string): string | undefined => (site[key] === undefined ? undefined : typeof site[key] === "string" ? site[key] : bail(`${key} must be a string`));
-		const flag = (key: string): boolean | undefined => (site[key] === undefined ? undefined : typeof site[key] === "boolean" ? site[key] : bail(`${key} must be true or false`));
-		const texts = (key: string): string[] | undefined => (site[key] === undefined ? undefined : Array.isArray(site[key]) && site[key].every((v: unknown) => typeof v === "string") ? site[key] : bail(`${key} must be an array of strings`));
+		const text = (key: string): string | undefined => (at = [key], site[key] === undefined ? undefined : typeof site[key] === "string" ? site[key] : bail(`${key} must be a string`));
+		const flag = (key: string): boolean | undefined => (at = [key], site[key] === undefined ? undefined : typeof site[key] === "boolean" ? site[key] : bail(`${key} must be true or false`));
+		const texts = (key: string): string[] | undefined => (at = [key], site[key] === undefined ? undefined : Array.isArray(site[key]) && site[key].every((v: unknown) => typeof v === "string") ? site[key] : bail(`${key} must be an array of strings`));
 		config.input = text("input") ?? config.input;
 		config.output = text("output") ?? config.output;
 		config.includes = text("includes") ?? config.includes;
@@ -721,6 +809,7 @@ function applyToml(config: Config, file: string): void {
 			if (value !== undefined) config[slot] = value === "" ? null : value;
 		}
 		config.deepMerge = flag("data_deep_merge") ?? config.deepMerge;
+		at = ["clean"];
 		if (site.leave_no_trace !== undefined && site.clean !== undefined) bail("duplicate field `leave_no_trace`");
 		config.leaveNoTrace = flag("leave_no_trace") ?? flag("clean") ?? config.leaveNoTrace;
 		config.ignore = texts("ignore") ?? config.ignore;
@@ -729,12 +818,17 @@ function applyToml(config: Config, file: string): void {
 		const base = text("base");
 		if (base !== undefined) config.base = normalizeBase(base);
 		if (site.budgets !== undefined) {
+			at = ["budgets"];
 			if (!isPlainObject(site.budgets)) bail("budgets must be a table");
 			// A whole number is bytes; anything else is read as a size is written (`1.5` is 2 bytes,
-			// rounded). In the order of their names, as 0.7 read them.
-			for (const [name, value] of Object.entries(byName(site.budgets))) config.budgets.push(budget(name, Number.isInteger(value) || typeof value === "string" ? value : String(value)));
+			// rounded, and `[1]` isn't one). In the order of their names, as 0.7 read them.
+			for (const [name, value] of Object.entries(byName(site.budgets))) {
+				at = ["budgets", name];
+				config.budgets.push(budget(name, Number.isInteger(value) || typeof value === "string" ? value : tomlText(value)));
+			}
 		}
 		if (site.serve !== undefined) {
+			at = ["serve"];
 			if (!isPlainObject(site.serve)) bail("serve must be a table");
 			const unknownServe = Object.keys(site.serve).find((k) => k !== "run");
 			if (unknownServe !== undefined) bail(`unknown field \`${unknownServe}\`, expected \`run\``);
@@ -750,6 +844,7 @@ function applyToml(config: Config, file: string): void {
 			config.lastModified = modified;
 		}
 		if (site.markdown !== undefined) {
+			at = ["markdown"];
 			if (!isPlainObject(site.markdown)) bail("markdown must be a table");
 			// The config's keys in snake case: `heading_ids = "blackfriday"`.
 			const camel: Data = {};
@@ -759,18 +854,22 @@ function applyToml(config: Config, file: string): void {
 		}
 		for (const theme of texts("theme") ?? []) addTheme(config, theme);
 		if (site.schemas !== undefined) {
+			at = ["schemas"];
 			if (!isPlainObject(site.schemas)) bail("schemas must be a table");
 			// Schemas and their fields in the order of their names, as 0.7 read every table here.
 			for (const [name, spec] of Object.entries(byName(site.schemas))) {
+				at = ["schemas", name];
 				const schema = parseSchema(name, spec);
 				config.schemas = config.schemas.filter((s) => s.name !== name);
 				config.schemas.push(schema);
 			}
 		}
 		if (site.passthrough !== undefined) {
+			at = ["passthrough"];
 			if (!isPlainObject(site.passthrough)) bail("passthrough must be a table");
 			// In the order of their names, as 0.7 read them.
 			for (const from of Object.keys(site.passthrough).sort()) {
+				at = ["passthrough", from];
 				const to = site.passthrough[from];
 				if (typeof to !== "string") bail(`passthrough: the destination for "${from}" must be a string`);
 				config.passthrough.push(to === "" ? { from } : { from, to });

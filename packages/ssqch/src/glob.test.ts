@@ -1,8 +1,13 @@
-// ssqch's globs read as 0.7's did (the globset crate for the config's globs, and the collection
-// API's own reading for `byGlob`).
+// ssqch's globs read as 0.7's did (the globset crate for the config's globs, `diff --only` and
+// schemas' `files`, and the collection API's own reading for `byGlob`). The expected matches and
+// errors here are what 0.7's binary gave, through `ssqch diff --only`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { globBase, globProblem, globSet, globToRegExp } from "./glob.ts";
+
+const PATHS = ["a.txt", "x/a.txt", "x/y/a.txt", "br/{y}.txt", "br/[x.txt", "é.txt", "ä.txt", "x*.txt", "a,b.txt", "]x.txt"];
+// Globs are read as on Linux and macOS unless a test says Windows.
+const matching = (glob: string, options = {}) => PATHS.filter((p) => globToRegExp(glob, { windows: false, ...options }).test(p));
 
 test("globs match whole paths", () => {
 	const matches = (glob: string, path: string, options = {}) => globToRegExp(glob, options).test(path);
@@ -18,11 +23,60 @@ test("globs match whole paths", () => {
 	assert.ok(!matches("a**", "a/a.md") && matches("a**", "ab.md") && matches("a**", "a/a.md", { loose: true }));
 });
 
+test("a backslash escapes the next character, as in globset", () => {
+	assert.deepEqual(matching("br/\\{y\\}.txt"), ["br/{y}.txt"]);
+	assert.deepEqual(matching("br/\\[x.txt"), ["br/[x.txt"]);
+	assert.deepEqual(matching("x\\/*"), ["x/a.txt"]);
+	assert.deepEqual(matching("x\\*.txt"), ["x*.txt"]);
+	// On Windows it's a folder separator instead, as globset has it there.
+	assert.deepEqual(matching("x\\*", { windows: true }), ["x/a.txt"]);
+	assert.deepEqual(matching("br\\[[]x.txt", { windows: true }), ["br/[x.txt"]);
+});
+
+test("`**` as globset reads it", () => {
+	// The whole glob `**/` (or `**`, or `**/**`) is every path.
+	assert.deepEqual(matching("**/"), PATHS);
+	assert.deepEqual(matching("**/**"), PATHS);
+	assert.deepEqual(matching("x/**"), ["x/a.txt", "x/y/a.txt"]);
+	assert.deepEqual(matching("x/{**,y}/a.txt"), ["x/y/a.txt"]);
+	assert.ok(globToRegExp("x/**/a.txt").test("x/a.txt") && globToRegExp("x/**/a.txt").test("x/y/a.txt"));
+	assert.ok(globToRegExp("/**").test("/a") && !globToRegExp("/**").test("a"));
+});
+
+test("a path is matched by its characters", () => {
+	// `?` is one character, a letter of two UTF-8 bytes too (0.7 matched bytes: decided 2026-11-18).
+	assert.deepEqual(matching("?.txt"), ["a.txt", "é.txt", "ä.txt"]);
+	assert.deepEqual(matching("??.txt"), ["x*.txt", "]x.txt"]);
+	// A class's members are characters, and so are its ranges.
+	assert.deepEqual(matching("[é].txt"), ["é.txt"]);
+	assert.deepEqual(matching("[à-é].txt"), ["é.txt", "ä.txt"]);
+	assert.ok(globToRegExp("?.png").test("😀.png"));
+	// Case is ignored for ASCII letters only, as in 0.7.
+	assert.ok(globToRegExp("[A-B].JPG", { ignoreCase: true }).test("b.jpg"));
+	assert.ok(!globToRegExp("É.jpg", { ignoreCase: true }).test("é.jpg"));
+});
+
+test("classes, alternates and commas as globset reads them", () => {
+	assert.deepEqual(matching("[]]x.txt"), ["]x.txt"]);
+	assert.deepEqual(matching("{,a}.txt"), ["a.txt"]);
+	assert.deepEqual(matching("a,b.txt"), ["a,b.txt"]);
+	assert.ok(globToRegExp("[a-].txt").test("-.txt") && globToRegExp("[!]].txt").test("a.txt") && !globToRegExp("[!]].txt").test("].txt"));
+	assert.ok(globToRegExp("{a,{b,ab}}.txt").test("ab.txt"));
+});
+
 test("a glob that can't be read says why", () => {
 	assert.equal(globProblem("[a"), "unclosed character class; missing ']'");
+	assert.equal(globProblem("[]"), "unclosed character class; missing ']'");
+	assert.equal(globProblem("[!]"), "unclosed character class; missing ']'");
 	assert.equal(globProblem("{a,b"), "unclosed alternate group; missing '}' (maybe escape '{' with '[{]'?)");
 	assert.equal(globProblem("a}"), "unopened alternate group; missing '{' (maybe escape '}' with '[}]'?)");
+	assert.equal(globProblem("{a,b}}"), "unopened alternate group; missing '{' (maybe escape '}' with '[}]'?)");
 	assert.equal(globProblem("[z-a]"), "invalid range; 'z' > 'a'");
+	assert.equal(globProblem("[z--]"), "invalid range; 'z' > '-'");
+	assert.equal(globProblem("a\\", { windows: false }), "dangling '\\'");
+	assert.equal(globProblem("a\\", { windows: true }), undefined);
+	// What globset reads, though it looks unfinished.
+	assert.equal(globProblem("br/\\[x.txt", { windows: false }), undefined);
 	assert.equal(globProblem("src/**/*.{png,jpg}"), undefined);
 	assert.throws(() => globSet("ignore", ["[a"]), /^BuildError: ignore: invalid glob "\[a": error parsing glob '\[a': unclosed character class; missing '\]'$/);
 });

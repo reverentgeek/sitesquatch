@@ -27,16 +27,15 @@ test("front_matter_reads_yaml_toml_and_json", () => {
 	assert.equal(out("toml"), "[\"1979-05-27T07:32:00Z\",\"1979-05-27T07:32:00.5\",9007199254740992,57005]");
 	assert.equal(out("json"), "[[1,2],{\"x\":null},\"three\",false]");
 	assert.equal(out("crlf"), "[\"one\",\"two\",3,4]");
+	assert.equal(out("micro"), "[\"1979-05-27T00:32:00.999999-07:00\",1,2,3]");
 	if (RUST_07) {
 		assert.equal(out("numbers"), "[15,31,\"017\",\"1_000\"]");
 		assert.equal(out("merge"), "[{\"x\":1,\"y\":2},{\"<<\":{\"x\":1,\"y\":2},\"y\":3},1,2]");
-		assert.equal(out("micro"), "[\"1979-05-27T00:32:00.999999-07:00\",1,2,3]");
 	} else {
 		// 0.8 reads YAML as js-yaml does (and so Eleventy): `017` and `1_000` are numbers, and `<<`
-		// merges. smol-toml reads a date as a JavaScript date, which keeps milliseconds.
+		// merges.
 		assert.equal(out("numbers"), "[15,31,17,1000]");
 		assert.equal(out("merge"), "[{\"x\":1,\"y\":2},{\"x\":1,\"y\":3},1,2]");
-		assert.equal(out("micro"), "[\"1979-05-27T00:32:00.999-07:00\",1,2,3]");
 	}
 });
 

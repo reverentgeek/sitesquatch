@@ -34,10 +34,10 @@ const PANIC = "panicked at src/lib.rs:7:9:\nthe trail washed out";
 
 /**
  * An ABI v1 plugin whose transform panics (it says so in the result slot, then traps), whose
- * render traps without a word, and whose `echo` filter answers its arguments. `manifest` and
- * `imports` change it for the refusals.
+ * render traps without a word, and whose `echo` filter answers its arguments. `manifest`,
+ * `importEnv` and `initPanics` change it for the refusals.
  */
-function handMade({ manifest = { abi: 1, name: "hand-made", version: "0.1.0", sdk: "0.8.0", hooks: ["transform", "filter", "render"], filters: ["echo"], engines: ["boom"] }, importEnv = false } = {}): Buffer {
+function handMade({ manifest = { abi: 1, name: "hand-made", version: "0.1.0", sdk: "0.8.0", hooks: ["transform", "filter", "render"], filters: ["echo"], engines: ["boom"] }, importEnv = false, initPanics = false } = {}): Buffer {
 	const SLOT = 16, MESSAGE = 64, SCRATCH = 1024;
 	const types = vec([[0x60, 0, 1, 0x7f], [0x60, 1, 0x7f, 1, 0x7f], [0x60, 2, 0x7f, 0x7f, 1, 0x7f], [0x60, 3, 0x7f, 0x7f, 0x7f, 1, 0x7f]]);
 	const imports = importEnv ? section(2, vec([[...text("env"), ...text("foo"), 0x00, 0x00]])) : [];
@@ -45,7 +45,7 @@ function handMade({ manifest = { abi: 1, name: "hand-made", version: "0.1.0", sd
 		[...i32(1)], // ssqch_abi_v1
 		[...i32(SCRATCH)], // ssqch_reserve
 		[...i32(SLOT)], // ssqch_result
-		[...i32(1)], // ssqch_init: fine, nothing to say
+		initPanics ? [...store(SLOT, i32(MESSAGE)), ...store(SLOT + 4, i32(Buffer.byteLength(PANIC))), ...store(SLOT + 8, i32(1)), 0x00] : [...i32(1)], // ssqch_init: fine, nothing to say (or a panic in `new`)
 		[...store(SLOT, i32(MESSAGE)), ...store(SLOT + 4, i32(Buffer.byteLength(PANIC))), ...store(SLOT + 8, i32(1)), 0x00], // ssqch_transform: a panic
 		[...store(SLOT, [...i32(SCRATCH), 0x20, 0, 0x6a]), ...store(SLOT + 4, [0x20, 1]), ...i32(0)], // ssqch_filter: the arguments back
 		[...store(SLOT + 8, i32(0)), 0x00], // ssqch_render: a trap
@@ -69,6 +69,7 @@ function handMade({ manifest = { abi: 1, name: "hand-made", version: "0.1.0", sd
 	]);
 }
 
+const handPluginFrom = (bytes: Buffer) => new RustPlugin(new WebAssembly.Module(bytes), undefined, "hand-made.wasm");
 const handPlugin = (options?: unknown) => new RustPlugin(new WebAssembly.Module(handMade()), options, "hand-made.wasm");
 
 // ---- the tests --------------------------------------------------------------------------------
@@ -107,6 +108,25 @@ test("a panic is an error with its place, and the next call gets a fresh plugin"
 	assert.equal(plugin.filterJson("echo", "[\"after\"]"), "[\"after\"]");
 	assert.throws(() => plugin.render("boom", "x", { inputPath: "./src/a.boom" }), (e: Error) => e.message.startsWith("hand-made: render of ./src/a.boom: crashed (") && e.message.includes("unreachable"));
 	assert.equal(plugin.filterJson("echo", "[1,2]"), "[1,2]");
+});
+
+test("a panic in new is the plugin's, not labelled as the options'", () => {
+	assert.throws(() => handPluginFrom(handMade({ initPanics: true })), { message: "hand-made: panicked at src/lib.rs:7:9: the trail washed out" });
+});
+
+test("a manifest that isn't one gets an error that says what's wrong", () => {
+	const full = { abi: 1, name: "x", version: "1", sdk: "1", hooks: [], filters: [], engines: [] };
+	const refused = (manifest: unknown) => () => readManifest(new WebAssembly.Module(handMade({ manifest: manifest as typeof full })), "bad.wasm");
+	assert.throws(refused(null), { message: "bad.wasm: not an ssqch plugin (its ssqch_plugin section isn't a manifest object)" });
+	assert.throws(refused([1]), { message: "bad.wasm: not an ssqch plugin (its ssqch_plugin section isn't a manifest object)" });
+	assert.throws(refused("pine"), { message: "bad.wasm: not an ssqch plugin (its ssqch_plugin section isn't a manifest object)" });
+	assert.throws(refused({ ...full, abi: "1" }), { message: "bad.wasm: not an ssqch plugin (its manifest has no abi number)" });
+	assert.throws(refused({ ...full, filters: ["fine", 3] }), { message: "bad.wasm: not an ssqch plugin (its manifest's filters must all be names, as text)" });
+	assert.throws(refused({ ...full, engines: [null] }), { message: "bad.wasm: not an ssqch plugin (its manifest's engines must all be names, as text)" });
+	assert.throws(refused({ ...full, hooks: [{}] }), { message: "bad.wasm: not an ssqch plugin (its manifest's hooks must all be names, as text)" });
+	assert.throws(refused({ ...full, engines: "md" }), { message: "bad.wasm: not an ssqch plugin (its manifest has no engines list)" });
+	assert.throws(refused({ ...full, name: "" }), { message: "bad.wasm: not an ssqch plugin (its manifest has no name)" });
+	assert.deepEqual(refused(full)(), full);
 });
 
 test("what isn't a plugin, or is for another ABI, is refused", () => {

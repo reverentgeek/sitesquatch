@@ -5,7 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readToml } from "./data.ts";
-import { blankComments, draftConfig, eleventy, rewriteData, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter } from "./import.ts";
+import { blankComments, draftConfig, eleventy, rewriteData, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, tomlError, zola } from "./import.ts";
+import { VERSION } from "./version.ts";
 
 test("zola_front_matter_gets_ssqch_names", () => {
 	let [text, changes] = rewriteZolaFrontMatter("+++\ntitle = \"Pine\"\ndate = 2024-01-02\npath = \"blog/2024/pine\"\n\n[taxonomies]\ntags = [\"trees\", \"cones\"]\n\n[extra]\nauthor = \"Sam\"\n+++\nBody with path = \"x\" and [taxonomies] in it.\n");
@@ -193,4 +194,52 @@ module.exports = function (eleventyConfig) {
 	assert.ok(draft.includes("\tplugins: []\n} );\n") && !draft.includes(",\n}"), draft);
 	list = byHand.map(([at, what]) => `${at}: ${what.split(" -> ")[0]}`);
 	assert.deepEqual(list, ["eleventy.config.js:4: addPassthroughCopy with a variable or a computed value", "eleventy.config.js:11: addFilter(\"year\")", "eleventy.config.js:12: addShortcode(\"url\")"]);
+});
+
+test("names, flags and indentation in any script, and a byte-order mark", () => {
+	// `\w` is Unicode's, as in Rust: the plugin is `pluginÉté`, and `--verbosé` is one flag.
+	const config = "﻿const pluginÉté = require(\"@11ty/eleventy-plugin-rss\");\nmodule.exports = function (eleventyConfig) {\n\televentyConfig.addPlugin(pluginÉté);\n\televentyConfig.addFilter(\"shout\", (value) => {\n\t\treturn value;\n\t});\n};\n";
+	const [draft, byHand] = draftConfig("eleventy.config.js", config, new Set(["md"]));
+	assert.ok(byHand.some(([at, what]) => at === "eleventy.config.js:3" && what === "addPlugin(pluginÉté) (from @11ty/eleventy-plugin-rss) -> see its package below"), JSON.stringify(byHand));
+	// The byte-order mark isn't indentation (Rust's `trim_start` keeps it): the draft has tabs.
+	assert.ok(draft.includes("\n\tmarkdownEngine: \"liquid\",\n") && draft.includes("\t\tshout: (value) => {\n\t\t\treturn value;\n\t\t},\n"), draft);
+	assert.deepEqual(rewriteScript("eleventy --pathprefix /x/ --verbosé", []), ["ssqch build --base /x/", ["--verbosé"]]);
+});
+
+test("template literals and default values that read the config stay for a person", () => {
+	const config = "const dir = \"static\";\nconst dateFormat = \"%Y\";\nmodule.exports = function (eleventyConfig) {\n\televentyConfig.addPassthroughCopy(`${dir}/img`);\n\televentyConfig.addPassthroughCopy(`fonts`);\n\televentyConfig.addWatchTarget(`${dir}/css`);\n\televentyConfig.addFilter(\"year\", (value, format = dateFormat) => format + value);\n\televentyConfig.addFilter(\"shout\", (value, mark = \"!\") => value + mark);\n\televentyConfig.addShortcode(\"pick\", ({ a, b = dir } = {}, ...rest) => a + b + rest.length);\n};\n";
+	const [draft, byHand] = draftConfig("eleventy.config.js", config, new Set(["md"]));
+	assert.ok(draft.includes("\tpassthrough: [\"fonts\"],\n") && !draft.includes("${dir}"), draft);
+	assert.ok(draft.includes("\t\tshout: (value, mark = \"!\") => value + mark,\n") && !draft.includes("dateFormat") && !draft.includes("pick:"), draft);
+	assert.deepEqual(byHand.map(([at, what]) => `${at}: ${what.split(" -> ")[0]}`), ["eleventy.config.js:4: addPassthroughCopy with a variable or a computed value", "eleventy.config.js:6: addWatchTarget", "eleventy.config.js:7: addFilter(\"year\")", "eleventy.config.js:9: addShortcode(\"pick\")"]);
+});
+
+test("package.json changes where it changes, and is kept as written everywhere else", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-package-"));
+	try {
+		fs.writeFileSync(path.join(dir, "eleventy.config.js"), "module.exports = () => ({});\n");
+		const text = "{\n\t\"name\": \"trail-guide\",\n\t\"2024\": \"year\",\n\t\"weight\": 1.0,\n\t\"exp\": 1e5,\n\t\"big\": 12345678901234567890,\n\t\"keywords\": [\"pine\", \"cone\"],\n\t\"scripts\": { \"build\": \"eleventy\", \"serve\": \"eleventy --serve\" },\n\t\"devDependencies\": {\n\t\t\"@11ty/eleventy\": \"^3.0.0\",\n\t\t\"zed\": \"1\"\n\t}\n}\n";
+		fs.writeFileSync(path.join(dir, "package.json"), text);
+		const [, changes, written] = eleventy(dir).edits.find(([p]) => p === "package.json")!;
+		assert.equal(written, text.replace("\"build\": \"eleventy\", \"serve\": \"eleventy --serve\"", "\"build\": \"ssqch build\", \"serve\": \"ssqch serve\"").replace("\"@11ty/eleventy\": \"^3.0.0\"", `"ssqch": ${JSON.stringify(VERSION)}`));
+		assert.deepEqual(changes, [`@11ty/eleventy -> ssqch ${VERSION} in devDependencies`, "scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve"]);
+		// Without devDependencies, they're added at the end, laid out as the file is.
+		fs.writeFileSync(path.join(dir, "package.json"), "{\n  \"name\": \"x\",\n  \"dependencies\": {\n    \"@11ty/eleventy\": \"3\"\n  }\n}\n");
+		assert.equal(eleventy(dir).edits.find(([p]) => p === "package.json")![2], `{\n  "name": "x",\n  "devDependencies": {\n    "ssqch": ${JSON.stringify(VERSION)}\n  }\n}\n`);
+	} finally {
+		fs.rmSync(path.join(dir), { recursive: true, force: true });
+	}
+});
+
+test("zola: a TOML error shows its line, and a file named templates is a template", () => {
+	assert.equal(tomlError((() => { try { readToml("title = \"x\"\n= 2\n"); } catch (e) { return e; } })(), "title = \"x\"\n= 2\n"), "TOML parse error at line 2, column 1\n  |\n2 | = 2\n  | ^\nunexpected end of key\n");
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-zola-"));
+	try {
+		fs.writeFileSync(path.join(dir, "config.toml"), "title = \"x\"\n");
+		fs.writeFileSync(path.join(dir, "templates"), "{{ page.title }} {{ get_url(path=\"x\") }}");
+		const byHand = zola(dir).byHand.filter(([at]) => at === "templates/").map(([, what]) => what.split(":")[0]);
+		assert.deepEqual(byHand, ["1 Tera templates", "1 x Tera functions (get_url, get_section, load_data, resize_image...)", "1 x `page.title`, `page.extra`, `page.taxonomies`"]);
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
 });

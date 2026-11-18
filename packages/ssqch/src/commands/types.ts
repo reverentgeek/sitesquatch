@@ -47,7 +47,7 @@ export async function runTypes(options: TypesOptions): Promise<number> {
 		process.stderr.write(`warn: couldn't read the site's config, so its schemas aren't in the types: ${messageOf(e)}\n`);
 	}
 	try {
-		write(file, text);
+		write(file, text, out);
 	} catch (e) {
 		process.stderr.write(`${red("error:")} ${(e as Error).message}\n`);
 		return 1;

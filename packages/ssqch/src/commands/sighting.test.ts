@@ -25,6 +25,11 @@ test("the last build is the last siting", () => {
 		// A list from an older ssqch has no `pages`.
 		fs.writeFileSync(path.join(dir, OUTPUT_LIST), JSON.stringify({ output: "dist", files: ["index.html", "site.css"] }));
 		assert.equal(later(5), "Last confirmed siting: 1 page in dist/, just now.");
+		// A list that's JSON but not one: nothing sighted, as in 0.7.
+		for (const odd of ["null", "[]", "\"dist\"", "3"]) {
+			fs.writeFileSync(path.join(dir, OUTPUT_LIST), odd);
+			assert.equal(later(5), "No confirmed sitings here yet. `ssqch build` would be the first.", odd);
+		}
 	} finally {
 		fs.rmSync(dir, { recursive: true, force: true });
 	}

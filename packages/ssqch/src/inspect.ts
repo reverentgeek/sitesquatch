@@ -18,7 +18,7 @@ import type { Data } from "./data.ts";
 import { getPath } from "./data.ts";
 import { bail } from "./diagnostics.ts";
 import { comparePaths, compareText, realPath, shown } from "./paths.ts";
-import { charCount, firstChars, jsString, padEnd, quoted, toJsonValue } from "./quote.ts";
+import { charCount, firstChars, jsString, padEnd, prettyJson, quoted, toJsonValue } from "./quote.ts";
 
 /** One level of the cascade that set a field: what to call it, and the value it gave. */
 export interface SetBy {
@@ -204,7 +204,7 @@ export function inspectionText(inspection: Inspection): string {
 }
 
 /** JSON as serde_json's pretty printer wrote it: two spaces, and `[]` and `{}` when empty. */
-const pretty = (v: unknown) => JSON.stringify(toJsonValue(v), null, 2);
+const pretty = (v: unknown) => prettyJson(toJsonValue(v));
 
 /** One field: its value in full, and each level that set it. */
 export function fieldText(f: Field): string {

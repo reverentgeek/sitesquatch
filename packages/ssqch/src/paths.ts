@@ -22,6 +22,25 @@ export const shown = (root: string, file: string) => displayPath(root, file).rep
 export const relative = (dir: string, file: string) => slashes(path.relative(dir, file));
 
 /**
+ * Two paths joined as Rust joins them, which is how 0.7's messages named a path given on the
+ * command line: nothing tidied (`.` and `x` are `./x`), and an absolute second path is itself.
+ */
+export const joinAsGiven = (base: string, rel: string) => (path.isAbsolute(rel) || base === "" ? rel : /[\\/]$/.test(base) ? base + rel : base + path.sep + rel);
+
+/** A path's folder as Rust names it (`Path::parent`): what's before its last part (`f/posts` for `f/posts/x.md`), or `""` for a bare name. */
+export function parentAsGiven(p: string): string {
+	const separators = path.sep === "/" ? "/" : "\\/";
+	let end = p.length;
+	while (end > 1 && separators.includes(p[end - 1])) end--;
+	let at = end - 1;
+	while (at >= 0 && !separators.includes(p[at])) at--;
+	if (at < 0) return "";
+	let parent = at;
+	while (parent > 0 && separators.includes(p[parent - 1])) parent--;
+	return parent === 0 ? p.slice(0, 1) : p.slice(0, parent);
+}
+
+/**
  * A path with its links followed, as the system itself names it. (The system's own answer, not
  * Node's reading of the path: on Windows that's the one with a folder's long name where the
  * path had its short one, `RUNNER~1`, which is how Node names a module's file in a stack.)

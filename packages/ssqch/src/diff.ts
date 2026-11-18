@@ -155,12 +155,26 @@ async function files(dir: string): Promise<string[]> {
  * files with the same key (a stale fingerprinted copy next to the current one) keep their own
  * paths. In the keys' order.
  */
-function keyed(paths: string[], exact: boolean): Map<string, string> {
+export function keyed(paths: string[], exact: boolean): Map<string, string> {
 	if (exact) return new Map(paths.map((p) => [p, p]));
-	const keys = paths.map(withoutFingerprints);
-	const counts = new Map<string, number>();
-	for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1);
-	const pairs = paths.map((p, i): [string, string] => (counts.get(keys[i])! > 1 ? [p, p] : [keys[i], p]));
+	const stripped = paths.map(withoutFingerprints);
+	// A path kept as its own key can be another file's key without a fingerprint
+	// (`x.11111111.css` is the key of `x.11111111.22222222.css`): that file keeps its path too,
+	// until no two files share a key. 0.7 let the second replace the first, and lost a file.
+	const own = new Set<number>();
+	for (let changed = true; changed;) {
+		changed = false;
+		const counts = new Map<string, number>();
+		const keyOf = (i: number) => (own.has(i) ? paths[i] : stripped[i]);
+		for (let i = 0; i < paths.length; i++) counts.set(keyOf(i), (counts.get(keyOf(i)) ?? 0) + 1);
+		for (let i = 0; i < paths.length; i++) {
+			if (!own.has(i) && counts.get(stripped[i])! > 1) {
+				own.add(i);
+				changed = true;
+			}
+		}
+	}
+	const pairs = paths.map((p, i): [string, string] => [own.has(i) ? p : stripped[i], p]);
 	return new Map(pairs.sort((a, b) => compareText(a[0], b[0])));
 }
 
@@ -482,7 +496,12 @@ class Reader {
 export async function compare(before: string, after: string, options: DiffOptions): Promise<DiffReport> {
 	const keep = (paths: string[]) => (options.only ? paths.filter((p) => options.only!.some((re) => re.test(p))) : paths);
 	// Both folders must be there before either is walked, so a missing one is said first.
-	const [listA, listB] = await Promise.all([files(before), files(after)]);
+	// Both are walked at once, and when both fail it's the first folder's error, as 0.7 walked it
+	// first: which walk failed sooner is up to the disk.
+	const [walkA, walkB] = await Promise.allSettled([files(before), files(after)]);
+	if (walkA.status === "rejected") throw walkA.reason;
+	if (walkB.status === "rejected") throw walkB.reason;
+	const [listA, listB] = [walkA.value, walkB.value];
 	const a = keyed(keep(listA), options.exact);
 	const b = keyed(keep(listB), options.exact);
 	const report: DiffReport = { before, after, exact: options.exact, added: [], removed: [], changed: [], unchangedPages: 0, unchangedFiles: 0 };

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
-import { exifOrientation, guessFormat, imageSize, oriented, probe } from "./header.ts";
+import { exifOrientation, guessFormat, imageSize, oriented, probe, probeFile, undecodable } from "./header.ts";
 
 const u16be = (n: number) => Buffer.from([n >> 8, n & 255]);
 const u32be = (n: number) => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
@@ -27,12 +27,13 @@ function jpeg(width: number, height: number, orientation: number): Buffer {
 		segment(0xe2, Buffer.concat([Buffer.from("ICC_PROFILE\0", "latin1"), Buffer.from([2, 2]), Buffer.from("second")])),
 		segment(0xe2, Buffer.concat([Buffer.from("ICC_PROFILE\0", "latin1"), Buffer.from([1, 2]), Buffer.from("first-")])),
 		segment(0xc0, Buffer.concat([Buffer.from([8]), u16be(height), u16be(width), Buffer.from([3, 1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1])])),
-		Buffer.from([0xff, 0xda]),
+		segment(0xda, Buffer.from([3, 1, 0, 2, 0x11, 3, 0x11, 0, 63, 0])),
 	]);
 }
 
 function chunk(type: string, data: Buffer): Buffer {
-	return Buffer.concat([u32be(data.length), Buffer.from(type, "latin1"), data, u32be(0)]);
+	const named = Buffer.concat([Buffer.from(type, "latin1"), data]);
+	return Buffer.concat([u32be(data.length), named, u32be(zlib.crc32(named) >>> 0)]);
 }
 
 function png(width: number, height: number, extra: Buffer[] = []): Buffer {
@@ -102,4 +103,61 @@ test("an EXIF block that says nothing is orientation 1", () => {
 	assert.equal(exifOrientation(exif(9)), 1);
 	assert.equal(exifOrientation(Buffer.from("junk")), 1);
 	assert.equal(exifOrientation(Buffer.concat([Buffer.from("Exif\0\0", "latin1"), exif(5)])), 5);
+});
+
+const PNG_START = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const ihdr = (width: number, height: number, depth: number, colour: number) => chunk("IHDR", Buffer.concat([u32be(width), u32be(height), Buffer.from([depth, colour, 0, 0, 0])]));
+
+// 0.7's decoders, through the `image` crate, said what was wrong with a file in their own words,
+// and its warnings and errors quote them: `reading <file>: <this>` for a header, `decoding <file>:
+// <this>` for the rest.
+test("a broken header is named as 0.7's decoders named it", () => {
+	const fails = (name: string, bytes: Buffer, format: "png" | "jpeg" | "gif" | "webp") => {
+		try { probeFile(file(name, bytes), format); } catch (e) { return (e as Error).message; }
+		return "read";
+	};
+	const text = Buffer.from("this is not an image\n");
+	assert.equal(fails("text.png", text, "png"), "Format error decoding Png: Invalid PNG signature.");
+	assert.equal(fails("text.jpg", text, "jpeg"), "Format error decoding Jpeg: Error parsing image. Illegal start bytes:7468");
+	assert.equal(fails("text.gif", text, "gif"), "Format error decoding Gif: malformed GIF header");
+	assert.equal(fails("text.webp", text, "webp"), "Format error decoding WebP: Invalid Chunk header: [52, 49, 46, 46]");
+	assert.equal(fails("empty.jpg", Buffer.alloc(0), "jpeg"), "Format error decoding Jpeg: I/O errors Not enough bytes, expected 2 but found 0");
+	const whole = jpeg(30, 20, 1);
+	const sos = whole.lastIndexOf(Buffer.from([0xff, 0xda]));
+	assert.equal(fails("headers.jpg", whole.subarray(0, sos), "jpeg"), "Format error decoding Jpeg: I/O errors Not enough bytes, expected 1 but found 0", "it ends before its image data");
+	const dqt = Buffer.concat([Buffer.from([0xff, 0xd8]), segment(0xdb, Buffer.concat([Buffer.from([0]), Buffer.alloc(64)]))]);
+	assert.equal(fails("dqt.jpg", dqt.subarray(0, 40), "jpeg"), "Format error decoding Jpeg: I/O errors Not enough bytes, expected 64 but found 33");
+	assert.equal(fails("whole.jpg", whole, "jpeg"), "read");
+	assert.equal(fails("short.png", png(4, 4).subarray(0, 30), "png"), "unexpected end of file");
+	assert.equal(fails("nodata.png", Buffer.concat([PNG_START, ihdr(4, 4, 8, 6), chunk("IEND", Buffer.alloc(0))]), "png"), "Format error decoding Png: IDAT or fdAT chunk is missing.");
+	assert.equal(fails("short.gif", Buffer.from("GIF89a\x01", "latin1"), "gif"), "Format error decoding Gif: Unexpected End of File");
+	assert.equal(fails("short.webp", Buffer.from("RIFF\0\0\0\0WEBPVP8 ", "latin1"), "webp"), "failed to fill whole buffer");
+	assert.equal(fails("avi.webp", Buffer.from("RIFF\0\0\0\0AVI LIST\0\0\0\0", "latin1"), "webp"), "Format error decoding WebP: Invalid WebP signature: [41, 56, 49, 20]");
+	// What 0.7 wrote a PNG of in grey, and in 16 bits.
+	const grey = probeFile(file("grey.png", Buffer.concat([PNG_START, ihdr(4, 4, 16, 0), chunk("IDAT", Buffer.alloc(2)), chunk("IEND", Buffer.alloc(0))])), "png");
+	assert.deepEqual([grey?.grey, grey?.sixteen], [true, true]);
+	assert.deepEqual([probe(file("rgba.png", png(4, 4)), "png").grey, probe(file("rgba.png", png(4, 4)), "png").sixteen], [false, false]);
+});
+
+test("what 0.7 couldn't decode past the header is found before anything is encoded", () => {
+	const whole = png(4, 4);
+	assert.equal(undecodable(whole, "png"), undefined);
+	assert.equal(undecodable(whole.subarray(0, whole.length - 12), "png"), "unexpected end of file", "no end chunk");
+	assert.equal(undecodable(whole.subarray(0, whole.length - 20), "png"), "unexpected end of file", "the image data cut short");
+	const damaged = Buffer.from(whole);
+	damaged[damaged.indexOf("IDAT") + 4] ^= 0x55;
+	assert.match(undecodable(damaged, "png") ?? "", /^Format error decoding Png: CRC error: expected 0x[0-9a-f]+ have 0x[0-9a-f]+ while decoding ChunkType \{ type: IDAT, critical: true, private: false, reserved: false, safecopy: false \} chunk\.$/);
+	// A damaged chunk a decoder can do without isn't checked: 0.7's decoder passed over it.
+	const noted = png(4, 4, [chunk("tEXt", Buffer.from("Comment\0pine cones"))]);
+	noted[noted.indexOf("pine")] ^= 1;
+	assert.equal(undecodable(noted, "png"), undefined);
+	// A GIF's first frame: its descriptor, then sub-blocks up to a 0.
+	const gif = Buffer.concat([Buffer.from("GIF89a", "latin1"), Buffer.from([2, 0, 2, 0, 0x80, 0, 0]), Buffer.alloc(6), Buffer.from([0x2c, 0, 0, 0, 0, 2, 0, 2, 0, 0, 2, 2, 0x44, 0x01, 0, 0x3b])]);
+	assert.equal(undecodable(gif, "gif"), undefined);
+	assert.equal(undecodable(gif.subarray(0, 24), "gif"), "Format error decoding Gif: Unexpected End of File");
+	const bits = (100 - 1) | ((50 - 1) << 14);
+	const vp8l = Buffer.concat([Buffer.from("RIFF", "latin1"), u32le(26), Buffer.from("WEBPVP8L", "latin1"), u32le(10), Buffer.from([0x2f]), u32le(bits), Buffer.alloc(5)]);
+	assert.equal(undecodable(vp8l, "webp"), undefined);
+	assert.equal(undecodable(vp8l.subarray(0, 25), "webp"), "Format error decoding WebP: Corrupt bitstream");
+	assert.equal(undecodable(Buffer.from([0xff, 0xd8, 0xff]), "jpeg"), undefined, "a JPEG's image data is decoded padded, as 0.7's decoder did");
 });

@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { comparePaths, compareText } from "./paths.ts";
+import { comparePaths, compareText, joinAsGiven, parentAsGiven } from "./paths.ts";
 
 test("paths are ordered folder by folder", () => {
 	const p = (s: string) => s.split("/").join(path.sep);
@@ -16,4 +16,16 @@ test("text is ordered by its UTF-8 bytes", () => {
 	// U+FF5E (three bytes) is before U+1F332 (four), which UTF-16 has the other way round.
 	assert.ok(compareText("～", "\u{1f332}") < 0);
 	assert.ok(compareText("a", "ab") < 0 && compareText("b", "ab") > 0 && compareText("x", "x") === 0);
+});
+
+// 0.7's messages named paths as Rust's `Path::join` and `Path::parent` give them, untidied.
+test("paths are joined and split as rust did", () => {
+	const s = path.sep;
+	assert.equal(joinAsGiven("nope", "."), `nope${s}.`);
+	assert.equal(joinAsGiven("broken/", "dead"), "broken/dead");
+	assert.equal(joinAsGiven("site", path.resolve("/srv/www")), path.resolve("/srv/www"));
+	assert.equal(parentAsGiven(`f${s}posts${s}x.md`), `f${s}posts`);
+	assert.equal(parentAsGiven("x.d.ts"), "");
+	assert.equal(parentAsGiven(`.${s}x`), ".");
+	assert.equal(parentAsGiven(`a${s}${s}b${s}`), "a");
 });

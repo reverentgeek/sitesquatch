@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { BuildReport } from "./build.ts";
 import type { Config } from "./config.ts";
-import { dirsOf } from "./config.ts";
+import { dirsOf, shownOutput } from "./config.ts";
 import { relative } from "./paths.ts";
 import * as voice from "./voice.ts";
 
@@ -59,7 +59,7 @@ export function summary(config: Config, report: BuildReport, recovered = false):
 	lines.push(...report.summary);
 
 	const [files, size] = dirSize(dirs.output);
-	const output = dirs.output.startsWith(dirs.root + path.sep) ? dirs.output.slice(dirs.root.length + 1) : dirs.output === dirs.root ? "" : dirs.output;
+	const output = shownOutput(config, true);
 	lines.push(["Output", `${output}: ${count(files)} file${plural(files)}, ${bytes(size)}`]);
 
 	if (report.timings.length) lines.push(["Time", report.timings.map(([label, ms]) => `${label} ${duration(ms)}`).join(", ")]);

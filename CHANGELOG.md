@@ -42,7 +42,16 @@ the release.
 - **`fetch` is Node's own, with 0.7's error words and `cache` option on top.** The reason after
   `fetch failed: <url>:` is Node's (`connect ECONNREFUSED 127.0.0.1:9`, `getaddrinfo ENOTFOUND
   ...`), where 0.7 gave its HTTP library's (`io: Connection refused`); a script that matched that
-  text should match the `cause` or the URL.
+  text should match the `cause` or the URL. Requests go out as 0.7 sent them, where the Fetch
+  standard would refuse or change them: credentials in the URL are Basic auth, the user agent is
+  `ssqch/<version>`, and a request for a port the standard blocks (6000, 6665 to 6669, 10080 and
+  the others) or with a `Host`, `Keep-Alive`, `Transfer-Encoding`, `Upgrade` or `Expect` header
+  goes out through `node:http`. Three things are Node's: a response's `statusText` is the server's
+  own (`"Pine OK"`), where 0.7 gave the standard words for its status (`"OK"`, and `""` for a
+  status without any); a response's `url` has no credentials in it, where 0.7 kept them; and an
+  error names the URL without its password. A response saved with `cache` lists its headers in
+  name order, with repeated ones joined (`"a, b"`), as Node's `Headers` gives them, where 0.7's
+  file had the server's order; a site reads them the same either way.
 - **Filters and templates get your real objects.** 0.7 handed them copies that kept writes to
   themselves; now a filter that sorts or changes what it's given changes it for the pages
   rendered after it. Copy first (`[...posts].sort()`). Data that refers to itself (`a.self = a`)
@@ -57,8 +66,6 @@ the release.
 - **YAML numbers and merge keys are js-yaml's too.** `017` is the number 17 and `1_000` is 1000,
   where 0.7 kept both as text, so a value with a leading zero that matters (a ZIP code, `007`)
   needs quotes. `<<: *defaults` merges the anchored mapping in, where 0.7 kept a key named `<<`.
-- **A TOML date's fraction of a second keeps three digits**: `07:32:00.999999` is
-  `07:32:00.999`, since smol-toml reads dates as JavaScript dates. Quote it to keep every digit.
 - **A build that fails can leave pages in the output folder.** Pages are written as they render,
   so the ones rendered before the error are there; 0.7 wrote nothing when any page failed. The
   exit code still says the build failed: don't deploy the folder of a build that failed.
@@ -144,11 +151,16 @@ the release.
   runs on every platform, shipped in an npm package whose function returns `{ name, rust: { wasm,
   options } }`. It can have a transform, filters and engines; `crates/ssqch-plugin/README.md`
   and `examples/rust-plugin` show how.
-- **`ssqch diff --ignore` takes a JavaScript regular expression** (in its Unicode mode), where 0.7
-  took Rust's. Most patterns are the same in both, and flags at the start (`(?i)`) and named
-  groups written `(?P<name>...)` still work, but Rust's own syntax JavaScript doesn't have
-  (`(?x)`, `\A`, `\z`, an escaped `-` outside `[...]`) is refused with JavaScript's words. `\d` and
-  `\w` are ASCII in JavaScript; write `\p{Nd}` or `\p{L}` for other scripts' digits and letters.
+- **`ssqch diff --ignore` refuses two kinds of pattern JavaScript can't match.** Patterns are still
+  in the syntax of Rust's regex crate, read as 0.7 read them (`\w`, `\d`, `\s` and `\b` in every
+  script, `.` up to a `\n` only, flags partway through, `(?x)`, `\A`, `\z`, `[a-z&&[^aeiou]]`, and
+  the crate's error messages) and matched by JavaScript. What's refused, with a message that says
+  so: the Unicode properties JavaScript doesn't have (`Age`, `Grapheme_Cluster_Break`,
+  `Word_Break`, `Sentence_Break`, `Hyphen`, `Grapheme_Link`, `IDS_Unary_Operator`,
+  `ID_Compat_Math_Start` and `_Continue`, `Modifier_Combining_Mark`,
+  `Prepended_Concatenation_Mark` and the `Other_` ones), and, on Node 22, a property in a
+  case-insensitive group that's only part of the pattern (`(?i:\p{Lu})x`). Write the property's
+  characters out, or put `(?i)` at the start of the pattern (or use Node 23 or newer).
 - **How ssqch is installed.** The npm package is ssqch itself, JavaScript that runs on Node 22.18
   or newer, with sharp as its one dependency; the `@ssqch/<platform>` packages are gone, so a
   `pnpm-workspace.yaml` that lists them under `minimumReleaseAgeExclude` needs only `ssqch`. The
@@ -165,9 +177,23 @@ the release.
   Date("2024-13-45")`) or `NaN` is an error, `dateToRfc3339: not a date: Invalid Date` (or
   `NaN`), as it is for ssqch's other date filters, where 0.7 wrote `1970-01-01T00:00:00Z` into
   the feed without a word. Fix the date, or leave the element out when there's none.
+- **An image that can't be encoded after its markup is written fails the build.** The image
+  plugin writes a page's `<picture>` (and a link's copy, a feed's copy, `imageUrl()`'s URL) from
+  the image's header while sharp encodes the files beside the build, so it reads a source through
+  before anything points at a file it has to make, and what 0.7 couldn't decode is still a
+  warning that leaves the tag as written, in 0.7's words (a file that ends too soon, a damaged
+  chunk, a header that doesn't read). What that can't see, such as a PNG whose compressed data is
+  damaged under correct checksums, or a cache folder that can't be written, comes to light after
+  the pages are written, and the build fails naming the source, where 0.7 warned. Fix or replace
+  the image, or leave it out with `ssqch:ignore`.
 
 ### Changed
 
+- **A glob matches a path by its characters.** `?` is one character and a class's members are
+  characters, so `?.jpg` matches `é.jpg` and `[é]` matches `é`; 0.7 matched UTF-8 bytes, where
+  neither did. That's every glob: `diff --only`, schemas' `files`, the config's `ignore` and
+  `passthrough`, the sitemap's `exclude`, and `files()`. Ignoring case is still for ASCII letters
+  only.
 - **`import "ssqch"` works from plain Node too.** The npm package's `exports` map names ssqch's
   own modules, which a config, a test or a script can import, where 0.7's package had stubs that
   said to build with ssqch.
@@ -184,15 +210,18 @@ the release.
 - `ssqch/minify` and `ssqch/sass` are 0.7's minifier and 0.7's Sass compiler (grass 0.13.4),
   built as WebAssembly, so pages and stylesheets come out as 0.7 wrote them. A Sass error's last
   line names the file from the project root (`./styles/blog.scss:1:16`), where 0.7 printed its
-  absolute path after `./`.
+  absolute path after `./`; so do the paths in `@warn` and `@debug` lines.
 - **Images are encoded by sharp** (libvips, with libaom for AVIF, libwebp and mozjpeg), where 0.7
   had encoders of its own, so an image file's bytes aren't 0.7's. The rest is: the markup, the
   files' names, widths and heights, the cache, and the quality options, whose numbers still mean
   what they meant in 0.7 (ssqch turns them into sharp's, measured to give pictures as good). At
   those settings the files are smaller and quicker to make: AVIF about a quarter smaller at the
   default speed (11 to 19% at speed 4) in well under half the time, WebP 1% smaller, and JPEG a
-  tenth smaller at quality 80 (sharp's best JPEG and AVIF fall short of 0.7's above about JPEG
-  91 and AVIF 98, and are sharp's 100 there). A site changes nothing. Its image
+  tenth smaller at quality 80 (sharp's best JPEG and AVIF fall short of 0.7's from about JPEG 92
+  and AVIF 98 up, and are sharp's 100 there). PNG files are filtered row by row and compressed
+  at zlib's level 6, as 0.7's were, and stay grey or 16 bits when the source is: each within 3%
+  of 0.7's size on the blog's PNGs, and 13% smaller in all. A JPEG of a transparent image keeps
+  the colour under the transparency, as 0.7's did. A site changes nothing. Its image
   cache from 0.7 is used as it is, since the names are the same, so the output has 0.7's files
   next to sharp's until the cache goes: delete `.cache/ssqch/img` to encode every file again.
   AVIF is always there, where 0.7 needed its `avif` feature.
@@ -202,10 +231,16 @@ the release.
 
 ### Changed
 
+- `ssqch diff` compares every file when a fingerprinted name is another file's name without its
+  last fingerprint (`x.11111111.22222222.css` beside `x.11111111.css` and `x.css`). 0.7 lost one
+  of the two from the report.
 - `[ssqch] Encoded ...` lines come as each image's files are done, while pages go on rendering,
   so they're among the `Writing` lines, not before the page that shows the image. The build waits
   for every file before the link checker, the other plugins' files, `afterBuild` hooks and the
-  summary.
+  summary, and the `Time` line counts the wait under `write`, as 0.7 did.
+- A warning about an image that can't be read gives the decoder's reason once, where 0.7 repeated
+  it (`reading <file>: Format error decoding Png: Invalid PNG signature.`, without 0.7's second
+  `: Invalid PNG signature.`).
 - Tags from the config's functions (`{% image "/a.png", "A pine" %}`, and paired with `{% endimage
   %}`) work in `.jinja` files too, where 0.7 had them in `.njk` only.
 - The config can be `ssqch.config.cjs`, `ssqch.config.ts` or `ssqch.config.mts`, besides `.js`
@@ -216,20 +251,45 @@ the release.
   follow from the rest of 0.8: a draft config isn't written where one of the new config names is
   already there, and a date in a Zola site's `[extra]` (`founded = 2019-05-01`) goes into the
   draft as its text, `"2019-05-01"`, where 0.7 wrote an object with a `$__toml_private_datetime`
-  key that no template could print.
+  key that no template could print. Three things are fixed. `package.json` is edited where it
+  changes and kept as it's written everywhere else, where 0.7 printed the whole file again (a
+  list on several lines, `1e5` as `100000.0`, escapes written out, the dev dependencies sorted).
+  A template literal with `${...}` in it (`` addPassthroughCopy(`${dir}/img`) ``) and a filter
+  whose default value reads the config (`(value, format = dateFormat) => ...`) are left for a
+  person to port, where 0.7 put them in the draft as they were, a path and a name that don't
+  exist and a function that needs a variable the draft doesn't have. A Zola `config.toml` that
+  isn't TOML shows its line and the spot, as 0.7's did, with smol-toml's words for what's wrong.
 - A warning a package raises with `process.emitWarning` is one of the build's warnings (`code:
   "console"` in the JSON report), like `console.warn`.
 - Messages that quote a parser are that parser's: YAML, JSON and TOML errors keep `at line N
   column M` (which the JSON report's `line` comes from), with js-yaml's, Node's and smol-toml's
   words before it. The error for a permalink outside the output folder names the permalink
   (`"/../up.html"`, where 0.7 printed `Some("/../up.html")`), and the warning for a data file
-  nothing can read says to provide it in the config's `data` (0.7 named the Rust API).
+  nothing can read says to provide it in the config's `data` (0.7 named the Rust API). A TOML
+  date that can't be (`2023-02-30`) says what 0.7 said (`invalid date, expected day between 01
+  and 28`), and a number past what 0.7 held says `integer number overflowed` (0.7: `u64 value
+  was too large`) or `floating-point number overflowed`. An error in `sitesquatch.toml` names
+  the file as 0.7 did (`./sitesquatch.toml`), with its line and the excerpt under the message,
+  and says what a key must be (`input must be a string`) where 0.7 quoted its TOML library
+  (`invalid type: integer 3, expected path string`). An error from the file system keeps 0.7's
+  words for what was being done and has Node's for what went wrong: `creating f: EEXIST: file
+  already exists, mkdir 'f'`, where 0.7 said `creating f: File exists (os error 17)` (in `init`,
+  `types`, `new`, and the `footprint` and `diff` walks).
 - Nunjucks' own syntax and filters work in `.jinja` files too (`{% elseif %}`, `===`,
   `{ title: x }`, `forceescape`, `nl2br`, `urlize`, `wordcount`, `center`, `random`), and
   `{% for key, value in object %}` works there. A Jinja or Nunjucks error in an include points
   at the include's own line, where 0.7 pointed at the `{% include %}` in the page.
 - A YAML integer too big for 128 bits (`123456789012345678901234567890`) is a rounded number,
   where 0.7 refused the file. TOML's integers past 2^53 are rounded numbers, as in 0.7.
+- A leap second in a page's `date` (`2016-12-31T23:59:60Z`, which TOML can write) is the
+  second before it, since a JavaScript date has no 60th second; 0.7 kept it. In any other key a
+  TOML date is its text, as 0.7 wrote it, the 60th second included.
+- `--output ../public`, an output folder outside the project given from it, builds there. 0.7
+  refused it with `permalink Some("/src/") points outside the output directory`, by mistake: its
+  check for a permalink that leaves the output folder counted the folder's own `..` (an absolute
+  path, `--output /srv/www`, worked).
+- `ssqch inspect` shows a date that isn't one (`new Date(NaN)` in the config's `data`) as `null`,
+  as `JSON.stringify` does; 0.7 showed the first moment of 1970, which no page had.
 - A stack frame in an error or a warning has the column Node gives: `throw new Error("...")` is
   at `new`, where 0.7 (on QuickJS) pointed at `Error`.
 - Edge has what edge.js has: destructuring in `@let`, block-bodied arrow functions, regular

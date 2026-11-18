@@ -5,6 +5,18 @@ import { isPlainObject } from "./data.ts";
 const ALPHANUMERIC = /[\p{Alphabetic}\p{N}]/u;
 
 /**
+ * `text` lowercased a character at a time, as 0.7 (Rust's `char::to_lowercase`) did. JavaScript
+ * lowercases a whole string by its context, and the one rule that has is the Greek final sigma:
+ * `ΟΔΟΣ` is `οδος` there and `οδοσ` here.
+ */
+function lowercase(text: string): string {
+	if (!text.includes("Σ")) return text.toLowerCase();
+	let out = "";
+	for (const c of text) out += c.toLowerCase();
+	return out;
+}
+
+/**
  * Lowercase letters and digits (of any script), with `separator` for each run of anything else.
  * An apostrophe is dropped (`drews-brownies`), or separates words like other punctuation with
  * `apostrophesSeparate` (`drew-s-brownies`).
@@ -12,7 +24,7 @@ const ALPHANUMERIC = /[\p{Alphabetic}\p{N}]/u;
 export function slugWith(text: string, separator: string, apostrophesSeparate: boolean): string {
 	let out = "";
 	let gap = false;
-	for (const c of text.toLowerCase()) {
+	for (const c of lowercase(text)) {
 		if (ALPHANUMERIC.test(c)) {
 			if (gap && out !== "") out += separator;
 			gap = false;
