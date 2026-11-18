@@ -1,7 +1,7 @@
 // From crates/sitesquatch/src/data.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { merge, normalizeTags, parseDate, parseFrontMatter } from "./data.ts";
+import { loadYaml, merge, normalizeTags, parseDate, parseFrontMatter } from "./data.ts";
 
 test("front_matter_formats", () => {
 	let { data: d, body } = parseFrontMatter("---\ntitle: Y\n---\nbody");
@@ -96,4 +96,16 @@ test("dates written loosely are read as 0.7 read them", () => {
 test("a JSON error says where, whatever V8 says", () => {
 	assert.throws(() => parseFrontMatter("---json\n{\"a\": }\n---\n"), /invalid JSON front matter: .* at line 1 column 7$/);
 	assert.throws(() => parseFrontMatter("---json\n{\n  \"a\": 1,\n}\n---\n"), /invalid JSON front matter: .* at line 3 column 1$/);
+});
+
+// js-yaml reads the years 0 to 99 as 1900 to 1999 (Date.UTC's rule); ssqch keeps them.
+test("yaml_dates_before_the_year_100_keep_their_year", () => {
+	const at = (text: string) => (loadYaml(`d: ${text}`) as { d: Date }).d.toISOString();
+	assert.equal(at("0099-12-31"), "0099-12-31T00:00:00.000Z");
+	assert.equal(at("0005-01-02T03:04:05Z"), "0005-01-02T03:04:05.000Z");
+	// An offset that moves the date into the year before.
+	assert.equal(at("0001-01-01T00:30:00+01:00"), "0000-12-31T23:30:00.000Z");
+	assert.equal(at("1999-12-31"), "1999-12-31T00:00:00.000Z");
+	// The rest of js-yaml's default schema is still there.
+	assert.deepEqual(loadYaml("base: &b { x: 1 }\nm:\n  <<: *b\n  y: 2"), { base: { x: 1 }, m: { x: 1, y: 2 } });
 });
