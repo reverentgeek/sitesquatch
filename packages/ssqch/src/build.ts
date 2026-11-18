@@ -15,6 +15,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { rewriteBase } from "./base.ts";
 import type { Config, Dirs, GeneratedFile, Hook, PageSummary } from "./config.ts";
+import { shownDir, shownOutput } from "./config.ts";
 import type { Data } from "./data.ts";
 import { STATIC_DATA_EXTENSIONS } from "./data.ts";
 import { BuildError, Diagnostics, bail, context, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
@@ -74,7 +75,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	const timer = new Timer();
 	const site = new Site(config);
 	const { dirs } = site;
-	if (!isDir(dirs.input)) bail(`input directory ${dirs.input} does not exist`);
+	if (!isDir(dirs.input)) bail(`input directory ${shownDir(config, config.input)} does not exist`);
 
 	const built = await runFileBuilders(config, dirs);
 	await runHooks(config, dirs, "beforeBuild", config.beforeBuild, undefined);
@@ -171,7 +172,7 @@ export interface InspectedPage {
 export async function inspectPages(config: Config): Promise<{ dirs: Dirs; global: Data; pages: InspectedPage[] }> {
 	const site = new Site(config, true);
 	const { dirs } = site;
-	if (!isDir(dirs.input)) bail(`input directory ${dirs.input} does not exist`);
+	if (!isDir(dirs.input)) bail(`input directory ${shownDir(config, config.input)} does not exist`);
 	await runFileBuilders(config, dirs);
 	await runHooks(config, dirs, "beforeBuild", config.beforeBuild, undefined);
 	await site.prepare(new Timer());
@@ -969,7 +970,7 @@ interface Recorded {
 function recordOutputs(config: Config, dirs: Dirs, outputs: string[], pagePaths: string[]): Recorded {
 	const listPath = path.join(dirs.root, OUTPUT_LIST);
 	const firstBuild = !isFile(listPath);
-	const outputName = relative(dirs.root, dirs.output);
+	const outputName = shownOutput(config);
 	const rel = (files: string[]) => new Set(files.filter((f) => isInside(dirs.output, f) && f !== dirs.output).map((f) => relative(dirs.output, f)));
 	const current = rel(outputs);
 	const pages = rel(pagePaths);

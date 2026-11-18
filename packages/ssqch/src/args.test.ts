@@ -32,6 +32,25 @@ test("the_usage_line_lists_the_options_given", () => {
 	assert.match(refused(["build", "--root", "x", "stray"]), /\nUsage: ssqch build \[OPTIONS\]\n/);
 	assert.match(refused(["build", "-q", "-q"]), /^error: the argument '--quiet' cannot be used multiple times\n\nUsage: ssqch build \[OPTIONS\]\n/);
 	assert.match(refused(["new", "--root", "x"]), /\nUsage: ssqch new --root <ROOT> <PATH>\n/);
+	// clap counted the option it suggested as given, and listed the options before the command too.
+	assert.match(refused(["build", "-q", "--verbos"]), /tip: a similar argument exists: '--verbose'\n\nUsage: ssqch build --quiet --verbose\n/);
+	assert.match(refused(["inspect", "--formt", "json", "x"]), /\nUsage: ssqch inspect --format <FORMAT> <PAGE>\n/);
+	assert.match(refused(["--root", "x", "--verbos", "build"]), /\nUsage: ssqch --root <ROOT> --verbose\n/);
+	assert.match(refused(["--quiet=1"]), /\nUsage: ssqch --quiet\n/);
+	// An argument too many is the whole usage line, after `--` too.
+	assert.match(refused(["new", "post", "--", "--x"]), /^error: unexpected argument '--x' found\n\nUsage: ssqch new \[OPTIONS\] <PATH>\n/);
+});
+
+test("words_after_a_double_dash_and_short_flags_as_clap_read_them", () => {
+	assert.match(refused(["--", "build"]), /^error: unexpected argument 'build' found\n\n {2}tip: subcommand 'build' exists; to use it, remove the '--' before it\n/);
+	assert.match(refused(["--", "buil"]), /^error: unrecognized subcommand 'buil'\n\n {2}tip: a similar subcommand exists: 'build'\n/);
+	assert.match(refused(["--", "-q"]), /^error: unrecognized subcommand '-q'\n/);
+	assert.match(refused(["build", "--root", "--"]), /^error: a value is required for '--root <ROOT>' but none was supplied/);
+	// The letter that isn't known, alone.
+	assert.match(refused(["-="]), /^error: unexpected argument '-=' found/);
+	assert.match(refused(["-q="]), /^error: unexpected argument '-=' found/);
+	assert.match(refused(["-xyz"]), /^error: unexpected argument '-x' found/);
+	assert.match(refused(["new", "-x=1", "a"]), /tip: to pass '-x' as a value, use '-- -x'/);
 });
 
 test("help_answers_as_clap_did", () => {

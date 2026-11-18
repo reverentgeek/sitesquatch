@@ -57,8 +57,6 @@ the release.
 - **YAML numbers and merge keys are js-yaml's too.** `017` is the number 17 and `1_000` is 1000,
   where 0.7 kept both as text, so a value with a leading zero that matters (a ZIP code, `007`)
   needs quotes. `<<: *defaults` merges the anchored mapping in, where 0.7 kept a key named `<<`.
-- **A TOML date's fraction of a second keeps three digits**: `07:32:00.999999` is
-  `07:32:00.999`, since smol-toml reads dates as JavaScript dates. Quote it to keep every digit.
 - **A build that fails can leave pages in the output folder.** Pages are written as they render,
   so the ones rendered before the error are there; 0.7 wrote nothing when any page failed. The
   exit code still says the build failed: don't deploy the folder of a build that failed.
@@ -210,13 +208,31 @@ the release.
   column M` (which the JSON report's `line` comes from), with js-yaml's, Node's and smol-toml's
   words before it. The error for a permalink outside the output folder names the permalink
   (`"/../up.html"`, where 0.7 printed `Some("/../up.html")`), and the warning for a data file
-  nothing can read says to provide it in the config's `data` (0.7 named the Rust API).
+  nothing can read says to provide it in the config's `data` (0.7 named the Rust API). A TOML
+  date that can't be (`2023-02-30`) says what 0.7 said (`invalid date, expected day between 01
+  and 28`), and a number past what 0.7 held says `integer number overflowed` (0.7: `u64 value
+  was too large`) or `floating-point number overflowed`. An error in `sitesquatch.toml` names
+  the file as 0.7 did (`./sitesquatch.toml`), with its line and the excerpt under the message,
+  and says what a key must be (`input must be a string`) where 0.7 quoted its TOML library
+  (`invalid type: integer 3, expected path string`). An error from the file system keeps 0.7's
+  words for what was being done and has Node's for what went wrong: `creating f: EEXIST: file
+  already exists, mkdir 'f'`, where 0.7 said `creating f: File exists (os error 17)` (in `init`,
+  `types`, `new`, and the `footprint` and `diff` walks).
 - Nunjucks' own syntax and filters work in `.jinja` files too (`{% elseif %}`, `===`,
   `{ title: x }`, `forceescape`, `nl2br`, `urlize`, `wordcount`, `center`, `random`), and
   `{% for key, value in object %}` works there. A Jinja or Nunjucks error in an include points
   at the include's own line, where 0.7 pointed at the `{% include %}` in the page.
 - A YAML integer too big for 128 bits (`123456789012345678901234567890`) is a rounded number,
   where 0.7 refused the file. TOML's integers past 2^53 are rounded numbers, as in 0.7.
+- A leap second in a page's `date` (`2016-12-31T23:59:60Z`, which TOML can write) is the
+  second before it, since a JavaScript date has no 60th second; 0.7 kept it. The text of a TOML
+  date is 0.7's either way.
+- `--output ../public`, an output folder outside the project given from it, builds there. 0.7
+  refused it with `permalink Some("/src/") points outside the output directory`, by mistake: its
+  check for a permalink that leaves the output folder counted the folder's own `..` (an absolute
+  path, `--output /srv/www`, worked).
+- `ssqch inspect` shows a date that isn't one (`new Date(NaN)` in the config's `data`) as `null`,
+  as `JSON.stringify` does; 0.7 showed the first moment of 1970, which no page had.
 - A stack frame in an error or a warning has the column Node gives: `throw new Error("...")` is
   at `new`, where 0.7 (on QuickJS) pointed at `Error`.
 - Edge has what edge.js has: destructuring in `@let`, block-bodied arrow functions, regular

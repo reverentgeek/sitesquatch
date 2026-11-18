@@ -5,7 +5,7 @@ import { Printed, UsageError, parse } from "./args.ts";
 import type { Command, Grammar, Option } from "./args.ts";
 import { build } from "./build.ts";
 import type { BuildReport } from "./build.ts";
-import { dirsOf, loadConfig, parseEnvironment } from "./config.ts";
+import { dirsOf, loadConfig, parseEnvironment, shownDir, shownOutput } from "./config.ts";
 import type { Config, Environment } from "./config.ts";
 import * as diagnostics from "./diagnostics.ts";
 import { Locator, bail } from "./diagnostics.ts";
@@ -24,7 +24,7 @@ import { field, fieldText, inspect, inspectionJson, inspectionText } from "./ins
 import type { Field as InspectedField, Inspection } from "./inspect.ts";
 import { describeThrown } from "./modules.ts";
 import { relative } from "./paths.ts";
-import { quoted } from "./quote.ts";
+import { prettyJson, quoted } from "./quote.ts";
 import { summary } from "./report.ts";
 import { BUILDER, runBuilder } from "./serve/builder.ts";
 import type { BuilderStart } from "./serve/builder.ts";
@@ -96,7 +96,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		options: [],
 		positionals: [{ name: "SHELL", help: "bash, zsh, fish, powershell or elvish", required: true, values: SHELLS }],
 		afterHelp: "Put the script where your shell looks for completions:\n\n  ssqch completions zsh > ~/.zfunc/_ssqch        (with ~/.zfunc in $fpath, before compinit)\n  ssqch completions bash > ~/.local/share/bash-completion/completions/ssqch\n  ssqch completions fish > ~/.config/fish/completions/ssqch.fish\n  ssqch completions powershell >> $PROFILE",
-		own: true,
+		// Not `own`: in 0.7 it was one of the core's commands, so `-d` and `--pathprefix` work there.
 	},
 	{
 		name: "diff",
@@ -133,7 +133,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		name: "import",
 		about: "Move a site from another generator: rename and rewrite what's mechanical, and list the rest",
 		options: [{ long: "write", help: "Make the changes (without it, only list them)" }],
-		positionals: [{ name: "generator", help: "The generator the site is built with: eleventy or zola", required: true }, { name: "dir", help: "The site's folder (default: the current folder) [default: .]", required: false }],
+		positionals: [{ name: "generator", help: "The generator the site is built with: eleventy or zola", required: true }, { name: "dir", help: "The site's folder (default: the current folder)", required: false, default: "." }],
 		afterHelp: "Run it in a clean git checkout, read the list, then run it again with --write. `ssqch docs --from <generator>` prints the trailhead for each generator.",
 		own: true,
 	},
@@ -151,6 +151,16 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	},
 	{ name: "sighting", about: "Photographic evidence", options: [], positionals: [], hidden: true, own: true },
 ];
+
+/**
+ * The commands as `capabilities` lists them: `--help`'s order, but with `completions` after
+ * `footprint`, where 0.7 had it (it was the last of the core's own commands there).
+ */
+const CAPABILITY_ORDER = (() => {
+	const names = COMMANDS.filter((c) => !c.hidden && c.name !== "completions").map((c) => c.name);
+	names.splice(names.indexOf("footprint") + 1, 0, "completions");
+	return names;
+})();
 
 export const GRAMMAR: Grammar = { name: "ssqch", about: "SiteSquatch (ssqch): a fast, pluggable static site generator", version: VERSION, globals: GLOBALS, commands: COMMANDS };
 
@@ -309,7 +319,7 @@ export async function main(argv: string[]): Promise<number> {
 	// The commands that don't build the site.
 	switch (command) {
 		case "init": return runInit({ dir: cli.positionals[0] ?? ".", starter: value("starter") ?? "site", engine: value("engine") ?? DEFAULT_ENGINE, quiet: flag("quiet") });
-		case "capabilities": return runCapabilities(format, COMMANDS.filter((c) => !c.hidden).map((c) => c.name));
+		case "capabilities": return runCapabilities(format, CAPABILITY_ORDER);
 		case "docs": return runDocs(GRAMMAR, { query: cli.positionals, from: value("from"), format });
 		case "sighting": return runSighting(path.resolve(value("root") ?? "."));
 		case "completions": {
@@ -352,7 +362,7 @@ export async function main(argv: string[]): Promise<number> {
 	const root = path.resolve(value("root") ?? ".");
 	siteRoot = root;
 	routeConsole();
-	const makeConfig = () => loadConfig({ root, env, serving, quiet: flag("quiet") || inspecting, verbose: flag("verbose"), output: value("output"), base: value("base") });
+	const makeConfig = () => loadConfig({ root, rootGiven: value("root") ?? ".", env, serving, quiet: flag("quiet") || inspecting, verbose: flag("verbose"), output: value("output"), base: value("base") });
 
 	if (command === "new") return newPage(makeConfig, root, { path: cli.positionals[0], title: value("title"), date: value("date"), blueprint: value("blueprint"), set: (cli.options.set as string[] | undefined) ?? [], format });
 	if (serving) {
@@ -402,7 +412,8 @@ export async function main(argv: string[]): Promise<number> {
 		}
 		if (command === "footprint") {
 			const dirs = dirsOf(config);
-			await runFootprint(dirs.output, relative(dirs.root, dirs.output), top, format);
+			// Read from the folder as 0.7 named it, so an error names it the same way (`nope/_site`).
+			await runFootprint(shownDir(config, config.output), shownOutput(config), top, format);
 			return 0;
 		}
 		const report = await build(config);
@@ -450,7 +461,7 @@ async function runInspect(config: Config, target: string, name: string | undefin
 		one = field(report, name);
 		if (!one) bail(`${report.url ?? report.inputPath} has no \`${name.split(".")[0]}\` in its data (it has: ${report.fields.map((f) => f.name).join(", ")})`);
 	}
-	if (format === "json") process.stdout.write(JSON.stringify(inspectionJson(report, one), null, 2) + "\n");
+	if (format === "json") process.stdout.write(prettyJson(inspectionJson(report, one)) + "\n");
 	else process.stdout.write(one ? fieldText(one) : inspectionText(report));
 }
 
@@ -524,7 +535,7 @@ async function buildJson(makeConfig: () => Promise<Config>, root: string, env: E
 	}
 	if (config) {
 		const dirs = dirsOf(config);
-		out.output = relative(dirs.root, dirs.output);
+		out.output = shownOutput(config);
 		try {
 			const report: BuildReport = await build(config);
 			out.durationMs = ms(report.durationMs);

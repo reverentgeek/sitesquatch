@@ -482,7 +482,12 @@ class Reader {
 export async function compare(before: string, after: string, options: DiffOptions): Promise<DiffReport> {
 	const keep = (paths: string[]) => (options.only ? paths.filter((p) => options.only!.some((re) => re.test(p))) : paths);
 	// Both folders must be there before either is walked, so a missing one is said first.
-	const [listA, listB] = await Promise.all([files(before), files(after)]);
+	// Both are walked at once, and when both fail it's the first folder's error, as 0.7 walked it
+	// first: which walk failed sooner is up to the disk.
+	const [walkA, walkB] = await Promise.allSettled([files(before), files(after)]);
+	if (walkA.status === "rejected") throw walkA.reason;
+	if (walkB.status === "rejected") throw walkB.reason;
+	const [listA, listB] = [walkA.value, walkB.value];
 	const a = keyed(keep(listA), options.exact);
 	const b = keyed(keep(listB), options.exact);
 	const report: DiffReport = { before, after, exact: options.exact, added: [], removed: [], changed: [], unchangedPages: 0, unchangedFiles: 0 };

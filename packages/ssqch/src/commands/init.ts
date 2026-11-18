@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { bundled, types } from "../bundled.ts";
 import { red } from "../diagnostics.ts";
-import { slashes } from "../paths.ts";
+import { joinAsGiven, parentAsGiven, slashes } from "../paths.ts";
 
 /** The starter site: (path in the new site, file in `bundled/`). It's an amateur investigator's field notes: five posts that each show one thing. */
 const STARTER: Array<[string, string]> = [
@@ -145,13 +145,13 @@ export function starterFiles(starter: string, engine: string): Array<[string, st
 }
 
 /** Writes `contents` to `file`, making its folders. */
-export function write(file: string, contents: string): void {
-	try {
-		fs.mkdirSync(path.dirname(file), { recursive: true });
-		fs.writeFileSync(file, contents);
-	} catch (e) {
-		throw new Error(`writing ${file}: ${(e as Error).message}`);
+export function write(file: string, contents: string, shown = file): void {
+	// Its folder first, then the file, each error naming which (as given), as 0.7's did.
+	const parent = parentAsGiven(shown);
+	if (parent !== "") {
+		try { fs.mkdirSync(path.dirname(file), { recursive: true }); } catch (e) { throw new Error(`creating ${parent}: ${(e as Error).message}`); }
 	}
+	try { fs.writeFileSync(file, contents); } catch (e) { throw new Error(`writing ${shown}: ${(e as Error).message}`); }
 }
 
 export interface InitOptions {
@@ -160,6 +160,9 @@ export interface InitOptions {
 	engine: string;
 	quiet: boolean;
 }
+
+/** Whether `dir` is the current folder as Rust compares paths (`.`, `./`, `./.`), where 0.7 printed no `cd`. */
+const isCurrentFolder = (dir: string) => dir.startsWith(".") && dir.split(path.sep === "/" ? "/" : /[\\/]/).every((part) => part === "" || part === ".");
 
 /** `ssqch init`: writes the starter into `dir`, keeping any file that's there. Answers the exit code. */
 export function runInit(options: InitOptions): number {
@@ -172,7 +175,7 @@ export function runInit(options: InitOptions): number {
 			const file = path.join(dir, rel);
 			if (fs.existsSync(file)) skipped.push(rel);
 			else {
-				write(file, contents);
+				write(file, contents, joinAsGiven(dir, rel));
 				written.push(rel);
 			}
 		}
@@ -186,7 +189,7 @@ export function runInit(options: InitOptions): number {
 	for (const rel of written) out += `  created ${slashes(rel)}\n`;
 	for (const rel of skipped) out += `  kept    ${slashes(rel)} (already there)\n`;
 	if (written.length === 0) out += "Nothing to do: camp is already set up (every starter file is there).\n";
-	else out += `\nCamp is set up. Next: ${dir === "." ? "" : `cd ${dir} && `}ssqch serve, then open http://localhost:8080\n`;
+	else out += `\nCamp is set up. Next: ${isCurrentFolder(dir) ? "" : `cd ${dir} && `}ssqch serve, then open http://localhost:8080\n`;
 	process.stdout.write(out);
 	return 0;
 }
