@@ -8,7 +8,7 @@ What's here: `index.js` and `src/`, as published (the published `src/` is nunjuc
 
 Errors that point at the spot:
 
-- **A filter or a test that isn't there, or that throws, names its line** (`compiler.js`, `compileFilter`, `compileFilterAsync`, `compileIs`). The compiled code kept track of the line only at function calls, so `{{ title | uper }}` was reported at the line of the last call before it, or at none.
+- **A filter or a test that isn't there, or that throws, names its line** (`compiler.js`, `compileFilter`, `compileFilterAsync`, `compileIs`), and so does an extension's tag that throws, when the extension gives its node a line (`compileCallExtension`; ssqch's tags from a site's functions do). The compiled code kept track of the line only at function calls, so `{{ title | uper }}` was reported at the line of the last call before it, or at none.
 - **A template that isn't there names the line of the tag that wanted it** (`_compileGetTemplate`), and an error that arrives through a callback (a missing include, an async filter that failed) gets a line at all (`_makeCallback`, which now passes it through `runtime.handleError`).
 - **A runtime error's line isn't one short** (`runtime.js`, `handleError`). The compiled code counts lines from 0 and a `TemplateError` from 1, as the parser's errors do; runtime errors were reported a line early.
 

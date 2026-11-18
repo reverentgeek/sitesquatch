@@ -286,7 +286,8 @@ export function installRuntime(): void {
 	installed = true;
 	// Slices (`crumbs[:-1]`) are nunjucks' own, from its Jinja compatibility. Its lookups are
 	// replaced below: they find a Python method before a key of the same name (a post's `items`
-	// would be a function), and `True` is a name that's looked up on every lookup that misses.
+	// would be a function), and they make every name that's missing a second lookup for `True`,
+	// `False` and `None` (which are globals here instead).
 	const variable = runtime.contextOrFrameLookup;
 	nunjucks.installJinjaCompat();
 	runtime.contextOrFrameLookup = variable;
