@@ -293,7 +293,10 @@ test("a file that fails after its markup is out fails the build, naming the sour
 	p.transformHtml("<img src=\"/pics/a.png\" alt=\"a\"><img src=\"/pics/b.png\" alt=\"b\">", path.join(root, "src/hike.html"), "/hike/");
 	p.imageUrl("/pics/a.png", 20, "webp");
 	const cache = path.join(root, ".cache/ssqch/img");
-	fs.rmSync(cache, { recursive: true });
+	// The encodes started with the markup (one for each core), and on Windows a folder one is
+	// writing into can't be removed that instant: try again, and what's still encoding then
+	// finds a file where its folder was.
+	fs.rmSync(cache, { recursive: true, maxRetries: 20, retryDelay: 10 });
 	fs.writeFileSync(cache, "not a folder");
 	await assert.rejects(p.settle(), (e: BuildError) => {
 		assert.match(e.message, /^images: encoding \.\/dist\/img\/[\w-]{10}-20\.webp from \.\/src\/pics\/a\.png: .+\. \.\/src\/index\.html and 2 more already point at it, so the build stops here rather than publish tracks that lead nowhere \(and 1 more image that failed\)$/);
