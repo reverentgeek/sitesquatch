@@ -1,7 +1,13 @@
 # AGENTS.md
 
-SiteSquatch (`ssqch`) is a static site generator in Rust. The README covers usage, the workspace
-layout and the known gaps; `TODO.md` has the plan.
+SiteSquatch (`ssqch`) is a static site generator: a TypeScript program on Node, in
+`packages/ssqch/`, with ssqch's own Markdown, highlighter, minifier and Sass as `.wasm` files
+built from Rust. The README covers usage and the known gaps; `TODO.md` has the plan.
+
+ssqch 0.7, the Rust binary, is still in `crates/` and `plugins/`: it's the oracle's reference
+until the release that switches removes it (`docs/node-migration.md` has the move's plan, its
+decisions D1 to D7, and what each stage found). Until then, keep it building, and don't change
+its behavior.
 
 ## Working with the blog
 
@@ -20,16 +26,19 @@ change affects it.
   else in ssqch. ssqch's own name stays the one the docs teach. Blog content about Eleventy
   (posts, their URLs) isn't an API and stays. Research on other generators goes in `research/`
   (gitignored); the work items go in `TODO.md`.
-- Other generators' words come from one table, `crates/sitesquatch/src/equivalents.rs`: ssqch's
-  name for each, what to say, and where to read more. Errors and warnings use it to name
-  ssqch's word (`"pathPrefix" isn't a config option. In ssqch it's base`), and each row is
-  tested (`other_generators_words_get_ssqch_names`). A row is an alias (`alias: true`: the word
-  works and says ssqch's name once, `note: pathPrefix works; ssqch calls it base`) when it means
-  the same thing in ssqch, and a hint (refused, with ssqch's name) when it would mean something
-  else; the test checks that an alias works and a hint refuses.
-- After a change that affects output, build the blog and run its smoke tests:
-  `cargo build --release -p ssqch --features avif`, then in `../blog`,
-  `SSQCH_BIN=../ssqch/target/release/ssqch pnpm test`.
+- Other generators' words come from one table, `packages/ssqch/src/equivalents.ts`: ssqch's name
+  for each, what to say, and where to read more. Errors and warnings use it to name ssqch's
+  word (`"pathPrefix" isn't a config option. In ssqch it's base`), and each row is tested
+  (`other_generators_words_get_ssqch_names`). A row is an alias (`alias: true`: the word works
+  and says ssqch's name once, `note: pathPrefix works; ssqch calls it base`) when it means the
+  same thing in ssqch, and a hint (refused, with ssqch's name) when it would mean something
+  else; the test checks that an alias works and a hint refuses. `equivalents.test.ts` keeps it
+  equal to 0.7's copy and the oracle's while those exist.
+- After a change that affects output, build the blog with the Node build and run its smoke tests:
+  in `../blog`, `SSQCH_BIN=../ssqch/packages/ssqch/bin/ssqch.ts pnpm test`. The oracle has the
+  blog's frozen output too (`node --test --test-name-pattern="^blog builds" sites.test.js` in
+  `tests/oracle/`); it matches only when the package's version is as long as 0.7.0, because the
+  JSON report's byte counts include the version.
 - The two TODO lists coordinate the work. This repository's `TODO.md` marks what the blog is
   waiting on with **Blog:**, and `../blog/TODO.md` marks what needs a change here with
   **Needs ssqch:**. When work lands on one side, update both lists.
@@ -40,54 +49,32 @@ change affects it.
 
 ## Commands
 
-- `cargo test --workspace` runs all tests. Add `--features avif` to cover the AVIF encoder (on
-  x86_64 that needs `nasm` installed).
-- `cargo build --release -p ssqch` builds the CLI. `-p reverentgeek` builds the Rust port of the
-  blog in `examples/reverentgeek`, an example of the Rust API (it doesn't have to match the
-  blog's config).
-- `scripts/bench.sh` runs the benchmarks in the README; results go to `bench-results/`.
-- The oracle (`tests/oracle/`, see its README) is the black-box test suite for the move to Node:
-  `cd tests/oracle && node --test` runs it against `target/release/ssqch` (or `SSQCH_BIN`), and
-  `node freeze.js [site...]` freezes a site's output. A change to 0.7's output means freezing
-  again, or a deliberate difference recorded in the test.
-- CI (`.github/workflows/ci.yml`) runs the tests on Linux, macOS and Windows (with AVIF on
-  Linux only), and `cargo clippy --workspace --all-targets --features ssqch/avif -- -D
-  warnings`. Keep clippy clean. It also builds the npm package and the standalone executable
-  and checks them (`package` and `standalone`, see "Releasing"). A pull request that changes
-  the release's own files runs `release.yml` up to the release, unsigned. The code isn't formatted with rustfmt (it uses long lines), so don't run `cargo fmt`.
-
-## The Node implementation (`packages/ssqch/`)
-
-ssqch 0.8 is a TypeScript program on Node, being built in `packages/ssqch/` beside the Rust
-implementation, which stays as it is until the release that switches. The plan, the decisions
-(D1 to D7) and the model to use for each stage are in `docs/node-migration.md`; the stages'
-checkboxes are at the top of `TODO.md`. Start a session there.
-
-### Commands
-
 Run from `packages/ssqch/` unless it says otherwise.
 
 - `node bin/ssqch.ts build --root <site>` runs ssqch from its source, with no build step: Node
-  strips the types. Every command and flag is the 0.7 binary's.
+  strips the types.
 - `node --test` runs the package's own unit tests (`*.test.ts` next to the code they test).
 - `npx tsc --noEmit` type-checks. Keep it clean; CI runs it.
-- The oracle is the definition of done: from `tests/oracle/`,
-  `SSQCH_BIN=packages/ssqch/bin/ssqch.ts node --test` (the path is from the repository root;
-  one file: add its path, such as `cli/init.test.js`). It expects `packages/ssqch/package.json`'s version. Run it on Node 22.18
-  (the lowest supported), 24 and 26 before calling a feature done.
-- While the Node build passes only part of the oracle: from `tests/oracle/`, `node progress.js`
-  runs it against the Node build and fails if a test in `node-passing.txt` fails (a file's path
-  runs only that file). When a stage makes more tests pass, `node progress.js --update` adds
-  them, on Node 22.18, 24 and 26 alike; a test leaves the list only with a reason in the commit.
+- The oracle (`tests/oracle/`, see its README) is the black-box suite: arguments in; files,
+  output and exit codes out. From `tests/oracle/`, `SSQCH_BIN=packages/ssqch/bin/ssqch.ts node
+  --test` runs it (the path is from the repository root; one file: add its path, such as
+  `cli/init.test.js`). Run it on Node 22.18 (the lowest supported), 24 and 26 before calling
+  something done. `node progress.js` holds the Node build to `node-passing.txt`, the tests it
+  passes; `node progress.js --update` adds new ones, on all three Node versions alike, and a
+  test leaves the list only with a reason in the commit. `node freeze.js [site...]` freezes a
+  site's output from 0.7.
 - `node bench/bench.ts` is the speed check: 10,000 pages in 2 s on one thread and v8.dev in
   0.72 s, on the machine those limits were set on (an Apple M-series laptop). Run it alone,
   with nothing compiling beside it. With `--baseline <another checkout's packages/ssqch>` it
   compares two builds instead, which is what CI does.
-- `packages/ssqch/bundled/` holds copies of what the package needs at run time (the README for
-  `ssqch docs`, `ssqch.d.ts`, the trailheads, the starters' files). After editing an original,
-  run `node scripts/sync-bundled.ts`; `bundled.test.ts` fails when a copy differs.
-- `cargo build --release -p ssqch` still builds 0.7, the oracle's reference. To see what 0.7
-  does, run it, not its source: `ssqch build`, then `ssqch diff <0.7 output> <0.8 output>`.
+- `node scripts/build.ts` builds the npm package into `dist/` (bundled with esbuild; sharp is its
+  one dependency), and `node scripts/check-package.ts` installs that tarball in an empty folder
+  and builds every example with it. "Releasing" has the standalone executable.
+- `packages/ssqch/bundled/` holds copies of what the package needs at run time that live
+  elsewhere while 0.7 does: the README for `ssqch docs`, `ssqch.d.ts`, the trailheads, the
+  starters' files. After editing an original, run `node scripts/sync-bundled.ts`;
+  `bundled.test.ts` fails when a copy differs. (`bundled/completions/`, 0.7's completion
+  scripts, is the package's own.)
 - `node scripts/build-wasm.ts` builds the Rust the Node build runs as WebAssembly: ssqch's
   Markdown and highlighter (`crates/ssqch-markdown`, which compiles 0.7's `markdown.rs` and
   `highlight.rs`) as `wasm/markdown.wasm`, its minifier (`crates/ssqch-minify`, 0.7's
@@ -99,25 +86,37 @@ Run from `packages/ssqch/` unless it says otherwise.
   `rustup target add wasm32-wasip1`.
 - Plugins written in Rust are `.wasm` files built with `crates/ssqch-plugin` (ABI v1, its
   README), loaded by `src/rust-plugin.ts` from a config's `{ name, rust: { wasm, options } }`.
+- 0.7, until the switch: `cargo build --release -p ssqch --features avif` builds it (the
+  oracle's reference), and `cargo test --workspace` runs its tests and the `.wasm` crates'
+  (AVIF on x86_64 needs `nasm`). To see what 0.7 does, run it, not its source: `ssqch build`,
+  then `ssqch diff <0.7 output> <0.8 output>`.
+- CI (`.github/workflows/ci.yml`) runs the Node build's unit tests and the oracle's list on Linux,
+  macOS and Windows on Node 22.18, 24 and 26; builds and checks the npm package and the
+  standalone executable (`package` and `standalone`, see "Releasing"); runs `node-benchmark`
+  (below); and, while 0.7 is here, `cargo test` and `cargo clippy --workspace --all-targets
+  --features ssqch/avif -- -D warnings`. Keep clippy clean. A pull request that changes the
+  release's own files runs `release.yml` up to the release, unsigned. The Rust isn't formatted
+  with rustfmt (it uses long lines), so don't run `cargo fmt`.
 
-### Rules
+## Rules
 
-- **The contract doesn't change.** `ssqch.d.ts`, the commands and flags, the JSON reports
+- **The contract is 0.7's.** `ssqch.d.ts`, the commands and flags, the JSON reports
   (`tests/oracle/contract/shapes.json`), the diagnostic codes, exit codes, folder conventions,
-  the build summary's lines and the voice are 0.7's. A deliberate difference is recorded in the
-  oracle test that checks it (`DELIBERATE` in `sites.test.js`, or a `RUST_07` condition) with
-  its reason, and under "Breaking" in `CHANGELOG.md`. Never edit a snapshot or `shapes.json` by
-  hand to make a test pass.
-- **Port, don't redesign.** ssqch's own designs (the cascade, schemas, the link checker, `diff`,
-  `inspect`, the importers, the equivalents table, the voice lines) move as they are. Read the
-  Rust module and its tests for the behavior and the messages word for word; a subagent can
-  brief you on a module (see "Where subagents help" in the plan).
+  the build summary's lines and the voice. A deliberate difference is recorded in the oracle
+  test that checks it (`DELIBERATE` in `sites.test.js`, or a `RUST_07` condition) with its
+  reason, and in `CHANGELOG.md` (under "Breaking" when a site has to change). Never edit a
+  snapshot or `shapes.json` by hand to make a test pass.
+- **ssqch's own designs stay ssqch's** (the cascade, schemas, the link checker, `diff`,
+  `inspect`, the importers, the equivalents table, the voice lines). To see what one does, run
+  0.7 or read its Rust module and tests while they're here; a subagent can brief you on a
+  module.
 - **TypeScript with erasable syntax only** (`erasableSyntaxOnly` in `tsconfig.json`): no
   `enum`, `namespace` or constructor parameter properties, and `import type` for types.
   Relative imports name the `.ts` file. ES modules throughout.
 - **Dependencies:** the template and Markdown libraries pinned exactly, and sharp. Nothing else
-  at run time without a reason in the commit message; the published package bundles them.
-  ssqch's own Markdown, highlighter and minifier are `.wasm` built from the Rust (D2, D3).
+  at run time without a reason in the commit message; the published package bundles them (and
+  `scripts/build.ts` lists what stays outside the bundle in `EXTERNAL`). ssqch's own Markdown,
+  highlighter, minifier and Sass are `.wasm` built from the Rust (D2, D3).
 - **Same output everywhere.** Nothing a build writes may depend on the machine's time zone, the
   locale, the order the file system lists files in, the number of threads, or the Node version.
   ssqch's own date filters and sorting don't use `Intl` (its results change between Node
@@ -125,12 +124,11 @@ Run from `packages/ssqch/` unless it says otherwise.
 - **Speed is part of done.** CI's `node-benchmark` job builds the 10,000-page site with a
   commit and with its parent on the same runner, and fails a change that makes it more than
   15% slower (a time measured on one machine doesn't hold on another). The times themselves,
-  2 s on one thread and 0.72 s for v8.dev, are checked with `bench/bench.ts` before a stage is
-  called done. Write pages as they render, through a queue with back-pressure, and don't copy
-  per page what can be shared.
-- **Errors point at the spot.** A library's error (nunjucks, liquidjs, edge.js, markdown-it, a
-  site's filter) becomes ssqch's: the site's file and line, an excerpt, the diagnostic code, and
-  "did you mean". Each engine gets a test for an unknown filter and for a filter that throws.
+  2 s on one thread and 0.72 s for v8.dev, are checked with `bench/bench.ts`. Write pages as
+  they render, through a queue with back-pressure, and don't copy per page what can be shared.
+- **Errors point at the spot.** A library's error (nunjucks, liquidjs, edge.js, a site's
+  filter) becomes ssqch's: the site's file and line, an excerpt, the diagnostic code, and
+  "did you mean". Each engine has a test for an unknown filter and for a filter that throws.
 - **Windows:** paths through `node:path`, URLs and output paths with forward slashes, and no
   shell-only commands in code or tests.
 - **`ssqch serve` builds in a second process** (`src/serve/builder.ts`), which it starts again
@@ -138,6 +136,10 @@ Run from `packages/ssqch/` unless it says otherwise.
   lasts until then, and is never the server's: the server learns about a build from what the
   builder sends it. A plugin that reads files of its own lists them (`config.watch`, or
   `startReading` in `src/plugin-files.ts`) so a change to one rebuilds.
+- **The bundle** (`scripts/build.ts`): `createRequire(import.meta.url)` is called inline,
+  `import.meta.dirname` and `filename` aren't used, and a dynamic `import()` of a relative path
+  that isn't a literal breaks in it. A new module needs its exports in `ssqch.d.ts` and an entry
+  in `BUILT_IN`; a bundled library that looks for files beside itself goes in `KNOWN_LOOKUPS`.
 - **Style:** tabs, double quotes and semicolons, as the rest of the repository's JavaScript;
   long lines are fine. Comments say why, in the voice of the README.
 
@@ -239,10 +241,10 @@ that each secret is set.
 
 - Commit subjects are short, imperative, in sentence case (`Fix unstyled pages when serving
   after a production build`).
-- The README is built into the binary for `ssqch docs`, which answers a name with the table row
-  or list item that starts with it in backticks. A new config option, module export or template
-  function needs one, and a description where it's defined (`ssqch.d.ts`, or `BUILTIN_FILTERS`
-  in `build.rs`); `docs_answer_for_every_name` checks.
+- The README ships with the package for `ssqch docs` (`bundled/README.md`), which answers a name
+  with the table row or list item that starts with it in backticks. A new config option, module
+  export or template function needs one, and a description where it's defined (`ssqch.d.ts`, or
+  `BUILTIN_FILTERS` in `src/filters.ts`); `docs_answer_for_every_name` checks.
 - Every new feature ships discoverable, with enough documentation that another coding agent could
   understand it and use it without reading the code: what it's for, its exact shape (names,
   arguments, return values), an example that works, what happens when it's used wrong, and how
@@ -261,14 +263,14 @@ that each secret is set.
 ssqch reports like a deadpan park ranger who knows a lot about HTML: what happened comes first,
 and now and then something large walks through the log (`Fresh tracks in src/posts/hello.md`,
 `we've passed this tree before. Layout loop: ...`). The lines that are shared are in
-`crates/sitesquatch/src/voice.rs`. When adding or changing a message:
+`packages/ssqch/src/voice.ts`. When adding or changing a message:
 
 - Facts first. A themed line still names the file and what went wrong, and keeps the words
   people search for (`Built in`, `broken`, `not found`). The joke is a few extra words, never
   a replacement, and the best ones explain the problem.
 - Machines get plain output: `--format json`, diagnostic codes, exit codes, `--version` and the
-  ready file. `diagnostics::locate` and `code_for` read error text (`in <file>: `, `rendering
-  <file> with`, ``layout ` ``, `output conflicts`, ` loop: `), so keep those parts.
+  ready file. `locate` and `codeFor` in `src/diagnostics.ts` read error text (`in <file>: `,
+  `rendering <file> with`, ``layout ` ``, `output conflicts`, ` loop: `), so keep those parts.
 - Nothing random: a message depends on what happened, so tests, logs and `ssqch diff` repeat.
 - Never in a site's output. A build adds no comments, headers or markup of its own. The
   starters' files belong to the site, so they can be silly.
