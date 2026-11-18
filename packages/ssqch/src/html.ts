@@ -161,12 +161,14 @@ const SQUOTE = 39;
 const isSpace = (c: number) => c === 32 || c === 10 || c === 9 || c === 13 || c === 12;
 const isLetter = (c: number) => (c | 32) >= 97 && (c | 32) <= 122;
 
+// The text handlers get an element's whole text when its content is text, and in SVG or MathML,
+// where a `<style>` or `<script>` holds markup, each run of text between two tags inside it.
 export interface Handlers {
 	/** Called for each start tag; change it with `tag.set()`. */
 	tag?(tag: StartTag): void;
 	/** Called with the text inside each `<style>`; what it returns replaces the text. */
 	style?(css: string): string;
-	/** Called with the text inside each element whose content is text (`<script>`, `<title>`...), to read it. */
+	/** Called with the text inside each element whose content is text (`<script>`, `<title>`...), and inside a `<style>` or `<script>` in SVG, to read it. */
 	rawText?(tag: StartTag, text: string): void;
 	/** Called with the text inside each `<script>`; what it returns replaces the text. */
 	script?(tag: StartTag, js: string): string;
