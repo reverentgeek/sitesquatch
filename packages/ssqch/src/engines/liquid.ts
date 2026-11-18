@@ -21,7 +21,6 @@ class NeedsAsync extends Error {}
 
 /** The parts of a liquidjs error this engine reads. */
 interface LiquidFailure {
-	name?: string;
 	message?: string;
 	originalError?: unknown;
 	token?: { file?: string; getPosition(): [number, number] };
@@ -33,8 +32,23 @@ const TAGS = /\{[{%]/;
 const unquoted = (name: string) => name.replace(/^(["'])(.*)\1$/s, "$2");
 
 export function liquidEngine(env: EngineEnv): TemplateEngine {
-	const root = env.config.root;
 	const loaded = new Set<string>();
+	// Made when the first Liquid template renders: setting liquidjs up takes a few milliseconds
+	// the first time, which a site without Liquid shouldn't spend.
+	let render: TemplateEngine["render"] | undefined;
+	return {
+		render(source, data, ctx) {
+			if (!TAGS.test(source)) return source;
+			render ??= liquidRenderer(env, loaded);
+			return render(source, data, ctx);
+		},
+		included: () => [...loaded],
+	};
+}
+
+/** liquidjs, set up for the site; it adds the includes it reads to `loaded`. */
+function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["render"] {
+	const root = env.config.root;
 	const isFile = (file: string) => fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false;
 	const read = (file: string) => {
 		const dir = env.includeDirs.find((d) => isInsideDir(d, file));
@@ -169,28 +183,26 @@ export function liquidEngine(env: EngineEnv): TemplateEngine {
 	const fail = (e: unknown, ctx: RenderContext): never => {
 		throw new BuildError(describe(e, ctx, env, filterNames()));
 	};
-	return {
-		render(source, data, ctx) {
-			if (!TAGS.test(source)) return source;
-			let templates = ctx.cacheKey === undefined ? undefined : compiled.get(ctx.cacheKey);
-			if (!templates) {
-				try { templates = liquid.parse(source, ctx.inputPath); } catch (e) { return fail(e, ctx); }
-				if (ctx.cacheKey !== undefined) compiled.set(ctx.cacheKey, templates);
-			}
-			const later = () => liquid.render(templates, data).then((out: unknown) => String(out), (e: unknown) => fail(e, ctx));
-			if (ctx.cacheKey !== undefined && isAsync.has(ctx.cacheKey)) return later();
-			syncRender = true;
-			try {
-				return String(liquid.renderSync(templates, data));
-			} catch (e) {
-				if (!needsAsync(e)) return fail(e, ctx);
-			} finally {
-				syncRender = false;
-			}
-			if (ctx.cacheKey !== undefined) isAsync.add(ctx.cacheKey);
-			return later();
-		},
-		included: () => [...loaded],
+	return (source, data, ctx) => {
+		let templates = ctx.cacheKey === undefined ? undefined : compiled.get(ctx.cacheKey);
+		if (!templates) {
+			try { templates = liquid.parse(source, ctx.inputPath); } catch (e) { return fail(e, ctx); }
+			if (ctx.cacheKey !== undefined) compiled.set(ctx.cacheKey, templates);
+		}
+		const later = () => liquid.render(templates, data).then((out: unknown) => String(out), (e: unknown) => fail(e, ctx));
+		if (ctx.cacheKey !== undefined && isAsync.has(ctx.cacheKey)) return later();
+		// Another page's `templateContent` can render in the middle of this one: the flag is put back as it was.
+		const was = syncRender;
+		syncRender = true;
+		try {
+			return String(liquid.renderSync(templates, data));
+		} catch (e) {
+			if (!needsAsync(e)) return fail(e, ctx);
+		} finally {
+			syncRender = was;
+		}
+		if (ctx.cacheKey !== undefined) isAsync.add(ctx.cacheKey);
+		return later();
 	};
 }
 

@@ -43,6 +43,14 @@ test("async_filters_are_awaited", async () => {
 	assert.equal(await out, "LATER:X");
 });
 
+test("a_page_rendered_in_the_middle_of_another_leaves_it_as_it_was", async () => {
+	// Reading another page's `templateContent` renders that page there and then.
+	let liquid: ReturnType<typeof liquidEngine>;
+	const site = testSite({}, { other: () => liquid.render("{{ 'inner' }}", {}, site.ctx("other.liquid")), later: async (s: unknown) => `later:${s}` });
+	liquid = liquidEngine(site.env);
+	assert.equal(await liquid.render("{{ x | other }} {{ x | later }}", { x: "x" }, site.ctx("page.liquid")), "inner later:x");
+});
+
 test("includes_come_from_the_site_then_its_themes", async () => {
 	const site = testSite({
 		"_includes/nav.html": "<nav>{{ include.section }}</nav>",

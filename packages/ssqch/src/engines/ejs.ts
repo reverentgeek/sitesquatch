@@ -11,7 +11,7 @@ import { BuildError } from "../diagnostics.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closestPath } from "../suggest.ts";
 import { siteFunction } from "./engine.ts";
-import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
+import type { EngineEnv, TemplateEngine } from "./engine.ts";
 
 /** A template as code: its function, or its text when it has no tags. */
 interface Compiled {

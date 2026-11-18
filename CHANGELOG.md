@@ -52,6 +52,12 @@ the release.
 - **A page's `templateContent` is rendered when it's first read.** In 0.7 a page read before it
   had rendered gave an empty string. A page whose own templates are async (an async filter or
   engine) can't be rendered on demand, and reading it too early is an error that names it.
+- **Liquid is liquidjs**, the library 0.7's Rust crate followed, with 0.7's filters kept where
+  the two differ (`capitalize`, `url_encode`, `split`, `divided_by`, `modulo`,
+  `array_to_sentence_string`, dates). What's liquidjs' own: `{{ some_object }}` prints `[object
+  Object]`, where 0.7 printed JSON with its keys in no fixed order (write `{{ some_object | json
+  }}`); `size` counts a string as JavaScript does, where 0.7 counted UTF-8 bytes (`café` is 4,
+  not 5), and is 0 for a number.
 
 ### Changed
 
@@ -73,6 +79,20 @@ the release.
   or engine) is an error that names the template: hooks render while the Markdown around them
   does, so make what they call synchronous. A highlighter in `markdown.highlight.languages`
   that's async gets the warning that it returned an object, not a list of tokens.
+- Liquid, Handlebars, Mustache and EJS templates render with liquidjs 10.30, handlebars.js 4.7 (for
+  Mustache too, as 0.7 did with its Rust port) and ejs 3.1.10, and their output is 0.7's (the
+  Liquid, Handlebars and EJS starters build to the same bytes). Their errors name the line now
+  (0.7's Liquid and Handlebars errors named only the file), an unknown helper or filter gets the
+  closest name ("did you mean"), and an error in an include or partial names that file. A function's
+  error starts with its name (`boom(): ...`), as in the other languages. What 0.7 refused or got
+  wrong that works now: an EJS function's promise that's printed (`<%= later(x) %>`) is awaited
+  where 0.7 printed `[object Promise]`, and an EJS template can `await`; Liquid's `{% render %}`
+  partials print nothing for an unknown variable, where 0.7 failed; Liquid's `date` reads ISO 8601
+  text (`2024-03-04`), Jekyll's `date_to_xmlschema`, `date_to_rfc822`, `date_to_string` and
+  `date_to_long_string` are there, and so are liquidjs' other filters and tags (`where_exp`, `sum`,
+  `{% liquid %}`, `{% echo %}`); a Mustache-style section in a `.hbs` file (`{{#items}}`) works,
+  where 0.7 said "Helper not found"; and `--verbose`'s list of templates nothing used covers Liquid,
+  Handlebars and Mustache too.
 
 ## 0.7.0 - 2026-11-17
 

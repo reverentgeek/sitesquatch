@@ -38,6 +38,14 @@ test("async_helpers_are_awaited_wherever_they_are", async () => {
 	assert.equal(await out, "later:x LATER:X yes");
 });
 
+test("a_page_rendered_in_the_middle_of_another_leaves_it_as_it_was", async () => {
+	// Reading another page's `templateContent` renders that page there and then.
+	let hbs: ReturnType<typeof handlebarsEngine>;
+	const site = testSite({}, { ...filters, other: () => hbs.render("{{shout \"inner\"}}", {}, site.ctx("other.hbs")) });
+	hbs = handlebarsEngine(site.env);
+	assert.equal(await hbs.render("{{other}} {{later title}}", { title: "x" }, site.ctx("page.hbs")), "INNER later:x");
+});
+
 test("partials_come_from_the_site_then_its_themes", async () => {
 	const site = testSite({
 		"_includes/nav.hbs": "<nav>{{title}}</nav>",

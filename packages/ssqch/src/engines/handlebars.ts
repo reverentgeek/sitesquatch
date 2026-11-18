@@ -38,7 +38,7 @@ class Located extends Error {
 
 // How `{{ }}` and `{{{ }}}` print a value: as 0.7 did, which printed the page's data as JSON
 // (a date as ISO 8601, a list as `[a, b, c]`, an object as `[object]`), not in the machine's
-// time zone. The raw path goes through it too (see `Compiler` below), with `true`.
+// time zone. `{{{ }}}` goes through it too (see `useCompiler`), with `raw` set.
 const utils = Handlebars.Utils as unknown as { escapeExpression(value: unknown, raw?: boolean): string; ssqch?: boolean };
 if (!utils.ssqch) {
 	const escape = utils.escapeExpression;
@@ -147,7 +147,7 @@ export function handlebarsEngine(env: EngineEnv): TemplateEngine {
 			return truth === wanted ? options.fn(this) : options.inverse(this);
 		});
 	}
-	hb.registerHelper("len",(value: unknown) => (Array.isArray(value) ? value.length : typeof value === "string" ? Buffer.byteLength(value) : isPlainObject(value) ? Object.keys(value).length : 0));
+	hb.registerHelper("len", (value: unknown) => (Array.isArray(value) ? value.length : typeof value === "string" ? Buffer.byteLength(value) : isPlainObject(value) ? Object.keys(value).length : 0));
 	hb.registerHelper("raw", (options: HelperOptions) => options.fn(undefined));
 	// Mustache's sections, as 0.7 had them: `{{#items}}` goes over a list, renders once with any
 	// other value that isn't false or empty, and `{{^items}}` renders when the value is false.
@@ -246,13 +246,15 @@ export function handlebarsEngine(env: EngineEnv): TemplateEngine {
 		throw new BuildError(`${at.file ? shownPath(at.file, root) : ctx.name}${at.line === undefined ? "" : `:${at.line}`}: ${at.message}`);
 	};
 	const once = (source: string, data: Data, ctx: RenderContext, now: Round): string => {
+		// Another page's `templateContent` can render in the middle of this one: its round is put back after.
+		const was = round;
 		round = now;
 		try {
 			return template(source, ctx)(data, runtimeOptions);
 		} catch (e) {
 			return fail(e, source, ctx);
 		} finally {
-			round = undefined;
+			round = was;
 		}
 	};
 	return {
