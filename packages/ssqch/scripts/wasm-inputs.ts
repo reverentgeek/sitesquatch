@@ -64,6 +64,16 @@ export const BUILDS: WasmBuild[] = [
 		profile: "wasm",
 	},
 	{
+		name: "sass",
+		crate: "ssqch-sass",
+		file: "packages/ssqch/wasm/sass.wasm",
+		section: "ssqch_sass_inputs",
+		env: "SSQCH_SASS_INPUTS",
+		files: ["crates/ssqch-sass/Cargo.toml"],
+		folders: ["crates/ssqch-sass/src"],
+		profile: "wasm",
+	},
+	{
 		name: "trail-guide",
 		crate: "ssqch-plugin-trail-guide",
 		file: "examples/rust-plugin/trail_guide.wasm",

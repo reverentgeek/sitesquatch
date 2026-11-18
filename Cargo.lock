@@ -2800,6 +2800,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ssqch-sass"
+version = "0.7.0"
+dependencies = [
+ "grass",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

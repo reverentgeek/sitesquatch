@@ -88,7 +88,8 @@ Run from `packages/ssqch/` unless it says otherwise.
 - `node scripts/build-wasm.ts` builds the Rust the Node build runs as WebAssembly: ssqch's
   Markdown and highlighter (`crates/ssqch-markdown`, which compiles 0.7's `markdown.rs` and
   `highlight.rs`) as `wasm/markdown.wasm`, its minifier (`crates/ssqch-minify`, 0.7's
-  `plugins/minify`) as `wasm/minify.wasm`, and the example Rust plugin
+  `plugins/minify`) as `wasm/minify.wasm`, its Sass (`crates/ssqch-sass`, grass at 0.7's
+  version) as `wasm/sass.wasm`, and the example Rust plugin
   (`examples/rust-plugin/trail_guide.wasm`). They're committed so the Node build needs no Rust.
   Run it after changing that Rust (`node scripts/build-wasm.ts minify` builds one; the lists are
   in `scripts/wasm-inputs.ts`); `scripts/wasm-inputs.test.ts` fails until then. It needs
