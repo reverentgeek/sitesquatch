@@ -2,7 +2,8 @@
 // absolute URL and, by default, its date as `<lastmod>`. Left out: pages with `sitemap: false`
 // in their data, 404 pages (`/404.html`, `/404/`), pages after the first of a list split into
 // pages (unless `paginated`), and URLs matching an `exclude` glob (`/drafts/**`). Ported from
-// `plugins/sitemap`.
+// `plugins/sitemap`. `alternates` (a page's translations, as hreflang links) is 0.8's: ssqch has
+// no languages of its own yet, so the site says what each page's are.
 import path from "node:path";
 import { BUILTINS } from "../config.ts";
 import type { Config, PageSummary } from "../config.ts";
@@ -26,7 +27,9 @@ function isLaterPage(data: PageSummary["data"]): boolean {
 }
 
 BUILTINS.set("ssqch/sitemap", (config: Config, given) => {
-	const o = new Options(given, ["url", "exclude", "lastmod", "output", "paginated"]);
+	const o = new Options(given, ["url", "exclude", "lastmod", "output", "paginated", "alternates"]);
+	const alternates = o.get("alternates");
+	if (alternates !== undefined && typeof alternates !== "function") bail(`alternates must be a function that gets each page and returns its translations, like (page) => [{ hreflang: "fr", href: "/fr/" }] (got ${typeof alternates})`);
 	const url = o.string("url");
 	if (url === undefined) bail("url is required: the site's address, like \"https://example.com\"");
 	const exclude = o.list("exclude") ?? [];
@@ -46,7 +49,22 @@ BUILTINS.set("ssqch/sitemap", (config: Config, given) => {
 		// With a `base` of `/repo`, `url` can be the domain or include the base.
 		const trimmed = url.replace(/\/+$/, "");
 		const withBase = trimmed.endsWith(config.base) ? trimmed : trimmed + config.base;
-		const entries: Array<[string, string]> = [];
+		const entries: Array<[string, string, Array<[string, string]>]> = [];
+		// A translation's `href` from the site's root gets the address and `base`, as `loc` does.
+		const absolute = (href: string) => (href.startsWith("/") ? withBase + href : href);
+		const linksOf = (p: PageSummary): Array<[string, string]> => {
+			if (!alternates) return [];
+			let out: unknown;
+			try { out = (alternates as (page: PageSummary) => unknown)(p); } catch (e) { bail(`alternates(), for ${p.url}: ${e instanceof Error ? e.message : String(e)}`); }
+			if (out === undefined || out === null) return [];
+			if (out instanceof Promise) bail("alternates() answered with a promise; it has to answer at once (work the translations out in data or a collection first)");
+			if (!Array.isArray(out)) bail(`alternates(), for ${p.url}: expected a list of { hreflang, href } (got ${typeof out})`);
+			return out.map((a) => {
+				const { hreflang, href } = (a ?? {}) as { hreflang?: unknown; href?: unknown };
+				if (typeof hreflang !== "string" || hreflang === "" || typeof href !== "string" || !(href.startsWith("/") || /^https?:\/\//.test(href))) bail(`alternates(), for ${p.url}: each one is { hreflang: "fr", href: "/fr/page/" } (an href from the site's root, or a whole address), got ${JSON.stringify(a) ?? String(a)}`);
+				return [hreflang, absolute(href)] as [string, string];
+			});
+		};
 		for (const p of pages) {
 			if (path.extname(p.outputPath) !== ".html") continue;
 			if (p.data.sitemap === false) continue;
@@ -54,13 +72,16 @@ BUILTINS.set("ssqch/sitemap", (config: Config, given) => {
 			if (p.url === "/404.html" || p.url === "/404/") continue;
 			if (excluded(p.url)) continue;
 			// `page.lastModified` (with the `lastModified` setting), else the page's date.
-			entries.push([p.url, isoDay(toDate(p.data.page?.lastModified) ?? p.date)]);
+			entries.push([p.url, isoDay(toDate(p.data.page?.lastModified) ?? p.date), linksOf(p)]);
 		}
 		entries.sort((a, b) => compareText(a[0], b[0]) || compareText(a[1], b[1]));
 		const loc = escapeHtml(withBase);
-		let xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n";
-		for (const [pageUrl, date] of entries) {
+		// The xhtml namespace only when there are alternates, so a sitemap without them is as it was.
+		const xhtml = entries.some((e) => e[2].length) ? " xmlns:xhtml=\"http://www.w3.org/1999/xhtml\"" : "";
+		let xml = `<?xml version="1.0" encoding="utf-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${xhtml}>\n`;
+		for (const [pageUrl, date, links] of entries) {
 			xml += `  <url>\n    <loc>${loc}${escapeHtml(pageUrl)}</loc>\n`;
+			for (const [hreflang, href] of links) xml += `    <xhtml:link rel="alternate" hreflang="${escapeHtml(hreflang)}" href="${escapeHtml(href)}"/>\n`;
 			if (lastmod) xml += `    <lastmod>${date}</lastmod>\n`;
 			xml += "  </url>\n";
 		}

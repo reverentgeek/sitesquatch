@@ -30,6 +30,9 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Added
 
+- `sitemapPlugin({ alternates })`: a function that returns a page's translations, written as
+  `<xhtml:link rel="alternate" hreflang>` under its `<loc>`, as @astrojs/sitemap and Google list
+  them. expressjs.com's port wrote its sitemap in an `afterBuild` hook for them.
 - A trailhead for Jekyll (`docs/trailheads/from-jekyll.md`, `ssqch docs --from jekyll`): the config,
   `page` and `site`, includes and plugin tags, Ruby Liquid's differences, the plugins, and kramdown,
   from moving opensource.guide.

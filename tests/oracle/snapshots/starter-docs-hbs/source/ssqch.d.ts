@@ -481,6 +481,8 @@ declare module "ssqch/sitemap" {
 		output?: string;
 		/** List every page of a list split into pages (`/2/`, `/3/`), not just the first. Pagination with `size: 1` (a page per tag, say) is always listed. Default `false`. */
 		paginated?: boolean;
+		/** A page's translations, as `<xhtml:link rel="alternate" hreflang>` links under its `<loc>` (Google's way to list them): a function that gets each page (`url`, `inputPath`, `outputPath`, `date`, `data`) and returns `[{ hreflang: "fr", href: "/fr/guide/" }]`, the page itself included, or nothing. An `href` from the site's root gets the `url` and `base` in front. It's called at once, for each page in the sitemap. */
+		alternates?: (page: { url: string; inputPath: string; outputPath: string; date: Date; data: Record<string, any> }) => Array<{ hreflang: string; href: string }> | undefined | null;
 	}
 
 	/** Writes `sitemap.xml` listing every HTML page. */

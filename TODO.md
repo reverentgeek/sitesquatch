@@ -683,6 +683,8 @@ trailhead.
       VitePress and Docusaurus all use github-slugger. Also say in the component-frameworks
       trailhead that remark-gfm links a bare URL after a quote and GFM's spec (and ssqch) doesn't
       (11 pages).
+- [x] **Sitemap alternates** (ex `i18n.md`; done 2026-11-18): `sitemapPlugin({ alternates })`, a
+      function that returns a page's translations; built-in i18n can fill it in later.
 - [ ] **A cache for generated images** (ex benchmarks.md): social images from a function (satori),
       kept by their inputs; the port's own `.cache/og` took the build from 6.3 to 2.0 s. Maybe an
       `ogImagePlugin({ render: (page) => element })`.
