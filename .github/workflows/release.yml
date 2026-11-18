@@ -1,27 +1,24 @@
 # Releases ssqch from a version tag (`git tag v0.8.0 && git push origin v0.8.0`; AGENTS.md has
-# the steps). Nothing is published unless every job before it passed:
+# the steps). ssqch ships through npm: the package, and a Homebrew formula that installs it with
+# Homebrew's Node. Nothing is published unless every job before it passed:
 #
 #   plan          the tag is packages/ssqch/package.json's version, and CHANGELOG.md has its section
 #   package       the npm package (packages/ssqch/scripts/build.ts), packed
-#   executables   the standalone executable for each platform (scripts/build-sea.ts), in its
-#                 archive; signed on macOS
-#   smoke-test    each executable, on its own platform: every example, a starter, images, the
-#                 .wasm files, and the oracle's list (scripts/check-package.ts)
-#   npm-test      the packed package, installed with npm on Linux, macOS and Windows, on Node
-#                 22.18, 24 and 26: the same checks
-#   notarize      the macOS executables, with Apple (notarize.yml)
+#   npm-test      the packed package, installed with npm on Linux, on Node 22.18, 24 and 26: every
+#                 example, a starter, images, the .wasm files, and the oracle's list
+#                 (scripts/check-package.ts)
 #   check-ci      CI passed on the tagged commit (check-ci.yml)
-#   release       the GitHub release: the archives, the installers, the npm tarball and the
-#                 checksums, with the changelog's section as its notes
+#   release       the GitHub release: the npm tarball and its checksum, with the changelog's
+#                 section as its notes
 #   npm           publishes the package with provenance (publish-npm.yml)
-#   homebrew      updates Formula/ssqch.rb in reverentgeek/homebrew-tap
+#   homebrew      updates Formula/ssqch.rb in reverentgeek/homebrew-tap, once the package is on npm
 #
 # `release` names every job before it in `needs` and has no `always()`, so it runs only when all
 # of them succeeded: a failed or skipped job skips it, and the jobs after it. (dist's host job
 # ran when builds were skipped, and a red commit got an empty release marked Latest: 0.3.4.)
 #
-# A pull request that changes how releases are built runs everything up to `release`, without
-# signing (the paths below), so the builds are tried before a tag needs them.
+# A pull request that changes how releases are built runs everything up to `release` (the paths
+# below), so the builds are tried before a tag needs them.
 name: Release
 
 on:
@@ -30,16 +27,10 @@ on:
   pull_request:
     paths:
       - .github/workflows/release.yml
-      - .github/workflows/notarize.yml
       - .github/workflows/check-ci.yml
       - .github/workflows/publish-npm.yml
       - packages/ssqch/scripts/build.ts
-      - packages/ssqch/scripts/build-sea.ts
-      - packages/ssqch/scripts/sea-main.ts
-      - packages/ssqch/scripts/sea-entitlements.plist
       - packages/ssqch/scripts/check-package.ts
-      - scripts/install.sh
-      - scripts/install.ps1
       - scripts/release-files.mjs
   workflow_dispatch:
 
@@ -49,11 +40,6 @@ permissions:
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-env:
-  # The Node inside the standalone executable: Node 25.5 or newer builds one, and this is the
-  # current LTS. Pinned, so a release says which Node it carries.
-  SEA_NODE: 26.13.1
 
 jobs:
   plan:
@@ -132,171 +118,15 @@ jobs:
           name: npm-package
           path: out/ssqch-*.tgz
 
-  executables:
-    name: executable (${{ matrix.target }})
-    needs: [plan, package]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { target: aarch64-apple-darwin, runner: macos-15 }
-          - { target: x86_64-apple-darwin, runner: macos-15-intel }
-          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-latest }
-          - { target: x86_64-pc-windows-msvc, runner: windows-latest }
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.SEA_NODE }}
-      - run: npm ci
-        working-directory: packages/ssqch
-      - uses: actions/download-artifact@v8
-        with:
-          name: npm-package
-          path: npm-package
-      # The Developer ID certificate, in a keychain of this job's own (macOS, releases only).
-      - name: Import the signing certificate
-        if: runner.os == 'macOS' && needs.plan.outputs.publishing == 'true'
-        env:
-          CODESIGN_CERTIFICATE: ${{ secrets.CODESIGN_CERTIFICATE }}
-          CODESIGN_CERTIFICATE_PASSWORD: ${{ secrets.CODESIGN_CERTIFICATE_PASSWORD }}
-          CODESIGN_IDENTITY: ${{ secrets.CODESIGN_IDENTITY }}
-        run: |
-          for v in CODESIGN_CERTIFICATE CODESIGN_CERTIFICATE_PASSWORD CODESIGN_IDENTITY; do
-            [ -n "${!v}" ] || { echo "::error::the $v secret isn't set"; exit 1; }
-          done
-          keychain="$RUNNER_TEMP/signing.keychain-db"
-          password=$(openssl rand -hex 16)
-          echo "$CODESIGN_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security create-keychain -p "$password" "$keychain"
-          security set-keychain-settings -lut 3600 "$keychain"
-          security unlock-keychain -p "$password" "$keychain"
-          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$CODESIGN_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
-          rm "$RUNNER_TEMP/cert.p12"
-          echo "SIGN_IDENTITY=$CODESIGN_IDENTITY" >> "$GITHUB_ENV"
-      - name: Build the executable
-        run: |
-          args=(--tarball "$(ls npm-package/ssqch-*.tgz)" --out out)
-          [ -n "${SIGN_IDENTITY:-}" ] && args+=(--sign "$SIGN_IDENTITY")
-          node packages/ssqch/scripts/build-sea.ts "${args[@]}"
-      - name: Pack the archive
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          mkdir -p archives
-          # As 0.7's archives were: the Windows zip has ssqch.exe at the top, and the others
-          # a folder named for the target (setup-ssqch, Homebrew and the installers expect it).
-          if [ "$RUNNER_OS" = Windows ]; then
-            cp LICENSE packages/ssqch/README.md out/
-            (cd out && 7z a -tzip -bso0 "../archives/ssqch-$TARGET.zip" ssqch.exe LICENSE README.md)
-            archive="ssqch-$TARGET.zip"
-          else
-            mkdir "ssqch-$TARGET"
-            cp out/ssqch LICENSE packages/ssqch/README.md "ssqch-$TARGET/"
-            tar -czf "archives/ssqch-$TARGET.tar.gz" "ssqch-$TARGET"
-            archive="ssqch-$TARGET.tar.gz"
-          fi
-          cd archives
-          if command -v sha256sum > /dev/null; then sha256sum "$archive" > "$archive.sha256"; else shasum -a 256 "$archive" > "$archive.sha256"; fi
-          ls -l
-      - name: Attest the archive's provenance
-        if: needs.plan.outputs.publishing == 'true'
-        uses: actions/attest@v4
-        with:
-          subject-path: archives/ssqch-${{ matrix.target }}.*
-      - uses: actions/upload-artifact@v7
-        with:
-          name: executable-${{ matrix.target }}
-          path: archives/
-
-  smoke-test:
-    name: smoke-test (${{ matrix.target }})
-    needs: [plan, executables]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { target: aarch64-apple-darwin, runner: macos-15 }
-          - { target: x86_64-apple-darwin, runner: macos-15-intel }
-          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-latest }
-          - { target: x86_64-pc-windows-msvc, runner: windows-latest }
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      # For the checks' reference builds (from source) and the oracle; the executable brings its own Node.
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-      - run: npm ci
-        working-directory: packages/ssqch
-      - uses: actions/download-artifact@v8
-        with:
-          name: executable-${{ matrix.target }}
-          path: archives
-      - name: Unpack the archive, as a download
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          mkdir unpacked
-          if [ "$RUNNER_OS" = Windows ]; then unzip -q "archives/ssqch-$TARGET.zip" -d unpacked; exe=unpacked/ssqch.exe
-          else tar -xzf "archives/ssqch-$TARGET.tar.gz" -C unpacked; exe="unpacked/ssqch-$TARGET/ssqch"; fi
-          ls -l "$exe"
-          echo "EXE=$PWD/$exe" >> "$GITHUB_ENV"
-      - name: The macOS executable is the right architecture, and signed
-        if: runner.os == 'macOS'
-        run: |
-          file "$EXE"
-          case "${{ matrix.target }}" in
-            aarch64-*) file "$EXE" | grep -q arm64 ;;
-            x86_64-*) file "$EXE" | grep -q x86_64 ;;
-          esac
-          codesign --verify --strict --verbose=2 "$EXE"
-      - name: ssqch --version, unpacking into the cache folder
-        run: |
-          "$EXE" --version | tee version.txt
-          grep -qx "ssqch ${{ needs.plan.outputs.version }}" version.txt
-          case "$RUNNER_OS" in
-            macOS) cache="$HOME/Library/Caches/ssqch" ;;
-            Windows) cache="$(cygpath -u "$LOCALAPPDATA")/ssqch" ;;
-            *) cache="${XDG_CACHE_HOME:-$HOME/.cache}/ssqch" ;;
-          esac
-          ls -la "$cache"
-          ls "$cache"/*/.unpacked
-      - name: Every example, a starter, images, the .wasm files and the oracle's list
-        run: node packages/ssqch/scripts/check-package.ts --exe "$EXE" --oracle
-
   npm-test:
-    name: npm-test (${{ matrix.os }}, node ${{ matrix.node }})
+    name: npm-test (node ${{ matrix.node }})
     needs: [plan, package]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
         node: [22.18.0, 24, 26]
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
@@ -311,13 +141,7 @@ jobs:
           name: npm-package
           path: npm-package
       - name: Every example, a starter, images, the .wasm files and the oracle's list
-        run: node packages/ssqch/scripts/check-package.ts --tarball "$(ls npm-package/ssqch-*.tgz)" ${{ matrix.node == '22.18.0' && '--oracle' || '' }}
-
-  notarize:
-    needs: [plan, executables]
-    if: needs.plan.outputs.publishing == 'true'
-    uses: ./.github/workflows/notarize.yml
-    secrets: inherit
+        run: node packages/ssqch/scripts/check-package.ts --tarball "$(ls npm-package/ssqch-*.tgz)" --oracle
 
   check-ci:
     needs: [plan]
@@ -327,37 +151,37 @@ jobs:
       actions: read
 
   release:
-    needs: [plan, package, executables, smoke-test, npm-test, notarize, check-ci]
+    needs: [plan, package, npm-test, check-ci]
     if: needs.plan.outputs.publishing == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
-    outputs:
-      formula: ${{ steps.files.outputs.formula }}
     steps:
+      # The homebrew job needs it after the release is out, so it's checked before.
+      - name: The Homebrew tap's token is set
+        if: needs.plan.outputs.prerelease != 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: '[ -n "$HOMEBREW_TAP_TOKEN" ] || { echo "::error::the HOMEBREW_TAP_TOKEN secret isn''t set"; exit 1; }'
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
-          pattern: executable-*
-          path: archives
-          merge-multiple: true
-      - uses: actions/download-artifact@v8
-        with:
           name: npm-package
-          path: archives
+          path: release
       - uses: actions/download-artifact@v8
         with:
           name: notes
           path: .
-      - id: files
-        name: The installers, the Homebrew formula and the checksums
+      - name: The Homebrew formula and the checksum
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
-          node scripts/release-files.mjs --version "${{ needs.plan.outputs.version }}" --archives archives --out extra
-          cp extra/ssqch-installer.sh extra/ssqch-installer.ps1 extra/sha256.sum archives/
-          ls -l archives
+          node scripts/release-files.mjs --version "$VERSION" --tarball "release/ssqch-$VERSION.tgz" --out extra
+          cp extra/sha256.sum release/
+          ls -l release
       - uses: actions/upload-artifact@v7
         with:
           name: homebrew-formula
@@ -370,7 +194,7 @@ jobs:
         run: |
           flags=()
           [ "$PRERELEASE" = true ] && flags+=(--prerelease)
-          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md "${flags[@]}" archives/*
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md "${flags[@]}" release/*
 
   npm:
     needs: [plan, release]
@@ -383,8 +207,9 @@ jobs:
       contents: read
       id-token: write
 
+  # The formula installs the package from npm's registry, so it waits for the package to be there.
   homebrew:
-    needs: [plan, release]
+    needs: [plan, release, npm]
     if: needs.plan.outputs.prerelease != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10

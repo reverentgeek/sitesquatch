@@ -69,7 +69,7 @@ Run from `packages/ssqch/` unless it says otherwise.
   compares two builds instead, which is what CI does.
 - `node scripts/build.ts` builds the npm package into `dist/` (bundled with esbuild; sharp is its
   one dependency), and `node scripts/check-package.ts` installs that tarball in an empty folder
-  and builds every example with it. "Releasing" has the standalone executable.
+  and builds every example with it. "Releasing" has the rest.
 - `packages/ssqch/bundled/` holds copies of what the package needs at run time that live
   elsewhere while 0.7 does: the README for `ssqch docs`, `ssqch.d.ts`, the trailheads, the
   starters' files. After editing an original, run `node scripts/sync-bundled.ts`;
@@ -91,9 +91,8 @@ Run from `packages/ssqch/` unless it says otherwise.
   (AVIF on x86_64 needs `nasm`). To see what 0.7 does, run it, not its source: `ssqch build`,
   then `ssqch diff <0.7 output> <0.8 output>`.
 - CI (`.github/workflows/ci.yml`) runs the Node build's unit tests and the oracle's list on Linux,
-  macOS and Windows on Node 22.18, 24 and 26; builds and checks the npm package and the
-  standalone executable (`package` and `standalone`, see "Releasing"); runs `node-benchmark`
-  (below); and, while 0.7 is here, `cargo test` and `cargo clippy --workspace --all-targets
+  macOS and Windows on Node 22.18, 24 and 26; builds and checks the npm package on Linux on
+  the same three (`package`, see "Releasing"); runs `node-benchmark` (below); and, while 0.7 is here, `cargo test` and `cargo clippy --workspace --all-targets
   --features ssqch/avif -- -D warnings`. Keep clippy clean. A pull request that changes the
   release's own files runs `release.yml` up to the release, unsigned. The Rust isn't formatted
   with rustfmt (it uses long lines), so don't run `cargo fmt`.
@@ -145,28 +144,27 @@ Run from `packages/ssqch/` unless it says otherwise.
 
 ## Releasing
 
-A release is ssqch's npm package and its standalone executable, from `packages/ssqch/`, built
-and published by `.github/workflows/release.yml` (written by hand) from a version tag. dist,
-which built the Rust binaries, is retired, and so are the npm wrapper and its platform packages
-(`npm/ssqch`, `@ssqch/<platform>`, `scripts/npm-packages.mjs`): the package is JavaScript, the
-same on every platform. `docs/node-migration.md` ("Stage 8") says why each piece is as it is.
+A release is ssqch's npm package, from `packages/ssqch/`, built and published by
+`.github/workflows/release.yml` (written by hand) from a version tag, and a Homebrew formula that
+installs it. ssqch ships through npm only: there's no standalone executable and no installer
+script (the owner's call, 2026-11-18). dist, which built the Rust binaries, is retired, and so
+are the npm wrapper and its platform packages (`npm/ssqch`, `@ssqch/<platform>`,
+`scripts/npm-packages.mjs`) and `setup-ssqch`: the package is JavaScript, the same on every
+platform. `docs/node-migration.md` ("Stage 8") says why each piece is as it is.
 
 - **The npm package:** `node scripts/build.ts` in `packages/ssqch/` builds it in `dist/` (esbuild
   bundles the code and the template libraries; sharp is the one dependency), and `npm pack
   ./dist` packs it. It's private until `--release`, which the release workflow passes.
-- **The standalone executable:** `node scripts/build-sea.ts` builds `dist-sea/ssqch` for the
-  machine it runs on: Node's single executable, with the installed package inside it, which it
-  unpacks on its first run (`scripts/sea-main.ts`). The Node that runs the script is the Node
-  inside, so it needs Node 25.5 or newer; the release workflow pins it (`SEA_NODE`). On macOS
-  it's signed ad hoc, or with `--sign <identity>` for a release.
-- **The check:** `node scripts/check-package.ts` (or `--tarball <tgz>`, or `--exe <ssqch>`)
-  installs it in an empty folder outside the repository, builds every example, a starter, and a
-  site with images, Markdown, minify, Sass and the example Rust plugin, and compares the output
-  with the source's, byte for byte. `--oracle` runs the oracle's list with it too. CI runs it on
-  Linux, macOS and Windows; the release runs it on each executable and each tarball.
-- **The installers** are `scripts/install.sh` and `scripts/install.ps1`; `scripts/release-files.mjs`
-  writes each release's copy (`ssqch-installer.sh`, `.ps1`) with its version in it, the
-  Homebrew formula and `sha256.sum`.
+- **The check:** `node scripts/check-package.ts` (or `--tarball <tgz>`) installs it in an empty
+  folder outside the repository, builds every example, a starter, and a site with images,
+  Markdown, minify, Sass and the example Rust plugin, and compares the output with the source's,
+  byte for byte. `--oracle` runs the oracle's list with it too. CI and the release run it on
+  Linux, on Node 22.18, 24 and 26.
+- **The Homebrew formula:** `scripts/release-files.mjs` writes it (`ssqch.rb`) and `sha256.sum`
+  from the packed tarball. The formula is Homebrew's pattern for an npm package: `depends_on
+  "node"`, `npm install` with `std_npm_args` from the registry's tarball URL and the tarball's
+  SHA-256 (`npm publish` uploads the tarball as it is), and a link to `ssqch` in `bin`. Its test
+  builds a page.
 
 To release:
 
@@ -174,23 +172,21 @@ To release:
    0.x, a breaking change bumps the minor version). The workflow refuses a tag whose version
    has no section, which becomes the release's notes.
 2. Set `version` in `packages/ssqch/package.json` to match (and run `npm install` there, so
-   `package-lock.json` has it). Update the pinned versions in the README too (`download/v<version>`,
-   the `setup-ssqch` example's `version:`, and the Netlify section's `ssqch@<version>` and
-   `SSQCH_VERSION`).
+   `package-lock.json` has it). Update the pinned versions in the README too (`ssqch@<version>`
+   in Install, the GitHub Actions example and GitHub Pages, and the Netlify section's
+   `ssqch@<version>` and `SSQCH_VERSION`).
 3. Commit and push to `main`.
 4. Wait for CI to pass on that commit, then tag and push: `git tag v<version> && git push origin
-   v<version>`. The release workflow refuses a tag that isn't the package's version; builds the
-   package and the four executables (macOS arm64 and x64, Linux x64, Windows x64), signing the
-   macOS ones; smoke-tests each executable on its own platform and the tarball on Node 22.18,
-   24 and 26 on all three systems (`check-package.ts`, with the oracle's list); notarizes the
-   macOS executables (`notarize.yml`); waits for CI to pass on the tagged commit
-   (`check-ci.yml`); and only then publishes the GitHub release, with the archives, the
-   installers, the npm tarball and checksums. Then it publishes the package to npm
-   (`publish-npm.yml`) and the formula to `reverentgeek/homebrew-tap` (not for a prerelease,
-   which goes to npm's `next` tag). If anything fails, nothing is published: fix it and tag the
-   fixed commit with the same version (delete the old tag first). The job that publishes names
-   every job before it in `needs` and has no `always()`, on purpose: dist's published when its
-   builds were skipped, and a red commit got an empty release marked Latest (0.3.4). Keep it so.
+   v<version>`. The release workflow refuses a tag that isn't the package's version; builds and
+   packs the package; checks the tarball on Linux on Node 22.18, 24 and 26 (`check-package.ts`,
+   with the oracle's list); waits for CI to pass on the tagged commit (`check-ci.yml`); and
+   only then publishes the GitHub release, with the npm tarball and its checksum. Then it
+   publishes the package to npm (`publish-npm.yml`) and, once it's there, the formula to
+   `reverentgeek/homebrew-tap` (not for a prerelease, which goes to npm's `next` tag). If
+   anything fails before the GitHub release, nothing is published: fix it and tag the fixed
+   commit with the same version (delete the old tag first). The job that publishes names every
+   job before it in `needs` and has no `always()`, on purpose: dist's published when its builds
+   were skipped, and a red commit got an empty release marked Latest (0.3.4). Keep it so.
 
 The 0.7 line is released from `release/0.7` (cut before these workflows), with dist, as it
 always was; see "One last 0.7.x" in `docs/node-migration.md`. The crates end at 0.7: nothing
@@ -212,30 +208,15 @@ The `@ssqch/<platform>` packages get no new versions. After 0.8.0, deprecate the
 lockfile says why: `npm deprecate '@ssqch/darwin-arm64@*' "ssqch 0.8 is JavaScript and needs no
 platform package"` (and the same for `darwin-x64`, `linux-x64` and `win32-x64`).
 
-### macOS signing and notarization
+### Homebrew
 
-The release workflow signs the macOS executables (`build-sea.ts --sign`, with the hardened
-runtime and `packages/ssqch/scripts/sea-entitlements.plist`, which V8 needs) with a certificate
-it imports into a keychain of its own, and `.github/workflows/notarize.yml` notarizes them
-before a release is published. They need these repository secrets (`gh secret set NAME <
-file`):
-
-- `CODESIGN_CERTIFICATE`: a Developer ID Application certificate exported from Keychain Access
-  as a `.p12`, base64-encoded (`base64 -i cert.p12`).
-- `CODESIGN_CERTIFICATE_PASSWORD`: the password chosen when exporting it.
-- `CODESIGN_IDENTITY`: the certificate's name, like `Developer ID Application: Name (TEAMID)`
-  (`security find-identity -v -p codesigning`).
-- `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`: for notarization, the Apple ID's email, an
-  app-specific password for it (appleid.apple.com, Sign-In and Security), and the 10-character
-  Developer Team ID. These are the same names as in `reverentgeek/metermaid`, whose
-  `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` and `APPLE_SIGNING_IDENTITY` hold the
-  same values as the three `CODESIGN_*` secrets here.
-- `HOMEBREW_TAP_TOKEN`: a fine-grained personal access token with Contents read and write
-  access to `reverentgeek/homebrew-tap`. The `homebrew` job uses it to push `Formula/ssqch.rb`
-  after each release.
-
-Without them, a tagged release fails before it publishes anything: the signing step checks
-that each secret is set.
+The `homebrew` job pushes `Formula/ssqch.rb` to `reverentgeek/homebrew-tap` with the
+`HOMEBREW_TAP_TOKEN` repository secret (`gh secret set HOMEBREW_TAP_TOKEN`): a fine-grained
+personal access token with Contents read and write access to that repository. The `release` job
+checks that it's set before it publishes anything. Homebrew installs a formula's npm
+dependencies with `--min-release-age`, so a dependency (sharp) published within the last day
+holds an install back until it's a day old; ssqch itself comes from the formula's URL and isn't
+held back.
 
 ## Conventions
 

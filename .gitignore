@@ -6,4 +6,3 @@
 /examples/sites/*/.cache
 /packages/*/node_modules
 /packages/ssqch/dist
-/packages/ssqch/dist-sea

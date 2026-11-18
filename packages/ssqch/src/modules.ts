@@ -272,8 +272,7 @@ function syntaxFrames(e: SyntaxError, root: string): string[] {
 			const copy = path.join(tmp, `check${ext}`);
 			fs.copyFileSync(file, copy);
 			try {
-				// In the standalone executable, Node is ssqch: the variable asks it to be `node --check` (scripts/sea-main.ts).
-				execFileSync(process.execPath, ["--check", copy], { stdio: ["ignore", "ignore", "pipe"], encoding: "utf8", timeout: 20_000, env: { ...process.env, SSQCH_SYNTAX_CHECK: "1" } });
+				execFileSync(process.execPath, ["--check", copy], { stdio: ["ignore", "ignore", "pipe"], encoding: "utf8", timeout: 20_000 });
 			} catch (failed: any) {
 				const lines = String(failed.stderr ?? "").split("\n");
 				// Node names the copy by its real path, however that's spelled here: the file's name is enough.
