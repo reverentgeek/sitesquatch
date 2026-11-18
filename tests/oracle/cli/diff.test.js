@@ -110,3 +110,33 @@ test("diff_keeps_files_whose_fingerprinted_names_collide", () => {
 	assert.deepEqual(removed, ["/x.11111111.22222222.css", "/x.11111111.css"]);
 	assert.equal(json.summary.unchangedFiles, 1);
 });
+
+// Both 2026-11-18 studies began by finding that the other generator's build changed by itself
+// (Jekyll printing the build's time, Astro's ids from Math.random()). Three or more folders:
+// which files vary between builds made the same way, and which builds agree.
+test("diff_of_several_builds_lists_what_varies", () => {
+	const dir = tempDir("diff-runs");
+	for (const [run, minute] of [["ref-1", "01"], ["ref-2", "01"], ["ref-3", "07"]]) {
+		write(dir, {
+			[`${run}/index.html`]: "<p>Squatch Snacks</p>\n",
+			[`${run}/trail/index.html`]: `<p>Built at <time>10:${minute}</time></p>\n`,
+			[`${run}/app.${run === "ref-2" ? "aaaa1111" : "bbbb2222"}.css`]: "body { color: pine; }\n",
+		});
+	}
+	write(dir, { "ref-2/stray.txt": "pine cone\n" });
+	const r = ssqch(["diff", "ref-1", "ref-2", "ref-3"], { cwd: dir });
+	assert.equal(r.code, 1, r.log);
+	assert.ok(r.stdout.startsWith("Comparing 3 builds: ref-1, ref-2, ref-3\n"), r.stdout);
+	assert.match(r.stdout, /~ \/trail\/  \(2 versions: ref-1, ref-2 agree; ref-3 differs\)\n      - 10:01\n      \+ 10:07\n/);
+	assert.match(r.stdout, /~ \/stray\.txt  \(2 versions: missing from ref-1, ref-3; only in ref-2\)/);
+	// A fingerprint doesn't count, as in a diff of two.
+	assert.ok(!r.stdout.includes("app."), r.stdout);
+	assert.match(r.stdout, /2 files vary between builds made the same way; 1 page and 1 other file are the same in all of them\./);
+	const json = JSON.parse(ssqch(["diff", "ref-1", "ref-2", "ref-3", "--format", "json"], { cwd: dir }).stdout);
+	assert.deepEqual(json.summary, { varies: 2, steadyPages: 1, steadyFiles: 1 });
+	assert.deepEqual(json.varies.find((v) => v.url === "/stray.txt").versions, [{ runs: ["ref-1", "ref-3"], missing: true }, { runs: ["ref-2"], missing: false }]);
+	// The same three times: exit 0.
+	const same = ssqch(["diff", "ref-1", "ref-1", "ref-1"], { cwd: dir });
+	assert.equal(same.code, 0, same.log);
+	assert.match(same.stdout, /Every build is the same: 2 pages and 1 other file\. The tracks match every time\./);
+});

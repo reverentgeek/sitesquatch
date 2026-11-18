@@ -402,5 +402,44 @@
     "output": "string",
     "pid": "number",
     "ok": "boolean"
+  },
+  "diff (several builds)": {
+    "schemaVersion": "number",
+    "runs": [
+      "string"
+    ],
+    "exact": "boolean",
+    "same": "boolean",
+    "summary": {
+      "varies": "number",
+      "steadyPages": "number",
+      "steadyFiles": "number"
+    },
+    "varies": [
+      {
+        "url": "string",
+        "path": "string",
+        "kind": "string",
+        "versions": [
+          {
+            "runs": [
+              "string"
+            ],
+            "missing": "boolean"
+          }
+        ],
+        "changedLines": "number",
+        "hunks": [
+          {
+            "removed": [
+              "string"
+            ],
+            "added": [
+              "string"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

@@ -114,7 +114,10 @@ Run from `packages/ssqch/` unless it says otherwise.
   deliberate differences. A change to any of them is deliberate, and recorded where it's
   tested (a `DELIBERATE (0.8)` comment, `DELIBERATE` in `sites.test.js`, or a site frozen again
   with `node freeze.js <site>`) with its reason, and in `CHANGELOG.md` (under "Breaking" when a
-  site has to change). Never edit a snapshot or `shapes.json` by hand to make a test pass.
+  site has to change). Never edit a snapshot or `shapes.json` by hand to make a test pass. A JSON
+  document 0.7 didn't print gets its shape from the version that adds it: list it in `ADDED` in
+  `contract/shapes.test.js` and run it with `SSQCH_FREEZE_SHAPES=new`, which leaves the others as
+  they are.
 - **ssqch's own designs stay ssqch's** (the cascade, schemas, the link checker, `diff`,
   `inspect`, the importers, the equivalents table, the voice lines). To see what one does, read
   its module and its tests here and in the oracle; 0.7's Rust is on `release/0.7`, and a

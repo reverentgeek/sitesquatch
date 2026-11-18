@@ -553,12 +553,12 @@ diff, fix the biggest group, repeat.
       into a fresh copy (`TZ=UTC`, files written in checkout order, as `git archive` gives), build
       with ssqch, and run `ssqch diff`. It's what tells a person or an agent the move is done
       (v8.dev's `scripts/parity.sh`).
-- [ ] **A stability check**: build N times and report the files that vary and the most common
+- [x] **A stability check**: build N times and report the files that vary and the most common
       variant (`ssqch diff --runs`, or a command). Eleventy's lit.dev output differs on 11 pages
-      between builds, and finding the target took 20 builds and `scripts/stability.py`. Decided
-      2026-11-18: `ssqch diff a b c` (three or more folders) lists the files that vary and the most
-      common version of each, with `--format json`. A JSON document that didn't exist in 0.7 gets
-      its shape frozen by the version that adds it; the 0.7 shapes stay as they are.
+      between builds, and finding the target took 20 builds and `scripts/stability.py`. Done
+      2026-11-18 as decided: `ssqch diff a b c` (three or more folders) lists the files that vary
+      and the most common version of each, with `--format json`. A JSON document that didn't exist
+      in 0.7 gets its shape frozen by the version that adds it; the 0.7 shapes stay as they are.
 - [ ] **A migration recipe for agents** in `ssqch docs agents` and the trailhead (a11y's
       `ssqch-improvements.md` has a draft checklist; v8 F6): baseline with `TZ=UTC` from fresh
       copies, `ssqch diff`, fix the largest group, repeat, finish with `--exact`.

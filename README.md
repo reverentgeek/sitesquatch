@@ -987,6 +987,8 @@ Changes found: 3 pages and 1 other file (2 changed, 1 added, 1 removed); 148 pag
 
 It works on any two folders of HTML, so it can also compare another generator's output with ssqch's while you move a site over.
 
+**Several builds:** give it three or more folders and it lists what varies between them instead: `ssqch diff ref-1 ref-2 ref-3`. Build the same site the same way into each (from fresh copies), and it names each file that isn't the same in all of them, which builds agree (`ref-1, ref-2 agree; ref-3 differs`, or `only in ref-2`), and the lines that differ between the most common version and the next. "The same" is what a diff of two calls the same, so fingerprints and whitespace between tags don't count (`--exact`, `--ignore` and `--only` work as above). Do it first when moving a site from another generator: if its own build changes by itself (Jekyll printing the build's time, ids from `Math.random()`), pin that or `--ignore` it before comparing its output with ssqch's. The exit code is 0 when every build is the same and 1 when something varies; `--format json` has `runs`, `same`, `summary` (`varies`, `steadyPages`, `steadyFiles`) and `varies` (each file's `url`, `path`, `kind`, `versions` with their `runs` and `missing`, `changedLines` and `hunks`).
+
 ## A build's footprint
 
 `ssqch footprint` says how much the last build weighs, by kind of file, and which pages and files leave the largest footprints:

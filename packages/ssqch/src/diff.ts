@@ -651,3 +651,156 @@ export function diffJson(report: DiffReport, limit: number): Record<string, unkn
 		changed,
 	};
 }
+
+// ---- several builds: what varies ---------------------------------------------------------------
+
+/** One version of a file that varies: the builds that have it (by their place in the list), or the builds that lack it. */
+export interface Version {
+	runs: number[];
+	missing: boolean;
+}
+
+/** A file that isn't the same in every build. */
+export interface Varies {
+	path: string;
+	url: string;
+	kind: "page" | "text" | "binary";
+	/** Most builds first. */
+	versions: Version[];
+	/** What differs between the most common version and the next one, when both are there. */
+	sample: FileDiff | undefined;
+}
+
+export interface RunsReport {
+	runs: string[];
+	exact: boolean;
+	varies: Varies[];
+	steadyPages: number;
+	steadyFiles: number;
+}
+
+/**
+ * Builds of one site made the same way, compared with each other: the files that aren't the same
+ * in all of them, and which builds agree. A reference build that changes by itself (Jekyll printing
+ * the build's time, Astro's ids from `Math.random()`) is the first thing to find in a migration,
+ * and both 2026-11-18 studies spent their first hour finding it by hand. "The same" is what `ssqch
+ * diff` calls the same: fingerprints, integrity hashes and whitespace between tags don't count,
+ * unless `exact`.
+ */
+export async function compareRuns(dirs: string[], options: DiffOptions): Promise<RunsReport> {
+	const keep = (paths: string[]) => (options.only ? paths.filter((p) => options.only!.some((re) => re.test(p))) : paths);
+	const walks = await Promise.allSettled(dirs.map(files));
+	for (const walk of walks) if (walk.status === "rejected") throw walk.reason;
+	const maps = walks.map((w) => keyed(keep((w as PromiseFulfilledResult<string[]>).value), options.exact));
+	const keys = [...new Set(maps.flatMap((m) => [...m.keys()]))].sort(compareText);
+	const report: RunsReport = { runs: dirs, exact: options.exact, varies: [], steadyPages: 0, steadyFiles: 0 };
+	const found: Array<Varies | undefined> = new Array(keys.length);
+	let next = 0;
+	const worker = async () => {
+		while (next < keys.length) {
+			const i = next++;
+			const key = keys[i];
+			const buffers = await Promise.all(maps.map(async (m, run) => {
+				const file = m.get(key);
+				return file === undefined ? undefined : Buffer.from(await fs.promises.readFile(path.join(dirs[run], file)));
+			}));
+			found[i] = varies(key, buffers, maps, options);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(READS_AT_ONCE, keys.length) }, worker));
+	keys.forEach((key, i) => {
+		const v = found[i];
+		if (v) report.varies.push(v);
+		else if (isPage(key)) report.steadyPages += 1;
+		else report.steadyFiles += 1;
+	});
+	return report;
+}
+
+/** How `diff` sees a file: its normalized tokens (a page) or text, or its bytes. Two builds agree when these are equal. */
+function seen(key: string, data: Buffer, options: DiffOptions): string {
+	const text = decode(data);
+	if (text === undefined) return `b:${data.toString("base64")}`;
+	const normal = normalize(text, options);
+	if (isPage(key) && !options.exact) return `p:${tokens(normal).map((t) => `${t.tag ? 1 : 0}${t.text}`).join("\0")}`;
+	return `t:${normal}`;
+}
+
+function varies(key: string, buffers: Array<Buffer | undefined>, maps: Array<Map<string, string>>, options: DiffOptions): Varies | undefined {
+	const groups = new Map<string, number[]>();
+	buffers.forEach((data, run) => {
+		const id = data === undefined ? "missing" : seen(key, data, options);
+		const list = groups.get(id);
+		if (list) list.push(run);
+		else groups.set(id, [run]);
+	});
+	if (groups.size === 1 && !groups.has("missing")) return undefined;
+	const versions = [...groups].map(([id, runs]) => ({ runs, missing: id === "missing" }));
+	versions.sort((a, b) => b.runs.length - a.runs.length || a.runs[0] - b.runs[0]);
+	const present = versions.filter((v) => !v.missing);
+	let sample: FileDiff | undefined;
+	if (present.length >= 2) {
+		const [x, y] = [present[0].runs[0], present[1].runs[0]];
+		sample = comparePair(buffers[x]!, buffers[y]!, { key, before: maps[x].get(key)!, after: maps[y].get(key)! }, options);
+	}
+	const first = buffers.find((b) => b !== undefined)!;
+	const kind = decode(first) === undefined ? "binary" : isPage(key) ? "page" : "text";
+	return { path: key, url: urlOf(key), kind, versions, sample };
+}
+
+/** The builds in `runs`, by name: `dist-1, dist-3`. */
+const named = (report: RunsReport, runs: number[]) => runs.map((r) => report.runs[r]).join(", ");
+
+/** The comparison of several builds, for a terminal. */
+export function runsText(report: RunsReport, limit: number, color: boolean): string {
+	const paint = (code: string, s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
+	let out = `Comparing ${count(report.runs.length)} builds: ${report.runs.join(", ")}\n`;
+	out += report.exact ? "Comparing bytes (--exact).\n" : "Ignoring asset fingerprints, integrity hashes, the generator's version, and whitespace between tags (--exact compares bytes).\n";
+	const steady = `${plural(report.steadyPages, "page", "pages")} and ${plural(report.steadyFiles, "other file", "other files")}`;
+	if (!report.varies.length) return `${out}\nEvery build is the same: ${steady}. The tracks match every time.\n`;
+	out += `\nVaries (${report.varies.length})\n`;
+	for (const file of report.varies) {
+		const [most, ...rest] = file.versions;
+		// A file most builds lack is "only in" the ones that have it, when they all have the same one.
+		const onlyIn = most.missing && rest.length === 1;
+		const others = rest.map((v) => (v.missing ? `missing from ${named(report, v.runs)}` : onlyIn ? `only in ${named(report, v.runs)}` : `${named(report, v.runs)} differ${v.runs.length === 1 ? "s" : ""}`));
+		const agree = most.missing ? `missing from ${named(report, most.runs)}` : `${named(report, most.runs)} agree${most.runs.length === 1 ? "s" : ""}`;
+		out += `  ~ ${file.url}  (${file.versions.length} versions: ${agree}; ${others.join("; ")})\n`;
+		const sample = file.sample;
+		if (!sample) continue;
+		for (const note of sample.notes) out += `      ${note}\n`;
+		let shown = 0;
+		done: for (const hunk of sample.hunks) {
+			for (const [sign, code, side] of [["-", "31", hunk.removed], ["+", "32", hunk.added]] as const) {
+				for (const line of side) {
+					if (limit > 0 && shown >= limit) break done;
+					out += paint(code, `      ${sign} ${clip(line)}\n`);
+					shown += 1;
+				}
+			}
+		}
+		if (sample.changedLines > shown) out += `      ... ${count(sample.changedLines - shown)} more changed ${sample.changedLines - shown === 1 ? "line" : "lines"} (--lines 0 shows all)\n`;
+	}
+	out += `\n${plural(report.varies.length, "file varies", "files vary")} between builds made the same way; ${steady} are the same in all of them. Pin what changes (the build's time, random ids) before comparing another build with these, or leave it out with --ignore.\n`;
+	return out;
+}
+
+/** The comparison of several builds as JSON (`schemaVersion` 1). */
+export function runsJson(report: RunsReport, limit: number): Record<string, unknown> {
+	const runs = report.runs.map((r) => r.replaceAll("\\", "/"));
+	return {
+		schemaVersion: 1,
+		runs,
+		exact: report.exact,
+		same: report.varies.length === 0,
+		summary: { varies: report.varies.length, steadyPages: report.steadyPages, steadyFiles: report.steadyFiles },
+		varies: report.varies.map((f) => ({
+			url: f.url,
+			path: f.path,
+			kind: f.kind,
+			versions: f.versions.map((v) => ({ runs: v.runs.map((r) => runs[r]), missing: v.missing })),
+			changedLines: f.sample?.changedLines ?? 0,
+			hunks: f.sample ? firstLines(f.sample.hunks, limit) : [],
+		})),
+	};
+}
