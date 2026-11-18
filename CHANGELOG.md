@@ -8,6 +8,14 @@ has to change.
 The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
 a `v<version>` tag on a commit where that version matches.
 
+## 0.7.1 - 2026-11-18
+
+The last release of the Rust implementation. 0.8 runs on Node: the same sites, commands and
+output, built by a TypeScript program with ssqch's own Markdown, highlighter, minifier and Sass
+as WebAssembly. Move to it with `npm install --save-dev ssqch` once 0.8.0 is out; its changelog
+lists what a site has to change. 0.7.x gets no more releases, and nothing else changed since
+0.7.0.
+
 ## 0.7.0 - 2026-11-17
 
 Found moving lit.dev from Eleventy.

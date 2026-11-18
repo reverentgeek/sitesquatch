@@ -22,6 +22,9 @@ What's in the pack:
 - **A quick start and a way in:** `ssqch init` (a blog, or a docs site with a sidebar and search), `ssqch import` for Eleventy and Zola sites, [`ssqch new`](#starting-a-new-page) for the next post, and a dev server (it answers to Squatch Watch) that reloads only the page you changed, swaps stylesheets in place, and shows a broken build in the browser.
 - **A Rust API** for when JavaScript isn't enough: custom template engines, heavy transforms, or a whole site as its own binary.
 
+> [!NOTE]
+> 0.7.1 is the last release of the Rust implementation. 0.8 runs on Node: the same sites, commands and output, built by a TypeScript program with ssqch's own Markdown, highlighter, minifier and Sass as WebAssembly. Move to it with `npm install --save-dev ssqch` once 0.8.0 is out; its changelog lists what a site has to change. 0.7.x gets no more releases.
+
 SiteSquatch is a young one (0.x), so expect some breaking changes between minor versions. Each is listed in the [changelog](CHANGELOG.md) with what you'd need to change.
 
 ## Install
@@ -44,7 +47,7 @@ On **Windows (x86_64)**, use the PowerShell installer:
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.ps1 | iex"
 ```
 
-The installers check the download's SHA-256 checksum, install `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and add that folder to your `PATH`. Every release binary runs a smoke test on its own platform before it's published. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.7.0`. You can also download an archive for your platform from the [releases page](https://github.com/reverentgeek/sitesquatch/releases), or, if you use [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), run `cargo binstall ssqch` to fetch the same archive.
+The installers check the download's SHA-256 checksum, install `ssqch` into `$CARGO_HOME/bin` (usually `~/.cargo/bin`), and add that folder to your `PATH`. Every release binary runs a smoke test on its own platform before it's published. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.7.1`. You can also download an archive for your platform from the [releases page](https://github.com/reverentgeek/sitesquatch/releases), or, if you use [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), run `cargo binstall ssqch` to fetch the same archive.
 
 In a site with a `package.json`, install it from **npm** as a dev dependency, so the lockfile pins the version: `npm install --save-dev ssqch` (or `pnpm add -D ssqch`, `yarn add -D ssqch`), then run `npx ssqch build`, or `ssqch build` in a `package.json` script. The `ssqch` package runs the binary from an optional dependency for your platform (`@ssqch/darwin-arm64`, `@ssqch/darwin-x64`, `@ssqch/linux-x64` or `@ssqch/win32-x64`), so installing runs no install scripts and downloads nothing from GitHub. It covers the same platforms as the installers.
 
@@ -74,7 +77,7 @@ In **GitHub Actions**, [`reverentgeek/setup-ssqch`](https://github.com/reverentg
 ```yaml
 - uses: reverentgeek/setup-ssqch@v1
   with:
-    version: 0.7.0
+    version: 0.7.1
 - run: ssqch build
 ```
 
@@ -1104,10 +1107,10 @@ Netlify can build the site itself, with no deploy token to manage. With `ssqch` 
     paths = [".cache/ssqch"]
 ```
 
-- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.7.0`) and bump it when you're ready.
+- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.7.1`) and bump it when you're ready.
 - **[`netlify-plugin-cache`](https://github.com/jakejarvis/netlify-plugin-cache)** carries the image cache (the encoded images and their hashes) over to the next build. Add it to your `devDependencies`.
 
-A site without a `package.json` can install the release in the build command instead, with `SSQCH_VERSION = "0.7.0"` under `[build.environment]` to pin it. `SSQCH_UNMANAGED_INSTALL=.cache/bin` installs the binary into that folder and leaves shell profiles alone:
+A site without a `package.json` can install the release in the build command instead, with `SSQCH_VERSION = "0.7.1"` under `[build.environment]` to pin it. `SSQCH_UNMANAGED_INSTALL=.cache/bin` installs the binary into that folder and leaves shell profiles alone:
 
 ```toml
 [build]
