@@ -50,9 +50,12 @@ export function pairs(): Array<{ original: string; copy: string }> {
 	return out;
 }
 
-/** Every file in `bundled/`, absolute. */
+/** Folders in `bundled/` that are the package's own, with no original elsewhere: 0.7's completion scripts. */
+const OWN = ["completions/"];
+
+/** Every copy in `bundled/` (not the package's own files), as absolute paths. */
 export function copies(): string[] {
-	return fs.existsSync(BUNDLED) ? walk(BUNDLED).map((rel) => path.join(BUNDLED, rel)) : [];
+	return fs.existsSync(BUNDLED) ? walk(BUNDLED).filter((rel) => !OWN.some((own) => rel.startsWith(own))).map((rel) => path.join(BUNDLED, rel)) : [];
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
