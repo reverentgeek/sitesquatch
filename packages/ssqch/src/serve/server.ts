@@ -340,7 +340,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 			const source = config === undefined ? sources.find(inSources) : undefined;
 			if (config !== undefined) {
 				if (!quiet) say(`${voice.FRESH_TRACKS} ${show(config)} (reading the configuration again)`);
-				const next = await Builder.start(args, { reload: true, said: builder.said });
+				const next = await Builder.start(args, { reload: true, fallback: builder.alive, said: builder.said });
 				if (next) {
 					builder.stop();
 					return next;
