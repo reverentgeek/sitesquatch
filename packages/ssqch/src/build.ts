@@ -18,7 +18,7 @@ import { rewriteBase } from "./base.ts";
 import type { Config, Dirs, GeneratedFile, Hook, PageSummary } from "./config.ts";
 import { shownDir, shownOutput } from "./config.ts";
 import type { Data } from "./data.ts";
-import { STATIC_DATA_EXTENSIONS } from "./data.ts";
+import { sourceDateEpoch, STATIC_DATA_EXTENSIONS } from "./data.ts";
 import { BuildError, Diagnostics, bail, context, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import type { RenderContext } from "./engines/engine.ts";
 import { beginFenceCache, rendering as markdownRendering, saveFenceCache, writeHighlightCss } from "./engines/markdown.ts";
@@ -74,6 +74,8 @@ export interface BuildReport {
 const MAX_WRITES = 64;
 
 export async function build(config: Config): Promise<BuildReport> {
+	// A SOURCE_DATE_EPOCH that isn't a number is one error now, not one for every page.
+	sourceDateEpoch();
 	const started = performance.now();
 	const timer = new Timer();
 	const site = new Site(config);

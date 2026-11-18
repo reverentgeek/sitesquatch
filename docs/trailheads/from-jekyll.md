@@ -6,7 +6,7 @@ opensource.guide (382 pages in 29 languages, on GitHub Pages' gem) was moved thi
 
 ## Build it both ways first
 
-Build the Jekyll site from a fresh checkout twice and compare the two: a page that prints the build's time (an undated article gets `site.time`) differs on every build. Pin it with a second config file holding `time: 2026-01-01 00:00:00 +0000` (`jekyll build --config _config.yml,pin.yml`). GitHub Pages' gem needs `PAGES_REPO_NWO=owner/repo` in a checkout without a git remote. Then build with ssqch into an empty folder and compare the two with `ssqch diff jekyll-site ssqch-site`.
+Build the Jekyll site from a fresh checkout twice and compare the two: a page that prints the build's time (an undated article gets `site.time`) differs on every build. Pin it with a second config file holding `time: 2026-01-01 00:00:00 +0000` (`jekyll build --config _config.yml,pin.yml`), and build ssqch with the same time: `SOURCE_DATE_EPOCH=1767225600`. GitHub Pages' gem needs `PAGES_REPO_NWO=owner/repo` in a checkout without a git remote. Then build with ssqch into an empty folder and compare the two with `ssqch diff jekyll-site ssqch-site`.
 
 ## The config
 
@@ -39,7 +39,7 @@ export default defineConfig({
 | `defaults` for a `path` | Directory data in that folder: `_guides/_guides.json` with `{ "layout": "guide" }` |
 | `layouts_dir` | `dirs: { layouts: "_layouts" }` |
 | `sass: { load_paths }` | `sassPlugin({ files, loadPaths })` from `ssqch/sass`. Front matter on a `.scss` file is fine. |
-| `time:` | Nothing yet: an undated page's date is its file's time. |
+| `time:` | `SOURCE_DATE_EPOCH=1767225600 ssqch build` (seconds since 1970): `now()` and every undated page get that time, as with `time:` |
 
 ## Templates
 

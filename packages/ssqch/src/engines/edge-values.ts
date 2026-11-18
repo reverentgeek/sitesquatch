@@ -12,6 +12,7 @@
 //
 // The template's code calls these through `template.ssqch` (see `adjust` in `edge.ts`), so a
 // site's own JavaScript, and the values themselves, stay JavaScript's.
+import { buildTime } from "../data.ts";
 
 /** How a function prints, as 0.7 printed every one (JavaScript prints its source, ssqch's own wrappers included). */
 const FUNCTION_TEXT = "function () { [native code] }";
@@ -119,7 +120,7 @@ export function parseDate(text: string): number {
 /** `new Date(...)` in a template, as 0.7 made it: in UTC, and nothing (not an invalid date) for what isn't one. */
 export function newDate(...args: unknown[]): Date | null {
 	let date: Date;
-	if (args.length === 0) date = new Date();
+	if (args.length === 0) date = buildTime();
 	else if (args.length === 1) {
 		const [value] = args;
 		date = typeof value === "string" ? new Date(parseDate(value)) : new Date(value as number);

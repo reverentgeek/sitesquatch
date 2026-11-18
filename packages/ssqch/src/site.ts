@@ -12,7 +12,7 @@ import type { Config, Dirs, Filter } from "./config.ts";
 import { dirsOf } from "./config.ts";
 import { excerpt, headings } from "./content.ts";
 import type { Data } from "./data.ts";
-import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
+import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, sourceDateEpoch, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
 import type { Diagnostic } from "./diagnostics.ts";
 import { BuildError, Diagnostics, aliasUsed, bail, context, error as errorOf, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import { edgeEngine } from "./engines/edge.ts";
@@ -687,8 +687,10 @@ export class Site {
 		let date: Date;
 		let fromFileTime = false;
 		if (tpl.data.date !== undefined && tpl.data.date !== null) date = toDate(tpl.data.date) ?? bail(`can't parse date ${show(tpl.data.date)}`);
-		// Then the date in the file name, then when the file last changed.
+		// Then the date in the file name, then the pinned build time (`SOURCE_DATE_EPOCH`, as Jekyll's
+		// `time:` gives undated pages `site.time`), then when the file last changed.
 		else if (tpl.fileDate) date = tpl.fileDate;
+		else if (sourceDateEpoch() !== undefined) date = new Date(sourceDateEpoch()!);
 		else [date, fromFileTime] = [tpl.mtime, true];
 		const basePage = (url: unknown, outputPath: unknown, when: Date): Data => {
 			const page: Data = { url, outputPath, inputPath, fileSlug: tpl.fileSlug, filePathStem: tpl.filePathStem, date: when };

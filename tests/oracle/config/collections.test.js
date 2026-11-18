@@ -201,3 +201,24 @@ export default {
 	assert.equal(read(root, "hooks.txt"), "false true");
 	assert.equal(read(root, "quiet.txt"), "false");
 });
+
+// opensource.guide (osg #13, #14): Jekyll's `time:` pins `site.time` and the date of every page
+// without one, which made its baseline the same on every build. SOURCE_DATE_EPOCH does that in
+// ssqch: `now()`, and undated pages' dates, which then sort by path, not by when a checkout wrote them.
+test("source_date_epoch_pins_the_build_time_and_undated_pages", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\", \"liquid\"] };\n",
+		"posts/zeta.md": "---\ntags: posts\n---\nZeta\n",
+		"posts/alpha.md": "---\ntags: posts\n---\nAlpha\n",
+		"posts/dated.md": "---\ntags: posts\ndate: 2025-06-01\n---\nDated\n",
+		"index.njk": "{% for p in collections.posts %}{{ p.url }} {{ p.date.toISOString() }}\n{% endfor %}{{ now().toISOString() }}\n",
+		"time.liquid": "{{ \"now\" | date: \"%Y-%m-%d\" }}\n",
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"], { env: { SOURCE_DATE_EPOCH: "1767225600" } });
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/index.html"), "/posts/dated/ 2025-06-01T00:00:00.000Z\n/posts/alpha/ 2026-01-01T00:00:00.000Z\n/posts/zeta/ 2026-01-01T00:00:00.000Z\n2026-01-01T00:00:00.000Z\n");
+	assert.equal(read(root, "_site/time/index.html"), "2026-01-01\n");
+	const bad = ssqch(["build", "--root", root], { env: { SOURCE_DATE_EPOCH: "soon" } });
+	assert.ok(!bad.ok);
+	assert.equal(bad.log.split("SOURCE_DATE_EPOCH must be whole seconds since 1970").length - 1, 1, bad.log);
+});

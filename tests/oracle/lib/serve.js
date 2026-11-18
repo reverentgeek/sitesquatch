@@ -19,7 +19,9 @@ process.on("exit", () => { for (const child of running) try { child.kill("SIGKIL
 export function start(args, { cwd, env = {}, logFile, detached = false } = {}) {
 	const out = logFile ? fs.openSync(logFile, "w") : "ignore";
 	const [command, argv] = SCRIPT ? [process.execPath, [BIN, ...args]] : [BIN, args];
-	const child = spawn(command, argv, { cwd, env: { ...process.env, TZ: "UTC", NO_COLOR: "1", ...env }, stdio: ["ignore", out, out], detached });
+	// As in ssqch(): SOURCE_DATE_EPOCH only for a test that asks for it.
+	const { SOURCE_DATE_EPOCH: _, ...inherited } = process.env;
+	const child = spawn(command, argv, { cwd, env: { ...inherited, TZ: "UTC", NO_COLOR: "1", ...env }, stdio: ["ignore", out, out], detached });
 	running.add(child);
 	const exited = new Promise((resolve) => child.on("exit", (code, signal) => { running.delete(child); resolve({ code, signal }); }));
 	return {

@@ -30,6 +30,9 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Added
 
+- `SOURCE_DATE_EPOCH` pins the build's time: `now()`, Liquid's `"now"`, Edge's `new Date()`, and
+  the date of every page without one (which then sort by path), as Jekyll's `time:` does. A
+  reference build that's the same every time took pinning in both 2026-11-18 studies.
 - `sitemapPlugin({ alternates })`: a function that returns a page's translations, written as
   `<xhtml:link rel="alternate" hreflang>` under its `<loc>`, as @astrojs/sitemap and Google list
   them. expressjs.com's port wrote its sitemap in an `afterBuild` hook for them.

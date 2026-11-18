@@ -12,6 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import nunjucks from "nunjucks";
 import type { Filter } from "../config.ts";
+import { buildTime } from "../data.ts";
 import type { Data } from "../data.ts";
 import { BuildError, warn, warning } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
@@ -219,8 +220,9 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 	const call = (name: string, fn: Filter, args: unknown[]) => callSite(name, fn, siteArgs(args), root);
 	for (const [name, fn] of functions) njk.addFilter(name, (...args: unknown[]) => call(name, fn, args));
 	for (const [name, fn] of env.globals) njk.addGlobal(name, (...args: unknown[]) => call(name, fn, args));
-	// `now()` is the build's time: kept like a site's function, so a render that runs again sees the same one.
-	const now = () => new Date();
+	// `now()` is the build's time (`SOURCE_DATE_EPOCH` pins it): kept like a site's function, so a
+	// render that runs again sees the same one.
+	const now = () => buildTime();
 	njk.addGlobal("now", (...args: unknown[]) => call("now", now, args));
 
 	// `{% image "/a.png", "A pine" %}` prints what `image("/a.png", "A pine")` returns, without
