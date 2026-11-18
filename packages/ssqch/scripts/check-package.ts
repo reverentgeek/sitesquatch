@@ -5,6 +5,7 @@
 //   node scripts/check-package.ts                    builds the package, packs it, installs it, checks it
 //   node scripts/check-package.ts --tarball <tgz>    installs that tarball and checks it
 //   node scripts/check-package.ts --exe <ssqch>      checks a standalone executable
+//   --oracle                                         also runs the oracle's list (tests/oracle/progress.js) with it
 //   --keep                                           keeps the temporary folder, and says where
 //
 // Everything runs in a temporary folder outside the repository, with copies of the sites, so
@@ -29,7 +30,7 @@ const REPO = path.resolve(PACKAGE, "../..");
 const SOURCE_BIN = path.join(PACKAGE, "bin/ssqch.ts");
 const windows = process.platform === "win32";
 
-const { values } = parseArgs({ options: { tarball: { type: "string" }, exe: { type: "string" }, keep: { type: "boolean" } } });
+const { values } = parseArgs({ options: { tarball: { type: "string" }, exe: { type: "string" }, oracle: { type: "boolean" }, keep: { type: "boolean" } } });
 const version: string = JSON.parse(fs.readFileSync(path.join(PACKAGE, "package.json"), "utf8")).version;
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-check-"));
 let failures = 0;
@@ -163,6 +164,15 @@ if (installed) {
 		const r = run(process.execPath, ["exports-check.mjs"], { cwd: installed });
 		if (!r.ok) throw new Error(r.out);
 	});
+}
+
+if (values.oracle) {
+	// Every test the source passes (node-passing.txt), with this ssqch: progress.js fails on one
+	// that doesn't, and says why.
+	console.log("The oracle's list, with this ssqch:");
+	const bin = candidate[1][0] ?? candidate[0];
+	const r = spawnSync(process.execPath, ["progress.js"], { cwd: path.join(REPO, "tests/oracle"), stdio: "inherit", env: { ...process.env, SSQCH_BIN: bin, SSQCH_EXPECT_VERSION: version } });
+	if (r.status !== 0) failures++;
 }
 
 if (values.keep) console.log(`Kept ${work}`);

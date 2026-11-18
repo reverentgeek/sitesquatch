@@ -12,6 +12,7 @@
 //   lib/cli.js       the CLI, and lib/ssqch.js, lib/image.js, ...: the modules a config imports
 //   lib/chunk-*.js   the code they share, so a config's `ssqch` and the build's are one module
 //   wasm/, bundled/  the files ssqch reads beside its code, as they are in packages/ssqch
+//   src/             the same for the files under src/ that aren't TypeScript (serve/live.js)
 //   types/           the types, one file a module, cut from ssqch.d.ts (the `exports` map)
 //
 // Every output file is one folder down from the package's root, as `src/*.ts` is. That's what
@@ -130,6 +131,9 @@ export async function buildPackage({ out, release = false, quiet = false }: { ou
 	fs.chmodSync(bin, 0o755);
 
 	copyTree(path.join(PACKAGE, "wasm"), path.join(out, "wasm"), (name) => name.endsWith(".wasm"));
+	// The files the code reads beside its source (the dev server's live-reload script and its
+	// 404 page), where the rewritten `import.meta.url` looks for them.
+	copyTree(path.join(PACKAGE, "src"), path.join(out, "src"), (name) => !name.endsWith(".ts"));
 	copyTree(path.join(PACKAGE, "bundled"), path.join(out, "bundled"));
 	fs.copyFileSync(path.join(REPO, "LICENSE"), path.join(out, "LICENSE"));
 	fs.copyFileSync(path.join(PACKAGE, "README.md"), path.join(out, "README.md"));
@@ -162,7 +166,7 @@ export async function buildPackage({ out, release = false, quiet = false }: { ou
 		bin: { ssqch: "bin/ssqch.js" },
 		types: "./types/index.d.ts",
 		exports,
-		files: ["bin", "lib", "types", "wasm", "bundled"],
+		files: ["bin", "lib", "src", "types", "wasm", "bundled"],
 		engines: { node: source.engines.node },
 		dependencies,
 	};
