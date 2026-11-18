@@ -11,31 +11,33 @@ where that version matches.
 
 ## Unreleased
 
-ssqch 0.8 is a TypeScript program on Node (22.18 or newer), or a standalone executable with Node
-inside it. The contract is 0.7's: the commands and flags, the config, `ssqch.d.ts`, the JSON
-reports, the diagnostic codes and the voice. Rendering, Markdown, minify and Sass give 0.7's
-output, and the blog, the examples and the starters build to the same bytes, image bytes apart
-(sharp encodes the images now). Most sites change nothing. Breaking lists what a site might have
-to change, by theme: installing, a site's JavaScript, data, templates, Markdown, images and
-feeds, builds, `serve.run` tools, `diff` and Rust plugins. Changed lists what's new, what works
-now that didn't, and the messages that read differently.
+ssqch 0.8 is a TypeScript program on Node (22.18 or newer), installed from npm. The contract is
+0.7's: the commands and flags, the config, `ssqch.d.ts`, the JSON reports, the diagnostic codes and
+the voice. Rendering, Markdown, minify and Sass give 0.7's output, and the blog, the examples and
+the starters build to the same bytes, image bytes apart (sharp encodes the images now). Most sites
+change nothing. Breaking lists what a site might have to change, by theme: installing, a site's
+JavaScript, data, templates, Markdown, images and feeds, builds, `serve.run` tools, `diff` and Rust
+plugins. Changed lists what's new, what works now that didn't, and the messages that read
+differently.
 
 ### Breaking
 
 #### Installing
 
-- **How ssqch is installed.** The npm package is ssqch itself, JavaScript that runs on Node 22.18
-  or newer, with sharp as its one dependency; the `@ssqch/<platform>` packages are gone, so a
-  `pnpm-workspace.yaml` that lists them under `minimumReleaseAgeExclude` needs only `ssqch`. The
-  standalone executable (the installers, Homebrew, `setup-ssqch`, the release archives) is Node
-  26 with the package inside it: 174 MB, where 0.7's binary was 29 MB, and it unpacks itself on
-  its first run into a folder of its own (`~/Library/Caches/ssqch` on macOS, `%LOCALAPPDATA%\ssqch`
-  on Windows, `~/.cache/ssqch` on Linux; `SSQCH_UNPACK_DIR` chooses another). The Linux
-  executable is Node's own build, so it needs glibc 2.28 or newer: on Alpine, where 0.7's static
-  binary ran, install Node and the npm package. Its archive is
-  `ssqch-x86_64-unknown-linux-gnu.tar.gz` (0.7's was `-musl`). The installer script puts `ssqch`
-  in `~/.local/bin`, or replaces it in `~/.cargo/bin` where 0.7's put it. `cargo install ssqch`
-  and `cargo binstall ssqch` end at 0.7.
+- **How ssqch is installed: from npm, and only from npm.** The npm package is ssqch itself,
+  JavaScript that runs on Node 22.18 or newer, with sharp as its one dependency; the
+  `@ssqch/<platform>` packages are gone, so a `pnpm-workspace.yaml` that lists them under
+  `minimumReleaseAgeExclude` needs only `ssqch`. There's no standalone executable: no installer
+  scripts, no release archives, and no `setup-ssqch` action. In a site, `npm install --save-dev
+  ssqch`; outside one, `npm install --global ssqch` or `npx ssqch@<version>`. Homebrew's formula
+  (`brew install reverentgeek/tap/ssqch`) installs the npm package with Homebrew's Node, so
+  `brew upgrade` moves to 0.8 by itself. In GitHub Actions, replace `setup-ssqch` with
+  `actions/setup-node` and `npm ci` (or `npm install --global ssqch@<version>`). On Netlify, run
+  ssqch from the site's dev dependency, or `npx --yes ssqch@<version> build`, in place of the
+  installer. Once 0.8.0 is the latest release, `releases/latest/download/ssqch-installer.sh` and
+  `.ps1` are gone (a pinned `download/v0.7.0/` installer still installs 0.7.0). Delete 0.7's
+  binary from `~/.cargo/bin`, where its installer put it, so it doesn't stand in front of the new
+  one on your `PATH`. `cargo install ssqch` and `cargo binstall ssqch` end at 0.7.
 
 #### A site's JavaScript
 

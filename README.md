@@ -4,7 +4,7 @@
 [![Latest release](https://img.shields.io/github/v/release/reverentgeek/sitesquatch)](https://github.com/reverentgeek/sitesquatch/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-SiteSquatch (`ssqch`) is a static site generator that runs on Node.js: large, quick, and rarely photographed. You write templates in [Jinja](https://jinja.palletsprojects.com/) (the default), [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Handlebars](https://handlebarsjs.com/), [Mustache](https://mustache.github.io/) or [EJS](https://ejs.co/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. Install it from npm into a site that has a `package.json` (Node 22.18 or newer), or use the standalone executable, which has Node inside, for a machine that has none. The JavaScript in your config and data files runs on Node itself, so any npm package that runs there works, and the libraries behind the template languages are the real ones.
+SiteSquatch (`ssqch`) is a static site generator that runs on Node.js: large, quick, and rarely photographed. You write templates in [Jinja](https://jinja.palletsprojects.com/) (the default), [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Handlebars](https://handlebarsjs.com/), [Mustache](https://mustache.github.io/) or [EJS](https://ejs.co/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. Install it from npm (Node 22.18 or newer), into a site's `package.json` or globally, or with Homebrew. The JavaScript in your config and data files runs on Node itself, so any npm package that runs there works, and the libraries behind the template languages are the real ones.
 
 It moves fast for its size. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in **under a second** once its images are cached, which is gone before you've found your camera. [Benchmarks](#benchmarks) has the measurements.
 
@@ -26,29 +26,11 @@ SiteSquatch is a young one (0.x), so expect some breaking changes between minor 
 
 ## Install
 
-ssqch is a program for [Node.js](https://nodejs.org) 22.18 or newer, and there are two ways to have it. In a site with a `package.json`, install it from **npm** as a dev dependency, so the lockfile pins the version: `npm install --save-dev ssqch` (or `pnpm add -D ssqch`, `yarn add -D ssqch`), then run `npx ssqch build`, or `ssqch build` in a `package.json` script. [sharp](https://sharp.pixelplumbing.com), which encodes images, is the package's one dependency: ssqch's template libraries are inside it, and so are its Markdown, highlighter, minifier and Sass, which are WebAssembly, so the package is the same on every platform, Alpine and Linux on ARM included.
+ssqch is a program for [Node.js](https://nodejs.org) 22.18 or newer, published on npm. In a site with a `package.json`, install it from **npm** as a dev dependency, so the lockfile pins the version: `npm install --save-dev ssqch` (or `pnpm add -D ssqch`, `yarn add -D ssqch`), then run `npx ssqch build`, or `ssqch build` in a `package.json` script. [sharp](https://sharp.pixelplumbing.com), which encodes images, is the package's one dependency: ssqch's template libraries are inside it, and so are its Markdown, highlighter, minifier and Sass, which are WebAssembly, so the package is the same on every platform, Alpine and Linux on ARM included.
 
-**The standalone executable** is Node with ssqch inside it, for a machine that doesn't have Node, and for a site that has no `package.json`. On **Linux (x86_64)** and **macOS** (Apple Silicon or Intel), install it with the installer script:
+**Without a `package.json`:** `npm install --global ssqch` puts `ssqch` on your `PATH`, and `npx ssqch@0.7.0 build` runs one version without installing it. With [Homebrew](https://brew.sh) (macOS or Linux), `brew install reverentgeek/tap/ssqch` installs the npm package with Homebrew's own Node, which it brings along if you don't have it.
 
-```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.sh | sh
-```
-
-With [Homebrew](https://brew.sh) (macOS or Linux):
-
-```sh
-brew install reverentgeek/tap/ssqch
-```
-
-On **Windows (x86_64)**, use the PowerShell installer:
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/reverentgeek/sitesquatch/releases/latest/download/ssqch-installer.ps1 | iex"
-```
-
-The installers check the download's SHA-256 checksum and install `ssqch` into `~/.local/bin` (`%LOCALAPPDATA%\ssqch\bin` on Windows), or into `~/.cargo/bin` where 0.7's installer put it, so the new one doesn't hide behind the old. They add that folder to your `PATH`. `SSQCH_INSTALL_DIR` chooses another folder, `SSQCH_NO_MODIFY_PATH=1` leaves your shell profiles alone, and `SSQCH_UNMANAGED_INSTALL=<folder>` installs into a folder and touches nothing else (for CI and Netlify). Every release executable runs a smoke test on its own platform before it's published. To pin a version, as you'd want in CI, use that release's installer instead: replace `latest/download` with `download/v0.7.0`. You can also download an archive for your platform from the [releases page](https://github.com/reverentgeek/sitesquatch/releases).
-
-**The standalone executable:** it's Node 26 with the npm package inside, about 174 MB (55 MB to download; 0.7's Rust binary was 29 MB), and it unpacks itself. On its first run it writes the package into a folder of its own, which takes a few dozen milliseconds, and runs from there: `~/Library/Caches/ssqch` on macOS, `%LOCALAPPDATA%\ssqch` on Windows, `$XDG_CACHE_HOME/ssqch` or `~/.cache/ssqch` on Linux (the temporary folder where none of those can be written). `SSQCH_UNPACK_DIR` chooses another folder, such as a CI cache or a home folder that is read-only. The folder is a cache: deleting it only means unpacking again. On Linux the executable is Node's own build, so it needs glibc 2.28 or newer (every mainstream distribution since 2018), where 0.7's static binary ran anywhere, and it's built for x86_64: on Alpine (musl) and on Linux on ARM, install Node and the npm package. There is no `cargo install ssqch` for 0.8, because ssqch is no longer Rust: the crates end at 0.7, apart from [`ssqch-plugin`](#plugins-in-rust), which is for writing plugins.
+**npm is the only way it ships:** there's no standalone executable for 0.8 and no installer script. 0.7's were a Rust binary; 0.8 is JavaScript, and it runs on the Node you have. If 0.7's installer put `ssqch` in `~/.cargo/bin`, delete it there, so the old one doesn't stand in front of the new one on your `PATH` (`which ssqch` says which one answers). There is no `cargo install ssqch` for 0.8 either: the crates end at 0.7, apart from [`ssqch-plugin`](#plugins-in-rust), which is for writing plugins.
 
 **A release from today and pnpm's release age:** pnpm 11 and later wait a day (`minimumReleaseAge`) before installing a new version, so `pnpm add -D ssqch` on the day of a release fails, or settles for the version before it. To take releases as they come out, list `ssqch` under `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`, by name, which trusts every version of it. It is the only package of ssqch's own (0.7 had a platform package for each system), so nothing else needs a line:
 
@@ -61,12 +43,13 @@ minimumReleaseAgeExclude:
 
 The npm package carries the modules built into ssqch (`ssqch`, `ssqch/image` and the rest) in its `exports` map, with their types, so editors, TypeScript and ESLint's `n/no-missing-import` find them without `ssqch types`. They load in plain Node too, which 0.7's stubs didn't: a test or a script can `import { markdown, slugify } from "ssqch"`. ESLint's `n/no-unpublished-import` flags imports of a dev dependency in files a package publishes, so turn it off for build-time files (`ssqch.config.js`, data files, and modules they import), which a site never ships.
 
-In **GitHub Actions**, [`reverentgeek/setup-ssqch`](https://github.com/reverentgeek/setup-ssqch) installs a pinned version of the executable on Linux, macOS and Windows runners, with no Node setup step. (A site that installs ssqch from npm uses `actions/setup-node` and `npm ci` instead.)
+In **GitHub Actions**, set up Node with `actions/setup-node` and install ssqch from npm. A site with a `package.json` runs `npm ci`, and its lockfile pins the version; one without installs a pinned version (or runs it with `npx --yes ssqch@0.7.0 build`):
 
 ```yaml
-- uses: reverentgeek/setup-ssqch@v1
+- uses: actions/setup-node@v4
   with:
-    version: 0.7.0
+    node-version: 24
+- run: npm install --global ssqch@0.7.0
 - run: ssqch build
 ```
 
@@ -1103,13 +1086,6 @@ A site without a `package.json` can run a pinned release straight from npm in th
   command = "npx --yes ssqch@$SSQCH_VERSION build"
 ```
 
-Or install the standalone executable instead, which needs no Node setting: `SSQCH_UNMANAGED_INSTALL=.cache/bin` installs it into that folder and leaves shell profiles alone.
-
-```toml
-[build]
-  command = "curl --proto '=https' --tlsv1.2 -fsSL https://github.com/reverentgeek/sitesquatch/releases/download/v$SSQCH_VERSION/ssqch-installer.sh | SSQCH_UNMANAGED_INSTALL=.cache/bin sh && .cache/bin/ssqch build"
-```
-
 On the blog, the first Netlify build (which encoded every image) took about 4 minutes with 0.7, and the next one took 18 seconds, including Netlify's own setup. 0.8 encodes the blog's images in less than half 0.7's time on the same machine (see [Benchmarks](#benchmarks)).
 
 ### GitHub Pages
@@ -1134,8 +1110,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: reverentgeek/setup-ssqch@v1
-      - run: ssqch build --output dist --base "/${{ github.event.repository.name }}/"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx ssqch build --output dist --base "/${{ github.event.repository.name }}/"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
@@ -1144,7 +1124,7 @@ jobs:
 ```
 
 - **`--base`** takes the repository's name from the workflow, so the config doesn't have to know it and `ssqch serve` on your machine still serves the site at `/`. A user site (`you.github.io`) or one with a custom domain is at the root: leave `--base` off.
-- **Pin the version** as in [Install](#install) (`with: version:`), so a new release can't surprise a deploy. A site with a `package.json` can install ssqch from npm instead: replace the `setup-ssqch` step with `actions/setup-node@v4` (`node-version: 24`, or any 22.18 or newer) and `npm ci`, then run `npx ssqch build --output dist --base ...`; the lockfile pins the version.
+- **The version** is the site's `ssqch` dev dependency, pinned by its lockfile, so a new release can't surprise a deploy. `node-version` can be any Node from 22.18 on. A site without a `package.json` replaces `npm ci` with `npm install --global ssqch@0.7.0` (drop `cache: npm`, which looks for a lockfile) and runs `ssqch build` instead of `npx ssqch build`.
 - **A 404 page:** GitHub Pages serves `404.html` from the site's root, so give your 404 page `permalink: /404.html`.
 - **Images:** to keep encoded images between builds, cache `.cache/ssqch` with `actions/cache` (see [Keep the image cache between builds](#keep-the-image-cache-between-builds)).
 
@@ -1161,7 +1141,7 @@ No blurry footage here: these numbers come from building the ReverentGeek blog (
 | Peak memory, warm | 328 MB | 239 MB |
 | Image files written | 4,985 (266 MB) | 4,985 (298 MB) |
 
-- **Warm builds** are what the dev server and cached CI builds do. Wall times include starting the process: Node starts, and ssqch loads from its compile cache, in a few dozen milliseconds. The standalone executable starts the same way, and unpacks itself once on its first run (see [Install](#install)).
+- **Warm builds** are what the dev server and cached CI builds do. Wall times include starting the process: Node starts, and ssqch loads from its compile cache, in a few dozen milliseconds.
 - **The JavaScript config** runs on Node's V8, with a JIT, so the blog's collections, filters and data files cost what they would in any Node script. (0.7 ran them in QuickJS, an interpreter.)
 - **Cold builds** are mostly image encoding, and AVIF is the most expensive format. sharp encodes with libaom, and ssqch turns `avifSpeed` into sharp's effort (speed 8 is effort 2): the files are smaller and quicker to make than 0.7's, which used rav1e. They're single runs and vary.
 - **One thread renders, the thread pool encodes:** pages render one at a time on one thread (there are no worker threads), written as they render, and image encoding runs on libuv's thread pool, which uses every core. A site with heavy per-page JavaScript uses one core for it.
@@ -1247,7 +1227,7 @@ git clone https://github.com/reverentgeek/blog.git ../blog
 
 Messages follow the rules in [`AGENTS.md`](AGENTS.md#the-sasquatch-voice): the facts first, plain output for machines, nothing random, and nothing added to a site's pages. The lines more than one place uses are in `packages/ssqch/src/voice.ts`.
 
-Releases are built by a hand-written workflow (`.github/workflows/release.yml`) from a version tag: the npm package, with provenance, and the standalone executables, which are signed and notarized on macOS. The steps are in [`AGENTS.md`](AGENTS.md#releasing).
+Releases are built by a hand-written workflow (`.github/workflows/release.yml`) from a version tag: the npm package, with provenance, and the Homebrew formula that installs it. The steps are in [`AGENTS.md`](AGENTS.md#releasing).
 
 ## Known gaps
 
@@ -1260,6 +1240,6 @@ The uncharted parts of the map, as of this release:
 - **Images:** no SVG rasterizing, and HDR photos (the PQ, gain-map profiles of newer iPhones) can't be converted to sRGB, so they look washed out; the build warns about them, and converting the source to sRGB once fixes it. SVGs are served as they are, and GIFs are copied for `auto` output, so animations keep working. The files' bytes are sharp's, not 0.7's, so a site that compared image bytes with `ssqch diff --exact` sees them change once.
 - **The dev server:** it listens on `127.0.0.1` only (no `--host`), doesn't watch `node_modules`, and rebuilds the whole site on a change, on one thread: after one edit, a 10,000-page site takes about 0.9 s.
 - **Collections:** custom collections don't see pages that are paginated over collections. Those pages are added to `all` and their tags afterwards.
-- **Platforms:** the standalone executable covers Linux x86_64 (glibc 2.28 or newer), macOS and Windows x86_64; Linux on ARM and Alpine run the npm package on their own Node. See [TODO.md](TODO.md) for what's next.
+- **Platforms:** ssqch needs Node 22.18 or newer, and runs wherever that Node and sharp do (Linux, Alpine and Linux on ARM included, macOS and Windows). There's no standalone executable, so a machine without Node needs it first (Homebrew's formula brings it). See [TODO.md](TODO.md) for what's next.
 
 Found a bug, or have an idea? [Open an issue](https://github.com/reverentgeek/sitesquatch/issues). Happy building, and may your pages load faster than a Squatch sighting disappears.

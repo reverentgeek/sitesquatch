@@ -296,22 +296,32 @@ until 0.8 ships.
         (`scripts/install.sh`, `install.ps1`); CI's `package` and `standalone` jobs. dist, the npm
         wrapper and the platform packages are gone. `docs/node-migration.md` ("Stage 8") has the
         numbers.
-  - [ ] Watch the first runs on Linux and Windows: the executable and the package were checked on
-        macOS only. Windows: whether `--build-sea` leaves Node's Authenticode signature invalid
-        (then strip it before building, or sign), and long paths in the unpack folder.
-  - [ ] A pull request that touches `release.yml` (it runs the release unsigned) before the first
-        tag, and the first notarization of a Node executable: the entitlements in
-        `scripts/sea-entitlements.plist` are Node's own, untried with the notary service here.
-  - [ ] `setup-ssqch` for 0.8: the branch `ssqch-0.8` in `../setup-ssqch` (Linux's target is
-        `x86_64-unknown-linux-gnu` from 0.8), merged and tagged once 0.8.0 is out.
+  - [x] npm only (the owner, 2026-11-18): the standalone executable is gone (`build-sea.ts`,
+        `sea-main.ts`, the entitlements, `notarize.yml`, the signing steps, CI's `standalone`
+        job, `check-package.ts --exe`), and so are the installers (`scripts/install.sh`,
+        `install.ps1`). `release-files.mjs` writes the Homebrew formula, which depends on
+        Homebrew's `node` and installs the npm package from the registry, and `sha256.sum` for
+        the tarball. CI's `package` job and the release's check run on Linux only, on Node 22.18,
+        24 and 26. The README shows `actions/setup-node` with npm for GitHub Actions.
+        `docs/node-migration.md` ("Stage 8") has why.
+  - [ ] A pull request that touches `release.yml` (it runs the release up to publishing) before
+        the first tag, and the first formula in `reverentgeek/homebrew-tap`: `brew install`,
+        `brew test` and `brew audit --strict` on it (it was checked with `ruby -c` and by running
+        its install and test steps by hand, not by Homebrew).
+  - [x] `setup-ssqch` is retired: 0.8 installs from npm with `actions/setup-node`. The owner
+        archives the repository (its `ssqch-0.8` branch isn't needed).
+  - [ ] The docs starter's Install and Deploying pages still show 0.7's ways (the installer script,
+        `cargo install`, `setup-ssqch`), and its Netlify command fetches
+        `latest/download/ssqch-installer.sh`, which 0.8.0's release doesn't have. They're 0.7's
+        files (`crates/ssqch/src/starter-docs/`, copied into `bundled/`) and the starter's
+        snapshots are 0.7's, so change them at the switch: npm, Homebrew and `actions/setup-node`,
+        with a `DELIBERATE` entry and a changelog line.
   - [ ] Release the last 0.7.x from `release/0.7` before 0.8.0 (`docs/node-migration.md`, "One
         last 0.7.x"), then deprecate the `@ssqch/<platform>` packages after 0.8.0 (`AGENTS.md`).
-  - [x] Stage 9: the README's Install, Netlify and GitHub Pages sections, and `ssqch docs
-        standalone` (the unpack folder, `SSQCH_UNPACK_DIR`, glibc); `import "ssqch"` from plain
-        Node works (2026-11-18). The version numbers in them are for the release step.
-  - [ ] A Linux arm64 executable (`ubuntu-24.04-arm`) and a musl one (Node's unofficial musl
-        builds), so Alpine and ARM servers have the executable too. The npm package covers both
-        today.
+  - [x] Stage 9: the README's Install, Netlify and GitHub Pages sections; `import "ssqch"` from
+        plain Node works (2026-11-18). The version numbers in them are for the release step.
+  - [x] ~~A Linux arm64 executable and a musl one~~: there's no executable (npm only). The npm
+        package runs on Alpine and Linux on ARM with their own Node.
 - [ ] **Stage 9, Blog:** move the blog, then the examples, starters and trial ports; the README,
       trailheads, changelog and benchmarks; `AGENTS.md` for the TypeScript codebase. Release 0.8.0.
   - [x] The README for 0.8, the trailheads, `ssqch.d.ts`'s `RustPlugin`, `AGENTS.md` for the
@@ -327,11 +337,12 @@ until 0.8 ships.
       `ssqch.d.ts` (restored; the package's is its own now). Still to fix: on Windows with the
       tarball on Node 22.18, `a_theme_sits_under_the_site_file_by_file` (the message has `\`
       where the test wants `themes/missing`) and `fetch_sends_requests_as_written` (`10+20`
-      where 0.7 gave `8+22`).
+      where 0.7 gave `8+22`). CI's `package` job no longer runs on Windows, so check them there
+      by hand.
     - 0.7.1 from the `v0.7.0` tag: only the version and a note pointing to 0.8.
     - Remove the Rust implementation before 0.8.0, on a branch, and check everything again.
     - Publish the `ssqch-plugin` crate with 0.8.0; keep the example plugin in the repository.
-    - npm only: drop the standalone executable (build-sea, sea-main, signing, notarizing, the
+    - [x] npm only: drop the standalone executable (build-sea, sea-main, signing, notarizing, the
       `standalone` job) and the install scripts. The Homebrew formula depends on Homebrew's
       node and installs the npm package. Retire `setup-ssqch` (the README shows
       `actions/setup-node` and `npm install -g ssqch@<version>`). The `package` job runs on
@@ -354,7 +365,7 @@ until 0.8 ships.
         `plugins/` but what the `.wasm` crates compile, which moves into them), the oracle's
         reference to the Rust build and `bundled/`'s sync (the copies become the originals).
   - [ ] **Needs the owner:** release 0.8.0 (`AGENTS.md`, "Releasing"), publish `ssqch-plugin`,
-        merge and tag `setup-ssqch`'s `ssqch-0.8`, then move the blog's `package.json` to
+        then move the blog's `package.json` to
         `ssqch@0.8.0` and deploy it.
   - [ ] lit.dev's frozen output (`node freeze.js trial-lit.dev`), which needs lit.dev's SSR build.
 
@@ -844,7 +855,7 @@ write-ups that are still owed.
     `_headers` file (cache headers for `/img/`), deploy previews and branch deploys, and bumping the
     pinned version.
   - Cloudflare: work out the recommended path (Workers static assets or Pages; a Git build or
-    `wrangler` from GitHub Actions with `setup-ssqch`), whether its build cache can keep
+    `wrangler` from GitHub Actions with `actions/setup-node`), whether its build cache can keep
     `.cache/ssqch` (if not, build in Actions with `actions/cache`), whether `redirectsPlugin`'s
     `_redirects` lines work there, and whether the option needs a host-neutral name. Deploy an
     example to prove each step.
@@ -911,7 +922,6 @@ Decided against for now, or waiting for someone to need it. Move an item up when
 - Built-in CSS processing with Lightning CSS (`@import` bundling, nesting, minifying, browser
   targets): only if a real gap shows up; `serve.run` and the missing-file note have covered every
   site so far. JavaScript bundling in Rust costs too much binary for what it gives.
-- Linux aarch64 release builds (static musl), when someone needs them.
 - Go templates (Hugo; no Rust implementation matches Go's `text/template` closely) and MDX/JSX
   (needs a JavaScript toolchain and a component model).
 - Liquid and Handlebars includes in "did you mean" and in `--verbose`'s list of unused templates:

@@ -1,10 +1,8 @@
-// Checks ssqch the way a site gets it: the npm package installed from its tarball, or the
-// standalone executable. It's the release candidate's test, run by CI on Linux, macOS and
-// Windows, and by the release workflow on each executable before anything is published.
+// Checks ssqch the way a site gets it: the npm package installed from its tarball. It's the
+// release candidate's test, run by CI and by the release workflow before anything is published.
 //
 //   node scripts/check-package.ts                    builds the package, packs it, installs it, checks it
 //   node scripts/check-package.ts --tarball <tgz>    installs that tarball and checks it
-//   node scripts/check-package.ts --exe <ssqch>      checks a standalone executable
 //   --oracle                                         also runs the oracle's list (tests/oracle/progress.js) with it
 //   --keep                                           keeps the temporary folder, and says where
 //
@@ -16,7 +14,7 @@
 // - `ssqch init` makes the starter, and it builds;
 // - a site with images (sharp), highlighted Markdown, minify, Sass and the example Rust plugin
 //   builds to the source's bytes, so ssqch's own .wasm files and a plugin's run the same;
-// - for the package, Node finds every module in its `exports` map, and the types beside it.
+// - Node finds every module in its `exports` map, and the types beside it.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -30,7 +28,7 @@ const REPO = path.resolve(PACKAGE, "../..");
 const SOURCE_BIN = path.join(PACKAGE, "bin/ssqch.ts");
 const windows = process.platform === "win32";
 
-const { values } = parseArgs({ options: { tarball: { type: "string" }, exe: { type: "string" }, oracle: { type: "boolean" }, keep: { type: "boolean" } } });
+const { values } = parseArgs({ options: { tarball: { type: "string" }, oracle: { type: "boolean" }, keep: { type: "boolean" } } });
 const version: string = JSON.parse(fs.readFileSync(path.join(PACKAGE, "package.json"), "utf8")).version;
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-check-"));
 let failures = 0;
@@ -54,36 +52,28 @@ function check(name: string, fn: () => void): void {
 	}
 }
 
-/** The ssqch under test, as a command and its first arguments. */
-let candidate: [string, string[]];
-let installed: string | undefined;
-if (values.exe) {
-	candidate = [path.resolve(values.exe), []];
-	// Unpacked here, not in this machine's cache folder (the release workflow checks that one).
-	process.env.SSQCH_UNPACK_DIR ??= path.join(work, "unpack");
-} else {
-	let tarball = values.tarball && path.resolve(values.tarball);
-	if (!tarball) {
-		const { buildPackage } = await import("./build.ts");
-		const out = path.join(work, "package");
-		await buildPackage({ out, quiet: true });
-		const packed = run("npm", ["pack", "--silent", "--pack-destination", work, out]);
-		if (!packed.ok) throw new Error(`npm pack failed:\n${packed.out}`);
-		tarball = path.join(work, packed.out.trim().split("\n").pop()!.trim());
-	}
-	const tarballSize = fs.statSync(tarball).size;
-	installed = path.join(work, "site");
-	fs.mkdirSync(installed);
-	fs.writeFileSync(path.join(installed, "package.json"), `${JSON.stringify({ private: true, type: "module" }, null, 2)}\n`);
-	const install = run("npm", ["install", "--no-audit", "--no-fund", "--save-dev", tarball], { cwd: installed });
-	if (!install.ok) throw new Error(`npm install ${tarball} failed:\n${install.out}`);
-	const modules = path.join(installed, "node_modules");
-	const packages = fs.readdirSync(modules).filter((n) => !n.startsWith(".")).flatMap((n) => (n.startsWith("@") ? fs.readdirSync(path.join(modules, n)).map((m) => `${n}/${m}`) : [n]));
-	console.log(`Installed ${path.basename(tarball)} (${(tarballSize / 1e6).toFixed(2)} MB): ${packages.length} packages, ${(sizeOf(path.join(modules, "ssqch")) / 1e6).toFixed(1)} MB for ssqch and ${(sizeOf(modules) / 1e6).toFixed(1)} MB in all (${packages.join(", ")})`);
-	candidate = [process.execPath, [path.join(modules, "ssqch/bin/ssqch.js")]];
+let tarball = values.tarball && path.resolve(values.tarball);
+if (!tarball) {
+	const { buildPackage } = await import("./build.ts");
+	const out = path.join(work, "package");
+	await buildPackage({ out, quiet: true });
+	const packed = run("npm", ["pack", "--silent", "--pack-destination", work, out]);
+	if (!packed.ok) throw new Error(`npm pack failed:\n${packed.out}`);
+	tarball = path.join(work, packed.out.trim().split("\n").pop()!.trim());
 }
+const tarballSize = fs.statSync(tarball).size;
+const installed = path.join(work, "site");
+fs.mkdirSync(installed);
+fs.writeFileSync(path.join(installed, "package.json"), `${JSON.stringify({ private: true, type: "module" }, null, 2)}\n`);
+const install = run("npm", ["install", "--no-audit", "--no-fund", "--save-dev", tarball], { cwd: installed });
+if (!install.ok) throw new Error(`npm install ${tarball} failed:\n${install.out}`);
+const modules = path.join(installed, "node_modules");
+const packages = fs.readdirSync(modules).filter((n) => !n.startsWith(".")).flatMap((n) => (n.startsWith("@") ? fs.readdirSync(path.join(modules, n)).map((m) => `${n}/${m}`) : [n]));
+console.log(`Installed ${path.basename(tarball)} (${(tarballSize / 1e6).toFixed(2)} MB): ${packages.length} packages, ${(sizeOf(path.join(modules, "ssqch")) / 1e6).toFixed(1)} MB for ssqch and ${(sizeOf(modules) / 1e6).toFixed(1)} MB in all (${packages.join(", ")})`);
+/** The ssqch under test: the installed package's bin. */
+const bin = path.join(modules, "ssqch/bin/ssqch.js");
 
-const ssqch = (args: string[], cwd = work) => run(candidate[0], [...candidate[1], ...args], { cwd });
+const ssqch = (args: string[], cwd = work) => run(process.execPath, [bin, ...args], { cwd });
 const source = (args: string[], cwd = work) => run(process.execPath, [SOURCE_BIN, ...args], { cwd });
 
 check(`ssqch --version is ${version}`, () => {
@@ -155,22 +145,19 @@ check("images, Markdown, minify, Sass and a Rust plugin build as from source", (
 	if (!fs.existsSync(path.join(work, "candidate/smoke-site/dist/css/site.css"))) throw new Error("no dist/css/site.css");
 });
 
-if (installed) {
-	check("Node finds every module in the exports map, and its types", () => {
-		const pkg = JSON.parse(fs.readFileSync(path.join(installed, "node_modules/ssqch/package.json"), "utf8"));
-		const names = Object.keys(pkg.exports).filter((k) => k !== "./package.json").map((k) => (k === "." ? "ssqch" : `ssqch/${k.slice(2)}`));
-		const script = `for (const name of ${JSON.stringify(names)}) { await import(name); import.meta.resolve(name); }\nconst fs = await import("node:fs");\nfor (const entry of Object.values(${JSON.stringify(pkg.exports)})) if (entry.types && !fs.existsSync(new URL("./node_modules/ssqch/" + entry.types, ${JSON.stringify(pathToFileURL(installed + path.sep).href)}))) throw new Error("no " + entry.types);\nconsole.log("ok");`;
-		fs.writeFileSync(path.join(installed, "exports-check.mjs"), script);
-		const r = run(process.execPath, ["exports-check.mjs"], { cwd: installed });
-		if (!r.ok) throw new Error(r.out);
-	});
-}
+check("Node finds every module in the exports map, and its types", () => {
+	const pkg = JSON.parse(fs.readFileSync(path.join(installed, "node_modules/ssqch/package.json"), "utf8"));
+	const names = Object.keys(pkg.exports).filter((k) => k !== "./package.json").map((k) => (k === "." ? "ssqch" : `ssqch/${k.slice(2)}`));
+	const script = `for (const name of ${JSON.stringify(names)}) { await import(name); import.meta.resolve(name); }\nconst fs = await import("node:fs");\nfor (const entry of Object.values(${JSON.stringify(pkg.exports)})) if (entry.types && !fs.existsSync(new URL("./node_modules/ssqch/" + entry.types, ${JSON.stringify(pathToFileURL(installed + path.sep).href)}))) throw new Error("no " + entry.types);\nconsole.log("ok");`;
+	fs.writeFileSync(path.join(installed, "exports-check.mjs"), script);
+	const r = run(process.execPath, ["exports-check.mjs"], { cwd: installed });
+	if (!r.ok) throw new Error(r.out);
+});
 
 if (values.oracle) {
 	// Every test the source passes (node-passing.txt), with this ssqch: progress.js fails on one
 	// that doesn't, and says why.
 	console.log("The oracle's list, with this ssqch:");
-	const bin = candidate[1][0] ?? candidate[0];
 	const r = spawnSync(process.execPath, ["progress.js"], { cwd: path.join(REPO, "tests/oracle"), stdio: "inherit", env: { ...process.env, SSQCH_BIN: bin, SSQCH_EXPECT_VERSION: version } });
 	if (r.status !== 0) failures++;
 }
