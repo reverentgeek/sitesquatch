@@ -205,8 +205,10 @@ test("a file a plugin read rebuilds the site", async () => {
 		assert.ok(readOr(path.join(dir, "dist/app.css")).includes("green"), server.said());
 		await server.change("shared/_colors.scss", "$pine: orange;\n", "dist/app.css", "orange");
 		assert.ok(server.said().includes(`Fresh tracks in ${path.join("shared", "_colors.scss")}\n`), server.said());
-		// A file beside it that nothing read isn't the site's.
+		// A file beside it that nothing read isn't the site's. Counted from the end of the rebuild,
+		// whose summary comes a few milliseconds after its stylesheet.
 		const builds = () => server.said().split("Built in").length - 1;
+		for (const started = Date.now(); builds() < 2 && Date.now() - started < 10_000;) await sleep(20);
 		const before = builds();
 		fs.writeFileSync(path.join(dir, "shared/notes.txt"), "still not\n");
 		await sleep(1500);
