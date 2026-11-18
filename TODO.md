@@ -323,7 +323,8 @@ until the switch removed 0.7 from `main`; they're in `docs/archive/todo-0.7-only
         frozen again with the Node build (`node freeze.js`), and the changelog says so.
   - [x] The last 0.7.x, 0.7.1, from `release/0.7` (2026-11-18): the binaries, npm, Homebrew and
         the 16 crates.
-  - [ ] Deprecate the `@ssqch/<platform>` packages, now that 0.8.0 is out (`AGENTS.md`, "npm").
+  - [x] The `@ssqch/<platform>` packages are deprecated (2026-11-18): all 11 versions of each of
+        the four say "ssqch 0.8 is JavaScript and needs no platform package".
   - [x] Stage 9: the README's Install, Netlify and GitHub Pages sections; `import "ssqch"` from
         plain Node works (2026-11-18). The version numbers in them are for the release step.
   - [x] ~~A Linux arm64 executable and a musl one~~: there's no executable (npm only). The npm
@@ -370,7 +371,7 @@ until the switch removed 0.7 from `main`; they're in `docs/archive/todo-0.7-only
     - After 0.8.0 (backlog): worker threads for `diff`; faster dev-server rebuilds on big sites;
       a time limit for a stuck build; the config-save gap while a builder restarts (accepted).
     - Kept: a late error in `serve` fails the next build, as in 0.7; the importer edits
-      `package.json` in place. After 0.8.0, deprecate the `@ssqch/<platform>` packages.
+      `package.json` in place. The `@ssqch/<platform>` packages are deprecated (above).
   - [x] Pushed, and CI watched on Linux and Windows (2026-11-18): the Windows tests above, and a
         dozen timing races in the serve and timer tests that only busy runners showed.
   - [x] The last 0.7.x: 0.7.1, from `v0.7.0`, released before 0.8.0 (2026-11-18).

@@ -210,9 +210,9 @@ release.yml --allow-publish --yes`, and `npm trust list ssqch` checks it. In the
 settings, publishing requires two-factor authentication and disallows tokens. A version that's
 already on npm is skipped, so a failed run can be rerun.
 
-The `@ssqch/<platform>` packages get no new versions. After 0.8.0, deprecate them so an old
-lockfile says why: `npm deprecate '@ssqch/darwin-arm64@*' "ssqch 0.8 is JavaScript and needs no
-platform package"` (and the same for `darwin-x64`, `linux-x64` and `win32-x64`).
+The `@ssqch/<platform>` packages (`darwin-arm64`, `darwin-x64`, `linux-x64`, `win32-x64`) get no
+new versions. Every version of each is deprecated (2026-11-18), so an old lockfile says why: "ssqch
+0.8 is JavaScript and needs no platform package".
 
 ### Homebrew
 
