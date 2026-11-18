@@ -107,10 +107,16 @@ const COMMANDS: Array<Command & { stage?: number }> = [
 		afterHelp: "It reads a build folder, so build first:\n\n  ssqch build\n  ssqch footprint                 (the site's output folder)\n  ssqch footprint dist-before     (any build)\n  ssqch footprint --top 20 --format json",
 		stage: 4,
 	},
-	// The rest read their own arguments, with the code that runs them (stages 4 and 7).
+	// The rest read their own arguments, with the code that runs them (stage 4), except `import`.
 	{ name: "init", about: "Create a starter site (config, layout, five posts, data and editor types)", options: [], positionals: [], raw: true, stage: 4 },
 	{ name: "types", about: "Write ssqch.d.ts, the types editors use for ssqch.config.js", options: [], positionals: [], raw: true, stage: 4 },
-	{ name: "import", about: "Move a site from another generator: rename and rewrite what's mechanical, and list the rest", options: [], positionals: [], raw: true, stage: 7 },
+	{
+		name: "import",
+		about: "Move a site from another generator: rename and rewrite what's mechanical, and list the rest",
+		options: [{ long: "write", help: "Make the changes (without it, only list them)" }],
+		positionals: [{ name: "generator", help: "The generator the site is built with: eleventy or zola", required: true }, { name: "dir", help: "The site's folder (default: the current folder) [default: .]", required: false }],
+		afterHelp: "Run it in a clean git checkout, read the list, then run it again with --write. `ssqch docs --from <generator>` prints the trailhead for each generator.",
+	},
 	{ name: "capabilities", about: "Say what this binary supports: template languages, modules, config options and optional features", options: [], positionals: [], raw: true, stage: 4 },
 	{ name: "docs", about: "Read the documentation for this version: a command, config option, function or topic", options: [], positionals: [], raw: true, stage: 4 },
 	{ name: "sighting", about: "Report a sighting", options: [], positionals: [], raw: true, hidden: true, stage: 4 },
@@ -120,8 +126,8 @@ export const GRAMMAR: Grammar = { name: "ssqch", about: "SiteSquatch (ssqch): a 
 
 /** The options that take a value, so it isn't taken for the command. */
 const VALUED = ["--root", "--output", "-o", "--base", "--env", "-d", "--destination", "--pathprefix", "--port", "-p", "--ready-file", "--format", "--title", "--date", "--blueprint", "--set", "--field", "--ignore", "--only", "--lines", "--top", "--starter", "--engine"];
-/** The commands that read their own arguments: left as they are. */
-const OWN = COMMANDS.filter((c) => c.raw).map((c) => c.name);
+/** The commands that read their own arguments, and `import` (0.7 read its line apart from the build's too): left as they are, so `-d` there is refused with its hint. */
+const OWN = COMMANDS.filter((c) => c.raw || c.name === "import").map((c) => c.name);
 
 /**
  * The command line with other generators' words that are aliases in ssqch (`ssqch dev`,
@@ -259,6 +265,8 @@ export async function main(argv: string[]): Promise<number> {
 		process.stderr.write(`${diagnostics.red("error:")} \`ssqch ${command}\` isn't in the Node build of ssqch yet (the move to Node, stage ${later}); ssqch 0.7 has it\n`);
 		return 1;
 	}
+	// It reads the site's files as text and runs none of them, so nothing below applies.
+	if (command === "import") return (await import("./import.ts")).runImport(cli.positionals[0], cli.positionals[1] ?? ".", flag("write"));
 
 	const serving = command === "serve";
 	// The first of --env, $SSQCH_ENV and $NODE_ENV that's set; a word that's neither environment is the command's default.
