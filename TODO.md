@@ -55,8 +55,12 @@ until 0.8 ships.
       unix only), none fail; the blog and trial ports skip there, being outside the repository.
 - [ ] Freeze lit.dev (`node freeze.js trial-lit.dev`): its exact port's `beforeBuild` helper needs
       lit.dev's own SSR build (`rollupout/server/ssr.js`), which the trial checkout doesn't have.
-- [ ] Three oracle tests skip because they need the Rust API (a `BuiltinPlugin` registered from
-      Rust, `JsModule` native functions). Replace them when 0.8's plugin API is settled.
+- [x] Three oracle tests skipped because they needed the Rust API (a `BuiltinPlugin` registered
+      from Rust, `JsModule` native functions). They test 0.8's Rust plugins now (2026-11-18), with
+      `examples/rust-plugin`: a plugin made from its options whose filter reads them, the
+      refusals (a file that isn't a plugin, another ABI, unknown options), and Rust functions
+      called with values from templates. 0.7 skips them; an unknown built-in's message is checked
+      on both.
 - [x] `cli/aliases.test.js` holds a copy of the equivalents table (57 rows from
       `equivalents.rs`), since the oracle may not import ssqch's code. The table is in TypeScript
       now (`packages/ssqch/src/equivalents.ts`), and `equivalents.test.ts` fails when the three
@@ -162,6 +166,20 @@ until 0.8 ships.
 - [ ] **Stage 5, plugins:** images (D4), rss, minify (D3), assets, sitemap, redirects, Sass,
       elements, themes; the Rust plugin SDK (`ssqch-plugin` crate, the `.wasm` loader, an example,
       and docs on when a Rust plugin pays).
+  - [x] minify (D3): 0.7's `plugins/minify` compiled by path into `crates/ssqch-minify`, an ABI v1
+        plugin committed as `wasm/minify.wasm` (0.2 MB). The 12 starters' production builds
+        (without images) and the blog's 169 pages minified by both are 0.7's bytes.
+  - [x] Sass: grass at 0.7's version as `wasm/sass.wasm` (`crates/ssqch-sass`, 2 MB), reading
+        files through Node. 0.7's bytes for the oracle's, component-docs' and eslint.org's 47
+        stylesheets in both styles; Dart Sass differs on 15 of eslint.org's 43 compressed.
+        `filesRead(config)` in `modules/sass.ts` lists what the last build read, for stage 6.
+  - [x] The Rust plugin SDK: `crates/ssqch-plugin` (ABI v1, `publish = false` until 0.8.0's
+        release), `src/rust-plugin.ts` (a config's `{ name, rust: { wasm, options } }`), and
+        `examples/rust-plugin` (trail-guide: an engine, three filters and a transform),
+        committed built. `docs/rust-plugins.md` is the README section's draft, for stage 9.
+  - [ ] Document Rust plugins in the README (stage 9, from `docs/rust-plugins.md`), and add
+        `{ name, rust }` to `ssqch.d.ts`'s `Plugin` type if wanted; publish `ssqch-plugin` to
+        crates.io with 0.8.0, and the example's npm package if it's to be installable.
 - [ ] **Stage 6, the dev server**, reloading a changed config from a bundled temporary copy.
       `importFile` (`modules.ts`) imports a changed file fresh but not the modules it imports,
       so a filter in the config's `./lib/filters.js` (the blog has one) stays the old one on a
