@@ -29,6 +29,8 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Fixed
 
+- A folder Bundler installed gems into (`bundle install --path vendor/bundle`, which Jekyll
+  sites do) isn't read as the site's pages: its gems' templates were built, and failed.
 - A page's `page.headings` read before the page had rendered (from a `computed` value, say) stayed
   an empty list for the rest of the build, so a table of contents built from it later was empty.
   Now an early read is empty and a read after the page renders has its headings.

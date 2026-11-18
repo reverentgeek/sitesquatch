@@ -632,7 +632,8 @@ From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
       strip a leading empty front matter (osg #9, #10). Until then, an error that says so.
 - [ ] **`headingIds: "kramdown"`** (kramdown's GFM ids, and its own ASCII ones inside HTML) and a
       **`code` render hook** for code spans (Rouge's `highlighter-rouge` classes) (osg #4).
-- [ ] **Skip `vendor/bundle` and `vendor/gems`** when walking the site (osg #12).
+- [x] **Skip `vendor/bundle` and `vendor/gems`** when walking the site (osg #12; done 2026-11-18,
+      any folder with `ruby/<version>/gems/`).
 - [ ] **Text templates in other formats** (`.js` with front matter): a recipe in the README, or
       `templateFormats: ["js:liquid"]` (osg #9).
 - [ ] **`toc` options** for the list's, items' and links' classes and the list's `id` (osg #11).

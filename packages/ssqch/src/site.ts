@@ -358,6 +358,7 @@ export class Site {
 				if (name.startsWith(".") || name === "node_modules") continue;
 				if (skipDirs.has(entry.real)) continue;
 				if (entry.isDirectory) {
+					if (isBundlerInstall(file)) continue;
 					walk(file, [...above, entry.real]);
 					continue;
 				}
@@ -922,6 +923,21 @@ function collectionApi(items: Data[]) {
 }
 
 // ---- helpers ---------------------------------------------------------------------------------
+
+/**
+ * A folder Bundler installed gems into (`bundle install --path vendor/bundle`): `ruby/<version>/gems/`
+ * inside it. Its files are Ruby gems' (Jekyll's own templates among them), not the site's, so the
+ * walk skips it, as it skips `node_modules`. opensource.guide's `vendor/gems` was built as pages.
+ */
+function isBundlerInstall(dir: string): boolean {
+	const ruby = path.join(dir, "ruby");
+	if (!fs.existsSync(ruby)) return false;
+	try {
+		return fs.readdirSync(ruby).some((version) => fs.existsSync(path.join(ruby, version, "gems")));
+	} catch {
+		return false;
+	}
+}
 
 /** A value as an error shows it. */
 const show = (v: unknown) => { try { return JSON.stringify(v) ?? String(v); } catch { return String(v); } };

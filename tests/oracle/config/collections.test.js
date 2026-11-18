@@ -165,3 +165,18 @@ test("headings_read_before_a_page_renders_are_found_after_it_renders", () => {
 	buildOk(root);
 	assert.match(read(root, "_site/guide/index.html"), /early 0, after 2: install use /);
 });
+
+// opensource.guide (osg #12): Bundler's `--path vendor/gems` put Jekyll's own templates in the
+// site, and ssqch built them as pages (5 errors, from gems' layouts). A Bundler install folder is
+// skipped as node_modules is; a site's own `vendor/` folder isn't.
+test("a_bundler_install_folder_is_not_the_sites_pages", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"md\"] };\n",
+		"index.md": "# Home\n",
+		"vendor/bundle/ruby/3.3.0/gems/jekyll-3.10.0/lib/site_template/about.md": "---\nlayout: page\n---\nAbout\n",
+		"vendor/notes.md": "# Our own vendor notes\n",
+	});
+	buildOk(root);
+	assert.match(read(root, "_site/vendor/notes/index.html"), /Our own vendor notes/);
+	assert.throws(() => read(root, "_site/vendor/bundle/ruby/3.3.0/gems/jekyll-3.10.0/lib/site_template/about/index.html"));
+});
