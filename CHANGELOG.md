@@ -38,6 +38,10 @@ the release.
   They are Node's own now, so `nodeModules.available` has all 32 and `stubs` is an empty list
   (the key stays). A script that skips a site's work when a module is a stub should drop the
   check.
+- **`fetch` is Node's own, with 0.7's error words and `cache` option on top.** The reason after
+  `fetch failed: <url>:` is Node's (`connect ECONNREFUSED 127.0.0.1:9`, `getaddrinfo ENOTFOUND
+  ...`), where 0.7 gave its HTTP library's (`io: Connection refused`); a script that matched that
+  text should match the `cause` or the URL.
 - **Filters and templates get your real objects.** 0.7 handed them copies that kept writes to
   themselves; now a filter that sorts or changes what it's given changes it for the pages
   rendered after it. Copy first (`[...posts].sort()`). Data that refers to itself (`a.self = a`)
