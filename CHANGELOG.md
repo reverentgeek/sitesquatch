@@ -9,6 +9,16 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
+
+### Fixed
+
+- A page's `page.headings` read before the page had rendered (from a `computed` value, say) stayed
+  an empty list for the rest of the build, so a table of contents built from it later was empty.
+  Now an early read is empty and a read after the page renders has its headings.
+
 ## 0.8.0 - 2026-11-18
 
 ssqch 0.8 is a TypeScript program on Node (22.18 or newer), installed from npm. The contract is

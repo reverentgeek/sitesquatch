@@ -461,10 +461,11 @@ clear; otherwise warn.
       that says computed can't see them.
 - [ ] **`computed.page` is dropped without a word** (osg #5): `site.ts:760` sets `page` after
       `computed` runs. Make it an error that says `page` is built in and names another key.
-- [ ] **`page.headings` read before the page renders is `[]` for good** (ex #2): `pageWithBody()`
-      (`site.ts:864-872`) memoizes `headings(contentOf(page) ?? "")` with `found ??=`, so a
-      `computed` value that reads it caches the empty list, and every table of contents built from
-      it is empty. Don't memoize while the content is undefined, or throw naming the page.
+- [x] **`page.headings` read before the page renders is `[]` for good** (ex #2; fixed 2026-11-18):
+      `pageWithBody()` (`site.ts:864-872`) memoizes `headings(contentOf(page) ?? "")` with `found
+      ??=`, so a `computed` value that reads it caches the empty list, and every table of contents
+      built from it is empty. Don't memoize while the content is undefined, or throw naming the
+      page.
 - [ ] **Warn when a template name shadows a filter or function** (ex #3): an imported macro
       `postCard` printed `function () { [native code] }` where the config's `postCard` was meant; a
       macro parameter `icon` hid `icon()`. Silent in Nunjucks; `strict` (off by default) catches

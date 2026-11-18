@@ -151,3 +151,17 @@ test("hook_errors_stop_the_build", () => {
 // The Rust test views_behave_like_plain_objects checked 0.7's copy-on-write views of the site's
 // data, which filters got. On Node, filters get the objects themselves (the changelog's
 // "Breaking"), so there are no views to check.
+
+// expressjs.com (ex #2): a route paginated over a collection read its page's headings from a data
+// file's `computed`, before that page had rendered, and the empty list stuck, so every table of
+// contents built from it was empty. Read early, they're empty; read after the page renders, they're there.
+test("headings_read_before_a_page_renders_are_found_after_it_renders", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"], collections: { docs: (pages) => pages.byGlob(\"docs/**\") } };\n",
+		"docs/guide.md": "---\npermalink: false\n---\n## Install\n\n## Use\n",
+		"routes.njk": "---\npagination: { data: collections.docs, size: 1, alias: doc }\npermalink: \"/guide/\"\n---\n{{ doc.templateContent | safe }}early {{ early }}, after {{ doc.page.headings | length }}: {% for h in doc.page.headings %}{{ h.id }} {% endfor %}\n",
+		"routes.data.js": "export default { computed: { early: (data) => data.doc.page.headings.length } };\n",
+	});
+	buildOk(root);
+	assert.match(read(root, "_site/guide/index.html"), /early 0, after 2: install use /);
+});

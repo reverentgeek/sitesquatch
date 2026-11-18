@@ -866,7 +866,16 @@ export class Site {
 		const site = this;
 		let found: ReturnType<typeof headings> | undefined;
 		return Object.defineProperties({ ...page.data.page }, {
-			headings: { enumerable: true, get() { return found ??= headings(site.contentOf(page) ?? ""); } },
+			// Not remembered until the page has rendered: a read before that (from `computed`, which
+			// runs before any page renders) gets an empty list, and a later one the real headings.
+			headings: {
+				enumerable: true,
+				get() {
+					if (found) return found;
+					const html = site.contentOf(page);
+					return html === undefined ? [] : (found = headings(html));
+				},
+			},
 			excerpt: { enumerable: true, get() { return excerpt(site.contentOf(page) ?? ""); } },
 		});
 	}
