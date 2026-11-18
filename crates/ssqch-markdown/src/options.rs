@@ -87,17 +87,26 @@ pub fn setup(json: &str, root: &Path, function: &dyn Fn(u32) -> Value) -> Result
     let key = j.get("languagesKey").and_then(J::as_str).unwrap_or_default().to_string();
     load(&mut o.languages, &key, root)?;
     let hooks = j.get("hooks").and_then(J::as_array).map(|names| names.iter().filter_map(|n| n.as_str().map(String::from)).collect()).unwrap_or_default();
-    let languages_id = KEYS.with(|keys| {
+    Ok(Setup { options: o, hooks, languages_id: languages_id(&key) })
+}
+
+/// The number for the languages `key` in this process ([`Setup::languages_id`]).
+pub fn languages_id(key: &str) -> u32 {
+    KEYS.with(|keys| {
         let mut keys = keys.borrow_mut();
-        match keys.iter().position(|k| *k == key) {
+        match keys.iter().position(|k| k == key) {
             Some(i) => i as u32,
             None => {
-                keys.push(key);
+                keys.push(key.to_string());
                 (keys.len() - 1) as u32
             }
         }
-    });
-    Ok(Setup { options: o, hooks, languages_id })
+    })
+}
+
+/// The languages' key for a number from [`languages_id`]: how the cache on disk names them.
+pub fn languages_key(id: u32) -> String {
+    KEYS.with(|keys| keys.borrow().get(id as usize).cloned().unwrap_or_default())
 }
 
 /// [`Languages::load`], or the grammars of the last load when its key is the same.

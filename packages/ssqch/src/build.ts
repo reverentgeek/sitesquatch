@@ -21,7 +21,7 @@ import type { Data } from "./data.ts";
 import { STATIC_DATA_EXTENSIONS } from "./data.ts";
 import { BuildError, Diagnostics, bail, context, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import type { RenderContext } from "./engines/engine.ts";
-import { rendering as markdownRendering, writeHighlightCss } from "./engines/markdown.ts";
+import { beginFenceCache, rendering as markdownRendering, saveFenceCache, writeHighlightCss } from "./engines/markdown.ts";
 import * as equivalents from "./equivalents.ts";
 import { measure, overBudget } from "./footprint.ts";
 import { globBase, globSet, isGlob } from "./glob.ts";
@@ -76,6 +76,8 @@ export async function build(config: Config): Promise<BuildReport> {
 	const timer = new Timer();
 	const site = new Site(config);
 	const { dirs } = site;
+	// Fences this build highlights are its own from here; the file gets them when it finishes.
+	beginFenceCache(dirs.root);
 	if (!isDir(dirs.input)) bail(`input directory ${shownDir(config, config.input)} does not exist`);
 
 	const built = await runFileBuilders(config, dirs);
@@ -144,6 +146,7 @@ export async function build(config: Config): Promise<BuildReport> {
 		const value = line(config);
 		if (value !== undefined) report.summary.push([label, value]);
 	}
+	saveFenceCache();
 	timer.lap("after");
 	report.durationMs = performance.now() - started;
 	report.timings = timer.timings;

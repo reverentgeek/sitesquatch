@@ -1,6 +1,8 @@
 // From crates/ssqch/tests/cli.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { ssqch, tempDir, write, read, RUST_07 } from "../lib/ssqch.js";
 
 test("markdown_options_hooks_containers_and_headings", () => {
@@ -112,4 +114,44 @@ test("sites_add_and_replace_highlighted_languages", () => {
 		const r = ssqch(["build", "--root", d, "-q"]);
 		assert.ok(!r.ok && r.log.includes(error), `${error}\n${r.log}`);
 	}
+});
+
+// 0.8: highlighted fences are kept in .cache/ssqch/highlight/ for the next process, which then
+// doesn't load the grammars. 0.7 kept them in memory only.
+test("highlighted_fences_are_cached_between_builds_and_never_change_a_page", { skip: RUST_07 && "0.7 kept highlighted fences in memory only" }, () => {
+	const dir = tempDir("highlight-cache");
+	const w = (p, t) => write(dir, { [p]: t });
+	const cache = path.join(dir, ".cache/ssqch/highlight/fences.json");
+	w("ssqch.config.js", "export default {\n  dirs: { input: \"src\", output: \"dist\" },\n  markdown: { highlight: { languages: { trail: (code) => [[code, \"keyword\"]] } } },\n};\n");
+	w("src/index.md", "```js {2}\nconst a = 1;\nlet b = \"two\";\n```\n\n```nonsense\n<x>\n```\n\n```trail\nOld Growth\n```\n\n```edge\n{{ snack }}\n```\n");
+	w("src/more.md", "```bash\necho \"Pine Cone Crunch\"\n```\n");
+	const build = () => {
+		const r = ssqch(["build", "--root", dir, "-q"]);
+		assert.ok(r.ok, r.log);
+		return ["dist/index.html", "dist/more/index.html", "dist/highlight.css"].map((f) => read(dir, f));
+	};
+	const cold = build();
+	assert.ok(cold[0].includes("<span class=\"line highlighted\"><span class=\"hl-keyword\">let</span>"), cold[0]);
+	const text = fs.readFileSync(cache, "utf8");
+	// The site's own highlighter isn't ssqch's to keep: it runs on every build.
+	for (const [expected, kept] of [["\"js\",\"const a = 1;\\nlet b = \\\"two\\\";\\n\",[2],", true], ["\"nonsense\",\"<x>\\n\",[],null]", true], ["\"edge\"", true], ["\"bash\"", true], ["Old Growth", false]]) {
+		assert.equal(text.includes(expected), kept, `${expected} in\n${text}`);
+	}
+
+	// Warm: the same bytes, and a cache with nothing new isn't written.
+	fs.utimesSync(cache, new Date(0), new Date(0));
+	assert.deepEqual(build(), cold);
+	assert.equal(fs.statSync(cache).mtimeMs, 0);
+
+	// A cache that can't be read, or another highlighter's, is ignored and written again.
+	for (const bad of [text.slice(0, text.length / 2), "pine cones", text.replace(/"highlighter":"[^"]*"/, "\"highlighter\":\"an old one\"").replaceAll("hl-keyword", "hl-stump")]) {
+		fs.writeFileSync(cache, bad);
+		assert.deepEqual(build(), cold);
+		assert.equal(fs.readFileSync(cache, "utf8"), text);
+	}
+
+	// Fences the build no longer has leave the cache.
+	fs.rmSync(path.join(dir, "src/more.md"));
+	build();
+	assert.ok(!fs.readFileSync(cache, "utf8").includes("\"bash\""));
 });

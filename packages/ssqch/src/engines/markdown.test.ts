@@ -11,7 +11,7 @@ import type { MarkdownOptions } from "../markdown-options.ts";
 import { capture, takeWarnings } from "../diagnostics.ts";
 import { Engines, plainEngine } from "./engine.ts";
 import type { TemplateEngine } from "./engine.ts";
-import { checkLanguages, crashForTest, loadHookTemplates, markdownEngine, rendering } from "./markdown.ts";
+import { FENCE_CACHE, beginFenceCache, checkLanguages, crashForTest, loadHookTemplates, markdownEngine, rendering, saveFenceCache } from "./markdown.ts";
 import type { HookTemplate } from "./markdown.ts";
 
 const options = (change: Partial<MarkdownOptions> = {}): MarkdownOptions => ({ ...defaultMarkdownOptions(), ...change });
@@ -166,4 +166,60 @@ test("hook_templates_are_found_as_0_7_found_them", () => {
 	fs.rmSync(path.join(root, "hooks/heading.html"));
 	assert.throws(() => loadHookTemplates(root, "_includes", engines, (ext) => [ext]), { message: "_includes/hooks/link.pug: no template engine named `pug` (known: html, t)" });
 	fs.rmSync(root, { recursive: true });
+});
+
+test("highlighted_fences_are_kept_on_disk_and_a_bad_cache_is_ignored", () => {
+	const site = () => fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-fences-"));
+	const md = markdownEngine(options({ highlight: true }));
+	const fence = (code: string) => md.render("```js\n" + code + "\n```\n", {}, ctx) as string;
+	// Each site's fences are code no other has, so the instance's memory can't answer for the disk.
+	const build = (root: string, code: string) => {
+		beginFenceCache(root);
+		const html = fence(code);
+		saveFenceCache();
+		return html;
+	};
+	const cacheOf = (root: string) => path.join(root, FENCE_CACHE);
+
+	const first = site();
+	const html = build(first, "let snacks = 1;");
+	assert.match(html, /<span class="hl-keyword">let<\/span>/);
+	const text = fs.readFileSync(cacheOf(first), "utf8");
+	assert.match(text, /^\{"highlighter":"[0-9a-f]{64}","languages":\["\[\]"\],"fences":\[\n\[0,"js","let snacks = 1;\\n",\[\],"<span/);
+	// The same fences again: the file isn't written.
+	fs.utimesSync(cacheOf(first), new Date(0), new Date(0));
+	assert.equal(build(first, "let snacks = 1;"), html);
+	assert.equal(fs.statSync(cacheOf(first)).mtimeMs, 0);
+	// A build with other fences keeps only those; one with none leaves no file.
+	build(first, "let crunch = 2;");
+	assert.doesNotMatch(fs.readFileSync(cacheOf(first), "utf8"), /snacks/);
+	beginFenceCache(first);
+	saveFenceCache();
+	assert.equal(fs.existsSync(cacheOf(first)), false);
+
+	// A file of this highlighter's is taken as it is (which is how a new process gets its HTML).
+	const put = (code: string, change: (text: string) => string) => {
+		const root = site();
+		fs.mkdirSync(path.dirname(cacheOf(root)), { recursive: true });
+		fs.writeFileSync(cacheOf(root), change(text.replace("let snacks = 1;", code)));
+		return root;
+	};
+	const poisoned = (t: string) => t.replace('"<span class=\\"hl-keyword\\">let</span>', '"<b>made up</b>');
+	const taken = put("let ranger = 3;", poisoned);
+	assert.match(build(taken, "let ranger = 3;"), /made up/);
+	// Another highlighter's, half a file, or not JSON: ignored, highlighted afresh, and written again.
+	const bad: Array<[string, (t: string) => string]> = [
+		["let stump = 4;", (t) => poisoned(t).replace(/"highlighter":"[0-9a-f]+"/, `"highlighter":"${"0".repeat(64)}"`)],
+		["let cone = 5;", (t) => poisoned(t).slice(0, t.length / 2)],
+		["let trail = 6;", () => "pine cones"],
+	];
+	for (const [code, change] of bad) {
+		const root = put(code, change);
+		const fresh = build(root, code);
+		assert.doesNotMatch(fresh, /made up/, code);
+		assert.match(fresh, /hl-keyword/);
+		assert.match(fs.readFileSync(cacheOf(root), "utf8"), /^\{"highlighter":"[0-9a-f]{64}".*\n.*hl-keyword.*\n\]\}\n$/s);
+		fs.rmSync(root, { recursive: true });
+	}
+	for (const root of [first, taken]) fs.rmSync(root, { recursive: true });
 });
