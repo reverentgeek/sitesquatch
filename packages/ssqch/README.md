@@ -1,5 +1,7 @@
 # ssqch
 
+<img align="right" src="https://raw.githubusercontent.com/reverentgeek/sitesquatch/main/docs/assets/stickers/sitesquatch.svg" alt="SiteSquatch, a Sasquatch with a deadpan stare" width="160">
+
 [SiteSquatch](https://github.com/reverentgeek/sitesquatch) is a fast static site generator, configured with JavaScript (`ssqch.config.js`). It runs on Node.js 22.18 or newer. Install it in a site as a dev dependency, so the lockfile pins the version:
 
 ```sh
