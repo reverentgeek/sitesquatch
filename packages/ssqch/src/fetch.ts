@@ -40,6 +40,7 @@ export function offline(): boolean {
 export function summary(): string | undefined {
 	const { asked, hits, stale } = counts;
 	counts.asked = counts.hits = counts.stale = 0;
+	savedThisBuild.clear();
 	const total = asked + hits + stale;
 	if (total === 0) return undefined;
 	let line = `${total} request${total === 1 ? "" : "s"}`;
@@ -426,8 +427,17 @@ function cachePaths(ask: Ask): [string, string] {
 }
 
 /** A saved response and how old it is (milliseconds). The age is from whole seconds, like the file's `savedAt`. */
+/**
+ * What this build saved, by its cache file, so the requests after it find it without reading the
+ * disk: on Windows a file another request is moving into place can't be read for that moment, and
+ * the request went to the network. Emptied with each build's summary.
+ */
+const savedThisBuild = new Map<string, { reply: Reply; savedAt: number }>();
+
 function saved(ask: Ask): (Reply & { old: number }) | undefined {
 	const [metaPath, bodyPath] = cachePaths(ask);
+	const kept = savedThisBuild.get(metaPath);
+	if (kept) return { ...kept.reply, old: Math.max(0, Date.now() - kept.savedAt * 1000) };
 	try {
 		const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
 		const body = fs.readFileSync(bodyPath);
@@ -453,6 +463,7 @@ async function save(ask: Ask, reply: Reply): Promise<void> {
 		headers: reply.headers.filter(([k]) => k.toLowerCase() !== "set-cookie"),
 		savedAt: Math.floor(Date.now() / 1000),
 	};
+	savedThisBuild.set(metaPath, { reply: { ...reply, headers: meta.headers }, savedAt: meta.savedAt });
 	// Each file is written beside its place and moved in, so a request for the same thing at the
 	// same moment never reads (or leaves) half a file.
 	const put = async (file: string, bytes: Uint8Array | string) => {

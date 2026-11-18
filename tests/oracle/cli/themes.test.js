@@ -54,9 +54,11 @@ test("a_theme_sits_under_the_site_file_by_file", () => {
 		assert.ok(!exists(dir, `dist/${notBuilt}`), `${notBuilt} was built`);
 	}
 
+	// The folder is named as the system names paths: 0.7 kept the config's `/` on Windows, and
+	// the Node build joins with `\` there, as node:path does (the changelog records it).
 	write(dir, { "ssqch.config.js": "export default { theme: \"themes/missing\" };\n" });
 	r = ssqch(["build", "--root", d, "-q"]);
-	assert.ok(!r.ok && r.log.includes("ssqch.config.js: theme folder") && r.log.includes("themes/missing doesn't exist"), r.log);
+	assert.ok(!r.ok && r.log.includes("ssqch.config.js: theme folder") && /themes[\\/]missing doesn't exist/.test(r.log), r.log);
 	write(dir, { "ssqch.config.js": "export default { theme: \"https://github.com/you/theme\" };\n" });
 	r = ssqch(["build", "--root", d, "-q"]);
 	assert.ok(!r.ok && r.log.includes("isn't pinned: add the commit or tag to use"), r.log);

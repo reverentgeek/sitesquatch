@@ -332,7 +332,13 @@ export default out.join("\\n");
 `;
 		const root = site({ "_data/out.js": data, "index.edge": "{{{ out }}}" });
 		buildOk(root);
-		assert.deepEqual(read(root, "_site/index.html").split("\n"), [
+		const lines = read(root, "_site/index.html").split("\n");
+		// The 30 calls together: a few go to the network at once (0.7 sent one per thread, 8 on an
+		// eight-core machine; the Node build sends 8), and the rest find the saved copy.
+		const [network, hits] = lines[13].split("+").map(Number);
+		assert.ok(network >= 1 && network <= 8 && network + hits === 30, lines[13]);
+		lines[13] = "turns";
+		assert.deepEqual(lines, [
 			"Basic cmFuZ2VyOnBpbmVjb25l",
 			"true",
 			"example.com",
@@ -346,7 +352,7 @@ export default out.join("\\n");
 			"1h",
 			"network",
 			"hit",
-			"8+22",
+			"turns",
 			"Invalid URL: not a url",
 		]);
 	} finally {
