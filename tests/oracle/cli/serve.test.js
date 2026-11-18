@@ -306,8 +306,7 @@ test("serve_keeps_building_with_the_last_config_after_its_code_ends_the_build", 
 	try {
 		const page = path.join(dir, "_site/index.html");
 		await waitFor(page, "ok Squatch Snacks");
-		fs.writeFileSync(path.join(dir, "_data/flag.json"), "{ \"v\": \"exit\" }");
-		await waitFor(log, "Build failed:");
+		await changeAndWait(path.join(dir, "_data/flag.json"), "{ \"v\": \"exit\" }", log, "Build failed:");
 		// The config is saved a moment later, as a person would: in the Node build, another
 		// process has loaded the last one by then. On a busy machine it may not have (the gap is
 		// accepted: TODO.md), and the log says nothing builds until the config loads. Then the

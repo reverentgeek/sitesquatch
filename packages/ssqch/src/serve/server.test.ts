@@ -300,7 +300,8 @@ test("the server answers during a build, and survives a site that ends its proce
 		await server.change("src/index.json", "{ \"n\": 4 }", "serve.log", "The build's process ended before the build did (exit code 7)");
 		fs.writeFileSync(path.join(dir, "how.txt"), "back\n");
 		await server.change("src/index.json", "{ \"n\": 5 }", "dist/index.html", "back 5");
-		assert.ok(server.said().includes("Build recovered. Back on the trail."), server.said());
+		// The page is written while the build runs; its summary comes after.
+		await server.until(() => server.said().includes("Build recovered. Back on the trail."), "the recovered build's summary");
 	} finally {
 		await server.stop();
 	}
