@@ -16,10 +16,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { Config } from "../config.ts";
-import { dirsOf } from "../config.ts";
+import { dirsOf, shownDir } from "../config.ts";
 import { parseFrontMatter } from "../data.ts";
 import { bail, context } from "../diagnostics.ts";
-import { isDir, realPath, slashes } from "../paths.ts";
+import { isDir, isFile, isInside, realPath, slashes } from "../paths.ts";
+import { serdeFloat } from "../quote.ts";
 import { slugWith } from "../slug.ts";
 import { FIELD_NOTES } from "../voice.ts";
 
@@ -85,13 +86,13 @@ function pagesIn(config: Config, dir: string): { files: string[]; folders: strin
 	return { files, folders };
 }
 
-/** Every file under `dir`. */
+/** Every file under `dir`, links left out, as 0.7's walk had them. */
 function filesUnder(dir: string): string[] {
 	const out: string[] = [];
 	for (const entry of entries(dir)) {
 		const file = path.join(dir, entry.name);
-		if (isDir(file)) out.push(...filesUnder(file));
-		else out.push(file);
+		if (entry.isDirectory()) out.push(...filesUnder(file));
+		else if (entry.isFile()) out.push(file);
 	}
 	return out;
 }
@@ -113,7 +114,7 @@ function findBlueprint(config: Config, root: string, named: string | undefined, 
 	for (const name of names) {
 		for (const dir of dirs) {
 			const at = path.join(dir, name);
-			const found = entries(path.dirname(at)).filter((e) => !e.isDirectory() && parts(e.name).stem === path.basename(at)).map((e) => path.join(path.dirname(at), e.name)).sort();
+			const found = entries(path.dirname(at)).filter((e) => parts(e.name).stem === path.basename(at)).map((e) => path.join(path.dirname(at), e.name)).filter(isFile).sort(); // a link to nothing isn't a blueprint, as in 0.7
 			const wanted = found.find((p) => ext !== undefined && parts(p).ext?.toLowerCase() === ext.toLowerCase());
 			const pick = wanted ?? found[0];
 			if (pick !== undefined) return pick;
@@ -189,6 +190,83 @@ function tomlEntries(lines: string[], close: number): [Array<[number, number]>, 
 }
 
 /**
+ * JSON as 0.7 read and wrote a blueprint's (serde_json, keeping the order): an object keeps its
+ * keys in the file's order (a `Map`, since a JavaScript object puts `"2024"` first), and a number
+ * is the text serde_json wrote for it, which keeps what a JavaScript number can't: a whole number
+ * up to 64 bits (`12345678901234567890`), a float that's whole (`1.0`, and `1e5` is `100000.0`),
+ * and `-0.0`.
+ */
+type Json = null | boolean | string | { number: string } | Json[] | Map<string, Json>;
+
+/** Reads JSON as serde_json did. Throws what's wrong: `JSON.parse`'s words, or a number past a double's range. */
+function readJson(text: string): Json {
+	// JSON.parse says what's wrong with text that isn't JSON; what's left to read is JSON.
+	JSON.parse(text);
+	let i = 0;
+	const space = () => {
+		while (text[i] === " " || text[i] === "\t" || text[i] === "\n" || text[i] === "\r") i++;
+	};
+	const token = (re: RegExp) => {
+		re.lastIndex = i;
+		const found = re.exec(text)![0];
+		i += found.length;
+		return found;
+	};
+	const value = (): Json => {
+		space();
+		const c = text[i];
+		if (c === "{" || c === "[") {
+			i++;
+			const close = c === "{" ? "}" : "]";
+			const map = new Map<string, Json>(), list: Json[] = [];
+			space();
+			if (text[i] === close) { i++; return c === "{" ? map : list; }
+			for (;;) {
+				if (c === "{") {
+					space();
+					const key = JSON.parse(token(STRING)) as string;
+					space();
+					i++;
+					map.set(key, value());
+				} else list.push(value());
+				space();
+				if (text[i++] === close) return c === "{" ? map : list;
+			}
+		}
+		if (c === "\"") return JSON.parse(token(STRING)) as string;
+		const word = token(/true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/y);
+		if (word === "true" || word === "false") return word === "true";
+		return word === "null" ? null : { number: serdeNumber(word) };
+	};
+	return value();
+}
+
+const STRING = /"(?:[^"\\]|\\.)*"/y;
+const I64_MIN = -(2n ** 63n), U64_MAX = 2n ** 64n - 1n;
+
+/** A JSON number as serde_json wrote it back: a whole number in 64 bits as it is, anything else as a double. */
+function serdeNumber(text: string): string {
+	if (!/[.eE]/.test(text)) {
+		const n = BigInt(text);
+		// serde_json read `-0` as the float -0.0.
+		if (text.startsWith("-") ? n !== 0n && n >= I64_MIN : n <= U64_MAX) return n.toString();
+	}
+	const x = Number(text);
+	if (!Number.isFinite(x)) throw new RangeError("number out of range");
+	return serdeFloat(x);
+}
+
+/** JSON as serde_json's `to_string_pretty` wrote it: two spaces a level. */
+function jsonText(v: Json, indent = ""): string {
+	if (v === null || typeof v === "boolean") return String(v);
+	if (typeof v === "string") return JSON.stringify(v);
+	const inner = indent + "  ";
+	if (v instanceof Map) return v.size === 0 ? "{}" : `{\n${[...v].map(([key, item]) => `${inner}${JSON.stringify(key)}: ${jsonText(item, inner)}`).join(",\n")}\n${indent}}`;
+	if (Array.isArray(v)) return v.length === 0 ? "[]" : `[\n${v.map((item) => inner + jsonText(item, inner)).join(",\n")}\n${indent}]`;
+	return v.number;
+}
+
+/**
  * Sets top-level keys in a page's front matter, keeping everything else (comments, the order,
  * the body) as it is. A key that isn't there is added: at the top when `first`, else at the end.
  */
@@ -211,15 +289,14 @@ export function fillFrontMatter(source: string, fills: FillRow[]): string {
 
 	if (format === "json") {
 		const text = lines.slice(1, close).join("");
-		let data: unknown;
-		try { data = JSON.parse(text.trim() === "" ? "{}" : text); } catch (e) { throw context(e, "its JSON front matter doesn't parse"); }
-		if (data === null || typeof data !== "object" || Array.isArray(data)) bail("its JSON front matter isn't an object");
-		const map = data as Record<string, unknown>;
+		let data: Json;
+		try { data = readJson(text.trim() === "" ? "{}" : text); } catch (e) { throw context(e, "its JSON front matter doesn't parse"); }
+		if (!(data instanceof Map)) bail("its JSON front matter isn't an object");
 		for (const [key, fill] of fills) {
-			if ("text" in fill) map[key] = fill.text;
-			else { try { map[key] = JSON.parse(fill.raw); } catch { map[key] = fill.raw; } }
+			if ("text" in fill) data.set(key, fill.text);
+			else { try { data.set(key, readJson(fill.raw)); } catch { data.set(key, fill.raw); } }
 		}
-		lines.splice(1, close - 1, JSON.stringify(map, null, 2).replace(/\n/g, newline) + newline);
+		lines.splice(1, close - 1, jsonText(data).replace(/\n/g, newline) + newline);
 		return lines.join("");
 	}
 
@@ -300,6 +377,20 @@ const pad = (n: number) => String(n).padStart(2, "0");
 /** Today's date, the local one, as front matter writes it. */
 const today = (): string => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 
+const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
+/**
+ * A blueprint's text, as it is (a byte-order mark included, as 0.7 kept it). Bytes that aren't
+ * UTF-8 are an error, as they were in 0.7, rather than characters quietly replaced in the new
+ * page. The error names the file as 0.7 did, from the input folder as the config gives it.
+ */
+function readBlueprint(file: string, blueprints: string, shownInput: string): string {
+	const shown = isInside(blueprints, file) ? [shownInput, "_blueprints", path.relative(blueprints, file)].join(path.sep) : file;
+	let bytes: Buffer;
+	try { bytes = fs.readFileSync(file); } catch (e) { throw context(e, `reading ${shown}`); }
+	try { return utf8.decode(bytes); } catch { return bail(`reading ${shown}: stream did not contain valid UTF-8`); }
+}
+
 /** Creates the page `options` describe. Nothing is overwritten. */
 export function newPage(config: Config, options: NewOptions): Created {
 	const dirs = dirsOf(config);
@@ -307,8 +398,9 @@ export function newPage(config: Config, options: NewOptions): Created {
 	while (given.startsWith("./")) given = given.slice(2);
 	if (given === "") bail("give the new page's path, like posts/pine-cones.md");
 	// From the input folder, or from the project root when that lands in it.
-	if (!fs.existsSync(dirs.input)) bail(`input directory ${dirs.input} does not exist`);
-	const input = realPath(dirs.input);
+	const shownInput = shownDir(config, config.input);
+	let input: string;
+	try { input = fs.realpathSync.native(dirs.input); } catch (e) { throw context(e, `input directory ${shownInput} does not exist`); }
 	const root = realPath(dirs.root);
 	const shownIn = (file: string) => slashes(path.relative(root, file));
 	const fromInput = under(input, given);
@@ -363,7 +455,7 @@ export function newPage(config: Config, options: NewOptions): Created {
 		bail(`${shownIn(file)} already exists. Those tracks are taken; ${another} (the file is left as it is)`);
 	}
 
-	const source = blueprint !== null ? fs.readFileSync(blueprint, "utf8") : "---\ntitle:\ndate:\n---\n\n";
+	const source = blueprint !== null ? readBlueprint(blueprint, path.join(dirs.input, "_blueprints"), shownInput) : "---\ntitle:\ndate:\n---\n\n";
 	const fills: FillRow[] = [["title", { text: title }, true]];
 	// A date only where the blueprint asks for one: a page whose file name has the date doesn't need it.
 	if (hasKey(source, "date") || options.date !== undefined) fills.push(["date", { raw: date }, false]);
@@ -377,8 +469,8 @@ export function newPage(config: Config, options: NewOptions): Created {
 	} catch (e) {
 		throw context(e, blueprint !== null ? `in ${shownIn(realPath(blueprint))}` : "in the built-in blueprint");
 	}
-	fs.mkdirSync(path.dirname(file), { recursive: true });
-	fs.writeFileSync(file, text);
+	try { fs.mkdirSync(path.dirname(file), { recursive: true }); } catch (e) { throw context(e, `creating ${path.dirname(file)}`); }
+	try { fs.writeFileSync(file, text); } catch (e) { throw context(e, `writing ${file}`); }
 	return { path: file, blueprint: blueprint === null ? null : realPath(blueprint), title, date };
 }
 

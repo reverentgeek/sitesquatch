@@ -12,7 +12,7 @@ import type { Config, Dirs, Filter } from "./config.ts";
 import { dirsOf } from "./config.ts";
 import { excerpt, headings } from "./content.ts";
 import type { Data } from "./data.ts";
-import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
+import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
 import type { Diagnostic } from "./diagnostics.ts";
 import { BuildError, Diagnostics, aliasUsed, bail, context, error as errorOf, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import { edgeEngine } from "./engines/edge.ts";
@@ -303,11 +303,12 @@ export class Site {
 			if (name.startsWith(".")) continue;
 			const file = path.join(dir, name);
 			const stem = name.slice(0, name.length - path.extname(name).length);
-			if (isDir(file)) data[name] = await this.loadGlobalData(file, skipped, `${prefix}${name}/`);
+			// A file or folder named `__proto__` is a key like any other (setOwn).
+			if (isDir(file)) setOwn(data, name, await this.loadGlobalData(file, skipped, `${prefix}${name}/`));
 			else {
 				const value = await loadDataFile(file, this.config.dataExtensions);
 				if (value === NOT_DATA) skipped.push(`${prefix}${name}`);
-				else data[stem] = value;
+				else setOwn(data, stem, value);
 			}
 		}
 		return data;
@@ -375,7 +376,10 @@ export class Site {
 				files.push(file);
 			}
 		};
-		walk(dirs.input, [realPath(dirs.input)]);
+		// The input folder itself is skipped too when it's one of those, as 0.7 skipped it: with
+		// `--output .` the input folder is the output, and its pages would be written over
+		// themselves.
+		if (!skipDirs.has(realPath(dirs.input))) walk(dirs.input, [realPath(dirs.input)]);
 		this.warnUnrendered(unrendered);
 		return files.sort(comparePaths);
 	}

@@ -89,37 +89,43 @@ export function buildFiles(dir: string, sizes: boolean): Promise<Array<[path: st
 	const folders: Folder[] = [{ path: dir, rel: "", real: realPath(dir), parent: undefined }];
 	const files: Array<[string, string]> = [];
 	let active = 0;
-	let failure: Error | undefined;
+	// Every problem the walk meets, by the path it's at: the one reported is the first of them by
+	// path, so it's the same however the reads finish (a walk in parallel finds them in any order).
+	const failures: Array<[at: string, message: string]> = [];
 	return new Promise((resolve, reject) => {
-		const fail = (detail: string) => {
-			failure ??= new BuildError(`reading ${dir}: ${detail}`);
+		const fail = (at: string, detail: string) => {
+			failures.push([at, `reading ${dir}: ${detail}`]);
 		};
+		// A path in the folder as 0.7's walk named it: `broken/` and `dead` are `broken/dead`.
+		const inside = (folder: Folder, name: string) => (folder.parent === undefined && /[\\/]$/.test(folder.path) ? folder.path + name : folder.path + path.sep + name);
 		const done = () => {
 			active--;
 			pump();
 		};
 		const read = (folder: Folder) => {
 			fs.readdir(folder.path, { withFileTypes: true }, (e, entries) => {
-				if (e) fail(`IO error for operation on ${folder.path}: ${e.message}`);
+				if (e) fail(folder.path, `IO error for operation on ${folder.path}: ${e.message}`);
 				else for (const entry of entries) {
-					const file = folder.path + path.sep + entry.name;
+					const file = inside(folder, entry.name);
 					const rel = folder.rel === "" ? entry.name : `${folder.rel}/${entry.name}`;
 					let isDir = entry.isDirectory(), isFile = entry.isFile();
 					// A link is followed (they're rare in a build, so this asks the disk as it goes).
 					if (entry.isSymbolicLink()) {
 						const stat = fs.statSync(file, { throwIfNoEntry: false });
 						if (!stat) {
-							fail(`IO error for operation on ${file}: No such file or directory (os error 2)`);
-							break;
+							// 0.7 said it twice: the walk's error, then its cause.
+							fail(file, `IO error for operation on ${file}: No such file or directory (os error 2): No such file or directory (os error 2)`);
+							continue;
 						}
 						[isDir, isFile] = [stat.isDirectory(), stat.isFile()];
 						if (isDir) {
 							const real = realPath(file);
 							let loop = folder as Folder | undefined;
 							while (loop && loop.real !== real) loop = loop.parent;
+							// The ancestor as the walk reached it (`loop/a`), as 0.7 named it.
 							if (loop) {
-								fail(`File system loop found: ${file} points to an ancestor ${loop.real}`);
-								break;
+								fail(file, `File system loop found: ${file} points to an ancestor ${loop.path}`);
+								continue;
 							}
 							folders.push({ path: file, rel, real, parent: folder });
 							continue;
@@ -137,19 +143,19 @@ export function buildFiles(dir: string, sizes: boolean): Promise<Array<[path: st
 		};
 		const size = (file: string, rel: string) => {
 			fs.stat(file, (e, stat) => {
-				if (e) fail(`IO error for operation on ${file}: ${e.message}`);
+				if (e) fail(file, `IO error for operation on ${file}: ${e.message}`);
 				else out.push([rel, stat.size]);
 				done();
 			});
 		};
 		const pump = () => {
-			while (!failure && active < AT_ONCE && (folders.length || files.length)) {
+			while (active < AT_ONCE && (folders.length || files.length)) {
 				active++;
 				if (folders.length) read(folders.pop()!);
 				else size(...files.pop()!);
 			}
 			if (active === 0) {
-				if (failure) reject(failure);
+				if (failures.length) reject(new BuildError(failures.sort((a, b) => compareText(a[0], b[0]))[0][1]));
 				else resolve(out);
 			}
 		};

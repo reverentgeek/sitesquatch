@@ -218,29 +218,244 @@ export function tomlReason(e: unknown): string {
 }
 
 /**
- * A TOML document as a site's data. An integer too big for a JavaScript number is a number
- * anyway, as 0.7 read it (rounded), where smol-toml would refuse the whole file.
+ * A TOML document as a site's data, as 0.7's TOML library read it. An integer too big for a
+ * JavaScript number is a number anyway (rounded), where smol-toml would refuse the whole file,
+ * but one past 64 bits is an error, and so is a float too big for one (`1e400`). A date or a time
+ * is its text as 0.7 wrote it, and one that can't be (`2023-02-30`) is an error, where JavaScript's
+ * dates would roll it over to March; a leap second (`23:59:60`) is fine.
  */
 export function readToml(text: string): unknown {
-	return tomlValue(parseToml(text, { integersAsBigInt: "asNeeded" }));
+	// smol-toml reads a date as a JavaScript date, so its own text is gone by the time it's
+	// read, and its seconds stop at 59. So each date is checked here, as 0.7's library checked it,
+	// and handed to smol-toml as a string that stands for it, of the same length where it fits,
+	// so the columns in smol-toml's errors stay right.
+	const values = bareValues(text);
+	let problem: TomlError | undefined;
+	const dates: string[] = [];
+	let marker = "";
+	let replaced = "";
+	let last = 0;
+	for (const { start, end } of values) {
+		const literal = text.slice(start, end);
+		const why = DATE_TIME.test(literal) ? dateProblem(literal) : numberProblem(literal);
+		if (why === null) continue;
+		if (why !== undefined) {
+			problem ??= new TomlError(why, { toml: text, ptr: start });
+			continue;
+		}
+		if (!marker) marker = placeholder(text);
+		const stand = marker + dates.length.toString(36);
+		replaced += text.slice(last, start) + JSON.stringify(stand.padEnd(Math.max(stand.length, literal.length - 2), marker));
+		last = end;
+		dates.push(dateText(literal));
+	}
+	let parsed: unknown;
+	try {
+		parsed = parseToml(dates.length ? replaced + text.slice(last) : text, { integersAsBigInt: "asNeeded" });
+	} catch (e) {
+		// The first problem in the file is the one to report, as 0.7's parser stopped there, and
+		// a date's own words when smol-toml stops at the same place.
+		if (problem && !(e instanceof TomlError && (e.line < problem.line || (e.line === problem.line && e.column < problem.column)))) throw problem;
+		throw e;
+	}
+	if (problem) throw problem;
+	return tomlValue(parsed, marker, dates);
+}
+
+/** A character for a document's dates to stand for themselves as, in strings: a private-use one the document doesn't have. */
+function placeholder(text: string): string {
+	for (let code = 0xe000; code <= 0xf8ff; code++) if (!text.includes(String.fromCharCode(code))) return String.fromCharCode(code);
+	throw new Error("a TOML document with every private-use character can't have dates");
+}
+
+/** A TOML date, a date and time, or a time, as the format writes them (TOML 1.1: seconds optional). */
+const DATE_TIME = /^(?:\d{4}-\d{2}-\d{2}(?:[Tt ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}:\d{2})?)?|\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/;
+
+/** What's wrong with a date or time that's written right, in the words of 0.7's TOML library (toml_datetime), or nothing. */
+function dateProblem(literal: string): string | undefined {
+	const date = /^(\d{4})-(\d{2})-(\d{2})/.exec(literal);
+	if (date) {
+		const [year, month, day] = [Number(date[1]), Number(date[2]), Number(date[3])];
+		if (month < 1 || month > 12) return "invalid date, expected month between 01 and 12";
+		const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+		const days = month === 2 ? (leap ? 29 : 28) : [4, 6, 9, 11].includes(month) ? 30 : 31;
+		if (day < 1 || day > days) return `invalid date, expected day between 01 and ${days}`;
+	}
+	const time = /(?:^|[Tt ])(\d{2}):(\d{2})(?::(\d{2}))?/.exec(literal);
+	if (time) {
+		if (Number(time[1]) > 23) return "invalid time, expected hour between 00 and 23";
+		if (Number(time[2]) > 59) return "invalid time, expected minute between 00 and 59";
+		// 60 is a leap second.
+		if (Number(time[3] ?? 0) > 60) return "invalid time, expected second between 00 and 60";
+	}
+	const offset = /[+-](\d{2}):(\d{2})$/.exec(date && time ? literal.slice(10) : "");
+	if (offset) {
+		if (Number(offset[1]) > 23) return "invalid offset, expected hours between 00 and 23";
+		if (Number(offset[2]) > 59) return "invalid offset, expected minutes between 00 and 59";
+	}
+	return undefined;
+}
+
+/**
+ * What's wrong with a number 0.7 couldn't hold, or `null` for a value that isn't a date: an
+ * integer past 64 bits, or a float past the largest double. smol-toml takes both (the integer as
+ * a BigInt, the float as `Infinity`).
+ */
+function numberProblem(literal: string): string | null {
+	const plain = literal.replaceAll("_", "");
+	if (/^[+-]?\d+$|^0[xob][0-9a-fA-F]+$/.test(plain)) {
+		let n: bigint;
+		try { n = BigInt(plain); } catch { return null; }
+		return n > 0x7fffffffffffffffn || n < -0x8000000000000000n ? "integer number overflowed" : null;
+	}
+	if (/^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(plain) && !Number.isFinite(Number(plain))) return "floating-point number overflowed";
+	return null;
+}
+
+/** A date or time as 0.7 wrote it (toml_datetime's `Display`): a `T` between date and time, at most nine digits of a second, and `Z` or `+HH:MM`. */
+function dateText(literal: string): string {
+	const m = /^(\d{4}-\d{2}-\d{2})?[Tt ]?(?:(\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?)?([Zz]|[+-]\d{2}:\d{2})?$/.exec(literal)!;
+	const [, date, hm, seconds, fraction, offset] = m;
+	let out = date ?? "";
+	if (hm !== undefined) {
+		out += (date ? "T" : "") + hm;
+		if (seconds !== undefined) out += `:${seconds}`;
+		if (fraction !== undefined) out += `.${fraction.slice(0, 9).padEnd(9, "0").replace(/0+$/, "") || "0"}`;
+	}
+	// An offset of zero minutes is `+00:00`, however it's written, as 0.7 wrote it.
+	if (offset !== undefined) out += /^[Zz]$/.test(offset) ? "Z" : offset.slice(1) === "00:00" ? "+00:00" : offset;
+	return out;
+}
+
+/**
+ * Where a TOML document's bare values are (numbers, booleans, dates and times): what comes after
+ * a key's `=`, or in an array or an inline table, outside strings and comments. What doesn't
+ * read as TOML is skipped, for smol-toml to report.
+ */
+function bareValues(text: string): Array<{ start: number; end: number }> {
+	const found: Array<{ start: number; end: number }> = [];
+	const n = text.length;
+	let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+	const space = () => {
+		while (text[i] === " " || text[i] === "\t") i++;
+	};
+	// Space, line breaks and comments, as arrays and inline tables can have.
+	const blank = () => {
+		for (;;) {
+			space();
+			if (text[i] === "#") while (i < n && text[i] !== "\n") i++;
+			else if (text[i] === "\n" || text[i] === "\r") i++;
+			else return;
+		}
+	};
+	const string = () => {
+		const q = text[i];
+		const fence = q.repeat(3);
+		if (text.startsWith(fence, i)) {
+			for (i += 3; i < n; i++) {
+				if (q === "\"" && text[i] === "\\") i++;
+				else if (text.startsWith(fence, i)) {
+					// Up to two more quotes are the string's own.
+					i += 3;
+					for (let extra = 0; extra < 2 && text[i] === q; extra++) i++;
+					return;
+				}
+			}
+			return;
+		}
+		for (i++; i < n && text[i] !== q && text[i] !== "\n"; i++) if (q === "\"" && text[i] === "\\") i++;
+		i++;
+	};
+	// A key, dotted or quoted, up to its `=`.
+	const key = () => {
+		for (;;) {
+			space();
+			if (i >= n || text[i] === "=" || text[i] === "\n" || text[i] === "#") return;
+			if (text[i] === "\"" || text[i] === "'") string();
+			else i++;
+		}
+	};
+	const ENDS = " \t\r\n,]}#";
+	const value = () => {
+		const c = text[i];
+		if (c === "\"" || c === "'") return string();
+		if (c === "[" || c === "{") {
+			const close = c === "[" ? "]" : "}";
+			for (i++; ;) {
+				blank();
+				if (i >= n) return;
+				if (text[i] === close) { i++; return; }
+				if (close === "}") {
+					key();
+					if (text[i] !== "=") return;
+					i++;
+					space();
+				}
+				value();
+				blank();
+				if (text[i] === ",") i++;
+				else if (text[i] === close) { i++; return; } else return;
+			}
+		}
+		const start = i;
+		while (i < n && !ENDS.includes(text[i])) i++;
+		// A date and its time can be apart by a space.
+		if (i - start === 10 && text[i] === " " && /^\d{4}-\d{2}-\d{2}$/.test(text.slice(start, i)) && /^\d{2}:/.test(text.slice(i + 1, i + 4))) {
+			for (i++; i < n && !ENDS.includes(text[i]); i++);
+		}
+		if (i > start) found.push({ start, end: i });
+	};
+	while (i < n) {
+		blank();
+		if (i >= n) break;
+		// A table's name: skipped, quoted parts and all.
+		if (text[i] === "[") {
+			while (i < n && text[i] !== "\n" && text[i] !== "#") {
+				if (text[i] === "\"" || text[i] === "'") string();
+				else i++;
+			}
+			continue;
+		}
+		key();
+		if (text[i] !== "=") {
+			while (i < n && text[i] !== "\n") i++;
+			continue;
+		}
+		i++;
+		space();
+		value();
+	}
+	return found;
 }
 
 /**
  * A TOML value as a site's data. A date or time (`2024-01-02`, without quotes) is its text, as
- * 0.7 has it; the page's `date` becomes a real date either way.
+ * 0.7 has it; the page's `date` becomes a real date either way. `marker` and `dates` are the
+ * strings `readToml` handed smol-toml for the document's dates, and the text each stands for.
  */
-export function tomlValue(v: unknown): unknown {
+export function tomlValue(v: unknown, marker = "", dates: string[] = []): unknown {
+	if (typeof v === "string") return marker && v.startsWith(marker) ? dates[parseInt(v.replaceAll(marker, ""), 36)] : v;
 	if (v instanceof TomlDate) return tomlDateText(v);
-	if (Array.isArray(v)) return v.map(tomlValue);
+	if (Array.isArray(v)) return v.map((item) => tomlValue(item, marker, dates));
 	if (isPlainObject(v)) {
 		// A table's keys in name order, as 0.7's TOML library sorted them (a loop over a TOML
 		// file's table gave the same order there); TOML itself says tables have none.
 		const out: Data = {};
-		for (const key of Object.keys(v).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) out[key] = tomlValue((v as Data)[key]);
+		for (const key of Object.keys(v).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) setOwn(out, key, tomlValue((v as Data)[key], marker, dates));
 		return out;
 	}
 	if (typeof v === "bigint") return Number(v);
 	return v;
+}
+
+/**
+ * Sets `key` on `target` as its own property, `__proto__` included: assigning that one sets the
+ * object's prototype instead, which drops the key and lets its values show through every key
+ * the object doesn't have.
+ */
+export function setOwn(target: Data, key: string, value: unknown): void {
+	if (key === "__proto__") Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true });
+	else target[key] = value;
 }
 
 /** A TOML date as it's written: no fraction of a second unless it has one, and its zeros dropped. */
@@ -330,10 +545,12 @@ export function merge(base: Data, over: Data, deep = true): Data {
 function mergeLevel(base: Data, over: Data, deep: boolean, top: boolean): Data {
 	const out: Data = { ...base };
 	for (const key of Object.keys(over)) {
-		const existing = out[key], incoming = over[key];
-		if (deep && isPlainObject(existing) && isPlainObject(incoming)) out[key] = mergeLevel(existing, incoming, deep, false);
-		else if (deep && Array.isArray(existing) && Array.isArray(incoming) && !(top && REPLACED.has(key))) out[key] = existing.concat(incoming);
-		else out[key] = incoming;
+		// `out.__proto__` would be Object.prototype, not a value of the data's.
+		const existing = key === "__proto__" && !Object.hasOwn(out, key) ? undefined : out[key], incoming = over[key];
+		// A key named `__proto__` is data like any other (setOwn), as in 0.7.
+		if (deep && isPlainObject(existing) && isPlainObject(incoming)) setOwn(out, key, mergeLevel(existing, incoming, deep, false));
+		else if (deep && Array.isArray(existing) && Array.isArray(incoming) && !(top && REPLACED.has(key))) setOwn(out, key, existing.concat(incoming));
+		else setOwn(out, key, incoming);
 	}
 	return out;
 }

@@ -185,10 +185,17 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 	const used: string[] = [];
 	// Once something is given, the options so far and every argument, the ones given as if they were
 	// required (`Usage: ssqch import --write <generator> [dir]`, `ssqch import <generator> <dir>`).
-	const usageUsed = () => {
-		if (!command || (!used.length && !out.positionals.length)) return usage();
+	// `also` is the option clap suggested for a misspelled one, which it counted as given.
+	const usageUsed = (also?: Option) => {
+		const shown = [...used];
+		if (also) {
+			const named = `--${also.long}${also.value ? ` <${also.value}>` : ""}`;
+			if (!shown.includes(named)) shown.push(named);
+		}
+		if (!command) return shown.length ? `Usage: ${grammar.name} ${shown.join(" ")}` : usage();
+		if (!shown.length && !out.positionals.length) return usage();
 		const args = command.positionals.map((p, i) => (p.required || i < out.positionals.length ? `<${p.name}>` : `[${p.name}]`));
-		return `Usage: ${grammar.name} ${command.name} ${[...used, ...args].join(" ")}`;
+		return `Usage: ${grammar.name} ${command.name} ${[...shown, ...args].join(" ")}`;
 	};
 	const required = (option: Option) => new UsageError(`error: a value is required for '--${option.long} <${option.value}>' but none was supplied\n\n${tail}`);
 	const set = (option: Option, value: string | true, shown: string) => {
@@ -211,20 +218,28 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 		const named = `--${option.long}${option.value ? ` <${option.value}>` : ""}`;
 		if (!used.includes(named)) used.push(named);
 	};
-	const unexpected = (arg: string, tips: string[] = []): never => {
-		const flag = arg.split("=")[0];
+	// A long option's name is before its `=` (`--verbos=1` is `--verbos`); a short one's word is
+	// its letter already. `line` is the usage line clap printed for it.
+	const unexpected = (arg: string, tips: string[], line: string): never => {
+		const flag = arg.startsWith("--") ? arg.split("=")[0] : arg;
 		const body = tips.length ? `${tips.map((t) => `  tip: ${t}`).join("\n")}\n\n` : "";
-		throw new UsageError(`error: unexpected argument '${arg.startsWith("-") ? flag : arg}' found\n\n${body}${arg.startsWith("--") ? usageUsed() : usage()}\n\n${tail}`, arg.startsWith("-") ? { word: flag, kind: "flag" } : undefined);
+		throw new UsageError(`error: unexpected argument '${flag}' found\n\n${body}${line}\n\n${tail}`, arg.startsWith("-") ? { word: flag, kind: "flag" } : undefined);
+	};
+	const unknownCommand = (arg: string): never => {
+		const like = similar(arg, grammar.commands.filter((c) => !c.hidden).map((c) => c.name));
+		const tip = like.length === 1 ? `  tip: a similar subcommand exists: '${like[0]}'\n\n` : like.length ? `  tip: some similar subcommands exist: ${like.map((c) => `'${c}'`).join(", ")}\n\n` : "";
+		throw new UsageError(`error: unrecognized subcommand '${arg}'\n\n${tip}${usage()}\n\n${tail}`, { word: arg, kind: "command" });
 	};
 
 	/** The value of `option` from the word after it (at `at + 1`). A word that starts with a dash isn't a value: it's another option, or one nobody knows. */
 	const valueAfter = (option: Option, at: number): string => {
 		const next = argv[at + 1];
-		if (next === undefined) throw required(option);
+		// `--root --` has no value: `--` only ends the options.
+		if (next === undefined || next === "--") throw required(option);
 		if (!next.startsWith("-") || next === "-") return next;
 		const name = next.split("=")[0];
 		if (find((o) => (name.startsWith("--") ? o.long === name.slice(2) : o.short === name[1]))) throw required(option);
-		return unexpected(next, command?.positionals.length ? [`to pass '${next}' as a value, use '-- ${next}'`] : []);
+		return unexpected(next, command?.positionals.length ? [`to pass '${next}' as a value, use '-- ${next}'`] : [], next.startsWith("--") ? usageUsed() : usage());
 	};
 
 	let onlyPositionals = false;
@@ -232,6 +247,12 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 		const arg = argv[i];
 		if (command?.raw) { out.positionals.push(arg); continue; }
 		if (onlyPositionals || arg === "-" || !arg.startsWith("-")) {
+			// After `--`, a word where the command goes is still read as one, as clap read it: a
+			// command's name there says to take the `--` away.
+			if (!command && onlyPositionals) {
+				if (arg === "help" || grammar.commands.some((c) => c.name === arg)) throw new UsageError(`error: unexpected argument '${arg}' found\n\n  tip: subcommand '${arg}' exists; to use it, remove the '--' before it\n\n${usage()}\n\n${tail}`);
+				unknownCommand(arg);
+			}
 			if (!command && !onlyPositionals) {
 				if (arg === "help") {
 					const name = argv[i + 1];
@@ -243,18 +264,14 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 					if (about && more !== undefined) throw new UsageError(`error: unrecognized subcommand '${more}'\n\n${usageOf(grammar, about)}\n\n${tail}`);
 					throw new Printed(help(grammar, about));
 				}
-				command = grammar.commands.find((c) => c.name === arg);
-				if (!command) {
-					const like = similar(arg, grammar.commands.filter((c) => !c.hidden).map((c) => c.name));
-					const tip = like.length === 1 ? `  tip: a similar subcommand exists: '${like[0]}'\n\n` : like.length ? `  tip: some similar subcommands exist: ${like.map((c) => `'${c}'`).join(", ")}\n\n` : "";
-					throw new UsageError(`error: unrecognized subcommand '${arg}'\n\n${tip}${usage()}\n\n${tail}`, { word: arg, kind: "command" });
-				}
+				command = grammar.commands.find((c) => c.name === arg) ?? unknownCommand(arg);
 				out.command = command.name;
 				// What came before the command's name isn't the command's, in its usage line.
 				used.length = 0;
 				continue;
 			}
-			if (!command || (out.positionals.length >= command.positionals.length && !command.positionals.at(-1)?.many)) unexpected(arg);
+			// One argument too many: the whole usage line, as clap printed it.
+			if (!command || (out.positionals.length >= command.positionals.length && !command.positionals.at(-1)?.many)) unexpected(arg, [], usage());
 			const positional = command!.positionals[Math.min(out.positionals.length, command!.positionals.length - 1)];
 			if (arg === "" && positional.path) throw new UsageError(`error: a value is required for '${positional.required ? `<${positional.name}>` : `[${positional.name}]`}' but none was supplied\n\n${tail}`);
 			if (positional.values && !positional.values.includes(arg)) throw new UsageError(`error: invalid value '${arg}' for '<${positional.name}>'\n  [possible values: ${positional.values.join(", ")}]\n\n${similarValue(arg, positional.values)}${tail}`);
@@ -269,7 +286,9 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 			if (!option) {
 				const longs = [...(command?.options ?? []), ...grammar.globals, HELP].map((o) => o.long);
 				const like = similar(name, longs).pop();
-				unexpected(arg, like ? [`a similar argument exists: '--${like}'`] : command?.positionals.length ? [`to pass '${arg}' as a value, use '-- ${arg}'`] : []);
+				// clap counted the option it suggested as given, in the usage line.
+				const suggested = like === undefined ? undefined : find((o) => o.long === like);
+				unexpected(arg, like ? [`a similar argument exists: '--${like}'`] : command?.positionals.length ? [`to pass '${arg}' as a value, use '-- ${arg}'`] : [], usageUsed(suggested));
 			}
 			if (!option!.value) {
 				if (eq !== -1) {
@@ -290,8 +309,9 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 			const letter = arg[j];
 			const option = find((o) => o.short === letter);
 			if (!option) {
-				const word = j === 1 ? arg : `-${letter}`;
-				unexpected(word, command?.positionals.length ? [`to pass '${word}' as a value, use '-- ${word}'`] : []);
+				// clap named the letter it didn't know: `-x` in `-xyz` and `-x=1`, `-=` in `-q=`.
+				const word = `-${letter}`;
+				unexpected(word, command?.positionals.length ? [`to pass '${word}' as a value, use '-- ${word}'`] : [], usage());
 			}
 			if (!option!.value) { set(option!, true, `--${option!.long}`); continue; }
 			let value: string | undefined = arg.slice(j + 1);

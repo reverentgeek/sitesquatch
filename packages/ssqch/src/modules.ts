@@ -18,13 +18,14 @@ const SELF = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 /** The modules a site imports from ssqch itself, besides `ssqch`. */
 export const BUILT_IN = ["ssqch/image", "ssqch/rss", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/minify"];
 /**
- * Where `ssqch` and `ssqch/image` are, as Node loads them: from source, `src/api.ts` and
- * `src/modules/image.ts`; in the npm package, compiled to `lib/ssqch.js` and `lib/image.js`
- * (`scripts/build.ts`), the files its `exports` name, so a config's `ssqch` is the build's.
+ * Where `ssqch` and `ssqch/image` are, as Node loads them: from source, `src/exports/ssqch.ts`
+ * and `src/exports/image.ts`, which export what ssqch.d.ts declares and nothing else; in the npm
+ * package, compiled from those to `lib/ssqch.js` and `lib/image.js` (`scripts/build.ts`), the
+ * files its `exports` name, so a config's `ssqch` is the build's.
  */
 const COMPILED = fs.existsSync(path.join(SELF, "lib", "ssqch.js"));
-const API = COMPILED ? pathToFileURL(path.join(SELF, "lib", "ssqch.js")).href : new URL("./api.ts", import.meta.url).href;
-const builtInUrl = (specifier: string): URL => (COMPILED ? pathToFileURL(path.join(SELF, "lib", `${specifier.slice(6)}.js`)) : new URL(`./modules/${specifier.slice(6)}.ts`, import.meta.url));
+const API = COMPILED ? pathToFileURL(path.join(SELF, "lib", "ssqch.js")).href : new URL("./exports/ssqch.ts", import.meta.url).href;
+const builtInUrl = (specifier: string): URL => (COMPILED ? pathToFileURL(path.join(SELF, "lib", `${specifier.slice(6)}.js`)) : new URL(`./exports/${specifier.slice(6)}.ts`, import.meta.url));
 
 /** The site's own files that were loaded as modules (not packages'), in the order they loaded: `ssqch serve` reads the configuration again when one changes. */
 export const loadedFiles = new Set<string>();

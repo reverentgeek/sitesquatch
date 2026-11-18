@@ -35,6 +35,20 @@ test("dates are written in UTC", () => {
 	assert.equal(dateToRfc3339("2024-01-05"), "2024-01-05T00:00:00Z");
 	assert.throws(() => dateToRfc3339("tomorrow"), /^BuildError: dateToRfc3339: not a date: "tomorrow"$/);
 	assert.throws(() => dateToRfc822(undefined), /^BuildError: dateToRfc822: not a date: undefined$/);
+	// 0.7 wrote 1970-01-01 for these (a deliberate difference, in CHANGELOG.md).
+	assert.throws(() => dateToRfc3339(new Date("2024-13-45")), /^BuildError: dateToRfc3339: not a date: Invalid Date$/);
+	assert.throws(() => dateToRfc822(Number.NaN), /^BuildError: dateToRfc822: not a date: NaN$/);
+	assert.throws(() => dateToRfc3339(Infinity), /^BuildError: dateToRfc3339: not a date: Infinity$/);
+});
+
+test("years before 0 and after 9999 are written as 0.7 wrote them", () => {
+	const year = (n: number) => { const d = new Date(0); d.setUTCFullYear(n, 0, 2); return d; };
+	assert.equal(dateToRfc3339(year(10000)), "+10000-01-02T00:00:00Z");
+	assert.equal(dateToRfc3339(year(-1)), "-0001-01-02T00:00:00Z");
+	assert.equal(dateToRfc3339(year(0)), "0000-01-02T00:00:00Z");
+	assert.equal(dateToRfc3339(year(12)), "0012-01-02T00:00:00Z");
+	assert.equal(dateToRfc822(year(10000)), "Sun, 02 Jan +10000 00:00:00 +0000");
+	assert.equal(dateToRfc822(year(-1)), "Sat, 02 Jan -0001 00:00:00 +0000");
 });
 
 test("the newest date in a collection", () => {

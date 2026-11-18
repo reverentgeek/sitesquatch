@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 import { ssqch, project, read, FIXTURES } from "../lib/ssqch.js";
 
 const PNG = fs.readFileSync(path.join(FIXTURES, "cli/squatch.png"));
@@ -251,6 +252,52 @@ test("linked_images_can_be_turned_off", () => {
 	const { ok, log } = build(root);
 	assert.ok(ok, log);
 	assert.ok(read(root, "dist/index.html").startsWith("<a href=\"/img/squatch.png\">"), read(root, "dist/index.html"));
+});
+
+/** A PNG of noise (it doesn't compress away, so a third of it ends inside the image data), made without an image library. */
+function noisePng(width, height) {
+	const chunk = (type, data) => {
+		const named = Buffer.concat([Buffer.from(type, "latin1"), data]);
+		const out = Buffer.alloc(named.length + 8);
+		out.writeUInt32BE(data.length, 0);
+		named.copy(out, 4);
+		out.writeUInt32BE(zlib.crc32(named) >>> 0, named.length + 4);
+		return out;
+	};
+	const header = Buffer.alloc(13);
+	header.writeUInt32BE(width, 0);
+	header.writeUInt32BE(height, 4);
+	header.set([8, 2, 0, 0, 0], 8);
+	// Each row: filter 0, then its pixels.
+	const rows = Buffer.alloc(height * (1 + width * 3));
+	let s = 76;
+	for (let i = 0; i < rows.length; i++) if (i % (1 + width * 3)) rows[i] = (s = (s * 1103515245 + 12345) & 0x7fffffff) >> 23;
+	return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", zlib.deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+// An image that can't be decoded is a warning, and the tags that name it stay as they were
+// written: no markup points at files that weren't made, and the summary counts what was.
+// `imageUrl()` of it is the page's error, with the decoder's words and not an encoder's.
+test("an_image_that_cant_be_decoded_is_left_as_written", () => {
+	const whole = noisePng(120, 80);
+	const root = project({
+		"ssqch.config.js": `import { imagePlugin } from "ssqch/image";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge", "html"], htmlEngine: "edge", plugins: [imagePlugin({ formats: ["webp"], widths: [60] })] };`,
+		"src/pics/t.png": whole.subarray(0, Math.floor(whole.length / 3)),
+		"src/pics/ok.png": whole,
+		"src/index.html": "<p><img src=\"/pics/t.png\" alt=\"t\"><a href=\"/pics/t.png\">big</a> <img src=\"/pics/ok.png\" alt=\"ok\"></p>\n",
+	});
+	let { ok, log } = build(root);
+	assert.ok(ok, log);
+	const html = read(root, "dist/index.html");
+	assert.ok(html.startsWith("<p><img src=\"/pics/t.png\" alt=\"t\"><a href=\"/pics/t.png\">big</a> <img "), html);
+	assert.ok(log.includes(`warn: decoding `) && log.includes(`pics/t.png: unexpected end of file\n`), log);
+	assert.ok(!/vips|\.tmp/.test(log), log);
+	assert.ok(log.includes("  Images  1 file from 1 source, ") && log.includes(": 1 encoded, 0 reused"), log);
+	assert.equal(fs.readdirSync(path.join(root, "dist/img")).length, 1);
+
+	fs.writeFileSync(path.join(root, "src/meta.edge"), "---\npermalink: /meta/\n---\n<meta property=\"og:image\" content=\"{{ imageUrl('/pics/t.png', { width: 60 }).url }}\">\n");
+	({ ok, log } = build(root));
+	assert.ok(!ok && log.includes("meta.edge") && log.includes("pics/t.png: unexpected end of file") && !/vips|\.tmp|\.cache/.test(log), log);
 });
 
 test("sitemap_and_redirects", () => {
@@ -612,4 +659,77 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge
 	({ ok, log } = build(root, ["--env", "development"]));
 	assert.ok(ok && !log.includes("isn't in the output"), log);
 	assert.ok(read(root, "dist/index.html").includes("from \"/assets/pco.js\""));
+});
+
+// Not from a Rust test: the plugins and `base` find URLs where 0.7's lol_html found them, which is
+// where browsers do, in HTML that's written oddly.
+test("urls_in_odd_html_are_found_where_browsers_find_them", () => {
+	const root = project({
+		"ssqch.config.js": `import { linksPlugin } from "ssqch/links";
+import { imagePlugin } from "ssqch/image";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["html"], base: "/repo/", plugins: [imagePlugin({ formats: ["webp"], widths: [16] }), linksPlugin({ fail: false })] };`,
+		"src/img/squatch.png": PNG,
+		"src/index.html": `<!doctype html><html><head><title>Probe</title></head><body>
+<iframe src="https://www.youtube.com/embed/abc" />
+<p><img src="/img/squatch.png" alt="Pine"> <a href="/next/">Next</a></p>
+</iframe>
+<p><img src="/img/squatch.png" alt="After"> <a href="/">Home</a></p>
+<svg><title><a href="/b6/">x</a></title><style>.a{fill:url(/grad.svg#g)}</style></svg>
+<!--><a href="/b3/">x</a><!-- -->
+<script><!--<script></script><a href="/in-script/"></script>--><a href="/after-script/">after</a>
+<p></p data-x="><a href='/in-end-tag/'>"><a href="/after-end-tag/">e</a>
+<textarea/><a href="/in-textarea/"></textarea>
+</body></html>
+`,
+	});
+	const { ok, log } = build(root);
+	assert.ok(ok, log);
+	const html = read(root, "dist/index.html");
+	for (const expected of [
+		// A self-closed <iframe /> holds text to its end tag: HTML ignores the slash.
+		"<p><img src=\"/img/squatch.png\" alt=\"Pine\"> <a href=\"/next/\">Next</a></p>",
+		"alt=\"After\" width=\"16\" height=\"8\"> <a href=\"/repo/\">Home</a>",
+		// In SVG, <title> holds markup, and <style> is still a style.
+		"<svg><title><a href=\"/repo/b6/\">x</a></title><style>.a{fill:url(/repo/grad.svg#g)}</style></svg>",
+		// <!--> is a whole comment.
+		"<!--><a href=\"/repo/b3/\">x</a><!-- -->",
+		// <!--<script> in a script starts a part that the next </script> doesn't end.
+		"<a href=\"/in-script/\"></script>--><a href=\"/repo/after-script/\">after</a>",
+		// A > in an end tag's quoted attribute doesn't end the tag.
+		"<a href='/in-end-tag/'>\"><a href=\"/repo/after-end-tag/\">e</a>",
+		"<textarea/><a href=\"/in-textarea/\"></textarea>",
+	]) {
+		assert.ok(html.includes(expected), `missing ${expected}\nin ${html}`);
+	}
+	assert.ok(log.includes("4 broken links:\n  / -> /after-end-tag/ (not found)\n  / -> /after-script/ (not found)\n  / -> /b3/ (not found)\n  / -> /b6/ (not found)"), log);
+	assert.ok(log.includes("Links   7 checked, 4 broken"), log);
+});
+
+// Not from a Rust test: an alias YAML reads as a date is the path it looks like.
+test("aliases_that_look_like_dates_are_paths", () => {
+	const root = project({
+		"ssqch.config.js": `import { redirectsPlugin } from "ssqch/redirects";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], plugins: [redirectsPlugin({ netlify: true })] };`,
+		"src/a.md": "---\naliases: 2024-01-01\n---\nA\n",
+		"src/b.md": "---\naliases: [2019-05-15, /old/]\n---\nB\n",
+	});
+	const { ok, log } = build(root);
+	assert.ok(ok, log);
+	assert.equal(read(root, "dist/_redirects"), "/2019-05-15  /b/  301\n/2024-01-01  /a/  301\n/old/  /b/  301\n");
+	assert.ok(read(root, "dist/2024-01-01/index.html").includes("url=/a/"));
+	assert.ok(read(root, "dist/2019-05-15/index.html").includes("url=/b/"));
+});
+
+// Not from a Rust test: a link to a path the system can't look up (a NUL byte, from `%00`, or a
+// name too long) is broken, not an error of the build.
+test("a_link_the_system_cant_look_up_is_not_found", () => {
+	const long = `/${"a".repeat(3000)}/`;
+	const root = project({
+		"ssqch.config.js": `import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["html"], plugins: [linksPlugin({ fail: false })] };`,
+		"src/index.html": `<a href="/x%00y">nul</a> <a href="/x%00y/">nul folder</a> <a href="${long}">long</a>`,
+	});
+	const { ok, log } = build(root);
+	assert.ok(ok, log);
+	assert.ok(log.includes(`3 broken links:\n  / -> ${long} (not found)\n  / -> /x%00y (not found)\n  / -> /x%00y/ (not found)`), log);
 });

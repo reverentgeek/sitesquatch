@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, RUST_07 } from "../lib/ssqch.js";
 
 test("diff_compares_two_builds", () => {
 	const dir = tempDir("diff");
@@ -58,4 +58,56 @@ test("diff_compares_two_builds", () => {
 	[code, log] = run(["diff", "before", "after", "--ignore", "("]);
 	assert.equal(code, 2, log);
 	assert.ok(log.includes("--ignore \"(\" isn't a regular expression"), log);
+});
+
+// `--ignore` is Rust's regex syntax, where `\w`, `\s` and `\b` know every script, `.` stops only
+// at `\n`, and flags can change partway through.
+test("diff_ignore_patterns_are_rust_regex", () => {
+	const dir = tempDir("diff-ignore");
+	// Whether the two files are the same once the pattern's matches are gone.
+	const same = (pattern, a, b = "") => {
+		fs.rmSync(path.join(dir, "a"), { recursive: true, force: true });
+		fs.rmSync(path.join(dir, "b"), { recursive: true, force: true });
+		write(dir, { "a/notes.txt": a, "b/notes.txt": b });
+		const r = ssqch(["diff", "a", "b", "--ignore", pattern], { cwd: dir });
+		assert.ok(r.code === 0 || r.code === 1, r.log);
+		return r.code === 0;
+	};
+	assert.equal(same("é\\b..", "café x", "café y"), true);
+	assert.equal(same("x\\wy", "xéy"), true);
+	assert.equal(same("x\\wy", "x‍y"), true);
+	assert.equal(same("a\\sb", "a\u0085b"), true);
+	assert.equal(same("a\\sb", "a﻿b"), false);
+	assert.equal(same("\\d+", "٣٤"), true);
+	assert.equal(same("a.b", "a\rb"), true);
+	assert.equal(same("a.b", "a b"), true);
+	assert.equal(same("a.b", "a\nb"), false);
+	assert.equal(same("(?m)^b", "a\rb", "a\rb"), true);
+	assert.equal(same("(?m)^b", "a\rb", "a\r"), false);
+	assert.equal(same("(?i:pine) cone", "PINE cone"), true);
+	assert.equal(same("(?i:pine) cone", "PINE CONE"), false);
+	assert.equal(same("(?i)k", "K"), true);
+	assert.equal(same("(?x) pine \\  cone # a comment", "pine cone"), true);
+	assert.equal(same("\\Apine\\z", "pine"), true);
+	assert.equal(same("\\p{Greek}+", "αβγ"), true);
+	assert.equal(same("[\\w&&\\p{Greek}]+", "αβ"), true);
+
+	write(dir, { "a/notes.txt": "x", "b/notes.txt": "x" });
+	const r = ssqch(["diff", "a", "b", "--ignore", "a(?=b)"], { cwd: dir });
+	assert.equal(r.code, 2, r.log);
+	assert.equal(r.stderr, "error: --ignore \"a(?=b)\" isn't a regular expression: regex parse error:\n    a(?=b)\n     ^^^\nerror: look-around, including look-ahead and look-behind, is not supported\n");
+});
+
+// A path kept whole because two files share a key can itself be a third file's key without a
+// fingerprint. 0.7 lost one of those files; the Node build reports it.
+test("diff_keeps_files_whose_fingerprinted_names_collide", () => {
+	const dir = tempDir("diff-keys");
+	write(dir, { "a/x.css": "a", "a/x.11111111.css": "b", "a/x.11111111.22222222.css": "c", "b/x.22222222.css": "a" });
+	const r = ssqch(["diff", "a", "b", "--format", "json"], { cwd: dir });
+	assert.equal(r.code, 1, r.log);
+	const json = JSON.parse(r.stdout);
+	const removed = [...json.removed].sort();
+	if (RUST_07) assert.equal(removed.length, 1, r.stdout);
+	else assert.deepEqual(removed, ["/x.11111111.22222222.css", "/x.11111111.css"]);
+	assert.equal(json.summary.unchangedFiles, 1);
 });

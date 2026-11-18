@@ -51,6 +51,8 @@ test("capabilities_match_what_a_config_can_use", () => {
 		for (const exp of module.exports) {
 			checks += `if (typeof m${i}[${JSON.stringify(exp)}] !== "function") throw new Error(${JSON.stringify(module.name)} + " lacks " + ${JSON.stringify(exp)});\n`;
 		}
+		// And nothing else: a module's own helpers aren't part of it (`ssqch` has a default export besides).
+		checks += `{ const extra = Object.keys(m${i}).filter((k) => k !== "default" && !${JSON.stringify(module.exports)}.includes(k)); if (extra.length) throw new Error(${JSON.stringify(module.name)} + " also exports " + extra.join(", ")); }\n`;
 		assert.ok(module.exports.length > 0, `${module.name} exports nothing`);
 	});
 	const node = [...names(caps.nodeModules.available), ...names(caps.nodeModules.stubs)];

@@ -1,7 +1,7 @@
 // From crates/sitesquatch/src/data.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadYaml, merge, normalizeTags, parseDate, parseFrontMatter } from "./data.ts";
+import { loadYaml, merge, normalizeTags, parseDate, parseFrontMatter, readToml } from "./data.ts";
 
 test("front_matter_formats", () => {
 	let { data: d, body } = parseFrontMatter("---\ntitle: Y\n---\nbody");
@@ -125,4 +125,62 @@ test("toml_tables_are_in_name_order", () => {
 	const d = parseFrontMatter("+++\nzebra = 1\napple = 2\nmango = 3\n[t]\nb = 1\na = 2\n+++\n").data;
 	assert.deepEqual(Object.keys(d), ["apple", "mango", "t", "zebra"]);
 	assert.deepEqual(Object.keys(d.t), ["a", "b"]);
+});
+
+// 0.7's TOML library (toml_datetime) checked a date's day against its month, took a leap second,
+// and wrote a date back as it was written, every digit of a second kept.
+test("toml_dates_are_checked_and_kept_as_0_7_wrote_them", () => {
+	const toml = (text: string) => (readToml(text) as { d: unknown }).d;
+	assert.throws(() => toml("d = 2023-02-30"), /^Error: Invalid TOML document: invalid date, expected day between 01 and 28\n/);
+	assert.throws(() => toml("d = 2024-02-30"), /expected day between 01 and 29/);
+	assert.throws(() => toml("d = 2023-04-31T10:00:00Z"), /expected day between 01 and 30/);
+	assert.throws(() => toml("d = 2023-13-01"), /invalid date, expected month between 01 and 12/);
+	assert.throws(() => toml("d = 24:00:00"), /invalid time, expected hour between 00 and 23/);
+	assert.throws(() => toml("d = 1979-05-27T07:32:00+24:00"), /invalid offset, expected hours between 00 and 23/);
+	assert.throws(() => toml("a = 1\nd = { x = [1979-02-29] }"), (e: Error & { line: number; column: number }) => e.line === 2 && e.column === 12);
+	assert.equal(toml("d = 1979-05-27T07:32:60Z"), "1979-05-27T07:32:60Z");
+	assert.equal(toml("d = 23:59:60"), "23:59:60");
+	assert.equal(toml("d = 2024-02-29"), "2024-02-29");
+	assert.equal(toml("d = 1979-05-27 07:32"), "1979-05-27T07:32");
+	assert.equal(toml("d = 07:32"), "07:32");
+	assert.equal(toml("d = 1979-05-27t07:32:00z"), "1979-05-27T07:32:00Z");
+	assert.equal(toml("d = 1979-05-27T07:32:00-00:00"), "1979-05-27T07:32:00+00:00");
+	assert.equal(toml("d = 1979-05-27T00:32:00.999999-07:00"), "1979-05-27T00:32:00.999999-07:00");
+	assert.equal(toml("d = 1979-05-27T07:32:00.1234567891"), "1979-05-27T07:32:00.123456789");
+	assert.equal(toml("d = 1979-05-27T07:32:00.000"), "1979-05-27T07:32:00.0");
+	// What looks like a date in a string, a comment or a key isn't one.
+	assert.deepEqual(readToml("d = \"2023-02-30\" # 2023-02-30\ns = '''\n2023-02-30'''\n2023-02-30 = 1\n[2023-02-31]"), { d: "2023-02-30", s: "2023-02-30", "2023-02-30": 1, "2023-02-31": {} });
+	assert.deepEqual(readToml("d = [\"]\", 2023-02-28, { a = 07:32:00 }]"), { d: ["]", "2023-02-28", { a: "07:32:00" }] });
+	// A string can't pass for a date, whatever it holds.
+	assert.deepEqual(readToml("a = \"\uE000\"\nd = 2024-01-02"), { a: "\uE000", d: "2024-01-02" });
+});
+
+test("toml_numbers_past_64_bits_are_errors", () => {
+	const toml = (text: string) => (readToml(text) as { n: unknown }).n;
+	assert.equal(toml("n = 9223372036854775807"), 9223372036854775807);
+	assert.equal(toml("n = -9223372036854775808"), -9223372036854775808);
+	for (const n of ["9223372036854775808", "-9223372036854775809", "9_223_372_036_854_775_808", "0xFFFFFFFFFFFFFFFF"]) {
+		assert.throws(() => toml(`n = ${n}`), /^Error: Invalid TOML document: integer number overflowed\n/, n);
+	}
+	for (const n of ["1e400", "-1e400", "2e308"]) assert.throws(() => toml(`n = ${n}`), /floating-point number overflowed/, n);
+	assert.equal(toml("n = inf"), Infinity);
+	assert.equal(toml("n = 1e-400"), 0);
+});
+
+// A key named `__proto__` is a key like any other, as in 0.7, and nothing reaches an object's
+// prototype through it.
+test("a_proto_key_is_a_key", () => {
+	const fromToml = readToml("[extra]\n__proto__ = { polluted = true }") as { extra: Record<string, unknown> };
+	assert.deepEqual(Object.keys(fromToml.extra), ["__proto__"]);
+	assert.equal(fromToml.extra.polluted, undefined);
+	const fromYaml = parseFrontMatter("---\nextra:\n  __proto__:\n    polluted: true\n---\n").data;
+	const fromJson = parseFrontMatter("---json\n{ \"extra\": { \"__proto__\": { \"polluted\": true } } }\n---\n").data;
+	for (const d of [fromYaml, fromJson]) {
+		assert.deepEqual(Object.keys(d.extra), ["__proto__"]);
+		assert.equal(d.extra.polluted, undefined);
+	}
+	const merged = merge({ a: 1 }, JSON.parse("{ \"__proto__\": { \"polluted\": true } }"));
+	assert.deepEqual(Object.keys(merged), ["a", "__proto__"]);
+	assert.equal(merged.polluted, undefined);
+	assert.equal(Object.getPrototypeOf(merged), Object.prototype);
 });

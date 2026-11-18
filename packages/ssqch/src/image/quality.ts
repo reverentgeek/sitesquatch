@@ -16,8 +16,19 @@
 //   JPEG  mozjpeg: 10% smaller at 0.7's 80, 25% at 50; a tenth of 0.7's time
 //
 // A higher effort makes smaller files still (a third smaller at effort 4) and takes three times
-// as long, which a first build of the blog's 4,985 files would feel. Above about 0.7's JPEG 91
-// and AVIF 98, sharp's best doesn't reach 0.7's score, and they are sharp's 100.
+// as long, which a first build of the blog's 4,985 files would feel. From about 0.7's JPEG 92
+// and AVIF 98 up, sharp's best (its 100) doesn't reach 0.7's score, so that's what they are:
+// the tables' last rows. Between 0.7's JPEG 90 (sharp's 97) and 92, and AVIF 95 (96) and 98,
+// sharp's number climbs to 100 along the line.
+//
+// PNG is lossless, so there's no number to turn: 0.7's encoder chose a filter for each row
+// (adaptive) and compressed at zlib's level 6, and so does sharp here. On a quarter of the
+// blog's PNGs at five widths (563 files), every file is then within 3% of 0.7's size, and
+// they're 13% smaller in all. Without the filters (sharp's default) they're 18% smaller in all,
+// but its pictures from an iPhone come out up to a fifth bigger than 0.7's, so it isn't
+// what 0.7 made; the filters cost a cold build of the blog about a tenth more CPU time. A grey
+// PNG stays grey and a 16-bit one 16 bits, as 0.7 wrote them, where sharp would make them 8-bit
+// RGB (`encodeFrom` in `processor.ts`): that, not the filters, was why grey ones doubled.
 import type { ImageOptions } from "./processor.ts";
 
 type Table = ReadonlyArray<readonly [number, number]>;
@@ -25,9 +36,9 @@ type Table = ReadonlyArray<readonly [number, number]>;
 /** WebP: 0.7's libwebp quality is sharp's (libwebp too). */
 export const WEBP: Table = [[0, 0], [100, 100]];
 /** JPEG: 0.7's (the `image` crate's encoder) to sharp's (mozjpeg). */
-export const JPEG: Table = [[50, 66], [60, 72], [70, 80], [80, 89], [90, 97], [95, 100]];
+export const JPEG: Table = [[50, 66], [60, 72], [70, 80], [80, 89], [90, 97], [92, 100]];
 /** AVIF: 0.7's (rav1e) quality to sharp's (libaom), the same within a point for speed 8 at effort 2 and speed 4 at effort 3. */
-export const AVIF: Table = [[30, 28], [40, 34], [50, 41], [60, 48], [70, 55], [80, 61], [90, 86], [95, 96], [100, 100]];
+export const AVIF: Table = [[30, 28], [40, 34], [50, 41], [60, 48], [70, 55], [80, 61], [90, 86], [95, 96], [98, 100]];
 /** 0.7's AVIF speed (1, slowest, to 10) as sharp's effort (9, slowest, to 0): faster than 0.7, and smaller. */
 export const EFFORT: Table = [[1, 5], [4, 3], [8, 2], [10, 0]];
 
@@ -43,7 +54,7 @@ const quality = (table: Table, x: number) => Math.min(100, Math.max(1, Math.roun
 
 export interface EncodeSettings {
 	jpeg: { quality: number; mozjpeg: boolean };
-	png: Record<string, never>;
+	png: { adaptiveFiltering: boolean; compressionLevel: number };
 	webp: { quality: number };
 	avif: { quality: number; effort: number };
 }
@@ -52,7 +63,7 @@ export interface EncodeSettings {
 export function encodeSettings(o: Pick<ImageOptions, "webpQuality" | "avifQuality" | "avifSpeed" | "jpegQuality">): EncodeSettings {
 	return {
 		jpeg: { quality: quality(JPEG, o.jpegQuality), mozjpeg: true },
-		png: {},
+		png: { adaptiveFiltering: true, compressionLevel: 6 },
 		webp: { quality: quality(WEBP, o.webpQuality) },
 		avif: { quality: quality(AVIF, o.avifQuality), effort: Math.min(9, Math.max(0, Math.round(lookup(EFFORT, o.avifSpeed)))) },
 	};
