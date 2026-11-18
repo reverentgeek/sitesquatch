@@ -5,24 +5,28 @@
 // compiles it, through its parser (`adjust` below): an undefined value prints nothing, a
 // mustache can start with an object literal (`{{ { tip: 'T' }[kind] }}`), a call reaches the
 // filter when the page has a field of that name (`{{ image(...) }}` beside `image:`), `@let` reads
-// the value it replaces (`@let(n = n - 1)`) and can be said twice, `@each` has `$loop`,
-// `reverse()` and `sort()` give copies (so a page can't reorder a collection under the next
-// one), lines end with `\n` on every system, and a date prints as ISO 8601 whatever the machine's
-// time zone.
+// the value it replaces (`@let(n = n - 1)`) and can be said twice, an include gives back the
+// variables it changed, `@each` has `$loop`, `reverse()` and `sort()` give copies (so a page
+// can't reorder a collection under the next one), and lines end with `\n` on every system.
+// Values are 0.7's too, in `edge-values.ts`: dates in UTC whatever the machine's time zone, and
+// as ISO 8601 text, strings indexed by character, numbers never in exponent notation.
 //
 // Compiled templates are kept: a page's or a layout's by its cache key, an include by its file
 // and the variables it shares (edge.js compiles an include again each time it's used).
 //
 // A template renders synchronously, as 0.7's did, until something in it gives a promise (an
 // async filter). Then that template is compiled again in edge.js's async mode, where every call
-// is awaited, as 0.7 awaited every function's answer, and it renders that way from then on. So a
-// page whose body has nothing async still renders on demand, when another page reads its
+// is awaited, as 0.7 awaited every function's answer, and it renders that way from then on; what
+// the first attempt called is answered from its record, so a function runs once. A page whose
+// body has nothing async still renders on demand, when another page reads its
 // `templateContent`, even when its layout is async.
+import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { Edge, EdgeError, Template, edgeGlobals } from "edge.js";
 import type { CompiledTemplate, LoaderContract, TagContract } from "edge.js/types";
 import { Parser } from "edge-parser";
 import type { Filter } from "../config.ts";
+import type { Data } from "../data.ts";
 import { readText } from "../data.ts";
 import { BuildError } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
@@ -30,6 +34,7 @@ import { describeThrown, watchSettle } from "../modules.ts";
 import { compareText, isFile, relative, walkFiles } from "../paths.ts";
 import { closest } from "../suggest.ts";
 import * as voice from "../voice.ts";
+import * as values from "./edge-values.ts";
 import { siteFunction } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 
@@ -57,11 +62,12 @@ export function edgeEngine(env: EngineEnv): TemplateEngine {
 	const loader = new Includes(env.includeDirs, root);
 	const edge = Edge.create({ cache: true, loader });
 	install();
-	edge.registerTag(letTag);
-	edge.registerTag(eachTag);
+	for (const tag of [letTag, eachTag, includeTag, includeIfTag, endTag]) edge.registerTag(tag);
+	edge.registerTag(insideBlocks(edge.tags.else, ["if", "unless", "each"]));
+	edge.registerTag(insideBlocks(edge.tags.elseif, ["if", "unless"]));
 
 	// 0.7's own helpers, then ssqch's functions and the config's, which replace any of the same name.
-	edge.global("stringify", (value: unknown, _replacer?: unknown, indent?: unknown) => JSON.stringify(value, null, typeof indent === "number" || typeof indent === "string" ? indent : undefined));
+	edge.global("stringify", (value: unknown, _replacer?: unknown, indent?: unknown) => stringify(value, null, indent));
 	edge.global("safe", (value: unknown) => value);
 	edge.global("escape", (value: unknown) => escapeHtml(String(value)));
 	edge.global("truncate", (value: unknown, length?: unknown) => {
@@ -69,8 +75,8 @@ export function edgeEngine(env: EngineEnv): TemplateEngine {
 		const n = Math.max(Math.trunc(Number(length)) || 0, 0);
 		return chars.length > n ? `${chars.slice(0, n).join("")}...` : String(value);
 	});
-	let syncDepth = 0;
-	for (const [name, fn] of env.globals) edge.global(name, settled(name, fn, root, () => syncDepth > 0));
+	const running: Running = { syncDepth: 0, recording: undefined };
+	for (const [name, fn] of env.globals) edge.global(name, settled(name, fn, root, running));
 	const functions: Record<string, unknown> = {};
 	for (const [name, value] of Object.entries(edge.globals)) if (typeof value === "function") functions[name] = value;
 	const globals = new Set(["stringify", "safe", "escape", "truncate", ...env.globals.keys()]);
@@ -82,7 +88,11 @@ export function edgeEngine(env: EngineEnv): TemplateEngine {
 
 	// edge.js compiles an include again each time it's used (its cache skips an include that's
 	// given variables, and every include is given a list, if an empty one). Kept here instead,
-	// by the file and the variables it shares.
+	// by the file and the variables it shares. An include gives those variables back as it
+	// leaves them (`template.ssqchShared`), so an `@assign` in it reaches the template that
+	// included it, as in 0.7, where an include shared its includer's scope.
+	let sharing: string[] | undefined;
+	edge.processor.process("compiled", ({ compiled: code }) => (sharing?.length ? code.replace(/return out;\s*$/, `template.ssqchShared = [${sharing.join(", ")}];\nreturn out;`) : undefined));
 	for (const compiler of [edge.compiler, edge.asyncCompiler]) {
 		const compile = compiler.compile.bind(compiler);
 		const kept = new Map<string, CompiledTemplate>();
@@ -90,7 +100,11 @@ export function edgeEngine(env: EngineEnv): TemplateEngine {
 			if (!localVariables) return compile(templatePath);
 			const key = `${loader.makePath(templatePath)}\n${localVariables.join(",")}`;
 			let fn = kept.get(key);
-			if (!fn) kept.set(key, fn = compile(templatePath, localVariables));
+			if (!fn) {
+				sharing = localVariables;
+				try { fn = compile(templatePath, localVariables); } finally { sharing = undefined; }
+				kept.set(key, fn);
+			}
 			return fn;
 		};
 	}
@@ -111,24 +125,28 @@ export function edgeEngine(env: EngineEnv): TemplateEngine {
 			const key = ctx.cacheKey ?? `${ctx.name}\0${source}`;
 			let entry = compiled.get(key);
 			if (entry?.source !== source) compiled.set(key, entry = { source, async: false });
+			const calls: Call[] = [];
 			if (!entry.async) {
 				let fn: CompiledTemplate;
 				try { fn = entry.sync ??= edge.compiler.compileRaw(source, ctx.name); } catch (e) { throw fail(e, ctx); }
-				const template = new Render(engine, edge.compiler);
-				syncDepth++;
+				const template = new Render(engine, edge.compiler, ctx.name, source);
+				const outer = running.recording;
+				running.recording = calls;
+				running.syncDepth++;
 				try {
 					return finish(template, fn(template, { ...edge.globals, ...data }, {}));
 				} catch (e) {
 					if (e !== NEEDS_ASYNC) throw fail(e, ctx);
 					entry.async = true;
 				} finally {
-					syncDepth--;
+					running.syncDepth--;
+					running.recording = outer;
 				}
 			}
 			let fn: CompiledTemplate;
 			try { fn = entry.asyncFn ??= edge.asyncCompiler.compileRaw(source, ctx.name); } catch (e) { throw fail(e, ctx); }
-			const template = new Render(engine, edge.asyncCompiler);
-			return watchSettle(fn(template, { ...edge.globals, ...data }, {}) as Promise<string>).then((out) => finish(template, out), (e) => { throw fail(e, ctx); });
+			const template = new Render(engine, edge.asyncCompiler, ctx.name, source);
+			return replays.run({ calls, at: 0 }, () => watchSettle(fn(template, { ...edge.globals, ...data }, {}) as Promise<string>)).then((out) => finish(template, out), (e) => { throw fail(e, ctx); });
 		},
 		included: () => [...used],
 	};
@@ -150,20 +168,62 @@ interface Compiled {
 	async: boolean;
 }
 
+/** A call of a site's function, and its answer. */
+interface Call { name: string; args: unknown[]; out: unknown }
+
+/** Where renders stand: how many synchronous ones are running (one inside another, for `templateContent`), and the calls the innermost has made. */
+interface Running {
+	syncDepth: number;
+	recording: Call[] | undefined;
+}
+
+/**
+ * The calls a synchronous attempt made before something gave a promise, which the render in
+ * async mode answers again, in the same order, without calling: a filter that logs or counts
+ * runs once, as it did in 0.7. An async render's own (AsyncLocalStorage, so two renders can't
+ * take each other's).
+ */
+const replays = new AsyncLocalStorage<{ calls: Call[]; at: number }>();
+
+/** The same arguments: equal values, and plain objects and lists with equal contents (a template makes `{ width: 1200 }` again each time). */
+function sameArgs(a: unknown, b: unknown, depth = 0): boolean {
+	if (Object.is(a, b)) return true;
+	if (depth > 4 || typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+	if (Array.isArray(a)) return Array.isArray(b) && a.length === b.length && a.every((x, i) => sameArgs(x, b[i], depth + 1));
+	if (Object.getPrototypeOf(a) !== Object.prototype || Object.getPrototypeOf(b) !== Object.prototype) return false;
+	const keys = Object.keys(a);
+	return keys.length === Object.keys(b).length && keys.every((k) => sameArgs((a as Data)[k], (b as Data)[k], depth + 1));
+}
+
 /**
  * A site's function as Edge templates call it. In a synchronous render, a promise from it means
- * the template has to be rendered again in async mode, where it's awaited.
+ * the template has to be rendered again in async mode, where it's awaited; what it was called
+ * with before that is answered from the attempt's record.
  */
-function settled(name: string, fn: Filter, root: string, synchronous: () => boolean): Filter {
-	const call = siteFunction(name, fn, root);
+function settled(name: string, fn: Filter, root: string, running: Running): Filter {
+	const site = siteFunction(name, fn, root);
 	return function (this: unknown, ...args: unknown[]) {
-		const out = call.apply(this, args);
-		if (out instanceof Promise && synchronous()) {
-			// Nothing else will look at this one: it's asked for again in async mode.
-			out.catch(() => {});
-			throw NEEDS_ASYNC;
+		if (running.syncDepth > 0) {
+			const out = site.apply(this, args);
+			running.recording?.push({ name, args, out });
+			if (out instanceof Promise) {
+				// Awaited by the render in async mode, which gets this same promise from the record.
+				out.catch(() => {});
+				throw NEEDS_ASYNC;
+			}
+			return out;
 		}
-		return out;
+		const replay = replays.getStore();
+		if (replay && replay.at < replay.calls.length) {
+			const before = replay.calls[replay.at];
+			if (before.name === name && sameArgs(before.args, args)) {
+				replay.at++;
+				return before.out;
+			}
+			// The render took another path: everything from here is called.
+			replay.at = replay.calls.length;
+		}
+		return site.apply(this, args);
 	};
 }
 
@@ -187,9 +247,23 @@ interface Helpers {
 	sort(list: any, ...args: unknown[]): unknown;
 	loop(collection: unknown, iteratee: (value: unknown, key: unknown, $loop: LoopInfo) => void): void;
 	loopAsync(collection: unknown, iteratee: (value: unknown, key: unknown, $loop: LoopInfo) => Promise<void>): Promise<void>;
+	// 0.7's values (see `edge-values.ts`): a date in UTC and as ISO 8601, a string by character.
+	str: typeof values.jsString;
+	add: typeof values.add;
+	call: typeof values.call;
+	index: typeof values.index;
+	newDate: typeof values.newDate;
+	parseDate(text: unknown): number;
+	/** `JSON.stringify` (and `stringify`), as 0.7 had them: `null` for nothing or a function, where JavaScript gives nothing at all. */
+	stringify(value: unknown, replacer?: unknown, indent?: unknown): string;
 }
 
 interface LoopInfo { index: number; total: number; first: boolean; last: boolean; isOdd: boolean; isEven: boolean }
+
+function stringify(value: unknown, replacer?: unknown, indent?: unknown): string {
+	const space = typeof indent === "number" || typeof indent === "string" ? indent : undefined;
+	return JSON.stringify(value === undefined || typeof value === "function" ? null : value, replacer as (string | number)[] | null, space);
+}
 
 function makeHelpers(functions: Record<string, unknown>): Helpers {
 	const text = (value: unknown, source: string | undefined, escape: boolean): string => {
@@ -202,8 +276,8 @@ function makeHelpers(functions: Record<string, unknown>): Helpers {
 			throw NEEDS_ASYNC;
 		}
 		if (value instanceof SafeValue) return text(value.value, undefined, false);
-		if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
-		return escape ? escapeHtml(value) : String(value);
+		const out = values.jsString(value);
+		return escape ? escapeHtml(out) : out;
 	};
 	const entries = (collection: unknown): Array<[unknown, unknown]> => {
 		if (Array.isArray(collection)) {
@@ -245,6 +319,13 @@ function makeHelpers(functions: Record<string, unknown>): Helpers {
 			const all = entries(collection);
 			for (let i = 0; i < all.length; i++) await iteratee(all[i][0], all[i][1], info(i, all.length));
 		},
+		str: values.jsString,
+		add: values.add,
+		call: values.call,
+		index: values.index,
+		newDate: values.newDate,
+		parseDate: (text) => (typeof text === "string" ? values.parseDate(text) : Date.parse(text as string)),
+		stringify,
 	};
 }
 
@@ -279,13 +360,20 @@ class UseFailed extends Error {}
  */
 class Render extends Template {
 	ssqch: Helpers;
+	/** The variables an include gives back to the template that included it (see `includeTag`). */
+	ssqchShared: unknown[] = [];
 	private engine: EngineState;
 	private trail: string[] = [];
+	/** The page's, layout's or data string's own name and text, for the line an error is on. */
+	private name: string;
+	private source: string;
 
-	constructor(engine: EngineState, compiler: Edge["compiler"]) {
+	constructor(engine: EngineState, compiler: Edge["compiler"], name: string, source: string) {
 		super(compiler, engine.edge.globals, {}, engine.edge.processor);
 		this.engine = engine;
 		this.ssqch = engine.helpers;
+		this.name = name;
+		this.source = source;
 	}
 
 	compilePartial(templatePath: string, ...localVariables: string[]): CompiledTemplate {
@@ -352,7 +440,7 @@ class Render extends Template {
 		if (error instanceof UseFailed) throw new TemplateError(`${at}: ${error.message}`, filename);
 		// `@newError` says where it is.
 		if (error instanceof EdgeError) throw new TemplateError(`${this.nameOf(error.filename)}:${error.line}: ${error.message}`, error.filename);
-		throw new TemplateError(`${at}: ${this.describe(error)}`, filename);
+		throw new TemplateError(`${at}: ${this.describe(error, filename, lineNumber)}`, filename);
 	}
 
 	/** An include's file by its name in the includes folder (`partials/nav.edge`); a page's own name as it is. */
@@ -360,13 +448,31 @@ class Render extends Template {
 		return this.engine.loader.names.get(file) ?? file;
 	}
 
+	/** Line `n` of a template this render read: the page's own, or an include's. */
+	private lineOf(file: string, n: number): string | undefined {
+		const text = file === this.name ? this.source : this.engine.loader.texts.get(file);
+		return text?.split("\n")[n - 1];
+	}
+
 	/** What a template's code threw, in 0.7's words: `` `upcase` is not a function `` rather than `state.upcase is not a function`. */
-	private describe(error: unknown): string {
+	private describe(error: unknown, file: string, line: number): string {
 		if (error instanceof BuildError) return error.message;
 		const text = describeThrown(error, this.engine.loader.root);
 		if (!(error instanceof TypeError || error instanceof ReferenceError)) return text;
 		// edge.js reads the page's data as `state.<name>`.
 		const plain = text.replace(/(^|[\s(`'])state\./g, "$1");
+		// `{{ a.b.c }}`: what was undefined, as 0.7 named it (`... (reading 'b') in \`a\``), when the
+		// line has one such place.
+		const reading = /^Cannot read properties of (?:undefined|null) \(reading '([^']+)'\)(?=\n|$)/.exec(plain);
+		if (reading) {
+			const word = reading[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			const text = this.lineOf(file, line) ?? "";
+			const paths = new Set([...text.matchAll(new RegExp(`([A-Za-z_$][\\w$]*(?:\\??\\.[A-Za-z_$][\\w$]*)*)\\??\\.${word}\\b`, "g"))].map((m) => m[1].replaceAll("?", "")));
+			// 0.7's name for what isn't a name: `new Date(x).getTime()`.
+			if (!paths.size && new RegExp(`[)\\]]\\??\\.${word}\\b`).test(text)) paths.add("expression");
+			if (paths.size === 1) return `${reading[0]} in \`${[...paths][0]}\`${plain.slice(reading[0].length)}`;
+			return plain;
+		}
 		const found = /^(.+?) is not a function(?=\n|$)/.exec(plain);
 		if (!found) return plain;
 		const name = found[1];
@@ -401,6 +507,8 @@ class Includes implements LoaderContract {
 	root: string;
 	/** An include's file, and its name in errors (`partials/nav.edge`). */
 	names = new Map<string, string>();
+	/** An include's text as edge.js was given it, for the line an error is on. */
+	texts = new Map<string, string>();
 	private found = new Map<string, string>();
 	mounted = {};
 	templates = {};
@@ -429,7 +537,9 @@ class Includes implements LoaderContract {
 			if ((e as NodeJS.ErrnoException)?.code === "ENOENT") throw this.notFound(templatePath);
 			throw new BuildError(`${templatePath}: ${(e as Error)?.message ?? e}`);
 		}
-		return { template: stripFrontMatter(text) };
+		const template = stripFrontMatter(text);
+		this.texts.set(templatePath, template);
+		return { template };
 	}
 
 	/** `template not found: .../_includes/partials/navv.edge (did you mean \`partials/nav\`?)` */
@@ -492,11 +602,21 @@ function install(): void {
 			case "es__mustache":
 				buffer.outputRaw(`{{{${token.properties.jsArg}}}}`);
 				return;
+			case "tag": {
+				// The blocks it's inside, for an `@else` that isn't in one (see `insideBlocks`).
+				if (!this.tags[token.properties.name]?.block) return processToken.call(this, token, buffer);
+				const blocks: Block[] = (this.ssqchBlocks ??= []);
+				blocks.push({ name: token.properties.name, otherwise: false });
+				try { return processToken.call(this, token, buffer); } finally { blocks.pop(); }
+			}
 			default:
 				return processToken.call(this, token, buffer);
 		}
 	};
 }
+
+/** A block tag being compiled, and whether it has had its `@else`. */
+interface Block { name: string; otherwise: boolean }
 
 /** Routes a parser's expressions (the tags' arguments, which go through `parser.utils`) through `adjust`. */
 function prepare(parser: any, settings: Settings): void {
@@ -539,11 +659,13 @@ interface Where {
 	chain: boolean;
 	/** A name read as a value (not a property's name, a key or a parameter). */
 	ref: boolean;
+	/** What a call calls, or what's assigned to, changed or deleted: a member there stays as it is. */
+	place: boolean;
 	/** The parameters of the functions it's in. */
 	params: ReadonlySet<string>;
 }
 
-const TOP: Where = { fn: false, chain: false, ref: true, params: new Set() };
+const TOP: Where = { fn: false, chain: false, ref: true, place: false, params: new Set() };
 
 type Visit = (node: any, where: Where) => any;
 
@@ -565,7 +687,8 @@ function walk(node: any, visit: Visit, where: Where = TOP, enter?: (node: any, w
 		const value = node[key];
 		if (!value || typeof value !== "object") continue;
 		const named = (node.type === "MemberExpression" && key === "property" && !node.computed) || (node.type === "Property" && key === "key" && !node.computed) || (scope && key === "params");
-		node[key] = walk(value, visit, { fn, chain, ref: !named, params }, enter);
+		const place = (node.type === "CallExpression" && key === "callee") || (node.type === "AssignmentExpression" && key === "left") || node.type === "UpdateExpression" || (node.type === "UnaryExpression" && node.operator === "delete");
+		node[key] = walk(value, visit, { fn, chain, ref: !named, place, params }, enter);
 	}
 	return visit(node, where);
 }
@@ -607,6 +730,9 @@ const INLINE = new Set(["$filename", "state", "$context"]);
  *   between Node releases);
  * - `upper('x')`, when the page has a field `upper` that isn't a function, calls the function;
  * - `reverse()` and `sort()` give copies, as 0.7's did;
+ * - a date's methods answer in UTC, `new Date(2024, 0, 5)` is in UTC, and a date as text
+ *   (`String(d)`, `` `${d}` ``, `'on ' + d`, `[d].join()`) is ISO 8601, as in 0.7;
+ * - a string with an emoji is indexed and sliced by character, as in 0.7;
  * - in async mode, each call is awaited, as 0.7 awaited every function's answer, and so is
  *   each one in a `map` callback (`posts.map(p => imageUrl(p.image))`: the callback is made
  *   async, and the list waited for). One in another function can't be, and says so.
@@ -621,27 +747,51 @@ function adjust(ast: any, parser: any, settings: Settings): any {
 			callback.ssqchAwaited = true;
 		}
 	};
+	const isNumber = (node: any) => node.type === "Literal" && typeof node.value === "number";
 	return walk(ast, (node, where) => {
-		if (node.type === "Identifier") {
-			const { name } = node;
-			if (!where.ref || where.params.has(name) || INLINE.has(name) || parser.stack.has(name) || (globalThis as any)[name] === undefined) return node;
-			if (settings.globals.has(name)) return member(id("state"), name);
-			const test = { type: "BinaryExpression", operator: "in", left: { type: "Literal", value: name, raw: JSON.stringify(name) }, right: id("state") };
-			return { type: "ConditionalExpression", test, consequent: member(id("state"), name), alternate: node };
+		switch (node.type) {
+			case "Identifier": {
+				const { name } = node;
+				if (!where.ref || where.params.has(name) || INLINE.has(name) || parser.stack.has(name) || (globalThis as any)[name] === undefined) return node;
+				if (settings.globals.has(name)) return member(id("state"), name);
+				const test = { type: "BinaryExpression", operator: "in", left: { type: "Literal", value: name, raw: JSON.stringify(name) }, right: id("state") };
+				return { type: "ConditionalExpression", test, consequent: member(id("state"), name), alternate: node, ssqchGlobal: name };
+			}
+			case "NewExpression":
+				return node.callee.ssqchGlobal === "Date" ? call(helper("newDate"), node.arguments) : node;
+			case "TemplateLiteral":
+				node.expressions = node.expressions.map((e: any) => call(helper("str"), [e]));
+				return node;
+			case "BinaryExpression":
+				return node.operator === "+" && !(isNumber(node.left) && isNumber(node.right)) ? call(helper("add"), [node.left, node.right]) : node;
+			case "MemberExpression":
+				// `t[0]`, not where it's assigned to or called.
+				return node.computed && !node.optional && !where.place && !where.chain ? call(helper("index"), [node.object, node.property]) : node;
 		}
 		if (node.type === "CallExpression") {
 			const callee = node.callee;
 			if (isState(callee, AWAIT_MARK)) return call(helper("awaitSync"), node.arguments);
-			const method = callee.type === "MemberExpression" && !callee.computed && !callee.optional && callee.property.type === "Identifier" ? callee.property.name : "";
-			if ((method === "reverse" || method === "sort") && !where.chain && !node.optional) {
+			const method = callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" ? callee.property.name : "";
+			if (callee.ssqchGlobal === "String" && node.arguments.length === 1) {
+				node = call(helper("str"), node.arguments);
+			} else if (method === "parse" && callee.object.ssqchGlobal === "Date") {
+				node = call(helper("parseDate"), node.arguments);
+			} else if (method === "stringify" && callee.object.ssqchGlobal === "JSON") {
+				node = call(helper("stringify"), node.arguments);
+			} else if ((method === "reverse" || method === "sort") && !callee.optional && !where.chain && !node.optional) {
 				node = call(helper(method), [callee.object, ...node.arguments]);
+			} else if (values.ADJUSTED_METHODS.has(method) && !isState(callee) && !node.optional) {
+				// In an optional chain (`page.date?.getDate()`), nothing gives nothing.
+				const optional = { type: "Literal", value: Boolean(callee.optional || where.chain), raw: String(Boolean(callee.optional || where.chain)) };
+				const path = calleeName(callee);
+				node = call(helper("call"), [callee.object, { type: "Literal", value: method, raw: JSON.stringify(method) }, optional, { type: "Literal", value: path, raw: JSON.stringify(path) }, ...node.arguments]);
 			} else if (isState(callee) && settings.functions.has(callee.property.name)) {
 				const test = { type: "BinaryExpression", operator: "===", left: { type: "UnaryExpression", operator: "typeof", prefix: true, argument: member(id("state"), callee.property.name) }, right: { type: "Literal", value: "function", raw: "\"function\"" } };
 				node.callee = { ...callee, object: { type: "ConditionalExpression", test, consequent: id("state"), alternate: helper("functions") } };
 			}
 			if (!asyncMode || where.chain) return node;
 			if (where.fn) return call(helper("notAsync"), [node, { type: "Literal", value: calleeName(callee), raw: JSON.stringify(calleeName(callee)) }]);
-			return { type: "AwaitExpression", argument: node.arguments[0]?.ssqchAwaited ? call(helper("all"), [node]) : node };
+			return { type: "AwaitExpression", argument: callee.type === "MemberExpression" && node.arguments[0]?.ssqchAwaited ? call(helper("all"), [node]) : node };
 		}
 		if (node.type === "ChainExpression" && asyncMode && !where.chain) {
 			return where.fn ? node : { type: "AwaitExpression", argument: node };
@@ -659,7 +809,8 @@ function calleeName(callee: any): string {
 		if (callee.object.type === "Identifier" && callee.object.name === "state") return callee.property.name;
 		return `${calleeName(callee.object)}.${callee.property.name}`;
 	}
-	return "function";
+	// What 0.7 called anything else.
+	return "expression";
 }
 
 // ---- tags that work as 0.7's did -------------------------------------------------------------
@@ -668,6 +819,66 @@ const unallowed = (message: string, filename: string, loc: { line: number; col: 
 	throw new EdgeError(message, "E_UNALLOWED_EXPRESSION", { line: loc.line, col: loc.col, filename });
 };
 
+/** A tag where it can't be: `unexpected @end`, in 0.7's words. */
+const unexpected = (token: any): never => {
+	throw new EdgeError(`unexpected @${token.properties.name}`, "E_UNEXPECTED_TAG", { line: token.loc.start.line, col: token.loc.start.col, filename: token.filename });
+};
+
+/**
+ * `@end` with nothing open. edge.js knows `@end` only as the end of what's open, and printed a
+ * stray one as text; 0.7 said where it was.
+ */
+const endTag: TagContract = { block: false, seekable: false, tagName: "end", compile: (_parser, _buffer, token) => unexpected(token) };
+
+/** `@else` and `@elseif` outside the blocks they belong to (edge.js wrote them into the template's code, which then didn't compile, with no line). */
+function insideBlocks(tag: TagContract, blocks: string[]): TagContract {
+	return {
+		...tag,
+		compile(parser: any, buffer: any, token: any) {
+			const block: Block | undefined = parser.ssqchBlocks?.at(-1);
+			if (!block || !blocks.includes(block.name) || block.otherwise) unexpected(token);
+			if (token.properties.name === "else") block!.otherwise = true;
+			return tag.compile(parser, buffer, token);
+		},
+	};
+}
+
+/**
+ * `@include` and `@includeIf`, with what the include changed given back: an `@assign` or `@let`
+ * of a variable the including template has reaches it, as in 0.7, where an include shared its
+ * scope. (edge.js gives an include the template's variables as its function's arguments, so
+ * what it changes stays in it.) The include hands them back as `template.ssqchShared`.
+ */
+function include(parser: any, buffer: any, token: any, path: any): void {
+	const locals: string[] = [...new Set<string>(parser.stack.list())];
+	const render = `template.compilePartial(${[parser.utils.stringify(path), ...locals.map((l) => JSON.stringify(l))].join(",")})(${["template", "state", "$context", ...locals].join(",")})`;
+	buffer.outputExpression(`${parser.asyncMode ? "await " : ""}${render}`, token.filename, token.loc.start.line, false);
+	if (locals.length) buffer.writeExpression(`[${locals.join(", ")}] = template.ssqchShared`, token.filename, token.loc.start.line);
+}
+
+const argument = (parser: any, token: any) => parser.utils.transformAst(parser.utils.generateAST(token.properties.jsArg, token.loc, token.filename), token.filename, parser);
+
+const includeTag: TagContract = {
+	block: false,
+	seekable: true,
+	tagName: "include",
+	compile: (parser: any, buffer: any, token: any) => include(parser, buffer, token, argument(parser, token)),
+};
+
+const includeIfTag: TagContract = {
+	block: false,
+	seekable: true,
+	tagName: "includeIf",
+	compile(parser: any, buffer: any, token: any) {
+		const parsed = argument(parser, token);
+		if (parsed.type !== "SequenceExpression") unallowed(`"${token.properties.jsArg}" is not a valid argument type for the @includeIf tag`, token.filename, parser.utils.getExpressionLoc(parsed));
+		if (parsed.expressions.length !== 2) throw new EdgeError("@includeIf expects a total of 2 arguments", "E_ARGUMENTS_MIS_MATCH", { line: token.loc.start.line, col: token.loc.start.col, filename: token.filename });
+		const [condition, path] = parsed.expressions;
+		buffer.writeStatement(`if (${parser.utils.stringify(condition)}) {`, token.filename, token.loc.start.line);
+		include(parser, buffer, token, path);
+		buffer.writeStatement("}", token.filename, -1);
+	},
+};
 
 /**
  * `@let`, as 0.7 had it: the value is read before the name is declared, so `@let(n = n - 1)`
@@ -682,7 +893,14 @@ const letTag: TagContract = {
 	noNewLine: true,
 	compile(parser: any, buffer: any, token: any) {
 		const { filename } = token;
-		const parsed = parser.utils.generateAST(`let ${token.properties.jsArg}`, token.loc, filename).declarations[0];
+		const declaration = parser.utils.generateAST(`let ${token.properties.jsArg}`, token.loc, filename);
+		const parsed = declaration.type === "VariableDeclaration" ? declaration.declarations[0] : undefined;
+		if (!parsed) {
+			// `@let(= 1)`: JavaScript reads `let = 1` as setting a variable named `let`.
+			const first = token.properties.jsArg.trim();
+			const found = first === "" ? "end of input" : `\`${/^[A-Za-z_$][\w$]*/.exec(first)?.[0] ?? first[0]}\``;
+			unallowed(`invalid @let arguments: expected an identifier but found ${found}`, filename, { line: token.loc.start.line, col: token.loc.start.col });
+		}
 		const key = parsed.id;
 		if (!["Identifier", "ObjectPattern", "ArrayPattern"].includes(key.type)) unallowed("Invalid variable name for the @let tag", filename, parser.utils.getExpressionLoc(key));
 		if (!parsed.init) unallowed("invalid @let arguments: expected `=`", filename, { line: token.loc.start.line, col: token.loc.start.col });
