@@ -1,18 +1,11 @@
-# Before a release is published, waits for the CI workflow (ci.yml) to pass on
-# the tagged commit. dist calls it with the smoke test and notarizing, after the
-# builds (`global-artifacts-jobs` in dist-workspace.toml), and its host job only
-# publishes when this passes: a tag pushed before CI finishes waits, and a tag
-# on a commit whose CI failed (or never ran) builds but doesn't release. On pull
-# requests it does nothing: CI runs there on its own.
+# Before a release is published, waits for the CI workflow (ci.yml) to pass on the tagged
+# commit. release.yml calls it beside the builds and tests, and its `release` job only runs when
+# this passes: a tag pushed before CI finishes waits, and a tag on a commit whose CI failed (or
+# never ran) builds but doesn't release. release.yml only calls it for a tag.
 name: Check CI
 
 on:
   workflow_call:
-    inputs:
-      # dist passes its plan to every global artifacts job; this one doesn't need it.
-      plan:
-        required: true
-        type: string
 
 jobs:
   check-ci:

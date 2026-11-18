@@ -1,28 +1,23 @@
-# Notarizes the signed macOS binaries with Apple, so Gatekeeper lets them run
-# when they're downloaded with a browser. dist signs them while building
-# (`macos-sign` in dist-workspace.toml) and calls this afterwards
-# (`global-artifacts-jobs`); if it fails, the release isn't published.
+# Notarizes the signed macOS executables with Apple, so Gatekeeper lets them run when they're
+# downloaded with a browser. release.yml signs them while building (build-sea.ts --sign, with the
+# hardened runtime and scripts/sea-entitlements.plist) and calls this for a tag; if it fails, the
+# release isn't published.
 #
-# A bare command-line binary can't have a notarization ticket stapled to it.
-# Gatekeeper looks the ticket up online instead, so the archives don't change
-# after signing.
+# A bare command-line executable can't have a notarization ticket stapled to it. Gatekeeper looks
+# the ticket up online instead, so the archives don't change after signing.
 #
-# Secrets (the same names as in reverentgeek/metermaid): APPLE_ID (the Apple
-# ID's email), APPLE_PASSWORD (an app-specific password for it) and
-# APPLE_TEAM_ID (the 10-character Developer Team ID).
+# Secrets (the same names as in reverentgeek/metermaid): APPLE_ID (the Apple ID's email), APPLE_PASSWORD
+# (an app-specific password for it) and APPLE_TEAM_ID (the 10-character Developer Team ID).
 name: Notarize
 
 on:
   workflow_call:
-    inputs:
-      plan:
-        required: true
-        type: string
 
 jobs:
   notarize:
     name: notarize (${{ matrix.target }})
     runs-on: macos-15
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -30,12 +25,12 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: artifacts-build-local-${{ matrix.target }}
-          path: artifacts
-      - name: Unpack the binary
+          name: executable-${{ matrix.target }}
+          path: archives
+      - name: Unpack the executable
         run: |
           mkdir unpacked
-          tar xzf "artifacts/ssqch-${{ matrix.target }}.tar.gz" -C unpacked
+          tar xzf "archives/ssqch-${{ matrix.target }}.tar.gz" -C unpacked
           cp "unpacked/ssqch-${{ matrix.target }}/ssqch" .
       - name: Check the signature
         run: |
@@ -44,7 +39,12 @@ jobs:
           echo "$info"
           echo "$info" | grep -q "^Authority=Developer ID Application" || { echo "::error::not signed with a Developer ID Application certificate"; exit 1; }
           echo "$info" | grep -q "^Timestamp=" || { echo "::error::the signature has no secure timestamp, which notarization requires"; exit 1; }
-          echo "$info" | grep -q "flags=.*runtime" || { echo "::error::the signature doesn't use the hardened runtime (CODESIGN_OPTIONS=runtime)"; exit 1; }
+          echo "$info" | grep -q "flags=.*runtime" || { echo "::error::the signature doesn't use the hardened runtime"; exit 1; }
+          # V8 needs to write machine code under the hardened runtime, and the notary service
+          # refuses an executable a debugger may attach to.
+          entitlements=$(codesign --display --entitlements - --xml ssqch 2>/dev/null)
+          echo "$entitlements" | grep -q "com.apple.security.cs.allow-jit" || { echo "::error::the signature has no allow-jit entitlement, so V8 can't run (scripts/sea-entitlements.plist)"; exit 1; }
+          if echo "$entitlements" | grep -q "get-task-allow"; then echo "::error::the signature has get-task-allow, which notarization refuses"; exit 1; fi
       - name: Submit to Apple's notary service
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -79,5 +79,10 @@ jobs:
             echo "Attempt $attempt: not accepted as notarized yet; checking again in 20 seconds."
             sleep 20
           done
-          echo "::error::Gatekeeper doesn't accept the binary as notarized"
+          echo "::error::Gatekeeper doesn't accept the executable as notarized"
           exit 1
+      # Quarantined, as a download is, it runs (and unpacks itself) on Apple silicon; the Intel
+      # one is checked by the smoke test on its own runner.
+      - name: The quarantined executable runs
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: SSQCH_UNPACK_DIR="$RUNNER_TEMP/unpack" ./ssqch --version

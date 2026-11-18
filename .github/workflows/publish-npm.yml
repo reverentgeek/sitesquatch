@@ -1,38 +1,30 @@
-# Publishes the npm packages after the GitHub release is created: `ssqch`, a
-# small wrapper, and one `@ssqch/<platform>-<arch>` package per release binary,
-# which the wrapper lists as optional dependencies (scripts/npm-packages.mjs
-# builds them from the release archives). dist calls this as a publish job
-# (`publish-jobs` in dist-workspace.toml), so it runs only once the release is
-# out, and the smoke test has already installed each platform's package.
+# Publishes the npm package after the GitHub release is created: the tarball the release
+# workflow packed and tested (packages/ssqch/scripts/build.ts), one package, `ssqch`, with sharp
+# as its only dependency. release.yml calls it once the release is out.
 #
-# It uses npm's trusted publishing (GitHub's OIDC token, no npm token stored
-# here), which also adds provenance. Each of the five packages on npmjs.com names
-# reverentgeek/sitesquatch and `release.yml` as its trusted publisher: npm checks
-# the calling workflow, not this one. A package has to exist before it can have
-# one, so each was first published by hand (see AGENTS.md). A version that's
-# already on npm is skipped, so the job can be rerun.
+# It uses npm's trusted publishing (GitHub's OIDC token, no npm token stored here), which also
+# adds provenance. `ssqch` on npmjs.com names reverentgeek/sitesquatch and `release.yml` as its
+# trusted publisher: npm checks the calling workflow, not this one. A version that's already on
+# npm is skipped, so the job can be rerun.
 name: Publish to npm
 
 on:
   workflow_call:
     inputs:
-      plan:
+      version:
         required: true
         type: string
 
 jobs:
   publish-npm:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 20
     permissions:
       contents: read
       id-token: write
     env:
-      PLAN: ${{ inputs.plan }}
+      VERSION: ${{ inputs.version }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -45,38 +37,18 @@ jobs:
             || { echo "::error::npm $(npm --version) can't use trusted publishing (it needs 11.5.1 or later)"; exit 1; }
       - uses: actions/download-artifact@v8
         with:
-          pattern: artifacts-build-local-*
-          path: artifacts
-          merge-multiple: true
-      - name: Build the packages
-        run: |
-          version=$(echo "$PLAN" | jq -r '.releases[] | select(.app_name == "ssqch") | .app_version')
-          [ -n "$version" ] || { echo "::error::the plan has no ssqch release"; exit 1; }
-          echo "version=$version" >> "$GITHUB_ENV"
-          node scripts/npm-packages.mjs --archives artifacts --out npm-out --version "$version"
+          name: npm-package
+          path: npm-package
       - name: Publish
         run: |
-          # A prerelease (0.6.0-beta.1) goes under the `next` tag, so `npm install
-          # ssqch` keeps getting the latest release.
+          tarball="npm-package/ssqch-$VERSION.tgz"
+          [ -f "$tarball" ] || { echo "::error::$tarball isn't there"; ls npm-package; exit 1; }
+          # A prerelease (0.8.0-rc.1) goes under the `next` tag, so `npm install ssqch` keeps
+          # getting the latest release.
           tag=latest
-          case "$version" in *-*) tag=next ;; esac
-          on_npm() { [ "$(npm view "$1@$version" version --prefer-online 2>/dev/null)" = "$version" ]; }
-          publish() {
-            name=$(jq -r .name "$1/package.json")
-            if on_npm "$name"; then
-              echo "$name@$version is already on npm"
-            else
-              (cd "$1" && npm publish --access public --tag "$tag")
-            fi
-          }
-          # The platform packages first, and the wrapper only once the registry serves
-          # them: npm takes minutes to process a 12 MB binary (the 2 kB wrapper is
-          # quicker), and until then it installs the wrapper without one.
-          for dir in npm-out/*-*; do publish "$dir"; done
-          for dir in npm-out/*-*; do
-            name=$(jq -r .name "$dir/package.json")
-            for i in $(seq 1 90); do on_npm "$name" && break; sleep 20; done
-            on_npm "$name" || { echo "::error::$name@$version still isn't on npm after 30 minutes, so ssqch@$version wasn't published. Rerun this job once it is."; exit 1; }
-            echo "$name@$version is on npm"
-          done
-          publish npm-out/ssqch
+          case "$VERSION" in *-*) tag=next ;; esac
+          if [ "$(npm view "ssqch@$VERSION" version --prefer-online 2>/dev/null)" = "$VERSION" ]; then
+            echo "ssqch@$VERSION is already on npm"
+            exit 0
+          fi
+          npm publish "$tarball" --access public --provenance --tag "$tag"

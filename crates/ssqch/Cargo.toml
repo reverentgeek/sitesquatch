@@ -28,10 +28,6 @@ sass = ["dep:sitesquatch-plugin-sass"]
 # `fetch()` in config and data files, about 2.3 MB.
 fetch = ["sitesquatch-js/fetch"]
 
-# Release builds include AVIF support (see dist-workspace.toml).
-[package.metadata.dist]
-features = ["avif"]
-
 # `cargo binstall ssqch` downloads the release archive instead of compiling.
 # dist's archives are `ssqch-<target>.tar.gz` with the binary in a
 # `ssqch-<target>/` folder; the Windows zip has `ssqch.exe` at the top.

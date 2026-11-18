@@ -5,8 +5,9 @@ breaks existing sites bumps the minor version (0.2.0 to 0.3.0), and everything e
 patch version (0.2.0 to 0.2.1). Breaking changes are listed under **Breaking**, with what a site
 has to change.
 
-The version is `[workspace.package] version` in `Cargo.toml`, shared by every crate. A release is
-a `v<version>` tag on a commit where that version matches.
+The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspace.package]
+version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
+where that version matches.
 
 ## 0.8.0 (not released: the move to Node, in progress)
 
