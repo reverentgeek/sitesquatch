@@ -162,6 +162,14 @@ until 0.8 ships.
 - [ ] **Stage 5, plugins:** images (D4), rss, minify (D3), assets, sitemap, redirects, Sass,
       elements, themes; the Rust plugin SDK (`ssqch-plugin` crate, the `.wasm` loader, an example,
       and docs on when a Rust plugin pays).
+  - [x] Images on sharp 0.35.5 and assets (2026-11-18), with 0.7's names (BLAKE3 in TypeScript),
+        so a site's image cache and asset URLs carry over: a copy of the blog with its cache
+        builds its 4,985 image files byte for byte as frozen. The quality options keep 0.7's
+        numbers, turned into sharp's from a calibration at equal SSIMULACRA2
+        (`src/image/quality.ts`); a cold build of the blog's images takes 28 s (0.7: 68 s) and
+        makes 7% fewer bytes. `files(pattern, { dimensions: true })` reads sizes too.
+  - [ ] Document for stage 9: the quality numbers are 0.7's scale on sharp, AVIF needs no
+        feature now, and `[ssqch] Encoded` lines come while pages render.
 - [ ] **Stage 6, the dev server**, reloading a changed config from a bundled temporary copy.
       `importFile` (`modules.ts`) imports a changed file fresh but not the modules it imports,
       so a filter in the config's `./lib/filters.js` (the blog has one) stays the old one on a
