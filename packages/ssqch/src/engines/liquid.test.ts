@@ -81,3 +81,76 @@ test("strict_names_what_is_missing_in_0_7_words", async () => {
 	const message = await failure(() => liquid.render("{{ titel }}", {}, site.ctx("page.liquid")));
 	assert.ok(message.startsWith("page.liquid:1: ") && message.includes("requested variable=titel"), message);
 });
+
+test("strict_refuses_what_0_7_refused", async () => {
+	const site = testSite({ "_includes/a.liquid": "x\n{{ nope }}" }, {}, true);
+	const liquid = liquidEngine(site.env);
+	// Asking whether a value is there is fine; using one that isn't is an error.
+	assert.equal(liquid.render("{% if nope %}x{% endif %}{% unless nope.x %}u{% endunless %}{% if nope and nada %}y{% endif %}", {}, site.ctx("page.liquid")), "u");
+	for (const source of ["{{ nope | default: \"d\" }}", "{% if title == nope %}{% endif %}", "{% case nope %}{% when 1 %}{% endcase %}", "{% assign y = nope %}"]) {
+		const message = await failure(() => liquid.render(source, { title: "t" }, site.ctx("page.liquid")));
+		assert.ok(message.includes("requested variable=nope"), `${source}: ${message}`);
+	}
+	// In an include, the include's file and line.
+	const message = await failure(() => liquid.render("one\n{% include \"a\" %}", {}, site.ctx("page.liquid")));
+	assert.ok(message.startsWith("_includes/a.liquid:2: Unknown variable"), message);
+});
+
+/** `run` with the machine's time zone set to `zone` (Node reads `TZ` again when it changes). */
+function inZone<T>(zone: string, run: () => T): T {
+	const was = process.env.TZ;
+	process.env.TZ = zone;
+	try { return run(); } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
+}
+
+test("liquids_own_filters_see_a_date_as_0_7_wrote_it", () => {
+	const site = testSite({});
+	const liquid = liquidEngine(site.env);
+	const date = new Date("2026-01-02T03:04:05Z");
+	const out = inZone("America/Los_Angeles", () => liquid.render("[{{ date | append: \"x\" }}] [{{ date | truncate: 15 }}] [{{ date | slice: 0, 10 }}] [{{ date | size }}] [{{ dates | join: \", \" }}] [{{ date | raw }}]", { date, dates: [date, date] }, site.ctx("page.liquid")));
+	const shown = "2026-01-02 03:04:05 +0000";
+	assert.equal(out, `[${shown}x] [2026-01-02 0...] [2026-01-02] [25] [${shown}, ${shown}] [${shown}]`);
+});
+
+test("each_function_runs_once_a_page_though_one_is_async", async () => {
+	let count = 0;
+	const site = testSite({}, { count: () => ++count, later: async (s: unknown) => `later:${s}` });
+	const liquid = liquidEngine(site.env);
+	const source = "{{ 1 | count }} {{ 1 | count }} {{ title | later }} {{ 1 | count }}";
+	assert.equal(await liquid.render(source, { title: "x" }, site.ctx("page.liquid", "page.liquid")), "1 2 later:x 3");
+	// The next page of the template renders asynchronously from the start.
+	assert.equal(await liquid.render(source, { title: "y" }, site.ctx("page.liquid", "page.liquid")), "4 5 later:y 6");
+});
+
+test("numbers_are_0_7s_whole_numbers_and_floats", async () => {
+	const site = testSite({});
+	const liquid = liquidEngine(site.env);
+	const out = liquid.render("{{ 10 | times: 1.0 | divided_by: 4 }}|{{ 10 | plus: 0.0 | divided_by: 4 }}|{{ ratio | times: 2 | divided_by: 2 }}|{{ 10.0 | divided_by: 4 }}|{% assign y = 4.0 %}{{ 10 | divided_by: y }}|{{ 7 | divided_by: 2 }}|{{ -7 | divided_by: 2 }}|{{ 7 | modulo: -3 }}|{{ 10 | times: 1.0 }}|{{ \"3\" | plus: 1 }}|{{ -2.5 | round }}|{{ 2.567 | round: 2 }}", { ratio: 2.5 }, site.ctx("page.liquid"));
+	assert.equal(out, "2.5|2.5|2.5|2.5|2.5|3|-3|1|10|4|-3|2.57");
+	for (const [source, said] of [["{{ nope | plus: 1 }}", "invalid input: Number expected"], ["{{ 1 | plus: nope }}", "invalid argument `operand`: Number expected"], ["{{ 1 | divided_by: 0 }}", "Can't divide by zero"]]) {
+		const message = await failure(() => liquid.render(source, {}, site.ctx("page.liquid")));
+		assert.ok(message.startsWith("page.liquid:1: ") && message.includes(said), message);
+	}
+});
+
+test("a_missing_value_reaches_a_function_as_null", () => {
+	const site = testSite({}, { show: (v: unknown) => (v === null ? "null" : typeof v), two: (a: unknown, b: unknown = "B") => `${a}+${b}` });
+	const liquid = liquidEngine(site.env);
+	assert.equal(liquid.render("{{ nope | show }} {{ \"x\" | two: nope }} {{ \"x\" | two }}", {}, site.ctx("page.liquid")), "null x+null x+B");
+});
+
+test("the_smaller_filters_give_0_7s_output", async () => {
+	const site = testSite({ "_includes/nav.liquid": "nav" });
+	const liquid = liquidEngine(site.env);
+	const data = { obj: { a: 1, b: 2 }, list: ["a", "b"], same: [{ x: 1 }, { x: 1 }, { x: 2 }] };
+	const out = liquid.render("{{ 'a\"b' | escape }}|{{ '&amp; \"x\"' | escape_once }}|{{ obj | size }}|{{ 5 | size }}|{{ same | uniq | size }}|{{ \"hello world\" | truncatewords: 0 }}|{{ \"a  b   c\" | truncatewords: 2 }}|{{ 'a\\nb' }}|{{ list | map: \"x\" | size }}|{{ \"a%20b+c%\" | url_decode }}|{{ \"hello world\" | truncate: 8, \"…\" }}", data, site.ctx("page.liquid"));
+	assert.equal(out, "a&quot;b|&amp; &quot;x&quot;|2|1|2|...|a ...|a\\nb|0|a b c%|hello…");
+	// What 0.7 refused is still refused.
+	for (const [source, said] of [["{% include \"nav\", a: 1 %}", "expected \"=\""], ["{% include \"nav\" with title %}", "not `with` or `for`"], ["{{ title | }}", "expected a filter's name"], ["{{ 1e3 }}", "`1e3` isn't a number"], ["{{ \"%E2%82\" | url_decode }}", "Malformed UTF-8"]]) {
+		const message = await failure(() => liquid.render(source, { title: "t" }, site.ctx("page.liquid")));
+		assert.ok(message.includes(said), `${source}: ${message}`);
+	}
+	// A missing include's suggestion is close to the name asked for.
+	assert.equal(await failure(() => liquid.render("{% include \"zz\" %}", {}, site.ctx("page.liquid"))), "page.liquid:1: template not found: can't include `zz`");
+	assert.equal(await failure(() => liquid.render("{% include \"nva\" %}", {}, site.ctx("page.liquid"))), "page.liquid:1: template not found: can't include `nva` (did you mean `nav.liquid`?)");
+});

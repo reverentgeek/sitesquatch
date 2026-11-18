@@ -1,7 +1,7 @@
 // Liquid, for `.liquid`: liquidjs itself. What's ssqch's is around it, as 0.7 had it (the liquid
 // crate, `plugins/liquid`): includes from the site's and its themes' folders, Jekyll's
 // `{% include nav.html section="home" %}`, the config's functions as filters, Jekyll's and
-// Shopify's filters, dates in UTC, and errors that name the file and the line.
+// Shopify's filters, 0.7's numbers and dates, and errors that name the file and the line.
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -9,6 +9,7 @@ import type * as LiquidJs from "liquidjs";
 import type { FS, Liquid } from "liquidjs";
 import type { Filter } from "../config.ts";
 import type { Data } from "../data.ts";
+import { isPlainObject } from "../data.ts";
 import { BuildError } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
@@ -24,8 +25,19 @@ class NeedsAsync extends Error {}
 interface LiquidFailure {
 	message?: string;
 	originalError?: unknown;
-	token?: { file?: string; getPosition(): [number, number] };
+	token?: { file?: string; input?: string; getPosition(): [number, number] };
 }
+
+/**
+ * What the config's functions answered in one rendering of a template, in the order they were
+ * called. A template that turns out to need a promise awaited renders again asynchronously, and
+ * the calls it had made are answered from here, so each function runs once a page.
+ */
+interface Answers {
+	calls: Array<{ fn: Filter; value: unknown }>;
+	at: number;
+}
+const ANSWERS = Symbol("ssqch answers");
 
 const TAGS = /\{[{%]/;
 
@@ -47,20 +59,78 @@ export function liquidEngine(env: EngineEnv): TemplateEngine {
 	};
 }
 
+/**
+ * A number the liquid crate kept as a float though it's whole (`10.0`, `10 | times: 1.0`): it
+ * divides exactly (`| divided_by: 4` is 2.5), where a whole number divides to a whole number.
+ * liquidjs' own code reads it as the number (it's a Drop with `valueOf`). Made with liquidjs.
+ */
+interface LiquidFloat { n: number }
+let FloatValue: (new (n: number) => LiquidFloat) | undefined;
+const isFloat = (v: unknown): v is LiquidFloat => FloatValue !== undefined && v instanceof FloatValue;
+
 // liquidjs is loaded when the first Liquid template renders, not when ssqch starts: most sites
 // have none, and loading it takes about 5 ms. `require`, because rendering is synchronous.
 let library: typeof LiquidJs | undefined;
-const liquidjs = () => (library ??= createRequire(import.meta.url)("liquidjs") as typeof LiquidJs);
+function liquidjs(): typeof LiquidJs {
+	if (library) return library;
+	library = createRequire(import.meta.url)("liquidjs") as typeof LiquidJs;
+	const { Drop, Tokenizer } = library;
+	FloatValue = class extends Drop implements LiquidFloat {
+		n: number;
+		constructor(n: number) {
+			super();
+			this.n = n;
+		}
+		valueOf() { return this.n; }
+		toString() { return String(this.n); }
+	};
+	// How liquidjs reads a template's literals, where 0.7's crate read them otherwise (ssqch's
+	// own copy of liquidjs; nothing else uses it):
+	const tokenizer = Tokenizer.prototype as any;
+	// A number written with a decimal point is a float, however whole it is. Digits run into
+	// letters (`1e3`, `2nd`) aren't a number or a name, where liquidjs would look up a variable.
+	const readNumber = tokenizer.readNumber;
+	tokenizer.readNumber = function (this: any) {
+		const token = readNumber.call(this);
+		if (token && token.getText().includes(".") && Number.isInteger(token.content)) token.content = new FloatValue!(token.content);
+		if (!token) {
+			const word = /^[+-]?\d[\w-]*/.exec(this.input.slice(this.p, this.N))?.[0];
+			if (word && /[A-Za-z_]/.test(word)) throw this.error(`\`${word}\` isn't a number, and a variable's name starts with a letter`, this.p);
+		}
+		return token;
+	};
+	// A quoted string is the text between its quotes: `"a\nb"` is a backslash and an `n`.
+	const readQuoted = tokenizer.readQuoted;
+	tokenizer.readQuoted = function (this: any) {
+		const token = readQuoted.call(this);
+		if (token) token.content = token.getText().slice(1, -1);
+		return token;
+	};
+	// A `|` with no filter after it (`{{ title | }}`) is a mistake, as in 0.7, not nothing.
+	const readFilter = tokenizer.readFilter;
+	tokenizer.readFilter = function (this: any) {
+		const from = this.p;
+		const filter = readFilter.call(this);
+		if (!filter && this.input.slice(from, this.p).includes("|")) throw this.error("expected a filter's name after `|`", from);
+		return filter;
+	};
+	return library;
+}
 
 /** liquidjs, set up for the site; it adds the includes it reads to `loaded`. */
 function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["render"] {
-	const { Liquid, TypeGuards } = liquidjs();
+	const { Liquid, IfTag, IncludeTag, UnlessTag, TypeGuards } = liquidjs();
 	const root = env.config.root;
 	const isFile = (file: string) => fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false;
+	// Each include's file by its text: some of liquidjs' errors (a variable `strict` refuses) carry
+	// the template's text but not its file.
+	const includes = new Map<string, string>();
 	const read = (file: string) => {
 		const dir = env.includeDirs.find((d) => isInsideDir(d, file));
 		if (dir) loaded.add(path.relative(dir, file).split(path.sep).join("/"));
-		return fs.readFileSync(file, "utf8");
+		const text = fs.readFileSync(file, "utf8");
+		includes.set(text, file);
+		return text;
 	};
 	// Includes come from the includes folders only, as in 0.7: the name as it is, or with
 	// `.liquid` added when there's no file by that name.
@@ -91,11 +161,44 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 		// An unknown filter is an error, as in 0.7 (liquidjs would print the value as it is).
 		strictFilters: true,
 		strictVariables: env.strict,
-		// `strict` is about printing: `{% if nope %}` is still false.
-		lenientIf: true,
 		// A date prints as 0.7 printed it (`2026-01-02 00:00:00 +0000`), not in the machine's time zone.
 		outputEscape: printable as (v: unknown) => string,
 	});
+
+	// Jekyll's include takes `name=value` and nothing else, as 0.7's did: liquidjs would read
+	// `a: 1` as `a` being true, and pass over `with x` and `for x`.
+	liquid.registerTag("include", class extends IncludeTag {
+		constructor(token: any, remain: any, liquid: any, parser: any) {
+			const rest = String(token.args).replace(/^\s*(?:"[^"]*"|'[^']*'|\S+)/, "").replace(/"[^"]*"|'[^']*'/g, "\"\"");
+			if (/^\s*(?:with|for)\b/.test(rest)) throw new BuildError("Jekyll's include takes `name=value` arguments, not `with` or `for`");
+			if (/[\w-]\s*:/.test(rest)) throw new BuildError("expected \"=\" to be used for the assignment (Jekyll's include takes `name=value`)");
+			super(token, remain, liquid, parser);
+		}
+	});
+	// With `strict` on, a missing variable fails everywhere 0.7's did: in a comparison, `case`,
+	// `assign` and `default`. Only an `if` or `unless` that asks whether it's there (`{% if nope
+	// %}`, `{% if a and b %}`) stays false, as it did in 0.7.
+	if (env.strict) {
+		const existence = (value: any) => value.filters.length === 0 && value.initial.postfix.every((t: any) => !TypeGuards.isOperatorToken(t) || ["and", "or", "not"].includes(t.operator));
+		const lenientWhereAsked = (branches: any[]) => {
+			for (const { value } of branches) {
+				if (!existence(value)) continue;
+				const evaluate = value.value.bind(value);
+				value.value = (ctx: unknown) => evaluate(ctx, true);
+			}
+		};
+		liquid.registerTag("if", class extends IfTag { constructor(...args: any[]) { super(...(args as [any, any, any, any])); lenientWhereAsked((this as any).branches); } });
+		liquid.registerTag("unless", class extends UnlessTag { constructor(...args: any[]) { super(...(args as [any, any, any, any])); lenientWhereAsked((this as any).branches); } });
+	}
+
+	// liquidjs' own filters turn a value into text with `String()`: a date as the machine's time
+	// zone gives it, a float as a plain number. They get 0.7's text for a date (`2026-01-02
+	// 00:00:00 +0000`) and the number for a float, in a list too. JSON is JSON's.
+	for (const [name, impl] of Object.entries(liquid.filters as Record<string, any>)) {
+		if (["json", "jsonify", "inspect"].includes(name)) continue;
+		const handler = typeof impl === "function" ? impl : impl.handler;
+		liquid.registerFilter(name, { ...(typeof impl === "function" ? {} : impl), handler(this: unknown, input: unknown, ...args: unknown[]) { return handler.call(this, asText(input), ...args.map(asText)); } });
+	}
 
 	// Dates are formatted in UTC with English names, whatever the machine's settings (see
 	// liquid-date.ts). A value that isn't a date comes back as it is, as in 0.7.
@@ -120,65 +223,39 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 	});
 	liquid.registerFilter("date_to_string", dateString("%b"));
 	liquid.registerFilter("date_to_long_string", dateString("%B"));
-	// Whole numbers divide to a whole number, as in 0.7 and Shopify (`10 | divided_by: 4` is 2,
-	// rounded toward zero as the liquid crate does); a divisor written with a decimal point (`4.0`)
-	// divides exactly. `modulo` keeps the dividend's sign (`7 | modulo: -3` is 1).
-	liquid.registerFilter("divided_by", function (this: any, dividend: unknown, divisor: unknown) {
-		const [a, b] = [Number(dividend), Number(divisor)];
-		const written = this.token?.args?.[0];
-		const exact = TypeGuards.isNumberToken(written) && written.getText().includes(".");
-		return Number.isInteger(a) && Number.isInteger(b) && !exact && b !== 0 ? Math.trunc(a / b) : a / b;
-	});
-	liquid.registerFilter("modulo", (dividend: unknown, divisor: unknown) => Number(dividend) % Number(divisor));
-	// Where the liquid crate's filters say otherwise than liquidjs', 0.7's output stays:
-	// `capitalize` changes the first letter only (`Pine CONE`), `url_encode` writes a space as
-	// `%20`, `split` keeps empty strings at the end, and `array_to_sentence_string` puts a comma
-	// before the last word (`a, and b`).
-	liquid.registerFilter("capitalize", (input: unknown) => {
-		const [first = "", ...rest] = [...text(input)];
-		return first.toUpperCase() + rest.join("");
-	});
-	liquid.registerFilter("url_encode", (input: unknown) => (input === undefined || input === null ? input : Array.from(new TextEncoder().encode(text(input)), (b) => (/[A-Za-z0-9._-]/.test(String.fromCharCode(b)) ? String.fromCharCode(b) : `%${b.toString(16).toUpperCase().padStart(2, "0")}`)).join("")));
-	liquid.registerFilter("split", (input: unknown, pattern: unknown) => {
-		const s = text(input), by = text(pattern);
-		if (s === "") return [];
-		return by === "" ? ["", ...s, ""] : s.split(by);
-	});
-	liquid.registerFilter("array_to_sentence_string", (input: unknown, connector: unknown) => {
-		if (!Array.isArray(input)) throw new BuildError("invalid input: Array expected");
-		const and = connector === undefined || connector === null ? "and" : text(connector);
-		return input.map((item, i) => (i === 0 ? text(item) : i === input.length - 1 ? `, ${and} ${text(item)}` : `, ${text(item)}`)).join("");
-	});
-	// Shopify's `pluralize`: `{{ n | pluralize: "pine cone", "pine cones" }}`.
-	liquid.registerFilter("pluralize", (n: unknown, singular: unknown, plural: unknown) => {
-		const count = typeof n === "string" && /^[+-]?\d+$/.test(n.trim()) ? Number(n) : n;
-		if (typeof count !== "number" || !Number.isInteger(count)) throw new BuildError("invalid input: Whole number expected");
-		return count === 1 ? singular : plural;
-	});
+	for (const [name, fn] of Object.entries(MATH)) liquid.registerFilter(name, fn);
+	for (const [name, fn] of Object.entries(TEXT)) liquid.registerFilter(name, fn);
 
 	// The config's functions as filters: `{{ x | wrap: "[", "]" }}` calls `wrap(x, "[", "]")`, and
-	// keyword arguments (`| f: size: 2`) arrive as one object at the end. A function is awaited
-	// when it answers with a promise; until one does, templates render synchronously.
-	let syncRender = false;
+	// keyword arguments (`| f: size: 2`) arrive as one object at the end. A value that isn't there
+	// arrives as `null`, as in 0.7. A function is awaited when it answers with a promise; until one
+	// does, templates render synchronously.
 	const functions = new Map<string, Filter>([...env.pipeFilters, ...env.globals]);
 	for (const [name, fn] of functions) {
 		liquid.registerFilter(name, function (this: any, input: unknown, ...rest: unknown[]) {
-			const args: unknown[] = [input];
+			const args: unknown[] = [given(input)];
 			let options: Data | undefined;
 			rest.forEach((arg, i) => {
-				if (Array.isArray(this.token?.args?.[i]) && Array.isArray(arg)) (options ??= {})[arg[0]] = arg[1];
-				else args.push(arg);
+				if (Array.isArray(this.token?.args?.[i]) && Array.isArray(arg)) (options ??= {})[arg[0]] = given(arg[1]);
+				else args.push(given(arg));
 			});
 			if (options) args.push(options);
+			const answers: Answers | undefined = this.context?.globals?.[ANSWERS];
+			const at = answers ? answers.at++ : -1;
+			const known = answers?.calls[at];
+			if (known?.fn === fn) return known.value;
 			let out: unknown;
 			try { out = fn(...args); } catch (e) { throw thrown(name, e, root); }
 			if (out instanceof Promise) {
-				if (syncRender) {
-					out.catch(() => {});
+				const settled = watchSettle(out).catch((e) => { throw thrown(name, e, root); });
+				answers?.calls.splice(at, Infinity, { fn, value: settled });
+				if (this.context?.sync) {
+					settled.catch(() => {});
 					throw new NeedsAsync();
 				}
-				return watchSettle(out).catch((e) => { throw thrown(name, e, root); });
+				return settled;
 			}
+			answers?.calls.splice(at, Infinity, { fn, value: out });
 			return out;
 		});
 	}
@@ -188,7 +265,7 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 	/** Templates that needed a promise awaited once: they render asynchronously from then on. */
 	const isAsync = new Set<string>();
 	const fail = (e: unknown, ctx: RenderContext): never => {
-		throw new BuildError(describe(e, ctx, env, filterNames()));
+		throw new BuildError(describe(e, ctx, env, filterNames(), includes));
 	};
 	return (source, data, ctx) => {
 		let templates = ctx.cacheKey === undefined ? undefined : compiled.get(ctx.cacheKey);
@@ -196,17 +273,17 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 			try { templates = liquid.parse(source, ctx.inputPath); } catch (e) { return fail(e, ctx); }
 			if (ctx.cacheKey !== undefined) compiled.set(ctx.cacheKey, templates);
 		}
-		const later = () => liquid.render(templates, data).then((out: unknown) => String(out), (e: unknown) => fail(e, ctx));
+		const answers: Answers = { calls: [], at: 0 };
+		const options = { globals: { [ANSWERS]: answers } };
+		const later = () => {
+			answers.at = 0;
+			return liquid.render(templates, data, options).then((out: unknown) => String(out), (e: unknown) => fail(e, ctx));
+		};
 		if (ctx.cacheKey !== undefined && isAsync.has(ctx.cacheKey)) return later();
-		// Another page's `templateContent` can render in the middle of this one: the flag is put back as it was.
-		const was = syncRender;
-		syncRender = true;
 		try {
-			return String(liquid.renderSync(templates, data));
+			return String(liquid.renderSync(templates, data, options));
 		} catch (e) {
 			if (!needsAsync(e)) return fail(e, ctx);
-		} finally {
-			syncRender = was;
 		}
 		if (ctx.cacheKey !== undefined) isAsync.add(ctx.cacheKey);
 		return later();
@@ -222,10 +299,22 @@ function needsAsync(e: unknown): boolean {
 	return false;
 }
 
-/** A value as `{{ }}` prints it: a date as 0.7 printed it, in UTC. */
+/** A value as a config function gets it: a missing one is `null`, as in 0.7, and a float its number. */
+const given = (v: unknown) => (v === undefined ? null : isFloat(v) ? v.n : v);
+
+/** A value as `{{ }}` prints it: a date as 0.7 printed it, in UTC, and a float as its number. */
 function printable(v: unknown): unknown {
 	if (v instanceof Date) return Number.isNaN(v.getTime()) ? String(v) : showDate(v);
-	if (Array.isArray(v) && v.some((item) => item instanceof Date || Array.isArray(item))) return v.map(printable);
+	if (isFloat(v)) return v.n;
+	if (Array.isArray(v) && v.some((item) => item instanceof Date || isFloat(item) || Array.isArray(item))) return v.map(printable);
+	return v;
+}
+
+/** A value for liquidjs' own filters: a date as 0.7's text, a float as its number, in a list too. */
+function asText(v: unknown): unknown {
+	if (v instanceof Date) return Number.isNaN(v.getTime()) ? v : showDate(v);
+	if (isFloat(v)) return v.n;
+	if (Array.isArray(v) && v.some((item) => item instanceof Date || isFloat(item))) return v.map(asText);
 	return v;
 }
 
@@ -235,6 +324,161 @@ function text(v: unknown): string {
 	if (shown === undefined || shown === null) return "";
 	if (Array.isArray(shown)) return shown.map(text).join("");
 	return String(shown);
+}
+
+/** A number as the liquid crate read one: a whole number, a float, or text that is one of them. */
+function number(v: unknown, what: "input" | "operand"): { value: number; float: boolean } {
+	if (isFloat(v)) return { value: v.n, float: true };
+	if (typeof v === "number") return { value: v, float: !Number.isInteger(v) };
+	if (typeof v === "string") {
+		if (/^[+-]?\d+$/.test(v)) return { value: Number(v), float: false };
+		if (/^[+-]?(?:\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?|inf|infinity|nan)$/i.test(v)) return { value: Number(v.replace(/inf(inity)?/i, "Infinity").replace(/nan/i, "NaN")), float: true };
+	}
+	throw new BuildError(what === "input" ? "invalid input: Number expected" : "invalid argument `operand`: Number expected");
+}
+
+/** A float that's whole stays one (see `LiquidFloat`). */
+const float = (n: number) => (Number.isInteger(n) ? new FloatValue!(n) : n);
+
+/** Two numbers through `whole` when both are whole numbers, and through `exact` as floats otherwise, as the liquid crate did. */
+const arithmetic = (whole: (a: number, b: number) => number, exact: (a: number, b: number) => number, checkZero = false) => (input: unknown, operand: unknown) => {
+	const a = number(input, "input"), b = number(operand, "operand");
+	if (checkZero && b.value === 0) throw new BuildError("invalid argument `operand`: Can't divide by zero");
+	return a.float || b.float ? float(exact(a.value, b.value)) : whole(a.value, b.value);
+};
+
+/** Rounding half away from zero, as Rust rounds. */
+const round = (n: number) => Math.sign(n) * Math.round(Math.abs(n));
+
+/** The liquid crate's numbers, which 0.7 had: whole numbers stay whole (`7 | divided_by: 2` is 3), and a float stays a float. */
+const MATH: Record<string, (...args: any[]) => unknown> = {
+	plus: arithmetic((a, b) => a + b, (a, b) => a + b),
+	minus: arithmetic((a, b) => a - b, (a, b) => a - b),
+	times: arithmetic((a, b) => a * b, (a, b) => a * b),
+	divided_by: arithmetic((a, b) => Math.trunc(a / b), (a, b) => a / b, true),
+	modulo: arithmetic((a, b) => a % b, (a, b) => a % b, true),
+	at_least: arithmetic((a, b) => Math.max(a, b), (a, b) => Math.max(a, b)),
+	at_most: arithmetic((a, b) => Math.min(a, b), (a, b) => Math.min(a, b)),
+	abs: (input: unknown) => {
+		const n = number(input, "input");
+		return n.float ? float(Math.abs(n.value)) : Math.abs(n.value);
+	},
+	round: (input: unknown, places: unknown) => {
+		const n = number(input, "input").value;
+		const p = places === undefined || places === null ? 0 : number(places, "operand").value;
+		if (p <= 0) return round(n);
+		const m = 10 ** p;
+		return float(round(n * m) / m);
+	},
+	ceil: (input: unknown) => Math.ceil(number(input, "input").value),
+	floor: (input: unknown) => Math.floor(number(input, "input").value),
+};
+
+/** Equality as the liquid crate tells it: by value, objects and lists too. */
+function same(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (isFloat(a) || isFloat(b)) return same(isFloat(a) ? a.n : a, isFloat(b) ? b.n : b);
+	if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+	if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((item, i) => same(item, b[i]));
+	if (isPlainObject(a) && isPlainObject(b)) {
+		const keys = Object.keys(a);
+		return keys.length === Object.keys(b).length && keys.every((k) => Object.hasOwn(b, k) && same(a[k], b[k]));
+	}
+	return false;
+}
+
+/** How the liquid crate escaped HTML: `"` is `&quot;`, and `escape_once` leaves 0.7's five entities as they are. */
+function escape(input: unknown, once: boolean): unknown {
+	if (input === undefined || input === null) return input;
+	const ENTITIES: Record<string, string> = { "<": "&lt;", ">": "&gt;", "'": "&#39;", "\"": "&quot;", "&": "&amp;" };
+	return text(input).replace(/[<>'"&]/g, (c, at: number, s: string) => (c === "&" && once && /^&(?:lt|gt|#39|quot|amp);/.test(s.slice(at)) ? "&" : ENTITIES[c]));
+}
+
+/** Rust's `as usize` for a length: a negative one is as long as can be. */
+const length = (v: unknown, otherwise: number) => {
+	if (v === undefined || v === null) return otherwise;
+	const n = number(v, "operand").value;
+	return n < 0 ? Infinity : Math.trunc(n);
+};
+
+/**
+ * Where the liquid crate's filters say otherwise than liquidjs', 0.7's output stays: `capitalize`
+ * changes the first letter only (`Pine CONE`), `url_encode` writes a space as `%20`, `split`
+ * keeps empty strings at the end, `array_to_sentence_string` puts a comma before the last word
+ * (`a, and b`), `truncate` counts the ellipsis' bytes, `truncatewords` splits at each space,
+ * `map` leaves out what isn't an object, `uniq` compares values, and `size` is a value's text's.
+ */
+const TEXT: Record<string, (...args: any[]) => unknown> = {
+	capitalize: (input: unknown) => {
+		const [first = "", ...rest] = [...text(input)];
+		return first.toUpperCase() + rest.join("");
+	},
+	url_encode: (input: unknown) => (input === undefined || input === null ? input : Array.from(new TextEncoder().encode(text(input)), (b) => (/[A-Za-z0-9._-]/.test(String.fromCharCode(b)) ? String.fromCharCode(b) : `%${b.toString(16).toUpperCase().padStart(2, "0")}`)).join("")),
+	url_decode: (input: unknown) => {
+		if (input === undefined || input === null) return input;
+		// A `%` that doesn't start an escape is left as it is; bytes that aren't UTF-8 are an error.
+		try { return new TextDecoder("utf-8", { fatal: true }).decode(percentDecode(text(input).replaceAll("+", " "))); } catch { throw new BuildError("invalid input: Malformed UTF-8"); }
+	},
+	split: (input: unknown, pattern: unknown) => {
+		const s = text(input), by = text(pattern);
+		if (s === "") return [];
+		return by === "" ? ["", ...s, ""] : s.split(by);
+	},
+	array_to_sentence_string: (input: unknown, connector: unknown) => {
+		if (!Array.isArray(input)) throw new BuildError("invalid input: Array expected");
+		const and = connector === undefined || connector === null ? "and" : text(connector);
+		return input.map((item, i) => (i === 0 ? text(item) : i === input.length - 1 ? `, ${and} ${text(item)}` : `, ${text(item)}`)).join("");
+	},
+	escape: (input: unknown) => escape(input, false),
+	escape_once: (input: unknown) => escape(input, true),
+	truncate: (input: unknown, size: unknown, ellipsis: unknown) => {
+		const s = text(input), end = ellipsis === undefined || ellipsis === null ? "..." : text(ellipsis);
+		const n = length(size, 50);
+		if (n >= Buffer.byteLength(s)) return input;
+		return [...s].slice(0, Math.max(n - Buffer.byteLength(end), 0)).join("") + end;
+	},
+	truncatewords: (input: unknown, count: unknown, ellipsis: unknown) => {
+		const words = text(input).split(" "), end = ellipsis === undefined || ellipsis === null ? "..." : text(ellipsis);
+		const n = length(count, 50);
+		return n < words.length ? words.slice(0, n).join(" ") + end : input;
+	},
+	map: (input: unknown, property: unknown) => {
+		if (!Array.isArray(input)) throw new BuildError("invalid input: Array expected");
+		const key = text(property);
+		return input.filter((item) => isPlainObject(item)).map((item) => (item as Data)[key] ?? null);
+	},
+	uniq: (input: unknown) => {
+		if (!Array.isArray(input)) throw new BuildError("invalid input: Array expected");
+		const kept: unknown[] = [];
+		for (const item of input) if (!kept.some((k) => same(k, item))) kept.push(item);
+		return kept;
+	},
+	// A string's size is JavaScript's (see the changelog); anything else that prints is its text's.
+	size: (input: unknown) => {
+		if (input === undefined || input === null) return 0;
+		if (Array.isArray(input)) return input.length;
+		if (isPlainObject(input)) return Object.keys(input).length;
+		return text(input).length;
+	},
+	// Shopify's `pluralize`: `{{ n | pluralize: "pine cone", "pine cones" }}`.
+	pluralize: (n: unknown, singular: unknown, plural: unknown) => {
+		const count = isFloat(n) ? n.n : typeof n === "string" && /^[+-]?\d+$/.test(n.trim()) ? Number(n) : n;
+		if (typeof count !== "number" || !Number.isInteger(count)) throw new BuildError("invalid input: Whole number expected");
+		return count === 1 ? singular : plural;
+	},
+};
+
+/** Percent escapes as bytes, the rest as its UTF-8. */
+function percentDecode(s: string): Uint8Array {
+	const out: number[] = [];
+	const raw = Buffer.from(s, "utf8");
+	for (let i = 0; i < raw.length; i++) {
+		if (raw[i] === 0x25 && i + 2 < raw.length && /^[0-9A-Fa-f]{2}$/.test(String.fromCharCode(raw[i + 1], raw[i + 2]))) {
+			out.push(Number.parseInt(String.fromCharCode(raw[i + 1], raw[i + 2]), 16));
+			i += 2;
+		} else out.push(raw[i]);
+	}
+	return Uint8Array.from(out);
 }
 
 /** `1st`, `2nd`, `3rd`, `4th`, `11th`, `21st`. */
@@ -253,17 +497,21 @@ function isInsideDir(dir: string, file: string): boolean {
  * \`upcase\`?)`. The line is the template's own, from where liquidjs found the problem; an error
  * in an include names the include.
  */
-function describe(e: unknown, ctx: RenderContext, env: EngineEnv, filters: string[]): string {
+function describe(e: unknown, ctx: RenderContext, env: EngineEnv, filters: string[], includes: Map<string, string>): string {
 	if (e instanceof BuildError) return e.message;
 	const failure = e as LiquidFailure;
-	// The innermost error is the one that says what happened.
+	// The innermost error is the one that says what happened, and the innermost place is where.
 	let inner: unknown = failure.originalError;
-	while ((inner as LiquidFailure)?.originalError) inner = (inner as LiquidFailure).originalError;
+	let token = failure.token;
+	while ((inner as LiquidFailure)?.originalError || (inner as LiquidFailure)?.token) {
+		token = (inner as LiquidFailure).token ?? token;
+		if (!(inner as LiquidFailure).originalError) break;
+		inner = (inner as LiquidFailure).originalError;
+	}
 	let message = inner instanceof Error ? inner.message : String(failure.message ?? e);
 	// liquidjs puts the place at the end (`, file:/site/page.liquid, line:2, col:6`); the build says it its own way.
-	if (!(inner instanceof Error)) message = message.replace(/(?:, file:.*?)?, line:\d+, col:\d+$/s, "");
-	const token = failure.token;
-	const file = token?.file;
+	message = message.replace(/(?:, file:.*?)?, line:\d+, col:\d+$/s, "");
+	const file = token?.file ?? (token?.input === undefined ? undefined : includes.get(token.input));
 	const name = file && path.resolve(file) !== path.resolve(ctx.inputPath) ? shownPath(file, env.config.root) : ctx.name;
 	const line = token ? token.getPosition()[0] : undefined;
 	let found: RegExpExecArray | null;
@@ -284,9 +532,14 @@ function describe(e: unknown, ctx: RenderContext, env: EngineEnv, filters: strin
 		message = `unknown tag \`${found[1]}\`${near ? ` (did you mean \`${near}\`?)` : ""}`;
 	} else if ((found = /^ENOENT: Failed to lookup "(.*)" in "/s.exec(message))) {
 		const wanted = unquoted(found[1]);
-		const have = env.includeDirs.flatMap((dir) => filesUnder(dir));
-		const near = closestPath(wanted, have) ?? closestPath(`${wanted}.liquid`, have);
-		message = `template not found: can't include \`${wanted}\`${near ? ` (did you mean \`${near}\`?)` : ""}`;
+		// What's there, by its name and, for a Liquid file, by its name without `.liquid` too (as it can be included).
+		const named = new Map<string, string>();
+		for (const have of env.includeDirs.flatMap((dir) => filesUnder(dir))) {
+			named.set(have, have);
+			if (have.endsWith(".liquid")) named.set(have.slice(0, -7), have);
+		}
+		const near = closestPath(wanted, named.keys()) ?? closest(wanted, named.keys());
+		message = `template not found: can't include \`${wanted}\`${near ? ` (did you mean \`${named.get(near)}\`?)` : ""}`;
 	} else if ((found = /^undefined variable: (.+)$/.exec(message))) {
 		// `strict`, in 0.7's words.
 		message = strictMessage(found[1]);
@@ -301,10 +554,11 @@ function strictMessage(wanted: string): string {
 	return `Unknown index (strict is on)\n  with:\n    variable=${parts.slice(0, -1).join(".")}\n    requested index=${parts[parts.length - 1]}`;
 }
 
-/** Every file under `dir`, as paths from it with forward slashes. */
+/** Every file under `dir`, as paths from it with forward slashes, in a fixed order. */
 function filesUnder(dir: string, rel = ""): string[] {
 	let entries: fs.Dirent[];
 	try { entries = fs.readdirSync(path.join(dir, rel), { withFileTypes: true }); } catch { return []; }
+	entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 	return entries.flatMap((entry) => {
 		const p = rel ? `${rel}/${entry.name}` : entry.name;
 		return entry.isDirectory() ? filesUnder(dir, p) : [p];
