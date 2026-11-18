@@ -28,6 +28,12 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Added
 
+- The config's functions are Liquid tags, as they are in Nunjucks, so a Jekyll plugin's tag can be a
+  function: `{% seo title=false %}` calls `seo({ title: false })` and prints its answer unescaped,
+  and `{% callout "tip" %}...{% endcallout %}` passes what's between first. Liquid's own tags keep
+  their names.
+- Jekyll's `{% include_relative parts/intro.md who="rangers" %}` in Liquid: a file beside the
+  template, with `include.who`; `{{ }}` in the name works and `..` is refused, as in Jekyll.
 - Config and data files can import the site's own files through `tsconfig.json`'s or
   `jsconfig.json`'s `compilerOptions.paths` (`import { menu } from "@/config/menu"`), as Astro,
   Vite and Next.js codebases do, with TypeScript's rules: the longest matching pattern, its targets

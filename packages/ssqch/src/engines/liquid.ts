@@ -119,7 +119,7 @@ function liquidjs(): typeof LiquidJs {
 
 /** liquidjs, set up for the site; it adds the includes it reads to `loaded`. */
 function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["render"] {
-	const { Liquid, IfTag, IncludeTag, UnlessTag, TypeGuards } = liquidjs();
+	const { Liquid, IfTag, IncludeTag, UnlessTag, Tag, Hash, TypeGuards, evalToken } = liquidjs();
 	const root = env.config.root;
 	const isFile = (file: string) => fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false;
 	// Each include's file by its text: some of liquidjs' errors (a variable `strict` refuses) carry
@@ -175,6 +175,57 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 			super(token, remain, liquid, parser);
 		}
 	});
+	// Jekyll's `{% include_relative part.md lang="fr" %}` (osg #8): a file beside the template that
+	// has the tag, not in `_includes`, rendered with the page's variables and `include.lang`. As in
+	// Jekyll, the name can have `{{ }}` in it, and can't go up a folder.
+	const relative = new Map<string, any[]>();
+	liquid.registerTag("include_relative", class extends Tag {
+		file: string;
+		hash: any;
+		from: string;
+		constructor(token: any, remain: any[], engine: any) {
+			super(token, remain, engine);
+			const tk = this.tokenizer as any;
+			tk.skipBlank();
+			const begin = tk.p;
+			const quoted = tk.readQuoted();
+			if (quoted) this.file = quoted.content;
+			else {
+				// Up to a space, reading `{{ p }}` whole.
+				while (!tk.end() && !/\s/.test(tk.peek())) {
+					if (tk.input.startsWith("{{", tk.p)) {
+						const close = tk.input.indexOf("}}", tk.p);
+						if (close === -1) throw tk.error("include_relative: `{{` without `}}` in the file name");
+						tk.p = close + 2;
+					} else tk.advance();
+				}
+				this.file = tk.input.slice(begin, tk.p);
+			}
+			if (!this.file) throw tk.error("include_relative needs a file name (`{% include_relative part.md %}`)");
+			this.hash = new Hash(tk, true);
+			const file = token.file ?? "";
+			this.from = path.dirname(path.isAbsolute(file) ? file : path.resolve(root, file));
+		}
+		*render(ctx: any, emitter: any): Generator<unknown, void, unknown> {
+			const r = (this.liquid as any).renderer;
+			let name = this.file;
+			if (name.includes("{{")) name = String(yield r.renderTemplates((this.liquid as any).parse(name), ctx));
+			if (name.split(/[\\/]/).includes("..")) throw new BuildError(`include_relative "${name}": the file has to be in the template's folder or below it, without ".."`);
+			const file = path.resolve(this.from, name);
+			let templates = relative.get(file);
+			if (!templates) {
+				if (!isFile(file)) throw new BuildError(`include_relative "${name}": ${path.relative(root, file).split(path.sep).join("/")} not found (it's read beside the template, not in _includes)`);
+				const text = fs.readFileSync(file, "utf8");
+				includes.set(text, file);
+				templates = (this.liquid as any).parse(text, file) as any[];
+				relative.set(file, templates);
+			}
+			const include = yield this.hash.render(ctx);
+			ctx.push({ include });
+			try { emitter.write(yield r.renderTemplates(templates, ctx)); } finally { ctx.pop(); }
+		}
+	});
+
 	// With `strict` on, a missing variable fails everywhere 0.7's did: in a comparison, `case`,
 	// `assign` and `default`. Only an `if` or `unless` that asks whether it's there (`{% if nope
 	// %}`, `{% if a and b %}`) stays false, as it did in 0.7.
@@ -232,6 +283,29 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 	// arrives as `null`, as in 0.7. A function is awaited when it answers with a promise; until one
 	// does, templates render synchronously.
 	const functions = new Map<string, Filter>([...env.pipeFilters, ...env.globals]);
+	/**
+	 * Calls a config function for a filter or a tag. A render that ran before (asynchronously)
+	 * gets each call's earlier answer; a promise in a synchronous render starts it again async.
+	 */
+	const invoke = (context: any, name: string, fn: Filter, args: unknown[]): unknown => {
+		const answers: Answers | undefined = context?.globals?.[ANSWERS];
+		const at = answers ? answers.at++ : -1;
+		const known = answers?.calls[at];
+		if (known?.fn === fn) return known.value;
+		let out: unknown;
+		try { out = fn(...args); } catch (e) { throw thrown(name, e, root); }
+		if (out instanceof Promise) {
+			const settled = watchSettle(out).catch((e) => { throw thrown(name, e, root); });
+			answers?.calls.splice(at, Infinity, { fn, value: settled });
+			if (context?.sync) {
+				settled.catch(() => {});
+				throw new NeedsAsync();
+			}
+			return settled;
+		}
+		answers?.calls.splice(at, Infinity, { fn, value: out });
+		return out;
+	};
 	for (const [name, fn] of functions) {
 		liquid.registerFilter(name, function (this: any, input: unknown, ...rest: unknown[]) {
 			const args: unknown[] = [given(input)];
@@ -241,23 +315,66 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 				else args.push(given(arg));
 			});
 			if (options) args.push(options);
-			const answers: Answers | undefined = this.context?.globals?.[ANSWERS];
-			const at = answers ? answers.at++ : -1;
-			const known = answers?.calls[at];
-			if (known?.fn === fn) return known.value;
-			let out: unknown;
-			try { out = fn(...args); } catch (e) { throw thrown(name, e, root); }
-			if (out instanceof Promise) {
-				const settled = watchSettle(out).catch((e) => { throw thrown(name, e, root); });
-				answers?.calls.splice(at, Infinity, { fn, value: settled });
-				if (this.context?.sync) {
-					settled.catch(() => {});
-					throw new NeedsAsync();
+			return invoke(this.context, name, fn, args);
+		});
+	}
+
+	// The config's functions as tags too, as in Nunjucks: `{% seo %}` prints what `seo()` returns,
+	// unescaped (Jekyll's jekyll-seo-tag, osg #6). Arguments are values, by commas or spaces, and
+	// `name: value` or Jekyll's `name=value` arrive as one object at the end (`{% seo title=false
+	// %}` calls `seo({ title: false })`). With an `{% endname %}`, the function gets what's between
+	// them first. Liquid's own tags keep their names: a function `include` is a filter only.
+	for (const [name, fn] of functions) {
+		if (name in liquid.tags) continue;
+		liquid.registerTag(name, class extends Tag {
+			values: any[] = [];
+			named: Array<[string, any]> = [];
+			templates: any[] | undefined;
+			constructor(token: any, remain: any[], engine: any, parser: any) {
+				super(token, remain, engine);
+				const tk = this.tokenizer as any;
+				for (;;) {
+					tk.skipBlank();
+					if (tk.peek() === ",") { tk.advance(); tk.skipBlank(); }
+					if (tk.end()) break;
+					const start = tk.p;
+					const key = tk.readIdentifier();
+					tk.skipBlank();
+					const sep = tk.peek();
+					if (key.content && (sep === ":" || (sep === "=" && tk.input[tk.p + 1] !== "="))) {
+						tk.advance();
+						this.named.push([key.content, tk.readValueOrThrow()]);
+						continue;
+					}
+					tk.p = start;
+					const value = tk.readValue();
+					if (!value && tk.peek() === "|") throw tk.error(`a filter can't go in {% ${name} %}'s arguments ("${tk.remaining().trim()}"): \`assign\` the value first, then pass the variable`);
+					if (!value) throw tk.error(`expected a value in {% ${name} %}'s arguments, at "${tk.remaining()}"`);
+					this.values.push(value);
 				}
-				return settled;
+				// Paired when the template closes it, as in Nunjucks.
+				if (remain.some((t) => TypeGuards.isTagToken(t) && t.name === `end${name}`)) {
+					this.templates = [];
+					while (remain.length) {
+						const next = remain.shift();
+						if (TypeGuards.isTagToken(next) && next.name === `end${name}`) break;
+						this.templates.push(parser.parseToken(next, remain));
+					}
+				}
 			}
-			answers?.calls.splice(at, Infinity, { fn, value: out });
-			return out;
+			*render(ctx: any, emitter: any): Generator<unknown, void, unknown> {
+				const args: unknown[] = [];
+				if (this.templates) args.push(yield (this.liquid as any).renderer.renderTemplates(this.templates, ctx));
+				for (const value of this.values) args.push(given(yield evalToken(value, ctx)));
+				if (this.named.length) {
+					const options: Data = {};
+					for (const [key, value] of this.named) options[key] = given(yield evalToken(value, ctx));
+					args.push(options);
+				}
+				const out = yield invoke(ctx, name, fn, args);
+				emitter.write(tagText(out));
+			}
+			*children(): Generator<unknown, any[], unknown> { return this.templates ?? []; }
 		});
 	}
 	const filterNames = () => Object.keys(liquid.filters);
@@ -302,6 +419,14 @@ function needsAsync(e: unknown): boolean {
 
 /** A value as a config function gets it: a missing one is `null`, as in 0.7, and a float its number. */
 const given = (v: unknown) => (v === undefined ? null : isFloat(v) ? v.n : v);
+
+/** What a tag prints for a function's answer: nothing for none, a list's items one after another. */
+function tagText(v: unknown): string {
+	if (v === undefined || v === null) return "";
+	if (Array.isArray(v)) return v.map(tagText).join("");
+	const shown = printable(v);
+	return typeof shown === "string" ? shown : String(shown);
+}
 
 /** A value as `{{ }}` prints it: a date as 0.7 printed it, in UTC, and a float as its number. */
 function printable(v: unknown): unknown {

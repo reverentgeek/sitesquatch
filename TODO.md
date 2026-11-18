@@ -626,8 +626,9 @@ From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
 - [ ] **`page.<front matter key>` in Liquid** (osg #5): fall back to the page's data for keys `page`
       doesn't have, as Jekyll templates expect (42 edits in 7 templates, and a collision with the
       site's own `lang` variable). A design note first.
-- [ ] **Config functions as Liquid tags** (osg #6): `{% seo %}`, as Nunjucks already does.
-- [ ] **`{% include_relative %}`** (osg #8), reading beside the template.
+- [x] **Config functions as Liquid tags** (osg #6; done 2026-11-18): `{% seo %}`, as Nunjucks
+      already does.
+- [x] **`{% include_relative %}`** (osg #8; done 2026-11-18), reading beside the template.
 - [x] **ssqch/sass** (osg #9, #10; done 2026-11-18, in the file bridge rather than a grass patch):
       an import that names its extension is found in the load paths, and leading front matter is
       blanked. Left: grass's warnings print `./` before an absolute path (`.//Users/…`, its

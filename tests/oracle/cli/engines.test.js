@@ -409,3 +409,39 @@ test("nunjucks_names_that_hide_a_function_are_warned_about", () => {
 		"index.njk:3 the loop variable `icon`",
 	]);
 });
+
+// opensource.guide (osg #6, #8): Jekyll's `{% seo %}` is a plugin's tag, and the config's functions
+// are tags in Liquid as they are in Nunjucks; `{% include_relative %}` reads beside the template.
+test("liquid_config_functions_are_tags_and_include_relative_reads_beside_the_template", () => {
+	const root = project({
+		"ssqch.config.js": `export default { templateFormats: ["liquid", "md"], markdownEngine: "liquid", filters: {
+	seo: (o) => "<title>" + (o?.title === false ? "" : "Squatch Snacks") + "</title>",
+	image: (src, alt, o) => \`<img src="\${src}" alt="\${alt}"\${o?.width ? \` width="\${o.width}"\` : ""}>\`,
+	callout: (body, kind) => \`<aside class="\${kind}">\${body.trim()}</aside>\`,
+	later: async (x) => \`[\${x}]\`,
+	include: () => "a filter, not a tag",
+} };
+`,
+		"index.liquid": "---\ntitle: Pine Cone Crunch\n---\n{% seo %}|{% seo title=false %}|{% image \"/a.png\", \"A <pine>\" width: 3 %}|{% image \"/b.png\" \"B\" %}|{% callout \"tip\" %}On {{ title }}{% endcallout %}|{% later title %}\n",
+		"guide/index.md": "---\ntitle: Cedar Trail\n---\n{% include_relative parts/intro.md who=\"rangers\" %}\n{% assign part = \"outro\" %}{% include_relative parts/{{ part }}.md %}\n",
+		"guide/parts/intro.md": "Hello, {{ include.who }}, on {{ title }}.\n",
+		"guide/parts/outro.md": "Leave no trace.\n",
+		"_includes/x.liquid": "",
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/index.html"), "<title>Squatch Snacks</title>|<title></title>|<img src=\"/a.png\" alt=\"A <pine>\" width=\"3\">|<img src=\"/b.png\" alt=\"B\">|<aside class=\"tip\">On Pine Cone Crunch</aside>|[Pine Cone Crunch]\n");
+	assert.match(read(root, "_site/guide/index.html"), /Hello, rangers, on Cedar Trail\./);
+	assert.match(read(root, "_site/guide/index.html"), /Leave no trace\./);
+
+	const broken = (template) => {
+		const site = project({ "ssqch.config.js": "export default { templateFormats: [\"liquid\"], filters: { boom: () => { throw new Error(\"the snack drawer is empty\"); } } };\n", "guide/index.liquid": template });
+		const b = ssqch(["build", "--root", site]);
+		assert.ok(!b.ok);
+		return b.log;
+	};
+	assert.match(broken("one\n{% boom 1 %}\n"), /guide\/index\.liquid:2: boom\(\): the snack drawer is empty/);
+	assert.match(broken("{% boom \"x\" | upcase %}\n"), /a filter can't go in \{% boom %\}'s arguments \("\| upcase"\): `assign` the value first/);
+	assert.match(broken("{% include_relative nope.md %}\n"), /include_relative "nope\.md": guide\/nope\.md not found/);
+	assert.match(broken("{% include_relative ../x.md %}\n"), /include_relative "\.\.\/x\.md": the file has to be in the template's folder/);
+});
