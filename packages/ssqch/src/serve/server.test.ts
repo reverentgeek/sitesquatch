@@ -177,8 +177,10 @@ test("a file a plugin watches rebuilds the site", async () => {
 			return answer.css.length > 0;
 		}, "the browser never heard of the stylesheet");
 		assert.deepEqual(answer, { ...answer, reload: false, css: ["/app.css"] });
-		// A file beside a watched one isn't the site's.
+		// A file beside a watched one isn't the site's. The stylesheet is written before its
+		// build's summary: the count starts once the last build has said it's serving again.
 		const builds = () => server.said().split("Built in").length - 1;
+		await server.until(() => server.said().split("Fresh tracks in").at(-1)!.includes("Squatch Watch is on."), "the last build never finished");
 		const before = builds();
 		fs.writeFileSync(path.join(dir, "other.txt"), "still not watched\n");
 		await sleep(1500);
