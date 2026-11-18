@@ -41,7 +41,9 @@ jobs:
           path: npm-package
       - name: Publish
         run: |
-          tarball="npm-package/ssqch-$VERSION.tgz"
+          # `./`: npm reads `npm-package/ssqch-<version>.tgz` as a GitHub repository (user/repo),
+          # not a file, and tries to clone it (v0.8.0's first run did).
+          tarball="./npm-package/ssqch-$VERSION.tgz"
           [ -f "$tarball" ] || { echo "::error::$tarball isn't there"; ls npm-package; exit 1; }
           # A prerelease (0.8.0-rc.1) goes under the `next` tag, so `npm install ssqch` keeps
           # getting the latest release.
