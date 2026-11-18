@@ -9,12 +9,13 @@
 //
 // The build itself runs in a process of its own (`builder.ts`), started again when the
 // configuration changes.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Config } from "../config.ts";
-import { dirsOf } from "../config.ts";
+import { CONFIG_FILES, dirsOf } from "../config.ts";
 import * as diagnostics from "../diagnostics.ts";
 import { BuildError, messageOf } from "../diagnostics.ts";
 import { isInside, realPath, relative, slashes } from "../paths.ts";
@@ -53,6 +54,19 @@ const exists = (file: string) => fs.existsSync(file);
 const isFile = (file: string) => fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false;
 const isDir = (file: string) => fs.statSync(file, { throwIfNoEntry: false })?.isDirectory() ?? false;
 const say = (line: string) => { process.stdout.write(line + "\n"); };
+/** What a config file in the project root can be called: a change to one reads the configuration again, whether or not one loaded. */
+const CONFIG_NAMES = new Set([...CONFIG_FILES, "sitesquatch.toml"]);
+
+/**
+ * What a changed source holds, to tell a change from a write of the same thing: a file's
+ * contents, a folder's names, or nothing for what's gone. A folder isn't nothing: one renamed
+ * away and back again (`git stash`, an editor's undo) was gone between, and is a change each time
+ * (0.7 counted every folder the same, so the second rename didn't rebuild).
+ */
+function sourceState(file: string): string | undefined {
+	if (!isDir(file)) return fingerprint(file);
+	try { return `folder:${crypto.hash("sha1", fs.readdirSync(file).sort().join("\n"), "base64")}`; } catch { return undefined; }
+}
 
 /** Write the ready file in one step, so a reader never sees half of it. */
 function writeReady(file: string, site: Served, port: number, ok: boolean): void {
@@ -301,6 +315,12 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 			}
 		};
 		watchConfigFiles();
+		// The project root's own files, for a config file that isn't there now: one that's put
+		// back (or made) is read, where the defaults were building (0.7 missed it).
+		const root = realPath(site.root);
+		if (!watchPaths.some((p) => isInside(p, root))) {
+			try { watcher.watch(root, false); } catch { /* the root's gone: nothing builds anyway */ }
+		}
 		// Changes seen while an update was held, for the loop to look at next.
 		const carried: string[] = [];
 		if (ok) {
@@ -334,13 +354,13 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 			// A source written again with the same contents hasn't changed: a `beforeBuild` command
 			// that writes into the input folder on every build would rebuild forever.
 			const sources = changed.filter((file) => !isInside(output, file)).filter((file) => {
-				const now = fingerprint(file);
+				const now = sourceState(file);
 				const seen = contents.has(file);
 				const before = contents.get(file);
 				contents.set(file, now);
 				return !seen || before !== now;
 			});
-			const isConfig = (file: string) => builder.files.has(file);
+			const isConfig = (file: string) => builder.files.has(file) || (path.dirname(file) === root && CONFIG_NAMES.has(path.basename(file)));
 			// Folders watched for a config file see their other files change too.
 			const inSources = (file: string) => watchPaths.some((p) => isInside(p, file)) || isConfig(file) || builder.read.has(file);
 			const config = sources.find(isConfig);
