@@ -7,6 +7,7 @@ import { loadConfig } from "../config.ts";
 import type { Environment } from "../config.ts";
 import { messageOf, red } from "../diagnostics.ts";
 import { write } from "./init.ts";
+import { schemaTypes } from "../schema.ts";
 
 /** The site's schemas as an addition to the `Schemas` interface. */
 export function schemaDeclarations(schemas: Array<[name: string, typescript: string]>): string {
@@ -19,13 +20,6 @@ export function schemaDeclarations(schemas: Array<[name: string, typescript: str
 	return out + "\t}\n}\n";
 }
 
-/** The site's schemas as TypeScript, from the schema module. */
-async function schemaTypes(config: Awaited<ReturnType<typeof loadConfig>>): Promise<Array<[string, string]>> {
-	if (config.schemas.length === 0) return [];
-	const module = "../schema.ts";
-	const { schemaTypes } = await import(module) as { schemaTypes: (config: unknown) => Array<[string, string]> };
-	return schemaTypes(config);
-}
 
 export interface TypesOptions {
 	/** `--root` as it was given. */

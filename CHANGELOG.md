@@ -143,6 +143,11 @@ the release.
   runs on every platform, shipped in an npm package whose function returns `{ name, rust: { wasm,
   options } }`. It can have a transform, filters and engines; `crates/ssqch-plugin/README.md`
   and `examples/rust-plugin` show how.
+- **`ssqch diff --ignore` takes a JavaScript regular expression** (in its Unicode mode), where 0.7
+  took Rust's. Most patterns are the same in both, and flags at the start (`(?i)`) and named
+  groups written `(?P<name>...)` still work, but Rust's own syntax JavaScript doesn't have
+  (`(?x)`, `\A`, `\z`, an escaped `-` outside `[...]`) is refused with JavaScript's words. `\d` and
+  `\w` are ASCII in JavaScript; write `\p{Nd}` or `\p{L}` for other scripts' digits and letters.
 
 ### Changed
 

@@ -144,7 +144,7 @@ function threeDigits(v: number): string {
  * goes to the even one, as 0.7 printed it; `toFixed` alone takes the larger, and the summary
  * would differ by a digit.
  */
-function fixed(v: number, digits: number): string {
+export function fixed(v: number, digits: number): string {
 	const exact = v.toFixed(digits + 30);
 	const kept = exact.slice(0, exact.length - 30);
 	if (!/^50*$/.test(exact.slice(-30))) return v.toFixed(digits);
