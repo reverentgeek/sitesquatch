@@ -109,3 +109,20 @@ test("yaml_dates_before_the_year_100_keep_their_year", () => {
 	// The rest of js-yaml's default schema is still there.
 	assert.deepEqual(loadYaml("base: &b { x: 1 }\nm:\n  <<: *b\n  y: 2"), { base: { x: 1 }, m: { x: 1, y: 2 } });
 });
+
+// A day that doesn't exist stays text, as 0.7 kept it, where js-yaml would roll it over to the
+// next month and nothing would say so; a schema can catch the text.
+test("yaml_dates_that_dont_exist_stay_text", () => {
+	const value = (text: string) => (loadYaml(`d: ${text}`) as { d: unknown }).d;
+	assert.equal(value("2026-02-30"), "2026-02-30");
+	assert.equal(value("2023-02-29"), "2023-02-29");
+	assert.equal(value("2026-04-31T10:00:00Z"), "2026-04-31T10:00:00Z");
+	assert.ok(value("2024-02-29") instanceof Date);
+});
+
+// 0.7's TOML library kept a table's keys in name order, so a loop over one gave that order.
+test("toml_tables_are_in_name_order", () => {
+	const d = parseFrontMatter("+++\nzebra = 1\napple = 2\nmango = 3\n[t]\nb = 1\na = 2\n+++\n").data;
+	assert.deepEqual(Object.keys(d), ["apple", "mango", "t", "zebra"]);
+	assert.deepEqual(Object.keys(d.t), ["a", "b"]);
+});

@@ -90,8 +90,13 @@ const YAML_SCHEMA = yaml.CORE_SCHEMA.extend({
 			kind: "scalar",
 			resolve: timestamp.resolve,
 			construct(text: string) {
+				// A day that doesn't exist (`2026-02-30`) stays text, as 0.7 kept it, where js-yaml
+				// would roll it over to March 2: a schema can say so, and nothing moves silently.
+				const [year, month, day] = text.slice(0, 10).split("-").map(Number);
+				const real = new Date(Date.UTC(2000, month - 1, day));
+				if (month < 1 || month > 12 || real.getUTCMonth() !== month - 1 || (month === 2 && day === 29 && !leapYear(year))) return text;
 				const date = timestamp.construct(text) as Date;
-				if (Number(/^\d{4}/.exec(text)?.[0]) < 100) date.setUTCFullYear(date.getUTCFullYear() - 1900);
+				if (year < 100) date.setUTCFullYear(date.getUTCFullYear() - 1900);
 				return date;
 			},
 			instanceOf: Date,
@@ -101,6 +106,8 @@ const YAML_SCHEMA = yaml.CORE_SCHEMA.extend({
 	],
 	explicit: [types.binary, types.omap, types.pairs, types.set],
 });
+
+const leapYear = (year: number) => (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 
 /** YAML text as a value, by js-yaml's rules and with the years before 100 kept. */
 export function loadYaml(text: string): unknown {
@@ -226,8 +233,10 @@ export function tomlValue(v: unknown): unknown {
 	if (v instanceof TomlDate) return tomlDateText(v);
 	if (Array.isArray(v)) return v.map(tomlValue);
 	if (isPlainObject(v)) {
+		// A table's keys in name order, as 0.7's TOML library sorted them (a loop over a TOML
+		// file's table gave the same order there); TOML itself says tables have none.
 		const out: Data = {};
-		for (const [key, value] of Object.entries(v)) out[key] = tomlValue(value);
+		for (const key of Object.keys(v).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) out[key] = tomlValue((v as Data)[key]);
 		return out;
 	}
 	if (typeof v === "bigint") return Number(v);
