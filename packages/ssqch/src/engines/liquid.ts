@@ -4,8 +4,9 @@
 // Shopify's filters, dates in UTC, and errors that name the file and the line.
 import fs from "node:fs";
 import path from "node:path";
-import { Liquid, TypeGuards } from "liquidjs";
-import type { FS } from "liquidjs";
+import { createRequire } from "node:module";
+import type * as LiquidJs from "liquidjs";
+import type { FS, Liquid } from "liquidjs";
 import type { Filter } from "../config.ts";
 import type { Data } from "../data.ts";
 import { BuildError } from "../diagnostics.ts";
@@ -46,8 +47,14 @@ export function liquidEngine(env: EngineEnv): TemplateEngine {
 	};
 }
 
+// liquidjs is loaded when the first Liquid template renders, not when ssqch starts: most sites
+// have none, and loading it takes about 5 ms. `require`, because rendering is synchronous.
+let library: typeof LiquidJs | undefined;
+const liquidjs = () => (library ??= createRequire(import.meta.url)("liquidjs") as typeof LiquidJs);
+
 /** liquidjs, set up for the site; it adds the includes it reads to `loaded`. */
 function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["render"] {
+	const { Liquid, TypeGuards } = liquidjs();
 	const root = env.config.root;
 	const isFile = (file: string) => fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false;
 	const read = (file: string) => {

@@ -6,13 +6,15 @@
 // file and the line.
 import fs from "node:fs";
 import path from "node:path";
-import Handlebars from "handlebars";
+import { createRequire } from "node:module";
+import type HandlebarsLib from "handlebars";
 import type { Filter } from "../config.ts";
 import type { Data } from "../data.ts";
 import { isPlainObject } from "../data.ts";
 import { BuildError } from "../diagnostics.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
+import { lazyEngine } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 
 /** The extensions that are Handlebars: a partial with one that doesn't parse is an error, and other files that don't are skipped. */
@@ -39,15 +41,23 @@ class Located extends Error {
 // How `{{ }}` and `{{{ }}}` print a value: as 0.7 did, which printed the page's data as JSON
 // (a date as ISO 8601, a list as `[a, b, c]`, an object as `[object]`), not in the machine's
 // time zone. `{{{ }}}` goes through it too (see `useCompiler`), with `raw` set.
-const utils = Handlebars.Utils as unknown as { escapeExpression(value: unknown, raw?: boolean): string; ssqch?: boolean };
-if (!utils.ssqch) {
-	const escape = utils.escapeExpression;
-	utils.escapeExpression = (value, raw) => {
-		const shown = printable(value);
-		if (!raw) return escape(shown);
-		return shown === undefined || shown === null ? "" : typeof shown === "object" && typeof (shown as any).toHTML === "function" ? (shown as any).toHTML() : String(shown);
-	};
-	utils.ssqch = true;
+let library: typeof HandlebarsLib | undefined;
+
+/** handlebars.js, loaded with the first Handlebars template (`require`, since rendering is synchronous). */
+function handlebarsLib(): typeof HandlebarsLib {
+	if (library) return library;
+	library = createRequire(import.meta.url)("handlebars") as typeof HandlebarsLib;
+	const utils = library.Utils as unknown as { escapeExpression(value: unknown, raw?: boolean): string; ssqch?: boolean };
+	if (!utils.ssqch) {
+		const escape = utils.escapeExpression;
+		utils.escapeExpression = (value, raw) => {
+			const shown = printable(value);
+			if (!raw) return escape(shown);
+			return shown === undefined || shown === null ? "" : typeof shown === "object" && typeof (shown as any).toHTML === "function" ? (shown as any).toHTML() : String(shown);
+		};
+		utils.ssqch = true;
+	}
+	return library;
 }
 
 function printable(value: unknown): unknown {
@@ -58,7 +68,7 @@ function printable(value: unknown): unknown {
 }
 
 /** handlebars.js' compiler, with `{{{ }}}` printing through `printable` as `{{ }}` does. */
-function useCompiler(hb: typeof Handlebars): void {
+function useCompiler(hb: typeof HandlebarsLib): void {
 	const Base = (hb as any).JavaScriptCompiler;
 	function Compiler(this: unknown, ...args: unknown[]) { Base.apply(this, args); }
 	Compiler.prototype = Object.create(Base.prototype);
@@ -102,8 +112,12 @@ function compare(a: unknown, b: unknown): number | undefined {
 }
 
 export function handlebarsEngine(env: EngineEnv): TemplateEngine {
+	return lazyEngine(() => makeHandlebars(env));
+}
+
+function makeHandlebars(env: EngineEnv): TemplateEngine {
 	const root = env.config.root;
-	const hb = Handlebars.create();
+	const hb = handlebarsLib().create();
 	useCompiler(hb);
 	// `{{log}}` says nothing, as in 0.7.
 	(hb as any).logger.level = "error";

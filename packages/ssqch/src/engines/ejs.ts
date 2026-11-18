@@ -5,12 +5,13 @@
 // and errors that name the template and the line.
 import fs from "node:fs";
 import path from "node:path";
-import ejs from "ejs";
+import { createRequire } from "node:module";
+import type EjsLib from "ejs";
 import type { Data } from "../data.ts";
 import { BuildError } from "../diagnostics.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closestPath } from "../suggest.ts";
-import { siteFunction } from "./engine.ts";
+import { lazyEngine, siteFunction } from "./engine.ts";
 import type { EngineEnv, TemplateEngine } from "./engine.ts";
 
 /** A template as code: its function, or its text when it has no tags. */
@@ -51,7 +52,16 @@ function showDate(d: Date): string {
 	return `${DAYS[d.getUTCDay()]} ${MONTHS[d.getUTCMonth()]} ${two(d.getUTCDate())} ${year < 0 ? "-" : ""}${String(Math.abs(year)).padStart(4, "0")} ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())} GMT+0000`;
 }
 
+// ejs is loaded with the first EJS template, not when ssqch starts (`require`, since rendering is synchronous).
+let library: typeof EjsLib | undefined;
+const ejsLib = () => (library ??= createRequire(import.meta.url)("ejs") as typeof EjsLib);
+
 export function ejsEngine(env: EngineEnv): TemplateEngine {
+	return lazyEngine(() => makeEjs(env));
+}
+
+function makeEjs(env: EngineEnv): TemplateEngine {
+	const ejs = ejsLib();
 	const root = env.config.root;
 	const loaded = new Set<string>();
 	const globals: Data = Object.create(null);
