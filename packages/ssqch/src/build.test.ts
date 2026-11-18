@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { asTextForTest as asText, edgeCodeMentionsForTest as edgeCodeMentions, sameContentsForTest as sameContents } from "./build.ts";
+import { spawnSync } from "node:child_process";
+import { asTextForTest as asText, commandLine, edgeCodeMentionsForTest as edgeCodeMentions, sameContentsForTest as sameContents } from "./build.ts";
 import { BuildError } from "./diagnostics.ts";
 import { BUILTIN_FILTERS, builtinFilters } from "./filters.ts";
 import { markdownEngine } from "./engines/markdown.ts";
@@ -39,6 +40,35 @@ test("an_engine_that_answers_with_something_other_than_text_is_one_clear_error",
 	}
 	await assert.rejects(asText(Promise.resolve(null), "liquid", "_includes/base.liquid"), (e: unknown) => e instanceof BuildError && e.message.includes("the `liquid` engine gave null instead of text"));
 	assert.equal(await asText(Promise.resolve("<p>Pine Cone Crunch</p>"), "edge", "index.edge"), "<p>Pine Cone Crunch</p>");
+});
+
+test("a_sites_commands_get_the_environment_ssqch_was_given", () => {
+	const had = process.env.UV_THREADPOOL_SIZE;
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-command-"));
+	try {
+		fs.mkdirSync(path.join(dir, "node_modules", ".bin"), { recursive: true });
+		const run = (command: string) => {
+			const { file, args, options } = commandLine(command, dir, { SSQCH_SERVING: "true" });
+			// cmd.exe's `echo` keeps the space before `&&`, and ends lines with `\r\n`.
+			return spawnSync(file, args, { ...options, encoding: "utf8" }).stdout.trim().split(/\r?\n/).map((line) => line.trimEnd()).join("\n");
+		};
+		const show = process.platform === "win32" ? "echo pool=%UV_THREADPOOL_SIZE% serving=%SSQCH_SERVING%" : "echo pool=${UV_THREADPOOL_SIZE:-%UV_THREADPOOL_SIZE%} serving=$SSQCH_SERVING";
+		// The pool ssqch sized for itself (bin/ssqch.ts) isn't the command's.
+		process.env.UV_THREADPOOL_SIZE = String(os.availableParallelism() + 4);
+		assert.equal(run(show), "pool=%UV_THREADPOOL_SIZE% serving=true");
+		// One the person running ssqch set is.
+		process.env.UV_THREADPOOL_SIZE = "7";
+		assert.equal(run(show), "pool=7 serving=true");
+		// The project's tools come first.
+		const { options } = commandLine("x", dir, {});
+		assert.equal(options.env.PATH!.split(path.delimiter)[0], path.join(dir, "node_modules", ".bin"));
+		// Quotes and the shell's own words, as written.
+		assert.equal(run("echo \"Pine Cone Crunch\" && echo trail"), process.platform === "win32" ? "\"Pine Cone Crunch\"\ntrail" : "Pine Cone Crunch\ntrail");
+	} finally {
+		if (had === undefined) delete process.env.UV_THREADPOOL_SIZE;
+		else process.env.UV_THREADPOOL_SIZE = had;
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
 });
 
 test("a_page_rewritten_with_its_size_and_modification_time_kept_is_read_again", (t) => {

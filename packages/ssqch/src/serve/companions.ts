@@ -10,7 +10,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
-import { toolPath } from "../build.ts";
+import { commandLine } from "../build.ts";
 import { BuildError, progress } from "../diagnostics.ts";
 
 /** What a companion is given: its folder and its `SSQCH_*` variables. */
@@ -60,15 +60,16 @@ export class Companions {
 		for (const command of commands) {
 			const name = toolName(command);
 			progress(`[ssqch] serve.run: ${command}`);
-			const env: NodeJS.ProcessEnv = { ...process.env, SSQCH_ENV: ctx.env, SSQCH_SERVING: "true", SSQCH_INPUT: ctx.input, SSQCH_OUTPUT: ctx.output };
-			// One `PATH`, whatever case the platform spells it in.
-			for (const key of Object.keys(env)) if (key.toUpperCase() === "PATH") delete env[key];
-			env.PATH = toolPath(ctx.root);
+			const { file, args, options } = commandLine(command, ctx.root, { SSQCH_ENV: ctx.env, SSQCH_SERVING: "true", SSQCH_INPUT: ctx.input, SSQCH_OUTPUT: ctx.output });
 			const one: Running = { child: undefined as unknown as ChildProcess, stopping: false, exited: false };
 			try {
 				// Standard input is held open: Tailwind's and esbuild's `--watch` stop when theirs
-				// closes, which a null one does at once.
-				one.child = spawn(command, { cwd: ctx.root, env, shell: true, stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32", windowsHide: true });
+				// closes, which a null one does at once. A process group of its own, so stopping it
+				// stops what it started: on Linux and macOS Node makes one only with a session of its
+				// own too, where 0.7 kept it in ssqch's (so it has no terminal), and on Windows not
+				// at all without a console of its own too (each program a tool starts would open a
+				// window), so it shares ssqch's and its group, and a tree is stopped with taskkill.
+				one.child = spawn(file, args, { ...options, stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32", windowsHide: true });
 				await new Promise<void>((resolve, reject) => { one.child.once("spawn", resolve); one.child.once("error", reject); });
 			} catch (e) {
 				await companions.stop();
@@ -168,6 +169,10 @@ async function stop(one: Running): Promise<void> {
 function relay(stream: NodeJS.ReadableStream | null, name: string, error: boolean): Promise<void> {
 	if (!stream) return Promise.resolve();
 	const show = (line: string) => {
+		// On Windows, Ctrl-C reaches the tools as well as ssqch (they share its console), and
+		// cmd.exe asks whether to stop a batch file (`npx.cmd`): 0.7's never heard it, and taskkill
+		// gave them no time to say more, so what they say once ssqch is stopping goes unshown.
+		if (shuttingDown && process.platform === "win32") return;
 		const shown = `[${name}] ${line.trimEnd()}`;
 		if (error) process.stderr.write(shown + "\n");
 		else progress(shown);

@@ -11,6 +11,7 @@
 //    `afterBuild` hooks.
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { rewriteBase } from "./base.ts";
@@ -730,6 +731,25 @@ export function toolPath(root: string): string {
 }
 
 /**
+ * How a command a site runs (a hook, a `serve.run` tool) is started, as 0.7 started it: through
+ * `/bin/sh -c`, or `cmd /C` on Windows, in the project root, with the environment ssqch was
+ * given, `vars` and `PATH` from `toolPath`. Not Node's `shell: true`, whose `cmd /d` skips the
+ * AutoRun commands cmd.exe runs for everything else (0.7's `cmd /C` ran them).
+ */
+export function commandLine(command: string, root: string, vars: Record<string, string>): { file: string; args: string[]; options: { cwd: string; env: NodeJS.ProcessEnv; windowsVerbatimArguments?: boolean } } {
+	const env: NodeJS.ProcessEnv = { ...process.env, ...vars };
+	// The thread pool the `ssqch` command sized for itself (`bin/ssqch.ts`) isn't the command's: a
+	// Node tool would take it for its own. One the person running ssqch set is theirs to pass on.
+	if (env.UV_THREADPOOL_SIZE === String(os.availableParallelism() + 4)) delete env.UV_THREADPOOL_SIZE;
+	// One `PATH`, whatever case the platform spells it in.
+	for (const key of Object.keys(env)) if (key.toUpperCase() === "PATH") delete env[key];
+	env.PATH = toolPath(root);
+	if (process.platform !== "win32") return { file: "/bin/sh", args: ["-c", command], options: { cwd: root, env } };
+	// `/s` and the quotes: what's between them runs as it was written, quotes and all.
+	return { file: process.env.ComSpec ?? "cmd.exe", args: ["/s", "/c", `"${command}"`], options: { cwd: root, env, windowsVerbatimArguments: true } };
+}
+
+/**
  * Runs `command` through the shell (`sh -c`, or `cmd /C` on Windows) in the project root, with
  * its output passed through. It gets `SSQCH_ENV`, `SSQCH_SERVING` (`true` or `false`),
  * `SSQCH_INPUT` and `SSQCH_OUTPUT` (the folders, absolute). A failure (or a program that can't
@@ -737,14 +757,9 @@ export function toolPath(root: string): string {
  */
 export function runCommand(config: Config, dirs: Dirs, event: string, command: string): void {
 	if (!config.quiet) progress(`[ssqch] ${event}: ${command}`);
-	const env: NodeJS.ProcessEnv = { ...process.env, SSQCH_ENV: config.env, SSQCH_SERVING: config.serving ? "true" : "false", SSQCH_INPUT: dirs.input, SSQCH_OUTPUT: dirs.output };
-	// One `PATH`, whatever case the platform spells it in.
-	for (const key of Object.keys(env)) if (key.toUpperCase() === "PATH") delete env[key];
-	env.PATH = toolPath(dirs.root);
-	const ran = spawnSync(command, {
-		cwd: dirs.root,
-		env,
-		shell: true,
+	const { file, args, options } = commandLine(command, dirs.root, { SSQCH_ENV: config.env, SSQCH_SERVING: config.serving ? "true" : "false", SSQCH_INPUT: dirs.input, SSQCH_OUTPUT: dirs.output });
+	const ran = spawnSync(file, args, {
+		...options,
 		// Standard output is kept for the JSON report, so the command's goes to standard error.
 		stdio: ["inherit", isCapturing() ? 2 : "inherit", "inherit"],
 	});
