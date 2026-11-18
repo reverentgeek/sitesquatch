@@ -14,6 +14,9 @@ import type { Equivalent } from "./equivalents.ts";
 import { describeThrown } from "./modules.ts";
 import { relative } from "./paths.ts";
 import { summary } from "./report.ts";
+import { BUILDER, runBuilder } from "./serve/builder.ts";
+import type { BuilderStart } from "./serve/builder.ts";
+import { serve, serveBuilt } from "./serve/server.ts";
 import { VERSION } from "./version.ts";
 
 const FORMAT: Option = { long: "format", value: "FORMAT", help: "text or json", default: "text" };
@@ -53,7 +56,6 @@ const COMMANDS: Array<Command & { stage?: number }> = [
 		],
 		positionals: [],
 		afterHelp: "With --built, it serves the output folder as the last build left it, the way a host would: no build, no\nwatching, no reload script, and text compressed with gzip. For checking a production build (Lighthouse,\na deploy's files) before it goes out:\n\n  ssqch build\n  ssqch serve --built",
-		stage: 6,
 	},
 	{
 		name: "new",
@@ -236,6 +238,12 @@ export function crashed(e: unknown): never {
 
 /** Runs ssqch with `argv` (without the program's name) and answers with the exit code. */
 export async function main(argv: string[]): Promise<number> {
+	// Started by `ssqch serve` to build for it (`serve/builder.ts`), with the server's own arguments.
+	let building: BuilderStart | undefined;
+	if (argv[0] === BUILDER && process.send !== undefined) {
+		building = JSON.parse(argv[1]) as BuilderStart;
+		argv = argv.slice(2);
+	}
 	const [args, aliases] = aliased(argv);
 	let cli;
 	try {
@@ -252,7 +260,9 @@ export async function main(argv: string[]): Promise<number> {
 	const command = cli.command ?? "build";
 	// A JSON build keeps its notes for the report.
 	if (command === "build" && format === "json") diagnostics.capture();
-	for (const row of aliases) diagnostics.aliasUsed(row);
+	// (The server has said the command line's own already.)
+	if (building) diagnostics.aliasesKnown(aliases);
+	else for (const row of aliases) diagnostics.aliasUsed(row);
 
 	const later = COMMANDS.find((c) => c.name === command)?.stage;
 	if (command !== "build" && later !== undefined) {
@@ -273,6 +283,33 @@ export async function main(argv: string[]): Promise<number> {
 	routeConsole();
 	const makeConfig = () => loadConfig({ root, env, serving, quiet: flag("quiet"), verbose: flag("verbose"), output: value("output"), base: value("base") });
 
+	if (serving) {
+		if (building) return runBuilder(building, makeConfig, root);
+		// From where the command was run, wherever the site's code runs.
+		const readyFile = value("ready-file") === undefined ? undefined : path.resolve(value("ready-file")!);
+		const options = { port: Number(value("port") ?? "8080"), readyFile, quiet: flag("quiet") };
+		if (!flag("built")) {
+			try {
+				return await serve(argv, options);
+			} catch (e) {
+				diagnostics.printError("error:", e, "build", new Locator(root));
+				return 1;
+			}
+		}
+		let config: Config;
+		try {
+			config = await makeConfig();
+		} catch (e) {
+			diagnostics.printError("error:", e, "config", new Locator(root));
+			return 1;
+		}
+		try {
+			return await serveBuilt(config, options);
+		} catch (e) {
+			diagnostics.printError("error:", e, "build", locatorOf(config));
+			return 1;
+		}
+	}
 	if (format === "json") return buildJson(makeConfig, root, env);
 	if (format !== "text") {
 		process.stderr.write(`${diagnostics.red("error:")} --format ${format}: use text or json\n`);
