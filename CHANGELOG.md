@@ -302,8 +302,9 @@ now that didn't, and the messages that read differently.
   what they meant in 0.7 (ssqch turns them into sharp's, measured to give pictures as good). At
   those settings the files are smaller and quicker to make: AVIF about a quarter smaller at the
   default speed (11 to 19% at speed 4) in well under half the time, WebP 1% smaller, and JPEG a
-  tenth smaller at quality 80 (sharp's best JPEG and AVIF fall short of 0.7's from about JPEG 92
-  and AVIF 98 up, and are sharp's 100 there). PNG files are filtered row by row and compressed
+  tenth smaller at quality 80. At the top of the scale sharp can't match 0.7: from JPEG quality
+  92 and AVIF quality 98 up, ssqch asks sharp for its best (100), which is a little below what
+  0.7 made there. PNG files are filtered row by row and compressed
   at zlib's level 6, as 0.7's were, and stay grey or 16 bits when the source is: each within 3%
   of 0.7's size on the blog's PNGs, and 13% smaller in all. A JPEG of a transparent image keeps
   the colour under the transparency, as 0.7's did. A site changes nothing. Its image
