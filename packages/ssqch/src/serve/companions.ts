@@ -10,7 +10,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
-import { commandLine } from "../build.ts";
+import { commandLine } from "../command-line.ts";
 import { BuildError, progress } from "../diagnostics.ts";
 
 /** What a companion is given: its folder and its `SSQCH_*` variables. */

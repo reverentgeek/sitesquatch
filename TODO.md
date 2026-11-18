@@ -249,10 +249,13 @@ until 0.8 ships.
         used every core). Worker threads, or rendering only the pages an edit can reach, would
         change that; the second needs the plugins that count across pages to take part. Both
         are described in "Stage 6, so far".
-  - [ ] The server spends about 60 ms of its start loading the build's modules, which only the
-        process that builds uses (`cli.ts` imports `build.ts`, and so every engine). Import
-        them when a command needs them, once the stages that add commands to `cli.ts` have
-        merged. Starting to serve a one-page site takes 0.26 s (0.7: 0.07 s).
+  - [x] The server no longer loads the build's modules (2026-11-18): `cli.ts` imports each
+        command's when it runs, and the build process's half of `serve/builder.ts` is
+        `serve/build-process.ts`, loaded only there. From source, `--help` takes 40 ms (70 ms
+        before) and serving a one-page site is ready in 151 ms (166 ms). The npm package bundles
+        everything into one file, so there it changes little (`--help` 45 to 30 ms; serving
+        about 125 ms either way): the time left is the build process, which loads the bundle and
+        builds before the server is ready. 0.7 was ready in 70 ms.
   - [ ] Windows and Linux: the server's own unit tests run both ways of watching on each, but
         the oracle's serve tests have only run on macOS. Watch CI's first run.
   - [x] The review's findings (2026-11-18), each with a unit test or an oracle test in

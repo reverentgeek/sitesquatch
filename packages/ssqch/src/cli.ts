@@ -3,32 +3,24 @@ import path from "node:path";
 import util from "node:util";
 import { Printed, UsageError, parse } from "./args.ts";
 import type { Command, Grammar, Option } from "./args.ts";
-import { build } from "./build.ts";
 import type { BuildReport } from "./build.ts";
-import { dirsOf, loadConfig, parseEnvironment, shownDir, shownOutput } from "./config.ts";
-import type { Config, Environment } from "./config.ts";
+import type { Config } from "./config.ts";
+import { dirsOf, parseEnvironment, shownDir, shownOutput } from "./dirs.ts";
+import type { Environment } from "./dirs.ts";
 import * as diagnostics from "./diagnostics.ts";
 import { Locator, bail } from "./diagnostics.ts";
-import { compare, diffJson, diffText, isSame } from "./diff.ts";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
-import { runCapabilities } from "./commands/capabilities.ts";
-import { runDocs } from "./commands/docs.ts";
-import { DEFAULT_ENGINE, runInit } from "./commands/init.ts";
-import { runNew } from "./commands/new.ts";
-import { runSighting } from "./commands/sighting.ts";
-import { runTypes } from "./commands/types.ts";
-import { footprintJson, footprintText, measure } from "./footprint.ts";
-import { globProblem, globToRegExp } from "./glob.ts";
-import { field, fieldText, inspect, inspectionJson, inspectionText } from "./inspect.ts";
+// Each command's modules load when it runs (`import()` below): `ssqch serve` starts a server
+// that never builds, and `--help` needs none of them.
+import { DEFAULT_ENGINE } from "./commands/init.ts";
+import type { NewCommand } from "./commands/new.ts";
 import type { Field as InspectedField, Inspection } from "./inspect.ts";
 import { describeThrown } from "./modules.ts";
 import { relative } from "./paths.ts";
 import { prettyJson, quoted } from "./quote.ts";
-import { summary } from "./report.ts";
-import { BUILDER, runBuilder } from "./serve/builder.ts";
+import { BUILDER } from "./serve/builder.ts";
 import type { BuilderStart } from "./serve/builder.ts";
-import { serve, serveBuilt } from "./serve/server.ts";
 import { VERSION } from "./version.ts";
 import { bundled } from "./bundled.ts";
 
@@ -318,10 +310,10 @@ export async function main(argv: string[]): Promise<number> {
 
 	// The commands that don't build the site.
 	switch (command) {
-		case "init": return runInit({ dir: cli.positionals[0] ?? ".", starter: value("starter") ?? "site", engine: value("engine") ?? DEFAULT_ENGINE, quiet: flag("quiet") });
-		case "capabilities": return runCapabilities(format, CAPABILITY_ORDER);
-		case "docs": return runDocs(GRAMMAR, { query: cli.positionals, from: value("from"), format });
-		case "sighting": return runSighting(path.resolve(value("root") ?? "."));
+		case "init": return (await import("./commands/init.ts")).runInit({ dir: cli.positionals[0] ?? ".", starter: value("starter") ?? "site", engine: value("engine") ?? DEFAULT_ENGINE, quiet: flag("quiet") });
+		case "capabilities": return (await import("./commands/capabilities.ts")).runCapabilities(format, CAPABILITY_ORDER);
+		case "docs": return (await import("./commands/docs.ts")).runDocs(GRAMMAR, { query: cli.positionals, from: value("from"), format });
+		case "sighting": return (await import("./commands/sighting.ts")).runSighting(path.resolve(value("root") ?? "."));
 		case "completions": {
 			// 0.7's scripts, which clap made from the same grammar (bundled/completions/; a test
 			// checks they name every command and option this grammar has).
@@ -330,7 +322,7 @@ export async function main(argv: string[]): Promise<number> {
 		}
 		case "types": {
 			routeConsole();
-			return runTypes({ root: value("root"), out: value("out") ?? "ssqch.d.ts" });
+			return (await import("./commands/types.ts")).runTypes({ root: value("root"), out: value("out") ?? "ssqch.d.ts" });
 		}
 	}
 
@@ -362,17 +354,17 @@ export async function main(argv: string[]): Promise<number> {
 	const root = path.resolve(value("root") ?? ".");
 	siteRoot = root;
 	routeConsole();
-	const makeConfig = () => loadConfig({ root, rootGiven: value("root") ?? ".", env, serving, quiet: flag("quiet") || inspecting, verbose: flag("verbose"), output: value("output"), base: value("base") });
+	const makeConfig = async () => (await import("./config.ts")).loadConfig({ root, rootGiven: value("root") ?? ".", env, serving, quiet: flag("quiet") || inspecting, verbose: flag("verbose"), output: value("output"), base: value("base") });
 
 	if (command === "new") return newPage(makeConfig, root, { path: cli.positionals[0], title: value("title"), date: value("date"), blueprint: value("blueprint"), set: (cli.options.set as string[] | undefined) ?? [], format });
 	if (serving) {
-		if (building) return runBuilder(building, makeConfig, root);
+		if (building) return (await import("./serve/build-process.ts")).runBuilder(building, makeConfig, root);
 		// From where the command was run, wherever the site's code runs.
 		const readyFile = value("ready-file") === undefined ? undefined : path.resolve(value("ready-file")!);
 		const options = { port: Number(value("port") ?? "8080"), readyFile, quiet: flag("quiet") };
 		if (!flag("built")) {
 			try {
-				return await serve(argv, options);
+				return await (await import("./serve/server.ts")).serve(argv, options);
 			} catch (e) {
 				diagnostics.printError("error:", e, "build", new Locator(root));
 				return 1;
@@ -386,7 +378,7 @@ export async function main(argv: string[]): Promise<number> {
 			return 1;
 		}
 		try {
-			return await serveBuilt(config, options);
+			return await (await import("./serve/server.ts")).serveBuilt(config, options);
 		} catch (e) {
 			diagnostics.printError("error:", e, "build", locatorOf(config));
 			return 1;
@@ -416,6 +408,7 @@ export async function main(argv: string[]): Promise<number> {
 			await runFootprint(shownDir(config, config.output), shownOutput(config), top, format);
 			return 0;
 		}
+		const [{ build }, { summary }] = await Promise.all([import("./build.ts"), import("./report.ts")]);
 		const report = await build(config);
 		if (!config.quiet) process.stdout.write(summary(config, report));
 		return 0;
@@ -426,7 +419,7 @@ export async function main(argv: string[]): Promise<number> {
 }
 
 /** `ssqch new`: the page, or what went wrong, said as a build says it. */
-async function newPage(makeConfig: () => Promise<Config>, root: string, command: Parameters<typeof runNew>[1]): Promise<number> {
+async function newPage(makeConfig: () => Promise<Config>, root: string, command: NewCommand): Promise<number> {
 	let config: Config;
 	try {
 		config = await makeConfig();
@@ -435,7 +428,7 @@ async function newPage(makeConfig: () => Promise<Config>, root: string, command:
 		return 1;
 	}
 	try {
-		runNew(config, command);
+		(await import("./commands/new.ts")).runNew(config, command);
 		return 0;
 	} catch (e) {
 		diagnostics.printError("error:", e, "build", locatorOf(config));
@@ -450,6 +443,7 @@ const checkFormat = (format: string) => {
 /** `ssqch inspect`: prints where a page (or one field of its data) comes from. */
 async function runInspect(config: Config, target: string, name: string | undefined, format: string): Promise<void> {
 	checkFormat(format);
+	const { field, fieldText, inspect, inspectionJson, inspectionText } = await import("./inspect.ts");
 	let report: Inspection;
 	try {
 		report = await inspect(config, target);
@@ -470,7 +464,7 @@ async function runDiff(before: string, after: string, options: { exact: boolean;
 	try {
 		checkFormat(options.format);
 		// Only `diff` reads Rust's regex syntax, so the translator loads with it.
-		const { rustRegExp } = await import("./rust-regex.ts");
+		const [{ rustRegExp }, { globProblem, globToRegExp }, { compare, diffJson, diffText, isSame }] = await Promise.all([import("./rust-regex.ts"), import("./glob.ts"), import("./diff.ts")]);
 		const ignore = options.ignore.map((pattern) => {
 			try { return rustRegExp(pattern, "g"); } catch (e) { return bail(`--ignore ${quoted(pattern)} isn't a regular expression: ${(e as Error).message}`); }
 		});
@@ -493,6 +487,7 @@ async function runDiff(before: string, after: string, options: { exact: boolean;
 /** `ssqch footprint`: what the build in `dir` weighs. `shown` is how the report names the folder. */
 async function runFootprint(dir: string, shown: string, top: number, format: string): Promise<void> {
 	checkFormat(format);
+	const { footprintJson, footprintText, measure } = await import("./footprint.ts");
 	const measured = await measure(dir);
 	if (format === "json") process.stdout.write(JSON.stringify(footprintJson(measured, shown, top), null, 2) + "\n");
 	else process.stdout.write(footprintText(measured, shown, top));
@@ -522,7 +517,7 @@ async function buildJson(makeConfig: () => Promise<Config>, root: string, env: E
 		const dirs = dirsOf(config);
 		out.output = shownOutput(config);
 		try {
-			const report: BuildReport = await build(config);
+			const report: BuildReport = await (await import("./build.ts")).build(config);
 			out.durationMs = ms(report.durationMs);
 			out.pages = { written: report.pagesWritten, templates: report.templates, bytes: report.pageBytes, new: report.pagesNew ?? null, gone: report.pagesGone ?? null };
 			out.copied = { files: report.filesCopied, unchanged: report.filesUnchanged, bytes: report.passthroughBytes };

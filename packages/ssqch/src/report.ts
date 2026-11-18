@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { BuildReport } from "./build.ts";
 import type { Config } from "./config.ts";
-import { dirsOf, shownOutput } from "./config.ts";
+import { dirsOf, shownOutput } from "./dirs.ts";
 import { relative } from "./paths.ts";
 import * as voice from "./voice.ts";
 

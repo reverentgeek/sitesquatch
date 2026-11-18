@@ -15,7 +15,7 @@ import http from "node:http";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Config } from "../config.ts";
-import { CONFIG_FILES, dirsOf } from "../config.ts";
+import { CONFIG_FILES, dirsOf } from "../dirs.ts";
 import * as diagnostics from "../diagnostics.ts";
 import { BuildError, messageOf } from "../diagnostics.ts";
 import { isInside, realPath, relative, slashes } from "../paths.ts";
