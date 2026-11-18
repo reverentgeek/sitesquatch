@@ -208,6 +208,9 @@ var Tokenizer = /*#__PURE__*/function () {
           } else {
             return token(TOKEN_INT, tok, lineno, colno);
           }
+        } else if (tok.match(/^[0-9]+e[0-9]+$/i)) {
+          // ssqch: `1e3` is a number, as in Jinja (it was a variable's name, and so nothing).
+          return token(TOKEN_FLOAT, tok, lineno, colno);
         } else if (tok.match(/^(true|false)$/)) {
           return token(TOKEN_BOOLEAN, tok, lineno, colno);
         } else if (tok === 'none') {

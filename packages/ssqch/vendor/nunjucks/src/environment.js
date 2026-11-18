@@ -195,6 +195,16 @@ var Environment = /*#__PURE__*/function (_EmitterObj) {
       // this fixes autoescape for templates referenced in symbols
       name = name.raw;
     }
+    // ssqch: `{% include ["a.njk", "b.njk"] %}` is the first of them that's there, as in Jinja
+    // (the first is the one named when none is).
+    if (lib.isArray(name) && name.length) {
+      var names = name;
+      name = names.find(function (candidate) {
+        return typeof candidate === 'string' && _this3.loaders.some(function (loader) {
+          return !loader.async && loader.getSource(candidate);
+        });
+      }) || names[0];
+    }
     if (lib.isFunction(parentName)) {
       cb = parentName;
       parentName = null;

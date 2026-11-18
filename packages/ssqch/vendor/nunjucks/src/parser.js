@@ -63,6 +63,13 @@ var Parser = /*#__PURE__*/function (_Obj) {
     return new lib.TemplateError(msg, lineno, colno);
   };
   _proto.fail = function fail(msg, lineno, colno) {
+    // ssqch: an error without a place (the file ended inside a block) is at the tag that opened
+    // the innermost block, as 0.7 reported it, rather than nowhere.
+    if (lineno === undefined && this.ssqchOpen && this.ssqchOpen.length) {
+      var open = this.ssqchOpen[this.ssqchOpen.length - 1];
+      lineno = open.lineno;
+      colno = open.colno;
+    }
     throw this.error(msg, lineno, colno);
   };
   _proto.skip = function skip(type) {
@@ -160,6 +167,9 @@ var Parser = /*#__PURE__*/function (_Obj) {
     // ssqch: Jinja's loop filter (`for x in xs if x.ok`) reads here as `xs if x.ok`, which runs
     // before `x` is set and loops over every item. An error, rather than an answer that's
     // quietly different from Jinja's.
+    if (this.peekToken() && this.peekToken().value === 'recursive') {
+      this.fail('a recursive loop (`for ... recursive` and `loop(...)`) isn\'t supported: write a macro that calls itself for the children', forTok.lineno, forTok.colno);
+    }
     if (node.arr instanceof nodes.InlineIf && !node.arr.else_) {
       this.fail('a loop can\'t filter with `if` (`for x in xs if ...`): put an `{% if %}` inside the loop, or filter the list first (`| selectattr`, `| select`)', node.arr.lineno, node.arr.colno);
     }
@@ -327,6 +337,8 @@ var Parser = /*#__PURE__*/function (_Obj) {
     if (this.skipSymbol('ignore') && this.skipSymbol('missing')) {
       node.ignoreMissing = true;
     }
+    // ssqch: Jinja's `with context` and `without context` (an include sees the page's data either way).
+    this.parseWithContext();
     this.advanceAfterBlockEnd(tag.value);
     return node;
   };
@@ -386,6 +398,14 @@ var Parser = /*#__PURE__*/function (_Obj) {
       }
     } else {
       node.value = this.parseExpression();
+      // ssqch: `{% set a, b = 1, 2 %}` is a tuple on the right (compileSet unpacks it).
+      if (this.peekToken() && this.peekToken().type === lexer.TOKEN_COMMA) {
+        var items = new nodes.Group(node.value.lineno, node.value.colno, [node.value]);
+        while (this.skip(lexer.TOKEN_COMMA)) {
+          items.addChild(this.parseExpression());
+        }
+        node.value = items;
+      }
       this.advanceAfterBlockEnd(tag.value);
     }
     return node;
@@ -453,7 +473,16 @@ var Parser = /*#__PURE__*/function (_Obj) {
     // and return the switch node.
     return new nodes.Switch(tag.lineno, tag.colno, expr, cases, defaultCase);
   };
+  // ssqch: the tags being parsed, innermost last, for `fail`.
   _proto.parseStatement = function parseStatement() {
+    (this.ssqchOpen || (this.ssqchOpen = [])).push(this.peekToken());
+    try {
+      return this.parseStatementTag();
+    } finally {
+      this.ssqchOpen.pop();
+    }
+  };
+  _proto.parseStatementTag = function parseStatementTag() {
     var tok = this.peekToken();
     var node;
     if (tok.type !== lexer.TOKEN_SYMBOL) {
@@ -664,6 +693,12 @@ var Parser = /*#__PURE__*/function (_Obj) {
       var not = this.skipSymbol('not');
       // get the next node
       var node2 = this.parseCompare();
+      // ssqch: Jinja's `is divisibleby 3` (one argument without parentheses), read as
+      // `is divisibleby(3)`.
+      var arg = this.peekToken();
+      if (node2 instanceof nodes.Symbol && arg && (arg.type === lexer.TOKEN_STRING || arg.type === lexer.TOKEN_INT || arg.type === lexer.TOKEN_FLOAT || arg.type === lexer.TOKEN_BOOLEAN || arg.type === lexer.TOKEN_NONE || (arg.type === lexer.TOKEN_SYMBOL && ['and', 'or', 'else', 'if', 'not', 'in', 'is'].indexOf(arg.value) === -1))) {
+        node2 = new nodes.FunCall(node2.lineno, node2.colno, node2, new nodes.NodeList(arg.lineno, arg.colno, [this.parsePrimary()]));
+      }
       // create an Is node using the next node and the info from our Is node.
       node = new nodes.Is(node.lineno, node.colno, node, node2);
       // if we have a Not, create a Not node from our Is node.

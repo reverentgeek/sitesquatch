@@ -80,6 +80,8 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     this._emitLine("function " + name + "(env, context, frame, runtime, cb) {");
     this._emitLine("var lineno = " + node.lineno + ";");
     this._emitLine("var colno = " + node.colno + ";");
+    // ssqch: what `and`, `or` and a chain of comparisons hold while they decide (see compileOr).
+    this._emitLine("var ssqch_v, ssqch_c;");
     this._emitLine("var " + this.buffer + " = \"\";");
     this._emitLine('try {');
   };
@@ -258,6 +260,13 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     }
   };
   _proto.compileGroup = function compileGroup(node, frame) {
+    // ssqch: `(a, b)` is a tuple, as in Jinja, where it was JavaScript's comma (and so `b`).
+    if (node.children.length > 1) {
+      this._emit('runtime.tuple(');
+      this._compileAggregate(node, frame, '[', ']');
+      this._emit(')');
+      return;
+    }
     this._compileAggregate(node, frame, '(', ')');
   };
   _proto.compileArray = function compileArray(node, frame) {
@@ -279,8 +288,11 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     this._compileExpression(val, frame);
   };
   _proto.compileInlineIf = function compileInlineIf(node, frame) {
-    this._emit('(');
+    // ssqch: truth is runtime.truthy's (Jinja's: an empty list is false), here and in `if`,
+    // `not`, `and` and `or`.
+    this._emit('(runtime.truthy(');
     this.compile(node.cond, frame);
+    this._emit(')');
     this._emit('?');
     this.compile(node.body, frame);
     this._emit(':');
@@ -325,17 +337,32 @@ var Compiler = /*#__PURE__*/function (_Obj) {
   // ensure concatenation instead of addition
   // by adding empty string in between
   ;
+  // ssqch: `a or b` is `a` when it's true by runtime.truthy, and `b` otherwise; `a and b` the
+  // other way round. ssqch_v holds `a` while it's tested: nothing runs between the two.
   _proto.compileOr = function compileOr(node, frame) {
-    return this._binOpEmitter(node, frame, ' || ');
+    this._emit('(runtime.truthy(ssqch_v = ');
+    this.compile(node.left, frame);
+    this._emit(') ? ssqch_v : ');
+    this.compile(node.right, frame);
+    this._emit(')');
   };
   _proto.compileAnd = function compileAnd(node, frame) {
-    return this._binOpEmitter(node, frame, ' && ');
+    this._emit('(runtime.truthy(ssqch_v = ');
+    this.compile(node.left, frame);
+    this._emit(') ? ');
+    this.compile(node.right, frame);
+    this._emit(' : ssqch_v)');
   };
   _proto.compileAdd = function compileAdd(node, frame) {
     return this._binOpEmitter(node, frame, ' + ');
   };
   _proto.compileConcat = function compileConcat(node, frame) {
-    return this._binOpEmitter(node, frame, ' + "" + ');
+    // ssqch: `~` joins values as text the way they print (an undefined value is nothing).
+    this._emit('runtime.concat(');
+    this.compile(node.left, frame);
+    this._emit(', ');
+    this.compile(node.right, frame);
+    this._emit(', env.opts.autoescape)');
   };
   _proto.compileSub = function compileSub(node, frame) {
     return this._binOpEmitter(node, frame, ' - ');
@@ -347,11 +374,17 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     return this._binOpEmitter(node, frame, ' / ');
   };
   _proto.compileMod = function compileMod(node, frame) {
-    return this._binOpEmitter(node, frame, ' % ');
+    // ssqch: `%` as Python has it (`-7 % 3` is 2).
+    this._emit('runtime.mod(');
+    this.compile(node.left, frame);
+    this._emit(', ');
+    this.compile(node.right, frame);
+    this._emit(')');
   };
   _proto.compileNot = function compileNot(node, frame) {
-    this._emit('!');
+    this._emit('!runtime.truthy(');
     this.compile(node.target, frame);
+    this._emit(')');
   };
   _proto.compileFloorDiv = function compileFloorDiv(node, frame) {
     this._emit('Math.floor(');
@@ -377,18 +410,49 @@ var Compiler = /*#__PURE__*/function (_Obj) {
   };
   _proto.compileCompare = function compileCompare(node, frame) {
     var _this5 = this;
-    this.compile(node.expr, frame);
-    node.ops.forEach(function (op) {
-      _this5._emit(" " + compareOps[op.type] + " ");
+    // ssqch: `==` and `!=` are runtime.eq's (Jinja's: `0 == ""` is false, `[1] == [1]` true),
+    // and a chain is Python's: `a < b < c` is `a < b and b < c`, with `b` worked out once.
+    if (node.ops.length === 1 && node.ops[0].type !== '==' && node.ops[0].type !== '!=') {
+      this.compile(node.expr, frame);
+      this._emit(" " + compareOps[node.ops[0].type] + " ");
+      this.compile(node.ops[0].expr, frame);
+      return;
+    }
+    this._emit('(');
+    node.ops.forEach(function (op, i) {
+      if (i > 0) {
+        _this5._emit(' && ');
+      }
+      _this5._emit('runtime.compare(');
+      if (i === 0) {
+        _this5.compile(node.expr, frame);
+      } else {
+        _this5._emit('ssqch_c');
+      }
+      _this5._emit(', "' + op.type + '", ');
+      if (i < node.ops.length - 1) {
+        _this5._emit('ssqch_c = ');
+      }
       _this5.compile(op.expr, frame);
+      _this5._emit(')');
     });
+    this._emit(')');
   };
   _proto.compileLookupVal = function compileLookupVal(node, frame) {
+    // ssqch: a slice that fails (`xs[::0]`) names its line.
+    var slice = node.val && node.val.typename === 'Slice';
+    if (slice) {
+      this._emit('(');
+      this._emitPosition(node);
+    }
     this._emit('runtime.memberLookup((');
     this._compileExpression(node.target, frame);
     this._emit('),');
     this._compileExpression(node.val, frame);
     this._emit(')');
+    if (slice) {
+      this._emit(')');
+    }
   };
   _proto._getNodeName = function _getNodeName(node) {
     switch (node.typename) {
@@ -411,8 +475,17 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     // anything
     this._emit('(lineno = ' + node.lineno + ', colno = ' + node.colno + ', ');
     this._emit('runtime.callWrap(');
-    // Compile it as normal.
-    this._compileExpression(node.name, frame);
+    // ssqch: `obj.items()` calls a method: runtime.methodLookup can find one where `obj` has a
+    // key of the same name that isn't a function (Jinja's way). Otherwise, compile it as normal.
+    if (node.name instanceof nodes.LookupVal && !(node.name.val && node.name.val.typename === 'Slice')) {
+      this._emit('runtime.methodLookup((');
+      this._compileExpression(node.name.target, frame);
+      this._emit('),');
+      this._compileExpression(node.name.val, frame);
+      this._emit(')');
+    } else {
+      this._compileExpression(node.name, frame);
+    }
 
     // Output the name of what we're calling so we can get friendly errors
     // if the lookup fails.
@@ -456,16 +529,17 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     if (node.targets.length === 1 && node.targets[0] instanceof nodes.LookupVal) {
       var target = node.targets[0];
       this._emitLine('lineno = ' + node.lineno + '; colno = ' + node.colno + ';');
+      this._emit('runtime.setAttribute(');
       this._compileExpression(target.target, frame);
-      this._emit('[');
+      this._emit(', ');
       this._compileExpression(target.val, frame);
-      this._emit('] = ');
+      this._emit(', ');
       if (node.value) {
         this._compileExpression(node.value, frame);
       } else {
         this.compile(node.body, frame);
       }
-      this._emitLine(';');
+      this._emitLine(');');
       return;
     }
 
@@ -483,7 +557,16 @@ var Compiler = /*#__PURE__*/function (_Obj) {
       }
       ids.push(id);
     });
-    if (node.value) {
+    if (node.value && ids.length > 1) {
+      // ssqch: `{% set a, b = pair %}` takes a list or tuple apart, as in Jinja; anything else is
+      // given to every name, as nunjucks did.
+      this._emit('ssqch_v = ');
+      this._compileExpression(node.value, frame);
+      this._emitLine(';');
+      this._emitLine('if(runtime.isArray(ssqch_v)) { ' + ids.map(function (id, i) {
+        return id + ' = ssqch_v[' + i + '];';
+      }).join(' ') + ' } else { ' + ids.join(' = ') + ' = ssqch_v; }');
+    } else if (node.value) {
       this._emit(ids.join(' = ') + ' = ');
       this._compileExpression(node.value, frame);
       this._emitLine(';');
@@ -532,9 +615,9 @@ var Compiler = /*#__PURE__*/function (_Obj) {
   };
   _proto.compileIf = function compileIf(node, frame, async) {
     var _this8 = this;
-    this._emit('if(');
+    this._emit('if(runtime.truthy(');
     this._compileExpression(node.cond, frame);
-    this._emitLine(') {');
+    this._emitLine(')) {');
     this._withScopedSyntax(function () {
       _this8.compile(node.body, frame);
       if (async) {
@@ -605,6 +688,8 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     this._emitLine(';');
     this._emit("if(" + arr + ") {");
     this._emitLine(arr + ' = runtime.fromIterator(' + arr + ');');
+    // ssqch: a number or `true` can't be looped over: an error, as in Jinja, not nothing.
+    this._emitLine('if(typeof ' + arr + ' === "number" || typeof ' + arr + ' === "boolean") { lineno = ' + node.lineno + '; colno = ' + node.colno + '; throw new Error("invalid operation: " + typeof ' + arr + ' + " is not iterable"); }');
 
     // If multiple names are passed, we need to bind them
     // appropriately
@@ -848,7 +933,9 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     var target = node.target.value;
     var id = this._compileGetTemplate(node, frame, false, false);
     this._addScopeLevel();
-    this._emitLine(id + '.getExported(' + (node.withContext ? 'context.getVariables(), frame, ' : '') + this._makeCallback(id));
+    // ssqch: an import sees the page's data unless it says `without context`, as 0.7's did
+    // (here it saw only the globals, so a macro file's `site.title` was empty).
+    this._emitLine(id + '.getExported(' + (node.withContext !== false ? 'context.getVariables(), frame, ' : '') + this._makeCallback(id));
     this._addScopeLevel();
     frame.set(target, id);
     if (frame.parent) {
@@ -861,7 +948,8 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     var _this13 = this;
     var importedId = this._compileGetTemplate(node, frame, false, false);
     this._addScopeLevel();
-    this._emitLine(importedId + '.getExported(' + (node.withContext ? 'context.getVariables(), frame, ' : '') + this._makeCallback(importedId));
+    // ssqch: as in compileImport.
+    this._emitLine(importedId + '.getExported(' + (node.withContext !== false ? 'context.getVariables(), frame, ' : '') + this._makeCallback(importedId));
     this._addScopeLevel();
     node.names.children.forEach(function (nameNode) {
       var name;

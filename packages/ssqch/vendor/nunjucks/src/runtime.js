@@ -312,7 +312,51 @@ function fromIterator(arr) {
     return arr;
   }
 }
+// ssqch: what the compiled code asks for truth, `==`, a chain of comparisons, `%`, `~`, a tuple
+// and `{% set ns.x %}`. These are nunjucks' own answers (JavaScript's); ssqch puts Jinja's in their
+// place (packages/ssqch/src/engines/jinja.ts).
+function truthy(value) {
+  return !!value;
+}
+function eq(a, b) {
+  return a == b; // eslint-disable-line eqeqeq
+}
+function compare(a, op, b) {
+  switch (op) {
+    case '==': return module.exports.eq(a, b);
+    case '!=': return !module.exports.eq(a, b);
+    case '===': return a === b;
+    case '!==': return a !== b;
+    case '<': return a < b;
+    case '>': return a > b;
+    case '<=': return a <= b;
+    default: return a >= b;
+  }
+}
+function mod(a, b) {
+  return a % b;
+}
+function concat(a, b) {
+  return '' + a + b;
+}
+function tuple(items) {
+  return items;
+}
+function setAttribute(obj, key, value) {
+  obj[key] = value;
+}
+function methodLookup(obj, key) {
+  return module.exports.memberLookup(obj, key);
+}
 module.exports = {
+  truthy: truthy,
+  eq: eq,
+  compare: compare,
+  mod: mod,
+  concat: concat,
+  tuple: tuple,
+  setAttribute: setAttribute,
+  methodLookup: methodLookup,
   Frame: Frame,
   makeMacro: makeMacro,
   makeKeywordArgs: makeKeywordArgs,
