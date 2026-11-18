@@ -240,7 +240,7 @@ The default export is the config: an object, or a function (sync or async) that 
 | `deepMerge` | Merge objects and concatenate arrays through the data cascade (default `true`). |
 | `leaveNoTrace` | Delete stale files from the output: pages and passthrough files an earlier build wrote that this one didn't, like a deleted post (default `false`). ssqch keeps a list of what it writes in `.cache/ssqch/output-files.json`, so files other tools write into the output (your CSS build, say) are never touched: it packs out only what it packed in. `clean` is another name for the same option (set one of them). |
 | `filters` | `{ name: function }`, callable from templates: `{{ title | slug }}` or `{{ slug(title) }}`. Async functions are awaited. |
-| `data` | `{ name: value }` for every template. A function (sync or async) is called on each build. |
+| `data` | `{ name: value }` for every template. A value that's a function (sync or async) is called on each build, and what it answers is that name's value: `data: { snacks: async () => fetchSnacks() }`. |
 | `collections` | `{ name: (pages) => ... }`. `pages` has `all()`, `byTag(tag)`, `byTags(...tags)` and `byGlob(glob or globs)`, oldest first. |
 | `transforms` | `{ name: (content, page) => content }`, run on every output file. `page` has `url`, `inputPath` and `outputPath`. Return the content, changed or not. Async works. |
 | `engines` | Template engines of your own: `{ extension: (source, data) => html }`, or an object with a `render(source, data)` method (async is fine). Add the extension to `templateFormats` to render those files; layouts in that extension work too, and `markdownEngine` can name one. `edge`, `md`, `html` and `txt` can't be replaced. |
@@ -460,7 +460,7 @@ The lay of the land:
 
 - **The data cascade:** a page's data comes from several places, and each one replaces what the ones before it set: global data, the front matter of its layouts, directory data, the page's data file, its front matter, then `computed`. [Where a value comes from](#where-a-value-comes-from) has the exact order, and `ssqch inspect` shows it for any page.
 - **Collections:** tags become collections, sorted by date, plus your custom ones. `excludeFromCollections: true` keeps a page out.
-- **Pagination:** `data`, `size`, `alias`, `reverse`, `filter`, `addAllPagesToCollections` and hrefs. `data: collections` goes over the collections' names, for a page per tag (`filter: [all]` leaves `all` out).
+- **Pagination:** one template makes a page for each item, or each group of items, in a list. In its front matter, `pagination: { data: "collections.posts", size: 10, alias: "posts" }` and a `permalink` with the page number (`/blog/{% if pagination.pageNumber > 0 %}{{ pagination.pageNumber + 1 }}/{% endif %}`). `data` names the list: global data (`snacks`), a collection (`collections.posts`, a custom collection included, even one that returns plain objects, so one template can write a page per route of a route table), or `collections` itself, the collections' names, for a page per tag (`filter: [all]` leaves `all` out). `size: 1` gives a page per item, and `alias` names the item (`alias: post`, then `{{ post.data.title }}`). Each page gets `pagination.items` (its items), `pageNumber` (from 0), `pages` (every page's items), `hrefs` (every page's URL), `href.previous`, `href.next`, `href.first` and `href.last`. More options: `reverse`, `filter` (values to leave out) and `addAllPagesToCollections` (every page in the template's collections, not just the first). A `computed` value in a data file beside the template sees the alias, so each page's data can come from its item.
 - **Permalinks:** dynamic permalinks, `permalink: false` and `dynamicPermalink`. A permalink (or `computed` value) with `{{ }}` renders in the page's own template language, so a Liquid page can write `permalink: "/{{ title | slugify }}/"`; Markdown and HTML pages use their `markdownEngine` or `htmlEngine` (Edge when that's `false`).
 - **Front matter:** YAML between `---` lines, TOML between `+++` lines, or JSON after `---json` (`---yaml` and `---toml` work too). `.markdown` files are Markdown, like `.md`.
 - **Navigation:** `navTree(nav, page.url)` takes a tree from data (`_data/nav.yml`: entries with `title`, `url`, and children under `children`, `items` or `pages`) and marks each entry `current`, `ancestor` or `open`, for a sidebar that highlights where you are. `navPager(nav, page.url)` returns `{ previous, next }` in reading order, and `navBreadcrumbs(nav, page.url)` the entries from the top down to the page. To build the tree from front matter instead, give pages `nav: { title, parent, order }` (or `nav: true`; `parent` names another entry's title, or its `key` when it has one) and use `pagesTree(collections.docs)`. URLs match with or without `index.html` and the last `/`.
@@ -663,6 +663,36 @@ Add `"hbs"` (or `"handlebars"`) or `"mustache"` to `templateFormats`, and those 
 - **Includes:** `<%- include("partials/nav") %>` reads `_includes/partials/nav.ejs` (and the themes'), `include("./card")` reads from the template's own folder, and a second argument adds variables: `include("card", { post })`. One that isn't there says which file you probably meant.
 - **Errors** name the template and line, and the lines under them are the file's own. A variable nothing defines is a `ReferenceError`, as in EJS (`typeof x` is still safe).
 - **Starters:** `ssqch init --engine ejs` (and `--starter docs --engine ejs`) writes the starters' layouts, render hook and containers in EJS.
+
+### Multilingual sites: translations, i18n and hreflang
+
+ssqch has no built-in i18n yet ([TODO.md](TODO.md), "Internationalization"). What two real sites (one from Jekyll, one from Astro) did instead, with what ssqch has:
+
+- **A folder per language** (`content/fr/guide.md`), and the language from directory data (`content/fr/fr.json`: `{ "lang": "fr" }`) or front matter. A key that groups a page's translations (the file's path below the language folder, or a front matter key like `translationKey`).
+- **A page's translations** are a lookup in a collection: `collections.docs | where: "data.key", key` in Liquid, or a filter of your own that groups pages by key once.
+- **Fallback pages** (the default language's page at another language's URL): a collection function that returns one object per URL (`{ lang, slug, page }`), choosing the translation when there is one, and one template with `pagination: { data: "collections.routes", size: 1, alias: "route" }` and `permalink: "/{{ route.lang }}/{{ route.slug }}/"` that writes `route.page.templateContent`. The content pages get `permalink: false`, so they're written only where the routes put them.
+- **Strings:** `_data/i18n/<lang>.json`, read in templates as `i18n[lang].nav.about`, or a `t(lang, key)` filter that falls back to the default language.
+- **hreflang:** a loop over the page's translations in the layout's `<head>`, with `x-default` for the default language; `sitemapPlugin()` doesn't write alternates yet, so a sitemap with them is a template or an `afterBuild` hook.
+- **Direction:** `dir` on `<html>` from a language list in data (`{ "ar": { "dir": "rtl" } }`).
+- **Old language codes:** `aliases` on each page, or `redirectsPlugin({ redirects })`.
+
+### SEO tags
+
+ssqch writes no `<head>` tags of its own, so a site's title, description, canonical link, Open Graph and Twitter tags are a partial in its layout. A starting point (Nunjucks):
+
+```njk
+{# _includes/seo.njk #}
+<title>{{ title ~ " · " ~ site.title if title else site.title }}</title>
+<meta name="description" content="{{ description or site.description }}">
+<link rel="canonical" href="{{ site.url ~ page.url }}">
+<meta property="og:title" content="{{ title or site.title }}">
+<meta property="og:description" content="{{ description or site.description }}">
+<meta property="og:url" content="{{ site.url ~ page.url }}">
+<meta property="og:image" content="{{ site.url ~ (image or "/og.png") }}">
+<meta name="twitter:card" content="summary_large_image">
+```
+
+Jekyll's `{% seo %}` (jekyll-seo-tag) becomes this include. JSON-LD, if the site wants it, is a `json` (Liquid), `tojson` (Jinja) or `dump` (Nunjucks) of an object built in the template or by a filter.
 
 ## Themes
 

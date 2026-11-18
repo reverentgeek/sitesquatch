@@ -36,6 +36,14 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 - Build hooks get `quiet` and `verbose` (whether the build was run with `--quiet` or
   `--verbose`), and a hook's command gets `SSQCH_QUIET`, so a hook's own messages can follow `-q`.
 
+### Changed
+
+- `ssqch docs` answers a name with the paragraph that leads with it in bold too (`**Containers:**`),
+  not only a table row that points at it. `ssqch docs pagination` explains pagination (it listed
+  option names), `data` says a value that's a function is called for that name, and `i18n`,
+  `translations`, `hreflang`, `multilingual` and `seo` find new sections: what isn't built in yet,
+  and the recipes two migrations used.
+
 ### Faster
 
 - Liquid's `where` and `reject` don't run liquidjs' generator and new scope for every item when

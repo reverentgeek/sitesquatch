@@ -685,12 +685,13 @@ trailhead.
 - [ ] **`quiet` and `verbose` in `BuildEvent`** (ex #11; done 2026-11-18, and `SSQCH_QUIET` for
       build commands, not yet `serve.run`), and one code frame per distinct error location (a
       222-page error printed the same frame three times).
-- [ ] **Docs** (ex #12): `ssqch docs containers`, `pagination` and `data` answer with a table row or
-      a feature list instead of the explanation (add them to `docs_answer_for_every_name`); when
-      `page.headings`, `page.excerpt` and `templateContent` are available (after the page renders,
-      not in `computed`); a fence hook example that writes `highlighted` (HTML) and escapes `code`
-      (raw text); a release-age cooldown (`min-release-age` in `.npmrc`) holding back a new ssqch
-      release, and sharp installing with `ignore-scripts`.
+- [ ] **Docs** (ex #12; `containers`, `pagination` and `data` done 2026-11-18): `ssqch docs
+      containers`, `pagination` and `data` answer with a table row or a feature list instead of the
+      explanation (add them to `docs_answer_for_every_name`); when `page.headings`, `page.excerpt`
+      and `templateContent` are available (after the page renders, not in `computed`); a fence hook
+      example that writes `highlighted` (HTML) and escapes `code` (raw text); a release-age cooldown
+      (`min-release-age` in `.npmrc`) holding back a new ssqch release, and sharp installing with
+      `ignore-scripts`.
 - [ ] Report the site's bugs upstream (ex `issues.md`, last section): 345 alerts with a translated
       `type`, ids from `Math.random()`, `llms` files without their `import` lines.
 
@@ -928,9 +929,11 @@ write-ups that are still owed.
       on Gahlee House and the `blog-categories` source.
 - [ ] 0.7.0's Node shims (callback `fs`, the `fs` stream stubs, `file:` imports) in a page about
       which packages load.
-- [ ] Answers for `ssqch docs seo` (it suggests `new`), `i18n`, `translations`, `hreflang` and
-      `multilingual`, even if the answer is "not built in yet" with the recipe (osg #16), and an SEO
-      tags example (or a `seoTags(page)` built in; every site writes the same 20 lines, osg #6).
+- [x] (done 2026-11-18: `seo`, `i18n`, `translations`, `hreflang` and `multilingual` find README
+      sections with the recipes) Answers for `ssqch docs seo` (it suggests `new`), `i18n`,
+      `translations`, `hreflang` and `multilingual`, even if the answer is "not built in yet" with
+      the recipe (osg #16), and an SEO tags example (or a `seoTags(page)` built in; every site
+      writes the same 20 lines, osg #6).
 - [ ] When troubleshooting docs get written: call the section (or page) "Ranger station:
       troubleshooting".
 

@@ -122,3 +122,22 @@ test("docs_answer_for_every_name", () => {
 	r = ssqch(["docs", "--from", "hugoo"]);
 	assert.ok(!r.ok && r.log.includes("--from hugoo: no trailhead for that generator (did you mean `hugo`?)"), r.log);
 });
+
+// The two migrations of 2026-11-18 asked `ssqch docs` for these and got a table row, a list of
+// option names, or nothing (opensource.guide's and expressjs.com's issues.md): each answers with
+// its explanation now.
+test("docs_explain_what_migrations_asked_about", () => {
+	const answer = (query) => JSON.parse(ssqch(["docs", "--format", "json", query]).stdout);
+	for (const [query, says] of [
+		["containers", "a block between `::: name` and `:::`"],
+		["pagination", "one template makes a page for each item"],
+		["data", "is called on each build, and what it answers is that name's value"],
+		["i18n", "ssqch has no built-in i18n yet"],
+		["translations", "A page's translations"],
+		["hreflang", "x-default"],
+		["seo", "a partial in its layout"],
+	]) {
+		const a = answer(query);
+		assert.ok(a.found && a.section.text.includes(says), `${query}: ${JSON.stringify(a).slice(0, 400)}`);
+	}
+});

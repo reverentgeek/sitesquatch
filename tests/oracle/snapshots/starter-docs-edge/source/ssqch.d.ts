@@ -186,7 +186,7 @@ declare module "ssqch" {
 		name?: string;
 		/** Functions templates can call: `{{ slug(title) }}`. Async functions are awaited. */
 		filters?: Record<string, (...args: any[]) => unknown>;
-		/** Data for every template. A function (sync or async) is called on each build. */
+		/** Data for every template. A value that's a function (sync or async) is called on each build, and its answer is that name's value. */
 		data?: Record<string, unknown>;
 		/** Custom collections, from the pages in collections. */
 		collections?: Record<string, (pages: Pages) => unknown>;
