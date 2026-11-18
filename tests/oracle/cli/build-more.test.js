@@ -96,3 +96,29 @@ test("aliases_keep_their_place_in_the_cascade", () => {
 	({ ok, log } = ssqch(["build", "--root", dir]));
 	assert.ok(!ok && log.includes("posts.json") && log.includes("`eleventyComputed` and `computed` are two names for one key"), log);
 });
+
+// Not from a Rust test: a failed build reports what 0.7's did. 0.7 rendered every page's body
+// before any layout and stopped at the first phase that failed, so a broken filter in a body is
+// one error, not one more for each layout that would have shown it.
+test("a_failed_build_reports_the_first_phase_that_failed", () => {
+	const dir = tempDir("phases");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\" }, templateFormats: [\"njk\"], filters: { boom: () => { throw new Error(\"no snacks\"); } } };\n",
+		"src/_includes/base.njk": "{{ content | safe }}{{ \"x\" | layoutboom }}\n",
+		"src/p1.njk": "---\nlayout: base.njk\n---\npage 1\n",
+		"src/p2.njk": "---\nlayout: base.njk\n---\npage 2\n",
+		"src/z.njk": "---\nlayout: base.njk\n---\n{{ \"x\" | boom }}\n",
+		"src/late.njk": "---\nlayout: base.njk\n---\n{% for p in collections.all %}{{ p.url | boom }}{% endfor %}\n",
+	});
+	const errors = () => {
+		const r = ssqch(["build", "--root", dir, "-q"]);
+		assert.ok(!r.ok, r.log);
+		return r.log.split("\n").filter((line) => line.startsWith("  - ")).map((line) => line.slice(4, line.indexOf(":")));
+	};
+	// The bodies of pages that don't read collections, then those that do, then layouts.
+	assert.deepEqual(errors(), ["rendering z.njk with `njk`"]);
+	write(dir, { "src/z.njk": "---\nlayout: base.njk\n---\nfine\n" });
+	assert.deepEqual(errors(), ["rendering late.njk with `njk`"]);
+	write(dir, { "src/late.njk": "---\nlayout: base.njk\n---\nfine\n" });
+	assert.deepEqual(errors().length, 4);
+});
