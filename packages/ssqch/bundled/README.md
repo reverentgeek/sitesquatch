@@ -6,7 +6,7 @@
 
 SiteSquatch (`ssqch`) is a static site generator that runs on Node.js: large, quick, and rarely photographed. You write templates in [Jinja](https://jinja.palletsprojects.com/) (the default), [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Handlebars](https://handlebarsjs.com/), [Mustache](https://mustache.github.io/) or [EJS](https://ejs.co/), plus Markdown, configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. Install it from npm into a site that has a `package.json` (Node 22.18 or newer), or use the standalone executable, which has Node inside, for a machine that has none. The JavaScript in your config and data files runs on Node itself, so any npm package that runs there works, and the libraries behind the template languages are the real ones.
 
-It moves fast for its size. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in **TODO(lead): numbers** once its images are cached, which is gone before you've found your camera. [Benchmarks](#benchmarks) has the measurements.
+It moves fast for its size. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in **under a second** once its images are cached, which is gone before you've found your camera. [Benchmarks](#benchmarks) has the measurements.
 
 It reports like a park ranger who has seen some things. What happened comes first, with the file and the line, and now and then something large walks through the log. The jokes never stand in for the facts, the JSON output has none, and nothing of ssqch's own is ever added to the pages it builds.
 
@@ -1110,7 +1110,7 @@ Or install the standalone executable instead, which needs no Node setting: `SSQC
   command = "curl --proto '=https' --tlsv1.2 -fsSL https://github.com/reverentgeek/sitesquatch/releases/download/v$SSQCH_VERSION/ssqch-installer.sh | SSQCH_UNMANAGED_INSTALL=.cache/bin sh && .cache/bin/ssqch build"
 ```
 
-On the blog, the first Netlify build (which encoded every image) took about 4 minutes with 0.7, and the next one took 18 seconds, including Netlify's own setup. TODO(lead): numbers for 0.8.
+On the blog, the first Netlify build (which encoded every image) took about 4 minutes with 0.7, and the next one took 18 seconds, including Netlify's own setup. 0.8 encodes the blog's images in less than half 0.7's time on the same machine (see [Benchmarks](#benchmarks)).
 
 ### GitHub Pages
 
@@ -1152,14 +1152,14 @@ jobs:
 
 No blurry footage here: these numbers come from building the ReverentGeek blog (161 HTML pages plus a feed, a sitemap and Netlify files) on an Apple M5 Pro (15 cores), in production mode with HTML minification on, with ssqch 0.8 on Node 26. Each build wrote to its own output folder, so no image cache was shared.
 
-| Build | `ssqch` 0.8 (Node, AVIF) |
-| --- | --- |
-| **Cold** (no images cached) | TODO(lead): numbers |
-| CPU time, cold (user + sys) | TODO(lead): numbers |
-| Peak memory, cold | TODO(lead): numbers |
-| **Warm** (images cached, median of 3) | TODO(lead): numbers |
-| Peak memory, warm | TODO(lead): numbers |
-| Image files written | TODO(lead): numbers |
+| Build | `ssqch` 0.8 (Node) | `ssqch` 0.7 (Rust) |
+| --- | --- | --- |
+| **Cold** (no images cached) | **25.6 s** | 60.2 s |
+| CPU time, cold (user + sys) | 341 s | 737 s |
+| Peak memory, cold | 2.6 GB | 1.8 GB |
+| **Warm** (images cached, median of 3) | **0.92 s** | 0.38 s |
+| Peak memory, warm | 328 MB | 239 MB |
+| Image files written | 4,985 (266 MB) | 4,985 (298 MB) |
 
 - **Warm builds** are what the dev server and cached CI builds do. Wall times include starting the process: Node starts, and ssqch loads from its compile cache, in a few dozen milliseconds. The standalone executable starts the same way, and unpacks itself once on its first run (see [Install](#install)).
 - **The JavaScript config** runs on Node's V8, with a JIT, so the blog's collections, filters and data files cost what they would in any Node script. (0.7 ran them in QuickJS, an interpreter.)
@@ -1167,19 +1167,19 @@ No blurry footage here: these numbers come from building the ReverentGeek blog (
 - **One thread renders, the thread pool encodes:** pages render one at a time on one thread (there are no worker threads), written as they render, and image encoding runs on libuv's thread pool, which uses every core. A site with heavy per-page JavaScript uses one core for it.
 - Only site generation is measured, not building the CSS and JavaScript.
 
-The speed check ssqch runs on itself is a synthetic site of 10,000 pages, built on one thread (`node packages/ssqch/bench/bench.ts` in the repository), plus v8.dev's exact port from Eleventy. TODO(lead): numbers. CI compares each commit with its parent on the same runner and fails a change that makes the 10,000-page build more than 15% slower.
+The speed check ssqch runs on itself is a synthetic site of 10,000 pages, built on one thread (`node packages/ssqch/bench/bench.ts` in the repository), plus v8.dev's exact port from Eleventy: on the same machine, the 10,000 pages build in 1.12 s and 370 MB (0.7 took 2.70 s on one thread), and v8.dev in 0.58 s. CI compares each commit with its parent on the same runner and fails a change that makes the 10,000-page build more than 15% slower.
 
 For a bigger site, `scripts/synthetic-site.py <folder> [pages] [engine]` writes a synthetic documentation site: 9,001 Markdown pages by default (about the size of kubernetes.io's English docs) in 60 sections, each page with a 9,000-entry sidebar from a data file, a table of contents, a highlighted code fence, a schema check and the link checker. On the same machine, production builds of it take:
 
 | Layout in | Build | CPU time | Peak memory |
 | --- | --- | --- | --- |
-| Edge | TODO(lead): numbers | TODO(lead): numbers | TODO(lead): numbers |
-| Nunjucks | TODO(lead): numbers | TODO(lead): numbers | TODO(lead): numbers |
-| Liquid | TODO(lead): numbers | TODO(lead): numbers | TODO(lead): numbers |
+| Edge | 2.85 s | 7.4 s | 465 MB |
+| Nunjucks | 2.74 s | 7.0 s | 454 MB |
+| Liquid | 9.23 s | 14.3 s | 610 MB |
 
-Each build writes 156 MB of HTML and checks 1.4 million links. Templates get your real objects, not copies, so handing the whole sidebar to a filter on every page copies nothing in any language.
+Each build writes 156 MB of HTML and checks 1.4 million links. 0.7 built it in 1.68, 1.75 and 12.6 s on all 15 cores, with 12, 12 and 159 s of CPU time: 0.8 does less work, on one thread for the pages. Templates get your real objects, not copies, so handing the whole sidebar to a filter on every page copies nothing in any language.
 
-`scripts/bench.sh [path/to/blog] [warm-runs]` runs the blog's table on macOS (the blog defaults to `../blog`) on a copy-on-write clone in a temporary folder, so your copy is never touched, and writes `results.csv`, `bench.log` and `summary.txt` to `bench-results/<timestamp>/`. TODO(lead): the script still builds and times 0.7's Rust ports; it needs the 0.8 columns.
+`scripts/bench.sh [path/to/blog] [warm-runs]` runs the blog's table on macOS (the blog defaults to `../blog`) on a copy-on-write clone in a temporary folder, so your copy is never touched, and writes `results.csv`, `bench.log` and `summary.txt` to `bench-results/<timestamp>/`. It times the npm package as it's published, with ssqch 0.7's binary beside it when `target/release/ssqch` is there, and needs pnpm for the blog's CSS and JavaScript.
 
 ## Plugins in Rust
 
@@ -1258,7 +1258,7 @@ The uncharted parts of the map, as of this release:
 - **Edge:** the async functions inside a callback of `filter`, `find` and the other array methods aren't awaited (an error says to call them first with `@let`).
 - **Markdown:** containers have to close inside the block they opened in (the same list item, say). Highlighting parses more slowly than tree-sitter would: the blog's 350 fences add about 60 ms to a build, and a process's first highlight compiles each grammar it uses (about 0.3 s for the blog's first build, and not again for the rebuilds of `ssqch serve`).
 - **Images:** no SVG rasterizing, and HDR photos (the PQ, gain-map profiles of newer iPhones) can't be converted to sRGB, so they look washed out; the build warns about them, and converting the source to sRGB once fixes it. SVGs are served as they are, and GIFs are copied for `auto` output, so animations keep working. The files' bytes are sharp's, not 0.7's, so a site that compared image bytes with `ssqch diff --exact` sees them change once.
-- **The dev server:** it listens on `127.0.0.1` only (no `--host`), doesn't watch `node_modules`, and rebuilds the whole site on a change, on one thread: after one edit, a 10,000-page site takes about a second (TODO(lead): numbers).
+- **The dev server:** it listens on `127.0.0.1` only (no `--host`), doesn't watch `node_modules`, and rebuilds the whole site on a change, on one thread: after one edit, a 10,000-page site takes about 0.9 s.
 - **Collections:** custom collections don't see pages that are paginated over collections. Those pages are added to `all` and their tags afterwards.
 - **Platforms:** the standalone executable covers Linux x86_64 (glibc 2.28 or newer), macOS and Windows x86_64; Linux on ARM and Alpine run the npm package on their own Node. See [TODO.md](TODO.md) for what's next.
 
