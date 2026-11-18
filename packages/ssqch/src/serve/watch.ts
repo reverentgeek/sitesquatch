@@ -122,7 +122,7 @@ export class Watcher {
 	}
 
 	private listen(top: Watched, dir: string, tree: boolean): void {
-		const watcher = fs.watch(dir, { recursive: tree }, (_, name) => this.changed(top, dir, name === null ? undefined : String(name), tree));
+		const watcher = fs.watch(dir, { recursive: tree }, (event, name) => this.changed(top, dir, name === null ? undefined : String(name), tree, event === "rename"));
 		// A folder that's deleted ends its watch, on Windows with an error.
 		watcher.on("error", () => this.forget(top, dir));
 		top.folders.set(dir, watcher);
@@ -149,15 +149,19 @@ export class Watcher {
 		}
 	}
 
-	private changed(top: Watched, dir: string, name: string | undefined, tree: boolean): void {
+	private changed(top: Watched, dir: string, name: string | undefined, tree: boolean, renamed: boolean): void {
 		// The system didn't say which file: the folder itself, then.
 		if (name === undefined) return this.onChange(dir);
 		const file = path.join(dir, name);
 		this.onChange(file);
 		if (tree || !top.recursive) return;
 		if (isDir(file)) {
+			if (SKIPPED.has(name)) return;
+			// A folder that was watched and is new again (deleted and made again before this heard
+			// of either) has a watcher on the one that's gone.
+			if (renamed && top.folders.has(file)) this.forget(top, file);
 			// A new folder: watch it, and report what was put in it before the watch began.
-			if (!top.folders.has(file) && !SKIPPED.has(name)) {
+			if (!top.folders.has(file)) {
 				this.walk(top, file);
 				for (const inside of filesIn(file)) this.onChange(inside);
 			}
