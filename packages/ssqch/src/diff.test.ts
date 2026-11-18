@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { compare, diffJson, diffText, isSame, tokens, withoutFingerprints } from "./diff.ts";
+import { compare, diffJson, diffText, isSame, keyed, tokens, withoutFingerprints } from "./diff.ts";
 import type { DiffOptions } from "./diff.ts";
 import { globToRegExp } from "./glob.ts";
 
@@ -145,5 +145,18 @@ test("lines_beyond_the_limit_are_counted_not_kept", async () => {
 	assert.equal(file.changedLines, 60);
 	assert.deepEqual(file.hunks, [{ removed: ["pine 0", "pine 1", "pine 2"], added: [] }]);
 	assert.ok(diffText(report, 3, false).includes("      - pine 2\n      ... 57 more changed lines (--lines 0 shows all)\n"));
+	for (const dir of [before, after]) fs.rmSync(dir, { recursive: true });
+});
+
+test("a fingerprinted name that's another file's key keeps every file", async () => {
+	// `x.11111111.css` keeps its own path (it shares `x.css` with `x.css`), and that path is
+	// `x.11111111.22222222.css` without its last fingerprint: 0.7 lost one of the two.
+	const keys = keyed(["x.11111111.22222222.css", "x.11111111.css", "x.css"], false);
+	assert.deepEqual([...keys.values()].sort(), ["x.11111111.22222222.css", "x.11111111.css", "x.css"]);
+	const before = build({ "x.css": "a", "x.11111111.css": "b", "x.11111111.22222222.css": "c" });
+	const after = build({ "x.22222222.css": "a" });
+	const report = await compare(before, after, options());
+	assert.deepEqual([...report.removed].sort(), ["/x.11111111.22222222.css", "/x.11111111.css"]);
+	assert.equal(report.unchangedFiles, 1);
 	for (const dir of [before, after]) fs.rmSync(dir, { recursive: true });
 });

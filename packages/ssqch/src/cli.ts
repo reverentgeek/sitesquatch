@@ -26,6 +26,7 @@ import { describeThrown } from "./modules.ts";
 import { relative } from "./paths.ts";
 import { quoted } from "./quote.ts";
 import { summary } from "./report.ts";
+import { rustRegExp } from "./rust-regex.ts";
 import { BUILDER, runBuilder } from "./serve/builder.ts";
 import type { BuilderStart } from "./serve/builder.ts";
 import { serve, serveBuilt } from "./serve/server.ts";
@@ -459,7 +460,7 @@ async function runDiff(before: string, after: string, options: { exact: boolean;
 	try {
 		checkFormat(options.format);
 		const ignore = options.ignore.map((pattern) => {
-			try { return rustRegExp(pattern); } catch (e) { return bail(`--ignore ${quoted(pattern)} isn't a regular expression: ${(e as Error).message}`); }
+			try { return rustRegExp(pattern, "g"); } catch (e) { return bail(`--ignore ${quoted(pattern)} isn't a regular expression: ${(e as Error).message}`); }
 		});
 		const only = options.only.length ? options.only.map((given) => {
 			const glob = given.replace(/^[./]+/, "");
@@ -475,23 +476,6 @@ async function runDiff(before: string, after: string, options: { exact: boolean;
 		process.stderr.write(`${diagnostics.red("error:")} ${describeThrown(e, process.cwd())}\n`);
 		return 2;
 	}
-}
-
-/**
- * A pattern as Rust's `regex` crate read it, as nearly as JavaScript can: in Unicode mode, with
- * flags at its start (`(?i)`, `(?s)`, `(?m)`) as JavaScript's flags and `(?P<name>...)` as
- * `(?<name>...)`. Without Unicode mode JavaScript would take some of Rust's escapes for letters
- * (`\A` for `A`), so a pattern it can't read that way is refused rather than read as something else.
- */
-function rustRegExp(pattern: string): RegExp {
-	let flags = "gu";
-	let source = pattern.replaceAll("(?P<", "(?<");
-	const lead = /^\(\?([ims]+)\)/.exec(source);
-	if (lead) {
-		flags += [...new Set(lead[1])].join("");
-		source = source.slice(lead[0].length);
-	}
-	return new RegExp(source, flags);
 }
 
 /** `ssqch footprint`: what the build in `dir` weighs. `shown` is how the report names the folder. */
