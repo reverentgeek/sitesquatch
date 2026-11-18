@@ -62,7 +62,7 @@ export function parseFrontMatter(src: string): { data: Data; body: string } {
 			}
 			if (format === "toml") {
 				let value: unknown;
-				try { value = tomlValue(parseToml(text)); } catch (e) { throw new BuildError(`invalid TOML front matter: ${tomlReason(e)}`); }
+				try { value = readToml(text); } catch (e) { throw new BuildError(`invalid TOML front matter: ${tomlReason(e)}`); }
 				return { data: frontMatterObject(value, "TOML"), body };
 			}
 			try { return { data: parseYaml(text), body }; } catch (e) { throw new BuildError(`invalid YAML front matter: ${yamlReason(e)}`); }
@@ -181,6 +181,14 @@ function tomlReason(e: unknown): string {
 }
 
 /**
+ * A TOML document as a site's data. An integer too big for a JavaScript number is a number
+ * anyway, as 0.7 read it (rounded), where smol-toml would refuse the whole file.
+ */
+export function readToml(text: string): unknown {
+	return tomlValue(parseToml(text, { integersAsBigInt: "asNeeded" }));
+}
+
+/**
  * A TOML value as a site's data. A date or time (`2024-01-02`, without quotes) is its text, as
  * 0.7 has it; the page's `date` becomes a real date either way.
  */
@@ -244,7 +252,7 @@ export function loadStaticDataFile(file: string): unknown {
 	}
 	if (ext === "toml") {
 		const text = read();
-		try { return tomlValue(parseToml(text)); } catch (e) { throw new BuildError(`invalid TOML in ${file}: ${tomlReason(e)}`); }
+		try { return readToml(text); } catch (e) { throw new BuildError(`invalid TOML in ${file}: ${tomlReason(e)}`); }
 	}
 	return undefined;
 }
