@@ -157,6 +157,12 @@ var Parser = /*#__PURE__*/function (_Obj) {
       this.fail('parseFor: expected "in" keyword for loop', forTok.lineno, forTok.colno);
     }
     node.arr = this.parseExpression();
+    // ssqch: Jinja's loop filter (`for x in xs if x.ok`) reads here as `xs if x.ok`, which runs
+    // before `x` is set and loops over every item. An error, rather than an answer that's
+    // quietly different from Jinja's.
+    if (node.arr instanceof nodes.InlineIf && !node.arr.else_) {
+      this.fail('a loop can\'t filter with `if` (`for x in xs if ...`): put an `{% if %}` inside the loop, or filter the list first (`| selectattr`, `| select`)', node.arr.lineno, node.arr.colno);
+    }
     this.advanceAfterBlockEnd(forTok.value);
     node.body = this.parseUntilBlocks(endBlock, 'else');
     if (this.skipSymbol('else')) {

@@ -110,7 +110,15 @@ var Compiler = /*#__PURE__*/function (_Obj) {
   };
   _proto._makeCallback = function _makeCallback(res) {
     var err = this._tmpid();
-    return 'function(' + err + (res ? ',' + res : '') + ') {\n' + 'if(' + err + ') { cb(' + err + '); return; }';
+    // ssqch: an error that arrives through a callback (a template that isn't there, an async
+    // filter that failed) gets the line it happened on, as a thrown one does. One that has a
+    // line already (from an include) keeps it.
+    return 'function(' + err + (res ? ',' + res : '') + ') {\n' + 'if(' + err + ') { cb(runtime.handleError(' + err + ', lineno, colno)); return; }';
+  };
+  // ssqch: where the code that follows is in the template, for an error it throws: the same as
+  // compileFunCall does for a call (`lineno` and `colno` are the root function's variables).
+  _proto._emitPosition = function _emitPosition(node) {
+    this._emit('lineno = ' + node.lineno + ', colno = ' + node.colno + ', ');
   };
   _proto._tmpid = function _tmpid() {
     this.lastId++;
@@ -161,6 +169,11 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     var args = node.args;
     var contentArgs = node.contentArgs;
     var autoescape = typeof node.autoescape === 'boolean' ? node.autoescape : true;
+    // ssqch: a tag that throws names its line, when its extension gave the node one (a
+    // CallExtension's constructor takes none).
+    if (typeof node.lineno === 'number') {
+      this._emitLine('lineno = ' + node.lineno + '; colno = ' + node.colno + ';');
+    }
     if (!async) {
       this._emit(this.buffer + " += runtime.suppressValue(");
     }
@@ -291,6 +304,9 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     var right = node.right.name ? node.right.name.value
     // otherwise go with the symbol value
     : node.right.value;
+    // ssqch: an unknown test, or one that throws, names its line.
+    this._emit('(');
+    this._emitPosition(node.right);
     this._emit('env.getTest("' + right + '").call(context, ');
     this.compile(node.left, frame);
     // compile the arguments for the callable if they exist
@@ -298,7 +314,7 @@ var Compiler = /*#__PURE__*/function (_Obj) {
       this._emit(',');
       this.compile(node.right.args, frame);
     }
-    this._emit(') === true');
+    this._emit(')) === true');
   };
   _proto._binOpEmitter = function _binOpEmitter(node, frame, str) {
     this.compile(node.left, frame);
@@ -407,15 +423,20 @@ var Compiler = /*#__PURE__*/function (_Obj) {
   _proto.compileFilter = function compileFilter(node, frame) {
     var name = node.name;
     this.assertType(name, nodes.Symbol);
+    // ssqch: an unknown filter, or one that throws, names its line.
+    this._emit('(');
+    this._emitPosition(name);
     this._emit('env.getFilter("' + name.value + '").call(context, ');
     this._compileAggregate(node.args, frame);
-    this._emit(')');
+    this._emit('))');
   };
   _proto.compileFilterAsync = function compileFilterAsync(node, frame) {
     var name = node.name;
     var symbol = node.symbol.value;
     this.assertType(name, nodes.Symbol);
     frame.set(symbol, symbol);
+    // ssqch: as compileFilter (this one starts a statement).
+    this._emitLine('lineno = ' + name.lineno + '; colno = ' + name.colno + ';');
     this._emit('env.getFilter("' + name.value + '").call(context, ');
     this._compileAggregate(node.args, frame);
     this._emitLine(', ' + this._makeCallback(symbol));
@@ -429,6 +450,24 @@ var Compiler = /*#__PURE__*/function (_Obj) {
   _proto.compileSet = function compileSet(node, frame) {
     var _this6 = this;
     var ids = [];
+
+    // ssqch: `{% set ns.found = true %}` sets an attribute, as Jinja does on a `namespace()`
+    // (its way to keep a value past a loop's end). Here it stopped the compiler.
+    if (node.targets.length === 1 && node.targets[0] instanceof nodes.LookupVal) {
+      var target = node.targets[0];
+      this._emitLine('lineno = ' + node.lineno + '; colno = ' + node.colno + ';');
+      this._compileExpression(target.target, frame);
+      this._emit('[');
+      this._compileExpression(target.val, frame);
+      this._emit('] = ');
+      if (node.value) {
+        this._compileExpression(node.value, frame);
+      } else {
+        this.compile(node.body, frame);
+      }
+      this._emitLine(';');
+      return;
+    }
 
     // Lookup the variable names for each identifier and create
     // new ones if necessary
@@ -617,6 +656,9 @@ var Compiler = /*#__PURE__*/function (_Obj) {
       // Generate a typical array iteration
       var _v = this._tmpid();
       frame.set(node.name.value, _v);
+      // ssqch: one name over an object goes through its keys, as in Jinja. (Here it went
+      // through nothing: an object has no `length`.)
+      this._emitLine("if(typeof " + arr + " === \"object\" && !runtime.isArray(" + arr + ") && !(" + arr + " instanceof runtime.SafeString)) { " + arr + " = runtime.keys(" + arr + "); }");
       this._emitLine("var " + len + " = " + arr + ".length;");
       this._emitLine("for(var " + i + "=0; " + i + " < " + arr + ".length; " + i + "++) {");
       this._emitLine("var " + _v + " = " + arr + "[" + i + "];");
@@ -795,6 +837,8 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     var cb = this._makeCallback(parentTemplateId);
     var eagerCompileArg = eagerCompile ? 'true' : 'false';
     var ignoreMissingArg = ignoreMissing ? 'true' : 'false';
+    // ssqch: a template that isn't there names the line of the tag that wanted it.
+    this._emitLine('lineno = ' + node.lineno + '; colno = ' + node.colno + ';');
     this._emit('env.getTemplate(');
     this._compileExpression(node.template, frame);
     this._emitLine(", " + eagerCompileArg + ", " + parentName + ", " + ignoreMissingArg + ", " + cb);

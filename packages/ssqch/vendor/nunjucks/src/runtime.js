@@ -224,7 +224,9 @@ function handleError(error, lineno, colno) {
   if (error.lineno) {
     return error;
   } else {
-    return new lib.TemplateError(error, lineno, colno);
+    // ssqch: the compiled code counts lines and columns from 0, and a TemplateError from 1 (as
+    // the parser's are and ensureDefined's), so a runtime error named the line before its own.
+    return new lib.TemplateError(error, lineno + 1, colno + 1);
   }
 }
 function asyncEach(arr, dimen, iter, cb) {
