@@ -123,7 +123,8 @@ the release.
   expressions, the `in` operator, `@eval`, `@inject`, `@stack` and `@pushTo`, and edge.js's
   helpers (`excerpt`, `html.attrs`, and `nl2br`, which gives HTML to print as it is, so escape
   what it's given: `{{{ nl2br(html.escape(text)) }}}`). `await` waits for a promise. A number's
-  `toString(16)` uses its radix, which 0.7 ignored, and a date's `toLocaleString()` and
+  `toString(16)` uses its radix, which 0.7 ignored; `new Date(2024, 0, 5, 9)` keeps its hours
+  (in UTC), where 0.7 dropped everything after the day; and a date's `toLocaleString()` and
   `toLocaleTimeString()`, which 0.7 didn't have, are `Intl`'s, in UTC unless they're given a
   `timeZone`. A function that isn't there says which one was probably meant (``index.edge:2:
   `uper` is not a function (did you mean `upper`?)``), or ssqch's name for another generator's
