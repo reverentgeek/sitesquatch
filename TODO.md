@@ -478,7 +478,9 @@ clear; otherwise warn.
       the layout chain after `computed` instead.
 - [ ] **Dates and time zones:**
   - A time zone for the build's JavaScript and date filters (`timeZone: "UTC"`): 137 of v8.dev's
-    pages differ between a laptop in EST and CI in UTC (v8 C11).
+    pages differ between a laptop in EST and CI in UTC (v8 C11). (Done 2026-11-18 for the site's
+    JavaScript; ssqch's own date filters stay UTC, and a zone for them needs zone data without
+    `Intl`.)
   - A fixed date for undated pages (`dateFallback: "git"`), so their order and `<lastmod>` don't
     depend on when a checkout wrote the files: every move's sitemap changed with file times (v8 C9).
     Maybe `date: "created"` too (a11y #22). Undated pages also sort by file time, so one edit

@@ -91,6 +91,8 @@ export interface Config {
 	bundles: boolean;
 	strict: boolean;
 	lastModified: "git" | "file" | null;
+	/** `timeZone`: the IANA zone the site's JavaScript runs in (`process.env.TZ`), or null for the machine's. */
+	timeZone: string | null;
 	/** The path the site is served under: empty for the domain's root, or `/repo` (no `/` at the end). */
 	base: string;
 	serveRun: string[];
@@ -167,6 +169,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		bundles: false,
 		strict: false,
 		lastModified: null,
+		timeZone: null,
 		base: "",
 		serveRun: [],
 		budgets: [],
@@ -237,7 +240,32 @@ export async function loadConfig(options: ConfigOptions): Promise<Config> {
 	}
 	// JavaScript data files and templates can make images even without the plugin.
 	useImages(config);
+	useTimeZone(config.timeZone);
 	return config;
+}
+
+/** The machine's own `TZ`, for a config that's loaded again without `timeZone`. */
+const MACHINE_TZ = process.env.TZ;
+
+/**
+ * Runs the site's JavaScript in `zone` from here on: `Date`'s local methods and libraries that use
+ * the local zone (luxon, date-fns) follow `process.env.TZ`, which Node reads again when it's set.
+ * v8.dev's dates differed on 137 pages between a laptop in EST and CI in UTC (v8 C11). The config's
+ * own top-level code has run by now, in the machine's zone.
+ */
+function useTimeZone(zone: string | null): void {
+	const want = zone ?? MACHINE_TZ;
+	if (process.env.TZ === want) return;
+	if (want === undefined) delete process.env.TZ;
+	else process.env.TZ = want;
+}
+
+/** A `timeZone` setting: an IANA zone name (`"UTC"`, `"America/New_York"`). */
+function checkTimeZone(value: unknown): string {
+	if (typeof value !== "string" || value === "") bail(`timeZone must be a time zone's name, like "UTC" or "America/New_York", not ${typeof value === "string" ? "an empty string" : typeof value}`);
+	// Asked of Intl only to check the name; nothing a build writes comes from it.
+	try { new Intl.DateTimeFormat("en", { timeZone: value }); } catch { bail(`timeZone: "${value}" isn't a time zone ssqch knows (like "UTC", "Europe/Berlin" or "America/New_York")`); }
+	return value;
 }
 
 /** A JavaScript data file's value: its default export, called if it's a function. */
@@ -255,7 +283,7 @@ async function loadJsData(file: string, root: string): Promise<unknown> {
 
 // ---- ssqch.config.js -------------------------------------------------------------------------
 
-const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "base", "schemas", "theme", "serve", "budgets"];
+const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "timeZone", "base", "schemas", "theme", "serve", "budgets"];
 const PARTS = ["data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins"];
 /** Engine names a config can't replace. */
 const CORE_ENGINES = ["edge", "md", "html", "txt"];
@@ -617,6 +645,7 @@ function applySettings(config: Config, settings: Data): void {
 	else if (modified === "git" || modified === "file") config.lastModified = modified;
 	else if (typeof modified === "string") bail(`lastModified must be "git", "file" or false, not "${modified}"`);
 	else if (modified !== undefined && modified !== null && modified !== false) bail(`lastModified must be "git", "file" or false, not ${typeof modified}`);
+	if (settings.timeZone !== undefined && settings.timeZone !== null) config.timeZone = checkTimeZone(settings.timeZone);
 	if (typeof settings.base === "string") config.base = normalizeBase(settings.base);
 	else if (settings.base !== undefined && settings.base !== null) bail(`base must be a URL path like "/docs/", not ${typeof settings.base}`);
 	// `theme: "themes/docs"`, a pinned git URL, `{ git, ref, dir }`, or a list of them.

@@ -30,6 +30,9 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Added
 
+- `timeZone` (`timeZone: "UTC"`): the time zone the site's own JavaScript runs in, for `Date`'s
+  local methods and libraries like luxon, so a laptop and CI build the same pages. v8.dev's dates
+  differed on 137 pages between EST and UTC. ssqch's own date filters stay UTC.
 - `SOURCE_DATE_EPOCH` pins the build's time: `now()`, Liquid's `"now"`, Edge's `new Date()`, and
   the date of every page without one (which then sort by path), as Jekyll's `time:` does. A
   reference build that's the same every time took pinning in both 2026-11-18 studies.

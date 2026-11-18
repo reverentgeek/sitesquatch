@@ -246,3 +246,22 @@ test("circular_data_is_an_error_not_a_hang", () => {
 	buildOk(root);
 	assert.equal(read(root, "_site/index.html"), "true");
 });
+
+// v8.dev (v8 C11): its dates came from the site's own JavaScript in the machine's zone, so 137
+// pages differed between a laptop in EST and CI in UTC. `timeZone` runs that code in one zone.
+test("time_zone_sets_the_zone_the_sites_javascript_runs_in", () => {
+	const files = (config) => ({
+		"ssqch.config.js": `export default { ${config}templateFormats: ["njk"], filters: { hour: (s) => new Date(s).getHours() } };\n`,
+		"_data/camp.js": "export default () => ({ opens: new Date(\"2026-01-01T03:00:00Z\").getDate() });\n",
+		"index.njk": "{{ hour(\"2026-01-01T03:00:00Z\") }} {{ camp.opens }}\n",
+	});
+	const east = { env: { TZ: "America/New_York" } };
+	const pinned = project(files("timeZone: \"UTC\", "));
+	assert.ok(ssqch(["build", "--root", pinned, "--quiet"], east).ok);
+	assert.equal(read(pinned, "_site/index.html"), "3 1\n");
+	const machine = project(files(""));
+	assert.ok(ssqch(["build", "--root", machine, "--quiet"], east).ok);
+	assert.equal(read(machine, "_site/index.html"), "22 31\n");
+	const wrong = ssqch(["build", "--root", project(files("timeZone: \"Mars/Olympus\", "))]);
+	assert.ok(!wrong.ok && wrong.log.includes("ssqch.config.js: timeZone: \"Mars/Olympus\" isn't a time zone ssqch knows"), wrong.log);
+});
