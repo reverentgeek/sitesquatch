@@ -112,9 +112,16 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 	// The server went away without stopping this (it was killed): nothing to build for.
 	process.on("disconnect", () => process.exit(0));
 
+	// While the site's code runs (the configuration loading, a build), the channel to the server
+	// doesn't keep this process going: when that code waits for a promise nothing can settle,
+	// Node is about to end, which is how ssqch finds out and says so (`watchSettle`).
+	const working = async <T>(work: () => Promise<T>): Promise<T> => {
+		process.channel?.unref();
+		try { return await work(); } finally { process.channel?.ref(); }
+	};
 	let config: Config;
 	try {
-		config = await makeConfig();
+		config = await working(makeConfig);
 	} catch (e) {
 		if (start.reload) process.stderr.write(`${diagnostics.red("Config error:")} ${diagnostics.messageOf(e)}\n(still serving with the last configuration that loaded)\n`);
 		else diagnostics.printError("error:", e, "config", new Locator(root));
@@ -132,13 +139,9 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 		while (!asked.length) await new Promise<void>((resolve) => { wake = resolve; });
 		wake = undefined;
 		const { recovered } = asked.shift()!;
-		// While a build runs, the channel to the server doesn't keep this process going: when the
-		// site's code waits for a promise nothing can settle, Node is about to end, which is how
-		// the build finds out and says so (`watchSettle`).
-		process.channel?.unref();
 		let result: { ok: boolean; error?: string; assets: string[] };
 		try {
-			const report = await build(config);
+			const report = await working(() => build(config));
 			if (!config.quiet) process.stdout.write(summary(config, report, recovered));
 			result = { ok: true, assets: report.outputs.filter(isAsset) };
 		} catch (e) {
@@ -147,7 +150,6 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 			process.stderr.write(`${diagnostics.red("Build failed:")} ${said}\n`);
 			result = { ok: false, error: said, assets: [] };
 		}
-		process.channel?.ref();
 		await flushed();
 		await send({ type: "built", ...result, ...state() });
 	}

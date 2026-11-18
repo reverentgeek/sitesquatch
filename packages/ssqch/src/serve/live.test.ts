@@ -11,6 +11,11 @@ function tempDir(name: string): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), `ssqch-${name}-`));
 }
 
+/** Removes a test's folder. On Windows a process that's ending can hold a file a moment longer: tried again, then left for the system to clear. */
+function remove(dir: string): void {
+	try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch { /* left in the temporary folder */ }
+}
+
 test("browsers_hear_what_changed", async () => {
 	const dir = tempDir("serve-live");
 	const write = (rel: string, text: string) => {
@@ -70,7 +75,7 @@ test("browsers_hear_what_changed", async () => {
 		assert.deepEqual(await live.changed(dir), []);
 		assert.equal(answer(7, "index.html"), "{\"id\":8,\"error\":null,\"reload\":false,\"css\":[\"/repo/assets/index.css\"]}");
 	} finally {
-		fs.rmSync(dir, { recursive: true, force: true });
+		remove(dir);
 	}
 });
 
@@ -91,7 +96,7 @@ test("a_browser_from_an_earlier_server_reloads_once_this_one_builds", async () =
 		const now = live.answer(undefined, "index.html", "").id;
 		assert.equal(live.answer(now, "index.html", "").reload, false);
 	} finally {
-		fs.rmSync(dir, { recursive: true, force: true });
+		remove(dir);
 	}
 });
 

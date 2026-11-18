@@ -181,6 +181,22 @@ the release.
   `{% liquid %}`, `{% echo %}`); a Mustache-style section in a `.hbs` file (`{{#items}}`) works,
   where 0.7 said "Helper not found"; and `--verbose`'s list of templates nothing used covers Liquid,
   Handlebars and Mustache too.
+- `ssqch serve` builds in a process of its own, which it starts again when the config changes
+  (or a module it imports, a JavaScript data file, or a module that imports). Everything the
+  site's JavaScript loaded is read again: ES modules, CommonJS ones and what they `require`, JSON,
+  and whatever a module kept in memory. Packages in `node_modules` start over with it, though a
+  change to one of their files still isn't watched. The commands, the messages and the ready
+  file are 0.7's, and so is the reload script the browser gets.
+  - A site whose code ends the process (`process.exit()`, or an error nothing catches in a
+    timer) fails that build, shown in the browser like any other, and the next change builds in
+    a new process. The server stays up.
+  - A rebuild compares each page with the last build's from memory, and reads a page's file
+    again only when something else has written it since.
+  - On Linux, the server watches each folder itself and leaves out the ones named `.cache`,
+    `.git` and `node_modules` (0.7 watched them and ignored what they reported), so a site whose
+    input folder is the project root doesn't spend a watch on every folder of its packages.
+    When the system has no watches left (`fs.inotify.max_user_watches`), a warning names the
+    first folder that wasn't watched, and the server goes on.
 
 ## 0.7.0 - 2026-11-17
 

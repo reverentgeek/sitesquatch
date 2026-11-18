@@ -162,10 +162,40 @@ until 0.8 ships.
 - [ ] **Stage 5, plugins:** images (D4), rss, minify (D3), assets, sitemap, redirects, Sass,
       elements, themes; the Rust plugin SDK (`ssqch-plugin` crate, the `.wasm` loader, an example,
       and docs on when a Rust plugin pays).
-- [ ] **Stage 6, the dev server**, reloading a changed config from a bundled temporary copy.
-      `importFile` (`modules.ts`) imports a changed file fresh but not the modules it imports,
-      so a filter in the config's `./lib/filters.js` (the blog has one) stays the old one on a
-      rebuild in the same process (found by stage 3's review).
+- [ ] **Stage 6, the dev server.** Started 2026-11-18; the results are in
+      `docs/node-migration.md` ("Stage 6, so far").
+  - [x] `ssqch serve` (`packages/ssqch/src/serve/`), from `serve.rs` and `companions.rs`:
+        watching, rebuilding, what browsers hear (a page reloads for its own change, a
+        stylesheet is swapped), a failed build over the page, the 404 page and the tab icon,
+        `--ready-file`, `--port`, `--built` and `preview`, `serve.run`'s tools (started, waited
+        for, started again), and the voice's lines. Checked in Chromium.
+  - [x] A changed config is read again by a new process, not from a bundled copy: the build runs
+        in a process of its own, which the server starts again when the config, a module it
+        imports, a JavaScript data file or a module that imports changes. That fixes what stage
+        3's review found (`importFile` imports a changed file fresh but not the modules it
+        imports, so a filter in the config's `./lib/filters.js`, as the blog has, stayed the old
+        one), for CommonJS files too, which a new URL doesn't reload.
+  - [x] Watching with `node:fs` alone: one watcher for a tree on macOS and Windows, one for each
+        folder on Linux (without `node_modules`, `.git` and `.cache`). No dependency.
+  - [x] A rebuild keeps what each page's file held when it was last compared, and doesn't read
+        it again. The blog rebuilds in 95 ms after one edit (0.7: 175 ms).
+  - [ ] Four oracle tests wait for stage 5's plugins, which their configs use:
+        `serve_recovers_when_another_build_deletes_a_watchers_file` (`ssqch/assets`),
+        `serve_reads_a_changed_config_again` (`ssqch/rss`),
+        `serve_rebuilds_sass_when_a_partial_changes` (`ssqch/sass`) and "serve ready file"
+        (`ssqch/links`). With the plugin taken out of a copy, each passes; run them when the
+        plugins merge. The Sass plugin has to list its files' folders in `config.watch`, as
+        0.7's did (`add_watch_target`).
+  - [ ] **Decide:** a rebuild of 10,000 pages takes 0.97 s after one edit, twice 0.7's (which
+        used every core). Worker threads, or rendering only the pages an edit can reach, would
+        change that; the second needs the plugins that count across pages to take part. Both
+        are described in "Stage 6, so far".
+  - [ ] The server spends about 60 ms of its start loading the build's modules, which only the
+        process that builds uses (`cli.ts` imports `build.ts`, and so every engine). Import
+        them when a command needs them, once the stages that add commands to `cli.ts` have
+        merged. Starting to serve a one-page site takes 0.26 s (0.7: 0.07 s).
+  - [ ] Windows and Linux: the server's own unit tests run both ways of watching on each, but
+        the oracle's serve tests have only run on macOS. Watch CI's first run.
 - [ ] **Stage 7, importers:** Eleventy and Zola.
 - [ ] **Stage 8, distribution:** the compiled, bundled npm package (sharp its only dependency), the
       standalone executable (D7) for Homebrew and the install script, `setup-ssqch`, Netlify; retire

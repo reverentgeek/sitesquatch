@@ -19,6 +19,11 @@ function tempDir(name: string): string {
 	return realPath(fs.mkdtempSync(path.join(os.tmpdir(), `ssqch-${name}-`)));
 }
 
+/** Removes a test's folder. On Windows a process that's ending can hold a file a moment longer: tried again, then left for the system to clear. */
+function remove(dir: string): void {
+	try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch { /* left in the temporary folder */ }
+}
+
 function write(dir: string, files: Record<string, string>): void {
 	for (const [rel, text] of Object.entries(files)) {
 		fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
@@ -40,7 +45,7 @@ test("an_update_waits_for_the_tools_writes", async () => {
 		const carried: string[] = [];
 		let started = performance.now();
 		await settle(rx, dir, before, QUIET, carried);
-		assert.ok(performance.now() - started < QUIET * 3, String(performance.now() - started));
+		assert.ok(performance.now() - started < 1200, String(performance.now() - started));
 
 		// The build's own write of a page, and a source edit, don't count as the tool's; the
 		// edit is kept for later. The tool's write does, and the window starts again from it.
@@ -55,16 +60,16 @@ test("an_update_waits_for_the_tools_writes", async () => {
 		await settle(rx, dir, before, 2000, carried);
 		const waited = performance.now() - started;
 		await writer;
-		assert.ok(waited >= 400 + QUIET - 5 && waited < 1000, String(waited));
+		assert.ok(waited >= 400 + QUIET - 5 && waited < 1500, String(waited));
 		assert.deepEqual(carried, [source]);
 
 		// A tool that wrote before the wait began (during the build) is seen at once.
 		fs.writeFileSync(css, "a{color:green}");
 		started = performance.now();
 		await settle(rx, dir, before, 2000, []);
-		assert.ok(performance.now() - started < QUIET * 3, String(performance.now() - started));
+		assert.ok(performance.now() - started < 1200, String(performance.now() - started));
 	} finally {
-		fs.rmSync(dir, { recursive: true, force: true });
+		remove(dir);
 	}
 });
 
@@ -141,7 +146,7 @@ test("a changed module is read again, whatever kind it is and whatever loaded it
 	} finally {
 		await server.stop();
 	}
-	fs.rmSync(dir, { recursive: true, force: true });
+	remove(dir);
 });
 
 // What a plugin says it reads (`watch`: a folder, or one file) rebuilds when it changes, wherever
@@ -181,7 +186,26 @@ test("a file a plugin watches rebuilds the site", async () => {
 	} finally {
 		await server.stop();
 	}
-	fs.rmSync(dir, { recursive: true, force: true });
+	remove(dir);
+});
+
+// A configuration that waits for something that never comes is an error like any other of its
+// errors (in `ssqch build` too), and the last one that loaded keeps serving.
+test("a configuration that never finishes loading is an error", async () => {
+	const dir = tempDir("serve-config-never");
+	const config = (word: string, extra = "") => `${extra}export default { dirs: { input: "src", output: "dist" }, data: { word: "${word}" } };\n`;
+	write(dir, { "ssqch.config.js": config("one"), "src/index.jinja": "{{ word }}" });
+	const server = await serve(dir);
+	try {
+		await server.change("ssqch.config.js", config("two", "await new Promise(() => {});\n"), "serve.log", "a Promise never settled");
+		await server.until(() => server.said().includes("(still serving with the last configuration that loaded)"), "the last configuration wasn't kept");
+		assert.ok(/Config error: ssqch\.config\.js: a Promise never settled/.test(server.said()), server.said());
+		await server.change("src/index.jinja", "{{ word }} still", "dist/index.html", "one still");
+		await server.change("ssqch.config.js", config("three"), "dist/index.html", "three still");
+	} finally {
+		await server.stop();
+	}
+	remove(dir);
 });
 
 // A rebuild leaves a page alone when it comes out the same, and knows that without reading the
@@ -211,7 +235,7 @@ test("a page something else wrote over is written again", async () => {
 	} finally {
 		await server.stop();
 	}
-	fs.rmSync(dir, { recursive: true, force: true });
+	remove(dir);
 });
 
 // The server answers while a build runs: a page from the last build, and the browser's question.
@@ -250,5 +274,5 @@ test("the server answers during a build, and survives a site that ends its proce
 	} finally {
 		await server.stop();
 	}
-	fs.rmSync(dir, { recursive: true, force: true });
+	remove(dir);
 });

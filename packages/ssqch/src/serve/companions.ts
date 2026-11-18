@@ -125,6 +125,20 @@ export async function stopAll(): Promise<void> {
 	await Promise.all([...running].map(stop));
 }
 
+/** Tell every companion to stop, without waiting for it: for a run that's ending this moment. */
+export function stopAllNow(): void {
+	shuttingDown = true;
+	for (const one of [...running]) {
+		one.stopping = true;
+		running.delete(one);
+		one.child.stdin?.destroy();
+		const pid = one.child.pid;
+		if (pid === undefined) continue;
+		if (process.platform === "win32") spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+		else try { process.kill(-pid, "SIGTERM"); } catch { /* gone already */ }
+	}
+}
+
 const alive = (group: number) => { try { process.kill(group, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; } };
 
 /** Stop the process group (or tree) that a companion leads. */

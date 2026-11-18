@@ -142,7 +142,10 @@ function stopWithTheServer(): void {
 	};
 	for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => stop(signal));
 	// Any other way out (an error of the server's own): nothing is left running.
-	process.on("exit", stopBuilders);
+	process.on("exit", () => {
+		stopBuilders();
+		companionProcesses.stopAllNow();
+	});
 }
 
 /**

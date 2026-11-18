@@ -14,6 +14,11 @@ function tempDir(name: string): string {
 	return realPath(fs.mkdtempSync(path.join(os.tmpdir(), `ssqch-${name}-`)));
 }
 
+/** Removes a test's folder. On Windows a process that's ending can hold a file a moment longer: tried again, then left for the system to clear. */
+function remove(dir: string): void {
+	try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch { /* left in the temporary folder */ }
+}
+
 async function until(found: () => boolean, what: () => string): Promise<void> {
 	const started = Date.now();
 	while (!found()) {
@@ -57,15 +62,19 @@ for (const strategy of ["tree", "folders"] as Strategy[]) {
 			fs.rmSync(path.join(dir, "src/posts/a.md"));
 			await until(has("src/posts/a.md"), said);
 			// A folder that goes takes its watchers with it, and one made again is watched again.
-			fs.rmSync(path.join(dir, "src/trails"), { recursive: true });
-			await sleep(200);
-			seen.clear();
-			write("src/trails/cedar/c.md", "c");
-			await until(has("src/trails/cedar/c.md"), said);
+			// (Not a watcher for each folder on Windows, which ssqch doesn't use there: a
+			// watched folder is only gone once its watcher is, and can't be made again before.)
+			if (!(process.platform === "win32" && strategy === "folders")) {
+				fs.rmSync(path.join(dir, "src/trails"), { recursive: true });
+				await sleep(200);
+				seen.clear();
+				write("src/trails/cedar/c.md", "c");
+				await until(has("src/trails/cedar/c.md"), said);
+			}
 			assert.ok(![...seen].some((file) => file.endsWith("beside.md")), said());
 		} finally {
 			watcher.close();
-			fs.rmSync(dir, { recursive: true, force: true });
+			remove(dir);
 		}
 		assert.equal(watcher.size, 0);
 	});
@@ -96,7 +105,7 @@ for (const strategy of ["tree", "folders"] as Strategy[]) {
 			await until(() => seen.has(path.join(dir, "lib/deep/x.js")), () => JSON.stringify([...seen]));
 		} finally {
 			watcher.close();
-			fs.rmSync(dir, { recursive: true, force: true });
+			remove(dir);
 		}
 	});
 }

@@ -10,6 +10,11 @@ function tempDir(name: string): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), `ssqch-${name}-`));
 }
 
+/** Removes a test's folder. On Windows a process that's ending can hold a file a moment longer: tried again, then left for the system to clear. */
+function remove(dir: string): void {
+	try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch { /* left in the temporary folder */ }
+}
+
 function write(dir: string, rel: string, text: string): void {
 	fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
 	fs.writeFileSync(path.join(dir, rel), text);
@@ -60,7 +65,7 @@ test("a_missing_page_names_the_closest_one", () => {
 		page = notFoundPage(dir, "/{{home}}/", "");
 		assert.ok(page.includes("<code>/{{home}}/</code>"), page);
 	} finally {
-		fs.rmSync(dir, { recursive: true, force: true });
+		remove(dir);
 	}
 });
 
