@@ -205,8 +205,9 @@ export class Site {
 		byName.set("html", plainEngine);
 		byName.set("txt", plainEngine);
 		byName.set("edge", edgeEngine(env));
-		const jinja = nunjucksEngine(env);
-		for (const name of ["jinja", "njk", "j2"]) byName.set(name, jinja);
+		byName.set("njk", nunjucksEngine(env, "njk"));
+		const jinja = nunjucksEngine(env, "jinja");
+		for (const name of ["jinja", "j2"]) byName.set(name, jinja);
 		byName.set("liquid", liquidEngine(env));
 		// Mustache templates render as Handlebars, which reads Mustache's tags, as in 0.7.
 		const hbs = handlebarsEngine(env);

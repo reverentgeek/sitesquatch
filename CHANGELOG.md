@@ -71,6 +71,22 @@ the release.
   Object]`, where 0.7 printed JSON with its keys in no fixed order (write `{{ some_object | json
   }}`); `size` counts a string as JavaScript does, where 0.7 counted UTF-8 bytes (`café` is 4,
   not 5), and is 0 for a number.
+- **Jinja (`.jinja`, `.j2`) and Nunjucks (`.njk`) render with Nunjucks**, ssqch's own fork of
+  it, where 0.7 used MiniJinja. Jinja's filters, tests and functions, Python's string, list and
+  dict methods, slices, the date filters, tags from your functions and the escaping are kept, so
+  most templates render as they did. What doesn't:
+  - A variable set inside a loop or an `if` keeps its value after it, as in Nunjucks:
+    `{% set total = 0 %}{% for x in xs %}{% set total = total + x %}{% endfor %}` ends with the
+    sum, where Jinja's scoping left it at 0 (`namespace()` still works).
+  - `{% break %}`, `{% continue %}`, `{% with %}`, `{% autoescape %}`, `{% set a, b = 1, 2 %}`
+    and the loop filter `{% for x in xs if x.ok %}` are errors that name their line. Put an
+    `{% if %}` inside the loop, or filter the list first (`xs | selectattr("ok")`).
+  - `loop.previtem`, `loop.nextitem` and `loop.depth` are undefined (`loop.cycle()` and
+    `loop.changed()` work).
+  - Numbers have no separate float type: `{{ 4 / 2 }}` and `{{ 3.5 | round }}` print `2` and
+    `4`, where 0.7 printed `2.0` and `4.0`.
+  - `+` and `*` are JavaScript's: `xs + ys` joins two lists as text (use `xs | chain(ys)`), and
+    `"ab" * 3` isn't `"ababab"`.
 
 ### Changed
 
@@ -83,6 +99,10 @@ the release.
   words before it. The error for a permalink outside the output folder names the permalink
   (`"/../up.html"`, where 0.7 printed `Some("/../up.html")`), and the warning for a data file
   nothing can read says to provide it in the config's `data` (0.7 named the Rust API).
+- Nunjucks' own syntax and filters work in `.jinja` files too (`{% elseif %}`, `===`,
+  `{ title: x }`, `forceescape`, `nl2br`, `urlize`, `wordcount`, `center`, `random`), and
+  `{% for key, value in object %}` works there. A Jinja or Nunjucks error in an include points
+  at the include's own line, where 0.7 pointed at the `{% include %}` in the page.
 - A YAML integer too big for 128 bits (`123456789012345678901234567890`) is a rounded number,
   where 0.7 refused the file. TOML's integers past 2^53 are rounded numbers, as in 0.7.
 - A stack frame in an error or a warning has the column Node gives: `throw new Error("...")` is
