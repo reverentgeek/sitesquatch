@@ -86,9 +86,9 @@ Four ports ran in parallel, each in its own git worktree with its oracle tests a
 
 | Check | Result |
 | --- | --- |
-| The 10,000-page site, one thread | **1.10 s, 363 MB** (1.45 s before the stage, measured with it; the limit is 2 s). Rendering went from markdown-it to the `.wasm`. |
-| v8.dev's exact port | **0.59 s** (the limit is 0.72 s); it brings its own markdown-it, which still works. |
-| The oracle | 86 of 186 tests pass, the same on Node 22.18, 24 and 26 (61 before): every engine's tests, the Markdown tests, front matter, and a11yproject.com's frozen site. What fails waits for `init` and the tools (stage 4), plugins (5), the server (6) and the importers (7). |
+| The 10,000-page site, one thread | **1.14 s, 366 MB** (1.42 s before the stage, measured with it; the limit is 2 s). Rendering went from markdown-it to the `.wasm`. |
+| v8.dev's exact port | **0.58 s** (the limit is 0.72 s); it brings its own markdown-it, which still works. |
+| The oracle | 95 of 195 tests pass, the same on Node 22.18, 24 and 26 (61 before): every engine's tests, the Markdown tests, front matter, a11yproject.com's frozen site, and the tests the review added. What fails waits for `init` and the tools (stage 4), plugins (5), the server (6) and the importers (7). |
 | Real sites, plugins taken out of both builds' copies | The 12 starters match 0.7 but for the version in their footers; the six Jinja and Nunjucks examples match; the blog's Edge pages and its 128 Markdown files (172 highlighted fences) match. |
 
 What the stage decided, or found:
@@ -100,6 +100,8 @@ What the stage decided, or found:
 - **Node 22.18 has a bug the others don't:** with any `load` hook registered (`module.registerHooks`), a CommonJS module's `require` has no `cache` (fixed by 22.23). Prism's language loader uses it, so a11yproject.com failed only there. ssqch's module hooks have no `load` hook now.
 - **Front matter** was checked with 24 unusual cases on both builds: TOML's integers past 2^53 are rounded numbers again; js-yaml's numbers (`017` is 17) and merge keys, and smol-toml's millisecond dates, are recorded in `cli/front-matter.test.js` and the changelog.
 - **The examples can't pass yet:** all eight use `ssqch/links`, a stage 5 plugin, so the stage's "done when" for them moves with stage 5.
+- **Async functions are recorded and replayed, never run twice.** Each engine renders synchronously; when a function answers with a promise, the engine waits for it and renders that template again, answering every call from the first pass (Nunjucks and Jinja, Edge, Liquid and Handlebars alike, and a page's Markdown for its `headingIds` and highlighter functions). So a page with nothing async still renders on demand, and a counter or `slugger()` in a filter counts as it did in 0.7. Markdown made while a template renders (`markdown()` in a template) can't wait, and a promise there is an error that names the function.
+- **The independent review found 36 problems** in the ports and in the four core files stage 2's review hadn't read, by building small sites with both builds in three time zones and on three Node versions. The ones that mattered most gave wrong output with no warning; each was fixed by the agent that wrote the port, with a unit test or an oracle test, or recorded under "Breaking" in the changelog where matching 0.7 would mean rewriting a library (Nunjucks' scoping of `{% set %}` in an include, liquidjs' `obj.size`).
 
 ## Stages
 

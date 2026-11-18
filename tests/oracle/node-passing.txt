@@ -11,10 +11,14 @@ cli/data.test.js: a_byte_order_mark_is_skipped_in_data_pages_and_scripts
 cli/data.test.js: length_counts_lists_and_strings_in_nunjucks_and_jinja
 cli/data.test.js: nunjucks_tags_from_config_functions_and_jinja_dates
 cli/data.test.js: slugs_take_a_separator_and_a_slugger_counts
+cli/engines.test.js: ejs_keeps_its_own_names_when_the_data_has_them
 cli/engines.test.js: ejs_templates_render_as_ejs_does
 cli/engines.test.js: handlebars_and_mustache_templates_render
+cli/engines.test.js: handlebars_helpers_get_0_7s_values_and_run_once
 cli/engines.test.js: jinja_errors_point_at_the_name_and_say_what_was_meant
 cli/engines.test.js: jinja_is_the_default_and_other_templates_are_named
+cli/engines.test.js: jinja_keeps_its_meaning_in_every_corner
+cli/engines.test.js: liquid_numbers_dates_and_functions_are_0_7s_in_any_time_zone
 cli/engines.test.js: liquid_templates_get_filters_includes_and_collections
 cli/engines.test.js: nunjucks_templates_get_filters_includes_and_collections
 cli/engines.test.js: quotes_in_prose_and_comments_dont_change_the_output
@@ -74,16 +78,21 @@ contract/codes.test.js: the passthrough code
 contract/codes.test.js: the template code
 contract/codes.test.js: the template-formats code
 edge/edge.test.js: a_call_reaches_the_filter_when_data_has_the_same_name
+edge/edge.test.js: a_tag_out_of_place_is_an_error_with_its_line
+edge/edge.test.js: an_assign_in_an_include_reaches_the_template_that_included_it
 edge/edge.test.js: an_include_loop_is_named
 edge/edge.test.js: conditionals_loops_and_whitespace
+edge/edge.test.js: dates_are_utc_whatever_the_time_zone
 edge/edge.test.js: errors_report_template_and_line
 edge/edge.test.js: escapes_like_edge_js
 edge/edge.test.js: includes_share_scope_and_components_isolate
 edge/edge.test.js: js_expressions
 edge/edge.test.js: let_and_assign_with_multiline_args
 edge/edge.test.js: mustaches_escape_and_raw
+edge/edge.test.js: strings_are_indexed_by_character
 edge/edge.test.js: text_files_keep_their_lines
 edge/edge.test.js: unknown_at_words_are_text
+edge/edge.test.js: values_print_as_0_7_printed_them
 edge/edge.test.js: whitespace_matches_edge_js
 sites.test.js: trial-a11yproject builds as 0.7.0 did
 sites.test.js: trial-v8.dev builds as 0.7.0 did

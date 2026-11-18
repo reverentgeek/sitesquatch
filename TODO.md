@@ -127,11 +127,21 @@ until 0.8 ships.
         (`cli/front-matter.test.js`).
   - [x] Node 22.18 gave CommonJS modules no `require.cache` while ssqch's `load` hook was
         registered (fixed in 22.23); the hook is gone, and a11yproject.com builds there.
-  - [x] The oracle: 86 of 186 on Node 22.18, 24 and 26 (61 before), a11yproject.com's frozen
-        site among them. The benchmark, alone on the laptop: 10,000 pages in 1.10 s on one
-        thread, 363 MB (1.45 s before the stage; the limit is 2 s); v8.dev in 0.59 s (0.72 s).
-  - [ ] An independent review of the stage's ports against 0.7, and of `args.ts`, `modules.ts`,
-        `api.ts` and `content.ts`, which stage 2's review left.
+  - [x] The oracle: 95 of 195 on Node 22.18, 24 and 26 (61 before), a11yproject.com's frozen
+        site and the review's new tests among them. The benchmark, alone on the laptop: 10,000
+        pages in 1.14 s on one thread, 366 MB (1.42 s before the stage; the limit is 2 s);
+        v8.dev in 0.58 s (0.72 s).
+  - [x] An independent review (two fresh agents, reading the ports beside the Rust and building
+        small sites with both builds, under three time zones and on three Node versions), with
+        `args.ts`, `modules.ts`, `api.ts` and `content.ts`, which stage 2's review left: 36
+        findings, fixed by the agents that wrote each port or recorded in the changelog. The
+        worst gave wrong output with no warning: async functions called as functions printed
+        `[object Promise]` in Jinja; empty lists were true; `~`, tuples and `==` were
+        JavaScript's; dates in Edge and in Liquid's own filters followed the machine's time zone;
+        an async function made Liquid and Handlebars run every other function twice; a site's
+        `set site.title` changed it for every later page. Also: EJS includes went from 1.68 s
+        to 0.36 s on 2,000 pages of 20 (0.7: 1.47 s), and YAML dates before the year 100 keep
+        their century.
   - [ ] Every example site and the starters, the stage's "done when": they wait for stage 5's
         plugins (all eight examples use `ssqch/links`) and stage 4's `init`. Built with the
         plugins taken out of both builds' copies, the 12 starters match 0.7 except the version in
@@ -141,7 +151,8 @@ until 0.8 ships.
         `.njk` prints `True`, Python-style lists and a spaced `dump` as 0.7 did, where a site from
         Eleventy expects Nunjucks' `true`, `a,b` and compact JSON; tags from functions work in
         `.njk` only, as in 0.7; Liquid keeps two of 0.7's answers (`"abc" | split: ""` has empty
-        strings at both ends, two items join as "a, and b").
+        strings at both ends, two items join as "a, and b"); Nunjucks' `random` filter picks
+        anew in each build, and again in the second render of a page with async functions.
   - [ ] A cache of highlighted fences on disk (`.cache/ssqch/`, keyed by the `.wasm`'s inputs):
         a process's first build of the blog spends about 0.3 s compiling syntect's grammars.
   - [ ] Stage 8 ships `wasm/markdown.wasm` in the package (the loader finds it next to `src/`),
