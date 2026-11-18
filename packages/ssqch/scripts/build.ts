@@ -10,6 +10,7 @@
 //
 //   bin/ssqch.js     the command (bin/ssqch.ts)
 //   lib/cli.js       the CLI, and lib/ssqch.js, lib/image.js, ...: the modules a config imports
+//                    (from src/exports/, so each has ssqch.d.ts's exports and no others)
 //   lib/chunk-*.js   the code they share, so a config's `ssqch` and the build's are one module
 //   wasm/, bundled/  the files ssqch reads beside its code, as they are in packages/ssqch
 //   src/             the same for the files under src/ that aren't TypeScript (serve/live.js)
@@ -71,12 +72,12 @@ export function sourcePlugin(): Plugin {
 	};
 }
 
-/** The modules a config imports (`ssqch`, `ssqch/image`, ...), from ssqch.d.ts, and the source of each. */
+/** The modules a config imports (`ssqch`, `ssqch/image`, ...), from ssqch.d.ts, and the source of each: the file in `src/exports/` that exports its API and nothing else. */
 export function ownModules(): Array<{ specifier: string; source: string }> {
 	const dts = fs.readFileSync(path.join(PACKAGE, "bundled/ssqch.d.ts"), "utf8");
 	const out: Array<{ specifier: string; source: string }> = [];
 	for (const [, specifier] of dts.matchAll(/^declare module "([^"]+)" \{$/gm)) {
-		const source = specifier === "ssqch" ? "src/api.ts" : `src/modules/${moduleFile(specifier)}.ts`;
+		const source = `src/exports/${moduleFile(specifier)}.ts`;
 		if (!fs.existsSync(path.join(PACKAGE, source))) throw new Error(`ssqch.d.ts declares "${specifier}", and ${source} isn't there`);
 		out.push({ specifier, source });
 	}

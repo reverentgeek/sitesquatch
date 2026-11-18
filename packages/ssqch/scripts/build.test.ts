@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { buildPackage, ownModules, rewriteSource } from "./build.ts";
 
 test("import.meta.url becomes the URL the source file would have in the package", () => {
@@ -40,6 +41,8 @@ test("the built package runs, and finds its .wasm, its README and its starters",
 		assert.deepEqual(Object.keys(manifest.dependencies), ["sharp"]);
 		assert.equal(manifest.exports["./image"].default, "./lib/image.js");
 		for (const file of ["bin/ssqch.js", "lib/cli.js", "lib/ssqch.js", "wasm/markdown.wasm", "bundled/README.md", "src/serve/live.js", "types/index.d.ts"]) assert.ok(fs.existsSync(path.join(out, file)), `no ${file}`);
+		// A module has ssqch.d.ts's exports, not its own helpers.
+		assert.deepEqual(Object.keys(await import(pathToFileURL(path.join(out, "lib/links.js")).href)), ["linksPlugin"]);
 
 		const ssqch = (...args: string[]) => spawnSync(process.execPath, [path.join(out, "bin/ssqch.js"), ...args], { encoding: "utf8", cwd: dir });
 		assert.equal(ssqch("--version").stdout.trim(), `ssqch ${built.version}`);
