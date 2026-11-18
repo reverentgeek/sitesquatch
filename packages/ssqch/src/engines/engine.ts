@@ -48,6 +48,18 @@ export interface TemplateEngine {
 	included?(): string[];
 }
 
+/**
+ * An engine made when its first template renders, so its library loads then and not when ssqch
+ * starts: most sites use one or two languages, and each library costs milliseconds to load.
+ */
+export function lazyEngine(make: () => TemplateEngine): TemplateEngine {
+	let engine: TemplateEngine | undefined;
+	return {
+		render: (source, data, ctx) => (engine ??= make()).render(source, data, ctx),
+		included: () => engine?.included?.() ?? [],
+	};
+}
+
 /** Plain text: the source as it is (`html` and `txt`). */
 export const plainEngine: TemplateEngine = { render: (source) => source };
 

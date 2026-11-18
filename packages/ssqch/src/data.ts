@@ -62,7 +62,7 @@ export function parseFrontMatter(src: string): { data: Data; body: string } {
 			}
 			if (format === "toml") {
 				let value: unknown;
-				try { value = tomlValue(parseToml(text)); } catch (e) { throw new BuildError(`invalid TOML front matter: ${tomlReason(e)}`); }
+				try { value = readToml(text); } catch (e) { throw new BuildError(`invalid TOML front matter: ${tomlReason(e)}`); }
 				return { data: frontMatterObject(value, "TOML"), body };
 			}
 			try { return { data: parseYaml(text), body }; } catch (e) { throw new BuildError(`invalid YAML front matter: ${yamlReason(e)}`); }
@@ -77,10 +77,40 @@ function frontMatterObject(v: unknown, format: string): Data {
 	throw new BuildError(`${format} front matter must be an object, not ${Array.isArray(v) || v === null ? "object" : typeof v}`);
 }
 
+// js-yaml's default schema with one change: its timestamps are made with `Date.UTC`, which
+// reads the years 0 to 99 as 1900 to 1999 (`0099-12-31` was 1999). The 1900 years it added are
+// taken back off, after any offset in the text has moved the date.
+// (`@types/js-yaml` leaves out the built-in types, which js-yaml exports as `types`.)
+type BuiltIn = yaml.Type & { resolve(text: string): boolean; construct(text: string): unknown; represent?: (value: object) => string };
+const types = (yaml as unknown as { types: Record<"timestamp" | "merge" | "binary" | "omap" | "pairs" | "set", BuiltIn> }).types;
+const timestamp = types.timestamp;
+const YAML_SCHEMA = yaml.CORE_SCHEMA.extend({
+	implicit: [
+		new yaml.Type("tag:yaml.org,2002:timestamp", {
+			kind: "scalar",
+			resolve: timestamp.resolve,
+			construct(text: string) {
+				const date = timestamp.construct(text) as Date;
+				if (Number(/^\d{4}/.exec(text)?.[0]) < 100) date.setUTCFullYear(date.getUTCFullYear() - 1900);
+				return date;
+			},
+			instanceOf: Date,
+			represent: timestamp.represent,
+		}),
+		types.merge,
+	],
+	explicit: [types.binary, types.omap, types.pairs, types.set],
+});
+
+/** YAML text as a value, by js-yaml's rules and with the years before 100 kept. */
+export function loadYaml(text: string): unknown {
+	return yaml.load(text, { schema: YAML_SCHEMA });
+}
+
 /** YAML as a site's data: an empty document is no data, and the top level is a mapping. */
 export function parseYaml(src: string): Data {
 	if (src.trim() === "") return {};
-	const value = yaml.load(src);
+	const value = loadYaml(src);
 	if (value === null || value === undefined) return {};
 	if (isPlainObject(value)) return value;
 	throw new BuildError("expected a mapping at the top level");
@@ -181,6 +211,14 @@ function tomlReason(e: unknown): string {
 }
 
 /**
+ * A TOML document as a site's data. An integer too big for a JavaScript number is a number
+ * anyway, as 0.7 read it (rounded), where smol-toml would refuse the whole file.
+ */
+export function readToml(text: string): unknown {
+	return tomlValue(parseToml(text, { integersAsBigInt: "asNeeded" }));
+}
+
+/**
  * A TOML value as a site's data. A date or time (`2024-01-02`, without quotes) is its text, as
  * 0.7 has it; the page's `date` becomes a real date either way.
  */
@@ -240,11 +278,11 @@ export function loadStaticDataFile(file: string): unknown {
 	}
 	if (ext === "yaml" || ext === "yml") {
 		const text = read();
-		try { return yaml.load(text) ?? null; } catch (e) { throw new BuildError(`invalid YAML in ${file}: ${yamlReason(e)}`); }
+		try { return loadYaml(text) ?? null; } catch (e) { throw new BuildError(`invalid YAML in ${file}: ${yamlReason(e)}`); }
 	}
 	if (ext === "toml") {
 		const text = read();
-		try { return tomlValue(parseToml(text)); } catch (e) { throw new BuildError(`invalid TOML in ${file}: ${tomlReason(e)}`); }
+		try { return readToml(text); } catch (e) { throw new BuildError(`invalid TOML in ${file}: ${tomlReason(e)}`); }
 	}
 	return undefined;
 }

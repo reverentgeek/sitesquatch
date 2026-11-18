@@ -43,3 +43,13 @@ codegen-units = 4
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+# The Node build's Markdown (crates/ssqch-markdown as packages/ssqch/wasm/markdown.wasm), from
+# packages/ssqch/scripts/build-wasm.ts: one unit, so the file is small and fast. A panic in the
+# wasm traps, and Node starts a fresh instance.
+[profile.wasm]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"

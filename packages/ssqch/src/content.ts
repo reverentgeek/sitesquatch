@@ -61,7 +61,8 @@ const NAMED: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: "\"", 
 export function decodeEntities(s: string): string {
 	if (!s.includes("&")) return s;
 	return s.replace(ENTITY, (whole, name: string) => {
-		if (name in NAMED) return NAMED[name];
+		// Its own keys only: `&constructor;` isn't an entity.
+		if (Object.hasOwn(NAMED, name)) return NAMED[name];
 		if (name[0] !== "#") return whole;
 		const code = name[1] === "x" || name[1] === "X" ? Number.parseInt(name.slice(2), 16) : Number.parseInt(name.slice(1), 10);
 		// A number that isn't a character (a surrogate, or past the last one) stays as written.
