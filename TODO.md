@@ -659,9 +659,10 @@ From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
 From expressjs.com (ex). Its `suggestions.md` has ready-to-paste text for the component-frameworks
 trailhead.
 
-- [ ] **`tsconfig.json` `paths` in the module loader** (ex #5): Astro, Vite and Next.js sites import
-      their own helpers through `@/` aliases, and ssqch says the package isn't installed; the port
-      copied a helper with relative imports. Read `compilerOptions.paths` (and `jsconfig.json`).
+- [x] **`tsconfig.json` `paths` in the module loader** (ex #5; done 2026-11-18): Astro, Vite and
+      Next.js sites import their own helpers through `@/` aliases, and ssqch says the package isn't
+      installed; the port copied a helper with relative imports. Read `compilerOptions.paths` (and
+      `jsconfig.json`).
 - [ ] **Named slots in containers** (ex #4): `container.slots.<name>` from nested `::: slot
       name="…"` blocks, as MDX's `<Fragment slot>` and Edge components have them; the port marks
       slot output with comments and splits it in the parent's template. And `container.props` parsed

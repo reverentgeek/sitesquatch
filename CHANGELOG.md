@@ -28,6 +28,10 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Added
 
+- Config and data files can import the site's own files through `tsconfig.json`'s or
+  `jsconfig.json`'s `compilerOptions.paths` (`import { menu } from "@/config/menu"`), as Astro,
+  Vite and Next.js codebases do, with TypeScript's rules: the longest matching pattern, its targets
+  in order, from `baseUrl` or the tsconfig's folder. An import Node resolves itself is unchanged.
 - A warning when a Nunjucks template gives one of the config's filters' names to a macro, an
   import, a `set` or a loop variable and then calls that name as a function
   (`{% from "ui.njk" import postCard %}` … `postCard(post)`): the call means the template's own

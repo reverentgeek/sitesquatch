@@ -73,19 +73,117 @@ export function hookModules(): void {
 			}
 			return next(name, context);
 		};
+		// A file, as written or with an extension, or a folder's index.
+		const withEndings = (name: string) => {
+			const [bare, query = ""] = name.split(/(?=\?)/, 2);
+			try { return attempt(name); } catch { /* with an ending */ }
+			for (const ending of ENDINGS) {
+				try { return attempt(bare.replace(/\/$/, "") + ending + query); } catch { /* the next ending */ }
+			}
+			return undefined;
+		};
 		try {
 			return attempt(specifier);
 		} catch (e: any) {
+			// A `#…` alias with no package.json `imports` is Node's ERR_PACKAGE_IMPORT_NOT_DEFINED.
+			if (!fromSite || !["ERR_MODULE_NOT_FOUND", "ERR_UNSUPPORTED_DIR_IMPORT", "ERR_PACKAGE_IMPORT_NOT_DEFINED"].includes(e?.code)) throw e;
 			// `import { shout } from "./lib/text"`: the file with an extension, or a folder's index.
 			const relative = specifier.startsWith("./") || specifier.startsWith("../") || path.isAbsolute(specifier) || specifier.startsWith("file:");
-			if (!fromSite || !relative || !["ERR_MODULE_NOT_FOUND", "ERR_UNSUPPORTED_DIR_IMPORT"].includes(e?.code)) throw e;
-			const [bare, query = ""] = specifier.split(/(?=\?)/, 2);
-			for (const ending of ENDINGS) {
-				try { return attempt(bare.replace(/\/$/, "") + ending + query); } catch { /* the next ending */ }
+			if (relative) return (e.code !== "ERR_PACKAGE_IMPORT_NOT_DEFINED" && withEndings(specifier)) || (() => { throw e; })();
+			// `import { menu } from "@/config/menu"`: tsconfig.json's (or jsconfig.json's) `paths`,
+			// which Astro, Vite and Next.js sites import their own files through (expressjs.com, ex #5).
+			for (const file of aliasTargets(specifier, path.dirname(fileURLToPath(context.parentURL!)))) {
+				const found = withEndings(pathToFileURL(file).href);
+				if (found) return found;
 			}
 			throw e;
 		}
 	}
+}
+
+// ---- tsconfig.json paths ----------------------------------------------------------------------
+
+/** `compilerOptions.paths` of the nearest tsconfig.json or jsconfig.json, with the folder its targets are from. */
+interface Aliases { base: string; paths: Array<[string, string[]]> }
+const aliasesByDir = new Map<string, Aliases | null>();
+
+/** JSON with comments and trailing commas, as tsconfig.json is written. */
+function parseJsonc(text: string): any {
+	let out = "";
+	for (let i = 0; i < text.length; i++) {
+		const c = text[i];
+		if (c === "\"") {
+			const end = /^"(?:[^"\\]|\\.)*"/.exec(text.slice(i))?.[0] ?? c;
+			out += end;
+			i += end.length - 1;
+		} else if (c === "/" && text[i + 1] === "/") {
+			while (i < text.length && text[i] !== "\n") i++;
+			out += "\n";
+		} else if (c === "/" && text[i + 1] === "*") {
+			const end = text.indexOf("*/", i + 2);
+			i = end === -1 ? text.length : end + 1;
+		} else out += c;
+	}
+	return JSON.parse(out.replace(/,(\s*[}\]])/g, "$1"));
+}
+
+/** A tsconfig's `paths` and the folder they're from (`baseUrl`, else its own folder), following a local `extends`. */
+function readAliases(file: string, seen = new Set<string>()): Aliases | null {
+	if (seen.has(file)) return null;
+	seen.add(file);
+	let json: any;
+	try { json = parseJsonc(fs.readFileSync(file, "utf8")); } catch { return null; }
+	const dir = path.dirname(file);
+	const options = json?.compilerOptions ?? {};
+	if (options.paths && typeof options.paths === "object") {
+		const base = typeof options.baseUrl === "string" ? path.resolve(dir, options.baseUrl) : dir;
+		const paths = Object.entries(options.paths).filter((e): e is [string, string[]] => Array.isArray(e[1])).map(([k, v]) => [k, v.filter((t) => typeof t === "string")] as [string, string[]]);
+		return { base, paths };
+	}
+	const parents = (Array.isArray(json?.extends) ? json.extends : [json?.extends]).filter((x: unknown): x is string => typeof x === "string" && (x.startsWith("./") || x.startsWith("../")));
+	for (const parent of parents) {
+		const found = readAliases(path.resolve(dir, parent.endsWith(".json") ? parent : `${parent}.json`), seen);
+		if (found) return found;
+	}
+	return null;
+}
+
+/** The nearest tsconfig.json or jsconfig.json's paths, from `dir` up. */
+function aliasesFor(dir: string): Aliases | null {
+	if (aliasesByDir.has(dir)) return aliasesByDir.get(dir)!;
+	let found: Aliases | null = null;
+	for (const name of ["tsconfig.json", "jsconfig.json"]) {
+		const file = path.join(dir, name);
+		if (fs.existsSync(file)) { found = readAliases(file); break; }
+	}
+	if (!found && !fs.existsSync(path.join(dir, "tsconfig.json")) && !fs.existsSync(path.join(dir, "jsconfig.json"))) {
+		const up = path.dirname(dir);
+		if (up !== dir) found = aliasesFor(up);
+	}
+	aliasesByDir.set(dir, found);
+	return found;
+}
+
+/**
+ * The files `specifier` names through the nearest tsconfig's `paths`, as TypeScript reads them:
+ * the pattern with the longest prefix before its `*` wins, and its targets are tried in order.
+ */
+export function aliasTargets(specifier: string, fromDir: string): string[] {
+	const aliases = aliasesFor(fromDir);
+	if (!aliases) return [];
+	let best: { pattern: string; star: string; targets: string[] } | undefined;
+	for (const [pattern, targets] of aliases.paths) {
+		const at = pattern.indexOf("*");
+		if (at === -1) {
+			if (pattern === specifier) return targets.map((t) => path.resolve(aliases.base, t));
+			continue;
+		}
+		const prefix = pattern.slice(0, at), suffix = pattern.slice(at + 1);
+		if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix) || specifier.length < prefix.length + suffix.length) continue;
+		if (best && prefix.length <= best.pattern.indexOf("*")) continue;
+		best = { pattern, star: specifier.slice(prefix.length, specifier.length - suffix.length), targets };
+	}
+	return best ? best.targets.map((t) => path.resolve(aliases.base, t.replace("*", best!.star))) : [];
 }
 
 const versions = new Map<string, { mtimeMs: number; version: number }>();
