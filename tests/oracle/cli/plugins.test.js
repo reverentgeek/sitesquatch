@@ -657,3 +657,17 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["html
 	assert.ok(log.includes("4 broken links:\n  / -> /after-end-tag/ (not found)\n  / -> /after-script/ (not found)\n  / -> /b3/ (not found)\n  / -> /b6/ (not found)"), log);
 	assert.ok(log.includes("Links   7 checked, 4 broken"), log);
 });
+
+// Not from a Rust test: a link to a path the system can't look up (a NUL byte, from `%00`, or a
+// name too long) is broken, not an error of the build.
+test("a_link_the_system_cant_look_up_is_not_found", () => {
+	const long = `/${"a".repeat(3000)}/`;
+	const root = project({
+		"ssqch.config.js": `import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["html"], plugins: [linksPlugin({ fail: false })] };`,
+		"src/index.html": `<a href="/x%00y">nul</a> <a href="/x%00y/">nul folder</a> <a href="${long}">long</a>`,
+	});
+	const { ok, log } = build(root);
+	assert.ok(ok, log);
+	assert.ok(log.includes(`3 broken links:\n  / -> ${long} (not found)\n  / -> /x%00y (not found)\n  / -> /x%00y/ (not found)`), log);
+});

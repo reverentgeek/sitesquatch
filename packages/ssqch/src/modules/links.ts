@@ -28,7 +28,7 @@ import type { Diagnostic } from "../diagnostics.ts";
 import { rewriteHtml } from "../html.ts";
 import { compareText } from "../paths.ts";
 import { count } from "../report.ts";
-import { closest, closestPath } from "../suggest.ts";
+import { closest, closestPathFinder } from "../suggest.ts";
 import * as voice from "../voice.ts";
 import { Options } from "./options.ts";
 
@@ -94,10 +94,10 @@ function jsonUrls(value: unknown, out: string[]): void {
 }
 
 /** The candidates' URLs in a `srcset`. */
-function srcsetUrls(srcset: string, out: string[]): void {
+function srcsetUrls(srcset: string, out: string[], keep: Keep): void {
 	for (const candidate of srcset.split(",")) {
 		const url = firstWord(candidate);
-		if (url !== undefined) out.push(url);
+		if (url !== undefined) out.push(keep(url));
 	}
 }
 
@@ -105,22 +105,26 @@ const XML_ATTR = /[\s<](?:href|src|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
 const XML_SRCSET = /[\s<](?:srcset|imagesrcset)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
 const XML_TEXT = />\s*((?:https?:\/\/|\/)[^<>\s]*)\s*</g;
 
+/** What a scan keeps of a string it found: by default the string, which may be a slice that keeps its whole page alive (V8 slices long strings rather than copying them). */
+type Keep = (found: string) => string;
+const asFound: Keep = (found) => found;
+
 /**
  * The URLs in an XML file (a feed, a sitemap): attribute values (`href`, `src`, `srcset`...) and
  * elements that hold only a URL (`<loc>`, `<link>`, `<id>`), including those in escaped HTML (a
  * feed entry's content), which is unescaped first.
  */
-export function scanXml(xml: string): string[] {
+export function scanXml(xml: string, keep: Keep = asFound): string[] {
 	const unescaped = unescapeXml(xml);
 	const out: string[] = [];
-	for (const c of unescaped.matchAll(XML_ATTR)) out.push(unescapeXml(c[1] ?? c[2] ?? ""));
+	for (const c of unescaped.matchAll(XML_ATTR)) out.push(keep(unescapeXml(c[1] ?? c[2] ?? "")));
 	for (const c of unescaped.matchAll(XML_SRCSET)) {
 		for (const candidate of (c[1] ?? c[2] ?? "").split(",")) {
 			const url = firstWord(candidate);
-			if (url !== undefined) out.push(unescapeXml(url));
+			if (url !== undefined) out.push(keep(unescapeXml(url)));
 		}
 	}
-	for (const c of unescaped.matchAll(XML_TEXT)) out.push(unescapeXml(c[1]));
+	for (const c of unescaped.matchAll(XML_TEXT)) out.push(keep(unescapeXml(c[1])));
 	return out;
 }
 
@@ -158,23 +162,24 @@ export function unescapeXml(given: string): string {
 	return out + rest;
 }
 
-export function scanHtml(html: string): PageScan {
+/** The ids and links in a page. What it keeps of each string it found is `keep`'s answer. */
+export function scanHtml(html: string, keep: Keep = asFound): PageScan {
 	const found: PageScan = { ids: new Set(), links: [], siteLinks: [], sitePaths: [] };
 	rewriteHtml(html, {
 		tag(el) {
 			const id = el.get("id");
-			if (id !== undefined) found.ids.add(id);
+			if (id !== undefined) found.ids.add(keep(id));
 			switch (el.name) {
 				case "a": {
 					const name = el.get("name");
-					if (name !== undefined) found.ids.add(name);
+					if (name !== undefined) found.ids.add(keep(name));
 					const href = el.get("href");
-					if (href !== undefined) found.links.push(href);
+					if (href !== undefined) found.links.push(keep(href));
 					break;
 				}
 				case "area": {
 					const href = el.get("href");
-					if (href !== undefined) found.links.push(href);
+					if (href !== undefined) found.links.push(keep(href));
 					break;
 				}
 				case "link": {
@@ -182,25 +187,25 @@ export function scanHtml(html: string): PageScan {
 					if (href !== undefined) {
 						// Hints to other origins, not resources on this site.
 						const rel = asciiLower(el.get("rel") ?? "");
-						if (!rel.trim().split(SPACES).some((r) => r === "preconnect" || r === "dns-prefetch")) found.links.push(href);
+						if (!rel.trim().split(SPACES).some((r) => r === "preconnect" || r === "dns-prefetch")) found.links.push(keep(href));
 					}
 					const srcset = el.get("imagesrcset");
-					if (srcset !== undefined) srcsetUrls(srcset, found.links);
+					if (srcset !== undefined) srcsetUrls(srcset, found.links, keep);
 					break;
 				}
 				case "meta": {
 					const content = el.get("content");
 					if (content === undefined) break;
 					const name = el.get("property") ?? el.get("name") ?? el.get("itemprop") ?? "";
-					if (metaIsUrl(name)) found.siteLinks.push(content);
+					if (metaIsUrl(name)) found.siteLinks.push(keep(content));
 					break;
 				}
 				case "img":
 				case "source": {
 					const src = el.get("src");
-					if (src !== undefined) found.links.push(src);
+					if (src !== undefined) found.links.push(keep(src));
 					const srcset = el.get("srcset");
-					if (srcset !== undefined) srcsetUrls(srcset, found.links);
+					if (srcset !== undefined) srcsetUrls(srcset, found.links, keep);
 					break;
 				}
 				case "script":
@@ -210,14 +215,16 @@ export function scanHtml(html: string): PageScan {
 				case "track":
 				case "embed": {
 					const src = el.get("src");
-					if (src !== undefined) found.links.push(src);
+					if (src !== undefined) found.links.push(keep(src));
 					break;
 				}
 			}
 		},
 		rawText(tag, text) {
-			// A `type` attribute's value is matched without regard to case, as a CSS selector does for it in HTML.
-			if (tag.name !== "script" || asciiLower(tag.get("type") ?? "") !== "application/ld+json") return;
+			// A `type` attribute's value is matched without regard to case, as a CSS selector does for it in HTML (not in SVG).
+			if (tag.name !== "script") return;
+			const type = tag.get("type") ?? "";
+			if ((tag.namespace === "html" ? asciiLower(type) : type) !== "application/ld+json") return;
 			let value: unknown;
 			try { value = JSON.parse(text); } catch { return; }
 			jsonUrls(value, found.sitePaths);
@@ -276,7 +283,10 @@ export function inSite(link: string, base: string): string | undefined {
 
 /** `dist/about/index.html` -> `/about/`, `dist/feed.xml` -> `/feed.xml`. */
 function urlOf(output: string, file: string): string {
-	const rel = path.relative(output, file).split(path.sep).join("/");
+	// The files written are in the output folder, as `path.join` made them: their path from it is
+	// the rest of the string (`path.relative` takes longer than the scan of a page).
+	const inside = file.length > output.length && file.startsWith(output) && file[output.length] === path.sep;
+	const rel = (inside ? file.slice(output.length + 1) : path.relative(output, file)).split(path.sep).join("/");
 	const url = `/${rel}`;
 	return url.endsWith("index.html") ? url.slice(0, -"index.html".length) : url;
 }
@@ -323,21 +333,30 @@ function normalize(p: string): string {
 	return p.endsWith("/") && out !== "/" ? `${out}/` : out;
 }
 
-const isFile = (p: string) => fs.statSync(p, { throwIfNoEntry: false })?.isFile() ?? false;
+/** Whether `p` is a file. A path the system refuses (one with a NUL byte, from a link's `%00`, or too long) isn't one, as for 0.7. */
+function isFile(p: string): boolean {
+	try {
+		return fs.statSync(p, { throwIfNoEntry: false })?.isFile() ?? false;
+	} catch {
+		return false;
+	}
+}
 
 /** The output file a URL path serves, if any. */
-function find(output: string, urlPath: string): string | undefined {
+function find(output: string, urlPath: string, written: Set<string>): string | undefined {
+	// A file this build wrote is there without asking the disk.
+	const there = (p: string) => written.has(p) || isFile(p);
 	const rel = urlPath.replace(/^\/+/, "");
 	const base = path.join(output, rel);
 	if (urlPath.endsWith("/")) {
 		const index = path.join(base, "index.html");
-		return isFile(index) ? index : undefined;
+		return there(index) ? index : undefined;
 	}
-	if (isFile(base)) return base;
+	if (there(base)) return base;
 	const html = path.join(output, `${rel}.html`);
-	if (isFile(html)) return html;
+	if (there(html)) return html;
 	const index = path.join(base, "index.html");
-	return isFile(index) ? index : undefined;
+	return there(index) ? index : undefined;
 }
 
 /** The source paths of a Netlify `_redirects` file in the output: exact paths, and prefixes for ones ending in `*`. */
@@ -386,6 +405,18 @@ interface Checked {
 /** Checks every HTML and XML page the build wrote. */
 async function check(config: Config, output: string, written: string[], options: LinksOptions): Promise<Checked> {
 	const scans: Array<[string, PageScan]> = [];
+	// The scans are kept until every page is read, so each string they keep is a copy, made once
+	// for the whole site: a slice of a page would keep the whole page alive, and most links are
+	// the same on every page (a sidebar's).
+	const kept = new Map<string, string>();
+	const keep: Keep = (found) => {
+		let copy = kept.get(found);
+		if (copy === undefined) {
+			copy = ` ${found}`.slice(1);
+			kept.set(copy, copy);
+		}
+		return copy;
+	};
 	// The files are read ahead, a few at a time, so reading (on Node's thread pool) goes on while this thread scans.
 	const pages = written.filter((file) => { const ext = path.extname(file); return ext === ".html" || ext === ".xml"; });
 	const reading = new Map<number, Promise<string>>();
@@ -394,11 +425,13 @@ async function check(config: Config, output: string, written: string[], options:
 		for (let j = i; j < Math.min(i + AHEAD, pages.length); j++) if (!reading.has(j)) reading.set(j, fs.promises.readFile(pages[j], "utf8"));
 		const text = await reading.get(i)!;
 		reading.delete(i);
-		scans.push([pages[i], path.extname(pages[i]) === ".xml" ? { ids: new Set(), links: [], siteLinks: scanXml(text), sitePaths: [] } : scanHtml(text)]);
+		scans.push([pages[i], path.extname(pages[i]) === ".xml" ? { ids: new Set(), links: [], siteLinks: scanXml(text, keep), sitePaths: [] } : scanHtml(text, keep)]);
 	}
+	kept.clear();
 	// The site's address, so absolute links to it are checked.
 	const origin = (options.url === undefined ? undefined : originOf(options.url)) ?? sitemapOrigin(output);
 	const ids = new Map<string, Set<string>>(scans.map(([file, scan]) => [file, scan.ids]));
+	const writtenFiles = new Set(written);
 	const redirects = redirectSources(output);
 	const anchors = options.anchors ?? true;
 
@@ -409,6 +442,7 @@ async function check(config: Config, output: string, written: string[], options:
 	const found = new Map<string, string | undefined>();
 	// "Did you mean": the page whose URL is nearly a missing one, looked for once.
 	const urls = scans.map(([file]) => urlOf(output, file));
+	let nearest: ((wanted: string) => string | undefined) | undefined;
 	const meant = new Map<string, string>();
 	const didYouMean = (name: string | undefined, mark: string) => (name === undefined ? "" : `; did you mean ${mark}${name}?`);
 	/** Why `inside` (a link with the base off) is broken from a page, or `undefined`. */
@@ -423,11 +457,11 @@ async function check(config: Config, output: string, written: string[], options:
 			return anchors && !hasId(page.ids, fragment!) ? `no id "${fragment}" on this page${didYouMean(closest(fragment!, page.ids), "#")}` : undefined;
 		}
 		if (options.ignore.some((p) => targetPath.startsWith(p)) || redirected(redirects, targetPath)) return undefined;
-		if (!found.has(targetPath)) found.set(targetPath, find(output, targetPath));
+		if (!found.has(targetPath)) found.set(targetPath, find(output, targetPath, writtenFiles));
 		const target = found.get(targetPath);
 		if (target === undefined) {
 			// A site with hundreds of dead links has a bigger problem than typos.
-			if (!meant.has(targetPath) && meant.size < 500) meant.set(targetPath, didYouMean(closestPath(targetPath, urls), ""));
+			if (!meant.has(targetPath) && meant.size < 500) meant.set(targetPath, didYouMean((nearest ??= closestPathFinder(urls))(targetPath), ""));
 			return `not found${meant.get(targetPath) ?? ""}`;
 		}
 		const targetIds = ids.get(target);
@@ -465,8 +499,8 @@ async function check(config: Config, output: string, written: string[], options:
 			broken.push({ page: pageUrl, link: shown, reason });
 		}
 	};
-	for (const [file, page] of scans) {
-		const pageUrl = urlOf(output, file);
+	for (const [at, [, page]] of scans.entries()) {
+		const pageUrl = urls[at];
 		// Links in attributes as written; the others only when they're on the site; JSON-LD's without their #fragment.
 		for (const l of page.links) one(pageUrl, page, l, true, false);
 		for (const l of page.siteLinks) one(pageUrl, page, l, false, false);
