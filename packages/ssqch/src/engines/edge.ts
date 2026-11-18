@@ -68,7 +68,8 @@ export function edgeEngine(env: EngineEnv): TemplateEngine {
 
 	// 0.7's own helpers, then ssqch's functions and the config's, which replace any of the same name.
 	edge.global("stringify", (value: unknown, _replacer?: unknown, indent?: unknown) => stringify(value, null, indent));
-	edge.global("safe", (value: unknown) => value);
+	// `safe(html)` prints its value as it is, as edge.js's `html.safe` does (0.7's changed nothing).
+	edge.global("safe", (value: unknown) => (value instanceof SafeValue ? value : new SafeValue(value)));
 	edge.global("escape", (value: unknown) => escapeHtml(String(value)));
 	edge.global("truncate", (value: unknown, length?: unknown) => {
 		const chars = [...String(value)];

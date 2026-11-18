@@ -154,3 +154,12 @@ test("the_smaller_filters_give_0_7s_output", async () => {
 	assert.equal(await failure(() => liquid.render("{% include \"zz\" %}", {}, site.ctx("page.liquid"))), "page.liquid:1: template not found: can't include `zz`");
 	assert.equal(await failure(() => liquid.render("{% include \"nva\" %}", {}, site.ctx("page.liquid"))), "page.liquid:1: template not found: can't include `nva` (did you mean `nav.liquid`?)");
 });
+
+// Two places where 0.7 was odd and Shopify and Jekyll aren't: splitting by nothing gives the
+// characters (0.7 put an empty string at each end), and two items join with `and` alone.
+test("split_and_sentences_follow_shopify_and_jekyll", () => {
+	const site = testSite({});
+	const liquid = liquidEngine(site.env);
+	const out = liquid.render("{{ \"abc\" | split: \"\" | join: \"-\" }}|{{ \"abc\" | split: \"\" | size }}|{{ two | array_to_sentence_string }}|{{ three | array_to_sentence_string }}|{{ one | array_to_sentence_string }}|{{ two | array_to_sentence_string: \"or\" }}", { one: ["pine"], two: ["pine", "cedar"], three: ["pine", "cedar", "fir"] }, site.ctx("page.liquid"));
+	assert.equal(out, "a-b-c|3|pine and cedar|pine, cedar, and fir|pine|pine or cedar");
+});

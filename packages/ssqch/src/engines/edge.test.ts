@@ -203,3 +203,9 @@ test("lines_end_with_a_newline_on_every_system", () => {
 	assert.equal(edge.render("a\r\n@if(true)\r\nyes {{ 1 }}\r\n@end\r\nb\r\n", {}, ctx()), "a\nyes 1\nb");
 	assert.equal(edge.render("plain\r\ntext\r\n", {}, ctx()), "plain\ntext");
 });
+
+// `safe(html)` prints its value as it is, as edge.js's `html.safe` does; 0.7's escaped it anyway.
+test("safe_prints_html_as_it_is", () => {
+	const edge = engine();
+	assert.equal(edge.render("{{ safe(html) }}|{{ html }}|{{ safe(missing) }}|{{ safe(safe(html)) }}", { html: "<b>pine</b>" }, ctx()), "<b>pine</b>|&lt;b&gt;pine&lt;/b&gt;||<b>pine</b>");
+});

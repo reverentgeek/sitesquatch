@@ -133,11 +133,29 @@ function attribute(value: unknown, path: unknown): unknown {
 }
 
 /**
+ * A value as Nunjucks makes it text, for `.njk` (and so as a site from Eleventy expects it):
+ * `true`, `a,b` for a list, `[object Object]`, nothing for `none`. A date is still ISO 8601:
+ * Nunjucks' own would be in the machine's time zone, and a build's output may not depend on it.
+ */
+export function njkString(v: unknown): string {
+	if (typeof v === "string") return v;
+	if (v === undefined || v === null) return "";
+	if (typeof v === "function") return FUNCTION;
+	if (v instanceof Date) return Number.isNaN(v.getTime()) ? String(v) : v.toISOString();
+	if (Array.isArray(v)) return v.map(njkString).join(",");
+	return String(v);
+}
+
+/**
  * A value as Jinja makes it text (`str()`): `True`, `None`, `['a', 'b']`, `{'a': 1}`, `(1, 2)`.
  * Dates are ISO 8601 (a JavaScript date would print in the machine's time zone). Printed on its
  * own, `none` is nothing; that's `suppressValue`'s.
  */
 export function pyString(v: unknown): string {
+	return pyStringOf(v);
+}
+
+function pyStringOf(v: unknown): string {
 	if (typeof v === "string") return v;
 	if (v === undefined) return "";
 	if (v === null) return "None";
@@ -376,12 +394,13 @@ export function installRuntime(): void {
 		return typeof val === "string" ? pythonMethod(obj, val) : undefined;
 	};
 
-	// Values print as 0.7 printed them (`True`, `['a', 'b']`, a date in ISO 8601), and
-	// escape as Nunjucks does, or as Jinja does in `.jinja` files.
+	// Values print as Jinja prints them in `.jinja` (`True`, `['a', 'b']`) and as Nunjucks does
+	// in `.njk` (`true`, `a,b`), a date in ISO 8601 in both, and escape as each language does.
+	// The flavor is the environment's `autoescape`, which nunjucks passes to every output.
 	runtime.suppressValue = function suppressValue(value: unknown, autoescape: unknown) {
 		if (value === undefined || value === null) return "";
 		if (value instanceof SafeString) return value;
-		const text = typeof value === "string" ? value : pyString(value);
+		const text = typeof value === "string" ? value : autoescape === JINJA_ESCAPE ? pyString(value) : njkString(value);
 		if (!autoescape) return text;
 		return autoescape === JINJA_ESCAPE ? escapeJinja(text) : lib.escape(text);
 	};
@@ -404,8 +423,9 @@ export function installRuntime(): void {
 	// `~` joins values as they'd print (an undefined value is nothing, `none` is `None`). With a
 	// safe side, the result is safe and the other side is escaped, as in Jinja.
 	runtime.concat = function concat(a: unknown, b: unknown, autoescape: unknown) {
-		if (!(a instanceof SafeString) && !(b instanceof SafeString)) return pyString(a) + pyString(b);
-		const part = (v: unknown) => (v instanceof SafeString ? String(v) : autoescape === JINJA_ESCAPE ? escapeJinja(pyString(v)) : lib.escape(pyString(v)));
+		const str = autoescape === JINJA_ESCAPE ? pyString : njkString;
+		if (!(a instanceof SafeString) && !(b instanceof SafeString)) return str(a) + str(b);
+		const part = (v: unknown) => (v instanceof SafeString ? String(v) : autoescape === JINJA_ESCAPE ? escapeJinja(str(v)) : lib.escape(str(v)));
 		return safe(part(a) + part(b));
 	};
 	runtime.tuple = tuple;
@@ -654,9 +674,13 @@ function sortKey(v: unknown, caseSensitive: unknown): unknown {
 }
 const compare = (a: unknown, b: unknown) => ((a as number) < (b as number) ? -1 : (a as number) > (b as number) ? 1 : 0);
 
-/** The filters 0.7's Jinja had, where nunjucks has none or answers another way. `escape` is the flavor's. */
-export function jinjaFilters(escape: (text: string) => string): Record<string, Fn> {
-	const escapeFilter = (v: unknown) => (v instanceof SafeString ? v : safe(escape(v === undefined || v === null ? "" : pyString(v))));
+/**
+ * The filters 0.7's Jinja had, where nunjucks has none or answers another way. `escape` is the
+ * flavor's; in `.njk` a value becomes text as Nunjucks makes it (`true`, `a,b`).
+ */
+export function jinjaFilters(escape: (text: string) => string, flavor: "njk" | "jinja" = "jinja"): Record<string, Fn> {
+	const toText = flavor === "njk" ? njkString : pyStringOf;
+	const escapeFilter = (v: unknown) => (v instanceof SafeString ? v : safe(escape(v === undefined || v === null ? "" : toText(v))));
 	const filters: Record<string, Fn> = {
 		escape: escapeFilter,
 		e: escapeFilter,
@@ -793,7 +817,7 @@ export function jinjaFilters(escape: (text: string) => string): Record<string, F
 		},
 		join: (v: unknown, ...args: unknown[]) => {
 			const [sep, attr] = named(args, ["d", "attribute"]);
-			return itemsOf(v).map((item) => pyString(attr === undefined || attr === null ? item : attribute(item, attr))).join(sep === undefined || sep === null ? "" : String(sep));
+			return itemsOf(v).map((item) => toText(attr === undefined || attr === null ? item : attribute(item, attr))).join(sep === undefined || sep === null ? "" : String(sep));
 		},
 		dictsort: (v: unknown, ...args: unknown[]) => {
 			const [caseSensitive, by, reverse] = named(args, ["case_sensitive", "by", "reverse"]);
@@ -809,15 +833,15 @@ export function jinjaFilters(escape: (text: string) => string): Record<string, F
 			const parts = String(v ?? "").split("\n");
 			return parts.map((line, i) => ((i === 0 && !first) || (!blank && line.trim() === "") ? line : pad + line)).join("\n");
 		},
-		title: (v: unknown) => titleCase(pyString(v)),
-		upper: (v: unknown) => pyString(v).toUpperCase(),
-		lower: (v: unknown) => pyString(v).toLowerCase(),
-		capitalize: (v: unknown) => STRING_METHODS.capitalize(pyString(v)),
+		title: (v: unknown) => titleCase(toText(v)),
+		upper: (v: unknown) => toText(v).toUpperCase(),
+		lower: (v: unknown) => toText(v).toLowerCase(),
+		capitalize: (v: unknown) => STRING_METHODS.capitalize(toText(v)),
 		urlencode,
 		// `default(x, true)` replaces a false value by Jinja's truth (an empty list is false).
 		default: (v: unknown, fallback: unknown = "", boolean?: unknown) => (boolean ? (truthy(v) ? v : fallback) : v === undefined ? fallback : v),
 		// Nunjucks' `nl2br`, with what it's given escaped and its own `<br />` kept.
-		nl2br: (v: unknown) => (v instanceof SafeString ? safe(String(v).replace(/\r\n|\n/g, "<br />\n")) : safe(escape(pyString(v)).replace(/\r\n|\n/g, "<br />\n"))),
+		nl2br: (v: unknown) => (v instanceof SafeString ? safe(String(v).replace(/\r\n|\n/g, "<br />\n")) : safe(escape(toText(v)).replace(/\r\n|\n/g, "<br />\n"))),
 		// A missing value is an empty list here, as in 0.7 (nunjucks' own filters failed on it), and
 		// a string is its characters, emoji and all.
 		length: (v: unknown) => (v === undefined || v === null ? 0 : isString(v) ? chars(String(v)).length : v instanceof Map || v instanceof Set ? v.size : isPlain(v) ? Object.keys(v).length : (v as { length?: number }).length ?? 0),
@@ -849,14 +873,16 @@ export function jinjaFilters(escape: (text: string) => string): Record<string, F
 		},
 		trim: (v: unknown, chars?: unknown) => trimChars(String(v ?? ""), chars === undefined || chars === null ? undefined : String(chars), true, true),
 		list: (v: unknown) => [...itemsOf(v)],
-		string: (v: unknown) => (v instanceof SafeString ? v : pyString(v)),
+		string: (v: unknown) => (v instanceof SafeString ? v : toText(v)),
 		select: function (this: unknown, v: unknown, ...args: unknown[]) { return selectBy(this, v, args, true, false); },
 		reject: function (this: unknown, v: unknown, ...args: unknown[]) { return selectBy(this, v, args, false, false); },
 		selectattr: function (this: unknown, v: unknown, ...args: unknown[]) { return selectBy(this, v, args, true, true); },
 		rejectattr: function (this: unknown, v: unknown, ...args: unknown[]) { return selectBy(this, v, args, false, true); },
 	};
-	// Nunjucks' name for `tojson`, which 0.7 gave it.
-	filters.dump = filters.tojson;
+	// Nunjucks' name for `tojson`, which 0.7 gave it in `.jinja`. In `.njk` it's Nunjucks' own:
+	// compact JSON (`spaces` indents it), escaped when it's printed, as a site from Eleventy has it.
+	if (flavor === "njk") filters.dump = (v: unknown, spaces?: unknown) => JSON.stringify(v, null, typeof spaces === "number" || typeof spaces === "string" ? spaces : undefined) ?? "";
+	else filters.dump = filters.tojson;
 	return filters;
 }
 

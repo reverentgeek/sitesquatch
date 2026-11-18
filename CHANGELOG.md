@@ -59,6 +59,8 @@ the release.
   value prints nothing, a call reaches the filter beside a page field of the same name,
   `$loop`, `reverse()` and `sort()` giving copies, dates in UTC and as ISO 8601 text, strings
   indexed by character, numbers never in exponent notation). What changes:
+  - `{{ safe(html) }}` prints `html` as it is, as edge.js's `html.safe` does. 0.7's `safe()`
+    changed nothing, so the value was escaped anyway; drop `safe()` where the escaping was wanted.
   - A variable an include declares with `@let`, that the template including it doesn't have,
     is the include's only, as edge.js scopes it; 0.7 declared it in the including template too.
     Declare it before the `@include` (an `@assign` or `@let` of a variable the including template
@@ -75,8 +77,11 @@ the release.
   filter; numbers keep the crate's whole numbers and floats (`10 | times: 1.0 | divided_by: 4` is
   2.5, `7 | divided_by: 2` is 3, and a missing or non-numeric operand, or dividing by zero, is an
   error); a missing value reaches a config function as `null`; and `capitalize`, `escape`,
-  `escape_once`, `url_encode`, `url_decode`, `split`, `truncate`, `truncatewords`, `map`, `uniq`,
-  `size` and `array_to_sentence_string` give 0.7's output. What's liquidjs' own: `{{ some_object }}`
+  `escape_once`, `url_encode`, `url_decode`, `split`, `truncate`, `truncatewords`, `map`, `uniq`
+  and `size` give 0.7's output. Two of 0.7's answers are Shopify's and Jekyll's now: `"abc" |
+  split: ""` is `a`, `b`, `c` (0.7 put an empty string at each end), and `array_to_sentence_string`
+  joins two items as `pine and cedar` (0.7 wrote `pine, and cedar`; three or more still have the
+  comma). What's liquidjs' own: `{{ some_object }}`
   prints `[object Object]`, where 0.7 ran its keys and values together in no fixed order (`{z: 1, a:
   "two"}` printed `z1atwo`), so write `{{ some_object | json }}`; `{{ some_object.size }}` is its
   number of keys, where 0.7 printed nothing; a string's `size` counts as JavaScript does, where 0.7
@@ -94,6 +99,11 @@ the release.
   it, where 0.7 used MiniJinja. Jinja's filters, tests and functions, Python's string, list and
   dict methods, slices, the date filters, tags from your functions and the escaping are kept, so
   most templates render as they did. What doesn't:
+  - **`.njk` prints values as Nunjucks does**, as a site from Eleventy expects: `true`, a list as
+    `a,b`, an object as `[object Object]` and `none` as nothing, and `dump` is compact JSON
+    (`dump(2)` indents it), escaped unless it's followed by `| safe`. 0.7 printed `True`,
+    `['a', 'b']` and a spaced, unescaped `dump`, as Jinja does, which `.jinja` still does. A date
+    prints as ISO 8601 in both, whatever the machine's time zone.
   - A variable set inside a loop or an `if` keeps its value after it, as in Nunjucks:
     `{% set total = 0 %}{% for x in xs %}{% set total = total + x %}{% endfor %}` ends with the
     sum, where Jinja's scoping left it at 0 (`namespace()` still works).
@@ -121,6 +131,8 @@ the release.
 
 ### Changed
 
+- Tags from the config's functions (`{% image "/a.png", "A pine" %}`, and paired with `{% endimage
+  %}`) work in `.jinja` files too, where 0.7 had them in `.njk` only.
 - The config can be `ssqch.config.cjs`, `ssqch.config.ts` or `ssqch.config.mts`, besides `.js`
   and `.mjs`.
 - A warning a package raises with `process.emitWarning` is one of the build's warnings (`code:

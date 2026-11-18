@@ -5,8 +5,9 @@
 // globals and (in `.njk`) as tags, async functions (a render that makes a promise renders again
 // once it's settled; see `render`), and errors that name the file and the line.
 //
-// The two flavors differ where 0.7's did: `.njk` escapes `\` as `&#92;`, as Nunjucks does, and
-// has tags named after the config's functions; `.jinja` leaves `\` as it is, as Jinja does.
+// The two flavors differ where 0.7's did, and where a site from Eleventy expects Nunjucks: `.njk`
+// escapes `\` as `&#92;` and prints values as Nunjucks does (`true`, `a,b`, a compact `dump`);
+// `.jinja` leaves `\` as it is and prints as Jinja does (`True`, `['a', 'b']`).
 import fs from "node:fs";
 import path from "node:path";
 import nunjucks from "nunjucks";
@@ -18,7 +19,7 @@ import { describeThrown, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
 import * as voice from "../voice.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
-import { JINJA_ESCAPE, JinjaError, escapeJinja, installRuntime, jinjaFilters, jinjaGlobals, jinjaTests, markdownAttributes, pyString, siteArgs } from "./jinja.ts";
+import { JINJA_ESCAPE, JinjaError, escapeJinja, installRuntime, jinjaFilters, jinjaGlobals, jinjaTests, markdownAttributes, njkString, pyString, siteArgs } from "./jinja.ts";
 
 /** `.njk` (Nunjucks' escaping and the config's functions as tags) or `.jinja` and `.j2`. */
 export type Flavor = "njk" | "jinja";
@@ -167,7 +168,7 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 	includeNames.set(njk, names);
 	const escape = flavor === "jinja" ? escapeJinja : (nunjucks.lib as unknown as { escape(s: string): string }).escape;
 	if (flavor === "jinja") (njk as unknown as { opts: { autoescape: unknown } }).opts.autoescape = JINJA_ESCAPE;
-	for (const [name, fn] of Object.entries(jinjaFilters(escape))) njk.addFilter(name, fn);
+	for (const [name, fn] of Object.entries(jinjaFilters(escape, flavor))) njk.addFilter(name, fn);
 	for (const [name, fn] of Object.entries(jinjaTests(njk))) (njk as unknown as { addTest(name: string, fn: unknown): void }).addTest(name, fn);
 	for (const [name, value] of Object.entries(jinjaGlobals())) njk.addGlobal(name, value);
 
@@ -184,9 +185,11 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 
 	// `{% image "/a.png", "A pine" %}` prints what `image("/a.png", "A pine")` returns, without
 	// escaping it; with an `{% endimage %}`, the function gets what's between them first. Every
-	// function is a tag (Nunjucks' own tags come first: `include` stays `include`).
-	if (flavor === "njk" && env.globals.size) {
-		const value = (out: unknown) => (out === undefined || out === null ? "" : out instanceof SafeString ? out : new SafeString(pyString(out)));
+	// function is a tag (Nunjucks' own tags come first: `include` stays `include`), in `.njk` and
+	// `.jinja` alike (0.7 had them in `.njk` only).
+	if (env.globals.size) {
+		const text = flavor === "njk" ? njkString : pyString;
+		const value = (out: unknown) => (out === undefined || out === null ? "" : out instanceof SafeString ? out : new SafeString(text(out)));
 		njk.addExtension("ssqchTags", {
 			tags: [...env.globals.keys()],
 			parse(parser: any, nodes: any) {

@@ -147,12 +147,12 @@ until 0.8 ships.
         plugins taken out of both builds' copies, the 12 starters match 0.7 except the version in
         their footers, and so do all eight examples (the six in Jinja and Nunjucks, and
         `component-docs` and `reference-pages` in Handlebars).
-  - [ ] Decide: Edge's `safe()` changes nothing, as in 0.7 (edge.js's `html.safe` prints raw);
-        `.njk` prints `True`, Python-style lists and a spaced `dump` as 0.7 did, where a site from
-        Eleventy expects Nunjucks' `true`, `a,b` and compact JSON; tags from functions work in
-        `.njk` only, as in 0.7; Liquid keeps two of 0.7's answers (`"abc" | split: ""` has empty
-        strings at both ends, two items join as "a, and b"); Nunjucks' `random` filter picks
-        anew in each build, and again in the second render of a page with async functions.
+  - [x] Decided 2026-11-17: Edge's `safe()` prints raw HTML, as edge.js's `html.safe` does;
+        `.njk` prints as Nunjucks does (`true`, `a,b`, a compact `dump`), as a site from Eleventy
+        expects, until someone reports otherwise, while `.jinja` keeps Jinja's printing; tags
+        from functions work in `.jinja` too; Liquid's `split: ""` and two-item
+        `array_to_sentence_string` follow Shopify and Jekyll instead of 0.7; Nunjucks' `random`
+        filter stays random.
   - [ ] A cache of highlighted fences on disk (`.cache/ssqch/`, keyed by the `.wasm`'s inputs):
         a process's first build of the blog spends about 0.3 s compiling syntect's grammars.
   - [ ] Stage 8 ships `wasm/markdown.wasm` in the package (the loader finds it next to `src/`),

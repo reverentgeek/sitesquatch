@@ -187,8 +187,27 @@ test("truth_is_jinjas", () => {
 });
 
 test("tilde_joins_text_as_values_print", () => {
-	const e = engine("njk");
-	assert.equal(e.render("[{{ missing ~ ' | ' ~ missing2 }}]|{{ 'a' ~ none }}|{{ true ~ '' }}|{{ [1, 2] ~ '' }}|{{ '<b>' | safe ~ '<i>' }}|{{ '\\\\' | safe ~ '\\\\' }}", {}, ctx()), "[ | ]|aNone|True|[1, 2]|<b>&lt;i&gt;|\\&#92;");
+	// In `.njk` as Nunjucks prints values (`true`, `1,2`, nothing for none); in `.jinja` as Jinja does.
+	const njk = engine("njk");
+	assert.equal(njk.render("[{{ missing ~ ' | ' ~ missing2 }}]|{{ 'a' ~ none }}|{{ true ~ '' }}|{{ [1, 2] ~ '' }}|{{ '<b>' | safe ~ '<i>' }}|{{ '\\\\' | safe ~ '\\\\' }}", {}, ctx()), "[ | ]|a|true|1,2|<b>&lt;i&gt;|\\&#92;");
+	const jinja = engine("jinja");
+	assert.equal(jinja.render("[{{ missing ~ ' | ' ~ missing2 }}]|{{ 'a' ~ none }}|{{ true ~ '' }}|{{ [1, 2] ~ '' }}|{{ '<b>' | safe ~ '<i>' }}", {}, ctx("page.jinja")), "[ | ]|aNone|True|[1, 2]|<b>&lt;i&gt;");
+});
+
+// `.njk` prints as Nunjucks does, as a site from Eleventy expects; `.jinja` keeps Jinja's
+// printing. A date is ISO 8601 in both, whatever the machine's time zone.
+test("njk_prints_values_as_nunjucks_does", () => {
+	const data = { ok: true, tags: ["a", "b"], obj: { x: 1 }, when: new Date("2024-03-04T05:06:07Z") };
+	const page = "{{ ok }}|{{ tags }}|{{ obj }}|{{ tags | dump }}|{{ obj | dump | safe }}|{{ obj | dump(2) | safe }}|{{ ok | string }}|{{ [true, none, 2] | join(',') }}|{{ [when] }}";
+	assert.equal(engine("njk").render(page, data, ctx()), "true|a,b|[object Object]|[&quot;a&quot;,&quot;b&quot;]|{\"x\":1}|{\n  \"x\": 1\n}|true|true,,2|2024-03-04T05:06:07.000Z");
+	assert.equal(engine("jinja").render(page, data, ctx("page.jinja")), "True|[&#39;a&#39;, &#39;b&#39;]|{&#39;x&#39;: 1}|[\"a\", \"b\"]|{\"x\": 1}|{\n  \"x\": 1\n}|True|True,None,2|[2024-03-04T05:06:07.000Z]");
+});
+
+test("tags_from_functions_work_in_jinja_too", () => {
+	const functions = { image: (src: unknown, alt: unknown) => `<img src="${src}" alt="${alt}">`, callout: (body: unknown, kind = "note") => `<aside class="${kind}">${String(body).trim()}</aside>` };
+	for (const [flavor, name] of [["njk", "page.njk"], ["jinja", "page.jinja"]] as const) {
+		assert.equal(engine(flavor, functions).render("{% image \"/a.png\", \"A pine\" %}{% callout \"tip\" %} Look up {% endcallout %}", {}, ctx(name)), "<img src=\"/a.png\" alt=\"A pine\"><aside class=\"tip\">Look up</aside>", flavor);
+	}
 });
 
 test("an_import_sees_the_pages_data", () => {

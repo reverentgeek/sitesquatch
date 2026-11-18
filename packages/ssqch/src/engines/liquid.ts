@@ -404,8 +404,7 @@ const length = (v: unknown, otherwise: number) => {
 /**
  * Where the liquid crate's filters say otherwise than liquidjs', 0.7's output stays: `capitalize`
  * changes the first letter only (`Pine CONE`), `url_encode` writes a space as `%20`, `split`
- * keeps empty strings at the end, `array_to_sentence_string` puts a comma before the last word
- * (`a, and b`), `truncate` counts the ellipsis' bytes, `truncatewords` splits at each space,
+ * keeps empty strings at the end, `truncate` counts the ellipsis' bytes, `truncatewords` splits at each space,
  * `map` leaves out what isn't an object, `uniq` compares values, and `size` is a value's text's.
  */
 const TEXT: Record<string, (...args: any[]) => unknown> = {
@@ -422,11 +421,14 @@ const TEXT: Record<string, (...args: any[]) => unknown> = {
 	split: (input: unknown, pattern: unknown) => {
 		const s = text(input), by = text(pattern);
 		if (s === "") return [];
-		return by === "" ? ["", ...s, ""] : s.split(by);
+		// By nothing: the characters, as Shopify splits them (0.7 put an empty string at each end).
+		return by === "" ? [...s] : s.split(by);
 	},
 	array_to_sentence_string: (input: unknown, connector: unknown) => {
 		if (!Array.isArray(input)) throw new BuildError("invalid input: Array expected");
 		const and = connector === undefined || connector === null ? "and" : text(connector);
+		// As Jekyll writes it: `a and b` for two (0.7 wrote `a, and b`), `a, b, and c` for more.
+		if (input.length === 2) return `${text(input[0])} ${and} ${text(input[1])}`;
 		return input.map((item, i) => (i === 0 ? text(item) : i === input.length - 1 ? `, ${and} ${text(item)}` : `, ${text(item)}`)).join("");
 	},
 	escape: (input: unknown) => escape(input, false),
