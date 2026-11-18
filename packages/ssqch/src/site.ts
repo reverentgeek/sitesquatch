@@ -16,8 +16,11 @@ import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, norm
 import type { Diagnostic } from "./diagnostics.ts";
 import { BuildError, Diagnostics, aliasUsed, bail, context, error as errorOf, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import { edgeEngine } from "./engines/edge.ts";
+import { ejsEngine } from "./engines/ejs.ts";
 import { Engines, plainEngine } from "./engines/engine.ts";
 import type { EngineEnv, RenderContext } from "./engines/engine.ts";
+import { handlebarsEngine } from "./engines/handlebars.ts";
+import { liquidEngine } from "./engines/liquid.ts";
 import { loadHookTemplates, markdownEngine } from "./engines/markdown.ts";
 import type { HookTemplate, Markdown } from "./engines/markdown.ts";
 import { nunjucksEngine } from "./engines/nunjucks.ts";
@@ -100,9 +103,6 @@ function templateExtension(file: string): string {
 
 /** Template and directory data files (`hello.data.js`, `posts.data.json`) sit next to templates, but aren't templates themselves. */
 const isDataFile = (name: string) => name.includes(".data.");
-
-/** The engines that arrive with stage 3 of the move to Node: named, so an error can say so. */
-const LATER_ENGINES = ["liquid", "hbs", "handlebars", "mustache", "ejs"];
 
 export class Timer {
 	last = performance.now();
@@ -207,6 +207,11 @@ export class Site {
 		byName.set("edge", edgeEngine(env));
 		const jinja = nunjucksEngine(env);
 		for (const name of ["jinja", "njk", "j2"]) byName.set(name, jinja);
+		byName.set("liquid", liquidEngine(env));
+		// Mustache templates render as Handlebars, which reads Mustache's tags, as in 0.7.
+		const hbs = handlebarsEngine(env);
+		for (const name of ["hbs", "handlebars", "mustache"]) byName.set(name, hbs);
+		byName.set("ejs", ejsEngine(env));
 		for (const [name, fn] of config.engines) {
 			byName.set(name, {
 				render: (source, data, ctx) => {
@@ -220,7 +225,6 @@ export class Site {
 			});
 		}
 		for (const format of config.templateFormats) {
-			if (!byName.has(format) && LATER_ENGINES.includes(format)) bail(`check \`template_formats\`: the \`${format}\` engine isn't in the Node build of ssqch yet (the move to Node, stage 3)`);
 			try { this.engines.get(format); } catch (e) { throw context(e, "check `template_formats`"); }
 		}
 		// Markdown's render hooks and containers: a theme's, then the site's own on top of them.
@@ -318,7 +322,7 @@ export class Site {
 
 	/** The template languages the site has engines for, rendered or not. */
 	private engineLanguages(): Set<string> {
-		return new Set([...this.engines.byName.keys(), ...LATER_ENGINES].filter((name) => !["md", "html", "txt"].includes(name)).map((name) => name.toLowerCase()));
+		return new Set([...this.engines.byName.keys()].filter((name) => !["md", "html", "txt"].includes(name)).map((name) => name.toLowerCase()));
 	}
 
 	/**
