@@ -264,6 +264,30 @@ pub extern "C" fn md_highlight(handle: u32, ptr: *mut u8, code_len: usize, lang_
     }
 }
 
+/// A build starts with the cache of highlighted fences on disk ([`highlight::begin`]). The buffer
+/// is the highlighter's version, then the file's text, `version_len` and `file_len` bytes.
+/// `flags`: 1 when Node read the file for this (its text is empty when there's none); without
+/// it, the disk is as this instance last left it. The result is how many fences the file gave.
+#[no_mangle]
+pub extern "C" fn md_fences_begin(ptr: *mut u8, version_len: usize, file_len: usize, flags: u32) -> u32 {
+    let buffer = take(ptr, version_len + file_len);
+    let version = String::from_utf8_lossy(&buffer[..version_len]);
+    // A file that isn't UTF-8 is one that can't be read, as one that isn't JSON.
+    let file = (flags & 1 != 0).then(|| std::str::from_utf8(&buffer[version_len..]).unwrap_or("\0"));
+    answer(DONE, highlight::begin(&version, file).to_string())
+}
+
+/// The cache file's new text after a build ([`highlight::save`]), for the version in the buffer:
+/// nothing (status 2) when the file is as it should be, and an empty text for no file.
+#[no_mangle]
+pub extern "C" fn md_fences_save(ptr: *mut u8, len: usize) -> u32 {
+    let buffer = take(ptr, len);
+    match highlight::save(&String::from_utf8_lossy(&buffer)) {
+        Some(text) => answer(DONE, text),
+        None => answer(NOTHING, String::new()),
+    }
+}
+
 /// The highlighting stylesheet.
 #[no_mangle]
 pub extern "C" fn md_css() -> u32 {

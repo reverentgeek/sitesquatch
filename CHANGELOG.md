@@ -377,6 +377,15 @@ differently.
   refused it with `permalink Some("/src/") points outside the output directory`, by mistake: its
   check for a permalink that leaves the output folder counted the folder's own `..` (an absolute
   path, `--output /srv/www`, worked).
+- **Highlighted code is kept between builds** in `.cache/ssqch/highlight/fences.json`, so a new
+  process (`ssqch build`, the first build of `ssqch serve`) takes each fence's HTML from there
+  instead of loading syntect's grammars: the blog's build takes 0.64 s instead of 1.0 s. 0.7 kept
+  fences in memory only, for the rebuilds of `ssqch serve`, as 0.8 still does. A fence is kept by
+  its language, code, marked lines and the site's `languages`, under the highlighter's version (a
+  hash of what it's built from), and not when a site's own function highlights it. The file has
+  the fences the last build used, is written only when they change, and is ignored and written
+  again when it's damaged or another version's. Pages come out the same, byte for byte, with or
+  without it.
 
 #### Messages
 

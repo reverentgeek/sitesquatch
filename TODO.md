@@ -157,8 +157,10 @@ until 0.8 ships.
         from functions work in `.jinja` too; Liquid's `split: ""` and two-item
         `array_to_sentence_string` follow Shopify and Jekyll instead of 0.7; Nunjucks' `random`
         filter stays random.
-  - [ ] A cache of highlighted fences on disk (`.cache/ssqch/`, keyed by the `.wasm`'s inputs):
-        a process's first build of the blog spends about 0.3 s compiling syntect's grammars.
+  - [x] A cache of highlighted fences on disk (`.cache/ssqch/highlight/fences.json`, keyed by
+        the `.wasm`'s inputs, 2026-11-18): a build whose fences are all there never loads
+        syntect's grammars, so the blog's first build in a new process renders in 48 ms instead
+        of 390 (0.64 s instead of 1.0 s in all), with the same bytes.
   - [x] Stage 8 ships `wasm/markdown.wasm` in the package (the loader finds it next to `src/`).
   - [x] The README's Edge, Jinja and Nunjucks, Liquid, Handlebars and EJS sections describe 0.8
         (2026-11-18).
@@ -359,7 +361,7 @@ until 0.8 ships.
       **Blog:** `src/utils/site/image-options.js` becomes `avifQuality: 48, avifEffort: 3` with
       its move to 0.8.0.
     - Before 0.8.0: a disk cache for highlighted fences in `.cache/ssqch/`, keyed by the
-      highlighter's version.
+      highlighter's version. Done 2026-11-18 (stage 3's item).
     - After 0.8.0 (backlog): worker threads for `diff`; faster dev-server rebuilds on big sites;
       a time limit for a stuck build; the config-save gap while a builder restarts (accepted).
     - Kept: a late error in `serve` fails the next build, as in 0.7; the importer edits
@@ -614,7 +616,14 @@ diff, fix the biggest group, repeat.
 - [ ] markdown-it's URL normalization (`%` becomes `%25`, as mdurl does; 1 v8.dev page).
 - [ ] `markdown(text, { html: false })`: lit.dev's API pages render doc comments with HTML turned
       off (41 pages).
-- [ ] A cache for highlighted fences, if big sites find it slow.
+- [x] A cache for highlighted fences: in memory across `ssqch serve`'s builds, and on disk in
+      `.cache/ssqch/highlight/` for a new process (2026-11-18).
+- [ ] Document the highlighting cache fully (done so far: the README paragraph, the Netlify
+      recipe's list of what `.cache/ssqch` holds, the changelog): the GitHub Pages recipe's
+      "Images" bullet becomes one about `.cache/ssqch` as a whole, and the README's benchmarks
+      give a first build with and without it. **Blog:** its `netlify.toml` restores
+      `.cache/ssqch` already, so its deploys get it with 0.8; the comment there names only the
+      images.
 
 ### Templates, data and navigation
 

@@ -13,7 +13,9 @@
 //
 // One instance serves the whole process, so the fences it has highlighted are kept across the
 // builds `ssqch serve` runs (the wasm drops them when the languages change, or when a build
-// didn't use them).
+// didn't use them). Between processes they're kept in `.cache/ssqch/highlight/fences.json`
+// (see "the cache of highlighted fences" below), so a first build doesn't load syntect's
+// grammars for fences it has highlighted before.
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -512,6 +514,8 @@ interface Exports {
 	md_render(handle: number, ptr: number, sourceLen: number, pageLen: number, flags: number): number;
 	md_highlight(handle: number, ptr: number, codeLen: number, langLen: number, pageLen: number): number;
 	md_css(): number;
+	md_fences_begin(ptr: number, versionLen: number, fileLen: number, flags: number): number;
+	md_fences_save(ptr: number, len: number): number;
 }
 
 /** The file, next to `src/`. */
@@ -526,10 +530,126 @@ function instance(): Wasm {
 			let bytes: Buffer;
 			try { bytes = fs.readFileSync(WASM_FILE); } catch (e) { throw new BuildError(`ssqch's Markdown isn't there (${WASM_FILE}: ${messageOf(e)}); build it with node packages/ssqch/scripts/build-wasm.ts`); }
 			compiled = new WebAssembly.Module(bytes);
+			highlighter = highlighterOf(compiled, bytes);
 		}
 		current = new Wasm(compiled);
+		// A new instance in a build (the first, or one after a panic) takes in the disk's fences.
+		if (disk?.open) giveFences(current, disk);
 	}
 	return current;
+}
+
+// ---- the cache of highlighted fences -------------------------------------------------------
+//
+// A process's first build of the blog spent about 0.3 s loading syntect's grammars, the set of
+// them and then each grammar's patterns the first time a fence used it: most of what its Markdown
+// cost. So the fences a build highlighted are kept on disk for the next process, and a build
+// whose fences are all there never loads a grammar. `ssqch serve`'s builder keeps them in memory
+// between its builds already; the file is for its first build, and for `ssqch build`.
+//
+// - **One file per site,** not one per fence: the blog's 180 fences are one read and one parse in
+//   the wasm (a few milliseconds), where a file each is a read each, and a site with thousands
+//   of fences would spend more opening files than the grammars cost. The wasm reads and writes
+//   it (`crates/ssqch-markdown/src/highlight.rs` has its shape), so the fences cross into it
+//   once, as one text.
+// - **The key** is a fence's language, code and marked lines (`{2,4}`), with the site's
+//   languages (`languagesKey` below: names, aliases and each grammar's hash, so editing a
+//   `.sublime-syntax` file is another key). That's all the HTML depends on: the classes are
+//   fixed (`hl-*`), and `highlight.css` is a stylesheet, not part of a fence. A fence a site's
+//   own highlighter handles (a function in `markdown.highlight.languages`) isn't ssqch's to keep:
+//   it runs every time, in memory too.
+// - **The highlighter's version** is the hash of what the `.wasm` is built from
+//   (`scripts/wasm-inputs.ts`, which the build puts in the file), not a version number someone
+//   has to remember to change: any change to the Rust, a crate or the lockfile is a new
+//   highlighter, and a file from another one is ignored. A `.wasm` built without the script
+//   uses the hash of its own bytes.
+// - **Written only when it changes,** with the fences this build used and no others, so the file
+//   doesn't grow as posts change, and a build with nothing new writes nothing. It's written
+//   beside its place and renamed in, as `fetch`'s cache is, so a build reading it at the same
+//   moment never sees half of it; half a file, another highlighter's file, or one that isn't
+//   JSON, is ignored (and written again), never an error. A build that fails writes nothing.
+// - It's a cache like the others in `.cache/ssqch/`: `leaveNoTrace` cleans the output, not
+//   `.cache`, and deleting the folder (or the file) only means highlighting again. The cache
+//   never changes a page: the HTML in it is the highlighter's own, for the same input.
+
+/** The cache's file, from the project root. */
+export const FENCE_CACHE = ".cache/ssqch/highlight/fences.json";
+
+/** The highlighter's version, from the compiled `.wasm`. */
+let highlighter = "";
+
+/** The disk as this process knows it: the file, its text (empty when there's none), and the instance that took it in. */
+interface Disk {
+	file: string;
+	text: string;
+	given: Wasm | undefined;
+	/** A build is running with it. */
+	open: boolean;
+}
+
+let disk: Disk | undefined;
+
+function highlighterOf(module: WasmModule, bytes: Buffer): string {
+	const sections = WebAssembly.Module.customSections(module, "ssqch_markdown_inputs");
+	const hash = sections.length ? Buffer.from(sections[sections.length - 1]).toString("utf8") : "";
+	return /^[0-9a-f]{64}$/.test(hash) ? hash : `bytes ${crypto.createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+/**
+ * A build of the site at `root` starts: the next highlighted fences are counted as its own, and
+ * the wasm takes in the file when it hasn't (now, or when the first Markdown starts it).
+ */
+export function beginFenceCache(root: string): void {
+	const file = path.join(root, FENCE_CACHE);
+	if (disk?.file !== file) {
+		let text = "";
+		try { text = fs.readFileSync(file, "utf8"); } catch { /* none yet */ }
+		disk = { file, text, given: undefined, open: true };
+	}
+	disk.open = true;
+	if (current) giveFences(current, disk);
+}
+
+function giveFences(wasm: Wasm, d: Disk): void {
+	const fresh = d.given !== wasm;
+	const [ptr, lens] = wasm.input([highlighter, fresh ? d.text : ""]);
+	wasm.run(wasm.frame(undefined as never, {}), () => wasm.x.md_fences_begin(ptr, lens[0], lens[1], fresh ? 1 : 0), "the cache of highlighted fences");
+	d.given = wasm;
+}
+
+/**
+ * A build finished: the file gets the fences it used, when they aren't what it has. Nothing for
+ * a build that never started the wasm. A cache that can't be written is left as it is: it only
+ * costs time.
+ */
+export function saveFenceCache(): void {
+	const d = disk;
+	if (!d?.open) return;
+	d.open = false;
+	const wasm = current;
+	if (!wasm || d.given !== wasm) return;
+	const [ptr, [len]] = wasm.input([highlighter]);
+	const [status, text] = wasm.run(wasm.frame(undefined as never, {}), () => wasm.x.md_fences_save(ptr, len), "the cache of highlighted fences");
+	if (status !== DONE) return;
+	try {
+		if (text === "") {
+			fs.rmSync(d.file, { force: true });
+		} else {
+			fs.mkdirSync(path.dirname(d.file), { recursive: true });
+			const temp = `${d.file.replace(/\.json$/, "")}.${process.pid}.tmp`;
+			try {
+				fs.writeFileSync(temp, text);
+				fs.renameSync(temp, d.file);
+			} catch (e) {
+				fs.rmSync(temp, { force: true });
+				throw e;
+			}
+		}
+		d.text = text;
+	} catch {
+		// The next build tries again: the wasm can't know the disk refused, so it's told to look afresh.
+		d.given = undefined;
+	}
 }
 
 /** A call in progress: whose it is, the data its hooks get, and what a hook or function threw in it. */

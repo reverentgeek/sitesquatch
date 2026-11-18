@@ -70,6 +70,7 @@ cli/init.test.js: init_rejects_an_unknown_engine
 cli/init.test.js: init_starts_a_docs_site
 cli/init.test.js: init_starts_a_site_in_each_engine
 cli/inspect.test.js: inspect_says_where_a_page_and_its_data_come_from
+cli/markdown.test.js: highlighted_fences_are_cached_between_builds_and_never_change_a_page
 cli/markdown.test.js: markdown_highlights_code_and_writes_the_stylesheet
 cli/markdown.test.js: markdown_options_hooks_containers_and_headings
 cli/markdown.test.js: sites_add_and_replace_highlighted_languages
