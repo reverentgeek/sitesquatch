@@ -3,7 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, project, read, write, FIXTURES, RUST_07 } from "../lib/ssqch.js";
+import { pathToFileURL } from "node:url";
+import { ssqch, project, read, write, FIXTURES, REPO, RUST_07 } from "../lib/ssqch.js";
 
 // The Rust tests built "a site without ssqch.config.js" through the library, whose default
 // template formats include edge. The command line's don't, so each project gets this config, which
@@ -252,7 +253,32 @@ test("intl_refuses_what_it_cant_format", { skip: !RUST_07 && "QuickJS only: ssqc
 	assert.ok(e.includes("the \"style\" option isn't supported in ssqch"), e);
 });
 
-test("programs_can_add_modules_with_native_functions", { skip: "needs the Rust API: a JsModule with native functions (sitesquatch_js::JsModule) added by a Rust program" }, () => {});
+// The Rust test added a module of Rust functions for a site's JavaScript to call, and checked
+// what they gave back. In 0.8 Rust functions come in a plugin, a .wasm file (the example in
+// examples/rust-plugin): its filters take a template's values and give values back, in every
+// template language, and its engine renders its own kind of file.
+test("programs_can_add_modules_with_native_functions", { skip: RUST_07 && "0.8 only: plugins written in Rust are .wasm files; 0.7 took Rust functions from a Rust program" }, () => {
+	const plugin = JSON.stringify(pathToFileURL(path.join(REPO, "examples/rust-plugin/index.js")).href);
+	const root = project({
+		"ssqch.config.js": `import trailGuide from ${plugin};\nexport default { templateFormats: ["edge", "njk", "trail"], plugins: [trailGuide({ greeting: "Howdy", wordsPerMinute: 2 })] };\n`,
+		"_data/sightings.json": "[{ \"creature\": \"Sasquatch\" }, { \"creature\": \"elk\" }, { \"creature\": \"Sasquatch\" }, { \"trail\": \"Cedar\" }]",
+		"index.edge": "{{ greet(\"pine cone\") }}|{{ readingTime(\"<p>one two <b>three</b></p>\") }}|{{ JSON.stringify(tally(sightings, \"creature\")) }}",
+		"other.njk": "{{ greet(\"brittle\") }}|{{ tally(sightings, \"creature\") | dump | safe }}|<a href=\"https://example.com\">out</a>",
+		"cedar.trail": "---\ntitle: Cedar Trail\n---\n0 Ranger station\n1.2 Old Growth junction | Fork left.\n",
+	});
+	buildOk(root);
+	assert.equal(read(root, "_site/index.html"), "Howdy, pine cone|2|{&quot;Sasquatch&quot;:2,&quot;elk&quot;:1}");
+	// Its transform gave the link to another site rel="external".
+	assert.equal(read(root, "_site/other/index.html"), "Howdy, brittle|{\"Sasquatch\":2,\"elk\":1}|<a href=\"https://example.com\" rel=\"external\">out</a>");
+	assert.equal(read(root, "_site/cedar/index.html"), "<h1>Cedar Trail</h1>\n<ol class=\"trail\">\n  <li><span class=\"miles\">0.0 mi</span> Ranger station</li>\n  <li><span class=\"miles\">1.2 mi</span> Old Growth junction <small>Fork left.</small></li>\n</ol>\n<p class=\"trail-length\">1.2 miles</p>\n");
+
+	// An error in a function names it and the plugin; one in the engine, the file's line.
+	let e = buildError({ "ssqch.config.js": read(root, "ssqch.config.js"), "index.edge": "\n{{ readingTime(3) }}" });
+	assert.ok(e.includes("index.edge:2: readingTime(): trail-guide: readingTime expects text, got a number"), e);
+	e = buildError({ "ssqch.config.js": read(root, "ssqch.config.js"), "cedar.trail": "---\ntitle: Cedar Trail\n---\n0 Ranger station\nhalfway Stump\n" });
+	assert.ok(e.includes("trail-guide: cedar.trail:5: a stop starts with its distance in miles"), e);
+	assert.ok(e.includes("  --> cedar.trail:5\n"), e);
+});
 
 test("crypto_create_hash_matches_node", () => {
 	// Expected values are Node's: crypto.createHash(alg).update("hello").digest("hex"), etc.

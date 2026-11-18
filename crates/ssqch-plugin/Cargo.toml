@@ -1,0 +1,25 @@
+# The SDK for ssqch plugins written in Rust: a plugin is a `.wasm` file (wasm32-wasip1) that ssqch
+# 0.8 runs in Node's WebAssembly, on every platform. ssqch's own minifier is built with it
+# (crates/ssqch-minify), and so is the example in examples/rust-plugin.
+#
+# It's published to crates.io with ssqch 0.8.0. Until then `publish = false` keeps a 0.7.x release
+# (`cargo publish --workspace`) from publishing it early: remove that line at the release.
+[package]
+name = "ssqch-plugin"
+description = "Write ssqch plugins in Rust: transforms, filters and template engines, built as one .wasm file that runs everywhere"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/ssqch-plugin"
+readme = "README.md"
+keywords = ["ssqch", "static-site", "plugin", "wasm"]
+categories = ["wasm", "web-programming", "template-engine"]
+# `#[unsafe(no_mangle)]` in what `export!` writes, and `&mut` in the manifest's const fns.
+rust-version = "1.83"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# Objects keep their keys in the order JavaScript gave them, as they would in a JavaScript filter.
+serde_json = { version = "1", features = ["preserve_order"] }

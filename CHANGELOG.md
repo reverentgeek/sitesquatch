@@ -33,6 +33,15 @@ the release.
     POSIX paths on every system. Code that builds URLs from paths should use `node:path/posix`
     or replace the separators. What ssqch itself hands a site (`page.inputPath`, `page.url`,
     a hook's `dirs`) still has `/` everywhere.
+- **`ssqch capabilities` has no stand-in Node modules.** 0.7 listed `node:http`, `node:net`,
+  `node:child_process` and 12 more under `nodeModules.stubs`: they loaded and threw when used.
+  They are Node's own now, so `nodeModules.available` has all 32 and `stubs` is an empty list
+  (the key stays). A script that skips a site's work when a module is a stub should drop the
+  check.
+- **`fetch` is Node's own, with 0.7's error words and `cache` option on top.** The reason after
+  `fetch failed: <url>:` is Node's (`connect ECONNREFUSED 127.0.0.1:9`, `getaddrinfo ENOTFOUND
+  ...`), where 0.7 gave its HTTP library's (`io: Connection refused`); a script that matched that
+  text should match the `cause` or the URL.
 - **Filters and templates get your real objects.** 0.7 handed them copies that kept writes to
   themselves; now a filter that sorts or changes what it's given changes it for the pages
   rendered after it. Copy first (`[...posts].sort()`). Data that refers to itself (`a.self = a`)
@@ -128,13 +137,25 @@ the release.
   `markdown()` from `"ssqch"` are errors that name the function, and so is a render hook or
   container template whose engine answers with one (an async filter, function or engine), where
   0.7 waited for them. Make those functions synchronous.
+- **Plugins written in Rust are `.wasm` files.** 0.7's Rust API (a site as its own Rust program,
+  `sitesquatch::Plugin`, modules of Rust functions) ends with 0.7. A Rust plugin is now a crate
+  built with `ssqch-plugin` for `wasm32-wasip1` (its `Plugin` trait and `export!`), one file that
+  runs on every platform, shipped in an npm package whose function returns `{ name, rust: { wasm,
+  options } }`. It can have a transform, filters and engines; `crates/ssqch-plugin/README.md`
+  and `examples/rust-plugin` show how.
 
 ### Changed
 
+- `ssqch/minify` and `ssqch/sass` are 0.7's minifier and 0.7's Sass compiler (grass 0.13.4),
+  built as WebAssembly, so pages and stylesheets come out as 0.7 wrote them. A Sass error's last
+  line names the file from the project root (`./styles/blog.scss:1:16`), where 0.7 printed its
+  absolute path after `./`.
 - Tags from the config's functions (`{% image "/a.png", "A pine" %}`, and paired with `{% endimage
   %}`) work in `.jinja` files too, where 0.7 had them in `.njk` only.
 - The config can be `ssqch.config.cjs`, `ssqch.config.ts` or `ssqch.config.mts`, besides `.js`
   and `.mjs`.
+- `ssqch capabilities` lists `ssqch.config.cjs`, `.ts` and `.mts` under `configFiles`, and says
+  `avif` and `sass` only when this build can do them (sharp writes the AVIF files).
 - A warning a package raises with `process.emitWarning` is one of the build's warnings (`code:
   "console"` in the JSON report), like `console.warn`.
 - Messages that quote a parser are that parser's: YAML, JSON and TOML errors keep `at line N

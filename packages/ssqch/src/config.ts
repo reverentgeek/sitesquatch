@@ -17,9 +17,11 @@ import { isPlainObject, readToml } from "./data.ts";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
 import { checkLanguages } from "./engines/markdown.ts";
+import { installFetch, summary as fetchSummary } from "./fetch.ts";
 import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
 import type { MarkdownOptions } from "./markdown-options.ts";
 import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
+import { loadRustPart } from "./rust-plugin.ts";
 import { resolveTheme } from "./theme.ts";
 import { realPath } from "./paths.ts";
 
@@ -46,6 +48,8 @@ export interface GeneratedFile {
 	contents: string;
 	/** Add to the end of a file a page wrote at the same path, instead of it being a conflict. */
 	append?: boolean;
+	/** A site's `_includes/hooks/<name>.*` template that writes this file instead of `contents`, if it has one: it gets `value` as `<name>`, next to the global data. Generators' files only. */
+	hook?: { name: string; value: unknown };
 }
 
 /** A page the build wrote, as generators see it. */
@@ -151,6 +155,9 @@ export interface ConfigOptions {
 }
 
 
+/** What a site gets without setting them: Jinja is the default template language, so pages are `.jinja` and Markdown and HTML go through it first (`ssqch capabilities` says so). */
+export const DEFAULTS = { templateFormats: ["jinja", "md", "html"], markdownEngine: "jinja", htmlEngine: "jinja" } as const;
+
 function emptyConfig(options: ConfigOptions): Config {
 	return {
 		root: realPath(path.resolve(options.root)),
@@ -164,10 +171,9 @@ function emptyConfig(options: ConfigOptions): Config {
 		includes: "_includes",
 		layouts: null,
 		data: "_data",
-		// Jinja is the default template language: pages in `.jinja`, and Markdown and HTML through it first.
-		templateFormats: ["jinja", "md", "html"],
-		markdownEngine: "jinja",
-		htmlEngine: "jinja",
+		templateFormats: [...DEFAULTS.templateFormats],
+		markdownEngine: DEFAULTS.markdownEngine,
+		htmlEngine: DEFAULTS.htmlEngine,
 		markdown: defaultMarkdownOptions(),
 		deepMerge: true,
 		leaveNoTrace: false,
@@ -215,6 +221,9 @@ export async function loadConfig(options: ConfigOptions): Promise<Config> {
 	// (A root that isn't there is the build's to report: nothing can be read from it.)
 	if (fs.statSync(config.root, { throwIfNoEntry: false })?.isDirectory()) process.chdir(config.root);
 	Object.assign(api.site, { root: config.root, input: null, markdown: null });
+	// `fetch` gets 0.7's error words and its `cache` option, before any of the site's code runs.
+	installFetch(config.root);
+	config.summaries.push(["Fetch", fetchSummary]);
 	// JavaScript data files (`_data/*.js`, `*.data.js`): the default export is the data, or a
 	// function (sync or async) that returns it, called on every build.
 	for (const ext of ["js", "mjs", "cjs", "ts", "mts"]) config.dataExtensions.set(ext, (file) => loadJsData(file, config.root));
@@ -342,8 +351,7 @@ function aliased(part: Data, where: string): Data {
 export type BuiltinPlugin = (config: Config, options: Data) => void | Promise<void>;
 
 /** The built-in plugins, by the module that makes them. The plugins register themselves here as they're ported. */
-export const BUILTINS = new Map<string, BuiltinPlugin>();
-/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
+export const BUILTINS = new Map<string, BuiltinPlugin>();/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
 const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements"];
 
 async function loadJs(config: Config, file: string): Promise<void> {
@@ -426,7 +434,7 @@ async function loadJs(config: Config, file: string): Promise<void> {
 		const unknown: string[] = [];
 		let guessed = false;
 		for (const key of Object.keys(part)) {
-			if (key === "name" && !top) continue;
+			if ((key === "name" || key === "rust") && !top) continue;
 			if (SETTINGS.includes(key)) {
 				if (!top) fail(`${where}: "${key}" can only be set in the config itself, not in a plugin`);
 			} else if (!PARTS.includes(key)) {
@@ -449,6 +457,27 @@ async function loadJs(config: Config, file: string): Promise<void> {
 		if (unknown.length) {
 			const options = top ? [...SETTINGS, ...PARTS] : PARTS;
 			fail(unknown.join("\n") + (guessed ? ` (options: ${options.join(", ")})` : ""));
+		}
+
+		// A plugin written in Rust (`{ name, rust: { wasm, options } }`, what its npm package
+		// returns): its transform, filters and engines, as its manifest lists them.
+		if (!top && part.rust !== undefined) {
+			const rust = loadRustPart(part.rust, where, root);
+			if (rust.transform) {
+				const [key, fn] = rust.transform;
+				claim("transforms", "transform", key, where);
+				ops.push(() => { config.transforms.push([key, fn]); });
+			}
+			for (const [key, fn] of rust.filters) {
+				claim("filters", "filter", key, where);
+				ops.push(() => { config.filters.set(key, fn); });
+			}
+			for (const [key, run] of rust.engines) {
+				if (!/^[A-Za-z0-9_-]+$/.test(key)) fail(`${where}: engines.${key}: an engine's name is a file extension (letters, digits, - and _)`);
+				if (CORE_ENGINES.includes(key)) fail(`${where}: engines.${key}: "${key}" is built in and can't be replaced`);
+				claim("engines", "engine", key, where);
+				ops.push(() => { config.engines.set(key, run); });
+			}
 		}
 
 		if (top) {

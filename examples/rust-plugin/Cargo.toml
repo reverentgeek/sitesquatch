@@ -1,0 +1,23 @@
+# An ssqch plugin written in Rust: see README.md. Build it with
+#
+#   cargo build --release --target wasm32-wasip1 -p ssqch-plugin-trail-guide
+#
+# (`node packages/ssqch/scripts/build-wasm.ts trail-guide` builds it and copies the file here as
+# trail_guide.wasm, which is committed so the tests run without Rust.)
+[package]
+name = "ssqch-plugin-trail-guide"
+description = "An example ssqch plugin in Rust: a .trail template language, readingTime, greet and tally filters, and a transform for links to other sites"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+# cdylib is the .wasm file; rlib lets `cargo test` test the plugin as plain Rust.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# A plugin of your own depends on the published crate: ssqch-plugin = "0.8".
+ssqch-plugin = { path = "../../crates/ssqch-plugin" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
