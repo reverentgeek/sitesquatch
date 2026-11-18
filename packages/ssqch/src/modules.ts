@@ -105,14 +105,26 @@ export async function importFile(file: string): Promise<Record<string, unknown>>
 	} catch (e) {
 		// Node 22.18 only retries a file as an ES module when its first syntax error is one of the
 		// module kind, so `[await get()]` above an `export` fails as CommonJS (`Unexpected token`, `missing )`).
-		// A file that exports or imports is a module: say so, as later Nodes do.
-		if (!(e instanceof SyntaxError) || !MODULE_SYNTAX.test(fs.readFileSync(file, "utf8"))) throw e;
+		// A file that exports or imports is a module: say so, as later Nodes do. Only when Node
+		// couldn't compile this file as CommonJS, so none of it ran: a `SyntaxError` the file threw
+		// while it ran (`JSON.parse`) is its error, and running it again would do what it did twice.
+		if (!(e instanceof SyntaxError) || !failedAsCommonJS(e, file) || !MODULE_SYNTAX.test(fs.readFileSync(file, "utf8"))) throw e;
 		return watchSettle(import(url + (url.includes("?") ? "&" : "?") + FORCE_ESM));
 	}
 }
 
 const FORCE_ESM = "ssqch-esm";
-const MODULE_SYNTAX = /^[ \t]*(export\s|import\s*[\w{*'"]|import\.meta)/m;
+/** `export`, `import` or `import.meta` as a statement would start, anywhere (`const v = [await x]; export default { v };` is one line). */
+const MODULE_SYNTAX = /(?:^|[;{}()\s])(?:export\s|import\s*[\w{*'"]|import\.meta)/m;
+
+/**
+ * Whether `e` is Node's CommonJS loader failing to compile `file`. Node starts that error's stack
+ * with the file and the line, and an error thrown while code runs has no such line.
+ */
+function failedAsCommonJS(e: SyntaxError, file: string): boolean {
+	const named = /^(.+):\d+\r?\n/.exec(e.stack ?? "")?.[1];
+	return named !== undefined && (named === file || named === realPath(file));
+}
 
 // ---- promises that never settle --------------------------------------------------------------
 
