@@ -469,10 +469,11 @@ clear; otherwise warn.
       ??=`, so a `computed` value that reads it caches the empty list, and every table of contents
       built from it is empty. Don't memoize while the content is undefined, or throw naming the
       page.
-- [ ] **Warn when a template name shadows a filter or function** (ex #3): an imported macro
-      `postCard` printed `function () { [native code] }` where the config's `postCard` was meant; a
-      macro parameter `icon` hid `icon()`. Silent in Nunjucks; `strict` (off by default) catches
-      only undefined values.
+- [x] **Warn when a template name shadows a filter or function** (ex #3; done 2026-11-18 for
+      Nunjucks, when the template calls the name; the config's filters only, since `{% set url %}`
+      is common): an imported macro `postCard` printed `function () { [native code] }` where the
+      config's `postCard` was meant; a macro parameter `icon` hid `icon()`. Silent in Nunjucks;
+      `strict` (off by default) catches only undefined values.
 - [ ] **A computed `layout` that depends on the page** (lit B3): it's refused since 0.7.0; resolve
       the layout chain after `computed` instead.
 - [ ] **Dates and time zones:**

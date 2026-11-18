@@ -104,6 +104,8 @@ export interface Config {
 	passthrough: Array<{ from: string; to?: string }>;
 	/** Functions every template can call, by name, in the order they were added. */
 	filters: Map<string, Filter>;
+	/** The names in `filters` that the site's config and its own plugins defined (not ssqch's built-in plugins). */
+	siteFilters: Set<string>;
 	globalData: Array<{ name: string; value?: unknown; fn?: () => unknown }>;
 	dataExtensions: Map<string, DataLoader>;
 	collections: Array<[string, CollectionFn]>;
@@ -172,6 +174,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		themes: [],
 		passthrough: [],
 		filters: new Map(),
+		siteFilters: new Set(),
 		globalData: [],
 		dataExtensions: new Map(),
 		collections: [],
@@ -455,7 +458,7 @@ async function loadJs(config: Config, file: string): Promise<void> {
 			}
 			for (const [key, fn] of rust.filters) {
 				claim("filters", "filter", key, where);
-				ops.push(() => { config.filters.set(key, fn); });
+				ops.push(() => { config.filters.set(key, fn); config.siteFilters.add(key); });
 			}
 			for (const [key, run] of rust.engines) {
 				if (!/^[A-Za-z0-9_-]+$/.test(key)) fail(`${where}: engines.${key}: an engine's name is a file extension (letters, digits, - and _)`);
@@ -486,7 +489,7 @@ async function loadJs(config: Config, file: string): Promise<void> {
 				ops.push(() => { config.globalData.push(typeof value === "function" ? { name: key, fn: value as () => unknown } : { name: key, value }); });
 			}
 		}
-		functions("filters", "filter", part.filters, where, (key, fn) => ops.push(() => { config.filters.set(key, fn); }));
+		functions("filters", "filter", part.filters, where, (key, fn) => ops.push(() => { config.filters.set(key, fn); config.siteFilters.add(key); }));
 		functions("collections", "collection", part.collections, where, (key, fn) => ops.push(() => { config.collections.push([key, fn]); }));
 		functions("transforms", "transform", part.transforms, where, (key, fn) => {
 			const run: TransformFn = async (content, page) => {

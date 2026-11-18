@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write, read, exists } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, exists, project } from "../lib/ssqch.js";
 
 test("jinja_is_the_default_and_other_templates_are_named", () => {
 	const dir = tempDir("default-engine");
@@ -386,4 +386,26 @@ test("printing_tags_and_sentences_as_0_8_decided", () => {
 	assert.equal(out("e"), "<b>pine</b>");
 	assert.equal(out("l"), "3|pine and cedar");
 	assert.equal(out("j"), "True|[&#39;a&#39;, &#39;b&#39;]");
+});
+
+// expressjs.com (ex #3): an imported macro named like a config filter (`postCard`) hid the
+// filter's function, and a card printed `function () { [native code] }` without a word. Each
+// way a Nunjucks template can take a function's name is a warning with its file and line.
+test("nunjucks_names_that_hide_a_function_are_warned_about", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\"], filters: { postCard: (p) => p, icon: (n) => n, label: (s) => s } };\n",
+		"_includes/ui.njk": "{% macro postCard(post, icon) %}{{ post }}{{ icon(post) }}{% endmacro %}\n",
+		"index.njk": "{% from \"ui.njk\" import postCard %}\n{% set label = 1 %}{{ label(2) }}\n{% for icon in [1] %}{{ icon(3) }}{% endfor %}\n{% import \"ui.njk\" as ui %}{{ postCard(1) }}{{ ui.postCard(2) }}\n",
+		// A name the template doesn't call, and a filter after a pipe, aren't traps.
+		"plain.njk": "{% set label = 1 %}{{ label }}{% set x = 1 | label(2) %}{% for item in [1] %}{{ item }}{% endfor %}\n",
+	});
+	// The build fails too: `label(2)` calls the number 1. The warnings say why.
+	const r = ssqch(["build", "--root", root, "--format", "json"]);
+	const warnings = JSON.parse(r.stdout).warnings.filter((w) => w.code === "template").map((w) => `${w.file}:${w.line} ${w.message.split(" has the name")[0].split(": ").pop()}`).sort();
+	assert.deepEqual(warnings, [
+		"_includes/ui.njk:1 the macro parameter `icon`",
+		"index.njk:1 the imported macro `postCard`",
+		"index.njk:2 the variable `label`",
+		"index.njk:3 the loop variable `icon`",
+	]);
 });

@@ -28,6 +28,11 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Added
 
+- A warning when a Nunjucks template gives one of the config's filters' names to a macro, an
+  import, a `set` or a loop variable and then calls that name as a function
+  (`{% from "ui.njk" import postCard %}` … `postCard(post)`): the call means the template's own
+  thing, not the filter, and printed `function () { [native code] }` without a word. It names the
+  file and line.
 - Build hooks get `quiet` and `verbose` (whether the build was run with `--quiet` or
   `--verbose`), and a hook's command gets `SSQCH_QUIET`, so a hook's own messages can follow `-q`.
 
