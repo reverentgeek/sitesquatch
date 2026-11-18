@@ -86,7 +86,11 @@ test("a_page_rewritten_with_its_size_and_modification_time_kept_is_read_again", 
 		t.mock.timers.enable({ apis: ["Date"], now: Date.now() + 10_000 });
 		assert.equal(sameContents(file, page), true);
 		assert.equal(sameContents(file, page), true);
-		// What `cp -p` and `touch -r` do: other contents of the same size, and the old time.
+		// What `cp -p` and `touch -r` do: other contents of the same size, and the old time. The
+		// mocked clock says seconds went by, but the file system's didn't: Windows stamps the change
+		// time from a clock that ticks every 15.6 ms or so, and a rewrite within the tick keeps the
+		// time the first read saw. In a build, 2.5 s pass between a change and a read it trusts.
+		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
 		fs.writeFileSync(file, "<p>Pine Cone Crumbs</p>");
 		fs.utimesSync(file, when, when);
 		assert.equal(fs.statSync(file).mtimeMs, when * 1000);
