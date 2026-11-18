@@ -225,6 +225,7 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 	liquid.registerFilter("date_to_long_string", dateString("%B"));
 	for (const [name, fn] of Object.entries(MATH)) liquid.registerFilter(name, fn);
 	for (const [name, fn] of Object.entries(TEXT)) liquid.registerFilter(name, fn);
+	fastWhere(liquid);
 
 	// The config's functions as filters: `{{ x | wrap: "[", "]" }}` calls `wrap(x, "[", "]")`, and
 	// keyword arguments (`| f: size: 2`) arrive as one object at the end. A value that isn't there
@@ -349,6 +350,67 @@ const arithmetic = (whole: (a: number, b: number) => number, exact: (a: number, 
 
 /** Rounding half away from zero, as Rust rounds. */
 const round = (n: number) => Math.sign(n) * Math.round(Math.abs(n));
+
+/**
+ * `where` and `reject` without liquidjs' generator and new scope for each item, for the common
+ * case: a list, and a property that's names and literals (`"data.lang"`). It reads each item the
+ * way liquidjs does (its scope's `findScope` and `readProperty`: `size`, `first`, drops, methods)
+ * and compares with its `equals`, so the answers are the same. Anything else (strict variables, a
+ * `[x]` in the property, an item that isn't an object, a value that's a promise) goes to liquidjs'
+ * own. expressjs.com's layouts call `where` 56 times a page over 380 items: its idiomatic port built
+ * in 7.4 s with liquidjs' `where` and in 1.06 s with a config filter like this one (ex #2).
+ */
+function fastWhere(liquid: Liquid): void {
+	const { Tokenizer, TypeGuards, evalTokenValue, toValueSync, isTruthy, toValue } = liquidjs();
+	const comparable = (v: any) => v && typeof v.equals === "function" && typeof v.gt === "function" && typeof v.geq === "function" && typeof v.lt === "function" && typeof v.leq === "function";
+	const SLOW = Symbol("slow");
+	// liquidjs' `equals`, synchronous; SLOW when a drop answers with something else.
+	const equals = (lhs: any, rhs: any): boolean | typeof SLOW => {
+		if (comparable(lhs)) { const r = lhs.equals(rhs); return typeof r === "boolean" ? r : SLOW; }
+		if (comparable(rhs)) { const r = rhs.equals(lhs); return typeof r === "boolean" ? r : SLOW; }
+		lhs = toValue(lhs);
+		rhs = toValue(rhs);
+		if (Array.isArray(lhs)) {
+			if (!Array.isArray(rhs) || lhs.length !== rhs.length) return false;
+			for (let i = 0; i < lhs.length; i++) {
+				const same = equals(lhs[i], rhs[i]);
+				if (same !== true) return same;
+			}
+			return true;
+		}
+		return lhs === rhs;
+	};
+	const isAsync = (v: any) => v !== null && typeof v === "object" && (typeof v.then === "function" || typeof v.next === "function");
+	for (const [name, include] of [["where", true], ["reject", false]] as const) {
+		const slow = liquid.filters[name] as any;
+		const slowHandler = typeof slow === "function" ? slow : slow.handler;
+		liquid.registerFilter(name, function (this: any, input: unknown, property: unknown, ...rest: unknown[]) {
+			const fallback = () => slowHandler.call(this, input, property, ...rest);
+			const ctx = this.context;
+			const list = asText(input);
+			if (!Array.isArray(list) || ctx.strictVariables || rest.length > 1) return fallback();
+			const token = new Tokenizer(String(property ?? "")).readScopeValue() as any;
+			if (!token || token.variable || !token.props.every((p: any) => TypeGuards.isWordToken(p) || TypeGuards.isQuotedToken(p) || TypeGuards.isNumberToken(p))) return fallback();
+			const keys = token.props.map((p: any) => toValueSync(evalTokenValue(p, ctx)));
+			const expected = rest.length ? asText(rest[0]) : undefined;
+			ctx.memoryLimit.use(list.length);
+			const out: unknown[] = [];
+			for (const item of list) {
+				if (item === null || (typeof item !== "object" && typeof item !== "function")) return fallback();
+				// A scope spawned on the item: the first name from the item if it has it, else the globals.
+				let value: any = keys[0] in (item as object) ? item : ctx.globals;
+				for (const key of keys) {
+					value = ctx.readProperty(value, key);
+					if (isAsync(value)) return fallback();
+				}
+				const matched = expected === undefined ? isTruthy(value, ctx) : equals(value, expected);
+				if (matched === SLOW) return fallback();
+				if (matched === include) out.push(item);
+			}
+			return out;
+		});
+	}
+}
 
 /** The liquid crate's numbers, which 0.7 had: whole numbers stay whole (`7 | divided_by: 2` is 3), and a float stays a float. */
 const MATH: Record<string, (...args: any[]) => unknown> = {

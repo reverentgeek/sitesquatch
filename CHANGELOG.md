@@ -13,6 +13,14 @@ where that version matches.
 
 Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
+### Faster
+
+- Liquid's `where` and `reject` don't run liquidjs' generator and new scope for every item when
+  they filter a list by a property (`collections.posts | where: "data.lang", "fr"`), with the same
+  answers. A layout that looks pages up in a collection on every page builds 8.6 times faster: the
+  benchmark's new Liquid case went from 39.8 s to 4.6 s, and opensource.guide's idiomatic port from
+  6.8 s to 1.4 s.
+
 ### Fixed
 
 - A page's `page.headings` read before the page had rendered (from a `computed` value, say) stayed

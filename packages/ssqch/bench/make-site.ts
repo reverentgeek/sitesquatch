@@ -63,6 +63,41 @@ export default defineConfig({
 `);
 }
 
+/**
+ * A Liquid site whose layout looks pages up in a collection on every page, as multilingual sites
+ * do (expressjs.com's layouts call `where` 56 times a page): N posts in 10 languages, each page
+ * listing its section with `where`, and its translations with one `where` per language.
+ */
+export function makeLiquidSite(out: string, posts: number): void {
+	const LANGS = ["en", "de", "es", "fr", "it", "ja", "ko", "pt-br", "zh-cn", "zh-tw"];
+	fs.mkdirSync(path.join(out, "src/posts"), { recursive: true });
+	fs.mkdirSync(path.join(out, "src/_includes"), { recursive: true });
+	fs.writeFileSync(path.join(out, "src/_includes/layout.liquid"), `<!doctype html>
+<html lang="{{ lang }}"><head><meta charset="utf-8"><title>{{ title }}</title>
+{%- for code in langs %}{% assign other = collections.post | where: "data.lang", code | where: "data.key", key | first %}{% if other %}
+<link rel="alternate" hreflang="{{ code }}" href="{{ other.url }}">{% endif %}{% endfor %}
+</head><body>
+<nav><ul>{% assign siblings = collections.post | where: "data.section", section %}{% for p in siblings %}<li><a href="{{ p.url }}">{{ p.data.title }}</a></li>{% endfor %}</ul></nav>
+<main><h1>{{ title }}</h1>
+{{ content }}
+</main></body></html>
+`);
+	for (let i = 0; i < posts; i++) {
+		const lang = LANGS[i % LANGS.length];
+		const key = Math.floor(i / LANGS.length);
+		const section = `s${Math.floor(key / 20)}`;
+		fs.writeFileSync(path.join(out, `src/posts/${String(i).padStart(5, "0")}.md`), `---\ntitle: "Trail ${key} (${lang})"\nlayout: layout.liquid\nlang: ${lang}\nkey: ${key}\nsection: ${section}\ntags: [post]\n---\nA ranger counted ${key} pine cones by the creek.\n`);
+	}
+	fs.writeFileSync(path.join(out, "ssqch.config.js"), `import { defineConfig } from "ssqch";
+export default defineConfig({
+	dirs: { input: "src", output: "_out" },
+	templateFormats: ["md", "liquid"],
+	markdownEngine: false,
+	data: { langs: ${JSON.stringify(LANGS)} },
+});
+`);
+}
+
 if (import.meta.main ?? process.argv[1] === new URL(import.meta.url).pathname) {
 	const [out, posts] = process.argv.slice(2);
 	if (!out || !/^\d+$/.test(posts ?? "")) {

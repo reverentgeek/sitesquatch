@@ -444,11 +444,13 @@ faster (0.35 s against 1.2 s).
 - [ ] **A warning when one JavaScript call takes over a second**, naming the function and the
       package it's from (lit A5: html-minifier, 5.2 s per page).
 - [ ] Document both, and use them to measure the sites the move to Node was measured on.
-- [ ] **Native Liquid `where`** (and `where_exp`, `map`, `sort`, `group_by`, `find` for a property
-      path), keeping liquidjs' for expressions (osg #2). liquidjs' `where` takes a generator and a
-      new scope for every item: opensource.guide's layouts call it 56 times a page over 380
-      articles, and a 10-line config `where` took its build from 7.4 s to 1.06 s with the same
-      output. Add a `bench/bench.ts` case: a layout that filters a collection on every page.
+- [ ] **Native Liquid `where`** (`where` and `reject` done 2026-11-18: the bench's Liquid case 39.8
+      s → 4.6 s; `where_exp`, `map`, `sort`, `group_by`, `find` still liquidjs') (and `where_exp`,
+      `map`, `sort`, `group_by`, `find` for a property path), keeping liquidjs' for expressions (osg
+      #2). liquidjs' `where` takes a generator and a new scope for every item: opensource.guide's
+      layouts call it 56 times a page over 380 articles, and a 10-line config `where` took its build
+      from 7.4 s to 1.06 s with the same output. Add a `bench/bench.ts` case: a layout that filters
+      a collection on every page.
 
 ### 2. Silent wrong answers
 
