@@ -99,6 +99,7 @@ export async function build(config: Config): Promise<BuildReport> {
 		}
 	}
 	await renderer.renderAll([...wanted.filter((p) => !late.has(p)), ...wanted.filter((p) => late.has(p))], late);
+	for (const wait of config.settle) await wait();
 	timer.timings.push(["render", renderer.renderMs], ["write", performance.now() - timer.last - renderer.renderMs]);
 	timer.last = performance.now();
 
