@@ -445,3 +445,24 @@ test("liquid_config_functions_are_tags_and_include_relative_reads_beside_the_tem
 	assert.match(broken("{% include_relative nope.md %}\n"), /include_relative "nope\.md": guide\/nope\.md not found/);
 	assert.match(broken("{% include_relative ../x.md %}\n"), /include_relative "\.\.\/x\.md": the file has to be in the template's folder/);
 });
+
+// opensource.guide (osg #5): Jekyll's templates read front matter through `page` (`page.title`),
+// which is empty in ssqch, where front matter is at the top level. No fallback (decided 2026-11-18):
+// a warning, once for each name, naming the page, even when the read is in an include.
+test("liquid_page_front_matter_reads_say_the_rename", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"liquid\", \"md\"], markdownEngine: \"liquid\" };\n",
+		"_includes/trail.liquid": "<h1>{{ page.title }}</h1>{{ page.url }}{% include head.liquid %}{{ content }}",
+		"_includes/head.liquid": "<meta content=\"{{ page.description }}\">{{ page.lantern }}",
+		"cedar.md": "---\nlayout: trail.liquid\ntitle: Cedar Trail\ndescription: Pine cones\n---\nx\n",
+		"ridge.md": "---\nlayout: trail.liquid\ntitle: Ridge Trail\ndescription: Stumps\n---\nx\n",
+	});
+	const r = ssqch(["build", "--root", root]);
+	assert.ok(r.ok, r.log);
+	const said = (key) => r.log.split(`: \`page.${key}\` is empty: in ssqch, front matter is at the top level, so it's \`${key}\``).length - 1;
+	assert.equal(said("title"), 1, r.log);
+	assert.equal(said("description"), 1, r.log);
+	// A key that isn't front matter either is just empty, as in Jekyll.
+	assert.ok(!r.log.includes("page.lantern"), r.log);
+	assert.match(r.log, /warn: rendering cedar\.md: `page\.title` is empty/);
+});

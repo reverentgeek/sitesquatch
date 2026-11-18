@@ -662,7 +662,7 @@ export default defineConfig({
 });
 ```
 
-- **Data:** Liquid templates get the same data as the other engines: front matter, the cascade, `page`, `collections` and `content` in layouts. Unknown variables and properties print nothing, as in Jekyll.
+- **Data:** Liquid templates get the same data as the other engines: front matter, the cascade, `page`, `collections` and `content` in layouts. Unknown variables and properties print nothing, as in Jekyll. Front matter is at the top level (`{{ title }}`), not under `page` as in Jekyll: a template that reads `page.title` gets nothing, and the build warns once for each such name, naming the page.
 - **Filters:** liquidjs' standard filters and tags (`where_exp`, `sum`, `{% liquid %}`, `{% echo %}`), Jekyll's `push`, `pop`, `shift`, `unshift`, `array_to_sentence_string`, `date_to_xmlschema`, `date_to_rfc822`, `date_to_string` and `date_to_long_string`, and Shopify's `pluralize`. `slugify` is ssqch's, the same as in the other languages. Your config `filters` work too: `{{ title | shout }}` calls `shout(title)`, and `{{ x | wrap: "[", "]" }}` calls `wrap(x, "[", "]")`. A config filter replaces a built-in one with the same name.
 - **Dates** print as `2026-01-02 00:00:00 +0000`, in UTC, whatever the machine's time zone, in every filter, and `date` reads ISO 8601 text (`2024-03-04`).
 - **Objects:** `{{ some_object }}` prints `[object Object]`, so write `{{ some_object | json }}`; `{{ some_object.size }}` is its number of keys, and a string's `size` counts as JavaScript does (`café` is 4). A variable named `empty` or `blank` is Liquid's keyword (`{% if empty %}`), so rename it.

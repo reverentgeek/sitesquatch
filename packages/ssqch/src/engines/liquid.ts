@@ -10,7 +10,7 @@ import type { FS, Liquid } from "liquidjs";
 import type { Filter } from "../config.ts";
 import type { Data } from "../data.ts";
 import { isPlainObject } from "../data.ts";
-import { BuildError } from "../diagnostics.ts";
+import { BuildError, warn, warning } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
@@ -385,7 +385,29 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 	const fail = (e: unknown, ctx: RenderContext): never => {
 		throw new BuildError(describe(e, ctx, env, filterNames(), includes));
 	};
-	return (source, data, ctx) => {
+	// Jekyll's templates read front matter through `page` (`page.title`); in ssqch it's at the top
+	// level, and `page` has the file's facts. Reading a key `page` lacks and the front matter has
+	// says the rename once, for the whole build (osg #5; decided against a fallback, so `page`
+	// means the same in every engine).
+	const told = new Set<string>();
+	const watched = (data: Data, ctx: RenderContext): Data => {
+		const page = data.page;
+		if (!isPlainObject(page) || told.size >= 20) return data;
+		const look = (key: string | symbol) => {
+			if (typeof key !== "string" || told.has(key) || Object.hasOwn(page, key) || !Object.hasOwn(data, key) || data[key] === undefined) return;
+			told.add(key);
+			// The page, not the template: the read can be in a layout or an include.
+			const shown = typeof page.inputPath === "string" ? page.inputPath.replace(/^\.\//, "") : path.relative(root, path.resolve(root, ctx.inputPath)).split(path.sep).join("/");
+			warn(warning("template", `rendering ${shown}: \`page.${key}\` is empty: in ssqch, front matter is at the top level, so it's \`${key}\` (\`page\` has the page's url, inputPath, date and headings). Said once for each name.`, { file: shown }));
+		};
+		const proxy = new Proxy(page, {
+			getOwnPropertyDescriptor(target, key) { look(key); return Reflect.getOwnPropertyDescriptor(target, key); },
+			get(target, key, receiver) { if (!(key in target)) look(key); return Reflect.get(target, key, receiver); },
+		});
+		return { ...data, page: proxy };
+	};
+	return (source, given, ctx) => {
+		const data = watched(given, ctx);
 		let templates = ctx.cacheKey === undefined ? undefined : compiled.get(ctx.cacheKey);
 		if (!templates) {
 			try { templates = liquid.parse(source, ctx.inputPath); } catch (e) { return fail(e, ctx); }

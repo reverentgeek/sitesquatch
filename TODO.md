@@ -637,7 +637,8 @@ From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
       doesn't have, as Jekyll templates expect (42 edits in 7 templates, and a collision with the
       site's own `lang` variable). A design note first. Decided 2026-11-18: no fallback. A warning
       names the rename (`page.title` is `title`), and `ssqch import jekyll` rewrites the templates;
-      `page` means the same in every engine.
+      `page` means the same in every engine. (The warning is done, 2026-11-18; the rewrite waits for
+      `ssqch import jekyll`.)
 - [x] **Config functions as Liquid tags** (osg #6; done 2026-11-18): `{% seo %}`, as Nunjucks
       already does.
 - [x] **`{% include_relative %}`** (osg #8; done 2026-11-18), reading beside the template.

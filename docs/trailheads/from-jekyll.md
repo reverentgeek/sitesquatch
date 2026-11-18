@@ -43,7 +43,7 @@ export default defineConfig({
 
 ## Templates
 
-- **`page` and front matter:** in ssqch, front matter is at the top level (`{{ title }}`), and `page` has the file's facts (`page.url`, `page.inputPath`, `page.date`, `page.headings`). Rename `page.title` to `title` in layouts and includes, and look for a template whose own variable has a front matter key's name (`{% assign lang = ... %}` next to `page.lang`).
+- **`page` and front matter:** in ssqch, front matter is at the top level (`{{ title }}`), and `page` has the file's facts (`page.url`, `page.inputPath`, `page.date`, `page.headings`). Rename `page.title` to `title` in layouts and includes (the build warns once for each `page.<key>` that's front matter, naming a page that reads it), and look for a template whose own variable has a front matter key's name (`{% assign lang = ... %}` next to `page.lang`).
 - **`site.posts` and collections:** `collections.posts` (the pages tagged `posts`) and your own collections. Items have `url` and `data`: `post.data.title`, `| where: "data.lang", "fr"`.
 - **Includes:** `{% include nav.html section="home" %}` works, with `include.section`, and so does `{% include_relative parts/intro.md %}`. A file read by `include_relative` is a page of its own too, if it's Markdown: give its folder `permalink: false` in directory data.
 - **Plugin tags** (`{% seo %}`, `{% feed_meta %}`): the config's functions are Liquid tags, so each is a function in `filters` that returns the HTML (`{% seo title=false %}` calls `seo({ title: false })`), or an include. `ssqch docs seo` has a starting point.

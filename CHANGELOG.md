@@ -34,6 +34,9 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Added
 
+- A warning when a Liquid template reads front matter through `page` (`page.title`, as Jekyll's
+  do): it's empty in ssqch, where front matter is at the top level. Once for each name, naming the
+  page, including reads in layouts and includes.
 - `ssqch diff` with three or more folders lists what varies between builds made the same way:
   each file that isn't the same in all of them, which builds agree, and the lines that differ. A
   reference build that changes by itself was the first hour of both 2026-11-18 studies.
