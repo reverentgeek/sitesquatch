@@ -649,7 +649,8 @@ async function runHooks(config: Config, dirs: Dirs, event: "beforeBuild" | "afte
 		try {
 			if ("run" in hook) runCommand(config, dirs, event, hook.run);
 			else {
-				try { await settle(hook.fn(hookEvent(config, dirs, report))); } catch (e) { throw new BuildError(`${hook.label}: ${describeThrown(e, dirs.root)}`); }
+				// A built-in plugin's hook has no label: its errors already say who it is.
+				try { await settle(hook.fn(hookEvent(config, dirs, report))); } catch (e) { throw hook.label === "" && e instanceof Error ? e : new BuildError(`${hook.label}: ${describeThrown(e, dirs.root)}`); }
 			}
 		} catch (e) {
 			throw context(e, failed);
