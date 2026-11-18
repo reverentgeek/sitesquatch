@@ -116,8 +116,11 @@ export function buildSite(site) {
 /** The implementation's version in text becomes `{{version}}`, so 0.7.0's snapshot fits 0.8.0. */
 export function normalizeText(text, version = expectedVersion()) {
 	const v = version.replaceAll(".", "\\.");
-	return text.replace(new RegExp(`(SiteSquatch |ssqch |ssqch@|ssqch/|"version": "|version: ")v?${v}\\b`, "g"), "$1{{version}}");
+	return text.replace(new RegExp(`(SiteSquatch |SiteSquatch</a> |ssqch |ssqch@|ssqch/|"version": "|version: ")v?${v}\\b`, "g"), "$1{{version}}");
 }
+
+/** The version the snapshots were frozen with: what the patterns `freeze.js` didn't know yet left in them is normalized when they load. */
+const FROZEN = "0.7.0";
 
 /** The JSON report without what changes from run to run: times, absolute paths, the order of `written`. */
 export function normalizeReport(report, build) {
@@ -213,8 +216,8 @@ export function saveSnapshot(dir, snap) {
 export function loadSnapshot(dir) {
 	const manifest = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"));
 	const files = {};
-	for (const [file, kind] of Object.entries(manifest.files)) files[file] = kind === "text" ? { text: fs.readFileSync(path.join(dir, "output", file), "utf8") } : kind;
-	const source = manifest.source ? Object.fromEntries(Object.entries(manifest.source).map(([f, kind]) => [f, kind === "text" ? fs.readFileSync(path.join(dir, "source", f), "utf8") : kind])) : null;
+	for (const [file, kind] of Object.entries(manifest.files)) files[file] = kind === "text" ? { text: normalizeText(fs.readFileSync(path.join(dir, "output", file), "utf8"), FROZEN) } : kind;
+	const source = manifest.source ? Object.fromEntries(Object.entries(manifest.source).map(([f, kind]) => [f, kind === "text" ? normalizeText(fs.readFileSync(path.join(dir, "source", f), "utf8"), FROZEN) : kind])) : null;
 	return { ok: manifest.ok, report: manifest.report, log: manifest.log, files, source };
 }
 
