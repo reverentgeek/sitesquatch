@@ -135,8 +135,8 @@ until 0.8 ships.
   - [ ] Every example site and the starters, the stage's "done when": they wait for stage 5's
         plugins (all eight examples use `ssqch/links`) and stage 4's `init`. Built with the
         plugins taken out of both builds' copies, the 12 starters match 0.7 except the version in
-        their footers, and so do the six Jinja and Nunjucks examples; `component-docs` and
-        `reference-pages` aren't compared yet.
+        their footers, and so do all eight examples (the six in Jinja and Nunjucks, and
+        `component-docs` and `reference-pages` in Handlebars).
   - [ ] Decide: Edge's `safe()` changes nothing, as in 0.7 (edge.js's `html.safe` prints raw);
         `.njk` prints `True`, Python-style lists and a spaced `dump` as 0.7 did, where a site from
         Eleventy expects Nunjucks' `true`, `a,b` and compact JSON; tags from functions work in
