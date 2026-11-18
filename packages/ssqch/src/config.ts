@@ -151,6 +151,9 @@ export interface ConfigOptions {
 }
 
 
+/** What a site gets without setting them: Jinja is the default template language, so pages are `.jinja` and Markdown and HTML go through it first (`ssqch capabilities` says so). */
+export const DEFAULTS = { templateFormats: ["jinja", "md", "html"], markdownEngine: "jinja", htmlEngine: "jinja" } as const;
+
 function emptyConfig(options: ConfigOptions): Config {
 	return {
 		root: realPath(path.resolve(options.root)),
@@ -164,10 +167,9 @@ function emptyConfig(options: ConfigOptions): Config {
 		includes: "_includes",
 		layouts: null,
 		data: "_data",
-		// Jinja is the default template language: pages in `.jinja`, and Markdown and HTML through it first.
-		templateFormats: ["jinja", "md", "html"],
-		markdownEngine: "jinja",
-		htmlEngine: "jinja",
+		templateFormats: [...DEFAULTS.templateFormats],
+		markdownEngine: DEFAULTS.markdownEngine,
+		htmlEngine: DEFAULTS.htmlEngine,
 		markdown: defaultMarkdownOptions(),
 		deepMerge: true,
 		leaveNoTrace: false,
@@ -342,8 +344,7 @@ function aliased(part: Data, where: string): Data {
 export type BuiltinPlugin = (config: Config, options: Data) => void | Promise<void>;
 
 /** The built-in plugins, by the module that makes them. The plugins register themselves here as they're ported. */
-export const BUILTINS = new Map<string, BuiltinPlugin>();
-/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
+export const BUILTINS = new Map<string, BuiltinPlugin>();/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
 const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements"];
 
 async function loadJs(config: Config, file: string): Promise<void> {

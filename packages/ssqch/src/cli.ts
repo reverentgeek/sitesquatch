@@ -11,6 +11,12 @@ import * as diagnostics from "./diagnostics.ts";
 import { Locator } from "./diagnostics.ts";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
+import { runCapabilities } from "./commands/capabilities.ts";
+import { runDocs } from "./commands/docs.ts";
+import { DEFAULT_ENGINE, runInit } from "./commands/init.ts";
+import { runNew } from "./commands/new.ts";
+import { runSighting } from "./commands/sighting.ts";
+import { runTypes } from "./commands/types.ts";
 import { describeThrown } from "./modules.ts";
 import { relative } from "./paths.ts";
 import { summary } from "./report.ts";
@@ -34,8 +40,8 @@ const GLOBALS: Option[] = [
 
 const SHELLS = ["bash", "elvish", "fish", "powershell", "zsh"];
 
-/** The commands, in the order `--help` lists them. `stage` marks one that isn't in the Node build yet, by the stage of the move that brings it. */
-const COMMANDS: Array<Command & { stage?: number }> = [
+/** The commands, in the order `--help` lists them. `stage` marks one that isn't in the Node build yet, by the stage of the move that brings it. `own` marks one that other generators' flag aliases don't touch (`ssqch docs -- --starter`). */
+const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	{
 		name: "build",
 		about: "Build the site (default)",
@@ -67,7 +73,6 @@ const COMMANDS: Array<Command & { stage?: number }> = [
 		],
 		positionals: [{ name: "PATH", help: "The new file, from the input folder (posts/pine-cones.md), or a folder, with --title", required: true }],
 		afterHelp: "The blueprint is named after the page's folder (_blueprints/posts.md for posts/), then `default`.\nIts body is copied as it is; only front matter keys are filled in. Nothing is overwritten.\n\n  ssqch new posts/pine-cones.md\n  ssqch new posts --title \"Pine cones\"      (named like the other pages in posts/)\n  ssqch new docs/guides/install.md --set order=3 --set draft=true",
-		stage: 4,
 	},
 	{
 		name: "inspect",
@@ -107,13 +112,32 @@ const COMMANDS: Array<Command & { stage?: number }> = [
 		afterHelp: "It reads a build folder, so build first:\n\n  ssqch build\n  ssqch footprint                 (the site's output folder)\n  ssqch footprint dist-before     (any build)\n  ssqch footprint --top 20 --format json",
 		stage: 4,
 	},
-	// The rest read their own arguments, with the code that runs them (stages 4 and 7).
-	{ name: "init", about: "Create a starter site (config, layout, five posts, data and editor types)", options: [], positionals: [], raw: true, stage: 4 },
-	{ name: "types", about: "Write ssqch.d.ts, the types editors use for ssqch.config.js", options: [], positionals: [], raw: true, stage: 4 },
+	{
+		name: "init",
+		about: "Create a starter site (config, layout, five posts, data and editor types)",
+		options: [
+			{ long: "starter", value: "NAME", help: "What to start with: site (a small blog) or docs (documentation with a sidebar, tabs and search)", default: "site" },
+			{ long: "engine", value: "NAME", help: "The template language for the starter's layouts and templates: jinja, njk, edge, liquid, hbs or ejs", default: DEFAULT_ENGINE },
+		],
+		positionals: [{ name: "dir", help: "Where to create it (default: the current folder)", required: false, default: "." }],
+		own: true,
+	},
+	{ name: "types", about: "Write ssqch.d.ts, the types editors use for ssqch.config.js", options: [{ long: "out", value: "out", help: "Where to write it", default: "ssqch.d.ts" }], positionals: [], own: true },
+	// Reads its own arguments, with the code that runs it (stage 7).
 	{ name: "import", about: "Move a site from another generator: rename and rewrite what's mechanical, and list the rest", options: [], positionals: [], raw: true, stage: 7 },
-	{ name: "capabilities", about: "Say what this binary supports: template languages, modules, config options and optional features", options: [], positionals: [], raw: true, stage: 4 },
-	{ name: "docs", about: "Read the documentation for this version: a command, config option, function or topic", options: [], positionals: [], raw: true, stage: 4 },
-	{ name: "sighting", about: "Report a sighting", options: [], positionals: [], raw: true, hidden: true, stage: 4 },
+	{ name: "capabilities", about: "Say what this binary supports: template languages, modules, config options and optional features", options: [FORMAT], positionals: [], own: true },
+	{
+		name: "docs",
+		about: "Read the documentation for this version: a command, config option, function or topic",
+		options: [
+			{ long: "from", value: "GENERATOR", help: "Another generator's words and ssqch's names for them: eleventy, hugo, jekyll, zola, ..." },
+			FORMAT,
+		],
+		positionals: [{ name: "NAME OR WORDS", help: "A name (base, imagePlugin, toc, serve), another generator's word (pathPrefix), or words from a heading (\"content schemas\")", required: false, many: true }],
+		afterHelp: "Without a name, it lists everything, one line each.\n\n  ssqch docs\n  ssqch docs base\n  ssqch docs \"content schemas\"\n  ssqch docs pathPrefix          (another generator's word: says ssqch's)\n  ssqch docs --from eleventy\n  ssqch docs -- --starter        (a flag: after --)\n  ssqch docs agents > AGENTS.md  (instructions for coding agents)\n\nThe text is this version's README, built into the binary.",
+		own: true,
+	},
+	{ name: "sighting", about: "Photographic evidence", options: [], positionals: [], hidden: true, own: true },
 ];
 
 const GRAMMAR: Grammar = { name: "ssqch", about: "SiteSquatch (ssqch): a fast, pluggable static site generator", version: VERSION, globals: GLOBALS, commands: COMMANDS };
@@ -121,7 +145,7 @@ const GRAMMAR: Grammar = { name: "ssqch", about: "SiteSquatch (ssqch): a fast, p
 /** The options that take a value, so it isn't taken for the command. */
 const VALUED = ["--root", "--output", "-o", "--base", "--env", "-d", "--destination", "--pathprefix", "--port", "-p", "--ready-file", "--format", "--title", "--date", "--blueprint", "--set", "--field", "--ignore", "--only", "--lines", "--top", "--starter", "--engine"];
 /** The commands that read their own arguments: left as they are. */
-const OWN = COMMANDS.filter((c) => c.raw).map((c) => c.name);
+const OWN = COMMANDS.filter((c) => c.raw || c.own).map((c) => c.name);
 
 /**
  * The command line with other generators' words that are aliases in ssqch (`ssqch dev`,
@@ -260,6 +284,18 @@ export async function main(argv: string[]): Promise<number> {
 		return 1;
 	}
 
+	// The commands that don't build the site.
+	switch (command) {
+		case "init": return runInit({ dir: cli.positionals[0] ?? ".", starter: value("starter") ?? "site", engine: value("engine") ?? DEFAULT_ENGINE, quiet: flag("quiet") });
+		case "capabilities": return runCapabilities(format, COMMANDS.filter((c) => !c.hidden).map((c) => c.name));
+		case "docs": return runDocs(GRAMMAR, { query: cli.positionals, from: value("from"), format });
+		case "sighting": return runSighting(path.resolve(value("root") ?? "."));
+		case "types": {
+			routeConsole();
+			return runTypes({ root: value("root"), out: value("out") ?? "ssqch.d.ts" });
+		}
+	}
+
 	const serving = command === "serve";
 	// The first of --env, $SSQCH_ENV and $NODE_ENV that's set; a word that's neither environment is the command's default.
 	const given = value("env") ?? process.env.SSQCH_ENV ?? process.env.NODE_ENV;
@@ -273,6 +309,7 @@ export async function main(argv: string[]): Promise<number> {
 	routeConsole();
 	const makeConfig = () => loadConfig({ root, env, serving, quiet: flag("quiet"), verbose: flag("verbose"), output: value("output"), base: value("base") });
 
+	if (command === "new") return newPage(makeConfig, root, { path: cli.positionals[0], title: value("title"), date: value("date"), blueprint: value("blueprint"), set: (cli.options.set as string[] | undefined) ?? [], format });
 	if (format === "json") return buildJson(makeConfig, root, env);
 	if (format !== "text") {
 		process.stderr.write(`${diagnostics.red("error:")} --format ${format}: use text or json\n`);
@@ -289,6 +326,24 @@ export async function main(argv: string[]): Promise<number> {
 	try {
 		const report = await build(config);
 		if (!config.quiet) process.stdout.write(summary(config, report));
+		return 0;
+	} catch (e) {
+		diagnostics.printError("error:", e, "build", locatorOf(config));
+		return 1;
+	}
+}
+
+/** `ssqch new`: the page, or what went wrong, said as a build says it. */
+async function newPage(makeConfig: () => Promise<Config>, root: string, command: Parameters<typeof runNew>[1]): Promise<number> {
+	let config: Config;
+	try {
+		config = await makeConfig();
+	} catch (e) {
+		diagnostics.printError("error:", e, "config", new Locator(root));
+		return 1;
+	}
+	try {
+		runNew(config, command);
 		return 0;
 	} catch (e) {
 		diagnostics.printError("error:", e, "build", locatorOf(config));

@@ -1,0 +1,10 @@
+# The sidebar. A page that isn't listed here still builds; it just isn't in
+# the sidebar, the breadcrumbs or the previous/next links.
+- title: Getting started
+  pages:
+    - { title: Introduction, url: /docs/ }
+    - { title: Installation, url: /docs/install/ }
+- title: Guides
+  pages:
+    - { title: Writing pages, url: /docs/guides/writing/ }
+    - { title: Deploying, url: /docs/guides/deploying/ }

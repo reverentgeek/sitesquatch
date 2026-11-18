@@ -33,6 +33,11 @@ the release.
     POSIX paths on every system. Code that builds URLs from paths should use `node:path/posix`
     or replace the separators. What ssqch itself hands a site (`page.inputPath`, `page.url`,
     a hook's `dirs`) still has `/` everywhere.
+- **`ssqch capabilities` has no stand-in Node modules.** 0.7 listed `node:http`, `node:net`,
+  `node:child_process` and 12 more under `nodeModules.stubs`: they loaded and threw when used.
+  They are Node's own now, so `nodeModules.available` has all 32 and `stubs` is an empty list
+  (the key stays). A script that skips a site's work when a module is a stub should drop the
+  check.
 - **Filters and templates get your real objects.** 0.7 handed them copies that kept writes to
   themselves; now a filter that sorts or changes what it's given changes it for the pages
   rendered after it. Copy first (`[...posts].sort()`). Data that refers to itself (`a.self = a`)
@@ -52,6 +57,8 @@ the release.
 
 - The config can be `ssqch.config.cjs`, `ssqch.config.ts` or `ssqch.config.mts`, besides `.js`
   and `.mjs`.
+- `ssqch capabilities` lists `ssqch.config.cjs`, `.ts` and `.mts` under `configFiles`, and says
+  `avif` and `sass` only when this build can do them (sharp writes the AVIF files).
 - A warning a package raises with `process.emitWarning` is one of the build's warnings (`code:
   "console"` in the JSON report), like `console.warn`.
 - Messages that quote a parser are that parser's: YAML, JSON and TOML errors keep `at line N

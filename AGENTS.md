@@ -83,6 +83,9 @@ Run from `packages/ssqch/` unless it says otherwise.
   0.72 s, on the machine those limits were set on (an Apple M-series laptop). Run it alone,
   with nothing compiling beside it. With `--baseline <another checkout's packages/ssqch>` it
   compares two builds instead, which is what CI does.
+- `packages/ssqch/bundled/` holds copies of what the package needs at run time (the README for
+  `ssqch docs`, `ssqch.d.ts`, the trailheads, the starters' files). After editing an original,
+  run `node scripts/sync-bundled.ts`; `bundled.test.ts` fails when a copy differs.
 - `cargo build --release -p ssqch` still builds 0.7, the oracle's reference. To see what 0.7
   does, run it, not its source: `ssqch build`, then `ssqch diff <0.7 output> <0.8 output>`.
 

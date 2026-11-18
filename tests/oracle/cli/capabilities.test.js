@@ -1,7 +1,7 @@
 // From crates/ssqch/tests/cli.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ssqch, tempDir, write, read, expectedVersion, hasCapability } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, expectedVersion, hasCapability, RUST_07 } from "../lib/ssqch.js";
 
 const names = (value) => value.map((v) => v);
 
@@ -18,7 +18,10 @@ test("capabilities_match_what_a_config_can_use", () => {
 	}
 	assert.equal(caps.features.avif, hasCapability("avif"));
 	assert.equal(names(caps.imageFormats).includes("avif"), hasCapability("avif"));
-	assert.ok(names(caps.nodeModules.stubs).includes("node:http") && !names(caps.nodeModules.available).includes("node:http"));
+	// 0.7's QuickJS had stand-ins for some Node modules (`node:http` loads and throws when used). On Node every
+	// module is Node's own, so none is a stub: `node:http` is available, and `stubs` stays in the report, empty.
+	if (RUST_07) assert.ok(names(caps.nodeModules.stubs).includes("node:http") && !names(caps.nodeModules.available).includes("node:http"));
+	else assert.ok(names(caps.nodeModules.stubs).length === 0 && names(caps.nodeModules.available).includes("node:http"));
 	// What a site gets without a config, and what a starter can be written in, the default first.
 	const def = hasCapability("jinja") ? "jinja" : "edge";
 	assert.deepEqual(caps.defaults, { templateFormats: [def, "md", "html"], markdownEngine: def, htmlEngine: def });

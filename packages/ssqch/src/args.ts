@@ -26,6 +26,10 @@ export interface Positional {
 	help: string;
 	required: boolean;
 	values?: string[];
+	/** Shown in help as `[default: .]`; the command applies it. */
+	default?: string;
+	/** Takes the rest of the words (the last positional only). */
+	many?: boolean;
 }
 
 export interface Command {
@@ -82,7 +86,7 @@ const VERSION: Option = { long: "version", short: "V", help: "Print version" };
 const optionLabel = (o: Option) => `${o.short ? `-${o.short}, ` : "    "}--${o.long}${o.value ? ` <${o.value}>` : ""}`;
 const usageOf = (grammar: Grammar, command: Command | undefined) => {
 	if (!command) return `Usage: ${grammar.name} [OPTIONS] [COMMAND]`;
-	const args = command.positionals.map((p) => (p.required ? `<${p.name}>` : `[${p.name}]`));
+	const args = command.positionals.map((p) => (p.required ? `<${p.name}>` : `[${p.name}]`) + (p.many ? "..." : ""));
 	return `Usage: ${grammar.name} ${command.name} ${["[OPTIONS]", ...args].join(" ")}`;
 };
 
@@ -103,9 +107,26 @@ export function help(grammar: Grammar, command?: Command): string {
 	}
 	let out = `${command.about}\n\n${usageOf(grammar, command)}\n`;
 	if (command.positionals.length) {
-		out += `\nArguments:\n${table(command.positionals.map((p) => [p.required ? `<${p.name}>` : `[${p.name}]`, p.help + (p.values ? ` [possible values: ${p.values.join(", ")}]` : "")]))}\n`;
+		out += `\nArguments:\n${table(command.positionals.map((p) => [(p.required ? `<${p.name}>` : `[${p.name}]`) + (p.many ? "..." : ""), p.help + (p.default !== undefined ? ` [default: ${p.default}]` : "") + (p.values ? ` [possible values: ${p.values.join(", ")}]` : "")]))}\n`;
 	}
 	out += `\nOptions:\n${table([...command.options, ...grammar.globals, HELP].map((o) => [optionLabel(o), describe(o)]))}\n`;
+	if (command.afterHelp) out += `\n${command.afterHelp}\n`;
+	return out;
+}
+
+/**
+ * The long help, which `ssqch docs <command>` prints: each argument and option on its own with
+ * its text below it, and a default or the possible values after a blank line, as clap's long
+ * help lays them out. `--help` itself is the short layout.
+ */
+export function longHelp(grammar: Grammar, command: Command): string {
+	const entry = (label: string, text: string, notes: string[]) => `  ${label}\n          ${text}\n${notes.length ? `          \n${notes.map((n) => `          ${n}\n`).join("")}` : ""}`;
+	const notesOf = (o: { default?: string; values?: string[] }) => [...(o.default !== undefined ? [`[default: ${o.default}]`] : []), ...(o.values ? [`[possible values: ${o.values.join(", ")}]`] : [])];
+	let out = `${command.about}\n\n${usageOf(grammar, command)}\n`;
+	if (command.positionals.length) {
+		out += `\nArguments:\n${command.positionals.map((p) => entry((p.required ? `<${p.name}>` : `[${p.name}]`) + (p.many ? "..." : ""), p.help, notesOf(p))).join("\n")}`;
+	}
+	out += `\nOptions:\n${[...command.options, ...grammar.globals, HELP].map((o) => entry(optionLabel(o), o.help, notesOf(o))).join("\n")}`;
 	if (command.afterHelp) out += `\n${command.afterHelp}\n`;
 	return out;
 }
@@ -204,8 +225,8 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 				out.command = command.name;
 				continue;
 			}
-			if (!command || out.positionals.length >= command.positionals.length) unexpected(arg);
-			const positional = command!.positionals[out.positionals.length];
+			if (!command || (out.positionals.length >= command.positionals.length && !command.positionals.at(-1)?.many)) unexpected(arg);
+			const positional = command!.positionals[Math.min(out.positionals.length, command!.positionals.length - 1)];
 			if (positional.values && !positional.values.includes(arg)) throw new UsageError(`error: invalid value '${arg}' for '<${positional.name}>'\n  [possible values: ${positional.values.join(", ")}]\n\n${tail}`);
 			out.positionals.push(arg);
 			continue;
