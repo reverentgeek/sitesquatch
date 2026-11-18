@@ -16,10 +16,13 @@ interface WebAssemblyGlobal {
 	Module: {
 		new (bytes: Uint8Array): WasmModule;
 		customSections(module: WasmModule, name: string): ArrayBuffer[];
+		imports(module: WasmModule): Array<{ module: string; name: string; kind: string }>;
 	};
 	Instance: new (module: WasmModule, imports: WasmImports) => { readonly exports: Record<string, unknown> };
 	/** What a trap (a panic in Rust, `unreachable`) throws. */
 	RuntimeError: new (message?: string) => Error;
+	/** What compiling bytes that aren't WebAssembly throws. */
+	CompileError: new (message?: string) => Error;
 }
 
 export const WebAssembly = (globalThis as unknown as { WebAssembly: WebAssemblyGlobal }).WebAssembly;

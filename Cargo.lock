@@ -2774,6 +2774,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "ssqch-minify"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ssqch-plugin",
+]
+
+[[package]]
+name = "ssqch-plugin"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ssqch-plugin-trail-guide"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ssqch-plugin",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

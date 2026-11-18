@@ -1,0 +1,19 @@
+{
+	"name": "ssqch-plugin-trail-guide",
+	"version": "0.1.0",
+	"private": true,
+	"description": "An example ssqch plugin written in Rust: a .trail template language, readingTime, greet and tally filters, and rel=\"external\" for links to other sites",
+	"license": "MIT",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"default": "./index.js"
+		}
+	},
+	"files": ["index.js", "index.d.ts", "trail_guide.wasm"],
+	"keywords": ["ssqch", "ssqch-plugin"],
+	"peerDependencies": {
+		"ssqch": ">=0.8.0"
+	}
+}

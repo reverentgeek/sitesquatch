@@ -20,6 +20,7 @@ import { checkLanguages } from "./engines/markdown.ts";
 import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
 import type { MarkdownOptions } from "./markdown-options.ts";
 import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
+import { loadRustPart } from "./rust-plugin.ts";
 import { resolveTheme } from "./theme.ts";
 import { realPath } from "./paths.ts";
 
@@ -428,7 +429,7 @@ async function loadJs(config: Config, file: string): Promise<void> {
 		const unknown: string[] = [];
 		let guessed = false;
 		for (const key of Object.keys(part)) {
-			if (key === "name" && !top) continue;
+			if ((key === "name" || key === "rust") && !top) continue;
 			if (SETTINGS.includes(key)) {
 				if (!top) fail(`${where}: "${key}" can only be set in the config itself, not in a plugin`);
 			} else if (!PARTS.includes(key)) {
@@ -451,6 +452,27 @@ async function loadJs(config: Config, file: string): Promise<void> {
 		if (unknown.length) {
 			const options = top ? [...SETTINGS, ...PARTS] : PARTS;
 			fail(unknown.join("\n") + (guessed ? ` (options: ${options.join(", ")})` : ""));
+		}
+
+		// A plugin written in Rust (`{ name, rust: { wasm, options } }`, what its npm package
+		// returns): its transform, filters and engines, as its manifest lists them.
+		if (!top && part.rust !== undefined) {
+			const rust = loadRustPart(part.rust, where, root);
+			if (rust.transform) {
+				const [key, fn] = rust.transform;
+				claim("transforms", "transform", key, where);
+				ops.push(() => { config.transforms.push([key, fn]); });
+			}
+			for (const [key, fn] of rust.filters) {
+				claim("filters", "filter", key, where);
+				ops.push(() => { config.filters.set(key, fn); });
+			}
+			for (const [key, run] of rust.engines) {
+				if (!/^[A-Za-z0-9_-]+$/.test(key)) fail(`${where}: engines.${key}: an engine's name is a file extension (letters, digits, - and _)`);
+				if (CORE_ENGINES.includes(key)) fail(`${where}: engines.${key}: "${key}" is built in and can't be replaced`);
+				claim("engines", "engine", key, where);
+				ops.push(() => { config.engines.set(key, run); });
+			}
 		}
 
 		if (top) {
