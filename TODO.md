@@ -813,7 +813,7 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       ssqch" (below): under a `base`, the link checker counts the site's own address outside the
       base as external, so a feed's links that miss the base aren't checked; the research's "all
       eight pass under a base" hadn't checked the feeds.
-- [x] **Agents, and launch** (2026-11-18; left: the `www` redirect, below).
+- [x] **Agents, and launch** (2026-11-18).
       `site/lib/agents.ts` writes each docs page's Markdown to `/docs/<page>.md` and
       `/docs/<page>/index.md` (the title as a heading, then the page's text without its stickers,
       links to docs pages pointing at their copies), `/llms.txt` (the summary, three lines of
@@ -839,9 +839,11 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       `preview_urls` set (both are, now): for the Cloudflare guide. `curl -H "Accept:
       text/markdown" https://sitesquatch.dev/docs/install/` returns Markdown. The npm package's
       `homepage` (`scripts/build.ts`), its README and a badge in the README point at the site.
-      **Needs David:** `www.sitesquatch.dev`, a proxied placeholder A record (`192.0.2.0`) and a
-      redirect rule to the apex (Rules, the "Redirect from WWW to root" template), which Wrangler
-      can't make.
+      `www.sitesquatch.dev` is a proxied placeholder A record (`192.0.2.0`) and a redirect rule
+      to the apex (Rules, the "Redirect from WWW to root" template), which Wrangler can't make.
+      The template matches `https://www.*` only, so `http://www.` was a 522 until "Always Use
+      HTTPS" was on (it also upgraded the apex, which served plain HTTP): for the Cloudflare
+      guide too. HSTS is off.
 
 After launch:
 
