@@ -1,6 +1,6 @@
 # sitesquatch.dev
 
-ssqch's own website, built with the ssqch in this repository (`packages/ssqch`), so a change to ssqch that breaks its own site shows up here first. The plan is section 9 of [`TODO.md`](../TODO.md), "The website". So far: the landing page, the docs, the 404 page and the Cloudflare deploy. The changelog and the live examples come next.
+ssqch's own website, built with the ssqch in this repository (`packages/ssqch`), so a change to ssqch that breaks its own site shows up here first. The plan is section 9 of [`TODO.md`](../TODO.md), "The website". So far: the landing page, the docs, the changelog, the 404 page and the Cloudflare deploy. The live examples come next.
 
 From this folder, with `npm ci` already run in `packages/ssqch`:
 
@@ -32,10 +32,16 @@ The README is the one source of the documentation until the docs move into pages
 - **The reference** (`/docs/reference/`) is every name `ssqch docs` lists with its one line and the page that explains it, from `ssqch docs`'s own module (`src/_data/reference.js`), so the two can't disagree.
 - **Search** is Pagefind, pinned in `build.ts`, which indexes the built docs after ssqch's build (`SEARCH=0` skips it). The header's `<site-search>` (`src/elements/site-search.js`, by `elementsPlugin()`) loads Pagefind's script and index the first time someone opens it, with the button or <kbd>/</kbd>. Without JavaScript it's a link to the reference.
 
+## The changelog
+
+`/changelog/` is the site's own writing, not `CHANGELOG.md` rendered: one entry for each minor release in `src/changelog/` (`0.9.md`), short and conversational, with the headlines, "What you might need to change" for every Breaking item, and a link to the release's section of `CHANGELOG.md`, which stays the complete record. A patch release adds its version to its minor's `releases` and a dated paragraph. `/changelog/feed.xml` is its Atom feed.
+
+An entry's front matter is its `title`, `release` (the version it starts with), `releases` (every version it covers) and `date` (`release`'s date), and `lastRelease` and `lastDate` when it covers more than one. `tests/changelog.test.ts` keeps the entries in step with `CHANGELOG.md`: the package's version has an entry (so a release can't ship without one), every release is in exactly one entry with its date, an entry whose releases have a Breaking heading has "What you might need to change", and every number in an entry is in its releases' sections.
+
 ## What's where
 
 - `src/index.jinja` is the landing page, `src/404.jinja` the 404 page, and `src/docs-reference.jinja` the reference. `src/_includes/base.jinja` is the layout, and `src/_includes/doc.jinja` the docs pages' (the sidebar, the table of contents, the strip under the title, previous and next).
-- `src/_data/` holds what the pages list, so a list has one source: `examples.yml` (the example sites), `trailheads.yml`, `benchmarks.js` (the mileage boards, each with the README's words for it), `links.yml` (where the landing page's links to the docs go), `release.js` (the latest release and the Node it needs, from `packages/ssqch/package.json`) and `drawings.js` (each drawing's size, from its viewBox).
+- `src/_data/` holds what the pages list, so a list has one source: `examples.yml` (the example sites), `trailheads.yml`, `benchmarks.js` (the mileage boards, each with the README's words for it), `links.yml` (where the landing page's links to the docs go), `latest.js` (the latest release and the Node it needs, from `packages/ssqch/package.json`) and `drawings.js` (each drawing's size, from its viewBox).
 - The drawings aren't copied in: `passthrough` takes them from `docs/assets/`, where the README's are.
 - Every terminal on the landing page is ssqch's own output from a real run, with `...` where lines were left out. The `init` and `serve` samples are a run of the starter with ssqch 0.9.0; the schema error and the "No differences" line are the README's.
 

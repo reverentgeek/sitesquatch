@@ -9,6 +9,7 @@
 	{% if page.url and not noindex %}<link rel="canonical" href="{{ site.url }}{{ page.url }}">{% endif %}
 	{% if noindex %}<meta name="robots" content="noindex">{% endif %}
 	<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+	<link rel="alternate" type="application/atom+xml" href="/changelog/feed.xml" title="SiteSquatch changelog">
 	<link rel="preload" href="/assets/fonts/caprasimo-latin.woff2" as="font" type="font/woff2" crossorigin>
 	{% if docs %}<link rel="stylesheet" href="/highlight.css">{% endif %}
 	<link rel="stylesheet" href="/assets/site.css">
@@ -26,7 +27,7 @@
 				<a href="/docs/"{% if docs and "/docs/trailheads/" not in page.url %} aria-current="page"{% endif %}>Docs</a>
 				<a href="/#examples">Examples</a>
 				<a href="/docs/trailheads/"{% if "/docs/trailheads/" in page.url %} aria-current="page"{% endif %}>Trailheads</a>
-				<a href="{{ links.changelog }}">Changelog</a>
+				<a href="{{ links.changelog }}"{% if "/changelog/" in page.url %} aria-current="page"{% endif %}>Changelog</a>
 			</nav>
 			<div class="header-tools">
 				{#- Pagefind, when the search is first used (src/elements/site-search.js). Without
@@ -52,7 +53,7 @@
 			<div>
 				<a class="brand" href="/"><span class="patch" aria-hidden="true"></span>SiteSquatch</a>
 				<p class="ranger">Happy building, and may your pages load faster than a Squatch sighting disappears.</p>
-				<p class="release">ssqch {{ release.version }} is the latest release.</p>
+				<p class="release">ssqch {{ latest.version }} is the latest release.</p>
 			</div>
 			<nav aria-labelledby="footer-docs">
 				<h2 id="footer-docs">Docs</h2>

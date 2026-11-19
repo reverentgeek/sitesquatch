@@ -740,7 +740,7 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       all of it (first run with this change's pull request). Lists have one source in
       `site/src/_data/` (`examples.yml`, `trailheads.yml`, `benchmarks.js`), and links to the docs
       go through `links.yml`, to the README on GitHub until the docs are pages. The footer already
-      names the latest release (`release.js`, from `packages/ssqch/package.json`). Left for later
+      names the latest release (`latest.js`, from `packages/ssqch/package.json`). Left for later
       stages: the header's search box (the docs), Live links on the campsites (the examples), and
       the web's Markdown copies in Mile 6 (agents; the template has a comment where they go).
 - [ ] **The Cloudflare pipeline.** Written and working on pull requests (2026-11-18); left: the
@@ -782,20 +782,18 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       is on the reference with a page.
       Found on the way: a `render: md` page got a `foreign-global` warning for the
       `{{ eleventy.generator }}` in its text (fixed, with a test and a changelog entry).
-- [ ] **The changelog, for people.** `/changelog/` is the site's own writing, not `CHANGELOG.md`
-      rendered: one entry for each minor release (`site/src/changelog/0.9.md`), in David's voice
-      (the `write` skill), about 250 words. Each has the headlines (three to five, each something
-      the reader can see or do), "What you might need to change" (every item under "Breaking" in
-      `CHANGELOG.md`, in plain words, with the fix), and one link to the release's section of
-      `CHANGELOG.md`, which stays the complete record. A patch release adds a dated paragraph to
-      its minor's entry. Numbers come from `CHANGELOG.md` only. The layout, an Atom feed, and the
-      first three entries: 0.9, 0.8 (the move to Node) and one for everything before (the plan has
-      a draft of 0.9's). Two tests in `site/`: the version in `packages/ssqch/package.json` has an
-      entry, and an entry has "What you might need to change" whenever its release has a
-      "Breaking" heading. "Releasing" in AGENTS.md gains a step: write the release's entry (or its
-      patch paragraph) in the release commit. **Needs David:** an edit of each entry. Part of the
-      documentation's session if there's room. (**Decision 11:** an entry for every release, or
-      only for releases worth announcing.)
+- [ ] **The changelog, for people.** Built 2026-11-18; left: David's edit of the entries.
+      `/changelog/` and an entry page each (`site/src/changelog/0.9.md`, `0.8.md`, `0.2-0.7.md`,
+      drafted with the `write` skill from `CHANGELOG.md` only), newest release first, with the
+      headlines, "What you might need to change" and one link to the release's section of
+      `CHANGELOG.md`; an Atom feed at `/changelog/feed.xml`, linked from every page's head.
+      `site/tests/changelog.test.ts`: the package's version has an entry, every release is in
+      exactly one entry with its date, an entry whose releases break something says what to
+      change, and an entry's numbers are `CHANGELOG.md`'s (versions like `0.64` slip past that
+      one). "Releasing" step 2 says to write the entry. **Needs David:** an edit of each entry.
+      0.9's is about 330 words and 0.8's 360, over the 250 aimed for, because every Breaking item
+      is in them; 0.8's lists its Breaking themes, not each of its items. (**Decision 11:** an
+      entry for every release, or only for releases worth announcing.)
 - [ ] **The examples, live.** Each example built with `--base /examples/<name>/` into the site's
       output (all eight build that way today, and `linksPlugin()` passes on each). The gallery at
       `/examples/` from one data file (`examples.yml`: what each shows, the docs page for each

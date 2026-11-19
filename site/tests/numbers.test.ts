@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import benchmarks from "../src/_data/benchmarks.js";
-import release from "../src/_data/release.js";
+import latest from "../src/_data/latest.js";
 
 const repo = new URL("../../", import.meta.url);
 const readme = readFileSync(new URL("README.md", repo), "utf8");
@@ -34,8 +34,8 @@ test("each mileage board's figure and its conditions are in the README's Benchma
 });
 
 test("the Node version the page asks for is the package's and the README's", () => {
-	assert.match(release.node, /^\d+\.\d+$/);
-	assert.ok(readme.includes(`[Node.js](https://nodejs.org) ${release.node} or newer`), `Install doesn't ask for Node.js ${release.node}`);
+	assert.match(latest.node, /^\d+\.\d+$/);
+	assert.ok(readme.includes(`[Node.js](https://nodejs.org) ${latest.node} or newer`), `Install doesn't ask for Node.js ${latest.node}`);
 });
 
 // [what the landing page says, what the README says]

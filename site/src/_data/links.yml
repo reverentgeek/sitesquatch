@@ -8,6 +8,6 @@ knownGaps: /docs/known-gaps/
 trailheads: /docs/trailheads/
 agents: /docs/agents/
 reference: /docs/reference/
-changelog: https://github.com/reverentgeek/sitesquatch/blob/main/CHANGELOG.md
+changelog: /changelog/
 issues: https://github.com/reverentgeek/sitesquatch/issues
 contributing: https://github.com/reverentgeek/sitesquatch#working-on-sitesquatch

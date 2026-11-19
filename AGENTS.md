@@ -208,7 +208,12 @@ skips, see `already-tested` in `ci.yml`):
    (`ssqch@<version>` in Install, the GitHub Actions example and GitHub Pages, and the Netlify
    section's `ssqch@<version>` and `SSQCH_VERSION`). Take out the "Not released yet" notes the
    release ships (`node scripts/unreleased-notes.mjs` lists them); the workflow refuses a tag
-   while one is left.
+   while one is left. Write the release's entry for the site's changelog, which is for people:
+   for a minor release, `site/src/changelog/<major>.<minor>.md` (the headlines, "What you might
+   need to change" for every Breaking item, about 250 words, numbers only from `CHANGELOG.md`; a
+   first draft with the `write` skill, for the owner to edit), and for a patch release, its
+   version in its minor's entry's `releases` and a dated paragraph about it.
+   `site/tests/changelog.test.ts` fails until the package's version has an entry.
 3. Bring the branch up to date with `main` if it isn't (a merge commit with a tree the pull
    request didn't test runs all of CI again), wait for its CI to pass, and merge it.
 4. Wait for CI on the merge commit (it skips in a minute when its tree passed on the pull

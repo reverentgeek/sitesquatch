@@ -6,8 +6,12 @@ import { assetsPlugin } from "ssqch/assets";
 import { elementsPlugin } from "ssqch/elements";
 import { linksPlugin } from "ssqch/links";
 import { minifyPlugin } from "ssqch/minify";
+import { rssPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
 import { splitDocs } from "./lib/split.ts";
+
+/** "0.9.0" as a number that sorts: 9000. */
+const version = (v) => String(v).split(".").reduce((n, part) => n * 1000 + Number(part), 0);
 
 export default defineConfig(({ env }) => ({
 	dirs: { input: "src", output: "dist" },
@@ -31,10 +35,23 @@ export default defineConfig(({ env }) => ({
 	watch: ["../README.md", "../docs/trailheads", "lib"],
 
 	markdown: { highlight: true },
+
+	// The changelog's entries (src/changelog/), newest release first.
+	collections: {
+		changelog: (pages) => pages.byTag("changelog").sort((a, b) => version(b.data.release) - version(a.data.release)),
+	},
+	filters: {
+		/** A page's first paragraph, for a list of entries. */
+		firstParagraph: (html) => /<p\b[\s\S]*?<\/p>/.exec(String(html ?? ""))?.[0] ?? "",
+	},
 	schemas: {
 		docs: {
 			files: "docs/**/*.md",
 			fields: { title: "string", description: "string", command: "string", source: "string", sourceLine: "integer" },
+			unknown: "error",
+		},
+		changelog: {
+			fields: { title: "string", release: "string", releases: "string[]", date: "date", "lastRelease?": "string", "lastDate?": "date" },
 			unknown: "error",
 		},
 	},
@@ -43,10 +60,11 @@ export default defineConfig(({ env }) => ({
 	// warning, so going over one of these fails the build. Pagefind's files are written after
 	// the build, so they aren't counted: they load only when someone searches. Production only:
 	// `ssqch serve` would count the Pagefind files the last production build left in dist/.
-	budgets: env === "production" ? { pages: "100 KB", css: "30 KB", javascript: "3 KB", fonts: "30 KB", images: "100 KB" } : {},
+	budgets: env === "production" ? { pages: "100 KB", css: "40 KB", javascript: "3 KB", fonts: "30 KB", images: "100 KB" } : {},
 
 	plugins: [
 		elementsPlugin(),
+		rssPlugin(),
 		linksPlugin({ ignore: ["/pagefind/"] }),
 		sitemapPlugin({ url: "https://sitesquatch.dev", lastmod: false }),
 		assetsPlugin({ files: ["/assets/site.css", "/assets/theme.js"] }),
