@@ -8,6 +8,7 @@ import { linksPlugin } from "ssqch/links";
 import { minifyPlugin } from "ssqch/minify";
 import { rssPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
+import { copyOf, writeAgentCopies } from "./lib/agents.ts";
 import { splitDocs } from "./lib/split.ts";
 
 /** "0.9.0" as a number that sorts: 9000. */
@@ -26,12 +27,15 @@ export default defineConfig(({ env }) => ({
 		{ "../docs/assets/stickers": "assets/drawings/stickers" },
 		{ "../docs/assets/sitesquatch.svg": "assets/drawings/sitesquatch.svg" },
 		{ "../docs/assets/footprint.svg": "assets/drawings/footprint.svg" },
+		// What agents read: each docs page as Markdown, /llms.txt and /llms-full.txt, written
+		// before the build by lib/agents.ts.
+		{ generated: "." },
 	],
 
 	// The docs pages are the README's sections and the trailheads (lib/docs-map.ts says which),
 	// written into src/docs/ before each build. A file is written only when it changed, so the
 	// dev server's rebuild doesn't start another.
-	beforeBuild: [() => { splitDocs(); }],
+	beforeBuild: [() => { splitDocs(); writeAgentCopies(); }],
 	watch: ["../README.md", "../docs/trailheads", "lib"],
 
 	markdown: { highlight: true },
@@ -43,6 +47,8 @@ export default defineConfig(({ env }) => ({
 	filters: {
 		/** A page's first paragraph, for a list of entries. */
 		firstParagraph: (html) => /<p\b[\s\S]*?<\/p>/.exec(String(html ?? ""))?.[0] ?? "",
+		/** A docs page's Markdown copy: `/docs/install/` is `/docs/install.md`. */
+		markdownCopy: (url) => copyOf(String(url)),
 	},
 	schemas: {
 		docs: {

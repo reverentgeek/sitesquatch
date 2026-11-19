@@ -25,7 +25,7 @@ export default function () {
 		const found = answer(GRAMMAR, all, known, name)?.section ?? answer(GRAMMAR, all, prose, name)?.section;
 		return found === undefined ? undefined : { title: all[found].title, url: readmeUrl(slug(all[found].title)) };
 	};
-	const entry = (n) => ({ name: n.name, id: `${n.kind.replace(/ /g, "-")}-${n.module ? `${n.module.replace(/\W+/g, "-")}-` : ""}${n.name}`, summary: firstSentence(n.summary), where: where(n.name) });
+	const entry = (n) => ({ name: n.name, id: `${n.kind.replace(/ /g, "-")}-${n.module ? `${n.module.replace(/\W+/g, "-")}-` : ""}${n.name}`, summary: firstSentence(n.summary).replace(/([^.!?])$/, "$1."), where: where(n.name) });
 	const groups = [
 		{ title: "Commands", prefix: "ssqch ", names: known.filter((n) => n.kind === "command").map(entry) },
 		{ title: "Config options", names: known.filter((n) => n.kind === "config option").map(entry) },
@@ -33,5 +33,12 @@ export default function () {
 	];
 	const modules = [...new Set(known.filter((n) => n.kind === "module export").map((n) => n.module))];
 	for (const module of modules) groups.push({ title: `From "${module}"`, names: known.filter((n) => n.kind === "module export" && n.module === module).map(entry) });
-	return { groups, count: known.length };
+	// The page is this Markdown, rendered, and its copy for agents is this Markdown as it is
+	// (lib/agents.ts), so the two can't say different things.
+	const lines = [`Every name \`ssqch docs\` knows, ${known.length} of them, with its one line from where it's defined (\`ssqch.d.ts\`, the command line, the template functions) and the page that explains it. In a project with ssqch installed, \`ssqch docs <name>\` answers for the version you have.`];
+	for (const group of groups) {
+		lines.push("", `## ${group.title}`, "");
+		for (const n of group.names) lines.push(`- \`${group.prefix ?? ""}${n.name}\`: ${n.summary}${n.where ? ` See [${n.where.title}](${n.where.url}).` : ""}`);
+	}
+	return { groups, count: known.length, markdown: `${lines.join("\n")}\n` };
 }

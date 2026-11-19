@@ -310,6 +310,7 @@ code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surfac
 /* The same page, three ways: the terminal, here, and where it's written. */
 .page-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem; margin: 0 0 1.75rem; padding: 0.55rem 0.9rem; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--chrome); font-size: 0.9rem; }
 .page-tools p { margin: 0; }
+.page-tools .links { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
 .page-tools .cli { display: flex; align-items: center; gap: 0.5rem; min-width: 0; margin-right: auto; }
 .page-tools .cli span { flex: none; font-family: var(--label); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .page-tools code { padding: 0; overflow-x: auto; background: none; color: var(--text); white-space: nowrap; user-select: all; }
@@ -336,13 +337,10 @@ code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surfac
 .markdown-alert p { margin: 0.3rem 0; }
 .map { padding-left: 1.2rem; }
 .map li::marker { color: var(--marker); }
-/* Every name, one line each. */
-.names { margin: 0; }
-.names > div { display: grid; grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr); gap: 0.25rem 1.25rem; padding: 0.55rem 0; border-bottom: 1px solid var(--border); scroll-margin-top: 5rem; }
-.names dt code { overflow-wrap: anywhere; }
-.names dd { margin: 0; }
-.names dd > a { white-space: nowrap; font-size: 0.9rem; }
-.names dd > a::before { content: "→ "; color: var(--muted); }
+/* Every name, one line each: the reference's lists. */
+.reference ul { padding-left: 0; list-style: none; }
+.reference li { margin: 0; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+.reference li > code:first-child { font-weight: 600; }
 kbd { padding: 0 0.35rem; border: 1px solid var(--border); border-radius: 0.3rem; font-family: var(--mono); font-size: 0.85em; }
 /* Previous and next, as arrow signs. */
 .pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
@@ -445,7 +443,6 @@ kbd { padding: 0 0.35rem; border: 1px solid var(--border); border-radius: 0.3rem
 	.sidebar-inner { position: static; max-height: none; }
 	.page-tools .cli { width: 100%; margin-right: 0; overflow-x: auto; }
 	.doc img[align="right"] { width: 4.5rem; margin-left: 1rem; }
-	.names > div { grid-template-columns: minmax(0, 1fr); }
 	.pager { flex-direction: column; }
 	.pager div:last-child { text-align: left; }
 	.lost img { width: 7rem; }

@@ -15,15 +15,16 @@ docs: true
 			<span aria-current="page">{{ crumbs[-1].title }}</span>
 		</nav>
 		{%- endif %}
-		<h1>{{ title }}</h1>
+		<h1 data-copy>{{ title }}</h1>
 		{#- The same page, three ways: in the terminal, here, and where it's written. #}
 		<div class="page-tools">
 			<p class="cli"><span>In your terminal</span> <code>{{ command }}</code></p>
-			{%- if source %}
-			<p><a href="{{ site.repo }}/blob/main/{{ source }}{% if sourceLine > 1 %}#L{{ sourceLine }}{% endif %}">Edit on GitHub</a></p>
-			{%- endif %}
+			<p class="links"><a href="{{ page.url | markdownCopy }}">View as Markdown</a>
+			{%- if source %} <a href="{{ site.repo }}/blob/main/{{ source }}{% if sourceLine > 1 %}#L{{ sourceLine }}{% endif %}">Edit on GitHub</a>{% endif %}</p>
 		</div>
+		<div data-copy>
 		{{ content }}
+		</div>
 		{%- if page.url == "/docs/" %}
 		<h2 id="the-map">The map <a class="anchor" data-pagefind-ignore href="#the-map" aria-hidden="true" tabindex="-1">#</a></h2>
 		{%- for section in nav %}

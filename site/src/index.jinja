@@ -221,8 +221,7 @@ No differences: 148 pages and 4,730 other files are the same. <span class="v">Th
 	<div class="with-terminal">
 		<div>
 			<p>Commands that report take <code>--format json</code>: a <code>schemaVersion</code>, diagnostic codes, and no jokes. <code>ssqch init</code> writes a 1 KB <code>AGENTS.md</code> that says where to look.</p>
-			{#- "Agents, and launch" (TODO.md, section 9) adds the web's copies here: every docs page as
-			    Markdown at its address with .md on the end, /llms.txt, and a curl line in the terminal. #}
+			<p>Reading from the web instead? Every docs page has a Markdown copy at its address with <code>.md</code> on the end, a request that asks for <code>text/markdown</code> gets it, and <a href="/llms.txt">/llms.txt</a> lists them all.</p>
 			<p><a href="{{ links.agents }}">Scripts and coding agents</a></p>
 		</div>
 		<figure class="terminal">
@@ -233,7 +232,9 @@ No differences: 148 pages and 4,730 other files are the same. <span class="v">Th
 <span class="p">$</span> ssqch docs --from eleventy
 <span class="c"># What this version can do, and what a build did</span>
 <span class="p">$</span> ssqch capabilities --format json
-<span class="p">$</span> ssqch build --format json</pre>
+<span class="p">$</span> ssqch build --format json
+<span class="c"># Or from the web, as Markdown</span>
+<span class="p">$</span> curl https://sitesquatch.dev/docs/content-schemas.md</pre>
 		</figure>
 	</div>
 </section>

@@ -1,12 +1,16 @@
-// sitesquatch.dev: one Cloudflare Worker that serves the built site as static assets, with no
-// script of its own. .github/workflows/site.yml deploys it: `wrangler preview` for each pull
-// request, `wrangler deploy` from main. Not attached to the domain yet (TODO.md, section 9,
-// "Agents, and launch", adds the custom domain).
+// sitesquatch.dev: one Cloudflare Worker that serves the built site as static assets. Its one
+// script (worker.js) runs for /docs and /docs/* only, to answer `Accept: text/markdown` with a
+// page's Markdown copy; everything else is a file, served without it.
+// .github/workflows/site.yml deploys it: `wrangler preview` for each pull request, `wrangler
+// deploy` from main. Not attached to the domain yet (TODO.md, section 9, "Agents, and launch").
 {
 	"name": "sitesquatch",
+	"main": "worker.js",
 	"compatibility_date": "2026-11-01",
 	"assets": {
 		"directory": "./dist",
+		"binding": "ASSETS",
+		"run_worker_first": ["/docs", "/docs/*"],
 		// The nearest 404.html going up the folders, with a 404 status.
 		"not_found_handling": "404-page"
 		// html_handling stays the default (auto-trailing-slash), which serves docs/index.html at

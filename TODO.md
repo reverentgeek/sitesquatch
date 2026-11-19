@@ -813,21 +813,28 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       ssqch" (below): under a `base`, the link checker counts the site's own address outside the
       base as external, so a feed's links that miss the base aren't checked; the research's "all
       eight pass under a base" hadn't checked the feeds.
-- [ ] **Agents, and launch.** An `afterBuild` hook writes each docs page's Markdown to
-      `/docs/<page>.md` and `/docs/<page>/index.md` (the title as a heading, then the source, with
-      links to other docs pages pointing at their copies). `<link rel="alternate"
-      type="text/markdown">` and `rel="describedby"` (to `/llms.txt`) in each page's head.
-      `/llms.txt` (the summary, three lines of guidance that start with `ssqch docs <name>`, then
-      the sidebar as links to the copies) and `/llms-full.txt`. A Worker script for `/docs/*`
-      only, which answers `Accept: text/markdown` with the copy and `Vary: Accept` (**Decision
-      6**). A test in `site/` that CI runs: every docs page has both copies, `/llms.txt` lists
-      exactly the docs pages, and each copy's rendered text equals its page's `<main>`. Then
-      launch: the apex as the Worker's custom domain (the Live links in `examples/sites/README.md`
-      answer from then), a redirect rule from `www`, and `homepage`
-      in `packages/ssqch/package.json`, the README and `examples/sites/README.md` pointing at the
-      site. **Needs David:** the DNS change (attaching
-      the domain creates the apex record). Done when `curl -H "Accept: text/markdown"
-      https://sitesquatch.dev/docs/install/` returns Markdown and the test passes.
+- [ ] **Agents, and launch.** The agents' half is done (2026-11-18); left: the launch.
+      `site/lib/agents.ts` writes each docs page's Markdown to `/docs/<page>.md` and
+      `/docs/<page>/index.md` (the title as a heading, then the page's text without its stickers,
+      links to docs pages pointing at their copies), `/llms.txt` (the summary, three lines of
+      guidance starting with `ssqch docs <name>`, then the sidebar as links to the copies) and
+      `/llms-full.txt`. It runs before the build into `site/generated/` (not committed), copied in
+      by `passthrough`, rather than in an `afterBuild` hook: the link checker runs before those
+      hooks, and each docs page's `<head>` links its copy (`rel="alternate"
+      type="text/markdown"`) and `/llms.txt` (`rel="describedby"`), with "View as Markdown" in the
+      strip under its title. The reference page now renders the same Markdown its copy is (its
+      HTML had been escaped: the test caught it). `site/worker.js`, run for `/docs` and `/docs/*`
+      only (`run_worker_first`), answers `Accept: text/markdown` (when it's ranked at least as
+      high as `text/html`) with the copy and `Vary: Accept`; `wrangler dev` showed each case. Every
+      request under `/docs/` runs the script now, so it counts as a Worker request on the free
+      plan (Decision 6). `site/tests/agents.test.ts` (after a build): every docs page has both
+      copies, `/llms.txt` lists exactly the docs pages, and each copy, rendered, has its page's
+      text. Then launch: the apex as the Worker's custom domain (the Live links in
+      `examples/sites/README.md` answer from then), a redirect rule from `www`, and `homepage` in
+      `packages/ssqch/package.json`, the README and `examples/sites/README.md` pointing at the
+      site. **Needs David:** the DNS change (attaching the domain creates the apex record). Done
+      when `curl -H "Accept: text/markdown" https://sitesquatch.dev/docs/install/` returns
+      Markdown.
 
 After launch:
 

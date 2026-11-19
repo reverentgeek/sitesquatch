@@ -10,6 +10,11 @@
 	{% if noindex %}<meta name="robots" content="noindex">{% endif %}
 	<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 	<link rel="alternate" type="application/atom+xml" href="/changelog/feed.xml" title="SiteSquatch changelog">
+	{%- if docs %}
+	{#- The page as Markdown, for agents (lib/agents.ts), and what describes the whole site to one. #}
+	<link rel="alternate" type="text/markdown" href="{{ page.url | markdownCopy }}">
+	<link rel="describedby" href="/llms.txt">
+	{%- endif %}
 	<link rel="preload" href="/assets/fonts/caprasimo-latin.woff2" as="font" type="font/woff2" crossorigin>
 	{% if docs %}<link rel="stylesheet" href="/highlight.css">{% endif %}
 	<link rel="stylesheet" href="/assets/site.css">
@@ -77,6 +82,7 @@
 				<h2 id="footer-help">Help</h2>
 				<ul>
 					<li><a href="{{ links.agents }}">Scripts and coding agents</a></li>
+					<li><a href="/llms.txt">llms.txt</a></li>
 					<li><a href="{{ links.issues }}">Report a sighting (open an issue)</a></li>
 					<li><a href="{{ links.contributing }}">Working on SiteSquatch</a></li>
 				</ul>

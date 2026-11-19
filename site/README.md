@@ -1,6 +1,6 @@
 # sitesquatch.dev
 
-ssqch's own website, built with the ssqch in this repository (`packages/ssqch`), so a change to ssqch that breaks its own site shows up here first. The plan is section 9 of [`TODO.md`](../TODO.md), "The website". So far: the landing page, the docs, the changelog, the live examples, the 404 page and the Cloudflare deploy. The Markdown copies for agents, and the launch, come next.
+ssqch's own website, built with the ssqch in this repository (`packages/ssqch`), so a change to ssqch that breaks its own site shows up here first. The plan is section 9 of [`TODO.md`](../TODO.md), "The website". So far: the landing page, the docs, the changelog, the live examples, what agents read, the 404 page and the Cloudflare deploy. The launch (the domain) comes next.
 
 From this folder, with `npm ci` already run in `packages/ssqch`:
 
@@ -13,7 +13,7 @@ From this folder, with `npm ci` already run in `packages/ssqch`:
 
 ## Deploying
 
-The site is one Cloudflare Worker with static assets and no script of its own (`wrangler.jsonc`): the build's `dist/`, with `404.html` for any address that isn't there (`not_found_handling: "404-page"`), and `src/_headers` caching the fingerprinted CSS and JavaScript for a year.
+The site is one Cloudflare Worker with static assets (`wrangler.jsonc`), whose one script (`worker.js`) runs for `/docs/` only, for agents (below): the build's `dist/`, with `404.html` for any address that isn't there (`not_found_handling: "404-page"`), and `src/_headers` caching the fingerprinted CSS and JavaScript for a year.
 
 - **A pull request** gets a Worker Preview, `pr-<number>`, at its own `workers.dev` address, posted in a comment on the pull request and deleted when it closes. A pull request from a fork gets none, since it gets no secrets.
 - **A push to `main`** is deployed to production. A fix to the site doesn't wait for a release, so the site can describe a feature that isn't on npm yet: that feature's documentation starts with a "Not released yet" note (AGENTS.md has the wording), which the release commit takes out. `node ../scripts/unreleased-notes.mjs` lists the notes, and the release workflow refuses a tag while one is left.
@@ -37,6 +37,10 @@ The README is the one source of the documentation until the docs move into pages
 `/changelog/` is the site's own writing, not `CHANGELOG.md` rendered: one entry for each minor release in `src/changelog/` (`0.9.md`), short and conversational, with the headlines, "What you might need to change" for every Breaking item, and a link to the release's section of `CHANGELOG.md`, which stays the complete record. A patch release adds its version to its minor's `releases` and a dated paragraph. `/changelog/feed.xml` is its Atom feed.
 
 An entry's front matter is its `title`, `release` (the version it starts with), `releases` (every version it covers) and `date` (`release`'s date), and `lastRelease` and `lastDate` when it covers more than one. `tests/changelog.test.ts` keeps the entries in step with `CHANGELOG.md`: the package's version has an entry (so a release can't ship without one), every release is in exactly one entry with its date, an entry whose releases have a Breaking heading has "What you might need to change", and every number in an entry is in its releases' sections.
+
+## What agents read
+
+`lib/agents.ts` writes, before each build, into `generated/` (not committed, copied into the site by `passthrough`): each docs page as Markdown at `/docs/<page>.md` and `/docs/<page>/index.md`, `/llms.txt` and `/llms-full.txt`. A copy is the page's own Markdown from `lib/split.ts`, its title as a heading and its links to docs pages pointing at their copies, with nothing of the page's chrome; each page's `<head>` links its copy and `/llms.txt`, and "View as Markdown" is in the strip under its title. On Cloudflare, `worker.js` runs for `/docs` and `/docs/*` only and answers a request that asks for `text/markdown` (ranked at least as high as `text/html`) with the copy, and `Vary: Accept`. `tests/agents.test.ts` reads the built site: every docs page has both copies, `/llms.txt` lists exactly the docs pages, and each copy, rendered, has the same text as its page.
 
 ## The examples
 

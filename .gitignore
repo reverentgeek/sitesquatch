@@ -10,6 +10,8 @@
 # Written by site/lib/split.ts from the README and docs/trailheads/ before each build.
 /site/src/docs
 /site/src/_data/nav.json
+# Written by site/lib/agents.ts: the docs as Markdown, llms.txt and llms-full.txt.
+/site/generated
 /packages/*/node_modules
 /packages/ssqch/dist
 

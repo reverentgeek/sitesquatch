@@ -190,7 +190,8 @@ function describe(body: string): string {
 		const marker = fenceOf(line);
 		if (marker) { fence = fence ? undefined : marker; continue; }
 		if (fence || line.trim() === "" || /^\s*(#|<|[-*|>]\s|\d+\.)/.test(line)) continue;
-		const text = line.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[`*]/g, "").trim();
+		// Links to their text, then emphasis and code to their words: `_data/*.js` keeps its `*`.
+		const text = line.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/`([^`]*)`/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/(^|\s)\*([^*\s][^*]*)\*/g, "$1$2").trim();
 		const end = text.search(/[.:](\s|$)/);
 		return (end === -1 ? text : text.slice(0, end + 1)).replace(/:$/, ".");
 	}
