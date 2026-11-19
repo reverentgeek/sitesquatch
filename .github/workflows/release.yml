@@ -13,7 +13,7 @@
 #   release       the GitHub release: the npm tarball and its checksum, with the changelog's
 #                 section as its notes
 #   npm           publishes the package with provenance (publish-npm.yml)
-#   homebrew      updates Formula/ssqch.rb in reverentgeek/homebrew-tap, once the package is on npm
+#   homebrew      updates Formula/ssqch.rb in reverentgeek/homebrew-tap, once npm serves the package
 #
 # `release` names every job before it in `needs` and has no `always()`, so it runs only when all
 # of them succeeded: a failed or skipped job skips it, and the jobs after it. (dist's host job
@@ -225,8 +225,23 @@ jobs:
     needs: [plan, release, npm]
     if: needs.plan.outputs.prerelease != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Most of it is waiting for npm (below).
+    timeout-minutes: 45
     steps:
+      # The npm job ends when npm accepts the package, but npm validates a new version before it
+      # serves it, and until then its tarball is a 404 (0.10.0's was, for minutes): a formula
+      # pushed before that is a `brew install` that fails. So the formula waits for the tarball.
+      # If npm still hasn't served it when the job times out, no formula goes out; rerun this job.
+      - name: Wait for npm to serve the tarball
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          url="https://registry.npmjs.org/ssqch/-/ssqch-$VERSION.tgz"
+          until [ "$(curl -s -o /dev/null -w '%{http_code}' "$url")" = "200" ]; do
+            echo "Not on npm yet: $url"
+            sleep 30
+          done
+          echo "On npm: $url"
       - uses: actions/download-artifact@v8
         with:
           name: homebrew-formula

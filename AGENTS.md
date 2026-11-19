@@ -232,8 +232,10 @@ skips, see `already-tested` in `ci.yml`):
    without the oracle, which CI ran on the commit); waits for CI to pass on the tagged commit
    (`check-ci.yml`); and
    only then publishes the GitHub release, with the npm tarball and its checksum. Then it
-   publishes the package to npm (`publish-npm.yml`) and, once it's there, the formula to
-   `reverentgeek/homebrew-tap` (not for a prerelease, which goes to npm's `next` tag). If
+   publishes the package to npm (`publish-npm.yml`) and, once npm serves it (npm validates a
+   new version first, which takes minutes, and the `homebrew` job waits for the tarball), the
+   formula to `reverentgeek/homebrew-tap` (not for a prerelease, which goes to npm's `next`
+   tag). If npm hasn't served it when that job times out, no formula goes out: rerun the job. If
    anything fails before the GitHub release, nothing is published: fix it and tag the fixed
    commit with the same version (delete the old tag first). The job that publishes names every
    job before it in `needs` and has no `always()`, on purpose: dist's published when its builds
