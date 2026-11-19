@@ -31,6 +31,7 @@ const CASES = [
 	["foreign-key", { "ssqch.config.js": base(), "src/index.md": "---\npublished: false\n---\nhi" }, { ok: true, in: "warnings", file: "src/index.md", field: "published" }],
 	["foreign-global", { "ssqch.config.js": base(), "src/index.njk": "{{ eleventy.generator }}" }, { ok: true, in: "warnings", file: "src/index.njk" }],
 	["over-budget", { "ssqch.config.js": base(", budgets: { pages: \"10 B\" }"), "src/index.md": "a page longer than ten bytes" }, { ok: true, in: "warnings" }],
+	["slow-call", { "ssqch.config.js": base(", transforms: { squeeze: (html) => { const end = Date.now() + 1100; while (Date.now() < end); return html; } }"), "src/index.md": "hi" }, { ok: true, in: "warnings" }],
 	["build", { "ssqch.config.js": base(", passthrough: [\"./nothing-here\"]"), "src/index.md": "hi" }, { ok: false, in: "errors" }],
 ];
 

@@ -434,16 +434,21 @@ faster (0.35 s against 1.2 s).
 
 ### 1. Profiling
 
-- [ ] **`ssqch build --profile`:** time per config filter, transform, engine and data file (calls
-      and total), per template and per page, and layouts apart from writing. The same numbers in
-      `ssqch build --format json` (`timings.filters`, `timings.transforms`, `timings.engines`).
-      Every move found its slow code by wrapping functions by hand: the summary's `write 1.42 s` was
-      layout filters, `toc` (830 ms) and `eleventyNavigation` (550 ms) (a11y #28); lit.dev's first
-      build took 9 min 8 s and `write 23 s` named nothing (lit A5); opensource.guide's `write 6.84
-      s` was liquidjs' `where`, found with `node --cpu-prof` (osg #2).
-- [ ] **A warning when one JavaScript call takes over a second**, naming the function and the
-      package it's from (lit A5: html-minifier, 5.2 s per page).
-- [ ] Document both, and use them to measure the sites the move to Node was measured on.
+- [x] **`ssqch build --profile`** (done 2026-11-19): time per page, template, layout, engine,
+      filter (the site's and ssqch's), transform, data file, data function, collection and hook,
+      with calls and totals, the slowest ten of each after the summary and all of them under
+      `profile` in `--format json` (`src/profile.ts`). Every move found its slow code by wrapping
+      functions by hand: the summary's `write 1.42 s` was layout filters, `toc` (830 ms) and
+      `eleventyNavigation` (550 ms) (a11y #28); lit.dev's first build took 9 min 8 s and `write
+      23 s` named nothing (lit A5); opensource.guide's `write 6.84 s` was liquidjs' `where`, found
+      with `node --cpu-prof` (osg #2).
+- [x] **A warning when one JavaScript call takes over a second** (done 2026-11-19, `slow-call`):
+      the site's own filters, transforms and collections, timed in every build, named with where
+      they came from (`ssqch.config.js`, or the plugin) and the first page they were slow on.
+      Not the package inside the function (lit A5's was html-minifier, inside a transform):
+      `--profile` narrows it to the function, and `node --cpu-prof` goes further.
+- [ ] Document both (done, "Where the time went" in `build-summary.md`), and use them to measure
+      the sites the move to Node was measured on.
 - [ ] **Native Liquid `where`** (`where` and `reject` done 2026-11-18: the bench's Liquid case 39.8
       s → 4.6 s; `where_exp`, `map`, `sort`, `group_by`, `find` still liquidjs') (and `where_exp`,
       `map`, `sort`, `group_by`, `find` for a property path), keeping liquidjs' for expressions (osg

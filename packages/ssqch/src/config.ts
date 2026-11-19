@@ -73,6 +73,10 @@ export interface Config {
 	serving: boolean;
 	quiet: boolean;
 	verbose: boolean;
+	/** `ssqch build --profile`: time every filter, transform, engine, layout, data file, collection, hook and page (src/profile.ts). */
+	profile: boolean;
+	/** Where each filter, collection, transform and data function came from, by `filters.<name>` (`ssqch.config.js`, `plugin "toc"`), for a `slow-call` warning. */
+	definedIn: Map<string, string>;
 	/** The folders as the config gives them: `input` and `output` from the root, the rest from the input folder. */
 	input: string;
 	output: string;
@@ -144,6 +148,7 @@ export interface ConfigOptions {
 	serving?: boolean;
 	quiet?: boolean;
 	verbose?: boolean;
+	profile?: boolean;
 	/** `--output`: overrides the config's output folder. */
 	output?: string;
 	/** `--base`: overrides the config's `base`. */
@@ -163,6 +168,8 @@ function emptyConfig(options: ConfigOptions): Config {
 		serving: options.serving ?? false,
 		quiet: options.quiet ?? false,
 		verbose: options.verbose ?? false,
+		profile: options.profile ?? false,
+		definedIn: new Map(),
 		input: ".",
 		output: "_site",
 		includes: "_includes",
@@ -403,6 +410,7 @@ async function loadJs(config: Config, file: string): Promise<void> {
 		const earlier = names[kind].get(key);
 		if (earlier) fail(`${where}: ${singular} "${key}" is already defined by ${earlier}`);
 		names[kind].set(key, where);
+		ops.push(() => { config.definedIn.set(`${kind}.${key}`, where); });
 	};
 	const functions = (kind: "filters" | "collections" | "transforms", singular: string, value: unknown, where: string, add: (key: string, fn: (...args: any[]) => any) => void) => {
 		if (value === undefined) return;

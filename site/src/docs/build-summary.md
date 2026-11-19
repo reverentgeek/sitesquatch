@@ -25,3 +25,35 @@ Built in 110 ms (production)
 With `--verbose`, a line under the summary names the templates in the includes folder that nothing used as a layout, an include or a component in this build: `Uninhabited: 1 template that nothing used in this build (src/_includes/cabin.jinja).` (`Unused:` when the report's themed line is another one.) It covers every template language: Jinja, Nunjucks, Edge, Liquid, Handlebars, Mustache and EJS.
 
 `ssqch serve` prints the same summary after every rebuild.
+
+## Where the time went
+
+> [!NOTE]
+> **Not released yet.** This ships with the next version of ssqch.
+
+`Time` says which phase was slow, not what in it. `ssqch build --profile` times everything the build calls, and lists the slowest of each kind after the summary. Here's part of the ReverentGeek blog's, a development build:
+
+```text
+Profile: where the time went, slowest first (a call's time includes the calls it makes)
+  Pages
+     233 ms  /avatars/
+    71.4 ms  /illustrations/
+    ...and 174 more (--format json lists them all)
+  Template engines (renders)
+     152 ms  edge (692)
+    17.8 ms  md (128)
+  Filters (calls)
+    45.1 ms  imageUrl (357)
+    21.3 ms  postDate (819)
+    ...
+  Transforms (pages)
+    1.42 s  image (176)
+    142 µs  assets (176)
+```
+
+- **The kinds:** pages (by URL), templates (each with its pages), layouts, template engines, filters (yours and ssqch's), transforms, data files and data functions, collections, and `beforeBuild` and `afterBuild` hooks. Each lists the ten that took the most time in total, with how many calls (or pages, or renders) that was.
+- **A call's time includes the calls it makes**, from the moment it starts until it returns, or until its promise settles. A template engine's time has its filters' in it, and a page's has its layouts' and transforms'. Async calls can overlap, so the times don't add up to the build's.
+- **`--format json`** has every one, under `profile`: `pages`, `templates`, `layouts`, `engines`, `filters`, `transforms`, `data`, `collections` and `hooks`, each a list of `{ "name", "calls", "ms" }`, slowest first. A build without `--profile` has no `profile`.
+- **What it costs:** a little time per call, for the timing itself. Leave it off for the builds you ship.
+
+Without `--profile`, a build still times your own filters, transforms and collections (not ssqch's), one call at a time, because they run for every page: a second each is minutes on a big site. One that takes a second or more is a `slow-call` warning at the end of the build, with where the function came from and the first page it was slow on: `transform \`squeeze\` (from ssqch.config.js) took 1.1 s working on src/b.md, the first of 2 calls that took over a second`. Data functions and hooks run once a build, and a slow one (a `fetch`, Pagefind) is often the point, so they're no warning; `--profile` times them.

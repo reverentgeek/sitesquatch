@@ -20,7 +20,7 @@ const frozen = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, "utf8")) :
 const freezing = process.env.SSQCH_FREEZE_SHAPES === "1";
 const freezingNew = process.env.SSQCH_FREEZE_SHAPES === "new";
 /** Documents 0.7.0 didn't print, and the version whose shape is frozen for each. */
-const ADDED = { "diff (several builds)": "0.8.1" };
+const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.11.0" };
 const shapes = {};
 
 /** A value's shape: "string", "number", "boolean", "null", { key: shape }, or [shape of every element merged]. */
@@ -102,6 +102,21 @@ test("build report", () => {
 	assert.equal(ok.schemaVersion, 1);
 	check("build", ok, again);
 	check("build (failed)", failed, broken);
+});
+
+// `--profile` adds where the time went: every kind, each with a name, its calls and its time.
+test("build report, profiled", () => {
+	const dir = project({
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"md\", \"njk\"], filters: { shout: (s) => String(s).toUpperCase() }, transforms: { tidy: (html) => html }, collections: { posts: (api) => api.byTag(\"posts\") }, beforeBuild: [() => {}] };\n",
+		"src/_data/site.json": "{ \"name\": \"Ranger Station\" }\n",
+		"src/_includes/base.njk": "<main>{{ content | safe }}</main>\n",
+		"src/index.njk": "---\nlayout: base.njk\ntags: posts\n---\n{{ site.name | shout }}\n",
+	}, "shapes-profile");
+	const report = json(["build", "--root", dir, "--profile"]);
+	for (const kind of ["pages", "templates", "layouts", "engines", "filters", "transforms", "data", "collections", "hooks"]) assert.ok(report.profile[kind].length > 0, `no ${kind} in the profile`);
+	check("build --profile", report);
+	// Without --profile there's no profile.
+	assert.equal(json(["build", "--root", dir]).profile, undefined);
 });
 
 test("inspect report", () => {

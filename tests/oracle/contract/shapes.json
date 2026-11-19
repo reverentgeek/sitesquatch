@@ -441,5 +441,112 @@
         ]
       }
     ]
+  },
+  "build --profile": {
+    "schemaVersion": "number",
+    "ok": "boolean",
+    "environment": "string",
+    "output": "string",
+    "durationMs": "number",
+    "pages": {
+      "written": "number",
+      "templates": "number",
+      "bytes": "number",
+      "new": "null",
+      "gone": "null"
+    },
+    "copied": {
+      "files": "number",
+      "unchanged": "number",
+      "bytes": "number"
+    },
+    "removed": "number",
+    "drafts": "number",
+    "written": [
+      "string"
+    ],
+    "summary": [
+      "empty"
+    ],
+    "timings": [
+      {
+        "phase": "string",
+        "ms": "number"
+      }
+    ],
+    "profile": {
+      "pages": [
+        {
+          "name": "string",
+          "calls": "number",
+          "ms": "number"
+        }
+      ],
+      "templates": [
+        {
+          "name": "string",
+          "calls": "number",
+          "ms": "number"
+        }
+      ],
+      "layouts": [
+        {
+          "name": "string",
+          "calls": "number",
+          "ms": "number"
+        }
+      ],
+      "engines": [
+        {
+          "name": "string",
+          "calls": "number",
+          "ms": "number"
+        }
+      ],
+      "filters": [
+        {
+          "name": "string",
+          "calls": "number",
+          "ms": "number"
+        }
+      ],
+      "transforms": [
+        {
+          "name": "string",
+          "calls": "number",
+          "ms": "number"
+        }
+      ],
+      "data": [
+        {
+          "name": "string",
+          "calls": "number",
+          "ms": "number"
+        }
+      ],
+      "collections": [
+        {
+          "name": "string",
+          "calls": "number",
+          "ms": "number"
+        }
+      ],
+      "hooks": [
+        {
+          "name": "string",
+          "calls": "number",
+          "ms": "number"
+        }
+      ]
+    },
+    "warnings": [
+      "empty"
+    ],
+    "aliases": [
+      "empty"
+    ],
+    "errors": [
+      "empty"
+    ]
   }
 }

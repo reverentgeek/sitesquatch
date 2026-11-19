@@ -122,3 +122,23 @@ test("a_failed_build_reports_the_first_phase_that_failed", () => {
 	write(dir, { "src/late.njk": "---\nlayout: base.njk\n---\nfine\n" });
 	assert.deepEqual(errors().length, 4);
 });
+
+// `--profile` lists where the time went after the summary, the slowest of each kind, and prints
+// it with --quiet too: it was asked for.
+test("build_profile_lists_the_slowest_of_each_kind", () => {
+	const dir = tempDir("profile");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"md\", \"njk\"], filters: { shout: (s) => String(s).toUpperCase() } };\n",
+		"src/_includes/base.njk": "<main>{{ content | safe }}</main>\n",
+		"src/index.njk": "---\nlayout: base.njk\n---\n{{ \"pine\" | shout }}\n",
+	});
+	let r = ssqch(["build", "--root", dir, "--profile"]);
+	assert.ok(r.ok, r.log);
+	assert.ok(r.stdout.includes("Built in ") && r.stdout.includes("Profile: where the time went, slowest first"), r.stdout);
+	for (const heading of ["  Pages\n", "  Layouts (renders)\n", "  Template engines (renders)\n", "  Filters (calls)\n"]) assert.ok(r.stdout.includes(heading), `${heading.trim()} in:\n${r.stdout}`);
+	assert.match(r.stdout, /\n {4}[\d.]+ [µm]?s {2}shout \(1\)\n/);
+	r = ssqch(["build", "--root", dir, "--profile", "-q"]);
+	assert.ok(!r.stdout.includes("Built in ") && r.stdout.includes("Profile: where the time went"), r.stdout);
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.stdout.includes("Profile:"), r.stdout);
+});
