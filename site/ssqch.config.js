@@ -3,9 +3,11 @@
 // fails on any warning; `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves it.
 import { defineConfig } from "ssqch";
 import { assetsPlugin } from "ssqch/assets";
+import { elementsPlugin } from "ssqch/elements";
 import { linksPlugin } from "ssqch/links";
 import { minifyPlugin } from "ssqch/minify";
 import { sitemapPlugin } from "ssqch/sitemap";
+import { splitDocs } from "./lib/split.ts";
 
 export default defineConfig(({ env }) => ({
 	dirs: { input: "src", output: "dist" },
@@ -22,12 +24,30 @@ export default defineConfig(({ env }) => ({
 		{ "../docs/assets/footprint.svg": "assets/drawings/footprint.svg" },
 	],
 
+	// The docs pages are the README's sections and the trailheads (lib/docs-map.ts says which),
+	// written into src/docs/ before each build. A file is written only when it changed, so the
+	// dev server's rebuild doesn't start another.
+	beforeBuild: [() => { splitDocs(); }],
+	watch: ["../README.md", "../docs/trailheads", "lib"],
+
+	markdown: { highlight: true },
+	schemas: {
+		docs: {
+			files: "docs/**/*.md",
+			fields: { title: "string", description: "string", command: "string", source: "string", sourceLine: "integer" },
+			unknown: "error",
+		},
+	},
+
 	// The site's promise is that a page gets no script it doesn't need. build.ts fails on any
-	// warning, so going over one of these fails the build.
-	budgets: { pages: "60 KB", css: "30 KB", javascript: "2 KB", fonts: "30 KB", images: "100 KB" },
+	// warning, so going over one of these fails the build. Pagefind's files are written after
+	// the build, so they aren't counted: they load only when someone searches. Production only:
+	// `ssqch serve` would count the Pagefind files the last production build left in dist/.
+	budgets: env === "production" ? { pages: "100 KB", css: "30 KB", javascript: "3 KB", fonts: "30 KB", images: "100 KB" } : {},
 
 	plugins: [
-		linksPlugin(),
+		elementsPlugin(),
+		linksPlugin({ ignore: ["/pagefind/"] }),
 		sitemapPlugin({ url: "https://sitesquatch.dev", lastmod: false }),
 		assetsPlugin({ files: ["/assets/site.css", "/assets/theme.js"] }),
 		env === "production" && minifyPlugin(),

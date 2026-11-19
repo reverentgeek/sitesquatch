@@ -743,39 +743,45 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       names the latest release (`release.js`, from `packages/ssqch/package.json`). Left for later
       stages: the header's search box (the docs), Live links on the campsites (the examples), and
       the web's Markdown copies in Mile 6 (agents; the template has a comment where they go).
-- [ ] **The Cloudflare pipeline.** Written 2026-11-18, waiting on the secrets.
-      `site/wrangler.jsonc` (static assets only, `not_found_handling: "404-page"`, the default
-      `html_handling`, an empty `previews` block), `site/src/_headers` (a year's caching for the
-      fingerprinted CSS and JavaScript), and `.github/workflows/site.yml`: the site's checks
-      (moved from `ci.yml`, whose `already-tested` would skip a deploy from main), then
-      `wrangler preview --name pr-<number>` with its URL in a comment, deleted when the pull
-      request closes, and `wrangler deploy` from main. Wrangler is pinned (4.157.0) and run with
-      `npx`, as Cloudflare's own Previews example does, rather than `cloudflare/wrangler-action`.
-      Without the secrets the Cloudflare jobs leave a notice and skip. `wrangler deploy --dry-run`
-      reads the config, and `wrangler dev` serves the build with the 404 page (a 404 status) and
-      the headers; a `compatibility_date` newer than the pinned Wrangler's runtime fails to start,
-      so the two move together. The "Not released yet" note (`> **Not released yet.** This ships
-      with the next version of ssqch.`): `scripts/unreleased-notes.mjs` lists them, `release.yml`
-      refuses a tag while one is left, and "Releasing" step 2 and AGENTS.md's site entry say so.
-      **Needs David:** the `CLOUDFLARE_API_TOKEN` ("Edit Cloudflare Workers") and
-      `CLOUDFLARE_ACCOUNT_ID` repository secrets. Done when a pull request shows a working preview
-      link, a merge is live at the Worker's `workers.dev` address, and what was learned is noted
-      for the Cloudflare guide (below): whether the token can create the custom domain, how long a
-      build takes, what `actions/cache` does for `.cache/ssqch`, and the shape of `wrangler preview
-      --json` (the workflow reads `.preview.urls[0]`, or `.preview_urls[0]`).
-- [ ] **The documentation.** Point `site/src/_data/links.yml` and `trailheads.yml` at the pages,
-      and add the header's search box. A script in `site/` splits the README into pages by
-      heading before each build, from a map (the plan's table, in the groups Start here, Build,
-      Check, Ship, Trailheads and Reference), and copies the trailheads in. It writes a file only
-      when its text changed, so `ssqch serve` doesn't rebuild in a loop. The docs layout from the
-      docs starter (sidebar from `nav.yml`, table of contents, breadcrumbs, previous and next), with
-      the strip under each title: the page's `ssqch docs` command, "View as Markdown" and "Edit on
-      GitHub". A reference page with every name and its one line, from `ssqch docs --format json`
-      and `ssqch capabilities --format json`. Pagefind over the docs and the changelog, in a
-      custom element (`elementsPlugin`) that loads it on first use. Done when every README section
-      in the map is a page, every name `ssqch capabilities` lists is on the reference page with a
-      link that resolves, search finds `base`, and the README's links between its own sections
-      land on the right pages.
+- [ ] **The Cloudflare pipeline.** Written and working on pull requests (2026-11-18); left: the
+      first deploy from `main`. `site/wrangler.jsonc` (static assets only, `not_found_handling:
+      "404-page"`, the default `html_handling`, an empty `previews` block), `site/src/_headers` (a
+      year's caching for the fingerprinted CSS and JavaScript), and `.github/workflows/site.yml`:
+      the site's checks (moved from `ci.yml`, whose `already-tested` would skip a deploy from
+      main), then `wrangler preview --name pr-<number>` with its URL in a comment, deleted when the
+      pull request closes, and `wrangler deploy` from main. CI's own workflow skips a change only
+      to `site/` (`paths-ignore`). Wrangler is pinned (4.157.0) and run with `npx`, as
+      Cloudflare's own Previews example does, rather than `cloudflare/wrangler-action`. Without
+      the secrets the Cloudflare jobs leave a notice and skip. The "Not released yet" note (`>
+      **Not released yet.** This ships with the next version of ssqch.`):
+      `scripts/unreleased-notes.mjs` lists them, `release.yml` refuses a tag while one is left, and
+      "Releasing" step 2 and AGENTS.md's site entry say so. Done when a merge is live at the
+      Worker's `workers.dev` address. For the Cloudflare guide (below), from #32: the first
+      `wrangler preview` created the Worker (no deploy first); the preview is
+      `pr-<number>-<worker>.<subdomain>.workers.dev`, with `X-Robots-Tag: noindex`; `--json`
+      still prints the upload's progress first, so the JSON starts at a line that's only `{` and
+      the address is `.preview.urls[0]`; the checks took 10 s and the preview 15 s; a
+      `compatibility_date` newer than the pinned Wrangler's runtime won't start under `wrangler
+      dev`, so the two move together. Still to learn: whether the "Edit Cloudflare Workers" token
+      can create the custom domain (at launch), and what `actions/cache` keeps of `.cache/ssqch`
+      once the site has images.
+- [x] **The documentation** (2026-11-18). `site/lib/split.ts` splits the README into 30 pages
+      by `site/lib/docs-map.ts` (Start here, Build, Check, Ship, Trailheads, Reference) and copies
+      the seven trailheads in, as a `beforeBuild` hook, writing only what changed (`ssqch serve`
+      watches the README and the trailheads, and settles after one extra build). `src/docs/` is
+      written, not committed. Links to the README's sections go to their pages and anchors, other
+      repository files to GitHub; the link checker passes all 2,741 links, anchors included. The
+      docs layout (sidebar, table of contents, breadcrumbs, previous and next as arrow signs), and
+      the strip under each title: the page's `ssqch docs` command and "Edit on GitHub" at its line
+      ("View as Markdown" comes with the agents' copies). `/docs/reference/` lists all 74 names
+      `ssqch docs` knows from its own module, each linked to its page. Pagefind (pinned, run by
+      `site/build.ts` after the build, so its files aren't held to the budgets) in a
+      `<site-search>` element that loads it on first use; it finds `base`.
+      `site/tests/docs.test.ts`: every README section is on one page and every `##` is in the
+      map, each page's `ssqch docs` command prints it, and every name `ssqch capabilities` lists
+      is on the reference with a page.
+      Found on the way: a `render: md` page got a `foreign-global` warning for the
+      `{{ eleventy.generator }}` in its text (fixed, with a test and a changelog entry).
 - [ ] **The changelog, for people.** `/changelog/` is the site's own writing, not `CHANGELOG.md`
       rendered: one entry for each minor release (`site/src/changelog/0.9.md`), in David's voice
       (the `write` skill), about 250 words. Each has the headlines (three to five, each something
@@ -843,7 +849,10 @@ After launch:
       of the site and `main`'s, in the preview comment. `assetsPlugin()` on a passthrough copy
       leaves the plain file in the output beside the fingerprinted one (`site.css` and
       `site.7d041850.css`), where the README says it's renamed: decide which is meant, and make
-      the other match. The `budgets` warning then lists both.
+      the other match. The `budgets` warning then lists both. `ssqch serve` names a watched file
+      outside the root by its absolute path (`Fresh tracks in
+      /Users/.../docs/trailheads/from-zola.md`), where one inside is relative (`src/docs/...`):
+      say `../docs/trailheads/from-zola.md`.
 - [ ] **More pages.** Field reports: the trial migrations as short case studies, lit.dev's "don't
       move yet" included (**Needs David:** a read of each before it's public, since they name
       other people's sites). The sticker sheet: the drawings, the palette and the trail patch. A

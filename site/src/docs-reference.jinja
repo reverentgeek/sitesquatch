@@ -1,0 +1,19 @@
+---
+layout: doc.jinja
+title: Every name
+description: Every command, config option, template function and module export in ssqch, with its one line and the page that explains it.
+permalink: /docs/reference/
+command: ssqch docs
+---
+<p>Every name <code>ssqch docs</code> knows, {{ reference.count }} of them, with its one line from where it's defined (<code>ssqch.d.ts</code>, the command line, the template functions) and the page that explains it. Your browser's find (<kbd>Ctrl</kbd>+<kbd>F</kbd> or <kbd>⌘</kbd>+<kbd>F</kbd>) searches the lot. In a project with ssqch installed, <code>ssqch docs &lt;name&gt;</code> answers for the version you have.</p>
+{%- for group in reference.groups %}
+<h2 id="{{ group.title | slugify }}">{{ group.title }} <a class="anchor" data-pagefind-ignore href="#{{ group.title | slugify }}" aria-hidden="true" tabindex="-1">#</a></h2>
+<dl class="names">
+	{%- for n in group.names %}
+	<div id="{{ n.id }}">
+		<dt><code>{{ group.prefix or "" }}{{ n.name }}</code></dt>
+		<dd>{{ markdown(n.summary, "inline") }}{% if n.where %} <a href="{{ n.where.url }}">{{ n.where.title }}</a>{% endif %}</dd>
+	</div>
+	{%- endfor %}
+</dl>
+{%- endfor %}

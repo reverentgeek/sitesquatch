@@ -86,10 +86,13 @@ Run from `packages/ssqch/` unless it says otherwise.
   `rustup target add wasm32-wasip1`.
 - `site/` is sitesquatch.dev, built with this repository's ssqch (TODO.md, section 9, has the
   plan). From `site/`: `node build.ts` builds it and fails on any warning, `node --test
-  "tests/*.test.ts"` checks its colors' contrast and that the README backs its numbers, and
-  `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves it. After changing a README number
-  the landing page shows (the benchmarks, a known gap), update `site/src/_data/benchmarks.js` or
-  the page; the `check` job in `.github/workflows/site.yml` fails until they agree. That
+  "tests/*.test.ts"` checks its colors' contrast, that the README backs its numbers and that the
+  docs pages cover the README, and `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves
+  it. The docs pages are the README's sections and the trailheads, split by
+  `site/lib/split.ts` before each build by the map in `site/lib/docs-map.ts`: a new `##` section
+  in the README needs a place in the map (the tests fail until it has one). After changing a
+  README number the landing page shows (the benchmarks, a known gap), update
+  `site/src/_data/benchmarks.js` or the page; the `check` job in `.github/workflows/site.yml` fails until they agree. That
   workflow also deploys the site to Cloudflare: a preview for each pull request, and production
   from `main`, so the site can be ahead of npm. Documentation for a feature that's merged and not
   released starts with `> [!NOTE]` and `> **Not released yet.** This ships with the next version

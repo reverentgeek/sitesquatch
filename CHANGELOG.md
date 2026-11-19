@@ -9,6 +9,16 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Fixed
+
+- A page that no template language reads (`render: md`, or a plain `.html` page with
+  `htmlEngine: false`) no longer gets a `foreign-global` warning for another generator's globals
+  in its text: it prints `{{ eleventy.generator }}` as written, so a page about Eleventy isn't
+  using it. Its layouts and includes are still checked. Found building sitesquatch.dev's
+  trailheads page.
+
 ## 0.9.0 - 2026-11-18
 
 Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.

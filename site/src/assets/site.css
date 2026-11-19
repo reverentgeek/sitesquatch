@@ -69,6 +69,42 @@
 	--terminal-error: #f0a17d;
 	--terminal-added: #b9c77e;
 
+	/* Callouts (GitHub's > [!NOTE] alerts) and highlighted code: the docs starter's colors. */
+	--note-bar: #e8af43;
+	--note-bg: light-dark(#f6efdf, #2e2b21);
+	--note: light-dark(#29332c, #e5e9e1);
+	--tip-bar: #a9b66a;
+	--tip-bg: light-dark(#eef1e4, #283023);
+	--tip: light-dark(#4e5e24, #b9c77e);
+	--warning-bar: #e8af43;
+	--warning-bg: light-dark(#f6efdf, #2e2b21);
+	--warning: light-dark(#7a500a, #e8af43);
+	--caution-bar: light-dark(#a23e20, #f0a17d);
+	--caution-bg: light-dark(#f8eae4, #33241f);
+	--caution: light-dark(#a23e20, #f0a17d);
+	--hl-comment: light-dark(#5e6a61, #a2aca3);
+	--hl-keyword: light-dark(#a23e20, #f0a17d);
+	--hl-operator: light-dark(#a23e20, #f0a17d);
+	--hl-string: light-dark(#4e5e24, #b9c77e);
+	--hl-regexp: light-dark(#4e5e24, #b9c77e);
+	--hl-escape: light-dark(#4e5e24, #b9c77e);
+	--hl-number: light-dark(#7a500a, #e8af43);
+	--hl-constant: light-dark(#7a500a, #e8af43);
+	--hl-builtin: light-dark(#7a500a, #e8af43);
+	--hl-property: light-dark(#233b2b, #e5e9e1);
+	--hl-attribute: light-dark(#7a500a, #e8af43);
+	--hl-function: light-dark(#233b2b, #d6e4c8);
+	--hl-type: light-dark(#7a500a, #e8af43);
+	--hl-parameter: light-dark(#7a500a, #e8af43);
+	--hl-tag: light-dark(#a23e20, #f0a17d);
+	--hl-heading: light-dark(#a23e20, #f0a17d);
+	--hl-link: light-dark(#a23e20, #f0a17d);
+	--hl-inserted: light-dark(#4e5e24, #b9c77e);
+	--hl-inserted-bg: light-dark(#e6ecda, #2e3f2b);
+	--hl-deleted: light-dark(#a23e20, #f0a17d);
+	--hl-deleted-bg: light-dark(#f8eae4, #33241f);
+	--hl-line-bg: light-dark(rgb(232 175 67 / 0.25), rgb(232 175 67 / 0.15));
+
 	/* Exhibit A stays a photograph on map paper in both modes. */
 	--exhibit-text: #29332c;
 
@@ -118,6 +154,16 @@ code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surfac
 .theme-switch { padding: 0.35rem 0.8rem; border: 1px solid var(--muted); border-radius: 0.5rem; background: none; color: var(--text); font: inherit; font-size: 0.9rem; cursor: pointer; }
 .theme-switch:hover { background: var(--selected); }
 .menu-link { display: none; font-family: var(--label); font-weight: 600; color: var(--heading); }
+/* The search: a link to every name until site-search.js makes it a button that opens Pagefind. */
+.search-link { display: flex; align-items: center; gap: 0.6rem; min-width: 13rem; padding: 0.35rem 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--background); color: var(--muted); font: inherit; font-size: 0.95rem; text-decoration: none; cursor: pointer; }
+.search-link kbd { margin-left: auto; padding: 0 0.4rem; border: 1px solid var(--border); border-radius: 0.3rem; font-family: var(--mono); font-size: 0.8rem; }
+.search-link:hover { border-color: var(--muted); }
+.search-dialog { width: min(42rem, calc(100vw - 2rem)); max-height: min(40rem, calc(100vh - 4rem)); margin: 4rem auto auto; padding: 1rem 1.25rem 1.25rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--background); color: var(--text); }
+.search-dialog::backdrop { background: rgb(27 32 29 / 0.55); }
+.search-dialog > form { display: flex; justify-content: flex-end; margin-bottom: 0.5rem; }
+.search-dialog .close { padding: 0.25rem 0.7rem; border: 1px solid var(--muted); border-radius: 0.4rem; background: none; color: var(--text); font: inherit; font-size: 0.85rem; cursor: pointer; }
+/* Pagefind's own interface, in the palette. */
+#search-box { --pagefind-ui-scale: 0.85; --pagefind-ui-primary: var(--link); --pagefind-ui-text: var(--text); --pagefind-ui-background: var(--background); --pagefind-ui-border: var(--border); --pagefind-ui-tag: var(--surface); --pagefind-ui-font: var(--body); }
 
 .site-footer { border-top: 5px solid transparent; border-image: var(--stripe) 1; font-size: 0.95rem; }
 .site-footer .wrap { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 2rem; padding-top: 2.5rem; padding-bottom: 2.5rem; }
@@ -240,6 +286,70 @@ code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surfac
 .camp p { max-width: 40rem; margin: 0 0 1.2rem; }
 .camp code { background: var(--background); }
 
+/* ---------- The docs: sidebar, page, table of contents ---------- */
+
+/* The sidebar's column is tinted the whole way down, however short the sidebar is. */
+.docs { display: grid; grid-template-columns: 17rem minmax(0, 1fr) 15rem; grid-template-areas: "sidebar main toc"; max-width: 92rem; margin: 0 auto; background: linear-gradient(to right, var(--chrome) 0 17rem, var(--border) 17rem calc(17rem + 1px), transparent calc(17rem + 1px)); }
+.sidebar { grid-area: sidebar; padding: 1.5rem 1rem 2rem 1.25rem; font-size: 0.95rem; }
+.toc { grid-area: toc; padding: 2rem 1.25rem; font-size: 0.9rem; }
+.sidebar-inner, .toc-inner { position: sticky; top: 4.6rem; max-height: calc(100vh - 5rem); overflow-y: auto; }
+.sidebar h2 { margin: 1.4rem 0 0.3rem; padding-left: 0.6rem; font-family: var(--label); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.sidebar h2:first-child { margin-top: 0; }
+.sidebar ul, .toc ul { margin: 0; padding: 0; list-style: none; }
+.toc ul ul { padding-left: 0.9rem; }
+.sidebar a, .toc a { display: block; padding: 0.22rem 0.6rem; border-radius: 0.375rem; color: var(--text); text-decoration: none; }
+.sidebar a:hover, .toc a:hover { background: var(--selected); }
+.sidebar a[aria-current] { border-left: 4px solid var(--marker); border-radius: 0 0.375rem 0.375rem 0; padding-left: calc(0.6rem - 4px); background: var(--selected); color: var(--heading); font-weight: 600; }
+.toc-title { margin: 0 0 0.4rem; padding: 0 0.6rem; font-family: var(--label); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.toc a { color: var(--muted); }
+
+.doc { grid-area: main; min-width: 0; max-width: 52rem; padding: 1.75rem 3rem 4rem; }
+.breadcrumbs { font-family: var(--label); font-size: 0.85rem; font-weight: 600; letter-spacing: 0.06em; color: var(--muted); }
+.breadcrumbs a { color: var(--muted); }
+.doc h1 { margin: 0.4rem 0 0.75rem; font-size: clamp(2.2rem, 5vw, 3rem); }
+/* The same page, three ways: the terminal, here, and where it's written. */
+.page-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem; margin: 0 0 1.75rem; padding: 0.55rem 0.9rem; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--chrome); font-size: 0.9rem; }
+.page-tools p { margin: 0; }
+.page-tools .cli { display: flex; align-items: center; gap: 0.5rem; min-width: 0; margin-right: auto; }
+.page-tools .cli span { flex: none; font-family: var(--label); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.page-tools code { padding: 0; overflow-x: auto; background: none; color: var(--text); white-space: nowrap; user-select: all; }
+.doc h2 { margin: 2.6rem 0 0.8rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); font-size: 1.6rem; }
+.doc h3 { margin: 2rem 0 0.6rem; font-size: 1.2rem; }
+.doc h4 { margin: 1.5rem 0 0.5rem; font-size: 1.05rem; color: var(--heading); }
+.anchor { margin-left: 0.35rem; font-family: var(--body); font-size: 0.8em; color: var(--muted); text-decoration: none; opacity: 0; }
+:is(h2, h3, h4):hover .anchor, .anchor:focus { opacity: 1; }
+.doc li { margin-bottom: 0.35rem; }
+.doc pre { margin: 1.25rem 0; padding: 1rem 1.1rem; overflow-x: auto; border-radius: 0.6rem; background: var(--surface); font-size: 0.88rem; line-height: 1.55; }
+.doc pre code { padding: 0; background: none; color: var(--text); font-size: inherit; }
+.doc table { display: block; max-width: 100%; margin: 1.25rem 0; overflow-x: auto; border-collapse: collapse; font-size: 0.95rem; }
+.doc th, .doc td { padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.doc th { border-bottom: 0; background: var(--chrome); }
+.doc blockquote { margin-inline: 0; padding-left: 1rem; border-left: 4px solid var(--border); color: var(--muted); }
+/* The README's stickers, floated beside a section as GitHub shows them. */
+.doc img[align="right"] { float: right; width: 6rem; margin: 0 0 1rem 1.5rem; }
+.doc h2, .doc h3, .pager { clear: both; }
+.markdown-alert { --accent: var(--note); --bar: var(--note-bar); --tint: var(--note-bg); margin: 1.5rem 0; padding: 0.6rem 1.25rem; border-left: 5px solid var(--bar); background: var(--tint); }
+.markdown-alert-tip { --accent: var(--tip); --bar: var(--tip-bar); --tint: var(--tip-bg); }
+.markdown-alert-warning, .markdown-alert-important { --accent: var(--warning); --bar: var(--warning-bar); --tint: var(--warning-bg); }
+.markdown-alert-caution { --accent: var(--caution); --bar: var(--caution-bar); --tint: var(--caution-bg); }
+.markdown-alert-title { margin: 0.2rem 0; font-family: var(--label); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.85rem; color: var(--accent); }
+.markdown-alert p { margin: 0.3rem 0; }
+.map { padding-left: 1.2rem; }
+.map li::marker { color: var(--marker); }
+/* Every name, one line each. */
+.names { margin: 0; }
+.names > div { display: grid; grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr); gap: 0.25rem 1.25rem; padding: 0.55rem 0; border-bottom: 1px solid var(--border); scroll-margin-top: 5rem; }
+.names dt code { overflow-wrap: anywhere; }
+.names dd { margin: 0; }
+.names dd > a { white-space: nowrap; font-size: 0.9rem; }
+.names dd > a::before { content: "→ "; color: var(--muted); }
+kbd { padding: 0 0.35rem; border: 1px solid var(--border); border-radius: 0.3rem; font-family: var(--mono); font-size: 0.85em; }
+/* Previous and next, as arrow signs. */
+.pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+.pager small { display: block; margin-bottom: 0.3rem; font-family: var(--label); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.pager div:last-child { text-align: right; }
+.sign.back { padding: 0.5rem 1rem 0.5rem 1.9rem; clip-path: polygon(1rem 0, 100% 0, 100% 100%, 1rem 100%, 0 50%); }
+
 /* ---------- The 404 page ---------- */
 
 .lost .wrap { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 2.5rem; align-items: center; padding-top: 4rem; padding-bottom: 5rem; }
@@ -248,6 +358,8 @@ code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surfac
 /* ---------- Narrower ---------- */
 
 @media (max-width: 76rem) {
+	.docs { grid-template-columns: 16rem minmax(0, 1fr); grid-template-areas: "sidebar main"; background: linear-gradient(to right, var(--chrome) 0 16rem, var(--border) 16rem calc(16rem + 1px), transparent calc(16rem + 1px)); }
+	.toc { display: none; }
 	.sites { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 	.pack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -281,6 +393,21 @@ code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surfac
 	.site-footer .wrap > div:first-child { grid-column: 1 / -1; }
 
 	.lost .wrap { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; padding-top: 2.5rem; padding-bottom: 3rem; }
+
+	.search-link { min-width: 0; padding: 0.3rem 0.6rem; }
+	.search-link span { display: none; }
+	.search-link::before { content: "Search"; }
+	.search-link kbd { display: none; }
+	/* The sidebar follows the page: the header's Menu link goes to it. */
+	.docs { display: block; background: none; }
+	.doc { padding: 1.25rem 1.25rem 2.5rem; }
+	.sidebar { border-top: 1px solid var(--border); background: var(--chrome); }
+	.sidebar-inner { position: static; max-height: none; }
+	.page-tools .cli { width: 100%; margin-right: 0; overflow-x: auto; }
+	.doc img[align="right"] { width: 4.5rem; margin-left: 1rem; }
+	.names > div { grid-template-columns: minmax(0, 1fr); }
+	.pager { flex-direction: column; }
+	.pager div:last-child { text-align: left; }
 	.lost img { width: 7rem; }
 }
 

@@ -635,7 +635,9 @@ function checkForeignGlobals(site: Site): void {
 	const sources: Array<[string, string, Tpl | undefined]> = [];
 	const seen = new Set<string>();
 	for (const tpl of site.tpls) {
-		sources.push([site.display(tpl.input), tpl.body, tpl]);
+		// A page no template language reads (`render: md`, plain HTML) prints `{{ eleventy.generator }}`
+		// as it's written: a page about another generator, not a use of it. Its layouts still count.
+		if (tpl.engines.some((e) => e !== "md" && e !== "html" && e !== "txt")) sources.push([site.display(tpl.input), tpl.body, tpl]);
 		for (const layout of tpl.layouts) {
 			if (seen.has(layout.path)) continue;
 			seen.add(layout.path);
