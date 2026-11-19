@@ -299,14 +299,24 @@ test("what_varies_the_same_way_on_several_files_is_grouped", async () => {
 });
 
 // A build's time printed in each page's own text (Jekyll's `site.time` in every page's JSON-LD,
-// opensource.guide): the same dates changed, so one group, though the text around them isn't.
+// opensource.guide), or a few milliseconds apart in each feed (the Rust blog): dates of one form
+// that changed, so one group, though the text around them isn't the same.
 test("the_same_dates_changed_in_other_text_are_grouped", async () => {
 	const page = (name: string, time: string) => `<script type="application/ld+json">{"name":"${name}","dateModified":"${time}"}</script><p>${name}</p>`;
-	const before = build({ "a/index.html": page("Pine", "2026-11-19T20:30:06Z"), "b/index.html": page("Cedar", "2026-11-19T20:30:06Z"), "c/index.html": page("Fir", "2026-11-18T09:00:00Z") });
-	const after = build({ "a/index.html": page("Pine", "2026-11-19T20:30:18Z"), "b/index.html": page("Cedar", "2026-11-19T20:30:18Z"), "c/index.html": page("Fir", "2026-11-18T09:00:01Z") });
+	const before = build({ "a/index.html": page("Pine", "2026-11-19T20:30:06Z"), "b/index.html": page("Cedar", "2026-11-19T20:30:06Z"), "c/index.html": page("Fir", "2026-11-18T09:00:00Z"), "d/index.html": page("Oak", "19 Nov 2026") });
+	const after = build({ "a/index.html": page("Pine", "2026-11-19T20:30:18Z"), "b/index.html": page("Cedar", "2026-11-19T20:30:18Z"), "c/index.html": page("Fir", "2026-11-18T09:00:01Z"), "d/index.html": page("Oak", "20 Nov 2026") });
 	const report = await compare(before, after, options());
-	assert.deepEqual(report.groups.map((g) => [g.urls, g.match, g.kind]), [[["/a/", "/b/"], "dates", "dates"]]);
-	assert.ok(diffText(report, 10, false).includes("  ~ 2 pages, the same dates in other text: /a/, /b/\n"));
-	// Other dates changed are another change.
-	assert.deepEqual(report.changed.find((f) => f.url === "/c/")!.groups, []);
+	assert.deepEqual(report.groups.map((g) => [g.urls, g.match, g.kind]), [[["/a/", "/b/", "/c/"], "dates", "dates"]]);
+	assert.ok(diffText(report, 10, false).includes("  ~ 3 pages, the same dates in other text: /a/, /b/, /c/\n"));
+	// A date of another form is another change.
+	assert.deepEqual(report.changed.find((f) => f.url === "/d/")!.groups, []);
+});
+
+// Zola writes `=` as `&#x3D;` in a feed's escaped HTML: unescaped once, the tags read as tags, and
+// a tag that doesn't read as one isn't rewritten into something else.
+test("a_feeds_numeric_entities_are_unescaped_and_odd_tags_stay_as_written", async () => {
+	const before = build({ "feed.xml": "<feed><content type=\"html\">&lt;a href&#x3D;&quot;https:&#x2F;&#x2F;example.com&#x2F;#trail&quot;&gt;Trail&lt;&#x2F;a&gt;</content></feed>" });
+	const after = build({ "feed.xml": "<feed><content type=\"html\">&lt;a href=&quot;https://example.com/#trail&quot;&gt;Trail&lt;/a&gt;</content></feed>" });
+	assert.equal((await compare(before, after, options())).changed.length, 0);
+	assert.deepEqual(canonicalTag("<a href&#x3D;\"https://x/#y\" class=b>", false), ["<a href&#x3D;\"https://x/#y\" class=b>", false]);
 });

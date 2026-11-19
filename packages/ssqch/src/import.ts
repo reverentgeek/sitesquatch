@@ -474,7 +474,7 @@ const ELEVENTY_FILTERS: Record<string, { say: string; port?: string }> = {
 };
 
 /** Tags the template languages have themselves, which a `{% name %}` isn't a shortcode for. */
-const BUILT_IN_TAGS = new Set(["if", "elif", "elsif", "else", "endif", "for", "endfor", "empty", "set", "endset", "macro", "endmacro", "call", "endcall", "import", "from", "include", "extends", "block", "endblock", "filter", "endfilter", "raw", "endraw", "verbatim", "endverbatim", "asyncEach", "endeach", "asyncAll", "endall", "ifAsync", "assign", "capture", "endcapture", "case", "when", "endcase", "comment", "endcomment", "cycle", "decrement", "increment", "echo", "break", "continue", "unless", "endunless", "render", "layout", "liquid", "tablerow", "endtablerow", "with", "endwith", "autoescape", "endautoescape", "setAsync"]);
+const BUILT_IN_TAGS = new Set(["if", "elif", "elseif", "elsif", "else", "endif", "for", "endfor", "empty", "set", "endset", "macro", "endmacro", "call", "endcall", "import", "from", "include", "extends", "block", "endblock", "filter", "endfilter", "raw", "endraw", "verbatim", "endverbatim", "asyncEach", "endeach", "asyncAll", "endall", "ifAsync", "assign", "capture", "endcapture", "case", "when", "endcase", "comment", "endcomment", "cycle", "decrement", "increment", "echo", "break", "continue", "unless", "endunless", "render", "layout", "liquid", "tablerow", "endtablerow", "with", "endwith", "autoescape", "endautoescape", "setAsync"]);
 
 let engineFilterNames: Set<string> | undefined;
 
@@ -504,6 +504,9 @@ const TAG_NAME = /^\{%-?\s*([A-Za-z_][\w]*)/;
  * ssqch, and the small ones come back as ports for the draft's `filters`.
  */
 function undefinedFilters(entries: Entry[], config: string, readsNavigation: boolean, plan: Plan): Array<[string, string]> {
+	// Only the site's templates: what's in Eleventy's input folder (lit.dev's `samples/` aren't pages).
+	const input = (setting(config, "input") ?? ".").replace(/^\.\//, "").replace(/\/+$/, "");
+	const inInput = (rel: string) => input === "" || input === "." || rel === input || rel.startsWith(`${input}/`);
 	const defined = new Set<string>();
 	for (const c of config.matchAll(CALL)) {
 		if (c[2] !== undefined && /Filter|Shortcode|Tag|Global/.test(c[1])) defined.add(c[2]);
@@ -511,7 +514,7 @@ function undefinedFilters(entries: Entry[], config: string, readsNavigation: boo
 	const known = knownFilters();
 	const uses = new Map<string, { first: string; templates: Set<string> }>();
 	for (const entry of entries) {
-		if (!entry.isFile || !["njk", "liquid", "md", "markdown", "html"].includes(asciiLower(extensionOf(entry.name)))) continue;
+		if (!entry.isFile || !inInput(entry.rel) || !["njk", "liquid", "md", "markdown", "html"].includes(asciiLower(extensionOf(entry.name)))) continue;
 		const text = readUtf8(entry.abs);
 		if (text === undefined || (!text.includes("{{") && !text.includes("{%"))) continue;
 		for (const tag of text.matchAll(TEMPLATE_CODE)) {
@@ -534,7 +537,7 @@ function undefinedFilters(entries: Entry[], config: string, readsNavigation: boo
 	// A paired shortcode's end tag (`{% endcallout %}`) goes with its start.
 	for (const name of [...uses.keys()]) {
 		const opens = name.slice(3);
-		if (name.startsWith("end") && opens !== "" && (uses.has(opens) || defined.has(opens))) uses.delete(name);
+		if (name.startsWith("end") && opens !== "" && (uses.has(opens) || defined.has(opens) || known.has(opens) || BUILT_IN_TAGS.has(opens))) uses.delete(name);
 	}
 	const ports: Array<[string, string]> = [];
 	for (const [name, use] of [...uses].sort(([a], [b]) => compareText(a, b))) {

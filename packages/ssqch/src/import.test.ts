@@ -314,9 +314,15 @@ test("filters_nothing_defines_are_listed", () => {
 	w(".eleventy.js", "module.exports = (c) => {\n  c.addFilter(\"readable\", (d) => d);\n  c.addPairedShortcode(\"callout\", (s) => s);\n};\n");
 	w("_includes/post.njk", "{{ title | upper | slug }} {{ date | readable }}\n{% set prev = collections.posts | getPreviousCollectionItem(page) %}\n{% callout %}x{% endcallout %}\n{{ \"a | b\" }} {{ x | mystery | safe }}{% youtube \"id\" %}\n");
 	w("feed.liquid", "{{ collections.posts | rssLastUpdatedDate }} {{ \"x\" | upcase | slug }}");
+	// Nunjucks' `elseif`, and the end of a tag ssqch knows (`highlight`), aren't shortcodes.
+	w("_includes/more.njk", "{% if a %}a{% elseif b %}b{% endif %}{% highlight \"js\" %}x{% endhighlight %}");
 	const plan = eleventy(dir);
 	const said = Object.fromEntries(plan.byHand.filter(([, what]) => what.startsWith("`")).map(([at, what]) => [what.slice(1, what.indexOf("`", 1)), [at, what]]));
 	assert.deepEqual(Object.keys(said).sort(), ["getPreviousCollectionItem", "mystery", "rssLastUpdatedDate", "slug", "youtube"]);
+	// Outside Eleventy's input folder, a template isn't one of the site's.
+	fs.writeFileSync(path.join(dir, ".eleventy.js"), fs.readFileSync(path.join(dir, ".eleventy.js"), "utf8").replace("};\n", "  return { dir: { input: \"_includes\" } };\n};\n"));
+	const inside = eleventy(dir).byHand.filter(([, what]) => what.startsWith("`")).map(([, what]) => what.slice(1, what.indexOf("`", 1)));
+	assert.ok(!inside.includes("rssLastUpdatedDate") && inside.includes("mystery"), JSON.stringify(inside));
 	assert.equal(said.slug[0], "_includes/post.njk:1");
 	assert.ok(said.slug[1].startsWith("`slug` (in 2 templates; this is the first): Eleventy's built-in `slug`"), said.slug[1]);
 	assert.equal(said.youtube[0], "_includes/post.njk:4");

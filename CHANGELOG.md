@@ -75,7 +75,7 @@ where that version matches.
   A group's tags can differ in their attribute values from file to file, and a run of three
   changed lines or more joins a group with the same tags. `--format json` has `groups` (each with
   `files`, `urls`, `same`, `match`, `kind` and `hunk`) and each changed file's `groups`;
-  A change that's only dates groups by the dates that changed. `--ungrouped` lists each file with
+  A change that's only dates groups by the form of the dates that changed. `--ungrouped` lists each file with
   all its changes. `ssqch diff a b c` groups what varies the same way on several files (a build's
   time on every page) too. opensource.guide's 172 changed
   pages are 12 groups, one of them on 102 pages; every move found its biggest group by hand.

@@ -246,9 +246,14 @@ function xmlWithMarkup(text: string): string {
 	return out;
 }
 
-/** One level of escaping undone: `&lt;p&gt;` is `<p>`, and `&amp;lt;` is `&lt;`. */
+/** One level of escaping undone: `&lt;p&gt;` is `<p>`, `&amp;lt;` is `&lt;`, and a number is its character (Zola writes `=` as `&#x3D;` in a feed's HTML). */
 function decodeEntitiesOnce(s: string): string {
-	return s.replace(/&(lt|gt|quot|apos|amp|#39|#x27);/g, (_, name: string) => ({ lt: "<", gt: ">", quot: "\"", apos: "'", amp: "&", "#39": "'", "#x27": "'" })[name]!);
+	return s.replace(/&(lt|gt|quot|apos|amp|#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6});/g, (whole, name: string) => {
+		const named: Record<string, string> = { lt: "<", gt: ">", quot: "\"", apos: "'", amp: "&" };
+		if (Object.hasOwn(named, name)) return named[name];
+		const code = name[1] === "x" || name[1] === "X" ? Number.parseInt(name.slice(2), 16) : Number.parseInt(name.slice(1), 10);
+		return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : whole;
+	});
 }
 
 // ---- tokens ----------------------------------------------------------------------------------
@@ -415,6 +420,9 @@ export function canonicalTag(tag: string, foreign: boolean, xml = false): [strin
 		while (j < end && !isSpace(tag.charCodeAt(j)) && tag[j] !== "=" && tag[j] !== ">" && !(tag[j] === "/" && j > i)) j++;
 		if (j === i) j++;
 		const attr = lower(tag.slice(i, j));
+		// Not a name a browser would read (an `=` written as an entity, a stray quote): the tag isn't
+		// one to rewrite, so it's compared as it's written.
+		if (/["'<]/.test(attr)) return [tag, false];
 		i = j;
 		while (i < end && isSpace(tag.charCodeAt(i))) i++;
 		let value: string | undefined;
@@ -673,6 +681,11 @@ function comparePair(a: Buffer, b: Buffer, pair: Pair, options: DiffOptions): Fi
 		found = hunks(la, lb, () => 0, (l) => l)[0];
 		// Only the line endings at the end of the file.
 		if (!found.length) found = [{ removed: [`(${Buffer.byteLength(before)} bytes)`], added: [`(${Buffer.byteLength(after)} bytes)`] }];
+		// A JSON file's `"updated"` follows the build's time too (the Rust blog's releases.json).
+		else if (!isPage(pair.key)) {
+			diff.onlyDates = onlyDates(found);
+			if (diff.onlyDates) diff.notes.push(`only dates changed (${diff.onlyDates[0]} -> ${diff.onlyDates[1]})`);
+		}
 	}
 	// A sitemap's or a list's entries in another order: every line that went is one that came.
 	if (!diff.onlyDates && sameLines(found)) diff.notes.push("the same lines, in another order");
@@ -828,10 +841,14 @@ function changedDates(h: Hunk): string[] | undefined {
 	return [...pairs].sort();
 }
 
-/** What groups a hunk: the dates it changed when that's all it changed (a build's time in each page's own JSON-LD), else its shape. */
+/**
+ * What groups a hunk: when all it changed is dates (a build's time in each page's own JSON-LD),
+ * the form of those dates, digits blanked: each file of a build can be stamped a few milliseconds
+ * after the last (the Rust blog's feeds), and that's still one change. Else its shape.
+ */
 const shapeKey = (h: Hunk) => {
 	const dates = changedDates(h);
-	return dates ? `dates:${JSON.stringify(dates)}` : shapeKeyOf(h);
+	return dates ? `dates:${JSON.stringify([...new Set(dates.map((pair) => pair.split(">")[0].replace(/\p{Nd}/gu, "0")))].sort())}` : shapeKeyOf(h);
 };
 
 /** A tag line as its name alone (`<source>`); text stays. A run of one line counts once, so a `<picture>` with two `<source>`s and one with three are alike. */
