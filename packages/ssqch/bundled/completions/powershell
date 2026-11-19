@@ -44,6 +44,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('footprint', 'footprint', [CompletionResultType]::ParameterValue, 'Show how much a build weighs: its files by kind, and the heaviest pages and files')
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create a starter site (config, layout, five posts, data and editor types)')
             [CompletionResult]::new('types', 'types', [CompletionResultType]::ParameterValue, 'Write ssqch.d.ts, the types editors use for ssqch.config.js')
+            [CompletionResult]::new('baseline', 'baseline', [CompletionResultType]::ParameterValue, 'Build the site with its old generator in fresh copies and compare the builds')
             [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Move a site from another generator: rename and rewrite what''s mechanical, and list the rest')
             [CompletionResult]::new('capabilities', 'capabilities', [CompletionResultType]::ParameterValue, 'Say what this binary supports: template languages, modules, config options and optional features')
             [CompletionResult]::new('docs', 'docs', [CompletionResultType]::ParameterValue, 'Read the documentation for this version: a command, config option, function or topic')
@@ -210,6 +211,25 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
+        'ssqch;baseline' {
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
+            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
+            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
+            [CompletionResult]::new('--from', '--from', [CompletionResultType]::ParameterName, 'The folder the command writes (default _site)')
+            [CompletionResult]::new('--runs', '--runs', [CompletionResultType]::ParameterName, 'How many builds to make and compare (default 3)')
+            [CompletionResult]::new('--commit', '--commit', [CompletionResultType]::ParameterName, 'Build this commit instead of the working tree')
+            [CompletionResult]::new('--to', '--to', [CompletionResultType]::ParameterName, 'What to call the builds (default ref)')
+            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
         'ssqch;import' {
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
             [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
@@ -269,6 +289,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('footprint', 'footprint', [CompletionResultType]::ParameterValue, 'Show how much a build weighs: its files by kind, and the heaviest pages and files')
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create a starter site (config, layout, five posts, data and editor types)')
             [CompletionResult]::new('types', 'types', [CompletionResultType]::ParameterValue, 'Write ssqch.d.ts, the types editors use for ssqch.config.js')
+            [CompletionResult]::new('baseline', 'baseline', [CompletionResultType]::ParameterValue, 'Build the site with its old generator in fresh copies and compare the builds')
             [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Move a site from another generator: rename and rewrite what''s mechanical, and list the rest')
             [CompletionResult]::new('capabilities', 'capabilities', [CompletionResultType]::ParameterValue, 'Say what this binary supports: template languages, modules, config options and optional features')
             [CompletionResult]::new('docs', 'docs', [CompletionResultType]::ParameterValue, 'Read the documentation for this version: a command, config option, function or topic')
@@ -300,6 +321,9 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             break
         }
         'ssqch;help;types' {
+            break
+        }
+        'ssqch;help;baseline' {
             break
         }
         'ssqch;help;import' {

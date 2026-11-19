@@ -131,6 +131,19 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		afterHelp: "Run it in a clean git checkout, read the list, then run it again with --write. `ssqch docs --from <generator>` prints the trailhead for each generator.",
 		own: true,
 	},
+	{
+		name: "baseline",
+		about: "Build the site with its old generator, in fresh copies with the clock pinned, and compare the builds: what to compare ssqch's with",
+		options: [
+			{ long: "from", value: "DIR", help: "The folder the command writes (Eleventy and Jekyll: _site; Hugo: public; Astro: dist)", default: "_site" },
+			{ long: "runs", value: "RUNS", help: "How many builds to make and compare", default: "3", check: number },
+			{ long: "commit", value: "REV", help: "Build this commit instead of the working tree (the one before `ssqch import --write`)" },
+			{ long: "to", value: "NAME", help: "What to call the builds: ref makes ref-1, ref-2 and ref-3", default: "ref" },
+		],
+		positionals: [{ name: "COMMAND", help: "The old generator's build command, quoted: \"npx @11ty/eleventy\"", required: true, many: true }],
+		afterHelp: "Each build runs in a fresh copy of the site (the files git would commit, or the --commit), with TZ=UTC, SOURCE_DATE_EPOCH and every file's time set to the commit's, and node_modules linked in. Then the builds are compared as `ssqch diff ref-1 ref-2 ref-3` compares them, so what changes by itself is known before anything is compared with ssqch's build.\n\n  ssqch baseline \"npx @11ty/eleventy\"\n  ssqch baseline \"bundle exec jekyll build\" --commit main\n  ssqch diff ref-1 dist",
+		own: true,
+	},
 	{ name: "capabilities", about: "Say what this binary supports: template languages, modules, config options and optional features", options: [FORMAT], positionals: [], own: true },
 	{
 		name: "docs",
@@ -307,6 +320,8 @@ export async function main(argv: string[]): Promise<number> {
 		process.stderr.write(`${diagnostics.red("error:")} \`ssqch ${command}\` isn't in the Node build of ssqch yet (the move to Node, stage ${later}); ssqch 0.7 has it\n`);
 		return 1;
 	}
+	// It runs another generator, not ssqch's build, so nothing below applies either.
+	if (command === "baseline") return (await import("./commands/baseline.ts")).runBaseline({ root: value("root") ?? ".", command: cli.positionals.join(" "), from: value("from") ?? "_site", runs: Number(value("runs") ?? "3"), commit: value("commit"), to: value("to") ?? "ref", quiet: flag("quiet") });
 	// It reads the site's files as text and runs none of them, so nothing below applies.
 	if (command === "import") return (await import("./import.ts")).runImport(cli.positionals[0], cli.positionals[1] ?? ".", flag("write"));
 

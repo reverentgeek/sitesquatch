@@ -50,6 +50,27 @@ Changes found: 3 pages and 1 other file (2 changed, 1 added, 1 removed); 148 pag
 
 It works on any two folders of HTML, so it can also compare another generator's output with ssqch's while you move a site over.
 
+**Several builds:** give it three or more folders and it lists what varies between them instead: `ssqch diff ref-1 ref-2 ref-3`. Build the same site the same way into each (from fresh copies: `ssqch baseline`, below, does that for another generator's build), and it names each file that isn't the same in all of them, which builds agree (`ref-1, ref-2 agree; ref-3 differs`, or `only in ref-2`), and the lines that differ between the most common version and the next. "The same" is what a diff of two calls the same, so fingerprints and whitespace between tags don't count (`--exact`, `--ignore` and `--only` work as above). Do it first when moving a site from another generator: if its own build changes by itself (Jekyll printing the build's time, ids from `Math.random()`), pin that or `--ignore` it before comparing its output with ssqch's. The exit code is 0 when every build is the same and 1 when something varies; `--format json` has `runs`, `same`, `summary` (`varies`, `steadyPages`, `steadyFiles`) and `varies` (each file's `url`, `path`, `kind`, `versions` with their `runs` and `missing`, `changedLines` and `hunks`).
+
+
+## Reference builds
+
+> [!NOTE]
+> **Not released yet.** This ships with the next version of ssqch.
+
+**Reference builds:** before comparing a move's output with the site its old generator built, make that build trustworthy: `ssqch baseline "<command>"` runs the old generator's build command in fresh copies of the site, three times, and compares the builds, so what changes by itself (the build's time, ids from `Math.random()`) is known before anything is compared with ssqch's:
+
+```sh
+ssqch baseline "npx @11ty/eleventy"                        # writes ref-1, ref-2 and ref-3
+ssqch baseline "bundle exec jekyll build" --commit main    # the commit before the move
+ssqch build && ssqch diff ref-1 dist
+```
+
+- **The copies:** each build runs in a copy of its own in `.cache/ssqch/baseline/` (removed afterwards): the files git would commit (tracked files, and new ones it doesn't ignore), or with `--commit <rev>`, that commit, checked out as a worktree. Outside git, every file but `node_modules`, `.cache` and the output. The site's `node_modules` is linked in, not installed again.
+- **The pinned clock:** every file's time is set to the commit's (2026-01-01 outside git), so pages dated by their file's time agree, and the command runs with `TZ=UTC` and `SOURCE_DATE_EPOCH` set to that time. On Linux, a file's creation time can't be set, so a generator that dates an undated page by when its file was created (Eleventy does) gives it the copy's time: give those pages a `date`, or let `ssqch diff` say `only dates changed`.
+- **The builds:** `--from <dir>` is the folder the command writes, `_site` unless you say (Eleventy's and Jekyll's; Hugo writes `public` and Astro `dist`), and each is moved to `ref-1`, `ref-2` and `ref-3` beside the site (`--to old` names them `old-1` and so on; add them to `.gitignore`). `--runs 1` makes one build and compares nothing; a build of that name an earlier, longer run left is removed. The command's own output goes to standard error, and `--quiet` leaves it out.
+- **The comparison:** the builds are compared as `ssqch diff ref-1 ref-2 ref-3` compares them (**Several builds**, above). The exit code is 0 when they're the same, 1 when something varies, and 2 when a build couldn't be made: the command failed (with its exit code) or wrote no `--from` folder, or the commit isn't there.
+
 ## Comparing another generator's output
 
 > [!NOTE]
@@ -64,5 +85,3 @@ It works on any two folders of HTML, so it can also compare another generator's 
 **Groups:** when the same change is on more than one file, it's listed once, the most files first, with how many files have it, the first three, and its lines as the first file has them: `~ 102 pages, the same but for attribute values: /ar/building-community/, ... and 99 more`. A group's tags can differ in their attribute values from file to file (each link moved to another anchor), but its text is the same, and `the same but for attribute values` says when the values differ. A run of three changed lines or more also joins a group with the same tags (`the same tags with other attributes`): a `<picture>` with two widths and one with three, or an `<img>` with a `fetchpriority` the others don't have. One changed line never does, since one `<meta>` that changed looks like any other. After the groups, each file is listed with what's left (its changes no group holds), and a file whose changes are all in groups isn't listed again. That's the order to fix them in: one cause is often hundreds of pages. `--ungrouped` lists each file with all its changes instead. With `--format json`, `groups` has each one's `files` (how many), `urls`, `same`, `match` (`lines`, `values` or `tags`: how alike its files' changes are), `kind` (`dates`, `order`, `markup`, `text` or `markup and text`) and `hunk`, and each changed file's `groups` are places in that list. opensource.guide's comparison has 12 groups, one of them on 102 of its 172 changed pages.
 
 **Links:** a symbolic link is compared by where it points, not by what's there (that file is compared on its own): two links to the same target are the same, a link that points elsewhere shows `- -> old.html` and `+ -> new.html` (`a link, to somewhere else`), and a link in one build that's a file in the other says so.
-
-**Several builds:** give it three or more folders and it lists what varies between them instead: `ssqch diff ref-1 ref-2 ref-3`. Build the same site the same way into each (from fresh copies), and it names each file that isn't the same in all of them, which builds agree (`ref-1, ref-2 agree; ref-3 differs`, or `only in ref-2`), and the lines that differ between the most common version and the next. "The same" is what a diff of two calls the same, so fingerprints and whitespace between tags don't count (`--exact`, `--ignore` and `--only` work as above). Do it first when moving a site from another generator: if its own build changes by itself (Jekyll printing the build's time, ids from `Math.random()`), pin that or `--ignore` it before comparing its output with ssqch's. The exit code is 0 when every build is the same and 1 when something varies; `--format json` has `runs`, `same`, `summary` (`varies`, `steadyPages`, `steadyFiles`) and `varies` (each file's `url`, `path`, `kind`, `versions` with their `runs` and `missing`, `changedLines` and `hunks`).

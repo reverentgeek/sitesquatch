@@ -61,6 +61,12 @@ where that version matches.
   `minifyCss(css)`, from `ssqch/minify`, compresses CSS text for a filter of your own.
 - A `code.*` render hook writes inline code spans, given `code.code`: a site from GitHub Pages
   keeps Rouge's `class="language-plaintext highlighter-rouge"` (opensource.guide).
+- `ssqch baseline "<command>"` builds the site with its old generator three times, each in a fresh
+  copy (the files git would commit, or `--commit <rev>`) with every file's time set to the
+  commit's, `TZ=UTC` and `SOURCE_DATE_EPOCH`, into `ref-1` to `ref-3`, and compares the builds, so
+  what changes by itself is known before ssqch's build is compared with them. `--from` is the
+  folder the command writes (`_site`), `--runs` and `--to` the builds and their names. Every move
+  wrote a script of its own for this (v8.dev's `parity.sh`, lit.dev's `stability.py`).
 - `ssqch diff` groups the same change on more than one file: it's listed once, the most files
   first, with how many files have it, and each file is listed after the groups with what's left.
   A group's tags can differ in their attribute values from file to file, and a run of three

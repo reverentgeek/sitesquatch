@@ -214,6 +214,27 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(baseline)
+_arguments "${_arguments_options[@]}" : \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--from=[The folder the command writes (default _site)]:DIR:_default' \
+'--runs=[How many builds to make and compare (default 3)]:RUNS:_default' \
+'--commit=[Build this commit instead of the working tree]:REV:_default' \
+'--to=[What to call the builds (default ref)]:NAME:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'*::COMMAND -- The old generator build command:_default' \
+&& ret=0
+;;
 (import)
 _arguments "${_arguments_options[@]}" : \
 '--root=[Project root (defaults to the current directory)]:ROOT:_files' \
@@ -354,6 +375,7 @@ _ssqch_commands() {
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
 'init:Create a starter site (config, layout, five posts, data and editor types)' \
 'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
+'baseline:Build the site with its old generator in fresh copies and compare the builds' \
 'import:Move a site from another generator\: rename and rewrite what'\''s mechanical, and list the rest' \
 'capabilities:Say what this binary supports\: template languages, modules, config options and optional features' \
 'docs:Read the documentation for this version\: a command, config option, function or topic' \
@@ -403,6 +425,7 @@ _ssqch__subcmd__help_commands() {
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
 'init:Create a starter site (config, layout, five posts, data and editor types)' \
 'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
+'baseline:Build the site with its old generator in fresh copies and compare the builds' \
 'import:Move a site from another generator\: rename and rewrite what'\''s mechanical, and list the rest' \
 'capabilities:Say what this binary supports\: template languages, modules, config options and optional features' \
 'docs:Read the documentation for this version\: a command, config option, function or topic' \
@@ -474,6 +497,11 @@ _ssqch__subcmd__help__subcmd__serve_commands() {
 _ssqch__subcmd__help__subcmd__types_commands() {
     local commands; commands=()
     _describe -t commands 'ssqch help types commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__baseline_commands] )) ||
+_ssqch__subcmd__baseline_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch baseline commands' commands "$@"
 }
 (( $+functions[_ssqch__subcmd__import_commands] )) ||
 _ssqch__subcmd__import_commands() {

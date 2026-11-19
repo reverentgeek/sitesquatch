@@ -41,6 +41,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
             cand footprint 'Show how much a build weighs: its files by kind, and the heaviest pages and files'
             cand init 'Create a starter site (config, layout, five posts, data and editor types)'
             cand types 'Write ssqch.d.ts, the types editors use for ssqch.config.js'
+            cand baseline 'Build the site with its old generator in fresh copies and compare the builds'
             cand import 'Move a site from another generator: rename and rewrite what''s mechanical, and list the rest'
             cand capabilities 'Say what this binary supports: template languages, modules, config options and optional features'
             cand docs 'Read the documentation for this version: a command, config option, function or topic'
@@ -197,6 +198,24 @@ set edit:completion:arg-completer[ssqch] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
+        &'ssqch;baseline'= {
+            cand --root 'Project root (defaults to the current directory)'
+            cand -o 'Override the output directory (relative to the root)'
+            cand --output 'Override the output directory (relative to the root)'
+            cand --base 'Serve the site under a path, like /repo/ (overrides the config''s `base`)'
+            cand --env 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)'
+            cand --from 'The folder the command writes (default _site)'
+            cand --runs 'How many builds to make and compare (default 3)'
+            cand --commit 'Build this commit instead of the working tree'
+            cand --to 'What to call the builds (default ref)'
+            cand --offline 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved'
+            cand -q 'Print only warnings and errors'
+            cand --quiet 'Print only warnings and errors'
+            cand -v 'Also list the slowest images to encode'
+            cand --verbose 'Also list the slowest images to encode'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
         &'ssqch;import'= {
             cand --root 'Project root (defaults to the current directory)'
             cand -o 'Override the output directory (relative to the root)'
@@ -253,6 +272,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
             cand footprint 'Show how much a build weighs: its files by kind, and the heaviest pages and files'
             cand init 'Create a starter site (config, layout, five posts, data and editor types)'
             cand types 'Write ssqch.d.ts, the types editors use for ssqch.config.js'
+            cand baseline 'Build the site with its old generator in fresh copies and compare the builds'
             cand import 'Move a site from another generator: rename and rewrite what''s mechanical, and list the rest'
             cand capabilities 'Say what this binary supports: template languages, modules, config options and optional features'
             cand docs 'Read the documentation for this version: a command, config option, function or topic'
@@ -275,6 +295,8 @@ set edit:completion:arg-completer[ssqch] = {|@words|
         &'ssqch;help;init'= {
         }
         &'ssqch;help;types'= {
+        }
+        &'ssqch;help;baseline'= {
         }
         &'ssqch;help;import'= {
         }

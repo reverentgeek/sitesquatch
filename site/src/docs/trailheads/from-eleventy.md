@@ -139,10 +139,12 @@ Pages render one at a time on one thread (there are no worker threads), so if a 
 
 ## Checking the move
 
-Build the old site with Eleventy and the new one with ssqch, and compare the two output folders:
+Build the old site with Eleventy and the new one with ssqch, and compare the two output folders. `ssqch baseline` makes Eleventy's build from fresh copies with the clock pinned, three times, and says what changes by itself:
 
 ```sh
-ssqch diff _site-eleventy dist
+ssqch baseline "npx @11ty/eleventy" --commit <the commit before the import>
+ssqch build
+ssqch diff ref-1 dist
 ```
 
 It lists the URLs that were added and removed and what changed on each page, ignoring whitespace between tags, fingerprinted file names, eleventy-img's and `imagePlugin()`'s image ids, and markup browsers read the same (attribute order, `defer="defer"`, `<br/>`, `&#39;`); `--ignore <regex>` drops differences you expect (a generator meta tag, say). The link checker (`linksPlugin()`) catches pages and anchors that moved, and a `schemas` entry catches front matter that didn't survive the trip.
