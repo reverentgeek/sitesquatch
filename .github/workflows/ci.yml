@@ -1,15 +1,18 @@
 # Tests and lints on every push to main or a release/* branch, and every pull request, except
-# one that only changes the website (site/ and its workflow): site.yml checks and deploys that,
-# with this commit's ssqch, and CI's matrix has nothing new to test. A release commit changes
-# packages/ssqch/package.json, so CI always runs on what check-ci.yml waits for.
+# one that only changes what CI's matrix doesn't read: the website (site/ and its workflow),
+# which site.yml checks and deploys with this commit's ssqch, and the repository's own prose
+# (the README, CONTRIBUTING.md, AGENTS.md, TODO.md, CHANGELOG.md and docs/). The docs pages
+# (site/src/docs/) are the exception: `ssqch docs` reads them and the package carries them, so a
+# change to one runs CI. A release commit changes packages/ssqch/package.json, so CI always runs
+# on what check-ci.yml waits for. A path that matches a later pattern follows that one.
 name: CI
 
 on:
   push:
     branches: [main, "release/**"]
-    paths-ignore: [site/**, .github/workflows/site.yml]
+    paths: ["**", "!site/**", "site/src/docs/**", "!.github/workflows/site.yml", "!README.md", "!CONTRIBUTING.md", "!AGENTS.md", "!TODO.md", "!CHANGELOG.md", "!docs/**"]
   pull_request:
-    paths-ignore: [site/**, .github/workflows/site.yml]
+    paths: ["**", "!site/**", "site/src/docs/**", "!.github/workflows/site.yml", "!README.md", "!CONTRIBUTING.md", "!AGENTS.md", "!TODO.md", "!CHANGELOG.md", "!docs/**"]
   workflow_dispatch:
 
 concurrency:
