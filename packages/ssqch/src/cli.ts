@@ -497,7 +497,7 @@ async function runDiff(dirs: string[], options: { exact: boolean; ignore: string
 		const only = options.only.length ? globs("only", options.only) : undefined;
 		const exclude = globs("exclude", options.exclude);
 		if (dirs.length > 2) {
-			const runs = await compareRuns(dirs, { exact: options.exact, ignore, only, exclude, lines: options.lines });
+			const runs = await compareRuns(dirs, { exact: options.exact, ungrouped: options.ungrouped, ignore, only, exclude, lines: options.lines });
 			if (options.format === "json") process.stdout.write(JSON.stringify(runsJson(runs, options.lines), null, 2) + "\n");
 			else process.stdout.write(runsText(runs, options.lines, process.stdout.isTTY === true));
 			return runs.varies.length ? 1 : 0;

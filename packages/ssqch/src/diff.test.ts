@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { canonicalTag, canonicalText, compare, diffJson, diffText, isSame, keyed, tokens, withoutFingerprints } from "./diff.ts";
+import { canonicalTag, canonicalText, compare, compareRuns, diffJson, diffText, isSame, keyed, runsJson, runsText, tokens, withoutFingerprints } from "./diff.ts";
 import type { DiffOptions } from "./diff.ts";
 import { globToRegExp } from "./glob.ts";
 
@@ -280,4 +280,20 @@ test("the_same_tags_with_other_attributes_are_grouped", async () => {
 	assert.ok(diffText(report, 10, false).includes("  ~ 3 pages, the same tags with other attributes: /a/, /b/, /c/\n"));
 	// The two `<meta>`s are each their page's own.
 	assert.deepEqual(report.changed.map((f) => [f.url, f.ownHunks.length]), [["/a/", 1], ["/b/", 1], ["/c/", 0]]);
+});
+
+// Jekyll prints the build's time into every page (osg #14): builds made the same way vary the
+// same way on each, and that's one group, as in a diff of two.
+test("what_varies_the_same_way_on_several_files_is_grouped", async () => {
+	const site = (time: string, extra = "") => build({ "a/index.html": `<p>A</p><footer>Built ${time}</footer>`, "b/index.html": `<p>B</p><footer>Built ${time}</footer>`, "c/index.html": `<p>C${extra}</p>` });
+	const runs = [site("at nine"), site("at ten", "!"), site("at nine")];
+	const report = await compareRuns(runs, options());
+	assert.deepEqual(report.groups.map((g) => [g.urls, g.match, g.hunk]), [[["/a/", "/b/"], "lines", { removed: ["Built at nine"], added: ["Built at ten"] }]]);
+	const text = runsText({ ...report, runs: ["ref-1", "ref-2", "ref-3"] }, 10, false);
+	assert.ok(text.includes("Varies (3)\n  The same difference on more than one file, the most files first (--ungrouped lists each file with all of it):\n  ~ 2 pages: /a/, /b/\n      - Built at nine\n      + Built at ten\n  And each file, with what's left:\n  ~ /c/  (2 versions: ref-1, ref-3 agree; ref-2 differs)\n      - C\n      + C!\n"), text);
+	assert.ok(!text.includes("~ /a/  ("), text);
+	const json = runsJson(report, 0) as { groups: unknown[]; varies: Array<{ url: string; groups: number[] }> };
+	assert.equal(json.groups.length, 1);
+	assert.deepEqual(json.varies.map((v) => [v.url, v.groups]), [["/a/", [0]], ["/b/", [0]], ["/c/", []]]);
+	assert.equal((await compareRuns(runs, options({ ungrouped: true }))).groups.length, 0);
 });

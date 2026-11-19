@@ -984,12 +984,47 @@ function clip(line: string): string {
 
 const plural = (n: number, one: string, many: string) => `${count(n)} ${n === 1 ? one : many}`;
 
+type Paint = (code: string, s: string) => string;
+
+/** A file's changed lines, up to `limit` of them (0 for all), and how many more there are. */
+function linesText(hunks: Hunk[], total: number, limit: number, paint: Paint, indent = "      "): string {
+	let shown = 0;
+	let text = "";
+	done: for (const hunk of hunks) {
+		for (const [sign, code, side] of [["-", "31", hunk.removed], ["+", "32", hunk.added]] as const) {
+			for (const line of side) {
+				if (limit > 0 && shown >= limit) break done;
+				text += paint(code, `${indent}${sign} ${clip(line)}\n`);
+				shown += 1;
+			}
+		}
+	}
+	if (total > shown) text += `${indent}... ${count(total - shown)} more changed ${total - shown === 1 ? "line" : "lines"} (--lines 0 shows all)\n`;
+	return text;
+}
+
+const isPageUrl = (url: string) => url.endsWith("/") || isPage(url);
+
+/** The groups, the most files first: how many files, the first three, how alike, and the change. `what` is the heading's verb phrase. */
+function groupsText(groups: DiffGroup[], limit: number, paint: Paint, heading: string): string {
+	let out = `  ${heading}, the most files first (--ungrouped lists each file with all of it):\n`;
+	for (const group of groups) {
+		const n = group.urls.length;
+		const what = group.urls.every(isPageUrl) ? (n === 1 ? "page" : "pages") : n === 1 ? "file" : "files";
+		const some = group.urls.slice(0, 3).join(", ");
+		const alike = group.match === "lines" ? "" : group.match === "values" ? ", the same but for attribute values" : ", the same tags with other attributes";
+		out += `  ~ ${count(n)} ${what}${alike}: ${some}${n > 3 ? ` and ${count(n - 3)} more` : ""}\n`;
+		out += linesText([group.hunk], group.hunk.removed.length + group.hunk.added.length, limit, paint);
+	}
+	return out;
+}
+
 /** The report for a terminal. `lines` is how many changed lines to show for each file (0 for all of them). */
 export function diffText(report: DiffReport, limit: number, color: boolean): string {
 	const paint = (code: string, s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
 	let out = `Comparing ${report.before} with ${report.after}\n`;
 	out += report.exact ? "Comparing bytes (--exact).\n" : IGNORING;
-	const pageUrl = (url: string) => url.endsWith("/") || isPage(url);
+	const pageUrl = isPageUrl;
 	const unchanged = `${plural(report.unchangedPages, "page", "pages")} and ${plural(report.unchangedFiles, "other file", "other files")}`;
 	if (isSame(report)) return `${out}\nNo differences: ${unchanged} are the same. The stump has not moved.\n`;
 	if (report.added.length) {
@@ -1001,33 +1036,9 @@ export function diffText(report: DiffReport, limit: number, color: boolean): str
 		for (const line of listed(report.removed, "-")) out += paint("31", line);
 	}
 	if (report.changed.length) out += `\nChanged (${report.changed.length})\n`;
-	const showLines = (hunks: Hunk[], total: number, indent: string) => {
-		let shown = 0;
-		let text = "";
-		done: for (const hunk of hunks) {
-			for (const [sign, code, side] of [["-", "31", hunk.removed], ["+", "32", hunk.added]] as const) {
-				for (const line of side) {
-					if (limit > 0 && shown >= limit) break done;
-					text += paint(code, `${indent}${sign} ${clip(line)}\n`);
-					shown += 1;
-				}
-			}
-		}
-		if (total > shown) text += `${indent}... ${count(total - shown)} more changed ${total - shown === 1 ? "line" : "lines"} (--lines 0 shows all)\n`;
-		return text;
-	};
 	const grouped = report.groups.length > 0;
 	if (grouped) {
-		out += "  The same change on more than one file, the most files first (--ungrouped lists each file with all of it):\n";
-		for (const group of report.groups) {
-			const n = group.urls.length;
-			const what = group.urls.every(pageUrl) ? (n === 1 ? "page" : "pages") : n === 1 ? "file" : "files";
-			const some = group.urls.slice(0, 3).join(", ");
-			const alike = group.match === "lines" ? "" : group.match === "values" ? ", the same but for attribute values" : ", the same tags with other attributes";
-			out += `  ~ ${count(n)} ${what}${alike}: ${some}${n > 3 ? ` and ${count(n - 3)} more` : ""}\n`;
-			const lines = group.hunk.removed.length + group.hunk.added.length;
-			out += showLines([group.hunk], lines, "      ");
-		}
+		out += groupsText(report.groups, limit, paint, "The same change on more than one file");
 		const rest = report.changed.filter((f) => f.ownLines > 0);
 		if (rest.length) out += `  And what's left on ${plural(rest.length, "file", "files")}:\n`;
 	}
@@ -1042,7 +1053,7 @@ export function diffText(report: DiffReport, limit: number, color: boolean): str
 		if (file.kind === "binary") about.push(`binary, ${bytes(file.sizeBefore)} -> ${bytes(file.sizeAfter)}`);
 		out += `  ~ ${file.url}${about.length ? `  (${about.join("; ")})` : ""}\n`;
 		for (const note of file.notes) out += `      ${note}\n`;
-		out += grouped ? showLines(file.ownHunks, file.ownLines, "      ") : showLines(file.hunks, file.changedLines, "      ");
+		out += grouped ? linesText(file.ownHunks, file.ownLines, limit, paint) : linesText(file.hunks, file.changedLines, limit, paint);
 	}
 	const pages = [...report.added, ...report.removed].filter(pageUrl).length + report.changed.filter((f) => isPage(f.path)).length;
 	const others = report.added.length + report.removed.length + report.changed.length - pages;
@@ -1115,6 +1126,8 @@ export interface RunsReport {
 	runs: string[];
 	exact: boolean;
 	varies: Varies[];
+	/** The same difference on more than one varying file (`site.time` on every page), the most files first. Empty with `--ungrouped`. */
+	groups: DiffGroup[];
 	steadyPages: number;
 	steadyFiles: number;
 }
@@ -1133,7 +1146,7 @@ export async function compareRuns(dirs: string[], options: DiffOptions): Promise
 	for (const walk of walks) if (walk.status === "rejected") throw walk.reason;
 	const maps = walks.map((w) => keyed(keep((w as PromiseFulfilledResult<string[]>).value), options.exact));
 	const keys = [...new Set(maps.flatMap((m) => [...m.keys()]))].sort(compareText);
-	const report: RunsReport = { runs: dirs, exact: options.exact, varies: [], steadyPages: 0, steadyFiles: 0 };
+	const report: RunsReport = { runs: dirs, exact: options.exact, varies: [], groups: [], steadyPages: 0, steadyFiles: 0 };
 	const found: Array<Varies | undefined> = new Array(keys.length);
 	let next = 0;
 	const worker = async () => {
@@ -1154,6 +1167,15 @@ export async function compareRuns(dirs: string[], options: DiffOptions): Promise
 		else if (isPage(key)) report.steadyPages += 1;
 		else report.steadyFiles += 1;
 	});
+	// A build's time on every page varies the same way on each: one group, as in a diff of two.
+	const samples = report.varies.map((v) => v.sample).filter((s): s is FileDiff => s !== undefined);
+	report.groups = options.ungrouped ? [] : groupChanges(samples);
+	for (const sample of samples) {
+		if (!report.groups.length) sample.ownHunks = sample.allHunks ?? sample.hunks;
+		sample.ownLines = sample.ownHunks.reduce((sum, h) => sum + h.removed.length + h.added.length, 0);
+		sample.ownHunks = firstLines(sample.ownHunks, options.lines);
+		delete sample.allHunks;
+	}
 	return report;
 }
 
@@ -1200,7 +1222,14 @@ export function runsText(report: RunsReport, limit: number, color: boolean): str
 	const steady = `${plural(report.steadyPages, "page", "pages")} and ${plural(report.steadyFiles, "other file", "other files")}`;
 	if (!report.varies.length) return `${out}\nEvery build is the same: ${steady}. The tracks match every time.\n`;
 	out += `\nVaries (${report.varies.length})\n`;
+	const grouped = report.groups.length > 0;
+	if (grouped) {
+		out += groupsText(report.groups, limit, paint, "The same difference on more than one file");
+		const rest = report.varies.filter((f) => !f.sample || f.sample.ownLines > 0);
+		if (rest.length) out += `  And each file, with what's left:\n`;
+	}
 	for (const file of report.varies) {
+		if (grouped && file.sample && file.sample.ownLines === 0) continue;
 		const [most, ...rest] = file.versions;
 		// A file most builds lack is "only in" the ones that have it, when they all have the same one.
 		const onlyIn = most.missing && rest.length === 1;
@@ -1210,17 +1239,7 @@ export function runsText(report: RunsReport, limit: number, color: boolean): str
 		const sample = file.sample;
 		if (!sample) continue;
 		for (const note of sample.notes) out += `      ${note}\n`;
-		let shown = 0;
-		done: for (const hunk of sample.hunks) {
-			for (const [sign, code, side] of [["-", "31", hunk.removed], ["+", "32", hunk.added]] as const) {
-				for (const line of side) {
-					if (limit > 0 && shown >= limit) break done;
-					out += paint(code, `      ${sign} ${clip(line)}\n`);
-					shown += 1;
-				}
-			}
-		}
-		if (sample.changedLines > shown) out += `      ... ${count(sample.changedLines - shown)} more changed ${sample.changedLines - shown === 1 ? "line" : "lines"} (--lines 0 shows all)\n`;
+		out += grouped ? linesText(sample.ownHunks, sample.ownLines, limit, paint) : linesText(sample.hunks, sample.changedLines, limit, paint);
 	}
 	out += `\n${plural(report.varies.length, "file varies", "files vary")} between builds made the same way; ${steady} are the same in all of them. Pin what changes (the build's time, random ids) before comparing another build with these, or leave it out with --ignore.\n`;
 	return out;
@@ -1242,6 +1261,9 @@ export function runsJson(report: RunsReport, limit: number): Record<string, unkn
 			versions: f.versions.map((v) => ({ runs: v.runs.map((r) => runs[r]), missing: v.missing })),
 			changedLines: f.sample?.changedLines ?? 0,
 			hunks: f.sample ? firstLines(f.sample.hunks, limit) : [],
+			groups: f.sample?.groups ?? [],
 		})),
+		// Each difference on more than one varying file, the most files first; a file's `groups` are places in this list.
+		groups: report.groups.map((g) => ({ files: g.urls.length, urls: g.urls, same: g.same, match: g.match, kind: g.kind, hunk: g.hunk })),
 	};
 }
