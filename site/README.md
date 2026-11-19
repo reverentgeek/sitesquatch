@@ -1,6 +1,6 @@
 # sitesquatch.dev
 
-ssqch's own website, built with the ssqch in this repository (`packages/ssqch`), so a change to ssqch that breaks its own site shows up here first. The plan is section 9 of [`TODO.md`](../TODO.md), "The website": this folder is its first stage, the landing page and the 404 page. The docs, the changelog, the live examples and the Cloudflare deploy come next.
+ssqch's own website, built with the ssqch in this repository (`packages/ssqch`), so a change to ssqch that breaks its own site shows up here first. The plan is section 9 of [`TODO.md`](../TODO.md), "The website". So far: the landing page, the 404 page and the Cloudflare deploy. The docs, the changelog and the live examples come next.
 
 From this folder, with `npm ci` already run in `packages/ssqch`:
 
@@ -9,7 +9,18 @@ From this folder, with `npm ci` already run in `packages/ssqch`:
 - `node --test "tests/*.test.ts"` checks it: every pair of text and background in both modes has enough contrast (`tests/contrast.test.ts`, from the tokens in `src/assets/site.css`), and the README backs every number on the landing page (`tests/numbers.test.ts`).
 - `../packages/ssqch/node_modules/.bin/tsc -p tsconfig.json` type-checks the build script and the tests.
 
-CI's `site` job runs all four.
+`.github/workflows/site.yml` runs all four on every pull request and push to `main`, and deploys what it built.
+
+## Deploying
+
+The site is one Cloudflare Worker with static assets and no script of its own (`wrangler.jsonc`): the build's `dist/`, with `404.html` for any address that isn't there (`not_found_handling: "404-page"`), and `src/_headers` caching the fingerprinted CSS and JavaScript for a year.
+
+- **A pull request** gets a Worker Preview, `pr-<number>`, at its own `workers.dev` address, posted in a comment on the pull request and deleted when it closes. A pull request from a fork gets none, since it gets no secrets.
+- **A push to `main`** is deployed to production. A fix to the site doesn't wait for a release, so the site can describe a feature that isn't on npm yet: that feature's documentation starts with a "Not released yet" note (AGENTS.md has the wording), which the release commit takes out. `node ../scripts/unreleased-notes.mjs` lists the notes, and the release workflow refuses a tag while one is left.
+- **The secrets:** `CLOUDFLARE_API_TOKEN` (made from the "Edit Cloudflare Workers" template) and `CLOUDFLARE_ACCOUNT_ID`. Until both are set, the preview and deploy jobs say so and skip, and the checks still run.
+- **Wrangler** is pinned in the workflow (`WRANGLER`). `wrangler.jsonc`'s `compatibility_date` can't be newer than that version's runtime supports, so move them together.
+
+To see the build as Cloudflare serves it, without an account: `node build.ts`, then `npx wrangler@4.157.0 dev` (it serves `dist/` at http://localhost:8787/ with the 404 handling and `_headers` applied).
 
 ## What's where
 

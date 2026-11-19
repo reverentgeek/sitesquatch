@@ -2,7 +2,8 @@
 # the steps). ssqch ships through npm: the package, and a Homebrew formula that installs it with
 # Homebrew's Node. Nothing is published unless every job before it passed:
 #
-#   plan          the tag is packages/ssqch/package.json's version, and CHANGELOG.md has its section
+#   plan          the tag is packages/ssqch/package.json's version, CHANGELOG.md has its section,
+#                 and no "Not released yet" note is left in the docs (scripts/unreleased-notes.mjs)
 #   package       the npm package (packages/ssqch/scripts/build.ts), packed
 #   npm-test      the packed package, installed with npm on Linux, on Node 22.18, 24 and 26: every
 #                 example, a starter, images and the .wasm files build to the source's bytes
@@ -33,6 +34,7 @@ on:
       - packages/ssqch/scripts/build.ts
       - packages/ssqch/scripts/check-package.ts
       - scripts/release-files.mjs
+      - scripts/unreleased-notes.mjs
   workflow_dispatch:
 
 permissions:
@@ -65,6 +67,9 @@ jobs:
             case "$version" in *-dev*) echo "::error::$version is a development version; set the release's version first."; exit 1 ;; esac
             publishing=true
           fi
+          # The docs ship in the package, and sitesquatch.dev deploys from main: a feature's
+          # "Not released yet" note comes out in the release commit (AGENTS.md, "Releasing").
+          if [ "$publishing" = true ]; then node scripts/unreleased-notes.mjs --check; else node scripts/unreleased-notes.mjs; fi
           prerelease=false
           case "$version" in *-*) prerelease=true ;; esac
           # The release's notes: CHANGELOG.md's section for this version, from its heading

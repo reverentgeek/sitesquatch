@@ -743,22 +743,26 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       names the latest release (`release.js`, from `packages/ssqch/package.json`). Left for later
       stages: the header's search box (the docs), Live links on the campsites (the examples), and
       the web's Markdown copies in Mile 6 (agents; the template has a comment where they go).
-- [ ] **The Cloudflare pipeline.** `site/wrangler.jsonc` (`assets.directory`,
-      `not_found_handling: "404-page"`, the default `html_handling`) and
-      `.github/workflows/site.yml` with `cloudflare/wrangler-action`: `wrangler preview --name
-      pr-<number>` on a pull request, with the URL in a comment and the preview deleted when it
-      closes, and `wrangler deploy` on a push to `main`, after the site's checks pass. Not attached
-      to the domain yet. Since the site can be ahead of npm: documentation for a feature that's
-      merged and not released carries a note at its top ("Not released yet. This ships with the
-      next version of ssqch."), the footer names the latest release (from
-      `packages/ssqch/package.json`), step 2 of "Releasing" in AGENTS.md gains "remove the Not
-      released yet notes", and `release.yml` refuses a tag while one is still in the docs. (The
-      footer's release line is done.)
-      **Needs David:** a Cloudflare API token ("Edit Cloudflare Workers") and the account ID as
-      repository secrets. Done when a pull request shows a working preview link, a merge is live
-      at the Worker's `workers.dev` address, and what was learned is noted for the Cloudflare guide
-      (below): whether the token can create the custom domain, how long a build takes, what
-      `actions/cache` does for `.cache/ssqch`.
+- [ ] **The Cloudflare pipeline.** Written 2026-11-18, waiting on the secrets.
+      `site/wrangler.jsonc` (static assets only, `not_found_handling: "404-page"`, the default
+      `html_handling`, an empty `previews` block), `site/src/_headers` (a year's caching for the
+      fingerprinted CSS and JavaScript), and `.github/workflows/site.yml`: the site's checks
+      (moved from `ci.yml`, whose `already-tested` would skip a deploy from main), then
+      `wrangler preview --name pr-<number>` with its URL in a comment, deleted when the pull
+      request closes, and `wrangler deploy` from main. Wrangler is pinned (4.157.0) and run with
+      `npx`, as Cloudflare's own Previews example does, rather than `cloudflare/wrangler-action`.
+      Without the secrets the Cloudflare jobs leave a notice and skip. `wrangler deploy --dry-run`
+      reads the config, and `wrangler dev` serves the build with the 404 page (a 404 status) and
+      the headers; a `compatibility_date` newer than the pinned Wrangler's runtime fails to start,
+      so the two move together. The "Not released yet" note (`> **Not released yet.** This ships
+      with the next version of ssqch.`): `scripts/unreleased-notes.mjs` lists them, `release.yml`
+      refuses a tag while one is left, and "Releasing" step 2 and AGENTS.md's site entry say so.
+      **Needs David:** the `CLOUDFLARE_API_TOKEN` ("Edit Cloudflare Workers") and
+      `CLOUDFLARE_ACCOUNT_ID` repository secrets. Done when a pull request shows a working preview
+      link, a merge is live at the Worker's `workers.dev` address, and what was learned is noted
+      for the Cloudflare guide (below): whether the token can create the custom domain, how long a
+      build takes, what `actions/cache` does for `.cache/ssqch`, and the shape of `wrangler preview
+      --json` (the workflow reads `.preview.urls[0]`, or `.preview_urls[0]`).
 - [ ] **The documentation.** Point `site/src/_data/links.yml` and `trailheads.yml` at the pages,
       and add the header's search box. A script in `site/` splits the README into pages by
       heading before each build, from a map (the plan's table, in the groups Start here, Build,

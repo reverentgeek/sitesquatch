@@ -1,0 +1,8 @@
+# Cloudflare's headers for the static assets (Workers static assets read this file and don't
+# serve it). A fingerprinted file's name changes when its content does (assetsPlugin in
+# ssqch.config.js lists them), so it can be cached for good. A pattern has one splat at most, and
+# `site.*.css` doesn't match the plain `site.css` the build also leaves beside it.
+/assets/site.*.css
+  Cache-Control: public, max-age=31536000, immutable
+/assets/theme.*.js
+  Cache-Control: public, max-age=31536000, immutable

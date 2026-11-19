@@ -6,6 +6,7 @@
 /examples/sites/*/.cache
 /site/dist
 /site/.cache
+/site/.wrangler
 /packages/*/node_modules
 /packages/ssqch/dist
 

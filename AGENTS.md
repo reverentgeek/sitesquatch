@@ -89,7 +89,11 @@ Run from `packages/ssqch/` unless it says otherwise.
   "tests/*.test.ts"` checks its colors' contrast and that the README backs its numbers, and
   `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves it. After changing a README number
   the landing page shows (the benchmarks, a known gap), update `site/src/_data/benchmarks.js` or
-  the page; CI's `site` job fails until they agree.
+  the page; the `check` job in `.github/workflows/site.yml` fails until they agree. That
+  workflow also deploys the site to Cloudflare: a preview for each pull request, and production
+  from `main`, so the site can be ahead of npm. Documentation for a feature that's merged and not
+  released starts with `> [!NOTE]` and `> **Not released yet.** This ships with the next version
+  of ssqch.`, until the release (step 2 of "Releasing").
 - `docs/assets/` holds the drawings (black line art, SVG) for the README, examples, guides and
   website, and `docs/assets/stickers/` a sticker of each: the drawing on a white shape with a
   border, so it reads on a light page and a dark one. After adding or editing a drawing, run
@@ -198,7 +202,9 @@ skips, see `already-tested` in `ci.yml`):
    `package-lock.json` has it), and the workspace's `version` in `Cargo.toml` (`ssqch-plugin` is
    published at ssqch's version). Update the pinned versions in the README too
    (`ssqch@<version>` in Install, the GitHub Actions example and GitHub Pages, and the Netlify
-   section's `ssqch@<version>` and `SSQCH_VERSION`).
+   section's `ssqch@<version>` and `SSQCH_VERSION`). Take out the "Not released yet" notes the
+   release ships (`node scripts/unreleased-notes.mjs` lists them); the workflow refuses a tag
+   while one is left.
 3. Bring the branch up to date with `main` if it isn't (a merge commit with a tree the pull
    request didn't test runs all of CI again), wait for its CI to pass, and merge it.
 4. Wait for CI on the merge commit (it skips in a minute when its tree passed on the pull

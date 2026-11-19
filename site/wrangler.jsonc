@@ -1,0 +1,18 @@
+// sitesquatch.dev: one Cloudflare Worker that serves the built site as static assets, with no
+// script of its own. .github/workflows/site.yml deploys it: `wrangler preview` for each pull
+// request, `wrangler deploy` from main. Not attached to the domain yet (TODO.md, section 9,
+// "Agents, and launch", adds the custom domain).
+{
+	"name": "sitesquatch",
+	"compatibility_date": "2026-11-01",
+	"assets": {
+		"directory": "./dist",
+		// The nearest 404.html going up the folders, with a 404 status.
+		"not_found_handling": "404-page"
+		// html_handling stays the default (auto-trailing-slash), which serves docs/index.html at
+		// /docs/, as ssqch writes it.
+	},
+	// Each pull request's preview is a Preview of this Worker, with the same assets settings.
+	// Previews don't inherit vars or routes; the site has neither.
+	"previews": {}
+}
