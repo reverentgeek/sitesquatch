@@ -122,7 +122,11 @@ Run from `packages/ssqch/` unless it says otherwise.
   Rust's tests and clippy, natively and for `wasm32-wasip1` (`rust`). Keep clippy clean. A push
   whose tree a pull request's CI already passed with (a merge commit, when the branch was up to
   date) skips those jobs and passes (`already-tested`), and a change only to `site/` (and its
-  workflow) doesn't run CI at all: `site.yml` checks and deploys it. A pull request that changes the
+  workflow) or the repository's prose (the README, `CONTRIBUTING.md`, `AGENTS.md`, `TODO.md`,
+  `CHANGELOG.md`, `docs/`) doesn't run CI at all: `site.yml` checks and deploys the site. A
+  change to a docs page (`site/src/docs/`) does run CI, since `ssqch docs` reads the pages. When
+  something CI tests starts reading one of those files, take it out of `paths` in `ci.yml`. A
+  pull request that changes the
   release's own files runs `release.yml` up to the release, unsigned. The Rust isn't formatted
   with rustfmt (it uses long lines), so don't run `cargo fmt`.
 
