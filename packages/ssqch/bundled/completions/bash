@@ -245,7 +245,7 @@ _ssqch() {
             return 0
             ;;
         ssqch__subcmd__diff)
-            opts="-o -q -v -h --exact --ignore --only --exclude --lines --format --root --output --base --offline --env --quiet --verbose --help"
+            opts="-o -q -v -h --exact --ungrouped --ignore --only --exclude --lines --format --root --output --base --offline --env --quiet --verbose --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

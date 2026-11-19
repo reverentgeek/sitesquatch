@@ -61,6 +61,12 @@ where that version matches.
   `minifyCss(css)`, from `ssqch/minify`, compresses CSS text for a filter of your own.
 - A `code.*` render hook writes inline code spans, given `code.code`: a site from GitHub Pages
   keeps Rouge's `class="language-plaintext highlighter-rouge"` (opensource.guide).
+- `ssqch diff` groups the same change on more than one file: it's listed once, the most files
+  first, with how many files have it, and each file is listed after the groups with what's left.
+  A group's tags can differ in their attribute values from file to file. `--format json` has
+  `groups` (each with `files`, `urls`, `same`, `kind` and `hunk`) and each changed file's `groups`;
+  `--ungrouped` lists each file with all its changes. opensource.guide's 172 changed pages are 12
+  groups, one of them on 102 pages; every move found its biggest group by hand.
 - `ssqch diff --exclude <glob>` leaves matching files out (repeatable, after `--only`): the blog's
   comparison with its Eleventy build needed nine `--only`s to leave out its images.
 

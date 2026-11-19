@@ -225,3 +225,37 @@ test("links_are_compared_by_their_targets", { skip: process.platform === "win32"
 		["latest.txt", ["a link, to somewhere else"], [{ removed: ["-> a.txt"], added: ["-> b.txt"] }]],
 	]);
 });
+
+// One cause on many pages is one group, the most pages first (osg `scripts/compare.py` did this by
+// hand for 387 pages): the same lines, or the same tags with other attribute values. A page's
+// other changes are listed with it after the groups; a page with none isn't listed again.
+test("changes_on_several_files_are_grouped", async () => {
+	const page = (body: string) => `<html><head><title>T</title></head><body>${body}</body></html>`;
+	const before = build({
+		"a/index.html": page("<footer>Built with Eleventy</footer><a href=\"#é\">x</a>"),
+		"b/index.html": page("<footer>Built with Eleventy</footer><a href=\"#ü\">y</a><p>Old</p>"),
+		"c/index.html": page("<footer>Built with Eleventy</footer>"),
+		"d/index.html": page("<p>Alone</p>"),
+	});
+	const after = build({
+		"a/index.html": page("<footer>Built with ssqch</footer><a href=\"#%C3%A9\">x</a>"),
+		"b/index.html": page("<footer>Built with ssqch</footer><a href=\"#%C3%BC\">y</a><p>New</p>"),
+		"c/index.html": page("<footer>Built with ssqch</footer>"),
+		"d/index.html": page("<p>Alone, changed</p>"),
+	});
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.groups.map((g) => [g.urls, g.same, g.kind, g.hunk]), [
+		[["/a/", "/b/", "/c/"], true, "text", { removed: ["Built with Eleventy"], added: ["Built with ssqch"] }],
+		[["/a/", "/b/"], false, "markup", { removed: ["<a href=\"#é\">"], added: ["<a href=\"#%C3%A9\">"] }],
+	]);
+	const text = diffText(report, 10, false);
+	assert.ok(text.includes("Changed (4)\n  The same change on more than one file, the most files first (--ungrouped lists each file with all of it):\n  ~ 3 pages: /a/, /b/, /c/\n      - Built with Eleventy\n      + Built with ssqch\n  ~ 2 pages, the same but for attribute values: /a/, /b/\n      - <a href=\"#é\">\n      + <a href=\"#%C3%A9\">\n  And what's left on 2 files:\n  ~ /b/  (text and markup)\n      - Old\n      + New\n  ~ /d/  (text)\n"), text);
+	assert.ok(!text.includes("~ /a/  ("), text);
+	const json = diffJson(report, 0) as { groups: Array<{ files: number; kind: string }>; changed: Array<{ url: string; groups: number[] }> };
+	assert.deepEqual(json.groups.map((g) => [g.files, g.kind]), [[3, "text"], [2, "markup"]]);
+	assert.deepEqual(json.changed.map((f) => [f.url, f.groups]), [["/a/", [0, 1]], ["/b/", [0, 1]], ["/c/", [0]], ["/d/", []]]);
+	// --ungrouped: each file with all its changes, as before.
+	const each = await compare(before, after, options({ ungrouped: true }));
+	assert.equal(each.groups.length, 0);
+	assert.ok(diffText(each, 10, false).includes("  ~ /a/  (text and markup)\n      - Built with Eleventy\n"));
+});

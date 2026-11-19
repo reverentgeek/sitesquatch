@@ -31,6 +31,8 @@ export interface DiffOptions {
 	exact: boolean;
 	/** Text matching one of these is left out of both sides before comparing. */
 	ignore: RegExp[];
+	/** List each file with all its changes, without groups (`--ungrouped`). */
+	ungrouped?: boolean;
 	/** Only compare files whose path (from the build's root, with `/`) matches one of these. */
 	only: RegExp[] | undefined;
 	/** Leave out files whose path matches one of these (after `only`). */
@@ -66,6 +68,31 @@ export interface FileDiff {
 	onlyDates: [string, string] | undefined;
 	sizeBefore: number;
 	sizeAfter: number;
+	/** Every changed run, while the comparison groups them; gone from the report. */
+	allHunks?: Hunk[];
+	/** The groups (by their place in `groups`) that hold some of its changes. */
+	groups: number[];
+	/** Its changes no group holds, up to `lines` of them: what's left to show for it alone. */
+	ownHunks: Hunk[];
+	/** How many changed lines no group holds, all of them. */
+	ownLines: number;
+}
+
+/**
+ * One change on more than one file (a hunk the same on each, or the same but for its attribute
+ * values): what a migration fixes once for all of them. Every move ran the loop "fix the biggest
+ * group of differences, repeat" by hand, and opensource.guide's 387 changed pages took a
+ * classifier of their own to turn into groups (osg `scripts/compare.py`).
+ */
+export interface DiffGroup {
+	/** The files that have it, by their URL, in the report's order. */
+	urls: string[];
+	/** `false` when only its attribute values differ from file to file (the lines are the first file's). */
+	same: boolean;
+	/** What it changes: `dates`, `order` (the same lines, moved), `markup`, `text`, or `markup and text`. */
+	kind: string;
+	/** The change, as the first file has it. */
+	hunk: Hunk;
 }
 
 export interface DiffReport {
@@ -77,6 +104,8 @@ export interface DiffReport {
 	/** URLs only in the first build. */
 	removed: string[];
 	changed: FileDiff[];
+	/** Changes on more than one file, the most files first. Empty with `--ungrouped`. */
+	groups: DiffGroup[];
 	unchangedPages: number;
 	unchangedFiles: number;
 }
@@ -602,6 +631,9 @@ function comparePair(a: Buffer, b: Buffer, pair: Pair, options: DiffOptions): Fi
 		onlyDates: undefined,
 		sizeBefore: a.length,
 		sizeAfter: b.length,
+		groups: [],
+		ownHunks: [],
+		ownLines: 0,
 	};
 	const textA = decode(a), textB = decode(b);
 	if (textA === undefined || textB === undefined) return diff;
@@ -642,6 +674,7 @@ function comparePair(a: Buffer, b: Buffer, pair: Pair, options: DiffOptions): Fi
 	}
 	// A sitemap's or a list's entries in another order: every line that went is one that came.
 	if (!diff.onlyDates && sameLines(found)) diff.notes.push("the same lines, in another order");
+	diff.allHunks = found;
 	diff.changedLines = found.reduce((sum, h) => sum + h.removed.length + h.added.length, 0);
 	diff.hunks = firstLines(found, options.lines);
 	return diff;
@@ -672,6 +705,9 @@ function compareLinks(a: string | undefined, b: string | undefined, pair: Pair):
 		onlyDates: undefined,
 		sizeBefore: 0,
 		sizeAfter: 0,
+		groups: [],
+		ownHunks: [],
+		ownLines: 0,
 	};
 }
 
@@ -726,7 +762,7 @@ export async function compare(before: string, after: string, options: DiffOption
 	const [listA, listB] = [walkA.value, walkB.value];
 	const a = keyed(keep(listA), options.exact);
 	const b = keyed(keep(listB), options.exact);
-	const report: DiffReport = { before, after, exact: options.exact, added: [], removed: [], changed: [], unchangedPages: 0, unchangedFiles: 0 };
+	const report: DiffReport = { before, after, exact: options.exact, added: [], removed: [], changed: [], groups: [], unchangedPages: 0, unchangedFiles: 0 };
 	for (const key of a.keys()) if (!b.has(key)) report.removed.push(urlOf(key));
 	for (const key of b.keys()) if (!a.has(key)) report.added.push(urlOf(key));
 	const pairs: Pair[] = [];
@@ -759,7 +795,69 @@ export async function compare(before: string, after: string, options: DiffOption
 		else if (isPage(pair.key)) report.unchangedPages += 1;
 		else report.unchangedFiles += 1;
 	});
+	report.groups = options.ungrouped ? [] : groupChanges(report.changed);
+	for (const file of report.changed) {
+		if (!report.groups.length) file.ownHunks = file.allHunks ?? file.hunks;
+		file.ownLines = file.ownHunks.reduce((sum, h) => sum + h.removed.length + h.added.length, 0);
+		file.ownHunks = firstLines(file.ownHunks, options.lines);
+		delete file.allHunks;
+	}
 	return report;
+}
+
+// ---- groups --------------------------------------------------------------------------------
+
+/** A hunk's lines as one key: the same lines, the same key. */
+const hunkKey = (h: Hunk) => JSON.stringify([h.removed, h.added]);
+
+/** A tag line with its attribute values blanked (`<meta content="…" name="…">`); text stays. Two hunks with the same shape are the same change with other values. */
+const lineShape = (line: string) => (line.startsWith("<") ? line.replace(/="[^"]*"/g, "=\"…\"") : line);
+const shapeKey = (h: Hunk) => JSON.stringify([h.removed.map(lineShape), h.added.map(lineShape)]);
+
+/** What a hunk changes, for agents sorting the groups. */
+function kindOf(h: Hunk): string {
+	if (onlyDates([h])) return "dates";
+	if (sameLines([h])) return "order";
+	const lines = [...h.removed, ...h.added];
+	const tags = lines.filter((l) => l.startsWith("<")).length;
+	return tags === lines.length ? "markup" : tags === 0 ? "text" : "markup and text";
+}
+
+/**
+ * The changes on more than one file: hunks whose tags are the same but for their attribute values,
+ * and whose text is the same (`same` when every one is the same line for line). One pass, not
+ * the exact ones first: links that each moved to an encoded anchor are one change on 70
+ * opensource.guide pages, not 70 pairs. Each file's `groups` and `ownHunks` (what no group holds)
+ * are set.
+ */
+export function groupChanges(changed: FileDiff[]): DiffGroup[] {
+	// Each shape's files, in the report's order, its first hunk, and whether every hunk is that one.
+	const found = new Map<string, { files: Set<number>; hunk: Hunk; first: number; same: boolean }>();
+	changed.forEach((f, i) => {
+		for (const h of f.allHunks ?? f.hunks) {
+			if (!h.removed.length && !h.added.length) continue;
+			const k = shapeKey(h);
+			const entry = found.get(k);
+			if (!entry) found.set(k, { files: new Set([i]), hunk: h, first: i, same: true });
+			else {
+				entry.files.add(i);
+				if (entry.same && hunkKey(h) !== hunkKey(entry.hunk)) entry.same = false;
+			}
+		}
+	});
+	const shared = [...found].filter(([, e]) => e.files.size > 1).sort(([, a], [, b]) => b.files.size - a.files.size || a.first - b.first);
+	const groups: DiffGroup[] = [];
+	const inGroup = new Map<string, number>();
+	for (const [k, e] of shared) {
+		inGroup.set(k, groups.length);
+		groups.push({ urls: [...e.files].map((i) => changed[i].url), same: e.same, kind: kindOf(e.hunk), hunk: e.hunk });
+	}
+	for (const f of changed) {
+		const all = f.allHunks ?? f.hunks;
+		f.groups = [...new Set(all.map((h) => inGroup.get(shapeKey(h))).filter((g): g is number => g !== undefined))].sort((a, b) => a - b);
+		f.ownHunks = all.filter((h) => !inGroup.has(shapeKey(h)));
+	}
+	return groups;
 }
 
 /** Whether the lines removed are the lines added, each as many times: the same lines, moved. */
@@ -828,6 +926,7 @@ export function diffText(report: DiffReport, limit: number, color: boolean): str
 	const paint = (code: string, s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
 	let out = `Comparing ${report.before} with ${report.after}\n`;
 	out += report.exact ? "Comparing bytes (--exact).\n" : IGNORING;
+	const pageUrl = (url: string) => url.endsWith("/") || isPage(url);
 	const unchanged = `${plural(report.unchangedPages, "page", "pages")} and ${plural(report.unchangedFiles, "other file", "other files")}`;
 	if (isSame(report)) return `${out}\nNo differences: ${unchanged} are the same. The stump has not moved.\n`;
 	if (report.added.length) {
@@ -839,7 +938,37 @@ export function diffText(report: DiffReport, limit: number, color: boolean): str
 		for (const line of listed(report.removed, "-")) out += paint("31", line);
 	}
 	if (report.changed.length) out += `\nChanged (${report.changed.length})\n`;
+	const showLines = (hunks: Hunk[], total: number, indent: string) => {
+		let shown = 0;
+		let text = "";
+		done: for (const hunk of hunks) {
+			for (const [sign, code, side] of [["-", "31", hunk.removed], ["+", "32", hunk.added]] as const) {
+				for (const line of side) {
+					if (limit > 0 && shown >= limit) break done;
+					text += paint(code, `${indent}${sign} ${clip(line)}\n`);
+					shown += 1;
+				}
+			}
+		}
+		if (total > shown) text += `${indent}... ${count(total - shown)} more changed ${total - shown === 1 ? "line" : "lines"} (--lines 0 shows all)\n`;
+		return text;
+	};
+	const grouped = report.groups.length > 0;
+	if (grouped) {
+		out += "  The same change on more than one file, the most files first (--ungrouped lists each file with all of it):\n";
+		for (const group of report.groups) {
+			const n = group.urls.length;
+			const what = group.urls.every(pageUrl) ? (n === 1 ? "page" : "pages") : n === 1 ? "file" : "files";
+			const some = group.urls.slice(0, 3).join(", ");
+			out += `  ~ ${count(n)} ${what}${group.same ? "" : ", the same but for attribute values"}: ${some}${n > 3 ? ` and ${count(n - 3)} more` : ""}\n`;
+			const lines = group.hunk.removed.length + group.hunk.added.length;
+			out += showLines([group.hunk], lines, "      ");
+		}
+		const rest = report.changed.filter((f) => f.ownLines > 0);
+		if (rest.length) out += `  And what's left on ${plural(rest.length, "file", "files")}:\n`;
+	}
 	for (const file of report.changed) {
+		if (grouped && file.ownLines === 0) continue;
 		const about: string[] = [];
 		if (file.what.length) about.push(file.what.join(" and "));
 		if (file.renamed) {
@@ -849,20 +978,8 @@ export function diffText(report: DiffReport, limit: number, color: boolean): str
 		if (file.kind === "binary") about.push(`binary, ${bytes(file.sizeBefore)} -> ${bytes(file.sizeAfter)}`);
 		out += `  ~ ${file.url}${about.length ? `  (${about.join("; ")})` : ""}\n`;
 		for (const note of file.notes) out += `      ${note}\n`;
-		let shown = 0;
-		done: for (const hunk of file.hunks) {
-			for (const [sign, code, side] of [["-", "31", hunk.removed], ["+", "32", hunk.added]] as const) {
-				for (const line of side) {
-					if (limit > 0 && shown >= limit) break done;
-					out += paint(code, `      ${sign} ${clip(line)}\n`);
-					shown += 1;
-				}
-			}
-		}
-		if (file.changedLines > shown) out += `      ... ${count(file.changedLines - shown)} more changed ${file.changedLines - shown === 1 ? "line" : "lines"} (--lines 0 shows all)\n`;
+		out += grouped ? showLines(file.ownHunks, file.ownLines, "      ") : showLines(file.hunks, file.changedLines, "      ");
 	}
-	// How many pages and other files differ, before the detail.
-	const pageUrl = (url: string) => url.endsWith("/") || isPage(url);
 	const pages = [...report.added, ...report.removed].filter(pageUrl).length + report.changed.filter((f) => isPage(f.path)).length;
 	const others = report.added.length + report.removed.length + report.changed.length - pages;
 	const found = others === 0 ? plural(pages, "page", "pages") : pages === 0 ? plural(others, "other file", "other files") : `${plural(pages, "page", "pages")} and ${plural(others, "other file", "other files")}`;
@@ -891,6 +1008,7 @@ export function diffJson(report: DiffReport, limit: number): Record<string, unkn
 			sizeBefore: f.sizeBefore,
 			sizeAfter: f.sizeAfter,
 			hunks: firstLines(f.hunks, limit),
+			groups: f.groups,
 		};
 		if (f.renamed) entry.renamed = { before: f.renamed[0], after: f.renamed[1] };
 		return entry;
@@ -905,6 +1023,8 @@ export function diffJson(report: DiffReport, limit: number): Record<string, unkn
 		added: report.added,
 		removed: report.removed,
 		changed,
+		// Each change on more than one file, the most files first; a file's `groups` are places in this list.
+		groups: report.groups.map((g) => ({ files: g.urls.length, urls: g.urls, same: g.same, kind: g.kind, hunk: g.hunk })),
 	};
 }
 

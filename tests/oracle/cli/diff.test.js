@@ -149,3 +149,21 @@ test("diff_of_several_builds_lists_what_varies", () => {
 	assert.equal(same.code, 0, same.log);
 	assert.match(same.stdout, /Every build is the same: 2 pages and 1 other file\. The tracks match every time\./);
 });
+
+// Every move fixed "the biggest group of differences" first, and found it by hand (osg's
+// `scripts/compare.py` for 387 pages): a change on more than one file is listed once, the most
+// files first, and `--ungrouped` lists each file with all its changes.
+test("diff_groups_the_same_change_on_several_files", () => {
+	const dir = tempDir("diff-groups");
+	const pages = (footer) => Object.fromEntries(["pine", "cedar", "spruce"].map((name) => [`${footer}/${name}/index.html`, `<p>${name}</p><footer>${footer === "before" ? "Built with Eleventy" : "Built with ssqch"}</footer>`]));
+	write(dir, { ...pages("before"), ...pages("after"), "after/cedar/index.html": "<p>cedar, again</p><footer>Built with ssqch</footer>" });
+	let r = ssqch(["diff", "before", "after"], { cwd: dir });
+	assert.equal(r.code, 1, r.log);
+	assert.ok(r.log.includes("  ~ 3 pages: /cedar/, /pine/, /spruce/\n      - Built with Eleventy\n      + Built with ssqch\n  And what's left on 1 file:\n  ~ /cedar/  (text)\n      - cedar\n      + cedar, again\n"), r.log);
+	r = ssqch(["diff", "before", "after", "--format", "json"], { cwd: dir });
+	const json = JSON.parse(r.stdout);
+	assert.deepEqual(json.groups, [{ files: 3, urls: ["/cedar/", "/pine/", "/spruce/"], same: true, kind: "text", hunk: { removed: ["Built with Eleventy"], added: ["Built with ssqch"] } }]);
+	assert.deepEqual(json.changed.map((f) => f.groups), [[0], [0], [0]]);
+	r = ssqch(["diff", "before", "after", "--ungrouped"], { cwd: dir });
+	assert.ok(!r.log.includes("The same change on more than one file") && r.log.includes("  ~ /pine/  (text)\n      - Built with Eleventy\n"), r.log);
+});

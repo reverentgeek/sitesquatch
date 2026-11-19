@@ -101,6 +101,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s h -l help -d
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l ignore -d 'Leave out text matching this regular expression before comparing (repeatable)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l only -d 'Only compare files matching this glob, like \'**/*.html\' (repeatable)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l exclude -d 'Leave out files matching this glob, like \'img/**\' (repeatable)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l ungrouped -d 'List each file with all its changes, without grouping the ones shared by several files'
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l lines -d 'Changed lines to show for each file (0 for all)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l format -d 'text or json' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l root -d 'Project root (defaults to the current directory)' -r -F

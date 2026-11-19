@@ -95,6 +95,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		about: "Compare two builds of a site: URLs added and removed, and what changed on each page. Given three or more, list what varies between them",
 		options: [
 			{ long: "exact", help: "Compare bytes: don't match fingerprinted files or ignore whitespace" },
+			{ long: "ungrouped", help: "List each file with all its changes, without grouping the ones shared by several files" },
 			{ long: "ignore", value: "REGEX", help: "Leave out text matching this regular expression before comparing (repeatable)", many: true },
 			{ long: "only", value: "GLOB", help: "Only compare files matching this glob, like '**/*.html' (repeatable)", many: true },
 			{ long: "exclude", value: "GLOB", help: "Leave out files matching this glob, like 'img/**' (repeatable)", many: true },
@@ -330,7 +331,7 @@ export async function main(argv: string[]): Promise<number> {
 	const many = (name: string) => (Array.isArray(cli.options[name]) ? cli.options[name] as string[] : typeof cli.options[name] === "string" ? [cli.options[name] as string] : []);
 	const top = Number(value("top") ?? "5");
 	// Two build folders need no config, and neither does a folder given to `footprint`.
-	if (command === "diff") return runDiff(cli.positionals, { exact: flag("exact"), ignore: many("ignore"), only: many("only"), exclude: many("exclude"), lines: Number(value("lines") ?? "10"), format });
+	if (command === "diff") return runDiff(cli.positionals, { exact: flag("exact"), ignore: many("ignore"), only: many("only"), exclude: many("exclude"), ungrouped: flag("ungrouped"), lines: Number(value("lines") ?? "10"), format });
 	if (command === "footprint" && cli.positionals[0] !== undefined) {
 		try {
 			await runFootprint(cli.positionals[0], cli.positionals[0], top, format);
@@ -463,7 +464,7 @@ async function runInspect(config: Config, target: string, name: string | undefin
 }
 
 /** `ssqch diff`: prints the comparison, and answers 0 when the builds are the same, 1 when they differ and 2 on an error. */
-async function runDiff(dirs: string[], options: { exact: boolean; ignore: string[]; only: string[]; exclude: string[]; lines: number; format: string }): Promise<number> {
+async function runDiff(dirs: string[], options: { exact: boolean; ignore: string[]; only: string[]; exclude: string[]; ungrouped: boolean; lines: number; format: string }): Promise<number> {
 	const [before, after] = dirs;
 	try {
 		checkFormat(options.format);
@@ -486,7 +487,7 @@ async function runDiff(dirs: string[], options: { exact: boolean; ignore: string
 			else process.stdout.write(runsText(runs, options.lines, process.stdout.isTTY === true));
 			return runs.varies.length ? 1 : 0;
 		}
-		const report = await compare(before, after, { exact: options.exact, ignore, only, exclude, lines: options.lines });
+		const report = await compare(before, after, { exact: options.exact, ungrouped: options.ungrouped, ignore, only, exclude, lines: options.lines });
 		if (options.format === "json") process.stdout.write(JSON.stringify(diffJson(report, options.lines), null, 2) + "\n");
 		else process.stdout.write(diffText(report, options.lines, process.stdout.isTTY === true));
 		return isSame(report) ? 0 : 1;

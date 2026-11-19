@@ -142,6 +142,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('--ignore', '--ignore', [CompletionResultType]::ParameterName, 'Leave out text matching this regular expression before comparing (repeatable)')
             [CompletionResult]::new('--only', '--only', [CompletionResultType]::ParameterName, 'Only compare files matching this glob, like ''**/*.html'' (repeatable)')
             [CompletionResult]::new('--exclude', '--exclude', [CompletionResultType]::ParameterName, 'Leave out files matching this glob, like ''img/**'' (repeatable)')
+            [CompletionResult]::new('--ungrouped', '--ungrouped', [CompletionResultType]::ParameterName, 'List each file with all its changes, without grouping the ones shared by several files')
             [CompletionResult]::new('--lines', '--lines', [CompletionResultType]::ParameterName, 'Changed lines to show for each file (0 for all)')
             [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
