@@ -13,6 +13,6 @@ The uncharted parts of the map, as of this release:
 - **Images:** no SVG rasterizing, and HDR photos (the PQ, gain-map profiles of newer iPhones) can't be converted to sRGB, so they look washed out; the build warns about them, and converting the source to sRGB once fixes it. SVGs are served as they are, and GIFs are copied for `auto` output, so animations keep working.
 - **The dev server:** it listens on `127.0.0.1` only (no `--host`), doesn't watch `node_modules`, and rebuilds the whole site on a change, on one thread: after one edit, a 10,000-page site takes about 0.9 s.
 - **Collections:** custom collections don't see pages that are paginated over collections. Those pages are added to `all` and their tags afterwards.
-- **Platforms:** ssqch needs Node 22.18 or newer, and runs wherever that Node and sharp do: macOS, Windows and Linux, Alpine and ARM included. See [TODO.md](https://github.com/reverentgeek/sitesquatch/blob/main/TODO.md) for what's next.
+- **Platforms:** ssqch needs Node 22.18 or newer, and runs wherever that Node and sharp do: macOS, Windows and Linux, Alpine and ARM included.
 
 Found a bug, or have an idea? [Open an issue](https://github.com/reverentgeek/sitesquatch/issues). Happy building, and may your pages load faster than a Squatch sighting disappears.

@@ -3,7 +3,9 @@
 SiteSquatch (`ssqch`) is a static site generator: a TypeScript program on Node, in
 `packages/ssqch/`, with ssqch's own Markdown, highlighter, minifier and Sass as `.wasm` files
 built from Rust. The docs are the pages in `site/src/docs/` (sitesquatch.dev/docs, and
-`ssqch docs`), the README is the front page, and `TODO.md` has the plan.
+`ssqch docs`), the README is the front page, and `research/TODO.md` has the plan. `research/` is
+gitignored: the roadmap is the owner's, on this machine, and not published (moved there
+2026-11-19, with the archived lists in `research/archive/`). If it isn't there, ask for it.
 
 ssqch 0.7, the Rust binary, was removed from `main` before 0.8.0 (it lives on in the
 `release/0.7` branch and the `v0.7.x` tags). What it was is frozen in the oracle (`tests/oracle/`):
@@ -21,7 +23,7 @@ change affects it.
 
 - Not a clone of Eleventy or of any other generator. ssqch started as an Eleventy-compatible
   build for the blog, and that was removed (see "Remove Eleventy" in
-  `docs/archive/todo-2026-11-17.md`): ssqch has its own design, and doesn't copy another
+  `research/archive/todo-2026-11-17.md`): ssqch has its own design, and doesn't copy another
   generator's API wholesale. Take the best ideas from existing generators, fill the gaps they
   leave, and design each feature as ssqch's own, so the result is something unique that appeals
   to lots of developers. Making the move easy is part of that: things should feel familiar and
@@ -29,7 +31,7 @@ change affects it.
   `ssqch dev`, `pathPrefix`) is welcome where it makes moving easier and doesn't mean something
   else in ssqch. ssqch's own name stays the one the docs teach. Blog content about Eleventy
   (posts, their URLs) isn't an API and stays. Research on other generators goes in `research/`
-  (gitignored); the work items go in `TODO.md`.
+  (gitignored); the work items go in `research/TODO.md`.
 - Other generators' words come from one table, `packages/ssqch/src/equivalents.ts`: ssqch's name
   for each, what to say, and where to read more. Errors and warnings use it to name ssqch's
   word (`"pathPrefix" isn't a config option. In ssqch it's base`), and each row is tested
@@ -42,8 +44,8 @@ change affects it.
   in `../blog`, `SSQCH_BIN=../ssqch/packages/ssqch/bin/ssqch.ts pnpm test`. The oracle has the
   blog's frozen output too (`node --test --test-name-pattern="^blog builds" sites.test.js` in
   `tests/oracle/`, where `../blog` and the local snapshot are there).
-- The two TODO lists coordinate the work. This repository's `TODO.md` marks what the blog is
-  waiting on with **Blog:**, and `../blog/TODO.md` marks what needs a change here with
+- The two TODO lists coordinate the work. This repository's `research/TODO.md` marks what the
+  blog is waiting on with **Blog:**, and `../blog/TODO.md` marks what needs a change here with
   **Needs ssqch:**. When work lands on one side, update both lists.
 - A change that breaks existing sites goes under a "Breaking" heading in the changelog, saying
   what a site has to change. Then update the blog in the same session.
@@ -86,8 +88,8 @@ Run from `packages/ssqch/` unless it says otherwise.
   Run it after changing that Rust (`node scripts/build-wasm.ts minify` builds one; the lists are
   in `scripts/wasm-inputs.ts`); `scripts/wasm-inputs.test.ts` fails until then. It needs
   `rustup target add wasm32-wasip1`.
-- `site/` is sitesquatch.dev, built with this repository's ssqch (TODO.md, section 9, has the
-  plan). From `site/`: `node build.ts` builds it and fails on any warning, `node --test
+- `site/` is sitesquatch.dev, built with this repository's ssqch (`research/TODO.md`, "The
+  website", has the plan). From `site/`: `node build.ts` builds it and fails on any warning, `node --test
   "tests/*.test.ts"` checks its colors' contrast, that the docs back its numbers and that every
   docs page is in `nav.yml`, and `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves it.
   The docs pages are the documentation's one source: `site/src/docs/`, in the order
@@ -122,7 +124,7 @@ Run from `packages/ssqch/` unless it says otherwise.
   Rust's tests and clippy, natively and for `wasm32-wasip1` (`rust`). Keep clippy clean. A push
   whose tree a pull request's CI already passed with (a merge commit, when the branch was up to
   date) skips those jobs and passes (`already-tested`), and a change only to `site/` (and its
-  workflow) or the repository's prose (the README, `CONTRIBUTING.md`, `AGENTS.md`, `TODO.md`,
+  workflow) or the repository's prose (the README, `CONTRIBUTING.md`, `AGENTS.md`,
   `CHANGELOG.md`, `docs/`) doesn't run CI at all: `site.yml` checks and deploys the site. A
   change to a docs page (`site/src/docs/`) does run CI, since `ssqch docs` reads the pages. When
   something CI tests starts reading one of those files, take it out of `paths` in `ci.yml`. A
@@ -292,8 +294,8 @@ held back.
   it interacts with what's already there. At minimum: an entry in the docs that `ssqch docs <name>`
   finds (check it answers with the full explanation, not only a table row, and add the query to
   `docs_answer_for_every_name`), types and descriptions where they're defined (`ssqch.d.ts`,
-  `BUILTIN_FILTERS`), and a CHANGELOG entry. Then add a task to `TODO.md`, in the feature's
-  section, to document it fully: a how-to or worked example, the trailheads in
+  `BUILTIN_FILTERS`), and a CHANGELOG entry. Then add a task to `research/TODO.md`, in the
+  feature's section, to document it fully: a how-to or worked example, the trailheads in
   `site/src/docs/trailheads/`
   and starters that could use it, and the blog or examples that could show it off.
 - Docs pages' and the README's paragraphs, list items and callouts are one line each (no hard

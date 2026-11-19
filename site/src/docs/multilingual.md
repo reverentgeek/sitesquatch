@@ -1,9 +1,9 @@
 ---
 title: "Multilingual sites: translations, i18n and hreflang"
 navTitle: "Multilingual sites"
-description: "ssqch has no built-in i18n yet (TODO.md, \"Internationalization\")."
+description: "ssqch has no built-in i18n yet."
 ---
-ssqch has no built-in i18n yet ([TODO.md](https://github.com/reverentgeek/sitesquatch/blob/main/TODO.md), "Internationalization"). What two real sites (one from Jekyll, one from Astro) did instead, with what ssqch has:
+ssqch has no built-in i18n yet. What two real sites (one from Jekyll, one from Astro) did instead, with what ssqch has:
 
 - **A folder per language** (`content/fr/guide.md`), and the language from directory data (`content/fr/fr.json`: `{ "lang": "fr" }`) or front matter. A key that groups a page's translations (the file's path below the language folder, or a front matter key like `translationKey`).
 - **A page's translations** are a lookup in a collection: `collections.docs | where: "data.key", key` in Liquid, or a filter of your own that groups pages by key once.

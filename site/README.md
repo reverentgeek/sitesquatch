@@ -1,6 +1,6 @@
 # sitesquatch.dev
 
-ssqch's own website, built with the ssqch in this repository (`packages/ssqch`), so a change to ssqch that breaks its own site shows up here first. The plan is section 9 of [`TODO.md`](../TODO.md), "The website". So far: the landing page, the docs, the changelog, the live examples, what agents read, the 404 page and the Cloudflare deploy. The launch (the domain) comes next.
+ssqch's own website, built with the ssqch in this repository (`packages/ssqch`), so a change to ssqch that breaks its own site shows up here first. The plan is in the roadmap (`research/TODO.md`, "The website", gitignored). So far: the landing page, the docs, the changelog, the live examples, what agents read, the 404 page and the Cloudflare deploy. The launch (the domain) comes next.
 
 From this folder, with `npm ci` already run in `packages/ssqch`:
 

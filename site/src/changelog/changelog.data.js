@@ -1,5 +1,4 @@
-// The changelog's entries: one for each minor release, written for people (TODO.md, section 9,
-// "The changelog, for people"). CHANGELOG.md stays the complete record, and each entry links to
+// The changelog's entries: one for each minor release, written for people. CHANGELOG.md stays the complete record, and each entry links to
 // its section there. `release` is the version an entry starts with, `releases` every version it
 // covers (tests/changelog.test.ts checks them against CHANGELOG.md), and an entry that covers
 // several releases names the last with `lastRelease` and `lastDate`.
