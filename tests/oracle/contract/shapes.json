@@ -479,63 +479,72 @@
         {
           "name": "string",
           "calls": "number",
-          "ms": "number"
+          "ms": "number",
+          "async": "boolean"
         }
       ],
       "templates": [
         {
           "name": "string",
           "calls": "number",
-          "ms": "number"
+          "ms": "number",
+          "async": "boolean"
         }
       ],
       "layouts": [
         {
           "name": "string",
           "calls": "number",
-          "ms": "number"
+          "ms": "number",
+          "async": "boolean"
         }
       ],
       "engines": [
         {
           "name": "string",
           "calls": "number",
-          "ms": "number"
+          "ms": "number",
+          "async": "boolean"
         }
       ],
       "filters": [
         {
           "name": "string",
           "calls": "number",
-          "ms": "number"
+          "ms": "number",
+          "async": "boolean"
         }
       ],
       "transforms": [
         {
           "name": "string",
           "calls": "number",
-          "ms": "number"
+          "ms": "number",
+          "async": "boolean"
         }
       ],
       "data": [
         {
           "name": "string",
           "calls": "number",
-          "ms": "number"
+          "ms": "number",
+          "async": "boolean"
         }
       ],
       "collections": [
         {
           "name": "string",
           "calls": "number",
-          "ms": "number"
+          "ms": "number",
+          "async": "boolean"
         }
       ],
       "hooks": [
         {
           "name": "string",
           "calls": "number",
-          "ms": "number"
+          "ms": "number",
+          "async": "boolean"
         }
       ]
     },

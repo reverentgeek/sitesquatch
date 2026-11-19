@@ -20,7 +20,7 @@ const frozen = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, "utf8")) :
 const freezing = process.env.SSQCH_FREEZE_SHAPES === "1";
 const freezingNew = process.env.SSQCH_FREEZE_SHAPES === "new";
 /** Documents 0.7.0 didn't print, and the version whose shape is frozen for each. */
-const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.11.0" };
+const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.10.1" };
 const shapes = {};
 
 /** A value's shape: "string", "number", "boolean", "null", { key: shape }, or [shape of every element merged]. */

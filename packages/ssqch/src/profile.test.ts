@@ -7,7 +7,7 @@ test("a wrapped function is timed, keeps its `this`, and returns what it returns
 	const shout = profile.wrap("filters", "shout", function (this: { mark: string }, s: string) { return `${s.toUpperCase()}${this.mark}`; }, true);
 	assert.equal(shout.call({ mark: "!" }, "pine"), "PINE!");
 	shout.call({ mark: "?" }, "cedar");
-	assert.deepEqual(profile.report().filters.map((e) => [e.name, e.calls]), [["shout", 2]]);
+	assert.deepEqual(profile.report().filters.map((e) => [e.name, e.calls, e.async]), [["shout", 2, false]]);
 });
 
 test("a promise is timed until it settles, and a rejection is still counted", async () => {
@@ -19,6 +19,7 @@ test("a promise is timed until it settles, and a rejection is still counted", as
 	await new Promise((resolve) => setImmediate(resolve));
 	const report = profile.report();
 	assert.ok(report.filters[0].ms >= 25, String(report.filters[0].ms));
+	assert.equal(report.filters[0].async, true, "a call that returned a promise is async");
 	assert.equal(report.transforms[0].calls, 1);
 });
 

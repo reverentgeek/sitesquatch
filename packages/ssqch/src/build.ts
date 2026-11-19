@@ -375,7 +375,7 @@ class Renderer {
 					data.content = content;
 					let text = layout.body;
 					for (const name of layout.engines) {
-						const ctx: RenderContext = { name: layout.name, inputPath: layout.path, cacheKey: `${layout.name}#${name}` };
+						const ctx: RenderContext = { name: layout.name, inputPath: layout.path, cacheKey: `${layout.name}#${name}`, kind: "layout" };
 						const engine = site.engines.get(name);
 						try {
 							const out = engine.render(text, data, ctx);

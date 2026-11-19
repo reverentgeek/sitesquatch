@@ -485,3 +485,29 @@ test("liquid_follows_rubys_liquid", () => {
 	assert.equal(read(root, "_site/split/index.html"), "2|3|a/b/c|a/b|0");
 	assert.equal(read(root, "_site/blank/index.html"), "ab|cd|e\n  1\nf|gh|i\n  out\nj");
 });
+
+// Found in migrations: a site's own engine (a markdown-it) rendered pages' permalinks too, so a
+// URL came out as `<p>/tags/{{ tag }}/</p>`, and the engine couldn't tell a page from a layout
+// or a permalink. A permalink renders with ssqch's template language (here the markdownEngine),
+// and the engine is told what it's rendering: `{ kind, path }`.
+test("a_sites_engine_is_told_what_it_renders_and_permalinks_skip_it", () => {
+	const dir = tempDir("engine-context");
+	const w = (p, t) => write(dir, { [p]: t });
+	w("ssqch.config.js", "export default { templateFormats: [\"md\", \"mdit\"], markdownEngine: \"jinja\", engines: { mdit: (source, data, context) => `<p>${context.kind} ${context.path}: ${source.trim()}</p>` } };\n");
+	w("_includes/frame.mdit", "frame");
+	w("posts/pine.md", "---\nrender: mdit\ntag: Pine\npermalink: \"/tags/{{ tag | lower }}/\"\nlayout: frame.mdit\n---\nCones\n");
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/tags/pine/index.html"), "<p>layout ./_includes/frame.mdit: frame</p>");
+	// The body, as the layout's `content` would have it, said `body` and the page's file.
+	w("_includes/frame.mdit", "{{ content }}");
+	w("ssqch.config.js", "export default { templateFormats: [\"md\", \"mdit\"], markdownEngine: \"jinja\", engines: { mdit: (source, data, context) => context.kind === \"layout\" ? data.content : `<p>${context.kind} ${context.path}: ${source.trim()}</p>` } };\n");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/tags/pine/index.html"), "<p>body ./posts/pine.md: Cones</p>");
+
+	// A permalink that comes out with tags still in it, or as a paragraph, is an error, not a URL.
+	w("posts/pine.md", "---\npermalink: \"{{ '<p>' | safe }}pine/\"\n---\nCones\n");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("isn't a URL: it was rendered with `jinja`"), r.log);
+});

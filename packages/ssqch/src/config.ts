@@ -6,6 +6,7 @@
 // `{ env, serving }`. Settings only make sense once, so they're allowed at the top level only.
 // Everything else can also come from a plugin, and is applied in order: the config's own entries
 // first, then each plugin's, depth first.
+import type { EngineKind } from "./engines/engine.ts";
 import fs from "node:fs";
 import path from "node:path";
 import * as api from "./api.ts";
@@ -36,7 +37,8 @@ export { CONFIG_FILES, dirsOf, parseEnvironment, shownDir, shownOutput } from ".
 export type { Dirs, Environment } from "./dirs.ts";
 
 export type Filter = (...args: any[]) => unknown;
-export type EngineFn = (source: string, data: Data, inputPath: string) => string | Promise<string>;
+/** A site's own engine, as ssqch calls it: `name` is for messages; `context` is what the engine's function gets as its third argument. */
+export type EngineFn = (source: string, data: Data, name: string, context: { kind: EngineKind; path: string }) => string | Promise<string>;
 export type TransformFn = (content: string, page: { url: string; inputPath: string; outputPath: string }) => string | Promise<string>;
 export type CollectionFn = (items: any[]) => unknown;
 /** A hook: the site's function (told about the build), or a command to run. */
@@ -562,8 +564,10 @@ async function loadJs(config: Config, file: string): Promise<void> {
 					if (typeof out !== "string") throw new TypeError(`engine "${key}" returned ${out === undefined ? "undefined" : typeof out} for ${inputPath}; return the rendered text`);
 					return out;
 				};
-				const run: EngineFn = (source, data, inputPath) => {
-					const out = render.call(engine, source, data);
+				// The third argument says what's being rendered (`{ kind, path }`): an engine that only
+				// has `source` and `data` had to guess whether it was a page, a layout or a permalink.
+				const run: EngineFn = (source, data, inputPath, context) => {
+					const out = render.call(engine, source, data, context);
 					return out instanceof Promise ? watchSettle(out).then((v) => checked(v, inputPath)) : checked(out, inputPath);
 				};
 				ops.push(() => { config.engines.set(key, run); });

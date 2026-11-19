@@ -508,6 +508,8 @@ export class ImageProcessor {
 	/** Each source with files still to make that something points at, by its path: one that fails fails the build. */
 	private watched = new Map<string, Watched>();
 	private generated = 0;
+	/** GIFs and SVGs copied as they are (no encode, and no cache), apart from `generated`. */
+	private copied = 0;
 	private pruned = 0;
 	private converted = new Set<string>();
 	private used = new Set<string>();
@@ -572,6 +574,7 @@ export class ImageProcessor {
 		this.timings = [];
 		if (this.options.hashCache) this.hashes.load(path.join(root, CACHE_FILE));
 		this.generated = 0;
+		this.copied = 0;
 		this.pruned = 0;
 	}
 
@@ -795,8 +798,11 @@ export class ImageProcessor {
 			const e = entry(srcFormat, w, h, w > 0 ? `${id}-${w}.${srcFormat}` : `${id}.${srcFormat}`);
 			const t = mtimeOf(e.path);
 			if (!(t !== undefined && (sourceTime === undefined || t >= sourceTime)) && !this.files.has(e.path)) {
-				fs.copyFileSync(src, e.path);
-				this.generated++;
+				// A copy of the source, not an encode: counted as copied, and made on the thread
+				// pool while pages go on rendering (settle waits for it).
+				const out = e.path;
+				this.placing.push(fs.promises.copyFile(src, out).then(() => undefined, (err) => new Error(`copying ${src} to ${out}: ${(err as Error).message}`)));
+				this.copied++;
 			}
 			this.files.set(e.path, "reused");
 			return { formats: new Map([[srcFormat, [e]]]), auto: formats.includes("auto") ? srcFormat : undefined, ready: READY };
@@ -1045,8 +1051,11 @@ export class ImageProcessor {
 		for (const p of this.used) size += this.sizes.get(p) ?? fs.statSync(p, { throwIfNoEntry: false })?.size ?? 0;
 		const sources = this.sources.size;
 		// A file two pages ask for at once is made once, but don't count past the files used.
-		const encoded = Math.min(this.generated, this.used.size);
-		let line = `${count(this.used.size)} file${this.used.size === 1 ? "" : "s"} from ${count(sources)} source${sources === 1 ? "" : "s"}, ${bytes(size)}: ${count(encoded)} encoded, ${count(this.used.size - encoded)} reused`;
+		const copied = Math.min(this.copied, this.used.size);
+		const encoded = Math.min(this.generated, this.used.size - copied);
+		// Copies of GIFs and SVGs are said apart: counted as encoded, a clean build of a site with
+		// some said `35 encoded` every time, as if the cache didn't work.
+		let line = `${count(this.used.size)} file${this.used.size === 1 ? "" : "s"} from ${count(sources)} source${sources === 1 ? "" : "s"}, ${bytes(size)}: ${count(encoded)} encoded, ${copied > 0 ? `${count(copied)} copied, ` : ""}${count(this.used.size - encoded - copied)} reused`;
 		if (this.converted.size > 0) line += ` (${count(this.converted.size)} source${this.converted.size === 1 ? "" : "s"} converted to sRGB)`;
 		if (this.options.prune) line += `, ${count(this.pruned)} pruned`;
 		return line;

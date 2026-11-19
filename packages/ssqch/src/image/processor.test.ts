@@ -217,6 +217,25 @@ test("cached files are linked into an empty output folder by the time the build 
 	fs.rmSync(root, { recursive: true });
 });
 
+// A GIF in `auto` output (it keeps its animation) and an SVG are copied as they are, not
+// encoded: the summary says so, so a clean build of a site with some doesn't read as a cache
+// that didn't work. The copies are made on the thread pool, and there once the build settles.
+test("a GIF or SVG copied as it is counts as copied, not encoded", async () => {
+	const gif = await sharp({ create: { width: 12, height: 8, channels: 3, background: "#228b22" } }).gif().toBuffer();
+	const svg = Buffer.from("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><circle cx=\"5\" cy=\"5\" r=\"4\"/></svg>");
+	const { root, p } = project({ "src/img/pine.gif": gif, "src/img/cone.svg": svg }, { ...defaultImageOptions(), formats: ["auto"], widths: [12] });
+	const page = path.join(root, "src/index.html");
+	p.transformHtml("<img src=\"/img/pine.gif\" alt=\"\"><img src=\"/img/cone.svg\" alt=\"\">", page);
+	await p.settle();
+	assert.equal(fs.readdirSync(path.join(root, "dist/img")).length, 2);
+	assert.equal(p.summary()?.replace(/, [\d.]+ [KM]?B:/, ", <size>:"), "2 files from 2 sources, <size>: 0 encoded, 2 copied, 0 reused");
+	p.startBuild({ root, input: "src", output: "dist", verbose: false } as Config);
+	p.transformHtml("<img src=\"/img/pine.gif\" alt=\"\"><img src=\"/img/cone.svg\" alt=\"\">", page);
+	await p.settle();
+	assert.equal(p.summary()?.replace(/, [\d.]+ [KM]?B:/, ", <size>:"), "2 files from 2 sources, <size>: 0 encoded, 2 reused");
+	fs.rmSync(root, { recursive: true });
+});
+
 /** A PNG of noise, which doesn't compress away, so a third of it ends inside its image data. */
 const noise = (width: number, height: number) => {
 	const raw = Buffer.alloc(width * height * 3);

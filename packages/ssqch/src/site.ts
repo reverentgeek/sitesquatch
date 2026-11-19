@@ -246,7 +246,8 @@ export class Site {
 			byName.set(name, {
 				render: (source, data, ctx) => {
 					try {
-						const out = fn(source, data, ctx.name);
+						// What's being rendered, and its file as `page.inputPath` names it (`./src/posts/pine.md`).
+						const out = fn(source, data, ctx.name, { kind: ctx.kind ?? "body", path: this.display(ctx.inputPath) });
 						return typeof out === "string" ? out : out.catch((e) => { throw new BuildError(describeThrown(e, dirs.root)); });
 					} catch (e) {
 						throw new BuildError(describeThrown(e, dirs.root));
@@ -812,7 +813,10 @@ export class Site {
 			if (permalink === false) url = null;
 			else if (typeof permalink === "string") {
 				const dynamic = data.dynamicPermalink !== false;
-				url = (dynamic && hasTags(tpl, permalink) ? await this.renderDataString(tpl, "permalink", permalink, data) : permalink).trim();
+				url = (dynamic && hasTags(tpl, this.config, permalink) ? await this.renderDataString(tpl, "permalink", permalink, data) : permalink).trim();
+				// A permalink that still has tags, or came out as a paragraph, went through something
+				// that isn't its template language: say so, rather than write a page at that URL.
+				if (dynamic && (/\{\{|\{%|<%/.test(url) || /^<p>/i.test(url))) bail(`permalink ${show(url)} isn't a URL: it was rendered with \`${dataStringEngine(tpl, this.config)}\`, which left it like that. Write it in that template language, or set \`dynamicPermalink: false\` to use it as written`);
 			} else if (permalink !== undefined && permalink !== null) bail("permalink must be a string or false");
 			// Non-HTML plain files (llms.txt) keep their own name.
 			else if (tpl.engines.length && tpl.engines.every((e) => e === "txt")) url = `/${tpl.rel}`;
@@ -878,13 +882,13 @@ export class Site {
 	}
 
 	/** Renders a `permalink` or `computed` string with the page's own template language. */
-	private async renderDataString(tpl: Tpl, what: string, text: string, data: Data): Promise<string> {
-		const ctx: RenderContext = { name: `${tpl.rel} (${what})`, inputPath: tpl.input };
-		return this.engines.get(dataStringEngine(tpl)).render(text, data, ctx);
+	private async renderDataString(tpl: Tpl, what: "permalink" | "computed", text: string, data: Data): Promise<string> {
+		const ctx: RenderContext = { name: `${tpl.rel} (${what})`, inputPath: tpl.input, kind: what };
+		return this.engines.get(dataStringEngine(tpl, this.config)).render(text, data, ctx);
 	}
 
 	private async renderComputed(value: unknown, data: Data, tpl: Tpl): Promise<unknown> {
-		if (typeof value === "string") return hasTags(tpl, value) ? this.renderDataString(tpl, "computed", value, data) : value;
+		if (typeof value === "string") return hasTags(tpl, this.config, value) ? this.renderDataString(tpl, "computed", value, data) : value;
 		if (isPlainObject(value)) {
 			const out: Data = {};
 			for (const [k, v] of Object.entries(value)) out[k] = await this.renderComputed(v, data, tpl);
@@ -1087,13 +1091,20 @@ export function readsCollections(computed: unknown): boolean {
 }
 
 /** The template language a page's data strings (`permalink`, `computed`) are written in: the first engine in its chain that isn't Markdown or plain text, or Edge for those. */
-function dataStringEngine(tpl: Tpl): string {
-	return tpl.engines.find((e) => e !== "md" && e !== "html" && e !== "txt") ?? "edge";
+// A site's own engine (`engines: { mdit }`) isn't one either: it's usually a Markdown renderer, and
+// a permalink through markdown-it came out as `<p>/blog/tags/{{ tag | slug }}/</p>` (found in a
+// migration). So it's the first of ssqch's template languages in the chain, then the
+// `markdownEngine` (what the site's Markdown pages read their tags with), then Edge.
+const TEMPLATE_LANGUAGES = new Set(["edge", "njk", "jinja", "j2", "liquid", "hbs", "handlebars", "mustache", "ejs"]);
+function dataStringEngine(tpl: Tpl, config: Config): string {
+	const own = (e: string) => TEMPLATE_LANGUAGES.has(e) && !config.engines.has(e);
+	const markdown = config.markdownEngine;
+	return tpl.engines.find(own) ?? (markdown !== null && own(markdown) ? markdown : "edge");
 }
 
 /** Whether a data string has tags in that language, so it needs rendering. */
-function hasTags(tpl: Tpl, s: string): boolean {
-	return dataStringEngine(tpl) === "ejs" ? s.includes("<%") : s.includes("{{") || s.includes("{%");
+function hasTags(tpl: Tpl, config: Config, s: string): boolean {
+	return dataStringEngine(tpl, config) === "ejs" ? s.includes("<%") : s.includes("{{") || s.includes("{%");
 }
 
 /** Reads files through Node's thread pool, 64 at a time. A file's bytes are decoded when its template is read, where an error can name it. */

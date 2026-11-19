@@ -458,8 +458,9 @@ faster (0.35 s against 1.2 s).
       Rust blog's is Markdown (649 ms, under 1 ms a page). v8's and a11y's are their own hooks.
       Async filters that run at once add up past the build's time (a11y's `htmlToAbsoluteUrls`,
       398 ms in a 457 ms build): the docs say so, and the profile could mark them.
-- [ ] **The profile marks async entries**, whose times overlap, so a list's total isn't read as
-      time the build spent (a11y's `htmlToAbsoluteUrls`, above).
+- [x] **The profile marks async entries** (done 2026-11-19: `async` in the JSON, `(65, async)` in
+      the text, and a line saying their totals overlap), so a list's total isn't read as time the
+      build spent (a11y's `htmlToAbsoluteUrls`, above).
 - [ ] **Native Liquid `where`** (`where` and `reject` done 2026-11-18: the bench's Liquid case 39.8
       s → 4.6 s; `where_exp`, `map`, `sort`, `group_by`, `find` still liquidjs') (and `where_exp`,
       `map`, `sort`, `group_by`, `find` for a property path), keeping liquidjs' for expressions (osg
@@ -526,10 +527,12 @@ guesswork.
       files for it, because `render` from a folder's data reaches its `.njk` pages too; lit.dev put
       `render` in the config's global `data`. Then `ssqch import eleventy` can carry
       `setLibrary("md", ...)` over as written.
-- [ ] **Custom engines get context** (lit B8): a third argument, `{ kind: "body" | "layout" |
+- [x] **Custom engines get context** (lit B8; done 2026-11-19, as the third argument, with
+      `"hook"` for a Markdown render hook too): a third argument, `{ kind: "body" | "layout" |
       "permalink" | "computed", path }`. lit.dev's engine guessed (`data.page.url` undefined meant a
       front matter string; layouts found by matching their body).
-- [ ] **Permalinks render with the first template language in the chain** (or `markdownEngine`),
+- [x] **Permalinks render with the first template language in the chain** (or `markdownEngine`;
+      done 2026-11-19, and `computed` strings too, with an error for one that isn't a URL),
       never a Markdown renderer or a custom engine that isn't one (v8 #6: `<p>/blog/tags/{{ tag |
       slug }}/</p>`). Say so when a permalink still has `{{`/`{%` or starts with `<p>` after
       rendering.
@@ -1024,7 +1027,8 @@ After launch:
 
 ### Images
 
-- [ ] **The summary counts a GIF or SVG copied as it is as encoded** (2026-11-19): the blog's clean
+- [x] **The summary counts a GIF or SVG copied as it is as encoded** (done 2026-11-19: `35 copied`,
+      made on the thread pool): the blog's clean
       build says `35 encoded` every time, which reads as a cache that doesn't work; they're copies
       of the source (`copyGif`, and SVGs), made into the output with no cache. Count them apart
       (`35 copied`), which changes the summary's line (a deliberate change, frozen again), and
