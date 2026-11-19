@@ -81,7 +81,7 @@ test("assetsPlugin() rewrites the pages that name a file, and assetUrl() names w
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-assets-plugin-"));
 	fs.mkdirSync(path.join(root, "dist/assets"), { recursive: true });
 	fs.writeFileSync(path.join(root, "dist/assets/site.css"), "body { color: green }");
-	const config = { root, input: "src", output: "dist", env: "production", serving: false, passthrough: [], beforeBuild: [], htmlTransforms: [], filters: new Map(), summaries: [] } as unknown as Config;
+	const config = { root, input: "src", output: "dist", env: "production", serving: false, passthrough: [], renamedCopies: new Map(), beforeBuild: [], htmlTransforms: [], filters: new Map(), summaries: [] } as unknown as Config;
 	await BUILTINS.get("ssqch/assets")!(config, { files: ["/assets/site.css"] } as never);
 	const hook = config.beforeBuild[0] as { fn: (event: unknown) => unknown };
 	await hook.fn({});

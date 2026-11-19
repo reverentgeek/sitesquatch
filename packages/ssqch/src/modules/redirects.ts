@@ -3,7 +3,8 @@
 // (`{ "/old/": "/new/" }`, where the target can be another site). Each becomes a small page that
 // sends browsers on (a meta refresh, with a canonical link and `noindex`), a line in a Netlify
 // `_redirects` file, or both. The `_redirects` lines go after any the site's own `_redirects`
-// template writes. Ported from `plugins/redirects`.
+// template writes, with the site's `base` on both URLs (a host matches the request's whole
+// path), as a redirect page's target has it. Ported from `plugins/redirects`.
 import { BUILTINS } from "../config.ts";
 import type { Config, GeneratedFile } from "../config.ts";
 import { bail, context } from "../diagnostics.ts";
@@ -121,7 +122,8 @@ BUILTINS.set("ssqch/redirects", (config: Config, given) => {
 				const target = withBase(config.base, to);
 				files.push({ path, contents: redirectPage(target), hook: { name: "redirect", value: { from, to: target } } });
 			}
-			lines += `${from}  ${to}  301\n`;
+			// Hosts match a line against the whole URL path, which has the base in front.
+			lines += `${withBase(config.base, from)}  ${withBase(config.base, to)}  301\n`;
 		}
 		if (netlify && lines !== "") files.push({ path: "/_redirects", contents: lines, append: true });
 		return files;

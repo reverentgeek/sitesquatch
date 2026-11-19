@@ -85,6 +85,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      # To download main's last deploy, for `ssqch diff`.
+      actions: read
     steps:
       - id: ready
         env:
@@ -120,15 +122,38 @@ jobs:
           # that's only "{". Its address is .preview.urls[0] (pr-<number>-sitesquatch.<you>.workers.dev).
           url=$(printf '%s\n' "$output" | sed -n '/^{$/,$p' | jq -er '.preview.urls[0]')
           echo "url=$url" >> "$GITHUB_OUTPUT"
-      - name: comment the preview's address
+      # What this pull request changes on the site: `ssqch diff` between main's last deploy (its
+      # run's artifact, kept 7 days) and this build. No artifact, no diff: the comment says only
+      # where the preview is.
+      - id: diff
+        if: steps.ready.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow site.yml --branch main --event push --status success --limit 1 --json databaseId,headSha --jq '.[0] | "\(.databaseId) \(.headSha)"')
+          if [ -z "$run" ] || ! gh run download "${run% *}" --repo "$GITHUB_REPOSITORY" --name site --dir "$RUNNER_TEMP/main-dist"; then
+            echo "::notice::No build of main to compare with."
+            exit 0
+          fi
+          (cd packages/ssqch && npm ci --no-audit --no-fund)
+          # It exits with 1 when it finds differences, which is what this is for.
+          node packages/ssqch/bin/ssqch.ts diff "$RUNNER_TEMP/main-dist" site/dist > "$RUNNER_TEMP/diff.txt" || [ $? -eq 1 ]
+          node packages/ssqch/bin/ssqch.ts diff "$RUNNER_TEMP/main-dist" site/dist --format json > "$RUNNER_TEMP/diff.json" || [ $? -eq 1 ]
+          echo "main=${run#* }" >> "$GITHUB_OUTPUT"
+      - name: comment the preview's address and what changed
         if: steps.ready.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ github.event.pull_request.number }}
           URL: ${{ steps.preview.outputs.url }}
           SHA: ${{ github.event.pull_request.head.sha }}
+          MAIN: ${{ steps.diff.outputs.main }}
         run: |
-          body="**Site preview:** $URL (at ${SHA:0:7}). It follows this pull request, and goes when it closes."
+          if [ -n "$MAIN" ]; then
+            body=$(node site/lib/preview-comment.ts --url "$URL" --sha "$SHA" --main "$MAIN" --diff "$RUNNER_TEMP/diff.json" --text "$RUNNER_TEMP/diff.txt")
+          else
+            body=$(node site/lib/preview-comment.ts --url "$URL" --sha "$SHA")
+          fi
           gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body" --edit-last --create-if-none
 
   cleanup:

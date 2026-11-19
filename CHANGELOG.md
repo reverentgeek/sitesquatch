@@ -25,6 +25,13 @@ where that version matches.
   its JSON's `trailhead.file` is `site/src/docs/trailheads/from-eleventy.md`. The dev server's
   message about a linked file nothing wrote ends with `` (`ssqch docs "CSS and JavaScript"`) ``
   where it said to see the README. No site has to change; a script that reads these does.
+- `assetsPlugin()` no longer leaves a passthrough copy's plain file beside its fingerprinted one:
+  a listed file that's a passthrough copy was copied in, renamed, and then copied in again by the
+  passthrough step, so `site.css` sat next to `site.7d041850.css` (and counted against `budgets`
+  twice). Only the fingerprinted file is in the output now. HTML that links the plain path is
+  rewritten as before; a reference the plugin doesn't rewrite (an `import` inside another
+  JavaScript file, a `url()` in CSS, a JSON file) has to use `assetUrl("/assets/site.css")` or
+  leave the file out of `files`.
 
 ### Changed
 
@@ -34,11 +41,26 @@ where that version matches.
 - The example sites run live on sitesquatch.dev, each under its own path
   (`https://sitesquatch.dev/examples/blog-tags/`), instead of a subdomain each. The six that name
   their address (`blog-tags`, `blog-categories`, `docs-sidebar`, `glossary-docs`,
-  `versioned-docs`, `islands`) say `https://sitesquatch.dev`, and the feeds of `blog-tags` and
-  `blog-categories` put each URL through `withBase` before `absoluteUrl`, so they're right under
-  a path too: a feed isn't HTML, so the base isn't added for it, and `absoluteUrl` against an
-  address with a path drops the path for a URL that starts with `/`. Their frozen outputs in the
-  oracle changed with the address, and nothing else.
+  `versioned-docs`, `islands`) say `https://sitesquatch.dev`. Their frozen outputs in the oracle
+  changed with the address, and nothing else.
+- Under a `base`, the feed filters put it in front of a URL from the site's root that doesn't
+  have it yet: `absoluteUrl(post.url, site.url)` is `https://example.com/repo/posts/pine/`, with
+  or without the path in `site.url`, and `htmlToAbsoluteUrls` and `feedHtml` do the same for
+  every URL in the HTML. A feed isn't HTML, so the base wasn't added for it, and `absoluteUrl`
+  against an address with a path dropped the path for a URL that starts with `/`: every link in
+  a feed under a path went to the domain's root. A URL that has the base already (from
+  `withBase()`) keeps one. The named exports, called from a site's own code, resolve as
+  `new URL(url, address)` does, as before.
+- A computed `layout` can depend on the page (`layout: (data) => data.wide ? "wide.html" :
+  "post.html"`, or a string with template tags): each page gets the layouts its value names, with
+  their front matter below the page's data, and `""` or `false` for none. It was an error since
+  0.7.0, because the layout was chosen before `computed` ran; the chain is chosen after it now,
+  page by page. Tested on several migrations.
+- `dateFallback: "git"` gives a page with no date of its own the date of the last commit that
+  changed its file, the same in every checkout. Its date was the file's time, which is when the
+  checkout wrote it, so `page.date` and a sitemap's `<lastmod>` changed from one clone to the
+  next. `"file"` (the file's time) is the default. Either way, an undated page sorts after the
+  dated ones, by path.
 
 ### Fixed
 
@@ -47,6 +69,17 @@ where that version matches.
   in its text: it prints `{{ eleventy.generator }}` as written, so a page about Eleventy isn't
   using it. Its layouts and includes are still checked. Found building sitesquatch.dev's
   trailheads page.
+- A page's `computed` values can read `collections`. Pages were expanded before collections were
+  built, so a computed value that read them got nothing, and a list built from it came out empty
+  without a word. A page whose `computed` mentions `collections` (in a string, or in a function's
+  source) now waits for them, as a page paginated over a collection does, and sees them as they
+  are without the pages that wait. Tested on several migrations.
+- `redirectsPlugin({ netlify: true })` under a `base` writes the base on both URLs of each
+  `_redirects` line (`/repo/old/  /repo/posts/pine/  301`). A host matches a line against the
+  request's whole path, so the lines without it redirected nothing. The link checker reads a
+  `_redirects` line with the base off, as it reads links, and still reads a line without it.
+- `ssqch serve` names a changed file outside the site's root from the root
+  (`Fresh tracks in ../docs/guide.md`), as it names one inside, instead of by its absolute path.
 
 ## 0.9.0 - 2026-11-18
 

@@ -191,6 +191,26 @@ test("a file a plugin watches rebuilds the site", async () => {
 	remove(dir);
 });
 
+// A watched file outside the site's root is named from the root, as one inside is: the website
+// watches the docs pages beside it, and said `Fresh tracks in /Users/.../docs/guide.md`.
+test("a watched file outside the root is named from the root", async () => {
+	const dir = tempDir("serve-outside");
+	write(dir, {
+		"site/ssqch.config.js": "import fs from \"node:fs\";\nconst notes = { name: \"notes\", watch: [\"../notes.txt\"], beforeBuild: () => { fs.mkdirSync(\"dist\", { recursive: true }); fs.writeFileSync(\"dist/notes.txt\", fs.readFileSync(\"../notes.txt\", \"utf8\")); } };\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [notes] };\n",
+		"site/src/index.html": "<p>camp</p>",
+		"notes.txt": "pine cones\n",
+	});
+	const server = await serve(path.join(dir, "site"));
+	try {
+		await server.change("../notes.txt", "squatch snacks\n", "dist/notes.txt", "squatch snacks");
+		await server.until(() => server.said().includes("Fresh tracks in"), "no Fresh tracks line");
+		assert.ok(server.said().includes(`Fresh tracks in ${path.join("..", "notes.txt")}\n`), server.said());
+	} finally {
+		await server.stop();
+	}
+	remove(dir);
+});
+
 // What a plugin read for the last build is watched too, wherever it is: a stylesheet's partial
 // in a folder the config never named.
 test("a file a plugin read rebuilds the site", async () => {

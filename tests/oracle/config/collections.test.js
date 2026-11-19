@@ -168,6 +168,22 @@ test("headings_read_before_a_page_renders_are_found_after_it_renders", () => {
 	assert.match(read(root, "_site/guide/index.html"), /early 0, after 2: install use /);
 });
 
+// Found in a migration: a page's `computed` read `collections` (from a data file's function and
+// in a template string), but pages were expanded before collections were built, so it read
+// nothing and the page listed no articles. It waits for the collections now, as a page paginated
+// over one does.
+test("computed_values_see_collections", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"] };\n",
+		"articles/pine.md": "---\ntitle: Pine\ntags: articles\ndate: 2024-01-01\n---\nPine\n",
+		"articles/cedar.md": "---\ntitle: Cedar\ntags: articles\ndate: 2024-02-01\n---\nCedar\n",
+		"learn.njk": "---\ncomputed:\n  count: \"{{ collections.articles | length }}\"\n---\n{{ titles }} ({{ count }})\n",
+		"learn.data.js": "export default { computed: { titles: (data) => data.collections.articles.map((p) => p.data.title).join(\", \") } };\n",
+	});
+	buildOk(root);
+	assert.match(read(root, "_site/learn/index.html"), /Pine, Cedar \(2\)/);
+});
+
 // opensource.guide (osg #12): Bundler's `--path vendor/gems` put Jekyll's own templates in the
 // site, and ssqch built them as pages (5 errors, from gems' layouts). A Bundler install folder is
 // skipped as node_modules is; a site's own `vendor/` folder isn't.

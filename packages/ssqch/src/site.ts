@@ -61,6 +61,8 @@ export interface Tpl {
 	fileDate: Date | undefined;
 	/** `page.lastModified`, with the `lastModified` setting. */
 	lastModified: Date | undefined;
+	/** When its file last changed in a commit, with `dateFallback: "git"`, for a page with no date of its own. */
+	commitDate: Date | undefined;
 	/** Plain text with no front matter: copied as it is and kept out of collections. */
 	plainCopy: boolean;
 	/** The keys in the file's own front matter, for schemas' `unknown`. */
@@ -83,6 +85,8 @@ export interface Page {
 	inCollections: boolean;
 	/** What collections hold for it (made once, when collections are first built). */
 	item?: Data;
+	/** Its own layout chain, when a computed `layout` that depends on the page chose it; otherwise it's its template's (`tpl.layouts`). */
+	layouts?: Layout[];
 }
 
 /** The engines a file with extension `ext` runs through, unless its data says otherwise. */
@@ -274,7 +278,7 @@ export class Site {
 		const [themePages, themeCopies] = this.themeFiles();
 		this.files.push(...themePages);
 		this.themeCopies = themeCopies;
-		const commitDates = config.lastModified === "git" ? this.gitDates() : new Map<string, Date>();
+		const commitDates = config.lastModified === "git" || config.dateFallback === "git" ? this.gitDates(config.lastModified === "git" ? "lastModified" : "dateFallback") : new Map<string, Date>();
 		const dirData = await this.loadDirectoryData();
 		const sources = await readAll(this.files);
 		const tpls = await collectErrors(this.files.map((file, i) => () => this.loadTemplate(file, sources[i], dirData, commitDates)));
@@ -289,8 +293,13 @@ export class Site {
 
 		// ---- pagination, computed data and permalinks
 		const overCollections = (t: Tpl) => typeof t.data.pagination?.data === "string" && t.data.pagination.data.startsWith("collections");
-		const immediate = this.tpls.filter((t) => !overCollections(t));
-		const deferred = this.tpls.filter(overCollections);
+		// A page whose `computed` reads `collections` waits for them too, and sees them as they are
+		// without the pages that wait (the waiting pages' own computed values can change what's in
+		// a collection). Expanded with the rest, it read `collections` as undefined, and a list
+		// built from it came out empty, without a word (found in a migration).
+		const waits = (t: Tpl) => overCollections(t) || readsCollections(t.data.computed);
+		const immediate = this.tpls.filter((t) => !waits(t));
+		const deferred = this.tpls.filter(waits);
 		const add = (pages: Page[][]) => { for (const page of pages.flat()) { page.index = this.pages.length; this.pages.push(page); } };
 		add(await collectErrors(immediate.map((t) => () => this.expand(t, undefined))));
 		if (deferred.length) {
@@ -462,11 +471,11 @@ export class Site {
 	 * with uncommitted changes are left out (they use their modification time). Not a
 	 * repository, or no git: nothing, with a warning.
 	 */
-	private gitDates(): Map<string, Date> {
+	private gitDates(setting: string): Map<string, Date> {
 		const { config, dirs } = this;
 		const git = (...args: string[]) => spawnSync("git", ["-C", dirs.root, "-c", "core.quotepath=off", ...args], { encoding: "utf8", maxBuffer: 1 << 30 });
 		const dates = new Map<string, Date>();
-		const lost = (message: string) => { if (!config.quiet) warn(warning("last-modified", `lastModified: ${message}`)); };
+		const lost = (message: string) => { if (!config.quiet) warn(warning("last-modified", `${setting}: ${message}`)); };
 		const top = git("rev-parse", "--show-toplevel");
 		if (top.error) { lost(`can't run git (${top.error.message}), so pages use their files' times`); return dates; }
 		if (top.status !== 0) { lost("not a git repository, so pages use their files' times"); return dates; }
@@ -612,32 +621,19 @@ export class Site {
 			own = merge(own, front, config.deepMerge);
 			if (this.keepLayers && frontKeys.length) layers.push(["front matter", front]);
 
-			// The layout chain is chosen here, before `computed` runs: a computed layout that's plain
-			// text is used as written, and one that depends on the page's data is refused rather
-			// than ignored.
+			// The template's layout chain is chosen here, before `computed` runs: a computed layout
+			// that's plain text is used as written. One that depends on the page's data (a function,
+			// or a string with template tags) chooses each page's chain after its computed values
+			// (expandPages), and this one is what the page has until then.
 			const computedLayout = own.computed?.layout;
-			if (computedLayout !== undefined && computedLayout !== null) {
-				if (typeof computedLayout === "string" && !computedLayout.includes("{{") && !computedLayout.includes("{%") && !computedLayout.includes("<%")) own.layout = computedLayout;
-				else bail("`layout` in computed isn't applied, because the layout is chosen before computed runs. Set `layout` in the front matter or a data file");
-			}
+			if (typeof computedLayout === "string" && !dependsOnPage(computedLayout)) own.layout = computedLayout;
 			// `page` is ssqch's (url, inputPath, date, headings), set after computed: a computed `page`
 			// would be thrown away, so it's refused (opensource.guide set one to give templates
 			// Jekyll's `page.title`, and nothing said it didn't take).
 			if (isPlainObject(own.computed) && Object.hasOwn(own.computed, "page")) bail("`page` in computed isn't applied, because `page` is ssqch's: its url, inputPath, date and headings. Give the value another name (`computed: { meta: ... }`); front matter is at the top level already (`title`, not `page.title`)");
 			// Layout chain; layout front matter sits below template data. `layout: ""`, like `false`
 			// and `null`, means no layout.
-			const chain: Layout[] = [];
-			const names: string[] = [];
-			let next: unknown = typeof own.layout === "string" && own.layout !== "" ? own.layout : undefined;
-			while (typeof next === "string") {
-				// A layout that leads back to one already in the chain never ends.
-				const start = names.indexOf(next);
-				if (start !== -1) bail(`${voice.PASSED_THIS_TREE}. Layout loop: ${names.slice(start).join(" -> ")} -> ${next}`);
-				const layout = this.loadLayout(next);
-				names.push(next);
-				chain.push(layout);
-				next = layout.data.layout;
-			}
+			const chain = this.layoutChain(own.layout);
 			let data = this.global;
 			let layoutLayers = 0;
 			for (const layout of [...chain].reverse()) {
@@ -673,10 +669,28 @@ export class Site {
 				mtime,
 				fileDate,
 				lastModified: config.lastModified === "git" ? commitDates.get(file) ?? mtime : config.lastModified === "file" ? mtime : undefined,
+				commitDate: config.dateFallback === "git" ? commitDates.get(file) : undefined,
 			};
 		} catch (e) {
 			throw context(e, `in ${rel}`);
 		}
+	}
+
+	/** The layouts `layout` names, innermost first: that layout, the one its front matter names, and so on. `""`, `false` and `null` are none. */
+	private layoutChain(layout: unknown): Layout[] {
+		const chain: Layout[] = [];
+		const names: string[] = [];
+		let next: unknown = typeof layout === "string" && layout !== "" ? layout : undefined;
+		while (typeof next === "string") {
+			// A layout that leads back to one already in the chain never ends.
+			const start = names.indexOf(next);
+			if (start !== -1) bail(`${voice.PASSED_THIS_TREE}. Layout loop: ${names.slice(start).join(" -> ")} -> ${next}`);
+			const found = this.loadLayout(next);
+			names.push(next);
+			chain.push(found);
+			next = found.data.layout;
+		}
+		return chain;
 	}
 
 	// ---- pagination, computed data and permalinks ----------------------------------------------
@@ -695,9 +709,13 @@ export class Site {
 		let date: Date;
 		let fromFileTime = false;
 		if (tpl.data.date !== undefined && tpl.data.date !== null) date = toDate(tpl.data.date) ?? bail(`can't parse date ${show(tpl.data.date)}`);
-		// Then the date in the file name, then the pinned build time (`SOURCE_DATE_EPOCH`, as Jekyll's
-		// `time:` gives undated pages `site.time`), then when the file last changed.
+		// Then the date in the file name, then the last commit that changed the file
+		// (`dateFallback: "git"`, the same in every checkout, where a file's time is when the checkout
+		// wrote it), then the pinned build time (`SOURCE_DATE_EPOCH`, as Jekyll's `time:` gives undated
+		// pages `site.time`), then when the file last changed. A commit's date and a file's time
+		// aren't the page's own: it still sorts after the dated pages, by path.
 		else if (tpl.fileDate) date = tpl.fileDate;
+		else if (tpl.commitDate) [date, fromFileTime] = [tpl.commitDate, true];
 		else if (sourceDateEpoch() !== undefined) date = new Date(sourceDateEpoch()!);
 		else [date, fromFileTime] = [tpl.mtime, true];
 		const basePage = (url: unknown, outputPath: unknown, when: Date): Data => {
@@ -743,6 +761,18 @@ export class Site {
 					try { data[key] = await this.renderComputed(value, data, tpl); } catch (e) { throw context(e, `computed.${key}`); }
 				}
 			}
+			// A computed `layout` that depends on the page chooses this page's chain (one that's plain
+			// text was chosen for the template already). Its layouts' front matter sits below the
+			// page's data, as a template's layouts' does: a key the page has stays the page's.
+			let layouts: Layout[] | undefined;
+			if (isPlainObject(computed) && Object.hasOwn(computed, "layout") && !(typeof computed.layout === "string" && !dependsOnPage(computed.layout))) {
+				const value = data.layout;
+				if (value !== undefined && value !== null && value !== false && typeof value !== "string") bail(`computed.layout must be a layout's name, \`""\` or \`false\`, not ${show(value)}`);
+				layouts = this.layoutChain(value);
+				for (const layout of layouts) {
+					for (const [key, v] of Object.entries(layout.data)) if (key !== "layout" && data[key] === undefined) data[key] = v;
+				}
+			}
 			// A computed `date` (from the URL, say) is the page's date.
 			let pageDate = date;
 			let fromFile = fromFileTime;
@@ -782,7 +812,7 @@ export class Site {
 
 			const excluded = Boolean(data.excludeFromCollections);
 			const inCollections = !excluded && !tpl.plainCopy && (index === 0 || Boolean(pagination?.addAllPagesToCollections));
-			pages.push({ index: -1, tpl, data, url, output, date: pageDate, when: fromFile ? UNDATED : BigInt(pageDate.getTime()) * 1_000_000n, inCollections });
+			pages.push({ index: -1, tpl, data, url, output, date: pageDate, when: fromFile ? UNDATED : BigInt(pageDate.getTime()) * 1_000_000n, inCollections, ...(layouts ? { layouts } : {}) });
 		}
 
 		// Fill in pagination hrefs now that every page has a URL.
@@ -1013,6 +1043,21 @@ function renderEngines(v: unknown): string[] {
 	else bail(`\`render\` must be an engine name (\`md\`), a list of names, or false, not ${typeof v}`);
 	if (!names.length) bail("`render` is empty: name an engine (`md`), or use `render: false` to skip processing");
 	return names;
+}
+
+/** Whether a computed value is worked out from the page's data: a string with template tags. */
+const dependsOnPage = (value: string) => value.includes("{{") || value.includes("{%") || value.includes("<%");
+
+/**
+ * Whether a page's `computed` reads `collections`: a string that mentions it, or a function whose
+ * source does (`(data) => data.collections.articles`), at any depth.
+ */
+export function readsCollections(computed: unknown): boolean {
+	if (typeof computed === "string") return computed.includes("collections");
+	if (typeof computed === "function") return Function.prototype.toString.call(computed).includes("collections");
+	if (Array.isArray(computed)) return computed.some(readsCollections);
+	if (isPlainObject(computed)) return Object.values(computed).some(readsCollections);
+	return false;
 }
 
 /** The template language a page's data strings (`permalink`, `computed`) are written in: the first engine in its chain that isn't Markdown or plain text, or Edge for those. */

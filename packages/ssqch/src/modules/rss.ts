@@ -1,6 +1,7 @@
 // `ssqch/rss`: helpers for feeds. `rssPlugin()` adds them to templates as filters; the named
 // exports are the same functions for a site's own code. Ported from `plugins/rss` and the module
 // in `crates/ssqch/src/js/rss.js`. Dates are read and written in UTC with no `Intl`, as 0.7 did.
+import { withBaseOnce } from "../base.ts";
 import { BUILTINS } from "../config.ts";
 import type { Config } from "../config.ts";
 import { toDate } from "../data.ts";
@@ -61,25 +62,31 @@ function year(d: Date): string {
 	return y > 9999 ? `+${y}` : String(y).padStart(4, "0");
 }
 
-/** `url` made absolute against `base`, as `new URL(url, base).toString()` does; a URL that can't be resolved comes back unchanged. */
-export function absoluteUrl(url: unknown, base: unknown): string {
-	const text = String(url);
+/**
+ * `url` made absolute against `base`, as `new URL(url, base).toString()` does; a URL that can't be
+ * resolved comes back unchanged. `siteBase` is the site's `base` (the filters pass it): a URL from
+ * the site's root gets it first, unless it has it already, since `page.url` doesn't, and `new URL`
+ * would drop a path in the address (`/posts/x/` against `https://example.com/repo/` is
+ * `https://example.com/posts/x/`).
+ */
+export function absoluteUrl(url: unknown, base: unknown, siteBase = ""): string {
+	const text = withBaseOnce(siteBase, String(url));
 	try { return new URL(text, String(base)).toString(); } catch { return text; }
 }
 
-/** `html` with `href`, `src`, `poster` and `srcset` made absolute against `base`; everything else is as it was. */
-export function htmlToAbsoluteUrls(html: unknown, base: unknown): string {
+/** `html` with `href`, `src`, `poster` and `srcset` made absolute against `base` (and `siteBase`, as `absoluteUrl` has it); everything else is as it was. */
+export function htmlToAbsoluteUrls(html: unknown, base: unknown, siteBase = ""): string {
 	const baseUrl = String(base);
 	return rewriteHtml(String(html ?? ""), {
 		tag(el) {
 			for (const attr of ["href", "src", "poster", "srcset"]) {
 				const v = el.get(attr);
 				if (v === undefined) continue;
-				if (attr !== "srcset") { el.set(attr, absoluteUrl(v, baseUrl)); continue; }
+				if (attr !== "srcset") { el.set(attr, absoluteUrl(v, baseUrl, siteBase)); continue; }
 				const candidates = v.split(",").map((c) => {
 					const candidate = c.trim();
 					const space = candidate.indexOf(" ");
-					return space === -1 ? absoluteUrl(candidate, baseUrl) : `${absoluteUrl(candidate.slice(0, space), baseUrl)} ${candidate.slice(space + 1)}`;
+					return space === -1 ? absoluteUrl(candidate, baseUrl, siteBase) : `${absoluteUrl(candidate.slice(0, space), baseUrl, siteBase)} ${candidate.slice(space + 1)}`;
 				});
 				el.set(attr, candidates.join(", "));
 			}
@@ -88,12 +95,12 @@ export function htmlToAbsoluteUrls(html: unknown, base: unknown): string {
 }
 
 /** A post's HTML for a feed: one generated copy for each local image, and every URL absolute. */
-export function feedHtml(html?: unknown, base?: unknown, options?: unknown): string | Promise<string> {
+export function feedHtml(html?: unknown, base?: unknown, options?: unknown, siteBase = ""): string | Promise<string> {
 	const feedImages = (image as { feedImages?: (html: string, base: string, options: unknown) => string | Promise<string> }).feedImages;
 	if (typeof feedImages !== "function") bail("feedHtml() isn't in the Node build of ssqch yet (the move to Node, stage 5)");
 	const source = html === undefined || html === null ? "" : String(html);
 	const done = feedImages(source, String(base), options);
-	return typeof done === "string" ? htmlToAbsoluteUrls(done, base) : done.then((h) => htmlToAbsoluteUrls(h, base));
+	return typeof done === "string" ? htmlToAbsoluteUrls(done, base, siteBase) : done.then((h) => htmlToAbsoluteUrls(h, base, siteBase));
 }
 
 BUILTINS.set("ssqch/rss", (config: Config, options) => {
@@ -102,8 +109,9 @@ BUILTINS.set("ssqch/rss", (config: Config, options) => {
 	filters.set("getNewestCollectionItemDate", (items?: unknown) => getNewestCollectionItemDate(items));
 	filters.set("dateToRfc3339", (date?: unknown) => dateToRfc3339(date));
 	filters.set("dateToRfc822", (date?: unknown) => dateToRfc822(date));
-	filters.set("absoluteUrl", (url?: unknown, base?: unknown) => absoluteUrl(output(url), output(base)));
-	filters.set("htmlToAbsoluteUrls", (html?: unknown, base?: unknown) => htmlToAbsoluteUrls(output(html), output(base)));
+	// As filters, they know the site's `base` (absoluteUrl).
+	filters.set("absoluteUrl", (url?: unknown, base?: unknown) => absoluteUrl(output(url), output(base), config.base));
+	filters.set("htmlToAbsoluteUrls", (html?: unknown, base?: unknown) => htmlToAbsoluteUrls(output(html), output(base), config.base));
 	// Template engines name the function in front of its errors already.
 	const unprefixed = (e: unknown) => {
 		if (e instanceof Error && e.message.startsWith("feedHtml(): ")) e.message = e.message.slice("feedHtml(): ".length);
@@ -111,7 +119,7 @@ BUILTINS.set("ssqch/rss", (config: Config, options) => {
 	};
 	filters.set("feedHtml", (html?: unknown, base?: unknown, options?: unknown) => {
 		try {
-			const done = feedHtml(html, base, options);
+			const done = feedHtml(html, base, options, config.base);
 			return typeof done === "string" ? done : done.catch((e) => { throw unprefixed(e); });
 		} catch (e) { throw unprefixed(e); }
 	});

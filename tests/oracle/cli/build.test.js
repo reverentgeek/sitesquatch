@@ -177,10 +177,23 @@ export default {
 	assert.match(rd("checks/index.html"), /^\d+ 7 8 ENOENT helper\.js true function$/);
 	if (unix) assert.equal(rd("samples/js/a.ts"), "export {};\n");
 
-	// A computed layout that depends on the page can't be applied, so it's an error.
-	w("src/articles/articles.data.js", "export default { computed: { layout: (data) => \"article\" } };\n");
+	// DELIBERATE (0.10): a computed layout that depends on the page chooses that page's layouts.
+	// 0.7.0 refused it, since the layout was chosen before computed ran; the chain is chosen after
+	// it now, page by page. A layout's front matter sits below the page's data, and `""` is none.
+	w("src/_includes/wide.html", "---\nwidth: wide\nlabel: from the layout\n---\n<wide class=\"{{ width }}\">{{ content }}</wide>");
+	w("src/articles/articles.data.js", "export default { label: \"the page's\", computed: { layout: (data) => (data.page.fileSlug === \"b\" ? \"wide.html\" : data.page.fileSlug === \"c\" ? \"\" : \"article\") } };\n");
+	w("src/articles/b.md", "Cedar {{ label }}\n");
+	w("src/articles/c.md", "Bare\n");
 	r = ssqch(["build", "--root", d]);
-	assert.ok(!r.ok && r.log.includes("`layout` in computed isn't applied"), r.log);
+	assert.ok(r.ok, r.log);
+	assert.equal(rd("articles/a/index.html"), "<article><p>Pine cones</p>\n</article>");
+	assert.equal(rd("articles/b/index.html"), "<wide class=\"wide\"><p>Cedar the page's</p>\n</wide>");
+	assert.equal(rd("articles/c/index.html"), "<p>Bare</p>\n");
+	w("src/articles/articles.data.js", "export default { computed: { layout: () => 7 } };\n");
+	r = ssqch(["build", "--root", d]);
+	assert.ok(!r.ok && r.log.includes("computed.layout must be a layout's name"), r.log);
+	fs.rmSync(path.join(dir, "src/articles/b.md"));
+	fs.rmSync(path.join(dir, "src/articles/c.md"));
 	// DELIBERATE (after 0.8.0): a computed `page` is refused too. It was thrown away without a word
 	// (`page` is set after computed runs), and opensource.guide lost time to it (osg #5).
 	w("src/articles/articles.data.js", "export default { computed: { page: (data) => ({ ...data.page, title: data.title }) } };\n");
@@ -259,6 +272,38 @@ test("last_modified_from_git", () => {
 	// Not committed yet: the file's own time.
 	assert.ok(parseInt(read(dir, "dist/c/index.html").trim(), 10) >= 2026);
 	assert.ok(read(dir, "dist/sitemap.xml").includes("<loc>https://example.com/a/</loc>\n    <lastmod>2021-03-04</lastmod>"), read(dir, "dist/sitemap.xml"));
+});
+
+// Found in several migrations: an undated page's date was its file's time, which is when the
+// checkout wrote it, so `page.date` and the sitemap's <lastmod> changed with every clone.
+// `dateFallback: "git"` is the last commit that changed the file instead. The page still sorts
+// after the dated ones, by path; a dated page keeps its own date.
+test("date_fallback_from_git", () => {
+	const dir = tempDir("datefallback");
+	const w = (p, t) => write(dir, { [p]: t });
+	fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+	const git = (args, date) => {
+		try {
+			execFileSync("git", ["-C", dir, ...args], { stdio: "pipe", env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.com", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.com" } });
+		} catch (e) {
+			assert.fail(`git ${JSON.stringify(args)}: ${e.stderr}`);
+		}
+	};
+	w("ssqch.config.js", "export default { dirs: { input: \"src\", output: \"dist\" }, dateFallback: \"git\" };\n");
+	w("src/about.jinja", "{{ page.date.toISOString() }}");
+	w("src/dated.jinja", "---\ndate: 2019-09-09\n---\n{{ page.date.toISOString() }}");
+	w("src/list.jinja", "---\npermalink: list.txt\n---\n{% for p in collections.all %}{{ p.url }} {% endfor %}");
+	git(["init", "-q"], "2020-01-01T00:00:00Z");
+	git(["add", "."], "2020-01-01T00:00:00Z");
+	git(["commit", "-q", "-m", "first"], "2021-03-04T05:06:07Z");
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "dist/about/index.html"), "2021-03-04T05:06:07.000Z");
+	assert.equal(read(dir, "dist/dated/index.html"), "2019-09-09T00:00:00.000Z");
+	assert.equal(read(dir, "dist/list.txt"), "/dated/ /about/ /list.txt ");
+	w("ssqch.config.js", "export default { dateFallback: \"created\" };\n");
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("dateFallback must be \"git\" or \"file\", not \"created\""), r.log);
 });
 
 test("hooks_run_commands", unixOnly, () => {
