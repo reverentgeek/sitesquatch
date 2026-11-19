@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>The Squatch Blog</title>
-  <link href="https://blog-tags.sitesquatch.dev/feed.xml" rel="self"/>
-  <link href="https://blog-tags.sitesquatch.dev/"/>
+  <link href="https://sitesquatch.dev/feed.xml" rel="self"/>
+  <link href="https://sitesquatch.dev/"/>
   <updated>2024-06-01T00:00:00Z</updated>
-  <id>https://blog-tags.sitesquatch.dev/feed.xml</id>
+  <id>https://sitesquatch.dev/feed.xml</id>
   <author><name>The Squatch Team</name></author>
 
   <entry>
     <title>Crunchy season</title>
-    <link href="https://blog-tags.sitesquatch.dev/blog/2024/06/01/crunchy-season/"/>
+    <link href="https://sitesquatch.dev/blog/2024/06/01/crunchy-season/"/>
     <updated>2024-06-01T00:00:00Z</updated>
-    <id>https://blog-tags.sitesquatch.dev/blog/2024/06/01/crunchy-season/</id>
+    <id>https://sitesquatch.dev/blog/2024/06/01/crunchy-season/</id>
     <content type="html">&lt;p&gt;Summer means crunchy pine cones. Squirrel sorts them for us, and this is her method:&lt;/p&gt;
 &lt;pre class=&quot;highlight&quot;&gt;&lt;code class=&quot;language-rust&quot;&gt;&lt;span class=&quot;hl-keyword&quot;&gt;fn&lt;/span&gt; &lt;span class=&quot;hl-function&quot;&gt;crunchiest&lt;/span&gt;(&lt;span class=&quot;hl-parameter&quot;&gt;cones&lt;/span&gt;: &lt;span class=&quot;hl-operator&quot;&gt;&amp;amp;&lt;/span&gt;[Cone]) -&amp;gt; &lt;span class=&quot;hl-type&quot;&gt;Option&lt;/span&gt;&amp;lt;&lt;span class=&quot;hl-operator&quot;&gt;&amp;amp;&lt;/span&gt;Cone&amp;gt; {
     cones.&lt;span class=&quot;hl-function&quot;&gt;iter&lt;/span&gt;().&lt;span class=&quot;hl-function&quot;&gt;max_by_key&lt;/span&gt;(|&lt;span class=&quot;hl-parameter&quot;&gt;c&lt;/span&gt;| c.crunch)
@@ -22,11 +22,11 @@
 
   <entry>
     <title>New tooling for the team</title>
-    <link href="https://blog-tags.sitesquatch.dev/inside/2024/03/02/new-tooling/"/>
+    <link href="https://sitesquatch.dev/inside/2024/03/02/new-tooling/"/>
     <updated>2024-03-02T00:00:00Z</updated>
-    <id>https://blog-tags.sitesquatch.dev/inside/2024/03/02/new-tooling/</id>
+    <id>https://sitesquatch.dev/inside/2024/03/02/new-tooling/</id>
     <content type="html">&lt;p&gt;The team moved its builds to a single binary. Builds take a tenth of a second now.&lt;/p&gt;
-&lt;h2 id=&quot;what-changed&quot;&gt;What changed&lt;a class=&quot;anchor&quot; href=&quot;https://blog-tags.sitesquatch.dev/inside/2024/03/02/new-tooling/#what-changed&quot; aria-hidden=&quot;true&quot;&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id=&quot;what-changed&quot;&gt;What changed&lt;a class=&quot;anchor&quot; href=&quot;https://sitesquatch.dev/inside/2024/03/02/new-tooling/#what-changed&quot; aria-hidden=&quot;true&quot;&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;ul&gt;
 &lt;li&gt;One config file&lt;/li&gt;
 &lt;li&gt;No &lt;code&gt;node_modules&lt;/code&gt;&lt;/li&gt;
@@ -36,18 +36,18 @@
 
   <entry>
     <title>Hello, Squatch</title>
-    <link href="https://blog-tags.sitesquatch.dev/blog/2024/01/15/hello-squatch/"/>
+    <link href="https://sitesquatch.dev/blog/2024/01/15/hello-squatch/"/>
     <updated>2024-01-15T00:00:00Z</updated>
-    <id>https://blog-tags.sitesquatch.dev/blog/2024/01/15/hello-squatch/</id>
-    <content type="html">&lt;p&gt;Welcome to the blog. We&#39;ll write about forest snacks and the tools we build.&lt;sup class=&quot;footnote-ref&quot;&gt;&lt;a href=&quot;https://blog-tags.sitesquatch.dev/blog/2024/01/15/hello-squatch/#fn-tools&quot; id=&quot;fnref-tools&quot;&gt;1&lt;/a&gt;&lt;/sup&gt;&lt;/p&gt;
-&lt;h2 id=&quot;getting-the-snacks&quot;&gt;Getting the snacks&lt;a class=&quot;anchor&quot; href=&quot;https://blog-tags.sitesquatch.dev/blog/2024/01/15/hello-squatch/#getting-the-snacks&quot; aria-hidden=&quot;true&quot;&gt;#&lt;/a&gt;&lt;/h2&gt;
+    <id>https://sitesquatch.dev/blog/2024/01/15/hello-squatch/</id>
+    <content type="html">&lt;p&gt;Welcome to the blog. We&#39;ll write about forest snacks and the tools we build.&lt;sup class=&quot;footnote-ref&quot;&gt;&lt;a href=&quot;https://sitesquatch.dev/blog/2024/01/15/hello-squatch/#fn-tools&quot; id=&quot;fnref-tools&quot;&gt;1&lt;/a&gt;&lt;/sup&gt;&lt;/p&gt;
+&lt;h2 id=&quot;getting-the-snacks&quot;&gt;Getting the snacks&lt;a class=&quot;anchor&quot; href=&quot;https://sitesquatch.dev/blog/2024/01/15/hello-squatch/#getting-the-snacks&quot; aria-hidden=&quot;true&quot;&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;pre class=&quot;highlight&quot;&gt;&lt;code class=&quot;language-js&quot;&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;hl-keyword&quot;&gt;const&lt;/span&gt; snacks &lt;span class=&quot;hl-operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;hl-keyword&quot;&gt;await&lt;/span&gt; &lt;span class=&quot;hl-function&quot;&gt;forage&lt;/span&gt;({ kind: &lt;span class=&quot;hl-string&quot;&gt;&amp;quot;pine-cone&amp;quot;&lt;/span&gt; });&lt;/span&gt;
 &lt;span class=&quot;line highlighted&quot;&gt;&lt;span class=&quot;hl-type&quot;&gt;console&lt;/span&gt;.&lt;span class=&quot;hl-function&quot;&gt;log&lt;/span&gt;(&lt;span class=&quot;hl-string&quot;&gt;`Found&lt;/span&gt; ${snacks.length} &lt;span class=&quot;hl-string&quot;&gt;snacks`&lt;/span&gt;);&lt;/span&gt;
 &lt;/code&gt;&lt;/pre&gt;
 &lt;section class=&quot;footnotes&quot;&gt;
 &lt;ol&gt;
 &lt;li id=&quot;fn-tools&quot;&gt;
-&lt;p&gt;Mostly static site generators. &lt;a href=&quot;https://blog-tags.sitesquatch.dev/blog/2024/01/15/hello-squatch/#fnref-tools&quot; class=&quot;footnote-backref&quot; aria-label=&quot;Back to reference 1&quot;&gt;↩&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;Mostly static site generators. &lt;a href=&quot;https://sitesquatch.dev/blog/2024/01/15/hello-squatch/#fnref-tools&quot; class=&quot;footnote-backref&quot; aria-label=&quot;Back to reference 1&quot;&gt;↩&lt;/a&gt;&lt;/p&gt;
 &lt;/li&gt;
 &lt;/ol&gt;
 &lt;/section&gt;

@@ -12,7 +12,7 @@ export default defineConfig( {
 	plugins: [
 		// src/elements/like-button.js loads on the pages with a <like-button>, and nowhere else.
 		elementsPlugin(),
-		sitemapPlugin( { url: "https://islands.sitesquatch.dev" } ),
+		sitemapPlugin( { url: "https://sitesquatch.dev" } ),
 		linksPlugin()
 	]
 } );

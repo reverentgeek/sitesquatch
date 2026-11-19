@@ -23,5 +23,5 @@ export default defineConfig( {
 		posts: pages => pages.byGlob( "src/blog/*.md" ).reverse()
 	},
 
-	plugins: [ sitemapPlugin( { url: "https://versioned-docs.sitesquatch.dev" } ), linksPlugin() ]
+	plugins: [ sitemapPlugin( { url: "https://sitesquatch.dev" } ), linksPlugin() ]
 } );

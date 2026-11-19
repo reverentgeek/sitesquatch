@@ -794,21 +794,25 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       0.9's is about 330 words and 0.8's 360, over the 250 aimed for, because every Breaking item
       is in them; 0.8's lists its Breaking themes, not each of its items. (**Decision 11:** an
       entry for every release, or only for releases worth announcing.)
-- [ ] **The examples, live.** Each example built with `--base /examples/<name>/` into the site's
-      output (all eight build that way today, and `linksPlugin()` passes on each). The gallery at
-      `/examples/` from one data file (`examples.yml`: what each shows, the docs page for each
-      feature, the engine), which also feeds a "See it working" box on docs pages and the trail
-      marker the site's build adds to the top of each example page (its name, Source, What it
-      shows, All examples). The six examples that name their own address (`blog-tags`,
-      `blog-categories`, `docs-sidebar`, `glossary-docs`, `versioned-docs`, `islands`) change it
-      from `https://<name>.sitesquatch.dev` to `https://sitesquatch.dev/examples/<name>/` and are
-      frozen again (`node freeze.js`). Merge `glossary-docs`' `_redirects` lines into the site's
-      own with the prefix, and check `docs-sidebar`'s Pagefind search under a base. Update the
-      Live column of `examples/sites/README.md`, and delete `.github/workflows/examples.yml`. Done
-      when every example reaches its source and its gallery entry in one click, and its redirects
-      and search work in a preview. (**Decision 2:** a subdomain each instead: a Worker and a
-      custom domain per example, and no example's address changes. **Decision 8:** the marker as a
-      line in each example's own layout.)
+- [x] **The examples, live** (2026-11-18). `site/build.ts` builds all eight with `--base
+      /examples/<name>/` into the site's output, before the site (so the site's link checker sees
+      them, and a bad link to one fails the build), fails on any warning in one, moves
+      `glossary-docs`' three `_redirects` rules into the site's own under its path, and runs
+      `docs-sidebar`'s Pagefind on its folder (its search works under the base; the site's own
+      index leaves the examples out with `--glob`). The gallery at `/examples/` and the "See it
+      working" box on eight docs pages come from `site/src/_data/examples.yml` (with
+      `seeIt.js`); the landing page's campsites link to each live, and the header to the
+      gallery. The trail marker is a pill fixed in a corner of each example page, not a bar at
+      the top: `docs-sidebar`'s `<body>` is a grid, and a bar there became one of its cells. The
+      six examples' address is `https://sitesquatch.dev`, not the plan's path: the sitemap adds the
+      base itself, and `absoluteUrl` against an address with a path drops the path, so the two
+      feeds use `withBase` instead (frozen again; changelog). `examples/sites/README.md` links
+      each live (they answer once the domain is attached at launch), and
+      `.github/workflows/examples.yml` is gone. `site/tests/examples.test.ts` keeps
+      `examples.yml` in step with `examples/sites/`. Found on the way, for "What the site taught
+      ssqch" (below): under a `base`, the link checker counts the site's own address outside the
+      base as external, so a feed's links that miss the base aren't checked; the research's "all
+      eight pass under a base" hadn't checked the feeds.
 - [ ] **Agents, and launch.** An `afterBuild` hook writes each docs page's Markdown to
       `/docs/<page>.md` and `/docs/<page>/index.md` (the title as a heading, then the source, with
       links to other docs pages pointing at their copies). `<link rel="alternate"
@@ -818,7 +822,8 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       only, which answers `Accept: text/markdown` with the copy and `Vary: Accept` (**Decision
       6**). A test in `site/` that CI runs: every docs page has both copies, `/llms.txt` lists
       exactly the docs pages, and each copy's rendered text equals its page's `<main>`. Then
-      launch: the apex as the Worker's custom domain, a redirect rule from `www`, and `homepage`
+      launch: the apex as the Worker's custom domain (the Live links in `examples/sites/README.md`
+      answer from then), a redirect rule from `www`, and `homepage`
       in `packages/ssqch/package.json`, the README and `examples/sites/README.md` pointing at the
       site. **Needs David:** the DNS change (attaching
       the domain creates the apex record). Done when `curl -H "Accept: text/markdown"
@@ -850,7 +855,11 @@ After launch:
       the other match. The `budgets` warning then lists both. `ssqch serve` names a watched file
       outside the root by its absolute path (`Fresh tracks in
       /Users/.../docs/trailheads/from-zola.md`), where one inside is relative (`src/docs/...`):
-      say `../docs/trailheads/from-zola.md`.
+      say `../docs/trailheads/from-zola.md`. Under a `base`, a feed's absolute links on the
+      site's own address that miss the base go unchecked (other paths on the domain are
+      external); `absoluteUrl(url, address)` drops a path in the address for a URL that starts
+      with `/`, so a feed needs `withBase` first. Decide whether `absoluteUrl` should add
+      `ssqch.base` itself, or the link checker should flag a feed link outside the base.
 - [ ] **More pages.** Field reports: the trial migrations as short case studies, lit.dev's "don't
       move yet" included (**Needs David:** a read of each before it's public, since they name
       other people's sites). The sticker sheet: the drawings, the palette and the trail patch. A

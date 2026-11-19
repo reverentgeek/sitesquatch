@@ -1,0 +1,34 @@
+---
+layout: base.jinja
+title: Examples
+description: Eight small, complete sites built with SiteSquatch, each distilled from a real one and written against a feature, running live with their source a click away.
+permalink: /examples/
+---
+{%- from "drawing.jinja" import drawing with context -%}
+<section class="gallery">
+	<div class="wrap">
+		<div class="stop-head">
+			<div>
+				<p class="kicker">Campsites</p>
+				<h1>Examples</h1>
+				<p class="lead">Small, complete sites, each distilled from a real one and written against a feature of ssqch. The test suite builds and link-checks every one, and each runs here, built under its own path. Poke around the live site, then take what you need from the source: copy its folder and run <code>ssqch serve</code> in it.</p>
+			</div>
+			{{ drawing("stickers/tent", 120, class="stop-art", eager=true) }}
+		</div>
+		<ul class="campsites">
+			{%- for example in examples %}
+			<li id="{{ example.name }}">
+				<h2><code>{{ example.name }}</code></h2>
+				<p class="engine">{{ example.engine }} · distilled from {{ example.from }}</p>
+				<p>{{ example.shows }}</p>
+				<ul class="features">
+					{%- for feature in example.features %}
+					<li><a href="{{ feature.docs }}">{{ feature.label }}</a></li>
+					{%- endfor %}
+				</ul>
+				<p class="links"><a class="button" href="/examples/{{ example.name }}/">Visit the live site</a> <a class="button quiet" href="{{ site.repo }}/tree/main/examples/sites/{{ example.name }}">Source</a></p>
+			</li>
+			{%- endfor %}
+		</ul>
+	</div>
+</section>

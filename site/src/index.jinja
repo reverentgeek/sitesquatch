@@ -197,13 +197,13 @@ No differences: 148 pages and 4,730 other files are the same. <span class="v">Th
 		<div>
 			<p class="kicker">Mile 5 · Campsites</p>
 			<h2 id="examples-title">{{ counting[examples | length] if (examples | length) < 13 else (examples | length) }} small sites to copy from</h2>
-			<p>Each one is distilled from a real site and written against a feature of ssqch, and the test suite builds and link-checks every one. Read the source, then take what you need.</p>
+			<p>Each one is distilled from a real site and written against a feature of ssqch, and the test suite builds and link-checks every one. Poke around the live version, then take what you need from the source. <a href="/examples/">The whole campground</a></p>
 		</div>
 		{{ drawing("stickers/tent", 104, class="stop-art") }}
 	</div>
 	<ul class="sites">
 		{%- for example in examples %}
-		<li><h3>{{ example.name }}</h3><p class="engine">{{ example.engine }}</p><p>{{ example.shows }}</p><p class="links"><a href="{{ site.repo }}/tree/main/examples/sites/{{ example.name }}">Source</a></p></li>
+		<li><h3>{{ example.name }}</h3><p class="engine">{{ example.engine }}</p><p>{{ example.shows }}</p><p class="links"><a href="/examples/{{ example.name }}/">Live</a><a href="/examples/#{{ example.name }}">What it shows</a><a href="{{ site.repo }}/tree/main/examples/sites/{{ example.name }}">Source</a></p></li>
 		{%- endfor %}
 	</ul>
 </section>

@@ -13,7 +13,7 @@ export default defineConfig( {
 	afterBuild: process.env.SEARCH ? [ { run: "npx -y pagefind --site dist" } ] : [],
 
 	plugins: [
-		sitemapPlugin( { url: "https://docs-sidebar.sitesquatch.dev" } ),
+		sitemapPlugin( { url: "https://sitesquatch.dev" } ),
 		// The search files only exist with SEARCH=1.
 		linksPlugin( { ignore: [ "/pagefind/" ] } )
 	]

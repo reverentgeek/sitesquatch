@@ -35,6 +35,18 @@ docs: true
 		</ul>
 		{%- endfor %}
 		{%- endif %}
+		{#- The examples that show this page's features (src/_data/seeIt.js, from examples.yml). #}
+		{%- set seen = seeIt[page.url] %}
+		{%- if seen %}
+		<aside class="see-it" aria-labelledby="see-it">
+			<h2 id="see-it">See it working</h2>
+			<ul>
+				{%- for s in seen %}
+				<li><a href="/examples/{{ s.name }}/"><code>{{ s.name }}</code></a>: {{ s.label }} (<a href="/examples/#{{ s.name }}">what it shows</a>)</li>
+				{%- endfor %}
+			</ul>
+		</aside>
+		{%- endif %}
 		{%- set pager = nav | navPager(page.url) %}
 		<nav class="pager" aria-label="Previous and next pages">
 			<div>{% if pager.previous %}<small>Back down the trail</small><a class="sign back" rel="prev" href="{{ pager.previous.url }}">{{ pager.previous.title }}</a>{% endif %}</div>

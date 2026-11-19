@@ -11,6 +11,17 @@ where that version matches.
 
 ## Unreleased
 
+### Changed
+
+- The example sites run live on sitesquatch.dev, each under its own path
+  (`https://sitesquatch.dev/examples/blog-tags/`), instead of a subdomain each. The six that name
+  their address (`blog-tags`, `blog-categories`, `docs-sidebar`, `glossary-docs`,
+  `versioned-docs`, `islands`) say `https://sitesquatch.dev`, and the feeds of `blog-tags` and
+  `blog-categories` put each URL through `withBase` before `absoluteUrl`, so they're right under
+  a path too: a feed isn't HTML, so the base isn't added for it, and `absoluteUrl` against an
+  address with a path drops the path for a URL that starts with `/`. Their frozen outputs in the
+  oracle changed with the address, and nothing else.
+
 ### Fixed
 
 - A page that no template language reads (`render: md`, or a plain `.html` page with

@@ -1,6 +1,6 @@
 # sitesquatch.dev
 
-ssqch's own website, built with the ssqch in this repository (`packages/ssqch`), so a change to ssqch that breaks its own site shows up here first. The plan is section 9 of [`TODO.md`](../TODO.md), "The website". So far: the landing page, the docs, the changelog, the 404 page and the Cloudflare deploy. The live examples come next.
+ssqch's own website, built with the ssqch in this repository (`packages/ssqch`), so a change to ssqch that breaks its own site shows up here first. The plan is section 9 of [`TODO.md`](../TODO.md), "The website". So far: the landing page, the docs, the changelog, the live examples, the 404 page and the Cloudflare deploy. The Markdown copies for agents, and the launch, come next.
 
 From this folder, with `npm ci` already run in `packages/ssqch`:
 
@@ -38,10 +38,14 @@ The README is the one source of the documentation until the docs move into pages
 
 An entry's front matter is its `title`, `release` (the version it starts with), `releases` (every version it covers) and `date` (`release`'s date), and `lastRelease` and `lastDate` when it covers more than one. `tests/changelog.test.ts` keeps the entries in step with `CHANGELOG.md`: the package's version has an entry (so a release can't ship without one), every release is in exactly one entry with its date, an entry whose releases have a Breaking heading has "What you might need to change", and every number in an entry is in its releases' sections.
 
+## The examples
+
+`build.ts` builds every site in `examples/sites/` with `--base /examples/<name>/` into `dist/examples/<name>/`, before the site, so the site's link checker finds them. Each is held to its own build (a warning in one fails the site's), gets a trail marker (a pill in a corner of each page: its name, "What it shows" in the gallery, its source, and all the examples), and has its `_redirects` rules moved into the site's own under its path, since Cloudflare reads only the root's. `docs-sidebar` gets its own Pagefind index in its folder. The gallery (`/examples/`), the landing page's campsites and the "See it working" box under a docs page all come from `src/_data/examples.yml`, which `tests/examples.test.ts` keeps in step with `examples/sites/`.
+
 ## What's where
 
 - `src/index.jinja` is the landing page, `src/404.jinja` the 404 page, and `src/docs-reference.jinja` the reference. `src/_includes/base.jinja` is the layout, and `src/_includes/doc.jinja` the docs pages' (the sidebar, the table of contents, the strip under the title, previous and next).
-- `src/_data/` holds what the pages list, so a list has one source: `examples.yml` (the example sites), `trailheads.yml`, `benchmarks.js` (the mileage boards, each with the README's words for it), `links.yml` (where the landing page's links to the docs go), `latest.js` (the latest release and the Node it needs, from `packages/ssqch/package.json`) and `drawings.js` (each drawing's size, from its viewBox).
+- `src/_data/` holds what the pages list, so a list has one source: `examples.yml` (the example sites, and `seeIt.js` from it: which examples show which docs page), `trailheads.yml`, `benchmarks.js` (the mileage boards, each with the README's words for it), `links.yml` (where the landing page's links to the docs go), `latest.js` (the latest release and the Node it needs, from `packages/ssqch/package.json`) and `drawings.js` (each drawing's size, from its viewBox).
 - The drawings aren't copied in: `passthrough` takes them from `docs/assets/`, where the README's are.
 - Every terminal on the landing page is ssqch's own output from a real run, with `...` where lines were left out. The `init` and `serve` samples are a run of the starter with ssqch 0.9.0; the schema error and the "No differences" line are the README's.
 

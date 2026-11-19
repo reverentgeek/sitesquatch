@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>The Squatch Blog: tooling</title>
-  <link href="https://blog-tags.sitesquatch.dev/tags/tooling/feed.xml" rel="self"/>
-  <link href="https://blog-tags.sitesquatch.dev/"/>
+  <link href="https://sitesquatch.dev/tags/tooling/feed.xml" rel="self"/>
+  <link href="https://sitesquatch.dev/"/>
   <updated>2024-03-02T00:00:00Z</updated>
-  <id>https://blog-tags.sitesquatch.dev/tags/tooling/feed.xml</id>
+  <id>https://sitesquatch.dev/tags/tooling/feed.xml</id>
   <author><name>The Squatch Team</name></author>
 
   <entry>
     <title>New tooling for the team</title>
-    <link href="https://blog-tags.sitesquatch.dev/inside/2024/03/02/new-tooling/"/>
+    <link href="https://sitesquatch.dev/inside/2024/03/02/new-tooling/"/>
     <updated>2024-03-02T00:00:00Z</updated>
-    <id>https://blog-tags.sitesquatch.dev/inside/2024/03/02/new-tooling/</id>
+    <id>https://sitesquatch.dev/inside/2024/03/02/new-tooling/</id>
     <content type="html">&lt;p&gt;The team moved its builds to a single binary. Builds take a tenth of a second now.&lt;/p&gt;
-&lt;h2 id=&quot;what-changed&quot;&gt;What changed&lt;a class=&quot;anchor&quot; href=&quot;https://blog-tags.sitesquatch.dev/inside/2024/03/02/new-tooling/#what-changed&quot; aria-hidden=&quot;true&quot;&gt;#&lt;/a&gt;&lt;/h2&gt;
+&lt;h2 id=&quot;what-changed&quot;&gt;What changed&lt;a class=&quot;anchor&quot; href=&quot;https://sitesquatch.dev/inside/2024/03/02/new-tooling/#what-changed&quot; aria-hidden=&quot;true&quot;&gt;#&lt;/a&gt;&lt;/h2&gt;
 &lt;ul&gt;
 &lt;li&gt;One config file&lt;/li&gt;
 &lt;li&gt;No &lt;code&gt;node_modules&lt;/code&gt;&lt;/li&gt;
