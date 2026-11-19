@@ -13,6 +13,9 @@ where that version matches.
 
 ### Changed
 
+- ssqch has a website: [sitesquatch.dev](https://sitesquatch.dev), with the documentation, the
+  example sites running live, a changelog written for people, and every docs page as Markdown
+  for coding agents (`/llms.txt`). The npm package's `homepage` is the site.
 - The example sites run live on sitesquatch.dev, each under its own path
   (`https://sitesquatch.dev/examples/blog-tags/`), instead of a subdomain each. The six that name
   their address (`blog-tags`, `blog-categories`, `docs-sidebar`, `glossary-docs`,

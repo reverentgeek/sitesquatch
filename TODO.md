@@ -813,7 +813,7 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       ssqch" (below): under a `base`, the link checker counts the site's own address outside the
       base as external, so a feed's links that miss the base aren't checked; the research's "all
       eight pass under a base" hadn't checked the feeds.
-- [ ] **Agents, and launch.** The agents' half is done (2026-11-18); left: the launch.
+- [x] **Agents, and launch** (2026-11-18; left: the `www` redirect, below).
       `site/lib/agents.ts` writes each docs page's Markdown to `/docs/<page>.md` and
       `/docs/<page>/index.md` (the title as a heading, then the page's text without its stickers,
       links to docs pages pointing at their copies), `/llms.txt` (the summary, three lines of
@@ -829,19 +829,19 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       request under `/docs/` runs the script now, so it counts as a Worker request on the free
       plan (Decision 6). `site/tests/agents.test.ts` (after a build): every docs page has both
       copies, `/llms.txt` lists exactly the docs pages, and each copy, rendered, has its page's
-      text. Launch, started 2026-11-18: `site/wrangler.jsonc` has the apex as a custom domain
-      (`routes`), deployed from a local checkout with `npx wrangler deploy`. Cloudflare refused it
-      while the zone still had the registrar's parking records ("already has externally managed
-      DNS records", code 100117), and Wrangler can't delete DNS records, so they go in the
-      dashboard first; then `npx wrangler deploy` again. A route turns `workers_dev` off unless
-      it's set, which took the `workers.dev` address and the pull requests' Previews down until a
-      second deploy with `workers_dev` and `preview_urls` set (both are, now): for the Cloudflare
-      guide. Then: the apex as the Worker's custom domain (the Live links in
-      `examples/sites/README.md` answer from then), a redirect rule from `www`, and `homepage` in
-      `packages/ssqch/package.json`, the README and `examples/sites/README.md` pointing at the
-      site. **Needs David:** the DNS change (attaching the domain creates the apex record). Done
-      when `curl -H "Accept: text/markdown" https://sitesquatch.dev/docs/install/` returns
-      Markdown.
+      text. Launched: `site/wrangler.jsonc` has the apex as a custom domain (`routes`), first
+      deployed from a local checkout with `npx wrangler deploy`. Cloudflare refused it while the
+      zone still had the registrar's parking records ("already has externally managed DNS
+      records", code 100117), and Wrangler can't delete DNS records, so David deleted them in the
+      dashboard; the next deploy attached the domain, with its record and certificate, in under
+      a minute. A route turns `workers_dev` off unless it's set, which took the `workers.dev`
+      address and the pull requests' Previews down until a second deploy with `workers_dev` and
+      `preview_urls` set (both are, now): for the Cloudflare guide. `curl -H "Accept:
+      text/markdown" https://sitesquatch.dev/docs/install/` returns Markdown. The npm package's
+      `homepage` (`scripts/build.ts`), its README and a badge in the README point at the site.
+      **Needs David:** `www.sitesquatch.dev`, a proxied placeholder A record (`192.0.2.0`) and a
+      redirect rule to the apex (Rules, the "Redirect from WWW to root" template), which Wrangler
+      can't make.
 
 After launch:
 
