@@ -23,6 +23,16 @@ export function normalizeBase(base: string): string {
 /** Whether `url` is from the site's root: `/about/`, but not `//cdn.example.com/x`. */
 const fromRoot = (url: string) => url.startsWith("/") && !url.startsWith("//");
 
+/**
+ * `url` with `base` in front once: like `withBase`, but a URL that already starts with the base
+ * (`/repo/feed.xml`, from `withBase()` in a template) is returned as it is.
+ */
+export function withBaseOnce(base: string, url: string): string {
+	if (base === "" || !fromRoot(url)) return url;
+	const rest = url.slice(base.length);
+	return url.startsWith(base) && (rest === "" || /^[/?#]/.test(rest)) ? url : base + url;
+}
+
 /** `url` with `base` in front, if it's from the site's root. Anything else (relative, `#top`, `https:`) is returned as it is. */
 export function withBase(base: string, url: string): string {
 	return base === "" || !fromRoot(url) ? url : base + url;

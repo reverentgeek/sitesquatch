@@ -91,6 +91,8 @@ export interface Config {
 	bundles: boolean;
 	strict: boolean;
 	lastModified: "git" | "file" | null;
+	/** `dateFallback`: the date of a page with none of its own (in its data or its file name): `"git"` for the last commit that changed its file, or `"file"` for the file's time. */
+	dateFallback: "git" | "file";
 	/** `timeZone`: the IANA zone the site's JavaScript runs in (`process.env.TZ`), or null for the machine's. */
 	timeZone: string | null;
 	/** The path the site is served under: empty for the domain's root, or `/repo` (no `/` at the end). */
@@ -104,6 +106,13 @@ export interface Config {
 	themes: string[];
 
 	passthrough: Array<{ from: string; to?: string }>;
+	/**
+	 * Passthrough destinations (absolute paths) a plugin has already written under another name,
+	 * to that name: the assets plugin copies a listed file in before the pages and renames it to
+	 * its fingerprinted name. The copy step leaves these out, so the plain file doesn't come back
+	 * beside the renamed one, and records the other name as the build's own.
+	 */
+	renamedCopies: Map<string, string>;
 	/** Functions every template can call, by name, in the order they were added. */
 	filters: Map<string, Filter>;
 	/** The names in `filters` that the site's config and its own plugins defined (not ssqch's built-in plugins). */
@@ -169,6 +178,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		bundles: false,
 		strict: false,
 		lastModified: null,
+		dateFallback: "file",
 		timeZone: null,
 		base: "",
 		serveRun: [],
@@ -176,6 +186,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		schemas: [],
 		themes: [],
 		passthrough: [],
+		renamedCopies: new Map(),
 		filters: new Map(),
 		siteFilters: new Set(),
 		globalData: [],
@@ -283,7 +294,7 @@ async function loadJsData(file: string, root: string): Promise<unknown> {
 
 // ---- ssqch.config.js -------------------------------------------------------------------------
 
-const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "timeZone", "base", "schemas", "theme", "serve", "budgets"];
+const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "dateFallback", "timeZone", "base", "schemas", "theme", "serve", "budgets"];
 const PARTS = ["data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins"];
 /** Engine names a config can't replace. */
 const CORE_ENGINES = ["edge", "md", "html", "txt"];
@@ -645,6 +656,9 @@ function applySettings(config: Config, settings: Data): void {
 	else if (modified === "git" || modified === "file") config.lastModified = modified;
 	else if (typeof modified === "string") bail(`lastModified must be "git", "file" or false, not "${modified}"`);
 	else if (modified !== undefined && modified !== null && modified !== false) bail(`lastModified must be "git", "file" or false, not ${typeof modified}`);
+	const fallback = settings.dateFallback;
+	if (fallback === "git" || fallback === "file") config.dateFallback = fallback;
+	else if (fallback !== undefined && fallback !== null) bail(`dateFallback must be "git" or "file", not ${typeof fallback === "string" ? `"${fallback}"` : typeof fallback}`);
 	if (settings.timeZone !== undefined && settings.timeZone !== null) config.timeZone = checkTimeZone(settings.timeZone);
 	if (typeof settings.base === "string") config.base = normalizeBase(settings.base);
 	else if (settings.base !== undefined && settings.base !== null) bail(`base must be a URL path like "/docs/", not ${typeof settings.base}`);

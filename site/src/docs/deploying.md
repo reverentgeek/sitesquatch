@@ -25,7 +25,7 @@ export default defineConfig({
 ```
 
 - **HTML:** in every page ssqch writes, a URL that starts with `/` gets the base in front: `href`, `src`, `srcset`, `action`, `poster` and the other URL attributes, a meta refresh, and `url()` in `style` attributes and `<style>` elements. That covers Markdown links, images from `imagePlugin()`, fingerprinted assets, redirect pages and Sass output. Relative URLs, `#fragments` and URLs with a domain aren't changed, so a link to something else on the same domain needs the whole address (`https://you.github.io/other-project/`).
-- **Everywhere else:** in an inline script, a JSON file or a feed, call `withBase("/search.json")`, or print `ssqch.base` (`/repo`, or an empty string without a base). Don't use `withBase()` inside an HTML attribute, or the URL gets the base twice (the link checker reports it).
+- **Everywhere else:** in an inline script, a JSON file or a feed, call `withBase("/search.json")`, or print `ssqch.base` (`/repo`, or an empty string without a base). The feed filters add it for you: `absoluteUrl(post.url, site.url)` is `https://example.com/repo/posts/pine/`, with or without the path in `site.url`, and a URL that already has the base keeps one. Don't use `withBase()` inside an HTML attribute, or the URL gets the base twice (the link checker reports it).
 - **`page.url` and collections:** unchanged, so `page.url == item.url` and the navigation helpers work the same with or without a base.
 - **The output folder:** unchanged too. `dist/about/index.html` is what the host serves at `/repo/about/`.
 - **Plugins:** `linksPlugin()` checks links under the base (other paths on the domain count as external), and `sitemapPlugin({ url })` takes the address with or without the base in it.

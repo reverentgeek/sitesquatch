@@ -335,7 +335,13 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 		sayWhere();
 		// What each changed source held the last time it was seen.
 		const contents = new Map<string, string | undefined>();
-		const show = (file: string) => (isInside(site.root, file) && file !== site.root ? path.relative(site.root, file) : file);
+		// From the site's root, for a watched file outside it too (`../docs/guide.md`), as the
+		// files inside are named; absolute only when there's no way there (another drive).
+		const show = (file: string) => {
+			if (file === site.root) return file;
+			const rel = path.relative(site.root, file);
+			return path.isAbsolute(rel) ? file : rel;
+		};
 		// What a build writes for itself (`.cache`, in a site whose input folder is the project
 		// root) isn't a change to the site: rebuilding for it would never end.
 		const own = (file: string) => isInside(site.root, file) && path.relative(site.root, file).split(path.sep).some((part) => part === ".cache" || part === ".git" || part === "node_modules");

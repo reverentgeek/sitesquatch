@@ -673,11 +673,15 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge
 	const hashed = html.split("from \"")[1].split("\"")[0];
 	assert.ok(hashed.startsWith("/assets/pco.") && hashed.endsWith(".js") && hashed.length === "/assets/pco.12345678.js".length, html);
 	assert.ok(fs.existsSync(path.join(root, "dist", hashed.replace(/^\//, ""))), hashed);
+	// DELIBERATE (0.10): the passthrough copy is renamed, not copied twice. The copy step put the
+	// plain file back beside the fingerprinted one, which nothing links to.
+	assert.ok(!fs.existsSync(path.join(root, "dist/assets/pco.js")), "the plain passthrough copy is left in the output");
 	// Built again, the passthrough copy and the fingerprinted one agree.
 	fs.writeFileSync(path.join(root, "js/pco.js"), "export function setup() { return 1; }");
 	({ ok, log } = build(root));
 	assert.ok(ok, log);
 	assert.ok(!read(root, "dist/index.html").includes(hashed), "a changed file gets a new name");
+	assert.deepEqual(fs.readdirSync(path.join(root, "dist/assets")).length, 1, "one fingerprinted copy, and no plain one");
 
 	// In development, the plain path, with no warning about a tool that hasn't written it.
 	fs.rmSync(path.join(root, "dist"), { recursive: true });
@@ -728,6 +732,23 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["html
 	}
 	assert.ok(log.includes("4 broken links:\n  / -> /after-end-tag/ (not found)\n  / -> /after-script/ (not found)\n  / -> /b3/ (not found)\n  / -> /b6/ (not found)"), log);
 	assert.ok(log.includes("Links   7 checked, 4 broken"), log);
+});
+
+// DELIBERATE (0.10): under a `base`, the `_redirects` lines have it on both URLs, as a host
+// matches the request's whole path (they had neither, so no old URL was redirected), and the link
+// checker reads them with the base off, as it reads links.
+test("redirects_under_a_base", () => {
+	const root = project({
+		"ssqch.config.js": `import { redirectsPlugin } from "ssqch/redirects";
+import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], base: "/repo/", plugins: [redirectsPlugin({ pages: false, netlify: true, redirects: { "/elsewhere": "https://other.example/" } }), linksPlugin()] };`,
+		"src/index.md": "See [the old post](/old/).",
+		"src/posts/pine.md": "---\naliases: [/old/]\n---\nPine",
+	});
+	const { ok, log } = build(root);
+	assert.ok(ok, log);
+	assert.equal(read(root, "dist/_redirects"), "/repo/elsewhere  https://other.example/  301\n/repo/old/  /repo/posts/pine/  301\n");
+	assert.ok(read(root, "dist/index.html").includes("href=\"/repo/old/\""));
 });
 
 // Not from a Rust test: an alias YAML reads as a date is the path it looks like.

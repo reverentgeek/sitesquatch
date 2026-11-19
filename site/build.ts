@@ -73,7 +73,8 @@ for (const name of examples) {
 			const rule = line.trim();
 			if (rule === "" || rule.startsWith("#")) continue;
 			const [from, to, ...rest] = rule.split(/\s+/);
-			const under = (url: string) => (url.startsWith("/") ? `${base}${url.slice(1)}` : url);
+			// redirectsPlugin() writes its lines under the base already; a line of the example's own may not have it.
+			const under = (url: string) => (url.startsWith("/") && !url.startsWith(base) ? `${base}${url.slice(1)}` : url);
 			redirects.push([under(from), under(to), ...rest].join(" "));
 		}
 		rmSync(own);
@@ -100,8 +101,10 @@ const report = build("the site", ["--root", root]);
 for (const line of report.summary ?? []) console.log(typeof line === "string" ? line : `  ${line.label.padEnd(7)} ${line.value}`);
 if (redirects.length) {
 	const file = path.join(output, "_redirects");
-	const before = existsSync(file) ? readFileSync(file, "utf8").trimEnd() + "\n" : "";
-	writeFileSync(file, `${before}# The examples' redirects, under their paths (site/build.ts)\n${redirects.join("\n")}\n`);
+	// Without the block an earlier build appended, when the site has no _redirects of its own to write over it.
+	const MARK = "# The examples' redirects, under their paths (site/build.ts)";
+	const own = existsSync(file) ? readFileSync(file, "utf8").split(MARK)[0].trimEnd() : "";
+	writeFileSync(file, `${own ? `${own}\n` : ""}${MARK}\n${redirects.join("\n")}\n`);
 	console.log(`  Redirects ${redirects.length} from the examples, in /_redirects`);
 }
 

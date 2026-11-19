@@ -457,10 +457,11 @@ faster (0.35 s against 1.2 s).
 Each of these built a site that was wrong in a way nothing reported. Fix the behavior where it's
 clear; otherwise warn.
 
-- [ ] **`computed` sees `collections`** (lit B4: the learn page lists `data.collections.articles` in
-      `eleventyComputed`). Evaluate computed values that read `collections` after collections are
-      built (Eleventy passes collections built without the computed values), or at least an error
-      that says computed can't see them.
+- [x] **`computed` sees `collections`** (lit B4: the learn page lists `data.collections.articles` in
+      `eleventyComputed`; done 2026-11-19): a page whose `computed` mentions `collections` (a
+      string, or a function's source) is expanded after collections are built, as a page
+      paginated over one is, and sees them without the pages that wait (as Eleventy passes
+      collections built without the computed values).
 - [x] **`computed.page` is dropped without a word** (osg #5; done 2026-11-18): `site.ts:760` sets
       `page` after `computed` runs. Make it an error that says `page` is built in and names another
       key.
@@ -474,9 +475,11 @@ clear; otherwise warn.
       is common): an imported macro `postCard` printed `function () { [native code] }` where the
       config's `postCard` was meant; a macro parameter `icon` hid `icon()`. Silent in Nunjucks;
       `strict` (off by default) catches only undefined values.
-- [ ] **A computed `layout` that depends on the page** (lit B3): it's refused since 0.7.0; resolve
-      the layout chain after `computed` instead.
-- [ ] **Dates and time zones:**
+- [x] **A computed `layout` that depends on the page** (lit B3; done 2026-11-19): the chain is chosen
+      after `computed`, page by page (`page.layouts`), with the layouts' front matter below the
+      page's data.
+- [x] **Dates and time zones** (done 2026-11-19, with `dateFallback: "git"`; `date: "created"` and a
+      zone for ssqch's own date filters aren't planned until a site asks):
   - A time zone for the build's JavaScript and date filters (`timeZone: "UTC"`): 137 of v8.dev's
     pages differ between a laptop in EST and CI in UTC (v8 C11). (Done 2026-11-18 for the site's
     JavaScript; ssqch's own date filters stay UTC, and a zone for them needs zone data without
@@ -866,7 +869,16 @@ After launch:
       highlighting's `languages`. The README is a front page (8 KB, was 143 KB). On the way: the
       splitter had put each page's subsections a level too high (an `<h1>` for "Step 1" on the
       live Field guide), fixed in the pages.
-- [ ] **What the site taught ssqch.** A page's Markdown as an output format ("Content and
+- [x] **What the site taught ssqch** (done 2026-11-19, but the output format, which is a feature:
+      "Content and structure", in the backlog): `assetsPlugin()` renames a passthrough copy
+      instead of leaving the plain file beside it (`config.renamedCopies`, a Breaking entry);
+      `redirectsPlugin()` writes the base on both URLs of a `_redirects` line, and the link
+      checker reads them with it off; the feed filters add the base to a URL from the root that
+      doesn't have it (`withBaseOnce`), so the examples' feeds lost their `withBase`; the site's
+      search shows an exact name first (`/docs/names.json`, from the reference page's data);
+      the preview comment has `ssqch diff` against main's last deploy
+      (`site/lib/preview-comment.ts`); and `ssqch serve` names a watched file outside the root
+      from it (`../docs/...`). What it said: A page's Markdown as an output format ("Content and
       structure", below), after which the site's hook goes away. `redirectsPlugin()` under a
       `base`: its `_redirects` lines are written without the base (the pages it writes get it),
       so decide whether they should have it. Exact names first in the site's search (`base`,

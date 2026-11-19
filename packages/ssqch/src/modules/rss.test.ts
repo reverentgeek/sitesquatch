@@ -28,6 +28,19 @@ test("html gets absolute urls", () => {
 	assert.ok(out.includes(`srcset="https://x.com/i-1.png 1x, https://x.com/i-2.png 2x"`));
 });
 
+// Under a `base`, the filters pass the site's base: a URL from the site's root gets it once, so
+// `absoluteUrl(page.url, site.url)` is on the site whether the address has the path or not.
+test("a url from the site's root gets the base once", () => {
+	assert.equal(absoluteUrl("/posts/pine/", "https://example.com", "/repo"), "https://example.com/repo/posts/pine/");
+	assert.equal(absoluteUrl("/posts/pine/", "https://example.com/repo/", "/repo"), "https://example.com/repo/posts/pine/");
+	assert.equal(absoluteUrl("/repo/feed.xml", "https://example.com", "/repo"), "https://example.com/repo/feed.xml");
+	assert.equal(absoluteUrl("/repository/", "https://example.com", "/repo"), "https://example.com/repo/repository/");
+	assert.equal(absoluteUrl("https://other.example/x", "https://example.com", "/repo"), "https://other.example/x");
+	assert.equal(absoluteUrl("//cdn.example.com/x.js", "https://example.com", "/repo"), "https://cdn.example.com/x.js");
+	assert.equal(absoluteUrl("/posts/pine/", "https://example.com/repo/"), "https://example.com/posts/pine/", "the named export, without a base, resolves as new URL does");
+	assert.equal(htmlToAbsoluteUrls('<a href="/posts/pine/"><img src="/img/p.png" srcset="/img/p.png 1x, /repo/img/p2.png 2x"></a>', "https://example.com", "/repo"), '<a href="https://example.com/repo/posts/pine/"><img src="https://example.com/repo/img/p.png" srcset="https://example.com/repo/img/p.png 1x, https://example.com/repo/img/p2.png 2x"></a>');
+});
+
 test("dates are written in UTC", () => {
 	const d = new Date(Date.UTC(2026, 2, 14, 1, 2, 3));
 	assert.equal(dateToRfc3339(d), "2026-03-14T01:02:03Z");

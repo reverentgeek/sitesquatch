@@ -190,7 +190,7 @@ export async function inspectPages(config: Config): Promise<{ dirs: Dirs; global
 		input: p.tpl.input,
 		output: p.output,
 		engines: p.tpl.engines,
-		layouts: p.tpl.layouts.map((l) => l.name),
+		layouts: (p.layouts ?? p.tpl.layouts).map((l) => l.name),
 		date: p.date,
 		dateFromName: p.tpl.fileDate !== undefined,
 		inCollections: p.inCollections,
@@ -354,14 +354,15 @@ class Renderer {
 		this.renderMs += performance.now() - start;
 		if (page.output === null) return;
 
-		if (tpl.layouts.length) {
+		const layouts = page.layouts ?? tpl.layouts;
+		if (layouts.length) {
 			const data = this.data(page);
 			// While its layouts render, the page's own body is there for `page.headings` and `page.excerpt`.
 			const had = this.bodies.get(page.index);
 			this.bodies.set(page.index, content);
 			try {
 				data.page = site.pageWithBody(page);
-				for (const layout of tpl.layouts) {
+				for (const layout of layouts) {
 					data.content = content;
 					let text = layout.body;
 					for (const name of layout.engines) {
@@ -954,8 +955,11 @@ async function passthroughCopy(config: Config, dirs: Dirs, extra: CopyJob[]): Pr
 		}
 	}
 	sameDestinations(jobs, dirs);
+	// What a plugin already wrote under another name stays that way (config.renamedCopies).
+	const renamed = jobs.filter(([, to]) => config.renamedCopies.has(to)).map(([, to]) => config.renamedCopies.get(to)!);
+	if (renamed.length) jobs.splice(0, jobs.length, ...jobs.filter(([, to]) => !config.renamedCopies.has(to)));
 	// Copies go through Node's thread pool, 32 at a time. A file whose copy is as new and as big is left alone.
-	const stats: CopyStats = { copied: 0, unchanged: 0, bytes: 0, paths: jobs.map(([, to]) => to) };
+	const stats: CopyStats = { copied: 0, unchanged: 0, bytes: 0, paths: [...jobs.map(([, to]) => to), ...renamed] };
 	const folders = new Map<string, Promise<unknown>>();
 	const failed: unknown[] = [];
 	let next = 0;

@@ -359,8 +359,13 @@ function find(output: string, urlPath: string, written: Set<string>): string | u
 	return there(index) ? index : undefined;
 }
 
-/** The source paths of a Netlify `_redirects` file in the output: exact paths, and prefixes for ones ending in `*`. */
-function redirectSources(output: string): string[] {
+/**
+ * The source paths of a Netlify `_redirects` file in the output: exact paths, and prefixes for
+ * ones ending in `*`, with the site's `base` taken off (they're compared with links that have it
+ * off). A line without the base is kept as it is, as a `_redirects` template written for the root
+ * has it.
+ */
+function redirectSources(output: string, base: string): string[] {
 	let text: string;
 	try { text = fs.readFileSync(path.join(output, "_redirects"), "utf8"); } catch { return []; }
 	const sources: string[] = [];
@@ -368,7 +373,7 @@ function redirectSources(output: string): string[] {
 		const l = trim(line);
 		if (l === "" || l.startsWith("#")) continue;
 		const from = firstWord(l);
-		if (from !== undefined && from.startsWith("/")) sources.push(from);
+		if (from !== undefined && from.startsWith("/")) sources.push(inSite(from, base) ?? from);
 	}
 	return sources;
 }
@@ -432,7 +437,7 @@ async function check(config: Config, output: string, written: string[], options:
 	const origin = (options.url === undefined ? undefined : originOf(options.url)) ?? sitemapOrigin(output);
 	const ids = new Map<string, Set<string>>(scans.map(([file, scan]) => [file, scan.ids]));
 	const writtenFiles = new Set(written);
-	const redirects = redirectSources(output);
+	const redirects = redirectSources(output, config.base);
 	const anchors = options.anchors ?? true;
 
 	let checked = 0;

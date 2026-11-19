@@ -18,7 +18,8 @@
 //
 // A listed file can be a passthrough copy (`passthrough: [{ "src/pco.js": "assets/pco.js" }]`):
 // it's copied into the output before it's fingerprinted, since passthrough files are otherwise
-// copied after pages. Static imports in inline module scripts (`import { setup } from
+// copied after pages, and the copy step then leaves it out (`config.renamedCopies`), so only the
+// fingerprinted file is in the output. Static imports in inline module scripts (`import { setup } from
 // "/assets/pco.js"`) are rewritten too, and so are `import("...")` calls with a plain string.
 // Other references (`url()` in CSS, imports inside JavaScript files) aren't; for a hashed URL
 // outside an HTML attribute, templates call `assetUrl("/assets/index.css")`.
@@ -182,6 +183,8 @@ BUILTINS.set("ssqch/assets", (config, given) => {
 	let names: string[] = [];
 	// The plain paths a page has to mention for this build to change it: one that's fingerprinted or gets an `integrity`.
 	let changing: string[] = [];
+	// The passthrough destinations this plugin renamed in the last build (config.renamedCopies).
+	let renamed: string[] = [];
 
 	config.beforeBuild.push({ label: "", fn: () => {
 		const output = path.resolve(config.root, config.output);
@@ -190,6 +193,8 @@ BUILTINS.set("ssqch/assets", (config, given) => {
 		const map = new Map<string, string>();
 		const hashes = new Map<string, string>();
 		const done: string[] = [];
+		for (const plain of renamed) config.renamedCopies.delete(plain);
+		renamed = [];
 		for (const file of files) {
 			if (enabled) {
 				// A passthrough file isn't in the output until after the pages are written.
@@ -200,6 +205,11 @@ BUILTINS.set("ssqch/assets", (config, given) => {
 					try { fs.copyFileSync(src, plain); } catch (e) { bail(`copying ${src} to ${plain}: ${(e as Error).message}`); }
 				}
 				const hashed = fingerprint(output, file);
+				if (src !== undefined) {
+					const plain = path.join(output, file.replace(/^\/+/, ""));
+					config.renamedCopies.set(plain, path.join(output, hashed.replace(/^\/+/, "")));
+					renamed.push(plain);
+				}
 				if (withIntegrity) {
 					const at = path.join(output, hashed.replace(/^\/+/, ""));
 					let bytes: Buffer;

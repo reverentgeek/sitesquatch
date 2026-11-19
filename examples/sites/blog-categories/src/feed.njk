@@ -5,17 +5,17 @@ excludeFromCollections: true
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>{{ site.title }}</title>
-  <link href="{{ "/feed.xml" | withBase | absoluteUrl(site.url) }}" rel="self"/>
-  <link href="{{ "/" | withBase | absoluteUrl(site.url) }}"/>
+  <link href="{{ "/feed.xml" | absoluteUrl(site.url) }}" rel="self"/>
+  <link href="{{ "/" | absoluteUrl(site.url) }}"/>
   <updated>{{ collections.posts | getNewestCollectionItemDate | dateToRfc3339 }}</updated>
-  <id>{{ "/" | withBase | absoluteUrl(site.url) }}</id>
+  <id>{{ "/" | absoluteUrl(site.url) }}</id>
 {% for post in collections.posts %}
   <entry>
     <title>{{ post.data.title }}</title>
-    <link href="{{ post.url | withBase | absoluteUrl(site.url) }}"/>
+    <link href="{{ post.url | absoluteUrl(site.url) }}"/>
     <updated>{{ post.date | dateToRfc3339 }}</updated>
-    <id>{{ post.url | withBase | absoluteUrl(site.url) }}</id>
-    <content type="html">{{ post.content | htmlToAbsoluteUrls(post.url | withBase | absoluteUrl(site.url)) }}</content>
+    <id>{{ post.url | absoluteUrl(site.url) }}</id>
+    <content type="html">{{ post.content | htmlToAbsoluteUrls(post.url | absoluteUrl(site.url)) }}</content>
   </entry>
 {% endfor %}
 </feed>
