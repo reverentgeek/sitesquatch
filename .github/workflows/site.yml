@@ -116,8 +116,9 @@ jobs:
           set -o pipefail
           output=$(npx --yes "$WRANGLER" preview --name "pr-$NUMBER" --message "${SHA:0:7}" --json)
           printf '%s\n' "$output"
-          # The shape Cloudflare's docs show, and the one before it.
-          url=$(printf '%s' "$output" | jq -er '.preview.urls[0] // .preview_urls[0]')
+          # --json still prints the asset upload's progress first: the JSON starts at a line
+          # that's only "{". Its address is .preview.urls[0] (pr-<number>-sitesquatch.<you>.workers.dev).
+          url=$(printf '%s\n' "$output" | sed -n '/^{$/,$p' | jq -er '.preview.urls[0]')
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: comment the preview's address
         if: steps.ready.outputs.ready == 'true'
