@@ -102,7 +102,9 @@ Run from `packages/ssqch/` unless it says otherwise.
 - CI (`.github/workflows/ci.yml`) runs the Node build's unit tests and the whole oracle on
   Linux, macOS and Windows on Node 22.18, 24 and 26; builds and checks the npm package on Linux
   on the same three (`package`, see "Releasing"); runs `node-benchmark` (below); and runs the
-  Rust's tests and clippy, natively and for `wasm32-wasip1` (`rust`). Keep clippy clean. A pull request that changes the
+  Rust's tests and clippy, natively and for `wasm32-wasip1` (`rust`). Keep clippy clean. A push
+  whose tree a pull request's CI already passed with (a merge commit, when the branch was up to
+  date) skips those jobs and passes (`already-tested`). A pull request that changes the
   release's own files runs `release.yml` up to the release, unsigned. The Rust isn't formatted
   with rustfmt (it uses long lines), so don't run `cargo fmt`.
 
@@ -171,28 +173,34 @@ platform. `docs/node-migration.md` ("Stage 8") says why each piece is as it is.
 - **The check:** `node scripts/check-package.ts` (or `--tarball <tgz>`) installs it in an empty
   folder outside the repository, builds every example, a starter, and a site with images,
   Markdown, minify, Sass and the example Rust plugin, and compares the output with the source's,
-  byte for byte. `--oracle` runs the oracle with it too. CI and the release run it on
-  Linux, on Node 22.18, 24 and 26.
+  byte for byte. `--oracle` runs the oracle with it too. CI runs it on Linux on Node 22.18, 24
+  and 26 (with the oracle on 22.18), and the release on the same three, without the oracle.
 - **The Homebrew formula:** `scripts/release-files.mjs` writes it (`ssqch.rb`) and `sha256.sum`
   from the packed tarball. The formula is Homebrew's pattern for an npm package: `depends_on
   "node"`, `npm install` with `std_npm_args` from the registry's tarball URL and the tarball's
   SHA-256 (`npm publish` uploads the tarball as it is), and a link to `ssqch` in `bin`. Its test
   builds a page.
 
-To release:
+To release (CI runs once: on the pull request; its merge commit's run sees the same tree and
+skips, see `already-tested` in `ci.yml`):
 
-1. In `CHANGELOG.md`, rename `## Unreleased` to `## <version> - <YYYY-MM-DD>` (semver; while
-   0.x, a breaking change bumps the minor version). The workflow refuses a tag whose version
-   has no section, which becomes the release's notes.
+1. On the pull request's branch, as its last commit (`Release <version>`), or on a branch of its
+   own: in `CHANGELOG.md`, rename `## Unreleased` to `## <version> - <YYYY-MM-DD>` (semver;
+   while 0.x, a breaking change bumps the minor version). The workflow refuses a tag whose
+   version has no section, which becomes the release's notes.
 2. Set `version` in `packages/ssqch/package.json` to match (and run `npm install` there, so
-   `package-lock.json` has it). Update the pinned versions in the README too (`ssqch@<version>`
-   in Install, the GitHub Actions example and GitHub Pages, and the Netlify section's
-   `ssqch@<version>` and `SSQCH_VERSION`).
-3. Commit and push to `main`.
-4. Wait for CI to pass on that commit, then tag and push: `git tag v<version> && git push origin
+   `package-lock.json` has it), and the workspace's `version` in `Cargo.toml` (`ssqch-plugin` is
+   published at ssqch's version). Update the pinned versions in the README too
+   (`ssqch@<version>` in Install, the GitHub Actions example and GitHub Pages, and the Netlify
+   section's `ssqch@<version>` and `SSQCH_VERSION`).
+3. Bring the branch up to date with `main` if it isn't (a merge commit with a tree the pull
+   request didn't test runs all of CI again), wait for its CI to pass, and merge it.
+4. Wait for CI on the merge commit (it skips in a minute when its tree passed on the pull
+   request), then tag that commit and push: `git tag v<version> && git push origin
    v<version>`. The release workflow refuses a tag that isn't the package's version; builds and
    packs the package; checks the tarball on Linux on Node 22.18, 24 and 26 (`check-package.ts`,
-   with the oracle); waits for CI to pass on the tagged commit (`check-ci.yml`); and
+   without the oracle, which CI ran on the commit); waits for CI to pass on the tagged commit
+   (`check-ci.yml`); and
    only then publishes the GitHub release, with the npm tarball and its checksum. Then it
    publishes the package to npm (`publish-npm.yml`) and, once it's there, the formula to
    `reverentgeek/homebrew-tap` (not for a prerelease, which goes to npm's `next` tag). If
