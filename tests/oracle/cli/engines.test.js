@@ -466,3 +466,22 @@ test("liquid_page_front_matter_reads_say_the_rename", () => {
 	assert.ok(!r.log.includes("page.lantern"), r.log);
 	assert.match(r.log, /warn: rendering cedar\.md: `page\.title` is empty/);
 });
+
+// DELIBERATE (after 0.8.0): Liquid follows Ruby's Liquid (4.0.4, Jekyll's and GitHub Pages') where
+// 0.7 followed the liquid crate (decided 2026-11-18, osg #7). Each expected string is what Ruby's
+// Liquid 4.0.4 rendered for the same template. Math reads text as Ruby does, `split` drops empty
+// strings at the end and splits `" "` at whitespace, and a block that only sets variables writes
+// nothing.
+test("liquid_follows_rubys_liquid", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"liquid\"] };\n",
+		"math.liquid": "{{ \"r>\" | times: 1 }}|{{ \"3\" | plus: 2 }}|{{ \"3.5x\" | minus: 1 }}|{{ \"\" | times: 2 }}|{{ nope | plus: 1 }}|{{ \"abc\" | divided_by: 1 }}|{{ \" 7 \" | plus: 1 }}|{{ \"1_000\" | plus: 1 }}",
+		"split.liquid": "{{ \"a,b,,\" | split: \",\" | size }}|{{ \",a,b\" | split: \",\" | size }}|{{ \"a  b c\" | split: \" \" | join: \"/\" }}|{{ \" a b \" | split: \" \" | join: \"/\" }}|{{ \",,\" | split: \",\" | size }}",
+		"blank.liquid": "a{% if true %}\n  {% assign x = 1 %}\n{% endif %}b|c{% for i in (1..2) %}\n  {% assign y = i %}\n{% endfor %}d|e{% if true %}\n  {{ x }}\n{% endif %}f|g{% unless false %} {% assign z = 2 %} {% comment %}x{% endcomment %} {% endunless %}h|i{% if false %}\n  {% assign w = 1 %}\n{% elsif true %}\n  out\n{% endif %}j",
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/math/index.html"), "0|5|2|0|1|0|8|1001");
+	assert.equal(read(root, "_site/split/index.html"), "2|3|a/b/c|a/b|0");
+	assert.equal(read(root, "_site/blank/index.html"), "ab|cd|e\n  1\nf|gh|i\n  out\nj");
+});

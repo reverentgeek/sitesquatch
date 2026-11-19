@@ -242,6 +242,32 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 		liquid.registerTag("unless", class extends UnlessTag { constructor(...args: any[]) { super(...(args as [any, any, any, any])); lenientWhereAsked((this as any).branches); } });
 	}
 
+	// A block that only sets variables writes nothing, as in Ruby's Liquid (`Block#blank?`): an
+	// `if` or `for` whose bodies are whitespace, `assign`, `capture` and comments still runs, but
+	// its whitespace isn't written. liquidjs (and 0.7) wrote it, so Jekyll layouts that compute in
+	// blocks came out with runs of blank lines (osg #7). Outside a block, whitespace is written.
+	const BLANK_TAGS = new Set(["assign", "capture", "comment", "#"]);
+	const isBlank = (templates: any[] | undefined): boolean => (templates ?? []).every((t) => {
+		if (t.blankBlock === true) return true;
+		if (typeof t.name === "string") return BLANK_TAGS.has(t.name);
+		return typeof t.str === "string" && /^\s*$/.test(t.str);
+	});
+	const discard = { write() {}, buffer: "" };
+	for (const name of ["if", "unless", "for", "case"]) {
+		const Base = (liquid.tags as Record<string, any>)[name];
+		liquid.registerTag(name, (class extends Base {
+			blankBlock: boolean;
+			constructor(...args: any[]) {
+				super(...args);
+				const self = this as any;
+				this.blankBlock = isBlank(self.templates) && isBlank(self.elseTemplates) && (self.branches ?? []).every((b: any) => isBlank(b.templates));
+			}
+			*render(ctx: any, emitter: any): Generator<unknown, unknown, unknown> {
+				return yield super.render(ctx, this.blankBlock ? discard : emitter);
+			}
+		}) as any);
+	}
+
 	// liquidjs' own filters turn a value into text with `String()`: a date as the machine's time
 	// zone gives it, a float as a plain number. They get 0.7's text for a date (`2026-01-02
 	// 00:00:00 +0000`) and the number for a float, in a list too. JSON is JSON's.
@@ -485,12 +511,31 @@ function number(v: unknown, what: "input" | "operand"): { value: number; float: 
 	throw new BuildError(what === "input" ? "invalid input: Number expected" : "invalid argument `operand`: Number expected");
 }
 
+/**
+ * A number for the math filters, as Ruby's Liquid reads one (`Utils.to_number`, Liquid 4.0.4, which
+ * Jekyll and GitHub Pages run): text that's a decimal (`"3.5"`) is a float, other text is its
+ * leading whole number or 0 (`"3.5x"` is 3, `"r>"` is 0), and nothing, `true` or a list is 0.
+ * jekyll-toc multiplies text by 1 and depends on it (osg #7); 0.7, after the liquid crate, said
+ * "Number expected".
+ */
+function toNumber(v: unknown): { value: number; float: boolean } {
+	if (isFloat(v)) return { value: v.n, float: true };
+	if (typeof v === "number") return { value: v, float: !Number.isInteger(v) };
+	if (typeof v === "string") {
+		const t = v.trim();
+		if (/^-?\d+\.\d+$/.test(t)) return { value: Number(t), float: true };
+		const whole = /^[+-]?\d+(?:_\d+)*/.exec(t)?.[0];
+		return { value: whole === undefined ? 0 : Number(whole.replaceAll("_", "")), float: false };
+	}
+	return { value: 0, float: false };
+}
+
 /** A float that's whole stays one (see `LiquidFloat`). */
 const float = (n: number) => (Number.isInteger(n) ? new FloatValue!(n) : n);
 
 /** Two numbers through `whole` when both are whole numbers, and through `exact` as floats otherwise, as the liquid crate did. */
 const arithmetic = (whole: (a: number, b: number) => number, exact: (a: number, b: number) => number, checkZero = false) => (input: unknown, operand: unknown) => {
-	const a = number(input, "input"), b = number(operand, "operand");
+	const a = toNumber(input), b = toNumber(operand);
 	if (checkZero && b.value === 0) throw new BuildError("invalid argument `operand`: Can't divide by zero");
 	return a.float || b.float ? float(exact(a.value, b.value)) : whole(a.value, b.value);
 };
@@ -559,7 +604,7 @@ function fastWhere(liquid: Liquid): void {
 	}
 }
 
-/** The liquid crate's numbers, which 0.7 had: whole numbers stay whole (`7 | divided_by: 2` is 3), and a float stays a float. */
+/** Whole numbers stay whole (`7 | divided_by: 2` is 3) and a float stays a float, as in 0.7 and Ruby; text is read as Ruby reads it (`toNumber`). */
 const MATH: Record<string, (...args: any[]) => unknown> = {
 	plus: arithmetic((a, b) => a + b, (a, b) => a + b),
 	minus: arithmetic((a, b) => a - b, (a, b) => a - b),
@@ -569,18 +614,18 @@ const MATH: Record<string, (...args: any[]) => unknown> = {
 	at_least: arithmetic((a, b) => Math.max(a, b), (a, b) => Math.max(a, b)),
 	at_most: arithmetic((a, b) => Math.min(a, b), (a, b) => Math.min(a, b)),
 	abs: (input: unknown) => {
-		const n = number(input, "input");
+		const n = toNumber(input);
 		return n.float ? float(Math.abs(n.value)) : Math.abs(n.value);
 	},
 	round: (input: unknown, places: unknown) => {
-		const n = number(input, "input").value;
-		const p = places === undefined || places === null ? 0 : number(places, "operand").value;
+		const n = toNumber(input).value;
+		const p = places === undefined || places === null ? 0 : toNumber(places).value;
 		if (p <= 0) return round(n);
 		const m = 10 ** p;
 		return float(round(n * m) / m);
 	},
-	ceil: (input: unknown) => Math.ceil(number(input, "input").value),
-	floor: (input: unknown) => Math.floor(number(input, "input").value),
+	ceil: (input: unknown) => Math.ceil(toNumber(input).value),
+	floor: (input: unknown) => Math.floor(toNumber(input).value),
 };
 
 /** Equality as the liquid crate tells it: by value, objects and lists too. */
@@ -613,7 +658,7 @@ const length = (v: unknown, otherwise: number) => {
 /**
  * Where the liquid crate's filters say otherwise than liquidjs', 0.7's output stays: `capitalize`
  * changes the first letter only (`Pine CONE`), `url_encode` writes a space as `%20`, `split`
- * keeps empty strings at the end, `truncate` counts the ellipsis' bytes, `truncatewords` splits at each space,
+ * is Ruby's (below), `truncate` counts the ellipsis' bytes, `truncatewords` splits at each space,
  * `map` leaves out what isn't an object, `uniq` compares values, and `size` is a value's text's.
  */
 const TEXT: Record<string, (...args: any[]) => unknown> = {
@@ -627,11 +672,16 @@ const TEXT: Record<string, (...args: any[]) => unknown> = {
 		// A `%` that doesn't start an escape is left as it is; bytes that aren't UTF-8 are an error.
 		try { return new TextDecoder("utf-8", { fatal: true }).decode(percentDecode(text(input).replaceAll("+", " "))); } catch { throw new BuildError("invalid input: Malformed UTF-8"); }
 	},
+	// Ruby's `String#split`, as Ruby's Liquid calls it: by nothing, the characters; by one space, at
+	// each run of whitespace, with none at the start; and empty strings at the end dropped
+	// (`"a,b,,"` is two). 0.7, after the liquid crate, kept them and split at each space.
 	split: (input: unknown, pattern: unknown) => {
 		const s = text(input), by = text(pattern);
 		if (s === "") return [];
-		// By nothing: the characters, as Shopify splits them (0.7 put an empty string at each end).
-		return by === "" ? [...s] : s.split(by);
+		if (by === "") return [...s];
+		const parts = by === " " ? s.replace(/^[ \t\n\v\f\r]+/, "").split(/[ \t\n\v\f\r]+/) : s.split(by);
+		while (parts.length && parts[parts.length - 1] === "") parts.pop();
+		return parts;
 	},
 	array_to_sentence_string: (input: unknown, connector: unknown) => {
 		if (!Array.isArray(input)) throw new BuildError("invalid input: Array expected");

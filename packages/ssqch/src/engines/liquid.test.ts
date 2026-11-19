@@ -127,7 +127,10 @@ test("numbers_are_0_7s_whole_numbers_and_floats", async () => {
 	const liquid = liquidEngine(site.env);
 	const out = liquid.render("{{ 10 | times: 1.0 | divided_by: 4 }}|{{ 10 | plus: 0.0 | divided_by: 4 }}|{{ ratio | times: 2 | divided_by: 2 }}|{{ 10.0 | divided_by: 4 }}|{% assign y = 4.0 %}{{ 10 | divided_by: y }}|{{ 7 | divided_by: 2 }}|{{ -7 | divided_by: 2 }}|{{ 7 | modulo: -3 }}|{{ 10 | times: 1.0 }}|{{ \"3\" | plus: 1 }}|{{ -2.5 | round }}|{{ 2.567 | round: 2 }}", { ratio: 2.5 }, site.ctx("page.liquid"));
 	assert.equal(out, "2.5|2.5|2.5|2.5|2.5|3|-3|1|10|4|-3|2.57");
-	for (const [source, said] of [["{{ nope | plus: 1 }}", "invalid input: Number expected"], ["{{ 1 | plus: nope }}", "invalid argument `operand`: Number expected"], ["{{ 1 | divided_by: 0 }}", "Can't divide by zero"]]) {
+	// DELIBERATE (after 0.8.0): text and nothing are numbers as Ruby's Liquid reads them (Jekyll's,
+	// decided 2026-11-18), where 0.7 said "Number expected": `"r>"` and nothing are 0, `"3.5x"` is 3.
+	assert.equal(liquid.render("{{ nope | plus: 1 }}|{{ 1 | plus: nope }}|{{ \"r>\" | times: 1 }}|{{ \"3.5x\" | minus: 1 }}|{{ \"2.5\" | times: 2 }}", {}, site.ctx("page.liquid")), "1|1|0|2|5");
+	for (const [source, said] of [["{{ 1 | divided_by: 0 }}", "Can't divide by zero"], ["{{ 1 | divided_by: \"x\" }}", "Can't divide by zero"]]) {
 		const message = await failure(() => liquid.render(source, {}, site.ctx("page.liquid")));
 		assert.ok(message.startsWith("page.liquid:1: ") && message.includes(said), message);
 	}

@@ -15,6 +15,12 @@ Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
 
 ### Breaking
 
+- Liquid follows Ruby's Liquid (Jekyll's) where 0.7 followed the Rust liquid crate, each checked
+  against Ruby's Liquid 4.0.4. Math filters read text as Ruby does (`"r>" | times: 1` is 0, not
+  an error; jekyll-toc depends on it). `split` drops empty strings at the end (`"a,b,,"` is two)
+  and splits `" "` at every run of whitespace. A block that only sets variables writes nothing.
+  A site that relied on the old output: `"a,b,," | split` has two items now, and the blank lines
+  such blocks wrote are gone.
 - Pages without a date sort after the dated ones in a collection, in path order, not by their
   files' times. A fresh clone or an edit gives files new times, so a collection's order changed
   with them (opensource.guide, v8.dev). Their `date` is still the file's time. A site that relied

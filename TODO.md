@@ -625,14 +625,18 @@ From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
       parent's end. The port's `markdownInHtml` (`_ssqch/jekyll.js`, 90 lines) is the behavior to
       port, and the site is the test. MDX needs it too, as an `"mdx"` mode (every element's
       content): 39 of the 53 expressjs.com pages whose text differs from Astro's (ex #6).
-- [ ] **Ruby Liquid's behavior** where 0.7 followed the liquid crate (osg #7): `times`, `plus` and
+- [x] **Ruby Liquid's behavior** where 0.7 followed the liquid crate (osg #7): `times`, `plus` and
       `minus` read text as Ruby's `to_number` does (`"r>"` is 0; jekyll-toc needs it); `split` drops
       trailing empty strings and splits `" "` on whitespace; `sort` on a hash gives `[key, value]`
       pairs, with missing values first by property; a block of only `assign`s renders nothing; the
       blank line after front matter goes with it. Deliberate changes with oracle entries, or a
       `liquid: { flavor: "jekyll" }`. Decided 2026-11-18: Ruby's behavior by default, each checked
       against Ruby and liquidjs first, recorded as DELIBERATE with a Breaking entry; no flavor
-      switch.
+      switch. Done 2026-11-18 for math, `split` and blank blocks, matched against Ruby's Liquid
+      4.0.4 (in the trial's vendored gems). Not Liquid's but Jekyll's: `sort` of a hash into pairs
+      and missing values first is Jekyll's own `sort` filter (Ruby's Liquid does neither, and nor
+      does ssqch). Left: a whole float prints as `5` where Ruby writes `5.0` (0.7's printing
+      everywhere), and the blank line after front matter (Jekyll's, unchecked).
 - [ ] **`page.<front matter key>` in Liquid** (osg #5): fall back to the page's data for keys `page`
       doesn't have, as Jekyll templates expect (42 edits in 7 templates, and a collision with the
       site's own `lang` variable). A design note first. Decided 2026-11-18: no fallback. A warning
