@@ -3,7 +3,11 @@
 // field is removed or changes meaning (README, "Scripts and coding agents"), so a new key is
 // allowed and a missing or retyped one isn't. Values are checked by the behavior tests in cli/.
 //
-//   SSQCH_FREEZE_SHAPES=1 node --test contract/shapes.test.js   rewrites shapes.json (0.7.0 only)
+//   SSQCH_FREEZE_SHAPES=1 node --test contract/shapes.test.js     rewrites shapes.json (0.7.0 only)
+//   SSQCH_FREEZE_SHAPES=new node --test contract/shapes.test.js   adds the shapes it doesn't have
+//
+// A document 0.7 didn't print gets its shape from the version that adds it (decided 2026-11-18),
+// listed in ADDED. `new` writes only those: every shape already in shapes.json stays as it is.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -14,6 +18,9 @@ import { serveSite } from "../lib/serve.js";
 const FILE = path.join(ORACLE, "contract/shapes.json");
 const frozen = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, "utf8")) : {};
 const freezing = process.env.SSQCH_FREEZE_SHAPES === "1";
+const freezingNew = process.env.SSQCH_FREEZE_SHAPES === "new";
+/** Documents 0.7.0 didn't print, and the version whose shape is frozen for each. */
+const ADDED = { "diff (several builds)": "0.8.1" };
 const shapes = {};
 
 /** A value's shape: "string", "number", "boolean", "null", { key: shape }, or [shape of every element merged]. */
@@ -64,7 +71,8 @@ function check(name, ...documents) {
 	const shape = documents.map(shapeOf).reduce((a, b) => merge(a, b));
 	shapes[name] = shape;
 	if (freezing) return;
-	assert.ok(frozen[name], `no frozen shape for ${name}: run SSQCH_FREEZE_SHAPES=1 against 0.7.0`);
+	if (!frozen[name] && freezingNew && ADDED[name]) return;
+	assert.ok(frozen[name], ADDED[name] ? `no frozen shape for ${name} (added in ${ADDED[name]}): run SSQCH_FREEZE_SHAPES=new` : `no frozen shape for ${name}: run SSQCH_FREEZE_SHAPES=1 against 0.7.0, or list it in ADDED`);
 	const problems = missing(frozen[name], shape);
 	assert.deepEqual(problems, [], `${name} lost or changed fields:\n  ${problems.join("\n  ")}`);
 }
@@ -111,6 +119,15 @@ test("diff report", () => {
 	check("diff", json(["diff", path.join(dir, "before"), path.join(dir, "after")]));
 });
 
+
+test("diff report, several builds", () => {
+	const dir = site();
+	for (const out of ["one", "two", "three"]) ssqch(["build", "--root", dir, "--output", out]);
+	write(dir, { "three/stray.txt": "pine\n", "two/about/index.html": "<p>The stump moved.</p>\n" });
+	const r = ssqch(["diff", path.join(dir, "one"), path.join(dir, "two"), path.join(dir, "three"), "--format", "json"]);
+	check("diff (several builds)", JSON.parse(r.stdout));
+});
+
 test("footprint report", () => {
 	const dir = site();
 	ssqch(["build", "--root", dir]);
@@ -138,4 +155,8 @@ test("serve ready file", async () => {
 
 test.after(() => {
 	if (freezing) fs.writeFileSync(FILE, JSON.stringify(shapes, null, 2) + "\n");
+	if (freezingNew) {
+		const added = Object.fromEntries(Object.entries(shapes).filter(([name]) => !frozen[name] && ADDED[name]));
+		if (Object.keys(added).length) fs.writeFileSync(FILE, JSON.stringify({ ...frozen, ...added }, null, 2) + "\n");
+	}
 });

@@ -18,7 +18,7 @@ import { rewriteBase } from "./base.ts";
 import type { Config, Dirs, GeneratedFile, Hook, PageSummary } from "./config.ts";
 import { shownDir, shownOutput } from "./config.ts";
 import type { Data } from "./data.ts";
-import { STATIC_DATA_EXTENSIONS } from "./data.ts";
+import { sourceDateEpoch, STATIC_DATA_EXTENSIONS } from "./data.ts";
 import { BuildError, Diagnostics, bail, context, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import type { RenderContext } from "./engines/engine.ts";
 import { beginFenceCache, rendering as markdownRendering, saveFenceCache, writeHighlightCss } from "./engines/markdown.ts";
@@ -74,6 +74,8 @@ export interface BuildReport {
 const MAX_WRITES = 64;
 
 export async function build(config: Config): Promise<BuildReport> {
+	// A SOURCE_DATE_EPOCH that isn't a number is one error now, not one for every page.
+	sourceDateEpoch();
 	const started = performance.now();
 	const timer = new Timer();
 	const site = new Site(config);
@@ -701,7 +703,9 @@ function unusedTemplates(site: Site): string[] {
 /** The argument to `beforeBuild` and `afterBuild` hooks. Folders are from the project root; `written` (after the build) lists the files it wrote. */
 function hookEvent(config: Config, dirs: Dirs, report: BuildReport | undefined): Data {
 	const rel = (dir: string) => (dir === dirs.root ? "./" : isInside(dirs.root, dir) ? `./${relative(dirs.root, dir)}/` : `${dir}/`);
-	const event: Data = { env: config.env, serving: config.serving, dirs: { input: rel(dirs.input), output: rel(dirs.output), includes: rel(dirs.includes), data: rel(dirs.data) } };
+	// `quiet` and `verbose` say what the build was asked to print, so a hook's own messages can follow
+	// `-q` (expressjs.com's social-image hook read process.argv for it, ex #11).
+	const event: Data = { env: config.env, serving: config.serving, quiet: config.quiet, verbose: config.verbose, dirs: { input: rel(dirs.input), output: rel(dirs.output), includes: rel(dirs.includes), data: rel(dirs.data) } };
 	if (report) event.written = [...report.written];
 	return event;
 }
@@ -723,13 +727,13 @@ async function runHooks(config: Config, dirs: Dirs, event: "beforeBuild" | "afte
 
 /**
  * Runs `command` through the shell (`sh -c`, or `cmd /C` on Windows) in the project root, with
- * its output passed through. It gets `SSQCH_ENV`, `SSQCH_SERVING` (`true` or `false`),
- * `SSQCH_INPUT` and `SSQCH_OUTPUT` (the folders, absolute). A failure (or a program that can't
+ * its output passed through. It gets `SSQCH_ENV`, `SSQCH_SERVING` and `SSQCH_QUIET` (`true` or
+ * `false`), `SSQCH_INPUT` and `SSQCH_OUTPUT` (the folders, absolute). A failure (or a program that can't
  * start) is an error naming the command.
  */
 export function runCommand(config: Config, dirs: Dirs, event: string, command: string): void {
 	if (!config.quiet) progress(`[ssqch] ${event}: ${command}`);
-	const { file, args, options } = commandLine(command, dirs.root, { SSQCH_ENV: config.env, SSQCH_SERVING: config.serving ? "true" : "false", SSQCH_INPUT: dirs.input, SSQCH_OUTPUT: dirs.output });
+	const { file, args, options } = commandLine(command, dirs.root, { SSQCH_ENV: config.env, SSQCH_SERVING: config.serving ? "true" : "false", SSQCH_QUIET: config.quiet ? "true" : "false", SSQCH_INPUT: dirs.input, SSQCH_OUTPUT: dirs.output });
 	const ran = spawnSync(file, args, {
 		...options,
 		// Standard output is kept for the JSON report, so the command's goes to standard error.
@@ -905,6 +909,29 @@ interface CopyStats {
 	paths: string[];
 }
 
+/**
+ * Two sources copied to one file (two passthrough folders with a `favicon.ico` each, v8 #19) raced,
+ * so either could win. The one listed later wins, every time, and when they differ that's a
+ * warning naming both. Identical files are copied once. Changes `jobs` in place.
+ */
+function sameDestinations(jobs: CopyJob[], dirs: Dirs): void {
+	const at = new Map<string, number>();
+	const kept: CopyJob[] = [];
+	const same = (a: string, b: string) => {
+		if (realPath(a) === realPath(b)) return true;
+		const [x, y] = [fs.statSync(a), fs.statSync(b)];
+		return x.size === y.size && fs.readFileSync(a).equals(fs.readFileSync(b));
+	};
+	for (const job of jobs) {
+		const earlier = at.get(job[1]);
+		if (earlier === undefined) { at.set(job[1], kept.length); kept.push(job); continue; }
+		const [first] = kept[earlier];
+		if (!same(first, job[0])) warn(warning("passthrough", `${shown(dirs.root, first)} and ${shown(dirs.root, job[0])} are both copied to ${shown(dirs.root, job[1])}, and they differ: the one listed later (${shown(dirs.root, job[0])}) is the one written. Remove one, or give one another \`to\``, { file: shown(dirs.root, job[0]) }));
+		kept[earlier] = job;
+	}
+	jobs.splice(0, jobs.length, ...kept);
+}
+
 async function passthroughCopy(config: Config, dirs: Dirs, extra: CopyJob[]): Promise<CopyStats> {
 	const jobs: CopyJob[] = [...extra];
 	for (const { from, to } of config.passthrough) {
@@ -924,6 +951,7 @@ async function passthroughCopy(config: Config, dirs: Dirs, extra: CopyJob[]): Pr
 			jobs.push([src, dest]);
 		}
 	}
+	sameDestinations(jobs, dirs);
 	// Copies go through Node's thread pool, 32 at a time. A file whose copy is as new and as big is left alone.
 	const stats: CopyStats = { copied: 0, unchanged: 0, bytes: 0, paths: jobs.map(([, to]) => to) };
 	const folders = new Map<string, Promise<unknown>>();

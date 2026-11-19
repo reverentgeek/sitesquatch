@@ -9,6 +9,126 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
+
+### Breaking
+
+- Liquid follows Ruby's Liquid (Jekyll's) where 0.7 followed the Rust liquid crate, each checked
+  against Ruby's Liquid 4.0.4. Math filters read text as Ruby does (`"r>" | times: 1` is 0, not
+  an error; jekyll-toc depends on it). `split` drops empty strings at the end (`"a,b,,"` is two)
+  and splits `" "` at every run of whitespace. A block that only sets variables writes nothing.
+  A site that relied on the old output: `"a,b,," | split` has two items now, and the blank lines
+  such blocks wrote are gone.
+- Pages without a date sort after the dated ones in a collection, in path order, not by their
+  files' times. A fresh clone or an edit gives files new times, so a collection's order changed
+  with them (opensource.guide, v8.dev). Their `date` is still the file's time. A site that relied
+  on the old order: give those pages dates, or sort the collection itself.
+- A `computed` value named `page` is an error (`` `page` in computed isn't applied, because `page`
+  is ssqch's ``). It was thrown away without a word, since ssqch sets `page` after `computed` runs.
+  A site that has one: give it another name (`computed: { meta: ... }`) and use that in templates.
+- `headingIds: "github"` (the default) follows github-slugger 2.0.0 character for character, the
+  slugger rehype-slug uses (so Astro's, VitePress's and Docusaurus's anchors) and GitHub's anchors
+  match. A heading's id changes when it has a combining accent (`e` + U+0301, which stays), an
+  emoji's variation selector or a zero-width joiner (which stay), or a superscript or fraction
+  (`x²`, `½`, which go). A site linking to such a heading's old id: link to the new one, or give
+  the heading its id (`## x² {#x2}`). expressjs.com had 29 pages linking to ids ssqch wrote
+  differently.
+- `slot` is ssqch's container name (named slots, below), so `_includes/containers/slot.*` is an
+  error. A site that has one: rename the container.
+
+### Added
+
+- A warning when a Liquid template reads front matter through `page` (`page.title`, as Jekyll's
+  do): it's empty in ssqch, where front matter is at the top level. Once for each name, naming the
+  page, including reads in layouts and includes.
+- `ssqch diff` with three or more folders lists what varies between builds made the same way:
+  each file that isn't the same in all of them, which builds agree, and the lines that differ. A
+  reference build that changes by itself was the first hour of both 2026-11-18 studies.
+- `timeZone` (`timeZone: "UTC"`): the time zone the site's own JavaScript runs in, for `Date`'s
+  local methods and libraries like luxon, so a laptop and CI build the same pages. v8.dev's dates
+  differed on 137 pages between EST and UTC. ssqch's own date filters stay UTC.
+- `SOURCE_DATE_EPOCH` pins the build's time: `now()`, Liquid's `"now"`, Edge's `new Date()`, and
+  the date of every page without one, as Jekyll's `time:` does. A
+  reference build that's the same every time took pinning in both 2026-11-18 studies.
+- `sitemapPlugin({ alternates })`: a function that returns a page's translations, written as
+  `<xhtml:link rel="alternate" hreflang>` under its `<loc>`, as @astrojs/sitemap and Google list
+  them. expressjs.com's port wrote its sitemap in an `afterBuild` hook for them.
+- A trailhead for Jekyll (`docs/trailheads/from-jekyll.md`, `ssqch docs --from jekyll`): the config,
+  `page` and `site`, includes and plugin tags, Ruby Liquid's differences, the plugins, and kramdown,
+  from moving opensource.guide.
+- `toc` takes `id`, `class`, `sublistClass`, `itemClass` (`{level}` is the heading's level) and
+  `linkClass`, so a table of contents can keep another generator's markup and CSS (jekyll-toc's
+  `section-nav` and `toc-entry toc-h2`).
+- Containers get `container.props`, their arguments read as a component's attributes
+  (`::: card type="tip" open items='["a","b"]'`), and named slots: a `::: slot title` block inside
+  a container is its `container.slots.title`, left out of `container.content`, as MDX's
+  `<Fragment slot>` is. A slot with no template around it to take it renders where it is.
+- The config's functions are Liquid tags, as they are in Nunjucks, so a Jekyll plugin's tag can be a
+  function: `{% seo title=false %}` calls `seo({ title: false })` and prints its answer unescaped,
+  and `{% callout "tip" %}...{% endcallout %}` passes what's between first. Liquid's own tags keep
+  their names.
+- Jekyll's `{% include_relative parts/intro.md who="rangers" %}` in Liquid: a file beside the
+  template, with `include.who`; `{{ }}` in the name works and `..` is refused, as in Jekyll.
+- Config and data files can import the site's own files through `tsconfig.json`'s or
+  `jsconfig.json`'s `compilerOptions.paths` (`import { menu } from "@/config/menu"`), as Astro,
+  Vite and Next.js codebases do, with TypeScript's rules: the longest matching pattern, its targets
+  in order, from `baseUrl` or the tsconfig's folder. An import Node resolves itself is unchanged.
+- A warning when a Nunjucks template gives one of the config's filters' names to a macro, an
+  import, a `set` or a loop variable and then calls that name as a function
+  (`{% from "ui.njk" import postCard %}` … `postCard(post)`): the call means the template's own
+  thing, not the filter, and printed `function () { [native code] }` without a word. It names the
+  file and line.
+- Build hooks get `quiet` and `verbose` (whether the build was run with `--quiet` or
+  `--verbose`), and a hook's command and `serve.run` commands get `SSQCH_QUIET`, so their own
+  messages can follow `-q`.
+
+### Changed
+
+- `ssqch docs` answers a name with the paragraph that leads with it in bold too (`**Containers:**`),
+  not only a table row that points at it. `ssqch docs pagination` explains pagination (it listed
+  option names), `data` says a value that's a function is called for that name, and `i18n`,
+  `translations`, `hreflang`, `multilingual` and `seo` find new sections: what isn't built in yet,
+  and the recipes two migrations used.
+
+### Faster
+
+- Liquid's `where` and `reject` don't run liquidjs' generator and new scope for every item when
+  they filter a list by a property (`collections.posts | where: "data.lang", "fr"`), with the same
+  answers. A layout that looks pages up in a collection on every page builds 8.6 times faster: the
+  benchmark's new Liquid case went from 39.8 s to 4.6 s, and opensource.guide's idiomatic port from
+  6.8 s to 1.4 s.
+
+### Fixed
+
+- Two passthrough sources copied to one file raced, so either could be written. The one listed
+  later is written every time, with a warning naming both when they differ.
+
+- `url` and `relative_url` on the url of a page with `permalink: false` printed `false` (a sitemap
+  got `/false`). They print nothing, with one warning.
+
+- With `"js"` in `templateFormats` (for `.js` files with front matter), the config and the modules
+  it imports were built as pages (`_site/ssqch.config/index.html`). They're code, and skipped. The
+  README has the recipe for text files with front matter.
+
+- The hint for Jekyll's `jsonify` in a Jinja or Nunjucks template said Liquid's is `json`; it says
+  `jsonify` works in Liquid.
+
+- An error that many pages hit at one spot (a broken include in a layout) shows that spot's lines
+  once, not up to three times, so a second, different error gets its own.
+
+- `ssqch/sass` finds an `@import`, `@use` or `@forward` that names its extension
+  (`"primer-core/index.scss"`) in the load paths, as Dart Sass and Ruby Sass do; it looked only
+  beside the importing file, so GitHub's primer, whose files all import that way, didn't compile.
+  And a stylesheet that starts with front matter (Jekyll's `---` lines) compiles, the lines left
+  blank so error lines still match.
+- A folder Bundler installed gems into (`bundle install --path vendor/bundle`, which Jekyll
+  sites do) isn't read as the site's pages: its gems' templates were built, and failed.
+- A page's `page.headings` read before the page had rendered (from a `computed` value, say) stayed
+  an empty list for the rest of the build, so a table of contents built from it later was empty.
+  Now an early read is empty and a read after the page renders has its headings.
+
 ## 0.8.0 - 2026-11-18
 
 ssqch 0.8 is a TypeScript program on Node (22.18 or newer), installed from npm. The contract is

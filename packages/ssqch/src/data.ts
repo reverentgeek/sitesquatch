@@ -5,6 +5,24 @@ import yaml from "js-yaml";
 import { parse as parseToml, TomlDate, TomlError } from "smol-toml";
 import { BuildError, context } from "./diagnostics.ts";
 
+/**
+ * The build's time: `now()` in templates, and the date of a page that has none of its own.
+ * `SOURCE_DATE_EPOCH` (seconds since 1970, the reproducible-builds convention, which Jekyll's
+ * `time:` is for too) pins it, so two builds of the same files write the same pages.
+ */
+export function buildTime(): Date {
+	const epoch = sourceDateEpoch();
+	return epoch === undefined ? new Date() : new Date(epoch);
+}
+
+/** `SOURCE_DATE_EPOCH` in milliseconds, if it's set. */
+export function sourceDateEpoch(): number | undefined {
+	const value = process.env.SOURCE_DATE_EPOCH;
+	if (value === undefined || value === "") return undefined;
+	if (!/^\d+$/.test(value.trim())) throw new BuildError(`SOURCE_DATE_EPOCH must be whole seconds since 1970 (like 1767225600 for 2026-01-01), not "${value}"`);
+	return Number(value.trim()) * 1000;
+}
+
 export type Data = Record<string, any>;
 
 /** An object written as `{ ... }` (or made with no prototype): what the cascade merges key by key. Dates, lists and class instances are values. */

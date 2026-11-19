@@ -20,6 +20,8 @@ pub use value::{Map, Value};
 // What the Node build doesn't call (0.7's `set_current`, `html_text`) is left as it is.
 #[allow(dead_code)]
 pub mod markdown;
+/// The characters github-slugger removes, for `headingIds: "github"` (generated).
+mod github_slugger;
 
 /// 0.7's highlighter as it is. [`highlight`] wraps it with a cache, and is the `highlight`
 /// module `markdown.rs` calls.

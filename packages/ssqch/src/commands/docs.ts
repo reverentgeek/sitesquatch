@@ -252,6 +252,15 @@ function firstMention(block: string, name: string): number | undefined {
 }
 
 /**
+ * A block that starts with `name` in bold (`**Containers:**` for `containers`, `- **Pagination:**`):
+ * the paragraph that explains it, which a table row (`| \`containers\` | ... (below). |`) only points at.
+ */
+function leadsWith(block: string, name: string): boolean {
+	const lead = /^(?:[-*] )?\*\*([^*]+?):?\*\*/.exec(block)?.[1];
+	return lead !== undefined && words(lead).join(" ") === words(name).join(" ");
+}
+
+/**
  * Where the README documents `name`: the blocks that define it (it's the first thing they write
  * as code, as in a table row or a list item), in the section that has the best one, and that
  * section. Without a definition, the block that writes it as code most often.
@@ -262,9 +271,10 @@ function passages(all: Section[], name: string): [number, string[]] | undefined 
 	all.forEach((s, i) => {
 		for (const block of blocks(s.body)) {
 			const n = mentions(block, name);
-			if (n === 0) continue;
+			const leads = leadsWith(block, name);
+			if (n === 0 && !leads) continue;
 			const at = firstMention(block, name);
-			const defines = at !== undefined && at < 60;
+			const defines = (at !== undefined && at < 60) || leads;
 			if (defines) defining.push([i, block]);
 			const score = n + (defines ? 1000 : 0) + mentions(s.title, name) * 100;
 			if (best === undefined || score > best[1]) best = [i, score, block];

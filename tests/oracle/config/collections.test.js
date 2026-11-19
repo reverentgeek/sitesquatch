@@ -1,6 +1,8 @@
 // From crates/sitesquatch-js/tests/collections.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { ssqch, project, read } from "../lib/ssqch.js";
 
 /** Builds `root` the way the Rust tests did: production, quiet. */
@@ -151,3 +153,92 @@ test("hook_errors_stop_the_build", () => {
 // The Rust test views_behave_like_plain_objects checked 0.7's copy-on-write views of the site's
 // data, which filters got. On Node, filters get the objects themselves (the changelog's
 // "Breaking"), so there are no views to check.
+
+// expressjs.com (ex #2): a route paginated over a collection read its page's headings from a data
+// file's `computed`, before that page had rendered, and the empty list stuck, so every table of
+// contents built from it was empty. Read early, they're empty; read after the page renders, they're there.
+test("headings_read_before_a_page_renders_are_found_after_it_renders", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"], collections: { docs: (pages) => pages.byGlob(\"docs/**\") } };\n",
+		"docs/guide.md": "---\npermalink: false\n---\n## Install\n\n## Use\n",
+		"routes.njk": "---\npagination: { data: collections.docs, size: 1, alias: doc }\npermalink: \"/guide/\"\n---\n{{ doc.templateContent | safe }}early {{ early }}, after {{ doc.page.headings | length }}: {% for h in doc.page.headings %}{{ h.id }} {% endfor %}\n",
+		"routes.data.js": "export default { computed: { early: (data) => data.doc.page.headings.length } };\n",
+	});
+	buildOk(root);
+	assert.match(read(root, "_site/guide/index.html"), /early 0, after 2: install use /);
+});
+
+// opensource.guide (osg #12): Bundler's `--path vendor/gems` put Jekyll's own templates in the
+// site, and ssqch built them as pages (5 errors, from gems' layouts). A Bundler install folder is
+// skipped as node_modules is; a site's own `vendor/` folder isn't.
+test("a_bundler_install_folder_is_not_the_sites_pages", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"md\"] };\n",
+		"index.md": "# Home\n",
+		"vendor/bundle/ruby/3.3.0/gems/jekyll-3.10.0/lib/site_template/about.md": "---\nlayout: page\n---\nAbout\n",
+		"vendor/notes.md": "# Our own vendor notes\n",
+	});
+	buildOk(root);
+	assert.match(read(root, "_site/vendor/notes/index.html"), /Our own vendor notes/);
+	assert.throws(() => read(root, "_site/vendor/bundle/ruby/3.3.0/gems/jekyll-3.10.0/lib/site_template/about/index.html"));
+});
+
+// expressjs.com (ex #11): a hook that prints had to read process.argv to follow `-q`. Hooks are
+// told what the build was asked to print: `quiet` and `verbose`, and SSQCH_QUIET for commands.
+test("build_hooks_are_told_quiet_and_verbose", () => {
+	const root = project({
+		"ssqch.config.js": `import fs from "node:fs";
+export default {
+  templateFormats: ["md"],
+  ignore: ["quiet.txt", "hooks.txt"],
+  beforeBuild: [({ quiet, verbose }) => fs.writeFileSync("hooks.txt", \`\${quiet} \${verbose}\`), { run: "node -e \\"require('fs').writeFileSync('quiet.txt', process.env.SSQCH_QUIET)\\"" }],
+};
+`,
+		"index.md": "# Home\n",
+	});
+	assert.ok(ssqch(["build", "--root", root, "--quiet"]).ok);
+	assert.equal(read(root, "hooks.txt"), "true false");
+	assert.equal(read(root, "quiet.txt"), "true");
+	assert.ok(ssqch(["build", "--root", root, "--verbose"]).ok);
+	assert.equal(read(root, "hooks.txt"), "false true");
+	assert.equal(read(root, "quiet.txt"), "false");
+});
+
+// opensource.guide (osg #13, #14): Jekyll's `time:` pins `site.time` and the date of every page
+// without one, which made its baseline the same on every build. SOURCE_DATE_EPOCH does that in
+// ssqch: `now()`, and undated pages' dates, which then sort by path, not by when a checkout wrote them.
+test("source_date_epoch_pins_the_build_time_and_undated_pages", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\", \"liquid\"] };\n",
+		"posts/zeta.md": "---\ntags: posts\n---\nZeta\n",
+		"posts/alpha.md": "---\ntags: posts\n---\nAlpha\n",
+		"posts/dated.md": "---\ntags: posts\ndate: 2025-06-01\n---\nDated\n",
+		"index.njk": "{% for p in collections.posts %}{{ p.url }} {{ p.date.toISOString() }}\n{% endfor %}{{ now().toISOString() }}\n",
+		"time.liquid": "{{ \"now\" | date: \"%Y-%m-%d\" }}\n",
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"], { env: { SOURCE_DATE_EPOCH: "1767225600" } });
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/index.html"), "/posts/dated/ 2025-06-01T00:00:00.000Z\n/posts/alpha/ 2026-01-01T00:00:00.000Z\n/posts/zeta/ 2026-01-01T00:00:00.000Z\n2026-01-01T00:00:00.000Z\n");
+	assert.equal(read(root, "_site/time/index.html"), "2026-01-01\n");
+	const bad = ssqch(["build", "--root", root], { env: { SOURCE_DATE_EPOCH: "soon" } });
+	assert.ok(!bad.ok);
+	assert.equal(bad.log.split("SOURCE_DATE_EPOCH must be whole seconds since 1970").length - 1, 1, bad.log);
+});
+
+// opensource.guide (osg #13, v8 C9): undated pages sorted by their files' times, so a fresh clone
+// or one edit reordered a collection. They sort by path, after the dated pages.
+test("undated_pages_sort_by_path_after_dated_ones", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"] };\n",
+		"trails/old-growth.md": "---\ntags: trails\n---\nOld Growth\n",
+		"trails/cedar.md": "---\ntags: trails\n---\nCedar\n",
+		"trails/ridge.md": "---\ntags: trails\ndate: 2024-05-01\n---\nRidge\n",
+		"index.njk": "{% for p in collections.trails %}{{ p.url }} {% endfor %}\n",
+	});
+	// Old Growth was edited last, Cedar long ago: neither changes the order.
+	fs.utimesSync(path.join(root, "trails/cedar.md"), new Date("2020-01-01"), new Date("2020-01-01"));
+	fs.utimesSync(path.join(root, "trails/old-growth.md"), new Date("2026-03-01"), new Date("2026-03-01"));
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/index.html"), "/trails/ridge/ /trails/cedar/ /trails/old-growth/ \n");
+});

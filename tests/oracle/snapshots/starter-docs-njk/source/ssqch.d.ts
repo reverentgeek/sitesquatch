@@ -75,7 +75,7 @@ declare module "ssqch" {
 
 	/** How Markdown renders. */
 	export interface MarkdownOptions {
-		/** Automatic heading `id`s: `"github"` (the default), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), or `false` for none. A `{#id}` on the heading always wins. */
+		/** Automatic heading `id`s: `"github"` (the default: GitHub's and github-slugger's anchors, character for character), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), or `false` for none. A `{#id}` on the heading always wins. */
 		headingIds?: "github" | "blackfriday" | "ascii" | false | ((text: string) => string);
 		/** `## Heading {#id .class key=value}`. Default `true`. */
 		headingAttributes?: boolean;
@@ -123,6 +123,10 @@ declare module "ssqch" {
 	export interface BuildEvent {
 		env: "production" | "development";
 		serving: boolean;
+		/** The build was run with `--quiet`: print only warnings and errors. */
+		quiet: boolean;
+		/** The build was run with `--verbose`. */
+		verbose: boolean;
 		/** Folders relative to the project root, like `./src/`. */
 		dirs: { input: string; output: string; includes: string; data: string };
 		/** The files the build wrote (`afterBuild` only). */
@@ -130,7 +134,7 @@ declare module "ssqch" {
 	}
 
 	type MaybePromise<T> = T | Promise<T>;
-	/** A function, or `{ run: "command" }` to run a program in the project root (through `sh -c`, or `cmd /C` on Windows). It gets `SSQCH_ENV`, `SSQCH_SERVING`, `SSQCH_INPUT` and `SSQCH_OUTPUT`; a failure fails the build. */
+	/** A function, or `{ run: "command" }` to run a program in the project root (through `sh -c`, or `cmd /C` on Windows). It gets `SSQCH_ENV`, `SSQCH_SERVING`, `SSQCH_QUIET`, `SSQCH_INPUT` and `SSQCH_OUTPUT`; a failure fails the build. */
 	type Hook = ((event: BuildEvent) => MaybePromise<void>) | { run: string };
 	/** Renders a template's body (front matter removed) with the page's data. */
 	type EngineRender = (source: string, data: Record<string, any>) => MaybePromise<string>;
@@ -182,7 +186,7 @@ declare module "ssqch" {
 		name?: string;
 		/** Functions templates can call: `{{ slug(title) }}`. Async functions are awaited. */
 		filters?: Record<string, (...args: any[]) => unknown>;
-		/** Data for every template. A function (sync or async) is called on each build. */
+		/** Data for every template. A value that's a function (sync or async) is called on each build, and its answer is that name's value. */
 		data?: Record<string, unknown>;
 		/** Custom collections, from the pages in collections. */
 		collections?: Record<string, (pages: Pages) => unknown>;
@@ -245,6 +249,8 @@ declare module "ssqch" {
 		strict?: boolean;
 		/** `page.lastModified`: `"git"` for the last commit that changed the page's file (its modification time when it has uncommitted changes), or `"file"` for the modification time. Off by default. Needs the full history in CI (`fetch-depth: 0`). */
 		lastModified?: "git" | "file" | false;
+		/** The time zone the site's own JavaScript runs in, as an IANA name (`"UTC"`, `"America/New_York"`): `Date`'s local methods and libraries like luxon and date-fns, in data files, filters, hooks and Edge templates, so a laptop and CI build the same pages. ssqch's own date filters are UTC whatever this says. Default: the machine's. The config's own top-level code runs before it applies. */
+		timeZone?: string;
 		/** The path the site is served under, when that isn't the root of its domain: `"/repo/"` for `https://you.github.io/repo/`. Templates and `page.url` stay as they are; ssqch adds the base to URLs from the site's root in the HTML it writes. Use the `withBase()` filter outside HTML attributes. */
 		base?: string;
 		/** A theme under the site: a folder (`"themes/docs"`), or a git repository pinned to a tag or a commit's full hash (`"https://github.com/you/theme#v1.2.0"`, with `#v1.2.0:folder` for a theme in a folder of its repository), fetched once and kept in `.cache/ssqch/themes/`. The site's own includes, data, pages and files win over the theme's, one by one. In a list, earlier themes sit on top of later ones. */
@@ -255,7 +261,7 @@ declare module "ssqch" {
 		budgets?: Partial<Record<"pages" | "images" | "css" | "javascript" | "fonts" | "media" | "documents" | "data" | "other" | "total", number | string>>;
 		/** What `ssqch serve` runs besides the server. (The server builds in a process of its own, starts it again when the config or a module it imports changes, and listens on 127.0.0.1 only.) */
 		serve?: {
-			/** Programs to start with the server and stop with it, like the watchers of your CSS and JavaScript tools: `["npx postcss src/app.css -o dist/app.css --watch"]`. Their output is shown with the tool's name in front. Builds don't run them. */
+			/** Programs to start with the server and stop with it, like the watchers of your CSS and JavaScript tools: `["npx postcss src/app.css -o dist/app.css --watch"]`. Their output is shown with the tool's name in front. They get `SSQCH_ENV`, `SSQCH_SERVING` (`true`), `SSQCH_QUIET`, `SSQCH_INPUT` and `SSQCH_OUTPUT`, as build commands do. Builds don't run them. */
 			run?: string | string[];
 		};
 	}
@@ -477,6 +483,8 @@ declare module "ssqch/sitemap" {
 		output?: string;
 		/** List every page of a list split into pages (`/2/`, `/3/`), not just the first. Pagination with `size: 1` (a page per tag, say) is always listed. Default `false`. */
 		paginated?: boolean;
+		/** A page's translations, as `<xhtml:link rel="alternate" hreflang>` links under its `<loc>` (Google's way to list them): a function that gets each page (`url`, `inputPath`, `outputPath`, `date`, `data`) and returns `[{ hreflang: "fr", href: "/fr/guide/" }]`, the page itself included, or nothing. An `href` from the site's root gets the `url` and `base` in front. It's called at once, for each page in the sitemap. */
+		alternates?: (page: { url: string; inputPath: string; outputPath: string; date: Date; data: Record<string, any> }) => Array<{ hreflang: string; href: string }> | undefined | null;
 	}
 
 	/** Writes `sitemap.xml` listing every HTML page. */

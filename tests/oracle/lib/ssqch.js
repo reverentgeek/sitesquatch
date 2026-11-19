@@ -33,7 +33,9 @@ const SCRIPT = /\.(c|m)?(j|t)s$/.test(BIN);
  */
 export function ssqch(args, { cwd, env = {}, input, timeout = 120_000 } = {}) {
 	const [command, argv] = SCRIPT ? [process.execPath, [BIN, ...args]] : [BIN, args];
-	const r = spawnSync(command, argv, { cwd, input, timeout, encoding: "utf8", env: { ...process.env, TZ: "UTC", NO_COLOR: "1", ...env }, maxBuffer: 64 * 1024 * 1024 });
+	// SOURCE_DATE_EPOCH changes undated pages' dates: only a test that asks for it gets it.
+	const { SOURCE_DATE_EPOCH: _, ...inherited } = process.env;
+	const r = spawnSync(command, argv, { cwd, input, timeout, encoding: "utf8", env: { ...inherited, TZ: "UTC", NO_COLOR: "1", ...env }, maxBuffer: 64 * 1024 * 1024 });
 	if (r.error) throw r.error;
 	const stdout = r.stdout ?? "", stderr = r.stderr ?? "";
 	return { ok: r.status === 0, code: r.status, signal: r.signal, stdout, stderr, log: stdout + stderr };

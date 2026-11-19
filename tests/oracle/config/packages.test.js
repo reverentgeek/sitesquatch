@@ -440,3 +440,43 @@ for (const init of [{ cache: "1h" }, undefined]) { try { await get("/count?new",
 		stop();
 	}
 });
+
+// expressjs.com (ex #5): Astro, Vite and Next.js sites import their own files through
+// tsconfig.json's `paths` (`@/config/menu`), and ssqch said the package wasn't installed. They
+// resolve as TypeScript reads them: the longest prefix wins, from `baseUrl` or the tsconfig's folder.
+test("imports_through_tsconfig_paths", () => {
+	const root = project({
+		"tsconfig.json": `{
+  // As Astro writes it: comments, and a trailing comma.
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["src/*"],
+      "@config/*": ["src/settings/*"],
+      "~site": ["src/site.ts"],
+    },
+  },
+}
+`,
+		"ssqch.config.js": "import { menu } from \"@/menus/main\";\nimport { trail } from \"@config/trail\";\nimport site from \"~site\";\nexport default { templateFormats: [\"njk\"], data: { menu, trail, site } };\n",
+		"src/menus/main.ts": "import { label } from \"@/menus/labels\";\nexport const menu: string[] = [label(\"Cedar\"), label(\"Old Growth\")];\n",
+		"src/menus/labels.ts": "export const label = (s: string) => `${s} Trail`;\n",
+		"src/settings/trail.ts": "export const trail = \"pine\";\n",
+		"src/site.ts": "export default { title: \"Squatch Snacks\" };\n",
+		"index.njk": "{{ menu | join(\", \") }} / {{ trail }} / {{ site.title }}\n",
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/index.html"), "Cedar Trail, Old Growth Trail / pine / Squatch Snacks\n");
+	// jsconfig.json, with `baseUrl`, works too; and a name that matches nothing is still not installed.
+	const js = project({
+		"jsconfig.json": "{ \"compilerOptions\": { \"baseUrl\": \"lib\", \"paths\": { \"#/*\": [\"*\"] } } }\n",
+		"ssqch.config.js": "import { pine } from \"#/cones.js\";\nexport default { templateFormats: [\"njk\"], data: { pine } };\n",
+		"lib/cones.js": "export const pine = 3;\n",
+		"index.njk": "{{ pine }}\n",
+	});
+	assert.ok(ssqch(["build", "--root", js, "--quiet"]).ok);
+	assert.equal(read(js, "_site/index.html"), "3\n");
+	const missing = project({ "tsconfig.json": "{ \"compilerOptions\": { \"paths\": { \"@/*\": [\"src/*\"] } } }\n", "ssqch.config.js": "import \"@/nope\";\nexport default {};\n" });
+	assert.match(ssqch(["build", "--root", missing]).log, /package "@\/nope" isn't installed/);
+});

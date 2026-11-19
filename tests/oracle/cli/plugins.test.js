@@ -758,3 +758,45 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["html
 	assert.ok(ok, log);
 	assert.ok(log.includes(`3 broken links:\n  / -> ${long} (not found)\n  / -> /x%00y (not found)\n  / -> /x%00y/ (not found)`), log);
 });
+
+// expressjs.com (ex, i18n.md): @astrojs/sitemap lists each page's translations as hreflang links,
+// and the port wrote its own sitemap in an afterBuild hook for them. ssqch has no languages yet, so
+// the site's `alternates` function says what a page's are.
+test("sitemap_lists_a_pages_translations", () => {
+	const root = project({
+		"ssqch.config.js": `import { sitemapPlugin } from "ssqch/sitemap";
+const langs = ["en", "fr"];
+export default { base: "/trail/", templateFormats: ["njk"], plugins: [sitemapPlugin({ url: "https://example.com", lastmod: false, alternates: (page) => {
+	if (page.url === "/") return null;
+	const rest = page.url.replace(/^\\/(en|fr)\\//, "/");
+	return [...langs.map((l) => ({ hreflang: l, href: \`/\${l}\${rest}\` })), { hreflang: "x-default", href: "https://example.com/trail/en" + rest }];
+} })] };
+`,
+		"index.njk": "Squatch Snacks\n",
+		"en/cedar.njk": "Cedar Trail\n",
+		"fr/cedar.njk": "Sentier des cèdres\n",
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	const links = [
+		"    <xhtml:link rel=\"alternate\" hreflang=\"en\" href=\"https://example.com/trail/en/cedar/\"/>",
+		"    <xhtml:link rel=\"alternate\" hreflang=\"fr\" href=\"https://example.com/trail/fr/cedar/\"/>",
+		"    <xhtml:link rel=\"alternate\" hreflang=\"x-default\" href=\"https://example.com/trail/en/cedar/\"/>",
+	];
+	assert.equal(read(root, "_site/sitemap.xml"), [
+		"<?xml version=\"1.0\" encoding=\"utf-8\"?>",
+		"<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\" xmlns:xhtml=\"http://www.w3.org/1999/xhtml\">",
+		"  <url>", "    <loc>https://example.com/trail/</loc>", "  </url>",
+		"  <url>", "    <loc>https://example.com/trail/en/cedar/</loc>", ...links, "  </url>",
+		"  <url>", "    <loc>https://example.com/trail/fr/cedar/</loc>", ...links, "  </url>",
+		"</urlset>", "",
+	].join("\n"));
+
+	const wrong = (alternates) => {
+		const site = project({ "ssqch.config.js": `import { sitemapPlugin } from "ssqch/sitemap";\nexport default { templateFormats: ["njk"], plugins: [sitemapPlugin({ url: "https://example.com", alternates: ${alternates} })] };\n`, "index.njk": "x\n" });
+		return ssqch(["build", "--root", site]).log;
+	};
+	assert.match(wrong("[\"fr\"]"), /alternates must be a function/);
+	assert.match(wrong("() => [{ lang: \"fr\" }]"), /alternates\(\), for \/: each one is \{ hreflang: "fr", href: "\/fr\/page\/" \}/);
+	assert.match(wrong("() => { throw new Error(\"no map of the trail\"); }"), /alternates\(\), for \/: no map of the trail/);
+});

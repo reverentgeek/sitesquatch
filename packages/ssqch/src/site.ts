@@ -12,7 +12,7 @@ import type { Config, Dirs, Filter } from "./config.ts";
 import { dirsOf } from "./config.ts";
 import { excerpt, headings } from "./content.ts";
 import type { Data } from "./data.ts";
-import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
+import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, sourceDateEpoch, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
 import type { Diagnostic } from "./diagnostics.ts";
 import { BuildError, Diagnostics, aliasUsed, bail, context, error as errorOf, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import { edgeEngine } from "./engines/edge.ts";
@@ -27,7 +27,7 @@ import { nunjucksEngine } from "./engines/nunjucks.ts";
 import * as equivalents from "./equivalents.ts";
 import { builtinFilters } from "./filters.ts";
 import { globSet, globToRegExp, isGlob } from "./glob.ts";
-import { describeThrown, settle } from "./modules.ts";
+import { describeThrown, loadedFiles, settle } from "./modules.ts";
 import { comparePaths, displayPath, isDir, isFile, isInside, readFollowing, realPath, relative, shown, slashes, walkFiles } from "./paths.ts";
 import { closest } from "./suggest.ts";
 import { VERSION } from "./version.ts";
@@ -57,8 +57,6 @@ export interface Tpl {
 	fileSlug: string;
 	filePathStem: string;
 	mtime: Date;
-	/** The same time in nanoseconds: pages without a date are ordered by it, and two files written in one millisecond still have an order. */
-	mtimeNs: bigint;
 	/** The date at the start of the file name (`2024-06-01-post.md`). */
 	fileDate: Date | undefined;
 	/** `page.lastModified`, with the `lastModified` setting. */
@@ -80,7 +78,7 @@ export interface Page {
 	/** The file it's written to, absolute. */
 	output: string | null;
 	date: Date;
-	/** The date as collections order by it, in nanoseconds: the file's own time when that's where the date came from. */
+	/** The date as collections order by it, in nanoseconds; `UNDATED` for a page whose date is its file's time. */
 	when: bigint;
 	inCollections: boolean;
 	/** What collections hold for it (made once, when collections are first built). */
@@ -192,8 +190,19 @@ export class Site {
 		for (const row of equivalents.TABLE) {
 			if (row.kind !== "filter" || !row.alias || config.filters.has(row.word)) continue;
 			const target = globals.get(row.ssqch);
+			// `url` on a page with `permalink: false` (its url is `false`) printed `/false` in a11y's
+			// sitemap: it prints nothing, and says so once.
+			const takesUrl = row.ssqch === "base";
+			let warned = false;
 			pipeFilters.set(row.word, (...args: unknown[]) => {
 				aliasUsed(row);
+				if (takesUrl && args[0] === false) {
+					if (!warned) {
+						warned = true;
+						warn(warning("template", `\`${row.word}\` got false, the url of a page with \`permalink: false\`, and printed nothing instead of "false". Leave such pages out first: \`{% if p.url %}\``));
+					}
+					return "";
+				}
 				return target ? target(...args) : args[0];
 			});
 		}
@@ -358,12 +367,16 @@ export class Site {
 				if (name.startsWith(".") || name === "node_modules") continue;
 				if (skipDirs.has(entry.real)) continue;
 				if (entry.isDirectory) {
+					if (isBundlerInstall(file)) continue;
 					walk(file, [...above, entry.real]);
 					continue;
 				}
 				if (!entry.isFile) continue;
 				this.seen.add(file);
 				if (isDataFile(name)) continue;
+				// The config and the modules it (or a data file) imported are code, not pages, even
+				// when `templateFormats` has "js" for a site's `.js` templates.
+				if (file === config.file || loadedFiles.has(file)) continue;
 				const ext = path.extname(name).slice(1).toLowerCase();
 				if (!formats.has(ext) && !engines.has(ext)) continue;
 				const rel = relative(dirs.input, file);
@@ -607,6 +620,10 @@ export class Site {
 				if (typeof computedLayout === "string" && !computedLayout.includes("{{") && !computedLayout.includes("{%") && !computedLayout.includes("<%")) own.layout = computedLayout;
 				else bail("`layout` in computed isn't applied, because the layout is chosen before computed runs. Set `layout` in the front matter or a data file");
 			}
+			// `page` is ssqch's (url, inputPath, date, headings), set after computed: a computed `page`
+			// would be thrown away, so it's refused (opensource.guide set one to give templates
+			// Jekyll's `page.title`, and nothing said it didn't take).
+			if (isPlainObject(own.computed) && Object.hasOwn(own.computed, "page")) bail("`page` in computed isn't applied, because `page` is ssqch's: its url, inputPath, date and headings. Give the value another name (`computed: { meta: ... }`); front matter is at the top level already (`title`, not `page.title`)");
 			// Layout chain; layout front matter sits below template data. `layout: ""`, like `false`
 			// and `null`, means no layout.
 			const chain: Layout[] = [];
@@ -654,7 +671,6 @@ export class Site {
 				fileSlug,
 				filePathStem: parent === "" ? `/${stem}` : `/${parent}/${stem}`,
 				mtime,
-				mtimeNs: stat.mtimeNs,
 				fileDate,
 				lastModified: config.lastModified === "git" ? commitDates.get(file) ?? mtime : config.lastModified === "file" ? mtime : undefined,
 			};
@@ -679,8 +695,10 @@ export class Site {
 		let date: Date;
 		let fromFileTime = false;
 		if (tpl.data.date !== undefined && tpl.data.date !== null) date = toDate(tpl.data.date) ?? bail(`can't parse date ${show(tpl.data.date)}`);
-		// Then the date in the file name, then when the file last changed.
+		// Then the date in the file name, then the pinned build time (`SOURCE_DATE_EPOCH`, as Jekyll's
+		// `time:` gives undated pages `site.time`), then when the file last changed.
 		else if (tpl.fileDate) date = tpl.fileDate;
+		else if (sourceDateEpoch() !== undefined) date = new Date(sourceDateEpoch()!);
 		else [date, fromFileTime] = [tpl.mtime, true];
 		const basePage = (url: unknown, outputPath: unknown, when: Date): Data => {
 			const page: Data = { url, outputPath, inputPath, fileSlug: tpl.fileSlug, filePathStem: tpl.filePathStem, date: when };
@@ -764,7 +782,7 @@ export class Site {
 
 			const excluded = Boolean(data.excludeFromCollections);
 			const inCollections = !excluded && !tpl.plainCopy && (index === 0 || Boolean(pagination?.addAllPagesToCollections));
-			pages.push({ index: -1, tpl, data, url, output, date: pageDate, when: fromFile ? tpl.mtimeNs : BigInt(pageDate.getTime()) * 1_000_000n, inCollections });
+			pages.push({ index: -1, tpl, data, url, output, date: pageDate, when: fromFile ? UNDATED : BigInt(pageDate.getTime()) * 1_000_000n, inCollections });
 		}
 
 		// Fill in pagination hrefs now that every page has a URL.
@@ -866,7 +884,16 @@ export class Site {
 		const site = this;
 		let found: ReturnType<typeof headings> | undefined;
 		return Object.defineProperties({ ...page.data.page }, {
-			headings: { enumerable: true, get() { return found ??= headings(site.contentOf(page) ?? ""); } },
+			// Not remembered until the page has rendered: a read before that (from `computed`, which
+			// runs before any page renders) gets an empty list, and a later one the real headings.
+			headings: {
+				enumerable: true,
+				get() {
+					if (found) return found;
+					const html = site.contentOf(page);
+					return html === undefined ? [] : (found = headings(html));
+				},
+			},
 			excerpt: { enumerable: true, get() { return excerpt(site.contentOf(page) ?? ""); } },
 		});
 	}
@@ -909,6 +936,29 @@ function collectionApi(items: Data[]) {
 }
 
 // ---- helpers ---------------------------------------------------------------------------------
+
+/**
+ * Where an undated page sorts: after every dated one (its date is its file's time, which is nearly
+ * always the newest, so a list in date order still reads in date order), and among the undated by
+ * path, as Jekyll sorts them. A fresh checkout or one edit gives files new times, and collections
+ * ordered by them changed with every clone (osg #13, v8 C9).
+ */
+const UNDATED = 1n << 80n;
+
+/**
+ * A folder Bundler installed gems into (`bundle install --path vendor/bundle`): `ruby/<version>/gems/`
+ * inside it. Its files are Ruby gems' (Jekyll's own templates among them), not the site's, so the
+ * walk skips it, as it skips `node_modules`. opensource.guide's `vendor/gems` was built as pages.
+ */
+function isBundlerInstall(dir: string): boolean {
+	const ruby = path.join(dir, "ruby");
+	if (!fs.existsSync(ruby)) return false;
+	try {
+		return fs.readdirSync(ruby).some((version) => fs.existsSync(path.join(ruby, version, "gems")));
+	} catch {
+		return false;
+	}
+}
 
 /** A value as an error shows it. */
 const show = (v: unknown) => { try { return JSON.stringify(v) ?? String(v); } catch { return String(v); } };

@@ -414,12 +414,21 @@ move's notes.
 | `v8 #n` | v8.dev (Eleventy 3.1.8, 323 pages, 0.6.4) | `../trials/v8.dev/ssqch-case-study/` |
 | `lit X#` | lit.dev (Eleventy 2.0.1, 332 pages, 0.6.4) | `../trials/lit.dev/ssqch-case-study/` |
 | Gahlee | Gahlee House (Eleventy 3.1.8, 0.6.2) | `../gahlee` |
+| `osg #n` | opensource.guide (Jekyll 3.10, github-pages 232, 382 pages in 29 languages, 0.8.0) | `../trials/opensource.guide/ssqch-case-study/` (`issues.md`) |
+| `ex #n` | expressjs.com (Astro 7.4, MDX, 1,332 pages in 10 languages, 0.8.0) | `../trials/expressjs.com/ssqch-case-study/` (`issues.md`) |
 
 What the moves agree on: the importer and `ssqch diff` do their jobs, and the costly problems are
 silent ones (output that's wrong with no warning) and slow JavaScript. lit.dev's verdict was "don't
 move yet": byte parity needed Eleventy's libraries, a Node helper and Chromium, and was slower than
 Eleventy (32.9 s against 24.9 s), while ssqch's own features built the site in 4.2 s but without
-Lit's server rendering or the site's highlighting styles.
+Lit's server rendering or the site's highlighting styles. opensource.guide, the first move from
+Jekyll, was the same site with no content changed (the same 478 files, nothing unexplained) and 5.9
+times faster, but two thirds of the work was kramdown's Markdown inside HTML, and liquidjs' `where`
+made the build 3 to 7 times slower until the config replaced it.
+expressjs.com, the first move from a component framework, matched Astro's URL set and its <head> on
+every page, the article text on 96%, and built in 2.0 s against 32.4 s; the work was a codemod for
+the MDX and a hand-written route table for its languages, and Astro's dev server still shows an edit
+faster (0.35 s against 1.2 s).
 
 ## Now
 
@@ -430,10 +439,18 @@ Lit's server rendering or the site's highlighting styles.
       `ssqch build --format json` (`timings.filters`, `timings.transforms`, `timings.engines`).
       Every move found its slow code by wrapping functions by hand: the summary's `write 1.42 s` was
       layout filters, `toc` (830 ms) and `eleventyNavigation` (550 ms) (a11y #28); lit.dev's first
-      build took 9 min 8 s and `write 23 s` named nothing (lit A5).
+      build took 9 min 8 s and `write 23 s` named nothing (lit A5); opensource.guide's `write 6.84
+      s` was liquidjs' `where`, found with `node --cpu-prof` (osg #2).
 - [ ] **A warning when one JavaScript call takes over a second**, naming the function and the
       package it's from (lit A5: html-minifier, 5.2 s per page).
 - [ ] Document both, and use them to measure the sites the move to Node was measured on.
+- [ ] **Native Liquid `where`** (`where` and `reject` done 2026-11-18: the bench's Liquid case 39.8
+      s → 4.6 s; `where_exp`, `map`, `sort`, `group_by`, `find` still liquidjs') (and `where_exp`,
+      `map`, `sort`, `group_by`, `find` for a property path), keeping liquidjs' for expressions (osg
+      #2). liquidjs' `where` takes a generator and a new scope for every item: opensource.guide's
+      layouts call it 56 times a page over 380 articles, and a 10-line config `where` took its build
+      from 7.4 s to 1.06 s with the same output. Add a `bench/bench.ts` case: a layout that filters
+      a collection on every page.
 
 ### 2. Silent wrong answers
 
@@ -444,19 +461,40 @@ clear; otherwise warn.
       `eleventyComputed`). Evaluate computed values that read `collections` after collections are
       built (Eleventy passes collections built without the computed values), or at least an error
       that says computed can't see them.
+- [x] **`computed.page` is dropped without a word** (osg #5; done 2026-11-18): `site.ts:760` sets
+      `page` after `computed` runs. Make it an error that says `page` is built in and names another
+      key.
+- [x] **`page.headings` read before the page renders is `[]` for good** (ex #2; fixed 2026-11-18):
+      `pageWithBody()` (`site.ts:864-872`) memoizes `headings(contentOf(page) ?? "")` with `found
+      ??=`, so a `computed` value that reads it caches the empty list, and every table of contents
+      built from it is empty. Don't memoize while the content is undefined, or throw naming the
+      page.
+- [x] **Warn when a template name shadows a filter or function** (ex #3; done 2026-11-18 for
+      Nunjucks, when the template calls the name; the config's filters only, since `{% set url %}`
+      is common): an imported macro `postCard` printed `function () { [native code] }` where the
+      config's `postCard` was meant; a macro parameter `icon` hid `icon()`. Silent in Nunjucks;
+      `strict` (off by default) catches only undefined values.
 - [ ] **A computed `layout` that depends on the page** (lit B3): it's refused since 0.7.0; resolve
       the layout chain after `computed` instead.
 - [ ] **Dates and time zones:**
   - A time zone for the build's JavaScript and date filters (`timeZone: "UTC"`): 137 of v8.dev's
-    pages differ between a laptop in EST and CI in UTC (v8 C11).
+    pages differ between a laptop in EST and CI in UTC (v8 C11). (Done 2026-11-18 for the site's
+    JavaScript; ssqch's own date filters stay UTC, and a zone for them needs zone data without
+    `Intl`.)
   - A fixed date for undated pages (`dateFallback: "git"`), so their order and `<lastmod>` don't
     depend on when a checkout wrote the files: every move's sitemap changed with file times (v8 C9).
-    Maybe `date: "created"` too (a11y #22).
-- [ ] **The `url` filter on a non-string** (a11y #16: `false` from a `permalink: false` page printed
-      `/false` in the sitemap): normalize as Eleventy does, or warn.
-- [ ] **Two passthrough sources that write one file** (v8 #19): warn unless they're identical.
-- [ ] **`minify()` shortens `checked="checked"` with `shortenAttributes: false`** (a11y #24): make
-      it part of that option, or document that boolean attributes are always shortened.
+    Maybe `date: "created"` too (a11y #22). Undated pages also sort by file time, so one edit
+    reorders a collection: sort them by path, as Jekyll does (osg #13; done 2026-11-18: after the
+    dated pages, by path, the date itself still the file's time, a Breaking entry). And honor
+    `SOURCE_DATE_EPOCH` as the fallback date and build time, which Jekyll's `time:` does for a
+    pinned baseline (osg #14; done 2026-11-18).
+- [x] **The `url` filter on a non-string** (a11y #16; done 2026-11-18: `false` prints nothing, with a
+      warning): `false` from a `permalink: false` page printed `/false` in the sitemap.
+- [x] **Two passthrough sources that write one file** (v8 #19; done 2026-11-18, and the later one
+      wins every time; they raced): warn unless they're identical.
+- [x] **`minify()` shortens `checked="checked"` with `shortenAttributes: false`** (a11y #24; fine in
+      0.8, checked 2026-11-18, with a test): make it part of that option, or document that boolean
+      attributes are always shortened.
 
 ### 3. One Markdown engine
 
@@ -505,13 +543,22 @@ diff, fix the biggest group, repeat.
     matter).
   - Say in its first line that the default ignores blank lines and leading whitespace, so a
     byte-for-byte check needs `--exact` (lit B7 hid behind it).
+  - Classes of difference: an HTML-aware normalization (`/>`, attribute quoting and spacing,
+    entities, tag case) as a flag, and `--classes <file>` for a site's own normalizations, reporting
+    the classes each page needs. opensource.guide's "Changed (387)" took a classifier of its own to
+    turn into counted groups (osg `scripts/compare.py`, suggestions.md "Agent experience").
+  - Say to build each side into an empty folder: stale files from an earlier build show up as
+    differences (osg #15).
 - [ ] **`ssqch import eleventy --verify`** (or `--compare`): build with the project's own Eleventy
       into a fresh copy (`TZ=UTC`, files written in checkout order, as `git archive` gives), build
       with ssqch, and run `ssqch diff`. It's what tells a person or an agent the move is done
       (v8.dev's `scripts/parity.sh`).
-- [ ] **A stability check**: build N times and report the files that vary and the most common
+- [x] **A stability check**: build N times and report the files that vary and the most common
       variant (`ssqch diff --runs`, or a command). Eleventy's lit.dev output differs on 11 pages
-      between builds, and finding the target took 20 builds and `scripts/stability.py`.
+      between builds, and finding the target took 20 builds and `scripts/stability.py`. Done
+      2026-11-18 as decided: `ssqch diff a b c` (three or more folders) lists the files that vary
+      and the most common version of each, with `--format json`. A JSON document that didn't exist
+      in 0.7 gets its shape frozen by the version that adds it; the 0.7 shapes stay as they are.
 - [ ] **A migration recipe for agents** in `ssqch docs agents` and the trailhead (a11y's
       `ssqch-improvements.md` has a draft checklist; v8 F6): baseline with `TZ=UTC` from fresh
       copies, `ssqch diff`, fix the largest group, repeat, finish with `--exact`.
@@ -566,9 +613,118 @@ diff, fix the biggest group, repeat.
 - [ ] **Scan data files and other modules for Eleventy packages** (blog #3): eleventy-img in a data
       file becomes `image()`/`imageUrl()`, eleventy-fetch becomes `fetch(..., { cache })`.
 
+### 7. Moving from Jekyll
+
+From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
+
+- [ ] **Markdown inside HTML: `markdown="1"`** (and `"block"`, `"span"`) in `crates/ssqch-markdown`
+      (osg #1): 3,791 elements in 327 of the site's files, and without it 325 pages show quote
+      credits as raw `[@name](url)`. kramdown's and Python-Markdown's (MkDocs `md_in_html`). With
+      `markdown: { htmlMarkdown: "kramdown" }` for kramdown's HTML rules: a block ends at its end
+      tag, block tags only at a line's start (up to three spaces), unclosed elements close at their
+      parent's end. The port's `markdownInHtml` (`_ssqch/jekyll.js`, 90 lines) is the behavior to
+      port, and the site is the test. MDX needs it too, as an `"mdx"` mode (every element's
+      content): 39 of the 53 expressjs.com pages whose text differs from Astro's (ex #6).
+- [x] **Ruby Liquid's behavior** where 0.7 followed the liquid crate (osg #7): `times`, `plus` and
+      `minus` read text as Ruby's `to_number` does (`"r>"` is 0; jekyll-toc needs it); `split` drops
+      trailing empty strings and splits `" "` on whitespace; `sort` on a hash gives `[key, value]`
+      pairs, with missing values first by property; a block of only `assign`s renders nothing; the
+      blank line after front matter goes with it. Deliberate changes with oracle entries, or a
+      `liquid: { flavor: "jekyll" }`. Decided 2026-11-18: Ruby's behavior by default, each checked
+      against Ruby and liquidjs first, recorded as DELIBERATE with a Breaking entry; no flavor
+      switch. Done 2026-11-18 for math, `split` and blank blocks, matched against Ruby's Liquid
+      4.0.4 (in the trial's vendored gems). Not Liquid's but Jekyll's: `sort` of a hash into pairs
+      and missing values first is Jekyll's own `sort` filter (Ruby's Liquid does neither, and nor
+      does ssqch). Left: a whole float prints as `5` where Ruby writes `5.0` (0.7's printing
+      everywhere), and the blank line after front matter (Jekyll's, unchecked).
+- [ ] **`page.<front matter key>` in Liquid** (osg #5): fall back to the page's data for keys `page`
+      doesn't have, as Jekyll templates expect (42 edits in 7 templates, and a collision with the
+      site's own `lang` variable). A design note first. Decided 2026-11-18: no fallback. A warning
+      names the rename (`page.title` is `title`), and `ssqch import jekyll` rewrites the templates;
+      `page` means the same in every engine. (The warning is done, 2026-11-18; the rewrite waits for
+      `ssqch import jekyll`.)
+- [x] **Config functions as Liquid tags** (osg #6; done 2026-11-18): `{% seo %}`, as Nunjucks
+      already does.
+- [x] **`{% include_relative %}`** (osg #8; done 2026-11-18), reading beside the template.
+- [x] **ssqch/sass** (osg #9, #10; done 2026-11-18, in the file bridge rather than a grass patch):
+      an import that names its extension is found in the load paths, and leading front matter is
+      blanked. Left: grass's warnings print `./` before an absolute path (`.//Users/…`, its
+      StdLogger, `logger.rs:33`); a logger of ssqch's own in `crates/ssqch-sass` would name the file
+      as the rest of the build does.
+- [ ] **`headingIds: "kramdown"`** (kramdown's GFM ids, and its own ASCII ones inside HTML) and a
+      **`code` render hook** for code spans (Rouge's `highlighter-rouge` classes) (osg #4).
+- [x] **Skip `vendor/bundle` and `vendor/gems`** when walking the site (osg #12; done 2026-11-18,
+      any folder with `ruby/<version>/gems/`).
+- [x] **Text templates in other formats** (`.js` with front matter; the recipe done 2026-11-18, and
+      the config is no longer a page): a recipe in the README, or `templateFormats: ["js:liquid"]`
+      (osg #9).
+- [x] **`toc` options** for the list's, items' and links' classes and the list's `id` (osg #11;
+      done 2026-11-18).
+- [ ] **`ssqch import jekyll`** (moved up from "Importer, the rest"): 9 of the move's 13 kinds of
+      edit were mechanical (osg `edits.md`): `exclude`, collections and their permalinks,
+      `defaults`, `site` and `site.data`, static files, front matter on `.js`/`.scss`, `page.`
+      renames (listing collisions), the plugins (seo, sitemap, redirect-from, feed, github-metadata,
+      github-pages' implicit ones and default theme), unknown tags, and a count of kramdown syntax.
+- [ ] **`docs/trailheads/from-jekyll.md`** from the draft in osg `suggestions.md` (done 2026-11-18),
+      and the rows `ssqch docs --from jekyll` lacks (osg #16): `page.title`, `site.data`,
+      `site.<collection>`, `collections`, `defaults`, `exclude`, `{% seo %}`, `include_relative`,
+      jekyll-sitemap, `markdown="1"`, kramdown, Rouge, `site.time`. (`jsonify`'s row fixed.)
+- [ ] Report the site's own bugs upstream (osg `issues.md`, last section): dead search, the
+      language menu on one-word URLs, the breadcrumb, jekyll-toc's missing last heading, and the 21
+      drifted untranslated copies.
+
+### 8. Moving from component frameworks
+
+From expressjs.com (ex). Its `suggestions.md` has ready-to-paste text for the component-frameworks
+trailhead.
+
+- [x] **`tsconfig.json` `paths` in the module loader** (ex #5; done 2026-11-18): Astro, Vite and
+      Next.js sites import their own helpers through `@/` aliases, and ssqch says the package isn't
+      installed; the port copied a helper with relative imports. Read `compilerOptions.paths` (and
+      `jsconfig.json`).
+- [x] **Named slots in containers** (ex #4; done 2026-11-18, and `container.props`):
+      `container.slots.<name>` from nested `::: slot name="…"` blocks, as MDX's `<Fragment slot>`
+      and Edge components have them; the port marks slot output with comments and splits it in the
+      parent's template. And `container.props` parsed from the arguments (`a="b" c='{"x":1}' flag`),
+      which every container template here needed.
+- [ ] **`ssqch import mdx`** (ex `edits.md`): component tags to containers by a map in the config,
+      imports and `{/* */}` out, JSX props as arguments, fences left alone (indented ones in list
+      items included), bodies dedented, links around cards folded in. The study's
+      `scripts/codemod.mjs` (183 lines) converted 663 files and about 2,600 component uses with no
+      hand edits; with a report of `getStaticPaths` files, path aliases, integrations and their
+      ssqch answers, and env variables read at build.
+- [x] **`headingIds: "github"` byte for byte as github-slugger** (ex #6a; done 2026-11-18, from its
+      own table; repeated empty slugs stay `section`, `section-1`): it keeps an emoji's variation
+      selector (`#️-what-you-should-do`) and numbers punctuation-only headings (`#-1`), and ssqch's
+      ids don't, so 29 expressjs.com pages link to anchors that aren't there. rehype-slug, Astro,
+      VitePress and Docusaurus all use github-slugger. Also say in the component-frameworks
+      trailhead that remark-gfm links a bare URL after a quote and GFM's spec (and ssqch) doesn't
+      (11 pages).
+- [x] **Sitemap alternates** (ex `i18n.md`; done 2026-11-18): `sitemapPlugin({ alternates })`, a
+      function that returns a page's translations; built-in i18n can fill it in later.
+- [ ] **A cache for generated images** (ex benchmarks.md): social images from a function (satori),
+      kept by their inputs; the port's own `.cache/og` took the build from 6.3 to 2.0 s. Maybe an
+      `ogImagePlugin({ render: (page) => element })`.
+- [x] **`quiet` and `verbose` in `BuildEvent`** (ex #11; done 2026-11-18, and `SSQCH_QUIET` for
+      build commands; `serve.run` too), and one code frame per distinct error location (a 222-page
+      error printed the same frame three times; done 2026-11-18).
+- [x] **Docs** (ex #12; done 2026-11-18): `ssqch docs containers`, `pagination` and `data` answer
+      with a table row or a feature list instead of the explanation (add them to
+      `docs_answer_for_every_name`); when `page.headings`, `page.excerpt` and `templateContent` are
+      available (after the page renders, not in `computed`); a fence hook example that writes
+      `highlighted` (HTML) and escapes `code` (raw text); a release-age cooldown (`min-release-age`
+      in `.npmrc`) holding back a new ssqch release, and sharp installing with `ignore-scripts`.
+- [ ] Report the site's bugs upstream (ex `issues.md`, last section): 345 alerts with a translated
+      `type`, ids from `Math.random()`, `llms` files without their `import` lines.
+
 ## Backlog
 
 ### Markdown
+
+- [ ] **CJK-friendly emphasis** (osg #3): `**完成。**下一步` stays literal under CommonMark's
+      flanking rules (16 opensource.guide pages, in 8 languages). `markdown: { cjkEmphasis: true }`,
+      as markdown-it-cjk-friendly does; on by default, since it only adds emphasis where CommonMark
+      printed asterisks.
 
 - [ ] The alt text as HTML in the image hook (`image.altHtml`: links and code in captions, 25 v8.dev
       pages).
@@ -619,9 +775,9 @@ diff, fix the biggest group, repeat.
       `striptags(preserveLinebreaks)` (a11y #7).
 - [ ] `collections: { sort: "eleventy" }` (date, then `inputPath` as a string), or document the
       tie-break and that defining `collections.all` replaces it (a11y #18).
-- [ ] Liquid's speed on big sites: 8x slower than the other engines on the 9,000-page benchmark,
-      because the `liquid` crate copies a variable's value on every read (`Runtime::get` calls
-      `into_owned`). A patch upstream, or a runtime of our own over liquid-core.
+- [ ] Liquid's speed beyond `where` (Now, 1): every liquidjs filter is wrapped in `asText`
+      (`engines/liquid.ts:196-201`), which converts its input on each call. Measure it on the
+      10,000-page benchmark in Liquid, and opensource.guide's exact port (the rest of its 1.6 s).
 - [ ] Peak memory is about 0.5 GB for 9,000 pages (every page's HTML is held until it's written):
       stream pages out if a bigger site needs it.
 
@@ -629,7 +785,8 @@ diff, fix the biggest group, repeat.
 
 - [ ] Incremental rebuilds in `ssqch serve` (a11y #20: 460 ms for all 115 pages, Eleventy 1.0 350
       ms; v8.dev 1.8 s, Eleventy `--incremental` 0.05 s; lit.dev's idiomatic port 2.9 s, Eleventy 22
-      s).
+      s). expressjs.com: `astro dev` shows a saved edit in 0.35 s, `ssqch serve` rebuilds 2,500
+      pages in 1.2-1.4 s (ex benchmarks.md).
 - [ ] Don't rebuild for files nothing in the build reads (v8 #18: saving a stylesheet only PostCSS
       reads rebuilt the site, 1.6 s, 0 pages changed), or a `watchIgnore`. Ignore editor temp files
       (`.!*!*`, `*~`, `.#*`, `*.swp`, files that vanish within the debounce), and say an unchanged
@@ -743,7 +900,7 @@ diff, fix the biggest group, repeat.
       are open questions, not plans.
 - [ ] `ssqch import zola`: write each section's directory data from its `_index.md`, and rewrite the
       Tera constructs that map one to one (`page.content`, named filter arguments).
-- [ ] `ssqch import jekyll` and `ssqch import hugo`. Weigh them against WordPress (below).
+- [ ] `ssqch import hugo`. Weigh it against WordPress (below). (`import jekyll` is in Next, 7.)
 
 ### Docs
 
@@ -794,6 +951,11 @@ write-ups that are still owed.
       on Gahlee House and the `blog-categories` source.
 - [ ] 0.7.0's Node shims (callback `fs`, the `fs` stream stubs, `file:` imports) in a page about
       which packages load.
+- [x] (done 2026-11-18: `seo`, `i18n`, `translations`, `hreflang` and `multilingual` find README
+      sections with the recipes) Answers for `ssqch docs seo` (it suggests `new`), `i18n`,
+      `translations`, `hreflang` and `multilingual`, even if the answer is "not built in yet" with
+      the recipe (osg #16), and an SEO tags example (or a `seoTags(page)` built in; every site
+      writes the same 20 lines, osg #6).
 - [ ] When troubleshooting docs get written: call the section (or page) "Ranger station:
       troubleshooting".
 
@@ -851,7 +1013,14 @@ write-ups that are still owed.
       locales than en-US (ICU4X with a chosen set; eslint.org's 7 other language sites and
       letsencrypt.org's number formats need it, and eslint.org's English site needs `NumberFormat`'s
       currency style and compact notation). An example `multilingual-liquid`, guides from Jekyll and
-      Hugo, and a trial with letsencrypt.org.
+      Hugo, and a trial with letsencrypt.org. opensource.guide's `i18n.md` is design input from a
+      real site, ranked by pages affected: `page.translations` (it does two `where`s per language
+      per page), hreflang, `t()` with fallback, fallback pages instead of copies (its 21 copies have
+      all drifted), `site.languages` with direction (15 pages wrap their body in `<div dir="rtl">`).
+      expressjs.com's `i18n.md` adds an Astro site's needs: shared untranslated sections (540
+      pages), version aliases on top of languages, links localized from the source, sitemap
+      alternates, retired languages (1,185 redirects), a content page's language in containers (ex
+      #1).
 - [ ] **Content and structure:** references in schemas (a field that names a page in another
       collection, `author: "ref:authors"`) and checks on the rendered output (every guide has a
       previous and next link); named data sources (`sources: { snacks: { url, cache, schema } }`

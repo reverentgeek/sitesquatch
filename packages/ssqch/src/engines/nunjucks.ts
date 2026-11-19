@@ -12,8 +12,9 @@ import fs from "node:fs";
 import path from "node:path";
 import nunjucks from "nunjucks";
 import type { Filter } from "../config.ts";
+import { buildTime } from "../data.ts";
 import type { Data } from "../data.ts";
-import { BuildError } from "../diagnostics.ts";
+import { BuildError, warn, warning } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { describeThrown, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
@@ -158,11 +159,51 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 				names.set(found, name.replaceAll("\\", "/"));
 			}
 			const source = found ? { src: fs.readFileSync(found, "utf8"), path: found, noCache: false } : null;
+			if (source) shadows(source.src, found!);
 			sources.set(name, source);
 			return source;
 		},
 	});
 	const loader = new Loader();
+
+	// A macro, an import, a `set` or a loop variable named like one of the site's own filters
+	// (`postCard`, `icon`) hides that filter's function in the template: `postCard(post)` calls the
+	// macro, and a card printed `function () { [native code] }` with nothing to say why
+	// (expressjs.com, ex #3). Said once for each file and name, with the line, when the template
+	// calls that name. ssqch's built-in functions aren't counted.
+	const shadowed = new Set<string>();
+	const shadows = (src: string, file: string) => {
+		if (!env.config.siteFilters?.size) return;
+		const lineOf = (at: number) => src.slice(0, at).split("\n").length;
+		const report = (name: string, kind: string, at: number) => {
+			if (!env.config.siteFilters?.has(name)) return;
+			// Only when the template calls it as a function: `{% set url = ... %}{{ url }}` is a
+			// variable and harms nothing, and `x | url(...)` is the filter, which a variable can't
+			// hide; `postCard(post)` after importing a macro `postCard` is the trap.
+			const calls = src.replace(new RegExp(`\\{%-?\\s*macro\\s+${name}\\s*\\(`, "g"), "").match(new RegExp(`(?<!\\|\\s*)(?<![\\w.])${name}\\s*\\(`));
+			if (!calls) return;
+			const shown = path.relative(root, file).split(path.sep).join("/");
+			const key = `${shown}\0${name}`;
+			if (shadowed.has(key)) return;
+			shadowed.add(key);
+			warn(warning("template", `${shown}:${lineOf(at)}: the ${kind} \`${name}\` has the name of the config's filter \`${name}\`, so \`${name}(...)\` in this template means the ${kind}, not the filter. Rename one of them.`, { file: shown, line: lineOf(at) }));
+		};
+		const names = (list: string) => list.split(",").map((n) => n.trim().split(/\s*=|\s/)[0]).filter((n) => /^[A-Za-z_]\w*$/.test(n));
+		for (const m of src.matchAll(/\{%-?\s*macro\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/g)) {
+			report(m[1], "macro", m.index!);
+			for (const param of names(m[2])) report(param, "macro parameter", m.index!);
+		}
+		for (const m of src.matchAll(/\{%-?\s*from\s+\S+\s+import\s+([\s\S]*?)\s*-?%\}/g)) {
+			for (const item of m[1].replace(/\s+(with|without)\s+context\s*$/, "").split(",")) {
+				const parts = item.trim().split(/\s+as\s+/);
+				const name = (parts[1] ?? parts[0]).trim();
+				if (/^[A-Za-z_]\w*$/.test(name)) report(name, "imported macro", m.index!);
+			}
+		}
+		for (const m of src.matchAll(/\{%-?\s*import\s+\S+\s+as\s+([A-Za-z_]\w*)/g)) report(m[1], "import", m.index!);
+		for (const m of src.matchAll(/\{%-?\s*set\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)/g)) for (const name of names(m[1])) report(name, "variable", m.index!);
+		for (const m of src.matchAll(/\{%-?\s*for\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s+in\b/g)) for (const name of names(m[1])) report(name, "loop variable", m.index!);
+	};
 	// `dev` keeps nunjucks' own error, with its line and what was thrown, instead of a copy of its message.
 	const njk = new nunjucks.Environment(loader, { autoescape: true, throwOnUndefined: env.strict, dev: true } as nunjucks.ConfigureOptions);
 	includeNames.set(njk, names);
@@ -179,8 +220,9 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 	const call = (name: string, fn: Filter, args: unknown[]) => callSite(name, fn, siteArgs(args), root);
 	for (const [name, fn] of functions) njk.addFilter(name, (...args: unknown[]) => call(name, fn, args));
 	for (const [name, fn] of env.globals) njk.addGlobal(name, (...args: unknown[]) => call(name, fn, args));
-	// `now()` is the build's time: kept like a site's function, so a render that runs again sees the same one.
-	const now = () => new Date();
+	// `now()` is the build's time (`SOURCE_DATE_EPOCH` pins it): kept like a site's function, so a
+	// render that runs again sees the same one.
+	const now = () => buildTime();
 	njk.addGlobal("now", (...args: unknown[]) => call("now", now, args));
 
 	// `{% image "/a.png", "A pine" %}` prints what `image("/a.png", "A pine")` returns, without
@@ -221,6 +263,7 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 	const template = (source: string, ctx: RenderContext) => {
 		const kept = ctx.cacheKey === undefined ? undefined : compiled.get(ctx.cacheKey);
 		if (kept) return kept;
+		shadows(source, path.resolve(root, ctx.inputPath));
 		const made = new nunjucks.Template(MARKDOWN.test(ctx.inputPath) ? markdownAttributes(source) : source, njk, ctx.inputPath, true);
 		if (ctx.cacheKey !== undefined) compiled.set(ctx.cacheKey, made);
 		return made;

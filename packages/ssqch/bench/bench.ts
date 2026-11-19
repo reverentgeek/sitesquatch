@@ -7,6 +7,9 @@
 //     node bench/bench.ts --reference <ssqch 0.7>      also time 0.7 on one thread, for the record
 //     node bench/bench.ts --pages 1000 --runs 3        a quicker look
 //
+// It also builds a Liquid site of pages/10 posts whose layout calls `where` over the whole
+// collection 11 times a page (make-site.ts makeLiquidSite), the way multilingual sites look up a
+// page's translations.
 // The 10,000-page site is made by make-site.ts and built on one thread (the Node build has no
 // worker threads yet, and wouldn't be given any here).
 //
@@ -28,7 +31,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { makeSite } from "./make-site.ts";
+import { makeLiquidSite, makeSite } from "./make-site.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -112,6 +115,16 @@ try {
 	const timings: Array<{ phase: string; ms: number }> = JSON.parse(phases.stdout).timings;
 	rows.push(`  phases: ${timings.map((t) => `${t.phase} ${Math.round(t.ms)} ms`).join(", ")}`);
 } catch { /* the timed runs already said whether it builds */ }
+// A Liquid site that looks pages up in a collection on every page (`where`, as multilingual sites
+// do). No limit of its own: CI compares it with the build before, as above.
+const liquidPosts = Math.max(100, Math.round(pages / 10));
+const liquidSite = path.join(os.tmpdir(), `ssqch-bench-liquid-${liquidPosts}`);
+if (!fs.existsSync(path.join(liquidSite, "ssqch.config.js"))) makeLiquidSite(liquidSite, liquidPosts);
+if (runner !== undefined && fs.existsSync(runner)) {
+	const [before, now] = time(liquidSite, "_out", [{ label: "the baseline", command: process.execPath, argv: [runner, "build", "--quiet"] }, head]);
+	report(`Liquid lookups before, ${liquidPosts} pages`, before, undefined);
+	report(`Liquid lookups, ${liquidPosts} pages`, now, before.wall * SLOWER, ` (${SLOWER} of the build before; this one is ${(now.wall / before.wall).toFixed(2)})`);
+} else report(`Liquid lookups, ${liquidPosts} pages`, time(liquidSite, "_out", [head])[0], undefined);
 if (v8) report("Node build, v8.dev", time(v8, "dist", [{ ...head, env: { V8_SITE_ONLY: "1" } }])[0], baseline === undefined ? 720 : undefined);
 
 process.stdout.write(`${`Node ${process.versions.node}, ${os.cpus()[0]?.model ?? "?"}`}\n${"".padEnd(34)} ${"time".padStart(8)} ${"memory".padStart(8)}\n${rows.join("\n")}\n`);

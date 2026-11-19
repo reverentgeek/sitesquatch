@@ -232,6 +232,8 @@ class WasmMarkdown implements Markdown {
 	}
 
 	useHooks(hooks: Map<string, HookTemplate>, engines: Engines): void {
+		const own = hooks.get("containers/slot");
+		if (own) throw new BuildError(`${own.name}: \`slot\` is ssqch's container for a named slot (\`::: slot footer\` inside another container is its \`container.slots.footer\`), so it can't have a template. Rename the container`);
 		this.#hooks = hooks;
 		this.#engines = engines;
 		// The wasm learns the hooks' names when it sets up.
@@ -271,7 +273,7 @@ class WasmMarkdown implements Markdown {
 		const [status, text, thrown] = wasm.run(frame, () => wasm.x.md_render(this.#handle, ptr, lens[0], lens[1], flags), file);
 		this.#waited(frame, what);
 		if (status !== DONE) throw failure(text, thrown);
-		return text;
+		return putBackSlots(text);
 	}
 
 	/** A render that runs nothing of the site's: the calls to its functions it would make, in order. */
@@ -384,7 +386,8 @@ class WasmMarkdown implements Markdown {
 			highlightCss: o.highlightCss,
 			languages,
 			headingIdsFunction: o.sluggerFn ? number(o.sluggerFn as (...args: unknown[]) => unknown, "markdown.headingIds", true) : null,
-			hooks: [...this.#hooks.keys()],
+			// `slot` is ssqch's container: it always calls back, to be kept for its parent.
+			hooks: [...this.#hooks.keys(), "containers/slot"],
 			languagesKey: JSON.stringify(key),
 		});
 		return { json, files };
@@ -397,6 +400,12 @@ class WasmMarkdown implements Markdown {
 
 	/** A render hook for the wasm: the template `name` with the page's data and `value` as `key`. */
 	renderHook(name: string, key: string, value: unknown, data: Data): string {
+		if (key === "container" && isPlainObject(value)) {
+			if (name === "containers/slot") return keepSlot(value);
+			const own: Data = { ...value, props: containerProps(value.args) };
+			own.slots = takeSlots(own);
+			value = own;
+		}
 		const template = this.#hooks.get(name);
 		const engines = this.#engines;
 		if (!template || !engines) throw new BuildError(`no template for \`${name}\``);
@@ -444,6 +453,66 @@ class WasmMarkdown implements Markdown {
 	thrown(e: unknown): string {
 		return describeThrown(e, this.#root);
 	}
+}
+
+// ---- container props and named slots ---------------------------------------------------------
+
+/**
+ * A container's arguments as props, as a component's attributes read: `type="tip" title='Hot
+ * pine cones' open` is `{ type: "tip", title: "Hot pine cones", open: true }`. A value in single
+ * quotes that starts with `{` or `[` is read as JSON (`items='["a","b"]'`), as MDX's
+ * `items={["a","b"]}` would be; unquoted, `size=3` is the text `3`. Words that aren't `name=` are
+ * `true`. Nothing is refused: `container.args` still has the line as written.
+ */
+export function containerProps(args: unknown): Data {
+	const props: Data = {};
+	for (const [, name, dq, sq, bare] of String(args ?? "").matchAll(/([A-Za-z_][\w-]*)(?:="([^"]*)"|='([^']*)'|=([^\s"']+))?/g)) {
+		if (dq !== undefined) props[name] = dq;
+		else if (sq !== undefined) {
+			if (/^\s*[{[]/.test(sq)) { try { props[name] = JSON.parse(sq); continue; } catch { /* the text as it is */ } }
+			props[name] = sq;
+		} else if (bare !== undefined) props[name] = bare;
+		else props[name] = true;
+	}
+	return props;
+}
+
+/** Slots rendered and not yet taken by their parent, by the number in their marker. */
+const slots = new Map<number, { name: string; content: string }>();
+let slotCount = 0;
+/** Where a slot stands in its parent's content until the parent takes it: private-use characters no Markdown makes. */
+const SLOT = /\uE000slot(\d+)\uE001\n?/g;
+
+/** `::: slot footer` (or `name="footer"`): kept for the container around it, which gets it as `container.slots.footer`. */
+function keepSlot(value: Data): string {
+	const props = containerProps(value.args);
+	const name = typeof props.name === "string" ? props.name : String(value.args ?? "").trim().split(/\s+/)[0] || "default";
+	const n = slotCount++;
+	slots.set(n, { name, content: String(value.content ?? "") });
+	return `\uE000slot${n}\uE001`;
+}
+
+/** The slots in a container's content, taken out of it: `{ footer: "<p>…</p>" }`. */
+function takeSlots(value: Data): Data {
+	const found: Data = {};
+	if (typeof value.content !== "string" || !value.content.includes("\uE000slot")) return found;
+	value.content = value.content.replace(SLOT, (_, n) => {
+		const slot = slots.get(Number(n));
+		slots.delete(Number(n));
+		if (slot) found[slot.name] = String(found[slot.name] ?? "") + slot.content;
+		return "";
+	});
+	return found;
+}
+
+/** A slot with no container template around it to take it renders where it is, as its content. */
+function putBackSlots(html: string): string {
+	if (!html.includes("\uE000slot")) return html;
+	return html.replace(SLOT, (_, n) => {
+		const slot = slots.get(Number(n));
+		slots.delete(Number(n));
+		return slot?.content ?? "";
+	});
 }
 
 /** For tests: what a crash in the wasm (a panic, a bad read) throws while it renders `file`. */

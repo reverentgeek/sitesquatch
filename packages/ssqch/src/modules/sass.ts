@@ -93,7 +93,7 @@ BUILTINS.set("ssqch/sass", (config: Config, given) => {
 		const chosen: Style = (style as Style | undefined) ?? (config.env === "production" && !config.serving ? "compressed" : "expanded");
 		// Sources, partials and anything they load (`filesRead` in plugin-files.ts).
 		const used = startReading(config, "ssqch/sass");
-		const compiler = new Compiler(config.root, used);
+		const compiler = new Compiler(config.root, used, loadPaths.map((dir) => path.resolve(config.root, dir)));
 		const options = JSON.stringify({ style: chosen, loadPaths: loadPaths.map((dir) => compiler.name(path.resolve(config.root, dir))) });
 		const out: GeneratedFile[] = [];
 		for (const [from, to] of files) {
@@ -135,9 +135,45 @@ let active: Compiler | undefined;
 class Compiler {
 	root: string;
 	used: Set<string>;
-	constructor(root: string, used: Set<string>) {
+	loadPaths: string[];
+	constructor(root: string, used: Set<string>, loadPaths: string[] = []) {
 		this.root = root;
 		this.used = used;
+		this.loadPaths = loadPaths;
+	}
+
+	/**
+	 * A stylesheet as grass should read it. Two things other compilers take that grass doesn't:
+	 *
+	 * - Front matter (Jekyll's `---` lines at the top of a site's main stylesheet) becomes blank
+	 *   lines, so error lines still match the file. Sass can't start with `---`, so nothing that
+	 *   compiled before reads differently.
+	 * - An `@import`, `@use` or `@forward` that names its extension (`"primer-core/index.scss"`)
+	 *   is found in the load paths too: grass 0.13 looks for one only beside the importing file
+	 *   (`find_import`, "todo: consider load paths"), and Dart Sass and Ruby Sass look in both.
+	 *   Where the file isn't beside the importer but is in a load path, the import names it from
+	 *   the importer's folder. primer's packages all import this way (opensource.guide, osg #10).
+	 */
+	source(file: string, data: Buffer): Buffer {
+		if (!isSass(file)) return data;
+		let text = data.toString("utf8");
+		const front = /^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(text);
+		if (front) text = front[0].replace(/[^\n]/g, "") + text.slice(front[0].length);
+		const dir = path.dirname(file);
+		const exists = (base: string, name: string) => {
+			const full = path.resolve(base, name);
+			const partial = path.join(path.dirname(full), `_${path.basename(full)}`);
+			return fs.existsSync(full) ? full : fs.existsSync(partial) ? partial : undefined;
+		};
+		const changed = text.replace(/@(import|use|forward)(\s+)([^;{}]+)/g, (statement, rule, space, rest) => `@${rule}${space}${rest.replace(/(["'])([^"'\n]+\.s[ac]ss)\1/g, (quoted: string, q: string, name: string) => {
+			if (path.isAbsolute(name) || /^[a-z]+:/i.test(name) || exists(dir, name)) return quoted;
+			for (const load of this.loadPaths) {
+				const found = exists(load, name);
+				if (found) return `${q}${slashes(path.relative(dir, path.join(path.dirname(found), path.basename(name))))}${q}`;
+			}
+			return quoted;
+		})}`);
+		return front || changed !== text ? Buffer.from(changed, "utf8") : data;
 	}
 
 	/** A path as grass sees it: from the root for the site's own files, else whole; with `/`. */
@@ -210,7 +246,7 @@ function instance(): Exports {
 		read: (ptr: number, len: number, out: number) => {
 			const file = active!.file(text(ptr, len));
 			try {
-				const data = fs.readFileSync(file);
+				const data = active!.source(file, fs.readFileSync(file));
 				active!.used.add(realPath(file));
 				return reply(out, 0, data);
 			} catch (e) {

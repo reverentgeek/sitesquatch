@@ -17,6 +17,7 @@ SSQCH_BIN=/path/to/node_modules/ssqch/bin/ssqch.js node --test   # another ssqch
 | `lib/ssqch.js` | Running ssqch (`ssqch`, `ssqchOk`, `ssqchFails`), temporary projects (`project`, `tempDir`, `write`, `read`), `expectedVersion()`, `hasCapability()` |
 | `lib/serve.js` | `ssqch serve` in the background (`start`, `serveSite`), `waitFor`, `changeAndWait`, raw HTTP (`httpGet`, `live`) |
 | `lib/sites.js` | The frozen sites: building in a copy, normalizing, snapshots |
+| `contract/` | The frozen contract: `shapes.json` (every JSON document's keys and types, 0.7.0's, and documents added since, each listed in `ADDED` in `shapes.test.js` with the version that froze it: `SSQCH_FREEZE_SHAPES=new node --test contract/shapes.test.js` adds those and changes nothing else) and the diagnostic codes |
 | `sites.test.js` | Every example, starter and (where present) the blog and trial ports build to their frozen output |
 | `freeze.js` | Makes the snapshots (`node freeze.js <site>...`): see "Changing a site's output" |
 | `snapshots/` | Committed: `<site>/manifest.json` (the version that froze it, the normalized JSON report, the build summary, every output file's kind or hash) and the text files under `output/` (and `source/`, what `ssqch init` wrote) |

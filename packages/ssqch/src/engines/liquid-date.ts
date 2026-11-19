@@ -2,6 +2,7 @@
 // `datetime.rs`): Ruby's `strftime` with English names, and a string without a time zone read as
 // UTC. liquidjs has its own, but it names months and days through `Intl` and reads a string in
 // the machine's time zone, and a build's output may depend on neither.
+import { buildTime } from "../data.ts";
 
 /** An instant and the offset it's shown at, in minutes east of UTC. */
 export interface Instant {
@@ -226,7 +227,7 @@ export function parseDate(text: string): Instant | undefined {
 	const s = text;
 	if (s === "") return undefined;
 	const lower = s.trim().toLowerCase();
-	if (lower === "now" || lower === "today") return { ms: Date.now(), offset: 0 };
+	if (lower === "now" || lower === "today") return { ms: buildTime().getTime(), offset: 0 };
 	if (/^[+-]?[0-9]+$/.test(s)) {
 		const seconds = Number(s);
 		return Number.isSafeInteger(seconds) ? { ms: seconds * 1000, offset: 0 } : undefined;

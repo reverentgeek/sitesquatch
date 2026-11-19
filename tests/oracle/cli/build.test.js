@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { ssqch, tempDir, write, read, exists, isFile } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, exists, isFile, project } from "../lib/ssqch.js";
 
 const unixOnly = { skip: process.platform === "win32" && "unix only" };
 
@@ -181,6 +181,11 @@ export default {
 	w("src/articles/articles.data.js", "export default { computed: { layout: (data) => \"article\" } };\n");
 	r = ssqch(["build", "--root", d]);
 	assert.ok(!r.ok && r.log.includes("`layout` in computed isn't applied"), r.log);
+	// DELIBERATE (after 0.8.0): a computed `page` is refused too. It was thrown away without a word
+	// (`page` is set after computed runs), and opensource.guide lost time to it (osg #5).
+	w("src/articles/articles.data.js", "export default { computed: { page: (data) => ({ ...data.page, title: data.title }) } };\n");
+	r = ssqch(["build", "--root", d]);
+	assert.ok(!r.ok && r.log.includes("`page` in computed isn't applied, because `page` is ssqch's"), r.log);
 	w("src/articles/articles.data.js", "export default {};\n");
 	// A link to nothing is named, not skipped.
 	if (unix) {
@@ -282,4 +287,75 @@ test("hooks_run_commands", unixOnly, () => {
 	w("ssqch.config.js", "export default { afterBuild: { cmd: \"x\" } };\n");
 	r = ssqch(["build", "--root", d, "-q"]);
 	assert.ok(!r.ok && r.log.includes("afterBuild: \"cmd\" isn't an option (use { run: \"command\" })"), r.log);
+});
+
+// expressjs.com (ex #11): a broken include in a layout failed 222 pages, and the error printed the
+// same lines three times. Each place is shown once, so a second, different one gets a frame too.
+test("each_error_location_is_shown_once", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\"] };\n",
+		"_includes/trail.njk": "{{ nope() }}\n",
+		"cedar.njk": "{% include \"trail.njk\" %}\n",
+		"old-growth.njk": "{% include \"trail.njk\" %}\n",
+		"ridge.njk": "{% include \"trail.njk\" %}\n",
+		"stump.njk": "{{ nah() }}\n",
+	});
+	const r = ssqch(["build", "--root", root]);
+	assert.ok(!r.ok);
+	assert.equal(r.log.split("--> _includes/trail.njk:1").length - 1, 1, r.log);
+	assert.match(r.log, /--> stump\.njk:1/);
+});
+
+// opensource.guide (osg #9): Jekyll renders a `.js` file with front matter. The recipe is an engine
+// for `js` that gives the text back, and Liquid first; with "js" in templateFormats, the config and
+// the modules it imports were built as pages too (`_site/ssqch.config/index.html`).
+test("js_templates_render_and_the_configs_modules_are_not_pages", () => {
+	const root = project({
+		"ssqch.config.js": "import { snack } from \"./lib/snack.js\";\nexport default { templateFormats: [\"liquid\", \"js\"], engines: { js: (s) => s }, data: { snack } };\n",
+		"lib/snack.js": "export const snack = \"Pine Cone Crunch\";\n",
+		"assets/js/app.js": "---\n---\nconst snack = \"{{ snack }}\";\n",
+		"assets/js/js.json": "{ \"render\": \"liquid,js\", \"permalink\": \"/{{ page.filePathStem }}.js\" }\n",
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/assets/js/app.js"), "const snack = \"Pine Cone Crunch\";\n");
+	assert.ok(!exists(root, "_site/ssqch.config") && !exists(root, "_site/lib"), r.log);
+});
+
+// a11yproject.com (a11y #16): `{{ p.url | url }}` for a page with `permalink: false` printed `/false`
+// in its sitemap (`false`, with the base in front). It prints nothing, and says so once.
+test("url_of_a_page_without_a_url_prints_nothing", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\"] };\n",
+		"stash.njk": "---\npermalink: false\n---\nSquatch Snacks\n",
+		"cache.njk": "---\npermalink: false\n---\nPine Cone Crunch\n",
+		"index.njk": "{% for p in collections.all %}[{{ p.url | url }}]{% endfor %}\n",
+	});
+	const r = ssqch(["build", "--root", root]);
+	assert.ok(r.ok, r.log);
+	// By path: cache, index, stash.
+	assert.equal(read(root, "_site/index.html"), "[][/][]\n");
+	assert.equal(r.log.split("`url` got false, the url of a page with `permalink: false`, and printed nothing instead of \"false\"").length - 1, 1, r.log);
+});
+
+// v8.dev (v8 #19): two passthrough folders with a file of the same name copied to one place, and
+// whichever copy finished last won. The one listed later wins every time, with a warning when the
+// two differ; identical files say nothing.
+test("passthrough_sources_that_write_one_file", () => {
+	const root = project({
+		"ssqch.config.js": "export default { passthrough: [{ \"cedar\": \"trail\" }, { \"ridge\": \"trail\" }] };\n",
+		"cedar/map.txt": "the Cedar Trail\n",
+		"ridge/map.txt": "the Old Growth Trail\n",
+		"cedar/rules.txt": "Leave no trace.\n",
+		"ridge/rules.txt": "Leave no trace.\n",
+		"index.html": "<p>Squatch Snacks</p>\n",
+	});
+	for (let i = 0; i < 3; i++) {
+		const r = ssqch(["build", "--root", root]);
+		assert.ok(r.ok, r.log);
+		assert.equal(read(root, "_site/trail/map.txt"), "the Old Growth Trail\n");
+		assert.equal(read(root, "_site/trail/rules.txt"), "Leave no trace.\n");
+		assert.match(r.log, /cedar\/map\.txt and ridge\/map\.txt are both copied to _site\/trail\/map\.txt, and they differ: the one listed later \(ridge\/map\.txt\) is the one written/);
+		assert.ok(!r.log.includes("rules.txt"), r.log);
+	}
 });

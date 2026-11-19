@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write, read, exists } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, exists, project } from "../lib/ssqch.js";
 
 test("jinja_is_the_default_and_other_templates_are_named", () => {
 	const dir = tempDir("default-engine");
@@ -386,4 +386,102 @@ test("printing_tags_and_sentences_as_0_8_decided", () => {
 	assert.equal(out("e"), "<b>pine</b>");
 	assert.equal(out("l"), "3|pine and cedar");
 	assert.equal(out("j"), "True|[&#39;a&#39;, &#39;b&#39;]");
+});
+
+// expressjs.com (ex #3): an imported macro named like a config filter (`postCard`) hid the
+// filter's function, and a card printed `function () { [native code] }` without a word. Each
+// way a Nunjucks template can take a function's name is a warning with its file and line.
+test("nunjucks_names_that_hide_a_function_are_warned_about", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"njk\"], filters: { postCard: (p) => p, icon: (n) => n, label: (s) => s } };\n",
+		"_includes/ui.njk": "{% macro postCard(post, icon) %}{{ post }}{{ icon(post) }}{% endmacro %}\n",
+		"index.njk": "{% from \"ui.njk\" import postCard %}\n{% set label = 1 %}{{ label(2) }}\n{% for icon in [1] %}{{ icon(3) }}{% endfor %}\n{% import \"ui.njk\" as ui %}{{ postCard(1) }}{{ ui.postCard(2) }}\n",
+		// A name the template doesn't call, and a filter after a pipe, aren't traps.
+		"plain.njk": "{% set label = 1 %}{{ label }}{% set x = 1 | label(2) %}{% for item in [1] %}{{ item }}{% endfor %}\n",
+	});
+	// The build fails too: `label(2)` calls the number 1. The warnings say why.
+	const r = ssqch(["build", "--root", root, "--format", "json"]);
+	const warnings = JSON.parse(r.stdout).warnings.filter((w) => w.code === "template").map((w) => `${w.file}:${w.line} ${w.message.split(" has the name")[0].split(": ").pop()}`).sort();
+	assert.deepEqual(warnings, [
+		"_includes/ui.njk:1 the macro parameter `icon`",
+		"index.njk:1 the imported macro `postCard`",
+		"index.njk:2 the variable `label`",
+		"index.njk:3 the loop variable `icon`",
+	]);
+});
+
+// opensource.guide (osg #6, #8): Jekyll's `{% seo %}` is a plugin's tag, and the config's functions
+// are tags in Liquid as they are in Nunjucks; `{% include_relative %}` reads beside the template.
+test("liquid_config_functions_are_tags_and_include_relative_reads_beside_the_template", () => {
+	const root = project({
+		"ssqch.config.js": `export default { templateFormats: ["liquid", "md"], markdownEngine: "liquid", filters: {
+	seo: (o) => "<title>" + (o?.title === false ? "" : "Squatch Snacks") + "</title>",
+	image: (src, alt, o) => \`<img src="\${src}" alt="\${alt}"\${o?.width ? \` width="\${o.width}"\` : ""}>\`,
+	callout: (body, kind) => \`<aside class="\${kind}">\${body.trim()}</aside>\`,
+	later: async (x) => \`[\${x}]\`,
+	include: () => "a filter, not a tag",
+} };
+`,
+		"index.liquid": "---\ntitle: Pine Cone Crunch\n---\n{% seo %}|{% seo title=false %}|{% image \"/a.png\", \"A <pine>\" width: 3 %}|{% image \"/b.png\" \"B\" %}|{% callout \"tip\" %}On {{ title }}{% endcallout %}|{% later title %}\n",
+		"guide/index.md": "---\ntitle: Cedar Trail\n---\n{% include_relative parts/intro.md who=\"rangers\" %}\n{% assign part = \"outro\" %}{% include_relative parts/{{ part }}.md %}\n",
+		"guide/parts/intro.md": "Hello, {{ include.who }}, on {{ title }}.\n",
+		"guide/parts/outro.md": "Leave no trace.\n",
+		"_includes/x.liquid": "",
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/index.html"), "<title>Squatch Snacks</title>|<title></title>|<img src=\"/a.png\" alt=\"A <pine>\" width=\"3\">|<img src=\"/b.png\" alt=\"B\">|<aside class=\"tip\">On Pine Cone Crunch</aside>|[Pine Cone Crunch]\n");
+	assert.match(read(root, "_site/guide/index.html"), /Hello, rangers, on Cedar Trail\./);
+	assert.match(read(root, "_site/guide/index.html"), /Leave no trace\./);
+
+	const broken = (template) => {
+		const site = project({ "ssqch.config.js": "export default { templateFormats: [\"liquid\"], filters: { boom: () => { throw new Error(\"the snack drawer is empty\"); } } };\n", "guide/index.liquid": template });
+		const b = ssqch(["build", "--root", site]);
+		assert.ok(!b.ok);
+		return b.log;
+	};
+	assert.match(broken("one\n{% boom 1 %}\n"), /guide\/index\.liquid:2: boom\(\): the snack drawer is empty/);
+	assert.match(broken("{% boom \"x\" | upcase %}\n"), /a filter can't go in \{% boom %\}'s arguments \("\| upcase"\): `assign` the value first/);
+	assert.match(broken("{% include_relative nope.md %}\n"), /include_relative "nope\.md": guide\/nope\.md not found/);
+	assert.match(broken("{% include_relative ../x.md %}\n"), /include_relative "\.\.\/x\.md": the file has to be in the template's folder/);
+});
+
+// opensource.guide (osg #5): Jekyll's templates read front matter through `page` (`page.title`),
+// which is empty in ssqch, where front matter is at the top level. No fallback (decided 2026-11-18):
+// a warning, once for each name, naming the page, even when the read is in an include.
+test("liquid_page_front_matter_reads_say_the_rename", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"liquid\", \"md\"], markdownEngine: \"liquid\" };\n",
+		"_includes/trail.liquid": "<h1>{{ page.title }}</h1>{{ page.url }}{% include head.liquid %}{{ content }}",
+		"_includes/head.liquid": "<meta content=\"{{ page.description }}\">{{ page.lantern }}",
+		"cedar.md": "---\nlayout: trail.liquid\ntitle: Cedar Trail\ndescription: Pine cones\n---\nx\n",
+		"ridge.md": "---\nlayout: trail.liquid\ntitle: Ridge Trail\ndescription: Stumps\n---\nx\n",
+	});
+	const r = ssqch(["build", "--root", root]);
+	assert.ok(r.ok, r.log);
+	const said = (key) => r.log.split(`: \`page.${key}\` is empty: in ssqch, front matter is at the top level, so it's \`${key}\``).length - 1;
+	assert.equal(said("title"), 1, r.log);
+	assert.equal(said("description"), 1, r.log);
+	// A key that isn't front matter either is just empty, as in Jekyll.
+	assert.ok(!r.log.includes("page.lantern"), r.log);
+	assert.match(r.log, /warn: rendering cedar\.md: `page\.title` is empty/);
+});
+
+// DELIBERATE (after 0.8.0): Liquid follows Ruby's Liquid (4.0.4, Jekyll's and GitHub Pages') where
+// 0.7 followed the liquid crate (decided 2026-11-18, osg #7). Each expected string is what Ruby's
+// Liquid 4.0.4 rendered for the same template. Math reads text as Ruby does, `split` drops empty
+// strings at the end and splits `" "` at whitespace, and a block that only sets variables writes
+// nothing.
+test("liquid_follows_rubys_liquid", () => {
+	const root = project({
+		"ssqch.config.js": "export default { templateFormats: [\"liquid\"] };\n",
+		"math.liquid": "{{ \"r>\" | times: 1 }}|{{ \"3\" | plus: 2 }}|{{ \"3.5x\" | minus: 1 }}|{{ \"\" | times: 2 }}|{{ nope | plus: 1 }}|{{ \"abc\" | divided_by: 1 }}|{{ \" 7 \" | plus: 1 }}|{{ \"1_000\" | plus: 1 }}",
+		"split.liquid": "{{ \"a,b,,\" | split: \",\" | size }}|{{ \",a,b\" | split: \",\" | size }}|{{ \"a  b c\" | split: \" \" | join: \"/\" }}|{{ \" a b \" | split: \" \" | join: \"/\" }}|{{ \",,\" | split: \",\" | size }}",
+		"blank.liquid": "a{% if true %}\n  {% assign x = 1 %}\n{% endif %}b|c{% for i in (1..2) %}\n  {% assign y = i %}\n{% endfor %}d|e{% if true %}\n  {{ x }}\n{% endif %}f|g{% unless false %} {% assign z = 2 %} {% comment %}x{% endcomment %} {% endunless %}h|i{% if false %}\n  {% assign w = 1 %}\n{% elsif true %}\n  out\n{% endif %}j",
+	});
+	const r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/math/index.html"), "0|5|2|0|1|0|8|1001");
+	assert.equal(read(root, "_site/split/index.html"), "2|3|a/b/c|a/b|0");
+	assert.equal(read(root, "_site/blank/index.html"), "ab|cd|e\n  1\nf|gh|i\n  out\nj");
 });

@@ -127,7 +127,10 @@ test("numbers_are_0_7s_whole_numbers_and_floats", async () => {
 	const liquid = liquidEngine(site.env);
 	const out = liquid.render("{{ 10 | times: 1.0 | divided_by: 4 }}|{{ 10 | plus: 0.0 | divided_by: 4 }}|{{ ratio | times: 2 | divided_by: 2 }}|{{ 10.0 | divided_by: 4 }}|{% assign y = 4.0 %}{{ 10 | divided_by: y }}|{{ 7 | divided_by: 2 }}|{{ -7 | divided_by: 2 }}|{{ 7 | modulo: -3 }}|{{ 10 | times: 1.0 }}|{{ \"3\" | plus: 1 }}|{{ -2.5 | round }}|{{ 2.567 | round: 2 }}", { ratio: 2.5 }, site.ctx("page.liquid"));
 	assert.equal(out, "2.5|2.5|2.5|2.5|2.5|3|-3|1|10|4|-3|2.57");
-	for (const [source, said] of [["{{ nope | plus: 1 }}", "invalid input: Number expected"], ["{{ 1 | plus: nope }}", "invalid argument `operand`: Number expected"], ["{{ 1 | divided_by: 0 }}", "Can't divide by zero"]]) {
+	// DELIBERATE (after 0.8.0): text and nothing are numbers as Ruby's Liquid reads them (Jekyll's,
+	// decided 2026-11-18), where 0.7 said "Number expected": `"r>"` and nothing are 0, `"3.5x"` is 3.
+	assert.equal(liquid.render("{{ nope | plus: 1 }}|{{ 1 | plus: nope }}|{{ \"r>\" | times: 1 }}|{{ \"3.5x\" | minus: 1 }}|{{ \"2.5\" | times: 2 }}", {}, site.ctx("page.liquid")), "1|1|0|2|5");
+	for (const [source, said] of [["{{ 1 | divided_by: 0 }}", "Can't divide by zero"], ["{{ 1 | divided_by: \"x\" }}", "Can't divide by zero"]]) {
 		const message = await failure(() => liquid.render(source, {}, site.ctx("page.liquid")));
 		assert.ok(message.startsWith("page.liquid:1: ") && message.includes(said), message);
 	}
@@ -162,4 +165,46 @@ test("split_and_sentences_follow_shopify_and_jekyll", () => {
 	const liquid = liquidEngine(site.env);
 	const out = liquid.render("{{ \"abc\" | split: \"\" | join: \"-\" }}|{{ \"abc\" | split: \"\" | size }}|{{ two | array_to_sentence_string }}|{{ three | array_to_sentence_string }}|{{ one | array_to_sentence_string }}|{{ two | array_to_sentence_string: \"or\" }}", { one: ["pine"], two: ["pine", "cedar"], three: ["pine", "cedar", "fir"] }, site.ctx("page.liquid"));
 	assert.equal(out, "a-b-c|3|pine and cedar|pine, cedar, and fir|pine|pine or cedar");
+});
+
+// `where` and `reject` take a fast path for lists and plain properties (liquid.ts fastWhere). Every
+// answer has to be liquidjs' own: the same templates through liquidjs as it comes.
+test("where_and_reject_answer_as_liquidjs_does", async () => {
+	const { Liquid } = await import("liquidjs");
+	const plain = new Liquid({ jekyllInclude: true, strictFilters: true });
+	const site = testSite({});
+	const liquid = liquidEngine(site.env);
+	const items = [
+		{ title: "Pine", data: { lang: "en", tags: ["a", "b"], order: 1, draft: false }, method() { return "m"; } },
+		{ title: "Pin", data: { lang: "fr", tags: ["a"], order: "1", draft: true }, method() { return "n"; } },
+		{ title: "Cedar", data: { lang: "en", tags: [], order: 2 } },
+		{ title: "Fir", data: null },
+		{ title: "", data: { lang: "" } },
+	];
+	const data = { items, site: "global", nested: [[1, 2], [3]], words: ["x", "y"], hash: { a: 1 } };
+	for (const template of [
+		"{{ items | where: 'data.lang', 'en' | map: 'title' | json }}",
+		"{{ items | where: \"data.lang\", \"fr\" | map: 'title' | json }}",
+		"{{ items | where: 'data.lang' | map: 'title' | json }}",
+		"{{ items | where: 'title' | map: 'title' | json }}",
+		"{{ items | where: 'data.draft' | map: 'title' | json }}",
+		"{{ items | where: 'data.draft', false | map: 'title' | json }}",
+		"{{ items | where: 'data.order', 1 | map: 'title' | json }}",
+		"{{ items | where: 'data.order', '1' | map: 'title' | json }}",
+		"{{ items | where: 'data.tags.size', 2 | map: 'title' | json }}",
+		"{{ items | where: 'data.tags.first', 'a' | map: 'title' | json }}",
+		"{{ items | where: 'data.tags', empty | map: 'title' | json }}",
+		"{{ items | where: 'data.tags', blank | map: 'title' | json }}",
+		"{{ items | where: 'method', 'm' | map: 'title' | json }}",
+		"{{ items | where: 'missing.deeper', nil | map: 'title' | json }}",
+		"{{ items | where: 'site', 'global' | map: 'title' | json }}",
+		"{{ items | where: 'data[\"lang\"]', 'en' | map: 'title' | json }}",
+		"{{ nested | where: 'size', 2 | json }}",
+		"{{ words | where: 'size', 1 | json }}",
+		"{{ hash | where: 'size', 1 | json }}",
+		"{{ items | reject: 'data.lang', 'en' | map: 'title' | json }}",
+		"{{ items | reject: 'data.draft' | map: 'title' | json }}",
+	]) {
+		assert.equal(await liquid.render(template, data, site.ctx("page.liquid")), await plain.parseAndRender(template, data), template);
+	}
 });

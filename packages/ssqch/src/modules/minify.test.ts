@@ -9,6 +9,8 @@ const page = "<!DOCTYPE html>\n<html>\n  <head><title> Hi </title></head>\n  <bo
 test("minify() gives 0.7's bytes, with its options", () => {
 	assert.equal(minify(page), "<!doctype html><html><head><title>Hi</title></head><body><p>Hello <strong>big</strong> world</p><script defer>var a = 1;</script></body></html>");
 	assert.equal(minify(page, { removeComments: false, shortDoctype: false, shortenAttributes: false }), "<!DOCTYPE html><html><head><title>Hi</title></head><body><!-- gone --><p>Hello <strong>big</strong> world</p><script defer=\"defer\">var a = 1;</script></body></html>");
+	// a11yproject.com (a11y #24) saw `checked="checked"` shortened with the option off, in 0.7.
+	assert.equal(minify("<input type=\"checkbox\" checked=\"checked\">", { shortenAttributes: false }), "<input type=\"checkbox\" checked=\"checked\">");
 	assert.equal(minify("<p>a  b</p>\n", { collapseWhitespace: false }), "<p>a  b</p>\n");
 	// Options are read as true or false, as 0.7 read them.
 	assert.equal(minify("<p>a  b</p>\n", { collapseWhitespace: 0 }), "<p>a  b</p>\n");

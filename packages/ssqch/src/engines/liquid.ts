@@ -10,7 +10,7 @@ import type { FS, Liquid } from "liquidjs";
 import type { Filter } from "../config.ts";
 import type { Data } from "../data.ts";
 import { isPlainObject } from "../data.ts";
-import { BuildError } from "../diagnostics.ts";
+import { BuildError, warn, warning } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
@@ -119,7 +119,7 @@ function liquidjs(): typeof LiquidJs {
 
 /** liquidjs, set up for the site; it adds the includes it reads to `loaded`. */
 function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["render"] {
-	const { Liquid, IfTag, IncludeTag, UnlessTag, TypeGuards } = liquidjs();
+	const { Liquid, IfTag, IncludeTag, UnlessTag, Tag, Hash, TypeGuards, evalToken } = liquidjs();
 	const root = env.config.root;
 	const isFile = (file: string) => fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false;
 	// Each include's file by its text: some of liquidjs' errors (a variable `strict` refuses) carry
@@ -175,6 +175,57 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 			super(token, remain, liquid, parser);
 		}
 	});
+	// Jekyll's `{% include_relative part.md lang="fr" %}` (osg #8): a file beside the template that
+	// has the tag, not in `_includes`, rendered with the page's variables and `include.lang`. As in
+	// Jekyll, the name can have `{{ }}` in it, and can't go up a folder.
+	const relative = new Map<string, any[]>();
+	liquid.registerTag("include_relative", class extends Tag {
+		file: string;
+		hash: any;
+		from: string;
+		constructor(token: any, remain: any[], engine: any) {
+			super(token, remain, engine);
+			const tk = this.tokenizer as any;
+			tk.skipBlank();
+			const begin = tk.p;
+			const quoted = tk.readQuoted();
+			if (quoted) this.file = quoted.content;
+			else {
+				// Up to a space, reading `{{ p }}` whole.
+				while (!tk.end() && !/\s/.test(tk.peek())) {
+					if (tk.input.startsWith("{{", tk.p)) {
+						const close = tk.input.indexOf("}}", tk.p);
+						if (close === -1) throw tk.error("include_relative: `{{` without `}}` in the file name");
+						tk.p = close + 2;
+					} else tk.advance();
+				}
+				this.file = tk.input.slice(begin, tk.p);
+			}
+			if (!this.file) throw tk.error("include_relative needs a file name (`{% include_relative part.md %}`)");
+			this.hash = new Hash(tk, true);
+			const file = token.file ?? "";
+			this.from = path.dirname(path.isAbsolute(file) ? file : path.resolve(root, file));
+		}
+		*render(ctx: any, emitter: any): Generator<unknown, void, unknown> {
+			const r = (this.liquid as any).renderer;
+			let name = this.file;
+			if (name.includes("{{")) name = String(yield r.renderTemplates((this.liquid as any).parse(name), ctx));
+			if (name.split(/[\\/]/).includes("..")) throw new BuildError(`include_relative "${name}": the file has to be in the template's folder or below it, without ".."`);
+			const file = path.resolve(this.from, name);
+			let templates = relative.get(file);
+			if (!templates) {
+				if (!isFile(file)) throw new BuildError(`include_relative "${name}": ${path.relative(root, file).split(path.sep).join("/")} not found (it's read beside the template, not in _includes)`);
+				const text = fs.readFileSync(file, "utf8");
+				includes.set(text, file);
+				templates = (this.liquid as any).parse(text, file) as any[];
+				relative.set(file, templates);
+			}
+			const include = yield this.hash.render(ctx);
+			ctx.push({ include });
+			try { emitter.write(yield r.renderTemplates(templates, ctx)); } finally { ctx.pop(); }
+		}
+	});
+
 	// With `strict` on, a missing variable fails everywhere 0.7's did: in a comparison, `case`,
 	// `assign` and `default`. Only an `if` or `unless` that asks whether it's there (`{% if nope
 	// %}`, `{% if a and b %}`) stays false, as it did in 0.7.
@@ -189,6 +240,32 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 		};
 		liquid.registerTag("if", class extends IfTag { constructor(...args: any[]) { super(...(args as [any, any, any, any])); lenientWhereAsked((this as any).branches); } });
 		liquid.registerTag("unless", class extends UnlessTag { constructor(...args: any[]) { super(...(args as [any, any, any, any])); lenientWhereAsked((this as any).branches); } });
+	}
+
+	// A block that only sets variables writes nothing, as in Ruby's Liquid (`Block#blank?`): an
+	// `if` or `for` whose bodies are whitespace, `assign`, `capture` and comments still runs, but
+	// its whitespace isn't written. liquidjs (and 0.7) wrote it, so Jekyll layouts that compute in
+	// blocks came out with runs of blank lines (osg #7). Outside a block, whitespace is written.
+	const BLANK_TAGS = new Set(["assign", "capture", "comment", "#"]);
+	const isBlank = (templates: any[] | undefined): boolean => (templates ?? []).every((t) => {
+		if (t.blankBlock === true) return true;
+		if (typeof t.name === "string") return BLANK_TAGS.has(t.name);
+		return typeof t.str === "string" && /^\s*$/.test(t.str);
+	});
+	const discard = { write() {}, buffer: "" };
+	for (const name of ["if", "unless", "for", "case"]) {
+		const Base = (liquid.tags as Record<string, any>)[name];
+		liquid.registerTag(name, (class extends Base {
+			blankBlock: boolean;
+			constructor(...args: any[]) {
+				super(...args);
+				const self = this as any;
+				this.blankBlock = isBlank(self.templates) && isBlank(self.elseTemplates) && (self.branches ?? []).every((b: any) => isBlank(b.templates));
+			}
+			*render(ctx: any, emitter: any): Generator<unknown, unknown, unknown> {
+				return yield super.render(ctx, this.blankBlock ? discard : emitter);
+			}
+		}) as any);
 	}
 
 	// liquidjs' own filters turn a value into text with `String()`: a date as the machine's time
@@ -225,12 +302,36 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 	liquid.registerFilter("date_to_long_string", dateString("%B"));
 	for (const [name, fn] of Object.entries(MATH)) liquid.registerFilter(name, fn);
 	for (const [name, fn] of Object.entries(TEXT)) liquid.registerFilter(name, fn);
+	fastWhere(liquid);
 
 	// The config's functions as filters: `{{ x | wrap: "[", "]" }}` calls `wrap(x, "[", "]")`, and
 	// keyword arguments (`| f: size: 2`) arrive as one object at the end. A value that isn't there
 	// arrives as `null`, as in 0.7. A function is awaited when it answers with a promise; until one
 	// does, templates render synchronously.
 	const functions = new Map<string, Filter>([...env.pipeFilters, ...env.globals]);
+	/**
+	 * Calls a config function for a filter or a tag. A render that ran before (asynchronously)
+	 * gets each call's earlier answer; a promise in a synchronous render starts it again async.
+	 */
+	const invoke = (context: any, name: string, fn: Filter, args: unknown[]): unknown => {
+		const answers: Answers | undefined = context?.globals?.[ANSWERS];
+		const at = answers ? answers.at++ : -1;
+		const known = answers?.calls[at];
+		if (known?.fn === fn) return known.value;
+		let out: unknown;
+		try { out = fn(...args); } catch (e) { throw thrown(name, e, root); }
+		if (out instanceof Promise) {
+			const settled = watchSettle(out).catch((e) => { throw thrown(name, e, root); });
+			answers?.calls.splice(at, Infinity, { fn, value: settled });
+			if (context?.sync) {
+				settled.catch(() => {});
+				throw new NeedsAsync();
+			}
+			return settled;
+		}
+		answers?.calls.splice(at, Infinity, { fn, value: out });
+		return out;
+	};
 	for (const [name, fn] of functions) {
 		liquid.registerFilter(name, function (this: any, input: unknown, ...rest: unknown[]) {
 			const args: unknown[] = [given(input)];
@@ -240,23 +341,66 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 				else args.push(given(arg));
 			});
 			if (options) args.push(options);
-			const answers: Answers | undefined = this.context?.globals?.[ANSWERS];
-			const at = answers ? answers.at++ : -1;
-			const known = answers?.calls[at];
-			if (known?.fn === fn) return known.value;
-			let out: unknown;
-			try { out = fn(...args); } catch (e) { throw thrown(name, e, root); }
-			if (out instanceof Promise) {
-				const settled = watchSettle(out).catch((e) => { throw thrown(name, e, root); });
-				answers?.calls.splice(at, Infinity, { fn, value: settled });
-				if (this.context?.sync) {
-					settled.catch(() => {});
-					throw new NeedsAsync();
+			return invoke(this.context, name, fn, args);
+		});
+	}
+
+	// The config's functions as tags too, as in Nunjucks: `{% seo %}` prints what `seo()` returns,
+	// unescaped (Jekyll's jekyll-seo-tag, osg #6). Arguments are values, by commas or spaces, and
+	// `name: value` or Jekyll's `name=value` arrive as one object at the end (`{% seo title=false
+	// %}` calls `seo({ title: false })`). With an `{% endname %}`, the function gets what's between
+	// them first. Liquid's own tags keep their names: a function `include` is a filter only.
+	for (const [name, fn] of functions) {
+		if (name in liquid.tags) continue;
+		liquid.registerTag(name, class extends Tag {
+			values: any[] = [];
+			named: Array<[string, any]> = [];
+			templates: any[] | undefined;
+			constructor(token: any, remain: any[], engine: any, parser: any) {
+				super(token, remain, engine);
+				const tk = this.tokenizer as any;
+				for (;;) {
+					tk.skipBlank();
+					if (tk.peek() === ",") { tk.advance(); tk.skipBlank(); }
+					if (tk.end()) break;
+					const start = tk.p;
+					const key = tk.readIdentifier();
+					tk.skipBlank();
+					const sep = tk.peek();
+					if (key.content && (sep === ":" || (sep === "=" && tk.input[tk.p + 1] !== "="))) {
+						tk.advance();
+						this.named.push([key.content, tk.readValueOrThrow()]);
+						continue;
+					}
+					tk.p = start;
+					const value = tk.readValue();
+					if (!value && tk.peek() === "|") throw tk.error(`a filter can't go in {% ${name} %}'s arguments ("${tk.remaining().trim()}"): \`assign\` the value first, then pass the variable`);
+					if (!value) throw tk.error(`expected a value in {% ${name} %}'s arguments, at "${tk.remaining()}"`);
+					this.values.push(value);
 				}
-				return settled;
+				// Paired when the template closes it, as in Nunjucks.
+				if (remain.some((t) => TypeGuards.isTagToken(t) && t.name === `end${name}`)) {
+					this.templates = [];
+					while (remain.length) {
+						const next = remain.shift();
+						if (TypeGuards.isTagToken(next) && next.name === `end${name}`) break;
+						this.templates.push(parser.parseToken(next, remain));
+					}
+				}
 			}
-			answers?.calls.splice(at, Infinity, { fn, value: out });
-			return out;
+			*render(ctx: any, emitter: any): Generator<unknown, void, unknown> {
+				const args: unknown[] = [];
+				if (this.templates) args.push(yield (this.liquid as any).renderer.renderTemplates(this.templates, ctx));
+				for (const value of this.values) args.push(given(yield evalToken(value, ctx)));
+				if (this.named.length) {
+					const options: Data = {};
+					for (const [key, value] of this.named) options[key] = given(yield evalToken(value, ctx));
+					args.push(options);
+				}
+				const out = yield invoke(ctx, name, fn, args);
+				emitter.write(tagText(out));
+			}
+			*children(): Generator<unknown, any[], unknown> { return this.templates ?? []; }
 		});
 	}
 	const filterNames = () => Object.keys(liquid.filters);
@@ -267,7 +411,29 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 	const fail = (e: unknown, ctx: RenderContext): never => {
 		throw new BuildError(describe(e, ctx, env, filterNames(), includes));
 	};
-	return (source, data, ctx) => {
+	// Jekyll's templates read front matter through `page` (`page.title`); in ssqch it's at the top
+	// level, and `page` has the file's facts. Reading a key `page` lacks and the front matter has
+	// says the rename once, for the whole build (osg #5; decided against a fallback, so `page`
+	// means the same in every engine).
+	const told = new Set<string>();
+	const watched = (data: Data, ctx: RenderContext): Data => {
+		const page = data.page;
+		if (!isPlainObject(page) || told.size >= 20) return data;
+		const look = (key: string | symbol) => {
+			if (typeof key !== "string" || told.has(key) || Object.hasOwn(page, key) || !Object.hasOwn(data, key) || data[key] === undefined) return;
+			told.add(key);
+			// The page, not the template: the read can be in a layout or an include.
+			const shown = typeof page.inputPath === "string" ? page.inputPath.replace(/^\.\//, "") : path.relative(root, path.resolve(root, ctx.inputPath)).split(path.sep).join("/");
+			warn(warning("template", `rendering ${shown}: \`page.${key}\` is empty: in ssqch, front matter is at the top level, so it's \`${key}\` (\`page\` has the page's url, inputPath, date and headings). Said once for each name.`, { file: shown }));
+		};
+		const proxy = new Proxy(page, {
+			getOwnPropertyDescriptor(target, key) { look(key); return Reflect.getOwnPropertyDescriptor(target, key); },
+			get(target, key, receiver) { if (!(key in target)) look(key); return Reflect.get(target, key, receiver); },
+		});
+		return { ...data, page: proxy };
+	};
+	return (source, given, ctx) => {
+		const data = watched(given, ctx);
 		let templates = ctx.cacheKey === undefined ? undefined : compiled.get(ctx.cacheKey);
 		if (!templates) {
 			try { templates = liquid.parse(source, ctx.inputPath); } catch (e) { return fail(e, ctx); }
@@ -301,6 +467,14 @@ function needsAsync(e: unknown): boolean {
 
 /** A value as a config function gets it: a missing one is `null`, as in 0.7, and a float its number. */
 const given = (v: unknown) => (v === undefined ? null : isFloat(v) ? v.n : v);
+
+/** What a tag prints for a function's answer: nothing for none, a list's items one after another. */
+function tagText(v: unknown): string {
+	if (v === undefined || v === null) return "";
+	if (Array.isArray(v)) return v.map(tagText).join("");
+	const shown = printable(v);
+	return typeof shown === "string" ? shown : String(shown);
+}
 
 /** A value as `{{ }}` prints it: a date as 0.7 printed it, in UTC, and a float as its number. */
 function printable(v: unknown): unknown {
@@ -337,12 +511,31 @@ function number(v: unknown, what: "input" | "operand"): { value: number; float: 
 	throw new BuildError(what === "input" ? "invalid input: Number expected" : "invalid argument `operand`: Number expected");
 }
 
+/**
+ * A number for the math filters, as Ruby's Liquid reads one (`Utils.to_number`, Liquid 4.0.4, which
+ * Jekyll and GitHub Pages run): text that's a decimal (`"3.5"`) is a float, other text is its
+ * leading whole number or 0 (`"3.5x"` is 3, `"r>"` is 0), and nothing, `true` or a list is 0.
+ * jekyll-toc multiplies text by 1 and depends on it (osg #7); 0.7, after the liquid crate, said
+ * "Number expected".
+ */
+function toNumber(v: unknown): { value: number; float: boolean } {
+	if (isFloat(v)) return { value: v.n, float: true };
+	if (typeof v === "number") return { value: v, float: !Number.isInteger(v) };
+	if (typeof v === "string") {
+		const t = v.trim();
+		if (/^-?\d+\.\d+$/.test(t)) return { value: Number(t), float: true };
+		const whole = /^[+-]?\d+(?:_\d+)*/.exec(t)?.[0];
+		return { value: whole === undefined ? 0 : Number(whole.replaceAll("_", "")), float: false };
+	}
+	return { value: 0, float: false };
+}
+
 /** A float that's whole stays one (see `LiquidFloat`). */
 const float = (n: number) => (Number.isInteger(n) ? new FloatValue!(n) : n);
 
 /** Two numbers through `whole` when both are whole numbers, and through `exact` as floats otherwise, as the liquid crate did. */
 const arithmetic = (whole: (a: number, b: number) => number, exact: (a: number, b: number) => number, checkZero = false) => (input: unknown, operand: unknown) => {
-	const a = number(input, "input"), b = number(operand, "operand");
+	const a = toNumber(input), b = toNumber(operand);
 	if (checkZero && b.value === 0) throw new BuildError("invalid argument `operand`: Can't divide by zero");
 	return a.float || b.float ? float(exact(a.value, b.value)) : whole(a.value, b.value);
 };
@@ -350,7 +543,68 @@ const arithmetic = (whole: (a: number, b: number) => number, exact: (a: number, 
 /** Rounding half away from zero, as Rust rounds. */
 const round = (n: number) => Math.sign(n) * Math.round(Math.abs(n));
 
-/** The liquid crate's numbers, which 0.7 had: whole numbers stay whole (`7 | divided_by: 2` is 3), and a float stays a float. */
+/**
+ * `where` and `reject` without liquidjs' generator and new scope for each item, for the common
+ * case: a list, and a property that's names and literals (`"data.lang"`). It reads each item the
+ * way liquidjs does (its scope's `findScope` and `readProperty`: `size`, `first`, drops, methods)
+ * and compares with its `equals`, so the answers are the same. Anything else (strict variables, a
+ * `[x]` in the property, an item that isn't an object, a value that's a promise) goes to liquidjs'
+ * own. expressjs.com's layouts call `where` 56 times a page over 380 items: its idiomatic port built
+ * in 7.4 s with liquidjs' `where` and in 1.06 s with a config filter like this one (ex #2).
+ */
+function fastWhere(liquid: Liquid): void {
+	const { Tokenizer, TypeGuards, evalTokenValue, toValueSync, isTruthy, toValue } = liquidjs();
+	const comparable = (v: any) => v && typeof v.equals === "function" && typeof v.gt === "function" && typeof v.geq === "function" && typeof v.lt === "function" && typeof v.leq === "function";
+	const SLOW = Symbol("slow");
+	// liquidjs' `equals`, synchronous; SLOW when a drop answers with something else.
+	const equals = (lhs: any, rhs: any): boolean | typeof SLOW => {
+		if (comparable(lhs)) { const r = lhs.equals(rhs); return typeof r === "boolean" ? r : SLOW; }
+		if (comparable(rhs)) { const r = rhs.equals(lhs); return typeof r === "boolean" ? r : SLOW; }
+		lhs = toValue(lhs);
+		rhs = toValue(rhs);
+		if (Array.isArray(lhs)) {
+			if (!Array.isArray(rhs) || lhs.length !== rhs.length) return false;
+			for (let i = 0; i < lhs.length; i++) {
+				const same = equals(lhs[i], rhs[i]);
+				if (same !== true) return same;
+			}
+			return true;
+		}
+		return lhs === rhs;
+	};
+	const isAsync = (v: any) => v !== null && typeof v === "object" && (typeof v.then === "function" || typeof v.next === "function");
+	for (const [name, include] of [["where", true], ["reject", false]] as const) {
+		const slow = liquid.filters[name] as any;
+		const slowHandler = typeof slow === "function" ? slow : slow.handler;
+		liquid.registerFilter(name, function (this: any, input: unknown, property: unknown, ...rest: unknown[]) {
+			const fallback = () => slowHandler.call(this, input, property, ...rest);
+			const ctx = this.context;
+			const list = asText(input);
+			if (!Array.isArray(list) || ctx.strictVariables || rest.length > 1) return fallback();
+			const token = new Tokenizer(String(property ?? "")).readScopeValue() as any;
+			if (!token || token.variable || !token.props.every((p: any) => TypeGuards.isWordToken(p) || TypeGuards.isQuotedToken(p) || TypeGuards.isNumberToken(p))) return fallback();
+			const keys = token.props.map((p: any) => toValueSync(evalTokenValue(p, ctx)));
+			const expected = rest.length ? asText(rest[0]) : undefined;
+			ctx.memoryLimit.use(list.length);
+			const out: unknown[] = [];
+			for (const item of list) {
+				if (item === null || (typeof item !== "object" && typeof item !== "function")) return fallback();
+				// A scope spawned on the item: the first name from the item if it has it, else the globals.
+				let value: any = keys[0] in (item as object) ? item : ctx.globals;
+				for (const key of keys) {
+					value = ctx.readProperty(value, key);
+					if (isAsync(value)) return fallback();
+				}
+				const matched = expected === undefined ? isTruthy(value, ctx) : equals(value, expected);
+				if (matched === SLOW) return fallback();
+				if (matched === include) out.push(item);
+			}
+			return out;
+		});
+	}
+}
+
+/** Whole numbers stay whole (`7 | divided_by: 2` is 3) and a float stays a float, as in 0.7 and Ruby; text is read as Ruby reads it (`toNumber`). */
 const MATH: Record<string, (...args: any[]) => unknown> = {
 	plus: arithmetic((a, b) => a + b, (a, b) => a + b),
 	minus: arithmetic((a, b) => a - b, (a, b) => a - b),
@@ -360,18 +614,18 @@ const MATH: Record<string, (...args: any[]) => unknown> = {
 	at_least: arithmetic((a, b) => Math.max(a, b), (a, b) => Math.max(a, b)),
 	at_most: arithmetic((a, b) => Math.min(a, b), (a, b) => Math.min(a, b)),
 	abs: (input: unknown) => {
-		const n = number(input, "input");
+		const n = toNumber(input);
 		return n.float ? float(Math.abs(n.value)) : Math.abs(n.value);
 	},
 	round: (input: unknown, places: unknown) => {
-		const n = number(input, "input").value;
-		const p = places === undefined || places === null ? 0 : number(places, "operand").value;
+		const n = toNumber(input).value;
+		const p = places === undefined || places === null ? 0 : toNumber(places).value;
 		if (p <= 0) return round(n);
 		const m = 10 ** p;
 		return float(round(n * m) / m);
 	},
-	ceil: (input: unknown) => Math.ceil(number(input, "input").value),
-	floor: (input: unknown) => Math.floor(number(input, "input").value),
+	ceil: (input: unknown) => Math.ceil(toNumber(input).value),
+	floor: (input: unknown) => Math.floor(toNumber(input).value),
 };
 
 /** Equality as the liquid crate tells it: by value, objects and lists too. */
@@ -404,7 +658,7 @@ const length = (v: unknown, otherwise: number) => {
 /**
  * Where the liquid crate's filters say otherwise than liquidjs', 0.7's output stays: `capitalize`
  * changes the first letter only (`Pine CONE`), `url_encode` writes a space as `%20`, `split`
- * keeps empty strings at the end, `truncate` counts the ellipsis' bytes, `truncatewords` splits at each space,
+ * is Ruby's (below), `truncate` counts the ellipsis' bytes, `truncatewords` splits at each space,
  * `map` leaves out what isn't an object, `uniq` compares values, and `size` is a value's text's.
  */
 const TEXT: Record<string, (...args: any[]) => unknown> = {
@@ -418,11 +672,16 @@ const TEXT: Record<string, (...args: any[]) => unknown> = {
 		// A `%` that doesn't start an escape is left as it is; bytes that aren't UTF-8 are an error.
 		try { return new TextDecoder("utf-8", { fatal: true }).decode(percentDecode(text(input).replaceAll("+", " "))); } catch { throw new BuildError("invalid input: Malformed UTF-8"); }
 	},
+	// Ruby's `String#split`, as Ruby's Liquid calls it: by nothing, the characters; by one space, at
+	// each run of whitespace, with none at the start; and empty strings at the end dropped
+	// (`"a,b,,"` is two). 0.7, after the liquid crate, kept them and split at each space.
 	split: (input: unknown, pattern: unknown) => {
 		const s = text(input), by = text(pattern);
 		if (s === "") return [];
-		// By nothing: the characters, as Shopify splits them (0.7 put an empty string at each end).
-		return by === "" ? [...s] : s.split(by);
+		if (by === "") return [...s];
+		const parts = by === " " ? s.replace(/^[ \t\n\v\f\r]+/, "").split(/[ \t\n\v\f\r]+/) : s.split(by);
+		while (parts.length && parts[parts.length - 1] === "") parts.pop();
+		return parts;
 	},
 	array_to_sentence_string: (input: unknown, connector: unknown) => {
 		if (!Array.isArray(input)) throw new BuildError("invalid input: Array expected");

@@ -92,7 +92,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	},
 	{
 		name: "diff",
-		about: "Compare two builds of a site: URLs added and removed, and what changed on each page",
+		about: "Compare two builds of a site: URLs added and removed, and what changed on each page. Given three or more, list what varies between them",
 		options: [
 			{ long: "exact", help: "Compare bytes: don't match fingerprinted files or ignore whitespace" },
 			{ long: "ignore", value: "REGEX", help: "Leave out text matching this regular expression before comparing (repeatable)", many: true },
@@ -100,8 +100,8 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 			{ long: "lines", value: "LINES", help: "Changed lines to show for each file (0 for all)", default: "10", check: number },
 			FORMAT,
 		],
-		positionals: [{ name: "BEFORE", help: "The build from before the change", required: true, path: true }, { name: "AFTER", help: "The build from after it", required: true, path: true }],
-		afterHelp: "Build the site into one folder before a change and another after it:\n\n  ssqch build --output dist-before\n  (upgrade ssqch, edit a layout, ...)\n  ssqch build\n  ssqch diff dist-before dist\n\nExits with 0 when the builds are the same, 1 when they differ, and 2 on an error.",
+		positionals: [{ name: "BEFORE", help: "The build from before the change", required: true, path: true }, { name: "AFTER", help: "The build from after it", required: true, path: true }, { name: "MORE", help: "More builds: with three or more, which files vary between them (builds made the same way)", required: false, many: true, path: true }],
+		afterHelp: "Build the site into one folder before a change and another after it:\n\n  ssqch build --output dist-before\n  (upgrade ssqch, edit a layout, ...)\n  ssqch build\n  ssqch diff dist-before dist\n\nTo see whether a build is the same every time (another generator's, before a move), build it three times and compare all three:\n\n  ssqch diff ref-1 ref-2 ref-3\n\nExits with 0 when the builds are the same, 1 when they differ, and 2 on an error.",
 	},
 	{
 		name: "footprint",
@@ -329,7 +329,7 @@ export async function main(argv: string[]): Promise<number> {
 	const many = (name: string) => (Array.isArray(cli.options[name]) ? cli.options[name] as string[] : typeof cli.options[name] === "string" ? [cli.options[name] as string] : []);
 	const top = Number(value("top") ?? "5");
 	// Two build folders need no config, and neither does a folder given to `footprint`.
-	if (command === "diff") return runDiff(cli.positionals[0], cli.positionals[1], { exact: flag("exact"), ignore: many("ignore"), only: many("only"), lines: Number(value("lines") ?? "10"), format });
+	if (command === "diff") return runDiff(cli.positionals, { exact: flag("exact"), ignore: many("ignore"), only: many("only"), lines: Number(value("lines") ?? "10"), format });
 	if (command === "footprint" && cli.positionals[0] !== undefined) {
 		try {
 			await runFootprint(cli.positionals[0], cli.positionals[0], top, format);
@@ -460,11 +460,12 @@ async function runInspect(config: Config, target: string, name: string | undefin
 }
 
 /** `ssqch diff`: prints the comparison, and answers 0 when the builds are the same, 1 when they differ and 2 on an error. */
-async function runDiff(before: string, after: string, options: { exact: boolean; ignore: string[]; only: string[]; lines: number; format: string }): Promise<number> {
+async function runDiff(dirs: string[], options: { exact: boolean; ignore: string[]; only: string[]; lines: number; format: string }): Promise<number> {
+	const [before, after] = dirs;
 	try {
 		checkFormat(options.format);
 		// Only `diff` reads Rust's regex syntax, so the translator loads with it.
-		const [{ rustRegExp }, { globProblem, globToRegExp }, { compare, diffJson, diffText, isSame }] = await Promise.all([import("./rust-regex.ts"), import("./glob.ts"), import("./diff.ts")]);
+		const [{ rustRegExp }, { globProblem, globToRegExp }, { compare, compareRuns, diffJson, diffText, isSame, runsJson, runsText }] = await Promise.all([import("./rust-regex.ts"), import("./glob.ts"), import("./diff.ts")]);
 		const ignore = options.ignore.map((pattern) => {
 			try { return rustRegExp(pattern, "g"); } catch (e) { return bail(`--ignore ${quoted(pattern)} isn't a regular expression: ${(e as Error).message}`); }
 		});
@@ -474,6 +475,12 @@ async function runDiff(before: string, after: string, options: { exact: boolean;
 			if (problem !== undefined) bail(`--only ${quoted(given)} isn't a glob: error parsing glob '${glob}': ${problem}`);
 			return globToRegExp(glob);
 		}) : undefined;
+		if (dirs.length > 2) {
+			const runs = await compareRuns(dirs, { exact: options.exact, ignore, only, lines: options.lines });
+			if (options.format === "json") process.stdout.write(JSON.stringify(runsJson(runs, options.lines), null, 2) + "\n");
+			else process.stdout.write(runsText(runs, options.lines, process.stdout.isTTY === true));
+			return runs.varies.length ? 1 : 0;
+		}
 		const report = await compare(before, after, { exact: options.exact, ignore, only, lines: options.lines });
 		if (options.format === "json") process.stdout.write(JSON.stringify(diffJson(report, options.lines), null, 2) + "\n");
 		else process.stdout.write(diffText(report, options.lines, process.stdout.isTTY === true));

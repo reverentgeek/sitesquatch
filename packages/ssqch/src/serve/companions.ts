@@ -19,6 +19,8 @@ export interface CompanionContext {
 	env: string;
 	input: string;
 	output: string;
+	/** `--quiet` on the command line: `SSQCH_QUIET`. */
+	quiet?: boolean;
 }
 
 interface Running {
@@ -35,7 +37,7 @@ let shuttingDown = false;
 /** Whether any companion was ever started: stopping them is then ssqch's to do before it ends. */
 export let everStarted = false;
 
-const environment = (ctx: CompanionContext) => [ctx.root, ctx.env, ctx.input, ctx.output];
+const environment = (ctx: CompanionContext) => [ctx.root, ctx.env, ctx.input, ctx.output, String(Boolean(ctx.quiet))];
 
 /** The companions of one configuration. */
 export class Companions {
@@ -60,7 +62,7 @@ export class Companions {
 		for (const command of commands) {
 			const name = toolName(command);
 			progress(`[ssqch] serve.run: ${command}`);
-			const { file, args, options } = commandLine(command, ctx.root, { SSQCH_ENV: ctx.env, SSQCH_SERVING: "true", SSQCH_INPUT: ctx.input, SSQCH_OUTPUT: ctx.output });
+			const { file, args, options } = commandLine(command, ctx.root, { SSQCH_ENV: ctx.env, SSQCH_SERVING: "true", SSQCH_QUIET: ctx.quiet ? "true" : "false", SSQCH_INPUT: ctx.input, SSQCH_OUTPUT: ctx.output });
 			const one: Running = { child: undefined as unknown as ChildProcess, stopping: false, exited: false };
 			try {
 				// Standard input is held open: Tailwind's and esbuild's `--watch` stop when theirs
