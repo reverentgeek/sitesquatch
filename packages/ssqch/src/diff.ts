@@ -87,8 +87,10 @@ export interface FileDiff {
 export interface DiffGroup {
 	/** The files that have it, by their URL, in the report's order. */
 	urls: string[];
-	/** `false` when only its attribute values differ from file to file (the lines are the first file's). */
+	/** `false` when its lines differ from file to file (the lines are the first file's). */
 	same: boolean;
+	/** How alike its changes are: `lines` (the same), `values` (the same but for attribute values), or `tags` (the same tags, with other attributes, or a line repeated another number of times). */
+	match: "lines" | "values" | "tags";
 	/** What it changes: `dates`, `order` (the same lines, moved), `markup`, `text`, or `markup and text`. */
 	kind: string;
 	/** The change, as the first file has it. */
@@ -814,6 +816,11 @@ const hunkKey = (h: Hunk) => JSON.stringify([h.removed, h.added]);
 const lineShape = (line: string) => (line.startsWith("<") ? line.replace(/="[^"]*"/g, "=\"…\"") : line);
 const shapeKey = (h: Hunk) => JSON.stringify([h.removed.map(lineShape), h.added.map(lineShape)]);
 
+/** A tag line as its name alone (`<source>`); text stays. A run of one line counts once, so a `<picture>` with two `<source>`s and one with three are alike. */
+const tagLine = (line: string) => (line.startsWith("<") ? (/^<\/?[^\s>]+/.exec(line)?.[0] ?? line) + ">" : line);
+const once = (lines: string[]) => lines.filter((line, i) => i === 0 || line !== lines[i - 1]);
+const tagKey = (h: Hunk) => JSON.stringify([once(h.removed.map(tagLine)), once(h.added.map(tagLine))]);
+
 /** What a hunk changes, for agents sorting the groups. */
 function kindOf(h: Hunk): string {
 	if (onlyDates([h])) return "dates";
@@ -845,17 +852,73 @@ export function groupChanges(changed: FileDiff[]): DiffGroup[] {
 			}
 		}
 	});
-	const shared = [...found].filter(([, e]) => e.files.size > 1).sort(([, a], [, b]) => b.files.size - a.files.size || a.first - b.first);
-	const groups: DiffGroup[] = [];
-	const inGroup = new Map<string, number>();
-	for (const [k, e] of shared) {
-		inGroup.set(k, groups.length);
-		groups.push({ urls: [...e.files].map((i) => changed[i].url), same: e.same, kind: kindOf(e.hunk), hunk: e.hunk });
+	// Each group's files, as places in `changed`, while groups gain the looser ones.
+	type Draft = { files: Set<number>; hunk: Hunk; first: number; match: DiffGroup["match"] };
+	const drafts: Draft[] = [];
+	const byShape = new Map<string, number>();
+	for (const [k, e] of found) {
+		if (e.files.size < 2) continue;
+		byShape.set(k, drafts.length);
+		drafts.push({ files: new Set(e.files), hunk: e.hunk, first: e.first, match: e.same ? "lines" : "values" });
 	}
+	// What no group took joins the group with the same tags (the blog's `<picture>`s with other
+	// widths), or, with another file's like it, makes a group of its own.
+	// Groups with the same tags are one: the biggest takes the others' files.
+	const byTags = new Map<string, number>();
+	const merged = new Map<number, number>();
+	// By its tags alone, only a run of three lines or more: one `<meta>` that changed looks like any
+	// other `<meta>` that did, and the group would show only the first one's lines.
+	const hasTags = (h: Hunk) => h.removed.length + h.added.length >= 3 && h.removed.concat(h.added).some((l) => l.startsWith("<"));
+	[...drafts.keys()].sort((a, b) => drafts[b].files.size - drafts[a].files.size || drafts[a].first - drafts[b].first).forEach((i) => {
+		const k = tagKey(drafts[i].hunk);
+		const into = hasTags(drafts[i].hunk) ? byTags.get(k) : undefined;
+		if (into === undefined) { byTags.set(k, i); return; }
+		for (const f of drafts[i].files) drafts[into].files.add(f);
+		drafts[into].match = "tags";
+		merged.set(i, into);
+	});
+	for (const [shape, i] of byShape) if (merged.has(i)) byShape.set(shape, merged.get(i)!);
+	const placed = new Map<FileDiff, Map<Hunk, number>>();
+	const loose = new Map<string, { files: Set<number>; hunk: Hunk; first: number; hunks: Array<[number, Hunk]> }>();
+	changed.forEach((f, i) => {
+		const at = new Map<Hunk, number>();
+		placed.set(f, at);
+		for (const h of f.allHunks ?? f.hunks) {
+			if (!h.removed.length && !h.added.length) continue;
+			const shaped = byShape.get(shapeKey(h));
+			if (shaped !== undefined) { at.set(h, shaped); continue; }
+			const tags = byTags.get(tagKey(h));
+			if (tags !== undefined && hasTags(h)) {
+				drafts[tags].files.add(i);
+				drafts[tags].match = "tags";
+				at.set(h, tags);
+				continue;
+			}
+			const k = tagKey(h);
+			const entry = loose.get(k) ?? { files: new Set<number>(), hunk: h, first: i, hunks: [] };
+			entry.files.add(i);
+			entry.hunks.push([i, h]);
+			loose.set(k, entry);
+		}
+	});
+	for (const e of loose.values()) {
+		if (e.files.size < 2 || !hasTags(e.hunk)) continue;
+		const index = drafts.length;
+		drafts.push({ files: e.files, hunk: e.hunk, first: e.first, match: "tags" });
+		for (const [i, h] of e.hunks) placed.get(changed[i])!.set(h, index);
+	}
+	// The most files first; the groups' places in the report follow. A merged group is gone.
+	const order = drafts.map((_, i) => i).filter((i) => !merged.has(i)).sort((a, b) => drafts[b].files.size - drafts[a].files.size || drafts[a].first - drafts[b].first);
+	const number = new Map(order.map((old, i) => [old, i]));
+	const groups: DiffGroup[] = order.map((i) => {
+		const d = drafts[i];
+		return { urls: [...d.files].sort((a, b) => a - b).map((f) => changed[f].url), same: d.match === "lines", match: d.match, kind: kindOf(d.hunk), hunk: d.hunk };
+	});
 	for (const f of changed) {
+		const at = placed.get(f)!;
 		const all = f.allHunks ?? f.hunks;
-		f.groups = [...new Set(all.map((h) => inGroup.get(shapeKey(h))).filter((g): g is number => g !== undefined))].sort((a, b) => a - b);
-		f.ownHunks = all.filter((h) => !inGroup.has(shapeKey(h)));
+		f.groups = [...new Set(all.map((h) => at.get(h)).filter((g): g is number => g !== undefined).map((g) => number.get(g)!))].sort((a, b) => a - b);
+		f.ownHunks = all.filter((h) => !at.has(h));
 	}
 	return groups;
 }
@@ -960,7 +1023,8 @@ export function diffText(report: DiffReport, limit: number, color: boolean): str
 			const n = group.urls.length;
 			const what = group.urls.every(pageUrl) ? (n === 1 ? "page" : "pages") : n === 1 ? "file" : "files";
 			const some = group.urls.slice(0, 3).join(", ");
-			out += `  ~ ${count(n)} ${what}${group.same ? "" : ", the same but for attribute values"}: ${some}${n > 3 ? ` and ${count(n - 3)} more` : ""}\n`;
+			const alike = group.match === "lines" ? "" : group.match === "values" ? ", the same but for attribute values" : ", the same tags with other attributes";
+			out += `  ~ ${count(n)} ${what}${alike}: ${some}${n > 3 ? ` and ${count(n - 3)} more` : ""}\n`;
 			const lines = group.hunk.removed.length + group.hunk.added.length;
 			out += showLines([group.hunk], lines, "      ");
 		}
@@ -1024,7 +1088,7 @@ export function diffJson(report: DiffReport, limit: number): Record<string, unkn
 		removed: report.removed,
 		changed,
 		// Each change on more than one file, the most files first; a file's `groups` are places in this list.
-		groups: report.groups.map((g) => ({ files: g.urls.length, urls: g.urls, same: g.same, kind: g.kind, hunk: g.hunk })),
+		groups: report.groups.map((g) => ({ files: g.urls.length, urls: g.urls, same: g.same, match: g.match, kind: g.kind, hunk: g.hunk })),
 	};
 }
 

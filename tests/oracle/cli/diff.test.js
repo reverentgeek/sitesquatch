@@ -162,7 +162,7 @@ test("diff_groups_the_same_change_on_several_files", () => {
 	assert.ok(r.log.includes("  ~ 3 pages: /cedar/, /pine/, /spruce/\n      - Built with Eleventy\n      + Built with ssqch\n  And what's left on 1 file:\n  ~ /cedar/  (text)\n      - cedar\n      + cedar, again\n"), r.log);
 	r = ssqch(["diff", "before", "after", "--format", "json"], { cwd: dir });
 	const json = JSON.parse(r.stdout);
-	assert.deepEqual(json.groups, [{ files: 3, urls: ["/cedar/", "/pine/", "/spruce/"], same: true, kind: "text", hunk: { removed: ["Built with Eleventy"], added: ["Built with ssqch"] } }]);
+	assert.deepEqual(json.groups, [{ files: 3, urls: ["/cedar/", "/pine/", "/spruce/"], same: true, match: "lines", kind: "text", hunk: { removed: ["Built with Eleventy"], added: ["Built with ssqch"] } }]);
 	assert.deepEqual(json.changed.map((f) => f.groups), [[0], [0], [0]]);
 	r = ssqch(["diff", "before", "after", "--ungrouped"], { cwd: dir });
 	assert.ok(!r.log.includes("The same change on more than one file") && r.log.includes("  ~ /pine/  (text)\n      - Built with Eleventy\n"), r.log);

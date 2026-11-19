@@ -259,3 +259,25 @@ test("changes_on_several_files_are_grouped", async () => {
 	assert.equal(each.groups.length, 0);
 	assert.ok(diffText(each, 10, false).includes("  ~ /a/  (text and markup)\n      - Built with Eleventy\n"));
 });
+
+// The same tags with other attributes are one change too (the blog's `<picture>`s with another
+// number of widths), when the change is a run of three lines or more; one changed `<meta>` isn't
+// another's.
+test("the_same_tags_with_other_attributes_are_grouped", async () => {
+	const picture = (widths: number[], extra = "") => `<picture>${widths.map((w) => `<source srcset="/img/a-${w}.webp">`).join("")}<img src="/img/a.gif"${extra}></picture>`;
+	const before = build({
+		"a/index.html": `<main>${picture([300, 600])}</main><meta name="description" content="A">`,
+		"b/index.html": `<main>${picture([300, 600, 900])}</main><meta property="og:title" content="B">`,
+		"c/index.html": `<main>${picture([300], " fetchpriority=\"high\"")}</main>`,
+	});
+	const after = build({
+		"a/index.html": "<main><img src=\"/img/a.gif\" width=\"600\"></main><meta name=\"description\" content=\"A, again\">",
+		"b/index.html": "<main><img src=\"/img/a.gif\" width=\"900\"></main><meta property=\"og:title\" content=\"B, again\">",
+		"c/index.html": "<main><img src=\"/img/a.gif\" width=\"300\"></main>",
+	});
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.groups.map((g) => [g.urls, g.match]), [[["/a/", "/b/", "/c/"], "tags"]]);
+	assert.ok(diffText(report, 10, false).includes("  ~ 3 pages, the same tags with other attributes: /a/, /b/, /c/\n"));
+	// The two `<meta>`s are each their page's own.
+	assert.deepEqual(report.changed.map((f) => [f.url, f.ownHunks.length]), [["/a/", 1], ["/b/", 1], ["/c/", 0]]);
+});
