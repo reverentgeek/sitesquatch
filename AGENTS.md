@@ -233,7 +233,7 @@ skips, see `already-tested` in `ci.yml`):
    (`check-ci.yml`); and
    only then publishes the GitHub release, with the npm tarball and its checksum. Then it
    publishes the package to npm (`publish-npm.yml`) and, once npm serves it (npm validates a
-   new version first, which takes minutes, and the `homebrew` job waits for the tarball), the
+   new version first, which takes minutes, and the `homebrew` job waits until `npm view` lists it), the
    formula to `reverentgeek/homebrew-tap` (not for a prerelease, which goes to npm's `next`
    tag). If npm hasn't served it when that job times out, no formula goes out: rerun the job. If
    anything fails before the GitHub release, nothing is published: fix it and tag the fixed
