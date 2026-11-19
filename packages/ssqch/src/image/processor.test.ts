@@ -287,17 +287,17 @@ test("a JPEG that ends too soon is made, padded with grey, as 0.7 made it", asyn
 // after pages that point at its files were written, so the build fails rather than ship them.
 test("a file that fails after its markup is out fails the build, naming the source and the page", async () => {
 	const { root, p } = project({ "src/pics/a.png": await noise(40, 20), "src/pics/b.png": await noise(30, 20) }, { ...defaultImageOptions(), formats: ["webp"], widths: [20] });
-	// The cache folder is a file now: nothing can be written there.
+	// The encodes wait until the cache folder is a file, so nothing they write can be there.
+	// (Removing the folder while they ran raced them: ENOTEMPTY on a slow runner.)
+	const release = p.holdEncodesForTest();
 	const html = p.transformHtml("<img src=\"/pics/a.png\" alt=\"a\">", path.join(root, "src/index.html"), "/");
 	assert.match(html, /<img [^>]*src="\/img\/[\w-]{10}-20\.webp"/);
 	p.transformHtml("<img src=\"/pics/a.png\" alt=\"a\"><img src=\"/pics/b.png\" alt=\"b\">", path.join(root, "src/hike.html"), "/hike/");
 	p.imageUrl("/pics/a.png", 20, "webp");
 	const cache = path.join(root, ".cache/ssqch/img");
-	// The encodes started with the markup (one for each core), and on Windows a folder one is
-	// writing into can't be removed that instant: try again, and what's still encoding then
-	// finds a file where its folder was.
-	fs.rmSync(cache, { recursive: true, maxRetries: 20, retryDelay: 10 });
+	fs.rmSync(cache, { recursive: true, force: true });
 	fs.writeFileSync(cache, "not a folder");
+	release();
 	await assert.rejects(p.settle(), (e: BuildError) => {
 		assert.match(e.message, /^images: encoding \.\/dist\/img\/[\w-]{10}-20\.webp from \.\/src\/pics\/a\.png: .+\. \.\/src\/index\.html and 2 more already point at it, so the build stops here rather than publish tracks that lead nowhere \(and 1 more image that failed\)$/);
 		assert.ok(!e.message.includes("\n"), "one line of libvips's: the rest of its buffer can be another encode's");

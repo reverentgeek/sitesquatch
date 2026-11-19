@@ -431,6 +431,15 @@ class Queue {
 		this.limit = limit;
 	}
 
+	/** For tests: nothing starts until the answer is called, then as many as there are places. */
+	hold(): () => void {
+		this.running += this.limit;
+		return () => {
+			this.running -= this.limit;
+			for (let i = 0; i < this.limit; i++) this.waiting.shift()?.();
+		};
+	}
+
 	/** `task`, once a place is free; `first` goes ahead of everything waiting (the files of a source already decoded, so its pixels are let go of soon). */
 	async run<T>(task: () => Promise<T>, first = false): Promise<T> {
 		if (this.running >= this.limit) await new Promise<void>((resolve) => (first ? this.waiting.unshift(resolve) : this.waiting.push(resolve)));
@@ -488,6 +497,11 @@ export class ImageProcessor {
 	private warned = new Set<string>();
 	private queue = new Queue(ENCODES);
 	private settings: EncodeSettings;
+
+	/** For tests: holds every encode back until the answer is called, so a test can change what they'll find first. */
+	holdEncodesForTest(): () => void {
+		return this.queue.hold();
+	}
 	/** The settings as image names hold them (`legacySettings`). */
 	private named: string;
 
