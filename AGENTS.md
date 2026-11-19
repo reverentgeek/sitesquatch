@@ -2,7 +2,8 @@
 
 SiteSquatch (`ssqch`) is a static site generator: a TypeScript program on Node, in
 `packages/ssqch/`, with ssqch's own Markdown, highlighter, minifier and Sass as `.wasm` files
-built from Rust. The README covers usage and the known gaps; `TODO.md` has the plan.
+built from Rust. The docs are the pages in `site/src/docs/` (sitesquatch.dev/docs, and
+`ssqch docs`), the README is the front page, and `TODO.md` has the plan.
 
 ssqch 0.7, the Rust binary, was removed from `main` before 0.8.0 (it lives on in the
 `release/0.7` branch and the `v0.7.x` tags). What it was is frozen in the oracle (`tests/oracle/`):
@@ -72,9 +73,10 @@ Run from `packages/ssqch/` unless it says otherwise.
   and builds every example with it. "Releasing" has the rest.
 - `packages/ssqch/bundled/` holds what the package reads at run time beside its code:
   `ssqch.d.ts`, the starters (`starter/`, `starter-docs/`) and the completion scripts. Edit them
-  there. The README (`ssqch docs`) and the trailheads (`docs/trailheads/`, `ssqch docs --from`)
-  stay where GitHub shows them: from the source, `src/bundled.ts` reads them there, and
-  `scripts/build.ts` copies them into the package's `bundled/`.
+  there. The docs (`ssqch docs`, and the trailheads for `ssqch docs --from`) are the website's
+  pages in `site/src/docs/`: from the source, `src/bundled.ts` reads them there, and
+  `scripts/build.ts` copies them (the `.md` files and `nav.yml`) into the package's
+  `bundled/docs/`.
 - `node scripts/build-wasm.ts` builds the Rust the Node build runs as WebAssembly: ssqch's
   Markdown and highlighter (`crates/ssqch-markdown`, 0.7's `markdown.rs` and `highlight.rs`,
   moved there) as `wasm/markdown.wasm`, its minifier (`crates/ssqch-minify`, 0.7's
@@ -86,24 +88,26 @@ Run from `packages/ssqch/` unless it says otherwise.
   `rustup target add wasm32-wasip1`.
 - `site/` is sitesquatch.dev, built with this repository's ssqch (TODO.md, section 9, has the
   plan). From `site/`: `node build.ts` builds it and fails on any warning, `node --test
-  "tests/*.test.ts"` checks its colors' contrast, that the README backs its numbers and that the
-  docs pages cover the README, and `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves
-  it. The docs pages are the README's sections and the trailheads, split by
-  `site/lib/split.ts` before each build by the map in `site/lib/docs-map.ts`: a new `##` section
-  in the README needs a place in the map (the tests fail until it has one). After changing a
-  README number the landing page shows (the benchmarks, a known gap), update
-  `site/src/_data/benchmarks.js` or the page; the `check` job in `.github/workflows/site.yml` fails until they agree. That
+  "tests/*.test.ts"` checks its colors' contrast, that the docs back its numbers and that every
+  docs page is in `nav.yml`, and `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves it.
+  The docs pages are the documentation's one source: `site/src/docs/`, in the order
+  `site/src/docs/nav.yml` gives (the sidebar, and the order `ssqch docs` reads them in, the
+  first page as its top section and each other as a `##` section). A new page goes in `nav.yml`
+  (the tests fail until it's there). After changing a number the landing page shows (the
+  benchmarks, a known gap), update `site/src/_data/benchmarks.js` or the page; the `check` job in
+  `.github/workflows/site.yml` fails until they agree. That
   workflow also deploys the site to Cloudflare: a preview for each pull request, and production
   from `main`, so the site can be ahead of npm. Documentation for a feature that's merged and not
   released starts with `> [!NOTE]` and `> **Not released yet.** This ships with the next version
   of ssqch.`, until the release (step 2 of "Releasing").
-- `docs/assets/` holds the drawings (black line art, SVG) for the README, examples, guides and
+- `docs/assets/` holds the drawings (black line art, SVG) for the README, the docs, examples and
   website, and `docs/assets/stickers/` a sticker of each: the drawing on a white shape with a
   border, so it reads on a light page and a dark one. After adding or editing a drawing, run
   `node scripts/stickers.mjs` from the repository root (or name the drawings to make); `HULL` in it
-  lists drawings whose outline is open, like the mountain. The README floats a sticker beside a
-  section with `<img align="right" ... alt="" width="96">` on a line of its own, which
-  `ssqch docs` leaves out.
+  lists drawings whose outline is open, like the mountain. The README and the docs pages float a
+  sticker beside a section with `<img align="right" ... alt="" width="96">` on a line of its own
+  (a docs page's `src` is relative, `../../../docs/assets/stickers/...`, which the site points at
+  its copy), which `ssqch docs` leaves out.
 - Plugins written in Rust are `.wasm` files built with `crates/ssqch-plugin` (ABI v1, its
   README), loaded by `src/rust-plugin.ts` from a config's `{ name, rust: { wasm, options } }`.
 - The Rust, from the repository's root: `cargo test --workspace` runs the `.wasm` crates', the
@@ -169,7 +173,7 @@ Run from `packages/ssqch/` unless it says otherwise.
   that isn't a literal breaks in it. A new module needs its exports in `ssqch.d.ts` and an entry
   in `BUILT_IN`; a bundled library that looks for files beside itself goes in `KNOWN_LOOKUPS`.
 - **Style:** tabs, double quotes and semicolons, as the rest of the repository's JavaScript;
-  long lines are fine. Comments say why, in the voice of the README.
+  long lines are fine. Comments say why, in the voice of the docs.
 
 ## Releasing
 
@@ -204,11 +208,12 @@ skips, see `already-tested` in `ci.yml`):
    version has no section, which becomes the release's notes.
 2. Set `version` in `packages/ssqch/package.json` to match (and run `npm install` there, so
    `package-lock.json` has it), and the workspace's `version` in `Cargo.toml` (`ssqch-plugin` is
-   published at ssqch's version). Update the pinned versions in the README too
-   (`ssqch@<version>` in Install, the GitHub Actions example and GitHub Pages, and the Netlify
-   section's `ssqch@<version>` and `SSQCH_VERSION`). Take out the "Not released yet" notes the
-   release ships (`node scripts/unreleased-notes.mjs` lists them); the workflow refuses a tag
-   while one is left. Write the release's entry for the site's changelog, which is for people:
+   published at ssqch's version). Update the pinned versions in the docs too
+   (`site/src/docs/netlify.md`'s `ssqch@<version>` and `SSQCH_VERSION`, and any other
+   `ssqch@<version>`: `git grep -n "ssqch@0\." site/src/docs`). Take out the "Not released
+   yet" notes the release ships (`node scripts/unreleased-notes.mjs` lists them); the workflow
+   refuses a tag while one is left. Write the release's entry for the site's changelog, which is
+   for people:
    for a minor release, `site/src/changelog/<major>.<minor>.md` (the headlines, "What you might
    need to change" for every Breaking item, about 250 words, numbers only from `CHANGELOG.md`; a
    first draft with the `write` skill, for the owner to edit), and for a patch release, its
@@ -267,20 +272,25 @@ held back.
 
 - Commit subjects are short, imperative, in sentence case (`Fix unstyled pages when serving
   after a production build`).
-- The README ships with the package for `ssqch docs` (as `bundled/README.md`), which answers a name
-  with the table row or list item that starts with it in backticks. A new config option, module
-  export or template function needs one, and a description where it's defined (`ssqch.d.ts`, or
-  `BUILTIN_FILTERS` in `src/filters.ts`); `docs_answer_for_every_name` checks.
+- The docs pages ship with the package for `ssqch docs` (as `bundled/docs/`), which answers a
+  name with the table row or list item that starts with it in backticks. A new config option,
+  module export or template function needs one, on the page that explains it, and a description
+  where it's defined (`ssqch.d.ts`, or `BUILTIN_FILTERS` in `src/filters.ts`);
+  `docs_answer_for_every_name` checks. Pages are plain Markdown (no template code runs in them),
+  link each other with relative `.md` links (`content-schemas.md#types`), and use GitHub's
+  `> [!NOTE]` alerts for callouts, so GitHub, `ssqch docs` and the site show the same text.
 - Every new feature ships discoverable, with enough documentation that another coding agent could
   understand it and use it without reading the code: what it's for, its exact shape (names,
   arguments, return values), an example that works, what happens when it's used wrong, and how
-  it interacts with what's already there. At minimum: a README entry that `ssqch docs <name>`
+  it interacts with what's already there. At minimum: an entry in the docs that `ssqch docs <name>`
   finds (check it answers with the full explanation, not only a table row, and add the query to
   `docs_answer_for_every_name`), types and descriptions where they're defined (`ssqch.d.ts`,
   `BUILTIN_FILTERS`), and a CHANGELOG entry. Then add a task to `TODO.md`, in the feature's
-  section, to document it fully: a how-to or worked example, the trailheads in `docs/trailheads/`
+  section, to document it fully: a how-to or worked example, the trailheads in
+  `site/src/docs/trailheads/`
   and starters that could use it, and the blog or examples that could show it off.
-- README paragraphs, list items and callouts are one line each (no hard wrapping). TODO and
+- Docs pages' and the README's paragraphs, list items and callouts are one line each (no hard
+  wrapping). TODO and
   CHANGELOG prose wraps at 100 columns.
 - Error messages name the file and what went wrong (`ssqch.config.js: too many pine cones`).
 

@@ -2,7 +2,7 @@
 layout: base.jinja
 docs: true
 ---
-{#- A docs page: the sidebar (from src/_data/nav.json, which lib/split.ts writes from lib/docs-map.ts),
+{#- A docs page: the sidebar (src/_data/nav.js, from src/docs/nav.yml),
     the page with its breadcrumbs, the strip that says where else it is, and previous and next as
     arrow signs, then its table of contents. -#}
 <div class="docs">
@@ -20,7 +20,7 @@ docs: true
 		<div class="page-tools">
 			<p class="cli"><span>In your terminal</span> <code>{{ command }}</code></p>
 			<p class="links"><a href="{{ page.url | markdownCopy }}">View as Markdown</a>
-			{%- if source %} <a href="{{ site.repo }}/blob/main/{{ source }}{% if sourceLine > 1 %}#L{{ sourceLine }}{% endif %}">Edit on GitHub</a>{% endif %}</p>
+			{%- if source %} <a href="{{ site.repo }}/blob/main/{{ source }}">Edit on GitHub</a>{% endif %}</p>
 		</div>
 		<div data-copy>
 		{{ content }}

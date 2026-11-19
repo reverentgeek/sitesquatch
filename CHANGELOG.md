@@ -11,6 +11,21 @@ where that version matches.
 
 ## Unreleased
 
+### Breaking
+
+- `ssqch docs` reads the docs pages, not the README: the documentation moved into pages of its
+  own (`site/src/docs/` in the repository, `bundled/docs/` in the package), which sitesquatch.dev
+  renders and GitHub shows, and the README is a short front page. Every name still answers with
+  the same section and the same text, with three differences. A page that was a `###` section of
+  the README (Markdown, Built-in plugins, Netlify and the rest) is a `##` section, so it's a topic
+  on `ssqch docs`' card. Links in an answer are the pages' relative `.md` links
+  (`content-schemas.md`), not the README's `#anchors`. And "Working on SiteSquatch" isn't in the
+  docs: it's `CONTRIBUTING.md`. `ssqch docs --from <generator>` names the trailhead's page on
+  sitesquatch.dev (`The trailhead (https://sitesquatch.dev/docs/trailheads/from-eleventy/):`), and
+  its JSON's `trailhead.file` is `site/src/docs/trailheads/from-eleventy.md`. The dev server's
+  message about a linked file nothing wrote ends with `` (`ssqch docs "CSS and JavaScript"`) ``
+  where it said to see the README. No site has to change; a script that reads these does.
+
 ### Changed
 
 - ssqch has a website: [sitesquatch.dev](https://sitesquatch.dev), with the documentation, the

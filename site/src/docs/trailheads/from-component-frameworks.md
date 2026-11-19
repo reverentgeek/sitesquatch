@@ -1,5 +1,9 @@
-# Trailhead: moving from Astro, VitePress, Next.js or Gatsby
-
+---
+title: "Trailhead: moving from Astro, VitePress, Next.js or Gatsby"
+navTitle: "From Astro, VitePress, Next.js, Gatsby"
+description: "These are component frameworks."
+command: "ssqch docs --from astro"
+---
 These are component frameworks: a page is a tree of components, rendered on a server or at build time and, for some of them, run again in the browser. ssqch is a template-and-Markdown generator that ships HTML and only the JavaScript you write. So this move isn't a port of the framework. It's a sort of what you have into three piles:
 
 1. **Content** (Markdown, front matter, data files): moves as it is.
@@ -8,7 +12,7 @@ These are component frameworks: a page is a tree of components, rendered on a se
 
 On the sites studied for this guide, most components were in the second pile: about 80% of getbootstrap.com's (Astro) and 37% of vuejs.org's (VitePress). A site whose pages are mostly the third pile (react.dev, with a live editor in most pages) is an app, and should stay one.
 
-The [`component-docs`](../../examples/sites/component-docs/) example is distilled from getbootstrap.com: components in place of MDX, live examples with their source, and values read from Sass files. [`islands`](../../examples/sites/islands/) shows interactive parts as custom elements.
+The [`component-docs`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/component-docs/) example is distilled from getbootstrap.com: components in place of MDX, live examples with their source, and values read from Sass files. [`islands`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/islands/) shows interactive parts as custom elements.
 
 ## Is ssqch a fit?
 

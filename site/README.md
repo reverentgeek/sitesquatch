@@ -6,7 +6,7 @@ From this folder, with `npm ci` already run in `packages/ssqch`:
 
 - `node build.ts` builds it for production into `dist/`, and fails on any warning as well as any error: a broken link, or a file over its budget (`budgets` in `ssqch.config.js`: no page gets JavaScript it doesn't need).
 - `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves it with live reload.
-- `node --test "tests/*.test.ts"` checks it: every pair of text and background in both modes has enough contrast (`tests/contrast.test.ts`, from the tokens in `src/assets/site.css`), the README backs every number on the landing page (`tests/numbers.test.ts`), and the docs pages cover the README (`tests/docs.test.ts`, below).
+- `node --test "tests/*.test.ts"` checks it: every pair of text and background in both modes has enough contrast (`tests/contrast.test.ts`, from the tokens in `src/assets/site.css`), the docs back every number on the landing page (`tests/numbers.test.ts`), and the docs pages are all in `nav.yml` and answer `ssqch docs` (`tests/docs.test.ts`, below).
 - `../packages/ssqch/node_modules/.bin/tsc -p tsconfig.json` type-checks the build script and the tests.
 
 `.github/workflows/site.yml` runs all four on every pull request and push to `main`, and deploys what it built.
@@ -24,13 +24,14 @@ To see the build as Cloudflare serves it, without an account: `node build.ts`, t
 
 ## The docs
 
-The README is the one source of the documentation until the docs move into pages of their own (TODO.md, section 9, "The docs move"). Before each build, `lib/split.ts` (the config's `beforeBuild`) splits it into pages in `src/docs/` by the map in `lib/docs-map.ts`, and copies the trailheads in from `docs/trailheads/`. `src/docs/` and `src/_data/nav.json` are written by it and aren't committed: edit the README or a trailhead, and `ssqch serve` (which watches both) shows the change.
+The docs pages in `src/docs/` are the documentation's one source: the site renders them, ssqch's package carries them for `ssqch docs` (`packages/ssqch/src/bundled.ts`), and GitHub shows them as files. `src/docs/nav.yml` gives their order: the sidebar's groups and pages, and the order `ssqch docs` reads them in (the first page as its top section, each other page as a `##` section with its headings one level down). `lib/docs.ts` reads them for the site.
 
-- **The map** is the sidebar's groups and pages, in order. A page is one or more README sections by heading, each with the sections under it that no other page takes. A new `##` section in the README needs a place in the map (or in `NOT_ON_THE_SITE`), and `tests/docs.test.ts` fails until it has one.
-- **Links** are rewritten for the site: a link to one of the README's sections goes to its page and anchor, a trailhead to its page, and any other file of the repository to GitHub. The build's link checker checks every one, anchors included.
-- **Each page says where else it is:** the `ssqch docs` command that prints it (tested to print that section), and "Edit on GitHub" at its line of the README.
+- **A page** is plain Markdown with front matter: `title` (and `navTitle` for a shorter sidebar name, `description`, and `command` when the `ssqch docs` command that prints it isn't `ssqch docs "<title>"`). No template language runs in it (`render: md`, from `src/docs/docs.data.js`), and callouts are GitHub's `> [!NOTE]` alerts, so GitHub, `ssqch docs` and the site show the same text.
+- **Links** between pages are relative `.md` links (`content-schemas.md#types`), which GitHub follows; the link render hook (`src/_includes/hooks/link.jinja`) turns them into page URLs, and the build's link checker checks every one, anchors included. A sticker's `src` is a relative path into `docs/assets/`, which the config's `stickers` transform points at the site's copy.
+- **Each page says where else it is:** the `ssqch docs` command that prints it (tested to print that page), "View as Markdown", and "Edit on GitHub" at its file.
 - **The reference** (`/docs/reference/`) is every name `ssqch docs` lists with its one line and the page that explains it, from `ssqch docs`'s own module (`src/_data/reference.js`), so the two can't disagree.
 - **Search** is Pagefind, pinned in `build.ts`, which indexes the built docs after ssqch's build (`SEARCH=0` skips it). The header's `<site-search>` (`src/elements/site-search.js`, by `elementsPlugin()`) loads Pagefind's script and index the first time someone opens it, with the button or <kbd>/</kbd>. Without JavaScript it's a link to the reference.
+- **Tests** (`tests/docs.test.ts`): `nav.yml` lists every page once, each page's `ssqch docs` command prints it, `ssqch docs --from` prints each trailhead, every name `ssqch capabilities` lists is on the reference, and the README's links to the docs go to pages that exist.
 
 ## The changelog
 
@@ -40,7 +41,7 @@ An entry's front matter is its `title`, `release` (the version it starts with), 
 
 ## What agents read
 
-`lib/agents.ts` writes, before each build, into `generated/` (not committed, copied into the site by `passthrough`): each docs page as Markdown at `/docs/<page>.md` and `/docs/<page>/index.md`, `/llms.txt` and `/llms-full.txt`. A copy is the page's own Markdown from `lib/split.ts`, its title as a heading and its links to docs pages pointing at their copies, with nothing of the page's chrome; each page's `<head>` links its copy and `/llms.txt`, and "View as Markdown" is in the strip under its title. On Cloudflare, `worker.js` runs for `/docs` and `/docs/*` only and answers a request that asks for `text/markdown` (ranked at least as high as `text/html`) with the copy, and `Vary: Accept`. `tests/agents.test.ts` reads the built site: every docs page has both copies, `/llms.txt` lists exactly the docs pages, and each copy, rendered, has the same text as its page.
+`lib/agents.ts` writes, before each build, into `generated/` (not committed, copied into the site by `passthrough`): each docs page as Markdown at `/docs/<page>.md` and `/docs/<page>/index.md`, `/llms.txt` and `/llms-full.txt`. A copy is the page's own file, its title as a heading and its links to docs pages pointing at their copies, with nothing of the page's chrome; each page's `<head>` links its copy and `/llms.txt`, and "View as Markdown" is in the strip under its title. On Cloudflare, `worker.js` runs for `/docs` and `/docs/*` only and answers a request that asks for `text/markdown` (ranked at least as high as `text/html`) with the copy, and `Vary: Accept`. `tests/agents.test.ts` reads the built site: every docs page has both copies, `/llms.txt` lists exactly the docs pages, and each copy, rendered, has the same text as its page.
 
 ## The examples
 
@@ -49,9 +50,9 @@ An entry's front matter is its `title`, `release` (the version it starts with), 
 ## What's where
 
 - `src/index.jinja` is the landing page, `src/404.jinja` the 404 page, and `src/docs-reference.jinja` the reference. `src/_includes/base.jinja` is the layout, and `src/_includes/doc.jinja` the docs pages' (the sidebar, the table of contents, the strip under the title, previous and next).
-- `src/_data/` holds what the pages list, so a list has one source: `examples.yml` (the example sites, and `seeIt.js` from it: which examples show which docs page), `trailheads.yml`, `benchmarks.js` (the mileage boards, each with the README's words for it), `links.yml` (where the landing page's links to the docs go), `latest.js` (the latest release and the Node it needs, from `packages/ssqch/package.json`) and `drawings.js` (each drawing's size, from its viewBox).
+- `src/_data/` holds what the pages list, so a list has one source: `examples.yml` (the example sites, and `seeIt.js` from it: which examples show which docs page), `trailheads.yml`, `benchmarks.js` (the mileage boards, each with the docs' words for it), `links.yml` (where the landing page's links to the docs go), `latest.js` (the latest release and the Node it needs, from `packages/ssqch/package.json`) and `drawings.js` (each drawing's size, from its viewBox).
 - The drawings aren't copied in: `passthrough` takes them from `docs/assets/`, where the README's are.
-- Every terminal on the landing page is ssqch's own output from a real run, with `...` where lines were left out. The `init` and `serve` samples are a run of the starter with ssqch 0.9.0; the schema error and the "No differences" line are the README's.
+- Every terminal on the landing page is ssqch's own output from a real run, with `...` where lines were left out. The `init` and `serve` samples are a run of the starter with ssqch 0.9.0; the schema error and the "No differences" line are the docs'.
 
 ## The fonts
 

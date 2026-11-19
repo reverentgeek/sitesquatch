@@ -155,7 +155,8 @@ test("serve_says_when_a_linked_file_is_missing", async () => {
 			const response = await httpGet(port, `/__ssqch/missing?path=${p}`);
 			try { return JSON.parse(body(response)); } catch (e) { throw new Error(`${e.message}: ${response}`); }
 		};
-		const said = "/assets/app.css is linked but nothing wrote it to _site. If a tool makes it, run its watcher with `serve.run` (see \"CSS and JavaScript\" in the README)";
+		// DELIBERATE (0.10): the docs are pages of their own now; the message names the command that prints the section.
+		const said = "/assets/app.css is linked but nothing wrote it to _site. If a tool makes it, run its watcher with `serve.run` (`ssqch docs \"CSS and JavaScript\"`)";
 		assert.equal((await ask("%2Fassets%2Fapp.css")).message, said);
 		await ask("%2Fassets%2Fapp.css");
 		// Said once, however many pages ask.

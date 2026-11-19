@@ -1,5 +1,8 @@
-# Trailhead: moving from Jekyll
-
+---
+title: "Trailhead: moving from Jekyll"
+navTitle: "From Jekyll"
+description: "Jekyll sites move well."
+---
 Jekyll sites move well: Liquid runs as it is, `_layouts/`, `_includes/` and `_data/` keep their names, and `redirect_from`, `relative_url`, `markdownify` and `jsonify` work. What takes the time is the Ruby around the templates (Jekyll's `page` and `site`, its plugins) and kramdown, Jekyll's Markdown.
 
 opensource.guide (382 pages in 29 languages, on GitHub Pages' gem) was moved this way as a study: the same 478 files, 95% of pages with the same text, and builds 5.9 times faster. Two thirds of the work was kramdown's `markdown="1"`, which ssqch doesn't read yet (below).
@@ -49,7 +52,7 @@ export default defineConfig({
 - **Plugin tags** (`{% seo %}`, `{% feed_meta %}`): the config's functions are Liquid tags, so each is a function in `filters` that returns the HTML (`{% seo title=false %}` calls `seo({ title: false })`), or an include. `ssqch docs seo` has a starting point.
 - **Filters:** `relative_url`, `markdownify` and `jsonify` work, and `where` is fast. Math, `split` and blocks that only `assign` behave as in Ruby's Liquid (`"r>" | times: 1` is 0, which jekyll-toc depends on). Jekyll's own `sort` differs from Liquid's: it sorts a hash into `[key, value]` pairs and puts pages missing the property first, where ssqch's `sort` (Liquid's) does neither, so pass a list from the config, or `sort` then handle the missing ones. A whole float prints as `5` (Ruby writes `5.0`).
 - **A table of contents:** `toc(page.headings, { class: "section-nav", itemClass: "toc-entry toc-h{level}" })` writes jekyll-toc's markup, so its CSS keeps working (`{{ page.headings | toc: class: "section-nav" }}` in Liquid). It reads the page's headings after it renders, so it goes in the layout.
-- **Files with front matter:** Jekyll renders any file that starts with `---`. In ssqch a `.js` (or `.txt`) file needs an engine: `engines: { js: (s) => s }`, `"js"` in `templateFormats`, and `"render": "liquid,js"` with a `.js` permalink in that folder's directory data (the README's "Text files with front matter").
+- **Files with front matter:** Jekyll renders any file that starts with `---`. In ssqch a `.js` (or `.txt`) file needs an engine: `engines: { js: (s) => s }`, `"js"` in `templateFormats`, and `"render": "liquid,js"` with a `.js` permalink in that folder's directory data ("Text files with front matter" in [Templates and data](../templates.md)).
 
 ## Plugins
 

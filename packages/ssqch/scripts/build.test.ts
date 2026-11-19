@@ -31,7 +31,7 @@ test("every module in ssqch.d.ts has its source", () => {
 	assert.ok(specifiers.includes("ssqch") && specifiers.includes("ssqch/image") && specifiers.includes("ssqch/sass"), specifiers.join(", "));
 });
 
-test("the built package runs, and finds its .wasm, its README and its starters", async () => {
+test("the built package runs, and finds its .wasm, its docs and its starters", async () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-build-test-"));
 	try {
 		const out = path.join(dir, "package");
@@ -40,7 +40,7 @@ test("the built package runs, and finds its .wasm, its README and its starters",
 		assert.equal(manifest.private, true);
 		assert.deepEqual(Object.keys(manifest.dependencies), ["sharp"]);
 		assert.equal(manifest.exports["./image"].default, "./lib/image.js");
-		for (const file of ["bin/ssqch.js", "lib/cli.js", "lib/ssqch.js", "wasm/markdown.wasm", "bundled/README.md", "src/serve/live.js", "types/index.d.ts"]) assert.ok(fs.existsSync(path.join(out, file)), `no ${file}`);
+		for (const file of ["bin/ssqch.js", "lib/cli.js", "lib/ssqch.js", "wasm/markdown.wasm", "bundled/docs/nav.yml", "bundled/docs/install.md", "bundled/docs/trailheads/from-eleventy.md", "src/serve/live.js", "types/index.d.ts"]) assert.ok(fs.existsSync(path.join(out, file)), `no ${file}`);
 		// A module has ssqch.d.ts's exports, not its own helpers.
 		assert.deepEqual(Object.keys(await import(pathToFileURL(path.join(out, "lib/links.js")).href)), ["linksPlugin"]);
 

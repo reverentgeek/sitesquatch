@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { REPO, SITE } from "../lib/split.ts";
+import { REPO, SITE } from "../lib/docs.ts";
 
 // ssqch's own YAML library, from its package.
 const yaml = createRequire(path.join(REPO, "packages", "ssqch", "package.json"))("js-yaml");

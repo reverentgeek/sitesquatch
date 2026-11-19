@@ -1,6 +1,6 @@
-// The README backs every number on the landing page. The benchmarks come from
-// src/_data/benchmarks.js, whose `backedBy` phrases have to be in the README word for word; the
-// rest of the page's claims are listed here with the README's words for each. When the README's
+// The docs back every number on the landing page. The benchmarks come from
+// src/_data/benchmarks.js, whose `backedBy` phrases have to be in the docs word for word; the
+// rest of the page's claims are listed here with the docs' words for each. When the docs'
 // numbers change, this fails until the page says the same.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,19 +11,21 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import benchmarks from "../src/_data/benchmarks.js";
 import latest from "../src/_data/latest.js";
+import { docsText } from "../../packages/ssqch/src/commands/docs.ts";
 
 const repo = new URL("../../", import.meta.url);
-const readme = readFileSync(new URL("README.md", repo), "utf8");
+// The docs as `ssqch docs` reads them: each page a `## <title>` section.
+const readme = docsText();
 const page = readFileSync(new URL("../src/index.jinja", import.meta.url), "utf8");
 
 function section(heading: string) {
 	const start = readme.indexOf(`\n## ${heading}\n`);
-	assert.notEqual(start, -1, `README.md has no "## ${heading}" section`);
+	assert.notEqual(start, -1, `the docs have no "${heading}" page`);
 	const end = readme.indexOf("\n## ", start + 1);
 	return readme.slice(start, end === -1 ? undefined : end);
 }
 
-test("each mileage board's figure and its conditions are in the README's Benchmarks", () => {
+test("each mileage board's figure and its conditions are in the docs' Benchmarks", () => {
 	const text = section("Benchmarks");
 	for (const board of benchmarks.boards) {
 		assert.ok(board.says.length > 0);
@@ -33,12 +35,12 @@ test("each mileage board's figure and its conditions are in the README's Benchma
 	for (const phrase of benchmarks.conditionsBackedBy) assert.ok(text.includes(phrase), `Benchmarks doesn't say "${phrase}"`);
 });
 
-test("the Node version the page asks for is the package's and the README's", () => {
+test("the Node version the page asks for is the package's and the docs'", () => {
 	assert.match(latest.node, /^\d+\.\d+$/);
 	assert.ok(readme.includes(`[Node.js](https://nodejs.org) ${latest.node} or newer`), `Install doesn't ask for Node.js ${latest.node}`);
 });
 
-// [what the landing page says, what the README says]
+// [what the landing page says, what the docs say]
 const claims: [string, string, string][] = [
 	["Known gaps", "about 0.9 s after one edit on a 10,000-page site", "a 10,000-page site takes about 0.9 s"],
 	["Known gaps", "listens on <code>127.0.0.1</code> only. There's no <code>--host</code>", "it listens on `127.0.0.1` only (no `--host`)"],
@@ -49,10 +51,10 @@ const claims: [string, string, string][] = [
 	["Field guide: build your first site", "five posts, a 404 page", "five posts, a 404 page"],
 ];
 
-test("the page's other claims are the README's", () => {
+test("the page's other claims are the docs'", () => {
 	for (const [heading, onPage, inReadme] of claims) {
 		assert.ok(page.includes(onPage), `the landing page no longer says "${onPage}": update this test`);
-		assert.ok(section(heading).includes(inReadme), `README's "${heading}" doesn't say "${inReadme}"`);
+		assert.ok(section(heading).includes(inReadme), `the docs' "${heading}" doesn't say "${inReadme}"`);
 	}
 });
 

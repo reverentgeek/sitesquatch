@@ -8,7 +8,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { markdown } from "../../packages/ssqch/src/exports/ssqch.ts";
 import { copyOf } from "../lib/agents.ts";
-import { SITE } from "../lib/split.ts";
+import { SITE } from "../lib/docs.ts";
 
 const dist = path.join(SITE, "dist");
 const built = existsSync(path.join(dist, "llms.txt"));

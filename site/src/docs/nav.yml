@@ -1,0 +1,50 @@
+# The docs' order: the site's sidebar, and the order `ssqch docs` reads the pages in (a page that
+# isn't listed is on the site but not in `ssqch docs`). Each is a page's file, or a page the site
+# makes itself.
+- title: Start here
+  pages:
+    - index.md
+    - install.md
+    - field-guide.md
+- title: Build
+  pages:
+    - configuring.md
+    - data-files.md
+    - plugins.md
+    - templates.md
+    - markdown.md
+    - template-languages.md
+    - css-and-javascript.md
+    - multilingual.md
+    - seo.md
+    - themes.md
+    - new-pages.md
+- title: Check
+  pages:
+    - content-schemas.md
+    - where-values-come-from.md
+    - build-summary.md
+    - comparing-builds.md
+    - footprint.md
+- title: Ship
+  pages:
+    - deploying.md
+    - netlify.md
+    - github-pages.md
+    - agents.md
+    - rust-plugins.md
+- title: Trailheads
+  pages:
+    - trailheads.md
+    - trailheads/from-eleventy.md
+    - trailheads/from-jekyll.md
+    - trailheads/from-zola.md
+    - trailheads/from-docusaurus.md
+    - trailheads/from-mkdocs.md
+    - trailheads/from-hexo.md
+    - trailheads/from-component-frameworks.md
+- title: Reference
+  pages:
+    - { title: "Every name", url: /docs/reference/ }
+    - benchmarks.md
+    - known-gaps.md

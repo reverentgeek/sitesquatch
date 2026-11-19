@@ -40,7 +40,7 @@ test("docs_answer_for_every_name", () => {
 		}
 	}
 
-	// Each name has an answer: a command its --help, the rest a part of the README that writes it as code.
+	// Each name has an answer: a command its --help, the rest a part of the docs that writes it as code.
 	for (const command of names(card.commands, "name")) {
 		const a = json([command]);
 		assert.ok(typeof a.help === "string" && a.help.includes(`Usage: ssqch ${command}`), `${command}: ${JSON.stringify(a)}`);
@@ -50,7 +50,7 @@ test("docs_answer_for_every_name", () => {
 	for (const name of documented) {
 		const a = json([name]);
 		assert.ok(a.found === true && Array.isArray(a.names) && a.names.length > 0, `${name}: ${JSON.stringify(a)}`);
-		assert.ok(typeof a.section?.text === "string" && a.section.text.includes(`\`${name}`), `the README doesn't document \`${name}\`: ${JSON.stringify(a)}`);
+		assert.ok(typeof a.section?.text === "string" && a.section.text.includes(`\`${name}`), `the docs don't document \`${name}\`: ${JSON.stringify(a)}`);
 	}
 
 	// Another generator's word says ssqch's, and its hint's `More:` answers.
@@ -117,12 +117,14 @@ test("docs_answer_for_every_name", () => {
 	assert.ok(!r.ok && r.log.includes("in the docs. Try `ssqch docs base`, or `ssqch docs` for everything."), r.log);
 
 	// Every generator that has a row or a config ssqch recognizes has field notes (see the top of this file).
+	// DELIBERATE (0.10): the docs are sitesquatch.dev's pages (site/src/docs/), so a trailhead is
+	// named by its page there, not a path in the repository.
 	r = ssqch(["docs", "--from", "eleventy"]);
-	assert.ok(r.ok && r.log.includes("\n  pathPrefix ") && r.log.includes("The trailhead (docs/trailheads/from-eleventy.md):\n\n# Trailhead: moving from Eleventy"), r.log);
+	assert.ok(r.ok && r.log.includes("\n  pathPrefix ") && r.log.includes("The trailhead (https://sitesquatch.dev/docs/trailheads/from-eleventy/):\n\n# Trailhead: moving from Eleventy"), r.log);
 	r = ssqch(["docs", "--from", "hugoo"]);
 	// Jekyll's trailhead (2026-11-18, from the opensource.guide study).
 	const jekyll = ssqch(["docs", "--from", "jekyll"]);
-	assert.ok(jekyll.ok && jekyll.log.includes("The trailhead (docs/trailheads/from-jekyll.md):\n\n# Trailhead: moving from Jekyll"), jekyll.log);
+	assert.ok(jekyll.ok && jekyll.log.includes("The trailhead (https://sitesquatch.dev/docs/trailheads/from-jekyll/):\n\n# Trailhead: moving from Jekyll"), jekyll.log);
 	assert.ok(!r.ok && r.log.includes("--from hugoo: no trailhead for that generator (did you mean `hugo`?)"), r.log);
 });
 

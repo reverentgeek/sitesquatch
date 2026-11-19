@@ -1,6 +1,6 @@
-// `ssqch docs`: the documentation of the installed version, from the package. The README is
-// bundled (`bundled/README.md` in the package, the repository's README from the source), so an answer always matches the version, with no network and no
-// README on disk. `ssqch docs` alone is a card: every command, config option, template function
+// `ssqch docs`: the documentation of the installed version, from the package. The docs are the
+// website's pages (`site/src/docs/` in the repository, `bundled/docs/` in the package; their order
+// is `nav.yml`), read as one text, so an answer always matches the version, with no network. `ssqch docs` alone is a card: every command, config option, template function
 // and module export, one line each. `ssqch docs <name>` prints the section that answers, found
 // by name (`base`, `imagePlugin`, `toc`), by another generator's word (`pathPrefix`, which says
 // ssqch's), by heading (`content schemas`), or by the text. `--from <generator>` is the card for
@@ -10,6 +10,7 @@
 // options and module exports, the command line's grammar for commands, and `BUILTIN_FILTERS`
 // for template functions. A test checks that every name `ssqch capabilities` lists has a
 // description and a section. Ported from `crates/ssqch/src/docs.rs`.
+import yaml from "js-yaml";
 import { longHelp } from "../args.ts";
 import type { Grammar } from "../args.ts";
 import { bundled, bundledNames, types } from "../bundled.ts";
@@ -23,9 +24,46 @@ import { VERSION } from "../version.ts";
 import { modules } from "./capabilities.ts";
 import { agentsMd } from "./init.ts";
 
-const GUIDES_URL = "https://github.com/reverentgeek/sitesquatch/blob";
+/** Where the docs are on the web: sitesquatch.dev, which follows `main`. */
+const SITE_URL = "https://sitesquatch.dev";
 
-/** A part of the README: a heading and the text under it, up to the next heading. */
+/** A docs page's file: its front matter's `title`, and its Markdown. */
+export function docsPage(text: string): { title: string; body: string } {
+	const front = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
+	const data = front ? (yaml.load(front[1]) as Record<string, unknown> | null) ?? {} : {};
+	return { title: String(data.title ?? ""), body: front ? text.slice(front[0].length) : text };
+}
+
+/** `body` with every heading one level down (`##` is `###`), except in code blocks. */
+function headingsDown(body: string): string {
+	let fence: string | null = null;
+	return body.split(/\r?\n/).map((line) => {
+		const trimmed = line.trimStart();
+		const marker = ["```", "~~~"].find((m) => trimmed.startsWith(m));
+		if (marker !== undefined) {
+			if (fence === null) fence = marker;
+			else if (fence === marker && trimmed.trimEnd().replace(new RegExp(`^\\${marker[0]}+`), "") === "") fence = null;
+			return line;
+		}
+		return fence === null && /^#{1,5} /.test(line) ? `#${line}` : line;
+	}).join("\n");
+}
+
+/**
+ * The docs as one text, in `nav.yml`'s order: the front page as `# <title>`, and each other page
+ * as `## <title>` with its own headings one level down, so a page's sections are inside it. The
+ * trailheads (`trailheads/`) aren't in it: `--from` prints them.
+ */
+export function docsText(): string {
+	const nav = (yaml.load(bundled("docs/nav.yml")) as Array<{ pages: unknown[] }> | null) ?? [];
+	const files = nav.flatMap((group) => group.pages).filter((p): p is string => typeof p === "string" && !p.startsWith("trailheads/"));
+	return files.map((file, i) => {
+		const { title, body } = docsPage(bundled(`docs/${file}`));
+		return i === 0 ? `# ${title}\n\n${body.trim()}\n` : `## ${title}\n\n${headingsDown(body).trim()}\n`;
+	}).join("\n");
+}
+
+/** A part of the docs: a heading and the text under it, up to the next heading. */
 export interface Section {
 	level: number;
 	title: string;
@@ -38,8 +76,8 @@ const ALNUM = /[\p{Alphabetic}\p{N}]/u;
 /** A line that's only an HTML image, perhaps in a `<p>` of its own. */
 const IMAGE_LINE = /^\s*(<p\b[^>]*>\s*)?<img\b[^>]*>(\s*<\/p>)?\s*$/i;
 
-/** The README's sections, in order. `#` lines in code blocks aren't headings, and a line that's only an image is left out. */
-export function sections(readme: string = bundled("README.md")): Section[] {
+/** The docs' sections, in order. `#` lines in code blocks aren't headings, and a line that's only an image is left out. */
+export function sections(readme: string = docsText()): Section[] {
 	const out: Section[] = [];
 	let fence: string | null = null;
 	for (const line of readme.split(/\r?\n/)) {
@@ -50,7 +88,7 @@ export function sections(readme: string = bundled("README.md")): Section[] {
 			// A closing fence is the marker alone; an opening one can name a language.
 			else if (fence === marker && trimmed.trimEnd().replace(new RegExp(`^\\${marker[0]}+`), "") === "") fence = null;
 		}
-		// A line that's only an image (the README's stickers) is for the page, not the terminal.
+		// A line that's only an image (the docs' stickers) is for the page, not the terminal.
 		if (fence === null && marker === undefined && IMAGE_LINE.test(line)) continue;
 		const hashes = line.length - line.replace(/^#+/, "").length;
 		if (fence === null && marker === undefined && hashes >= 1 && hashes <= 4 && line[hashes] === " ") {
@@ -522,13 +560,17 @@ function nextStep(grammar: Grammar, all: Section[], known: Name[], query: string
 /** The guide for `generator`: its file name, and its text. */
 function guide(generator: string): { file: string; text: string | null } | undefined {
 	const configured = equivalents.OTHER_CONFIGS.find(([, g]) => g === generator)?.[3] ?? null;
-	const available = bundledNames("trailheads");
+	const available = bundledNames("docs/trailheads");
 	const file = configured ?? (available.includes(`from-${generator.toLowerCase()}.md`) ? `from-${generator.toLowerCase()}.md` : undefined);
 	if (file === undefined) return undefined;
-	return { file, text: available.includes(file) ? bundled(`trailheads/${file}`) : null };
+	if (!available.includes(file)) return { file, text: null };
+	// As the page reads: its title, then its text.
+	const { title, body } = docsPage(bundled(`docs/trailheads/${file}`));
+	return { file, text: `# ${title}\n\n${body.trim()}\n` };
 }
 
-const guideUrl = (file: string) => `${GUIDES_URL}/v${VERSION}/docs/trailheads/${file}`;
+/** A trailhead's page on sitesquatch.dev: `from-eleventy.md` is `/docs/trailheads/from-eleventy/`. */
+const guideUrl = (file: string) => `${SITE_URL}/docs/trailheads/${file.replace(/\.md$/, "")}/`;
 
 /** `ssqch docs --from <generator>`: its words, ssqch's names for them, and its trailhead. */
 function from(generator: string, json: boolean): string {
@@ -543,7 +585,7 @@ function from(generator: string, json: boolean): string {
 	const g = guide(found);
 	if (json) {
 		const rows = (list: readonly Equivalent[]) => list.map((e) => ({ ...equivalents.toJson(e), say: e.say }));
-		const value = { generator: found, words: rows(theirs), common: rows(everyone), trailhead: g ? { file: `docs/trailheads/${g.file}`, url: guideUrl(g.file), text: g.text } : null };
+		const value = { generator: found, words: rows(theirs), common: rows(everyone), trailhead: g ? { file: `site/src/docs/trailheads/${g.file}`, url: guideUrl(g.file), text: g.text } : null };
 		return JSON.stringify(value, null, 2) + "\n";
 	}
 	let out = `${found}'s words, and ssqch's names for them. The ones marked (works) are aliases: they do the same as ssqch's name, and say it once. The others are refused with this hint.\n`;
@@ -561,7 +603,7 @@ function from(generator: string, json: boolean): string {
 		if (list.length) out += `\n${label}\n${rows(list)}`;
 	}
 	if (everyone.length) out += `\nWords most generators use\n${rows(everyone)}`;
-	if (g && g.text !== null) out += `\nThe trailhead (docs/trailheads/${g.file}):\n\n${g.text.trimEnd()}\n`;
+	if (g && g.text !== null) out += `\nThe trailhead (${guideUrl(g.file)}):\n\n${g.text.trimEnd()}\n`;
 	else if (g) out += `\nThe trailhead: ${guideUrl(g.file)}\n`;
 	else out += "\nThere's no trailhead for it yet; `ssqch docs trailheads` has the general route.\n";
 	return out;

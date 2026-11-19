@@ -4,7 +4,7 @@
 // module, from this repository), so the page answers as the command does.
 import { GRAMMAR } from "../../../packages/ssqch/src/cli.ts";
 import { answer, names, sections } from "../../../packages/ssqch/src/commands/docs.ts";
-import { readmeUrl, slug } from "../../lib/split.ts";
+import { headingUrl } from "../../lib/docs.ts";
 
 /** The first sentence, outside code spans: the card's line. */
 function firstSentence(text) {
@@ -23,7 +23,8 @@ export default function () {
 	const prose = known.filter((n) => n.kind !== "command");
 	const where = (name) => {
 		const found = answer(GRAMMAR, all, known, name)?.section ?? answer(GRAMMAR, all, prose, name)?.section;
-		return found === undefined ? undefined : { title: all[found].title, url: readmeUrl(slug(all[found].title)) };
+		const url = found === undefined ? undefined : headingUrl(all[found].title);
+		return url === undefined ? undefined : { title: all[found].title, url };
 	};
 	const entry = (n) => ({ name: n.name, id: `${n.kind.replace(/ /g, "-")}-${n.module ? `${n.module.replace(/\W+/g, "-")}-` : ""}${n.name}`, summary: firstSentence(n.summary).replace(/([^.!?])$/, "$1."), where: where(n.name) });
 	const groups = [
