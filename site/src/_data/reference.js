@@ -41,5 +41,8 @@ export default function () {
 		lines.push("", `## ${group.title}`, "");
 		for (const n of group.names) lines.push(`- \`${group.prefix ?? ""}${n.name}\`: ${n.summary}${n.where ? ` See [${n.where.title}](${n.where.url}).` : ""}`);
 	}
-	return { groups, count: known.length, markdown: `${lines.join("\n")}\n` };
+	// The search's exact names (src/elements/site-search.js, from /docs/names.json): a name typed
+	// as it is comes first, with the page that explains it, as `ssqch docs <name>` answers.
+	const exact = groups.flatMap((g) => g.names.filter((n) => n.where).map((n) => ({ name: `${g.prefix ?? ""}${n.name}`, group: g.title, summary: n.summary, page: n.where.title, url: n.where.url })));
+	return { groups, count: known.length, markdown: `${lines.join("\n")}\n`, namesJson: JSON.stringify(exact) };
 }

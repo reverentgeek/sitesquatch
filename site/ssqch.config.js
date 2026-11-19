@@ -67,7 +67,7 @@ export default defineConfig(({ env }) => ({
 	// warning, so going over one of these fails the build. Pagefind's files are written after
 	// the build, so they aren't counted: they load only when someone searches. Production only:
 	// `ssqch serve` would count the Pagefind files the last production build left in dist/.
-	budgets: env === "production" ? { pages: "100 KB", css: "40 KB", javascript: "3 KB", fonts: "30 KB", images: "100 KB" } : {},
+	budgets: env === "production" ? { pages: "100 KB", css: "40 KB", javascript: "4 KB", fonts: "30 KB", images: "100 KB" } : {},
 
 	// The docs pages' stickers point into docs/assets/ by a relative path, which GitHub follows;
 	// the site serves those drawings from /assets/drawings/ (passthrough, above).
