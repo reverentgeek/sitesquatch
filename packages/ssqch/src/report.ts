@@ -166,13 +166,19 @@ export function profileText(profile: ProfileReport): string {
 	// Calls are worth showing where a name is called more than once: a filter, not a page.
 	const withCalls = new Set<Kind>(["templates", "layouts", "engines", "filters", "transforms"]);
 	let out = "Profile: where the time went, slowest first (a call's time includes the calls it makes)\n";
+	// An async call is timed until its promise settles, and ones that ran at once overlap: their
+	// total can pass the build's own time (an async filter on every page of a feed).
+	if (KINDS.some((kind) => profile[kind].some((e) => e.async))) out += "Async ones are timed until they settle, and overlap: their totals can add up to more than the build took\n";
 	for (const kind of KINDS) {
 		const list = profile[kind];
 		if (!list.length) continue;
 		out += `  ${titles[kind]}\n`;
 		const shown = list.slice(0, PROFILE_TOP);
 		const width = Math.max(...shown.map((e) => duration(e.ms).length));
-		for (const e of shown) out += `    ${duration(e.ms).padStart(width)}  ${e.name}${withCalls.has(kind) ? ` (${count(e.calls)})` : ""}\n`;
+		for (const e of shown) {
+			const notes = [...(withCalls.has(kind) ? [count(e.calls)] : []), ...(e.async ? ["async"] : [])];
+			out += `    ${duration(e.ms).padStart(width)}  ${e.name}${notes.length ? ` (${notes.join(", ")})` : ""}\n`;
+		}
 		if (list.length > PROFILE_TOP) out += `    ...and ${count(list.length - PROFILE_TOP)} more (--format json lists them all)\n`;
 	}
 	return out;

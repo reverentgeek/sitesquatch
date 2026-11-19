@@ -136,8 +136,13 @@ declare module "ssqch" {
 	type MaybePromise<T> = T | Promise<T>;
 	/** A function, or `{ run: "command" }` to run a program in the project root (through `sh -c`, or `cmd /C` on Windows). It gets `SSQCH_ENV`, `SSQCH_SERVING`, `SSQCH_QUIET`, `SSQCH_INPUT` and `SSQCH_OUTPUT`; a failure fails the build. */
 	type Hook = ((event: BuildEvent) => MaybePromise<void>) | { run: string };
-	/** Renders a template's body (front matter removed) with the page's data. */
-	type EngineRender = (source: string, data: Record<string, any>) => MaybePromise<string>;
+	/** What a site's own engine is rendering, its third argument: a page's body, a layout, a Markdown render hook, or a page's `permalink` or `computed` string; and the file, as `page.inputPath` names it (`./src/posts/pine.md`). */
+	interface EngineContext {
+		kind: "body" | "layout" | "hook" | "permalink" | "computed";
+		path: string;
+	}
+	/** Renders a template's body (front matter removed) with the page's data. The third argument says what's being rendered. */
+	type EngineRender = (source: string, data: Record<string, any>, context: EngineContext) => MaybePromise<string>;
 
 	/**
 	 * A field's type: `"string"`, `"number"`, `"integer"`, `"boolean"`, `"date"`, `"file"` (a path to a file that exists), `"object"`, `"array"` or `"any"`;

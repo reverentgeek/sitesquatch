@@ -18,7 +18,7 @@ Built in 110 ms (production)
 - **Drafts** is in production builds that left `draft: true` pages out: `Drafts  3 unconfirmed (built in development only)`, or `3 left out` when the report's themed line is another one.
 - **Removed** is the stale files `leaveNoTrace` deleted: `Removed  2 stale files, left no trace`, or just `2 stale files`.
 - **One themed line at most:** a report says one thing in the ranger's voice, the one that matters most (in this order: nothing to build, a first build, files removed, drafts, unused templates), and says the rest plainly.
-- **Images** counts the image files this build used, the source images they came from, and how many had to be encoded. With `prune` on, it also says how many stale files it deleted.
+- **Images** counts the image files this build used, the source images they came from, how many had to be encoded, and how many were copied as they are (GIFs that keep their animation, and SVGs), when there are some. With `prune` on, it also says how many stale files it deleted.
 - **Output** is everything in the output folder, including files left from earlier builds.
 - **Time** splits the build into phases. `write` includes layouts, transforms and image encoding, so a build that encodes images spends most of its time there. `after` is the `afterBuild` hooks.
 
@@ -52,8 +52,9 @@ Profile: where the time went, slowest first (a call's time includes the calls it
 ```
 
 - **The kinds:** pages (by URL), templates (each with its pages), layouts, template engines, filters (yours and ssqch's), transforms, data files and data functions, collections, and `beforeBuild` and `afterBuild` hooks. Each lists the ten that took the most time in total, with how many calls (or pages, or renders) that was.
-- **A call's time includes the calls it makes**, from the moment it starts until it returns, or until its promise settles. A template engine's time has its filters' in it, and a page's has its layouts' and transforms'. Async calls can overlap, so the times don't add up to the build's.
-- **`--format json`** has every one, under `profile`: `pages`, `templates`, `layouts`, `engines`, `filters`, `transforms`, `data`, `collections` and `hooks`, each a list of `{ "name", "calls", "ms" }`, slowest first. A build without `--profile` has no `profile`.
+- **A call's time includes the calls it makes**, from the moment it starts until it returns, or until its promise settles. A template engine's time has its filters' in it, and a page's has its layouts' and transforms'.
+- **`async`** marks a function with a call that returned a promise (`htmlToAbsoluteUrls (65, async)`). It's timed until the promise settles, and calls that ran at the same time overlap, so its total can add up to more than the build took: look at the others first.
+- **`--format json`** has every one, under `profile`: `pages`, `templates`, `layouts`, `engines`, `filters`, `transforms`, `data`, `collections` and `hooks`, each a list of `{ "name", "calls", "ms", "async" }`, slowest first. A build without `--profile` has no `profile`.
 - **What it costs:** a little time per call, for the timing itself. Leave it off for the builds you ship.
 
 Without `--profile`, a build still times your own filters, transforms and collections (not ssqch's), one call at a time, because they run for every page: a second each is minutes on a big site. One that takes a second or more is a `slow-call` warning at the end of the build, with where the function came from and the first page it was slow on: `transform \`squeeze\` (from ssqch.config.js) took 1.1 s working on src/b.md, the first of 2 calls that took over a second`. Data functions and hooks run once a build, and a slow one (a `fetch`, Pagefind) is often the point, so they're no warning; `--profile` times them.

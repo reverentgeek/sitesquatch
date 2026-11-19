@@ -17,14 +17,35 @@ where that version matches.
   slowest pages, templates, layouts, template engines, filters (the site's and ssqch's),
   transforms, data files and data functions, collections and hooks, ten of each, with their
   calls and their total time; `--format json` has every one, under `profile` (a list of
-  `{ name, calls, ms }` for each kind). A call's time includes the calls it makes. Every move to
-  ssqch found its slow code by wrapping functions by hand, because `Time` named a phase and
-  nothing in it.
+  `{ name, calls, ms, async }` for each kind). A call's time includes the calls it makes, and
+  `async` marks one whose promise was timed until it settled: calls that ran at once overlap, so
+  their total can pass the build's own time. Every move to ssqch found its slow code by wrapping
+  functions by hand, because `Time` named a phase and nothing in it.
 - A `slow-call` warning names a filter, transform or collection of the site's own that took a
   second or more in one call, with where it came from (`ssqch.config.js`, or the plugin) and the
   first page it was slow on. They run for every page, so a second each is minutes on a big site
   (an HTML minifier as a transform took 5.2 s a page in a migration). It's timed one call at a
   time in every build; data functions and hooks, which run once, aren't.
+- A site's own template engine (`engines`) gets a third argument, `{ kind, path }`: what it's
+  rendering (`"body"`, `"layout"`, `"hook"` for a Markdown render hook, `"permalink"` or
+  `"computed"`) and the file, as `page.inputPath` names it. An engine that only had `source` and
+  `data` had to guess, from what was in them. One that takes two arguments works as before.
+
+### Changed
+
+- The image summary counts GIFs and SVGs copied as they are apart from the files it encoded:
+  `0 encoded, 35 copied, 4,950 reused`. A clean build of the ReverentGeek blog said `35 encoded`
+  every time, which read as a cache that didn't work. The copies are made on Node's thread pool
+  too, while pages go on rendering.
+
+### Fixed
+
+- A page's `permalink` and `computed` strings render with the first of ssqch's template languages
+  in its chain, then the `markdownEngine`, then Edge, and never with a site's own engine: a page
+  sent through a markdown-it engine (`render: mdit`) had its permalink rendered by markdown-it, as
+  `<p>/blog/tags/{{ tag | slug }}/</p>`, and a page written at that path. A permalink that still
+  has template tags after rendering, or starts with `<p>`, is an error naming it, rather than a
+  URL. Tested on several migrations.
 
 ### Faster
 

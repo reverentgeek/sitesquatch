@@ -535,7 +535,7 @@ async function buildJson(makeConfig: () => Promise<Config>, root: string, env: E
 			out.written = report.written.map((file) => relative(dirs.output, file));
 			out.summary = report.summary.map(([label, text]) => ({ label, value: text }));
 			out.timings = report.timings.map(([phase, time]) => ({ phase, ms: ms(time) }));
-			if (report.profile) out.profile = Object.fromEntries(Object.entries(report.profile).map(([kind, list]) => [kind, list.map((e) => ({ name: e.name, calls: e.calls, ms: ms(e.ms) }))]));
+			if (report.profile) out.profile = Object.fromEntries(Object.entries(report.profile).map(([kind, list]) => [kind, list.map((e) => ({ name: e.name, calls: e.calls, ms: ms(e.ms), async: e.async }))]));
 			errors = [];
 		} catch (e) {
 			errors = diagnostics.fromError(e, "build", locatorOf(config));

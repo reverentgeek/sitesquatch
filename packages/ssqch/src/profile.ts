@@ -37,13 +37,16 @@ interface Stat {
 	slowCalls: number;
 	firstSlow?: number;
 	firstSlowAt?: string;
+	/** A call returned a promise, timed until it settled: calls that ran at once overlap. */
+	async: boolean;
 }
 
-/** One line of a profile's list: a name, how many calls, and their total time. */
+/** One line of a profile's list: a name, how many calls, their total time, and whether any call was async (its time overlaps others'). */
 export interface ProfileEntry {
 	name: string;
 	calls: number;
 	ms: number;
+	async: boolean;
 }
 
 export type ProfileReport = Record<Kind, ProfileEntry[]>;
@@ -62,12 +65,13 @@ export class Profile {
 	}
 
 	/** Records one call of `name`, which took `ms`. */
-	add(kind: Kind, name: string, ms: number, own: boolean, from?: string, at = this.at): void {
+	add(kind: Kind, name: string, ms: number, own: boolean, from?: string, at = this.at, async = false): void {
 		if (!this.detailed && !(own && ms >= SLOW_MS)) return;
 		const of = this.stats.get(kind)!;
 		let stat = of.get(name);
-		if (!stat) of.set(name, stat = { calls: 0, ms: 0, own, from, slowCalls: 0 });
+		if (!stat) of.set(name, stat = { calls: 0, ms: 0, own, from, slowCalls: 0, async: false });
 		stat.calls++;
+		if (async) stat.async = true;
 		stat.ms += ms;
 		if (ms >= SLOW_MS && stat.slowCalls++ === 0) [stat.firstSlow, stat.firstSlowAt] = [ms, at];
 	}
@@ -78,7 +82,7 @@ export class Profile {
 		const start = performance.now();
 		const out = call();
 		if (isPromise(out)) {
-			const done = () => this.add(kind, name, performance.now() - start, own, from, at);
+			const done = () => this.add(kind, name, performance.now() - start, own, from, at, true);
 			out.then(done, done);
 		} else this.add(kind, name, performance.now() - start, own, from, at);
 		return out;
@@ -117,7 +121,7 @@ export class Profile {
 	report(): ProfileReport {
 		const out = {} as ProfileReport;
 		for (const kind of KINDS) {
-			const list = this.detailed ? [...this.stats.get(kind)!].map(([name, s]) => ({ name, calls: s.calls, ms: s.ms })) : [];
+			const list = this.detailed ? [...this.stats.get(kind)!].map(([name, s]) => ({ name, calls: s.calls, ms: s.ms, async: s.async })) : [];
 			out[kind] = list.sort((a, b) => b.ms - a.ms || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 		}
 		return out;

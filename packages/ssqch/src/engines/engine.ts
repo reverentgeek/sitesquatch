@@ -30,7 +30,11 @@ export interface RenderContext {
 	inputPath: string;
 	/** When set, the engine may keep the compiled template under this key. */
 	cacheKey?: string;
+	/** What's being rendered, for a site's own engine (`engines`), which is told: a page's body (the default), a layout, a render hook, or a `permalink` or `computed` string. */
+	kind?: EngineKind;
 }
+
+export type EngineKind = "body" | "layout" | "hook" | "permalink" | "computed";
 
 export interface TemplateEngine {
 	/**

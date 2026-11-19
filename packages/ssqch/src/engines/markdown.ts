@@ -413,7 +413,7 @@ class WasmMarkdown implements Markdown {
 		let text = template.body;
 		for (const name of template.engines) {
 			const engine = engines.get(name);
-			const ctx: RenderContext = { name: template.name, inputPath: template.path, cacheKey: `${template.name}#${name}` };
+			const ctx: RenderContext = { name: template.name, inputPath: template.path, cacheKey: `${template.name}#${name}`, kind: "hook" };
 			let out: string | Promise<string>;
 			try { out = engine.render(text, hookData, ctx); } catch (e) { throw context(e, `rendering ${template.name}`); }
 			if (typeof out !== "string") {
