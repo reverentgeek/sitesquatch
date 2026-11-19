@@ -231,9 +231,11 @@ jobs:
       # The npm job ends when npm accepts the package, but npm validates a new version before it
       # serves it, and until then its tarball is a 404 (0.10.0's was, for minutes): a formula
       # pushed before that is a `brew install` that fails. So the formula waits for npm to list
-      # the version. It asks the registry (`--prefer-online`), not the tarball's URL: npm's CDN
-      # keeps a 404 for five minutes, so polling the URL the formula downloads would keep it
-      # failing for brew users after the package is there.
+      # the version, and then for its tarball, which came a few minutes after the listing for
+      # 0.10.1. Neither check asks for the URL the formula downloads as it is: npm's CDN keeps a
+      # 404 for five minutes, so asking it too early would keep brew installs failing after the
+      # package is there. The tarball is asked for with a query of its own (`?check=<time>`),
+      # which the CDN keeps apart, and only its headers (`--head`).
       # If npm still hasn't served it when the job times out, no formula goes out; rerun this job.
       - name: Wait for npm to serve the package
         env:
@@ -244,6 +246,12 @@ jobs:
             sleep 30
           done
           echo "ssqch@$VERSION is on npm"
+          url="https://registry.npmjs.org/ssqch/-/ssqch-$VERSION.tgz"
+          until [ "$(curl -s -o /dev/null --head -w '%{http_code}' "$url?check=$(date +%s)")" = "200" ]; do
+            echo "Its tarball isn't served yet: $url"
+            sleep 30
+          done
+          echo "Its tarball is served: $url"
       - uses: actions/download-artifact@v8
         with:
           name: homebrew-formula
