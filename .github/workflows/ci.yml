@@ -15,10 +15,46 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # A push whose files a pull request's CI already passed with (GitHub tests a pull request as it
+  # would be merged, so its merge commit has the same tree) runs nothing again: the jobs below are
+  # skipped and the run passes, which check-ci.yml accepts for a tag. `tested` records each tree
+  # that passed. If main moved after the pull request was tested, the tree differs and all of CI
+  # runs. A release ran CI four times, and each run was a chance for a slow runner to fail.
+  already-tested:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      skip: ${{ steps.look.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: look
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          if [ "$GITHUB_EVENT_NAME" != push ]; then echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # A passing run's record of this tree, if there is one.
+          runs=$(gh api "repos/$REPO/actions/artifacts?name=tested-tree-$tree&per_page=20" --jq '.artifacts[] | select(.expired == false) | .workflow_run.id')
+          for run in $runs; do
+            if [ "$(gh api "repos/$REPO/actions/runs/$run" --jq .conclusion)" = success ]; then
+              echo "This tree ($tree) passed CI in run $run: https://github.com/$REPO/actions/runs/$run"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "No passing run has this tree ($tree): running CI."
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
   # ssqch (packages/ssqch), on the lowest Node it supports and the two after it: the type check,
   # the unit tests, and the oracle (tests/oracle), black-box tests and the sites' frozen output.
   node:
     name: node ${{ matrix.node }} (${{ matrix.os }})
+    needs: already-tested
+    if: needs.already-tested.outputs.skip != 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -53,6 +89,8 @@ jobs:
   # code and the oracle on macOS and Windows.
   package:
     name: package (node ${{ matrix.node }})
+    needs: already-tested
+    if: needs.already-tested.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -79,6 +117,8 @@ jobs:
   # A change that makes it more than 15% slower fails. ssqch 0.7.0 from npm is timed for the
   # record. packages/ssqch/bench/bench.ts says why CI compares rather than checks a time.
   node-benchmark:
+    needs: already-tested
+    if: needs.already-tested.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -105,6 +145,8 @@ jobs:
   # compiled only there). That the committed .wasm files are built from this Rust is checked by
   # the `node` job, without Rust (scripts/wasm-inputs.test.ts).
   rust:
+    needs: already-tested
+    if: needs.already-tested.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -117,3 +159,20 @@ jobs:
       - run: cargo test --workspace --locked --no-fail-fast
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo clippy --workspace --lib --locked --target wasm32-wasip1 -- -D warnings
+
+  # Records the tree that passed, for `already-tested` (after every other job, so only a passing
+  # run records one). On a pull request that's the tree its merge commit will have.
+  tested:
+    needs: [already-tested, node, package, node-benchmark, rust]
+    if: needs.already-tested.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - run: echo "tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+      - run: git rev-parse HEAD > tested-tree.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tested-tree-${{ env.tree }}
+          path: tested-tree.txt
+          retention-days: 30

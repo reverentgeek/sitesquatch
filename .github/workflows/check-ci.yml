@@ -1,7 +1,9 @@
 # Before a release is published, waits for the CI workflow (ci.yml) to pass on the tagged
 # commit. release.yml calls it beside the builds and tests, and its `release` job only runs when
 # this passes: a tag pushed before CI finishes waits, and a tag on a commit whose CI failed (or
-# never ran) builds but doesn't release. release.yml only calls it for a tag.
+# never ran) builds but doesn't release. release.yml only calls it for a tag. A merge commit whose
+# tree its pull request's CI passed with has a CI run that skips its jobs and passes (ci.yml,
+# `already-tested`), and that counts.
 name: Check CI
 
 on:

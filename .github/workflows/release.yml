@@ -5,8 +5,9 @@
 #   plan          the tag is packages/ssqch/package.json's version, and CHANGELOG.md has its section
 #   package       the npm package (packages/ssqch/scripts/build.ts), packed
 #   npm-test      the packed package, installed with npm on Linux, on Node 22.18, 24 and 26: every
-#                 example, a starter, images, the .wasm files, and the oracle
-#                 (scripts/check-package.ts)
+#                 example, a starter, images and the .wasm files build to the source's bytes
+#                 (scripts/check-package.ts). Not the oracle: CI ran it on this commit, against
+#                 its own tarball too, and check-ci waits for that.
 #   check-ci      CI passed on the tagged commit (check-ci.yml)
 #   release       the GitHub release: the npm tarball and its checksum, with the changelog's
 #                 section as its notes
@@ -147,8 +148,8 @@ jobs:
         with:
           name: npm-package
           path: npm-package
-      - name: Every example, a starter, images, the .wasm files and the oracle
-        run: node packages/ssqch/scripts/check-package.ts --tarball "$(ls npm-package/ssqch-*.tgz)" --oracle
+      - name: Every example, a starter, images and the .wasm files
+        run: node packages/ssqch/scripts/check-package.ts --tarball "$(ls npm-package/ssqch-*.tgz)"
 
   check-ci:
     needs: [plan]
