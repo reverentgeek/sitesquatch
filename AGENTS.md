@@ -84,6 +84,12 @@ Run from `packages/ssqch/` unless it says otherwise.
   Run it after changing that Rust (`node scripts/build-wasm.ts minify` builds one; the lists are
   in `scripts/wasm-inputs.ts`); `scripts/wasm-inputs.test.ts` fails until then. It needs
   `rustup target add wasm32-wasip1`.
+- `site/` is sitesquatch.dev, built with this repository's ssqch (TODO.md, section 9, has the
+  plan). From `site/`: `node build.ts` builds it and fails on any warning, `node --test
+  "tests/*.test.ts"` checks its colors' contrast and that the README backs its numbers, and
+  `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves it. After changing a README number
+  the landing page shows (the benchmarks, a known gap), update `site/src/_data/benchmarks.js` or
+  the page; CI's `site` job fails until they agree.
 - `docs/assets/` holds the drawings (black line art, SVG) for the README, examples, guides and
   website, and `docs/assets/stickers/` a sticker of each: the drawing on a white shape with a
   border, so it reads on a light page and a dark one. After adding or editing a drawing, run

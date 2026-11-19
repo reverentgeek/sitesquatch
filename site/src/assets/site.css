@@ -1,0 +1,289 @@
+/* sitesquatch.dev: Ranger Station '76, as a 1976 park brochure.
+
+   Soft white and green charcoal pages, pine headings and navigation, burnt orange for links and
+   markers, avocado for selection and code, harvest gold for callout edges, and map paper wherever
+   a drawing or a sign needs its own ground. The bright colors take small areas, and gold is never
+   text on a light page. The page's furniture is trail furniture: the trail with its mile markers,
+   Exhibit A, mileage boards, arrow signs and the permit.
+
+   Every color is a token below, as light-dark(light, dark): the mode follows the system unless
+   the reader picks one (theme.js sets data-theme on <html>). tests/contrast.test.ts reads these
+   tokens and checks every pair of text and background the page uses, in both modes, so a new
+   color goes here and its pair goes there. */
+
+@font-face {
+	font-family: "Caprasimo";
+	src: url("/assets/fonts/caprasimo-latin.woff2") format("woff2");
+	font-weight: 400;
+	font-display: swap;
+}
+@font-face {
+	font-family: "National Park";
+	src: url("/assets/fonts/national-park-latin.woff2") format("woff2");
+	font-weight: 400 700;
+	font-display: swap;
+}
+
+:root {
+	color-scheme: light dark;
+
+	/* The palette, by name. */
+	--pine: #233b2b;
+	--pine-light: #2e5a3c;
+	--orange: #a23e20;
+	--gold: #e8af43;
+	--avocado: #a9b66a;
+	--paper: #fff3d6;
+	--paper-edge: #d9c9a0;
+	--paper-light: #fffaf0;
+	--charcoal: #1b201d;
+
+	/* The page. */
+	--text: light-dark(#29332c, #e5e9e1);
+	--heading: light-dark(#233b2b, #d6e4c8);
+	--muted: light-dark(#5e6a61, #a2aca3);
+	--background: light-dark(#fafaf7, #1b201d);
+	--chrome: light-dark(#f1f1eb, #252b27);
+	--surface: light-dark(#eeefe7, #2c332e);
+	--border: light-dark(#dcddd4, #3a413b);
+	--link: light-dark(#a23e20, #f0a17d);
+	--code: light-dark(#3f5a2a, #b9c77e);
+	--selected: light-dark(#e6ecda, #2e3f2b);
+	--marker: light-dark(#a23e20, #f0a17d);
+	--stripe-pine: light-dark(#233b2b, #2e5a3c);
+
+	/* Signs and boards: pine in light mode, a lighter pine on the dark page, so they stand off it. */
+	--sign: light-dark(#233b2b, #2e5a3c);
+	--sign-hover: light-dark(#2e5a3c, #3a6b4a);
+	--sign-text: #fff3d6;
+	--sign-edge: light-dark(#233b2b, #3f6b4c);
+	--board-figure: #e8af43;
+
+	/* Terminals are objects on the page, the same in both modes. */
+	--terminal: light-dark(#1b201d, #121613);
+	--terminal-edge: light-dark(#1b201d, #3a413b);
+	--terminal-text: #e5e9e1;
+	--terminal-quiet: #a2aca3;
+	--terminal-prompt: #a9b66a;
+	--terminal-voice: #e8af43;
+	--terminal-error: #f0a17d;
+	--terminal-added: #b9c77e;
+
+	/* Exhibit A stays a photograph on map paper in both modes. */
+	--exhibit-text: #29332c;
+
+	--display: "Caprasimo", "Cooper Black", "Cooper Std", Rockwell, Georgia, serif;
+	--label: "National Park", "Avenir Next", "Trebuchet MS", system-ui, sans-serif;
+	--body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+	--page: 72rem;
+	--stripe: linear-gradient(to right, var(--stripe-pine) 0 25%, var(--orange) 25% 50%, var(--gold) 50% 75%, var(--avocado) 75%);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html { scroll-padding-top: 5rem; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { margin: 0; font: 1.0625rem/1.65 var(--body); color: var(--text); background: var(--background); }
+img { max-width: 100%; height: auto; }
+a { color: var(--link); text-decoration: underline; text-underline-offset: 0.18em; }
+a:hover { text-decoration-thickness: 2px; }
+::selection { background: rgb(232 175 67 / 0.4); }
+:focus-visible { outline: 3px solid var(--marker); outline-offset: 2px; }
+h1, h2, h3 { color: var(--heading); line-height: 1.15; text-wrap: balance; }
+h1, h2 { font-family: var(--display); font-weight: 400; }
+p { text-wrap: pretty; }
+code, pre { font-family: var(--mono); }
+code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surface); color: var(--code); font-size: 0.9em; }
+.wrap { max-width: var(--page); margin: 0 auto; padding: 0 1.25rem; }
+.skip-link { position: absolute; left: 1rem; top: -3rem; z-index: 5; padding: 0.4rem 0.9rem; border-radius: 0.25rem; background: var(--heading); color: var(--background); font-weight: 600; }
+.skip-link:focus { top: 0.5rem; }
+
+/* A label, in the routed letters of a trail sign. */
+.kicker { margin: 0 0 0.6rem; font-family: var(--label); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--marker); }
+
+/* ---------- The header and footer ---------- */
+
+.site-header { position: sticky; top: 0; z-index: 4; background: var(--chrome); }
+.site-header::after { content: ""; display: block; height: 5px; background: var(--stripe); }
+.site-header .wrap { display: flex; align-items: center; gap: 1.5rem; padding-top: 0.6rem; padding-bottom: 0.6rem; }
+.brand { display: flex; align-items: center; gap: 0.6rem; font-family: var(--display); font-size: 1.35rem; color: var(--heading); text-decoration: none; white-space: nowrap; }
+/* The tab icon's footprint: map paper on a pine circle. */
+.patch { display: grid; place-items: center; flex: none; width: 2.2rem; height: 2.2rem; border-radius: 50%; background: var(--stripe-pine); }
+.patch::before { content: ""; width: 58%; height: 72%; background: var(--paper); mask: url("/assets/drawings/footprint.svg") center / contain no-repeat; transform: rotate(8deg); }
+.site-nav { display: flex; gap: 1.25rem; font-family: var(--label); font-weight: 600; letter-spacing: 0.03em; }
+.site-nav a { padding: 0.2rem 0; color: var(--heading); text-decoration: none; }
+.site-nav a:hover, .site-nav a[aria-current] { text-decoration: underline; text-decoration-color: var(--marker); text-decoration-thickness: 2px; text-underline-offset: 0.35em; }
+.header-tools { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
+.theme-switch { padding: 0.35rem 0.8rem; border: 1px solid var(--muted); border-radius: 0.5rem; background: none; color: var(--text); font: inherit; font-size: 0.9rem; cursor: pointer; }
+.theme-switch:hover { background: var(--selected); }
+.menu-link { display: none; font-family: var(--label); font-weight: 600; color: var(--heading); }
+
+.site-footer { border-top: 5px solid transparent; border-image: var(--stripe) 1; font-size: 0.95rem; }
+.site-footer .wrap { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 2rem; padding-top: 2.5rem; padding-bottom: 2.5rem; }
+.site-footer h2 { margin: 0 0 0.5rem; font-family: var(--label); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.site-footer ul { margin: 0; padding: 0; list-style: none; }
+.site-footer li { margin-bottom: 0.3rem; }
+.site-footer a { color: var(--heading); }
+.site-footer .brand { color: var(--heading); }
+.site-footer .ranger, .site-footer .release { max-width: 22rem; margin: 0.75rem 0 0; color: var(--muted); }
+
+/* ---------- Buttons, signs and the permit ---------- */
+
+.button { display: inline-block; padding: 0.7rem 1.3rem; border: 2px solid var(--sign-edge); border-radius: 0.5rem; background: var(--sign); color: var(--sign-text); font-family: var(--label); font-weight: 700; letter-spacing: 0.04em; text-decoration: none; }
+.button:hover { background: var(--sign-hover); }
+.button.quiet { border-color: var(--heading); background: none; color: var(--heading); }
+.button.quiet:hover { background: var(--selected); }
+/* An arrow board, pointing down the trail. */
+.sign { display: inline-block; padding: 0.5rem 1.9rem 0.5rem 1rem; background: var(--sign); color: var(--sign-text); font-family: var(--label); font-weight: 700; letter-spacing: 0.04em; text-decoration: none; clip-path: polygon(0 0, calc(100% - 1rem) 0, 100% 50%, calc(100% - 1rem) 100%, 0 100%); }
+.sign:hover { background: var(--sign-hover); }
+/* The clipped corner would cut a focus ring off, so a focused sign gets an underline too. */
+.sign:focus-visible { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 0.25em; }
+.signpost { display: flex; flex-wrap: wrap; gap: 0.6rem 0.5rem; margin: 0 0 1.5rem; padding: 0; list-style: none; }
+
+/* The install command, on a permit. */
+.actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.75rem; }
+.permit { display: inline-grid; max-width: 100%; border: 1px solid var(--border); border-left: 6px solid var(--gold); border-radius: 0.4rem; background: var(--chrome); }
+.permit-label { padding: 0.45rem 0.9rem 0; font-family: var(--label); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.permit code { display: block; padding: 0.1rem 0.9rem 0.5rem; overflow-x: auto; background: none; color: var(--text); font-size: 1rem; white-space: nowrap; user-select: all; }
+.permit-note { margin: 0.6rem 0 0; font-size: 0.9rem; color: var(--muted); }
+
+/* ---------- Terminals ---------- */
+
+.terminal { margin: 0; overflow: hidden; border: 1px solid var(--terminal-edge); border-radius: 0.6rem; background: var(--terminal); color: var(--terminal-text); }
+.terminal-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.9rem; border-bottom: 1px solid #3a413b; font-family: var(--label); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--terminal-quiet); }
+.terminal-bar::before { content: ""; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--avocado); }
+/* A long line wraps rather than scrolling the page sideways on a phone. */
+.terminal pre { margin: 0; padding: 1rem 1.1rem; overflow-x: auto; font-size: 0.86rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.terminal .p { color: var(--terminal-prompt); }
+.terminal .c { color: var(--terminal-quiet); }
+.terminal .v { color: var(--terminal-voice); }
+.terminal .e { color: var(--terminal-error); font-weight: 600; }
+.terminal .a { color: var(--terminal-added); }
+.terminal .r { color: var(--terminal-error); }
+
+/* ---------- The trailhead ---------- */
+
+.hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--border); }
+/* Contour lines: decoration, faint enough that nothing reads over them. */
+.topo { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--heading); opacity: 0.09; pointer-events: none; }
+.hero .wrap { position: relative; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); gap: 3rem; align-items: center; padding-top: 4rem; padding-bottom: 4.5rem; }
+.hero h1 { margin: 0 0 1.25rem; font-size: clamp(2.6rem, 6.2vw, 4.6rem); line-height: 1.02; }
+.hero .lead, .lost .lead { max-width: 36rem; margin: 0 0 1.75rem; font-size: 1.2rem; line-height: 1.55; }
+
+/* Exhibit A: the drawing as the one clear photograph, taped to map paper. */
+.exhibit { position: relative; justify-self: center; width: min(100%, 21rem); margin: 0; padding: 1rem 1rem 0.8rem; border: 1px solid var(--paper-edge); background: var(--paper); box-shadow: 0 1px 0 var(--paper-edge), 0.5rem 0.6rem 0 rgb(35 59 43 / 0.14); transform: rotate(2.2deg); }
+.exhibit .photo { display: grid; place-items: center; aspect-ratio: 1; border: 1px solid var(--paper-edge); background: var(--paper-light); }
+.exhibit .photo img { width: 86%; }
+.exhibit figcaption { padding-top: 0.6rem; font-family: var(--mono); font-size: 0.8rem; color: var(--exhibit-text); text-align: center; }
+.exhibit::before, .exhibit::after { content: ""; position: absolute; width: 3.6rem; height: 1.3rem; background: rgb(232 175 67 / 0.75); }
+.exhibit::before { top: -0.6rem; left: -1.1rem; transform: rotate(-38deg); }
+.exhibit::after { right: -1.3rem; bottom: 1.9rem; transform: rotate(-38deg); }
+/* The trail patch, as a stamp: broad gold and avocado stripes behind the footprint. */
+.trail-patch { position: absolute; top: -1.6rem; right: -1.4rem; z-index: 1; display: grid; place-items: center; width: 5.2rem; height: 5.2rem; border: 4px solid var(--pine); border-radius: 50%; background: linear-gradient(var(--gold) 0 34%, var(--avocado) 34% 67%, var(--orange) 67%); box-shadow: 0 0 0 3px var(--paper); transform: rotate(-10deg); }
+.trail-patch::before { content: ""; width: 44%; height: 66%; background: var(--pine); mask: url("/assets/drawings/footprint.svg") center / contain no-repeat; transform: rotate(14deg); }
+
+.first-minute { padding: 3rem 0 1rem; }
+.first-minute .wrap { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 2.5rem; align-items: center; }
+.first-minute h2 { margin: 0 0 0.75rem; font-size: 1.9rem; }
+
+/* ---------- The trail: a dashed line down the page, with a mile marker at each stop ---------- */
+
+.trail { max-width: var(--page); margin: 0 auto; padding: 2rem 1.25rem 0; }
+.stop { position: relative; padding: 2.75rem 0 2.75rem 5.5rem; }
+.stop::before { content: ""; position: absolute; top: 0; bottom: 0; left: 1.55rem; border-left: 3px dashed var(--marker); opacity: 0.55; }
+.stop:first-child::before { top: 3rem; }
+.stop:last-child::before { bottom: auto; height: 3rem; }
+.mile { position: absolute; top: 2.6rem; left: 0; display: grid; place-items: center; width: 3.3rem; height: 3.3rem; border: 3px solid var(--heading); border-radius: 50%; background: var(--background); font-family: var(--display); font-size: 1.35rem; color: var(--heading); }
+.stop-head { display: flex; align-items: flex-start; gap: 1.5rem; margin-bottom: 1.5rem; }
+.stop-head > div { flex: 1; min-width: 0; }
+.stop-head h2 { margin: 0 0 0.6rem; font-size: clamp(1.8rem, 3.6vw, 2.5rem); }
+.stop-head p { max-width: 42rem; margin: 0; }
+.stop-art { flex: none; width: 6.5rem; }
+.also { margin: 1.25rem 0 0; color: var(--muted); }
+
+.pack { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
+.pack li { display: grid; grid-template-columns: 3.6rem minmax(0, 1fr); gap: 0.9rem; padding: 1.1rem; border: 1px solid var(--border); border-radius: 0.6rem; background: var(--chrome); }
+.pack img { width: 3.6rem; }
+.pack h3 { margin: 0 0 0.3rem; font-size: 1.08rem; }
+.pack p { margin: 0; font-size: 0.96rem; line-height: 1.5; }
+.pack code { background: var(--background); }
+
+.two-up { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+.two-up h3 { margin: 0 0 0.4rem; font-size: 1.15rem; }
+.two-up p { margin: 0 0 0.9rem; font-size: 0.98rem; }
+
+/* Mileage boards: gold numbers on pine, which reads in both modes. */
+.boards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
+.boards li { padding: 1.2rem 1.3rem 1.3rem; border: 2px solid var(--sign-edge); border-radius: 0.6rem; background: var(--pine); color: var(--sign-text); }
+.boards b { display: block; font-family: var(--display); font-weight: 400; font-size: 2.9rem; line-height: 1.1; color: var(--board-figure); }
+.boards span { display: block; margin-top: 0.3rem; font-size: 0.98rem; line-height: 1.45; }
+.fine { max-width: 46rem; margin: 1rem 0 0; font-size: 0.93rem; color: var(--muted); }
+
+.with-terminal { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+.with-terminal p { margin-top: 0; }
+
+.sites { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
+.sites li { display: flex; flex-direction: column; padding: 1rem 1.1rem; border: 1px solid var(--border); border-top: 5px solid var(--avocado); border-radius: 0.5rem; background: var(--chrome); }
+.sites h3 { margin: 0; font-family: var(--mono); font-size: 1rem; }
+.engine { margin: 0.15rem 0 0.5rem; font-family: var(--label); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.sites p { margin: 0 0 0.8rem; font-size: 0.93rem; line-height: 1.45; }
+.sites .links { display: flex; gap: 1rem; margin-top: auto; margin-bottom: 0; }
+
+.gaps { max-width: 46rem; margin: 0; padding-left: 1.2rem; }
+.gaps li { margin-bottom: 0.45rem; }
+.gaps li::marker { color: var(--marker); }
+
+.camp { margin-top: 2rem; border-top: 1px solid var(--border); background: var(--chrome); }
+.camp .wrap { display: grid; grid-template-columns: 8rem minmax(0, 1fr); gap: 2rem; align-items: center; padding-top: 3rem; padding-bottom: 3rem; }
+.camp h2 { margin: 0 0 0.5rem; font-size: 2.2rem; }
+.camp p { max-width: 40rem; margin: 0 0 1.2rem; }
+.camp code { background: var(--background); }
+
+/* ---------- The 404 page ---------- */
+
+.lost .wrap { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 2.5rem; align-items: center; padding-top: 4rem; padding-bottom: 5rem; }
+.lost h1 { margin: 0 0 1rem; font-size: clamp(2.4rem, 5.5vw, 3.8rem); line-height: 1.05; }
+
+/* ---------- Narrower ---------- */
+
+@media (max-width: 76rem) {
+	.sites { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.pack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 54rem) {
+	.site-header .wrap { gap: 0.75rem; }
+	.site-nav { display: none; }
+	.menu-link { display: inline; }
+	.brand { font-size: 1.15rem; }
+	.patch { width: 1.9rem; height: 1.9rem; }
+	.theme-switch { padding: 0.3rem 0.6rem; font-size: 0.85rem; }
+
+	.hero .wrap { grid-template-columns: minmax(0, 1fr); gap: 2.5rem; padding-top: 2.5rem; padding-bottom: 3rem; }
+	.hero .lead, .lost .lead { font-size: 1.1rem; }
+	.exhibit { width: min(78%, 17rem); }
+	.first-minute .wrap, .with-terminal, .two-up { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+	.first-minute { padding-top: 2rem; }
+
+	/* On a phone the trail is a marker above each heading: the line would take the margin the text needs. */
+	.stop { padding: 2rem 0; border-top: 3px dashed color-mix(in srgb, var(--marker) 45%, transparent); }
+	.stop:first-child { border-top: 0; }
+	.stop::before { display: none; }
+	.mile { position: static; width: 2.6rem; height: 2.6rem; margin-bottom: 0.8rem; font-size: 1.1rem; }
+	/* The drawing goes up beside the marker, so the text below keeps the whole width. */
+	.stop-art { position: absolute; top: 1.6rem; right: 0; width: 3.8rem; }
+	.stop-head { display: block; }
+	.pack, .boards, .sites { grid-template-columns: minmax(0, 1fr); }
+	.boards b { font-size: 2.4rem; }
+	.camp .wrap { grid-template-columns: minmax(0, 1fr); gap: 1rem; padding-top: 2rem; padding-bottom: 2rem; }
+	.camp img { width: 5rem; }
+	.site-footer .wrap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.site-footer .wrap > div:first-child { grid-column: 1 / -1; }
+
+	.lost .wrap { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; padding-top: 2.5rem; padding-bottom: 3rem; }
+	.lost img { width: 7rem; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	html { scroll-behavior: smooth; }
+}

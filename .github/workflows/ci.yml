@@ -160,10 +160,36 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo clippy --workspace --lib --locked --target wasm32-wasip1 -- -D warnings
 
+  # sitesquatch.dev (site/), built with this commit's ssqch: a change to ssqch that breaks its own
+  # site fails here. site/build.ts fails on any warning (a broken link, a page over a budget),
+  # and site/tests check the colors' contrast in both modes and that the README backs every
+  # number on the landing page. Linux, Node 24: it's a check of the site, not of a platform.
+  site:
+    needs: already-tested
+    if: needs.already-tested.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+        working-directory: packages/ssqch
+      - name: type check
+        working-directory: site
+        run: ../packages/ssqch/node_modules/.bin/tsc -p tsconfig.json
+      - name: build
+        working-directory: site
+        run: node build.ts
+      - name: tests
+        working-directory: site
+        run: node --test "tests/*.test.ts"
+
   # Records the tree that passed, for `already-tested` (after every other job, so only a passing
   # run records one). On a pull request that's the tree its merge commit will have.
   tested:
-    needs: [already-tested, node, package, node-benchmark, rust]
+    needs: [already-tested, node, package, node-benchmark, rust, site]
     if: needs.already-tested.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5

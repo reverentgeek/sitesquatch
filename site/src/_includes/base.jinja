@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{% if fullTitle %}{{ fullTitle }}{% elif title %}{{ title }} | {{ site.name }}{% else %}{{ site.name }}{% endif %}</title>
+	<meta name="description" content="{{ description or site.description }}">
+	<meta name="generator" content="{{ ssqch.generator }}">
+	{% if page.url and not noindex %}<link rel="canonical" href="{{ site.url }}{{ page.url }}">{% endif %}
+	{% if noindex %}<meta name="robots" content="noindex">{% endif %}
+	<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+	<link rel="preload" href="/assets/fonts/caprasimo-latin.woff2" as="font" type="font/woff2" crossorigin>
+	<link rel="stylesheet" href="/assets/site.css">
+	<script src="/assets/theme.js" defer></script>
+	{#- Before the page is drawn, so a reader who picked a mode doesn't see the other one first. #}
+	<script>try { const theme = localStorage.getItem("theme"); if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme; } catch {}</script>
+</head>
+<body>
+	<a class="skip-link" href="#main">Skip to the content</a>
+
+	<header class="site-header">
+		<div class="wrap">
+			<a class="brand" href="/"><span class="patch" aria-hidden="true"></span>SiteSquatch</a>
+			<nav class="site-nav" aria-label="Site">
+				<a href="{{ links.readme }}">Docs</a>
+				<a href="/#examples">Examples</a>
+				<a href="/#trailheads">Trailheads</a>
+				<a href="{{ links.changelog }}">Changelog</a>
+			</nav>
+			<div class="header-tools">
+				<a class="menu-link" href="#footer">Menu</a>
+				{#- theme.js shows it. Without JavaScript, the mode follows the system. #}
+				<button class="theme-switch" type="button" hidden>Dark</button>
+			</div>
+		</div>
+	</header>
+
+	<main id="main">
+{{ content }}
+	</main>
+
+	<footer class="site-footer" id="footer">
+		<div class="wrap">
+			<div>
+				<a class="brand" href="/"><span class="patch" aria-hidden="true"></span>SiteSquatch</a>
+				<p class="ranger">Happy building, and may your pages load faster than a Squatch sighting disappears.</p>
+				<p class="release">ssqch {{ release.version }} is the latest release.</p>
+			</div>
+			<nav aria-labelledby="footer-docs">
+				<h2 id="footer-docs">Docs</h2>
+				<ul>
+					<li><a href="{{ links.install }}">Install</a></li>
+					<li><a href="{{ links.fieldGuide }}">Field guide</a></li>
+					<li><a href="{{ links.trailheads }}">Trailheads</a></li>
+					<li><a href="{{ links.knownGaps }}">Known gaps</a></li>
+				</ul>
+			</nav>
+			<nav aria-labelledby="footer-project">
+				<h2 id="footer-project">Project</h2>
+				<ul>
+					<li><a href="/#examples">Examples</a></li>
+					<li><a href="{{ links.changelog }}">Changelog</a></li>
+					<li><a href="{{ links.benchmarks }}">Benchmarks</a></li>
+					<li><a href="{{ site.repo }}">GitHub</a></li>
+				</ul>
+			</nav>
+			<nav aria-labelledby="footer-help">
+				<h2 id="footer-help">Help</h2>
+				<ul>
+					<li><a href="{{ links.agents }}">Scripts and coding agents</a></li>
+					<li><a href="{{ links.issues }}">Report a sighting (open an issue)</a></li>
+					<li><a href="{{ links.contributing }}">Working on SiteSquatch</a></li>
+				</ul>
+			</nav>
+		</div>
+	</footer>
+</body>
+</html>

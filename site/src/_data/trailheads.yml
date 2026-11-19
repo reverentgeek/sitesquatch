@@ -1,0 +1,16 @@
+# The seven trailheads (docs/trailheads/), in the order the README lists them. `url` goes to
+# GitHub until they're pages on the site.
+- name: Eleventy
+  url: https://github.com/reverentgeek/sitesquatch/blob/main/docs/trailheads/from-eleventy.md
+- name: Jekyll
+  url: https://github.com/reverentgeek/sitesquatch/blob/main/docs/trailheads/from-jekyll.md
+- name: Zola
+  url: https://github.com/reverentgeek/sitesquatch/blob/main/docs/trailheads/from-zola.md
+- name: Docusaurus
+  url: https://github.com/reverentgeek/sitesquatch/blob/main/docs/trailheads/from-docusaurus.md
+- name: MkDocs
+  url: https://github.com/reverentgeek/sitesquatch/blob/main/docs/trailheads/from-mkdocs.md
+- name: Hexo
+  url: https://github.com/reverentgeek/sitesquatch/blob/main/docs/trailheads/from-hexo.md
+- name: Astro, VitePress, Next.js or Gatsby
+  url: https://github.com/reverentgeek/sitesquatch/blob/main/docs/trailheads/from-component-frameworks.md

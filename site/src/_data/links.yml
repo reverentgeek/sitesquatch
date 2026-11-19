@@ -1,0 +1,15 @@
+# Where the site's links to the documentation go. Until the docs are pages here ("The
+# documentation" in TODO.md's section 9), they go to the README on GitHub, which is the one
+# source; that session points each at its page, and nothing else has to change.
+readme: https://github.com/reverentgeek/sitesquatch#readme
+fieldGuide: https://github.com/reverentgeek/sitesquatch#field-guide-build-your-first-site
+install: https://github.com/reverentgeek/sitesquatch#install
+pack: https://github.com/reverentgeek/sitesquatch#readme
+benchmarks: https://github.com/reverentgeek/sitesquatch#benchmarks
+knownGaps: https://github.com/reverentgeek/sitesquatch#known-gaps
+trailheads: https://github.com/reverentgeek/sitesquatch#trailheads-moving-from-another-generator
+agents: https://github.com/reverentgeek/sitesquatch#scripts-and-coding-agents
+reference: https://github.com/reverentgeek/sitesquatch#configuring-a-site
+changelog: https://github.com/reverentgeek/sitesquatch/blob/main/CHANGELOG.md
+issues: https://github.com/reverentgeek/sitesquatch/issues
+contributing: https://github.com/reverentgeek/sitesquatch#working-on-sitesquatch

@@ -717,6 +717,135 @@ trailhead.
 - [ ] Report the site's bugs upstream (ex `issues.md`, last section): 345 alerts with a translated
       `type`, ids from `Math.random()`, `llms` files without their `import` lines.
 
+### 9. The website (sitesquatch.dev)
+
+ssqch's own site: a landing page, the documentation, the eight examples live, a changelog written
+for people, and a Markdown copy of every docs page for coding agents. Built with ssqch from
+`site/`, served by one Cloudflare Worker with static assets, and deployed from GitHub Actions: a
+preview for each pull request, and production from `main`, so a fix to the site never waits for a
+release (the owner's call, 2026-11-18). The plan, its research and the mock-ups are in
+`research/website/` (gitignored). Until the docs move (below), the README stays the one source and
+the site splits it into pages as it builds. **Decision n** marks an entry that changes if that
+decision, at the end of the plan, goes the other way than the plan recommends.
+
+- [x] **Foundation and the landing page** (2026-11-18). `site/` (its README says how to build,
+      serve, test and type-check it, and how the fonts were made): the layout, the stylesheet
+      (every color a `light-dark()` token), the landing page with the plan's copy, and the 404
+      page. Caprasimo and National Park are OFL 1.1 with no reserved names, served as Latin WOFF2
+      subsets (44 KB together). `site/build.ts` builds for production and fails on any warning,
+      so `linksPlugin()` and `budgets` (JavaScript: 2 KB a file) fail it; `site/tests/` checks
+      every text and edge color pair in both modes and that the README backs each number on the
+      page (the benchmarks, the gaps, the Node version, `init`'s 1 KB `AGENTS.md`). Checked in a
+      browser at 390 and 1280 pixels in both modes, with no sideways scroll. CI's `site` job runs
+      all of it (first run with this change's pull request). Lists have one source in
+      `site/src/_data/` (`examples.yml`, `trailheads.yml`, `benchmarks.js`), and links to the docs
+      go through `links.yml`, to the README on GitHub until the docs are pages. The footer already
+      names the latest release (`release.js`, from `packages/ssqch/package.json`). Left for later
+      stages: the header's search box (the docs), Live links on the campsites (the examples), and
+      the web's Markdown copies in Mile 6 (agents; the template has a comment where they go).
+- [ ] **The Cloudflare pipeline.** `site/wrangler.jsonc` (`assets.directory`,
+      `not_found_handling: "404-page"`, the default `html_handling`) and
+      `.github/workflows/site.yml` with `cloudflare/wrangler-action`: `wrangler preview --name
+      pr-<number>` on a pull request, with the URL in a comment and the preview deleted when it
+      closes, and `wrangler deploy` on a push to `main`, after the site's checks pass. Not attached
+      to the domain yet. Since the site can be ahead of npm: documentation for a feature that's
+      merged and not released carries a note at its top ("Not released yet. This ships with the
+      next version of ssqch."), the footer names the latest release (from
+      `packages/ssqch/package.json`), step 2 of "Releasing" in AGENTS.md gains "remove the Not
+      released yet notes", and `release.yml` refuses a tag while one is still in the docs. (The
+      footer's release line is done.)
+      **Needs David:** a Cloudflare API token ("Edit Cloudflare Workers") and the account ID as
+      repository secrets. Done when a pull request shows a working preview link, a merge is live
+      at the Worker's `workers.dev` address, and what was learned is noted for the Cloudflare guide
+      (below): whether the token can create the custom domain, how long a build takes, what
+      `actions/cache` does for `.cache/ssqch`.
+- [ ] **The documentation.** Point `site/src/_data/links.yml` and `trailheads.yml` at the pages,
+      and add the header's search box. A script in `site/` splits the README into pages by
+      heading before each build, from a map (the plan's table, in the groups Start here, Build,
+      Check, Ship, Trailheads and Reference), and copies the trailheads in. It writes a file only
+      when its text changed, so `ssqch serve` doesn't rebuild in a loop. The docs layout from the
+      docs starter (sidebar from `nav.yml`, table of contents, breadcrumbs, previous and next), with
+      the strip under each title: the page's `ssqch docs` command, "View as Markdown" and "Edit on
+      GitHub". A reference page with every name and its one line, from `ssqch docs --format json`
+      and `ssqch capabilities --format json`. Pagefind over the docs and the changelog, in a
+      custom element (`elementsPlugin`) that loads it on first use. Done when every README section
+      in the map is a page, every name `ssqch capabilities` lists is on the reference page with a
+      link that resolves, search finds `base`, and the README's links between its own sections
+      land on the right pages.
+- [ ] **The changelog, for people.** `/changelog/` is the site's own writing, not `CHANGELOG.md`
+      rendered: one entry for each minor release (`site/src/changelog/0.9.md`), in David's voice
+      (the `write` skill), about 250 words. Each has the headlines (three to five, each something
+      the reader can see or do), "What you might need to change" (every item under "Breaking" in
+      `CHANGELOG.md`, in plain words, with the fix), and one link to the release's section of
+      `CHANGELOG.md`, which stays the complete record. A patch release adds a dated paragraph to
+      its minor's entry. Numbers come from `CHANGELOG.md` only. The layout, an Atom feed, and the
+      first three entries: 0.9, 0.8 (the move to Node) and one for everything before (the plan has
+      a draft of 0.9's). Two tests in `site/`: the version in `packages/ssqch/package.json` has an
+      entry, and an entry has "What you might need to change" whenever its release has a
+      "Breaking" heading. "Releasing" in AGENTS.md gains a step: write the release's entry (or its
+      patch paragraph) in the release commit. **Needs David:** an edit of each entry. Part of the
+      documentation's session if there's room. (**Decision 11:** an entry for every release, or
+      only for releases worth announcing.)
+- [ ] **The examples, live.** Each example built with `--base /examples/<name>/` into the site's
+      output (all eight build that way today, and `linksPlugin()` passes on each). The gallery at
+      `/examples/` from one data file (`examples.yml`: what each shows, the docs page for each
+      feature, the engine), which also feeds a "See it working" box on docs pages and the trail
+      marker the site's build adds to the top of each example page (its name, Source, What it
+      shows, All examples). The six examples that name their own address (`blog-tags`,
+      `blog-categories`, `docs-sidebar`, `glossary-docs`, `versioned-docs`, `islands`) change it
+      from `https://<name>.sitesquatch.dev` to `https://sitesquatch.dev/examples/<name>/` and are
+      frozen again (`node freeze.js`). Merge `glossary-docs`' `_redirects` lines into the site's
+      own with the prefix, and check `docs-sidebar`'s Pagefind search under a base. Update the
+      Live column of `examples/sites/README.md`, and delete `.github/workflows/examples.yml`. Done
+      when every example reaches its source and its gallery entry in one click, and its redirects
+      and search work in a preview. (**Decision 2:** a subdomain each instead: a Worker and a
+      custom domain per example, and no example's address changes. **Decision 8:** the marker as a
+      line in each example's own layout.)
+- [ ] **Agents, and launch.** An `afterBuild` hook writes each docs page's Markdown to
+      `/docs/<page>.md` and `/docs/<page>/index.md` (the title as a heading, then the source, with
+      links to other docs pages pointing at their copies). `<link rel="alternate"
+      type="text/markdown">` and `rel="describedby"` (to `/llms.txt`) in each page's head.
+      `/llms.txt` (the summary, three lines of guidance that start with `ssqch docs <name>`, then
+      the sidebar as links to the copies) and `/llms-full.txt`. A Worker script for `/docs/*`
+      only, which answers `Accept: text/markdown` with the copy and `Vary: Accept` (**Decision
+      6**). A test in `site/` that CI runs: every docs page has both copies, `/llms.txt` lists
+      exactly the docs pages, and each copy's rendered text equals its page's `<main>`. Then
+      launch: the apex as the Worker's custom domain, a redirect rule from `www`, and `homepage`
+      in `packages/ssqch/package.json`, the README and `examples/sites/README.md` pointing at the
+      site. **Needs David:** the DNS change (attaching
+      the domain creates the apex record). Done when `curl -H "Accept: text/markdown"
+      https://sitesquatch.dev/docs/install/` returns Markdown and the test passes.
+
+After launch:
+
+- [ ] **The docs move** (**Decision 3**). Run the splitter a last time, commit its pages in
+      `site/src/docs/`, and delete it: the pages are the source. `ssqch docs` reads them from the
+      package (`scripts/build.ts` copies them into `bundled/`, and `FROM_REPOSITORY` in
+      `src/bundled.ts` reads them in place from a checkout), with every answer the same text
+      (`docs_answer_for_every_name`, and the oracle's `docs` tests). The pages are plain Markdown:
+      the folder's data file sets `render: md`, and callouts are GitHub alerts, so GitHub, `ssqch
+      docs` and the site show the same text. The trailheads move from `docs/trailheads/` to
+      `site/src/docs/trailheads/`, and `GUIDES_URL` in `src/commands/docs.ts` points at
+      sitesquatch.dev. The README becomes the front page (what ssqch is, install, the first site,
+      a map of the docs), under about 15 KB, and "Working on SiteSquatch" becomes
+      `CONTRIBUTING.md`. AGENTS.md's "Conventions" (a new name needs a README row) and
+      "Releasing" step 2 (the pinned versions) change to name the docs pages. A changelog entry,
+      under "Breaking" if any `ssqch docs` answer or `section` name changes.
+- [ ] **What the site taught ssqch.** A page's Markdown as an output format ("Content and
+      structure", below), after which the site's hook goes away. `redirectsPlugin()` under a
+      `base`: its `_redirects` lines are written without the base (the pages it writes get it),
+      so decide whether they should have it. Exact names first in the site's search (`base`,
+      `imagePlugin`), as `ssqch docs <name>` answers. `ssqch diff` between a pull request's build
+      of the site and `main`'s, in the preview comment. `assetsPlugin()` on a passthrough copy
+      leaves the plain file in the output beside the fingerprinted one (`site.css` and
+      `site.7d041850.css`), where the README says it's renamed: decide which is meant, and make
+      the other match. The `budgets` warning then lists both.
+- [ ] **More pages.** Field reports: the trial migrations as short case studies, lit.dev's "don't
+      move yet" included (**Needs David:** a read of each before it's public, since they name
+      other people's sites). The sticker sheet: the drawings, the palette and the trail patch. A
+      social card image per page (one PNG by hand until then; SVG rasterizing is a known gap).
+      Sightings, when a second site is built with ssqch.
+
 ## Backlog
 
 ### Markdown
@@ -790,7 +919,9 @@ trailhead.
 - [ ] Don't rebuild for files nothing in the build reads (v8 #18: saving a stylesheet only PostCSS
       reads rebuilt the site, 1.6 s, 0 pages changed), or a `watchIgnore`. Ignore editor temp files
       (`.!*!*`, `*~`, `.#*`, `*.swp`, files that vanish within the debounce), and say an unchanged
-      warning once per session (a11y #20).
+      warning once per session (a11y #20). Seen again 2026-11-18: macOS `sed -i` on a starter post
+      printed `Fresh tracks in src/posts/.!64277!i-know-what-i-saw.md`, and the rebuild it started
+      changed no pages.
 - [ ] `serve.run`'s first compile: the wait is 2 s, and Tailwind took longer, so the first page
       warned (blog #14); a slow tool (a big `tsc --watch`) still races the first build. Wait while a
       watcher is on its first build, or `serve: { run: [{ command, waitFor }] }`.
@@ -905,7 +1036,8 @@ trailhead.
 ### Docs
 
 Per AGENTS.md, every feature ships with a README entry `ssqch docs` finds; these are the fuller
-write-ups that are still owed.
+write-ups that are still owed. Once the docs move to `site/src/docs/` ("The website", above), these
+are pages there, and the README row `ssqch docs` finds is a row on a page.
 
 - [ ] The Eleventy trailhead:
   - "Things that work differently": the defaults that change markup (heading ids, `linkedImages`,
@@ -961,24 +1093,23 @@ write-ups that are still owed.
 
 ### Deploying and examples
 
-- [ ] Deploy the examples, one Netlify site each at `<name>.sitesquatch.dev`.
-      `.github/workflows/examples.yml` builds them with the same commit's ssqch and uploads each
-      through Netlify's deploy API on pushes to `main`. Left: create a Netlify site per example
-      (eight now), add the `NETLIFY_AUTH_TOKEN` secret and the `NETLIFY_SITE_*` variables (the
-      workflow lists them), and run it; a CNAME per example on Namecheap's DNS and the custom domain
-      in each Netlify site; link the live URLs from `examples/sites/README.md` and the README.
 - [ ] Deploy guides:
   - Netlify: grow the README's recipe into a guide with the blog's `netlify.toml` as the worked
     example: `netlify-plugin-cache`, `redirectsPlugin({ netlify: true })` and `_redirects`, a
     `_headers` file (cache headers for `/img/`), deploy previews and branch deploys, and bumping the
     pinned version.
-  - Cloudflare: work out the recommended path (Workers static assets or Pages; a Git build or
-    `wrangler` from GitHub Actions with `actions/setup-node`), whether its build cache can keep
-    `.cache/ssqch` (if not, build in Actions with `actions/cache`), whether `redirectsPlugin`'s
-    `_redirects` lines work there, and whether the option needs a host-neutral name. Deploy an
-    example to prove each step.
-  - Decide where guides live (`docs/deploying/` beside `docs/trailheads/`, or the README) and
-    whether `ssqch docs` answers from them; link them from the trailheads and the starters' READMEs.
+  - Cloudflare: a guide from what the website's pipeline found. Workers with static assets, not
+    Pages (Cloudflare says to start new projects on Workers). A `wrangler.jsonc` with
+    `assets.directory` and `not_found_handling: "404-page"`; the default `html_handling` serves
+    `about/index.html` at `/about/`. Two ways to deploy: Cloudflare's Git builds (Workers Builds:
+    a build command, `NODE_VERSION`, a preview for each branch), proven with an example in a
+    scratch repository, and GitHub Actions with `cloudflare/wrangler-action`, as the website does.
+    `_redirects` and `_headers` work as on Netlify (2,000 static redirects, 100 header rules), so
+    `redirectsPlugin({ netlify: true })` gets a host-neutral name (Breaking). Still to find out:
+    whether Workers Builds' cache can keep `.cache/ssqch`, and whether it runs Node 26.
+  - Guides are docs pages under "Deploying" (`site/src/docs/deploying/` once the docs move), so
+    `ssqch docs netlify` and `ssqch docs cloudflare` answer from them; link them from the
+    trailheads and the starters' READMEs.
 - [ ] CI: build the blog and compare it against a known-good output, as a regression test (today
       it's by hand: build with the release and the branch, then `ssqch diff --exact`).
 - [ ] The starter: a suitably blurry picture for the second post (**Needs David**: a drawing beats
@@ -1026,7 +1157,9 @@ write-ups that are still owed.
       previous and next link); named data sources (`sources: { snacks: { url, cache, schema } }`
       with `ssqch refresh`, so a build can run offline from pinned snapshots); `ssqch move <from>
       <to>` (move a page, fix the links to it, add an alias); and more output formats for a page
-      (the same content as JSON or Markdown, for a search index, an app or `llms.txt`).
+      (the same content as JSON or Markdown, for a search index, an app or `llms.txt`). The website
+      writes each docs page's Markdown with an `afterBuild` hook until this exists, and is its
+      first test: `/docs/<page>.md`, and `/llms.txt` as a listing of them.
 - [ ] **Themes:** a theme's own config (filters, plugins), `ssqch theme` to list a theme's files and
       copy one into the site, a report of upstream changes that overlap the site's overrides, and
       the docs starter published as a theme.

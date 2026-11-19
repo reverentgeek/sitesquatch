@@ -1,0 +1,28 @@
+# The example sites (examples/sites/), in the order examples/sites/README.md lists them: the
+# landing page's campsites now, and later the gallery, each docs page's "See it working" box and
+# the marker on each live example ("The examples, live" in TODO.md's section 9). `shows` is the
+# short version of the README's Shows column.
+- name: blog-tags
+  engine: Nunjucks
+  shows: Dated permalinks, tag pages with a feed each, aliases, footnotes, highlighting.
+- name: blog-categories
+  engine: Nunjucks
+  shows: Category pages from a custom collection, reading time, excerpts, an Atom feed.
+- name: docs-sidebar
+  engine: Nunjucks
+  shows: A sidebar, breadcrumbs and previous/next from one file, admonitions, Pagefind search.
+- name: glossary-docs
+  engine: Nunjucks
+  shows: A headless glossary with tooltips, callout containers, generated redirects.
+- name: versioned-docs
+  engine: Jinja
+  shows: Versions as folders with their own sidebars, a version switcher, tabs, a blog with authors.
+- name: component-docs
+  engine: Edge
+  shows: Edge components in place of MDX, live examples with highlighted source, Sass.
+- name: islands
+  engine: Jinja
+  shows: Custom elements whose scripts load only on the pages that use them, each with a fallback.
+- name: reference-pages
+  engine: Handlebars
+  shows: One page per option, generated from a JSON schema and grouped by category.

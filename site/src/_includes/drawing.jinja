@@ -1,0 +1,6 @@
+{#- A drawing from docs/assets/: `name` is "stickers/owl" or "sitesquatch", `width` in pixels.
+    Most are decoration (alt=""), and the ones below the first screen load when they're near. -#}
+{% macro drawing(name, width, alt="", class="", eager=false) -%}
+{%- set size = drawings[name] -%}
+<img{% if class %} class="{{ class }}"{% endif %} src="/assets/drawings/{{ name }}.svg" alt="{{ alt }}" width="{{ width }}" height="{{ (width * size.height / size.width) | round | int }}"{% if not eager %} loading="lazy"{% endif %} decoding="async">
+{%- endmacro %}

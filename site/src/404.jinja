@@ -1,0 +1,24 @@
+---
+layout: base.jinja
+title: The trail went cold
+permalink: /404.html
+noindex: true
+sitemap: false
+---
+{%- from "drawing.jinja" import drawing with context -%}
+<section class="lost">
+	<div class="wrap">
+		{{ drawing("stickers/sitesquatch-side", 180, eager=true) }}
+		<div>
+			<p class="kicker">404 · Page not found</p>
+			<h1>The trail went cold</h1>
+			<p class="lead">We followed the tracks to this address, and they stop here. Either the page moved, or it was never here and somebody's been telling stories.</p>
+			<ul class="signpost">
+				<li><a class="sign" href="/">Back to the trailhead</a></li>
+				<li><a class="sign" href="{{ links.readme }}">The docs</a></li>
+				<li><a class="sign" href="/#examples">The examples</a></li>
+			</ul>
+			<p class="fine">Followed a link here from somewhere on this site? That's a bug, and we'd like to hear about it: <a href="{{ links.issues }}">report a sighting</a>.</p>
+		</div>
+	</div>
+</section>

@@ -4,6 +4,8 @@
 /research
 /examples/sites/*/dist
 /examples/sites/*/.cache
+/site/dist
+/site/.cache
 /packages/*/node_modules
 /packages/ssqch/dist
 
