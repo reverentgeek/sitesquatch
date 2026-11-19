@@ -1,8 +1,11 @@
-# Trailhead: moving from Docusaurus
-
+---
+title: "Trailhead: moving from Docusaurus"
+navTitle: "From Docusaurus"
+description: "Docusaurus sites are React apps that happen to render documentation; ssqch builds the same documentation as static HTML that needs no JavaScript to read."
+---
 Docusaurus sites are React apps that happen to render documentation; ssqch builds the same documentation as static HTML that needs no JavaScript to read. The move is mostly mechanical for Markdown pages, and takes a decision for each React component: an Edge component, a container, or client-side JavaScript that stays.
 
-Two examples are distilled from reactnative.dev: [`versioned-docs`](../../examples/sites/versioned-docs/) (versions, sidebars, tabs, a blog with authors) and [`component-docs`](../../examples/sites/component-docs/) (components in place of MDX, live examples).
+Two examples are distilled from reactnative.dev: [`versioned-docs`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/versioned-docs/) (versions, sidebars, tabs, a blog with authors) and [`component-docs`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/component-docs/) (components in place of MDX, live examples).
 
 ## The config
 
@@ -48,7 +51,7 @@ Two examples are distilled from reactnative.dev: [`versioned-docs`](../../exampl
 
 ## React pages
 
-Pages in `src/pages/*.js` become templates in any of ssqch's languages. Interactive parts (a playground, a live demo) stay JavaScript: ship them as custom elements with `elementsPlugin()` from `ssqch/elements`, which loads each one's script only on the pages that use it (the [`islands`](../../examples/sites/islands/) example).
+Pages in `src/pages/*.js` become templates in any of ssqch's languages. Interactive parts (a playground, a live demo) stay JavaScript: ship them as custom elements with `elementsPlugin()` from `ssqch/elements`, which loads each one's script only on the pages that use it (the [`islands`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/islands/) example).
 
 ## Starting point
 

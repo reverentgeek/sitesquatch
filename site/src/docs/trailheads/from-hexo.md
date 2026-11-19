@@ -1,8 +1,11 @@
-# Trailhead: moving from Hexo
-
+---
+title: "Trailhead: moving from Hexo"
+navTitle: "From Hexo"
+description: "Hexo sites are Markdown posts, a theme of templates (often Nunjucks, sometimes EJS or Pug) and tag plugins inside the posts."
+---
 Hexo sites are Markdown posts, a theme of templates (often Nunjucks, sometimes EJS or Pug) and tag plugins inside the posts. Nunjucks themes render in ssqch as they are, posts keep their front matter, and tag plugins become filters that keep the same `{% tag %}` syntax. What takes work is the theme's helpers and anything that leans on Hexo's `site` object.
 
-The [`docs-sidebar`](../../examples/sites/docs-sidebar/) example is distilled from hexo.io (and the FastAPI docs), and [`blog-tags`](../../examples/sites/blog-tags/) shows a blog with tag pages and feeds.
+The [`docs-sidebar`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/docs-sidebar/) example is distilled from hexo.io (and the FastAPI docs), and [`blog-tags`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/blog-tags/) shows a blog with tag pages and feeds.
 
 ## The config
 
@@ -11,7 +14,7 @@ The [`docs-sidebar`](../../examples/sites/docs-sidebar/) example is distilled fr
 | Hexo | SiteSquatch |
 | --- | --- |
 | `source_dir: source`, `public_dir: public` | `dirs: { input: "source", output: "public" }` |
-| `themes/<name>/layout/` | `dirs: { includes: "_includes" }`, or keep the theme where it is as a [theme](../../README.md#themes): `theme: "themes/<name>"`, with its templates under `_includes/` |
+| `themes/<name>/layout/` | `dirs: { includes: "_includes" }`, or keep the theme where it is as a [theme](../themes.md): `theme: "themes/<name>"`, with its templates under `_includes/` |
 | `themes/<name>/source/` (CSS, JS, images) | The theme folder's other files are copied as they are, or `passthrough` |
 | `_config.yml` values in templates (`config.title`) | `src/_data/config.yml`: every file in `_data` is a template variable |
 | `theme_config`, `themes/<name>/_config.yml` (`theme.menu`) | `src/_data/theme.yml` |

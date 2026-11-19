@@ -143,7 +143,9 @@ test("other_generators_words_get_ssqch_names", () => {
 	for (const help of [["build", "--help"], ["serve", "--help"], ["init", "--help"], ["new", "--help"], ["--help"]]) {
 		known += ssqch(help).log;
 	}
-	const readme = fs.readFileSync(path.join(REPO, "README.md"), "utf8");
+	// The docs: sitesquatch.dev's pages, which `ssqch docs` reads.
+	const docs = path.join(REPO, "site", "src", "docs");
+	const readme = fs.readdirSync(docs, { recursive: true }).filter((f) => String(f).endsWith(".md")).map((f) => fs.readFileSync(path.join(docs, String(f)), "utf8")).join("\n");
 	const dir = tempDir("equivalents");
 	const d = dir;
 	for (const row of TABLE) {

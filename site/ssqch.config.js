@@ -9,7 +9,7 @@ import { minifyPlugin } from "ssqch/minify";
 import { rssPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
 import { copyOf, writeAgentCopies } from "./lib/agents.ts";
-import { splitDocs } from "./lib/split.ts";
+import { docsHref } from "./lib/docs.ts";
 
 /** "0.9.0" as a number that sorts: 9000. */
 const version = (v) => String(v).split(".").reduce((n, part) => n * 1000 + Number(part), 0);
@@ -32,11 +32,10 @@ export default defineConfig(({ env }) => ({
 		{ generated: "." },
 	],
 
-	// The docs pages are the README's sections and the trailheads (lib/docs-map.ts says which),
-	// written into src/docs/ before each build. A file is written only when it changed, so the
-	// dev server's rebuild doesn't start another.
-	beforeBuild: [() => { splitDocs(); writeAgentCopies(); }],
-	watch: ["../README.md", "../docs/trailheads", "lib"],
+	// The docs pages are src/docs/ (lib/docs.ts). What agents read is written from them before
+	// each build, only what changed, so the dev server's rebuild doesn't start another.
+	beforeBuild: [() => { writeAgentCopies(); }],
+	watch: ["lib"],
 
 	markdown: { highlight: true },
 
@@ -49,11 +48,13 @@ export default defineConfig(({ env }) => ({
 		firstParagraph: (html) => /<p\b[\s\S]*?<\/p>/.exec(String(html ?? ""))?.[0] ?? "",
 		/** A docs page's Markdown copy: `/docs/install/` is `/docs/install.md`. */
 		markdownCopy: (url) => copyOf(String(url)),
+		/** A link in a docs page, from `page.inputPath`: a relative .md link is its page's URL (lib/docs.ts). */
+		docsHref: (href, inputPath) => docsHref(String(href), String(inputPath).replace(/\\/g, "/").replace(/^.*?src\/docs\//, "")),
 	},
 	schemas: {
 		docs: {
 			files: "docs/**/*.md",
-			fields: { title: "string", description: "string", command: "string", source: "string", sourceLine: "integer" },
+			fields: { title: "string", "navTitle?": "string", "description?": "string", "command?": "string" },
 			unknown: "error",
 		},
 		changelog: {
@@ -67,6 +68,12 @@ export default defineConfig(({ env }) => ({
 	// the build, so they aren't counted: they load only when someone searches. Production only:
 	// `ssqch serve` would count the Pagefind files the last production build left in dist/.
 	budgets: env === "production" ? { pages: "100 KB", css: "40 KB", javascript: "3 KB", fonts: "30 KB", images: "100 KB" } : {},
+
+	// The docs pages' stickers point into docs/assets/ by a relative path, which GitHub follows;
+	// the site serves those drawings from /assets/drawings/ (passthrough, above).
+	transforms: {
+		stickers: (content, page) => (page.outputPath?.endsWith(".html") ? content.replace(/(<img\b[^>]*\bsrc=")(?:\.\.\/)+docs\/assets\//g, "$1/assets/drawings/") : content),
+	},
 
 	plugins: [
 		elementsPlugin(),

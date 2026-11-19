@@ -101,7 +101,7 @@ test("a_browser_from_an_earlier_server_reloads_once_this_one_builds", async () =
 });
 
 test("a_missing_file_names_who_could_have_written_it", () => {
-	assert.equal(missingMessage("/app.css", [], "dist"), "/app.css is linked but nothing wrote it to dist. If a tool makes it, run its watcher with `serve.run` (see \"CSS and JavaScript\" in the README)");
+	assert.equal(missingMessage("/app.css", [], "dist"), "/app.css is linked but nothing wrote it to dist. If a tool makes it, run its watcher with `serve.run` (`ssqch docs \"CSS and JavaScript\"`)");
 	assert.equal(missingMessage("/app.css", ["postcss"], "dist"), "/app.css is linked but isn't in dist: serve.run's postcss hasn't written it (its output is in the terminal)");
 	assert.equal(missingMessage("/app.css", ["postcss", "esbuild", "tsc"], "dist"), "/app.css is linked but isn't in dist: none of serve.run's postcss, esbuild or tsc has written it (their output is in the terminal)");
 });

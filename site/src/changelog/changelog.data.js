@@ -3,7 +3,7 @@
 // its section there. `release` is the version an entry starts with, `releases` every version it
 // covers (tests/changelog.test.ts checks them against CHANGELOG.md), and an entry that covers
 // several releases names the last with `lastRelease` and `lastDate`.
-import { slug } from "../../lib/split.ts";
+import { slug } from "../../lib/docs.ts";
 
 const day = (date) => new Date(date).toISOString().slice(0, 10);
 

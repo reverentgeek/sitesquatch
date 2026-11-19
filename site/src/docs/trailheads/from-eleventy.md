@@ -1,8 +1,11 @@
-# Trailhead: moving from Eleventy
-
+---
+title: "Trailhead: moving from Eleventy"
+navTitle: "From Eleventy"
+description: "SiteSquatch keeps many of the same ideas as Eleventy (a data cascade, collections, pagination, layouts) but isn't a drop-in replacement."
+---
 SiteSquatch keeps many of the same ideas as Eleventy (a data cascade, collections, pagination, layouts) but isn't a drop-in replacement: the config is one object instead of method calls, and names are SiteSquatch's own. Nunjucks and Liquid templates render as they are, so the first build usually comes early, and what's left is the config and a few front-matter keys.
 
-The [ReverentGeek blog](https://github.com/reverentgeek/blog) made this move (from Eleventy with Edge templates), and the [`blog-categories`](../../examples/sites/blog-categories/) example is distilled from eslint.org, an Eleventy site.
+The [ReverentGeek blog](https://github.com/reverentgeek/blog) made this move (from Eleventy with Edge templates), and the [`blog-categories`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/blog-categories/) example is distilled from eslint.org, an Eleventy site.
 
 ## Importing
 
@@ -84,7 +87,7 @@ Where Eleventy's word means the same thing in ssqch, it works as it is: `ssqch d
 
 ## Templates
 
-Nunjucks (`.njk`) renders with Nunjucks, the library Eleventy uses (ssqch's fork of it, which prints values as Nunjucks does: `true`, `a,b`), Liquid with liquidjs, Eleventy's Liquid library, and EJS (`.ejs`) with ejs (`include()` reads from `_includes`, as in Eleventy). Most templates work unchanged, shortcodes included; the README lists what differs (Liquid shortcodes become filters, for one). JavaScript templates (`.11ty.js`) need rewriting in a template language, or an engine of your own for a new extension: `engines: { page: (source, data) => html }` renders `.page` files. WebC isn't supported.
+Nunjucks (`.njk`) renders with Nunjucks, the library Eleventy uses (ssqch's fork of it, which prints values as Nunjucks does: `true`, `a,b`), Liquid with liquidjs, Eleventy's Liquid library, and EJS (`.ejs`) with ejs (`include()` reads from `_includes`, as in Eleventy). Most templates work unchanged, shortcodes included; [Each template language](../template-languages.md) lists what differs (Liquid shortcodes become filters, for one). JavaScript templates (`.11ty.js`) need rewriting in a template language, or an engine of your own for a new extension: `engines: { page: (source, data) => html }` renders `.page` files. WebC isn't supported.
 
 ## Things that work differently
 

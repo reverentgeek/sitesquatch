@@ -8,7 +8,7 @@
 // is never in the table.
 //
 // The table is curated: the words people and agents reach for, from the trailheads (migration
-// guides) in `docs/trailheads/`, not every option of every generator. Each row is tested: an
+// guides) in `site/src/docs/trailheads/`, not every option of every generator. Each row is tested: an
 // alias works and a hint is refused, and the name it gives exists.
 import fs from "node:fs";
 import path from "node:path";
@@ -128,7 +128,7 @@ export function inMessage(message: string): Equivalent | undefined {
 	return TABLE.find((e) => message.includes(e.say));
 }
 
-/** Another generator's config, in a folder without ssqch's: [file, generator, importer, the trailhead in `docs/trailheads/` that `ssqch docs --from` prints]. */
+/** Another generator's config, in a folder without ssqch's: [file, generator, importer, the trailhead in `site/src/docs/trailheads/` that `ssqch docs --from` prints]. */
 export const OTHER_CONFIGS: ReadonlyArray<readonly [string, string, string | null, string | null]> = [
 	[".eleventy.js", "Eleventy", "eleventy", "from-eleventy.md"],
 	["eleventy.config.js", "Eleventy", "eleventy", "from-eleventy.md"],

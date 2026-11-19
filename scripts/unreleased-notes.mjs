@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const NOTE = /^>\s*\*\*Not released yet\.\*\*/;
 
-/** The documentation's Markdown: the README, the trailheads, and the site's pages. */
+/** The documentation's Markdown: the README, and the site's pages (the docs among them). */
 function documentation() {
 	const files = ["README.md"];
 	const walk = (dir) => {
@@ -32,7 +32,6 @@ function documentation() {
 			else if (entry.name.endsWith(".md")) files.push(file);
 		}
 	};
-	walk("docs/trailheads");
 	walk("site/src");
 	return files;
 }

@@ -4,15 +4,13 @@
 // link checker sees the copies each page's <head> links. The first thing each says is that
 // `ssqch docs <name>` answers for the installed version, which beats any website.
 //
-// A page and its copy come from the same Markdown (lib/split.ts), and nothing of the page's
-// chrome goes into the copy: the title as a heading, then the page's text, with links to other
-// docs pages pointing at their copies. tests/agents.test.ts checks that each copy, rendered, is
+// A page and its copy are the same file (src/docs/, lib/docs.ts), and nothing of the page's
+// chrome goes into the copy: the title as a heading, then the page's text, with its relative .md
+// links pointing at the other pages' copies. tests/agents.test.ts checks that each copy, rendered, is
 // its page's text.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { DOCS } from "./docs-map.ts";
-import { pages, SITE } from "./split.ts";
-import type { Written } from "./split.ts";
+import { docsHref, pages, SITE } from "./docs.ts";
 import reference from "../src/_data/reference.js";
 
 export const GENERATED = path.join(SITE, "generated");
@@ -24,14 +22,18 @@ export const copyOf = (url: string) => (url === "/docs/" ? "/docs/index.md" : `$
 /** The other place a copy is: `/docs/install/index.md` (the llms.txt proposal's name for a folder's page), and `/docs.md` for `/docs/`. */
 const otherCopyOf = (url: string) => (url === "/docs/" ? "/docs.md" : `${url}index.md`);
 
-/** Links to docs pages point at their copies: `](/docs/markdown/#containers)` is `](/docs/markdown.md#containers)`. */
-function toCopies(markdown: string): string {
+/** Links to docs pages point at their copies: `](themes.md#x)` from `trailheads/from-hexo.md`, or `](/docs/themes/#x)`, is `](/docs/themes.md#x)`. */
+function toCopies(markdown: string, from: string): string {
 	let fence: string | undefined;
 	return markdown.split("\n").map((line) => {
 		const marker = /^\s*(```+|~~~+)/.exec(line)?.[1];
 		if (marker) fence = fence === undefined ? marker : line.trim() === marker ? undefined : fence;
 		if (fence !== undefined || marker) return line;
-		return line.split(/(`+[^`]*`+)/).map((part, i) => (i % 2 === 1 ? part : part.replace(/\]\((\/docs\/[^)#\s]*)(#[^)\s]*)?\)/g, (_, url: string, hash = "") => `](${copyOf(url)}${hash})`))).join("");
+		return line.split(/(`+[^`]*`+)/).map((part, i) => (i % 2 === 1 ? part : part.replace(/\]\(([^)\s]+)\)/g, (whole, href: string) => {
+			const url = docsHref(href, from);
+			const page = /^(\/docs\/[^#]*)(#.*)?$/.exec(url);
+			return page ? `](${copyOf(page[1])}${page[2] ?? ""})` : whole;
+		}))).join("");
 	}).join("\n");
 }
 
@@ -40,9 +42,9 @@ const PICTURE = /^\s*<img\b[^>]*>\s*$/;
 
 /** Each docs page's copy: its URL, title and Markdown. */
 export function copies(): Array<{ url: string; title: string; description: string; group: string; markdown: string }> {
-	return pages().map((p: Written) => {
-		const body = p.page.from || p.page.file ? p.markdown.split("\n").filter((line) => !PICTURE.test(line)).join("\n") : reference().markdown;
-		return { url: p.url, title: p.title, description: p.description, group: p.group, markdown: `# ${p.title}\n\n${toCopies(body).trim()}\n` };
+	return pages().map((p) => {
+		const body = p.file ? p.body.split("\n").filter((line) => !PICTURE.test(line)).join("\n") : reference().markdown;
+		return { url: p.url, title: p.title, description: p.description, group: p.group, markdown: `# ${p.title}\n\n${toCopies(body, p.file).trim()}\n` };
 	});
 }
 
@@ -62,9 +64,9 @@ export function writeAgentCopies(): string[] {
 	}
 	const summary = "> SiteSquatch (`ssqch`) is a static site generator for Node.js. It turns Markdown and templates into plain HTML, and checks its own work on every build: links, front matter against schemas, and what a change did to the output.";
 	const index = [`# SiteSquatch`, "", summary, "", ...GUIDANCE];
-	for (const group of DOCS) {
-		index.push("", `## ${group.title}`, "");
-		for (const c of all.filter((c) => c.group === group.title)) index.push(`- [${c.title}](${ADDRESS}${copyOf(c.url)})${c.description ? `: ${c.description}` : ""}`);
+	for (const group of [...new Set(all.map((c) => c.group))]) {
+		index.push("", `## ${group}`, "");
+		for (const c of all.filter((c) => c.group === group)) index.push(`- [${c.title}](${ADDRESS}${copyOf(c.url)})${c.description ? `: ${c.description}` : ""}`);
 	}
 	files.set("/llms.txt", `${index.join("\n")}\n`);
 	files.set("/llms-full.txt", `# SiteSquatch\n\n${summary}\n\n${GUIDANCE.join("\n")}\n\n${all.map((c) => `<!-- ${ADDRESS}${c.url} -->\n\n${c.markdown}`).join("\n\n")}`);

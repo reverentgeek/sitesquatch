@@ -97,7 +97,7 @@ async function settled(files: string[]): Promise<Array<Stamp | undefined>> {
 
 /** What's said about a stylesheet or script a page links that isn't in the output. */
 export function missingMessage(url: string, tools: string[], output: string): string {
-	if (tools.length === 0) return `${url} is linked but nothing wrote it to ${output}. If a tool makes it, run its watcher with \`serve.run\` (see "CSS and JavaScript" in the README)`;
+	if (tools.length === 0) return `${url} is linked but nothing wrote it to ${output}. If a tool makes it, run its watcher with \`serve.run\` (\`ssqch docs "CSS and JavaScript"\`)`;
 	if (tools.length === 1) return `${url} is linked but isn't in ${output}: serve.run's ${tools[0]} hasn't written it (its output is in the terminal)`;
 	return `${url} is linked but isn't in ${output}: none of serve.run's ${tools.slice(0, -1).join(", ")} or ${tools[tools.length - 1]} has written it (their output is in the terminal)`;
 }

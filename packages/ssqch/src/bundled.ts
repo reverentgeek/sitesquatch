@@ -1,10 +1,9 @@
-// The files that ship with the package: the README (`ssqch docs`), the trailheads (`ssqch docs
+// The files that ship with the package: the docs (`ssqch docs`, and the trailheads for `ssqch docs
 // --from`), the editor types, the completion scripts and the starters.
 //
-// Most of them live in the package's `bundled/` folder. The README and the trailheads are the
-// repository's own files, where GitHub shows them and the docs link to them
-// (`docs/trailheads/from-eleventy.md`), so there's one copy of each to edit: from the source,
-// ssqch reads them there, and `scripts/build.ts` copies them into the package's `bundled/`.
+// Most of them live in the package's `bundled/` folder. The docs are the website's pages
+// (`site/src/docs/`, sitesquatch.dev/docs/), so there's one copy to edit: from the source, ssqch
+// reads them there, and `scripts/build.ts` copies them into the package's `bundled/docs/`.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,8 +15,7 @@ export const BUNDLED = path.join(PACKAGE, "bundled");
 
 /** What's read from the repository when it isn't in `bundled/`: (path under `bundled/`, the original from the repository's root). */
 export const FROM_REPOSITORY: ReadonlyArray<readonly [rel: string, original: string]> = [
-	["README.md", "README.md"],
-	["trailheads", "docs/trailheads"],
+	["docs", "site/src/docs"],
 ];
 
 /** Where a bundled file or folder is: in `bundled/`, or (running from the source) its original. */

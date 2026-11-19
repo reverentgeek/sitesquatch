@@ -1,4 +1,4 @@
-# The seven trailheads (docs/trailheads/, pages under /docs/trailheads/), for the landing page's
+# The seven trailheads (site/src/docs/trailheads/, pages under /docs/trailheads/), for the landing page's
 # signs, in the order the README lists them.
 - name: Eleventy
   url: /docs/trailheads/from-eleventy/

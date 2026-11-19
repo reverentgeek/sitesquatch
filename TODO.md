@@ -665,10 +665,11 @@ From opensource.guide (osg). The trailhead draft is in its `suggestions.md`.
       `defaults`, `site` and `site.data`, static files, front matter on `.js`/`.scss`, `page.`
       renames (listing collisions), the plugins (seo, sitemap, redirect-from, feed, github-metadata,
       github-pages' implicit ones and default theme), unknown tags, and a count of kramdown syntax.
-- [ ] **`docs/trailheads/from-jekyll.md`** from the draft in osg `suggestions.md` (done 2026-11-18),
-      and the rows `ssqch docs --from jekyll` lacks (osg #16): `page.title`, `site.data`,
-      `site.<collection>`, `collections`, `defaults`, `exclude`, `{% seo %}`, `include_relative`,
-      jekyll-sitemap, `markdown="1"`, kramdown, Rouge, `site.time`. (`jsonify`'s row fixed.)
+- [ ] **`site/src/docs/trailheads/from-jekyll.md`** from the draft in osg `suggestions.md` (done
+      2026-11-18), and the rows `ssqch docs --from jekyll` lacks (osg #16): `page.title`,
+      `site.data`, `site.<collection>`, `collections`, `defaults`, `exclude`, `{% seo %}`,
+      `include_relative`, jekyll-sitemap, `markdown="1"`, kramdown, Rouge, `site.time`. (`jsonify`'s
+      row fixed.)
 - [ ] Report the site's own bugs upstream (osg `issues.md`, last section): dead search, the
       language menu on one-word URLs, the breadcrumb, jekyll-toc's missing last heading, and the 21
       drifted untranslated copies.
@@ -724,8 +725,8 @@ for people, and a Markdown copy of every docs page for coding agents. Built with
 `site/`, served by one Cloudflare Worker with static assets, and deployed from GitHub Actions: a
 preview for each pull request, and production from `main`, so a fix to the site never waits for a
 release (the owner's call, 2026-11-18). The plan, its research and the mock-ups are in
-`research/website/` (gitignored). Until the docs move (below), the README stays the one source and
-the site splits it into pages as it builds. **Decision n** marks an entry that changes if that
+`research/website/` (gitignored). The docs are the pages in `site/src/docs/` (the docs move,
+below), and the README is the front page. **Decision n** marks an entry that changes if that
 decision, at the end of the plan, goes the other way than the plan recommends.
 
 - [x] **Foundation and the landing page** (2026-11-18). `site/` (its README says how to build,
@@ -847,19 +848,24 @@ decision, at the end of the plan, goes the other way than the plan recommends.
 
 After launch:
 
-- [ ] **The docs move** (**Decision 3**). Run the splitter a last time, commit its pages in
-      `site/src/docs/`, and delete it: the pages are the source. `ssqch docs` reads them from the
-      package (`scripts/build.ts` copies them into `bundled/`, and `FROM_REPOSITORY` in
-      `src/bundled.ts` reads them in place from a checkout), with every answer the same text
-      (`docs_answer_for_every_name`, and the oracle's `docs` tests). The pages are plain Markdown:
-      the folder's data file sets `render: md`, and callouts are GitHub alerts, so GitHub, `ssqch
-      docs` and the site show the same text. The trailheads move from `docs/trailheads/` to
-      `site/src/docs/trailheads/`, and `GUIDES_URL` in `src/commands/docs.ts` points at
-      sitesquatch.dev. The README becomes the front page (what ssqch is, install, the first site,
-      a map of the docs), under about 15 KB, and "Working on SiteSquatch" becomes
-      `CONTRIBUTING.md`. AGENTS.md's "Conventions" (a new name needs a README row) and
-      "Releasing" step 2 (the pinned versions) change to name the docs pages. A changelog entry,
-      under "Breaking" if any `ssqch docs` answer or `section` name changes.
+- [x] **The docs move** (2026-11-18). The pages are the source: `site/src/docs/` (34 pages and
+      the trailheads), in the order `site/src/docs/nav.yml` gives, which is the sidebar and the
+      order `ssqch docs` reads them in. The splitter ran a last time and is gone, and
+      `docs/trailheads/` with it. Pages are plain Markdown (`render: md` from the folder's
+      `docs.data.js`), with front matter (`title`, `navTitle`, `description`, `command`), relative
+      `.md` links between them (GitHub follows them; the site's link hook makes them page URLs,
+      and the link checker passes them all), and stickers as relative paths into `docs/assets/`
+      (a site transform points them at its copy). `ssqch docs` builds one text from them: the
+      front page as `# SiteSquatch`, each other page as `## <title>` with its headings one level
+      down (`docsText()` in `src/commands/docs.ts`); the package carries the `.md` files and
+      `nav.yml` in `bundled/docs/` (`FROM_REPOSITORY`). Every name answers with the same section
+      and text, compared before and after for 130 queries; what changed is in the changelog
+      (Breaking): former `###` pages are `##`, links are `.md` links, "Working on SiteSquatch" is
+      `CONTRIBUTING.md`, and `--from` names the trailhead's page on sitesquatch.dev. The template
+      languages page is "Each template language" so `ssqch docs languages` still answers with
+      highlighting's `languages`. The README is a front page (8 KB, was 143 KB). On the way: the
+      splitter had put each page's subsections a level too high (an `<h1>` for "Step 1" on the
+      live Field guide), fixed in the pages.
 - [ ] **What the site taught ssqch.** A page's Markdown as an output format ("Content and
       structure", below), after which the site's hook goes away. `redirectsPlugin()` under a
       `base`: its `_redirects` lines are written without the base (the pages it writes get it),
@@ -991,9 +997,9 @@ After launch:
 
 - [ ] Document the quality options on sharp's scale fully (2026-11-18): a how-to for moving a 0.7
       site's numbers (the changelog's table, and that converted numbers keep the cache), what
-      `avifEffort` costs and saves on a cold build, the trailheads in `docs/trailheads/` (none
-      says yet what Eleventy Image's `sharpAvifOptions` or Hugo's and Astro's `quality` become),
-      and the blog's config as the worked example.
+      `avifEffort` costs and saves on a cold build, the trailheads in `site/src/docs/trailheads/`
+      (none says yet what Eleventy Image's `sharpAvifOptions` or Hugo's and Astro's `quality`
+      become), and the blog's config as the worked example.
 - [ ] Copied GIFs and SVGs count as "encoded" on every build and aren't kept in `.cache/ssqch/img`
       (blog #10): cache them, and count them as copied.
 - [ ] `image()` and `imageUrl()` take different kinds of path; say which `image()` takes, next to
@@ -1060,7 +1066,7 @@ After launch:
 - [ ] `ssqch import --format json` (each item with `file`, `line`, `kind` and the ssqch equivalent),
       and `--help` without the build-only options (`--base`, `--offline`, `--env`, `--verbose`; v8
       #26).
-- [ ] The table of equivalents: check it against the tables in `docs/trailheads/`, and move
+- [ ] The table of equivalents: check it against the tables in `site/src/docs/trailheads/`, and move
       `import`'s method and package hints (`CALL`, `replacement`) into it. Aliases in
       `sitesquatch.toml` (snake_case keys, so Eleventy's words don't apply) and in `ssqch.d.ts` (a
       typed config that uses `pathPrefix` gets a type error, which keeps the docs on ssqch's names)
@@ -1071,9 +1077,8 @@ After launch:
 
 ### Docs
 
-Per AGENTS.md, every feature ships with a README entry `ssqch docs` finds; these are the fuller
-write-ups that are still owed. Once the docs move to `site/src/docs/` ("The website", above), these
-are pages there, and the README row `ssqch docs` finds is a row on a page.
+Per AGENTS.md, every feature ships with an entry in the docs that `ssqch docs` finds; these are the
+fuller write-ups that are still owed, as pages in `site/src/docs/` (in `nav.yml`).
 
 - [ ] The Eleventy trailhead:
   - "Things that work differently": the defaults that change markup (heading ids, `linkedImages`,
@@ -1172,8 +1177,8 @@ are pages there, and the README row `ssqch docs` finds is a row on a page.
     media in for `imagePlugin()` and writes `aliases` for old permalinks and `?p=123` URLs, plus a
     by-hand list; or a guide that leans on an existing converter.
   - Migrate a real WordPress site end to end and compare URLs, feed and sitemap with the live site,
-    as the trial migrations did. Then write `docs/trailheads/from-wordpress.md`, a README pointer,
-    an `ssqch docs wordpress` answer and a CHANGELOG entry.
+    as the trial migrations did. Then write `site/src/docs/trailheads/from-wordpress.md`, a pointer
+    in the docs, an `ssqch docs wordpress` answer and a CHANGELOG entry.
 - [ ] **Internationalization.** A design write-up first: a `locales` config key, `page.lang` from
       the folder, `page.translations` grouped by a translation key, a `t(key)` filter over
       `_data/i18n/<lang>.*`, fallback pages for untranslated content, and hreflang. `Intl` for more

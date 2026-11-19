@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { REPO, SITE } from "../lib/split.ts";
+import { REPO, SITE } from "../lib/docs.ts";
 
 const changelog = readFileSync(path.join(REPO, "CHANGELOG.md"), "utf8");
 
