@@ -7,7 +7,7 @@
 
 <img align="right" src="docs/assets/stickers/sitesquatch.svg" alt="SiteSquatch, a Sasquatch with a deadpan stare" width="180">
 
-SiteSquatch (`ssqch`) is a static site generator for Node.js: large, quick, and rarely photographed. Write your pages in Markdown and [Jinja](https://jinja.palletsprojects.com/) (the default), [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Handlebars](https://handlebarsjs.com/), [Mustache](https://mustache.github.io/) or [EJS](https://ejs.co/), configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. Your config runs on Node, so any npm package you already know works in it.
+SiteSquatch (`ssqch`) is a static site generator that's fun to work with: large, quick, and rarely photographed. Write your pages in Markdown and [Jinja](https://jinja.palletsprojects.com/) (the default), [Edge.js](https://edgejs.dev), [Liquid](https://shopify.github.io/liquid/), [Nunjucks](https://mozilla.github.io/nunjucks/), [Handlebars](https://handlebarsjs.com/), [Mustache](https://mustache.github.io/) or [EJS](https://ejs.co/), configure the site in JavaScript, and `ssqch build` turns it all into plain HTML. Your config runs on Node, so any npm package you already know works in it.
 
 It moves fast for its size. [reverentgeek.com](https://reverentgeek.com) (168 pages, a feed, a sitemap and about 4,700 responsive image files) rebuilds in **under a second** once its images are cached, which is gone before you've found your camera. [Benchmarks](https://sitesquatch.dev/docs/benchmarks/) has the measurements.
 

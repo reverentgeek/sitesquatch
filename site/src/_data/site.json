@@ -1,6 +1,6 @@
 {
 	"name": "SiteSquatch",
 	"url": "https://sitesquatch.dev",
-	"description": "SiteSquatch (ssqch) is a static site generator for Node.js. It turns Markdown and templates into plain HTML, and checks its own work on every build.",
+	"description": "SiteSquatch (ssqch) is a static site generator that's fun to work with. It turns your Markdown and templates into a website, and when something breaks, it points at the line.",
 	"repo": "https://github.com/reverentgeek/sitesquatch"
 }
