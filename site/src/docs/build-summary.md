@@ -28,9 +28,6 @@ With `--verbose`, a line under the summary names the templates in the includes f
 
 ## Where the time went
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
-
 `Time` says which phase was slow, not what in it. `ssqch build --profile` times everything the build calls, and lists the slowest of each kind after the summary. Here's part of the ReverentGeek blog's, a development build:
 
 ```text
