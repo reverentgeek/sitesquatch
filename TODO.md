@@ -752,8 +752,8 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       names the latest release (`latest.js`, from `packages/ssqch/package.json`). Left for later
       stages: the header's search box (the docs), Live links on the campsites (the examples), and
       the web's Markdown copies in Mile 6 (agents; the template has a comment where they go).
-- [ ] **The Cloudflare pipeline.** Written and working on pull requests (2026-11-18); left: the
-      first deploy from `main`. `site/wrangler.jsonc` (static assets only, `not_found_handling:
+- [x] **The Cloudflare pipeline.** Written and working on pull requests (2026-11-18), and
+      deploying from `main` since #32 merged (2026-11-19). `site/wrangler.jsonc` (static assets only, `not_found_handling:
       "404-page"`, the default `html_handling`, an empty `previews` block), `site/src/_headers` (a
       year's caching for the fingerprinted CSS and JavaScript), and `.github/workflows/site.yml`:
       the site's checks (moved from `ci.yml`, whose `already-tested` would skip a deploy from
@@ -791,7 +791,8 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       is on the reference with a page.
       Found on the way: a `render: md` page got a `foreign-global` warning for the
       `{{ eleventy.generator }}` in its text (fixed, with a test and a changelog entry).
-- [ ] **The changelog, for people.** Built 2026-11-18; left: David's edit of the entries.
+- [ ] **The changelog, for people.** Built 2026-11-18, rewritten to lead with the experience and
+      without other people's sites (2026-11-19); left: David's edit of the entries.
       `/changelog/` and an entry page each (`site/src/changelog/0.9.md`, `0.8.md`, `0.2-0.7.md`,
       drafted with the `write` skill from `CHANGELOG.md` only), newest release first, with the
       headlines, "What you might need to change" and one link to the release's section of
