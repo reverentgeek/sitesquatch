@@ -26,6 +26,14 @@ where that version matches.
   (an HTML minifier as a transform took 5.2 s a page in a migration). It's timed one call at a
   time in every build; data functions and hooks, which run once, aren't.
 
+### Faster
+
+- A build into an empty output folder (every CI build, and a local one after deleting it) puts
+  the image plugin's cached files there with hard links made on Node's thread pool, while pages
+  go on rendering, instead of one at a time on the main thread. On macOS a hard link takes about
+  0.2 ms, so the ReverentGeek blog's 4,950 cached files took a second: its build into an empty
+  folder went from 1.58 s to 0.86 s. A build whose output has them already is as it was.
+
 ## 0.10.0 - 2026-11-19
 
 ### Breaking

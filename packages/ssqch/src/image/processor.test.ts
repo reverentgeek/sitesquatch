@@ -198,6 +198,25 @@ test("a page's images become a picture, and the files are made", async () => {
 	fs.rmSync(root, { recursive: true });
 });
 
+// A build into an empty output folder (every CI build) puts each cached file there with a hard
+// link, made on the thread pool while pages go on rendering: the files are there, as links to
+// the cache's, once settle() returns, and the summary has them as reused.
+test("cached files are linked into an empty output folder by the time the build settles", async () => {
+	const { root, p } = project({ "src/img/a.png": await pixels(64, 32, "#228b22") }, { ...defaultImageOptions(), formats: ["webp", "auto"], widths: [16, 32] });
+	const page = path.join(root, "src/index.html");
+	const html = p.transformHtml("<img src=\"/img/a.png\" alt=\"A\">", page);
+	await p.settle();
+	fs.rmSync(path.join(root, "dist"), { recursive: true });
+	p.startBuild({ root, input: "src", output: "dist", verbose: false } as Config);
+	assert.equal(p.transformHtml("<img src=\"/img/a.png\" alt=\"A\">", page), html);
+	await p.settle();
+	const files = fs.readdirSync(path.join(root, "dist/img"));
+	assert.equal(files.length, 4);
+	for (const name of files) assert.equal(fs.statSync(path.join(root, "dist/img", name)).nlink, 2, `${name} isn't a link to the cache's copy`);
+	assert.equal(p.summary()?.replace(/, [\d.]+ [KM]?B:/, ", <size>:"), "4 files from 1 source, <size>: 0 encoded, 4 reused");
+	fs.rmSync(root, { recursive: true });
+});
+
 /** A PNG of noise, which doesn't compress away, so a third of it ends inside its image data. */
 const noise = (width: number, height: number) => {
 	const raw = Buffer.alloc(width * height * 3);
