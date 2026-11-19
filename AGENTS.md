@@ -88,20 +88,19 @@ Run from `packages/ssqch/` unless it says otherwise.
   Run it after changing that Rust (`node scripts/build-wasm.ts minify` builds one; the lists are
   in `scripts/wasm-inputs.ts`); `scripts/wasm-inputs.test.ts` fails until then. It needs
   `rustup target add wasm32-wasip1`.
-- `site/` is sitesquatch.dev, built with this repository's ssqch (`research/TODO.md`, "The
-  website", has the plan). From `site/`: `node build.ts` builds it and fails on any warning, `node --test
-  "tests/*.test.ts"` checks its colors' contrast, that the docs back its numbers and that every
-  docs page is in `nav.yml`, and `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves it.
-  The docs pages are the documentation's one source: `site/src/docs/`, in the order
-  `site/src/docs/nav.yml` gives (the sidebar, and the order `ssqch docs` reads them in, the
-  first page as its top section and each other as a `##` section). A new page goes in `nav.yml`
-  (the tests fail until it's there). After changing a number the landing page shows (the
-  benchmarks, a known gap), update `site/src/_data/benchmarks.js` or the page; the `check` job in
-  `.github/workflows/site.yml` fails until they agree. That
-  workflow also deploys the site to Cloudflare: a preview for each pull request, and production
-  from `main`, so the site can be ahead of npm. Documentation for a feature that's merged and not
-  released starts with `> [!NOTE]` and `> **Not released yet.** This ships with the next version
-  of ssqch.`, until the release (step 2 of "Releasing").
+- `site/` is sitesquatch.dev, built with this repository's ssqch (`research/TODO.md`, "The website",
+  has the plan). From `site/`: `node build.ts` builds it and fails on any warning, `node --test
+  "tests/*.test.ts"` checks its colors' contrast, that the docs back its numbers and that every docs
+  page is in `nav.yml`, and `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves it. The docs
+  pages are the documentation's one source: `site/src/docs/`, in the order `site/src/docs/nav.yml`
+  gives (the sidebar, and the order `ssqch docs` reads them in, the first page as its top section
+  and each other as a `##` section). A new page goes in `nav.yml` (the tests fail until it's there).
+  After changing a number the landing page shows (the benchmarks, a known gap), update
+  `site/src/_data/benchmarks.js` or the page; the `check` job in `.github/workflows/site.yml` fails
+  until they agree. That workflow also deploys the site to Cloudflare: a preview for each pull
+  request, and production from `main`, so the site can be ahead of npm. Documentation for a feature
+  that's merged and not released starts with `> [!NOTE]` and `> **Not released yet.** This ships
+  with the next version of ssqch.`, until the release (step 2 of "Releasing").
 - `docs/assets/` holds the drawings (black line art, SVG) for the README, the docs, examples and
   website, and `docs/assets/stickers/` a sticker of each: the drawing on a white shape with a
   border, so it reads on a light page and a dark one. After adding or editing a drawing, run
@@ -236,9 +235,9 @@ skips, see `already-tested` in `ci.yml`):
    only then publishes the GitHub release, with the npm tarball and its checksum. Then it
    publishes the package to npm (`publish-npm.yml`) and, once npm serves it (npm validates a
    new version first, which takes minutes, and the `homebrew` job waits until `npm view` lists
-   it), the formula to `reverentgeek/homebrew-tap` (not for a prerelease, which goes to npm's
-   `next` tag). If npm hasn't served it when that job times out, no formula goes out: rerun the
-   job. If
+   it and its tarball downloads), the formula to `reverentgeek/homebrew-tap` (not for a
+   prerelease, which goes to npm's `next` tag). If npm hasn't served it when that job times out,
+   no formula goes out: rerun the job. If
    anything fails before the GitHub release, nothing is published: fix it and tag the fixed
    commit with the same version (delete the old tag first). The job that publishes names every
    job before it in `needs` and has no `always()`, on purpose: dist's published when its builds
