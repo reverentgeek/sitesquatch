@@ -1,5 +1,5 @@
-// What coding agents read on the web (TODO.md, section 9, "Agents, and launch"): a Markdown copy
-// of every docs page, `/llms.txt` and `/llms-full.txt`. Written before each build into
+// What coding agents read on the web: a Markdown copy of every docs page, `/llms.txt` and
+// `/llms-full.txt`. Written before each build into
 // site/generated/ (not committed), which the config's passthrough copies into the site, so the
 // link checker sees the copies each page's <head> links. The first thing each says is that
 // `ssqch docs <name>` answers for the installed version, which beats any website.

@@ -317,7 +317,7 @@ test("serve_keeps_building_with_the_last_config_after_its_code_ends_the_build", 
 		await changeAndWait(path.join(dir, "_data/flag.json"), "{ \"v\": \"exit\" }", log, "Build failed:");
 		// The config is saved a moment later, as a person would: in the Node build, another
 		// process has loaded the last one by then. On a busy machine it may not have (the gap is
-		// accepted: TODO.md), and the log says nothing builds until the config loads. Then the
+		// accepted, 2026-11-18), and the log says nothing builds until the config loads. Then the
 		// good config goes back, its build ends its process again, and the save is tried again.
 		const config = path.join(dir, "ssqch.config.js");
 		const good = fs.readFileSync(config, "utf8");
