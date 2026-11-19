@@ -133,7 +133,9 @@ test("the_command_line_reads_as_clap_did", () => {
 		// clap names the program as it was run: `ssqch.exe` on Windows, where 0.7 is that file.
 		return r.stderr.replaceAll("Usage: ssqch.exe ", "Usage: ssqch ");
 	};
-	assert.ok(usage(["build", "--verbos"]).includes("tip: a similar argument exists: '--verbose'\n\nUsage: ssqch build --verbose\n"));
+	// What it printed, when it isn't what's expected (once on Windows CI, 2026-11-18).
+	const has = (text, part) => assert.ok(text.includes(part), `expected ${JSON.stringify(part)} in:\n${text}`);
+	has(usage(["build", "--verbos"]), "tip: a similar argument exists: '--verbose'\n\nUsage: ssqch build --verbose\n");
 	assert.ok(usage(["inspect", "--formt", "json", "x"]).includes("\n\nUsage: ssqch inspect --format <FORMAT> <PAGE>\n"));
 	assert.ok(usage(["--root", "x", "--verbos", "build"]).includes("\n\nUsage: ssqch --root <ROOT> --verbose\n"));
 	assert.ok(usage(["--quiet=1"]).includes("\n\nUsage: ssqch --quiet\n"));
