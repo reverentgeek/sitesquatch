@@ -47,6 +47,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
 '--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'--profile[Also time every page, template, layout, engine, filter, transform, data file, collection and hook, and list the slowest]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
 '-v[Also list the slowest images to encode]' \

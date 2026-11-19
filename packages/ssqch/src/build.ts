@@ -32,6 +32,7 @@ export { commandLine, toolPath } from "./command-line.ts";
 import { checkPages } from "./schema.ts";
 import type { CopyJob, Page, Tpl } from "./site.ts";
 import { Site, Timer, errorsTogether } from "./site.ts";
+import type { Profile, ProfileReport } from "./profile.ts";
 import * as voice from "./voice.ts";
 
 /** What a build did, handed to `afterBuild` hooks and printed as the summary. */
@@ -68,6 +69,8 @@ export interface BuildReport {
 	timings: Array<[string, number]>;
 	/** Lines plugins add to the build summary, such as `["Images", "4,689 files ..."]`. */
 	summary: Array<[string, string]>;
+	/** With `--profile`: where the time went, by kind, slowest first (src/profile.ts). */
+	profile?: ProfileReport;
 }
 
 /** How many page writes wait at once: each holds its page in memory, so the queue has a limit. */
@@ -85,7 +88,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	if (!isDir(dirs.input)) bail(`input directory ${shownDir(config, config.input)} does not exist`);
 
 	const built = await runFileBuilders(config, dirs);
-	await runHooks(config, dirs, "beforeBuild", config.beforeBuild, undefined);
+	await runHooks(config, dirs, "beforeBuild", config.beforeBuild, undefined, site.profile);
 	await site.prepare(timer);
 	await checkPages(site);
 	checkForeignKeys(site);
@@ -143,7 +146,7 @@ export async function build(config: Config): Promise<BuildReport> {
 		timings: [],
 		summary: [],
 	};
-	await runHooks(config, dirs, "afterBuild", config.afterBuild, report);
+	await runHooks(config, dirs, "afterBuild", config.afterBuild, report, site.profile);
 	// After the hooks, which can fingerprint or minify what's measured.
 	if (config.budgets.length) for (const found of overBudget(await measure(dirs.output), config.budgets)) warn(found);
 	for (const [label, line] of config.summaries) {
@@ -154,6 +157,8 @@ export async function build(config: Config): Promise<BuildReport> {
 	timer.lap("after");
 	report.durationMs = performance.now() - started;
 	report.timings = timer.timings;
+	for (const slow of site.profile.slowCalls()) warn(slow);
+	if (config.profile) report.profile = site.profile.report();
 	return report;
 }
 
@@ -311,6 +316,8 @@ class Renderer {
 			this.borrowedFailure = false;
 			// Markdown's warnings (a site's highlighter that failed) name the page.
 			markdownRendering(this.site.display(page.tpl.input));
+			// What a slow call was working on (src/profile.ts): pages render one at a time.
+			this.site.profile.at = shown(this.site.dirs.root, page.tpl.input);
 			try {
 				await this.render(page);
 			} catch (e) {
@@ -322,6 +329,7 @@ class Renderer {
 			}
 		}
 		markdownRendering(undefined);
+		this.site.profile.at = undefined;
 		await Promise.all(this.pending);
 		if (this.writeError !== undefined) this.errors.push({ error: this.writeError, phase: 2 });
 		if (this.errors.length) {
@@ -363,6 +371,7 @@ class Renderer {
 			try {
 				data.page = site.pageWithBody(page);
 				for (const layout of layouts) {
+					const layoutStart = performance.now();
 					data.content = content;
 					let text = layout.body;
 					for (const name of layout.engines) {
@@ -374,6 +383,7 @@ class Renderer {
 						} catch (e) { throw context(e, `rendering layout ${layout.name} for ${tpl.rel}`); }
 					}
 					content = text;
+					if (site.profile.detailed) site.profile.add("layouts", layout.name, performance.now() - layoutStart, false);
 				}
 			} finally {
 				if (had === undefined && !this.keep) this.bodies.delete(page.index);
@@ -382,12 +392,22 @@ class Renderer {
 
 		const output = page.output;
 		const info = { url: page.url ?? "", inputPath: site.display(tpl.input), outputPath: output };
-		for (const [name, transform] of [...config.htmlTransforms, ...config.transforms]) {
-			try { content = await transform(content, info); } catch (e) { throw new BuildError(`transform \`${name}\` failed for ${tpl.rel}: ${describeThrown(e, dirs.root)}`); }
+		const transforms = [...config.htmlTransforms, ...config.transforms];
+		for (let i = 0; i < transforms.length; i++) {
+			const [name, transform] = transforms[i];
+			// The site's own (config.transforms) are timed for `slow-call`; ssqch's (images, assets) with `--profile`.
+			const own = i >= config.htmlTransforms.length;
+			const run = () => transform(content, info);
+			try { content = await (site.profile.times(own) ? site.profile.time("transforms", name, own, run, config.definedIn.get(`transforms.${name}`)) : run()); } catch (e) { throw new BuildError(`transform \`${name}\` failed for ${tpl.rel}: ${describeThrown(e, dirs.root)}`); }
 		}
 		// Last, so URLs that transforms wrote (images, fingerprinted assets) get it too.
 		if (config.base !== "" && output.endsWith(".html")) {
 			try { content = rewriteBase(content, config.base); } catch (e) { throw context(e, `in ${tpl.rel}`); }
+		}
+		if (site.profile.detailed) {
+			const ms = performance.now() - start;
+			site.profile.add("pages", page.url ?? shown(dirs.root, output), ms, false);
+			site.profile.add("templates", shown(dirs.root, tpl.input), ms, false);
 		}
 		// While serving, a page that comes out the same is left alone, so the browser only
 		// reloads for a page that changed.
@@ -713,14 +733,21 @@ function hookEvent(config: Config, dirs: Dirs, report: BuildReport | undefined):
 	return event;
 }
 
-async function runHooks(config: Config, dirs: Dirs, event: "beforeBuild" | "afterBuild", hooks: Hook[], report: BuildReport | undefined): Promise<void> {
+async function runHooks(config: Config, dirs: Dirs, event: "beforeBuild" | "afterBuild", hooks: Hook[], report: BuildReport | undefined, profile?: Profile): Promise<void> {
 	const failed = event === "beforeBuild" ? "before_build hook failed" : "after_build hook failed";
 	for (const hook of hooks) {
 		try {
-			if ("run" in hook) runCommand(config, dirs, event, hook.run);
-			else {
+			// With `--profile`, timed: a command, or a function by its label (`afterBuild
+			// (ssqch.config.js)`); a built-in plugin's has none. A hook runs once a build, and a long
+			// one (Pagefind) is often the point, so it's no `slow-call`.
+			if ("run" in hook) {
+				const run = () => runCommand(config, dirs, event, hook.run);
+				if (profile?.detailed) profile.time("hooks", `${event}: ${hook.run}`, false, run);
+				else run();
+			} else {
+				const call = () => hook.fn(hookEvent(config, dirs, report));
 				// A built-in plugin's hook has no label: its errors already say who it is.
-				try { await settle(hook.fn(hookEvent(config, dirs, report))); } catch (e) { throw hook.label === "" && e instanceof Error ? e : new BuildError(`${hook.label}: ${describeThrown(e, dirs.root)}`); }
+				try { await settle(profile?.detailed ? profile.time("hooks", hook.label || `${event} (built in)`, false, call) : call()); } catch (e) { throw hook.label === "" && e instanceof Error ? e : new BuildError(`${hook.label}: ${describeThrown(e, dirs.root)}`); }
 			}
 		} catch (e) {
 			throw context(e, failed);

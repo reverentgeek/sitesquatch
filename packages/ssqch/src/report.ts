@@ -16,6 +16,8 @@ import type { BuildReport } from "./build.ts";
 import type { Config } from "./config.ts";
 import { dirsOf, shownOutput } from "./dirs.ts";
 import { relative } from "./paths.ts";
+import { KINDS } from "./profile.ts";
+import type { Kind, ProfileReport } from "./profile.ts";
 import * as voice from "./voice.ts";
 
 /** The summary's themed lines, of which it says one. */
@@ -153,4 +155,25 @@ export function fixed(v: number, digits: number): string {
 	if (last % 2 === 0) return down;
 	// Odd: up, which is what `toFixed` does with a tie.
 	return v.toFixed(digits);
+}
+
+/** How many of each kind `--profile` prints; the JSON report has them all. */
+const PROFILE_TOP = 10;
+
+/** What `--profile` prints after the summary: the slowest of each kind, by total time, with their calls. */
+export function profileText(profile: ProfileReport): string {
+	const titles: Record<Kind, string> = { pages: "Pages", templates: "Templates (pages)", layouts: "Layouts (renders)", engines: "Template engines (renders)", filters: "Filters (calls)", transforms: "Transforms (pages)", data: "Data", collections: "Collections", hooks: "Hooks" };
+	// Calls are worth showing where a name is called more than once: a filter, not a page.
+	const withCalls = new Set<Kind>(["templates", "layouts", "engines", "filters", "transforms"]);
+	let out = "Profile: where the time went, slowest first (a call's time includes the calls it makes)\n";
+	for (const kind of KINDS) {
+		const list = profile[kind];
+		if (!list.length) continue;
+		out += `  ${titles[kind]}\n`;
+		const shown = list.slice(0, PROFILE_TOP);
+		const width = Math.max(...shown.map((e) => duration(e.ms).length));
+		for (const e of shown) out += `    ${duration(e.ms).padStart(width)}  ${e.name}${withCalls.has(kind) ? ` (${count(e.calls)})` : ""}\n`;
+		if (list.length > PROFILE_TOP) out += `    ...and ${count(list.length - PROFILE_TOP)} more (--format json lists them all)\n`;
+	}
+	return out;
 }

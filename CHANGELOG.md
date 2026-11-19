@@ -9,6 +9,23 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Added
+
+- `ssqch build --profile` says where a build's time went. After the summary, it lists the
+  slowest pages, templates, layouts, template engines, filters (the site's and ssqch's),
+  transforms, data files and data functions, collections and hooks, ten of each, with their
+  calls and their total time; `--format json` has every one, under `profile` (a list of
+  `{ name, calls, ms }` for each kind). A call's time includes the calls it makes. Every move to
+  ssqch found its slow code by wrapping functions by hand, because `Time` named a phase and
+  nothing in it.
+- A `slow-call` warning names a filter, transform or collection of the site's own that took a
+  second or more in one call, with where it came from (`ssqch.config.js`, or the plugin) and the
+  first page it was slow on. They run for every page, so a second each is minutes on a big site
+  (an HTML minifier as a transform took 5.2 s a page in a migration). It's timed one call at a
+  time in every build; data functions and hooks, which run once, aren't.
+
 ## 0.10.0 - 2026-11-19
 
 ### Breaking

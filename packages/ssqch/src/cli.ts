@@ -47,7 +47,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	{
 		name: "build",
 		about: "Build the site (default)",
-		options: [FORMAT],
+		options: [FORMAT, { long: "profile", help: "Also time every page, template, layout, engine, filter, transform, data file, collection and hook, and list the slowest" }],
 		positionals: [],
 		afterHelp: "With --format json, standard output is one JSON report: whether the build worked, what it wrote, and its\nwarnings and errors, each with a code, the file, the line when it's known, and the field for a content error.\nProgress lines and `console.log` go to standard error.",
 	},
@@ -354,7 +354,7 @@ export async function main(argv: string[]): Promise<number> {
 	const root = path.resolve(value("root") ?? ".");
 	siteRoot = root;
 	routeConsole();
-	const makeConfig = async () => (await import("./config.ts")).loadConfig({ root, rootGiven: value("root") ?? ".", env, serving, quiet: flag("quiet") || inspecting, verbose: flag("verbose"), output: value("output"), base: value("base") });
+	const makeConfig = async () => (await import("./config.ts")).loadConfig({ root, rootGiven: value("root") ?? ".", env, serving, quiet: flag("quiet") || inspecting, verbose: flag("verbose"), profile: command === "build" && flag("profile"), output: value("output"), base: value("base") });
 
 	if (command === "new") return newPage(makeConfig, root, { path: cli.positionals[0], title: value("title"), date: value("date"), blueprint: value("blueprint"), set: (cli.options.set as string[] | undefined) ?? [], format });
 	if (serving) {
@@ -408,9 +408,11 @@ export async function main(argv: string[]): Promise<number> {
 			await runFootprint(shownDir(config, config.output), shownOutput(config), top, format);
 			return 0;
 		}
-		const [{ build }, { summary }] = await Promise.all([import("./build.ts"), import("./report.ts")]);
+		const [{ build }, { summary, profileText }] = await Promise.all([import("./build.ts"), import("./report.ts")]);
 		const report = await build(config);
 		if (!config.quiet) process.stdout.write(summary(config, report));
+		// Asked for, so printed even with --quiet.
+		if (report.profile) process.stdout.write(profileText(report.profile));
 		return 0;
 	} catch (e) {
 		diagnostics.printError("error:", e, "build", locatorOf(config));
@@ -533,6 +535,7 @@ async function buildJson(makeConfig: () => Promise<Config>, root: string, env: E
 			out.written = report.written.map((file) => relative(dirs.output, file));
 			out.summary = report.summary.map(([label, text]) => ({ label, value: text }));
 			out.timings = report.timings.map(([phase, time]) => ({ phase, ms: ms(time) }));
+			if (report.profile) out.profile = Object.fromEntries(Object.entries(report.profile).map(([kind, list]) => [kind, list.map((e) => ({ name: e.name, calls: e.calls, ms: ms(e.ms) }))]));
 			errors = [];
 		} catch (e) {
 			errors = diagnostics.fromError(e, "build", locatorOf(config));

@@ -30,6 +30,7 @@ import { globSet, globToRegExp, isGlob } from "./glob.ts";
 import { describeThrown, loadedFiles, settle } from "./modules.ts";
 import { comparePaths, displayPath, isDir, isFile, isInside, readFollowing, realPath, relative, shown, slashes, walkFiles } from "./paths.ts";
 import { closest } from "./suggest.ts";
+import { Profile } from "./profile.ts";
 import { VERSION } from "./version.ts";
 import * as voice from "./voice.ts";
 
@@ -142,10 +143,20 @@ export class Site {
 	/** Set by the build: a page's rendered body, on demand (for `templateContent`). */
 	contentOf: (page: Page) => string | undefined = () => undefined;
 
+	/** What `ssqch build --profile` reports, and the `slow-call` warnings (src/profile.ts). */
+	profile: Profile;
+
 	constructor(config: Config, keepLayers = false) {
 		this.config = config;
 		this.dirs = dirsOf(config);
 		this.keepLayers = keepLayers;
+		this.profile = new Profile(config.profile);
+	}
+
+	/** A data file's value, timed with `--profile`. One that fetches can take a while on purpose, so it's no `slow-call`. */
+	private loadData(file: string): ReturnType<typeof loadDataFile> {
+		const load = () => loadDataFile(file, this.config.dataExtensions);
+		return this.profile.detailed ? this.profile.time("data", shown(this.dirs.root, file), false, load) : load();
 	}
 
 	private seenLower: Set<string> | undefined;
@@ -211,6 +222,11 @@ export class Site {
 			});
 		}
 		for (const [name, fn] of config.filters) globals.set(name, fn);
+		// Timed for the profile: every filter with `--profile`, the site's own for `slow-call`.
+		for (const [name, fn] of globals) {
+			const own = config.siteFilters.has(name);
+			if (this.profile.times(own)) globals.set(name, this.profile.wrap("filters", name, fn, own, config.definedIn.get(`filters.${name}`)));
+		}
 		this.themeIncludes = config.themes.map((theme) => path.join(theme, "_includes"));
 		const env: EngineEnv = { config, dirs, includeDirs: [dirs.includes, ...this.themeIncludes], globals, pipeFilters, strict: config.strict };
 		const byName = this.engines.byName;
@@ -238,6 +254,15 @@ export class Site {
 				},
 			});
 		}
+		// With `--profile`, each engine's renders are timed, under the name a page's chain uses
+		// (`jinja`, `j2`). The time includes the filters the template calls.
+		if (this.profile.detailed) {
+			for (const [name, engine] of byName) {
+				const timed = Object.create(engine);
+				timed.render = (source: string, data: Data, ctx: RenderContext) => this.profile.time("engines", name, false, () => engine.render(source, data, ctx));
+				byName.set(name, timed);
+			}
+		}
 		for (const format of config.templateFormats) {
 			try { this.engines.get(format); } catch (e) { throw context(e, "check `template_formats`"); }
 		}
@@ -258,7 +283,7 @@ export class Site {
 		global = merge(global, siteData, config.deepMerge);
 		const provided = await Promise.all(config.globalData.map(async ({ name, value, fn }) => {
 			if (!fn) return [name, value] as const;
-			try { return [name, await settle(fn())] as const; } catch (e) { throw new BuildError(`global data \`${name}\` failed: data.${name}: ${describeThrown(e, dirs.root)}`); }
+			try { return [name, await settle(this.profile.detailed ? this.profile.time("data", `data.${name}`, false, fn) : fn())] as const; } catch (e) { throw new BuildError(`global data \`${name}\` failed: data.${name}: ${describeThrown(e, dirs.root)}`); }
 		}));
 		for (const [name, value] of provided) global[name] = value;
 		try { aliasDataKeys(global); } catch (e) { throw context(e, "in global data"); }
@@ -324,7 +349,7 @@ export class Site {
 			// A file or folder named `__proto__` is a key like any other (setOwn).
 			if (isDir(file)) setOwn(data, name, await this.loadGlobalData(file, skipped, `${prefix}${name}/`));
 			else {
-				const value = await loadDataFile(file, this.config.dataExtensions);
+				const value = await this.loadData(file);
 				if (value === NOT_DATA) skipped.push(`${prefix}${name}`);
 				else setOwn(data, stem, value);
 			}
@@ -531,7 +556,7 @@ export class Site {
 			for (const candidate of candidates) {
 				const file = path.join(dir, candidate);
 				if (!(this.seen.has(file) || isFile(file))) continue;
-				const value = await loadDataFile(file, this.config.dataExtensions);
+				const value = await this.loadData(file);
 				if (!isPlainObject(value)) continue;
 				const layer = { ...value };
 				try { aliasDataKeys(layer); } catch (e) { throw context(e, `in ${shown(this.dirs.root, file)}`); }
@@ -610,7 +635,7 @@ export class Site {
 			for (const suffix of ["json", "data.json", ...[...config.dataExtensions.keys()].map((ext) => `data.${ext}`)]) {
 				const candidate = path.join(path.dirname(file), `${stem}.${suffix}`);
 				if (!this.sawFile(candidate)) continue;
-				const value = await loadDataFile(candidate, config.dataExtensions);
+				const value = await this.loadData(candidate);
 				if (!isPlainObject(value)) continue;
 				const layer = { ...value };
 				try { aliasDataKeys(layer); } catch (e) { throw context(e, `in ${shown(dirs.root, candidate)}`); }
@@ -945,7 +970,8 @@ export class Site {
 		for (const [tag, items] of byTag) collections[tag] = items;
 		const pages = collectionApi(all);
 		for (const [name, fn] of this.config.collections) {
-			try { collections[name] = await settle(fn(pages as any)); } catch (e) { throw new BuildError(`collection \`${name}\` failed: ${describeThrown(e, this.dirs.root)}`); }
+			const from = this.config.definedIn.get(`collections.${name}`);
+			try { collections[name] = await settle(this.profile.time("collections", name, true, () => fn(pages as any), from)); } catch (e) { throw new BuildError(`collection \`${name}\` failed: ${describeThrown(e, this.dirs.root)}`); }
 		}
 		this.collections = collections;
 	}

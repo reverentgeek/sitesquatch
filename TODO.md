@@ -434,16 +434,21 @@ faster (0.35 s against 1.2 s).
 
 ### 1. Profiling
 
-- [ ] **`ssqch build --profile`:** time per config filter, transform, engine and data file (calls
-      and total), per template and per page, and layouts apart from writing. The same numbers in
-      `ssqch build --format json` (`timings.filters`, `timings.transforms`, `timings.engines`).
-      Every move found its slow code by wrapping functions by hand: the summary's `write 1.42 s` was
-      layout filters, `toc` (830 ms) and `eleventyNavigation` (550 ms) (a11y #28); lit.dev's first
-      build took 9 min 8 s and `write 23 s` named nothing (lit A5); opensource.guide's `write 6.84
-      s` was liquidjs' `where`, found with `node --cpu-prof` (osg #2).
-- [ ] **A warning when one JavaScript call takes over a second**, naming the function and the
-      package it's from (lit A5: html-minifier, 5.2 s per page).
-- [ ] Document both, and use them to measure the sites the move to Node was measured on.
+- [x] **`ssqch build --profile`** (done 2026-11-19): time per page, template, layout, engine,
+      filter (the site's and ssqch's), transform, data file, data function, collection and hook,
+      with calls and totals, the slowest ten of each after the summary and all of them under
+      `profile` in `--format json` (`src/profile.ts`). Every move found its slow code by wrapping
+      functions by hand: the summary's `write 1.42 s` was layout filters, `toc` (830 ms) and
+      `eleventyNavigation` (550 ms) (a11y #28); lit.dev's first build took 9 min 8 s and `write
+      23 s` named nothing (lit A5); opensource.guide's `write 6.84 s` was liquidjs' `where`, found
+      with `node --cpu-prof` (osg #2).
+- [x] **A warning when one JavaScript call takes over a second** (done 2026-11-19, `slow-call`):
+      the site's own filters, transforms and collections, timed in every build, named with where
+      they came from (`ssqch.config.js`, or the plugin) and the first page they were slow on.
+      Not the package inside the function (lit A5's was html-minifier, inside a transform):
+      `--profile` narrows it to the function, and `node --cpu-prof` goes further.
+- [ ] Document both (done, "Where the time went" in `build-summary.md`), and use them to measure
+      the sites the move to Node was measured on.
 - [ ] **Native Liquid `where`** (`where` and `reject` done 2026-11-18: the bench's Liquid case 39.8
       s → 4.6 s; `where_exp`, `map`, `sort`, `group_by`, `find` still liquidjs') (and `where_exp`,
       `map`, `sort`, `group_by`, `find` for a property path), keeping liquidjs' for expressions (osg
@@ -747,8 +752,8 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       names the latest release (`latest.js`, from `packages/ssqch/package.json`). Left for later
       stages: the header's search box (the docs), Live links on the campsites (the examples), and
       the web's Markdown copies in Mile 6 (agents; the template has a comment where they go).
-- [ ] **The Cloudflare pipeline.** Written and working on pull requests (2026-11-18); left: the
-      first deploy from `main`. `site/wrangler.jsonc` (static assets only, `not_found_handling:
+- [x] **The Cloudflare pipeline.** Written and working on pull requests (2026-11-18), and
+      deploying from `main` since #32 merged (2026-11-19). `site/wrangler.jsonc` (static assets only, `not_found_handling:
       "404-page"`, the default `html_handling`, an empty `previews` block), `site/src/_headers` (a
       year's caching for the fingerprinted CSS and JavaScript), and `.github/workflows/site.yml`:
       the site's checks (moved from `ci.yml`, whose `already-tested` would skip a deploy from
@@ -786,7 +791,8 @@ decision, at the end of the plan, goes the other way than the plan recommends.
       is on the reference with a page.
       Found on the way: a `render: md` page got a `foreign-global` warning for the
       `{{ eleventy.generator }}` in its text (fixed, with a test and a changelog entry).
-- [ ] **The changelog, for people.** Built 2026-11-18; left: David's edit of the entries.
+- [ ] **The changelog, for people.** Built 2026-11-18, rewritten to lead with the experience and
+      without other people's sites (2026-11-19); left: David's edit of the entries.
       `/changelog/` and an entry page each (`site/src/changelog/0.9.md`, `0.8.md`, `0.2-0.7.md`,
       drafted with the `write` skill from `CHANGELOG.md` only), newest release first, with the
       headlines, "What you might need to change" and one link to the release's section of
