@@ -447,8 +447,19 @@ faster (0.35 s against 1.2 s).
       they came from (`ssqch.config.js`, or the plugin) and the first page they were slow on.
       Not the package inside the function (lit A5's was html-minifier, inside a transform):
       `--profile` narrows it to the function, and `node --cpu-prof` goes further.
-- [ ] Document both (done, "Where the time went" in `build-summary.md`), and use them to measure
-      the sites the move to Node was measured on.
+- [x] Document both (done, "Where the time went" in `build-summary.md`), and use them to measure
+      the sites the move to Node was measured on (2026-11-19, `--profile` on the blog, a11y, v8,
+      osg, eslint and the Rust blog; ex fails on its `slot` container, renamed in 0.9, and lit
+      needs its SSR build). What they said: the blog's build into an empty output spent 1.17 s
+      of 1.56 s on hard links to cached images (on the main thread, 0.2 ms each on APFS): made on
+      the thread pool now, 0.86 s. osg's native `where` is 574 ms over 39,509 calls, and the
+      Liquid filters still in liquidjs (`split` 7 ms, `sort` 1 ms) don't cost enough to port yet.
+      eslint's time is its own `responsiveImage` filter and Nunjucks (890 ms over 637 pages); the
+      Rust blog's is Markdown (649 ms, under 1 ms a page). v8's and a11y's are their own hooks.
+      Async filters that run at once add up past the build's time (a11y's `htmlToAbsoluteUrls`,
+      398 ms in a 457 ms build): the docs say so, and the profile could mark them.
+- [ ] **The profile marks async entries**, whose times overlap, so a list's total isn't read as
+      time the build spent (a11y's `htmlToAbsoluteUrls`, above).
 - [ ] **Native Liquid `where`** (`where` and `reject` done 2026-11-18: the bench's Liquid case 39.8
       s → 4.6 s; `where_exp`, `map`, `sort`, `group_by`, `find` still liquidjs') (and `where_exp`,
       `map`, `sort`, `group_by`, `find` for a property path), keeping liquidjs' for expressions (osg
@@ -1013,6 +1024,11 @@ After launch:
 
 ### Images
 
+- [ ] **The summary counts a GIF or SVG copied as it is as encoded** (2026-11-19): the blog's clean
+      build says `35 encoded` every time, which reads as a cache that doesn't work; they're copies
+      of the source (`copyGif`, and SVGs), made into the output with no cache. Count them apart
+      (`35 copied`), which changes the summary's line (a deliberate change, frozen again), and
+      make the copies on the thread pool too.
 - [ ] Document the quality options on sharp's scale fully (2026-11-18): a how-to for moving a 0.7
       site's numbers (the changelog's table, and that converted numbers keep the cache), what
       `avifEffort` costs and saves on a cold build, the trailheads in `site/src/docs/trailheads/`

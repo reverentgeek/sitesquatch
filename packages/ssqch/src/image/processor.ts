@@ -363,6 +363,25 @@ function publish(cache: string, out: string, a = statOf(cache)): number {
 	return Number(a?.size ?? statOf(out)?.size ?? 0);
 }
 
+/**
+ * `publish`'s link, made on Node's thread pool: the cached file at `cache` in the output at `out`,
+ * which isn't there. A build into an empty output folder links every image it uses, and on
+ * macOS a hard link takes about 0.2 ms: the blog's 4,689 took a second, one after another on the
+ * main thread. On the pool they're made four at a time, while pages go on rendering. Resolves to
+ * the error, if there is one, so nothing waits on a rejection nobody's listening for.
+ */
+async function publishLater(cache: string, out: string): Promise<Error | undefined> {
+	try {
+		await fs.promises.link(cache, out);
+	} catch {
+		// Something else may have just put the same file there.
+		const [there, source] = [statOf(out), statOf(cache)];
+		if (there && source && there.size === source.size) return undefined;
+		try { await fs.promises.copyFile(cache, out); } catch (e) { return new Error(`copying ${out} into the output: ${(e as Error).message}`); }
+	}
+	return undefined;
+}
+
 function linkOrCopy(from: string, to: string): void {
 	try {
 		fs.linkSync(from, to);
@@ -484,6 +503,8 @@ export class ImageProcessor {
 	private sizes = new Map<string, number>();
 	/** Everything this build is still waiting for, settled or not. */
 	private pending: Array<Promise<unknown>> = [];
+	/** Cached files being linked into the output (publishLater), each resolving to its error if it failed. */
+	private placing: Array<Promise<Error | undefined>> = [];
 	/** Each source with files still to make that something points at, by its path: one that fails fails the build. */
 	private watched = new Map<string, Watched>();
 	private generated = 0;
@@ -543,6 +564,7 @@ export class ImageProcessor {
 		this.made.clear();
 		this.sizes.clear();
 		this.pending = [];
+		this.placing = [];
 		this.watched.clear();
 		this.used.clear();
 		this.sources.clear();
@@ -566,6 +588,11 @@ export class ImageProcessor {
 			this.pending = [];
 			await Promise.all(waiting);
 		}
+		// Every cached file the pages point at, in the output.
+		const placing = this.placing;
+		this.placing = [];
+		const failed = (await Promise.all(placing)).find((e) => e !== undefined);
+		if (failed) throw new BuildError(`images: ${failed.message}`);
 		const root = this.context().root;
 		// By the source's path, as plain text: the same order on every machine.
 		const failures = [...this.watched.values()].filter((w) => w.error !== undefined).map((w) => ({ ...w, file: shown(root, w.src) })).sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
@@ -824,7 +851,16 @@ export class ImageProcessor {
 			const cached = s.file !== s.e.path;
 			if (s.found === "cache") {
 				if (cached) {
-					try { this.sizes.set(s.e.path, publish(s.file, s.e.path, s.stat)); } catch (e) { throw new Error(`copying ${s.e.path} into the output: ${(e as Error).message}`); }
+					// Already there and as new: nothing to do. Otherwise it's linked on the thread
+					// pool (publishLater), and `settle` waits for it.
+					const [a, b] = [s.stat, statOf(s.e.path)];
+					if (!(a && b && a.size === b.size && b.mtimeNs >= a.mtimeNs)) {
+						if (b) {
+							try { fs.rmSync(s.e.path, { force: true }); } catch (e) { throw new Error(`copying ${s.e.path} into the output: ${(e as Error).message}`); }
+						}
+						this.placing.push(publishLater(s.file, s.e.path));
+					}
+					this.sizes.set(s.e.path, Number(a?.size ?? 0));
 				} else this.sizes.set(s.e.path, Number(s.stat!.size));
 			} else {
 				try { linkOrCopy(s.e.path, s.file); } catch (e) { throw new Error(`copying ${s.e.path} into the image cache: ${(e as Error).message}`); }
