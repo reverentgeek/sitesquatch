@@ -184,9 +184,72 @@ test("the_config_can_define_template_engines", () => {
 	assert.ok(!r.ok && r.log.includes("engine \"shout\" returned number for loud.shout"), r.log);
 
 	// Built-in engines can't be replaced.
-	w("ssqch.config.js", config("md: (s) => s,", "\"md\""));
+	// DELIBERATE (0.11): except Markdown. `md` can be the site's own (a markdown-it), so a move
+	// that keeps its Markdown library replaces it once (a11y #12; see
+	// a_sites_engine_can_replace_markdown_once below).
+	w("ssqch.config.js", config("edge: (s) => s,", "\"md\""));
 	r = ssqch(["build", "--root", d]);
-	assert.ok(!r.ok && r.log.includes("engines.md: \"md\" is built in"), r.log);
+	assert.ok(!r.ok && r.log.includes("engines.edge: \"edge\" is built in"), r.log);
+});
+
+// Found in migrations: keeping a site's markdown-it took an engine of its own plus `render` in
+// every folder's data, and `render` from a folder's data reached its `.njk` pages too (v8.dev
+// changed nine content files for it, a11y #12). `engines: { md }` replaces Markdown once: `.md`
+// files and `md` in a chain use it, with the `markdownEngine` still first, and an object with
+// markdown-it's `render(source, env)` works as it is.
+test("a_sites_engine_can_replace_markdown_once", () => {
+	const dir = tempDir("engine-md");
+	const w = (p, t) => write(dir, { [p]: t });
+	// Like markdown-it: a `render` method that reads `this`, and gets the page's data as `env`.
+	const mdit = "{ tag: \"mdit\", render(source, env, context) { return `<${this.tag} title=\"${env.title}\" kind=\"${context.kind}\">${source.trim()}</${this.tag}>\\n`; } }";
+	w("ssqch.config.js", `export default { templateFormats: ["md", "njk", "jinja"], markdownEngine: "jinja", engines: { md: ${mdit} } };\n`);
+	w("_includes/base.njk", "<main>{{ content | safe }}</main>{{ markdown(\"*ssqch*\") | safe }}");
+	w("posts/pine.md", "---\ntitle: Pine\nlayout: base.njk\n---\n*{{ title | upper }}*\n");
+	w("posts/cedar.njk", "---\ntitle: Cedar\n---\n*{{ title }}*");
+	w("chain.jinja", "---\ntitle: Chain\nrender: [jinja, md]\n---\n{{ 1 + 1 }}");
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	const rd = (p) => read(dir, `_site/${p}`);
+	// Jinja first, then the site's Markdown; the `markdown` filter is still ssqch's.
+	assert.equal(rd("posts/pine/index.html"), "<main><mdit title=\"Pine\" kind=\"body\">*PINE*</mdit>\n</main><p><em>ssqch</em></p>\n");
+	// A Nunjucks page in the same folder isn't Markdown, and doesn't become it.
+	assert.equal(rd("posts/cedar/index.html"), "*Cedar*");
+	assert.equal(rd("chain/index.html"), "<mdit title=\"Chain\" kind=\"body\">2</mdit>\n");
+
+	// A `markdown` filter of the site's own takes the built-in one's place, and Jekyll's
+	// `markdownify`, an alias of it, calls the site's too.
+	w("ssqch.config.js", `export default { templateFormats: ["md", "liquid"], engines: { md: ${mdit} }, filters: { markdown: (text) => \`<mine>\${text}</mine>\` } };\n`);
+	w("feed.liquid", "{{ \"*a*\" | markdownify }}|{{ \"*b*\" | markdown }}");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(rd("feed/index.html"), "<mine>*a*</mine>|<mine>*b*</mine>");
+});
+
+// v8.dev's serve rebuild went from 1.8 s to 0.28 s with a cache of markdown-it's output in its
+// config. `cache: true` keeps an engine's page bodies by their source; layouts render each time.
+test("a_sites_engine_can_cache_what_it_renders", () => {
+	const dir = tempDir("engine-cache");
+	const w = (p, t) => write(dir, { [p]: t });
+	const config = (cache) => `let calls = 0;\nexport default { templateFormats: ["md", "mdit"], markdownEngine: false, engines: { mdit: { cache: ${cache}, render: (source, data, context) => context.kind === "layout" ? \`[\${data.content}]\` : \`<p>\${source.trim()} \${++calls}</p>\` } } };\n`;
+	w("ssqch.config.js", config("true"));
+	w("_includes/frame.mdit", "frame");
+	for (const name of ["a", "b", "c"]) w(`${name}.md`, `---\nrender: mdit\nlayout: frame.mdit\n---\n${name === "c" ? "Cedar" : "Pine"}\n`);
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	const rd = (p) => read(dir, `_site/${p}`);
+	// Two pages with the same text render once; the layout renders for each page.
+	assert.equal(rd("a/index.html"), "[<p>Pine 1</p>]");
+	assert.equal(rd("b/index.html"), "[<p>Pine 1</p>]");
+	assert.equal(rd("c/index.html"), "[<p>Cedar 2</p>]");
+
+	w("ssqch.config.js", config("false"));
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(rd("b/index.html"), "[<p>Pine 2</p>]");
+
+	w("ssqch.config.js", config("\"yes\""));
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("engines.mdit.cache must be true or false"), r.log);
 });
 
 test("liquid_templates_get_filters_includes_and_collections", () => {

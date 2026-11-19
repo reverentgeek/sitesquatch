@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { compare, diffJson, diffText, isSame, keyed, tokens, withoutFingerprints } from "./diff.ts";
+import { canonicalTag, canonicalText, compare, diffJson, diffText, isSame, keyed, tokens, withoutFingerprints } from "./diff.ts";
 import type { DiffOptions } from "./diff.ts";
 import { globToRegExp } from "./glob.ts";
 
@@ -159,4 +159,69 @@ test("a fingerprinted name that's another file's key keeps every file", async ()
 	assert.deepEqual([...report.removed].sort(), ["/x.11111111.22222222.css", "/x.11111111.css"]);
 	assert.equal(report.unchangedFiles, 1);
 	for (const dir of [before, after]) fs.rmSync(dir, { recursive: true });
+});
+
+// What browsers read the same is the same (blog #8, v8 #23): a migration's diff was mostly these.
+test("markup_browsers_read_the_same_is_the_same", () => {
+	const same = (a: string, b: string) => assert.deepEqual(tokens(a), tokens(b), `${a} vs ${b}`);
+	const differ = (a: string, b: string) => assert.notDeepEqual(tokens(a), tokens(b), `${a} vs ${b}`);
+	same("<script defer src=\"/a.js\"></script>", "<SCRIPT src='/a.js' defer=\"defer\"></script>");
+	same("<input disabled=\"\" type=text>", "<input type=\"text\" disabled />");
+	same("<br/>", "<br>");
+	same("<svg><path d=\"M0\"/></svg>", "<svg><path d=\"M0\"></path></svg>");
+	same("<svg/><p>x</p>", "<svg></svg><p>x</p>");
+	same("<img srcset=\"a.jpg 1x,b.jpg   2x\" sizes=\"(min-width: 40em) 50vw,100vw\">", "<img sizes=\"(min-width: 40em) 50vw, 100vw\" srcset=\"a.jpg 1x, b.jpg 2x\">");
+	same("<h2 id=\"it&#39;s\">It&#39;s &quot;here&quot;</h2>", "<h2 id=\"it's\">It's \"here\"</h2>");
+	same("<a href=\"/?a=1&amp;b=2\">Tom &amp; Jerry &gt; all</a>", "<a href=\"/?a=1&b=2\">Tom & Jerry > all</a>");
+	same("<p class=\" a  b \">x</p>", "<p class=\"a b\">x</p>");
+	same("<pre><code>it&#39;s</code></pre>", "<pre><code>it's</code></pre>");
+	same("<!DOCTYPE html>", "<!doctype html>");
+	// What a browser reads differently stays different.
+	differ("<p class=\"a b\">x</p>", "<p class=\"b a\">x</p>");
+	differ("<p>a&nbsp;b</p>", "<p>a b</p>");
+	differ("<p>&lt;b&gt;</p>", "<p><b></p>");
+	differ("<input value=\"defer\">", "<input value>");
+	differ("<div/>x", "<div></div>x");
+	differ("<script>it&#39;s</script>", "<script>it's</script>");
+	// The first of two attributes with one name is the one a browser keeps.
+	assert.deepEqual(canonicalTag("<a href=\"/one\" HREF=\"/two\">", false), ["<a href=\"/one\">", false]);
+	assert.deepEqual(canonicalTag("<path d=\"M0\" />", true), ["<path d=\"M0\">", true]);
+	assert.equal(canonicalText("&copy; &#169; &#xA0; & &amp;amp;"), "&copy; \u00a9 &nbsp; &amp; &amp;amp;");
+});
+
+// A feed holds its pages' HTML escaped or in CDATA: read as HTML, `<br />` and `<br>` are the
+// same there too, and XML's names keep their case.
+test("a_feeds_escaped_html_is_compared_as_html", async () => {
+	const feed = (content: string, date: string) => `<?xml version="1.0"?>\n<feed><entry><updated>${date}</updated><content type="html">${content}</content></entry></feed>\n`;
+	const before = build({ "feed.xml": feed("&lt;p&gt;Pine &amp;amp; cone&lt;br /&gt;&lt;/p&gt;", "2026-01-01"), "rss.xml": "<rss><description><![CDATA[<p class='a'>x</p>]]></description></rss>" });
+	const after = build({ "feed.xml": feed("&lt;p&gt;Pine &amp;amp; cone&lt;br&gt;&lt;/p&gt;", "2026-01-02"), "rss.xml": "<rss><description>&lt;p class=\"a\"&gt;x&lt;/p&gt;</description></rss>" });
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.changed.map((f) => [f.path, f.kind, f.hunks, f.notes]), [["feed.xml", "text", [{ removed: ["2026-01-01"], added: ["2026-01-02"] }], ["only dates changed (2026-01-01 -> 2026-01-02)"]]]);
+	assert.deepEqual(tokens("<pubDate>x</pubDate>", true).map((t) => t.text), ["<pubDate>", "x", "</pubDate>"]);
+});
+
+// opensource.guide's and the blog's sitemaps had the same URLs in another order.
+test("the_same_lines_in_another_order_are_said_to_be", async () => {
+	const before = build({ "sitemap.xml": "<urlset><url><loc>/a/</loc></url><url><loc>/b/</loc></url></urlset>" });
+	const after = build({ "sitemap.xml": "<urlset><url><loc>/b/</loc></url><url><loc>/a/</loc></url></urlset>" });
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.changed[0].notes, ["the same lines, in another order"]);
+});
+
+// A link is compared by where it points (lit.dev's output has 33 links whose targets matter), not
+// by what's there.
+test("links_are_compared_by_their_targets", { skip: process.platform === "win32" && "symlinks need privileges on Windows" }, async () => {
+	const before = build({ "a.txt": "A\n", "b.txt": "B\n" });
+	const after = build({ "a.txt": "A\n", "b.txt": "B\n", "same.txt": "x" });
+	fs.symlinkSync("a.txt", path.join(before, "latest.txt"));
+	fs.symlinkSync("b.txt", path.join(after, "latest.txt"));
+	fs.symlinkSync("a.txt", path.join(before, "steady.txt"));
+	fs.symlinkSync("a.txt", path.join(after, "steady.txt"));
+	fs.writeFileSync(path.join(before, "flat.txt"), "A\n");
+	fs.symlinkSync("a.txt", path.join(after, "flat.txt"));
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.changed.map((f) => [f.path, f.notes, f.hunks]), [
+		["flat.txt", ["a link in one build and a file in the other"], [{ removed: ["(a file, not a link)"], added: ["-> a.txt"] }]],
+		["latest.txt", ["a link, to somewhere else"], [{ removed: ["-> a.txt"], added: ["-> b.txt"] }]],
+	]);
 });

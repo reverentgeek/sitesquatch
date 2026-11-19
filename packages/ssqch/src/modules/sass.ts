@@ -110,6 +110,36 @@ BUILTINS.set("ssqch/sass", (config: Config, given) => {
 	config.summaries.push(["Sass", () => (count === undefined ? undefined : `${count[0]} file${count[0] === 1 ? "" : "s"} (${count[1]})`)]);
 });
 
+// ---- CSS as text ------------------------------------------------------------------------------
+
+/** CSS text compressed before, by its text: a site that inlines one stylesheet in every page compresses it once. */
+const compressedCss = new Map<string, string>();
+/** How many texts `compressedCss` keeps; past that, the oldest goes (a server's builds go on for hours). */
+const KEPT_CSS = 256;
+
+/**
+ * CSS text, compressed by grass as `style: "compressed"` writes a stylesheet (`minifyCss` from
+ * `ssqch/minify`): comments, whitespace and the last `;` out, colors and numbers shortened. It's
+ * read as plain CSS (a `.css` file), so Sass's own syntax is an error; so is CSS grass can't
+ * read, with grass's words. `shown` names the text in an error.
+ */
+export function compressCss(css: string, shown = "CSS"): string {
+	const kept = compressedCss.get(css);
+	if (kept !== undefined) return kept;
+	const name = "ssqch:inline.css";
+	const compiler = new Compiler(process.cwd(), new Set());
+	compiler.inline.set(name, css);
+	let out: string;
+	try {
+		out = compiler.compile(name, JSON.stringify({ style: "compressed", loadPaths: [] }), shown);
+	} catch (e) {
+		throw new BuildError(messageOf(e).replace(`compiling ${shown}: ${shown}: `, `${shown}: `).replaceAll(name, shown));
+	}
+	if (compressedCss.size >= KEPT_CSS) compressedCss.delete(compressedCss.keys().next().value!);
+	compressedCss.set(css, out);
+	return out;
+}
+
 // ---- the wasm --------------------------------------------------------------------------------
 
 /** The file, next to `src/`. */
@@ -136,6 +166,8 @@ class Compiler {
 	root: string;
 	used: Set<string>;
 	loadPaths: string[];
+	/** A stylesheet that's no file, by the name grass is given for it (`minifyCss`'s text). */
+	inline: Map<string, string> = new Map();
 	constructor(root: string, used: Set<string>, loadPaths: string[] = []) {
 		this.root = root;
 		this.used = used;
@@ -240,10 +272,13 @@ function instance(): Exports {
 		return status;
 	};
 	const stat = (ptr: number, len: number) => fs.statSync(active!.file(text(ptr, len)), { throwIfNoEntry: false });
+	const inline = (ptr: number, len: number) => active!.inline.get(text(ptr, len));
 	const host = {
-		is_file: (ptr: number, len: number) => (stat(ptr, len)?.isFile() ? 1 : 0),
-		is_dir: (ptr: number, len: number) => (stat(ptr, len)?.isDirectory() ? 1 : 0),
+		is_file: (ptr: number, len: number) => (inline(ptr, len) !== undefined || stat(ptr, len)?.isFile() ? 1 : 0),
+		is_dir: (ptr: number, len: number) => (inline(ptr, len) === undefined && stat(ptr, len)?.isDirectory() ? 1 : 0),
 		read: (ptr: number, len: number, out: number) => {
+			const given = inline(ptr, len);
+			if (given !== undefined) return reply(out, 0, given);
 			const file = active!.file(text(ptr, len));
 			try {
 				const data = active!.source(file, fs.readFileSync(file));
@@ -255,6 +290,7 @@ function instance(): Exports {
 		},
 		// The same file under two names is one module (grass uses it to load each once).
 		canonicalize: (ptr: number, len: number, out: number) => {
+			if (inline(ptr, len) !== undefined) return reply(out, 0, text(ptr, len));
 			try {
 				return reply(out, 0, active!.name(fs.realpathSync.native(active!.file(text(ptr, len)))));
 			} catch (e) {

@@ -9,6 +9,81 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Added
+
+- A site can replace ssqch's Markdown once: `engines: { md }` renders every `.md` file, and every
+  `md` in a `render` chain, with the site's own library, after the `markdownEngine` as before. A
+  markdown-it instance works as it is (its `render(source, env)` gets the page's data as `env`,
+  as Eleventy's `setLibrary("md", ...)` gave it). Keeping a site's markdown-it took an engine of
+  its own and `render` in every folder's data, which reached the folder's `.njk` pages too:
+  v8.dev changed nine content files for it. The `markdown` filter stays ssqch's Markdown, and
+  `ssqch import eleventy` says how to carry `setLibrary("md", md)` over.
+- `cache: true` on a site's engine (`engines: { md: { render, cache: true } }`) keeps the page
+  bodies it renders by their source, so a page whose text didn't change isn't rendered again in
+  `ssqch serve`'s next build. Layouts and render hooks render each time. It holds the last two
+  builds, in memory, and is for an engine whose output depends on the source alone. v8.dev's
+  serve rebuild went from 1.8 s to 0.28 s with a cache like it in its config.
+
+- Three of markdown-it's habits as `markdown` options, each writing the bytes markdown-it 13
+  writes: `breaks: true` (a single newline in a paragraph is a `<br>`; 374 on a11yproject.com),
+  `autolinks: "fuzzy"` (bare domains and email addresses become links, as `linkify` makes them)
+  and `figures: true` (an image alone in a paragraph is a `<figure>` with its alt text as the
+  `<figcaption>`, as markdown-it-implicit-figures makes it; 74 v8.dev pages). `ssqch import
+  eleventy` carries markdown-it's `breaks`, `linkify` and `typographer` and the implicit-figures
+  plugin into the draft's `markdown`.
+- `markdown: { highlight: { classes } }` names highlighted tokens as another highlighter does,
+  so a site keeps its theme's CSS. `classes: "prism"` writes Prism's names (`token keyword`),
+  `<pre class="language-js">` and marked lines as `<mark class="highlight-line
+  highlight-line-active">`, as Eleventy's syntax-highlight plugin does; an object names some
+  kinds (`{ keyword: "tok-keyword" }`, lit.dev's CodeMirror theme). `/highlight.css` uses the
+  same names. `ssqch import eleventy` suggests it for the syntax-highlight plugin.
+- `ssqch import eleventy` adds the packages that came with `@11ty/eleventy` to `package.json`
+  when the site's own code imports them without listing them (`slugify` in a config,
+  `browser-sync` in a gulpfile), at the version installed; removing Eleventy used to remove them
+  too. It lists the filters and shortcodes the templates use that nothing defines, with how many
+  templates use each and the first place, says what Eleventy's and its plugins' become, and ports
+  Eleventy's `log` and collection-item filters into the draft. On a11yproject.com it names every
+  filter that move found by hand.
+- `ssqch import eleventy` follows the config into the site's own modules (a `registerSiteFilters`
+  in `lib/`, a plugin of the site's own) and lists what each adds with its file and line, copying
+  the self-contained filters into the draft; on the ReverentGeek blog's last Eleventy commit that's
+  8 filters, 2 collections and a transform the list didn't have. Data files and other modules that
+  use eleventy-img or eleventy-fetch are listed with what replaces them, and a plugin imported
+  beside named imports (`import pluginRSS, { dateToRfc3339 } from ...`) is recognized.
+- `ssqch import eleventy`'s draft sets the Markdown defaults where Eleventy's Markdown wrote other
+  markup, each with a comment: `headingIds: false` without markdown-it-anchor (380 headings on the
+  ReverentGeek blog had ids they didn't have before) and `indentedCode: false` for Eleventy 3.
+- `minifyPlugin({ css: true, xml: true, json: true })` also compresses each page's `<style>`
+  elements (with ssqch's Sass, as html-minifier's `minifyCSS` does; lit.dev inlines 30 to 60 KB a
+  page), feeds and sitemaps, and JSON files and manifests. All three are off by default.
+  `minifyCss(css)`, from `ssqch/minify`, compresses CSS text for a filter of your own.
+- A `code.*` render hook writes inline code spans, given `code.code`: a site from GitHub Pages
+  keeps Rouge's `class="language-plaintext highlighter-rouge"` (opensource.guide).
+- `ssqch diff --exclude <glob>` leaves matching files out (repeatable, after `--only`): the blog's
+  comparison with its Eleventy build needed nine `--only`s to leave out its images.
+
+### Changed
+
+- `ssqch diff` leaves out what browsers read the same. Each tag is compared in one form (names
+  in lower case, attributes sorted, values decoded and in double quotes, `defer="defer"` as
+  `defer`, no `/` before `>`, and `<path/>` as `<path></path>` in an SVG), and so is text (`&#39;`
+  and `'`, `&gt;` and `>`). Images named by an id, as `imagePlugin()` and eleventy-img name them
+  (`/img/LeC3bj9CzE-256.webp`), are compared by their widths and formats, and more than five of
+  them added or removed are one counted line. A feed's escaped or CDATA HTML is compared as HTML,
+  XML files say `only dates changed` and `the same lines, in another order`, and a report with
+  added or removed files says to build each side into an empty folder. The ReverentGeek blog's
+  comparison with its Eleventy build went from 24,659 changed lines on 161 pages to 225 on 14,
+  which are the real differences. `--exact` compares bytes, as before. A symbolic link is compared
+  by its target, not by the file it points at, and a link that's a file in the other build is a
+  change.
+- `ssqch/minify` writes the viewport `<meta>`'s numbers as html-minifier-terser does
+  (`initial-scale=1.0` is `initial-scale=1`) and takes all its whitespace out: 309 lit.dev pages
+  differed from Eleventy's only in that. A site with a decimal there gets other bytes.
+- `markdownify` (Jekyll's and Hugo's name for `markdown`) calls the site's own `markdown` filter
+  when it has one. It called ssqch's built-in one whatever the config said.
+
 ## 0.10.1 - 2026-11-19
 
 ### Added

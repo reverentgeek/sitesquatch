@@ -132,6 +132,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
         &'ssqch;diff'= {
             cand --ignore 'Leave out text matching this regular expression before comparing (repeatable)'
             cand --only 'Only compare files matching this glob, like ''**/*.html'' (repeatable)'
+            cand --exclude 'Leave out files matching this glob, like ''img/**'' (repeatable)'
             cand --lines 'Changed lines to show for each file (0 for all)'
             cand --format 'text or json'
             cand --root 'Project root (defaults to the current directory)'

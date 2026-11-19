@@ -83,8 +83,12 @@ declare module "ssqch" {
 		footnotes?: boolean;
 		/** `- [ ]` and `- [x]` items. Default `true`. */
 		taskLists?: boolean;
-		/** Bare `https://` and `www.` URLs become links. Default `true`. */
-		autolinks?: boolean;
+		/** Bare `https://` and `www.` URLs become links. `"fuzzy"` links bare domains (`example.com`, with a common or two-letter country TLD) and email addresses too, as markdown-it's `linkify` does. Default `true`. */
+		autolinks?: boolean | "fuzzy";
+		/** A single newline inside a paragraph (or a list item) becomes a `<br>`, as markdown-it's `breaks: true` makes it. Default `false`. */
+		breaks?: boolean;
+		/** An image (or a linked image) alone in a paragraph becomes `<figure><img alt=""><figcaption>its alt text</figcaption></figure>`, as markdown-it-implicit-figures with `figcaption: true` writes it. Default `false`. */
+		figures?: boolean;
 		/** GitHub's `> [!NOTE]` alerts: note, tip, important, warning and caution. Default `true`. */
 		alerts?: boolean;
 		/** `::: name args` blocks, rendered by `_includes/containers/name.*`. Default `true`. */
@@ -95,8 +99,8 @@ declare module "ssqch" {
 		smartPunctuation?: boolean;
 		/** Lines indented four spaces are code blocks. `false` renders them as ordinary Markdown (HTML indented inside Markdown, say); fences are still code. Default `true`. */
 		indentedCode?: boolean;
-		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. `languages` adds languages or replaces built-in ones. Default `false`. */
-		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter> };
+		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. `languages` adds languages or replaces built-in ones. `classes` names the tokens as another highlighter does, so a site keeps its theme's CSS: `"prism"` (`token keyword`, `<pre class="language-js">`, marked lines as `<mark class="highlight-line highlight-line-active">`), or `{ keyword: "tok-keyword" }` for some kinds; the stylesheet uses the same names. Default `false`. */
+		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter>; classes?: "prism" | Partial<Record<TokenKind, string>> };
 	}
 
 	/** What a collection function gets. */
@@ -197,8 +201,8 @@ declare module "ssqch" {
 		collections?: Record<string, (pages: Pages) => unknown>;
 		/** Run on every output file. Return the content, changed or not. */
 		transforms?: Record<string, (content: string, page: TransformPage) => MaybePromise<string>>;
-		/** Template engines of your own, by file extension: a function, or an object with `render`. Return the rendered text. */
-		engines?: Record<string, EngineRender | { render: EngineRender }>;
+		/** Template engines of your own, by file extension: a function, or an object with `render` (a markdown-it instance is one: `render(source, env)` gets the page's data as `env`). Return the rendered text. `md` replaces ssqch's Markdown for `.md` files and `md` in a `render` chain, after the `markdownEngine`; the `markdown` filter stays ssqch's. `cache: true` keeps the page bodies it renders by their source, so a body with the same text isn't rendered again, in a build or the next one in `ssqch serve`: for an engine whose output depends on the source alone. */
+		engines?: Record<string, EngineRender | { render: EngineRender; cache?: boolean }>;
 		/** Files or folders to copy: a path, or `{ from: to }`, or an array of them. */
 		passthrough?: string | Record<string, string> | Array<string | Record<string, string>>;
 		/** More paths for `ssqch serve` to watch. */
@@ -432,14 +436,26 @@ declare module "ssqch/minify" {
 		removeComments?: boolean;
 		/** Default `true`. */
 		shortDoctype?: boolean;
-		/** Drop boolean attributes' values (`defer="defer"` to `defer`) and extra whitespace in `class`, `srcset`, URLs and the viewport `<meta>`. Default `true`. */
+		/** Drop boolean attributes' values (`defer="defer"` to `defer`) and extra whitespace in `class`, `srcset`, URLs and the viewport `<meta>` (whose numbers it writes as html-minifier-terser does: `initial-scale=1`). Default `true`. */
 		shortenAttributes?: boolean;
 	}
 
-	/** Minifies HTML output, after the image transform, with ssqch's own minifier (Rust, as WebAssembly): it doesn't write html-minifier-terser's bytes. */
-	export function minifyPlugin(options?: MinifyOptions): BuiltinPlugin;
+	/** `minifyPlugin()`'s options: the minifier's, and what else it minifies, all off by default. */
+	export interface MinifyPluginOptions extends MinifyOptions {
+		/** Compress each page's `<style>` elements with ssqch's Sass, as `minifyCss` does; one it can't read (Sass syntax, native CSS nesting) stays as it is, with a warning. Default `false`. */
+		css?: boolean;
+		/** Take the whitespace between tags out of `.xml`, `.rss` and `.atom` files (feeds, sitemaps), not inside text, CDATA or comments. Default `false`. */
+		xml?: boolean;
+		/** Write `.json` and `.webmanifest` files without spaces. Default `false`. */
+		json?: boolean;
+	}
+
+	/** Minifies HTML output, after the image transform, with ssqch's own minifier (Rust, as WebAssembly): it doesn't write html-minifier-terser's bytes. With `css`, `xml` and `json`, inline CSS, feeds and manifests too. */
+	export function minifyPlugin(options?: MinifyPluginOptions): BuiltinPlugin;
 	/** Minify one string of HTML, with the plugin's options. */
 	export function minify(html: string, options?: MinifyOptions): string;
+	/** Compress CSS text as `style: "compressed"` Sass writes it (`.a{color:#fff}`), for CSS inlined by a template: `{{ css | minifyCss }}` in a filter of your own. Sass's own syntax, and CSS ssqch's Sass can't read (native nesting), is an error. */
+	export function minifyCss(css: string): string;
 }
 
 declare module "ssqch/assets" {

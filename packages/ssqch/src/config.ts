@@ -130,6 +130,8 @@ export interface Config {
 	/** Transforms that run before every other, whatever order plugins were added in (images). */
 	htmlTransforms: Array<[string, TransformFn]>;
 	engines: Map<string, EngineFn>;
+	/** The caches of engines with `cache: true`, which each build starts (`startBuild`). */
+	engineCaches: EngineCache[];
 	beforeBuild: Hook[];
 	afterBuild: Hook[];
 	watch: string[];
@@ -204,6 +206,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		transforms: [],
 		htmlTransforms: [],
 		engines: new Map(),
+		engineCaches: [],
 		beforeBuild: [],
 		afterBuild: [],
 		watch: [],
@@ -301,12 +304,43 @@ async function loadJsData(file: string, root: string): Promise<unknown> {
 	}
 }
 
+/**
+ * What a site's engine with `cache: true` rendered, by the source it was given: the bodies of this
+ * build, and of the one before, which a body this build renders again moves into this build's. So
+ * `ssqch serve` renders only the pages whose text changed, and keeps no more than two builds of
+ * them: a page that's deleted or edited is gone after the next build.
+ */
+export class EngineCache {
+	now = new Map<string, string>();
+	before = new Map<string, string>();
+
+	startBuild(): void {
+		this.before = this.now;
+		this.now = new Map();
+	}
+
+	get(source: string): string | undefined {
+		const kept = this.now.get(source);
+		if (kept !== undefined) return kept;
+		const earlier = this.before.get(source);
+		if (earlier !== undefined) this.now.set(source, earlier);
+		return earlier;
+	}
+
+	set(source: string, html: string): void {
+		this.now.set(source, html);
+	}
+}
+
 // ---- ssqch.config.js -------------------------------------------------------------------------
 
 const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "dateFallback", "timeZone", "base", "schemas", "theme", "serve", "budgets"];
 const PARTS = ["data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins"];
-/** Engine names a config can't replace. */
-const CORE_ENGINES = ["edge", "md", "html", "txt"];
+/**
+ * Engine names a config can't replace. `md` can be: a site that keeps its markdown-it replaces
+ * Markdown once (`engines: { md }`) instead of naming its engine in every folder's `render`.
+ */
+const CORE_ENGINES = ["edge", "html", "txt"];
 const DIRS = ["input", "output", "includes", "layouts", "data"];
 
 /** The options a config can set, in the order its errors list them. */
@@ -555,6 +589,10 @@ async function loadJs(config: Config, file: string): Promise<void> {
 			for (const [key, engine] of Object.entries<any>(part.engines)) {
 				const render = typeof engine === "function" ? engine : engine?.render;
 				if (typeof render !== "function") fail(`${where}: engines.${key} must be a function (source, data) or an object with a render(source, data) method`);
+				// Only an object of the site's own says `cache`: a library's instance (a markdown-it)
+				// may have a property of that name that means something else.
+				if (isPlainObject(engine) && engine.cache !== undefined && typeof engine.cache !== "boolean") fail(`${where}: engines.${key}.cache must be true or false`);
+				const cache = typeof engine === "object" && engine.cache === true ? new EngineCache() : undefined;
 				if (!/^[A-Za-z0-9_-]+$/.test(key)) fail(`${where}: engines.${key}: an engine's name is a file extension (letters, digits, - and _)`);
 				if (CORE_ENGINES.includes(key)) fail(`${where}: engines.${key}: "${key}" is built in and can't be replaced`);
 				claim("engines", "engine", key, where);
@@ -570,7 +608,24 @@ async function loadJs(config: Config, file: string): Promise<void> {
 					const out = render.call(engine, source, data, context);
 					return out instanceof Promise ? watchSettle(out).then((v) => checked(v, inputPath)) : checked(out, inputPath);
 				};
-				ops.push(() => { config.engines.set(key, run); });
+				ops.push(() => {
+					if (!cache) {
+						config.engines.set(key, run);
+						return;
+					}
+					config.engineCaches.push(cache);
+					// A page's body, kept by its source. A layout's and a hook's text is the same on every
+					// page while what they print isn't (`content`, the hook's value), so they render each time.
+					config.engines.set(key, (source, data, inputPath, context) => {
+						if (context.kind !== "body") return run(source, data, inputPath, context);
+						const kept = cache.get(source);
+						if (kept !== undefined) return kept;
+						const out = run(source, data, inputPath, context);
+						if (typeof out === "string") cache.set(source, out);
+						else out.then((html) => cache.set(source, html), () => {});
+						return out;
+					});
+				});
 			}
 		}
 

@@ -138,6 +138,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '*--ignore=[Leave out text matching this regular expression before comparing (repeatable)]:REGEX:_default' \
 '*--only=[Only compare files matching this glob, like '\''**/*.html'\'' (repeatable)]:GLOB:_default' \
+'*--exclude=[Leave out files matching this glob, like '\''img/**'\'' (repeatable)]:GLOB:_default' \
 '--lines=[Changed lines to show for each file (0 for all)]:LINES:_default' \
 '--format=[text or json]:FORMAT:_default' \
 '--root=[Project root (defaults to the current directory)]:ROOT:_files' \

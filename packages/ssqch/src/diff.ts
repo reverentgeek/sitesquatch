@@ -33,6 +33,8 @@ export interface DiffOptions {
 	ignore: RegExp[];
 	/** Only compare files whose path (from the build's root, with `/`) matches one of these. */
 	only: RegExp[] | undefined;
+	/** Leave out files whose path matches one of these (after `only`). */
+	exclude?: RegExp[];
 	/** The changed lines to keep for each file (0 for all): the report shows no more, so a big change doesn't fill memory. */
 	lines: number;
 }
@@ -104,6 +106,23 @@ const DATE = new RegExp([
 	String.raw`${START}(?:19|20)\p{Nd}{2}${END}`,
 ].join("|"), "gu");
 
+/**
+ * An image named by its id, as eleventy-img and `imagePlugin()` name them: ten characters of a
+ * hash, then the width (`/img/LeC3bj9CzE-256.webp`). Two builds that hash differently (another
+ * generator, other image settings) give every image another id. A plain word that happens to be
+ * ten letters long (`screenshot-1200.png`) or a number (`2024061512-800.jpg`) is a name, not an id.
+ */
+const IMAGE_ID = /(?<=[/"'=,\p{White_Space}]|^)([A-Za-z0-9_-]{10})(?=-\p{Nd}{1,5}\.(?:avif|webp|jpe?g|png|gif|svg)(?![A-Za-z0-9]))/gu;
+const isImageId = (id: string) => !/^(?:[a-z]+|[0-9]+)$/.test(id);
+/** Whether a path is an image named by its id (`img/LeC3bj9CzE-256.webp`). */
+export const isHashedImage = (file: string) => [...file.slice(file.lastIndexOf("/") + 1).matchAll(IMAGE_ID)].some((m) => m.index === 0 && isImageId(m[1]));
+
+/** Text with image ids written as `{id}`: `/img/{id}-256.webp`. */
+export function withoutImageIds(text: string): string {
+	if (!text.includes("-")) return text;
+	return text.replace(IMAGE_ID, (id: string) => (isImageId(id) ? "{id}" : id));
+}
+
 /** `name` (or a whole text) without asset fingerprints: eight hex digits before the extension. Eight digits that read as a date (`report.20240101.pdf`) are part of the name, not a fingerprint. */
 export function withoutFingerprints(text: string): string {
 	if (!text.includes(".")) return text;
@@ -139,6 +158,7 @@ function normalize(text: string, options: DiffOptions): string {
 	let out = text.replaceAll("\r\n", "\n");
 	for (const re of options.ignore) out = out.replace(re, "");
 	out = withoutFingerprints(out);
+	out = withoutImageIds(out);
 	if (out.includes("integrity=")) out = out.replace(INTEGRITY, "");
 	if (out.includes("SiteSquatch v")) out = out.replace(GENERATOR, "SiteSquatch");
 	return out;
@@ -179,6 +199,26 @@ export function keyed(paths: string[], exact: boolean): Map<string, string> {
 }
 
 const isPage = (file: string) => file.endsWith(".html") || file.endsWith(".htm");
+const isXml = (file: string) => /\.(?:xml|rss|atom|xsl)$/.test(file);
+
+const CDATA = /<!\[CDATA\[([\s\S]*?)\]\]>/g;
+const ESCAPED_TEXT = /(?<=>)([^<]*&lt;[^<]*)(?=<)/g;
+
+/**
+ * An XML file with the HTML it holds as markup: a feed's `<content>`, `<description>` and
+ * `<summary>` carry a page's HTML escaped (`&lt;p&gt;`) or in CDATA, which one generator writes
+ * `<br />` and the next `<br>`. Read as HTML, its tags compare the way a page's do.
+ */
+function xmlWithMarkup(text: string): string {
+	let out = text.includes("<![CDATA[") ? text.replace(CDATA, (_, inside: string) => inside) : text;
+	if (out.includes("&lt;")) out = out.replace(ESCAPED_TEXT, (escaped: string) => decodeEntitiesOnce(escaped));
+	return out;
+}
+
+/** One level of escaping undone: `&lt;p&gt;` is `<p>`, and `&amp;lt;` is `&lt;`. */
+function decodeEntitiesOnce(s: string): string {
+	return s.replace(/&(lt|gt|quot|apos|amp|#39|#x27);/g, (_, name: string) => ({ lt: "<", gt: ">", quot: "\"", apos: "'", amp: "&", "#39": "'", "#x27": "'" })[name]!);
+}
 
 // ---- tokens ----------------------------------------------------------------------------------
 
@@ -256,6 +296,128 @@ function tagEnd(s: string, from: number): number | undefined {
 	return undefined;
 }
 
+// ---- markup as browsers read it ----------------------------------------------------------------
+//
+// Two generators write the same page in different ways: attributes in another order, `'` or `"`
+// around values (or none), `&#39;` for `'`, `defer="defer"` for `defer`, `<br/>` for `<br>`, and
+// `<path/>` for `<path></path>` in an SVG. A browser reads them the same, so a migration's diff
+// shouldn't list them: the blog's first comparison was about 25,000 lines of them for 161 pages.
+// Unless `exact`, each tag is written one way (`canonicalTag`), and so is the text between tags
+// (`canonicalText`), before they're compared. What browsers read differently stays different:
+// an attribute's value, the order of `class` names, `&nbsp;` and a space.
+
+/** Attributes whose presence is what counts: `defer`, `defer=""` and `defer="defer"` are the same. */
+const BOOLEAN = new Set(["allowfullscreen", "async", "autofocus", "autoplay", "checked", "controls", "default", "defer", "disabled", "formnovalidate", "hidden", "inert", "ismap", "itemscope", "loop", "multiple", "muted", "nomodule", "novalidate", "open", "playsinline", "readonly", "required", "reversed", "selected"]);
+/** Attributes that hold lists, whose spacing doesn't count: `srcset="a.jpg 1x,b.jpg 2x"` is `srcset="a.jpg 1x, b.jpg 2x"`. */
+const SPACED = new Set(["class", "rel", "sizes", "srcset"]);
+/** Elements with no end tag, where a `/` before `>` means nothing. */
+const VOID = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+
+const ENTITY_OR_AMP = /&(?:(#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]*);)?/g;
+const NAMED_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'" };
+
+/** The character an entity names, when it's one browsers and generators commonly write both ways; otherwise undefined. */
+function entityChar(name: string): string | undefined {
+	if (name[0] !== "#") return Object.hasOwn(NAMED_ENTITIES, name) ? NAMED_ENTITIES[name] : undefined;
+	const code = name[1] === "x" || name[1] === "X" ? Number.parseInt(name.slice(2), 16) : Number.parseInt(name.slice(1), 10);
+	// A non-breaking space stays `&nbsp;`: as a character, it would collapse with the spaces.
+	if (code === 0xa0) return undefined;
+	return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : undefined;
+}
+
+/** Text with its entities written one way: characters as themselves, apart from `&` and `<` (`&amp;`, `&lt;`), and a lone `&` as `&amp;`. `&#160;` is `&nbsp;`; entities it doesn't know stay as they are. */
+export function canonicalText(text: string): string {
+	if (!text.includes("&") && !text.includes(">")) return text;
+	return text.replace(ENTITY_OR_AMP, (whole, name: string | undefined) => {
+		if (name === undefined) return "&amp;";
+		if (name === "#160" || /^#[xX]0*[aA]0$/.test(name)) return "&nbsp;";
+		const c = entityChar(name);
+		return c === undefined ? whole : c === "&" ? "&amp;" : c === "<" ? "&lt;" : c;
+	}).replaceAll("&gt;", ">");
+}
+
+/** An attribute's value as the browser reads it: its entities decoded. */
+function attributeValue(raw: string): string {
+	if (!raw.includes("&")) return raw;
+	return raw.replace(ENTITY_OR_AMP, (whole, name: string | undefined) => (name === undefined ? whole : name === "nbsp" ? "\u00a0" : (entityChar(name) ?? whole)));
+}
+
+const NO_ATTRIBUTES = /^<\/?[a-z][a-z0-9-]*>$/;
+
+/**
+ * A start or end tag written one way: its name and attribute names in lower case, attributes
+ * sorted by name (the first of two with one name, which is the one a browser keeps), each value
+ * decoded and written in double quotes (`&` and `"` escaped), a boolean attribute without a value,
+ * and no `/` before the `>`. Returns the tag, and whether it closed itself (`<path/>` in an SVG,
+ * which is `<path></path>`). A comment, a doctype and anything that doesn't parse as a tag come
+ * back as they are, a doctype in lower case.
+ */
+export function canonicalTag(tag: string, foreign: boolean, xml = false): [string, boolean] {
+	if (NO_ATTRIBUTES.test(tag)) return [tag, false];
+	// XML's names keep their case (`<pubDate>`), and every element can close itself.
+	const lower = xml ? (t: string) => t : asciiLower;
+	if (tag.startsWith("<!--")) return [tag, false];
+	if (/^<!doctype/i.test(tag)) return [asciiLower(tag), false];
+	const closing = tag.charCodeAt(1) === 47;
+	let i = closing ? 2 : 1;
+	const name = nameAt(tag, i);
+	if (name === "") return [tag, false];
+	i += name.length;
+	// Custom elements' names go on past letters and digits (`<site-header>`).
+	while (i < tag.length && /[A-Za-z0-9_:.-]/.test(tag[i])) i++;
+	const element = lower(tag.slice(closing ? 2 : 1, i));
+	const attrs = new Map<string, string | undefined>();
+	let selfClosing = false;
+	const end = tag.length - 1;
+	while (i < end) {
+		const c = tag.charCodeAt(i);
+		if (isSpace(c)) { i++; continue; }
+		if (c === 47) {
+			// A `/` right before the `>` closes the element; anywhere else it's nothing.
+			let j = i + 1;
+			while (j < end && isSpace(tag.charCodeAt(j))) j++;
+			if (j === end) selfClosing = true;
+			i++;
+			continue;
+		}
+		let j = i;
+		while (j < end && !isSpace(tag.charCodeAt(j)) && tag[j] !== "=" && tag[j] !== ">" && !(tag[j] === "/" && j > i)) j++;
+		if (j === i) j++;
+		const attr = lower(tag.slice(i, j));
+		i = j;
+		while (i < end && isSpace(tag.charCodeAt(i))) i++;
+		let value: string | undefined;
+		if (tag[i] === "=") {
+			i++;
+			while (i < end && isSpace(tag.charCodeAt(i))) i++;
+			const q = tag[i];
+			if (q === "\"" || q === "'") {
+				const close = tag.indexOf(q, i + 1);
+				// An unclosed quote: not a tag a browser would read this way, so leave it be.
+				if (close === -1) return [tag, false];
+				value = attributeValue(tag.slice(i + 1, close));
+				i = close + 1;
+			} else {
+				let k = i;
+				while (k < end && !isSpace(tag.charCodeAt(k))) k++;
+				value = attributeValue(tag.slice(i, k));
+				i = k;
+			}
+		}
+		if (attrs.has(attr)) continue;
+		if (value !== undefined && BOOLEAN.has(attr) && !foreign && (value === "" || asciiLower(value) === attr)) value = undefined;
+		if (value !== undefined && SPACED.has(attr)) value = collapse(value).replace(/ ?, ?/g, ", ");
+		attrs.set(attr, value);
+	}
+	if (closing) return [`</${element}>`, false];
+	let out = `<${element}`;
+	for (const attr of [...attrs.keys()].sort()) {
+		const value = attrs.get(attr);
+		out += value === undefined ? ` ${attr}` : ` ${attr}="${value.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"`;
+	}
+	return [`${out}>`, selfClosing && (xml || foreign || element === "svg" || element === "math") && !VOID.has(element)];
+}
+
 const RAW = new Set(["script", "style", "pre", "textarea"]);
 const CLOSING = new Map([...RAW].map((name) => [name, new RegExp(`</${name}`, "gi")]));
 
@@ -263,10 +425,12 @@ const CLOSING = new Map([...RAW].map((name) => [name, new RegExp(`</${name}`, "g
 const startsTag = (c: number) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 47 || c === 33 || c === 63;
 
 /** HTML as a list of tags and pieces of text. Whitespace is collapsed, except in elements where it matters, whose content is kept line by line. */
-export function tokens(html: string): Token[] {
+export function tokens(html: string, xml = false): Token[] {
 	const out: Token[] = [];
 	let i = 0;
 	let textStart = 0;
+	// How deep in an `<svg>` or `<math>`, where a tag can close itself.
+	let foreign = 0;
 	// Whitespace is collapsed, and dropped next to block tags, where it doesn't show. Next to an
 	// inline tag it does (`a <b>b</b>` isn't `a<b>b</b>`), so one space stays.
 	const pushText = (s: string, nextTag: string | undefined) => {
@@ -274,7 +438,7 @@ export function tokens(html: string): Token[] {
 		const last = out[out.length - 1];
 		const before = isSpace(s.codePointAt(0)!) && last !== undefined && last.tag && isInline(last.text);
 		const after = isSpace(s.charCodeAt(s.length - 1)) && nextTag !== undefined && isInline(nextTag);
-		let t = collapse(s);
+		let t = canonicalText(collapse(s));
 		if (t === "") {
 			if (before && after) out.push({ tag: false, text: " " });
 			return;
@@ -297,13 +461,20 @@ export function tokens(html: string): Token[] {
 		}
 		const tag = html.slice(i, i + end);
 		pushText(html.slice(textStart, i), tag);
-		out.push({ tag: true, text: collapseTag(tag) });
+		const [text, closes] = canonicalTag(collapseTag(tag), foreign > 0, xml);
+		out.push({ tag: true, text });
+		const name = xml ? "" : nameAt(tag, 1);
+		// Inside an SVG or MathML, `<path/>` is `<path></path>`.
+		if (name === "svg" || name === "math") {
+			if (!closes) foreign++;
+		} else if (tag.charCodeAt(1) === 47 && (nameAt(tag, 2) === "svg" || nameAt(tag, 2) === "math")) foreign = Math.max(0, foreign - 1);
+		if (closes) out.push({ tag: true, text: `</${text.slice(1, text.search(/[ >]/))}>` });
 		i += end;
 		textStart = i;
 		// Raw content: kept exactly as it is (blank lines, indents), a line at a time. Tags inside
 		// <pre> (highlighting spans) are markup like any other, but the diff is easier to read
-		// with the line whole.
-		const name = nameAt(tag, 1);
+		// with the line whole. A `<pre>`'s and a `<textarea>`'s entities are read as in other
+		// text (highlighters write `'` as `&#39;` or not); a script's and a style's aren't entities.
 		if (RAW.has(name) && !tag.endsWith("/>")) {
 			const closing = CLOSING.get(name)!;
 			closing.lastIndex = i;
@@ -312,7 +483,13 @@ export function tokens(html: string): Token[] {
 			let raw = html.slice(i, i + len);
 			// A browser drops the newline right after `<pre>` and `<textarea>`.
 			if (name === "pre" || name === "textarea") raw = raw.startsWith("\r\n") ? raw.slice(2) : raw.startsWith("\n") ? raw.slice(1) : raw;
-			if (raw !== "") for (const line of raw.split("\n")) out.push({ tag: false, text: line.endsWith("\r") ? line.slice(0, -1) : line });
+			const entities = name === "pre" || name === "textarea";
+			if (raw !== "") {
+				for (const line of raw.split("\n")) {
+					const text = line.endsWith("\r") ? line.slice(0, -1) : line;
+					out.push({ tag: false, text: entities ? canonicalText(text) : text });
+				}
+			}
 			i += len;
 			textStart = i;
 		}
@@ -447,6 +624,15 @@ function comparePair(a: Buffer, b: Buffer, pair: Pair, options: DiffOptions): Fi
 		diff.onlyDates = onlyDates(list);
 		if (diff.onlyDates) diff.notes.push(`only dates changed (${diff.onlyDates[0]} -> ${diff.onlyDates[1]})`);
 		found = list;
+	} else if (isXml(pair.key) && !options.exact) {
+		// Tags and text, as a page is compared, with the HTML a feed holds read as HTML.
+		diff.kind = "text";
+		const ta = tokens(xmlWithMarkup(before), true), tb = tokens(xmlWithMarkup(after), true);
+		found = hunks(ta, tb, (t) => (t.tag ? 1 : 0), (t) => t.text)[0];
+		if (!found.length) return undefined;
+		// A sitemap's `<lastmod>` and a feed's `<updated>` follow the files' dates.
+		diff.onlyDates = onlyDates(found);
+		if (diff.onlyDates) diff.notes.push(`only dates changed (${diff.onlyDates[0]} -> ${diff.onlyDates[1]})`);
 	} else {
 		diff.kind = isPage(pair.key) ? "page" : "text";
 		const la = lines(before), lb = lines(after);
@@ -454,9 +640,39 @@ function comparePair(a: Buffer, b: Buffer, pair: Pair, options: DiffOptions): Fi
 		// Only the line endings at the end of the file.
 		if (!found.length) found = [{ removed: [`(${Buffer.byteLength(before)} bytes)`], added: [`(${Buffer.byteLength(after)} bytes)`] }];
 	}
+	// A sitemap's or a list's entries in another order: every line that went is one that came.
+	if (!diff.onlyDates && sameLines(found)) diff.notes.push("the same lines, in another order");
 	diff.changedLines = found.reduce((sum, h) => sum + h.removed.length + h.added.length, 0);
 	diff.hunks = firstLines(found, options.lines);
 	return diff;
+}
+
+/** Where a link points (with `/`), or undefined for a file that isn't a link. */
+async function linkTarget(file: string): Promise<string | undefined> {
+	try { return (await fs.promises.readlink(file)).replaceAll("\\", "/"); } catch { return undefined; }
+}
+
+/**
+ * A pair where either side is a link (lit.dev's output has 33 whose targets matter): links to the
+ * same place are the same, whatever is there (that file is compared on its own), and a link that
+ * points elsewhere, or that's a file in the other build, is a change.
+ */
+function compareLinks(a: string | undefined, b: string | undefined, pair: Pair): FileDiff | undefined {
+	if (a === b) return undefined;
+	const side = (target: string | undefined) => (target === undefined ? "(a file, not a link)" : `-> ${target}`);
+	return {
+		path: pair.key,
+		url: urlOf(pair.key),
+		renamed: pair.before !== pair.after ? [pair.before, pair.after] : undefined,
+		kind: "text",
+		what: [],
+		notes: [a !== undefined && b !== undefined ? "a link, to somewhere else" : "a link in one build and a file in the other"],
+		hunks: [{ removed: [side(a)], added: [side(b)] }],
+		changedLines: 2,
+		onlyDates: undefined,
+		sizeBefore: 0,
+		sizeAfter: 0,
+	};
 }
 
 /** How many pairs of files are read at once: enough to keep Node's file threads busy, few enough that memory stays flat. */
@@ -492,9 +708,15 @@ class Reader {
 	}
 }
 
+/** The paths `--only` and `--exclude` leave in. */
+function kept(paths: string[], options: DiffOptions): string[] {
+	const { only, exclude } = options;
+	return paths.filter((p) => (!only || only.some((re) => re.test(p))) && !(exclude ?? []).some((re) => re.test(p)));
+}
+
 /** Compares the build in `before` with the one in `after`. */
 export async function compare(before: string, after: string, options: DiffOptions): Promise<DiffReport> {
-	const keep = (paths: string[]) => (options.only ? paths.filter((p) => options.only!.some((re) => re.test(p))) : paths);
+	const keep = (paths: string[]) => kept(paths, options);
 	// Both folders must be there before either is walked, so a missing one is said first.
 	// Both are walked at once, and when both fail it's the first folder's error, as 0.7 walked it
 	// first: which walk failed sooner is up to the disk.
@@ -521,6 +743,11 @@ export async function compare(before: string, after: string, options: DiffOption
 		while (next < pairs.length) {
 			const i = next++;
 			const pair = pairs[i];
+			const [fromLink, toLink] = await Promise.all([linkTarget(path.join(before, pair.before)), linkTarget(path.join(after, pair.after))]);
+			if (fromLink !== undefined || toLink !== undefined) {
+				results[i] = compareLinks(fromLink, toLink, pair);
+				continue;
+			}
 			const [one, two] = await Promise.all([x.read(path.join(before, pair.before)), y.read(path.join(after, pair.after))]);
 			results[i] = comparePair(one, two, pair, options);
 		}
@@ -533,6 +760,18 @@ export async function compare(before: string, after: string, options: DiffOption
 		else report.unchangedFiles += 1;
 	});
 	return report;
+}
+
+/** Whether the lines removed are the lines added, each as many times: the same lines, moved. */
+function sameLines(list: Hunk[]): boolean {
+	const counts = new Map<string, number>();
+	let lines = 0;
+	for (const hunk of list) {
+		for (const line of hunk.removed) counts.set(line, (counts.get(line) ?? 0) + 1);
+		for (const line of hunk.added) counts.set(line, (counts.get(line) ?? 0) - 1);
+		lines += hunk.removed.length;
+	}
+	return lines > 0 && [...counts.values()].every((n) => n === 0);
 }
 
 /** When every changed line is the same apart from its dates and years: the first date that changed, before and after. */
@@ -561,6 +800,21 @@ function onlyDates(list: Hunk[]): [string, string] | undefined {
 
 // ---- output ----------------------------------------------------------------------------------
 
+/** What a comparison that isn't `--exact` leaves out, said first: what differs only in these doesn't count. */
+const IGNORING = "Ignoring asset fingerprints, image ids, integrity hashes, the generator's version, whitespace between tags, and how tags are written where browsers read them the same (attribute order, quotes, entities, `<br/>`) (--exact compares bytes).\n";
+
+/** More images named by their id than this, added or removed, are counted in one line rather than listed. */
+const IMAGES_LISTED = 5;
+
+/** The URLs in an Added or Removed list: each one, apart from a long run of images named by their id, which is one line. */
+function listed(urls: string[], sign: string): string[] {
+	const images = urls.filter(isHashedImage);
+	if (images.length <= IMAGES_LISTED) return urls.map((url) => `  ${sign} ${url}\n`);
+	const out = urls.filter((url) => !isHashedImage(url)).map((url) => `  ${sign} ${url}\n`);
+	out.push(`  ${sign} ${plural(images.length, "image", "images")} named by an id (${images[0].replace(IMAGE_ID, "{id}")} and the like): two builds that hash images differently name them differently, so they're counted here (--format json lists them)\n`);
+	return out;
+}
+
 function clip(line: string): string {
 	const MAX = 200;
 	const n = charCount(line);
@@ -573,16 +827,16 @@ const plural = (n: number, one: string, many: string) => `${count(n)} ${n === 1 
 export function diffText(report: DiffReport, limit: number, color: boolean): string {
 	const paint = (code: string, s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
 	let out = `Comparing ${report.before} with ${report.after}\n`;
-	out += report.exact ? "Comparing bytes (--exact).\n" : "Ignoring asset fingerprints, integrity hashes, the generator's version, and whitespace between tags (--exact compares bytes).\n";
+	out += report.exact ? "Comparing bytes (--exact).\n" : IGNORING;
 	const unchanged = `${plural(report.unchangedPages, "page", "pages")} and ${plural(report.unchangedFiles, "other file", "other files")}`;
 	if (isSame(report)) return `${out}\nNo differences: ${unchanged} are the same. The stump has not moved.\n`;
 	if (report.added.length) {
 		out += `\nAdded (${report.added.length})\n`;
-		for (const url of report.added) out += paint("32", `  + ${url}\n`);
+		for (const line of listed(report.added, "+")) out += paint("32", line);
 	}
 	if (report.removed.length) {
 		out += `\nRemoved (${report.removed.length})\n`;
-		for (const url of report.removed) out += paint("31", `  - ${url}\n`);
+		for (const line of listed(report.removed, "-")) out += paint("31", line);
 	}
 	if (report.changed.length) out += `\nChanged (${report.changed.length})\n`;
 	for (const file of report.changed) {
@@ -617,6 +871,8 @@ export function diffText(report: DiffReport, limit: number, color: boolean): str
 		const which = dated === report.changed.length ? `All ${plural(dated, "changed file", "changed files")}` : `${count(dated)} of the ${plural(report.changed.length, "changed file", "changed files")}`;
 		out += `\n${which} differ only in dates or years. See \`ssqch docs "dates that changed"\`: a page with no date of its own gets its file's modification time.\n`;
 	}
+	// Files an earlier build left behind are added or removed files too (osg #15).
+	if (report.added.length || report.removed.length) out += "\nFiles left in a folder by an earlier build count as added or removed: build each side into an empty folder.\n";
 	out += `\nChanges found: ${found} (${count(report.changed.length)} changed, ${count(report.added.length)} added, ${count(report.removed.length)} removed); ${unchanged} are the same. The stump has moved.\n`;
 	return out;
 }
@@ -688,7 +944,7 @@ export interface RunsReport {
  * unless `exact`.
  */
 export async function compareRuns(dirs: string[], options: DiffOptions): Promise<RunsReport> {
-	const keep = (paths: string[]) => (options.only ? paths.filter((p) => options.only!.some((re) => re.test(p))) : paths);
+	const keep = (paths: string[]) => kept(paths, options);
 	const walks = await Promise.allSettled(dirs.map(files));
 	for (const walk of walks) if (walk.status === "rejected") throw walk.reason;
 	const maps = walks.map((w) => keyed(keep((w as PromiseFulfilledResult<string[]>).value), options.exact));
@@ -723,6 +979,7 @@ function seen(key: string, data: Buffer, options: DiffOptions): string {
 	if (text === undefined) return `b:${data.toString("base64")}`;
 	const normal = normalize(text, options);
 	if (isPage(key) && !options.exact) return `p:${tokens(normal).map((t) => `${t.tag ? 1 : 0}${t.text}`).join("\0")}`;
+	if (isXml(key) && !options.exact) return `x:${tokens(xmlWithMarkup(normal), true).map((t) => `${t.tag ? 1 : 0}${t.text}`).join("\0")}`;
 	return `t:${normal}`;
 }
 
@@ -755,7 +1012,7 @@ const named = (report: RunsReport, runs: number[]) => runs.map((r) => report.run
 export function runsText(report: RunsReport, limit: number, color: boolean): string {
 	const paint = (code: string, s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
 	let out = `Comparing ${count(report.runs.length)} builds: ${report.runs.join(", ")}\n`;
-	out += report.exact ? "Comparing bytes (--exact).\n" : "Ignoring asset fingerprints, integrity hashes, the generator's version, and whitespace between tags (--exact compares bytes).\n";
+	out += report.exact ? "Comparing bytes (--exact).\n" : IGNORING;
 	const steady = `${plural(report.steadyPages, "page", "pages")} and ${plural(report.steadyFiles, "other file", "other files")}`;
 	if (!report.varies.length) return `${out}\nEvery build is the same: ${steady}. The tracks match every time.\n`;
 	out += `\nVaries (${report.varies.length})\n`;

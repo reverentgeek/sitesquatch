@@ -97,11 +97,23 @@ export function loadHookTemplates(dir: string, name: string, engines: Engines, c
  * `css` is false), and only when it changed, so a server doesn't see a new file each build.
  * Returns the file, for the build's list of what it wrote.
  */
+/**
+ * The stylesheet with the class names the site gave its tokens (`highlight: { classes }`), so it
+ * colors what the pages have: `.token.keyword` for Prism's, and with Prism's markup, its marked
+ * lines (`.highlight-line-active`).
+ */
+export function cssWithClasses(css: string, classes: MarkdownOptions["highlightClasses"]): string {
+	if (!classes) return css;
+	let out = css.replace(/^\.hl-([a-z]+) \{/gm, (whole, kind: string) => (classes.names[kind] ? `.${classes.names[kind].split(" ").join(".")} {` : whole));
+	if (classes.prism) out = out.replace("pre.highlight .line { display: inline-block; min-width: 100%; }\n", ".highlight-line { display: inline-block; min-width: 100%; }\n").replace("pre.highlight .line.highlighted {", ".highlight-line-active {");
+	return out;
+}
+
 export function writeHighlightCss(options: MarkdownOptions, output: string, markdown: Markdown): string[] {
 	const url = options.highlight ? options.highlightCss : null;
 	if (url === null) return [];
 	const file = path.join(output, ...url.replace(/^\/+/, "").split("/"));
-	const css = markdown.css();
+	const css = cssWithClasses(markdown.css(), options.highlightClasses);
 	let before: string | undefined;
 	try { before = fs.readFileSync(file, "utf8"); } catch {}
 	if (before !== css) {
@@ -377,6 +389,8 @@ class WasmMarkdown implements Markdown {
 			footnotes: o.footnotes,
 			taskLists: o.taskLists,
 			autolinks: o.autolinks,
+			breaks: o.breaks,
+			figures: o.figures,
 			alerts: o.alerts,
 			containers: o.containers,
 			definitionLists: o.definitionLists,
@@ -384,6 +398,7 @@ class WasmMarkdown implements Markdown {
 			indentedCode: o.indentedCode,
 			highlight: o.highlight,
 			highlightCss: o.highlightCss,
+			highlightClasses: o.highlightClasses,
 			languages,
 			headingIdsFunction: o.sluggerFn ? number(o.sluggerFn as (...args: unknown[]) => unknown, "markdown.headingIds", true) : null,
 			// `slot` is ssqch's container: it always calls back, to be kept for its parent.

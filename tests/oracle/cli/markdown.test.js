@@ -220,3 +220,57 @@ test("toc_sets_the_lists_items_and_links_classes", () => {
 	const bad = project({ "ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"] };\n", "_includes/t.njk": "{{ toc(page.headings, { klass: \"x\" }) | safe }}\n", "a.md": "---\nlayout: t.njk\n---\n## A\n" });
 	assert.match(ssqch(["build", "--root", bad]).log, /unknown option `klass` \(options: from, to, ordered, id, class, sublistClass, itemClass, linkClass\)/);
 });
+
+// markdown-it's habits as options, for a site that moves with the output it had: `breaks` (374
+// line breaks on a11yproject.com, a11y #12, #25), `autolinks: "fuzzy"` (its `linkify`), and
+// `figures` (markdown-it-implicit-figures, 74 v8.dev pages, v8 #24). Each expected string is what
+// markdown-it 13.0.2 wrote for the same Markdown.
+test("markdown_its_habits_are_options", () => {
+	const dir = tempDir("markdown-habits");
+	const w = (p, t) => write(dir, { [p]: t });
+	w("ssqch.config.js", "export default { markdown: { breaks: true, figures: true, autolinks: \"fuzzy\" } };\n");
+	w("index.md", "Pine\ncone at example.com or ranger@example.com, not node.js.\n\n![A *pine* cone](/cone.jpg)\n\n[![Map](/map.png)](/trails/)\n");
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<p>Pine<br>\ncone at <a href=\"http://example.com\">example.com</a> or <a href=\"mailto:ranger@example.com\">ranger@example.com</a>, not node.js.</p>\n<figure><img src=\"/cone.jpg\" alt=\"\"><figcaption>A <em>pine</em> cone</figcaption></figure>\n<figure><a href=\"/trails/\"><img src=\"/map.png\" alt=\"\"></a><figcaption>Map</figcaption></figure>\n");
+	w("ssqch.config.js", "export default { markdown: { autolinks: \"lots\" } };\n");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("markdown.autolinks must be true, false or \"fuzzy\", not \"lots\""), r.log);
+	w("ssqch.config.js", "export default { markdown: { figures: \"yes\" } };\n");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("markdown.figures must be true or false, not string"), r.log);
+});
+
+// A site keeps its highlighting theme's CSS (v8 B3: most Eleventy sites with code use the Prism
+// plugin; lit.dev's CSS styles CodeMirror's classes): `highlight: { classes }` names the tokens
+// as another highlighter does, and the stylesheet follows.
+test("highlighting_can_use_another_highlighters_classes", () => {
+	const dir = tempDir("highlight-classes");
+	const w = (p, t) => write(dir, { [p]: t });
+	w("ssqch.config.js", "export default { markdown: { highlight: { classes: \"prism\" } } };\n");
+	w("index.md", "```js {2}\nlet a = 1;\nf(a);\n```\n");
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<pre class=\"language-js\"><code class=\"language-js\"><span class=\"token keyword\">let</span> a <span class=\"token operator\">=</span> <span class=\"token number\">1</span>;\n<mark class=\"highlight-line highlight-line-active\"><span class=\"token function\">f</span>(a);</mark>\n</code></pre>\n");
+	const css = read(dir, "_site/highlight.css");
+	assert.ok(css.includes("\n.token.keyword { color: var(--hl-keyword); }\n") && css.includes("\n.highlight-line-active {") && !css.includes(".hl-keyword"), css);
+	w("ssqch.config.js", "export default { markdown: { highlight: { classes: { keyword: \"tok-keyword\", type: \"tok-typeName\" } } } };\n");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.ok(read(dir, "_site/index.html").startsWith("<pre class=\"highlight\"><code class=\"language-js\"><span class=\"line\"><span class=\"tok-keyword\">let</span>"), read(dir, "_site/index.html"));
+	w("ssqch.config.js", "export default { markdown: { highlight: { classes: \"codemirror\" } } };\n");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("markdown.highlight.classes must be \"prism\" or an object of { kind: \"class names\" }, not \"codemirror\""), r.log);
+});
+
+// GitHub Pages' Rouge puts `class="language-plaintext highlighter-rouge"` on every code span, and a
+// Jekyll site's CSS styles it (osg #4): `_includes/hooks/code.*` writes code spans, given their text.
+test("a_code_hook_writes_code_spans", () => {
+	const dir = tempDir("code-hook");
+	const w = (p, t) => write(dir, { [p]: t });
+	w("_includes/hooks/code.jinja", "<code class=\"language-plaintext highlighter-rouge\">{{ code.code }}</code>");
+	w("index.md", "Run `ssqch build` and `a < b`.\n\n```js\nx\n```\n");
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<p>Run <code class=\"language-plaintext highlighter-rouge\">ssqch build</code> and <code class=\"language-plaintext highlighter-rouge\">a &lt; b</code>.</p>\n<pre><code class=\"language-js\">x\n</code></pre>\n");
+});

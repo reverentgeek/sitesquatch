@@ -52,6 +52,15 @@ test("diff_compares_two_builds", () => {
 
 	[code, log] = run(["diff", "before", "after", "--ignore", "(Pine|Cedar) trail\\.|Trails|Paths|trails|paths", "--only", "index.html"]);
 	assert.equal(code, 0, log);
+	// `--exclude` leaves out what `--only` would have to list (the blog needed nine `--only`s).
+	[code, log] = run(["diff", "before", "after", "--format", "json", "--exclude", "index.html", "--exclude", "new/**"]);
+	assert.equal(code, 1, log);
+	assert.deepEqual(JSON.parse(log).summary, { added: 0, removed: 1, changed: 0, unchangedPages: 0, unchangedFiles: 0 });
+	[code, log] = run(["diff", "before", "after", "--only", "**/*.html", "--exclude", "about/**", "--exclude", "new/**", "--ignore", "(Pine|Cedar) trail\\.|Trails|Paths|trails|paths"]);
+	assert.equal(code, 0, log);
+	[code, log] = run(["diff", "before", "after", "--exclude", "[a"]);
+	assert.equal(code, 2, log);
+	assert.ok(log.includes("--exclude \"[a\" isn't a glob"), log);
 	[code, log] = run(["diff", "before", "missing"]);
 	assert.equal(code, 2, log);
 	assert.ok(log.includes("missing isn't a folder"), log);

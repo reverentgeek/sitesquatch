@@ -97,7 +97,7 @@ test("docs_answer_for_every_name", () => {
 		assert.ok(r.ok && r.log.includes("**Your own languages:**"), `${JSON.stringify(query)}: ${r.log}`);
 	}
 	// New features answer with their whole explanation, not only a line.
-	for (const [query, want] of [[["files"], "**Files as data:**"], [["files"], "{ dimensions: true }` adds `width`"], [["dates", "that", "changed"], "**Dates that changed:**"], [["release", "age"], "under `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`"], [["javascript", "properties", "and", "methods"], "`.length` counts a list's items"]]) {
+	for (const [query, want] of [[["files"], "**Files as data:**"], [["files"], "{ dimensions: true }` adds `width`"], [["dates", "that", "changed"], "**Dates that changed:**"], [["release", "age"], "under `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`"], [["javascript", "properties", "and", "methods"], "`.length` counts a list's items"], [["your", "own", "markdown"], "**Your own Markdown:**"], [["setLibrary"], "give it to `engines` as `md`"], [["caching", "an", "engine"], "With `cache: true`, an engine keeps"], [["markdown-it", "habits"], "so `node.js` stays text"], [["another", "highlighter's", "classes"], "`classes: \"prism\"` gives every token Prism's names"]]) {
 		r = ssqch(["docs", ...query]);
 		assert.ok(r.ok && r.log.includes(want), `${JSON.stringify(query)}: ${r.log}`);
 	}

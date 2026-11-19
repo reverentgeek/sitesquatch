@@ -8,13 +8,17 @@
 // as text and never runs them, so nothing in it was there for QuickJS, and nothing changes now
 // that a site's packages run on Node.
 import fs from "node:fs";
+import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
+import nunjucks from "nunjucks";
 import { TomlError } from "smol-toml";
 import { findConfig } from "./config.ts";
 import { isPlainObject, readToml, tomlReason } from "./data.ts";
 import type { Data } from "./data.ts";
 import { red } from "./diagnostics.ts";
 import { TABLE } from "./equivalents.ts";
+import { jinjaFilters } from "./engines/jinja.ts";
+import { BUILTIN_FILTERS } from "./filters.ts";
 import { JsonText } from "./json-edit.ts";
 import { compareText, isDir, isFile } from "./paths.ts";
 import { rustRegExp } from "./rust-regex.ts";
@@ -269,7 +273,7 @@ function pluginPackage(code: string, name: string): string | undefined {
 	const base = name.split(".")[0];
 	if (base === "" || !IDENTIFIER.test(base)) return undefined;
 	const id = escapeRegex(base);
-	const re = rustRegExp(String.raw`(?:\b(?:const|let|var)\s+(?:${id}|\{[^}]*\b${id}\b[^}]*\})\s*=\s*(?:await\s+)?(?:require|import)\(\s*|\bimport\s+(?:${id}|\{[^}]*\b${id}\b[^}]*\}|\*\s+as\s+${id})\s+from\s+)["'\x60]([^"'\x60]+)["'\x60]`);
+	const re = rustRegExp(String.raw`(?:\b(?:const|let|var)\s+(?:${id}|\{[^}]*\b${id}\b[^}]*\})\s*=\s*(?:await\s+)?(?:require|import)\(\s*|\bimport\s+(?:${id}(?:\s*,\s*(?:\{[^}]*\}|\*\s+as\s+[A-Za-z_$][\w$]*))?|(?:[A-Za-z_$][\w$]*\s*,\s*)?\{[^}]*\b${id}\b[^}]*\}|\*\s+as\s+${id})\s+from\s+)["'\x60]([^"'\x60]+)["'\x60]`);
 	return re.exec(code)?.[1];
 }
 
@@ -315,10 +319,26 @@ export function eleventy(dir: string): Plan {
 		if (template && (text.includes("eleventy.env") || text.includes("eleventy.directories"))) plan.byHand.push([rel, "`eleventy.env` and `eleventy.directories` aren't there: use `ssqch.env` and `ssqch.serving`"]);
 	}
 
-	packageFiles(dir, plan);
+	packageFiles(dir, plan, entries);
+	// The site's own modules the config passes `eleventyConfig` to: their calls count as the config's.
+	const followed = config === undefined ? new Map<string, string>() : helperModules(dir, config, configText);
+	const helpers: Array<[string, Array<[string, string]>]> = [];
+	const helperLists: Array<[string, string]> = [];
+	let helperText = "";
+	for (const rel of new Set(followed.values())) {
+		const text = readUtf8(path.join(dir, ...rel.split("/")));
+		if (text === undefined) continue;
+		const [, list, ported] = draftConfig(rel, text, extensions);
+		// Its packages are listed by `modulesUsingEleventy`, with their lines.
+		helperLists.push(...list.filter(([at]) => at !== rel));
+		helpers.push([rel, ported]);
+		helperText += `\n${blankComments(text)}`;
+	}
+	const ports = config === undefined ? [] : undefinedFilters(entries, blankComments(configText) + helperText, readsNavigation, plan);
+	modulesUsingEleventy(entries, config, plan);
 	if (config !== undefined) {
-		const [source, byHand] = draftConfig(config, configText, extensions);
-		plan.byHand.push(...byHand);
+		const [source, byHand] = draftConfig(config, configText, extensions, ports, eleventyMajor(dir), helpers, new Set(followed.keys()));
+		plan.byHand.push(...byHand, ...helperLists);
 		if (findConfig(dir) === undefined) plan.newFiles.push(["ssqch.config.js", `a first draft, from ${config}`, source]);
 		else plan.byHand.push(["ssqch.config.js", "it's already there, so the draft from the Eleventy config wasn't written"]);
 	} else {
@@ -425,17 +445,192 @@ export function rewriteData(text: string, keep: readonly string[] = []): [string
 	return [out, changes];
 }
 
+// ---- filters the templates use that nothing defines --------------------------------------------
+
+/**
+ * Eleventy's own filters and shortcodes, and its plugins', that a template can use without the
+ * config defining them: what each is in ssqch, and a port for the draft when it's small.
+ */
+const ELEVENTY_FILTERS: Record<string, { say: string; port?: string }> = {
+	slug: { say: "Eleventy's built-in `slug` (the slugify package): ssqch's is `slugify`, which drops `.` and other punctuation that `slug` keeps. For the same ids, port it: `slug: (s) => slugify(String(s), { lower: true })` with `import slugify from \"slugify\"`" },
+	log: { say: "Eleventy's built-in `log`: ported into the draft (it prints the value and passes it on)", port: "(value) => {\n\t\t\tconsole.log(value);\n\t\t\treturn value;\n\t\t}" },
+	getCollectionItemIndex: { say: "Eleventy's built-in, ported into the draft: pass the page, `collection | getCollectionItemIndex(page)`", port: "(collection, page) => collection.findIndex((item) => item.url === page.url)" },
+	getCollectionItem: { say: "Eleventy's built-in, ported into the draft: pass the page, `collection | getCollectionItem(page)`", port: "(collection, page) => collection.find((item) => item.url === page.url)" },
+	getPreviousCollectionItem: { say: "Eleventy's built-in, ported into the draft: pass the page, `collection | getPreviousCollectionItem(page)`", port: "(collection, page) => {\n\t\t\tconst i = collection.findIndex((item) => item.url === page.url);\n\t\t\treturn i > 0 ? collection[i - 1] : undefined;\n\t\t}" },
+	getNextCollectionItem: { say: "Eleventy's built-in, ported into the draft: pass the page, `collection | getNextCollectionItem(page)`", port: "(collection, page) => {\n\t\t\tconst i = collection.findIndex((item) => item.url === page.url);\n\t\t\treturn i >= 0 && i < collection.length - 1 ? collection[i + 1] : undefined;\n\t\t}" },
+	inputPathToUrl: { say: "Eleventy's built-in: link to the page's URL itself (`collections` items have `url`), or a filter of your own that looks it up" },
+	renderTemplate: { say: "Eleventy's render plugin: a container (`::: name`) or an include does the same in ssqch" },
+	renderFile: { say: "Eleventy's render plugin: an `{% include %}` of the file" },
+	rssLastUpdatedDate: { say: "the RSS plugin's old name: `rssPlugin()` from \"ssqch/rss\" has `getNewestCollectionItemDate(collection) | dateToRfc3339`" },
+	rssDate: { say: "the RSS plugin's old name: `rssPlugin()` from \"ssqch/rss\" has `dateToRfc3339`" },
+	getNewestCollectionItemDate: { say: "the RSS plugin's: `rssPlugin()` from \"ssqch/rss\" has it" },
+	dateToRfc3339: { say: "the RSS plugin's: `rssPlugin()` from \"ssqch/rss\" has it" },
+	dateToRfc822: { say: "the RSS plugin's: `rssPlugin()` from \"ssqch/rss\" has it" },
+	absoluteUrl: { say: "the RSS plugin's: `rssPlugin()` from \"ssqch/rss\" has it" },
+	htmlToAbsoluteUrls: { say: "the RSS plugin's: `rssPlugin()` from \"ssqch/rss\" has it (or `feedHtml`)" },
+	eleventyNavigationBreadcrumb: { say: "eleventy-navigation's: `navBreadcrumbs(nav, page.url)` with `nav` front matter (`ssqch docs navBreadcrumbs`)" },
+	eleventyNavigationToHtml: { say: "eleventy-navigation's: `navTree(nav, page.url)` and a template that writes the list (`ssqch docs navTree`)" },
+	eleventyNavigationToMarkdown: { say: "eleventy-navigation's: `navTree(nav, page.url)` and a template that writes the list (`ssqch docs navTree`)" },
+};
+
+/** Tags the template languages have themselves, which a `{% name %}` isn't a shortcode for. */
+const BUILT_IN_TAGS = new Set(["if", "elif", "elsif", "else", "endif", "for", "endfor", "empty", "set", "endset", "macro", "endmacro", "call", "endcall", "import", "from", "include", "extends", "block", "endblock", "filter", "endfilter", "raw", "endraw", "verbatim", "endverbatim", "asyncEach", "endeach", "asyncAll", "endall", "ifAsync", "assign", "capture", "endcapture", "case", "when", "endcase", "comment", "endcomment", "cycle", "decrement", "increment", "echo", "break", "continue", "unless", "endunless", "render", "layout", "liquid", "tablerow", "endtablerow", "with", "endwith", "autoescape", "endautoescape", "setAsync"]);
+
+let engineFilterNames: Set<string> | undefined;
+
+/** Every filter the template languages have themselves, and ssqch's: what a template can use that no config defines. */
+function knownFilters(): Set<string> {
+	if (engineFilterNames) return engineFilterNames;
+	const names = new Set<string>([...BUILTIN_FILTERS.map(([name]) => name), ...TABLE.filter((r) => r.kind === "filter" && r.alias).map((r) => r.word)]);
+	for (const name of Object.keys(jinjaFilters((t) => t))) names.add(name);
+	for (const name of Object.keys(jinjaFilters((t) => t, "njk"))) names.add(name);
+	// Nunjucks' own (`safe`, `dump`), which ssqch's engines keep.
+	for (const name of Object.keys((new nunjucks.Environment() as unknown as { filters: Record<string, unknown> }).filters)) names.add(name);
+	try {
+		const { Liquid } = createRequire(import.meta.url)("liquidjs") as { Liquid: new () => { filters: Record<string, unknown> } };
+		for (const name of Object.keys(new Liquid().filters)) names.add(name);
+	} catch { /* without liquidjs, its filters read as unknown */ }
+	return (engineFilterNames = names);
+}
+
+const TEMPLATE_CODE = /\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/g;
+const PIPE_FILTER = /\|\s*([A-Za-z_][\w]*)/g;
+const TAG_NAME = /^\{%-?\s*([A-Za-z_][\w]*)/;
+
+/**
+ * The filters and shortcodes templates use that nothing defines: not the template languages, not
+ * ssqch, and not the Eleventy config (a11y #5). Each goes in the list once, with how many
+ * templates use it and the first place; Eleventy's own and its plugins' say what they are in
+ * ssqch, and the small ones come back as ports for the draft's `filters`.
+ */
+function undefinedFilters(entries: Entry[], config: string, readsNavigation: boolean, plan: Plan): Array<[string, string]> {
+	const defined = new Set<string>();
+	for (const c of config.matchAll(CALL)) {
+		if (c[2] !== undefined && /Filter|Shortcode|Tag|Global/.test(c[1])) defined.add(c[2]);
+	}
+	const known = knownFilters();
+	const uses = new Map<string, { first: string; templates: Set<string> }>();
+	for (const entry of entries) {
+		if (!entry.isFile || !["njk", "liquid", "md", "markdown", "html"].includes(asciiLower(extensionOf(entry.name)))) continue;
+		const text = readUtf8(entry.abs);
+		if (text === undefined || (!text.includes("{{") && !text.includes("{%"))) continue;
+		for (const tag of text.matchAll(TEMPLATE_CODE)) {
+			const found: string[] = [];
+			// Quoted text inside a tag isn't code: `{{ "a | b" }}`.
+			const code = tag[0].replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, "\"\"");
+			for (const m of code.matchAll(PIPE_FILTER)) found.push(m[1]);
+			const name = TAG_NAME.exec(code)?.[1];
+			if (name !== undefined && tag[0].startsWith("{%") && !BUILT_IN_TAGS.has(name)) found.push(name);
+			for (const name of found) {
+				if (defined.has(name) || (known.has(name) && !Object.hasOwn(ELEVENTY_FILTERS, name))) continue;
+				if (readsNavigation && name === "eleventyNavigation") continue;
+				const line = occurrences(text.slice(0, tag.index), "\n") + 1;
+				const use = uses.get(name) ?? { first: `${entry.rel}:${line}`, templates: new Set<string>() };
+				use.templates.add(entry.rel);
+				uses.set(name, use);
+			}
+		}
+	}
+	// A paired shortcode's end tag (`{% endcallout %}`) goes with its start.
+	for (const name of [...uses.keys()]) {
+		const opens = name.slice(3);
+		if (name.startsWith("end") && opens !== "" && (uses.has(opens) || defined.has(opens))) uses.delete(name);
+	}
+	const ports: Array<[string, string]> = [];
+	for (const [name, use] of [...uses].sort(([a], [b]) => compareText(a, b))) {
+		const where = use.templates.size === 1 ? "" : ` (in ${use.templates.size} templates; this is the first)`;
+		const eleventy = Object.hasOwn(ELEVENTY_FILTERS, name) ? ELEVENTY_FILTERS[name] : undefined;
+		if (eleventy?.port) ports.push([name, eleventy.port]);
+		plan.byHand.push([use.first, eleventy ? `\`${name}\`${where}: ${eleventy.say}` : `\`${name}\`${where} is a filter or shortcode nothing defines: not the template language, not ssqch, not the Eleventy config. A plugin's, or one a helper module adds? Port it to \`filters\``]);
+	}
+	return ports;
+}
+
+const RELATIVE_IMPORT = /(?:\brequire\(\s*|\bimport\s*\(\s*|\bfrom\s+)["'](\.{1,2}\/[^"']+)["']/g;
+const HELPER_CALL = /\.\s*(?:addFilter|addAsyncFilter|addNunjucksFilter|addLiquidFilter|addNunjucksAsyncFilter|addShortcode|addAsyncShortcode|addPairedShortcode|addNunjucksShortcode|addLiquidShortcode|addCollection|addTransform|addGlobalData|addPlugin|addPassthroughCopy|setLibrary)\s*\(/;
+
+/**
+ * The site's own modules, from the config on, that call Eleventy's `add*` methods (blog #2: a
+ * `registerSiteFilters(config)` in `lib/` hid 11 filters, 2 collections and a transform; lit D4:
+ * a plugin of the site's own). Followed through relative imports, inside the site. By what the
+ * importing file wrote (`./lib/filters.js`), each module's path from the site's folder.
+ */
+function helperModules(dir: string, config: string, configText: string): Map<string, string> {
+	const found = new Map<string, string>();
+	const seen = new Set<string>([config]);
+	const queue: Array<[string, string]> = [[config, configText]];
+	while (queue.length) {
+		const [rel, text] = queue.shift()!;
+		for (const m of blankComments(text).matchAll(RELATIVE_IMPORT)) {
+			const base = path.posix.join(path.posix.dirname(rel), m[1]);
+			if (base.startsWith("..")) continue;
+			const target = [base, `${base}.js`, `${base}.cjs`, `${base}.mjs`, `${base}/index.js`].find((p) => isFile(path.join(dir, ...p.split("/"))));
+			if (target === undefined) continue;
+			// Another file's name for a module already followed.
+			if (seen.has(target)) {
+				if ([...found.values()].includes(target)) found.set(m[1], target);
+				continue;
+			}
+			seen.add(target);
+			const next = readUtf8(path.join(dir, ...target.split("/")));
+			if (next === undefined) continue;
+			if (HELPER_CALL.test(blankComments(next))) found.set(m[1], target);
+			queue.push([target, next]);
+		}
+	}
+	return found;
+}
+
+/**
+ * Eleventy's packages in the site's other modules (blog #3): a data file that runs eleventy-img or
+ * eleventy-fetch itself, a helper the config imports. The config's are listed with the rest of it.
+ */
+function modulesUsingEleventy(entries: Entry[], config: string | undefined, plan: Plan): void {
+	const inData: Record<string, string> = {
+		"@11ty/eleventy-img": "`image(src, options)` from \"ssqch/image\" in a data file (the URLs and sizes, without markup), or `imageUrl(src)` in a template",
+		"@11ty/eleventy-fetch": "`fetch(url, { cache: \"1d\" })`, from \"ssqch\" in a data file: it keeps a copy in `.cache/ssqch/fetch/` as eleventy-fetch kept one in `.cache`",
+	};
+	for (const entry of entries) {
+		if (!entry.isFile || entry.rel === config || !/\.(?:[cm]?js|[cm]?ts)$/.test(entry.name)) continue;
+		const text = readUtf8(entry.abs);
+		if (text === undefined || (!text.includes("eleventy") && !text.includes("markdown-it"))) continue;
+		const code = blankComments(text);
+		const seen = new Set<string>();
+		for (const m of code.matchAll(REQUIRE)) {
+			const pkg = m[1];
+			if (seen.has(pkg) || pkg === "@11ty/eleventy") continue;
+			seen.add(pkg);
+			const what = Object.hasOwn(inData, pkg) ? inData[pkg] : replacement(pkg);
+			if (what !== undefined) plan.byHand.push([`${entry.rel}:${occurrences(code.slice(0, m.index), "\n") + 1}`, `${pkg} -> ${what}`]);
+		}
+	}
+}
+
+/** The major version of Eleventy the site has: the one installed, or else the one `package.json` asks for. */
+function eleventyMajor(dir: string): number | undefined {
+	const major = (version: unknown) => (typeof version === "string" ? Number(/(\d+)/.exec(version)?.[1]) : Number.NaN);
+	for (const file of [path.join(dir, "node_modules", "@11ty", "eleventy", "package.json"), path.join(dir, "package.json")]) {
+		let pkg: unknown;
+		try { pkg = JSON.parse(fs.readFileSync(file, "utf8")); } catch { continue; }
+		if (!isPlainObject(pkg)) continue;
+		const found = file.endsWith(path.join("eleventy", "package.json")) ? major(pkg.version) : major([pkg.dependencies, pkg.devDependencies].map((d) => (isPlainObject(d) ? d["@11ty/eleventy"] : undefined)).find((v) => v !== undefined));
+		if (Number.isFinite(found)) return found;
+	}
+	return undefined;
+}
+
 /** What an Eleventy plugin or library is in ssqch. */
 function replacement(pkg: string): string | undefined {
 	switch (pkg) {
 		case "@11ty/eleventy-img": return "`imagePlugin()` from \"ssqch/image\" (every <img> becomes a <picture>), or `image()` in data files";
 		case "@11ty/eleventy-plugin-rss": return "`rssPlugin()` from \"ssqch/rss\"";
-		case "@11ty/eleventy-plugin-syntaxhighlight": return "`markdown: { highlight: true }`";
+		case "@11ty/eleventy-plugin-syntaxhighlight": return "`markdown: { highlight: { classes: \"prism\", css: false } }`: Prism's class names and `<pre class=\"language-x\">`, so your Prism theme's CSS still colors the code";
 		case "@11ty/eleventy-navigation": return "`nav` front matter and `pagesTree(collections.all)`, with `navTree`, `navPager` and `navBreadcrumbs`";
 		case "@11ty/eleventy-fetch": return "`fetch(url, { cache: \"1d\" })`";
 		case "@11ty/eleventy-plugin-bundle": case "@11ty/eleventy-plugin-webc": case "@11ty/is-land": return "custom elements with `elementsPlugin()` from \"ssqch/elements\"";
 		case "@11ty/eleventy-upgrade-help": case "@11ty/eleventy": case "@11ty/eleventy-dev-server": return undefined;
-		case "markdown-it": return "ssqch's own Markdown: see the `markdown` options, render hooks and containers";
+		case "markdown-it": return "ssqch's own Markdown: see the `markdown` options (its `breaks`, `linkify` and `typographer` are `breaks`, `autolinks: \"fuzzy\"` and `smartPunctuation`), render hooks and containers; or keep it with `engines: { md }`";
+		case "markdown-it-implicit-figures": return "`markdown: { figures: true }` (what it writes with `figcaption: true`)";
 		case "markdown-it-anchor": return "heading ids are built in; add anchor links with `_includes/hooks/heading.*`";
 		case "markdown-it-footnote": return "built in (`markdown: { footnotes: true }`, the default)";
 		case "markdown-it-container": return "built in: `::: name` renders `_includes/containers/name.*`";
@@ -668,7 +863,7 @@ function reindent(source: string, fromIndent: string, toIndent: string): string 
 }
 
 /** A first `ssqch.config.js` from an Eleventy config, and what in it needs porting. */
-export function draftConfig(name: string, text: string, extensions: ReadonlySet<string>): [string, Array<[string, string]>] {
+export function draftConfig(name: string, text: string, extensions: ReadonlySet<string>, ports: ReadonlyArray<[string, string]> = [], eleventyMajor?: number, helpers: ReadonlyArray<[string, ReadonlyArray<[string, string]>]> = [], followed: ReadonlySet<string> = new Set()): [string, Array<[string, string]>, Array<[string, string]>] {
 	const code = blankComments(text);
 	const lineOf = (offset: number) => occurrences(text.slice(0, offset), "\n") + 1;
 	const style = styleOf(text);
@@ -766,12 +961,19 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 				const known = pkg !== undefined && `require("${pkg}")`.search(REQUIRE) !== -1 && replacement(pkg) !== undefined;
 				const from = pkg === undefined ? "" : ` (from ${pkg})`;
 				if (known) byHand.push([at, `addPlugin(${arg})${from} -> see its package below`]);
+				else if (pkg !== undefined && followed.has(pkg)) byHand.push([at, `addPlugin(${arg})${from}: the site's own plugin. What it adds is listed with its own file and line, and what could be copied as written is in the draft`]);
 				else byHand.push([at, `addPlugin(${arg})${from}: a plugin ssqch doesn't know, so the filters, shortcodes and transforms it adds aren't listed here. Read its source and port them, or put it in \`plugins: [...]\` if it's written for ssqch`]);
 				break;
 			}
-			case "setLibrary":
-				byHand.push([at, "setLibrary -> ssqch renders Markdown itself: `markdown: { ... }` options, render hooks and containers"]);
+			case "setLibrary": {
+				// The library as written (`md`, `markdownIt(options).use(plugin)`): it comes along as an
+				// engine, with the imports and setup it needs, which the draft can't follow.
+				const library = quoted === "md" && args[1] !== undefined ? trim(args[1]) : undefined;
+				if (library !== undefined) byHand.push([at, `setLibrary("md", ${library.length > 60 || library.includes("\n") ? "..." : library}) -> keep your markdown-it as it is with \`engines: { ${library === "md" ? "md" : `md: ${/^[A-Za-z_$][\w$]*$/.test(library) ? library : "yourMarkdownIt"}`} }\` (bring its import and setup into the config; \`ssqch docs "moving with identical output first"\`), or ssqch's own Markdown: \`markdown: { ... }\` options, render hooks and containers`]);
+				else if (quoted !== undefined && quoted !== "md") byHand.push([at, `setLibrary("${quoted}") -> ssqch has its own; a library of your own is an engine: \`engines: { ${quoted}: { render: (source, data) => ... } }\``]);
+				else byHand.push([at, "setLibrary -> ssqch renders Markdown itself: `markdown: { ... }` options, render hooks and containers"]);
 				break;
+			}
 			case "addDataExtension":
 				byHand.push([at, "addDataExtension -> YAML, TOML and JSON data files load as they are"]);
 				break;
@@ -780,7 +982,27 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 				break;
 		}
 	}
-	const packages = [...new Set([...code.matchAll(REQUIRE)].map((c) => c[1]))].filter((p) => replacement(p) !== undefined).sort(compareText);
+	const required = new Set([...code.matchAll(REQUIRE)].map((c) => c[1]));
+	const packages = [...required].filter((p) => replacement(p) !== undefined).sort(compareText);
+	// markdown-it's options that ssqch's Markdown has too, wherever the config sets them (in the
+	// `markdownIt(...)` call, a variable it's given, or `md.set(...)`).
+	const markdown: string[] = [];
+	// Defaults where Eleventy's Markdown and ssqch's write different markup, each with why, so the
+	// first build matches the old one (blog #5, #6; v8 #3). A person can take a line out to move to
+	// ssqch's.
+	const markdownDefaults: Array<[string, string]> = [];
+	const ownLibrary = /\.\s*setLibrary\s*\(\s*["'\x60]md["'\x60]/.test(code);
+	if (required.has("markdown-it")) {
+		if (/\bbreaks\s*:\s*true\b/.test(code)) markdown.push("breaks: true");
+		if (/\blinkify\s*:\s*true\b/.test(code)) markdown.push("autolinks: \"fuzzy\"");
+		if (/\btypographer\s*:\s*true\b/.test(code)) markdown.push("smartPunctuation: true");
+		if (required.has("markdown-it-implicit-figures")) markdown.push("figures: true");
+	}
+	if (extensions.has("md")) {
+		if (!required.has("markdown-it-anchor")) markdownDefaults.push(["Eleventy's markdown-it gave headings no ids (no markdown-it-anchor); take this out for ssqch's.", "headingIds: false"]);
+		// Eleventy 2 turned indented code off in its own markdown-it, and 3 in a site's too.
+		if (eleventyMajor !== undefined && (eleventyMajor >= 3 || (eleventyMajor === 2 && !ownLibrary))) markdownDefaults.push([`Eleventy ${eleventyMajor} turns off markdown-it's indented code blocks (\`md.disable("code")\`).`, "indentedCode: false"]);
+	}
 	for (const pkg of packages) byHand.push([name, `${pkg} -> ${replacement(pkg)}`]);
 
 	// Eleventy runs Markdown and HTML through Liquid unless told otherwise.
@@ -814,6 +1036,11 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 	entries.push(`${ind}htmlEngine: ${htmlEngine ?? "\"liquid\""}`);
 	const prefix = setting(code, "pathPrefix");
 	if (prefix !== undefined && prefix !== "/") entries.push(`${ind}base: "${prefix}"`);
+	if (markdownDefaults.length) {
+		const items = markdownDefaults.map(([why, item]) => `${ind}${ind}// ${why}\n${ind}${ind}${item}`);
+		if (markdown.length) items.push(`${ind}${ind}// From the Eleventy config's markdown-it options.\n${ind}${ind}${markdown.join(`,\n${ind}${ind}`)}`);
+		entries.push(`${ind}markdown: {\n${styleItems(style, items)}${ind}}`);
+	} else if (markdown.length) entries.push(`${ind}// From the Eleventy config's markdown-it options.\n${ind}markdown: { ${markdown.join(", ")} }`);
 	if (passthrough.length) entries.push(`${ind}passthrough: ${styleList(style, passthrough)}`);
 	if (watch.length) entries.push(`${ind}watch: ${styleList(style, watch)}`);
 	let filters = `\n${ind}filters: {\n`;
@@ -821,9 +1048,19 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 		filters += `${ind}${ind}// From ${name}, as written.\n`;
 		filters += styleItems(style, ported.map(([filter, source]) => `${ind}${ind}${styleKey(style, filter)}: ${source}`));
 	}
+	for (const [file, list] of helpers) {
+		if (!list.length) continue;
+		filters += `${ind}${ind}// From ${file}, as written.\n`;
+		filters += styleItems(style, list.map(([filter, source]) => `${ind}${ind}${styleKey(style, filter)}: ${source}`));
+	}
+	if (ports.length) {
+		filters += `${ind}${ind}// Eleventy's own filters the templates use, ported.\n`;
+		// The ports are written with tabs; the draft indents as the config does.
+		filters += styleItems(style, ports.map(([filter, source]) => `${ind}${ind}${styleKey(style, filter)}: ${source.replaceAll("\t", ind)}`));
+	}
 	// The placeholder, unless every filter and shortcode was ported (the list at the end names the
 	// ones left). After the last filter, a comment doesn't count as a trailing comma.
-	if (!ported.length || todo.some((t) => t.startsWith("filters:"))) filters += `${ind}${ind}// Port each filter and shortcode here: name: (value, ...args) => result\n`;
+	if ((!ported.length && !ports.length && !helpers.some(([, list]) => list.length)) || todo.some((t) => t.startsWith("filters:"))) filters += `${ind}${ind}// Port each filter and shortcode here: name: (value, ...args) => result\n`;
 	filters += `${ind}}`;
 	entries.push(filters);
 	entries.push(`${ind}collections: {\n${ind}${ind}// name: (pages) => pages.byTag("post")\n${ind}}`);
@@ -834,7 +1071,7 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 		out += `\n// To port from ${name}:\n`;
 		for (const item of todo) out += `//   ${item}\n`;
 	}
-	return [out, byHand];
+	return [out, byHand, ported];
 }
 
 const LOCKFILES: ReadonlyArray<readonly [string, readonly string[]]> = [["pnpm", ["pnpm-lock.yaml"]], ["yarn", ["yarn.lock"]], ["bun", ["bun.lock", "bun.lockb"]], ["npm", ["package-lock.json", "npm-shrinkwrap.json"]]];
@@ -909,7 +1146,58 @@ function isEleventyCommand(script: string, start: number, wordEnd: number, names
 }
 
 /** package.json with ssqch for Eleventy, in the dependencies and the scripts, and what's left: lockfiles to update or remove. */
-function packageFiles(dir: string, plan: Plan): void {
+/**
+ * Packages that came with `@11ty/eleventy` when its own `node_modules` has none to say: the ones
+ * sites were found importing without listing (a11y #19, v8.dev's `slugify`, lit.dev's
+ * gray-matter).
+ */
+const CAME_WITH_ELEVENTY = ["@sindresorhus/slugify", "browser-sync", "chokidar", "debug", "fast-glob", "gray-matter", "js-yaml", "liquidjs", "luxon", "markdown-it", "minimist", "moo", "nunjucks", "posthtml", "slugify"];
+
+const BARE_IMPORT = new RegExp(String.raw`(?:\brequire\(\s*|\bimport\s*\(\s*|\bfrom\s+|^\s*import\s+)["']([^"'./][^"']*)["']`, "gm");
+
+/** A bare specifier's package: `luxon`, `@11ty/eleventy-img` from `@11ty/eleventy-img/sharp`. */
+function packageOf(specifier: string): string | undefined {
+	if (specifier.startsWith("node:") || specifier.includes(":")) return undefined;
+	const parts = specifier.split("/");
+	const name = specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
+	return builtinModules.includes(name) ? undefined : name;
+}
+
+/**
+ * The packages the site's own JavaScript (its config, data files, scripts, a gulpfile) imports
+ * that `package.json` doesn't list and that came with Eleventy, with the version installed (or
+ * undefined when there's no `node_modules` to read it from), and the first file that imports each.
+ */
+function cameWithEleventy(dir: string, root: Data, entries: Entry[]): Array<[string, string | undefined, string]> {
+	const listed = new Set<string>();
+	for (const section of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
+		if (isPlainObject(root[section])) for (const name of Object.keys(root[section])) listed.add(name);
+	}
+	// What Eleventy itself depends on, when it's installed; else the packages sites were found using.
+	const installed = (name: string): Data | undefined => {
+		try { const p = JSON.parse(fs.readFileSync(path.join(dir, "node_modules", ...name.split("/"), "package.json"), "utf8")); return isPlainObject(p) ? p : undefined; } catch { return undefined; }
+	};
+	const eleventyPkg = installed("@11ty/eleventy");
+	const eleventyDeps = eleventyPkg && isPlainObject(eleventyPkg.dependencies) ? new Set(Object.keys(eleventyPkg.dependencies)) : undefined;
+	const came = (name: string) => (eleventyDeps ? eleventyDeps.has(name) : CAME_WITH_ELEVENTY.includes(name));
+	const found = new Map<string, string>();
+	for (const entry of entries) {
+		if (!entry.isFile || !/\.(?:[cm]?js|[cm]?ts)$/.test(entry.name)) continue;
+		const text = readUtf8(entry.abs);
+		if (text === undefined) continue;
+		for (const m of blankComments(text).matchAll(BARE_IMPORT)) {
+			const name = packageOf(m[1]);
+			if (name === undefined || listed.has(name) || name === "@11ty/eleventy" || found.has(name) || !came(name)) continue;
+			found.set(name, entry.rel);
+		}
+	}
+	return [...found].sort(([a], [b]) => compareText(a, b)).map(([name, file]) => {
+		const version = installed(name)?.version;
+		return [name, typeof version === "string" ? version : undefined, file];
+	});
+}
+
+function packageFiles(dir: string, plan: Plan, entries: Entry[] = []): void {
 	const text = readUtf8(path.join(dir, "package.json"));
 	if (text === undefined) return;
 	let pkg: unknown;
@@ -928,10 +1216,20 @@ function packageFiles(dir: string, plan: Plan): void {
 	// doesn't import it at run time), pinned exactly, as the README's Install says.
 	const hasSsqch = ["dependencies", "devDependencies"].some((k) => isPlainObject(root[k]) && Object.hasOwn(root[k], "ssqch"));
 	let removed = false;
+	// Where Eleventy was: the packages that came with it go there.
+	let eleventySection = "devDependencies";
+	const missing = cameWithEleventy(dir, root, entries);
 	for (const section of ["dependencies", "devDependencies"]) {
 		const deps = root[section];
 		if (!isPlainObject(deps)) continue;
 		if (Object.hasOwn(deps, "@11ty/eleventy")) {
+			eleventySection = section;
+			// Its packages stay, before it goes, so `dependencies` isn't left empty and removed.
+			for (const [name, version] of missing) {
+				if (version === undefined) continue;
+				deps[name] = version;
+				edits.insert([section], name, JSON.stringify(version), (other) => compareText(other, name) > 0);
+			}
 			delete deps["@11ty/eleventy"];
 			edits.remove([section], "@11ty/eleventy");
 			removed = true;
@@ -942,6 +1240,11 @@ function packageFiles(dir: string, plan: Plan): void {
 		}
 	}
 	if (removed) {
+		const pinned = missing.filter(([, version]) => version !== undefined);
+		if (pinned.length) changes.push(`${pinned.map(([name, version]) => `${name} ${version}`).join(", ")} added to ${eleventySection}: the site's own code imports ${pinned.length === 1 ? "it" : "them"}, and ${pinned.length === 1 ? "it" : "they"} came with @11ty/eleventy (pinned to the version installed, since the output can depend on it)`);
+		for (const [name, version, file] of missing) {
+			if (version === undefined) plan.byHand.push([file, `imports ${name}, which came with @11ty/eleventy and isn't in package.json: add it (\`npm ls ${name}\` before removing Eleventy says which version it had)`]);
+		}
 		if (hasSsqch) {
 			changes.push("@11ty/eleventy removed (ssqch is already there)");
 		} else {

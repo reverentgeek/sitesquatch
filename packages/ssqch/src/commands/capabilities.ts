@@ -16,7 +16,7 @@ export const MODULE_EXPORTS: ReadonlyArray<readonly [name: string, exports: read
 	["ssqch/redirects", ["redirectsPlugin"]],
 	["ssqch/sass", ["sassPlugin"]],
 	["ssqch/elements", ["elementsPlugin"]],
-	["ssqch/minify", ["minifyPlugin", "minify"]],
+	["ssqch/minify", ["minifyPlugin", "minify", "minifyCss"]],
 ];
 
 /** The Node modules a config, a data file or a package can import. They are Node's own, so every one works (0.7's QuickJS had stand-ins for some that threw when used, listed as `stubs`). */

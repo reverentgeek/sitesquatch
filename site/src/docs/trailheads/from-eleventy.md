@@ -11,6 +11,11 @@ The [ReverentGeek blog](https://github.com/reverentgeek/blog) made this move (fr
 
 `ssqch import eleventy` does the mechanical part of what this guide describes: it renames `*.11tydata.*` data files, rewrites the front matter keys and `eleventy:` image attributes below, writes a first `ssqch.config.js` from the Eleventy config (folders, passthrough copies, watch targets, template engines, `pathPrefix`, and filters and shortcodes that use only their own arguments, copied as written, in the config's own indentation), swaps `@11ty/eleventy` for `ssqch` in `package.json` and its scripts (`eleventy` is `ssqch build`, `eleventy --serve` is `ssqch serve`), and lists what's left, including a lockfile to update or a stale one from another package manager, each with its file and line: every filter, shortcode, collection, transform and plugin, and what it becomes. Run it once to read the list (it changes nothing), then with `--write` in a clean git checkout.
 
+> [!NOTE]
+> **Not released yet.** This ships with the next version of ssqch.
+
+**What the importer also finds:** what the site's own modules add: the config is followed through its relative imports (`registerSiteFilters(eleventyConfig)` in `lib/`, a plugin of the site's own), and each module's filters, shortcodes, collections and transforms are listed with its own file and line, the self-contained filters copied into the draft as the config's are. Eleventy's packages in data files and other modules (eleventy-img or eleventy-fetch run by a data file) are listed with what replaces them. The packages that came with `@11ty/eleventy` and that the site's own code imports without listing them (`slugify` in the config, `browser-sync` in a gulpfile, `gray-matter` in a data file): it adds each to `package.json` beside where Eleventy was, at the version installed, since the output can depend on it, or, with no `node_modules` to read the version from, lists it to add by hand. The filters and shortcodes the templates use that nothing defines (not the template language, not ssqch, not the Eleventy config), each with how many templates use it and the first place: Eleventy's built-ins (`slug`, `log`, `getPreviousCollectionItem`, `getNextCollectionItem`, `getCollectionItem`, `getCollectionItemIndex`, which it ports into the draft's `filters`), the RSS and navigation plugins' (and what replaces them), and any other name, which is usually a plugin's or a helper module's. markdown-it's `breaks`, `linkify` and `typographer` and markdown-it-implicit-figures come along as the draft's `markdown` options, and so do the defaults where the two Markdowns write different markup, each with a comment: `headingIds: false` when the site has no markdown-it-anchor (Eleventy's headings had no ids; the ReverentGeek blog had 380), and `indentedCode: false` for Eleventy 3 (and Eleventy 2 without a library of its own), which turns indented code blocks off. Take a line out to move to ssqch's.
+
 ## The config
 
 `.eleventy.js` becomes `ssqch.config.js`, an ES module whose default export is the config: an object, or a function of `{ env, serving }` that returns one.
@@ -43,7 +48,7 @@ export default defineConfig(({ env }) => ({
 | `on("eleventy.before")`, `on("eleventy.after")` | `beforeBuild`, `afterBuild` |
 | `dir` | `dirs` (`dir` works too) |
 | `markdownTemplateEngine`, `htmlTemplateEngine` | `markdownEngine`, `htmlEngine` (Eleventy's names work too) |
-| `setLibrary("md", markdownIt(...).use(...))` | `markdown: { ... }` options, render hooks and containers (below) |
+| `setLibrary("md", markdownIt(...).use(...))` | `markdown: { ... }` options, render hooks and containers (below), or keep your markdown-it as it is: `engines: { md }` ([Your own Markdown library](../markdown.md#your-own-markdown-library)) |
 | `pathPrefix` | `base: "/repo/"` (`pathPrefix` works too). Links in templates need no `url` filter (it works, and gives the URL back as it is): ssqch adds the base to every URL from the site's root in the HTML it writes, and `withBase()` covers scripts and JSON. |
 
 The config is ESM, though your own CommonJS files (`require`, `module.exports`) load too. ssqch runs on Node, like Eleventy, so a site's packages run as they are: luxon, date-fns, lodash, markdown-it, slugify-style helpers and the libraries Eleventy brought along all work, and so do servers, child processes and native addons.
@@ -74,12 +79,13 @@ Where Eleventy's word means the same thing in ssqch, it works as it is: `ssqch d
 | --- | --- |
 | `@11ty/eleventy-img` | `imagePlugin()` from `ssqch/image`: every `<img>` becomes a `<picture>` |
 | `@11ty/eleventy-plugin-rss` | `rssPlugin()` from `ssqch/rss` |
-| `@11ty/eleventy-plugin-syntaxhighlight` | `markdown: { highlight: true }` |
+| `@11ty/eleventy-plugin-syntaxhighlight` | `markdown: { highlight: true }`, or `highlight: { classes: "prism", css: false }` to keep your Prism theme's CSS ([Another highlighter's classes](../markdown.md#another-highlighters-classes)) |
 | A Prism language added in the plugin's `init({ Prism })`, or its `alias` option | `markdown: { highlight: { languages } }`: a function that returns `[text, kind]` tokens, another language's name (`cho: "chordpro"`), or a `.sublime-syntax` file (`ssqch docs languages`) |
 | markdown-it-anchor | Heading IDs are built in; add anchor links with a heading render hook |
 | markdown-it-footnote | Built in |
 | markdown-it-container | Built in: `::: name` |
 | markdown-it-attrs | `{#id .class}` on headings |
+| markdown-it-implicit-figures | `markdown: { figures: true }` |
 | An HTML minifier transform | `minifyPlugin()` from `ssqch/minify` |
 | A link checker | `linksPlugin()` from `ssqch/links` |
 | A sitemap template | `sitemapPlugin({ url })` from `ssqch/sitemap` |
@@ -99,7 +105,7 @@ Nunjucks (`.njk`) renders with Nunjucks, the library Eleventy uses (ssqch's fork
 - **A data file can start with a byte-order mark** (SQL Server's and Excel's exports do): ssqch skips it in JSON, YAML, TOML, JavaScript and templates, as Node does.
 - **A folder of full-size photos** is what `imagePlugin()` from `ssqch/image` is for: every `<img>` gets sized, modern-format copies in a `<picture>`, and `image()` in a data file gives the URLs and dimensions without markup.
 - **A printed date is ISO 8601** (`2024-06-01T00:00:00.000Z`), not JavaScript's `Date.toString()`, which depends on the machine's time zone. Format dates with a filter.
-- **Markdown differs from markdown-it in a few places:** bare domains like `example.com` aren't links (only `https://` and `www.` URLs are, as on GitHub), and with `indentedCode: false`, indented HTML renders as HTML (markdown-it wraps it in `<p>`).
+- **Markdown differs from markdown-it in a few places:** bare domains like `example.com` aren't links (only `https://` and `www.` URLs are, as on GitHub) unless `markdown: { autolinks: "fuzzy" }`, and with `indentedCode: false`, indented HTML renders as HTML (markdown-it wraps it in `<p>`). markdown-it's `breaks` and markdown-it-implicit-figures are `markdown: { breaks: true, figures: true }` ([markdown-it's habits](../markdown.md#markdown-its-habits)); `ssqch import eleventy` carries them, `linkify` and `typographer` into the draft config.
 - **The layout is chosen before `computed` runs.** A computed `layout` that's plain text (`eleventyComputed: { layout: "article" }`) is used; one that depends on the page is an error. Set it in the front matter or a data file.
 - **`computed` doesn't see `collections`.** Build lists that need collections in a filter or a collection instead.
 - **Includes come from `_includes`** (and themes), not from the project root as in Eleventy's Nunjucks. To show a source file in a page, read it in a filter: `filters: { readFile: (p) => fs.readFileSync(p, "utf8") }`.
@@ -111,10 +117,11 @@ Nunjucks (`.njk`) renders with Nunjucks, the library Eleventy uses (ssqch's fork
 
 A big site moves most safely in two steps: first the same pages, byte for byte, then ssqch's own features one at a time. For the first step, keep Eleventy's template libraries and let ssqch do the rest (finding pages, the data cascade, pagination, collections, layouts, transforms, writing):
 
-- **Markdown and HTML:** an engine of your own (`engines` in the config) that runs liquidjs and then your markdown-it for `.md`, and your Nunjucks for `.njk` and `.html`, set for every page with one line, `data: { render: "eleventy" }` (global data reaches every page), and for layouts with `htmlEngine: "eleventy"`. Branch on `data.page.inputPath`. Eleventy's defaults: Markdown runs through Liquid first, and markdown-it has `code` (indented code blocks) turned off.
-- **Front matter strings:** the same engine renders `computed` strings and permalinks before the page has a URL (`data.page.url` is undefined): render those with the template language only, not Markdown.
+- **Markdown:** your markdown-it as it is, `engines: { md }` (the instance you gave `setLibrary("md", ...)`), and `markdownEngine: "liquid"`, since Eleventy runs Markdown through Liquid first. Eleventy's markdown-it has `code` (indented code blocks) turned off: `md.disable("code")`. `cache: true` keeps what it renders between `ssqch serve`'s rebuilds ([Your own Markdown library](../markdown.md#your-own-markdown-library)).
+- **Liquid and Nunjucks:** ssqch's Liquid is liquidjs, as Eleventy's is, and its Nunjucks a fork of Nunjucks, so most pages match as they are. Its Liquid follows Ruby's in a few places, as Jekyll's does (math on text, `split`); `ssqch diff` shows the pages that differ.
+- **Front matter strings:** `permalink` and `computed` strings never go through an engine of your own: they render with ssqch's template language (for a `.md` page, the `markdownEngine`), so your markdown-it never sees them.
 - **Install what Eleventy brought along:** liquidjs, nunjucks, gray-matter and luxon came with `@11ty/eleventy`, and a site's data files often import them without listing them. Pin the versions Eleventy had (`npm ls liquidjs nunjucks`), since the output depends on them.
-- **Compare bytes:** `ssqch diff --exact`. Without `--exact`, whitespace between tags is ignored.
+- **Compare bytes:** `ssqch diff --exact`. Without `--exact`, whitespace between tags, image ids and how tags are written (attribute order, quotes, entities) are ignored.
 
 Then move one feature at a time to ssqch's (Markdown, highlighting, minifying, the table of contents), with `ssqch diff` after each.
 
@@ -138,6 +145,6 @@ Build the old site with Eleventy and the new one with ssqch, and compare the two
 ssqch diff _site-eleventy dist
 ```
 
-It lists the URLs that were added and removed and what changed on each page, ignoring whitespace between tags and fingerprinted file names; `--ignore <regex>` drops differences you expect (a generator meta tag, say). The link checker (`linksPlugin()`) catches pages and anchors that moved, and a `schemas` entry catches front matter that didn't survive the trip.
+It lists the URLs that were added and removed and what changed on each page, ignoring whitespace between tags, fingerprinted file names, eleventy-img's and `imagePlugin()`'s image ids, and markup browsers read the same (attribute order, `defer="defer"`, `<br/>`, `&#39;`); `--ignore <regex>` drops differences you expect (a generator meta tag, say). The link checker (`linksPlugin()`) catches pages and anchors that moved, and a `schemas` entry catches front matter that didn't survive the trip.
 
-`ssqch import eleventy` does the mechanical renames above for you; see [Importing](#importing).
+`ssqch import eleventy` does the mechanical renames above for you; see [Importing](#importing). For the whole loop as steps a coding agent can follow (reference builds, the biggest group of differences first, when to stop), see [Moving a site with an agent](../agents.md#moving-a-site-with-an-agent).

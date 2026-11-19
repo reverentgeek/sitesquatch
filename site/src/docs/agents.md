@@ -68,3 +68,14 @@ ssqch serve --port 0 --ready-file .cache/ready.json &
 `ok` is whether that first build worked (the server keeps running either way, and rebuilds when a file changes). The file is deleted when the server starts, so one from an earlier run never counts, and it's written again when a changed config loads, since `output` and `base` can change with it.
 
 The other commands with JSON are [`ssqch inspect --format json`](where-values-come-from.md) (where a page's data came from) and [`ssqch diff --format json`](comparing-builds.md) (what a change did to the output; it exits with 0, 1 or 2 like `diff`).
+
+## Moving a site with an agent
+
+Every move from another generator so far ran the same loop: build the old site, build the new one, compare, fix the biggest group of differences, repeat. It's a loop an agent can run, as long as each step has an answer it can read:
+
+1. **Reference builds you can trust.** Build the old site with its own generator from fresh copies of the repository (`git worktree add ../ref HEAD`, or `git archive HEAD | tar -x -C ../ref`, which gives every file the commit's time), with `TZ=UTC`, into three folders. `ssqch diff ref-1 ref-2 ref-3` names what changes by itself (the build's time, ids from `Math.random()`): pin it, or note an `--ignore` pattern for it, before anything else.
+2. **The mechanical part.** `ssqch import <generator>` (Eleventy and Zola) lists what it would change and what's left to port, each with its file and line; read it, then run it again with `--write`. `ssqch docs --from <generator>` has that generator's words with ssqch's for each, and its trailhead.
+3. **A build that works.** Build into an empty folder (files an earlier build left count as differences): `rm -rf dist && TZ=UTC ssqch build --format json`, until `ok` is true. Each error has a `code`, a `file` and a `line`.
+4. **The biggest group first.** `ssqch diff ref-1 dist --format json --lines 0`, then group the changed lines by what they have in common. One cause (a filter that formats dates another way, a layout that lost a `<meta>`) is often hundreds of pages, and fixing it shows what's under it. Build and compare again after each fix. What browsers read the same (attribute order, quotes, entities, `<br/>`), fingerprints and image ids don't count, so what's left is a real difference.
+5. **Done is a decision.** Stop at `No differences`, or when what's left is on purpose: write each one down with why (an `--ignore` pattern with a comment, or a line in the move's notes). `ssqch diff --exact` shows the bytes that still differ, such as a minifier's.
+6. **Then ssqch's own features,** one at a time (its Markdown, highlighting, minifying, `toc()`), with a diff after each, so every change in the output has one cause.

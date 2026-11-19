@@ -200,11 +200,12 @@ export class Site {
 		const globals = builtinFilters(this.markdown, config);
 		// Other generators' filters that are aliases here: `url` and `relative_url` give the URL
 		// back (the build adds `base` itself), and `markdownify` is `markdown`. A config filter with
-		// the same name replaces one.
+		// the same name replaces one. An alias calls ssqch's name as the site has it, looked up when
+		// it's called: a site with its own `markdown` (its markdown-it, with `engines: { md }`) gets
+		// that from `markdownify` too.
 		const pipeFilters = new Map<string, Filter>();
 		for (const row of equivalents.TABLE) {
 			if (row.kind !== "filter" || !row.alias || config.filters.has(row.word)) continue;
-			const target = globals.get(row.ssqch);
 			// `url` on a page with `permalink: false` (its url is `false`) printed `/false` in a11y's
 			// sitemap: it prints nothing, and says so once.
 			const takesUrl = row.ssqch === "base";
@@ -218,6 +219,7 @@ export class Site {
 					}
 					return "";
 				}
+				const target = globals.get(row.ssqch);
 				return target ? target(...args) : args[0];
 			});
 		}
@@ -242,6 +244,11 @@ export class Site {
 		const hbs = handlebarsEngine(env);
 		for (const name of ["hbs", "handlebars", "mustache"]) byName.set(name, hbs);
 		byName.set("ejs", ejsEngine(env));
+		// A site's engine with `cache: true` keeps what this build renders, and forgets what the
+		// build before rendered and this one doesn't.
+		for (const cache of config.engineCaches) cache.startBuild();
+		// A site's engine named `md` takes the place of ssqch's Markdown, set just above, for `.md`
+		// files and `md` in a `render` chain. The `markdown` filter stays ssqch's.
 		for (const [name, fn] of config.engines) {
 			byName.set(name, {
 				render: (source, data, ctx) => {

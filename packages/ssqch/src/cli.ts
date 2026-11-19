@@ -97,6 +97,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 			{ long: "exact", help: "Compare bytes: don't match fingerprinted files or ignore whitespace" },
 			{ long: "ignore", value: "REGEX", help: "Leave out text matching this regular expression before comparing (repeatable)", many: true },
 			{ long: "only", value: "GLOB", help: "Only compare files matching this glob, like '**/*.html' (repeatable)", many: true },
+			{ long: "exclude", value: "GLOB", help: "Leave out files matching this glob, like 'img/**' (repeatable)", many: true },
 			{ long: "lines", value: "LINES", help: "Changed lines to show for each file (0 for all)", default: "10", check: number },
 			FORMAT,
 		],
@@ -157,7 +158,7 @@ const CAPABILITY_ORDER = (() => {
 export const GRAMMAR: Grammar = { name: "ssqch", about: "SiteSquatch (ssqch): a fast, pluggable static site generator", version: VERSION, globals: GLOBALS, commands: COMMANDS };
 
 /** The options that take a value, so it isn't taken for the command. */
-const VALUED = ["--root", "--output", "-o", "--base", "--env", "-d", "--destination", "--pathprefix", "--port", "-p", "--ready-file", "--format", "--title", "--date", "--blueprint", "--set", "--field", "--ignore", "--only", "--lines", "--top", "--starter", "--engine"];
+const VALUED = ["--root", "--output", "-o", "--base", "--env", "-d", "--destination", "--pathprefix", "--port", "-p", "--ready-file", "--format", "--title", "--date", "--blueprint", "--set", "--field", "--ignore", "--only", "--exclude", "--lines", "--top", "--starter", "--engine"];
 /** The commands that read their own arguments, and `import` (0.7 read its line apart from the build's too): left as they are, so `-d` there is refused with its hint. */
 const OWN = COMMANDS.filter((c) => c.raw || c.own).map((c) => c.name);
 
@@ -329,7 +330,7 @@ export async function main(argv: string[]): Promise<number> {
 	const many = (name: string) => (Array.isArray(cli.options[name]) ? cli.options[name] as string[] : typeof cli.options[name] === "string" ? [cli.options[name] as string] : []);
 	const top = Number(value("top") ?? "5");
 	// Two build folders need no config, and neither does a folder given to `footprint`.
-	if (command === "diff") return runDiff(cli.positionals, { exact: flag("exact"), ignore: many("ignore"), only: many("only"), lines: Number(value("lines") ?? "10"), format });
+	if (command === "diff") return runDiff(cli.positionals, { exact: flag("exact"), ignore: many("ignore"), only: many("only"), exclude: many("exclude"), lines: Number(value("lines") ?? "10"), format });
 	if (command === "footprint" && cli.positionals[0] !== undefined) {
 		try {
 			await runFootprint(cli.positionals[0], cli.positionals[0], top, format);
@@ -462,7 +463,7 @@ async function runInspect(config: Config, target: string, name: string | undefin
 }
 
 /** `ssqch diff`: prints the comparison, and answers 0 when the builds are the same, 1 when they differ and 2 on an error. */
-async function runDiff(dirs: string[], options: { exact: boolean; ignore: string[]; only: string[]; lines: number; format: string }): Promise<number> {
+async function runDiff(dirs: string[], options: { exact: boolean; ignore: string[]; only: string[]; exclude: string[]; lines: number; format: string }): Promise<number> {
 	const [before, after] = dirs;
 	try {
 		checkFormat(options.format);
@@ -471,19 +472,21 @@ async function runDiff(dirs: string[], options: { exact: boolean; ignore: string
 		const ignore = options.ignore.map((pattern) => {
 			try { return rustRegExp(pattern, "g"); } catch (e) { return bail(`--ignore ${quoted(pattern)} isn't a regular expression: ${(e as Error).message}`); }
 		});
-		const only = options.only.length ? options.only.map((given) => {
-			const glob = given.replace(/^[./]+/, "");
+		const globs = (flag: string, given: string[]) => given.map((one) => {
+			const glob = one.replace(/^[./]+/, "");
 			const problem = globProblem(glob);
-			if (problem !== undefined) bail(`--only ${quoted(given)} isn't a glob: error parsing glob '${glob}': ${problem}`);
+			if (problem !== undefined) bail(`--${flag} ${quoted(one)} isn't a glob: error parsing glob '${glob}': ${problem}`);
 			return globToRegExp(glob);
-		}) : undefined;
+		});
+		const only = options.only.length ? globs("only", options.only) : undefined;
+		const exclude = globs("exclude", options.exclude);
 		if (dirs.length > 2) {
-			const runs = await compareRuns(dirs, { exact: options.exact, ignore, only, lines: options.lines });
+			const runs = await compareRuns(dirs, { exact: options.exact, ignore, only, exclude, lines: options.lines });
 			if (options.format === "json") process.stdout.write(JSON.stringify(runsJson(runs, options.lines), null, 2) + "\n");
 			else process.stdout.write(runsText(runs, options.lines, process.stdout.isTTY === true));
 			return runs.varies.length ? 1 : 0;
 		}
-		const report = await compare(before, after, { exact: options.exact, ignore, only, lines: options.lines });
+		const report = await compare(before, after, { exact: options.exact, ignore, only, exclude, lines: options.lines });
 		if (options.format === "json") process.stdout.write(JSON.stringify(diffJson(report, options.lines), null, 2) + "\n");
 		else process.stdout.write(diffText(report, options.lines, process.stdout.isTTY === true));
 		return isSame(report) ? 0 : 1;

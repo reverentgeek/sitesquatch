@@ -1,2 +1,2 @@
 // `ssqch/minify`, as a site imports it (see `ssqch.ts` here).
-export { minify, minifyPlugin } from "../modules/minify.ts";
+export { minify, minifyCss, minifyPlugin } from "../modules/minify.ts";

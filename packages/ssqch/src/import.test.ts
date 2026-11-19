@@ -243,3 +243,127 @@ test("zola: a TOML error shows its line, and a file named templates is a templat
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+// A site's markdown-it can come along as it is (`engines: { md }`), or give way to ssqch's.
+test("set_library_for_markdown_says_how_to_keep_it", () => {
+	const config = (library: string) => `const markdownIt = require("markdown-it");\nconst md = markdownIt({ html: true });\nmodule.exports = function (eleventyConfig) {\n  eleventyConfig.setLibrary(${library});\n};\n`;
+	const said = (library: string) => draftConfig(".eleventy.js", config(library), new Set(["md"]))[1].find(([at]) => at === ".eleventy.js:4")?.[1];
+	assert.equal(said("\"md\", md"), "setLibrary(\"md\", md) -> keep your markdown-it as it is with `engines: { md }` (bring its import and setup into the config; `ssqch docs \"moving with identical output first\"`), or ssqch's own Markdown: `markdown: { ... }` options, render hooks and containers");
+	assert.ok(said("\"md\", markdownLibrary")?.includes("`engines: { md: markdownLibrary }`"));
+	assert.ok(said("\"md\", markdownIt({ html: true })")?.startsWith("setLibrary(\"md\", markdownIt({ html: true })) -> keep your markdown-it as it is with `engines: { md: yourMarkdownIt }`"));
+	assert.equal(said("\"liquid\", liquid"), "setLibrary(\"liquid\") -> ssqch has its own; a library of your own is an engine: `engines: { liquid: { render: (source, data) => ... } }`");
+});
+
+// markdown-it's options that ssqch's Markdown has come along as `markdown` options (a11y #12,
+// #25; v8 #24): v8.dev's config sets `breaks` in a variable, and uses implicit figures.
+test("markdown_its_options_come_along", () => {
+	const config = `const markdownIt = require("markdown-it");
+const figures = require("markdown-it-implicit-figures");
+const options = { html: true, breaks: true, linkify: true, typographer: false };
+module.exports = function (eleventyConfig) {
+  eleventyConfig.setLibrary("md", markdownIt(options).use(figures, { figcaption: true }));
+};
+`;
+	const [draft, byHand] = draftConfig(".eleventy.js", config, new Set(["md"]));
+	assert.ok(draft.includes("  markdown: {\n    // Eleventy's markdown-it gave headings no ids (no markdown-it-anchor); take this out for ssqch's.\n    headingIds: false,\n    // From the Eleventy config's markdown-it options.\n    breaks: true,\n    autolinks: \"fuzzy\",\n    figures: true,\n  },"), draft);
+	// Eleventy 3 turns indented code off in a site's own markdown-it; with markdown-it-anchor, headings have ids.
+	const three = draftConfig(".eleventy.js", config.replace("const figures", "const anchor = require(\"markdown-it-anchor\");\nconst figures"), new Set(["md"]), [], 3)[0];
+	assert.ok(three.includes("    // Eleventy 3 turns off markdown-it's indented code blocks (`md.disable(\"code\")`).\n    indentedCode: false,\n") && !three.includes("headingIds"), three);
+	// Eleventy 2 only in its own, so a site's library keeps them.
+	assert.ok(!draftConfig(".eleventy.js", config, new Set(["md"]), [], 2)[0].includes("indentedCode"));
+	assert.ok(byHand.some(([, what]) => what.startsWith("markdown-it-implicit-figures -> `markdown: { figures: true }`")), JSON.stringify(byHand));
+	assert.ok(!draftConfig(".eleventy.js", "module.exports = () => ({ breaks: true });\n", new Set(["md"]))[0].includes("breaks"));
+});
+
+// Removing @11ty/eleventy removes what it installed, and a site's own code imports some of it
+// without listing it (a11y #19: browser-sync and gray-matter; v8.dev lost `slugify`; lit.dev's
+// `videos.js` imports gray-matter). Each goes into package.json at the version installed.
+test("packages_that_came_with_eleventy_are_added", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-deps-"));
+	const w = (file: string, text: string) => {
+		fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+		fs.writeFileSync(path.join(dir, file), text);
+	};
+	w("package.json", `{\n  "name": "trail",\n  "devDependencies": {\n    "@11ty/eleventy": "^3.1.0",\n    "sharp": "^0.34.0"\n  }\n}\n`);
+	w("eleventy.config.js", "const slugify = require(\"slugify\");\nconst sharp = require(\"sharp\");\nmodule.exports = (c) => { c.addFilter(\"slug\", (s) => slugify(s)); };\n");
+	w("_data/site.js", "import { DateTime } from \"luxon\";\nimport fs from \"node:fs\";\nimport path from \"path\";\n// require(\"moo\") in a comment doesn't count\nexport default { year: DateTime.now().year };\n");
+	w("node_modules/@11ty/eleventy/package.json", JSON.stringify({ name: "@11ty/eleventy", version: "3.1.0", dependencies: { luxon: "^3.5.0", slugify: "^1.6.6", moo: "^0.5.2" } }));
+	w("node_modules/luxon/package.json", JSON.stringify({ name: "luxon", version: "3.5.0" }));
+	w("node_modules/slugify/package.json", JSON.stringify({ name: "slugify", version: "1.6.6" }));
+	const plan = eleventy(dir);
+	const [, changes, written] = plan.edits.find(([p]) => p === "package.json")!;
+	assert.ok(changes[0].startsWith("luxon 3.5.0, slugify 1.6.6 added to devDependencies: the site's own code imports them, and they came with @11ty/eleventy"), changes.join("\n"));
+	const pkg = JSON.parse(written);
+	assert.deepEqual(Object.keys(pkg.devDependencies), ["luxon", "sharp", "slugify", "ssqch"]);
+	assert.equal(pkg.devDependencies.luxon, "3.5.0");
+
+	// Without node_modules, the packages sites were found importing, by name: listed for a person.
+	fs.rmSync(path.join(dir, "node_modules"), { recursive: true });
+	const later = eleventy(dir);
+	assert.ok(later.byHand.some(([at, what]) => at === "_data/site.js" && what.startsWith("imports luxon, which came with @11ty/eleventy and isn't in package.json: add it")), JSON.stringify(later.byHand));
+});
+
+// Filters and shortcodes templates use that nothing defines are named before the first build
+// fails on one (a11y #5): Eleventy's own (some ported into the draft), its plugins', and the rest.
+test("filters_nothing_defines_are_listed", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-filters-"));
+	const w = (file: string, text: string) => {
+		fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+		fs.writeFileSync(path.join(dir, file), text);
+	};
+	w(".eleventy.js", "module.exports = (c) => {\n  c.addFilter(\"readable\", (d) => d);\n  c.addPairedShortcode(\"callout\", (s) => s);\n};\n");
+	w("_includes/post.njk", "{{ title | upper | slug }} {{ date | readable }}\n{% set prev = collections.posts | getPreviousCollectionItem(page) %}\n{% callout %}x{% endcallout %}\n{{ \"a | b\" }} {{ x | mystery | safe }}{% youtube \"id\" %}\n");
+	w("feed.liquid", "{{ collections.posts | rssLastUpdatedDate }} {{ \"x\" | upcase | slug }}");
+	const plan = eleventy(dir);
+	const said = Object.fromEntries(plan.byHand.filter(([, what]) => what.startsWith("`")).map(([at, what]) => [what.slice(1, what.indexOf("`", 1)), [at, what]]));
+	assert.deepEqual(Object.keys(said).sort(), ["getPreviousCollectionItem", "mystery", "rssLastUpdatedDate", "slug", "youtube"]);
+	assert.equal(said.slug[0], "_includes/post.njk:1");
+	assert.ok(said.slug[1].startsWith("`slug` (in 2 templates; this is the first): Eleventy's built-in `slug`"), said.slug[1]);
+	assert.equal(said.youtube[0], "_includes/post.njk:4");
+	assert.ok(said.mystery[1].includes("is a filter or shortcode nothing defines"), said.mystery[1]);
+	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
+	assert.ok(draft.includes("    // Eleventy's own filters the templates use, ported.\n    getPreviousCollectionItem: (collection, page) => {\n      const i = collection.findIndex((item) => item.url === page.url);\n"), draft);
+});
+
+// A data file that runs eleventy-img or eleventy-fetch itself is listed too (blog #3), not only
+// the config's packages.
+test("eleventy_packages_in_other_modules_are_listed", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-modules-"));
+	const w = (file: string, text: string) => {
+		fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+		fs.writeFileSync(path.join(dir, file), text);
+	};
+	w(".eleventy.js", "const rss = require(\"@11ty/eleventy-plugin-rss\");\nmodule.exports = (c) => { c.addPlugin(rss); };\n");
+	w("_data/gallery.js", "// photos\nconst Image = require(\"@11ty/eleventy-img\");\nconst EleventyFetch = require(\"@11ty/eleventy-fetch\");\nmodule.exports = async () => Image(\"a.jpg\");\n");
+	const said = eleventy(dir).byHand.filter(([at]) => at.startsWith("_data/")).map(([at, what]) => `${at}: ${what.split(" -> ")[0]}`);
+	assert.deepEqual(said, ["_data/gallery.js:2: @11ty/eleventy-img", "_data/gallery.js:3: @11ty/eleventy-fetch"]);
+});
+
+// The config hands `eleventyConfig` to the site's own modules (blog #2: `registerSiteFilters`
+// hid 11 filters, 2 collections and a transform): their calls are listed with their own file and
+// line, and what can be copied as written goes into the draft.
+test("the_config_is_followed_into_the_sites_own_modules", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-helpers-"));
+	const w = (file: string, text: string) => {
+		fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+		fs.writeFileSync(path.join(dir, file), text);
+	};
+	w(".eleventy.js", "const registerSiteFilters = require(\"./lib/filters\");\nconst sitePlugin = require(\"./lib/plugin.js\");\nconst unused = require(\"./lib/plain.js\");\nmodule.exports = (c) => {\n  registerSiteFilters(c);\n  c.addPlugin(sitePlugin);\n};\n");
+	w("lib/filters.js", "const more = require(\"./more\");\nmodule.exports = (config) => {\n  config.addFilter(\"shout\", (s) => s.toUpperCase());\n  config.addCollection(\"posts\", (api) => api.getAll());\n  more(config);\n};\n");
+	w("lib/more.js", "module.exports = (config) => {\n  config.addTransform(\"tidy\", (content) => content);\n};\n");
+	w("lib/plugin.js", "module.exports = (config) => {\n  config.addShortcode(\"year\", () => \"2026\");\n};\n");
+	w("lib/plain.js", "module.exports = { a: 1 };\n");
+	const plan = eleventy(dir);
+	const listed = plan.byHand.filter(([at]) => at.startsWith("lib/") || at.startsWith(".eleventy.js:6")).map(([at, what]) => `${at}: ${what.split(" -> ")[0].split(":")[0]}`);
+	assert.deepEqual(listed, [".eleventy.js:6: addPlugin(sitePlugin) (from ./lib/plugin.js)", "lib/filters.js:4: addCollection(\"posts\")", "lib/more.js:2: addTransform(\"tidy\")"]);
+	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
+	assert.ok(draft.includes("    // From lib/filters.js, as written.\n    shout: (s) => s.toUpperCase(),\n") && draft.includes("    // From lib/plugin.js, as written.\n    year: () => \"2026\","), draft);
+});
+
+// `import pluginRSS, { dateToRfc3339 } from "@11ty/eleventy-plugin-rss"`, the blog's: the plugin's
+// package is found when the default import has named ones beside it, either way round.
+test("a_plugins_package_is_found_beside_named_imports", () => {
+	const config = "import pluginRSS, {\n  dateToRfc3339,\n} from \"@11ty/eleventy-plugin-rss\";\nimport Image, { eleventyImageTransformPlugin } from \"@11ty/eleventy-img\";\nexport default (c) => {\n  c.addPlugin(pluginRSS);\n  c.addPlugin(eleventyImageTransformPlugin);\n};\n";
+	const said = draftConfig("eleventy.config.js", config, new Set())[1].filter(([, what]) => what.startsWith("addPlugin")).map(([, what]) => what);
+	assert.deepEqual(said, ["addPlugin(pluginRSS) (from @11ty/eleventy-plugin-rss) -> see its package below", "addPlugin(eleventyImageTransformPlugin) (from @11ty/eleventy-img) -> see its package below"]);
+});

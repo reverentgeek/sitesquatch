@@ -74,7 +74,7 @@ ssqch's Markdown is CommonMark; Jekyll's is kramdown. `markdown: { smartPunctuat
 - **HTML blocks** end at a blank line in CommonMark, and at their end tag in kramdown: keep blank lines out of HTML elements, or a line indented by four spaces inside one becomes code.
 - **Heading ids:** kramdown's GFM ids keep accents and other letters, as ssqch's do; headings inside HTML get kramdown's ASCII ids (`section`, `section-1`).
 - **Bold next to punctuation** (`**完成。**下一步`) closes in kramdown but not in CommonMark.
-- **Code:** GitHub Pages adds Rouge's `class="language-plaintext highlighter-rouge"` to code; ssqch doesn't (`markdown: { highlight: true }` highlights, with its own classes).
+- **Code:** GitHub Pages adds Rouge's `class="language-plaintext highlighter-rouge"` to code; ssqch doesn't (`markdown: { highlight: true }` highlights, with its own classes). To keep those classes on code spans, write them in a `code` render hook: `_includes/hooks/code.liquid` with `<code class="language-plaintext highlighter-rouge">{{ code.code | escape }}</code>` ([Code spans](../markdown.md)).
 - Smart quotes next to non-Latin letters, and non-ASCII characters in link URLs (which ssqch percent-encodes), come out differently; readers see the same page.
 
 ## Checking the move
