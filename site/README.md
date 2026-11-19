@@ -66,3 +66,7 @@ latin="U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-20
 pyftsubset Caprasimo-Regular.ttf --unicodes="$latin" --flavor=woff2 --layout-features=kern,liga,calt --output-file=caprasimo-latin.woff2
 pyftsubset national-park.ttf --unicodes="$latin" --flavor=woff2 --layout-features=kern,liga,calt --output-file=national-park-latin.woff2
 ```
+
+## The tab icon
+
+`src/favicon.svg` is the header's patch as an SVG of its own: `docs/assets/footprint.svg` in map paper on a pine circle, placed as `.patch` places it. `lib/favicon.ts` writes it from the drawing, so after editing the footprint, run `node lib/favicon.ts` here; `tests/favicon.test.ts` fails until the icon matches.
