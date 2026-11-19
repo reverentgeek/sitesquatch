@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://glossary-docs.sitesquatch.dev/</loc>
+    <loc>https://sitesquatch.dev/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://glossary-docs.sitesquatch.dev/docs/concepts/nodes/</loc>
+    <loc>https://sitesquatch.dev/docs/concepts/nodes/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://glossary-docs.sitesquatch.dev/docs/concepts/pods/</loc>
+    <loc>https://sitesquatch.dev/docs/concepts/pods/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://glossary-docs.sitesquatch.dev/docs/tasks/deploy/</loc>
+    <loc>https://sitesquatch.dev/docs/tasks/deploy/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://glossary-docs.sitesquatch.dev/glossary/</loc>
+    <loc>https://sitesquatch.dev/glossary/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
 </urlset>

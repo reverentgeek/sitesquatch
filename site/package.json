@@ -1,0 +1,11 @@
+{
+	"name": "sitesquatch-dev",
+	"private": true,
+	"type": "module",
+	"description": "sitesquatch.dev, built with the ssqch in this repository.",
+	"scripts": {
+		"build": "node build.ts",
+		"serve": "node ../packages/ssqch/bin/ssqch.ts serve --root .",
+		"test": "node --test \"tests/*.test.ts\""
+	}
+}

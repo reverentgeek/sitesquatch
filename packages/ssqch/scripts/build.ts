@@ -167,7 +167,7 @@ export async function buildPackage({ out, release = false, quiet = false }: { ou
 		...(release ? {} : { private: true }),
 		description: "SiteSquatch (ssqch): a fast static site generator, configured with JavaScript",
 		keywords: ["static site generator", "ssg", "blog", "markdown", "jinja", "nunjucks", "liquid", "edge"],
-		homepage: "https://github.com/reverentgeek/sitesquatch#readme",
+		homepage: "https://sitesquatch.dev",
 		repository: { type: "git", url: "git+https://github.com/reverentgeek/sitesquatch.git", directory: "packages/ssqch" },
 		bugs: "https://github.com/reverentgeek/sitesquatch/issues",
 		license: "MIT",

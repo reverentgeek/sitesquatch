@@ -84,6 +84,19 @@ Run from `packages/ssqch/` unless it says otherwise.
   Run it after changing that Rust (`node scripts/build-wasm.ts minify` builds one; the lists are
   in `scripts/wasm-inputs.ts`); `scripts/wasm-inputs.test.ts` fails until then. It needs
   `rustup target add wasm32-wasip1`.
+- `site/` is sitesquatch.dev, built with this repository's ssqch (TODO.md, section 9, has the
+  plan). From `site/`: `node build.ts` builds it and fails on any warning, `node --test
+  "tests/*.test.ts"` checks its colors' contrast, that the README backs its numbers and that the
+  docs pages cover the README, and `node ../packages/ssqch/bin/ssqch.ts serve --root .` serves
+  it. The docs pages are the README's sections and the trailheads, split by
+  `site/lib/split.ts` before each build by the map in `site/lib/docs-map.ts`: a new `##` section
+  in the README needs a place in the map (the tests fail until it has one). After changing a
+  README number the landing page shows (the benchmarks, a known gap), update
+  `site/src/_data/benchmarks.js` or the page; the `check` job in `.github/workflows/site.yml` fails until they agree. That
+  workflow also deploys the site to Cloudflare: a preview for each pull request, and production
+  from `main`, so the site can be ahead of npm. Documentation for a feature that's merged and not
+  released starts with `> [!NOTE]` and `> **Not released yet.** This ships with the next version
+  of ssqch.`, until the release (step 2 of "Releasing").
 - `docs/assets/` holds the drawings (black line art, SVG) for the README, examples, guides and
   website, and `docs/assets/stickers/` a sticker of each: the drawing on a white shape with a
   border, so it reads on a light page and a dark one. After adding or editing a drawing, run
@@ -104,7 +117,8 @@ Run from `packages/ssqch/` unless it says otherwise.
   on the same three (`package`, see "Releasing"); runs `node-benchmark` (below); and runs the
   Rust's tests and clippy, natively and for `wasm32-wasip1` (`rust`). Keep clippy clean. A push
   whose tree a pull request's CI already passed with (a merge commit, when the branch was up to
-  date) skips those jobs and passes (`already-tested`). A pull request that changes the
+  date) skips those jobs and passes (`already-tested`), and a change only to `site/` (and its
+  workflow) doesn't run CI at all: `site.yml` checks and deploys it. A pull request that changes the
   release's own files runs `release.yml` up to the release, unsigned. The Rust isn't formatted
   with rustfmt (it uses long lines), so don't run `cargo fmt`.
 
@@ -192,7 +206,14 @@ skips, see `already-tested` in `ci.yml`):
    `package-lock.json` has it), and the workspace's `version` in `Cargo.toml` (`ssqch-plugin` is
    published at ssqch's version). Update the pinned versions in the README too
    (`ssqch@<version>` in Install, the GitHub Actions example and GitHub Pages, and the Netlify
-   section's `ssqch@<version>` and `SSQCH_VERSION`).
+   section's `ssqch@<version>` and `SSQCH_VERSION`). Take out the "Not released yet" notes the
+   release ships (`node scripts/unreleased-notes.mjs` lists them); the workflow refuses a tag
+   while one is left. Write the release's entry for the site's changelog, which is for people:
+   for a minor release, `site/src/changelog/<major>.<minor>.md` (the headlines, "What you might
+   need to change" for every Breaking item, about 250 words, numbers only from `CHANGELOG.md`; a
+   first draft with the `write` skill, for the owner to edit), and for a patch release, its
+   version in its minor's entry's `releases` and a dated paragraph about it.
+   `site/tests/changelog.test.ts` fails until the package's version has an entry.
 3. Bring the branch up to date with `main` if it isn't (a merge commit with a tree the pull
    request didn't test runs all of CI again), wait for its CI to pass, and merge it.
 4. Wait for CI on the merge commit (it skips in a minute when its tree passed on the pull

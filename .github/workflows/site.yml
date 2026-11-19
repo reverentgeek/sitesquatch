@@ -1,0 +1,190 @@
+# sitesquatch.dev (site/): built with the commit's own ssqch and checked on every pull request and
+# every push to main, then deployed to Cloudflare (one Worker with static assets, site/wrangler.jsonc).
+#
+#   check     the type check, the production build (site/build.ts fails on any warning: a broken
+#             link, a file over its budget) and site/tests (contrast in both modes, and the README
+#             backs every number on the landing page). A change to ssqch that breaks its own site
+#             fails here.
+#   preview   a pull request's Worker Preview (`wrangler preview --name pr-<number>`), from the
+#             site `check` built, with its URL in a comment on the pull request
+#   cleanup   deletes the Preview when the pull request closes
+#   deploy    production, from main (`wrangler deploy`), so a fix to the site never waits for a
+#             release (the owner's call, 2026-11-18). Docs for a feature that isn't on npm yet
+#             carry a "Not released yet" note until the release that ships it.
+#
+# Not in ci.yml: CI skips every job on a push whose tree a pull request already passed with
+# (`already-tested`), which would skip the deploy from main too.
+#
+# The Cloudflare jobs need two repository secrets, CLOUDFLARE_API_TOKEN (the "Edit Cloudflare
+# Workers" template) and CLOUDFLARE_ACCOUNT_ID. Until both are set they say so and skip, and the
+# checks still run. A pull request from a fork gets no secrets, so it gets no preview either.
+name: Site
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.event.pull_request.number || github.ref }}
+  # A newer push to a pull request replaces its preview; production deploys finish in order.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # The Wrangler that deploys, pinned (Worker Previews need 4.135.0 or newer). wrangler.jsonc's
+  # compatibility_date can't be newer than this version's runtime supports.
+  WRANGLER: wrangler@4.157.0
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  check:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+        working-directory: packages/ssqch
+      # ssqch's cache (images, highlighting, fetches) between runs. The key changes every run, so
+      # each run saves what it has, and restores the newest a run before it saved.
+      - uses: actions/cache@v6
+        with:
+          path: site/.cache
+          key: site-cache-${{ github.run_id }}
+          restore-keys: site-cache-
+      - name: type check
+        working-directory: site
+        run: ../packages/ssqch/node_modules/.bin/tsc -p tsconfig.json
+      - name: build
+        working-directory: site
+        run: node build.ts
+      - name: tests
+        working-directory: site
+        run: node --test "tests/*.test.ts"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: site/dist
+          # `_headers` (Cloudflare's) starts with no dot, but keep every file the build wrote.
+          include-hidden-files: true
+          retention-days: 7
+
+  preview:
+    needs: check
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - id: ready
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::No preview: the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets aren't both set."; fi
+      - uses: actions/checkout@v7
+        if: steps.ready.outputs.ready == 'true'
+      - uses: actions/download-artifact@v8
+        if: steps.ready.outputs.ready == 'true'
+        with:
+          name: site
+          path: site/dist
+      - uses: actions/setup-node@v6
+        if: steps.ready.outputs.ready == 'true'
+        with:
+          node-version: 24
+      - id: preview
+        if: steps.ready.outputs.ready == 'true'
+        working-directory: site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -o pipefail
+          output=$(npx --yes "$WRANGLER" preview --name "pr-$NUMBER" --message "${SHA:0:7}" --json)
+          printf '%s\n' "$output"
+          # --json still prints the asset upload's progress first: the JSON starts at a line
+          # that's only "{". Its address is .preview.urls[0] (pr-<number>-sitesquatch.<you>.workers.dev).
+          url=$(printf '%s\n' "$output" | sed -n '/^{$/,$p' | jq -er '.preview.urls[0]')
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: comment the preview's address
+        if: steps.ready.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          URL: ${{ steps.preview.outputs.url }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          body="**Site preview:** $URL (at ${SHA:0:7}). It follows this pull request, and goes when it closes."
+          gh pr comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body" --edit-last --create-if-none
+
+  cleanup:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - id: ready
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::No preview to delete: the Cloudflare secrets aren't both set."; fi
+      - uses: actions/checkout@v7
+        if: steps.ready.outputs.ready == 'true'
+      - uses: actions/setup-node@v6
+        if: steps.ready.outputs.ready == 'true'
+        with:
+          node-version: 24
+      - if: steps.ready.outputs.ready == 'true'
+        working-directory: site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        # A preview that was never made (the secrets came later) isn't an error.
+        run: npx --yes "$WRANGLER" preview delete --name "pr-$NUMBER" --skip-confirmation || echo "::notice::No preview pr-$NUMBER to delete."
+
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - id: ready
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::Not deployed: the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets aren't both set."; fi
+      - uses: actions/checkout@v7
+        if: steps.ready.outputs.ready == 'true'
+      - uses: actions/download-artifact@v8
+        if: steps.ready.outputs.ready == 'true'
+        with:
+          name: site
+          path: site/dist
+      - uses: actions/setup-node@v6
+        if: steps.ready.outputs.ready == 'true'
+        with:
+          node-version: 24
+      - if: steps.ready.outputs.ready == 'true'
+        working-directory: site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes "$WRANGLER" deploy --message "${GITHUB_SHA:0:7}"

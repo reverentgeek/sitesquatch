@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>Squatch Lint Blog</title>
-  <link href="https://blog-categories.sitesquatch.dev/feed.xml" rel="self"/>
-  <link href="https://blog-categories.sitesquatch.dev/"/>
+  <link href="https://sitesquatch.dev/feed.xml" rel="self"/>
+  <link href="https://sitesquatch.dev/"/>
   <updated>2024-06-30T00:00:00Z</updated>
-  <id>https://blog-categories.sitesquatch.dev/</id>
+  <id>https://sitesquatch.dev/</id>
 
   <entry>
     <title>Meetup recap</title>
-    <link href="https://blog-categories.sitesquatch.dev/blog/meetup-recap/"/>
+    <link href="https://sitesquatch.dev/blog/meetup-recap/"/>
     <updated>2024-06-30T00:00:00Z</updated>
-    <id>https://blog-categories.sitesquatch.dev/blog/meetup-recap/</id>
+    <id>https://sitesquatch.dev/blog/meetup-recap/</id>
     <content type="html">&lt;p&gt;Forty creatures came to the June meetup at the ranger station, and Beaver gave the talk everyone wanted: how to lint a dam.&lt;/p&gt;
 &lt;!-- more --&gt;
 &lt;h2 id=&quot;details&quot;&gt;Details&lt;/h2&gt;
@@ -20,9 +20,9 @@
 
   <entry>
     <title>Squatch Lint v9.2 released</title>
-    <link href="https://blog-categories.sitesquatch.dev/blog/v9-2-released/"/>
+    <link href="https://sitesquatch.dev/blog/v9-2-released/"/>
     <updated>2024-05-20T00:00:00Z</updated>
-    <id>https://blog-categories.sitesquatch.dev/blog/v9-2-released/</id>
+    <id>https://sitesquatch.dev/blog/v9-2-released/</id>
     <content type="html">&lt;p&gt;This post is about v9.2 released, and it starts with a short summary.&lt;/p&gt;
 &lt;!-- more --&gt;
 &lt;h2 id=&quot;details&quot;&gt;Details&lt;/h2&gt;
@@ -32,9 +32,9 @@
 
   <entry>
     <title>Rule of the month: no-unused-snacks</title>
-    <link href="https://blog-categories.sitesquatch.dev/blog/rule-of-the-month/"/>
+    <link href="https://sitesquatch.dev/blog/rule-of-the-month/"/>
     <updated>2024-04-12T00:00:00Z</updated>
-    <id>https://blog-categories.sitesquatch.dev/blog/rule-of-the-month/</id>
+    <id>https://sitesquatch.dev/blog/rule-of-the-month/</id>
     <content type="html">&lt;p&gt;This post is about rule of the month: no-unused-snacks, and it starts with a short summary.&lt;/p&gt;
 &lt;!-- more --&gt;
 &lt;h2 id=&quot;details&quot;&gt;Details&lt;/h2&gt;
@@ -44,9 +44,9 @@
 
   <entry>
     <title>Squatch Lint v9.1 released</title>
-    <link href="https://blog-categories.sitesquatch.dev/blog/v9-1-released/"/>
+    <link href="https://sitesquatch.dev/blog/v9-1-released/"/>
     <updated>2024-03-05T00:00:00Z</updated>
-    <id>https://blog-categories.sitesquatch.dev/blog/v9-1-released/</id>
+    <id>https://sitesquatch.dev/blog/v9-1-released/</id>
     <content type="html">&lt;p&gt;This post is about v9.1 released, and it starts with a short summary.&lt;/p&gt;
 &lt;!-- more --&gt;
 &lt;h2 id=&quot;details&quot;&gt;Details&lt;/h2&gt;
@@ -56,9 +56,9 @@
 
   <entry>
     <title>Getting started with flat config</title>
-    <link href="https://blog-categories.sitesquatch.dev/blog/flat-config/"/>
+    <link href="https://sitesquatch.dev/blog/flat-config/"/>
     <updated>2024-02-01T00:00:00Z</updated>
-    <id>https://blog-categories.sitesquatch.dev/blog/flat-config/</id>
+    <id>https://sitesquatch.dev/blog/flat-config/</id>
     <content type="html">&lt;p&gt;This post is about getting started with flat config, and it starts with a short summary.&lt;/p&gt;
 &lt;!-- more --&gt;
 &lt;h2 id=&quot;details&quot;&gt;Details&lt;/h2&gt;
@@ -68,9 +68,9 @@
 
   <entry>
     <title>Squatch Lint v9 released</title>
-    <link href="https://blog-categories.sitesquatch.dev/blog/v9-released/"/>
+    <link href="https://sitesquatch.dev/blog/v9-released/"/>
     <updated>2024-01-10T00:00:00Z</updated>
-    <id>https://blog-categories.sitesquatch.dev/blog/v9-released/</id>
+    <id>https://sitesquatch.dev/blog/v9-released/</id>
     <content type="html">&lt;p&gt;This post is about v9 released, and it starts with a short summary.&lt;/p&gt;
 &lt;!-- more --&gt;
 &lt;h2 id=&quot;details&quot;&gt;Details&lt;/h2&gt;

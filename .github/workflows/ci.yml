@@ -1,10 +1,15 @@
-# Tests and lints on every push to main or a release/* branch, and every pull request.
+# Tests and lints on every push to main or a release/* branch, and every pull request, except
+# one that only changes the website (site/ and its workflow): site.yml checks and deploys that,
+# with this commit's ssqch, and CI's matrix has nothing new to test. A release commit changes
+# packages/ssqch/package.json, so CI always runs on what check-ci.yml waits for.
 name: CI
 
 on:
   push:
     branches: [main, "release/**"]
+    paths-ignore: [site/**, .github/workflows/site.yml]
   pull_request:
+    paths-ignore: [site/**, .github/workflows/site.yml]
   workflow_dispatch:
 
 concurrency:

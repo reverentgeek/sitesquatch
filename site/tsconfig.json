@@ -1,0 +1,5 @@
+{
+	"extends": "../packages/ssqch/tsconfig.json",
+	"compilerOptions": { "typeRoots": ["../packages/ssqch/node_modules/@types"], "allowJs": true, "checkJs": false },
+	"include": ["build.ts", "lib/*.ts", "tests/*.ts", "src/_data/*.js", "src/elements/*.js"]
+}

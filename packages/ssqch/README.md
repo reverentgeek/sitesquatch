@@ -15,4 +15,4 @@ The package is JavaScript, with its template and Markdown libraries bundled in, 
 
 The modules a config imports (`ssqch`, `ssqch/image` and the rest) are in the package's `exports` map, with their types, so editors, TypeScript and ESLint's `n/no-missing-import` find them.
 
-Outside a site, `npm install --global ssqch` puts `ssqch` on your `PATH`, and Homebrew (`brew install reverentgeek/tap/ssqch`) installs this package with Homebrew's own Node. See the [README](https://github.com/reverentgeek/sitesquatch#readme) for everything else.
+Outside a site, `npm install --global ssqch` puts `ssqch` on your `PATH`, and Homebrew (`brew install reverentgeek/tap/ssqch`) installs this package with Homebrew's own Node. The documentation is at [sitesquatch.dev](https://sitesquatch.dev/docs/), and `ssqch docs` prints it for the version you have installed, with no network.

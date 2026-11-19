@@ -1,0 +1,13 @@
+# Where the site's links to the documentation go: one place to change them.
+readme: /docs/
+fieldGuide: /docs/field-guide/
+install: /docs/install/
+pack: /docs/
+benchmarks: /docs/benchmarks/
+knownGaps: /docs/known-gaps/
+trailheads: /docs/trailheads/
+agents: /docs/agents/
+reference: /docs/reference/
+changelog: /changelog/
+issues: https://github.com/reverentgeek/sitesquatch/issues
+contributing: https://github.com/reverentgeek/sitesquatch#working-on-sitesquatch

@@ -1,47 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://versioned-docs.sitesquatch.dev/</loc>
+    <loc>https://sitesquatch.dev/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://versioned-docs.sitesquatch.dev/blog/</loc>
+    <loc>https://sitesquatch.dev/blog/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://versioned-docs.sitesquatch.dev/blog/hello-1-0/</loc>
+    <loc>https://sitesquatch.dev/blog/hello-1-0/</loc>
     <lastmod>2024-05-01</lastmod>
   </url>
   <url>
-    <loc>https://versioned-docs.sitesquatch.dev/blog/next-architecture/</loc>
+    <loc>https://sitesquatch.dev/blog/next-architecture/</loc>
     <lastmod>2024-09-12</lastmod>
   </url>
   <url>
-    <loc>https://versioned-docs.sitesquatch.dev/docs/1.0/</loc>
+    <loc>https://sitesquatch.dev/docs/1.0/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://versioned-docs.sitesquatch.dev/docs/1.0/animations/</loc>
+    <loc>https://sitesquatch.dev/docs/1.0/animations/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://versioned-docs.sitesquatch.dev/docs/1.0/install/</loc>
+    <loc>https://sitesquatch.dev/docs/1.0/install/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://versioned-docs.sitesquatch.dev/docs/next/</loc>
+    <loc>https://sitesquatch.dev/docs/next/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://versioned-docs.sitesquatch.dev/docs/next/animations/</loc>
+    <loc>https://sitesquatch.dev/docs/next/animations/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://versioned-docs.sitesquatch.dev/docs/next/install/</loc>
+    <loc>https://sitesquatch.dev/docs/next/install/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
   <url>
-    <loc>https://versioned-docs.sitesquatch.dev/docs/next/new-architecture/</loc>
+    <loc>https://sitesquatch.dev/docs/next/new-architecture/</loc>
     <lastmod>2026-01-01</lastmod>
   </url>
 </urlset>

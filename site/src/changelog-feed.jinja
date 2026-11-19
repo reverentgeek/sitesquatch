@@ -1,0 +1,23 @@
+---
+permalink: /changelog/feed.xml
+sitemap: false
+---
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+	<title>SiteSquatch changelog</title>
+	<subtitle>What's new in each release of SiteSquatch, written for people.</subtitle>
+	<link href="{{ site.url }}/changelog/feed.xml" rel="self"/>
+	<link href="{{ site.url }}/changelog/"/>
+	<id>{{ site.url }}/changelog/</id>
+	<updated>{{ collections.changelog[0].data.updated }}T00:00:00Z</updated>
+	<author><name>SiteSquatch</name></author>
+	{%- for entry in collections.changelog %}
+	<entry>
+		<title>{{ entry.data.title }}</title>
+		<link href="{{ site.url }}{{ entry.url }}"/>
+		<id>{{ site.url }}{{ entry.url }}</id>
+		<updated>{{ entry.data.updated }}T00:00:00Z</updated>
+		<content type="html">{{ entry.templateContent | htmlToAbsoluteUrls(site.url ~ entry.url) }}</content>
+	</entry>
+	{%- endfor %}
+</feed>

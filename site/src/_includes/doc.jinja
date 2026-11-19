@@ -1,0 +1,81 @@
+---
+layout: base.jinja
+docs: true
+---
+{#- A docs page: the sidebar (from src/_data/nav.json, which lib/split.ts writes from lib/docs-map.ts),
+    the page with its breadcrumbs, the strip that says where else it is, and previous and next as
+    arrow signs, then its table of contents. -#}
+<div class="docs">
+	<main id="main" class="doc" data-pagefind-body>
+		{%- set crumbs = nav | navBreadcrumbs(page.url) %}
+		{%- if crumbs | length > 1 %}
+		<nav class="breadcrumbs" aria-label="Breadcrumbs">
+			<a href="/docs/">Docs</a> ›
+			{%- for crumb in crumbs[:-1] %} <span>{{ crumb.title }}</span> ›{% endfor %}
+			<span aria-current="page">{{ crumbs[-1].title }}</span>
+		</nav>
+		{%- endif %}
+		<h1 data-copy>{{ title }}</h1>
+		{#- The same page, three ways: in the terminal, here, and where it's written. #}
+		<div class="page-tools">
+			<p class="cli"><span>In your terminal</span> <code>{{ command }}</code></p>
+			<p class="links"><a href="{{ page.url | markdownCopy }}">View as Markdown</a>
+			{%- if source %} <a href="{{ site.repo }}/blob/main/{{ source }}{% if sourceLine > 1 %}#L{{ sourceLine }}{% endif %}">Edit on GitHub</a>{% endif %}</p>
+		</div>
+		<div data-copy>
+		{{ content }}
+		</div>
+		{%- if page.url == "/docs/" %}
+		<h2 id="the-map">The map <a class="anchor" data-pagefind-ignore href="#the-map" aria-hidden="true" tabindex="-1">#</a></h2>
+		{%- for section in nav %}
+		<h3>{{ section.title }}</h3>
+		<ul class="map">
+			{%- for item in section.pages %}{% if item.url != "/docs/" %}
+			<li><a href="{{ item.url }}">{{ item.title }}</a>{% if item.description %}: {{ item.description }}{% endif %}</li>
+			{%- endif %}{% endfor %}
+		</ul>
+		{%- endfor %}
+		{%- endif %}
+		{#- The examples that show this page's features (src/_data/seeIt.js, from examples.yml). #}
+		{%- set seen = seeIt[page.url] %}
+		{%- if seen %}
+		<aside class="see-it" aria-labelledby="see-it">
+			<h2 id="see-it">See it working</h2>
+			<ul>
+				{%- for s in seen %}
+				<li><a href="/examples/{{ s.name }}/"><code>{{ s.name }}</code></a>: {{ s.label }} (<a href="/examples/#{{ s.name }}">what it shows</a>)</li>
+				{%- endfor %}
+			</ul>
+		</aside>
+		{%- endif %}
+		{%- set pager = nav | navPager(page.url) %}
+		<nav class="pager" aria-label="Previous and next pages">
+			<div>{% if pager.previous %}<small>Back down the trail</small><a class="sign back" rel="prev" href="{{ pager.previous.url }}">{{ pager.previous.title }}</a>{% endif %}</div>
+			<div>{% if pager.next %}<small>Up the trail</small><a class="sign" rel="next" href="{{ pager.next.url }}">{{ pager.next.title }}</a>{% endif %}</div>
+		</nav>
+	</main>
+
+	{%- set contents = toc(page.headings) %}
+	<aside class="toc" aria-label="On this page">
+		<div class="toc-inner">
+		{%- if contents %}
+		<p class="toc-title">On this page</p>
+		{{ contents | safe }}
+		{%- endif %}
+		</div>
+	</aside>
+
+	{#- After the page in the HTML, so a phone and a screen reader get the page first. #}
+	<nav class="sidebar" id="sidebar" aria-label="Documentation">
+		<div class="sidebar-inner">
+		{%- for section in nav | navTree(page.url) %}
+		<h2>{{ section.title }}</h2>
+		<ul>
+			{%- for item in section.pages %}
+			<li><a href="{{ item.url }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.title }}</a></li>
+			{%- endfor %}
+		</ul>
+		{%- endfor %}
+		</div>
+	</nav>
+</div>

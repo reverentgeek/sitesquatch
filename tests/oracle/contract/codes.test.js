@@ -34,6 +34,15 @@ const CASES = [
 	["build", { "ssqch.config.js": base(", passthrough: [\"./nothing-here\"]"), "src/index.md": "hi" }, { ok: false, in: "errors" }],
 ];
 
+// A page no template language reads prints another generator's globals as text: no warning.
+test("foreign-global leaves out a page that isn't a template", () => {
+	const dir = project({ "ssqch.config.js": base(), "src/index.md": "---\nrender: md\n---\nEleventy's `{{ eleventy.generator }}` is `{{ ssqch.generator }}` here." }, "foreign-global-md");
+	const r = ssqch(["build", "--root", dir, "--format", "json"]);
+	const report = JSON.parse(r.stdout);
+	assert.equal(report.ok, true, r.log);
+	assert.deepEqual(report.warnings.filter((d) => d.code === "foreign-global"), [], r.log);
+});
+
 for (const [code, files, want, args = []] of CASES) {
 	test(`the ${code} code`, () => {
 		const dir = project(files, code);

@@ -1,0 +1,22 @@
+---
+layout: base.jinja
+title: Changelog
+description: What's new in each release of SiteSquatch, written for people, with what you might need to change.
+permalink: /changelog/
+---
+<section class="entries">
+	<div class="wrap entry-wrap">
+		<p class="kicker">Release notes</p>
+		<h1>Changelog</h1>
+		<p class="lead">What's new in each release, and what you might need to change when you upgrade. Every change, down to the last fix, is in <a href="{{ site.repo }}/blob/main/CHANGELOG.md">CHANGELOG.md</a>. Follow along with the <a href="/changelog/feed.xml">Atom feed</a>.</p>
+		<ol class="entry-list">
+			{%- for entry in collections.changelog %}
+			<li>
+				<p class="entry-date"><time datetime="{{ entry.data.updated }}">{{ (entry.data.lastDate or entry.date) | dateformat("%-d %B %Y") }}</time></p>
+				<h2><a href="{{ entry.url }}">{{ entry.data.title }}</a></h2>
+				{{ entry.templateContent | firstParagraph | safe }}
+			</li>
+			{%- endfor %}
+		</ol>
+	</div>
+</section>

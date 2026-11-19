@@ -1,0 +1,275 @@
+---
+layout: base.jinja
+fullTitle: "SiteSquatch: a static site generator for Node.js"
+description: SiteSquatch (ssqch) turns Markdown and templates into plain HTML, and checks its own work on every build. When something breaks, it points at the line.
+---
+{%- from "drawing.jinja" import drawing with context -%}
+{#- Every number on this page is the README's, and every terminal is ssqch's own output, from a
+    real run (an excerpt where a line says "..."). tests/numbers.test.ts checks the benchmarks and the gaps. -#}
+<section class="hero">
+	<svg class="topo" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">
+		<defs><path id="ring" vector-effect="non-scaling-stroke" d="M100,0 C100,60 60,95 5,100 C-55,105 -100,60 -98,0 C-96,-58 -60,-102 0,-100 C58,-98 100,-55 100,0 Z"/></defs>
+		<g transform="translate(930 250)">
+			<use href="#ring" transform="scale(0.5) rotate(10)"/><use href="#ring" transform="rotate(22)"/><use href="#ring" transform="scale(1.55 1.45) rotate(30)"/><use href="#ring" transform="scale(2.15 1.95) rotate(36)"/><use href="#ring" transform="scale(2.8 2.5) rotate(40)"/><use href="#ring" transform="scale(3.5 3.1) rotate(43)"/><use href="#ring" transform="scale(4.3 3.8) rotate(45)"/>
+		</g>
+		<g transform="translate(160 520)">
+			<use href="#ring" transform="scale(0.7) rotate(-20)"/><use href="#ring" transform="scale(1.3 1.2) rotate(-12)"/><use href="#ring" transform="scale(2 1.8) rotate(-6)"/><use href="#ring" transform="scale(2.8 2.5)"/><use href="#ring" transform="scale(3.7 3.3) rotate(5)"/>
+		</g>
+	</svg>
+	<div class="wrap">
+		<div>
+			<p class="kicker">A static site generator for Node.js</p>
+			<h1>Large, quick, and rarely photographed.</h1>
+			<p class="lead">SiteSquatch (<code>ssqch</code>) turns Markdown and templates into plain HTML, and checks its own work while it does: your links, your front matter, and what a change did to the output. When something breaks, it points at the line.</p>
+			<div class="actions">
+				<a class="button" href="{{ links.fieldGuide }}">Build your first site</a>
+				<a class="button quiet" href="#pack">See what's in the pack</a>
+			</div>
+			<div class="permit">
+				<span class="permit-label">Pack it</span>
+				<code>npm install --save-dev ssqch</code>
+			</div>
+			<p class="permit-note">Needs Node.js {{ latest.node }} or newer. Also on Homebrew: <code>brew install reverentgeek/tap/ssqch</code></p>
+		</div>
+		<figure class="exhibit">
+			<span class="trail-patch" aria-hidden="true"></span>
+			<div class="photo">{{ drawing("sitesquatch", 300, alt="SiteSquatch, a Sasquatch with a deadpan stare", eager=true) }}</div>
+			<figcaption>Exhibit A. In focus, for once.</figcaption>
+		</figure>
+	</div>
+</section>
+
+<section class="first-minute" aria-labelledby="first-minute">
+	<div class="wrap">
+		<div>
+			<p class="kicker">Your first minute</p>
+			<h2 id="first-minute">Two commands, and you've got a website</h2>
+			<p><code>ssqch init</code> sets up camp: a config, a layout, a home page, five posts, a 404 page, a blueprint for the next post, editor types, and an <code>AGENTS.md</code> for your coding agent. Then it leaves you to it. Run <code>ssqch serve</code>, edit a post, and the page you're looking at reloads.</p>
+			<p><a href="{{ links.fieldGuide }}">The field guide walks you through it</a></p>
+		</div>
+		<figure class="terminal">
+			<figcaption class="terminal-bar">Terminal</figcaption>
+<pre><span class="p">$</span> npx ssqch init my-site
+<span class="c">  ...</span>
+<span class="v">Camp is set up.</span> Next: cd my-site &amp;&amp; ssqch serve, then open http://localhost:8080
+<span class="p">$</span> cd my-site &amp;&amp; npx ssqch serve
+<span class="v">First confirmed siting.</span> Built in 24.7 ms (development)
+  Pages   7 written from 7 templates, 18.4 KB (7 changed)
+  Links   14 checked, 0 broken
+<span class="c">  ...</span>
+Serving dist at http://localhost:8080/. <span class="v">Squatch Watch is on.</span>
+<span class="v">Fresh tracks</span> in src/posts/i-know-what-i-saw.md
+Built in 5.64 ms (development)
+  Pages   7 written from 7 templates, 18.4 KB (1 changed)</pre>
+		</figure>
+	</div>
+</section>
+
+<div class="trail">
+
+<section class="stop" id="pack" aria-labelledby="pack-title">
+	<div class="mile" aria-hidden="true">1</div>
+	<div class="stop-head">
+		<div>
+			<p class="kicker">Mile 1 · What's in the pack</p>
+			<h2 id="pack-title">A blog or a docs site, with no plugin hunt</h2>
+			<p>The things every content site ends up needing are already in there, and each one is a line of config. Your config runs on Node, so anything that's missing is an npm package away.</p>
+		</div>
+		{{ drawing("stickers/backpack", 104, class="stop-art") }}
+	</div>
+	<ul class="pack">
+		<li>{{ drawing("stickers/compass", 58) }}<div><h3>Templates you already know</h3><p>Jinja is the default. Edge, Liquid, Nunjucks, Handlebars, Mustache and EJS work too, so the templates you have can come along.</p></div></li>
+		<li>{{ drawing("stickers/lantern", 58) }}<div><h3>Markdown that replaces a plugin stack</h3><p>Heading ids, footnotes, containers, render hooks in any template language, and syntax highlighting at build time.</p></div></li>
+		<li>{{ drawing("stickers/raccoon", 58) }}<div><h3>Images, encoded once</h3><p>Every <code>&lt;img&gt;</code> becomes a <code>&lt;picture&gt;</code> with AVIF, WebP and a fallback, cached by content so later builds skip the encoding.</p></div></li>
+		<li>{{ drawing("stickers/ranger-mary", 58) }}<div><h3>Checks on every build</h3><p>Content schemas for front matter and a link checker, so a typo fails the build and names the file, the field and a guess at the fix.</p></div></li>
+		<li>{{ drawing("stickers/coffee", 58) }}<div><h3>A config that's plain JavaScript</h3><p>Filters, data, collections, transforms and build hooks, plus any npm package, <code>fetch</code> with a cache, and every Node built-in.</p></div></li>
+		<li>{{ drawing("stickers/beaver", 58) }}<div><h3>A dev server that's careful</h3><p>Squatch Watch reloads only the page you changed, swaps stylesheets in place, and shows a broken build in the browser.</p></div></li>
+	</ul>
+	<p class="also">Also in the pack: themes without a package manager, custom elements that load only where they're used, Sass (yes, Sassquatch), a sitemap, redirects, RSS helpers, HTML minification and asset fingerprinting. <a href="{{ links.pack }}">The whole inventory</a></p>
+</section>
+
+<section class="stop" id="checks" aria-labelledby="checks-title">
+	<div class="mile" aria-hidden="true">2</div>
+	<div class="stop-head">
+		<div>
+			<p class="kicker">Mile 2 · Evidence</p>
+			<h2 id="checks-title">When something's wrong, it points at the spot</h2>
+			<p>A build that succeeds isn't proof that your site is fine. ssqch checks the things generators usually leave to you, reports every problem in one go, and takes a guess at what you meant.</p>
+		</div>
+		{{ drawing("stickers/footprint", 70, class="stop-art") }}
+	</div>
+	<div class="two-up">
+		<div>
+			<h3>Front matter, checked against a schema</h3>
+			<p>A misspelled key, a date that isn't one, a hero image that was renamed. Each one gets its file and its line.</p>
+			<figure class="terminal">
+				<figcaption class="terminal-bar">ssqch build</figcaption>
+<pre><span class="e">error:</span> 3 content errors:
+  - src/posts/cedar.md: `status` must be "draft" or "published", not "drfat" (schema `posts`)
+  - src/posts/cedar.md: `hero.src` is "cedar.jpg", but there's no such file next to the page (schema `posts`)
+  - src/posts/cedar.md: `descripton` isn't a field of this schema (did you mean `description`?) (schema `posts`)
+
+  --&gt; src/posts/cedar.md:5
+   3 | date: 2026-03-02
+   4 | tags: posts
+   5 | status: drfat
+     | <span class="v">^^^^^^</span>
+   6 | hero: { src: cedar.jpg, alt: A cedar }</pre>
+			</figure>
+		</div>
+		<div>
+			<h3>What a change did to the output</h3>
+			<p>Upgrade ssqch, edit a layout or move from another generator, then compare the two builds. It's better evidence than most sightings get.</p>
+			<figure class="terminal">
+				<figcaption class="terminal-bar">ssqch diff before after</figcaption>
+<pre><span class="c">...</span>
+Added (1)
+  <span class="a">+ /trails/cedar/</span>
+
+Changed (1)
+  ~ /trails/  (text and markup)
+      ids removed (links to them break): #old-growth
+      <span class="r">- &lt;h2 id="old-growth"&gt;</span>
+      <span class="r">- Old growth</span>
+      <span class="a">+ &lt;h2 id="cedar"&gt;</span>
+      <span class="a">+ Cedar</span>
+
+Changes found: 2 pages (1 changed, 1 added, 0 removed); 5 pages and 1 other file are the same. <span class="v">The stump has moved.</span></pre>
+			</figure>
+		</div>
+	</div>
+</section>
+
+<section class="stop" id="speed" aria-labelledby="speed-title">
+	<div class="mile" aria-hidden="true">3</div>
+	<div class="stop-head">
+		<div>
+			<p class="kicker">Mile 3 · No blurry footage</p>
+			<h2 id="speed-title">It moves fast for its size</h2>
+			<p>These are measurements, with the conditions next to each one. The dev server does the same warm build every time you save.</p>
+		</div>
+		{{ drawing("stickers/boots", 104, class="stop-art") }}
+	</div>
+	<ul class="boards">
+		{%- for board in benchmarks.boards %}
+		<li><b>{{ board.figure }}</b><span>{{ board.says }}</span></li>
+		{%- endfor %}
+	</ul>
+	<p class="fine">{{ benchmarks.conditions }} <a href="{{ links.benchmarks }}">How these were measured, and the rest of the numbers</a></p>
+</section>
+
+<section class="stop" id="trailheads" aria-labelledby="trailheads-title">
+	<div class="mile" aria-hidden="true">4</div>
+	<div class="stop-head">
+		<div>
+			<p class="kicker">Mile 4 · Trailheads</p>
+			<h2 id="trailheads-title">Coming from another generator?</h2>
+			<p>Everything migrates eventually. Each trailhead maps another generator's config, front matter and templates onto ssqch's, so you can see the whole route before you start walking.</p>
+		</div>
+		{{ drawing("stickers/direction-sign", 100, class="stop-art") }}
+	</div>
+	<ul class="signpost">
+		{%- for trailhead in trailheads %}
+		<li><a class="sign" href="{{ trailhead.url }}">From {{ trailhead.name }}</a></li>
+		{%- endfor %}
+	</ul>
+	<div class="with-terminal">
+		<div>
+			<p><code>ssqch import eleventy</code> (or <code>zola</code>) does the mechanical part and lists what's left to port by hand, each with its file and line. The words you bring along work too, and say ssqch's name once.</p>
+			<p>When you think you're done, build the site both ways and run <code>ssqch diff</code> on the two folders. It'll tell you.</p>
+		</div>
+		<figure class="terminal">
+			<figcaption class="terminal-bar">Old habits</figcaption>
+<pre><span class="p">$</span> ssqch dev
+<span class="c">note: dev works; ssqch calls it serve (ssqch docs serve)</span>
+
+<span class="p">$</span> ssqch diff _site dist
+<span class="c">...</span>
+No differences: 148 pages and 4,730 other files are the same. <span class="v">The stump has not moved.</span></pre>
+		</figure>
+	</div>
+</section>
+
+{%- set counting = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"] %}
+<section class="stop" id="examples" aria-labelledby="examples-title">
+	<div class="mile" aria-hidden="true">5</div>
+	<div class="stop-head">
+		<div>
+			<p class="kicker">Mile 5 · Campsites</p>
+			<h2 id="examples-title">{{ counting[examples | length] if (examples | length) < 13 else (examples | length) }} small sites to copy from</h2>
+			<p>Each one is distilled from a real site and written against a feature of ssqch, and the test suite builds and link-checks every one. Poke around the live version, then take what you need from the source. <a href="/examples/">The whole campground</a></p>
+		</div>
+		{{ drawing("stickers/tent", 104, class="stop-art") }}
+	</div>
+	<ul class="sites">
+		{%- for example in examples %}
+		<li><h3>{{ example.name }}</h3><p class="engine">{{ example.engine }}</p><p>{{ example.shows }}</p><p class="links"><a href="/examples/{{ example.name }}/">Live</a><a href="/examples/#{{ example.name }}">What it shows</a><a href="{{ site.repo }}/tree/main/examples/sites/{{ example.name }}">Source</a></p></li>
+		{%- endfor %}
+	</ul>
+</section>
+
+<section class="stop" id="agents" aria-labelledby="agents-title">
+	<div class="mile" aria-hidden="true">6</div>
+	<div class="stop-head">
+		<div>
+			<p class="kicker">Mile 6 · For coding agents</p>
+			<h2 id="agents-title">The docs travel with the package</h2>
+			<p>If a coding agent is doing the building, it doesn't need this website. The documentation ships inside ssqch, so the answer matches the version that's installed and needs no network.</p>
+		</div>
+		{{ drawing("stickers/owl", 104, class="stop-art") }}
+	</div>
+	<div class="with-terminal">
+		<div>
+			<p>Commands that report take <code>--format json</code>: a <code>schemaVersion</code>, diagnostic codes, and no jokes. <code>ssqch init</code> writes a 1 KB <code>AGENTS.md</code> that says where to look.</p>
+			<p>Reading from the web instead? Every docs page has a Markdown copy at its address with <code>.md</code> on the end, a request that asks for <code>text/markdown</code> gets it, and <a href="/llms.txt">/llms.txt</a> lists them all.</p>
+			<p><a href="{{ links.agents }}">Scripts and coding agents</a></p>
+		</div>
+		<figure class="terminal">
+			<figcaption class="terminal-bar">No browser required</figcaption>
+<pre><span class="c"># One name, from the installed package</span>
+<span class="p">$</span> ssqch docs base
+<span class="c"># Another generator's words, with ssqch's for each</span>
+<span class="p">$</span> ssqch docs --from eleventy
+<span class="c"># What this version can do, and what a build did</span>
+<span class="p">$</span> ssqch capabilities --format json
+<span class="p">$</span> ssqch build --format json
+<span class="c"># Or from the web, as Markdown</span>
+<span class="p">$</span> curl https://sitesquatch.dev/docs/content-schemas.md</pre>
+		</figure>
+	</div>
+</section>
+
+<section class="stop" id="gaps" aria-labelledby="gaps-title">
+	<div class="mile" aria-hidden="true">7</div>
+	<div class="stop-head">
+		<div>
+			<p class="kicker">Mile 7 · The uncharted parts of the map</p>
+			<h2 id="gaps-title">What it doesn't do yet</h2>
+			<p>SiteSquatch is a young one (0.x), so expect some breaking changes between minor versions. Each is in the changelog with what you'd need to change. Some of the map is still blank, too:</p>
+		</div>
+		{{ drawing("stickers/mountain", 104, class="stop-art") }}
+	</div>
+	<ul class="gaps">
+		<li>Pages render one at a time on one thread. Image encoding uses every core, but heavy per-page JavaScript doesn't spread across them.</li>
+		<li>The dev server rebuilds the whole site on a change: about 0.9 s after one edit on a 10,000-page site.</li>
+		<li>The dev server listens on <code>127.0.0.1</code> only. There's no <code>--host</code>.</li>
+		<li>No SVG rasterizing, and HDR photos need converting to sRGB first (the build warns about them).</li>
+	</ul>
+	<p class="also"><a href="{{ links.knownGaps }}">Every known gap, as of this release</a></p>
+</section>
+
+</div>
+
+<section class="camp" aria-labelledby="camp-title">
+	<div class="wrap">
+		{{ drawing("stickers/campfire", 128) }}
+		<div>
+			<h2 id="camp-title">Set up camp</h2>
+			<p><code>npx ssqch init my-site</code> gives you a blog. Add <code>--starter docs</code> for a docs site with a sidebar, a table of contents and search. Every file is yours to edit: there's no theme package underneath.</p>
+			<div class="actions">
+				<a class="button" href="{{ links.fieldGuide }}">Read the field guide</a>
+				<a class="button quiet" href="{{ site.repo }}">Star it on GitHub</a>
+			</div>
+		</div>
+	</div>
+</section>

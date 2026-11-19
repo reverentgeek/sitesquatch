@@ -9,6 +9,30 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Changed
+
+- ssqch has a website: [sitesquatch.dev](https://sitesquatch.dev), with the documentation, the
+  example sites running live, a changelog written for people, and every docs page as Markdown
+  for coding agents (`/llms.txt`). The npm package's `homepage` is the site.
+- The example sites run live on sitesquatch.dev, each under its own path
+  (`https://sitesquatch.dev/examples/blog-tags/`), instead of a subdomain each. The six that name
+  their address (`blog-tags`, `blog-categories`, `docs-sidebar`, `glossary-docs`,
+  `versioned-docs`, `islands`) say `https://sitesquatch.dev`, and the feeds of `blog-tags` and
+  `blog-categories` put each URL through `withBase` before `absoluteUrl`, so they're right under
+  a path too: a feed isn't HTML, so the base isn't added for it, and `absoluteUrl` against an
+  address with a path drops the path for a URL that starts with `/`. Their frozen outputs in the
+  oracle changed with the address, and nothing else.
+
+### Fixed
+
+- A page that no template language reads (`render: md`, or a plain `.html` page with
+  `htmlEngine: false`) no longer gets a `foreign-global` warning for another generator's globals
+  in its text: it prints `{{ eleventy.generator }}` as written, so a page about Eleventy isn't
+  using it. Its layouts and includes are still checked. Found building sitesquatch.dev's
+  trailheads page.
+
 ## 0.9.0 - 2026-11-18
 
 Found moving opensource.guide (Jekyll) and expressjs.com (Astro) to 0.8.0.
