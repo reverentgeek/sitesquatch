@@ -79,4 +79,4 @@ ssqch's Markdown is CommonMark; Jekyll's is kramdown. `markdown: { smartPunctuat
 
 ## Checking the move
 
-`ssqch baseline "bundle exec jekyll build"` builds the Jekyll site three times from fresh copies, with the clock pinned, into `ref-1` to `ref-3`, and says what changes by itself (Jekyll prints `site.time`); then `ssqch diff ref-1 _site` lists the files that differ and how. Most of what's left after the steps above is Markdown: `markdown="1"`, then kramdown's spacing and quotes. `linksPlugin()` from `ssqch/links` checks every internal link and anchor on each build.
+`ssqch baseline "bundle exec jekyll build"` builds the Jekyll site three times from fresh copies, with the clock pinned and the site's gems linked in (`.bundle` and its `BUNDLE_PATH`), into `ref-1` to `ref-3`, and says what changes by itself (Jekyll prints `site.time` into every page: one group); then `ssqch diff ref-1 _site` lists the files that differ and how. Most of what's left after the steps above is Markdown: `markdown="1"`, then kramdown's spacing and quotes. `linksPlugin()` from `ssqch/links` checks every internal link and anchor on each build.

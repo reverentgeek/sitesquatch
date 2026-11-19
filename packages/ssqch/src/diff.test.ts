@@ -297,3 +297,16 @@ test("what_varies_the_same_way_on_several_files_is_grouped", async () => {
 	assert.deepEqual(json.varies.map((v) => [v.url, v.groups]), [["/a/", [0]], ["/b/", [0]], ["/c/", []]]);
 	assert.equal((await compareRuns(runs, options({ ungrouped: true }))).groups.length, 0);
 });
+
+// A build's time printed in each page's own text (Jekyll's `site.time` in every page's JSON-LD,
+// opensource.guide): the same dates changed, so one group, though the text around them isn't.
+test("the_same_dates_changed_in_other_text_are_grouped", async () => {
+	const page = (name: string, time: string) => `<script type="application/ld+json">{"name":"${name}","dateModified":"${time}"}</script><p>${name}</p>`;
+	const before = build({ "a/index.html": page("Pine", "2026-11-19T20:30:06Z"), "b/index.html": page("Cedar", "2026-11-19T20:30:06Z"), "c/index.html": page("Fir", "2026-11-18T09:00:00Z") });
+	const after = build({ "a/index.html": page("Pine", "2026-11-19T20:30:18Z"), "b/index.html": page("Cedar", "2026-11-19T20:30:18Z"), "c/index.html": page("Fir", "2026-11-18T09:00:01Z") });
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.groups.map((g) => [g.urls, g.match, g.kind]), [[["/a/", "/b/"], "dates", "dates"]]);
+	assert.ok(diffText(report, 10, false).includes("  ~ 2 pages, the same dates in other text: /a/, /b/\n"));
+	// Other dates changed are another change.
+	assert.deepEqual(report.changed.find((f) => f.url === "/c/")!.groups, []);
+});

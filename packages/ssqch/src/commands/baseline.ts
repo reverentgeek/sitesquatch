@@ -27,6 +27,8 @@ export interface BaselineOptions {
 	commit: string | undefined;
 	/** What the reference builds are called: `ref` makes `ref-1`, `ref-2` and `ref-3`. */
 	to: string;
+	/** More of the site's folders to link into each copy, beside the installs found by themselves (`--link`). */
+	link: string[];
 	quiet: boolean;
 }
 
@@ -67,9 +69,17 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 				copyWorkingTree(root, copy, inGit, [options.from, ".cache", "node_modules"], options.to);
 			}
 			pinTimes(copy, time);
-			// The site's installed packages, shared: an install in each copy would take minutes.
-			const modules = path.join(root, "node_modules");
-			if (fs.existsSync(modules) && !fs.existsSync(path.join(copy, "node_modules"))) fs.symlinkSync(modules, path.join(copy, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+			// The site's installed packages, shared: an install in each copy would take minutes, and
+			// git ignores them, so a copy has none.
+			for (const rel of installs(root, options.link)) {
+				const from = path.join(root, ...rel.split("/"));
+				const to = path.join(copy, ...rel.split("/"));
+				if (!fs.existsSync(from) || fs.existsSync(to)) continue;
+				fs.mkdirSync(path.dirname(to), { recursive: true });
+				const dir = fs.statSync(from).isDirectory();
+				if (dir) fs.symlinkSync(from, to, process.platform === "win32" ? "junction" : "dir");
+				else fs.copyFileSync(from, to);
+			}
 
 			say(`Building ${run} of ${options.runs}: ${options.command}`);
 			const { file, args, options: spawnOptions } = commandLine(options.command, copy, { TZ: "UTC", SOURCE_DATE_EPOCH: String(time) });
@@ -106,6 +116,26 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 		fs.rmSync(work, { recursive: true, force: true });
 		if (worktrees.length) git(root, ["worktree", "prune"]);
 	}
+}
+
+/**
+ * The folders a generator's packages are installed in, which git ignores: npm's `node_modules`,
+ * Bundler's `.bundle` (its config) and the path that config gives gems (`BUNDLE_PATH`, or
+ * `vendor/bundle`), a Python `.venv`, and `--link`'s. opensource.guide's Jekyll wouldn't start in
+ * a copy without its `vendor/gems`.
+ */
+function installs(root: string, more: string[]): string[] {
+	const found = ["node_modules", ".bundle", "vendor/bundle", ".venv"];
+	try {
+		const config = fs.readFileSync(path.join(root, ".bundle", "config"), "utf8");
+		const gems = /^BUNDLE_PATH:\s*["']?([^"'\n]+?)["']?\s*$/m.exec(config)?.[1];
+		if (gems && !path.isAbsolute(gems) && !gems.startsWith("~")) found.push(gems.replace(/^\.\//, "").replace(/\/+$/, ""));
+	} catch { /* no Bundler config */ }
+	for (const rel of more) {
+		if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes("..")) throw new BaselineError(`--link ${rel}: a folder inside the site's folder (\`vendor/bundle\`)`);
+		found.push(rel.replaceAll("\\", "/").replace(/\/+$/, ""));
+	}
+	return [...new Set(found)];
 }
 
 /** The site's files as git would commit them (tracked, and new ones it doesn't ignore), or every file but `skip`'s outside git, copied into `copy`. */

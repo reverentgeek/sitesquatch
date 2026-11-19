@@ -65,15 +65,19 @@ where that version matches.
   copy (the files git would commit, or `--commit <rev>`) with every file's time set to the
   commit's, `TZ=UTC` and `SOURCE_DATE_EPOCH`, into `ref-1` to `ref-3`, and compares the builds, so
   what changes by itself is known before ssqch's build is compared with them. `--from` is the
-  folder the command writes (`_site`), `--runs` and `--to` the builds and their names. Every move
-  wrote a script of its own for this (v8.dev's `parity.sh`, lit.dev's `stability.py`).
+  folder the command writes (`_site`), `--runs` and `--to` the builds and their names. The site's
+  installs are linked into each copy (`node_modules`, Bundler's `.bundle` and its `BUNDLE_PATH`,
+  `vendor/bundle`, `.venv`), and `--link` adds others. Every move wrote a script of its own for
+  this (v8.dev's `parity.sh`, lit.dev's `stability.py`). opensource.guide's three Jekyll builds
+  take 37 s and vary on 380 files, one group: the build's time.
 - `ssqch diff` groups the same change on more than one file: it's listed once, the most files
   first, with how many files have it, and each file is listed after the groups with what's left.
   A group's tags can differ in their attribute values from file to file, and a run of three
   changed lines or more joins a group with the same tags. `--format json` has `groups` (each with
   `files`, `urls`, `same`, `match`, `kind` and `hunk`) and each changed file's `groups`;
-  `--ungrouped` lists each file with all its changes. `ssqch diff a b c` groups what varies the
-  same way on several files (a build's time on every page) too. opensource.guide's 172 changed
+  A change that's only dates groups by the dates that changed. `--ungrouped` lists each file with
+  all its changes. `ssqch diff a b c` groups what varies the same way on several files (a build's
+  time on every page) too. opensource.guide's 172 changed
   pages are 12 groups, one of them on 102 pages; every move found its biggest group by hand.
 - `ssqch diff --exclude <glob>` leaves matching files out (repeatable, after `--only`): the blog's
   comparison with its Eleventy build needed nine `--only`s to leave out its images.

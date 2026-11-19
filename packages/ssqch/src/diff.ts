@@ -89,8 +89,8 @@ export interface DiffGroup {
 	urls: string[];
 	/** `false` when its lines differ from file to file (the lines are the first file's). */
 	same: boolean;
-	/** How alike its changes are: `lines` (the same), `values` (the same but for attribute values), or `tags` (the same tags, with other attributes, or a line repeated another number of times). */
-	match: "lines" | "values" | "tags";
+	/** How alike its changes are: `lines` (the same), `values` (the same but for attribute values), `tags` (the same tags, with other attributes, or a line repeated another number of times), or `dates` (the same dates changed, in other text). */
+	match: "lines" | "values" | "tags" | "dates";
 	/** What it changes: `dates`, `order` (the same lines, moved), `markup`, `text`, or `markup and text`. */
 	kind: string;
 	/** The change, as the first file has it. */
@@ -814,7 +814,25 @@ const hunkKey = (h: Hunk) => JSON.stringify([h.removed, h.added]);
 
 /** A tag line with its attribute values blanked (`<meta content="…" name="…">`); text stays. Two hunks with the same shape are the same change with other values. */
 const lineShape = (line: string) => (line.startsWith("<") ? line.replace(/="[^"]*"/g, "=\"…\"") : line);
-const shapeKey = (h: Hunk) => JSON.stringify([h.removed.map(lineShape), h.added.map(lineShape)]);
+const shapeKeyOf = (h: Hunk) => JSON.stringify([h.removed.map(lineShape), h.added.map(lineShape)]);
+
+/** Every date that changed in a hunk that changed only dates, as `old>new` pairs; undefined for any other hunk. */
+function changedDates(h: Hunk): string[] | undefined {
+	if (!onlyDates([h])) return undefined;
+	const pairs = new Set<string>();
+	h.removed.forEach((line, i) => {
+		const old = [...line.matchAll(DATE)].map((m) => m[0]);
+		const now = [...h.added[i].matchAll(DATE)].map((m) => m[0]);
+		old.forEach((d, k) => { if (d !== now[k]) pairs.add(`${d}>${now[k]}`); });
+	});
+	return [...pairs].sort();
+}
+
+/** What groups a hunk: the dates it changed when that's all it changed (a build's time in each page's own JSON-LD), else its shape. */
+const shapeKey = (h: Hunk) => {
+	const dates = changedDates(h);
+	return dates ? `dates:${JSON.stringify(dates)}` : shapeKeyOf(h);
+};
 
 /** A tag line as its name alone (`<source>`); text stays. A run of one line counts once, so a `<picture>` with two `<source>`s and one with three are alike. */
 const tagLine = (line: string) => (line.startsWith("<") ? (/^<\/?[^\s>]+/.exec(line)?.[0] ?? line) + ">" : line);
@@ -859,7 +877,7 @@ export function groupChanges(changed: FileDiff[]): DiffGroup[] {
 	for (const [k, e] of found) {
 		if (e.files.size < 2) continue;
 		byShape.set(k, drafts.length);
-		drafts.push({ files: new Set(e.files), hunk: e.hunk, first: e.first, match: e.same ? "lines" : "values" });
+		drafts.push({ files: new Set(e.files), hunk: e.hunk, first: e.first, match: e.same ? "lines" : k.startsWith("dates:") ? "dates" : "values" });
 	}
 	// What no group took joins the group with the same tags (the blog's `<picture>`s with other
 	// widths), or, with another file's like it, makes a group of its own.
@@ -1012,7 +1030,7 @@ function groupsText(groups: DiffGroup[], limit: number, paint: Paint, heading: s
 		const n = group.urls.length;
 		const what = group.urls.every(isPageUrl) ? (n === 1 ? "page" : "pages") : n === 1 ? "file" : "files";
 		const some = group.urls.slice(0, 3).join(", ");
-		const alike = group.match === "lines" ? "" : group.match === "values" ? ", the same but for attribute values" : ", the same tags with other attributes";
+		const alike = group.match === "lines" ? "" : group.match === "values" ? ", the same but for attribute values" : group.match === "dates" ? ", the same dates in other text" : ", the same tags with other attributes";
 		out += `  ~ ${count(n)} ${what}${alike}: ${some}${n > 3 ? ` and ${count(n - 3)} more` : ""}\n`;
 		out += linesText([group.hunk], group.hunk.removed.length + group.hunk.added.length, limit, paint);
 	}

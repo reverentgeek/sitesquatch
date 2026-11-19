@@ -221,6 +221,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('--runs', '--runs', [CompletionResultType]::ParameterName, 'How many builds to make and compare (default 3)')
             [CompletionResult]::new('--commit', '--commit', [CompletionResultType]::ParameterName, 'Build this commit instead of the working tree')
             [CompletionResult]::new('--to', '--to', [CompletionResultType]::ParameterName, 'What to call the builds (default ref)')
+            [CompletionResult]::new('--link', '--link', [CompletionResultType]::ParameterName, 'Link this folder of the site into each copy (repeatable)')
             [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')

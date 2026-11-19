@@ -225,6 +225,7 @@ _arguments "${_arguments_options[@]}" : \
 '--runs=[How many builds to make and compare (default 3)]:RUNS:_default' \
 '--commit=[Build this commit instead of the working tree]:REV:_default' \
 '--to=[What to call the builds (default ref)]:NAME:_default' \
+'*--link=[Link this folder of the site into each copy (repeatable)]:PATH:_files' \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \

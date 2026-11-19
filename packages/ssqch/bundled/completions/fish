@@ -151,6 +151,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l from -d 'The fo
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l runs -d 'How many builds to make and compare (default 3)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l commit -d 'Build this commit instead of the working tree' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l to -d 'What to call the builds (default ref)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l link -d 'Link this folder of the site into each copy (repeatable)' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -s q -l quiet -d 'Print only warnings and errors'
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -s v -l verbose -d 'Also list the slowest images to encode'

@@ -56,3 +56,28 @@ test("baseline_builds_the_old_site_and_says_what_varies", { skip: !hasGit && "ne
 	r = ssqch(["baseline", "node -e 0", "--commit", "nope", "--quiet"], { cwd: dir });
 	assert.ok(r.code === 2 && r.log.includes("--commit nope: no such commit"), r.log);
 });
+
+// opensource.guide's Jekyll wouldn't start in a copy: its gems are in `vendor/gems`, which
+// `.bundle/config` names and git ignores. The installs a site has are linked into each copy,
+// and `--link` adds others.
+test("baseline_links_the_sites_installs_into_each_copy", { skip: !hasGit && "needs git" }, () => {
+	const dir = tempDir("baseline-links");
+	write(dir, {
+		".gitignore": "_site\nref-*\n.bundle\n/vendor\ntools\n",
+		".bundle/config": "---\nBUNDLE_PATH: \"vendor/gems\"\n",
+		"vendor/gems/jekyll.txt": "gems",
+		"tools/helper.txt": "help",
+		"build.mjs": "import fs from \"node:fs\";\nfs.mkdirSync(\"_site\", { recursive: true });\nfs.writeFileSync(\"_site/index.html\", [\".bundle/config\", \"vendor/gems/jekyll.txt\", \"tools/helper.txt\"].map((f) => fs.existsSync(f) ? \"yes\" : \"no\").join(\" \"));\n",
+	});
+	git(dir, "init", "-q");
+	git(dir, "add", "-A");
+	git(dir, "commit", "-q", "-m", "The old site");
+	let r = ssqch(["baseline", "node build.mjs", "--runs", "1", "--quiet"], { cwd: dir });
+	assert.equal(r.code, 0, r.log);
+	assert.equal(read(dir, "ref-1/index.html"), "yes yes no");
+	r = ssqch(["baseline", "node build.mjs", "--runs", "1", "--link", "tools", "--quiet"], { cwd: dir });
+	assert.equal(r.code, 0, r.log);
+	assert.equal(read(dir, "ref-1/index.html"), "yes yes yes");
+	r = ssqch(["baseline", "node build.mjs", "--link", "../elsewhere", "--quiet"], { cwd: dir });
+	assert.ok(r.code === 2 && r.log.includes("--link ../elsewhere: a folder inside the site's folder"), r.log);
+});
