@@ -2,10 +2,17 @@
 // script (worker.js) runs for /docs and /docs/* only, to answer `Accept: text/markdown` with a
 // page's Markdown copy; everything else is a file, served without it.
 // .github/workflows/site.yml deploys it: `wrangler preview` for each pull request, `wrangler
-// deploy` from main. Not attached to the domain yet (TODO.md, section 9, "Agents, and launch").
+// deploy` from main.
 {
 	"name": "sitesquatch",
 	"main": "worker.js",
+	// The apex is the Worker's custom domain: Cloudflare made its DNS record and certificate.
+	// www.sitesquatch.dev is a redirect rule to it, set in the dashboard (Rules), not here.
+	"routes": [{ "pattern": "sitesquatch.dev", "custom_domain": true }],
+	// With a route, Wrangler turns workers.dev off unless it's set: it stays on, for the pull
+	// requests' Previews (pr-<number>-sitesquatch.<subdomain>.workers.dev) and version URLs.
+	"workers_dev": true,
+	"preview_urls": true,
 	"compatibility_date": "2026-11-01",
 	"assets": {
 		"directory": "./dist",
