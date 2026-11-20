@@ -110,10 +110,10 @@ where that version matches.
 
 - `ssqch import jekyll`: a first `ssqch.config.js` from `_config.yml` (Liquid for pages,
   kramdown's Markdown options, `exclude`, the files Jekyll copies, `site`, the `defaults` for every
-  page, the plugins it knows), directory data for `_posts` and each collection with their tags
-  and permalinks, `page.title` and the other front matter keys renamed in templates, `site.posts`
-  and `site.data.<name>` as ssqch has them, and `{% seo %}` as an include it writes; the rest is
-  listed with file and line. opensource.guide goes from a fresh checkout to a full build with it.
+  page, the plugins it knows, and `jekyllTemplates`), directory data for `_posts` and each
+  collection with their tags and permalinks, and `{% seo %}` as an include it writes; it edits no
+  other template, and lists the rest with file and line. opensource.guide goes from a fresh
+  checkout to a full build with it.
 - `markdown: { htmlMarkdown: "kramdown" }` reads kramdown's Markdown inside HTML: an element with
   `markdown="1"` (or `"block"`, `"span"`) has its content rendered, and kramdown's HTML rules hold
   around it. opensource.guide's 3,791 such elements come out as Jekyll wrote them.
@@ -164,11 +164,19 @@ where that version matches.
 - `ssqch import jekyll` lists each `_plugins/*.rb` with what it registers (filters, tags,
   generators, hooks) and ssqch's way to do each, writes directory data for every `_posts` folder
   (`en/news/_posts`, its folders as the first categories), renames a `.rss` or `.xml` layout to
-  `.liquid` so it runs Liquid, and keeps `site.data.<name>` working through `computed` instead of
-  editing templates and pages. The Jekyll trailhead has "Porting a site's own plugins".
+  `.liquid` so it runs Liquid. The Jekyll trailhead has "Porting a site's own plugins".
+- `jekyllTemplates: true` gives templates Jekyll's `page` (front matter too: `page.title`, with
+  `page.path` and `page.categories`) and `site` (`site.posts`, newest first, each collection,
+  `pages`, `categories`, `tags`, `data`, `time`), with items in Jekyll's shape (`post.title`,
+  `post.content`, `post.excerpt`), in every template language. A Jekyll site's layouts and
+  includes run as written: www.ruby-lang.org imports with 17 edits where it took 1,056.
 
 ### Changed
 
+- `ssqch import eleventy` leaves Eleventy's front matter keys as they are (`eleventyComputed`,
+  `eleventyExcludeFromCollections`, `templateEngineOverride` work in ssqch), where it renamed them in
+  every page, and lists `eleventyNavigation` pages instead of renaming the key to `nav`. The
+  importers now list what needs doing and make only edits that are mechanical and clearly right.
 - Liquid's `truncate` counts characters and `truncatewords` splits at any whitespace and adds
   the ellipsis from `n` words, as Ruby's Liquid 4 (Jekyll's) does; 0.7 counted bytes, so a
   Cyrillic or CJK text under the limit got a `...`. `truncatewords`' default is 15, as in Ruby.
@@ -215,8 +223,7 @@ where that version matches.
 - `ssqch baseline` left Jekyll's `site.time` unpinned when the command gave its own `--config`
   (every article varied): the time goes last in that list. It warns when Jekyll's build has GitHub
   Pages' placeholder `github.com/pages/...` URLs.
-- `ssqch import jekyll` takes `site.url` from `CNAME` for a GitHub Pages site, renames an item's
-  fields inside the includes it's passed to (`include.article.data.title`), says where Jekyll's
+- `ssqch import jekyll` takes `site.url` from `CNAME` for a GitHub Pages site, says where Jekyll's
   `excerpt` and `sort` differ, and writes what it only named: `redirects.json`, `robots.txt`, Rouge's
   wrapper for code blocks, and whole URLs in the redirect page. opensource.guide's import matches
   Jekyll's build on 306 of 404 pages with no hand edits.
@@ -227,13 +234,8 @@ where that version matches.
 - `ssqch import jekyll` wrote collection permalinks with `//` in front (`//ar/metrics/`): a
   page's `filePathStem` starts with its own `/`. A build now warns about any page whose URL has
   `//` in it.
-- `ssqch import jekyll` left `site.articles` (a collection) as it was, empty in ssqch: it's
-  `collections.articles`, with its items' front matter under `data`, and the build warns about
-  `site.<collection>` as it does about `site.posts`.
-- `ssqch import jekyll` renamed `site.data.locales` to `locales` beside a template's own
-  `{% assign locales = ... %}`, which replaced the data for every include after it, and left
-  `page.lang` as it was beside a template's own `lang` (opensource.guide's language menus): the
-  template's own variable is `my_locales` or `my_lang` now, and the rename goes ahead.
+- `site.articles` (a Jekyll collection) was empty with no word: with `jekyllTemplates` it's there,
+  and without it the build warns about `site.<collection>` as it does about `site.posts`.
 - Smart quotes: a closing `"` after a letter came out `“` when it closed an outer quote or had no
   partner (`... p5.js Edition“`).
 - `ssqch baseline` says when files git doesn't track go into its copies, and `ssqch import jekyll`

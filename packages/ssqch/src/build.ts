@@ -34,6 +34,7 @@ import type { CopyJob, Page, Tpl } from "./site.ts";
 import { Site, Timer, errorsTogether } from "./site.ts";
 import type { Profile, ProfileReport } from "./profile.ts";
 import * as voice from "./voice.ts";
+import { jekyllPage, jekyllSite } from "./jekyll.ts";
 
 /** What a build did, handed to `afterBuild` hooks and printed as the summary. */
 export interface BuildReport {
@@ -254,7 +255,22 @@ class Renderer {
 
 	/** The data a page's templates get: its own, and the collections. */
 	private data(page: Page): Data {
-		return { ...page.data, collections: this.site.collections };
+		const data: Data = { ...page.data, collections: this.site.collections };
+		if (this.site.config.jekyllTemplates) {
+			data.site = this.jekyllSite();
+			data.page = jekyllPage(page.data, page.data.page, this.globalKeys());
+		}
+		return data;
+	}
+
+	/** `jekyllTemplates`: Jekyll's `site`, made once a build, after the collections. */
+	private jekyllSiteData: Data | undefined;
+	private jekyllSite(): Data {
+		return (this.jekyllSiteData ??= jekyllSite(this.site.global.site, this.site.collections, this.site.global));
+	}
+	private globalKeySet: Set<string> | undefined;
+	private globalKeys(): Set<string> {
+		return (this.globalKeySet ??= new Set(Object.keys(this.site.global)));
 	}
 
 	/** A page's body through its engines: at once when they all answer at once, otherwise later. */
@@ -369,7 +385,7 @@ class Renderer {
 			const had = this.bodies.get(page.index);
 			this.bodies.set(page.index, content);
 			try {
-				data.page = site.pageWithBody(page);
+				data.page = config.jekyllTemplates ? jekyllPage(page.data, site.pageWithBody(page), this.globalKeys()) : site.pageWithBody(page);
 				for (const layout of layouts) {
 					const layoutStart = performance.now();
 					data.content = content;
@@ -656,7 +672,9 @@ function checkForeignGlobals(site: Site): void {
 	// `site.posts` is Jekyll's only where nothing gives `site` a `posts`: not the global data, and
 	// not a page's own data (front matter, directory data).
 	const defines = (data: Data, key: string) => data.site !== undefined && data.site !== null && data.site[key] !== undefined;
-	const rows = equivalents.TABLE.filter((e) => e.kind === "global" && (!e.word.startsWith("site.") || !defines(site.global, e.word.slice(5))));
+	// With `jekyllTemplates`, Jekyll's `site` is there: its words aren't another generator's then.
+	const jekyll = site.config.jekyllTemplates;
+	const rows = equivalents.TABLE.filter((e) => e.kind === "global" && (!e.word.startsWith("site.") || (!jekyll && !defines(site.global, e.word.slice(5)))));
 	if (!rows.length) return;
 	// Each template's text, with the pages it makes (none for layouts and includes).
 	const sources: Array<[string, string, Tpl | undefined]> = [];
@@ -687,7 +705,7 @@ function checkForeignGlobals(site: Site): void {
 		if (!text.includes("site.")) continue;
 		for (const m of text.matchAll(/\bsite\.([A-Za-z_][\w-]*)/g)) mentioned.add(m[1]);
 	}
-	if (mentioned.size) {
+	if (mentioned.size && !jekyll) {
 		const tagged = new Set<string>();
 		for (const p of site.pages) {
 			const tags = Array.isArray(p.data.tags) ? p.data.tags : typeof p.data.tags === "string" ? [p.data.tags] : [];

@@ -27,9 +27,9 @@ test("import_moves_an_eleventy_site", () => {
 	for (const expected of [
 		"(a dry run: nothing is changed; add --write to make the changes)",
 		"Rename (1)\n  src/posts/posts.11tydata.json -> src/posts/posts.data.json\n",
-		"  src/index.njk: eleventyExcludeFromCollections -> excludeFromCollections\n",
-		"  src/posts/pine.md: templateEngineOverride -> render, eleventy:widths/ignore -> ssqch:widths/ignore\n",
-		"  src/posts/posts.11tydata.json: eleventyComputed -> computed\n",
+		// DELIBERATE (0.11): Eleventy's front matter keys work in ssqch, so pages aren't edited for
+		// them; the image attributes still change.
+		"  src/posts/pine.md: eleventy:widths/ignore -> ssqch:widths/ignore\n",
 		"Create (1)\n  ssqch.config.js (a first draft, from .eleventy.js)\n",
 		"  src/feed.11ty.js: JavaScript templates don't run in ssqch",
 		`  package.json: @11ty/eleventy -> ssqch ${expectedVersion()} in devDependencies, scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve\n`,
@@ -48,12 +48,12 @@ test("import_moves_an_eleventy_site", () => {
 
 	// With --write, the site builds with ssqch.
 	r = ssqch(["import", "eleventy", d, "--write"]);
-	assert.ok(r.ok && r.log.includes("Done: 1 renamed, 4 edited, 1 created."), r.log);
+	assert.ok(r.ok && r.log.includes("Done: 1 renamed, 2 edited, 1 created."), r.log);
 	assert.equal(
 		read(dir, "package.json"),
 		`{\n  "scripts": {\n    "build": "ssqch build",\n    "start": "ssqch serve"\n  },\n  "packageManager": "pnpm@12.21.0",\n  "devDependencies": {\n    "ssqch": "${expectedVersion()}"\n  }\n}\n`,
 	);
-	assert.ok(read(dir, "src/posts/posts.data.json").includes("\"computed\""));
+	assert.ok(read(dir, "src/posts/posts.data.json").includes("\"eleventyComputed\""));
 	const config = read(dir, "ssqch.config.js");
 	assert.ok(config.includes("dirs: { input: \"src\", output: \"_site\" },") && config.includes("markdownEngine: \"njk\",\n  htmlEngine: \"njk\",") && config.includes("passthrough: [\"src/css\"],") && config.includes("    shout: (s) => s.toUpperCase(),\n"), config);
 	r = ssqch(["build", "--root", d, "-q"]);
@@ -140,7 +140,8 @@ test("import_carries_over_ejs_templates", () => {
 		"src/trail.md": "---\nlayout: base.ejs\ntitle: Trail\n---\nOld Growth.\n",
 	});
 	let r = ssqch(["import", "eleventy", d, "--write"]);
-	assert.ok(r.ok && r.log.includes("  src/index.ejs: eleventyExcludeFromCollections -> excludeFromCollections\n"), r.log);
+	// DELIBERATE (0.11): `eleventyExcludeFromCollections` works as it is; the page isn't edited.
+	assert.ok(r.ok && !r.log.includes("src/index.ejs: eleventyExcludeFromCollections"), r.log);
 	const config = read(dir, "ssqch.config.js");
 	assert.ok(config.includes("templateFormats: [\"ejs\", \"md\"],"), config);
 	r = ssqch(["build", "--root", d, "-q"]);
@@ -229,7 +230,7 @@ test("import_jekyll_drafts_a_config_that_builds", () => {
 		"_guides/trail.md": "---\ntitle: Old Growth\nlang: fr\n---\n<aside markdown=\"1\">\n*Hush*\n</aside>\n\n## Cedar\n",
 		"_posts/2026-01-02-pine.md": "---\ntitle: Pine\nlayout: default\n---\nPine {{ site.data.trails.count }}\n",
 		"_data/trails.yml": "count: 3\n",
-		"index.html": "---\nlayout: default\n---\n{% for post in site.posts %}{{ post.data.title }}{% endfor %}\n",
+		"index.html": "---\nlayout: default\n---\n{% for post in site.posts %}{{ post.title }}{% endfor %}\n",
 		"assets/img/stump.png": "png",
 		"robots.txt": "User-agent: *\n",
 		// Jekyll renders a file with front matter, and copies a collection's file without it.
@@ -241,22 +242,23 @@ test("import_jekyll_drafts_a_config_that_builds", () => {
 	let r = ssqch(["import", "jekyll", dir]);
 	assert.ok(r.ok, r.log);
 	for (const said of [
-		"_layouts/guide.html: lang (the template's own variable) -> my_lang, page.title -> title, page.lang -> lang",
-		"_layouts/default.html: page.path -> page.inputPath | remove_first: \"./\", {% seo %} -> {% include seo.liquid %}",
-		"index.html: site.posts -> collections.posts",
+		// DELIBERATE (0.11): templates aren't rewritten; `jekyllTemplates: true` gives Jekyll's `page`
+		// and `site`. The one edit to a layout is the include `{% seo %}` stands for.
+		"_layouts/default.html: {% seo %} -> {% include seo.liquid %}",
 		"_guides/_guides.json (the `guides` collection: its tag and permalink)",
 		"_posts/_posts.json (Jekyll's posts: the `posts` tag, and the permalink)",
 		"_includes/seo.liquid (jekyll-seo-tag's tags",
-		"_layouts/guide.html: `lang`, the template's own variable, is `my_lang` now (`page.lang` is `lang`)",
 		".: 1 `markdown=\"1\"` elements: `htmlMarkdown: \"kramdown\"` (in the draft) reads them as kramdown does",
 	]) assert.ok(r.log.includes(said), `${said}\n${r.log}`);
 	r = ssqch(["import", "jekyll", dir, "--write"]);
 	assert.ok(r.ok, r.log);
 	const config = read(dir, "ssqch.config.js");
-	for (const part of ["trimAfterFrontMatter: true,", "markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false, encodeUrls: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets/img\", { \"_guides/zh/README.md\": \"guides/zh/README.md\" }],", "data: { site, image: \"/og.png\",\n    // `site.data.<name>` in templates: each of _data's files.\n    computed: { site: (data) => ({ ...data.site, data: { trails: data[\"trails\"] } }) },\n  },", "plugins: [redirectsPlugin(), sitemapPlugin({ url: site.url })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	for (const part of ["trimAfterFrontMatter: true,", "markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false, encodeUrls: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets/img\", { \"_guides/zh/README.md\": \"guides/zh/README.md\" }],", "jekyllTemplates: true,", "data: { site, image: \"/og.png\" },", "plugins: [redirectsPlugin(), sitemapPlugin({ url: site.url })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(r.ok && !r.log.includes("`//`"), r.log);
 	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<aside>\n<p><em>Hush</em></p>\n</aside>"), read(dir, "_site/guides/trail/index.html"));
+	// `page.lang` is the page's, whatever the template assigns to its own `lang`.
+	assert.ok(read(dir, "_site/guides/trail/index.html").includes("</h1>") && /<\/h1>[\s\S]*fr/.test(read(dir, "_site/guides/trail/index.html")), read(dir, "_site/guides/trail/index.html"));
 	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<h1>Old Growth</h1>") && read(dir, "_site/guides/trail/index.html").includes("<title>Old Growth | Trail Guide</title>"), read(dir, "_site/guides/trail/index.html"));
 	assert.ok(read(dir, "_site/2026/01/02/pine/index.html").includes("Pine 3") && read(dir, "_site/2026/01/02/pine/index.html").includes("/edit/_posts/2026-01-02-pine.md"), read(dir, "_site/2026/01/02/pine/index.html"));
 	assert.ok(read(dir, "_site/index.html").includes("Pine"), read(dir, "_site/index.html"));

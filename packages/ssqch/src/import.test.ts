@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readToml } from "./data.ts";
-import { blankComments, draftConfig, eleventy, itemsPassedToIncludes, jekyll, jekyllPermalink, rewriteData, rewriteJekyllTemplate, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./import.ts";
+import { blankComments, draftConfig, eleventy, jekyll, jekyllPermalink, rewriteData, jekyllTemplateNotes, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./import.ts";
 import { VERSION } from "./version.ts";
 
 test("zola_front_matter_gets_ssqch_names", () => {
@@ -36,15 +36,16 @@ test("templates_and_data_get_ssqch_names", () => {
 		"---\ntitle: Pine\neleventyExcludeFromCollections: true\neleventyComputed:\n  slug: \"{{ title | slugify }}\"\ntemplateEngineOverride: njk,md\neleventyNavigation:\n  key: Pine\n---\nUse eleventyComputed in prose. <img src=\"a.png\" eleventy:widths=\"300\" eleventy:ignore> {{ eleventy.generator }}\n",
 		false,
 	);
-	assert.equal(text, "---\ntitle: Pine\nexcludeFromCollections: true\ncomputed:\n  slug: \"{{ title | slugify }}\"\nrender: njk,md\nnav:\n  key: Pine\n---\nUse eleventyComputed in prose. <img src=\"a.png\" ssqch:widths=\"300\" ssqch:ignore> {{ ssqch.generator }}\n");
-	assert.equal(changes.length, 6);
+	// DELIBERATE (0.11): front matter keys stay as they are (Eleventy's work in ssqch, and
+	// `eleventyNavigation` is listed instead); the image attributes and the generator still change.
+	assert.equal(text, "---\ntitle: Pine\neleventyExcludeFromCollections: true\neleventyComputed:\n  slug: \"{{ title | slugify }}\"\ntemplateEngineOverride: njk,md\neleventyNavigation:\n  key: Pine\n---\nUse eleventyComputed in prose. <img src=\"a.png\" ssqch:widths=\"300\" ssqch:ignore> {{ ssqch.generator }}\n");
+	assert.equal(changes.length, 2);
 	const [same, none] = rewriteTemplate("No front matter, and eleventyComputed is only a word here.\n", true);
 	assert.deepEqual([same, none.length], ["No front matter, and eleventyComputed is only a word here.\n", 0]);
 	let data: string;
-	[data, changes] = rewriteData("{ \"layout\": \"post\", \"eleventyComputed\": { \"permalink\": \"/x/\" }, \"note\": \"about eleventyComputed: a key\" }");
-	assert.equal(data, "{ \"layout\": \"post\", \"computed\": { \"permalink\": \"/x/\" }, \"note\": \"about eleventyComputed: a key\" }");
-	assert.deepEqual(changes, ["eleventyComputed -> computed"]);
-	assert.equal(rewriteData("module.exports = {\n  eleventyComputed: { a: 1 },\n  note: \"eleventyNavigation\",\n};\n")[0], "module.exports = {\n  computed: { a: 1 },\n  note: \"eleventyNavigation\",\n};\n");
+	const json = "{ \"layout\": \"post\", \"eleventyComputed\": { \"permalink\": \"/x/\" } }";
+	[data, changes] = rewriteData(json);
+	assert.deepEqual([data, changes], [json, []]);
 
 	// A post about Eleventy keeps its prose and its code samples.
 	const post = "---\ntitle: Images in Eleventy\n---\nAdd `eleventy:ignore` to skip one, as in `<img eleventy:ignore>`, and print {{ eleventy.version }}.\n\n```html\n<img src=\"a.png\" eleventy:widths=\"300\"> {{ eleventy.generator }}\n```\n\n<img src=\"b.png\" eleventy:ignore>\n";
@@ -100,8 +101,8 @@ test("wireit_commands_and_navigation_filters", () => {
 		const pkg = plan.edits.find(([p]) => p === "package.json")!;
 		assert.ok(pkg[2].includes("\"command\": \"ssqch build"), pkg[2]);
 		assert.ok(pkg[1].some((c) => c.startsWith("wireit commands")), pkg[1].join("\n"));
-		const page = plan.edits.find(([p]) => p === "site/a.md")!;
-		assert.ok(page[2].includes("eleventyNavigation:") && page[2].includes("computed:"), page[2]);
+		// DELIBERATE (0.11): the page isn't edited; its keys work as they are.
+		assert.ok(!plan.edits.some(([p]) => p === "site/a.md"), JSON.stringify(plan.edits.map(([p]) => p)));
 		assert.ok(plan.byHand.some(([, what]) => what.includes("findNavigationEntries")), JSON.stringify(plan.byHand));
 	} finally {
 		fs.rmSync(dir, { recursive: true, force: true });
@@ -472,13 +473,15 @@ test("jekyll_permalinks_become_liquid", () => {
 	assert.equal(jekyllPermalink("/:week/:title/", ""), undefined);
 });
 
-// `page.<front matter>` is `<front matter>` in ssqch; Jekyll's own `page` keys are listed, and so
-// is a key the template uses as a variable of its own.
-test("jekyll_templates_lose_page_for_front_matter", () => {
-	const [out, changes, left] = rewriteJekyllTemplate("<h1>{{ page.title }}</h1>{% if page.lang == \"fr\" %}{{ page.url }}{{ page.content }}{% endif %}{% assign class = page.class %}{{ site.data.trails.count }}{% for p in site.posts %}{% endfor %}<a href=\"/edit/{{ page.path }}\">{{ page.next.url }}</a>");
-	assert.equal(out, "<h1>{{ title }}</h1>{% if lang == \"fr\" %}{{ page.url }}{{ page.content }}{% endif %}{% assign my_class = class %}{{ trails.count }}{% for p in collections.posts %}{% endfor %}<a href=\"/edit/{{ page.inputPath | remove_first: \"./\" }}\">{{ page.next.url }}</a>");
-	assert.deepEqual(changes, ["page.path -> page.inputPath | remove_first: \"./\"", "class (the template's own variable) -> my_class", "page.title -> title", "page.lang -> lang", "page.class -> class", "site.data.<name> -> <name>", "site.posts -> collections.posts"]);
-	assert.deepEqual(left, ["`class`, the template's own variable, is `my_class` now (`page.class` is `class`): check the includes that read it without assigning it", "`page.content` (1): `content`, in a layout", "`page.next` (1): `navPager(collections.posts, page.url).next`"]);
+// The importer edits no template: `jekyllTemplates: true` gives Jekyll's `page` and `site`. What
+// it doesn't give is listed (the fresh runs: excerpts, `sort`, `page.next`).
+test("jekyll_templates_are_listed_not_rewritten", () => {
+	const notes = jekyllTemplateNotes("{{ page.title }}{{ page.next.url }}{{ page.next.title }}{% assign list = site.articles | sort: 'order' %}{{ post.excerpt }}{{ page.path }}", ["posts", "articles"]);
+	assert.deepEqual(notes, [
+		"`page.next` (2): `navPager(collections.posts, page.url).next`",
+		"`excerpt` isn't Jekyll's: Jekyll's is the source up to `excerpt_separator` (the first blank line), rendered; ssqch's is the page up to `<!-- more -->`, or else its first paragraph. They differ when a page starts with something else than a paragraph",
+		"`sort: 'order'` on a collection: Jekyll's `sort` puts the items without `order` first, ssqch's (Liquid's) last; with some missing it, sort them in the config, or a filter of your own",
+	]);
 });
 
 test("the_seo_include_is_the_docs_one", () => {
@@ -494,17 +497,6 @@ test("other_build_tools_are_listed_with_ssqchs_ways", () => {
 	const said = eleventy(dir).byHand.find(([at]) => at === "gulpfile.js")?.[1] ?? "";
 	assert.ok(said.startsWith("Gulp builds part of the site too: keep it for the first, identical build"), said);
 	assert.ok(said.includes("Sass -> `sassPlugin()`") && said.includes("SVG optimizing") && said.includes("a style guide (KSS)") && !said.includes("autoprefixer"), said);
-});
-
-// From the fresh opensource.guide rerun: `site.articles` stayed `site.articles` (empty in ssqch,
-// 380 pages' menus and lists), its items' front matter is under `data`, and `site.data.locales`
-// renamed to `locales` collided with the template's own `locales`.
-test("jekyll_collections_and_their_items_are_ssqchs", () => {
-	const src = "{% assign guides = site.articles | where: 'lang', page.lang | sort: 'title' %}{% for article in guides %}<a href=\"{{ article.url }}\">{{ article.title }}</a>{{ article.content }}{{ article.excerpt }}{% endfor %}{% assign top = site.articles | first %}{{ top.class }}{% assign locales = site.data.locales | sort %}{% for locale in locales %}{{ locale[0] }}{% endfor %}{{ site.data.locales[page.lang] }}";
-	const [out, changes, left] = rewriteJekyllTemplate(src, ["articles"], ["locales", "fields"]);
-	assert.equal(out, "{% assign guides = collections.articles | where: 'data.lang', lang | sort: 'data.title' %}{% for article in guides %}<a href=\"{{ article.url }}\">{{ article.data.title }}</a>{{ article.templateContent }}{{ article.page.excerpt }}{% endfor %}{% assign top = collections.articles | first %}{{ top.data.class }}{% assign my_locales = locales | sort %}{% for locale in my_locales %}{{ locale[0] }}{% endfor %}{{ locales[lang] }}");
-	assert.ok(changes.includes("site.articles -> collections.articles") && changes.includes("locales (the template's own variable) -> my_locales") && changes.some((c) => c.startsWith("6 fields of collection items -> under `data`")), JSON.stringify(changes));
-	assert.ok(left.some((l) => l.startsWith("`locales`, the template's own variable, is `my_locales` now")), JSON.stringify(left));
 });
 
 // From the fresh opensource.guide rerun: the agent's notes (untracked) went into `passthrough`.
@@ -524,18 +516,6 @@ test("jekyll_import_leaves_untracked_files_out", { skip: spawnSync("git", ["--ve
 	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
 	assert.ok(draft.includes("passthrough: [\"robots.txt\", \"assets\"],"), draft);
 	assert.ok(plan.byHand.some(([at, what]) => at === "notes/" && what.startsWith("1 file git doesn't track (notes/) left out of `passthrough`")), JSON.stringify(plan.byHand));
-});
-
-// From the fresh opensource.guide rerun: the search index's 379 titles came through an include's
-// parameter (`include.article.title`), which the rename missed; and Jekyll's `excerpt` and `sort`
-// mean something else in ssqch, which wasn't said.
-test("jekyll_items_passed_to_includes_are_ssqchs_too", () => {
-	assert.deepEqual(itemsPassedToIncludes("{% for article in site.articles %}{% include search-result.html article=article lang=page.lang %}{% endfor %}", ["articles"]), [["search-result.html", "article"]]);
-	const [out, , left] = rewriteJekyllTemplate("{{ include.article.title }}|{{ include.article.url }}|{{ include.article.excerpt }}|{{ include.lang }}", [], [], ["article"]);
-	assert.equal(out, "{{ include.article.data.title }}|{{ include.article.url }}|{{ include.article.page.excerpt }}|{{ include.lang }}");
-	assert.ok(left.some((l) => l.startsWith("`include.article.excerpt` is `include.article.page.excerpt` now, which isn't Jekyll's")), JSON.stringify(left));
-	const [, , sorted] = rewriteJekyllTemplate("{% assign list = site.articles | sort: 'order' %}", ["articles"]);
-	assert.ok(sorted.some((l) => l.startsWith("`sort: 'order'` on a collection: Jekyll's `sort` puts the items without `order` first")), JSON.stringify(sorted));
 });
 
 // From the fresh opensource.guide rerun: GitHub Pages gave `site.url` from the CNAME (381 pages),
@@ -587,7 +567,7 @@ test("jekyll_import_reads_a_site_like_rubys", () => {
 	// `site.data` stays as it's written, and the config puts the data under it.
 	assert.ok(!plan.edits.some(([f]) => f.startsWith("en/news/")), JSON.stringify(plan.edits.map(([f]) => f)));
 	const config = plan.newFiles.find(([f]) => f === "ssqch.config.js")![2];
-	assert.ok(config.includes("computed: { site: (data) => ({ ...data.site, data: { locales: data[\"locales\"] } }) },"), config);
+	assert.ok(config.includes("jekyllTemplates: true,"), config);
 	assert.ok(config.includes("passthrough: [\"images/logo.png\"]"), config);
 	const posts = plan.newFiles.find(([f]) => f === "en/news/_posts/_posts.json")?.[2] ?? "";
 	assert.ok(posts.includes("\"permalink\": \"/en/news{% if categories %}"), posts);
