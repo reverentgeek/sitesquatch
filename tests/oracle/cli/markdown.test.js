@@ -341,3 +341,18 @@ test("heading_ids_like_markdown_it_anchors", () => {
 	assert.ok(r.ok, r.log);
 	assert.equal(read(dir, "_site/index.html"), "<h2 id=\"what%E2%80%99s-new%3A-caf%C3%A9%3F\">What’s new: Café?</h2>\n<h2 id=\"what%E2%80%99s-new%3A-caf%C3%A9%3F-1\">What’s new: Café?</h2>\n");
 });
+
+// Added in 0.11, from the fresh opensource.guide rerun: a link without a title had `link.title` as
+// `""`, which Liquid counts as true (`title=""` on 343 pages). It's nothing now.
+test("a_link_without_a_title_has_none_in_its_hook", () => {
+	const dir = tempDir("link-title");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"md\", \"liquid\"] };\n",
+		"_includes/hooks/link.liquid": "<a href=\"{{ link.href }}\"{% if link.title %} title=\"{{ link.title }}\"{% endif %}>{{ link.text }}</a>",
+		"_includes/hooks/image.liquid": "<img src=\"{{ image.src }}\" alt=\"{{ image.alt }}\"{% if image.title %} title=\"{{ image.title }}\"{% endif %}>",
+		"index.md": "[a](/x) [b](/y \"Why\") ![c](/c.png)\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<p><a href=\"/x\">a</a> <a href=\"/y\" title=\"Why\">b</a> <img src=\"/c.png\" alt=\"c\"></p>\n");
+});

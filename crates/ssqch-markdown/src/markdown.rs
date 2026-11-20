@@ -524,6 +524,17 @@ pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -
     Ok(out)
 }
 
+/// A link's or image's title for its hook: null when it has none, so `{% if link.title %}` is
+/// false in Liquid too, where an empty string is true (`title=""` on 343 of opensource.guide's
+/// links). It prints as nothing in every engine, as the empty string did.
+fn title_value(title: &str) -> Value {
+    if title.is_empty() {
+        Value::Null
+    } else {
+        Value::from(title.to_string())
+    }
+}
+
 /// Render Markdown, and for one paragraph, drop the `<p>` around it (for a
 /// title or a caption).
 pub fn render_inline(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -> Result<String> {
@@ -986,7 +997,7 @@ impl Writer<'_, '_> {
                     let href = if *link_type == LinkType::Email { format!("mailto:{}", dest_url) } else { dest_url.to_string() };
                     let link = Value::from_pairs([
                         ("href", Value::from(href)),
-                        ("title", Value::from(title.to_string())),
+                        ("title", title_value(title)),
                         ("text", Value::from(plain_text(&events[i + 1..end]))),
                         ("content", Value::from(self.inner(&events[i + 1..end])?)),
                     ]);
@@ -1007,7 +1018,7 @@ impl Writer<'_, '_> {
                         })
                         .collect();
                     if self.has("hooks/image") {
-                        let image = Value::from_pairs([("src", Value::from(dest_url.to_string())), ("alt", Value::from(alt)), ("title", Value::from(title.to_string()))]);
+                        let image = Value::from_pairs([("src", Value::from(dest_url.to_string())), ("alt", Value::from(alt)), ("title", title_value(title))]);
                         out.push_str(self.hook("hooks/image", "image", image)?.trim_end());
                     } else {
                         out.push_str("<img src=\"");

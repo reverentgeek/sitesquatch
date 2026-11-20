@@ -47,7 +47,12 @@ export interface Command {
 	hidden?: boolean;
 	/** Takes anything after its name as it is (its own parsing). */
 	raw?: boolean;
+	/** The global options its `--help` lists, when only some do anything for it (every one is still accepted): `diff` reads no config, so `--offline` and `--base` say nothing there. */
+	helpGlobals?: string[];
 }
+
+/** The global options a command's help lists. */
+const globalsFor = (grammar: Grammar, command: Command) => (command.helpGlobals ? grammar.globals.filter((o) => command.helpGlobals!.includes(o.long)) : grammar.globals);
 
 export interface Parsed {
 	command: string | undefined;
@@ -113,7 +118,7 @@ export function help(grammar: Grammar, command?: Command): string {
 	if (command.positionals.length) {
 		out += `\nArguments:\n${table(command.positionals.map((p) => [(p.required ? `<${p.name}>` : `[${p.name}]`) + (p.many ? "..." : ""), p.help + (p.default !== undefined ? ` [default: ${p.default}]` : "") + (p.values ? ` [possible values: ${p.values.join(", ")}]` : "")]))}\n`;
 	}
-	out += `\nOptions:\n${table([...command.options, ...grammar.globals, HELP].map((o) => [optionLabel(o), describe(o)]))}\n`;
+	out += `\nOptions:\n${table([...command.options, ...globalsFor(grammar, command), HELP].map((o) => [optionLabel(o), describe(o)]))}\n`;
 	if (command.afterHelp) out += `\n${command.afterHelp}\n`;
 	return out;
 }
@@ -130,7 +135,7 @@ export function longHelp(grammar: Grammar, command: Command): string {
 	if (command.positionals.length) {
 		out += `\nArguments:\n${command.positionals.map((p) => entry((p.required ? `<${p.name}>` : `[${p.name}]`) + (p.many ? "..." : ""), p.help, notesOf(p))).join("\n")}`;
 	}
-	out += `\nOptions:\n${[...command.options, ...grammar.globals, HELP].map((o) => entry(optionLabel(o), o.help, notesOf(o))).join("\n")}`;
+	out += `\nOptions:\n${[...command.options, ...globalsFor(grammar, command), HELP].map((o) => entry(optionLabel(o), o.help, notesOf(o))).join("\n")}`;
 	if (command.afterHelp) out += `\n${command.afterHelp}\n`;
 	return out;
 }

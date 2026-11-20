@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { kramdownHtml, kramdownId, withKramdownIds } from "./kramdown-html.ts";
+import { kramdownHtml, kramdownId, restoreBlankLines, withKramdownIds } from "./kramdown-html.ts";
 
 // A stand-in for the site's Markdown: says what it was given, and how.
 const render = { block: (text: string) => `[block ${text}]`, span: (text: string) => `[span ${text}]` };
@@ -43,4 +43,13 @@ test("headings_inside_html_get_kramdowns_own_ids", () => {
 	const html = "<h2 id=\"caf\">Café</h2>\n<h3 id=\"own\">Own</h3>\n<h2 id=\"x\">Nested</h2>";
 	assert.equal(withKramdownIds(html, "## Café\n### Own {#own}\n<h2 id=\"x\">Nested</h2>", new Map()), "<h2 id=\"caf\">Café</h2>\n<h3 id=\"own\">Own</h3>\n<h2 id=\"x\">Nested</h2>");
 	assert.equal(withKramdownIds("<h2 id=\"café-x\">Café <em>x</em></h2>", "## Café *x*", new Map()), "<h2 id=\"caf-x\">Café <em>x</em></h2>");
+});
+
+// From the fresh opensource.guide rerun: an indented code block inside `<aside markdown="1">` lost
+// the blank line between its paragraphs (de/legal and two more).
+test("blank_lines_inside_pre_come_back", () => {
+	const block = { block: () => "<pre><code>one\n\ntwo\n  \nthree\n</code></pre>\n<p>a</p>\n\n<p>b</p>", span: (t: string) => t };
+	const html = kramdownHtml("<aside markdown=\"1\">\n    one\n</aside>\n", block);
+	assert.ok(!/\n[ \t]*\n/.test(html.replace(/\n+$/, "")), JSON.stringify(html));
+	assert.equal(restoreBlankLines(html), "<aside>\n<pre><code>one\n\ntwo\n  \nthree\n</code></pre>\n<p>a</p>\n<p>b</p>\n</aside>\n");
 });

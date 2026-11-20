@@ -47,6 +47,8 @@ export interface DiffOptions {
 export interface Hunk {
 	removed: string[];
 	added: string[];
+	/** Where on a page it is: the nearest heading above it, `#its-id` or its text in quotes. */
+	at?: string;
 }
 
 /** A file that's in both builds with different contents. */
@@ -562,6 +564,29 @@ function title(list: Token[]): string | undefined {
 	return next && !next.tag ? next.text : undefined;
 }
 
+/**
+ * Where a change on a page is: the nearest heading above it, as `#its-id` (what a link to it
+ * names) or its text in quotes. "+ </p>" on 8 pages said nothing about where on a 900-line page
+ * (the fresh opensource.guide move).
+ */
+function headingAbove(list: Token[]): (index: number) => string | undefined {
+	const found = new Map<number, string | undefined>();
+	return (index) => {
+		for (let i = Math.min(index, list.length) - 1; i >= 0; i--) {
+			const t = list[i];
+			if (!t.tag || !/^<h[1-6][\s>]/i.test(t.text)) continue;
+			if (found.has(i)) return found.get(i);
+			const id = attr(t.text, "id");
+			let text = "";
+			for (let j = i + 1; j < list.length && !/^<\/h[1-6]>/i.test(list[j].text); j++) if (!list[j].tag) text += list[j].text;
+			const at = id ? `#${id}` : text.trim() ? `"${clip(text.trim())}"` : undefined;
+			found.set(i, at);
+			return at;
+		}
+		return undefined;
+	};
+}
+
 /** An attribute's value in a tag as `canonicalTag` writes it (double quotes, entities decoded), or undefined. */
 function attr(tag: string, name: string): string | undefined {
 	const m = new RegExp(`\\s${name}="([^"]*)"`, "i").exec(tag);
@@ -614,7 +639,7 @@ function lines(text: string): string[] {
 }
 
 /** The changed runs between two lists, and (whether from the first list, index) for every changed item. */
-function hunks<T>(before: T[], after: T[], kind: (item: T) => number, show: (item: T) => string): [Hunk[], Array<[boolean, number]>] {
+function hunks<T>(before: T[], after: T[], kind: (item: T) => number, show: (item: T) => string, where?: (oldIndex: number) => string | undefined): [Hunk[], Array<[boolean, number]>] {
 	// The algorithm compares numbers: each distinct item (its kind, and its text) gets one.
 	const numbers = [new Map<string, number>(), new Map<string, number>()];
 	let count = 0;
@@ -637,7 +662,10 @@ function hunks<T>(before: T[], after: T[], kind: (item: T) => number, show: (ite
 		if (op.tag === "equal") continue;
 		for (let i = op.oldIndex; i < op.oldIndex + op.oldLen; i++) changed.push([true, i]);
 		for (let i = op.newIndex; i < op.newIndex + op.newLen; i++) changed.push([false, i]);
-		out.push({ removed: before.slice(op.oldIndex, op.oldIndex + op.oldLen).map(show), added: after.slice(op.newIndex, op.newIndex + op.newLen).map(show) });
+		const hunk: Hunk = { removed: before.slice(op.oldIndex, op.oldIndex + op.oldLen).map(show), added: after.slice(op.newIndex, op.newIndex + op.newLen).map(show) };
+		const at = where?.(op.oldIndex);
+		if (at !== undefined) hunk.at = at;
+		out.push(hunk);
 	}
 	return [out, changed];
 }
@@ -653,7 +681,7 @@ function firstLines(list: Hunk[], limit: number): Hunk[] {
 		left -= removed.length;
 		const added = h.added.slice(0, left);
 		left -= added.length;
-		out.push({ removed, added });
+		out.push(h.at === undefined ? { removed, added } : { removed, added, at: h.at });
 	}
 	return out;
 }
@@ -695,7 +723,7 @@ function comparePair(a: Buffer, b: Buffer, pair: Pair, options: DiffOptions): Fi
 	if (isPage(pair.key) && !options.exact) {
 		diff.kind = "page";
 		const ta = tokens(before), tb = tokens(after);
-		const [list, changed] = hunks(ta, tb, (t) => (t.tag ? 1 : 0), (t) => t.text);
+		const [list, changed] = hunks(ta, tb, (t) => (t.tag ? 1 : 0), (t) => t.text, headingAbove(ta));
 		if (!list.length) return undefined;
 		const isTag = ([first, i]: [boolean, number]) => (first ? ta[i] : tb[i]).tag;
 		if (changed.some((c) => !isTag(c))) diff.what.push("text");
@@ -1089,7 +1117,11 @@ type Paint = (code: string, s: string) => string;
 function linesText(hunks: Hunk[], total: number, limit: number, paint: Paint, indent = "      "): string {
 	let shown = 0;
 	let text = "";
+	let place: string | undefined;
 	done: for (const hunk of hunks) {
+		// Where it is on the page, when that's another place than the hunk before's.
+		if (hunk.at !== undefined && hunk.at !== place && !(limit > 0 && shown >= limit)) text += paint("2", `${indent}@ under ${hunk.at}\n`);
+		place = hunk.at;
 		for (const [sign, code, side] of [["-", "31", hunk.removed], ["+", "32", hunk.added]] as const) {
 			for (const line of side) {
 				if (limit > 0 && shown >= limit) break done;

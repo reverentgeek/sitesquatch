@@ -91,7 +91,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		// Not `own`: in 0.7 it was one of the core's commands, so `-d` and `--pathprefix` work there.
 	},
 	{
-		name: "diff",
+		name: "diff", helpGlobals: ["quiet"],
 		about: "Compare two builds of a site: URLs added and removed, and what changed on each page. Given three or more, list what varies between them",
 		options: [
 			{ long: "exact", help: "Compare bytes: don't match fingerprinted files or ignore whitespace" },
@@ -124,7 +124,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	},
 	{ name: "types", about: "Write ssqch.d.ts, the types editors use for ssqch.config.js", options: [{ long: "out", value: "out", help: "Where to write it", default: "ssqch.d.ts" }], positionals: [], own: true },
 	{
-		name: "import",
+		name: "import", helpGlobals: [],
 		about: "Move a site from another generator: rename and rewrite what's mechanical, and list the rest",
 		options: [{ long: "write", help: "Make the changes (without it, only list them)" }],
 		positionals: [{ name: "generator", help: "The generator the site is built with: eleventy, jekyll or zola", required: true }, { name: "dir", help: "The site's folder (default: the current folder)", required: false, default: "." }],
@@ -132,7 +132,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		own: true,
 	},
 	{
-		name: "baseline",
+		name: "baseline", helpGlobals: ["root", "quiet"],
 		about: "Build the site with its old generator, in fresh copies with the clock pinned, and compare the builds: what to compare ssqch's with",
 		options: [
 			{ long: "from", value: "DIR", help: "The folder the command writes (Eleventy and Jekyll: _site; Hugo: public; Astro: dist)", default: "_site" },

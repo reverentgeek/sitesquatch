@@ -37,7 +37,41 @@ pub fn compile(path: &str, options: &Options, fs: &dyn grass::Fs) -> Result<Stri
     for dir in &options.load_paths {
         grass_options = grass_options.load_path(dir);
     }
-    grass::from_path(path, &grass_options).map_err(|e| e.to_string())
+    let css = grass::from_path(path, &grass_options).map_err(|e| e.to_string())?;
+    Ok(match options.style {
+        Style::Compressed => without_last_semicolons(&css),
+        Style::Expanded => css,
+    })
+}
+
+/// Compressed CSS without a `;` right before a `}`. grass leaves one when a comment followed the
+/// last declaration (`-webkit-text-size-adjust: 100%; /* 2 */` in normalize.css: 12 rules on
+/// opensource.guide), where Dart Sass and libsass don't. Strings are passed over as they are.
+fn without_last_semicolons(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut chars = css.chars().peekable();
+    while let Some(c) = chars.next() {
+        if let Some(q) = quote {
+            out.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        if c == '"' || c == '\'' {
+            quote = Some(c);
+        } else if c == ';' && chars.peek() == Some(&'}') {
+            continue;
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// What Node calls, and what the wasm calls back. `packages/ssqch/src/modules/sass.ts` is the
@@ -238,6 +272,13 @@ mod tests {
         assert_eq!(compile("styles/app.scss", &compressed, &fs).unwrap(), ".trail{margin:0 auto}body{color:#01796f}body a{color:red}");
         let expanded = Options { style: Style::Expanded, load_paths: vec![] };
         assert_eq!(compile("print.sass", &expanded, &fs).unwrap(), "body {\n  font-size: 12pt;\n}\n");
+    }
+
+    #[test]
+    fn no_semicolon_before_a_closing_brace() {
+        let fs = files(&[("a.scss", "html {\n  line-height: 1.15; /* 1 */\n  -webkit-text-size-adjust: 100%; /* 2 */\n}\nb::before { content: \";}\"; }\n")]);
+        let compressed = Options { style: Style::Compressed, load_paths: vec![] };
+        assert_eq!(compile("a.scss", &compressed, &fs).unwrap(), "html{line-height:1.15;-webkit-text-size-adjust:100%}b::before{content:\";}\"}");
     }
 
     #[test]

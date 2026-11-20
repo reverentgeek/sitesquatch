@@ -30,8 +30,18 @@ export interface KramdownRender {
 	span(text: string): string;
 }
 
-/** HTML without blank lines, so CommonMark keeps reading it as one HTML block. */
-const blank = (html: string) => html.replace(/\n[ \t]*(?=\n)/g, "").replace(/\n{2,}/g, "\n");
+/** What stands in for a blank line inside a `<pre>`, which `restoreBlankLines` takes out after the page's Markdown. */
+const PRE_BLANK = "\u0091kd-blank\u0092";
+
+/**
+ * HTML without blank lines, so CommonMark keeps reading it as one HTML block. A blank line inside
+ * a `<pre>` is the code's own (an indented code block in `<aside markdown="1">` on three of
+ * opensource.guide's pages): it's marked instead, and comes back after the page renders.
+ */
+const blank = (html: string) => html.split(/(<pre\b[\s\S]*?<\/pre>)/i).map((part, i) => (i % 2 === 1 ? part.replace(/\n([ \t]*)(?=\n)/g, `\n$1${PRE_BLANK}`) : part.replace(/\n[ \t]*(?=\n)/g, "").replace(/\n{2,}/g, "\n"))).join("");
+
+/** The page's HTML with the blank lines inside `<pre>` back. */
+export const restoreBlankLines = (html: string) => (html.includes(PRE_BLANK) ? html.replaceAll(PRE_BLANK, "") : html);
 
 /** `source` with every `markdown="1"` element's content rendered, and kramdown's HTML rules applied. */
 export function kramdownHtml(source: string, render: KramdownRender): string {

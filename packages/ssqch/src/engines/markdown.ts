@@ -16,7 +16,7 @@
 // didn't use them). Between processes they're kept in `.cache/ssqch/highlight/fences.json`
 // (see "the cache of highlighted fences" below), so a first build doesn't load syntect's
 // grammars for fences it has highlighted before.
-import { kramdownHtml, withKramdownIds } from "./kramdown-html.ts";
+import { kramdownHtml, restoreBlankLines, withKramdownIds } from "./kramdown-html.ts";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -208,7 +208,13 @@ class WasmMarkdown implements Markdown {
 	render(source: string, data: Data, _ctx: RenderContext): string | Promise<string> {
 		const file = page ?? pageOf(data);
 		this.#ready();
-		if (this.#options.htmlMarkdown) source = this.#inHtml(source, HOOKS, data, file);
+		if (!this.#options.htmlMarkdown) return this.#page(source, data, file);
+		// The blank lines kept inside `<pre>` in `markdown="1"` blocks come back last.
+		const out = this.#page(this.#inHtml(source, HOOKS, data, file), data, file);
+		return typeof out === "string" ? restoreBlankLines(out) : out.then(restoreBlankLines);
+	}
+
+	#page(source: string, data: Data, file: string | undefined): string | Promise<string> {
 		if (!this.#functions.length) return this.#markdown(source, HOOKS, data, file);
 		let asked: Asked[];
 		try {
@@ -221,12 +227,12 @@ class WasmMarkdown implements Markdown {
 	}
 
 	html(text: string, inline: boolean): string {
-		if (this.#options.htmlMarkdown) text = this.#inHtml(text, HOOKS, {}, page, "markdown() in a template");
+		if (this.#options.htmlMarkdown) return restoreBlankLines(this.#markdown(this.#inHtml(text, HOOKS, {}, page, "markdown() in a template"), HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template"));
 		return this.#markdown(text, HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template");
 	}
 
 	plain(text: string, inline: boolean): string {
-		if (this.#options.htmlMarkdown) text = this.#inHtml(text, 0, {}, page, "markdown() from \"ssqch\"");
+		if (this.#options.htmlMarkdown) return restoreBlankLines(this.#markdown(this.#inHtml(text, 0, {}, page, "markdown() from \"ssqch\""), inline ? INLINE : 0, {}, page, undefined, "markdown() from \"ssqch\""));
 		return this.#markdown(text, inline ? INLINE : 0, {}, page, undefined, "markdown() from \"ssqch\"");
 	}
 

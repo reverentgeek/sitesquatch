@@ -89,7 +89,8 @@ test("noise_is_ignored_and_changes_are_classified", async () => {
 	const home = byUrl("/");
 	assert.deepEqual(home.what, ["text", "markup"]);
 	assert.deepEqual(home.notes, ["ids removed (links to them break): #team"]);
-	assert.deepEqual(home.hunks, [{ removed: ["<h2 id=\"team\">"], added: ["<h2>"] }, { removed: ["Old text"], added: ["New text"] }]);
+	// The second is under the heading the first changed, which has its id in the build before.
+	assert.deepEqual(home.hunks, [{ removed: ["<h2 id=\"team\">"], added: ["<h2>"] }, { removed: ["Old text"], added: ["New text"], at: "#team" }]);
 	assert.deepEqual(byUrl("/markup/").what, ["markup"]);
 	const css = byUrl("/assets/index.css");
 	assert.deepEqual(css.renamed, ["assets/index.11111111.css", "assets/index.22222222.css"]);
@@ -97,7 +98,7 @@ test("noise_is_ignored_and_changes_are_classified", async () => {
 	assert.equal(report.changed.length, 3);
 
 	const text = diffText(report, 10, false);
-	assert.ok(text.includes("  ~ /  (text and markup)\n      ids removed (links to them break): #team\n      - <h2 id=\"team\">\n      + <h2>\n      - Old text\n      + New text\n"), text);
+	assert.ok(text.includes("  ~ /  (text and markup)\n      ids removed (links to them break): #team\n      - <h2 id=\"team\">\n      + <h2>\n      @ under #team\n      - Old text\n      + New text\n"), text);
 	assert.ok(text.includes("  ~ /assets/index.css  (index.11111111.css -> index.22222222.css)"), text);
 	assert.ok(text.endsWith("Changes found: 4 pages and 1 other file (3 changed, 1 added, 1 removed); 1 page and 2 other files are the same. The stump has moved.\n"), text);
 	const json = diffJson(report, 1) as { same: boolean; summary: { changed: number }; changed: Array<{ url: string; changedLines: number; hunks: unknown[] }> };

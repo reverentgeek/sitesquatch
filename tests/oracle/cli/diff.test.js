@@ -36,7 +36,9 @@ test("diff_compares_two_builds", () => {
 	for (const expected of [
 		"Added (1)\n  + /new/\n",
 		"Removed (1)\n  - /about/\n",
-		"  ~ /  (text and markup)\n      ids removed (links to them break): #trails\n      - <h2 id=\"trails\">\n      - Trails\n      + <h2 id=\"paths\">\n      + Paths\n      - Pine trail.\n      + Cedar trail.\n",
+		// DELIBERATE (0.11, from the fresh opensource.guide rerun): a change on a page says which
+		// heading it's under, when that's another than the change before's.
+		"  ~ /  (text and markup)\n      ids removed (links to them break): #trails\n      - <h2 id=\"trails\">\n      - Trails\n      + <h2 id=\"paths\">\n      + Paths\n      @ under #trails\n      - Pine trail.\n      + Cedar trail.\n",
 		"Changes found: 3 pages (1 changed, 1 added, 1 removed); 0 pages and 0 other files are the same. The stump has moved.\n",
 	]) {
 		assert.ok(log.includes(expected), `missing ${JSON.stringify(expected)} in\n${log}`);

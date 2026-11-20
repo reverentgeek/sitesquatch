@@ -232,6 +232,11 @@ test("import_jekyll_drafts_a_config_that_builds", () => {
 		"index.html": "---\nlayout: default\n---\n{% for post in site.posts %}{{ post.data.title }}{% endfor %}\n",
 		"assets/img/stump.png": "png",
 		"robots.txt": "User-agent: *\n",
+		// Jekyll renders a file with front matter, and copies a collection's file without it.
+		"assets/app.js": "---\n---\nconst title = {{ site.title | jsonify }};\n",
+		"_guides/zh/README.md": "Read me as I am\n",
+		"Gemfile.lock": "GEM\n  specs:\n    jekyll (3.10.0)\n",
+		"_guides/old.md": "---\ntitle: Moved\nredirect_from: [/legacy/]\n---\nMoved\n",
 	});
 	let r = ssqch(["import", "jekyll", dir]);
 	assert.ok(r.ok, r.log);
@@ -249,7 +254,7 @@ test("import_jekyll_drafts_a_config_that_builds", () => {
 	r = ssqch(["import", "jekyll", dir, "--write"]);
 	assert.ok(r.ok, r.log);
 	const config = read(dir, "ssqch.config.js");
-	for (const part of ["trimAfterFrontMatter: true,", "markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets\"],", "data: { site, image: \"/og.png\" },", "plugins: [redirectsPlugin(), sitemapPlugin({ url: site.url })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	for (const part of ["trimAfterFrontMatter: true,", "markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets/img\", { \"_guides/zh/README.md\": \"guides/zh/README.md\" }],", "data: { site, image: \"/og.png\" },", "plugins: [redirectsPlugin(), sitemapPlugin({ url: site.url })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(r.ok && !r.log.includes("`//`"), r.log);
 	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<aside>\n<p><em>Hush</em></p>\n</aside>"), read(dir, "_site/guides/trail/index.html"));
@@ -257,6 +262,12 @@ test("import_jekyll_drafts_a_config_that_builds", () => {
 	assert.ok(read(dir, "_site/2026/01/02/pine/index.html").includes("Pine 3") && read(dir, "_site/2026/01/02/pine/index.html").includes("/edit/_posts/2026-01-02-pine.md"), read(dir, "_site/2026/01/02/pine/index.html"));
 	assert.ok(read(dir, "_site/index.html").includes("Pine"), read(dir, "_site/index.html"));
 	assert.ok(isFile(dir, "_site/assets/img/stump.png") && isFile(dir, "_site/robots.txt") && !isFile(dir, "_site/README/index.html"));
+	// The rendered `.js` keeps its name; the collection's README is copied as it is; the old URL gets
+	// jekyll-redirect-from's page; the generator is Jekyll's.
+	assert.equal(read(dir, "_site/assets/app.js"), "const title = \"Trail Guide\";\n");
+	assert.equal(read(dir, "_site/guides/zh/README.md"), "Read me as I am\n");
+	assert.ok(read(dir, "_site/legacy/index.html").startsWith("<!DOCTYPE html>\n<html lang=\"en-US\">\n  <meta charset=\"utf-8\">\n  <title>Redirecting&hellip;</title>"), read(dir, "_site/legacy/index.html"));
+	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<meta name=\"generator\" content=\"Jekyll v3.10.0\" />") && read(dir, "_site/guides/trail/index.html").includes("\"@type\":\"BlogPosting\""), read(dir, "_site/guides/trail/index.html"));
 	r = ssqch(["import", "jekyll", `${dir}/assets`]);
 	assert.ok(!r.ok && r.log.includes("there's no _config.yml in"), r.log);
 });

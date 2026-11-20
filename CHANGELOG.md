@@ -144,8 +144,23 @@ where that version matches.
   does, and warns on each build.
 - The SEO docs have an include that writes jekyll-seo-tag's tags.
 
+- `ssqch import jekyll` writes more of what Jekyll's plugins wrote, so the first build matches:
+  the SEO include has jekyll-seo-tag's generator tag (Jekyll's version, from `Gemfile.lock`),
+  article tags for dated pages, `twitter:site`, `article:publisher` and its JSON-LD;
+  jekyll-redirect-from's page for each old URL (a redirect hook); and Rouge's classes on inline
+  code for a GitHub Pages site (a code hook). A file with front matter in any extension (`.js`,
+  `.xml`, `.txt`) gets an engine and a permalink that keeps its name, and a collection's file
+  without front matter is copied as Jekyll copied it. opensource.guide's import matches Jekyll's
+  build on 247 of 404 pages, up from 1.
+- `ssqch diff` says which heading a page's change is under (`@ under #its-id`), and the JSON has it
+  as each hunk's `at`.
+
 ### Changed
 
+- A link's or image's hook gets no `title` (null) when it has none, where it got `""`, which
+  Liquid counts as true.
+- `ssqch import`, `ssqch diff` and `ssqch baseline` list only the global options that do
+  something for them in `--help` (all are still accepted).
 - ssqch's smart quotes close an open quote where pulldown-cmark opened a second one (a `"`
   between two letters, as in `比如"进展 ISSUE-123"；`).
 - A `_site` folder at the top of the input folder (where Jekyll and Eleventy write) is skipped, so
@@ -176,6 +191,10 @@ where that version matches.
 
 ### Fixed
 
+- `sassPlugin()`'s compressed CSS kept a `;` before `}` when a comment followed the last
+  declaration (normalize.css's `-webkit-text-size-adjust: 100%; /* 2 */`).
+- With `htmlMarkdown: "kramdown"`, an indented code block inside a `markdown="1"` element lost its
+  blank lines.
 - `ssqch import jekyll` wrote collection permalinks with `//` in front (`//ar/metrics/`): a
   page's `filePathStem` starts with its own `/`. A build now warns about any page whose URL has
   `//` in it.

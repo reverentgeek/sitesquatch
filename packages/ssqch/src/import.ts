@@ -1597,8 +1597,8 @@ const LIQUID_TAGS = new Set(["assign", "capture", "endcapture", "case", "when", 
 
 /** The Jekyll plugins a site can name, and what each is in ssqch: an import and a plugin, or what to do. */
 const JEKYLL_PLUGINS: Record<string, { use?: [string, string]; say: string }> = {
-	"jekyll-sitemap": { use: ["import { sitemapPlugin } from \"ssqch/sitemap\";", "sitemapPlugin({ url: site.url })"], say: "`sitemapPlugin({ url: site.url })`, in the draft (an empty `url` writes paths, as jekyll-sitemap did, and warns)" },
-	"jekyll-redirect-from": { use: ["import { redirectsPlugin } from \"ssqch/redirects\";", "redirectsPlugin()"], say: "`redirectsPlugin()`, in the draft: `redirect_from` works as it is; `_includes/hooks/redirect.*` is its page's markup" },
+	"jekyll-sitemap": { use: ["import { sitemapPlugin } from \"ssqch/sitemap\";", "sitemapPlugin({ url: site.url })"], say: "`sitemapPlugin({ url: site.url })`, in the draft (an empty `url` writes paths, as jekyll-sitemap did, and warns). jekyll-sitemap also wrote `/robots.txt` (`Sitemap: <url>/sitemap.xml`) when the site had none: a `robots.txt` of the site's own" },
+	"jekyll-redirect-from": { use: ["import { redirectsPlugin } from \"ssqch/redirects\";", "redirectsPlugin()"], say: "`redirectsPlugin()`, in the draft: `redirect_from` works as it is (templates read it as `aliases`); `_includes/hooks/redirect.*` is its page's markup. jekyll-redirect-from also wrote `/redirects.json` (each old URL and the new one): a template over `collections.all` that writes each page's `aliases`" },
 	"jekyll-feed": { use: ["import { rssPlugin } from \"ssqch/rss\";", "rssPlugin()"], say: "`rssPlugin()` is in the draft; the feed itself is a template of the site's (`feed.xml.liquid` with `permalink: /feed.xml`): `ssqch docs rssPlugin`" },
 	"jekyll-seo-tag": { say: "`{% seo %}` becomes an include: `ssqch docs \"From jekyll-seo-tag\"` has one that writes its tags" },
 	"jekyll-github-metadata": { say: "`site.github` isn't there: put what the templates read (`site.github.repository_nwo`, `site.github.url`) in the config's `data`" },
@@ -1615,7 +1615,21 @@ const JEKYLL_PLUGINS: Record<string, { use?: [string, string]; say: string }> = 
 };
 
 /** jekyll-seo-tag's tags as an include (the one `ssqch docs "From jekyll-seo-tag"` shows; a test keeps them the same). */
-export const SEO_INCLUDE = "{%- comment -%} _includes/seo.liquid {%- endcomment -%}\n{%- assign site_title = site.title | default: site.name | markdownify | strip_html | normalize_whitespace | escape_once -%}\n{%- assign page_title = title | markdownify | strip_html | normalize_whitespace | escape_once | default: site_title -%}\n{%- assign about = description | default: site.description | markdownify | strip_html | normalize_whitespace | escape_once -%}\n{%- if page_title != site_title -%}{%- assign full_title = page_title | append: \" | \" | append: site_title -%}{%- elsif site.description -%}{%- assign full_title = site_title | append: \" | \" | append: about -%}{%- else -%}{%- assign full_title = site_title -%}{%- endif -%}\n{%- assign canonical = site.url | append: page.url -%}\n<!-- Begin Jekyll SEO tag v2.8.0 -->\n<title>{{ full_title }}</title>\n<meta property=\"og:title\" content=\"{{ page_title }}\" />\n<meta property=\"og:locale\" content=\"{{ lang | default: site.lang | default: \"en_US\" | replace: \"-\", \"_\" }}\" />\n{% if about %}<meta name=\"description\" content=\"{{ about }}\" />\n<meta property=\"og:description\" content=\"{{ about }}\" />\n{% endif %}{% if site.url %}<link rel=\"canonical\" href=\"{{ canonical }}\" />\n<meta property=\"og:url\" content=\"{{ canonical }}\" />\n{% endif %}<meta property=\"og:site_name\" content=\"{{ site_title }}\" />\n{% if image %}<meta property=\"og:image\" content=\"{{ site.url | append: image }}\" />\n{% endif %}<meta property=\"og:type\" content=\"website\" />\n<meta name=\"twitter:card\" content=\"{% if image %}summary_large_image{% else %}summary{% endif %}\" />\n{% if image %}<meta property=\"twitter:image\" content=\"{{ site.url | append: image }}\" />\n{% endif %}<meta property=\"twitter:title\" content=\"{{ page_title }}\" />\n<!-- End Jekyll SEO tag -->\n";
+export const SEO_INCLUDE = "{%- comment -%} _includes/seo.liquid {%- endcomment -%}\n{%- assign site_title = site.title | default: site.name | markdownify | strip_html | normalize_whitespace | escape_once -%}\n{%- assign page_title = title | markdownify | strip_html | normalize_whitespace | escape_once | default: site_title -%}\n{%- assign about = description | default: site.description | markdownify | strip_html | normalize_whitespace | escape_once -%}\n{%- if page_title != site_title -%}{%- assign full_title = page_title | append: \" | \" | append: site_title -%}{%- elsif site.description -%}{%- assign full_title = site_title | append: \" | \" | append: about -%}{%- else -%}{%- assign full_title = site_title -%}{%- endif -%}\n{%- assign canonical = site.url | append: page.url -%}\n{%- if image -%}{%- assign image_url = site.url | append: image -%}{%- endif -%}\n{%- if date or tags -%}{%- assign published = page.date | date_to_xmlschema -%}{%- endif -%}\n{%- if page.url == \"/\" or page.url == \"/about/\" -%}{%- assign ld_type = \"WebSite\" -%}{%- elsif published -%}{%- assign ld_type = \"BlogPosting\" -%}{%- else -%}{%- assign ld_type = \"WebPage\" -%}{%- endif -%}\n<!-- Begin Jekyll SEO tag v2.8.0 -->\n<title>{{ full_title }}</title>\n<meta name=\"generator\" content=\"{{ ssqch.generator }}\" />\n<meta property=\"og:title\" content=\"{{ page_title }}\" />\n<meta property=\"og:locale\" content=\"{{ lang | default: site.lang | default: \"en_US\" | replace: \"-\", \"_\" }}\" />\n{% if about %}<meta name=\"description\" content=\"{{ about }}\" />\n<meta property=\"og:description\" content=\"{{ about }}\" />\n{% endif %}{% if site.url %}<link rel=\"canonical\" href=\"{{ canonical }}\" />\n<meta property=\"og:url\" content=\"{{ canonical }}\" />\n{% endif %}<meta property=\"og:site_name\" content=\"{{ site_title }}\" />\n{% if image_url %}<meta property=\"og:image\" content=\"{{ image_url }}\" />\n{% endif %}{% if published %}<meta property=\"og:type\" content=\"article\" />\n<meta property=\"article:published_time\" content=\"{{ published }}\" />\n{% else %}<meta property=\"og:type\" content=\"website\" />\n{% endif %}<meta name=\"twitter:card\" content=\"{% if image_url %}summary_large_image{% else %}summary{% endif %}\" />\n{% if image_url %}<meta property=\"twitter:image\" content=\"{{ image_url }}\" />\n{% endif %}<meta property=\"twitter:title\" content=\"{{ page_title }}\" />\n{% if site.twitter.username %}<meta name=\"twitter:site\" content=\"@{{ site.twitter.username | remove: \"@\" }}\" />\n{% endif %}{% if site.facebook.publisher %}<meta property=\"article:publisher\" content=\"{{ site.facebook.publisher }}\" />\n{% endif %}<script type=\"application/ld+json\">\n{\"@context\":\"https://schema.org\",\"@type\":{{ ld_type | jsonify }}{% if published %},\"dateModified\":{{ published | jsonify }},\"datePublished\":{{ published | jsonify }}{% endif %}{% if about %},\"description\":{{ about | jsonify }}{% endif %},\"headline\":{{ page_title | jsonify }}{% if image_url %},\"image\":{{ image_url | jsonify }}{% endif %}{% if ld_type == \"BlogPosting\" %},\"mainEntityOfPage\":{\"@type\":\"WebPage\",\"@id\":{{ canonical | jsonify }}}{% endif %}{% if ld_type == \"WebSite\" %},\"name\":{{ site_title | jsonify }}{% endif %}{% if site.logo %},\"publisher\":{\"@type\":\"Organization\",\"logo\":{\"@type\":\"ImageObject\",\"url\":{{ site.url | append: site.logo | jsonify }}}}{% endif %},\"url\":{{ canonical | jsonify }}}</script>\n<!-- End Jekyll SEO tag -->\n";
+
+/** jekyll-redirect-from 0.16's page for an old URL, as an ssqch redirect hook (`redirect.to`). */
+const JEKYLL_REDIRECT_PAGE = `<!DOCTYPE html>
+<html lang="en-US">
+  <meta charset="utf-8">
+  <title>Redirecting&hellip;</title>
+  <link rel="canonical" href="{{ redirect.to }}">
+  <script>location="{{ redirect.to }}"</script>
+  <meta http-equiv="refresh" content="0; url={{ redirect.to }}">
+  <meta name="robots" content="noindex">
+  <h1>Redirecting&hellip;</h1>
+  <a href="{{ redirect.to }}">Click here if you are not redirected.</a>
+</html>
+`;
 
 /** github-pages' gem turns these on by itself. */
 const GITHUB_PAGES_PLUGINS = ["jekyll-github-metadata", "jekyll-relative-links", "jekyll-optional-front-matter", "jekyll-titles-from-headings", "jekyll-default-layout", "jekyll-readme-index"];
@@ -1803,7 +1817,7 @@ export function jekyll(dir: string): Plan {
 			continue;
 		}
 		if (text === undefined) continue;
-		if (front && !["md", "markdown", "html", "liquid", "xml", "txt", "json", "scss", "sass", "css"].includes(ext)) frontMatterOther.push(entry.rel);
+		if (front && !["md", "markdown", "html", "liquid", "scss", "sass"].includes(ext)) frontMatterOther.push(entry.rel);
 		if (!(templateDir || front) || ["scss", "sass"].includes(ext)) continue;
 		let [next, changes, left] = rewriteJekyllTemplate(text, collectionList, dataNames);
 		// `{% seo %}` is jekyll-seo-tag's: the include written below.
@@ -1827,7 +1841,14 @@ export function jekyll(dir: string): Plan {
 	}
 	if (seo) {
 		if (isFile(path.join(dir, includesDir, "seo.liquid"))) plan.byHand.push([`${includesDir}/seo.liquid`, "it's there already, so jekyll-seo-tag's include wasn't written: `{% seo %}` now includes it"]);
-		else plan.newFiles.push([`${includesDir}/seo.liquid`, "jekyll-seo-tag's tags, for `{% seo %}`: add the ones your site's options turn on (`ssqch docs \"From jekyll-seo-tag\"`)", SEO_INCLUDE]);
+		else {
+			// Jekyll's version in the generator tag, as jekyll-seo-tag wrote it, so the first build
+			// matches; `{{ ssqch.generator }}` once the move is done.
+			const lock = readUtf8(path.join(dir, "Gemfile.lock")) ?? "";
+			const version = /^\s{4}jekyll \(([\d.]+)\)$/m.exec(lock)?.[1];
+			const include = version ? SEO_INCLUDE.replace("{{ ssqch.generator }}", `Jekyll v${version}`) : SEO_INCLUDE;
+			plan.newFiles.push([`${includesDir}/seo.liquid`, `jekyll-seo-tag's tags, for \`{% seo %}\`${version ? `, with Jekyll v${version} as the generator (\`{{ ssqch.generator }}\` once the move is done)` : ""}: add the ones your site's options turn on (\`ssqch docs "From jekyll-seo-tag"\`)`, include]);
+		}
 		tags.delete("seo");
 	}
 	for (const [name, [n, at]] of [...tags].sort(([a], [b]) => compareText(a, b))) {
@@ -1835,7 +1856,25 @@ export function jekyll(dir: string): Plan {
 	}
 	if (ial) plan.byHand.push([".", `${ial} kramdown attribute lists (\`{: .class}\`): ssqch's Markdown doesn't read them, so they print as text. A \`{.class}\` on a heading works (\`## Title {#id .class}\`); for the others, HTML, or a container (\`::: name\`)`]);
 	if (markdownAttr) plan.byHand.push([".", `${markdownAttr} \`markdown="1"\` elements: \`htmlMarkdown: "kramdown"\` (in the draft) reads them as kramdown does`]);
-	for (const rel of frontMatterOther) plan.byHand.push([rel, "has front matter, so Jekyll renders it: in ssqch that's an engine for its extension (`engines: { js: (s) => s }`, the extension in `templateFormats`, and `\"render\": \"liquid,js\"` in its folder's directory data): `ssqch docs \"Text files with front matter\"`"]);
+	// Jekyll renders any file with front matter (`assets/js/search_worker.js`, `feed.xml`): in ssqch
+	// that's an engine for its extension that hands the text back, the extension in
+	// `templateFormats`, and in the file's front matter, Liquid first and a permalink that keeps
+	// its name.
+	const otherFormats = [...new Set(frontMatterOther.map((rel) => asciiLower(extensionOf(rel.split("/").pop()!))))].sort(compareText);
+	for (const rel of frontMatterOther) {
+		const ext = asciiLower(extensionOf(rel.split("/").pop()!));
+		const at = plan.edits.findIndex(([file]) => file === rel);
+		const text = at >= 0 ? plan.edits[at][2] : readUtf8(path.join(dir, ...rel.split("/")));
+		if (text === undefined) continue;
+		const fence = /^---[ \t]*\r?\n/.exec(text)!;
+		const body = text.slice(fence[0].length);
+		const has = (key: string) => new RegExp(`^${key}\\s*:`, "m").test(body.slice(0, Math.max(0, body.search(/^---[ \t]*$/m))));
+		const keys = [`render: liquid,${ext}`, ...(has("permalink") ? [] : [`permalink: "{{ page.filePathStem }}.${ext}"`])];
+		const next = `${fence[0]}${keys.join("\n")}\n${body}`;
+		const change = `front matter: render: liquid,${ext}${has("permalink") ? "" : ", and a permalink that keeps its name"} (Jekyll rendered it)`;
+		if (at >= 0) plan.edits[at] = [rel, [...plan.edits[at][1], change], next];
+		else plan.edits.push([rel, [change], next]);
+	}
 
 	// Collections and posts: directory data with the tag, the layout `defaults` gave, and the permalink.
 	const defaults = Array.isArray(config.defaults) ? (config.defaults as unknown[]).filter(isPlainObject) : [];
@@ -1909,6 +1948,23 @@ export function jekyll(dir: string): Plan {
 		if (top.startsWith("_")) continue;
 		topLevel.set(top, [...(topLevel.get(top) ?? []), rel]);
 	}
+	// A file without front matter in a collection that has pages is copied as it is, without the
+	// collection's folder (`_articles/zh-hant/README.md` is `/zh-hant/README.md` with `/:path/`), or
+	// under the collection's name otherwise. In ssqch a `.md` there would be a page.
+	const copied: Array<[string, string]> = [];
+	for (const [name, settings] of Object.entries(collections)) {
+		const st = isPlainObject(settings) ? settings : {};
+		if (st.output !== true) continue;
+		const folder = collectionsDir ? `${collectionsDir}/_${name}` : `_${name}`;
+		const pattern = typeof st.permalink === "string" ? st.permalink : "/:collection/:path/";
+		const prefix = /^\/:path\b/.test(pattern) ? "" : `${name}/`;
+		for (const e of entries) {
+			if (!e.isFile || !e.rel.startsWith(`${folder}/`) || untracked.has(e.rel)) continue;
+			const text = readUtf8(e.abs);
+			if (text !== undefined && hasFrontMatter(text)) continue;
+			copied.push([e.rel, `${prefix}${e.rel.slice(folder.length + 1)}`]);
+		}
+	}
 	for (const [top, files] of [...topLevel].sort(([a], [b]) => compareText(a, b))) {
 		const whole = top !== "" && ![...front].some((f) => f.startsWith(`${top}/`));
 		if (whole) passthrough.push(top);
@@ -1950,6 +2006,16 @@ export function jekyll(dir: string): Plan {
 		}
 		if (name !== "jekyll-seo-tag" || seo === 0) plan.byHand.push(["Gemfile", `${name} -> ${known.say}`]);
 	}
+	// GitHub Pages' kramdown puts Rouge's classes on inline code (`default_lang: plaintext`): a
+	// `code` hook writes them, so the pages match and the site's CSS for them keeps working.
+	const rouge = named.has("github-pages") || (isPlainObject(config.kramdown) && isPlainObject(config.kramdown.syntax_highlighter_opts) && config.kramdown.syntax_highlighter_opts.default_lang !== undefined);
+	if (rouge && !entries.some((e) => e.rel.startsWith(`${includesDir}/hooks/code.`))) {
+		plan.newFiles.push([`${includesDir}/hooks/code.liquid`, "Rouge's classes on inline code, as GitHub Pages' kramdown wrote them", "<code class=\"language-plaintext highlighter-rouge\">{{ code.code | escape }}</code>"]);
+	}
+	// jekyll-redirect-from's own page for each old URL, as ssqch's redirect hook, so the pages match.
+	if (named.has("jekyll-redirect-from") && !entries.some((e) => e.rel.startsWith(`${includesDir}/hooks/redirect.`))) {
+		plan.newFiles.push([`${includesDir}/hooks/redirect.liquid`, "jekyll-redirect-from's page for each old URL", JEKYLL_REDIRECT_PAGE]);
+	}
 	if (named.has("github-pages")) plan.byHand.push(["Gemfile", "github-pages' default theme (jekyll-theme-primer) writes `/assets/css/style.css`: nothing in ssqch, so check whether a page links to it"]);
 	const sass = isDir(path.join(dir, "_sass")) || entries.some((e) => e.isFile && /\.s[ac]ss$/.test(e.name) && front.has(e.rel));
 	if (sass) {
@@ -1967,7 +2033,10 @@ export function jekyll(dir: string): Plan {
 	if (typeof config.markdown === "string" && !/kramdown/i.test(config.markdown)) plan.byHand.push([configFile!, `markdown: ${config.markdown}: the draft's options are kramdown's; ssqch's Markdown is CommonMark with extensions (\`ssqch docs markdown\`)`]);
 	let out = `// A first draft, written by \`ssqch import jekyll\` from ${configFile}.\n// \`ssqch docs --from jekyll\` has the whole mapping.\n${[...new Set(imports)].join("\n")}\n\n`;
 	out += `// \`site.title\` and every other key of ${configFile} in templates read this.\nconst site = readData(${JSON.stringify(configFile)});\n\nexport default defineConfig({\n`;
-	out += "  // Markdown and HTML pages run through Liquid first, as in Jekyll.\n  templateFormats: [\"liquid\", \"md\", \"html\"],\n  markdownEngine: \"liquid\",\n  htmlEngine: \"liquid\",\n";
+	const builtIn = new Set(["txt"]);
+	out += `  // Markdown and HTML pages run through Liquid first, as in Jekyll.\n  templateFormats: ${JSON.stringify(["liquid", "md", "html", ...otherFormats]).replaceAll(",", ", ")},\n  markdownEngine: "liquid",\n  htmlEngine: "liquid",\n`;
+	const own = otherFormats.filter((e) => !builtIn.has(e));
+	if (own.length) out += `  // Files with front matter that Jekyll rendered (their front matter puts Liquid first): the text as it is.\n  engines: { ${own.map((e) => `${/^[a-z_]\w*$/.test(e) ? e : JSON.stringify(e)}: (text) => text`).join(", ")} },\n`;
 	const dirs = [`layouts: ${JSON.stringify(layoutsDir)}`];
 	if (includesDir !== "_includes") dirs.push(`includes: ${JSON.stringify(includesDir)}`);
 	if (dataDir !== "_data") dirs.push(`data: ${JSON.stringify(dataDir)}`);
@@ -1976,7 +2045,8 @@ export function jekyll(dir: string): Plan {
 	out += "  // Jekyll drops the blank lines after the closing `---`.\n  trimAfterFrontMatter: true,\n";
 	out += `  // kramdown's habits: markdown="1", its heading ids, smart quotes, no bare-URL links.\n  markdown: { ${markdown.join(", ")} },\n`;
 	out += `  // ${configFile}'s \`exclude\`, and what Jekyll leaves out by itself.\n  ignore: [${ignores.map((g) => JSON.stringify(g)).join(", ")}],\n`;
-	if (passthrough.length) out += `  // What Jekyll copied as it is: files without front matter.\n  passthrough: [${passthrough.map((p) => JSON.stringify(p)).join(", ")}],\n`;
+	const passed = [...passthrough.map((p) => JSON.stringify(p)), ...copied.map(([from, to]) => `{ ${JSON.stringify(from)}: ${JSON.stringify(to)} }`)];
+	if (passed.length) out += `  // What Jekyll copied as it is: files without front matter.\n  passthrough: [${passed.join(", ")}],\n`;
 	const pageDefaults = Object.entries(everyPage).map(([k, v]) => `${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${JSON.stringify(v)}`);
 	out += pageDefaults.length ? `  // ${configFile}'s \`defaults\` for every page.\n  data: { site, ${pageDefaults.join(", ")} },\n` : "  data: { site },\n";
 	out += `  filters: {\n    // Plugins' tags and filters go here: name: (...args) => result\n  },\n  plugins: [${plugins.join(", ")}],\n});\n`;
