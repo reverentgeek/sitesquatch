@@ -1597,8 +1597,8 @@ const LIQUID_TAGS = new Set(["assign", "capture", "endcapture", "case", "when", 
 
 /** The Jekyll plugins a site can name, and what each is in ssqch: an import and a plugin, or what to do. */
 const JEKYLL_PLUGINS: Record<string, { use?: [string, string]; say: string }> = {
-	"jekyll-sitemap": { use: ["import { sitemapPlugin } from \"ssqch/sitemap\";", "sitemapPlugin({ url: site.url })"], say: "`sitemapPlugin({ url: site.url })`, in the draft (an empty `url` writes paths, as jekyll-sitemap did, and warns). jekyll-sitemap also wrote `/robots.txt` (`Sitemap: <url>/sitemap.xml`) when the site had none: a `robots.txt` of the site's own" },
-	"jekyll-redirect-from": { use: ["import { redirectsPlugin } from \"ssqch/redirects\";", "redirectsPlugin()"], say: "`redirectsPlugin()`, in the draft: `redirect_from` works as it is (templates read it as `aliases`); `_includes/hooks/redirect.*` is its page's markup. jekyll-redirect-from also wrote `/redirects.json` (each old URL and the new one): a template over `collections.all` that writes each page's `aliases`" },
+	"jekyll-sitemap": { use: ["import { sitemapPlugin } from \"ssqch/sitemap\";", "sitemapPlugin({ url: site.url })"], say: "`sitemapPlugin({ url: site.url })`, in the draft (an empty `url` writes paths, as jekyll-sitemap did, and warns). jekyll-sitemap also wrote `/robots.txt` when the site had none: `robots.liquid`, in the plan. Its own sitemap's format (the order, `xsi:schemaLocation`) is a template of your own if the bytes matter" },
+	"jekyll-redirect-from": { use: ["import { redirectsPlugin } from \"ssqch/redirects\";", "redirectsPlugin()"], say: "`redirectsPlugin()`, in the draft: `redirect_from` works as it is (templates read it as `aliases`); `_includes/hooks/redirect.*` is its page's markup. jekyll-redirect-from also wrote `/redirects.json`: `redirects.liquid`, in the plan" },
 	"jekyll-feed": { use: ["import { rssPlugin } from \"ssqch/rss\";", "rssPlugin()"], say: "`rssPlugin()` is in the draft; the feed itself is a template of the site's (`feed.xml.liquid` with `permalink: /feed.xml`): `ssqch docs rssPlugin`" },
 	"jekyll-seo-tag": { say: "`{% seo %}` becomes an include: `ssqch docs \"From jekyll-seo-tag\"` has one that writes its tags" },
 	"jekyll-github-metadata": { say: "`site.github` isn't there: put what the templates read (`site.github.repository_nwo`, `site.github.url`) in the config's `data`" },
@@ -1618,18 +1618,42 @@ const JEKYLL_PLUGINS: Record<string, { use?: [string, string]; say: string }> = 
 export const SEO_INCLUDE = "{%- comment -%} _includes/seo.liquid {%- endcomment -%}\n{%- assign site_title = site.title | default: site.name | markdownify | strip_html | normalize_whitespace | escape_once -%}\n{%- assign page_title = title | markdownify | strip_html | normalize_whitespace | escape_once | default: site_title -%}\n{%- assign about = description | default: site.description | markdownify | strip_html | normalize_whitespace | escape_once -%}\n{%- if page_title != site_title -%}{%- assign full_title = page_title | append: \" | \" | append: site_title -%}{%- elsif site.description -%}{%- assign full_title = site_title | append: \" | \" | append: about -%}{%- else -%}{%- assign full_title = site_title -%}{%- endif -%}\n{%- assign canonical = site.url | append: page.url -%}\n{%- if image -%}{%- assign image_url = site.url | append: image -%}{%- endif -%}\n{%- if date or tags -%}{%- assign published = page.date | date_to_xmlschema -%}{%- endif -%}\n{%- if page.url == \"/\" or page.url == \"/about/\" -%}{%- assign ld_type = \"WebSite\" -%}{%- elsif published -%}{%- assign ld_type = \"BlogPosting\" -%}{%- else -%}{%- assign ld_type = \"WebPage\" -%}{%- endif -%}\n<!-- Begin Jekyll SEO tag v2.8.0 -->\n<title>{{ full_title }}</title>\n<meta name=\"generator\" content=\"{{ ssqch.generator }}\" />\n<meta property=\"og:title\" content=\"{{ page_title }}\" />\n<meta property=\"og:locale\" content=\"{{ lang | default: site.lang | default: \"en_US\" | replace: \"-\", \"_\" }}\" />\n{% if about %}<meta name=\"description\" content=\"{{ about }}\" />\n<meta property=\"og:description\" content=\"{{ about }}\" />\n{% endif %}{% if site.url %}<link rel=\"canonical\" href=\"{{ canonical }}\" />\n<meta property=\"og:url\" content=\"{{ canonical }}\" />\n{% endif %}<meta property=\"og:site_name\" content=\"{{ site_title }}\" />\n{% if image_url %}<meta property=\"og:image\" content=\"{{ image_url }}\" />\n{% endif %}{% if published %}<meta property=\"og:type\" content=\"article\" />\n<meta property=\"article:published_time\" content=\"{{ published }}\" />\n{% else %}<meta property=\"og:type\" content=\"website\" />\n{% endif %}<meta name=\"twitter:card\" content=\"{% if image_url %}summary_large_image{% else %}summary{% endif %}\" />\n{% if image_url %}<meta property=\"twitter:image\" content=\"{{ image_url }}\" />\n{% endif %}<meta property=\"twitter:title\" content=\"{{ page_title }}\" />\n{% if site.twitter.username %}<meta name=\"twitter:site\" content=\"@{{ site.twitter.username | remove: \"@\" }}\" />\n{% endif %}{% if site.facebook.publisher %}<meta property=\"article:publisher\" content=\"{{ site.facebook.publisher }}\" />\n{% endif %}<script type=\"application/ld+json\">\n{\"@context\":\"https://schema.org\",\"@type\":{{ ld_type | jsonify }}{% if published %},\"dateModified\":{{ published | jsonify }},\"datePublished\":{{ published | jsonify }}{% endif %}{% if about %},\"description\":{{ about | jsonify }}{% endif %},\"headline\":{{ page_title | jsonify }}{% if image_url %},\"image\":{{ image_url | jsonify }}{% endif %}{% if ld_type == \"BlogPosting\" %},\"mainEntityOfPage\":{\"@type\":\"WebPage\",\"@id\":{{ canonical | jsonify }}}{% endif %}{% if ld_type == \"WebSite\" %},\"name\":{{ site_title | jsonify }}{% endif %}{% if site.logo %},\"publisher\":{\"@type\":\"Organization\",\"logo\":{\"@type\":\"ImageObject\",\"url\":{{ site.url | append: site.logo | jsonify }}}}{% endif %},\"url\":{{ canonical | jsonify }}}</script>\n<!-- End Jekyll SEO tag -->\n";
 
 /** jekyll-redirect-from 0.16's page for an old URL, as an ssqch redirect hook (`redirect.to`). */
-const JEKYLL_REDIRECT_PAGE = `<!DOCTYPE html>
+const JEKYLL_REDIRECT_PAGE = `{%- comment -%} jekyll-redirect-from writes the new URL whole: site.url in front of a path. {%- endcomment -%}
+{%- assign to = redirect.to -%}{%- unless to contains "://" -%}{%- assign to = site.url | append: redirect.to -%}{%- endunless -%}
+<!DOCTYPE html>
 <html lang="en-US">
   <meta charset="utf-8">
   <title>Redirecting&hellip;</title>
-  <link rel="canonical" href="{{ redirect.to }}">
-  <script>location="{{ redirect.to }}"</script>
-  <meta http-equiv="refresh" content="0; url={{ redirect.to }}">
+  <link rel="canonical" href="{{ to }}">
+  <script>location="{{ to }}"</script>
+  <meta http-equiv="refresh" content="0; url={{ to }}">
   <meta name="robots" content="noindex">
   <h1>Redirecting&hellip;</h1>
-  <a href="{{ redirect.to }}">Click here if you are not redirected.</a>
+  <a href="{{ to }}">Click here if you are not redirected.</a>
 </html>
 `;
+
+/** jekyll-redirect-from's `/redirects.json`: each old URL and the new one, whole. */
+const JEKYLL_REDIRECTS_JSON = `---
+permalink: /redirects.json
+excludeFromCollections: true
+---
+{%- comment -%} jekyll-redirect-from's redirects.json: each old URL and the new one. {%- endcomment -%}
+{%- assign docs = collections.all | sort: "inputPath" -%}
+{%- assign first = true -%}
+{ {%- for doc in docs -%}{%- for from in doc.data.aliases -%}{%- unless first %},{% endunless -%}{{ from | jsonify }}:{{ site.url | append: doc.url | jsonify }}{%- assign first = false -%}{%- endfor -%}{%- endfor -%} }`;
+
+/** jekyll-sitemap's `/robots.txt`, which it wrote when the site had none. */
+const JEKYLL_ROBOTS = `---
+permalink: /robots.txt
+excludeFromCollections: true
+---
+Sitemap: {{ site.url }}/sitemap.xml
+`;
+
+/** Rouge's wrapper for a code block, as GitHub Pages' kramdown writes one (`default_lang: plaintext`). */
+const ROUGE_FENCE = `<div class="language-{% if fence.lang != "" %}{{ fence.lang }}{% else %}plaintext{% endif %} highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{{ fence.code | escape }}</code></pre></div></div>`;
+
 
 /** github-pages' gem turns these on by itself. */
 const GITHUB_PAGES_PLUGINS = ["jekyll-github-metadata", "jekyll-relative-links", "jekyll-optional-front-matter", "jekyll-titles-from-headings", "jekyll-default-layout", "jekyll-readme-index"];
@@ -1683,7 +1707,33 @@ export function jekyllPermalink(pattern: string, folder: string): string | undef
 /** What a collection item has itself in ssqch (beside `data`); any other key a Jekyll template reads on one is front matter, under `data`. */
 const ITEM_KEYS = new Set(["url", "date", "page", "data", "templateContent", "inputPath", "outputPath", "fileSlug", "filePathStem"]);
 
-export function rewriteJekyllTemplate(text: string, collections: readonly string[] = [], dataNames: readonly string[] = []): [string, string[], string[]] {
+/**
+ * The variables in a template that hold a collection's items: loop variables over a collection
+ * (`site.articles` or `collections.articles`), or over a variable assigned from one (`{% assign
+ * guides = collections.articles | where: "lang", page.lang %}`), and what `first` and `last` take.
+ */
+export function collectionItems(text: string, lists: readonly string[]): { isList: (expr: string) => boolean; items: Set<string> } {
+	const fromList = new RegExp(`(?:collections|site)\\.(?:${lists.join("|")})\\b`);
+	const listVars = new Set<string>();
+	for (const m of text.matchAll(/\{%-?\s*assign\s+([A-Za-z_][\w-]*)\s*=\s*([^%]*?)-?%\}/g)) if (fromList.test(m[2]) && !/\|\s*(?:first|last|size)\b/.test(m[2])) listVars.add(m[1]);
+	const isList = (expr: string) => fromList.test(expr) || [...listVars].some((v) => new RegExp(`^\\s*${v}\\b`).test(expr));
+	const items = new Set<string>();
+	for (const m of text.matchAll(/\{%-?\s*for\s+([A-Za-z_][\w-]*)\s+in\s+([^%]*?)-?%\}/g)) if (isList(m[2])) items.add(m[1]);
+	for (const m of text.matchAll(/\{%-?\s*assign\s+([A-Za-z_][\w-]*)\s*=\s*([^%]*?)-?%\}/g)) if (isList(m[2]) && /\|\s*(?:first|last)\b/.test(m[2])) items.add(m[1]);
+	return { isList, items };
+}
+
+/** The includes a template passes a collection's item to, and the parameter it's under: `{% include search-result.html article=article %}`. */
+export function itemsPassedToIncludes(text: string, lists: readonly string[]): Array<[string, string]> {
+	const { items } = collectionItems(text, lists);
+	const out: Array<[string, string]> = [];
+	for (const m of text.matchAll(/\{%-?\s*include\s+([^\s%]+)([^%]*)%\}/g)) {
+		for (const p of m[2].matchAll(/([A-Za-z_][\w-]*)\s*=\s*([A-Za-z_][\w-]*)(?=\s|-?$)/g)) if (items.has(p[2])) out.push([m[1], p[1]]);
+	}
+	return out;
+}
+
+export function rewriteJekyllTemplate(text: string, collections: readonly string[] = [], dataNames: readonly string[] = [], itemParams: readonly string[] = []): [string, string[], string[]] {
 	const changes: string[] = [];
 	const left: string[] = [];
 	// A key the template also uses as its own variable can't be renamed: `{% assign lang = page.lang %}`.
@@ -1737,19 +1787,15 @@ export function rewriteJekyllTemplate(text: string, collections: readonly string
 	// `templateContent` and `excerpt` is `page.excerpt`. The items are the loop variables over a
 	// collection, or over a variable assigned from one (`{% assign guides = collections.articles |
 	// where: "lang", page.lang %}`), and what `first` and `last` take from them.
-	const fromList = new RegExp(`collections\\.(?:${lists.join("|")})\\b`);
-	const listVars = new Set<string>();
-	for (const m of out.matchAll(/\{%-?\s*assign\s+([A-Za-z_][\w-]*)\s*=\s*([^%]*?)-?%\}/g)) if (fromList.test(m[2]) && !/\|\s*(?:first|last|size)\b/.test(m[2])) listVars.add(m[1]);
-	const isList = (expr: string) => fromList.test(expr) || [...listVars].some((v) => new RegExp(`^\\s*${v}\\b`).test(expr));
-	const items = new Set<string>();
-	for (const m of out.matchAll(/\{%-?\s*for\s+([A-Za-z_][\w-]*)\s+in\s+([^%]*?)-?%\}/g)) if (isList(m[2])) items.add(m[1]);
-	for (const m of out.matchAll(/\{%-?\s*assign\s+([A-Za-z_][\w-]*)\s*=\s*([^%]*?)-?%\}/g)) if (isList(m[2]) && /\|\s*(?:first|last)\b/.test(m[2])) items.add(m[1]);
+	const { isList, items } = collectionItems(out, lists);
+	for (const name of itemParams) items.add(`include.${name}`);
 	let fields = 0;
 	if (items.size) {
-		const item = new RegExp(`(?<![\\w.])(${[...items].join("|")})\\.([A-Za-z_][\\w-]*)`, "g");
+		const item = new RegExp(`(?<![\\w.])(${[...items].map((v) => v.replace(".", "\\.")).join("|")})\\.([A-Za-z_][\\w-]*)`, "g");
 		inTags((code) => code.replace(item, (whole, v: string, key: string) => {
 			if (ITEM_KEYS.has(key)) return whole;
 			fields++;
+			if (key === "excerpt") left.push(`\`${v}.excerpt\` is \`${v}.page.excerpt\` now, which isn't Jekyll's: Jekyll's is the source up to \`excerpt_separator\` (the first blank line), rendered; ssqch's is the page up to \`<!-- more -->\`, or else its first paragraph. They differ when a page starts with something else than a paragraph`);
 			return key === "content" ? `${v}.templateContent` : key === "excerpt" ? `${v}.page.excerpt` : `${v}.data.${key}`;
 		}));
 	}
@@ -1761,6 +1807,7 @@ export function rewriteJekyllTemplate(text: string, collections: readonly string
 		return code.replace(props, (whole, filter: string, q: string, key: string) => {
 			if (ITEM_KEYS.has(key)) return whole;
 			fields++;
+			if (/sort/.test(filter)) left.push(`\`${filter.replace(/^\|\s*/, "").replace(/\s*:\s*$/, "")}: ${q}${key}${q}\` on a collection: Jekyll's \`sort\` puts the items without \`${key}\` first, ssqch's (Liquid's) last; with some missing it, sort them in the config, or a filter of your own`);
 			return `${filter}${q}data.${key}${q}`;
 		});
 	});
@@ -1800,6 +1847,20 @@ export function jekyll(dir: string): Plan {
 	const collectionList = Object.keys(collections);
 	let dataNames: string[] = [];
 	try { dataNames = [...new Set(fs.readdirSync(path.join(dir, ...dataDir.split("/"))).map((n) => n.replace(/\.(?:ya?ml|json|csv|toml|tsv)$/, "")).filter((n) => /^[A-Za-z_][\w-]*$/.test(n)))]; } catch { /* no data folder */ }
+	// Which includes get a collection's item, and under which parameter, from every template that
+	// includes them: `include.article.title` in the include is `include.article.data.title` (the
+	// fresh opensource.guide rerun's search index had 379 empty titles).
+	const itemParams = new Map<string, Set<string>>();
+	for (const entry of entries) {
+		if (!entry.isFile || !TEMPLATE_EXTENSIONS.includes(asciiLower(extensionOf(entry.name))) && asciiLower(extensionOf(entry.name)) !== "js") continue;
+		const text = readUtf8(entry.abs);
+		if (text === undefined || !text.includes("include")) continue;
+		for (const [file, param] of itemsPassedToIncludes(text, ["posts", ...collectionList])) {
+			const rel = `${includesDir}/${file}`;
+			if (!itemParams.has(rel)) itemParams.set(rel, new Set());
+			itemParams.get(rel)!.add(param);
+		}
+	}
 	const tags = new Map<string, [number, string]>();
 	let markdownAttr = 0, ial = 0, seo = 0;
 	const hasFrontMatter = (text: string) => /^---\s*\r?\n/.test(text);
@@ -1819,7 +1880,7 @@ export function jekyll(dir: string): Plan {
 		if (text === undefined) continue;
 		if (front && !["md", "markdown", "html", "liquid", "scss", "sass"].includes(ext)) frontMatterOther.push(entry.rel);
 		if (!(templateDir || front) || ["scss", "sass"].includes(ext)) continue;
-		let [next, changes, left] = rewriteJekyllTemplate(text, collectionList, dataNames);
+		let [next, changes, left] = rewriteJekyllTemplate(text, collectionList, dataNames, [...(itemParams.get(entry.rel) ?? [])]);
 		// `{% seo %}` is jekyll-seo-tag's: the include written below.
 		if (/\{%-?\s*seo\b[^%]*%\}/.test(next)) {
 			next = next.replace(/\{%(-?)\s*seo\b[^%]*?(-?)%\}/g, "{%$1 include seo.liquid $2%}");
@@ -2012,6 +2073,13 @@ export function jekyll(dir: string): Plan {
 	if (rouge && !entries.some((e) => e.rel.startsWith(`${includesDir}/hooks/code.`))) {
 		plan.newFiles.push([`${includesDir}/hooks/code.liquid`, "Rouge's classes on inline code, as GitHub Pages' kramdown wrote them", "<code class=\"language-plaintext highlighter-rouge\">{{ code.code | escape }}</code>"]);
 	}
+	if (rouge && !entries.some((e) => e.rel.startsWith(`${includesDir}/hooks/fence.`))) {
+		plan.newFiles.push([`${includesDir}/hooks/fence.liquid`, "Rouge's wrapper for code blocks, as GitHub Pages' kramdown wrote it (the code itself isn't highlighted Rouge's way)", ROUGE_FENCE]);
+	}
+	// What the plugins wrote beside the pages: `/redirects.json`, and `/robots.txt` when the site has none.
+	const has = (rel: string) => entries.some((e) => e.rel === rel);
+	if (named.has("jekyll-redirect-from") && !has("redirects.liquid") && !has("redirects.json")) plan.newFiles.push(["redirects.liquid", "jekyll-redirect-from's /redirects.json", JEKYLL_REDIRECTS_JSON]);
+	if (named.has("jekyll-sitemap") && !has("robots.txt") && !has("robots.liquid")) plan.newFiles.push(["robots.liquid", "jekyll-sitemap's /robots.txt (the site has none)", JEKYLL_ROBOTS]);
 	// jekyll-redirect-from's own page for each old URL, as ssqch's redirect hook, so the pages match.
 	if (named.has("jekyll-redirect-from") && !entries.some((e) => e.rel.startsWith(`${includesDir}/hooks/redirect.`))) {
 		plan.newFiles.push([`${includesDir}/hooks/redirect.liquid`, "jekyll-redirect-from's page for each old URL", JEKYLL_REDIRECT_PAGE]);
@@ -2032,7 +2100,13 @@ export function jekyll(dir: string): Plan {
 	if (kramdown.smart_quotes !== undefined || kramdown.input === "GFM" && kramdown.hard_wrap === true) plan.byHand.push([configFile!, "kramdown's `smart_quotes` or `hard_wrap`: check the draft's `markdown` against them (`breaks: true` for `hard_wrap`)"]);
 	if (typeof config.markdown === "string" && !/kramdown/i.test(config.markdown)) plan.byHand.push([configFile!, `markdown: ${config.markdown}: the draft's options are kramdown's; ssqch's Markdown is CommonMark with extensions (\`ssqch docs markdown\`)`]);
 	let out = `// A first draft, written by \`ssqch import jekyll\` from ${configFile}.\n// \`ssqch docs --from jekyll\` has the whole mapping.\n${[...new Set(imports)].join("\n")}\n\n`;
-	out += `// \`site.title\` and every other key of ${configFile} in templates read this.\nconst site = readData(${JSON.stringify(configFile)});\n\nexport default defineConfig({\n`;
+	// On GitHub Pages, jekyll-github-metadata gives `site.url` from the CNAME when the config has
+	// none: opensource.guide's 381 pages had it in their canonical links, feeds and sitemap.
+	const cname = (readUtf8(path.join(dir, "CNAME")) ?? "").trim().split(/\s+/)[0];
+	const urlFromCname = (typeof config.url !== "string" || config.url === "") && cname !== "" && (named.has("github-pages") || named.has("jekyll-github-metadata"));
+	out += urlFromCname
+		? `// \`site.title\` and every other key of ${configFile} in templates read this. GitHub Pages gave\n// \`site.url\` from the CNAME (jekyll-github-metadata).\nconst site = { ...readData(${JSON.stringify(configFile)}), url: ${JSON.stringify(`https://${cname}`)} };\n\nexport default defineConfig({\n`
+		: `// \`site.title\` and every other key of ${configFile} in templates read this.\nconst site = readData(${JSON.stringify(configFile)});\n\nexport default defineConfig({\n`;
 	const builtIn = new Set(["txt"]);
 	out += `  // Markdown and HTML pages run through Liquid first, as in Jekyll.\n  templateFormats: ${JSON.stringify(["liquid", "md", "html", ...otherFormats]).replaceAll(",", ", ")},\n  markdownEngine: "liquid",\n  htmlEngine: "liquid",\n`;
 	const own = otherFormats.filter((e) => !builtIn.has(e));

@@ -195,6 +195,14 @@ where that version matches.
 
 ### Fixed
 
+- `ssqch baseline` left Jekyll's `site.time` unpinned when the command gave its own `--config`
+  (every article varied): the time goes last in that list. It warns when Jekyll's build has GitHub
+  Pages' placeholder `github.com/pages/...` URLs.
+- `ssqch import jekyll` takes `site.url` from `CNAME` for a GitHub Pages site, renames an item's
+  fields inside the includes it's passed to (`include.article.data.title`), says where Jekyll's
+  `excerpt` and `sort` differ, and writes what it only named: `redirects.json`, `robots.txt`, Rouge's
+  wrapper for code blocks, and whole URLs in the redirect page. opensource.guide's import matches
+  Jekyll's build on 306 of 404 pages with no hand edits.
 - `sassPlugin()`'s compressed CSS kept a `;` before `}` when a comment followed the last
   declaration (normalize.css's `-webkit-text-size-adjust: 100%; /* 2 */`).
 - With `htmlMarkdown: "kramdown"`, an indented code block inside a `markdown="1"` element lost its

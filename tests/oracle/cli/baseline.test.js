@@ -111,8 +111,16 @@ test("baseline_pins_jekylls_own_clock", { skip: (!hasGit && "needs git") || (pro
 	assert.equal(r.code, 0, r.log);
 	assert.ok(r.log.includes("Jekyll's site.time pinned (with --config _config.yml and a time: of its own)"), r.log);
 	assert.equal(read(dir, ".cache/ssqch/baseline/ref-1/index.html"), "_config.yml | time: 2026-03-01 12:00:00 +0000");
-	r = ssqch(["baseline", "./jekyll build --config _config.yml", "--runs", "1", "--quiet"], { cwd: dir });
-	assert.equal(read(dir, ".cache/ssqch/baseline/ref-1/index.html"), "_config.yml");
+	// DELIBERATE (0.11, from the fresh opensource.guide rerun): a command's own `--config` gets the pin
+	// last too, where it was left out and every article varied.
+	r = ssqch(["baseline", "./jekyll build --config _config.yml", "--runs", "1"], { cwd: dir });
+	assert.ok(r.log.includes("Jekyll's site.time pinned (a time: of its own, after --config _config.yml)"), r.log);
+	assert.equal(read(dir, ".cache/ssqch/baseline/ref-1/index.html"), "_config.yml | time: 2026-03-01 12:00:00 +0000");
+	// A build with GitHub Pages' placeholder URLs is said to be wrong.
+	write(dir, { "jekyll": "#!/usr/bin/env node\nconst fs = require(\"node:fs\");\nfs.mkdirSync(\"_site\", { recursive: true });\nfs.writeFileSync(\"_site/index.html\", \"<a href=\\\"https://github.com/pages/owner/repo/\\\">home</a>\");\n" });
+	fs.chmodSync(path.join(dir, "jekyll"), 0o755);
+	r = ssqch(["baseline", "./jekyll build", "--runs", "1", "--quiet"], { cwd: dir });
+	assert.ok(r.log.includes("warn: Jekyll's build has `https://github.com/pages/...` URLs: jekyll-github-metadata couldn't tell which repository this is"), r.log);
 });
 
 // opensource.guide's Jekyll wouldn't start in a copy: its gems are in `vendor/gems`, which

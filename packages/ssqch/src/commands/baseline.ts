@@ -62,15 +62,24 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 		if (patch !== undefined && !fs.statSync(patch, { throwIfNoEntry: false })?.isFile()) throw new BaselineError(`--patch ${options.patch}: no such file (a patch, as \`git diff > fix.patch\` writes)`);
 		if (path.isAbsolute(options.to) || options.to.split(/[\\/]/).includes("..")) throw new BaselineError(`--to ${options.to}: a name inside the site's folder (\`ref\`, or \`.refs/jekyll\`)`);
 		// Jekyll prints its own clock (`site.time`) and doesn't read SOURCE_DATE_EPOCH: a config of
-		// its own pins it, unless the command gives its configs itself (opensource.guide's 380 files).
+		// its own pins it (opensource.guide's 380 files), last in the command's `--config` list when
+		// it has one, since a later config wins (the rerun's `--config _config.yml,pin.yml` had
+		// every article vary when it was left out).
 		let command = options.command;
 		let clock = "TZ=UTC, SOURCE_DATE_EPOCH and every file's time pinned; a generator that reads its own clock isn't, so pin it in its config if the builds vary";
-		if (/\bjekyll\s+build\b/.test(command) && !/--config\b/.test(command)) {
+		const jekyll = /\bjekyll\s+build\b/.test(command);
+		if (jekyll) {
 			const pin = path.join(work, "..", "baseline-time.yml");
 			fs.mkdirSync(path.dirname(pin), { recursive: true });
 			fs.writeFileSync(pin, `# Written by ssqch baseline: Jekyll's site.time, pinned.\ntime: ${new Date(time * 1000).toISOString().replace("T", " ").replace(/\.\d+Z$/, " +0000")}\n`);
-			command = command.replace(/\bjekyll\s+build\b/, (m) => `${m} --config _config.yml,${JSON.stringify(pin)}`);
-			clock = "TZ=UTC, SOURCE_DATE_EPOCH, every file's time and Jekyll's site.time pinned (with --config _config.yml and a time: of its own)";
+			const given = /--config(=|\s+)(\S+)/.exec(command);
+			if (given) {
+				command = command.replace(given[0], `--config${given[1]}${given[2]},${JSON.stringify(pin)}`);
+				clock = `TZ=UTC, SOURCE_DATE_EPOCH, every file's time and Jekyll's site.time pinned (a time: of its own, after --config ${given[2]})`;
+			} else {
+				command = command.replace(/\bjekyll\s+build\b/, (m) => `${m} --config _config.yml,${JSON.stringify(pin)}`);
+				clock = "TZ=UTC, SOURCE_DATE_EPOCH, every file's time and Jekyll's site.time pinned (with --config _config.yml and a time: of its own)";
+			}
 		}
 
 		fs.rmSync(work, { recursive: true, force: true });
@@ -117,6 +126,14 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 			if (result.status !== 0) throw new BaselineError(`\`${options.command}\` failed in build ${run} (exit code ${result.status ?? result.signal}); its output is above`);
 			const built = path.join(copy, options.from);
 			if (!fs.statSync(built, { throwIfNoEntry: false })?.isDirectory()) throw new BaselineError(`\`${options.command}\` wrote no ${options.from}/ in build ${run}: give the folder it writes with --from (Eleventy and Jekyll write _site, Hugo public, Astro dist)`);
+			// jekyll-github-metadata (GitHub Pages' gem) without a repository to read writes every
+			// `site.url` as `https://github.com/pages/...`: a reference build that's wrong on every
+			// page, quietly (the opensource.guide rerun).
+			if (run === 1 && jekyll) {
+				const home = path.join(built, "index.html");
+				const text = fs.statSync(home, { throwIfNoEntry: false })?.isFile() ? fs.readFileSync(home, "utf8") : "";
+				if (text.includes("github.com/pages/")) process.stderr.write("warn: Jekyll's build has `https://github.com/pages/...` URLs: jekyll-github-metadata couldn't tell which repository this is, so `site.url` is wrong on every page. Give it the repository (`PAGES_REPO_NWO=owner/repo`, and `JEKYLL_GITHUB_TOKEN` if it asks), or `url:` in a config of your own\n");
+			}
 			const name = `${options.to}-${run}`;
 			const target = path.join(root, ...name.split("/"));
 			fs.rmSync(target, { recursive: true, force: true });

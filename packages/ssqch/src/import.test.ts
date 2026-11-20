@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readToml } from "./data.ts";
-import { blankComments, draftConfig, eleventy, jekyll, jekyllPermalink, rewriteData, rewriteJekyllTemplate, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./import.ts";
+import { blankComments, draftConfig, eleventy, itemsPassedToIncludes, jekyll, jekyllPermalink, rewriteData, rewriteJekyllTemplate, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./import.ts";
 import { VERSION } from "./version.ts";
 
 test("zola_front_matter_gets_ssqch_names", () => {
@@ -524,4 +524,43 @@ test("jekyll_import_leaves_untracked_files_out", { skip: spawnSync("git", ["--ve
 	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
 	assert.ok(draft.includes("passthrough: [\"robots.txt\", \"assets\"],"), draft);
 	assert.ok(plan.byHand.some(([at, what]) => at === "notes/" && what.startsWith("1 file git doesn't track (notes/) left out of `passthrough`")), JSON.stringify(plan.byHand));
+});
+
+// From the fresh opensource.guide rerun: the search index's 379 titles came through an include's
+// parameter (`include.article.title`), which the rename missed; and Jekyll's `excerpt` and `sort`
+// mean something else in ssqch, which wasn't said.
+test("jekyll_items_passed_to_includes_are_ssqchs_too", () => {
+	assert.deepEqual(itemsPassedToIncludes("{% for article in site.articles %}{% include search-result.html article=article lang=page.lang %}{% endfor %}", ["articles"]), [["search-result.html", "article"]]);
+	const [out, , left] = rewriteJekyllTemplate("{{ include.article.title }}|{{ include.article.url }}|{{ include.article.excerpt }}|{{ include.lang }}", [], [], ["article"]);
+	assert.equal(out, "{{ include.article.data.title }}|{{ include.article.url }}|{{ include.article.page.excerpt }}|{{ include.lang }}");
+	assert.ok(left.some((l) => l.startsWith("`include.article.excerpt` is `include.article.page.excerpt` now, which isn't Jekyll's")), JSON.stringify(left));
+	const [, , sorted] = rewriteJekyllTemplate("{% assign list = site.articles | sort: 'order' %}", ["articles"]);
+	assert.ok(sorted.some((l) => l.startsWith("`sort: 'order'` on a collection: Jekyll's `sort` puts the items without `order` first")), JSON.stringify(sorted));
+});
+
+// From the fresh opensource.guide rerun: GitHub Pages gave `site.url` from the CNAME (381 pages),
+// and the importer named the plugins' other files without writing them.
+test("jekyll_import_writes_what_github_pages_and_its_plugins_did", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-pages-"));
+	const w = (file: string, text: string) => {
+		fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+		fs.writeFileSync(path.join(dir, file), text);
+	};
+	w("_config.yml", "title: Trail\n");
+	w("CNAME", "trail.example\n");
+	w("Gemfile", "gem \"github-pages\", group: :jekyll_plugins\n");
+	w("index.md", "---\n---\n# Pine\n");
+	const plan = jekyll(dir);
+	const file = (name: string) => plan.newFiles.find(([f]) => f === name)?.[2] ?? "";
+	assert.ok(file("ssqch.config.js").includes("const site = { ...readData(\"_config.yml\"), url: \"https://trail.example\" };"), file("ssqch.config.js"));
+	assert.ok(file("_includes/hooks/fence.liquid").startsWith("<div class=\"language-{% if fence.lang"), JSON.stringify(plan.newFiles.map(([f]) => f)));
+	assert.ok(file("_includes/hooks/code.liquid").includes("highlighter-rouge"));
+	// github-pages has neither jekyll-sitemap nor jekyll-redirect-from by itself.
+	assert.equal(file("robots.liquid"), "");
+	w("_config.yml", "title: Trail\nurl: https://example.com\nplugins: [jekyll-sitemap, jekyll-redirect-from]\n");
+	const again = jekyll(dir);
+	const other = (name: string) => again.newFiles.find(([f]) => f === name)?.[2] ?? "";
+	assert.ok(other("ssqch.config.js").includes("const site = readData(\"_config.yml\");"), other("ssqch.config.js"));
+	assert.ok(other("robots.liquid").includes("Sitemap: {{ site.url }}/sitemap.xml") && other("redirects.liquid").includes("permalink: /redirects.json"));
+	assert.ok(other("_includes/hooks/redirect.liquid").includes("{%- assign to = site.url | append: redirect.to -%}"));
 });
