@@ -420,6 +420,7 @@ class WasmMarkdown implements Markdown {
 			definitionLists: o.definitionLists,
 			smartPunctuation: o.smartPunctuation,
 			indentedCode: o.indentedCode,
+			encodeUrls: o.encodeUrls,
 			highlight: o.highlight,
 			highlightCss: o.highlightCss,
 			highlightClasses: o.highlightClasses,

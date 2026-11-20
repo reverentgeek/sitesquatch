@@ -31,6 +31,8 @@ export interface MarkdownOptions {
 	smartPunctuation: boolean;
 	/** Lines indented four spaces are code. Off, they're ordinary Markdown; fences are still code. */
 	indentedCode: boolean;
+	/** Link and image URLs percent-encoded (`#كتابة` as `#%D9%83...`), as CommonMark's reference renderer writes them; `false` writes them as the page has them, HTML-escaped only, as kramdown does. */
+	encodeUrls: boolean;
 	/** Highlight fenced code at build time. */
 	highlight: boolean;
 	/** Where the build writes the highlighting stylesheet (a URL path like `/highlight.css`), or `null` to leave it out. */
@@ -59,6 +61,7 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		definitionLists: false,
 		smartPunctuation: false,
 		indentedCode: true,
+		encodeUrls: true,
 		highlight: false,
 		highlightCss: "/highlight.css",
 		highlightClasses: null,
@@ -69,9 +72,9 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 }
 
 /** The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`). */
-export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown"] as const;
+export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "encodeUrls"] as const;
 
-const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures"] as const;
+const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures", "encodeUrls"] as const;
 
 /** What a highlighted token can be: the `hl-*` names, without the prefix. */
 export const HIGHLIGHT_KINDS = ["comment", "keyword", "operator", "string", "regexp", "escape", "number", "constant", "builtin", "property", "attribute", "function", "type", "parameter", "tag", "heading", "strong", "emphasis", "link", "inserted", "deleted"] as const;

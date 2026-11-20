@@ -41,7 +41,7 @@ export default defineConfig({
   dirs: { layouts: "_layouts" },
   trimAfterFrontMatter: true,
   // kramdown's habits: markdown="1", its heading ids, smart quotes, no bare-URL links.
-  markdown: { htmlMarkdown: "kramdown", headingIds: "kramdown", smartPunctuation: true, autolinks: false },
+  markdown: { htmlMarkdown: "kramdown", headingIds: "kramdown", smartPunctuation: true, autolinks: false, encodeUrls: false },
   ignore: ["Gemfile", "Gemfile.lock", "README.md", "script/**"],
   data: { site },
   plugins: [sitemapPlugin({ url: site.url }), redirectsPlugin()],
@@ -85,13 +85,13 @@ export default defineConfig({
 
 ## Markdown
 
-ssqch's Markdown is CommonMark; Jekyll's is kramdown. `markdown: { smartPunctuation: true, autolinks: false, htmlMarkdown: "kramdown", headingIds: "kramdown" }` comes closest. What differs:
+ssqch's Markdown is CommonMark; Jekyll's is kramdown. `markdown: { smartPunctuation: true, autolinks: false, htmlMarkdown: "kramdown", headingIds: "kramdown", encodeUrls: false }` comes closest. What differs:
 
 - **`markdown="1"`** on an HTML element (kramdown reads its content as Markdown): `htmlMarkdown: "kramdown"` reads it the same way, and keeps kramdown's HTML rules (a block element is raw to its end tag, blank lines and all). Without it, ssqch writes the element as it is and Markdown inside stays text. A container (`::: name`) is ssqch's own way to wrap Markdown in HTML.
 - **Heading ids:** `headingIds: "kramdown"` gives kramdown's: its GFM ids for the page's headings (accents and other letters kept, emoji dropped), and its ASCII ids for headings inside `markdown="1"` HTML (`section`, `section-1`). Repeats are counted within each, where kramdown counts them across the page.
 - **Bold next to punctuation** (`**完成。**下一步`) closes in kramdown but not in CommonMark.
 - **Code:** GitHub Pages adds Rouge's `class="language-plaintext highlighter-rouge"` to code; ssqch doesn't (`markdown: { highlight: true }` highlights, with its own classes). To keep those classes on code spans, write them in a `code` render hook: `_includes/hooks/code.liquid` with `<code class="language-plaintext highlighter-rouge">{{ code.code | escape }}</code>` ([Code spans](../markdown.md)).
-- Smart quotes next to non-Latin letters, and non-ASCII characters in link URLs (which ssqch percent-encodes), come out differently; readers see the same page.
+- **Link URLs:** ssqch percent-encodes non-ASCII characters in them (`#كتابة` as `#%D9%83...`) and kramdown keeps them; `encodeUrls: false` writes them as kramdown does. Smart quotes next to non-Latin letters can come out differently; readers see the same page.
 
 ## Checking the move
 

@@ -7,6 +7,9 @@ Everything migrates eventually. The trailheads map another generator's config, f
 
 For a Zola site, `ssqch import zola` moves `tags` out of `[taxonomies]` and turns `path` into `permalink` in each page's front matter, writes a first `ssqch.config.js` from `config.toml` (the site's data, Markdown options, Sass, redirects, a sitemap), and lists what the Tera templates, shortcodes and sections need.
 
+> [!NOTE]
+> **Not released yet.** This ships with the next version of ssqch: `ssqch import jekyll`.
+
 For a Jekyll site, `ssqch import jekyll` writes a first `ssqch.config.js` from `_config.yml` (Liquid for pages, kramdown's Markdown options, `exclude`, the files Jekyll copies, the plugins it knows), directory data for `_posts` and each collection with their permalinks, renames `page.title` and the other front matter keys in templates to `title`, and writes jekyll-seo-tag's tags as an include; the [Jekyll trailhead](trailheads/from-jekyll.md#importing) has the rest.
 
 For an Eleventy site, `ssqch import eleventy` does the mechanical part. It renames `*.11tydata.*` files, rewrites front matter keys and image attributes to ssqch's names, writes a first `ssqch.config.js` from what it can read in the Eleventy config (folders, passthrough copies, template engines, `pathPrefix`), and lists what's left to port by hand, each with its file and line and what it becomes: filters, shortcodes, collections, plugins and their ssqch equivalents. Without `--write` it only prints the list, so run it in a clean git checkout, read it, then run it again with `--write`:

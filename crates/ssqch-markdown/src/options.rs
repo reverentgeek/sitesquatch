@@ -65,6 +65,7 @@ pub fn setup(json: &str, root: &Path, function: &dyn Fn(u32) -> Value) -> Result
         definition_lists: flag("definitionLists", defaults.definition_lists),
         smart_punctuation: flag("smartPunctuation", defaults.smart_punctuation),
         indented_code: flag("indentedCode", defaults.indented_code),
+        encode_urls: flag("encodeUrls", defaults.encode_urls),
         highlight: flag("highlight", defaults.highlight),
         highlight_css: j.get("highlightCss").and_then(J::as_str).map(String::from),
         ..defaults

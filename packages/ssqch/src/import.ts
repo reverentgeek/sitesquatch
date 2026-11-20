@@ -2026,7 +2026,7 @@ export function jekyll(dir: string): Plan {
 		plugins.push(`sassPlugin({ files: { ${files.join(", ")} }${loadPaths.length ? `, loadPaths: ${JSON.stringify(loadPaths)}` : ""}, charset: false })`);
 	}
 
-	const markdown = ["htmlMarkdown: \"kramdown\"", "headingIds: \"kramdown\"", "smartPunctuation: true", "autolinks: false"];
+	const markdown = ["htmlMarkdown: \"kramdown\"", "headingIds: \"kramdown\"", "smartPunctuation: true", "autolinks: false", "encodeUrls: false"];
 	const kramdown = isPlainObject(config.kramdown) ? config.kramdown : {};
 	if (kramdown.auto_ids === false) markdown[1] = "headingIds: false";
 	if (kramdown.smart_quotes !== undefined || kramdown.input === "GFM" && kramdown.hard_wrap === true) plan.byHand.push([configFile!, "kramdown's `smart_quotes` or `hard_wrap`: check the draft's `markdown` against them (`breaks: true` for `hard_wrap`)"]);
@@ -2043,7 +2043,7 @@ export function jekyll(dir: string): Plan {
 	if (output !== "_site") dirs.push(`output: ${JSON.stringify(output)}`);
 	out += `  dirs: { ${dirs.join(", ")} },\n`;
 	out += "  // Jekyll drops the blank lines after the closing `---`.\n  trimAfterFrontMatter: true,\n";
-	out += `  // kramdown's habits: markdown="1", its heading ids, smart quotes, no bare-URL links.\n  markdown: { ${markdown.join(", ")} },\n`;
+	out += `  // kramdown's habits: markdown="1", its heading ids, smart quotes, no bare-URL links, URLs as written.\n  markdown: { ${markdown.join(", ")} },\n`;
 	out += `  // ${configFile}'s \`exclude\`, and what Jekyll leaves out by itself.\n  ignore: [${ignores.map((g) => JSON.stringify(g)).join(", ")}],\n`;
 	const passed = [...passthrough.map((p) => JSON.stringify(p)), ...copied.map(([from, to]) => `{ ${JSON.stringify(from)}: ${JSON.stringify(to)} }`)];
 	if (passed.length) out += `  // What Jekyll copied as it is: files without front matter.\n  passthrough: [${passed.join(", ")}],\n`;

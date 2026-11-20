@@ -155,6 +155,10 @@ where that version matches.
 - `ssqch diff` says which heading a page's change is under (`@ under #its-id`), and the JSON has it
   as each hunk's `at`.
 
+- `markdown: { encodeUrls: false }` writes link and image URLs as the page has them,
+  HTML-escaped only, as kramdown does, where ssqch percent-encodes them (`#كتابة` as
+  `#%D9%83...`); `ssqch import jekyll` turns it on. Browsers go to the same place either way.
+
 ### Changed
 
 - A link's or image's hook gets no `title` (null) when it has none, where it got `""`, which

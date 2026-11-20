@@ -141,6 +141,16 @@ test("docs_explain_what_migrations_asked_about", () => {
 		["translations", "A page's translations"],
 		["hreflang", "x-default"],
 		["seo", "a partial in its layout"],
+		// Added in 0.11: what the Jekyll and Eleventy moves needed.
+		["htmlMarkdown", "renders the content of an HTML element with `markdown=\"1\"`"],
+		["encodeUrls", "writes them as the page has them, HTML-escaped only"],
+		["headingIds", "`\"kramdown\"` matches Jekyll's"],
+		["markdown-it-anchor", "markdown-it-anchor"],
+		["charset", "`charset`: `false` leaves out"],
+		["ref-common", "each varying file's most common version"],
+		["From jekyll-seo-tag", "jekyll-seo-tag 2.8 writes"],
+		["sitemapPlugin", "jekyll-sitemap"],
+		["rssDate", "`rssDate` and `rssLastUpdatedDate`"],
 	]) {
 		const a = answer(query);
 		assert.ok(a.found && a.section.text.includes(says), `${query}: ${JSON.stringify(a).slice(0, 400)}`);
