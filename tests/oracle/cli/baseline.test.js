@@ -144,6 +144,16 @@ test("baseline_links_the_sites_installs_into_each_copy", { skip: !hasGit && "nee
 	r = ssqch(["baseline", "node build.mjs", "--runs", "1", "--link", "tools", "--quiet"], { cwd: dir });
 	assert.equal(r.code, 0, r.log);
 	assert.equal(read(dir, ".cache/ssqch/baseline/ref-1/index.html"), "yes yes yes");
+	// Copied instead of linked, for a tool that won't follow a link out of its folder (Hugo's js.Build;
+	// added in 0.11, from the fresh gohugo.io move).
+	write(dir, { "build.mjs": "import fs from \"node:fs\";\nfs.mkdirSync(\"_site\", { recursive: true });\nfs.writeFileSync(\"_site/index.html\", fs.lstatSync(\"vendor/gems\").isSymbolicLink() ? \"linked\" : fs.readFileSync(\"vendor/gems/jekyll.txt\", \"utf8\"));\n" });
+	git(dir, "add", "-A");
+	git(dir, "commit", "-q", "-m", "Say how the gems got there");
+	r = ssqch(["baseline", "node build.mjs", "--runs", "1", "--quiet"], { cwd: dir });
+	assert.equal(read(dir, ".cache/ssqch/baseline/ref-1/index.html"), "linked");
+	r = ssqch(["baseline", "node build.mjs", "--runs", "1", "--copy-installs", "--quiet"], { cwd: dir });
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, ".cache/ssqch/baseline/ref-1/index.html"), "gems");
 	r = ssqch(["baseline", "node build.mjs", "--link", "../elsewhere", "--quiet"], { cwd: dir });
 	assert.ok(r.code === 2 && r.log.includes("--link ../elsewhere: a folder inside the site's folder"), r.log);
 });

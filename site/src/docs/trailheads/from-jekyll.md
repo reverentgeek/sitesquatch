@@ -19,6 +19,8 @@ ssqch import jekyll            # what would change, and what's left
 ssqch import jekyll --write    # make the changes
 ```
 
+The [`jekyll-guides`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/jekyll-guides/) example is a small Jekyll site laid out as Jekyll lays one out, with these settings: its layouts and pages are written for Jekyll and run as they are.
+
 ## Build it both ways first
 
 Build the Jekyll site from a fresh checkout twice and compare the two: a page that prints the build's time (an undated article gets `site.time`) differs on every build. Pin it with a second config file holding `time: 2026-01-01 00:00:00 +0000` (`jekyll build --config _config.yml,pin.yml`), and build ssqch with the same time: `SOURCE_DATE_EPOCH=1767225600`. GitHub Pages' gem needs `PAGES_REPO_NWO=owner/repo` in a checkout without a git remote. Then build with ssqch into an empty folder and compare the two with `ssqch diff jekyll-site ssqch-site`.

@@ -1,0 +1,1 @@
+{ "tags": "guides", "layout": "default", "permalink": "/guides{{ page.filePathStem | remove_first: '/_guides' }}/" }

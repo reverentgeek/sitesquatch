@@ -227,6 +227,7 @@ _arguments "${_arguments_options[@]}" : \
 '--to=[What to call the builds (default ref)]:NAME:_default' \
 '*--link=[Link this folder of the site into each copy (repeatable)]:PATH:_files' \
 '--patch=[Apply this patch to each copy before building]:FILE:_files' \
+'--copy-installs[Copy the installs into each copy instead of linking them]' \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \

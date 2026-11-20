@@ -223,6 +223,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('--to', '--to', [CompletionResultType]::ParameterName, 'What to call the builds (default ref)')
             [CompletionResult]::new('--link', '--link', [CompletionResultType]::ParameterName, 'Link this folder of the site into each copy (repeatable)')
             [CompletionResult]::new('--patch', '--patch', [CompletionResultType]::ParameterName, 'Apply this patch to each copy before building')
+            [CompletionResult]::new('--copy-installs', '--copy-installs', [CompletionResultType]::ParameterName, 'Copy the installs into each copy instead of linking them')
             [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')

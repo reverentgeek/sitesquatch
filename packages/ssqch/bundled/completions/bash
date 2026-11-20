@@ -599,7 +599,7 @@ _ssqch() {
             return 0
             ;;
         ssqch__subcmd__baseline)
-            opts="-o -q -v -h --from --runs --commit --to --link --patch --root --output --base --offline --env --quiet --verbose --help"
+            opts="-o -q -v -h --from --runs --commit --to --link --patch --copy-installs --root --output --base --offline --env --quiet --verbose --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

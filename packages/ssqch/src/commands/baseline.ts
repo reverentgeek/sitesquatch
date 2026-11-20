@@ -29,6 +29,8 @@ export interface BaselineOptions {
 	to: string;
 	/** More of the site's folders to link into each copy, beside the installs found by themselves (`--link`). */
 	link: string[];
+	/** Copy the installs into each copy instead of linking them (`--copy-installs`; Hugo's are copied without it). */
+	copyInstalls: boolean;
 	/** A patch (`git diff`'s) applied to each copy before it's built: what an old commit needs to build at all (`--patch`). */
 	patch: string | undefined;
 	quiet: boolean;
@@ -82,6 +84,7 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 			}
 		}
 
+		const copyInstalls = options.copyInstalls || /\bhugo\b/.test(options.command);
 		fs.rmSync(work, { recursive: true, force: true });
 		fs.mkdirSync(work, { recursive: true });
 		const names: string[] = [];
@@ -114,7 +117,11 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 				if (!fs.existsSync(from) || fs.existsSync(to)) continue;
 				fs.mkdirSync(path.dirname(to), { recursive: true });
 				const dir = fs.statSync(from).isDirectory();
-				if (dir) fs.symlinkSync(from, to, process.platform === "win32" ? "junction" : "dir");
+				// Copied, where a tool won't follow a link out of its folder: Hugo's js.Build resolves
+				// `node_modules` to its real path and refuses it ("outside the project"; the gohugo.io
+				// move). Copy-on-write where the file system has it (APFS, Btrfs, XFS), so it's quick.
+				if (dir && copyInstalls) fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE });
+				else if (dir) fs.symlinkSync(from, to, process.platform === "win32" ? "junction" : "dir");
 				else fs.copyFileSync(from, to);
 			}
 

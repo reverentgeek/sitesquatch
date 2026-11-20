@@ -141,6 +141,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 			{ long: "to", value: "NAME", help: "Where the builds go: the default makes .cache/ssqch/baseline/ref-1, -2 and -3", default: ".cache/ssqch/baseline/ref" },
 			{ long: "link", value: "PATH", help: "Link this folder of the site into each copy, as node_modules, .bundle and vendor/bundle are (repeatable)", many: true },
 			{ long: "patch", value: "FILE", help: "Apply this patch (git diff's) to each copy before building: a fix the --commit needs to build" },
+			{ long: "copy-installs", help: "Copy node_modules and the other installs into each copy instead of linking them, for a tool that won't follow a link out of its folder (Hugo's are copied without it)" },
 		],
 		positionals: [{ name: "COMMAND", help: "The old generator's build command, quoted: \"npx @11ty/eleventy\"", required: true, many: true }],
 		afterHelp: "Each build runs in a fresh copy of the site (the files git would commit, or the --commit), with TZ=UTC, SOURCE_DATE_EPOCH and every file's time set to the commit's, and node_modules linked in. Then the builds are compared as `ssqch diff ref-1 ref-2 ref-3` compares them, so what changes by itself is known before anything is compared with ssqch's build.\n\n  ssqch baseline \"npx @11ty/eleventy\"\n  ssqch baseline \"bundle exec jekyll build\" --commit main\n  ssqch baseline \"npx @11ty/eleventy\" --commit HEAD~3 --patch fix-build.patch\n  ssqch diff ref-1 dist",
@@ -323,7 +324,7 @@ export async function main(argv: string[]): Promise<number> {
 		return 1;
 	}
 	// It runs another generator, not ssqch's build, so nothing below applies either.
-	if (command === "baseline") return (await import("./commands/baseline.ts")).runBaseline({ root: value("root") ?? ".", command: cli.positionals.join(" "), from: value("from") ?? "_site", runs: Number(value("runs") ?? "3"), commit: value("commit"), to: value("to") ?? ".cache/ssqch/baseline/ref", link: [cli.options.link ?? []].flat() as string[], patch: value("patch"), quiet: flag("quiet") });
+	if (command === "baseline") return (await import("./commands/baseline.ts")).runBaseline({ root: value("root") ?? ".", command: cli.positionals.join(" "), from: value("from") ?? "_site", runs: Number(value("runs") ?? "3"), commit: value("commit"), to: value("to") ?? ".cache/ssqch/baseline/ref", link: [cli.options.link ?? []].flat() as string[], patch: value("patch"), copyInstalls: flag("copy-installs"), quiet: flag("quiet") });
 	// It reads the site's files as text and runs none of them, so nothing below applies.
 	if (command === "import") return (await import("./import.ts")).runImport(cli.positionals[0], cli.positionals[1] ?? ".", flag("write"));
 

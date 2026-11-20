@@ -216,6 +216,9 @@ where that version matches.
 
 ### Fixed
 
+- `ssqch baseline` couldn't build a Hugo site that bundles JavaScript: Hugo's `js.Build` refused the
+  linked `node_modules` ("outside the project"). For a `hugo` command the installs are copied
+  (copy-on-write where the file system has it), and `--copy-installs` copies them for any other.
 - Front matter dates in Jekyll's documented form (`2009-12-25 10:41:06 +0000`, a space before a
   zone without a colon, a one-digit hour) were refused.
 - `ssqch import jekyll` wrote front matter into `_data` files that start with YAML's `---`, and the
