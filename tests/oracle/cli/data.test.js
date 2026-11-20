@@ -42,7 +42,8 @@ test("slugs_take_a_separator_and_a_slugger_counts", () => {
 	write(dir, { "src/liquid.liquid": "{{ \"Taco Bake\" | slugify }}" });
 	write(dir, { "src/index.njk": "{{ \"x\" | slugify({ sep: \"_\" }) }}" });
 	r = ssqch(["build", "--root", d, "-q"]);
-	assert.ok(!r.ok && r.log.includes("slugify: unknown option `sep` (options: separator, apostrophes)"), r.log);
+	// DELIBERATE (0.11, from the a11yproject.com rerun): `ascii` and `stripTags` are options too.
+	assert.ok(!r.ok && r.log.includes("slugify: unknown option `sep` (options: separator, apostrophes, ascii, stripTags)"), r.log);
 	write(dir, { "src/index.njk": "{{ \"x\" | slugify({ apostrophes: \"keep\" }) }}" });
 	r = ssqch(["build", "--root", d, "-q"]);
 	assert.ok(!r.ok && r.log.includes("slugify: `apostrophes` is \"drop\" or \"separate\", not keep"), r.log);

@@ -78,7 +78,8 @@ test("its options are checked with 0.7's messages", async () => {
 	const root = site(SITE);
 	const fails = async (options: unknown, message: string) => assert.rejects(async () => plugin(root, options), { message });
 	await fails({}, "files is required: { \"src/scss\": \"/css\" } or { \"src/app.scss\": \"/app.css\" }");
-	await fails({ file: {} }, "unknown option \"file\" (did you mean \"files\"?) (options: files, style, loadPaths)");
+	// DELIBERATE (0.11): `charset` is an option too.
+	await fails({ file: {} }, "unknown option \"file\" (did you mean \"files\"?) (options: files, style, loadPaths, charset)");
 	await fails({ files: ["styles"] }, "files must be an object of { source: \"/output\" }");
 	await fails({ files: { styles: 1 } }, "files.styles: the output must be a URL path string");
 	await fails({ files: { styles: "css" } }, "files: \"css\" must be a URL path starting with / (like \"/css/app.css\" or \"/css\")");

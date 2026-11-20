@@ -89,8 +89,73 @@ where that version matches.
 - `ssqch diff --exclude <glob>` leaves matching files out (repeatable, after `--only`): the blog's
   comparison with its Eleventy build needed nine `--only`s to leave out its images.
 
+- `pagesTree(collections.all, { root: "Feature" })` (or `pagesTree(pages, "Feature")`) is the
+  tree below one key, as eleventy-navigation's `eleventyNavigation: "Feature"` was; `nav.url`
+  replaces a page's URL, any other `nav` key (`excerpt`) is copied onto its entry, and the title
+  falls back to `nav.key`.
+- `getPreviousCollectionItem` and `getNextCollectionItem`, Eleventy's filters, work (and say once
+  that ssqch's is `navPager(collection, page.url)`), so `ssqch import eleventy` no longer ports
+  them into the draft.
+- `ssqch docs <page>` answers with the page a file name names (`ssqch docs comparing-builds`,
+  `ssqch docs /docs/comparing-builds/`), and a trailhead's as `--from` does (`ssqch docs
+  from-eleventy`), where it searched for the words.
+- `ssqch baseline --patch <file>` applies a patch to each copy before it's built, for a commit
+  that needs a fix to build at all.
+- `ssqch baseline` and `ssqch diff a b c` name the build most like the others (the most common
+  version of the most files that vary), and `baseline`'s `Next:` compares with it; a version
+  more than four builds share is a count (`34 of 50 builds (ref-1, ref-2, ref-4, ...) agree`).
+  `--format json` has it as `typical`.
+- `markdown(text, "inline")` in config code, as templates call it, where it failed with
+  `unknown option "0"`.
+
+- `ssqch import jekyll`: a first `ssqch.config.js` from `_config.yml` (Liquid for pages,
+  kramdown's Markdown options, `exclude`, the files Jekyll copies, `site`, the `defaults` for every
+  page, the plugins it knows), directory data for `_posts` and each collection with their tags
+  and permalinks, `page.title` and the other front matter keys renamed in templates, `site.posts`
+  and `site.data.<name>` as ssqch has them, and `{% seo %}` as an include it writes; the rest is
+  listed with file and line. opensource.guide goes from a fresh checkout to a full build with it.
+- `markdown: { htmlMarkdown: "kramdown" }` reads kramdown's Markdown inside HTML: an element with
+  `markdown="1"` (or `"block"`, `"span"`) has its content rendered, and kramdown's HTML rules hold
+  around it. opensource.guide's 3,791 such elements come out as Jekyll wrote them.
+- `headingIds: "kramdown"` (kramdown's GFM ids, emoji dropped, and its ASCII ids for headings
+  inside `markdown="1"` HTML) and `headingIds: "markdown-it-anchor"` (that plugin's default,
+  percent-encoded). `ssqch import eleventy` writes the second for a site with markdown-it-anchor.
+- `trimAfterFrontMatter: true` starts a template's body at its first line with text, as Jekyll
+  does.
+- `sassPlugin({ charset: false })` leaves out the byte order mark (or `@charset`) that CSS with a
+  character outside ASCII starts with, as Dart Sass's `--no-charset` does.
+- Jekyll's `xml_escape` (`&apos;`), `normalize_whitespace` and `sort` of a hash (into `[key, value]`
+  pairs) write what Jekyll's do.
+- `rssPlugin()` has the Eleventy RSS plugin's first names too: `rssDate` and `rssLastUpdatedDate`.
+- `slugify(text, { ascii: true, stripTags: true })`: accents off and symbols spelled out, as the
+  slugify package does (`Thomas Sjögren` is `thomas-sjogren`), and HTML tags left out first.
+- `toc(html)` reads the headings in HTML, for headings a layout adds (`toc(content)` in an outer
+  layout).
+- `ssqch baseline` writes `ref-common` beside its builds when they vary: each file's most common
+  version, which its `Next:` compares with, and it says which files have none yet.
+- `ssqch diff` calls out a changed canonical link or refresh redirect on a page, and a feed's
+  entries that went or came, by their id.
+- `ssqch import eleventy` lists what changes the output before the first diff (a Date printed as
+  it is, date code that reads the machine's time zone, `pagination` over `collections`,
+  templates in a passed-through folder, `&` beside `ssqch build` in a script, a second build tool
+  with ssqch's way for each part), unwraps `{{ '/x/' | url }}` in data files when the site had
+  `dataTemplateEngine`, reads `ignores.add()`, and lists a passthrough entry once.
+- `sitemapPlugin()` without a `url` (or with `""`) writes paths from the root, as jekyll-sitemap
+  does, and warns on each build.
+- The SEO docs have an include that writes jekyll-seo-tag's tags.
+
 ### Changed
 
+- ssqch's smart quotes close an open quote where pulldown-cmark opened a second one (a `"`
+  between two letters, as in `比如"进展 ISSUE-123"；`).
+- A `_site` folder at the top of the input folder (where Jekyll and Eleventy write) is skipped, so
+  the old generator's build isn't read as pages while ssqch writes elsewhere.
+- With `classes: "prism"`, a fence in a language with no grammar gets Prism's
+  `<pre class="language-x">` too.
+- The build summary's `render` time includes layouts, which it counted as `write`.
+- The `eleventyNavigation` warning is left out when the site defines a filter of that name.
+- `pagesTree`: a `parent` no page has is a heading (an entry with that title and no `url`)
+  holding its children, where they went to the top of the tree.
 - `ssqch diff` leaves out what browsers read the same. Each tag is compared in one form (names
   in lower case, attributes sorted, values decoded and in double quotes, `defer="defer"` as
   `defer`, no `/` before `>`, and `<path/>` as `<path></path>` in an SVG), and so is text (`&#39;`

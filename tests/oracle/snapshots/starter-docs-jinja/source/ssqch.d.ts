@@ -75,8 +75,8 @@ declare module "ssqch" {
 
 	/** How Markdown renders. */
 	export interface MarkdownOptions {
-		/** Automatic heading `id`s: `"github"` (the default: GitHub's and github-slugger's anchors, character for character), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), or `false` for none. A `{#id}` on the heading always wins. */
-		headingIds?: "github" | "blackfriday" | "ascii" | false | ((text: string) => string);
+		/** Automatic heading `id`s: `"github"` (the default: GitHub's and github-slugger's anchors, character for character), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), `"kramdown"` (Jekyll's: GitHub's ids for the page's headings, and kramdown's ASCII ones, `section` for none, for headings inside `markdown="1"` HTML), `"markdown-it-anchor"` (that plugin's default: the lowercase text with spaces as `-`, percent-encoded, `what%E2%80%99s-new%3F`), or `false` for none. A `{#id}` on the heading always wins. */
+		headingIds?: "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor" | false | ((text: string) => string);
 		/** `## Heading {#id .class key=value}`. Default `true`. */
 		headingAttributes?: boolean;
 		/** `[^1]` references, with the notes at the end of the page. Default `true`. */
@@ -100,6 +100,8 @@ declare module "ssqch" {
 		/** Lines indented four spaces are code blocks. `false` renders them as ordinary Markdown (HTML indented inside Markdown, say); fences are still code. Default `true`. */
 		indentedCode?: boolean;
 		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. `languages` adds languages or replaces built-in ones. `classes` names the tokens as another highlighter does, so a site keeps its theme's CSS: `"prism"` (`token keyword`, `<pre class="language-js">`, marked lines as `<mark class="highlight-line highlight-line-active">`), or `{ keyword: "tok-keyword" }` for some kinds; the stylesheet uses the same names. Default `false`. */
+		/** Markdown inside HTML, as Jekyll's kramdown reads it: `"kramdown"` renders the content of an element with `markdown="1"` (span-level for `p`, headings and inline elements, block-level for the others; `"block"` and `"span"` choose) and drops the attribute, and keeps kramdown's HTML rules: a block-level element is raw HTML to its end tag, blank lines and all. Default `false`: HTML is CommonMark's, and Markdown inside it stays text. */
+		htmlMarkdown?: "kramdown" | false;
 		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter>; classes?: "prism" | Partial<Record<TokenKind, string>> };
 	}
 
@@ -256,6 +258,8 @@ declare module "ssqch" {
 		bundles?: boolean;
 		/** Printing an undefined value (`{{ titel }}`) is an error, in every template language. Conditionals and defaults still work. Default `false`. */
 		strict?: boolean;
+		/** Start a template's body at its first line with text, dropping the blank lines after the closing `---`, as Jekyll does (its layouts and includes print no blank line there). Off by default: the body starts on the line after `---`, as Eleventy and gray-matter have it. */
+		trimAfterFrontMatter?: boolean;
 		/** `page.lastModified`: `"git"` for the last commit that changed the page's file (its modification time when it has uncommitted changes), or `"file"` for the modification time. Off by default. Needs the full history in CI (`fetch-depth: 0`). */
 		lastModified?: "git" | "file" | false;
 		/** The date of a page with no date of its own (in its data or its file name): `"git"` for the last commit that changed its file, the same in every checkout, or `"file"` (the default) for the file's modification time, which is when the checkout wrote it. Either way it sorts after the dated pages, by path. Needs the full history in CI (`fetch-depth: 0`). */
@@ -281,8 +285,8 @@ declare module "ssqch" {
 
 	/** Returns its argument. It's there so the config reads as one, and for these types. */
 	export function defineConfig<T extends Config | ((context: ConfigContext) => MaybePromise<Config>)>(config: T): T;
-	/** Render Markdown with the site's `markdown` options (render hooks and containers are for templates). `inline` drops the `<p>` around a single paragraph. */
-	export function markdown(text: string, options?: { inline?: boolean }): string;
+	/** Render Markdown with the site's `markdown` options (render hooks and containers are for templates). `inline` drops the `<p>` around a single paragraph: `markdown(text, { inline: true })`, or `markdown(text, "inline")` as in templates. */
+	export function markdown(text: string, options?: { inline?: boolean } | "inline"): string;
 	/** Read a JSON, YAML or TOML file (from the project root) into data: `readData("src/_data/sites/en.yml")`. */
 	export function readData(path: string): any;
 	/** A file that `files()` found. */
@@ -316,6 +320,10 @@ declare module "ssqch" {
 		separator?: string;
 		/** `"drop"` (the default): `Drew's Brownies` is `drews-brownies`. `"separate"`: an apostrophe splits words like other punctuation, `drew-s-brownies`, to keep a site's existing URLs. */
 		apostrophes?: "drop" | "separate";
+		/** `true` takes accents off and spells out a few letters and symbols first, as the slugify package does: `Thomas Sjögren` is `thomas-sjogren`, `Straße & 50%` is `strasse-and-50-percent`. Other scripts stay as they are. Default `false`. */
+		ascii?: boolean;
+		/** `true` drops HTML tags first: `Use <code>title</code>` is `use-title`, not `use-code-title-code`. Default `false`. */
+		stripTags?: boolean;
 	}
 	/** The `slugify` template filter, for data files: `slugify("Taco Bake", { separator: "_" })` is `"taco_bake"`. Lowercase letters and digits, with `separator` (a dash by default) for each run of anything else. A string is the separator. */
 	export function slugify(text: string, options?: SlugifyOptions | string): string;
@@ -558,6 +566,8 @@ declare module "ssqch/sass" {
 		style?: "compressed" | "expanded";
 		/** More folders `@use` and `@import` look in, relative to the project root. */
 		loadPaths?: string[];
+		/** `false` leaves out what CSS with a character outside ASCII starts with: a byte order mark (compressed) or `@charset "UTF-8";` (expanded), as Dart Sass's `--no-charset` does and jekyll-sass-converter's output has it. Default `true`. */
+		charset?: boolean;
 	}
 
 	/** Compiles Sass at the start of each build, with grass (Rust, as WebAssembly: no Dart Sass), so fingerprinting and the link checker see the CSS. */

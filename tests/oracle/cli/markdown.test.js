@@ -274,3 +274,70 @@ test("a_code_hook_writes_code_spans", () => {
 	assert.ok(r.ok, r.log);
 	assert.equal(read(dir, "_site/index.html"), "<p>Run <code class=\"language-plaintext highlighter-rouge\">ssqch build</code> and <code class=\"language-plaintext highlighter-rouge\">a &lt; b</code>.</p>\n<pre><code class=\"language-js\">x\n</code></pre>\n");
 });
+
+// Added in 0.11, from the fresh opensource.guide move: config code's `markdown()` takes the
+// template function's `"inline"` too, where it failed with `unknown option "0"`.
+test("config_markdown_takes_inline_as_templates_do", () => {
+	const dir = tempDir("markdown-inline");
+	write(dir, {
+		"ssqch.config.js": "import { markdown } from \"ssqch\";\nexport default { data: { a: markdown(\"*a*\", \"inline\"), b: markdown(\"*b*\", { inline: true }) } };\n",
+		"index.jinja": "{{ a | safe }}|{{ b | safe }}",
+	});
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<em>a</em>|<em>b</em>");
+	write(dir, { "ssqch.config.js": "import { markdown } from \"ssqch\";\nexport default { data: { a: markdown(\"*a*\", \"block\") } };\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("markdown(): unknown option \"block\" (give \"inline\", or { inline: true })"), r.log);
+});
+
+// Added in 0.11, from opensource.guide (3,791 `markdown="1"` elements, 325 pages with raw
+// `[@name](url)` credits without them): kramdown's Markdown inside HTML, and its heading ids.
+test("kramdowns_markdown_inside_html", () => {
+	const dir = tempDir("markdown-kramdown");
+	write(dir, {
+		"ssqch.config.js": "export default { markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\" } };\n",
+		"index.md": "# Pine 🌲 trail\n\n<aside markdown=\"1\" class=\"note\">\n## Café *notes*\n\n- [@ranger](https://example.com)\n\n</aside>\n## After\n\n<p markdown=\"1\">A *quote*</p>\n\n<div>\nraw *stays*\n\nstill raw\n</div>\n",
+		"other.jinja": "{{ markdown('<p markdown=\"1\">*a*</p>') | safe }}",
+	});
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<h1 id=\"pine--trail\">Pine 🌲 trail</h1>\n<aside class=\"note\">\n<h2 id=\"caf-notes\">Café <em>notes</em></h2>\n<ul>\n<li><a href=\"https://example.com\">@ranger</a></li>\n</ul>\n</aside>\n<h2 id=\"after\">After</h2>\n<p>A <em>quote</em></p>\n<div>\nraw *stays*\nstill raw\n</div>\n");
+	// The `markdown` function too, as Jekyll's `markdownify`.
+	assert.equal(read(dir, "_site/other/index.html"), "<p><em>a</em></p>");
+	// Off (the default), the element is CommonMark's HTML.
+	write(dir, { "ssqch.config.js": "export default {};\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(read(dir, "_site/index.html").includes("<p markdown=\"1\">A *quote*</p>"), read(dir, "_site/index.html"));
+	write(dir, { "ssqch.config.js": "export default { markdown: { htmlMarkdown: true } };\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("markdown.htmlMarkdown must be \"kramdown\" or false, not boolean"), r.log);
+});
+
+// Added in 0.11, from the a11yproject.com rerun: a layout adds the only `h2` on some pages, so
+// `page.headings` has none; `toc()` takes HTML too, as eleventy-plugin-nesting-toc did.
+test("toc_takes_html_for_headings_a_layout_adds", () => {
+	const dir = tempDir("toc-html");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"md\", \"njk\"] };\n",
+		"index.md": "---\nlayout: featured.njk\n---\nSome text.\n",
+		"_includes/featured.njk": "---\nlayout: base.njk\n---\n<h2 id=\"spotlight\">Spotlight</h2>\n{{ content | safe }}",
+		"_includes/base.njk": "<nav>{{ toc(content) | safe }}</nav><nav>{{ toc(page.headings) | safe }}</nav>",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<nav><ul><li><a href=\"#spotlight\">Spotlight</a></li></ul></nav><nav></nav>");
+});
+
+// Added in 0.11, from the a11yproject.com rerun: markdown-it-anchor's ids are encodeURIComponent's
+// (50 pages' ids with `’`, `:` or `?` changed, and links to them broke).
+test("heading_ids_like_markdown_it_anchors", () => {
+	const dir = tempDir("markdown-it-anchor-ids");
+	write(dir, {
+		"ssqch.config.js": "export default { markdown: { headingIds: \"markdown-it-anchor\" } };\n",
+		"index.md": "## What’s new: Café?\n\n## What’s new: Café?\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<h2 id=\"what%E2%80%99s-new%3A-caf%C3%A9%3F\">What’s new: Café?</h2>\n<h2 id=\"what%E2%80%99s-new%3A-caf%C3%A9%3F-1\">What’s new: Café?</h2>\n");
+});

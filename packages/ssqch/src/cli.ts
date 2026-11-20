@@ -127,7 +127,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		name: "import",
 		about: "Move a site from another generator: rename and rewrite what's mechanical, and list the rest",
 		options: [{ long: "write", help: "Make the changes (without it, only list them)" }],
-		positionals: [{ name: "generator", help: "The generator the site is built with: eleventy or zola", required: true }, { name: "dir", help: "The site's folder (default: the current folder)", required: false, default: "." }],
+		positionals: [{ name: "generator", help: "The generator the site is built with: eleventy, jekyll or zola", required: true }, { name: "dir", help: "The site's folder (default: the current folder)", required: false, default: "." }],
 		afterHelp: "Run it in a clean git checkout, read the list, then run it again with --write. `ssqch docs --from <generator>` prints the trailhead for each generator.",
 		own: true,
 	},
@@ -140,9 +140,10 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 			{ long: "commit", value: "REV", help: "Build this commit instead of the working tree (the one before `ssqch import --write`)" },
 			{ long: "to", value: "NAME", help: "Where the builds go: the default makes .cache/ssqch/baseline/ref-1, -2 and -3", default: ".cache/ssqch/baseline/ref" },
 			{ long: "link", value: "PATH", help: "Link this folder of the site into each copy, as node_modules, .bundle and vendor/bundle are (repeatable)", many: true },
+			{ long: "patch", value: "FILE", help: "Apply this patch (git diff's) to each copy before building: a fix the --commit needs to build" },
 		],
 		positionals: [{ name: "COMMAND", help: "The old generator's build command, quoted: \"npx @11ty/eleventy\"", required: true, many: true }],
-		afterHelp: "Each build runs in a fresh copy of the site (the files git would commit, or the --commit), with TZ=UTC, SOURCE_DATE_EPOCH and every file's time set to the commit's, and node_modules linked in. Then the builds are compared as `ssqch diff ref-1 ref-2 ref-3` compares them, so what changes by itself is known before anything is compared with ssqch's build.\n\n  ssqch baseline \"npx @11ty/eleventy\"\n  ssqch baseline \"bundle exec jekyll build\" --commit main\n  ssqch diff ref-1 dist",
+		afterHelp: "Each build runs in a fresh copy of the site (the files git would commit, or the --commit), with TZ=UTC, SOURCE_DATE_EPOCH and every file's time set to the commit's, and node_modules linked in. Then the builds are compared as `ssqch diff ref-1 ref-2 ref-3` compares them, so what changes by itself is known before anything is compared with ssqch's build.\n\n  ssqch baseline \"npx @11ty/eleventy\"\n  ssqch baseline \"bundle exec jekyll build\" --commit main\n  ssqch baseline \"npx @11ty/eleventy\" --commit HEAD~3 --patch fix-build.patch\n  ssqch diff ref-1 dist",
 		own: true,
 	},
 	{ name: "capabilities", about: "Say what this binary supports: template languages, modules, config options and optional features", options: [FORMAT], positionals: [], own: true },
@@ -322,7 +323,7 @@ export async function main(argv: string[]): Promise<number> {
 		return 1;
 	}
 	// It runs another generator, not ssqch's build, so nothing below applies either.
-	if (command === "baseline") return (await import("./commands/baseline.ts")).runBaseline({ root: value("root") ?? ".", command: cli.positionals.join(" "), from: value("from") ?? "_site", runs: Number(value("runs") ?? "3"), commit: value("commit"), to: value("to") ?? ".cache/ssqch/baseline/ref", link: [cli.options.link ?? []].flat() as string[], quiet: flag("quiet") });
+	if (command === "baseline") return (await import("./commands/baseline.ts")).runBaseline({ root: value("root") ?? ".", command: cli.positionals.join(" "), from: value("from") ?? "_site", runs: Number(value("runs") ?? "3"), commit: value("commit"), to: value("to") ?? ".cache/ssqch/baseline/ref", link: [cli.options.link ?? []].flat() as string[], patch: value("patch"), quiet: flag("quiet") });
 	// It reads the site's files as text and runs none of them, so nothing below applies.
 	if (command === "import") return (await import("./import.ts")).runImport(cli.positionals[0], cli.positionals[1] ?? ".", flag("write"));
 

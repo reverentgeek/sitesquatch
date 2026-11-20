@@ -90,7 +90,7 @@ export async function capabilities(commands: string[]): Promise<Capabilities> {
 		imageFormats: avif ? ["avif", "webp", "jpeg", "png", "gif", "svg"] : ["webp", "jpeg", "png", "gif", "svg"],
 		starters: ["site", "docs"],
 		starterEngines: starterEngines(),
-		importers: ["eleventy", "zola"],
+		importers: ["eleventy", "jekyll", "zola"],
 	};
 }
 

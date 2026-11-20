@@ -298,6 +298,19 @@ test("what_varies_the_same_way_on_several_files_is_grouped", async () => {
 	assert.equal((await compareRuns(runs, options({ ungrouped: true }))).groups.length, 0);
 });
 
+// A race needs many builds (a11yproject.com's KSS, rerun): the versions are counted, and the build
+// with the most common version of the most files is the one to compare with.
+test("many_builds_are_counted_and_the_typical_one_named", async () => {
+	const site = (a: string, b: string) => build({ "a/index.html": `<p>${a}</p>`, "b/index.html": `<p>${b}</p>` });
+	const runs = [site("x", "1"), site("y", "1"), site("y", "2"), site("y", "1"), site("y", "1"), site("y", "1"), site("x", "2")];
+	const report = await compareRuns(runs, options());
+	assert.equal(report.typical, 1);
+	const text = runsText({ ...report, runs: runs.map((_, i) => `ref-${i + 1}`) }, 10, false);
+	assert.ok(text.includes("~ /a/  (2 versions: 5 of 7 builds (ref-2, ref-3, ref-4, ...) agree; ref-1, ref-7 differ)"), text);
+	assert.ok(text.includes("The build most like the others: ref-2, with the most common version of 2 of the 2 files that vary.\n"), text);
+	assert.equal((runsJson({ ...report, runs: runs.map((_, i) => `ref-${i + 1}`) }, 0) as { typical: string }).typical, "ref-2");
+});
+
 // A build's time printed in each page's own text (Jekyll's `site.time` in every page's JSON-LD,
 // opensource.guide), or a few milliseconds apart in each feed (the Rust blog): dates of one form
 // that changed, so one group, though the text around them isn't the same.
@@ -330,4 +343,24 @@ test("a_date_printed_by_javascript_is_a_date", async () => {
 	const report = await compare(before, after, options());
 	assert.deepEqual(report.groups.map((g) => [g.urls, g.match]), [[["/a/", "/b/"], "dates"]]);
 	assert.ok(report.changed.every((f) => f.onlyDates));
+});
+
+// What a reader and a search engine end up at is called out like a title: a page whose canonical
+// link or refresh changed has moved, and a feed's entries are what readers' apps track.
+test("canonical_links_redirects_and_feed_entries_are_called_out", async () => {
+	const before = build({
+		"a/index.html": "<head><link rel=\"canonical\" href=\"https://example.com/a/\"></head><p>A</p>",
+		"old/index.html": "<meta http-equiv=\"refresh\" content=\"0; url=/new/\"><p>Moved</p>",
+		"feed.xml": "<feed><entry><id>tag:a</id><title>A</title></entry><entry><id>tag:b</id><title>B</title></entry></feed>",
+	});
+	const after = build({
+		"a/index.html": "<head><link href=\"https://example.com/a\" rel=\"canonical\"></head><p>A</p>",
+		"old/index.html": "<meta content=\"0;url=/newer/\" http-equiv=\"refresh\"><p>Moved</p>",
+		"feed.xml": "<feed><entry><id>tag:b</id><title>B</title></entry><entry><id>tag:c</id><title>C</title></entry></feed>",
+	});
+	const report = await compare(before, after, options({ ungrouped: true }));
+	const notes = Object.fromEntries(report.changed.map((f) => [f.url, f.notes]));
+	assert.deepEqual(notes["/a/"], ["canonical link: https://example.com/a/ -> https://example.com/a"]);
+	assert.deepEqual(notes["/old/"], ["redirects to: /new/ -> /newer/"]);
+	assert.deepEqual(notes["/feed.xml"], ["feed entries removed (readers see them go): tag:a", "feed entries added (readers see them as new): tag:c"]);
 });

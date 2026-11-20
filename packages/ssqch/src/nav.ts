@@ -248,24 +248,46 @@ interface Node {
 	entry: Data;
 }
 
+/** What `fromPages` takes besides the pages: `root` is the key whose children are the tree. */
+export interface PagesTreeOptions {
+	root?: string;
+}
+
+/** The `nav` keys `fromPages` reads itself; any other is copied onto the entry (`excerpt`, `icon`). */
+const NAV_OWN = new Set(["title", "key", "parent", "order", "url", ...CHILD_KEYS]);
+
 /**
  * A tree from collection items with `nav` front matter: `nav: { title, parent, order }` (or
  * `nav: true` for a top-level entry titled by `title`). An entry's key is its `nav.key`, or its
- * title; `parent` names another entry's key. Siblings sort by `order`, then title.
+ * title; `parent` names another entry's key. Siblings sort by `order`, then title. A `parent` no
+ * page has is a heading of its own (an entry with that title and no `url`), as eleventy-navigation's
+ * `parent: Feature` was, and `root` picks one key's children as the tree.
  */
-export function fromPages(items: unknown[]): Entry[] {
-	let nodes: Node[] = [];
+export function fromPages(items: unknown[], options: PagesTreeOptions = {}): Entry[] {
+	const nodes: Node[] = [];
 	for (const item of items) {
 		const data = get(item, "data");
 		const nav = get(data, "nav");
 		if (nav === undefined || nav === null || nav === false) continue;
 		const navTitle = get(nav, "title");
-		const title = typeof navTitle === "string" ? navTitle : String(get(data, "title"));
 		const navKey = get(nav, "key");
+		const pageTitle = get(data, "title");
+		const title = typeof navTitle === "string" ? navTitle : pageTitle !== undefined && pageTitle !== null ? String(pageTitle) : typeof navKey === "string" ? navKey : "";
 		const key = typeof navKey === "string" ? navKey : title;
 		const parent = get(nav, "parent");
 		const order = get(nav, "order");
-		nodes.push({ key, parent: typeof parent === "string" ? parent : undefined, order: typeof order === "number" ? order : Number.MAX_VALUE, entry: { title, url: get(item, "url"), key } });
+		const navUrl = get(nav, "url");
+		const extra = isPlainObject(nav) ? Object.fromEntries(Object.entries(nav).filter(([k]) => !NAV_OWN.has(k))) : {};
+		nodes.push({ key, parent: typeof parent === "string" ? parent : undefined, order: typeof order === "number" ? order : Number.MAX_VALUE, entry: { ...extra, title, url: typeof navUrl === "string" ? navUrl : get(item, "url"), key } });
+	}
+	// A parent no page has becomes a heading, placed where its first child would sort.
+	const keys = new Set(nodes.map((n) => n.key));
+	for (const n of [...nodes]) {
+		if (n.parent === undefined || keys.has(n.parent)) continue;
+		keys.add(n.parent);
+		const siblings = nodes.filter((m) => m.parent === n.parent);
+		const order = Math.min(...siblings.map((m) => m.order));
+		nodes.push({ key: n.parent, parent: undefined, order, entry: { title: n.parent, key: n.parent } });
 	}
 	const build = (parent: string | undefined, depth: number): Entry[] => {
 		if (depth > 32) return [];
@@ -273,8 +295,5 @@ export function fromPages(items: unknown[]): Entry[] {
 		level.sort((a, b) => totalCompare(a.order, b.order) || compareText(a.entry.title, b.entry.title));
 		return level.map((n) => ({ ...n.entry, children: build(n.key, depth + 1) }));
 	};
-	// Entries whose parent doesn't exist go at the top.
-	const keys = new Set(nodes.map((n) => n.key));
-	nodes = nodes.map((n) => (n.parent !== undefined && !keys.has(n.parent) ? { ...n, parent: undefined } : n));
-	return build(undefined, 0);
+	return options.root === undefined ? build(undefined, 0) : build(options.root, 1);
 }

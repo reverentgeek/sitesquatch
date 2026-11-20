@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
-import { ssqch, project, read, FIXTURES } from "../lib/ssqch.js";
+import { ssqch, project, read, tempDir, write, FIXTURES } from "../lib/ssqch.js";
 
 const PNG = fs.readFileSync(path.join(FIXTURES, "cli/squatch.png"));
 
@@ -820,4 +820,47 @@ export default { base: "/trail/", templateFormats: ["njk"], plugins: [sitemapPlu
 	assert.match(wrong("[\"fr\"]"), /alternates must be a function/);
 	assert.match(wrong("() => [{ lang: \"fr\" }]"), /alternates\(\), for \/: each one is \{ hreflang: "fr", href: "\/fr\/page\/" \}/);
 	assert.match(wrong("() => { throw new Error(\"no map of the trail\"); }"), /alternates\(\), for \/: no map of the trail/);
+});
+
+// Added in 0.11, from the fresh opensource.guide move: a Jekyll site's `url` is often empty, and
+// jekyll-sitemap writes paths then. So does sitemapPlugin(), and it says why that's not enough.
+test("a_sitemap_without_a_url_writes_paths_and_says_so", () => {
+	const root = tempDir("sitemap-no-url");
+	write(root, {
+		"ssqch.config.js": "import { sitemapPlugin } from \"ssqch/sitemap\";\nexport default { plugins: [sitemapPlugin({ url: \"\", lastmod: false })] };\n",
+		"index.md": "# Pine\n",
+		"trail.md": "# Trail\n",
+	});
+	const r = ssqch(["build", "--root", root]);
+	assert.ok(r.ok, r.log);
+	assert.ok(r.log.includes("warn: sitemapPlugin() has no url, so /sitemap.xml's <loc>s are paths from the site's root"), r.log);
+	assert.equal(read(root, "_site/sitemap.xml"), "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>/</loc>\n  </url>\n  <url>\n    <loc>/trail/</loc>\n  </url>\n</urlset>\n");
+});
+
+// Added in 0.11, from the fresh opensource.guide move: grass starts CSS with a character outside
+// ASCII with a byte order mark (or `@charset` when expanded); `charset: false` leaves it out, as
+// jekyll-sass-converter did.
+test("sass_charset_false_leaves_out_the_byte_order_mark", () => {
+	const root = tempDir("sass-charset");
+	write(root, { "app.scss": ".quote::before { content: \"“\"; }\n", "index.md": "# Pine\n" });
+	for (const [style, charset, starts] of [["compressed", undefined, "﻿.quote"], ["compressed", false, ".quote"], ["expanded", undefined, "@charset \"UTF-8\";\n.quote"], ["expanded", false, ".quote"]]) {
+		write(root, { "ssqch.config.js": `import { sassPlugin } from "ssqch/sass";\nexport default { plugins: [sassPlugin({ files: { "app.scss": "/app.css" }, style: "${style}"${charset === false ? ", charset: false" : ""} })] };\n` });
+		const r = ssqch(["build", "--root", root, "-q"]);
+		assert.ok(r.ok, r.log);
+		assert.ok(read(root, "_site/app.css").startsWith(starts), `${style} ${charset}: ${JSON.stringify(read(root, "_site/app.css"))}`);
+	}
+});
+
+// Added in 0.11: the Eleventy RSS plugin's first names, which its sample feed still uses.
+test("rss_has_the_eleventy_plugins_first_names", () => {
+	const root = tempDir("rss-old-names");
+	write(root, {
+		"ssqch.config.js": "import { rssPlugin } from \"ssqch/rss\";\nexport default { templateFormats: [\"md\", \"njk\"], plugins: [rssPlugin()] };\n",
+		"posts/a.md": "---\ntags: posts\ndate: 2026-01-02\n---\nA",
+		"posts/b.md": "---\ntags: posts\ndate: 2026-03-04\n---\nB",
+		"feed.njk": "---\npermalink: /feed.xml\n---\n{{ collections.posts | rssLastUpdatedDate }}|{{ collections.posts[0].date | rssDate }}",
+	});
+	const r = ssqch(["build", "--root", root, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(root, "_site/feed.xml"), "2026-03-04T00:00:00Z|2026-01-02T00:00:00Z");
 });

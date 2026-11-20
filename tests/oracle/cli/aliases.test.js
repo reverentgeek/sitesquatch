@@ -56,12 +56,14 @@ const TABLE = [
 	{"word":"setTemplateFormats","kind":"Config","alias":false,"ssqch":"templateFormats","say":"In ssqch it's `templateFormats`: templateFormats: [\"njk\", \"md\"].","more":"ssqch docs templateFormats"},
 	{"word":"eleventyComputed","kind":"FrontMatter","alias":true,"ssqch":"computed","say":"ssqch's name is `computed`.","more":"ssqch docs computed"},
 	{"word":"eleventyExcludeFromCollections","kind":"FrontMatter","alias":true,"ssqch":"excludeFromCollections","say":"ssqch's name is `excludeFromCollections`.","more":"ssqch docs excludeFromCollections"},
-	{"word":"eleventyNavigation","kind":"FrontMatter","alias":false,"ssqch":"nav","say":"ssqch's own navigation (`pagesTree` and `navTree`) reads `nav`, so these pages aren't in it. Templates and filters that read `eleventyNavigation` (eleventy-navigation's `findNavigationEntries`) still get it as it is.","more":"ssqch docs nav"},
+	{"word":"eleventyNavigation","kind":"FrontMatter","alias":false,"ssqch":"nav","say":"ssqch's own navigation (`pagesTree` and `navTree`) reads `nav`, so these pages aren't in it: rename it to `nav` (the same `key`, `parent`, `order` and `title`), and `collections.all | eleventyNavigation: \"Feature\"` is `pagesTree(collections.all, { root: \"Feature\" })`. Templates and filters that read `eleventyNavigation` (eleventy-navigation's `findNavigationEntries`) still get it as it is.","more":"ssqch docs nav"},
 	{"word":"templateEngineOverride","kind":"FrontMatter","alias":true,"ssqch":"render","say":"ssqch's name is `render`, a list: render: [njk, md].","more":"ssqch docs render"},
 	{"word":"redirect_from","kind":"FrontMatter","alias":true,"ssqch":"aliases","say":"ssqch's name is `aliases`; `redirectsPlugin()` from \"ssqch/redirects\" writes the redirects.","more":"ssqch docs aliases"},
 	{"word":"published","kind":"FrontMatter","alias":false,"ssqch":"draft","say":"`published: false` doesn't hold a page back in ssqch, so it's published: use `draft: true`.","more":"ssqch docs draft"},
 	{"word":"url","kind":"Filter","alias":true,"ssqch":"base","say":"It returns the URL as it is: the build adds `base` to every URL from the site's root, so `href=\"/about/\"` needs no filter (use `withBase()` outside HTML attributes).","more":"ssqch docs base"},
 	{"word":"relative_url","kind":"Filter","alias":true,"ssqch":"base","say":"It returns the URL as it is: the build adds `base` to every URL from the site's root, so `href=\"/about/\"` needs no filter (use `withBase()` outside HTML attributes).","more":"ssqch docs base"},
+	{"word":"getPreviousCollectionItem","kind":"Filter","alias":true,"ssqch":"navPager","say":"`collection | getPreviousCollectionItem(page)` works: it's `navPager(collection, page.url).previous`, which gives `previous` and `next` at once.","more":"ssqch docs navPager"},
+	{"word":"getNextCollectionItem","kind":"Filter","alias":true,"ssqch":"navPager","say":"`collection | getNextCollectionItem(page)` works: it's `navPager(collection, page.url).next`, which gives `previous` and `next` at once.","more":"ssqch docs navPager"},
 	{"word":"slug","kind":"Filter","alias":false,"ssqch":"slugify","say":"ssqch's is `slugify`, which differs: Eleventy's `slug` (the `slugify` npm package) keeps `.` and some punctuation, so `Node.js` is `node.js` there and `node-js` in ssqch. To keep old URLs, define `slug` in `filters` with that package: slug: (s) => slugify(String(s), { lower: true }).","more":"ssqch docs slugify"},
 	{"word":"absolute_url","kind":"Filter","alias":false,"ssqch":"absoluteUrl","say":"`absoluteUrl(url, base)` comes with `rssPlugin()` from \"ssqch/rss\".","more":"ssqch docs absoluteUrl"},
 	{"word":"markdownify","kind":"Filter","alias":true,"ssqch":"markdown","say":"ssqch's function is `markdown(text)` (or `markdown(text, \"inline\")`).","more":"ssqch docs markdown"},
@@ -122,9 +124,17 @@ function aliasWorks(row, dir) {
 		assert.ok(rd("_site/index.html").includes(want), `${row.word}: ${rd("_site/index.html")}`);
 	} else if (row.kind === "Filter") {
 		fs.rmSync(path.join(dir, "index.md"));
-		write(dir, { "index.jinja": `{{ "/x/" | ${word} }}` });
-		result = ssqch(["build", "--root", d]);
-		assert.ok(rd("_site/index.html").startsWith(word === "markdownify" ? "&lt;p&gt;/x/" : "/x/"), `${row.word}: ${rd("_site/index.html")}`);
+		if (row.ssqch === "navPager") {
+			// Eleventy's `collection | getNextCollectionItem(page)`: the neighbour in the list.
+			write(dir, { "a.jinja": "---\ntags: trail\ndate: 2026-01-01\n---\nA", "b.jinja": "---\ntags: trail\ndate: 2026-01-02\n---\nB", "index.jinja": `{% set p = collections.trail | ${word}(collections.trail[${word === "getNextCollectionItem" ? 0 : 1}]) %}{{ p.url }}` });
+			result = ssqch(["build", "--root", d]);
+			assert.equal(rd("_site/index.html"), word === "getNextCollectionItem" ? "/b/" : "/a/", row.word);
+			for (const f of ["a.jinja", "b.jinja"]) fs.rmSync(path.join(dir, f));
+		} else {
+			write(dir, { "index.jinja": `{{ "/x/" | ${word} }}` });
+			result = ssqch(["build", "--root", d]);
+			assert.ok(rd("_site/index.html").startsWith(word === "markdownify" ? "&lt;p&gt;/x/" : "/x/"), `${row.word}: ${rd("_site/index.html")}`);
+		}
 		fs.rmSync(path.join(dir, "index.jinja"));
 	} else {
 		throw new Error(`${row.word}: a template global can't be an alias`);

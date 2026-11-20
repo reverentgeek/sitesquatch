@@ -33,7 +33,12 @@ test("baseline_builds_the_old_site_and_says_what_varies", { skip: !hasGit && "ne
 	// neither generator reads them as pages, and the message says what isn't pinned.
 	const ref = ".cache/ssqch/baseline/ref";
 	assert.ok(r.log.includes(`Base camp is set: ${ref}-1, ${ref}-2 and ${ref}-3, built from the working tree with TZ=UTC, SOURCE_DATE_EPOCH and every file's time pinned; a generator that reads its own clock isn't, so pin it in its config if the builds vary.`), r.log);
-	assert.ok(r.log.includes("Varies (1)\n  ~ /  (") && r.log.includes(`Next: build with ssqch into an empty folder, then \`ssqch diff ${ref}-1 <ssqch's output>\`, with an --ignore for what varies above, and fix the biggest group first. The whole loop: \`ssqch docs "moving a site with an agent"\`.`), r.log);
+	// The build to compare with is the one most like the others (all three differ here: the first).
+	assert.ok(r.log.includes("The build most like the others: .cache/ssqch/baseline/ref-1, with the most common version of 1 of the 1 file that vary.\n1 file has no most common version: each build has its own. More builds (--runs 20) show whether one is usual.\n"), r.log);
+	// What varies is put together from each file's most common version, and compared with.
+	assert.ok(r.log.includes("Wrote .cache/ssqch/baseline/ref-common: each file's most common version of the 3 builds"), r.log);
+	assert.ok(exists(dir, ".cache/ssqch/baseline/ref-common/index.html") && exists(dir, ".cache/ssqch/baseline/ref-common/trail/index.html"));
+	assert.ok(r.log.includes("Varies (1)\n  ~ /  (") && r.log.includes(`Next: build with ssqch into an empty folder, then \`ssqch diff ${ref}-common <ssqch's output>\`, with an --ignore for what varies above, and fix the biggest group first. The whole loop: \`ssqch docs "moving a site with an agent"\`.`), r.log);
 	// Every file's time is the commit's, in every copy, and the clock is UTC.
 	assert.equal(read(dir, `${ref}-2/trail/index.html`), "<p>2026-03-01T12:00:00.000Z UTC 1772366400</p>");
 	assert.ok(!exists(dir, ".cache/ssqch/baseline-copies"), "the copies are removed");
@@ -42,6 +47,7 @@ test("baseline_builds_the_old_site_and_says_what_varies", { skip: !hasGit && "ne
 	r = ssqch(["baseline", "node build.mjs steady", "--runs", "2", "--quiet"], { cwd: dir });
 	assert.equal(r.code, 0, r.log);
 	assert.ok(r.log.includes("Every build is the same: 2 pages and 0 other files."), r.log);
+	assert.ok(!exists(dir, ".cache/ssqch/baseline/ref-common"), "an earlier run's is removed");
 	assert.ok(!exists(dir, `${ref}-3`));
 
 	// --commit builds that commit, in a worktree it removes afterwards.
@@ -51,6 +57,22 @@ test("baseline_builds_the_old_site_and_says_what_varies", { skip: !hasGit && "ne
 	assert.equal(r.code, 0, r.log);
 	assert.ok(exists(dir, ".refs/old-1/index.html"));
 	assert.equal(git(dir, "worktree", "list").split("\n").length, 1);
+
+	// --patch applies a fix to each copy first: here, to the commit whose build fails. (Added in
+	// 0.11, from the fresh a11yproject.com rerun: a commit that needed a fix couldn't be built.)
+	git(dir, "add", "-A");
+	git(dir, "commit", "-q", "-m", "Break the build");
+	fs.writeFileSync(path.join(dir, "fix.patch"), git(dir, "diff", "HEAD", "HEAD~1", "--", "build.mjs") + "\n");
+	r = ssqch(["baseline", "node build.mjs steady", "--runs", "1", "--commit", "HEAD", "--patch", "fix.patch"], { cwd: dir });
+	assert.equal(r.code, 0, r.log);
+	assert.ok(r.log.includes("Base camp is set: .cache/ssqch/baseline/ref-1, built from HEAD and fix.patch with TZ=UTC"), r.log);
+	r = ssqch(["baseline", "node build.mjs steady", "--runs", "1", "--patch", "nope.patch", "--quiet"], { cwd: dir });
+	assert.ok(r.code === 2 && r.log.includes("--patch nope.patch: no such file"), r.log);
+	// The commit before has the fix already.
+	r = ssqch(["baseline", "node build.mjs steady", "--runs", "1", "--commit", "HEAD~1", "--patch", "fix.patch", "--quiet"], { cwd: dir });
+	assert.ok(r.code === 2 && r.log.includes("--patch fix.patch: didn't apply to HEAD~1: "), r.log);
+	assert.equal(git(dir, "worktree", "list").split("\n").length, 1);
+	fs.rmSync(path.join(dir, "fix.patch"));
 
 	// What goes wrong says so, and exits 2.
 	r = ssqch(["baseline", "node build.mjs", "--quiet"], { cwd: dir });

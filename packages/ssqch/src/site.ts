@@ -12,7 +12,7 @@ import type { Config, Dirs, Filter } from "./config.ts";
 import { dirsOf } from "./config.ts";
 import { excerpt, headings } from "./content.ts";
 import type { Data } from "./data.ts";
-import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, sourceDateEpoch, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
+import { NOT_DATA, decodeText, frontMatterSettings, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, sourceDateEpoch, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
 import type { Diagnostic } from "./diagnostics.ts";
 import { BuildError, Diagnostics, aliasUsed, bail, context, error as errorOf, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import { edgeEngine } from "./engines/edge.ts";
@@ -148,6 +148,7 @@ export class Site {
 
 	constructor(config: Config, keepLayers = false) {
 		this.config = config;
+		frontMatterSettings.trimAfter = config.trimAfterFrontMatter;
 		this.dirs = dirsOf(config);
 		this.keepLayers = keepLayers;
 		this.profile = new Profile(config.profile);
@@ -227,6 +228,13 @@ export class Site {
 					const given = (args[0] ?? "") as string;
 					if (given === "") args = [".", ...args.slice(1)];
 					else if (given.startsWith("/") && !given.startsWith("//")) args = [path.posix.normalize(given), ...args.slice(1)];
+				}
+				// `collection | getNextCollectionItem(page)`: the page's neighbour in the list, or nothing.
+				if (row.ssqch === "navPager") {
+					const page = args[1];
+					const url = page !== null && typeof page === "object" && typeof (page as { url?: unknown }).url === "string" ? (page as { url: string }).url : "";
+					const pager = target ? (target(args[0], url) as { previous: unknown; next: unknown }) : { previous: null, next: null };
+					return (row.word === "getNextCollectionItem" ? pager.next : pager.previous) ?? undefined;
 				}
 				return target ? target(...args) : args[0];
 			});
@@ -418,6 +426,10 @@ export class Site {
 				if (skipDirs.has(entry.real)) continue;
 				if (entry.isDirectory) {
 					if (isBundlerInstall(file)) continue;
+					// `_site` at the top is where Jekyll and Eleventy write: another generator's build,
+					// not pages (opensource.guide's Jekyll build was read as 405 more pages when ssqch
+					// wrote elsewhere). It's skipped as `node_modules` is; ssqch's own output already is.
+					if (name === "_site" && dir === dirs.input) continue;
 					walk(file, [...above, entry.real]);
 					continue;
 				}

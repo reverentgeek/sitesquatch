@@ -609,6 +609,19 @@ function from(generator: string, json: boolean): string {
 	return out;
 }
 
+/** The docs page a query names by its file (`comparing-builds`, `comparing-builds.md`, `/docs/comparing-builds/`): its title, or the generator for a trailhead. */
+function pageNamed(query: string): { file: string; title?: string; trailhead?: string } | undefined {
+	const name = query.trim().replace(/^.*\/docs\//, "").replace(/^\/+|\/+$/g, "").replace(/\.md$/, "");
+	if (!/^[\w-]+(\/[\w-]+)?$/.test(name)) return undefined;
+	const nav = (yaml.load(bundled("docs/nav.yml")) as Array<{ pages: unknown[] }> | null) ?? [];
+	const files = nav.flatMap((group) => group.pages).filter((p): p is string => typeof p === "string");
+	const file = files.find((f) => f.replace(/\.md$/, "") === name || (!name.includes("/") && f.replace(/\.md$/, "").split("/").pop() === name));
+	if (file === undefined) return undefined;
+	const trail = /^trailheads\/from-([\w-]+)\.md$/.exec(file);
+	if (trail) return { file, trailhead: trail[1] };
+	return { file, title: docsPage(bundled(`docs/${file}`)).title };
+}
+
 export interface DocsCommand {
 	query: string[];
 	from?: string;
@@ -638,8 +651,22 @@ export function runDocs(grammar: Grammar, command: DocsCommand): number {
 		const text = agentsMd();
 		return out(json ? JSON.stringify({ query, found: true, agentsMd: text }, null, 2) + "\n" : text);
 	}
-	const a = answer(grammar, all, known, query);
-	if (a) return out(json ? JSON.stringify(answerJson(all, a), null, 2) + "\n" : answerText(all, a));
+	// A page's file name, as its link on the site ends (`comparing-builds`, `trailheads/from-eleventy.md`):
+	// that page, and a trailhead as `--from` prints it.
+	// A name ssqch has (`footprint` is a command and a page) answers as a name.
+	const page = known.some((n) => n.name === query) ? undefined : pageNamed(query);
+	if (page?.trailhead !== undefined) {
+		try {
+			return out(from(page.trailhead, json));
+		} catch {
+			// A trailhead no one generator's words name (`from-component-frameworks`): the page itself.
+			const { title, body } = docsPage(bundled(`docs/${page.file}`));
+			const text = `# ${title}\n\n${body.trim()}\n`;
+			return out(json ? JSON.stringify({ query, found: true, page: { file: `site/src/docs/${page.file}`, url: guideUrl(page.file.replace(/^trailheads\//, "")), text } }, null, 2) + "\n" : text);
+		}
+	}
+	const a = page?.title !== undefined ? { query, names: [], passages: [], also: [], section: all.findIndex((s) => s.level <= 2 && s.title === page.title) } : answer(grammar, all, known, query);
+	if (a && a.section !== -1) return out(json ? JSON.stringify(answerJson(all, a), null, 2) + "\n" : answerText(all, a));
 	const near = closestName(all, known, query);
 	const next = near === undefined ? nextStep(grammar, all, known, query) : undefined;
 	if (json) {

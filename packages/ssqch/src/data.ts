@@ -37,6 +37,9 @@ export const typeOf = (v: unknown): string => typeof v;
 
 // ---- front matter --------------------------------------------------------------------------
 
+/** What the site's config says about front matter: `trimAfterFrontMatter`, set before a build reads its templates (and read again for error lines). */
+export const frontMatterSettings = { trimAfter: false };
+
 /**
  * Splits front matter from a template body: `---` YAML (or `---yaml`, `---json`, `---toml`), or
  * `+++` TOML. A file without front matter is all body.
@@ -72,7 +75,8 @@ export function parseFrontMatter(src: string): { data: Data; body: string } {
 			const text = rest.slice(0, offset);
 			// The body starts on the line after the fence, and blank lines there are kept, as
 			// gray-matter keeps them.
-			const body = rest.slice(next);
+			// With `trimAfterFrontMatter` they go, as Jekyll's pattern (`---\s*$\n?`) takes them.
+			const body = frontMatterSettings.trimAfter ? rest.slice(next).replace(/^(?:[ \t]*\r?\n)+/, "") : rest.slice(next);
 			if (format === "json") {
 				let value: unknown;
 				try { value = JSON.parse(text.trim() === "" ? "{}" : text); } catch (e) { throw new BuildError(`invalid JSON front matter: ${jsonReason(e, text)}`); }

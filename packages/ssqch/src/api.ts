@@ -23,7 +23,10 @@ export const site: { root: string; input: string | null; markdown: ((text: strin
 
 export const defineConfig = <T>(config: T): T => config;
 
-export function markdown(text: unknown, options: { inline?: boolean } | null = {}): string {
+export function markdown(text: unknown, options: { inline?: boolean } | "inline" | null = {}): string {
+	// `markdown(text, "inline")`, as the template function takes it.
+	if (options === "inline") options = { inline: true };
+	if (typeof options === "string") throw new TypeError(`markdown(): unknown option "${options}" (give "inline", or { inline: true })`);
 	for (const key of Object.keys(options ?? {})) {
 		if (key !== "inline") throw new TypeError(`markdown(): unknown option "${key}" (options: inline)`);
 	}

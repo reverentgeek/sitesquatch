@@ -209,6 +209,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
             cand --commit 'Build this commit instead of the working tree'
             cand --to 'What to call the builds (default ref)'
             cand --link 'Link this folder of the site into each copy (repeatable)'
+            cand --patch 'Apply this patch to each copy before building'
             cand --offline 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved'
             cand -q 'Print only warnings and errors'
             cand --quiet 'Print only warnings and errors'

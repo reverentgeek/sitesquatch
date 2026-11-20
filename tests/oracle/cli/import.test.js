@@ -67,7 +67,8 @@ test("import_moves_an_eleventy_site", () => {
 	r = ssqch(["import", "eleventy", d]);
 	assert.ok(r.ok && r.log.includes("Nothing to rename, edit or create.") && r.log.includes("ssqch.config.js: it's already there"), r.log);
 	r = ssqch(["import", "hugo", d]);
-	assert.ok(!r.ok && r.log.includes("there's no importer for hugo yet (only eleventy and zola)"), r.log);
+	// DELIBERATE (0.11): there's an importer for Jekyll now.
+	assert.ok(!r.ok && r.log.includes("there's no importer for hugo yet (only eleventy, jekyll and zola)"), r.log);
 });
 
 // A config's names, a script's flags and its indentation, in any script and after a byte-order
@@ -212,4 +213,50 @@ test("import_moves_a_zola_site", () => {
 	assert.equal(out("blog/2024/pine/index.html"), "<h1>Pine</h1><p>A <em>pine</em>. <iframe></iframe></p>\nTrail Notes by Sam, 2024, trees");
 	assert.ok(out("old-pine.html").includes("url=/blog/2024/pine/") && out("robots.txt").includes("User-agent") && out("sitemap.xml").includes("https://example.com/blog/2024/pine/"));
 	assert.ok(!exists(dir, "public/blog/_index/index.html") && !exists(dir, "public/_index/index.html"));
+});
+
+// Added in 0.11, from opensource.guide (9 of its 13 kinds of edit were mechanical): a Jekyll site
+// is imported, and builds.
+test("import_jekyll_drafts_a_config_that_builds", () => {
+	const dir = tempDir("import-jekyll");
+	write(dir, {
+		"_config.yml": "title: Trail Guide\ndescription: Into the Mild\nexclude: [script, README.md]\npermalink: pretty\ncollections:\n  guides:\n    output: true\n    permalink: /:collection/:path/\ndefaults:\n  - scope: { path: \"\" }\n    values: { image: /og.png }\n  - scope: { path: _guides }\n    values: { layout: guide }\nplugins: [jekyll-sitemap, jekyll-seo-tag, jekyll-redirect-from]\n",
+		"Gemfile": "source \"https://rubygems.org\"\ngem \"jekyll\"\n",
+		"README.md": "# Readme\n",
+		"script/run": "echo",
+		"_layouts/default.html": "<html><head>{% seo %}</head><body>{{ content }}<a href=\"https://example.com/edit/{{ page.path }}\">Edit</a></body></html>\n",
+		"_layouts/guide.html": "---\nlayout: default\n---\n\n<h1>{{ page.title }}</h1>{{ content }}{% assign lang = \"en\" %}{{ page.lang }}\n",
+		"_guides/trail.md": "---\ntitle: Old Growth\nlang: fr\n---\n<aside markdown=\"1\">\n*Hush*\n</aside>\n\n## Cedar\n",
+		"_posts/2026-01-02-pine.md": "---\ntitle: Pine\nlayout: default\n---\nPine {{ site.data.trails.count }}\n",
+		"_data/trails.yml": "count: 3\n",
+		"index.html": "---\nlayout: default\n---\n{% for post in site.posts %}{{ post.data.title }}{% endfor %}\n",
+		"assets/img/stump.png": "png",
+		"robots.txt": "User-agent: *\n",
+	});
+	let r = ssqch(["import", "jekyll", dir]);
+	assert.ok(r.ok, r.log);
+	for (const said of [
+		"_layouts/guide.html: page.title -> title",
+		"_layouts/default.html: page.path -> page.inputPath | remove_first: \"./\", {% seo %} -> {% include seo.liquid %}",
+		"_posts/2026-01-02-pine.md: site.data.<name> -> <name>",
+		"index.html: site.posts -> collections.posts",
+		"_guides/_guides.json (the `guides` collection: its tag and permalink)",
+		"_posts/_posts.json (Jekyll's posts: the `posts` tag, and the permalink)",
+		"_includes/seo.liquid (jekyll-seo-tag's tags",
+		"_layouts/guide.html: `page.lang` is front matter, and the template has a variable `lang` of its own",
+		".: 1 `markdown=\"1\"` elements: `htmlMarkdown: \"kramdown\"` (in the draft) reads them as kramdown does",
+	]) assert.ok(r.log.includes(said), `${said}\n${r.log}`);
+	r = ssqch(["import", "jekyll", dir, "--write"]);
+	assert.ok(r.ok, r.log);
+	const config = read(dir, "ssqch.config.js");
+	for (const part of ["trimAfterFrontMatter: true,", "markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets\"],", "data: { site, image: \"/og.png\" },", "plugins: [redirectsPlugin(), sitemapPlugin({ url: site.url })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<aside>\n<p><em>Hush</em></p>\n</aside>"), read(dir, "_site/guides/trail/index.html"));
+	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<h1>Old Growth</h1>") && read(dir, "_site/guides/trail/index.html").includes("<title>Old Growth | Trail Guide</title>"), read(dir, "_site/guides/trail/index.html"));
+	assert.ok(read(dir, "_site/2026/01/02/pine/index.html").includes("Pine 3") && read(dir, "_site/2026/01/02/pine/index.html").includes("/edit/_posts/2026-01-02-pine.md"), read(dir, "_site/2026/01/02/pine/index.html"));
+	assert.ok(read(dir, "_site/index.html").includes("Pine"), read(dir, "_site/index.html"));
+	assert.ok(isFile(dir, "_site/assets/img/stump.png") && isFile(dir, "_site/robots.txt") && !isFile(dir, "_site/README/index.html"));
+	r = ssqch(["import", "jekyll", `${dir}/assets`]);
+	assert.ok(!r.ok && r.log.includes("there's no _config.yml in"), r.log);
 });

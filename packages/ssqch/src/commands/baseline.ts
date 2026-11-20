@@ -29,6 +29,8 @@ export interface BaselineOptions {
 	to: string;
 	/** More of the site's folders to link into each copy, beside the installs found by themselves (`--link`). */
 	link: string[];
+	/** A patch (`git diff`'s) applied to each copy before it's built: what an old commit needs to build at all (`--patch`). */
+	patch: string | undefined;
 	quiet: boolean;
 }
 
@@ -56,6 +58,8 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 		const rev = options.commit ?? "HEAD";
 		const time = inGit ? Number(git(root, ["log", "-1", "--format=%ct", rev]).stdout.toString().trim()) || FALLBACK_TIME : FALLBACK_TIME;
 		if (options.commit !== undefined && git(root, ["rev-parse", "--verify", "--quiet", `${options.commit}^{commit}`]).status !== 0) throw new BaselineError(`--commit ${options.commit}: no such commit`);
+		const patch = options.patch === undefined ? undefined : path.resolve(options.patch);
+		if (patch !== undefined && !fs.statSync(patch, { throwIfNoEntry: false })?.isFile()) throw new BaselineError(`--patch ${options.patch}: no such file (a patch, as \`git diff > fix.patch\` writes)`);
 		if (path.isAbsolute(options.to) || options.to.split(/[\\/]/).includes("..")) throw new BaselineError(`--to ${options.to}: a name inside the site's folder (\`ref\`, or \`.refs/jekyll\`)`);
 		// Jekyll prints its own clock (`site.time`) and doesn't read SOURCE_DATE_EPOCH: a config of
 		// its own pins it, unless the command gives its configs itself (opensource.guide's 380 files).
@@ -81,6 +85,12 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 				worktrees.push(copy);
 			} else {
 				copyWorkingTree(root, copy, inGit, [options.from, ".cache", "node_modules"], options.to);
+			}
+			if (patch !== undefined) {
+				// Applied in the copy alone: the ceiling keeps git from finding the site's own
+				// repository above it (a copy of the working tree is inside the site's folder).
+				const applied = spawnSync("git", ["apply", "--whitespace=nowarn", patch], { cwd: copy, encoding: "utf8", env: { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(copy) } });
+				if (applied.status !== 0) throw new BaselineError(`--patch ${options.patch}: didn't apply to ${options.commit ?? "the working tree"}: ${(applied.stderr || applied.error?.message || "").trim()}`);
 			}
 			pinTimes(copy, time);
 			// The site's installed packages, shared: an install in each copy would take minutes, and
@@ -115,14 +125,35 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 		// A build an earlier, longer run left (`ref-3` after `--runs 2`) would be read as one of these.
 		for (let run = options.runs + 1; fs.existsSync(path.join(root, `${options.to}-${run}`)); run++) fs.rmSync(path.join(root, `${options.to}-${run}`), { recursive: true, force: true });
 		const shown = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-		say(`Base camp is set: ${shown}, built from ${options.commit ?? "the working tree"} with ${clock}.`);
+		say(`Base camp is set: ${shown}, built from ${options.commit ?? "the working tree"}${options.patch !== undefined ? ` and ${options.patch}` : ""} with ${clock}.`);
 		let code = 0;
+		let reference = names[0];
+		// One an earlier run put together would be read as this run's.
+		const common = path.join(root, `${options.to}-common`);
+		fs.rmSync(common, { recursive: true, force: true });
 		if (names.length > 1) {
 			const report = await compareRuns(names.map((n) => path.join(root, n)), { exact: false, ignore: [], only: undefined, lines: 10 });
 			process.stdout.write(runsText({ ...report, runs: names }, 10, process.stdout.isTTY === true));
 			code = report.varies.length ? 1 : 0;
+			reference = names[report.typical];
+			// A race (a11yproject.com's style guide took 170 builds to settle) has no one build to
+			// trust: the reference is each file's most common version, put together.
+			if (report.varies.length && names.length >= 3) {
+				fs.cpSync(path.join(root, names[report.typical]), common, { recursive: true, verbatimSymlinks: true });
+				for (const v of report.varies) {
+					const [most] = v.versions;
+					const own = v.files[report.typical];
+					if (own !== undefined) fs.rmSync(path.join(common, own), { force: true });
+					if (most.missing) continue;
+					const from = v.files[most.runs[0]]!;
+					fs.mkdirSync(path.dirname(path.join(common, from)), { recursive: true });
+					fs.copyFileSync(path.join(root, names[most.runs[0]], from), path.join(common, from));
+				}
+				reference = `${options.to}-common`;
+				say(`Wrote ${reference}: each file's most common version of the ${names.length} builds, to compare ssqch's with.`);
+			}
 		}
-		process.stdout.write(`\nNext: build with ssqch into an empty folder, then \`ssqch diff ${names[0]} <ssqch's output>\`${code ? ", with an --ignore for what varies above" : ""}, and fix the biggest group first. The whole loop: \`ssqch docs "moving a site with an agent"\`.\n`);
+		process.stdout.write(`\nNext: build with ssqch into an empty folder, then \`ssqch diff ${reference} <ssqch's output>\`${code ? ", with an --ignore for what varies above" : ""}, and fix the biggest group first. The whole loop: \`ssqch docs "moving a site with an agent"\`.\n`);
 		return code;
 	} catch (e) {
 		process.stderr.write(`${red("error:")} ${e instanceof BaselineError ? e.message : e instanceof Error ? e.message : String(e)}\n`);

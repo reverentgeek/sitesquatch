@@ -204,3 +204,19 @@ test("inspect_prints_numbers_as_0_7_did", () => {
 	assert.ok(r.ok, r.log);
 	assert.equal(JSON.parse(r.stdout).field.value, null);
 });
+
+// Added in 0.11, from the a11yproject.com rerun: the slugify package (Eleventy's `slugify`)
+// transliterates and its titles had tags in them; links to `#thomas-sjogren` broke.
+test("slugify_can_write_ascii_and_leave_out_tags", () => {
+	const dir = tempDir("slugify-ascii");
+	write(dir, {
+		"index.jinja": "{{ \"Thomas Sjögren\" | slugify({ ascii: true }) }} {{ \"Use <code>title</code> & more\" | slugify({ ascii: true, stripTags: true }) }} {{ \"中文 ö\" | slugify({ ascii: true }) }}",
+		"data.jinja": "{{ \"x\" | slugify({ ascii: \"yes\" }) }}",
+	});
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("slugify: `ascii` is true or false, not yes"), r.log);
+	fs.rmSync(path.join(dir, "data.jinja"));
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "thomas-sjogren use-title-and-more 中文-o");
+});

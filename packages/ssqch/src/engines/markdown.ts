@@ -16,6 +16,7 @@
 // didn't use them). Between processes they're kept in `.cache/ssqch/highlight/fences.json`
 // (see "the cache of highlighted fences" below), so a first build doesn't load syntect's
 // grammars for fences it has highlighted before.
+import { kramdownHtml, withKramdownIds } from "./kramdown-html.ts";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -207,6 +208,7 @@ class WasmMarkdown implements Markdown {
 	render(source: string, data: Data, _ctx: RenderContext): string | Promise<string> {
 		const file = page ?? pageOf(data);
 		this.#ready();
+		if (this.#options.htmlMarkdown) source = this.#inHtml(source, HOOKS, data, file);
 		if (!this.#functions.length) return this.#markdown(source, HOOKS, data, file);
 		let asked: Asked[];
 		try {
@@ -219,11 +221,26 @@ class WasmMarkdown implements Markdown {
 	}
 
 	html(text: string, inline: boolean): string {
+		if (this.#options.htmlMarkdown) text = this.#inHtml(text, HOOKS, {}, page, "markdown() in a template");
 		return this.#markdown(text, HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template");
 	}
 
 	plain(text: string, inline: boolean): string {
+		if (this.#options.htmlMarkdown) text = this.#inHtml(text, 0, {}, page, "markdown() from \"ssqch\"");
 		return this.#markdown(text, inline ? INLINE : 0, {}, page, undefined, "markdown() from \"ssqch\"");
+	}
+
+	/** `markdown="1"` elements' content rendered, with kramdown's HTML rules (`htmlMarkdown: "kramdown"`). */
+	#inHtml(source: string, flags: number, data: Data, file: string | undefined, what = "this Markdown"): string {
+		const kramdownIds = this.#options.headingIds === "kramdown";
+		const seen = new Map<string, number>();
+		return kramdownHtml(source, {
+			block: (text) => {
+				const html = this.#markdown(text, flags, data, file, undefined, what);
+				return kramdownIds ? withKramdownIds(html, text, seen) : html;
+			},
+			span: (text) => this.#markdown(text, flags | INLINE, data, file, undefined, what),
+		});
 	}
 
 	highlight(code: string, lang: string): string | undefined {
@@ -384,6 +401,7 @@ class WasmMarkdown implements Markdown {
 			return [name, { grammar: language.grammar }];
 		});
 		const json = JSON.stringify({
+			// kramdown's GFM ids for the page's own headings; the ones inside `markdown="1"` HTML get kramdown's own after (kramdown-html.ts).
 			headingIds: o.headingIds,
 			headingAttributes: o.headingAttributes,
 			footnotes: o.footnotes,

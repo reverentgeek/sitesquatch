@@ -383,6 +383,9 @@ class Renderer {
 						} catch (e) { throw context(e, `rendering layout ${layout.name} for ${tpl.rel}`); }
 					}
 					content = text;
+					// Layouts are rendering too: the summary's `write` was most of opensource.guide's
+					// build (1.2 s, its layouts' `where` calls) while its writes took a fraction of it.
+					this.renderMs += performance.now() - layoutStart;
 					if (site.profile.detailed) site.profile.add("layouts", layout.name, performance.now() - layoutStart, false);
 				}
 			} finally {
@@ -625,6 +628,9 @@ function checkForeignKeys(site: Site): void {
 	// Aliases are read as ssqch's keys (see `aliasDataKeys`).
 	for (const row of equivalents.TABLE) {
 		if (row.kind !== "frontMatter" || row.alias) continue;
+		// A site with a filter of that name reads the key on purpose: `ssqch import eleventy` keeps
+		// `eleventyNavigation` and eleventy-navigation's filter when templates call it.
+		if (site.config.filters.has(row.word)) continue;
 		// `published` is a site's own word too; only `false`, which means something elsewhere, is news.
 		const sets = (page: Page) => (row.word in page.data) && (row.word !== "published" || page.data[row.word] === false);
 		const files = dedup(site.pages.filter(sets).map((p) => shown(site.dirs.root, p.tpl.input)));

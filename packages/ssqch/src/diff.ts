@@ -562,6 +562,43 @@ function title(list: Token[]): string | undefined {
 	return next && !next.tag ? next.text : undefined;
 }
 
+/** An attribute's value in a tag as `canonicalTag` writes it (double quotes, entities decoded), or undefined. */
+function attr(tag: string, name: string): string | undefined {
+	const m = new RegExp(`\\s${name}="([^"]*)"`, "i").exec(tag);
+	return m?.[1];
+}
+
+/** The page's canonical link, and where a refresh sends it: what a search engine and a reader end up at. */
+function wayfinding(list: Token[]): { canonical?: string; redirect?: string } {
+	const out: { canonical?: string; redirect?: string } = {};
+	for (const t of list) {
+		if (!t.tag) continue;
+		if (out.canonical === undefined && /^<link\s/i.test(t.text) && /\srel="canonical"/i.test(t.text)) out.canonical = attr(t.text, "href");
+		if (out.redirect === undefined && /^<meta\s/i.test(t.text) && /\shttp-equiv="refresh"/i.test(t.text)) out.redirect = /url=\s*['"]?([^'"\s>]+)/i.exec(attr(t.text, "content") ?? "")?.[1];
+	}
+	return out;
+}
+
+/** A feed's entries, by their id (`<guid>` or `<id>`), else their `<link>`: the ones a reader's app tracks. */
+function feedEntries(list: Token[]): string[] {
+	const out: string[] = [];
+	let inEntry = false;
+	let id: string | undefined;
+	let link: string | undefined;
+	for (let i = 0; i < list.length; i++) {
+		const t = list[i];
+		if (!t.tag) continue;
+		if (/^<(item|entry)[\s>]/i.test(t.text)) { inEntry = true; id = link = undefined; continue; }
+		if (/^<\/(item|entry)>/i.test(t.text)) { if (inEntry) out.push(id ?? link ?? `(entry ${out.length + 1})`); inEntry = false; continue; }
+		if (!inEntry) continue;
+		const next = list[i + 1];
+		const text = next && !next.tag ? next.text.trim() : undefined;
+		if (/^<(guid|id)[\s>]/i.test(t.text) && text) id ??= text;
+		else if (/^<link[\s>]/i.test(t.text)) link ??= attr(t.text, "href") ?? text;
+	}
+	return out;
+}
+
 // ---- compare ---------------------------------------------------------------------------------
 
 /** Rust's `str::lines`: split at `\n`, a `\r` before it dropped, and no empty line after a last `\n`. */
@@ -668,6 +705,11 @@ function comparePair(a: Buffer, b: Buffer, pair: Pair, options: DiffOptions): Fi
 		const kept = new Set(ids(tb));
 		const gone = ids(ta).filter((id) => !kept.has(id)).map((id) => `#${id}`);
 		if (gone.length) diff.notes.push(`ids removed (links to them break): ${gone.slice(0, 8).join(", ")}${gone.length > 8 ? ` and ${gone.length - 8} more` : ""}`);
+		// Where search engines and readers end up: a changed canonical link or refresh is a page
+		// that moved, whatever else is the same.
+		const [wa, wb] = [wayfinding(ta), wayfinding(tb)];
+		if (wa.canonical !== wb.canonical) diff.notes.push(`canonical link: ${wa.canonical ?? "none"} -> ${wb.canonical ?? "none"}`);
+		if (wa.redirect !== wb.redirect) diff.notes.push(`redirects to: ${wa.redirect ?? "nowhere"} -> ${wb.redirect ?? "nowhere"}`);
 		diff.onlyDates = onlyDates(list);
 		if (diff.onlyDates) diff.notes.push(`only dates changed (${diff.onlyDates[0]} -> ${diff.onlyDates[1]})`);
 		found = list;
@@ -677,6 +719,15 @@ function comparePair(a: Buffer, b: Buffer, pair: Pair, options: DiffOptions): Fi
 		const ta = tokens(xmlWithMarkup(before), true), tb = tokens(xmlWithMarkup(after), true);
 		found = hunks(ta, tb, (t) => (t.tag ? 1 : 0), (t) => t.text)[0];
 		if (!found.length) return undefined;
+		// A feed's entries that went or came: readers' apps track them by id.
+		const [ea, eb] = [feedEntries(ta), feedEntries(tb)];
+		if (ea.length || eb.length) {
+			const kept = new Set(eb), had = new Set(ea);
+			const gone = ea.filter((e) => !kept.has(e)), came = eb.filter((e) => !had.has(e));
+			const some = (list: string[]) => `${list.slice(0, 3).join(", ")}${list.length > 3 ? ` and ${list.length - 3} more` : ""}`;
+			if (gone.length) diff.notes.push(`feed entries removed (readers see them go): ${some(gone)}`);
+			if (came.length) diff.notes.push(`feed entries added (readers see them as new): ${some(came)}`);
+		}
 		// A sitemap's `<lastmod>` and a feed's `<updated>` follow the files' dates.
 		diff.onlyDates = onlyDates(found);
 		if (diff.onlyDates) diff.notes.push(`only dates changed (${diff.onlyDates[0]} -> ${diff.onlyDates[1]})`);
@@ -1168,6 +1219,8 @@ export interface Varies {
 	versions: Version[];
 	/** What differs between the most common version and the next one, when both are there. */
 	sample: FileDiff | undefined;
+	/** The file's name in each build (by its place in the list), or undefined where it's missing. */
+	files: Array<string | undefined>;
 }
 
 export interface RunsReport {
@@ -1178,6 +1231,8 @@ export interface RunsReport {
 	groups: DiffGroup[];
 	steadyPages: number;
 	steadyFiles: number;
+	/** The build with the most common version of the most files that vary (by its place in the list): the one to compare another build with. */
+	typical: number;
 }
 
 /**
@@ -1195,7 +1250,7 @@ export async function compareRuns(dirs: string[], options: DiffOptions): Promise
 	checkOnly(walks.map((w) => (w as PromiseFulfilledResult<string[]>).value), options);
 	const maps = walks.map((w) => keyed(keep((w as PromiseFulfilledResult<string[]>).value), options.exact));
 	const keys = [...new Set(maps.flatMap((m) => [...m.keys()]))].sort(compareText);
-	const report: RunsReport = { runs: dirs, exact: options.exact, varies: [], groups: [], steadyPages: 0, steadyFiles: 0 };
+	const report: RunsReport = { runs: dirs, exact: options.exact, varies: [], groups: [], steadyPages: 0, steadyFiles: 0, typical: 0 };
 	const found: Array<Varies | undefined> = new Array(keys.length);
 	let next = 0;
 	const worker = async () => {
@@ -1216,6 +1271,11 @@ export async function compareRuns(dirs: string[], options: DiffOptions): Promise
 		else if (isPage(key)) report.steadyPages += 1;
 		else report.steadyFiles += 1;
 	});
+	// A race (a11yproject.com's KSS) needs many builds, and the one most like the rest is the
+	// reference: the most files where it has the most common version (the first build on a tie).
+	const typical = dirs.map(() => 0);
+	for (const v of report.varies) if (!v.versions[0].missing) for (const run of v.versions[0].runs) typical[run] += 1;
+	report.typical = typical.indexOf(Math.max(...typical));
 	// A build's time on every page varies the same way on each: one group, as in a diff of two.
 	const samples = report.varies.map((v) => v.sample).filter((s): s is FileDiff => s !== undefined);
 	report.groups = options.ungrouped ? [] : groupChanges(samples);
@@ -1257,11 +1317,11 @@ function varies(key: string, buffers: Array<Buffer | undefined>, maps: Array<Map
 	}
 	const first = buffers.find((b) => b !== undefined)!;
 	const kind = decode(first) === undefined ? "binary" : isPage(key) ? "page" : "text";
-	return { path: key, url: urlOf(key), kind, versions, sample };
+	return { path: key, url: urlOf(key), kind, versions, sample, files: maps.map((m) => m.get(key)) };
 }
 
-/** The builds in `runs`, by name: `dist-1, dist-3`. */
-const named = (report: RunsReport, runs: number[]) => runs.map((r) => report.runs[r]).join(", ");
+/** The builds in `runs`, by name: `dist-1, dist-3`, or with a count for more than four: `34 of 50 builds (dist-1, dist-2, dist-4, ...)`. */
+const named = (report: RunsReport, runs: number[]) => (runs.length > 4 ? `${runs.length} of ${report.runs.length} builds (${runs.slice(0, 3).map((r) => report.runs[r]).join(", ")}, ...)` : runs.map((r) => report.runs[r]).join(", "));
 
 /** The comparison of several builds, for a terminal. */
 export function runsText(report: RunsReport, limit: number, color: boolean): string {
@@ -1291,6 +1351,11 @@ export function runsText(report: RunsReport, limit: number, color: boolean): str
 		out += grouped ? linesText(sample.ownHunks, sample.ownLines, limit, paint) : linesText(sample.hunks, sample.changedLines, limit, paint);
 	}
 	out += `\n${plural(report.varies.length, "file varies", "files vary")} between builds made the same way; ${steady} are the same in all of them. Pin what changes (the build's time, random ids) before comparing another build with these, or leave it out with --ignore.\n`;
+	const common = report.varies.filter((v) => !v.versions[0].missing && v.versions[0].runs.includes(report.typical)).length;
+	out += `The build most like the others: ${report.runs[report.typical]}, with the most common version of ${common} of the ${plural(report.varies.length, "file", "files")} that vary.\n`;
+	// Every build different: no version is the usual one yet (a race needs more builds to show it).
+	const unsettled = report.varies.filter((v) => v.versions[0].runs.length < 2).length;
+	if (unsettled) out += `${unsettled === 1 ? "1 file has" : `${unsettled} files have`} no most common version: each build has its own. More builds (--runs 20) show whether one is usual.\n`;
 	return out;
 }
 
@@ -1303,6 +1368,8 @@ export function runsJson(report: RunsReport, limit: number): Record<string, unkn
 		exact: report.exact,
 		same: report.varies.length === 0,
 		summary: { varies: report.varies.length, steadyPages: report.steadyPages, steadyFiles: report.steadyFiles },
+		// The build with the most common version of the most files that vary.
+		typical: runs[report.typical],
 		varies: report.varies.map((f) => ({
 			url: f.url,
 			path: f.path,

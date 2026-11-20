@@ -109,6 +109,9 @@ BUILTINS.set("ssqch/rss", (config: Config, options) => {
 	filters.set("getNewestCollectionItemDate", (items?: unknown) => getNewestCollectionItemDate(items));
 	filters.set("dateToRfc3339", (date?: unknown) => dateToRfc3339(date));
 	filters.set("dateToRfc822", (date?: unknown) => dateToRfc822(date));
+	// The Eleventy RSS plugin's first names, which its sample feed and many sites' feeds still use.
+	filters.set("rssDate", (date?: unknown) => dateToRfc3339(date));
+	filters.set("rssLastUpdatedDate", (items?: unknown) => dateToRfc3339(getNewestCollectionItemDate(items)));
 	// As filters, they know the site's `base` (absoluteUrl).
 	filters.set("absoluteUrl", (url?: unknown, base?: unknown) => absoluteUrl(output(url), output(base), config.base));
 	filters.set("htmlToAbsoluteUrls", (html?: unknown, base?: unknown) => htmlToAbsoluteUrls(output(html), output(base), config.base));

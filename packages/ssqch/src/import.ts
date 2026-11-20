@@ -13,7 +13,7 @@ import path from "node:path";
 import nunjucks from "nunjucks";
 import { TomlError } from "smol-toml";
 import { findConfig } from "./config.ts";
-import { isPlainObject, readToml, tomlReason } from "./data.ts";
+import { isPlainObject, parseYaml, readToml, tomlReason } from "./data.ts";
 import type { Data } from "./data.ts";
 import { red } from "./diagnostics.ts";
 import { TABLE } from "./equivalents.ts";
@@ -51,8 +51,9 @@ export function runImport(generator: string, dir: string, write: boolean): numbe
 		let plan: Plan;
 		if (generator === "eleventy" || generator === "11ty") plan = eleventy(dir);
 		else if (generator === "zola") plan = zola(dir);
-		else if (["jekyll", "hugo", "docusaurus", "mkdocs", "hexo", "astro", "vitepress"].includes(generator)) plan = fail(`there's no importer for ${generator} yet (only eleventy and zola): \`ssqch docs --from ${generator}\` has its words and trailhead, and \`ssqch baseline "<its build command>"\` builds the site with it to compare with`);
-		else plan = fail(`${generator}: not a generator ssqch can import from (use eleventy or zola)`);
+		else if (generator === "jekyll") plan = jekyll(dir);
+		else if (["hugo", "docusaurus", "mkdocs", "hexo", "astro", "vitepress"].includes(generator)) plan = fail(`there's no importer for ${generator} yet (only eleventy, jekyll and zola): \`ssqch docs --from ${generator}\` has its words and trailhead, and \`ssqch baseline "<its build command>"\` builds the site with it to compare with`);
+		else plan = fail(`${generator}: not a generator ssqch can import from (use eleventy, jekyll or zola)`);
 		process.stdout.write(describe(plan, dir, write));
 		if (write) process.stdout.write(apply(plan, dir));
 		return 0;
@@ -93,7 +94,8 @@ export function apply(plan: Plan, dir: string): string {
 		if (fs.existsSync(path.join(dir, to))) fail(`${to} is in the way of renaming ${from}`);
 		attempt(() => fs.renameSync(path.join(dir, from), path.join(dir, to)), `renaming ${from} to ${to}`);
 	}
-	for (const [file, , contents] of plan.newFiles) attempt(() => fs.writeFileSync(path.join(dir, file), contents), `writing ${file}`);
+	// A new file can be in a folder that isn't there yet (`_includes/seo.liquid`).
+	for (const [file, , contents] of plan.newFiles) attempt(() => { fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true }); fs.writeFileSync(path.join(dir, file), contents); }, `writing ${file}`);
 	return `Done: ${plan.renames.length} renamed, ${plan.edits.length} edited, ${plan.newFiles.length} created. Welcome to the woods.\n`;
 }
 
@@ -294,6 +296,7 @@ export function eleventy(dir: string): Plan {
 	const keep = readsNavigation ? ["eleventyNavigation"] : [];
 	const major = eleventyMajor(dir);
 	// Eleventy's input folder: what's outside it (notes, a README) isn't one of the site's pages.
+	const dataEngine = /\bdataTemplateEngine\s*:\s*["'\x60](?!false)[^"'\x60]+["'\x60]/.test(blankComments(configText));
 	const input = config === undefined ? "." : (setting(blankComments(configText), "input") ?? ".").replace(/^\.\//, "").replace(/\/+$/, "");
 	const inInput = (rel: string) => input === "" || input === "." || rel === input || rel.startsWith(`${input}/`);
 	if (major !== undefined && major < 2) keep.push("eleventy.generator");
@@ -319,7 +322,14 @@ export function eleventy(dir: string): Plan {
 		const text = readUtf8(entry.abs);
 		if (text === undefined) continue;
 		if (template) extensions.add(ext === "markdown" ? "md" : ext);
-		const [next, changes] = template ? rewriteTemplate(text, ext === "md" || ext === "markdown", keep) : rewriteData(text, keep);
+		let [next, changes] = template ? rewriteTemplate(text, ext === "md" || ext === "markdown", keep) : rewriteData(text, keep);
+		// Eleventy's `dataTemplateEngine` rendered a data file's strings; ssqch doesn't. A string
+		// that's only a literal through `url` is that literal (a11yproject.com: 27 in 4 files).
+		if (data && dataEngine && /\{\{|\{%/.test(next)) {
+			const [unwrapped, literals, left] = unwrapUrlLiterals(next);
+			if (literals) { next = unwrapped; changes = [...changes, `${literals} \`{{ "/x/" | url }}\` -> "/x/" (dataTemplateEngine rendered them)`]; }
+			if (left) plan.byHand.push([rel, `${left} ${left === 1 ? "value has" : "values have"} template code (\`{{ }}\` or \`{% %}\`), which Eleventy's \`dataTemplateEngine\` rendered and ssqch prints as written: write the value itself, or compute it in a \`.data.js\` file`]);
+		}
 		if (changes.length) plan.edits.push([rel, changes, next]);
 		if (template && (text.includes("eleventy.env") || text.includes("eleventy.directories"))) plan.byHand.push([rel, "`eleventy.env` and `eleventy.directories` aren't there: use `ssqch.env` and `ssqch.serving`"]);
 		if (template && inInput(rel) && keep.includes("eleventy.generator") && text.search(TEMPLATE_GLOBAL) !== -1) plan.byHand.push([rel, `\`eleventy.generator\` and \`eleventy.version\` left as they are: Eleventy ${major} printed nothing for them, so in ssqch they print nothing too and the output matches. \`ssqch.generator\` prints "SiteSquatch v${VERSION}" when the move is done`]);
@@ -341,6 +351,11 @@ export function eleventy(dir: string): Plan {
 			ignored.push(rel.startsWith(`${input}/`) && input !== "." ? rel.slice(input.length + 1) : rel);
 		}
 	}
+	// `eleventyConfig.ignores.add("src/drafts/**")`: from the project root, as `.eleventyignore`'s.
+	for (const m of blankComments(configText).matchAll(/\.ignores\.add\(\s*["'\x60]([^"'\x60]+)["'\x60]\s*\)/g)) {
+		const rel = m[1].replace(/^\.\//, "").replace(/\/$/, "/**");
+		ignored.push(rel.startsWith(`${input}/`) && input !== "." ? rel.slice(input.length + 1) : rel);
+	}
 	// The site's own modules the config passes `eleventyConfig` to: their calls count as the config's.
 	const followed = config === undefined ? new Map<string, string>() : helperModules(dir, config, configText);
 	const helpers: Array<[string, Array<[string, string]>]> = [];
@@ -357,6 +372,8 @@ export function eleventy(dir: string): Plan {
 	}
 	const ports = config === undefined ? [] : undefinedFilters(entries, blankComments(configText) + helperText, readsNavigation, plan);
 	modulesUsingEleventy(entries, config, plan);
+	outputChanges(entries, configText, input, plan);
+	otherBuildTools(dir, plan);
 	if (config !== undefined) {
 		const [source, byHand] = draftConfig(config, configText, extensions, ports, major, helpers, new Set(followed.keys()), ignored);
 		plan.byHand.push(...byHand, ...helperLists);
@@ -454,6 +471,21 @@ function changeProse(prose: string, change: (part: string) => string): string {
 }
 
 /** A data file with ssqch's names for the keys Eleventy reads: only where they're keys (`"eleventyComputed":`, `eleventyComputed:`), not in values. */
+/**
+ * A data file's `"{{ '/about/' | url }}"` as the literal (`"/about/"`), normalized as Eleventy's
+ * `url` normalized it; and how many other strings have template code. JSON and YAML strings (a
+ * JSON string's own quotes inside it are `\"`).
+ */
+export function unwrapUrlLiterals(text: string): [string, number, number] {
+	let literals = 0;
+	const out = text.replace(/\{\{-?\s*(\\?["'])([^"'{}\\]*)\1\s*\|\s*url\s*-?\}\}/g, (_, _q: string, value: string) => {
+		literals++;
+		return value === "" ? "." : value.startsWith("/") && !value.startsWith("//") ? path.posix.normalize(value) : value;
+	});
+	const left = (out.match(/\{\{|\{%/g) ?? []).length;
+	return [out, literals, left];
+}
+
 export function rewriteData(text: string, keep: readonly string[] = []): [string, string[]] {
 	let out = text;
 	const changes: string[] = [];
@@ -480,13 +512,11 @@ const ELEVENTY_FILTERS: Record<string, { say: string; port?: string }> = {
 	log: { say: "Eleventy's built-in `log`: ported into the draft (it prints the value and passes it on)", port: "(value) => {\n\t\t\tconsole.log(value);\n\t\t\treturn value;\n\t\t}" },
 	getCollectionItemIndex: { say: "Eleventy's built-in, ported into the draft: pass the page, `collection | getCollectionItemIndex(page)`", port: "(collection, page) => collection.findIndex((item) => item.url === page.url)" },
 	getCollectionItem: { say: "Eleventy's built-in, ported into the draft: pass the page, `collection | getCollectionItem(page)`", port: "(collection, page) => collection.find((item) => item.url === page.url)" },
-	getPreviousCollectionItem: { say: "Eleventy's built-in, ported into the draft: pass the page, `collection | getPreviousCollectionItem(page)`", port: "(collection, page) => {\n\t\t\tconst i = collection.findIndex((item) => item.url === page.url);\n\t\t\treturn i > 0 ? collection[i - 1] : undefined;\n\t\t}" },
-	getNextCollectionItem: { say: "Eleventy's built-in, ported into the draft: pass the page, `collection | getNextCollectionItem(page)`", port: "(collection, page) => {\n\t\t\tconst i = collection.findIndex((item) => item.url === page.url);\n\t\t\treturn i >= 0 && i < collection.length - 1 ? collection[i + 1] : undefined;\n\t\t}" },
 	inputPathToUrl: { say: "Eleventy's built-in: link to the page's URL itself (`collections` items have `url`), or a filter of your own that looks it up" },
 	renderTemplate: { say: "Eleventy's render plugin: a container (`::: name`) or an include does the same in ssqch" },
 	renderFile: { say: "Eleventy's render plugin: an `{% include %}` of the file" },
-	rssLastUpdatedDate: { say: "the RSS plugin's old name: `rssPlugin()` from \"ssqch/rss\" has `getNewestCollectionItemDate(collection) | dateToRfc3339`" },
-	rssDate: { say: "the RSS plugin's old name: `rssPlugin()` from \"ssqch/rss\" has `dateToRfc3339`" },
+	rssLastUpdatedDate: { say: "the RSS plugin's old name: `rssPlugin()` from \"ssqch/rss\" has it (and `getNewestCollectionItemDate(collection) | dateToRfc3339`, its new one)" },
+	rssDate: { say: "the RSS plugin's old name: `rssPlugin()` from \"ssqch/rss\" has it (and `dateToRfc3339`, its new one)" },
 	getNewestCollectionItemDate: { say: "the RSS plugin's: `rssPlugin()` from \"ssqch/rss\" has it" },
 	dateToRfc3339: { say: "the RSS plugin's: `rssPlugin()` from \"ssqch/rss\" has it" },
 	dateToRfc822: { say: "the RSS plugin's: `rssPlugin()` from \"ssqch/rss\" has it" },
@@ -633,6 +663,79 @@ function modulesUsingEleventy(entries: Entry[], config: string | undefined, plan
 	}
 }
 
+/**
+ * A second build tool beside Eleventy (a11yproject.com's gulpfile: Sass, cache-busting, HTML
+ * minifying, a style guide), with what ssqch has for each part it does and what it doesn't, so
+ * the plan for the move after the first, identical build starts from a list.
+ */
+function otherBuildTools(dir: string, plan: Plan): void {
+	const tools: Array<[string, string]> = [["gulpfile.js", "Gulp"], ["gulpfile.mjs", "Gulp"], ["gulpfile.cjs", "Gulp"], ["Gruntfile.js", "Grunt"], ["webpack.config.js", "webpack"], ["webpack.config.mjs", "webpack"], ["postcss.config.js", "PostCSS"], ["postcss.config.cjs", "PostCSS"], ["vite.config.js", "Vite"], ["vite.config.mjs", "Vite"], ["rollup.config.js", "Rollup"], ["rollup.config.mjs", "Rollup"]];
+	const parts: Array<[RegExp, string]> = [
+		[/\b(?:gulp-)?(?:dart-)?sass\b/, "Sass -> `sassPlugin()` from \"ssqch/sass\""],
+		[/\b(?:gulp-rev|rev-hash|cachebust|gulp-hash)\b/, "cache-busting -> `assetsPlugin()` from \"ssqch/assets\" (fingerprints)"],
+		[/\b(?:gulp-htmlmin|html-minifier(?:-terser)?)\b/, "HTML minifying -> `minifyPlugin()` from \"ssqch/minify\" (it keeps markup as written; html-minifier repairs unclosed tags)"],
+		[/\b(?:gulp-(?:clean-css|cssnano)|cssnano|clean-css)\b/, "CSS minifying -> `minifyPlugin({ css: true })`, or Sass's compressed style"],
+		[/\b(?:gulp-imagemin|imagemin|sharp)\b/, "images -> `imagePlugin()` from \"ssqch/image\""],
+		[/\b(?:autoprefixer)\b/, "autoprefixer: not in ssqch; keep it as a `beforeBuild` `run:` step (or after `sassPlugin()`)"],
+		[/\b(?:purgecss|gulp-purgecss|@fullhuman\/postcss-purgecss)\b/, "PurgeCSS: not in ssqch; keep it as a step of its own"],
+		[/\b(?:terser|uglify|gulp-uglify|esbuild)\b/, "JavaScript bundling or minifying: not in ssqch; keep the tool, before `ssqch build`"],
+		[/\b(?:svgo|gulp-svgmin|svg-sprite|gulp-svgstore)\b/, "SVG optimizing and sprites: not in ssqch; keep the tool"],
+		[/\b(?:kss|gulp-kss)\b/, "a style guide (KSS): not a generator's job; keep it (`afterBuild: { run: \"kss ...\" }`)"],
+	];
+	for (const [file, tool] of tools) {
+		const text = readUtf8(path.join(dir, file));
+		if (text === undefined) continue;
+		const found = parts.filter(([pattern]) => pattern.test(text)).map(([, say]) => say);
+		plan.byHand.push([file, `${tool} builds part of the site too: keep it for the first, identical build (\`ssqch build && <the tool>\`, and both in \`ssqch baseline\`'s command)${found.length ? `. What it does, and ssqch's way: ${found.join("; ")}` : ""}`]);
+	}
+}
+
+/**
+ * What changes a page's output beyond the mechanical edits, found before the first diff: a Date
+ * printed as it is (`Date.toString()` in Eleventy, ISO 8601 in ssqch; a11yproject.com's 66
+ * posts), date code that reads the machine's time zone (v8.dev), `pagination` over `collections`
+ * (its names come in another order), and templates in a folder that's passed through (Eleventy
+ * rendered them; ssqch copies them).
+ */
+function outputChanges(entries: Entry[], configText: string, input: string, plan: Plan): void {
+	const line = (text: string, at: number) => occurrences(text.slice(0, at), "\n") + 1;
+	const inInput = (rel: string) => input === "." || rel.startsWith(`${input}/`);
+	const bare: Array<[string, number]> = [];
+	for (const entry of entries) {
+		if (!entry.isFile) continue;
+		const ext = asciiLower(extensionOf(entry.name));
+		const template = TEMPLATE_EXTENSIONS.includes(ext);
+		const code = /^(?:[cm]?js|[cm]?ts)$/.test(ext);
+		if (!template && !code) continue;
+		const text = readUtf8(entry.abs);
+		if (text === undefined) continue;
+		if (template && inInput(entry.rel)) {
+			const d = /\{\{-?\s*((?:page\.|\w+\.data\.)?date)\s*-?\}\}/.exec(text);
+			if (d) bare.push([`${entry.rel}:${line(text, d.index)}`, occurrences(text, d[0])]);
+			const p = /^pagination:\s*\n(?:[ \t]+.*\n)*?[ \t]+data:\s*["']?collections["']?\s*$/m.exec(text);
+			if (p) plan.byHand.push([`${entry.rel}:${line(text, p.index)}`, "`pagination: { data: collections }` pages over the collections' names, which come in another order in ssqch (the order they're defined, not Eleventy's): page over a list of names you make in data, in the order you want"]);
+		}
+		if (code) {
+			const js = blankComments(text);
+			for (const m of js.matchAll(/\.(toLocaleDateString|toLocaleString|toLocaleTimeString)\(([^()]*)\)|DateTime\.fromJSDate\(([^()]*)\)/g)) {
+				const args = m[2] ?? m[3] ?? "";
+				if (/timeZone|zone/.test(args)) continue;
+				plan.byHand.push([`${entry.rel}:${line(js, m.index)}`, `\`${m[1] ?? "DateTime.fromJSDate"}\` without a time zone uses the build machine's, so the page changes with where it's built: give it one (\`{ timeZone: "UTC" }\`, luxon's \`{ zone: "utc" }\`), or set \`timeZone\` in the config`]);
+			}
+		}
+	}
+	if (bare.length) {
+		const total = bare.reduce((n, [, c]) => n + c, 0);
+		plan.byHand.push([bare[0][0], `\`{{ date }}\` prints a Date as it is (in ${bare.length} ${bare.length === 1 ? "template" : "templates"}, ${total} ${total === 1 ? "time" : "times"}; this is the first): Eleventy wrote \`Date.toString()\` (\`Mon Mar 08 2021 00:00:00 GMT+0000 (Coordinated Universal Time)\`, in the machine's time zone), ssqch writes ISO 8601. Format it (\`| dateformat("iso")\`), so the page doesn't depend on the machine; \`ssqch diff\` groups the two forms as dates`]);
+	}
+	// Folders passed through, from the project root: a template inside one is copied, not rendered.
+	const passed = [...blankComments(configText).matchAll(/addPassthroughCopy\(\s*["'\x60]([^"'\x60*{]+)["'\x60]/g)].map((m) => m[1].replace(/^\.\//, "").replace(/\/+$/, ""));
+	for (const folder of new Set(passed)) {
+		const inside = entries.filter((e) => e.isFile && e.rel.startsWith(`${folder}/`) && TEMPLATE_EXTENSIONS.includes(asciiLower(extensionOf(e.name))));
+		if (inside.length) plan.byHand.push([folder, `is passed through, and has ${inside.length} ${inside.length === 1 ? "template" : "templates"} (${inside.slice(0, 3).map((e) => e.rel).join(", ")}${inside.length > 3 ? ", ..." : ""}): Eleventy rendered ${inside.length === 1 ? "it" : "them"}, ssqch copies ${inside.length === 1 ? "it" : "them"} as ${inside.length === 1 ? "it is" : "they are"}. Move ${inside.length === 1 ? "it" : "them"} out of the folder, or pass through only the other files`]);
+	}
+}
+
 /** The major version of Eleventy the site has: the one installed, or else the one `package.json` asks for. */
 function eleventyMajor(dir: string): number | undefined {
 	const major = (version: unknown) => (typeof version === "string" ? Number(/(\d+)/.exec(version)?.[1]) : Number.NaN);
@@ -658,7 +761,7 @@ function replacement(pkg: string): string | undefined {
 		case "@11ty/eleventy-upgrade-help": case "@11ty/eleventy": case "@11ty/eleventy-dev-server": return undefined;
 		case "markdown-it": return "ssqch's own Markdown: see the `markdown` options (its `breaks`, `linkify` and `typographer` are `breaks`, `autolinks: \"fuzzy\"` and `smartPunctuation`), render hooks and containers; or keep it with `engines: { md }`";
 		case "markdown-it-implicit-figures": return "`markdown: { figures: true }` (what it writes with `figcaption: true`)";
-		case "markdown-it-anchor": return "heading ids are built in; add anchor links with `_includes/hooks/heading.*`";
+		case "markdown-it-anchor": return "heading ids are built in (`headingIds: \"markdown-it-anchor\"` for its own, in the draft unless it had a `slugify`); add its anchor links and `tabindex=\"-1\"` with `_includes/hooks/heading.*`";
 		case "markdown-it-footnote": return "built in (`markdown: { footnotes: true }`, the default)";
 		case "markdown-it-container": return "built in: `::: name` renders `_includes/containers/name.*`";
 		case "markdown-it-attrs": return "`{#id .class}` on headings is built in";
@@ -1035,6 +1138,9 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 	}
 	if (extensions.has("md")) {
 		if (!required.has("markdown-it-anchor")) markdownDefaults.push(["Eleventy's markdown-it gave headings no ids (no markdown-it-anchor); take this out for ssqch's.", "headingIds: false"]);
+		// markdown-it-anchor's own ids, unless the site gives it a `slugify` of its own (the
+		// a11yproject.com rerun: 50 pages' ids with `’`, `:` or `?` were others in ssqch's).
+		else if (!/\bslugify\s*:/.test(code)) markdownDefaults.push(["markdown-it-anchor's ids (encodeURIComponent of the text); take this out for ssqch's.", "headingIds: \"markdown-it-anchor\""]);
 		// Eleventy 2 turned indented code off in its own markdown-it, and 3 in a site's too.
 		if (eleventyMajor !== undefined && (eleventyMajor >= 3 || (eleventyMajor === 2 && !ownLibrary))) markdownDefaults.push([`Eleventy ${eleventyMajor} turns off markdown-it's indented code blocks (\`md.disable("code")\`).`, "indentedCode: false"]);
 	}
@@ -1080,8 +1186,9 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 	if (ignored.length) entries.push(`${ind}// From .eleventyignore.\n${ind}ignore: ${styleList(style, ignored.map((g) => `"${g}"`))}`);
 	// Eleventy renders a JSON data file's strings with this engine; ssqch reads data as it is.
 	const dataEngine = /\bdataTemplateEngine\s*:\s*["'\x60]([^"'\x60]*)["'\x60]/.exec(code)?.[1];
-	if (dataEngine) byHand.push([name, `dataTemplateEngine: "${dataEngine}" -> ssqch doesn't render data files' strings: a JSON file's \`{{ ... | url }}\` stays as it's written. Write the value itself, or compute it in a \`.data.js\` file`]);
-	if (passthrough.length) entries.push(`${ind}passthrough: ${styleList(style, passthrough)}`);
+	if (dataEngine) byHand.push([name, `dataTemplateEngine: "${dataEngine}" -> ssqch doesn't render data files' strings. The ones that were only a literal through \`url\` (\`{{ '/about/' | url }}\`) are the literal now; the files with other template code are listed`]);
+	// The same entry twice (a11yproject.com's `logo-192x192.png`) is copied once.
+	if (passthrough.length) entries.push(`${ind}passthrough: ${styleList(style, [...new Set(passthrough)])}`);
 	if (watch.length) entries.push(`${ind}watch: ${styleList(style, watch)}`);
 	let filters = `\n${ind}filters: {\n`;
 	if (ported.length) {
@@ -1316,6 +1423,9 @@ function packageFiles(dir: string, plan: Plan, entries: Entry[] = []): void {
 				changed = true;
 			}
 			if (unknown.length) unknownFlags.push(`the \`${name}\` script's ${flagsAre(unknown)}`);
+			// `eleventy & gulp` runs both at once, and npm returns when the last one does: a deploy
+			// can start while ssqch is still writing (a11yproject.com's `publish`).
+			if (/ssqch build[^&|;]*[^&]&(?!&)|(?:^|[^&])&\s*(?:npx\s+)?ssqch build/.test(rewritten)) plan.byHand.push(["package.json", `the \`${name}\` script runs \`ssqch build\` and another command at the same time (\`&\`): npm returns when the last one does, so what runs next (a deploy) can start while ssqch is still writing. Use \`&&\` to run them one after the other`]);
 		}
 		if (changed) changes.push("scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve");
 	}
@@ -1460,6 +1570,352 @@ export function tomlError(e: unknown, text: string): string {
 }
 
 /** The plan for the Zola site in `dir`. */
+// ---- Jekyll ---------------------------------------------------------------------------------
+
+/** What Jekyll leaves out by itself (its `exclude` defaults), beside what `_config.yml` lists. */
+const JEKYLL_EXCLUDES = [".sass-cache", ".jekyll-cache", "gemfiles", "Gemfile", "Gemfile.lock", "node_modules", "vendor/bundle", "vendor/cache", "vendor/gems", "vendor/ruby"];
+
+/** `page.<key>` that's the page's own in ssqch too (its facts, not its front matter): left as it is. */
+const PAGE_KEYS = new Set(["url", "date", "excerpt", "inputPath", "outputPath", "fileSlug", "filePathStem", "headings", "lastModified"]);
+
+/** `page.<key>` Jekyll fills in itself, which ssqch's `page` doesn't have: what each is in ssqch. */
+const JEKYLL_PAGE: Record<string, string> = {
+	content: "`content`, in a layout",
+	path: "`page.inputPath` (with `./` in front)",
+	name: "`page.fileSlug` (without the extension)",
+	dir: "the folder of `page.url`",
+	id: "`page.url`",
+	collection: "the tag the collection is made from",
+	next: "`navPager(collections.posts, page.url).next`",
+	previous: "`navPager(collections.posts, page.url).previous`",
+	categories: "`categories` front matter, or the folders above `_posts`",
+};
+
+/** Liquid's tags, Jekyll's and ssqch's, which a `{% name %}` isn't a plugin's tag for. */
+const LIQUID_TAGS = new Set(["assign", "capture", "endcapture", "case", "when", "endcase", "comment", "endcomment", "cycle", "decrement", "increment", "echo", "for", "endfor", "break", "continue", "if", "elsif", "else", "endif", "unless", "endunless", "include", "include_relative", "render", "layout", "liquid", "raw", "endraw", "tablerow", "endtablerow", "highlight", "endhighlight", "link", "post_url", "block", "endblock"]);
+
+/** The Jekyll plugins a site can name, and what each is in ssqch: an import and a plugin, or what to do. */
+const JEKYLL_PLUGINS: Record<string, { use?: [string, string]; say: string }> = {
+	"jekyll-sitemap": { use: ["import { sitemapPlugin } from \"ssqch/sitemap\";", "sitemapPlugin({ url: site.url })"], say: "`sitemapPlugin({ url: site.url })`, in the draft (an empty `url` writes paths, as jekyll-sitemap did, and warns)" },
+	"jekyll-redirect-from": { use: ["import { redirectsPlugin } from \"ssqch/redirects\";", "redirectsPlugin()"], say: "`redirectsPlugin()`, in the draft: `redirect_from` works as it is; `_includes/hooks/redirect.*` is its page's markup" },
+	"jekyll-feed": { use: ["import { rssPlugin } from \"ssqch/rss\";", "rssPlugin()"], say: "`rssPlugin()` is in the draft; the feed itself is a template of the site's (`feed.xml.liquid` with `permalink: /feed.xml`): `ssqch docs rssPlugin`" },
+	"jekyll-seo-tag": { say: "`{% seo %}` becomes an include: `ssqch docs \"From jekyll-seo-tag\"` has one that writes its tags" },
+	"jekyll-github-metadata": { say: "`site.github` isn't there: put what the templates read (`site.github.repository_nwo`, `site.github.url`) in the config's `data`" },
+	"jekyll-paginate": { say: "`paginate` and `paginator` become `pagination: { data: \"collections.posts\", size: N }` in the listing page's front matter, and `pagination.items`" },
+	"jekyll-toc": { say: "`toc(page.headings, { class: \"section-nav\" })` writes jekyll-toc's markup (`ssqch docs toc`)" },
+	"jekyll-relative-links": { say: "ssqch leaves `[x](other.md)` as it's written: link to the page's URL" },
+	"jekyll-optional-front-matter": { say: "a Markdown file without front matter is a page in ssqch too" },
+	"jekyll-titles-from-headings": { say: "a page's `title` comes from its front matter only: add `title` to the pages that had theirs from the first heading" },
+	"jekyll-default-layout": { say: "set `layout` in directory data, or in the config's `data`, for pages that had the default one" },
+	"jekyll-readme-index": { say: "a `README.md` is a page in ssqch too; give it `permalink: /` to make it the index, or ignore it" },
+	"jekyll-gist": { say: "`{% gist %}` becomes a function in `filters` (`{% gist \"id\" %}` calls it) that writes the `<script>`" },
+	"jekyll-mentions": { say: "`@name` stays text: a transform of your own, or links in the source" },
+	"jekyll-avatar": { say: "`{% avatar %}` becomes a function in `filters` that writes the `<img>`" },
+};
+
+/** jekyll-seo-tag's tags as an include (the one `ssqch docs "From jekyll-seo-tag"` shows; a test keeps them the same). */
+export const SEO_INCLUDE = "{%- comment -%} _includes/seo.liquid {%- endcomment -%}\n{%- assign site_title = site.title | default: site.name | markdownify | strip_html | normalize_whitespace | escape_once -%}\n{%- assign page_title = title | markdownify | strip_html | normalize_whitespace | escape_once | default: site_title -%}\n{%- assign about = description | default: site.description | markdownify | strip_html | normalize_whitespace | escape_once -%}\n{%- if page_title != site_title -%}{%- assign full_title = page_title | append: \" | \" | append: site_title -%}{%- elsif site.description -%}{%- assign full_title = site_title | append: \" | \" | append: about -%}{%- else -%}{%- assign full_title = site_title -%}{%- endif -%}\n{%- assign canonical = site.url | append: page.url -%}\n<!-- Begin Jekyll SEO tag v2.8.0 -->\n<title>{{ full_title }}</title>\n<meta property=\"og:title\" content=\"{{ page_title }}\" />\n<meta property=\"og:locale\" content=\"{{ lang | default: site.lang | default: \"en_US\" | replace: \"-\", \"_\" }}\" />\n{% if about %}<meta name=\"description\" content=\"{{ about }}\" />\n<meta property=\"og:description\" content=\"{{ about }}\" />\n{% endif %}{% if site.url %}<link rel=\"canonical\" href=\"{{ canonical }}\" />\n<meta property=\"og:url\" content=\"{{ canonical }}\" />\n{% endif %}<meta property=\"og:site_name\" content=\"{{ site_title }}\" />\n{% if image %}<meta property=\"og:image\" content=\"{{ site.url | append: image }}\" />\n{% endif %}<meta property=\"og:type\" content=\"website\" />\n<meta name=\"twitter:card\" content=\"{% if image %}summary_large_image{% else %}summary{% endif %}\" />\n{% if image %}<meta property=\"twitter:image\" content=\"{{ site.url | append: image }}\" />\n{% endif %}<meta property=\"twitter:title\" content=\"{{ page_title }}\" />\n<!-- End Jekyll SEO tag -->\n";
+
+/** github-pages' gem turns these on by itself. */
+const GITHUB_PAGES_PLUGINS = ["jekyll-github-metadata", "jekyll-relative-links", "jekyll-optional-front-matter", "jekyll-titles-from-headings", "jekyll-default-layout", "jekyll-readme-index"];
+
+/**
+ * A Jekyll permalink style or pattern, as an ssqch permalink (Liquid, for the folder's directory
+ * data), or undefined for a placeholder it can't write.
+ */
+export function jekyllPermalink(pattern: string, folder: string): string | undefined {
+	const styles: Record<string, string> = {
+		date: "/:categories/:year/:month/:day/:title:output_ext",
+		pretty: "/:categories/:year/:month/:day/:title/",
+		ordinal: "/:categories/:year/:y_day/:title:output_ext",
+		none: "/:categories/:title:output_ext",
+	};
+	const p = styles[pattern] ?? pattern;
+	const strip = folder === "" ? "" : ` | remove_first: '/${folder}'`;
+	const parts: Record<string, string> = {
+		":year": "{{ page.date | date: '%Y' }}",
+		":month": "{{ page.date | date: '%m' }}",
+		":day": "{{ page.date | date: '%d' }}",
+		":i_month": "{{ page.date | date: '%-m' }}",
+		":i_day": "{{ page.date | date: '%-d' }}",
+		":short_year": "{{ page.date | date: '%y' }}",
+		":y_day": "{{ page.date | date: '%j' }}",
+		":title": "{{ page.fileSlug }}",
+		":name": "{{ page.fileSlug }}",
+		":slug": "{{ page.fileSlug }}",
+		":path": `{{ page.filePathStem${strip} }}`,
+		":collection": folder.replace(/^_/, ""),
+		":output_ext": ".html",
+		":categories": "{% if categories %}/{{ categories | join: '/' | downcase }}{% endif %}",
+	};
+	let unknown = false;
+	const out = p.replace(/:[a-z_]+/g, (m) => {
+		if (Object.hasOwn(parts, m)) return parts[m];
+		unknown = true;
+		return m;
+	});
+	if (unknown) return undefined;
+	// `/:categories` writes its own `/`, and nothing when there are none.
+	return out.replace(/^\/(\{% if categories %\})/, "$1").replace(/\/\.html$/, "/index.html");
+}
+
+/** A template's `page.<key>` renamed to `<key>` where it's the page's front matter, and what's left that ssqch's `page` doesn't have. */
+export function rewriteJekyllTemplate(text: string): [string, string[], string[]] {
+	const changes: string[] = [];
+	const left: string[] = [];
+	// A key the template also uses as its own variable can't be renamed: `{% assign lang = page.lang %}`.
+	const own = new Set([...text.matchAll(/\{%-?\s*(?:assign|capture|for|increment|decrement)\s+([A-Za-z_][\w-]*)/g)].map((m) => m[1]));
+	const renamed = new Map<string, number>();
+	const kept = new Map<string, number>();
+	// `{{ page.path }}` (an "edit this page" link) is the input path without its `./`.
+	let paths = 0;
+	let out = text.replace(/\{\{(-?)\s*page\.path\s*(?=-?\}\}|\|)/g, (_, dash: string) => {
+		paths++;
+		return `{{${dash} page.inputPath | remove_first: "./" `;
+	});
+	if (paths) changes.push(`page.path -> page.inputPath | remove_first: "./"${paths > 1 ? ` (${paths})` : ""}`);
+	out = out.replace(/(\{\{[^}]*?\}\}|\{%[^%]*?%\})/g, (code) => code.replace(/(?<![\w.])page\.([A-Za-z_][\w-]*)/g, (whole, key: string) => {
+		if (PAGE_KEYS.has(key)) return whole;
+		if (Object.hasOwn(JEKYLL_PAGE, key)) {
+			kept.set(key, (kept.get(key) ?? 0) + 1);
+			return whole;
+		}
+		if (own.has(key)) {
+			left.push(`\`page.${key}\` is front matter, and the template has a variable \`${key}\` of its own: rename that one, then \`page.${key}\` to \`${key}\``);
+			return whole;
+		}
+		renamed.set(key, (renamed.get(key) ?? 0) + 1);
+		return key;
+	}));
+	// `site.posts` and `site.data.<name>`: collections and global data in ssqch.
+	out = out.replace(/(\{\{[^}]*?\}\}|\{%[^%]*?%\})/g, (code) => code.replace(/(?<![\w.])site\.posts\b/g, () => {
+		renamed.set("site.posts", (renamed.get("site.posts") ?? 0) + 1);
+		return "collections.posts";
+	}).replace(/(?<![\w.])site\.data\.(?=[A-Za-z_])/g, () => {
+		renamed.set("site.data.", (renamed.get("site.data.") ?? 0) + 1);
+		return "";
+	}));
+	for (const [key, n] of renamed) changes.push(key === "site.posts" ? "site.posts -> collections.posts" : key === "site.data." ? "site.data.<name> -> <name>" : `page.${key} -> ${key}${n > 1 ? ` (${n})` : ""}`);
+	for (const [key, n] of kept) left.push(`\`page.${key}\` (${n}): ${JEKYLL_PAGE[key]}`);
+	return [out, changes, [...new Set(left)]];
+}
+
+export function jekyll(dir: string): Plan {
+	const configFile = ["_config.yml", "_config.yaml", "_config.toml"].find((f) => isFile(path.join(dir, f)));
+	if (configFile === undefined) fail(`there's no _config.yml in ${dir}: is this the Jekyll site's folder?`);
+	const configText = readStrict(path.join(dir, configFile!));
+	let config: Data = {};
+	try { config = configFile!.endsWith(".toml") ? (readToml(configText) as Data) : parseYaml(configText); } catch (e) { fail(`${configFile}: ${e instanceof Error ? e.message : String(e)}`); }
+	const plan: Plan = { from: "Jekyll", renames: [], edits: [], newFiles: [], byHand: [] };
+	const list = (key: string) => (Array.isArray(config[key]) ? (config[key] as unknown[]).filter((v): v is string => typeof v === "string") : []);
+	const layoutsDir = typeof config.layouts_dir === "string" ? config.layouts_dir : "_layouts";
+	const includesDir = typeof config.includes_dir === "string" ? config.includes_dir : "_includes";
+	const dataDir = typeof config.data_dir === "string" ? config.data_dir : "_data";
+	const output = typeof config.destination === "string" ? config.destination.replace(/^\.\//, "") : "_site";
+	const collections = isPlainObject(config.collections) ? config.collections : Array.isArray(config.collections) ? Object.fromEntries((config.collections as unknown[]).map((c) => [String(c), {}])) : {};
+	const collectionsDir = typeof config.collections_dir === "string" ? config.collections_dir.replace(/\/$/, "") : "";
+	const excluded = [...JEKYLL_EXCLUDES, ...list("exclude")];
+	const included = new Set(list("include"));
+	const isExcluded = (rel: string) => excluded.some((e) => {
+		const glob = e.replace(/^\.\//, "").replace(/\/$/, "");
+		return rel === glob || rel.startsWith(`${glob}/`) || (glob.includes("*") && new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\u0000").replace(/\*/g, "[^/]*").replace(/\u0000/g, ".*")}$`).test(rel));
+	});
+	// Jekyll reads `_`-folders it knows, and skips the rest (and dot files) unless `include` names them.
+	const special = new Set([layoutsDir, includesDir, dataDir, "_posts", "_drafts", "_sass", ...Object.keys(collections).map((c) => (collectionsDir ? `${collectionsDir}/_${c}` : `_${c}`))]);
+	const entries = walk(dir, (name, rel) => rel === output || name === ".git" || name === "node_modules" || name === ".cache" || isExcluded(rel) || ((name.startsWith(".") || name.startsWith("_")) && !included.has(name) && !special.has(rel) && !(collectionsDir && rel === collectionsDir)), true);
+
+	// Templates: `page.<key>` renamed, the tags no one defines counted, and kramdown's habits.
+	const tags = new Map<string, [number, string]>();
+	let markdownAttr = 0, ial = 0, seo = 0;
+	const hasFrontMatter = (text: string) => /^---\s*\r?\n/.test(text);
+	const statics: string[] = [];
+	const frontMatterOther: string[] = [];
+	for (const entry of entries) {
+		if (!entry.isFile) continue;
+		const ext = asciiLower(extensionOf(entry.name));
+		const text = readUtf8(entry.abs);
+		const templateDir = entry.rel.startsWith(`${layoutsDir}/`) || entry.rel.startsWith(`${includesDir}/`);
+		const front = text !== undefined && hasFrontMatter(text);
+		if (!templateDir && !entry.rel.startsWith(`${dataDir}/`) && !entry.rel.startsWith("_sass/") && !front) {
+			// Jekyll copies a file without front matter as it is; ssqch renders `.md` and `.html`.
+			if (!["md", "markdown"].includes(ext)) statics.push(entry.rel);
+			continue;
+		}
+		if (text === undefined) continue;
+		if (front && !["md", "markdown", "html", "liquid", "xml", "txt", "json", "scss", "sass", "css"].includes(ext)) frontMatterOther.push(entry.rel);
+		if (!(templateDir || front) || ["scss", "sass"].includes(ext)) continue;
+		let [next, changes, left] = rewriteJekyllTemplate(text);
+		// `{% seo %}` is jekyll-seo-tag's: the include written below.
+		if (/\{%-?\s*seo\b[^%]*%\}/.test(next)) {
+			next = next.replace(/\{%(-?)\s*seo\b[^%]*?(-?)%\}/g, "{%$1 include seo.liquid $2%}");
+			changes = [...changes, "{% seo %} -> {% include seo.liquid %}"];
+		}
+		if (changes.length) plan.edits.push([entry.rel, changes, next]);
+		for (const what of left) plan.byHand.push([entry.rel, what]);
+		for (const m of text.matchAll(/\{%-?\s*([a-z_][\w-]*)/g)) {
+			const name = m[1];
+			if (LIQUID_TAGS.has(name) || name.startsWith("end")) continue;
+			if (name === "seo") seo++;
+			const had = tags.get(name);
+			tags.set(name, had ? [had[0] + 1, had[1]] : [1, `${entry.rel}:${occurrences(text.slice(0, m.index), "\n") + 1}`]);
+		}
+		if (["md", "markdown"].includes(ext)) {
+			markdownAttr += (text.match(/\smarkdown\s*=\s*["']?(?:1|block|span)/g) ?? []).length;
+			ial += (text.match(/\{:\s*[.#][^}]*\}/g) ?? []).length;
+		}
+	}
+	if (seo) {
+		if (isFile(path.join(dir, includesDir, "seo.liquid"))) plan.byHand.push([`${includesDir}/seo.liquid`, "it's there already, so jekyll-seo-tag's include wasn't written: `{% seo %}` now includes it"]);
+		else plan.newFiles.push([`${includesDir}/seo.liquid`, "jekyll-seo-tag's tags, for `{% seo %}`: add the ones your site's options turn on (`ssqch docs \"From jekyll-seo-tag\"`)", SEO_INCLUDE]);
+		tags.delete("seo");
+	}
+	for (const [name, [n, at]] of [...tags].sort(([a], [b]) => compareText(a, b))) {
+		plan.byHand.push([at, name === "seo" ? `\`{% seo %}\` (in ${n} ${n === 1 ? "place" : "places"}; this is the first): jekyll-seo-tag's tag becomes an include, \`{% include seo.liquid %}\`: \`ssqch docs "From jekyll-seo-tag"\` has one that writes its tags` : `\`{% ${name} %}\` (in ${n} ${n === 1 ? "place" : "places"}; this is the first) is a plugin's tag: a function in \`filters\` is a Liquid tag too (\`{% ${name} x %}\` calls \`${name}(x)\`), or an include`]);
+	}
+	if (ial) plan.byHand.push([".", `${ial} kramdown attribute lists (\`{: .class}\`): ssqch's Markdown doesn't read them, so they print as text. A \`{.class}\` on a heading works (\`## Title {#id .class}\`); for the others, HTML, or a container (\`::: name\`)`]);
+	if (markdownAttr) plan.byHand.push([".", `${markdownAttr} \`markdown="1"\` elements: \`htmlMarkdown: "kramdown"\` (in the draft) reads them as kramdown does`]);
+	for (const rel of frontMatterOther) plan.byHand.push([rel, "has front matter, so Jekyll renders it: in ssqch that's an engine for its extension (`engines: { js: (s) => s }`, the extension in `templateFormats`, and `\"render\": \"liquid,js\"` in its folder's directory data): `ssqch docs \"Text files with front matter\"`"]);
+
+	// Collections and posts: directory data with the tag, the layout `defaults` gave, and the permalink.
+	const defaults = Array.isArray(config.defaults) ? (config.defaults as unknown[]).filter(isPlainObject) : [];
+	const defaultsFor = (folder: string, type: string) => {
+		const values: Data = {};
+		for (const d of defaults) {
+			const scope = isPlainObject(d.scope) ? d.scope : {};
+			const scopePath = typeof scope.path === "string" ? scope.path.replace(/^\.\//, "").replace(/\/$/, "") : "";
+			if ((scopePath === "" || scopePath === folder) && (scope.type === undefined || scope.type === type) && isPlainObject(d.values)) Object.assign(values, d.values);
+		}
+		return values;
+	};
+	// `defaults` for every page: global data, below what a page and its folder set.
+	const everyPage: Data = {};
+	const collectionNames: string[] = [];
+	const directoryData = (folder: string, data: Data, from: string) => {
+		const name = `${folder}/${folder.split("/").pop()!}.json`;
+		if (isFile(path.join(dir, ...name.split("/")))) return plan.byHand.push([name, `it's there already, so ${from} wasn't written into it: ${JSON.stringify(data)}`]);
+		plan.newFiles.push([name, from, `${JSON.stringify(data, null, 2)}\n`]);
+	};
+	if (isDir(path.join(dir, "_posts"))) {
+		const permalink = jekyllPermalink(typeof config.permalink === "string" ? config.permalink : "date", "");
+		const data: Data = { tags: "posts", ...defaultsFor("_posts", "posts") };
+		if (permalink) data.permalink = permalink;
+		else plan.byHand.push([configFile!, `permalink: ${String(config.permalink)}: a placeholder ssqch can't write; give _posts/posts.json a \`permalink\` of your own`]);
+		directoryData("_posts", data, `Jekyll's posts: the \`posts\` tag${permalink ? ", and the permalink" : ""}`);
+		collectionNames.push("posts");
+	}
+	if (isDir(path.join(dir, "_drafts"))) plan.byHand.push(["_drafts", "drafts: move them to `_posts` with `draft: true`, which `ssqch serve` builds and production builds leave out"]);
+	for (const [name, settings] of Object.entries(collections)) {
+		if (name === "posts") continue;
+		const folder = collectionsDir ? `${collectionsDir}/_${name}` : `_${name}`;
+		if (!isDir(path.join(dir, ...folder.split("/")))) continue;
+		const s = isPlainObject(settings) ? settings : {};
+		const data: Data = { tags: name, ...defaultsFor(folder, name) };
+		if (s.output === true) {
+			const permalink = jekyllPermalink(typeof s.permalink === "string" ? s.permalink : "/:collection/:path/", folder);
+			if (permalink) data.permalink = permalink;
+			else plan.byHand.push([folder, `permalink: ${String(s.permalink)}: a placeholder ssqch can't write; give the folder's directory data a \`permalink\` of your own`]);
+		} else data.permalink = false;
+		directoryData(folder, data, `the \`${name}\` collection: its tag${s.output === true ? " and permalink" : ", and no pages (`output` isn't true)"}`);
+		collectionNames.push(name);
+	}
+	// `defaults` for other folders: directory data there too.
+	for (const d of defaults) {
+		const scope = isPlainObject(d.scope) ? d.scope : {};
+		const folder = typeof scope.path === "string" ? scope.path.replace(/^\.\//, "").replace(/\/$/, "") : "";
+		if (!isPlainObject(d.values)) continue;
+		if (folder === "" && scope.type === undefined) Object.assign(everyPage, d.values);
+		else if (folder === "") { if (scope.type !== "posts" && !Object.hasOwn(collections, String(scope.type))) plan.byHand.push([configFile!, `defaults for \`type: ${String(scope.type)}\`: directory data in the folders those pages are in`]); }
+		else if (!folder.includes("*") && folder !== "_posts" && !collectionNames.some((c) => folder === `_${c}` || folder === `${collectionsDir}/_${c}`) && isDir(path.join(dir, ...folder.split("/")))) directoryData(folder, { ...d.values }, `\`defaults\` for ${folder}`);
+		else if (folder.includes("*")) plan.byHand.push([configFile!, `defaults for \`${folder}\`: directory data in each folder it matches`]);
+	}
+
+	// What Jekyll copies as it is: the folders with no front matter in them, and the other files.
+	const passthrough: string[] = [];
+	const front = new Set(entries.filter((e) => e.isFile && !statics.includes(e.rel)).map((e) => e.rel));
+	const topLevel = new Map<string, string[]>();
+	for (const rel of statics) {
+		const top = rel.includes("/") ? rel.slice(0, rel.indexOf("/")) : "";
+		if (top.startsWith("_")) continue;
+		topLevel.set(top, [...(topLevel.get(top) ?? []), rel]);
+	}
+	for (const [top, files] of [...topLevel].sort(([a], [b]) => compareText(a, b))) {
+		const whole = top !== "" && ![...front].some((f) => f.startsWith(`${top}/`));
+		if (whole) passthrough.push(top);
+		else {
+			// A folder with templates in it: its subfolders without any, and its other files.
+			const sub = new Map<string, string[]>();
+			for (const f of files) {
+				const rest = top === "" ? f : f.slice(top.length + 1);
+				const key = rest.includes("/") ? `${top === "" ? "" : `${top}/`}${rest.slice(0, rest.indexOf("/"))}` : f;
+				sub.set(key, [...(sub.get(key) ?? []), f]);
+			}
+			for (const [key] of [...sub].sort(([a], [b]) => compareText(a, b))) {
+				if (key.includes("/") && !isFile(path.join(dir, ...key.split("/"))) && [...front].some((f) => f.startsWith(`${key}/`))) for (const f of sub.get(key)!) passthrough.push(f);
+				else passthrough.push(key);
+			}
+		}
+	}
+	// A folder is everything in it; a file or a glob is as it's written.
+	const ignores = [...new Set([...list("exclude").map((e) => {
+		const rel = e.replace(/^\.\//, "").replace(/\/$/, "");
+		return !rel.includes("*") && isDir(path.join(dir, ...rel.split("/"))) ? `${rel}/**` : rel;
+	}), "Gemfile", "Gemfile.lock"])];
+
+	// Plugins: the config's `plugins` (or `gems`), the Gemfile's, and github-pages' own.
+	const gemfile = readUtf8(path.join(dir, "Gemfile")) ?? "";
+	const named = new Set([...list("plugins"), ...list("gems"), ...[...gemfile.matchAll(/^\s*gem\s+["']([^"']+)["']/gm)].map((m) => m[1])]);
+	if (named.has("github-pages")) for (const p of GITHUB_PAGES_PLUGINS) named.add(p);
+	const imports = ["import { defineConfig, readData } from \"ssqch\";"];
+	const plugins: string[] = [];
+	for (const name of [...named].sort(compareText)) {
+		const known = JEKYLL_PLUGINS[name];
+		if (!known) {
+			if (name.startsWith("jekyll-") || name.startsWith("jekyll_")) plan.byHand.push(["Gemfile", `${name}: a plugin ssqch has no word for; what it adds to the output is a filter, a transform or a template of the site's`]);
+			continue;
+		}
+		if (known.use) {
+			imports.push(known.use[0]);
+			plugins.push(known.use[1]);
+		}
+		if (name !== "jekyll-seo-tag" || seo === 0) plan.byHand.push(["Gemfile", `${name} -> ${known.say}`]);
+	}
+	if (named.has("github-pages")) plan.byHand.push(["Gemfile", "github-pages' default theme (jekyll-theme-primer) writes `/assets/css/style.css`: nothing in ssqch, so check whether a page links to it"]);
+	const sass = isDir(path.join(dir, "_sass")) || entries.some((e) => e.isFile && /\.s[ac]ss$/.test(e.name) && front.has(e.rel));
+	if (sass) {
+		imports.push("import { sassPlugin } from \"ssqch/sass\";");
+		const sources = entries.filter((e) => e.isFile && /\.s[ac]ss$/.test(e.name) && front.has(e.rel) && !e.rel.startsWith("_"));
+		const files = sources.map((e) => `"${e.rel}": "/${e.rel.replace(/\.s[ac]ss$/, ".css")}"`);
+		const loadPaths = isPlainObject(config.sass) && Array.isArray(config.sass.load_paths) ? (config.sass.load_paths as unknown[]).map(String) : isDir(path.join(dir, "_sass")) ? ["_sass"] : [];
+		plugins.push(`sassPlugin({ files: { ${files.join(", ")} }${loadPaths.length ? `, loadPaths: ${JSON.stringify(loadPaths)}` : ""}, charset: false })`);
+	}
+
+	const markdown = ["htmlMarkdown: \"kramdown\"", "headingIds: \"kramdown\"", "smartPunctuation: true", "autolinks: false"];
+	const kramdown = isPlainObject(config.kramdown) ? config.kramdown : {};
+	if (kramdown.auto_ids === false) markdown[1] = "headingIds: false";
+	if (kramdown.smart_quotes !== undefined || kramdown.input === "GFM" && kramdown.hard_wrap === true) plan.byHand.push([configFile!, "kramdown's `smart_quotes` or `hard_wrap`: check the draft's `markdown` against them (`breaks: true` for `hard_wrap`)"]);
+	if (typeof config.markdown === "string" && !/kramdown/i.test(config.markdown)) plan.byHand.push([configFile!, `markdown: ${config.markdown}: the draft's options are kramdown's; ssqch's Markdown is CommonMark with extensions (\`ssqch docs markdown\`)`]);
+	let out = `// A first draft, written by \`ssqch import jekyll\` from ${configFile}.\n// \`ssqch docs --from jekyll\` has the whole mapping.\n${[...new Set(imports)].join("\n")}\n\n`;
+	out += `// \`site.title\` and every other key of ${configFile} in templates read this.\nconst site = readData(${JSON.stringify(configFile)});\n\nexport default defineConfig({\n`;
+	out += "  // Markdown and HTML pages run through Liquid first, as in Jekyll.\n  templateFormats: [\"liquid\", \"md\", \"html\"],\n  markdownEngine: \"liquid\",\n  htmlEngine: \"liquid\",\n";
+	const dirs = [`layouts: ${JSON.stringify(layoutsDir)}`];
+	if (includesDir !== "_includes") dirs.push(`includes: ${JSON.stringify(includesDir)}`);
+	if (dataDir !== "_data") dirs.push(`data: ${JSON.stringify(dataDir)}`);
+	if (output !== "_site") dirs.push(`output: ${JSON.stringify(output)}`);
+	out += `  dirs: { ${dirs.join(", ")} },\n`;
+	out += "  // Jekyll drops the blank lines after the closing `---`.\n  trimAfterFrontMatter: true,\n";
+	out += `  // kramdown's habits: markdown="1", its heading ids, smart quotes, no bare-URL links.\n  markdown: { ${markdown.join(", ")} },\n`;
+	out += `  // ${configFile}'s \`exclude\`, and what Jekyll leaves out by itself.\n  ignore: [${ignores.map((g) => JSON.stringify(g)).join(", ")}],\n`;
+	if (passthrough.length) out += `  // What Jekyll copied as it is: files without front matter.\n  passthrough: [${passthrough.map((p) => JSON.stringify(p)).join(", ")}],\n`;
+	const pageDefaults = Object.entries(everyPage).map(([k, v]) => `${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${JSON.stringify(v)}`);
+	out += pageDefaults.length ? `  // ${configFile}'s \`defaults\` for every page.\n  data: { site, ${pageDefaults.join(", ")} },\n` : "  data: { site },\n";
+	out += `  filters: {\n    // Plugins' tags and filters go here: name: (...args) => result\n  },\n  plugins: [${plugins.join(", ")}],\n});\n`;
+	if (findConfig(dir) === undefined) plan.newFiles.unshift(["ssqch.config.js", `a first draft, from ${configFile}`, out]);
+	else plan.byHand.push(["ssqch.config.js", "it's already there, so the draft from the Jekyll config wasn't written"]);
+	if (!isFile(path.join(dir, "package.json"))) plan.byHand.push([".", "no package.json: `npm init -y && npm install -D ssqch` pins the version the site builds with"]);
+	if (typeof config.url === "string" && config.url !== "" && !config.url.startsWith("http")) plan.byHand.push([configFile!, `url: ${config.url}: the site's address starts with https://`]);
+	return plan;
+}
+
 export function zola(dir: string): Plan {
 	const configPath = path.join(dir, "config.toml");
 	if (!isFile(configPath)) fail(`there's no config.toml in ${dir}: is this the Zola site's folder?`);

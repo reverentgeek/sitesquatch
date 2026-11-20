@@ -298,6 +298,20 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 		const nth = `${day}${ordinal(day)}`;
 		return style === "US" ? strftime(when, `${month} ${nth}, %Y`) : strftime(when, `${nth} ${month} %Y`);
 	});
+	// Jekyll's filters as Jekyll writes them (opensource.guide's search index and language menus):
+	// `xml_escape` is Ruby's `encode(xml: :attr)` (`'` is `&apos;`, where liquidjs writes `&#39;`),
+	// `normalize_whitespace` folds ASCII whitespace only (Ruby's `\s`) and trims, and `sort` of an
+	// object sorts its `[key, value]` pairs by key, as Ruby's `Hash#sort` (liquidjs gives nothing
+	// useful for one).
+	const XML: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&apos;" };
+	liquid.registerFilter("xml_escape", (input: unknown) => (input === undefined || input === null ? "" : text(input).replace(/[&<>"']/g, (c) => XML[c])));
+	liquid.registerFilter("normalize_whitespace", (input: unknown) => text(input ?? "").replace(/[ \t\n\v\f\r]+/g, " ").replace(/^ | $/g, ""));
+	const liquidSort = liquid.filters.sort as any;
+	const sortHandler = typeof liquidSort === "function" ? liquidSort : liquidSort.handler;
+	liquid.registerFilter("sort", function (this: unknown, input: unknown, ...args: unknown[]) {
+		if (isPlainObject(input) && args.length === 0) return Object.entries(input).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+		return sortHandler.call(this, input, ...args);
+	});
 	liquid.registerFilter("date_to_string", dateString("%b"));
 	liquid.registerFilter("date_to_long_string", dateString("%B"));
 	for (const [name, fn] of Object.entries(MATH)) liquid.registerFilter(name, fn);

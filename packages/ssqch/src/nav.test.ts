@@ -58,8 +58,25 @@ test("tree_from_front_matter", () => {
 	];
 	const t = fromPages(items);
 	const titles = (v: any[]) => v.map((e) => e.title);
-	assert.deepEqual(titles(t), ["Guides", "Lost"]);
+	// DELIBERATE (0.11, from the fresh a11yproject.com moves): a parent no page has is a heading
+	// holding its children (0.7 put them at the top), as eleventy-navigation's `parent: Feature` was.
+	assert.deepEqual(titles(t), ["Guides", "Nope"]);
 	assert.deepEqual(titles(getPath(t, "0.children") as any[]), ["Deploy", "Config"]);
+	assert.deepEqual(getPath(t, "1"), { title: "Nope", key: "Nope", children: [{ title: "Lost", url: "/orphan/", key: "Lost", children: [] }] });
+});
+
+test("tree_below_a_root_with_nav_urls_and_extras", () => {
+	const items = [
+		{ url: "/a/", data: { title: "Accessible names", nav: { key: "names", parent: "Feature", order: 2, excerpt: "What a name is" } } },
+		{ url: "/b/", data: { nav: { key: "Skip links", parent: "Feature", order: 1, url: "https://example.com/skip/" } } },
+		{ url: "/c/", data: { title: "Elsewhere", nav: { parent: "Other" } } },
+	];
+	const t = fromPages(items, { root: "Feature" }) as any[];
+	assert.deepEqual(t, [
+		{ title: "Skip links", url: "https://example.com/skip/", key: "Skip links", children: [] },
+		{ excerpt: "What a name is", title: "Accessible names", url: "/a/", key: "names", children: [] },
+	]);
+	assert.deepEqual(fromPages(items, { root: "Nothing" }), []);
 });
 
 // Not in the Rust: the trees a template passes in belong to the site, so no call may change them.

@@ -96,6 +96,8 @@ export interface Config {
 	ignore: string[];
 	bundles: boolean;
 	strict: boolean;
+	/** `trimAfterFrontMatter`: a template's body starts at its first line with text, as Jekyll's does, not right after the closing `---`. */
+	trimAfterFrontMatter: boolean;
 	lastModified: "git" | "file" | null;
 	/** `dateFallback`: the date of a page with none of its own (in its data or its file name): `"git"` for the last commit that changed its file, or `"file"` for the file's time. */
 	dateFallback: "git" | "file";
@@ -190,6 +192,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		ignore: [],
 		bundles: false,
 		strict: false,
+		trimAfterFrontMatter: false,
 		lastModified: null,
 		dateFallback: "file",
 		timeZone: null,
@@ -337,7 +340,7 @@ export class EngineCache {
 
 // ---- ssqch.config.js -------------------------------------------------------------------------
 
-const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "dateFallback", "timeZone", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
+const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "trimAfterFrontMatter", "lastModified", "dateFallback", "timeZone", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
 const PARTS = ["data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins"];
 /**
  * Engine names a config can't replace. `md` can be: a site that keeps its markdown-it replaces
@@ -715,7 +718,7 @@ function applySettings(config: Config, settings: Data): void {
 		trace = value;
 	}
 	if (trace !== undefined) config.leaveNoTrace = trace;
-	for (const key of ["bundles", "strict"] as const) {
+	for (const key of ["bundles", "strict", "trimAfterFrontMatter"] as const) {
 		const value = settings[key];
 		if (value === undefined) continue;
 		if (typeof value !== "boolean") bail(`${key} must be true or false, not ${typeof value}`);

@@ -613,3 +613,18 @@ test("the_url_alias_normalizes_as_eleventys_did", () => {
 	assert.ok(r.ok, r.log);
 	assert.equal(read(dir, "_site/index.html"), ".|.|/a/c/|https://x.dev//y|rel/x");
 });
+
+// Added in 0.11, from the fresh opensource.guide move: Jekyll's filters as Jekyll writes them.
+// `xml_escape` is Ruby's (`&apos;`; liquidjs wrote `&#39;`), `normalize_whitespace` folds ASCII
+// whitespace and trims, and `sort` of an object gives its `[key, value]` pairs by key (the
+// language menus).
+test("jekylls_liquid_filters_write_what_jekyll_writes", () => {
+	const dir = tempDir("jekyll-filters");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"liquid\"], data: { langs: { fr: \"Français\", de: \"Deutsch\", ar: \"عربي\" } } };\n",
+		"index.liquid": "{{ \"l'Open & <b>\" | xml_escape }}|{{ \"  a   \n\t b  \" | normalize_whitespace }}|{% assign pairs = langs | sort %}{% for p in pairs %}{{ p[0] }}={{ p[1] }},{% endfor %}|{{ \"b,a\" | split: \",\" | sort | join: \",\" }}",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "l&apos;Open &amp; &lt;b&gt;|a   b|ar=عربي,de=Deutsch,fr=Français,|a,b");
+});

@@ -32,7 +32,17 @@ pub enum Slugger {
     /// ASCII only: letters are transliterated (`Ünïcödé` is `unicode`, `🦀`
     /// is `crab`), then like blackfriday. Zola's anchors look like this.
     Ascii,
+    /// kramdown's GFM parser's (Jekyll's): lowercase, then everything but letters, marks,
+    /// digits, `_`-like connectors, `-`, spaces and tabs is dropped (emoji too, which GitHub's
+    /// keeps), and spaces and tabs become `-`.
+    Kramdown,
+    /// markdown-it-anchor's default: trimmed, lowercase, each run of whitespace a `-`, then
+    /// `encodeURIComponent` (`What’s new?` is `what%E2%80%99s-new%3F`).
+    MarkdownItAnchor,
 }
+
+/// What kramdown's GFM ids drop: Ruby's `/[^\p{Word}\- \t]/`.
+static KRAMDOWN_DROPS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^\p{L}\p{M}\p{Nd}\p{Pc}\- \t]").unwrap());
 
 impl Slugger {
     pub fn parse(name: &str) -> Option<Slugger> {
@@ -40,6 +50,8 @@ impl Slugger {
             "github" => Some(Slugger::Github),
             "blackfriday" => Some(Slugger::Blackfriday),
             "ascii" => Some(Slugger::Ascii),
+            "kramdown" => Some(Slugger::Kramdown),
+            "markdown-it-anchor" => Some(Slugger::MarkdownItAnchor),
             _ => None,
         }
     }
@@ -61,6 +73,31 @@ impl Slugger {
                 }
             }
             Slugger::Ascii => return Slugger::Blackfriday.slug(&deunicode::deunicode(text)),
+            Slugger::Kramdown => return KRAMDOWN_DROPS.replace_all(&text.to_lowercase(), "").replace([' ', '\t'], "-"),
+            Slugger::MarkdownItAnchor => {
+                // JavaScript's `trim`, `toLowerCase` and `/\s+/g`: Unicode white space, and the BOM.
+                let js_space = |c: char| c.is_whitespace() || c == '\u{FEFF}';
+                let lower = text.trim_matches(js_space).to_lowercase();
+                let mut space = false;
+                for c in lower.chars() {
+                    if js_space(c) {
+                        if !space {
+                            out.push('-');
+                        }
+                        space = true;
+                        continue;
+                    }
+                    space = false;
+                    if c.is_ascii_alphanumeric() || "-_.!~*'()".contains(c) {
+                        out.push(c);
+                    } else {
+                        let mut buf = [0u8; 4];
+                        for b in c.encode_utf8(&mut buf).bytes() {
+                            out.push_str(&format!("%{:02X}", b));
+                        }
+                    }
+                }
+            }
             Slugger::Blackfriday => {
                 let mut dash = false;
                 for c in text.chars() {
@@ -267,7 +304,7 @@ impl MarkdownOptions {
                     self.heading_ids = match v {
                         Value::Bool(false) | Value::Null => None,
                         Value::Bool(true) => Some(Slugger::Github),
-                        Value::Str(s) => Some(Slugger::parse(s).ok_or_else(|| anyhow::anyhow!("markdown.headingIds: unknown slugger \"{}\" (use \"github\", \"blackfriday\", \"ascii\" or false)", s))?),
+                        Value::Str(s) => Some(Slugger::parse(s).ok_or_else(|| anyhow::anyhow!("markdown.headingIds: unknown slugger \"{}\" (use \"github\", \"blackfriday\", \"ascii\", \"kramdown\", \"markdown-it-anchor\" or false)", s))?),
                         other => bail!("markdown.headingIds must be \"github\", \"blackfriday\", \"ascii\" or false, not {}", other.type_of()),
                     };
                     continue;
@@ -450,6 +487,7 @@ pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -
         .collect();
     if opts.smart_punctuation {
         keep_flags(&mut events);
+        close_open_quotes(&mut events);
     }
     if let Some(f) = &opts.slugger_fn {
         assign_heading_ids(&mut events, |text| match f {
@@ -495,6 +533,58 @@ pub fn render_inline(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Ho
         Some(inner) if !inner.contains("<p>") && !inner.contains("</p>") => inner.to_string(),
         _ => html,
     })
+}
+
+/// With smart punctuation, a `"` between two letters is both left- and right-flanking, and
+/// pulldown-cmark opens a quote with it even when one is open: `比如"进展 ISSUE-123"；` came out
+/// `“…ISSUE-123“` (opensource.guide's zh-hans pages). An opening quote that follows a character
+/// other than a space while a quote is open in the same block closes it, as markdown-it and
+/// commonmark.js match quotes.
+fn close_open_quotes(events: &mut [Event]) {
+    let mut open = false;
+    let mut last: Option<char> = None;
+    for event in events.iter_mut() {
+        match event {
+            Event::Start(tag) if !matches!(tag, Tag::Emphasis | Tag::Strong | Tag::Strikethrough | Tag::Link { .. } | Tag::Image { .. }) => {
+                open = false;
+                last = None;
+            }
+            Event::End(end) if !matches!(end, TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough | TagEnd::Link | TagEnd::Image) => {
+                open = false;
+                last = None;
+            }
+            Event::Code(code) => last = code.chars().last(),
+            Event::SoftBreak | Event::HardBreak => last = Some(' '),
+            Event::Text(text) => {
+                if !text.contains(['\u{201C}', '\u{201D}']) {
+                    last = text.chars().last().or(last);
+                    continue;
+                }
+                let mut out = String::with_capacity(text.len());
+                for c in text.chars() {
+                    let c = match c {
+                        '\u{201C}' if open && last.is_some_and(|l| !l.is_whitespace()) => {
+                            open = false;
+                            '\u{201D}'
+                        }
+                        '\u{201C}' => {
+                            open = true;
+                            c
+                        }
+                        '\u{201D}' => {
+                            open = false;
+                            c
+                        }
+                        _ => c,
+                    };
+                    out.push(c);
+                    last = Some(c);
+                }
+                *text = out.into();
+            }
+            _ => {}
+        }
+    }
 }
 
 /// With smart punctuation, `--` is an en dash, which is wrong for a
@@ -1116,8 +1206,9 @@ impl Writer<'_, '_> {
             block(out, &self.hook(&name, "fence", Value::from_pairs(fence))?);
             return Ok(());
         }
-        if highlighted.is_some() && classes.is_some_and(|c| c.prism) && !lang.is_empty() {
-            // Prism's: the language on the `<pre>` too.
+        if self.highlight && classes.is_some_and(|c| c.prism) && !lang.is_empty() {
+            // Prism's: the language on the `<pre>` too, and for a language without a grammar
+            // (the code escaped as it is), as eleventy-plugin-syntaxhighlight writes it.
             out.push_str("<pre class=\"language-");
             escape_html(&mut *out, lang).ok();
             out.push_str("\"><code");
@@ -1422,6 +1513,12 @@ mod tests {
         assert_eq!(Slugger::Github.slug("Cafe\u{301} x\u{B2} \u{BD}"), "cafe\u{301}-x-");
         assert_eq!(Slugger::Github.slug("\u{130}stanbul"), "i\u{307}stanbul");
         assert_eq!(Slugger::Blackfriday.slug("A -- B"), "a-b");
+        // kramdown's GFM ids drop emoji and symbols, and keep letters in any script.
+        assert_eq!(Slugger::Kramdown.slug("\u{1F62D} Вы не атрымаеце адказ"), "-вы-не-атрымаеце-адказ");
+        assert_eq!(Slugger::Kramdown.slug("Café, x\u{B2}\tsnake_case!"), "café-x-snake_case");
+        // markdown-it-anchor's: encodeURIComponent of the lowercase text, spaces as `-`.
+        assert_eq!(Slugger::MarkdownItAnchor.slug("  What’s new:  Café?  "), "what%E2%80%99s-new%3A-caf%C3%A9%3F");
+        assert_eq!(Slugger::MarkdownItAnchor.slug("Use (it) wisely!"), "use-(it)-wisely!");
         assert_eq!(Slugger::Blackfriday.slug("What's new in 1.2?"), "what-s-new-in-1-2");
         assert_eq!(Slugger::Blackfriday.slug("snake_case"), "snake-case");
         assert_eq!(Slugger::Ascii.slug("Debugging Aspirations (👩‍💻)"), "debugging-aspirations-woman-computer");
@@ -1490,6 +1587,14 @@ mod tests {
         // Opened inside a list item, closed outside it.
         let err = render("- item\n  ::: note\n  x\n\n:::\n", &MarkdownOptions::default(), None).unwrap_err();
         assert!(err.to_string().contains("line 2: container `note`"), "{}", err);
+    }
+
+    #[test]
+    fn smart_quotes_between_letters_close_an_open_one() {
+        let smart = MarkdownOptions { smart_punctuation: true, ..Default::default() };
+        assert_eq!(render("比如\"我们正在处理——进展见 ISSUE-123\"；\n", &smart, None).unwrap(), "<p>比如“我们正在处理——进展见 ISSUE-123”；</p>\n");
+        assert_eq!(render("a \"b\" c \"d\"\n\n\"e\"\n", &smart, None).unwrap(), "<p>a “b” c “d”</p>\n<p>“e”</p>\n");
+        assert_eq!(render("say \"*one*\"x\"two\"\n", &smart, None).unwrap(), "<p>say “<em>one</em>”x“two”</p>\n");
     }
 
     #[test]
@@ -1643,6 +1748,8 @@ mod tests {
         assert_eq!(render("```js\nlet a = 1;\n```\n", &opts, None).unwrap(), "<pre class=\"language-js\"><code class=\"language-js\"><span class=\"token keyword\">let</span> a <span class=\"hl-operator\">=</span> <span class=\"token number\">1</span>;\n</code></pre>\n");
         let marked = render("```js {2}\nlet a;\nlet b;\n```\n", &opts, None).unwrap();
         assert_eq!(marked, "<pre class=\"language-js\"><code class=\"language-js\"><span class=\"token keyword\">let</span> a;\n<mark class=\"highlight-line highlight-line-active\"><span class=\"token keyword\">let</span> b;</mark>\n</code></pre>\n");
+        // A language with no grammar keeps Prism's `<pre>`, its code escaped.
+        assert_eq!(render("```nope\na < b\n```\n", &opts, None).unwrap(), "<pre class=\"language-nope\"><code class=\"language-nope\">a &lt; b\n</code></pre>\n");
         // A map of the site's own keeps ssqch's markup around the spans.
         let own = MarkdownOptions { highlight: true, highlight_classes: Some(HighlightClasses { names: vec![("keyword".into(), "tok-keyword".into())], prism: false }), ..Default::default() };
         assert_eq!(render("```js\nlet a;\n```\n", &own, None).unwrap(), "<pre class=\"highlight\"><code class=\"language-js\"><span class=\"tok-keyword\">let</span> a;\n</code></pre>\n");

@@ -58,7 +58,7 @@ function entries(root: string, from: string, to: string): Array<[string, string]
 }
 
 BUILTINS.set("ssqch/sass", (config: Config, given) => {
-	const o = new Options(given, ["files", "style", "loadPaths"]);
+	const o = new Options(given, ["files", "style", "loadPaths", "charset"]);
 	const files: Array<[string, string]> = [];
 	const map = o.get("files");
 	if (map !== undefined) {
@@ -71,6 +71,10 @@ BUILTINS.set("ssqch/sass", (config: Config, given) => {
 	const style = o.string("style");
 	if (style !== undefined && style !== "compressed" && style !== "expanded") bail(`style must be "compressed" or "expanded", not ${debugString(style)}`);
 	const loadPaths = o.list("loadPaths") ?? [];
+	// Dart Sass's `--no-charset`: CSS with a character outside ASCII starts with a byte order mark
+	// (compressed) or `@charset "UTF-8";` (expanded) unless it's false. jekyll-sass-converter takes
+	// the mark out, so a Jekyll site's CSS has none (opensource.guide's index.css).
+	const charset = o.bool("charset") ?? true;
 	if (!files.length) bail("files is required: { \"src/scss\": \"/css\" } or { \"src/app.scss\": \"/app.css\" }");
 	for (const [from, to] of files) {
 		if (!to.startsWith("/") || to.includes("..")) bail(`files: ${debugString(to)} must be a URL path starting with / (like "/css/app.css" or "/css")`);
@@ -99,7 +103,8 @@ BUILTINS.set("ssqch/sass", (config: Config, given) => {
 		for (const [from, to] of files) {
 			for (const [src, url] of entries(config.root, from, to)) {
 				const shown = displayPath(config.root, src);
-				const css = compiler.compile(src, options, shown);
+				const compiled = compiler.compile(src, options, shown);
+				const css = charset ? compiled : compiled.replace(/^\uFEFF|^@charset "UTF-8";\n?/, "");
 				// `url(/fonts/a.woff2)` gets the site's `base`, like URLs in HTML.
 				out.push({ path: url, contents: cssWithBase(config.base, css) });
 			}

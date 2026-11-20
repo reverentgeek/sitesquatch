@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readToml } from "./data.ts";
-import { blankComments, draftConfig, eleventy, rewriteData, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, tomlError, zola } from "./import.ts";
+import { blankComments, draftConfig, eleventy, jekyllPermalink, rewriteData, rewriteJekyllTemplate, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./import.ts";
 import { VERSION } from "./version.ts";
 
 test("zola_front_matter_gets_ssqch_names", () => {
@@ -268,7 +268,10 @@ module.exports = function (eleventyConfig) {
 	assert.ok(draft.includes("  markdown: {\n    // Eleventy's markdown-it gave headings no ids (no markdown-it-anchor); take this out for ssqch's.\n    headingIds: false,\n    // From the Eleventy config's markdown-it options.\n    breaks: true,\n    autolinks: \"fuzzy\",\n    figures: true,\n  },"), draft);
 	// Eleventy 3 turns indented code off in a site's own markdown-it; with markdown-it-anchor, headings have ids.
 	const three = draftConfig(".eleventy.js", config.replace("const figures", "const anchor = require(\"markdown-it-anchor\");\nconst figures"), new Set(["md"]), [], 3)[0];
-	assert.ok(three.includes("    // Eleventy 3 turns off markdown-it's indented code blocks (`md.disable(\"code\")`).\n    indentedCode: false,\n") && !three.includes("headingIds"), three);
+	assert.ok(three.includes("    // Eleventy 3 turns off markdown-it's indented code blocks (`md.disable(\"code\")`).\n    indentedCode: false,\n") && three.includes("    // markdown-it-anchor's ids (encodeURIComponent of the text); take this out for ssqch's.\n    headingIds: \"markdown-it-anchor\",\n"), three);
+	// Its own `slugify` is the site's: ssqch's ids, and the importer lists the option.
+	const own = draftConfig(".eleventy.js", config.replace("const figures", "const anchor = require(\"markdown-it-anchor\");\nmd.use(anchor, { slugify: (s) => s });\nconst figures"), new Set(["md"]), [], 3)[0];
+	assert.ok(!own.includes("headingIds"), own);
 	// Eleventy 2 only in its own, so a site's library keeps them.
 	assert.ok(!draftConfig(".eleventy.js", config, new Set(["md"]), [], 2)[0].includes("indentedCode"));
 	assert.ok(byHand.some(([, what]) => what.startsWith("markdown-it-implicit-figures -> `markdown: { figures: true }`")), JSON.stringify(byHand));
@@ -312,13 +315,13 @@ test("filters_nothing_defines_are_listed", () => {
 		fs.writeFileSync(path.join(dir, file), text);
 	};
 	w(".eleventy.js", "module.exports = (c) => {\n  c.addFilter(\"readable\", (d) => d);\n  c.addPairedShortcode(\"callout\", (s) => s);\n};\n");
-	w("_includes/post.njk", "{{ title | upper | slug }} {{ date | readable }}\n{% set prev = collections.posts | getPreviousCollectionItem(page) %}\n{% callout %}x{% endcallout %}\n{{ \"a | b\" }} {{ x | mystery | safe }}{% youtube \"id\" %}\n");
+	w("_includes/post.njk", "{{ title | upper | slug }} {{ date | readable }}\n{% set prev = collections.posts | getPreviousCollectionItem(page) %}{% set here = collections.posts | getCollectionItem(page) %}\n{% callout %}x{% endcallout %}\n{{ \"a | b\" }} {{ x | mystery | safe }}{% youtube \"id\" %}\n");
 	w("feed.liquid", "{{ collections.posts | rssLastUpdatedDate }} {{ \"x\" | upcase | slug }}");
 	// Nunjucks' `elseif`, and the end of a tag ssqch knows (`highlight`), aren't shortcodes.
 	w("_includes/more.njk", "{% if a %}a{% elseif b %}b{% endif %}{% highlight \"js\" %}x{% endhighlight %}");
 	const plan = eleventy(dir);
 	const said = Object.fromEntries(plan.byHand.filter(([, what]) => what.startsWith("`")).map(([at, what]) => [what.slice(1, what.indexOf("`", 1)), [at, what]]));
-	assert.deepEqual(Object.keys(said).sort(), ["getPreviousCollectionItem", "mystery", "rssLastUpdatedDate", "slug", "youtube"]);
+	assert.deepEqual(Object.keys(said).sort(), ["getCollectionItem", "mystery", "rssLastUpdatedDate", "slug", "youtube"]);
 	// Outside Eleventy's input folder, a template isn't one of the site's.
 	fs.writeFileSync(path.join(dir, ".eleventy.js"), fs.readFileSync(path.join(dir, ".eleventy.js"), "utf8").replace("};\n", "  return { dir: { input: \"_includes\" } };\n};\n"));
 	const inside = eleventy(dir).byHand.filter(([, what]) => what.startsWith("`")).map(([, what]) => what.slice(1, what.indexOf("`", 1)));
@@ -328,7 +331,9 @@ test("filters_nothing_defines_are_listed", () => {
 	assert.equal(said.youtube[0], "_includes/post.njk:4");
 	assert.ok(said.mystery[1].includes("is a filter or shortcode nothing defines"), said.mystery[1]);
 	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
-	assert.ok(draft.includes("    // Eleventy's own filters the templates use, ported.\n    getPreviousCollectionItem: (collection, page) => {\n      const i = collection.findIndex((item) => item.url === page.url);\n"), draft);
+	assert.ok(draft.includes("    // Eleventy's own filters the templates use, ported.\n    getCollectionItem: (collection, page) => collection.find((item) => item.url === page.url),\n"), draft);
+	// `getPreviousCollectionItem` and `getNextCollectionItem` work in ssqch (aliases of `navPager`).
+	assert.ok(!draft.includes("getPreviousCollectionItem"), draft);
 });
 
 // A data file that runs eleventy-img or eleventy-fetch itself is listed too (blog #3), not only
@@ -400,4 +405,90 @@ test("layout_aliases_ignores_and_eleventy_1s_generator_come_along", () => {
 	// Eleventy 2 printed it: rewritten as before.
 	w("package.json", "{\n  \"name\": \"a11y\",\n  \"devDependencies\": {\n    \"@11ty/eleventy\": \"^2.0.1\"\n  }\n}\n");
 	assert.ok(eleventy(dir).edits.some(([file, changes]) => file === "src/_includes/layouts/base.njk" && changes.includes("eleventy.generator/version -> ssqch.generator/version")));
+});
+
+// From the a11yproject.com rerun: `eleventy & gulp` runs both at once, so npm's script returns
+// while ssqch may still be writing; and a file passed through twice is listed once.
+test("scripts_that_run_ssqch_beside_another_command_are_listed", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-amp-"));
+	fs.writeFileSync(path.join(dir, ".eleventy.js"), "module.exports = (c) => {\n  c.addPassthroughCopy(\"src/logo.png\");\n  c.addPassthroughCopy(\"src/logo.png\");\n  return { dir: { input: \"src\" } };\n};\n");
+	fs.mkdirSync(path.join(dir, "src"));
+	fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { publish: "eleventy & gulp", build: "eleventy && gulp" }, devDependencies: { "@11ty/eleventy": "^1.0.0" } }, null, 2));
+	const plan = eleventy(dir);
+	const said = plan.byHand.filter(([at, what]) => at === "package.json" && what.includes("at the same time"));
+	assert.equal(said.length, 1, JSON.stringify(plan.byHand));
+	assert.ok(said[0][1].startsWith("the `publish` script runs `ssqch build` and another command at the same time (`&`)"), said[0][1]);
+	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
+	assert.equal(draft.split("src/logo.png").length, 2, draft);
+});
+
+// From the a11yproject.com rerun: Eleventy 1's `dataTemplateEngine` rendered `{{ '/x/' | url }}`
+// in data files (27 strings in 4 files); ssqch prints them as written.
+test("data_files_url_literals_become_the_literal", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-data-engine-"));
+	fs.writeFileSync(path.join(dir, ".eleventy.js"), "module.exports = () => ({ dataTemplateEngine: \"njk\", dir: { input: \"src\" } });\n");
+	fs.mkdirSync(path.join(dir, "src/_data"), { recursive: true });
+	fs.writeFileSync(path.join(dir, "src/_data/nav.json"), "[{ \"url\": \"{{ '/about//team/../' | url }}\" }, { \"url\": \"{{ \\\"/x/\\\" | url }}\" }, { \"title\": \"{{ site.title }}\" }]\n");
+	const plan = eleventy(dir);
+	const edit = plan.edits.find(([file]) => file === "src/_data/nav.json");
+	assert.ok(edit, JSON.stringify(plan.edits));
+	assert.equal(edit![2], "[{ \"url\": \"/about/\" }, { \"url\": \"/x/\" }, { \"title\": \"{{ site.title }}\" }]\n");
+	assert.ok(edit![1].includes("2 `{{ \"/x/\" | url }}` -> \"/x/\" (dataTemplateEngine rendered them)"), JSON.stringify(edit![1]));
+	assert.ok(plan.byHand.some(([at, what]) => at === "src/_data/nav.json" && what.startsWith("1 value has template code")), JSON.stringify(plan.byHand));
+});
+
+// What changes output beyond the mechanical edits, found before the first diff (a11y #3, #13;
+// v8 #12, #13; the a11yproject.com rerun).
+test("output_changes_are_listed_before_the_first_diff", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-output-"));
+	const w = (file: string, text: string) => {
+		fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+		fs.writeFileSync(path.join(dir, file), text);
+	};
+	w(".eleventy.js", "module.exports = (c) => {\n  c.ignores.add(\"src/drafts/**\");\n  c.addPassthroughCopy(\"src/demos\");\n  c.addFilter(\"day\", (d) => d.toLocaleDateString(\"en-US\"));\n  c.addFilter(\"utc\", (d) => d.toLocaleDateString(\"en-US\", { timeZone: \"UTC\" }));\n  return { dir: { input: \"src\" } };\n};\n");
+	w("src/_includes/post.njk", "<time>{{ date }}</time>\n<p>{{ page.date }}</p>\n");
+	w("src/tags.njk", "---\npagination:\n  data: collections\n  size: 1\n---\n{{ pagination.items[0] }}\n");
+	w("src/demos/one.njk", "{{ 1 + 1 }}");
+	const plan = eleventy(dir);
+	const at = (where: string) => plan.byHand.find(([a]) => a === where)?.[1] ?? "";
+	assert.ok(at("src/_includes/post.njk:1").startsWith("`{{ date }}` prints a Date as it is (in 1 template, 1 time; this is the first)"), JSON.stringify(plan.byHand));
+	assert.ok(at("src/tags.njk:2").startsWith("`pagination: { data: collections }`"), JSON.stringify(plan.byHand));
+	assert.ok(at(".eleventy.js:4").startsWith("`toLocaleDateString` without a time zone"), JSON.stringify(plan.byHand));
+	assert.equal(at(".eleventy.js:5"), "");
+	assert.ok(at("src/demos").startsWith("is passed through, and has 1 template (src/demos/one.njk)"), JSON.stringify(plan.byHand));
+	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
+	assert.ok(draft.includes("\"drafts/**\""), draft);
+});
+
+// Jekyll's permalinks as ssqch's (Liquid, for a folder's directory data).
+test("jekyll_permalinks_become_liquid", () => {
+	assert.equal(jekyllPermalink("pretty", ""), "{% if categories %}/{{ categories | join: '/' | downcase }}{% endif %}/{{ page.date | date: '%Y' }}/{{ page.date | date: '%m' }}/{{ page.date | date: '%d' }}/{{ page.fileSlug }}/");
+	assert.equal(jekyllPermalink("/:collection/:path/", "_guides"), "/guides/{{ page.filePathStem | remove_first: '/_guides' }}/");
+	assert.equal(jekyllPermalink("/blog/:title:output_ext", ""), "/blog/{{ page.fileSlug }}.html");
+	assert.equal(jekyllPermalink("/:title/", ""), "/{{ page.fileSlug }}/");
+	assert.equal(jekyllPermalink("/:week/:title/", ""), undefined);
+});
+
+// `page.<front matter>` is `<front matter>` in ssqch; Jekyll's own `page` keys are listed, and so
+// is a key the template uses as a variable of its own.
+test("jekyll_templates_lose_page_for_front_matter", () => {
+	const [out, changes, left] = rewriteJekyllTemplate("<h1>{{ page.title }}</h1>{% if page.lang == \"fr\" %}{{ page.url }}{{ page.content }}{% endif %}{% assign class = page.class %}{{ site.data.trails.count }}{% for p in site.posts %}{% endfor %}<a href=\"/edit/{{ page.path }}\">{{ page.next.url }}</a>");
+	assert.equal(out, "<h1>{{ title }}</h1>{% if lang == \"fr\" %}{{ page.url }}{{ page.content }}{% endif %}{% assign class = page.class %}{{ trails.count }}{% for p in collections.posts %}{% endfor %}<a href=\"/edit/{{ page.inputPath | remove_first: \"./\" }}\">{{ page.next.url }}</a>");
+	assert.deepEqual(changes, ["page.path -> page.inputPath | remove_first: \"./\"", "page.title -> title", "page.lang -> lang", "site.data.<name> -> <name>", "site.posts -> collections.posts"]);
+	assert.deepEqual(left, ["`page.class` is front matter, and the template has a variable `class` of its own: rename that one, then `page.class` to `class`", "`page.content` (1): `content`, in a layout", "`page.next` (1): `navPager(collections.posts, page.url).next`"]);
+});
+
+test("the_seo_include_is_the_docs_one", () => {
+	const docs = fs.readFileSync(new URL("../../../site/src/docs/seo.md", import.meta.url), "utf8");
+	assert.equal(SEO_INCLUDE, /```liquid\n([\s\S]*?)```/.exec(docs)?.[1]);
+});
+
+// A second build tool (a11yproject.com's gulpfile), with ssqch's way for each part it does.
+test("other_build_tools_are_listed_with_ssqchs_ways", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-gulp-"));
+	fs.writeFileSync(path.join(dir, ".eleventy.js"), "module.exports = () => ({});\n");
+	fs.writeFileSync(path.join(dir, "gulpfile.js"), "const sass = require(\"gulp-sass\")(require(\"sass\"));\nconst kss = require(\"kss\");\nconst svgmin = require(\"gulp-svgmin\");\n");
+	const said = eleventy(dir).byHand.find(([at]) => at === "gulpfile.js")?.[1] ?? "";
+	assert.ok(said.startsWith("Gulp builds part of the site too: keep it for the first, identical build"), said);
+	assert.ok(said.includes("Sass -> `sassPlugin()`") && said.includes("SVG optimizing") && said.includes("a style guide (KSS)") && !said.includes("autoprefixer"), said);
 });

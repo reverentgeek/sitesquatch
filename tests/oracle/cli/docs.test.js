@@ -146,3 +146,17 @@ test("docs_explain_what_migrations_asked_about", () => {
 		assert.ok(a.found && a.section.text.includes(says), `${query}: ${JSON.stringify(a).slice(0, 400)}`);
 	}
 });
+
+// Added in 0.11, from the fresh a11yproject.com rerun: a page's file name (as its link ends)
+// answers with that page, and a trailhead's with `--from`'s answer, not a search for the words.
+test("docs_answer_a_pages_file_name_with_the_page", () => {
+	const text = (...args) => ssqch(["docs", ...args]).stdout;
+	assert.ok(text("comparing-builds").startsWith("## Comparing two builds\n"), text("comparing-builds").slice(0, 200));
+	assert.ok(text("/docs/comparing-builds/").startsWith("## Comparing two builds\n"));
+	assert.equal(text("from-eleventy"), text("--from", "eleventy"));
+	assert.equal(text("trailheads/from-jekyll.md"), text("--from", "jekyll"));
+	assert.ok(text("from-component-frameworks").startsWith("# Trailhead: moving from Astro"), text("from-component-frameworks").slice(0, 200));
+	// Eleventy's collection helpers answer, and say they work.
+	assert.ok(text("getNextCollectionItem").includes("works in ssqch too") && text("getNextCollectionItem").includes("navPager(collection, page.url).next"), text("getNextCollectionItem"));
+	assert.ok(text("pagesTree").includes("{ root: \"Feature\" }"), text("pagesTree"));
+});

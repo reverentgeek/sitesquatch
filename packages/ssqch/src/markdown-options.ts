@@ -4,7 +4,7 @@ import { bail } from "./diagnostics.ts";
 import { isPlainObject } from "./data.ts";
 import { closest } from "./suggest.ts";
 
-export type Slugger = "github" | "blackfriday" | "ascii";
+export type Slugger = "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor";
 
 export interface MarkdownOptions {
 	/** Automatic heading `id`s (GitHub style by default), or `null` for none. An explicit `{#id}` always wins. */
@@ -41,6 +41,8 @@ export interface MarkdownOptions {
 	languages: Array<[string, ((code: string, lang: string) => unknown) | { alias: string } | { grammar: string }]>;
 	/** A slugger of the site's own (`headingIds: text => id`), used instead of `headingIds` when set. Repeats still get `-1`, `-2`. */
 	sluggerFn: ((text: string) => unknown) | null;
+	/** Markdown inside HTML: `"kramdown"` reads `markdown="1"` elements' content as Markdown, with kramdown's HTML rules around them; `false` leaves HTML as CommonMark does. */
+	htmlMarkdown: "kramdown" | false;
 }
 
 export function defaultMarkdownOptions(): MarkdownOptions {
@@ -62,11 +64,12 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		highlightClasses: null,
 		languages: [],
 		sluggerFn: null,
+		htmlMarkdown: false,
 	};
 }
 
 /** The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`). */
-export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures"] as const;
+export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown"] as const;
 
 const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures"] as const;
 
@@ -105,9 +108,12 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 			else if (v === false || v === null) options.headingIds = null;
 			else if (v === true) options.headingIds = "github";
 			else if (typeof v === "string") {
-				if (v !== "github" && v !== "blackfriday" && v !== "ascii") bail(`markdown.headingIds: unknown slugger "${v}" (use "github", "blackfriday", "ascii" or false)`);
-				options.headingIds = v;
-			} else bail(`markdown.headingIds must be "github", "blackfriday", "ascii" or false, not ${typeOf(v)}`);
+				if (!["github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor"].includes(v)) bail(`markdown.headingIds: unknown slugger "${v}" (use "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor" or false)`);
+				options.headingIds = v as Slugger;
+			} else bail(`markdown.headingIds must be "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor" or false, not ${typeOf(v)}`);
+		} else if (key === "htmlMarkdown") {
+			if (v !== false && v !== "kramdown") bail(`markdown.htmlMarkdown must be "kramdown" or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			options.htmlMarkdown = v;
 		} else if (key === "highlight") {
 			if (typeof v === "boolean") options.highlight = v;
 			else if (isPlainObject(v)) {
