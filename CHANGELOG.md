@@ -120,6 +120,15 @@ Found by fresh moves of a11yproject.com and opensource.guide, run as if for the 
   get text, as in Eleventy; a filter that gives its argument back unchanged still prints HTML.
 - `page.headings` (and `toc()`) left a heading's inline code out of its text: `The <code>toc</code>
   filter` was `The filter`.
+- `ssqch diff` didn't read JavaScript's `Date.toString()` (`Mon Mar 08 2021 00:00:00 GMT+0000
+  ...`) as a date, so 70 pages whose Eleventy build printed dates that way were listed one by one;
+  they're a date change, grouped. `--only /posts/pine/` (a folder, as a URL is written) matches
+  what's in it, and `--only` that matches no file in either build is an error, not "No
+  differences".
+- `ssqch import eleventy` listed `eleventy.generator` in files outside Eleventy's input folder (a
+  notes file).
+- `url`, Eleventy's filter, normalizes its path as Eleventy did: `""` is `.`, `/a//b/../c/` is
+  `/a/c/`.
 - `sassPlugin()` didn't find a partial with a dot in its name (`@import "logic/variables.paths"`
   for `_variables.paths.scss`), so a whole stylesheet failed to compile.
 

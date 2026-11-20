@@ -320,3 +320,14 @@ test("a_feeds_numeric_entities_are_unescaped_and_odd_tags_stay_as_written", asyn
 	assert.equal((await compare(before, after, options())).changed.length, 0);
 	assert.deepEqual(canonicalTag("<a href&#x3D;\"https://x/#y\" class=b>", false), ["<a href&#x3D;\"https://x/#y\" class=b>", false]);
 });
+
+// Eleventy's Nunjucks printed a bare date as JavaScript's Date.toString(), and ssqch prints ISO
+// 8601: a date-only change, grouped (70 a11yproject.com pages were listed one by one).
+test("a_date_printed_by_javascript_is_a_date", async () => {
+	const page = (name: string, date: string) => `<script type="application/ld+json">{"name":"${name}","datePublished":"${date}"}</script>`;
+	const before = build({ "a/index.html": page("Pine", "Mon Mar 08 2021 00:00:00 GMT+0000 (Coordinated Universal Time)"), "b/index.html": page("Cedar", "Tue Mar 09 2021 00:00:00 GMT+0000 (Coordinated Universal Time)") });
+	const after = build({ "a/index.html": page("Pine", "2021-03-08T00:00:00.000Z"), "b/index.html": page("Cedar", "2021-03-09T00:00:00.000Z") });
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.groups.map((g) => [g.urls, g.match]), [[["/a/", "/b/"], "dates"]]);
+	assert.ok(report.changed.every((f) => f.onlyDates));
+});

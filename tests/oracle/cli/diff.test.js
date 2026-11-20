@@ -167,3 +167,15 @@ test("diff_groups_the_same_change_on_several_files", () => {
 	r = ssqch(["diff", "before", "after", "--ungrouped"], { cwd: dir });
 	assert.ok(!r.log.includes("The same change on more than one file") && r.log.includes("  ~ /pine/  (text)\n      - Built with Eleventy\n"), r.log);
 });
+
+// Found in the rerun of a11yproject.com: `--only /posts/x/` (a page's URL) matched nothing and
+// printed "No differences: 0 pages". A glob that ends in `/` is that folder, and one that matches
+// no file in either build is an error.
+test("diff_only_takes_a_folder_and_says_when_it_matches_nothing", () => {
+	const dir = tempDir("diff-only");
+	write(dir, { "a/posts/pine/index.html": "<p>Pine</p>", "b/posts/pine/index.html": "<p>Cedar</p>" });
+	let r = ssqch(["diff", "a", "b", "--only", "/posts/pine/"], { cwd: dir });
+	assert.ok(r.code === 1 && r.log.includes("  ~ /posts/pine/  (text)"), r.log);
+	r = ssqch(["diff", "a", "b", "--only", "/posts/fir/"], { cwd: dir });
+	assert.ok(r.code === 2 && r.log.includes("--only \"/posts/fir/\" matched no file in either build"), r.log);
+});

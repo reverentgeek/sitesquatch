@@ -394,6 +394,9 @@ test("layout_aliases_ignores_and_eleventy_1s_generator_come_along", () => {
 	assert.ok(plan.byHand.some(([, what]) => what.startsWith("dataTemplateEngine: \"njk\" -> ssqch doesn't render data files' strings")), JSON.stringify(plan.byHand));
 	assert.ok(!plan.edits.some(([file]) => file === "src/_includes/layouts/base.njk"), "Eleventy 1's generator tag stays");
 	assert.ok(plan.byHand.some(([at, what]) => at === "src/_includes/layouts/base.njk" && what.includes("Eleventy 1 printed nothing for them")));
+	// A notes file outside the input folder that mentions it isn't one of the site's templates.
+	w("notes/move.md", "We kept `{{ eleventy.generator }}` as it was.\n");
+	assert.ok(!eleventy(dir).byHand.some(([at]) => at === "notes/move.md"));
 	// Eleventy 2 printed it: rewritten as before.
 	w("package.json", "{\n  \"name\": \"a11y\",\n  \"devDependencies\": {\n    \"@11ty/eleventy\": \"^2.0.1\"\n  }\n}\n");
 	assert.ok(eleventy(dir).edits.some(([file, changes]) => file === "src/_includes/layouts/base.njk" && changes.includes("eleventy.generator/version -> ssqch.generator/version")));

@@ -490,7 +490,8 @@ async function runDiff(dirs: string[], options: { exact: boolean; ignore: string
 			try { return rustRegExp(pattern, "g"); } catch (e) { return bail(`--ignore ${quoted(pattern)} isn't a regular expression: ${(e as Error).message}`); }
 		});
 		const globs = (flag: string, given: string[]) => given.map((one) => {
-			const glob = one.replace(/^[./]+/, "");
+			// `/posts/x/`, a page's URL: everything in that folder (`posts/x/index.html`).
+			const glob = one.replace(/^[./]+/, "").replace(/\/$/, "/**");
 			const problem = globProblem(glob);
 			if (problem !== undefined) bail(`--${flag} ${quoted(one)} isn't a glob: error parsing glob '${glob}': ${problem}`);
 			return globToRegExp(glob);
@@ -498,12 +499,12 @@ async function runDiff(dirs: string[], options: { exact: boolean; ignore: string
 		const only = options.only.length ? globs("only", options.only) : undefined;
 		const exclude = globs("exclude", options.exclude);
 		if (dirs.length > 2) {
-			const runs = await compareRuns(dirs, { exact: options.exact, ungrouped: options.ungrouped, ignore, only, exclude, lines: options.lines });
+			const runs = await compareRuns(dirs, { exact: options.exact, ungrouped: options.ungrouped, ignore, only, onlyGiven: options.only, exclude, lines: options.lines });
 			if (options.format === "json") process.stdout.write(JSON.stringify(runsJson(runs, options.lines), null, 2) + "\n");
 			else process.stdout.write(runsText(runs, options.lines, process.stdout.isTTY === true));
 			return runs.varies.length ? 1 : 0;
 		}
-		const report = await compare(before, after, { exact: options.exact, ungrouped: options.ungrouped, ignore, only, exclude, lines: options.lines });
+		const report = await compare(before, after, { exact: options.exact, ungrouped: options.ungrouped, ignore, only, onlyGiven: options.only, exclude, lines: options.lines });
 		if (options.format === "json") process.stdout.write(JSON.stringify(diffJson(report, options.lines), null, 2) + "\n");
 		else process.stdout.write(diffText(report, options.lines, process.stdout.isTTY === true));
 		return isSame(report) ? 0 : 1;

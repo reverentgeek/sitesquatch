@@ -35,6 +35,8 @@ export interface DiffOptions {
 	ungrouped?: boolean;
 	/** Only compare files whose path (from the build's root, with `/`) matches one of these. */
 	only: RegExp[] | undefined;
+	/** `--only` as it was given, for the error when it matches nothing. */
+	onlyGiven?: string[];
 	/** Leave out files whose path matches one of these (after `only`). */
 	exclude?: RegExp[];
 	/** The changed lines to keep for each file (0 for all): the report shows no more, so a big change doesn't fill memory. */
@@ -125,6 +127,9 @@ const GENERATOR = new RegExp(String.raw`SiteSquatch v\p{Nd}+\.\p{Nd}+\.\p{Nd}+[\
 const ID_ATTR = /\p{White_Space}id=(?:"([^"]*)"|'([^']*)'|([^\p{White_Space}>]+))/u;
 const MONTH = "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)";
 const DATE = new RegExp([
+	// Mon Mar 08 2021 00:00:00 GMT+0000 (Coordinated Universal Time): JavaScript's Date.toString(),
+	// as Eleventy's Nunjucks printed a date (a11yproject.com's JSON-LD, against ssqch's ISO 8601).
+	String.raw`${START}(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\p{White_Space}+${MONTH}\p{White_Space}+\p{Nd}{2}\p{White_Space}+\p{Nd}{4}\p{White_Space}+\p{Nd}{2}:\p{Nd}{2}:\p{Nd}{2}\p{White_Space}+GMT[+\-]\p{Nd}{4}(?:\p{White_Space}+\([^)]*\))?`,
 	// 2026-03-14T09:05:00Z
 	String.raw`\p{Nd}{4}-\p{Nd}{2}-\p{Nd}{2}(?:[T ]\p{Nd}{2}:\p{Nd}{2}(?::\p{Nd}{2}(?:\.\p{Nd}+)?)?(?:Z|[+\-]\p{Nd}{2}:?\p{Nd}{2})?)?`,
 	// March 14, 2026
@@ -765,6 +770,13 @@ function kept(paths: string[], options: DiffOptions): string[] {
 	return paths.filter((p) => (!only || only.some((re) => re.test(p))) && !(exclude ?? []).some((re) => re.test(p)));
 }
 
+/** `--only` that matched no file in any build: "No differences" would read as an answer (a page's URL given where a path is meant). */
+function checkOnly(lists: string[][], options: DiffOptions): void {
+	if (!options.only || lists.some((list) => list.some((p) => options.only!.some((re) => re.test(p))))) return;
+	const given = (options.onlyGiven ?? []).map((g) => `"${g}"`).join(", ");
+	bail(`--only ${given || "(its globs)"} matched no file in ${lists.length === 2 ? "either build" : "any of the builds"}: it's a glob of paths in the build folder, like \`posts/pine/index.html\`, \`posts/**\` or \`/posts/pine/\` (a folder: everything in it)`);
+}
+
 /** Compares the build in `before` with the one in `after`. */
 export async function compare(before: string, after: string, options: DiffOptions): Promise<DiffReport> {
 	const keep = (paths: string[]) => kept(paths, options);
@@ -775,6 +787,7 @@ export async function compare(before: string, after: string, options: DiffOption
 	if (walkA.status === "rejected") throw walkA.reason;
 	if (walkB.status === "rejected") throw walkB.reason;
 	const [listA, listB] = [walkA.value, walkB.value];
+	checkOnly([listA, listB], options);
 	const a = keyed(keep(listA), options.exact);
 	const b = keyed(keep(listB), options.exact);
 	const report: DiffReport = { before, after, exact: options.exact, added: [], removed: [], changed: [], groups: [], unchangedPages: 0, unchangedFiles: 0 };
@@ -843,12 +856,12 @@ function changedDates(h: Hunk): string[] | undefined {
 
 /**
  * What groups a hunk: when all it changed is dates (a build's time in each page's own JSON-LD),
- * the form of those dates, digits blanked: each file of a build can be stamped a few milliseconds
+ * the form of those dates, digits and letters blanked (`Mon Mar 08` and `Tue Mar 09` are one form): each file of a build can be stamped a few milliseconds
  * after the last (the Rust blog's feeds), and that's still one change. Else its shape.
  */
 const shapeKey = (h: Hunk) => {
 	const dates = changedDates(h);
-	return dates ? `dates:${JSON.stringify([...new Set(dates.map((pair) => pair.split(">")[0].replace(/\p{Nd}/gu, "0")))].sort())}` : shapeKeyOf(h);
+	return dates ? `dates:${JSON.stringify([...new Set(dates.map((pair) => pair.split(">")[0].replace(/\p{Nd}/gu, "0").replace(/\p{L}/gu, "a")))].sort())}` : shapeKeyOf(h);
 };
 
 /** A tag line as its name alone (`<source>`); text stays. A run of one line counts once, so a `<picture>` with two `<source>`s and one with three are alike. */
@@ -1179,6 +1192,7 @@ export async function compareRuns(dirs: string[], options: DiffOptions): Promise
 	const keep = (paths: string[]) => kept(paths, options);
 	const walks = await Promise.allSettled(dirs.map(files));
 	for (const walk of walks) if (walk.status === "rejected") throw walk.reason;
+	checkOnly(walks.map((w) => (w as PromiseFulfilledResult<string[]>).value), options);
 	const maps = walks.map((w) => keyed(keep((w as PromiseFulfilledResult<string[]>).value), options.exact));
 	const keys = [...new Set(maps.flatMap((m) => [...m.keys()]))].sort(compareText);
 	const report: RunsReport = { runs: dirs, exact: options.exact, varies: [], groups: [], steadyPages: 0, steadyFiles: 0 };

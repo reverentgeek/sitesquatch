@@ -220,6 +220,14 @@ export class Site {
 					return "";
 				}
 				const target = globals.get(row.ssqch);
+				// Eleventy's `url` normalized the path it was given: `""` (and nothing) is `.`, and
+				// `/a//b/../c/` is `/a/c/` (a11yproject.com's menus). A full URL stays as it is; the base is
+				// ssqch's to add.
+				if (row.word === "url" && (args[0] === undefined || args[0] === null || typeof args[0] === "string")) {
+					const given = (args[0] ?? "") as string;
+					if (given === "") args = [".", ...args.slice(1)];
+					else if (given.startsWith("/") && !given.startsWith("//")) args = [path.posix.normalize(given), ...args.slice(1)];
+				}
 				return target ? target(...args) : args[0];
 			});
 		}

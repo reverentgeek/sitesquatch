@@ -604,3 +604,12 @@ test("site_filters_get_a_layouts_content_as_text", () => {
 	assert.ok(r.ok, r.log);
 	assert.equal(read(dir, "_site/pine/index.html"), "string|<p><em>Pine</em></p>\n|<P><EM>PINE</EM></P>\n|<p><em>Pine</em></p>\n");
 });
+
+// Eleventy's `url` normalized its path (the rerun of a11yproject.com: `""` was `.` in its menus).
+test("the_url_alias_normalizes_as_eleventys_did", () => {
+	const dir = tempDir("url-alias");
+	write(dir, { "ssqch.config.js": "export default { templateFormats: [\"njk\"] };\n", "index.njk": "{{ \"\" | url }}|{{ nope | url }}|{{ \"/a//b/../c/\" | url }}|{{ \"https://x.dev//y\" | url }}|{{ \"rel/x\" | url }}" });
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), ".|.|/a/c/|https://x.dev//y|rel/x");
+});

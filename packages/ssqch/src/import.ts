@@ -293,6 +293,9 @@ export function eleventy(dir: string): Plan {
 	const readsNavigation = entries.some((e) => e.isFile && isTemplate(e.name) && NAVIGATION_FILTER.test(readUtf8(e.abs) ?? ""));
 	const keep = readsNavigation ? ["eleventyNavigation"] : [];
 	const major = eleventyMajor(dir);
+	// Eleventy's input folder: what's outside it (notes, a README) isn't one of the site's pages.
+	const input = config === undefined ? "." : (setting(blankComments(configText), "input") ?? ".").replace(/^\.\//, "").replace(/\/+$/, "");
+	const inInput = (rel: string) => input === "" || input === "." || rel === input || rel.startsWith(`${input}/`);
 	if (major !== undefined && major < 2) keep.push("eleventy.generator");
 	if (readsNavigation) {
 		plan.byHand.push([".", "`eleventyNavigation` front matter was left as it is, because templates call the `eleventyNavigation` filter, which reads it. To keep that filter, define it with the package's own function: `import navigation from \"@11ty/eleventy-navigation/eleventy-navigation.js\"`, then `filters: { eleventyNavigation: (pages, key) => navigation.findNavigationEntries(pages, key) }`. To move to ssqch's navigation instead (`pagesTree`), rename it to `nav` (`ssqch docs nav`)"]);
@@ -319,14 +322,13 @@ export function eleventy(dir: string): Plan {
 		const [next, changes] = template ? rewriteTemplate(text, ext === "md" || ext === "markdown", keep) : rewriteData(text, keep);
 		if (changes.length) plan.edits.push([rel, changes, next]);
 		if (template && (text.includes("eleventy.env") || text.includes("eleventy.directories"))) plan.byHand.push([rel, "`eleventy.env` and `eleventy.directories` aren't there: use `ssqch.env` and `ssqch.serving`"]);
-		if (template && keep.includes("eleventy.generator") && text.search(TEMPLATE_GLOBAL) !== -1) plan.byHand.push([rel, `\`eleventy.generator\` and \`eleventy.version\` left as they are: Eleventy ${major} printed nothing for them, so in ssqch they print nothing too and the output matches. \`ssqch.generator\` prints "SiteSquatch v${VERSION}" when the move is done`]);
+		if (template && inInput(rel) && keep.includes("eleventy.generator") && text.search(TEMPLATE_GLOBAL) !== -1) plan.byHand.push([rel, `\`eleventy.generator\` and \`eleventy.version\` left as they are: Eleventy ${major} printed nothing for them, so in ssqch they print nothing too and the output matches. \`ssqch.generator\` prints "SiteSquatch v${VERSION}" when the move is done`]);
 	}
 
 	packageFiles(dir, plan, entries);
 	// `.eleventyignore` (at the top or in the input folder): the same globs in the draft's `ignore`,
 	// or a file Eleventy never read becomes a page (a11yproject.com's `src/css/homepage.md`).
 	const ignored: string[] = [];
-	const input = config === undefined ? "." : (setting(blankComments(configText), "input") ?? ".").replace(/^\.\//, "").replace(/\/+$/, "");
 	for (const at of [".eleventyignore", input && input !== "." ? `${input}/.eleventyignore` : ""]) {
 		if (!at) continue;
 		const text = readUtf8(path.join(dir, ...at.split("/")));
