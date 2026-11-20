@@ -109,3 +109,16 @@ test("jekyll_front_matter_and_load_path_imports_that_name_their_extension", asyn
 	fs.writeFileSync(path.join(root, "assets/css/index.scss"), "---\ntitle: x\n---\n.a { color: $nope; }\n");
 	await assert.rejects(build, (e: Error) => /index\.scss:4/.test(e.message));
 });
+
+// A partial whose name has a dot of its own (`_variables.paths.scss`, imported as
+// `logic/variables.paths`): grass took `.paths` for an extension and didn't find it, which kept
+// a11yproject.com's whole stylesheet from compiling. Beside the importer or in a load path.
+test("partials with a dot in their name are found", async () => {
+	const root = site({
+		"css/screen.scss": "@import \"logic/variables.paths\";\n@import \"trail.colors\";\nbody { color: $pine; border-color: $cedar; }\n",
+		"css/logic/_variables.paths.scss": "$pine: #233b2b;\n",
+		"vendor/_trail.colors.scss": "$cedar: #a23e20;\n",
+	});
+	const { build } = await plugin(root, { files: { "css/screen.scss": "/screen.css" }, loadPaths: ["vendor"] });
+	assert.deepEqual(await build(), { "/screen.css": "body{color:#233b2b;border-color:#a23e20}" });
+});

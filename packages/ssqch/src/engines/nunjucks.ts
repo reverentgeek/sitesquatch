@@ -217,7 +217,18 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 	// (`{{ shout(title) }}`). A call goes through `call`, which keeps what it gave for the render
 	// that's running (see `Pass`): that's how an async function's answer reaches the template.
 	const functions = new Map<string, Filter>([...env.pipeFilters, ...env.globals]);
-	const call = (name: string, fn: Filter, args: unknown[]) => callSite(name, fn, siteArgs(args), root);
+	// The site's own functions get text where a template has a SafeString (a layout's `content`),
+	// as in Eleventy: a table-of-contents filter that checks `typeof content === "string"` gave ""
+	// on a11yproject.com's 70 pages. What comes back unchanged is the SafeString again, so
+	// `{{ content | maybeChange }}` still prints HTML.
+	const own = env.config.siteFilters ?? new Set<string>();
+	const call = (name: string, fn: Filter, args: unknown[]) => {
+		if (!own.has(name) || !args.some((a) => a instanceof SafeString)) return callSite(name, fn, siteArgs(args), root);
+		const safe = args.filter((a): a is InstanceType<typeof SafeString> => a instanceof SafeString);
+		const back = (out: unknown) => (typeof out === "string" ? (safe.find((a) => String(a) === out) ?? out) : out);
+		const out = callSite(name, fn, siteArgs(args.map((a) => (a instanceof SafeString ? String(a) : a))), root);
+		return out instanceof Promise ? out.then(back) : back(out);
+	};
 	for (const [name, fn] of functions) njk.addFilter(name, (...args: unknown[]) => call(name, fn, args));
 	for (const [name, fn] of env.globals) njk.addGlobal(name, (...args: unknown[]) => call(name, fn, args));
 	// `now()` is the build's time (`SOURCE_DATE_EPOCH` pins it): kept like a site's function, so a

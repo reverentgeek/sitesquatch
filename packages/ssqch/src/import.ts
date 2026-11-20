@@ -51,7 +51,7 @@ export function runImport(generator: string, dir: string, write: boolean): numbe
 		let plan: Plan;
 		if (generator === "eleventy" || generator === "11ty") plan = eleventy(dir);
 		else if (generator === "zola") plan = zola(dir);
-		else if (["jekyll", "hugo", "docusaurus", "mkdocs", "hexo", "astro", "vitepress"].includes(generator)) plan = fail(`there's no importer for ${generator} yet (only eleventy and zola); \`ssqch docs --from <generator>\` has trailheads for moving from Docusaurus, MkDocs, Hexo and component frameworks by hand`);
+		else if (["jekyll", "hugo", "docusaurus", "mkdocs", "hexo", "astro", "vitepress"].includes(generator)) plan = fail(`there's no importer for ${generator} yet (only eleventy and zola): \`ssqch docs --from ${generator}\` has its words and trailhead, and \`ssqch baseline "<its build command>"\` builds the site with it to compare with`);
 		else plan = fail(`${generator}: not a generator ssqch can import from (use eleventy or zola)`);
 		process.stdout.write(describe(plan, dir, write));
 		if (write) process.stdout.write(apply(plan, dir));
@@ -82,7 +82,7 @@ export function describe(plan: Plan, dir: string, write: boolean): string {
 		out += `\nBy hand (${plan.byHand.length})\n`;
 		for (const [at, what] of plan.byHand) out += `  ${at}: ${what}\n`;
 	}
-	out += `\nNext: \`ssqch build\`, then compare with the site ${plan.from} built: \`ssqch diff <${plan.from}'s output> <ssqch's output>\`.\n`;
+	out += `\nNext: \`ssqch baseline "<${plan.from}'s build command>"\` (before --write, or with --commit) builds the site with ${plan.from} to compare with; then \`ssqch build\` and \`ssqch diff <the baseline> <ssqch's output>\`, the biggest group first. The whole loop: \`ssqch docs "moving a site with an agent"\`.\n`;
 	return out;
 }
 
@@ -228,7 +228,7 @@ const NAVIGATION_FILTER = rustRegExp(String.raw`\|\s*eleventyNavigation(?:Breadc
 const DATA_FILE = rustRegExp(String.raw`\.11tydata\.(js|cjs|mjs|json|ya?ml|toml)$`);
 const IMAGE_ATTR = rustRegExp(String.raw`\beleventy:(widths|ignore)\b`, "g");
 const TEMPLATE_GLOBAL = rustRegExp(String.raw`\beleventy\.(generator|version)\b`, "g");
-const CALL = rustRegExp(String.raw`\.\s*(addFilter|addAsyncFilter|addNunjucksFilter|addLiquidFilter|addNunjucksAsyncFilter|addShortcode|addAsyncShortcode|addNunjucksShortcode|addNunjucksAsyncShortcode|addLiquidShortcode|addPairedShortcode|addPairedAsyncShortcode|addPairedNunjucksShortcode|addPairedNunjucksAsyncShortcode|addPairedLiquidShortcode|addNunjucksTag|addLiquidTag|addNunjucksGlobal|addMarkdownHighlighter|addCollection|addTransform|addGlobalData|addPlugin|addPassthroughCopy|addWatchTarget|setLibrary|addDataExtension|addTemplateFormats|setTemplateFormats|on)\s*\(\s*(?:["'\x60]([^"'\x60]*)["'\x60]|([A-Za-z_$][\w$.]*))?`, "g");
+const CALL = rustRegExp(String.raw`\.\s*(addFilter|addAsyncFilter|addNunjucksFilter|addLiquidFilter|addNunjucksAsyncFilter|addShortcode|addAsyncShortcode|addNunjucksShortcode|addNunjucksAsyncShortcode|addLiquidShortcode|addPairedShortcode|addPairedAsyncShortcode|addPairedNunjucksShortcode|addPairedNunjucksAsyncShortcode|addPairedLiquidShortcode|addNunjucksTag|addLiquidTag|addNunjucksGlobal|addMarkdownHighlighter|addCollection|addTransform|addGlobalData|addPlugin|addPassthroughCopy|addWatchTarget|setLibrary|addDataExtension|addTemplateFormats|setTemplateFormats|addLayoutAlias|on)\s*\(\s*(?:["'\x60]([^"'\x60]*)["'\x60]|([A-Za-z_$][\w$.]*))?`, "g");
 const SETTING = rustRegExp(String.raw`\b(input|output|includes|layouts|data|markdownTemplateEngine|htmlTemplateEngine|pathPrefix)\s*:\s*["'\x60]([^"'\x60]*)["'\x60]`, "g");
 const FORMATS = rustRegExp(String.raw`templateFormats\s*:\s*\[([^\]]*)\]`);
 const REQUIRE = rustRegExp(String.raw`(?:require\(\s*|from\s+)["'](@11ty/[\w./-]+|markdown-it[\w-]*|eleventy-[\w-]+|@[\w-]+/eleventy-[\w-]+)["']`, "g");
@@ -292,6 +292,8 @@ export function eleventy(dir: string): Plan {
 	// renaming it to `nav` would empty their navigation (lit.dev).
 	const readsNavigation = entries.some((e) => e.isFile && isTemplate(e.name) && NAVIGATION_FILTER.test(readUtf8(e.abs) ?? ""));
 	const keep = readsNavigation ? ["eleventyNavigation"] : [];
+	const major = eleventyMajor(dir);
+	if (major !== undefined && major < 2) keep.push("eleventy.generator");
 	if (readsNavigation) {
 		plan.byHand.push([".", "`eleventyNavigation` front matter was left as it is, because templates call the `eleventyNavigation` filter, which reads it. To keep that filter, define it with the package's own function: `import navigation from \"@11ty/eleventy-navigation/eleventy-navigation.js\"`, then `filters: { eleventyNavigation: (pages, key) => navigation.findNavigationEntries(pages, key) }`. To move to ssqch's navigation instead (`pagesTree`), rename it to `nav` (`ssqch docs nav`)"]);
 	}
@@ -317,9 +319,26 @@ export function eleventy(dir: string): Plan {
 		const [next, changes] = template ? rewriteTemplate(text, ext === "md" || ext === "markdown", keep) : rewriteData(text, keep);
 		if (changes.length) plan.edits.push([rel, changes, next]);
 		if (template && (text.includes("eleventy.env") || text.includes("eleventy.directories"))) plan.byHand.push([rel, "`eleventy.env` and `eleventy.directories` aren't there: use `ssqch.env` and `ssqch.serving`"]);
+		if (template && keep.includes("eleventy.generator") && text.search(TEMPLATE_GLOBAL) !== -1) plan.byHand.push([rel, `\`eleventy.generator\` and \`eleventy.version\` left as they are: Eleventy ${major} printed nothing for them, so in ssqch they print nothing too and the output matches. \`ssqch.generator\` prints "SiteSquatch v${VERSION}" when the move is done`]);
 	}
 
 	packageFiles(dir, plan, entries);
+	// `.eleventyignore` (at the top or in the input folder): the same globs in the draft's `ignore`,
+	// or a file Eleventy never read becomes a page (a11yproject.com's `src/css/homepage.md`).
+	const ignored: string[] = [];
+	const input = config === undefined ? "." : (setting(blankComments(configText), "input") ?? ".").replace(/^\.\//, "").replace(/\/+$/, "");
+	for (const at of [".eleventyignore", input && input !== "." ? `${input}/.eleventyignore` : ""]) {
+		if (!at) continue;
+		const text = readUtf8(path.join(dir, ...at.split("/")));
+		if (text === undefined) continue;
+		const base = at.includes("/") ? `${at.slice(0, at.lastIndexOf("/"))}/` : "";
+		for (const line of lines(text)) {
+			const glob = trim(line);
+			if (glob === "" || glob.startsWith("#") || glob.startsWith("!")) continue;
+			const rel = `${base}${glob.replace(/^\.\//, "")}`.replace(/\/$/, "/**");
+			ignored.push(rel.startsWith(`${input}/`) && input !== "." ? rel.slice(input.length + 1) : rel);
+		}
+	}
 	// The site's own modules the config passes `eleventyConfig` to: their calls count as the config's.
 	const followed = config === undefined ? new Map<string, string>() : helperModules(dir, config, configText);
 	const helpers: Array<[string, Array<[string, string]>]> = [];
@@ -337,7 +356,7 @@ export function eleventy(dir: string): Plan {
 	const ports = config === undefined ? [] : undefinedFilters(entries, blankComments(configText) + helperText, readsNavigation, plan);
 	modulesUsingEleventy(entries, config, plan);
 	if (config !== undefined) {
-		const [source, byHand] = draftConfig(config, configText, extensions, ports, eleventyMajor(dir), helpers, new Set(followed.keys()));
+		const [source, byHand] = draftConfig(config, configText, extensions, ports, major, helpers, new Set(followed.keys()), ignored);
 		plan.byHand.push(...byHand, ...helperLists);
 		if (findConfig(dir) === undefined) plan.newFiles.push(["ssqch.config.js", `a first draft, from ${config}`, source]);
 		else plan.byHand.push(["ssqch.config.js", "it's already there, so the draft from the Eleventy config wasn't written"]);
@@ -379,6 +398,9 @@ export function rewriteTemplate(text: string, markdown: boolean, keep: readonly 
 			if (tag.search(IMAGE_ATTR) !== -1) attrs = true;
 			return tag.replace(IMAGE_ATTR, "ssqch:$1");
 		});
+		// Eleventy 1 printed nothing for `eleventy.generator` (a11yproject.com's 112 pages had
+		// `content=""`): rewritten, every page would change. `keep` has it then.
+		if (keep.includes("eleventy.generator")) return tagged;
 		return tagged.replace(TEMPLATE_TAG, (tag) => {
 			if (tag.search(TEMPLATE_GLOBAL) !== -1) globals = true;
 			return tag.replace(TEMPLATE_GLOBAL, "ssqch.$1");
@@ -866,7 +888,7 @@ function reindent(source: string, fromIndent: string, toIndent: string): string 
 }
 
 /** A first `ssqch.config.js` from an Eleventy config, and what in it needs porting. */
-export function draftConfig(name: string, text: string, extensions: ReadonlySet<string>, ports: ReadonlyArray<[string, string]> = [], eleventyMajor?: number, helpers: ReadonlyArray<[string, ReadonlyArray<[string, string]>]> = [], followed: ReadonlySet<string> = new Set()): [string, Array<[string, string]>, Array<[string, string]>] {
+export function draftConfig(name: string, text: string, extensions: ReadonlySet<string>, ports: ReadonlyArray<[string, string]> = [], eleventyMajor?: number, helpers: ReadonlyArray<[string, ReadonlyArray<[string, string]>]> = [], followed: ReadonlySet<string> = new Set(), ignored: readonly string[] = []): [string, Array<[string, string]>, Array<[string, string]>] {
 	const code = blankComments(text);
 	const lineOf = (offset: number) => occurrences(text.slice(0, offset), "\n") + 1;
 	const style = styleOf(text);
@@ -874,6 +896,8 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 	const declared = declaredNames(text);
 	const byHand: Array<[string, string]> = [];
 	const passthrough: string[] = [], watch: string[] = [], todo: string[] = [];
+	// `addLayoutAlias("post", "layouts/post.njk")`: [name, layout].
+	const aliases: Array<[string, string]> = [];
 	// Filters and shortcodes moved as written: [name, function source].
 	const ported: Array<[string, string]> = [];
 	for (const c of code.matchAll(CALL)) {
@@ -977,6 +1001,12 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 				else byHand.push([at, "setLibrary -> ssqch renders Markdown itself: `markdown: { ... }` options, render hooks and containers"]);
 				break;
 			}
+			case "addLayoutAlias": {
+				const target = args[1] === undefined ? undefined : stringLiteral(args[1]);
+				if (quoted !== undefined && target !== undefined) aliases.push([quoted, target]);
+				else byHand.push([at, "addLayoutAlias with a variable -> `layoutAliases: { name: \"layouts/name.njk\" }`"]);
+				break;
+			}
 			case "addDataExtension":
 				byHand.push([at, "addDataExtension -> YAML, TOML and JSON data files load as they are"]);
 				break;
@@ -1044,6 +1074,11 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 		if (markdown.length) items.push(`${ind}${ind}// From the Eleventy config's markdown-it options.\n${ind}${ind}${markdown.join(`,\n${ind}${ind}`)}`);
 		entries.push(`${ind}markdown: {\n${styleItems(style, items)}${ind}}`);
 	} else if (markdown.length) entries.push(`${ind}// From the Eleventy config's markdown-it options.\n${ind}markdown: { ${markdown.join(", ")} }`);
+	if (aliases.length) entries.push(`${ind}// From addLayoutAlias: \`layout: ${aliases[0][0]}\` is that file (without it, it'd be \`_includes/${aliases[0][0]}.*\`).\n${ind}layoutAliases: { ${aliases.map(([name, target]) => `${styleKey(style, name)}: "${target}"`).join(", ")} }`);
+	if (ignored.length) entries.push(`${ind}// From .eleventyignore.\n${ind}ignore: ${styleList(style, ignored.map((g) => `"${g}"`))}`);
+	// Eleventy renders a JSON data file's strings with this engine; ssqch reads data as it is.
+	const dataEngine = /\bdataTemplateEngine\s*:\s*["'\x60]([^"'\x60]*)["'\x60]/.exec(code)?.[1];
+	if (dataEngine) byHand.push([name, `dataTemplateEngine: "${dataEngine}" -> ssqch doesn't render data files' strings: a JSON file's \`{{ ... | url }}\` stays as it's written. Write the value itself, or compute it in a \`.data.js\` file`]);
 	if (passthrough.length) entries.push(`${ind}passthrough: ${styleList(style, passthrough)}`);
 	if (watch.length) entries.push(`${ind}watch: ${styleList(style, watch)}`);
 	let filters = `\n${ind}filters: {\n`;

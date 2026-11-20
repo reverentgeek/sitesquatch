@@ -574,3 +574,33 @@ test("a_sites_engine_is_told_what_it_renders_and_permalinks_skip_it", () => {
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(!r.ok && r.log.includes("isn't a URL: it was rendered with `jinja`"), r.log);
 });
+
+// Found in the fresh a11yproject.com move: `{{ date.toString() }}` printed `[object Undefined]`,
+// with no warning, in every post's JSON-LD (the table of UTC date methods is an object, and its
+// `toString` was Object's). A date's methods are its own, as in Eleventy, in the site's timeZone.
+test("a_dates_own_methods_work_in_templates", () => {
+	const dir = tempDir("date-methods");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"njk\"], timeZone: \"UTC\" };\n",
+		"post.njk": "---\ndate: 2020-05-01\n---\n{{ date.toString() }}|{{ page.date.toISOString() }}|{{ date.getFullYear() }}",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/post/index.html"), "Fri May 01 2020 00:00:00 GMT+0000 (Coordinated Universal Time)|2020-05-01T00:00:00.000Z|2020");
+});
+
+// Found in the fresh a11yproject.com move: a layout's `content` reached the site's own filters as a
+// SafeString, so a table-of-contents filter that checks `typeof content === "string"` gave "" on 70
+// pages, silently. The site's functions get text, as in Eleventy; what comes back unchanged is
+// still HTML.
+test("site_filters_get_a_layouts_content_as_text", () => {
+	const dir = tempDir("filters-safe-string");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"], filters: { kind: (c) => typeof c, same: (c) => c, shout: (c) => typeof c === \"string\" ? c.toUpperCase() : \"\" } };\n",
+		"_includes/base.njk": "{{ content | kind }}|{{ content | same }}|{{ content | shout | safe }}|{{ content }}",
+		"pine.md": "---\nlayout: base.njk\n---\n*Pine*\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/pine/index.html"), "string|<p><em>Pine</em></p>\n|<P><EM>PINE</EM></P>\n|<p><em>Pine</em></p>\n");
+});

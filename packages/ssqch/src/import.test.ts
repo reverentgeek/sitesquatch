@@ -373,3 +373,28 @@ test("a_plugins_package_is_found_beside_named_imports", () => {
 	const said = draftConfig("eleventy.config.js", config, new Set())[1].filter(([, what]) => what.startsWith("addPlugin")).map(([, what]) => what);
 	assert.deepEqual(said, ["addPlugin(pluginRSS) (from @11ty/eleventy-plugin-rss) -> see its package below", "addPlugin(eleventyImageTransformPlugin) (from @11ty/eleventy-img) -> see its package below"]);
 });
+
+// What the fresh a11yproject.com move found the importer missing: addLayoutAlias (`layout: post`
+// found a partial), .eleventyignore (a KSS doc became a page), dataTemplateEngine, and
+// `eleventy.generator`, which Eleventy 1 printed as nothing (rewritten, 112 pages changed).
+test("layout_aliases_ignores_and_eleventy_1s_generator_come_along", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-aliases-"));
+	const w = (file: string, text: string) => {
+		fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+		fs.writeFileSync(path.join(dir, file), text);
+	};
+	w("package.json", "{\n  \"name\": \"a11y\",\n  \"devDependencies\": {\n    \"@11ty/eleventy\": \"^1.0.0\"\n  }\n}\n");
+	w(".eleventy.js", "module.exports = (c) => {\n  c.addLayoutAlias(\"post\", \"layouts/post.njk\");\n  return { dir: { input: \"src\" }, dataTemplateEngine: \"njk\" };\n};\n");
+	w("src/.eleventyignore", "# styleguide sources\ncss/\nimg/\n");
+	w("src/_includes/layouts/base.njk", "<meta name=\"generator\" content=\"{{ eleventy.generator }}\">");
+	const plan = eleventy(dir);
+	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
+	assert.ok(draft.includes("  layoutAliases: { post: \"layouts/post.njk\" },\n"), draft);
+	assert.ok(draft.includes("  // From .eleventyignore.\n  ignore: [\"css/**\", \"img/**\"],\n"), draft);
+	assert.ok(plan.byHand.some(([, what]) => what.startsWith("dataTemplateEngine: \"njk\" -> ssqch doesn't render data files' strings")), JSON.stringify(plan.byHand));
+	assert.ok(!plan.edits.some(([file]) => file === "src/_includes/layouts/base.njk"), "Eleventy 1's generator tag stays");
+	assert.ok(plan.byHand.some(([at, what]) => at === "src/_includes/layouts/base.njk" && what.includes("Eleventy 1 printed nothing for them")));
+	// Eleventy 2 printed it: rewritten as before.
+	w("package.json", "{\n  \"name\": \"a11y\",\n  \"devDependencies\": {\n    \"@11ty/eleventy\": \"^2.0.1\"\n  }\n}\n");
+	assert.ok(eleventy(dir).edits.some(([file, changes]) => file === "src/_includes/layouts/base.njk" && changes.includes("eleventy.generator/version -> ssqch.generator/version")));
+});

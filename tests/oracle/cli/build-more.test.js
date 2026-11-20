@@ -142,3 +142,25 @@ test("build_profile_lists_the_slowest_of_each_kind", () => {
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(!r.stdout.includes("Profile:"), r.stdout);
 });
+
+// Added in 0.11, from the fresh a11yproject.com move: Eleventy's `addLayoutAlias("post",
+// "layouts/post.njk")` made `layout: post` that file, and without it ssqch found
+// `_includes/post.njk`, a partial. `layoutAliases` names it; the page's `layout` stays `post`.
+test("layout_aliases_name_another_layout", () => {
+	const dir = tempDir("layout-aliases");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"md\", \"njk\"], layoutAliases: { post: \"layouts/post.njk\" } };\n",
+		"_includes/post.njk": "a post card",
+		"_includes/layouts/post.njk": "<article data-layout=\"{{ layout }}\">{{ content | safe }}</article>",
+		"pine.md": "---\nlayout: post\n---\nCones\n",
+	});
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/pine/index.html"), "<article data-layout=\"post\"><p>Cones</p>\n</article>");
+	write(dir, { "ssqch.config.js": "export default { layoutAliases: { a: \"b\", b: \"a\" } };\n", "pine.md": "---\nlayout: a\n---\nCones\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("Layout alias loop: a -> b -> a (layoutAliases)"), r.log);
+	write(dir, { "ssqch.config.js": "export default { layoutAliases: [\"post\"] };\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("layoutAliases must be an object of { name: layout }"), r.log);
+});

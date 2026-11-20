@@ -1099,7 +1099,7 @@ export function diffText(report: DiffReport, limit: number, color: boolean): str
 		out += `\n${which} differ only in dates or years. See \`ssqch docs "dates that changed"\`: a page with no date of its own gets its file's modification time.\n`;
 	}
 	// Files an earlier build left behind are added or removed files too (osg #15).
-	if (report.added.length || report.removed.length) out += "\nFiles left in a folder by an earlier build count as added or removed: build each side into an empty folder.\n";
+	if (report.added.length || report.removed.length) out += "\nIf a folder held an earlier build, its leftover files are among the added and removed: to rule that out, build each side into an empty folder.\n";
 	out += `\nChanges found: ${found} (${count(report.changed.length)} changed, ${count(report.added.length)} added, ${count(report.removed.length)} removed); ${unchanged} are the same. The stump has moved.\n`;
 	return out;
 }

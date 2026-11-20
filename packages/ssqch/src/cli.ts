@@ -138,7 +138,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 			{ long: "from", value: "DIR", help: "The folder the command writes (Eleventy and Jekyll: _site; Hugo: public; Astro: dist)", default: "_site" },
 			{ long: "runs", value: "RUNS", help: "How many builds to make and compare", default: "3", check: number },
 			{ long: "commit", value: "REV", help: "Build this commit instead of the working tree (the one before `ssqch import --write`)" },
-			{ long: "to", value: "NAME", help: "What to call the builds: ref makes ref-1, ref-2 and ref-3", default: "ref" },
+			{ long: "to", value: "NAME", help: "Where the builds go: the default makes .cache/ssqch/baseline/ref-1, -2 and -3", default: ".cache/ssqch/baseline/ref" },
 			{ long: "link", value: "PATH", help: "Link this folder of the site into each copy, as node_modules, .bundle and vendor/bundle are (repeatable)", many: true },
 		],
 		positionals: [{ name: "COMMAND", help: "The old generator's build command, quoted: \"npx @11ty/eleventy\"", required: true, many: true }],
@@ -322,7 +322,7 @@ export async function main(argv: string[]): Promise<number> {
 		return 1;
 	}
 	// It runs another generator, not ssqch's build, so nothing below applies either.
-	if (command === "baseline") return (await import("./commands/baseline.ts")).runBaseline({ root: value("root") ?? ".", command: cli.positionals.join(" "), from: value("from") ?? "_site", runs: Number(value("runs") ?? "3"), commit: value("commit"), to: value("to") ?? "ref", link: [cli.options.link ?? []].flat() as string[], quiet: flag("quiet") });
+	if (command === "baseline") return (await import("./commands/baseline.ts")).runBaseline({ root: value("root") ?? ".", command: cli.positionals.join(" "), from: value("from") ?? "_site", runs: Number(value("runs") ?? "3"), commit: value("commit"), to: value("to") ?? ".cache/ssqch/baseline/ref", link: [cli.options.link ?? []].flat() as string[], quiet: flag("quiet") });
 	// It reads the site's files as text and runs none of them, so nothing below applies.
 	if (command === "import") return (await import("./import.ts")).runImport(cli.positionals[0], cli.positionals[1] ?? ".", flag("write"));
 

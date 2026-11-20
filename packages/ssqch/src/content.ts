@@ -12,14 +12,16 @@ const HEADING = /<h([1-6])(\s[^>]*)?>(.*?)<\/h[1-6]\s*>/gis;
 const ID_ATTR = /(?:^|\s)id\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
 const TAG = /<(\/?)([A-Za-z][A-Za-z0-9-]*)([^>]*)>|<!--.*?-->/gs;
 const HIDDEN = /\saria-hidden\s*=\s*["']?true/i;
-const CODE = /<!--.*?-->|<(pre|code|script|style|template|textarea)\b.*?<\/(?:pre|code|script|style|template|textarea)\s*>/gis;
+const CODE = /<!--.*?-->|<(pre|script|style|template|textarea)\b.*?<\/(?:pre|script|style|template|textarea)\s*>/gis;
+/** A `<code>` with a heading's tags in it, as written (an example), not a heading's own inline code: `## The \`toc\` filter` keeps its words (a11yproject.com's six tables of contents). */
+const CODE_WITH_HEADING = /<code\b(?:(?!<\/code\s*>).)*?<h[1-6][\s>](?:(?!<\/code\s*>).)*<\/code\s*>/gis;
 const VOID = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
 
 /** The `<h1>` to `<h6>` headings in some HTML, in order. Headings shown as code (inside `<pre>`, `<code>`, a script, a comment) don't count. */
 export function headings(html: string): Heading[] {
 	if (!html.includes("<h") && !html.includes("<H")) return [];
 	const out: Heading[] = [];
-	for (const found of html.replace(CODE, "").matchAll(HEADING)) {
+	for (const found of html.replace(CODE, "").replace(CODE_WITH_HEADING, "").matchAll(HEADING)) {
 		const id = ID_ATTR.exec(found[2] ?? "");
 		const value = id ? id[1] ?? id[2] ?? id[3] : undefined;
 		out.push({ level: Number(found[1]), id: value === undefined ? undefined : decodeEntities(value), text: htmlText(found[3]) });

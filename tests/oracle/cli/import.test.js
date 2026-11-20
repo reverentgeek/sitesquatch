@@ -176,7 +176,9 @@ test("import_moves_a_zola_site", () => {
 		"  templates/: 1 x filters with named arguments",
 		"  templates/: 1 x `page.content`, `section.content`: `content` in a layout",
 		"  config.toml: generate_feeds: a feed template",
-		"compare with the site Zola built: `ssqch diff <Zola's output> <ssqch's output>`",
+		// DELIBERATE (0.11, from the fresh migrations, where neither agent found the loop): the next
+		// step is a baseline of the old site, and the line names the loop's docs.
+		"Next: `ssqch baseline \"<Zola's build command>\"` (before --write, or with --commit) builds the site with Zola to compare with; then `ssqch build` and `ssqch diff <the baseline> <ssqch's output>`, the biggest group first. The whole loop: `ssqch docs \"moving a site with an agent\"`.",
 	]) {
 		assert.ok(r.log.includes(expected), `missing ${JSON.stringify(expected)} in\n${r.log}`);
 	}

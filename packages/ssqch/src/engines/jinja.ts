@@ -310,20 +310,22 @@ const isLoop = (o: Record<string, unknown>) => "index0" in o && "revindex0" in o
 
 /** A method Python (or Jinja's loop) has that the value doesn't: `"a".upper()`, `post.items()`, `date.strftime("%Y")`. */
 function pythonMethod(obj: unknown, name: string): Fn | undefined {
+	// A table's own methods only: `constructor` or `toString` aren't Python's.
+	const own = <T,>(table: Record<string, T>): T | undefined => (Object.hasOwn(table, name) ? table[name] : undefined);
 	if (isString(obj)) {
-		const m = STRING_METHODS[name];
+		const m = own(STRING_METHODS);
 		return m && ((...args) => m(String(obj), ...args.filter((a) => !isKwargs(a))));
 	}
 	if (Array.isArray(obj)) {
-		const m = LIST_METHODS[name];
+		const m = own(LIST_METHODS);
 		return m && ((...args) => m(obj, ...args));
 	}
 	if (obj instanceof Date) {
-		const m = DATE_METHODS[name];
+		const m = own(DATE_METHODS);
 		return m && ((...args) => m(obj, ...args));
 	}
 	if (isPlain(obj)) {
-		const m = (isLoop(obj) ? LOOP_METHODS[name] : undefined) ?? DICT_METHODS[name];
+		const m = (isLoop(obj) ? own(LOOP_METHODS) : undefined) ?? own(DICT_METHODS);
 		return m && ((...args) => m(obj, ...args));
 	}
 	return undefined;
@@ -378,7 +380,9 @@ export function installRuntime(): void {
 		}
 		const found = (obj as Record<string, unknown>)[val as string];
 		if (typeof found === "function") {
-			const utc = obj instanceof Date ? DATE_UTC[val as string] : undefined;
+			// Its own keys only: `toString` would be Object's, called on nothing (`[object Undefined]`,
+			// a11yproject.com's JSON-LD), where a date's own `toString` is meant.
+			const utc = obj instanceof Date && Object.hasOwn(DATE_UTC, val as string) ? DATE_UTC[val as string] : undefined;
 			if (utc) return () => utc(obj as Date);
 			// A string's `split` and `replace` are Python's, as they were in 0.7: JavaScript's
 			// `"a-a".replace("-", " ")` replaces only the first.

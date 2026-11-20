@@ -43,7 +43,9 @@ const git = (root: string, args: string[]) => spawnSync("git", ["-C", root, ...a
 export async function runBaseline(options: BaselineOptions): Promise<number> {
 	const say = (line: string) => { if (!options.quiet) process.stderr.write(`${line}\n`); };
 	const root = path.resolve(options.root);
-	const work = path.join(root, ".cache", "ssqch", "baseline");
+	// The copies, apart from the builds (`.cache/ssqch/baseline/ref-1` by default), which an
+	// earlier run's copies mustn't take with them.
+	const work = path.join(root, ".cache", "ssqch", "baseline-copies");
 	const worktrees: string[] = [];
 	try {
 		if (!options.command.trim()) throw new BaselineError("give the old generator's build command: `ssqch baseline \"npx @11ty/eleventy\"`");
@@ -54,6 +56,18 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 		const rev = options.commit ?? "HEAD";
 		const time = inGit ? Number(git(root, ["log", "-1", "--format=%ct", rev]).stdout.toString().trim()) || FALLBACK_TIME : FALLBACK_TIME;
 		if (options.commit !== undefined && git(root, ["rev-parse", "--verify", "--quiet", `${options.commit}^{commit}`]).status !== 0) throw new BaselineError(`--commit ${options.commit}: no such commit`);
+		if (path.isAbsolute(options.to) || options.to.split(/[\\/]/).includes("..")) throw new BaselineError(`--to ${options.to}: a name inside the site's folder (\`ref\`, or \`.refs/jekyll\`)`);
+		// Jekyll prints its own clock (`site.time`) and doesn't read SOURCE_DATE_EPOCH: a config of
+		// its own pins it, unless the command gives its configs itself (opensource.guide's 380 files).
+		let command = options.command;
+		let clock = "TZ=UTC, SOURCE_DATE_EPOCH and every file's time pinned; a generator that reads its own clock isn't, so pin it in its config if the builds vary";
+		if (/\bjekyll\s+build\b/.test(command) && !/--config\b/.test(command)) {
+			const pin = path.join(work, "..", "baseline-time.yml");
+			fs.mkdirSync(path.dirname(pin), { recursive: true });
+			fs.writeFileSync(pin, `# Written by ssqch baseline: Jekyll's site.time, pinned.\ntime: ${new Date(time * 1000).toISOString().replace("T", " ").replace(/\.\d+Z$/, " +0000")}\n`);
+			command = command.replace(/\bjekyll\s+build\b/, (m) => `${m} --config _config.yml,${JSON.stringify(pin)}`);
+			clock = "TZ=UTC, SOURCE_DATE_EPOCH, every file's time and Jekyll's site.time pinned (with --config _config.yml and a time: of its own)";
+		}
 
 		fs.rmSync(work, { recursive: true, force: true });
 		fs.mkdirSync(work, { recursive: true });
@@ -81,8 +95,8 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 				else fs.copyFileSync(from, to);
 			}
 
-			say(`Building ${run} of ${options.runs}: ${options.command}`);
-			const { file, args, options: spawnOptions } = commandLine(options.command, copy, { TZ: "UTC", SOURCE_DATE_EPOCH: String(time) });
+			say(`Building ${run} of ${options.runs}: ${command}`);
+			const { file, args, options: spawnOptions } = commandLine(command, copy, { TZ: "UTC", SOURCE_DATE_EPOCH: String(time) });
 			// The command's output is for a person: it goes to standard error, with ssqch's.
 			const result = spawnSync(file, args, { ...spawnOptions, stdio: ["ignore", options.quiet ? "ignore" : process.stderr, options.quiet ? "ignore" : process.stderr] });
 			if (result.error) throw new BaselineError(`couldn't run \`${options.command}\`: ${result.error.message}`);
@@ -90,8 +104,10 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 			const built = path.join(copy, options.from);
 			if (!fs.statSync(built, { throwIfNoEntry: false })?.isDirectory()) throw new BaselineError(`\`${options.command}\` wrote no ${options.from}/ in build ${run}: give the folder it writes with --from (Eleventy and Jekyll write _site, Hugo public, Astro dist)`);
 			const name = `${options.to}-${run}`;
-			const target = path.join(root, name);
+			const target = path.join(root, ...name.split("/"));
 			fs.rmSync(target, { recursive: true, force: true });
+			// `--to .refs/jekyll` names a folder that may not be there yet.
+			fs.mkdirSync(path.dirname(target), { recursive: true });
 			fs.renameSync(built, target);
 			names.push(name);
 		}
@@ -99,14 +115,14 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 		// A build an earlier, longer run left (`ref-3` after `--runs 2`) would be read as one of these.
 		for (let run = options.runs + 1; fs.existsSync(path.join(root, `${options.to}-${run}`)); run++) fs.rmSync(path.join(root, `${options.to}-${run}`), { recursive: true, force: true });
 		const shown = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-		say(`Base camp is set: ${shown}, built from ${options.commit ?? "the working tree"} with TZ=UTC and every file's time pinned.`);
+		say(`Base camp is set: ${shown}, built from ${options.commit ?? "the working tree"} with ${clock}.`);
 		let code = 0;
 		if (names.length > 1) {
 			const report = await compareRuns(names.map((n) => path.join(root, n)), { exact: false, ignore: [], only: undefined, lines: 10 });
 			process.stdout.write(runsText({ ...report, runs: names }, 10, process.stdout.isTTY === true));
 			code = report.varies.length ? 1 : 0;
 		}
-		process.stdout.write(`\nNext: build with ssqch into an empty folder, then \`ssqch diff ${names[0]} <ssqch's output>\`${code ? ", with an --ignore for what varies above" : ""}.\n`);
+		process.stdout.write(`\nNext: build with ssqch into an empty folder, then \`ssqch diff ${names[0]} <ssqch's output>\`${code ? ", with an --ignore for what varies above" : ""}, and fix the biggest group first. The whole loop: \`ssqch docs "moving a site with an agent"\`.\n`);
 		return code;
 	} catch (e) {
 		process.stderr.write(`${red("error:")} ${e instanceof BaselineError ? e.message : e instanceof Error ? e.message : String(e)}\n`);

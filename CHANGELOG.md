@@ -63,7 +63,8 @@ where that version matches.
   keeps Rouge's `class="language-plaintext highlighter-rouge"` (opensource.guide).
 - `ssqch baseline "<command>"` builds the site with its old generator three times, each in a fresh
   copy (the files git would commit, or `--commit <rev>`) with every file's time set to the
-  commit's, `TZ=UTC` and `SOURCE_DATE_EPOCH`, into `ref-1` to `ref-3`, and compares the builds, so
+  commit's, `TZ=UTC` and `SOURCE_DATE_EPOCH` (and Jekyll's `time:`), into
+  `.cache/ssqch/baseline/ref-1` to `-3`, and compares the builds, so
   what changes by itself is known before ssqch's build is compared with them. `--from` is the
   folder the command writes (`_site`), `--runs` and `--to` the builds and their names. The site's
   installs are linked into each copy (`node_modules`, Bundler's `.bundle` and its `BUNDLE_PATH`,
@@ -79,6 +80,12 @@ where that version matches.
   all its changes. `ssqch diff a b c` groups what varies the same way on several files (a build's
   time on every page) too. opensource.guide's 172 changed
   pages are 12 groups, one of them on 102 pages; every move found its biggest group by hand.
+- `layoutAliases: { post: "layouts/post.njk" }` gives a layout another name, as Eleventy's
+  `addLayoutAlias` did; a page's `layout` stays the name it gave. Without it, a moved site's
+  `layout: post` quietly found `_includes/post.njk`, a partial (a11yproject.com).
+  `ssqch import eleventy` writes it, and carries `.eleventyignore` into `ignore`, lists
+  `dataTemplateEngine`, and leaves `eleventy.generator` as it is for Eleventy 1, which printed
+  nothing for it.
 - `ssqch diff --exclude <glob>` leaves matching files out (repeatable, after `--only`): the blog's
   comparison with its Eleventy build needed nine `--only`s to leave out its images.
 
@@ -101,6 +108,20 @@ where that version matches.
   differed from Eleventy's only in that. A site with a decimal there gets other bytes.
 - `markdownify` (Jekyll's and Hugo's name for `markdown`) calls the site's own `markdown` filter
   when it has one. It called ssqch's built-in one whatever the config said.
+
+### Fixed
+
+Found by fresh moves of a11yproject.com and opensource.guide, run as if for the first time.
+
+- `{{ date.toString() }}` printed `[object Undefined]`, with no warning: a date's own methods work
+  in templates, as in Eleventy (in the site's `timeZone`). Every post's JSON-LD had it.
+- A site's own filters got a layout's `content` as a SafeString in Nunjucks and Jinja, so one that
+  checks `typeof content === "string"` returned nothing (a table of contents, on 70 pages). They
+  get text, as in Eleventy; a filter that gives its argument back unchanged still prints HTML.
+- `page.headings` (and `toc()`) left a heading's inline code out of its text: `The <code>toc</code>
+  filter` was `The filter`.
+- `sassPlugin()` didn't find a partial with a dot in its name (`@import "logic/variables.paths"`
+  for `_variables.paths.scss`), so a whole stylesheet failed to compile.
 
 ## 0.10.1 - 2026-11-19
 

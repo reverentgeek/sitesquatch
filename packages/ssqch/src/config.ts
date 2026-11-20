@@ -99,6 +99,8 @@ export interface Config {
 	lastModified: "git" | "file" | null;
 	/** `dateFallback`: the date of a page with none of its own (in its data or its file name): `"git"` for the last commit that changed its file, or `"file"` for the file's time. */
 	dateFallback: "git" | "file";
+	/** `layoutAliases`: other names for layouts (`post` for `layouts/post.njk`), as Eleventy's `addLayoutAlias` gave them. */
+	layoutAliases: Map<string, string>;
 	/** `timeZone`: the IANA zone the site's JavaScript runs in (`process.env.TZ`), or null for the machine's. */
 	timeZone: string | null;
 	/** The path the site is served under: empty for the domain's root, or `/repo` (no `/` at the end). */
@@ -191,6 +193,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		lastModified: null,
 		dateFallback: "file",
 		timeZone: null,
+		layoutAliases: new Map(),
 		base: "",
 		serveRun: [],
 		budgets: [],
@@ -334,7 +337,7 @@ export class EngineCache {
 
 // ---- ssqch.config.js -------------------------------------------------------------------------
 
-const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "dateFallback", "timeZone", "base", "schemas", "theme", "serve", "budgets"];
+const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "dateFallback", "timeZone", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
 const PARTS = ["data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins"];
 /**
  * Engine names a config can't replace. `md` can be: a site that keeps its markdown-it replaces
@@ -727,6 +730,16 @@ function applySettings(config: Config, settings: Data): void {
 	if (fallback === "git" || fallback === "file") config.dateFallback = fallback;
 	else if (fallback !== undefined && fallback !== null) bail(`dateFallback must be "git" or "file", not ${typeof fallback === "string" ? `"${fallback}"` : typeof fallback}`);
 	if (settings.timeZone !== undefined && settings.timeZone !== null) config.timeZone = checkTimeZone(settings.timeZone);
+	// `layoutAliases: { post: "layouts/post.njk" }`: `layout: post` is that file, and a page's
+	// `layout` is still `post` (a template that tests `layout == "post"` keeps working).
+	if (settings.layoutAliases !== undefined && settings.layoutAliases !== null) {
+		if (!isObject(settings.layoutAliases)) bail(`layoutAliases must be an object of { name: layout }, like { post: "layouts/post.njk" }, not ${typeof settings.layoutAliases}`);
+		for (const [name, target] of Object.entries(settings.layoutAliases)) {
+			if (typeof target !== "string" || target === "") bail(`layoutAliases.${name} must be a layout's name, like "layouts/post.njk"`);
+			if (target === name) bail(`layoutAliases.${name} names itself`);
+			config.layoutAliases.set(name, target);
+		}
+	}
 	if (typeof settings.base === "string") config.base = normalizeBase(settings.base);
 	else if (settings.base !== undefined && settings.base !== null) bail(`base must be a URL path like "/docs/", not ${typeof settings.base}`);
 	// `theme: "themes/docs"`, a pinned git URL, `{ git, ref, dir }`, or a list of them.

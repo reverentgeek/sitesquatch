@@ -603,7 +603,7 @@ function from(generator: string, json: boolean): string {
 		if (list.length) out += `\n${label}\n${rows(list)}`;
 	}
 	if (everyone.length) out += `\nWords most generators use\n${rows(everyone)}`;
-	if (g && g.text !== null) out += `\nThe trailhead (${guideUrl(g.file)}):\n\n${g.text.trimEnd()}\n`;
+	if (g && g.text !== null) out += `\nThe trailhead (${guideUrl(g.file)}):\n\n${g.text.trimEnd()}\n\nThe move, step by step (reference builds with \`ssqch baseline\`, the biggest group of differences first): \`ssqch docs "moving a site with an agent"\`.\n`;
 	else if (g) out += `\nThe trailhead: ${guideUrl(g.file)}\n`;
 	else out += "\nThere's no trailhead for it yet; `ssqch docs trailheads` has the general route.\n";
 	return out;

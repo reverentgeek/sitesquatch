@@ -587,10 +587,19 @@ export class Site {
 		return found ? ` (did you mean \`${found}\`?)` : "";
 	}
 
-	private loadLayout(name: string): Layout {
+	private loadLayout(name: string, aliases: string[] = []): Layout {
 		const cached = this.layouts.get(name);
 		if (cached) return cached;
 		const { config, dirs } = this;
+		// Another name for a layout (`layoutAliases: { post: "layouts/post.njk" }`): its file, kept under
+		// the name the page gave, so `layout: post` finds the layout, not `_includes/post.njk`.
+		const alias = config.layoutAliases.get(name);
+		if (alias !== undefined) {
+			if (aliases.includes(name)) bail(`${voice.PASSED_THIS_TREE}. Layout alias loop: ${[...aliases, name].join(" -> ")} (layoutAliases)`);
+			const layout = this.loadLayout(alias, [...aliases, name]);
+			this.layouts.set(name, layout);
+			return layout;
+		}
 		// The site's layouts folder, then each theme's includes.
 		let file: string | undefined;
 		for (const dir of [dirs.layouts, ...this.themeIncludes]) {

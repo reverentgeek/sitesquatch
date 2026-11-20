@@ -197,7 +197,18 @@ class Compiler {
 			const partial = path.join(path.dirname(full), `_${path.basename(full)}`);
 			return fs.existsSync(full) ? full : fs.existsSync(partial) ? partial : undefined;
 		};
-		const changed = text.replace(/@(import|use|forward)(\s+)([^;{}]+)/g, (statement, rule, space, rest) => `@${rule}${space}${rest.replace(/(["'])([^"'\n]+\.s[ac]ss)\1/g, (quoted: string, q: string, name: string) => {
+		// A partial whose name has a dot of its own (`logic/variables.paths` for
+		// `_variables.paths.scss`): grass reads `.paths` as an extension and doesn't find it (the
+		// fresh a11yproject.com move). The file that's there, beside the importer or in a load path,
+		// is named with its extension, as the next step reads it.
+		const dotted = (name: string) => {
+			if (!/\.[^/.]+$/.test(name) || /\.(?:s[ac]ss|css)$/.test(name) || /^[a-z]+:/i.test(name)) return name;
+			for (const base of [dir, ...this.loadPaths]) {
+				for (const ext of [".scss", ".sass"]) if (exists(base, `${name}${ext}`)) return `${name}${ext}`;
+			}
+			return name;
+		};
+		const changed = text.replace(/@(import|use|forward)(\s+)([^;{}]+)/g, (statement, rule, space, rest) => `@${rule}${space}${rest.replace(/(["'])([^"'\n]+)\1/g, (quoted: string, q: string, name: string) => `${q}${dotted(name)}${q}`).replace(/(["'])([^"'\n]+\.s[ac]ss)\1/g, (quoted: string, q: string, name: string) => {
 			if (path.isAbsolute(name) || /^[a-z]+:/i.test(name) || exists(dir, name)) return quoted;
 			for (const load of this.loadPaths) {
 				const found = exists(load, name);
