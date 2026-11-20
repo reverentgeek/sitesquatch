@@ -45,7 +45,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create a starter site (config, layout, five posts, data and editor types)')
             [CompletionResult]::new('types', 'types', [CompletionResultType]::ParameterValue, 'Write ssqch.d.ts, the types editors use for ssqch.config.js')
             [CompletionResult]::new('baseline', 'baseline', [CompletionResultType]::ParameterValue, 'Build the site with its old generator in fresh copies and compare the builds')
-            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Move a site from another generator: rename and rewrite what''s mechanical, and list the rest')
+            [CompletionResult]::new('scout', 'scout', [CompletionResultType]::ParameterValue, 'Scout a site built with another generator: what moving it to ssqch takes, and what remains during a move')
             [CompletionResult]::new('capabilities', 'capabilities', [CompletionResultType]::ParameterValue, 'Say what this binary supports: template languages, modules, config options and optional features')
             [CompletionResult]::new('docs', 'docs', [CompletionResultType]::ParameterValue, 'Read the documentation for this version: a command, config option, function or topic')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -233,13 +233,16 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
-        'ssqch;import' {
+        'ssqch;scout' {
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
             [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
             [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
             [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
             [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
-            [CompletionResult]::new('--write', '--write', [CompletionResultType]::ParameterName, 'Make the changes (without it, only list them)')
+            [CompletionResult]::new('--from', '--from', [CompletionResultType]::ParameterName, 'The generator the site is built with, when scout finds another')
+            [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
+            [CompletionResult]::new('--write-draft', '--write-draft', [CompletionResultType]::ParameterName, 'Write the new files of the draft; never overwrites a file')
+            [CompletionResult]::new('--patch', '--patch', [CompletionResultType]::ParameterName, 'Write the mechanical edits to FILE as a patch to review; nothing is applied')
             [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
@@ -293,7 +296,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create a starter site (config, layout, five posts, data and editor types)')
             [CompletionResult]::new('types', 'types', [CompletionResultType]::ParameterValue, 'Write ssqch.d.ts, the types editors use for ssqch.config.js')
             [CompletionResult]::new('baseline', 'baseline', [CompletionResultType]::ParameterValue, 'Build the site with its old generator in fresh copies and compare the builds')
-            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Move a site from another generator: rename and rewrite what''s mechanical, and list the rest')
+            [CompletionResult]::new('scout', 'scout', [CompletionResultType]::ParameterValue, 'Scout a site built with another generator: what moving it to ssqch takes, and what remains during a move')
             [CompletionResult]::new('capabilities', 'capabilities', [CompletionResultType]::ParameterValue, 'Say what this binary supports: template languages, modules, config options and optional features')
             [CompletionResult]::new('docs', 'docs', [CompletionResultType]::ParameterValue, 'Read the documentation for this version: a command, config option, function or topic')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -329,7 +332,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
         'ssqch;help;baseline' {
             break
         }
-        'ssqch;help;import' {
+        'ssqch;help;scout' {
             break
         }
         'ssqch;help;capabilities' {

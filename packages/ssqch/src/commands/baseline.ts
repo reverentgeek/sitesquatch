@@ -23,7 +23,7 @@ export interface BaselineOptions {
 	from: string;
 	/** How many builds: 1 makes one; 2 or more compare them. */
 	runs: number;
-	/** A commit to build instead of the working tree (the one before `ssqch import --write`). */
+	/** A commit to build instead of the working tree (the one before the move's first change). */
 	commit: string | undefined;
 	/** What the reference builds are called: `ref` makes `ref-1`, `ref-2` and `ref-3`. */
 	to: string;

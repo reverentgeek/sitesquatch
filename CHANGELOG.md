@@ -11,6 +11,22 @@ where that version matches.
 
 ## Unreleased
 
+### Breaking
+
+- `ssqch import <generator> [--write]` is now `ssqch scout [dir]`, with no alias: a report of
+  what moving a site takes that's safe to run any time, before and during a move. It finds the
+  generator from its files (`--from` chooses), names the reference build for `ssqch baseline`
+  and what it needs, and lists what the site uses with file and line, ssqch's way to do each or
+  "not in ssqch yet"; run again, it shows what's left. It changes nothing unless asked:
+  `--write-draft` writes the new files (the config draft, directory data, includes, hooks) and
+  never overwrites one, and `--patch <file>` writes the mechanical edits as a patch to read and
+  `git apply`. `--format json` prints the report as data. What `import --write` did is
+  `ssqch scout --write-draft --patch move.patch && git apply move.patch`. Besides Eleventy,
+  Jekyll and Zola it reads Hugo sites (shortcodes and their calls, sections, render hooks, Go
+  templates, Hugo Pipes) and MkDocs sites (the nav, theme, plugins and Markdown extensions, and
+  the MkDocs syntax pages use), from the fresh moves of gohugo.io and Material for MkDocs' docs.
+  `ssqch capabilities` lists them under "Scout reads" (`importers` in its JSON).
+
 ### Added
 
 - A site can replace ssqch's Markdown once: `engines: { md }` renders every `.md` file, and every
@@ -19,7 +35,7 @@ where that version matches.
   as Eleventy's `setLibrary("md", ...)` gave it). Keeping a site's markdown-it took an engine of
   its own and `render` in every folder's data, which reached the folder's `.njk` pages too:
   v8.dev changed nine content files for it. The `markdown` filter stays ssqch's Markdown, and
-  `ssqch import eleventy` says how to carry `setLibrary("md", md)` over.
+  `ssqch scout` says how to carry `setLibrary("md", md)` over.
 - `cache: true` on a site's engine (`engines: { md: { render, cache: true } }`) keeps the page
   bodies it renders by their source, so a page whose text didn't change isn't rendered again in
   `ssqch serve`'s next build. Layouts and render hooks render each time. It holds the last two
@@ -30,29 +46,29 @@ where that version matches.
   writes: `breaks: true` (a single newline in a paragraph is a `<br>`; 374 on a11yproject.com),
   `autolinks: "fuzzy"` (bare domains and email addresses become links, as `linkify` makes them)
   and `figures: true` (an image alone in a paragraph is a `<figure>` with its alt text as the
-  `<figcaption>`, as markdown-it-implicit-figures makes it; 74 v8.dev pages). `ssqch import
-  eleventy` carries markdown-it's `breaks`, `linkify` and `typographer` and the implicit-figures
+  `<figcaption>`, as markdown-it-implicit-figures makes it; 74 v8.dev pages). `ssqch
+  scout` carries markdown-it's `breaks`, `linkify` and `typographer` and the implicit-figures
   plugin into the draft's `markdown`.
 - `markdown: { highlight: { classes } }` names highlighted tokens as another highlighter does,
   so a site keeps its theme's CSS. `classes: "prism"` writes Prism's names (`token keyword`),
   `<pre class="language-js">` and marked lines as `<mark class="highlight-line
   highlight-line-active">`, as Eleventy's syntax-highlight plugin does; an object names some
   kinds (`{ keyword: "tok-keyword" }`, lit.dev's CodeMirror theme). `/highlight.css` uses the
-  same names. `ssqch import eleventy` suggests it for the syntax-highlight plugin.
-- `ssqch import eleventy` adds the packages that came with `@11ty/eleventy` to `package.json`
+  same names. `ssqch scout` suggests it for the syntax-highlight plugin.
+- `ssqch scout` adds the packages that came with `@11ty/eleventy` to `package.json`
   when the site's own code imports them without listing them (`slugify` in a config,
   `browser-sync` in a gulpfile), at the version installed; removing Eleventy used to remove them
   too. It lists the filters and shortcodes the templates use that nothing defines, with how many
   templates use each and the first place, says what Eleventy's and its plugins' become, and ports
   Eleventy's `log` and collection-item filters into the draft. On a11yproject.com it names every
   filter that move found by hand.
-- `ssqch import eleventy` follows the config into the site's own modules (a `registerSiteFilters`
+- `ssqch scout` follows the config into the site's own modules (a `registerSiteFilters`
   in `lib/`, a plugin of the site's own) and lists what each adds with its file and line, copying
   the self-contained filters into the draft; on the ReverentGeek blog's last Eleventy commit that's
   8 filters, 2 collections and a transform the list didn't have. Data files and other modules that
   use eleventy-img or eleventy-fetch are listed with what replaces them, and a plugin imported
   beside named imports (`import pluginRSS, { dateToRfc3339 } from ...`) is recognized.
-- `ssqch import eleventy`'s draft sets the Markdown defaults where Eleventy's Markdown wrote other
+- `ssqch scout`'s draft sets the Markdown defaults where Eleventy's Markdown wrote other
   markup, each with a comment: `headingIds: false` without markdown-it-anchor (380 headings on the
   ReverentGeek blog had ids they didn't have before) and `indentedCode: false` for Eleventy 3.
 - `minifyPlugin({ css: true, xml: true, json: true })` also compresses each page's `<style>`
@@ -83,7 +99,7 @@ where that version matches.
 - `layoutAliases: { post: "layouts/post.njk" }` gives a layout another name, as Eleventy's
   `addLayoutAlias` did; a page's `layout` stays the name it gave. Without it, a moved site's
   `layout: post` quietly found `_includes/post.njk`, a partial (a11yproject.com).
-  `ssqch import eleventy` writes it, and carries `.eleventyignore` into `ignore`, lists
+  `ssqch scout` writes it, and carries `.eleventyignore` into `ignore`, lists
   `dataTemplateEngine`, and leaves `eleventy.generator` as it is for Eleventy 1, which printed
   nothing for it.
 - `ssqch diff --exclude <glob>` leaves matching files out (repeatable, after `--only`): the blog's
@@ -94,7 +110,7 @@ where that version matches.
   replaces a page's URL, any other `nav` key (`excerpt`) is copied onto its entry, and the title
   falls back to `nav.key`.
 - `getPreviousCollectionItem` and `getNextCollectionItem`, Eleventy's filters, work (and say once
-  that ssqch's is `navPager(collection, page.url)`), so `ssqch import eleventy` no longer ports
+  that ssqch's is `navPager(collection, page.url)`), so `ssqch scout` no longer ports
   them into the draft.
 - `ssqch docs <page>` answers with the page a file name names (`ssqch docs comparing-builds`,
   `ssqch docs /docs/comparing-builds/`), and a trailhead's as `--from` does (`ssqch docs
@@ -108,7 +124,7 @@ where that version matches.
 - `markdown(text, "inline")` in config code, as templates call it, where it failed with
   `unknown option "0"`.
 
-- `ssqch import jekyll`: a first `ssqch.config.js` from `_config.yml` (Liquid for pages,
+- `ssqch scout` reads Jekyll sites: a first `ssqch.config.js` from `_config.yml` (Liquid for pages,
   kramdown's Markdown options, `exclude`, the files Jekyll copies, `site`, the `defaults` for every
   page, the plugins it knows, and `jekyllTemplates`), directory data for `_posts` and each
   collection with their tags and permalinks, and `{% seo %}` as an include it writes; it edits no
@@ -119,7 +135,7 @@ where that version matches.
   around it. opensource.guide's 3,791 such elements come out as Jekyll wrote them.
 - `headingIds: "kramdown"` (kramdown's GFM ids, emoji dropped, and its ASCII ids for headings
   inside `markdown="1"` HTML) and `headingIds: "markdown-it-anchor"` (that plugin's default,
-  percent-encoded). `ssqch import eleventy` writes the second for a site with markdown-it-anchor.
+  percent-encoded). `ssqch scout` writes the second for a site with markdown-it-anchor.
 - `trimAfterFrontMatter: true` starts a template's body at its first line with text, as Jekyll
   does.
 - `sassPlugin({ charset: false })` leaves out the byte order mark (or `@charset`) that CSS with a
@@ -135,7 +151,7 @@ where that version matches.
   version, which its `Next:` compares with, and it says which files have none yet.
 - `ssqch diff` calls out a changed canonical link or refresh redirect on a page, and a feed's
   entries that went or came, by their id.
-- `ssqch import eleventy` lists what changes the output before the first diff (a Date printed as
+- `ssqch scout` lists what changes the output before the first diff (a Date printed as
   it is, date code that reads the machine's time zone, `pagination` over `collections`,
   templates in a passed-through folder, `&` beside `ssqch build` in a script, a second build tool
   with ssqch's way for each part), unwraps `{{ '/x/' | url }}` in data files when the site had
@@ -144,7 +160,7 @@ where that version matches.
   does, and warns on each build.
 - The SEO docs have an include that writes jekyll-seo-tag's tags.
 
-- `ssqch import jekyll` writes more of what Jekyll's plugins wrote, so the first build matches:
+- `ssqch scout` writes more of what Jekyll's plugins wrote, so the first build matches:
   the SEO include has jekyll-seo-tag's generator tag (Jekyll's version, from `Gemfile.lock`),
   article tags for dated pages, `twitter:site`, `article:publisher` and its JSON-LD;
   jekyll-redirect-from's page for each old URL (a redirect hook); and Rouge's classes on inline
@@ -157,11 +173,11 @@ where that version matches.
 
 - `markdown: { encodeUrls: false }` writes link and image URLs as the page has them,
   HTML-escaped only, as kramdown does, where ssqch percent-encodes them (`#كتابة` as
-  `#%D9%83...`); `ssqch import jekyll` turns it on. Browsers go to the same place either way.
+  `#%D9%83...`); `ssqch scout` turns it on. Browsers go to the same place either way.
 
 - Jekyll's `{% highlight lang %}` (in Jekyll's `<figure>`, with ssqch's highlighter), `{% link path %}`
   and `{% post_url name %}` in Liquid; a path no page has is an error that names it.
-- `ssqch import jekyll` lists each `_plugins/*.rb` with what it registers (filters, tags,
+- `ssqch scout` lists each `_plugins/*.rb` with what it registers (filters, tags,
   generators, hooks) and ssqch's way to do each, writes directory data for every `_posts` folder
   (`en/news/_posts`, its folders as the first categories), renames a `.rss` or `.xml` layout to
   `.liquid` so it runs Liquid. The Jekyll trailhead has "Porting a site's own plugins".
@@ -173,7 +189,7 @@ where that version matches.
 
 ### Changed
 
-- `ssqch import eleventy` leaves Eleventy's front matter keys as they are (`eleventyComputed`,
+- `ssqch scout` leaves Eleventy's front matter keys as they are (`eleventyComputed`,
   `eleventyExcludeFromCollections`, `templateEngineOverride` work in ssqch), where it renamed them in
   every page, and lists `eleventyNavigation` pages instead of renaming the key to `nav`. The
   importers now list what needs doing and make only edits that are mechanical and clearly right.
@@ -184,7 +200,7 @@ where that version matches.
   error.
 - A link's or image's hook gets no `title` (null) when it has none, where it got `""`, which
   Liquid counts as true.
-- `ssqch import`, `ssqch diff` and `ssqch baseline` list only the global options that do
+- `ssqch scout`, `ssqch diff` and `ssqch baseline` list only the global options that do
   something for them in `--help` (all are still accepted).
 - ssqch's smart quotes close an open quote where pulldown-cmark opened a second one (a `"`
   between two letters, as in `比如"进展 ISSUE-123"；`).
@@ -221,12 +237,12 @@ where that version matches.
   (copy-on-write where the file system has it), and `--copy-installs` copies them for any other.
 - Front matter dates in Jekyll's documented form (`2009-12-25 10:41:06 +0000`, a space before a
   zone without a colon, a one-digit hour) were refused.
-- `ssqch import jekyll` wrote front matter into `_data` files that start with YAML's `---`, and the
+- `ssqch scout` wrote front matter into `_data` files that start with YAML's `---`, and the
   build failed; it copied `_` folders inside a passed-through folder, which Jekyll skips.
 - `ssqch baseline` left Jekyll's `site.time` unpinned when the command gave its own `--config`
   (every article varied): the time goes last in that list. It warns when Jekyll's build has GitHub
   Pages' placeholder `github.com/pages/...` URLs.
-- `ssqch import jekyll` takes `site.url` from `CNAME` for a GitHub Pages site, says where Jekyll's
+- `ssqch scout` takes `site.url` from `CNAME` for a GitHub Pages site, says where Jekyll's
   `excerpt` and `sort` differ, and writes what it only named: `redirects.json`, `robots.txt`, Rouge's
   wrapper for code blocks, and whole URLs in the redirect page. opensource.guide's import matches
   Jekyll's build on 306 of 404 pages with no hand edits.
@@ -234,14 +250,14 @@ where that version matches.
   declaration (normalize.css's `-webkit-text-size-adjust: 100%; /* 2 */`).
 - With `htmlMarkdown: "kramdown"`, an indented code block inside a `markdown="1"` element lost its
   blank lines.
-- `ssqch import jekyll` wrote collection permalinks with `//` in front (`//ar/metrics/`): a
+- `ssqch scout` wrote collection permalinks with `//` in front (`//ar/metrics/`): a
   page's `filePathStem` starts with its own `/`. A build now warns about any page whose URL has
   `//` in it.
 - `site.articles` (a Jekyll collection) was empty with no word: with `jekyllTemplates` it's there,
   and without it the build warns about `site.<collection>` as it does about `site.posts`.
 - Smart quotes: a closing `"` after a letter came out `“` when it closed an outer quote or had no
   partner (`... p5.js Edition“`).
-- `ssqch baseline` says when files git doesn't track go into its copies, and `ssqch import jekyll`
+- `ssqch baseline` says when files git doesn't track go into its copies, and `ssqch scout`
   leaves them out of `passthrough`.
 Found by fresh moves of a11yproject.com and opensource.guide, run as if for the first time.
 
@@ -257,7 +273,7 @@ Found by fresh moves of a11yproject.com and opensource.guide, run as if for the 
   they're a date change, grouped. `--only /posts/pine/` (a folder, as a URL is written) matches
   what's in it, and `--only` that matches no file in either build is an error, not "No
   differences".
-- `ssqch import eleventy` listed `eleventy.generator` in files outside Eleventy's input folder (a
+- `ssqch scout` listed `eleventy.generator` in files outside Eleventy's input folder (a
   notes file).
 - `url`, Eleventy's filter, normalizes its path as Eleventy did: `""` is `.`, `/a//b/../c/` is
   `/a/c/`.

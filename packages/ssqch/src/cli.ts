@@ -124,20 +124,26 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	},
 	{ name: "types", about: "Write ssqch.d.ts, the types editors use for ssqch.config.js", options: [{ long: "out", value: "out", help: "Where to write it", default: "ssqch.d.ts" }], positionals: [], own: true },
 	{
-		name: "import", helpGlobals: [],
-		about: "Move a site from another generator: rename and rewrite what's mechanical, and list the rest",
-		options: [{ long: "write", help: "Make the changes (without it, only list them)" }],
-		positionals: [{ name: "generator", help: "The generator the site is built with: eleventy, jekyll or zola", required: true }, { name: "dir", help: "The site's folder (default: the current folder)", required: false, default: "." }],
-		afterHelp: "Run it in a clean git checkout, read the list, then run it again with --write. `ssqch docs --from <generator>` prints the trailhead for each generator.",
+		name: "scout", helpGlobals: [],
+		about: "Scout a site built with another generator: what moving it to ssqch takes, with file and line, and what's left during a move. Changes nothing unless asked",
+		options: [
+			{ long: "from", value: "GENERATOR", help: "The generator the site is built with, when it isn't the one scout finds: eleventy, jekyll, zola, hugo, mkdocs, docusaurus, astro, vitepress or hexo" },
+			FORMAT,
+			{ long: "write-draft", help: "Write the draft's new files (a config draft, directory data, includes, hooks); never overwrites a file" },
+			{ long: "patch", value: "FILE", help: "Write the mechanical edits (renames, a data file's name, an attribute) to FILE as a patch to review; nothing is applied" },
+		],
+		positionals: [{ name: "dir", help: "The site's folder (default: the current folder)", required: false, default: "." }],
+		afterHelp: "Run it before a move, and again during one to see what's left. `ssqch docs \"scouting a site\"` explains the report and its JSON, and `ssqch docs --from <generator>` prints each generator's trailhead.",
 		own: true,
 	},
+
 	{
 		name: "baseline", helpGlobals: ["root", "quiet"],
 		about: "Build the site with its old generator, in fresh copies with the clock pinned, and compare the builds: what to compare ssqch's with",
 		options: [
 			{ long: "from", value: "DIR", help: "The folder the command writes (Eleventy and Jekyll: _site; Hugo: public; Astro: dist)", default: "_site" },
 			{ long: "runs", value: "RUNS", help: "How many builds to make and compare", default: "3", check: number },
-			{ long: "commit", value: "REV", help: "Build this commit instead of the working tree (the one before `ssqch import --write`)" },
+			{ long: "commit", value: "REV", help: "Build this commit instead of the working tree (the one before the move's first change)" },
 			{ long: "to", value: "NAME", help: "Where the builds go: the default makes .cache/ssqch/baseline/ref-1, -2 and -3", default: ".cache/ssqch/baseline/ref" },
 			{ long: "link", value: "PATH", help: "Link this folder of the site into each copy, as node_modules, .bundle and vendor/bundle are (repeatable)", many: true },
 			{ long: "patch", value: "FILE", help: "Apply this patch (git diff's) to each copy before building: a fix the --commit needs to build" },
@@ -176,7 +182,7 @@ export const GRAMMAR: Grammar = { name: "ssqch", about: "SiteSquatch (ssqch): a 
 
 /** The options that take a value, so it isn't taken for the command. */
 const VALUED = ["--root", "--output", "-o", "--base", "--env", "-d", "--destination", "--pathprefix", "--port", "-p", "--ready-file", "--format", "--title", "--date", "--blueprint", "--set", "--field", "--ignore", "--only", "--exclude", "--lines", "--top", "--starter", "--engine"];
-/** The commands that read their own arguments, and `import` (0.7 read its line apart from the build's too): left as they are, so `-d` there is refused with its hint. */
+/** The commands that read their own arguments, and `scout` (0.7 read `import`'s line apart from the build's too): left as they are, so `-d` there is refused with its hint. */
 const OWN = COMMANDS.filter((c) => c.raw || c.own).map((c) => c.name);
 
 /**
@@ -326,7 +332,7 @@ export async function main(argv: string[]): Promise<number> {
 	// It runs another generator, not ssqch's build, so nothing below applies either.
 	if (command === "baseline") return (await import("./commands/baseline.ts")).runBaseline({ root: value("root") ?? ".", command: cli.positionals.join(" "), from: value("from") ?? "_site", runs: Number(value("runs") ?? "3"), commit: value("commit"), to: value("to") ?? ".cache/ssqch/baseline/ref", link: [cli.options.link ?? []].flat() as string[], patch: value("patch"), copyInstalls: flag("copy-installs"), quiet: flag("quiet") });
 	// It reads the site's files as text and runs none of them, so nothing below applies.
-	if (command === "import") return (await import("./import.ts")).runImport(cli.positionals[0], cli.positionals[1] ?? ".", flag("write"));
+	if (command === "scout") return (await import("./scout.ts")).runScout(cli.positionals[0] ?? ".", { from: value("from"), format: value("format") === "json" ? "json" : "text", writeDraft: flag("write-draft"), patch: value("patch") });
 
 	// The commands that don't build the site.
 	switch (command) {

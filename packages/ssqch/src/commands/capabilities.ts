@@ -56,6 +56,7 @@ export interface Capabilities {
 	imageFormats: string[];
 	starters: string[];
 	starterEngines: string[];
+	/** The generators `ssqch scout` reads a site of in depth (the key is 0.7's, from when they were importers). */
 	importers: string[];
 }
 
@@ -90,7 +91,7 @@ export async function capabilities(commands: string[]): Promise<Capabilities> {
 		imageFormats: avif ? ["avif", "webp", "jpeg", "png", "gif", "svg"] : ["webp", "jpeg", "png", "gif", "svg"],
 		starters: ["site", "docs"],
 		starterEngines: starterEngines(),
-		importers: ["eleventy", "jekyll", "zola"],
+		importers: ["eleventy", "jekyll", "zola", "hugo", "mkdocs"],
 	};
 }
 
@@ -110,7 +111,7 @@ function text(caps: Capabilities): string {
 	row("Globals", caps.globals.join(", "));
 	row("Image formats", caps.imageFormats.join(", "));
 	row("Starters", `${caps.starters.join(", ")} (in ${caps.starterEngines.join(", ")})`);
-	row("Importers", caps.importers.join(", "));
+	row("Scout reads", caps.importers.join(", "));
 	return out + "\n--format json has all of it, with each module's exports.\n";
 }
 

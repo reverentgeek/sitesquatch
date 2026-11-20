@@ -1,4 +1,4 @@
-// From crates/ssqch/src/import.rs.
+// From crates/ssqch/src/import.rs (0.7's importer, whose detectors scout's are).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readToml } from "./data.ts";
-import { blankComments, draftConfig, eleventy, jekyll, jekyllPermalink, rewriteData, jekyllTemplateNotes, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./import.ts";
+import { blankComments, detect, draftConfig, eleventy, hugo, jekyll, mkdocs, patchOf, unifiedHunks, jekyllPermalink, rewriteData, jekyllTemplateNotes, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./scout.ts";
 import { VERSION } from "./version.ts";
 
 test("zola_front_matter_gets_ssqch_names", () => {
@@ -575,4 +575,102 @@ test("jekyll_import_reads_a_site_like_rubys", () => {
 	const said = (at: string) => plan.byHand.find(([a]) => a === at)?.[1] ?? "";
 	assert.ok(said("_plugins/posted_by.rb").startsWith("a Ruby plugin, which ssqch doesn't run: filters `posted_by`: functions in the config's `filters`"), said("_plugins/posted_by.rb"));
 	assert.ok(said("_plugins/llms.rb").includes("a `site` `post_write` hook: `afterBuild`"), said("_plugins/llms.rb"));
+});
+
+/** A folder with these files in it. */
+function site(name: string, files: Record<string, string>): string {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), `ssqch-scout-${name}-`));
+	for (const [rel, text] of Object.entries(files)) {
+		fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+		fs.writeFileSync(path.join(dir, rel), text);
+	}
+	return dir;
+}
+
+test("scout_finds_the_generator_from_its_files", () => {
+	assert.deepEqual(detect(site("eleventy", { "eleventy.config.js": "" })), [["eleventy", "eleventy.config.js"]]);
+	assert.deepEqual(detect(site("eleventy-pkg", { "package.json": "{\"devDependencies\":{\"@11ty/eleventy\":\"3\"}}" })), [["eleventy", "package.json (@11ty/eleventy)"]]);
+	assert.deepEqual(detect(site("jekyll", { "_config.yml": "title: x\n" })), [["jekyll", "_config.yml"]]);
+	assert.deepEqual(detect(site("jekyll-gem", { "Gemfile": "gem \"github-pages\"\n" })), [["jekyll", "Gemfile"]]);
+	// Hexo has a _config.yml too: its package says which.
+	assert.deepEqual(detect(site("hexo", { "_config.yml": "title: x\n", "package.json": "{\"dependencies\":{\"hexo\":\"7\"}}" })), [["hexo", "_config.yml and package.json (hexo)"]]);
+	// config.toml is Hugo's old name and Zola's only one.
+	assert.deepEqual(detect(site("hugo-old", { "config.toml": "baseURL = \"https://x\"\n" })), [["hugo", "config.toml (baseURL)"]]);
+	assert.deepEqual(detect(site("zola", { "config.toml": "base_url = \"https://x\"\n" })), [["zola", "config.toml (base_url)"]]);
+	assert.deepEqual(detect(site("hugo", { "hugo.toml": "" })), [["hugo", "hugo.toml"]]);
+	assert.deepEqual(detect(site("mkdocs", { "mkdocs.yml": "" })), [["mkdocs", "mkdocs.yml"]]);
+	assert.deepEqual(detect(site("docusaurus", { "docusaurus.config.ts": "" })), [["docusaurus", "docusaurus.config.ts"]]);
+	assert.deepEqual(detect(site("nothing", { "index.html": "" })), []);
+	assert.equal(detect(site("two", { "mkdocs.yml": "", "hugo.toml": "" })).length, 2);
+});
+
+test("scout_patches_apply_with_git", () => {
+	// Three lines of context, hunks that share context joined, and a file without a last newline.
+	const before = Array.from({ length: 20 }, (_, i) => `line ${i + 1}\n`).join("");
+	const after = before.replace("line 2\n", "line two\n").replace("line 5\n", "line five\n").replace("line 18\n", "");
+	assert.equal(unifiedHunks(before, after), "@@ -1,8 +1,8 @@\n line 1\n-line 2\n+line two\n line 3\n line 4\n-line 5\n+line five\n line 6\n line 7\n line 8\n@@ -15,6 +15,5 @@\n line 15\n line 16\n line 17\n-line 18\n line 19\n line 20\n");
+	assert.equal(unifiedHunks("a\nb", "a\nc"), "@@ -1,2 +1,2 @@\n a\n-b\n\\ No newline at end of file\n+c\n\\ No newline at end of file\n");
+	assert.equal(unifiedHunks("", "a\n"), "@@ -0,0 +1,1 @@\n+a\n");
+	// A rename with an edit, and one without, applied by git to the files as they are.
+	const dir = site("patch", { "a.json": before, "b.11tydata.json": "{}\n", "c.md": "x\n" });
+	const patch = patchOf({ from: "Eleventy", renames: [["b.11tydata.json", "b.data.json"], ["c.md", "d.md"]], edits: [["a.json", ["edited"], after], ["c.md", ["edited"], "y\n"]], newFiles: [], byHand: [] }, dir);
+	fs.writeFileSync(path.join(dir, "move.patch"), patch);
+	const r = spawnSync("git", ["apply", "move.patch"], { cwd: dir, encoding: "utf8" });
+	assert.equal(r.status, 0, `${r.stderr}\n${patch}`);
+	assert.equal(fs.readFileSync(path.join(dir, "a.json"), "utf8"), after);
+	assert.equal(fs.readFileSync(path.join(dir, "b.data.json"), "utf8"), "{}\n");
+	assert.equal(fs.readFileSync(path.join(dir, "d.md"), "utf8"), "y\n");
+	assert.ok(!fs.existsSync(path.join(dir, "b.11tydata.json")) && !fs.existsSync(path.join(dir, "c.md")));
+});
+
+test("scout_lists_what_a_hugo_site_uses", () => {
+	const dir = site("hugo-list", {
+		"hugo.toml": "baseURL = \"https://example.com/\"\n",
+		"content/trails/_index.md": "---\ntitle: Trails\ncascade:\n  layout: trail\n---\n",
+		"content/trails/cedar.md": "---\ntitle: Cedar\n---\n{{< note >}}Pack water{{< /note >}}\n\n{{< youtube abc >}}\n{{< note >}}x{{< /note >}}\n",
+		"content/trails/old-growth.md": "---\ntitle: Old Growth\n---\nWrite `{{ .Title }}` in a template.\n",
+		"layouts/baseof.html": "{{ $js := resources.Get \"app.js\" | js.Build }}{{ block \"main\" . }}{{ end }}\n",
+		"layouts/shortcodes/note.html": "<aside>{{ .Inner }}</aside>",
+		"layouts/_markup/render-link.html": "<a href=\"{{ .Destination }}\">{{ .Text }}</a>",
+		"layouts/_markup/render-table.html": "<table></table>",
+		"static/robots.txt": "",
+	});
+	const said = hugo(dir).byHand.map(([at, what]) => `${at}: ${what}`);
+	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
+	has("content: 2 shortcodes, called in 1 page (each below, most used first): shortcodes aren't in ssqch yet.");
+	has("content/trails/cedar.md:4: `{{< note >}}`, the site's own (2 uses in 1 file; this is the first)");
+	has("content/trails/cedar.md:6: `{{< youtube >}}`, Hugo's (1 use in 1 file; this is the first)");
+	has("content/trails/old-growth.md:4: `{{ }}` or `{% %}` as text in 1 page");
+	has("content: 1 section (`_index.md`)");
+	has("`cascade` in 1 page's front matter");
+	has("layouts/_markup/render-link.html: a render hook: ssqch's is `_includes/hooks/link.<ext>`");
+	has("layouts/_markup/render-table.html: a table hook: not in ssqch yet");
+	has("layouts: 4 Go templates:");
+	has("layouts/baseof.html:1: `js.Build` (esbuild)");
+	has("static: copied as they are");
+	assert.ok(!said.some((line) => line.includes("/note")), said.join("\n"));
+});
+
+test("scout_lists_what_an_mkdocs_site_uses", () => {
+	const dir = site("mkdocs-list", {
+		// MkDocs' YAML tags read as plain values.
+		"mkdocs.yml": "site_name: Trail\nsite_url: https://example.com/\nrepo_url: https://example.com/repo\ntheme:\n  name: material\nnav:\n  - Home: index.md\n  - Trails:\n    - trails/cedar.md\n    - Old Growth: trails/old.md\nplugins:\n  - search\n  - redirects:\n      redirect_maps: {}\n  - pine-cones\nmarkdown_extensions:\n  - admonition\n  - toc:\n      slugify: !!python/object/apply:pymdownx.slugs.slugify\n        kwds:\n          case: lower\n  - pymdownx.emoji:\n      emoji_index: !!python/name:material.extensions.emoji.twemoji\nextra:\n  analytics: !ENV [ANALYTICS, none]\n",
+		"docs/index.md": "# Home\n\n!!! note \"Pack\"\n    Water\n\n=== \"Cedar\"\n\n    Flat\n\nSee [Cedar](trails/cedar.md#trailhead) and [old].\n\n[old]: trails/old.md\n",
+		"docs/trails/cedar.md": "---\ndate:\n  created: 2026-01-02\n---\n:material-pine-tree: Cedar\n",
+	});
+	const said = mkdocs(dir).byHand.map(([at, what]) => `${at}: ${what}`);
+	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
+	has("mkdocs.yml: the config: dirs: { input: \"docs\", output: \"site\" }; the site's URL (https://example.com/)");
+	has("mkdocs.yml: nav: the nav (3 entries)");
+	has("mkdocs.yml: theme: Material's templates are Jinja");
+	has("mkdocs.yml: plugins: `search`: ssqch has no search index of its own");
+	has("mkdocs.yml: plugins: `redirects`: `redirectsPlugin({ redirects })`");
+	has("mkdocs.yml: plugins: `pine-cones`: not in ssqch yet: port it as a plugin");
+	has("mkdocs.yml: markdown_extensions: `toc`: heading ids are `headingIds`");
+	has("mkdocs.yml: markdown_extensions: `pymdownx.emoji`: `:icon:` shortcodes: not in ssqch yet");
+	has("docs/index.md:10: links to .md files (2 uses in 1 file; this is the first)");
+	has("docs/index.md:3: admonitions (`!!!`, `???`) (1 use in 1 file");
+	has("docs/index.md:6: tabs (`===`) (1 use in 1 file");
+	has("docs/trails/cedar.md:5: icons and emoji (`:name:`) (1 use in 1 file");
+	has("docs/trails/cedar.md: `date: { created, updated }` front matter");
 });

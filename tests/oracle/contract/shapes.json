@@ -557,5 +557,45 @@
     "errors": [
       "empty"
     ]
+  },
+  "scout": {
+    "generator": "string",
+    "name": "string",
+    "detectedBy": "string",
+    "underWay": "boolean",
+    "build": {
+      "command": "string",
+      "output": "string",
+      "baseline": "string",
+      "needs": [
+        "string"
+      ]
+    },
+    "todo": [
+      {
+        "at": "string",
+        "what": "string"
+      }
+    ],
+    "draft": [
+      {
+        "path": "string",
+        "from": "string",
+        "there": "boolean"
+      }
+    ],
+    "edits": [
+      {
+        "path": "string",
+        "changes": [
+          "string"
+        ]
+      }
+    ],
+    "wroteDraft": [
+      "string"
+    ],
+    "patch": "string",
+    "trailhead": "string"
   }
 }

@@ -1,21 +1,20 @@
-// `ssqch import <generator>`: the mechanical part of moving a site.
+// `ssqch scout`: what moving a site from another generator takes, as a report that's safe to run
+// any time. It detects the generator, lists what the site uses that needs doing in ssqch (with
+// file and line), names the reference build for `ssqch baseline`, and, run again during a move,
+// shows what's left. Nothing changes unless it's asked: `--write-draft` writes the new files (a
+// config draft, directory data, includes, hooks) and never overwrites one, and `--patch <file>`
+// writes the mechanical edits as a patch to review and apply (`git apply`), never applying it.
 //
-// What an importer is for (decided 2026-11-20, after five fresh moves): it lists what needs doing,
-// with file and line; it writes a config draft and new files (directory data, includes, hooks);
-// and it makes only edits that are mechanical and clearly right (a data file's name, an image
-// attribute, a layout's extension). It doesn't rewrite a site's templates: regex surgery on
-// someone's Liquid broke a new way on every site (www.ruby-lang.org: 1,002 pages' output changed,
-// and 18 data files were corrupted). Where a template would need a rewrite, ssqch gets the
-// compatibility instead (`jekyllTemplates`, Eleventy's front matter keys as aliases), or the
-// importer lists it.
+// It replaced `ssqch import` (2026-11-20, after seven fresh moves). An importer that rewrote a
+// site's templates broke a new way on every site (www.ruby-lang.org: 1,002 pages' output changed,
+// and 18 data files were corrupted), and the agents doing the moves got the most from the list,
+// not the rewrite. Where a template would need a rewrite, ssqch gets the compatibility instead
+// (`jekyllTemplates`, Eleventy's front matter keys as aliases), or scout lists it. The edits it
+// still makes are mechanical and clearly right: a data file's name, an image attribute, a layout's
+// extension.
 //
-// It renames data files, rewrites front matter keys and attributes to ssqch's names, writes a
-// first `ssqch.config.js` from what it can read in the old config, and lists what's left to do by
-// hand, with file and line. Without `--write` it only says what it would do.
-//
-// This is 0.7's importer (`crates/ssqch/src/import.rs`), messages and all. It reads a site's files
-// as text and never runs them, so nothing in it was there for QuickJS, and nothing changes now
-// that a site's packages run on Node.
+// The Eleventy, Jekyll and Zola detectors are 0.7's importer (`crates/ssqch/src/import.rs`). They
+// read a site's files as text and never run them.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { builtinModules, createRequire } from "node:module";
@@ -34,7 +33,7 @@ import { compareText, isDir, isFile } from "./paths.ts";
 import { rustRegExp } from "./rust-regex.ts";
 import { VERSION } from "./version.ts";
 
-/** What an import would do to a site. Paths are relative to its folder. */
+/** What moving a site takes. Paths are relative to its folder. */
 export interface Plan {
 	/** The generator the site is moving from, as people write it. */
 	from: string;
@@ -48,24 +47,97 @@ export interface Plan {
 	byHand: Array<[string, string]>;
 }
 
-/** Why an import stopped: printed as `error: <message>`. */
-class ImportError extends Error {}
+/** Why scouting stopped: printed as `error: <message>`. */
+class ScoutError extends Error {}
 
 const fail = (message: string): never => {
-	throw new ImportError(message);
+	throw new ScoutError(message);
 };
 
-/** `ssqch import <generator> [dir] [--write]`: prints the plan, makes it with `write`, and answers with the exit code. */
-export function runImport(generator: string, dir: string, write: boolean): number {
+/** The generators scout knows: its id, the name people write, and the build command `ssqch baseline` runs. */
+const GENERATORS: Record<string, { name: string; build: string; output: string }> = {
+	eleventy: { name: "Eleventy", build: "npx @11ty/eleventy", output: "_site" },
+	jekyll: { name: "Jekyll", build: "bundle exec jekyll build", output: "_site" },
+	zola: { name: "Zola", build: "zola build", output: "public" },
+	hugo: { name: "Hugo", build: "hugo", output: "public" },
+	mkdocs: { name: "MkDocs", build: "mkdocs build", output: "site" },
+	docusaurus: { name: "Docusaurus", build: "npx docusaurus build", output: "build" },
+	astro: { name: "Astro", build: "npx astro build", output: "dist" },
+	vitepress: { name: "VitePress", build: "npx vitepress build", output: ".vitepress/dist" },
+	hexo: { name: "Hexo", build: "npx hexo generate", output: "public" },
+};
+const ALIASES: Record<string, string> = { "11ty": "eleventy" };
+
+export interface ScoutOptions {
+	/** The generator, when it isn't the one scout finds (`--from`). */
+	from?: string;
+	format: "text" | "json";
+	/** Write the draft's new files (`--write-draft`). */
+	writeDraft: boolean;
+	/** Write the edits as a patch to this file (`--patch`). */
+	patch?: string;
+}
+
+/** Which generator builds the site in `dir`, and the file that says so; every one that matches, when it's more than one. */
+export function detect(dir: string): Array<[string, string]> {
+	const has = (rel: string) => fs.existsSync(path.join(dir, rel));
+	const text = (rel: string) => readUtf8(path.join(dir, rel)) ?? "";
+	const deps = (() => {
+		try {
+			const pkg = JSON.parse(text("package.json") || "{}");
+			return new Set(Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }));
+		} catch { return new Set<string>(); }
+	})();
+	const found: Array<[string, string]> = [];
+	const eleventyConfig = ELEVENTY_CONFIGS.find(has);
+	if (eleventyConfig) found.push(["eleventy", eleventyConfig]);
+	else if (deps.has("@11ty/eleventy")) found.push(["eleventy", "package.json (@11ty/eleventy)"]);
+	const mkdocs = ["mkdocs.yml", "mkdocs.yaml"].find(has);
+	if (mkdocs) found.push(["mkdocs", mkdocs]);
+	const docusaurus = ["docusaurus.config.js", "docusaurus.config.ts", "docusaurus.config.mjs"].find(has);
+	if (docusaurus) found.push(["docusaurus", docusaurus]);
+	const astro = ["astro.config.mjs", "astro.config.js", "astro.config.ts", "astro.config.mts"].find(has);
+	if (astro) found.push(["astro", astro]);
+	if (has(".vitepress") || has("docs/.vitepress")) found.push(["vitepress", has(".vitepress") ? ".vitepress" : "docs/.vitepress"]);
+	const jekyllConfig = ["_config.yml", "_config.yaml", "_config.toml"].find(has);
+	if (jekyllConfig && deps.has("hexo")) found.push(["hexo", `${jekyllConfig} and package.json (hexo)`]);
+	else if (jekyllConfig) found.push(["jekyll", jekyllConfig]);
+	else if (/\b(jekyll|github-pages)\b/.test(text("Gemfile"))) found.push(["jekyll", "Gemfile"]);
+	const hugoConfig = ["hugo.toml", "hugo.yaml", "hugo.yml", "hugo.json", "config/_default/hugo.toml", "config/_default/config.toml", "config/_default/hugo.yaml"].find(has);
+	if (hugoConfig) found.push(["hugo", hugoConfig]);
+	// config.toml is Hugo's old name and Zola's only one: Hugo writes `baseURL`, Zola `base_url`.
+	const configToml = text("config.toml");
+	if (!hugoConfig && /^\s*baseURL\s*=/m.test(configToml)) found.push(["hugo", "config.toml (baseURL)"]);
+	else if (/^\s*base_url\s*=/m.test(configToml)) found.push(["zola", "config.toml (base_url)"]);
+	else if (has("zola.toml")) found.push(["zola", "zola.toml"]);
+	return found;
+}
+
+/** `ssqch scout [dir]`: prints the report, writes the draft and the patch when asked, and answers with the exit code. */
+export function runScout(dir: string, options: ScoutOptions): number {
 	try {
-		let plan: Plan;
-		if (generator === "eleventy" || generator === "11ty") plan = eleventy(dir);
-		else if (generator === "zola") plan = zola(dir);
-		else if (generator === "jekyll") plan = jekyll(dir);
-		else if (["hugo", "docusaurus", "mkdocs", "hexo", "astro", "vitepress"].includes(generator)) plan = fail(`there's no importer for ${generator} yet (only eleventy, jekyll and zola): \`ssqch docs --from ${generator}\` has its words and trailhead, and \`ssqch baseline "<its build command>"\` builds the site with it to compare with`);
-		else plan = fail(`${generator}: not a generator ssqch can import from (use eleventy, jekyll or zola)`);
-		process.stdout.write(describe(plan, dir, write));
-		if (write) process.stdout.write(apply(plan, dir));
+		if (!isDir(dir)) fail(`${dir} isn't a folder`);
+		let id: string;
+		let how: string;
+		if (options.from !== undefined) {
+			id = ALIASES[options.from] ?? options.from;
+			if (!GENERATORS[id]) fail(`${options.from}: not a generator scout knows (${Object.keys(GENERATORS).join(", ")})`);
+			how = "--from";
+		} else {
+			const found = detect(dir);
+			if (found.length === 0) {
+				const ssqch = findConfig(dir) !== undefined ? ": it has an ssqch.config.js, and nothing of another generator's, so the move may be done" : "";
+				fail(`couldn't tell which generator builds the site in ${dir}${ssqch}. Name it with --from (${Object.keys(GENERATORS).join(", ")})`);
+			}
+			if (found.length > 1) fail(`more than one generator's files are in ${dir} (${found.map(([g, file]) => `${GENERATORS[g].name}: ${file}`).join("; ")}): choose with --from`);
+			[id, how] = found[0];
+		}
+		const plan = id === "eleventy" ? eleventy(dir) : id === "jekyll" ? jekyll(dir) : id === "zola" ? zola(dir) : id === "hugo" ? hugo(dir) : id === "mkdocs" ? mkdocs(dir) : other(dir, id);
+		const report = scoutReport(plan, dir, id, how);
+		if (options.writeDraft) for (const file of report.draft) if (!file.there) writeNew(dir, file.path, plan.newFiles.find(([p]) => p === file.path)![2]);
+		if (options.patch !== undefined) attempt(() => fs.writeFileSync(options.patch!, patchOf(plan, dir)), `writing ${options.patch}`);
+		if (options.format === "json") process.stdout.write(`${JSON.stringify(scoutJson(report, options), null, 2)}\n`);
+		else process.stdout.write(scoutText(report, options));
 		return 0;
 	} catch (e) {
 		process.stderr.write(`${red("error:")} ${e instanceof Error ? e.message : String(e)}\n`);
@@ -73,40 +145,209 @@ export function runImport(generator: string, dir: string, write: boolean): numbe
 	}
 }
 
-/** What the plan does, as the dry run and `--write` print it. */
-export function describe(plan: Plan, dir: string, write: boolean): string {
-	let out = `Importing the ${plan.from} site in ${dir}${write ? "" : " (a dry run: nothing is changed; add --write to make the changes)"}\n`;
-	if (plan.renames.length) {
-		out += `\nRename (${plan.renames.length})\n`;
-		for (const [from, to] of plan.renames) out += `  ${from} -> ${to}\n`;
+/** What scout found, as both formats print it. */
+export interface Report {
+	dir: string;
+	/** The generator's id (`jekyll`) and name (`Jekyll`), and what said so: a file, or `--from`. */
+	generator: string;
+	name: string;
+	detectedBy: string;
+	/** The reference build: the command for `ssqch baseline`, and the folder it writes. */
+	build: { command: string; output: string; baseline: string; needs: string[] };
+	todo: Array<{ at: string; what: string }>;
+	draft: Array<{ path: string; from: string; there: boolean }>;
+	edits: Array<{ path: string; to?: string; changes: string[] }>;
+	/** Whether the site has an ssqch.config.js already: a move under way. */
+	underWay: boolean;
+}
+
+export function scoutReport(plan: Plan, dir: string, id: string, how: string): Report {
+	const g = GENERATORS[id];
+	const { command, output, needs } = referenceBuild(dir, id);
+	const baseline = `ssqch baseline ${JSON.stringify(command)}${output === "_site" ? "" : ` --from ${output}`}`;
+	const edits: Report["edits"] = [];
+	const renamed = new Map(plan.renames);
+	for (const [file, changes] of plan.edits) edits.push({ path: file, ...(renamed.has(file) ? { to: renamed.get(file) } : {}), changes });
+	for (const [from, to] of plan.renames) if (!plan.edits.some(([file]) => file === from)) edits.push({ path: from, to, changes: ["renamed"] });
+	return {
+		dir, generator: id, name: g.name, detectedBy: how,
+		build: { command, output, baseline, needs },
+		todo: plan.byHand.map(([at, what]) => ({ at, what })),
+		draft: plan.newFiles.map(([file, from]) => ({ path: file, from, there: fs.existsSync(path.join(dir, file)) || (file === "ssqch.config.js" && findConfig(dir) !== undefined) })),
+		edits,
+		underWay: findConfig(dir) !== undefined,
+	};
+}
+
+/** The old generator's build command, from what the site says (a package.json script, Netlify's config), and what it needs to build the way the live site does. */
+function referenceBuild(dir: string, id: string): { command: string; output: string; needs: string[] } {
+	const g = GENERATORS[id];
+	let command = g.build;
+	let output = g.output;
+	const needs: string[] = [];
+	const netlify = readUtf8(path.join(dir, "netlify.toml")) ?? "";
+	const netlifyCommand = /^\s*command\s*=\s*"([^"]+)"/m.exec(netlify)?.[1];
+	const netlifyPublish = /^\s*publish\s*=\s*"([^"]+)"/m.exec(netlify)?.[1];
+	let scripts: Record<string, string> = {};
+	try { scripts = JSON.parse(readUtf8(path.join(dir, "package.json")) ?? "{}").scripts ?? {}; } catch { /* no package.json */ }
+	const words: Record<string, RegExp> = { eleventy: /\beleventy\b/, jekyll: /\bjekyll\b/, hugo: /\bhugo\b/, zola: /\bzola\b/, mkdocs: /\bmkdocs\b/, docusaurus: /\bdocusaurus\b/, astro: /\bastro\b/, vitepress: /\bvitepress\b/, hexo: /\bhexo\b/ };
+	if (netlifyCommand && words[id].test(netlifyCommand)) command = netlifyCommand;
+	else if (typeof scripts.build === "string" && words[id].test(scripts.build)) command = "npm run build";
+	if (netlifyPublish && command === netlifyCommand) output = netlifyPublish.replace(/^\.\//, "").replace(/\/$/, "");
+	if (id === "jekyll") {
+		const gemfile = readUtf8(path.join(dir, "Gemfile")) ?? "";
+		if (/\bgithub-pages\b/.test(gemfile)) {
+			const remote = spawnSync("git", ["remote", "get-url", "origin"], { cwd: dir, encoding: "utf8" }).stdout?.trim() ?? "";
+			const nwo = /github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/.exec(remote)?.[1];
+			needs.push(`PAGES_REPO_NWO=${nwo ?? "<owner>/<repo>"} in the environment: the github-pages gem reads the repository's name from GitHub, and without it writes placeholder github.com/pages/ URLs on every page`);
+		}
 	}
-	if (plan.edits.length) {
-		out += `\nEdit (${plan.edits.length})\n`;
-		for (const [file, changes] of plan.edits) out += `  ${file}: ${changes.join(", ")}\n`;
+	if (/\btailwindcss\b/.test(readUtf8(path.join(dir, "package.json")) ?? "") && !["eleventy", "astro", "docusaurus", "vitepress"].includes(id)) needs.push("Node and `npm install` first: the site builds its CSS with Tailwind");
+	return { command, output, needs };
+}
+
+/** The report, as the terminal shows it. */
+export function scoutText(report: Report, options: Pick<ScoutOptions, "writeDraft" | "patch">): string {
+	let out = `Scouting the ${report.name} site in ${report.dir} (found ${report.detectedBy === "--from" ? "with --from" : report.detectedBy})${report.underWay ? ": a move under way, with an ssqch.config.js" : ""}\n`;
+	out += `\nReference build\n  ${report.build.baseline}\n`;
+	for (const need of report.build.needs) out += `  needs ${need}\n`;
+	if (report.todo.length) {
+		out += `\nTo do (${report.todo.length})\n`;
+		for (const { at, what } of report.todo) out += `  ${at}: ${what}\n`;
 	}
-	if (plan.newFiles.length) {
-		out += `\nCreate (${plan.newFiles.length})\n`;
-		for (const [file, from] of plan.newFiles) out += `  ${file} (${from})\n`;
+	const left = report.draft.filter((f) => !f.there);
+	if (report.draft.length) {
+		out += `\nDraft (${left.length} to write${left.length < report.draft.length ? `, ${report.draft.length - left.length} there already` : ""})${options.writeDraft ? "" : ": --write-draft writes them, and never overwrites a file"}\n`;
+		for (const f of report.draft) out += `  ${f.path} (${f.from})${f.there ? " [there already]" : ""}\n`;
 	}
-	if (!plan.renames.length && !plan.edits.length && !plan.newFiles.length) out += "\nNothing to rename, edit or create.\n";
-	if (plan.byHand.length) {
-		out += `\nBy hand (${plan.byHand.length})\n`;
-		for (const [at, what] of plan.byHand) out += `  ${at}: ${what}\n`;
+	if (report.edits.length) {
+		out += `\nEdits (${report.edits.length})${options.patch !== undefined ? "" : ": --patch <file> writes them as a patch to review, and changes nothing"}\n`;
+		for (const e of report.edits) out += `  ${e.path}${e.to ? ` -> ${e.to}` : ""}${e.changes.length && e.changes[0] !== "renamed" ? `: ${e.changes.join(", ")}` : ""}\n`;
 	}
-	out += `\nNext: \`ssqch baseline "<${plan.from}'s build command>"\` (before --write, or with --commit) builds the site with ${plan.from} to compare with; then \`ssqch build\` and \`ssqch diff <the baseline> <ssqch's output>\`, the biggest group first. The whole loop: \`ssqch docs "moving a site with an agent"\`.\n`;
+	if (!report.todo.length && !left.length && !report.edits.length) out += "\nNothing left to do that scout can see.\n";
+	if (options.writeDraft) out += `\nWrote ${left.length} draft ${left.length === 1 ? "file" : "files"}.\n`;
+	if (options.patch !== undefined) out += `\nWrote ${report.edits.length} ${report.edits.length === 1 ? "edit" : "edits"} to ${options.patch}: read it, then \`git apply ${options.patch}\`${report.dir === "." ? "" : ` in ${report.dir}`}.\n`;
+	out += `\nNext: \`${report.build.baseline}\` builds the site with ${report.name} to compare with${report.edits.length ? " (before the patch, or with --commit)" : ""}; then \`ssqch build\` and \`ssqch diff .cache/ssqch/baseline/ref-1 <ssqch's output>\`, the biggest group first. \`ssqch docs --from ${report.generator}\` has ${report.name}'s words and trailhead, and \`ssqch docs "moving a site with an agent"\` the whole loop. Run scout again to see what's left.\n`;
 	return out;
 }
 
-/** Makes the changes, and answers with the line that says so. Edits are written before the renames move the files. */
-export function apply(plan: Plan, dir: string): string {
-	for (const [file, , contents] of plan.edits) attempt(() => fs.writeFileSync(path.join(dir, file), contents), `writing ${file}`);
-	for (const [from, to] of plan.renames) {
-		if (fs.existsSync(path.join(dir, to))) fail(`${to} is in the way of renaming ${from}`);
-		attempt(() => fs.renameSync(path.join(dir, from), path.join(dir, to)), `renaming ${from} to ${to}`);
+/** The report for machines: `--format json`. */
+export function scoutJson(report: Report, options: Pick<ScoutOptions, "writeDraft" | "patch">): Record<string, unknown> {
+	return {
+		generator: report.generator,
+		name: report.name,
+		detectedBy: report.detectedBy,
+		underWay: report.underWay,
+		build: report.build,
+		todo: report.todo,
+		draft: report.draft,
+		edits: report.edits,
+		wroteDraft: options.writeDraft ? report.draft.filter((f) => !f.there).map((f) => f.path) : [],
+		patch: options.patch ?? null,
+		trailhead: `ssqch docs --from ${report.generator}`,
+	};
+}
+
+/** Writes a draft file, and its folder; scout never overwrites one (the report counts it as there already). */
+function writeNew(dir: string, file: string, contents: string): void {
+	const to = path.join(dir, file);
+	if (fs.existsSync(to)) return;
+	attempt(() => { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.writeFileSync(to, contents, { flag: "wx" }); }, `writing ${file}`);
+}
+
+// ---- the patch ------------------------------------------------------------------------------
+
+/** The plan's renames and edits as a git patch, with paths from the repository's top when the site is in one, so `git apply` in the site's folder applies it. */
+export function patchOf(plan: Plan, dir: string): string {
+	const prefix = spawnSync("git", ["rev-parse", "--show-prefix"], { cwd: dir, encoding: "utf8" }).stdout?.trim() ?? "";
+	const at = (rel: string) => `${prefix}${rel}`.replace(/\\/g, "/");
+	const renamed = new Map(plan.renames);
+	const files = new Set([...plan.edits.map(([f]) => f), ...plan.renames.map(([f]) => f)]);
+	let out = "";
+	for (const file of [...files].sort(compareText)) {
+		const to = renamed.get(file) ?? file;
+		const before = readUtf8(path.join(dir, file)) ?? "";
+		const after = plan.edits.find(([f]) => f === file)?.[2] ?? before;
+		out += `diff --git a/${at(file)} b/${at(to)}\n`;
+		if (to !== file) out += `rename from ${at(file)}\nrename to ${at(to)}\n`;
+		if (before !== after) out += `--- a/${at(file)}\n+++ b/${at(to)}\n${unifiedHunks(before, after)}`;
 	}
-	// A new file can be in a folder that isn't there yet (`_includes/seo.liquid`).
-	for (const [file, , contents] of plan.newFiles) attempt(() => { fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true }); fs.writeFileSync(path.join(dir, file), contents); }, `writing ${file}`);
-	return `Done: ${plan.renames.length} renamed, ${plan.edits.length} edited, ${plan.newFiles.length} created. Welcome to the woods.\n`;
+	return out;
+}
+
+/** The hunks of a unified diff between two texts, three lines of context, as `git apply` reads them. */
+export function unifiedHunks(before: string, after: string): string {
+	const split = (t: string) => (t === "" ? [] : t.split(/(?<=\n)/));
+	const a = split(before);
+	const b = split(after);
+	const ops = lineOps(a, b);
+	const CONTEXT = 3;
+	let out = "";
+	let i = 0;
+	while (i < ops.length) {
+		if (ops[i].kind === " ") { i++; continue; }
+		let start = Math.max(0, i - CONTEXT);
+		let end = i;
+		// Extend through changes that are close enough to share context.
+		for (;;) {
+			while (end < ops.length && ops[end].kind !== " ") end++;
+			let next = end;
+			while (next < ops.length && ops[next].kind === " ") next++;
+			if (next < ops.length && next - end <= CONTEXT * 2) { end = next; continue; }
+			end = Math.min(ops.length, end + CONTEXT);
+			break;
+		}
+		const slice = ops.slice(start, end);
+		const aStart = ops[start].a;
+		const bStart = ops[start].b;
+		const aCount = slice.filter((o) => o.kind !== "+").length;
+		const bCount = slice.filter((o) => o.kind !== "-").length;
+		out += `@@ -${aCount ? aStart + 1 : aStart},${aCount} +${bCount ? bStart + 1 : bStart},${bCount} @@\n`;
+		for (const o of slice) {
+			const line = o.kind === "+" ? b[o.b] : a[o.a];
+			out += `${o.kind}${line}${line.endsWith("\n") ? "" : "\n\\ No newline at end of file\n"}`;
+		}
+		i = end;
+		start = end;
+	}
+	return out;
+}
+
+interface LineOp { kind: " " | "-" | "+"; a: number; b: number }
+
+/** The lines kept, removed and added between `a` and `b`: Myers' diff, which is quick when the edits are few, as a draft's are. */
+function lineOps(a: string[], b: string[]): LineOp[] {
+	const n = a.length;
+	const m = b.length;
+	const max = n + m;
+	const v = new Map<number, number>([[1, 0]]);
+	const trace: Array<Map<number, number>> = [];
+	outer: for (let d = 0; d <= max; d++) {
+		trace.push(new Map(v));
+		for (let k = -d; k <= d; k += 2) {
+			let x = k === -d || (k !== d && (v.get(k - 1) ?? -1) < (v.get(k + 1) ?? -1)) ? v.get(k + 1)! : v.get(k - 1)! + 1;
+			let y = x - k;
+			while (x < n && y < m && a[x] === b[y]) { x++; y++; }
+			v.set(k, x);
+			if (x >= n && y >= m) break outer;
+		}
+	}
+	const ops: LineOp[] = [];
+	let x = n;
+	let y = m;
+	for (let d = trace.length - 1; d >= 0; d--) {
+		const vd = trace[d];
+		const k = x - y;
+		const prevK = k === -d || (k !== d && (vd.get(k - 1) ?? -1) < (vd.get(k + 1) ?? -1)) ? k + 1 : k - 1;
+		const prevX = vd.get(prevK) ?? 0;
+		const prevY = prevX - prevK;
+		while (x > prevX && y > prevY) { x--; y--; ops.push({ kind: " ", a: x, b: y }); }
+		if (d > 0) {
+			if (x === prevX) { y--; ops.push({ kind: "+", a: x, b: y }); }
+			else { x--; ops.push({ kind: "-", a: x, b: y }); }
+		}
+	}
+	return ops.reverse();
 }
 
 // ---- reading the site ----------------------------------------------------------------------
@@ -390,8 +631,7 @@ export function eleventy(dir: string): Plan {
 	if (config !== undefined) {
 		const [source, byHand] = draftConfig(config, configText, extensions, ports, major, helpers, new Set(followed.keys()), ignored);
 		plan.byHand.push(...byHand, ...helperLists);
-		if (findConfig(dir) === undefined) plan.newFiles.push(["ssqch.config.js", `a first draft, from ${config}`, source]);
-		else plan.byHand.push(["ssqch.config.js", "it's already there, so the draft from the Eleventy config wasn't written"]);
+		plan.newFiles.push(["ssqch.config.js", `a first draft, from ${config}`, source]);
 	} else {
 		plan.byHand.push([".", `no Eleventy config here (${ELEVENTY_CONFIGS.join(", ")}): is this the site's folder?`]);
 	}
@@ -1168,7 +1408,7 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 		if (value !== undefined) dirs.push(`${key}: "${value}"`);
 	}
 	const [open, close] = style.padded ? ["( {", "} )"] : ["({", "})"];
-	let out = `// A first draft, written by \`ssqch import eleventy\` from ${name}.\n// What it couldn't carry over is listed at the end; \`ssqch docs --from eleventy\` has the whole\n// mapping.\nimport { defineConfig } from "ssqch";\n\nexport default defineConfig${open}\n`;
+	let out = `// A first draft, written by \`ssqch scout\` from ${name}.\n// What it couldn't carry over is listed at the end; \`ssqch docs --from eleventy\` has the whole\n// mapping.\nimport { defineConfig } from "ssqch";\n\nexport default defineConfig${open}\n`;
 	const entries: string[] = [];
 	if (dirs.length) entries.push(`${ind}dirs: { ${dirs.join(", ")} }`);
 	if (formats.length) entries.push(`${ind}templateFormats: ${quotedList(formats)}`);
@@ -1794,7 +2034,7 @@ export function jekyll(dir: string): Plan {
 		}
 	}
 	if (seo) {
-		if (isFile(path.join(dir, includesDir, "seo.liquid"))) plan.byHand.push([`${includesDir}/seo.liquid`, "it's there already, so jekyll-seo-tag's include wasn't written: `{% seo %}` now includes it"]);
+		if (isFile(path.join(dir, includesDir, "seo.liquid"))) plan.newFiles.push([`${includesDir}/seo.liquid`, "jekyll-seo-tag's tags, for `{% seo %}`", ""]);
 		else {
 			// Jekyll's version in the generator tag, as jekyll-seo-tag wrote it, so the first build
 			// matches; `{{ ssqch.generator }}` once the move is done.
@@ -1823,6 +2063,8 @@ export function jekyll(dir: string): Plan {
 		const fence = /^---[ \t]*\r?\n/.exec(text)!;
 		const body = text.slice(fence[0].length);
 		const has = (key: string) => new RegExp(`^${key}\\s*:`, "m").test(body.slice(0, Math.max(0, body.search(/^---[ \t]*$/m))));
+		// Done already (a second run, during the move): nothing to change.
+		if (has("render")) continue;
 		const keys = [`render: liquid,${ext}`, ...(has("permalink") ? [] : [`permalink: "{{ page.filePathStem }}.${ext}"`])];
 		const next = `${fence[0]}${keys.join("\n")}\n${body}`;
 		const change = `front matter: render: liquid,${ext}${has("permalink") ? "" : ", and a permalink that keeps its name"} (Jekyll rendered it)`;
@@ -1846,7 +2088,13 @@ export function jekyll(dir: string): Plan {
 	const collectionNames: string[] = [];
 	const directoryData = (folder: string, data: Data, from: string) => {
 		const name = `${folder}/${folder.split("/").pop()!}.json`;
-		if (isFile(path.join(dir, ...name.split("/")))) return plan.byHand.push([name, `it's there already, so ${from} wasn't written into it: ${JSON.stringify(data)}`]);
+		const there = readUtf8(path.join(dir, ...name.split("/")));
+		// The same data (a draft written earlier) is the draft, there already; other data is the site's own.
+		if (there !== undefined) {
+			let same = false;
+			try { same = JSON.stringify(sortedKeys(JSON.parse(there))) === JSON.stringify(sortedKeys(data)); } catch { /* not JSON */ }
+			if (!same) return plan.byHand.push([name, `it's there already, so ${from} wasn't written into it: ${JSON.stringify(data)}`]);
+		}
 		plan.newFiles.push([name, from, `${JSON.stringify(data, null, 2)}\n`]);
 	};
 	// Every `_posts` folder (www.ruby-lang.org has one for each language, `en/news/_posts`, and
@@ -1893,7 +2141,8 @@ export function jekyll(dir: string): Plan {
 	// have them (the fresh opensource.guide move's notes went into `passthrough`).
 	const tracked = spawnSync("git", ["-C", dir, "ls-files", "-z", "--others", "--exclude-standard"], { encoding: "utf8" });
 	const untracked = tracked.status === 0 ? new Set(tracked.stdout.split("\0").filter(Boolean)) : new Set<string>();
-	const left = statics.filter((rel) => untracked.has(rel));
+	// The config scout drafted is untracked too, until the move is committed.
+	const left = statics.filter((rel) => untracked.has(rel) && !/^ssqch\.config\.[cm]?[jt]s$/.test(rel));
 	if (left.length) {
 		for (const rel of left) statics.splice(statics.indexOf(rel), 1);
 		const folders = [...new Set(left.map((rel) => (rel.includes("/") ? `${rel.slice(0, rel.indexOf("/"))}/` : rel)))].sort(compareText);
@@ -1973,7 +2222,8 @@ export function jekyll(dir: string): Plan {
 			imports.push(known.use[0]);
 			plugins.push(known.use[1]);
 		}
-		if (name !== "jekyll-seo-tag" || seo === 0) plan.byHand.push(["Gemfile", `${name} -> ${known.say}`]);
+		// Done already when the include is there (a second run, after the patch).
+		if (name !== "jekyll-seo-tag" || (seo === 0 && !isFile(path.join(dir, includesDir, "seo.liquid")))) plan.byHand.push(["Gemfile", `${name} -> ${known.say}`]);
 	}
 	// GitHub Pages' kramdown puts Rouge's classes on inline code (`default_lang: plaintext`): a
 	// `code` hook writes them, so the pages match and the site's CSS for them keeps working.
@@ -2038,7 +2288,7 @@ export function jekyll(dir: string): Plan {
 	if (kramdown.auto_ids === false) markdown[1] = "headingIds: false";
 	if (kramdown.smart_quotes !== undefined || kramdown.input === "GFM" && kramdown.hard_wrap === true) plan.byHand.push([configFile!, "kramdown's `smart_quotes` or `hard_wrap`: check the draft's `markdown` against them (`breaks: true` for `hard_wrap`)"]);
 	if (typeof config.markdown === "string" && !/kramdown/i.test(config.markdown)) plan.byHand.push([configFile!, `markdown: ${config.markdown}: the draft's options are kramdown's; ssqch's Markdown is CommonMark with extensions (\`ssqch docs markdown\`)`]);
-	let out = `// A first draft, written by \`ssqch import jekyll\` from ${configFile}.\n// \`ssqch docs --from jekyll\` has the whole mapping.\n${[...new Set(imports)].join("\n")}\n\n`;
+	let out = `// A first draft, written by \`ssqch scout\` from ${configFile}.\n// \`ssqch docs --from jekyll\` has the whole mapping.\n${[...new Set(imports)].join("\n")}\n\n`;
 	// On GitHub Pages, jekyll-github-metadata gives `site.url` from the CNAME when the config has
 	// none: opensource.guide's 381 pages had it in their canonical links, feeds and sitemap.
 	const cname = (readUtf8(path.join(dir, "CNAME")) ?? "").trim().split(/\s+/)[0];
@@ -2064,8 +2314,7 @@ export function jekyll(dir: string): Plan {
 	const pageDefaults = Object.entries(everyPage).map(([k, v]) => `${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${JSON.stringify(v)}`);
 	out += pageDefaults.length ? `  // ${configFile}'s \`defaults\` for every page.\n  data: { site, ${pageDefaults.join(", ")} },\n` : "  data: { site },\n";
 	out += `  filters: {\n    // Plugins' tags and filters go here: name: (...args) => result\n  },\n  plugins: [${plugins.join(", ")}],\n});\n`;
-	if (findConfig(dir) === undefined) plan.newFiles.unshift(["ssqch.config.js", `a first draft, from ${configFile}`, out]);
-	else plan.byHand.push(["ssqch.config.js", "it's already there, so the draft from the Jekyll config wasn't written"]);
+	plan.newFiles.unshift(["ssqch.config.js", `a first draft, from ${configFile}`, out]);
 	if (!isFile(path.join(dir, "package.json"))) plan.byHand.push([".", "no package.json: `npm init -y && npm install -D ssqch` pins the version the site builds with"]);
 	if (typeof config.url === "string" && config.url !== "" && !config.url.startsWith("http")) plan.byHand.push([configFile!, `url: ${config.url}: the site's address starts with https://`]);
 	return plan;
@@ -2160,10 +2409,10 @@ export function zola(dir: string): Plan {
 	const markdown = ["headingIds: \"ascii\""];
 	if (flag("highlight_code")) markdown.push("highlight: true");
 	if (flag("smart_punctuation")) markdown.push("smartPunctuation: true");
-	let out = `// A first draft, written by \`ssqch import zola\` from config.toml.\n// \`ssqch docs --from zola\` has the whole mapping.\n${imports.join("\n")}\n\nexport default defineConfig({\n`;
+	let out = `// A first draft, written by \`ssqch scout\` from config.toml.\n// \`ssqch docs --from zola\` has the whole mapping.\n${imports.join("\n")}\n\nexport default defineConfig({\n`;
 	out += `  dirs: { input: "content", output: ${JSON.stringify(text("output_dir") ?? "public")}, includes: "../templates" },\n`;
 	out += "  // Tera templates are close to Jinja: Markdown and the .html templates run through it.\n  templateFormats: [\"md\"],\n  markdownEngine: \"jinja\",\n  htmlEngine: \"jinja\",\n";
-	if (sections.length) out += "  // Section files: their settings go in directory data (see the list `ssqch import` printed).\n  ignore: [\"**/_index.md\"],\n";
+	if (sections.length) out += "  // Section files: their settings go in directory data (see the list `ssqch scout` printed).\n  ignore: [\"**/_index.md\"],\n";
 	if (bundles) out += "  // Pages that are a folder (`post/index.md`) keep the files next to them.\n  bundles: true,\n";
 	out += `  markdown: { ${markdown.join(", ")} },\n`;
 	if (isDir(path.join(dir, "static"))) out += "  passthrough: [{ static: \".\" }],\n";
@@ -2172,7 +2421,210 @@ export function zola(dir: string): Plan {
 	if (config.taxonomies !== undefined) plan.byHand.push(["config.toml", "taxonomies: tags are built in (`collections.<tag>`); tag pages are a template paginated over the tags (the `blog-tags` example), and other taxonomies are custom `collections`"]);
 	if (flag("build_search_index")) plan.byHand.push(["config.toml", "build_search_index: Pagefind after the build (`afterBuild: { run: \"npx -y pagefind --site public\" }`)"]);
 	if (flag("generate_feeds") || flag("generate_feed")) plan.byHand.push(["config.toml", "generate_feeds: a feed template with `rssPlugin()`'s filters (the `blog-tags` example has one)"]);
-	if (findConfig(dir) === undefined) plan.newFiles.push(["ssqch.config.js", "a first draft, from config.toml", out]);
-	else plan.byHand.push(["ssqch.config.js", "it's already there, so the draft from config.toml wasn't written"]);
+	plan.newFiles.push(["ssqch.config.js", "a first draft, from config.toml", out]);
 	return plan;
+}
+
+// ---- Hugo, MkDocs and the rest: listing only ------------------------------------------------
+//
+// From the fresh moves of gohugo.io and Material for MkDocs' docs (2026-11-20): neither needed a
+// content file changed, and both agents spent their first hour finding what the site used. These
+// detectors list that, with counts and the first file and line of each, and write nothing.
+
+/** Where a match is: `file:line`. */
+const lineAt = (entry: Entry, text: string, index: number) => `${entry.rel}:${occurrences(text.slice(0, index), "\n") + 1}`;
+
+/** Counts each name's uses across files, keeping the first place it's used. */
+class Tally {
+	readonly seen = new Map<string, { count: number; files: Set<string>; first: string }>();
+	add(name: string, entry: Entry, text: string, index: number): void {
+		const known = this.seen.get(name);
+		if (known) { known.count++; known.files.add(entry.rel); return; }
+		this.seen.set(name, { count: 1, files: new Set([entry.rel]), first: lineAt(entry, text, index) });
+	}
+	/** Most used first, then by name. */
+	sorted(): Array<[string, { count: number; files: Set<string>; first: string }]> {
+		return [...this.seen].sort((a, b) => b[1].count - a[1].count || compareText(a[0], b[0]));
+	}
+}
+
+const uses = (count: number, files: number) => `${count} ${count === 1 ? "use" : "uses"} in ${files} ${files === 1 ? "file" : "files"}; this is the first`;
+
+const HUGO_SHORTCODE = /\{\{([<%])\s*(?!\/)([\w./-]+)/g;
+const HUGO_BUILT_IN_SHORTCODES = new Set(["details", "figure", "gist", "highlight", "instagram", "param", "qr", "ref", "relref", "vimeo", "x", "twitter", "youtube"]);
+const HUGO_HOOKS: Record<string, string> = { heading: "heading", link: "link", image: "image", codeblock: "fence" };
+const HUGO_FUNCTIONS: Array<[RegExp, string]> = [
+	[/\.GetPage\b/, "`.GetPage`: not in ssqch yet as a function; a collection, or `collections.all` filtered by `url`, finds a page"],
+	[/\bjs\.Build\b/, "`js.Build` (esbuild): ssqch bundles scripts with `ssqch/assets`, or keep esbuild as a `beforeBuild` step"],
+	[/\bcss\.TailwindCSS\b/, "`css.TailwindCSS`: run Tailwind's CLI as a `beforeBuild` step (`ssqch docs beforeBuild`)"],
+	[/\b(?:toCSS|css\.Sass)\b/, "Sass (`toCSS`, `css.Sass`): ssqch compiles Sass with `sassPlugin()` from \"ssqch/sass\""],
+	[/\|\s*fingerprint\b|\bresources\.Fingerprint\b/, "`fingerprint`: ssqch's is `assetsPlugin({ fingerprint: true })` (`ssqch docs fingerprint`)"],
+	[/\.(?:Resize|Fill|Fit|Crop)\s+"/, "image processing (`.Resize`, `.Fill`): ssqch's is `imagesPlugin()` from \"ssqch/images\""],
+	[/\.Related\b|\bsite\.RegularPages\.Related\b/, "related content (`.Related`): not in ssqch yet; a filter of your own over a collection"],
+	[/\btransform\.Highlight\b|\bhighlight\s+\(/, "`transform.Highlight`: ssqch's highlighter is `markdown: { highlight: true }`, with its own classes (not Chroma's)"],
+	[/\bi18n\b|\bT\s+"/, "translations (`i18n`, `T`): ssqch's are a filter over `_data` (`ssqch docs multilingual`)"],
+	[/\.Paginate\b|\.Paginator\b/, "`.Paginate`: ssqch's pagination is `pagination` in front matter (`ssqch docs pagination`)"],
+];
+
+/** What a Hugo site uses that needs doing in ssqch. Hugo's templates are Go's, which ssqch doesn't run: they're listed, not rewritten. */
+export function hugo(dir: string): Plan {
+	const plan: Plan = { from: "Hugo", renames: [], edits: [], newFiles: [], byHand: [] };
+	const entries = walk(dir, (name, rel) => name.startsWith(".git") || name === "node_modules" || name === ".cache" || name === "public" || name === "resources" || rel === "_vendor", false);
+	const content = entries.filter((e) => e.isFile && /^content\//.test(e.rel) && /\.(md|markdown|html)$/.test(e.name));
+	const layouts = entries.filter((e) => e.isFile && /^(?:layouts|themes\/[^/]+\/layouts)\//.test(e.rel) && /\.(html|xml|json|txt)$/.test(e.name));
+	const shortcodes = new Tally();
+	let sections = 0;
+	let cascades = 0;
+	let templated: string | undefined;
+	let templatedCount = 0;
+	for (const entry of content) {
+		const text = readUtf8(entry.abs) ?? "";
+		if (entry.name === "_index.md") sections++;
+		if (/^cascade\s*:/m.test(text.slice(0, 4000))) cascades++;
+		for (const m of text.matchAll(HUGO_SHORTCODE)) shortcodes.add(m[2], entry, text, m.index!);
+		// Hugo doesn't run template code in content, so `{{ x }}` in a page is text, as in a code sample.
+		const plain = text.replace(/\{\{[<%][\s\S]*?[%>]\}\}/g, "");
+		if (/\{\{|\{%/.test(plain)) { templatedCount++; templated ??= lineAt(entry, plain, plain.search(/\{\{|\{%/)); }
+	}
+	const ownShortcodes = new Set(entries.filter((e) => e.isFile && /(?:^|\/)layouts\/_?shortcodes\//.test(e.rel)).map((e) => e.rel.replace(/^.*\/_?shortcodes\//, "").replace(/\.[^./]+$/, "").replace(/\.[^./]+$/, "")));
+	const calls = shortcodes.sorted();
+	if (calls.length) {
+		const pages = new Set(calls.flatMap(([, { files }]) => [...files])).size;
+		plan.byHand.push(["content", `${calls.length} ${calls.length === 1 ? "shortcode" : "shortcodes"}, called in ${pages} ${pages === 1 ? "page" : "pages"} (each below, most used first): shortcodes aren't in ssqch yet. Each call becomes a template call (a macro or include, with \`markdownEngine\`) or a container (\`::: name\`), and the shortcode a macro, include or hook`]);
+	}
+	for (const [name, { count, files, first }] of calls) {
+		const whose = ownShortcodes.has(name) ? "the site's own" : HUGO_BUILT_IN_SHORTCODES.has(name) ? "Hugo's" : "nobody's (no template for it)";
+		plan.byHand.push([first, `\`{{< ${name} >}}\`, ${whose} (${uses(count, files.size)})`]);
+	}
+	if (templated) plan.byHand.push([templated, `\`{{ }}\` or \`{% %}\` as text in ${templatedCount} ${templatedCount === 1 ? "page" : "pages"} (this is the first): Hugo prints them as they are, and ssqch runs Markdown through a template engine unless \`markdownEngine: false\``]);
+	if (sections) plan.byHand.push(["content", `${sections} ${sections === 1 ? "section" : "sections"} (\`_index.md\`): ssqch's sections are folders with directory data (\`<folder>/<folder>.json\` for layout and permalink) and a collection (\`tags\`), and the section page a page of its own`]);
+	if (cascades) plan.byHand.push(["content", `\`cascade\` in ${cascades} ${cascades === 1 ? "page's" : "pages'"} front matter: ssqch's is directory data, which every page below it gets`]);
+	for (const entry of entries.filter((e) => e.isFile && /(?:^|\/)layouts\/(?:_default\/)?_markup\/render-/.test(e.rel))) {
+		const kind = /render-([a-z]+)(?:-([\w-]+))?\./.exec(entry.name);
+		const ours = kind && HUGO_HOOKS[kind[1]];
+		plan.byHand.push([entry.rel, ours ? `a render hook: ssqch's is \`_includes/hooks/${ours}${kind![2] ? `-${kind![2]}` : ""}.<ext>\` (\`ssqch docs hooks\`), written in the site's template language` : `a ${kind?.[1] ?? "render"} hook: not in ssqch yet (its hooks are heading, link, image, code, fence and footnotes)`]);
+	}
+	if (layouts.length) plan.byHand.push([layouts[0].rel.replace(/\/.*$/, ""), `${layouts.length} Go ${layouts.length === 1 ? "template" : "templates"}: ssqch doesn't run Go templates. Jinja is closest: \`define\` and \`block\` map onto \`extends\` and \`block\`, and \`{{- -}}\` trims the same way, so the minifier sees the same text`]);
+	for (const [pattern, what] of HUGO_FUNCTIONS) {
+		let count = 0;
+		let first: string | undefined;
+		const files = new Set<string>();
+		for (const entry of layouts) {
+			const text = readUtf8(entry.abs) ?? "";
+			const m = pattern.exec(text);
+			if (!m) continue;
+			count++;
+			files.add(entry.rel);
+			first ??= lineAt(entry, text, m.index);
+		}
+		if (first) plan.byHand.push([first, `${what} (in ${files.size} ${files.size === 1 ? "template" : "templates"})`]);
+	}
+	if (entries.some((e) => e.rel === "assets" && !e.isFile)) plan.byHand.push(["assets", "Hugo Pipes' sources: ssqch copies files with `passthrough` and processes them with its plugins (`ssqch docs assets`)"]);
+	if (entries.some((e) => e.rel === "static" && !e.isFile)) plan.byHand.push(["static", "copied as they are: `passthrough: [{ from: \"static\", to: \"/\" }]` in the config"]);
+	if (entries.some((e) => e.rel === "data" && !e.isFile)) plan.byHand.push(["data", "data files: ssqch reads `_data` (`dirs: { data: \"../data\" }` with `content` as the input, or move the folder)"]);
+	return plan;
+}
+
+/** mkdocs.yml as plain YAML: MkDocs' tags (`!ENV`, `!!python/name:`) make plain readers fail. */
+function readMkdocsYaml(text: string): Data {
+	const plain = text.replace(/!!python\/name:(\S+)/g, '"$1"').replace(/!!python\/[\w/:.-]+/g, "").replace(/!ENV\s+\[([^\]]*)\]/g, (_m, args: string) => args.split(",").at(-1)!.trim()).replace(/!ENV\s+/g, "").replace(/!relative\s*/g, "");
+	try { return parseYaml(plain); } catch (e) { return fail(`mkdocs.yml: ${e instanceof Error ? e.message : String(e)}`); }
+}
+
+const MKDOCS_PLUGINS: Record<string, string> = {
+	search: "ssqch has no search index of its own: Pagefind indexes the built site (`ssqch docs search`)",
+	blog: "a blog is a collection in ssqch: posts in a folder with directory data, with pagination for the index and categories",
+	redirects: "`redirectsPlugin({ redirects })` from \"ssqch/redirects\", with `redirect_maps`",
+	minify: "`minifyPlugin()` from \"ssqch/minify\"",
+	tags: "tags are a collection in ssqch (`tags` in front matter, and a page per tag by pagination)",
+	social: "not in ssqch yet: social cards are images drawn per page (the `<meta>` tags are a layout's)",
+	privacy: "not in ssqch yet: fetching external assets at build time",
+	offline: "not in ssqch yet",
+	"git-revision-date-localized": "`page.lastModified` (`ssqch docs lastModified`), formatted with a date filter",
+	"awesome-pages": "the sidebar's order is `_data/nav.yml`'s (`navTree`)",
+	macros: "Markdown runs through a template engine in ssqch (`markdownEngine`): the macros become the engine's, with the site's variables as data",
+	i18n: "`ssqch docs multilingual`",
+};
+const MKDOCS_EXTENSIONS: Record<string, string> = {
+	admonition: "`!!!` admonitions: not in ssqch yet as written; ssqch's are containers (`::: note`)",
+	"pymdownx.details": "`???` collapsible admonitions: not in ssqch yet as written; ssqch's is `::: details`",
+	"pymdownx.tabbed": "`===` tabs: not in ssqch yet as written; ssqch's are containers",
+	"pymdownx.superfences": "fences, built in; custom fences (mermaid) are a fence hook (`_includes/hooks/fence-mermaid.<ext>`)",
+	"pymdownx.highlight": "`markdown: { highlight: true }`, with ssqch's classes (not Pygments')",
+	"pymdownx.inlinehilite": "not in ssqch yet: inline code with a language",
+	"pymdownx.snippets": "`--8<--` snippets: an include in a template engine (`markdownEngine`), or not in ssqch yet as written",
+	"pymdownx.emoji": "`:icon:` shortcodes: not in ssqch yet",
+	"pymdownx.keys": "`++ctrl+c++` keys: not in ssqch yet",
+	"pymdownx.critic": "not in ssqch yet",
+	"pymdownx.arithmatex": "math: not in ssqch yet as written; KaTeX as a filter or a fence hook",
+	"pymdownx.tasklist": "task lists, built in",
+	"pymdownx.caret": "`^^insert^^` and `^sup^`: not in ssqch yet",
+	"pymdownx.mark": "`==mark==`: not in ssqch yet",
+	"pymdownx.tilde": "`~~delete~~`, built in (`~sub~` isn't)",
+	attr_list: "attributes (`{#id .class}`), built in; on headings, ssqch keeps ids and classes",
+	md_in_html: "Markdown inside HTML: `markdown: { htmlMarkdown: \"kramdown\" }` reads `markdown=\"1\"`, not the bare `markdown` attribute",
+	footnotes: "footnotes, built in (their markup is a `footnotes` hook's)",
+	toc: "heading ids are `headingIds`; MkDocs' own aren't one of its styles yet. The table of contents is `page.headings` and the `toc` filter",
+	def_list: "definition lists: not in ssqch yet",
+	abbr: "abbreviations: not in ssqch yet",
+	tables: "tables, built in",
+	meta: "front matter, built in",
+};
+
+/** What an MkDocs site uses that needs doing in ssqch, from mkdocs.yml and the docs' Markdown. */
+export function mkdocs(dir: string): Plan {
+	const configFile = ["mkdocs.yml", "mkdocs.yaml"].find((f) => isFile(path.join(dir, f))) ?? fail(`there's no mkdocs.yml in ${dir}: is this the MkDocs site's folder?`);
+	const config = readMkdocsYaml(readStrict(path.join(dir, configFile)));
+	const plan: Plan = { from: "MkDocs", renames: [], edits: [], newFiles: [], byHand: [] };
+	const docsDir = typeof config.docs_dir === "string" ? config.docs_dir : "docs";
+	const siteDir = typeof config.site_dir === "string" ? config.site_dir : "site";
+	const settings: string[] = [`dirs: { input: ${JSON.stringify(docsDir)}, output: ${JSON.stringify(siteDir)} }`];
+	if (typeof config.site_url === "string") settings.push(`the site's URL (${config.site_url}) in \`_data/site.json\`, and \`sitemapPlugin({ url })\``);
+	if (typeof config.repo_url === "string") settings.push("`repo_url` and `edit_uri` as data, for edit links");
+	plan.byHand.push([configFile, `the config: ${settings.join("; ")}`]);
+	if (config.extra && isPlainObject(config.extra)) plan.byHand.push([`${configFile}: extra`, "`extra` is data: `_data/site.yml` (or the config's `data`), read as `site.<key>`"]);
+	if (Array.isArray(config.nav)) {
+		const count = (list: unknown[]): number => list.reduce<number>((n, item) => n + (isPlainObject(item) ? Object.values(item).reduce<number>((m, v) => m + (Array.isArray(v) ? count(v) : 1), 0) : 1), 0);
+		plan.byHand.push([`${configFile}: nav`, `the nav (${count(config.nav)} entries): ssqch's sidebar is \`_data/nav.yml\` (\`title\`, \`url\`, \`children\`) and \`navTree\`, with URLs in place of \`.md\` paths; an entry without a title takes the page's \`# heading\` in MkDocs`]);
+	}
+	const theme = isPlainObject(config.theme) ? config.theme.name : config.theme;
+	if (typeof theme === "string") plan.byHand.push([`${configFile}: theme`, theme === "material" ? "Material's templates are Jinja, which ssqch runs, but they need the context MkDocs gives them (`config`, `nav`, `page`, a page-relative `url` filter): not in ssqch yet as built in. The fresh MkDocs move ran all 49 unchanged with a module of its own that makes it" : `the ${theme} theme's templates are Jinja, which ssqch runs; they need the context MkDocs gives them (\`config\`, \`nav\`, \`page\`)`]);
+	const named = (list: unknown) => (Array.isArray(list) ? list.map((item) => (isPlainObject(item) ? Object.keys(item)[0] : String(item))) : isPlainObject(list) ? Object.keys(list) : []);
+	for (const name of named(config.plugins)) {
+		const key = name.replace(/^material\//, "");
+		plan.byHand.push([`${configFile}: plugins`, `\`${name}\`: ${MKDOCS_PLUGINS[key] ?? "not in ssqch yet: port it as a plugin (`ssqch docs plugins`)"}`]);
+	}
+	for (const name of named(config.markdown_extensions)) plan.byHand.push([`${configFile}: markdown_extensions`, `\`${name}\`: ${MKDOCS_EXTENSIONS[name] ?? "not in ssqch yet"}`]);
+	if (isFile(path.join(dir, "hooks.py")) || config.hooks) plan.byHand.push([`${configFile}: hooks`, "Python hooks don't run in ssqch: port each as a plugin or a filter (`ssqch docs plugins`)"]);
+	// The syntax the pages use, counted: what a preprocessor would have to turn into ssqch's.
+	const pages = walk(path.join(dir, docsDir), (name) => name.startsWith(".") || name === "node_modules", false).filter((e) => e.isFile && /\.md$/.test(e.name)).map((e) => ({ ...e, rel: `${docsDir}/${e.rel}` }));
+	const syntax: Array<[string, RegExp, string]> = [
+		["links to .md files", /\]\((?![a-z]+:)[^)\s#]*\.md(?:#[^)\s]*)?\)|^[ \t]*\[[^\]\n]+\]:[ \t]*(?![a-z]+:)[^\s#]*\.md(?:#\S*)?[ \t]*$/gm, "not in ssqch yet: ssqch keeps a link's URL as written, so each needs the page's URL (the link checker reports them)"],
+		["admonitions (`!!!`, `???`)", /^[ \t]*(?:!!!|\?\?\?\+?)[ \t]+\w/gm, "not in ssqch yet as written: ssqch's are containers (`::: note`)"],
+		["tabs (`===`)", /^[ \t]*===\+?[ \t]+"/gm, "not in ssqch yet as written: ssqch's are containers"],
+		["snippets (`--8<--`)", /^[ \t]*-+8<-+/gm, "not in ssqch yet as written"],
+		["icons and emoji (`:name:`)", /:(?:material|fontawesome|octicons|simple)-[\w-]+:/g, "not in ssqch yet"],
+		["bare `markdown` attributes", /<[a-z][^>]*\smarkdown(?=[\s>])/g, "ssqch's `htmlMarkdown: \"kramdown\"` reads `markdown=\"1\"`"],
+	];
+	for (const [what, pattern, say] of syntax) {
+		let count = 0;
+		let first: string | undefined;
+		const files = new Set<string>();
+		for (const entry of pages) {
+			const text = readUtf8(entry.abs) ?? "";
+			for (const m of text.matchAll(pattern)) { count++; files.add(entry.rel); first ??= lineAt(entry, text, m.index!); }
+		}
+		if (first) plan.byHand.push([first, `${what} (${uses(count, files.size)}): ${say}`]);
+	}
+	const blogDates = pages.find((e) => /^date:\s*\n\s+created:/m.test((readUtf8(e.abs) ?? "").slice(0, 2000)));
+	if (blogDates) plan.byHand.push([blogDates.rel, "`date: { created, updated }` front matter (Material's blog): ssqch's `date` is one date; not in ssqch yet as written"]);
+	return plan;
+}
+
+const TRAILHEADS: Record<string, string> = { docusaurus: "from-docusaurus", hexo: "from-hexo", astro: "from-component-frameworks", vitepress: "from-component-frameworks" };
+
+/** A generator scout has no detector for: the reference build and the trailhead, and nothing of the site's own. */
+function other(dir: string, id: string): Plan {
+	const name = GENERATORS[id].name;
+	return { from: name, renames: [], edits: [], newFiles: [], byHand: [[".", `scout doesn't read ${name} sites yet, so this lists nothing of the site's own: \`ssqch docs --from ${id}\` has ${name}'s words${TRAILHEADS[id] ? " and its trailhead" : ""}`]] };
 }

@@ -189,7 +189,7 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 	// missing argument (`Usage: ssqch build --root <ROOT> --quiet`).
 	const used: string[] = [];
 	// Once something is given, the options so far and every argument, the ones given as if they were
-	// required (`Usage: ssqch import --write <generator> [dir]`, `ssqch import <generator> <dir>`).
+	// required (`Usage: ssqch scout --write-draft [dir]`, `ssqch new <path>`).
 	// `also` is the option clap suggested for a misspelled one, which it counted as given.
 	const usageUsed = (also?: Option) => {
 		const shown = [...used];

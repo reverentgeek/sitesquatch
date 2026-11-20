@@ -20,7 +20,7 @@ const frozen = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, "utf8")) :
 const freezing = process.env.SSQCH_FREEZE_SHAPES === "1";
 const freezingNew = process.env.SSQCH_FREEZE_SHAPES === "new";
 /** Documents 0.7.0 didn't print, and the version whose shape is frozen for each. */
-const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.10.1" };
+const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.10.1", "scout": "0.11.0" };
 const shapes = {};
 
 /** A value's shape: "string", "number", "boolean", "null", { key: shape }, or [shape of every element merged]. */
@@ -117,6 +117,23 @@ test("build report, profiled", () => {
 	check("build --profile", report);
 	// Without --profile there's no profile.
 	assert.equal(json(["build", "--root", dir]).profile, undefined);
+});
+
+// `ssqch scout --format json`, with every list filled: a to-do, a draft, an edit and a rename, and
+// what the reference build needs.
+test("scout_json_shape", () => {
+	const dir = project({
+		"_config.yml": "title: Trail\nurl: https://example.com\n",
+		"Gemfile": "gem \"github-pages\"\n",
+		"_layouts/default.html": "<head>{% seo %}</head>{{ content }}",
+		"_data/trails.yml": "- Cedar\n",
+		"_posts/2026-01-02-pine.md": "---\ntitle: Pine\n---\n<div markdown=\"1\">*a*</div>\n",
+		"index.md": "---\nlayout: default\n---\nHi\n",
+	}, "shapes-scout");
+	const report = json(["scout", dir, "--write-draft", "--patch", path.join(dir, "move.patch")]);
+	for (const list of ["todo", "draft", "edits"]) assert.ok(report[list].length > 0, `no ${list} in the report`);
+	assert.ok(report.build.needs.length > 0, "nothing the build needs");
+	check("scout", report);
 });
 
 test("inspect report", () => {

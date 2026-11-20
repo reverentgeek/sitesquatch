@@ -211,4 +211,6 @@ test("other_generators_words_get_ssqch_names", () => {
 	const report = JSON.parse(r.stdout);
 	assert.equal(report.warnings[0].code, "other-generator", r.stdout);
 	assert.ok(report.warnings[0].message.startsWith("this folder has an Eleventy config (.eleventy.js) and no ssqch.config.js"), r.stdout);
+	// DELIBERATE (0.11): it names `ssqch scout`, which replaced `ssqch import`.
+	assert.ok(report.warnings[0].message.includes("`ssqch scout` lists what moving it takes and drafts a config (`--write-draft`)"), r.stdout);
 });

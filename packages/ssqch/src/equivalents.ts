@@ -149,7 +149,7 @@ export const OTHER_CONFIGS: ReadonlyArray<readonly [string, string, string | nul
 	[".vitepress/config.js", "VitePress", null, "from-component-frameworks.md"],
 ];
 
-/** What to say about a folder that has another generator's config and none of ssqch's: the generator's name, and the importer or guide for it. */
+/** What to say about a folder that has another generator's config and none of ssqch's: the generator's name, `ssqch scout`, and the guide for it. */
 export function otherGenerator(root: string): string | undefined {
 	const isFile = (file: string) => fs.statSync(path.join(root, file), { throwIfNoEntry: false })?.isFile() ?? false;
 	const read = (file: string) => { try { return fs.readFileSync(path.join(root, file), "utf8"); } catch { return undefined; } };
@@ -165,9 +165,9 @@ export function otherGenerator(root: string): string | undefined {
 		}
 	}
 	if (!found) return undefined;
-	const [file, generator, importer] = found;
+	const [file, generator] = found;
 	const docs = `\`ssqch docs --from ${generator.toLowerCase()}\` says what maps to what`;
-	const next = importer ? `\`ssqch import ${importer}\` drafts one from it, and ${docs}` : `\`ssqch init\` starts one, and ${docs}`;
+	const next = `\`ssqch scout\` lists what moving it takes and drafts a config (\`--write-draft\`), and ${docs}`;
 	const article = /^[AEIOU]/.test(generator) ? "an" : "a";
 	return `this folder has ${article} ${generator} config (${file}) and no ssqch.config.js, so ssqch builds it with its own defaults. ${next}.`;
 }

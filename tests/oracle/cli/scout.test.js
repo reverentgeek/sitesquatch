@@ -1,10 +1,29 @@
-// From crates/ssqch/tests/cli.rs.
+// From crates/ssqch/tests/cli.rs, where these were `ssqch import`'s tests.
+//
+// DELIBERATE (0.11): `ssqch import <generator> [--write]` became `ssqch scout [dir]`, with no
+// alias. It finds the generator itself (`--from` chooses), changes nothing unless asked, and is
+// safe to run again during a move to see what's left: `--write-draft` writes the new files (never
+// over one), and `--patch <file>` writes the edits as a patch, which a person or an agent reads
+// and applies. What `import --write` did is both, and `git apply`: `move()` below.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { ssqch, tempDir, write, read, exists, isFile, expectedVersion } from "../lib/ssqch.js";
 
-test("import_moves_an_eleventy_site", () => {
-	const dir = tempDir("import");
+/** What `ssqch import --write` did: scout's draft written, and its patch applied with `git apply`. */
+function move(dir, from) {
+	const patch = path.join(tempDir("scout-patch"), "move.patch");
+	const r = ssqch(["scout", dir, "--from", from, "--write-draft", "--patch", patch]);
+	if (!r.ok) return r;
+	if (read(path.dirname(patch), "move.patch") === "") return r;
+	const applied = spawnSync("git", ["apply", patch], { cwd: dir, encoding: "utf8" });
+	assert.equal(applied.status, 0, `git apply: ${applied.stderr}\n${read(path.dirname(patch), "move.patch")}`);
+	return r;
+}
+
+test("scout_moves_an_eleventy_site", () => {
+	const dir = tempDir("scout");
 	const d = dir;
 	write(dir, {
 		".eleventy.js": "const pluginRss = require(\"@11ty/eleventy-plugin-rss\");\nmodule.exports = function (eleventyConfig) {\n  eleventyConfig.addPlugin(pluginRss);\n  eleventyConfig.addPassthroughCopy(\"src/css\");\n  eleventyConfig.addFilter(\"shout\", (s) => s.toUpperCase());\n  return { dir: { input: \"src\", output: \"_site\" }, markdownTemplateEngine: \"njk\", htmlTemplateEngine: \"njk\" };\n};\n",
@@ -22,15 +41,16 @@ test("import_moves_an_eleventy_site", () => {
 	const before = read(dir, "src/index.njk");
 
 	// A dry run says what it would do, and does nothing.
-	let r = ssqch(["import", "eleventy", d]);
+	let r = ssqch(["scout", d]);
 	assert.ok(r.ok, r.log);
 	for (const expected of [
-		"(a dry run: nothing is changed; add --write to make the changes)",
-		"Rename (1)\n  src/posts/posts.11tydata.json -> src/posts/posts.data.json\n",
+		"Scouting the Eleventy site in ",
+		" (found .eleventy.js)\n",
+		"Draft (1 to write): --write-draft writes them, and never overwrites a file\n  ssqch.config.js (a first draft, from .eleventy.js)\n",
+		"  src/posts/posts.11tydata.json -> src/posts/posts.data.json\n",
 		// DELIBERATE (0.11): Eleventy's front matter keys work in ssqch, so pages aren't edited for
 		// them; the image attributes still change.
 		"  src/posts/pine.md: eleventy:widths/ignore -> ssqch:widths/ignore\n",
-		"Create (1)\n  ssqch.config.js (a first draft, from .eleventy.js)\n",
 		"  src/feed.11ty.js: JavaScript templates don't run in ssqch",
 		`  package.json: @11ty/eleventy -> ssqch ${expectedVersion()} in devDependencies, scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve\n`,
 		"  pnpm-workspace.yaml: pnpm waits a day before installing a new release, so if ssqch ",
@@ -47,8 +67,8 @@ test("import_moves_an_eleventy_site", () => {
 	assert.ok(!exists(dir, "ssqch.config.js") && exists(dir, "src/posts/posts.11tydata.json"));
 
 	// With --write, the site builds with ssqch.
-	r = ssqch(["import", "eleventy", d, "--write"]);
-	assert.ok(r.ok && r.log.includes("Done: 1 renamed, 2 edited, 1 created."), r.log);
+	r = move(d, "eleventy");
+	assert.ok(r.ok && r.log.includes("Wrote 1 draft file.") && r.log.includes("Wrote 3 edits to "), r.log);
 	assert.equal(
 		read(dir, "package.json"),
 		`{\n  "scripts": {\n    "build": "ssqch build",\n    "start": "ssqch serve"\n  },\n  "packageManager": "pnpm@12.21.0",\n  "devDependencies": {\n    "ssqch": "${expectedVersion()}"\n  }\n}\n`,
@@ -64,22 +84,29 @@ test("import_moves_an_eleventy_site", () => {
 	assert.ok(isFile(dir, "_site/css/site.css"));
 
 	// A second run has nothing left to change, and keeps the config that's there.
-	r = ssqch(["import", "eleventy", d]);
-	assert.ok(r.ok && r.log.includes("Nothing to rename, edit or create.") && r.log.includes("ssqch.config.js: it's already there"), r.log);
-	r = ssqch(["import", "hugo", d]);
-	// DELIBERATE (0.11): there's an importer for Jekyll now.
-	assert.ok(!r.ok && r.log.includes("there's no importer for hugo yet (only eleventy, jekyll and zola)"), r.log);
+	// A second run is a progress check: the draft is there, and nothing's left to edit.
+	r = ssqch(["scout", d]);
+	assert.ok(r.ok && r.log.includes(": a move under way, with an ssqch.config.js\n") && r.log.includes("Draft (0 to write, 1 there already)") && r.log.includes("  ssqch.config.js (a first draft, from .eleventy.js) [there already]\n") && !r.log.includes("Edits ("), r.log);
+	// A folder with no generator's files, or two generators', asks for --from.
+	const empty = tempDir("scout-empty");
+	r = ssqch(["scout", empty]);
+	assert.ok(!r.ok && r.log.includes("couldn't tell which generator builds the site in ") && r.log.includes("Name it with --from (eleventy, jekyll, zola, hugo, mkdocs,"), r.log);
+	write(empty, { "mkdocs.yml": "site_name: Trail\n", "_config.yml": "title: Trail\n" });
+	r = ssqch(["scout", empty]);
+	assert.ok(!r.ok && r.log.includes("more than one generator's files are in ") && r.log.includes("(MkDocs: mkdocs.yml; Jekyll: _config.yml): choose with --from"), r.log);
+	r = ssqch(["scout", empty, "--from", "gatsby"]);
+	assert.ok(!r.ok && r.log.includes("gatsby: not a generator scout knows"), r.log);
 });
 
 // A config's names, a script's flags and its indentation, in any script and after a byte-order
 // mark, read as 0.7's Rust patterns read them.
-test("import_reads_names_in_any_script", () => {
-	const dir = tempDir("import-unicode");
+test("scout_reads_names_in_any_script", () => {
+	const dir = tempDir("scout-unicode");
 	write(dir, {
 		"eleventy.config.js": "﻿const pluginÉté = require(\"@11ty/eleventy-plugin-rss\");\nmodule.exports = function (eleventyConfig) {\n\televentyConfig.addPlugin(pluginÉté);\n\televentyConfig.addFilter(\"shout\", (value) => {\n\t\treturn value;\n\t});\n};\n",
 		"package.json": "{\n  \"scripts\": {\n    \"build\": \"eleventy --pathprefix /x/ --verbosé\"\n  }\n}\n",
 	});
-	let r = ssqch(["import", "eleventy", dir, "--write"]);
+	let r = move(dir, "eleventy");
 	assert.ok(r.ok, r.log);
 	for (const expected of ["  eleventy.config.js:3: addPlugin(pluginÉté) (from @11ty/eleventy-plugin-rss) -> see its package below\n", "  package.json: the `build` script's --verbosé flag is Eleventy's"]) {
 		assert.ok(r.log.includes(expected), `missing ${JSON.stringify(expected)} in\n${r.log}`);
@@ -89,26 +116,26 @@ test("import_reads_names_in_any_script", () => {
 	assert.ok(config.includes("\n\tmarkdownEngine: \"liquid\",\n") && config.includes("\t\tshout: (value) => {\n\t\t\treturn value;\n\t\t},\n"), config);
 
 	// A Zola config that isn't TOML shows the line and the spot, in TOML's words.
-	const zola = tempDir("import-zola-error");
+	const zola = tempDir("scout-zola-error");
 	write(zola, { "config.toml": "title = \"x\"\n= 2\n", "templates": "{{ page.title }}" });
-	r = ssqch(["import", "zola", zola]);
+	r = ssqch(["scout", "--from", "zola", zola]);
 	assert.equal(r.code, 1, r.log);
 	assert.ok(r.stderr.startsWith("error: config.toml: TOML parse error at line 2, column 1\n  |\n2 | = 2\n  | ^\n"), r.stderr);
 	// `templates` can be a file, and it's a template.
 	write(zola, { "config.toml": "title = \"x\"\n" });
-	r = ssqch(["import", "zola", zola]);
+	r = ssqch(["scout", "--from", "zola", zola]);
 	assert.ok(r.ok && r.log.includes("  templates/: 1 Tera templates: ") && r.log.includes("  templates/: 1 x `page.title`"), r.log);
 });
 
 // package.json changes where it changes. 0.7 printed the whole file again (a list on several
 // lines, `1e5` as `100000.0`, its dev dependencies sorted); the Node build edits the text in place.
-test("import_keeps_package_json_as_written", () => {
-	const dir = tempDir("import-package");
+test("scout_keeps_package_json_as_written", () => {
+	const dir = tempDir("scout-package");
 	write(dir, {
 		"eleventy.config.js": "module.exports = () => ({});\n",
 		"package.json": "{\n\t\"name\": \"trail-guide\",\n\t\"weight\": 1.0,\n\t\"exp\": 1e5,\n\t\"keywords\": [\"pine\", \"cone\"],\n\t\"scripts\": { \"build\": \"eleventy\" },\n\t\"devDependencies\": {\n\t\t\"@11ty/eleventy\": \"^3.0.0\",\n\t\t\"zed\": \"1\"\n\t}\n}\n",
 	});
-	const r = ssqch(["import", "eleventy", dir, "--write"]);
+	const r = move(dir, "eleventy");
 	assert.ok(r.ok, r.log);
 	const v = expectedVersion();
 	assert.equal(read(dir, "package.json"), `{\n\t"name": "trail-guide",\n\t"weight": 1.0,\n\t"exp": 1e5,\n\t"keywords": ["pine", "cone"],\n\t"scripts": { "build": "ssqch build" },\n\t"devDependencies": {\n\t\t"ssqch": "${v}",\n\t\t"zed": "1"\n\t}\n}\n`);
@@ -116,10 +143,10 @@ test("import_keeps_package_json_as_written", () => {
 
 // A template literal with `${...}` is worked out when the config runs, and a default value that
 // reads the config needs it: 0.7 put both in the draft as they were, the Node build lists them.
-test("import_leaves_computed_names_and_config_defaults_for_a_person", () => {
-	const dir = tempDir("import-computed");
+test("scout_leaves_computed_names_and_config_defaults_for_a_person", () => {
+	const dir = tempDir("scout-computed");
 	write(dir, { "eleventy.config.js": "const dir = \"static\";\nconst dateFormat = \"%Y\";\nmodule.exports = function (eleventyConfig) {\n\televentyConfig.addPassthroughCopy(`${dir}/img`);\n\televentyConfig.addFilter(\"year\", (value, format = dateFormat) => format + value);\n};\n" });
-	const r = ssqch(["import", "eleventy", dir, "--write"]);
+	const r = move(dir, "eleventy");
 	assert.ok(r.ok, r.log);
 	const config = read(dir, "ssqch.config.js");
 	assert.ok(!config.includes("${dir}") && !config.includes("dateFormat") && config.includes("//   filters: year\n"), config);
@@ -129,8 +156,8 @@ test("import_leaves_computed_names_and_config_defaults_for_a_person", () => {
 });
 
 // Eleventy's EJS templates render in ssqch as they are: `include()` reads from `_includes` in both.
-test("import_carries_over_ejs_templates", () => {
-	const dir = tempDir("import-ejs");
+test("scout_carries_over_ejs_templates", () => {
+	const dir = tempDir("scout-ejs");
 	const d = dir;
 	write(dir, {
 		"eleventy.config.js": "module.exports = function (eleventyConfig) {\n  return { dir: { input: \"src\" }, markdownTemplateEngine: false };\n};\n",
@@ -139,7 +166,7 @@ test("import_carries_over_ejs_templates", () => {
 		"src/index.ejs": "---\nlayout: base.ejs\ntitle: Camp\neleventyExcludeFromCollections: true\n---\n<% for (const post of collections.all) { %><a href=\"<%= post.url %>\"><%= post.data.title %></a><% } %>",
 		"src/trail.md": "---\nlayout: base.ejs\ntitle: Trail\n---\nOld Growth.\n",
 	});
-	let r = ssqch(["import", "eleventy", d, "--write"]);
+	let r = move(d, "eleventy");
 	// DELIBERATE (0.11): `eleventyExcludeFromCollections` works as it is; the page isn't edited.
 	assert.ok(r.ok && !r.log.includes("src/index.ejs: eleventyExcludeFromCollections"), r.log);
 	const config = read(dir, "ssqch.config.js");
@@ -151,8 +178,8 @@ test("import_carries_over_ejs_templates", () => {
 	assert.equal(out("trail/index.html"), "<nav>Trail</nav><main><p>Old Growth.</p>\n</main>");
 });
 
-test("import_moves_a_zola_site", () => {
-	const dir = tempDir("import-zola");
+test("scout_moves_a_zola_site", () => {
+	const dir = tempDir("scout-zola");
 	const d = dir;
 	write(dir, {
 		"config.toml": "base_url = \"https://example.com\"\ntitle = \"Trail Notes\"\ngenerate_feeds = true\ntaxonomies = [{ name = \"tags\" }]\n\n[markdown]\nhighlight_code = true\n\n[extra]\nauthor = \"Sam\"\nfounded = 2019-05-01\n",
@@ -164,12 +191,13 @@ test("import_moves_a_zola_site", () => {
 		"static/robots.txt": "User-agent: *\n",
 	});
 
-	let r = ssqch(["import", "zola", d]);
+	let r = ssqch(["scout", "--from", "zola", d]);
 	assert.ok(r.ok, r.log);
 	for (const expected of [
-		"Importing the Zola site in",
-		"Edit (1)\n  content/blog/pine.md: path -> permalink, [taxonomies] tags -> tags\n",
-		"Create (1)\n  ssqch.config.js (a first draft, from config.toml)\n",
+		"Scouting the Zola site in",
+		"Reference build\n  ssqch baseline \"zola build\" --from public\n",
+		"Edits (1): --patch <file> writes them as a patch to review, and changes nothing\n  content/blog/pine.md: path -> permalink, [taxonomies] tags -> tags\n",
+		"Draft (1 to write): --write-draft writes them, and never overwrites a file\n  ssqch.config.js (a first draft, from config.toml)\n",
 		"  content/blog/_index.md: a section: its settings",
 		"(content/blog/blog.json: `layout`, `tags`, `permalink`)",
 		"  templates/shortcodes/youtube.html: a shortcode used in content",
@@ -179,15 +207,15 @@ test("import_moves_a_zola_site", () => {
 		"  templates/: 1 x `page.content`, `section.content`: `content` in a layout",
 		"  config.toml: generate_feeds: a feed template",
 		// DELIBERATE (0.11, from the fresh migrations, where neither agent found the loop): the next
-		// step is a baseline of the old site, and the line names the loop's docs.
-		"Next: `ssqch baseline \"<Zola's build command>\"` (before --write, or with --commit) builds the site with Zola to compare with; then `ssqch build` and `ssqch diff <the baseline> <ssqch's output>`, the biggest group first. The whole loop: `ssqch docs \"moving a site with an agent\"`.",
+		// step is a baseline of the old site, with its command, and the line names the loop's docs.
+		"Next: `ssqch baseline \"zola build\" --from public` builds the site with Zola to compare with (before the patch, or with --commit); then `ssqch build` and `ssqch diff .cache/ssqch/baseline/ref-1 <ssqch's output>`, the biggest group first. `ssqch docs --from zola` has Zola's words and trailhead, and `ssqch docs \"moving a site with an agent\"` the whole loop. Run scout again to see what's left.",
 	]) {
 		assert.ok(r.log.includes(expected), `missing ${JSON.stringify(expected)} in\n${r.log}`);
 	}
 	assert.ok(!exists(dir, "ssqch.config.js"));
 
-	r = ssqch(["import", "zola", d, "--write"]);
-	assert.ok(r.ok && r.log.includes("Done: 0 renamed, 1 edited, 1 created."), r.log);
+	r = move(d, "zola");
+	assert.ok(r.ok && r.log.includes("Wrote 1 draft file.") && r.log.includes("Wrote 1 edit to "), r.log);
 	assert.equal(
 		read(dir, "content/blog/pine.md"),
 		"+++\ntitle = \"Pine\"\ndate = 2024-01-02\npermalink = \"/blog/2024/pine/\"\naliases = [\"old-pine.html\"]\ntags = [\"trees\"]\n+++\nA *pine*. {{ youtube(id=\"abc\") }}\n",
@@ -218,8 +246,8 @@ test("import_moves_a_zola_site", () => {
 
 // Added in 0.11, from opensource.guide (9 of its 13 kinds of edit were mechanical): a Jekyll site
 // is imported, and builds.
-test("import_jekyll_drafts_a_config_that_builds", () => {
-	const dir = tempDir("import-jekyll");
+test("scout_jekyll_drafts_a_config_that_builds", () => {
+	const dir = tempDir("scout-jekyll");
 	write(dir, {
 		"_config.yml": "title: Trail Guide\ndescription: Into the Mild\nexclude: [script, README.md]\npermalink: pretty\ncollections:\n  guides:\n    output: true\n    permalink: /:collection/:path/\ndefaults:\n  - scope: { path: \"\" }\n    values: { image: /og.png }\n  - scope: { path: _guides }\n    values: { layout: guide }\nplugins: [jekyll-sitemap, jekyll-seo-tag, jekyll-redirect-from]\n",
 		"Gemfile": "source \"https://rubygems.org\"\ngem \"jekyll\"\n",
@@ -239,7 +267,7 @@ test("import_jekyll_drafts_a_config_that_builds", () => {
 		"Gemfile.lock": "GEM\n  specs:\n    jekyll (3.10.0)\n",
 		"_guides/old.md": "---\ntitle: Moved\nredirect_from: [/legacy/]\n---\nMoved\n",
 	});
-	let r = ssqch(["import", "jekyll", dir]);
+	let r = ssqch(["scout", "--from", "jekyll", dir]);
 	assert.ok(r.ok, r.log);
 	for (const said of [
 		// DELIBERATE (0.11): templates aren't rewritten; `jekyllTemplates: true` gives Jekyll's `page`
@@ -250,7 +278,7 @@ test("import_jekyll_drafts_a_config_that_builds", () => {
 		"_includes/seo.liquid (jekyll-seo-tag's tags",
 		".: 1 `markdown=\"1\"` elements: `htmlMarkdown: \"kramdown\"` (in the draft) reads them as kramdown does",
 	]) assert.ok(r.log.includes(said), `${said}\n${r.log}`);
-	r = ssqch(["import", "jekyll", dir, "--write"]);
+	r = move(dir, "jekyll");
 	assert.ok(r.ok, r.log);
 	const config = read(dir, "ssqch.config.js");
 	for (const part of ["trimAfterFrontMatter: true,", "markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false, encodeUrls: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets/img\", { \"_guides/zh/README.md\": \"guides/zh/README.md\" }],", "jekyllTemplates: true,", "data: { site, image: \"/og.png\" },", "plugins: [redirectsPlugin(), sitemapPlugin({ url: site.url })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
@@ -269,6 +297,6 @@ test("import_jekyll_drafts_a_config_that_builds", () => {
 	assert.equal(read(dir, "_site/guides/zh/README.md"), "Read me as I am\n");
 	assert.ok(read(dir, "_site/legacy/index.html").startsWith("<!DOCTYPE html>\n<html lang=\"en-US\">\n  <meta charset=\"utf-8\">\n  <title>Redirecting&hellip;</title>"), read(dir, "_site/legacy/index.html"));
 	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<meta name=\"generator\" content=\"Jekyll v3.10.0\" />") && read(dir, "_site/guides/trail/index.html").includes("\"@type\":\"BlogPosting\""), read(dir, "_site/guides/trail/index.html"));
-	r = ssqch(["import", "jekyll", `${dir}/assets`]);
+	r = ssqch(["scout", "--from", "jekyll", `${dir}/assets`]);
 	assert.ok(!r.ok && r.log.includes("there's no _config.yml in"), r.log);
 });
