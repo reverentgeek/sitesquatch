@@ -217,3 +217,30 @@ test("a_foreign_key_a_site_filter_reads_isnt_warned_about", () => {
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(r.ok && !r.log.includes("eleventyNavigation"), r.log);
 });
+
+// Added in 0.11, from the fresh opensource.guide rerun: `/{{ page.filePathStem }}/` made every
+// article's URL `//ar/metrics/`, and the files landed where they should, so nothing said so.
+test("a_url_with_a_double_slash_is_warned_about", () => {
+	const dir = tempDir("double-slash");
+	write(dir, {
+		"ssqch.config.js": "export default {};\n",
+		"guides/guides.json": "{ \"permalink\": \"/{{ page.filePathStem }}/\" }\n",
+		"guides/pine.md": "# Pine\n",
+		"index.md": "# Home\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && r.log.includes("warn: 1 page has `//` in its URL: //guides/pine/ (./guides/pine.md). Its permalink puts a `/` before a value that starts with one"), r.log);
+});
+
+// Added in 0.11, from the fresh opensource.guide rerun: `site.articles` (a Jekyll collection) was
+// empty on 380 pages with no word; it's warned about as `site.posts` is.
+test("a_jekyll_collection_under_site_is_warned_about", () => {
+	const dir = tempDir("site-collection");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"md\", \"liquid\"] };\n",
+		"_articles/pine.md": "---\ntags: articles\n---\n# Pine\n",
+		"index.liquid": "{% for a in site.articles %}{{ a.url }}{% endfor %}",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && r.log.includes("warn: index.liquid uses `site.articles` (Jekyll's). ssqch's lists of pages are `collections`: `collections.articles` is the pages tagged `articles`"), r.log);
+});

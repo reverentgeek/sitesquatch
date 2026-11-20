@@ -43,6 +43,13 @@ test("baseline_builds_the_old_site_and_says_what_varies", { skip: !hasGit && "ne
 	assert.equal(read(dir, `${ref}-2/trail/index.html`), "<p>2026-03-01T12:00:00.000Z UTC 1772366400</p>");
 	assert.ok(!exists(dir, ".cache/ssqch/baseline-copies"), "the copies are removed");
 
+	// A file git doesn't track goes into the copies, as the old generator reads the working tree, and
+	// that's said. (Added in 0.11, from the fresh opensource.guide rerun: notes in the reference build.)
+	write(dir, { "notes/today.md": "notes" });
+	r = ssqch(["baseline", "node build.mjs steady", "--runs", "1", "--quiet"], { cwd: dir });
+	assert.ok(r.ok && r.log.includes("warn: 1 file git doesn't track goes into the copies too (notes/), as the old generator reads the working tree"), r.log);
+	fs.rmSync(path.join(dir, "notes"), { recursive: true });
+
 	// Two builds of a steady command agree, and a third left from before is removed.
 	r = ssqch(["baseline", "node build.mjs steady", "--runs", "2", "--quiet"], { cwd: dir });
 	assert.equal(r.code, 0, r.log);

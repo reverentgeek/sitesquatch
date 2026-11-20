@@ -657,6 +657,15 @@ function checkForeignGlobals(site: Site): void {
 	// not a page's own data (front matter, directory data).
 	const defines = (data: Data, key: string) => data.site !== undefined && data.site !== null && data.site[key] !== undefined;
 	const rows = equivalents.TABLE.filter((e) => e.kind === "global" && (!e.word.startsWith("site.") || !defines(site.global, e.word.slice(5))));
+	// `site.articles`, a Jekyll collection's name, is a collection here too: `collections.articles`.
+	// opensource.guide's language menus and guide lists were empty on 380 pages, with no word.
+	// It runs before the collections are made: their names are the pages' tags.
+	const tagNames = new Set(site.pages.flatMap((p) => (Array.isArray(p.data.tags) ? p.data.tags : typeof p.data.tags === "string" ? [p.data.tags] : []).filter((t): t is string => typeof t === "string")));
+	const named = [...tagNames].sort(compareText).filter((name) => name !== "all" && name !== "posts" && /^[A-Za-z_][\w-]*$/.test(name) && !defines(site.global, name));
+	for (const name of named) {
+		const word = `site.${name}`;
+		rows.push({ word, kind: "global", alias: false, from: ["Jekyll"], ssqch: "collections", say: `ssqch's lists of pages are \`collections\`: \`collections.${name}\` is the pages tagged \`${name}\`, so this is empty (and an item's front matter is under \`data\`: \`item.data.title\`).`, more: "ssqch docs collections" });
+	}
 	if (!rows.length) return;
 	// Each template's text, with the pages it makes (none for layouts and includes).
 	const sources: Array<[string, string, Tpl | undefined]> = [];

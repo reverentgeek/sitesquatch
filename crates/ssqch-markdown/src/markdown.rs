@@ -535,22 +535,24 @@ pub fn render_inline(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Ho
     })
 }
 
-/// With smart punctuation, a `"` between two letters is both left- and right-flanking, and
-/// pulldown-cmark opens a quote with it even when one is open: `比如"进展 ISSUE-123"；` came out
-/// `“…ISSUE-123“` (opensource.guide's zh-hans pages). An opening quote that follows a character
-/// other than a space while a quote is open in the same block closes it, as markdown-it and
-/// commonmark.js match quotes.
+/// With smart punctuation, pulldown-cmark opens a quote with a `"` it can't match: one between
+/// two letters while a quote is open (`比如"进展 ISSUE-123"；` came out `“…ISSUE-123“`, opensource.guide's
+/// zh-hans pages), and one that closes an outer quote around a nested pair or has no partner
+/// (`"What Does "Open Source" Even Mean? p5.js Edition"` ended in `Edition“`, 13 pages). An opening
+/// quote that follows a character other than a space closes instead when a space, punctuation or
+/// the end of the text comes after it, or when a quote is open in the same block, as SmartyPants,
+/// kramdown and markdown-it read them.
 fn close_open_quotes(events: &mut [Event]) {
-    let mut open = false;
+    let mut open = 0usize;
     let mut last: Option<char> = None;
     for event in events.iter_mut() {
         match event {
             Event::Start(tag) if !matches!(tag, Tag::Emphasis | Tag::Strong | Tag::Strikethrough | Tag::Link { .. } | Tag::Image { .. }) => {
-                open = false;
+                open = 0;
                 last = None;
             }
             Event::End(end) if !matches!(end, TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough | TagEnd::Link | TagEnd::Image) => {
-                open = false;
+                open = 0;
                 last = None;
             }
             Event::Code(code) => last = code.chars().last(),
@@ -560,19 +562,22 @@ fn close_open_quotes(events: &mut [Event]) {
                     last = text.chars().last().or(last);
                     continue;
                 }
+                let chars: Vec<char> = text.chars().collect();
                 let mut out = String::with_capacity(text.len());
-                for c in text.chars() {
+                for (i, &c) in chars.iter().enumerate() {
+                    let after_text = last.is_some_and(|l| !l.is_whitespace());
+                    let ends = chars.get(i + 1).is_none_or(|n| n.is_whitespace() || (n.is_ascii_punctuation() && *n != '(' && *n != '[') || matches!(n, '，' | '。' | '；' | '：' | '！' | '？' | '、' | '）'));
                     let c = match c {
-                        '\u{201C}' if open && last.is_some_and(|l| !l.is_whitespace()) => {
-                            open = false;
+                        '\u{201C}' if after_text && (open > 0 || ends) => {
+                            open = open.saturating_sub(1);
                             '\u{201D}'
                         }
                         '\u{201C}' => {
-                            open = true;
+                            open += 1;
                             c
                         }
                         '\u{201D}' => {
-                            open = false;
+                            open = open.saturating_sub(1);
                             c
                         }
                         _ => c,
@@ -1595,6 +1600,11 @@ mod tests {
         assert_eq!(render("比如\"我们正在处理——进展见 ISSUE-123\"；\n", &smart, None).unwrap(), "<p>比如“我们正在处理——进展见 ISSUE-123”；</p>\n");
         assert_eq!(render("a \"b\" c \"d\"\n\n\"e\"\n", &smart, None).unwrap(), "<p>a “b” c “d”</p>\n<p>“e”</p>\n");
         assert_eq!(render("say \"*one*\"x\"two\"\n", &smart, None).unwrap(), "<p>say “<em>one</em>”x“two”</p>\n");
+        // A closing quote around a nested pair, and one with no partner (opensource.guide, 13 pages).
+        assert_eq!(render("[\"What Does \"Open Source\" Even Mean? p5.js Edition\"](/x)\n", &smart, None).unwrap(), "<p><a href=\"/x\">“What Does “Open Source” Even Mean? p5.js Edition”</a></p>\n");
+        assert_eq!(render("[x y\"](z)\n", &smart, None).unwrap(), "<p><a href=\"z\">x y”</a></p>\n");
+        // An opening one stays: after a space, or before a word.
+        assert_eq!(render("a \"b c\n", &smart, None).unwrap(), "<p>a “b c</p>\n");
     }
 
     #[test]

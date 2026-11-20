@@ -176,6 +176,20 @@ where that version matches.
 
 ### Fixed
 
+- `ssqch import jekyll` wrote collection permalinks with `//` in front (`//ar/metrics/`): a
+  page's `filePathStem` starts with its own `/`. A build now warns about any page whose URL has
+  `//` in it.
+- `ssqch import jekyll` left `site.articles` (a collection) as it was, empty in ssqch: it's
+  `collections.articles`, with its items' front matter under `data`, and the build warns about
+  `site.<collection>` as it does about `site.posts`.
+- `ssqch import jekyll` renamed `site.data.locales` to `locales` beside a template's own
+  `{% assign locales = ... %}`, which replaced the data for every include after it, and left
+  `page.lang` as it was beside a template's own `lang` (opensource.guide's language menus): the
+  template's own variable is `my_locales` or `my_lang` now, and the rename goes ahead.
+- Smart quotes: a closing `"` after a letter came out `“` when it closed an outer quote or had no
+  partner (`... p5.js Edition“`).
+- `ssqch baseline` says when files git doesn't track go into its copies, and `ssqch import jekyll`
+  leaves them out of `passthrough`.
 Found by fresh moves of a11yproject.com and opensource.guide, run as if for the first time.
 
 - `{{ date.toString() }}` printed `[object Undefined]`, with no warning: a date's own methods work

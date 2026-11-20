@@ -7,6 +7,7 @@
 // This is 0.7's importer (`crates/ssqch/src/import.rs`), messages and all. It reads a site's files
 // as text and never runs them, so nothing in it was there for QuickJS, and nothing changes now
 // that a site's packages run on Node.
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
@@ -1655,12 +1656,20 @@ export function jekyllPermalink(pattern: string, folder: string): string | undef
 		return m;
 	});
 	if (unknown) return undefined;
+	// `:path` is `filePathStem`, which starts with its own `/` (opensource.guide's URLs came out
+	// `//ar/metrics/`).
+	const stem = "{{ page.filePathStem";
+	let joined = out;
+	while (joined.includes(`/${stem}`)) joined = joined.replace(`/${stem}`, stem);
 	// `/:categories` writes its own `/`, and nothing when there are none.
-	return out.replace(/^\/(\{% if categories %\})/, "$1").replace(/\/\.html$/, "/index.html");
+	return joined.replace(/^\/(\{% if categories %\})/, "$1").replace(/\/\.html$/, "/index.html");
 }
 
 /** A template's `page.<key>` renamed to `<key>` where it's the page's front matter, and what's left that ssqch's `page` doesn't have. */
-export function rewriteJekyllTemplate(text: string): [string, string[], string[]] {
+/** What a collection item has itself in ssqch (beside `data`); any other key a Jekyll template reads on one is front matter, under `data`. */
+const ITEM_KEYS = new Set(["url", "date", "page", "data", "templateContent", "inputPath", "outputPath", "fileSlug", "filePathStem"]);
+
+export function rewriteJekyllTemplate(text: string, collections: readonly string[] = [], dataNames: readonly string[] = []): [string, string[], string[]] {
 	const changes: string[] = [];
 	const left: string[] = [];
 	// A key the template also uses as its own variable can't be renamed: `{% assign lang = page.lang %}`.
@@ -1674,28 +1683,75 @@ export function rewriteJekyllTemplate(text: string): [string, string[], string[]
 		return `{{${dash} page.inputPath | remove_first: "./" `;
 	});
 	if (paths) changes.push(`page.path -> page.inputPath | remove_first: "./"${paths > 1 ? ` (${paths})` : ""}`);
+	// A variable of the template's own with the name a front matter key or a data name will have
+	// (`{% assign lang = ... %}` beside `page.lang`, `{% assign locales = site.data.locales | sort %}`):
+	// Liquid's `assign` is global, so it would replace the page's value for every include after it.
+	// The template's own gets another name, `my_lang`, in every tag of this file.
+	const renameOwn = (name: string, why: string) => {
+		const mine = `my_${name}`;
+		out = out.replace(/(\{\{[^}]*?\}\}|\{%[^%]*?%\})/g, (code) => code.replace(new RegExp(`(?<![\\w.'"-])${name}(?![\\w'"-]|\\s*:)`, "g"), mine));
+		own.delete(name);
+		changes.push(`${name} (the template's own variable) -> ${mine}`);
+		left.push(`\`${name}\`, the template's own variable, is \`${mine}\` now (${why}): check the includes that read it without assigning it`);
+	};
+	for (const name of [...own].sort(compareText)) {
+		if (PAGE_KEYS.has(name) || Object.hasOwn(JEKYLL_PAGE, name)) continue;
+		if (new RegExp(`(?<![\\w.])page\\.${name}\\b`).test(out)) renameOwn(name, `\`page.${name}\` is \`${name}\``);
+		else if (dataNames.includes(name) && new RegExp(`(?<![\\w.])site\\.data\\.${name}\\b`).test(out)) renameOwn(name, `\`site.data.${name}\` is \`${name}\``);
+	}
 	out = out.replace(/(\{\{[^}]*?\}\}|\{%[^%]*?%\})/g, (code) => code.replace(/(?<![\w.])page\.([A-Za-z_][\w-]*)/g, (whole, key: string) => {
 		if (PAGE_KEYS.has(key)) return whole;
 		if (Object.hasOwn(JEKYLL_PAGE, key)) {
 			kept.set(key, (kept.get(key) ?? 0) + 1);
 			return whole;
 		}
-		if (own.has(key)) {
-			left.push(`\`page.${key}\` is front matter, and the template has a variable \`${key}\` of its own: rename that one, then \`page.${key}\` to \`${key}\``);
-			return whole;
-		}
 		renamed.set(key, (renamed.get(key) ?? 0) + 1);
 		return key;
 	}));
-	// `site.posts` and `site.data.<name>`: collections and global data in ssqch.
-	out = out.replace(/(\{\{[^}]*?\}\}|\{%[^%]*?%\})/g, (code) => code.replace(/(?<![\w.])site\.posts\b/g, () => {
-		renamed.set("site.posts", (renamed.get("site.posts") ?? 0) + 1);
-		return "collections.posts";
+	const inTags = (fn: (code: string) => string) => { out = out.replace(/(\{\{[^}]*?\}\}|\{%[^%]*?%\})/g, fn); };
+	// `site.posts`, `site.<collection>` and `site.data.<name>`: collections and global data in ssqch.
+	const lists = ["posts", ...collections.filter((c) => c !== "posts")];
+	const listWord = new RegExp(`(?<![\\w.])site\\.(${lists.join("|")})\\b`, "g");
+	inTags((code) => code.replace(listWord, (_, name: string) => {
+		renamed.set(`site.${name}`, (renamed.get(`site.${name}`) ?? 0) + 1);
+		return `collections.${name}`;
 	}).replace(/(?<![\w.])site\.data\.(?=[A-Za-z_])/g, () => {
 		renamed.set("site.data.", (renamed.get("site.data.") ?? 0) + 1);
 		return "";
 	}));
-	for (const [key, n] of renamed) changes.push(key === "site.posts" ? "site.posts -> collections.posts" : key === "site.data." ? "site.data.<name> -> <name>" : `page.${key} -> ${key}${n > 1 ? ` (${n})` : ""}`);
+	// What's read from a collection's items: front matter is under `data` in ssqch, `content` is
+	// `templateContent` and `excerpt` is `page.excerpt`. The items are the loop variables over a
+	// collection, or over a variable assigned from one (`{% assign guides = collections.articles |
+	// where: "lang", page.lang %}`), and what `first` and `last` take from them.
+	const fromList = new RegExp(`collections\\.(?:${lists.join("|")})\\b`);
+	const listVars = new Set<string>();
+	for (const m of out.matchAll(/\{%-?\s*assign\s+([A-Za-z_][\w-]*)\s*=\s*([^%]*?)-?%\}/g)) if (fromList.test(m[2]) && !/\|\s*(?:first|last|size)\b/.test(m[2])) listVars.add(m[1]);
+	const isList = (expr: string) => fromList.test(expr) || [...listVars].some((v) => new RegExp(`^\\s*${v}\\b`).test(expr));
+	const items = new Set<string>();
+	for (const m of out.matchAll(/\{%-?\s*for\s+([A-Za-z_][\w-]*)\s+in\s+([^%]*?)-?%\}/g)) if (isList(m[2])) items.add(m[1]);
+	for (const m of out.matchAll(/\{%-?\s*assign\s+([A-Za-z_][\w-]*)\s*=\s*([^%]*?)-?%\}/g)) if (isList(m[2]) && /\|\s*(?:first|last)\b/.test(m[2])) items.add(m[1]);
+	let fields = 0;
+	if (items.size) {
+		const item = new RegExp(`(?<![\\w.])(${[...items].join("|")})\\.([A-Za-z_][\\w-]*)`, "g");
+		inTags((code) => code.replace(item, (whole, v: string, key: string) => {
+			if (ITEM_KEYS.has(key)) return whole;
+			fields++;
+			return key === "content" ? `${v}.templateContent` : key === "excerpt" ? `${v}.page.excerpt` : `${v}.data.${key}`;
+		}));
+	}
+	// A filter's property on a list of them is front matter too: `where: "lang"` is `where: "data.lang"`.
+	const props = /(\|\s*(?:where|sort|sort_natural|group_by|map|find|reject)\s*:\s*)(["'])([A-Za-z_][\w-]*)\2/g;
+	inTags((code) => {
+		const body = code.replace(/^\{[{%]-?\s*(?:assign\s+[\w-]+\s*=|for\s+[\w-]+\s+in)?/, "");
+		if (!isList(body)) return code;
+		return code.replace(props, (whole, filter: string, q: string, key: string) => {
+			if (ITEM_KEYS.has(key)) return whole;
+			fields++;
+			return `${filter}${q}data.${key}${q}`;
+		});
+	});
+	for (const [key, n] of renamed) changes.push(key.startsWith("site.") && key !== "site.data." ? `${key} -> collections.${key.slice(5)}` : key === "site.data." ? "site.data.<name> -> <name>" : `page.${key} -> ${key}${n > 1 ? ` (${n})` : ""}`);
+	if (fields) changes.push(`${fields} ${fields === 1 ? "field" : "fields"} of collection items -> under \`data\` (\`post.title\` -> \`post.data.title\`, \`content\` -> \`templateContent\`)`);
 	for (const [key, n] of kept) left.push(`\`page.${key}\` (${n}): ${JEKYLL_PAGE[key]}`);
 	return [out, changes, [...new Set(left)]];
 }
@@ -1725,6 +1781,11 @@ export function jekyll(dir: string): Plan {
 	const entries = walk(dir, (name, rel) => rel === output || name === ".git" || name === "node_modules" || name === ".cache" || isExcluded(rel) || ((name.startsWith(".") || name.startsWith("_")) && !included.has(name) && !special.has(rel) && !(collectionsDir && rel === collectionsDir)), true);
 
 	// Templates: `page.<key>` renamed, the tags no one defines counted, and kramdown's habits.
+	// The collections (`site.articles`) and the data's names (`site.data.locales`), which templates
+	// read under other names in ssqch.
+	const collectionList = Object.keys(collections);
+	let dataNames: string[] = [];
+	try { dataNames = [...new Set(fs.readdirSync(path.join(dir, ...dataDir.split("/"))).map((n) => n.replace(/\.(?:ya?ml|json|csv|toml|tsv)$/, "")).filter((n) => /^[A-Za-z_][\w-]*$/.test(n)))]; } catch { /* no data folder */ }
 	const tags = new Map<string, [number, string]>();
 	let markdownAttr = 0, ial = 0, seo = 0;
 	const hasFrontMatter = (text: string) => /^---\s*\r?\n/.test(text);
@@ -1744,7 +1805,7 @@ export function jekyll(dir: string): Plan {
 		if (text === undefined) continue;
 		if (front && !["md", "markdown", "html", "liquid", "xml", "txt", "json", "scss", "sass", "css"].includes(ext)) frontMatterOther.push(entry.rel);
 		if (!(templateDir || front) || ["scss", "sass"].includes(ext)) continue;
-		let [next, changes, left] = rewriteJekyllTemplate(text);
+		let [next, changes, left] = rewriteJekyllTemplate(text, collectionList, dataNames);
 		// `{% seo %}` is jekyll-seo-tag's: the include written below.
 		if (/\{%-?\s*seo\b[^%]*%\}/.test(next)) {
 			next = next.replace(/\{%(-?)\s*seo\b[^%]*?(-?)%\}/g, "{%$1 include seo.liquid $2%}");
@@ -1829,9 +1890,19 @@ export function jekyll(dir: string): Plan {
 		else if (folder.includes("*")) plan.byHand.push([configFile!, `defaults for \`${folder}\`: directory data in each folder it matches`]);
 	}
 
+	// Files git doesn't track (notes, a scratch folder) aren't the site's: a fresh checkout doesn't
+	// have them (the fresh opensource.guide move's notes went into `passthrough`).
+	const tracked = spawnSync("git", ["-C", dir, "ls-files", "-z", "--others", "--exclude-standard"], { encoding: "utf8" });
+	const untracked = tracked.status === 0 ? new Set(tracked.stdout.split("\0").filter(Boolean)) : new Set<string>();
+	const left = statics.filter((rel) => untracked.has(rel));
+	if (left.length) {
+		for (const rel of left) statics.splice(statics.indexOf(rel), 1);
+		const folders = [...new Set(left.map((rel) => (rel.includes("/") ? `${rel.slice(0, rel.indexOf("/"))}/` : rel)))].sort(compareText);
+		plan.byHand.push([folders[0], `${left.length} ${left.length === 1 ? "file" : "files"} git doesn't track (${folders.slice(0, 4).join(", ")}${folders.length > 4 ? ", ..." : ""}) left out of \`passthrough\`: Jekyll copied ${left.length === 1 ? "it" : "them"} from this folder, a fresh checkout wouldn't have ${left.length === 1 ? "it" : "them"}. Add ${left.length === 1 ? "it" : "them"} to git if ${left.length === 1 ? "it's" : "they're"} the site's`]);
+	}
 	// What Jekyll copies as it is: the folders with no front matter in them, and the other files.
 	const passthrough: string[] = [];
-	const front = new Set(entries.filter((e) => e.isFile && !statics.includes(e.rel)).map((e) => e.rel));
+	const front = new Set(entries.filter((e) => e.isFile && !statics.includes(e.rel) && !untracked.has(e.rel)).map((e) => e.rel));
 	const topLevel = new Map<string, string[]>();
 	for (const rel of statics) {
 		const top = rel.includes("/") ? rel.slice(0, rel.indexOf("/")) : "";

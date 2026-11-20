@@ -357,6 +357,19 @@ export class Site {
 			add(await collectErrors(deferred.map((t) => () => this.expand(t, shallow))));
 		}
 		this.checkConflicts();
+		this.checkDoubleSlashes();
+	}
+
+	/**
+	 * A URL with `//` in it is almost always a permalink that puts a `/` before a value that starts
+	 * with one (`/{{ page.filePathStem }}/`): the files land where they should, so nothing fails,
+	 * but every link to the page is wrong (opensource.guide's `//ar/metrics/`). Said once a build.
+	 */
+	private checkDoubleSlashes(): void {
+		const found = this.pages.filter((p) => p.url !== null && p.url.includes("//"));
+		if (!found.length) return;
+		const shown = found.slice(0, 3).map((p) => `${p.url} (${this.display(p.tpl.input)})`).join(", ");
+		warn(warning("template", `${found.length === 1 ? "1 page has" : `${found.length} pages have`} \`//\` in ${found.length === 1 ? "its URL" : "their URLs"}: ${shown}${found.length > 3 ? ", ..." : ""}. Its permalink puts a \`/\` before a value that starts with one (\`page.filePathStem\` does): take one out`, found.length === 1 ? { file: this.display(found[0].tpl.input) } : {}));
 	}
 
 	/**

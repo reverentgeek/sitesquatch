@@ -236,22 +236,22 @@ test("import_jekyll_drafts_a_config_that_builds", () => {
 	let r = ssqch(["import", "jekyll", dir]);
 	assert.ok(r.ok, r.log);
 	for (const said of [
-		"_layouts/guide.html: page.title -> title",
+		"_layouts/guide.html: lang (the template's own variable) -> my_lang, page.title -> title, page.lang -> lang",
 		"_layouts/default.html: page.path -> page.inputPath | remove_first: \"./\", {% seo %} -> {% include seo.liquid %}",
 		"_posts/2026-01-02-pine.md: site.data.<name> -> <name>",
 		"index.html: site.posts -> collections.posts",
 		"_guides/_guides.json (the `guides` collection: its tag and permalink)",
 		"_posts/_posts.json (Jekyll's posts: the `posts` tag, and the permalink)",
 		"_includes/seo.liquid (jekyll-seo-tag's tags",
-		"_layouts/guide.html: `page.lang` is front matter, and the template has a variable `lang` of its own",
+		"_layouts/guide.html: `lang`, the template's own variable, is `my_lang` now (`page.lang` is `lang`)",
 		".: 1 `markdown=\"1\"` elements: `htmlMarkdown: \"kramdown\"` (in the draft) reads them as kramdown does",
 	]) assert.ok(r.log.includes(said), `${said}\n${r.log}`);
 	r = ssqch(["import", "jekyll", dir, "--write"]);
 	assert.ok(r.ok, r.log);
 	const config = read(dir, "ssqch.config.js");
 	for (const part of ["trimAfterFrontMatter: true,", "markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets\"],", "data: { site, image: \"/og.png\" },", "plugins: [redirectsPlugin(), sitemapPlugin({ url: site.url })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
-	r = ssqch(["build", "--root", dir, "-q"]);
-	assert.ok(r.ok, r.log);
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && !r.log.includes("`//`"), r.log);
 	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<aside>\n<p><em>Hush</em></p>\n</aside>"), read(dir, "_site/guides/trail/index.html"));
 	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<h1>Old Growth</h1>") && read(dir, "_site/guides/trail/index.html").includes("<title>Old Growth | Trail Guide</title>"), read(dir, "_site/guides/trail/index.html"));
 	assert.ok(read(dir, "_site/2026/01/02/pine/index.html").includes("Pine 3") && read(dir, "_site/2026/01/02/pine/index.html").includes("/edit/_posts/2026-01-02-pine.md"), read(dir, "_site/2026/01/02/pine/index.html"));

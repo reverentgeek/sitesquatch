@@ -84,7 +84,11 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 				if (added.status !== 0) throw new BaselineError(`couldn't check out ${options.commit}: ${added.stderr.toString().trim()}`);
 				worktrees.push(copy);
 			} else {
-				copyWorkingTree(root, copy, inGit, [options.from, ".cache", "node_modules"], options.to);
+				const untracked = copyWorkingTree(root, copy, inGit, [options.from, ".cache", "node_modules"], options.to);
+				if (run === 1 && untracked.length) {
+					const folders = [...new Set(untracked.map((rel) => (rel.includes("/") ? `${rel.slice(0, rel.indexOf("/"))}/` : rel)))].sort(compareText);
+					process.stderr.write(`warn: ${untracked.length === 1 ? "1 file git doesn't track goes" : `${untracked.length} files git doesn't track go`} into the copies too (${folders.slice(0, 4).join(", ")}${folders.length > 4 ? ", ..." : ""}), as the old generator reads the working tree; a fresh checkout wouldn't have ${untracked.length === 1 ? "it" : "them"}. Add ${untracked.length === 1 ? "it" : "them"} to git or .gitignore, or build a commit (\`--commit HEAD\`)\n`);
+				}
 			}
 			if (patch !== undefined) {
 				// Applied in the copy alone: the ceiling keeps git from finding the site's own
@@ -186,7 +190,7 @@ function installs(root: string, more: string[]): string[] {
 }
 
 /** The site's files as git would commit them (tracked, and new ones it doesn't ignore), or every file but `skip`'s outside git, copied into `copy`. */
-function copyWorkingTree(root: string, copy: string, inGit: boolean, skip: string[], to: string): void {
+function copyWorkingTree(root: string, copy: string, inGit: boolean, skip: string[], to: string): string[] {
 	// Earlier reference builds (`ref-1/`) aren't the site's files.
 	const build = new RegExp(`^${to.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d+(?:/|$)`);
 	const skipped = (rel: string) => rel === ".git" || rel.startsWith(".git/") || build.test(rel) || skip.some((s) => rel === s || rel.startsWith(`${s}/`));
@@ -207,6 +211,14 @@ function copyWorkingTree(root: string, copy: string, inGit: boolean, skip: strin
 		};
 		walk("");
 	}
+	// The files git doesn't track yet, which go in too (notes, a scratch folder): said, since a
+	// fresh checkout wouldn't have them (the fresh opensource.guide move's notes were in Jekyll's
+	// reference build).
+	let untracked: string[] = [];
+	if (inGit) {
+		const others = git(root, ["ls-files", "-z", "--others", "--exclude-standard"]);
+		if (others.status === 0) untracked = others.stdout.toString().split("\0").filter((rel) => rel && !skipped(rel));
+	}
 	for (const rel of files) {
 		if (skipped(rel)) continue;
 		const from = path.join(root, ...rel.split("/"));
@@ -216,6 +228,7 @@ function copyWorkingTree(root: string, copy: string, inGit: boolean, skip: strin
 		fs.mkdirSync(path.dirname(to), { recursive: true });
 		fs.copyFileSync(from, to);
 	}
+	return untracked;
 }
 
 /** Every file in `dir` (not through `node_modules`) gets `time`, in seconds. */
