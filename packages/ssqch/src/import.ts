@@ -1733,7 +1733,7 @@ export function itemsPassedToIncludes(text: string, lists: readonly string[]): A
 	return out;
 }
 
-export function rewriteJekyllTemplate(text: string, collections: readonly string[] = [], dataNames: readonly string[] = [], itemParams: readonly string[] = []): [string, string[], string[]] {
+export function rewriteJekyllTemplate(text: string, collections: readonly string[] = [], dataNames: readonly string[] = [], itemParams: readonly string[] = [], keepSiteData = false): [string, string[], string[]] {
 	const changes: string[] = [];
 	const left: string[] = [];
 	// A key the template also uses as its own variable can't be renamed: `{% assign lang = page.lang %}`.
@@ -1761,7 +1761,7 @@ export function rewriteJekyllTemplate(text: string, collections: readonly string
 	for (const name of [...own].sort(compareText)) {
 		if (PAGE_KEYS.has(name) || Object.hasOwn(JEKYLL_PAGE, name)) continue;
 		if (new RegExp(`(?<![\\w.])page\\.${name}\\b`).test(out)) renameOwn(name, `\`page.${name}\` is \`${name}\``);
-		else if (dataNames.includes(name) && new RegExp(`(?<![\\w.])site\\.data\\.${name}\\b`).test(out)) renameOwn(name, `\`site.data.${name}\` is \`${name}\``);
+		else if (!keepSiteData && dataNames.includes(name) && new RegExp(`(?<![\\w.])site\\.data\\.${name}\\b`).test(out)) renameOwn(name, `\`site.data.${name}\` is \`${name}\``);
 	}
 	out = out.replace(/(\{\{[^}]*?\}\}|\{%[^%]*?%\})/g, (code) => code.replace(/(?<![\w.])page\.([A-Za-z_][\w-]*)/g, (whole, key: string) => {
 		if (PAGE_KEYS.has(key)) return whole;
@@ -1779,7 +1779,8 @@ export function rewriteJekyllTemplate(text: string, collections: readonly string
 	inTags((code) => code.replace(listWord, (_, name: string) => {
 		renamed.set(`site.${name}`, (renamed.get(`site.${name}`) ?? 0) + 1);
 		return `collections.${name}`;
-	}).replace(/(?<![\w.])site\.data\.(?=[A-Za-z_])/g, () => {
+	}).replace(/(?<![\w.])site\.data\.(?=[A-Za-z_])/g, (whole) => {
+		if (keepSiteData) return whole;
 		renamed.set("site.data.", (renamed.get("site.data.") ?? 0) + 1);
 		return "";
 	}));
@@ -1839,7 +1840,8 @@ export function jekyll(dir: string): Plan {
 	});
 	// Jekyll reads `_`-folders it knows, and skips the rest (and dot files) unless `include` names them.
 	const special = new Set([layoutsDir, includesDir, dataDir, "_posts", "_drafts", "_sass", ...Object.keys(collections).map((c) => (collectionsDir ? `${collectionsDir}/_${c}` : `_${c}`))]);
-	const entries = walk(dir, (name, rel) => rel === output || name === ".git" || name === "node_modules" || name === ".cache" || isExcluded(rel) || ((name.startsWith(".") || name.startsWith("_")) && !included.has(name) && !special.has(rel) && !(collectionsDir && rel === collectionsDir)), true);
+	// `_posts` and `_drafts` count in any folder, as Jekyll reads them (`en/news/_posts`).
+	const entries = walk(dir, (name, rel) => rel === output || name === ".git" || name === "node_modules" || name === ".cache" || isExcluded(rel) || ((name.startsWith(".") || name.startsWith("_")) && !included.has(name) && !special.has(rel) && name !== "_posts" && name !== "_drafts" && !(collectionsDir && rel === collectionsDir)), true);
 
 	// Templates: `page.<key>` renamed, the tags no one defines counted, and kramdown's habits.
 	// The collections (`site.articles`) and the data's names (`site.data.locales`), which templates
@@ -1871,8 +1873,12 @@ export function jekyll(dir: string): Plan {
 		const ext = asciiLower(extensionOf(entry.name));
 		const text = readUtf8(entry.abs);
 		const templateDir = entry.rel.startsWith(`${layoutsDir}/`) || entry.rel.startsWith(`${includesDir}/`);
+		// Data files and Sass partials are never pages, and a YAML file's `---` is YAML's document
+		// marker, not front matter (www.ruby-lang.org's 18 `_data/*.yml` got front matter written
+		// into them, and the build failed).
+		if (entry.rel.startsWith(`${dataDir}/`) || entry.rel.startsWith("_sass/")) continue;
 		const front = text !== undefined && hasFrontMatter(text);
-		if (!templateDir && !entry.rel.startsWith(`${dataDir}/`) && !entry.rel.startsWith("_sass/") && !front) {
+		if (!templateDir && !front) {
 			// Jekyll copies a file without front matter as it is; ssqch renders `.md` and `.html`.
 			if (!["md", "markdown"].includes(ext)) statics.push(entry.rel);
 			continue;
@@ -1880,7 +1886,7 @@ export function jekyll(dir: string): Plan {
 		if (text === undefined) continue;
 		if (front && !["md", "markdown", "html", "liquid", "scss", "sass"].includes(ext)) frontMatterOther.push(entry.rel);
 		if (!(templateDir || front) || ["scss", "sass"].includes(ext)) continue;
-		let [next, changes, left] = rewriteJekyllTemplate(text, collectionList, dataNames, [...(itemParams.get(entry.rel) ?? [])]);
+		let [next, changes, left] = rewriteJekyllTemplate(text, collectionList, dataNames, [...(itemParams.get(entry.rel) ?? [])], true);
 		// `{% seo %}` is jekyll-seo-tag's: the include written below.
 		if (/\{%-?\s*seo\b[^%]*%\}/.test(next)) {
 			next = next.replace(/\{%(-?)\s*seo\b[^%]*?(-?)%\}/g, "{%$1 include seo.liquid $2%}");
@@ -1956,14 +1962,20 @@ export function jekyll(dir: string): Plan {
 		if (isFile(path.join(dir, ...name.split("/")))) return plan.byHand.push([name, `it's there already, so ${from} wasn't written into it: ${JSON.stringify(data)}`]);
 		plan.newFiles.push([name, from, `${JSON.stringify(data, null, 2)}\n`]);
 	};
-	if (isDir(path.join(dir, "_posts"))) {
-		const permalink = jekyllPermalink(typeof config.permalink === "string" ? config.permalink : "date", "");
-		const data: Data = { tags: "posts", ...defaultsFor("_posts", "posts") };
+	// Every `_posts` folder (www.ruby-lang.org has one for each language, `en/news/_posts`, and
+	// 4,787 posts were at `/en/news/_posts/<file>/`): the `posts` tag, and the permalink, with the
+	// folders above it as the first categories, as Jekyll makes them.
+	const postFolders = entries.filter((e) => !e.isFile && e.name === "_posts").map((e) => e.rel);
+	for (const folder of postFolders) {
+		const above = folder.split("/").slice(0, -1);
+		let permalink = jekyllPermalink(typeof config.permalink === "string" ? config.permalink : "date", "");
+		if (permalink && above.length) permalink = permalink.replace("{% if categories %}", `/${above.map((f) => f.toLowerCase()).join("/")}{% if categories %}`);
+		const data: Data = { tags: "posts", ...defaultsFor(folder, "posts") };
 		if (permalink) data.permalink = permalink;
-		else plan.byHand.push([configFile!, `permalink: ${String(config.permalink)}: a placeholder ssqch can't write; give _posts/posts.json a \`permalink\` of your own`]);
-		directoryData("_posts", data, `Jekyll's posts: the \`posts\` tag${permalink ? ", and the permalink" : ""}`);
-		collectionNames.push("posts");
+		else plan.byHand.push([configFile!, `permalink: ${String(config.permalink)}: a placeholder ssqch can't write; give ${folder}/_posts.json a \`permalink\` of your own`]);
+		directoryData(folder, data, `Jekyll's posts: the \`posts\` tag${permalink ? `, and the permalink${above.length ? ` (with ${above.join("/")} as categories)` : ""}` : ""}`);
 	}
+	if (postFolders.length) collectionNames.push("posts");
 	if (isDir(path.join(dir, "_drafts"))) plan.byHand.push(["_drafts", "drafts: move them to `_posts` with `draft: true`, which `ssqch serve` builds and production builds leave out"]);
 	for (const [name, settings] of Object.entries(collections)) {
 		if (name === "posts") continue;
@@ -2026,8 +2038,17 @@ export function jekyll(dir: string): Plan {
 			copied.push([e.rel, `${prefix}${e.rel.slice(folder.length + 1)}`]);
 		}
 	}
+	// Jekyll skips `_` and `.` entries inside a copied folder too (www.ruby-lang.org's
+	// `images/_obsolete/`, 42 files): a folder with one is copied a file at a time, without it.
+	const hidden = (rel: string): boolean => {
+		try {
+			return fs.readdirSync(path.join(dir, ...rel.split("/")), { withFileTypes: true }).some((d) => d.name.startsWith("_") || d.name.startsWith(".") || (d.isDirectory() && hidden(`${rel}/${d.name}`)));
+		} catch {
+			return false;
+		}
+	};
 	for (const [top, files] of [...topLevel].sort(([a], [b]) => compareText(a, b))) {
-		const whole = top !== "" && ![...front].some((f) => f.startsWith(`${top}/`));
+		const whole = top !== "" && ![...front].some((f) => f.startsWith(`${top}/`)) && !hidden(top);
 		if (whole) passthrough.push(top);
 		else {
 			// A folder with templates in it: its subfolders without any, and its other files.
@@ -2038,7 +2059,7 @@ export function jekyll(dir: string): Plan {
 				sub.set(key, [...(sub.get(key) ?? []), f]);
 			}
 			for (const [key] of [...sub].sort(([a], [b]) => compareText(a, b))) {
-				if (key.includes("/") && !isFile(path.join(dir, ...key.split("/"))) && [...front].some((f) => f.startsWith(`${key}/`))) for (const f of sub.get(key)!) passthrough.push(f);
+				if (key.includes("/") && !isFile(path.join(dir, ...key.split("/"))) && ([...front].some((f) => f.startsWith(`${key}/`)) || hidden(key))) for (const f of sub.get(key)!) passthrough.push(f);
 				else passthrough.push(key);
 			}
 		}
@@ -2084,6 +2105,37 @@ export function jekyll(dir: string): Plan {
 	if (named.has("jekyll-redirect-from") && !entries.some((e) => e.rel.startsWith(`${includesDir}/hooks/redirect.`))) {
 		plan.newFiles.push([`${includesDir}/hooks/redirect.liquid`, "jekyll-redirect-from's page for each old URL", JEKYLL_REDIRECT_PAGE]);
 	}
+	// A layout in another extension (`_layouts/news_feed.rss`) would run that extension's engine only,
+	// never Liquid (www.ruby-lang.org's 17 feeds printed their `{% for %}`): it's a `.liquid` layout, and
+	// `layout: news_feed` still names it.
+	for (const e of entries) {
+		if (!e.isFile || !e.rel.startsWith(`${layoutsDir}/`)) continue;
+		const ext = asciiLower(extensionOf(e.name));
+		if (["html", "liquid", "md", "markdown"].includes(ext)) continue;
+		const to = e.rel.replace(/\.[^./]+$/, ".liquid");
+		if (entries.some((o) => o.rel === to)) plan.byHand.push([e.rel, `a layout in .${ext}, which wouldn't run Liquid in ssqch; ${to} is there already, so rename it by hand`]);
+		else plan.renames.push([e.rel, to]);
+	}
+	// The site's own Ruby plugins, which ssqch can't run: what each registers, and ssqch's way to do
+	// it, so an `unknown filter` at build time isn't the first sign (www.ruby-lang.org's 8 files).
+	const pluginsDir = typeof config.plugins_dir === "string" ? config.plugins_dir : "_plugins";
+	let pluginFiles: string[] = [];
+	try { pluginFiles = fs.readdirSync(path.join(dir, pluginsDir)).filter((f) => f.endsWith(".rb")).sort(compareText); } catch { /* none */ }
+	for (const file of pluginFiles) {
+		const ruby = readUtf8(path.join(dir, pluginsDir, file)) ?? "";
+		const parts: string[] = [];
+		if (/register_filter/.test(ruby)) {
+			const filters = [...ruby.matchAll(/^\s*def\s+([a-z_][\w]*[?!]?)/gm)].map((m) => m[1]).filter((n) => !n.startsWith("self.") && n !== "initialize");
+			parts.push(`filters ${filters.map((f) => `\`${f}\``).join(", ")}: functions in the config's \`filters\` (a function sees only its arguments, so pass what it read from \`@context\`, like \`page.lang\`)`);
+		}
+		for (const m of ruby.matchAll(/register_tag\(\s*["':]?([\w]+)["']?/g)) parts.push(`the tag \`{% ${m[1]} %}\`: a function in \`filters\` is a Liquid tag too, and returns its HTML`);
+		for (const m of ruby.matchAll(/register_block\(\s*["':]?([\w]+)["']?/g)) parts.push(`the block \`{% ${m[1]} %}...{% end${m[1]} %}\`: a function in \`filters\` gets what's between them first`);
+		if (/<\s*(?:Jekyll::)?Generator\b/.test(ruby)) parts.push("a generator (pages made from data): a collection of what to make, and one template with `pagination` over it, or a `.data.js` file");
+		if (/<\s*(?:Jekyll::)?Page\b/.test(ruby) && !/<\s*(?:Jekyll::)?Generator\b/.test(ruby)) parts.push("pages of its own: a template with `pagination` over data");
+		for (const m of ruby.matchAll(/Hooks\.register\s+:(\w+),\s*:(\w+)/g)) parts.push(`a \`${m[1]}\` \`${m[2]}\` hook: ${m[2] === "post_write" ? "`afterBuild` (a function, or `{ run: \"...\" }`)" : m[2].startsWith("pre") || m[2] === "post_read" || m[2] === "after_init" ? "`beforeBuild`, `computed` or a `.data.js` file" : "a transform (`transforms`) or `afterBuild`"}`);
+		if (/<\s*(?:Jekyll::)?Converter\b/.test(ruby)) parts.push("a converter: an engine for its extension (`engines`)");
+		plan.byHand.push([`${pluginsDir}/${file}`, `a Ruby plugin, which ssqch doesn't run: ${parts.length ? parts.join("; ") : "read it for what it adds to the output, then do that with a filter, a transform, a collection or `afterBuild`"}. "Porting a site's own plugins" in \`ssqch docs --from jekyll\` has a table of each kind`]);
+	}
 	if (named.has("github-pages")) plan.byHand.push(["Gemfile", "github-pages' default theme (jekyll-theme-primer) writes `/assets/css/style.css`: nothing in ssqch, so check whether a page links to it"]);
 	const sass = isDir(path.join(dir, "_sass")) || entries.some((e) => e.isFile && /\.s[ac]ss$/.test(e.name) && front.has(e.rel));
 	if (sass) {
@@ -2122,7 +2174,12 @@ export function jekyll(dir: string): Plan {
 	const passed = [...passthrough.map((p) => JSON.stringify(p)), ...copied.map(([from, to]) => `{ ${JSON.stringify(from)}: ${JSON.stringify(to)} }`)];
 	if (passed.length) out += `  // What Jekyll copied as it is: files without front matter.\n  passthrough: [${passed.join(", ")}],\n`;
 	const pageDefaults = Object.entries(everyPage).map(([k, v]) => `${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${JSON.stringify(v)}`);
-	out += pageDefaults.length ? `  // ${configFile}'s \`defaults\` for every page.\n  data: { site, ${pageDefaults.join(", ")} },\n` : "  data: { site },\n";
+	// `site.data.<name>` keeps working as it is: ssqch's global data is `<name>`, and `computed` puts
+	// it under `site.data` too, so no template or page is edited for it (www.ruby-lang.org's 1,002
+	// pages print their own source, where an edit changed the output).
+	const usesSiteData = entries.some((e) => e.isFile && /\.(?:html|liquid|md|markdown|xml|rss|txt|json|js)$/.test(e.name) && (readUtf8(e.abs) ?? "").includes("site.data"));
+	const siteData = usesSiteData && dataNames.length ? `\n    // \`site.data.<name>\` in templates: each of ${dataDir}'s files.\n    computed: { site: (data) => ({ ...data.site, data: { ${dataNames.map((n) => `${/^[A-Za-z_$][\w$]*$/.test(n) ? n : JSON.stringify(n)}: data[${JSON.stringify(n)}]`).join(", ")} } }) },\n  ` : " ";
+	out += pageDefaults.length ? `  // ${configFile}'s \`defaults\` for every page.\n  data: { site, ${pageDefaults.join(", ")},${siteData}},\n` : `  data: { site,${siteData}},\n`;
 	out += `  filters: {\n    // Plugins' tags and filters go here: name: (...args) => result\n  },\n  plugins: [${plugins.join(", ")}],\n});\n`;
 	if (findConfig(dir) === undefined) plan.newFiles.unshift(["ssqch.config.js", `a first draft, from ${configFile}`, out]);
 	else plan.byHand.push(["ssqch.config.js", "it's already there, so the draft from the Jekyll config wasn't written"]);

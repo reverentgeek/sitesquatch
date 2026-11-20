@@ -159,8 +159,21 @@ where that version matches.
   HTML-escaped only, as kramdown does, where ssqch percent-encodes them (`#كتابة` as
   `#%D9%83...`); `ssqch import jekyll` turns it on. Browsers go to the same place either way.
 
+- Jekyll's `{% highlight lang %}` (in Jekyll's `<figure>`, with ssqch's highlighter), `{% link path %}`
+  and `{% post_url name %}` in Liquid; a path no page has is an error that names it.
+- `ssqch import jekyll` lists each `_plugins/*.rb` with what it registers (filters, tags,
+  generators, hooks) and ssqch's way to do each, writes directory data for every `_posts` folder
+  (`en/news/_posts`, its folders as the first categories), renames a `.rss` or `.xml` layout to
+  `.liquid` so it runs Liquid, and keeps `site.data.<name>` working through `computed` instead of
+  editing templates and pages. The Jekyll trailhead has "Porting a site's own plugins".
+
 ### Changed
 
+- Liquid's `truncate` counts characters and `truncatewords` splits at any whitespace and adds
+  the ellipsis from `n` words, as Ruby's Liquid 4 (Jekyll's) does; 0.7 counted bytes, so a
+  Cyrillic or CJK text under the limit got a `...`. `truncatewords`' default is 15, as in Ruby.
+- A front matter key written twice is the last one, with a warning, as in Jekyll, where it was an
+  error.
 - A link's or image's hook gets no `title` (null) when it has none, where it got `""`, which
   Liquid counts as true.
 - `ssqch import`, `ssqch diff` and `ssqch baseline` list only the global options that do
@@ -195,6 +208,10 @@ where that version matches.
 
 ### Fixed
 
+- Front matter dates in Jekyll's documented form (`2009-12-25 10:41:06 +0000`, a space before a
+  zone without a colon, a one-digit hour) were refused.
+- `ssqch import jekyll` wrote front matter into `_data` files that start with YAML's `---`, and the
+  build failed; it copied `_` folders inside a passed-through folder, which Jekyll skips.
 - `ssqch baseline` left Jekyll's `site.time` unpinned when the command gave its own `--config`
   (every article varied): the time goes last in that list. It warns when Jekyll's build has GitHub
   Pages' placeholder `github.com/pages/...` URLs.

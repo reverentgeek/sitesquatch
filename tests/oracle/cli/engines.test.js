@@ -628,3 +628,22 @@ test("jekylls_liquid_filters_write_what_jekyll_writes", () => {
 	assert.ok(r.ok, r.log);
 	assert.equal(read(dir, "_site/index.html"), "l&apos;Open &amp; &lt;b&gt;|a   b|ar=عربي,de=Deutsch,fr=Français,|a,b");
 });
+
+// Added in 0.11, from the fresh www.ruby-lang.org move: Jekyll's own tags and Ruby's Liquid 4
+// filters, Jekyll's date form (3,545 posts), and a front matter key written twice (4 posts).
+test("jekylls_tags_dates_and_rubys_truncate", () => {
+	const dir = tempDir("jekyll-tags");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"liquid\", \"md\"] };\n",
+		"en/news/_posts/_posts.json": "{ \"permalink\": \"/en/news/{{ page.fileSlug }}/\" }\n",
+		"en/news/_posts/2016-07-26-pine.md": "---\ntitle: English\ntitle: Pine\ndate: 2009-12-25 10:41:06 +0000\n---\nPine\n",
+		"index.liquid": "{% highlight ruby %}\nputs \"<hi>\"\n{% endhighlight %}|{% link en/news/_posts/2016-07-26-pine.md %}|{% post_url 2016-07-26-pine %}|{{ collections.all | where: \"url\", \"/en/news/pine/\" | map: \"data\" | map: \"title\" | first }} {{ collections.all | where: \"url\", \"/en/news/pine/\" | map: \"date\" | first | date: \"%Y-%m-%d %H:%M\" }}|{{ \"ббб\" | truncate: 5 }}|{{ \"a b c\" | truncatewords: 3 }}|{{ \"a\tb\" | truncatewords: 1 }}",
+	});
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.ok(r.log.includes("warn: ./en/news/_posts/2016-07-26-pine.md: front matter has `title` twice (line 3); the last one is used, as Jekyll uses it"), r.log);
+	assert.equal(read(dir, "_site/index.html"), "<figure class=\"highlight\"><pre><code class=\"language-ruby\" data-lang=\"ruby\"><span class=\"hl-function\">puts</span> <span class=\"hl-string\">&quot;&lt;hi&gt;&quot;</span></code></pre></figure>|/en/news/pine/|/en/news/pine/|Pine 2009-12-25 10:41|ббб|a b c...|a...");
+	write(dir, { "bad.liquid": "{% link nope.md %}" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("{% link nope.md %}: no page at nope.md"), r.log);
+});

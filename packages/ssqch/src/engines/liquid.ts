@@ -359,6 +359,70 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 		});
 	}
 
+	// Jekyll's own tags. `{% highlight ruby %}...{% endhighlight %}`: the bare word is the language
+	// (as a function tag it was an undefined variable, and www.ruby-lang.org's 2,442 code blocks came
+	// out as paragraphs, quietly), written in Jekyll's `<figure>` with ssqch's highlighter. A site's
+	// own `highlight` function keeps the tag.
+	const highlightFn = functions.get("highlight");
+	if (highlightFn && !env.config.filters.has("highlight")) {
+		liquid.registerTag("highlight", class extends Tag {
+			lang = "";
+			templates: any[] = [];
+			constructor(token: any, remain: any[], engine: any, parser: any) {
+				super(token, remain, engine);
+				const words = String(token.args ?? "").trim().split(/\s+/).filter(Boolean);
+				this.lang = (words[0] ?? "").replace(/^["']|["']$/g, "");
+				if (!/^[\w+#.-]+$/.test(this.lang)) throw new BuildError(`{% highlight ${token.args?.trim() ?? ""} %}: give the language as a word, like {% highlight ruby %}`);
+				let closed = false;
+				while (remain.length) {
+					const next = remain.shift();
+					if (TypeGuards.isTagToken(next) && next.name === "endhighlight") { closed = true; break; }
+					this.templates.push(parser.parseToken(next, remain));
+				}
+				if (!closed) throw new BuildError(`{% highlight ${this.lang} %} has no {% endhighlight %}`);
+			}
+			*render(ctx: any, emitter: any): Generator<unknown, void, unknown> {
+				// Jekyll takes the line breaks off both ends of the code.
+				const code = String(yield (this.liquid as any).renderer.renderTemplates(this.templates, ctx)).replace(/^(?:\r?\n)+|(?:\r?\n)+$/g, "");
+				const html = String(yield invoke(ctx, "highlight", highlightFn, [code, this.lang]));
+				const lang = escapeAttr(this.lang);
+				emitter.write(`<figure class="highlight"><pre><code class="language-${lang}" data-lang="${lang}">${html}</code></pre></figure>`);
+			}
+			*children(): Generator<unknown, any[], unknown> { return this.templates; }
+		});
+	}
+	// `{% link _posts/2016-07-26-pine.md %}` is that page's URL, and `{% post_url 2016-07-26-pine %}` a
+	// post's (www.ruby-lang.org: 320 links). Paths are from the site's folder, as Jekyll has them; a
+	// path no page has is an error naming it.
+	const pageUrl = (ctx: any, tag: string, test: (inputPath: string) => boolean, shown: string): string => {
+		const all = ctx.getSync(["collections", "all"]);
+		const found = Array.isArray(all) ? all.find((p: any) => typeof p?.inputPath === "string" && test(p.inputPath.replace(/^\.\//, ""))) : undefined;
+		if (!found || typeof found.url !== "string") throw new BuildError(`{% ${tag} ${shown} %}: no page at ${shown}`);
+		return found.url;
+	};
+	for (const tag of ["link", "post_url"]) {
+		if (functions.has(tag)) continue;
+		liquid.registerTag(tag, class extends Tag {
+			arg = "";
+			constructor(token: any, remain: any[], engine: any) {
+				super(token, remain, engine);
+				this.arg = String(token.args ?? "").trim();
+				if (this.arg === "") throw new BuildError(`{% ${tag} %} needs a path, like {% ${tag === "link" ? "link _posts/2016-07-26-pine.md" : "post_url 2016-07-26-pine"} %}`);
+			}
+			*render(ctx: any, emitter: any): Generator<unknown, void, unknown> {
+				// Jekyll 4 renders Liquid in the path: `{% link {{ page.file }} %}`.
+				const arg = this.arg.includes("{{") ? String(yield (this.liquid as any).parseAndRender(this.arg, ctx.getAll())) : this.arg;
+				if (tag === "link") emitter.write(pageUrl(ctx, tag, (p) => p === arg.replace(/^\.?\//, ""), arg));
+				else {
+					// `2016-07-26-pine` or `news/2016-07-26-pine`: a post's file name without its extension, in any `_posts` folder.
+					const slash = arg.lastIndexOf("/");
+					const [folder, name] = slash < 0 ? ["", arg] : [arg.slice(0, slash).replace(/^\//, ""), arg.slice(slash + 1)];
+					emitter.write(pageUrl(ctx, tag, (p) => new RegExp(`(?:^|/)_posts/${folder ? `${folder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/` : "(?:.*/)?"}${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.[^/.]+$`).test(p), arg));
+				}
+			}
+		});
+	}
+
 	// The config's functions as tags too, as in Nunjucks: `{% seo %}` prints what `seo()` returns,
 	// unescaped (Jekyll's jekyll-seo-tag, osg #6). Arguments are values, by commas or spaces, and
 	// `name: value` or Jekyll's `name=value` arrive as one object at the end (`{% seo title=false
@@ -672,9 +736,11 @@ const length = (v: unknown, otherwise: number) => {
 /**
  * Where the liquid crate's filters say otherwise than liquidjs', 0.7's output stays: `capitalize`
  * changes the first letter only (`Pine CONE`), `url_encode` writes a space as `%20`, `split`
- * is Ruby's (below), `truncate` counts the ellipsis' bytes, `truncatewords` splits at each space,
+ * is Ruby's (below), `truncate` and `truncatewords` are Ruby's Liquid 4's (Jekyll's; 0.7 counted bytes),
  * `map` leaves out what isn't an object, `uniq` compares values, and `size` is a value's text's.
  */
+const escapeAttr = (v: string) => v.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]!);
+
 const TEXT: Record<string, (...args: any[]) => unknown> = {
 	capitalize: (input: unknown) => {
 		const [first = "", ...rest] = [...text(input)];
@@ -706,16 +772,19 @@ const TEXT: Record<string, (...args: any[]) => unknown> = {
 	},
 	escape: (input: unknown) => escape(input, false),
 	escape_once: (input: unknown) => escape(input, true),
+	// Ruby's Liquid (Jekyll's) counts characters, where 0.7 counted bytes: a Cyrillic or CJK
+	// description shorter than the limit got a `...` (www.ruby-lang.org, 883 pages).
 	truncate: (input: unknown, size: unknown, ellipsis: unknown) => {
-		const s = text(input), end = ellipsis === undefined || ellipsis === null ? "..." : text(ellipsis);
+		const chars = [...text(input)], end = [...(ellipsis === undefined || ellipsis === null ? "..." : text(ellipsis))];
 		const n = length(size, 50);
-		if (n >= Buffer.byteLength(s)) return input;
-		return [...s].slice(0, Math.max(n - Buffer.byteLength(end), 0)).join("") + end;
+		if (n >= chars.length) return input;
+		return chars.slice(0, Math.max(n - end.length, 0)).join("") + end.join("");
 	},
+	// Liquid 4's (Jekyll's): words split at any whitespace, and the ellipsis once there are `n` of them.
 	truncatewords: (input: unknown, count: unknown, ellipsis: unknown) => {
-		const words = text(input).split(" "), end = ellipsis === undefined || ellipsis === null ? "..." : text(ellipsis);
-		const n = length(count, 50);
-		return n < words.length ? words.slice(0, n).join(" ") + end : input;
+		const words = text(input).split(/[ \t\n\v\f\r]+/).filter((w) => w !== ""), end = ellipsis === undefined || ellipsis === null ? "..." : text(ellipsis);
+		const n = Math.max(length(count, 15), 1);
+		return words.length >= n ? words.slice(0, n).join(" ") + end : input;
 	},
 	map: (input: unknown, property: unknown) => {
 		if (!Array.isArray(input)) throw new BuildError("invalid input: Array expected");

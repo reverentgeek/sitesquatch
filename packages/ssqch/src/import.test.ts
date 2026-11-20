@@ -564,3 +564,35 @@ test("jekyll_import_writes_what_github_pages_and_its_plugins_did", () => {
 	assert.ok(other("robots.liquid").includes("Sitemap: {{ site.url }}/sitemap.xml") && other("redirects.liquid").includes("permalink: /redirects.json"));
 	assert.ok(other("_includes/hooks/redirect.liquid").includes("{%- assign to = site.url | append: redirect.to -%}"));
 });
+
+// From the fresh www.ruby-lang.org move: the importer wrote front matter into `_data` (the build
+// failed), missed every `_posts` folder but the top one, said nothing of `_plugins/`, left a `.rss`
+// layout that never ran Liquid, copied `images/_obsolete/`, and renamed `site.data` in 1,002 pages.
+test("jekyll_import_reads_a_site_like_rubys", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-import-ruby-"));
+	const w = (file: string, text: string) => {
+		fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+		fs.writeFileSync(path.join(dir, file), text);
+	};
+	w("_config.yml", "title: Ruby\npermalink: pretty\n");
+	w("_data/locales.yml", "---\nen: { posted_by: \"Posted by %a\" }\n");
+	w("en/news/_posts/2016-07-26-pine.md", "---\ntitle: Pine\n---\n{{ site.data.locales.en.posted_by }}\n");
+	w("_layouts/news_feed.rss", "<rss>{{ content }}</rss>\n");
+	w("_plugins/posted_by.rb", "module Jekyll\n  module PostedByFilter\n    def posted_by(date)\n    end\n  end\nend\nLiquid::Template.register_filter(Jekyll::PostedByFilter)\n");
+	w("_plugins/llms.rb", "Jekyll::Hooks.register :site, :post_write do |site|\nend\n");
+	w("images/logo.png", "png");
+	w("images/_obsolete/old.png", "png");
+	const plan = jekyll(dir);
+	assert.ok(!plan.edits.some(([f]) => f.startsWith("_data/")) && !plan.newFiles.some(([f]) => f.startsWith("_data/")), JSON.stringify(plan.edits.map(([f]) => f)));
+	// `site.data` stays as it's written, and the config puts the data under it.
+	assert.ok(!plan.edits.some(([f]) => f.startsWith("en/news/")), JSON.stringify(plan.edits.map(([f]) => f)));
+	const config = plan.newFiles.find(([f]) => f === "ssqch.config.js")![2];
+	assert.ok(config.includes("computed: { site: (data) => ({ ...data.site, data: { locales: data[\"locales\"] } }) },"), config);
+	assert.ok(config.includes("passthrough: [\"images/logo.png\"]"), config);
+	const posts = plan.newFiles.find(([f]) => f === "en/news/_posts/_posts.json")?.[2] ?? "";
+	assert.ok(posts.includes("\"permalink\": \"/en/news{% if categories %}"), posts);
+	assert.deepEqual(plan.renames, [["_layouts/news_feed.rss", "_layouts/news_feed.liquid"]]);
+	const said = (at: string) => plan.byHand.find(([a]) => a === at)?.[1] ?? "";
+	assert.ok(said("_plugins/posted_by.rb").startsWith("a Ruby plugin, which ssqch doesn't run: filters `posted_by`: functions in the config's `filters`"), said("_plugins/posted_by.rb"));
+	assert.ok(said("_plugins/llms.rb").includes("a `site` `post_write` hook: `afterBuild`"), said("_plugins/llms.rb"));
+});

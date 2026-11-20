@@ -147,7 +147,9 @@ test("the_smaller_filters_give_0_7s_output", async () => {
 	const liquid = liquidEngine(site.env);
 	const data = { obj: { a: 1, b: 2 }, list: ["a", "b"], same: [{ x: 1 }, { x: 1 }, { x: 2 }] };
 	const out = liquid.render("{{ 'a\"b' | escape }}|{{ '&amp; \"x\"' | escape_once }}|{{ obj | size }}|{{ 5 | size }}|{{ same | uniq | size }}|{{ \"hello world\" | truncatewords: 0 }}|{{ \"a  b   c\" | truncatewords: 2 }}|{{ 'a\\nb' }}|{{ list | map: \"x\" | size }}|{{ \"a%20b+c%\" | url_decode }}|{{ \"hello world\" | truncate: 8, \"…\" }}", data, site.ctx("page.liquid"));
-	assert.equal(out, "a&quot;b|&amp; &quot;x&quot;|2|1|2|...|a ...|a\\nb|0|a b c%|hello…");
+	// DELIBERATE (0.11, from the fresh www.ruby-lang.org move): `truncate` and `truncatewords` are Ruby's
+	// Liquid 4's (Jekyll's), where 0.7 counted bytes (`…` was 3) and split at single spaces.
+	assert.equal(out, "a&quot;b|&amp; &quot;x&quot;|2|1|2|hello...|a b...|a\\nb|0|a b c%|hello w…");
 	// What 0.7 refused is still refused.
 	for (const [source, said] of [["{% include \"nav\", a: 1 %}", "expected \"=\""], ["{% include \"nav\" with title %}", "not `with` or `for`"], ["{{ title | }}", "expected a filter's name"], ["{{ 1e3 }}", "`1e3` isn't a number"], ["{{ \"%E2%82\" | url_decode }}", "Malformed UTF-8"]]) {
 		const message = await failure(() => liquid.render(source, { title: "t" }, site.ctx("page.liquid")));

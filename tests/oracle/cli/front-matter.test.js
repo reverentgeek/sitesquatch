@@ -42,7 +42,12 @@ test("front_matter_errors_name_the_page", () => {
 	write(dir, { "src/open.edge": "---json\n[1, 2]\n---\n" });
 	r = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(!r.ok && r.log.includes("in open.edge: JSON front matter must be an object, not "), r.log);
+	// DELIBERATE (0.11, from the fresh www.ruby-lang.org move): a key written twice is the last one, as
+	// in Jekyll, with a warning that names it, where it was an error.
 	write(dir, { "src/open.edge": "---\na: one\na: two\n---\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok && r.log.includes("warn: ./src/open.edge: front matter has `a` twice (line 3); the last one is used"), r.log);
+	write(dir, { "src/open.edge": "---\na: [unclosed\n---\n" });
 	r = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(!r.ok && r.log.includes("in open.edge: invalid YAML front matter: "), r.log);
 });

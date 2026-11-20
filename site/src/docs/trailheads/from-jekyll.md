@@ -65,9 +65,11 @@ export default defineConfig({
 - **`site.posts` and collections:** `site.posts` is `collections.posts` (the pages tagged `posts`), and a collection's `site.articles` is `collections.articles` (its folder's directory data tags its pages `articles`; the build warns about a `site.<collection>` it finds). Items have `url` and `data`: front matter is under `data` (`post.data.title`, `| where: "data.lang", "fr"`), `post.content` is `post.templateContent`, and `post.excerpt` is `post.page.excerpt`.
 - **Excerpts:** Jekyll's `excerpt` is the source up to `excerpt_separator` (the first blank line by default), rendered; ssqch's `page.excerpt` is the rendered page up to a `<!-- more -->` comment, or else its first paragraph. They're the same for a post that starts with a paragraph; for one that starts with a heading, a list or a quote, put `<!-- more -->` where Jekyll's separator was. `excerpt_separator: <!--more-->` in `_config.yml` is the same as ssqch's.
 - **A language menu and hreflang links** (each page's translations, looked up in a loop over every page): ssqch has no built-in i18n yet. The Liquid loop works as it is, but it runs on every page; a filter that groups the pages once is faster, `translations: (pages, url) => ...` in the config's `filters` (`ssqch docs "Multilingual sites"`).
+- **Jekyll's tags:** `{% highlight ruby %}...{% endhighlight %}` writes Jekyll's `<figure class="highlight">` with ssqch's highlighter, and `{% link _posts/2016-07-26-pine.md %}` and `{% post_url 2016-07-26-pine %}` are that page's URL (a path no page has is an error that names it). A site's own `highlight` function keeps that tag.
+- **`site.data`:** `_data` is global data (`site.data.locales` is `locales`); `ssqch import jekyll` puts it under `site.data` too, with `computed`, so templates and pages read it as they did.
 - **Includes:** `{% include nav.html section="home" %}` works, with `include.section`, and so does `{% include_relative parts/intro.md %}`. A file read by `include_relative` is a page of its own too, if it's Markdown: give its folder `permalink: false` in directory data.
 - **Plugin tags** (`{% seo %}`, `{% feed_meta %}`): an include, or a function in `filters` that returns the HTML: the config's functions are Liquid tags (`{% seo title=false %}` calls `seo({ title: false })`). A function sees only what it's given, so pass it the page and the front matter it reads (`{% seo page, title, description %}`). `ssqch docs "From jekyll-seo-tag"` has an include that writes jekyll-seo-tag's tags.
-- **Filters:** `relative_url`, `markdownify` and `jsonify` work, and `where` is fast. Math, `split` and blocks that only `assign` behave as in Ruby's Liquid (`"r>" | times: 1` is 0, which jekyll-toc depends on). `xml_escape` (`'` as `&apos;`), `normalize_whitespace`, `where_exp`, `group_by` and `sort` of a hash (into `[key, value]` pairs, by key) write what Jekyll's do. With a property, Jekyll's `sort` puts pages missing it first and ssqch's (Liquid's) last, so `sort` then handle the missing ones, or pass a list from the config. A whole float prints as `5` (Ruby writes `5.0`).
+- **Filters:** `relative_url`, `markdownify` and `jsonify` work, and `where` is fast. Math, `split` and blocks that only `assign` behave as in Ruby's Liquid (`"r>" | times: 1` is 0, which jekyll-toc depends on). `xml_escape` (`'` as `&apos;`), `normalize_whitespace`, `where_exp`, `group_by` and `sort` of a hash (into `[key, value]` pairs, by key) write what Jekyll's do. With a property, Jekyll's `sort` puts pages missing it first and ssqch's (Liquid's) last, so `sort` then handle the missing ones, or pass a list from the config. A whole float prints as `5` (Ruby writes `5.0`). `truncate` and `truncatewords` are Ruby's Liquid 4's. Front matter dates in Jekyll's form (`2009-12-25 10:41:06 +0000`) are read, and a key written twice is the last one, with a warning.
 - **A table of contents:** `toc(page.headings, { class: "section-nav", itemClass: "toc-entry toc-h{level}" })` writes jekyll-toc's markup, so its CSS keeps working (`{{ page.headings | toc: class: "section-nav" }}` in Liquid). It reads the page's headings after it renders, so it goes in the layout.
 - **Files with front matter:** Jekyll renders any file that starts with `---`. In ssqch a `.js` (or `.txt`) file needs an engine: `engines: { js: (s) => s }`, `"js"` in `templateFormats`, and `"render": "liquid,js"` with a `.js` permalink in that folder's directory data ("Text files with front matter" in [Templates and data](../templates.md)).
 
@@ -82,6 +84,25 @@ export default defineConfig({
 | jekyll-toc | `toc(page.headings, ...)`, above |
 | jekyll-github-metadata | Data in the config (`site.github.repository_nwo`) |
 | github-pages' default theme (jekyll-theme-primer) | Nothing: it writes `/assets/css/style.css`. Check whether a page links to it. |
+
+## Porting a site's own plugins
+
+> [!NOTE]
+> **Not released yet.** This ships with the next version of ssqch: `ssqch import jekyll`'s list of each `_plugins/*.rb`.
+
+A Jekyll site's own Ruby plugins (`_plugins/*.rb`) can't run in ssqch, but each kind has an ssqch feature that does its job. `ssqch import jekyll` lists each file with what it registers; port each to that feature, in a module of the site's own that the config imports (`lib/jekyll.js`), and build and compare with `ssqch diff` after each. www.ruby-lang.org's 8 plugins (705 lines of Ruby) became 572 lines of JavaScript.
+
+| In the Ruby | What it is | In ssqch |
+| --- | --- | --- |
+| `Liquid::Template.register_filter(Module)` | A filter for each method of the module | A function in `filters`: `posted_by: (date, author) => ...`; the method's arguments are the function's |
+| `Liquid::Template.register_tag("name", Class)` | A tag | A function in `filters` is a tag too: `{% translation_status %}` calls `translation_status()` and prints what it returns; a block tag's function gets the content first |
+| `@context.registers[:site]`, `@context.environments.first["page"]` | The site or the page, read from Liquid's context | A function sees only its arguments: pass what it reads (`{{ post.date \| posted_by: post.author, lang }}`), or keep site-wide lists in the module, filled by a collection function |
+| `class X < Jekyll::Generator` that adds `Jekyll::Page`s | Pages made from data (archives by year and month) | A collection function that returns one object per page (`{ url, layout, title, posts }`), and one template paginated over it with `size: 1` and a `permalink` from the item |
+| `Jekyll::Hooks.register :site, :post_read` that sets `page.data[...]` | Data on every page | `computed` in the config's `data` |
+| `Jekyll::Hooks.register :site, :post_write` that writes files | Files written after the build: a search index, `llms.txt` | `afterBuild`: a function, or a program (`{ run: "npx pagefind --site _site" }`) |
+| `Jekyll::Converter` | A file type of its own | An engine for its extension (`engines`) |
+
+What a plugin printed with Ruby's own methods (`strftime`, `Time#to_s`, `Hash` order) has to be written the same way in JavaScript: Ruby's `sort` isn't stable, and a whole `Float` prints as `4.0`. If Jekyll's build needs a file a tool writes first (a Tailwind `compiled.css` that's in `.gitignore`), put that step in the baseline's command (`ssqch baseline "npm run build-css && bundle exec jekyll build"`) and in ssqch's: `beforeBuild: [{ run: "npm run build-css" }]`.
 
 ## Markdown
 

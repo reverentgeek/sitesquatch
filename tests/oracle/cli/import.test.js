@@ -243,7 +243,6 @@ test("import_jekyll_drafts_a_config_that_builds", () => {
 	for (const said of [
 		"_layouts/guide.html: lang (the template's own variable) -> my_lang, page.title -> title, page.lang -> lang",
 		"_layouts/default.html: page.path -> page.inputPath | remove_first: \"./\", {% seo %} -> {% include seo.liquid %}",
-		"_posts/2026-01-02-pine.md: site.data.<name> -> <name>",
 		"index.html: site.posts -> collections.posts",
 		"_guides/_guides.json (the `guides` collection: its tag and permalink)",
 		"_posts/_posts.json (Jekyll's posts: the `posts` tag, and the permalink)",
@@ -254,7 +253,7 @@ test("import_jekyll_drafts_a_config_that_builds", () => {
 	r = ssqch(["import", "jekyll", dir, "--write"]);
 	assert.ok(r.ok, r.log);
 	const config = read(dir, "ssqch.config.js");
-	for (const part of ["trimAfterFrontMatter: true,", "markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false, encodeUrls: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets/img\", { \"_guides/zh/README.md\": \"guides/zh/README.md\" }],", "data: { site, image: \"/og.png\" },", "plugins: [redirectsPlugin(), sitemapPlugin({ url: site.url })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	for (const part of ["trimAfterFrontMatter: true,", "markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false, encodeUrls: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets/img\", { \"_guides/zh/README.md\": \"guides/zh/README.md\" }],", "data: { site, image: \"/og.png\",\n    // `site.data.<name>` in templates: each of _data's files.\n    computed: { site: (data) => ({ ...data.site, data: { trails: data[\"trails\"] } }) },\n  },", "plugins: [redirectsPlugin(), sitemapPlugin({ url: site.url })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(r.ok && !r.log.includes("`//`"), r.log);
 	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<aside>\n<p><em>Hush</em></p>\n</aside>"), read(dir, "_site/guides/trail/index.html"));

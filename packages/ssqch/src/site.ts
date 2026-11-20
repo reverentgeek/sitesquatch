@@ -658,7 +658,8 @@ export class Site {
 		const rel = relative(root, file);
 		try {
 			const src = decodeText(source);
-			const { data: front, body } = parseFrontMatter(src);
+			const { data: front, body, duplicate } = parseFrontMatter(src);
+			if (duplicate) warn(warning("front-matter", `${this.display(file)}: front matter has \`${duplicate.key}\` twice (line ${duplicate.line + 1}); the last one is used, as Jekyll uses it. Take one out`, { file: this.display(file), line: duplicate.line + 1, field: duplicate.key }));
 			const frontKeys = Object.keys(front);
 			aliasDataKeys(front);
 			const hasFrontMatter = body.length !== src.length;
