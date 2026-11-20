@@ -3,6 +3,7 @@
 import { bail } from "./diagnostics.ts";
 import { isPlainObject } from "./data.ts";
 import { closest } from "./suggest.ts";
+import { pythonMarkdownSlug } from "./engines/markdown-dialects.ts";
 
 export type Slugger = "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor";
 
@@ -45,6 +46,14 @@ export interface MarkdownOptions {
 	sluggerFn: ((text: string) => unknown) | null;
 	/** Markdown inside HTML: `"kramdown"` reads `markdown="1"` elements' content as Markdown, with kramdown's HTML rules around them; `false` leaves HTML as CommonMark does. */
 	htmlMarkdown: "kramdown" | false;
+	/** MkDocs' `!!! note "Title"` and `??? note` blocks (`"mkdocs"`), written as Python-Markdown's admonition and pymdownx.details write them. */
+	admonitions: "mkdocs" | false;
+	/** MkDocs' `=== "Tab"` blocks (`"mkdocs"`), written as pymdownx.tabbed's alternate style writes them. */
+	tabs: "mkdocs" | false;
+	/** Hugo's shortcodes on lines of their own (`"hugo"`) as containers: `{{< note >}}` to `{{< /note >}}` renders `_includes/containers/note.*`. */
+	shortcodes: "hugo" | false;
+	/** Links to `.md` files go to the page built from that file: `true` from the site's root, `"relative"` from the page, as MkDocs writes them. */
+	sourceLinks: boolean | "relative";
 }
 
 export function defaultMarkdownOptions(): MarkdownOptions {
@@ -68,11 +77,15 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		languages: [],
 		sluggerFn: null,
 		htmlMarkdown: false,
+		admonitions: false,
+		tabs: false,
+		shortcodes: false,
+		sourceLinks: false,
 	};
 }
 
 /** The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`). */
-export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "encodeUrls"] as const;
+export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "encodeUrls", "admonitions", "tabs", "shortcodes", "sourceLinks"] as const;
 
 const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures", "encodeUrls"] as const;
 
@@ -80,12 +93,16 @@ const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "contain
 export const HIGHLIGHT_KINDS = ["comment", "keyword", "operator", "string", "regexp", "escape", "number", "constant", "builtin", "property", "attribute", "function", "type", "parameter", "tag", "heading", "strong", "emphasis", "link", "inserted", "deleted"] as const;
 
 /** Prism's names for each kind, the ones Prism's themes color (`.token.keyword`). */
+/** Pygments' short class names (`.k`, `.s`, `.nf`), which its themes and Chroma's (Hugo's highlighter) color: MkDocs' and Hugo's stylesheets keep working. */
+export const PYGMENTS_CLASSES: Record<string, string> = { comment: "c", keyword: "k", operator: "o", string: "s", regexp: "sr", escape: "se", number: "m", constant: "kc", builtin: "nb", property: "py", attribute: "na", function: "nf", type: "nc", parameter: "nv", tag: "nt", heading: "gh", strong: "gs", emphasis: "ge", link: "nl", inserted: "gi", deleted: "gd" };
+
 export const PRISM_CLASSES: Record<string, string> = { comment: "token comment", keyword: "token keyword", operator: "token operator", string: "token string", regexp: "token regex", escape: "token escape", number: "token number", constant: "token constant", builtin: "token builtin", property: "token property", attribute: "token attr-name", function: "token function", type: "token class-name", parameter: "token parameter", tag: "token tag", heading: "token title", strong: "token bold", emphasis: "token italic", link: "token url", inserted: "token inserted", deleted: "token deleted" };
 
 /** `classes: "prism"`, or `{ kind: "class names" }` for some kinds. */
 function highlightClasses(value: unknown): MarkdownOptions["highlightClasses"] {
 	if (value === "prism") return { names: { ...PRISM_CLASSES }, prism: true };
-	if (!isPlainObject(value)) bail(`markdown.highlight.classes must be "prism" or an object of { kind: "class names" }, not ${typeof value === "string" ? `"${value}"` : typeOf(value)}`);
+	if (value === "pygments" || value === "chroma") return { names: { ...PYGMENTS_CLASSES }, prism: false };
+	if (!isPlainObject(value)) bail(`markdown.highlight.classes must be "prism", "pygments" or an object of { kind: "class names" }, not ${typeof value === "string" ? `"${value}"` : typeOf(value)}`);
 	const names: Record<string, string> = {};
 	for (const [kind, classes] of Object.entries(value)) {
 		if (!(HIGHLIGHT_KINDS as readonly string[]).includes(kind)) {
@@ -111,12 +128,23 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 			else if (v === false || v === null) options.headingIds = null;
 			else if (v === true) options.headingIds = "github";
 			else if (typeof v === "string") {
-				if (!["github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor"].includes(v)) bail(`markdown.headingIds: unknown slugger "${v}" (use "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor" or false)`);
+				// Python-Markdown's (MkDocs') ids are a function of the text, so they're a slugger function of ssqch's own.
+				if (v === "python-markdown") { options.sluggerFn = pythonMarkdownSlug; options.headingIds = "github"; continue; }
+				if (!["github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor"].includes(v)) bail(`markdown.headingIds: unknown slugger "${v}" (use "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor", "python-markdown" or false)`);
 				options.headingIds = v as Slugger;
-			} else bail(`markdown.headingIds must be "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor" or false, not ${typeOf(v)}`);
+			} else bail(`markdown.headingIds must be "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor", "python-markdown" or false, not ${typeOf(v)}`);
 		} else if (key === "htmlMarkdown") {
 			if (v !== false && v !== "kramdown") bail(`markdown.htmlMarkdown must be "kramdown" or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.htmlMarkdown = v;
+		} else if (key === "admonitions" || key === "tabs") {
+			if (v !== false && v !== "mkdocs") bail(`markdown.${key} must be "mkdocs" or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			options[key] = v;
+		} else if (key === "shortcodes") {
+			if (v !== false && v !== "hugo") bail(`markdown.shortcodes must be "hugo" or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			options.shortcodes = v;
+		} else if (key === "sourceLinks") {
+			if (typeof v !== "boolean" && v !== "relative") bail(`markdown.sourceLinks must be true, false or "relative", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			options.sourceLinks = v;
 		} else if (key === "highlight") {
 			if (typeof v === "boolean") options.highlight = v;
 			else if (isPlainObject(v)) {

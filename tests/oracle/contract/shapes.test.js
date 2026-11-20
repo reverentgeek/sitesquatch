@@ -133,7 +133,21 @@ test("scout_json_shape", () => {
 	const report = json(["scout", dir, "--write-draft", "--patch", path.join(dir, "move.patch")]);
 	for (const list of ["todo", "draft", "edits"]) assert.ok(report[list].length > 0, `no ${list} in the report`);
 	assert.ok(report.build.needs.length > 0, "nothing the build needs");
-	check("scout", report);
+	// An MkDocs site fills the counts, the options and the page count, and --compare its comparison.
+	const mkdocs = project({
+		"mkdocs.yml": "site_name: Trail\nsite_url: https://example.com/trail/\nmarkdown_extensions:\n  - admonition\n",
+		"docs/index.md": "# Trail\n\n!!! tip\n    Water\n\n[Cedar](cedar.md)\n",
+		"docs/cedar.md": "# Cedar\n",
+	}, "shapes-scout-mkdocs");
+	json(["scout", mkdocs, "--write-draft"]);
+	// A reference that differs from ssqch's build in one file, so the comparison has a group.
+	assert.ok(ssqch(["build", "--root", mkdocs, "-q"]).ok);
+	fs.cpSync(path.join(mkdocs, "site"), path.join(mkdocs, "ref"), { recursive: true });
+	for (const file of ["ref/index.html", "ref/cedar/index.html"]) fs.appendFileSync(path.join(mkdocs, file), "<p>Fresh tracks</p>\n");
+	const compared = json(["scout", mkdocs, "--compare", "--reference", "ref"]);
+	assert.ok(compared.todo.some((t) => t.count !== null && t.option !== null) && compared.summary.pages === 2, JSON.stringify(compared));
+	assert.ok(compared.compare.built && compared.compare.summary.changed === 2 && compared.compare.groups.length === 1, JSON.stringify(compared.compare));
+	check("scout", report, compared);
 });
 
 test("inspect report", () => {

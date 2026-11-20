@@ -166,6 +166,8 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l from -d 'The gener
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l format -d 'text or json' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l write-draft -d 'Write the new files of the draft; never overwrites a file'
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l patch -d 'Write the mechanical edits to FILE as a patch to review; nothing is applied' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l compare -d 'Also build with ssqch and compare with the reference build'
+complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l reference -d 'The reference build to compare with' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -s q -l quiet -d 'Print only warnings and errors'
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -s v -l verbose -d 'Also list the slowest images to encode'

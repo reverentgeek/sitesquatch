@@ -243,6 +243,8 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
             [CompletionResult]::new('--write-draft', '--write-draft', [CompletionResultType]::ParameterName, 'Write the new files of the draft; never overwrites a file')
             [CompletionResult]::new('--patch', '--patch', [CompletionResultType]::ParameterName, 'Write the mechanical edits to FILE as a patch to review; nothing is applied')
+            [CompletionResult]::new('--compare', '--compare', [CompletionResultType]::ParameterName, 'Also build with ssqch and compare with the reference build')
+            [CompletionResult]::new('--reference', '--reference', [CompletionResultType]::ParameterName, 'The reference build to compare with')
             [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')

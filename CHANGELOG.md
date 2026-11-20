@@ -29,6 +29,29 @@ where that version matches.
 
 ### Added
 
+- Other generators' Markdown, read as it's written, so a site's pages move unchanged (from the
+  fresh MkDocs and Hugo moves, whose agents wrote 624 and 674 lines to do it):
+  `markdown: { admonitions: "mkdocs" }` writes `!!! note "Title"` and `??? note` as
+  Python-Markdown's admonition and pymdownx.details do, `tabs: "mkdocs"` writes `=== "Tab"` as
+  pymdownx.tabbed's alternate style, `shortcodes: "hugo"` reads a Hugo shortcode on a line of
+  its own as a container (`_includes/containers/<name>.*`), and `sourceLinks: true` (or
+  `"relative"`, as MkDocs writes them) sends links to `.md` files to the page built from them,
+  and reads images and other relative URLs from the Markdown file's folder.
+  `headingIds: "python-markdown"` gives MkDocs' ids, and `highlight: { classes: "pygments" }`
+  (or `"chroma"`) Pygments' class names, which MkDocs' and Hugo's themes style.
+- A Hugo trailhead (`ssqch docs --from hugo`), from the fresh gohugo.io move.
+- `ssqch scout`'s report says how big the move is first (how many to-dos ssqch does, an option
+  does, aren't in ssqch yet, or are the site's own code), marks each line, and ranks them by the
+  files they touch; in JSON each has a stable `code`, its `status`, its counts, the option that
+  does it and an `ssqch docs` query. `--compare` builds the site, compares it with the
+  `ssqch baseline` reference and lists the biggest groups of differences. Its Hugo and MkDocs
+  drafts turn on the options above, write MkDocs' nav as `_data/nav.yml`, `base` from the
+  site's URL and its redirects, and a container template to port for each Hugo shortcode; and it
+  lists what Docusaurus, Astro, VitePress and Hexo sites use. A fresh clone of Material for
+  MkDocs' docs builds every page from scout's draft with no page changed.
+- Material for MkDocs' blog dates, `date: { created, updated }`: the page's date is `created`.
+- `ssqch docs "<a heading>"` finds headings in the trailheads too (`"moving with identical
+  output first"`), which other answers and `ssqch scout` point at.
 - A site can replace ssqch's Markdown once: `engines: { md }` renders every `.md` file, and every
   `md` in a `render` chain, with the site's own library, after the `markdownEngine` as before. A
   markdown-it instance works as it is (its `render(source, env)` gets the page's data as `env`,

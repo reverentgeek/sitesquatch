@@ -17,6 +17,7 @@
 // (see "the cache of highlighted fences" below), so a first build doesn't load syntect's
 // grammars for fences it has highlighted before.
 import { kramdownHtml, restoreBlankLines, withKramdownIds } from "./kramdown-html.ts";
+import { hugoShortcodes, pythonMarkdownBlocks, sourceLinks } from "./markdown-dialects.ts";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -208,10 +209,25 @@ class WasmMarkdown implements Markdown {
 	render(source: string, data: Data, _ctx: RenderContext): string | Promise<string> {
 		const file = page ?? pageOf(data);
 		this.#ready();
-		if (!this.#options.htmlMarkdown) return this.#page(source, data, file);
+		source = this.#dialects(source);
+		const links = this.#options.sourceLinks;
+		const after = (html: string) => (links ? sourceLinks(html, data, links) : html);
+		if (!this.#options.htmlMarkdown) {
+			const out = this.#page(source, data, file);
+			if (!links) return out;
+			return typeof out === "string" ? after(out) : out.then(after);
+		}
 		// The blank lines kept inside `<pre>` in `markdown="1"` blocks come back last.
 		const out = this.#page(this.#inHtml(source, HOOKS, data, file), data, file);
-		return typeof out === "string" ? restoreBlankLines(out) : out.then(restoreBlankLines);
+		return typeof out === "string" ? after(restoreBlankLines(out)) : out.then((html) => after(restoreBlankLines(html)));
+	}
+
+	/** Other generators' syntax as ssqch's (markdown-dialects.ts): Hugo's shortcodes as containers, MkDocs' blocks as Python-Markdown's HTML. */
+	#dialects(source: string): string {
+		const o = this.#options;
+		if (o.shortcodes === "hugo") source = hugoShortcodes(source);
+		if (o.admonitions || o.tabs) source = pythonMarkdownBlocks(source, { admonitions: o.admonitions === "mkdocs", tabs: o.tabs === "mkdocs" });
+		return source;
 	}
 
 	#page(source: string, data: Data, file: string | undefined): string | Promise<string> {
@@ -227,6 +243,7 @@ class WasmMarkdown implements Markdown {
 	}
 
 	html(text: string, inline: boolean): string {
+		if (!inline) text = this.#dialects(text);
 		if (this.#options.htmlMarkdown) return restoreBlankLines(this.#markdown(this.#inHtml(text, HOOKS, {}, page, "markdown() in a template"), HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template"));
 		return this.#markdown(text, HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template");
 	}

@@ -260,7 +260,8 @@ test("highlighting_can_use_another_highlighters_classes", () => {
 	assert.ok(read(dir, "_site/index.html").startsWith("<pre class=\"highlight\"><code class=\"language-js\"><span class=\"line\"><span class=\"tok-keyword\">let</span>"), read(dir, "_site/index.html"));
 	w("ssqch.config.js", "export default { markdown: { highlight: { classes: \"codemirror\" } } };\n");
 	r = ssqch(["build", "--root", dir]);
-	assert.ok(!r.ok && r.log.includes("markdown.highlight.classes must be \"prism\" or an object of { kind: \"class names\" }, not \"codemirror\""), r.log);
+	// DELIBERATE (0.11): "pygments" (and "chroma") are classes too, for MkDocs' and Hugo's themes.
+	assert.ok(!r.ok && r.log.includes("markdown.highlight.classes must be \"prism\", \"pygments\" or an object of { kind: \"class names\" }, not \"codemirror\""), r.log);
 });
 
 // GitHub Pages' Rouge puts `class="language-plaintext highlighter-rouge"` on every code span, and a

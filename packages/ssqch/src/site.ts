@@ -784,7 +784,10 @@ export class Site {
 		const inputPath = this.display(tpl.input);
 		let date: Date;
 		let fromFileTime = false;
-		if (tpl.data.date !== undefined && tpl.data.date !== null) date = toDate(tpl.data.date) ?? bail(`can't parse date ${show(tpl.data.date)}`);
+		// Material for MkDocs' blog writes `date: { created, updated }`: the page's date is `created`,
+		// and `date.updated` stays in its data for a template that shows it.
+		const given = isPlainObject(tpl.data.date) && tpl.data.date.created !== undefined ? tpl.data.date.created : tpl.data.date;
+		if (given !== undefined && given !== null) date = toDate(given) ?? bail(`can't parse date ${show(tpl.data.date)}`);
 		// Then the date in the file name, then the last commit that changed the file
 		// (`dateFallback: "git"`, the same in every checkout, where a file's time is when the checkout
 		// wrote it), then the pinned build time (`SOURCE_DATE_EPOCH`, as Jekyll's `time:` gives undated

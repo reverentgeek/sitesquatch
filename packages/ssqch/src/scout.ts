@@ -43,8 +43,25 @@ export interface Plan {
 	edits: Array<[string, string[], string]>;
 	/** Files to create: [path, where it came from, contents]. */
 	newFiles: Array<[string, string, string]>;
-	/** What's left for a person: [where, what to do]. */
-	byHand: Array<[string, string]>;
+	/** What's left for a person: [where, what to do, and what an agent reads of it]. */
+	byHand: Array<[string, string, Todo?]>;
+	/** How many pages the site has, when the detector counted them. */
+	pages?: number;
+}
+
+/** What a to-do is, for machines and for ranking: a stable `code`, whether ssqch has it, and how much of the site it touches. */
+export interface Todo {
+	/** A stable name for the kind of thing (`hugo-shortcode`, `mkdocs-admonitions`). */
+	code?: string;
+	/** `ssqch`: ssqch does it, as it is or in its own way; `option`: an option does it, and the draft turns it on; `not-yet`: not in ssqch yet; `site`: the site's own code, to port. */
+	status?: "ssqch" | "option" | "not-yet" | "site";
+	/** How many times the site uses it, and in how many files. */
+	count?: number;
+	files?: number;
+	/** The config that does it (`markdown: { admonitions: "mkdocs" }`). */
+	option?: string;
+	/** What to read: an `ssqch docs` query. */
+	docs?: string;
 }
 
 /** Why scouting stopped: printed as `error: <message>`. */
@@ -76,6 +93,43 @@ export interface ScoutOptions {
 	writeDraft: boolean;
 	/** Write the edits as a patch to this file (`--patch`). */
 	patch?: string;
+	/** Build with ssqch and compare with this reference build (`--compare`; "" for `ssqch baseline`'s). */
+	compare?: string;
+}
+
+/** How the site's ssqch build compares with the old generator's, for `--compare`. */
+export interface Comparison {
+	reference: string;
+	output: string | null;
+	/** Whether the ssqch build finished, and its errors' first lines. */
+	built: boolean;
+	errors: string[];
+	same: boolean;
+	summary: { added: number; removed: number; changed: number; unchangedPages: number; unchangedFiles: number } | null;
+	/** The biggest groups of differences, the most files first: what to fix next. */
+	groups: Array<{ files: number; kind: string; first: string; removed: string[]; added: string[] }>;
+	/** What went wrong before a comparison could be made. */
+	problem: string | null;
+}
+
+/** Builds the site with ssqch (as a command, so its config runs as it would) and compares the output with the reference build. */
+function compareBuilds(dir: string, given: string): Comparison {
+	const cache = path.join(dir, ".cache/ssqch/baseline");
+	const reference = given !== "" ? given : fs.existsSync(path.join(cache, "ref-common")) ? ".cache/ssqch/baseline/ref-common" : ".cache/ssqch/baseline/ref-1";
+	const none: Comparison = { reference, output: null, built: false, errors: [], same: false, summary: null, groups: [], problem: null };
+	if (!isDir(path.resolve(dir, reference))) return { ...none, problem: `there's no reference build in ${reference}: \`ssqch baseline "<the old build command>"\` makes one` };
+	const run = (args: string[]) => spawnSync(process.execPath, [...process.execArgv, process.argv[1], ...args], { cwd: dir, encoding: "utf8", env: { ...process.env, TZ: "UTC" }, maxBuffer: 1 << 30 });
+	const built = run(["build", "--format", "json"]);
+	let build: Data;
+	try { build = JSON.parse(built.stdout); } catch { return { ...none, problem: `\`ssqch build\` printed no report: ${(built.stderr || built.stdout).trim().split("\n")[0]}` }; }
+	const errors = Array.isArray(build.errors) ? (build.errors as Data[]).map((e) => String(e.message).split("\n")[0]) : [];
+	const output = typeof build.output === "string" ? build.output : null;
+	if (!build.ok || output === null) return { ...none, output, errors: errors.slice(0, 10), problem: `ssqch's build failed with ${errors.length} ${errors.length === 1 ? "error" : "errors"}` };
+	const compared = run(["diff", path.resolve(dir, reference), path.resolve(dir, output), "--format", "json", "--lines", "0"]);
+	let diff: Data;
+	try { diff = JSON.parse(compared.stdout); } catch { return { ...none, output, built: true, problem: `\`ssqch diff\` printed no report: ${(compared.stderr || compared.stdout).trim().split("\n")[0]}` }; }
+	const groups = Array.isArray(diff.groups) ? (diff.groups as Data[]).slice(0, 10).map((g) => ({ files: Number(g.files), kind: String(g.kind), first: Array.isArray(g.urls) ? String(g.urls[0]) : "", removed: (g.hunk?.removed ?? []).slice(0, 3).map(String), added: (g.hunk?.added ?? []).slice(0, 3).map(String) })) : [];
+	return { reference, output, built: true, errors, same: diff.same === true, summary: isPlainObject(diff.summary) ? diff.summary as Comparison["summary"] : null, groups, problem: null };
 }
 
 /** Which generator builds the site in `dir`, and the file that says so; every one that matches, when it's more than one. */
@@ -134,6 +188,7 @@ export function runScout(dir: string, options: ScoutOptions): number {
 		}
 		const plan = id === "eleventy" ? eleventy(dir) : id === "jekyll" ? jekyll(dir) : id === "zola" ? zola(dir) : id === "hugo" ? hugo(dir) : id === "mkdocs" ? mkdocs(dir) : other(dir, id);
 		const report = scoutReport(plan, dir, id, how);
+		if (options.compare !== undefined) report.compare = compareBuilds(dir, options.compare);
 		if (options.writeDraft) for (const file of report.draft) if (!file.there) writeNew(dir, file.path, plan.newFiles.find(([p]) => p === file.path)![2]);
 		if (options.patch !== undefined) attempt(() => fs.writeFileSync(options.patch!, patchOf(plan, dir)), `writing ${options.patch}`);
 		if (options.format === "json") process.stdout.write(`${JSON.stringify(scoutJson(report, options), null, 2)}\n`);
@@ -154,11 +209,15 @@ export interface Report {
 	detectedBy: string;
 	/** The reference build: the command for `ssqch baseline`, and the folder it writes. */
 	build: { command: string; output: string; baseline: string; needs: string[] };
-	todo: Array<{ at: string; what: string }>;
+	todo: Array<{ at: string; what: string; code: string; status: NonNullable<Todo["status"]>; count: number | null; files: number | null; option: string | null; docs: string | null }>;
+	/** How many to-dos have each status, and how many pages the site has. */
+	summary: { pages: number | null; ssqch: number; option: number; notYet: number; site: number };
 	draft: Array<{ path: string; from: string; there: boolean }>;
 	edits: Array<{ path: string; to?: string; changes: string[] }>;
 	/** Whether the site has an ssqch.config.js already: a move under way. */
 	underWay: boolean;
+	/** With `--compare`: how ssqch's build compares with the reference. */
+	compare?: Comparison;
 }
 
 export function scoutReport(plan: Plan, dir: string, id: string, how: string): Report {
@@ -169,14 +228,31 @@ export function scoutReport(plan: Plan, dir: string, id: string, how: string): R
 	const renamed = new Map(plan.renames);
 	for (const [file, changes] of plan.edits) edits.push({ path: file, ...(renamed.has(file) ? { to: renamed.get(file) } : {}), changes });
 	for (const [from, to] of plan.renames) if (!plan.edits.some(([file]) => file === from)) edits.push({ path: from, to, changes: ["renamed"] });
+	// The most files first, as \`ssqch diff\` lists its groups; what has no count keeps its place after them.
+	const todo = plan.byHand.map(([at, what, meta], order) => ({
+		at, what,
+		code: meta?.code ?? `${id}-other`,
+		status: meta?.status ?? statusOf(what),
+		count: meta?.count ?? null, files: meta?.files ?? null, option: meta?.option ?? null, docs: meta?.docs ?? null,
+		order,
+	})).sort((a, b) => (b.files ?? -1) - (a.files ?? -1) || a.order - b.order).map(({ order: _, ...t }) => t);
 	return {
 		dir, generator: id, name: g.name, detectedBy: how,
 		build: { command, output, baseline, needs },
-		todo: plan.byHand.map(([at, what]) => ({ at, what })),
+		todo,
+		summary: { pages: plan.pages ?? null, ssqch: todo.filter((t) => t.status === "ssqch").length, option: todo.filter((t) => t.status === "option").length, notYet: todo.filter((t) => t.status === "not-yet").length, site: todo.filter((t) => t.status === "site").length },
 		draft: plan.newFiles.map(([file, from]) => ({ path: file, from, there: fs.existsSync(path.join(dir, file)) || (file === "ssqch.config.js" && findConfig(dir) !== undefined) })),
 		edits,
 		underWay: findConfig(dir) !== undefined,
 	};
+}
+
+/** A to-do's status from its words, for the ones a detector didn't mark. */
+function statusOf(what: string): NonNullable<Todo["status"]> {
+	if (/not in ssqch yet|don't run in ssqch|doesn't run|aren't supported|isn't supported/.test(what)) return "not-yet";
+	if (/\(in the draft\)|, in the draft/.test(what)) return "option";
+	if (/\bport\b|by hand|rewrite it|the site's own/i.test(what)) return "site";
+	return "ssqch";
 }
 
 /** The old generator's build command, from what the site says (a package.json script, Netlify's config), and what it needs to build the way the live site does. */
@@ -209,11 +285,14 @@ function referenceBuild(dir: string, id: string): { command: string; output: str
 /** The report, as the terminal shows it. */
 export function scoutText(report: Report, options: Pick<ScoutOptions, "writeDraft" | "patch">): string {
 	let out = `Scouting the ${report.name} site in ${report.dir} (found ${report.detectedBy === "--from" ? "with --from" : report.detectedBy})${report.underWay ? ": a move under way, with an ssqch.config.js" : ""}\n`;
+	const { summary } = report;
+	if (report.todo.length) out += `\n${report.todo.length} to do${summary.pages !== null ? ` across ${summary.pages} ${summary.pages === 1 ? "page" : "pages"}` : ""}: ${[[summary.ssqch, "ssqch does"], [summary.option, "an option does (the draft turns it on)"], [summary.notYet, "not in ssqch yet"], [summary.site, "the site's own code to port"]].filter(([n]) => n).map(([n, what]) => `${n} ${what}`).join(", ")}.\n`;
 	out += `\nReference build\n  ${report.build.baseline}\n`;
 	for (const need of report.build.needs) out += `  needs ${need}\n`;
 	if (report.todo.length) {
 		out += `\nTo do (${report.todo.length})\n`;
-		for (const { at, what } of report.todo) out += `  ${at}: ${what}\n`;
+		const mark: Record<string, string> = { ssqch: "", option: "[option] ", "not-yet": "[not yet] ", site: "[port] " };
+		for (const { at, what, status } of report.todo) out += `  ${mark[status]}${at}: ${what}\n`;
 	}
 	const left = report.draft.filter((f) => !f.there);
 	if (report.draft.length) {
@@ -225,9 +304,21 @@ export function scoutText(report: Report, options: Pick<ScoutOptions, "writeDraf
 		for (const e of report.edits) out += `  ${e.path}${e.to ? ` -> ${e.to}` : ""}${e.changes.length && e.changes[0] !== "renamed" ? `: ${e.changes.join(", ")}` : ""}\n`;
 	}
 	if (!report.todo.length && !left.length && !report.edits.length) out += "\nNothing left to do that scout can see.\n";
+	const c = report.compare;
+	if (c) {
+		out += `\nCompared with ${c.reference}\n`;
+		if (c.problem) out += `  ${c.problem}\n${c.errors.map((e) => `  error: ${e}\n`).join("")}`;
+		else if (c.same) out += "  No differences: ssqch's build is the same as the reference.\n";
+		else if (c.summary) {
+			out += `  ${c.summary.changed} changed, ${c.summary.added} only in ssqch's, ${c.summary.removed} only in the reference; ${c.summary.unchangedPages} pages and ${c.summary.unchangedFiles} other files the same\n`;
+			for (const g of c.groups) out += `  ${g.files} ${g.files === 1 ? "file" : "files"}, ${g.kind} (first ${g.first}): ${[...g.removed.map((l) => `-${l.trim()}`), ...g.added.map((l) => `+${l.trim()}`)].join(" ").slice(0, 160)}\n`;
+			if (c.groups.length) out += `  The whole list: \`ssqch diff ${c.reference} ${c.output}\`\n`;
+		}
+	}
 	if (options.writeDraft) out += `\nWrote ${left.length} draft ${left.length === 1 ? "file" : "files"}.\n`;
 	if (options.patch !== undefined) out += `\nWrote ${report.edits.length} ${report.edits.length === 1 ? "edit" : "edits"} to ${options.patch}: read it, then \`git apply ${options.patch}\`${report.dir === "." ? "" : ` in ${report.dir}`}.\n`;
-	out += `\nNext: \`${report.build.baseline}\` builds the site with ${report.name} to compare with${report.edits.length ? " (before the patch, or with --commit)" : ""}; then \`ssqch build\` and \`ssqch diff .cache/ssqch/baseline/ref-1 <ssqch's output>\`, the biggest group first. \`ssqch docs --from ${report.generator}\` has ${report.name}'s words and trailhead, and \`ssqch docs "moving a site with an agent"\` the whole loop. Run scout again to see what's left.\n`;
+	if (c && !c.problem) out += c.same ? "\nNext: the move matches. Then ssqch's own features, one at a time, with a compare after each: `ssqch docs \"moving a site with an agent\"`.\n" : `\nNext: fix the biggest group above (one cause is often hundreds of files), then \`ssqch scout --compare\` again.\n`;
+	else out += `\nNext: \`${report.build.baseline}\` builds the site with ${report.name} to compare with${report.edits.length ? " (before the patch, or with --commit)" : ""}; then \`ssqch build\` and \`ssqch diff .cache/ssqch/baseline/ref-1 <ssqch's output>\`, the biggest group first. \`ssqch docs --from ${report.generator}\` has ${report.name}'s words and trailhead, and \`ssqch docs "moving a site with an agent"\` the whole loop. Run scout again to see what's left.\n`;
 	return out;
 }
 
@@ -239,12 +330,14 @@ export function scoutJson(report: Report, options: Pick<ScoutOptions, "writeDraf
 		detectedBy: report.detectedBy,
 		underWay: report.underWay,
 		build: report.build,
+		summary: report.summary,
 		todo: report.todo,
 		draft: report.draft,
 		edits: report.edits,
 		wroteDraft: options.writeDraft ? report.draft.filter((f) => !f.there).map((f) => f.path) : [],
 		patch: options.patch ?? null,
 		trailhead: `ssqch docs --from ${report.generator}`,
+		...(report.compare ? { compare: report.compare } : {}),
 	};
 }
 
@@ -2453,26 +2546,48 @@ const uses = (count: number, files: number) => `${count} ${count === 1 ? "use" :
 const HUGO_SHORTCODE = /\{\{([<%])\s*(?!\/)([\w./-]+)/g;
 const HUGO_BUILT_IN_SHORTCODES = new Set(["details", "figure", "gist", "highlight", "instagram", "param", "qr", "ref", "relref", "vimeo", "x", "twitter", "youtube"]);
 const HUGO_HOOKS: Record<string, string> = { heading: "heading", link: "link", image: "image", codeblock: "fence" };
-const HUGO_FUNCTIONS: Array<[RegExp, string]> = [
-	[/\.GetPage\b/, "`.GetPage`: not in ssqch yet as a function; a collection, or `collections.all` filtered by `url`, finds a page"],
-	[/\bjs\.Build\b/, "`js.Build` (esbuild): ssqch bundles scripts with `ssqch/assets`, or keep esbuild as a `beforeBuild` step"],
-	[/\bcss\.TailwindCSS\b/, "`css.TailwindCSS`: run Tailwind's CLI as a `beforeBuild` step (`ssqch docs beforeBuild`)"],
-	[/\b(?:toCSS|css\.Sass)\b/, "Sass (`toCSS`, `css.Sass`): ssqch compiles Sass with `sassPlugin()` from \"ssqch/sass\""],
-	[/\|\s*fingerprint\b|\bresources\.Fingerprint\b/, "`fingerprint`: ssqch's is `assetsPlugin({ fingerprint: true })` (`ssqch docs fingerprint`)"],
-	[/\.(?:Resize|Fill|Fit|Crop)\s+"/, "image processing (`.Resize`, `.Fill`): ssqch's is `imagesPlugin()` from \"ssqch/images\""],
-	[/\.Related\b|\bsite\.RegularPages\.Related\b/, "related content (`.Related`): not in ssqch yet; a filter of your own over a collection"],
-	[/\btransform\.Highlight\b|\bhighlight\s+\(/, "`transform.Highlight`: ssqch's highlighter is `markdown: { highlight: true }`, with its own classes (not Chroma's)"],
-	[/\bi18n\b|\bT\s+"/, "translations (`i18n`, `T`): ssqch's are a filter over `_data` (`ssqch docs multilingual`)"],
-	[/\.Paginate\b|\.Paginator\b/, "`.Paginate`: ssqch's pagination is `pagination` in front matter (`ssqch docs pagination`)"],
+const HUGO_FUNCTIONS: Array<[RegExp, string, string, NonNullable<Todo["status"]>]> = [
+	[/\.GetPage\b/, "`.GetPage`: not in ssqch yet as a function; a collection, or `collections.all` filtered by `url`, finds a page", "hugo-getpage", "not-yet"],
+	[/\bjs\.Build\b/, "`js.Build` (esbuild): ssqch bundles scripts with `ssqch/assets`, or keep esbuild as a `beforeBuild` step", "hugo-js-build", "ssqch"],
+	[/\bcss\.TailwindCSS\b/, "`css.TailwindCSS`: run Tailwind's CLI as a `beforeBuild` step (`ssqch docs beforeBuild`)", "hugo-tailwind", "ssqch"],
+	[/\b(?:toCSS|css\.Sass)\b/, "Sass (`toCSS`, `css.Sass`): ssqch compiles Sass with `sassPlugin()` from \"ssqch/sass\"", "hugo-sass", "ssqch"],
+	[/\|\s*fingerprint\b|\bresources\.Fingerprint\b/, "`fingerprint`: ssqch's is `assetsPlugin({ fingerprint: true })` (`ssqch docs fingerprint`)", "hugo-fingerprint", "ssqch"],
+	[/\.(?:Resize|Fill|Fit|Crop)\s+"/, "image processing (`.Resize`, `.Fill`): ssqch's is `imagePlugin()` from \"ssqch/image\"", "hugo-images", "ssqch"],
+	[/\.Related\b/, "related content (`.Related`): not in ssqch yet; a filter of your own over a collection", "hugo-related", "not-yet"],
+	[/\btransform\.Highlight\b|\bhighlight\s+\(/, "`transform.Highlight`: ssqch's highlighter is `highlight(code, lang)`, with Pygments' classes in the draft", "hugo-highlight", "ssqch"],
+	[/\bi18n\b|\bT\s+"/, "translations (`i18n`, `T`): ssqch's are a filter over `_data` (`ssqch docs multilingual`)", "hugo-i18n", "ssqch"],
+	[/\.Paginate\b|\.Paginator\b/, "`.Paginate`: ssqch's pagination is `pagination` in front matter (`ssqch docs pagination`)", "hugo-paginate", "ssqch"],
 ];
 
-/** What a Hugo site uses that needs doing in ssqch. Hugo's templates are Go's, which ssqch doesn't run: they're listed, not rewritten. */
+/** Hugo's config, from whichever file the site has, or `{}`. */
+function readHugoConfig(dir: string): [string | undefined, Data] {
+	for (const file of ["hugo.toml", "hugo.yaml", "hugo.yml", "hugo.json", "config.toml", "config/_default/hugo.toml", "config/_default/config.toml", "config/_default/hugo.yaml"]) {
+		const text = readUtf8(path.join(dir, file));
+		if (text === undefined) continue;
+		try {
+			const data = file.endsWith(".toml") ? (readToml(text) as Data) : file.endsWith(".json") ? JSON.parse(text) : parseYaml(text);
+			return [file, isPlainObject(data) ? data : {}];
+		} catch (e) { return fail(`${file}: ${e instanceof Error ? e.message : String(e)}`); }
+	}
+	return [undefined, {}];
+}
+
+/** A key of Hugo's config, which reads keys in any case (`baseURL`, `baseurl`). */
+const hugoKey = (config: Data, key: string): unknown => Object.entries(config).find(([k]) => k.toLowerCase() === key.toLowerCase())?.[1];
+
+/** What a Hugo site uses that needs doing in ssqch, and a draft with the options that read its content as it is. Hugo's templates are Go's, which ssqch doesn't run: they're listed, not rewritten. */
 export function hugo(dir: string): Plan {
 	const plan: Plan = { from: "Hugo", renames: [], edits: [], newFiles: [], byHand: [] };
-	const entries = walk(dir, (name, rel) => name.startsWith(".git") || name === "node_modules" || name === ".cache" || name === "public" || name === "resources" || rel === "_vendor", false);
-	const content = entries.filter((e) => e.isFile && /^content\//.test(e.rel) && /\.(md|markdown|html)$/.test(e.name));
+	const [configFile, config] = readHugoConfig(dir);
+	const contentDir = typeof hugoKey(config, "contentDir") === "string" ? (hugoKey(config, "contentDir") as string) : "content";
+	const output = typeof hugoKey(config, "publishDir") === "string" ? (hugoKey(config, "publishDir") as string) : "public";
+	const entries = walk(dir, (name, rel) => name.startsWith(".git") || name === "node_modules" || name === ".cache" || rel === output || name === "resources" || rel === "_vendor", false);
+	const inContent = new RegExp(`^${contentDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`);
+	const content = entries.filter((e) => e.isFile && inContent.test(e.rel) && /\.(md|markdown|html)$/.test(e.name));
+	plan.pages = content.length;
 	const layouts = entries.filter((e) => e.isFile && /^(?:layouts|themes\/[^/]+\/layouts)\//.test(e.rel) && /\.(html|xml|json|txt)$/.test(e.name));
-	const shortcodes = new Tally();
+	const blockCalls = new Tally();
+	const inlineCalls = new Tally();
 	let sections = 0;
 	let cascades = 0;
 	let templated: string | undefined;
@@ -2481,47 +2596,74 @@ export function hugo(dir: string): Plan {
 		const text = readUtf8(entry.abs) ?? "";
 		if (entry.name === "_index.md") sections++;
 		if (/^cascade\s*:/m.test(text.slice(0, 4000))) cascades++;
-		for (const m of text.matchAll(HUGO_SHORTCODE)) shortcodes.add(m[2], entry, text, m.index!);
+		for (const m of text.matchAll(HUGO_SHORTCODE)) {
+			const lineStart = text.lastIndexOf("\n", m.index!) + 1;
+			const lineEnd = text.indexOf("\n", m.index!);
+			const line = text.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+			(/^[ \t]*\{\{[<%][^\n]*[>%]\}\}[ \t]*$/.test(line) && (line.match(/\{\{[<%]/g) ?? []).length === 1 ? blockCalls : inlineCalls).add(m[2], entry, text, m.index!);
+		}
 		// Hugo doesn't run template code in content, so `{{ x }}` in a page is text, as in a code sample.
 		const plain = text.replace(/\{\{[<%][\s\S]*?[%>]\}\}/g, "");
 		if (/\{\{|\{%/.test(plain)) { templatedCount++; templated ??= lineAt(entry, plain, plain.search(/\{\{|\{%/)); }
 	}
-	const ownShortcodes = new Set(entries.filter((e) => e.isFile && /(?:^|\/)layouts\/_?shortcodes\//.test(e.rel)).map((e) => e.rel.replace(/^.*\/_?shortcodes\//, "").replace(/\.[^./]+$/, "").replace(/\.[^./]+$/, "")));
-	const calls = shortcodes.sorted();
-	if (calls.length) {
-		const pages = new Set(calls.flatMap(([, { files }]) => [...files])).size;
-		plan.byHand.push(["content", `${calls.length} ${calls.length === 1 ? "shortcode" : "shortcodes"}, called in ${pages} ${pages === 1 ? "page" : "pages"} (each below, most used first): shortcodes aren't in ssqch yet. Each call becomes a template call (a macro or include, with \`markdownEngine\`) or a container (\`::: name\`), and the shortcode a macro, include or hook`]);
+	const shortcodeFiles = new Map(entries.filter((e) => e.isFile && /(?:^|\/)layouts\/_?shortcodes\//.test(e.rel)).map((e) => [e.rel.replace(/^.*\/_?shortcodes\//, "").replace(/\.[^./]+$/, "").replace(/\.[^./]+$/, ""), e.rel]));
+	const calls = blockCalls.sorted();
+	if (calls.length || inlineCalls.seen.size) {
+		const pages = new Set([...calls, ...inlineCalls.sorted()].flatMap(([, { files }]) => [...files])).size;
+		plan.byHand.push([contentDir, `${new Set([...blockCalls.seen.keys(), ...inlineCalls.seen.keys()]).size} shortcodes, called in ${pages} ${pages === 1 ? "page" : "pages"}: \`markdown: { shortcodes: "hugo" }\` (in the draft) reads each call on a line of its own as a container, rendered by \`_includes/containers/<name>.*\`; the draft has a template to port for each of the site's own`, { code: "hugo-shortcodes", status: "option", files: pages, option: "markdown: { shortcodes: \"hugo\" }", docs: "shortcodes" }]);
 	}
 	for (const [name, { count, files, first }] of calls) {
-		const whose = ownShortcodes.has(name) ? "the site's own" : HUGO_BUILT_IN_SHORTCODES.has(name) ? "Hugo's" : "nobody's (no template for it)";
-		plan.byHand.push([first, `\`{{< ${name} >}}\`, ${whose} (${uses(count, files.size)})`]);
+		const own = shortcodeFiles.get(name);
+		const whose = own ? `the site's own (${own})` : HUGO_BUILT_IN_SHORTCODES.has(name) ? "Hugo's" : "nobody's (no template for it)";
+		const draft = own && /^[\w-]+$/.test(name) ? `_includes/containers/${name}.jinja` : undefined;
+		plan.byHand.push([first, `\`{{< ${name} >}}\`, ${whose} (${uses(count, files.size)}): a container${draft ? `; port its template into ${draft} (in the draft)` : `; write \`_includes/containers/${name}.jinja\``}`, { code: "hugo-shortcode", status: own ? "site" : "ssqch", count, files: files.size, docs: "containers" }]);
+		if (draft) plan.newFiles.push([draft, `a container for the ${name} shortcode, to port from ${own}`, `{#- The ${name} shortcode (${own}), as a container: port its Go template here.\n    container.args is what the call wrote after the name, container.props its named\n    parameters (key="value"), and container.content the inside, rendered. -#}\n<div class="${name}">{{ container.content | safe }}</div>\n`]);
 	}
-	if (templated) plan.byHand.push([templated, `\`{{ }}\` or \`{% %}\` as text in ${templatedCount} ${templatedCount === 1 ? "page" : "pages"} (this is the first): Hugo prints them as they are, and ssqch runs Markdown through a template engine unless \`markdownEngine: false\``]);
-	if (sections) plan.byHand.push(["content", `${sections} ${sections === 1 ? "section" : "sections"} (\`_index.md\`): ssqch's sections are folders with directory data (\`<folder>/<folder>.json\` for layout and permalink) and a collection (\`tags\`), and the section page a page of its own`]);
-	if (cascades) plan.byHand.push(["content", `\`cascade\` in ${cascades} ${cascades === 1 ? "page's" : "pages'"} front matter: ssqch's is directory data, which every page below it gets`]);
+	for (const [name, { count, files, first }] of inlineCalls.sorted()) plan.byHand.push([first, `\`{{< ${name} >}}\` inside a line of text (${uses(count, files.size)}): not in ssqch yet as written (only a shortcode on a line of its own is a container); a filter or an include, with \`markdownEngine\` on for those pages`, { code: "hugo-inline-shortcode", status: "not-yet", count, files: files.size }]);
+	if (templated) plan.byHand.push([templated, `\`{{ }}\` or \`{% %}\` as text in ${templatedCount} ${templatedCount === 1 ? "page" : "pages"} (this is the first): Hugo prints them as they are, and so does ssqch with \`markdownEngine: false\` (in the draft)`, { code: "hugo-template-text", status: "option", files: templatedCount, option: "markdownEngine: false" }]);
+	if (sections) plan.byHand.push([contentDir, `${sections} ${sections === 1 ? "section" : "sections"} (\`_index.md\`): ssqch's sections are folders with directory data (\`<folder>/<folder>.json\` for layout and permalink) and a collection (\`tags\`), and the section page a page of its own`, { code: "hugo-sections", status: "ssqch", count: sections, files: sections, docs: "directory data" }]);
+	if (cascades) plan.byHand.push([contentDir, `\`cascade\` in ${cascades} ${cascades === 1 ? "page's" : "pages'"} front matter: ssqch's is directory data, which every page below it gets`, { code: "hugo-cascade", status: "ssqch", files: cascades, docs: "directory data" }]);
 	for (const entry of entries.filter((e) => e.isFile && /(?:^|\/)layouts\/(?:_default\/)?_markup\/render-/.test(e.rel))) {
 		const kind = /render-([a-z]+)(?:-([\w-]+))?\./.exec(entry.name);
 		const ours = kind && HUGO_HOOKS[kind[1]];
-		plan.byHand.push([entry.rel, ours ? `a render hook: ssqch's is \`_includes/hooks/${ours}${kind![2] ? `-${kind![2]}` : ""}.<ext>\` (\`ssqch docs hooks\`), written in the site's template language` : `a ${kind?.[1] ?? "render"} hook: not in ssqch yet (its hooks are heading, link, image, code, fence and footnotes)`]);
+		plan.byHand.push([entry.rel, ours ? `a render hook: ssqch's is \`_includes/hooks/${ours}${kind![2] ? `-${kind![2]}` : ""}.<ext>\` (\`ssqch docs hooks\`), written in the site's template language` : `a ${kind?.[1] ?? "render"} hook: not in ssqch yet (its hooks are heading, link, image, code, fence and footnotes)`, { code: "hugo-render-hook", status: ours ? "site" : "not-yet", docs: "hooks" }]);
 	}
-	if (layouts.length) plan.byHand.push([layouts[0].rel.replace(/\/.*$/, ""), `${layouts.length} Go ${layouts.length === 1 ? "template" : "templates"}: ssqch doesn't run Go templates. Jinja is closest: \`define\` and \`block\` map onto \`extends\` and \`block\`, and \`{{- -}}\` trims the same way, so the minifier sees the same text`]);
-	for (const [pattern, what] of HUGO_FUNCTIONS) {
-		let count = 0;
+	if (layouts.length) plan.byHand.push([layouts[0].rel.replace(/\/.*$/, ""), `${layouts.length} Go ${layouts.length === 1 ? "template" : "templates"} to port: ssqch doesn't run Go templates. Jinja is closest: \`define\` and \`block\` map onto \`extends\` and \`block\`, and \`{{- -}}\` trims the same way, so the minifier sees the same text`, { code: "hugo-templates", status: "site", files: layouts.length, docs: "--from hugo" }]);
+	for (const [pattern, what, code, status] of HUGO_FUNCTIONS) {
 		let first: string | undefined;
 		const files = new Set<string>();
 		for (const entry of layouts) {
 			const text = readUtf8(entry.abs) ?? "";
 			const m = pattern.exec(text);
 			if (!m) continue;
-			count++;
 			files.add(entry.rel);
 			first ??= lineAt(entry, text, m.index);
 		}
-		if (first) plan.byHand.push([first, `${what} (in ${files.size} ${files.size === 1 ? "template" : "templates"})`]);
+		if (first) plan.byHand.push([first, `${what} (in ${files.size} ${files.size === 1 ? "template" : "templates"})`, { code, status, files: files.size }]);
 	}
-	if (entries.some((e) => e.rel === "assets" && !e.isFile)) plan.byHand.push(["assets", "Hugo Pipes' sources: ssqch copies files with `passthrough` and processes them with its plugins (`ssqch docs assets`)"]);
-	if (entries.some((e) => e.rel === "static" && !e.isFile)) plan.byHand.push(["static", "copied as they are: `passthrough: [{ from: \"static\", to: \"/\" }]` in the config"]);
-	if (entries.some((e) => e.rel === "data" && !e.isFile)) plan.byHand.push(["data", "data files: ssqch reads `_data` (`dirs: { data: \"../data\" }` with `content` as the input, or move the folder)"]);
+	const highlight = hugoKey(config, "markup") as Data | undefined;
+	const noClasses = isPlainObject(highlight) && isPlainObject(highlight.highlight) ? highlight.highlight.noClasses !== false : true;
+	if (noClasses && entries.some((e) => e.isFile && /\.(md|markdown)$/.test(e.name) && /^```/m.test(readUtf8(e.abs) ?? ""))) plan.byHand.push([configFile ?? ".", "code is highlighted with inline styles (Hugo's `noClasses`, its default): not in ssqch yet; the draft uses classes with Pygments' (and Chroma's) names, for a stylesheet (`hugo gen chromastyles`)", { code: "hugo-inline-styles", status: "not-yet" }]);
+	const hasDir = (rel: string) => entries.some((e) => e.rel === rel && !e.isFile);
+	if (hasDir("assets")) plan.byHand.push(["assets", "Hugo Pipes' sources: ssqch copies files with `passthrough` and processes them with its plugins (`ssqch docs assets`)", { code: "hugo-assets", status: "ssqch", docs: "assets" }]);
+
+	// The draft: Hugo's content read as it's written, the site's settings as data.
+	const baseURL = typeof hugoKey(config, "baseURL") === "string" ? (hugoKey(config, "baseURL") as string).replace(/\/$/, "") : undefined;
+	const site: Data = {};
+	for (const key of ["title", "languageCode", "copyright"]) if (hugoKey(config, key) !== undefined) site[key] = hugoKey(config, key);
+	if (baseURL) site.url = baseURL;
+	if (isPlainObject(hugoKey(config, "params"))) site.params = hugoKey(config, "params");
+	const dirs = [`input: ${JSON.stringify(contentDir)}`, `output: ${JSON.stringify(output)}`, "includes: \"../_includes\"", ...(hasDir("data") ? ["data: \"../data\""] : [])];
+	const imports = ["import { defineConfig } from \"ssqch\";", "import { linksPlugin } from \"ssqch/links\";", ...(baseURL ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : [])];
+	let out = `// A first draft, written by \`ssqch scout\` from ${configFile ?? "the Hugo site"}.\n// \`ssqch docs --from hugo\` has the whole mapping.\n${imports.join("\n")}\n\nexport default defineConfig({\n`;
+	out += `  dirs: { ${dirs.join(", ")} },\n`;
+	if (basePath(baseURL) !== undefined) out += `  // baseURL's path: the site is served under it.\n  base: ${JSON.stringify(basePath(baseURL))},\n`;
+	out += "  // Hugo doesn't run template code in content, and its shortcodes on a line of their own are\n  // containers (_includes/containers/<name>.jinja).\n  markdownEngine: false,\n";
+	out += "  markdown: { shortcodes: \"hugo\", highlight: { classes: \"pygments\" } },\n";
+	if (hasDir("static")) out += "  passthrough: [{ static: \".\" }],\n";
+	out += `  data: { site: ${JSON.stringify(sortedKeys(site))} },\n`;
+	out += `  plugins: [${[...(baseURL ? [`sitemapPlugin({ url: ${JSON.stringify(baseURL)} })`] : []), "linksPlugin()"].join(", ")}],\n});\n`;
+	plan.newFiles.unshift(["ssqch.config.js", `a first draft, from ${configFile ?? "the Hugo site"}`, out]);
 	return plan;
 }
 
@@ -2531,82 +2673,101 @@ function readMkdocsYaml(text: string): Data {
 	try { return parseYaml(plain); } catch (e) { return fail(`mkdocs.yml: ${e instanceof Error ? e.message : String(e)}`); }
 }
 
-const MKDOCS_PLUGINS: Record<string, string> = {
-	search: "ssqch has no search index of its own: Pagefind indexes the built site (`ssqch docs search`)",
-	blog: "a blog is a collection in ssqch: posts in a folder with directory data, with pagination for the index and categories",
-	redirects: "`redirectsPlugin({ redirects })` from \"ssqch/redirects\", with `redirect_maps`",
-	minify: "`minifyPlugin()` from \"ssqch/minify\"",
-	tags: "tags are a collection in ssqch (`tags` in front matter, and a page per tag by pagination)",
-	social: "not in ssqch yet: social cards are images drawn per page (the `<meta>` tags are a layout's)",
-	privacy: "not in ssqch yet: fetching external assets at build time",
-	offline: "not in ssqch yet",
-	"git-revision-date-localized": "`page.lastModified` (`ssqch docs lastModified`), formatted with a date filter",
-	"awesome-pages": "the sidebar's order is `_data/nav.yml`'s (`navTree`)",
-	macros: "Markdown runs through a template engine in ssqch (`markdownEngine`): the macros become the engine's, with the site's variables as data",
-	i18n: "`ssqch docs multilingual`",
+type Mapping = { say: string; status: NonNullable<Todo["status"]>; option?: string };
+
+const MKDOCS_PLUGINS: Record<string, Mapping> = {
+	search: { say: "ssqch has no search index of its own: Pagefind indexes the built site (`ssqch docs search`)", status: "ssqch" },
+	blog: { say: "a blog is a collection in ssqch: posts in a folder with directory data, with pagination for the index and categories", status: "ssqch" },
+	redirects: { say: "`redirectsPlugin({ redirects })` from \"ssqch/redirects\", with `redirect_maps` (in the draft)", status: "option" },
+	minify: { say: "`minifyPlugin()` from \"ssqch/minify\"", status: "ssqch" },
+	tags: { say: "tags are a collection in ssqch (`tags` in front matter, and a page per tag by pagination)", status: "ssqch" },
+	social: { say: "not in ssqch yet: social cards are images drawn per page (the `<meta>` tags are a layout's)", status: "not-yet" },
+	privacy: { say: "not in ssqch yet: fetching external assets at build time", status: "not-yet" },
+	offline: { say: "not in ssqch yet", status: "not-yet" },
+	"git-revision-date-localized": { say: "`page.lastModified` (`ssqch docs lastModified`), formatted with a date filter", status: "ssqch" },
+	"awesome-pages": { say: "the sidebar's order is `_data/nav.yml`'s (`navTree`)", status: "ssqch" },
+	macros: { say: "Markdown runs through a template engine in ssqch (`markdownEngine`): the macros become the engine's, with the site's variables as data", status: "site" },
+	i18n: { say: "`ssqch docs multilingual`", status: "ssqch" },
 };
-const MKDOCS_EXTENSIONS: Record<string, string> = {
-	admonition: "`!!!` admonitions: not in ssqch yet as written; ssqch's are containers (`::: note`)",
-	"pymdownx.details": "`???` collapsible admonitions: not in ssqch yet as written; ssqch's is `::: details`",
-	"pymdownx.tabbed": "`===` tabs: not in ssqch yet as written; ssqch's are containers",
-	"pymdownx.superfences": "fences, built in; custom fences (mermaid) are a fence hook (`_includes/hooks/fence-mermaid.<ext>`)",
-	"pymdownx.highlight": "`markdown: { highlight: true }`, with ssqch's classes (not Pygments')",
-	"pymdownx.inlinehilite": "not in ssqch yet: inline code with a language",
-	"pymdownx.snippets": "`--8<--` snippets: an include in a template engine (`markdownEngine`), or not in ssqch yet as written",
-	"pymdownx.emoji": "`:icon:` shortcodes: not in ssqch yet",
-	"pymdownx.keys": "`++ctrl+c++` keys: not in ssqch yet",
-	"pymdownx.critic": "not in ssqch yet",
-	"pymdownx.arithmatex": "math: not in ssqch yet as written; KaTeX as a filter or a fence hook",
-	"pymdownx.tasklist": "task lists, built in",
-	"pymdownx.caret": "`^^insert^^` and `^sup^`: not in ssqch yet",
-	"pymdownx.mark": "`==mark==`: not in ssqch yet",
-	"pymdownx.tilde": "`~~delete~~`, built in (`~sub~` isn't)",
-	attr_list: "attributes (`{#id .class}`), built in; on headings, ssqch keeps ids and classes",
-	md_in_html: "Markdown inside HTML: `markdown: { htmlMarkdown: \"kramdown\" }` reads `markdown=\"1\"`, not the bare `markdown` attribute",
-	footnotes: "footnotes, built in (their markup is a `footnotes` hook's)",
-	toc: "heading ids are `headingIds`; MkDocs' own aren't one of its styles yet. The table of contents is `page.headings` and the `toc` filter",
-	def_list: "definition lists: not in ssqch yet",
-	abbr: "abbreviations: not in ssqch yet",
-	tables: "tables, built in",
-	meta: "front matter, built in",
+const MKDOCS_EXTENSIONS: Record<string, Mapping> = {
+	admonition: { say: "`!!!` admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft) writes them as Python-Markdown does", status: "option", option: "markdown: { admonitions: \"mkdocs\" }" },
+	"pymdownx.details": { say: "`???` collapsible admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft)", status: "option", option: "markdown: { admonitions: \"mkdocs\" }" },
+	"pymdownx.tabbed": { say: "`===` tabs: `markdown: { tabs: \"mkdocs\" }` (in the draft) writes them in the alternate style", status: "option", option: "markdown: { tabs: \"mkdocs\" }" },
+	"pymdownx.superfences": { say: "fences, built in; custom fences (mermaid) are a fence hook (`_includes/hooks/fence-mermaid.<ext>`)", status: "ssqch" },
+	"pymdownx.highlight": { say: "`markdown: { highlight: { classes: \"pygments\" } }` (in the draft): Pygments' class names, cut by ssqch's grammars", status: "option", option: "markdown: { highlight: { classes: \"pygments\" } }" },
+	codehilite: { say: "`markdown: { highlight: { classes: \"pygments\" } }` (in the draft)", status: "option", option: "markdown: { highlight: { classes: \"pygments\" } }" },
+	"pymdownx.inlinehilite": { say: "not in ssqch yet: inline code with a language", status: "not-yet" },
+	"pymdownx.snippets": { say: "`--8<--` snippets: not in ssqch yet as written; an include in a template engine (`markdownEngine`)", status: "not-yet" },
+	"pymdownx.emoji": { say: "`:icon:` shortcodes: not in ssqch yet", status: "not-yet" },
+	"pymdownx.keys": { say: "`++ctrl+c++` keys: not in ssqch yet", status: "not-yet" },
+	"pymdownx.critic": { say: "not in ssqch yet", status: "not-yet" },
+	"pymdownx.arithmatex": { say: "math: not in ssqch yet as written; KaTeX as a filter or a fence hook", status: "not-yet" },
+	"pymdownx.tasklist": { say: "task lists, built in", status: "ssqch" },
+	"pymdownx.caret": { say: "`^^insert^^` and `^sup^`: not in ssqch yet", status: "not-yet" },
+	"pymdownx.mark": { say: "`==mark==`: not in ssqch yet", status: "not-yet" },
+	"pymdownx.tilde": { say: "`~~delete~~`, built in (`~sub~` isn't)", status: "ssqch" },
+	"pymdownx.magiclink": { say: "bare URLs, built in (`autolinks`); its repository shorthands aren't", status: "ssqch" },
+	"pymdownx.smartsymbols": { say: "not in ssqch yet (`smartPunctuation` does quotes and dashes)", status: "not-yet" },
+	"pymdownx.betterem": { say: "emphasis, built in (CommonMark's rules)", status: "ssqch" },
+	smarty: { say: "`markdown: { smartPunctuation: true }` (in the draft)", status: "option", option: "markdown: { smartPunctuation: true }" },
+	attr_list: { say: "attributes (`{#id .class}`), built in; on headings, ssqch keeps ids and classes", status: "ssqch" },
+	md_in_html: { say: "Markdown inside HTML with the bare `markdown` attribute: not in ssqch yet as written; `markdown: { htmlMarkdown: \"kramdown\" }` reads `markdown=\"1\"`", status: "not-yet" },
+	footnotes: { say: "footnotes, built in (their markup is a `footnotes` hook's)", status: "ssqch" },
+	toc: { say: "`markdown: { headingIds: \"python-markdown\" }` (in the draft): toc's default ids (a repeated heading gets `-1`, not `_1`; a `slugify` of the site's own needs a function). The table of contents is `page.headings` and the `toc` filter", status: "option", option: "markdown: { headingIds: \"python-markdown\" }" },
+	def_list: { say: "`markdown: { definitionLists: true }` (in the draft)", status: "option", option: "markdown: { definitionLists: true }" },
+	abbr: { say: "abbreviations: not in ssqch yet", status: "not-yet" },
+	tables: { say: "tables, built in", status: "ssqch" },
+	meta: { say: "front matter, built in", status: "ssqch" },
 };
 
-/** What an MkDocs site uses that needs doing in ssqch, from mkdocs.yml and the docs' Markdown. */
+/** The path a site is served under, from its full URL (`https://x.github.io/repo/` is served under `/repo/`), as the draft's \`base\`. */
+function basePath(url: string | undefined): string | undefined {
+	if (url === undefined) return undefined;
+	const m = /^[a-z]+:\/\/[^/]+(\/.*)$/i.exec(url.endsWith("/") ? url : `${url}/`);
+	return m && m[1] !== "/" ? m[1] : undefined;
+}
+
+/** A page's URL as MkDocs makes it with `use_directory_urls`: `setup/index.md` and `setup/README.md` as `/setup/`, `setup/install.md` as `/setup/install/`. */
+function mkdocsUrl(file: string, directoryUrls: boolean): string {
+	const stem = file.replace(/\.md$/, "");
+	if (/(?:^|\/)(?:index|README)$/.test(stem)) return `/${stem.replace(/(?:^|\/)?(?:index|README)$/, "")}${stem.includes("/") ? "/" : ""}`.replace(/\/+/g, "/");
+	return directoryUrls ? `/${stem}/` : `/${stem}.html`;
+}
+
+/** What an MkDocs site uses that needs doing in ssqch, from mkdocs.yml and the docs' Markdown, and a draft with the options that read the pages as they are. */
 export function mkdocs(dir: string): Plan {
 	const configFile = ["mkdocs.yml", "mkdocs.yaml"].find((f) => isFile(path.join(dir, f))) ?? fail(`there's no mkdocs.yml in ${dir}: is this the MkDocs site's folder?`);
 	const config = readMkdocsYaml(readStrict(path.join(dir, configFile)));
 	const plan: Plan = { from: "MkDocs", renames: [], edits: [], newFiles: [], byHand: [] };
 	const docsDir = typeof config.docs_dir === "string" ? config.docs_dir : "docs";
 	const siteDir = typeof config.site_dir === "string" ? config.site_dir : "site";
-	const settings: string[] = [`dirs: { input: ${JSON.stringify(docsDir)}, output: ${JSON.stringify(siteDir)} }`];
-	if (typeof config.site_url === "string") settings.push(`the site's URL (${config.site_url}) in \`_data/site.json\`, and \`sitemapPlugin({ url })\``);
-	if (typeof config.repo_url === "string") settings.push("`repo_url` and `edit_uri` as data, for edit links");
-	plan.byHand.push([configFile, `the config: ${settings.join("; ")}`]);
-	if (config.extra && isPlainObject(config.extra)) plan.byHand.push([`${configFile}: extra`, "`extra` is data: `_data/site.yml` (or the config's `data`), read as `site.<key>`"]);
-	if (Array.isArray(config.nav)) {
-		const count = (list: unknown[]): number => list.reduce<number>((n, item) => n + (isPlainObject(item) ? Object.values(item).reduce<number>((m, v) => m + (Array.isArray(v) ? count(v) : 1), 0) : 1), 0);
-		plan.byHand.push([`${configFile}: nav`, `the nav (${count(config.nav)} entries): ssqch's sidebar is \`_data/nav.yml\` (\`title\`, \`url\`, \`children\`) and \`navTree\`, with URLs in place of \`.md\` paths; an entry without a title takes the page's \`# heading\` in MkDocs`]);
-	}
-	const theme = isPlainObject(config.theme) ? config.theme.name : config.theme;
-	if (typeof theme === "string") plan.byHand.push([`${configFile}: theme`, theme === "material" ? "Material's templates are Jinja, which ssqch runs, but they need the context MkDocs gives them (`config`, `nav`, `page`, a page-relative `url` filter): not in ssqch yet as built in. The fresh MkDocs move ran all 49 unchanged with a module of its own that makes it" : `the ${theme} theme's templates are Jinja, which ssqch runs; they need the context MkDocs gives them (\`config\`, \`nav\`, \`page\`)`]);
+	const directoryUrls = config.use_directory_urls !== false;
+	const pages = walk(path.join(dir, docsDir), (name) => name.startsWith(".") || name === "node_modules", false).filter((e) => e.isFile && /\.md$/.test(e.name)).map((e) => ({ ...e, rel: `${docsDir}/${e.rel}`, page: e.rel }));
+	plan.pages = pages.length;
 	const named = (list: unknown) => (Array.isArray(list) ? list.map((item) => (isPlainObject(item) ? Object.keys(item)[0] : String(item))) : isPlainObject(list) ? Object.keys(list) : []);
-	for (const name of named(config.plugins)) {
-		const key = name.replace(/^material\//, "");
-		plan.byHand.push([`${configFile}: plugins`, `\`${name}\`: ${MKDOCS_PLUGINS[key] ?? "not in ssqch yet: port it as a plugin (`ssqch docs plugins`)"}`]);
+	const extensions = named(config.markdown_extensions);
+	const plugins = named(config.plugins);
+	const theme = isPlainObject(config.theme) ? config.theme.name : config.theme;
+	if (typeof theme === "string") plan.byHand.push([`${configFile}: theme`, theme === "material" ? "Material's templates are Jinja, which ssqch runs, but they need the context MkDocs gives them (`config`, `nav`, `page`, a page-relative `url` filter): not in ssqch yet as built in. The fresh MkDocs move ran all 49 unchanged with a module of its own that makes it" : `the ${theme} theme's templates are Jinja, which ssqch runs; they need the context MkDocs gives them (\`config\`, \`nav\`, \`page\`)`, { code: "mkdocs-theme", status: theme === "material" ? "not-yet" : "site" }]);
+	for (const name of plugins) {
+		const known = MKDOCS_PLUGINS[name.replace(/^material\//, "")];
+		plan.byHand.push([`${configFile}: plugins`, `\`${name}\`: ${known?.say ?? "not in ssqch yet: port it as a plugin (`ssqch docs plugins`)"}`, { code: "mkdocs-plugin", status: known?.status ?? "site" }]);
 	}
-	for (const name of named(config.markdown_extensions)) plan.byHand.push([`${configFile}: markdown_extensions`, `\`${name}\`: ${MKDOCS_EXTENSIONS[name] ?? "not in ssqch yet"}`]);
-	if (isFile(path.join(dir, "hooks.py")) || config.hooks) plan.byHand.push([`${configFile}: hooks`, "Python hooks don't run in ssqch: port each as a plugin or a filter (`ssqch docs plugins`)"]);
-	// The syntax the pages use, counted: what a preprocessor would have to turn into ssqch's.
-	const pages = walk(path.join(dir, docsDir), (name) => name.startsWith(".") || name === "node_modules", false).filter((e) => e.isFile && /\.md$/.test(e.name)).map((e) => ({ ...e, rel: `${docsDir}/${e.rel}` }));
-	const syntax: Array<[string, RegExp, string]> = [
-		["links to .md files", /\]\((?![a-z]+:)[^)\s#]*\.md(?:#[^)\s]*)?\)|^[ \t]*\[[^\]\n]+\]:[ \t]*(?![a-z]+:)[^\s#]*\.md(?:#\S*)?[ \t]*$/gm, "not in ssqch yet: ssqch keeps a link's URL as written, so each needs the page's URL (the link checker reports them)"],
-		["admonitions (`!!!`, `???`)", /^[ \t]*(?:!!!|\?\?\?\+?)[ \t]+\w/gm, "not in ssqch yet as written: ssqch's are containers (`::: note`)"],
-		["tabs (`===`)", /^[ \t]*===\+?[ \t]+"/gm, "not in ssqch yet as written: ssqch's are containers"],
-		["snippets (`--8<--`)", /^[ \t]*-+8<-+/gm, "not in ssqch yet as written"],
-		["icons and emoji (`:name:`)", /:(?:material|fontawesome|octicons|simple)-[\w-]+:/g, "not in ssqch yet"],
-		["bare `markdown` attributes", /<[a-z][^>]*\smarkdown(?=[\s>])/g, "ssqch's `htmlMarkdown: \"kramdown\"` reads `markdown=\"1\"`"],
+	for (const name of extensions) {
+		const known = MKDOCS_EXTENSIONS[name];
+		plan.byHand.push([`${configFile}: markdown_extensions`, `\`${name}\`: ${known?.say ?? "not in ssqch yet"}`, { code: "mkdocs-extension", status: known?.status ?? "not-yet", ...(known?.option ? { option: known.option } : {}) }]);
+	}
+	if (isFile(path.join(dir, "hooks.py")) || config.hooks) plan.byHand.push([`${configFile}: hooks`, "Python hooks don't run in ssqch: port each as a plugin or a filter (`ssqch docs plugins`)", { code: "mkdocs-hooks", status: "site", docs: "plugins" }]);
+	// The syntax the pages use, counted: what each option reads, and what nothing does yet.
+	const syntax: Array<[string, RegExp, string, string, NonNullable<Todo["status"]>]> = [
+		["links to .md files", /\]\((?![a-z]+:)[^)\s#]*\.md(?:#[^)\s]*)?\)|^[ \t]*\[[^\]\n]+\]:[ \t]*(?![a-z]+:)[^\s#]*\.md(?:#\S*)?[ \t]*$/gm, "`markdown: { sourceLinks: \"relative\" }` (in the draft) links each to its page's URL, as MkDocs does", "mkdocs-md-links", "option"],
+		["admonitions (`!!!`, `???`)", /^[ \t]*(?:!!!|\?\?\?\+?)[ \t]+\w/gm, "`markdown: { admonitions: \"mkdocs\" }` (in the draft)", "mkdocs-admonitions", "option"],
+		["tabs (`===`)", /^[ \t]*===[+!]{0,2}[ \t]+"/gm, "`markdown: { tabs: \"mkdocs\" }` (in the draft)", "mkdocs-tabs", "option"],
+		["snippets (`--8<--`)", /^[ \t]*-+8<-+/gm, "not in ssqch yet as written", "mkdocs-snippets", "not-yet"],
+		["icons and emoji (`:name:`)", /:(?:material|fontawesome|octicons|simple)-[\w-]+:/g, "not in ssqch yet", "mkdocs-icons", "not-yet"],
+		["bare `markdown` attributes", /<[a-z][^>]*\smarkdown(?=[\s>])/g, "not in ssqch yet as written: `htmlMarkdown: \"kramdown\"` reads `markdown=\"1\"`", "mkdocs-md-in-html", "not-yet"],
 	];
-	for (const [what, pattern, say] of syntax) {
+	for (const [what, pattern, say, code, status] of syntax) {
 		let count = 0;
 		let first: string | undefined;
 		const files = new Set<string>();
@@ -2614,17 +2775,161 @@ export function mkdocs(dir: string): Plan {
 			const text = readUtf8(entry.abs) ?? "";
 			for (const m of text.matchAll(pattern)) { count++; files.add(entry.rel); first ??= lineAt(entry, text, m.index!); }
 		}
-		if (first) plan.byHand.push([first, `${what} (${uses(count, files.size)}): ${say}`]);
+		const option = { "mkdocs-md-links": "markdown: { sourceLinks: \"relative\" }", "mkdocs-admonitions": "markdown: { admonitions: \"mkdocs\" }", "mkdocs-tabs": "markdown: { tabs: \"mkdocs\" }" }[code];
+		if (first) plan.byHand.push([first, `${what} (${uses(count, files.size)}): ${say}`, { code, status, count, files: files.size, ...(option ? { option } : {}) }]);
 	}
-	const blogDates = pages.find((e) => /^date:\s*\n\s+created:/m.test((readUtf8(e.abs) ?? "").slice(0, 2000)));
-	if (blogDates) plan.byHand.push([blogDates.rel, "`date: { created, updated }` front matter (Material's blog): ssqch's `date` is one date; not in ssqch yet as written"]);
+	const blogDates = pages.filter((e) => /^date:\s*\n\s+created:/m.test((readUtf8(e.abs) ?? "").slice(0, 2000)));
+	if (blogDates.length) plan.byHand.push([blogDates[0].rel, `\`date: { created, updated }\` front matter (Material's blog) in ${blogDates.length} ${blogDates.length === 1 ? "page" : "pages"}: ssqch's \`date\` is one date; not in ssqch yet as written`, { code: "mkdocs-blog-dates", status: "not-yet", files: blogDates.length }]);
+
+	// The draft: the config, the nav as data, and the pages read as they're written.
+	const site: Data = {};
+	for (const [from, to] of [["site_name", "name"], ["site_url", "url"], ["site_description", "description"], ["site_author", "author"], ["repo_url", "repo_url"], ["edit_uri", "edit_uri"], ["copyright", "copyright"]] as const) if (typeof config[from] === "string") site[to] = config[from];
+	if (isPlainObject(config.extra)) site.extra = config.extra;
+	const markdown = ["admonitions: \"mkdocs\"", "tabs: \"mkdocs\"", "sourceLinks: \"relative\"", "headingIds: \"python-markdown\""];
+	if (extensions.some((e) => e === "pymdownx.highlight" || e === "codehilite")) markdown.push("highlight: { classes: \"pygments\" }");
+	if (extensions.includes("def_list")) markdown.push("definitionLists: true");
+	if (extensions.includes("smarty")) markdown.push("smartPunctuation: true");
+	if (!extensions.includes("footnotes")) markdown.push("footnotes: false");
+	const redirects = (() => {
+		const entry = Array.isArray(config.plugins) ? (config.plugins as unknown[]).find((p) => isPlainObject(p) && "redirects" in p) as Data | undefined : undefined;
+		const maps = entry && isPlainObject(entry.redirects) && isPlainObject(entry.redirects.redirect_maps) ? entry.redirects.redirect_maps : undefined;
+		if (!maps) return undefined;
+		const out: Record<string, string> = {};
+		for (const [from, to] of Object.entries(maps)) if (typeof to === "string") out[mkdocsUrl(from, directoryUrls)] = /^[a-z]+:/.test(to) ? to : mkdocsUrl(to.replace(/#.*$/, ""), directoryUrls) + (to.includes("#") ? to.slice(to.indexOf("#")) : "");
+		return out;
+	})();
+	const url = typeof config.site_url === "string" ? config.site_url.replace(/\/$/, "") : undefined;
+	const imports = ["import { defineConfig } from \"ssqch\";", "import { linksPlugin } from \"ssqch/links\";", ...(url ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : []), ...(redirects ? ["import { redirectsPlugin } from \"ssqch/redirects\";"] : [])];
+	let out = `// A first draft, written by \`ssqch scout\` from ${configFile}.\n// \`ssqch docs --from mkdocs\` has the whole mapping. The sidebar is _data/nav.yml (navTree).\n${imports.join("\n")}\n\nexport default defineConfig({\n`;
+	out += `  dirs: { input: ${JSON.stringify(docsDir)}, output: ${JSON.stringify(siteDir)}, includes: "../_includes", data: "../_data" },\n`;
+	if (basePath(url) !== undefined) out += `  // site_url's path: the site is served under it.\n  base: ${JSON.stringify(basePath(url))},\n`;
+	out += "  // MkDocs doesn't run template code in pages; its blocks and links read as it writes them.\n  markdownEngine: false,\n";
+	out += `  markdown: { ${markdown.join(", ")} },\n`;
+	// MkDocs copies every file in the docs folder that isn't Markdown, at its own path.
+	const others = [...new Set(walk(path.join(dir, docsDir), (name) => name.startsWith(".") || name === "node_modules", false).filter((e) => e.isFile && !/\.md$/i.test(e.name) && /\.[A-Za-z0-9]+$/.test(e.name)).map((e) => extensionOf(e.name).toLowerCase()))].sort(compareText);
+	if (others.length) out += `  passthrough: [${others.map((ext) => `{ ${JSON.stringify(`${docsDir}/**/*.${ext}`)}: "." }`).join(", ")}],\n`;
+	out += `  data: { site: ${JSON.stringify(sortedKeys(site))} },\n`;
+	const pluginCalls = [...(url ? [`sitemapPlugin({ url: ${JSON.stringify(url)} })`] : []), ...(redirects ? [`redirectsPlugin({ redirects: ${JSON.stringify(redirects)} })`] : []), "linksPlugin()"];
+	out += `  plugins: [${pluginCalls.join(", ")}],\n});\n`;
+	plan.newFiles.push(["ssqch.config.js", `a first draft, from ${configFile}`, out]);
+	if (Array.isArray(config.nav)) {
+		const titleOf = (file: string) => /^#[ \t]+(.+?)[ \t#]*$/m.exec(readUtf8(path.join(dir, docsDir, file)) ?? "")?.[1] ?? file.replace(/\.md$/, "").split("/").pop()!;
+		let entries = 0;
+		const convert = (list: unknown[]): Data[] => list.flatMap((item): Data[] => {
+			if (typeof item === "string") { entries++; return [/^[a-z]+:/.test(item) ? { title: item, url: item } : { title: titleOf(item), url: mkdocsUrl(item, directoryUrls) }]; }
+			if (!isPlainObject(item)) return [];
+			return Object.entries(item).map(([title, value]) => {
+				if (Array.isArray(value)) return { title, children: convert(value) };
+				entries++;
+				return { title, url: typeof value === "string" && !/^[a-z]+:/.test(value) ? mkdocsUrl(value, directoryUrls) : String(value) };
+			});
+		});
+		const nav = convert(config.nav as unknown[]);
+		plan.newFiles.push(["_data/nav.yml", `the nav from ${configFile} (${entries} entries), for \`navTree\``, `# From ${configFile}'s nav, by ssqch scout: titles as the nav gives them, or each page's first heading.\n${dumpYaml(nav)}`]);
+	} else plan.byHand.push([configFile, "no `nav`: MkDocs builds the sidebar from the folders; ssqch's is `_data/nav.yml` (`navTree`) or `pagesTree(collections.all)`", { code: "mkdocs-nav", status: "ssqch", docs: "navTree" }]);
 	return plan;
+}
+
+/** A list of nav entries as YAML, the way a person would write it. */
+function dumpYaml(nav: Data[], indent = ""): string {
+	const scalar = (v: string) => (/^[\w./ -]+$/.test(v) && !/^\s|\s$|^(?:true|false|null|yes|no|on|off|~|-?\d[\d.]*)$/i.test(v) && !v.startsWith("- ") ? v : JSON.stringify(v));
+	let out = "";
+	for (const entry of nav) {
+		out += `${indent}- title: ${scalar(String(entry.title))}\n`;
+		if (entry.url !== undefined) out += `${indent}  url: ${scalar(String(entry.url))}\n`;
+		if (Array.isArray(entry.children)) out += `${indent}  children:\n${dumpYaml(entry.children as Data[], `${indent}    `)}`;
+	}
+	return out;
 }
 
 const TRAILHEADS: Record<string, string> = { docusaurus: "from-docusaurus", hexo: "from-hexo", astro: "from-component-frameworks", vitepress: "from-component-frameworks" };
 
-/** A generator scout has no detector for: the reference build and the trailhead, and nothing of the site's own. */
-function other(dir: string, id: string): Plan {
+/** Counts a pattern across files: how many uses, in how many files, and the first. */
+function countIn(entries: Entry[], pattern: RegExp): { count: number; files: number; first?: string } {
+	let count = 0;
+	let first: string | undefined;
+	const files = new Set<string>();
+	for (const entry of entries) {
+		const text = readUtf8(entry.abs) ?? "";
+		for (const m of text.matchAll(pattern)) { count++; files.add(entry.rel); first ??= lineAt(entry, text, m.index!); }
+	}
+	return { count, files: files.size, first };
+}
+
+/** One row per pattern that turns up: what it is, and ssqch's way. */
+function listSyntax(plan: Plan, entries: Entry[], rows: Array<[string, RegExp, string, string, NonNullable<Todo["status"]>]>): void {
+	for (const [what, pattern, say, code, status] of rows) {
+		const { count, files, first } = countIn(entries, new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`));
+		if (first) plan.byHand.push([first, `${what} (${uses(count, files)}): ${say}`, { code, status, count, files }]);
+	}
+}
+
+/** The packages a site's package.json lists, matching `pattern`. */
+function packagesLike(dir: string, pattern: RegExp): string[] {
+	try {
+		const pkg = JSON.parse(readUtf8(path.join(dir, "package.json")) ?? "{}");
+		return Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).filter((name) => pattern.test(name)).sort(compareText);
+	} catch { return []; }
+}
+
+const SKIP_BUILT = (name: string) => name.startsWith(".git") || name === "node_modules" || name === ".cache" || name === "build" || name === "dist" || name === ".docusaurus" || name === ".astro";
+
+/**
+ * Docusaurus, Astro, VitePress and Hexo: what their pages use, counted, with ssqch's way to do
+ * each. These are lighter than the others (no draft yet): a fresh move of each is the next step
+ * to find what an agent needs listed.
+ */
+export function other(dir: string, id: string): Plan {
 	const name = GENERATORS[id].name;
-	return { from: name, renames: [], edits: [], newFiles: [], byHand: [[".", `scout doesn't read ${name} sites yet, so this lists nothing of the site's own: \`ssqch docs --from ${id}\` has ${name}'s words${TRAILHEADS[id] ? " and its trailhead" : ""}`]] };
+	const plan: Plan = { from: name, renames: [], edits: [], newFiles: [], byHand: [] };
+	const entries = walk(dir, (n, rel) => SKIP_BUILT(n) || (id === "vitepress" && /(?:^|\/)\.vitepress\/(?:cache|dist)$/.test(rel)) || (id === "hexo" && rel === "public"), false).filter((e) => e.isFile);
+	const pages = entries.filter((e) => /\.(md|mdx|markdown)$/.test(e.name));
+	plan.pages = pages.length;
+	if (id === "docusaurus") {
+		const mdx = pages.filter((e) => e.name.endsWith(".mdx"));
+		if (mdx.length) plan.byHand.push([mdx[0].rel, `${mdx.length} MDX ${mdx.length === 1 ? "page" : "pages"}: ssqch's Markdown doesn't run JSX; their components become Edge components or containers (\`ssqch docs --from docusaurus\`)`, { code: "docusaurus-mdx", status: "site", files: mdx.length }]);
+		listSyntax(plan, pages, [
+			["`import` of components in pages", /^import\s+[\w{},\s*]+\s+from\s+['"][^'"]+['"];?\s*$/m, "not in ssqch yet as written: Edge components (`@component(...)`) or containers", "docusaurus-imports", "not-yet"],
+			["`<Tabs>` and `<TabItem>`", /<Tabs\b/, "tabs from containers (the versioned-docs example has them)", "docusaurus-tabs", "ssqch"],
+			["admonitions (`:::note`)", /^:::(?:note|tip|info|warning|danger|caution)\b/m, "containers, built in: `_includes/containers/note.*` gives each its markup", "docusaurus-admonitions", "ssqch"],
+			["`<!-- truncate -->` and `{/* truncate */}`", /<!--\s*truncate\s*-->|\{\/\*\s*truncate\s*\*\/\}/, "an excerpt's end: ssqch's marker is `<!-- more -->`", "docusaurus-truncate", "not-yet"],
+			["`@site/` and `@theme/` paths", /@(?:site|theme)\//, "not in ssqch yet: paths from the site's root", "docusaurus-aliases", "not-yet"],
+		]);
+		for (const file of ["sidebars.js", "sidebars.ts"]) if (isFile(path.join(dir, file))) plan.byHand.push([file, "the sidebar: ssqch's is `_data/nav.yml` and `navTree`, or `pagesTree(collections.all)` from front matter", { code: "docusaurus-sidebar", status: "ssqch", docs: "navTree" }]);
+		if (isDir(path.join(dir, "versioned_docs"))) plan.byHand.push(["versioned_docs", "versions as folders, each with its own sidebar: directory data per version (the versioned-docs example)", { code: "docusaurus-versions", status: "ssqch" }]);
+		if (isDir(path.join(dir, "i18n"))) plan.byHand.push(["i18n", "translations: `ssqch docs multilingual`", { code: "docusaurus-i18n", status: "ssqch", docs: "multilingual" }]);
+		for (const pkg of packagesLike(dir, /^@docusaurus\/plugin-|docusaurus-plugin-/)) plan.byHand.push(["package.json", `${pkg}: ${/sitemap/.test(pkg) ? "`sitemapPlugin()` from \"ssqch/sitemap\"" : /content-blog/.test(pkg) ? "a blog is a collection with directory data" : /client-redirects/.test(pkg) ? "`redirectsPlugin()` from \"ssqch/redirects\"" : /ideal-image/.test(pkg) ? "`imagePlugin()` from \"ssqch/image\"" : "not in ssqch yet: port it as a plugin"}`, { code: "docusaurus-plugin", status: /sitemap|content-blog|client-redirects|ideal-image/.test(pkg) ? "ssqch" : "site" }]);
+	} else if (id === "astro") {
+		const astro = entries.filter((e) => e.name.endsWith(".astro"));
+		if (astro.length) plan.byHand.push([astro[0].rel, `${astro.length} \`.astro\` ${astro.length === 1 ? "component" : "components"} to port: ssqch doesn't run them; layouts and components become templates (Edge's components are closest), and their scripts custom elements from \`ssqch/elements\``, { code: "astro-components", status: "site", files: astro.length, docs: "--from astro" }]);
+		const islands = entries.filter((e) => /\.(jsx|tsx|vue|svelte)$/.test(e.name) && !e.rel.startsWith("node_modules"));
+		if (islands.length) plan.byHand.push([islands[0].rel, `${islands.length} framework ${islands.length === 1 ? "component" : "components"} (React, Vue, Svelte): islands in ssqch are custom elements whose scripts load where they're used (the islands example)`, { code: "astro-islands", status: "site", files: islands.length }]);
+		const collections = ["src/content/config.ts", "src/content.config.ts", "src/content/config.mjs"].find((f) => isFile(path.join(dir, f)));
+		if (collections) plan.byHand.push([collections, "content collections with schemas: ssqch's are collections and `schemas` (`ssqch docs schemas`)", { code: "astro-content-collections", status: "ssqch", docs: "schemas" }]);
+		listSyntax(plan, pages, [["`import` in MDX pages", /^import\s+.+\s+from\s+['"][^'"]+['"]/m, "not in ssqch yet as written: Edge components or containers", "astro-mdx-imports", "not-yet"]]);
+		for (const pkg of packagesLike(dir, /^@astrojs\//)) plan.byHand.push(["package.json", `${pkg}: ${/sitemap/.test(pkg) ? "`sitemapPlugin()` from \"ssqch/sitemap\"" : /mdx/.test(pkg) ? "MDX pages: see the MDX line" : /rss/.test(pkg) ? "`rssPlugin()` from \"ssqch/rss\"" : /react|vue|svelte|preact|solid/.test(pkg) ? "framework islands: custom elements" : "not in ssqch yet: port it as a plugin"}`, { code: "astro-integration", status: /sitemap|rss/.test(pkg) ? "ssqch" : "site" }]);
+	} else if (id === "vitepress") {
+		listSyntax(plan, pages, [
+			["containers (`::: tip`)", /^:::\s*(?:tip|info|warning|danger|details)\b/m, "containers, built in: `_includes/containers/tip.*` gives each its markup", "vitepress-containers", "ssqch"],
+			["code groups (`::: code-group`)", /^:::\s*code-group\b/m, "a container with a template of its own", "vitepress-code-group", "ssqch"],
+			["Vue components in pages", /^<[A-Z][\w-]*[\s/>]/m, "not in ssqch yet as written: custom elements, or Edge components", "vitepress-vue", "not-yet"],
+			["Vue expressions (`{{ $frontmatter.x }}`)", /\{\{\s*\$\w+/, "template code: with `markdownEngine` on, ssqch's templates read front matter as `{{ x }}`", "vitepress-expressions", "site"],
+			["`[[toc]]`", /^\[\[toc\]\]\s*$/m, "the `toc` filter in the layout, from `page.headings`", "vitepress-toc", "ssqch"],
+			["`<<< @/` snippets", /^<<<\s*@\//m, "not in ssqch yet as written: an include in a template engine", "vitepress-snippets", "not-yet"],
+		]);
+		const config = [".vitepress/config.ts", ".vitepress/config.mts", ".vitepress/config.js", ".vitepress/config.mjs", "docs/.vitepress/config.ts", "docs/.vitepress/config.mts", "docs/.vitepress/config.js"].find((f) => isFile(path.join(dir, f)));
+		if (config) plan.byHand.push([config, "the config's `sidebar` and `nav`: ssqch's are data (`_data/nav.yml`) and `navTree`", { code: "vitepress-sidebar", status: "ssqch", docs: "navTree" }]);
+		const theme = entries.find((e) => /(?:^|\/)\.vitepress\/theme\/index\.[jt]s$/.test(e.rel));
+		if (theme) plan.byHand.push([theme.rel, "a custom theme (Vue): ssqch's layouts are templates; the theme's components become templates and custom elements", { code: "vitepress-theme", status: "site" }]);
+	} else if (id === "hexo") {
+		listSyntax(plan, pages, [
+			["tag plugins (`{% codeblock %}`, `{% asset_img %}`, `{% post_link %}`)", /\{%\s*(?:codeblock|asset_img|asset_link|asset_path|post_link|post_path|blockquote|youtube|iframe|img|link|include_code|raw)\b/, "not in ssqch yet as written: filters or shortcodes of the site's own (Liquid's and Nunjucks' `{% %}` read them as tags)", "hexo-tag-plugins", "not-yet"],
+			["`<!-- more -->`", /<!--\s*more\s*-->/, "an excerpt's end, as in ssqch", "hexo-more", "ssqch"],
+		]);
+		if (isDir(path.join(dir, "themes"))) plan.byHand.push(["themes", "the theme's layouts (EJS, Nunjucks, Pug): ssqch runs EJS and Nunjucks; Pug isn't in ssqch", { code: "hexo-theme", status: "site" }]);
+		if (isDir(path.join(dir, "scaffolds"))) plan.byHand.push(["scaffolds", "scaffolds are ssqch's blueprints: `_blueprints/` and `ssqch new posts/pine.md`", { code: "hexo-scaffolds", status: "ssqch", docs: "blueprints" }]);
+		for (const pkg of packagesLike(dir, /^hexo-/)) plan.byHand.push(["package.json", `${pkg}: ${/generator-sitemap/.test(pkg) ? "`sitemapPlugin()`" : /generator-feed/.test(pkg) ? "`rssPlugin()`" : /renderer-(?:ejs|nunjucks|marked|markdown-it)/.test(pkg) ? "ssqch renders it itself" : /generator-(?:archive|category|tag|index)/.test(pkg) ? "a page per tag or category by pagination" : "not in ssqch yet: port it as a plugin"}`, { code: "hexo-plugin", status: /sitemap|feed|renderer-(?:ejs|nunjucks|marked|markdown-it)|generator-(?:archive|category|tag|index)/.test(pkg) ? "ssqch" : "site" }]);
+	}
+	plan.byHand.push([".", `scout reads ${name} sites lightly (no draft yet): \`ssqch docs --from ${id}\` has ${name}'s words${TRAILHEADS[id] ? " and its trailhead" : ""}`, { code: `${id}-trailhead`, status: "ssqch", docs: `--from ${id}` }]);
+	return plan;
 }

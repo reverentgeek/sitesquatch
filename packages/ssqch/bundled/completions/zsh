@@ -249,6 +249,8 @@ _arguments "${_arguments_options[@]}" : \
 '--format=[text or json]:FORMAT:_default' \
 '--write-draft[Write the new files of the draft; never overwrites a file]' \
 '--patch=[Write the mechanical edits to FILE as a patch to review; nothing is applied]:PATCH:_files' \
+'--compare[Also build with ssqch and compare with the reference build]' \
+'--reference=[The reference build to compare with]:REFERENCE:_files' \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \

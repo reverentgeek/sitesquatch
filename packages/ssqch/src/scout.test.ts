@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readToml } from "./data.ts";
-import { blankComments, detect, draftConfig, eleventy, hugo, jekyll, mkdocs, patchOf, unifiedHunks, jekyllPermalink, rewriteData, jekyllTemplateNotes, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./scout.ts";
+import { blankComments, detect, draftConfig, eleventy, hugo, jekyll, mkdocs, other, patchOf, unifiedHunks, jekyllPermalink, rewriteData, jekyllTemplateNotes, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./scout.ts";
 import { VERSION } from "./version.ts";
 
 test("zola_front_matter_gets_ssqch_names", () => {
@@ -627,7 +627,7 @@ test("scout_lists_what_a_hugo_site_uses", () => {
 	const dir = site("hugo-list", {
 		"hugo.toml": "baseURL = \"https://example.com/\"\n",
 		"content/trails/_index.md": "---\ntitle: Trails\ncascade:\n  layout: trail\n---\n",
-		"content/trails/cedar.md": "---\ntitle: Cedar\n---\n{{< note >}}Pack water{{< /note >}}\n\n{{< youtube abc >}}\n{{< note >}}x{{< /note >}}\n",
+		"content/trails/cedar.md": "---\ntitle: Cedar\n---\n{{< note >}}\nPack water\n{{< /note >}}\n\n{{< youtube abc >}}\nSee {{< ref \"old-growth\" >}}.\n",
 		"content/trails/old-growth.md": "---\ntitle: Old Growth\n---\nWrite `{{ .Title }}` in a template.\n",
 		"layouts/baseof.html": "{{ $js := resources.Get \"app.js\" | js.Build }}{{ block \"main\" . }}{{ end }}\n",
 		"layouts/shortcodes/note.html": "<aside>{{ .Inner }}</aside>",
@@ -635,20 +635,27 @@ test("scout_lists_what_a_hugo_site_uses", () => {
 		"layouts/_markup/render-table.html": "<table></table>",
 		"static/robots.txt": "",
 	});
-	const said = hugo(dir).byHand.map(([at, what]) => `${at}: ${what}`);
+	const plan = hugo(dir);
+	const said = plan.byHand.map(([at, what]) => `${at}: ${what}`);
 	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
-	has("content: 2 shortcodes, called in 1 page (each below, most used first): shortcodes aren't in ssqch yet.");
-	has("content/trails/cedar.md:4: `{{< note >}}`, the site's own (2 uses in 1 file; this is the first)");
-	has("content/trails/cedar.md:6: `{{< youtube >}}`, Hugo's (1 use in 1 file; this is the first)");
+	has("content: 3 shortcodes, called in 1 page: `markdown: { shortcodes: \"hugo\" }` (in the draft)");
+	has("content/trails/cedar.md:4: `{{< note >}}`, the site's own (layouts/shortcodes/note.html) (1 use in 1 file; this is the first): a container; port its template into _includes/containers/note.jinja (in the draft)");
+	has("content/trails/cedar.md:8: `{{< youtube >}}`, Hugo's (1 use in 1 file; this is the first): a container; write `_includes/containers/youtube.jinja`");
+	has("content/trails/cedar.md:9: `{{< ref >}}` inside a line of text (1 use in 1 file; this is the first): not in ssqch yet as written");
 	has("content/trails/old-growth.md:4: `{{ }}` or `{% %}` as text in 1 page");
 	has("content: 1 section (`_index.md`)");
 	has("`cascade` in 1 page's front matter");
 	has("layouts/_markup/render-link.html: a render hook: ssqch's is `_includes/hooks/link.<ext>`");
 	has("layouts/_markup/render-table.html: a table hook: not in ssqch yet");
-	has("layouts: 4 Go templates:");
+	has("layouts: 4 Go templates to port:");
 	has("layouts/baseof.html:1: `js.Build` (esbuild)");
-	has("static: copied as they are");
-	assert.ok(!said.some((line) => line.includes("/note")), said.join("\n"));
+	// A closing tag isn't a call.
+	assert.ok(!said.some((line) => line.includes("{{< /note")), said.join("\n"));
+	// The draft reads the content as it is, with a container to port for the site's own shortcode.
+	const config = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
+	for (const part of ["dirs: { input: \"content\", output: \"public\", includes: \"../_includes\" },", "markdownEngine: false,", "markdown: { shortcodes: \"hugo\", highlight: { classes: \"pygments\" } },", "passthrough: [{ static: \".\" }],", "data: { site: {\"url\":\"https://example.com\"} },", "plugins: [sitemapPlugin({ url: \"https://example.com\" }), linksPlugin()],"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	assert.ok(plan.newFiles.some(([file]) => file === "_includes/containers/note.jinja"));
+	assert.equal(plan.pages, 3);
 });
 
 test("scout_lists_what_an_mkdocs_site_uses", () => {
@@ -660,17 +667,54 @@ test("scout_lists_what_an_mkdocs_site_uses", () => {
 	});
 	const said = mkdocs(dir).byHand.map(([at, what]) => `${at}: ${what}`);
 	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
-	has("mkdocs.yml: the config: dirs: { input: \"docs\", output: \"site\" }; the site's URL (https://example.com/)");
-	has("mkdocs.yml: nav: the nav (3 entries)");
 	has("mkdocs.yml: theme: Material's templates are Jinja");
 	has("mkdocs.yml: plugins: `search`: ssqch has no search index of its own");
 	has("mkdocs.yml: plugins: `redirects`: `redirectsPlugin({ redirects })`");
+	has("mkdocs.yml: markdown_extensions: `admonition`: `!!!` admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft)");
 	has("mkdocs.yml: plugins: `pine-cones`: not in ssqch yet: port it as a plugin");
-	has("mkdocs.yml: markdown_extensions: `toc`: heading ids are `headingIds`");
+	has("mkdocs.yml: markdown_extensions: `toc`: `markdown: { headingIds: \"python-markdown\" }` (in the draft)");
 	has("mkdocs.yml: markdown_extensions: `pymdownx.emoji`: `:icon:` shortcodes: not in ssqch yet");
-	has("docs/index.md:10: links to .md files (2 uses in 1 file; this is the first)");
+	has("docs/index.md:10: links to .md files (2 uses in 1 file; this is the first): `markdown: { sourceLinks: \"relative\" }` (in the draft)");
 	has("docs/index.md:3: admonitions (`!!!`, `???`) (1 use in 1 file");
 	has("docs/index.md:6: tabs (`===`) (1 use in 1 file");
 	has("docs/trails/cedar.md:5: icons and emoji (`:name:`) (1 use in 1 file");
 	has("docs/trails/cedar.md: `date: { created, updated }` front matter");
+	// The draft: the config with the pages' syntax on, and the nav as data, with URLs for paths.
+	const plan = mkdocs(dir);
+	const config = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
+	for (const part of ["dirs: { input: \"docs\", output: \"site\", includes: \"../_includes\", data: \"../_data\" },", "markdown: { admonitions: \"mkdocs\", tabs: \"mkdocs\", sourceLinks: \"relative\", headingIds: \"python-markdown\", footnotes: false },", "\"name\":\"Trail\"", "redirectsPlugin({ redirects: {} })", "sitemapPlugin({ url: \"https://example.com\" })"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	assert.equal(plan.newFiles.find(([file]) => file === "_data/nav.yml")![2], "# From mkdocs.yml's nav, by ssqch scout: titles as the nav gives them, or each page's first heading.\n- title: Home\n  url: /\n- title: Trails\n  children:\n    - title: cedar\n      url: /trails/cedar/\n    - title: Old Growth\n      url: /trails/old/\n");
+	assert.equal(plan.pages, 2);
+});
+
+test("scout_lists_what_docusaurus_astro_vitepress_and_hexo_sites_use", () => {
+	const lines = (plan: ReturnType<typeof other>) => plan.byHand.map(([at, what, meta]) => `${meta?.status}: ${at}: ${what}`);
+	const has = (said: string[], text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
+	const docusaurus = lines(other(site("docusaurus-list", {
+		"docusaurus.config.js": "", "sidebars.js": "", "package.json": "{\"dependencies\":{\"@docusaurus/plugin-client-redirects\":\"3\",\"docusaurus-plugin-pine\":\"1\"}}",
+		"docs/intro.mdx": "import Tabs from '@theme/Tabs';\n\n<Tabs>\n</Tabs>\n\n:::tip\nx\n:::\n",
+		"blog/2026-01-02-pine.md": "Hi\n\n<!-- truncate -->\n",
+	}), "docusaurus"));
+	has(docusaurus, "site: docs/intro.mdx: 1 MDX page");
+	has(docusaurus, "not-yet: docs/intro.mdx:1: `import` of components in pages (1 use in 1 file");
+	has(docusaurus, "ssqch: docs/intro.mdx:6: admonitions (`:::note`)");
+	has(docusaurus, "not-yet: blog/2026-01-02-pine.md:3: `<!-- truncate -->`");
+	has(docusaurus, "ssqch: sidebars.js: the sidebar");
+	has(docusaurus, "ssqch: package.json: @docusaurus/plugin-client-redirects: `redirectsPlugin()`");
+	has(docusaurus, "site: package.json: docusaurus-plugin-pine: not in ssqch yet");
+	const astro = lines(other(site("astro-list", { "astro.config.mjs": "", "src/pages/index.astro": "", "src/components/Map.tsx": "", "src/content.config.ts": "", "package.json": "{\"dependencies\":{\"@astrojs/sitemap\":\"3\"}}" }), "astro"));
+	has(astro, "site: src/components/Map.tsx: 1 framework component");
+	has(astro, "site: src/pages/index.astro: 1 `.astro` component to port");
+	has(astro, "ssqch: src/content.config.ts: content collections");
+	has(astro, "ssqch: package.json: @astrojs/sitemap: `sitemapPlugin()`");
+	const vitepress = lines(other(site("vitepress-list", { ".vitepress/config.mts": "", "guide.md": "# Guide\n\n[[toc]]\n\n::: tip\nx\n:::\n\n<Badge type=\"tip\" />\n\n{{ $frontmatter.title }}\n" }), "vitepress"));
+	has(vitepress, "ssqch: guide.md:5: containers (`::: tip`)");
+	has(vitepress, "not-yet: guide.md:9: Vue components in pages");
+	has(vitepress, "site: guide.md:11: Vue expressions");
+	has(vitepress, "ssqch: guide.md:3: `[[toc]]`");
+	has(vitepress, "ssqch: .vitepress/config.mts: the config's `sidebar` and `nav`");
+	const hexo = lines(other(site("hexo-list", { "_config.yml": "", "scaffolds/post.md": "", "source/_posts/pine.md": "Hi\n<!-- more -->\n{% asset_img stump.png %}\n", "package.json": "{\"dependencies\":{\"hexo\":\"7\",\"hexo-generator-feed\":\"3\"}}" }), "hexo"));
+	has(hexo, "not-yet: source/_posts/pine.md:3: tag plugins");
+	has(hexo, "ssqch: scaffolds: scaffolds are ssqch's blueprints");
+	has(hexo, "ssqch: package.json: hexo-generator-feed: `rssPlugin()`");
 });

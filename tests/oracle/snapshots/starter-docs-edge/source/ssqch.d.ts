@@ -75,8 +75,8 @@ declare module "ssqch" {
 
 	/** How Markdown renders. */
 	export interface MarkdownOptions {
-		/** Automatic heading `id`s: `"github"` (the default: GitHub's and github-slugger's anchors, character for character), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), `"kramdown"` (Jekyll's: GitHub's ids for the page's headings, and kramdown's ASCII ones, `section` for none, for headings inside `markdown="1"` HTML), `"markdown-it-anchor"` (that plugin's default: the lowercase text with spaces as `-`, percent-encoded, `what%E2%80%99s-new%3F`), or `false` for none. A `{#id}` on the heading always wins. */
-		headingIds?: "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor" | false | ((text: string) => string);
+		/** Automatic heading `id`s: `"github"` (the default: GitHub's and github-slugger's anchors, character for character), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), `"kramdown"` (Jekyll's: GitHub's ids for the page's headings, and kramdown's ASCII ones, `section` for none, for headings inside `markdown="1"` HTML), `"markdown-it-anchor"` (that plugin's default: the lowercase text with spaces as `-`, percent-encoded, `what%E2%80%99s-new%3F`), `"python-markdown"` (MkDocs': Python-Markdown's `toc` ids, ASCII, `cafe-notes` for `Café notes`), or `false` for none. A `{#id}` on the heading always wins. */
+		headingIds?: "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor" | "python-markdown" | false | ((text: string) => string);
 		/** `## Heading {#id .class key=value}`. Default `true`. */
 		headingAttributes?: boolean;
 		/** `[^1]` references, with the notes at the end of the page. Default `true`. */
@@ -101,10 +101,18 @@ declare module "ssqch" {
 		indentedCode?: boolean;
 		/** Link and image URLs are percent-encoded, as CommonMark's reference renderer writes them (`#كتابة` as `#%D9%83...`, `café.png` as `caf%C3%A9.png`). `false` writes them as the page has them, HTML-escaped only (`&` as `&amp;`), as kramdown (Jekyll) does; browsers go to the same place either way. A link or image hook gets the URL as written in both. Default `true`. */
 		encodeUrls?: boolean;
-		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. `languages` adds languages or replaces built-in ones. `classes` names the tokens as another highlighter does, so a site keeps its theme's CSS: `"prism"` (`token keyword`, `<pre class="language-js">`, marked lines as `<mark class="highlight-line highlight-line-active">`), or `{ keyword: "tok-keyword" }` for some kinds; the stylesheet uses the same names. Default `false`. */
+		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. `languages` adds languages or replaces built-in ones. `classes` names the tokens as another highlighter does, so a site keeps its theme's CSS: `"prism"` (`token keyword`, `<pre class="language-js">`, marked lines as `<mark class="highlight-line highlight-line-active">`), `"pygments"` or `"chroma"` (Pygments' short names, `k`, `s`, `nf`, which MkDocs' and Hugo's themes style), or `{ keyword: "tok-keyword" }` for some kinds; the stylesheet uses the same names. Default `false`. */
 		/** Markdown inside HTML, as Jekyll's kramdown reads it: `"kramdown"` renders the content of an element with `markdown="1"` (span-level for `p`, headings and inline elements, block-level for the others; `"block"` and `"span"` choose) and drops the attribute, and keeps kramdown's HTML rules: a block-level element is raw HTML to its end tag, blank lines and all. Default `false`: HTML is CommonMark's, and Markdown inside it stays text. */
 		htmlMarkdown?: "kramdown" | false;
-		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter>; classes?: "prism" | Partial<Record<TokenKind, string>> };
+		/** MkDocs' admonitions: `"mkdocs"` writes `!!! note "Title"` (body indented four spaces) as Python-Markdown's `<div class="admonition note"><p class="admonition-title">Title</p>...</div>`, and `??? note` and `???+ note` (pymdownx.details) as `<details class="note">`, open with `+`. The title is the type's name when there's none, and left out for `""`. Default `false`. */
+		admonitions?: "mkdocs" | false;
+		/** MkDocs' content tabs: `"mkdocs"` writes `=== "Tab"` blocks (body indented four spaces; tabs one after another are one set, `===+` selected, `===!` a new set) as pymdownx.tabbed's `alternate_style` writes them (`<div class="tabbed-set tabbed-alternate">`), which Material's CSS styles. Default `false`. */
+		tabs?: "mkdocs" | false;
+		/** Hugo's shortcodes: `"hugo"` reads a shortcode on a line of its own as a container: `{{< note type="tip" >}}` to `{{< /note >}}` (or `{{% %}}`) renders `_includes/containers/note.*` with `container.args`, `container.props` and the content as Markdown; one with no closing tag has no content. A shortcode inside a line of text is left as written. Default `false`. */
+		shortcodes?: "hugo" | false;
+		/** Links to `.md` files (`[Setup](setup/install.md#first)`) go to the page built from that file, with the `#` part: `true` writes its URL from the site's root (`/setup/install/#first`), `"relative"` from the page, as MkDocs does (`setup/install/#first`). A link to a file that isn't a page stays as written, for the link checker. Default `false`. */
+		sourceLinks?: boolean | "relative";
+		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter>; classes?: "prism" | "pygments" | "chroma" | Partial<Record<TokenKind, string>> };
 	}
 
 	/** What a collection function gets. */

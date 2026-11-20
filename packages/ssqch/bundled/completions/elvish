@@ -229,6 +229,8 @@ set edit:completion:arg-completer[ssqch] = {|@words|
             cand --format 'text or json'
             cand --write-draft 'Write the new files of the draft; never overwrites a file'
             cand --patch 'Write the mechanical edits to FILE as a patch to review; nothing is applied'
+            cand --compare 'Also build with ssqch and compare with the reference build'
+            cand --reference 'The reference build to compare with'
             cand --offline 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved'
             cand -q 'Print only warnings and errors'
             cand --quiet 'Print only warnings and errors'

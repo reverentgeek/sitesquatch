@@ -51,7 +51,7 @@ test("scout_moves_an_eleventy_site", () => {
 		// DELIBERATE (0.11): Eleventy's front matter keys work in ssqch, so pages aren't edited for
 		// them; the image attributes still change.
 		"  src/posts/pine.md: eleventy:widths/ignore -> ssqch:widths/ignore\n",
-		"  src/feed.11ty.js: JavaScript templates don't run in ssqch",
+		"  [not yet] src/feed.11ty.js: JavaScript templates don't run in ssqch",
 		`  package.json: @11ty/eleventy -> ssqch ${expectedVersion()} in devDependencies, scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve\n`,
 		"  pnpm-workspace.yaml: pnpm waits a day before installing a new release, so if ssqch ",
 		"  pnpm-lock.yaml: run `pnpm install` to update it for ssqch\n",
@@ -299,4 +299,29 @@ test("scout_jekyll_drafts_a_config_that_builds", () => {
 	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<meta name=\"generator\" content=\"Jekyll v3.10.0\" />") && read(dir, "_site/guides/trail/index.html").includes("\"@type\":\"BlogPosting\""), read(dir, "_site/guides/trail/index.html"));
 	r = ssqch(["scout", "--from", "jekyll", `${dir}/assets`]);
 	assert.ok(!r.ok && r.log.includes("there's no _config.yml in"), r.log);
+});
+
+// `--compare` builds with ssqch and compares with the reference build: the move's loop in one command.
+test("scout_compare_builds_and_lists_the_biggest_groups", () => {
+	const dir = tempDir("scout-compare");
+	write(dir, {
+		"mkdocs.yml": "site_name: Trail\ndocs_dir: docs\nmarkdown_extensions:\n  - admonition\n",
+		"docs/index.md": "# Trail\n\n!!! tip \"Pack\"\n    Water\n\nSee [Cedar](cedar.md).\n",
+		"docs/cedar.md": "# Cedar\n\nFlat.\n",
+	});
+	// Before a reference build, it says how to make one.
+	let r = ssqch(["scout", dir, "--write-draft", "--compare"]);
+	assert.ok(r.ok && r.log.includes("Compared with .cache/ssqch/baseline/ref-1\n  there's no reference build in .cache/ssqch/baseline/ref-1: `ssqch baseline \"<the old build command>\"` makes one\n"), r.log);
+	// A reference that differs in one place: the group names it.
+	write(dir, {
+		".cache/ssqch/baseline/ref-1/index.html": "<h1 id=\"trail\">Trail</h1>\n<div class=\"admonition tip\">\n<p class=\"admonition-title\">Pack</p>\n<p>Water</p>\n</div>\n<p>See <a href=\"cedar/\">Cedar</a>.</p>\n",
+		".cache/ssqch/baseline/ref-1/cedar/index.html": "<h1 id=\"cedar\">Cedar</h1>\n<p>Flat!</p>\n",
+	});
+	r = ssqch(["scout", dir, "--compare", "--format", "json"]);
+	assert.ok(r.ok, r.log);
+	const { compare } = JSON.parse(r.stdout);
+	assert.equal(compare.built, true, r.stdout);
+	assert.deepEqual(compare.summary, { added: 0, removed: 0, changed: 1, unchangedPages: 1, unchangedFiles: 0 }, r.stdout);
+	r = ssqch(["scout", dir, "--compare"]);
+	assert.ok(r.log.includes("  1 changed, 0 only in ssqch's, 0 only in the reference; 1 pages and 0 other files the same\n") && r.log.includes("Next: fix the biggest group above"), r.log);
 });

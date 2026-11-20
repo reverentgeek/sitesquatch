@@ -131,6 +131,8 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 			FORMAT,
 			{ long: "write-draft", help: "Write the draft's new files (a config draft, directory data, includes, hooks); never overwrites a file" },
 			{ long: "patch", value: "FILE", help: "Write the mechanical edits (renames, a data file's name, an attribute) to FILE as a patch to review; nothing is applied" },
+			{ long: "compare", help: "Also build with ssqch and compare the output with the reference build, listing the biggest groups of differences: what to fix next" },
+			{ long: "reference", value: "DIR", help: "The reference build --compare compares with (default: ssqch baseline's, .cache/ssqch/baseline/ref-common or ref-1)" },
 		],
 		positionals: [{ name: "dir", help: "The site's folder (default: the current folder)", required: false, default: "." }],
 		afterHelp: "Run it before a move, and again during one to see what's left. `ssqch docs \"scouting a site\"` explains the report and its JSON, and `ssqch docs --from <generator>` prints each generator's trailhead.",
@@ -332,7 +334,7 @@ export async function main(argv: string[]): Promise<number> {
 	// It runs another generator, not ssqch's build, so nothing below applies either.
 	if (command === "baseline") return (await import("./commands/baseline.ts")).runBaseline({ root: value("root") ?? ".", command: cli.positionals.join(" "), from: value("from") ?? "_site", runs: Number(value("runs") ?? "3"), commit: value("commit"), to: value("to") ?? ".cache/ssqch/baseline/ref", link: [cli.options.link ?? []].flat() as string[], patch: value("patch"), copyInstalls: flag("copy-installs"), quiet: flag("quiet") });
 	// It reads the site's files as text and runs none of them, so nothing below applies.
-	if (command === "scout") return (await import("./scout.ts")).runScout(cli.positionals[0] ?? ".", { from: value("from"), format: value("format") === "json" ? "json" : "text", writeDraft: flag("write-draft"), patch: value("patch") });
+	if (command === "scout") return (await import("./scout.ts")).runScout(cli.positionals[0] ?? ".", { from: value("from"), format: value("format") === "json" ? "json" : "text", writeDraft: flag("write-draft"), patch: value("patch"), compare: flag("compare") ? value("reference") ?? "" : undefined });
 
 	// The commands that don't build the site.
 	switch (command) {
