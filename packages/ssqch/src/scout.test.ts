@@ -615,7 +615,8 @@ test("scout_patches_apply_with_git", () => {
 	const dir = site("patch", { "a.json": before, "b.11tydata.json": "{}\n", "c.md": "x\n" });
 	const patch = patchOf({ from: "Eleventy", renames: [["b.11tydata.json", "b.data.json"], ["c.md", "d.md"]], edits: [["a.json", ["edited"], after], ["c.md", ["edited"], "y\n"]], newFiles: [], byHand: [] }, dir);
 	fs.writeFileSync(path.join(dir, "move.patch"), patch);
-	const r = spawnSync("git", ["apply", "move.patch"], { cwd: dir, encoding: "utf8" });
+	// Windows' git writes CRLF when it applies a patch (core.autocrlf), which is the machine's setting, not the patch's.
+	const r = spawnSync("git", ["-c", "core.autocrlf=false", "apply", "move.patch"], { cwd: dir, encoding: "utf8" });
 	assert.equal(r.status, 0, `${r.stderr}\n${patch}`);
 	assert.equal(fs.readFileSync(path.join(dir, "a.json"), "utf8"), after);
 	assert.equal(fs.readFileSync(path.join(dir, "b.data.json"), "utf8"), "{}\n");

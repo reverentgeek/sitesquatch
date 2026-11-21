@@ -17,7 +17,8 @@ function move(dir, from) {
 	const r = ssqch(["scout", dir, "--from", from, "--write-draft", "--patch", patch]);
 	if (!r.ok) return r;
 	if (read(path.dirname(patch), "move.patch") === "") return r;
-	const applied = spawnSync("git", ["apply", patch], { cwd: dir, encoding: "utf8" });
+	// Windows' git writes CRLF when it applies a patch (core.autocrlf), which is the machine's setting, not the patch's.
+	const applied = spawnSync("git", ["-c", "core.autocrlf=false", "apply", patch], { cwd: dir, encoding: "utf8" });
 	assert.equal(applied.status, 0, `git apply: ${applied.stderr}\n${read(path.dirname(patch), "move.patch")}`);
 	return r;
 }
