@@ -28,3 +28,5 @@ A site without a `package.json` can run a pinned release straight from npm in th
 [build]
   command = "npx --yes ssqch@$SSQCH_VERSION build"
 ```
+
+To answer a coding agent's `Accept: text/markdown` with a page's Markdown copy, add an edge function: [Serving Markdown to agents](serving-markdown.md#netlify) has it, ready to paste.

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { contentType, inside, linksAnIcon, mounted, notFoundPage, pageFile, pageUrls, percentDecode, queryValue } from "./http.ts";
+import { contentType, inside, linksAnIcon, mounted, notFoundPage, pageFile, pageUrls, percentDecode, prefersMarkdown, queryValue } from "./http.ts";
 
 function tempDir(name: string): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), `ssqch-${name}-`));
@@ -86,4 +86,12 @@ test("a_browsers_questions_are_read", () => {
 	assert.equal(contentType("a/site.css"), "text/css; charset=utf-8");
 	assert.equal(contentType("a/app.mjs"), "text/javascript; charset=utf-8");
 	assert.equal(contentType("a/photo.JPG"), "application/octet-stream");
+});
+
+// Added in 0.13: a request that asks for Markdown by name gets a page's copy.
+test("a_request_that_prefers_markdown_by_name_gets_it", () => {
+	for (const yes of ["text/markdown", "text/markdown, text/html;q=0.9", "text/markdown, text/html", "text/html;q=0.5, text/markdown;q=0.8", "TEXT/MARKDOWN; charset=utf-8", "text/markdown, */*"]) assert.ok(prefersMarkdown(yes), yes);
+	// A browser's, curl's, and a request that ranks HTML higher or turns Markdown off.
+	for (const no of [undefined, "", "*/*", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "text/html, text/markdown;q=0.5", "text/markdown;q=0", "text/*"]) assert.ok(!prefersMarkdown(no), String(no));
+	assert.equal(contentType("guide/index.md"), "text/markdown; charset=utf-8");
 });

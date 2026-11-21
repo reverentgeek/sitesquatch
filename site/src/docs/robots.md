@@ -70,6 +70,6 @@ llms.txt's proposal (v2) has agents find both from any page by two links, which 
 
 `markdownCopy(page.url)` comes with `llmsPlugin()`: the copy's URL, or `""` for a page without one. The starters' layouts have all three.
 
-## Serving Markdown to agents
+## When an agent asks for Markdown
 
-Claude Code, Cursor and OpenCode ask for a page with `Accept: text/markdown`. A static host answers with the HTML file whatever the request asks, so answering with the copy takes the host's own code; until a page here says how for each host, the `<link rel="alternate">` is how an agent finds the copy.
+Claude Code, Cursor and OpenCode ask for a page with `Accept: text/markdown`. `ssqch serve` answers with the page's copy, and on a host it takes a few lines of the host's own code: [Serving Markdown to agents](serving-markdown.md) has them for Cloudflare, Netlify and Vercel, and what GitHub Pages does instead.

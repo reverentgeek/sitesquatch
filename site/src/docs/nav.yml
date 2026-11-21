@@ -33,6 +33,7 @@
     - deploying.md
     - netlify.md
     - github-pages.md
+    - serving-markdown.md
     - agents.md
     - rust-plugins.md
 - title: Trailheads

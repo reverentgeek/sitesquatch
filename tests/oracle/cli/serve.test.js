@@ -517,3 +517,37 @@ test("serve_tells_before_build_what_changed", async () => {
 		await server.stop();
 	}
 });
+
+// Added in 0.13 (the audit's plan, step 4): a request that asks for `text/markdown` by name, as
+// Claude Code, Cursor and OpenCode do, gets the page's Markdown copy, from both servers; a
+// browser's request gets the page, and both say they vary by `Accept`.
+test("serve_answers_markdown_to_a_request_that_asks_for_it", async () => {
+	const dir = tempDir("serve-markdown");
+	write(dir, {
+		"ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { plugins: [llmsPlugin()] };\n",
+		"guide/intro.md": "# Getting started\n\nPack water, and a snack for the stump.\n",
+		"plain.html": "---\nllms: false\n---\n<p>No copy here.</p>",
+	});
+	ssqch(["build", "--root", dir, "-q"]);
+	for (const built of [false, true]) {
+		const ready = path.join(tempDir("serve-markdown-ready"), "ready.json");
+		const server = start(["serve", ...(built ? ["--built"] : []), "--port", "0", "--root", dir, "--ready-file", ready], { logFile: path.join(tempDir("serve-markdown-log"), "serve.log") });
+		try {
+			await waitFor(ready, "\"schemaVersion\"");
+			const port = JSON.parse(fs.readFileSync(ready, "utf8")).port;
+			const md = await httpGet(port, "/guide/intro/", { Accept: "text/markdown, text/html;q=0.9" });
+			assert.ok(md.startsWith("HTTP/1.1 200") && /\r\nContent-Type: text\/markdown; charset=utf-8\r\n/i.test(md) && /\r\nVary: Accept/i.test(md), `${built ? "--built" : "serve"}: ${md}`);
+			assert.equal(body(md), "# Getting started\n\nPack water, and a snack for the stump.\n");
+			const page = await httpGet(port, "/guide/intro/", { Accept: "text/html,application/xhtml+xml,*/*;q=0.8" });
+			assert.ok(/\r\nContent-Type: text\/html/i.test(page) && /\r\nVary: Accept/i.test(page) && body(page).includes("<h1"), page);
+			// A page without a copy is the page, whatever the request asks for.
+			const plain = await httpGet(port, "/plain/", { Accept: "text/markdown" });
+			assert.ok(/\r\nContent-Type: text\/html/i.test(plain) && !/\r\nVary: Accept\r\n/i.test(plain), plain);
+			// The copy at its own address is Markdown too.
+			const file = await httpGet(port, "/guide/intro/index.md");
+			assert.ok(/\r\nContent-Type: text\/markdown; charset=utf-8\r\n/i.test(file), file);
+		} finally {
+			await server.stop();
+		}
+	}
+});

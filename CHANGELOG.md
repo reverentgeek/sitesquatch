@@ -47,6 +47,8 @@ where that version matches.
 
 ### Fixed
 
+- The dev server and `ssqch serve --built` send a `.md` file as `text/markdown; charset=utf-8`,
+  where they sent `application/octet-stream`.
 - `ssqch diff` reads a URL the same percent-encoded or not (`#كتابة` and `#%D9%83...`, `café.png`
   and `caf%C3%A9.png`), as browsers do. ASCII that means something in a URL (`%2F`) still counts.
 - `ssqch docs "<heading>"` answers with a trailhead's section when that's the heading's own page,
@@ -73,6 +75,13 @@ where that version matches.
   "View as Markdown" and a "Copy as Markdown" button, and the blog starter's home page an `<h1>`.
   Their `AGENTS.md` names `ssqch patrol`.
 - `ssqch check`, refused with ssqch's word, names `ssqch patrol` too.
+- `ssqch serve` and `ssqch serve --built` answer a request for a page with its Markdown copy
+  when the request asks for `text/markdown` by name, at a q-value at least HTML's, as Claude Code,
+  Cursor and OpenCode do: `text/markdown; charset=utf-8`, with `Vary: Accept` on both of a page's
+  answers. A browser's request (and curl's `*/*`) gets the page. A new docs page, "Serving
+  Markdown to agents", has the same for Cloudflare (sitesquatch.dev's own Worker), Netlify (an
+  edge function) and Vercel (Routing Middleware), ready to paste, and what GitHub Pages does
+  instead.
 - `llmsPlugin()`: `details` (Markdown after the description: what a model should know first),
   `sort` (the pages' order), and the template function `markdownCopy(page.url)`, the URL of a
   page's copy, or an empty string when it has none.
