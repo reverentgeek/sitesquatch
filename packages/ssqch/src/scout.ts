@@ -3343,7 +3343,7 @@ export function vitepress(dir: string): Plan {
 }
 
 /**
- * Docusaurus, Astro, VitePress and Hexo: what their pages use, counted, with ssqch's way to do
+ * Docusaurus, Astro and Hexo: what their pages use, counted, with ssqch's way to do
  * each. These are lighter than the others (no draft yet): a fresh move of each is the next step
  * to find what an agent needs listed.
  */

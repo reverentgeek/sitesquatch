@@ -1,4 +1,4 @@
-# The seven trailheads (site/src/docs/trailheads/, pages under /docs/trailheads/), for the landing page's
+# The trailheads (site/src/docs/trailheads/, pages under /docs/trailheads/), for the landing page's
 # signs, in the order the README lists them.
 - name: Eleventy
   url: /docs/trailheads/from-eleventy/
@@ -6,11 +6,15 @@
   url: /docs/trailheads/from-jekyll/
 - name: Zola
   url: /docs/trailheads/from-zola/
+- name: Hugo
+  url: /docs/trailheads/from-hugo/
 - name: Docusaurus
   url: /docs/trailheads/from-docusaurus/
 - name: MkDocs
   url: /docs/trailheads/from-mkdocs/
 - name: Hexo
   url: /docs/trailheads/from-hexo/
-- name: Astro, VitePress, Next.js or Gatsby
+- name: VitePress
+  url: /docs/trailheads/from-vitepress/
+- name: Astro, Next.js or Gatsby
   url: /docs/trailheads/from-component-frameworks/
