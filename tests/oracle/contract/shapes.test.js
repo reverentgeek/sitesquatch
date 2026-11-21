@@ -20,7 +20,7 @@ const frozen = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, "utf8")) :
 const freezing = process.env.SSQCH_FREEZE_SHAPES === "1";
 const freezingNew = process.env.SSQCH_FREEZE_SHAPES === "new";
 /** Documents 0.7.0 didn't print, and the version whose shape is frozen for each. */
-const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.10.1", "scout": "0.11.0" };
+const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.10.1", "scout": "0.11.0", "diff --text": "0.12.0" };
 const shapes = {};
 
 /** A value's shape: "string", "number", "boolean", "null", { key: shape }, or [shape of every element merged]. */
@@ -176,6 +176,16 @@ test("diff report, several builds", () => {
 	const r = ssqch(["diff", path.join(dir, "one"), path.join(dir, "two"), path.join(dir, "three"), "--format", "json"]);
 	check("diff (several builds)", JSON.parse(r.stdout));
 });
+// Added in 0.12, from the fresh vuejs.org run: how much of each page's article text matches.
+test("diff report, article text", () => {
+	const dir = site();
+	ssqch(["build", "--root", dir, "--output", "before"]);
+	write(dir, { "src/about.md": "---\ntitle: About us\n---\nThe stump moved.\n" });
+	ssqch(["build", "--root", dir, "--output", "after"]);
+	const r = ssqch(["diff", path.join(dir, "before"), path.join(dir, "after"), "--text", "--format", "json"]);
+	check("diff --text", JSON.parse(r.stdout));
+});
+
 
 test("footprint report", () => {
 	const dir = site();

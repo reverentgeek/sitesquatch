@@ -76,6 +76,12 @@ where that version matches.
   link to the copy in each page is opt-in (`hint: true`). vitepress-plugin-llms wrote 96 files
   that the vuejs.org move left out.
 
+- `ssqch diff <before> <after> --text` says how much of each page's article text matches, word
+  by word: the number for a move that can't be byte for byte (vuejs.org's: 99.9% of 125,249
+  words, 99 of 109 pages identical, which the move measured with a script of its own).
+- `ssqch baseline` says, for a site that builds with Vite, that the copies' asset names and Vue's
+  scope ids aren't a build in the site's own folder's.
+
 ### Fixed
 
 - A Hugo shortcode shown with `/* */` (`{{</* note */>}}`) on a line of its own was read as a

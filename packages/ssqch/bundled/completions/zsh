@@ -140,6 +140,7 @@ _arguments "${_arguments_options[@]}" : \
 '*--only=[Only compare files matching this glob, like '\''**/*.html'\'' (repeatable)]:GLOB:_default' \
 '*--exclude=[Leave out files matching this glob, like '\''img/**'\'' (repeatable)]:GLOB:_default' \
 '--ungrouped[List each file with all its changes, without grouping the ones shared by several files]' \
+'--text[Compare the article text of each page, word by word, and say how much of it matches]' \
 '--lines=[Changed lines to show for each file (0 for all)]:LINES:_default' \
 '--format=[text or json]:FORMAT:_default' \
 '--root=[Project root (defaults to the current directory)]:ROOT:_files' \

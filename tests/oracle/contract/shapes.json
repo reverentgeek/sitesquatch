@@ -661,5 +661,26 @@
       },
       "problem": "null"
     }
+  },
+  "diff --text": {
+    "schemaVersion": "number",
+    "before": "string",
+    "after": "string",
+    "summary": {
+      "pages": "number",
+      "identical": "number",
+      "atLeast99": "number",
+      "atLeast95": "number",
+      "words": "number",
+      "match": "number"
+    },
+    "pages": [
+      {
+        "url": "string",
+        "before": "number",
+        "after": "number",
+        "match": "number"
+      }
+    ]
   }
 }
