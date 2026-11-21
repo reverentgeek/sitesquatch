@@ -8,9 +8,6 @@ ssqch has no built-in i18n yet. What two real sites (one from Jekyll, one from A
 - **A folder per language** (`content/fr/guide.md`), and the language from directory data (`content/fr/fr.json`: `{ "lang": "fr" }`) or front matter. A key that groups a page's translations (the file's path below the language folder, or a front matter key like `translationKey`).
 - **A page's translations** are a lookup in a collection: `collections.docs | where: "data.key", key` in Liquid, or a filter of your own that groups pages by key once. A loop over every page on every page (a language menu built with `where`) is the slow way on a big site; a filter that groups them once is fast, and the same in every template language:
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: the `translation` filter recipe.
-
   ```js
   // ssqch.config.js: each page's translations, by its key and language, worked out once a build.
   const groups = new WeakMap();

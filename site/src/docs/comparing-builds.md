@@ -56,9 +56,6 @@ It works on any two folders of HTML, so it can also compare another generator's 
 
 ## Reference builds
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
-
 **Reference builds:** before comparing a move's output with the site its old generator built, make that build trustworthy: `ssqch baseline "<command>"` runs the old generator's build command in fresh copies of the site, three times, and compares the builds, so what changes by itself (the build's time, ids from `Math.random()`) is known before anything is compared with ssqch's:
 
 ```sh
@@ -74,9 +71,6 @@ ssqch build && ssqch diff .cache/ssqch/baseline/ref-1 dist
 - **The comparison:** the builds are compared as `ssqch diff a b c` compares them (**Several builds**, above), grouped: opensource.guide's three Jekyll builds vary on 380 files, all of them one group, the build's time in each page's `article:published_time` and JSON-LD. With more than four builds in a version, the list is a count (`34 of 50 builds (ref-1, ref-2, ref-4, ...) agree`), so `--runs 50` shows how often a race comes out each way, and the summary names the build most like the others (the most common version of the most files that vary; `ssqch diff a b c --format json` has it as `typical`), and the files no two builds agree on. The exit code is 0 when they're the same, 1 when something varies, and 2 when a build couldn't be made: the command failed (with its exit code) or wrote no `--from` folder, the commit isn't there, or the patch didn't apply.
 
 ## Comparing another generator's output
-
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
 
 **Markup browsers read the same:** two generators write the same page in different ways, and a browser reads them alike, so the diff doesn't list them. Each tag is compared in one form: element and attribute names in lower case, attributes in alphabetical order (the first of two with one name, as a browser keeps it), values with their entities decoded and in double quotes, a boolean attribute without a value (`defer`, `defer=""` and `defer="defer"`), no `/` before the `>` (`<br/>` is `<br>`), and in an SVG or MathML, `<path/>` as `<path></path>`. Spacing inside `class`, `rel`, `srcset` and `sizes` doesn't count (`a.jpg 1x,b.jpg 2x` is `a.jpg 1x, b.jpg 2x`). In text, and inside `<pre>` and `<textarea>`, an entity and its character are the same (`&#39;` and `'`, `&gt;` and `>`, `&amp;` and a lone `&`), apart from `&nbsp;`, which stays different from a space. What a browser reads differently still counts: an attribute's value, the order of `class` names, `<div/>` in HTML (which doesn't close the `div`), and entities in a `<script>` or `<style>`. The ReverentGeek blog's comparison with its Eleventy build went from 24,659 changed lines to 225 with it, and from 161 changed pages to 14.
 

@@ -9,9 +9,6 @@ The [`docs-sidebar`](https://github.com/reverentgeek/sitesquatch/tree/main/examp
 
 ## Scouting
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `ssqch scout` for MkDocs sites, `mkdocsTemplates`, `jinja: { autoescape }`, and the `admonitions`, `tabs`, `sourceLinks`, `dialect`, `headingIds: "python-markdown"` and `highlight: { classes: "pygments" }` Markdown options.
-
 `ssqch scout` (see [Scouting a site](../trailheads.md#scouting-a-site)) reads `mkdocs.yml` and the pages: each plugin and Markdown extension with ssqch's way to do it, and the MkDocs syntax the pages use, counted (links to `.md` files, admonitions, tabs, snippets, icons, mkautodoc's and mkdocstrings' `:::` blocks), and what MkDocs writes on its own (`search/search_index.json`, `404.html`, `sitemap.xml.gz`). Its reference build names the Python environment MkDocs needs (`pip install -r requirements.txt`, and a `.venv`'s `mkdocs` when there is one). Its draft (`--write-draft`) is an `ssqch.config.js` that reads the pages as MkDocs writes them, with no page changed, and the nav as `_data/nav.yml` (titles from the nav, or each page's first heading). On Material for MkDocs' own docs, the draft built every page from a fresh checkout:
 
 ```js

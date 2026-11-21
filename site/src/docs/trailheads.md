@@ -7,9 +7,6 @@ Everything migrates eventually. The trailheads map another generator's config, f
 
 ## Scouting a site
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `ssqch scout`, which replaces `ssqch import`.
-
 `ssqch scout` tells you what moving a site to ssqch takes, before you start and at any point during the move. Run it in the old site's folder (or name the folder: `ssqch scout ../old-site`). It finds the generator from its files (`_config.yml`, `hugo.toml`, `mkdocs.yml`, an Eleventy config; `--from <generator>` chooses when it can't tell or guesses wrong) and prints:
 
 - **Reference build:** the `ssqch baseline` command that builds the site with its own generator to compare with, from the site's own build command (`netlify.toml`, a `build` script), and what that build needs (`PAGES_REPO_NWO` for a GitHub Pages site, an `npm install` for Tailwind).
