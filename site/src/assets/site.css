@@ -154,6 +154,24 @@ code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surfac
 .theme-switch { padding: 0.35rem 0.8rem; border: 1px solid var(--muted); border-radius: 0.5rem; background: none; color: var(--text); font: inherit; font-size: 0.9rem; cursor: pointer; }
 .theme-switch:hover { background: var(--selected); }
 .menu-link { display: none; font-family: var(--label); font-weight: 600; color: var(--heading); }
+button.menu-link { padding: 0.3rem 0.6rem; border: 1px solid var(--muted); border-radius: 0.5rem; background: none; font-size: 0.9rem; cursor: pointer; }
+button.menu-link:hover { background: var(--selected); }
+/* The Menu's panel (site-menu.js): from the right edge, the whole height, on the header's chrome. */
+.menu-panel { width: min(20rem, calc(100vw - 3rem)); max-width: none; height: 100%; max-height: none; margin: 0 0 0 auto; padding: 0 1rem 2rem; border: 0; border-left: 5px solid transparent; border-image: var(--stripe) 1; background: var(--chrome); color: var(--text); overflow-y: auto; overscroll-behavior: contain; }
+.menu-panel::backdrop { background: rgb(27 32 29 / 0.55); }
+.menu-head { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; margin: 0 -1rem; padding: 0.75rem 1rem; background: var(--chrome); border-bottom: 1px solid var(--border); }
+.menu-head span { font-family: var(--label); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.menu-head form { margin: 0; }
+.menu-head .close { padding: 0.25rem 0.7rem; border: 1px solid var(--muted); border-radius: 0.4rem; background: none; color: var(--text); font: inherit; font-size: 0.85rem; cursor: pointer; }
+.menu-site { display: grid; gap: 0.1rem; padding: 0.75rem 0; border-bottom: 1px solid var(--border); font-family: var(--label); font-weight: 600; font-size: 1.1rem; letter-spacing: 0.03em; }
+.menu-site a, .menu-docs a { display: block; padding: 0.45rem 0.6rem; border-radius: 0.375rem; color: var(--heading); text-decoration: none; }
+.menu-site a:hover, .menu-docs a:hover { background: var(--selected); }
+.menu-site a[aria-current], .menu-docs a[aria-current] { border-left: 4px solid var(--marker); border-radius: 0 0.375rem 0.375rem 0; padding-left: calc(0.6rem - 4px); background: var(--selected); }
+.menu-docs { padding-top: 0.5rem; font-size: 0.95rem; }
+.menu-docs h2 { margin: 1.2rem 0 0.3rem; padding-left: 0.6rem; font-family: var(--label); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.menu-docs ul { margin: 0; padding: 0; list-style: none; }
+.menu-docs a { padding: 0.35rem 0.6rem; color: var(--text); }
+.menu-docs a[aria-current] { color: var(--heading); font-weight: 600; }
 /* The search: a link to every name until site-search.js makes it a button that opens Pagefind. */
 .search-link { display: flex; align-items: center; gap: 0.6rem; min-width: 13rem; padding: 0.35rem 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--background); color: var(--muted); font: inherit; font-size: 0.95rem; text-decoration: none; cursor: pointer; }
 .search-link kbd { margin-left: auto; padding: 0 0.4rem; border: 1px solid var(--border); border-radius: 0.3rem; font-family: var(--mono); font-size: 0.8rem; }
@@ -414,7 +432,7 @@ kbd { padding: 0 0.35rem; border: 1px solid var(--border); border-radius: 0.3rem
 @media (max-width: 54rem) {
 	.site-header .wrap { gap: 0.75rem; }
 	.site-nav { display: none; }
-	.menu-link { display: inline; }
+	.menu-link { display: inline-block; }
 	.brand { font-size: 1.15rem; }
 	.patch { width: 1.9rem; height: 1.9rem; }
 	.theme-switch { padding: 0.3rem 0.6rem; font-size: 0.85rem; }
@@ -451,6 +469,8 @@ kbd { padding: 0 0.35rem; border: 1px solid var(--border); border-radius: 0.3rem
 	.doc { padding: 1.25rem 1.25rem 2.5rem; }
 	.sidebar { border-top: 1px solid var(--border); background: var(--chrome); }
 	.sidebar-inner { position: static; max-height: none; }
+	/* Once the Menu opens a panel with it, the sidebar needn't follow the page as well. */
+	html:has(site-menu:defined) .docs > .sidebar { display: none; }
 	.page-tools .cli { width: 100%; margin-right: 0; overflow-x: auto; }
 	.doc img[align="right"] { width: 4.5rem; margin-left: 1rem; }
 	.pager { flex-direction: column; }

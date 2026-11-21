@@ -38,7 +38,9 @@
 				{#- Pagefind, when the search is first used (src/elements/site-search.js). Without
 				    JavaScript, it's a link to every name on one page. #}
 				<site-search ssqch:load="idle"><a class="search-link" href="/docs/reference/">Search the docs</a></site-search>
-				<a class="menu-link" href="{% if docs %}#sidebar{% else %}#footer{% endif %}">Menu</a>
+				{#- A panel with the site's links and the docs' sidebar (src/elements/site-menu.js), on a
+				    narrow screen. Without JavaScript, it's a link to the sidebar or the footer. #}
+				<site-menu ssqch:load="idle"><a class="menu-link" href="{% if docs %}#sidebar{% else %}#footer{% endif %}">Menu</a></site-menu>
 				{#- theme.js shows it. Without JavaScript, the mode follows the system. #}
 				<button class="theme-switch" type="button" hidden>Dark</button>
 			</div>
