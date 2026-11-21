@@ -235,7 +235,8 @@ test("markdown_its_habits_are_options", () => {
 	assert.equal(read(dir, "_site/index.html"), "<p>Pine<br>\ncone at <a href=\"http://example.com\">example.com</a> or <a href=\"mailto:ranger@example.com\">ranger@example.com</a>, not node.js.</p>\n<figure><img src=\"/cone.jpg\" alt=\"\"><figcaption>A <em>pine</em> cone</figcaption></figure>\n<figure><a href=\"/trails/\"><img src=\"/map.png\" alt=\"\"></a><figcaption>Map</figcaption></figure>\n");
 	w("ssqch.config.js", "export default { markdown: { autolinks: \"lots\" } };\n");
 	r = ssqch(["build", "--root", dir]);
-	assert.ok(!r.ok && r.log.includes("markdown.autolinks must be true, false or \"fuzzy\", not \"lots\""), r.log);
+	// DELIBERATE (0.12): `"email"` is a value too (VitePress's markdown-it, from the vuejs.org run).
+	assert.ok(!r.ok && r.log.includes("markdown.autolinks must be true, false, \"email\" or \"fuzzy\", not \"lots\""), r.log);
 	w("ssqch.config.js", "export default { markdown: { figures: \"yes\" } };\n");
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(!r.ok && r.log.includes("markdown.figures must be true or false, not string"), r.log);

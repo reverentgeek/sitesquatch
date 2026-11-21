@@ -25,6 +25,24 @@ where that version matches.
   `??? tip "Read [the guide]"` links with the page's reference definition. Before, a title was
   plain text (27 of Material for MkDocs' pages have one with code or a link).
 
+- `urls: "html"` builds a page without a permalink as `/guide/intro.html` instead of
+  `/guide/intro/`, as VitePress does without `cleanUrls` (and Hugo with `uglyURLs`); an index
+  page is still its folder. vuejs.org's move set a global permalink for it. `uglyURLs` and
+  `cleanUrls` in the config say what ssqch calls it.
+- `markdown: { autolinks: "email" }` links URLs and email addresses but not bare domains, as
+  VitePress's markdown-it does (`fuzzy` made `Dev.to` a link on one of vuejs.org's pages).
+- `markdown: { containers: "markdown-it" }` closes a container at a `:::` indented under the
+  list it ends, as markdown-it-container does: Prettier writes them that way, and 20 of
+  vuejs.org's pages failed on one.
+- `markdown: { preprocess: (source, data) => source }` changes a page's Markdown before ssqch
+  reads it (Vue's `<script setup>` blocks out, say). The vuejs.org move used an engine for it.
+- `_includes/hooks/table.*` writes a Markdown table, with its rows as `table.content`:
+  VitePress's `<table tabindex="0">`.
+- `sitemapPlugin({ format: "vitepress" })` writes the sitemap VitePress does, byte for byte.
+- While serving, `beforeBuild` and `afterBuild` get `changed`, the files whose change started the
+  build, so a hook can skip work an edit doesn't touch: vuejs.org's Vite build of its components
+  took a rebuild from 343 ms to 867 ms when only Markdown had changed.
+
 ### Fixed
 
 - A Hugo shortcode shown with `/* */` (`{{</* note */>}}`) on a line of its own was read as a

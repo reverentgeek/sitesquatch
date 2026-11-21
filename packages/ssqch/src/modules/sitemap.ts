@@ -27,7 +27,12 @@ function isLaterPage(data: PageSummary["data"]): boolean {
 }
 
 BUILTINS.set("ssqch/sitemap", (config: Config, given) => {
-	const o = new Options(given, ["url", "exclude", "lastmod", "output", "paginated", "alternates"]);
+	const o = new Options(given, ["url", "exclude", "lastmod", "output", "paginated", "alternates", "format"]);
+	// `"vitepress"`: the sitemap VitePress writes (its `sitemap` option, through the sitemap
+	// package), so a move compares byte for byte: one line, its five namespaces, the pages in the
+	// order of their files, and no `<lastmod>` unless it's asked for.
+	const format = o.string("format") ?? "ssqch";
+	if (format !== "ssqch" && format !== "vitepress") bail(`format must be "ssqch" or "vitepress" (got ${debugString(format)})`);
 	const alternates = o.get("alternates");
 	if (alternates !== undefined && typeof alternates !== "function") bail(`alternates must be a function that gets each page and returns its translations, like (page) => [{ hreflang: "fr", href: "/fr/" }] (got ${typeof alternates})`);
 	// Without an address (`url: site.url`, which a Jekyll site's `_config.yml` leaves empty), the
@@ -35,7 +40,7 @@ BUILTINS.set("ssqch/sitemap", (config: Config, given) => {
 	// the whole address, so it says so on each build.
 	const url = o.string("url") || undefined;
 	const exclude = o.list("exclude") ?? [];
-	const lastmod = o.bool("lastmod") ?? true;
+	const lastmod = o.bool("lastmod") ?? format === "ssqch";
 	const output = o.string("output") ?? "/sitemap.xml";
 	const paginated = o.bool("paginated") ?? false;
 
@@ -79,6 +84,18 @@ BUILTINS.set("ssqch/sitemap", (config: Config, given) => {
 		}
 		entries.sort((a, b) => compareText(a[0], b[0]) || compareText(a[1], b[1]));
 		const loc = escapeHtml(withBase);
+		if (format === "vitepress") {
+			const file = (u: string) => (u.endsWith("/") ? `${u}index.html` : u);
+			entries.sort((a, b) => compareText(file(a[0]), file(b[0])));
+			let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\" xmlns:news=\"http://www.google.com/schemas/sitemap-news/0.9\" xmlns:xhtml=\"http://www.w3.org/1999/xhtml\" xmlns:image=\"http://www.google.com/schemas/sitemap-image/1.1\" xmlns:video=\"http://www.google.com/schemas/sitemap-video/1.1\">";
+			for (const [pageUrl, date, links] of entries) {
+				xml += `<url><loc>${loc}${escapeHtml(pageUrl)}</loc>`;
+				if (lastmod) xml += `<lastmod>${date}</lastmod>`;
+				for (const [hreflang, href] of links) xml += `<xhtml:link rel="alternate" hreflang="${escapeHtml(hreflang)}" href="${escapeHtml(href)}"/>`;
+				xml += "</url>";
+			}
+			return [{ path: output, contents: `${xml}</urlset>` }];
+		}
 		// The xhtml namespace only when there are alternates, so a sitemap without them is as it was.
 		const xhtml = entries.some((e) => e[2].length) ? " xmlns:xhtml=\"http://www.w3.org/1999/xhtml\"" : "";
 		let xml = `<?xml version="1.0" encoding="utf-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${xhtml}>\n`;

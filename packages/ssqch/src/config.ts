@@ -75,6 +75,8 @@ export interface Config {
 	env: Environment;
 	/** True while running the development server. */
 	serving: boolean;
+	/** While serving, the files whose change started this build (absolute), for `beforeBuild`'s `changed`; undefined for a build of everything. */
+	changed?: string[];
 	quiet: boolean;
 	verbose: boolean;
 	/** `ssqch build --profile`: time every filter, transform, engine, layout, data file, collection, hook and page (src/profile.ts). */
@@ -113,6 +115,8 @@ export interface Config {
 	layoutAliases: Map<string, string>;
 	/** `timeZone`: the IANA zone the site's JavaScript runs in (`process.env.TZ`), or null for the machine's. */
 	timeZone: string | null;
+	/** `urls`: a page's URL without a permalink: `/guide/intro/` (`"folders"`) or `/guide/intro.html` (`"html"`). */
+	urls: "folders" | "html";
 	/** The path the site is served under: empty for the domain's root, or `/repo` (no `/` at the end). */
 	base: string;
 	serveRun: string[];
@@ -207,6 +211,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		lastModified: null,
 		dateFallback: "file",
 		timeZone: null,
+		urls: "folders",
 		layoutAliases: new Map(),
 		base: "",
 		serveRun: [],
@@ -351,7 +356,7 @@ export class EngineCache {
 
 // ---- ssqch.config.js -------------------------------------------------------------------------
 
-const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "trimAfterFrontMatter", "jekyllTemplates", "mkdocsTemplates", "jinja", "lastModified", "dateFallback", "timeZone", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
+const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "trimAfterFrontMatter", "jekyllTemplates", "mkdocsTemplates", "jinja", "lastModified", "dateFallback", "timeZone", "urls", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
 const PARTS = ["data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins"];
 /**
  * Engine names a config can't replace. `md` can be: a site that keeps its markdown-it replaces
@@ -757,6 +762,9 @@ function applySettings(config: Config, settings: Data): void {
 	if (fallback === "git" || fallback === "file") config.dateFallback = fallback;
 	else if (fallback !== undefined && fallback !== null) bail(`dateFallback must be "git" or "file", not ${typeof fallback === "string" ? `"${fallback}"` : typeof fallback}`);
 	if (settings.timeZone !== undefined && settings.timeZone !== null) config.timeZone = checkTimeZone(settings.timeZone);
+	const urls = settings.urls;
+	if (urls === "folders" || urls === "html") config.urls = urls;
+	else if (urls !== undefined && urls !== null) bail(`urls must be "folders" (/guide/intro/) or "html" (/guide/intro.html), not ${typeof urls === "string" ? `"${urls}"` : typeof urls}`);
 	// `layoutAliases: { post: "layouts/post.njk" }`: `layout: post` is that file, and a page's
 	// `layout` is still `post` (a template that tests `layout == "post"` keeps working).
 	if (settings.layoutAliases !== undefined && settings.layoutAliases !== null) {

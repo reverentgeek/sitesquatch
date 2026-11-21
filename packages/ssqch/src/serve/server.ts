@@ -384,7 +384,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				// classes, say) a moment later: the update waits for that, so it's one.
 				await runBuild(builder, live, async () => {
 					if (tools) await settle(rx, output, assetStamps(output), QUIET, carried);
-				});
+				}, sources);
 				if (!quiet) sayWhere();
 				watchConfigFiles();
 			} else if (outputs.some((file) => isAsset(file) || !exists(file))) {
@@ -458,8 +458,8 @@ async function recover(rx: Channel<string[]>, gone: string[], restart: () => Pro
  * Build, print the summary (or the error), and tell the browsers. `hold` runs between a build
  * that worked and telling them, to wait for what the `serve.run` tools write (`settle`).
  */
-async function runBuild(builder: Builder, live: Live, hold: () => Promise<void>): Promise<boolean> {
-	const { ok } = await buildAndReport(builder, live);
+async function runBuild(builder: Builder, live: Live, hold: () => Promise<void>, changed?: string[]): Promise<boolean> {
+	const { ok } = await buildAndReport(builder, live, changed);
 	if (ok) {
 		await hold();
 		await publish(builder.site, live);
@@ -468,8 +468,8 @@ async function runBuild(builder: Builder, live: Live, hold: () => Promise<void>)
 }
 
 /** Build and print the summary, or the error (which browsers are told at once). */
-async function buildAndReport(builder: Builder, live: Live): Promise<Built> {
-	const built = await builder.build(live.error !== null);
+async function buildAndReport(builder: Builder, live: Live, changed?: string[]): Promise<Built> {
+	const built = await builder.build(live.error !== null, changed);
 	if (!built.ok) live.failed(built.error ?? "");
 	return built;
 }

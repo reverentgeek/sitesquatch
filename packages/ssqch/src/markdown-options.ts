@@ -16,16 +16,16 @@ export interface MarkdownOptions {
 	footnotes: boolean;
 	/** `- [ ]` and `- [x]` list items. */
 	taskLists: boolean;
-	/** Bare `https://` and `www.` URLs become links; `"fuzzy"` links bare domains (`example.com`) and email addresses too, as markdown-it's `linkify` does. */
-	autolinks: boolean | "fuzzy";
+	/** Bare `https://` and `www.` URLs become links; `"email"` email addresses too, `"fuzzy"` bare domains (`example.com`) and email addresses, as markdown-it's `linkify` does. */
+	autolinks: boolean | "fuzzy" | "email";
 	/** A single newline in a paragraph is a `<br>`, as markdown-it's `breaks: true` makes it. */
 	breaks: boolean;
 	/** An image alone in a paragraph is a `<figure>` with its alt text as the `<figcaption>`, as markdown-it-implicit-figures makes it. */
 	figures: boolean;
 	/** GitHub's `> [!NOTE]` alerts (note, tip, important, warning, caution). */
 	alerts: boolean;
-	/** `::: name args` blocks. */
-	containers: boolean;
+	/** `::: name args` blocks; `"markdown-it"` closes one at an indented `:::`, as markdown-it-container does. */
+	containers: boolean | "markdown-it";
 	/** `Term` followed by `: definition` lines. */
 	definitionLists: boolean;
 	/** Curly quotes, dashes and ellipses. */
@@ -54,6 +54,8 @@ export interface MarkdownOptions {
 	shortcodes: "hugo" | false;
 	/** Links to `.md` files go to the page built from that file: `true` from the site's root, `"relative"` from the page, as MkDocs writes them. */
 	sourceLinks: boolean | "relative";
+	/** A function of the site's that changes a page's Markdown before ssqch reads it: `(source, data) => source`. */
+	preprocess: ((source: string, data: Record<string, unknown>) => unknown) | null;
 	/** `"python-markdown"`: what Python-Markdown (MkDocs') reads and writes differently from CommonMark, as it does: raw HTML blocks to their closing tag, lists nested at four spaces, `"` in text, XHTML's void tags. */
 	dialect: "python-markdown" | null;
 }
@@ -83,14 +85,15 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		tabs: false,
 		shortcodes: false,
 		sourceLinks: false,
+		preprocess: null,
 		dialect: null,
 	};
 }
 
 /** The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`). */
-export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "encodeUrls", "admonitions", "tabs", "shortcodes", "sourceLinks", "dialect"] as const;
+export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "encodeUrls", "admonitions", "tabs", "shortcodes", "sourceLinks", "preprocess", "dialect"] as const;
 
-const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures", "encodeUrls"] as const;
+const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures", "encodeUrls"] as const;
 
 /** What a highlighted token can be: the `hl-*` names, without the prefix. */
 export const HIGHLIGHT_KINDS = ["comment", "keyword", "operator", "string", "regexp", "escape", "number", "constant", "builtin", "property", "attribute", "function", "type", "parameter", "tag", "heading", "strong", "emphasis", "link", "inserted", "deleted"] as const;
@@ -148,6 +151,9 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 		} else if (key === "dialect") {
 			if (v !== "python-markdown" && v !== null && v !== false) bail(`markdown.dialect: unknown dialect ${typeof v === "string" ? `"${v}"` : typeOf(v)} (use "python-markdown", or false for CommonMark's)`);
 			options.dialect = v === "python-markdown" ? v : null;
+		} else if (key === "preprocess") {
+			if (v !== null && v !== false && typeof v !== "function") bail(`markdown.preprocess must be a function (source, data) => source, not ${typeOf(v)}`);
+			options.preprocess = typeof v === "function" ? (v as MarkdownOptions["preprocess"]) : null;
 		} else if (key === "sourceLinks") {
 			if (typeof v !== "boolean" && v !== "relative") bail(`markdown.sourceLinks must be true, false or "relative", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.sourceLinks = v;
@@ -169,8 +175,11 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 				}
 			} else bail(`markdown.highlight must be true, false or { classes, css, languages }, not ${typeOf(v)}`);
 		} else if (key === "autolinks") {
-			if (typeof v !== "boolean" && v !== "fuzzy") bail(`markdown.autolinks must be true, false or "fuzzy", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			if (typeof v !== "boolean" && v !== "fuzzy" && v !== "email") bail(`markdown.autolinks must be true, false, "email" or "fuzzy", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.autolinks = v;
+		} else if (key === "containers") {
+			if (typeof v !== "boolean" && v !== "markdown-it") bail(`markdown.containers must be true, false or "markdown-it", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			options.containers = v;
 		} else if ((FLAGS as readonly string[]).includes(key)) {
 			if (typeof v !== "boolean") bail(`markdown.${key} must be true or false, not ${typeOf(v)}`);
 			options[key as typeof FLAGS[number]] = v;

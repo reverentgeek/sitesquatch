@@ -6,7 +6,7 @@
 //!
 //! ```json
 //! { "headingIds": "github", "headingAttributes": true, "footnotes": true, "taskLists": true,
-//!   "autolinks": true (or "fuzzy"), "breaks": false, "figures": false, "alerts": true, "containers": true, "definitionLists": false,
+//!   "autolinks": true (or "fuzzy" or "email"), "breaks": false, "figures": false, "alerts": true, "containers": true, "definitionLists": false,
 //!   "smartPunctuation": false, "indentedCode": true, "highlight": true, "highlightCss": "/highlight.css",
 //!   "languages": [["chordpro", { "function": 0 }], ["cho", { "alias": "chordpro" }],
 //!                 ["snack", { "grammar": "grammars/snack.sublime-syntax" }]],
@@ -56,12 +56,15 @@ pub fn setup(json: &str, root: &Path, function: &dyn Fn(u32) -> Value) -> Result
         footnotes: flag("footnotes", defaults.footnotes),
         task_lists: flag("taskLists", defaults.task_lists),
         // `"fuzzy"`: bare domains and email addresses too.
-        autolinks: j.get("autolinks").map(|v| v.as_bool().unwrap_or(v.as_str() == Some("fuzzy"))).unwrap_or(defaults.autolinks),
+        autolinks: j.get("autolinks").map(|v| v.as_bool().unwrap_or(matches!(v.as_str(), Some("fuzzy" | "email")))).unwrap_or(defaults.autolinks),
         fuzzy_links: j.get("autolinks").and_then(J::as_str) == Some("fuzzy"),
+        email_links: j.get("autolinks").and_then(J::as_str) == Some("email"),
         breaks: flag("breaks", defaults.breaks),
         figures: flag("figures", defaults.figures),
         alerts: flag("alerts", defaults.alerts),
-        containers: flag("containers", defaults.containers),
+        // `"markdown-it"`: on, and a closing `:::` closes where markdown-it-container closes it.
+        containers: j.get("containers").map(|v| v.as_bool().unwrap_or(v.as_str() == Some("markdown-it"))).unwrap_or(defaults.containers),
+        markdown_it_containers: j.get("containers").and_then(J::as_str) == Some("markdown-it"),
         definition_lists: flag("definitionLists", defaults.definition_lists),
         smart_punctuation: flag("smartPunctuation", defaults.smart_punctuation),
         indented_code: flag("indentedCode", defaults.indented_code),
