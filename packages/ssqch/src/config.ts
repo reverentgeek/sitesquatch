@@ -364,7 +364,7 @@ export class EngineCache {
 
 // ---- ssqch.config.js -------------------------------------------------------------------------
 
-const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "ignore", "bundles", "strict", "jekyllTemplates", "mkdocsTemplates", "jinja", "lastModified", "dateFallback", "timeZone", "urls", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
+const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "ignore", "bundles", "strict", "jinja", "lastModified", "dateFallback", "timeZone", "urls", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
 const PARTS = ["data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins"];
 /**
  * Engine names a config can't replace. `md` can be: a site that keeps its markdown-it replaces
@@ -410,6 +410,8 @@ const configWord = (key: string): Equivalent | undefined => equivalents.find(key
  * 2026-11-21).
  */
 const RETIRED: Record<string, string> = {
+	jekyllTemplates: "it's fromJekyll() from \"ssqch/from-jekyll\" now, which also turns on kramdown's Markdown (`fromJekyll({ kramdown: false })` leaves that out): add it to plugins (`ssqch docs fromJekyll`)",
+	mkdocsTemplates: "it's fromMkdocs({ templates: true }) from \"ssqch/from-mkdocs\" now (`config: \"docs/mkdocs.yml\"` names another mkdocs.yml), which also turns on MkDocs' Markdown: add it to plugins (`ssqch docs fromMkdocs`)",
 	trimAfterFrontMatter: "the blank lines after a template's front matter are whitespace between tags in HTML, which browsers and `ssqch diff` read as the same. Where one matters (a feed that has to start with `<?xml`, a text file), take it out of that template: `ssqch scout --patch` does it for a Jekyll site",
 };
 
@@ -769,17 +771,12 @@ function applySettings(config: Config, settings: Data): void {
 	const trace = settings.leaveNoTrace;
 	if (trace !== undefined && typeof trace !== "boolean") bail(`leaveNoTrace must be true or false, not ${typeof trace}`);
 	if (trace !== undefined) config.leaveNoTrace = trace;
-	for (const key of ["bundles", "strict", "jekyllTemplates"] as const) {
+	for (const key of ["bundles", "strict"] as const) {
 		const value = settings[key];
 		if (value === undefined) continue;
 		if (typeof value !== "boolean") bail(`${key} must be true or false, not ${typeof value}`);
 		config[key] = value;
 	}
-	// `mkdocsTemplates: true` reads mkdocs.yml; a string names another file.
-	const mkdocs = settings.mkdocsTemplates;
-	if (mkdocs === true) config.mkdocsTemplates = "mkdocs.yml";
-	else if (typeof mkdocs === "string" && mkdocs.trim() !== "") config.mkdocsTemplates = mkdocs;
-	else if (mkdocs !== undefined && mkdocs !== false && mkdocs !== null) bail(`mkdocsTemplates must be true, false or the path of an mkdocs.yml, not ${typeof mkdocs === "string" ? "an empty string" : typeof mkdocs}`);
 	const jinja = settings.jinja;
 	if (isObject(jinja)) {
 		const unknown = Object.keys(jinja).find((k) => k !== "autoescape");
@@ -817,7 +814,6 @@ function applySettings(config: Config, settings: Data): void {
 	const themes = theme === undefined || theme === null || theme === false ? [] : Array.isArray(theme) ? theme : [theme];
 	for (const one of themes) addTheme(config, one);
 	// MkDocs' own pages (its 404) go under every theme, from the theme's 404.html.
-	if (config.mkdocsTemplates !== null) addMkdocsTheme(config);
 	if (isObject(settings.schemas)) {
 		for (const [name, spec] of Object.entries(settings.schemas)) {
 			const schema = parseSchema(name, spec);

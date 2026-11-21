@@ -959,13 +959,14 @@ export default { markdown: { smartPunctuation: false }, plugins: [trail] };
 test("from_vitepress_is_the_vitepress_dialect_as_a_plugin", () => {
 	const dir = tempDir("from-vitepress");
 	const page = "<script setup>\nimport X from './x.vue'\n</script>\n\n# What's Vue?\n\n::: tip\nPack *water*.\n:::\n\n[[toc]]\n";
-	write(dir, { "ssqch.config.js": "export default { markdown: { dialect: \"vitepress\" } };\n", "index.md": page });
-	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
-	const before = read(dir, "_site/index.html");
-	write(dir, { "ssqch.config.js": "import { fromVitepress } from \"ssqch/from-vitepress\";\nexport default { plugins: [fromVitepress()] };\n" });
+	write(dir, { "ssqch.config.js": "import { fromVitepress } from \"ssqch/from-vitepress\";\nexport default { plugins: [fromVitepress()] };\n", "index.md": page });
 	const r = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(r.ok, r.log);
-	assert.equal(read(dir, "_site/index.html"), before);
+	const before = read(dir, "_site/index.html");
+	// DELIBERATE (0.13): the old option is refused with the module's name.
+	write(dir, { "ssqch.config.js": "export default { markdown: { dialect: \"vitepress\" } };\n" });
+	const old = ssqch(["build", "--root", dir]);
+	assert.ok(!old.ok && old.log.includes("markdown.dialect is fromVitepress() from \"ssqch/from-vitepress\" now"), old.log);
 	assert.ok(before.includes("id=\"what-s-vue\"") && before.includes("class=\"tip custom-block\"") && !before.includes("<script"), before);
 });
 
@@ -985,6 +986,12 @@ test("from_jekyll_gives_kramdown_and_jekylls_templates", () => {
 	write(dir, { "ssqch.config.js": "import { fromJekyll } from \"ssqch/from-jekyll\";\nexport default { plugins: [fromJekyll({ kramdwon: true })] };\n" });
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(!r.ok && r.log.includes("unknown option \"kramdwon\" (did you mean \"kramdown\"?)"), r.log);
+	// DELIBERATE (0.13): the old options are refused with their module's name.
+	for (const [config, says] of [["{ jekyllTemplates: true }", "\"jekyllTemplates\" is gone: it's fromJekyll() from \"ssqch/from-jekyll\" now"], ["{ markdown: { admonitions: \"mkdocs\" } }", "markdown.admonitions is fromMkdocs() from \"ssqch/from-mkdocs\" now"]]) {
+		write(dir, { "ssqch.config.js": `export default ${config};\n` });
+		r = ssqch(["build", "--root", dir]);
+		assert.ok(!r.ok && r.log.includes(says), r.log);
+	}
 });
 
 // Added in 0.13: `fromHugo()` from "ssqch/from-hugo": Hugo's shortcodes as containers, as
@@ -999,9 +1006,10 @@ test("from_hugo_reads_shortcodes_as_containers", () => {
 	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
 	const withPlugin = read(dir, "_site/index.html");
 	assert.ok(withPlugin.startsWith("<div class=\"note tip\"><p>Pack <em>water</em>.</p>"), withPlugin);
+	// DELIBERATE (0.13): the option on its own is refused with the module's name.
 	write(dir, { "ssqch.config.js": "export default { markdownEngine: false, markdown: { shortcodes: \"hugo\" } };\n" });
-	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
-	assert.equal(read(dir, "_site/index.html"), withPlugin);
+	const old = ssqch(["build", "--root", dir]);
+	assert.ok(!old.ok && old.log.includes("markdown.shortcodes is fromHugo() from \"ssqch/from-hugo\" now"), old.log);
 	write(dir, { "ssqch.config.js": "import { fromHugo } from \"ssqch/from-hugo\";\nexport default { plugins: [fromHugo({ shortcodes: true })] };\n" });
 	const bad = ssqch(["build", "--root", dir]);
 	assert.ok(!bad.ok && bad.log.includes("this plugin takes no options (got \"shortcodes\")"), bad.log);

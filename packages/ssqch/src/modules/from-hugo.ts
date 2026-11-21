@@ -14,5 +14,5 @@ export function fromHugo(options: Record<string, unknown> = {}) {
 
 BUILTINS.set("ssqch/from-hugo", (config: Config, given) => {
 	new Options(given, []);
-	if (!config.markdownGiven.has("shortcodes")) applyMarkdownOptions(config.markdown, { shortcodes: "hugo" });
+	if (!config.markdownGiven.has("shortcodes")) applyMarkdownOptions(config.markdown, { shortcodes: "hugo" }, "module");
 });

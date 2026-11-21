@@ -47,6 +47,20 @@ where that version matches.
 - "First confirmed siting." is "First confirmed sighting.", spelled as `ssqch sighting` is, and so
   are `ssqch sighting`'s own lines ("Last confirmed sighting", "No confirmed sightings here
   yet"). A script that looked for the old spelling in the build summary needs the new one.
+- Another generator's options are modules now, each a plugin documented in its trailhead (the
+  audit's plan, step 6), so a site that doesn't move from one never meets them. Each old name is
+  refused with its module's:
+  - `jekyllTemplates: true` and `markdown: { htmlMarkdown: "kramdown" }`: `fromJekyll()` from
+    `ssqch/from-jekyll` (both on by default; `templates: false` or `kramdown: false` for one).
+  - `mkdocsTemplates`, and `markdown: { dialect: "python-markdown" }`, `admonitions: "mkdocs"` and
+    `tabs: "mkdocs"`: `fromMkdocs()` from `ssqch/from-mkdocs` (`templates: true` for the theme's
+    context, `config` for another mkdocs.yml).
+  - `markdown: { dialect: "vitepress" }`: `fromVitepress()` from `ssqch/from-vitepress`.
+  - `markdown: { shortcodes: "hugo" }`: `fromHugo()` from `ssqch/from-hugo`.
+
+  Add the module to `plugins` and leave the option out; the module's Markdown settings are
+  defaults, so the site's own `markdown` still changes one (`headingIds: false`). `ssqch scout`
+  drafts the modules. The `jekyll-guides` example uses `fromJekyll()`.
 - `clean` is no longer another name for `leaveNoTrace` in `ssqch.config.js` (a rename replaces the
   old name): it's refused with ssqch's name, as the `clean` command is. `sitesquatch.toml` keeps
   it.

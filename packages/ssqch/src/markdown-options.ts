@@ -5,7 +5,6 @@ import { isPlainObject } from "./data.ts";
 import { closest } from "./suggest.ts";
 import { pythonMarkdownSlug } from "./engines/markdown-dialects.ts";
 import { vitepressSlug } from "./engines/vitepress-dialect.ts";
-import { VITEPRESS_DEFAULTS, vitepressMarkdown } from "./modules/from-vitepress.ts";
 
 export type Slugger = "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor";
 
@@ -124,7 +123,7 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 }
 
 /** The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`). */
-export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "admonitions", "tabs", "shortcodes", "sourceLinks", "preprocess", "dialect"] as const;
+export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "sourceLinks", "preprocess"] as const;
 
 const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures"] as const;
 
@@ -157,9 +156,28 @@ function highlightClasses(value: unknown): MarkdownOptions["highlightClasses"] {
 /** JavaScript's `typeof`, with a list or `null` as "object": how these errors name a value's type. */
 const typeOf = (v: unknown) => typeof v;
 
-/** Applies a `markdown` object from the config. Errors start with the key (`markdown.footnotes must be true or false`). */
-export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): void {
+/**
+ * Options that were another generator's ways, now each the job of a module (`fromJekyll()` and the
+ * rest, the audit's plan, step 6): a site's config that sets one is told which. The modules set
+ * them themselves (`applyMarkdownOptions(..., "module")`).
+ */
+const RETIRED_MARKDOWN: Record<string, (value: unknown) => string> = {
+	dialect: (v) => (v === "vitepress" ? "fromVitepress() from \"ssqch/from-vitepress\"" : "fromMkdocs() from \"ssqch/from-mkdocs\""),
+	admonitions: () => "fromMkdocs() from \"ssqch/from-mkdocs\"",
+	tabs: () => "fromMkdocs() from \"ssqch/from-mkdocs\"",
+	shortcodes: () => "fromHugo() from \"ssqch/from-hugo\"",
+	htmlMarkdown: () => "fromJekyll() from \"ssqch/from-jekyll\"",
+};
+
+/** Applies a `markdown` object: the site's config's (`"site"`), or a built-in module's own settings (`"module"`). Errors start with the key (`markdown.footnotes must be true or false`). */
+export function applyMarkdownOptions(options: MarkdownOptions, value: unknown, from: "site" | "module" = "site"): void {
 	if (!isPlainObject(value)) bail(`markdown must be an object, not ${typeOf(value)}`);
+	if (from === "site") {
+		for (const [key, v] of Object.entries(value)) {
+			// `false` and `null` turned it off, which is where a site without the module is already.
+			if (Object.hasOwn(RETIRED_MARKDOWN, key) && v !== false && v !== null && v !== undefined) bail(`markdown.${key} is ${RETIRED_MARKDOWN[key](v)} now: add it to plugins, and leave markdown.${key} out (\`ssqch docs ${RETIRED_MARKDOWN[key](v).split("(")[0]}\`)`);
+		}
+	}
 	for (const [key, v] of Object.entries(value)) {
 		if (key === "headingIds") {
 			// `headingIds: text => id`: a slugger of the site's own.
@@ -228,13 +246,6 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 	}
 	// VitePress's markdown-it, for what the site doesn't set itself: its heading ids, linkify
 	// without bare domains, and markdown-it-container's closing `:::`.
-	// The old name for fromVitepress() (ssqch/from-vitepress): the same steps, hooks and defaults.
-	if (options.dialect === "vitepress") {
-		addMarkdownSteps(options.steps, "markdown.dialect", vitepressMarkdown());
-		const given = value as Record<string, unknown>;
-		const defaults = Object.fromEntries(Object.entries(VITEPRESS_DEFAULTS).filter(([key]) => !(key in given)));
-		if (Object.keys(defaults).length) applyMarkdownOptions(options, defaults);
-	}
 }
 
 /** The keys a plugin's `markdown` part can have. */

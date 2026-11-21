@@ -319,10 +319,12 @@ test("vitepress_habits_have_options", () => {
 });
 
 // Added in 0.12, from the fresh vuejs.org run: VitePress's Markdown, as one option.
+// DELIBERATE (0.13): VitePress's Markdown is fromVitepress() from "ssqch/from-vitepress" (the
+// audit's plan, step 6), which writes what `dialect: "vitepress"` did.
 test("the_vitepress_dialect_writes_vitepress_markup", () => {
 	const dir = tempDir("vitepress-dialect");
 	write(dir, {
-		"ssqch.config.js": "export default { urls: \"html\", markdownEngine: false, markdown: { dialect: \"vitepress\" } };\n",
+		"ssqch.config.js": "import { fromVitepress } from \"ssqch/from-vitepress\";\nexport default { urls: \"html\", markdownEngine: false, plugins: [fromVitepress()] };\n",
 		"_includes/containers/warning.jinja": "<aside class=\"own\">{{ container.content | safe }}</aside>",
 		"guide/intro.md": "<script setup>\nimport { ref } from 'vue'\n</script>\n\n## What's Vue?\n\nRead [the guide](./next.md) or [Vue School](https://vueschool.io).\n\n::: tip\n- one\n  :::\n\n::: warning\nOurs\n:::\n",
 		"guide/next.md": "# Next\n",

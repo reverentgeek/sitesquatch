@@ -142,7 +142,8 @@ test("docs_explain_what_migrations_asked_about", () => {
 		["hreflang", "x-default"],
 		["seo", "a partial in its layout"],
 		// Added in 0.11: what the Jekyll and Eleventy moves needed.
-		["htmlMarkdown", "renders the content of an HTML element with `markdown=\"1\"`"],
+		// DELIBERATE (0.13): the other generators' options are modules, documented in their trailheads.
+		["fromJekyll", "and kramdown's Markdown"],
 		["headingIds", "`\"kramdown\"` matches Jekyll's"],
 		["markdown-it-anchor", "markdown-it-anchor"],
 		["charset", "`charset`: `false` leaves out"],
@@ -153,8 +154,7 @@ test("docs_explain_what_migrations_asked_about", () => {
 		// From the httpx move: what a filter sees, and MkDocs' templates and Markdown.
 		["this.page", "`this.page` is the page being rendered"],
 		["safe", "marks a function's answer as HTML"],
-		["mkdocsTemplates", "gives templates what MkDocs gives a theme's"],
-		["dialect", "`\"python-markdown\"` (MkDocs'): a raw HTML block runs to its closing tag"],
+		["fromMkdocs", "MkDocs' Markdown as defaults (Python-Markdown's reading"],
 	]) {
 		const a = answer(query);
 		// DELIBERATE (0.13): a trailhead's own heading answers with its section (`From jekyll-seo-tag`, which moved there).

@@ -20,7 +20,7 @@ BUILTINS.set("ssqch/from-jekyll", (config: Config, given) => {
 	const o = new Options(given, ["templates", "kramdown"]);
 	if (o.bool("kramdown") ?? true) {
 		const own = Object.fromEntries(Object.entries(KRAMDOWN_DEFAULTS).filter(([key]) => !config.markdownGiven.has(key)));
-		if (Object.keys(own).length) applyMarkdownOptions(config.markdown, own);
+		if (Object.keys(own).length) applyMarkdownOptions(config.markdown, own, "module");
 	}
 	if (o.bool("templates") ?? true) config.jekyllTemplates = true;
 });

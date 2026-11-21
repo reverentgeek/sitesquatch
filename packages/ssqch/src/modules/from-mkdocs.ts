@@ -30,6 +30,6 @@ BUILTINS.set("ssqch/from-mkdocs", (config: Config, given) => {
 	const file = o.string("config") ?? "mkdocs.yml";
 	if (file.trim() === "") bail(`config must be the path of an mkdocs.yml, like "docs/mkdocs.yml" (got ${debugString(file)})`);
 	const own = Object.fromEntries(Object.entries(MKDOCS_DEFAULTS).filter(([key]) => !config.markdownGiven.has(key)));
-	if (Object.keys(own).length) applyMarkdownOptions(config.markdown, own);
+	if (Object.keys(own).length) applyMarkdownOptions(config.markdown, own, "module");
 	if (o.bool("templates")) mkdocsTemplates(config, file);
 });
