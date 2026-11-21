@@ -87,6 +87,17 @@ function linksIn(md: string): string[] {
 	return out;
 }
 
+/** Markdown without its code: fenced blocks and code spans, where an `href` is an example, not a link. */
+function prose(md: string): string {
+	let fence: string | undefined;
+	return md.split("\n").filter((line) => {
+		const marker = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+		if (fence !== undefined) { if (marker && marker[0] === fence[0] && marker.length >= fence.length && line.trim() === marker) fence = undefined; return false; }
+		if (marker) { fence = marker; return false; }
+		return true;
+	}).map((line) => line.replace(/`+[^`]*`+/g, "")).join("\n");
+}
+
 /** Whether every code fence opened in `md` is closed. */
 function fencesClose(md: string): boolean {
 	let fence: string | undefined;
@@ -208,6 +219,8 @@ export function patrol(dir: string): Patrol {
 		else if (md.length > COPY_LONG) say("copy-long", `Markdown copies over ${count(COPY_LONG)} characters: long for one fetch`, copy);
 		if (!fencesClose(md)) say("copy-fence", "Markdown copies with a code fence that never closes: the rest reads as code", copy);
 		if (linksIn(md).some(relative)) say("relative-links", "links that aren't whole addresses (or from the site's root): they break once the text is read on its own", copy);
+		// A link or picture to the site's own file that isn't in the build (a picture's source path, which an image plugin published under another name).
+		if ([...linksIn(md), ...[...prose(md).matchAll(/<(?:img|a|source)\b[^>]*\s(?:src|href)\s*=\s*["']([^"']+)["']/gi)].map((m) => m[1])].some((href) => !relative(href) && fileOf(href) === "")) say("copy-broken", "Markdown copies that link the site's own files that aren't in the build (an image's source path, say)", copy);
 		// The copy says what the page says: most of each one's words are in the other.
 		if (content) {
 			const page = words(textOf(content.html));

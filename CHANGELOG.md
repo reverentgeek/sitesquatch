@@ -23,7 +23,8 @@ where that version matches.
   `{% for %}` is the list it wrote (before, a copy had the template code in it). Pages that aren't
   Markdown (a home page in Jinja) are listed now too, with their `<article>`, `<main>` or `<body>`
   as Markdown. Links in a copy are whole addresses, and a link to a page that has a copy goes to
-  the copy. A page leaves the list with `llms: false` in its front matter, or with `exclude`.
+  the copy. Its pictures, and links to them, are the files the page shows (`imagePlugin()`'s
+  resized copies, where the source isn't published). A page leaves the list with `llms: false` in its front matter, or with `exclude`.
 - `llms-full.txt` starts with `llms.txt`'s heading and description, then the pages.
 - `llmsPlugin()` writes a page's copy where llms.txt's v2 proposal (August 2026) puts it: a URL
   without a file name gets `index.md` (`/guide/intro/` is `/guide/intro/index.md`, where it was
@@ -88,7 +89,8 @@ where that version matches.
   output: the posted signs (`robots.txt`, a sitemap, `llms.txt`, a real `404.html`), each page's
   shape (one `<h1>`, its content in `<main>` or `<article>` and before the navigation, a
   description), and each page's Markdown copy (there when it's linked, saying what its page says,
-  under the length an agent's fetch reads, its code fences closed, its links whole). Each warning
+  under the length an agent's fetch reads, its code fences closed, its links whole, and the site's
+  own files it links there). Each warning
   has a code (`ssqch docs "what patrol checks"`), `--format json` gives them with every file, and
   it exits with 0 when it found nothing, 1 when it warned and 2 on an error. On the ReverentGeek
   blog, its first real site, it found two links in the hand-written `llms.txt` to pages that

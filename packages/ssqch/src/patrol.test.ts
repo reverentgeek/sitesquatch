@@ -56,3 +56,15 @@ test("each kind of trouble has its code", () => {
 test("a folder that isn't there says so", () => {
 	assert.throws(() => patrol(path.join(os.tmpdir(), "no-such-build-folder")), /isn't there: build the site first/);
 });
+
+test("a copy's links to the site's own files that aren't there are copy-broken, but not in code", () => {
+	const dir = built({
+		"robots.txt": "Sitemap: https://trail.example/sitemap.xml\n",
+		"index.html": page("Home", `<p>${TEXT}</p>`, "<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">"),
+		"index.md": `# Home\n\n${TEXT}\n\n![Stump](https://trail.example/content/stump.jpg)\n\n\`\`\`html\n<a href="/logout">Log out</a>\n\`\`\`\n`,
+		"guide/index.html": page("Guide", `<p>${TEXT}</p>`, "<link rel=\"alternate\" type=\"text/markdown\" href=\"/guide/index.md\">"),
+		"guide/index.md": `# Guide\n\n${TEXT} Use \`<a href="/nope">\` in a template.\n`,
+	});
+	const broken = patrol(dir).findings.find((f) => f.code === "copy-broken");
+	assert.deepEqual(broken?.files, ["index.md"]);
+});

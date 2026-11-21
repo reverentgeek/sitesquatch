@@ -41,6 +41,7 @@ Each warning has a code. The checks are the ones a build folder can answer from 
 | `copy-missing` | A page whose `<link rel="alternate" type="text/markdown">` points at a file that isn't in the build. |
 | `copy-differs` | A Markdown copy that doesn't say what its page says: under 80% of its words are on the page, or under half the page's are in it (template code where the text should be, or a layout that adds most of the page). |
 | `copy-long`, `copy-cut-off` | A Markdown copy over 50,000 characters, long for one fetch, or over 100,000, where Claude Code's fetch stops reading. Split the page. |
+| `copy-broken` | A Markdown copy that links the site's own file that isn't in the build: often a picture's source path, which an image plugin published under another name. `llmsPlugin()` writes the published addresses. |
 | `copy-fence` | A code fence in a copy that never closes, so the rest reads as code. |
 | `relative-links` | A link in `llms.txt` or a copy that isn't a whole address or a path from the root: it breaks once the text is read away from its page. `llmsPlugin({ url })` writes whole addresses. |
 

@@ -11,6 +11,7 @@
 //
 // A build adds no markup of its own: `markdownCopy(page.url)` is the copy's URL for a layout's
 // `<link rel="alternate" type="text/markdown">`, and an empty string for a page that has none.
+import fs from "node:fs";
 import path from "node:path";
 import { BUILTINS } from "../config.ts";
 import type { Config, GeneratedFile, PageSummary } from "../config.ts";
@@ -86,6 +87,61 @@ function pageText(markdown: string): string {
 	return out.join("\n").replace(/^\s+/, "");
 }
 
+/**
+ * A copy's pictures at the addresses the page shows them at: an image plugin (`imagePlugin()`)
+ * publishes resized copies under new names and rewrites the page's `<img>`, while the copy has
+ * the source's path, which isn't published. Each picture takes the page's address for the picture
+ * with the same `alt`, in order (two pictures can share one), from the page as it was written.
+ */
+function publishedImages(markdown: string, outputPath: string, base: string, output: string): string {
+	let html: string;
+	try { html = fs.readFileSync(outputPath, "utf8"); } catch { return markdown; }
+	const attr = (tag: string, name: string) => new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag)?.slice(1).find((v) => v !== undefined);
+	const byAlt = new Map<string, string[]>();
+	for (const [tag] of html.matchAll(/<img\b[^>]*>/gi)) {
+		const alt = decodeEntities(attr(tag, "alt") ?? "");
+		let src = attr(tag, "src");
+		if (src === undefined || /^[a-z][a-z0-9+.-]*:/i.test(src)) continue;
+		src = decodeEntities(src);
+		// The page's own URLs have the site's `base`; the copy's are from the site's root, as written.
+		if (base && src.startsWith(`${base}/`)) src = src.slice(base.length);
+		byAlt.set(alt, [...(byAlt.get(alt) ?? []), src]);
+	}
+	// The page's links by their text, for a copy's link to a source file the page links published.
+	const byText = new Map<string, string[]>();
+	for (const [, href, text] of html.matchAll(/<a\b[^>]*\shref\s*=\s*"([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+		const key = decodeEntities(text.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+		if (key) byText.set(key, [...(byText.get(key) ?? []), base && href.startsWith(`${base}/`) ? href.slice(base.length) : href]);
+	}
+	if (!byAlt.size && !byText.size) return markdown;
+	const next = (alt: string) => byAlt.get(alt)?.shift();
+	// One pass, so Markdown's pictures and raw `<img>` tags take their addresses in the page's order.
+	// What each source path became, for a link to it (a picture that links to its full size).
+	const became = new Map<string, string>();
+	const out = !byAlt.size ? markdown : markdown.replace(/(!\[([^\]]*)\]\()(<[^>]*>|[^\s)]+)|<img\b[^>]*>/gi, (whole, open?: string, alt?: string, dest?: string) => {
+		if (open !== undefined) {
+			const src = next((alt ?? "").replace(/\\(.)/g, "$1"));
+			if (src === undefined) return whole;
+			became.set((dest ?? "").replace(/^<|>$/g, ""), src);
+			return open + src;
+		}
+		const src = next(decodeEntities(attr(whole, "alt") ?? ""));
+		if (src === undefined) return whole;
+		const was = attr(whole, "src");
+		if (was !== undefined) became.set(decodeEntities(was), src);
+		return whole.replace(/(\ssrc\s*=\s*)(?:"[^"]*"|'[^']*'|[^\s>]+)/i, `$1"${src}"`);
+	});
+	// A link from the site's root to a file the build doesn't have.
+	const missing = (href: string) => href.startsWith("/") && !href.startsWith("//") && !fs.existsSync(path.join(output, decodeURIComponent(href.split(/[?#]/)[0])));
+	return out
+		.replace(/(\[([^\]]*)\]\()([^\s)]+)/g, (whole, open: string, text: string, href: string) => {
+			if (became.has(href)) return open + became.get(href);
+			const instead = missing(href) ? byText.get(text.replace(/\\(.)/g, "$1").replace(/[*_`]/g, "").trim())?.find((h) => !missing(h)) : undefined;
+			return instead === undefined ? whole : open + instead;
+		})
+		.replace(/(<a\b[^>]*\shref\s*=\s*)(?:"([^"]*)"|'([^']*)')/gi, (whole, open: string, d?: string, q?: string) => { const href = decodeEntities(d ?? q ?? ""); return became.has(href) ? `${open}"${became.get(href)}"` : whole; });
+}
+
 BUILTINS.set("ssqch/llms", (config: Config, given) => {
 	if (given !== null && typeof given === "object" && Object.hasOwn(given, "hint")) bail("`hint` is gone: a build adds no markup of its own. Link the copy from your layout's <head> instead: <link rel=\"alternate\" type=\"text/markdown\" href=\"{{ markdownCopy(page.url) }}\">");
 	const o = new Options(given, ["title", "description", "details", "url", "exclude", "copies", "full", "section", "sort"]);
@@ -141,6 +197,7 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 
 	config.generators.push(["ssqch/llms", (config, pages) => {
 		const base = config.base.replace(/\/$/, "");
+		const output = path.resolve(config.root, config.output);
 		const whole = (u: string) => `${address}${base}${u}`;
 		const files: GeneratedFile[] = [];
 		const chosen = pages.filter(listed).sort((a, b) => compareText(a.url, b.url));
@@ -177,6 +234,7 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 			// page shows it. Only a heading the page starts with counts: a `#` further down can be a
 			// shell comment in a code block.
 			if (!/^#\s/.test(body) && oneLine(p.data.title)) body = `# ${oneLine(p.data.title)}\n\n${body}`;
+			body = publishedImages(body, p.outputPath, base, output);
 			body = rewriteLinks(body, (href) => target(href, p));
 			let name = sectionOf(p.url);
 			if (typeof section === "function") {

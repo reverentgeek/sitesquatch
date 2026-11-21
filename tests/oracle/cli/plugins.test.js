@@ -1014,3 +1014,23 @@ test("from_hugo_reads_shortcodes_as_containers", () => {
 	const bad = ssqch(["build", "--root", dir]);
 	assert.ok(!bad.ok && bad.log.includes("this plugin takes no options (got \"shortcodes\")"), bad.log);
 });
+
+// Added in 0.13, from the ReverentGeek blog's first build with llmsPlugin(): a copy's pictures
+// and links to them had the source's path, which imagePlugin() publishes under another name.
+// They take the addresses the page shows, and `ssqch patrol` checks a copy's own links.
+test("llms_copies_link_the_pictures_the_page_publishes", () => {
+	const dir = project({
+		"ssqch.config.js": "import { imagePlugin } from \"ssqch/image\";\nimport { llmsPlugin } from \"ssqch/llms\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [imagePlugin({ widths: [32], formats: [\"auto\"] }), llmsPlugin({ url: \"https://trail.example\" })] };\n",
+		"src/img/squatch.png": PNG,
+		"src/index.md": "# Pine\n\n![A squatch](/img/squatch.png)\n\n<img src=\"/img/squatch.png\" alt=\"Also a squatch\">\n\n[The full size](/img/squatch.png)\n",
+	}, "llms-images");
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	const copy = read(dir, "dist/index.md");
+	const published = [...copy.matchAll(/https:\/\/trail\.example(\/img\/[^)"\s]+)/g)].map((m) => m[1]);
+	assert.equal(published.length, 3, copy);
+	for (const p of published) assert.ok(fs.existsSync(path.join(dir, "dist", p)), `${p} isn't in the build: ${copy}`);
+	assert.ok(!copy.includes("/img/squatch.png"), copy);
+	const patrol = ssqch(["patrol", path.join(dir, "dist"), "--format", "json"]);
+	assert.ok(!JSON.parse(patrol.stdout).warnings.some((w) => w.code === "copy-broken"), patrol.stdout);
+});
