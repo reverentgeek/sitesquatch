@@ -6,6 +6,8 @@
   url: /docs/trailheads/from-jekyll/
 - name: Zola
   url: /docs/trailheads/from-zola/
+- name: Hugo
+  url: /docs/trailheads/from-hugo/
 - name: Docusaurus
   url: /docs/trailheads/from-docusaurus/
 - name: MkDocs
