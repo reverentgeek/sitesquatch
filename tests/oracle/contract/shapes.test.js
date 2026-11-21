@@ -156,8 +156,9 @@ test("scout_json_shape", () => {
 test("inspect report", () => {
 	const dir = site();
 	ssqch(["build", "--root", dir]);
-	check("inspect", json(["inspect", "/", "--root", dir]));
-	check("inspect --field", json(["inspect", "/", "--field", "title", "--root", dir]));
+	// Frozen under 0.7's name for the command, `inspect`; `ssqch trace` writes the same JSON.
+	check("inspect", json(["trace", "/", "--root", dir]));
+	check("inspect --field", json(["trace", "/", "--field", "title", "--root", dir]));
 });
 
 test("diff report", () => {

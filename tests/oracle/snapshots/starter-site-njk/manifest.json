@@ -50,7 +50,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed siting. Built in <time> (production)\n  Pages   7 written from 7 templates, 18.9 KB\n  Links   40 checked, 0 broken\n  Output  dist: 17 files, 29.2 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   7 written from 7 templates, 18.9 KB\n  Links   40 checked, 0 broken\n  Output  dist: 17 files, 29.2 KB\n",
   "files": {
     "404.html": "text",
     "index.html": "text",

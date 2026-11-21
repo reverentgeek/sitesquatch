@@ -1,5 +1,5 @@
 ---
-title: "Deploying"
+title: "Out of the woods: deploying"
 description: "Encoding images is by far the slowest part of a build, so it's worth never doing it twice."
 ---
 <img align="right" src="../../../docs/assets/stickers/canoe.svg" alt="" width="96">

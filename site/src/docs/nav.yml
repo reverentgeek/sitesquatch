@@ -1,7 +1,7 @@
 # The docs' order: the site's sidebar, and the order `ssqch docs` reads the pages in (a page that
 # isn't listed is on the site but not in `ssqch docs`). Each is a page's file, or a page the site
 # makes itself.
-- title: Start here
+- title: Base camp
   pages:
     - index.md
     - install.md

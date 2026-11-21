@@ -105,7 +105,7 @@ test("docs_answer_for_every_name", () => {
 	r = ssqch(["docs", "avifEffort"]);
 	assert.ok(r.ok && r.log.includes("`avifQuality` 41") && r.log.includes("`avifEffort` 2"), r.log);
 	r = ssqch(["docs"]);
-	assert.ok(r.ok && r.log.includes("\n  leaveNoTrace ") && r.log.includes("\n    imagePlugin ") && r.log.includes("\nTopics\n  Install, "), r.log);
+	assert.ok(r.ok && r.log.includes("\n  leaveNoTrace ") && r.log.includes("\n    imagePlugin ") && r.log.includes("\nTopics\n  Gear up: install, "), r.log); // DELIBERATE (0.13): display titles (the audit's plan, step 5).
 	r = ssqch(["docs", "pinecone", "crunch", "sightings"]);
 	assert.ok(!r.ok && r.log.includes("no tracks of \"pinecone crunch sightings\" in the docs"), r.log);
 	r = ssqch(["docs", "leaveNoTrance"]);
@@ -166,8 +166,10 @@ test("docs_explain_what_migrations_asked_about", () => {
 // answers with that page, and a trailhead's with `--from`'s answer, not a search for the words.
 test("docs_answer_a_pages_file_name_with_the_page", () => {
 	const text = (...args) => ssqch(["docs", ...args]).stdout;
-	assert.ok(text("comparing-builds").startsWith("## Comparing two builds\n"), text("comparing-builds").slice(0, 200));
-	assert.ok(text("/docs/comparing-builds/").startsWith("## Comparing two builds\n"));
+	// DELIBERATE (0.13): pages have display titles, with the plain words after the theme.
+	assert.ok(text("comparing-builds").startsWith("## Has the stump moved? Comparing two builds\n"), text("comparing-builds").slice(0, 200));
+	assert.ok(text("/docs/comparing-builds/").startsWith("## Has the stump moved? Comparing two builds\n"));
+	assert.ok(text("comparing", "two", "builds").startsWith("## Has the stump moved? Comparing two builds\n"), "the plain words still find it");
 	assert.equal(text("from-eleventy"), text("--from", "eleventy"));
 	assert.equal(text("trailheads/from-jekyll.md"), text("--from", "jekyll"));
 	assert.ok(text("from-component-frameworks").startsWith("# Trailhead: moving from Astro"), text("from-component-frameworks").slice(0, 200));

@@ -46,7 +46,7 @@ test("init_creates_a_site_that_builds", () => {
 	assert.ok(at("The Stump Has Moved") < at("Upon Further Review, a Stump") && at("Upon Further Review, a Stump") < at("I Know What I Saw"), home);
 	assert.ok(read(dir, "dist/404.html").includes("several eyewitness accounts"));
 	// A site's first build says so; the next one doesn't.
-	assert.ok(r.log.includes("First confirmed siting. Built in "), r.log);
+	assert.ok(r.log.includes("First confirmed sighting. Built in "), r.log);
 
 	// The next post starts from the starter's blueprint, and is on the home page.
 	r = ssqch(["new", "--root", d, "posts", "--title", "My second post", "--date", "2026-02-03"]);
@@ -54,7 +54,7 @@ test("init_creates_a_site_that_builds", () => {
 	assert.equal(read(dir, "src/posts/my-second-post.md"), "---\ntitle: My second post\ndate: 2026-02-03\n---\nWrite down what you saw.\n");
 	r = ssqch(["build", "--root", d]);
 	assert.ok(r.ok, r.log);
-	assert.ok(r.log.includes("Built in ") && !r.log.includes("First confirmed siting"), r.log);
+	assert.ok(r.log.includes("Built in ") && !r.log.includes("First confirmed sighting"), r.log);
 	home = read(dir, "dist/index.html");
 	assert.ok(home.includes("<a href=\"/posts/my-second-post/\">My second post</a> (February 3, 2026)") && !exists(dir, "dist/_blueprints"), home);
 

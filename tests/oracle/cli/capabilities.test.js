@@ -12,7 +12,7 @@ test("capabilities_match_what_a_config_can_use", () => {
 	try { caps = JSON.parse(r.stdout); } catch (e) { throw new Error(`${e.message}: ${r.stdout}`); }
 	assert.equal(caps.schemaVersion, 1);
 	assert.equal(caps.version, expectedVersion());
-	for (const [key, expected] of [["commands", "inspect"], ["configOptions", "dirs"], ["configOptions", "plugins"], ["nodeModules", "node:fs"], ["globals", "URL"], ["imageFormats", "webp"]]) {
+	for (const [key, expected] of [["commands", "trace"], ["configOptions", "dirs"], ["configOptions", "plugins"], ["nodeModules", "node:fs"], ["globals", "URL"], ["imageFormats", "webp"]]) {
 		const list = key === "nodeModules" ? names(caps[key].available) : names(caps[key]);
 		assert.ok(list.some((n) => n === expected), `${key} lacks ${expected}: ${JSON.stringify(list)}`);
 	}

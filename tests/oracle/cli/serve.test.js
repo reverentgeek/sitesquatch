@@ -236,7 +236,7 @@ test("serve_does_not_rebuild_for_its_own_files", async () => {
 		// The server says its name, and what changed.
 		assert.ok(said.includes("Serving ") && said.includes("/. Squatch Watch is on.\n") && said.includes("Fresh tracks in index.jinja\n"), said);
 		// The first build is the site's first; the rebuild isn't.
-		assert.equal(count(said, "First confirmed siting. Built in"), 1, said);
+		assert.equal(count(said, "First confirmed sighting. Built in"), 1, said);
 		// A build that works after one that failed says so, once.
 		fs.writeFileSync(path.join(dir, "index.jinja"), "three {{ 2 + }}");
 		const start0 = Date.now();

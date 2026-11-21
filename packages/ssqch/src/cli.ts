@@ -15,7 +15,7 @@ import type { Equivalent } from "./equivalents.ts";
 // that never builds, and `--help` needs none of them.
 import { DEFAULT_ENGINE } from "./commands/init.ts";
 import type { NewCommand } from "./commands/new.ts";
-import type { Field as InspectedField, Inspection } from "./inspect.ts";
+import type { Field as TracedField, Trace } from "./trace.ts";
 import { describeThrown } from "./modules.ts";
 import { isDir, relative } from "./paths.ts";
 import { prettyJson, quoted } from "./quote.ts";
@@ -76,11 +76,11 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		afterHelp: "The blueprint is named after the page's folder (_blueprints/posts.md for posts/), then `default`.\nIts body is copied as it is; only front matter keys are filled in. Nothing is overwritten.\n\n  ssqch new posts/pine-cones.md\n  ssqch new posts --title \"Pine cones\"      (named like the other pages in posts/)\n  ssqch new docs/guides/install.md --set order=3 --set draft=true",
 	},
 	{
-		name: "inspect",
-		about: "Show where a page comes from, and which level of the data cascade set each value",
+		name: "trace",
+		about: "Follow a page's tracks: where it comes from, and which level of the data cascade set each value",
 		options: [{ long: "field", value: "NAME", help: "One field of its data, in full, with every level that set it (a dotted path reaches inside: hero.alt)" }, FORMAT],
 		positionals: [{ name: "PAGE", help: "The page: its URL (/about/), or its template's path", required: true }],
-		afterHelp: "The site is read as a build reads it, up to rendering: beforeBuild hooks run (data can depend on them),\nbut no page is rendered or written, and afterBuild hooks don't run. Standard output is only the report.\n\n  ssqch inspect /guides/install/\n  ssqch inspect src/guides/install.md --field title\n  ssqch inspect /guides/install/ --field hero.alt --format json",
+		afterHelp: "The site is read as a build reads it, up to rendering: beforeBuild hooks run (data can depend on them),\nbut no page is rendered or written, and afterBuild hooks don't run. Standard output is only the report.\n\n  ssqch trace /guides/install/\n  ssqch trace src/guides/install.md --field title\n  ssqch trace /guides/install/ --field hero.alt --format json",
 	},
 	{
 		name: "completions",
@@ -376,9 +376,9 @@ export async function main(argv: string[]): Promise<number> {
 			return 1;
 		}
 	}
-	// `ssqch inspect` prints a report: what its hooks and `console.log` say goes to standard error.
-	const inspecting = command === "inspect";
-	if (inspecting) diagnostics.capture();
+	// `ssqch trace` prints a report: what its hooks and `console.log` say goes to standard error.
+	const tracing = command === "trace";
+	if (tracing) diagnostics.capture();
 
 	const serving = command === "serve";
 	// The first of --env, $SSQCH_ENV and $NODE_ENV that's set; a word that's neither environment is the command's default.
@@ -391,7 +391,7 @@ export async function main(argv: string[]): Promise<number> {
 	const root = path.resolve(value("root") ?? ".");
 	siteRoot = root;
 	routeConsole();
-	const makeConfig = async () => (await import("./config.ts")).loadConfig({ root, rootGiven: value("root") ?? ".", env, serving, quiet: flag("quiet") || inspecting, verbose: flag("verbose"), profile: command === "build" && flag("profile"), output: value("output"), base: value("base") });
+	const makeConfig = async () => (await import("./config.ts")).loadConfig({ root, rootGiven: value("root") ?? ".", env, serving, quiet: flag("quiet") || tracing, verbose: flag("verbose"), profile: command === "build" && flag("profile"), output: value("output"), base: value("base") });
 
 	if (command === "new") return newPage(makeConfig, root, { path: cli.positionals[0], title: value("title"), date: value("date"), blueprint: value("blueprint"), set: (cli.options.set as string[] | undefined) ?? [], format });
 	if (serving) {
@@ -435,8 +435,8 @@ export async function main(argv: string[]): Promise<number> {
 		return 1;
 	}
 	try {
-		if (inspecting) {
-			await runInspect(config, cli.positionals[0], value("field"), format);
+		if (tracing) {
+			await runTrace(config, cli.positionals[0], value("field"), format);
 			return 0;
 		}
 		if (command === "patrol") return runPatrol(shownDir(config, config.output), shownOutput(config), format);
@@ -480,23 +480,23 @@ const checkFormat = (format: string) => {
 	if (format !== "text" && format !== "json") bail(`--format ${format}: use text or json`);
 };
 
-/** `ssqch inspect`: prints where a page (or one field of its data) comes from. */
-async function runInspect(config: Config, target: string, name: string | undefined, format: string): Promise<void> {
+/** `ssqch trace`: prints where a page (or one field of its data) comes from. */
+async function runTrace(config: Config, target: string, name: string | undefined, format: string): Promise<void> {
 	checkFormat(format);
-	const { field, fieldText, inspect, inspectionJson, inspectionText } = await import("./inspect.ts");
-	let report: Inspection;
+	const { field, fieldText, trace, traceJson, traceText } = await import("./trace.ts");
+	let report: Trace;
 	try {
-		report = await inspect(config, target);
+		report = await trace(config, target);
 	} finally {
 		for (const found of diagnostics.takeWarnings()) process.stderr.write(`warn: ${found.message}\n`);
 	}
-	let one: InspectedField | undefined;
+	let one: TracedField | undefined;
 	if (name !== undefined) {
 		one = field(report, name);
 		if (!one) bail(`${report.url ?? report.inputPath} has no \`${name.split(".")[0]}\` in its data (it has: ${report.fields.map((f) => f.name).join(", ")})`);
 	}
-	if (format === "json") process.stdout.write(prettyJson(inspectionJson(report, one)) + "\n");
-	else process.stdout.write(one ? fieldText(one) : inspectionText(report));
+	if (format === "json") process.stdout.write(prettyJson(traceJson(report, one)) + "\n");
+	else process.stdout.write(one ? fieldText(one) : traceText(report));
 }
 
 /** `ssqch diff`: prints the comparison, and answers 0 when the builds are the same, 1 when they differ and 2 on an error. */

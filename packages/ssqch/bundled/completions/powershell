@@ -38,7 +38,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('build', 'build', [CompletionResultType]::ParameterValue, 'Build the site (default)')
             [CompletionResult]::new('serve', 'serve', [CompletionResultType]::ParameterValue, 'Build, serve, watch for changes and live-reload the browser')
             [CompletionResult]::new('new', 'new', [CompletionResultType]::ParameterValue, 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in')
-            [CompletionResult]::new('inspect', 'inspect', [CompletionResultType]::ParameterValue, 'Show where a page comes from, and which level of the data cascade set each value')
+            [CompletionResult]::new('trace', 'trace', [CompletionResultType]::ParameterValue, 'Follow a page''s tracks: where it comes from, and which level of the data cascade set each value')
             [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Print a completion script for your shell, so Tab finishes commands and options')
             [CompletionResult]::new('diff', 'diff', [CompletionResultType]::ParameterValue, 'Compare two builds of a site: URLs added and removed, and what changed on each page')
             [CompletionResult]::new('footprint', 'footprint', [CompletionResultType]::ParameterValue, 'Show how much a build weighs: its files by kind, and the heaviest pages and files')
@@ -108,7 +108,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
-        'ssqch;inspect' {
+        'ssqch;trace' {
             [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'One field of its data, in full, with every level that set it (a dotted path reaches inside: hero.alt)')
             [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
@@ -292,7 +292,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('build', 'build', [CompletionResultType]::ParameterValue, 'Build the site (default)')
             [CompletionResult]::new('serve', 'serve', [CompletionResultType]::ParameterValue, 'Build, serve, watch for changes and live-reload the browser')
             [CompletionResult]::new('new', 'new', [CompletionResultType]::ParameterValue, 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in')
-            [CompletionResult]::new('inspect', 'inspect', [CompletionResultType]::ParameterValue, 'Show where a page comes from, and which level of the data cascade set each value')
+            [CompletionResult]::new('trace', 'trace', [CompletionResultType]::ParameterValue, 'Follow a page''s tracks: where it comes from, and which level of the data cascade set each value')
             [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Print a completion script for your shell, so Tab finishes commands and options')
             [CompletionResult]::new('diff', 'diff', [CompletionResultType]::ParameterValue, 'Compare two builds of a site: URLs added and removed, and what changed on each page')
             [CompletionResult]::new('footprint', 'footprint', [CompletionResultType]::ParameterValue, 'Show how much a build weighs: its files by kind, and the heaviest pages and files')
@@ -315,7 +315,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
         'ssqch;help;new' {
             break
         }
-        'ssqch;help;inspect' {
+        'ssqch;help;trace' {
             break
         }
         'ssqch;help;completions' {

@@ -1,4 +1,5 @@
 {
+  "version": "0.12.0",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -39,7 +40,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed siting. Built in <time> (production)\n  Pages   3 written from 3 templates, 3.53 KB\n  Sass    1 file (compressed)\n  Links   17 checked, 0 broken\n  Output  dist: 5 files, 8.67 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   3 written from 3 templates, 3.53 KB\n  Sass    1 file (compressed)\n  Links   17 checked, 0 broken\n  Output  dist: 5 files, 8.67 KB\n",
   "files": {
     "css/pinecone.css": "text",
     "docs/buttons/index.html": "text",

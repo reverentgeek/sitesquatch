@@ -67,7 +67,7 @@ ssqch serve --port 0 --ready-file .cache/ready.json &
 
 `ok` is whether that first build worked (the server keeps running either way, and rebuilds when a file changes). The file is deleted when the server starts, so one from an earlier run never counts, and it's written again when a changed config loads, since `output` and `base` can change with it.
 
-The other commands with JSON are [`ssqch inspect --format json`](where-values-come-from.md) (where a page's data came from) and [`ssqch diff --format json`](comparing-builds.md) (what a change did to the output; it exits with 0, 1 or 2 like `diff`).
+The other commands with JSON are [`ssqch trace --format json`](where-values-come-from.md) (where a page's data came from) and [`ssqch diff --format json`](comparing-builds.md) (what a change did to the output; it exits with 0, 1 or 2 like `diff`).
 
 ## Moving a site with an agent
 

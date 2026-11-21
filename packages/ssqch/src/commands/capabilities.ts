@@ -72,7 +72,7 @@ export async function capabilities(commands: string[]): Promise<Capabilities> {
 		schemaVersion: 1,
 		version: VERSION,
 		commands,
-		json: ["build --format json", "inspect --format json", "diff --format json", "capabilities --format json", "docs --format json", "serve --ready-file"],
+		json: ["build --format json", "trace --format json", "diff --format json", "capabilities --format json", "docs --format json", "serve --ready-file"],
 		features,
 		configFiles: [...CONFIG_FILES, "sitesquatch.toml"],
 		configOptions: configOptions(),

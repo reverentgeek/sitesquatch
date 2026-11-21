@@ -1,5 +1,5 @@
 ---
-title: "Comparing two builds"
+title: "Has the stump moved? Comparing two builds"
 description: "A build that succeeds isn't proof that an upgrade, a refactor or a migration left the site alone."
 ---
 <img align="right" src="../../../docs/assets/stickers/footprint.svg" alt="" width="96">

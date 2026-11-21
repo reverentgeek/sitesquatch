@@ -34,7 +34,7 @@ test("the_usage_line_lists_the_options_given", () => {
 	assert.match(refused(["new", "--root", "x"]), /\nUsage: ssqch new --root <ROOT> <PATH>\n/);
 	// clap counted the option it suggested as given, and listed the options before the command too.
 	assert.match(refused(["build", "-q", "--verbos"]), /tip: a similar argument exists: '--verbose'\n\nUsage: ssqch build --quiet --verbose\n/);
-	assert.match(refused(["inspect", "--formt", "json", "x"]), /\nUsage: ssqch inspect --format <FORMAT> <PAGE>\n/);
+	assert.match(refused(["trace", "--formt", "json", "x"]), /\nUsage: ssqch trace --format <FORMAT> <PAGE>\n/);
 	assert.match(refused(["--root", "x", "--verbos", "build"]), /\nUsage: ssqch --root <ROOT> --verbose\n/);
 	assert.match(refused(["--quiet=1"]), /\nUsage: ssqch --quiet\n/);
 	// An argument too many is the whole usage line, after `--` too.

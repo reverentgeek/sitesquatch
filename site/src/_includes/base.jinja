@@ -32,7 +32,7 @@
 				<a href="/docs/"{% if docs and "/docs/trailheads/" not in page.url %} aria-current="page"{% endif %}>Docs</a>
 				<a href="/examples/"{% if page.url == "/examples/" %} aria-current="page"{% endif %}>Examples</a>
 				<a href="/docs/trailheads/"{% if "/docs/trailheads/" in page.url %} aria-current="page"{% endif %}>Trailheads</a>
-				<a href="{{ links.changelog }}"{% if "/changelog/" in page.url %} aria-current="page"{% endif %}>Changelog</a>
+				<a href="{{ links.changelog }}"{% if "/changelog/" in page.url %} aria-current="page"{% endif %}>Trail log</a>
 			</nav>
 			<div class="header-tools">
 				{#- Pagefind, when the search is first used (src/elements/site-search.js). Without
@@ -75,7 +75,7 @@
 				<h2 id="footer-project">Project</h2>
 				<ul>
 					<li><a href="/examples/">Examples</a></li>
-					<li><a href="{{ links.changelog }}">Changelog</a></li>
+					<li><a href="{{ links.changelog }}">Trail log</a></li>
 					<li><a href="{{ links.benchmarks }}">Benchmarks</a></li>
 					<li><a href="{{ site.repo }}">GitHub</a></li>
 				</ul>

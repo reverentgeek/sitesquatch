@@ -1,6 +1,6 @@
 // The site model: everything up to the list of pages. Engines, global data, templates with
 // their data (the cascade), pagination, computed data, permalinks and collections. It's what
-// `build` renders, and what `ssqch inspect` reports on.
+// `build` renders, and what `ssqch trace` reports on.
 //
 // The cascade, lowest first: global data < layout front matter < directory data < template data
 // file < front matter < `computed`.
@@ -72,7 +72,7 @@ export interface Tpl {
 	plainCopy: boolean;
 	/** The keys in the file's own front matter, for schemas' `unknown`. */
 	frontKeys: string[];
-	/** For `ssqch inspect`: each level of the data cascade that set something, lowest first, by what to call it. Empty in a build. */
+	/** For `ssqch trace`: each level of the data cascade that set something, lowest first, by what to call it. Empty in a build. */
 	layers: Array<[string, Data]>;
 }
 

@@ -1,5 +1,5 @@
 ---
-title: "SEO tags"
+title: "Getting spotted: SEO tags"
 description: "ssqch writes no <head> tags of its own, so a site's title, description, canonical link, Open Graph and Twitter tags are a partial in its layout."
 ---
 ssqch writes no `<head>` tags of its own, so a site's title, description, canonical link, Open Graph and Twitter tags are a partial in its layout. A starting point (Nunjucks):

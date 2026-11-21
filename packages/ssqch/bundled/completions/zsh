@@ -98,7 +98,7 @@ _arguments "${_arguments_options[@]}" : \
 ':path -- The new file, from the input folder (posts/pine-cones.md), or a folder, with --title:_default' \
 && ret=0
 ;;
-(inspect)
+(trace)
 _arguments "${_arguments_options[@]}" : \
 '--field=[One field of its data, in full, with every level that set it (a dotted path reaches inside\: hero.alt)]:NAME:_default' \
 '--format=[text or json]:FORMAT:_default' \
@@ -323,7 +323,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(inspect)
+(trace)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -382,7 +382,7 @@ _ssqch_commands() {
 'build:Build the site (default)' \
 'serve:Build, serve, watch for changes and live-reload the browser' \
 'new:Create a page from a blueprint (a file in _blueprints/), with its title and date filled in' \
-'inspect:Show where a page comes from, and which level of the data cascade set each value' \
+'trace:Follow a page'\''s tracks\: where it comes from, and which level of the data cascade set each value' \
 'completions:Print a completion script for your shell, so Tab finishes commands and options' \
 'diff:Compare two builds of a site\: URLs added and removed, and what changed on each page' \
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
@@ -438,7 +438,7 @@ _ssqch__subcmd__help_commands() {
 'build:Build the site (default)' \
 'serve:Build, serve, watch for changes and live-reload the browser' \
 'new:Create a page from a blueprint (a file in _blueprints/), with its title and date filled in' \
-'inspect:Show where a page comes from, and which level of the data cascade set each value' \
+'trace:Follow a page'\''s tracks\: where it comes from, and which level of the data cascade set each value' \
 'completions:Print a completion script for your shell, so Tab finishes commands and options' \
 'diff:Compare two builds of a site\: URLs added and removed, and what changed on each page' \
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
@@ -503,10 +503,10 @@ _ssqch__subcmd__help__subcmd__init_commands() {
     local commands; commands=()
     _describe -t commands 'ssqch help init commands' commands "$@"
 }
-(( $+functions[_ssqch__subcmd__help__subcmd__inspect_commands] )) ||
-_ssqch__subcmd__help__subcmd__inspect_commands() {
+(( $+functions[_ssqch__subcmd__help__subcmd__trace_commands] )) ||
+_ssqch__subcmd__help__subcmd__trace_commands() {
     local commands; commands=()
-    _describe -t commands 'ssqch help inspect commands' commands "$@"
+    _describe -t commands 'ssqch help trace commands' commands "$@"
 }
 (( $+functions[_ssqch__subcmd__help__subcmd__new_commands] )) ||
 _ssqch__subcmd__help__subcmd__new_commands() {
@@ -538,10 +538,10 @@ _ssqch__subcmd__init_commands() {
     local commands; commands=()
     _describe -t commands 'ssqch init commands' commands "$@"
 }
-(( $+functions[_ssqch__subcmd__inspect_commands] )) ||
-_ssqch__subcmd__inspect_commands() {
+(( $+functions[_ssqch__subcmd__trace_commands] )) ||
+_ssqch__subcmd__trace_commands() {
     local commands; commands=()
-    _describe -t commands 'ssqch inspect commands' commands "$@"
+    _describe -t commands 'ssqch trace commands' commands "$@"
 }
 (( $+functions[_ssqch__subcmd__new_commands] )) ||
 _ssqch__subcmd__new_commands() {

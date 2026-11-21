@@ -1,5 +1,5 @@
 {
-  "version": "0.10.1",
+  "version": "0.12.0",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -51,7 +51,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed siting. Built in <time> (production)\n  Pages   6 written from 6 templates, 4.23 KB\n  Copied  1 file, 132 B\n  Links   38 checked, 0 broken\n  Output  dist: 8 files, 4.86 KB\nnote: redirect_from works; ssqch calls it aliases (ssqch docs aliases)\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   6 written from 6 templates, 4.23 KB\n  Copied  1 file, 132 B\n  Links   38 checked, 0 broken\n  Output  dist: 8 files, 4.86 KB\nnote: redirect_from works; ssqch calls it aliases (ssqch docs aliases)\n",
   "files": {
     "assets/guides.css": "text",
     "guides/cedar/index.html": "text",

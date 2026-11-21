@@ -41,6 +41,12 @@ where that version matches.
   jekyll-sitemap does) is one search engines can't read. A build without it stops and asks for the
   site's address, where it used to warn on every build. `ssqch scout` leaves the plugin commented
   out in a Jekyll draft until `_config.yml` has a `url`.
+- `ssqch inspect` is `ssqch trace`: it follows a page's values back along their tracks through
+  the data cascade. The options and the JSON are the same. `ssqch inspect` is refused with the
+  new name, and the starters' `AGENTS.md`, the completions and the docs say `trace`.
+- "First confirmed siting." is "First confirmed sighting.", spelled as `ssqch sighting` is, and so
+  are `ssqch sighting`'s own lines ("Last confirmed sighting", "No confirmed sightings here
+  yet"). A script that looked for the old spelling in the build summary needs the new one.
 - `clean` is no longer another name for `leaveNoTrace` in `ssqch.config.js` (a rename replaces the
   old name): it's refused with ssqch's name, as the `clean` command is. `sitesquatch.toml` keeps
   it.
@@ -88,6 +94,14 @@ where that version matches.
 
 ### Changed
 
+- The docs pages have display titles, with their plain words after the theme: "Gear up:
+  install", "The gear shed: built-in plugins", "Getting spotted: SEO tags", "Following the tracks:
+  where a value comes from", "Has the stump moved? Comparing two builds", "Out of the woods:
+  deploying" and "Uncharted territory: known gaps". `ssqch docs` finds each by either, and names
+  it by the plain words (`ssqch docs "SEO tags"`). The first group of the docs is "Base camp", and
+  sitesquatch.dev's changelog is the "Trail log".
+- When builds made the same way differ, the report starts its last line with "The eyewitness
+  accounts differ:" (`ssqch diff` with three builds, and `ssqch baseline`).
 - `rssDate` and `rssLastUpdatedDate` (the Eleventy RSS plugin's first names, with `rssPlugin()`)
   are aliases: they work as before, and say ssqch's names once (`dateToRfc3339`,
   `getNewestCollectionItemDate`).

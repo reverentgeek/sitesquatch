@@ -21,7 +21,7 @@ import type { Kind, ProfileReport } from "./profile.ts";
 import * as voice from "./voice.ts";
 
 /** The summary's themed lines, of which it says one. */
-type Aside = "recovered" | "nothingSighted" | "firstSiting" | "leftNoTrace" | "unconfirmed" | "uninhabited";
+type Aside = "recovered" | "nothingSighted" | "firstSighting" | "leftNoTrace" | "unconfirmed" | "uninhabited";
 
 /** The whole summary, ending in a newline. `recovered`: for a build that worked after one that failed (while serving), which is the aside then. */
 export function summary(config: Config, report: BuildReport, recovered = false): string {
@@ -31,7 +31,7 @@ export function summary(config: Config, report: BuildReport, recovered = false):
 	const asides: Array<[boolean, Aside]> = [
 		[recovered, "recovered"],
 		[nothing, "nothingSighted"],
-		[report.firstBuild, "firstSiting"],
+		[report.firstBuild, "firstSighting"],
 		[report.filesRemoved > 0, "leftNoTrace"],
 		[report.drafts > 0, "unconfirmed"],
 		[report.unused.length > 0, "uninhabited"],
@@ -68,7 +68,7 @@ export function summary(config: Config, report: BuildReport, recovered = false):
 
 	const width = Math.max(0, ...lines.map(([label]) => label.length));
 	// A site's first build, or one that works again, gets a word before the usual line.
-	const first = aside === "firstSiting" ? `${voice.FIRST_SITING} ` : aside === "recovered" ? `${voice.RECOVERED} ` : "";
+	const first = aside === "firstSighting" ? `${voice.FIRST_SIGHTING} ` : aside === "recovered" ? `${voice.RECOVERED} ` : "";
 	let out = `${first}Built in ${duration(report.durationMs)} (${config.env})\n`;
 	for (const [label, text] of lines) out += `  ${label.padEnd(width)}  ${text}\n`;
 	if (report.unused.length) {

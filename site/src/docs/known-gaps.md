@@ -1,5 +1,5 @@
 ---
-title: "Known gaps"
+title: "Uncharted territory: known gaps"
 description: "The uncharted parts of the map, as of this release."
 ---
 <img align="right" src="../../../docs/assets/stickers/direction-sign.svg" alt="" width="96">

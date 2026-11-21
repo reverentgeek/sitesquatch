@@ -35,7 +35,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
             cand build 'Build the site (default)'
             cand serve 'Build, serve, watch for changes and live-reload the browser'
             cand new 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in'
-            cand inspect 'Show where a page comes from, and which level of the data cascade set each value'
+            cand trace 'Follow a page''s tracks: where it comes from, and which level of the data cascade set each value'
             cand completions 'Print a completion script for your shell, so Tab finishes commands and options'
             cand diff 'Compare two builds of a site: URLs added and removed, and what changed on each page'
             cand footprint 'Show how much a build weighs: its files by kind, and the heaviest pages and files'
@@ -101,7 +101,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
-        &'ssqch;inspect'= {
+        &'ssqch;trace'= {
             cand --field 'One field of its data, in full, with every level that set it (a dotted path reaches inside: hero.alt)'
             cand --format 'text or json'
             cand --root 'Project root (defaults to the current directory)'
@@ -274,7 +274,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
             cand build 'Build the site (default)'
             cand serve 'Build, serve, watch for changes and live-reload the browser'
             cand new 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in'
-            cand inspect 'Show where a page comes from, and which level of the data cascade set each value'
+            cand trace 'Follow a page''s tracks: where it comes from, and which level of the data cascade set each value'
             cand completions 'Print a completion script for your shell, so Tab finishes commands and options'
             cand diff 'Compare two builds of a site: URLs added and removed, and what changed on each page'
             cand footprint 'Show how much a build weighs: its files by kind, and the heaviest pages and files'
@@ -293,7 +293,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
         }
         &'ssqch;help;new'= {
         }
-        &'ssqch;help;inspect'= {
+        &'ssqch;help;trace'= {
         }
         &'ssqch;help;completions'= {
         }

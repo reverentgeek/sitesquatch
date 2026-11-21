@@ -26,6 +26,7 @@ import { diffOps } from "./myers.ts";
 import { compareText } from "./paths.ts";
 import { firstChars, quoted } from "./quote.ts";
 import { bytes, count } from "./report.ts";
+import * as voice from "./voice.ts";
 
 export interface DiffOptions {
 	/** Compare bytes: no fingerprint matching, and nothing ignored but the `ignore` patterns. */
@@ -1472,7 +1473,7 @@ export function runsText(report: RunsReport, limit: number, color: boolean): str
 		for (const note of sample.notes) out += `      ${note}\n`;
 		out += grouped ? linesText(sample.ownHunks, sample.ownLines, limit, paint) : linesText(sample.hunks, sample.changedLines, limit, paint);
 	}
-	out += `\n${plural(report.varies.length, "file varies", "files vary")} between builds made the same way; ${steady} are the same in all of them. Pin what changes (the build's time, random ids) before comparing another build with these, or leave it out with --ignore.\n`;
+	out += `\n${voice.ACCOUNTS_DIFFER} ${plural(report.varies.length, "file varies", "files vary")} between builds made the same way; ${steady} are the same in all of them. Pin what changes (the build's time, random ids) before comparing another build with these, or leave it out with --ignore.\n`;
 	const common = report.varies.filter((v) => !v.versions[0].missing && v.versions[0].runs.includes(report.typical)).length;
 	// With no file in a most common version, no build is more like the others than another.
 	if (common > 0 && report.varies.some((v) => v.versions[0].runs.length >= 2)) out += `The build most like the others: ${report.runs[report.typical]}, with the most common version of ${common} of the ${plural(report.varies.length, "file", "files")} that vary.\n`;

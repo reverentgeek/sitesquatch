@@ -167,8 +167,8 @@ export async function build(config: Config): Promise<BuildReport> {
 	return report;
 }
 
-/** A page as `ssqch inspect` sees it. */
-export interface InspectedPage {
+/** A page as `ssqch trace` sees it. */
+export interface TracedPage {
 	url: string | null;
 	input: string;
 	output: string | null;
@@ -188,14 +188,14 @@ export interface InspectedPage {
  * them (a plugin that learns the build's context there, a command that writes a data file). No
  * page is rendered or written, and `afterBuild` hooks don't run.
  */
-export async function inspectPages(config: Config): Promise<{ dirs: Dirs; global: Data; pages: InspectedPage[] }> {
+export async function tracePages(config: Config): Promise<{ dirs: Dirs; global: Data; pages: TracedPage[] }> {
 	const site = new Site(config, true);
 	const { dirs } = site;
 	if (!isDir(dirs.input)) bail(`input directory ${shownDir(config, config.input)} does not exist`);
 	await runFileBuilders(config, dirs);
 	await runHooks(config, dirs, "beforeBuild", config.beforeBuild, undefined);
 	await site.prepare(new Timer());
-	const pages = site.pages.map((p): InspectedPage => ({
+	const pages = site.pages.map((p): TracedPage => ({
 		url: p.url,
 		input: p.tpl.input,
 		output: p.output,
