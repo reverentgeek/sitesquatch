@@ -59,6 +59,17 @@ where that version matches.
   its own too). On vuejs.org it replaces three hooks, six container templates, a preprocess
   engine and about 80 lines of filters.
 
+- `ssqch scout` reads VitePress sites in depth, and drafts their config: `srcDir` and
+  `srcExclude` (so it counts the pages VitePress builds: vuejs.org's run counted every `.md` in
+  the repository), `cleanUrls`, the sitemap, `head`, markdown-it plugins, and what the pages use,
+  each with what ssqch does for it (Vue's `<script setup>`, containers, Prettier's indented `:::`,
+  each component by name with its `.vue` file and whether it has state, the front matter the
+  theme reads, data loaders named like ssqch's data, dynamic routes). The draft turns on
+  `dialect: "vitepress"`, `urls: "html"`, `ignore` for the loaders, `public/` and the sitemap, and
+  a component counts as done once it has a template; the reference build uses the site's package
+  manager (`pnpm run build`). On vuejs.org, 57 to-dos became 44 with the draft written, and the
+  draft built the site first time. A trailhead of its own: `ssqch docs --from vitepress`.
+
 ### Fixed
 
 - A Hugo shortcode shown with `/* */` (`{{</* note */>}}`) on a line of its own was read as a

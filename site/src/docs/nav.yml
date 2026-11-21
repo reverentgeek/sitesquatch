@@ -43,6 +43,7 @@
     - trailheads/from-docusaurus.md
     - trailheads/from-mkdocs.md
     - trailheads/from-hexo.md
+    - trailheads/from-vitepress.md
     - trailheads/from-component-frameworks.md
 - title: Reference
   pages:
