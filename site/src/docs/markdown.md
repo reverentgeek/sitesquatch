@@ -36,9 +36,6 @@ export default defineConfig({
 | `indentedCode` | `true` | Lines indented four spaces are code. `false` makes them ordinary Markdown, for HTML indented inside Markdown; fences are still code. |
 | `highlight` | `false` | Syntax highlighting at build time (below). `true`, or `{ css: "/assets/code.css" }` to put the stylesheet somewhere else, or `{ css: false }` to leave it out. `languages` adds languages or replaces built-in ones: `{ languages: { chordpro: code => tokens, cho: "chordpro", snack: "grammars/snack.sublime-syntax" } }` (below). `classes` names the tokens as another highlighter does: `{ classes: "prism" }` ([below](#another-highlighters-classes)). |
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `htmlMarkdown`, `encodeUrls`, `admonitions`, `tabs`, `shortcodes`, `sourceLinks`, `dialect`, and `headingIds`' `"kramdown"`, `"markdown-it-anchor"` and `"python-markdown"`.
-
 **Syntax highlighting:** with `highlight: true`, fenced code is highlighted while the site builds, so pages need no highlighting script. The grammars are Sublime Text's and TextMate's (about 200 languages, from [syntect](https://github.com/trishume/syntect) and [bat](https://github.com/sharkdp/bat)), plus ssqch's own for the template languages those don't cover (`edge`, `liquid`, `hbs`, `mustache` and `ejs`: the tags, over highlighted HTML) and for ChordPro songs (`chordpro` and `cho`: directives, `[G7]` chords and comments), and each token gets one class for what it is: `hl-keyword`, `hl-string`, `hl-comment`, `hl-function`, `hl-type`, `hl-number` and so on. The build writes a stylesheet for them to `/highlight.css` (link it from your layout) with GitHub's colors, light and dark. Each color is a CSS custom property, like `--hl-keyword`, so a theme switch or your own palette only has to set those. Mark lines with braces in the fence's info string, ```` ```js {1,4-6} ````, and those lines get `class="line highlighted"`. A language without a grammar renders as plain `<pre><code class="language-x">`.
 
 **Your own languages:** `languages`, in `highlight: { languages: { ... } }`, gives a highlighter for a language ssqch doesn't have (a custom syntax highlighter), or replaces a built-in one. Each name is a fence's language, matched in any case, and it comes before the built-in grammars. A highlighter can be a function, `(code, lang) => tokens`, that returns the code cut into tokens, as `[text, kind]` pairs or `{ text, kind }` objects, where `kind` is one of the `hl-*` names without the prefix (`comment`, `keyword`, `operator`, `string`, `regexp`, `escape`, `number`, `constant`, `builtin`, `property`, `attribute`, `function`, `type`, `parameter`, `tag`, `heading`, `strong`, `emphasis`, `link`, `inserted` or `deleted`) and a token without one (or a plain string) is plain text. ssqch escapes the text and writes the spans, so marked lines and `/highlight.css` work as they do for the built-in languages. The tokens' text has to add up to the code; when it doesn't, or the function throws or returns another kind, the build warns (naming the page) and that fence is plain text. A highlighter can also be another language's name, an alias (`cho: "chordpro"`, `jsx: "js"`), or the path of a Sublime Text `.sublime-syntax` grammar from the project root, for a language that has one. A replacement only takes the name it's given: `js: fn` leaves `javascript` fences to the built-in grammar, unless you add `javascript: "js"`. The languages apply everywhere highlighting does: fences, `highlight(code, lang)` and a fence hook's `highlighted`.
@@ -51,17 +48,11 @@ export default { markdown: { highlight: { languages: { trailnotes, trail: "trail
 
 **A table of contents:** after a page's content renders, `page.headings` lists its headings (`level`, `id` and `text`), so its layouts can build a table of contents. The built-in `toc` filter does it for you: `{{{ toc(page.headings) }}}` writes nested `<ul>` links to the `h2` and `h3` headings, and `toc(page.headings, { from: 2, to: 4, ordered: true })` changes the levels or uses `<ol>`. `id` and `class` go on the outer list, `sublistClass` on the lists inside it, `itemClass` on each `<li>` (with `{level}` replaced by the heading's level) and `linkClass` on each link, so jekyll-toc's markup is `toc(page.headings, { class: "section-nav", itemClass: "toc-entry toc-h{level}" })`, and an unknown option is an error that lists them. In Liquid that's `{{ page.headings | toc: 2, 4 }}`, or `{{ page.headings | toc: class: "section-nav" }}` with options, and in Nunjucks, `{{ toc(page.headings) | safe }}`. The headings come from the HTML, so they work for pages in any template language. Collections have them too (`post.page.headings`). They're there once the page has rendered: in its layouts, and in a collection item after that item's `templateContent` has been read. Read in `computed`, which runs before any page renders, they're an empty list. `page.headings` are the page's own; for headings a layout adds around them, give `toc` the HTML instead, `toc(content)` in an outer layout (the same options), as eleventy-plugin-nesting-toc took it.
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `toc(html)`, the headings in HTML.
-
 **Highlighting anywhere:** `highlight(code, lang)` returns the highlighted HTML for the inside of a `<code>` (escaped text for a language without a grammar), for code that isn't a Markdown fence: an example container's source, a snippet from a data file.
 
 **The highlighting cache:** each build keeps the code it highlighted in `.cache/ssqch/highlight/fences.json`, beside `fetch`'s copies and the images, and the next build takes the HTML from there instead of loading the grammars, which is most of what highlighting costs a new process: the ReverentGeek blog's `ssqch build` takes 0.64 s with it and 1.0 s without (rendering, 48 ms against 390 ms). `ssqch serve` keeps the same fences in memory between rebuilds, so the file is for its first build and for `ssqch build`. A fence is kept by its language, code and marked lines, the site's `languages` (a `.sublime-syntax` file by its contents), and the highlighter's own version: a hash of what ssqch's highlighter is built from, so a release that changes highlighting starts afresh by itself. Fences a site's own function highlights aren't kept, because a function can answer differently each time, and `highlight(code, lang)` in a template uses the cache too. The file holds the fences the last build used and no others, it's written only when they change (beside its place, then moved in), and a build that fails doesn't write it. A file that's damaged or from another version of ssqch is ignored and written again, never an error, and the cache never changes a page: a build with it writes the same bytes as a build without. `leaveNoTrace` cleans the output, not `.cache`; delete the file (or `.cache/`) to highlight everything again, and restore `.cache/ssqch` in CI to keep it, as for images.
 
 **Markdown anywhere:** the `markdown` filter renders a string, such as a description from front matter: `{{{ markdown(summary) }}}`, or `markdown(title, "inline")` (in Liquid, `{{ title | markdown: "inline" }}`) to leave out the `<p>`. Config and data files can `import { markdown } from "ssqch"`, which takes the same `"inline"` (or `{ inline: true }`); another option is an error naming the two.
-
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `"inline"` in config code's `markdown()`.
 
 **Containers:** a block between `::: name` and `:::` renders through `_includes/containers/name.*`, a template in any engine. It gets the page's data plus `container.name`, `container.args` (the rest of the opening line, without `[` `]` around it: `:::tip[Watch out]` works), `container.props` (the arguments read as a component's attributes: `::: card type="tip" open items='["a","b"]'` is `{ type: "tip", open: true, items: ["a", "b"] }`, where a single-quoted value that starts with `{` or `[` is JSON, an unquoted one like `size=3` is the text `3`, and a word on its own is `true`), `container.slots` (below), `container.content` (the block's Markdown, rendered) and `container.source` (the block's lines as written, for an example that shows its own code). One template covers admonitions, tabs, figures or anything else that wraps content:
 
@@ -132,15 +123,9 @@ A fence hook writes the whole block, so it has to write `<pre><code>` itself: `f
 </div>
 ```
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
-
 **Code spans:** a `code.*` hook writes each inline code span (`` `ssqch build` ``) from its text, `code.code`, which the template escapes as a fence hook's does (Jinja and Nunjucks do it by themselves; in Liquid, `{{ code.code | escape }}`). A site moving from GitHub Pages keeps its CSS for Rouge's markup with `<code class="language-plaintext highlighter-rouge">{{ code.code }}</code>`. Fences don't go through it; they have `fence.*`.
 
 ## Another highlighter's classes
-
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
 
 **Another highlighter's classes:** a site that styles its code with a Prism theme, or another highlighter's CSS, can keep it: `classes`, in `highlight: { classes }`, names the tokens as that highlighter does. `classes: "prism"` gives every token Prism's names (`token keyword`, `token string`, `token class-name` for a type, `token regex`, `token attr-name` for an attribute, `token title` for a heading, `token url` for a link, and so on), puts the language on the `<pre>` as Prism's plugins do (`<pre class="language-js"><code class="language-js">`, a language with no grammar too, its code as it is), and writes a marked line (```` ```js {2} ````) as `<mark class="highlight-line highlight-line-active">`, Eleventy's syntax-highlight plugin's markup, with the other lines unwrapped. `classes: "pygments"` (or `"chroma"`, the same names) gives Pygments' short names, which MkDocs' and Hugo's themes style and Chroma (Hugo's highlighter) writes too: `k` for a keyword, `s` a string, `c` a comment, `nf` a function, `nc` a type, `m` a number, `nt` a tag, `na` an attribute, `nb` a builtin, `o` an operator, inside ssqch's `<pre class="highlight">` (the wrapper MkDocs or Hugo wrote around it, such as `<div class="highlight">`, is a fence hook's). An object names some kinds yourself and leaves the rest `hl-*`, inside ssqch's own `<pre class="highlight">`: lit.dev's CodeMirror theme is `classes: { keyword: "tok-keyword", string: "tok-string", type: "tok-typeName" }`. The kinds are the `hl-*` names without the prefix (above); another key is an error that names them, and so is a value that isn't class names. The tokens are still ssqch's (its grammars cut the code), so a theme colors them the way it colors that highlighter's, not always the same characters. `/highlight.css` uses the same names (`.token.keyword`), so it still colors the code; with a theme of your own, leave it out: `highlight: { classes: "prism", css: false }`. A fence hook's `fence.highlighted` and `highlight(code, lang)` have the same names.
 
@@ -151,9 +136,6 @@ export default defineConfig({
 ```
 
 ## markdown-it's habits
-
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
 
 **markdown-it's habits:** a site moving from a generator that used markdown-it can keep three of its habits without keeping markdown-it, and each one writes the bytes markdown-it 13 writes:
 
@@ -168,9 +150,6 @@ export default defineConfig({
 ```
 
 ## Your own Markdown library
-
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
 
 **Your own Markdown:** to keep a Markdown library you already use (markdown-it and its plugins, say, while a move from another generator is checked byte for byte), give it to `engines` as `md`. Every `.md` file, and every `md` in a `render` chain, then renders with it instead of ssqch's Markdown, in one line of the config rather than `render` in every folder's data. The `markdownEngine` still runs first (Jinja, unless you change it), so a post's tags are rendered before your library sees the text, and `.njk`, `.jinja` and `.html` pages beside it don't change. A markdown-it instance works as it is: its `render(source, env)` gets the page's data as `env`, as Eleventy's `setLibrary("md", ...)` gave it. So does a function, `(source, data, context) => html`, or any object with a `render` method, and `context.kind` says whether it's rendering a page's body (`"body"`), a `.md` layout (`"layout"`) or a `.md` render hook (`"hook"`):
 

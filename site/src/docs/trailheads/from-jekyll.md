@@ -9,9 +9,6 @@ opensource.guide (382 pages in 29 languages, on GitHub Pages' gem) was moved thi
 
 ## Scouting
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
-
 `ssqch scout` (see [Scouting a site](../trailheads.md#scouting-a-site)) lists what this guide describes for your site, with file and line, and drafts the mechanical part. It reads the files a fresh checkout has: ones git doesn't track (notes, a scratch folder) are left out of `passthrough`, and listed. Its draft is a first `ssqch.config.js` from `_config.yml`: Liquid for Markdown and HTML pages, `layouts_dir`, `trimAfterFrontMatter`, kramdown's Markdown options, `exclude` as `ignore`, the files Jekyll copies as they are (those without front matter) as `passthrough`, `site` read from `_config.yml`, the `defaults` for every page as data, and the plugins it knows (jekyll-sitemap, jekyll-redirect-from, jekyll-feed; Sass when there's a `_sass` folder or a stylesheet with front matter). It drafts directory data for `_posts` (the `posts` tag and the `permalink` style) and for each collection (its tag, its `defaults`, and its `permalink`, or none when `output` isn't true), and for the other folders `defaults` names. It turns on `jekyllTemplates`, so layouts, includes and pages keep Jekyll's `page` and `site` as they're written (`page.title`, `site.posts`, `site.data.locales`, `post.title`). For what the plugins wrote beside the pages it drafts `_includes/seo.liquid` (jekyll-seo-tag's tags), `redirects.liquid` (jekyll-redirect-from's `/redirects.json`), `robots.liquid` (jekyll-sitemap's `/robots.txt`, when the site has none) and a redirect hook with the new URL whole; for a GitHub Pages site, `site.url` from `CNAME` (as jekyll-github-metadata gave it) and Rouge's markup on code. Its edits are only what's mechanical: `{% seo %}` includes `_includes/seo.liquid`, a `.rss` or `.xml` layout becomes `.liquid`, and a file with front matter in another extension gets `render` and a permalink. It lists the rest with file and line: where Jekyll's `excerpt` and `sort` mean something else, Jekyll's own `page` keys (`page.next`), plugins' tags, kramdown's attribute lists (`{: .class}`), each `_plugins/*.rb` and what it registers, and what each plugin is in ssqch. It changes nothing on its own: `--write-draft` writes the draft and `--patch move.patch` the edits, to read and `git apply`. opensource.guide went from a fresh checkout to a full build with no hand edits this way, and 306 of its 404 pages matched Jekyll's.
 
 ```sh
@@ -89,9 +86,6 @@ export default defineConfig({
 | github-pages' default theme (jekyll-theme-primer) | Nothing: it writes `/assets/css/style.css`. Check whether a page links to it. |
 
 ## Porting a site's own plugins
-
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `ssqch scout`'s list of each `_plugins/*.rb`.
 
 A Jekyll site's own Ruby plugins (`_plugins/*.rb`) can't run in ssqch, but each kind has an ssqch feature that does its job. `ssqch scout` lists each file with what it registers; port each to that feature, in a module of the site's own that the config imports (`lib/jekyll.js`), and build and compare with `ssqch diff` after each. www.ruby-lang.org's 8 plugins (705 lines of Ruby) became 572 lines of JavaScript.
 

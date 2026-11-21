@@ -3,9 +3,6 @@ title: "Trailhead: moving from Hugo"
 navTitle: "From Hugo"
 description: "Hugo and SiteSquatch both build pages from Markdown with front matter, a data folder, layouts and static files."
 ---
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: this trailhead, `markdown: { shortcodes: "hugo" }`, `highlight: { classes: "pygments" }`, and `ssqch scout` for Hugo sites.
-
 Hugo and SiteSquatch both build pages from Markdown with front matter, a data folder, layouts and static files. Hugo's content usually moves as it is: the gohugo.io docs (1,007 content files) moved with none of them changed, and 764 of 787 pages came out byte for byte the same. The templates are the work: Hugo's are Go templates, which ssqch doesn't run, and Jinja (ssqch's default) is the closest, since Go's `define` and `block` map onto Jinja's `extends` and `block`, and both trim whitespace with `{{- -}}`.
 
 ## Scouting

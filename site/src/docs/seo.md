@@ -18,9 +18,6 @@ ssqch writes no `<head>` tags of its own, so a site's title, description, canoni
 
 JSON-LD, if the site wants it, is a `json` (Liquid), `tojson` (Jinja) or `dump` (Nunjucks) of an object built in the template or by a filter.
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: the jekyll-seo-tag include.
-
 **From jekyll-seo-tag:** Jekyll's `{% seo %}` becomes an include, `{% include seo.liquid %}` in the layout. This one writes what jekyll-seo-tag 2.8 writes, in its order and its bytes, for a site whose `_config.yml` is read as `site` (`data: { site: readData("_config.yml") }`) and whose pages have `title`, `description` and `image` in front matter. As jekyll-seo-tag does, the title and description go through `markdownify` for their quotes and dashes; the canonical link and `og:url` need `site.url`; a dated page (front matter `date`, or a post's or collection's `tags`) is an `article` with its `published_time` and a `BlogPosting`; the home page (`/` or `/about/`) is a `WebSite` with a `name`; `site.twitter.username`, `site.facebook.publisher` and `site.logo` add their tags; and the generator is ssqch's (`ssqch scout`'s draft for a Jekyll site writes Jekyll's version there instead, from `Gemfile.lock`, so the first build matches). Add the tags for options this leaves out (authors, `fb:app_id`, webmaster verifications):
 
 ```liquid
