@@ -178,8 +178,8 @@ test("mistakes_in_the_config_say_what_to_fix", () => {
 		["export default { publishDir: \"a\", outDir: \"b\" };", "outDir and publishDir are two names for one option; set one of them"],
 		// The Rust test's "test:gretter" was one letter from a plugin registered from Rust; ssqch's own are listed.
 		// DELIBERATE (0.12): `ssqch/llms` and `ssqch/vue` are built-in plugins too (from the fresh vuejs.org run).
-		// DELIBERATE (0.13): and `ssqch/robots` (the audit's plan, step 3), `ssqch/from-mkdocs` and `ssqch/from-jekyll` (step 6).
-		["export default { plugins: [{ builtin: \"ssqch/sas\" }] };", "unknown plugin \"ssqch/sas\" (built-in plugins: ssqch/rss, ssqch/image, ssqch/minify, ssqch/assets, ssqch/links, ssqch/sitemap, ssqch/redirects, ssqch/sass, ssqch/elements, ssqch/llms, ssqch/vue, ssqch/robots, ssqch/from-mkdocs, ssqch/from-jekyll)"],
+		// DELIBERATE (0.13): and `ssqch/robots` (the audit's plan, step 3), `ssqch/from-mkdocs`, `ssqch/from-jekyll` and `ssqch/from-hugo` (step 6).
+		["export default { plugins: [{ builtin: \"ssqch/sas\" }] };", "unknown plugin \"ssqch/sas\" (built-in plugins: ssqch/rss, ssqch/image, ssqch/minify, ssqch/assets, ssqch/links, ssqch/sitemap, ssqch/redirects, ssqch/sass, ssqch/elements, ssqch/llms, ssqch/vue, ssqch/robots, ssqch/from-mkdocs, ssqch/from-jekyll, ssqch/from-hugo)"],
 		["export default async () => { await new Promise(() => {}); };", "never settled"],
 		["export default { filters: { x: 1 } };", "filters.x must be a function"],
 		["export default { plugins: [{ name: \"snacks\", dirs: { input: \"src\" } }] };", "plugin \"snacks\": \"dirs\" can only be set in the config itself"],

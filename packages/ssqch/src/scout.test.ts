@@ -707,7 +707,7 @@ test("scout_lists_what_a_hugo_site_uses", () => {
 	const plan = hugo(dir);
 	const said = plan.byHand.map(([at, what]) => `${at}: ${what}`);
 	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
-	has("content: 3 shortcodes, called in 1 page: `markdown: { shortcodes: \"hugo\" }` (in the draft)");
+	has("content: 3 shortcodes, called in 1 page: `fromHugo()` (in the draft)");
 	has("content/trails/cedar.md:4: `{{< note >}}`, the site's own (layouts/shortcodes/note.html) (1 use in 1 file; this is the first): a container; port its template into _includes/containers/note.jinja (in the draft)");
 	has("content/trails/cedar.md:8: `{{< youtube >}}`, Hugo's (1 use in 1 file; this is the first): a container; write `_includes/containers/youtube.jinja`");
 	has("content/trails/cedar.md:9: `{{< ref >}}` inside a line of text, Hugo's (1 use in 1 file; this is the first): its container template renders it in place, with `container.inline` true; write `_includes/containers/ref.jinja`");
@@ -722,7 +722,7 @@ test("scout_lists_what_a_hugo_site_uses", () => {
 	assert.ok(!said.some((line) => line.includes("{{< /note")), said.join("\n"));
 	// The draft reads the content as it is, with a container to port for the site's own shortcode.
 	const config = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
-	for (const part of ["dirs: { input: \"content\", output: \"public\", includes: \"../_includes\" },", "markdownEngine: false,", "markdown: { shortcodes: \"hugo\", highlight: { classes: \"pygments\" } },", "passthrough: [{ static: \".\" }],", "data: { site: {\"url\":\"https://example.com\"} },", "plugins: [sitemapPlugin({ url: \"https://example.com\" }), linksPlugin({ fail: false })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	for (const part of ["dirs: { input: \"content\", output: \"public\", includes: \"../_includes\" },", "markdownEngine: false,", "markdown: { highlight: { classes: \"pygments\" } },", "passthrough: [{ static: \".\" }],", "data: { site: {\"url\":\"https://example.com\"} },", "plugins: [fromHugo(), sitemapPlugin({ url: \"https://example.com\" }), linksPlugin({ fail: false })],", "import { fromHugo } from \"ssqch/from-hugo\";"]) assert.ok(config.includes(part), `${part}\n${config}`);
 	assert.ok(plan.newFiles.some(([file]) => file === "_includes/containers/note.jinja"));
 	assert.equal(plan.pages, 3);
 });

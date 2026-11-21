@@ -2871,7 +2871,7 @@ export function hugo(dir: string): Plan {
 	const calls = blockCalls.sorted();
 	if (calls.length || inlineCalls.seen.size) {
 		const pages = new Set([...calls, ...inlineCalls.sorted()].flatMap(([, { files }]) => [...files])).size;
-		plan.byHand.push([contentDir, `${new Set([...blockCalls.seen.keys(), ...inlineCalls.seen.keys()]).size} shortcodes, called in ${pages} ${pages === 1 ? "page" : "pages"}: \`markdown: { shortcodes: "hugo" }\` (in the draft) reads each call as a container, rendered by \`_includes/containers/<name>.*\` (one inside a line of text too, in its place); the draft has a template to port for each of the site's own`, { code: "hugo-shortcodes", status: "option", files: pages, option: "markdown: { shortcodes: \"hugo\" }", docs: "shortcodes" }]);
+		plan.byHand.push([contentDir, `${new Set([...blockCalls.seen.keys(), ...inlineCalls.seen.keys()]).size} shortcodes, called in ${pages} ${pages === 1 ? "page" : "pages"}: \`fromHugo()\` (in the draft) reads each call as a container, rendered by \`_includes/containers/<name>.*\` (one inside a line of text too, in its place); the draft has a template to port for each of the site's own`, { code: "hugo-shortcodes", status: "option", files: pages, option: "markdown: { shortcodes: \"hugo\" }", defines: ["plugin:fromHugo"], docs: "shortcodes" }]);
 	}
 	for (const [name, { count, files, first }] of calls) {
 		const own = shortcodeFiles.get(name);
@@ -2923,15 +2923,16 @@ export function hugo(dir: string): Plan {
 	if (baseURL) site.url = baseURL;
 	if (isPlainObject(hugoKey(config, "params"))) site.params = hugoKey(config, "params");
 	const dirs = [`input: ${JSON.stringify(contentDir)}`, `output: ${JSON.stringify(output)}`, "includes: \"../_includes\"", ...(hasDir("data") ? ["data: \"../data\""] : [])];
-	const imports = ["import { defineConfig } from \"ssqch\";", "import { linksPlugin } from \"ssqch/links\";", ...(baseURL ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : [])];
+	const imports = ["import { defineConfig } from \"ssqch\";", "import { fromHugo } from \"ssqch/from-hugo\";", "import { linksPlugin } from \"ssqch/links\";", ...(baseURL ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : [])];
 	let out = `// A first draft, written by \`ssqch scout\` from ${configFile ?? "the Hugo site"}.\n// \`ssqch docs --from hugo\` has the whole mapping.\n${imports.join("\n")}\n\nexport default defineConfig({\n`;
 	out += `  dirs: { ${dirs.join(", ")} },\n`;
 	if (basePath(baseURL) !== undefined) out += `  // baseURL's path: the site is served under it.\n  base: ${JSON.stringify(basePath(baseURL))},\n`;
 	out += "  // Hugo doesn't run template code in content, and its shortcodes on a line of their own are\n  // containers (_includes/containers/<name>.jinja).\n  markdownEngine: false,\n";
-	out += "  markdown: { shortcodes: \"hugo\", highlight: { classes: \"pygments\" } },\n";
+	// Chroma's classes (Hugo's highlighter) are Pygments' names, which the theme's CSS styles.
+	out += "  markdown: { highlight: { classes: \"pygments\" } },\n";
 	if (hasDir("static")) out += "  passthrough: [{ static: \".\" }],\n";
 	out += `  data: { site: ${JSON.stringify(sortedKeys(site))} },\n`;
-	out += `  plugins: [${[...(baseURL ? [`sitemapPlugin({ url: ${JSON.stringify(baseURL)} })`] : []), // Hugo doesn't check links, so one that was broken there warns rather than failing the move's build.
+	out += `  plugins: [${["fromHugo()", ...(baseURL ? [`sitemapPlugin({ url: ${JSON.stringify(baseURL)} })`] : []), // Hugo doesn't check links, so one that was broken there warns rather than failing the move's build.
 		"linksPlugin({ fail: false })"].join(", ")}],\n});\n`;
 	plan.newFiles.unshift(["ssqch.config.js", `a first draft, from ${configFile ?? "the Hugo site"}`, out]);
 	return plan;

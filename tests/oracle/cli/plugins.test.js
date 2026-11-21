@@ -986,3 +986,23 @@ test("from_jekyll_gives_kramdown_and_jekylls_templates", () => {
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(!r.ok && r.log.includes("unknown option \"kramdwon\" (did you mean \"kramdown\"?)"), r.log);
 });
+
+// Added in 0.13: `fromHugo()` from "ssqch/from-hugo": Hugo's shortcodes as containers, as
+// `markdown: { shortcodes: "hugo" }` reads them.
+test("from_hugo_reads_shortcodes_as_containers", () => {
+	const dir = tempDir("from-hugo");
+	write(dir, {
+		"ssqch.config.js": "import { fromHugo } from \"ssqch/from-hugo\";\nexport default { markdownEngine: false, plugins: [fromHugo()] };\n",
+		"_includes/containers/note.jinja": "<div class=\"note {{ container.props.type }}\">{{ container.content | safe }}</div>",
+		"index.md": "{{< note type=\"tip\" >}}\nPack *water*.\n{{< /note >}}\n",
+	});
+	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
+	const withPlugin = read(dir, "_site/index.html");
+	assert.ok(withPlugin.startsWith("<div class=\"note tip\"><p>Pack <em>water</em>.</p>"), withPlugin);
+	write(dir, { "ssqch.config.js": "export default { markdownEngine: false, markdown: { shortcodes: \"hugo\" } };\n" });
+	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
+	assert.equal(read(dir, "_site/index.html"), withPlugin);
+	write(dir, { "ssqch.config.js": "import { fromHugo } from \"ssqch/from-hugo\";\nexport default { plugins: [fromHugo({ shortcodes: true })] };\n" });
+	const bad = ssqch(["build", "--root", dir]);
+	assert.ok(!bad.ok && bad.log.includes("this plugin takes no options (got \"shortcodes\")"), bad.log);
+});

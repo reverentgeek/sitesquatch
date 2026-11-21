@@ -615,6 +615,12 @@ declare module "ssqch/from-jekyll" {
 	export function fromJekyll(options?: FromJekyllOptions): BuiltinPlugin;
 }
 
+declare module "ssqch/from-hugo" {
+	import type { BuiltinPlugin } from "ssqch";
+	/** Hugo's shortcodes for a site moving from Hugo, as a default under the site's own `markdown` options (`shortcodes: "hugo"`): a shortcode on a line of its own (`{{< note type="tip" >}}` to `{{< /note >}}`, or `{{% %}}`) is a container rendered by `_includes/containers/<name>.*`, with its arguments as `container.props`, and one inside a line of text renders the same template in its place, with `container.inline` true. Takes no options. */
+	export function fromHugo(): BuiltinPlugin;
+}
+
 declare module "ssqch/vue" {
 	import type { BuiltinPlugin } from "ssqch";
 	export interface VuePluginOptions {

@@ -101,6 +101,9 @@ where that version matches.
   ids, smart quotes, no bare-URL links). www.ruby-lang.org's port (7,647 pages) builds the same
   with it as with those options written out, and the `jekyll-guides` example uses it with its
   output unchanged. `ssqch scout` drafts it.
+- `fromHugo()` from `ssqch/from-hugo` reads Hugo's shortcodes as containers, as
+  `markdown: { shortcodes: "hugo" }` does, as a default under the site's own `markdown`.
+  `ssqch scout` drafts it.
 - `ssqch serve` and `ssqch serve --built` answer a request for a page with its Markdown copy
   when the request asks for `text/markdown` by name, at a q-value at least HTML's, as Claude Code,
   Cursor and OpenCode do: `text/markdown; charset=utf-8`, with `Vary: Accept` on both of a page's

@@ -14,12 +14,17 @@ export default defineConfig({
   dirs: { input: "content", output: "public", includes: "../_includes", data: "../data" },
   // Hugo doesn't run template code in content, and its shortcodes on a line of their own are containers.
   markdownEngine: false,
-  markdown: { shortcodes: "hugo", highlight: { classes: "pygments" } },
+  markdown: { highlight: { classes: "pygments" } },
   passthrough: [{ static: "." }],
   data: { site: { title: "Trail Notes", url: "https://example.com", params: {} } },
-  plugins: [sitemapPlugin({ url: "https://example.com" }), linksPlugin({ fail: false })],
+  plugins: [fromHugo(), sitemapPlugin({ url: "https://example.com" }), linksPlugin({ fail: false })],
 });
 ```
+
+`fromHugo()` from `ssqch/from-hugo` reads Hugo's shortcodes as containers, below: a default (`shortcodes: "hugo"`) your own `markdown` can change.
+
+> [!NOTE]
+> **Not released yet.** This ships with the next version of ssqch: `fromHugo()`. In 0.12.0, write it as an option: `markdown: { shortcodes: "hugo" }`.
 
 ## The config
 
@@ -45,7 +50,7 @@ export default defineConfig({
 ## Content
 
 - **Template code in your Markdown:** Hugo's docs and many tutorials have `{{ .Title }}` in code samples. ssqch runs Markdown through a template engine first unless `markdownEngine: false`, so set that before the first build.
-- **Shortcodes:** with `markdown: { shortcodes: "hugo" }`, a shortcode on a line of its own is a container ([Markdown](../markdown.md), "Containers"): `{{< note type="tip" >}}` to `{{< /note >}}` (or `{{% %}}`) renders `_includes/containers/note.*`, with `container.args` (what the call wrote), `container.props` (its `key="value"` parameters) `container.content` (the inside, rendered as Markdown) and `container.source` (the inside as written, for a `{{< >}}` shortcode, whose inside Hugo doesn't read as Markdown). One without a closing tag (`{{< youtube abc >}}`) has no content. Port each shortcode's Go template into its container template. A shortcode inside a line of text (`{{< new-in 0.148 />}}`, `[About]({{< ref "about" >}})`) renders through the same container template in its place, with `container.inline` true, so a template that's called both ways can check it: `{% if container.inline %}<span>...</span>{% else %}<div>...</div>{% endif %}`.
+- **Shortcodes:** with `fromHugo()`, a shortcode on a line of its own is a container ([Markdown](../markdown.md), "Containers"): `{{< note type="tip" >}}` to `{{< /note >}}` (or `{{% %}}`) renders `_includes/containers/note.*`, with `container.args` (what the call wrote), `container.props` (its `key="value"` parameters) `container.content` (the inside, rendered as Markdown) and `container.source` (the inside as written, for a `{{< >}}` shortcode, whose inside Hugo doesn't read as Markdown). One without a closing tag (`{{< youtube abc >}}`) has no content. Port each shortcode's Go template into its container template. A shortcode inside a line of text (`{{< new-in 0.148 />}}`, `[About]({{< ref "about" >}})`) renders through the same container template in its place, with `container.inline` true, so a template that's called both ways can check it: `{% if container.inline %}<span>...</span>{% else %}<div>...</div>{% endif %}`.
 - **URLs:** Hugo lowercases paths and reads `slug` and `url`. In ssqch, `permalink` in front matter or directory data sets a page's URL; `computed` can make one from the path for every page.
 - **Sections:** an `_index.md` is a section's list page. In ssqch it's a page like any other: give it a layout in its folder's directory data, and list its folder's pages with a collection: a tag, or one in the config (`collections: { functions: (api) => api.byGlob("content/functions/**") }`).
 - **Page bundles:** a folder with `index.md` and its images is a bundle in both; set `bundles: true`.

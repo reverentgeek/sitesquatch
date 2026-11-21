@@ -16,12 +16,13 @@ import * as vue from "../exports/vue.ts";
 import * as fromVitepress from "../exports/from-vitepress.ts";
 import * as fromMkdocs from "../exports/from-mkdocs.ts";
 import * as fromJekyll from "../exports/from-jekyll.ts";
+import * as fromHugo from "../exports/from-hugo.ts";
 import { typedNames } from "./docs.ts";
 import { MODULE_EXPORTS } from "./capabilities.ts";
 
 // What `ssqch capabilities` says each module exports is what the module has, what `ssqch.d.ts` declares, and all it has.
 test("each module exports what capabilities says", () => {
-	const actual: Record<string, Record<string, unknown>> = { ssqch: api, "ssqch/image": image, "ssqch/rss": rss, "ssqch/assets": assets, "ssqch/links": links, "ssqch/sitemap": sitemap, "ssqch/redirects": redirects, "ssqch/sass": sass, "ssqch/elements": elements, "ssqch/minify": minify, "ssqch/llms": llms, "ssqch/robots": robots, "ssqch/vue": vue, "ssqch/from-vitepress": fromVitepress, "ssqch/from-mkdocs": fromMkdocs, "ssqch/from-jekyll": fromJekyll };
+	const actual: Record<string, Record<string, unknown>> = { ssqch: api, "ssqch/image": image, "ssqch/rss": rss, "ssqch/assets": assets, "ssqch/links": links, "ssqch/sitemap": sitemap, "ssqch/redirects": redirects, "ssqch/sass": sass, "ssqch/elements": elements, "ssqch/minify": minify, "ssqch/llms": llms, "ssqch/robots": robots, "ssqch/vue": vue, "ssqch/from-vitepress": fromVitepress, "ssqch/from-mkdocs": fromMkdocs, "ssqch/from-jekyll": fromJekyll, "ssqch/from-hugo": fromHugo };
 	assert.deepEqual(MODULE_EXPORTS.map(([name]) => name), Object.keys(actual));
 	const declared = typedNames().filter((n) => n.kind === "module export");
 	for (const [name, exports] of MODULE_EXPORTS) {
