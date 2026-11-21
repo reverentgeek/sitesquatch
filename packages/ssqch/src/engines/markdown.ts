@@ -17,6 +17,7 @@
 // (see "the cache of highlighted fences" below), so a first build doesn't load syntect's
 // grammars for fences it has highlighted before.
 import { kramdownHtml, restoreBlankLines, withKramdownIds } from "./kramdown-html.ts";
+import { VITEPRESS_HOOKS, vitepressAfter, vitepressBefore } from "./vitepress-dialect.ts";
 import { hugoShortcodes, INLINE_SHORTCODE_MARKER, type InlineShortcode, inlineShortcodeNumber, pythonMarkdownAfter, pythonMarkdownBefore, pythonMarkdownBlocks, pythonMarkdownIds, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
@@ -237,6 +238,8 @@ class WasmMarkdown implements Markdown {
 		// Python-Markdown's raw HTML blocks are set aside first, before the other dialects write HTML.
 		const python = this.#options.dialect === "python-markdown" ? pythonMarkdownBefore(source) : undefined;
 		if (python) source = python.source;
+		const vitepress = this.#options.dialect === "vitepress";
+		if (vitepress) source = vitepressBefore(source);
 		const shortcodes: InlineShortcode[] = [];
 		source = this.#dialects(source, shortcodes, data, file);
 		const links = this.#options.sourceLinks;
@@ -245,9 +248,10 @@ class WasmMarkdown implements Markdown {
 			if (shortcodes.length) html = this.#inlineShortcodes(html, shortcodes, data, file);
 			if (links) html = sourceLinks(html, data, links, this.#inputRoot);
 			if (ids) html = pythonMarkdownIds(html);
+			if (vitepress) html = vitepressAfter(html);
 			return python ? pythonMarkdownAfter(html, python.raw) : html;
 		};
-		const changes = Boolean(links || ids || python || shortcodes.length);
+		const changes = Boolean(links || ids || python || vitepress || shortcodes.length);
 		if (!this.#options.htmlMarkdown) {
 			const out = this.#page(source, data, file);
 			if (!changes) return out;
@@ -508,7 +512,7 @@ class WasmMarkdown implements Markdown {
 			languages,
 			headingIdsFunction: o.sluggerFn ? number(o.sluggerFn as (...args: unknown[]) => unknown, "markdown.headingIds", true) : null,
 			// `slot` is ssqch's container: it always calls back, to be kept for its parent.
-			hooks: [...this.#hooks.keys(), "containers/slot"],
+			hooks: [...this.#hooks.keys(), ...this.#builtinHooks().filter((name) => !this.#hooks.has(name)), "containers/slot"],
 			languagesKey: JSON.stringify(key),
 		});
 		return { json, files };
@@ -524,6 +528,11 @@ class WasmMarkdown implements Markdown {
 		return this.#hooks.has(template) ? this.renderHook(template, "component", value, data) : undefined;
 	}
 
+	/** The dialect's built-in render hooks and containers (`dialect: "vitepress"`), which a site's own templates replace. */
+	#builtinHooks(): string[] {
+		return this.#options.dialect === "vitepress" ? Object.keys(VITEPRESS_HOOKS) : [];
+	}
+
 	/** A render hook for the wasm: the template `name` with the page's data and `value` as `key`. */
 	renderHook(name: string, key: string, value: unknown, data: Data): string {
 		if (key === "container" && isPlainObject(value)) {
@@ -534,6 +543,8 @@ class WasmMarkdown implements Markdown {
 		}
 		const template = this.#hooks.get(name);
 		const engines = this.#engines;
+		// A dialect's own hook, where the site has no template of that name.
+		if (!template && this.#builtinHooks().includes(name) && isPlainObject(value)) return VITEPRESS_HOOKS[name](value, { htmlUrls: this.#options.htmlUrls });
 		if (!template || !engines) throw new BuildError(`no template for \`${name}\``);
 		const hookData: Data = { ...(isPlainObject(data) ? data : {}), [key]: value };
 		let text = template.body;

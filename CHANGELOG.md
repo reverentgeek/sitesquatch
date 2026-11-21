@@ -50,6 +50,15 @@ where that version matches.
   pages. VitePress, Astro and MDX pages use components this way: the vuejs.org move rebuilt its
   two presentational ones with 51 lines of a transform.
 
+- `markdown: { dialect: "vitepress" }` reads and writes Markdown as VitePress does: Vue's
+  `<script>` and `<style>` blocks and `<ClientOnly>` left out, `-vue` fences, and VitePress's
+  markup as built-in render hooks and containers that a site's own templates replace (heading
+  anchors, `.html` links and external ones in a new tab, code blocks with the copy button and
+  language label, tables, `tip`, `info`, `warning`, `danger`, `details`, `raw` and `code-group`),
+  `[[toc]]` in any case, and VitePress's heading ids (`headingIds: "vitepress"`, which works on
+  its own too). On vuejs.org it replaces three hooks, six container templates, a preprocess
+  engine and about 80 lines of filters.
+
 ### Fixed
 
 - A Hugo shortcode shown with `/* */` (`{{</* note */>}}`) on a line of its own was read as a

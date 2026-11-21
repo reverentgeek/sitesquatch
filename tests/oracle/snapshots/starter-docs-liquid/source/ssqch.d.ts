@@ -75,8 +75,8 @@ declare module "ssqch" {
 
 	/** How Markdown renders. */
 	export interface MarkdownOptions {
-		/** Automatic heading `id`s: `"github"` (the default: GitHub's and github-slugger's anchors, character for character), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), `"kramdown"` (Jekyll's: GitHub's ids for the page's headings, and kramdown's ASCII ones, `section` for none, for headings inside `markdown="1"` HTML), `"markdown-it-anchor"` (that plugin's default: the lowercase text with spaces as `-`, percent-encoded, `what%E2%80%99s-new%3F`), `"python-markdown"` (MkDocs': Python-Markdown's `toc` ids, ASCII, `cafe-notes` for `Café notes`), or `false` for none. A `{#id}` on the heading always wins. */
-		headingIds?: "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor" | "python-markdown" | false | ((text: string) => string);
+		/** Automatic heading `id`s: `"github"` (the default: GitHub's and github-slugger's anchors, character for character), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), `"kramdown"` (Jekyll's: GitHub's ids for the page's headings, and kramdown's ASCII ones, `section` for none, for headings inside `markdown="1"` HTML), `"markdown-it-anchor"` (that plugin's default: the lowercase text with spaces as `-`, percent-encoded, `what%E2%80%99s-new%3F`), `"python-markdown"` (MkDocs': Python-Markdown's `toc` ids, ASCII, `cafe-notes` for `Café notes`), or `false` for none. A `{#id}` on the heading always wins. `"vitepress"`: VitePress's (@mdit-vue's `slugify`: `What's Vue?` is `what-s-vue`, `1. Setup` is `_1-setup`). */
+		headingIds?: "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor" | "python-markdown" | "vitepress" | false | ((text: string) => string);
 		/** `## Heading {#id .class key=value}`. Default `true`. */
 		headingAttributes?: boolean;
 		/** `[^1]` references, with the notes at the end of the page. Default `true`. */
@@ -112,8 +112,8 @@ declare module "ssqch" {
 		shortcodes?: "hugo" | false;
 		/** Links to `.md` files (`[Setup](setup/install.md#first)`) go to the page built from that file, with the `#` part: `true` writes its URL from the site's root (`/setup/install/#first`), `"relative"` from the page, as MkDocs does (`setup/install/#first`). A link to a file that isn't a page stays as written, for the link checker. Default `false`. */
 		sourceLinks?: boolean | "relative";
-		/** Another Markdown's ways, where they're CommonMark's otherwise. `"python-markdown"` (MkDocs'): a raw HTML block runs to its closing tag, blank lines and all; a list nests at four spaces (an item indented less is the next item); and the HTML is Python-Markdown's: `"` as it is in text, `<hr />`, `<br />`, `<img alt="" src="" />`, a tight item's nested list right after its text, nothing at the end. Default `false`. */
-		dialect?: "python-markdown" | false;
+		/** Another Markdown's ways, where they're CommonMark's otherwise. `"python-markdown"` (MkDocs'): a raw HTML block runs to its closing tag, blank lines and all; a list nests at four spaces (an item indented less is the next item); and the HTML is Python-Markdown's: `"` as it is in text, `<hr />`, `<br />`, `<img alt="" src="" />`, a tight item's nested list right after its text, nothing at the end. Default `false`. `"vitepress"`: Markdown as VitePress reads and writes it: Vue's `<script>`, `<style>` and `<ClientOnly>` left out, `-vue` fences, `[[toc]]`, and VitePress's markup for headings, links, code blocks, tables and the `tip`, `info`, `warning`, `danger`, `details`, `raw` and `code-group` containers, as built-in hooks a site's own templates replace; with `headingIds: "vitepress"`, `autolinks: "email"` and `containers: "markdown-it"` unless set. */
+		dialect?: "python-markdown" | "vitepress" | false;
 		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter>; classes?: "prism" | "pygments" | "chroma" | Partial<Record<TokenKind, string>> };
 	}
 
