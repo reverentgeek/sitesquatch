@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { canonicalTag, canonicalText, compare, compareRuns, diffJson, diffText, isSame, keyed, runsJson, runsText, tokens, withoutFingerprints } from "./diff.ts";
+import { canonicalTag, canonicalText, compare, compareRuns, diffJson, diffText, isSame, keyed, knownChange, runsJson, runsText, tokens, withoutFingerprints } from "./diff.ts";
 import type { DiffOptions } from "./diff.ts";
 import { globToRegExp } from "./glob.ts";
 
@@ -388,4 +388,13 @@ test("canonical_links_redirects_and_feed_entries_are_called_out", async () => {
 	assert.deepEqual(notes["/a/"], ["canonical link: https://example.com/a/ -> https://example.com/a"]);
 	assert.deepEqual(notes["/old/"], ["redirects to: /new/ -> /newer/"]);
 	assert.deepEqual(notes["/feed.xml"], ["feed entries removed (readers see them go): tag:a", "feed entries added (readers see them as new): tag:c"]);
+});
+
+// vuejs.org's two biggest groups were VitePress's client app and Shiki's colors on every page:
+// expected in a move, and said so.
+test("a_frameworks_client_app_and_shikis_colors_are_known_changes", () => {
+	assert.match(knownChange({ removed: ["<script>", "window.__VP_HASH_MAP__=JSON.parse(\"{}\")", "</script>"], added: [] }) ?? "", /^VitePress's client app/);
+	assert.match(knownChange({ removed: ["<astro-island uid=\"x\">"], added: [] }) ?? "", /^Astro's islands/);
+	assert.match(knownChange({ removed: ["<span style=\"color:#F97583;\">import</span>"], added: ["<span class=\"hl-keyword\">import</span>"] }) ?? "", /^Shiki's inline colors/);
+	assert.equal(knownChange({ removed: ["<p>Old text</p>"], added: ["<p>New text</p>"] }), undefined);
 });

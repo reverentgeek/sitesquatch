@@ -82,6 +82,10 @@ where that version matches.
 - `ssqch baseline` says, for a site that builds with Vite, that the copies' asset names and Vue's
   scope ids aren't a build in the site's own folder's.
 
+- `ssqch diff` names the groups a move from a component framework always has (the old
+  generator's client app, Shiki's inline colors where ssqch writes classes) as expected in a move,
+  and its JSON gives such a group `known`.
+
 ### Fixed
 
 - A Hugo shortcode shown with `/* */` (`{{</* note */>}}`) on a line of its own was read as a
