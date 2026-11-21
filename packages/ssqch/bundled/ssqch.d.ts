@@ -112,6 +112,8 @@ declare module "ssqch" {
 		shortcodes?: "hugo" | false;
 		/** Links to `.md` files (`[Setup](setup/install.md#first)`) go to the page built from that file, with the `#` part: `true` writes its URL from the site's root (`/setup/install/#first`), `"relative"` from the page, as MkDocs does (`setup/install/#first`). A link to a file that isn't a page stays as written, for the link checker. Default `false`. */
 		sourceLinks?: boolean | "relative";
+		/** Another Markdown's ways, where they're CommonMark's otherwise. `"python-markdown"` (MkDocs'): a raw HTML block runs to its closing tag, blank lines and all; a list nests at four spaces (an item indented less is the next item); and the HTML is Python-Markdown's: `"` as it is in text, `<hr />`, `<br />`, `<img alt="" src="" />`, a tight item's nested list right after its text, nothing at the end. Default `false`. */
+		dialect?: "python-markdown" | false;
 		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter>; classes?: "prism" | "pygments" | "chroma" | Partial<Record<TokenKind, string>> };
 	}
 
@@ -206,7 +208,7 @@ declare module "ssqch" {
 		/** Shows up in error messages. */
 		name?: string;
 		/** Functions templates can call: `{{ slug(title) }}`. Async functions are awaited. */
-		filters?: Record<string, (...args: any[]) => unknown>;
+		filters?: Record<string, (this: FilterContext | undefined, ...args: any[]) => unknown>;
 		/** Data for every template. A value that's a function (sync or async) is called on each build, and its answer is that name's value. */
 		data?: Record<string, unknown>;
 		/** Custom collections, from the pages in collections. */
@@ -272,6 +274,10 @@ declare module "ssqch" {
 		trimAfterFrontMatter?: boolean;
 		/** Templates see Jekyll's `page` and `site`, so a Jekyll site's layouts and includes run as written: `page` has the page's front matter too (`page.title`; ssqch's own keys, like `url` and `date`, win) and `page.path` and `page.categories`; `site` has the site's own keys, `posts` (newest first), each collection by its tag (`site.articles`), `pages`, `html_pages`, `categories`, `tags`, `data` (the global data) and `time`; and their items read in Jekyll's shape (`post.title`, `post.content`, `post.excerpt`). Off by default: front matter is at the top level (`title`) and items keep it under `data`. */
 		jekyllTemplates?: boolean;
+		/** Templates see what MkDocs gives a theme's, so an MkDocs theme's Jinja templates (Material for MkDocs') run as written: `config` (mkdocs.yml, with the theme's `mkdocs_theme.yml` under its `theme`), `nav` (Sections, Pages and Links, with `active` on the page being rendered), `page` in a layout (MkDocs' page: `title`, `url` without its first `/`, `abs_url`, `canonical_url`, `edit_url`, `content`, `toc`, `meta`, `previous_page`, `next_page`, `ancestors`, `is_homepage`), `base_url`, `mkdocs_version` and `build_date_utc`, and the `url` and `script_tag` filters, relative to the page. A Markdown page's layout is `main.html` (or its front matter's `template`), the theme's `404.html` makes `/404.html`, and Jinja doesn't escape (`jinja: { autoescape }` says otherwise). `true` reads `mkdocs.yml`; a string names another file. Off by default. */
+		mkdocsTemplates?: boolean | string;
+		/** Jinja's settings for `.jinja` and `.j2` templates. `autoescape: false` prints values as they are, as MkDocs' Jinja does (`| e` still escapes); default `true`, or `false` with `mkdocsTemplates`. `.njk` always escapes. */
+		jinja?: { autoescape?: boolean };
 		/** `page.lastModified`: `"git"` for the last commit that changed the page's file (its modification time when it has uncommitted changes), or `"file"` for the modification time. Off by default. Needs the full history in CI (`fetch-depth: 0`). */
 		lastModified?: "git" | "file" | false;
 		/** The date of a page with no date of its own (in its data or its file name): `"git"` for the last commit that changed its file, the same in every checkout, or `"file"` (the default) for the file's modification time, which is when the checkout wrote it. Either way it sorts after the dated pages, by path. Needs the full history in CI (`fetch-depth: 0`). */
@@ -301,6 +307,15 @@ declare module "ssqch" {
 	export function markdown(text: string, options?: { inline?: boolean } | "inline"): string;
 	/** Read a JSON, YAML or TOML file (from the project root) into data: `readData("src/_data/sites/en.yml")`. */
 	export function readData(path: string): any;
+	/** HTML that templates print as it is, in every template language: a filter's answer that's markup, `return safe(`<b>${text}</b>`)`. Anything else gets the text as a string. Escape what goes in it yourself. */
+	export function safe(html: unknown): string;
+	/** `this` in a config filter written as a `function` (an arrow function has no `this`): the page being rendered. `undefined` outside a render (in a collection, a data file or a hook). */
+	export interface FilterContext {
+		/** The page being rendered, as its templates see `page`: `url`, `inputPath`, `outputPath`, `date`, and in a layout `headings` and `excerpt`. */
+		page: Record<string, any>;
+		/** Everything the template sees: front matter, the cascade, `collections`, and in a layout `content`. */
+		data: Record<string, any>;
+	}
 	/** A file that `files()` found. */
 	export interface FoundFile {
 		/** From the project root, with `/`: `"images/albums/v1/20011222_08.JPG"`. */

@@ -668,7 +668,7 @@ test("scout_lists_what_an_mkdocs_site_uses", () => {
 	});
 	const said = mkdocs(dir).byHand.map(([at, what]) => `${at}: ${what}`);
 	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
-	has("mkdocs.yml: theme: Material's templates are Jinja");
+	has("mkdocs.yml: theme: the Material theme's templates are Jinja, which ssqch runs as written with `mkdocsTemplates: true`");
 	has("mkdocs.yml: plugins: `search`: MkDocs writes `search/search_index.json`");
 	has("mkdocs.yml: plugins: `redirects`: `redirectsPlugin({ redirects })`");
 	has("mkdocs.yml: markdown_extensions: `admonition`: `!!!` admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft)");
@@ -683,7 +683,7 @@ test("scout_lists_what_an_mkdocs_site_uses", () => {
 	// The draft: the config with the pages' syntax on, and the nav as data, with URLs for paths.
 	const plan = mkdocs(dir);
 	const config = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
-	for (const part of ["dirs: { input: \"docs\", output: \"site\", includes: \"../_includes\", data: \"../_data\" },", "markdown: { admonitions: \"mkdocs\", tabs: \"mkdocs\", sourceLinks: \"relative\", headingIds: \"python-markdown\", footnotes: false },", "\"name\":\"Trail\"", "redirectsPlugin({ redirects: {} })", "sitemapPlugin({ url: \"https://example.com\" })"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	for (const part of ["dirs: { input: \"docs\", output: \"site\", includes: \"../_includes\", data: \"../_data\" },", "markdown: { admonitions: \"mkdocs\", tabs: \"mkdocs\", sourceLinks: \"relative\", headingIds: \"python-markdown\", dialect: \"python-markdown\", footnotes: false },", "\"name\":\"Trail\"", "redirectsPlugin({ redirects: {} })", "sitemapPlugin({ url: \"https://example.com\" })"]) assert.ok(config.includes(part), `${part}\n${config}`);
 	assert.equal(plan.newFiles.find(([file]) => file === "_data/nav.yml")![2], "# From mkdocs.yml's nav, by ssqch scout: titles as the nav gives them, or each page's first heading.\n- title: Home\n  url: /\n- title: Trails\n  children:\n    - title: cedar\n      url: /trails/cedar/\n    - title: Old Growth\n      url: /trails/old/\n");
 	assert.equal(plan.pages, 2);
 });

@@ -29,6 +29,8 @@ import { describeThrown, settle } from "./modules.ts";
 import { compareText, isDir, isFile, isInside, readFollowing, realPath, relative, shown, slashes, walkFiles } from "./paths.ts";
 import { commandLine } from "./command-line.ts";
 export { commandLine, toolPath } from "./command-line.ts";
+import { mkdocsGlobals, tocOf } from "./mkdocs.ts";
+import { currentRendering, renderingAs, safe } from "./rendering.ts";
 import { checkPages } from "./schema.ts";
 import type { CopyJob, Page, Tpl } from "./site.ts";
 import { Site, Timer, errorsTogether } from "./site.ts";
@@ -260,8 +262,20 @@ class Renderer {
 			data.site = this.jekyllSite();
 			data.page = jekyllPage(page.data, page.data.page, this.globalKeys());
 		}
+		// `mkdocsTemplates`: MkDocs' context. A page's own body keeps ssqch's `page`; its layouts get
+		// MkDocs' (see render), and MkDocs' 404 page (`mkdocsPage: false`) has none.
+		const mk = this.site.mkdocs;
+		if (mk) {
+			const error = page.data.mkdocsPage === false;
+			const context = this.site.mkdocsContext(error ? null : page);
+			Object.assign(data, mkdocsGlobals(mk), { nav: context.nav, base_url: context.base_url });
+			if (error) data.page = null;
+			else if (context.page) this.mkdocsPageOf.set(data, context.page);
+		}
 		return data;
 	}
+	/** Each page's MkDocs page, by the data its layouts render with. */
+	private mkdocsPageOf = new WeakMap<Data, Data>();
 
 	/** `jekyllTemplates`: Jekyll's `site`, made once a build, after the collections. */
 	private jekyllSiteData: Data | undefined;
@@ -277,6 +291,10 @@ class Renderer {
 	private body(page: Page): string | Promise<string> {
 		const { tpl } = page;
 		const data = this.data(page);
+		// The config's functions see this page as `this.page` (src/rendering.ts): one store for the
+		// page's render, whose data is the body's, then its layouts'.
+		const now = currentRendering();
+		if (now) now.data = data;
 		const ctx: RenderContext = { name: tpl.rel, inputPath: tpl.input, cacheKey: tpl.rel };
 		const run = (from: number, content: string): string | Promise<string> => {
 			for (let i = from; i < tpl.engines.length; i++) {
@@ -308,7 +326,10 @@ class Renderer {
 		let out: string | Promise<string>;
 		const before = markdownRendering(this.site.display(page.tpl.input));
 		try {
-			out = this.body(page);
+			// Another page's body, read now: its functions see that page, then this one's again.
+			const now = currentRendering();
+			const was = now?.data;
+			try { out = this.body(page); } finally { if (now && was) now.data = was; }
 		} catch (e) {
 			this.bodies.delete(page.index);
 			// That page's own turn reports this; the page that asked isn't a second error.
@@ -335,7 +356,7 @@ class Renderer {
 			// What a slow call was working on (src/profile.ts): pages render one at a time.
 			this.site.profile.at = shown(this.site.dirs.root, page.tpl.input);
 			try {
-				await this.render(page);
+				await renderingAs({ data: page.data }, () => this.render(page));
 			} catch (e) {
 				// A page that failed because a body it shows failed isn't reported: that body's page is.
 				if (this.borrowedFailure) continue;
@@ -386,6 +407,13 @@ class Renderer {
 			this.bodies.set(page.index, content);
 			try {
 				data.page = config.jekyllTemplates ? jekyllPage(page.data, site.pageWithBody(page), this.globalKeys()) : site.pageWithBody(page);
+				// MkDocs' page, with the page's HTML and its table of contents.
+				const mkdocsPage = this.mkdocsPageOf.get(data);
+				if (mkdocsPage) {
+					mkdocsPage.content = safe(content);
+					mkdocsPage.toc = tocOf((data.page as Data).headings as Array<{ level: number; id?: string; text: string }>);
+					data.page = mkdocsPage;
+				} else if (site.mkdocs && page.data.mkdocsPage === false) data.page = null;
 				for (const layout of layouts) {
 					const layoutStart = performance.now();
 					data.content = content;
@@ -394,6 +422,8 @@ class Renderer {
 						const ctx: RenderContext = { name: layout.name, inputPath: layout.path, cacheKey: `${layout.name}#${name}`, kind: "layout" };
 						const engine = site.engines.get(name);
 						try {
+							const now = currentRendering();
+							if (now) now.data = data;
 							const out = engine.render(text, data, ctx);
 							text = typeof out === "string" ? out : await asText(out, name, layout.name);
 						} catch (e) { throw context(e, `rendering layout ${layout.name} for ${tpl.rel}`); }

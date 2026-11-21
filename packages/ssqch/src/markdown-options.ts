@@ -54,6 +54,8 @@ export interface MarkdownOptions {
 	shortcodes: "hugo" | false;
 	/** Links to `.md` files go to the page built from that file: `true` from the site's root, `"relative"` from the page, as MkDocs writes them. */
 	sourceLinks: boolean | "relative";
+	/** `"python-markdown"`: what Python-Markdown (MkDocs') reads and writes differently from CommonMark, as it does: raw HTML blocks to their closing tag, lists nested at four spaces, `"` in text, XHTML's void tags. */
+	dialect: "python-markdown" | null;
 }
 
 export function defaultMarkdownOptions(): MarkdownOptions {
@@ -81,11 +83,12 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		tabs: false,
 		shortcodes: false,
 		sourceLinks: false,
+		dialect: null,
 	};
 }
 
 /** The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`). */
-export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "encodeUrls", "admonitions", "tabs", "shortcodes", "sourceLinks"] as const;
+export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "encodeUrls", "admonitions", "tabs", "shortcodes", "sourceLinks", "dialect"] as const;
 
 const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures", "encodeUrls"] as const;
 
@@ -142,6 +145,9 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 		} else if (key === "shortcodes") {
 			if (v !== false && v !== "hugo") bail(`markdown.shortcodes must be "hugo" or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.shortcodes = v;
+		} else if (key === "dialect") {
+			if (v !== "python-markdown" && v !== null && v !== false) bail(`markdown.dialect: unknown dialect ${typeof v === "string" ? `"${v}"` : typeOf(v)} (use "python-markdown", or false for CommonMark's)`);
+			options.dialect = v === "python-markdown" ? v : null;
 		} else if (key === "sourceLinks") {
 			if (typeof v !== "boolean" && v !== "relative") bail(`markdown.sourceLinks must be true, false or "relative", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.sourceLinks = v;

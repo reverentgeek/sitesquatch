@@ -17,7 +17,7 @@
 // (see "the cache of highlighted fences" below), so a first build doesn't load syntect's
 // grammars for fences it has highlighted before.
 import { kramdownHtml, restoreBlankLines, withKramdownIds } from "./kramdown-html.ts";
-import { hugoShortcodes, pythonMarkdownBlocks, sourceLinks } from "./markdown-dialects.ts";
+import { hugoShortcodes, pythonMarkdownAfter, pythonMarkdownBefore, pythonMarkdownBlocks, pythonMarkdownIds, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -215,12 +215,21 @@ class WasmMarkdown implements Markdown {
 	render(source: string, data: Data, _ctx: RenderContext): string | Promise<string> {
 		const file = page ?? pageOf(data);
 		this.#ready();
+		// Python-Markdown's raw HTML blocks are set aside first, before the other dialects write HTML.
+		const python = this.#options.dialect === "python-markdown" ? pythonMarkdownBefore(source) : undefined;
+		if (python) source = python.source;
 		source = this.#dialects(source);
 		const links = this.#options.sourceLinks;
-		const after = (html: string) => (links ? sourceLinks(html, data, links, this.#inputRoot) : html);
+		const ids = this.#options.sluggerFn === pythonMarkdownSlug;
+		const after = (html: string) => {
+			if (links) html = sourceLinks(html, data, links, this.#inputRoot);
+			if (ids) html = pythonMarkdownIds(html);
+			return python ? pythonMarkdownAfter(html, python.raw) : html;
+		};
+		const changes = Boolean(links || ids || python);
 		if (!this.#options.htmlMarkdown) {
 			const out = this.#page(source, data, file);
-			if (!links) return out;
+			if (!changes) return out;
 			return typeof out === "string" ? after(out) : out.then(after);
 		}
 		// The blank lines kept inside `<pre>` in `markdown="1"` blocks come back last.

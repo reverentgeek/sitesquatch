@@ -272,3 +272,94 @@ export function pythonMarkdownSlug(text: string): string {
 	const ascii = text.normalize("NFKD").replace(/[^\x00-\x7f]/g, "");
 	return ascii.replace(/[^\w\s-]/g, "").trim().toLowerCase().replace(/[-\s]+/g, "-");
 }
+
+// ---- Python-Markdown's own ways (`dialect: "python-markdown"`) ---------------------------------
+
+const BLOCK_TAGS = "address|article|aside|blockquote|details|dialog|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|ol|p|pre|section|table|ul|canvas|math|noscript|script|style|iframe|video";
+const RAW = "<!--ssqch-raw-";
+/** Holds a line's one space at its end through ssqch's Markdown, which drops it. */
+const KEPT_SPACE = "\uE000";
+
+/**
+ * What Python-Markdown (MkDocs') reads differently from CommonMark, before ssqch's Markdown
+ * reads the page, from the httpx move's 106-line pass:
+ * - a raw HTML block runs to its closing tag, blank lines and all (CommonMark's ends at the first
+ *   blank line, and Markdown after it is Markdown again): set aside as it's written, and put back
+ *   after the render by `pythonMarkdownAfter`;
+ * - a list nests at four spaces: a list item indented one to three spaces under another is the
+ *   next item of the same list;
+ * - a line of text that ends in one space keeps it (two are a line break in both).
+ */
+export function pythonMarkdownBefore(source: string): { source: string; raw: string[] } {
+	const lines = source.split("\n");
+	const raw: string[] = [];
+	const open = new RegExp(`^<(${BLOCK_TAGS})(?=[\\s>/])`, "i");
+	let inList = false;
+	outsideFences(lines, (line, i) => {
+		const blankBefore = i === 0 || lines[i - 1].trim() === "";
+		if (/^(?:[*+-]|\d+[.)])[ \t]/.test(line)) inList = true;
+		else if (line.trim() === "" && lines[i + 1] !== undefined && !/^[ \t]/.test(lines[i + 1])) inList = false;
+		else if (inList && /^ {1,3}(?:[*+-]|\d+[.)])[ \t]/.test(line)) lines[i] = line.trimStart();
+		if (/[^ \t] $/.test(lines[i]) && !/^\s*(?:#|\|)/.test(lines[i])) lines[i] += KEPT_SPACE;
+		if (!blankBefore) return;
+		const tag = open.exec(line);
+		const comment = line.startsWith("<!--");
+		// `markdown` is md_in_html's: its inside is Markdown.
+		if ((!tag && !comment) || /\smarkdown(?:=|[\s>])/.test(line)) return;
+		let j = i;
+		if (comment) while (j < lines.length - 1 && !lines[j].includes("-->")) j++;
+		else {
+			const name = tag![1].toLowerCase();
+			let depth = 0;
+			for (; j < lines.length; j++) {
+				depth += (lines[j].match(new RegExp(`<${name}(?=[\\s>/])`, "gi")) ?? []).length;
+				depth -= (lines[j].match(new RegExp(`</${name}\\s*>`, "gi")) ?? []).length;
+				if (depth <= 0) break;
+			}
+			if (j >= lines.length) j = lines.length - 1;
+		}
+		raw.push(lines.slice(i, j + 1).join("\n"));
+		lines.splice(i, j - i + 1, `${RAW}${raw.length - 1}-->`, "");
+		return i + 2;
+	});
+	return { source: lines.join("\n"), raw };
+}
+
+/**
+ * Python-Markdown's HTML, from ssqch's: the raw HTML blocks back as they were written, each
+ * with a blank line after it, as a codehilite block has; `"` as it is in text (CommonMark writes
+ * `&quot;`); XHTML's `<hr />`, `<br />` and `<img alt src />`; a tight item's nested list right
+ * after its text; and nothing at the end.
+ */
+export function pythonMarkdownAfter(html: string, raw: string[]): string {
+	let out = html.includes(KEPT_SPACE) ? html.replaceAll(KEPT_SPACE, "") : html;
+	out = out.replace(/(^|>)([^<]*)/g, (_m, gt: string, text: string) => gt + text.replaceAll("&quot;", "\""));
+	out = out.replace(/<(hr|br)>/g, "<$1 />");
+	out = out.replace(/<img((?:\s+(?:src|alt|title)="[^"]*")+)\s*\/?>/g, (_m, attrs: string) => {
+		const get = (name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(attrs)?.[1];
+		const title = get("title");
+		return `<img alt="${get("alt") ?? ""}" src="${get("src") ?? ""}"${title === undefined ? "" : ` title="${title}"`} />`;
+	});
+	out = out.replace(/^(<li>(?:(?!<p>|<\/li>).)*)\n(<[uo]l>)$/gm, "$1$2");
+	out = out.replace(/<\/code><\/pre><\/div>\n*/g, "</code></pre></div>\n\n");
+	if (raw.length) out = out.replace(new RegExp(`${RAW}(\\d+)-->\\n*`, "g"), (_m, n: string) => `${raw[Number(n)]}\n\n`);
+	return out.replace(/\s+$/, "");
+}
+
+/** toc's ids for a repeated heading: `example_1`, where ssqch writes `example-1`. Links to them in the page follow. */
+export function pythonMarkdownIds(html: string): string {
+	if (!/<h[1-6] id="[^"]*-\d+"/.test(html)) return html;
+	const seen = new Set<string>();
+	const renamed = new Map<string, string>();
+	html = html.replace(/<h([1-6]) id="([^"]+)"([^>]*)>([\s\S]*?)<\/h\1>/g, (whole, level: string, id: string, rest: string, inner: string) => {
+		const base = pythonMarkdownSlug(inner.replace(/<[^>]+>/g, "").replace(/&(?:amp|lt|gt|quot|#39);/g, ""));
+		const n = id.startsWith(`${base}-`) ? id.slice(base.length + 1) : "";
+		const own = base !== "" && seen.has(base) && /^\d+$/.test(n) ? `${base}_${n}` : id;
+		seen.add(own);
+		if (own === id) return whole;
+		renamed.set(id, own);
+		return `<h${level} id="${own}"${rest}>${inner}</h${level}>`;
+	});
+	for (const [from, to] of renamed) html = html.replaceAll(`href="#${from}"`, `href="#${to}"`);
+	return html;
+}

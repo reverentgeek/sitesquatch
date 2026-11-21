@@ -37,6 +37,24 @@ where that version matches.
 
 ### Added
 
+- `mkdocsTemplates: true`: templates see what MkDocs gives a theme's (`config`, with the theme's
+  `mkdocs_theme.yml` under it, `nav` with the page active, MkDocs' `page` with `content` and
+  `toc`, `base_url`, and the page-relative `url` and `script_tag` filters), each Markdown page
+  renders with the theme's `main.html`, its `404.html` makes `/404.html`, and Jinja doesn't
+  escape. Material for MkDocs' templates, copied from its package unchanged, built the httpx
+  docs with MkDocs' nav, table of contents, header and footer byte for byte; each fresh MkDocs
+  move had written this context itself, the httpx one in about 220 lines. `ssqch scout` drafts it for
+  an MkDocs site with a theme.
+- `jinja: { autoescape: false }` prints `.jinja` values as they are, as MkDocs' Jinja does.
+- `markdown: { dialect: "python-markdown" }`: raw HTML blocks run to their closing tag, lists
+  nest at four spaces, a line keeps its one space at the end, and the HTML is Python-Markdown's
+  (`"` in text, `<hr />`, `<br />`, `<img alt src />`, a tight item's nested list after its
+  text). `headingIds: "python-markdown"` gives a repeated heading toc's `_1`. With both, the
+  httpx docs' pages matched MkDocs' but for highlighted code and the pages Python writes.
+- `this.page` and `this.data` in a config filter written as a `function`: the page being
+  rendered and its data, in every template language, in a layout and an async filter too (four
+  fresh moves wanted them; MkDocs' `url` filter is relative to the page). And `safe(html)` from
+  `ssqch`, which every template language prints as it is.
 - `ssqch scout` loads a move's `ssqch.config.js`, so an `[option]` it sets already is done: off
   the list, counted in the summary (`3 done already`), and in `done` and `summary.done` in its
   JSON, with `configError` when the config doesn't load. In the httpx move, "what's left" listed

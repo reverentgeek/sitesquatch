@@ -31,6 +31,7 @@ import { readText } from "../data.ts";
 import { BuildError } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { describeThrown, watchSettle } from "../modules.ts";
+import { isSafe } from "../rendering.ts";
 import { compareText, isFile, relative, walkFiles } from "../paths.ts";
 import { closest } from "../suggest.ts";
 import * as voice from "../voice.ts";
@@ -277,6 +278,8 @@ function makeHelpers(functions: Record<string, unknown>): Helpers {
 			throw NEEDS_ASYNC;
 		}
 		if (value instanceof SafeValue) return text(value.value, undefined, false);
+		// `safe()` from ssqch, as the other template languages read it.
+		if (isSafe(value)) return String(value);
 		const out = values.jsString(value);
 		return escape ? escapeHtml(out) : out;
 	};

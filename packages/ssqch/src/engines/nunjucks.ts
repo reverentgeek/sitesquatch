@@ -20,7 +20,7 @@ import { describeThrown, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
 import * as voice from "../voice.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
-import { JINJA_ESCAPE, JinjaError, escapeJinja, installRuntime, jinjaFilters, jinjaGlobals, jinjaTests, markdownAttributes, njkString, pyString, siteArgs } from "./jinja.ts";
+import { JINJA_ESCAPE, JINJA_RAW, JinjaError, escapeJinja, installRuntime, jinjaFilters, jinjaGlobals, jinjaTests, markdownAttributes, njkString, pyString, siteArgs } from "./jinja.ts";
 
 /** `.njk` (Nunjucks' escaping and the config's functions as tags) or `.jinja` and `.j2`. */
 export type Flavor = "njk" | "jinja";
@@ -211,7 +211,10 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 	const njk = new nunjucks.Environment(loader, { autoescape: true, throwOnUndefined: env.strict, dev: true } as nunjucks.ConfigureOptions);
 	includeNames.set(njk, names);
 	const escape = flavor === "jinja" ? escapeJinja : (nunjucks.lib as unknown as { escape(s: string): string }).escape;
-	if (flavor === "jinja") (njk as unknown as { opts: { autoescape: unknown } }).opts.autoescape = JINJA_ESCAPE;
+	// `jinja: { autoescape: false }` (and `mkdocsTemplates`, as MkDocs' Jinja has it): Jinja's
+	// printing with nothing escaped.
+	const escapes = env.config.jinjaAutoescape ?? !env.config.mkdocsTemplates;
+	if (flavor === "jinja") (njk as unknown as { opts: { autoescape: unknown } }).opts.autoescape = escapes ? JINJA_ESCAPE : JINJA_RAW;
 	for (const [name, fn] of Object.entries(jinjaFilters(escape, flavor))) njk.addFilter(name, fn);
 	for (const [name, fn] of Object.entries(jinjaTests(njk))) (njk as unknown as { addTest(name: string, fn: unknown): void }).addTest(name, fn);
 	for (const [name, value] of Object.entries(jinjaGlobals())) njk.addGlobal(name, value);

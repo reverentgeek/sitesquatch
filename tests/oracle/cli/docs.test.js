@@ -151,6 +151,11 @@ test("docs_explain_what_migrations_asked_about", () => {
 		["From jekyll-seo-tag", "jekyll-seo-tag 2.8 writes"],
 		["sitemapPlugin", "jekyll-sitemap"],
 		["rssDate", "`rssDate` and `rssLastUpdatedDate`"],
+		// From the httpx move: what a filter sees, and MkDocs' templates and Markdown.
+		["this.page", "`this.page` is the page being rendered"],
+		["safe", "marks a function's answer as HTML"],
+		["mkdocsTemplates", "gives templates what MkDocs gives a theme's"],
+		["dialect", "`\"python-markdown\"` (MkDocs'): a raw HTML block runs to its closing tag"],
 	]) {
 		const a = answer(query);
 		assert.ok(a.found && a.section.text.includes(says), `${query}: ${JSON.stringify(a).slice(0, 400)}`);

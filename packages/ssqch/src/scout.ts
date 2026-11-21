@@ -27,6 +27,7 @@ import type { Data } from "./data.ts";
 import { red } from "./diagnostics.ts";
 import { TABLE } from "./equivalents.ts";
 import { jinjaFilters } from "./engines/jinja.ts";
+import { readMkdocsYaml as readMkdocsData } from "./mkdocs.ts";
 import { importFile } from "./modules.ts";
 import { baselineTime } from "./commands/baseline.ts";
 import { BUILTIN_FILTERS } from "./filters.ts";
@@ -2735,8 +2736,7 @@ export function hugo(dir: string): Plan {
 
 /** mkdocs.yml as plain YAML: MkDocs' tags (`!ENV`, `!!python/name:`) make plain readers fail. */
 function readMkdocsYaml(text: string): Data {
-	const plain = text.replace(/!!python\/name:(\S+)/g, '"$1"').replace(/!!python\/[\w/:.-]+/g, "").replace(/!ENV\s+\[([^\]]*)\]/g, (_m, args: string) => args.split(",").at(-1)!.trim()).replace(/!ENV\s+/g, "").replace(/!relative\s*/g, "");
-	try { return parseYaml(plain); } catch (e) { return fail(`mkdocs.yml: ${e instanceof Error ? e.message : String(e)}`); }
+	try { return readMkdocsData(text); } catch (e) { return fail(e instanceof Error ? e.message : String(e)); }
 }
 
 type Mapping = { say: string; status: NonNullable<Todo["status"]>; option?: string };
@@ -2781,7 +2781,7 @@ const MKDOCS_EXTENSIONS: Record<string, Mapping> = {
 	attr_list: { say: "attributes (`{#id .class}`), built in; on headings, ssqch keeps ids and classes", status: "ssqch" },
 	md_in_html: { say: "Markdown inside HTML with the bare `markdown` attribute: not in ssqch yet as written; `markdown: { htmlMarkdown: \"kramdown\" }` reads `markdown=\"1\"`", status: "not-yet" },
 	footnotes: { say: "footnotes, built in (their markup is a `footnotes` hook's)", status: "ssqch" },
-	toc: { say: "`markdown: { headingIds: \"python-markdown\" }` (in the draft): toc's default ids (a repeated heading gets `-1`, not `_1`; a `slugify` of the site's own needs a function). The table of contents is `page.headings` and the `toc` filter", status: "option", option: "markdown: { headingIds: \"python-markdown\" }" },
+	toc: { say: "`markdown: { headingIds: \"python-markdown\" }` (in the draft): toc's default ids (a repeated heading's `_1` too; a `slugify` of the site's own needs a function). The table of contents is `page.headings` and the `toc` filter", status: "option", option: "markdown: { headingIds: \"python-markdown\" }" },
 	def_list: { say: "`markdown: { definitionLists: true }` (in the draft)", status: "option", option: "markdown: { definitionLists: true }" },
 	abbr: { say: "abbreviations: not in ssqch yet", status: "not-yet" },
 	tables: { say: "tables, built in", status: "ssqch" },
@@ -2817,7 +2817,7 @@ export function mkdocs(dir: string): Plan {
 	// MkDocs turns on `search` when the config names no plugins.
 	const plugins = config.plugins === undefined ? ["search"] : named(config.plugins);
 	const theme = isPlainObject(config.theme) ? config.theme.name : config.theme;
-	if (typeof theme === "string") plan.byHand.push([`${configFile}: theme`, theme === "material" ? "Material's templates are Jinja, which ssqch runs as written, but they read the context MkDocs gives them, which isn't in ssqch yet: `config` (mkdocs.yml), `nav` and `page` (`title`, `toc`, `content`, `meta`, `previous_page`, `next_page`, `canonical_url`, `is_homepage`), `base_url`, and the `url` filter, which makes a URL relative to the page. Give them those as global data, `computed` data and filters in ssqch.config.js; the fresh MkDocs moves ran Material's templates unchanged with about 220 lines of it" : `the ${theme} theme's templates are Jinja, which ssqch runs; they need the context MkDocs gives them (\`config\`, \`nav\`, \`page\`)`, { code: "mkdocs-theme", status: theme === "material" ? "not-yet" : "site" }]);
+	if (typeof theme === "string") plan.byHand.push([`${configFile}: theme`, `the ${theme === "material" ? "Material" : theme} theme's templates are Jinja, which ssqch runs as written with \`mkdocsTemplates: true\` (in the draft, to turn on once they're there): it gives them MkDocs' context (\`config\`, \`nav\`, \`page\`, \`base_url\`, the \`url\` filter). Copy the theme's templates from its Python package into an ssqch theme first (\`ssqch docs --from mkdocs\`, "The theme")`, { code: "mkdocs-theme", status: "option", option: "mkdocsTemplates: true", docs: "mkdocsTemplates" }]);
 	for (const name of plugins) {
 		const known = MKDOCS_PLUGINS[name.replace(/^material\//, "")];
 		plan.byHand.push([`${configFile}: plugins`, `\`${name}\`: ${known?.say ?? "not in ssqch yet: port it as a plugin (`ssqch docs plugins`)"}`, { code: "mkdocs-plugin", status: known?.status ?? "site" }]);
@@ -2862,7 +2862,7 @@ export function mkdocs(dir: string): Plan {
 	const site: Data = {};
 	for (const [from, to] of [["site_name", "name"], ["site_url", "url"], ["site_description", "description"], ["site_author", "author"], ["repo_url", "repo_url"], ["edit_uri", "edit_uri"], ["copyright", "copyright"]] as const) if (typeof config[from] === "string") site[to] = config[from];
 	if (isPlainObject(config.extra)) site.extra = config.extra;
-	const markdown = ["admonitions: \"mkdocs\"", "tabs: \"mkdocs\"", "sourceLinks: \"relative\"", "headingIds: \"python-markdown\""];
+	const markdown = ["admonitions: \"mkdocs\"", "tabs: \"mkdocs\"", "sourceLinks: \"relative\"", "headingIds: \"python-markdown\"", "dialect: \"python-markdown\""];
 	if (extensions.some((e) => e === "pymdownx.highlight" || e === "codehilite")) markdown.push("highlight: { classes: \"pygments\" }");
 	if (extensions.includes("def_list")) markdown.push("definitionLists: true");
 	if (extensions.includes("smarty")) markdown.push("smartPunctuation: true");
@@ -2883,6 +2883,7 @@ export function mkdocs(dir: string): Plan {
 	out += `  dirs: { input: ${JSON.stringify(docsDir)}, output: ${JSON.stringify(siteDir)}, includes: ${JSON.stringify(customDir ? path.posix.relative(docsDir, customDir) : "../_includes")}, data: "../_data" },\n`;
 	if (basePath(url) !== undefined) out += `  // site_url's path: the site is served under it.\n  base: ${JSON.stringify(basePath(url))},\n`;
 	out += "  // MkDocs doesn't run template code in pages; its blocks and links read as it writes them.\n  markdownEngine: false,\n";
+	if (typeof theme === "string") out += `  // The ${theme} theme's templates as they are: copy them into theme/ (\`ssqch docs --from mkdocs\`,\n  // "The theme"), then turn these on.\n  // theme: "theme", mkdocsTemplates: true,\n`;
 	out += `  markdown: { ${markdown.join(", ")} },\n`;
 	// MkDocs copies every file in the docs folder that isn't Markdown, at its own path.
 	const copied = walk(path.join(dir, docsDir), (name) => name.startsWith(".") || name === "node_modules", false).filter((e) => e.isFile && !/\.md$/i.test(e.name) && !(customDir && path.join(dir, docsDir, e.rel).startsWith(path.join(dir, customDir) + path.sep)));
@@ -2901,7 +2902,7 @@ export function mkdocs(dir: string): Plan {
 	const highlighter = extensions.includes("pymdownx.highlight") ? "pymdownx.highlight" : extensions.includes("codehilite") ? "codehilite" : undefined;
 	if (highlighter) {
 		const open = highlighter === "codehilite" ? "<div class=\"codehilite\">" : "<div class=\"{% if fence.lang %}language-{{ fence.lang }} {% endif %}highlight\">";
-		plan.newFiles.push([path.posix.join(customDir ?? "_includes", "hooks/fence.jinja"), `${highlighter}'s wrapper around highlighted code`, `{# ${highlighter}'s markup around a code block, by ssqch scout: the theme's CSS reads it. #}\n${open}<pre><span></span><code>{% if fence.highlighted %}{{ fence.highlighted | safe }}{% else %}{{ fence.code }}{% endif %}</code></pre></div>\n`]);
+		plan.newFiles.push([path.posix.join(customDir ?? "_includes", "hooks/fence.jinja"), `${highlighter}'s wrapper around highlighted code`, `{# ${highlighter}'s markup around a code block, by ssqch scout: the theme's CSS reads it. #}\n${open}<pre><span></span><code>{% if fence.highlighted %}{{ fence.highlighted | safe }}{% else %}{{ fence.code | e }}{% endif %}</code></pre></div>\n`]);
 	}
 	if (Array.isArray(config.nav)) {
 		const titleOf = (file: string) => /^#[ \t]+(.+?)[ \t#]*$/m.exec(readUtf8(path.join(dir, docsDir, file)) ?? "")?.[1] ?? file.replace(/\.md$/, "").split("/").pop()!;

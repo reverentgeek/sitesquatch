@@ -7,7 +7,7 @@ import { starterEngines } from "./init.ts";
 
 /** The names each module exports, in the order `ssqch.d.ts` declares them. `capabilities.test.ts` checks each is a function the module has. */
 export const MODULE_EXPORTS: ReadonlyArray<readonly [name: string, exports: readonly string[]]> = [
-	["ssqch", ["defineConfig", "markdown", "readData", "files", "slugify", "slugger"]],
+	["ssqch", ["defineConfig", "markdown", "readData", "files", "slugify", "slugger", "safe"]],
 	["ssqch/image", ["imagePlugin", "image", "imageUrl"]],
 	["ssqch/rss", ["rssPlugin", "getNewestCollectionItemDate", "dateToRfc3339", "dateToRfc822", "absoluteUrl", "htmlToAbsoluteUrls", "feedHtml"]],
 	["ssqch/assets", ["assetsPlugin"]],

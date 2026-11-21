@@ -7,6 +7,7 @@ import { loadStaticDataFile } from "./data.ts";
 import { globBase, globProblem, globToRegExp, isGlob } from "./glob.ts";
 import { imageSize } from "./image/header.ts";
 import { markdownEngine } from "./engines/markdown.ts";
+import { safe } from "./rendering.ts";
 import { defaultMarkdownOptions } from "./markdown-options.ts";
 import { slugify as slug } from "./slug.ts";
 
@@ -187,4 +188,5 @@ export function slugger(options: unknown = {}): (text: unknown) => string {
 	};
 }
 
-export default { defineConfig, markdown, readData, files, slugify, slugger };
+export { safe } from "./rendering.ts";
+export default { defineConfig, markdown, readData, files, slugify, slugger, safe };

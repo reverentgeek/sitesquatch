@@ -11,6 +11,10 @@ import * as api from "./api.ts";
 import type { Config, Dirs, Filter } from "./config.ts";
 import { dirsOf } from "./config.ts";
 import { excerpt, headings } from "./content.ts";
+import { bundledPath } from "./bundled.ts";
+import { buildNav, loadMkdocs, mkdocsFilters, relativeUrl, sitePath } from "./mkdocs.ts";
+import type { MkDocs, NavPage } from "./mkdocs.ts";
+import { withPage } from "./rendering.ts";
 import type { Data } from "./data.ts";
 import { NOT_DATA, decodeText, frontMatterSettings, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, sourceDateEpoch, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
 import type { Diagnostic } from "./diagnostics.ts";
@@ -126,6 +130,8 @@ export class Site {
 	markdown!: Markdown;
 	engines = new Engines();
 	themeIncludes: string[] = [];
+	/** mkdocs.yml as MkDocs reads it, with `mkdocsTemplates`. */
+	mkdocs: MkDocs | undefined;
 	global: Data = {};
 	/** The template files, in the order pages are made. */
 	files: string[] = [];
@@ -246,6 +252,12 @@ export class Site {
 			if (this.profile.times(own)) globals.set(name, this.profile.wrap("filters", name, fn, own, config.definedIn.get(`filters.${name}`)));
 		}
 		this.themeIncludes = config.themes.map((theme) => path.join(theme, "_includes"));
+		// MkDocs' context and filters for its theme's templates (src/mkdocs.ts). A filter of the
+		// site's own with the same name wins.
+		if (config.mkdocsTemplates !== null) {
+			this.mkdocs = loadMkdocs(dirs.root, config.mkdocsTemplates, [dirs.includes, ...this.themeIncludes]);
+			for (const [name, fn] of Object.entries(mkdocsFilters(this.mkdocs))) if (!config.filters.has(name)) globals.set(name, withPage(fn));
+		}
 		const env: EngineEnv = { config, dirs, includeDirs: [dirs.includes, ...this.themeIncludes], globals, pipeFilters, strict: config.strict };
 		const byName = this.engines.byName;
 		byName.set("md", this.markdown);
@@ -497,6 +509,8 @@ export class Site {
 		const pages: string[] = [], copies: CopyJob[] = [];
 		const taken = new Set<string>();
 		for (const theme of config.themes) {
+			// mkdocsTemplates' own 404 page renders the theme's 404.html: none, no page.
+			if (theme === bundledPath("mkdocs") && ![dirs.includes, ...this.themeIncludes].some((dir) => fs.existsSync(path.join(dir, "404.html")))) continue;
 			const lost = (problem: { path: string; loop?: string }): never => bail(problem.loop !== undefined ? `File system loop found: ${problem.path} points to an ancestor ${problem.loop}` : `IO error for operation on ${problem.path}: No such file or directory (os error 2)`);
 			const walk = (dir: string, depth: number, above: string[]) => {
 				for (const entry of readFollowing(dir, above, lost).sort((a, b) => comparePaths(a.name, b.name))) {
@@ -711,7 +725,10 @@ export class Site {
 			// and `null`, means no layout.
 			// A `layout` in global data (the config's `data`, `_data/layout.*`) is every page's, below
 			// directory data and front matter, as any other global value is.
-			const chain = this.layoutChain(Object.hasOwn(own, "layout") ? own.layout : this.global.layout);
+			// With `mkdocsTemplates`, a Markdown page's layout is the theme's `main.html`, or the one its
+			// front matter's `template` names, as MkDocs renders it.
+			const mkdocsLayout = config.mkdocsTemplates !== null && /\.(?:md|markdown)$/i.test(file) ? (typeof own.template === "string" ? own.template : "main.html") : undefined;
+			const chain = this.layoutChain(Object.hasOwn(own, "layout") ? own.layout : this.global.layout ?? mkdocsLayout);
 			let data = this.global;
 			let layoutLayers = 0;
 			for (const layout of [...chain].reverse()) {
@@ -991,6 +1008,29 @@ export class Site {
 			get content() { return site.contentOf(page); },
 		};
 		return page.item = item;
+	}
+
+	private mkdocsPages: NavPage[] | undefined;
+	/**
+	 * With `mkdocsTemplates`: MkDocs' `nav` for `page` (null for the 404 page), its MkDocs page,
+	 * and its `base_url`. The site's Markdown pages in the input folder are the nav's pages.
+	 */
+	mkdocsContext(page: Page | null): { nav: Data; page: Data | null; base_url: string } {
+		const mk = this.mkdocs!;
+		const { dirs } = this;
+		const isDoc = (p: Page) => p.url !== null && /\.(?:md|markdown)$/i.test(p.tpl.input) && isInside(dirs.input, p.tpl.input);
+		this.mkdocsPages ??= this.pages.filter(isDoc).map((p): NavPage => {
+			let heading: string | null | undefined;
+			return {
+				src: relative(dirs.input, p.tpl.input),
+				url: p.url!,
+				title: typeof p.data.title === "string" ? p.data.title : null,
+				meta: Object.fromEntries(p.tpl.frontKeys.map((k) => [k, p.data[k]])),
+				firstHeading: () => (heading !== undefined ? heading : (heading = /^#[ \t]+(.+?)[ \t#]*$/m.exec(p.tpl.body)?.[1] ?? null)),
+			};
+		});
+		const { nav, page: own } = buildNav(mk, this.mkdocsPages, page && isDoc(page) ? relative(dirs.input, page.tpl.input) : null);
+		return { nav, page: own, base_url: own ? relativeUrl(".", String(own.url)) : sitePath(mk) };
 	}
 
 	/** `page` as layouts and collections see it: with `headings` and `excerpt` from the rendered body, read when they're asked for. */

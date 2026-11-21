@@ -647,3 +647,56 @@ test("jekylls_tags_dates_and_rubys_truncate", () => {
 	r = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(!r.ok && r.log.includes("{% link nope.md %}: no page at nope.md"), r.log);
 });
+
+// Added in 0.11: a config filter written as a `function` gets the page being rendered as
+// `this.page` (and its data as `this.data`), and `safe()` marks its answer as HTML, in every
+// template language. Four fresh moves wanted both (MkDocs' page-relative `url` filter, among them).
+test("filters_see_the_page_and_can_answer_with_html", () => {
+	const dir = tempDir("this-page");
+	write(dir, {
+		"ssqch.config.js": "import { safe } from \"ssqch\";\nexport default {\n  templateFormats: [\"jinja\", \"njk\", \"liquid\", \"edge\", \"hbs\", \"ejs\", \"md\"],\n  filters: {\n    here: function (x) { return `${x}@${this.page.url}:${this.data.title}`; },\n    bold: (t) => safe(`<b>${t}</b>`),\n    later: async function (x) { await new Promise((r) => setTimeout(r, 5)); return `${x}~${this.page.url}`; },\n  },\n};\n",
+		"_includes/lay.jinja": "{{ \"L\" | here }}|{{ content }}",
+		"j.jinja": "---\ntitle: J\n---\n{{ \"a\" | here }} {{ \"b\" | bold }} {{ \"c\" | later }}",
+		"n.njk": "---\ntitle: N\n---\n{{ \"a\" | here }} {{ \"b\" | bold }} {{ \"c\" | later }}",
+		"l.liquid": "---\ntitle: L\n---\n{{ \"a\" | here }} {{ \"b\" | bold }} {{ \"c\" | later }}",
+		"e.edge": "---\ntitle: E\n---\n{{ here(\"a\") }} {{ bold(\"b\") }} {{ await later(\"c\") }}",
+		"h.hbs": "---\ntitle: H\n---\n{{here \"a\"}} {{bold \"b\"}}",
+		"x.ejs": "---\ntitle: X\n---\n<%= here(\"a\") %> <%= bold(\"b\") %> <%= await later(\"c\") %>",
+		"m.md": "---\ntitle: M\nlayout: lay.jinja\n---\nbody\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	const out = (p) => read(dir, `_site/${p}/index.html`);
+	assert.equal(out("j"), "a@/j/:J <b>b</b> c~/j/");
+	assert.equal(out("n"), "a@/n/:N <b>b</b> c~/n/");
+	assert.equal(out("l"), "a@/l/:L <b>b</b> c~/l/");
+	assert.equal(out("e"), "a@/e/:E <b>b</b> c~/e/");
+	assert.equal(out("h"), "a@/h/:H <b>b</b>");
+	assert.equal(out("x"), "a@/x/:X <b>b</b> c~/x/");
+	// In a layout, it's the page the layout is rendering.
+	assert.equal(out("m"), "L@/m/:M|<p>body</p>\n");
+});
+
+// Added in 0.11: `mkdocsTemplates: true` gives templates MkDocs' context, so an MkDocs theme's
+// templates (Material's) run as written: every fresh MkDocs move wrote it by hand (~220 lines).
+test("mkdocs_templates_see_mkdocs_context", () => {
+	const dir = tempDir("mkdocs-templates");
+	write(dir, {
+		"mkdocs.yml": "site_name: Trail & Co\nsite_url: https://example.com/\nnav:\n  - Home: index.md\n  - Trails:\n    - trails/cedar.md\n",
+		"ssqch.config.js": "export default { dirs: { input: \"docs\", output: \"site\" }, theme: \"theme\", mkdocsTemplates: true, markdownEngine: false };\n",
+		"theme/_includes/main.html": "{% extends \"base.html\" %}",
+		"theme/_includes/base.html": "<title>{{ page.title }} - {{ config.site_name }}</title><link href=\"{{ 'assets/app.css' | url }}\">{% for item in nav %}[{{ item.title }}{% if item.active %}*{% endif %}]{% endfor %}<b>{{ base_url }}</b>{% for t in page.toc %}({{ t.title }}{% for c in t.children %}/{{ c.title }}{% endfor %}){% endfor %}<main>{{ page.content }}</main>{% if page.next_page %}<next>{{ page.next_page.url | url }}</next>{% endif %}",
+		"theme/_includes/404.html": "<h1>Lost{% if page %} in {{ page.title }}{% endif %}</h1><link href=\"{{ 'assets/app.css' | url }}\">",
+		"theme/assets/app.css": "body { color: pine }\n",
+		"docs/index.md": "# Camp\n\n## Water\n",
+		"docs/trails/cedar.md": "# Cedar\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	// Nothing escaped, as in MkDocs' Jinja; URLs from the page; the nav with the page active.
+	assert.equal(read(dir, "site/index.html"), "<title>Home - Trail & Co</title><link href=\"assets/app.css\">[Home*][Trails]<b>.</b>(Camp/Water)<main><h1 id=\"camp\">Camp</h1>\n<h2 id=\"water\">Water</h2>\n</main><next>trails/cedar/</next>");
+	assert.equal(read(dir, "site/trails/cedar/index.html"), "<title>Cedar - Trail & Co</title><link href=\"../../assets/app.css\">[Home][Trails*]<b>../..</b>(Cedar)<main><h1 id=\"cedar\">Cedar</h1>\n</main>");
+	// MkDocs' 404 page, from the theme's 404.html, with no page and the site's path.
+	assert.equal(read(dir, "site/404.html"), "<h1>Lost</h1><link href=\"/assets/app.css\">");
+	assert.equal(read(dir, "site/assets/app.css"), "body { color: pine }\n");
+});

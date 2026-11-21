@@ -332,3 +332,14 @@ test("an_error_after_an_include_or_in_a_layout_names_its_own_file_and_line", asy
 		assert.match(await error(() => e.render("a\nb\n{% if 'x' in nothing %}y{% endif %}", {}, ctx())), /^page\.njk:3: /);
 	}
 });
+
+test("jinja_autoescape_false_prints_as_mkdocs_jinja_does", () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-raw-"));
+	const make = (config: Record<string, unknown>, flavor: Flavor = "jinja") => nunjucksEngine({ config: { root, ...config }, dirs: {}, includeDirs: [root], globals: new Map(), pipeFilters: new Map(), strict: false } as unknown as EngineEnv, flavor);
+	const src = `{{ x }}|{{ x | e }}|{{ x ~ "!" }}|{{ flag }}`;
+	assert.equal(make({ jinjaAutoescape: false }).render(src, { x: "<b>", flag: true }, ctx("page.jinja")), "<b>|&lt;b&gt;|<b>!|True");
+	// mkdocsTemplates turns it off, unless jinja.autoescape says otherwise; `.njk` always escapes.
+	assert.equal(make({ mkdocsTemplates: "mkdocs.yml" }).render(src, { x: "<b>", flag: true }, ctx("page.jinja")), "<b>|&lt;b&gt;|<b>!|True");
+	assert.equal(make({ mkdocsTemplates: "mkdocs.yml", jinjaAutoescape: true }).render(src, { x: "<b>", flag: true }, ctx("page.jinja")), "&lt;b&gt;|&lt;b&gt;|&lt;b&gt;!|True");
+	assert.equal(make({ jinjaAutoescape: false }, "njk").render("{{ x }}", { x: "<b>" }, ctx()), "&lt;b&gt;");
+});

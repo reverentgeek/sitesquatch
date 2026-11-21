@@ -31,6 +31,9 @@ const safe = (text: string) => new SafeString(text);
 
 /** The `autoescape` a `.jinja` environment has: escaping as Jinja does, which leaves `\` alone (nunjucks writes `&#92;`). */
 export const JINJA_ESCAPE = Object.freeze({ jinja: true });
+/** The `autoescape` of a `.jinja` environment with `jinja: { autoescape: false }`: Jinja's printing, and nothing escaped, as MkDocs' Jinja has it. */
+export const JINJA_RAW = Object.freeze({ jinja: true, raw: true });
+const isJinja = (autoescape: unknown) => autoescape === JINJA_ESCAPE || autoescape === JINJA_RAW;
 
 /** An error in a template that ssqch's own filters report as 0.7 did (`invalid operation: not a date: nope`): its message is the whole story. */
 export class JinjaError extends Error {}
@@ -406,8 +409,8 @@ export function installRuntime(): void {
 	runtime.suppressValue = function suppressValue(value: unknown, autoescape: unknown) {
 		if (value === undefined || value === null) return "";
 		if (value instanceof SafeString) return value;
-		const text = typeof value === "string" ? value : autoescape === JINJA_ESCAPE ? pyString(value) : njkString(value);
-		if (!autoescape) return text;
+		const text = typeof value === "string" ? value : isJinja(autoescape) ? pyString(value) : njkString(value);
+		if (!autoescape || autoescape === JINJA_RAW) return text;
 		return autoescape === JINJA_ESCAPE ? escapeJinja(text) : lib.escape(text);
 	};
 
@@ -429,8 +432,8 @@ export function installRuntime(): void {
 	// `~` joins values as they'd print (an undefined value is nothing, `none` is `None`). With a
 	// safe side, the result is safe and the other side is escaped, as in Jinja.
 	runtime.concat = function concat(a: unknown, b: unknown, autoescape: unknown) {
-		const str = autoescape === JINJA_ESCAPE ? pyString : njkString;
-		if (!(a instanceof SafeString) && !(b instanceof SafeString)) return str(a) + str(b);
+		const str = isJinja(autoescape) ? pyString : njkString;
+		if (autoescape === JINJA_RAW || (!(a instanceof SafeString) && !(b instanceof SafeString))) return str(a) + str(b);
 		const part = (v: unknown) => (v instanceof SafeString ? String(v) : autoescape === JINJA_ESCAPE ? escapeJinja(str(v)) : lib.escape(str(v)));
 		return safe(part(a) + part(b));
 	};

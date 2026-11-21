@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hugoShortcodes, pythonMarkdownBlocks, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
+import { hugoShortcodes, pythonMarkdownAfter, pythonMarkdownBefore, pythonMarkdownBlocks, pythonMarkdownIds, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
 
 const both = { admonitions: true, tabs: true };
 
@@ -53,4 +53,26 @@ test("python_markdown_slugs_as_tocs_default", () => {
 	assert.equal(pythonMarkdownSlug("What's new? (2026)"), "whats-new-2026");
 	assert.equal(pythonMarkdownSlug("a -- b"), "a-b");
 	assert.equal(pythonMarkdownSlug("中文"), "");
+});
+
+test("python_markdown_reads_raw_html_and_lists_as_it_does", () => {
+	// A raw HTML block runs to its closing tag, blank lines and all, and comes back as written.
+	const { source, raw } = pythonMarkdownBefore("# Camp\n\n<div class=\"x\">\n\n*not markdown*\n\n</div>\nAfter\n");
+	assert.equal(source, "# Camp\n\n<!--ssqch-raw-0-->\n\nAfter\n");
+	assert.deepEqual(raw, ["<div class=\"x\">\n\n*not markdown*\n\n</div>"]);
+	assert.equal(pythonMarkdownAfter("<h1>Camp</h1>\n<!--ssqch-raw-0-->\n<p>After</p>\n", raw), "<h1>Camp</h1>\n<div class=\"x\">\n\n*not markdown*\n\n</div>\n\n<p>After</p>");
+	// `markdown` attributes are md_in_html's, and fences are left alone.
+	assert.deepEqual(pythonMarkdownBefore("<div markdown>\n\n*a*\n\n</div>\n").raw, []);
+	assert.deepEqual(pythonMarkdownBefore("```\n<div>\n\nx\n```\n").raw, []);
+	// Lists nest at four spaces: two is the next item.
+	assert.equal(pythonMarkdownBefore("* a\n  * b\n    * c\n").source, "* a\n* b\n    * c\n");
+	// One space at the end of a line stays.
+	assert.equal(pythonMarkdownAfter(pythonMarkdownBefore("mounts. \nnext").source.replace("\n", "\n"), []).endsWith(" \nnext"), true);
+});
+
+test("python_markdown_writes_html_as_it_does", () => {
+	assert.equal(pythonMarkdownAfter("<p>Say &quot;hi&quot; <a title=\"&quot;x&quot;\">a</a></p>\n<hr>\n<p>a<br>\n<img src=\"/a.png\" alt=\"A\"></p>\n", []), "<p>Say \"hi\" <a title=\"&quot;x&quot;\">a</a></p>\n<hr />\n<p>a<br />\n<img alt=\"A\" src=\"/a.png\" /></p>");
+	assert.equal(pythonMarkdownAfter("<ul>\n<li>a\n<ul>\n<li>b</li>\n</ul>\n</li>\n</ul>\n", []), "<ul>\n<li>a<ul>\n<li>b</li>\n</ul>\n</li>\n</ul>");
+	// toc's ids for a repeated heading, and the page's links to them.
+	assert.equal(pythonMarkdownIds("<h2 id=\"example\">Example</h2><h2 id=\"example-1\">Example</h2><a href=\"#example-1\">x</a><h2 id=\"step-1\">Step 1</h2>"), "<h2 id=\"example\">Example</h2><h2 id=\"example_1\">Example</h2><a href=\"#example_1\">x</a><h2 id=\"step-1\">Step 1</h2>");
 });
