@@ -14,6 +14,7 @@
 import path from "node:path";
 import { BUILTINS } from "../config.ts";
 import type { Config, GeneratedFile, PageSummary } from "../config.ts";
+import { decodeEntities } from "../content.ts";
 import { bail } from "../diagnostics.ts";
 import { globSet } from "../glob.ts";
 import { htmlToMarkdown, rewriteLinks } from "../html-markdown.ts";
@@ -26,11 +27,14 @@ export function llmsPlugin(options: Record<string, unknown> = {}) {
 	return { name: "ssqch/llms", builtin: "ssqch/llms", options };
 }
 
-/** Where a page's Markdown copy goes: `/guide/intro.html` and `/guide/intro/` are `/guide/intro.md`, `/guide/` (an index page) is `/guide.md`, and `/` is `/index.md`. */
+/**
+ * Where a page's Markdown copy goes, as llms.txt's v2 proposal (2026) puts it: a URL with a file
+ * name has its extension replaced (`/guide/intro.html` is `/guide/intro.md`), and one without
+ * gets `index.md` (`/guide/intro/` is `/guide/intro/index.md`, `/` is `/index.md`).
+ */
 export function copyUrl(url: string): string {
-	if (url === "/") return "/index.md";
-	const bare = url.replace(/\/index\.html$/, "/").replace(/\.html$/, "").replace(/\/$/, "");
-	return `${bare}.md`;
+	if (url.endsWith("/")) return `${url}index.md`;
+	return url.replace(/\.html?$/, "") + ".md";
 }
 
 /** A section's name from a page's first folder: `/guide/intro.html` is "Guide", `/api-reference/` is "Api reference", the top's pages are "Pages". */
@@ -111,9 +115,15 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 	const sources = new Map<string, string>();
 	config.markdownSources = sources;
 	const converted = new Map<string, string>();
+	// A template page's `<title>`, for its name in llms.txt when it has no title or heading of its own.
+	const titles = new Map<string, string>();
 	config.htmlTransforms.push(["llms", (html, page) => {
 		if (copies || full) {
-			if (!sources.has(page.url) && page.outputPath.endsWith(".html") && listedUrl(page.url)) converted.set(page.url, htmlToMarkdown(html));
+			if (page.outputPath.endsWith(".html") && listedUrl(page.url)) {
+				if (!sources.has(page.url)) converted.set(page.url, htmlToMarkdown(html));
+				const title = /<title[^>]*>([^<]*)<\/title>/i.exec(html)?.[1];
+				if (title) titles.set(page.url, decodeEntities(title).replace(/\s+/g, " ").trim());
+			}
 		}
 		return html;
 	}]);
@@ -162,7 +172,7 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 		for (const p of chosen) {
 			const source = sources.get(p.url);
 			let body = source !== undefined ? pageText(source) : converted.get(p.url) ?? "";
-			const pageTitle = oneLine(p.data.title) || /^#\s+(.+)$/m.exec(body)?.[1]?.trim() || p.url;
+			const pageTitle = oneLine(p.data.title) || /^#\s+(.+)$/m.exec(body)?.[1]?.trim() || titles.get(p.url) || p.url;
 			// A page whose title is only in its front matter (or its layout) starts with it, as the
 			// page shows it. Only a heading the page starts with counts: a `#` further down can be a
 			// shell comment in a code block.
@@ -178,6 +188,7 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 		}
 		sources.clear();
 		converted.clear();
+		titles.clear();
 		// The site's title: the option, or `site.title` in its data (`_data/site.json`), or the home page's.
 		const site = pages[0]?.data.site;
 		const siteTitle = title ?? (oneLine(site !== null && typeof site === "object" ? (site as Record<string, unknown>).title : undefined) || entries.find((e) => e.url === "/")?.title || "Pages");

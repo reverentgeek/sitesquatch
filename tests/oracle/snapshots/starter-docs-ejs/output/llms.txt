@@ -1,0 +1,12 @@
+# Squatch Docs
+
+## Pages
+
+- [Squatch Docs](https://example.com/index.md)
+
+## Docs
+
+- [Introduction](https://example.com/docs/index.md): What's in this starter, and where things live.
+- [Deploying](https://example.com/docs/guides/deploying/index.md): Publish the built site on any static host.
+- [Writing pages](https://example.com/docs/guides/writing/index.md): Notes, tabs, code, footnotes and the rest of what a page can use.
+- [Installation](https://example.com/docs/install/index.md): Install ssqch and run this site.

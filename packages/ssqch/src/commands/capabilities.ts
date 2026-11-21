@@ -18,6 +18,7 @@ export const MODULE_EXPORTS: ReadonlyArray<readonly [name: string, exports: read
 	["ssqch/elements", ["elementsPlugin"]],
 	["ssqch/minify", ["minifyPlugin", "minify", "minifyCss"]],
 	["ssqch/llms", ["llmsPlugin"]],
+	["ssqch/robots", ["robotsPlugin"]],
 	["ssqch/vue", ["vuePlugin"]],
 ];
 

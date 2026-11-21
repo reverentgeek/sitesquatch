@@ -32,7 +32,9 @@ test("init_creates_a_site_that_builds", () => {
 
 	r = ssqch(["build", "--root", d]);
 	assert.ok(r.ok, r.log);
-	assert.ok(r.log.includes("Links   14 checked, 0 broken"), r.log);
+	// DELIBERATE (0.13): the starter links each page's canonical address, its Markdown copy and llms.txt
+	// (the audit's plan, step 3), and the copies' links are checked too.
+	assert.ok(r.log.includes("Links   40 checked, 0 broken"), r.log);
 	let home = read(dir, "dist/index.html");
 	assert.ok(home.includes("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), home);
 	// Newest first.
@@ -84,7 +86,7 @@ test("init_starts_a_site_in_each_engine", () => {
 
 		r = ssqch(["build", "--root", d]);
 		assert.ok(r.ok, `${engine}: ${r.log}`);
-		assert.ok(r.log.includes("Links   14 checked, 0 broken") && !r.log.includes("warn"), `${engine}: ${r.log}`);
+		assert.ok(r.log.includes("Links   40 checked, 0 broken") && !r.log.includes("warn"), `${engine}: ${r.log}`);
 		const home = read(dir, "dist/index.html");
 		assert.ok(home.includes("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), `${engine}: ${home}`);
 		assert.ok(home.includes("<title>Field Notes</title>"), `${engine}: ${home}`);

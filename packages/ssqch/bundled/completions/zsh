@@ -179,6 +179,24 @@ _arguments "${_arguments_options[@]}" : \
 '::dir -- The build folder (default\: the site'\''s output folder):_files' \
 && ret=0
 ;;
+(patrol)
+_arguments "${_arguments_options[@]}" : \
+'--format=[text or json]:FORMAT:_default' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::dir -- The build folder (default\: the site'\''s output folder):_files' \
+&& ret=0
+;;
 (init)
 _arguments "${_arguments_options[@]}" : \
 '--starter=[What to start with\: site (a small blog) or docs (documentation with a sidebar, tabs and search)]:NAME:_default' \
@@ -321,6 +339,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(patrol)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (init)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -364,6 +386,7 @@ _ssqch_commands() {
 'completions:Print a completion script for your shell, so Tab finishes commands and options' \
 'diff:Compare two builds of a site\: URLs added and removed, and what changed on each page' \
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
+'patrol:Check a build for what agents and crawlers read\: robots.txt, the sitemap, llms.txt, Markdown copies, headings and descriptions' \
 'init:Create a starter site (config, layout, five posts, data and editor types)' \
 'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
 'baseline:Build the site with its old generator in fresh copies and compare the builds' \
@@ -404,6 +427,11 @@ _ssqch__subcmd__footprint_commands() {
     local commands; commands=()
     _describe -t commands 'ssqch footprint commands' commands "$@"
 }
+(( $+functions[_ssqch__subcmd__patrol_commands] )) ||
+_ssqch__subcmd__patrol_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch patrol commands' commands "$@"
+}
 (( $+functions[_ssqch__subcmd__help_commands] )) ||
 _ssqch__subcmd__help_commands() {
     local commands; commands=(
@@ -414,6 +442,7 @@ _ssqch__subcmd__help_commands() {
 'completions:Print a completion script for your shell, so Tab finishes commands and options' \
 'diff:Compare two builds of a site\: URLs added and removed, and what changed on each page' \
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
+'patrol:Check a build for what agents and crawlers read\: robots.txt, the sitemap, llms.txt, Markdown copies, headings and descriptions' \
 'init:Create a starter site (config, layout, five posts, data and editor types)' \
 'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
 'baseline:Build the site with its old generator in fresh copies and compare the builds' \
@@ -453,6 +482,11 @@ _ssqch__subcmd__help__subcmd__docs_commands() {
 _ssqch__subcmd__help__subcmd__footprint_commands() {
     local commands; commands=()
     _describe -t commands 'ssqch help footprint commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__help__subcmd__patrol_commands] )) ||
+_ssqch__subcmd__help__subcmd__patrol_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help patrol commands' commands "$@"
 }
 (( $+functions[_ssqch__subcmd__help__subcmd__help_commands] )) ||
 _ssqch__subcmd__help__subcmd__help_commands() {

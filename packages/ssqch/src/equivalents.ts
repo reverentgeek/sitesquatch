@@ -42,7 +42,7 @@ export const TABLE: readonly Equivalent[] = [
 	{ word: "server", kind: "command", alias: true, from: ["Hugo", "Hexo", "Jekyll"], ssqch: "serve", say: SERVE, more: "ssqch docs serve" },
 	{ word: "preview", kind: "command", alias: true, from: ["Astro", "VitePress"], ssqch: "serve --built", say: "Serving a production build as it is, without building or reloading, is `ssqch serve --built`.", more: "ssqch docs serve" },
 	{ word: "watch", kind: "command", alias: true, from: [], ssqch: "serve", say: SERVE, more: "ssqch docs serve" },
-	{ word: "check", kind: "command", alias: false, from: ["Zola", "Astro"], ssqch: "build", say: "`ssqch build` checks as it builds: content schemas on every build, and internal links with `linksPlugin()`.", more: "ssqch docs \"Content schemas\"" },
+	{ word: "check", kind: "command", alias: false, from: ["Zola", "Astro"], ssqch: "build", say: "`ssqch build` checks as it builds: content schemas on every build, and internal links with `linksPlugin()`. `ssqch patrol` checks a build for what agents and crawlers read.", more: "ssqch docs \"Content schemas\"" },
 	{ word: "clean", kind: "command", alias: false, from: ["Hexo", "Jekyll", "Gatsby"], ssqch: "leaveNoTrace", say: "ssqch has no clean command: `leaveNoTrace: true` in the config deletes what an earlier build wrote and this one didn't.", more: "ssqch docs leaveNoTrace" },
 	{ word: "generate", kind: "command", alias: true, from: ["Hexo"], ssqch: "build", say: "To build the site: `ssqch build`.", more: "ssqch docs build" },
 	{ word: "version", kind: "command", alias: false, from: ["Hugo"], ssqch: "--version", say: "The version is `ssqch --version`.", more: "ssqch --help" },

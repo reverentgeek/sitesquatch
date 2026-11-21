@@ -18,10 +18,9 @@ function prefersMarkdown(accept) {
 	return markdown > 0 && markdown >= q("text/html");
 }
 
-/** The Markdown copy of a docs page's path: `/docs/install/` is `/docs/install.md`, `/docs/` is `/docs.md`. */
+/** The Markdown copy of a docs page's path (llmsPlugin's): `/docs/install/` (or `/docs/install`) is `/docs/install/index.md`. */
 function copyOf(pathname) {
-	const trimmed = pathname.replace(/\/+$/, "");
-	return `${trimmed}.md`;
+	return `${pathname.replace(/\/+$/, "")}/index.md`;
 }
 
 /** `response`, with `Vary: Accept` added. */

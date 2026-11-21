@@ -17,6 +17,10 @@ sidebar: true
     {{{ content }}}
 
     <footer class="page-footer">
+      @let(copy = markdownCopy(page.url))
+      @if(copy)
+      <p class="page-markdown"><a href="{{ copy }}">View as Markdown</a> <button type="button" data-copy-markdown="{{ copy }}" hidden>Copy as Markdown</button></p>
+      @end
       @if(site.editUrl)
       <p><a href="{{ site.editUrl }}{{ page.inputPath.replace('./', '') }}">Edit this page</a></p>
       @end

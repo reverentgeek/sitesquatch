@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><% if (locals.title) { %><%= title %> | <% } %><%= site.title %></title>
     <meta name="description" content="<%= locals.description || site.description %>">
+    <link rel="canonical" href="<%= site.url %><%= page.url %>">
+    <%# For agents: the page as Markdown and the site's map (llmsPlugin() in ssqch.config.js). %>
+    <% const copy = markdownCopy(page.url); if (copy) { %><link rel="alternate" type="text/markdown" href="<%= copy %>"><% } %>
+    <link rel="describedby" href="/llms.txt">
     <style>
       /* Ranger Station '76: soft white (or green charcoal in dark mode), neutral text, pine
          headings, burnt orange links, and a four-color stripe under the header. */

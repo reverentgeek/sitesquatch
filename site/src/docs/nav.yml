@@ -17,6 +17,7 @@
     - css-and-javascript.md
     - multilingual.md
     - seo.md
+    - robots.md
     - themes.md
     - new-pages.md
 - title: Check
@@ -26,6 +27,7 @@
     - build-summary.md
     - comparing-builds.md
     - footprint.md
+    - patrol.md
 - title: Ship
   pages:
     - deploying.md

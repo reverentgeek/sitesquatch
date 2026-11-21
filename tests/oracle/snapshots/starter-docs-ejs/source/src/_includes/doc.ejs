@@ -17,6 +17,10 @@ sidebar: true
     <%- content %>
 
     <footer class="page-footer">
+      <%_ const copy = markdownCopy(page.url); _%>
+      <%_ if (copy) { _%>
+      <p class="page-markdown"><a href="<%= copy %>">View as Markdown</a> <button type="button" data-copy-markdown="<%= copy %>" hidden>Copy as Markdown</button></p>
+      <%_ } _%>
       <%_ if (site.editUrl) { _%>
       <p><a href="<%= site.editUrl %><%= page.inputPath.replace("./", "") %>">Edit this page</a></p>
       <%_ } _%>

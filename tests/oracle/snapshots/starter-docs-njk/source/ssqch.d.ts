@@ -582,7 +582,7 @@ declare module "ssqch/llms" {
 		url?: string;
 		/** URL globs of pages to leave out, like `["/blog/**"]`. 404 pages are always left out, and so is a page whose front matter says `llms: false`. */
 		exclude?: string[];
-		/** A Markdown copy of each listed page beside its URL (`/guide/intro.html` and `/guide/intro/` are `/guide/intro.md`; `/guide/` is `/guide.md`), which `llms.txt` links to. A Markdown page's copy is its Markdown after its template engine ran; another page's is its `<article>`, `<main>` or `<body>` as Markdown. Links in a copy are whole addresses, and a link to a page with a copy goes to the copy. Default `true`; with `false`, `llms.txt` links to the pages. */
+		/** A Markdown copy of each listed page beside its URL (`/guide/intro.html` is `/guide/intro.md`, and `/guide/intro/` is `/guide/intro/index.md`, as llms.txt's v2 proposal has them), which `llms.txt` links to. A Markdown page's copy is its Markdown after its template engine ran; another page's is its `<article>`, `<main>` or `<body>` as Markdown. Links in a copy are whole addresses, and a link to a page with a copy goes to the copy. Default `true`; with `false`, `llms.txt` links to the pages. */
 		copies?: boolean;
 		/** `/llms-full.txt`, every listed page's Markdown in one file, each after a `url:` line. Default `true`. */
 		full?: boolean;
@@ -593,6 +593,20 @@ declare module "ssqch/llms" {
 	}
 	/** Writes `/llms.txt` (the site's pages, with links to their Markdown), a Markdown copy of each, and `/llms-full.txt`, for language models, as llmstxt.org describes; and adds the template function `markdownCopy(page.url)`, the URL of a page's copy (or `""` when it has none), for a layout's `<link rel="alternate" type="text/markdown">`. */
 	export function llmsPlugin(options?: LlmsPluginOptions): BuiltinPlugin;
+}
+
+declare module "ssqch/robots" {
+	import type { BuiltinPlugin } from "ssqch";
+	export interface RobotsPluginOptions {
+		/** What AI crawlers may do, by what they're for: `training` (collecting pages to train models: GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot, meta-externalagent, Bytespider), `search` (indexing them for an AI search: OAI-SearchBot, Claude-SearchBot, PerplexityBot) and `fetch` (reading a page a person asked about: ChatGPT-User, Claude-User, Perplexity-User, meta-externalfetcher). `false` gives that purpose's crawlers a group with `Disallow: /`. Each defaults to `true`: no group, so they read everyone's. */
+		ai?: { training?: boolean; search?: boolean; fetch?: boolean };
+		/** URL paths no crawler should read, like `["/drafts/"]`, as `Disallow:` lines in everyone's group. */
+		disallow?: string[];
+		/** The `Sitemap:` line: by default `sitemapPlugin()`'s address when it's on (none without it); `false` leaves it out; a string is another sitemap's whole address. */
+		sitemap?: boolean | string;
+	}
+	/** Writes `/robots.txt`: the paths no crawler reads, a group for each kind of AI crawler that's turned off, and the sitemap's address. */
+	export function robotsPlugin(options?: RobotsPluginOptions): BuiltinPlugin;
 }
 
 declare module "ssqch/elements" {

@@ -682,5 +682,26 @@
         "match": "number"
       }
     ]
+  },
+  "patrol": {
+    "schemaVersion": "number",
+    "output": "string",
+    "pages": "number",
+    "copies": "number",
+    "signs": {
+      "robots": "boolean",
+      "sitemap": "boolean",
+      "llms": "boolean",
+      "notFound": "boolean"
+    },
+    "warnings": [
+      {
+        "code": "string",
+        "message": "string",
+        "files": [
+          "string"
+        ]
+      }
+    ]
   }
 }

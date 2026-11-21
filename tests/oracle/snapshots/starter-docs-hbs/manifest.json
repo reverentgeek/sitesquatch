@@ -9,29 +9,38 @@
     "pages": {
       "written": 6,
       "templates": 6,
-      "bytes": 22218,
+      "bytes": 23932,
       "new": null,
       "gone": null
     },
     "copied": {
       "files": 2,
       "unchanged": 0,
-      "bytes": 14302
+      "bytes": 15393
     },
     "removed": 0,
     "drafts": 0,
     "written": [
       "404.html",
       "docs/guides/deploying/index.html",
+      "docs/guides/deploying/index.md",
       "docs/guides/writing/index.html",
+      "docs/guides/writing/index.md",
       "docs/index.html",
+      "docs/index.md",
       "docs/install/index.html",
-      "index.html"
+      "docs/install/index.md",
+      "index.html",
+      "index.md",
+      "llms-full.txt",
+      "llms.txt",
+      "robots.txt",
+      "sitemap.xml"
     ],
     "summary": [
       {
         "label": "Links",
-        "value": "101 checked, 0 broken"
+        "value": "127 checked, 0 broken"
       }
     ],
     "warnings": [],
@@ -39,17 +48,26 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed siting. Built in <time> (production)\n  Pages   6 written from 6 templates, 22.2 KB\n  Copied  2 files, 14.3 KB\n  Links   101 checked, 0 broken\n  Output  dist: 9 files, 39.0 KB\n",
+  "log": "First confirmed siting. Built in <time> (production)\n  Pages   6 written from 6 templates, 23.9 KB\n  Copied  2 files, 15.4 KB\n  Links   127 checked, 0 broken\n  Output  dist: 18 files, 55.7 KB\n",
   "files": {
     "404.html": "text",
     "assets/docs.css": "text",
     "assets/docs.js": "text",
     "docs/guides/deploying/index.html": "text",
+    "docs/guides/deploying/index.md": "text",
     "docs/guides/writing/index.html": "text",
+    "docs/guides/writing/index.md": "text",
     "docs/index.html": "text",
+    "docs/index.md": "text",
     "docs/install/index.html": "text",
+    "docs/install/index.md": "text",
     "highlight.css": "text",
-    "index.html": "text"
+    "index.html": "text",
+    "index.md": "text",
+    "llms-full.txt": "text",
+    "llms.txt": "text",
+    "robots.txt": "text",
+    "sitemap.xml": "text"
   },
   "source": {
     ".gitignore": "text",

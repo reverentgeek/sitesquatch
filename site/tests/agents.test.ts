@@ -1,6 +1,6 @@
 // What agents get equals what people get. Reads the built site (`node build.ts` first; CI's
 // `check` job builds before it tests): every docs page has its Markdown copy, /llms.txt
-// lists exactly the docs pages, and each copy, rendered, has the same text as its page (the
+// lists every docs page, and each copy, rendered, has the same text as its page (the
 // title and the part marked `data-copy` in src/_includes/doc.jinja).
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -46,7 +46,7 @@ test("every docs page has its Markdown copy", { skip: !built }, () => {
 	}
 });
 
-test("/llms.txt lists exactly the docs pages", { skip: !built }, () => {
+test("/llms.txt lists every docs page", { skip: !built }, () => {
 	const listed = [...readFileSync(path.join(dist, "llms.txt"), "utf8").matchAll(/\]\(https:\/\/sitesquatch\.dev(\/docs[^)]*\.md)\)/g)].map(([, url]) => url).sort();
 	assert.deepEqual(listed, docsPages().map(copyOf).sort());
 });

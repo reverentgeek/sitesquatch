@@ -1,0 +1,240 @@
+# Squatch Docs
+
+---
+url: https://example.com/
+---
+
+<div class="home">
+
+# Squatch Docs
+
+Documentation built with SiteSquatch. This starter has a sidebar, a table of contents on each page, previous and next links, notes and tabs, highlighted code, a link checker and a schema for front matter.
+
+[Read the docs](https://example.com/docs/index.md)
+
+</div>
+
+---
+url: https://example.com/docs/
+---
+
+# Introduction
+
+Welcome! This is a documentation site built with [SiteSquatch](https://github.com/reverentgeek/sitesquatch). It's yours to change: every file is in this folder, and there's no theme to fight.
+
+## Where things live
+
+| Path | What it is |
+| --- | --- |
+| `src/docs/` | The pages, in Markdown. A folder is a section of the URL. |
+| `src/_data/nav.yml` | The sidebar, which also gives each page its breadcrumbs and previous and next links. |
+| `src/_data/site.json` | The site's name and description. |
+| `src/_includes/` | The layouts (`base.edge`, `doc.edge`), and the templates behind headings, tabs and details. |
+| `src/assets/` | The stylesheet (its colors are custom properties at the top), and a small script for tabs, search and the light and dark switch. |
+| `ssqch.config.js` | The config: highlighting, the link checker, the schema for front matter. |
+
+## Add a page
+
+1. Create `src/docs/guides/my-page.md` with a `title` in its front matter.
+2. List it in `src/_data/nav.yml`.
+
+That's it. Run `ssqch serve` and it's at `/docs/guides/my-page/`.
+
+:::tip[Owl's field guide]
+Owl reads the sidebar from the top: install first, then [Writing pages](https://example.com/docs/guides/writing/index.md), whose source uses every kind of block once, so it doubles as a cheat sheet.
+:::
+
+Next: [install ssqch](https://example.com/docs/install/index.md), or see [what a page can do](https://example.com/docs/guides/writing/index.md).
+
+---
+url: https://example.com/docs/guides/deploying/
+---
+
+# Deploying
+
+`ssqch build` writes plain files to `dist/`. Any static host can serve them.
+
+## Netlify
+
+```toml
+# netlify.toml
+[build]
+  publish = "dist"
+  command = "npx ssqch build"
+
+[build.environment]
+  NODE_VERSION = "24"
+```
+
+With `ssqch` in the site's `devDependencies` (see [Installation](https://example.com/docs/install/index.md)), Netlify installs it at the version in the lockfile, so a build next year uses the ssqch you tested with. `NODE_VERSION` can be any Node from 22.18 on.
+
+## GitHub Pages
+
+A project site is served under its repository's name, like `https://you.github.io/repo/`. Set that path in `ssqch.config.js`, and leave the links in your pages as they are:
+
+```js
+export default defineConfig({
+  base: "/repo/",
+});
+```
+
+Then build it in a workflow with `actions/setup-node`, and deploy `dist/` with GitHub's own Pages actions (in the repository's settings, set Pages' source to "GitHub Actions"):
+
+```yaml
+# .github/workflows/pages.yml
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx ssqch build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
+```
+
+## Check before you publish
+
+Build the site before and after a big change, and compare the two:
+
+```sh
+npx ssqch build --output dist-before
+# ...make the change...
+npx ssqch build
+npx ssqch diff dist-before dist
+```
+
+It lists the pages that were added, removed and changed, and ignores what doesn't matter.
+
+:::note[Beaver's build notes]
+Beaver keeps `dist-before/` until the diff shows only what she meant to change. A dam is easier to fix before the water arrives.
+:::
+
+---
+url: https://example.com/docs/guides/writing/
+---
+
+# Writing pages
+
+Pages are Markdown, with GitHub's extensions and a few of ssqch's own. This page uses each of them once, so its source is a cheat sheet.
+
+## Notes
+
+:::note
+A `:::note` block. There are `:::tip`, `:::warning` and `:::caution` too.
+:::
+
+:::warning[Check twice]
+Give a block a title in brackets.
+:::
+
+> [!TIP]
+> **Deer's shortcut:** GitHub's alert syntax works as well, which keeps a README readable in both places.
+
+:::details How do these work?
+Each `:::name` block renders through `src/_includes/containers/name.edge` if there is one (like this one, `details.edge`), or as a `<div class="name">`.
+:::
+
+## Tabs
+
+::::tabs
+:::tab npm
+```sh
+npm install pinecone
+```
+:::
+:::tab pnpm
+```sh
+pnpm add pinecone
+```
+:::
+::::
+
+Without JavaScript, tabs are labeled sections, one after another. With it, picking a tab picks it in every group on the site that has one with that name.
+
+## Code
+
+Fences are highlighted while the site builds. Mark lines with braces:
+
+```js {2}
+export function trail(name) {
+  return `/trails/${name}/`;
+}
+```
+
+## Tables, tasks and footnotes
+
+| Syntax | Result |
+| --- | --- |
+| `- [x] done` | A checked box |
+| `[^1]` | A footnote[^1] |
+
+- [x] Write the docs
+- [ ] Spot a Squatch
+
+## Data in a page
+
+Front matter and the files in `src/_data/` are available in every page: this site is called Squatch Docs.
+
+[^1]: https://example.com/docs/guides/writing/Footnotes collect at the end of the page.
+
+---
+url: https://example.com/docs/install/
+---
+
+# Installation
+
+`ssqch` runs on [Node.js](https://nodejs.org) 22.18 or newer, and comes from npm. Install it in the site as a dev dependency, so the lockfile pins the version:
+
+::::tabs
+:::tab npm
+```sh
+npm init -y
+npm install --save-dev ssqch
+```
+:::
+:::tab pnpm
+```sh
+pnpm init
+pnpm add -D ssqch
+```
+:::
+::::
+
+Then run it with `npx ssqch` (or `pnpm ssqch`), or by name in a `package.json` script: `"build": "ssqch build"`. To have `ssqch` on your `PATH` for every site, `npm install --global ssqch` or `brew install reverentgeek/tap/ssqch`.
+
+## Run the site
+
+```sh
+npx ssqch serve
+```
+
+Open <http://localhost:8080>. Pages rebuild and the browser reloads as you save, and that includes `ssqch.config.js`.
+
+## Build it
+
+```sh
+npx ssqch build
+```
+
+The site is in `dist/`, ready for any static host. A broken link or a page without a `title` stops the build and says where.
+
+:::tip
+`SEARCH=1 npx ssqch build` also builds a search index with [Pagefind](https://pagefind.app) and adds a search box to the header. Pagefind is a program of its own, which `npx` fetches for that one step.
+:::

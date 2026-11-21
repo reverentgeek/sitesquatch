@@ -50,6 +50,11 @@ BUILTINS.set("ssqch/sitemap", (config: Config, given) => {
 	});
 	const excluded = (url: string) => matchers.some((m) => m(url));
 
+	// robots.txt's `Sitemap:` line (robotsPlugin()): the same address the `<loc>`s start with.
+	config.sitemap = () => {
+		const trimmed = url.replace(/\/+$/, "");
+		return `${trimmed.endsWith(config.base) ? trimmed : trimmed + config.base}${output}`;
+	};
 	config.generators.push(["ssqch/sitemap", (config, pages) => {
 		// With a `base` of `/repo`, `url` can be the domain or include the base.
 		const trimmed = url.replace(/\/+$/, "");

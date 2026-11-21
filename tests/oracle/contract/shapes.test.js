@@ -20,7 +20,7 @@ const frozen = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, "utf8")) :
 const freezing = process.env.SSQCH_FREEZE_SHAPES === "1";
 const freezingNew = process.env.SSQCH_FREEZE_SHAPES === "new";
 /** Documents 0.7.0 didn't print, and the version whose shape is frozen for each. */
-const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.10.1", "scout": "0.11.0", "diff --text": "0.12.0" };
+const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.10.1", "scout": "0.11.0", "diff --text": "0.12.0", "patrol": "0.13.0" };
 const shapes = {};
 
 /** A value's shape: "string", "number", "boolean", "null", { key: shape }, or [shape of every element merged]. */
@@ -191,6 +191,13 @@ test("footprint report", () => {
 	const dir = site();
 	ssqch(["build", "--root", dir]);
 	check("footprint", json(["footprint", "--root", dir]));
+});
+
+// Added in 0.13: `ssqch patrol --format json`, with a warning and its files.
+test("patrol report", () => {
+	const dir = site();
+	ssqch(["build", "--root", dir]);
+	check("patrol", json(["patrol", "--root", dir]));
 });
 
 test("new report", () => {

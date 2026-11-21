@@ -7,6 +7,7 @@ import { elementsPlugin } from "ssqch/elements";
 import { linksPlugin } from "ssqch/links";
 import { llmsPlugin } from "ssqch/llms";
 import { minifyPlugin } from "ssqch/minify";
+import { robotsPlugin } from "ssqch/robots";
 import { rssPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
 import { docsHref, pages } from "./lib/docs.ts";
@@ -24,7 +25,6 @@ export default defineConfig(({ env }) => ({
 	passthrough: [
 		{ "src/assets": "assets" },
 		{ "src/favicon.svg": "favicon.svg" },
-		{ "src/robots.txt": "robots.txt" },
 		// Read by Cloudflare, not served (wrangler.jsonc).
 		{ "src/_headers": "_headers" },
 		// The drawings have one home, docs/assets/, beside the README that floats them.
@@ -79,7 +79,9 @@ export default defineConfig(({ env }) => ({
 		rssPlugin(),
 		linksPlugin({ ignore: ["/pagefind/"] }),
 		sitemapPlugin({ url: "https://sitesquatch.dev", lastmod: false }),
-		// What agents read: each docs page as Markdown (`/docs/install.md`), /llms.txt and
+		// Every crawler welcome, AI ones included: the sitemap line comes from sitemapPlugin().
+		robotsPlugin(),
+		// What agents read: each docs page as Markdown (`/docs/install/index.md`), /llms.txt and
 		// /llms-full.txt, in the sidebar's groups and order. The first thing they say is that
 		// `ssqch docs <name>` answers for the installed version, which beats any website.
 		llmsPlugin({
@@ -88,10 +90,11 @@ export default defineConfig(({ env }) => ({
 			description: "SiteSquatch (`ssqch`) is a static site generator for Node.js. It turns Markdown and templates into plain HTML, and checks its own work on every build: links, front matter against schemas, and what a change did to the output.",
 			details: [
 				"- If ssqch is installed, `ssqch docs <name>` (a command, a config option, a function or a heading's words) prints the documentation for the installed version, with no network. `ssqch docs` alone lists every name, and `--format json` gives the same as JSON.",
-				"- Every docs page here has a Markdown copy at its address with `.md` on the end (https://sitesquatch.dev/docs/install.md), and a request for a docs page with `Accept: text/markdown` gets the copy.",
+				"- Every docs page here has a Markdown copy at its address with `index.md` on the end (https://sitesquatch.dev/docs/install/index.md), and a request for a docs page with `Accept: text/markdown` gets the copy.",
 				"- The example sites run live at https://sitesquatch.dev/examples/, and their source is at https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites.",
 			].join("\n"),
-			exclude: ["/", "/changelog/**", "/examples/**"],
+			// The examples are sites of their own; the home page and the changelog are listed after the docs.
+			exclude: ["/examples/**"],
 			section: (page) => docsOrder().get(page.url)?.group,
 			sort: (a, b) => (docsOrder().get(a.url)?.at ?? Infinity) - (docsOrder().get(b.url)?.at ?? Infinity),
 		}),

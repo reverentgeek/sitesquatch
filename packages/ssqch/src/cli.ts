@@ -114,6 +114,13 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		afterHelp: "It reads a build folder, so build first:\n\n  ssqch build\n  ssqch footprint                 (the site's output folder)\n  ssqch footprint dist-before     (any build)\n  ssqch footprint --top 20 --format json",
 	},
 	{
+		name: "patrol",
+		about: "Check a build for what agents and crawlers read: robots.txt, the sitemap, llms.txt, Markdown copies, headings and descriptions",
+		options: [FORMAT],
+		positionals: [{ name: "DIR", help: "The build folder (default: the site's output folder)", required: false, path: true }],
+		afterHelp: "It reads a build folder, any generator's, so build first:\n\n  ssqch build\n  ssqch patrol                    (the site's output folder)\n  ssqch patrol _site              (another generator's build, before a move)\n  ssqch patrol --format json\n\nEach warning has a code (`ssqch docs \"what patrol checks\"` says what each means). Exits with 0 when it found nothing, 1 when\nit warned, and 2 on an error.",
+	},
+	{
 		name: "init",
 		about: "Create a starter site (config, layout, five posts, data and editor types)",
 		options: [
@@ -359,6 +366,7 @@ export async function main(argv: string[]): Promise<number> {
 	const top = Number(value("top") ?? "5");
 	// Two build folders need no config, and neither does a folder given to `footprint`.
 	if (command === "diff") return runDiff(cli.positionals, { exact: flag("exact"), ignore: many("ignore"), only: many("only"), exclude: many("exclude"), ungrouped: flag("ungrouped"), text: flag("text"), lines: Number(value("lines") ?? "10"), format });
+	if (command === "patrol" && cli.positionals[0] !== undefined) return runPatrol(cli.positionals[0], cli.positionals[0], format);
 	if (command === "footprint" && cli.positionals[0] !== undefined) {
 		try {
 			await runFootprint(cli.positionals[0], cli.positionals[0], top, format);
@@ -431,6 +439,7 @@ export async function main(argv: string[]): Promise<number> {
 			await runInspect(config, cli.positionals[0], value("field"), format);
 			return 0;
 		}
+		if (command === "patrol") return runPatrol(shownDir(config, config.output), shownOutput(config), format);
 		if (command === "footprint") {
 			const dirs = dirsOf(config);
 			// Read from the folder as 0.7 named it, so an error names it the same way (`nope/_site`).
@@ -531,6 +540,20 @@ async function runDiff(dirs: string[], options: { exact: boolean; ignore: string
 		if (options.format === "json") process.stdout.write(JSON.stringify(diffJson(report, options.lines), null, 2) + "\n");
 		else process.stdout.write(diffText(report, options.lines, process.stdout.isTTY === true));
 		return isSame(report) ? 0 : 1;
+	} catch (e) {
+		process.stderr.write(`${diagnostics.red("error:")} ${describeThrown(e, process.cwd())}\n`);
+		return 2;
+	}
+}
+
+/** `ssqch patrol`: what agents and crawlers find in the build in `dir`. 0 when it's clear, 1 when it warned, 2 on an error. */
+async function runPatrol(dir: string, shown: string, format: string): Promise<number> {
+	try {
+		checkFormat(format);
+		const { patrol, patrolJson, patrolText } = await import("./patrol.ts");
+		const report = patrol(dir);
+		process.stdout.write(format === "json" ? JSON.stringify(patrolJson(report, shown), null, 2) + "\n" : patrolText(report, shown));
+		return report.findings.length ? 1 : 0;
 	} catch (e) {
 		process.stderr.write(`${diagnostics.red("error:")} ${describeThrown(e, process.cwd())}\n`);
 		return 2;

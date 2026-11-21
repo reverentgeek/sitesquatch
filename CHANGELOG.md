@@ -25,6 +25,10 @@ where that version matches.
   as Markdown. Links in a copy are whole addresses, and a link to a page that has a copy goes to
   the copy. A page leaves the list with `llms: false` in its front matter, or with `exclude`.
 - `llms-full.txt` starts with `llms.txt`'s heading and description, then the pages.
+- `llmsPlugin()` writes a page's copy where llms.txt's v2 proposal (August 2026) puts it: a URL
+  without a file name gets `index.md` (`/guide/intro/` is `/guide/intro/index.md`, where it was
+  `/guide/intro.md`); one with a file name has its extension replaced (`/guide/intro.html` is
+  `/guide/intro.md`, as before). `markdownCopy(page.url)` gives the new address.
 - Options that were there only so a move could match another generator's bytes are gone, each
   with an error that says what to do instead:
   - `trimAfterFrontMatter`. The blank lines after a template's front matter are whitespace that
@@ -50,6 +54,25 @@ where that version matches.
 
 ### Added
 
+- `ssqch patrol [DIR]` checks a build for what agents and crawlers read, in any generator's
+  output: the posted signs (`robots.txt`, a sitemap, `llms.txt`, a real `404.html`), each page's
+  shape (one `<h1>`, its content in `<main>` or `<article>` and before the navigation, a
+  description), and each page's Markdown copy (there when it's linked, saying what its page says,
+  under the length an agent's fetch reads, its code fences closed, its links whole). Each warning
+  has a code (`ssqch docs "what patrol checks"`), `--format json` gives them with every file, and
+  it exits with 0 when it found nothing, 1 when it warned and 2 on an error. On the ReverentGeek
+  blog, its first real site, it found two links in the hand-written `llms.txt` to pages that
+  aren't there.
+- `robotsPlugin()` from `ssqch/robots` writes `robots.txt`: the paths no crawler reads
+  (`disallow`), the sitemap's address from `sitemapPlugin()`, and what AI crawlers may do by what
+  they're for (`ai: { training, search, fetch }`), from one table of their names, each from its
+  company's documentation. A docs page, "Posted signs", lists them.
+- The starters are ready for agents: `sitemapPlugin()`, `robotsPlugin()` and `llmsPlugin()` are on
+  (with the site's `url` in `src/_data/site.json`), and the layouts link each page's canonical
+  address, its Markdown copy and `llms.txt` (`rel="describedby"`). The docs starter's pages have
+  "View as Markdown" and a "Copy as Markdown" button, and the blog starter's home page an `<h1>`.
+  Their `AGENTS.md` names `ssqch patrol`.
+- `ssqch check`, refused with ssqch's word, names `ssqch patrol` too.
 - `llmsPlugin()`: `details` (Markdown after the description: what a model should know first),
   `sort` (the pages' order), and the template function `markdownCopy(page.url)`, the URL of a
   page's copy, or an empty string when it has none.
