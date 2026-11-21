@@ -21,7 +21,7 @@ import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
 import nunjucks from "nunjucks";
 import { TomlError } from "smol-toml";
-import { findConfig } from "./config.ts";
+import { CONFIG_FILES, findConfig } from "./config.ts";
 import { isPlainObject, parseYaml, readToml, tomlReason } from "./data.ts";
 import type { Data } from "./data.ts";
 import { red } from "./diagnostics.ts";
@@ -65,6 +65,13 @@ export interface Todo {
 	option?: string;
 	/** What to read: an `ssqch docs` query. */
 	docs?: string;
+	/**
+	 * What in the site's ssqch config does it, any one of them: a value at a path
+	 * (`filters.slugify`, `engines.md`), a plugin by its name (`plugin:ssqch/rss`), or the old
+	 * package imported as it is (`import:markdown-it`: kept on purpose, for identical output).
+	 * Scout counts the to-do as done when the config has one.
+	 */
+	defines?: string[];
 }
 
 /** Why scouting stopped: printed as `error: <message>`. */
@@ -224,7 +231,7 @@ export interface Report {
 	edits: Array<{ path: string; to?: string; changes: string[] }>;
 	/** Whether the site has an ssqch.config.js already: a move under way. */
 	underWay: boolean;
-	/** The to-dos an option does that the site's config sets already: out of `todo`, and counted in `summary.done`. */
+	/** The to-dos the site's config does already (an option it sets, a filter or collection it defines, a package it keeps): out of `todo`, and counted in `summary.done`. `option` says what in the config did it. */
 	done: Array<{ at: string; what: string; code: string; option: string }>;
 	/** Why the site's config couldn't be read, when it couldn't: then nothing counts as done. */
 	configError: string | null;
@@ -232,18 +239,56 @@ export interface Report {
 	compare?: Comparison;
 }
 
-/** The site's ssqch config as it's written (its default export), to see which options a move has set already. */
-export interface SiteConfig { config?: Record<string, unknown>; error?: string }
+/** The site's ssqch config as it's written (its default export, and its source), to see what a move has done already. */
+export interface SiteConfig { config?: Record<string, unknown>; source?: string; error?: string }
 export async function siteConfig(dir: string): Promise<SiteConfig> {
 	const file = findConfig(dir);
 	if (!file) return {};
+	// A `.js` config in a package without `"type": "module"` is every Eleventy site's, mid-move:
+	// Node's warning about it isn't the site's to fix, and `ssqch build` doesn't print it either.
+	const emitWarning = process.emitWarning;
+	process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
+		const options = rest[0];
+		const code = warning instanceof Error ? (warning as { code?: unknown }).code : options !== null && typeof options === "object" ? (options as { code?: unknown }).code : rest[1];
+		if (code === "MODULE_TYPELESS_PACKAGE_JSON") return;
+		return (emitWarning as (...args: unknown[]) => void).call(process, warning, ...rest);
+	}) as typeof process.emitWarning;
 	try {
 		const value = (await importFile(file)).default;
-		return isPlainObject(value) ? { config: value as Record<string, unknown> } : { error: `${path.basename(file)}'s default export isn't an object` };
+		const source = readUtf8(file);
+		return isPlainObject(value) ? { config: value as Record<string, unknown>, ...(source === undefined ? {} : { source }) } : { error: `${path.basename(file)}'s default export isn't an object` };
 	} catch (e) {
 		return { error: `${path.basename(file)}: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}` };
+	} finally {
+		process.emitWarning = emitWarning;
 	}
 }
+
+/**
+ * Which of `defines` (`Todo.defines`) the site's config has, as the report names it: a path with
+ * a value (`filters.slugify`), a plugin in `plugins` by its name, or a package it imports.
+ */
+export function definedIn(site: SiteConfig, defines: readonly string[]): string | undefined {
+	const config = site.config;
+	if (!config) return undefined;
+	const code = site.source === undefined ? "" : blankComments(site.source);
+	for (const want of defines) {
+		if (want.startsWith("plugin:")) {
+			const name = want.slice("plugin:".length);
+			const plugins = Array.isArray(config.plugins) ? config.plugins.flat(Infinity) : [];
+			if (plugins.some((p) => isPlainObject(p) && (p as { name?: unknown }).name === name)) return name;
+		} else if (want.startsWith("import:")) {
+			const pkg = want.slice("import:".length);
+			for (const m of code.matchAll(IMPORTED)) if (m[1] === pkg || m[1].startsWith(`${pkg}/`)) return `import "${pkg}"`;
+		} else {
+			let at: unknown = config;
+			for (const key of want.split(".")) at = isPlainObject(at) && Object.hasOwn(at as object, key) ? (at as Record<string, unknown>)[key] : undefined;
+			if (at !== undefined && at !== null) return want;
+		}
+	}
+	return undefined;
+}
+const IMPORTED = /(?:\brequire\(\s*|\bimport\s*\(\s*|\bfrom\s+|^\s*import\s+)["']([^"']+)["']/gm;
 
 /**
  * Whether `config` sets what `option` says (`markdown: { admonitions: "mkdocs" }`): each value
@@ -279,15 +324,18 @@ export function scoutReport(plan: Plan, dir: string, id: string, how: string, si
 		code: meta?.code ?? `${id}-other`,
 		status: meta?.status ?? statusOf(what),
 		count: meta?.count ?? null, files: meta?.files ?? null, option: meta?.option ?? null, docs: meta?.docs ?? null,
-		order,
-	})).sort((a, b) => (b.files ?? -1) - (a.files ?? -1) || a.order - b.order).map(({ order: _, ...t }) => t);
-	// What the config sets already is done: off the list, so a second run shows what's left.
+		order, defines: meta?.defines,
+	})).sort((a, b) => (b.files ?? -1) - (a.files ?? -1) || a.order - b.order);
+	// What the config does already is done: off the list, so a second run shows what's left. An
+	// option counts when the config sets its values; a to-do with `defines`, when the config has
+	// one of them (the filter, the collection, the plugin, or the old package kept as it is).
 	const done: Report["done"] = [];
-	const todo = all.filter((t) => {
-		if (t.status !== "option" || !t.option || !site.config || !setIn(site.config, t.option)) return true;
-		done.push({ at: t.at, what: t.what, code: t.code, option: t.option });
-		return false;
-	});
+	const todo: Report["todo"] = [];
+	for (const { order: _, defines, ...t } of all) {
+		const by = t.status === "option" && t.option && site.config && setIn(site.config, t.option) ? t.option : defines ? definedIn(site, defines) : undefined;
+		if (by === undefined) todo.push(t);
+		else done.push({ at: t.at, what: t.what, code: t.code, option: by });
+	}
 	return {
 		dir, generator: id, name: g.name, detectedBy: how,
 		build: { command, output, baseline, needs },
@@ -321,9 +369,43 @@ function referenceBuild(dir: string, id: string): { command: string; output: str
 	let scripts: Record<string, string> = {};
 	try { scripts = JSON.parse(readUtf8(path.join(dir, "package.json")) ?? "{}").scripts ?? {}; } catch { /* no package.json */ }
 	const words: Record<string, RegExp> = { eleventy: /\beleventy\b/, jekyll: /\bjekyll\b/, hugo: /\bhugo\b/, zola: /\bzola\b/, mkdocs: /\bmkdocs\b/, docusaurus: /\bdocusaurus\b/, astro: /\bastro\b/, vitepress: /\bvitepress\b/, hexo: /\bhexo\b/ };
+	// The script that builds the site: `build`, or another that runs the generator (a11yproject.com's
+	// `publish`), and not one that watches. Mid-move, scout's patch made it run `ssqch build`, which
+	// stands for the generator's command again.
+	const watching = /\b(?:watch|serve|start|dev|debug)\b|--(?:watch|serve)\b/;
+	const runsIt = (script: string) => words[id].test(script) || /\bssqch\s+build\b/.test(script);
+	const named = [...(typeof scripts.build === "string" ? ["build"] : []), ...Object.keys(scripts).filter((k) => k !== "build")]
+		.find((k) => typeof scripts[k] === "string" && runsIt(scripts[k]) && !watching.test(k) && !watching.test(scripts[k]));
 	if (netlifyCommand && words[id].test(netlifyCommand)) command = netlifyCommand;
-	else if (typeof scripts.build === "string" && words[id].test(scripts.build)) command = "npm run build";
+	else if (named !== undefined) {
+		const script = scripts[named];
+		// With another tool beside it (`eleventy & gulp`), the two, one after the other: `&` would
+		// let baseline copy the output while the generator is still writing it.
+		const parts = script.split(/\s*&&?\s*/).filter((p) => p !== "");
+		const own = /\bssqch\s+build\b/.test(script);
+		if (parts.length > 1) command = parts.map((p) => (/\bssqch\s+build\b/.test(p) ? g.build : p)).join(" && ");
+		else if (!own) command = named === "build" ? "npm run build" : `npm run ${named}`;
+	}
 	if (netlifyPublish && command === netlifyCommand) output = netlifyPublish.replace(/^\.\//, "").replace(/\/$/, "");
+	// Eleventy's output folder, from its config (`dir: { output: "dist" }`).
+	if (id === "eleventy") {
+		const config = ELEVENTY_CONFIGS.find((name) => isFile(path.join(dir, name)));
+		const set = config === undefined ? undefined : setting(blankComments(readUtf8(path.join(dir, config)) ?? ""), "output");
+		if (set !== undefined) output = set.replace(/^\.\//, "").replace(/\/+$/, "");
+		// Gulp writes part of the output (a11yproject.com: 458 of 597 files), so the reference
+		// needs it too, after the generator.
+		if (["gulpfile.js", "gulpfile.mjs", "gulpfile.cjs"].some((f) => isFile(path.join(dir, f))) && !/\bgulp\b/.test(command)) command += " && npx gulp";
+	}
+	// The Node the site asks for: an old generator may need it, and ssqch needs 22.18 or later.
+	if (["eleventy", "docusaurus", "astro", "vitepress", "hexo"].includes(id)) {
+		let engines: unknown;
+		try { engines = JSON.parse(readUtf8(path.join(dir, "package.json")) ?? "{}").engines?.node; } catch { /* no package.json */ }
+		const pinned: Array<[string, string | undefined]> = [[".nvmrc", readUtf8(path.join(dir, ".nvmrc"))], [".node-version", readUtf8(path.join(dir, ".node-version"))], ["netlify.toml", /\bNODE_VERSION\s*=\s*"([^"]+)"/.exec(netlify)?.[1]], ["package.json's engines", typeof engines === "string" ? engines : undefined]];
+		// A range open at the top (`>=16`) takes ssqch's Node too.
+		const found = pinned.find(([, v]) => v !== undefined && /\d/.test(v) && !/^\s*>|\|\|/.test(v));
+		const major = found === undefined ? undefined : Number(/(\d+)/.exec(found[1]!)![1]);
+		if (found && major !== undefined && major < 22) needs.push(`The site asks for Node ${trim(found[1]!).replace(/^v/, "")} (${found[0]}), and ssqch needs 22.18 or later. Try the reference build on ssqch's Node first (old generators often build the same there); if it fails, give baseline the command with that Node (\`ssqch baseline "npx -y -p node@${major} -c '${command.replace(/'/g, "")}'"\`)`);
+	}
 	if (id === "mkdocs") {
 		const requirements = ["requirements.txt", "requirements-docs.txt", "docs/requirements.txt", "requirements/docs.txt"].filter((f) => isFile(path.join(dir, f)));
 		const venv = [".venv", "venv"].find((v) => isFile(path.join(dir, v, "bin", "mkdocs")) || isFile(path.join(dir, v, "Scripts", "mkdocs.exe")));
@@ -344,12 +426,19 @@ function referenceBuild(dir: string, id: string): { command: string; output: str
 	return { command, output, needs };
 }
 
+/** What the config has that did the done to-dos, each once: the first eight, and how many more. */
+function doneList(done: Report["done"]): string {
+	const names = [...new Set(done.map((d) => d.option))];
+	const shown = names.slice(0, 8).map((o) => `\`${o}\``).join(", ");
+	return names.length > 8 ? `${shown} and ${names.length - 8} more` : shown;
+}
+
 /** The report, as the terminal shows it. */
 export function scoutText(report: Report, options: Pick<ScoutOptions, "writeDraft" | "patch">): string {
 	let out = `Scouting the ${report.name} site in ${report.dir} (found ${report.detectedBy === "--from" ? "with --from" : report.detectedBy})${report.underWay ? ": a move under way, with an ssqch.config.js" : ""}\n`;
 	const { summary } = report;
 	if (report.todo.length) out += `\n${report.todo.length} to do${summary.pages !== null ? ` across ${summary.pages} ${summary.pages === 1 ? "page" : "pages"}` : ""}: ${[[summary.ssqch, "ssqch does"], [summary.option, "an option does (the draft turns it on)"], [summary.notYet, "not in ssqch yet"], [summary.site, "the site's own code to port"]].filter(([n]) => n).map(([n, what]) => `${n} ${what}`).join(", ")}.\n`;
-	if (report.done.length) out += `${report.todo.length ? "" : "\n"}${report.done.length} done already: ssqch.config.js sets ${report.done.map((d) => `\`${d.option}\``).filter((o, i, all) => all.indexOf(o) === i).join(", ")}.\n`;
+	if (report.done.length) out += `${report.todo.length ? "" : "\n"}${report.done.length} done already: ssqch.config.js has ${doneList(report.done)}.\n`;
 	if (report.configError) out += `\nCouldn't read the site's config, so nothing counts as done yet: ${report.configError}\n`;
 	out += `\nReference build\n  ${report.build.baseline}\n`;
 	for (const need of report.build.needs) out += `  needs ${need}\n`;
@@ -710,7 +799,7 @@ export function eleventy(dir: string): Plan {
 	const inInput = (rel: string) => input === "" || input === "." || rel === input || rel.startsWith(`${input}/`);
 	if (major !== undefined && major < 2) keep.push("eleventy.generator");
 	if (readsNavigation) {
-		plan.byHand.push([".", "`eleventyNavigation` front matter was left as it is, because templates call the `eleventyNavigation` filter, which reads it. To keep that filter, define it with the package's own function: `import navigation from \"@11ty/eleventy-navigation/eleventy-navigation.js\"`, then `filters: { eleventyNavigation: (pages, key) => navigation.findNavigationEntries(pages, key) }`. To move to ssqch's navigation instead (`pagesTree`), rename it to `nav` (`ssqch docs nav`)"]);
+		plan.byHand.push([".", "`eleventyNavigation` front matter was left as it is, because templates call the `eleventyNavigation` filter, which reads it. To keep that filter, define it with the package's own function: `import navigation from \"@11ty/eleventy-navigation/eleventy-navigation.js\"`, then `filters: { eleventyNavigation: (pages, key) => navigation.findNavigationEntries(pages, key) }`. To move to ssqch's navigation instead (`pagesTree`), rename it to `nav` (`ssqch docs nav`)", { defines: ["filters.eleventyNavigation"] }]);
 	} else {
 		// Listed, not renamed: `nav` is ssqch's navigation, which builds the tree its own way.
 		const navPages = entries.filter((e) => e.isFile && isTemplate(e.name) && /^eleventyNavigation\s*:/m.test(readUtf8(e.abs) ?? "")).map((e) => e.rel);
@@ -730,7 +819,9 @@ export function eleventy(dir: string): Plan {
 			continue;
 		}
 		const template = TEMPLATE_EXTENSIONS.includes(ext);
-		const data = DATA_FILE.test(name) || (["json", "yaml", "yml"].includes(ext) && !name.startsWith("package"));
+		// Data is what Eleventy read as data: its data folder and the data files beside templates, all
+		// in its input folder. A JSON file elsewhere (a saved report, a tool's settings) isn't.
+		const data = inInput(rel) && (DATA_FILE.test(name) || (["json", "yaml", "yml"].includes(ext) && !name.startsWith("package")));
 		if (!template && !data) continue;
 		const text = readUtf8(entry.abs);
 		if (text === undefined) continue;
@@ -772,7 +863,7 @@ export function eleventy(dir: string): Plan {
 	// The site's own modules the config passes `eleventyConfig` to: their calls count as the config's.
 	const followed = config === undefined ? new Map<string, string>() : helperModules(dir, config, configText);
 	const helpers: Array<[string, Array<[string, string]>]> = [];
-	const helperLists: Array<[string, string]> = [];
+	const helperLists: Array<[string, string, Todo?]> = [];
 	let helperText = "";
 	for (const rel of new Set(followed.values())) {
 		const text = readUtf8(path.join(dir, ...rel.split("/")));
@@ -996,7 +1087,8 @@ function undefinedFilters(entries: Entry[], config: string, readsNavigation: boo
 		const where = use.templates.size === 1 ? "" : ` (in ${use.templates.size} templates; this is the first)`;
 		const eleventy = Object.hasOwn(ELEVENTY_FILTERS, name) ? ELEVENTY_FILTERS[name] : undefined;
 		if (eleventy?.port) ports.push([name, eleventy.port]);
-		plan.byHand.push([use.first, eleventy ? `\`${name}\`${where}: ${eleventy.say}` : `\`${name}\`${where} is a filter or shortcode nothing defines: not the template language, not ssqch, not the Eleventy config. A plugin's, or one a helper module adds? Port it to \`filters\``]);
+		const plugin = eleventy?.say.includes("rssPlugin()") ? ["plugin:ssqch/rss"] : [];
+		plan.byHand.push([use.first, eleventy ? `\`${name}\`${where}: ${eleventy.say}` : `\`${name}\`${where} is a filter or shortcode nothing defines: not the template language, not ssqch, not the Eleventy config. A plugin's, or one a helper module adds? Port it to \`filters\``, { defines: [`filters.${name}`, ...plugin] }]);
 	}
 	return ports;
 }
@@ -1046,7 +1138,9 @@ function modulesUsingEleventy(entries: Entry[], config: string | undefined, plan
 		"@11ty/eleventy-fetch": "`fetch(url, { cache: \"1d\" })`, from \"ssqch\" in a data file: it keeps a copy in `.cache/ssqch/fetch/` as eleventy-fetch kept one in `.cache`",
 	};
 	for (const entry of entries) {
-		if (!entry.isFile || entry.rel === config || !/\.(?:[cm]?js|[cm]?ts)$/.test(entry.name)) continue;
+		// The ssqch config's imports of Eleventy's packages are the move's own (an identical first
+		// build keeps them on purpose): they're what makes the Eleventy config's to-dos done.
+		if (!entry.isFile || entry.rel === config || CONFIG_FILES.includes(entry.rel) || !/\.(?:[cm]?js|[cm]?ts)$/.test(entry.name)) continue;
 		const text = readUtf8(entry.abs);
 		if (text === undefined || (!text.includes("eleventy") && !text.includes("markdown-it"))) continue;
 		const code = blankComments(text);
@@ -1145,6 +1239,25 @@ function eleventyMajor(dir: string): number | undefined {
 		if (Number.isFinite(found)) return found;
 	}
 	return undefined;
+}
+
+/**
+ * What in a site's ssqch config does what an Eleventy plugin or library did (`Todo.defines`):
+ * ssqch's own way, or the package itself, imported as it is for the first, identical build.
+ */
+function packageDefines(pkg: string): string[] {
+	const kept = `import:${pkg}`;
+	switch (pkg) {
+		case "@11ty/eleventy-img": return ["plugin:ssqch/image", kept];
+		case "@11ty/eleventy-plugin-rss": return ["plugin:ssqch/rss", kept];
+		case "@11ty/eleventy-plugin-syntaxhighlight": return ["markdown.highlight", "engines.md", kept];
+		case "@11ty/eleventy-navigation": return ["filters.eleventyNavigation", kept];
+		case "@11ty/eleventy-plugin-bundle": case "@11ty/eleventy-plugin-webc": case "@11ty/is-land": return ["plugin:ssqch/elements", kept];
+		case "markdown-it-anchor": return ["markdown.headingIds", "engines.md", kept];
+		case "markdown-it-footnote": return ["markdown.footnotes", "engines.md", kept];
+		case "markdown-it-implicit-figures": return ["markdown.figures", "engines.md", kept];
+		default: return pkg === "markdown-it" || pkg.startsWith("markdown-it-") ? ["engines.md", "markdown", kept] : [kept];
+	}
 }
 
 /** What an Eleventy plugin or library is in ssqch. */
@@ -1391,14 +1504,16 @@ function reindent(source: string, fromIndent: string, toIndent: string): string 
 }
 
 /** A first `ssqch.config.js` from an Eleventy config, and what in it needs porting. */
-export function draftConfig(name: string, text: string, extensions: ReadonlySet<string>, ports: ReadonlyArray<[string, string]> = [], eleventyMajor?: number, helpers: ReadonlyArray<[string, ReadonlyArray<[string, string]>]> = [], followed: ReadonlySet<string> = new Set(), ignored: readonly string[] = []): [string, Array<[string, string]>, Array<[string, string]>] {
+export function draftConfig(name: string, text: string, extensions: ReadonlySet<string>, ports: ReadonlyArray<[string, string]> = [], eleventyMajor?: number, helpers: ReadonlyArray<[string, ReadonlyArray<[string, string]>]> = [], followed: ReadonlySet<string> = new Set(), ignored: readonly string[] = []): [string, Array<[string, string, Todo?]>, Array<[string, string]>] {
 	const code = blankComments(text);
 	const lineOf = (offset: number) => occurrences(text.slice(0, offset), "\n") + 1;
 	const style = styleOf(text);
 	const ind = style.indent;
 	const declared = declaredNames(text);
-	const byHand: Array<[string, string]> = [];
+	const byHand: Array<[string, string, Todo?]> = [];
 	const passthrough: string[] = [], watch: string[] = [], todo: string[] = [];
+	// Done when the site's ssqch config defines the same name (`Todo.defines`).
+	const defines = (...names: string[]): Todo => ({ defines: names });
 	// `addLayoutAlias("post", "layouts/post.njk")`: [name, layout].
 	const aliases: Array<[string, string]> = [];
 	// Filters and shortcodes moved as written: [name, function source].
@@ -1446,51 +1561,51 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 			case "addFilter": case "addAsyncFilter": case "addNunjucksFilter": case "addLiquidFilter":
 				if (!port()) {
 					todo.push(`filters: ${arg}`);
-					byHand.push([at, `${method}("${arg}") -> \`filters: { ${arg}: ... }\` (async functions are awaited)`]);
+					byHand.push([at, `${method}("${arg}") -> \`filters: { ${arg}: ... }\` (async functions are awaited)`, defines(`filters.${arg}`)]);
 				}
 				break;
 			case "addNunjucksAsyncFilter":
 				todo.push(`filters: ${arg}`);
-				byHand.push([at, `${method}("${arg}") -> \`filters: { ${arg}: async (value) => ... }\`: return the result instead of calling the callback`]);
+				byHand.push([at, `${method}("${arg}") -> \`filters: { ${arg}: async (value) => ... }\`: return the result instead of calling the callback`, defines(`filters.${arg}`)]);
 				break;
 			case "addShortcode": case "addAsyncShortcode": case "addNunjucksShortcode": case "addNunjucksAsyncShortcode": case "addLiquidShortcode":
 				if (!port()) {
 					todo.push(`filters: ${arg}`);
-					byHand.push([at, `${method}("${arg}") -> a filter: \`filters: { ${arg}: ... }\`. Nunjucks keeps \`{% ${arg} ... %}\`; in Liquid it's \`{{ x | ${arg} }}\``]);
+					byHand.push([at, `${method}("${arg}") -> a filter: \`filters: { ${arg}: ... }\`. Nunjucks keeps \`{% ${arg} ... %}\`; in Liquid it's \`{{ x | ${arg} }}\``, defines(`filters.${arg}`)]);
 				}
 				break;
 			case "addPairedShortcode": case "addPairedAsyncShortcode": case "addPairedNunjucksShortcode": case "addPairedNunjucksAsyncShortcode": case "addPairedLiquidShortcode":
 				if (!port()) {
 					todo.push(`filters: ${arg}`);
-					byHand.push([at, `${method}("${arg}") -> a filter that gets the content first. Nunjucks keeps \`{% ${arg} %}...{% end${arg} %}\`; in Markdown, a \`::: ${arg}\` container`]);
+					byHand.push([at, `${method}("${arg}") -> a filter that gets the content first. Nunjucks keeps \`{% ${arg} %}...{% end${arg} %}\`; in Markdown, a \`::: ${arg}\` container`, defines(`filters.${arg}`)]);
 				}
 				break;
 			case "addCollection":
 				todo.push(`collections: ${arg}`);
-				byHand.push([at, `addCollection("${arg}") -> \`collections: { ${arg}: (pages) => ... }\`: getAll() is pages.all(), getFilteredByTag is pages.byTag, getFilteredByGlob is pages.byGlob`]);
+				byHand.push([at, `addCollection("${arg}") -> \`collections: { ${arg}: (pages) => ... }\`: getAll() is pages.all(), getFilteredByTag is pages.byTag, getFilteredByGlob is pages.byGlob`, defines(`collections.${arg}`)]);
 				break;
 			case "addTransform":
-				byHand.push([at, `addTransform("${arg}") -> \`transforms: { ${arg}: (content, page) => content }\` (an HTML minifier is \`minifyPlugin()\`)`]);
+				byHand.push([at, `addTransform("${arg}") -> \`transforms: { ${arg}: (content, page) => content }\` (an HTML minifier is \`minifyPlugin()\`)`, defines(`transforms.${arg}`, ...(/min/i.test(arg) ? ["plugin:ssqch/minify"] : []))]);
 				break;
 			case "addGlobalData":
-				byHand.push([at, `addGlobalData("${arg}") -> \`data: { ${arg}: value or function }\``]);
+				byHand.push([at, `addGlobalData("${arg}") -> \`data: { ${arg}: value or function }\``, defines(`data.${arg}`)]);
 				break;
 			case "addNunjucksTag": case "addLiquidTag":
 				todo.push(`filters: ${arg}`);
-				byHand.push([at, `${method}("${arg}") -> a custom tag is a filter in ssqch: \`filters: { ${arg}: ... }\`, and \`{% ${arg} ... %}\` keeps working in Nunjucks`]);
+				byHand.push([at, `${method}("${arg}") -> a custom tag is a filter in ssqch: \`filters: { ${arg}: ... }\`, and \`{% ${arg} ... %}\` keeps working in Nunjucks`, defines(`filters.${arg}`)]);
 				break;
 			case "addNunjucksGlobal":
-				byHand.push([at, `addNunjucksGlobal("${arg}") -> \`data: { ${arg}: value }\`, or a filter for a function`]);
+				byHand.push([at, `addNunjucksGlobal("${arg}") -> \`data: { ${arg}: value }\`, or a filter for a function`, defines(`data.${arg}`, `filters.${arg}`)]);
 				break;
 			case "addMarkdownHighlighter":
-				byHand.push([at, "addMarkdownHighlighter -> `markdown: { highlight: true }`, or a fence hook for a highlighter of your own"]);
+				byHand.push([at, "addMarkdownHighlighter -> `markdown: { highlight: true }`, or a fence hook for a highlighter of your own", defines("markdown.highlight", "engines.md")]);
 				break;
 			case "addPlugin": {
 				// A plugin from a package ssqch knows is listed below; one of the site's own isn't read.
 				const pkg = pluginPackage(code, arg);
 				const known = pkg !== undefined && `require("${pkg}")`.search(REQUIRE) !== -1 && replacement(pkg) !== undefined;
 				const from = pkg === undefined ? "" : ` (from ${pkg})`;
-				if (known) byHand.push([at, `addPlugin(${arg})${from} -> see its package below`]);
+				if (known) byHand.push([at, `addPlugin(${arg})${from} -> see its package below`, defines(...packageDefines(pkg))]);
 				else if (pkg !== undefined && followed.has(pkg)) byHand.push([at, `addPlugin(${arg})${from}: the site's own plugin. What it adds is listed with its own file and line, and what could be copied as written is in the draft`]);
 				else byHand.push([at, `addPlugin(${arg})${from}: a plugin ssqch doesn't know, so the filters, shortcodes and transforms it adds aren't listed here. Read its source and port them, or put it in \`plugins: [...]\` if it's written for ssqch`]);
 				break;
@@ -1499,7 +1614,7 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 				// The library as written (`md`, `markdownIt(options).use(plugin)`): it comes along as an
 				// engine, with the imports and setup it needs, which the draft can't follow.
 				const library = quoted === "md" && args[1] !== undefined ? trim(args[1]) : undefined;
-				if (library !== undefined) byHand.push([at, `setLibrary("md", ${library.length > 60 || library.includes("\n") ? "..." : library}) -> keep your markdown-it as it is with \`engines: { ${library === "md" ? "md" : `md: ${/^[A-Za-z_$][\w$]*$/.test(library) ? library : "yourMarkdownIt"}`} }\` (bring its import and setup into the config; \`ssqch docs "moving with identical output first"\`), or ssqch's own Markdown: \`markdown: { ... }\` options, render hooks and containers`]);
+				if (library !== undefined) byHand.push([at, `setLibrary("md", ${library.length > 60 || library.includes("\n") ? "..." : library}) -> keep your markdown-it as it is with \`engines: { ${library === "md" ? "md" : `md: ${/^[A-Za-z_$][\w$]*$/.test(library) ? library : "yourMarkdownIt"}`} }\` (bring its import and setup into the config; \`ssqch docs "moving with identical output first"\`), or ssqch's own Markdown: \`markdown: { ... }\` options, render hooks and containers`, defines("engines.md", "markdown")]);
 				else if (quoted !== undefined && quoted !== "md") byHand.push([at, `setLibrary("${quoted}") -> ssqch has its own; a library of your own is an engine: \`engines: { ${quoted}: { render: (source, data) => ... } }\``]);
 				else byHand.push([at, "setLibrary -> ssqch renders Markdown itself: `markdown: { ... }` options, render hooks and containers"]);
 				break;
@@ -1542,7 +1657,7 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 		// Eleventy 2 turned indented code off in its own markdown-it, and 3 in a site's too.
 		if (eleventyMajor !== undefined && (eleventyMajor >= 3 || (eleventyMajor === 2 && !ownLibrary))) markdownDefaults.push([`Eleventy ${eleventyMajor} turns off markdown-it's indented code blocks (\`md.disable("code")\`).`, "indentedCode: false"]);
 	}
-	for (const pkg of packages) byHand.push([name, `${pkg} -> ${replacement(pkg)}`]);
+	for (const pkg of packages) byHand.push([name, `${pkg} -> ${replacement(pkg)}`, defines(...packageDefines(pkg))]);
 
 	// Eleventy runs Markdown and HTML through Liquid unless told otherwise.
 	const engine = (key: string): string | undefined => {
