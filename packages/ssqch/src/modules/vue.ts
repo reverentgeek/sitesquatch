@@ -80,15 +80,30 @@ export function packageEntry(root: string, name: string, subpath = "."): string 
 	}
 }
 
+/**
+ * A package from the site, or else from VitePress's own folder: pnpm keeps vite and
+ * @vitejs/plugin-vue beside vitepress, not in the site's `node_modules` (the vuejs.org rerun).
+ */
+export function sitePackage(root: string, name: string): string | undefined {
+	const found = packageEntry(root, name);
+	if (found !== undefined) return found;
+	const vitepress = path.join(root, "node_modules", "vitepress");
+	if (!fs.existsSync(vitepress)) return undefined;
+	return packageEntry(fs.realpathSync(vitepress), name);
+}
+
 async function fromSite(root: string, name: string): Promise<Record<string, any>> {
-	const entry = packageEntry(root, name);
-	if (entry === undefined) bail(`vuePlugin() needs ${name} in the site's packages, as a VitePress site has it: \`npm install -D vite @vitejs/plugin-vue vue\``);
+	const entry = sitePackage(root, name);
+	if (entry === undefined) {
+		const pm = fs.existsSync(path.join(root, "pnpm-lock.yaml")) ? "pnpm add -D" : fs.existsSync(path.join(root, "yarn.lock")) ? "yarn add -D" : "npm install -D";
+		bail(`vuePlugin() needs ${name} in the site's packages, as a VitePress site has it: \`${pm} vite @vitejs/plugin-vue vue\``);
+	}
 	return import(pathToFileURL(entry!).href);
 }
 
 const HYDRATE = ["load", "idle", "visible"] as const;
-const MARK = (n: number) => `${n}`;
-const MARKS = /(\d+)/g;
+const MARK = (n: number) => `\uE050${n}\uE051`;
+const MARKS = /\uE050(\d+)\uE051/g;
 
 BUILTINS.set("ssqch/vue", (config: Config, given) => {
 	const o = new Options(given, ["components", "root", "hydrate", "css", "vite", "vitepress"]);
@@ -151,6 +166,9 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 	};
 
 	config.beforeBuild.push({ label: "", fn: async (event) => {
+		// Vue picks its development or production build from NODE_ENV when it loads: ssqch's env,
+		// unless it's set (without it, a production build wrote Vue's `<!--v-if-->` on every page).
+		process.env.NODE_ENV ??= config.env === "production" ? "production" : "development";
 		pending = [];
 		islands = false;
 		const changed = Array.isArray(event.changed) ? (event.changed as string[]) : undefined;
@@ -183,7 +201,8 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 		const given = extra as { resolve?: { alias?: unknown } };
 		// VitePress's own aliases: "vitepress" (the stand-in) and `@theme/` (its theme folder).
 		const alias = [...(vitepress ? [{ find: /^vitepress$/, replacement: shim }, ...(vitepressFolder ? [{ find: /^@theme\//, replacement: `${path.join(vitepressFolder, "theme")}/` }] : [])] : []), ...(Array.isArray(given.resolve?.alias) ? given.resolve!.alias as unknown[] : Object.entries((given.resolve?.alias as Record<string, string> | undefined) ?? {}).map(([find, replacement]) => ({ find, replacement })))];
-		const base = { ...(extra as Record<string, unknown>), root, configFile: false, resolve: { ...(given.resolve ?? {}), alias }, ssr: { noExternal: vitepress ? ["vitepress"] : [] }, plugins: [dirname, vue(), ...((extra as { plugins?: unknown[] }).plugins ?? [])], define: { __VUE_OPTIONS_API__: true, __VUE_PROD_DEVTOOLS__: false, __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false, ...((extra as { define?: object }).define ?? {}) } };
+		// `publicDir: false`: the site's `public/` is the site's to copy (passthrough), not the components'.
+		const base = { publicDir: false, ...(extra as Record<string, unknown>), root, configFile: false, resolve: { ...(given.resolve ?? {}), alias }, ssr: { noExternal: vitepress ? ["vitepress"] : [] }, plugins: [dirname, vue(), ...((extra as { plugins?: unknown[] }).plugins ?? [])], define: { __VUE_OPTIONS_API__: true, __VUE_PROD_DEVTOOLS__: false, __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false, ...((extra as { define?: object }).define ?? {}) } };
 		// VitePress's data loaders (`import { data } from "./api.data"`): each `load()` run once, through
 		// Vite (they're TypeScript, and import what the site does), and its answer is the `data` export.
 		loaded.clear();
@@ -260,7 +279,7 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 			"",
 		].join("\n"));
 		try {
-			await vite.build({ ...base, plugins: [loaders, ...base.plugins], ...quiet, build: { ssr: server, outDir: path.join(cache, "ssr"), emptyOutDir: true, minify: false, cssCodeSplit: false, ssrEmitAssets: true, rollupOptions: { output: { entryFileNames: "server.mjs" } } } });
+			await vite.build({ ...base, plugins: [loaders, ...base.plugins], ...quiet, base: config.base || "/", build: { ssr: server, outDir: path.join(cache, "ssr"), emptyOutDir: true, minify: false, cssCodeSplit: false, ssrEmitAssets: true, rollupOptions: { output: { entryFileNames: "server.mjs" } } } });
 		} catch (e) { throw e instanceof BuildError ? e : new BuildError(`vuePlugin(): Vite couldn't build the components for the server: ${e instanceof Error ? e.message : String(e)}`); }
 		// The loaders pages import for their own bindings (`:errors="data.runtime"`).
 		for (const file of new Set([...pageLoaders.values()].flatMap((m) => Object.values(m)))) await runLoader(file);
@@ -315,7 +334,9 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 		for (const [prop, expr] of Object.entries(value.bindings)) {
 			try { props[prop] = new Function(...Object.keys(scope), `"use strict"; return (${expr});`)(...Object.values(scope)); } catch { /* left as the page's data read it */ }
 		}
-		const html = render(id, { ...props, ...attrs }, value.content, JSON.parse(JSON.stringify(page, (_, v) => (v instanceof Date ? v.toISOString() : v)))).then(
+		// The components inside its slot first: Vue gets their HTML, not their markers.
+		const pageJson = JSON.parse(JSON.stringify(page, (_, v) => (v instanceof Date ? v.toISOString() : v)));
+		const html = fill(value.content).then((content) => render!(id, { ...props, ...attrs }, content, pageJson)).then(
 			(h) => {
 				if (!hydrate) return h;
 				islands = true;
@@ -329,11 +350,10 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 		return MARK(pending.length - 1);
 	});
 
-	config.htmlTransforms.push(["vue", async (content) => {
-		if (!content.includes("")) return content;
-		const done = new Map<number, string>();
-		for (const m of content.matchAll(MARKS)) done.set(Number(m[1]), await pending[Number(m[1])]);
-		let out = content.replace(MARKS, (_, n: string) => done.get(Number(n)) ?? "");
+	config.htmlTransforms.push(["vue", async (content, page) => {
+		if (!content.includes("\uE050")) return content;
+		let out: string;
+		try { out = await fill(content); } catch (e) { throw e instanceof BuildError ? e : new BuildError(`vuePlugin(): ${page.inputPath}: ${e instanceof Error ? e.message : String(e)}`); }
 		// The islands' script, once, before the page's end.
 		if (hydrate && out.includes("<ssqch-vue ")) {
 			const tag = `<script type="module" src="${config.base.replace(/\/$/, "")}/assets/vue/islands.js"></script>`;
@@ -342,18 +362,40 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 		return out;
 	}]);
 
+	/** `text` with each component's marker replaced by its HTML, again until none are left (one inside another's HTML: a layout component's slot holds the page's). */
+	async function fill(text: string): Promise<string> {
+		for (let round = 0; text.includes("\uE050"); round++) {
+			if (round > 50) throw new BuildError("vuePlugin(): components nest more than 50 deep");
+			const done = new Map<number, string>();
+			for (const m of text.matchAll(MARKS)) {
+				const n = Number(m[1]);
+				if (pending[n] === undefined) throw new BuildError(`vuePlugin(): a component's HTML went missing (marker ${n}): this is a bug in ssqch`);
+				done.set(n, await pending[n]);
+			}
+			text = text.replace(MARKS, (_, n: string) => done.get(Number(n))!);
+		}
+		return text;
+	}
+
 	// The components' styles, and the browser's modules.
 	config.generators.push(["ssqch/vue", () => {
 		const files: GeneratedFile[] = [];
 		if (!render) return files;
 		const ssrDir = path.join(cache, "ssr");
-		const css = fs.existsSync(ssrDir) ? fs.readdirSync(ssrDir, { recursive: true }).map(String).filter((f) => f.endsWith(".css")).sort() : [];
-		if (cssPath && css.length) files.push({ path: cssPath, contents: css.map((f) => fs.readFileSync(path.join(ssrDir, f), "utf8")).join("\n") });
+		const listed = (dir: string) => (fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).map(String).filter((f) => fs.statSync(path.join(dir, f)).isFile()).sort() : []);
+		const ssr = listed(ssrDir);
+		const css = ssr.filter((f) => f.endsWith(".css"));
+		if (cssPath && css.length) {
+			files.push({ path: cssPath, contents: css.map((f) => fs.readFileSync(path.join(ssrDir, f), "utf8")).join("\n") });
+			// What the styles point at (the theme's fonts, images), where Vite wrote them: `/assets/inter-x.woff2`.
+			for (const f of ssr) if (!/\.(?:[cm]?js|css|map)$/.test(f)) files.push({ path: `/${f.split(path.sep).join("/")}`, contents: fs.readFileSync(path.join(ssrDir, f)) });
+		}
 		const clientDir = path.join(cache, "client");
-		if (hydrate && islands && fs.existsSync(clientDir)) {
-			for (const f of fs.readdirSync(clientDir, { recursive: true }).map(String).sort()) {
+		if (hydrate && islands) {
+			for (const f of listed(clientDir)) {
+				if (f.endsWith(".map")) continue;
 				const full = path.join(clientDir, f);
-				if (fs.statSync(full).isFile() && /\.(?:js|css)$/.test(f)) files.push({ path: `/assets/vue/${f.split(path.sep).join("/")}`, contents: fs.readFileSync(full, "utf8") });
+				files.push({ path: `/assets/vue/${f.split(path.sep).join("/")}`, contents: /\.(?:[cm]?js|css|svg|json)$/.test(f) ? fs.readFileSync(full, "utf8") : fs.readFileSync(full) });
 			}
 		}
 		return files;

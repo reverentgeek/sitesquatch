@@ -49,7 +49,8 @@ export type Hook = { label: string; fn: (event: Data) => unknown } | { run: stri
 /** A file a plugin adds to the output: a URL path (`/sitemap.xml`) and its contents. */
 export interface GeneratedFile {
 	path: string;
-	contents: string;
+	/** Text, or bytes for a binary file (a font, an image). */
+	contents: string | Uint8Array;
 	/** Add to the end of a file a page wrote at the same path, instead of it being a conflict. */
 	append?: boolean;
 	/** A site's `_includes/hooks/<name>.*` template that writes this file instead of `contents`, if it has one: it gets `value` as `<name>`, next to the global data. Generators' files only. */
