@@ -90,7 +90,10 @@ where that version matches.
   with the site's own Vite, @vitejs/plugin-vue and Vue: the ones a page's `<script setup>`
   imports and the ones the config names for every page, with bindings read as Vue reads them
   (VitePress's data loaders, a dynamic route's `params`, `useData()`), and with `hydrate`, as
-  islands in the browser. On vuejs.org, scout's draft and one data file build every page with
+  islands in the browser. A component inside another's slot renders (a layout component that
+  holds the page), Vue renders with its production build in a production build, the fonts and
+  images the styles point at are copied, and with pnpm, vite is found beside vitepress. On
+  vuejs.org, scout's draft and one data file build every page with
   its components (the move wrote 241 lines for that), and the demos run in the browser again.
   Scout drafts it for a VitePress site, and lists the site's data loaders in `ignore` by their
   paths, so the move's own `.data.js` files stay ssqch's.

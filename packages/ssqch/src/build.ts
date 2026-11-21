@@ -930,7 +930,10 @@ export function runCommand(config: Config, dirs: Dirs, event: string, command: s
 
 // ---- files plugins add -----------------------------------------------------------------------
 
-const sameText = (file: string, contents: string) => { try { return fs.readFileSync(file, "utf8") === contents; } catch { return false; } };
+/** Whether `file` holds `contents` already (text, or a binary file's bytes), so it isn't written again. */
+const sameText = (file: string, contents: string | Uint8Array) => {
+	try { return typeof contents === "string" ? fs.readFileSync(file, "utf8") === contents : Buffer.from(contents).equals(fs.readFileSync(file)); } catch { return false; }
+};
 
 /** Runs the file builders (files built from sources of their own, like compiled CSS) and writes their files, unless a file is already up to date. */
 async function runFileBuilders(config: Config, dirs: Dirs): Promise<string[]> {
@@ -988,7 +991,7 @@ async function runGenerators(config: Config, dirs: Dirs, pages: Page[], pageOutp
 				try { rendered = site.markdown.hookFile(file.hook.name, file.hook.value, site.global); } catch (e) { throw context(e, `${name}: writing ${file.path}`); }
 				if (rendered !== undefined) contents = rendered;
 			}
-			if (file.append && (isPage || owners.has(target))) {
+			if (file.append && typeof contents === "string" && (isPage || owners.has(target))) {
 				let existing = "";
 				try { existing = fs.readFileSync(target, "utf8"); } catch { /* nothing there yet */ }
 				if (existing !== "" && !existing.endsWith("\n")) existing += "\n";
