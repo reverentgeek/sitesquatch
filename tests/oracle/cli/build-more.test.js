@@ -120,7 +120,11 @@ test("a_failed_build_reports_the_first_phase_that_failed", () => {
 	write(dir, { "src/z.njk": "---\nlayout: base.njk\n---\nfine\n" });
 	assert.deepEqual(errors(), ["rendering late.njk with `njk`"]);
 	write(dir, { "src/late.njk": "---\nlayout: base.njk\n---\nfine\n" });
-	assert.deepEqual(errors().length, 4);
+	// DELIBERATE (0.12): the layout's one error on the 4 pages is one line with the count
+	// (vuejs.org's move printed one layout error 86 times); `--format json` still lists each.
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.log.includes("4 error(s):\n") && r.log.includes("(and 3 more pages with the same error: "), r.log);
+	assert.deepEqual(errors().length, 1);
 });
 
 // `--profile` lists where the time went after the summary, the slowest of each kind, and prints
@@ -243,4 +247,42 @@ test("a_jekyll_collection_under_site_is_warned_about", () => {
 	});
 	const r = ssqch(["build", "--root", dir]);
 	assert.ok(r.ok && r.log.includes("warn: index.liquid uses `site.articles` (Jekyll's). ssqch's lists of pages are `collections`: `collections.articles` is the pages tagged `articles`"), r.log);
+});
+
+// Added in 0.12, from the fresh vuejs.org run: VitePress's data loaders (`api/api.data.ts`) are
+// named the way ssqch names a folder's data, and `ignore` didn't keep them out.
+test("ignore_keeps_a_data_file_out_and_a_data_error_says_why_it_was_read", () => {
+	const dir = tempDir("data-ignore");
+	write(dir, {
+		"ssqch.config.js": "export default {};\n",
+		"api/api.data.js": "import md from \"markdown-it-not-installed\";\nexport default { load: () => md };\n",
+		"api/index.md": "# API\n",
+	});
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("ssqch read api/api.data.js as the directory data for api/, by its name: if it isn't ssqch data (a VitePress loader is named this way too), list it in `ignore`"), r.log);
+	write(dir, { "ssqch.config.js": "export default { ignore: [\"**/*.data.js\"] };\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && exists(dir, "_site/api/index.html"), r.log);
+});
+
+// Added in 0.12, from the fresh vuejs.org run: VitePress's `page: true` on 9 pages was replaced by
+// ssqch's `page` with no word.
+test("front_matter_page_is_warned_about", () => {
+	const dir = tempDir("front-matter-page");
+	write(dir, {
+		"ssqch.config.js": "export default {};\n",
+		"index.md": "---\npage: true\n---\n# Home\n",
+		"about.md": "# About\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && r.log.includes("warn: index.md sets `page` in its front matter. `page` is ssqch's (the page's url, inputPath, date and headings), so the front matter's value is replaced"), r.log);
+});
+
+// Added in 0.12, from the fresh vuejs.org run: one layout's error printed once for each of 86 pages.
+test("the_same_error_on_many_pages_is_one_line", () => {
+	const dir = tempDir("same-error");
+	const pages = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`p${i + 1}.md`, "---\nlayout: base.jinja\n---\nhi\n"]));
+	write(dir, { "ssqch.config.js": "export default {};\n", "_includes/base.jinja": "{% if x is matching %}y{% endif %}{{ content }}\n", ...pages });
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("5 error(s):\n  - rendering layout _includes/base.jinja for p1.md: _includes/base.jinja:1: unknown test `matching` (and 4 more pages with the same error: p2.md, p3.md, p4.md, ...)\n"), r.log);
 });

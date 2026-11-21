@@ -59,6 +59,9 @@ test("spaces_that_show_and_names_with_dates_count", () => {
 	assert.equal(withoutFingerprints("/assets/index.3f2a1b4c.css /a/app.00112233.js"), "/assets/index.css /a/app.js");
 	assert.equal(withoutFingerprints("/files/report.20240101.pdf /files/notes.19991231.txt"), "/files/report.20240101.pdf /files/notes.19991231.txt");
 	assert.equal(withoutFingerprints("app.3f2a1b4c.json app.3f2a1b4c.jsx"), "app.json app.3f2a1b4c.jsx");
+	// Vite's and Rollup's base64url hashes, after a `.` or a `-` (vuejs.org's move); a word stays.
+	assert.equal(withoutFingerprints("/assets/style.Bfpn8qS8.css /assets/index-D_xVD091.js /a/chunk.Bem-lx-m.js"), "/assets/style.css /assets/index.js /a/chunk.js");
+	assert.equal(withoutFingerprints("/js/my-Template.js /js/trail-12345678.js /js/pine-cones.js"), "/js/my-Template.js /js/trail-12345678.js /js/pine-cones.js");
 });
 
 test("noise_is_ignored_and_changes_are_classified", async () => {
@@ -116,6 +119,12 @@ test("noise_is_ignored_and_changes_are_classified", async () => {
 	const others = build({ "api/index.html": "<p>&lt;Client object at 0x10a2b3c4d&gt;</p>\n" });
 	assert.equal((await compare(addresses, others, options({ exact: true }))).changed.length, 1);
 	assert.equal((await compare(addresses, others, options({ exact: true, ignore: [/object at 0x[0-9a-f]+/gu] }))).changed.length, 0);
+
+	// Vue's scope ids and fragment markers, and Astro's, aren't a difference; --exact counts them.
+	const vue = build({ "guide/index.html": "<div class=\"tip\" data-v-ba3e0d0a><!--[--><p data-v-ba3e0d0a=\"\">Pack out what you pack in.</p><!--]--><!----><span data-astro-cid-j7pv25f6>x</span></div>\n" });
+	const plain = build({ "guide/index.html": "<div class=\"tip\"><p>Pack out what you pack in.</p><span>x</span></div>\n" });
+	assert.equal((await compare(vue, plain, options())).changed.length, 0);
+	assert.equal((await compare(vue, plain, options({ exact: true }))).changed.length, 1);
 
 	// An ignore pattern, and only some files.
 	report = await compare(before, after, options({ ignore: [/(Old|New)\s+text/gu], only: [globToRegExp("index.html")] }));
@@ -314,6 +323,17 @@ test("many_builds_are_counted_and_the_typical_one_named", async () => {
 	assert.ok(text.includes("~ /a/  (2 versions: 5 of 7 builds (ref-2, ref-3, ref-4, ...) agree; ref-1, ref-7 differ)"), text);
 	assert.ok(text.includes("The build most like the others: ref-2, with the most common version of 2 of the 2 files that vary.\n"), text);
 	assert.equal((runsJson({ ...report, runs: runs.map((_, i) => `ref-${i + 1}`) }, 0) as { typical: string }).typical, "ref-2");
+});
+
+// vuejs.org's 20 builds each had their own CSS: after --runs 20, more builds aren't the advice.
+test("every_build_different_after_many_runs_says_more_wont_help", async () => {
+	const few = [build({ "a.css": "1" }), build({ "a.css": "2" }), build({ "a.css": "3" })];
+	const text = (runs: string[], dirs: string[]) => compareRuns(dirs, options()).then((r) => runsText({ ...r, runs }, 10, false));
+	assert.match(await text(["ref-1", "ref-2", "ref-3"], few), /each build has its own\. More builds \(--runs 20\) show whether one is usual\./);
+	const many = Array.from({ length: 20 }, (_, i) => build({ "a.css": String(i) }));
+	const said = await text(many.map((_, i) => `ref-${i + 1}`), many);
+	assert.match(said, /With 20 builds, more won't find one: something writes it differently each time/);
+	assert.ok(!said.includes("--runs 20"), said);
 });
 
 // A build's time printed in each page's own text (Jekyll's `site.time` in every page's JSON-LD,

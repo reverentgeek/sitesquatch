@@ -161,6 +161,27 @@ export class Site {
 	}
 
 	/** A data file's value, timed with `--profile`. One that fetches can take a while on purpose, so it's no `slow-call`. */
+	private ignoreGlobs: ((rel: string) => boolean) | undefined;
+	/**
+	 * Whether `ignore` lists a data file beside the templates. Data is read by its name
+	 * (`api/api.data.ts` is `api/`'s), so another generator's file with that name (VitePress's
+	 * loaders) would be imported as data: `ignore: ["**\/*.data.ts"]` keeps it out.
+	 */
+	private ignoredData(file: string): boolean {
+		this.ignoreGlobs ??= globSet("ignore", this.config.ignore);
+		return this.ignoreGlobs(relative(this.dirs.input, file));
+	}
+
+	/** A data file's error, saying why ssqch read it: a file is data by its name, which another generator's file can have too. */
+	private async loadNamedData(file: string, why: string): Promise<unknown> {
+		try {
+			return await this.loadData(file);
+		} catch (e) {
+			const items = e instanceof Diagnostics || e instanceof BuildError ? e.items : undefined;
+			throw new BuildError(`${messageOf(e)}. ssqch read ${shown(this.dirs.root, file)} as ${why}, by its name: if it isn't ssqch data (a VitePress loader is named this way too), list it in \`ignore\``, items);
+		}
+	}
+
 	private loadData(file: string): ReturnType<typeof loadDataFile> {
 		const load = () => loadDataFile(file, this.config.dataExtensions);
 		return this.profile.detailed ? this.profile.time("data", shown(this.dirs.root, file), false, load) : load();
@@ -610,8 +631,8 @@ export class Site {
 			let data: Data = {};
 			for (const candidate of candidates) {
 				const file = path.join(dir, candidate);
-				if (!(this.seen.has(file) || isFile(file))) continue;
-				const value = await this.loadData(file);
+				if (!(this.seen.has(file) || isFile(file)) || this.ignoredData(file)) continue;
+				const value = await this.loadNamedData(file, `the directory data for ${shown(this.dirs.root, dir)}/`);
 				if (!isPlainObject(value)) continue;
 				const layer = { ...value };
 				try { aliasDataKeys(layer); } catch (e) { throw context(e, `in ${shown(this.dirs.root, file)}`); }
@@ -699,8 +720,8 @@ export class Site {
 			const stem = name.slice(0, name.length - path.extname(name).length);
 			for (const suffix of ["json", "data.json", ...[...config.dataExtensions.keys()].map((ext) => `data.${ext}`)]) {
 				const candidate = path.join(path.dirname(file), `${stem}.${suffix}`);
-				if (!this.sawFile(candidate)) continue;
-				const value = await this.loadData(candidate);
+				if (!this.sawFile(candidate) || this.ignoredData(candidate)) continue;
+				const value = await this.loadNamedData(candidate, `the data for ${shown(dirs.root, file)}`);
 				if (!isPlainObject(value)) continue;
 				const layer = { ...value };
 				try { aliasDataKeys(layer); } catch (e) { throw context(e, `in ${shown(dirs.root, candidate)}`); }
@@ -1230,5 +1251,39 @@ export async function collectErrors<T>(jobs: Array<() => T | Promise<T>>): Promi
 export function errorsTogether(failed: unknown[]): Diagnostics {
 	const messages = failed.map(messageOf);
 	const items: Diagnostic[] = failed.flatMap((e, i) => ((e instanceof Diagnostics || e instanceof BuildError) && e.items ? e.items : [errorOf("", messages[i])]));
-	return new Diagnostics(`${failed.length} error(s):\n  - ${messages.slice(0, 10).join("\n  - ")}${failed.length > 10 ? "\n  ..." : ""}`, items);
+	const listed = sameErrorsTogether(messages);
+	return new Diagnostics(`${failed.length} error(s):\n  - ${listed.slice(0, 10).join("\n  - ")}${listed.length > 10 ? "\n  ..." : ""}`, items);
+}
+
+/**
+ * One line for the same error on several pages: a layout's mistake fails every page that uses it
+ * (vuejs.org's move: one unknown Jinja test, 86 times). The first page's line, and how many more.
+ */
+export function sameErrorsTogether(messages: string[]): string[] {
+	// Where a message names its page: `in <page>: `, `rendering layout <layout> for <page>: `,
+	// `rendering <page> with `. The rest, with the page left out, is the error.
+	const PAGE = /^(?:in |rendering layout [^\s]+ for |rendering )([^\s:]+?\.[A-Za-z0-9]+)(?:: | with )/;
+	const keyOf = (m: string): [string, string] | undefined => {
+		const found = PAGE.exec(m);
+		if (!found) return undefined;
+		const at = found[0].indexOf(found[1]);
+		return [m.slice(0, at) + "\0" + m.slice(at + found[1].length), found[1]];
+	};
+	const pages = new Map<string, string[]>();
+	for (const m of messages) {
+		const key = keyOf(m);
+		if (key) pages.set(key[0], [...(pages.get(key[0]) ?? []), key[1]]);
+	}
+	const out: string[] = [];
+	const said = new Set<string>();
+	for (const m of messages) {
+		const key = keyOf(m);
+		const all = key ? pages.get(key[0])! : [];
+		if (!key || all.length === 1) { out.push(m); continue; }
+		if (said.has(key[0])) continue;
+		said.add(key[0]);
+		const more = all.slice(1);
+		out.push(`${m} (and ${more.length} more ${more.length === 1 ? "page" : "pages"} with the same error: ${more.slice(0, 3).join(", ")}${more.length > 3 ? ", ..." : ""})`);
+	}
+	return out;
 }

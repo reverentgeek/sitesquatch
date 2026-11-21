@@ -700,6 +700,14 @@ function checkForeignKeys(site: Site): void {
 			: `${n} pages set \`${row.word}\` (${files.slice(0, 3).join(", ")}${n > 3 ? ", ..." : ""}): ${row.say}\n  More: ${row.more}`;
 		warn(warning("foreign-key", message, n === 1 ? { field: row.word, file: files[0] } : { field: row.word }));
 	}
+	// `page` is ssqch's own (url, inputPath, date, headings), so a page's front matter `page` is
+	// replaced: VitePress's `page: true` on vuejs.org's 9 pages vanished without a word.
+	const files = dedup(site.pages.filter((p) => p.tpl.frontKeys.includes("page")).map((p) => shown(site.dirs.root, p.tpl.input)));
+	if (files.length) {
+		const say = "`page` is ssqch's (the page's url, inputPath, date and headings), so the front matter's value is replaced and templates never see it. Give it another name (`pageLayout: true`); VitePress's `page: true`, a page without the docs layout, is a layout in ssqch (`layout: page`)";
+		const message = files.length === 1 ? `${files[0]} sets \`page\` in its front matter. ${say}` : `${files.length} pages set \`page\` in their front matter (${files.slice(0, 3).join(", ")}${files.length > 3 ? ", ..." : ""}): ${say}`;
+		warn(warning("foreign-key", message, files.length === 1 ? { field: "page", file: files[0] } : { field: "page" }));
+	}
 }
 
 /** A list without repeats that follow each other. */
