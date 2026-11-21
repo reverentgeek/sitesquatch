@@ -9,6 +9,27 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Added
+
+- `markdown: { shortcodes: "hugo" }` reads a Hugo shortcode inside a line of text too, through
+  the same container template as one on a line of its own: `Added in {{< new-in 0.148 />}}`,
+  `[About]({{< ref "about" >}})` and `{{% kbd %}}Ctrl{{% /kbd %}}` render
+  `_includes/containers/<name>.*` in place, with `container.inline` true and what's between a
+  pair's tags as `container.content`. In a heading, the call leaves the id alone. A call with no
+  template is left as written, as before. The gohugo.io move had calls like these in 65 files and
+  no way to give them a template, and `ssqch scout` drafts one for each of the site's own.
+- With `admonitions: "mkdocs"` and `tabs: "mkdocs"`, a title is inline Markdown, as
+  Python-Markdown reads it: `=== "\`base.html\`"` labels its tab with `<code>`, and
+  `??? tip "Read [the guide]"` links with the page's reference definition. Before, a title was
+  plain text (27 of Material for MkDocs' pages have one with code or a link).
+
+### Fixed
+
+- A Hugo shortcode shown with `/* */` (`{{</* note */>}}`) on a line of its own was read as a
+  container named `/`; it prints `{{< note >}}`, as in Hugo.
+
 ## 0.11.0 - 2026-11-20
 
 ### Breaking
