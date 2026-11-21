@@ -41,6 +41,21 @@ where that version matches.
   with a tool beside it run after it (`eleventy & gulp` becomes `eleventy && gulp`), a gulpfile
   no script runs added, and the Node a site pins (`.nvmrc`, `.node-version`, `engines`) named
   when it's older than ssqch's.
+- `ignore` keeps a data file beside the templates out too (`ignore: ["**/*.data.ts"]`).
+  VitePress names its data loaders the way ssqch names a folder's data (`api/api.data.ts`), and
+  the vuejs.org move's first build failed on one with an error about markdown-it, which it had
+  to rename to get past. A data file that fails to load now says ssqch read it by its name.
+- Front matter `page` (VitePress's `page: true`, on 9 of vuejs.org's pages) is warned about
+  (`foreign-key`): ssqch's own `page` replaced it without a word.
+- `ssqch diff` takes Vite's and Rollup's base64url hashes for fingerprints
+  (`style.Bfpn8qS8.css`, `index-D_xVD091.js`), and leaves out Vue's scoped-style attributes
+  (`data-v-ba3e0d0a`), its server renderer's fragment markers (`<!--[-->`) and Astro's
+  `data-astro-cid-*`. On vuejs.org, the 20 reference builds looked like 111 varying pages, and
+  the first diff had 172 groups of these, until two `--ignore` patterns.
+- `ssqch baseline` with 20 builds or more no longer suggests `--runs 20` when every build has its
+  own version of a file; it says more builds won't find a common one.
+- The same error on several pages is one line, with how many more pages have it: one unknown
+  Jinja test in a layout printed 86 times.
 - `ssqch scout` rewrote every JSON and YAML file in an Eleventy project as data, its own saved
   reports included; only data in the input folder is. It no longer prints Node's
   `MODULE_TYPELESS_PACKAGE_JSON` warning when it loads a site's config, as `ssqch build` doesn't.

@@ -124,7 +124,11 @@ const WORD = String.raw`[\p{Alphabetic}\p{M}\p{Nd}\p{Pc}\p{Join_Control}]`;
 const START = `(?<!${WORD})`;
 const END = `(?!${WORD})`;
 
-const FINGERPRINT = new RegExp(String.raw`\.([0-9a-f]{8})\.(css|js|mjs|map|woff2?|ttf|otf|png|jpe?g|gif|svg|webp|avif|ico|json|xml|txt|pdf|wasm)` + END, "gu");
+const FINGERPRINT = new RegExp(String.raw`([.\-])([0-9A-Za-z_\-]{8})\.(css|js|mjs|map|woff2?|ttf|otf|png|jpe?g|gif|svg|webp|avif|ico|json|xml|txt|pdf|wasm)` + END, "gu");
+// Vue's scoped-style attributes and its server renderer's fragment markers, and Astro's scope
+// attributes: ids from the build, which a port that writes the same markup another way doesn't
+// have (vuejs.org's move: 172 groups of them).
+const FRAMEWORK_MARKERS = /\p{White_Space}data-(?:v-[0-9a-f]{8}|astro-cid-[0-9a-z]{8})(?:=(?:""|''))?(?=[\p{White_Space}/>])|<!--\[-->|<!--\]-->|<!---->/gu;
 const INTEGRITY = /\p{White_Space}+integrity=("[^"]*"|'[^']*'|[^\p{White_Space}>]+)/gu;
 const GENERATOR = new RegExp(String.raw`SiteSquatch v\p{Nd}+\.\p{Nd}+\.\p{Nd}+[\p{Alphabetic}\p{M}\p{Nd}\p{Pc}\p{Join_Control}.+\-]*`, "gu");
 const ID_ATTR = /\p{White_Space}id=(?:"([^"]*)"|'([^']*)'|([^\p{White_Space}>]+))/u;
@@ -162,10 +166,24 @@ export function withoutImageIds(text: string): string {
 	return text.replace(IMAGE_ID, (id: string) => (isImageId(id) ? "{id}" : id));
 }
 
-/** `name` (or a whole text) without asset fingerprints: eight hex digits before the extension. Eight digits that read as a date (`report.20240101.pdf`) are part of the name, not a fingerprint. */
+/**
+ * `name` (or a whole text) without asset fingerprints before the extension: eight hex digits
+ * after a `.` (`index.3f2a1b4c.css`), or the eight base64url characters Vite and Rollup write,
+ * after a `.` or a `-` (`style.Bfpn8qS8.css`, `index-D_xVD091.js`). Eight digits that read as a
+ * date (`report.20240101.pdf`) are part of the name, and so is a word (`my-Template.js`): Vite's
+ * hash mixes cases with a digit, `-` or `_`.
+ */
 export function withoutFingerprints(text: string): string {
 	if (!text.includes(".")) return text;
-	return text.replace(FINGERPRINT, (whole, hash: string, ext: string) => (/^(19|20)\d{6}$/.test(hash) ? whole : `.${ext}`));
+	return text.replace(FINGERPRINT, (whole, before: string, hash: string, ext: string) => (isFingerprint(before, hash) ? `.${ext}` : whole));
+}
+
+function isFingerprint(before: string, hash: string): boolean {
+	if (before === "." && /^[0-9a-f]{8}$/.test(hash)) return !/^(19|20)\d{6}$/.test(hash);
+	// base64url: an upper-case letter with lower case or digits. After a `-`, where a name's own
+	// words are (`my-Template.js`), a digit, `-` or `_` too.
+	if (!/[A-Z]/.test(hash) || !/[a-z0-9]/.test(hash)) return false;
+	return before === "." || /[0-9_\-]/.test(hash);
 }
 
 /** Elements that sit in a line of text, where a space next to the tag shows. */
@@ -198,6 +216,7 @@ function normalize(text: string, options: DiffOptions): string {
 	if (options.exact) return out;
 	out = withoutFingerprints(out);
 	out = withoutImageIds(out);
+	if (out.includes("data-") || out.includes("<!--")) out = out.replace(FRAMEWORK_MARKERS, "");
 	if (out.includes("integrity=")) out = out.replace(INTEGRITY, "");
 	if (out.includes("SiteSquatch v")) out = out.replace(GENERATOR, "SiteSquatch");
 	return out;
@@ -1090,7 +1109,7 @@ function onlyDates(list: Hunk[]): [string, string] | undefined {
 // ---- output ----------------------------------------------------------------------------------
 
 /** What a comparison that isn't `--exact` leaves out, said first: what differs only in these doesn't count. */
-const IGNORING = "Ignoring asset fingerprints, image ids, integrity hashes, the generator's version, whitespace between tags, and how tags are written where browsers read them the same (attribute order, quotes, entities, `<br/>`) (--exact compares bytes).\n";
+const IGNORING = "Ignoring asset fingerprints, image ids, integrity hashes, the generator's version, Vue's and Astro's scope ids and fragment markers, whitespace between tags, and how tags are written where browsers read them the same (attribute order, quotes, entities, `<br/>`) (--exact compares bytes).\n";
 
 /** More images named by their id than this, added or removed, are counted in one line rather than listed. */
 const IMAGES_LISTED = 5;
@@ -1388,7 +1407,8 @@ export function runsText(report: RunsReport, limit: number, color: boolean): str
 	out += `The build most like the others: ${report.runs[report.typical]}, with the most common version of ${common} of the ${plural(report.varies.length, "file", "files")} that vary.\n`;
 	// Every build different: no version is the usual one yet (a race needs more builds to show it).
 	const unsettled = report.varies.filter((v) => v.versions[0].runs.length < 2).length;
-	if (unsettled) out += `${unsettled === 1 ? "1 file has" : `${unsettled} files have`} no most common version: each build has its own. More builds (--runs 20) show whether one is usual.\n`;
+	// After 20 builds or more, more won't settle it: the file is made differently every time.
+	if (unsettled) out += `${unsettled === 1 ? "1 file has" : `${unsettled} files have`} no most common version: each build has its own. ${report.runs.length < 20 ? "More builds (--runs 20) show whether one is usual." : `With ${report.runs.length} builds, more won't find one: something writes ${unsettled === 1 ? "it" : "them"} differently each time (a tool's output order, a time). Pin that, or leave ${unsettled === 1 ? "it" : "them"} out with --ignore or --only.`}\n`;
 	return out;
 }
 
