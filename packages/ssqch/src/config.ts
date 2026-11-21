@@ -765,6 +765,7 @@ function applySettings(config: Config, settings: Data): void {
 	const urls = settings.urls;
 	if (urls === "folders" || urls === "html") config.urls = urls;
 	else if (urls !== undefined && urls !== null) bail(`urls must be "folders" (/guide/intro/) or "html" (/guide/intro.html), not ${typeof urls === "string" ? `"${urls}"` : typeof urls}`);
+	config.markdown.htmlUrls = config.urls === "html";
 	// `layoutAliases: { post: "layouts/post.njk" }`: `layout: post` is that file, and a page's
 	// `layout` is still `post` (a template that tests `layout == "post"` keeps working).
 	if (settings.layoutAliases !== undefined && settings.layoutAliases !== null) {

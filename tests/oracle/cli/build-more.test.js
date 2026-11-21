@@ -314,3 +314,17 @@ test("vitepress_habits_have_options", () => {
 	const bad = ssqch(["build", "--root", dir]);
 	assert.ok(!bad.ok && bad.log.includes("urls must be \"folders\" (/guide/intro/) or \"html\" (/guide/intro.html), not \"ugly\""), bad.log);
 });
+
+// Added in 0.12, from the fresh vuejs.org run: VitePress's Markdown, as one option.
+test("the_vitepress_dialect_writes_vitepress_markup", () => {
+	const dir = tempDir("vitepress-dialect");
+	write(dir, {
+		"ssqch.config.js": "export default { urls: \"html\", markdownEngine: false, markdown: { dialect: \"vitepress\" } };\n",
+		"_includes/containers/warning.jinja": "<aside class=\"own\">{{ container.content | safe }}</aside>",
+		"guide/intro.md": "<script setup>\nimport { ref } from 'vue'\n</script>\n\n## What's Vue?\n\nRead [the guide](./next.md) or [Vue School](https://vueschool.io).\n\n::: tip\n- one\n  :::\n\n::: warning\nOurs\n:::\n",
+		"guide/next.md": "# Next\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/guide/intro.html"), "<h2 id=\"what-s-vue\" tabindex=\"-1\">What's Vue? <a class=\"header-anchor\" href=\"#what-s-vue\" aria-label=\"Permalink to “What's Vue?”\">​</a></h2>\n<p>Read <a href=\"./next.html\">the guide</a> or <a href=\"https://vueschool.io\" target=\"_blank\" rel=\"noreferrer\">Vue School</a>.</p>\n<div class=\"tip custom-block\"><p class=\"custom-block-title custom-block-title-default\">TIP</p>\n<ul>\n<li>one</li>\n</ul>\n</div>\n<aside class=\"own\"><p>Ours</p>\n</aside>\n");
+});

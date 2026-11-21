@@ -4,6 +4,7 @@ import { bail } from "./diagnostics.ts";
 import { isPlainObject } from "./data.ts";
 import { closest } from "./suggest.ts";
 import { pythonMarkdownSlug } from "./engines/markdown-dialects.ts";
+import { vitepressSlug } from "./engines/vitepress-dialect.ts";
 
 export type Slugger = "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor";
 
@@ -57,7 +58,9 @@ export interface MarkdownOptions {
 	/** A function of the site's that changes a page's Markdown before ssqch reads it: `(source, data) => source`. */
 	preprocess: ((source: string, data: Record<string, unknown>) => unknown) | null;
 	/** `"python-markdown"`: what Python-Markdown (MkDocs') reads and writes differently from CommonMark, as it does: raw HTML blocks to their closing tag, lists nested at four spaces, `"` in text, XHTML's void tags. */
-	dialect: "python-markdown" | null;
+	dialect: "python-markdown" | "vitepress" | null;
+	/** The site's `urls` is `"html"`: the `vitepress` dialect's links get `.html`. Set from the config, not from `markdown`. */
+	htmlUrls: boolean;
 }
 
 export function defaultMarkdownOptions(): MarkdownOptions {
@@ -87,6 +90,7 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		sourceLinks: false,
 		preprocess: null,
 		dialect: null,
+		htmlUrls: false,
 	};
 }
 
@@ -136,9 +140,11 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 			else if (typeof v === "string") {
 				// Python-Markdown's (MkDocs') ids are a function of the text, so they're a slugger function of ssqch's own.
 				if (v === "python-markdown") { options.sluggerFn = pythonMarkdownSlug; options.headingIds = "github"; continue; }
-				if (!["github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor"].includes(v)) bail(`markdown.headingIds: unknown slugger "${v}" (use "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor", "python-markdown" or false)`);
+				// VitePress's (@mdit-vue/shared's `slugify`).
+				if (v === "vitepress") { options.sluggerFn = vitepressSlug; options.headingIds = "github"; continue; }
+				if (!["github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor"].includes(v)) bail(`markdown.headingIds: unknown slugger "${v}" (use "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor", "python-markdown", "vitepress" or false)`);
 				options.headingIds = v as Slugger;
-			} else bail(`markdown.headingIds must be "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor", "python-markdown" or false, not ${typeOf(v)}`);
+			} else bail(`markdown.headingIds must be "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor", "python-markdown", "vitepress" or false, not ${typeOf(v)}`);
 		} else if (key === "htmlMarkdown") {
 			if (v !== false && v !== "kramdown") bail(`markdown.htmlMarkdown must be "kramdown" or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.htmlMarkdown = v;
@@ -149,8 +155,8 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 			if (v !== false && v !== "hugo") bail(`markdown.shortcodes must be "hugo" or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.shortcodes = v;
 		} else if (key === "dialect") {
-			if (v !== "python-markdown" && v !== null && v !== false) bail(`markdown.dialect: unknown dialect ${typeof v === "string" ? `"${v}"` : typeOf(v)} (use "python-markdown", or false for CommonMark's)`);
-			options.dialect = v === "python-markdown" ? v : null;
+			if (v !== "python-markdown" && v !== "vitepress" && v !== null && v !== false) bail(`markdown.dialect: unknown dialect ${typeof v === "string" ? `"${v}"` : typeOf(v)} (use "python-markdown", "vitepress", or false for CommonMark's)`);
+			options.dialect = v === "python-markdown" || v === "vitepress" ? v : null;
 		} else if (key === "preprocess") {
 			if (v !== null && v !== false && typeof v !== "function") bail(`markdown.preprocess must be a function (source, data) => source, not ${typeOf(v)}`);
 			options.preprocess = typeof v === "function" ? (v as MarkdownOptions["preprocess"]) : null;
@@ -187,6 +193,14 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 			const near = closest(key, MARKDOWN_KEYS);
 			bail(`markdown.${key} isn't an option${near ? ` (did you mean \`${near}\`?)` : ""} (options: ${MARKDOWN_KEYS.join(", ")})`);
 		}
+	}
+	// VitePress's markdown-it, for what the site doesn't set itself: its heading ids, linkify
+	// without bare domains, and markdown-it-container's closing `:::`.
+	if (options.dialect === "vitepress") {
+		const given = value as Record<string, unknown>;
+		if (!("headingIds" in given)) { options.sluggerFn = vitepressSlug; options.headingIds = "github"; }
+		if (!("autolinks" in given)) options.autolinks = "email";
+		if (!("containers" in given)) options.containers = "markdown-it";
 	}
 }
 
