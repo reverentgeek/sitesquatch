@@ -33,8 +33,9 @@ test("baseline_builds_the_old_site_and_says_what_varies", { skip: !hasGit && "ne
 	// neither generator reads them as pages, and the message says what isn't pinned.
 	const ref = ".cache/ssqch/baseline/ref";
 	assert.ok(r.log.includes(`Base camp is set: ${ref}-1, ${ref}-2 and ${ref}-3, built from the working tree with TZ=UTC, SOURCE_DATE_EPOCH and every file's time pinned; a generator that reads its own clock isn't, so pin it in its config if the builds vary.`), r.log);
-	// The build to compare with is the one most like the others (all three differ here: the first).
-	assert.ok(r.log.includes("The build most like the others: .cache/ssqch/baseline/ref-1, with the most common version of 1 of the 1 file that vary.\n1 file has no most common version: each build has its own. More builds (--runs 20) show whether one is usual.\n"), r.log);
+	// DELIBERATE (0.12): all three differ here, so none is named as the one most like the others (the
+	// fresh vuejs.org rerun read "most like" with every build its own as a contradiction).
+	assert.ok(r.log.includes("1 file has no most common version: each build has its own. More builds (--runs 20) show whether one is usual.\n") && !r.log.includes("The build most like the others"), r.log);
 	// What varies is put together from each file's most common version, and compared with.
 	assert.ok(r.log.includes("Wrote .cache/ssqch/baseline/ref-common: each file's most common version of the 3 builds"), r.log);
 	assert.ok(exists(dir, ".cache/ssqch/baseline/ref-common/index.html") && exists(dir, ".cache/ssqch/baseline/ref-common/trail/index.html"));

@@ -40,6 +40,26 @@ change affects it.
   same thing in ssqch, and a hint (refused, with ssqch's name) when it would mean something
   else; the test checks that an alias works and a hint refuses. `equivalents.test.ts` keeps it
   equal to the oracle's copy (`tests/oracle/cli/aliases.test.js`).
+- Gaps a move finds: document a workaround, or build for everyone. A trial or a fresh run finds
+  what a move from another framework needed, and not every gap is closed in ssqch. For each one:
+  1. **A reasonable workaround exists:** a person or an agent gets what they need with what ssqch
+     has (a few lines of config, a template, a hook, a transform, a data file). Write it in that
+     framework's trailhead (`site/src/docs/trailheads/from-<framework>.md`), ready to paste, with
+     what it costs, and have scout point at it when it finds the case. Don't build it into ssqch
+     unless building it is small and worth having for everyone, not just for people moving from
+     that one framework.
+  2. **No reasonable workaround:** judge the feature by what it's worth to every ssqch site. Build
+     it when it's useful beyond the migration (a good idea from that framework that ssqch's own
+     users would want). One that only reproduces a framework's behavior for the people leaving it
+     needs a strong reason, written down; otherwise list it in the trailhead as a known gap.
+
+  "Reasonable" means an agent following the trailhead does it in minutes, without reading ssqch's
+  source, and it keeps working as the site changes; code that has to be redone on every upgrade,
+  or copies ssqch's internals, doesn't count. Bugs in what ssqch already has are fixed as bugs.
+  Why: ssqch is meant to be approachable and easy for everyone, with the best ideas from many
+  frameworks, not a set of compatibility layers for each. Every option is documented, tested and
+  learned by every user, so it has to be worth that to all of them. In `research/TODO.md`, mark
+  each gap from a run **document**, **build** or **known gap**, with the reason.
 - After a change that affects output, build the blog with the Node build and run its smoke tests:
   in `../blog`, `SSQCH_BIN=../ssqch/packages/ssqch/bin/ssqch.ts pnpm test`. The oracle has the
   blog's frozen output too (`node --test --test-name-pattern="^blog builds" sites.test.js` in

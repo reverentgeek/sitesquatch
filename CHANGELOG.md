@@ -98,6 +98,17 @@ where that version matches.
   Scout drafts it for a VitePress site, and lists the site's data loaders in `ignore` by their
   paths, so the move's own `.data.js` files stay ssqch's.
 
+- `ssqch scout` counts a VitePress to-do as done when the site's templates do it (the layout reads
+  the front matter the theme did, has the `<head>`, renders the theme; a heading hook; a dynamic
+  route's data file), and drafts `llmsPlugin()` for a site with vitepress-plugin-llms. On the
+  vuejs.org rerun's finished port, "what's left" went from 17 (11 of them done) to 8.
+- `dialect: "vitepress"` writes a page's raw HTML as Vue's compiler does: a self-closing element
+  (`<sup class="vt-badge" />`) gets its end tag, as a browser would leave it open (32 of
+  vuejs.org's pages), and `v-pre` and event listeners (`@click`) are left out.
+- The VitePress trailhead has the rest as recipes: keeping the site's own theme, rendered by
+  `vuePlugin()` around each page (a wrapper component and a layout); Vue in a page's HTML; and
+  the known gaps.
+
 ### Fixed
 
 - A Hugo shortcode shown with `/* */` (`{{</* note */>}}`) on a line of its own was read as a
@@ -132,6 +143,17 @@ where that version matches.
 - `ssqch scout` rewrote every JSON and YAML file in an Eleventy project as data, its own saved
   reports included; only data in the input folder is. It no longer prints Node's
   `MODULE_TYPELESS_PACKAGE_JSON` warning when it loads a site's config, as `ssqch build` doesn't.
+- A heading's `header-anchor` link (VitePress's, markdown-it-anchor's) isn't part of its text in
+  `page.headings`: VitePress's zero-width space ended up in every heading's text, and in a
+  `<title>` made from it.
+- `ssqch diff --text` reads a `<` or `>` inside a quoted attribute as part of it, not as a tag's end
+  (one of vuejs.org's pages scored 24% though its text matched).
+- `ssqch diff` shows a long changed line around where it differs (`(from character 181,203)`),
+  not from its start: a minified stylesheet's two versions showed as identical excerpts.
+- `ssqch baseline` doesn't name a build "most like the others" when every build has its own
+  version of every file that varies.
+- `vuePlugin()`'s `useRoute()` for a dynamic route's page is the page's own path
+  (`partners/vehikl.md`), as in VitePress, not its file's (`[partnerId].md`).
 
 ## 0.11.0 - 2026-11-20
 

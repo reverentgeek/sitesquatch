@@ -1,7 +1,7 @@
 // What the build reads from a page's rendered HTML: its headings (`page.headings`), its excerpt
 // (`page.excerpt`), its text (for `readingTime`), and the table of contents the `toc` filter makes.
 
-/** A heading found in a page's HTML, for `page.headings`. `text` is without tags and without anything inside an `aria-hidden="true"` element (such as an anchor link's `#`). */
+/** A heading found in a page's HTML, for `page.headings`. `text` is without tags and without anything inside an `aria-hidden="true"` element or a `header-anchor` link (such as an anchor link's `#`). */
 export interface Heading {
 	level: number;
 	id: string | undefined;
@@ -11,7 +11,9 @@ export interface Heading {
 const HEADING = /<h([1-6])(\s[^>]*)?>(.*?)<\/h[1-6]\s*>/gis;
 const ID_ATTR = /(?:^|\s)id\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
 const TAG = /<(\/?)([A-Za-z][A-Za-z0-9-]*)([^>]*)>|<!--.*?-->/gs;
-const HIDDEN = /\saria-hidden\s*=\s*["']?true/i;
+// A `header-anchor` is a heading's permalink (VitePress's, markdown-it-anchor's), which they write
+// without `aria-hidden`: its `#` or zero-width space isn't the heading's text.
+const HIDDEN = /\saria-hidden\s*=\s*["']?true|\sclass\s*=\s*["'][^"']*\bheader-anchor\b/i;
 const CODE = /<!--.*?-->|<(pre|script|style|template|textarea)\b.*?<\/(?:pre|script|style|template|textarea)\s*>/gis;
 /** A `<code>` with a heading's tags in it, as written (an example), not a heading's own inline code: `## The \`toc\` filter` keeps its words (a11yproject.com's six tables of contents). */
 const CODE_WITH_HEADING = /<code\b(?:(?!<\/code\s*>).)*?<h[1-6][\s>](?:(?!<\/code\s*>).)*<\/code\s*>/gis;

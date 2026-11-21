@@ -170,6 +170,7 @@ export const VITEPRESS_HOOKS: Record<string, Hook> = {
 /** `[[toc]]`, and HTML comments, after ssqch's Markdown: the page's `h2` and `h3`s as nested lists, as markdown-it-table-of-contents writes them. */
 export function vitepressAfter(html: string): string {
 	let out = html.includes("<!--") ? withoutComments(html) : html;
+	out = asVueWritesIt(out);
 	const marker = /<p>\[\[toc\]\]<\/p>/i.exec(out);
 	if (!marker) return out;
 	const heads = [...out.matchAll(/<h([23]) id="([^"]*)"[^>]*>([\s\S]*?)<\/h\1>/g)].map(([, level, id, inner]) => ({ level: Number(level), id, text: inner.replace(/<a class="header-anchor"[\s\S]*?<\/a>/, "").replace(/<[^>]+>/g, "").trim() }));
@@ -188,6 +189,25 @@ export function vitepressAfter(html: string): string {
 	toc += "</ul></nav>";
 	out = out.replace(marker[0], toc);
 	return out;
+}
+
+const VOID = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+
+/**
+ * A page's raw HTML as Vue's template compiler writes it in VitePress: a self-closing element
+ * (`<sup class="vt-badge" data-text="3.3+" />`) gets its end tag, as a browser would otherwise
+ * leave it open and put the rest of the line inside it (32 of vuejs.org's pages), and `v-pre` and
+ * event listeners (`@click="..."`, `v-on:click`) are left out, as Vue doesn't write them. Lower-case
+ * tags only: a PascalCase one is a component. Code isn't touched.
+ */
+function asVueWritesIt(html: string): string {
+	if (!/\/>|\sv-pre\b|\s@[\w.-]+=|\sv-on:/.test(html)) return html;
+	return html.replace(/<(pre|code|script|style|textarea)\b[\s\S]*?<\/\1>|<([a-z][\w-]*)((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*(\/?)>/g, (whole, raw: string | undefined, name: string, attrs: string, selfClosing: string) => {
+		if (raw !== undefined) return whole;
+		const kept = attrs.replace(/\s+(?:v-pre|@[\w.:-]+|v-on:[\w.:-]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?/g, "");
+		if (selfClosing && !VOID.has(name)) return `<${name}${kept}></${name}>`;
+		return kept === attrs ? whole : `<${name}${kept}${selfClosing ? " /" : ""}>`;
+	});
 }
 
 /** Comments out, outside `<pre>`, `<code>`, `<script>`, `<style>` and `<textarea>`. */

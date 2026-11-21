@@ -326,7 +326,9 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 		const relativePath = path.relative(path.resolve(config.root, config.input), inputPath).split(path.sep).join("/");
 		const url = typeof (data.page as { url?: unknown } | undefined)?.url === "string" ? (data.page as { url: string }).url : "";
 		const params = (data.params as Record<string, unknown> | undefined) ?? routeParams(relativePath, url);
-		const page = { relativePath, frontmatter: front, params, title: typeof data.title === "string" ? data.title : "" };
+		// A dynamic route's page is its own path in VitePress (`partners/vehikl.md`), not its file's (`[partnerId].md`).
+		const ownPath = relativePath.includes("[") && url !== "" ? url.replace(/^\//, "").replace(/(^|\/)$/, "$1index.html").replace(/\.html$/, ".md").replace(/^(?!.*\.md$)(.*)$/, "$1.md") : relativePath;
+		const page = { relativePath: ownPath, frontmatter: front, params, title: typeof data.title === "string" ? data.title : "" };
 		// Bindings, as Vue reads them in the page: with its loaders' data, `params` and `frontmatter` in scope.
 		// `page` is `useData()`'s, which a page's script takes (`const { page } = useData()`) and its template reads unwrapped.
 		const scope: Record<string, unknown> = { page, params, $params: params, frontmatter: front, $frontmatter: front };

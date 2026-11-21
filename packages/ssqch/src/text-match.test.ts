@@ -12,6 +12,9 @@ test("article_text_is_mains_words", () => {
 	assert.deepEqual(articleWords("<body><article><p>Only this</p></article><aside>not</aside></body>"), ["Only", "this"]);
 	assert.deepEqual(articleWords("<body><p>The body​</p></body>"), ["The", "body"]);
 	assert.equal(commonWords(["a", "b", "c", "d"], ["a", "x", "c", "d", "e"]), 3);
+	// A `<` or `>` in a quoted attribute isn't the tag's end.
+	assert.deepEqual(articleWords("<main><ssqch-vue data-props=\"{&quot;m&quot;:&quot;Use '<' to print '>'&quot;}\"><p>Error codes</p></ssqch-vue></main>"), ["Error", "codes"]);
+	assert.deepEqual(articleWords("<main><p title='a > b'>Pine</p></main>"), ["Pine"]);
 });
 
 test("text_match_compares_each_page_and_sums_the_words", () => {
