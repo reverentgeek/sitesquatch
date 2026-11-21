@@ -29,6 +29,21 @@ where that version matches.
 
 - A Hugo shortcode shown with `/* */` (`{{</* note */>}}`) on a line of its own was read as a
   container named `/`; it prints `{{< note >}}`, as in Hugo.
+- `ssqch scout`'s list for an Eleventy site shrinks as the move goes. A filter, collection or
+  transform the site's `ssqch.config.js` defines under the same name is done, and so is a plugin
+  or library the config does (`rssPlugin()`, `engines: { md }`) or imports as it is; the config's
+  own imports of Eleventy's packages aren't to-dos any more. The a11yproject.com move listed 29
+  to-dos before and 37 when its output was identical, with none done; now it's 6, with 23 done.
+  The text says `ssqch.config.js has ...` (it said `sets`), and JSON's `done[].option` names what
+  in the config did it (`filters.slugify`, `ssqch/rss`, `import "markdown-it"`).
+- `ssqch scout`'s reference build for Eleventy is the site's: the config's output folder
+  (`--from dist`, not `_site`), a script that runs Eleventy under any name (not only `build`),
+  with a tool beside it run after it (`eleventy & gulp` becomes `eleventy && gulp`), a gulpfile
+  no script runs added, and the Node a site pins (`.nvmrc`, `.node-version`, `engines`) named
+  when it's older than ssqch's.
+- `ssqch scout` rewrote every JSON and YAML file in an Eleventy project as data, its own saved
+  reports included; only data in the input folder is. It no longer prints Node's
+  `MODULE_TYPELESS_PACKAGE_JSON` warning when it loads a site's config, as `ssqch build` doesn't.
 
 ## 0.11.0 - 2026-11-20
 

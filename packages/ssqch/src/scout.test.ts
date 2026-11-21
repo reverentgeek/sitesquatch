@@ -439,6 +439,74 @@ test("data_files_url_literals_become_the_literal", () => {
 	assert.ok(plan.byHand.some(([at, what]) => at === "src/_data/nav.json" && what.startsWith("1 value has template code")), JSON.stringify(plan.byHand));
 });
 
+// Only the input folder's data is Eleventy's: a JSON file elsewhere (scout's own saved report, in
+// the a11yproject.com run on 0.11) is left as it is.
+test("data_files_outside_the_input_folder_are_left_alone", () => {
+	const dir = site("data-outside", {
+		".eleventy.js": "module.exports = () => ({ dataTemplateEngine: \"njk\", dir: { input: \"src\" } });\n",
+		"src/_data/nav.json": "[{ \"url\": \"{{ '/about/' | url }}\" }]\n",
+		"src/posts/posts.json": "{ \"img\": \"{{ '/img/x.png' | url }}\" }\n",
+		"notes/scout-before.json": "{ \"what\": \"{{ '/x/' | url }} -> /x/\", \"title\": \"{{ site.title }}\" }\n",
+	});
+	const plan = eleventy(dir);
+	assert.deepEqual(plan.edits.map(([file]) => file).sort(), ["src/_data/nav.json", "src/posts/posts.json"]);
+	assert.ok(!plan.byHand.some(([at]) => at.startsWith("notes/")), JSON.stringify(plan.byHand));
+});
+
+// The a11yproject.com run on 0.11: Eleventy writes `dist`, its `publish` script runs gulp beside
+// it, and `.nvmrc` asks for Node 16.
+test("the_reference_build_is_the_sites_own", () => {
+	const dir = site("reference-build", {
+		".eleventy.js": "module.exports = () => ({ dir: { input: \"src\", output: \"dist\" } });\n",
+		"package.json": JSON.stringify({ scripts: { start: "eleventy --serve & gulp watch", publish: "eleventy & gulp" }, devDependencies: { "@11ty/eleventy": "^1.0.0" } }),
+		"gulpfile.js": "const gulp = require(\"gulp\");\n",
+		".nvmrc": "16\n",
+	});
+	const report = scoutReport(eleventy(dir), dir, "eleventy", ".eleventy.js");
+	assert.equal(report.build.command, "eleventy && gulp");
+	assert.equal(report.build.output, "dist");
+	assert.equal(report.build.baseline, "ssqch baseline \"eleventy && gulp\" --from dist");
+	assert.ok(report.build.needs.some((n) => n.startsWith("The site asks for Node 16 (.nvmrc), and ssqch needs 22.18 or later")), JSON.stringify(report.build.needs));
+	// Mid-move, the script runs ssqch: the reference is Eleventy again, with gulp after it.
+	fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { publish: "ssqch build & gulp" }, engines: { node: ">=16" } }));
+	fs.rmSync(path.join(dir, ".nvmrc"));
+	const moving = scoutReport(eleventy(dir), dir, "eleventy", ".eleventy.js");
+	assert.equal(moving.build.command, "npx @11ty/eleventy && gulp");
+	// A range open at the top takes ssqch's Node too.
+	assert.deepEqual(moving.build.needs, []);
+	// A gulpfile no script runs is added after the generator.
+	fs.writeFileSync(path.join(dir, "package.json"), "{}");
+	assert.equal(scoutReport(eleventy(dir), dir, "eleventy", ".eleventy.js").build.command, "npx @11ty/eleventy && npx gulp");
+});
+
+// The a11yproject.com run on 0.11: 29 to-dos before the move, 37 when the output was identical,
+// none done. What the ssqch config defines under the same name is done, and its own imports of
+// Eleventy's packages (an identical first build keeps them) aren't to-dos.
+test("scout_counts_what_an_eleventy_sites_config_defines_as_done", async () => {
+	const dir = site("eleventy-done", {
+		".eleventy.js": "const pluginRss = require(\"@11ty/eleventy-plugin-rss\");\nconst markdownIt = require(\"markdown-it\");\nconst slugify = require(\"./lib/slugify\");\nmodule.exports = (eleventyConfig) => {\n\televentyConfig.addPlugin(pluginRss);\n\televentyConfig.addFilter(\"slugify\", slugify);\n\televentyConfig.addCollection(\"posts\", (api) => api.getAll());\n\televentyConfig.addTransform(\"htmlmin\", minify);\n\televentyConfig.setLibrary(\"md\", markdownIt());\n\treturn { dir: { input: \"src\" } };\n};\n",
+		"src/feed.njk": "{{ site.url | absoluteUrl }} {{ posts | trailMix }}\n",
+	});
+	const codes = (r: ReturnType<typeof scoutReport>) => r.todo.map((t) => t.what.split(" -> ")[0].split(":")[0]);
+	const before = scoutReport(eleventy(dir), dir, "eleventy", ".eleventy.js", await siteConfig(dir));
+	assert.equal(before.summary.done, 0);
+	for (const want of ["addPlugin(pluginRss) (from @11ty/eleventy-plugin-rss)", "addFilter(\"slugify\")", "addCollection(\"posts\")", "addTransform(\"htmlmin\")", "`absoluteUrl`", "`trailMix` is a filter or shortcode nothing defines", "@11ty/eleventy-plugin-rss", "markdown-it"]) {
+		assert.ok(codes(before).some((c) => c.startsWith(want)), `${want} in ${JSON.stringify(codes(before))}`);
+	}
+	// The identical first build: the old packages imported as they are, the site's functions by name.
+	fs.writeFileSync(path.join(dir, "ssqch.config.js"), "const rss = () => import(\"@11ty/eleventy-plugin-rss\");\nconst md = () => import(\"markdown-it\");\nexport default {\n\tengines: { md: {} },\n\tfilters: { slugify: (s) => s, absoluteUrl: (s) => s },\n\tcollections: { posts: (pages) => pages.all() },\n\tplugins: [{ name: \"ssqch/minify\" }],\n};\n");
+	const after = scoutReport(eleventy(dir), dir, "eleventy", ".eleventy.js", await siteConfig(dir));
+	assert.deepEqual(codes(after), ["`trailMix` is a filter or shortcode nothing defines"]);
+	assert.equal(after.summary.done, before.todo.length - 1);
+	assert.deepEqual([...new Set(after.done.map((d) => d.option))].sort(), ["collections.posts", "engines.md", "filters.absoluteUrl", "filters.slugify", "import \"@11ty/eleventy-plugin-rss\"", "ssqch/minify"]);
+	assert.ok(!after.todo.some((t) => t.at.startsWith("ssqch.config.js")), "the config's own imports aren't to-dos");
+	// ssqch's own way counts too: `rssPlugin()` has the RSS plugin's filters.
+	fs.writeFileSync(path.join(dir, "ssqch.config.js"), "export default { plugins: [{ name: \"ssqch/rss\" }] };\n");
+	const rss = scoutReport(eleventy(dir), dir, "eleventy", ".eleventy.js", await siteConfig(dir));
+	assert.ok(!codes(rss).some((c) => c.startsWith("`absoluteUrl`") || c.startsWith("addPlugin(pluginRss)") || c === "@11ty/eleventy-plugin-rss"), JSON.stringify(codes(rss)));
+	assert.match(scoutText(rss, { writeDraft: false }), /done already: ssqch\.config\.js has `ssqch\/rss`\./);
+});
+
 // What changes output beyond the mechanical edits, found before the first diff (a11y #3, #13;
 // v8 #12, #13; the a11yproject.com rerun).
 test("output_changes_are_listed_before_the_first_diff", () => {
@@ -734,7 +802,7 @@ test("scout_counts_what_the_sites_config_sets_as_done", async () => {
 	assert.ok(after.todo.some((t) => t.code === "mkdocs-tabs"), "the tabs aren't");
 	assert.deepEqual([...new Set(after.done.map((d) => d.option))], ['markdown: { admonitions: "mkdocs" }']);
 	assert.equal(after.summary.done, after.done.length);
-	assert.match(scoutText(after, { writeDraft: false }), /done already: ssqch\.config\.js sets `markdown: \{ admonitions: "mkdocs" \}`/);
+	assert.match(scoutText(after, { writeDraft: false }), /done already: ssqch\.config\.js has `markdown: \{ admonitions: "mkdocs" \}`/);
 	// A config that doesn't load counts nothing as done, and says why.
 	fs.writeFileSync(path.join(dir, "ssqch.config.js"), "export default {\n");
 	const broken = scoutReport(mkdocs(dir), dir, "mkdocs", "mkdocs.yml", await siteConfig(dir));
