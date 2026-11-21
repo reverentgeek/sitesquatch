@@ -22,7 +22,7 @@ docs: true
 			<p class="links"><a href="{{ page.url | markdownCopy }}">View as Markdown</a>
 			{%- if source %} <a href="{{ site.repo }}/blob/main/{{ source }}">Edit on GitHub</a>{% endif %}</p>
 		</div>
-		<div data-copy>
+		<div data-copy{% if contentClass %} class="{{ contentClass }}"{% endif %}>
 		{{ content }}
 		</div>
 		{%- if page.url == "/docs/" %}

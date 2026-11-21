@@ -577,25 +577,29 @@ declare module "ssqch/vue" {
 
 declare module "ssqch/llms" {
 	import type { BuiltinPlugin } from "ssqch";
+	/** A page as `section` and `sort` get it. */
+	export interface LlmsPage { url: string; inputPath: string; outputPath: string; date: Date; data: Record<string, any> }
 	export interface LlmsPluginOptions {
 		/** The `# heading` of `llms.txt`. Default: `site.title` in the site's data, or the home page's title. */
 		title?: string;
 		/** A line under it, as `> description`. */
 		description?: string;
-		/** The site's address, like `"https://example.com"`, for whole links. Default: links from the site's root. */
+		/** Markdown after the description, in `llms.txt` and `llms-full.txt`: what a model should know before it reads on, like a list of where else the docs are. */
+		details?: string;
+		/** The site's address, like `"https://example.com"`, for whole links in `llms.txt` and in every copy. Default: links from the site's root. */
 		url?: string;
-		/** URL globs of pages to leave out, like `["/blog/**"]`. 404 pages are always left out. */
+		/** URL globs of pages to leave out, like `["/blog/**"]`. 404 pages are always left out, and so is a page whose front matter says `llms: false`. */
 		exclude?: string[];
-		/** A Markdown copy of each listed page beside its URL (`/guide/intro.html` and `/guide/intro.md`; `/guide/` is `/guide.md`), which `llms.txt` links to. Default `true`; with `false`, it links to the pages. */
+		/** A Markdown copy of each listed page beside its URL (`/guide/intro.html` and `/guide/intro/` are `/guide/intro.md`; `/guide/` is `/guide.md`), which `llms.txt` links to. A Markdown page's copy is its Markdown after its template engine ran; another page's is its `<article>`, `<main>` or `<body>` as Markdown. Links in a copy are whole addresses, and a link to a page with a copy goes to the copy. Default `true`; with `false`, `llms.txt` links to the pages. */
 		copies?: boolean;
 		/** `/llms-full.txt`, every listed page's Markdown in one file, each after a `url:` line. Default `true`. */
 		full?: boolean;
-		/** A hidden `<div hidden aria-hidden="true">` at the top of each listed page's `<body>`, naming its Markdown copy, for a model that reads the HTML. Default `false`: a build adds no markup of its own unless asked. */
-		hint?: boolean;
-		/** A page's section in `llms.txt`: a function that gets each page and returns a name. Default: its first folder (`/guide/...` is "Guide"; the top's pages are "Pages"). */
-		section?: (page: { url: string; inputPath: string; outputPath: string; date: Date; data: Record<string, any> }) => string | undefined;
+		/** A page's section in `llms.txt`: a function that gets each page and returns a name. Default: its first folder (`/guide/...` is "Guide"; the top's pages are "Pages"). Sections are in the order their first page comes. */
+		section?: (page: LlmsPage) => string | undefined;
+		/** The pages' order, as `Array.prototype.sort` takes it: `(a, b) => a.data.order - b.data.order`. Default: by URL. */
+		sort?: (a: LlmsPage, b: LlmsPage) => number;
 	}
-	/** Writes `/llms.txt` (the pages that came from Markdown, with links to their Markdown), a Markdown copy of each, and `/llms-full.txt`, for language models, as llmstxt.org describes. */
+	/** Writes `/llms.txt` (the site's pages, with links to their Markdown), a Markdown copy of each, and `/llms-full.txt`, for language models, as llmstxt.org describes; and adds the template function `markdownCopy(page.url)`, the URL of a page's copy (or `""` when it has none), for a layout's `<link rel="alternate" type="text/markdown">`. */
 	export function llmsPlugin(options?: LlmsPluginOptions): BuiltinPlugin;
 }
 

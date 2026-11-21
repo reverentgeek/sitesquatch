@@ -9,6 +9,34 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Breaking
+
+- `llmsPlugin()` no longer has `hint`, the hidden `<div>` it wrote at the top of each page's
+  `<body>`: hidden text written for models reads as cloaking, and a build adds no markup of its
+  own. A config that sets it fails with what to write instead: the plugin's new template function,
+  `markdownCopy(page.url)`, in the layout's `<head>`:
+  `<link rel="alternate" type="text/markdown" href="{{ markdownCopy(page.url) }}">`.
+- `llmsPlugin()`'s copies are what the page says, not the file it came from. A Markdown page's
+  copy is its Markdown after its template engine ran, so `{{ site.title }}` is the title and a
+  `{% for %}` is the list it wrote (before, a copy had the template code in it). Pages that aren't
+  Markdown (a home page in Jinja) are listed now too, with their `<article>`, `<main>` or `<body>`
+  as Markdown. Links in a copy are whole addresses, and a link to a page that has a copy goes to
+  the copy. A page leaves the list with `llms: false` in its front matter, or with `exclude`.
+- `llms-full.txt` starts with `llms.txt`'s heading and description, then the pages.
+
+### Added
+
+- `llmsPlugin()`: `details` (Markdown after the description: what a model should know first),
+  `sort` (the pages' order), and the template function `markdownCopy(page.url)`, the URL of a
+  page's copy, or an empty string when it has none.
+
+### Changed
+
+- `llmsPlugin()` knows nothing of VitePress: `<script>` and `<style>` blocks are left out of every
+  copy (a VitePress page's `<script setup>` among them), and so are pictures with `alt=""`.
+
 ## 0.12.0 - 2026-11-21
 
 ### Added

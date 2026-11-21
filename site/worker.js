@@ -1,7 +1,7 @@
 // sitesquatch.dev's one script. Everything else is static files (wrangler.jsonc). It runs for
 // /docs and /docs/* only (`run_worker_first`), and answers a request that would rather have
 // Markdown (`Accept: text/markdown`, as Claude Code, Cursor and OpenCode send it) with the page's
-// Markdown copy (lib/agents.ts). Its answers vary by `Accept`, so caches keep the two apart.
+// Markdown copy (llmsPlugin in ssqch.config.js). Its answers vary by `Accept`, so caches keep the two apart.
 
 /** Whether `accept` prefers text/markdown to text/html, by their q values (a missing one is 1). */
 function prefersMarkdown(accept) {
@@ -18,10 +18,10 @@ function prefersMarkdown(accept) {
 	return markdown > 0 && markdown >= q("text/html");
 }
 
-/** The Markdown copy of a docs page's path: `/docs/install/` is `/docs/install.md`, `/docs/` is `/docs/index.md`. */
+/** The Markdown copy of a docs page's path: `/docs/install/` is `/docs/install.md`, `/docs/` is `/docs.md`. */
 function copyOf(pathname) {
 	const trimmed = pathname.replace(/\/+$/, "");
-	return trimmed === "/docs" ? "/docs/index.md" : `${trimmed}.md`;
+	return `${trimmed}.md`;
 }
 
 /** `response`, with `Vary: Accept` added. */

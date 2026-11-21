@@ -5,11 +5,15 @@ import { defineConfig } from "ssqch";
 import { assetsPlugin } from "ssqch/assets";
 import { elementsPlugin } from "ssqch/elements";
 import { linksPlugin } from "ssqch/links";
+import { llmsPlugin } from "ssqch/llms";
 import { minifyPlugin } from "ssqch/minify";
 import { rssPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
-import { copyOf, writeAgentCopies } from "./lib/agents.ts";
-import { docsHref } from "./lib/docs.ts";
+import { docsHref, pages } from "./lib/docs.ts";
+
+/** Each docs page's sidebar group and place, by URL (src/docs/nav.yml), read once a build. */
+let order;
+const docsOrder = () => (order ??= new Map(pages().map((p, at) => [p.url, { group: p.group, at }])));
 
 /** "0.9.0" as a number that sorts: 9000. */
 const version = (v) => String(v).split(".").reduce((n, part) => n * 1000 + Number(part), 0);
@@ -27,14 +31,11 @@ export default defineConfig(({ env }) => ({
 		{ "../docs/assets/stickers": "assets/drawings/stickers" },
 		{ "../docs/assets/sitesquatch.svg": "assets/drawings/sitesquatch.svg" },
 		{ "../docs/assets/footprint.svg": "assets/drawings/footprint.svg" },
-		// What agents read: each docs page as Markdown, /llms.txt and /llms-full.txt, written
-		// before the build by lib/agents.ts.
-		{ generated: "." },
 	],
 
-	// The docs pages are src/docs/ (lib/docs.ts). What agents read is written from them before
-	// each build, only what changed, so the dev server's rebuild doesn't start another.
-	beforeBuild: [() => { writeAgentCopies(); }],
+	// The docs pages are src/docs/ (lib/docs.ts). Their order is read again for each build, so an
+	// edit to nav.yml while serving reorders /llms.txt.
+	beforeBuild: [() => { order = undefined; }],
 	watch: ["lib"],
 
 	markdown: { highlight: true },
@@ -46,8 +47,6 @@ export default defineConfig(({ env }) => ({
 	filters: {
 		/** A page's first paragraph, for a list of entries. */
 		firstParagraph: (html) => /<p\b[\s\S]*?<\/p>/.exec(String(html ?? ""))?.[0] ?? "",
-		/** A docs page's Markdown copy: `/docs/install/` is `/docs/install.md`. */
-		markdownCopy: (url) => copyOf(String(url)),
 		/** A link in a docs page, from `page.inputPath`: a relative .md link is its page's URL (lib/docs.ts). */
 		docsHref: (href, inputPath) => docsHref(String(href), String(inputPath).replace(/\\/g, "/").replace(/^.*?src\/docs\//, "")),
 	},
@@ -80,6 +79,22 @@ export default defineConfig(({ env }) => ({
 		rssPlugin(),
 		linksPlugin({ ignore: ["/pagefind/"] }),
 		sitemapPlugin({ url: "https://sitesquatch.dev", lastmod: false }),
+		// What agents read: each docs page as Markdown (`/docs/install.md`), /llms.txt and
+		// /llms-full.txt, in the sidebar's groups and order. The first thing they say is that
+		// `ssqch docs <name>` answers for the installed version, which beats any website.
+		llmsPlugin({
+			url: "https://sitesquatch.dev",
+			title: "SiteSquatch",
+			description: "SiteSquatch (`ssqch`) is a static site generator for Node.js. It turns Markdown and templates into plain HTML, and checks its own work on every build: links, front matter against schemas, and what a change did to the output.",
+			details: [
+				"- If ssqch is installed, `ssqch docs <name>` (a command, a config option, a function or a heading's words) prints the documentation for the installed version, with no network. `ssqch docs` alone lists every name, and `--format json` gives the same as JSON.",
+				"- Every docs page here has a Markdown copy at its address with `.md` on the end (https://sitesquatch.dev/docs/install.md), and a request for a docs page with `Accept: text/markdown` gets the copy.",
+				"- The example sites run live at https://sitesquatch.dev/examples/, and their source is at https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites.",
+			].join("\n"),
+			exclude: ["/", "/changelog/**", "/examples/**"],
+			section: (page) => docsOrder().get(page.url)?.group,
+			sort: (a, b) => (docsOrder().get(a.url)?.at ?? Infinity) - (docsOrder().get(b.url)?.at ?? Infinity),
+		}),
 		assetsPlugin({ files: ["/assets/site.css", "/assets/theme.js"] }),
 		env === "production" && minifyPlugin(),
 	],

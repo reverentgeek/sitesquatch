@@ -5,7 +5,7 @@
 //
 // Pages link each other with relative .md links (`content-schemas.md#types`), which GitHub
 // follows; the site's link hook (src/_includes/hooks/link.jinja) turns them into page URLs with
-// `docsHref`, and the copies for agents (lib/agents.ts) into the copies' URLs.
+// `docsHref`, and the copies for agents (llmsPlugin) into the copies' URLs.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";

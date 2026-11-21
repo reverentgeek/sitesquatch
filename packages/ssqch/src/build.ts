@@ -302,6 +302,8 @@ class Renderer {
 			for (let i = from; i < tpl.engines.length; i++) {
 				const name = tpl.engines[i];
 				const engine = this.site.engines.get(name);
+				// The page's Markdown as its template engine left it, for llmsPlugin()'s copy.
+				if (name === "md" && page.url !== null) this.site.config.markdownSources?.set(page.url, content);
 				let out: string | Promise<string>;
 				try {
 					out = engine.render(content, data, ctx);

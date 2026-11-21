@@ -146,6 +146,8 @@ export interface Config {
 	transforms: Array<[string, TransformFn]>;
 	/** Transforms that run before every other, whatever order plugins were added in (images). */
 	htmlTransforms: Array<[string, TransformFn]>;
+	/** While `llmsPlugin()` is on: each Markdown page's text as its Markdown engine got it (after its template engine), by URL, for the page's copy. */
+	markdownSources?: Map<string, string>;
 	/** Plugins that render a component tag the site has no template for (`vuePlugin()`): its HTML, or `undefined` for one it doesn't know. Asked in order, after `_includes/components/`. */
 	componentRenderers: Array<(name: string, value: { name: string; props: Record<string, unknown>; content: string; attrs: string; bindings: Record<string, string> }, inputPath: string, data: Data) => string | undefined>;
 	engines: Map<string, EngineFn>;

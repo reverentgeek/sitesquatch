@@ -866,34 +866,41 @@ test("rss_has_the_eleventy_plugins_first_names", () => {
 });
 
 // Added in 0.12, from the fresh vuejs.org run: vitepress-plugin-llms wrote 96 files the move left
-// out. `llms.txt` lists the pages from Markdown, each with a Markdown copy, and llms-full.txt has them all.
+// out. `llms.txt` lists the pages, each with a Markdown copy, and llms-full.txt has them all.
+// DELIBERATE (0.13): a copy is what the page says (its Markdown after its template engine, or a
+// page from a template as Markdown), its links are whole addresses that go to the copies, and
+// `hint` is gone for `markdownCopy(page.url)`: a build adds no markup of its own, and hidden text
+// for models reads as cloaking (the audit's plan, 2026-11-21).
 test("llms_plugin_writes_the_site_for_language_models", () => {
 	const dir = tempDir("llms");
 	write(dir, {
-		"ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { urls: \"html\", data: { layout: \"base.jinja\" }, plugins: [llmsPlugin({ url: \"https://trail.example\", description: \"Hikes and the gear for them.\", exclude: [\"/drafts/**\"], hint: true })] };\n",
-		"_data/site.json": "{ \"title\": \"Trail Guide\" }\n",
-		"_includes/base.jinja": "<html><body>{{ content | safe }}</body></html>",
-		"index.md": "---\ntitle: Home\n---\nWelcome to the trails.\n",
+		"ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { urls: \"html\", data: { layout: \"base.jinja\" }, plugins: [llmsPlugin({ url: \"https://trail.example\", description: \"Hikes and the gear for them.\", exclude: [\"/drafts/**\"] })] };\n",
+		"_data/site.json": "{ \"title\": \"Trail Guide\", \"trails\": [\"Cedar\", \"Old Growth\"] }\n",
+		"_includes/base.jinja": "<html><head>{% if markdownCopy(page.url) %}<link rel=\"alternate\" type=\"text/markdown\" href=\"{{ markdownCopy(page.url) }}\">{% endif %}</head><body><nav><a href=\"/\">Home</a></nav><main>{{ content | safe }}</main></body></html>",
+		"index.md": "---\ntitle: Home\n---\nWelcome to the trails. Start with [the intro](guide/intro.md).\n",
 		"guide/index.md": "# Guide\n",
-		"guide/intro.md": "---\ndescription: Where to start.\n---\n# Getting started\n\nPack water.\n",
+		"guide/intro.md": "---\ndescription: Where to start.\n---\n# Getting started\n\nOn {{ site.title }}:\n{% for t in site.trails %}\n- {{ t }}\n{% endfor %}\n\nPack water, then [the gear](/about.html#packs).\n",
+		"guide/secret.md": "---\nllms: false\n---\n# Ranger only\n",
 		"drafts/wip.md": "# Not yet\n",
-		"about.jinja": "<p>Not Markdown</p>",
+		"about.jinja": "---\ntitle: About\n---\n<h1>About</h1><p>Squatch <em>Snacks</em> for the <a href=\"guide/intro.html\">trail</a>.</p><ul><li>Pine Cone Crunch</ul>",
 	});
 	const r = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(r.ok, r.log);
-	assert.equal(read(dir, "_site/llms.txt"), "# Trail Guide\n\n> Hikes and the gear for them.\n\n## Pages\n\n- [Home](https://trail.example/index.md)\n\n## Guide\n\n- [Guide](https://trail.example/guide.md)\n- [Getting started](https://trail.example/guide/intro.md): Where to start.\n");
-	assert.equal(read(dir, "_site/guide/intro.md"), "# Getting started\n\nPack water.\n");
-	assert.equal(read(dir, "_site/index.md"), "# Home\n\nWelcome to the trails.\n");
-	assert.ok(read(dir, "_site/llms-full.txt").startsWith("---\nurl: https://trail.example/\n---\n\n# Home\n"));
-	assert.ok(!fs.existsSync(path.join(dir, "_site/drafts/wip.md")) && !fs.existsSync(path.join(dir, "_site/about.md")));
-	assert.ok(read(dir, "_site/guide/intro.html").startsWith("<html><body><div hidden aria-hidden=\"true\">This page is also Markdown, for language models: https://trail.example/guide/intro.md</div><h1"));
-	// Without `hint`, a page has no markup of the plugin's.
-	write(dir, { "ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { plugins: [llmsPlugin()] };\n" });
-	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
-	assert.ok(!read(dir, "_site/guide/intro/index.html").includes("hidden"));
-	write(dir, { "ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { plugins: [llmsPlugin({ hints: true })] };\n" });
+	assert.equal(read(dir, "_site/llms.txt"), "# Trail Guide\n\n> Hikes and the gear for them.\n\n## Pages\n\n- [Home](https://trail.example/index.md)\n- [About](https://trail.example/about.md)\n\n## Guide\n\n- [Guide](https://trail.example/guide.md)\n- [Getting started](https://trail.example/guide/intro.md): Where to start.\n");
+	assert.equal(read(dir, "_site/guide/intro.md"), "# Getting started\n\nOn Trail Guide:\n\n- Cedar\n\n- Old Growth\n\nPack water, then [the gear](https://trail.example/about.md#packs).\n");
+	assert.equal(read(dir, "_site/index.md"), "# Home\n\nWelcome to the trails. Start with [the intro](https://trail.example/guide/intro.md).\n");
+	assert.equal(read(dir, "_site/about.md"), "# About\n\nSquatch *Snacks* for the [trail](https://trail.example/guide/intro.md).\n\n- Pine Cone Crunch\n");
+	assert.ok(read(dir, "_site/llms-full.txt").startsWith("# Trail Guide\n\n> Hikes and the gear for them.\n\n---\nurl: https://trail.example/\n---\n\n# Home\n"));
+	assert.ok(!fs.existsSync(path.join(dir, "_site/drafts/wip.md")) && !fs.existsSync(path.join(dir, "_site/guide/secret.md")));
+	// The layout links the copy; a page without one gets "".
+	assert.ok(read(dir, "_site/guide/intro.html").startsWith("<html><head><link rel=\"alternate\" type=\"text/markdown\" href=\"/guide/intro.md\"></head><body><nav>"));
+	assert.ok(read(dir, "_site/guide/secret.html").startsWith("<html><head></head>"));
+	write(dir, { "ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { plugins: [llmsPlugin({ hint: true })] };\n" });
+	const gone = ssqch(["build", "--root", dir]);
+	assert.ok(!gone.ok && gone.log.includes("`hint` is gone") && gone.log.includes("markdownCopy(page.url)"), gone.log);
+	write(dir, { "ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { plugins: [llmsPlugin({ detail: \"x\" })] };\n" });
 	const bad = ssqch(["build", "--root", dir]);
-	assert.ok(!bad.ok && bad.log.includes("unknown option \"hints\" (did you mean \"hint\"?)"), bad.log);
+	assert.ok(!bad.ok && bad.log.includes("unknown option \"detail\" (did you mean \"details\"?)"), bad.log);
 });
 
 // Added in 0.12, from the fresh vuejs.org run: Vue's components render with the site's own Vite,
