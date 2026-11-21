@@ -213,6 +213,23 @@ class WasmMarkdown implements Markdown {
 	 * function or a hook never runs twice. Without functions, it's one render.
 	 */
 	render(source: string, data: Data, _ctx: RenderContext): string | Promise<string> {
+		// `markdown.preprocess`: the site's own step before ssqch reads the page (Vue's
+		// `<script setup>` blocks out, a dialect of its own), awaited when it answers with a promise.
+		const pre = this.#options.preprocess;
+		if (pre) {
+			const check = (out: unknown): string => {
+				if (typeof out !== "string") throw new BuildError(`markdown.preprocess gave ${out === null ? "null" : typeof out} for ${page ?? pageOf(data) ?? "a page"}: return the page's Markdown as a string`);
+				return out;
+			};
+			let out: unknown;
+			try { out = pre(source, data); } catch (e) { throw context(e, "markdown.preprocess"); }
+			if (out instanceof Promise) return out.then((text) => this.#render(check(text), data), (e) => { throw context(e, "markdown.preprocess"); });
+			return this.#render(check(out), data);
+		}
+		return this.#render(source, data);
+	}
+
+	#render(source: string, data: Data): string | Promise<string> {
 		const file = page ?? pageOf(data);
 		this.#ready();
 		// Python-Markdown's raw HTML blocks are set aside first, before the other dialects write HTML.

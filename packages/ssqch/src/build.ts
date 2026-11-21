@@ -823,6 +823,10 @@ function hookEvent(config: Config, dirs: Dirs, report: BuildReport | undefined):
 	// `-q` (expressjs.com's social-image hook read process.argv for it, ex #11).
 	const event: Data = { env: config.env, serving: config.serving, quiet: config.quiet, verbose: config.verbose, dirs: { input: rel(dirs.input), output: rel(dirs.output), includes: rel(dirs.includes), data: rel(dirs.data) } };
 	if (report) event.written = [...report.written];
+	// While serving, what changed to start this build (`./src/guide/intro.md`): a hook can skip
+	// work the change doesn't touch (vuejs.org's Vite build of its components, when only Markdown
+	// changed: 867 ms to 343 ms). Not there on a build of everything.
+	if (config.changed) event.changed = config.changed.map((file) => (isInside(dirs.root, file) ? `./${relative(dirs.root, file)}` : file));
 	return event;
 }
 

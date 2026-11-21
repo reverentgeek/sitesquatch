@@ -915,8 +915,15 @@ export class Site {
 			else if (tpl.engines.length && tpl.engines.every((e) => e === "txt")) url = `/${tpl.rel}`;
 			else {
 				const stem = tpl.filePathStem;
-				url = stem === "/index" ? "/" : stem.endsWith("/index") ? stem.slice(0, -5) : `${stem}/`;
-				if (index > 0) url = `${url}${index}/`;
+				if (this.config.urls === "html") {
+					// `/guide/intro.html`, as VitePress (without `cleanUrls`), Hugo's `uglyURLs` and
+					// Docusaurus's `trailingSlash: false` write it; an index page is still its folder.
+					const folder = stem === "/index" ? "/" : stem.endsWith("/index") ? stem.slice(0, -5) : undefined;
+					url = index > 0 ? `${folder ?? `${stem}/`}${index}.html` : folder ?? `${stem}.html`;
+				} else {
+					url = stem === "/index" ? "/" : stem.endsWith("/index") ? stem.slice(0, -5) : `${stem}/`;
+					if (index > 0) url = `${url}${index}/`;
+				}
 			}
 			if (url !== null && !url.startsWith("/")) url = `/${url}`;
 			let output: string | null = null;

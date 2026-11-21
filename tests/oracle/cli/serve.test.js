@@ -497,3 +497,22 @@ test("serve_answers_what_it_cant_serve_as_it_did", async () => {
 		}
 	}
 });
+
+// Added in 0.12, from the fresh vuejs.org run: a `beforeBuild` hook that builds the site's Vue
+// components can skip that when only Markdown changed, if it knows what changed.
+test("serve_tells_before_build_what_changed", async () => {
+	const dir = tempDir("serve-changed");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\" }, beforeBuild: ({ changed }) => { globalThis.changes = changed === undefined ? \"everything\" : changed.join(\" \"); }, filters: { changes: () => globalThis.changes } };\n",
+		"src/index.jinja": "{{ changes() }}|one",
+	});
+	const log = path.join(dir, "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "_site/index.html");
+		await waitFor(page, "everything|one");
+		await changeAndWait(path.join(dir, "src/index.jinja"), "{{ changes() }}|two", page, "./src/index.jinja|two");
+	} finally {
+		await server.stop();
+	}
+});

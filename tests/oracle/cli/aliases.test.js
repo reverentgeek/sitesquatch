@@ -43,6 +43,8 @@ const TABLE = [
 	{"word":"integrations","kind":"Config","alias":false,"ssqch":"plugins","say":"In ssqch it's `plugins`: plugins: [imagePlugin()].","more":"ssqch docs plugins"},
 	{"word":"markdownTemplateEngine","kind":"Config","alias":true,"ssqch":"markdownEngine","say":"In ssqch it's `markdownEngine`: markdownEngine: \"njk\" (or false).","more":"ssqch docs markdownEngine"},
 	{"word":"htmlTemplateEngine","kind":"Config","alias":true,"ssqch":"htmlEngine","say":"In ssqch it's `htmlEngine`: htmlEngine: \"njk\" (or false).","more":"ssqch docs htmlEngine"},
+	{"word":"uglyURLs","kind":"Config","alias":false,"ssqch":"urls","say":"In ssqch it's `urls`: urls: \"html\" writes /guide/intro.html.","more":"ssqch docs urls"},
+	{"word":"cleanUrls","kind":"Config","alias":false,"ssqch":"urls","say":"ssqch's URLs are clean by default (urls: \"folders\", /guide/intro/); urls: \"html\" writes /guide/intro.html, as VitePress does without cleanUrls.","more":"ssqch docs urls"},
 	{"word":"baseURL","kind":"Config","alias":false,"ssqch":"base","say":"ssqch's `base` is the path only (base: \"/repo/\"); the site's full URL goes in your data, for sitemapPlugin({ url }).","more":"ssqch docs base"},
 	{"word":"title","kind":"Config","alias":false,"ssqch":"data","say":"The site's title is data: put it in `_data/site.json` and use `site.title` in templates.","more":"ssqch docs data"},
 	{"word":"addPassthroughCopy","kind":"Config","alias":false,"ssqch":"passthrough","say":"In ssqch it's `passthrough`: passthrough: [\"src/fonts\", { \"src/static\": \"static\" }].","more":"ssqch docs passthrough"},

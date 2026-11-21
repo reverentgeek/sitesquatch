@@ -286,3 +286,31 @@ test("the_same_error_on_many_pages_is_one_line", () => {
 	const r = ssqch(["build", "--root", dir]);
 	assert.ok(!r.ok && r.log.includes("5 error(s):\n  - rendering layout _includes/base.jinja for p1.md: _includes/base.jinja:1: unknown test `matching` (and 4 more pages with the same error: p2.md, p3.md, p4.md, ...)\n"), r.log);
 });
+
+// Added in 0.12, from the fresh vuejs.org run: what a VitePress site needed as hooks and filters.
+test("vitepress_habits_have_options", () => {
+	const dir = tempDir("vitepress-options");
+	write(dir, {
+		"ssqch.config.js": [
+			"import { sitemapPlugin } from \"ssqch/sitemap\";",
+			"export default {",
+			"\turls: \"html\",",
+			"\tmarkdown: { autolinks: \"email\", containers: \"markdown-it\", preprocess: async (source) => source.replace(/<script setup>[\\s\\S]*?<\\/script>\\n?/g, \"\") },",
+			"\tplugins: [sitemapPlugin({ url: \"https://trail.example\", format: \"vitepress\" })],",
+			"};",
+		].join("\n"),
+		"_includes/hooks/table.jinja": "<table tabindex=\"0\">{{ table.content | safe }}</table>",
+		"index.md": "# Home\n",
+		"guide/index.md": "# Guide\n",
+		"guide/intro.md": "<script setup>\nimport Pine from \"./Pine.vue\"\n</script>\n\n::: info\n- Write ranger@example.com\n- not example.com\n  :::\n\n| Trail | Miles |\n| --- | --- |\n| Cedar | 3 |\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.ok(exists(dir, "_site/guide/intro.html") && exists(dir, "_site/guide/index.html") && exists(dir, "_site/index.html"));
+	assert.equal(read(dir, "_site/guide/intro.html"), "<div class=\"info\">\n<ul>\n<li>Write <a href=\"mailto:ranger@example.com\">ranger@example.com</a></li>\n<li>not example.com</li>\n</ul>\n</div>\n<table tabindex=\"0\"><thead><tr><th>Trail</th><th>Miles</th></tr></thead><tbody>\n<tr><td>Cedar</td><td>3</td></tr>\n</tbody></table>\n");
+	assert.equal(read(dir, "_site/sitemap.xml"), "<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\" xmlns:news=\"http://www.google.com/schemas/sitemap-news/0.9\" xmlns:xhtml=\"http://www.w3.org/1999/xhtml\" xmlns:image=\"http://www.google.com/schemas/sitemap-image/1.1\" xmlns:video=\"http://www.google.com/schemas/sitemap-video/1.1\"><url><loc>https://trail.example/guide/</loc></url><url><loc>https://trail.example/guide/intro.html</loc></url><url><loc>https://trail.example/</loc></url></urlset>");
+	// Wrong values say what they can be.
+	write(dir, { "ssqch.config.js": "export default { urls: \"ugly\" };\n" });
+	const bad = ssqch(["build", "--root", dir]);
+	assert.ok(!bad.ok && bad.log.includes("urls must be \"folders\" (/guide/intro/) or \"html\" (/guide/intro.html), not \"ugly\""), bad.log);
+});

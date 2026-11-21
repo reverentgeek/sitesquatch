@@ -83,16 +83,16 @@ declare module "ssqch" {
 		footnotes?: boolean;
 		/** `- [ ]` and `- [x]` items. Default `true`. */
 		taskLists?: boolean;
-		/** Bare `https://` and `www.` URLs become links. `"fuzzy"` links bare domains (`example.com`, with a common or two-letter country TLD) and email addresses too, as markdown-it's `linkify` does. Default `true`. */
-		autolinks?: boolean | "fuzzy";
+		/** Bare `https://` and `www.` URLs become links. `"fuzzy"` links bare domains (`example.com`, with a common or two-letter country TLD) and email addresses too, as markdown-it's `linkify` does. `"email"` links email addresses (with `mailto:`) and URLs, not bare domains, as markdown-it's `linkify` with `fuzzyLink: false` does (VitePress's setting). Default `true`. */
+		autolinks?: boolean | "fuzzy" | "email";
 		/** A single newline inside a paragraph (or a list item) becomes a `<br>`, as markdown-it's `breaks: true` makes it. Default `false`. */
 		breaks?: boolean;
 		/** An image (or a linked image) alone in a paragraph becomes `<figure><img alt=""><figcaption>its alt text</figcaption></figure>`, as markdown-it-implicit-figures with `figcaption: true` writes it. Default `false`. */
 		figures?: boolean;
 		/** GitHub's `> [!NOTE]` alerts: note, tip, important, warning and caution. Default `true`. */
 		alerts?: boolean;
-		/** `::: name args` blocks, rendered by `_includes/containers/name.*`. Default `true`. */
-		containers?: boolean;
+		/** `::: name args` blocks, rendered by `_includes/containers/name.*`. A container closes inside the block it opened in (a list item's closes in that item). `"markdown-it"` reads them as markdown-it-container (and VitePress) does: a closing `:::` indented less than four spaces closes the innermost open container, so Prettier's `:::` indented under the list it ends works. Default `true`. */
+		containers?: boolean | "markdown-it";
 		/** A term, then `: definition` lines. Default `false`. */
 		definitionLists?: boolean;
 		/** Curly quotes, dashes and ellipses. Default `false`. */
@@ -149,6 +149,8 @@ declare module "ssqch" {
 		dirs: { input: string; output: string; includes: string; data: string };
 		/** The files the build wrote (`afterBuild` only). */
 		written?: string[];
+		/** While serving, the files whose change started this build, relative to the project root (`./src/guide/intro.md`), so a hook can skip work the change doesn't touch: `if (changed && !changed.some((f) => f.endsWith(".vue"))) return;`. Not there on the first build or a build of everything (`ssqch build`). */
+		changed?: string[];
 	}
 
 	type MaybePromise<T> = T | Promise<T>;
@@ -284,6 +286,8 @@ declare module "ssqch" {
 		dateFallback?: "git" | "file";
 		/** The time zone the site's own JavaScript runs in, as an IANA name (`"UTC"`, `"America/New_York"`): `Date`'s local methods and libraries like luxon and date-fns, in data files, filters, hooks and Edge templates, so a laptop and CI build the same pages. ssqch's own date filters are UTC whatever this says. Default: the machine's. The config's own top-level code runs before it applies. */
 		timeZone?: string;
+		/** A page's URL when it has no `permalink`: `"folders"` (the default) writes `guide/intro.md` as `/guide/intro/` (`guide/intro/index.html`), `"html"` as `/guide/intro.html`, as VitePress without `cleanUrls`, Hugo's `uglyURLs` and Docusaurus's `trailingSlash: false` do. An index page is its folder either way (`guide/index.md` is `/guide/`). */
+		urls?: "folders" | "html";
 		/** Other names for layouts: `{ post: "layouts/post.njk" }` makes `layout: post` that file (where it would be `_includes/post.*`), as Eleventy's `addLayoutAlias` did. A page's `layout` is still the name it gave. */
 		layoutAliases?: Record<string, string>;
 		/** The path the site is served under, when that isn't the root of its domain: `"/repo/"` for `https://you.github.io/repo/`. Templates and `page.url` stay as they are; ssqch adds the base to URLs from the site's root in the HTML it writes. Use the `withBase()` filter outside HTML attributes. */
@@ -537,8 +541,10 @@ declare module "ssqch/sitemap" {
 		url?: string;
 		/** URL globs to leave out, like `["/tags/**"]`. Pages with `sitemap: false` and 404 pages are always left out. */
 		exclude?: string[];
-		/** Add `<lastmod>` from each page's date. Default `true`. */
+		/** Add `<lastmod>` from each page's date. Default `true` (`false` with `format: "vitepress"`). */
 		lastmod?: boolean;
+		/** How the file is written: `"ssqch"` (the default: one tag per line, pages by URL) or `"vitepress"`, the sitemap VitePress's `sitemap` option writes (one line, its five namespaces, pages in the order of their files, no `<lastmod>` unless `lastmod: true`), so a move from VitePress compares byte for byte. */
+		format?: "ssqch" | "vitepress";
 		/** Where to write it. Default `"/sitemap.xml"`. */
 		output?: string;
 		/** List every page of a list split into pages (`/2/`, `/3/`), not just the first. Pagination with `size: 1` (a page per tag, say) is always listed. Default `false`. */

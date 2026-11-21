@@ -232,6 +232,9 @@ pub struct MarkdownOptions {
     /// With `autolinks`, bare domains (`example.com`) and email addresses too, as markdown-it's
     /// `linkify` does (`autolinks: "fuzzy"`).
     pub fuzzy_links: bool,
+    /// With `autolinks`, email addresses too but not bare domains, as markdown-it's `linkify`
+    /// does with `fuzzyLink: false`, VitePress's setting (`autolinks: "email"`).
+    pub email_links: bool,
     /// A single newline in a paragraph is a `<br>`, as markdown-it's `breaks: true` makes it.
     pub breaks: bool,
     /// An image alone in a paragraph is a `<figure>`, its alt text the `<figcaption>`, as
@@ -241,6 +244,10 @@ pub struct MarkdownOptions {
     pub alerts: bool,
     /// `::: name args` blocks.
     pub containers: bool,
+    /// A closing `:::` indented less than four spaces closes the innermost open container
+    /// wherever it is, as markdown-it-container reads it (`containers: "markdown-it"`): Prettier
+    /// indents the one after a list, and VitePress closes it (vuejs.org: 38 on 20 pages).
+    pub markdown_it_containers: bool,
     /// `Term` followed by `: definition` lines.
     pub definition_lists: bool,
     /// Curly quotes, dashes and ellipses.
@@ -275,10 +282,12 @@ impl Default for MarkdownOptions {
             task_lists: true,
             autolinks: true,
             fuzzy_links: false,
+            email_links: false,
             breaks: false,
             figures: false,
             alerts: true,
             containers: true,
+            markdown_it_containers: false,
             definition_lists: false,
             smart_punctuation: false,
             indented_code: true,
@@ -342,10 +351,19 @@ impl MarkdownOptions {
                     continue;
                 }
                 "autolinks" => {
-                    (self.autolinks, self.fuzzy_links) = match v {
+                    (self.autolinks, self.fuzzy_links, self.email_links) = match v {
+                        Value::Bool(b) => (*b, false, false),
+                        Value::Str(s) if s.as_ref() == "fuzzy" => (true, true, false),
+                        Value::Str(s) if s.as_ref() == "email" => (true, false, true),
+                        other => bail!("markdown.autolinks must be true, false, \"email\" or \"fuzzy\", not {}", if let Value::Str(s) = other { format!("\"{}\"", s) } else { other.type_of().to_string() }),
+                    };
+                    continue;
+                }
+                "containers" => {
+                    (self.containers, self.markdown_it_containers) = match v {
                         Value::Bool(b) => (*b, false),
-                        Value::Str(s) if s.as_ref() == "fuzzy" => (true, true),
-                        other => bail!("markdown.autolinks must be true, false or \"fuzzy\", not {}", if let Value::Str(s) = other { format!("\"{}\"", s) } else { other.type_of().to_string() }),
+                        Value::Str(s) if s.as_ref() == "markdown-it" => (true, true),
+                        other => bail!("markdown.containers must be true, false or \"markdown-it\", not {}", if let Value::Str(s) = other { format!("\"{}\"", s) } else { other.type_of().to_string() }),
                     };
                     continue;
                 }
@@ -355,7 +373,6 @@ impl MarkdownOptions {
                 "footnotes" => &mut self.footnotes,
                 "taskLists" => &mut self.task_lists,
                 "alerts" => &mut self.alerts,
-                "containers" => &mut self.containers,
                 "definitionLists" => &mut self.definition_lists,
                 "smartPunctuation" => &mut self.smart_punctuation,
                 "indentedCode" => &mut self.indented_code,
@@ -484,7 +501,7 @@ pub fn render_current(source: &str, inline: bool) -> Result<String> {
 /// Render Markdown to HTML.
 pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -> Result<String> {
     let mut containers = Vec::new();
-    let source = if opts.containers { mark_containers(source, &mut containers) } else { Cow::Borrowed(source) };
+    let source = if opts.containers { mark_containers(source, &mut containers, opts.markdown_it_containers) } else { Cow::Borrowed(source) };
     let mut events: Vec<Event> = TextMergeStream::new(Parser::new_ext(&source, opts.parser_options()))
         .map(|e| match e {
             Event::Start(Tag::Subscript) | Event::End(TagEnd::Subscript) => Event::Text("~".into()),
@@ -504,7 +521,7 @@ pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -
         assign_heading_ids(&mut events, |text| Ok(slugger.slug(text)))?;
     }
     if opts.autolinks {
-        events = autolink(events, opts.fuzzy_links);
+        events = autolink(events, opts.fuzzy_links, opts.email_links);
     }
     if opts.breaks {
         for e in events.iter_mut() {
@@ -717,11 +734,14 @@ static FUZZY: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r"(?:https?://|www\.)[A-Za-z0-9][^\s<>]*|(?:[A-Za-z0-9._%+-]+@)?(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+(?i:{})\b(?::[0-9]{{1,5}})?(?:[/?#][^\s<>]*)?", FUZZY_TLDS)).unwrap()
 });
 
+/// A URL, or an email address (`ranger@example.com`), for `autolinks: "email"`.
+static EMAIL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:https?://|www\.)[A-Za-z0-9][^\s<>]*|[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}\b").unwrap());
+
 /// Turn bare URLs in text into links, as GitHub does: trailing punctuation
 /// and an unbalanced `)` stay out of the link. With `fuzzy`, bare domains
 /// get `http://` and email addresses `mailto:`, as markdown-it's `linkify` does.
-fn autolink(events: Vec<Event>, fuzzy: bool) -> Vec<Event> {
-    let pattern: &Regex = if fuzzy { &FUZZY } else { &URL };
+fn autolink(events: Vec<Event>, fuzzy: bool, email: bool) -> Vec<Event> {
+    let pattern: &Regex = if fuzzy { &FUZZY } else if email { &EMAIL } else { &URL };
     let mut out = Vec::with_capacity(events.len());
     let (mut in_link, mut in_html_link) = (0usize, 0usize);
     for e in events {
@@ -736,7 +756,7 @@ fn autolink(events: Vec<Event>, fuzzy: bool) -> Vec<Event> {
                     in_html_link = in_html_link.saturating_sub(1);
                 }
             }
-            Event::Text(t) if in_link == 0 && in_html_link == 0 && (t.contains("http") || t.contains("www.") || (fuzzy && t.contains('.'))) => {
+            Event::Text(t) if in_link == 0 && in_html_link == 0 && (t.contains("http") || t.contains("www.") || (fuzzy && t.contains('.')) || (email && t.contains('@'))) => {
                 let text = t.to_string();
                 let mut last = 0;
                 for m in pattern.find_iter(&text) {
@@ -849,21 +869,24 @@ const CLOSE: &str = "<!--ssqch:container:close:";
 /// Replace `::: name args` and `:::` lines (outside fenced code) with HTML
 /// comments, so the parser sees them as block boundaries and the writer can
 /// find them. A container closes with a line of at least as many colons as
-/// it opened with; one left open closes at the end.
-fn mark_containers<'a>(source: &'a str, found: &mut Vec<Container>) -> Cow<'a, str> {
+/// it opened with; one left open closes at the end. With `markdown_it`, a closing line indented
+/// less than four spaces closes the innermost container at its opener's indentation, so it ends
+/// where it began, as markdown-it-container ends it (it scans lines, whatever the nesting).
+fn mark_containers<'a>(source: &'a str, found: &mut Vec<Container>, markdown_it: bool) -> Cow<'a, str> {
     if !source.contains(":::") {
         return Cow::Borrowed(source);
     }
     let mut out = String::with_capacity(source.len() + 64);
-    let mut stack: Vec<(usize, usize)> = Vec::new();
+    // Each open container: its id, how many colons opened it, and its indentation.
+    let mut stack: Vec<(usize, usize, &str)> = Vec::new();
     let mut fence: Option<(char, usize)> = None;
     for (n, line) in source.split_inclusive('\n').enumerate() {
         let trimmed = line.trim_start();
         let indent = &line[..line.len() - trimmed.len()];
         let body = trimmed.trim_end();
         // Every open container's source gets the line (its own markers aside).
-        let keep = |found: &mut Vec<Container>, stack: &[(usize, usize)]| {
-            for &(id, _) in stack {
+        let keep = |found: &mut Vec<Container>, stack: &[(usize, usize, &str)]| {
+            for &(id, _, _) in stack {
                 found[id].source.push_str(line);
             }
         };
@@ -889,10 +912,11 @@ fn mark_containers<'a>(source: &'a str, found: &mut Vec<Container>) -> Cow<'a, s
             let colons = body.chars().take_while(|c| *c == ':').count();
             let rest = body[colons..].trim();
             if rest.is_empty() {
-                if let Some(&(id, opened)) = stack.last() {
+                if let Some(&(id, opened, at)) = stack.last() {
                     if colons >= opened {
                         stack.pop();
                         keep(found, &stack);
+                        let indent = if markdown_it && indent.len() < 4 { at } else { indent };
                         out.push_str(&format!("{}{}{}-->\n", indent, CLOSE, id));
                         continue;
                     }
@@ -905,7 +929,7 @@ fn mark_containers<'a>(source: &'a str, found: &mut Vec<Container>) -> Cow<'a, s
                 let args = rest[name_len..].trim();
                 let args = args.strip_prefix('[').and_then(|a| a.strip_suffix(']')).unwrap_or(args);
                 found.push(Container { name: rest[..name_len].to_string(), args: args.trim().to_string(), line: n + 1, source: String::new() });
-                stack.push((id, colons));
+                stack.push((id, colons, indent));
                 out.push_str(&format!("{}{}{}-->\n", indent, OPEN, id));
                 continue;
             }
@@ -916,7 +940,7 @@ fn mark_containers<'a>(source: &'a str, found: &mut Vec<Container>) -> Cow<'a, s
     if found.is_empty() {
         return Cow::Borrowed(source);
     }
-    while let Some((id, _)) = stack.pop() {
+    while let Some((id, _, _)) = stack.pop() {
         if !out.ends_with('\n') {
             out.push('\n');
         }
@@ -950,6 +974,8 @@ struct Writer<'h, 'c> {
     refs: Vec<(String, usize)>,
     notes: HashMap<String, String>,
     aligns: Vec<Alignment>,
+    /// Writing a table for `hooks/table`, which gets the table as ssqch writes it.
+    in_table_hook: bool,
     in_head: bool,
     column: usize,
 }
@@ -1179,6 +1205,24 @@ impl Writer<'_, '_> {
                 }
                 Event::Start(Tag::Strikethrough) => plain.push(Event::InlineHtml("<s>".into())),
                 Event::End(TagEnd::Strikethrough) => plain.push(Event::InlineHtml("</s>".into())),
+                // A table through `hooks/table.*`, given its rows as ssqch writes them (`table.content`,
+                // `<thead>` to `</tbody>`), so the hook writes the `<table>` itself: VitePress's
+                // `<table tabindex="0">`, or a scrolling wrapper.
+                Event::Start(Tag::Table(a)) if self.has("hooks/table") && !self.in_table_hook => {
+                    let end = matching(events, i);
+                    flush(&mut plain, out);
+                    // The table as ssqch writes it, then its rows from inside `<table>`.
+                    self.in_table_hook = true;
+                    let mut whole = String::new();
+                    let written = self.write(&events[i..=end], &mut whole);
+                    self.in_table_hook = false;
+                    written?;
+                    let rows = whole.trim().strip_prefix("<table>").and_then(|t| t.strip_suffix("</table>")).unwrap_or(whole.trim()).trim_start_matches('\n');
+                    let table = Value::from_pairs([("content", Value::from(rows.to_string())), ("columns", Value::Num(a.len() as f64))]);
+                    block(out, &self.hook("hooks/table", "table", table)?);
+                    i = end + 1;
+                    continue;
+                }
                 Event::Start(Tag::Table(a)) => {
                     self.aligns = a.clone();
                     plain.push(events[i].clone());
@@ -1630,6 +1674,16 @@ mod tests {
         // Opened inside a list item, closed outside it.
         let err = render("- item\n  ::: note\n  x\n\n:::\n", &MarkdownOptions::default(), None).unwrap_err();
         assert!(err.to_string().contains("line 2: container `note`"), "{}", err);
+        // Prettier's closing `:::`, indented under the list it ends: markdown-it-container (and
+        // VitePress) close the container there; `containers: "markdown-it"` does too.
+        let prettier = "::: info\n- one\n- two\n  :::\n\nAfter\n";
+        assert!(render(prettier, &MarkdownOptions::default(), None).is_err());
+        let markdown_it = MarkdownOptions { markdown_it_containers: true, ..Default::default() };
+        assert_eq!(render(prettier, &markdown_it, None).unwrap(), "<div class=\"info\">\n<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n</div>\n<p>After</p>\n");
+        let mut o = MarkdownOptions::default();
+        o.apply(&Value::from_pairs([("containers", Value::from("markdown-it"))])).unwrap();
+        assert!(o.containers && o.markdown_it_containers);
+        assert!(o.apply(&Value::from_pairs([("containers", Value::from("loose"))])).unwrap_err().to_string().contains("markdown.containers must be true, false or \"markdown-it\", not \"loose\""));
     }
 
     #[test]
@@ -1650,6 +1704,26 @@ mod tests {
         let smart = MarkdownOptions { smart_punctuation: true, ..Default::default() };
         let html = render("Run it with --fix or ---force, pages 1--2 -- \"quoted\" --- done... and a -- b.\n", &smart, None).unwrap();
         assert_eq!(html, "<p>Run it with --fix or ---force, pages 1\u{2013}2 \u{2013} \u{201c}quoted\u{201d} \u{2014} done\u{2026} and a \u{2013} b.</p>\n");
+    }
+
+    // VitePress gives a Markdown table `tabindex="0"`: `hooks/table` writes the `<table>`, with
+    // ssqch's rows (alignment included) as `table.content`.
+    #[test]
+    fn table_hook_writes_the_table() {
+        struct TableHooks;
+        impl Hooks for TableHooks {
+            fn has(&self, name: &str) -> bool {
+                name == "hooks/table"
+            }
+            fn render(&self, _name: &str, _key: &str, v: Value) -> Result<String> {
+                Ok(format!("<table tabindex=\"0\" data-columns=\"{}\">{}</table>\n", v.get("columns").to_js_string(), v.get("content").to_js_string()))
+            }
+        }
+        let opts = MarkdownOptions::default();
+        let plain = render("| Trail | Miles |\n| --- | --: |\n| Cedar | 3 |\n", &opts, None).unwrap();
+        let hooked = render("| Trail | Miles |\n| --- | --: |\n| Cedar | 3 |\n", &opts, Some(&TableHooks)).unwrap();
+        assert_eq!(hooked, plain.replacen("<table>", "<table tabindex=\"0\" data-columns=\"2\">", 1));
+        assert!(hooked.contains("<th style=\"text-align:right\">Miles</th>"), "{}", hooked);
     }
 
     #[test]
@@ -1774,6 +1848,12 @@ mod tests {
             "<p>See <a href=\"http://example.com\">example.com</a>, <a href=\"http://docs.example.org/a?b=1\">docs.example.org/a?b=1</a> and <a href=\"mailto:ranger@example.com\">ranger@example.com</a>. Not node.js, e.g. or 1.2.3; <a href=\"http://www.x.io\">www.x.io</a> and <a href=\"https://y.dev\">https://y.dev</a> stay.</p>\n"
         );
         assert_eq!(render("example.com\n", &MarkdownOptions::default(), None).unwrap(), "<p>example.com</p>\n");
+        // `"email"`: markdown-it with `fuzzyLink: false` (VitePress): addresses, not bare domains.
+        let email = MarkdownOptions { email_links: true, ..Default::default() };
+        assert_eq!(
+            render("Write ranger@example.com, not example.com; https://y.dev stays.\n", &email, None).unwrap(),
+            "<p>Write <a href=\"mailto:ranger@example.com\">ranger@example.com</a>, not example.com; <a href=\"https://y.dev\">https://y.dev</a> stays.</p>\n"
+        );
         let figures = MarkdownOptions { figures: true, ..Default::default() };
         assert_eq!(render("![A *pine* cone](/cone.jpg)\n", &figures, None).unwrap(), "<figure><img src=\"/cone.jpg\" alt=\"\"><figcaption>A <em>pine</em> cone</figcaption></figure>\n");
         assert_eq!(render("[![Map](/map.png \"Trail\")](/trails/)\n", &figures, None).unwrap(), "<figure><a href=\"/trails/\"><img src=\"/map.png\" alt=\"\" title=\"Trail\"></a><figcaption>Map</figcaption></figure>\n");
@@ -1783,7 +1863,7 @@ mod tests {
         let mut o = MarkdownOptions::default();
         o.apply(&Value::from_pairs([("autolinks", Value::from("fuzzy")), ("breaks", Value::Bool(true)), ("figures", Value::Bool(true))])).unwrap();
         assert!(o.autolinks && o.fuzzy_links && o.breaks && o.figures);
-        assert!(o.apply(&Value::from_pairs([("autolinks", Value::from("loose"))])).unwrap_err().to_string().contains("markdown.autolinks must be true, false or \"fuzzy\", not \"loose\""));
+        assert!(o.apply(&Value::from_pairs([("autolinks", Value::from("loose"))])).unwrap_err().to_string().contains("markdown.autolinks must be true, false, \"email\" or \"fuzzy\", not \"loose\""));
     }
 
     // Another highlighter's classes, so a site keeps its theme's CSS (v8 B3, lit.dev's CodeMirror

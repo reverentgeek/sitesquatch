@@ -84,7 +84,7 @@ export type FromBuilder =
 	/** The site's code threw where nothing caught it, and the process is ending: the error, said as a build's is. */
 	| { type: "crashed"; error: string };
 
-export type ToBuilder = { type: "build"; recovered: boolean };
+export type ToBuilder = { type: "build"; recovered: boolean; changed?: string[] };
 
 /** What a file holds, as a hash (`-` for a file that isn't there). */
 export function fileHash(file: string): string {
@@ -236,7 +236,7 @@ export class Builder {
 	}
 
 	/** Build, and print the summary or the error. `recovered`: the last build failed, which the summary of one that works says. */
-	async build(recovered: boolean): Promise<Built> {
+	async build(recovered: boolean, changed?: string[]): Promise<Built> {
 		if (stopping) return never();
 		if (this.starting) await this.starting;
 		// The site's code threw after the last build had reported, which ended its process: this
@@ -254,7 +254,7 @@ export class Builder {
 		if (!this.child) return { ok: false, error: "The configuration didn't load: its error is in the terminal.", assets: [] };
 		const child = this.child;
 		const answer = this.next();
-		child.send({ type: "build", recovered } satisfies ToBuilder);
+		child.send({ type: "build", recovered, ...(changed ? { changed } : {}) } satisfies ToBuilder);
 		const message = await answer;
 		if (stopping) return never();
 		if (message?.type === "crashed") {

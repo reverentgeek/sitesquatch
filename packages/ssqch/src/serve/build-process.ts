@@ -107,7 +107,8 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 	for (;;) {
 		while (!asked.length) await new Promise<void>((resolve) => { wake = resolve; });
 		wake = undefined;
-		const { recovered } = asked.shift()!;
+		const { recovered, changed } = asked.shift()!;
+		config.changed = changed;
 		let result: { ok: boolean; error?: string; assets: string[] };
 		try {
 			const report = await working(() => build(config));
