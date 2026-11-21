@@ -61,6 +61,14 @@ where that version matches.
   Add the module to `plugins` and leave the option out; the module's Markdown settings are
   defaults, so the site's own `markdown` still changes one (`headingIds: false`). `ssqch scout`
   drafts the modules. The `jekyll-guides` example uses `fromJekyll()`.
+- `markdown: { containers: "markdown-it" }` is what `containers: true` does now: a closing `:::`
+  indented less than four spaces closes the innermost open container, so Prettier's `:::` under a
+  list closes it. The old value is refused; write `true`, or leave it out. Every site in the oracle
+  builds the same.
+- `vuePlugin({ vitepress })` is gone, and a `.vitepress` folder no longer turns VitePress's ways on
+  by itself: `fromVitepress()` does, before or after `vuePlugin()` in `plugins` (VitePress's
+  `useData()` stand-in, `@theme/`, and `./x.data` imports running its data loaders). The vuejs.org
+  port builds byte for byte the same with both plugins.
 - `clean` is no longer another name for `leaveNoTrace` in `ssqch.config.js` (a rename replaces the
   old name): it's refused with ssqch's name, as the `clean` command is. `sitesquatch.toml` keeps
   it.
@@ -131,6 +139,10 @@ where that version matches.
 
 ### Changed
 
+- Options' descriptions say what each does first, and another generator's name for it last
+  (`urls`, `jinja`, `layoutAliases`, `breaks`, `figures`, `sassPlugin({ charset })`). The Markdown
+  page says why ssqch keeps other generators' heading id styles: an id is part of a URL others
+  link to.
 - The docs pages have display titles, with their plain words after the theme: "Gear up:
   install", "The gear shed: built-in plugins", "Getting spotted: SEO tags", "Following the tracks:
   where a value comes from", "Has the stump moved? Comparing two builds", "Out of the woods:

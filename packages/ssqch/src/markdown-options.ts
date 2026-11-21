@@ -25,8 +25,8 @@ export interface MarkdownOptions {
 	figures: boolean;
 	/** GitHub's `> [!NOTE]` alerts (note, tip, important, warning, caution). */
 	alerts: boolean;
-	/** `::: name args` blocks; `"markdown-it"` closes one at an indented `:::`, as markdown-it-container does. */
-	containers: boolean | "markdown-it";
+	/** `::: name args` blocks; a `:::` indented less than four spaces closes the innermost open one, as markdown-it-container reads them. */
+	containers: boolean;
 	/** `Term` followed by `: definition` lines. */
 	definitionLists: boolean;
 	/** Curly quotes, dashes and ellipses. */
@@ -231,7 +231,9 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown, f
 			if (typeof v !== "boolean" && v !== "fuzzy" && v !== "email") bail(`markdown.autolinks must be true, false, "email" or "fuzzy", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.autolinks = v;
 		} else if (key === "containers") {
-			if (typeof v !== "boolean" && v !== "markdown-it") bail(`markdown.containers must be true, false or "markdown-it", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			// `"markdown-it"` (0.12) is what `true` does now (the audit's plan, step 7).
+			if (v === "markdown-it") bail("markdown.containers: \"markdown-it\" is what `containers: true` does now (a closing `:::` indented under a list closes its container): write true, or leave it out");
+			if (typeof v !== "boolean") bail(`markdown.containers must be true or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.containers = v;
 		} else if ((FLAGS as readonly string[]).includes(key)) {
 			if (typeof v !== "boolean") bail(`markdown.${key} must be true or false, not ${typeOf(v)}`);

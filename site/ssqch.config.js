@@ -10,7 +10,7 @@ import { minifyPlugin } from "ssqch/minify";
 import { robotsPlugin } from "ssqch/robots";
 import { rssPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
-import { docsHref, pages } from "./lib/docs.ts";
+import { pages } from "./lib/docs.ts";
 
 /** Each docs page's sidebar group and place, by URL (src/docs/nav.yml), read once a build. */
 let order;
@@ -38,7 +38,8 @@ export default defineConfig(({ env }) => ({
 	beforeBuild: [() => { order = undefined; }],
 	watch: ["lib"],
 
-	markdown: { highlight: true },
+	// The docs pages link each other with relative .md links, which GitHub follows; each goes to its page.
+	markdown: { highlight: true, sourceLinks: true },
 
 	// The changelog's entries (src/changelog/), newest release first.
 	collections: {
@@ -47,8 +48,6 @@ export default defineConfig(({ env }) => ({
 	filters: {
 		/** A page's first paragraph, for a list of entries. */
 		firstParagraph: (html) => /<p\b[\s\S]*?<\/p>/.exec(String(html ?? ""))?.[0] ?? "",
-		/** A link in a docs page, from `page.inputPath`: a relative .md link is its page's URL (lib/docs.ts). */
-		docsHref: (href, inputPath) => docsHref(String(href), String(inputPath).replace(/\\/g, "/").replace(/^.*?src\/docs\//, "")),
 	},
 	schemas: {
 		docs: {

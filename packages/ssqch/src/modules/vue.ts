@@ -106,7 +106,9 @@ const MARK = (n: number) => `\uE050${n}\uE051`;
 const MARKS = /\uE050(\d+)\uE051/g;
 
 BUILTINS.set("ssqch/vue", (config: Config, given) => {
-	const o = new Options(given, ["components", "root", "hydrate", "css", "vite", "vitepress"]);
+	// `vitepress: true` (0.12) is fromVitepress()'s now.
+	if (given !== null && typeof given === "object" && Object.hasOwn(given, "vitepress")) bail("`vitepress` is fromVitepress() from \"ssqch/from-vitepress\" now: add it to plugins, and vuePlugin() gives the components VitePress's `useData()`, `@theme/` and data loaders (`ssqch docs fromVitepress`)");
+	const o = new Options(given, ["components", "root", "hydrate", "css", "vite"]);
 	const globals = o.get("components") ?? {};
 	if (typeof globals !== "object" || globals === null || Array.isArray(globals)) bail(`components must be an object of { Name: "path/to/Name.vue" }, the ones the site registers for every page (VitePress's \`app.component()\`) (got ${shown(globals)})`);
 	for (const [name, file] of Object.entries(globals)) if (!/^[A-Z]\w*$/.test(name) || typeof file !== "string") bail(`components: ${debugString(name)} must be a PascalCase name with a .vue file's path, like { Badge: ".vitepress/theme/Badge.vue" }`);
@@ -121,9 +123,9 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 	const rootGiven = o.string("root");
 	// A VitePress site's components import `useData()` and the like from "vitepress", which only work
 	// inside VitePress's app: they get a stand-in with the page's front matter, its route and the
-	// site's `themeConfig`. On when the site has a `.vitepress` folder.
+	// site's `themeConfig`, `@theme/` is its theme's folder, and `./x.data` imports run its data
+	// loaders. On with fromVitepress() (ssqch/from-vitepress), which can be listed before or after.
 	const vitepressFolder = [".vitepress", "docs/.vitepress"].map((f) => path.join(config.root, f)).find((f) => fs.existsSync(f));
-	const vitepress = o.bool("vitepress") ?? vitepressFolder !== undefined;
 
 	const cache = path.join(config.root, ".cache", "ssqch", "vue");
 	// A component the config names is from the project's root (or a package's, as written).
@@ -186,6 +188,7 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 		const vue = (vuePluginModule.default ?? vuePluginModule) as () => unknown;
 		fs.rmSync(cache, { recursive: true, force: true });
 		fs.mkdirSync(cache, { recursive: true });
+		const vitepress = config.vitepress;
 		const shim = path.join(cache, "vitepress.js");
 		const quiet = { logLevel: config.quiet ? "silent" : "warn" };
 		const root = path.resolve(config.root, rootGiven ?? config.input);
@@ -279,7 +282,7 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 			"",
 		].join("\n"));
 		try {
-			await vite.build({ ...base, plugins: [loaders, ...base.plugins], ...quiet, base: config.base || "/", build: { ssr: server, outDir: path.join(cache, "ssr"), emptyOutDir: true, minify: false, cssCodeSplit: false, ssrEmitAssets: true, rollupOptions: { output: { entryFileNames: "server.mjs" } } } });
+			await vite.build({ ...base, plugins: [...(vitepress ? [loaders] : []), ...base.plugins], ...quiet, base: config.base || "/", build: { ssr: server, outDir: path.join(cache, "ssr"), emptyOutDir: true, minify: false, cssCodeSplit: false, ssrEmitAssets: true, rollupOptions: { output: { entryFileNames: "server.mjs" } } } });
 		} catch (e) { throw e instanceof BuildError ? e : new BuildError(`vuePlugin(): Vite couldn't build the components for the server: ${e instanceof Error ? e.message : String(e)}`); }
 		// The loaders pages import for their own bindings (`:errors="data.runtime"`).
 		for (const file of new Set([...pageLoaders.values()].flatMap((m) => Object.values(m)))) await runLoader(file);
@@ -302,7 +305,7 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 				"",
 			].join("\n"));
 			try {
-				await vite.build({ ...base, plugins: [loaders, ...base.plugins], ...quiet, base: `${config.base.replace(/\/$/, "")}/assets/vue/`, build: { outDir: path.join(cache, "client"), emptyOutDir: true, manifest: false, cssCodeSplit: false, rollupOptions: { input: client, output: { entryFileNames: "islands.js", chunkFileNames: "[name]-[hash].js", assetFileNames: "[name]-[hash][extname]" } } } });
+				await vite.build({ ...base, plugins: [...(vitepress ? [loaders] : []), ...base.plugins], ...quiet, base: `${config.base.replace(/\/$/, "")}/assets/vue/`, build: { outDir: path.join(cache, "client"), emptyOutDir: true, manifest: false, cssCodeSplit: false, rollupOptions: { input: client, output: { entryFileNames: "islands.js", chunkFileNames: "[name]-[hash].js", assetFileNames: "[name]-[hash][extname]" } } } });
 			} catch (e) { throw new BuildError(`vuePlugin(): Vite couldn't build the components for the browser: ${e instanceof Error ? e.message : String(e)}`); }
 		}
 		builtFrom = key;

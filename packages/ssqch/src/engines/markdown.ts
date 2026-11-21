@@ -502,7 +502,8 @@ class WasmMarkdown implements Markdown {
 			breaks: o.breaks,
 			figures: o.figures,
 			alerts: o.alerts,
-			containers: o.containers,
+			// The wasm's markdown-it reading of a closing `:::`, which is ssqch's own now.
+			containers: o.containers ? "markdown-it" : false,
 			definitionLists: o.definitionLists,
 			smartPunctuation: o.smartPunctuation,
 			indentedCode: o.indentedCode,

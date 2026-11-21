@@ -85,14 +85,14 @@ declare module "ssqch" {
 		taskLists?: boolean;
 		/** Bare `https://` and `www.` URLs become links. `"fuzzy"` links bare domains (`example.com`, with a common or two-letter country TLD) and email addresses too, as markdown-it's `linkify` does. `"email"` links email addresses (with `mailto:`) and URLs, not bare domains, as markdown-it's `linkify` with `fuzzyLink: false` does (VitePress's setting). Default `true`. */
 		autolinks?: boolean | "fuzzy" | "email";
-		/** A single newline inside a paragraph (or a list item) becomes a `<br>`, as markdown-it's `breaks: true` makes it. Default `false`. */
+		/** A single newline inside a paragraph (or a list item) becomes a `<br>`. Default `false`. (markdown-it's `breaks: true` writes the same.) */
 		breaks?: boolean;
-		/** An image (or a linked image) alone in a paragraph becomes `<figure><img alt=""><figcaption>its alt text</figcaption></figure>`, as markdown-it-implicit-figures with `figcaption: true` writes it. Default `false`. */
+		/** An image (or a linked image) alone in a paragraph becomes `<figure><img alt=""><figcaption>its alt text</figcaption></figure>`. Default `false`. (markdown-it-implicit-figures with `figcaption: true` writes the same.) */
 		figures?: boolean;
 		/** GitHub's `> [!NOTE]` alerts: note, tip, important, warning and caution. Default `true`. */
 		alerts?: boolean;
-		/** `::: name args` blocks, rendered by `_includes/containers/name.*`. A container closes inside the block it opened in (a list item's closes in that item). `"markdown-it"` reads them as markdown-it-container (and VitePress) does: a closing `:::` indented less than four spaces closes the innermost open container, so Prettier's `:::` indented under the list it ends works. Default `true`. */
-		containers?: boolean | "markdown-it";
+		/** `::: name args` blocks, rendered by `_includes/containers/name.*`. A closing `:::` indented less than four spaces closes the innermost open container, so Prettier's `:::`, indented under the list it ends, works (as markdown-it-container and VitePress read them). Default `true`. */
+		containers?: boolean;
 		/** A term, then `: definition` lines. Default `false`. */
 		definitionLists?: boolean;
 		/** Curly quotes, dashes and ellipses. Default `false`. */
@@ -294,7 +294,7 @@ declare module "ssqch" {
 		bundles?: boolean;
 		/** Printing an undefined value (`{{ titel }}`) is an error, in every template language. Conditionals and defaults still work. Default `false`. */
 		strict?: boolean;
-		/** Jinja's settings for `.jinja` and `.j2` templates. `autoescape: false` prints values as they are, as MkDocs' Jinja does (`| e` still escapes); default `true`, or `false` with `fromMkdocs({ templates: true })`. `.njk` always escapes. */
+		/** Jinja's settings for `.jinja` and `.j2` templates. `autoescape: false` prints values as they are (`| e` still escapes); default `true`, or `false` with `fromMkdocs({ templates: true })`, since MkDocs' Jinja doesn't escape. `.njk` always escapes. */
 		jinja?: { autoescape?: boolean };
 		/** `page.lastModified`: `"git"` for the last commit that changed the page's file (its modification time when it has uncommitted changes), or `"file"` for the modification time. Off by default. Needs the full history in CI (`fetch-depth: 0`). */
 		lastModified?: "git" | "file" | false;
@@ -302,9 +302,9 @@ declare module "ssqch" {
 		dateFallback?: "git" | "file";
 		/** The time zone the site's own JavaScript runs in, as an IANA name (`"UTC"`, `"America/New_York"`): `Date`'s local methods and libraries like luxon and date-fns, in data files, filters, hooks and Edge templates, so a laptop and CI build the same pages. ssqch's own date filters are UTC whatever this says. Default: the machine's. The config's own top-level code runs before it applies. */
 		timeZone?: string;
-		/** A page's URL when it has no `permalink`: `"folders"` (the default) writes `guide/intro.md` as `/guide/intro/` (`guide/intro/index.html`), `"html"` as `/guide/intro.html`, as VitePress without `cleanUrls`, Hugo's `uglyURLs` and Docusaurus's `trailingSlash: false` do. An index page is its folder either way (`guide/index.md` is `/guide/`). */
+		/** A page's URL when it has no `permalink`: `"folders"` (the default) writes `guide/intro.md` as `/guide/intro/` (`guide/intro/index.html`), `"html"` as `/guide/intro.html`. An index page is its folder either way (`guide/index.md` is `/guide/`). (`"html"` is VitePress without `cleanUrls`, Hugo's `uglyURLs` and Docusaurus's `trailingSlash: false`.) */
 		urls?: "folders" | "html";
-		/** Other names for layouts: `{ post: "layouts/post.njk" }` makes `layout: post` that file (where it would be `_includes/post.*`), as Eleventy's `addLayoutAlias` did. A page's `layout` is still the name it gave. */
+		/** Other names for layouts: `{ post: "layouts/post.njk" }` makes `layout: post` that file (where it would be `_includes/post.*`). A page's `layout` is still the name it gave. (Eleventy's `addLayoutAlias` does the same.) */
 		layoutAliases?: Record<string, string>;
 		/** The path the site is served under, when that isn't the root of its domain: `"/repo/"` for `https://you.github.io/repo/`. Templates and `page.url` stay as they are; ssqch adds the base to URLs from the site's root in the HTML it writes. Use the `withBase()` filter outside HTML attributes. */
 		base?: string;
@@ -572,9 +572,9 @@ declare module "ssqch/sitemap" {
 }
 
 declare module "ssqch/from-vitepress" {
-	import type { PluginParts } from "ssqch";
-	/** VitePress's Markdown, for a site moving from VitePress: Vue's `<script>` and `<style>` blocks and `<ClientOnly>` left out, VitePress's markup for headings (`header-anchor`), links (`.html` with `urls: "html"`, external ones in a new tab), code blocks and tables, its `tip`, `info`, `warning`, `danger`, `details`, `raw` and `code-group` containers, `[[toc]]`, and, under the site's own `markdown` options, its heading ids, email autolinks and markdown-it's `:::`. A site's own hook or container template of the same name replaces VitePress's. Takes no options. */
-	export function fromVitepress(): PluginParts;
+	import type { BuiltinPlugin } from "ssqch";
+	/** VitePress's Markdown, for a site moving from VitePress, and VitePress's ways for `vuePlugin()`'s components (`useData()` and the rest from "vitepress", `@theme/`, and `./x.data` imports running its data loaders): Vue's `<script>` and `<style>` blocks and `<ClientOnly>` left out, VitePress's markup for headings (`header-anchor`), links (`.html` with `urls: "html"`, external ones in a new tab), code blocks and tables, its `tip`, `info`, `warning`, `danger`, `details`, `raw` and `code-group` containers, `[[toc]]`, and, under the site's own `markdown` options, its heading ids and email autolinks. A site's own hook or container template of the same name replaces VitePress's. Takes no options. */
+	export function fromVitepress(): BuiltinPlugin;
 }
 
 declare module "ssqch/from-mkdocs" {
@@ -709,7 +709,7 @@ declare module "ssqch/sass" {
 		style?: "compressed" | "expanded";
 		/** More folders `@use` and `@import` look in, relative to the project root. */
 		loadPaths?: string[];
-		/** `false` leaves out what CSS with a character outside ASCII starts with: a byte order mark (compressed) or `@charset "UTF-8";` (expanded), as Dart Sass's `--no-charset` does and jekyll-sass-converter's output has it. Default `true`. */
+		/** `false` leaves out what CSS with a character outside ASCII starts with: a byte order mark (compressed) or `@charset "UTF-8";` (expanded). Default `true`. (Dart Sass's `--no-charset`; jekyll-sass-converter's CSS has neither.) */
 		charset?: boolean;
 	}
 

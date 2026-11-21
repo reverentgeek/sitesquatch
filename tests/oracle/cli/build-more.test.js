@@ -285,6 +285,8 @@ test("the_same_error_on_many_pages_is_one_line", () => {
 });
 
 // Added in 0.12, from the fresh vuejs.org run: what a VitePress site needed as hooks and filters.
+// DELIBERATE (0.13): `containers: "markdown-it"` is what `containers: true` does (step 7), so the
+// indented closing `:::` below needs no option.
 test("vitepress_habits_have_options", () => {
 	const dir = tempDir("vitepress-options");
 	write(dir, {
@@ -292,7 +294,7 @@ test("vitepress_habits_have_options", () => {
 			"import { sitemapPlugin } from \"ssqch/sitemap\";",
 			"export default {",
 			"\turls: \"html\",",
-			"\tmarkdown: { autolinks: \"email\", containers: \"markdown-it\", preprocess: async (source) => source.replace(/<script setup>[\\s\\S]*?<\\/script>\\n?/g, \"\") },",
+			"\tmarkdown: { autolinks: \"email\", preprocess: async (source) => source.replace(/<script setup>[\\s\\S]*?<\\/script>\\n?/g, \"\") },",
 			"\tplugins: [sitemapPlugin({ url: \"https://trail.example\" })],",
 			"};",
 		].join("\n"),
@@ -316,6 +318,9 @@ test("vitepress_habits_have_options", () => {
 	write(dir, { "ssqch.config.js": "export default { urls: \"ugly\" };\n" });
 	const bad = ssqch(["build", "--root", dir]);
 	assert.ok(!bad.ok && bad.log.includes("urls must be \"folders\" (/guide/intro/) or \"html\" (/guide/intro.html), not \"ugly\""), bad.log);
+	write(dir, { "ssqch.config.js": "export default { markdown: { containers: \"markdown-it\" } };\n" });
+	const old = ssqch(["build", "--root", dir]);
+	assert.ok(!old.ok && old.log.includes("markdown.containers: \"markdown-it\" is what `containers: true` does now"), old.log);
 });
 
 // Added in 0.12, from the fresh vuejs.org run: VitePress's Markdown, as one option.

@@ -150,6 +150,8 @@ export interface Config {
 	sitemap?: () => string;
 	/** The `markdown` options the site's config sets itself, which plugins' `defaults` don't replace. */
 	markdownGiven: Set<string>;
+	/** With fromVitepress(): vuePlugin() gives components VitePress's `useData()`, `@theme/` and data loaders. */
+	vitepress: boolean;
 	/** Plugins that render a component tag the site has no template for (`vuePlugin()`): its HTML, or `undefined` for one it doesn't know. Asked in order, after `_includes/components/`. */
 	componentRenderers: Array<(name: string, value: { name: string; props: Record<string, unknown>; content: string; attrs: string; bindings: Record<string, string> }, inputPath: string, data: Data) => string | undefined>;
 	engines: Map<string, EngineFn>;
@@ -234,6 +236,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		transforms: [],
 		htmlTransforms: [],
 		markdownGiven: new Set(),
+		vitepress: false,
 		engines: new Map(),
 		engineCaches: [],
 		beforeBuild: [],
@@ -463,7 +466,7 @@ export type BuiltinPlugin = (config: Config, options: Data) => void | Promise<vo
 
 /** The built-in plugins, by the module that makes them. The plugins register themselves here as they're ported. */
 export const BUILTINS = new Map<string, BuiltinPlugin>();/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
-const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/llms", "ssqch/vue", "ssqch/robots", "ssqch/from-mkdocs", "ssqch/from-jekyll", "ssqch/from-hugo"];
+const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/llms", "ssqch/vue", "ssqch/robots", "ssqch/from-mkdocs", "ssqch/from-jekyll", "ssqch/from-hugo", "ssqch/from-vitepress"];
 
 async function loadJs(config: Config, file: string): Promise<void> {
 	const name = path.basename(file);

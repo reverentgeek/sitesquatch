@@ -4,8 +4,8 @@
 // shows them as files, and the site renders them.
 //
 // Pages link each other with relative .md links (`content-schemas.md#types`), which GitHub
-// follows; the site's link hook (src/_includes/hooks/link.jinja) turns them into page URLs with
-// `docsHref`, and the copies for agents (llmsPlugin) into the copies' URLs.
+// follows; `markdown: { sourceLinks: true }` (ssqch.config.js) turns them into page URLs, and
+// llmsPlugin into the copies' URLs.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -70,14 +70,6 @@ export function commandOf(page: Pick<DocsPage, "file" | "title" | "command">): s
 	if (page.file === "index.md" || page.file === "") return "ssqch docs";
 	const trailhead = /^trailheads\/from-([\w-]+)\.md$/.exec(page.file);
 	return trailhead ? `ssqch docs --from ${trailhead[1]}` : `ssqch docs "${page.title}"`;
-}
-
-/** Where a link in a page goes on the site: a relative `.md` link to its page's URL (`../themes.md#x` from `trailheads/from-hexo.md` is `/docs/themes/#x`); anything else as it is. */
-export function docsHref(href: string, from: string): string {
-	const match = /^([^:#?]+\.md)(#.*)?$/.exec(href);
-	if (!match || href.startsWith("/")) return href;
-	const target = path.posix.normalize(path.posix.join(path.posix.dirname(from), match[1]));
-	return target.startsWith("..") ? href : `${urlOf(target)}${match[2] ?? ""}`;
 }
 
 /** The site's URL for a heading of the docs: its page, and its anchor unless it's the page's title. */

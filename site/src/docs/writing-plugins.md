@@ -66,7 +66,7 @@ Steps run on a page's own Markdown (not on the `markdown()` function's text), in
 
 The built-in plugins (`ssqch docs "built-in plugins"`) are written this way where they can be. Four of them are another generator's ways, for a site moving from it, each documented in its trailhead:
 
-- `fromVitepress()` from `ssqch/from-vitepress`: VitePress's Markdown as a plugin of this kind, a `before` and an `after` step, eleven hooks and three defaults ([Moving from VitePress](trailheads/from-vitepress.md)).
+- `fromVitepress()` from `ssqch/from-vitepress`: VitePress's Markdown, built with what this page describes (a `before` and an `after` step, eleven hooks and two defaults), and VitePress's `useData()`, `@theme/` and data loaders for `vuePlugin()`'s components ([Moving from VitePress](trailheads/from-vitepress.md)).
 - `fromMkdocs()` from `ssqch/from-mkdocs`: MkDocs' Markdown as defaults (Python-Markdown's reading, admonitions, tabs, toc's ids, `.md` links), and its theme context with `templates: true` ([Moving from MkDocs](trailheads/from-mkdocs.md)).
 - `fromJekyll()` from `ssqch/from-jekyll`: Jekyll's `page` and `site` in templates, and kramdown's Markdown ([Moving from Jekyll](trailheads/from-jekyll.md)).
 - `fromHugo()` from `ssqch/from-hugo`: Hugo's shortcodes as containers ([Moving from Hugo](trailheads/from-hugo.md)).
