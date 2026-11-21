@@ -184,9 +184,72 @@ test("the_config_can_define_template_engines", () => {
 	assert.ok(!r.ok && r.log.includes("engine \"shout\" returned number for loud.shout"), r.log);
 
 	// Built-in engines can't be replaced.
-	w("ssqch.config.js", config("md: (s) => s,", "\"md\""));
+	// DELIBERATE (0.11): except Markdown. `md` can be the site's own (a markdown-it), so a move
+	// that keeps its Markdown library replaces it once (a11y #12; see
+	// a_sites_engine_can_replace_markdown_once below).
+	w("ssqch.config.js", config("edge: (s) => s,", "\"md\""));
 	r = ssqch(["build", "--root", d]);
-	assert.ok(!r.ok && r.log.includes("engines.md: \"md\" is built in"), r.log);
+	assert.ok(!r.ok && r.log.includes("engines.edge: \"edge\" is built in"), r.log);
+});
+
+// Found in migrations: keeping a site's markdown-it took an engine of its own plus `render` in
+// every folder's data, and `render` from a folder's data reached its `.njk` pages too (v8.dev
+// changed nine content files for it, a11y #12). `engines: { md }` replaces Markdown once: `.md`
+// files and `md` in a chain use it, with the `markdownEngine` still first, and an object with
+// markdown-it's `render(source, env)` works as it is.
+test("a_sites_engine_can_replace_markdown_once", () => {
+	const dir = tempDir("engine-md");
+	const w = (p, t) => write(dir, { [p]: t });
+	// Like markdown-it: a `render` method that reads `this`, and gets the page's data as `env`.
+	const mdit = "{ tag: \"mdit\", render(source, env, context) { return `<${this.tag} title=\"${env.title}\" kind=\"${context.kind}\">${source.trim()}</${this.tag}>\\n`; } }";
+	w("ssqch.config.js", `export default { templateFormats: ["md", "njk", "jinja"], markdownEngine: "jinja", engines: { md: ${mdit} } };\n`);
+	w("_includes/base.njk", "<main>{{ content | safe }}</main>{{ markdown(\"*ssqch*\") | safe }}");
+	w("posts/pine.md", "---\ntitle: Pine\nlayout: base.njk\n---\n*{{ title | upper }}*\n");
+	w("posts/cedar.njk", "---\ntitle: Cedar\n---\n*{{ title }}*");
+	w("chain.jinja", "---\ntitle: Chain\nrender: [jinja, md]\n---\n{{ 1 + 1 }}");
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	const rd = (p) => read(dir, `_site/${p}`);
+	// Jinja first, then the site's Markdown; the `markdown` filter is still ssqch's.
+	assert.equal(rd("posts/pine/index.html"), "<main><mdit title=\"Pine\" kind=\"body\">*PINE*</mdit>\n</main><p><em>ssqch</em></p>\n");
+	// A Nunjucks page in the same folder isn't Markdown, and doesn't become it.
+	assert.equal(rd("posts/cedar/index.html"), "*Cedar*");
+	assert.equal(rd("chain/index.html"), "<mdit title=\"Chain\" kind=\"body\">2</mdit>\n");
+
+	// A `markdown` filter of the site's own takes the built-in one's place, and Jekyll's
+	// `markdownify`, an alias of it, calls the site's too.
+	w("ssqch.config.js", `export default { templateFormats: ["md", "liquid"], engines: { md: ${mdit} }, filters: { markdown: (text) => \`<mine>\${text}</mine>\` } };\n`);
+	w("feed.liquid", "{{ \"*a*\" | markdownify }}|{{ \"*b*\" | markdown }}");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(rd("feed/index.html"), "<mine>*a*</mine>|<mine>*b*</mine>");
+});
+
+// v8.dev's serve rebuild went from 1.8 s to 0.28 s with a cache of markdown-it's output in its
+// config. `cache: true` keeps an engine's page bodies by their source; layouts render each time.
+test("a_sites_engine_can_cache_what_it_renders", () => {
+	const dir = tempDir("engine-cache");
+	const w = (p, t) => write(dir, { [p]: t });
+	const config = (cache) => `let calls = 0;\nexport default { templateFormats: ["md", "mdit"], markdownEngine: false, engines: { mdit: { cache: ${cache}, render: (source, data, context) => context.kind === "layout" ? \`[\${data.content}]\` : \`<p>\${source.trim()} \${++calls}</p>\` } } };\n`;
+	w("ssqch.config.js", config("true"));
+	w("_includes/frame.mdit", "frame");
+	for (const name of ["a", "b", "c"]) w(`${name}.md`, `---\nrender: mdit\nlayout: frame.mdit\n---\n${name === "c" ? "Cedar" : "Pine"}\n`);
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	const rd = (p) => read(dir, `_site/${p}`);
+	// Two pages with the same text render once; the layout renders for each page.
+	assert.equal(rd("a/index.html"), "[<p>Pine 1</p>]");
+	assert.equal(rd("b/index.html"), "[<p>Pine 1</p>]");
+	assert.equal(rd("c/index.html"), "[<p>Cedar 2</p>]");
+
+	w("ssqch.config.js", config("false"));
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(rd("b/index.html"), "[<p>Pine 2</p>]");
+
+	w("ssqch.config.js", config("\"yes\""));
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("engines.mdit.cache must be true or false"), r.log);
 });
 
 test("liquid_templates_get_filters_includes_and_collections", () => {
@@ -510,4 +573,130 @@ test("a_sites_engine_is_told_what_it_renders_and_permalinks_skip_it", () => {
 	w("posts/pine.md", "---\npermalink: \"{{ '<p>' | safe }}pine/\"\n---\nCones\n");
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(!r.ok && r.log.includes("isn't a URL: it was rendered with `jinja`"), r.log);
+});
+
+// Found in the fresh a11yproject.com move: `{{ date.toString() }}` printed `[object Undefined]`,
+// with no warning, in every post's JSON-LD (the table of UTC date methods is an object, and its
+// `toString` was Object's). A date's methods are its own, as in Eleventy, in the site's timeZone.
+test("a_dates_own_methods_work_in_templates", () => {
+	const dir = tempDir("date-methods");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"njk\"], timeZone: \"UTC\" };\n",
+		"post.njk": "---\ndate: 2020-05-01\n---\n{{ date.toString() }}|{{ page.date.toISOString() }}|{{ date.getFullYear() }}",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/post/index.html"), "Fri May 01 2020 00:00:00 GMT+0000 (Coordinated Universal Time)|2020-05-01T00:00:00.000Z|2020");
+});
+
+// Found in the fresh a11yproject.com move: a layout's `content` reached the site's own filters as a
+// SafeString, so a table-of-contents filter that checks `typeof content === "string"` gave "" on 70
+// pages, silently. The site's functions get text, as in Eleventy; what comes back unchanged is
+// still HTML.
+test("site_filters_get_a_layouts_content_as_text", () => {
+	const dir = tempDir("filters-safe-string");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"], filters: { kind: (c) => typeof c, same: (c) => c, shout: (c) => typeof c === \"string\" ? c.toUpperCase() : \"\" } };\n",
+		"_includes/base.njk": "{{ content | kind }}|{{ content | same }}|{{ content | shout | safe }}|{{ content }}",
+		"pine.md": "---\nlayout: base.njk\n---\n*Pine*\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/pine/index.html"), "string|<p><em>Pine</em></p>\n|<P><EM>PINE</EM></P>\n|<p><em>Pine</em></p>\n");
+});
+
+// Eleventy's `url` normalized its path (the rerun of a11yproject.com: `""` was `.` in its menus).
+test("the_url_alias_normalizes_as_eleventys_did", () => {
+	const dir = tempDir("url-alias");
+	write(dir, { "ssqch.config.js": "export default { templateFormats: [\"njk\"] };\n", "index.njk": "{{ \"\" | url }}|{{ nope | url }}|{{ \"/a//b/../c/\" | url }}|{{ \"https://x.dev//y\" | url }}|{{ \"rel/x\" | url }}" });
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), ".|.|/a/c/|https://x.dev//y|rel/x");
+});
+
+// Added in 0.11, from the fresh opensource.guide move: Jekyll's filters as Jekyll writes them.
+// `xml_escape` is Ruby's (`&apos;`; liquidjs wrote `&#39;`), `normalize_whitespace` folds ASCII
+// whitespace and trims, and `sort` of an object gives its `[key, value]` pairs by key (the
+// language menus).
+test("jekylls_liquid_filters_write_what_jekyll_writes", () => {
+	const dir = tempDir("jekyll-filters");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"liquid\"], data: { langs: { fr: \"Français\", de: \"Deutsch\", ar: \"عربي\" } } };\n",
+		"index.liquid": "{{ \"l'Open & <b>\" | xml_escape }}|{{ \"  a   \n\t b  \" | normalize_whitespace }}|{% assign pairs = langs | sort %}{% for p in pairs %}{{ p[0] }}={{ p[1] }},{% endfor %}|{{ \"b,a\" | split: \",\" | sort | join: \",\" }}",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "l&apos;Open &amp; &lt;b&gt;|a   b|ar=عربي,de=Deutsch,fr=Français,|a,b");
+});
+
+// Added in 0.11, from the fresh www.ruby-lang.org move: Jekyll's own tags and Ruby's Liquid 4
+// filters, Jekyll's date form (3,545 posts), and a front matter key written twice (4 posts).
+test("jekylls_tags_dates_and_rubys_truncate", () => {
+	const dir = tempDir("jekyll-tags");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"liquid\", \"md\"] };\n",
+		"en/news/_posts/_posts.json": "{ \"permalink\": \"/en/news/{{ page.fileSlug }}/\" }\n",
+		"en/news/_posts/2016-07-26-pine.md": "---\ntitle: English\ntitle: Pine\ndate: 2009-12-25 10:41:06 +0000\n---\nPine\n",
+		"index.liquid": "{% highlight ruby %}\nputs \"<hi>\"\n{% endhighlight %}|{% link en/news/_posts/2016-07-26-pine.md %}|{% post_url 2016-07-26-pine %}|{{ collections.all | where: \"url\", \"/en/news/pine/\" | map: \"data\" | map: \"title\" | first }} {{ collections.all | where: \"url\", \"/en/news/pine/\" | map: \"date\" | first | date: \"%Y-%m-%d %H:%M\" }}|{{ \"ббб\" | truncate: 5 }}|{{ \"a b c\" | truncatewords: 3 }}|{{ \"a\tb\" | truncatewords: 1 }}",
+	});
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.ok(r.log.includes("warn: ./en/news/_posts/2016-07-26-pine.md: front matter has `title` twice (line 3); the last one is used, as Jekyll uses it"), r.log);
+	assert.equal(read(dir, "_site/index.html"), "<figure class=\"highlight\"><pre><code class=\"language-ruby\" data-lang=\"ruby\"><span class=\"hl-function\">puts</span> <span class=\"hl-string\">&quot;&lt;hi&gt;&quot;</span></code></pre></figure>|/en/news/pine/|/en/news/pine/|Pine 2009-12-25 10:41|ббб|a b c...|a...");
+	write(dir, { "bad.liquid": "{% link nope.md %}" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("{% link nope.md %}: no page at nope.md"), r.log);
+});
+
+// Added in 0.11: a config filter written as a `function` gets the page being rendered as
+// `this.page` (and its data as `this.data`), and `safe()` marks its answer as HTML, in every
+// template language. Four fresh moves wanted both (MkDocs' page-relative `url` filter, among them).
+test("filters_see_the_page_and_can_answer_with_html", () => {
+	const dir = tempDir("this-page");
+	write(dir, {
+		"ssqch.config.js": "import { safe } from \"ssqch\";\nexport default {\n  templateFormats: [\"jinja\", \"njk\", \"liquid\", \"edge\", \"hbs\", \"ejs\", \"md\"],\n  filters: {\n    here: function (x) { return `${x}@${this.page.url}:${this.data.title}`; },\n    bold: (t) => safe(`<b>${t}</b>`),\n    later: async function (x) { await new Promise((r) => setTimeout(r, 5)); return `${x}~${this.page.url}`; },\n  },\n};\n",
+		"_includes/lay.jinja": "{{ \"L\" | here }}|{{ content }}",
+		"j.jinja": "---\ntitle: J\n---\n{{ \"a\" | here }} {{ \"b\" | bold }} {{ \"c\" | later }}",
+		"n.njk": "---\ntitle: N\n---\n{{ \"a\" | here }} {{ \"b\" | bold }} {{ \"c\" | later }}",
+		"l.liquid": "---\ntitle: L\n---\n{{ \"a\" | here }} {{ \"b\" | bold }} {{ \"c\" | later }}",
+		"e.edge": "---\ntitle: E\n---\n{{ here(\"a\") }} {{ bold(\"b\") }} {{ await later(\"c\") }}",
+		"h.hbs": "---\ntitle: H\n---\n{{here \"a\"}} {{bold \"b\"}}",
+		"x.ejs": "---\ntitle: X\n---\n<%= here(\"a\") %> <%= bold(\"b\") %> <%= await later(\"c\") %>",
+		"m.md": "---\ntitle: M\nlayout: lay.jinja\n---\nbody\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	const out = (p) => read(dir, `_site/${p}/index.html`);
+	assert.equal(out("j"), "a@/j/:J <b>b</b> c~/j/");
+	assert.equal(out("n"), "a@/n/:N <b>b</b> c~/n/");
+	assert.equal(out("l"), "a@/l/:L <b>b</b> c~/l/");
+	assert.equal(out("e"), "a@/e/:E <b>b</b> c~/e/");
+	assert.equal(out("h"), "a@/h/:H <b>b</b>");
+	assert.equal(out("x"), "a@/x/:X <b>b</b> c~/x/");
+	// In a layout, it's the page the layout is rendering.
+	assert.equal(out("m"), "L@/m/:M|<p>body</p>\n");
+});
+
+// Added in 0.11: `mkdocsTemplates: true` gives templates MkDocs' context, so an MkDocs theme's
+// templates (Material's) run as written: every fresh MkDocs move wrote it by hand (~220 lines).
+test("mkdocs_templates_see_mkdocs_context", () => {
+	const dir = tempDir("mkdocs-templates");
+	write(dir, {
+		"mkdocs.yml": "site_name: Trail & Co\nsite_url: https://example.com/\nnav:\n  - Home: index.md\n  - Trails:\n    - trails/cedar.md\n",
+		"ssqch.config.js": "export default { dirs: { input: \"docs\", output: \"site\" }, theme: \"theme\", mkdocsTemplates: true, markdownEngine: false };\n",
+		"theme/_includes/main.html": "{% extends \"base.html\" %}",
+		"theme/_includes/base.html": "<title>{{ page.title }} - {{ config.site_name }}</title><link href=\"{{ 'assets/app.css' | url }}\">{% for item in nav %}[{{ item.title }}{% if item.active %}*{% endif %}]{% endfor %}<b>{{ base_url }}</b>{% for t in page.toc %}({{ t.title }}{% for c in t.children %}/{{ c.title }}{% endfor %}){% endfor %}<main>{{ page.content }}</main>{% if page.next_page %}<next>{{ page.next_page.url | url }}</next>{% endif %}",
+		"theme/_includes/404.html": "<h1>Lost{% if page %} in {{ page.title }}{% endif %}</h1><link href=\"{{ 'assets/app.css' | url }}\">",
+		"theme/assets/app.css": "body { color: pine }\n",
+		"docs/index.md": "# Camp\n\n## Water\n",
+		"docs/trails/cedar.md": "# Cedar\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	// Nothing escaped, as in MkDocs' Jinja; URLs from the page; the nav with the page active.
+	assert.equal(read(dir, "site/index.html"), "<title>Home - Trail & Co</title><link href=\"assets/app.css\">[Home*][Trails]<b>.</b>(Camp/Water)<main><h1 id=\"camp\">Camp</h1>\n<h2 id=\"water\">Water</h2>\n</main><next>trails/cedar/</next>");
+	assert.equal(read(dir, "site/trails/cedar/index.html"), "<title>Cedar - Trail & Co</title><link href=\"../../assets/app.css\">[Home][Trails*]<b>../..</b>(Cedar)<main><h1 id=\"cedar\">Cedar</h1>\n</main>");
+	// MkDocs' 404 page, from the theme's 404.html, with no page and the site's path.
+	assert.equal(read(dir, "site/404.html"), "<h1>Lost</h1><link href=\"/assets/app.css\">");
+	assert.equal(read(dir, "site/assets/app.css"), "body { color: pine }\n");
 });

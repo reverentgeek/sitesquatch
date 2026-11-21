@@ -7,7 +7,7 @@ import { starterEngines } from "./init.ts";
 
 /** The names each module exports, in the order `ssqch.d.ts` declares them. `capabilities.test.ts` checks each is a function the module has. */
 export const MODULE_EXPORTS: ReadonlyArray<readonly [name: string, exports: readonly string[]]> = [
-	["ssqch", ["defineConfig", "markdown", "readData", "files", "slugify", "slugger"]],
+	["ssqch", ["defineConfig", "markdown", "readData", "files", "slugify", "slugger", "safe"]],
 	["ssqch/image", ["imagePlugin", "image", "imageUrl"]],
 	["ssqch/rss", ["rssPlugin", "getNewestCollectionItemDate", "dateToRfc3339", "dateToRfc822", "absoluteUrl", "htmlToAbsoluteUrls", "feedHtml"]],
 	["ssqch/assets", ["assetsPlugin"]],
@@ -16,7 +16,7 @@ export const MODULE_EXPORTS: ReadonlyArray<readonly [name: string, exports: read
 	["ssqch/redirects", ["redirectsPlugin"]],
 	["ssqch/sass", ["sassPlugin"]],
 	["ssqch/elements", ["elementsPlugin"]],
-	["ssqch/minify", ["minifyPlugin", "minify"]],
+	["ssqch/minify", ["minifyPlugin", "minify", "minifyCss"]],
 ];
 
 /** The Node modules a config, a data file or a package can import. They are Node's own, so every one works (0.7's QuickJS had stand-ins for some that threw when used, listed as `stubs`). */
@@ -56,6 +56,7 @@ export interface Capabilities {
 	imageFormats: string[];
 	starters: string[];
 	starterEngines: string[];
+	/** The generators `ssqch scout` reads a site of in depth (the key is 0.7's, from when they were importers). */
 	importers: string[];
 }
 
@@ -90,7 +91,7 @@ export async function capabilities(commands: string[]): Promise<Capabilities> {
 		imageFormats: avif ? ["avif", "webp", "jpeg", "png", "gif", "svg"] : ["webp", "jpeg", "png", "gif", "svg"],
 		starters: ["site", "docs"],
 		starterEngines: starterEngines(),
-		importers: ["eleventy", "zola"],
+		importers: ["eleventy", "jekyll", "zola", "hugo", "mkdocs"],
 	};
 }
 
@@ -110,7 +111,7 @@ function text(caps: Capabilities): string {
 	row("Globals", caps.globals.join(", "));
 	row("Image formats", caps.imageFormats.join(", "));
 	row("Starters", `${caps.starters.join(", ")} (in ${caps.starterEngines.join(", ")})`);
-	row("Importers", caps.importers.join(", "));
+	row("Scout reads", caps.importers.join(", "));
 	return out + "\n--format json has all of it, with each module's exports.\n";
 }
 

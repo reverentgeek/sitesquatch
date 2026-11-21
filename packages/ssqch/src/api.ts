@@ -7,6 +7,7 @@ import { loadStaticDataFile } from "./data.ts";
 import { globBase, globProblem, globToRegExp, isGlob } from "./glob.ts";
 import { imageSize } from "./image/header.ts";
 import { markdownEngine } from "./engines/markdown.ts";
+import { safe } from "./rendering.ts";
 import { defaultMarkdownOptions } from "./markdown-options.ts";
 import { slugify as slug } from "./slug.ts";
 
@@ -23,7 +24,10 @@ export const site: { root: string; input: string | null; markdown: ((text: strin
 
 export const defineConfig = <T>(config: T): T => config;
 
-export function markdown(text: unknown, options: { inline?: boolean } | null = {}): string {
+export function markdown(text: unknown, options: { inline?: boolean } | "inline" | null = {}): string {
+	// `markdown(text, "inline")`, as the template function takes it.
+	if (options === "inline") options = { inline: true };
+	if (typeof options === "string") throw new TypeError(`markdown(): unknown option "${options}" (give "inline", or { inline: true })`);
 	for (const key of Object.keys(options ?? {})) {
 		if (key !== "inline") throw new TypeError(`markdown(): unknown option "${key}" (options: inline)`);
 	}
@@ -184,4 +188,5 @@ export function slugger(options: unknown = {}): (text: unknown) => string {
 	};
 }
 
-export default { defineConfig, markdown, readData, files, slugify, slugger };
+export { safe } from "./rendering.ts";
+export default { defineConfig, markdown, readData, files, slugify, slugger, safe };

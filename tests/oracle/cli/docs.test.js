@@ -97,7 +97,7 @@ test("docs_answer_for_every_name", () => {
 		assert.ok(r.ok && r.log.includes("**Your own languages:**"), `${JSON.stringify(query)}: ${r.log}`);
 	}
 	// New features answer with their whole explanation, not only a line.
-	for (const [query, want] of [[["files"], "**Files as data:**"], [["files"], "{ dimensions: true }` adds `width`"], [["dates", "that", "changed"], "**Dates that changed:**"], [["release", "age"], "under `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`"], [["javascript", "properties", "and", "methods"], "`.length` counts a list's items"]]) {
+	for (const [query, want] of [[["files"], "**Files as data:**"], [["files"], "{ dimensions: true }` adds `width`"], [["dates", "that", "changed"], "**Dates that changed:**"], [["release", "age"], "under `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`"], [["javascript", "properties", "and", "methods"], "`.length` counts a list's items"], [["your", "own", "markdown"], "**Your own Markdown:**"], [["setLibrary"], "give it to `engines` as `md`"], [["caching", "an", "engine"], "With `cache: true`, an engine keeps"], [["markdown-it", "habits"], "so `node.js` stays text"], [["another", "highlighter's", "classes"], "`classes: \"prism\"` gives every token Prism's names"]]) {
 		r = ssqch(["docs", ...query]);
 		assert.ok(r.ok && r.log.includes(want), `${JSON.stringify(query)}: ${r.log}`);
 	}
@@ -141,8 +141,37 @@ test("docs_explain_what_migrations_asked_about", () => {
 		["translations", "A page's translations"],
 		["hreflang", "x-default"],
 		["seo", "a partial in its layout"],
+		// Added in 0.11: what the Jekyll and Eleventy moves needed.
+		["htmlMarkdown", "renders the content of an HTML element with `markdown=\"1\"`"],
+		["encodeUrls", "writes them as the page has them, HTML-escaped only"],
+		["headingIds", "`\"kramdown\"` matches Jekyll's"],
+		["markdown-it-anchor", "markdown-it-anchor"],
+		["charset", "`charset`: `false` leaves out"],
+		["ref-common", "each varying file's most common version"],
+		["From jekyll-seo-tag", "jekyll-seo-tag 2.8 writes"],
+		["sitemapPlugin", "jekyll-sitemap"],
+		["rssDate", "`rssDate` and `rssLastUpdatedDate`"],
+		// From the httpx move: what a filter sees, and MkDocs' templates and Markdown.
+		["this.page", "`this.page` is the page being rendered"],
+		["safe", "marks a function's answer as HTML"],
+		["mkdocsTemplates", "gives templates what MkDocs gives a theme's"],
+		["dialect", "`\"python-markdown\"` (MkDocs'): a raw HTML block runs to its closing tag"],
 	]) {
 		const a = answer(query);
 		assert.ok(a.found && a.section.text.includes(says), `${query}: ${JSON.stringify(a).slice(0, 400)}`);
 	}
+});
+
+// Added in 0.11, from the fresh a11yproject.com rerun: a page's file name (as its link ends)
+// answers with that page, and a trailhead's with `--from`'s answer, not a search for the words.
+test("docs_answer_a_pages_file_name_with_the_page", () => {
+	const text = (...args) => ssqch(["docs", ...args]).stdout;
+	assert.ok(text("comparing-builds").startsWith("## Comparing two builds\n"), text("comparing-builds").slice(0, 200));
+	assert.ok(text("/docs/comparing-builds/").startsWith("## Comparing two builds\n"));
+	assert.equal(text("from-eleventy"), text("--from", "eleventy"));
+	assert.equal(text("trailheads/from-jekyll.md"), text("--from", "jekyll"));
+	assert.ok(text("from-component-frameworks").startsWith("# Trailhead: moving from Astro"), text("from-component-frameworks").slice(0, 200));
+	// Eleventy's collection helpers answer, and say they work.
+	assert.ok(text("getNextCollectionItem").includes("works in ssqch too") && text("getNextCollectionItem").includes("navPager(collection, page.url).next"), text("getNextCollectionItem"));
+	assert.ok(text("pagesTree").includes("{ root: \"Feature\" }"), text("pagesTree"));
 });

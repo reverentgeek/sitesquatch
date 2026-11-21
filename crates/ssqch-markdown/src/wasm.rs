@@ -255,7 +255,11 @@ pub extern "C" fn md_highlight(handle: u32, ptr: *mut u8, code_len: usize, lang_
         let lang = text(&buffer[code_len..code_len + lang_len])?;
         let page = text(&buffer[code_len + lang_len..])?;
         let _page = (!page.is_empty()).then(|| markdown::rendering(page));
-        Ok(highlight::caching(setup.languages_id, || highlight::highlight_in(&setup.options.languages, lang, code, &[])))
+        let html = highlight::caching(setup.languages_id, || highlight::highlight_in(&setup.options.languages, lang, code, &[]));
+        Ok(match &setup.options.highlight_classes {
+            Some(classes) => html.map(|h| classes.apply(&h)),
+            None => html,
+        })
     })();
     match found {
         Ok(Some(html)) => answer(DONE, html),

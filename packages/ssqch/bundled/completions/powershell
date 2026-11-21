@@ -44,7 +44,8 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('footprint', 'footprint', [CompletionResultType]::ParameterValue, 'Show how much a build weighs: its files by kind, and the heaviest pages and files')
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create a starter site (config, layout, five posts, data and editor types)')
             [CompletionResult]::new('types', 'types', [CompletionResultType]::ParameterValue, 'Write ssqch.d.ts, the types editors use for ssqch.config.js')
-            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Move a site from another generator: rename and rewrite what''s mechanical, and list the rest')
+            [CompletionResult]::new('baseline', 'baseline', [CompletionResultType]::ParameterValue, 'Build the site with its old generator in fresh copies and compare the builds')
+            [CompletionResult]::new('scout', 'scout', [CompletionResultType]::ParameterValue, 'Scout a site built with another generator: what moving it to ssqch takes, and what remains during a move')
             [CompletionResult]::new('capabilities', 'capabilities', [CompletionResultType]::ParameterValue, 'Say what this binary supports: template languages, modules, config options and optional features')
             [CompletionResult]::new('docs', 'docs', [CompletionResultType]::ParameterValue, 'Read the documentation for this version: a command, config option, function or topic')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -141,6 +142,8 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
         'ssqch;diff' {
             [CompletionResult]::new('--ignore', '--ignore', [CompletionResultType]::ParameterName, 'Leave out text matching this regular expression before comparing (repeatable)')
             [CompletionResult]::new('--only', '--only', [CompletionResultType]::ParameterName, 'Only compare files matching this glob, like ''**/*.html'' (repeatable)')
+            [CompletionResult]::new('--exclude', '--exclude', [CompletionResultType]::ParameterName, 'Leave out files matching this glob, like ''img/**'' (repeatable)')
+            [CompletionResult]::new('--ungrouped', '--ungrouped', [CompletionResultType]::ParameterName, 'List each file with all its changes, without grouping the ones shared by several files')
             [CompletionResult]::new('--lines', '--lines', [CompletionResultType]::ParameterName, 'Changed lines to show for each file (0 for all)')
             [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
@@ -208,18 +211,28 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
-        'ssqch;import' {
+        'ssqch;baseline' {
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
-            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
-            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
-            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
-            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
-            [CompletionResult]::new('--write', '--write', [CompletionResultType]::ParameterName, 'Make the changes (without it, only list them)')
-            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
+            [CompletionResult]::new('--from', '--from', [CompletionResultType]::ParameterName, 'The folder the command writes (default _site)')
+            [CompletionResult]::new('--runs', '--runs', [CompletionResultType]::ParameterName, 'How many builds to make and compare (default 3)')
+            [CompletionResult]::new('--commit', '--commit', [CompletionResultType]::ParameterName, 'Build this commit instead of the working tree')
+            [CompletionResult]::new('--to', '--to', [CompletionResultType]::ParameterName, 'What to call the builds (default ref)')
+            [CompletionResult]::new('--link', '--link', [CompletionResultType]::ParameterName, 'Link this folder of the site into each copy (repeatable)')
+            [CompletionResult]::new('--patch', '--patch', [CompletionResultType]::ParameterName, 'Apply this patch to each copy before building')
+            [CompletionResult]::new('--copy-installs', '--copy-installs', [CompletionResultType]::ParameterName, 'Copy the installs into each copy instead of linking them')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
-            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
-            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'ssqch;scout' {
+            [CompletionResult]::new('--from', '--from', [CompletionResultType]::ParameterName, 'The generator the site is built with, when scout finds another')
+            [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
+            [CompletionResult]::new('--write-draft', '--write-draft', [CompletionResultType]::ParameterName, 'Write the new files of the draft; never overwrites a file')
+            [CompletionResult]::new('--patch', '--patch', [CompletionResultType]::ParameterName, 'Write the mechanical edits to FILE as a patch to review; nothing is applied')
+            [CompletionResult]::new('--compare', '--compare', [CompletionResultType]::ParameterName, 'Also build with ssqch and compare with the reference build')
+            [CompletionResult]::new('--reference', '--reference', [CompletionResultType]::ParameterName, 'The reference build to compare with')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -267,7 +280,8 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('footprint', 'footprint', [CompletionResultType]::ParameterValue, 'Show how much a build weighs: its files by kind, and the heaviest pages and files')
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create a starter site (config, layout, five posts, data and editor types)')
             [CompletionResult]::new('types', 'types', [CompletionResultType]::ParameterValue, 'Write ssqch.d.ts, the types editors use for ssqch.config.js')
-            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Move a site from another generator: rename and rewrite what''s mechanical, and list the rest')
+            [CompletionResult]::new('baseline', 'baseline', [CompletionResultType]::ParameterValue, 'Build the site with its old generator in fresh copies and compare the builds')
+            [CompletionResult]::new('scout', 'scout', [CompletionResultType]::ParameterValue, 'Scout a site built with another generator: what moving it to ssqch takes, and what remains during a move')
             [CompletionResult]::new('capabilities', 'capabilities', [CompletionResultType]::ParameterValue, 'Say what this binary supports: template languages, modules, config options and optional features')
             [CompletionResult]::new('docs', 'docs', [CompletionResultType]::ParameterValue, 'Read the documentation for this version: a command, config option, function or topic')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -300,7 +314,10 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
         'ssqch;help;types' {
             break
         }
-        'ssqch;help;import' {
+        'ssqch;help;baseline' {
+            break
+        }
+        'ssqch;help;scout' {
             break
         }
         'ssqch;help;capabilities' {

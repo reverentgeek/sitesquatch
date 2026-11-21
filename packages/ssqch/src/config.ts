@@ -26,9 +26,11 @@ import { useImages } from "./image/processor.ts";
 import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
 import type { MarkdownOptions } from "./markdown-options.ts";
 import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
+import { withPage } from "./rendering.ts";
 import { loadRustPart } from "./rust-plugin.ts";
 import { resolveTheme } from "./theme.ts";
 import { compareText, realPath, slashes } from "./paths.ts";
+import { bundledPath } from "./bundled.ts";
 import { CONFIG_FILES } from "./dirs.ts";
 import type { Environment } from "./dirs.ts";
 // The folders, config file names and environments live in dirs.ts, which the dev server loads
@@ -96,9 +98,19 @@ export interface Config {
 	ignore: string[];
 	bundles: boolean;
 	strict: boolean;
+	/** `trimAfterFrontMatter`: a template's body starts at its first line with text, as Jekyll's does, not right after the closing `---`. */
+	trimAfterFrontMatter: boolean;
+	/** `jekyllTemplates`: templates see Jekyll's `page` (front matter too) and `site` (`posts`, collections, `data`, `categories`). */
+	jekyllTemplates: boolean;
+	/** `mkdocsTemplates`: the mkdocs.yml (from the root) whose context templates see, as MkDocs gives a theme's (`config`, `nav`, `page`, `base_url`, the `url` filter), or `null`. */
+	mkdocsTemplates: string | null;
+	/** `jinja.autoescape`: whether `.jinja` templates escape what they print. `null` is the default: they do, unless `mkdocsTemplates` is on (MkDocs' Jinja doesn't). */
+	jinjaAutoescape: boolean | null;
 	lastModified: "git" | "file" | null;
 	/** `dateFallback`: the date of a page with none of its own (in its data or its file name): `"git"` for the last commit that changed its file, or `"file"` for the file's time. */
 	dateFallback: "git" | "file";
+	/** `layoutAliases`: other names for layouts (`post` for `layouts/post.njk`), as Eleventy's `addLayoutAlias` gave them. */
+	layoutAliases: Map<string, string>;
 	/** `timeZone`: the IANA zone the site's JavaScript runs in (`process.env.TZ`), or null for the machine's. */
 	timeZone: string | null;
 	/** The path the site is served under: empty for the domain's root, or `/repo` (no `/` at the end). */
@@ -130,6 +142,8 @@ export interface Config {
 	/** Transforms that run before every other, whatever order plugins were added in (images). */
 	htmlTransforms: Array<[string, TransformFn]>;
 	engines: Map<string, EngineFn>;
+	/** The caches of engines with `cache: true`, which each build starts (`startBuild`). */
+	engineCaches: EngineCache[];
 	beforeBuild: Hook[];
 	afterBuild: Hook[];
 	watch: string[];
@@ -186,9 +200,14 @@ function emptyConfig(options: ConfigOptions): Config {
 		ignore: [],
 		bundles: false,
 		strict: false,
+		trimAfterFrontMatter: false,
+		jekyllTemplates: false,
+		mkdocsTemplates: null,
+		jinjaAutoescape: null,
 		lastModified: null,
 		dateFallback: "file",
 		timeZone: null,
+		layoutAliases: new Map(),
 		base: "",
 		serveRun: [],
 		budgets: [],
@@ -204,6 +223,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		transforms: [],
 		htmlTransforms: [],
 		engines: new Map(),
+		engineCaches: [],
 		beforeBuild: [],
 		afterBuild: [],
 		watch: [],
@@ -301,12 +321,43 @@ async function loadJsData(file: string, root: string): Promise<unknown> {
 	}
 }
 
+/**
+ * What a site's engine with `cache: true` rendered, by the source it was given: the bodies of this
+ * build, and of the one before, which a body this build renders again moves into this build's. So
+ * `ssqch serve` renders only the pages whose text changed, and keeps no more than two builds of
+ * them: a page that's deleted or edited is gone after the next build.
+ */
+export class EngineCache {
+	now = new Map<string, string>();
+	before = new Map<string, string>();
+
+	startBuild(): void {
+		this.before = this.now;
+		this.now = new Map();
+	}
+
+	get(source: string): string | undefined {
+		const kept = this.now.get(source);
+		if (kept !== undefined) return kept;
+		const earlier = this.before.get(source);
+		if (earlier !== undefined) this.now.set(source, earlier);
+		return earlier;
+	}
+
+	set(source: string, html: string): void {
+		this.now.set(source, html);
+	}
+}
+
 // ---- ssqch.config.js -------------------------------------------------------------------------
 
-const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "lastModified", "dateFallback", "timeZone", "base", "schemas", "theme", "serve", "budgets"];
+const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "trimAfterFrontMatter", "jekyllTemplates", "mkdocsTemplates", "jinja", "lastModified", "dateFallback", "timeZone", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
 const PARTS = ["data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins"];
-/** Engine names a config can't replace. */
-const CORE_ENGINES = ["edge", "md", "html", "txt"];
+/**
+ * Engine names a config can't replace. `md` can be: a site that keeps its markdown-it replaces
+ * Markdown once (`engines: { md }`) instead of naming its engine in every folder's `render`.
+ */
+const CORE_ENGINES = ["edge", "html", "txt"];
 const DIRS = ["input", "output", "includes", "layouts", "data"];
 
 /** The options a config can set, in the order its errors list them. */
@@ -538,7 +589,8 @@ async function loadJs(config: Config, file: string): Promise<void> {
 				ops.push(() => { config.globalData.push(typeof value === "function" ? { name: key, fn: value as () => unknown } : { name: key, value }); });
 			}
 		}
-		functions("filters", "filter", part.filters, where, (key, fn) => ops.push(() => { config.filters.set(key, fn); config.siteFilters.add(key); }));
+		// A filter that's a `function` gets the page being rendered as `this.page` (src/rendering.ts).
+		functions("filters", "filter", part.filters, where, (key, fn) => ops.push(() => { config.filters.set(key, withPage(fn)); config.siteFilters.add(key); }));
 		functions("collections", "collection", part.collections, where, (key, fn) => ops.push(() => { config.collections.push([key, fn]); }));
 		functions("transforms", "transform", part.transforms, where, (key, fn) => {
 			const run: TransformFn = async (content, page) => {
@@ -555,6 +607,10 @@ async function loadJs(config: Config, file: string): Promise<void> {
 			for (const [key, engine] of Object.entries<any>(part.engines)) {
 				const render = typeof engine === "function" ? engine : engine?.render;
 				if (typeof render !== "function") fail(`${where}: engines.${key} must be a function (source, data) or an object with a render(source, data) method`);
+				// Only an object of the site's own says `cache`: a library's instance (a markdown-it)
+				// may have a property of that name that means something else.
+				if (isPlainObject(engine) && engine.cache !== undefined && typeof engine.cache !== "boolean") fail(`${where}: engines.${key}.cache must be true or false`);
+				const cache = typeof engine === "object" && engine.cache === true ? new EngineCache() : undefined;
 				if (!/^[A-Za-z0-9_-]+$/.test(key)) fail(`${where}: engines.${key}: an engine's name is a file extension (letters, digits, - and _)`);
 				if (CORE_ENGINES.includes(key)) fail(`${where}: engines.${key}: "${key}" is built in and can't be replaced`);
 				claim("engines", "engine", key, where);
@@ -570,7 +626,24 @@ async function loadJs(config: Config, file: string): Promise<void> {
 					const out = render.call(engine, source, data, context);
 					return out instanceof Promise ? watchSettle(out).then((v) => checked(v, inputPath)) : checked(out, inputPath);
 				};
-				ops.push(() => { config.engines.set(key, run); });
+				ops.push(() => {
+					if (!cache) {
+						config.engines.set(key, run);
+						return;
+					}
+					config.engineCaches.push(cache);
+					// A page's body, kept by its source. A layout's and a hook's text is the same on every
+					// page while what they print isn't (`content`, the hook's value), so they render each time.
+					config.engines.set(key, (source, data, inputPath, context) => {
+						if (context.kind !== "body") return run(source, data, inputPath, context);
+						const kept = cache.get(source);
+						if (kept !== undefined) return kept;
+						const out = run(source, data, inputPath, context);
+						if (typeof out === "string") cache.set(source, out);
+						else out.then((html) => cache.set(source, html), () => {});
+						return out;
+					});
+				});
 			}
 		}
 
@@ -657,12 +730,24 @@ function applySettings(config: Config, settings: Data): void {
 		trace = value;
 	}
 	if (trace !== undefined) config.leaveNoTrace = trace;
-	for (const key of ["bundles", "strict"] as const) {
+	for (const key of ["bundles", "strict", "trimAfterFrontMatter", "jekyllTemplates"] as const) {
 		const value = settings[key];
 		if (value === undefined) continue;
 		if (typeof value !== "boolean") bail(`${key} must be true or false, not ${typeof value}`);
 		config[key] = value;
 	}
+	// `mkdocsTemplates: true` reads mkdocs.yml; a string names another file.
+	const mkdocs = settings.mkdocsTemplates;
+	if (mkdocs === true) config.mkdocsTemplates = "mkdocs.yml";
+	else if (typeof mkdocs === "string" && mkdocs.trim() !== "") config.mkdocsTemplates = mkdocs;
+	else if (mkdocs !== undefined && mkdocs !== false && mkdocs !== null) bail(`mkdocsTemplates must be true, false or the path of an mkdocs.yml, not ${typeof mkdocs === "string" ? "an empty string" : typeof mkdocs}`);
+	const jinja = settings.jinja;
+	if (isObject(jinja)) {
+		const unknown = Object.keys(jinja).find((k) => k !== "autoescape");
+		if (unknown !== undefined) bail(`jinja: "${unknown}" isn't an option${meant(unknown, ["autoescape"])} (options: autoescape)`);
+		if (jinja.autoescape !== undefined && typeof jinja.autoescape !== "boolean") bail(`jinja.autoescape must be true or false, not ${typeof jinja.autoescape}`);
+		if (typeof jinja.autoescape === "boolean") config.jinjaAutoescape = jinja.autoescape;
+	} else if (jinja !== undefined && jinja !== null) bail(`jinja must be an object, like { autoescape: false }, not ${typeof jinja}`);
 	const modified = settings.lastModified;
 	if (modified === true) config.lastModified = "git";
 	else if (modified === "git" || modified === "file") config.lastModified = modified;
@@ -672,12 +757,24 @@ function applySettings(config: Config, settings: Data): void {
 	if (fallback === "git" || fallback === "file") config.dateFallback = fallback;
 	else if (fallback !== undefined && fallback !== null) bail(`dateFallback must be "git" or "file", not ${typeof fallback === "string" ? `"${fallback}"` : typeof fallback}`);
 	if (settings.timeZone !== undefined && settings.timeZone !== null) config.timeZone = checkTimeZone(settings.timeZone);
+	// `layoutAliases: { post: "layouts/post.njk" }`: `layout: post` is that file, and a page's
+	// `layout` is still `post` (a template that tests `layout == "post"` keeps working).
+	if (settings.layoutAliases !== undefined && settings.layoutAliases !== null) {
+		if (!isObject(settings.layoutAliases)) bail(`layoutAliases must be an object of { name: layout }, like { post: "layouts/post.njk" }, not ${typeof settings.layoutAliases}`);
+		for (const [name, target] of Object.entries(settings.layoutAliases)) {
+			if (typeof target !== "string" || target === "") bail(`layoutAliases.${name} must be a layout's name, like "layouts/post.njk"`);
+			if (target === name) bail(`layoutAliases.${name} names itself`);
+			config.layoutAliases.set(name, target);
+		}
+	}
 	if (typeof settings.base === "string") config.base = normalizeBase(settings.base);
 	else if (settings.base !== undefined && settings.base !== null) bail(`base must be a URL path like "/docs/", not ${typeof settings.base}`);
 	// `theme: "themes/docs"`, a pinned git URL, `{ git, ref, dir }`, or a list of them.
 	const theme = settings.theme;
 	const themes = theme === undefined || theme === null || theme === false ? [] : Array.isArray(theme) ? theme : [theme];
 	for (const one of themes) addTheme(config, one);
+	// MkDocs' own pages (its 404) go under every theme, from the theme's 404.html.
+	if (config.mkdocsTemplates !== null) addMkdocsTheme(config);
 	if (isObject(settings.schemas)) {
 		for (const [name, spec] of Object.entries(settings.schemas)) {
 			const schema = parseSchema(name, spec);
@@ -704,6 +801,12 @@ function applySettings(config: Config, settings: Data): void {
 	if (typeof ignore === "string") config.ignore = [ignore];
 	else if (Array.isArray(ignore)) config.ignore = ignore.map((g) => (typeof g === "string" ? g : bail(`ignore must be a glob or an array of globs, not an array with ${typeof g}`)));
 	else if (ignore !== undefined) bail(`ignore must be a glob or an array of globs, not ${typeof ignore}`);
+}
+
+/** `mkdocsTemplates`' own theme, under every other: the 404 page MkDocs renders from the theme's `404.html`. */
+function addMkdocsTheme(config: Config): void {
+	const dir = bundledPath("mkdocs");
+	if (!config.themes.includes(dir)) config.themes.push(dir);
 }
 
 function addTheme(config: Config, theme: unknown): void {

@@ -20,7 +20,7 @@ const frozen = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, "utf8")) :
 const freezing = process.env.SSQCH_FREEZE_SHAPES === "1";
 const freezingNew = process.env.SSQCH_FREEZE_SHAPES === "new";
 /** Documents 0.7.0 didn't print, and the version whose shape is frozen for each. */
-const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.10.1" };
+const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.10.1", "scout": "0.11.0" };
 const shapes = {};
 
 /** A value's shape: "string", "number", "boolean", "null", { key: shape }, or [shape of every element merged]. */
@@ -117,6 +117,40 @@ test("build report, profiled", () => {
 	check("build --profile", report);
 	// Without --profile there's no profile.
 	assert.equal(json(["build", "--root", dir]).profile, undefined);
+});
+
+// `ssqch scout --format json`, with every list filled: a to-do, a draft, an edit and a rename, what
+// the reference build needs, and what the config does already.
+test("scout_json_shape", () => {
+	const dir = project({
+		"_config.yml": "title: Trail\nurl: https://example.com\n",
+		"Gemfile": "gem \"github-pages\"\n",
+		"_layouts/default.html": "<head>{% seo %}</head>{{ content }}",
+		"_data/trails.yml": "- Cedar\n",
+		"_posts/2026-01-02-pine.md": "---\ntitle: Pine\n---\n<div markdown=\"1\">*a*</div>\n",
+		"index.md": "---\nlayout: default\n---\nHi\n",
+	}, "shapes-scout");
+	const report = json(["scout", dir, "--write-draft", "--patch", path.join(dir, "move.patch")]);
+	for (const list of ["todo", "draft", "edits"]) assert.ok(report[list].length > 0, `no ${list} in the report`);
+	assert.ok(report.build.needs.length > 0, "nothing the build needs");
+	// An MkDocs site fills the counts, the options and the page count, and --compare its comparison.
+	const mkdocs = project({
+		"mkdocs.yml": "site_name: Trail\nsite_url: https://example.com/trail/\nmarkdown_extensions:\n  - admonition\n",
+		"docs/index.md": "# Trail\n\n!!! tip\n    Water\n\n[Cedar](cedar.md)\n",
+		"docs/cedar.md": "# Cedar\n",
+	}, "shapes-scout-mkdocs");
+	const fresh = json(["scout", mkdocs, "--write-draft"]);
+	assert.ok(fresh.todo.some((t) => t.count !== null && t.option !== null) && fresh.summary.pages === 2, JSON.stringify(fresh));
+	// A reference that differs from ssqch's build in one file, so the comparison has a group.
+	// Built at the time `--compare` pins (2026-01-01, outside git), as `ssqch baseline` builds a reference.
+	assert.ok(ssqch(["build", "--root", mkdocs, "-q"], { env: { SOURCE_DATE_EPOCH: "1767225600" } }).ok);
+	fs.cpSync(path.join(mkdocs, "site"), path.join(mkdocs, "ref"), { recursive: true });
+	for (const file of ["ref/index.html", "ref/cedar/index.html"]) fs.appendFileSync(path.join(mkdocs, file), "<p>Fresh tracks</p>\n");
+	const compared = json(["scout", mkdocs, "--compare", "--reference", "ref"]);
+	// The draft's config sets the options, so the second run counts them as done.
+	assert.ok(compared.done.length > 0 && compared.summary.done === compared.done.length, JSON.stringify(compared));
+	assert.ok(compared.compare.built && compared.compare.summary.changed === 2 && compared.compare.groups.length === 1, JSON.stringify(compared.compare));
+	check("scout", report, fresh, compared);
 });
 
 test("inspect report", () => {

@@ -91,12 +91,14 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		// Not `own`: in 0.7 it was one of the core's commands, so `-d` and `--pathprefix` work there.
 	},
 	{
-		name: "diff",
+		name: "diff", helpGlobals: ["quiet"],
 		about: "Compare two builds of a site: URLs added and removed, and what changed on each page. Given three or more, list what varies between them",
 		options: [
 			{ long: "exact", help: "Compare bytes: don't match fingerprinted files or ignore whitespace" },
+			{ long: "ungrouped", help: "List each file with all its changes, without grouping the ones shared by several files" },
 			{ long: "ignore", value: "REGEX", help: "Leave out text matching this regular expression before comparing (repeatable)", many: true },
 			{ long: "only", value: "GLOB", help: "Only compare files matching this glob, like '**/*.html' (repeatable)", many: true },
+			{ long: "exclude", value: "GLOB", help: "Leave out files matching this glob, like 'img/**' (repeatable)", many: true },
 			{ long: "lines", value: "LINES", help: "Changed lines to show for each file (0 for all)", default: "10", check: number },
 			FORMAT,
 		],
@@ -122,11 +124,35 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	},
 	{ name: "types", about: "Write ssqch.d.ts, the types editors use for ssqch.config.js", options: [{ long: "out", value: "out", help: "Where to write it", default: "ssqch.d.ts" }], positionals: [], own: true },
 	{
-		name: "import",
-		about: "Move a site from another generator: rename and rewrite what's mechanical, and list the rest",
-		options: [{ long: "write", help: "Make the changes (without it, only list them)" }],
-		positionals: [{ name: "generator", help: "The generator the site is built with: eleventy or zola", required: true }, { name: "dir", help: "The site's folder (default: the current folder)", required: false, default: "." }],
-		afterHelp: "Run it in a clean git checkout, read the list, then run it again with --write. `ssqch docs --from <generator>` prints the trailhead for each generator.",
+		name: "scout", helpGlobals: [], strictGlobals: true,
+		about: "Scout a site built with another generator: what moving it to ssqch takes, with file and line, and what's left during a move. Changes nothing unless asked",
+		options: [
+			{ long: "from", value: "GENERATOR", help: "The generator the site is built with, when it isn't the one scout finds: eleventy, jekyll, zola, hugo, mkdocs, docusaurus, astro, vitepress or hexo" },
+			FORMAT,
+			{ long: "write-draft", help: "Write the draft's new files (a config draft, directory data, includes, hooks); never overwrites a file" },
+			{ long: "patch", value: "FILE", help: "Write the mechanical edits (renames, a data file's name, an attribute) to FILE as a patch to review; nothing is applied" },
+			{ long: "compare", help: "Also build with ssqch and compare the output with the reference build, listing the biggest groups of differences: what to fix next" },
+			{ long: "reference", value: "DIR", help: "The reference build --compare compares with (default: ssqch baseline's, .cache/ssqch/baseline/ref-common or ref-1)" },
+		],
+		positionals: [{ name: "dir", help: "The site's folder (default: the current folder)", required: false, default: "." }],
+		afterHelp: "Run it before a move, and again during one to see what's left. `ssqch docs \"scouting a site\"` explains the report and its JSON, and `ssqch docs --from <generator>` prints each generator's trailhead.",
+		own: true,
+	},
+
+	{
+		name: "baseline", helpGlobals: ["root", "quiet"], strictGlobals: true, insteadOf: { output: "to" },
+		about: "Build the site with its old generator, in fresh copies with the clock pinned, and compare the builds: what to compare ssqch's with",
+		options: [
+			{ long: "from", value: "DIR", help: "The folder the command writes (Eleventy and Jekyll: _site; Hugo: public; Astro: dist)", default: "_site" },
+			{ long: "runs", value: "RUNS", help: "How many builds to make and compare", default: "3", check: number },
+			{ long: "commit", value: "REV", help: "Build this commit instead of the working tree (the one before the move's first change)" },
+			{ long: "to", value: "NAME", help: "Where the builds go: the default makes .cache/ssqch/baseline/ref-1, -2 and -3", default: ".cache/ssqch/baseline/ref" },
+			{ long: "link", value: "PATH", help: "Link this folder of the site into each copy, as node_modules, .bundle and vendor/bundle are (repeatable)", many: true },
+			{ long: "patch", value: "FILE", help: "Apply this patch (git diff's) to each copy before building: a fix the --commit needs to build" },
+			{ long: "copy-installs", help: "Copy node_modules and the other installs into each copy instead of linking them, for a tool that won't follow a link out of its folder (Hugo's are copied without it)" },
+		],
+		positionals: [{ name: "COMMAND", help: "The old generator's build command, quoted: \"npx @11ty/eleventy\"", required: true, many: true }],
+		afterHelp: "Each build runs in a fresh copy of the site (the files git would commit, or the --commit), with TZ=UTC, SOURCE_DATE_EPOCH and every file's time set to the commit's, and node_modules linked in. Then the builds are compared as `ssqch diff ref-1 ref-2 ref-3` compares them, so what changes by itself is known before anything is compared with ssqch's build.\n\n  ssqch baseline \"npx @11ty/eleventy\"\n  ssqch baseline \"bundle exec jekyll build\" --commit main\n  ssqch baseline \"npx @11ty/eleventy\" --commit HEAD~3 --patch fix-build.patch\n  ssqch diff ref-1 dist",
 		own: true,
 	},
 	{ name: "capabilities", about: "Say what this binary supports: template languages, modules, config options and optional features", options: [FORMAT], positionals: [], own: true },
@@ -157,8 +183,8 @@ const CAPABILITY_ORDER = (() => {
 export const GRAMMAR: Grammar = { name: "ssqch", about: "SiteSquatch (ssqch): a fast, pluggable static site generator", version: VERSION, globals: GLOBALS, commands: COMMANDS };
 
 /** The options that take a value, so it isn't taken for the command. */
-const VALUED = ["--root", "--output", "-o", "--base", "--env", "-d", "--destination", "--pathprefix", "--port", "-p", "--ready-file", "--format", "--title", "--date", "--blueprint", "--set", "--field", "--ignore", "--only", "--lines", "--top", "--starter", "--engine"];
-/** The commands that read their own arguments, and `import` (0.7 read its line apart from the build's too): left as they are, so `-d` there is refused with its hint. */
+const VALUED = ["--root", "--output", "-o", "--base", "--env", "-d", "--destination", "--pathprefix", "--port", "-p", "--ready-file", "--format", "--title", "--date", "--blueprint", "--set", "--field", "--ignore", "--only", "--exclude", "--lines", "--top", "--starter", "--engine"];
+/** The commands that read their own arguments, and `scout` (0.7 read `import`'s line apart from the build's too): left as they are, so `-d` there is refused with its hint. */
 const OWN = COMMANDS.filter((c) => c.raw || c.own).map((c) => c.name);
 
 /**
@@ -305,8 +331,10 @@ export async function main(argv: string[]): Promise<number> {
 		process.stderr.write(`${diagnostics.red("error:")} \`ssqch ${command}\` isn't in the Node build of ssqch yet (the move to Node, stage ${later}); ssqch 0.7 has it\n`);
 		return 1;
 	}
+	// It runs another generator, not ssqch's build, so nothing below applies either.
+	if (command === "baseline") return (await import("./commands/baseline.ts")).runBaseline({ root: value("root") ?? ".", command: cli.positionals.join(" "), from: value("from") ?? "_site", runs: Number(value("runs") ?? "3"), commit: value("commit"), to: value("to") ?? ".cache/ssqch/baseline/ref", link: [cli.options.link ?? []].flat() as string[], patch: value("patch"), copyInstalls: flag("copy-installs"), quiet: flag("quiet") });
 	// It reads the site's files as text and runs none of them, so nothing below applies.
-	if (command === "import") return (await import("./import.ts")).runImport(cli.positionals[0], cli.positionals[1] ?? ".", flag("write"));
+	if (command === "scout") return (await import("./scout.ts")).runScout(cli.positionals[0] ?? ".", { from: value("from"), format: value("format") === "json" ? "json" : "text", writeDraft: flag("write-draft"), patch: value("patch"), compare: flag("compare") ? value("reference") ?? "" : undefined });
 
 	// The commands that don't build the site.
 	switch (command) {
@@ -329,7 +357,7 @@ export async function main(argv: string[]): Promise<number> {
 	const many = (name: string) => (Array.isArray(cli.options[name]) ? cli.options[name] as string[] : typeof cli.options[name] === "string" ? [cli.options[name] as string] : []);
 	const top = Number(value("top") ?? "5");
 	// Two build folders need no config, and neither does a folder given to `footprint`.
-	if (command === "diff") return runDiff(cli.positionals, { exact: flag("exact"), ignore: many("ignore"), only: many("only"), lines: Number(value("lines") ?? "10"), format });
+	if (command === "diff") return runDiff(cli.positionals, { exact: flag("exact"), ignore: many("ignore"), only: many("only"), exclude: many("exclude"), ungrouped: flag("ungrouped"), lines: Number(value("lines") ?? "10"), format });
 	if (command === "footprint" && cli.positionals[0] !== undefined) {
 		try {
 			await runFootprint(cli.positionals[0], cli.positionals[0], top, format);
@@ -462,7 +490,7 @@ async function runInspect(config: Config, target: string, name: string | undefin
 }
 
 /** `ssqch diff`: prints the comparison, and answers 0 when the builds are the same, 1 when they differ and 2 on an error. */
-async function runDiff(dirs: string[], options: { exact: boolean; ignore: string[]; only: string[]; lines: number; format: string }): Promise<number> {
+async function runDiff(dirs: string[], options: { exact: boolean; ignore: string[]; only: string[]; exclude: string[]; ungrouped: boolean; lines: number; format: string }): Promise<number> {
 	const [before, after] = dirs;
 	try {
 		checkFormat(options.format);
@@ -471,19 +499,22 @@ async function runDiff(dirs: string[], options: { exact: boolean; ignore: string
 		const ignore = options.ignore.map((pattern) => {
 			try { return rustRegExp(pattern, "g"); } catch (e) { return bail(`--ignore ${quoted(pattern)} isn't a regular expression: ${(e as Error).message}`); }
 		});
-		const only = options.only.length ? options.only.map((given) => {
-			const glob = given.replace(/^[./]+/, "");
+		const globs = (flag: string, given: string[]) => given.map((one) => {
+			// `/posts/x/`, a page's URL: everything in that folder (`posts/x/index.html`).
+			const glob = one.replace(/^[./]+/, "").replace(/\/$/, "/**");
 			const problem = globProblem(glob);
-			if (problem !== undefined) bail(`--only ${quoted(given)} isn't a glob: error parsing glob '${glob}': ${problem}`);
+			if (problem !== undefined) bail(`--${flag} ${quoted(one)} isn't a glob: error parsing glob '${glob}': ${problem}`);
 			return globToRegExp(glob);
-		}) : undefined;
+		});
+		const only = options.only.length ? globs("only", options.only) : undefined;
+		const exclude = globs("exclude", options.exclude);
 		if (dirs.length > 2) {
-			const runs = await compareRuns(dirs, { exact: options.exact, ignore, only, lines: options.lines });
+			const runs = await compareRuns(dirs, { exact: options.exact, ungrouped: options.ungrouped, ignore, only, onlyGiven: options.only, exclude, lines: options.lines });
 			if (options.format === "json") process.stdout.write(JSON.stringify(runsJson(runs, options.lines), null, 2) + "\n");
 			else process.stdout.write(runsText(runs, options.lines, process.stdout.isTTY === true));
 			return runs.varies.length ? 1 : 0;
 		}
-		const report = await compare(before, after, { exact: options.exact, ignore, only, lines: options.lines });
+		const report = await compare(before, after, { exact: options.exact, ungrouped: options.ungrouped, ignore, only, onlyGiven: options.only, exclude, lines: options.lines });
 		if (options.format === "json") process.stdout.write(JSON.stringify(diffJson(report, options.lines), null, 2) + "\n");
 		else process.stdout.write(diffText(report, options.lines, process.stdout.isTTY === true));
 		return isSame(report) ? 0 : 1;

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write, read } from "../lib/ssqch.js";
+import { ssqch, tempDir, write, read, exists } from "../lib/ssqch.js";
 
 /** Every file under `dir`, as paths with forward slashes. */
 function walk(dir) {
@@ -141,4 +141,106 @@ test("build_profile_lists_the_slowest_of_each_kind", () => {
 	assert.ok(!r.stdout.includes("Built in ") && r.stdout.includes("Profile: where the time went"), r.stdout);
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(!r.stdout.includes("Profile:"), r.stdout);
+});
+
+// Added in 0.11, from the fresh a11yproject.com move: Eleventy's `addLayoutAlias("post",
+// "layouts/post.njk")` made `layout: post` that file, and without it ssqch found
+// `_includes/post.njk`, a partial. `layoutAliases` names it; the page's `layout` stays `post`.
+test("layout_aliases_name_another_layout", () => {
+	const dir = tempDir("layout-aliases");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"md\", \"njk\"], layoutAliases: { post: \"layouts/post.njk\" } };\n",
+		"_includes/post.njk": "a post card",
+		"_includes/layouts/post.njk": "<article data-layout=\"{{ layout }}\">{{ content | safe }}</article>",
+		"pine.md": "---\nlayout: post\n---\nCones\n",
+	});
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/pine/index.html"), "<article data-layout=\"post\"><p>Cones</p>\n</article>");
+	write(dir, { "ssqch.config.js": "export default { layoutAliases: { a: \"b\", b: \"a\" } };\n", "pine.md": "---\nlayout: a\n---\nCones\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("Layout alias loop: a -> b -> a (layoutAliases)"), r.log);
+	write(dir, { "ssqch.config.js": "export default { layoutAliases: [\"post\"] };\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("layoutAliases must be an object of { name: layout }"), r.log);
+});
+
+// Added in 0.11, from the fresh opensource.guide move: Jekyll drops the blank lines after the
+// closing `---` (every page and layout had one more `\n` in ssqch's build).
+test("trim_after_front_matter_starts_the_body_at_its_text", () => {
+	const dir = tempDir("trim-front-matter");
+	write(dir, {
+		"ssqch.config.js": "export default { trimAfterFrontMatter: true, templateFormats: [\"liquid\"] };\n",
+		"index.liquid": "---\nlayout: base.liquid\n---\n\n\n<p>{{ \"x\" | nope }}</p>\n",
+		"_includes/base.liquid": "---\n---\n\n<main>{{ content }}</main>\n",
+	});
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	// The error's line is the file's.
+	assert.ok(!r.ok && r.log.includes("--> index.liquid:6"), r.log);
+	write(dir, { "index.liquid": "---\nlayout: base.liquid\n---\n\n\n<p>x</p>\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<main><p>x</p>\n</main>\n");
+	write(dir, { "ssqch.config.js": "export default { trimAfterFrontMatter: \"yes\", templateFormats: [\"liquid\"] };\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("trimAfterFrontMatter must be true or false, not string"), r.log);
+});
+
+// Added in 0.11, from the fresh opensource.guide move: Jekyll's own `_site` was read as 405 more
+// pages when ssqch wrote to `dist`.
+test("another_generators_site_folder_isnt_read_as_pages", () => {
+	const dir = tempDir("other-site-folder");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { output: \"dist\" } };\n",
+		"index.md": "# Pine\n",
+		"_site/index.html": "<p>Jekyll's</p>\n",
+		"_site/trail/index.html": "<p>Jekyll's</p>\n",
+		"guides/_site/index.md": "# Not at the top\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.ok(exists(dir, "dist/index.html") && !exists(dir, "dist/_site") && !exists(dir, "dist/trail"));
+	assert.ok(exists(dir, "dist/guides/_site/index.html"));
+});
+
+// Added in 0.11, from the a11yproject.com rerun: a site that keeps eleventy-navigation's filter
+// (as `ssqch import eleventy` does when templates call it) reads `eleventyNavigation` on purpose.
+test("a_foreign_key_a_site_filter_reads_isnt_warned_about", () => {
+	const dir = tempDir("foreign-key-kept");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"md\", \"liquid\"] };\n",
+		"index.md": "---\neleventyNavigation:\n  key: Pine\n---\n# Pine\n",
+	});
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && r.log.includes("sets `eleventyNavigation`"), r.log);
+	write(dir, { "ssqch.config.js": "export default { templateFormats: [\"md\", \"liquid\"], filters: { eleventyNavigation: (pages) => pages } };\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && !r.log.includes("eleventyNavigation"), r.log);
+});
+
+// Added in 0.11, from the fresh opensource.guide rerun: `/{{ page.filePathStem }}/` made every
+// article's URL `//ar/metrics/`, and the files landed where they should, so nothing said so.
+test("a_url_with_a_double_slash_is_warned_about", () => {
+	const dir = tempDir("double-slash");
+	write(dir, {
+		"ssqch.config.js": "export default {};\n",
+		"guides/guides.json": "{ \"permalink\": \"/{{ page.filePathStem }}/\" }\n",
+		"guides/pine.md": "# Pine\n",
+		"index.md": "# Home\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && r.log.includes("warn: 1 page has `//` in its URL: //guides/pine/ (./guides/pine.md). Its permalink puts a `/` before a value that starts with one"), r.log);
+});
+
+// Added in 0.11, from the fresh opensource.guide rerun: `site.articles` (a Jekyll collection) was
+// empty on 380 pages with no word; it's warned about as `site.posts` is.
+test("a_jekyll_collection_under_site_is_warned_about", () => {
+	const dir = tempDir("site-collection");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"md\", \"liquid\"] };\n",
+		"_articles/pine.md": "---\ntags: articles\n---\n# Pine\n",
+		"index.liquid": "{% for a in site.articles %}{{ a.url }}{% endfor %}",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && r.log.includes("warn: index.liquid uses `site.articles` (Jekyll's). ssqch's lists of pages are `collections`: `collections.articles` is the pages tagged `articles`"), r.log);
 });

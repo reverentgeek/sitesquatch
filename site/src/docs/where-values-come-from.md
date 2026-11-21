@@ -4,7 +4,7 @@ description: "A page's data is a cascade."
 ---
 A page's data is a cascade. From the lowest level to the highest:
 
-1. **Global data:** files in a theme's `_data/`, then the site's `_data/` (`site.json` is `site`), then the config's `data`.
+1. **Global data:** files in a theme's `_data/`, then the site's `_data/` (`site.json` is `site`), then the config's `data`. A `layout` there (`data: { layout: "base.jinja" }`) is every page's that doesn't set one lower down: in directory data or front matter, where `layout: false` turns it off.
 2. **Layouts:** the front matter of the page's layouts, the outermost layout first.
 3. **Directory data:** `posts/posts.json` (or `.yaml`, `.toml`, `posts.data.js`) applies to everything in `posts/` and below it. The outermost folder goes first.
 4. **The page's data file:** `pine.json` or `pine.data.js` next to `pine.md`.

@@ -1,6 +1,6 @@
 // JSON edited as text: a member taken out, put in or given a new value, and everything else in
 // the file as it was written, its numbers (`1.0`, `1e5`, `12345678901234567890`), key order,
-// escapes and layout. `ssqch import` changes a site's package.json this way, so that the diff a
+// escapes and layout. `ssqch scout --patch` changes a site's package.json this way, so that the diff a
 // person reviews is the change and nothing else.
 
 /** A value in the text: where it starts and ends, and an object's members. */

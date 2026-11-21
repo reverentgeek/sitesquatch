@@ -20,7 +20,7 @@ import { describeThrown, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
 import * as voice from "../voice.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
-import { JINJA_ESCAPE, JinjaError, escapeJinja, installRuntime, jinjaFilters, jinjaGlobals, jinjaTests, markdownAttributes, njkString, pyString, siteArgs } from "./jinja.ts";
+import { JINJA_ESCAPE, JINJA_RAW, JinjaError, escapeJinja, installRuntime, jinjaFilters, jinjaGlobals, jinjaTests, markdownAttributes, njkString, pyString, siteArgs } from "./jinja.ts";
 
 /** `.njk` (Nunjucks' escaping and the config's functions as tags) or `.jinja` and `.j2`. */
 export type Flavor = "njk" | "jinja";
@@ -142,6 +142,9 @@ const STRICT = "attempted to output null or undefined value";
 
 export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): TemplateEngine {
 	installRuntime();
+	// Jinja drops one newline at the end of each template (`keep_trailing_newline=False`), so an
+	// include doesn't add a blank line where it's included. 0.7 kept it; Nunjucks keeps it in `.njk`.
+	const lastLine = (src: string) => (flavor === "jinja" ? src.replace(/(?:\r\n|\r|\n)$/, "") : src);
 	const root = env.config.root;
 	const loaded = new Set<string>();
 	const sources = new Map<string, { src: string; path: string; noCache: boolean } | null>();
@@ -158,7 +161,7 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 				loaded.add(name.replaceAll("\\", "/"));
 				names.set(found, name.replaceAll("\\", "/"));
 			}
-			const source = found ? { src: fs.readFileSync(found, "utf8"), path: found, noCache: false } : null;
+			const source = found ? { src: lastLine(fs.readFileSync(found, "utf8")), path: found, noCache: false } : null;
 			if (source) shadows(source.src, found!);
 			sources.set(name, source);
 			return source;
@@ -208,7 +211,10 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 	const njk = new nunjucks.Environment(loader, { autoescape: true, throwOnUndefined: env.strict, dev: true } as nunjucks.ConfigureOptions);
 	includeNames.set(njk, names);
 	const escape = flavor === "jinja" ? escapeJinja : (nunjucks.lib as unknown as { escape(s: string): string }).escape;
-	if (flavor === "jinja") (njk as unknown as { opts: { autoescape: unknown } }).opts.autoescape = JINJA_ESCAPE;
+	// `jinja: { autoescape: false }` (and `mkdocsTemplates`, as MkDocs' Jinja has it): Jinja's
+	// printing with nothing escaped.
+	const escapes = env.config.jinjaAutoescape ?? !env.config.mkdocsTemplates;
+	if (flavor === "jinja") (njk as unknown as { opts: { autoescape: unknown } }).opts.autoescape = escapes ? JINJA_ESCAPE : JINJA_RAW;
 	for (const [name, fn] of Object.entries(jinjaFilters(escape, flavor))) njk.addFilter(name, fn);
 	for (const [name, fn] of Object.entries(jinjaTests(njk))) (njk as unknown as { addTest(name: string, fn: unknown): void }).addTest(name, fn);
 	for (const [name, value] of Object.entries(jinjaGlobals())) njk.addGlobal(name, value);
@@ -217,7 +223,18 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 	// (`{{ shout(title) }}`). A call goes through `call`, which keeps what it gave for the render
 	// that's running (see `Pass`): that's how an async function's answer reaches the template.
 	const functions = new Map<string, Filter>([...env.pipeFilters, ...env.globals]);
-	const call = (name: string, fn: Filter, args: unknown[]) => callSite(name, fn, siteArgs(args), root);
+	// The site's own functions get text where a template has a SafeString (a layout's `content`),
+	// as in Eleventy: a table-of-contents filter that checks `typeof content === "string"` gave ""
+	// on a11yproject.com's 70 pages. What comes back unchanged is the SafeString again, so
+	// `{{ content | maybeChange }}` still prints HTML.
+	const own = env.config.siteFilters ?? new Set<string>();
+	const call = (name: string, fn: Filter, args: unknown[]) => {
+		if (!own.has(name) || !args.some((a) => a instanceof SafeString)) return callSite(name, fn, siteArgs(args), root);
+		const safe = args.filter((a): a is InstanceType<typeof SafeString> => a instanceof SafeString);
+		const back = (out: unknown) => (typeof out === "string" ? (safe.find((a) => String(a) === out) ?? out) : out);
+		const out = callSite(name, fn, siteArgs(args.map((a) => (a instanceof SafeString ? String(a) : a))), root);
+		return out instanceof Promise ? out.then(back) : back(out);
+	};
 	for (const [name, fn] of functions) njk.addFilter(name, (...args: unknown[]) => call(name, fn, args));
 	for (const [name, fn] of env.globals) njk.addGlobal(name, (...args: unknown[]) => call(name, fn, args));
 	// `now()` is the build's time (`SOURCE_DATE_EPOCH` pins it): kept like a site's function, so a
@@ -264,7 +281,7 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 		const kept = ctx.cacheKey === undefined ? undefined : compiled.get(ctx.cacheKey);
 		if (kept) return kept;
 		shadows(source, path.resolve(root, ctx.inputPath));
-		const made = new nunjucks.Template(MARKDOWN.test(ctx.inputPath) ? markdownAttributes(source) : source, njk, ctx.inputPath, true);
+		const made = new nunjucks.Template(MARKDOWN.test(ctx.inputPath) ? markdownAttributes(source) : lastLine(source), njk, ctx.inputPath, true);
 		if (ctx.cacheKey !== undefined) compiled.set(ctx.cacheKey, made);
 		return made;
 	};
@@ -324,7 +341,7 @@ interface Where {
  */
 function describe(e: unknown, source: string, ctx: RenderContext, at: Where): string {
 	if (e instanceof BuildError) return e.message;
-	const err = (e ?? {}) as { message?: unknown; lineno?: number; colno?: number; cause?: unknown };
+	const err = (e ?? {}) as { message?: unknown; lineno?: number; colno?: number; cause?: unknown; ssqchFile?: string };
 	let message = String(err.message ?? e);
 	// `(page path)\n (include path) [Line 2, Column 7]\n  Error: what happened`: the template with
 	// the line is where it happened; without one, the last one named.
@@ -336,7 +353,10 @@ function describe(e: unknown, source: string, ctx: RenderContext, at: Where): st
 		else if (!label) break;
 		message = message.slice((place ?? label)![0].length);
 	}
-	const where = places.find((p) => p.line !== undefined) ?? places[places.length - 1];
+	// The fork names the template the error happened in (`ssqchFile`): the places in the message
+	// are the renders it passed through, and a layout's code runs inside its child's.
+	const own = typeof err.ssqchFile === "string" ? { file: err.ssqchFile, line: undefined } : undefined;
+	const where = own ?? places.find((p) => p.line !== undefined) ?? places[places.length - 1];
 	const line = typeof err.lineno === "number" && err.lineno > 0 ? err.lineno : where?.line;
 	const include = where === undefined ? undefined : at.names.get(where.file);
 	const name = include ?? ctx.name;

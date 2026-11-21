@@ -6,7 +6,7 @@
 //!
 //! ```json
 //! { "headingIds": "github", "headingAttributes": true, "footnotes": true, "taskLists": true,
-//!   "autolinks": true, "alerts": true, "containers": true, "definitionLists": false,
+//!   "autolinks": true (or "fuzzy"), "breaks": false, "figures": false, "alerts": true, "containers": true, "definitionLists": false,
 //!   "smartPunctuation": false, "indentedCode": true, "highlight": true, "highlightCss": "/highlight.css",
 //!   "languages": [["chordpro", { "function": 0 }], ["cho", { "alias": "chordpro" }],
 //!                 ["snack", { "grammar": "grammars/snack.sublime-syntax" }]],
@@ -55,12 +55,17 @@ pub fn setup(json: &str, root: &Path, function: &dyn Fn(u32) -> Value) -> Result
         heading_attributes: flag("headingAttributes", defaults.heading_attributes),
         footnotes: flag("footnotes", defaults.footnotes),
         task_lists: flag("taskLists", defaults.task_lists),
-        autolinks: flag("autolinks", defaults.autolinks),
+        // `"fuzzy"`: bare domains and email addresses too.
+        autolinks: j.get("autolinks").map(|v| v.as_bool().unwrap_or(v.as_str() == Some("fuzzy"))).unwrap_or(defaults.autolinks),
+        fuzzy_links: j.get("autolinks").and_then(J::as_str) == Some("fuzzy"),
+        breaks: flag("breaks", defaults.breaks),
+        figures: flag("figures", defaults.figures),
         alerts: flag("alerts", defaults.alerts),
         containers: flag("containers", defaults.containers),
         definition_lists: flag("definitionLists", defaults.definition_lists),
         smart_punctuation: flag("smartPunctuation", defaults.smart_punctuation),
         indented_code: flag("indentedCode", defaults.indented_code),
+        encode_urls: flag("encodeUrls", defaults.encode_urls),
         highlight: flag("highlight", defaults.highlight),
         highlight_css: j.get("highlightCss").and_then(J::as_str).map(String::from),
         ..defaults
@@ -80,6 +85,11 @@ pub fn setup(json: &str, root: &Path, function: &dyn Fn(u32) -> Value) -> Result
             bail!("ssqch's Markdown got a language it can't read: {}", entry);
         };
         o.languages.set(name, language)?;
+    }
+    // `{ "names": { "keyword": "token keyword" }, "prism": true }`, checked and resolved by Node.
+    if let Some(c) = j.get("highlightClasses").filter(|c| c.is_object()) {
+        let names = c.get("names").and_then(J::as_object).map(|m| m.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect()).unwrap_or_default();
+        o.highlight_classes = Some(crate::markdown::HighlightClasses { names, prism: c.get("prism").and_then(J::as_bool).unwrap_or(false) });
     }
     if let Some(n) = j.get("headingIdsFunction").and_then(J::as_u64) {
         o.slugger_fn = Some(function(n as u32));

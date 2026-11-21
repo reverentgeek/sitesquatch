@@ -58,3 +58,12 @@ test("help_answers_as_clap_did", () => {
 	assert.match(refused(["help", "build", "extra"]), /^error: unrecognized subcommand 'extra'\n\nUsage: ssqch build \[OPTIONS\]\n/);
 	assert.match(refused(["completions", "tcsh"]), /\n {2}tip: a similar value exists: 'zsh'\n\n/);
 });
+
+test("globals_that_do_nothing_are_refused_by_the_newer_commands", () => {
+	// baseline writes where --to says; --output was accepted and did nothing.
+	assert.match(refused(["baseline", "true", "--output", "x"]), /^error: unexpected argument '--output' found\n\n  tip: '--output' does nothing for ssqch baseline: use '--to'\n/);
+	assert.match(refused(["scout", "--base", "/x/"]), /tip: '--base' does nothing for ssqch scout\n/);
+	assert.equal(parse(GRAMMAR, ["baseline", "true", "--root", "site", "-q"]).options.root, "site");
+	// 0.7's commands still accept every global.
+	assert.equal(parse(GRAMMAR, ["diff", "a", "b", "--root", "x"]).options.root, "x");
+});

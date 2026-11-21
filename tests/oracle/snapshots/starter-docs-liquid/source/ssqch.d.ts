@@ -75,16 +75,20 @@ declare module "ssqch" {
 
 	/** How Markdown renders. */
 	export interface MarkdownOptions {
-		/** Automatic heading `id`s: `"github"` (the default: GitHub's and github-slugger's anchors, character for character), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), or `false` for none. A `{#id}` on the heading always wins. */
-		headingIds?: "github" | "blackfriday" | "ascii" | false | ((text: string) => string);
+		/** Automatic heading `id`s: `"github"` (the default: GitHub's and github-slugger's anchors, character for character), `"blackfriday"` (Hugo's older style: `a-b` for `A -- B`), `"kramdown"` (Jekyll's: GitHub's ids for the page's headings, and kramdown's ASCII ones, `section` for none, for headings inside `markdown="1"` HTML), `"markdown-it-anchor"` (that plugin's default: the lowercase text with spaces as `-`, percent-encoded, `what%E2%80%99s-new%3F`), `"python-markdown"` (MkDocs': Python-Markdown's `toc` ids, ASCII, `cafe-notes` for `Café notes`), or `false` for none. A `{#id}` on the heading always wins. */
+		headingIds?: "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor" | "python-markdown" | false | ((text: string) => string);
 		/** `## Heading {#id .class key=value}`. Default `true`. */
 		headingAttributes?: boolean;
 		/** `[^1]` references, with the notes at the end of the page. Default `true`. */
 		footnotes?: boolean;
 		/** `- [ ]` and `- [x]` items. Default `true`. */
 		taskLists?: boolean;
-		/** Bare `https://` and `www.` URLs become links. Default `true`. */
-		autolinks?: boolean;
+		/** Bare `https://` and `www.` URLs become links. `"fuzzy"` links bare domains (`example.com`, with a common or two-letter country TLD) and email addresses too, as markdown-it's `linkify` does. Default `true`. */
+		autolinks?: boolean | "fuzzy";
+		/** A single newline inside a paragraph (or a list item) becomes a `<br>`, as markdown-it's `breaks: true` makes it. Default `false`. */
+		breaks?: boolean;
+		/** An image (or a linked image) alone in a paragraph becomes `<figure><img alt=""><figcaption>its alt text</figcaption></figure>`, as markdown-it-implicit-figures with `figcaption: true` writes it. Default `false`. */
+		figures?: boolean;
 		/** GitHub's `> [!NOTE]` alerts: note, tip, important, warning and caution. Default `true`. */
 		alerts?: boolean;
 		/** `::: name args` blocks, rendered by `_includes/containers/name.*`. Default `true`. */
@@ -95,8 +99,22 @@ declare module "ssqch" {
 		smartPunctuation?: boolean;
 		/** Lines indented four spaces are code blocks. `false` renders them as ordinary Markdown (HTML indented inside Markdown, say); fences are still code. Default `true`. */
 		indentedCode?: boolean;
-		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. `languages` adds languages or replaces built-in ones. Default `false`. */
-		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter> };
+		/** Link and image URLs are percent-encoded, as CommonMark's reference renderer writes them (`#كتابة` as `#%D9%83...`, `café.png` as `caf%C3%A9.png`). `false` writes them as the page has them, HTML-escaped only (`&` as `&amp;`), as kramdown (Jekyll) does; browsers go to the same place either way. A link or image hook gets the URL as written in both. Default `true`. */
+		encodeUrls?: boolean;
+		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. `languages` adds languages or replaces built-in ones. `classes` names the tokens as another highlighter does, so a site keeps its theme's CSS: `"prism"` (`token keyword`, `<pre class="language-js">`, marked lines as `<mark class="highlight-line highlight-line-active">`), `"pygments"` or `"chroma"` (Pygments' short names, `k`, `s`, `nf`, which MkDocs' and Hugo's themes style), or `{ keyword: "tok-keyword" }` for some kinds; the stylesheet uses the same names. Default `false`. */
+		/** Markdown inside HTML, as Jekyll's kramdown reads it: `"kramdown"` renders the content of an element with `markdown="1"` (span-level for `p`, headings and inline elements, block-level for the others; `"block"` and `"span"` choose) and drops the attribute, and keeps kramdown's HTML rules: a block-level element is raw HTML to its end tag, blank lines and all. Default `false`: HTML is CommonMark's, and Markdown inside it stays text. */
+		htmlMarkdown?: "kramdown" | false;
+		/** MkDocs' admonitions: `"mkdocs"` writes `!!! note "Title"` (body indented four spaces) as Python-Markdown's `<div class="admonition note"><p class="admonition-title">Title</p>...</div>`, and `??? note` and `???+ note` (pymdownx.details) as `<details class="note">`, open with `+`. The title is the type's name when there's none, and left out for `""`. Default `false`. */
+		admonitions?: "mkdocs" | false;
+		/** MkDocs' content tabs: `"mkdocs"` writes `=== "Tab"` blocks (body indented four spaces; tabs one after another are one set, `===+` selected, `===!` a new set) as pymdownx.tabbed's `alternate_style` writes them (`<div class="tabbed-set tabbed-alternate">`), which Material's CSS styles. Default `false`. */
+		tabs?: "mkdocs" | false;
+		/** Hugo's shortcodes: `"hugo"` reads a shortcode on a line of its own as a container: `{{< note type="tip" >}}` to `{{< /note >}}` (or `{{% %}}`) renders `_includes/containers/note.*` with `container.args`, `container.props` and the content as Markdown; one with no closing tag has no content. A shortcode inside a line of text is left as written. Default `false`. */
+		shortcodes?: "hugo" | false;
+		/** Links to `.md` files (`[Setup](setup/install.md#first)`) go to the page built from that file, with the `#` part: `true` writes its URL from the site's root (`/setup/install/#first`), `"relative"` from the page, as MkDocs does (`setup/install/#first`). A link to a file that isn't a page stays as written, for the link checker. Default `false`. */
+		sourceLinks?: boolean | "relative";
+		/** Another Markdown's ways, where they're CommonMark's otherwise. `"python-markdown"` (MkDocs'): a raw HTML block runs to its closing tag, blank lines and all; a list nests at four spaces (an item indented less is the next item); and the HTML is Python-Markdown's: `"` as it is in text, `<hr />`, `<br />`, `<img alt="" src="" />`, a tight item's nested list right after its text, nothing at the end. Default `false`. */
+		dialect?: "python-markdown" | false;
+		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter>; classes?: "prism" | "pygments" | "chroma" | Partial<Record<TokenKind, string>> };
 	}
 
 	/** What a collection function gets. */
@@ -190,15 +208,15 @@ declare module "ssqch" {
 		/** Shows up in error messages. */
 		name?: string;
 		/** Functions templates can call: `{{ slug(title) }}`. Async functions are awaited. */
-		filters?: Record<string, (...args: any[]) => unknown>;
+		filters?: Record<string, (this: FilterContext | undefined, ...args: any[]) => unknown>;
 		/** Data for every template. A value that's a function (sync or async) is called on each build, and its answer is that name's value. */
 		data?: Record<string, unknown>;
 		/** Custom collections, from the pages in collections. */
 		collections?: Record<string, (pages: Pages) => unknown>;
 		/** Run on every output file. Return the content, changed or not. */
 		transforms?: Record<string, (content: string, page: TransformPage) => MaybePromise<string>>;
-		/** Template engines of your own, by file extension: a function, or an object with `render`. Return the rendered text. */
-		engines?: Record<string, EngineRender | { render: EngineRender }>;
+		/** Template engines of your own, by file extension: a function, or an object with `render` (a markdown-it instance is one: `render(source, env)` gets the page's data as `env`). Return the rendered text. `md` replaces ssqch's Markdown for `.md` files and `md` in a `render` chain, after the `markdownEngine`; the `markdown` filter stays ssqch's. `cache: true` keeps the page bodies it renders by their source, so a body with the same text isn't rendered again, in a build or the next one in `ssqch serve`: for an engine whose output depends on the source alone. */
+		engines?: Record<string, EngineRender | { render: EngineRender; cache?: boolean }>;
 		/** Files or folders to copy: a path, or `{ from: to }`, or an array of them. */
 		passthrough?: string | Record<string, string> | Array<string | Record<string, string>>;
 		/** More paths for `ssqch serve` to watch. */
@@ -252,12 +270,22 @@ declare module "ssqch" {
 		bundles?: boolean;
 		/** Printing an undefined value (`{{ titel }}`) is an error, in every template language. Conditionals and defaults still work. Default `false`. */
 		strict?: boolean;
+		/** Start a template's body at its first line with text, dropping the blank lines after the closing `---`, as Jekyll does (its layouts and includes print no blank line there). Off by default: the body starts on the line after `---`, as Eleventy and gray-matter have it. */
+		trimAfterFrontMatter?: boolean;
+		/** Templates see Jekyll's `page` and `site`, so a Jekyll site's layouts and includes run as written: `page` has the page's front matter too (`page.title`; ssqch's own keys, like `url` and `date`, win) and `page.path` and `page.categories`; `site` has the site's own keys, `posts` (newest first), each collection by its tag (`site.articles`), `pages`, `html_pages`, `categories`, `tags`, `data` (the global data) and `time`; and their items read in Jekyll's shape (`post.title`, `post.content`, `post.excerpt`). Off by default: front matter is at the top level (`title`) and items keep it under `data`. */
+		jekyllTemplates?: boolean;
+		/** Templates see what MkDocs gives a theme's, so an MkDocs theme's Jinja templates (Material for MkDocs') run as written: `config` (mkdocs.yml, with the theme's `mkdocs_theme.yml` under its `theme`), `nav` (Sections, Pages and Links, with `active` on the page being rendered), `page` in a layout (MkDocs' page: `title`, `url` without its first `/`, `abs_url`, `canonical_url`, `edit_url`, `content`, `toc`, `meta`, `previous_page`, `next_page`, `ancestors`, `is_homepage`), `base_url`, `mkdocs_version` and `build_date_utc`, and the `url` and `script_tag` filters, relative to the page. A Markdown page's layout is `main.html` (or its front matter's `template`), the theme's `404.html` makes `/404.html`, and Jinja doesn't escape (`jinja: { autoescape }` says otherwise). `true` reads `mkdocs.yml`; a string names another file. Off by default. */
+		mkdocsTemplates?: boolean | string;
+		/** Jinja's settings for `.jinja` and `.j2` templates. `autoescape: false` prints values as they are, as MkDocs' Jinja does (`| e` still escapes); default `true`, or `false` with `mkdocsTemplates`. `.njk` always escapes. */
+		jinja?: { autoescape?: boolean };
 		/** `page.lastModified`: `"git"` for the last commit that changed the page's file (its modification time when it has uncommitted changes), or `"file"` for the modification time. Off by default. Needs the full history in CI (`fetch-depth: 0`). */
 		lastModified?: "git" | "file" | false;
 		/** The date of a page with no date of its own (in its data or its file name): `"git"` for the last commit that changed its file, the same in every checkout, or `"file"` (the default) for the file's modification time, which is when the checkout wrote it. Either way it sorts after the dated pages, by path. Needs the full history in CI (`fetch-depth: 0`). */
 		dateFallback?: "git" | "file";
 		/** The time zone the site's own JavaScript runs in, as an IANA name (`"UTC"`, `"America/New_York"`): `Date`'s local methods and libraries like luxon and date-fns, in data files, filters, hooks and Edge templates, so a laptop and CI build the same pages. ssqch's own date filters are UTC whatever this says. Default: the machine's. The config's own top-level code runs before it applies. */
 		timeZone?: string;
+		/** Other names for layouts: `{ post: "layouts/post.njk" }` makes `layout: post` that file (where it would be `_includes/post.*`), as Eleventy's `addLayoutAlias` did. A page's `layout` is still the name it gave. */
+		layoutAliases?: Record<string, string>;
 		/** The path the site is served under, when that isn't the root of its domain: `"/repo/"` for `https://you.github.io/repo/`. Templates and `page.url` stay as they are; ssqch adds the base to URLs from the site's root in the HTML it writes. Use the `withBase()` filter outside HTML attributes. */
 		base?: string;
 		/** A theme under the site: a folder (`"themes/docs"`), or a git repository pinned to a tag or a commit's full hash (`"https://github.com/you/theme#v1.2.0"`, with `#v1.2.0:folder` for a theme in a folder of its repository), fetched once and kept in `.cache/ssqch/themes/`. The site's own includes, data, pages and files win over the theme's, one by one. In a list, earlier themes sit on top of later ones. */
@@ -275,10 +303,19 @@ declare module "ssqch" {
 
 	/** Returns its argument. It's there so the config reads as one, and for these types. */
 	export function defineConfig<T extends Config | ((context: ConfigContext) => MaybePromise<Config>)>(config: T): T;
-	/** Render Markdown with the site's `markdown` options (render hooks and containers are for templates). `inline` drops the `<p>` around a single paragraph. */
-	export function markdown(text: string, options?: { inline?: boolean }): string;
+	/** Render Markdown with the site's `markdown` options (render hooks and containers are for templates). `inline` drops the `<p>` around a single paragraph: `markdown(text, { inline: true })`, or `markdown(text, "inline")` as in templates. */
+	export function markdown(text: string, options?: { inline?: boolean } | "inline"): string;
 	/** Read a JSON, YAML or TOML file (from the project root) into data: `readData("src/_data/sites/en.yml")`. */
 	export function readData(path: string): any;
+	/** HTML that templates print as it is, in every template language: a filter's answer that's markup, `return safe(`<b>${text}</b>`)`. Anything else gets the text as a string. Escape what goes in it yourself. */
+	export function safe(html: unknown): string;
+	/** `this` in a config filter written as a `function` (an arrow function has no `this`): the page being rendered. `undefined` outside a render (in a collection, a data file or a hook). */
+	export interface FilterContext {
+		/** The page being rendered, as its templates see `page`: `url`, `inputPath`, `outputPath`, `date`, and in a layout `headings` and `excerpt`. */
+		page: Record<string, any>;
+		/** Everything the template sees: front matter, the cascade, `collections`, and in a layout `content`. */
+		data: Record<string, any>;
+	}
 	/** A file that `files()` found. */
 	export interface FoundFile {
 		/** From the project root, with `/`: `"images/albums/v1/20011222_08.JPG"`. */
@@ -310,6 +347,10 @@ declare module "ssqch" {
 		separator?: string;
 		/** `"drop"` (the default): `Drew's Brownies` is `drews-brownies`. `"separate"`: an apostrophe splits words like other punctuation, `drew-s-brownies`, to keep a site's existing URLs. */
 		apostrophes?: "drop" | "separate";
+		/** `true` takes accents off and spells out a few letters and symbols first, as the slugify package does: `Thomas Sjögren` is `thomas-sjogren`, `Straße & 50%` is `strasse-and-50-percent`. Other scripts stay as they are. Default `false`. */
+		ascii?: boolean;
+		/** `true` drops HTML tags first: `Use <code>title</code>` is `use-title`, not `use-code-title-code`. Default `false`. */
+		stripTags?: boolean;
 	}
 	/** The `slugify` template filter, for data files: `slugify("Taco Bake", { separator: "_" })` is `"taco_bake"`. Lowercase letters and digits, with `separator` (a dash by default) for each run of anything else. A string is the separator. */
 	export function slugify(text: string, options?: SlugifyOptions | string): string;
@@ -432,14 +473,26 @@ declare module "ssqch/minify" {
 		removeComments?: boolean;
 		/** Default `true`. */
 		shortDoctype?: boolean;
-		/** Drop boolean attributes' values (`defer="defer"` to `defer`) and extra whitespace in `class`, `srcset`, URLs and the viewport `<meta>`. Default `true`. */
+		/** Drop boolean attributes' values (`defer="defer"` to `defer`) and extra whitespace in `class`, `srcset`, URLs and the viewport `<meta>` (whose numbers it writes as html-minifier-terser does: `initial-scale=1`). Default `true`. */
 		shortenAttributes?: boolean;
 	}
 
-	/** Minifies HTML output, after the image transform, with ssqch's own minifier (Rust, as WebAssembly): it doesn't write html-minifier-terser's bytes. */
-	export function minifyPlugin(options?: MinifyOptions): BuiltinPlugin;
+	/** `minifyPlugin()`'s options: the minifier's, and what else it minifies, all off by default. */
+	export interface MinifyPluginOptions extends MinifyOptions {
+		/** Compress each page's `<style>` elements with ssqch's Sass, as `minifyCss` does; one it can't read (Sass syntax, native CSS nesting) stays as it is, with a warning. Default `false`. */
+		css?: boolean;
+		/** Take the whitespace between tags out of `.xml`, `.rss` and `.atom` files (feeds, sitemaps), not inside text, CDATA or comments. Default `false`. */
+		xml?: boolean;
+		/** Write `.json` and `.webmanifest` files without spaces. Default `false`. */
+		json?: boolean;
+	}
+
+	/** Minifies HTML output, after the image transform, with ssqch's own minifier (Rust, as WebAssembly): it doesn't write html-minifier-terser's bytes. With `css`, `xml` and `json`, inline CSS, feeds and manifests too. */
+	export function minifyPlugin(options?: MinifyPluginOptions): BuiltinPlugin;
 	/** Minify one string of HTML, with the plugin's options. */
 	export function minify(html: string, options?: MinifyOptions): string;
+	/** Compress CSS text as `style: "compressed"` Sass writes it (`.a{color:#fff}`), for CSS inlined by a template: `{{ css | minifyCss }}` in a filter of your own. Sass's own syntax, and CSS ssqch's Sass can't read (native nesting), is an error. */
+	export function minifyCss(css: string): string;
 }
 
 declare module "ssqch/assets" {
@@ -480,8 +533,8 @@ declare module "ssqch/sitemap" {
 	import type { BuiltinPlugin } from "ssqch";
 
 	export interface SitemapPluginOptions {
-		/** The site's address, like `"https://example.com"`. */
-		url: string;
+		/** The site's address, like `"https://example.com"`. Without one (or with `""`, as a Jekyll site's `url` often is), each `<loc>` is a path from the site's root, as jekyll-sitemap writes it, and every build warns: search engines read only whole addresses. */
+		url?: string;
 		/** URL globs to leave out, like `["/tags/**"]`. Pages with `sitemap: false` and 404 pages are always left out. */
 		exclude?: string[];
 		/** Add `<lastmod>` from each page's date. Default `true`. */
@@ -540,6 +593,8 @@ declare module "ssqch/sass" {
 		style?: "compressed" | "expanded";
 		/** More folders `@use` and `@import` look in, relative to the project root. */
 		loadPaths?: string[];
+		/** `false` leaves out what CSS with a character outside ASCII starts with: a byte order mark (compressed) or `@charset "UTF-8";` (expanded), as Dart Sass's `--no-charset` does and jekyll-sass-converter's output has it. Default `true`. */
+		charset?: boolean;
 	}
 
 	/** Compiles Sass at the start of each build, with grass (Rust, as WebAssembly: no Dart Sass), so fingerprinting and the link checker see the CSS. */

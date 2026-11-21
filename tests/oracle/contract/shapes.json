@@ -557,5 +557,109 @@
     "errors": [
       "empty"
     ]
+  },
+  "scout": {
+    "generator": "string",
+    "name": "string",
+    "detectedBy": "string",
+    "underWay": "boolean",
+    "configError": "null",
+    "build": {
+      "command": "string",
+      "output": "string",
+      "baseline": "string",
+      "needs": [
+        "string"
+      ]
+    },
+    "summary": {
+      "pages": "null|number",
+      "ssqch": "number",
+      "option": "number",
+      "notYet": "number",
+      "site": "number",
+      "done": "number"
+    },
+    "todo": [
+      {
+        "at": "string",
+        "what": "string",
+        "code": "string",
+        "status": "string",
+        "count": "null|number",
+        "files": "null|number",
+        "option": "null|string",
+        "docs": "null|string"
+      }
+    ],
+    "done": [
+      {
+        "at": "string",
+        "what": "string",
+        "code": "string",
+        "option": "string"
+      }
+    ],
+    "draft": [
+      {
+        "path": "string",
+        "from": "string",
+        "there": "boolean"
+      }
+    ],
+    "edits": [
+      {
+        "path": "string",
+        "changes": [
+          "string"
+        ]
+      }
+    ],
+    "wroteDraft": [
+      "string"
+    ],
+    "patch": "null|string",
+    "trailhead": "string",
+    "compare": {
+      "reference": "string",
+      "output": "string",
+      "built": "boolean",
+      "errors": [
+        "empty"
+      ],
+      "same": "boolean",
+      "summary": {
+        "added": "number",
+        "removed": "number",
+        "changed": "number",
+        "unchangedPages": "number",
+        "unchangedFiles": "number"
+      },
+      "groups": [
+        {
+          "files": "number",
+          "kind": "string",
+          "first": "string",
+          "removed": [
+            "string"
+          ],
+          "added": [
+            "empty"
+          ]
+        }
+      ],
+      "files": {
+        "changed": [
+          "string"
+        ],
+        "added": [
+          "empty"
+        ],
+        "removed": [
+          "empty"
+        ]
+      },
+      "problem": "null"
+    }
   }
 }

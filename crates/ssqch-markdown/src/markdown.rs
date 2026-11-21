@@ -32,7 +32,17 @@ pub enum Slugger {
     /// ASCII only: letters are transliterated (`Ünïcödé` is `unicode`, `🦀`
     /// is `crab`), then like blackfriday. Zola's anchors look like this.
     Ascii,
+    /// kramdown's GFM parser's (Jekyll's): lowercase, then everything but letters, marks,
+    /// digits, `_`-like connectors, `-`, spaces and tabs is dropped (emoji too, which GitHub's
+    /// keeps), and spaces and tabs become `-`.
+    Kramdown,
+    /// markdown-it-anchor's default: trimmed, lowercase, each run of whitespace a `-`, then
+    /// `encodeURIComponent` (`What’s new?` is `what%E2%80%99s-new%3F`).
+    MarkdownItAnchor,
 }
+
+/// What kramdown's GFM ids drop: Ruby's `/[^\p{Word}\- \t]/`.
+static KRAMDOWN_DROPS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^\p{L}\p{M}\p{Nd}\p{Pc}\- \t]").unwrap());
 
 impl Slugger {
     pub fn parse(name: &str) -> Option<Slugger> {
@@ -40,6 +50,8 @@ impl Slugger {
             "github" => Some(Slugger::Github),
             "blackfriday" => Some(Slugger::Blackfriday),
             "ascii" => Some(Slugger::Ascii),
+            "kramdown" => Some(Slugger::Kramdown),
+            "markdown-it-anchor" => Some(Slugger::MarkdownItAnchor),
             _ => None,
         }
     }
@@ -61,6 +73,31 @@ impl Slugger {
                 }
             }
             Slugger::Ascii => return Slugger::Blackfriday.slug(&deunicode::deunicode(text)),
+            Slugger::Kramdown => return KRAMDOWN_DROPS.replace_all(&text.to_lowercase(), "").replace([' ', '\t'], "-"),
+            Slugger::MarkdownItAnchor => {
+                // JavaScript's `trim`, `toLowerCase` and `/\s+/g`: Unicode white space, and the BOM.
+                let js_space = |c: char| c.is_whitespace() || c == '\u{FEFF}';
+                let lower = text.trim_matches(js_space).to_lowercase();
+                let mut space = false;
+                for c in lower.chars() {
+                    if js_space(c) {
+                        if !space {
+                            out.push('-');
+                        }
+                        space = true;
+                        continue;
+                    }
+                    space = false;
+                    if c.is_ascii_alphanumeric() || "-_.!~*'()".contains(c) {
+                        out.push(c);
+                    } else {
+                        let mut buf = [0u8; 4];
+                        for b in c.encode_utf8(&mut buf).bytes() {
+                            out.push_str(&format!("%{:02X}", b));
+                        }
+                    }
+                }
+            }
             Slugger::Blackfriday => {
                 let mut dash = false;
                 for c in text.chars() {
@@ -192,6 +229,14 @@ pub struct MarkdownOptions {
     pub task_lists: bool,
     /// Bare `https://` and `www.` URLs become links.
     pub autolinks: bool,
+    /// With `autolinks`, bare domains (`example.com`) and email addresses too, as markdown-it's
+    /// `linkify` does (`autolinks: "fuzzy"`).
+    pub fuzzy_links: bool,
+    /// A single newline in a paragraph is a `<br>`, as markdown-it's `breaks: true` makes it.
+    pub breaks: bool,
+    /// An image alone in a paragraph is a `<figure>`, its alt text the `<figcaption>`, as
+    /// markdown-it-implicit-figures makes it with `figcaption: true`.
+    pub figures: bool,
     /// GitHub's `> [!NOTE]` alerts (note, tip, important, warning, caution).
     pub alerts: bool,
     /// `::: name args` blocks.
@@ -203,6 +248,10 @@ pub struct MarkdownOptions {
     /// Lines indented four spaces are code. Off, they're ordinary Markdown
     /// (handy for HTML indented inside Markdown); fences are still code.
     pub indented_code: bool,
+    /// Link and image URLs percent-encoded, as CommonMark's reference renderer writes them
+    /// (`#كتابة` is `#%D9%83...`). Off, they're written as the page has them, HTML-escaped only,
+    /// as kramdown and markdown-it with its own normalizer write them.
+    pub encode_urls: bool,
     /// Highlight fenced code at build time (needs the `highlight` feature).
     pub highlight: bool,
     /// Where the build writes the highlighting stylesheet (a URL path like
@@ -210,6 +259,8 @@ pub struct MarkdownOptions {
     pub highlight_css: Option<String>,
     /// Languages the site adds or replaces (`highlight: { languages }`).
     pub languages: Languages,
+    /// Another highlighter's class names for the tokens (`highlight: { classes }`).
+    pub highlight_classes: Option<HighlightClasses>,
     /// A slugger of the site's own (`headingIds: text => id`), used instead
     /// of `heading_ids` when set. Repeats still get `-1`, `-2`.
     pub slugger_fn: Option<Value>,
@@ -223,14 +274,19 @@ impl Default for MarkdownOptions {
             footnotes: true,
             task_lists: true,
             autolinks: true,
+            fuzzy_links: false,
+            breaks: false,
+            figures: false,
             alerts: true,
             containers: true,
             definition_lists: false,
             smart_punctuation: false,
             indented_code: true,
+            encode_urls: true,
             highlight: false,
             highlight_css: Some("/highlight.css".into()),
             languages: Languages::default(),
+            highlight_classes: None,
             slugger_fn: None,
         }
     }
@@ -238,8 +294,8 @@ impl Default for MarkdownOptions {
 
 impl MarkdownOptions {
     /// The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`).
-    pub const KEYS: [&'static str; 11] =
-        ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight"];
+    pub const KEYS: [&'static str; 14] =
+        ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "encodeUrls"];
 
     /// Apply a `markdown` object from the config. Errors start with the key
     /// (`markdown.footnotes must be true or false`).
@@ -253,7 +309,7 @@ impl MarkdownOptions {
                     self.heading_ids = match v {
                         Value::Bool(false) | Value::Null => None,
                         Value::Bool(true) => Some(Slugger::Github),
-                        Value::Str(s) => Some(Slugger::parse(s).ok_or_else(|| anyhow::anyhow!("markdown.headingIds: unknown slugger \"{}\" (use \"github\", \"blackfriday\", \"ascii\" or false)", s))?),
+                        Value::Str(s) => Some(Slugger::parse(s).ok_or_else(|| anyhow::anyhow!("markdown.headingIds: unknown slugger \"{}\" (use \"github\", \"blackfriday\", \"ascii\", \"kramdown\", \"markdown-it-anchor\" or false)", s))?),
                         other => bail!("markdown.headingIds must be \"github\", \"blackfriday\", \"ascii\" or false, not {}", other.type_of()),
                     };
                     continue;
@@ -285,15 +341,25 @@ impl MarkdownOptions {
                     }
                     continue;
                 }
+                "autolinks" => {
+                    (self.autolinks, self.fuzzy_links) = match v {
+                        Value::Bool(b) => (*b, false),
+                        Value::Str(s) if s.as_ref() == "fuzzy" => (true, true),
+                        other => bail!("markdown.autolinks must be true, false or \"fuzzy\", not {}", if let Value::Str(s) = other { format!("\"{}\"", s) } else { other.type_of().to_string() }),
+                    };
+                    continue;
+                }
+                "breaks" => &mut self.breaks,
+                "figures" => &mut self.figures,
                 "headingAttributes" => &mut self.heading_attributes,
                 "footnotes" => &mut self.footnotes,
                 "taskLists" => &mut self.task_lists,
-                "autolinks" => &mut self.autolinks,
                 "alerts" => &mut self.alerts,
                 "containers" => &mut self.containers,
                 "definitionLists" => &mut self.definition_lists,
                 "smartPunctuation" => &mut self.smart_punctuation,
                 "indentedCode" => &mut self.indented_code,
+                "encodeUrls" => &mut self.encode_urls,
                 other => bail!("markdown.{} isn't an option{} (options: {})", other, crate::suggest::closest(other, Self::KEYS.iter().copied()).map(|name| format!(" (did you mean `{}`?)", name)).unwrap_or_default(), Self::KEYS.join(", ")),
             };
             match v {
@@ -321,6 +387,68 @@ impl MarkdownOptions {
             }
         }
         o
+    }
+}
+
+/// Another highlighter's class names, so a site keeps its theme's CSS (`highlight: { classes }`):
+/// Prism's (`token keyword`), or the site's own for some kinds. Applied to the highlighted HTML,
+/// after the cache of highlighted fences, so the cache doesn't depend on them.
+#[derive(Clone, Debug, Default)]
+pub struct HighlightClasses {
+    /// The class names for each kind (`keyword` -> `token keyword`); a kind left out keeps `hl-*`.
+    pub names: Vec<(String, String)>,
+    /// Prism's markup around them too, as the syntax-highlight plugins write it:
+    /// `<pre class="language-js">`, and a marked line as `<mark class="highlight-line
+    /// highlight-line-active">` (the other lines unwrapped).
+    pub prism: bool,
+}
+
+impl HighlightClasses {
+    /// The highlighted HTML (the inside of a `<code>`) with these names.
+    pub fn apply(&self, html: &str) -> String {
+        let mut lines = String::with_capacity(html.len() + html.len() / 4);
+        if self.prism && html.starts_with("<span class=\"line") {
+            for line in html.split_inclusive('\n') {
+                let (body, newline) = line.strip_suffix('\n').map_or((line, ""), |b| (b, "\n"));
+                if let Some(inner) = body.strip_prefix("<span class=\"line highlighted\">").and_then(|b| b.strip_suffix("</span>")) {
+                    lines.push_str("<mark class=\"highlight-line highlight-line-active\">");
+                    lines.push_str(inner);
+                    lines.push_str("</mark>");
+                } else if let Some(inner) = body.strip_prefix("<span class=\"line\">").and_then(|b| b.strip_suffix("</span>")) {
+                    lines.push_str(inner);
+                } else {
+                    lines.push_str(body);
+                }
+                lines.push_str(newline);
+            }
+        } else {
+            lines.push_str(html);
+        }
+        const OPEN: &str = "<span class=\"hl-";
+        if self.names.is_empty() || !lines.contains(OPEN) {
+            return lines;
+        }
+        let mut out = String::with_capacity(lines.len() + lines.len() / 4);
+        let mut rest = lines.as_str();
+        while let Some(at) = rest.find(OPEN) {
+            out.push_str(&rest[..at]);
+            let after = &rest[at + OPEN.len()..];
+            let kind_len = after.find('"').unwrap_or(after.len());
+            let kind = &after[..kind_len];
+            match self.names.iter().find(|(k, _)| k == kind) {
+                Some((_, names)) => {
+                    out.push_str("<span class=\"");
+                    out.push_str(names);
+                }
+                None => {
+                    out.push_str(OPEN);
+                    out.push_str(kind);
+                }
+            }
+            rest = &after[kind_len..];
+        }
+        out.push_str(rest);
+        out
     }
 }
 
@@ -365,6 +493,7 @@ pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -
         .collect();
     if opts.smart_punctuation {
         keep_flags(&mut events);
+        close_open_quotes(&mut events);
     }
     if let Some(f) = &opts.slugger_fn {
         assign_heading_ids(&mut events, |text| match f {
@@ -375,7 +504,17 @@ pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -
         assign_heading_ids(&mut events, |text| Ok(slugger.slug(text)))?;
     }
     if opts.autolinks {
-        events = autolink(events);
+        events = autolink(events, opts.fuzzy_links);
+    }
+    if opts.breaks {
+        for e in events.iter_mut() {
+            if matches!(e, Event::SoftBreak) {
+                *e = Event::HardBreak;
+            }
+        }
+    }
+    if opts.figures {
+        events = figures(events);
     }
     let defined = events
         .iter()
@@ -391,6 +530,17 @@ pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -
     Ok(out)
 }
 
+/// A link's or image's title for its hook: null when it has none, so `{% if link.title %}` is
+/// false in Liquid too, where an empty string is true (`title=""` on 343 of opensource.guide's
+/// links). It prints as nothing in every engine, as the empty string did.
+fn title_value(title: &str) -> Value {
+    if title.is_empty() {
+        Value::Null
+    } else {
+        Value::from(title.to_string())
+    }
+}
+
 /// Render Markdown, and for one paragraph, drop the `<p>` around it (for a
 /// title or a caption).
 pub fn render_inline(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -> Result<String> {
@@ -400,6 +550,63 @@ pub fn render_inline(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Ho
         Some(inner) if !inner.contains("<p>") && !inner.contains("</p>") => inner.to_string(),
         _ => html,
     })
+}
+
+/// With smart punctuation, pulldown-cmark opens a quote with a `"` it can't match: one between
+/// two letters while a quote is open (`比如"进展 ISSUE-123"；` came out `“…ISSUE-123“`, opensource.guide's
+/// zh-hans pages), and one that closes an outer quote around a nested pair or has no partner
+/// (`"What Does "Open Source" Even Mean? p5.js Edition"` ended in `Edition“`, 13 pages). An opening
+/// quote that follows a character other than a space closes instead when a space, punctuation or
+/// the end of the text comes after it, or when a quote is open in the same block, as SmartyPants,
+/// kramdown and markdown-it read them.
+fn close_open_quotes(events: &mut [Event]) {
+    let mut open = 0usize;
+    let mut last: Option<char> = None;
+    for event in events.iter_mut() {
+        match event {
+            Event::Start(tag) if !matches!(tag, Tag::Emphasis | Tag::Strong | Tag::Strikethrough | Tag::Link { .. } | Tag::Image { .. }) => {
+                open = 0;
+                last = None;
+            }
+            Event::End(end) if !matches!(end, TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough | TagEnd::Link | TagEnd::Image) => {
+                open = 0;
+                last = None;
+            }
+            Event::Code(code) => last = code.chars().last(),
+            Event::SoftBreak | Event::HardBreak => last = Some(' '),
+            Event::Text(text) => {
+                if !text.contains(['\u{201C}', '\u{201D}']) {
+                    last = text.chars().last().or(last);
+                    continue;
+                }
+                let chars: Vec<char> = text.chars().collect();
+                let mut out = String::with_capacity(text.len());
+                for (i, &c) in chars.iter().enumerate() {
+                    let after_text = last.is_some_and(|l| !l.is_whitespace());
+                    let ends = chars.get(i + 1).is_none_or(|n| n.is_whitespace() || (n.is_ascii_punctuation() && *n != '(' && *n != '[') || matches!(n, '，' | '。' | '；' | '：' | '！' | '？' | '、' | '）'));
+                    let c = match c {
+                        '\u{201C}' if after_text && (open > 0 || ends) => {
+                            open = open.saturating_sub(1);
+                            '\u{201D}'
+                        }
+                        '\u{201C}' => {
+                            open += 1;
+                            c
+                        }
+                        '\u{201D}' => {
+                            open = open.saturating_sub(1);
+                            c
+                        }
+                        _ => c,
+                    };
+                    out.push(c);
+                    last = Some(c);
+                }
+                *text = out.into();
+            }
+            _ => {}
+        }
+    }
 }
 
 /// With smart punctuation, `--` is an en dash, which is wrong for a
@@ -501,9 +708,20 @@ fn plain_text(events: &[Event]) -> String {
 
 static URL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:https?://|www\.)[A-Za-z0-9][^\s<>]*").unwrap());
 
+/// The top-level domains a bare domain can end in for `autolinks: "fuzzy"`: linkify-it's (the
+/// library markdown-it's `linkify` uses), a few generic ones and every two-letter country code.
+const FUZZY_TLDS: &str = "biz|com|edu|gov|net|org|pro|web|xxx|aero|asia|coop|info|museum|name|shop|рф|a[cdefgilmnoqrstuwxz]|b[abdefghijmnorstvwyz]|c[acdfghiklmnoruvwxyz]|d[ejkmoz]|e[cegrstu]|f[ijkmor]|g[abdefghilmnpqrstuwy]|h[kmnrtu]|i[delmnoqrst]|j[emop]|k[eghimnprwyz]|l[abcikrstuvy]|m[acdeghklmnopqrstuvwxyz]|n[acefgilopruz]|om|p[aefghklmnrstwy]|qa|r[eosuw]|s[abcdeghijklmnortuvxyz]|t[cdfghjklmnortvwz]|u[agksyz]|v[aceginu]|w[fs]|y[et]|z[amw]";
+
+/// A URL, or a bare domain (`example.com/path`) or email address (`ranger@example.com`).
+static FUZZY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(r"(?:https?://|www\.)[A-Za-z0-9][^\s<>]*|(?:[A-Za-z0-9._%+-]+@)?(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+(?i:{})\b(?::[0-9]{{1,5}})?(?:[/?#][^\s<>]*)?", FUZZY_TLDS)).unwrap()
+});
+
 /// Turn bare URLs in text into links, as GitHub does: trailing punctuation
-/// and an unbalanced `)` stay out of the link.
-fn autolink(events: Vec<Event>) -> Vec<Event> {
+/// and an unbalanced `)` stay out of the link. With `fuzzy`, bare domains
+/// get `http://` and email addresses `mailto:`, as markdown-it's `linkify` does.
+fn autolink(events: Vec<Event>, fuzzy: bool) -> Vec<Event> {
+    let pattern: &Regex = if fuzzy { &FUZZY } else { &URL };
     let mut out = Vec::with_capacity(events.len());
     let (mut in_link, mut in_html_link) = (0usize, 0usize);
     for e in events {
@@ -518,10 +736,10 @@ fn autolink(events: Vec<Event>) -> Vec<Event> {
                     in_html_link = in_html_link.saturating_sub(1);
                 }
             }
-            Event::Text(t) if in_link == 0 && in_html_link == 0 && (t.contains("http") || t.contains("www.")) => {
+            Event::Text(t) if in_link == 0 && in_html_link == 0 && (t.contains("http") || t.contains("www.") || (fuzzy && t.contains('.'))) => {
                 let text = t.to_string();
                 let mut last = 0;
-                for m in URL.find_iter(&text) {
+                for m in pattern.find_iter(&text) {
                     let before = text[..m.start()].chars().next_back();
                     if before.is_some_and(|c| !(c.is_whitespace() || "*_~(".contains(c))) {
                         continue;
@@ -533,7 +751,13 @@ fn autolink(events: Vec<Event>) -> Vec<Event> {
                     if m.start() > last {
                         out.push(Event::Text(text[last..m.start()].to_string().into()));
                     }
-                    let href = if url.starts_with("www.") { format!("http://{}", url) } else { url.to_string() };
+                    let href = if url.starts_with("http://") || url.starts_with("https://") {
+                        url.to_string()
+                    } else if url.contains('@') && !url.contains('/') {
+                        format!("mailto:{}", url)
+                    } else {
+                        format!("http://{}", url)
+                    };
                     out.push(Event::Start(Tag::Link { link_type: LinkType::Autolink, dest_url: href.into(), title: "".into(), id: "".into() }));
                     out.push(Event::Text(url.to_string().into()));
                     out.push(Event::End(TagEnd::Link));
@@ -549,6 +773,48 @@ fn autolink(events: Vec<Event>) -> Vec<Event> {
             _ => {}
         }
         out.push(e);
+    }
+    out
+}
+
+/// `figures`: a paragraph that's only an image (or a linked image) is a `<figure>`, with the
+/// image's alt text as its `<figcaption>` and the image's own `alt` left empty, so a screen reader
+/// reads the caption once. markdown-it-implicit-figures with `figcaption: true` writes the same.
+fn figures(events: Vec<Event>) -> Vec<Event> {
+    let mut out = Vec::with_capacity(events.len());
+    let mut i = 0;
+    while i < events.len() {
+        if let Event::Start(Tag::Paragraph) = &events[i] {
+            let linked = matches!(events.get(i + 1), Some(Event::Start(Tag::Link { .. }))) && matches!(events.get(i + 2), Some(Event::Start(Tag::Image { .. })));
+            let image = if linked { i + 2 } else { i + 1 };
+            if matches!(events.get(image), Some(Event::Start(Tag::Image { .. }))) {
+                let end = matching(&events, image);
+                let after = if linked { end + 2 } else { end + 1 };
+                let link_closes = !linked || matches!(events.get(end + 1), Some(Event::End(TagEnd::Link)));
+                if link_closes && matches!(events.get(after), Some(Event::End(TagEnd::Paragraph))) {
+                    out.push(Event::InlineHtml("<figure>".into()));
+                    if linked {
+                        out.push(events[i + 1].clone());
+                    }
+                    out.push(events[image].clone());
+                    out.push(events[end].clone());
+                    if linked {
+                        out.push(events[end + 1].clone());
+                    }
+                    let caption = &events[image + 1..end];
+                    if !caption.is_empty() {
+                        out.push(Event::InlineHtml("<figcaption>".into()));
+                        out.extend(caption.iter().cloned());
+                        out.push(Event::InlineHtml("</figcaption>".into()));
+                    }
+                    out.push(Event::InlineHtml("</figure>\n".into()));
+                    i = after + 1;
+                    continue;
+                }
+            }
+        }
+        out.push(events[i].clone());
+        i += 1;
     }
     out
 }
@@ -730,6 +996,23 @@ impl Writer<'_, '_> {
                     i = end + 1;
                     continue;
                 }
+                // `encodeUrls: false`: the URL as the page has it, HTML-escaped (pulldown-cmark's own
+                // writer percent-encodes it). The link's content and `</a>` are written as usual.
+                Event::Start(Tag::Link { link_type, dest_url, title, .. }) if !self.has("hooks/link") && self.opts.is_some_and(|o| !o.encode_urls) => {
+                    flush(&mut plain, out);
+                    out.push_str("<a href=\"");
+                    if *link_type == LinkType::Email {
+                        out.push_str("mailto:");
+                    }
+                    escape_html(&mut *out, dest_url).ok();
+                    if !title.is_empty() {
+                        out.push_str("\" title=\"");
+                        escape_html(&mut *out, title).ok();
+                    }
+                    out.push_str("\">");
+                    i += 1;
+                    continue;
+                }
                 Event::Start(Tag::Link { link_type, dest_url, title, .. }) if self.has("hooks/link") => {
                     let end = matching(events, i);
                     flush(&mut plain, out);
@@ -737,7 +1020,7 @@ impl Writer<'_, '_> {
                     let href = if *link_type == LinkType::Email { format!("mailto:{}", dest_url) } else { dest_url.to_string() };
                     let link = Value::from_pairs([
                         ("href", Value::from(href)),
-                        ("title", Value::from(title.to_string())),
+                        ("title", title_value(title)),
                         ("text", Value::from(plain_text(&events[i + 1..end]))),
                         ("content", Value::from(self.inner(&events[i + 1..end])?)),
                     ]);
@@ -758,11 +1041,15 @@ impl Writer<'_, '_> {
                         })
                         .collect();
                     if self.has("hooks/image") {
-                        let image = Value::from_pairs([("src", Value::from(dest_url.to_string())), ("alt", Value::from(alt)), ("title", Value::from(title.to_string()))]);
+                        let image = Value::from_pairs([("src", Value::from(dest_url.to_string())), ("alt", Value::from(alt)), ("title", title_value(title))]);
                         out.push_str(self.hook("hooks/image", "image", image)?.trim_end());
                     } else {
                         out.push_str("<img src=\"");
-                        escape_href(&mut *out, dest_url).ok();
+                        if self.opts.is_some_and(|o| !o.encode_urls) {
+                            escape_html(&mut *out, dest_url).ok();
+                        } else {
+                            escape_href(&mut *out, dest_url).ok();
+                        }
                         out.push_str("\" alt=\"");
                         escape_html(&mut *out, &alt).ok();
                         out.push('"');
@@ -926,6 +1213,12 @@ impl Writer<'_, '_> {
                 // pulldown-cmark leaves `"` as it is in text; escape it, as the
                 // CommonMark reference renderer does.
                 Event::Text(t) if t.contains('"') => plain.push(Event::InlineHtml(escape_text(t).into())),
+                // A code span through `hooks/code.*` (GitHub Pages' Rouge writes `<code
+                // class="language-plaintext highlighter-rouge">`; osg #4), given its text.
+                Event::Code(t) if self.has("hooks/code") => {
+                    flush(&mut plain, out);
+                    out.push_str(self.hook("hooks/code", "code", Value::from_pairs([("code", Value::from(t.as_ref()))]))?.trim_end());
+                }
                 Event::Code(t) if t.contains('"') => plain.push(Event::InlineHtml(format!("<code>{}</code>", escape_text(t)).into())),
                 other => plain.push(other.clone()),
             }
@@ -937,8 +1230,9 @@ impl Writer<'_, '_> {
 
     fn fence(&mut self, info: &str, code: &str, out: &mut String) -> Result<()> {
         let lang = info.split(|c: char| c.is_whitespace() || c == '{' || c == ',').next().unwrap_or("");
+        let classes = self.opts.and_then(|o| o.highlight_classes.as_ref());
         let highlighted = match self.opts {
-            Some(opts) if self.highlight => highlight_code(&opts.languages, lang, code, info),
+            Some(opts) if self.highlight => highlight_code(&opts.languages, lang, code, info).map(|h| classes.map_or(h.clone(), |c| c.apply(&h))),
             _ => None,
         };
         let specific = format!("hooks/fence-{}", lang);
@@ -955,7 +1249,15 @@ impl Writer<'_, '_> {
             block(out, &self.hook(&name, "fence", Value::from_pairs(fence))?);
             return Ok(());
         }
-        out.push_str(if highlighted.is_some() { "<pre class=\"highlight\"><code" } else { "<pre><code" });
+        if self.highlight && classes.is_some_and(|c| c.prism) && !lang.is_empty() {
+            // Prism's: the language on the `<pre>` too, and for a language without a grammar
+            // (the code escaped as it is), as eleventy-plugin-syntaxhighlight writes it.
+            out.push_str("<pre class=\"language-");
+            escape_html(&mut *out, lang).ok();
+            out.push_str("\"><code");
+        } else {
+            out.push_str(if highlighted.is_some() { "<pre class=\"highlight\"><code" } else { "<pre><code" });
+        }
         if !lang.is_empty() {
             out.push_str(" class=\"language-");
             escape_html(&mut *out, lang).ok();
@@ -1254,6 +1556,12 @@ mod tests {
         assert_eq!(Slugger::Github.slug("Cafe\u{301} x\u{B2} \u{BD}"), "cafe\u{301}-x-");
         assert_eq!(Slugger::Github.slug("\u{130}stanbul"), "i\u{307}stanbul");
         assert_eq!(Slugger::Blackfriday.slug("A -- B"), "a-b");
+        // kramdown's GFM ids drop emoji and symbols, and keep letters in any script.
+        assert_eq!(Slugger::Kramdown.slug("\u{1F62D} Вы не атрымаеце адказ"), "-вы-не-атрымаеце-адказ");
+        assert_eq!(Slugger::Kramdown.slug("Café, x\u{B2}\tsnake_case!"), "café-x-snake_case");
+        // markdown-it-anchor's: encodeURIComponent of the lowercase text, spaces as `-`.
+        assert_eq!(Slugger::MarkdownItAnchor.slug("  What’s new:  Café?  "), "what%E2%80%99s-new%3A-caf%C3%A9%3F");
+        assert_eq!(Slugger::MarkdownItAnchor.slug("Use (it) wisely!"), "use-(it)-wisely!");
         assert_eq!(Slugger::Blackfriday.slug("What's new in 1.2?"), "what-s-new-in-1-2");
         assert_eq!(Slugger::Blackfriday.slug("snake_case"), "snake-case");
         assert_eq!(Slugger::Ascii.slug("Debugging Aspirations (👩‍💻)"), "debugging-aspirations-woman-computer");
@@ -1325,6 +1633,19 @@ mod tests {
     }
 
     #[test]
+    fn smart_quotes_between_letters_close_an_open_one() {
+        let smart = MarkdownOptions { smart_punctuation: true, ..Default::default() };
+        assert_eq!(render("比如\"我们正在处理——进展见 ISSUE-123\"；\n", &smart, None).unwrap(), "<p>比如“我们正在处理——进展见 ISSUE-123”；</p>\n");
+        assert_eq!(render("a \"b\" c \"d\"\n\n\"e\"\n", &smart, None).unwrap(), "<p>a “b” c “d”</p>\n<p>“e”</p>\n");
+        assert_eq!(render("say \"*one*\"x\"two\"\n", &smart, None).unwrap(), "<p>say “<em>one</em>”x“two”</p>\n");
+        // A closing quote around a nested pair, and one with no partner (opensource.guide, 13 pages).
+        assert_eq!(render("[\"What Does \"Open Source\" Even Mean? p5.js Edition\"](/x)\n", &smart, None).unwrap(), "<p><a href=\"/x\">“What Does “Open Source” Even Mean? p5.js Edition”</a></p>\n");
+        assert_eq!(render("[x y\"](z)\n", &smart, None).unwrap(), "<p><a href=\"z\">x y”</a></p>\n");
+        // An opening one stays: after a space, or before a word.
+        assert_eq!(render("a \"b c\n", &smart, None).unwrap(), "<p>a “b c</p>\n");
+    }
+
+    #[test]
     fn smart_punctuation_leaves_flags_alone() {
         let smart = MarkdownOptions { smart_punctuation: true, ..Default::default() };
         let html = render("Run it with --fix or ---force, pages 1--2 -- \"quoted\" --- done... and a -- b.\n", &smart, None).unwrap();
@@ -1393,6 +1714,24 @@ mod tests {
         assert_eq!(headings(&html), vec![Heading { level: 2, id: Some("a-link-here".into()), text: "A link here".into() }]);
     }
 
+    // GitHub Pages' Rouge puts its classes on every code span (osg #4): a hook writes them.
+    #[test]
+    fn a_code_hook_writes_code_spans() {
+        struct CodeHook;
+        impl Hooks for CodeHook {
+            fn has(&self, name: &str) -> bool {
+                name == "hooks/code"
+            }
+            fn render(&self, _: &str, _: &str, v: Value) -> Result<String> {
+                Ok(format!("<code class=\"language-plaintext highlighter-rouge\">{}</code>\n", escape_text(&v.get("code").to_js_string())))
+            }
+        }
+        assert_eq!(
+            render("Run `ssqch \"build\"` <b>now</b>, then [`serve`](/s/).\n", &MarkdownOptions::default(), Some(&CodeHook)).unwrap(),
+            "<p>Run <code class=\"language-plaintext highlighter-rouge\">ssqch &quot;build&quot;</code> <b>now</b>, then <a href=\"/s/\"><code class=\"language-plaintext highlighter-rouge\">serve</code></a>.</p>\n"
+        );
+    }
+
     #[test]
     fn headings_from_html() {
         let html = "<h1>Top &amp; <em>tail</em></h1>\n<pre><code>&lt;h2&gt;no&lt;/h2&gt;</code></pre><!-- <h2>no</h2> -->\n<H2 class=x id='two'>Two<br>lines</H2><h3 id=three>Three <span aria-hidden=\"true\"><b>¶</b></span></h3>";
@@ -1420,6 +1759,56 @@ mod tests {
         );
         assert_eq!(toc(&hs, 2, 2, true), "<ol><li><a href=\"#a\">A</a></li><li><a href=\"#b\">B</a></li><li><a href=\"#c\">C</a></li></ol>");
         assert_eq!(toc(&[], 2, 3, false), "");
+    }
+
+    // markdown-it's habits, for sites that move with their output as it was (a11y #12, #25; v8
+    // #24). Each expected string is what markdown-it 13 wrote for the same Markdown (`breaks:
+    // true`, `linkify: true`, markdown-it-implicit-figures with `figcaption: true`).
+    #[test]
+    fn markdown_its_habits() {
+        let breaks = MarkdownOptions { breaks: true, ..Default::default() };
+        assert_eq!(render("line one\nline two\n\n- a\n  b\n", &breaks, None).unwrap(), "<p>line one<br>\nline two</p>\n<ul>\n<li>a<br>\nb</li>\n</ul>\n");
+        let fuzzy = MarkdownOptions { fuzzy_links: true, ..Default::default() };
+        assert_eq!(
+            render("See example.com, docs.example.org/a?b=1 and ranger@example.com. Not node.js, e.g. or 1.2.3; www.x.io and https://y.dev stay.\n", &fuzzy, None).unwrap(),
+            "<p>See <a href=\"http://example.com\">example.com</a>, <a href=\"http://docs.example.org/a?b=1\">docs.example.org/a?b=1</a> and <a href=\"mailto:ranger@example.com\">ranger@example.com</a>. Not node.js, e.g. or 1.2.3; <a href=\"http://www.x.io\">www.x.io</a> and <a href=\"https://y.dev\">https://y.dev</a> stay.</p>\n"
+        );
+        assert_eq!(render("example.com\n", &MarkdownOptions::default(), None).unwrap(), "<p>example.com</p>\n");
+        let figures = MarkdownOptions { figures: true, ..Default::default() };
+        assert_eq!(render("![A *pine* cone](/cone.jpg)\n", &figures, None).unwrap(), "<figure><img src=\"/cone.jpg\" alt=\"\"><figcaption>A <em>pine</em> cone</figcaption></figure>\n");
+        assert_eq!(render("[![Map](/map.png \"Trail\")](/trails/)\n", &figures, None).unwrap(), "<figure><a href=\"/trails/\"><img src=\"/map.png\" alt=\"\" title=\"Trail\"></a><figcaption>Map</figcaption></figure>\n");
+        assert_eq!(render("![](/x.png)\n", &figures, None).unwrap(), "<figure><img src=\"/x.png\" alt=\"\"></figure>\n");
+        // An image beside other text is still an image in a paragraph.
+        assert_eq!(render("Look: ![Cone](/cone.jpg)\n", &figures, None).unwrap(), "<p>Look: <img src=\"/cone.jpg\" alt=\"Cone\"></p>\n");
+        let mut o = MarkdownOptions::default();
+        o.apply(&Value::from_pairs([("autolinks", Value::from("fuzzy")), ("breaks", Value::Bool(true)), ("figures", Value::Bool(true))])).unwrap();
+        assert!(o.autolinks && o.fuzzy_links && o.breaks && o.figures);
+        assert!(o.apply(&Value::from_pairs([("autolinks", Value::from("loose"))])).unwrap_err().to_string().contains("markdown.autolinks must be true, false or \"fuzzy\", not \"loose\""));
+    }
+
+    // Another highlighter's classes, so a site keeps its theme's CSS (v8 B3, lit.dev's CodeMirror
+    // classes): the spans' names, and with Prism's, its `<pre>` and its marked lines.
+    #[cfg(feature = "highlight")]
+    #[test]
+    fn highlighting_with_another_highlighters_classes() {
+        let prism = HighlightClasses { names: vec![("keyword".into(), "token keyword".into()), ("number".into(), "token number".into())], prism: true };
+        let opts = MarkdownOptions { highlight: true, highlight_classes: Some(prism), ..Default::default() };
+        assert_eq!(render("```js\nlet a = 1;\n```\n", &opts, None).unwrap(), "<pre class=\"language-js\"><code class=\"language-js\"><span class=\"token keyword\">let</span> a <span class=\"hl-operator\">=</span> <span class=\"token number\">1</span>;\n</code></pre>\n");
+        let marked = render("```js {2}\nlet a;\nlet b;\n```\n", &opts, None).unwrap();
+        assert_eq!(marked, "<pre class=\"language-js\"><code class=\"language-js\"><span class=\"token keyword\">let</span> a;\n<mark class=\"highlight-line highlight-line-active\"><span class=\"token keyword\">let</span> b;</mark>\n</code></pre>\n");
+        // A language with no grammar keeps Prism's `<pre>`, its code escaped.
+        assert_eq!(render("```nope\na < b\n```\n", &opts, None).unwrap(), "<pre class=\"language-nope\"><code class=\"language-nope\">a &lt; b\n</code></pre>\n");
+        // A map of the site's own keeps ssqch's markup around the spans.
+        let own = MarkdownOptions { highlight: true, highlight_classes: Some(HighlightClasses { names: vec![("keyword".into(), "tok-keyword".into())], prism: false }), ..Default::default() };
+        assert_eq!(render("```js\nlet a;\n```\n", &own, None).unwrap(), "<pre class=\"highlight\"><code class=\"language-js\"><span class=\"tok-keyword\">let</span> a;\n</code></pre>\n");
+    }
+
+    #[test]
+    fn urls_can_be_kept_as_written() {
+        let src = "[a](../start/#كتابة-ملف \"T & c\") [b](/x?a=1&b=2) <ranger@example.com> ![c](/café.png)\n";
+        assert_eq!(md(src), "<p><a href=\"../start/#%D9%83%D8%AA%D8%A7%D8%A8%D8%A9-%D9%85%D9%84%D9%81\" title=\"T &amp; c\">a</a> <a href=\"/x?a=1&amp;b=2\">b</a> <a href=\"mailto:ranger@example.com\">ranger@example.com</a> <img src=\"/caf%C3%A9.png\" alt=\"c\"></p>\n");
+        let opts = MarkdownOptions { encode_urls: false, ..Default::default() };
+        assert_eq!(render(src, &opts, None).unwrap(), "<p><a href=\"../start/#كتابة-ملف\" title=\"T &amp; c\">a</a> <a href=\"/x?a=1&amp;b=2\">b</a> <a href=\"mailto:ranger@example.com\">ranger@example.com</a> <img src=\"/café.png\" alt=\"c\"></p>\n");
     }
 
     #[test]

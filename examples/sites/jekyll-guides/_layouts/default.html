@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="{{ page.lang | default: 'en' }}">
+<head>
+  <meta charset="utf-8">
+  <title>{% if page.title %}{{ page.title }} | {% endif %}{{ site.title }}</title>
+  <link rel="stylesheet" href="/assets/guides.css">
+</head>
+<body>
+  {% include nav.html %}
+  <main>{{ content }}</main>
+  <footer>{{ site.description }} {{ site.data.trails | size }} trails.</footer>
+</body>
+</html>

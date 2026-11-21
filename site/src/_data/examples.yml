@@ -63,6 +63,14 @@
   features:
     - { label: Custom elements that load only where they're used, docs: /docs/plugins/ }
     - { label: Serving a site under a path, docs: /docs/deploying/#serving-a-site-under-a-path }
+- name: jekyll-guides
+  engine: Liquid
+  from: opensource.guide and www.ruby-lang.org (Jekyll)
+  shows: A Jekyll site as it's laid out, its layouts run as written, with kramdown's Markdown.
+  features:
+    - { label: "Jekyll's page and site (jekyllTemplates)", docs: /docs/configuring/ }
+    - { label: "Markdown inside HTML (markdown=\"1\") and kramdown's heading ids", docs: /docs/markdown/ }
+    - { label: "Jekyll's highlight, link and post_url tags", docs: /docs/trailheads/from-jekyll/ }
 - name: reference-pages
   engine: Handlebars
   from: the TSConfig reference on typescriptlang.org

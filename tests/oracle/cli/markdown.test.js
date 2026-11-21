@@ -220,3 +220,140 @@ test("toc_sets_the_lists_items_and_links_classes", () => {
 	const bad = project({ "ssqch.config.js": "export default { templateFormats: [\"njk\", \"md\"] };\n", "_includes/t.njk": "{{ toc(page.headings, { klass: \"x\" }) | safe }}\n", "a.md": "---\nlayout: t.njk\n---\n## A\n" });
 	assert.match(ssqch(["build", "--root", bad]).log, /unknown option `klass` \(options: from, to, ordered, id, class, sublistClass, itemClass, linkClass\)/);
 });
+
+// markdown-it's habits as options, for a site that moves with the output it had: `breaks` (374
+// line breaks on a11yproject.com, a11y #12, #25), `autolinks: "fuzzy"` (its `linkify`), and
+// `figures` (markdown-it-implicit-figures, 74 v8.dev pages, v8 #24). Each expected string is what
+// markdown-it 13.0.2 wrote for the same Markdown.
+test("markdown_its_habits_are_options", () => {
+	const dir = tempDir("markdown-habits");
+	const w = (p, t) => write(dir, { [p]: t });
+	w("ssqch.config.js", "export default { markdown: { breaks: true, figures: true, autolinks: \"fuzzy\" } };\n");
+	w("index.md", "Pine\ncone at example.com or ranger@example.com, not node.js.\n\n![A *pine* cone](/cone.jpg)\n\n[![Map](/map.png)](/trails/)\n");
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<p>Pine<br>\ncone at <a href=\"http://example.com\">example.com</a> or <a href=\"mailto:ranger@example.com\">ranger@example.com</a>, not node.js.</p>\n<figure><img src=\"/cone.jpg\" alt=\"\"><figcaption>A <em>pine</em> cone</figcaption></figure>\n<figure><a href=\"/trails/\"><img src=\"/map.png\" alt=\"\"></a><figcaption>Map</figcaption></figure>\n");
+	w("ssqch.config.js", "export default { markdown: { autolinks: \"lots\" } };\n");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("markdown.autolinks must be true, false or \"fuzzy\", not \"lots\""), r.log);
+	w("ssqch.config.js", "export default { markdown: { figures: \"yes\" } };\n");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("markdown.figures must be true or false, not string"), r.log);
+});
+
+// A site keeps its highlighting theme's CSS (v8 B3: most Eleventy sites with code use the Prism
+// plugin; lit.dev's CSS styles CodeMirror's classes): `highlight: { classes }` names the tokens
+// as another highlighter does, and the stylesheet follows.
+test("highlighting_can_use_another_highlighters_classes", () => {
+	const dir = tempDir("highlight-classes");
+	const w = (p, t) => write(dir, { [p]: t });
+	w("ssqch.config.js", "export default { markdown: { highlight: { classes: \"prism\" } } };\n");
+	w("index.md", "```js {2}\nlet a = 1;\nf(a);\n```\n");
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<pre class=\"language-js\"><code class=\"language-js\"><span class=\"token keyword\">let</span> a <span class=\"token operator\">=</span> <span class=\"token number\">1</span>;\n<mark class=\"highlight-line highlight-line-active\"><span class=\"token function\">f</span>(a);</mark>\n</code></pre>\n");
+	const css = read(dir, "_site/highlight.css");
+	assert.ok(css.includes("\n.token.keyword { color: var(--hl-keyword); }\n") && css.includes("\n.highlight-line-active {") && !css.includes(".hl-keyword"), css);
+	w("ssqch.config.js", "export default { markdown: { highlight: { classes: { keyword: \"tok-keyword\", type: \"tok-typeName\" } } } };\n");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.ok(read(dir, "_site/index.html").startsWith("<pre class=\"highlight\"><code class=\"language-js\"><span class=\"line\"><span class=\"tok-keyword\">let</span>"), read(dir, "_site/index.html"));
+	w("ssqch.config.js", "export default { markdown: { highlight: { classes: \"codemirror\" } } };\n");
+	r = ssqch(["build", "--root", dir]);
+	// DELIBERATE (0.11): "pygments" (and "chroma") are classes too, for MkDocs' and Hugo's themes.
+	assert.ok(!r.ok && r.log.includes("markdown.highlight.classes must be \"prism\", \"pygments\" or an object of { kind: \"class names\" }, not \"codemirror\""), r.log);
+});
+
+// GitHub Pages' Rouge puts `class="language-plaintext highlighter-rouge"` on every code span, and a
+// Jekyll site's CSS styles it (osg #4): `_includes/hooks/code.*` writes code spans, given their text.
+test("a_code_hook_writes_code_spans", () => {
+	const dir = tempDir("code-hook");
+	const w = (p, t) => write(dir, { [p]: t });
+	w("_includes/hooks/code.jinja", "<code class=\"language-plaintext highlighter-rouge\">{{ code.code }}</code>");
+	w("index.md", "Run `ssqch build` and `a < b`.\n\n```js\nx\n```\n");
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<p>Run <code class=\"language-plaintext highlighter-rouge\">ssqch build</code> and <code class=\"language-plaintext highlighter-rouge\">a &lt; b</code>.</p>\n<pre><code class=\"language-js\">x\n</code></pre>\n");
+});
+
+// Added in 0.11, from the fresh opensource.guide move: config code's `markdown()` takes the
+// template function's `"inline"` too, where it failed with `unknown option "0"`.
+test("config_markdown_takes_inline_as_templates_do", () => {
+	const dir = tempDir("markdown-inline");
+	write(dir, {
+		"ssqch.config.js": "import { markdown } from \"ssqch\";\nexport default { data: { a: markdown(\"*a*\", \"inline\"), b: markdown(\"*b*\", { inline: true }) } };\n",
+		"index.jinja": "{{ a | safe }}|{{ b | safe }}",
+	});
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<em>a</em>|<em>b</em>");
+	write(dir, { "ssqch.config.js": "import { markdown } from \"ssqch\";\nexport default { data: { a: markdown(\"*a*\", \"block\") } };\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("markdown(): unknown option \"block\" (give \"inline\", or { inline: true })"), r.log);
+});
+
+// Added in 0.11, from opensource.guide (3,791 `markdown="1"` elements, 325 pages with raw
+// `[@name](url)` credits without them): kramdown's Markdown inside HTML, and its heading ids.
+test("kramdowns_markdown_inside_html", () => {
+	const dir = tempDir("markdown-kramdown");
+	write(dir, {
+		"ssqch.config.js": "export default { markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\" } };\n",
+		"index.md": "# Pine 🌲 trail\n\n<aside markdown=\"1\" class=\"note\">\n## Café *notes*\n\n- [@ranger](https://example.com)\n\n</aside>\n## After\n\n<p markdown=\"1\">A *quote*</p>\n\n<div>\nraw *stays*\n\nstill raw\n</div>\n",
+		"other.jinja": "{{ markdown('<p markdown=\"1\">*a*</p>') | safe }}",
+	});
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<h1 id=\"pine--trail\">Pine 🌲 trail</h1>\n<aside class=\"note\">\n<h2 id=\"caf-notes\">Café <em>notes</em></h2>\n<ul>\n<li><a href=\"https://example.com\">@ranger</a></li>\n</ul>\n</aside>\n<h2 id=\"after\">After</h2>\n<p>A <em>quote</em></p>\n<div>\nraw *stays*\nstill raw\n</div>\n");
+	// The `markdown` function too, as Jekyll's `markdownify`.
+	assert.equal(read(dir, "_site/other/index.html"), "<p><em>a</em></p>");
+	// Off (the default), the element is CommonMark's HTML.
+	write(dir, { "ssqch.config.js": "export default {};\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(read(dir, "_site/index.html").includes("<p markdown=\"1\">A *quote*</p>"), read(dir, "_site/index.html"));
+	write(dir, { "ssqch.config.js": "export default { markdown: { htmlMarkdown: true } };\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("markdown.htmlMarkdown must be \"kramdown\" or false, not boolean"), r.log);
+});
+
+// Added in 0.11, from the a11yproject.com rerun: a layout adds the only `h2` on some pages, so
+// `page.headings` has none; `toc()` takes HTML too, as eleventy-plugin-nesting-toc did.
+test("toc_takes_html_for_headings_a_layout_adds", () => {
+	const dir = tempDir("toc-html");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"md\", \"njk\"] };\n",
+		"index.md": "---\nlayout: featured.njk\n---\nSome text.\n",
+		"_includes/featured.njk": "---\nlayout: base.njk\n---\n<h2 id=\"spotlight\">Spotlight</h2>\n{{ content | safe }}",
+		"_includes/base.njk": "<nav>{{ toc(content) | safe }}</nav><nav>{{ toc(page.headings) | safe }}</nav>",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<nav><ul><li><a href=\"#spotlight\">Spotlight</a></li></ul></nav><nav></nav>");
+});
+
+// Added in 0.11, from the a11yproject.com rerun: markdown-it-anchor's ids are encodeURIComponent's
+// (50 pages' ids with `’`, `:` or `?` changed, and links to them broke).
+test("heading_ids_like_markdown_it_anchors", () => {
+	const dir = tempDir("markdown-it-anchor-ids");
+	write(dir, {
+		"ssqch.config.js": "export default { markdown: { headingIds: \"markdown-it-anchor\" } };\n",
+		"index.md": "## What’s new: Café?\n\n## What’s new: Café?\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<h2 id=\"what%E2%80%99s-new%3A-caf%C3%A9%3F\">What’s new: Café?</h2>\n<h2 id=\"what%E2%80%99s-new%3A-caf%C3%A9%3F-1\">What’s new: Café?</h2>\n");
+});
+
+// Added in 0.11, from the fresh opensource.guide rerun: a link without a title had `link.title` as
+// `""`, which Liquid counts as true (`title=""` on 343 pages). It's nothing now.
+test("a_link_without_a_title_has_none_in_its_hook", () => {
+	const dir = tempDir("link-title");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"md\", \"liquid\"] };\n",
+		"_includes/hooks/link.liquid": "<a href=\"{{ link.href }}\"{% if link.title %} title=\"{{ link.title }}\"{% endif %}>{{ link.text }}</a>",
+		"_includes/hooks/image.liquid": "<img src=\"{{ image.src }}\" alt=\"{{ image.alt }}\"{% if image.title %} title=\"{{ image.title }}\"{% endif %}>",
+		"index.md": "[a](/x) [b](/y \"Why\") ![c](/c.png)\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<p><a href=\"/x\">a</a> <a href=\"/y\" title=\"Why\">b</a> <img src=\"/c.png\" alt=\"c\"></p>\n");
+});

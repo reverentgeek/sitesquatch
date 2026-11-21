@@ -84,13 +84,15 @@ export const TABLE: readonly Equivalent[] = [
 	// Front-matter keys that can't be a site's own.
 	{ word: "eleventyComputed", kind: "frontMatter", alias: true, from: ["Eleventy"], ssqch: "computed", say: "ssqch's name is `computed`.", more: "ssqch docs computed" },
 	{ word: "eleventyExcludeFromCollections", kind: "frontMatter", alias: true, from: ["Eleventy"], ssqch: "excludeFromCollections", say: "ssqch's name is `excludeFromCollections`.", more: "ssqch docs excludeFromCollections" },
-	{ word: "eleventyNavigation", kind: "frontMatter", alias: false, from: ["Eleventy"], ssqch: "nav", say: "ssqch's own navigation (`pagesTree` and `navTree`) reads `nav`, so these pages aren't in it. Templates and filters that read `eleventyNavigation` (eleventy-navigation's `findNavigationEntries`) still get it as it is.", more: "ssqch docs nav" },
+	{ word: "eleventyNavigation", kind: "frontMatter", alias: false, from: ["Eleventy"], ssqch: "nav", say: "ssqch's own navigation (`pagesTree` and `navTree`) reads `nav`, so these pages aren't in it: rename it to `nav` (the same `key`, `parent`, `order` and `title`), and `collections.all | eleventyNavigation: \"Feature\"` is `pagesTree(collections.all, { root: \"Feature\" })`. Templates and filters that read `eleventyNavigation` (eleventy-navigation's `findNavigationEntries`) still get it as it is.", more: "ssqch docs nav" },
 	{ word: "templateEngineOverride", kind: "frontMatter", alias: true, from: ["Eleventy"], ssqch: "render", say: "ssqch's name is `render`, a list: render: [njk, md].", more: "ssqch docs render" },
 	{ word: "redirect_from", kind: "frontMatter", alias: true, from: ["Jekyll"], ssqch: "aliases", say: "ssqch's name is `aliases`; `redirectsPlugin()` from \"ssqch/redirects\" writes the redirects.", more: "ssqch docs aliases" },
 	{ word: "published", kind: "frontMatter", alias: false, from: ["Jekyll"], ssqch: "draft", say: "`published: false` doesn't hold a page back in ssqch, so it's published: use `draft: true`.", more: "ssqch docs draft" },
 	// Filters.
 	{ word: "url", kind: "filter", alias: true, from: ["Eleventy"], ssqch: "base", say: "It returns the URL as it is: the build adds `base` to every URL from the site's root, so `href=\"/about/\"` needs no filter (use `withBase()` outside HTML attributes).", more: "ssqch docs base" },
 	{ word: "relative_url", kind: "filter", alias: true, from: ["Jekyll"], ssqch: "base", say: "It returns the URL as it is: the build adds `base` to every URL from the site's root, so `href=\"/about/\"` needs no filter (use `withBase()` outside HTML attributes).", more: "ssqch docs base" },
+	{ word: "getPreviousCollectionItem", kind: "filter", alias: true, from: ["Eleventy"], ssqch: "navPager", say: "`collection | getPreviousCollectionItem(page)` works: it's `navPager(collection, page.url).previous`, which gives `previous` and `next` at once.", more: "ssqch docs navPager" },
+	{ word: "getNextCollectionItem", kind: "filter", alias: true, from: ["Eleventy"], ssqch: "navPager", say: "`collection | getNextCollectionItem(page)` works: it's `navPager(collection, page.url).next`, which gives `previous` and `next` at once.", more: "ssqch docs navPager" },
 	{ word: "slug", kind: "filter", alias: false, from: ["Eleventy"], ssqch: "slugify", say: "ssqch's is `slugify`, which differs: Eleventy's `slug` (the `slugify` npm package) keeps `.` and some punctuation, so `Node.js` is `node.js` there and `node-js` in ssqch. To keep old URLs, define `slug` in `filters` with that package: slug: (s) => slugify(String(s), { lower: true }).", more: "ssqch docs slugify" },
 	{ word: "absolute_url", kind: "filter", alias: false, from: ["Jekyll"], ssqch: "absoluteUrl", say: "`absoluteUrl(url, base)` comes with `rssPlugin()` from \"ssqch/rss\".", more: "ssqch docs absoluteUrl" },
 	{ word: "markdownify", kind: "filter", alias: true, from: ["Jekyll", "Hugo"], ssqch: "markdown", say: "ssqch's function is `markdown(text)` (or `markdown(text, \"inline\")`).", more: "ssqch docs markdown" },
@@ -147,7 +149,7 @@ export const OTHER_CONFIGS: ReadonlyArray<readonly [string, string, string | nul
 	[".vitepress/config.js", "VitePress", null, "from-component-frameworks.md"],
 ];
 
-/** What to say about a folder that has another generator's config and none of ssqch's: the generator's name, and the importer or guide for it. */
+/** What to say about a folder that has another generator's config and none of ssqch's: the generator's name, `ssqch scout`, and the guide for it. */
 export function otherGenerator(root: string): string | undefined {
 	const isFile = (file: string) => fs.statSync(path.join(root, file), { throwIfNoEntry: false })?.isFile() ?? false;
 	const read = (file: string) => { try { return fs.readFileSync(path.join(root, file), "utf8"); } catch { return undefined; } };
@@ -163,9 +165,9 @@ export function otherGenerator(root: string): string | undefined {
 		}
 	}
 	if (!found) return undefined;
-	const [file, generator, importer] = found;
+	const [file, generator] = found;
 	const docs = `\`ssqch docs --from ${generator.toLowerCase()}\` says what maps to what`;
-	const next = importer ? `\`ssqch import ${importer}\` drafts one from it, and ${docs}` : `\`ssqch init\` starts one, and ${docs}`;
+	const next = `\`ssqch scout\` lists what moving it takes and drafts a config (\`--write-draft\`), and ${docs}`;
 	const article = /^[AEIOU]/.test(generator) ? "an" : "a";
 	return `this folder has ${article} ${generator} config (${file}) and no ssqch.config.js, so ssqch builds it with its own defaults. ${next}.`;
 }

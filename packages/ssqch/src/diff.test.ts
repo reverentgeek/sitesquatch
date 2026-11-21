@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { compare, diffJson, diffText, isSame, keyed, tokens, withoutFingerprints } from "./diff.ts";
+import { canonicalTag, canonicalText, compare, compareRuns, diffJson, diffText, isSame, keyed, runsJson, runsText, tokens, withoutFingerprints } from "./diff.ts";
 import type { DiffOptions } from "./diff.ts";
 import { globToRegExp } from "./glob.ts";
 
@@ -89,7 +89,8 @@ test("noise_is_ignored_and_changes_are_classified", async () => {
 	const home = byUrl("/");
 	assert.deepEqual(home.what, ["text", "markup"]);
 	assert.deepEqual(home.notes, ["ids removed (links to them break): #team"]);
-	assert.deepEqual(home.hunks, [{ removed: ["<h2 id=\"team\">"], added: ["<h2>"] }, { removed: ["Old text"], added: ["New text"] }]);
+	// The second is under the heading the first changed, which has its id in the build before.
+	assert.deepEqual(home.hunks, [{ removed: ["<h2 id=\"team\">"], added: ["<h2>"] }, { removed: ["Old text"], added: ["New text"], at: "#team" }]);
 	assert.deepEqual(byUrl("/markup/").what, ["markup"]);
 	const css = byUrl("/assets/index.css");
 	assert.deepEqual(css.renamed, ["assets/index.11111111.css", "assets/index.22222222.css"]);
@@ -97,7 +98,7 @@ test("noise_is_ignored_and_changes_are_classified", async () => {
 	assert.equal(report.changed.length, 3);
 
 	const text = diffText(report, 10, false);
-	assert.ok(text.includes("  ~ /  (text and markup)\n      ids removed (links to them break): #team\n      - <h2 id=\"team\">\n      + <h2>\n      - Old text\n      + New text\n"), text);
+	assert.ok(text.includes("  ~ /  (text and markup)\n      ids removed (links to them break): #team\n      - <h2 id=\"team\">\n      + <h2>\n      @ under #team\n      - Old text\n      + New text\n"), text);
 	assert.ok(text.includes("  ~ /assets/index.css  (index.11111111.css -> index.22222222.css)"), text);
 	assert.ok(text.endsWith("Changes found: 4 pages and 1 other file (3 changed, 1 added, 1 removed); 1 page and 2 other files are the same. The stump has moved.\n"), text);
 	const json = diffJson(report, 1) as { same: boolean; summary: { changed: number }; changed: Array<{ url: string; changedLines: number; hunks: unknown[] }> };
@@ -107,10 +108,14 @@ test("noise_is_ignored_and_changes_are_classified", async () => {
 	assert.equal(homeJson.changedLines, 4);
 	assert.equal(homeJson.hunks.length, 1);
 
-	// --exact: fingerprints are different files, and every byte counts.
+	// --exact: fingerprints are different files, and every byte counts but what --ignore leaves out.
 	const exact = await compare(before, after, options({ exact: true }));
 	assert.ok(exact.added.includes("/assets/index.22222222.css") && exact.removed.includes("/assets/index.11111111.css"));
 	assert.ok(exact.changed.some((f) => f.url === "/same/"));
+	const addresses = build({ "api/index.html": "<p>&lt;Client object at 0x108946cf0&gt;</p>\n" });
+	const others = build({ "api/index.html": "<p>&lt;Client object at 0x10a2b3c4d&gt;</p>\n" });
+	assert.equal((await compare(addresses, others, options({ exact: true }))).changed.length, 1);
+	assert.equal((await compare(addresses, others, options({ exact: true, ignore: [/object at 0x[0-9a-f]+/gu] }))).changed.length, 0);
 
 	// An ignore pattern, and only some files.
 	report = await compare(before, after, options({ ignore: [/(Old|New)\s+text/gu], only: [globToRegExp("index.html")] }));
@@ -159,4 +164,208 @@ test("a fingerprinted name that's another file's key keeps every file", async ()
 	assert.deepEqual([...report.removed].sort(), ["/x.11111111.22222222.css", "/x.11111111.css"]);
 	assert.equal(report.unchangedFiles, 1);
 	for (const dir of [before, after]) fs.rmSync(dir, { recursive: true });
+});
+
+// What browsers read the same is the same (blog #8, v8 #23): a migration's diff was mostly these.
+test("markup_browsers_read_the_same_is_the_same", () => {
+	const same = (a: string, b: string) => assert.deepEqual(tokens(a), tokens(b), `${a} vs ${b}`);
+	const differ = (a: string, b: string) => assert.notDeepEqual(tokens(a), tokens(b), `${a} vs ${b}`);
+	same("<script defer src=\"/a.js\"></script>", "<SCRIPT src='/a.js' defer=\"defer\"></script>");
+	same("<input disabled=\"\" type=text>", "<input type=\"text\" disabled />");
+	same("<br/>", "<br>");
+	same("<svg><path d=\"M0\"/></svg>", "<svg><path d=\"M0\"></path></svg>");
+	same("<svg/><p>x</p>", "<svg></svg><p>x</p>");
+	same("<img srcset=\"a.jpg 1x,b.jpg   2x\" sizes=\"(min-width: 40em) 50vw,100vw\">", "<img sizes=\"(min-width: 40em) 50vw, 100vw\" srcset=\"a.jpg 1x, b.jpg 2x\">");
+	same("<h2 id=\"it&#39;s\">It&#39;s &quot;here&quot;</h2>", "<h2 id=\"it's\">It's \"here\"</h2>");
+	same("<a href=\"/?a=1&amp;b=2\">Tom &amp; Jerry &gt; all</a>", "<a href=\"/?a=1&b=2\">Tom & Jerry > all</a>");
+	same("<p class=\" a  b \">x</p>", "<p class=\"a b\">x</p>");
+	same("<pre><code>it&#39;s</code></pre>", "<pre><code>it's</code></pre>");
+	same("<!DOCTYPE html>", "<!doctype html>");
+	// What a browser reads differently stays different.
+	differ("<p class=\"a b\">x</p>", "<p class=\"b a\">x</p>");
+	differ("<p>a&nbsp;b</p>", "<p>a b</p>");
+	differ("<p>&lt;b&gt;</p>", "<p><b></p>");
+	differ("<input value=\"defer\">", "<input value>");
+	differ("<div/>x", "<div></div>x");
+	differ("<script>it&#39;s</script>", "<script>it's</script>");
+	// The first of two attributes with one name is the one a browser keeps.
+	assert.deepEqual(canonicalTag("<a href=\"/one\" HREF=\"/two\">", false), ["<a href=\"/one\">", false]);
+	assert.deepEqual(canonicalTag("<path d=\"M0\" />", true), ["<path d=\"M0\">", true]);
+	assert.equal(canonicalText("&copy; &#169; &#xA0; & &amp;amp;"), "&copy; \u00a9 &nbsp; &amp; &amp;amp;");
+});
+
+// A feed holds its pages' HTML escaped or in CDATA: read as HTML, `<br />` and `<br>` are the
+// same there too, and XML's names keep their case.
+test("a_feeds_escaped_html_is_compared_as_html", async () => {
+	const feed = (content: string, date: string) => `<?xml version="1.0"?>\n<feed><entry><updated>${date}</updated><content type="html">${content}</content></entry></feed>\n`;
+	const before = build({ "feed.xml": feed("&lt;p&gt;Pine &amp;amp; cone&lt;br /&gt;&lt;/p&gt;", "2026-01-01"), "rss.xml": "<rss><description><![CDATA[<p class='a'>x</p>]]></description></rss>" });
+	const after = build({ "feed.xml": feed("&lt;p&gt;Pine &amp;amp; cone&lt;br&gt;&lt;/p&gt;", "2026-01-02"), "rss.xml": "<rss><description>&lt;p class=\"a\"&gt;x&lt;/p&gt;</description></rss>" });
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.changed.map((f) => [f.path, f.kind, f.hunks, f.notes]), [["feed.xml", "text", [{ removed: ["2026-01-01"], added: ["2026-01-02"] }], ["only dates changed (2026-01-01 -> 2026-01-02)"]]]);
+	assert.deepEqual(tokens("<pubDate>x</pubDate>", true).map((t) => t.text), ["<pubDate>", "x", "</pubDate>"]);
+});
+
+// opensource.guide's and the blog's sitemaps had the same URLs in another order.
+test("the_same_lines_in_another_order_are_said_to_be", async () => {
+	const before = build({ "sitemap.xml": "<urlset><url><loc>/a/</loc></url><url><loc>/b/</loc></url></urlset>" });
+	const after = build({ "sitemap.xml": "<urlset><url><loc>/b/</loc></url><url><loc>/a/</loc></url></urlset>" });
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.changed[0].notes, ["the same lines, in another order"]);
+});
+
+// A link is compared by where it points (lit.dev's output has 33 links whose targets matter), not
+// by what's there.
+test("links_are_compared_by_their_targets", { skip: process.platform === "win32" && "symlinks need privileges on Windows" }, async () => {
+	const before = build({ "a.txt": "A\n", "b.txt": "B\n" });
+	const after = build({ "a.txt": "A\n", "b.txt": "B\n", "same.txt": "x" });
+	fs.symlinkSync("a.txt", path.join(before, "latest.txt"));
+	fs.symlinkSync("b.txt", path.join(after, "latest.txt"));
+	fs.symlinkSync("a.txt", path.join(before, "steady.txt"));
+	fs.symlinkSync("a.txt", path.join(after, "steady.txt"));
+	fs.writeFileSync(path.join(before, "flat.txt"), "A\n");
+	fs.symlinkSync("a.txt", path.join(after, "flat.txt"));
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.changed.map((f) => [f.path, f.notes, f.hunks]), [
+		["flat.txt", ["a link in one build and a file in the other"], [{ removed: ["(a file, not a link)"], added: ["-> a.txt"] }]],
+		["latest.txt", ["a link, to somewhere else"], [{ removed: ["-> a.txt"], added: ["-> b.txt"] }]],
+	]);
+});
+
+// One cause on many pages is one group, the most pages first (osg `scripts/compare.py` did this by
+// hand for 387 pages): the same lines, or the same tags with other attribute values. A page's
+// other changes are listed with it after the groups; a page with none isn't listed again.
+test("changes_on_several_files_are_grouped", async () => {
+	const page = (body: string) => `<html><head><title>T</title></head><body>${body}</body></html>`;
+	const before = build({
+		"a/index.html": page("<footer>Built with Eleventy</footer><a href=\"#é\">x</a>"),
+		"b/index.html": page("<footer>Built with Eleventy</footer><a href=\"#ü\">y</a><p>Old</p>"),
+		"c/index.html": page("<footer>Built with Eleventy</footer>"),
+		"d/index.html": page("<p>Alone</p>"),
+	});
+	const after = build({
+		"a/index.html": page("<footer>Built with ssqch</footer><a href=\"#%C3%A9\">x</a>"),
+		"b/index.html": page("<footer>Built with ssqch</footer><a href=\"#%C3%BC\">y</a><p>New</p>"),
+		"c/index.html": page("<footer>Built with ssqch</footer>"),
+		"d/index.html": page("<p>Alone, changed</p>"),
+	});
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.groups.map((g) => [g.urls, g.same, g.kind, g.hunk]), [
+		[["/a/", "/b/", "/c/"], true, "text", { removed: ["Built with Eleventy"], added: ["Built with ssqch"] }],
+		[["/a/", "/b/"], false, "markup", { removed: ["<a href=\"#é\">"], added: ["<a href=\"#%C3%A9\">"] }],
+	]);
+	const text = diffText(report, 10, false);
+	assert.ok(text.includes("Changed (4)\n  The same change on more than one file, the most files first (--ungrouped lists each file with all of it):\n  ~ 3 pages: /a/, /b/, /c/\n      - Built with Eleventy\n      + Built with ssqch\n  ~ 2 pages, the same but for attribute values: /a/, /b/\n      - <a href=\"#é\">\n      + <a href=\"#%C3%A9\">\n  And what's left on 2 files:\n  ~ /b/  (text and markup)\n      - Old\n      + New\n  ~ /d/  (text)\n"), text);
+	assert.ok(!text.includes("~ /a/  ("), text);
+	const json = diffJson(report, 0) as { groups: Array<{ files: number; kind: string }>; changed: Array<{ url: string; groups: number[] }> };
+	assert.deepEqual(json.groups.map((g) => [g.files, g.kind]), [[3, "text"], [2, "markup"]]);
+	assert.deepEqual(json.changed.map((f) => [f.url, f.groups]), [["/a/", [0, 1]], ["/b/", [0, 1]], ["/c/", [0]], ["/d/", []]]);
+	// --ungrouped: each file with all its changes, as before.
+	const each = await compare(before, after, options({ ungrouped: true }));
+	assert.equal(each.groups.length, 0);
+	assert.ok(diffText(each, 10, false).includes("  ~ /a/  (text and markup)\n      - Built with Eleventy\n"));
+});
+
+// The same tags with other attributes are one change too (the blog's `<picture>`s with another
+// number of widths), when the change is a run of three lines or more; one changed `<meta>` isn't
+// another's.
+test("the_same_tags_with_other_attributes_are_grouped", async () => {
+	const picture = (widths: number[], extra = "") => `<picture>${widths.map((w) => `<source srcset="/img/a-${w}.webp">`).join("")}<img src="/img/a.gif"${extra}></picture>`;
+	const before = build({
+		"a/index.html": `<main>${picture([300, 600])}</main><meta name="description" content="A">`,
+		"b/index.html": `<main>${picture([300, 600, 900])}</main><meta property="og:title" content="B">`,
+		"c/index.html": `<main>${picture([300], " fetchpriority=\"high\"")}</main>`,
+	});
+	const after = build({
+		"a/index.html": "<main><img src=\"/img/a.gif\" width=\"600\"></main><meta name=\"description\" content=\"A, again\">",
+		"b/index.html": "<main><img src=\"/img/a.gif\" width=\"900\"></main><meta property=\"og:title\" content=\"B, again\">",
+		"c/index.html": "<main><img src=\"/img/a.gif\" width=\"300\"></main>",
+	});
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.groups.map((g) => [g.urls, g.match]), [[["/a/", "/b/", "/c/"], "tags"]]);
+	assert.ok(diffText(report, 10, false).includes("  ~ 3 pages, the same tags with other attributes: /a/, /b/, /c/\n"));
+	// The two `<meta>`s are each their page's own.
+	assert.deepEqual(report.changed.map((f) => [f.url, f.ownHunks.length]), [["/a/", 1], ["/b/", 1], ["/c/", 0]]);
+});
+
+// Jekyll prints the build's time into every page (osg #14): builds made the same way vary the
+// same way on each, and that's one group, as in a diff of two.
+test("what_varies_the_same_way_on_several_files_is_grouped", async () => {
+	const site = (time: string, extra = "") => build({ "a/index.html": `<p>A</p><footer>Built ${time}</footer>`, "b/index.html": `<p>B</p><footer>Built ${time}</footer>`, "c/index.html": `<p>C${extra}</p>` });
+	const runs = [site("at nine"), site("at ten", "!"), site("at nine")];
+	const report = await compareRuns(runs, options());
+	assert.deepEqual(report.groups.map((g) => [g.urls, g.match, g.hunk]), [[["/a/", "/b/"], "lines", { removed: ["Built at nine"], added: ["Built at ten"] }]]);
+	const text = runsText({ ...report, runs: ["ref-1", "ref-2", "ref-3"] }, 10, false);
+	assert.ok(text.includes("Varies (3)\n  The same difference on more than one file, the most files first (--ungrouped lists each file with all of it):\n  ~ 2 pages: /a/, /b/\n      - Built at nine\n      + Built at ten\n  And each file, with what's left:\n  ~ /c/  (2 versions: ref-1, ref-3 agree; ref-2 differs)\n      - C\n      + C!\n"), text);
+	assert.ok(!text.includes("~ /a/  ("), text);
+	const json = runsJson(report, 0) as { groups: unknown[]; varies: Array<{ url: string; groups: number[] }> };
+	assert.equal(json.groups.length, 1);
+	assert.deepEqual(json.varies.map((v) => [v.url, v.groups]), [["/a/", [0]], ["/b/", [0]], ["/c/", []]]);
+	assert.equal((await compareRuns(runs, options({ ungrouped: true }))).groups.length, 0);
+});
+
+// A race needs many builds (a11yproject.com's KSS, rerun): the versions are counted, and the build
+// with the most common version of the most files is the one to compare with.
+test("many_builds_are_counted_and_the_typical_one_named", async () => {
+	const site = (a: string, b: string) => build({ "a/index.html": `<p>${a}</p>`, "b/index.html": `<p>${b}</p>` });
+	const runs = [site("x", "1"), site("y", "1"), site("y", "2"), site("y", "1"), site("y", "1"), site("y", "1"), site("x", "2")];
+	const report = await compareRuns(runs, options());
+	assert.equal(report.typical, 1);
+	const text = runsText({ ...report, runs: runs.map((_, i) => `ref-${i + 1}`) }, 10, false);
+	assert.ok(text.includes("~ /a/  (2 versions: 5 of 7 builds (ref-2, ref-3, ref-4, ...) agree; ref-1, ref-7 differ)"), text);
+	assert.ok(text.includes("The build most like the others: ref-2, with the most common version of 2 of the 2 files that vary.\n"), text);
+	assert.equal((runsJson({ ...report, runs: runs.map((_, i) => `ref-${i + 1}`) }, 0) as { typical: string }).typical, "ref-2");
+});
+
+// A build's time printed in each page's own text (Jekyll's `site.time` in every page's JSON-LD,
+// opensource.guide), or a few milliseconds apart in each feed (the Rust blog): dates of one form
+// that changed, so one group, though the text around them isn't the same.
+test("the_same_dates_changed_in_other_text_are_grouped", async () => {
+	const page = (name: string, time: string) => `<script type="application/ld+json">{"name":"${name}","dateModified":"${time}"}</script><p>${name}</p>`;
+	const before = build({ "a/index.html": page("Pine", "2026-11-19T20:30:06Z"), "b/index.html": page("Cedar", "2026-11-19T20:30:06Z"), "c/index.html": page("Fir", "2026-11-18T09:00:00Z"), "d/index.html": page("Oak", "19 Nov 2026") });
+	const after = build({ "a/index.html": page("Pine", "2026-11-19T20:30:18Z"), "b/index.html": page("Cedar", "2026-11-19T20:30:18Z"), "c/index.html": page("Fir", "2026-11-18T09:00:01Z"), "d/index.html": page("Oak", "20 Nov 2026") });
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.groups.map((g) => [g.urls, g.match, g.kind]), [[["/a/", "/b/", "/c/"], "dates", "dates"]]);
+	assert.ok(diffText(report, 10, false).includes("  ~ 3 pages, the same dates in other text: /a/, /b/, /c/\n"));
+	// A date of another form is another change.
+	assert.deepEqual(report.changed.find((f) => f.url === "/d/")!.groups, []);
+});
+
+// Zola writes `=` as `&#x3D;` in a feed's escaped HTML: unescaped once, the tags read as tags, and
+// a tag that doesn't read as one isn't rewritten into something else.
+test("a_feeds_numeric_entities_are_unescaped_and_odd_tags_stay_as_written", async () => {
+	const before = build({ "feed.xml": "<feed><content type=\"html\">&lt;a href&#x3D;&quot;https:&#x2F;&#x2F;example.com&#x2F;#trail&quot;&gt;Trail&lt;&#x2F;a&gt;</content></feed>" });
+	const after = build({ "feed.xml": "<feed><content type=\"html\">&lt;a href=&quot;https://example.com/#trail&quot;&gt;Trail&lt;/a&gt;</content></feed>" });
+	assert.equal((await compare(before, after, options())).changed.length, 0);
+	assert.deepEqual(canonicalTag("<a href&#x3D;\"https://x/#y\" class=b>", false), ["<a href&#x3D;\"https://x/#y\" class=b>", false]);
+});
+
+// Eleventy's Nunjucks printed a bare date as JavaScript's Date.toString(), and ssqch prints ISO
+// 8601: a date-only change, grouped (70 a11yproject.com pages were listed one by one).
+test("a_date_printed_by_javascript_is_a_date", async () => {
+	const page = (name: string, date: string) => `<script type="application/ld+json">{"name":"${name}","datePublished":"${date}"}</script>`;
+	const before = build({ "a/index.html": page("Pine", "Mon Mar 08 2021 00:00:00 GMT+0000 (Coordinated Universal Time)"), "b/index.html": page("Cedar", "Tue Mar 09 2021 00:00:00 GMT+0000 (Coordinated Universal Time)") });
+	const after = build({ "a/index.html": page("Pine", "2021-03-08T00:00:00.000Z"), "b/index.html": page("Cedar", "2021-03-09T00:00:00.000Z") });
+	const report = await compare(before, after, options());
+	assert.deepEqual(report.groups.map((g) => [g.urls, g.match]), [[["/a/", "/b/"], "dates"]]);
+	assert.ok(report.changed.every((f) => f.onlyDates));
+});
+
+// What a reader and a search engine end up at is called out like a title: a page whose canonical
+// link or refresh changed has moved, and a feed's entries are what readers' apps track.
+test("canonical_links_redirects_and_feed_entries_are_called_out", async () => {
+	const before = build({
+		"a/index.html": "<head><link rel=\"canonical\" href=\"https://example.com/a/\"></head><p>A</p>",
+		"old/index.html": "<meta http-equiv=\"refresh\" content=\"0; url=/new/\"><p>Moved</p>",
+		"feed.xml": "<feed><entry><id>tag:a</id><title>A</title></entry><entry><id>tag:b</id><title>B</title></entry></feed>",
+	});
+	const after = build({
+		"a/index.html": "<head><link href=\"https://example.com/a\" rel=\"canonical\"></head><p>A</p>",
+		"old/index.html": "<meta content=\"0;url=/newer/\" http-equiv=\"refresh\"><p>Moved</p>",
+		"feed.xml": "<feed><entry><id>tag:b</id><title>B</title></entry><entry><id>tag:c</id><title>C</title></entry></feed>",
+	});
+	const report = await compare(before, after, options({ ungrouped: true }));
+	const notes = Object.fromEntries(report.changed.map((f) => [f.url, f.notes]));
+	assert.deepEqual(notes["/a/"], ["canonical link: https://example.com/a/ -> https://example.com/a"]);
+	assert.deepEqual(notes["/old/"], ["redirects to: /new/ -> /newer/"]);
+	assert.deepEqual(notes["/feed.xml"], ["feed entries removed (readers see them go): tag:a", "feed entries added (readers see them as new): tag:c"]);
 });

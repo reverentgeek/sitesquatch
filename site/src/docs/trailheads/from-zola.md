@@ -7,9 +7,9 @@ Zola is a single Rust binary, and SiteSquatch runs on Node (from npm), so the mo
 
 blog.rust-lang.org was ported this way as a trial: all of its URLs and most pages came out the same. The [`blog-tags`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/blog-tags/) example is a small blog laid out like a Zola site (sections, tags with feeds, aliases, highlighting), distilled from blog.rust-lang.org.
 
-## Importing
+## Scouting
 
-`ssqch import zola` does the mechanical part of this guide. In each page's `+++` front matter it moves `tags` out of `[taxonomies]` to the top level and turns `path` into a `permalink`. It writes a first `ssqch.config.js` from `config.toml`: `content/` as the input and `templates/` for layouts, `config.title` and `config.extra` as data so templates keep reading them, the Markdown options, Sass, a sitemap, redirects for `aliases`, and `static/` copied as it is. Then it lists what's left with where it is: each section (`_index.md`), each shortcode used in the content, and counts of the Tera constructs in your templates that read differently in Jinja. Run it once to read the list (it changes nothing), then with `--write` in a clean git checkout.
+`ssqch scout` (see [Scouting a site](../trailheads.md#scouting-a-site)) lists what this guide describes for your site and drafts the mechanical part. Its edits, in each page's `+++` front matter, move `tags` out of `[taxonomies]` to the top level and turn `path` into a `permalink`. Its draft is a first `ssqch.config.js` from `config.toml`: `content/` as the input and `templates/` for layouts, `config.title` and `config.extra` as data so templates keep reading them, the Markdown options, Sass, a sitemap, redirects for `aliases`, and `static/` copied as it is. Then it lists what's left with where it is: each section (`_index.md`), each shortcode used in the content, and counts of the Tera constructs in your templates that read differently in Jinja. It changes nothing on its own: `--write-draft` writes the draft and `--patch move.patch` the edits, to read and `git apply`.
 
 ## The config
 

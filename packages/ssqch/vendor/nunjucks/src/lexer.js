@@ -312,6 +312,21 @@ var Tokenizer = /*#__PURE__*/function () {
           case 'r':
             str += '\r';
             break;
+          // ssqch: Python's (and JavaScript's) code point escapes, so Jinja's "\u003ch1" is "<h1".
+          case 'x':
+          case 'u':
+          case 'U':
+            {
+              var size = { x: 2, u: 4, U: 8 }[this.current()];
+              var hex = this.str.slice(this.index + 1, this.index + 1 + size);
+              if (hex.length === size && /^[0-9a-fA-F]+$/.test(hex)) {
+                str += String.fromCodePoint(parseInt(hex, 16));
+                for (var i = 0; i < size; i++) this.forward();
+              } else {
+                str += this.current();
+              }
+            }
+            break;
           default:
             str += this.current();
         }

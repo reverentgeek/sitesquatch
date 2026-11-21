@@ -61,7 +61,6 @@
     
   </ul>
 </photo-gallery>
-
 <script type="module">const idle=window.requestIdleCallback||((f)=>setTimeout(f,200));for(const[tag,src,when]of[["photo-gallery","/elements/photo-gallery.js","idle"]]){if(when==="idle"){idle(()=>import(src));continue}const seen=new IntersectionObserver((entries)=>{if(entries.some((e)=>e.isIntersecting)){seen.disconnect();import(src)}},{rootMargin:"200px"});document.querySelectorAll(tag).forEach((el)=>seen.observe(el))}</script>
 </body>
 </html>

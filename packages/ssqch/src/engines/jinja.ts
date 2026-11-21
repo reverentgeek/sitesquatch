@@ -31,6 +31,9 @@ const safe = (text: string) => new SafeString(text);
 
 /** The `autoescape` a `.jinja` environment has: escaping as Jinja does, which leaves `\` alone (nunjucks writes `&#92;`). */
 export const JINJA_ESCAPE = Object.freeze({ jinja: true });
+/** The `autoescape` of a `.jinja` environment with `jinja: { autoescape: false }`: Jinja's printing, and nothing escaped, as MkDocs' Jinja has it. */
+export const JINJA_RAW = Object.freeze({ jinja: true, raw: true });
+const isJinja = (autoescape: unknown) => autoescape === JINJA_ESCAPE || autoescape === JINJA_RAW;
 
 /** An error in a template that ssqch's own filters report as 0.7 did (`invalid operation: not a date: nope`): its message is the whole story. */
 export class JinjaError extends Error {}
@@ -197,9 +200,10 @@ function quote(s: string): string {
 
 /**
  * JSON as Jinja's `tojson` writes it: `{"a": 1, "b": [2, 3]}`, or indented, with `<`, `>`, `&`
- * and `'` escaped so it's safe in HTML and in a `<script>`.
+ * and `'` escaped so it's safe in HTML and in a `<script>`. `sortKeys` writes a dict's keys in
+ * order, as Jinja does (`json.dumps(sort_keys=True)`); `.njk` keeps them as they were set.
  */
-function toJson(value: unknown, indent?: number): string {
+function toJson(value: unknown, indent?: number, sortKeys = false): string {
 	const write = (v: unknown, depth: number): string => {
 		if (v === undefined || v === null || (typeof v === "number" && !Number.isFinite(v))) return "null";
 		if (typeof v === "boolean" || typeof v === "number") return String(v);
@@ -207,6 +211,7 @@ function toJson(value: unknown, indent?: number): string {
 		if (v instanceof Date) return JSON.stringify(pyString(v));
 		if (typeof v === "function") return "null";
 		const entries: Array<[string | undefined, unknown]> = Array.isArray(v) ? v.map((item) => [undefined, item]) : Object.entries(v as object).filter(([, item]) => item !== undefined && typeof item !== "function");
+		if (sortKeys && !Array.isArray(v)) entries.sort(([a], [b]) => (a! < b! ? -1 : a! > b! ? 1 : 0));
 		const [open, close] = Array.isArray(v) ? ["[", "]"] : ["{", "}"];
 		if (!entries.length) return open + close;
 		const parts = entries.map(([k, item]) => (k === undefined ? "" : `${JSON.stringify(k)}: `) + write(item, depth + 1));
@@ -310,20 +315,22 @@ const isLoop = (o: Record<string, unknown>) => "index0" in o && "revindex0" in o
 
 /** A method Python (or Jinja's loop) has that the value doesn't: `"a".upper()`, `post.items()`, `date.strftime("%Y")`. */
 function pythonMethod(obj: unknown, name: string): Fn | undefined {
+	// A table's own methods only: `constructor` or `toString` aren't Python's.
+	const own = <T,>(table: Record<string, T>): T | undefined => (Object.hasOwn(table, name) ? table[name] : undefined);
 	if (isString(obj)) {
-		const m = STRING_METHODS[name];
+		const m = own(STRING_METHODS);
 		return m && ((...args) => m(String(obj), ...args.filter((a) => !isKwargs(a))));
 	}
 	if (Array.isArray(obj)) {
-		const m = LIST_METHODS[name];
+		const m = own(LIST_METHODS);
 		return m && ((...args) => m(obj, ...args));
 	}
 	if (obj instanceof Date) {
-		const m = DATE_METHODS[name];
+		const m = own(DATE_METHODS);
 		return m && ((...args) => m(obj, ...args));
 	}
 	if (isPlain(obj)) {
-		const m = (isLoop(obj) ? LOOP_METHODS[name] : undefined) ?? DICT_METHODS[name];
+		const m = (isLoop(obj) ? own(LOOP_METHODS) : undefined) ?? own(DICT_METHODS);
 		return m && ((...args) => m(obj, ...args));
 	}
 	return undefined;
@@ -378,7 +385,9 @@ export function installRuntime(): void {
 		}
 		const found = (obj as Record<string, unknown>)[val as string];
 		if (typeof found === "function") {
-			const utc = obj instanceof Date ? DATE_UTC[val as string] : undefined;
+			// Its own keys only: `toString` would be Object's, called on nothing (`[object Undefined]`,
+			// a11yproject.com's JSON-LD), where a date's own `toString` is meant.
+			const utc = obj instanceof Date && Object.hasOwn(DATE_UTC, val as string) ? DATE_UTC[val as string] : undefined;
 			if (utc) return () => utc(obj as Date);
 			// A string's `split` and `replace` are Python's, as they were in 0.7: JavaScript's
 			// `"a-a".replace("-", " ")` replaces only the first.
@@ -400,8 +409,8 @@ export function installRuntime(): void {
 	runtime.suppressValue = function suppressValue(value: unknown, autoescape: unknown) {
 		if (value === undefined || value === null) return "";
 		if (value instanceof SafeString) return value;
-		const text = typeof value === "string" ? value : autoescape === JINJA_ESCAPE ? pyString(value) : njkString(value);
-		if (!autoescape) return text;
+		const text = typeof value === "string" ? value : isJinja(autoescape) ? pyString(value) : njkString(value);
+		if (!autoescape || autoescape === JINJA_RAW) return text;
 		return autoescape === JINJA_ESCAPE ? escapeJinja(text) : lib.escape(text);
 	};
 
@@ -423,8 +432,8 @@ export function installRuntime(): void {
 	// `~` joins values as they'd print (an undefined value is nothing, `none` is `None`). With a
 	// safe side, the result is safe and the other side is escaped, as in Jinja.
 	runtime.concat = function concat(a: unknown, b: unknown, autoescape: unknown) {
-		const str = autoescape === JINJA_ESCAPE ? pyString : njkString;
-		if (!(a instanceof SafeString) && !(b instanceof SafeString)) return str(a) + str(b);
+		const str = isJinja(autoescape) ? pyString : njkString;
+		if (autoescape === JINJA_RAW || (!(a instanceof SafeString) && !(b instanceof SafeString))) return str(a) + str(b);
 		const part = (v: unknown) => (v instanceof SafeString ? String(v) : autoescape === JINJA_ESCAPE ? escapeJinja(str(v)) : lib.escape(str(v)));
 		return safe(part(a) + part(b));
 	};
@@ -439,6 +448,43 @@ export function installRuntime(): void {
 		if (value === undefined) throw new lib.TemplateError("attempted to output null or undefined value", lineno + 1, colno + 1);
 		return value;
 	};
+
+	// Jinja's `self`: `{{ self.title() }}` renders the block `title` as the page's templates have
+	// it (the child's over the parent's), wherever it's called, as Material for MkDocs' base.html
+	// does with `self.announce()`. A variable or a value named `self` comes first.
+	const lookup = runtime.contextOrFrameLookup;
+	runtime.contextOrFrameLookup = function contextOrFrameLookup(context: unknown, frame: unknown, name: string) {
+		const found = lookup(context, frame, name);
+		if (found !== undefined || name !== "self" || !isBlockContext(context)) return found;
+		return selfOf(context);
+	};
+}
+
+interface BlockContext { env: unknown; blocks: Record<string, Fn[]>; getBlock(name: string): Fn }
+const isBlockContext = (v: unknown): v is BlockContext => typeof v === "object" && v !== null && typeof (v as BlockContext).blocks === "object" && typeof (v as BlockContext).getBlock === "function";
+const selves = new WeakMap<BlockContext, object>();
+
+/** The `self` of a render: each block of its templates as a function that renders it. */
+function selfOf(context: BlockContext): object {
+	let self = selves.get(context);
+	if (self) return self;
+	const Frame = (nunjucks.runtime as unknown as { Frame: new () => unknown }).Frame;
+	self = new Proxy({}, {
+		get(_target, name) {
+			if (typeof name !== "string" || !context.blocks[name]) return undefined;
+			return () => {
+				let out = "";
+				context.getBlock(name)(context.env, context, new Frame(), nunjucks.runtime, (err: unknown, text: string) => {
+					if (err) throw err;
+					out = text;
+				});
+				return safe(out);
+			};
+		},
+		has: (_target, name) => typeof name === "string" && Boolean(context.blocks[name]),
+	});
+	selves.set(context, self);
+	return self;
 }
 
 // ---- filters --------------------------------------------------------------------------------
@@ -688,7 +734,7 @@ export function jinjaFilters(escape: (text: string) => string, flavor: "njk" | "
 		truncate,
 		tojson: (v: unknown, ...args: unknown[]) => {
 			const [indent] = named(args, ["indent"]);
-			return safe(toJson(v, indent === true ? 2 : typeof indent === "number" ? indent : undefined));
+			return safe(toJson(v, indent === true ? 2 : typeof indent === "number" ? indent : undefined, flavor === "jinja"));
 		},
 		pprint: (v: unknown) => pyRepr(v, new Set(), 4),
 		pluralize: (v: unknown, ...args: unknown[]) => {

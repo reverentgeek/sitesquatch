@@ -42,7 +42,8 @@ complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "diff" -d 'Compare two b
 complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "footprint" -d 'Show how much a build weighs: its files by kind, and the heaviest pages and files'
 complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "init" -d 'Create a starter site (config, layout, five posts, data and editor types)'
 complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "types" -d 'Write ssqch.d.ts, the types editors use for ssqch.config.js'
-complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "import" -d 'Move a site from another generator: rename and rewrite what\'s mechanical, and list the rest'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "baseline" -d 'Build the site with its old generator in fresh copies and compare the builds'
+complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "scout" -d 'Scout a site built with another generator: what moving it to ssqch takes, and what remains during a move'
 complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "capabilities" -d 'Say what this binary supports: template languages, modules, config options and optional features'
 complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "docs" -d 'Read the documentation for this version: a command, config option, function or topic'
 complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
@@ -100,6 +101,8 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s v -l verbose
 complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l ignore -d 'Leave out text matching this regular expression before comparing (repeatable)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l only -d 'Only compare files matching this glob, like \'**/*.html\' (repeatable)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l exclude -d 'Leave out files matching this glob, like \'img/**\' (repeatable)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l ungrouped -d 'List each file with all its changes, without grouping the ones shared by several files'
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l lines -d 'Changed lines to show for each file (0 for all)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l format -d 'text or json' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l root -d 'Project root (defaults to the current directory)' -r -F
@@ -140,15 +143,23 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l offline -d 'Don\'t
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s q -l quiet -d 'Print only warnings and errors'
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s v -l verbose -d 'Also list the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s h -l help -d 'Print help'
-complete -c ssqch -n "__fish_ssqch_using_subcommand import" -l root -d 'Project root (defaults to the current directory)' -r -F
-complete -c ssqch -n "__fish_ssqch_using_subcommand import" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
-complete -c ssqch -n "__fish_ssqch_using_subcommand import" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
-complete -c ssqch -n "__fish_ssqch_using_subcommand import" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
-complete -c ssqch -n "__fish_ssqch_using_subcommand import" -l write -d 'Make the changes (without it, only list them)'
-complete -c ssqch -n "__fish_ssqch_using_subcommand import" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
-complete -c ssqch -n "__fish_ssqch_using_subcommand import" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand import" -s v -l verbose -d 'Also list the slowest images to encode'
-complete -c ssqch -n "__fish_ssqch_using_subcommand import" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l root -d 'Project root (defaults to the current directory)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l from -d 'The folder the command writes (default _site)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l runs -d 'How many builds to make and compare (default 3)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l commit -d 'Build this commit instead of the working tree' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l to -d 'What to call the builds (default ref)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l link -d 'Link this folder of the site into each copy (repeatable)' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l patch -d 'Apply this patch to each copy before building' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l copy-installs -d 'Copy the installs into each copy instead of linking them'
+complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -s q -l quiet -d 'Print only warnings and errors'
+complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -s h -l help -d 'Print help'
+complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l from -d 'The generator the site is built with, when scout finds another' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l format -d 'text or json' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l write-draft -d 'Write the new files of the draft; never overwrites a file'
+complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l patch -d 'Write the mechanical edits to FILE as a patch to review; nothing is applied' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l compare -d 'Also build with ssqch and compare with the reference build'
+complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l reference -d 'The reference build to compare with' -r -F
+complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l format -d 'text or json' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l root -d 'Project root (defaults to the current directory)' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
@@ -168,16 +179,17 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l offline -d 'Don\'t 
 complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -s q -l quiet -d 'Print only warnings and errors'
 complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -s v -l verbose -d 'Also list the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -s h -l help -d 'Print help'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "build" -d 'Build the site (default)'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "serve" -d 'Build, serve, watch for changes and live-reload the browser'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "new" -d 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "inspect" -d 'Show where a page comes from, and which level of the data cascade set each value'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "completions" -d 'Print a completion script for your shell, so Tab finishes commands and options'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "diff" -d 'Compare two builds of a site: URLs added and removed, and what changed on each page'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "footprint" -d 'Show how much a build weighs: its files by kind, and the heaviest pages and files'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "init" -d 'Create a starter site (config, layout, five posts, data and editor types)'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "types" -d 'Write ssqch.d.ts, the types editors use for ssqch.config.js'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "import" -d 'Move a site from another generator: rename and rewrite what\'s mechanical, and list the rest'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "capabilities" -d 'Say what this binary supports: template languages, modules, config options and optional features'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "docs" -d 'Read the documentation for this version: a command, config option, function or topic'
-complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types import capabilities docs help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "build" -d 'Build the site (default)'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "serve" -d 'Build, serve, watch for changes and live-reload the browser'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "new" -d 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "inspect" -d 'Show where a page comes from, and which level of the data cascade set each value'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "completions" -d 'Print a completion script for your shell, so Tab finishes commands and options'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "diff" -d 'Compare two builds of a site: URLs added and removed, and what changed on each page'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "footprint" -d 'Show how much a build weighs: its files by kind, and the heaviest pages and files'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "init" -d 'Create a starter site (config, layout, five posts, data and editor types)'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "types" -d 'Write ssqch.d.ts, the types editors use for ssqch.config.js'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "baseline" -d 'Build the site with its old generator in fresh copies and compare the builds'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "scout" -d 'Scout a site built with another generator: what moving it to ssqch takes, and what remains during a move'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "capabilities" -d 'Say what this binary supports: template languages, modules, config options and optional features'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "docs" -d 'Read the documentation for this version: a command, config option, function or topic'
+complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new inspect completions diff footprint init types baseline scout capabilities docs help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'

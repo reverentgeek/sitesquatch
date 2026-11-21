@@ -91,13 +91,19 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     }
     this._closeScopeLevels();
     this._emitLine('} catch (e) {');
-    this._emitLine('  cb(runtime.handleError(e, lineno, colno));');
+    this._emitLine('  cb(runtime.handleError(e, lineno, colno, ' + this._templateName() + '));');
     this._emitLine('}');
     this._emitLine('}');
     this.buffer = null;
   };
   _proto._addScopeLevel = function _addScopeLevel() {
-    this._scopeClosers += '})';
+    // ssqch: what runs in a callback (the rest of a template after an include, an extends or a
+    // block) runs inside the call of the template it waited for, so an error there was caught by
+    // that one's try, and named its file and line (an error after `{% include "nav.jinja" %}` was
+    // nav.jinja's line 1; one in a layout, the page's `{% block %}` line). Its own try names the
+    // line of this template, and its own `cb` reports it.
+    this._emit('try {');
+    this._scopeClosers += '} catch (e) { cb(runtime.handleError(e, lineno, colno, ' + this._templateName() + ')); } })';
   };
   _proto._closeScopeLevels = function _closeScopeLevels() {
     this._emitLine(this._scopeClosers + ';');
@@ -115,7 +121,7 @@ var Compiler = /*#__PURE__*/function (_Obj) {
     // ssqch: an error that arrives through a callback (a template that isn't there, an async
     // filter that failed) gets the line it happened on, as a thrown one does. One that has a
     // line already (from an include) keeps it.
-    return 'function(' + err + (res ? ',' + res : '') + ') {\n' + 'if(' + err + ') { cb(runtime.handleError(' + err + ', lineno, colno)); return; }';
+    return 'function(' + err + (res ? ',' + res : '') + ') {\n' + 'if(' + err + ') { cb(runtime.handleError(' + err + ', lineno, colno, ' + this._templateName() + ')); return; }';
   };
   // ssqch: where the code that follows is in the template, for an error it throws: the same as
   // compileFunCall does for a call (`lineno` and `colno` are the root function's variables).
@@ -615,6 +621,8 @@ var Compiler = /*#__PURE__*/function (_Obj) {
   };
   _proto.compileIf = function compileIf(node, frame, async) {
     var _this8 = this;
+    // ssqch: as in compileOutput, for the condition.
+    this._emitLine('lineno = ' + node.cond.lineno + '; colno = ' + node.cond.colno + ';');
     this._emit('if(runtime.truthy(');
     this._compileExpression(node.cond, frame);
     this._emitLine(')) {');
@@ -1074,6 +1082,8 @@ var Compiler = /*#__PURE__*/function (_Obj) {
           _this15._emitLine(';');
         }
       } else {
+        // ssqch: an error in the expression names its own line, not the last tag's that set one.
+        _this15._emitLine('lineno = ' + child.lineno + '; colno = ' + child.colno + ';');
         _this15._emit(_this15.buffer + " += runtime.suppressValue(");
         if (_this15.throwOnUndefined) {
           _this15._emit('runtime.ensureDefined(');

@@ -220,13 +220,19 @@ function contextOrFrameLookup(context, frame, name) {
   var val = frame.lookup(name);
   return val !== undefined ? val : context.lookup(name);
 }
-function handleError(error, lineno, colno) {
+function handleError(error, lineno, colno, file) {
   if (error.lineno) {
+    // ssqch: an error with its line that no template has named yet (strict mode's) is this one's.
+    if (error.ssqchFile === undefined && error.firstUpdate !== false && file !== undefined) error.ssqchFile = file;
     return error;
   } else {
     // ssqch: the compiled code counts lines and columns from 0, and a TemplateError from 1 (as
     // the parser's are and ensureDefined's), so a runtime error named the line before its own.
-    return new lib.TemplateError(error, lineno + 1, colno + 1);
+    // `ssqchFile` is the template it happened in: a layout's code runs from its child's render,
+    // which put the child's name on it.
+    var made = new lib.TemplateError(error, lineno + 1, colno + 1);
+    if (file !== undefined) made.ssqchFile = file;
+    return made;
   }
 }
 function asyncEach(arr, dimen, iter, cb) {

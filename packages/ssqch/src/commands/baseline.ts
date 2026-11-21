@@ -1,0 +1,272 @@
+// `ssqch baseline "<command>"`: the old generator's builds to compare a move with.
+//
+// Every move from another generator started the same way, by hand: build the site with its own
+// generator from fresh copies, with the time zone and the files' times pinned, a few times over,
+// and see what changes by itself (the build's time, ids from `Math.random()`) before comparing
+// anything with ssqch. v8.dev wrote `scripts/parity.sh` for it and lit.dev `stability.py`. This
+// does it for any generator: the copies, the pinned clock, the runs, and `ssqch diff`'s
+// comparison of several builds at the end.
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { commandLine } from "../command-line.ts";
+import { red } from "../diagnostics.ts";
+import { compareRuns, runsText } from "../diff.ts";
+import { compareText } from "../paths.ts";
+
+export interface BaselineOptions {
+	/** The site's folder: the copies are of it, and the reference builds go beside it. */
+	root: string;
+	/** The old generator's build command, run in each copy (`npx @11ty/eleventy`). */
+	command: string;
+	/** The folder the command writes, in the site's folder (`_site`). */
+	from: string;
+	/** How many builds: 1 makes one; 2 or more compare them. */
+	runs: number;
+	/** A commit to build instead of the working tree (the one before the move's first change). */
+	commit: string | undefined;
+	/** What the reference builds are called: `ref` makes `ref-1`, `ref-2` and `ref-3`. */
+	to: string;
+	/** More of the site's folders to link into each copy, beside the installs found by themselves (`--link`). */
+	link: string[];
+	/** Copy the installs into each copy instead of linking them (`--copy-installs`; Hugo's are copied without it). */
+	copyInstalls: boolean;
+	/** A patch (`git diff`'s) applied to each copy before it's built: what an old commit needs to build at all (`--patch`). */
+	patch: string | undefined;
+	quiet: boolean;
+}
+
+/** The time every copied file gets, so pages dated by their file's time agree from build to build: the commit's, or 2026-01-01. */
+const FALLBACK_TIME = Date.UTC(2026, 0, 1) / 1000;
+
+/** The build time baseline pins for a site with no `--commit`: its HEAD commit's, or 2026-01-01. `ssqch scout --compare` builds with it too. */
+export function baselineTime(root: string, rev = "HEAD"): number {
+	const inGit = git(root, ["rev-parse", "--is-inside-work-tree"]).status === 0;
+	return inGit ? Number(git(root, ["log", "-1", "--format=%ct", rev]).stdout.toString().trim()) || FALLBACK_TIME : FALLBACK_TIME;
+}
+
+class BaselineError extends Error {}
+
+const git = (root: string, args: string[]) => spawnSync("git", ["-C", root, ...args], { encoding: "buffer", maxBuffer: 1 << 30 });
+
+/** `ssqch baseline`: prints the comparison of the builds and answers 0 when they're the same, 1 when something varies, and 2 when a build couldn't be made. */
+export async function runBaseline(options: BaselineOptions): Promise<number> {
+	const say = (line: string) => { if (!options.quiet) process.stderr.write(`${line}\n`); };
+	const root = path.resolve(options.root);
+	// The copies, apart from the builds (`.cache/ssqch/baseline/ref-1` by default), which an
+	// earlier run's copies mustn't take with them.
+	const work = path.join(root, ".cache", "ssqch", "baseline-copies");
+	const worktrees: string[] = [];
+	try {
+		if (!options.command.trim()) throw new BaselineError("give the old generator's build command: `ssqch baseline \"npx @11ty/eleventy\"`");
+		if (!Number.isInteger(options.runs) || options.runs < 1) throw new BaselineError(`--runs ${options.runs}: give a number of builds, 1 or more`);
+		if (path.isAbsolute(options.from) || options.from.split(/[\\/]/).includes("..")) throw new BaselineError(`--from ${options.from}: the folder the command writes, inside the site's folder (\`_site\`)`);
+		const inGit = git(root, ["rev-parse", "--is-inside-work-tree"]).status === 0;
+		if (options.commit !== undefined && !inGit) throw new BaselineError(`--commit ${options.commit}: ${root} isn't in a git repository`);
+		const rev = options.commit ?? "HEAD";
+		const time = baselineTime(root, rev);
+		if (options.commit !== undefined && git(root, ["rev-parse", "--verify", "--quiet", `${options.commit}^{commit}`]).status !== 0) throw new BaselineError(`--commit ${options.commit}: no such commit`);
+		const patch = options.patch === undefined ? undefined : path.resolve(options.patch);
+		if (patch !== undefined && !fs.statSync(patch, { throwIfNoEntry: false })?.isFile()) throw new BaselineError(`--patch ${options.patch}: no such file (a patch, as \`git diff > fix.patch\` writes)`);
+		if (path.isAbsolute(options.to) || options.to.split(/[\\/]/).includes("..")) throw new BaselineError(`--to ${options.to}: a name inside the site's folder (\`ref\`, or \`.refs/jekyll\`)`);
+		// Jekyll prints its own clock (`site.time`) and doesn't read SOURCE_DATE_EPOCH: a config of
+		// its own pins it (opensource.guide's 380 files), last in the command's `--config` list when
+		// it has one, since a later config wins (the rerun's `--config _config.yml,pin.yml` had
+		// every article vary when it was left out).
+		let command = options.command;
+		let clock = "TZ=UTC, SOURCE_DATE_EPOCH and every file's time pinned; a generator that reads its own clock isn't, so pin it in its config if the builds vary";
+		const jekyll = /\bjekyll\s+build\b/.test(command);
+		if (jekyll) {
+			const pin = path.join(work, "..", "baseline-time.yml");
+			fs.mkdirSync(path.dirname(pin), { recursive: true });
+			fs.writeFileSync(pin, `# Written by ssqch baseline: Jekyll's site.time, pinned.\ntime: ${new Date(time * 1000).toISOString().replace("T", " ").replace(/\.\d+Z$/, " +0000")}\n`);
+			const given = /--config(=|\s+)(\S+)/.exec(command);
+			if (given) {
+				command = command.replace(given[0], `--config${given[1]}${given[2]},${JSON.stringify(pin)}`);
+				clock = `TZ=UTC, SOURCE_DATE_EPOCH, every file's time and Jekyll's site.time pinned (a time: of its own, after --config ${given[2]})`;
+			} else {
+				command = command.replace(/\bjekyll\s+build\b/, (m) => `${m} --config _config.yml,${JSON.stringify(pin)}`);
+				clock = "TZ=UTC, SOURCE_DATE_EPOCH, every file's time and Jekyll's site.time pinned (with --config _config.yml and a time: of its own)";
+			}
+		}
+
+		const copyInstalls = options.copyInstalls || /\bhugo\b/.test(options.command);
+		fs.rmSync(work, { recursive: true, force: true });
+		fs.mkdirSync(work, { recursive: true });
+		const names: string[] = [];
+		for (let run = 1; run <= options.runs; run++) {
+			const copy = path.join(work, `run-${run}`);
+			// A fresh copy each time: what one build leaves (a cache, a stale file) doesn't reach the next.
+			if (options.commit !== undefined) {
+				const added = git(root, ["worktree", "add", "--detach", "--force", copy, options.commit]);
+				if (added.status !== 0) throw new BaselineError(`couldn't check out ${options.commit}: ${added.stderr.toString().trim()}`);
+				worktrees.push(copy);
+			} else {
+				const untracked = copyWorkingTree(root, copy, inGit, [options.from, ".cache", "node_modules"], options.to);
+				if (run === 1 && untracked.length) {
+					const folders = [...new Set(untracked.map((rel) => (rel.includes("/") ? `${rel.slice(0, rel.indexOf("/"))}/` : rel)))].sort(compareText);
+					process.stderr.write(`warn: ${untracked.length === 1 ? "1 file git doesn't track goes" : `${untracked.length} files git doesn't track go`} into the copies too (${folders.slice(0, 4).join(", ")}${folders.length > 4 ? ", ..." : ""}), as the old generator reads the working tree; a fresh checkout wouldn't have ${untracked.length === 1 ? "it" : "them"}. Add ${untracked.length === 1 ? "it" : "them"} to git or .gitignore, or build a commit (\`--commit HEAD\`)\n`);
+				}
+			}
+			if (patch !== undefined) {
+				// Applied in the copy alone: the ceiling keeps git from finding the site's own
+				// repository above it (a copy of the working tree is inside the site's folder).
+				const applied = spawnSync("git", ["apply", "--whitespace=nowarn", patch], { cwd: copy, encoding: "utf8", env: { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(copy) } });
+				if (applied.status !== 0) throw new BaselineError(`--patch ${options.patch}: didn't apply to ${options.commit ?? "the working tree"}: ${(applied.stderr || applied.error?.message || "").trim()}`);
+			}
+			pinTimes(copy, time);
+			// The site's installed packages, shared: an install in each copy would take minutes, and
+			// git ignores them, so a copy has none.
+			for (const rel of installs(root, options.link)) {
+				const from = path.join(root, ...rel.split("/"));
+				const to = path.join(copy, ...rel.split("/"));
+				if (!fs.existsSync(from) || fs.existsSync(to)) continue;
+				fs.mkdirSync(path.dirname(to), { recursive: true });
+				const dir = fs.statSync(from).isDirectory();
+				// Copied, where a tool won't follow a link out of its folder: Hugo's js.Build resolves
+				// `node_modules` to its real path and refuses it ("outside the project"; the gohugo.io
+				// move). Copy-on-write where the file system has it (APFS, Btrfs, XFS), so it's quick.
+				if (dir && copyInstalls) fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE });
+				else if (dir) fs.symlinkSync(from, to, process.platform === "win32" ? "junction" : "dir");
+				else fs.copyFileSync(from, to);
+			}
+
+			say(`Building ${run} of ${options.runs}: ${command}`);
+			const { file, args, options: spawnOptions } = commandLine(command, copy, { TZ: "UTC", SOURCE_DATE_EPOCH: String(time) });
+			// The command's output is for a person: it goes to standard error, with ssqch's.
+			const result = spawnSync(file, args, { ...spawnOptions, stdio: ["ignore", options.quiet ? "ignore" : process.stderr, options.quiet ? "ignore" : process.stderr] });
+			if (result.error) throw new BaselineError(`couldn't run \`${options.command}\`: ${result.error.message}`);
+			if (result.status !== 0) throw new BaselineError(`\`${options.command}\` failed in build ${run} (exit code ${result.status ?? result.signal}); its output is above`);
+			const built = path.join(copy, options.from);
+			if (!fs.statSync(built, { throwIfNoEntry: false })?.isDirectory()) throw new BaselineError(`\`${options.command}\` wrote no ${options.from}/ in build ${run}: give the folder it writes with --from (Eleventy and Jekyll write _site, Hugo public, Astro dist)`);
+			// jekyll-github-metadata (GitHub Pages' gem) without a repository to read writes every
+			// `site.url` as `https://github.com/pages/...`: a reference build that's wrong on every
+			// page, quietly (the opensource.guide rerun).
+			if (run === 1 && jekyll) {
+				const home = path.join(built, "index.html");
+				const text = fs.statSync(home, { throwIfNoEntry: false })?.isFile() ? fs.readFileSync(home, "utf8") : "";
+				if (text.includes("github.com/pages/")) process.stderr.write("warn: Jekyll's build has `https://github.com/pages/...` URLs: jekyll-github-metadata couldn't tell which repository this is, so `site.url` is wrong on every page. Give it the repository (`PAGES_REPO_NWO=owner/repo`, and `JEKYLL_GITHUB_TOKEN` if it asks), or `url:` in a config of your own\n");
+			}
+			const name = `${options.to}-${run}`;
+			const target = path.join(root, ...name.split("/"));
+			fs.rmSync(target, { recursive: true, force: true });
+			// `--to .refs/jekyll` names a folder that may not be there yet.
+			fs.mkdirSync(path.dirname(target), { recursive: true });
+			fs.renameSync(built, target);
+			names.push(name);
+		}
+
+		// A build an earlier, longer run left (`ref-3` after `--runs 2`) would be read as one of these.
+		for (let run = options.runs + 1; fs.existsSync(path.join(root, `${options.to}-${run}`)); run++) fs.rmSync(path.join(root, `${options.to}-${run}`), { recursive: true, force: true });
+		const shown = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+		say(`Base camp is set: ${shown}, built from ${options.commit ?? "the working tree"}${options.patch !== undefined ? ` and ${options.patch}` : ""} with ${clock}.`);
+		let code = 0;
+		let reference = names[0];
+		// One an earlier run put together would be read as this run's.
+		const common = path.join(root, `${options.to}-common`);
+		fs.rmSync(common, { recursive: true, force: true });
+		if (names.length > 1) {
+			const report = await compareRuns(names.map((n) => path.join(root, n)), { exact: false, ignore: [], only: undefined, lines: 10 });
+			process.stdout.write(runsText({ ...report, runs: names }, 10, process.stdout.isTTY === true));
+			code = report.varies.length ? 1 : 0;
+			reference = names[report.typical];
+			// A race (a11yproject.com's style guide took 170 builds to settle) has no one build to
+			// trust: the reference is each file's most common version, put together.
+			if (report.varies.length && names.length >= 3) {
+				fs.cpSync(path.join(root, names[report.typical]), common, { recursive: true, verbatimSymlinks: true });
+				for (const v of report.varies) {
+					const [most] = v.versions;
+					const own = v.files[report.typical];
+					if (own !== undefined) fs.rmSync(path.join(common, own), { force: true });
+					if (most.missing) continue;
+					const from = v.files[most.runs[0]]!;
+					fs.mkdirSync(path.dirname(path.join(common, from)), { recursive: true });
+					fs.copyFileSync(path.join(root, names[most.runs[0]], from), path.join(common, from));
+				}
+				reference = `${options.to}-common`;
+				say(`Wrote ${reference}: each file's most common version of the ${names.length} builds, to compare ssqch's with.`);
+			}
+		}
+		process.stdout.write(`\nNext: build with ssqch into an empty folder, then \`ssqch diff ${reference} <ssqch's output>\`${code ? ", with an --ignore for what varies above" : ""}, and fix the biggest group first. The whole loop: \`ssqch docs "moving a site with an agent"\`.\n`);
+		return code;
+	} catch (e) {
+		process.stderr.write(`${red("error:")} ${e instanceof BaselineError ? e.message : e instanceof Error ? e.message : String(e)}\n`);
+		return 2;
+	} finally {
+		for (const tree of worktrees) git(root, ["worktree", "remove", "--force", tree]);
+		fs.rmSync(work, { recursive: true, force: true });
+		if (worktrees.length) git(root, ["worktree", "prune"]);
+	}
+}
+
+/**
+ * The folders a generator's packages are installed in, which git ignores: npm's `node_modules`,
+ * Bundler's `.bundle` (its config) and the path that config gives gems (`BUNDLE_PATH`, or
+ * `vendor/bundle`), a Python `.venv`, and `--link`'s. opensource.guide's Jekyll wouldn't start in
+ * a copy without its `vendor/gems`.
+ */
+function installs(root: string, more: string[]): string[] {
+	const found = ["node_modules", ".bundle", "vendor/bundle", ".venv"];
+	try {
+		const config = fs.readFileSync(path.join(root, ".bundle", "config"), "utf8");
+		const gems = /^BUNDLE_PATH:\s*["']?([^"'\n]+?)["']?\s*$/m.exec(config)?.[1];
+		if (gems && !path.isAbsolute(gems) && !gems.startsWith("~")) found.push(gems.replace(/^\.\//, "").replace(/\/+$/, ""));
+	} catch { /* no Bundler config */ }
+	for (const rel of more) {
+		if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes("..")) throw new BaselineError(`--link ${rel}: a folder inside the site's folder (\`vendor/bundle\`)`);
+		found.push(rel.replaceAll("\\", "/").replace(/\/+$/, ""));
+	}
+	return [...new Set(found)];
+}
+
+/** The site's files as git would commit them (tracked, and new ones it doesn't ignore), or every file but `skip`'s outside git, copied into `copy`. */
+function copyWorkingTree(root: string, copy: string, inGit: boolean, skip: string[], to: string): string[] {
+	// Earlier reference builds (`ref-1/`) aren't the site's files.
+	const build = new RegExp(`^${to.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d+(?:/|$)`);
+	const skipped = (rel: string) => rel === ".git" || rel.startsWith(".git/") || build.test(rel) || skip.some((s) => rel === s || rel.startsWith(`${s}/`));
+	let files: string[];
+	if (inGit) {
+		const listed = git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]);
+		if (listed.status !== 0) throw new BaselineError(`couldn't list the site's files: ${listed.stderr.toString().trim()}`);
+		files = listed.stdout.toString().split("\0").filter(Boolean);
+	} else {
+		files = [];
+		const walk = (rel: string) => {
+			for (const entry of fs.readdirSync(path.join(root, rel), { withFileTypes: true }).sort((a, b) => compareText(a.name, b.name))) {
+				const child = rel ? `${rel}/${entry.name}` : entry.name;
+				if (skipped(child)) continue;
+				if (entry.isDirectory()) walk(child);
+				else if (entry.isFile()) files.push(child);
+			}
+		};
+		walk("");
+	}
+	// The files git doesn't track yet, which go in too (notes, a scratch folder): said, since a
+	// fresh checkout wouldn't have them (the fresh opensource.guide move's notes were in Jekyll's
+	// reference build).
+	let untracked: string[] = [];
+	if (inGit) {
+		const others = git(root, ["ls-files", "-z", "--others", "--exclude-standard"]);
+		if (others.status === 0) untracked = others.stdout.toString().split("\0").filter((rel) => rel && !skipped(rel));
+	}
+	for (const rel of files) {
+		if (skipped(rel)) continue;
+		const from = path.join(root, ...rel.split("/"));
+		// A file git lists but the working tree has deleted.
+		if (!fs.statSync(from, { throwIfNoEntry: false })?.isFile()) continue;
+		const to = path.join(copy, ...rel.split("/"));
+		fs.mkdirSync(path.dirname(to), { recursive: true });
+		fs.copyFileSync(from, to);
+	}
+	return untracked;
+}
+
+/** Every file in `dir` (not through `node_modules`) gets `time`, in seconds. */
+function pinTimes(dir: string, time: number): void {
+	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+		if (entry.name === ".git" || entry.name === "node_modules") continue;
+		const full = path.join(dir, entry.name);
+		if (entry.isDirectory()) pinTimes(full, time);
+		else if (entry.isFile()) fs.utimesSync(full, time, time);
+	}
+}

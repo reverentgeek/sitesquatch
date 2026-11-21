@@ -8,7 +8,7 @@ import path from "node:path";
 import { BUILTINS } from "../config.ts";
 import type { Config, PageSummary } from "../config.ts";
 import { toDate } from "../data.ts";
-import { bail } from "../diagnostics.ts";
+import { bail, warn, warning } from "../diagnostics.ts";
 import { globSet } from "../glob.ts";
 import { compareText } from "../paths.ts";
 import { Options } from "./options.ts";
@@ -30,14 +30,16 @@ BUILTINS.set("ssqch/sitemap", (config: Config, given) => {
 	const o = new Options(given, ["url", "exclude", "lastmod", "output", "paginated", "alternates"]);
 	const alternates = o.get("alternates");
 	if (alternates !== undefined && typeof alternates !== "function") bail(`alternates must be a function that gets each page and returns its translations, like (page) => [{ hreflang: "fr", href: "/fr/" }] (got ${typeof alternates})`);
-	const url = o.string("url");
-	if (url === undefined) bail("url is required: the site's address, like \"https://example.com\"");
+	// Without an address (`url: site.url`, which a Jekyll site's `_config.yml` leaves empty), the
+	// `<loc>`s are paths from the site's root, as jekyll-sitemap writes them; search engines want
+	// the whole address, so it says so on each build.
+	const url = o.string("url") || undefined;
 	const exclude = o.list("exclude") ?? [];
 	const lastmod = o.bool("lastmod") ?? true;
 	const output = o.string("output") ?? "/sitemap.xml";
 	const paginated = o.bool("paginated") ?? false;
 
-	if (!(url.startsWith("https://") || url.startsWith("http://"))) bail(`url must be the site's address, like "https://example.com" (got ${debugString(url)})`);
+	if (url !== undefined && !(url.startsWith("https://") || url.startsWith("http://"))) bail(`url must be the site's address, like "https://example.com" (got ${debugString(url)})`);
 	if (!output.startsWith("/") || output.endsWith("/")) bail(`output must be a URL path to a file, like "/sitemap.xml" (got ${debugString(output)})`);
 	const matchers = exclude.map((glob) => {
 		if (!glob.startsWith("/")) bail(`exclude: ${debugString(glob)} must be a URL path or glob starting with /, like "/tags/**"`);
@@ -47,7 +49,8 @@ BUILTINS.set("ssqch/sitemap", (config: Config, given) => {
 
 	config.generators.push(["ssqch/sitemap", (config, pages) => {
 		// With a `base` of `/repo`, `url` can be the domain or include the base.
-		const trimmed = url.replace(/\/+$/, "");
+		if (url === undefined) warn(warning("config", `sitemapPlugin() has no url, so ${output}'s <loc>s are paths from the site's root (as jekyll-sitemap writes them without one), and search engines read only whole addresses: give it the site's address, like { url: "https://example.com" }`));
+		const trimmed = (url ?? "").replace(/\/+$/, "");
 		const withBase = trimmed.endsWith(config.base) ? trimmed : trimmed + config.base;
 		const entries: Array<[string, string, Array<[string, string]>]> = [];
 		// A translation's `href` from the site's root gets the address and `base`, as `loc` does.

@@ -36,7 +36,9 @@ test("diff_compares_two_builds", () => {
 	for (const expected of [
 		"Added (1)\n  + /new/\n",
 		"Removed (1)\n  - /about/\n",
-		"  ~ /  (text and markup)\n      ids removed (links to them break): #trails\n      - <h2 id=\"trails\">\n      - Trails\n      + <h2 id=\"paths\">\n      + Paths\n      - Pine trail.\n      + Cedar trail.\n",
+		// DELIBERATE (0.11, from the fresh opensource.guide rerun): a change on a page says which
+		// heading it's under, when that's another than the change before's.
+		"  ~ /  (text and markup)\n      ids removed (links to them break): #trails\n      - <h2 id=\"trails\">\n      - Trails\n      + <h2 id=\"paths\">\n      + Paths\n      @ under #trails\n      - Pine trail.\n      + Cedar trail.\n",
 		"Changes found: 3 pages (1 changed, 1 added, 1 removed); 0 pages and 0 other files are the same. The stump has moved.\n",
 	]) {
 		assert.ok(log.includes(expected), `missing ${JSON.stringify(expected)} in\n${log}`);
@@ -52,6 +54,15 @@ test("diff_compares_two_builds", () => {
 
 	[code, log] = run(["diff", "before", "after", "--ignore", "(Pine|Cedar) trail\\.|Trails|Paths|trails|paths", "--only", "index.html"]);
 	assert.equal(code, 0, log);
+	// `--exclude` leaves out what `--only` would have to list (the blog needed nine `--only`s).
+	[code, log] = run(["diff", "before", "after", "--format", "json", "--exclude", "index.html", "--exclude", "new/**"]);
+	assert.equal(code, 1, log);
+	assert.deepEqual(JSON.parse(log).summary, { added: 0, removed: 1, changed: 0, unchangedPages: 0, unchangedFiles: 0 });
+	[code, log] = run(["diff", "before", "after", "--only", "**/*.html", "--exclude", "about/**", "--exclude", "new/**", "--ignore", "(Pine|Cedar) trail\\.|Trails|Paths|trails|paths"]);
+	assert.equal(code, 0, log);
+	[code, log] = run(["diff", "before", "after", "--exclude", "[a"]);
+	assert.equal(code, 2, log);
+	assert.ok(log.includes("--exclude \"[a\" isn't a glob"), log);
 	[code, log] = run(["diff", "before", "missing"]);
 	assert.equal(code, 2, log);
 	assert.ok(log.includes("missing isn't a folder"), log);
@@ -139,4 +150,34 @@ test("diff_of_several_builds_lists_what_varies", () => {
 	const same = ssqch(["diff", "ref-1", "ref-1", "ref-1"], { cwd: dir });
 	assert.equal(same.code, 0, same.log);
 	assert.match(same.stdout, /Every build is the same: 2 pages and 1 other file\. The tracks match every time\./);
+});
+
+// Every move fixed "the biggest group of differences" first, and found it by hand (osg's
+// `scripts/compare.py` for 387 pages): a change on more than one file is listed once, the most
+// files first, and `--ungrouped` lists each file with all its changes.
+test("diff_groups_the_same_change_on_several_files", () => {
+	const dir = tempDir("diff-groups");
+	const pages = (footer) => Object.fromEntries(["pine", "cedar", "spruce"].map((name) => [`${footer}/${name}/index.html`, `<p>${name}</p><footer>${footer === "before" ? "Built with Eleventy" : "Built with ssqch"}</footer>`]));
+	write(dir, { ...pages("before"), ...pages("after"), "after/cedar/index.html": "<p>cedar, again</p><footer>Built with ssqch</footer>" });
+	let r = ssqch(["diff", "before", "after"], { cwd: dir });
+	assert.equal(r.code, 1, r.log);
+	assert.ok(r.log.includes("  ~ 3 pages: /cedar/, /pine/, /spruce/\n      - Built with Eleventy\n      + Built with ssqch\n  And what's left on 1 file:\n  ~ /cedar/  (text)\n      - cedar\n      + cedar, again\n"), r.log);
+	r = ssqch(["diff", "before", "after", "--format", "json"], { cwd: dir });
+	const json = JSON.parse(r.stdout);
+	assert.deepEqual(json.groups, [{ files: 3, urls: ["/cedar/", "/pine/", "/spruce/"], same: true, match: "lines", kind: "text", hunk: { removed: ["Built with Eleventy"], added: ["Built with ssqch"] } }]);
+	assert.deepEqual(json.changed.map((f) => f.groups), [[0], [0], [0]]);
+	r = ssqch(["diff", "before", "after", "--ungrouped"], { cwd: dir });
+	assert.ok(!r.log.includes("The same change on more than one file") && r.log.includes("  ~ /pine/  (text)\n      - Built with Eleventy\n"), r.log);
+});
+
+// Found in the rerun of a11yproject.com: `--only /posts/x/` (a page's URL) matched nothing and
+// printed "No differences: 0 pages". A glob that ends in `/` is that folder, and one that matches
+// no file in either build is an error.
+test("diff_only_takes_a_folder_and_says_when_it_matches_nothing", () => {
+	const dir = tempDir("diff-only");
+	write(dir, { "a/posts/pine/index.html": "<p>Pine</p>", "b/posts/pine/index.html": "<p>Cedar</p>" });
+	let r = ssqch(["diff", "a", "b", "--only", "/posts/pine/"], { cwd: dir });
+	assert.ok(r.code === 1 && r.log.includes("  ~ /posts/pine/  (text)"), r.log);
+	r = ssqch(["diff", "a", "b", "--only", "/posts/fir/"], { cwd: dir });
+	assert.ok(r.code === 2 && r.log.includes("--only \"/posts/fir/\" matched no file in either build"), r.log);
 });

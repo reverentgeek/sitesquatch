@@ -11,8 +11,12 @@ import * as api from "./api.ts";
 import type { Config, Dirs, Filter } from "./config.ts";
 import { dirsOf } from "./config.ts";
 import { excerpt, headings } from "./content.ts";
+import { bundledPath } from "./bundled.ts";
+import { buildNav, loadMkdocs, mkdocsFilters, relativeUrl, sitePath } from "./mkdocs.ts";
+import type { MkDocs, NavPage } from "./mkdocs.ts";
+import { withPage } from "./rendering.ts";
 import type { Data } from "./data.ts";
-import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, sourceDateEpoch, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
+import { NOT_DATA, decodeText, frontMatterSettings, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, sourceDateEpoch, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
 import type { Diagnostic } from "./diagnostics.ts";
 import { BuildError, Diagnostics, aliasUsed, bail, context, error as errorOf, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import { edgeEngine } from "./engines/edge.ts";
@@ -126,6 +130,8 @@ export class Site {
 	markdown!: Markdown;
 	engines = new Engines();
 	themeIncludes: string[] = [];
+	/** mkdocs.yml as MkDocs reads it, with `mkdocsTemplates`. */
+	mkdocs: MkDocs | undefined;
 	global: Data = {};
 	/** The template files, in the order pages are made. */
 	files: string[] = [];
@@ -148,6 +154,7 @@ export class Site {
 
 	constructor(config: Config, keepLayers = false) {
 		this.config = config;
+		frontMatterSettings.trimAfter = config.trimAfterFrontMatter;
 		this.dirs = dirsOf(config);
 		this.keepLayers = keepLayers;
 		this.profile = new Profile(config.profile);
@@ -194,17 +201,18 @@ export class Site {
 
 	async prepare(timer: Timer): Promise<void> {
 		const { config, dirs } = this;
-		this.markdown = markdownEngine(config.markdown, dirs.root);
+		this.markdown = markdownEngine(config.markdown, dirs.root, dirs.input);
 		// The `ssqch` module's `markdown()` has the site's options and no render hooks.
 		Object.assign(api.site, { root: dirs.root, input: dirs.input, markdown: (text: string, inline: boolean) => this.markdown.plain(text, inline) });
 		const globals = builtinFilters(this.markdown, config);
 		// Other generators' filters that are aliases here: `url` and `relative_url` give the URL
 		// back (the build adds `base` itself), and `markdownify` is `markdown`. A config filter with
-		// the same name replaces one.
+		// the same name replaces one. An alias calls ssqch's name as the site has it, looked up when
+		// it's called: a site with its own `markdown` (its markdown-it, with `engines: { md }`) gets
+		// that from `markdownify` too.
 		const pipeFilters = new Map<string, Filter>();
 		for (const row of equivalents.TABLE) {
 			if (row.kind !== "filter" || !row.alias || config.filters.has(row.word)) continue;
-			const target = globals.get(row.ssqch);
 			// `url` on a page with `permalink: false` (its url is `false`) printed `/false` in a11y's
 			// sitemap: it prints nothing, and says so once.
 			const takesUrl = row.ssqch === "base";
@@ -218,6 +226,22 @@ export class Site {
 					}
 					return "";
 				}
+				const target = globals.get(row.ssqch);
+				// Eleventy's `url` normalized the path it was given: `""` (and nothing) is `.`, and
+				// `/a//b/../c/` is `/a/c/` (a11yproject.com's menus). A full URL stays as it is; the base is
+				// ssqch's to add.
+				if (row.word === "url" && (args[0] === undefined || args[0] === null || typeof args[0] === "string")) {
+					const given = (args[0] ?? "") as string;
+					if (given === "") args = [".", ...args.slice(1)];
+					else if (given.startsWith("/") && !given.startsWith("//")) args = [path.posix.normalize(given), ...args.slice(1)];
+				}
+				// `collection | getNextCollectionItem(page)`: the page's neighbour in the list, or nothing.
+				if (row.ssqch === "navPager") {
+					const page = args[1];
+					const url = page !== null && typeof page === "object" && typeof (page as { url?: unknown }).url === "string" ? (page as { url: string }).url : "";
+					const pager = target ? (target(args[0], url) as { previous: unknown; next: unknown }) : { previous: null, next: null };
+					return (row.word === "getNextCollectionItem" ? pager.next : pager.previous) ?? undefined;
+				}
 				return target ? target(...args) : args[0];
 			});
 		}
@@ -228,6 +252,12 @@ export class Site {
 			if (this.profile.times(own)) globals.set(name, this.profile.wrap("filters", name, fn, own, config.definedIn.get(`filters.${name}`)));
 		}
 		this.themeIncludes = config.themes.map((theme) => path.join(theme, "_includes"));
+		// MkDocs' context and filters for its theme's templates (src/mkdocs.ts). A filter of the
+		// site's own with the same name wins.
+		if (config.mkdocsTemplates !== null) {
+			this.mkdocs = loadMkdocs(dirs.root, config.mkdocsTemplates, [dirs.includes, ...this.themeIncludes]);
+			for (const [name, fn] of Object.entries(mkdocsFilters(this.mkdocs))) if (!config.filters.has(name)) globals.set(name, withPage(fn));
+		}
 		const env: EngineEnv = { config, dirs, includeDirs: [dirs.includes, ...this.themeIncludes], globals, pipeFilters, strict: config.strict };
 		const byName = this.engines.byName;
 		byName.set("md", this.markdown);
@@ -242,6 +272,11 @@ export class Site {
 		const hbs = handlebarsEngine(env);
 		for (const name of ["hbs", "handlebars", "mustache"]) byName.set(name, hbs);
 		byName.set("ejs", ejsEngine(env));
+		// A site's engine with `cache: true` keeps what this build renders, and forgets what the
+		// build before rendered and this one doesn't.
+		for (const cache of config.engineCaches) cache.startBuild();
+		// A site's engine named `md` takes the place of ssqch's Markdown, set just above, for `.md`
+		// files and `md` in a `render` chain. The `markdown` filter stays ssqch's.
 		for (const [name, fn] of config.engines) {
 			byName.set(name, {
 				render: (source, data, ctx) => {
@@ -334,6 +369,19 @@ export class Site {
 			add(await collectErrors(deferred.map((t) => () => this.expand(t, shallow))));
 		}
 		this.checkConflicts();
+		this.checkDoubleSlashes();
+	}
+
+	/**
+	 * A URL with `//` in it is almost always a permalink that puts a `/` before a value that starts
+	 * with one (`/{{ page.filePathStem }}/`): the files land where they should, so nothing fails,
+	 * but every link to the page is wrong (opensource.guide's `//ar/metrics/`). Said once a build.
+	 */
+	private checkDoubleSlashes(): void {
+		const found = this.pages.filter((p) => p.url !== null && p.url.includes("//"));
+		if (!found.length) return;
+		const shown = found.slice(0, 3).map((p) => `${p.url} (${this.display(p.tpl.input)})`).join(", ");
+		warn(warning("template", `${found.length === 1 ? "1 page has" : `${found.length} pages have`} \`//\` in ${found.length === 1 ? "its URL" : "their URLs"}: ${shown}${found.length > 3 ? ", ..." : ""}. Its permalink puts a \`/\` before a value that starts with one (\`page.filePathStem\` does): take one out`, found.length === 1 ? { file: this.display(found[0].tpl.input) } : {}));
 	}
 
 	/**
@@ -403,6 +451,10 @@ export class Site {
 				if (skipDirs.has(entry.real)) continue;
 				if (entry.isDirectory) {
 					if (isBundlerInstall(file)) continue;
+					// `_site` at the top is where Jekyll and Eleventy write: another generator's build,
+					// not pages (opensource.guide's Jekyll build was read as 405 more pages when ssqch
+					// wrote elsewhere). It's skipped as `node_modules` is; ssqch's own output already is.
+					if (name === "_site" && dir === dirs.input) continue;
 					walk(file, [...above, entry.real]);
 					continue;
 				}
@@ -457,6 +509,8 @@ export class Site {
 		const pages: string[] = [], copies: CopyJob[] = [];
 		const taken = new Set<string>();
 		for (const theme of config.themes) {
+			// mkdocsTemplates' own 404 page renders the theme's 404.html: none, no page.
+			if (theme === bundledPath("mkdocs") && ![dirs.includes, ...this.themeIncludes].some((dir) => fs.existsSync(path.join(dir, "404.html")))) continue;
 			const lost = (problem: { path: string; loop?: string }): never => bail(problem.loop !== undefined ? `File system loop found: ${problem.path} points to an ancestor ${problem.loop}` : `IO error for operation on ${problem.path}: No such file or directory (os error 2)`);
 			const walk = (dir: string, depth: number, above: string[]) => {
 				for (const entry of readFollowing(dir, above, lost).sort((a, b) => comparePaths(a.name, b.name))) {
@@ -580,10 +634,19 @@ export class Site {
 		return found ? ` (did you mean \`${found}\`?)` : "";
 	}
 
-	private loadLayout(name: string): Layout {
+	private loadLayout(name: string, aliases: string[] = []): Layout {
 		const cached = this.layouts.get(name);
 		if (cached) return cached;
 		const { config, dirs } = this;
+		// Another name for a layout (`layoutAliases: { post: "layouts/post.njk" }`): its file, kept under
+		// the name the page gave, so `layout: post` finds the layout, not `_includes/post.njk`.
+		const alias = config.layoutAliases.get(name);
+		if (alias !== undefined) {
+			if (aliases.includes(name)) bail(`${voice.PASSED_THIS_TREE}. Layout alias loop: ${[...aliases, name].join(" -> ")} (layoutAliases)`);
+			const layout = this.loadLayout(alias, [...aliases, name]);
+			this.layouts.set(name, layout);
+			return layout;
+		}
 		// The site's layouts folder, then each theme's includes.
 		let file: string | undefined;
 		for (const dir of [dirs.layouts, ...this.themeIncludes]) {
@@ -609,7 +672,8 @@ export class Site {
 		const rel = relative(root, file);
 		try {
 			const src = decodeText(source);
-			const { data: front, body } = parseFrontMatter(src);
+			const { data: front, body, duplicate } = parseFrontMatter(src);
+			if (duplicate) warn(warning("front-matter", `${this.display(file)}: front matter has \`${duplicate.key}\` twice (line ${duplicate.line + 1}); the last one is used, as Jekyll uses it. Take one out`, { file: this.display(file), line: duplicate.line + 1, field: duplicate.key }));
 			const frontKeys = Object.keys(front);
 			aliasDataKeys(front);
 			const hasFrontMatter = body.length !== src.length;
@@ -659,7 +723,12 @@ export class Site {
 			if (isPlainObject(own.computed) && Object.hasOwn(own.computed, "page")) bail("`page` in computed isn't applied, because `page` is ssqch's: its url, inputPath, date and headings. Give the value another name (`computed: { meta: ... }`); front matter is at the top level already (`title`, not `page.title`)");
 			// Layout chain; layout front matter sits below template data. `layout: ""`, like `false`
 			// and `null`, means no layout.
-			const chain = this.layoutChain(own.layout);
+			// A `layout` in global data (the config's `data`, `_data/layout.*`) is every page's, below
+			// directory data and front matter, as any other global value is.
+			// With `mkdocsTemplates`, a Markdown page's layout is the theme's `main.html`, or the one its
+			// front matter's `template` names, as MkDocs renders it.
+			const mkdocsLayout = config.mkdocsTemplates !== null && /\.(?:md|markdown)$/i.test(file) ? (typeof own.template === "string" ? own.template : "main.html") : undefined;
+			const chain = this.layoutChain(Object.hasOwn(own, "layout") ? own.layout : this.global.layout ?? mkdocsLayout);
 			let data = this.global;
 			let layoutLayers = 0;
 			for (const layout of [...chain].reverse()) {
@@ -734,7 +803,10 @@ export class Site {
 		const inputPath = this.display(tpl.input);
 		let date: Date;
 		let fromFileTime = false;
-		if (tpl.data.date !== undefined && tpl.data.date !== null) date = toDate(tpl.data.date) ?? bail(`can't parse date ${show(tpl.data.date)}`);
+		// Material for MkDocs' blog writes `date: { created, updated }`: the page's date is `created`,
+		// and `date.updated` stays in its data for a template that shows it.
+		const given = isPlainObject(tpl.data.date) && tpl.data.date.created !== undefined ? tpl.data.date.created : tpl.data.date;
+		if (given !== undefined && given !== null) date = toDate(given) ?? bail(`can't parse date ${show(tpl.data.date)}`);
 		// Then the date in the file name, then the last commit that changed the file
 		// (`dateFallback: "git"`, the same in every checkout, where a file's time is when the checkout
 		// wrote it), then the pinned build time (`SOURCE_DATE_EPOCH`, as Jekyll's `time:` gives undated
@@ -936,6 +1008,29 @@ export class Site {
 			get content() { return site.contentOf(page); },
 		};
 		return page.item = item;
+	}
+
+	private mkdocsPages: NavPage[] | undefined;
+	/**
+	 * With `mkdocsTemplates`: MkDocs' `nav` for `page` (null for the 404 page), its MkDocs page,
+	 * and its `base_url`. The site's Markdown pages in the input folder are the nav's pages.
+	 */
+	mkdocsContext(page: Page | null): { nav: Data; page: Data | null; base_url: string } {
+		const mk = this.mkdocs!;
+		const { dirs } = this;
+		const isDoc = (p: Page) => p.url !== null && /\.(?:md|markdown)$/i.test(p.tpl.input) && isInside(dirs.input, p.tpl.input);
+		this.mkdocsPages ??= this.pages.filter(isDoc).map((p): NavPage => {
+			let heading: string | null | undefined;
+			return {
+				src: relative(dirs.input, p.tpl.input),
+				url: p.url!,
+				title: typeof p.data.title === "string" ? p.data.title : null,
+				meta: Object.fromEntries(p.tpl.frontKeys.map((k) => [k, p.data[k]])),
+				firstHeading: () => (heading !== undefined ? heading : (heading = /^#[ \t]+(.+?)[ \t#]*$/m.exec(p.tpl.body)?.[1] ?? null)),
+			};
+		});
+		const { nav, page: own } = buildNav(mk, this.mkdocsPages, page && isDoc(page) ? relative(dirs.input, page.tpl.input) : null);
+		return { nav, page: own, base_url: own ? relativeUrl(".", String(own.url)) : sitePath(mk) };
 	}
 
 	/** `page` as layouts and collections see it: with `headings` and `excerpt` from the rendered body, read when they're asked for. */

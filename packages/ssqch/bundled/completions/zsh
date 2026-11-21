@@ -138,6 +138,8 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '*--ignore=[Leave out text matching this regular expression before comparing (repeatable)]:REGEX:_default' \
 '*--only=[Only compare files matching this glob, like '\''**/*.html'\'' (repeatable)]:GLOB:_default' \
+'*--exclude=[Leave out files matching this glob, like '\''img/**'\'' (repeatable)]:GLOB:_default' \
+'--ungrouped[List each file with all its changes, without grouping the ones shared by several files]' \
 '--lines=[Changed lines to show for each file (0 for all)]:LINES:_default' \
 '--format=[text or json]:FORMAT:_default' \
 '--root=[Project root (defaults to the current directory)]:ROOT:_files' \
@@ -212,22 +214,33 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
-(import)
+(baseline)
 _arguments "${_arguments_options[@]}" : \
 '--root=[Project root (defaults to the current directory)]:ROOT:_files' \
-'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
-'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
-'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
-'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
-'--write[Make the changes (without it, only list them)]' \
-'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'--from=[The folder the command writes (default _site)]:DIR:_default' \
+'--runs=[How many builds to make and compare (default 3)]:RUNS:_default' \
+'--commit=[Build this commit instead of the working tree]:REV:_default' \
+'--to=[What to call the builds (default ref)]:NAME:_default' \
+'*--link=[Link this folder of the site into each copy (repeatable)]:PATH:_files' \
+'--patch=[Apply this patch to each copy before building]:FILE:_files' \
+'--copy-installs[Copy the installs into each copy instead of linking them]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
-':generator -- The generator the site is built with\: eleventy or zola:_default' \
+'*::COMMAND -- The old generator build command:_default' \
+&& ret=0
+;;
+(scout)
+_arguments "${_arguments_options[@]}" : \
+'--from=[The generator the site is built with, when scout finds another]:FROM:_default' \
+'--format=[text or json]:FORMAT:_default' \
+'--write-draft[Write the new files of the draft; never overwrites a file]' \
+'--patch=[Write the mechanical edits to FILE as a patch to review; nothing is applied]:PATCH:_files' \
+'--compare[Also build with ssqch and compare with the reference build]' \
+'--reference=[The reference build to compare with]:REFERENCE:_files' \
+'-h[Print help]' \
+'--help[Print help]' \
 '::dir -- The site'\''s folder (default\: the current folder):_default' \
 && ret=0
 ;;
@@ -315,7 +328,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(import)
+(scout)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -352,7 +365,8 @@ _ssqch_commands() {
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
 'init:Create a starter site (config, layout, five posts, data and editor types)' \
 'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
-'import:Move a site from another generator\: rename and rewrite what'\''s mechanical, and list the rest' \
+'baseline:Build the site with its old generator in fresh copies and compare the builds' \
+'scout:Scout a site built with another generator\: what moving it to ssqch takes, and what remains during a move' \
 'capabilities:Say what this binary supports\: template languages, modules, config options and optional features' \
 'docs:Read the documentation for this version\: a command, config option, function or topic' \
 'help:Print this message or the help of the given subcommand(s)' \
@@ -401,7 +415,8 @@ _ssqch__subcmd__help_commands() {
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
 'init:Create a starter site (config, layout, five posts, data and editor types)' \
 'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
-'import:Move a site from another generator\: rename and rewrite what'\''s mechanical, and list the rest' \
+'baseline:Build the site with its old generator in fresh copies and compare the builds' \
+'scout:Scout a site built with another generator\: what moving it to ssqch takes, and what remains during a move' \
 'capabilities:Say what this binary supports\: template languages, modules, config options and optional features' \
 'docs:Read the documentation for this version\: a command, config option, function or topic' \
 'help:Print this message or the help of the given subcommand(s)' \
@@ -443,10 +458,10 @@ _ssqch__subcmd__help__subcmd__help_commands() {
     local commands; commands=()
     _describe -t commands 'ssqch help help commands' commands "$@"
 }
-(( $+functions[_ssqch__subcmd__help__subcmd__import_commands] )) ||
-_ssqch__subcmd__help__subcmd__import_commands() {
+(( $+functions[_ssqch__subcmd__help__subcmd__scout_commands] )) ||
+_ssqch__subcmd__help__subcmd__scout_commands() {
     local commands; commands=()
-    _describe -t commands 'ssqch help import commands' commands "$@"
+    _describe -t commands 'ssqch help scout commands' commands "$@"
 }
 (( $+functions[_ssqch__subcmd__help__subcmd__init_commands] )) ||
 _ssqch__subcmd__help__subcmd__init_commands() {
@@ -473,10 +488,15 @@ _ssqch__subcmd__help__subcmd__types_commands() {
     local commands; commands=()
     _describe -t commands 'ssqch help types commands' commands "$@"
 }
-(( $+functions[_ssqch__subcmd__import_commands] )) ||
-_ssqch__subcmd__import_commands() {
+(( $+functions[_ssqch__subcmd__baseline_commands] )) ||
+_ssqch__subcmd__baseline_commands() {
     local commands; commands=()
-    _describe -t commands 'ssqch import commands' commands "$@"
+    _describe -t commands 'ssqch baseline commands' commands "$@"
+}
+(( $+functions[_ssqch__subcmd__scout_commands] )) ||
+_ssqch__subcmd__scout_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch scout commands' commands "$@"
 }
 (( $+functions[_ssqch__subcmd__init_commands] )) ||
 _ssqch__subcmd__init_commands() {

@@ -569,6 +569,28 @@ function guide(generator: string): { file: string; text: string | null } | undef
 	return { file, text: `# ${title}\n\n${body.trim()}\n` };
 }
 
+/** The section of a trailhead whose heading is the query, ignoring case: its page, generator and text. */
+function trailheadSection(query: string): { page: string; generator: string; heading: string; text: string } | undefined {
+	const wanted = query.trim().toLowerCase();
+	for (const file of bundledNames("docs/trailheads").sort()) {
+		const { title, body } = docsPage(bundled(`docs/trailheads/${file}`));
+		const lines = body.split("\n");
+		for (let i = 0; i < lines.length; i++) {
+			const m = /^(#{2,6})\s+(.+?)\s*#*\s*$/.exec(lines[i]);
+			if (!m || m[2].toLowerCase() !== wanted) continue;
+			let end = i + 1;
+			let fence = false;
+			for (; end < lines.length; end++) {
+				if (/^(```|~~~)/.test(lines[end])) fence = !fence;
+				const next = !fence && /^(#{2,6})\s/.exec(lines[end]);
+				if (next && next[1].length <= m[1].length) break;
+			}
+			return { page: title, generator: file.replace(/^from-/, "").replace(/\.md$/, ""), heading: m[2], text: `${lines.slice(i, end).join("\n").trim()}\n` };
+		}
+	}
+	return undefined;
+}
+
 /** A trailhead's page on sitesquatch.dev: `from-eleventy.md` is `/docs/trailheads/from-eleventy/`. */
 const guideUrl = (file: string) => `${SITE_URL}/docs/trailheads/${file.replace(/\.md$/, "")}/`;
 
@@ -603,10 +625,23 @@ function from(generator: string, json: boolean): string {
 		if (list.length) out += `\n${label}\n${rows(list)}`;
 	}
 	if (everyone.length) out += `\nWords most generators use\n${rows(everyone)}`;
-	if (g && g.text !== null) out += `\nThe trailhead (${guideUrl(g.file)}):\n\n${g.text.trimEnd()}\n`;
+	if (g && g.text !== null) out += `\nThe trailhead (${guideUrl(g.file)}):\n\n${g.text.trimEnd()}\n\nThe move, step by step (reference builds with \`ssqch baseline\`, the biggest group of differences first): \`ssqch docs "moving a site with an agent"\`.\n`;
 	else if (g) out += `\nThe trailhead: ${guideUrl(g.file)}\n`;
 	else out += "\nThere's no trailhead for it yet; `ssqch docs trailheads` has the general route.\n";
 	return out;
+}
+
+/** The docs page a query names by its file (`comparing-builds`, `comparing-builds.md`, `/docs/comparing-builds/`): its title, or the generator for a trailhead. */
+function pageNamed(query: string): { file: string; title?: string; trailhead?: string } | undefined {
+	const name = query.trim().replace(/^.*\/docs\//, "").replace(/^\/+|\/+$/g, "").replace(/\.md$/, "");
+	if (!/^[\w-]+(\/[\w-]+)?$/.test(name)) return undefined;
+	const nav = (yaml.load(bundled("docs/nav.yml")) as Array<{ pages: unknown[] }> | null) ?? [];
+	const files = nav.flatMap((group) => group.pages).filter((p): p is string => typeof p === "string");
+	const file = files.find((f) => f.replace(/\.md$/, "") === name || (!name.includes("/") && f.replace(/\.md$/, "").split("/").pop() === name));
+	if (file === undefined) return undefined;
+	const trail = /^trailheads\/from-([\w-]+)\.md$/.exec(file);
+	if (trail) return { file, trailhead: trail[1] };
+	return { file, title: docsPage(bundled(`docs/${file}`)).title };
 }
 
 export interface DocsCommand {
@@ -638,8 +673,26 @@ export function runDocs(grammar: Grammar, command: DocsCommand): number {
 		const text = agentsMd();
 		return out(json ? JSON.stringify({ query, found: true, agentsMd: text }, null, 2) + "\n" : text);
 	}
-	const a = answer(grammar, all, known, query);
-	if (a) return out(json ? JSON.stringify(answerJson(all, a), null, 2) + "\n" : answerText(all, a));
+	// A page's file name, as its link on the site ends (`comparing-builds`, `trailheads/from-eleventy.md`):
+	// that page, and a trailhead as `--from` prints it.
+	// A name ssqch has (`footprint` is a command and a page) answers as a name.
+	const page = known.some((n) => n.name === query) ? undefined : pageNamed(query);
+	if (page?.trailhead !== undefined) {
+		try {
+			return out(from(page.trailhead, json));
+		} catch {
+			// A trailhead no one generator's words name (`from-component-frameworks`): the page itself.
+			const { title, body } = docsPage(bundled(`docs/${page.file}`));
+			const text = `# ${title}\n\n${body.trim()}\n`;
+			return out(json ? JSON.stringify({ query, found: true, page: { file: `site/src/docs/${page.file}`, url: guideUrl(page.file.replace(/^trailheads\//, "")), text } }, null, 2) + "\n" : text);
+		}
+	}
+	const a = page?.title !== undefined ? { query, names: [], passages: [], also: [], section: all.findIndex((s) => s.level <= 2 && s.title === page.title) } : answer(grammar, all, known, query);
+	if (a && a.section !== -1) return out(json ? JSON.stringify(answerJson(all, a), null, 2) + "\n" : answerText(all, a));
+	// A heading in a trailhead (`"moving with identical output first"`): the main docs don't have
+	// the trailheads (`--from` prints them), but scout's lines and the trailheads point at their sections.
+	const trail = trailheadSection(query);
+	if (trail) return out(json ? JSON.stringify({ query, found: true, trailhead: trail }, null, 2) + "\n" : `From "${trail.page}" (ssqch docs --from ${trail.generator}):\n\n${trail.text}`);
 	const near = closestName(all, known, query);
 	const next = near === undefined ? nextStep(grammar, all, known, query) : undefined;
 	if (json) {

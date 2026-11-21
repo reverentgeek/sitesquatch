@@ -303,6 +303,42 @@ fn parse_attrs(tag: &str) -> Option<(&str, Vec<Attr<'_>>, &str)> {
 }
 
 /// Shorten a start tag's attributes without changing what they mean.
+/// The viewport `<meta>`'s `content` as html-minifier-terser writes it: no whitespace, and each
+/// decimal as JavaScript prints the number (`initial-scale=1.0` is `initial-scale=1`; 309 lit.dev
+/// pages differed only in that).
+fn viewport_content(value: &str) -> String {
+    let compact: String = value.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut out = String::with_capacity(compact.len());
+    let chars: Vec<char> = compact.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i].is_ascii_digit() {
+            let start = i;
+            while i < chars.len() && chars[i].is_ascii_digit() {
+                i += 1;
+            }
+            if i + 1 < chars.len() && chars[i] == '.' && chars[i + 1].is_ascii_digit() {
+                i += 1;
+                while i < chars.len() && chars[i].is_ascii_digit() {
+                    i += 1;
+                }
+                let number: String = chars[start..i].iter().collect();
+                // Rust prints a float as the shortest text that reads back as it, as JavaScript does.
+                match number.parse::<f64>() {
+                    Ok(n) => out.push_str(&n.to_string()),
+                    Err(_) => out.push_str(&number),
+                }
+            } else {
+                out.extend(&chars[start..i]);
+            }
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
 fn shorten_attributes(tag: &str, element: &str) -> String {
     let Some((name, attrs, end)) = parse_attrs(tag) else { return tag.to_string() };
     let viewport = element == "meta" && attrs.iter().any(|a| a.name.eq_ignore_ascii_case("name") && a.value.is_some_and(|(_, v)| v.trim().eq_ignore_ascii_case("viewport")));
@@ -320,7 +356,7 @@ fn shorten_attributes(tag: &str, element: &str) -> String {
         let value = match lower.as_str() {
             "class" | "sizes" => collapse_ws(value).trim().to_string(),
             "srcset" => collapse_ws(value).trim().replace(", ", ","),
-            "content" if viewport => value.split(',').map(|part| part.split('=').map(str::trim).collect::<Vec<_>>().join("=")).collect::<Vec<_>>().join(","),
+            "content" if viewport => viewport_content(value),
             l if URL_ATTRS.contains(&l) => value.trim().to_string(),
             _ => value.to_string(),
         };
@@ -370,6 +406,8 @@ mod tests {
         assert_eq!(m("<script defer=\"defer\" src=\"/a.js\"></script>"), "<script defer src=\"/a.js\"></script>");
         assert_eq!(m("<video autoplay=\"\" muted loop='LOOP' controls=\"false\">"), "<video autoplay muted loop controls=\"false\">");
         assert_eq!(m("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"), "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+        // html-minifier-terser's numbers: `1.0` is `1`, `0.90` is `0.9`, `1.0001` stays.
+        assert_eq!(m("<meta name=viewport content=\"width = device-width, initial-scale=1.0, maximum-scale=0.90, minimum-scale=1.0001, user-scalable=no\">"), "<meta name=viewport content=\"width=device-width,initial-scale=1,maximum-scale=0.9,minimum-scale=1.0001,user-scalable=no\">");
         assert_eq!(m("<meta name=\"description\" content=\"a, b = c\">"), "<meta name=\"description\" content=\"a, b = c\">");
         assert_eq!(m("<img class=\"  a\n  b \" srcset=\"/a.jpg 1x, /b.jpg 2x\" src=\" /a.jpg \">"), "<img class=\"a b\" srcset=\"/a.jpg 1x,/b.jpg 2x\" src=\"/a.jpg\">");
         assert_eq!(m("<a href=x title=\"a  b\">"), "<a href=x title=\"a  b\">");

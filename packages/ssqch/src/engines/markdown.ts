@@ -16,6 +16,8 @@
 // didn't use them). Between processes they're kept in `.cache/ssqch/highlight/fences.json`
 // (see "the cache of highlighted fences" below), so a first build doesn't load syntect's
 // grammars for fences it has highlighted before.
+import { kramdownHtml, restoreBlankLines, withKramdownIds } from "./kramdown-html.ts";
+import { hugoShortcodes, pythonMarkdownAfter, pythonMarkdownBefore, pythonMarkdownBlocks, pythonMarkdownIds, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -97,11 +99,23 @@ export function loadHookTemplates(dir: string, name: string, engines: Engines, c
  * `css` is false), and only when it changed, so a server doesn't see a new file each build.
  * Returns the file, for the build's list of what it wrote.
  */
+/**
+ * The stylesheet with the class names the site gave its tokens (`highlight: { classes }`), so it
+ * colors what the pages have: `.token.keyword` for Prism's, and with Prism's markup, its marked
+ * lines (`.highlight-line-active`).
+ */
+export function cssWithClasses(css: string, classes: MarkdownOptions["highlightClasses"]): string {
+	if (!classes) return css;
+	let out = css.replace(/^\.hl-([a-z]+) \{/gm, (whole, kind: string) => (classes.names[kind] ? `.${classes.names[kind].split(" ").join(".")} {` : whole));
+	if (classes.prism) out = out.replace("pre.highlight .line { display: inline-block; min-width: 100%; }\n", ".highlight-line { display: inline-block; min-width: 100%; }\n").replace("pre.highlight .line.highlighted {", ".highlight-line-active {");
+	return out;
+}
+
 export function writeHighlightCss(options: MarkdownOptions, output: string, markdown: Markdown): string[] {
 	const url = options.highlight ? options.highlightCss : null;
 	if (url === null) return [];
 	const file = path.join(output, ...url.replace(/^\/+/, "").split("/"));
-	const css = markdown.css();
+	const css = cssWithClasses(markdown.css(), options.highlightClasses);
 	let before: string | undefined;
 	try { before = fs.readFileSync(file, "utf8"); } catch {}
 	if (before !== css) {
@@ -135,8 +149,8 @@ const INLINE = 1;
 const HOOKS = 2;
 
 /** ssqch's Markdown with the site's options. `root` is the project root, where grammar files are read from. */
-export function markdownEngine(options: MarkdownOptions, root = process.cwd()): Markdown {
-	return new WasmMarkdown(options, root);
+export function markdownEngine(options: MarkdownOptions, root = process.cwd(), input?: string): Markdown {
+	return new WasmMarkdown(options, root, input);
 }
 
 /**
@@ -171,6 +185,8 @@ type Answer = Asked & ({ value: unknown } | { error: unknown });
 class WasmMarkdown implements Markdown {
 	#options: MarkdownOptions;
 	#root: string;
+	/** The input folder, from the root with a `/` after it (`docs/`): where `sourceLinks` finds a relative URL's file in the output. */
+	#inputRoot: string | undefined;
 	#hooks = new Map<string, HookTemplate>();
 	#engines: Engines | undefined;
 	/** The config's functions, by the numbers the wasm calls them with. */
@@ -179,9 +195,13 @@ class WasmMarkdown implements Markdown {
 	#handle = -1;
 	#wasm: Wasm | undefined;
 
-	constructor(options: MarkdownOptions, root: string) {
+	constructor(options: MarkdownOptions, root: string, input?: string) {
 		this.#options = options;
 		this.#root = root;
+		if (input !== undefined) {
+			const rel = path.relative(root, input).split(path.sep).join("/");
+			this.#inputRoot = rel === "" ? "" : rel.startsWith("..") ? undefined : `${rel}/`;
+		}
 	}
 
 	/**
@@ -195,6 +215,37 @@ class WasmMarkdown implements Markdown {
 	render(source: string, data: Data, _ctx: RenderContext): string | Promise<string> {
 		const file = page ?? pageOf(data);
 		this.#ready();
+		// Python-Markdown's raw HTML blocks are set aside first, before the other dialects write HTML.
+		const python = this.#options.dialect === "python-markdown" ? pythonMarkdownBefore(source) : undefined;
+		if (python) source = python.source;
+		source = this.#dialects(source);
+		const links = this.#options.sourceLinks;
+		const ids = this.#options.sluggerFn === pythonMarkdownSlug;
+		const after = (html: string) => {
+			if (links) html = sourceLinks(html, data, links, this.#inputRoot);
+			if (ids) html = pythonMarkdownIds(html);
+			return python ? pythonMarkdownAfter(html, python.raw) : html;
+		};
+		const changes = Boolean(links || ids || python);
+		if (!this.#options.htmlMarkdown) {
+			const out = this.#page(source, data, file);
+			if (!changes) return out;
+			return typeof out === "string" ? after(out) : out.then(after);
+		}
+		// The blank lines kept inside `<pre>` in `markdown="1"` blocks come back last.
+		const out = this.#page(this.#inHtml(source, HOOKS, data, file), data, file);
+		return typeof out === "string" ? after(restoreBlankLines(out)) : out.then((html) => after(restoreBlankLines(html)));
+	}
+
+	/** Other generators' syntax as ssqch's (markdown-dialects.ts): Hugo's shortcodes as containers, MkDocs' blocks as Python-Markdown's HTML. */
+	#dialects(source: string): string {
+		const o = this.#options;
+		if (o.shortcodes === "hugo") source = hugoShortcodes(source);
+		if (o.admonitions || o.tabs) source = pythonMarkdownBlocks(source, { admonitions: o.admonitions === "mkdocs", tabs: o.tabs === "mkdocs" });
+		return source;
+	}
+
+	#page(source: string, data: Data, file: string | undefined): string | Promise<string> {
 		if (!this.#functions.length) return this.#markdown(source, HOOKS, data, file);
 		let asked: Asked[];
 		try {
@@ -207,11 +258,27 @@ class WasmMarkdown implements Markdown {
 	}
 
 	html(text: string, inline: boolean): string {
+		if (!inline) text = this.#dialects(text);
+		if (this.#options.htmlMarkdown) return restoreBlankLines(this.#markdown(this.#inHtml(text, HOOKS, {}, page, "markdown() in a template"), HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template"));
 		return this.#markdown(text, HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template");
 	}
 
 	plain(text: string, inline: boolean): string {
+		if (this.#options.htmlMarkdown) return restoreBlankLines(this.#markdown(this.#inHtml(text, 0, {}, page, "markdown() from \"ssqch\""), inline ? INLINE : 0, {}, page, undefined, "markdown() from \"ssqch\""));
 		return this.#markdown(text, inline ? INLINE : 0, {}, page, undefined, "markdown() from \"ssqch\"");
+	}
+
+	/** `markdown="1"` elements' content rendered, with kramdown's HTML rules (`htmlMarkdown: "kramdown"`). */
+	#inHtml(source: string, flags: number, data: Data, file: string | undefined, what = "this Markdown"): string {
+		const kramdownIds = this.#options.headingIds === "kramdown";
+		const seen = new Map<string, number>();
+		return kramdownHtml(source, {
+			block: (text) => {
+				const html = this.#markdown(text, flags, data, file, undefined, what);
+				return kramdownIds ? withKramdownIds(html, text, seen) : html;
+			},
+			span: (text) => this.#markdown(text, flags | INLINE, data, file, undefined, what),
+		});
 	}
 
 	highlight(code: string, lang: string): string | undefined {
@@ -372,18 +439,23 @@ class WasmMarkdown implements Markdown {
 			return [name, { grammar: language.grammar }];
 		});
 		const json = JSON.stringify({
+			// kramdown's GFM ids for the page's own headings; the ones inside `markdown="1"` HTML get kramdown's own after (kramdown-html.ts).
 			headingIds: o.headingIds,
 			headingAttributes: o.headingAttributes,
 			footnotes: o.footnotes,
 			taskLists: o.taskLists,
 			autolinks: o.autolinks,
+			breaks: o.breaks,
+			figures: o.figures,
 			alerts: o.alerts,
 			containers: o.containers,
 			definitionLists: o.definitionLists,
 			smartPunctuation: o.smartPunctuation,
 			indentedCode: o.indentedCode,
+			encodeUrls: o.encodeUrls,
 			highlight: o.highlight,
 			highlightCss: o.highlightCss,
+			highlightClasses: o.highlightClasses,
 			languages,
 			headingIdsFunction: o.sluggerFn ? number(o.sluggerFn as (...args: unknown[]) => unknown, "markdown.headingIds", true) : null,
 			// `slot` is ssqch's container: it always calls back, to be kept for its parent.

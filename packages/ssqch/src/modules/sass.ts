@@ -58,7 +58,7 @@ function entries(root: string, from: string, to: string): Array<[string, string]
 }
 
 BUILTINS.set("ssqch/sass", (config: Config, given) => {
-	const o = new Options(given, ["files", "style", "loadPaths"]);
+	const o = new Options(given, ["files", "style", "loadPaths", "charset"]);
 	const files: Array<[string, string]> = [];
 	const map = o.get("files");
 	if (map !== undefined) {
@@ -71,6 +71,10 @@ BUILTINS.set("ssqch/sass", (config: Config, given) => {
 	const style = o.string("style");
 	if (style !== undefined && style !== "compressed" && style !== "expanded") bail(`style must be "compressed" or "expanded", not ${debugString(style)}`);
 	const loadPaths = o.list("loadPaths") ?? [];
+	// Dart Sass's `--no-charset`: CSS with a character outside ASCII starts with a byte order mark
+	// (compressed) or `@charset "UTF-8";` (expanded) unless it's false. jekyll-sass-converter takes
+	// the mark out, so a Jekyll site's CSS has none (opensource.guide's index.css).
+	const charset = o.bool("charset") ?? true;
 	if (!files.length) bail("files is required: { \"src/scss\": \"/css\" } or { \"src/app.scss\": \"/app.css\" }");
 	for (const [from, to] of files) {
 		if (!to.startsWith("/") || to.includes("..")) bail(`files: ${debugString(to)} must be a URL path starting with / (like "/css/app.css" or "/css")`);
@@ -99,7 +103,8 @@ BUILTINS.set("ssqch/sass", (config: Config, given) => {
 		for (const [from, to] of files) {
 			for (const [src, url] of entries(config.root, from, to)) {
 				const shown = displayPath(config.root, src);
-				const css = compiler.compile(src, options, shown);
+				const compiled = compiler.compile(src, options, shown);
+				const css = charset ? compiled : compiled.replace(/^\uFEFF|^@charset "UTF-8";\n?/, "");
 				// `url(/fonts/a.woff2)` gets the site's `base`, like URLs in HTML.
 				out.push({ path: url, contents: cssWithBase(config.base, css) });
 			}
@@ -109,6 +114,36 @@ BUILTINS.set("ssqch/sass", (config: Config, given) => {
 	}]);
 	config.summaries.push(["Sass", () => (count === undefined ? undefined : `${count[0]} file${count[0] === 1 ? "" : "s"} (${count[1]})`)]);
 });
+
+// ---- CSS as text ------------------------------------------------------------------------------
+
+/** CSS text compressed before, by its text: a site that inlines one stylesheet in every page compresses it once. */
+const compressedCss = new Map<string, string>();
+/** How many texts `compressedCss` keeps; past that, the oldest goes (a server's builds go on for hours). */
+const KEPT_CSS = 256;
+
+/**
+ * CSS text, compressed by grass as `style: "compressed"` writes a stylesheet (`minifyCss` from
+ * `ssqch/minify`): comments, whitespace and the last `;` out, colors and numbers shortened. It's
+ * read as plain CSS (a `.css` file), so Sass's own syntax is an error; so is CSS grass can't
+ * read, with grass's words. `shown` names the text in an error.
+ */
+export function compressCss(css: string, shown = "CSS"): string {
+	const kept = compressedCss.get(css);
+	if (kept !== undefined) return kept;
+	const name = "ssqch:inline.css";
+	const compiler = new Compiler(process.cwd(), new Set());
+	compiler.inline.set(name, css);
+	let out: string;
+	try {
+		out = compiler.compile(name, JSON.stringify({ style: "compressed", loadPaths: [] }), shown);
+	} catch (e) {
+		throw new BuildError(messageOf(e).replace(`compiling ${shown}: ${shown}: `, `${shown}: `).replaceAll(name, shown));
+	}
+	if (compressedCss.size >= KEPT_CSS) compressedCss.delete(compressedCss.keys().next().value!);
+	compressedCss.set(css, out);
+	return out;
+}
 
 // ---- the wasm --------------------------------------------------------------------------------
 
@@ -136,6 +171,8 @@ class Compiler {
 	root: string;
 	used: Set<string>;
 	loadPaths: string[];
+	/** A stylesheet that's no file, by the name grass is given for it (`minifyCss`'s text). */
+	inline: Map<string, string> = new Map();
 	constructor(root: string, used: Set<string>, loadPaths: string[] = []) {
 		this.root = root;
 		this.used = used;
@@ -165,7 +202,18 @@ class Compiler {
 			const partial = path.join(path.dirname(full), `_${path.basename(full)}`);
 			return fs.existsSync(full) ? full : fs.existsSync(partial) ? partial : undefined;
 		};
-		const changed = text.replace(/@(import|use|forward)(\s+)([^;{}]+)/g, (statement, rule, space, rest) => `@${rule}${space}${rest.replace(/(["'])([^"'\n]+\.s[ac]ss)\1/g, (quoted: string, q: string, name: string) => {
+		// A partial whose name has a dot of its own (`logic/variables.paths` for
+		// `_variables.paths.scss`): grass reads `.paths` as an extension and doesn't find it (the
+		// fresh a11yproject.com move). The file that's there, beside the importer or in a load path,
+		// is named with its extension, as the next step reads it.
+		const dotted = (name: string) => {
+			if (!/\.[^/.]+$/.test(name) || /\.(?:s[ac]ss|css)$/.test(name) || /^[a-z]+:/i.test(name)) return name;
+			for (const base of [dir, ...this.loadPaths]) {
+				for (const ext of [".scss", ".sass"]) if (exists(base, `${name}${ext}`)) return `${name}${ext}`;
+			}
+			return name;
+		};
+		const changed = text.replace(/@(import|use|forward)(\s+)([^;{}]+)/g, (statement, rule, space, rest) => `@${rule}${space}${rest.replace(/(["'])([^"'\n]+)\1/g, (quoted: string, q: string, name: string) => `${q}${dotted(name)}${q}`).replace(/(["'])([^"'\n]+\.s[ac]ss)\1/g, (quoted: string, q: string, name: string) => {
 			if (path.isAbsolute(name) || /^[a-z]+:/i.test(name) || exists(dir, name)) return quoted;
 			for (const load of this.loadPaths) {
 				const found = exists(load, name);
@@ -240,10 +288,13 @@ function instance(): Exports {
 		return status;
 	};
 	const stat = (ptr: number, len: number) => fs.statSync(active!.file(text(ptr, len)), { throwIfNoEntry: false });
+	const inline = (ptr: number, len: number) => active!.inline.get(text(ptr, len));
 	const host = {
-		is_file: (ptr: number, len: number) => (stat(ptr, len)?.isFile() ? 1 : 0),
-		is_dir: (ptr: number, len: number) => (stat(ptr, len)?.isDirectory() ? 1 : 0),
+		is_file: (ptr: number, len: number) => (inline(ptr, len) !== undefined || stat(ptr, len)?.isFile() ? 1 : 0),
+		is_dir: (ptr: number, len: number) => (inline(ptr, len) === undefined && stat(ptr, len)?.isDirectory() ? 1 : 0),
 		read: (ptr: number, len: number, out: number) => {
+			const given = inline(ptr, len);
+			if (given !== undefined) return reply(out, 0, given);
 			const file = active!.file(text(ptr, len));
 			try {
 				const data = active!.source(file, fs.readFileSync(file));
@@ -255,6 +306,7 @@ function instance(): Exports {
 		},
 		// The same file under two names is one module (grass uses it to load each once).
 		canonicalize: (ptr: number, len: number, out: number) => {
+			if (inline(ptr, len) !== undefined) return reply(out, 0, text(ptr, len));
 			try {
 				return reply(out, 0, active!.name(fs.realpathSync.native(active!.file(text(ptr, len)))));
 			} catch (e) {

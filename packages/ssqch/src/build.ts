@@ -29,11 +29,14 @@ import { describeThrown, settle } from "./modules.ts";
 import { compareText, isDir, isFile, isInside, readFollowing, realPath, relative, shown, slashes, walkFiles } from "./paths.ts";
 import { commandLine } from "./command-line.ts";
 export { commandLine, toolPath } from "./command-line.ts";
+import { mkdocsGlobals, tocOf } from "./mkdocs.ts";
+import { currentRendering, renderingAs, safe } from "./rendering.ts";
 import { checkPages } from "./schema.ts";
 import type { CopyJob, Page, Tpl } from "./site.ts";
 import { Site, Timer, errorsTogether } from "./site.ts";
 import type { Profile, ProfileReport } from "./profile.ts";
 import * as voice from "./voice.ts";
+import { jekyllPage, jekyllSite } from "./jekyll.ts";
 
 /** What a build did, handed to `afterBuild` hooks and printed as the summary. */
 export interface BuildReport {
@@ -98,7 +101,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	const { pages } = site;
 	const renderer = new Renderer(site);
 	// Pages paginated over a collection render last too: their items come from the finished collections.
-	const collectionIncludes = includesUsingCollections([dirs.includes, ...site.themeIncludes]);
+	const collectionIncludes = includesUsingCollections(site);
 	const overCollections = (p: Page) => typeof p.data.pagination?.data === "string" && p.data.pagination.data.startsWith("collections.");
 	const wanted = pages.filter((p) => p.output !== null || p.inCollections);
 	const late = new Set(wanted.filter((p) => usesCollections(p.tpl, collectionIncludes) || overCollections(p)));
@@ -254,13 +257,44 @@ class Renderer {
 
 	/** The data a page's templates get: its own, and the collections. */
 	private data(page: Page): Data {
-		return { ...page.data, collections: this.site.collections };
+		const data: Data = { ...page.data, collections: this.site.collections };
+		if (this.site.config.jekyllTemplates) {
+			data.site = this.jekyllSite();
+			data.page = jekyllPage(page.data, page.data.page, this.globalKeys());
+		}
+		// `mkdocsTemplates`: MkDocs' context. A page's own body keeps ssqch's `page`; its layouts get
+		// MkDocs' (see render), and MkDocs' 404 page (`mkdocsPage: false`) has none.
+		const mk = this.site.mkdocs;
+		if (mk) {
+			const error = page.data.mkdocsPage === false;
+			const context = this.site.mkdocsContext(error ? null : page);
+			Object.assign(data, mkdocsGlobals(mk), { nav: context.nav, base_url: context.base_url });
+			if (error) data.page = null;
+			else if (context.page) this.mkdocsPageOf.set(data, context.page);
+		}
+		return data;
+	}
+	/** Each page's MkDocs page, by the data its layouts render with. */
+	private mkdocsPageOf = new WeakMap<Data, Data>();
+
+	/** `jekyllTemplates`: Jekyll's `site`, made once a build, after the collections. */
+	private jekyllSiteData: Data | undefined;
+	private jekyllSite(): Data {
+		return (this.jekyllSiteData ??= jekyllSite(this.site.global.site, this.site.collections, this.site.global));
+	}
+	private globalKeySet: Set<string> | undefined;
+	private globalKeys(): Set<string> {
+		return (this.globalKeySet ??= new Set(Object.keys(this.site.global)));
 	}
 
 	/** A page's body through its engines: at once when they all answer at once, otherwise later. */
 	private body(page: Page): string | Promise<string> {
 		const { tpl } = page;
 		const data = this.data(page);
+		// The config's functions see this page as `this.page` (src/rendering.ts): one store for the
+		// page's render, whose data is the body's, then its layouts'.
+		const now = currentRendering();
+		if (now) now.data = data;
 		const ctx: RenderContext = { name: tpl.rel, inputPath: tpl.input, cacheKey: tpl.rel };
 		const run = (from: number, content: string): string | Promise<string> => {
 			for (let i = from; i < tpl.engines.length; i++) {
@@ -292,7 +326,10 @@ class Renderer {
 		let out: string | Promise<string>;
 		const before = markdownRendering(this.site.display(page.tpl.input));
 		try {
-			out = this.body(page);
+			// Another page's body, read now: its functions see that page, then this one's again.
+			const now = currentRendering();
+			const was = now?.data;
+			try { out = this.body(page); } finally { if (now && was) now.data = was; }
 		} catch (e) {
 			this.bodies.delete(page.index);
 			// That page's own turn reports this; the page that asked isn't a second error.
@@ -319,7 +356,7 @@ class Renderer {
 			// What a slow call was working on (src/profile.ts): pages render one at a time.
 			this.site.profile.at = shown(this.site.dirs.root, page.tpl.input);
 			try {
-				await this.render(page);
+				await renderingAs({ data: page.data }, () => this.render(page));
 			} catch (e) {
 				// A page that failed because a body it shows failed isn't reported: that body's page is.
 				if (this.borrowedFailure) continue;
@@ -369,7 +406,14 @@ class Renderer {
 			const had = this.bodies.get(page.index);
 			this.bodies.set(page.index, content);
 			try {
-				data.page = site.pageWithBody(page);
+				data.page = config.jekyllTemplates ? jekyllPage(page.data, site.pageWithBody(page), this.globalKeys()) : site.pageWithBody(page);
+				// MkDocs' page, with the page's HTML and its table of contents.
+				const mkdocsPage = this.mkdocsPageOf.get(data);
+				if (mkdocsPage) {
+					mkdocsPage.content = safe(content);
+					mkdocsPage.toc = tocOf((data.page as Data).headings as Array<{ level: number; id?: string; text: string }>);
+					data.page = mkdocsPage;
+				} else if (site.mkdocs && page.data.mkdocsPage === false) data.page = null;
 				for (const layout of layouts) {
 					const layoutStart = performance.now();
 					data.content = content;
@@ -378,11 +422,16 @@ class Renderer {
 						const ctx: RenderContext = { name: layout.name, inputPath: layout.path, cacheKey: `${layout.name}#${name}`, kind: "layout" };
 						const engine = site.engines.get(name);
 						try {
+							const now = currentRendering();
+							if (now) now.data = data;
 							const out = engine.render(text, data, ctx);
 							text = typeof out === "string" ? out : await asText(out, name, layout.name);
 						} catch (e) { throw context(e, `rendering layout ${layout.name} for ${tpl.rel}`); }
 					}
 					content = text;
+					// Layouts are rendering too: the summary's `write` was most of opensource.guide's
+					// build (1.2 s, its layouts' `where` calls) while its writes took a fraction of it.
+					this.renderMs += performance.now() - layoutStart;
 					if (site.profile.detailed) site.profile.add("layouts", layout.name, performance.now() - layoutStart, false);
 				}
 			} finally {
@@ -488,17 +537,35 @@ function sameContents(file: string, contents: string): boolean {
 	return same;
 }
 
+/**
+ * Files in an include folder that can't hold template code, which the checks below don't read:
+ * images (SVG too), fonts, media and archives. Material for MkDocs ships 14,376 icons as includes,
+ * and reading each on every build made a 25-page site take a second (the fresh httpx move).
+ */
+const NOT_TEMPLATES = /\.(?:svg|png|jpe?g|gif|webp|avif|ico|bmp|tiff?|woff2?|ttf|otf|eot|pdf|zip|gz|br|mp[34]|webm|ogg|wav|mov)$/i;
+const includeTexts = new WeakMap<Site, Array<{ dir: string; file: string; text: string }>>();
+
+/** The text of each file in the includes folders that can be a template, read once per build. */
+function includeSources(site: Site): Array<{ dir: string; file: string; text: string }> {
+	let list = includeTexts.get(site);
+	if (list) return list;
+	list = [];
+	for (const dir of [site.dirs.includes, ...site.themeIncludes]) {
+		for (const file of walkFiles(dir)) {
+			if (NOT_TEMPLATES.test(file)) continue;
+			try { list.push({ dir, file, text: fs.readFileSync(file, "utf8") }); } catch { /* not text */ }
+		}
+	}
+	includeTexts.set(site, list);
+	return list;
+}
+
 /** Whether any template, layout or include reads a page's rendered content (cheap: it decides whether bodies are kept from the start). */
 function mentionsContent(site: Site): boolean {
 	const reads = (text: string) => text.includes("templateContent") || /\.content\b/.test(text);
 	if (site.tpls.some((t) => reads(t.body))) return true;
 	for (const layout of site.layouts.values()) if (reads(layout.body)) return true;
-	for (const dir of [site.dirs.includes, ...site.themeIncludes]) {
-		for (const file of walkFiles(dir)) {
-			try { if (reads(fs.readFileSync(file, "utf8"))) return true; } catch { /* not text */ }
-		}
-	}
-	return false;
+	return includeSources(site).some(({ text }) => reads(text));
 }
 
 // ---- which pages read collections ------------------------------------------------------------
@@ -552,13 +619,8 @@ function includeKey(name: string): string {
 }
 
 /** The files in the includes folders (as `includeKey`s) whose code reads `collections`, or that include one that does. */
-function includesUsingCollections(dirs: string[]): Set<string> {
-	const files: Array<[string, string]> = [];
-	for (const dir of dirs) {
-		for (const file of walkFiles(dir)) {
-			try { files.push([includeKey(relative(dir, file)), fs.readFileSync(file, "utf8")]); } catch { /* not text */ }
-		}
-	}
+function includesUsingCollections(site: Site): Set<string> {
+	const files: Array<[string, string]> = includeSources(site).map(({ dir, file, text }) => [includeKey(relative(dir, file)), text]);
 	const using = new Set<string>();
 	for (const [key, text] of files) {
 		if (text.includes("collections") && (edgeCodeMentions(text, "collections") || tagCodeMentions(text, "collections"))) using.add(key);
@@ -625,6 +687,9 @@ function checkForeignKeys(site: Site): void {
 	// Aliases are read as ssqch's keys (see `aliasDataKeys`).
 	for (const row of equivalents.TABLE) {
 		if (row.kind !== "frontMatter" || row.alias) continue;
+		// A site with a filter of that name reads the key on purpose: `ssqch scout` leaves
+		// `eleventyNavigation` and eleventy-navigation's filter when templates call it.
+		if (site.config.filters.has(row.word)) continue;
 		// `published` is a site's own word too; only `false`, which means something elsewhere, is news.
 		const sets = (page: Page) => (row.word in page.data) && (row.word !== "published" || page.data[row.word] === false);
 		const files = dedup(site.pages.filter(sets).map((p) => shown(site.dirs.root, p.tpl.input)));
@@ -650,7 +715,9 @@ function checkForeignGlobals(site: Site): void {
 	// `site.posts` is Jekyll's only where nothing gives `site` a `posts`: not the global data, and
 	// not a page's own data (front matter, directory data).
 	const defines = (data: Data, key: string) => data.site !== undefined && data.site !== null && data.site[key] !== undefined;
-	const rows = equivalents.TABLE.filter((e) => e.kind === "global" && (!e.word.startsWith("site.") || !defines(site.global, e.word.slice(5))));
+	// With `jekyllTemplates`, Jekyll's `site` is there: its words aren't another generator's then.
+	const jekyll = site.config.jekyllTemplates;
+	const rows = equivalents.TABLE.filter((e) => e.kind === "global" && (!e.word.startsWith("site.") || (!jekyll && !defines(site.global, e.word.slice(5)))));
 	if (!rows.length) return;
 	// Each template's text, with the pages it makes (none for layouts and includes).
 	const sources: Array<[string, string, Tpl | undefined]> = [];
@@ -665,11 +732,29 @@ function checkForeignGlobals(site: Site): void {
 			sources.push([site.display(layout.path), layout.body, undefined]);
 		}
 	}
-	for (const dir of [site.dirs.includes, ...site.themeIncludes]) {
-		for (const file of walkFiles(dir)) {
-			if (seen.has(file)) continue;
-			seen.add(file);
-			try { sources.push([site.display(file), fs.readFileSync(file, "utf8"), undefined]); } catch { /* not text */ }
+	for (const { file, text } of includeSources(site)) {
+		if (seen.has(file)) continue;
+		seen.add(file);
+		sources.push([site.display(file), text, undefined]);
+	}
+	// `site.articles`, a Jekyll collection's name, is a collection here too: `collections.articles`.
+	// opensource.guide's language menus and guide lists were empty on 380 pages, with no word. Each
+	// template is read once for the `site.<name>`s it has, and the names that are tags count: a row
+	// for every tag would read every template once for each (10,000 pages took 2.5 s more).
+	const mentioned = new Set<string>();
+	for (const [, text] of sources) {
+		if (!text.includes("site.")) continue;
+		for (const m of text.matchAll(/\bsite\.([A-Za-z_][\w-]*)/g)) mentioned.add(m[1]);
+	}
+	if (mentioned.size && !jekyll) {
+		const tagged = new Set<string>();
+		for (const p of site.pages) {
+			const tags = Array.isArray(p.data.tags) ? p.data.tags : typeof p.data.tags === "string" ? [p.data.tags] : [];
+			for (const t of tags) if (typeof t === "string" && mentioned.has(t)) tagged.add(t);
+		}
+		for (const name of [...tagged].sort(compareText)) {
+			if (name === "all" || name === "posts" || defines(site.global, name)) continue;
+			rows.push({ word: `site.${name}`, kind: "global", alias: false, from: ["Jekyll"], ssqch: "collections", say: `ssqch's lists of pages are \`collections\`: \`collections.${name}\` is the pages tagged \`${name}\`, so this is empty (and an item's front matter is under \`data\`: \`item.data.title\`).`, more: "ssqch docs collections" });
 		}
 	}
 	// Whether the pages a source renders for have the value: its own pages, or any page for a layout or include.
@@ -978,7 +1063,9 @@ async function passthroughCopy(config: Config, dirs: Dirs, extra: CopyJob[]): Pr
 			const broken = (link: string): never => bail(`passthrough ${from}: ${shown(dirs.root, link)} is a link to ${fs.readlinkSync(link)}, which doesn't exist`);
 			for (const file of walkFollowing(src, broken)) jobs.push([file, path.join(dest, path.relative(src, file))]);
 		} else {
-			jobs.push([src, dest]);
+			// A file given a folder (`"."`, `"img/"`, or one that's there) goes into it, by its own name.
+			const into = to !== undefined && (to === "." || /[\\/]$/.test(to) || isDir(dest));
+			jobs.push([src, into ? path.join(dest, path.basename(src)) : dest]);
 		}
 	}
 	sameDestinations(jobs, dirs);

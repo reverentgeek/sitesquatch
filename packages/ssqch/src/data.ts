@@ -37,11 +37,14 @@ export const typeOf = (v: unknown): string => typeof v;
 
 // ---- front matter --------------------------------------------------------------------------
 
+/** What the site's config says about front matter: `trimAfterFrontMatter`, set before a build reads its templates (and read again for error lines). */
+export const frontMatterSettings = { trimAfter: false };
+
 /**
  * Splits front matter from a template body: `---` YAML (or `---yaml`, `---json`, `---toml`), or
  * `+++` TOML. A file without front matter is all body.
  */
-export function parseFrontMatter(src: string): { data: Data; body: string } {
+export function parseFrontMatter(src: string): { data: Data; body: string; duplicate?: { key: string; line: number } } {
 	let format: "yaml" | "json" | "toml";
 	let fence: string;
 	let rest: string;
@@ -72,7 +75,8 @@ export function parseFrontMatter(src: string): { data: Data; body: string } {
 			const text = rest.slice(0, offset);
 			// The body starts on the line after the fence, and blank lines there are kept, as
 			// gray-matter keeps them.
-			const body = rest.slice(next);
+			// With `trimAfterFrontMatter` they go, as Jekyll's pattern (`---\s*$\n?`) takes them.
+			const body = frontMatterSettings.trimAfter ? rest.slice(next).replace(/^(?:[ \t]*\r?\n)+/, "") : rest.slice(next);
 			if (format === "json") {
 				let value: unknown;
 				try { value = JSON.parse(text.trim() === "" ? "{}" : text); } catch (e) { throw new BuildError(`invalid JSON front matter: ${jsonReason(e, text)}`); }
@@ -83,7 +87,19 @@ export function parseFrontMatter(src: string): { data: Data; body: string } {
 				try { value = readToml(text); } catch (e) { throw new BuildError(`invalid TOML front matter: ${tomlReason(e)}`); }
 				return { data: frontMatterObject(value, "TOML"), body };
 			}
-			try { return { data: parseYaml(text), body }; } catch (e) { throw new BuildError(`invalid YAML front matter: ${yamlReason(e)}`); }
+			try { return { data: parseYaml(text), body }; } catch (e) {
+				// A key written twice (a translation that kept the English `title:`): the last one
+				// wins, as in Jekyll (Ruby's YAML), and the page says which (www.ruby-lang.org's 4 posts).
+				if (e instanceof yaml.YAMLException && /duplicated mapping key/.test(e.reason)) {
+					try {
+						const value = yaml.load(text, { schema: YAML_SCHEMA, json: true });
+						const line = e.mark ? e.mark.line + 1 : 0;
+						const key = e.mark ? /^\s*["']?([^"':]+)["']?\s*:/.exec(text.split("\n")[e.mark.line] ?? "")?.[1]?.trim() : undefined;
+						return { data: frontMatterObject(value ?? {}, "YAML"), body, duplicate: { key: key ?? "", line } };
+					} catch { /* the error below says what's wrong */ }
+				}
+				throw new BuildError(`invalid YAML front matter: ${yamlReason(e)}`);
+			}
 		}
 		offset = next;
 	}
@@ -629,6 +645,10 @@ export function toDate(value: unknown): Date | undefined {
 }
 
 const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})[Tt ](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/;
+// Jekyll's documented form, and what Ruby's `Time.parse` takes besides: a space before the zone,
+// no colon in it, a one-digit hour, no seconds (`2009-12-25 10:41:06 +0000`, `2024-03-21 9:00 +09:00`):
+// www.ruby-lang.org's 3,545 posts.
+const ZONED = /^(\d{4})-(\d{1,2})-(\d{1,2})[Tt ](\d{1,2}):(\d{2})(?::(\d{2})(\.\d+)?)? ?([Zz]|[+-]\d{2}:?\d{2}|UTC)$/;
 // Without a zone, the parts can be written loosely (`2024-1-5`, `+2024-06-01`), as 0.7 read them.
 const DATE_ONLY = /^([+-]?\d{1,6})-(\d{1,2})-(\d{1,2})$/;
 const NAIVE = /^([+-]?\d{1,6})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{1,2})(?::(\d{1,2})(\.\d+)?)?$/;
@@ -646,6 +666,14 @@ export function parseDate(text: string): Date | undefined {
 			offset = (zone[0] === "-" ? -minutes : minutes) * 60_000;
 		}
 		return new Date(utc - offset);
+	}
+	m = ZONED.exec(s);
+	if (m) {
+		const utc = utcMs(m[1], m[2], m[3], m[4], m[5], m[6] ?? "0", m[7]);
+		if (utc === undefined) return undefined;
+		const zone = m[8].replace(":", "");
+		const minutes = /^[Zz]|UTC$/.test(zone) ? 0 : Number(zone.slice(1, 3)) * 60 + Number(zone.slice(3, 5));
+		return new Date(utc - (zone[0] === "-" ? -minutes : minutes) * 60_000);
 	}
 	m = DATE_ONLY.exec(s);
 	if (m) {

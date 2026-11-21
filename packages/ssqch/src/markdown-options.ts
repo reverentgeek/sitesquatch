@@ -3,8 +3,9 @@
 import { bail } from "./diagnostics.ts";
 import { isPlainObject } from "./data.ts";
 import { closest } from "./suggest.ts";
+import { pythonMarkdownSlug } from "./engines/markdown-dialects.ts";
 
-export type Slugger = "github" | "blackfriday" | "ascii";
+export type Slugger = "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor";
 
 export interface MarkdownOptions {
 	/** Automatic heading `id`s (GitHub style by default), or `null` for none. An explicit `{#id}` always wins. */
@@ -15,8 +16,12 @@ export interface MarkdownOptions {
 	footnotes: boolean;
 	/** `- [ ]` and `- [x]` list items. */
 	taskLists: boolean;
-	/** Bare `https://` and `www.` URLs become links. */
-	autolinks: boolean;
+	/** Bare `https://` and `www.` URLs become links; `"fuzzy"` links bare domains (`example.com`) and email addresses too, as markdown-it's `linkify` does. */
+	autolinks: boolean | "fuzzy";
+	/** A single newline in a paragraph is a `<br>`, as markdown-it's `breaks: true` makes it. */
+	breaks: boolean;
+	/** An image alone in a paragraph is a `<figure>` with its alt text as the `<figcaption>`, as markdown-it-implicit-figures makes it. */
+	figures: boolean;
 	/** GitHub's `> [!NOTE]` alerts (note, tip, important, warning, caution). */
 	alerts: boolean;
 	/** `::: name args` blocks. */
@@ -27,14 +32,30 @@ export interface MarkdownOptions {
 	smartPunctuation: boolean;
 	/** Lines indented four spaces are code. Off, they're ordinary Markdown; fences are still code. */
 	indentedCode: boolean;
+	/** Link and image URLs percent-encoded (`#كتابة` as `#%D9%83...`), as CommonMark's reference renderer writes them; `false` writes them as the page has them, HTML-escaped only, as kramdown does. */
+	encodeUrls: boolean;
 	/** Highlight fenced code at build time. */
 	highlight: boolean;
 	/** Where the build writes the highlighting stylesheet (a URL path like `/highlight.css`), or `null` to leave it out. */
 	highlightCss: string | null;
+	/** Another highlighter's class names for the tokens (`highlight: { classes }`): `names` by kind, and `prism` for Prism's `<pre>` and marked lines too. */
+	highlightClasses: { names: Record<string, string>; prism: boolean } | null;
 	/** Languages the site adds or replaces (`highlight: { languages }`): a function, another language's name, or a `.sublime-syntax` file. */
 	languages: Array<[string, ((code: string, lang: string) => unknown) | { alias: string } | { grammar: string }]>;
 	/** A slugger of the site's own (`headingIds: text => id`), used instead of `headingIds` when set. Repeats still get `-1`, `-2`. */
 	sluggerFn: ((text: string) => unknown) | null;
+	/** Markdown inside HTML: `"kramdown"` reads `markdown="1"` elements' content as Markdown, with kramdown's HTML rules around them; `false` leaves HTML as CommonMark does. */
+	htmlMarkdown: "kramdown" | false;
+	/** MkDocs' `!!! note "Title"` and `??? note` blocks (`"mkdocs"`), written as Python-Markdown's admonition and pymdownx.details write them. */
+	admonitions: "mkdocs" | false;
+	/** MkDocs' `=== "Tab"` blocks (`"mkdocs"`), written as pymdownx.tabbed's alternate style writes them. */
+	tabs: "mkdocs" | false;
+	/** Hugo's shortcodes on lines of their own (`"hugo"`) as containers: `{{< note >}}` to `{{< /note >}}` renders `_includes/containers/note.*`. */
+	shortcodes: "hugo" | false;
+	/** Links to `.md` files go to the page built from that file: `true` from the site's root, `"relative"` from the page, as MkDocs writes them. */
+	sourceLinks: boolean | "relative";
+	/** `"python-markdown"`: what Python-Markdown (MkDocs') reads and writes differently from CommonMark, as it does: raw HTML blocks to their closing tag, lists nested at four spaces, `"` in text, XHTML's void tags. */
+	dialect: "python-markdown" | null;
 }
 
 export function defaultMarkdownOptions(): MarkdownOptions {
@@ -44,22 +65,58 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		footnotes: true,
 		taskLists: true,
 		autolinks: true,
+		breaks: false,
+		figures: false,
 		alerts: true,
 		containers: true,
 		definitionLists: false,
 		smartPunctuation: false,
 		indentedCode: true,
+		encodeUrls: true,
 		highlight: false,
 		highlightCss: "/highlight.css",
+		highlightClasses: null,
 		languages: [],
 		sluggerFn: null,
+		htmlMarkdown: false,
+		admonitions: false,
+		tabs: false,
+		shortcodes: false,
+		sourceLinks: false,
+		dialect: null,
 	};
 }
 
 /** The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`). */
-export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight"] as const;
+export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "encodeUrls", "admonitions", "tabs", "shortcodes", "sourceLinks", "dialect"] as const;
 
-const FLAGS = ["headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode"] as const;
+const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures", "encodeUrls"] as const;
+
+/** What a highlighted token can be: the `hl-*` names, without the prefix. */
+export const HIGHLIGHT_KINDS = ["comment", "keyword", "operator", "string", "regexp", "escape", "number", "constant", "builtin", "property", "attribute", "function", "type", "parameter", "tag", "heading", "strong", "emphasis", "link", "inserted", "deleted"] as const;
+
+/** Prism's names for each kind, the ones Prism's themes color (`.token.keyword`). */
+/** Pygments' short class names (`.k`, `.s`, `.nf`), which its themes and Chroma's (Hugo's highlighter) color: MkDocs' and Hugo's stylesheets keep working. */
+export const PYGMENTS_CLASSES: Record<string, string> = { comment: "c", keyword: "k", operator: "o", string: "s", regexp: "sr", escape: "se", number: "m", constant: "kc", builtin: "nb", property: "py", attribute: "na", function: "nf", type: "nc", parameter: "nv", tag: "nt", heading: "gh", strong: "gs", emphasis: "ge", link: "nl", inserted: "gi", deleted: "gd" };
+
+export const PRISM_CLASSES: Record<string, string> = { comment: "token comment", keyword: "token keyword", operator: "token operator", string: "token string", regexp: "token regex", escape: "token escape", number: "token number", constant: "token constant", builtin: "token builtin", property: "token property", attribute: "token attr-name", function: "token function", type: "token class-name", parameter: "token parameter", tag: "token tag", heading: "token title", strong: "token bold", emphasis: "token italic", link: "token url", inserted: "token inserted", deleted: "token deleted" };
+
+/** `classes: "prism"`, or `{ kind: "class names" }` for some kinds. */
+function highlightClasses(value: unknown): MarkdownOptions["highlightClasses"] {
+	if (value === "prism") return { names: { ...PRISM_CLASSES }, prism: true };
+	if (value === "pygments" || value === "chroma") return { names: { ...PYGMENTS_CLASSES }, prism: false };
+	if (!isPlainObject(value)) bail(`markdown.highlight.classes must be "prism", "pygments" or an object of { kind: "class names" }, not ${typeof value === "string" ? `"${value}"` : typeOf(value)}`);
+	const names: Record<string, string> = {};
+	for (const [kind, classes] of Object.entries(value)) {
+		if (!(HIGHLIGHT_KINDS as readonly string[]).includes(kind)) {
+			const near = closest(kind, HIGHLIGHT_KINDS);
+			bail(`markdown.highlight.classes.${kind} isn't a kind of token${near ? ` (did you mean \`${near}\`?)` : ""} (kinds: ${HIGHLIGHT_KINDS.join(", ")})`);
+		}
+		if (typeof classes !== "string" || !/^-?[A-Za-z_][\w-]*(?: -?[A-Za-z_][\w-]*)*$/.test(classes.trim())) bail(`markdown.highlight.classes.${kind} must be class names, like "tok-keyword", not ${typeof classes === "string" ? `"${classes}"` : typeOf(classes)}`);
+		names[kind] = classes.trim();
+	}
+	return { names, prism: false };
+}
 
 /** JavaScript's `typeof`, with a list or `null` as "object": how these errors name a value's type. */
 const typeOf = (v: unknown) => typeof v;
@@ -74,9 +131,26 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 			else if (v === false || v === null) options.headingIds = null;
 			else if (v === true) options.headingIds = "github";
 			else if (typeof v === "string") {
-				if (v !== "github" && v !== "blackfriday" && v !== "ascii") bail(`markdown.headingIds: unknown slugger "${v}" (use "github", "blackfriday", "ascii" or false)`);
-				options.headingIds = v;
-			} else bail(`markdown.headingIds must be "github", "blackfriday", "ascii" or false, not ${typeOf(v)}`);
+				// Python-Markdown's (MkDocs') ids are a function of the text, so they're a slugger function of ssqch's own.
+				if (v === "python-markdown") { options.sluggerFn = pythonMarkdownSlug; options.headingIds = "github"; continue; }
+				if (!["github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor"].includes(v)) bail(`markdown.headingIds: unknown slugger "${v}" (use "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor", "python-markdown" or false)`);
+				options.headingIds = v as Slugger;
+			} else bail(`markdown.headingIds must be "github", "blackfriday", "ascii", "kramdown", "markdown-it-anchor", "python-markdown" or false, not ${typeOf(v)}`);
+		} else if (key === "htmlMarkdown") {
+			if (v !== false && v !== "kramdown") bail(`markdown.htmlMarkdown must be "kramdown" or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			options.htmlMarkdown = v;
+		} else if (key === "admonitions" || key === "tabs") {
+			if (v !== false && v !== "mkdocs") bail(`markdown.${key} must be "mkdocs" or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			options[key] = v;
+		} else if (key === "shortcodes") {
+			if (v !== false && v !== "hugo") bail(`markdown.shortcodes must be "hugo" or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			options.shortcodes = v;
+		} else if (key === "dialect") {
+			if (v !== "python-markdown" && v !== null && v !== false) bail(`markdown.dialect: unknown dialect ${typeof v === "string" ? `"${v}"` : typeOf(v)} (use "python-markdown", or false for CommonMark's)`);
+			options.dialect = v === "python-markdown" ? v : null;
+		} else if (key === "sourceLinks") {
+			if (typeof v !== "boolean" && v !== "relative") bail(`markdown.sourceLinks must be true, false or "relative", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			options.sourceLinks = v;
 		} else if (key === "highlight") {
 			if (typeof v === "boolean") options.highlight = v;
 			else if (isPlainObject(v)) {
@@ -86,12 +160,17 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 						if (setting === false || setting === null) options.highlightCss = null;
 						else if (typeof setting === "string" && setting.startsWith("/") && !setting.includes("..")) options.highlightCss = setting;
 						else bail(`markdown.highlight.css must be a path like "/assets/highlight.css", or false, not ${typeof setting === "string" ? `"${setting}"` : typeOf(setting)}`);
+					} else if (k === "classes") {
+						options.highlightClasses = highlightClasses(setting);
 					} else if (k === "languages") {
 						if (!isPlainObject(setting)) bail(`markdown.highlight.languages must be an object of { name: highlighter }, not ${typeOf(setting)}`);
 						for (const [name, language] of Object.entries(setting)) setLanguage(options, name, language);
-					} else bail(`markdown.highlight.${k} isn't an option (options: css, languages)`);
+					} else bail(`markdown.highlight.${k} isn't an option (options: classes, css, languages)`);
 				}
-			} else bail(`markdown.highlight must be true, false or { css, languages }, not ${typeOf(v)}`);
+			} else bail(`markdown.highlight must be true, false or { classes, css, languages }, not ${typeOf(v)}`);
+		} else if (key === "autolinks") {
+			if (typeof v !== "boolean" && v !== "fuzzy") bail(`markdown.autolinks must be true, false or "fuzzy", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			options.autolinks = v;
 		} else if ((FLAGS as readonly string[]).includes(key)) {
 			if (typeof v !== "boolean") bail(`markdown.${key} must be true or false, not ${typeOf(v)}`);
 			options[key as typeof FLAGS[number]] = v;

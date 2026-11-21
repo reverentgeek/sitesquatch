@@ -1,0 +1,65 @@
+{
+  "version": "0.10.1",
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 6,
+      "templates": 6,
+      "bytes": 4226,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 1,
+      "unchanged": 0,
+      "bytes": 132
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "guides/cedar/index.html",
+      "guides/old-growth/index.html",
+      "index.html",
+      "news/2026/03/pine-cone-season/index.html",
+      "news/2026/04/cedar-trail-reopens/index.html",
+      "news/index.html",
+      "pine-cones/index.html"
+    ],
+    "summary": [
+      {
+        "label": "Links",
+        "value": "38 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [
+      {
+        "word": "redirect_from",
+        "kind": "frontMatter",
+        "use": "aliases",
+        "alias": true,
+        "from": [
+          "Jekyll"
+        ],
+        "more": "ssqch docs aliases"
+      }
+    ],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed siting. Built in <time> (production)\n  Pages   6 written from 6 templates, 4.23 KB\n  Copied  1 file, 132 B\n  Links   38 checked, 0 broken\n  Output  dist: 8 files, 4.86 KB\nnote: redirect_from works; ssqch calls it aliases (ssqch docs aliases)\n",
+  "files": {
+    "assets/guides.css": "text",
+    "guides/cedar/index.html": "text",
+    "guides/old-growth/index.html": "text",
+    "index.html": "text",
+    "news/2026/03/pine-cone-season/index.html": "text",
+    "news/2026/04/cedar-trail-reopens/index.html": "text",
+    "news/index.html": "text",
+    "pine-cones/index.html": "text"
+  }
+}

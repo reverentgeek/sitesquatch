@@ -9,6 +9,7 @@ import { createRequire } from "node:module";
 import type EjsLib from "ejs";
 import type { Data } from "../data.ts";
 import { BuildError } from "../diagnostics.ts";
+import { isSafe } from "../rendering.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closestPath } from "../suggest.ts";
 import { lazyEngine, siteFunction } from "./engine.ts";
@@ -182,7 +183,8 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 					waiting.push({ mark, raw: Boolean(raw), promise: watchSettle(value), name, line });
 					return mark;
 				}
-				if (!raw) return value === undefined || value === null ? "" : text(value).replace(/[&<>"']/g, (c) => ESCAPES[c]);
+				// A function's answer marked with `safe()` prints as it is.
+				if (!raw) return value === undefined || value === null ? "" : isSafe(value) ? String(value) : text(value).replace(/[&<>"']/g, (c) => ESCAPES[c]);
 				if (typeof value !== "string") return text(value);
 				// `<%= %>` has printed it already; this is where it goes, for a promise's error to name.
 				if (value.startsWith(MARK)) {

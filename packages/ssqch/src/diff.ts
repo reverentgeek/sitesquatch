@@ -4,7 +4,8 @@
 // it into another, and this says what the change did to the output: which URLs were added and
 // removed, and what changed on the pages that differ.
 //
-// Unless `exact` is set, differences that don't matter are ignored:
+// Unless `exact` is set, differences that don't matter are ignored (with `exact`, only the `ignore`
+// patterns are, so "byte for byte but this" can be said):
 //
 // - asset fingerprints (`index.3f2a1b4c.css` and `index.9d8e7f6a.css` are the same file,
 //   compared by content) and `integrity` hashes,
@@ -27,12 +28,18 @@ import { charCount, firstChars, quoted } from "./quote.ts";
 import { bytes, count } from "./report.ts";
 
 export interface DiffOptions {
-	/** Compare bytes: no fingerprint matching, and nothing ignored. */
+	/** Compare bytes: no fingerprint matching, and nothing ignored but the `ignore` patterns. */
 	exact: boolean;
 	/** Text matching one of these is left out of both sides before comparing. */
 	ignore: RegExp[];
+	/** List each file with all its changes, without groups (`--ungrouped`). */
+	ungrouped?: boolean;
 	/** Only compare files whose path (from the build's root, with `/`) matches one of these. */
 	only: RegExp[] | undefined;
+	/** `--only` as it was given, for the error when it matches nothing. */
+	onlyGiven?: string[];
+	/** Leave out files whose path matches one of these (after `only`). */
+	exclude?: RegExp[];
 	/** The changed lines to keep for each file (0 for all): the report shows no more, so a big change doesn't fill memory. */
 	lines: number;
 }
@@ -41,6 +48,8 @@ export interface DiffOptions {
 export interface Hunk {
 	removed: string[];
 	added: string[];
+	/** Where on a page it is: the nearest heading above it, `#its-id` or its text in quotes. */
+	at?: string;
 }
 
 /** A file that's in both builds with different contents. */
@@ -64,6 +73,33 @@ export interface FileDiff {
 	onlyDates: [string, string] | undefined;
 	sizeBefore: number;
 	sizeAfter: number;
+	/** Every changed run, while the comparison groups them; gone from the report. */
+	allHunks?: Hunk[];
+	/** The groups (by their place in `groups`) that hold some of its changes. */
+	groups: number[];
+	/** Its changes no group holds, up to `lines` of them: what's left to show for it alone. */
+	ownHunks: Hunk[];
+	/** How many changed lines no group holds, all of them. */
+	ownLines: number;
+}
+
+/**
+ * One change on more than one file (a hunk the same on each, or the same but for its attribute
+ * values): what a migration fixes once for all of them. Every move ran the loop "fix the biggest
+ * group of differences, repeat" by hand, and opensource.guide's 387 changed pages took a
+ * classifier of their own to turn into groups (osg `scripts/compare.py`).
+ */
+export interface DiffGroup {
+	/** The files that have it, by their URL, in the report's order. */
+	urls: string[];
+	/** `false` when its lines differ from file to file (the lines are the first file's). */
+	same: boolean;
+	/** How alike its changes are: `lines` (the same), `values` (the same but for attribute values), `tags` (the same tags, with other attributes, or a line repeated another number of times), or `dates` (the same dates changed, in other text). */
+	match: "lines" | "values" | "tags" | "dates";
+	/** What it changes: `dates`, `order` (the same lines, moved), `markup`, `text`, or `markup and text`. */
+	kind: string;
+	/** The change, as the first file has it. */
+	hunk: Hunk;
 }
 
 export interface DiffReport {
@@ -75,6 +111,8 @@ export interface DiffReport {
 	/** URLs only in the first build. */
 	removed: string[];
 	changed: FileDiff[];
+	/** Changes on more than one file, the most files first. Empty with `--ungrouped`. */
+	groups: DiffGroup[];
 	unchangedPages: number;
 	unchangedFiles: number;
 }
@@ -92,6 +130,9 @@ const GENERATOR = new RegExp(String.raw`SiteSquatch v\p{Nd}+\.\p{Nd}+\.\p{Nd}+[\
 const ID_ATTR = /\p{White_Space}id=(?:"([^"]*)"|'([^']*)'|([^\p{White_Space}>]+))/u;
 const MONTH = "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)";
 const DATE = new RegExp([
+	// Mon Mar 08 2021 00:00:00 GMT+0000 (Coordinated Universal Time): JavaScript's Date.toString(),
+	// as Eleventy's Nunjucks printed a date (a11yproject.com's JSON-LD, against ssqch's ISO 8601).
+	String.raw`${START}(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\p{White_Space}+${MONTH}\p{White_Space}+\p{Nd}{2}\p{White_Space}+\p{Nd}{4}\p{White_Space}+\p{Nd}{2}:\p{Nd}{2}:\p{Nd}{2}\p{White_Space}+GMT[+\-]\p{Nd}{4}(?:\p{White_Space}+\([^)]*\))?`,
 	// 2026-03-14T09:05:00Z
 	String.raw`\p{Nd}{4}-\p{Nd}{2}-\p{Nd}{2}(?:[T ]\p{Nd}{2}:\p{Nd}{2}(?::\p{Nd}{2}(?:\.\p{Nd}+)?)?(?:Z|[+\-]\p{Nd}{2}:?\p{Nd}{2})?)?`,
 	// March 14, 2026
@@ -103,6 +144,23 @@ const DATE = new RegExp([
 	// 2026
 	String.raw`${START}(?:19|20)\p{Nd}{2}${END}`,
 ].join("|"), "gu");
+
+/**
+ * An image named by its id, as eleventy-img and `imagePlugin()` name them: ten characters of a
+ * hash, then the width (`/img/LeC3bj9CzE-256.webp`). Two builds that hash differently (another
+ * generator, other image settings) give every image another id. A plain word that happens to be
+ * ten letters long (`screenshot-1200.png`) or a number (`2024061512-800.jpg`) is a name, not an id.
+ */
+const IMAGE_ID = /(?<=[/"'=,\p{White_Space}]|^)([A-Za-z0-9_-]{10})(?=-\p{Nd}{1,5}\.(?:avif|webp|jpe?g|png|gif|svg)(?![A-Za-z0-9]))/gu;
+const isImageId = (id: string) => !/^(?:[a-z]+|[0-9]+)$/.test(id);
+/** Whether a path is an image named by its id (`img/LeC3bj9CzE-256.webp`). */
+export const isHashedImage = (file: string) => [...file.slice(file.lastIndexOf("/") + 1).matchAll(IMAGE_ID)].some((m) => m.index === 0 && isImageId(m[1]));
+
+/** Text with image ids written as `{id}`: `/img/{id}-256.webp`. */
+export function withoutImageIds(text: string): string {
+	if (!text.includes("-")) return text;
+	return text.replace(IMAGE_ID, (id: string) => (isImageId(id) ? "{id}" : id));
+}
 
 /** `name` (or a whole text) without asset fingerprints: eight hex digits before the extension. Eight digits that read as a date (`report.20240101.pdf`) are part of the name, not a fingerprint. */
 export function withoutFingerprints(text: string): string {
@@ -135,10 +193,11 @@ function isInline(tag: string): boolean {
 
 /** The text to compare for a file's contents. */
 function normalize(text: string, options: DiffOptions): string {
-	if (options.exact) return text;
-	let out = text.replaceAll("\r\n", "\n");
+	let out = options.exact ? text : text.replaceAll("\r\n", "\n");
 	for (const re of options.ignore) out = out.replace(re, "");
+	if (options.exact) return out;
 	out = withoutFingerprints(out);
+	out = withoutImageIds(out);
 	if (out.includes("integrity=")) out = out.replace(INTEGRITY, "");
 	if (out.includes("SiteSquatch v")) out = out.replace(GENERATOR, "SiteSquatch");
 	return out;
@@ -179,6 +238,31 @@ export function keyed(paths: string[], exact: boolean): Map<string, string> {
 }
 
 const isPage = (file: string) => file.endsWith(".html") || file.endsWith(".htm");
+const isXml = (file: string) => /\.(?:xml|rss|atom|xsl)$/.test(file);
+
+const CDATA = /<!\[CDATA\[([\s\S]*?)\]\]>/g;
+const ESCAPED_TEXT = /(?<=>)([^<]*&lt;[^<]*)(?=<)/g;
+
+/**
+ * An XML file with the HTML it holds as markup: a feed's `<content>`, `<description>` and
+ * `<summary>` carry a page's HTML escaped (`&lt;p&gt;`) or in CDATA, which one generator writes
+ * `<br />` and the next `<br>`. Read as HTML, its tags compare the way a page's do.
+ */
+function xmlWithMarkup(text: string): string {
+	let out = text.includes("<![CDATA[") ? text.replace(CDATA, (_, inside: string) => inside) : text;
+	if (out.includes("&lt;")) out = out.replace(ESCAPED_TEXT, (escaped: string) => decodeEntitiesOnce(escaped));
+	return out;
+}
+
+/** One level of escaping undone: `&lt;p&gt;` is `<p>`, `&amp;lt;` is `&lt;`, and a number is its character (Zola writes `=` as `&#x3D;` in a feed's HTML). */
+function decodeEntitiesOnce(s: string): string {
+	return s.replace(/&(lt|gt|quot|apos|amp|#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6});/g, (whole, name: string) => {
+		const named: Record<string, string> = { lt: "<", gt: ">", quot: "\"", apos: "'", amp: "&" };
+		if (Object.hasOwn(named, name)) return named[name];
+		const code = name[1] === "x" || name[1] === "X" ? Number.parseInt(name.slice(2), 16) : Number.parseInt(name.slice(1), 10);
+		return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : whole;
+	});
+}
 
 // ---- tokens ----------------------------------------------------------------------------------
 
@@ -256,6 +340,131 @@ function tagEnd(s: string, from: number): number | undefined {
 	return undefined;
 }
 
+// ---- markup as browsers read it ----------------------------------------------------------------
+//
+// Two generators write the same page in different ways: attributes in another order, `'` or `"`
+// around values (or none), `&#39;` for `'`, `defer="defer"` for `defer`, `<br/>` for `<br>`, and
+// `<path/>` for `<path></path>` in an SVG. A browser reads them the same, so a migration's diff
+// shouldn't list them: the blog's first comparison was about 25,000 lines of them for 161 pages.
+// Unless `exact`, each tag is written one way (`canonicalTag`), and so is the text between tags
+// (`canonicalText`), before they're compared. What browsers read differently stays different:
+// an attribute's value, the order of `class` names, `&nbsp;` and a space.
+
+/** Attributes whose presence is what counts: `defer`, `defer=""` and `defer="defer"` are the same. */
+const BOOLEAN = new Set(["allowfullscreen", "async", "autofocus", "autoplay", "checked", "controls", "default", "defer", "disabled", "formnovalidate", "hidden", "inert", "ismap", "itemscope", "loop", "multiple", "muted", "nomodule", "novalidate", "open", "playsinline", "readonly", "required", "reversed", "selected"]);
+/** Attributes that hold lists, whose spacing doesn't count: `srcset="a.jpg 1x,b.jpg 2x"` is `srcset="a.jpg 1x, b.jpg 2x"`. */
+const SPACED = new Set(["class", "rel", "sizes", "srcset"]);
+/** Elements with no end tag, where a `/` before `>` means nothing. */
+const VOID = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+
+const ENTITY_OR_AMP = /&(?:(#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]*);)?/g;
+const NAMED_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'" };
+
+/** The character an entity names, when it's one browsers and generators commonly write both ways; otherwise undefined. */
+function entityChar(name: string): string | undefined {
+	if (name[0] !== "#") return Object.hasOwn(NAMED_ENTITIES, name) ? NAMED_ENTITIES[name] : undefined;
+	const code = name[1] === "x" || name[1] === "X" ? Number.parseInt(name.slice(2), 16) : Number.parseInt(name.slice(1), 10);
+	// A non-breaking space stays `&nbsp;`: as a character, it would collapse with the spaces.
+	if (code === 0xa0) return undefined;
+	return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : undefined;
+}
+
+/** Text with its entities written one way: characters as themselves, apart from `&` and `<` (`&amp;`, `&lt;`), and a lone `&` as `&amp;`. `&#160;` is `&nbsp;`; entities it doesn't know stay as they are. */
+export function canonicalText(text: string): string {
+	if (!text.includes("&") && !text.includes(">")) return text;
+	return text.replace(ENTITY_OR_AMP, (whole, name: string | undefined) => {
+		if (name === undefined) return "&amp;";
+		if (name === "#160" || /^#[xX]0*[aA]0$/.test(name)) return "&nbsp;";
+		const c = entityChar(name);
+		return c === undefined ? whole : c === "&" ? "&amp;" : c === "<" ? "&lt;" : c;
+	}).replaceAll("&gt;", ">");
+}
+
+/** An attribute's value as the browser reads it: its entities decoded. */
+function attributeValue(raw: string): string {
+	if (!raw.includes("&")) return raw;
+	return raw.replace(ENTITY_OR_AMP, (whole, name: string | undefined) => (name === undefined ? whole : name === "nbsp" ? "\u00a0" : (entityChar(name) ?? whole)));
+}
+
+const NO_ATTRIBUTES = /^<\/?[a-z][a-z0-9-]*>$/;
+
+/**
+ * A start or end tag written one way: its name and attribute names in lower case, attributes
+ * sorted by name (the first of two with one name, which is the one a browser keeps), each value
+ * decoded and written in double quotes (`&` and `"` escaped), a boolean attribute without a value,
+ * and no `/` before the `>`. Returns the tag, and whether it closed itself (`<path/>` in an SVG,
+ * which is `<path></path>`). A comment, a doctype and anything that doesn't parse as a tag come
+ * back as they are, a doctype in lower case.
+ */
+export function canonicalTag(tag: string, foreign: boolean, xml = false): [string, boolean] {
+	if (NO_ATTRIBUTES.test(tag)) return [tag, false];
+	// XML's names keep their case (`<pubDate>`), and every element can close itself.
+	const lower = xml ? (t: string) => t : asciiLower;
+	if (tag.startsWith("<!--")) return [tag, false];
+	if (/^<!doctype/i.test(tag)) return [asciiLower(tag), false];
+	const closing = tag.charCodeAt(1) === 47;
+	let i = closing ? 2 : 1;
+	const name = nameAt(tag, i);
+	if (name === "") return [tag, false];
+	i += name.length;
+	// Custom elements' names go on past letters and digits (`<site-header>`).
+	while (i < tag.length && /[A-Za-z0-9_:.-]/.test(tag[i])) i++;
+	const element = lower(tag.slice(closing ? 2 : 1, i));
+	const attrs = new Map<string, string | undefined>();
+	let selfClosing = false;
+	const end = tag.length - 1;
+	while (i < end) {
+		const c = tag.charCodeAt(i);
+		if (isSpace(c)) { i++; continue; }
+		if (c === 47) {
+			// A `/` right before the `>` closes the element; anywhere else it's nothing.
+			let j = i + 1;
+			while (j < end && isSpace(tag.charCodeAt(j))) j++;
+			if (j === end) selfClosing = true;
+			i++;
+			continue;
+		}
+		let j = i;
+		while (j < end && !isSpace(tag.charCodeAt(j)) && tag[j] !== "=" && tag[j] !== ">" && !(tag[j] === "/" && j > i)) j++;
+		if (j === i) j++;
+		const attr = lower(tag.slice(i, j));
+		// Not a name a browser would read (an `=` written as an entity, a stray quote): the tag isn't
+		// one to rewrite, so it's compared as it's written.
+		if (/["'<]/.test(attr)) return [tag, false];
+		i = j;
+		while (i < end && isSpace(tag.charCodeAt(i))) i++;
+		let value: string | undefined;
+		if (tag[i] === "=") {
+			i++;
+			while (i < end && isSpace(tag.charCodeAt(i))) i++;
+			const q = tag[i];
+			if (q === "\"" || q === "'") {
+				const close = tag.indexOf(q, i + 1);
+				// An unclosed quote: not a tag a browser would read this way, so leave it be.
+				if (close === -1) return [tag, false];
+				value = attributeValue(tag.slice(i + 1, close));
+				i = close + 1;
+			} else {
+				let k = i;
+				while (k < end && !isSpace(tag.charCodeAt(k))) k++;
+				value = attributeValue(tag.slice(i, k));
+				i = k;
+			}
+		}
+		if (attrs.has(attr)) continue;
+		if (value !== undefined && BOOLEAN.has(attr) && !foreign && (value === "" || asciiLower(value) === attr)) value = undefined;
+		if (value !== undefined && SPACED.has(attr)) value = collapse(value).replace(/ ?, ?/g, ", ");
+		attrs.set(attr, value);
+	}
+	if (closing) return [`</${element}>`, false];
+	let out = `<${element}`;
+	for (const attr of [...attrs.keys()].sort()) {
+		const value = attrs.get(attr);
+		out += value === undefined ? ` ${attr}` : ` ${attr}="${value.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"`;
+	}
+	return [`${out}>`, selfClosing && (xml || foreign || element === "svg" || element === "math") && !VOID.has(element)];
+}
+
 const RAW = new Set(["script", "style", "pre", "textarea"]);
 const CLOSING = new Map([...RAW].map((name) => [name, new RegExp(`</${name}`, "gi")]));
 
@@ -263,10 +472,12 @@ const CLOSING = new Map([...RAW].map((name) => [name, new RegExp(`</${name}`, "g
 const startsTag = (c: number) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 47 || c === 33 || c === 63;
 
 /** HTML as a list of tags and pieces of text. Whitespace is collapsed, except in elements where it matters, whose content is kept line by line. */
-export function tokens(html: string): Token[] {
+export function tokens(html: string, xml = false): Token[] {
 	const out: Token[] = [];
 	let i = 0;
 	let textStart = 0;
+	// How deep in an `<svg>` or `<math>`, where a tag can close itself.
+	let foreign = 0;
 	// Whitespace is collapsed, and dropped next to block tags, where it doesn't show. Next to an
 	// inline tag it does (`a <b>b</b>` isn't `a<b>b</b>`), so one space stays.
 	const pushText = (s: string, nextTag: string | undefined) => {
@@ -274,7 +485,7 @@ export function tokens(html: string): Token[] {
 		const last = out[out.length - 1];
 		const before = isSpace(s.codePointAt(0)!) && last !== undefined && last.tag && isInline(last.text);
 		const after = isSpace(s.charCodeAt(s.length - 1)) && nextTag !== undefined && isInline(nextTag);
-		let t = collapse(s);
+		let t = canonicalText(collapse(s));
 		if (t === "") {
 			if (before && after) out.push({ tag: false, text: " " });
 			return;
@@ -297,13 +508,20 @@ export function tokens(html: string): Token[] {
 		}
 		const tag = html.slice(i, i + end);
 		pushText(html.slice(textStart, i), tag);
-		out.push({ tag: true, text: collapseTag(tag) });
+		const [text, closes] = canonicalTag(collapseTag(tag), foreign > 0, xml);
+		out.push({ tag: true, text });
+		const name = xml ? "" : nameAt(tag, 1);
+		// Inside an SVG or MathML, `<path/>` is `<path></path>`.
+		if (name === "svg" || name === "math") {
+			if (!closes) foreign++;
+		} else if (tag.charCodeAt(1) === 47 && (nameAt(tag, 2) === "svg" || nameAt(tag, 2) === "math")) foreign = Math.max(0, foreign - 1);
+		if (closes) out.push({ tag: true, text: `</${text.slice(1, text.search(/[ >]/))}>` });
 		i += end;
 		textStart = i;
 		// Raw content: kept exactly as it is (blank lines, indents), a line at a time. Tags inside
 		// <pre> (highlighting spans) are markup like any other, but the diff is easier to read
-		// with the line whole.
-		const name = nameAt(tag, 1);
+		// with the line whole. A `<pre>`'s and a `<textarea>`'s entities are read as in other
+		// text (highlighters write `'` as `&#39;` or not); a script's and a style's aren't entities.
 		if (RAW.has(name) && !tag.endsWith("/>")) {
 			const closing = CLOSING.get(name)!;
 			closing.lastIndex = i;
@@ -312,7 +530,13 @@ export function tokens(html: string): Token[] {
 			let raw = html.slice(i, i + len);
 			// A browser drops the newline right after `<pre>` and `<textarea>`.
 			if (name === "pre" || name === "textarea") raw = raw.startsWith("\r\n") ? raw.slice(2) : raw.startsWith("\n") ? raw.slice(1) : raw;
-			if (raw !== "") for (const line of raw.split("\n")) out.push({ tag: false, text: line.endsWith("\r") ? line.slice(0, -1) : line });
+			const entities = name === "pre" || name === "textarea";
+			if (raw !== "") {
+				for (const line of raw.split("\n")) {
+					const text = line.endsWith("\r") ? line.slice(0, -1) : line;
+					out.push({ tag: false, text: entities ? canonicalText(text) : text });
+				}
+			}
 			i += len;
 			textStart = i;
 		}
@@ -341,6 +565,66 @@ function title(list: Token[]): string | undefined {
 	return next && !next.tag ? next.text : undefined;
 }
 
+/**
+ * Where a change on a page is: the nearest heading above it, as `#its-id` (what a link to it
+ * names) or its text in quotes. "+ </p>" on 8 pages said nothing about where on a 900-line page
+ * (the fresh opensource.guide move).
+ */
+function headingAbove(list: Token[]): (index: number) => string | undefined {
+	const found = new Map<number, string | undefined>();
+	return (index) => {
+		for (let i = Math.min(index, list.length) - 1; i >= 0; i--) {
+			const t = list[i];
+			if (!t.tag || !/^<h[1-6][\s>]/i.test(t.text)) continue;
+			if (found.has(i)) return found.get(i);
+			const id = attr(t.text, "id");
+			let text = "";
+			for (let j = i + 1; j < list.length && !/^<\/h[1-6]>/i.test(list[j].text); j++) if (!list[j].tag) text += list[j].text;
+			const at = id ? `#${id}` : text.trim() ? `"${clip(text.trim())}"` : undefined;
+			found.set(i, at);
+			return at;
+		}
+		return undefined;
+	};
+}
+
+/** An attribute's value in a tag as `canonicalTag` writes it (double quotes, entities decoded), or undefined. */
+function attr(tag: string, name: string): string | undefined {
+	const m = new RegExp(`\\s${name}="([^"]*)"`, "i").exec(tag);
+	return m?.[1];
+}
+
+/** The page's canonical link, and where a refresh sends it: what a search engine and a reader end up at. */
+function wayfinding(list: Token[]): { canonical?: string; redirect?: string } {
+	const out: { canonical?: string; redirect?: string } = {};
+	for (const t of list) {
+		if (!t.tag) continue;
+		if (out.canonical === undefined && /^<link\s/i.test(t.text) && /\srel="canonical"/i.test(t.text)) out.canonical = attr(t.text, "href");
+		if (out.redirect === undefined && /^<meta\s/i.test(t.text) && /\shttp-equiv="refresh"/i.test(t.text)) out.redirect = /url=\s*['"]?([^'"\s>]+)/i.exec(attr(t.text, "content") ?? "")?.[1];
+	}
+	return out;
+}
+
+/** A feed's entries, by their id (`<guid>` or `<id>`), else their `<link>`: the ones a reader's app tracks. */
+function feedEntries(list: Token[]): string[] {
+	const out: string[] = [];
+	let inEntry = false;
+	let id: string | undefined;
+	let link: string | undefined;
+	for (let i = 0; i < list.length; i++) {
+		const t = list[i];
+		if (!t.tag) continue;
+		if (/^<(item|entry)[\s>]/i.test(t.text)) { inEntry = true; id = link = undefined; continue; }
+		if (/^<\/(item|entry)>/i.test(t.text)) { if (inEntry) out.push(id ?? link ?? `(entry ${out.length + 1})`); inEntry = false; continue; }
+		if (!inEntry) continue;
+		const next = list[i + 1];
+		const text = next && !next.tag ? next.text.trim() : undefined;
+		if (/^<(guid|id)[\s>]/i.test(t.text) && text) id ??= text;
+		else if (/^<link[\s>]/i.test(t.text)) link ??= attr(t.text, "href") ?? text;
+	}
+	return out;
+}
+
 // ---- compare ---------------------------------------------------------------------------------
 
 /** Rust's `str::lines`: split at `\n`, a `\r` before it dropped, and no empty line after a last `\n`. */
@@ -356,7 +640,7 @@ function lines(text: string): string[] {
 }
 
 /** The changed runs between two lists, and (whether from the first list, index) for every changed item. */
-function hunks<T>(before: T[], after: T[], kind: (item: T) => number, show: (item: T) => string): [Hunk[], Array<[boolean, number]>] {
+function hunks<T>(before: T[], after: T[], kind: (item: T) => number, show: (item: T) => string, where?: (oldIndex: number) => string | undefined): [Hunk[], Array<[boolean, number]>] {
 	// The algorithm compares numbers: each distinct item (its kind, and its text) gets one.
 	const numbers = [new Map<string, number>(), new Map<string, number>()];
 	let count = 0;
@@ -379,7 +663,10 @@ function hunks<T>(before: T[], after: T[], kind: (item: T) => number, show: (ite
 		if (op.tag === "equal") continue;
 		for (let i = op.oldIndex; i < op.oldIndex + op.oldLen; i++) changed.push([true, i]);
 		for (let i = op.newIndex; i < op.newIndex + op.newLen; i++) changed.push([false, i]);
-		out.push({ removed: before.slice(op.oldIndex, op.oldIndex + op.oldLen).map(show), added: after.slice(op.newIndex, op.newIndex + op.newLen).map(show) });
+		const hunk: Hunk = { removed: before.slice(op.oldIndex, op.oldIndex + op.oldLen).map(show), added: after.slice(op.newIndex, op.newIndex + op.newLen).map(show) };
+		const at = where?.(op.oldIndex);
+		if (at !== undefined) hunk.at = at;
+		out.push(hunk);
 	}
 	return [out, changed];
 }
@@ -395,7 +682,7 @@ function firstLines(list: Hunk[], limit: number): Hunk[] {
 		left -= removed.length;
 		const added = h.added.slice(0, left);
 		left -= added.length;
-		out.push({ removed, added });
+		out.push(h.at === undefined ? { removed, added } : { removed, added, at: h.at });
 	}
 	return out;
 }
@@ -425,6 +712,9 @@ function comparePair(a: Buffer, b: Buffer, pair: Pair, options: DiffOptions): Fi
 		onlyDates: undefined,
 		sizeBefore: a.length,
 		sizeAfter: b.length,
+		groups: [],
+		ownHunks: [],
+		ownLines: 0,
 	};
 	const textA = decode(a), textB = decode(b);
 	if (textA === undefined || textB === undefined) return diff;
@@ -434,7 +724,7 @@ function comparePair(a: Buffer, b: Buffer, pair: Pair, options: DiffOptions): Fi
 	if (isPage(pair.key) && !options.exact) {
 		diff.kind = "page";
 		const ta = tokens(before), tb = tokens(after);
-		const [list, changed] = hunks(ta, tb, (t) => (t.tag ? 1 : 0), (t) => t.text);
+		const [list, changed] = hunks(ta, tb, (t) => (t.tag ? 1 : 0), (t) => t.text, headingAbove(ta));
 		if (!list.length) return undefined;
 		const isTag = ([first, i]: [boolean, number]) => (first ? ta[i] : tb[i]).tag;
 		if (changed.some((c) => !isTag(c))) diff.what.push("text");
@@ -444,19 +734,81 @@ function comparePair(a: Buffer, b: Buffer, pair: Pair, options: DiffOptions): Fi
 		const kept = new Set(ids(tb));
 		const gone = ids(ta).filter((id) => !kept.has(id)).map((id) => `#${id}`);
 		if (gone.length) diff.notes.push(`ids removed (links to them break): ${gone.slice(0, 8).join(", ")}${gone.length > 8 ? ` and ${gone.length - 8} more` : ""}`);
+		// Where search engines and readers end up: a changed canonical link or refresh is a page
+		// that moved, whatever else is the same.
+		const [wa, wb] = [wayfinding(ta), wayfinding(tb)];
+		if (wa.canonical !== wb.canonical) diff.notes.push(`canonical link: ${wa.canonical ?? "none"} -> ${wb.canonical ?? "none"}`);
+		if (wa.redirect !== wb.redirect) diff.notes.push(`redirects to: ${wa.redirect ?? "nowhere"} -> ${wb.redirect ?? "nowhere"}`);
 		diff.onlyDates = onlyDates(list);
 		if (diff.onlyDates) diff.notes.push(`only dates changed (${diff.onlyDates[0]} -> ${diff.onlyDates[1]})`);
 		found = list;
+	} else if (isXml(pair.key) && !options.exact) {
+		// Tags and text, as a page is compared, with the HTML a feed holds read as HTML.
+		diff.kind = "text";
+		const ta = tokens(xmlWithMarkup(before), true), tb = tokens(xmlWithMarkup(after), true);
+		found = hunks(ta, tb, (t) => (t.tag ? 1 : 0), (t) => t.text)[0];
+		if (!found.length) return undefined;
+		// A feed's entries that went or came: readers' apps track them by id.
+		const [ea, eb] = [feedEntries(ta), feedEntries(tb)];
+		if (ea.length || eb.length) {
+			const kept = new Set(eb), had = new Set(ea);
+			const gone = ea.filter((e) => !kept.has(e)), came = eb.filter((e) => !had.has(e));
+			const some = (list: string[]) => `${list.slice(0, 3).join(", ")}${list.length > 3 ? ` and ${list.length - 3} more` : ""}`;
+			if (gone.length) diff.notes.push(`feed entries removed (readers see them go): ${some(gone)}`);
+			if (came.length) diff.notes.push(`feed entries added (readers see them as new): ${some(came)}`);
+		}
+		// A sitemap's `<lastmod>` and a feed's `<updated>` follow the files' dates.
+		diff.onlyDates = onlyDates(found);
+		if (diff.onlyDates) diff.notes.push(`only dates changed (${diff.onlyDates[0]} -> ${diff.onlyDates[1]})`);
 	} else {
 		diff.kind = isPage(pair.key) ? "page" : "text";
 		const la = lines(before), lb = lines(after);
 		found = hunks(la, lb, () => 0, (l) => l)[0];
 		// Only the line endings at the end of the file.
 		if (!found.length) found = [{ removed: [`(${Buffer.byteLength(before)} bytes)`], added: [`(${Buffer.byteLength(after)} bytes)`] }];
+		// A JSON file's `"updated"` follows the build's time too (the Rust blog's releases.json).
+		else if (!isPage(pair.key)) {
+			diff.onlyDates = onlyDates(found);
+			if (diff.onlyDates) diff.notes.push(`only dates changed (${diff.onlyDates[0]} -> ${diff.onlyDates[1]})`);
+		}
 	}
+	// A sitemap's or a list's entries in another order: every line that went is one that came.
+	if (!diff.onlyDates && sameLines(found)) diff.notes.push("the same lines, in another order");
+	diff.allHunks = found;
 	diff.changedLines = found.reduce((sum, h) => sum + h.removed.length + h.added.length, 0);
 	diff.hunks = firstLines(found, options.lines);
 	return diff;
+}
+
+/** Where a link points (with `/`), or undefined for a file that isn't a link. */
+async function linkTarget(file: string): Promise<string | undefined> {
+	try { return (await fs.promises.readlink(file)).replaceAll("\\", "/"); } catch { return undefined; }
+}
+
+/**
+ * A pair where either side is a link (lit.dev's output has 33 whose targets matter): links to the
+ * same place are the same, whatever is there (that file is compared on its own), and a link that
+ * points elsewhere, or that's a file in the other build, is a change.
+ */
+function compareLinks(a: string | undefined, b: string | undefined, pair: Pair): FileDiff | undefined {
+	if (a === b) return undefined;
+	const side = (target: string | undefined) => (target === undefined ? "(a file, not a link)" : `-> ${target}`);
+	return {
+		path: pair.key,
+		url: urlOf(pair.key),
+		renamed: pair.before !== pair.after ? [pair.before, pair.after] : undefined,
+		kind: "text",
+		what: [],
+		notes: [a !== undefined && b !== undefined ? "a link, to somewhere else" : "a link in one build and a file in the other"],
+		hunks: [{ removed: [side(a)], added: [side(b)] }],
+		changedLines: 2,
+		onlyDates: undefined,
+		sizeBefore: 0,
+		sizeAfter: 0,
+		groups: [],
+		ownHunks: [],
+		ownLines: 0,
+	};
 }
 
 /** How many pairs of files are read at once: enough to keep Node's file threads busy, few enough that memory stays flat. */
@@ -492,9 +844,22 @@ class Reader {
 	}
 }
 
+/** The paths `--only` and `--exclude` leave in. */
+function kept(paths: string[], options: DiffOptions): string[] {
+	const { only, exclude } = options;
+	return paths.filter((p) => (!only || only.some((re) => re.test(p))) && !(exclude ?? []).some((re) => re.test(p)));
+}
+
+/** `--only` that matched no file in any build: "No differences" would read as an answer (a page's URL given where a path is meant). */
+function checkOnly(lists: string[][], options: DiffOptions): void {
+	if (!options.only || lists.some((list) => list.some((p) => options.only!.some((re) => re.test(p))))) return;
+	const given = (options.onlyGiven ?? []).map((g) => `"${g}"`).join(", ");
+	bail(`--only ${given || "(its globs)"} matched no file in ${lists.length === 2 ? "either build" : "any of the builds"}: it's a glob of paths in the build folder, like \`posts/pine/index.html\`, \`posts/**\` or \`/posts/pine/\` (a folder: everything in it)`);
+}
+
 /** Compares the build in `before` with the one in `after`. */
 export async function compare(before: string, after: string, options: DiffOptions): Promise<DiffReport> {
-	const keep = (paths: string[]) => (options.only ? paths.filter((p) => options.only!.some((re) => re.test(p))) : paths);
+	const keep = (paths: string[]) => kept(paths, options);
 	// Both folders must be there before either is walked, so a missing one is said first.
 	// Both are walked at once, and when both fail it's the first folder's error, as 0.7 walked it
 	// first: which walk failed sooner is up to the disk.
@@ -502,9 +867,10 @@ export async function compare(before: string, after: string, options: DiffOption
 	if (walkA.status === "rejected") throw walkA.reason;
 	if (walkB.status === "rejected") throw walkB.reason;
 	const [listA, listB] = [walkA.value, walkB.value];
+	checkOnly([listA, listB], options);
 	const a = keyed(keep(listA), options.exact);
 	const b = keyed(keep(listB), options.exact);
-	const report: DiffReport = { before, after, exact: options.exact, added: [], removed: [], changed: [], unchangedPages: 0, unchangedFiles: 0 };
+	const report: DiffReport = { before, after, exact: options.exact, added: [], removed: [], changed: [], groups: [], unchangedPages: 0, unchangedFiles: 0 };
 	for (const key of a.keys()) if (!b.has(key)) report.removed.push(urlOf(key));
 	for (const key of b.keys()) if (!a.has(key)) report.added.push(urlOf(key));
 	const pairs: Pair[] = [];
@@ -521,6 +887,11 @@ export async function compare(before: string, after: string, options: DiffOption
 		while (next < pairs.length) {
 			const i = next++;
 			const pair = pairs[i];
+			const [fromLink, toLink] = await Promise.all([linkTarget(path.join(before, pair.before)), linkTarget(path.join(after, pair.after))]);
+			if (fromLink !== undefined || toLink !== undefined) {
+				results[i] = compareLinks(fromLink, toLink, pair);
+				continue;
+			}
 			const [one, two] = await Promise.all([x.read(path.join(before, pair.before)), y.read(path.join(after, pair.after))]);
 			results[i] = comparePair(one, two, pair, options);
 		}
@@ -532,7 +903,164 @@ export async function compare(before: string, after: string, options: DiffOption
 		else if (isPage(pair.key)) report.unchangedPages += 1;
 		else report.unchangedFiles += 1;
 	});
+	report.groups = options.ungrouped ? [] : groupChanges(report.changed);
+	for (const file of report.changed) {
+		if (!report.groups.length) file.ownHunks = file.allHunks ?? file.hunks;
+		file.ownLines = file.ownHunks.reduce((sum, h) => sum + h.removed.length + h.added.length, 0);
+		file.ownHunks = firstLines(file.ownHunks, options.lines);
+		delete file.allHunks;
+	}
 	return report;
+}
+
+// ---- groups --------------------------------------------------------------------------------
+
+/** A hunk's lines as one key: the same lines, the same key. */
+const hunkKey = (h: Hunk) => JSON.stringify([h.removed, h.added]);
+
+/** A tag line with its attribute values blanked (`<meta content="…" name="…">`); text stays. Two hunks with the same shape are the same change with other values. */
+const lineShape = (line: string) => (line.startsWith("<") ? line.replace(/="[^"]*"/g, "=\"…\"") : line);
+const shapeKeyOf = (h: Hunk) => JSON.stringify([h.removed.map(lineShape), h.added.map(lineShape)]);
+
+/** Every date that changed in a hunk that changed only dates, as `old>new` pairs; undefined for any other hunk. */
+function changedDates(h: Hunk): string[] | undefined {
+	if (!onlyDates([h])) return undefined;
+	const pairs = new Set<string>();
+	h.removed.forEach((line, i) => {
+		const old = [...line.matchAll(DATE)].map((m) => m[0]);
+		const now = [...h.added[i].matchAll(DATE)].map((m) => m[0]);
+		old.forEach((d, k) => { if (d !== now[k]) pairs.add(`${d}>${now[k]}`); });
+	});
+	return [...pairs].sort();
+}
+
+/**
+ * What groups a hunk: when all it changed is dates (a build's time in each page's own JSON-LD),
+ * the form of those dates, digits and letters blanked (`Mon Mar 08` and `Tue Mar 09` are one form): each file of a build can be stamped a few milliseconds
+ * after the last (the Rust blog's feeds), and that's still one change. Else its shape.
+ */
+const shapeKey = (h: Hunk) => {
+	const dates = changedDates(h);
+	return dates ? `dates:${JSON.stringify([...new Set(dates.map((pair) => pair.split(">")[0].replace(/\p{Nd}/gu, "0").replace(/\p{L}/gu, "a")))].sort())}` : shapeKeyOf(h);
+};
+
+/** A tag line as its name alone (`<source>`); text stays. A run of one line counts once, so a `<picture>` with two `<source>`s and one with three are alike. */
+const tagLine = (line: string) => (line.startsWith("<") ? (/^<\/?[^\s>]+/.exec(line)?.[0] ?? line) + ">" : line);
+const once = (lines: string[]) => lines.filter((line, i) => i === 0 || line !== lines[i - 1]);
+const tagKey = (h: Hunk) => JSON.stringify([once(h.removed.map(tagLine)), once(h.added.map(tagLine))]);
+
+/** What a hunk changes, for agents sorting the groups. */
+function kindOf(h: Hunk): string {
+	if (onlyDates([h])) return "dates";
+	if (sameLines([h])) return "order";
+	const lines = [...h.removed, ...h.added];
+	const tags = lines.filter((l) => l.startsWith("<")).length;
+	return tags === lines.length ? "markup" : tags === 0 ? "text" : "markup and text";
+}
+
+/**
+ * The changes on more than one file: hunks whose tags are the same but for their attribute values,
+ * and whose text is the same (`same` when every one is the same line for line). One pass, not
+ * the exact ones first: links that each moved to an encoded anchor are one change on 70
+ * opensource.guide pages, not 70 pairs. Each file's `groups` and `ownHunks` (what no group holds)
+ * are set.
+ */
+export function groupChanges(changed: FileDiff[]): DiffGroup[] {
+	// Each shape's files, in the report's order, its first hunk, and whether every hunk is that one.
+	const found = new Map<string, { files: Set<number>; hunk: Hunk; first: number; same: boolean }>();
+	changed.forEach((f, i) => {
+		for (const h of f.allHunks ?? f.hunks) {
+			if (!h.removed.length && !h.added.length) continue;
+			const k = shapeKey(h);
+			const entry = found.get(k);
+			if (!entry) found.set(k, { files: new Set([i]), hunk: h, first: i, same: true });
+			else {
+				entry.files.add(i);
+				if (entry.same && hunkKey(h) !== hunkKey(entry.hunk)) entry.same = false;
+			}
+		}
+	});
+	// Each group's files, as places in `changed`, while groups gain the looser ones.
+	type Draft = { files: Set<number>; hunk: Hunk; first: number; match: DiffGroup["match"] };
+	const drafts: Draft[] = [];
+	const byShape = new Map<string, number>();
+	for (const [k, e] of found) {
+		if (e.files.size < 2) continue;
+		byShape.set(k, drafts.length);
+		drafts.push({ files: new Set(e.files), hunk: e.hunk, first: e.first, match: e.same ? "lines" : k.startsWith("dates:") ? "dates" : "values" });
+	}
+	// What no group took joins the group with the same tags (the blog's `<picture>`s with other
+	// widths), or, with another file's like it, makes a group of its own.
+	// Groups with the same tags are one: the biggest takes the others' files.
+	const byTags = new Map<string, number>();
+	const merged = new Map<number, number>();
+	// By its tags alone, only a run of three lines or more: one `<meta>` that changed looks like any
+	// other `<meta>` that did, and the group would show only the first one's lines.
+	const hasTags = (h: Hunk) => h.removed.length + h.added.length >= 3 && h.removed.concat(h.added).some((l) => l.startsWith("<"));
+	[...drafts.keys()].sort((a, b) => drafts[b].files.size - drafts[a].files.size || drafts[a].first - drafts[b].first).forEach((i) => {
+		const k = tagKey(drafts[i].hunk);
+		const into = hasTags(drafts[i].hunk) ? byTags.get(k) : undefined;
+		if (into === undefined) { byTags.set(k, i); return; }
+		for (const f of drafts[i].files) drafts[into].files.add(f);
+		drafts[into].match = "tags";
+		merged.set(i, into);
+	});
+	for (const [shape, i] of byShape) if (merged.has(i)) byShape.set(shape, merged.get(i)!);
+	const placed = new Map<FileDiff, Map<Hunk, number>>();
+	const loose = new Map<string, { files: Set<number>; hunk: Hunk; first: number; hunks: Array<[number, Hunk]> }>();
+	changed.forEach((f, i) => {
+		const at = new Map<Hunk, number>();
+		placed.set(f, at);
+		for (const h of f.allHunks ?? f.hunks) {
+			if (!h.removed.length && !h.added.length) continue;
+			const shaped = byShape.get(shapeKey(h));
+			if (shaped !== undefined) { at.set(h, shaped); continue; }
+			const tags = byTags.get(tagKey(h));
+			if (tags !== undefined && hasTags(h)) {
+				drafts[tags].files.add(i);
+				drafts[tags].match = "tags";
+				at.set(h, tags);
+				continue;
+			}
+			const k = tagKey(h);
+			const entry = loose.get(k) ?? { files: new Set<number>(), hunk: h, first: i, hunks: [] };
+			entry.files.add(i);
+			entry.hunks.push([i, h]);
+			loose.set(k, entry);
+		}
+	});
+	for (const e of loose.values()) {
+		if (e.files.size < 2 || !hasTags(e.hunk)) continue;
+		const index = drafts.length;
+		drafts.push({ files: e.files, hunk: e.hunk, first: e.first, match: "tags" });
+		for (const [i, h] of e.hunks) placed.get(changed[i])!.set(h, index);
+	}
+	// The most files first; the groups' places in the report follow. A merged group is gone.
+	const order = drafts.map((_, i) => i).filter((i) => !merged.has(i)).sort((a, b) => drafts[b].files.size - drafts[a].files.size || drafts[a].first - drafts[b].first);
+	const number = new Map(order.map((old, i) => [old, i]));
+	const groups: DiffGroup[] = order.map((i) => {
+		const d = drafts[i];
+		return { urls: [...d.files].sort((a, b) => a - b).map((f) => changed[f].url), same: d.match === "lines", match: d.match, kind: kindOf(d.hunk), hunk: d.hunk };
+	});
+	for (const f of changed) {
+		const at = placed.get(f)!;
+		const all = f.allHunks ?? f.hunks;
+		f.groups = [...new Set(all.map((h) => at.get(h)).filter((g): g is number => g !== undefined).map((g) => number.get(g)!))].sort((a, b) => a - b);
+		f.ownHunks = all.filter((h) => !at.has(h));
+	}
+	return groups;
+}
+
+/** Whether the lines removed are the lines added, each as many times: the same lines, moved. */
+function sameLines(list: Hunk[]): boolean {
+	const counts = new Map<string, number>();
+	let lines = 0;
+	for (const hunk of list) {
+		for (const line of hunk.removed) counts.set(line, (counts.get(line) ?? 0) + 1);
+		for (const line of hunk.added) counts.set(line, (counts.get(line) ?? 0) - 1);
+		lines += hunk.removed.length;
+	}
+	return lines > 0 && [...counts.values()].every((n) => n === 0);
 }
 
 /** When every changed line is the same apart from its dates and years: the first date that changed, before and after. */
@@ -561,6 +1089,21 @@ function onlyDates(list: Hunk[]): [string, string] | undefined {
 
 // ---- output ----------------------------------------------------------------------------------
 
+/** What a comparison that isn't `--exact` leaves out, said first: what differs only in these doesn't count. */
+const IGNORING = "Ignoring asset fingerprints, image ids, integrity hashes, the generator's version, whitespace between tags, and how tags are written where browsers read them the same (attribute order, quotes, entities, `<br/>`) (--exact compares bytes).\n";
+
+/** More images named by their id than this, added or removed, are counted in one line rather than listed. */
+const IMAGES_LISTED = 5;
+
+/** The URLs in an Added or Removed list: each one, apart from a long run of images named by their id, which is one line. */
+function listed(urls: string[], sign: string): string[] {
+	const images = urls.filter(isHashedImage);
+	if (images.length <= IMAGES_LISTED) return urls.map((url) => `  ${sign} ${url}\n`);
+	const out = urls.filter((url) => !isHashedImage(url)).map((url) => `  ${sign} ${url}\n`);
+	out.push(`  ${sign} ${plural(images.length, "image", "images")} named by an id (${images[0].replace(IMAGE_ID, "{id}")} and the like): two builds that hash images differently name them differently, so they're counted here (--format json lists them)\n`);
+	return out;
+}
+
 function clip(line: string): string {
 	const MAX = 200;
 	const n = charCount(line);
@@ -569,23 +1112,70 @@ function clip(line: string): string {
 
 const plural = (n: number, one: string, many: string) => `${count(n)} ${n === 1 ? one : many}`;
 
+type Paint = (code: string, s: string) => string;
+
+/** A file's changed lines, up to `limit` of them (0 for all), and how many more there are. */
+function linesText(hunks: Hunk[], total: number, limit: number, paint: Paint, indent = "      "): string {
+	let shown = 0;
+	let text = "";
+	let place: string | undefined;
+	done: for (const hunk of hunks) {
+		// Where it is on the page, when that's another place than the hunk before's.
+		if (hunk.at !== undefined && hunk.at !== place && !(limit > 0 && shown >= limit)) text += paint("2", `${indent}@ under ${hunk.at}\n`);
+		place = hunk.at;
+		for (const [sign, code, side] of [["-", "31", hunk.removed], ["+", "32", hunk.added]] as const) {
+			for (const line of side) {
+				if (limit > 0 && shown >= limit) break done;
+				text += paint(code, `${indent}${sign} ${clip(line)}\n`);
+				shown += 1;
+			}
+		}
+	}
+	if (total > shown) text += `${indent}... ${count(total - shown)} more changed ${total - shown === 1 ? "line" : "lines"} (--lines 0 shows all)\n`;
+	return text;
+}
+
+const isPageUrl = (url: string) => url.endsWith("/") || isPage(url);
+
+/** The groups, the most files first: how many files, the first three, how alike, and the change. `what` is the heading's verb phrase. */
+function groupsText(groups: DiffGroup[], limit: number, paint: Paint, heading: string): string {
+	let out = `  ${heading}, the most files first (--ungrouped lists each file with all of it):\n`;
+	for (const group of groups) {
+		const n = group.urls.length;
+		const what = group.urls.every(isPageUrl) ? (n === 1 ? "page" : "pages") : n === 1 ? "file" : "files";
+		const some = group.urls.slice(0, 3).join(", ");
+		const alike = group.match === "lines" ? "" : group.match === "values" ? ", the same but for attribute values" : group.match === "dates" ? ", the same dates in other text" : ", the same tags with other attributes";
+		out += `  ~ ${count(n)} ${what}${alike}: ${some}${n > 3 ? ` and ${count(n - 3)} more` : ""}\n`;
+		out += linesText([group.hunk], group.hunk.removed.length + group.hunk.added.length, limit, paint);
+	}
+	return out;
+}
+
 /** The report for a terminal. `lines` is how many changed lines to show for each file (0 for all of them). */
 export function diffText(report: DiffReport, limit: number, color: boolean): string {
 	const paint = (code: string, s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
 	let out = `Comparing ${report.before} with ${report.after}\n`;
-	out += report.exact ? "Comparing bytes (--exact).\n" : "Ignoring asset fingerprints, integrity hashes, the generator's version, and whitespace between tags (--exact compares bytes).\n";
+	out += report.exact ? "Comparing bytes (--exact).\n" : IGNORING;
+	const pageUrl = isPageUrl;
 	const unchanged = `${plural(report.unchangedPages, "page", "pages")} and ${plural(report.unchangedFiles, "other file", "other files")}`;
 	if (isSame(report)) return `${out}\nNo differences: ${unchanged} are the same. The stump has not moved.\n`;
 	if (report.added.length) {
 		out += `\nAdded (${report.added.length})\n`;
-		for (const url of report.added) out += paint("32", `  + ${url}\n`);
+		for (const line of listed(report.added, "+")) out += paint("32", line);
 	}
 	if (report.removed.length) {
 		out += `\nRemoved (${report.removed.length})\n`;
-		for (const url of report.removed) out += paint("31", `  - ${url}\n`);
+		for (const line of listed(report.removed, "-")) out += paint("31", line);
 	}
 	if (report.changed.length) out += `\nChanged (${report.changed.length})\n`;
+	const grouped = report.groups.length > 0;
+	if (grouped) {
+		out += groupsText(report.groups, limit, paint, "The same change on more than one file");
+		const rest = report.changed.filter((f) => f.ownLines > 0);
+		if (rest.length) out += `  And what's left on ${plural(rest.length, "file", "files")}:\n`;
+	}
 	for (const file of report.changed) {
+		if (grouped && file.ownLines === 0) continue;
 		const about: string[] = [];
 		if (file.what.length) about.push(file.what.join(" and "));
 		if (file.renamed) {
@@ -595,20 +1185,8 @@ export function diffText(report: DiffReport, limit: number, color: boolean): str
 		if (file.kind === "binary") about.push(`binary, ${bytes(file.sizeBefore)} -> ${bytes(file.sizeAfter)}`);
 		out += `  ~ ${file.url}${about.length ? `  (${about.join("; ")})` : ""}\n`;
 		for (const note of file.notes) out += `      ${note}\n`;
-		let shown = 0;
-		done: for (const hunk of file.hunks) {
-			for (const [sign, code, side] of [["-", "31", hunk.removed], ["+", "32", hunk.added]] as const) {
-				for (const line of side) {
-					if (limit > 0 && shown >= limit) break done;
-					out += paint(code, `      ${sign} ${clip(line)}\n`);
-					shown += 1;
-				}
-			}
-		}
-		if (file.changedLines > shown) out += `      ... ${count(file.changedLines - shown)} more changed ${file.changedLines - shown === 1 ? "line" : "lines"} (--lines 0 shows all)\n`;
+		out += grouped ? linesText(file.ownHunks, file.ownLines, limit, paint) : linesText(file.hunks, file.changedLines, limit, paint);
 	}
-	// How many pages and other files differ, before the detail.
-	const pageUrl = (url: string) => url.endsWith("/") || isPage(url);
 	const pages = [...report.added, ...report.removed].filter(pageUrl).length + report.changed.filter((f) => isPage(f.path)).length;
 	const others = report.added.length + report.removed.length + report.changed.length - pages;
 	const found = others === 0 ? plural(pages, "page", "pages") : pages === 0 ? plural(others, "other file", "other files") : `${plural(pages, "page", "pages")} and ${plural(others, "other file", "other files")}`;
@@ -617,6 +1195,8 @@ export function diffText(report: DiffReport, limit: number, color: boolean): str
 		const which = dated === report.changed.length ? `All ${plural(dated, "changed file", "changed files")}` : `${count(dated)} of the ${plural(report.changed.length, "changed file", "changed files")}`;
 		out += `\n${which} differ only in dates or years. See \`ssqch docs "dates that changed"\`: a page with no date of its own gets its file's modification time.\n`;
 	}
+	// Files an earlier build left behind are added or removed files too (osg #15).
+	if (report.added.length || report.removed.length) out += "\nIf a folder held an earlier build, its leftover files are among the added and removed: to rule that out, build each side into an empty folder.\n";
 	out += `\nChanges found: ${found} (${count(report.changed.length)} changed, ${count(report.added.length)} added, ${count(report.removed.length)} removed); ${unchanged} are the same. The stump has moved.\n`;
 	return out;
 }
@@ -635,6 +1215,7 @@ export function diffJson(report: DiffReport, limit: number): Record<string, unkn
 			sizeBefore: f.sizeBefore,
 			sizeAfter: f.sizeAfter,
 			hunks: firstLines(f.hunks, limit),
+			groups: f.groups,
 		};
 		if (f.renamed) entry.renamed = { before: f.renamed[0], after: f.renamed[1] };
 		return entry;
@@ -649,6 +1230,8 @@ export function diffJson(report: DiffReport, limit: number): Record<string, unkn
 		added: report.added,
 		removed: report.removed,
 		changed,
+		// Each change on more than one file, the most files first; a file's `groups` are places in this list.
+		groups: report.groups.map((g) => ({ files: g.urls.length, urls: g.urls, same: g.same, match: g.match, kind: g.kind, hunk: g.hunk })),
 	};
 }
 
@@ -669,14 +1252,20 @@ export interface Varies {
 	versions: Version[];
 	/** What differs between the most common version and the next one, when both are there. */
 	sample: FileDiff | undefined;
+	/** The file's name in each build (by its place in the list), or undefined where it's missing. */
+	files: Array<string | undefined>;
 }
 
 export interface RunsReport {
 	runs: string[];
 	exact: boolean;
 	varies: Varies[];
+	/** The same difference on more than one varying file (`site.time` on every page), the most files first. Empty with `--ungrouped`. */
+	groups: DiffGroup[];
 	steadyPages: number;
 	steadyFiles: number;
+	/** The build with the most common version of the most files that vary (by its place in the list): the one to compare another build with. */
+	typical: number;
 }
 
 /**
@@ -688,12 +1277,13 @@ export interface RunsReport {
  * unless `exact`.
  */
 export async function compareRuns(dirs: string[], options: DiffOptions): Promise<RunsReport> {
-	const keep = (paths: string[]) => (options.only ? paths.filter((p) => options.only!.some((re) => re.test(p))) : paths);
+	const keep = (paths: string[]) => kept(paths, options);
 	const walks = await Promise.allSettled(dirs.map(files));
 	for (const walk of walks) if (walk.status === "rejected") throw walk.reason;
+	checkOnly(walks.map((w) => (w as PromiseFulfilledResult<string[]>).value), options);
 	const maps = walks.map((w) => keyed(keep((w as PromiseFulfilledResult<string[]>).value), options.exact));
 	const keys = [...new Set(maps.flatMap((m) => [...m.keys()]))].sort(compareText);
-	const report: RunsReport = { runs: dirs, exact: options.exact, varies: [], steadyPages: 0, steadyFiles: 0 };
+	const report: RunsReport = { runs: dirs, exact: options.exact, varies: [], groups: [], steadyPages: 0, steadyFiles: 0, typical: 0 };
 	const found: Array<Varies | undefined> = new Array(keys.length);
 	let next = 0;
 	const worker = async () => {
@@ -714,6 +1304,20 @@ export async function compareRuns(dirs: string[], options: DiffOptions): Promise
 		else if (isPage(key)) report.steadyPages += 1;
 		else report.steadyFiles += 1;
 	});
+	// A race (a11yproject.com's KSS) needs many builds, and the one most like the rest is the
+	// reference: the most files where it has the most common version (the first build on a tie).
+	const typical = dirs.map(() => 0);
+	for (const v of report.varies) if (!v.versions[0].missing) for (const run of v.versions[0].runs) typical[run] += 1;
+	report.typical = typical.indexOf(Math.max(...typical));
+	// A build's time on every page varies the same way on each: one group, as in a diff of two.
+	const samples = report.varies.map((v) => v.sample).filter((s): s is FileDiff => s !== undefined);
+	report.groups = options.ungrouped ? [] : groupChanges(samples);
+	for (const sample of samples) {
+		if (!report.groups.length) sample.ownHunks = sample.allHunks ?? sample.hunks;
+		sample.ownLines = sample.ownHunks.reduce((sum, h) => sum + h.removed.length + h.added.length, 0);
+		sample.ownHunks = firstLines(sample.ownHunks, options.lines);
+		delete sample.allHunks;
+	}
 	return report;
 }
 
@@ -723,6 +1327,7 @@ function seen(key: string, data: Buffer, options: DiffOptions): string {
 	if (text === undefined) return `b:${data.toString("base64")}`;
 	const normal = normalize(text, options);
 	if (isPage(key) && !options.exact) return `p:${tokens(normal).map((t) => `${t.tag ? 1 : 0}${t.text}`).join("\0")}`;
+	if (isXml(key) && !options.exact) return `x:${tokens(xmlWithMarkup(normal), true).map((t) => `${t.tag ? 1 : 0}${t.text}`).join("\0")}`;
 	return `t:${normal}`;
 }
 
@@ -745,21 +1350,28 @@ function varies(key: string, buffers: Array<Buffer | undefined>, maps: Array<Map
 	}
 	const first = buffers.find((b) => b !== undefined)!;
 	const kind = decode(first) === undefined ? "binary" : isPage(key) ? "page" : "text";
-	return { path: key, url: urlOf(key), kind, versions, sample };
+	return { path: key, url: urlOf(key), kind, versions, sample, files: maps.map((m) => m.get(key)) };
 }
 
-/** The builds in `runs`, by name: `dist-1, dist-3`. */
-const named = (report: RunsReport, runs: number[]) => runs.map((r) => report.runs[r]).join(", ");
+/** The builds in `runs`, by name: `dist-1, dist-3`, or with a count for more than four: `34 of 50 builds (dist-1, dist-2, dist-4, ...)`. */
+const named = (report: RunsReport, runs: number[]) => (runs.length > 4 ? `${runs.length} of ${report.runs.length} builds (${runs.slice(0, 3).map((r) => report.runs[r]).join(", ")}, ...)` : runs.map((r) => report.runs[r]).join(", "));
 
 /** The comparison of several builds, for a terminal. */
 export function runsText(report: RunsReport, limit: number, color: boolean): string {
 	const paint = (code: string, s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
 	let out = `Comparing ${count(report.runs.length)} builds: ${report.runs.join(", ")}\n`;
-	out += report.exact ? "Comparing bytes (--exact).\n" : "Ignoring asset fingerprints, integrity hashes, the generator's version, and whitespace between tags (--exact compares bytes).\n";
+	out += report.exact ? "Comparing bytes (--exact).\n" : IGNORING;
 	const steady = `${plural(report.steadyPages, "page", "pages")} and ${plural(report.steadyFiles, "other file", "other files")}`;
 	if (!report.varies.length) return `${out}\nEvery build is the same: ${steady}. The tracks match every time.\n`;
 	out += `\nVaries (${report.varies.length})\n`;
+	const grouped = report.groups.length > 0;
+	if (grouped) {
+		out += groupsText(report.groups, limit, paint, "The same difference on more than one file");
+		const rest = report.varies.filter((f) => !f.sample || f.sample.ownLines > 0);
+		if (rest.length) out += `  And each file, with what's left:\n`;
+	}
 	for (const file of report.varies) {
+		if (grouped && file.sample && file.sample.ownLines === 0) continue;
 		const [most, ...rest] = file.versions;
 		// A file most builds lack is "only in" the ones that have it, when they all have the same one.
 		const onlyIn = most.missing && rest.length === 1;
@@ -769,19 +1381,14 @@ export function runsText(report: RunsReport, limit: number, color: boolean): str
 		const sample = file.sample;
 		if (!sample) continue;
 		for (const note of sample.notes) out += `      ${note}\n`;
-		let shown = 0;
-		done: for (const hunk of sample.hunks) {
-			for (const [sign, code, side] of [["-", "31", hunk.removed], ["+", "32", hunk.added]] as const) {
-				for (const line of side) {
-					if (limit > 0 && shown >= limit) break done;
-					out += paint(code, `      ${sign} ${clip(line)}\n`);
-					shown += 1;
-				}
-			}
-		}
-		if (sample.changedLines > shown) out += `      ... ${count(sample.changedLines - shown)} more changed ${sample.changedLines - shown === 1 ? "line" : "lines"} (--lines 0 shows all)\n`;
+		out += grouped ? linesText(sample.ownHunks, sample.ownLines, limit, paint) : linesText(sample.hunks, sample.changedLines, limit, paint);
 	}
 	out += `\n${plural(report.varies.length, "file varies", "files vary")} between builds made the same way; ${steady} are the same in all of them. Pin what changes (the build's time, random ids) before comparing another build with these, or leave it out with --ignore.\n`;
+	const common = report.varies.filter((v) => !v.versions[0].missing && v.versions[0].runs.includes(report.typical)).length;
+	out += `The build most like the others: ${report.runs[report.typical]}, with the most common version of ${common} of the ${plural(report.varies.length, "file", "files")} that vary.\n`;
+	// Every build different: no version is the usual one yet (a race needs more builds to show it).
+	const unsettled = report.varies.filter((v) => v.versions[0].runs.length < 2).length;
+	if (unsettled) out += `${unsettled === 1 ? "1 file has" : `${unsettled} files have`} no most common version: each build has its own. More builds (--runs 20) show whether one is usual.\n`;
 	return out;
 }
 
@@ -794,6 +1401,8 @@ export function runsJson(report: RunsReport, limit: number): Record<string, unkn
 		exact: report.exact,
 		same: report.varies.length === 0,
 		summary: { varies: report.varies.length, steadyPages: report.steadyPages, steadyFiles: report.steadyFiles },
+		// The build with the most common version of the most files that vary.
+		typical: runs[report.typical],
 		varies: report.varies.map((f) => ({
 			url: f.url,
 			path: f.path,
@@ -801,6 +1410,9 @@ export function runsJson(report: RunsReport, limit: number): Record<string, unkn
 			versions: f.versions.map((v) => ({ runs: v.runs.map((r) => runs[r]), missing: v.missing })),
 			changedLines: f.sample?.changedLines ?? 0,
 			hunks: f.sample ? firstLines(f.sample.hunks, limit) : [],
+			groups: f.sample?.groups ?? [],
 		})),
+		// Each difference on more than one varying file, the most files first; a file's `groups` are places in this list.
+		groups: report.groups.map((g) => ({ files: g.urls.length, urls: g.urls, same: g.same, match: g.match, kind: g.kind, hunk: g.hunk })),
 	};
 }
