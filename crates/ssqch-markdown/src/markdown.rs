@@ -255,10 +255,6 @@ pub struct MarkdownOptions {
     /// Lines indented four spaces are code. Off, they're ordinary Markdown
     /// (handy for HTML indented inside Markdown); fences are still code.
     pub indented_code: bool,
-    /// Link and image URLs percent-encoded, as CommonMark's reference renderer writes them
-    /// (`#كتابة` is `#%D9%83...`). Off, they're written as the page has them, HTML-escaped only,
-    /// as kramdown and markdown-it with its own normalizer write them.
-    pub encode_urls: bool,
     /// Highlight fenced code at build time (needs the `highlight` feature).
     pub highlight: bool,
     /// Where the build writes the highlighting stylesheet (a URL path like
@@ -291,7 +287,6 @@ impl Default for MarkdownOptions {
             definition_lists: false,
             smart_punctuation: false,
             indented_code: true,
-            encode_urls: true,
             highlight: false,
             highlight_css: Some("/highlight.css".into()),
             languages: Languages::default(),
@@ -303,8 +298,8 @@ impl Default for MarkdownOptions {
 
 impl MarkdownOptions {
     /// The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`).
-    pub const KEYS: [&'static str; 14] =
-        ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "encodeUrls"];
+    pub const KEYS: [&'static str; 13] =
+        ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures"];
 
     /// Apply a `markdown` object from the config. Errors start with the key
     /// (`markdown.footnotes must be true or false`).
@@ -376,7 +371,6 @@ impl MarkdownOptions {
                 "definitionLists" => &mut self.definition_lists,
                 "smartPunctuation" => &mut self.smart_punctuation,
                 "indentedCode" => &mut self.indented_code,
-                "encodeUrls" => &mut self.encode_urls,
                 other => bail!("markdown.{} isn't an option{} (options: {})", other, crate::suggest::closest(other, Self::KEYS.iter().copied()).map(|name| format!(" (did you mean `{}`?)", name)).unwrap_or_default(), Self::KEYS.join(", ")),
             };
             match v {
@@ -1022,23 +1016,6 @@ impl Writer<'_, '_> {
                     i = end + 1;
                     continue;
                 }
-                // `encodeUrls: false`: the URL as the page has it, HTML-escaped (pulldown-cmark's own
-                // writer percent-encodes it). The link's content and `</a>` are written as usual.
-                Event::Start(Tag::Link { link_type, dest_url, title, .. }) if !self.has("hooks/link") && self.opts.is_some_and(|o| !o.encode_urls) => {
-                    flush(&mut plain, out);
-                    out.push_str("<a href=\"");
-                    if *link_type == LinkType::Email {
-                        out.push_str("mailto:");
-                    }
-                    escape_html(&mut *out, dest_url).ok();
-                    if !title.is_empty() {
-                        out.push_str("\" title=\"");
-                        escape_html(&mut *out, title).ok();
-                    }
-                    out.push_str("\">");
-                    i += 1;
-                    continue;
-                }
                 Event::Start(Tag::Link { link_type, dest_url, title, .. }) if self.has("hooks/link") => {
                     let end = matching(events, i);
                     flush(&mut plain, out);
@@ -1071,11 +1048,7 @@ impl Writer<'_, '_> {
                         out.push_str(self.hook("hooks/image", "image", image)?.trim_end());
                     } else {
                         out.push_str("<img src=\"");
-                        if self.opts.is_some_and(|o| !o.encode_urls) {
-                            escape_html(&mut *out, dest_url).ok();
-                        } else {
-                            escape_href(&mut *out, dest_url).ok();
-                        }
+                        escape_href(&mut *out, dest_url).ok();
                         out.push_str("\" alt=\"");
                         escape_html(&mut *out, &alt).ok();
                         out.push('"');
@@ -1884,11 +1857,9 @@ mod tests {
     }
 
     #[test]
-    fn urls_can_be_kept_as_written() {
+    fn urls_are_percent_encoded() {
         let src = "[a](../start/#كتابة-ملف \"T & c\") [b](/x?a=1&b=2) <ranger@example.com> ![c](/café.png)\n";
         assert_eq!(md(src), "<p><a href=\"../start/#%D9%83%D8%AA%D8%A7%D8%A8%D8%A9-%D9%85%D9%84%D9%81\" title=\"T &amp; c\">a</a> <a href=\"/x?a=1&amp;b=2\">b</a> <a href=\"mailto:ranger@example.com\">ranger@example.com</a> <img src=\"/caf%C3%A9.png\" alt=\"c\"></p>\n");
-        let opts = MarkdownOptions { encode_urls: false, ..Default::default() };
-        assert_eq!(render(src, &opts, None).unwrap(), "<p><a href=\"../start/#كتابة-ملف\" title=\"T &amp; c\">a</a> <a href=\"/x?a=1&amp;b=2\">b</a> <a href=\"mailto:ranger@example.com\">ranger@example.com</a> <img src=\"/café.png\" alt=\"c\"></p>\n");
     }
 
     #[test]

@@ -106,16 +106,16 @@ test("leave_no_trace_removes_only_stale_files_ssqch_wrote", () => {
 	r = ssqch(["build", "--root", d]);
 	assert.ok(r.ok && !r.log.includes("Removed"), r.log);
 
-	// `clean` is the option's other name.
+	// DELIBERATE (0.13): `clean` isn't another name for it in the config any more (a rename
+	// replaces the old name, the audit's plan): it's refused with ssqch's name, as the command is.
 	w("ssqch.config.js", "export default { clean: true, passthrough: \"files\" };\n");
+	r = ssqch(["build", "--root", d]);
+	assert.ok(!r.ok && r.log.includes("\"clean\" isn't a config option. ssqch calls it `leaveNoTrace`"), r.log);
+	w("ssqch.config.js", "export default { leaveNoTrace: true, passthrough: \"files\" };\n");
 	fs.rmSync(path.join(dir, "keep.md"));
 	w("stay.md", "Stay\n");
 	r = ssqch(["build", "--root", d]);
 	assert.ok(r.ok && r.log.includes("Removed  1 stale file, left no trace") && !exists(site, "keep"), r.log);
-	// One name at a time.
-	w("ssqch.config.js", "export default { leaveNoTrace: true, clean: true };\n");
-	r = ssqch(["build", "--root", d]);
-	assert.ok(!r.ok && r.log.includes("leaveNoTrace and clean are two names for one option; set one of them"), r.log);
 	// In TOML it's `leave_no_trace`, or `clean`.
 	fs.rmSync(path.join(dir, "ssqch.config.js"));
 	for (const key of ["leave_no_trace", "clean"]) {

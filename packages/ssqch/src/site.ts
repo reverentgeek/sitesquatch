@@ -16,7 +16,7 @@ import { buildNav, loadMkdocs, mkdocsFilters, relativeUrl, sitePath } from "./mk
 import type { MkDocs, NavPage } from "./mkdocs.ts";
 import { withPage } from "./rendering.ts";
 import type { Data } from "./data.ts";
-import { NOT_DATA, decodeText, frontMatterSettings, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, sourceDateEpoch, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
+import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, sourceDateEpoch, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
 import type { Diagnostic } from "./diagnostics.ts";
 import { BuildError, Diagnostics, aliasUsed, bail, context, error as errorOf, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import { edgeEngine } from "./engines/edge.ts";
@@ -156,7 +156,6 @@ export class Site {
 
 	constructor(config: Config, keepLayers = false) {
 		this.config = config;
-		frontMatterSettings.trimAfter = config.trimAfterFrontMatter;
 		this.dirs = dirsOf(config);
 		this.keepLayers = keepLayers;
 		this.profile = new Profile(config.profile);
@@ -236,6 +235,8 @@ export class Site {
 		const pipeFilters = new Map<string, Filter>();
 		for (const row of equivalents.TABLE) {
 			if (row.kind !== "filter" || !row.alias || config.filters.has(row.word)) continue;
+			// A plugin's function (`rssDate` is rssPlugin()'s `dateToRfc3339`): the plugin has the alias.
+			if (row.ssqch !== "base" && !globals.has(row.ssqch)) continue;
 			// `url` on a page with `permalink: false` (its url is `false`) printed `/false` in a11y's
 			// sitemap: it prints nothing, and says so once.
 			const takesUrl = row.ssqch === "base";

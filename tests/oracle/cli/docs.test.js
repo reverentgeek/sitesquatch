@@ -143,7 +143,6 @@ test("docs_explain_what_migrations_asked_about", () => {
 		["seo", "a partial in its layout"],
 		// Added in 0.11: what the Jekyll and Eleventy moves needed.
 		["htmlMarkdown", "renders the content of an HTML element with `markdown=\"1\"`"],
-		["encodeUrls", "writes them as the page has them, HTML-escaped only"],
 		["headingIds", "`\"kramdown\"` matches Jekyll's"],
 		["markdown-it-anchor", "markdown-it-anchor"],
 		["charset", "`charset`: `false` leaves out"],
@@ -158,7 +157,8 @@ test("docs_explain_what_migrations_asked_about", () => {
 		["dialect", "`\"python-markdown\"` (MkDocs'): a raw HTML block runs to its closing tag"],
 	]) {
 		const a = answer(query);
-		assert.ok(a.found && a.section.text.includes(says), `${query}: ${JSON.stringify(a).slice(0, 400)}`);
+		// DELIBERATE (0.13): a trailhead's own heading answers with its section (`From jekyll-seo-tag`, which moved there).
+		assert.ok(a.found && (a.section?.text ?? a.trailhead?.text ?? "").includes(says), `${query}: ${JSON.stringify(a).slice(0, 400)}`);
 	}
 });
 

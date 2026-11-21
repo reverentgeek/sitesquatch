@@ -553,7 +553,7 @@ test("jekyll_templates_are_listed_not_rewritten", () => {
 });
 
 test("the_seo_include_is_the_docs_one", () => {
-	const docs = fs.readFileSync(new URL("../../../site/src/docs/seo.md", import.meta.url), "utf8");
+	const docs = fs.readFileSync(new URL("../../../site/src/docs/trailheads/from-jekyll.md", import.meta.url), "utf8");
 	assert.equal(SEO_INCLUDE, /```liquid\n([\s\S]*?)```/.exec(docs)?.[1]);
 });
 
@@ -881,7 +881,7 @@ test("scout_reads_a_vitepress_site_and_drafts_its_config", async () => {
 	assert.equal(report.build.command, "pnpm run build");
 	assert.equal(report.build.output, ".vitepress/dist");
 	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
-	assert.ok(draft.includes("dirs: { input: \"src\", output: \"dist\" },") && draft.includes("urls: \"html\",") && draft.includes("ignore: [\"api/api.data.ts\", \"tutorial/**/description.md\", \".vitepress/**\", \"public/**\"],") && draft.includes("passthrough: { \"src/public/**\": \".\" },") && draft.includes("markdown: { dialect: \"vitepress\", highlight: true },") && draft.includes("vuePlugin({ components: { Badge: \".vitepress/theme/components/Badge.vue\" }, hydrate: \"visible\" }),") && draft.includes("sitemapPlugin({ url: \"https://trail.example\", format: \"vitepress\" }),"), draft);
+	assert.ok(draft.includes("dirs: { input: \"src\", output: \"dist\" },") && draft.includes("urls: \"html\",") && draft.includes("ignore: [\"api/api.data.ts\", \"tutorial/**/description.md\", \".vitepress/**\", \"public/**\"],") && draft.includes("passthrough: { \"src/public/**\": \".\" },") && draft.includes("markdown: { dialect: \"vitepress\", highlight: true },") && draft.includes("vuePlugin({ components: { Badge: \".vitepress/theme/components/Badge.vue\" }, hydrate: \"visible\" }),") && draft.includes("sitemapPlugin({ url: \"https://trail.example\" }),"), draft);
 	// With the draft and a template for `<Badge>`, those are done.
 	fs.writeFileSync(path.join(dir, "ssqch.config.js"), draft.replace(/^import .*\n/gm, "").replace(/\tplugins: \[[\s\S]*?\n\t\],\n/, "\tplugins: [{ name: \"ssqch/sitemap\" }],\n"));
 	fs.mkdirSync(path.join(dir, "src/_includes/components"), { recursive: true });

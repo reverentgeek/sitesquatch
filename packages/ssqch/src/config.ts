@@ -101,8 +101,6 @@ export interface Config {
 	ignore: string[];
 	bundles: boolean;
 	strict: boolean;
-	/** `trimAfterFrontMatter`: a template's body starts at its first line with text, as Jekyll's does, not right after the closing `---`. */
-	trimAfterFrontMatter: boolean;
 	/** `jekyllTemplates`: templates see Jekyll's `page` (front matter too) and `site` (`posts`, collections, `data`, `categories`). */
 	jekyllTemplates: boolean;
 	/** `mkdocsTemplates`: the mkdocs.yml (from the root) whose context templates see, as MkDocs gives a theme's (`config`, `nav`, `page`, `base_url`, the `url` filter), or `null`. */
@@ -209,7 +207,6 @@ function emptyConfig(options: ConfigOptions): Config {
 		ignore: [],
 		bundles: false,
 		strict: false,
-		trimAfterFrontMatter: false,
 		jekyllTemplates: false,
 		mkdocsTemplates: null,
 		jinjaAutoescape: null,
@@ -362,7 +359,7 @@ export class EngineCache {
 
 // ---- ssqch.config.js -------------------------------------------------------------------------
 
-const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "trimAfterFrontMatter", "jekyllTemplates", "mkdocsTemplates", "jinja", "lastModified", "dateFallback", "timeZone", "urls", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
+const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "ignore", "bundles", "strict", "jekyllTemplates", "mkdocsTemplates", "jinja", "lastModified", "dateFallback", "timeZone", "urls", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
 const PARTS = ["data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins"];
 /**
  * Engine names a config can't replace. `md` can be: a site that keeps its markdown-it replaces
@@ -401,6 +398,15 @@ export function meant(key: unknown, options: readonly string[]): string {
 }
 
 const configWord = (key: string): Equivalent | undefined => equivalents.find(key, "config");
+
+/**
+ * Options ssqch had and took out, with what to do instead: they were there only so a move could
+ * match another generator's bytes, which nothing that reads a site needs (the audit's plan,
+ * 2026-11-21).
+ */
+const RETIRED: Record<string, string> = {
+	trimAfterFrontMatter: "the blank lines after a template's front matter are whitespace between tags in HTML, which browsers and `ssqch diff` read as the same. Where one matters (a feed that has to start with `<?xml`, a text file), take it out of that template: `ssqch scout --patch` does it for a Jekyll site",
+};
 
 /** A check that failed: the message is the whole error (`ssqch.config.js: ...`). */
 const fail = (message: string): never => { throw new TypeError(message); };
@@ -545,6 +551,10 @@ async function loadJs(config: Config, file: string): Promise<void> {
 				}
 				if (equivalent) {
 					unknown.push(`${where}: "${key}" isn't a config option. ${equivalent.say}\n  More: ${equivalent.more}`);
+					continue;
+				}
+				if (top && Object.hasOwn(RETIRED, key)) {
+					unknown.push(`${where}: "${key}" is gone: ${RETIRED[key]}`);
 					continue;
 				}
 				// `output: "dist"` at the top is a folder that belongs in `dirs`.
@@ -731,17 +741,10 @@ function applySettings(config: Config, settings: Data): void {
 		if (typeof settings.deepMerge !== "boolean") bail(`deepMerge must be true or false, not ${typeof settings.deepMerge}`);
 		config.deepMerge = settings.deepMerge;
 	}
-	// `leaveNoTrace`, or `clean`, its other name.
-	let trace: boolean | undefined;
-	for (const key of ["leaveNoTrace", "clean"]) {
-		const value = settings[key];
-		if (value === undefined) continue;
-		if (typeof value !== "boolean") bail(`${key} must be true or false, not ${typeof value}`);
-		if (trace !== undefined) bail("leaveNoTrace and clean are two names for one option; set one of them");
-		trace = value;
-	}
+	const trace = settings.leaveNoTrace;
+	if (trace !== undefined && typeof trace !== "boolean") bail(`leaveNoTrace must be true or false, not ${typeof trace}`);
 	if (trace !== undefined) config.leaveNoTrace = trace;
-	for (const key of ["bundles", "strict", "trimAfterFrontMatter", "jekyllTemplates"] as const) {
+	for (const key of ["bundles", "strict", "jekyllTemplates"] as const) {
 		const value = settings[key];
 		if (value === undefined) continue;
 		if (typeof value !== "boolean") bail(`${key} must be true or false, not ${typeof value}`);

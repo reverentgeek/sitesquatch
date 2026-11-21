@@ -99,8 +99,6 @@ declare module "ssqch" {
 		smartPunctuation?: boolean;
 		/** Lines indented four spaces are code blocks. `false` renders them as ordinary Markdown (HTML indented inside Markdown, say); fences are still code. Default `true`. */
 		indentedCode?: boolean;
-		/** Link and image URLs are percent-encoded, as CommonMark's reference renderer writes them (`#كتابة` as `#%D9%83...`, `café.png` as `caf%C3%A9.png`). `false` writes them as the page has them, HTML-escaped only (`&` as `&amp;`), as kramdown (Jekyll) does; browsers go to the same place either way. A link or image hook gets the URL as written in both. Default `true`. */
-		encodeUrls?: boolean;
 		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. `languages` adds languages or replaces built-in ones. `classes` names the tokens as another highlighter does, so a site keeps its theme's CSS: `"prism"` (`token keyword`, `<pre class="language-js">`, marked lines as `<mark class="highlight-line highlight-line-active">`), `"pygments"` or `"chroma"` (Pygments' short names, `k`, `s`, `nf`, which MkDocs' and Hugo's themes style), or `{ keyword: "tok-keyword" }` for some kinds; the stylesheet uses the same names. Default `false`. */
 		/** Markdown inside HTML, as Jekyll's kramdown reads it: `"kramdown"` renders the content of an element with `markdown="1"` (span-level for `p`, headings and inline elements, block-level for the others; `"block"` and `"span"` choose) and drops the attribute, and keeps kramdown's HTML rules: a block-level element is raw HTML to its end tag, blank lines and all. Default `false`: HTML is CommonMark's, and Markdown inside it stays text. */
 		htmlMarkdown?: "kramdown" | false;
@@ -264,16 +262,12 @@ declare module "ssqch" {
 		deepMerge?: boolean;
 		/** Delete output files an earlier build wrote or copied that this one didn't (a deleted post's page). Files other tools write are never touched. Default `false`. */
 		leaveNoTrace?: boolean;
-		/** Another name for `leaveNoTrace`. Set one of them. */
-		clean?: boolean;
 		/** Globs (relative to the input folder) of files that aren't pages, like `["drafts/**", "notes/*.wip.md"]`. */
 		ignore?: string | string[];
 		/** Page bundles: copy the other files in a folder whose page is `index.*` (images, downloads) next to the page. Default `false`. */
 		bundles?: boolean;
 		/** Printing an undefined value (`{{ titel }}`) is an error, in every template language. Conditionals and defaults still work. Default `false`. */
 		strict?: boolean;
-		/** Start a template's body at its first line with text, dropping the blank lines after the closing `---`, as Jekyll does (its layouts and includes print no blank line there). Off by default: the body starts on the line after `---`, as Eleventy and gray-matter have it. */
-		trimAfterFrontMatter?: boolean;
 		/** Templates see Jekyll's `page` and `site`, so a Jekyll site's layouts and includes run as written: `page` has the page's front matter too (`page.title`; ssqch's own keys, like `url` and `date`, win) and `page.path` and `page.categories`; `site` has the site's own keys, `posts` (newest first), each collection by its tag (`site.articles`), `pages`, `html_pages`, `categories`, `tags`, `data` (the global data) and `time`; and their items read in Jekyll's shape (`post.title`, `post.content`, `post.excerpt`). Off by default: front matter is at the top level (`title`) and items keep it under `data`. */
 		jekyllTemplates?: boolean;
 		/** Templates see what MkDocs gives a theme's, so an MkDocs theme's Jinja templates (Material for MkDocs') run as written: `config` (mkdocs.yml, with the theme's `mkdocs_theme.yml` under its `theme`), `nav` (Sections, Pages and Links, with `active` on the page being rendered), `page` in a layout (MkDocs' page: `title`, `url` without its first `/`, `abs_url`, `canonical_url`, `edit_url`, `content`, `toc`, `meta`, `previous_page`, `next_page`, `ancestors`, `is_homepage`), `base_url`, `mkdocs_version` and `build_date_utc`, and the `url` and `script_tag` filters, relative to the page. A Markdown page's layout is `main.html` (or its front matter's `template`), the theme's `404.html` makes `/404.html`, and Jinja doesn't escape (`jinja: { autoescape }` says otherwise). `true` reads `mkdocs.yml`; a string names another file. Off by default. */
@@ -537,14 +531,12 @@ declare module "ssqch/sitemap" {
 	import type { BuiltinPlugin } from "ssqch";
 
 	export interface SitemapPluginOptions {
-		/** The site's address, like `"https://example.com"`. Without one (or with `""`, as a Jekyll site's `url` often is), each `<loc>` is a path from the site's root, as jekyll-sitemap writes it, and every build warns: search engines read only whole addresses. */
-		url?: string;
+		/** The site's address, like `"https://example.com"`: required, since a sitemap lists whole addresses and search engines read only those. With a `base`, it can be the domain or include the base. */
+		url: string;
 		/** URL globs to leave out, like `["/tags/**"]`. Pages with `sitemap: false` and 404 pages are always left out. */
 		exclude?: string[];
-		/** Add `<lastmod>` from each page's date. Default `true` (`false` with `format: "vitepress"`). */
+		/** Add `<lastmod>` from each page's date. Default `true`. */
 		lastmod?: boolean;
-		/** How the file is written: `"ssqch"` (the default: one tag per line, pages by URL) or `"vitepress"`, the sitemap VitePress's `sitemap` option writes (one line, its five namespaces, pages in the order of their files, no `<lastmod>` unless `lastmod: true`), so a move from VitePress compares byte for byte. */
-		format?: "ssqch" | "vitepress";
 		/** Where to write it. Default `"/sitemap.xml"`. */
 		output?: string;
 		/** List every page of a list split into pages (`/2/`, `/3/`), not just the first. Pagination with `size: 1` (a page per tag, say) is always listed. Default `false`. */

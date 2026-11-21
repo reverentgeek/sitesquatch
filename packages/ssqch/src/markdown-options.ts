@@ -33,8 +33,6 @@ export interface MarkdownOptions {
 	smartPunctuation: boolean;
 	/** Lines indented four spaces are code. Off, they're ordinary Markdown; fences are still code. */
 	indentedCode: boolean;
-	/** Link and image URLs percent-encoded (`#كتابة` as `#%D9%83...`), as CommonMark's reference renderer writes them; `false` writes them as the page has them, HTML-escaped only, as kramdown does. */
-	encodeUrls: boolean;
 	/** Highlight fenced code at build time. */
 	highlight: boolean;
 	/** Where the build writes the highlighting stylesheet (a URL path like `/highlight.css`), or `null` to leave it out. */
@@ -77,7 +75,6 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		definitionLists: false,
 		smartPunctuation: false,
 		indentedCode: true,
-		encodeUrls: true,
 		highlight: false,
 		highlightCss: "/highlight.css",
 		highlightClasses: null,
@@ -95,9 +92,9 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 }
 
 /** The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`). */
-export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "encodeUrls", "admonitions", "tabs", "shortcodes", "sourceLinks", "preprocess", "dialect"] as const;
+export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "admonitions", "tabs", "shortcodes", "sourceLinks", "preprocess", "dialect"] as const;
 
-const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures", "encodeUrls"] as const;
+const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures"] as const;
 
 /** What a highlighted token can be: the `hl-*` names, without the prefix. */
 export const HIGHLIGHT_KINDS = ["comment", "keyword", "operator", "string", "regexp", "escape", "number", "constant", "builtin", "property", "attribute", "function", "type", "parameter", "tag", "heading", "strong", "emphasis", "link", "inserted", "deleted"] as const;
@@ -189,6 +186,9 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 		} else if ((FLAGS as readonly string[]).includes(key)) {
 			if (typeof v !== "boolean") bail(`markdown.${key} must be true or false, not ${typeOf(v)}`);
 			options[key as typeof FLAGS[number]] = v;
+		} else if (key === "encodeUrls") {
+			// Taken out (the audit's plan, 2026-11-21): it was there so a move could match kramdown's bytes.
+			bail("markdown.encodeUrls is gone: link and image URLs are percent-encoded, as CommonMark writes them, and browsers go to the same place either way (so does `ssqch diff`). Leave it out");
 		} else {
 			const near = closest(key, MARKDOWN_KEYS);
 			bail(`markdown.${key} isn't an option${near ? ` (did you mean \`${near}\`?)` : ""} (options: ${MARKDOWN_KEYS.join(", ")})`);

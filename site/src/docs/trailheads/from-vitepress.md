@@ -24,7 +24,7 @@ export default {
 	markdown: { dialect: "vitepress", highlight: true },
 	plugins: [
 		vuePlugin({ components: { VueSchoolLink: ".vitepress/theme/components/VueSchoolLink.vue", ScrimbaLink: ".vitepress/theme/components/ScrimbaLink.vue" }, hydrate: "visible" }),
-		sitemapPlugin({ url: "https://vuejs.org", format: "vitepress" }),
+		sitemapPlugin({ url: "https://vuejs.org" }),
 	],
 };
 ```
@@ -56,7 +56,7 @@ export default {
 | `page: true`, `layout: home` | `page` is ssqch's own (it's warned about): give those pages a layout of their own (`layout: home.jinja`) |
 | `[param].md` with `[param].paths.ts` | `pagination` over the same list, `size: 1`, a `permalink` with the item's value, and `addAllPagesToCollections: true`, in `[param].data.js` beside the page |
 | `head` in the config | The layout's `<head>` |
-| `sitemap: { hostname }` | `sitemapPlugin({ url, format: "vitepress" })`, the same file byte for byte |
+| `sitemap: { hostname }` | `sitemapPlugin({ url })`, with the same URLs. The file is ssqch's own (a tag a line, pages by URL, with `<lastmod>`; `lastmod: false` leaves it out), so `ssqch diff` lists `sitemap.xml` as changed, and that's expected: no reader of a sitemap needs VitePress's bytes |
 | `markdown.config(md)` plugins | A render hook, a container, or `markdown.preprocess` |
 | `vitepress-plugin-llms` | `llmsPlugin()` from `ssqch/llms`: `llms.txt`, a Markdown copy of each page and `llms-full.txt` |
 

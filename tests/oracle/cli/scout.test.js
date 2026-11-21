@@ -267,6 +267,8 @@ test("scout_jekyll_drafts_a_config_that_builds", () => {
 		"_guides/zh/README.md": "Read me as I am\n",
 		"Gemfile.lock": "GEM\n  specs:\n    jekyll (3.10.0)\n",
 		"_guides/old.md": "---\ntitle: Moved\nredirect_from: [/legacy/]\n---\nMoved\n",
+		// Added in 0.13: a feed whose blank line after the front matter would come before `<?xml`.
+		"feed.xml": "---\nlayout: null\n---\n\n<?xml version=\"1.0\"?><feed/>\n",
 	});
 	let r = ssqch(["scout", "--from", "jekyll", dir]);
 	assert.ok(r.ok, r.log);
@@ -278,11 +280,15 @@ test("scout_jekyll_drafts_a_config_that_builds", () => {
 		"_posts/_posts.json (Jekyll's posts: the `posts` tag, and the permalink)",
 		"_includes/seo.liquid (jekyll-seo-tag's tags",
 		".: 1 `markdown=\"1\"` elements: `htmlMarkdown: \"kramdown\"` (in the draft) reads them as kramdown does",
+		// DELIBERATE (0.13): `trimAfterFrontMatter` is gone; the blank line goes where it matters.
+		"feed.xml: the blank line after the front matter out",
+		// DELIBERATE (0.13): sitemapPlugin() needs the address, which this site's config doesn't have.
+		"no `url`: `sitemapPlugin()` needs the site's address",
 	]) assert.ok(r.log.includes(said), `${said}\n${r.log}`);
 	r = move(dir, "jekyll");
 	assert.ok(r.ok, r.log);
 	const config = read(dir, "ssqch.config.js");
-	for (const part of ["trimAfterFrontMatter: true,", "markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false, encodeUrls: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets/img\", { \"_guides/zh/README.md\": \"guides/zh/README.md\" }],", "jekyllTemplates: true,", "data: { site, image: \"/og.png\" },", "plugins: [redirectsPlugin(), sitemapPlugin({ url: site.url })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	for (const part of ["markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets/img\", { \"_guides/zh/README.md\": \"guides/zh/README.md\" }],", "jekyllTemplates: true,", "data: { site, image: \"/og.png\" },", "plugins: [redirectsPlugin(), /* sitemapPlugin({ url: site.url }): needs `url` in _config.yml */],"]) assert.ok(config.includes(part), `${part}\n${config}`);
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(r.ok && !r.log.includes("`//`"), r.log);
 	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<aside>\n<p><em>Hush</em></p>\n</aside>"), read(dir, "_site/guides/trail/index.html"));
@@ -295,6 +301,7 @@ test("scout_jekyll_drafts_a_config_that_builds", () => {
 	// The rendered `.js` keeps its name; the collection's README is copied as it is; the old URL gets
 	// jekyll-redirect-from's page; the generator is Jekyll's.
 	assert.equal(read(dir, "_site/assets/app.js"), "const title = \"Trail Guide\";\n");
+	assert.ok(read(dir, "_site/feed.xml").startsWith("<?xml"), read(dir, "_site/feed.xml"));
 	assert.equal(read(dir, "_site/guides/zh/README.md"), "Read me as I am\n");
 	assert.ok(read(dir, "_site/legacy/index.html").startsWith("<!DOCTYPE html>\n<html lang=\"en-US\">\n  <meta charset=\"utf-8\">\n  <title>Redirecting&hellip;</title>"), read(dir, "_site/legacy/index.html"));
 	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<meta name=\"generator\" content=\"Jekyll v3.10.0\" />") && read(dir, "_site/guides/trail/index.html").includes("\"@type\":\"BlogPosting\""), read(dir, "_site/guides/trail/index.html"));

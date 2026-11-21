@@ -25,6 +25,28 @@ where that version matches.
   as Markdown. Links in a copy are whole addresses, and a link to a page that has a copy goes to
   the copy. A page leaves the list with `llms: false` in its front matter, or with `exclude`.
 - `llms-full.txt` starts with `llms.txt`'s heading and description, then the pages.
+- Options that were there only so a move could match another generator's bytes are gone, each
+  with an error that says what to do instead:
+  - `trimAfterFrontMatter`. The blank lines after a template's front matter are whitespace that
+    browsers and `ssqch diff` don't see. Where one matters (a feed that has to start with `<?xml`,
+    a text file), take it out of that template; `ssqch scout --patch` does it for a Jekyll site.
+  - `markdown.encodeUrls`. Link and image URLs are percent-encoded, as CommonMark writes them;
+    browsers go to the same place either way.
+  - `sitemapPlugin({ format: "vitepress" })`. The sitemap is ssqch's own, with the same URLs.
+- `sitemapPlugin()` needs `url`: a sitemap of paths from the root (what it wrote without one, as
+  jekyll-sitemap does) is one search engines can't read. A build without it stops and asks for the
+  site's address, where it used to warn on every build. `ssqch scout` leaves the plugin commented
+  out in a Jekyll draft until `_config.yml` has a `url`.
+- `clean` is no longer another name for `leaveNoTrace` in `ssqch.config.js` (a rename replaces the
+  old name): it's refused with ssqch's name, as the `clean` command is. `sitesquatch.toml` keeps
+  it.
+
+### Fixed
+
+- `ssqch diff` reads a URL the same percent-encoded or not (`#كتابة` and `#%D9%83...`, `café.png`
+  and `caf%C3%A9.png`), as browsers do. ASCII that means something in a URL (`%2F`) still counts.
+- `ssqch docs "<heading>"` answers with a trailhead's section when that's the heading's own page,
+  rather than with a page that only mentions the words (`ssqch docs "From jekyll-seo-tag"`).
 
 ### Added
 
@@ -34,6 +56,10 @@ where that version matches.
 
 ### Changed
 
+- `rssDate` and `rssLastUpdatedDate` (the Eleventy RSS plugin's first names, with `rssPlugin()`)
+  are aliases: they work as before, and say ssqch's names once (`dateToRfc3339`,
+  `getNewestCollectionItemDate`).
+- jekyll-seo-tag's include moved from "SEO tags" to the Jekyll trailhead.
 - `llmsPlugin()` knows nothing of VitePress: `<script>` and `<style>` blocks are left out of every
   copy (a VitePress page's `<script setup>` among them), and so are pictures with `alt=""`.
 

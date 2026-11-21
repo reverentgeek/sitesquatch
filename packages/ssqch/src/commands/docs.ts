@@ -687,11 +687,14 @@ export function runDocs(grammar: Grammar, command: DocsCommand): number {
 			return out(json ? JSON.stringify({ query, found: true, page: { file: `site/src/docs/${page.file}`, url: guideUrl(page.file.replace(/^trailheads\//, "")), text } }, null, 2) + "\n" : text);
 		}
 	}
-	const a = page?.title !== undefined ? { query, names: [], passages: [], also: [], section: all.findIndex((s) => s.level <= 2 && s.title === page.title) } : answer(grammar, all, known, query);
-	if (a && a.section !== -1) return out(json ? JSON.stringify(answerJson(all, a), null, 2) + "\n" : answerText(all, a));
 	// A heading in a trailhead (`"moving with identical output first"`): the main docs don't have
-	// the trailheads (`--from` prints them), but scout's lines and the trailheads point at their sections.
-	const trail = trailheadSection(query);
+	// the trailheads (`--from` prints them), but scout's lines and the trailheads point at their
+	// sections. A heading's own words beat a page that only mentions them, unless the main docs
+	// have that heading or name too.
+	const trail = page === undefined ? trailheadSection(query) : undefined;
+	const exact = trail !== undefined && !known.some((n) => n.name === query) && !all.some((s) => s.title.toLowerCase() === query.trim().toLowerCase());
+	const a = page?.title !== undefined ? { query, names: [], passages: [], also: [], section: all.findIndex((s) => s.level <= 2 && s.title === page.title) } : exact ? undefined : answer(grammar, all, known, query);
+	if (a && a.section !== -1) return out(json ? JSON.stringify(answerJson(all, a), null, 2) + "\n" : answerText(all, a));
 	if (trail) return out(json ? JSON.stringify({ query, found: true, trailhead: trail }, null, 2) + "\n" : `From "${trail.page}" (ssqch docs --from ${trail.generator}):\n\n${trail.text}`);
 	const near = closestName(all, known, query);
 	const next = near === undefined ? nextStep(grammar, all, known, query) : undefined;

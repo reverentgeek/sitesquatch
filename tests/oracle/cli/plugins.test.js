@@ -823,18 +823,16 @@ export default { base: "/trail/", templateFormats: ["njk"], plugins: [sitemapPlu
 });
 
 // Added in 0.11, from the fresh opensource.guide move: a Jekyll site's `url` is often empty, and
-// jekyll-sitemap writes paths then. So does sitemapPlugin(), and it says why that's not enough.
-test("a_sitemap_without_a_url_writes_paths_and_says_so", () => {
+// jekyll-sitemap writes paths then. DELIBERATE (0.13): a sitemap of paths is one search engines
+// can't read, so sitemapPlugin() asks for the address instead of warning on every build.
+test("a_sitemap_without_a_url_asks_for_one", () => {
 	const root = tempDir("sitemap-no-url");
-	write(root, {
-		"ssqch.config.js": "import { sitemapPlugin } from \"ssqch/sitemap\";\nexport default { plugins: [sitemapPlugin({ url: \"\", lastmod: false })] };\n",
-		"index.md": "# Pine\n",
-		"trail.md": "# Trail\n",
-	});
-	const r = ssqch(["build", "--root", root]);
-	assert.ok(r.ok, r.log);
-	assert.ok(r.log.includes("warn: sitemapPlugin() has no url, so /sitemap.xml's <loc>s are paths from the site's root"), r.log);
-	assert.equal(read(root, "_site/sitemap.xml"), "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>/</loc>\n  </url>\n  <url>\n    <loc>/trail/</loc>\n  </url>\n</urlset>\n");
+	write(root, { "index.md": "# Pine\n" });
+	for (const options of ["{ url: \"\" }", "{}"]) {
+		write(root, { "ssqch.config.js": `import { sitemapPlugin } from "ssqch/sitemap";\nexport default { plugins: [sitemapPlugin(${options})] };\n` });
+		const r = ssqch(["build", "--root", root]);
+		assert.ok(!r.ok && r.log.includes("needs the site's address, like sitemapPlugin({ url: \"https://example.com\" })"), r.log);
+	}
 });
 
 // Added in 0.11, from the fresh opensource.guide move: grass starts CSS with a character outside

@@ -15,7 +15,7 @@ ssqch diff dist-before dist
 
 ```text
 Comparing dist-before with dist
-Ignoring asset fingerprints, image ids, integrity hashes, the generator's version, Vue's and Astro's scope ids and fragment markers, whitespace between tags, and how tags are written where browsers read them the same (attribute order, quotes, entities, `<br/>`) (--exact compares bytes).
+Ignoring asset fingerprints, image ids, integrity hashes, the generator's version, Vue's and Astro's scope ids and fragment markers, whitespace between tags, and how tags are written where browsers read them the same (attribute order, quotes, entities, percent-encoding in URLs, `<br/>`) (--exact compares bytes).
 
 Added (1)
   + /trails/cedar/

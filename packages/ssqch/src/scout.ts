@@ -2151,9 +2151,28 @@ const JEKYLL_PAGE: Record<string, string> = {
 /** Liquid's tags, Jekyll's and ssqch's, which a `{% name %}` isn't a plugin's tag for. */
 const LIQUID_TAGS = new Set(["assign", "capture", "endcapture", "case", "when", "endcase", "comment", "endcomment", "cycle", "decrement", "increment", "echo", "for", "endfor", "break", "continue", "if", "elsif", "else", "endif", "unless", "endunless", "include", "include_relative", "render", "layout", "liquid", "raw", "endraw", "tablerow", "endtablerow", "highlight", "endhighlight", "link", "post_url", "block", "endblock"]);
 
+/** A template with the blank lines after its front matter's closing `---` taken out, or undefined when there are none. */
+export function withoutBlankAfterFrontMatter(text: string): string | undefined {
+	const open = /^---[ \t]*\r?\n/.exec(text);
+	if (!open) return undefined;
+	const close = /^---[ \t]*(?:\r?\n|$)/m.exec(text.slice(open[0].length));
+	if (!close) return undefined;
+	const end = open[0].length + close.index + close[0].length;
+	const blank = /^(?:[ \t]*\r?\n)+/.exec(text.slice(end));
+	return blank ? text.slice(0, end) + text.slice(end + blank[0].length) : undefined;
+}
+
+/** Whether a Jekyll template writes HTML: a page in Markdown or HTML, unless its permalink names another kind of file (`permalink: /feed.xml`). Layouts and includes are checked by the caller. */
+function writesHtml(rel: string, text: string): boolean {
+	const front = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text)?.[1] ?? "";
+	const permalink = /^permalink:\s*["']?([^"'\s#]+)/m.exec(front)?.[1];
+	if (permalink && /\.[A-Za-z0-9]+$/.test(permalink)) return /\.html?$/i.test(permalink);
+	return /\.(?:md|markdown|html?)$/i.test(rel);
+}
+
 /** The Jekyll plugins a site can name, and what each is in ssqch: an import and a plugin, or what to do. */
 const JEKYLL_PLUGINS: Record<string, { use?: [string, string]; say: string }> = {
-	"jekyll-sitemap": { use: ["import { sitemapPlugin } from \"ssqch/sitemap\";", "sitemapPlugin({ url: site.url })"], say: "`sitemapPlugin({ url: site.url })`, in the draft (an empty `url` writes paths, as jekyll-sitemap did, and warns). jekyll-sitemap also wrote `/robots.txt` when the site had none: `robots.liquid`, in the plan. Its own sitemap's format (the order, `xsi:schemaLocation`) is a template of your own if the bytes matter" },
+	"jekyll-sitemap": { use: ["import { sitemapPlugin } from \"ssqch/sitemap\";", "sitemapPlugin({ url: site.url })"], say: "`sitemapPlugin({ url: site.url })`, in the draft (it needs the site's address: with no `url` in the config, the draft leaves it commented out until there is one). jekyll-sitemap also wrote `/robots.txt` when the site had none: `robots.liquid`, in the plan. Its own sitemap's format (the order, `xsi:schemaLocation`) is a template of your own if the bytes matter" },
 	"jekyll-redirect-from": { use: ["import { redirectsPlugin } from \"ssqch/redirects\";", "redirectsPlugin()"], say: "`redirectsPlugin()`, in the draft: `redirect_from` works as it is (templates read it as `aliases`); `_includes/hooks/redirect.*` is its page's markup. jekyll-redirect-from also wrote `/redirects.json`: `redirects.liquid`, in the plan" },
 	"jekyll-feed": { use: ["import { rssPlugin } from \"ssqch/rss\";", "rssPlugin()"], say: "`rssPlugin()` is in the draft; the feed itself is a template of the site's (`feed.xml.liquid` with `permalink: /feed.xml`): `ssqch docs rssPlugin`" },
 	"jekyll-seo-tag": { say: "`{% seo %}` becomes an include: `ssqch docs \"From jekyll-seo-tag\"` has one that writes its tags" },
@@ -2338,6 +2357,14 @@ export function jekyll(dir: string): Plan {
 		if (/\{%-?\s*seo\b[^%]*%\}/.test(next)) {
 			next = next.replace(/\{%(-?)\s*seo\b[^%]*?(-?)%\}/g, "{%$1 include seo.liquid $2%}");
 			changes = [...changes, "{% seo %} -> {% include seo.liquid %}"];
+		}
+		// Jekyll dropped the blank lines after the closing `---`; ssqch keeps them, as other
+		// generators do. In HTML that's whitespace browsers don't see, but a feed has to start with
+		// `<?xml`, and a text file's first line is its first line: take them out there.
+		const trimmed = withoutBlankAfterFrontMatter(next);
+		if (trimmed !== undefined && !templateDir && !writesHtml(entry.rel, next)) {
+			next = trimmed;
+			changes = [...changes, "the blank line after the front matter out (Jekyll dropped it; here it would be the file's first line)"];
 		}
 		if (changes.length) plan.edits.push([entry.rel, changes, next]);
 		for (const what of left) plan.byHand.push([entry.rel, what]);
@@ -2603,7 +2630,7 @@ export function jekyll(dir: string): Plan {
 		plugins.push(`sassPlugin({ files: { ${files.join(", ")} }${loadPaths.length ? `, loadPaths: ${JSON.stringify(loadPaths)}` : ""}, charset: false })`);
 	}
 
-	const markdown = ["htmlMarkdown: \"kramdown\"", "headingIds: \"kramdown\"", "smartPunctuation: true", "autolinks: false", "encodeUrls: false"];
+	const markdown = ["htmlMarkdown: \"kramdown\"", "headingIds: \"kramdown\"", "smartPunctuation: true", "autolinks: false"];
 	const kramdown = isPlainObject(config.kramdown) ? config.kramdown : {};
 	if (kramdown.auto_ids === false) markdown[1] = "headingIds: false";
 	if (kramdown.smart_quotes !== undefined || kramdown.input === "GFM" && kramdown.hard_wrap === true) plan.byHand.push([configFile!, "kramdown's `smart_quotes` or `hard_wrap`: check the draft's `markdown` against them (`breaks: true` for `hard_wrap`)"]);
@@ -2616,6 +2643,13 @@ export function jekyll(dir: string): Plan {
 	out += urlFromCname
 		? `// \`site.title\` and every other key of ${configFile} in templates read this. GitHub Pages gave\n// \`site.url\` from the CNAME (jekyll-github-metadata).\nconst site = { ...readData(${JSON.stringify(configFile)}), url: ${JSON.stringify(`https://${cname}`)} };\n\nexport default defineConfig({\n`
 		: `// \`site.title\` and every other key of ${configFile} in templates read this.\nconst site = readData(${JSON.stringify(configFile)});\n\nexport default defineConfig({\n`;
+	// jekyll-sitemap wrote paths without a `url`; sitemapPlugin() needs the address, so the draft
+	// leaves it out until the config has one (the first build works either way).
+	const SITEMAP = "sitemapPlugin({ url: site.url })";
+	if (plugins.includes(SITEMAP) && (typeof config.url !== "string" || config.url === "") && !urlFromCname) {
+		plugins[plugins.indexOf(SITEMAP)] = `/* ${SITEMAP}: needs \`url\` in ${configFile} */`;
+		plan.byHand.push([configFile!, "no `url`: `sitemapPlugin()` needs the site's address (`url: https://example.com`), so it's commented out in the draft until there is one"]);
+	}
 	const builtIn = new Set(["txt"]);
 	out += `  // Markdown and HTML pages run through Liquid first, as in Jekyll.\n  templateFormats: ${JSON.stringify(["liquid", "md", "html", ...otherFormats]).replaceAll(",", ", ")},\n  markdownEngine: "liquid",\n  htmlEngine: "liquid",\n`;
 	const own = otherFormats.filter((e) => !builtIn.has(e));
@@ -2625,9 +2659,8 @@ export function jekyll(dir: string): Plan {
 	if (dataDir !== "_data") dirs.push(`data: ${JSON.stringify(dataDir)}`);
 	if (output !== "_site") dirs.push(`output: ${JSON.stringify(output)}`);
 	out += `  dirs: { ${dirs.join(", ")} },\n`;
-	out += "  // Jekyll drops the blank lines after the closing `---`.\n  trimAfterFrontMatter: true,\n";
 	out += "  // Templates see Jekyll's `page` (front matter too: `page.title`) and `site` (`site.posts`,\n  // each collection, `site.data`, `site.categories`), so the layouts and includes run as written.\n  jekyllTemplates: true,\n";
-	out += `  // kramdown's habits: markdown="1", its heading ids, smart quotes, no bare-URL links, URLs as written.\n  markdown: { ${markdown.join(", ")} },\n`;
+	out += `  // kramdown's habits: markdown="1", its heading ids, smart quotes and no bare-URL links.\n  markdown: { ${markdown.join(", ")} },\n`;
 	out += `  // ${configFile}'s \`exclude\`, and what Jekyll leaves out by itself.\n  ignore: [${ignores.map((g) => JSON.stringify(g)).join(", ")}],\n`;
 	const passed = [...passthrough.map((p) => JSON.stringify(p)), ...copied.map(([from, to]) => `{ ${JSON.stringify(from)}: ${JSON.stringify(to)} }`)];
 	if (passed.length) out += `  // What Jekyll copied as it is: files without front matter.\n  passthrough: [${passed.join(", ")}],\n`;
@@ -3271,7 +3304,7 @@ export function vitepress(dir: string): Plan {
 		const clean = /\bcleanUrls\s*:\s*true\b/.test(configText);
 		if (!clean) plan.byHand.push([configFile, "`cleanUrls` is off (VitePress's default), so pages are `/guide/intro.html`: `urls: \"html\"` (in the draft)", { code: "vitepress-urls", status: "option", option: 'urls: "html"' }]);
 		const hostname = /\bsitemap\s*:\s*\{[^}]*\bhostname\s*:\s*["'`]([^"'`]+)["'`]/.exec(configText)?.[1];
-		if (hostname) plan.byHand.push([configFile, `\`sitemap\`: \`sitemapPlugin({ url: "${hostname}", format: "vitepress" })\` writes the same file (in the draft)`, { code: "vitepress-sitemap", status: "ssqch", defines: ["plugin:ssqch/sitemap"] }]);
+		if (hostname) plan.byHand.push([configFile, `\`sitemap\`: \`sitemapPlugin({ url: "${hostname}" })\` (in the draft) lists the same URLs; the file is ssqch's own, so \`ssqch diff\` shows sitemap.xml as changed`, { code: "vitepress-sitemap", status: "ssqch", defines: ["plugin:ssqch/sitemap"] }]);
 		const head = /\bhead\s*:\s*\[/.exec(configText);
 		if (head) {
 			const close = closingBracket(configText, head.index + head[0].length - 1);
@@ -3328,7 +3361,7 @@ export function vitepress(dir: string): Plan {
 					"\t\t// The Vue components the pages use, rendered with the site's Vite and Vue (and run in the browser with `hydrate`).",
 					`\t\tvuePlugin({ ${vueGlobals.length ? `components: { ${vueGlobals.map(([n, f]) => `${n}: ${JSON.stringify(f)}`).join(", ")} }${stateful ? ", " : ""}` : ""}${stateful ? "hydrate: \"visible\"" : ""} }),`,
 				] : []),
-				...(hostname ? [`\t\tsitemapPlugin({ url: ${JSON.stringify(hostname)}, format: "vitepress" }),`] : []),
+				...(hostname ? [`\t\tsitemapPlugin({ url: ${JSON.stringify(hostname)} }),`] : []),
 				...(llms ? [`\t\tllmsPlugin({ ${[siteTitle ? `title: ${JSON.stringify(siteTitle)}` : "", siteDescription ? `description: ${JSON.stringify(siteDescription)}` : "", hostname ? `url: ${JSON.stringify(hostname)}` : ""].filter(Boolean).join(", ")} }),`] : []),
 				"\t],",
 			] : []),

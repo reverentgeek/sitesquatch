@@ -48,6 +48,7 @@ const TABLE = [
 	{"word":"baseURL","kind":"Config","alias":false,"ssqch":"base","say":"ssqch's `base` is the path only (base: \"/repo/\"); the site's full URL goes in your data, for sitemapPlugin({ url }).","more":"ssqch docs base"},
 	{"word":"title","kind":"Config","alias":false,"ssqch":"data","say":"The site's title is data: put it in `_data/site.json` and use `site.title` in templates.","more":"ssqch docs data"},
 	{"word":"addPassthroughCopy","kind":"Config","alias":false,"ssqch":"passthrough","say":"In ssqch it's `passthrough`: passthrough: [\"src/fonts\", { \"src/static\": \"static\" }].","more":"ssqch docs passthrough"},
+	{"word":"clean","kind":"Config","alias":false,"ssqch":"leaveNoTrace","say":"ssqch calls it `leaveNoTrace`: leaveNoTrace: true deletes what an earlier build wrote and this one didn't.","more":"ssqch docs leaveNoTrace"},
 	{"word":"addFilter","kind":"Config","alias":false,"ssqch":"filters","say":"In ssqch it's `filters`: filters: { shout: (s) => s.toUpperCase() }.","more":"ssqch docs filters"},
 	{"word":"addShortcode","kind":"Config","alias":false,"ssqch":"filters","say":"A shortcode is a function in `filters`: filters: { year: () => String(new Date().getFullYear()) }.","more":"ssqch docs filters"},
 	{"word":"addCollection","kind":"Config","alias":false,"ssqch":"collections","say":"In ssqch it's `collections`: collections: { posts: (pages) => pages.byTag(\"post\") }.","more":"ssqch docs collections"},
@@ -67,6 +68,8 @@ const TABLE = [
 	{"word":"getPreviousCollectionItem","kind":"Filter","alias":true,"ssqch":"navPager","say":"`collection | getPreviousCollectionItem(page)` works: it's `navPager(collection, page.url).previous`, which gives `previous` and `next` at once.","more":"ssqch docs navPager"},
 	{"word":"getNextCollectionItem","kind":"Filter","alias":true,"ssqch":"navPager","say":"`collection | getNextCollectionItem(page)` works: it's `navPager(collection, page.url).next`, which gives `previous` and `next` at once.","more":"ssqch docs navPager"},
 	{"word":"slug","kind":"Filter","alias":false,"ssqch":"slugify","say":"ssqch's is `slugify`, which differs: Eleventy's `slug` (the `slugify` npm package) keeps `.` and some punctuation, so `Node.js` is `node.js` there and `node-js` in ssqch. To keep old URLs, define `slug` in `filters` with that package: slug: (s) => slugify(String(s), { lower: true }).","more":"ssqch docs slugify"},
+	{"word":"rssDate","kind":"Filter","alias":true,"ssqch":"dateToRfc3339","say":"With `rssPlugin()` it's `dateToRfc3339`: {{ post.date | dateToRfc3339 }}.","more":"ssqch docs rssPlugin"},
+	{"word":"rssLastUpdatedDate","kind":"Filter","alias":true,"ssqch":"getNewestCollectionItemDate","say":"With `rssPlugin()` it's `getNewestCollectionItemDate`, then `dateToRfc3339`: {{ collections.posts | getNewestCollectionItemDate | dateToRfc3339 }}.","more":"ssqch docs rssPlugin"},
 	{"word":"absolute_url","kind":"Filter","alias":false,"ssqch":"absoluteUrl","say":"`absoluteUrl(url, base)` comes with `rssPlugin()` from \"ssqch/rss\".","more":"ssqch docs absoluteUrl"},
 	{"word":"markdownify","kind":"Filter","alias":true,"ssqch":"markdown","say":"ssqch's function is `markdown(text)` (or `markdown(text, \"inline\")`).","more":"ssqch docs markdown"},
 	{"word":"jsonify","kind":"Filter","alias":false,"ssqch":"dump","say":"`jsonify` works in Liquid templates; in Jinja it's `tojson`, and in Nunjucks `dump`.","more":"ssqch docs \"Jinja and Nunjucks\""},
@@ -132,6 +135,12 @@ function aliasWorks(row, dir) {
 			result = ssqch(["build", "--root", d]);
 			assert.equal(rd("_site/index.html"), word === "getNextCollectionItem" ? "/b/" : "/a/", row.word);
 			for (const f of ["a.jinja", "b.jinja"]) fs.rmSync(path.join(dir, f));
+		} else if (word === "rssDate" || word === "rssLastUpdatedDate") {
+			// Added in 0.13: the Eleventy RSS plugin's first names, with rssPlugin(), say its new ones.
+			write(dir, { "ssqch.config.js": "import { rssPlugin } from \"ssqch/rss\";\nexport default { plugins: [rssPlugin()] };\n", "post.md": "---\ntags: posts\ndate: 2026-01-02\n---\nPine.\n", "index.jinja": word === "rssDate" ? "{{ collections.posts[0].date | rssDate }}" : "{{ collections.posts | rssLastUpdatedDate }}" });
+			result = ssqch(["build", "--root", d]);
+			assert.equal(rd("_site/index.html"), "2026-01-02T00:00:00Z", row.word);
+			fs.rmSync(path.join(dir, "post.md"));
 		} else {
 			write(dir, { "index.jinja": `{{ "/x/" | ${word} }}` });
 			result = ssqch(["build", "--root", d]);

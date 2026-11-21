@@ -217,7 +217,8 @@ test("serve_does_not_rebuild_for_its_own_files", async () => {
 	const dir = tempDir("serve-root");
 	write(dir, {
 		"index.jinja": "one {{ 1 + 1 }}",
-		"ssqch.config.js": "export default { clean: true };\n",
+		// DELIBERATE (0.13): `leaveNoTrace`, which `clean` was another name for.
+		"ssqch.config.js": "export default { leaveNoTrace: true };\n",
 	});
 	// The server's output goes outside the folder it watches: a log in there changes with every build.
 	const log = path.join(tempDir("serve-root-log"), "serve.log");
