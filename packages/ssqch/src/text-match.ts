@@ -26,7 +26,9 @@ export interface TextReport {
 }
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " ", ZeroWidthSpace: "" };
-const BREAKS = /<\/?(?:p|li|ul|ol|div|h[1-6]|tr|td|th|table|thead|tbody|pre|br|hr|section|article|header|footer|nav|main|aside|details|summary|blockquote|dl|dt|dd|label|button|input|img|figure|figcaption)\b[^>]*>/gi;
+const BREAKS = new Set(["p", "li", "ul", "ol", "div", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "td", "th", "table", "thead", "tbody", "pre", "br", "hr", "section", "article", "header", "footer", "nav", "main", "aside", "details", "summary", "blockquote", "dl", "dt", "dd", "label", "button", "input", "img", "figure", "figcaption"]);
+/** A tag, its attributes' quoted values read as values: a `<` or `>` inside one (an island's `data-props`) isn't the tag's end (the vuejs.org rerun's error reference scored 24% for that). */
+const TAG = /<(\/?)([A-Za-z][\w:-]*)(?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*\s*\/?>/g;
 
 /** A page's article text as words: `<main>`, else `<article>`, else `<body>`, else the whole file. */
 export function articleWords(html: string): string[] {
@@ -34,8 +36,7 @@ export function articleWords(html: string): string[] {
 	return part
 		.replace(/<(script|style|template)\b[\s\S]*?<\/\1>/gi, " ")
 		.replace(/<!--[\s\S]*?-->/g, "")
-		.replace(BREAKS, " ")
-		.replace(/<[^>]+>/g, "")
+		.replace(TAG, (_, _close: string, name: string) => (BREAKS.has(name.toLowerCase()) ? " " : ""))
 		.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (whole, e: string) => (e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITIES[e] ?? whole))
 		.replace(/​/g, "")
 		.split(/\s+/)

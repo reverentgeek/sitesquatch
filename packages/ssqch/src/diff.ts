@@ -24,7 +24,7 @@ import { BuildError, bail } from "./diagnostics.ts";
 import { buildFiles, urlOf } from "./footprint.ts";
 import { diffOps } from "./myers.ts";
 import { compareText } from "./paths.ts";
-import { charCount, firstChars, quoted } from "./quote.ts";
+import { firstChars, quoted } from "./quote.ts";
 import { bytes, count } from "./report.ts";
 
 export interface DiffOptions {
@@ -1126,10 +1126,29 @@ function listed(urls: string[], sign: string): string[] {
 	return out;
 }
 
-function clip(line: string): string {
+/**
+ * A long line, cut to 200 characters. With `at` (where a changed line first differs from the one it
+ * replaces), the part around it: a minified stylesheet's difference 180 KB in showed as two
+ * identical excerpts of its start (the vuejs.org rerun).
+ */
+function clip(line: string, at = 0): string {
 	const MAX = 200;
-	const n = charCount(line);
-	return n <= MAX ? line : `${firstChars(line, MAX)}… (${n - MAX} more characters)`;
+	const chars = Array.from(line);
+	const n = chars.length;
+	if (n <= MAX) return line;
+	const from = at > 60 ? Math.min(at - 40, n - MAX) : 0;
+	if (from <= 0) return `${firstChars(line, MAX)}… (${n - MAX} more characters)`;
+	const rest = n - from - MAX;
+	return `(from character ${count(from + 1)}) …${chars.slice(from, from + MAX).join("")}${rest > 0 ? `… (${count(rest)} more characters)` : ""}`;
+}
+
+/** Where two lines first differ, in characters, or 0. */
+function firstDifference(a: string | undefined, b: string | undefined): number {
+	if (a === undefined || b === undefined) return 0;
+	const x = Array.from(a), y = Array.from(b);
+	let i = 0;
+	while (i < x.length && i < y.length && x[i] === y[i]) i++;
+	return i;
 }
 
 const plural = (n: number, one: string, many: string) => `${count(n)} ${n === 1 ? one : many}`;
@@ -1145,10 +1164,12 @@ function linesText(hunks: Hunk[], total: number, limit: number, paint: Paint, in
 		// Where it is on the page, when that's another place than the hunk before's.
 		if (hunk.at !== undefined && hunk.at !== place && !(limit > 0 && shown >= limit)) text += paint("2", `${indent}@ under ${hunk.at}\n`);
 		place = hunk.at;
+		// A line replaced by one line: both shown around where they first differ.
+		const at = hunk.removed.length === 1 && hunk.added.length === 1 ? firstDifference(hunk.removed[0], hunk.added[0]) : 0;
 		for (const [sign, code, side] of [["-", "31", hunk.removed], ["+", "32", hunk.added]] as const) {
 			for (const line of side) {
 				if (limit > 0 && shown >= limit) break done;
-				text += paint(code, `${indent}${sign} ${clip(line)}\n`);
+				text += paint(code, `${indent}${sign} ${clip(line, at)}\n`);
 				shown += 1;
 			}
 		}
@@ -1425,7 +1446,8 @@ export function runsText(report: RunsReport, limit: number, color: boolean): str
 	}
 	out += `\n${plural(report.varies.length, "file varies", "files vary")} between builds made the same way; ${steady} are the same in all of them. Pin what changes (the build's time, random ids) before comparing another build with these, or leave it out with --ignore.\n`;
 	const common = report.varies.filter((v) => !v.versions[0].missing && v.versions[0].runs.includes(report.typical)).length;
-	out += `The build most like the others: ${report.runs[report.typical]}, with the most common version of ${common} of the ${plural(report.varies.length, "file", "files")} that vary.\n`;
+	// With no file in a most common version, no build is more like the others than another.
+	if (common > 0 && report.varies.some((v) => v.versions[0].runs.length >= 2)) out += `The build most like the others: ${report.runs[report.typical]}, with the most common version of ${common} of the ${plural(report.varies.length, "file", "files")} that vary.\n`;
 	// Every build different: no version is the usual one yet (a race needs more builds to show it).
 	const unsettled = report.varies.filter((v) => v.versions[0].runs.length < 2).length;
 	// After 20 builds or more, more won't settle it: the file is made differently every time.

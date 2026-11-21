@@ -15,3 +15,10 @@ test("entities_decode_and_others_stay", () => {
 test("a_headings_inline_code_is_part_of_its_text", () => {
 	assert.deepEqual(headings("<h2 id=\"toc\">The <code>toc</code> filter</h2><p><code><h3>an example</h3></code></p><pre><h4>also code</h4></pre>"), [{ level: 2, id: "toc", text: "The toc filter" }]);
 });
+
+// The vuejs.org rerun: VitePress's anchor (and markdown-it-anchor's) has no `aria-hidden`, and its
+// zero-width space ended up in every heading's text, and so in a `<title>` made from it.
+test("a_header_anchor_isnt_part_of_its_headings_text", () => {
+	assert.deepEqual(headings("<h2 id=\"intro\" tabindex=\"-1\">Introduction <a class=\"header-anchor\" href=\"#intro\" aria-label=\"Permalink to “Introduction”\">​</a></h2>").map((h) => h.text), ["Introduction"]);
+	assert.deepEqual(headings("<h2 id=\"a\">Trails <a class=\"anchor\" href=\"#a\">#</a></h2>").map((h) => h.text), ["Trails #"]);
+});

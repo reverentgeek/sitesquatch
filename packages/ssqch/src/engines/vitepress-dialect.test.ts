@@ -43,3 +43,9 @@ test("toc_markers_and_comments_after", () => {
 	const html = "<p>[[TOC]]</p>\n<!-- note -->\n<h2 id=\"a\" tabindex=\"-1\">A <a class=\"header-anchor\" href=\"#a\">​</a></h2>\n<h3 id=\"b\">B</h3>\n<h2 id=\"c\">C</h2>\n<pre><code>&lt;!-- kept --&gt;<!-- kept --></code></pre>";
 	assert.equal(vitepressAfter(html), "<nav class=\"table-of-contents\"><ul><li><a href=\"#a\">A</a><ul><li><a href=\"#b\">B</a></li></ul></li><li><a href=\"#c\">C</a></li></ul></nav>\n\n<h2 id=\"a\" tabindex=\"-1\">A <a class=\"header-anchor\" href=\"#a\">​</a></h2>\n<h3 id=\"b\">B</h3>\n<h2 id=\"c\">C</h2>\n<pre><code>&lt;!-- kept --&gt;<!-- kept --></code></pre>");
 });
+
+// The vuejs.org rerun: Vue's compiler closes a self-closing element and drops `v-pre` and listeners.
+test("raw_html_is_written_as_vues_compiler_writes_it", () => {
+	assert.equal(vitepressAfter("<h2>Props <sup class=\"vt-badge\" data-text=\"3.3+\" /></h2>\n<p><span v-pre>{{ raw }}</span> <button @click=\"go()\" v-on:keyup.enter=\"go\">Go</button></p>\n<p>A<br/>B <img src=\"x.png\" /> <Badge text=\"kept\" /></p>\n<pre><code>&lt;sup /&gt;<b @click=\"x\" /></code></pre>"),
+		"<h2>Props <sup class=\"vt-badge\" data-text=\"3.3+\"></sup></h2>\n<p><span>{{ raw }}</span> <button>Go</button></p>\n<p>A<br/>B <img src=\"x.png\" /> <Badge text=\"kept\" /></p>\n<pre><code>&lt;sup /&gt;<b @click=\"x\" /></code></pre>");
+});

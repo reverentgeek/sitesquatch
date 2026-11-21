@@ -333,6 +333,8 @@ test("every_build_different_after_many_runs_says_more_wont_help", async () => {
 	const many = Array.from({ length: 20 }, (_, i) => build({ "a.css": String(i) }));
 	const said = await text(many.map((_, i) => `ref-${i + 1}`), many);
 	assert.match(said, /With 20 builds, more won't find one: something writes it differently each time/);
+	// No file has a most common version, so no build is named as the one most like the others.
+	assert.ok(!said.includes("The build most like the others"), said);
 	assert.ok(!said.includes("--runs 20"), said);
 });
 
@@ -397,4 +399,11 @@ test("a_frameworks_client_app_and_shikis_colors_are_known_changes", () => {
 	assert.match(knownChange({ removed: ["<astro-island uid=\"x\">"], added: [] }) ?? "", /^Astro's islands/);
 	assert.match(knownChange({ removed: ["<span style=\"color:#F97583;\">import</span>"], added: ["<span class=\"hl-keyword\">import</span>"] }) ?? "", /^Shiki's inline colors/);
 	assert.equal(knownChange({ removed: ["<p>Old text</p>"], added: ["<p>New text</p>"] }), undefined);
+});
+
+// The vuejs.org rerun: a minified stylesheet differing 180 KB in showed two identical excerpts of its start.
+test("a_long_changed_line_is_shown_where_it_differs", async () => {
+	const css = (color: string) => `${"a{b:c}".repeat(500)}.pine{color:${color}}${"d{e:f}".repeat(100)}`;
+	const text = diffText(await compare(build({ "app.css": css("green") }), build({ "app.css": css("teal") }), options()), 10, false);
+	assert.ok(text.includes("- (from character 2,973) …") && text.includes(".pine{color:green}") && text.includes(".pine{color:teal}"), text);
 });

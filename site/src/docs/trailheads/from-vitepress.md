@@ -63,6 +63,81 @@ export default {
 | `markdown.config(md)` plugins | A render hook, a container, or `markdown.preprocess` |
 | `vitepress-plugin-llms` | `llmsPlugin()` from `ssqch/llms`: `llms.txt`, a Markdown copy of each page and `llms-full.txt` |
 
+## Keeping your VitePress theme
+
+You don't have to rebuild your theme as templates: `vuePlugin()` can render it around each page, so its nav, sidebar, outline and footer are the HTML VitePress writes (the vuejs.org move's theme came out with no differences). It takes a wrapper component and a layout, about 30 lines, and nothing in your pages changes. ssqch has no option for this: a theme's way of placing the page (`<Content />`) and reading `useData()` is VitePress's own.
+
+A wrapper that renders the theme, with the page as its slot. On the server, the theme's `<Content />` is the page ssqch rendered; in the browser (with `hydrate`), it's the HTML the server wrote:
+
+```vue
+<!-- src/_includes/vue/SiteLayout.vue -->
+<script setup>
+import { getCurrentInstance, h, useSlots } from "vue";
+import { current } from "vitepress";
+import Theme from "../../../.vitepress/theme/index.ts";
+
+// What useData() has for the page: the layout passes it in.
+const props = defineProps({ page: { type: String, required: true } });
+const given = JSON.parse(decodeURIComponent(props.page));
+const headers = [];
+for (const heading of given.headings) {
+	const header = { level: heading.level, title: heading.text, slug: heading.id, link: `#${heading.id}`, children: [] };
+	if (heading.level === 2) headers.push(header);
+	else if (heading.level === 3 && headers.length) headers.at(-1).children.push(header);
+}
+current.page.value = { ...current.page.value, relativePath: given.relativePath, title: given.title, headers, frontmatter: given.frontmatter };
+current.frontmatter.value = given.frontmatter;
+
+const slots = useSlots();
+const html = typeof document === "undefined" ? undefined : document.querySelector("[data-page]")?.innerHTML;
+const app = getCurrentInstance().appContext.app;
+app.component("Content", { setup: () => () => (html === undefined ? h("div", { "data-page": "" }, slots.default?.()) : h("div", { "data-page": "", innerHTML: html })) });
+Theme.enhanceApp?.({ app });
+</script>
+
+<template>
+	<component :is="Theme.Layout" />
+</template>
+```
+
+A layout every page gets (`layout: "vitepress.njk"` in `src/src.data.js`, the input folder's data), which passes the page's data to it as `useData()` reads it, and the page as its slot:
+
+```njk
+{# src/_includes/vitepress.njk #}
+{%- set vitepress = { relativePath: page.inputPath | replace(r/^.*?src\//, ""), title: title or "", headings: page.headings, frontmatter: { aside: aside, outline: outline, footer: footer, sidebar: sidebar, editLink: editLink } } -%}
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+	<meta charset="utf-8">
+	<title>{{ title }}</title>
+	<link rel="stylesheet" href="/assets/vue.css">
+	{# What `head` in .vitepress/config.ts has. #}
+</head>
+<body>
+	<div id="app"><SiteLayout page="{{ vitepress | dump | urlencode }}">{{ content | safe }}</SiteLayout></div>
+</body>
+</html>
+```
+
+And in `ssqch.config.js`, the wrapper as a component every page can use, with `hydrate` if the theme should run in the browser (dark mode, the sidebar on a phone, search): `vuePlugin({ components: { SiteLayout: "src/_includes/vue/SiteLayout.vue" }, hydrate: "visible" })`. A theme that imports something virtual (`virtual:group-icons.css`) needs the Vite plugin that makes it: `vite: { plugins: [groupIconVitePlugin()] }`.
+
+What it costs, and the choices:
+
+- **`hydrate` is for every component.** With it, the theme runs in the browser too (the vuejs.org move's dark mode, Options/Composition switch and sidebar work), and so does every demo; without it, the pages are HTML only, and the parts that need JavaScript are custom elements from `ssqch/elements`.
+- **`page: true`:** ssqch's `page` is its own. Give those pages a layout of their own (`layout: "page.njk"`), or read the value from the file in a `computed` (`vitepressPage: (data) => /^page:\s*true$/m.test(readFileSync(data.page.inputPath, "utf8"))`, in the input folder's data) and pass it to `frontmatter` as `page`.
+- **A dynamic route's `relativePath`** is its page's own: `vuePlugin()` gives `useRoute()` the page's URL, and the layout can pass `page.url` the same way.
+
+## Inline Vue in pages
+
+VitePress compiles each page into a Vue component, so a page can have Vue in its HTML: `{{ count }}`, `v-model`, `v-if`. ssqch's pages are HTML, and with `markdownEngine: false` those print as written (scout lists each, with its line). For each, either write the text itself (a version number, a link), or move that part into a `.vue` component of its own, beside the page, and use it there (`<CountDemo />`, imported in the page's `<script setup>`): `vuePlugin()` renders it, and with `hydrate`, runs it. `dialect: "vitepress"` does what Vue's compiler does to the rest of the page's HTML: a self-closing `<sup />` gets its end tag, and `v-pre` and event listeners (`@click`) are left out.
+
+## Known gaps
+
+- **Shiki's colors:** ssqch highlights with its own classes (`highlight: true`), so code is colored by its stylesheet, not inline. A site with one Shiki theme (VitePress's `markdown.theme: "github-dark"`) has no `vp-adaptive-theme` on its code blocks: a fence hook of your own (`_includes/hooks/fence.*`, starting from the dialect's markup) writes them without it.
+- **`llms.txt`:** `llmsPlugin()` writes llmstxt.org's format, not vitepress-plugin-llms' word for word. For the same bytes, a page with `permalink: /llms.txt` that lists `collections.all` writes your own.
+- **What only runs in VitePress's app:** a REPL, `<Teleport>`, and components that read the router at run time need their own JavaScript in the browser: a custom element, or Vue loaded for that part.
+- **Speed in the dev server:** VitePress compiles the one module the browser asks for (a few milliseconds); ssqch builds the site again (about half a second for vuejs.org, the Vue components kept from the last build when only pages changed).
+
 ## Checking the move
 
 `ssqch diff .cache/ssqch/baseline/ref-1 dist` leaves out Vue's scoped-style attributes (`data-v-*`), its server renderer's `<!--[-->` markers and Vite's fingerprints (`style.Bfpn8qS8.css`). Expect two differences on every page: VitePress's client app in `<head>` (its scripts and preloads), and Shiki's inline colors where ssqch writes classes. The text should match. A Vite build's asset names and Vue's scope ids depend on the folder it ran in, so the reference builds' are their own; the comparison takes that into account.

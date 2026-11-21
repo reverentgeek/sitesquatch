@@ -886,8 +886,10 @@ test("scout_reads_a_vitepress_site_and_drafts_its_config", async () => {
 	fs.writeFileSync(path.join(dir, "ssqch.config.js"), draft.replace(/^import .*\n/gm, "").replace(/\tplugins: \[[\s\S]*?\n\t\],\n/, "\tplugins: [{ name: \"ssqch/sitemap\" }],\n"));
 	fs.mkdirSync(path.join(dir, "src/_includes/components"), { recursive: true });
 	fs.writeFileSync(path.join(dir, "src/_includes/components/Badge.jinja"), "<span>{{ component.content | safe }}</span>");
+	// The layout's own work counts too (the vuejs.org rerun: 11 of 17 to-dos were done in files scout didn't read).
+	fs.writeFileSync(path.join(dir, "src/_includes/base.njk"), "<html><head><title>{{ title }}</title></head><body class=\"{{ layout }}\">{{ content | safe }}</body></html>");
 	const after = scoutReport(vitepress(dir), dir, "vitepress", ".vitepress", await siteConfig(dir));
 	const done = after.done.map((d) => d.code);
-	for (const code of ["vitepress-script-setup", "vitepress-indented-container", "vitepress-containers", "vitepress-urls", "vitepress-loaders", "vitepress-sitemap", "vitepress-public", "vitepress-component"]) assert.ok(done.includes(code), `${code} done: ${JSON.stringify(after.done)}`);
+	for (const code of ["vitepress-script-setup", "vitepress-indented-container", "vitepress-containers", "vitepress-urls", "vitepress-loaders", "vitepress-sitemap", "vitepress-public", "vitepress-component", "vitepress-head", "vitepress-theme", "vitepress-front-matter"]) assert.ok(done.includes(code), `${code} done: ${JSON.stringify(after.done)}`);
 	assert.ok(after.todo.some((t) => t.what.startsWith("`<Counter>`")), "Counter has no template yet");
 });
