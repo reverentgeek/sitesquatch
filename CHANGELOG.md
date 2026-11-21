@@ -86,6 +86,15 @@ where that version matches.
   generator's client app, Shiki's inline colors where ssqch writes classes) as expected in a move,
   and its JSON gives such a group `known`.
 
+- `vuePlugin()` from `ssqch/vue` renders the Vue components a site's pages use at build time,
+  with the site's own Vite, @vitejs/plugin-vue and Vue: the ones a page's `<script setup>`
+  imports and the ones the config names for every page, with bindings read as Vue reads them
+  (VitePress's data loaders, a dynamic route's `params`, `useData()`), and with `hydrate`, as
+  islands in the browser. On vuejs.org, scout's draft and one data file build every page with
+  its components (the move wrote 241 lines for that), and the demos run in the browser again.
+  Scout drafts it for a VitePress site, and lists the site's data loaders in `ignore` by their
+  paths, so the move's own `.data.js` files stay ssqch's.
+
 ### Fixed
 
 - A Hugo shortcode shown with `/* */` (`{{</* note */>}}`) on a line of its own was read as a

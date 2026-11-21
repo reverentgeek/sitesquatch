@@ -867,8 +867,8 @@ test("scout_reads_a_vitepress_site_and_drafts_its_config", async () => {
 	has("vitepress-script-setup: src/index.md:5:");
 	has("vitepress-indented-container: src/index.md:15:");
 	has("vitepress-interpolations: src/index.md:17:");
-	has("vitepress-component: src/index.md:9: `<Badge>` (.vitepress/theme/components/Badge.vue) (1 use in 1 file; this is the first): a template for its HTML");
-	has("vitepress-component: src/index.md:11: `<Counter>` (src/Counter.vue) (1 use in 1 file; this is the first): it has state");
+	has("vitepress-component: src/index.md:9: `<Badge>` (.vitepress/theme/components/Badge.vue) (1 use in 1 file; this is the first): `vuePlugin()` from \"ssqch/vue\" renders it with Vue");
+	has("vitepress-component: src/index.md:11: `<Counter>` (src/Counter.vue) (1 use in 1 file; this is the first): it has state (it runs in the browser): `vuePlugin()`");
 	has("vitepress-page: src/index.md: `page: true`");
 	has("vitepress-loaders: src/api/api.data.ts: 1 VitePress data loader (`*.data.ts`), 1 named like a folder's or a page's data");
 	has("vitepress-urls: .vitepress/config.ts:");
@@ -881,9 +881,9 @@ test("scout_reads_a_vitepress_site_and_drafts_its_config", async () => {
 	assert.equal(report.build.command, "pnpm run build");
 	assert.equal(report.build.output, ".vitepress/dist");
 	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
-	assert.ok(draft.includes("dirs: { input: \"src\", output: \"dist\" },") && draft.includes("urls: \"html\",") && draft.includes("ignore: [\"**/*.data.ts\", \"**/*.data.js\", \"tutorial/**/description.md\", \".vitepress/**\", \"public/**\"],") && draft.includes("passthrough: { \"src/public/**\": \".\" },") && draft.includes("markdown: { dialect: \"vitepress\", highlight: true },") && draft.includes("plugins: [sitemapPlugin({ url: \"https://trail.example\", format: \"vitepress\" })],"), draft);
+	assert.ok(draft.includes("dirs: { input: \"src\", output: \"dist\" },") && draft.includes("urls: \"html\",") && draft.includes("ignore: [\"api/api.data.ts\", \"tutorial/**/description.md\", \".vitepress/**\", \"public/**\"],") && draft.includes("passthrough: { \"src/public/**\": \".\" },") && draft.includes("markdown: { dialect: \"vitepress\", highlight: true },") && draft.includes("vuePlugin({ components: { Badge: \".vitepress/theme/components/Badge.vue\" }, hydrate: \"visible\" }),") && draft.includes("sitemapPlugin({ url: \"https://trail.example\", format: \"vitepress\" }),"), draft);
 	// With the draft and a template for `<Badge>`, those are done.
-	fs.writeFileSync(path.join(dir, "ssqch.config.js"), draft.replace(/^import .*\n/m, "").replace(/plugins: \[.*\],\n/, "plugins: [{ name: \"ssqch/sitemap\" }],\n"));
+	fs.writeFileSync(path.join(dir, "ssqch.config.js"), draft.replace(/^import .*\n/gm, "").replace(/\tplugins: \[[\s\S]*?\n\t\],\n/, "\tplugins: [{ name: \"ssqch/sitemap\" }],\n"));
 	fs.mkdirSync(path.join(dir, "src/_includes/components"), { recursive: true });
 	fs.writeFileSync(path.join(dir, "src/_includes/components/Badge.jinja"), "<span>{{ component.content | safe }}</span>");
 	const after = scoutReport(vitepress(dir), dir, "vitepress", ".vitepress", await siteConfig(dir));

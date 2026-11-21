@@ -4,7 +4,7 @@ navTitle: "From VitePress"
 description: "VitePress builds each Markdown page into a Vue component; SiteSquatch reads the same Markdown and writes HTML."
 ---
 > [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: scout's VitePress draft, `dialect: "vitepress"`, components, `urls: "html"`, `sitemapPlugin({ format: "vitepress" })` and `ssqch/llms`.
+> **Not released yet.** This ships with the next version of ssqch: scout's VitePress draft, `dialect: "vitepress"`, components, `urls: "html"`, `sitemapPlugin({ format: "vitepress" })`, `ssqch/llms` and `ssqch/vue`.
 
 VitePress builds each Markdown page into a Vue component and ships a client app that hydrates it. SiteSquatch reads the same Markdown and writes HTML, so a move keeps your pages as they are and turns the theme into templates. What takes the work is Vue in your pages: the components they use, and the parts that run in the browser. The vuejs.org docs (111 pages, 33 component names) moved with no Markdown page edited, 99.9% of their article text the same as VitePress's, and the generator step at 0.54 s against VitePress's 5.7 s.
 
@@ -15,22 +15,27 @@ VitePress builds each Markdown page into a Vue component and ships a client app 
 ```js
 // ssqch.config.js, as scout drafts it for vuejs.org
 import { sitemapPlugin } from "ssqch/sitemap";
+import { vuePlugin } from "ssqch/vue";
 
 export default {
 	dirs: { input: "src", output: "dist" },
 	templateFormats: ["md"],
 	markdownEngine: false,
 	urls: "html",
-	ignore: ["**/*.data.ts", "**/*.data.js", "tutorial/**/description.md", ".vitepress/**", "public/**"],
+	ignore: ["api/api.data.ts", "error-reference/errors.data.ts", "examples/examples.data.ts", "tutorial/tutorial.data.ts", "tutorial/**/description.md", ".vitepress/**", "public/**"],
 	passthrough: { "src/public/**": "." },
 	markdown: { dialect: "vitepress", highlight: true },
-	plugins: [sitemapPlugin({ url: "https://vuejs.org", format: "vitepress" })],
+	plugins: [
+		vuePlugin({ components: { VueSchoolLink: ".vitepress/theme/components/VueSchoolLink.vue", ScrimbaLink: ".vitepress/theme/components/ScrimbaLink.vue" }, hydrate: "visible" }),
+		sitemapPlugin({ url: "https://vuejs.org", format: "vitepress" }),
+	],
 };
 ```
 
 - **`templateFormats: ["md"]` and `markdownEngine: false`:** VitePress's pages are its Markdown, and Vue's `{{ }}` in them isn't a template language's.
 - **`urls: "html"`:** with `cleanUrls` off (VitePress's default) a page is `/guide/intro.html`. With `cleanUrls: true`, leave it out: ssqch's URLs are folders (`/guide/intro/`).
-- **`ignore`:** VitePress's data loaders are `*.data.ts`, and `api/api.data.ts` is the name ssqch gives a folder's data. Listed, they aren't read; a `_data/*.js` file can import a loader's `load()` if a page needs its data.
+- **`ignore`:** VitePress's data loaders are `*.data.ts`, and `api/api.data.ts` is the name ssqch gives a folder's data. Listed by their paths, they aren't read as data, and the `.data.js` files the move adds (a dynamic route's pagination) still are; `vuePlugin()` runs the loaders for the components and pages that import their `data`.
+- **`vuePlugin()`:** the Vue components the pages use, rendered with your Vite and Vue (`npm install -D vite @vitejs/plugin-vue vue`, which a VitePress site has already), with the ones the theme registers for every page in `components`, and `hydrate: "visible"` when one has state.
 - **`passthrough: { "src/public/**": "." }`:** `public/`'s files at the site's root. `{ "src/public": "." }` would copy the folder by its name.
 - **`dialect: "vitepress"`:** VitePress's Markdown (below).
 
@@ -47,7 +52,8 @@ export default {
 | `[[toc]]` | The same, in any case |
 | `<script setup>`, `<style>`, `<ClientOnly>` in a page | Left out by the dialect, as VitePress writes none of it |
 | A component in a page (`<VueSchoolLink href="..." />`) | A template in `_includes/components/VueSchoolLink.*`, with `component.props` and `component.content` ([components](../templates.md)) |
-| A component with state (a counter, a demo, a REPL) | Its HTML from a template, and what it does from a custom element in `ssqch/elements` (or Vue, loaded in the browser for that part) |
+| A `.vue` component a page imports, or the theme registers | `vuePlugin()` from `ssqch/vue` renders it with your Vite and Vue at build time, loaders and `useData()` included; `hydrate: "visible"` runs it in the browser as an island (the vuejs.org demos work this way). Scout drafts it, with the theme's `app.component()`s. |
+| A component with state, without Vue | Its HTML from a template, and what it does from a custom element in `ssqch/elements` |
 | `themeConfig.nav` and `sidebar` | Data: move them to `_data/themeConfig.js` and import that file in `.vitepress/config.ts`, so both read one list. `navTree` marks the page you're on; a sidebar keyed by path is the longest key the page's URL starts with. In Jinja, read `link.get("items")`: `link.items` is the dict's method where there's no key. |
 | The default theme's `Layout`, a theme's slots | A layout in `_includes/`. The theme's markup is in your build's HTML; `toc()`, `navTree` and `navPager` make the outline, the sidebar and the pager. |
 | `page: true`, `layout: home` | `page` is ssqch's own (it's warned about): give those pages a layout of their own (`layout: home.jinja`) |

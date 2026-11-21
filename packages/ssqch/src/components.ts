@@ -19,6 +19,8 @@ export interface ComponentValue {
 	content: string;
 	/** Its attributes that aren't bindings or directives, as written (` class="x" href="y"`), to pass on to the element the template writes. */
 	attrs: string;
+	/** Vue's bindings as written: `:errors="data.runtime"` is `{ errors: "data.runtime" }`, for a renderer that knows more names than the page's data (`vuePlugin()`). */
+	bindings: Record<string, string>;
 }
 
 /** A component's template, called with its value; undefined when the site has none of that name. */
@@ -86,7 +88,7 @@ export function renderComponents(html: string, render: RenderComponent, data: Re
 			endTag = html.slice(close.start, close.end);
 			stop = close.end;
 		}
-		const value: ComponentValue = { name, props: propsOf(open.attrs, data), content, attrs: plainAttrs(open.attrs) };
+		const value: ComponentValue = { name, props: propsOf(open.attrs, data), content, attrs: plainAttrs(open.attrs), bindings: bindingsOf(open.attrs) };
 		const rendered = render(name, value);
 		if (rendered === undefined) {
 			unknown(name);
@@ -159,6 +161,12 @@ function propsOf(attrs: Array<[string, string | true]>, data: Record<string, unk
 		if (name.includes("-")) props[camel(name)] = v;
 	}
 	return props;
+}
+
+function bindingsOf(attrs: Array<[string, string | true]>): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [given, value] of attrs) if ((given.startsWith(":") || given.startsWith("v-bind:")) && value !== true) out[given.slice(given.indexOf(":") + 1)] = value;
+	return out;
 }
 
 function plainAttrs(attrs: Array<[string, string | true]>): string {

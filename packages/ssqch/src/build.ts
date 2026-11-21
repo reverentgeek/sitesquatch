@@ -329,7 +329,18 @@ class Renderer {
 		const md = this.site.markdown;
 		const unknown = this.site.unknownComponents;
 		try {
-			return renderComponents(html, (name, value) => md.component(name, value, data), data, (name) => {
+			const others = this.site.config.componentRenderers;
+			const input = page.tpl.input;
+			const render = (name: string, value: Parameters<typeof others[number]>[1]) => {
+				const own = md.component(name, value, data);
+				if (own !== undefined) return own;
+				for (const other of others) {
+					const html = other(name, value, input, data);
+					if (html !== undefined) return html;
+				}
+				return undefined;
+			};
+			return renderComponents(html, render, data, (name) => {
 				const files = unknown.get(name) ?? new Set<string>();
 				files.add(this.site.display(page.tpl.input));
 				unknown.set(name, files);
