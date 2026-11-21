@@ -3260,8 +3260,8 @@ export function vitepress(dir: string): Plan {
 		if (/\bthemeConfig\b[\s\S]*\b(?:sidebar|nav)\s*:/.test(configText)) plan.byHand.push([configFile, "`themeConfig`'s `nav` and `sidebar`: data for ssqch's layout. Move them to a `_data/*.js` file that the VitePress config imports too, so both read one list; `navTree` marks the page you're on (a sidebar keyed by path picks the longest key that the page's URL starts with)", { code: "vitepress-sidebar", status: "site", docs: "navTree" }]);
 	}
 	for (const pkg of packagesLike(dir, /^vitepress-plugin-|^@?[\w-]*\/?vitepress-plugin-/)) {
-		const say = /llms/.test(pkg) ? "`llms.txt` and a Markdown copy of each page: not in ssqch yet as a plugin; a page with `permalink: /llms.txt` lists the pages, from `collections.all`" : /group-icons/.test(pkg) ? "icons on code groups' tabs: its CSS keyed by the tab's label (`data-title`), which `dialect: \"vitepress\"` writes" : "not in ssqch yet: port what it does as a hook, a transform or a plugin";
-		plan.byHand.push(["package.json", `${pkg}: ${say}`, { code: "vitepress-plugin", status: /group-icons/.test(pkg) ? "ssqch" : /llms/.test(pkg) ? "not-yet" : "site" }]);
+		const say = /llms/.test(pkg) ? "`llms.txt`, a Markdown copy of each page and `llms-full.txt`: `llmsPlugin()` from \"ssqch/llms\"" : /group-icons/.test(pkg) ? "icons on code groups' tabs: its CSS keyed by the tab's label (`data-title`), which `dialect: \"vitepress\"` writes" : "not in ssqch yet: port what it does as a hook, a transform or a plugin";
+		plan.byHand.push(["package.json", `${pkg}: ${say}`, { code: "vitepress-plugin", status: /group-icons|llms/.test(pkg) ? "ssqch" : "site", ...(/llms/.test(pkg) ? { defines: ["plugin:ssqch/llms"] } : {}) }]);
 	}
 	if (themeIndex !== undefined) {
 		const extendsDefault = /\bextends\s*:\s*DefaultTheme\b|from\s+['"]vitepress\/theme['"]/.test(themeText);
