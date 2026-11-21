@@ -78,11 +78,7 @@ The default export is the config: an object, or a function (sync or async) that 
 | `layoutAliases` | Other names for layouts, as Eleventy's `addLayoutAlias` gave them: `layoutAliases: { post: "layouts/post.njk" }` makes `layout: post` that file, where it would otherwise be `_includes/post.*` (a partial, on a site moving from Eleventy). A page's `layout` is still the name it gave, so a template that tests `layout == "post"` keeps working. An alias can name another alias; a loop of them is an error, and so is a value that isn't a layout's name. `ssqch scout`'s draft for an Eleventy site writes it from `addLayoutAlias`. |
 | `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `markdown`, `deepMerge`, `leaveNoTrace`, `ignore`, `bundles`, `strict`, `lastModified`, `dateFallback`, `base`, `schemas`, `theme`), or functions that return one, or a plugin written in Rust (`{ name, rust: { wasm, options } }`, what its npm package's function returns: see [Plugins in Rust](rust-plugins.md)). `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `urls`, `beforeBuild`'s `changed`, and `ignore` for data files.
-
 Mistakes get caught at the trailhead. A misspelled key or option is an error that says what you probably meant (`"templateFormat" isn't a config option (did you mean "templateFormats"?)`, or `unknown option "widhts" (did you mean "widths"?)` for a plugin), and so are two plugins that define the same filter, data or collection name (the message names both). When something in your code throws, you get `ssqch.config.js: too many pine cones` and a stack trace that points at your file, like `at bad (lib/filters.js:3:9)`.
-
 
 ## What a filter sees
 
@@ -134,7 +130,6 @@ export default async function () {
 
 CI starts without `.cache/`, so production builds fetch fresh data unless you restore that folder.
 
-
 ## npm packages
 
 Install packages with npm, pnpm or yarn as usual, and import them: `import { DateTime } from "luxon"`. Node finds them as it always does, in `node_modules` folders from the importing file's folder up (so monorepos and pnpm's symlinks work), using `package.json`'s `exports`, `imports` (`#internal`) and `main`. CommonJS works too: `.cjs` files, and `.js` files in packages without `"type": "module"`, run with `require`, `module.exports`, `__dirname` and `__filename`, and importing one gives `module.exports` as the default export and, where Node can read the names from its source, its properties as named exports (`import legacy from "legacy"; const { twice } = legacy;` is the safe way for a package whose exports are built at run time). Your own `.js` files follow Node's rules: `"type"` in your `package.json` decides, and without one Node 22 reads a file with `import` or `export` as an ES module and any other as CommonJS, so `module.exports = { ... }` in `_data/site.js` works. In an ES module, `createRequire(import.meta.url)` from `node:module` gives you a `require`.
@@ -142,7 +137,6 @@ Install packages with npm, pnpm or yarn as usual, and import them: `import { Dat
 Packages run on Node, as they are, so anything that works in a Node script works here: servers, child processes, streams, native addons and the file system. Eleventy's own libraries (liquidjs, nunjucks, markdown-it and its plugins, gray-matter), luxon, dayjs, date-fns, lodash, slugify, js-yaml, marked, highlight.js, prismjs, sanitize-html, html-minifier-terser, clean-css, feed, cheerio and @lit-labs/ssr all run, at Node's speed. Some have a faster built-in in ssqch (the `markdown` filter, `readingTime`, `ssqch/minify`, and `markdown: { highlight: true }` for highlighting), so reach for those packages when you need their particular output.
 
 Every page is rendered on one thread, one call at a time (there are no worker threads), so module-level state in your config behaves as it would in any Node script: a counter in a filter counts every page in order. A filter or template gets your real objects, not copies, so a filter that sorts `collections.posts` in place reorders it for the pages rendered after it: copy first (`[...posts].sort()`).
-
 
 ## Configuring with TOML
 

@@ -52,9 +52,6 @@ export default defineConfig({
 - **Headless pages** (`build.render: never`, snippets included elsewhere): `permalink: false`, or `ignore` them.
 - **Summaries:** Hugo's `.Summary` is about the first 70 words, in whole paragraphs; ssqch's `page.excerpt` is what's before `<!-- more -->`, or else the first paragraph.
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: a shortcode inside a line of text through its container template.
-
 ## Templates: Go templates in Jinja
 
 | Go template | Jinja |
