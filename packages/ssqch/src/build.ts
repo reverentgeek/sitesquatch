@@ -19,6 +19,7 @@ import type { Config, Dirs, GeneratedFile, Hook, PageSummary } from "./config.ts
 import { shownDir, shownOutput } from "./config.ts";
 import type { Data } from "./data.ts";
 import { sourceDateEpoch, STATIC_DATA_EXTENSIONS } from "./data.ts";
+import { renderComponents } from "./components.ts";
 import { BuildError, Diagnostics, bail, context, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import type { RenderContext } from "./engines/engine.ts";
 import { beginFenceCache, rendering as markdownRendering, saveFenceCache, writeHighlightCss } from "./engines/markdown.ts";
@@ -112,6 +113,7 @@ export async function build(config: Config): Promise<BuildReport> {
 		}
 	}
 	await renderer.renderAll([...wanted.filter((p) => !late.has(p)), ...wanted.filter((p) => late.has(p))], late);
+	warnUnknownComponents(site);
 	for (const wait of config.settle) await wait();
 	timer.timings.push(["render", renderer.renderMs], ["write", performance.now() - timer.last - renderer.renderMs]);
 	timer.last = performance.now();
@@ -310,7 +312,29 @@ class Renderer {
 			}
 			return content;
 		};
-		return run(0, tpl.body);
+		const out = run(0, tpl.body);
+		// Components in the page (`<Badge type="tip">`, its Markdown's raw HTML included), once
+		// its engines have run: what reads its body (`templateContent`, its layouts) gets them rendered.
+		if (!this.componentsIn(page)) return out;
+		return typeof out === "string" ? this.components(out, data, page) : out.then((text) => this.components(text, data, page));
+	}
+
+	/** Whether a page's HTML can have components: an HTML page, or one that's only read by others. */
+	private componentsIn(page: Page): boolean {
+		return page.output === null || page.output.endsWith(".html");
+	}
+
+	/** `html` with its component tags rendered through `_includes/components/<Name>.*`. */
+	private components(html: string, data: Data, page: Page): string {
+		const md = this.site.markdown;
+		const unknown = this.site.unknownComponents;
+		try {
+			return renderComponents(html, (name, value) => md.component(name, value, data), data, (name) => {
+				const files = unknown.get(name) ?? new Set<string>();
+				files.add(this.site.display(page.tpl.input));
+				unknown.set(name, files);
+			});
+		} catch (e) { throw context(e, `in ${page.tpl.rel}`); }
 	}
 
 	/**
@@ -437,6 +461,8 @@ class Renderer {
 			} finally {
 				if (had === undefined && !this.keep) this.bodies.delete(page.index);
 			}
+			// A layout's own components (`<SiteNav />`); the page's were rendered with its body.
+			if (this.componentsIn(page)) content = this.components(content, this.data(page), page);
 		}
 
 		const output = page.output;
@@ -707,6 +733,19 @@ function checkForeignKeys(site: Site): void {
 		const say = "`page` is ssqch's (the page's url, inputPath, date and headings), so the front matter's value is replaced and templates never see it. Give it another name (`pageLayout: true`); VitePress's `page: true`, a page without the docs layout, is a layout in ssqch (`layout: page`)";
 		const message = files.length === 1 ? `${files[0]} sets \`page\` in its front matter. ${say}` : `${files.length} pages set \`page\` in their front matter (${files.slice(0, 3).join(", ")}${files.length > 3 ? ", ..." : ""}): ${say}`;
 		warn(warning("foreign-key", message, files.length === 1 ? { field: "page", file: files[0] } : { field: "page" }));
+	}
+}
+
+/**
+ * A PascalCase tag with no template in `_includes/components/` (`<VueSchoolLink>`, from a
+ * VitePress, Astro or MDX page): browsers show what's inside it and drop the tag, so it's said,
+ * once a name, with the pages it's on.
+ */
+function warnUnknownComponents(site: Site): void {
+	for (const [name, files] of [...site.unknownComponents].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+		const list = [...files].sort();
+		const where = list.length === 1 ? list[0] : `${list.length} pages (${list.slice(0, 3).join(", ")}${list.length > 3 ? ", ..." : ""})`;
+		warn(warning("template", `\`<${name}>\` in ${where} is a component (a PascalCase tag) with no template: browsers drop the tag and show what's inside it. Give it one in _includes/components/${name}.* (it gets \`component.props\` and \`component.content\`; \`ssqch docs components\`), or write the HTML it stands for`, list.length === 1 ? { file: list[0] } : {}));
 	}
 }
 

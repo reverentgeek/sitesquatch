@@ -145,6 +145,8 @@ export class Site {
 	collections: Data = {};
 	/** Every file seen while looking for templates, so a data file next to a template is found without asking the disk. */
 	private seen = new Set<string>();
+	/** PascalCase tags the pages have with no template in `_includes/components/`, with the pages each is on. */
+	unknownComponents = new Map<string, Set<string>>();
 	private keepLayers: boolean;
 	/** Set by the build: a page's rendered body, on demand (for `templateContent`). */
 	contentOf: (page: Page) => string | undefined = () => undefined;

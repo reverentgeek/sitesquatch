@@ -43,6 +43,13 @@ where that version matches.
   build, so a hook can skip work an edit doesn't touch: vuejs.org's Vite build of its components
   took a rebuild from 343 ms to 867 ms when only Markdown had changed.
 
+- Components as HTML tags: a PascalCase tag in a page or a layout (`<Badge type="tip" />`,
+  `<VueSchoolLink href="...">Watch</VueSchoolLink>`) renders `_includes/components/<Name>.*` in
+  its place, with `component.props` (Vue's `:bound` attributes read against the page's data),
+  `component.content` and `component.attrs`. One with no template is a warning that names its
+  pages. VitePress, Astro and MDX pages use components this way: the vuejs.org move rebuilt its
+  two presentational ones with 51 lines of a transform.
+
 ### Fixed
 
 - A Hugo shortcode shown with `/* */` (`{{</* note */>}}`) on a line of its own was read as a

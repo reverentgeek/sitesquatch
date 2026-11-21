@@ -50,6 +50,8 @@ export interface Markdown extends TemplateEngine {
 	 * with `value` as `<name>` next to the global data, or `undefined` when the site has none.
 	 */
 	hookFile(name: string, value: unknown, data: Data): string | undefined;
+	/** A component tag (`<Badge>`) through `_includes/components/<Name>.*`, with `value` as `component`, or `undefined` when the site has no template of that name. */
+	component(name: string, value: unknown, data: Data): string | undefined;
 }
 
 /** A render hook or container template from `_includes/hooks/` or `_includes/containers/`. */
@@ -70,7 +72,7 @@ export interface HookTemplate {
  */
 export function loadHookTemplates(dir: string, name: string, engines: Engines, chain: (ext: string) => string[]): Map<string, HookTemplate> {
 	const out = new Map<string, HookTemplate>();
-	for (const kind of ["hooks", "containers"]) {
+	for (const kind of ["hooks", "containers", "components"]) {
 		let files: string[];
 		try { files = fs.readdirSync(path.join(dir, kind)); } catch { continue; }
 		for (const file of files.sort(comparePaths)) {
@@ -515,6 +517,11 @@ class WasmMarkdown implements Markdown {
 	hookFile(name: string, value: unknown, data: Data): string | undefined {
 		// 0.7's `render_hook`: `hooks/redirect`, with the value in the data as `redirect`.
 		return this.#hooks.has(`hooks/${name}`) ? this.renderHook(`hooks/${name}`, name, value, data) : undefined;
+	}
+
+	component(name: string, value: unknown, data: Data): string | undefined {
+		const template = `components/${name}`;
+		return this.#hooks.has(template) ? this.renderHook(template, "component", value, data) : undefined;
 	}
 
 	/** A render hook for the wasm: the template `name` with the page's data and `value` as `key`. */
