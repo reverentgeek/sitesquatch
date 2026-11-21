@@ -2,9 +2,6 @@
 title: "Serving Markdown to agents"
 description: "A coding agent asks for a page with Accept: text/markdown. ssqch serve answers with the page's Markdown copy; on a host, a few lines of the host's own code do the same."
 ---
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
-
 Claude Code, Cursor and OpenCode ask for a page with `Accept: text/markdown`, and a page's Markdown copy (written by `llmsPlugin()`) is what they'd rather read: the text without the navigation, scripts and styles. A browser never asks for it, and neither does a crawler, so the same address can answer both.
 
 ## While you work

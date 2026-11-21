@@ -38,9 +38,6 @@ export default {
 - **`passthrough: { "src/public/**": "." }`:** `public/`'s files at the site's root. `{ "src/public": "." }` would copy the folder by its name.
 - **`fromVitepress()`** from `ssqch/from-vitepress`: VitePress's Markdown (below), as one plugin. It turns on VitePress's heading ids and email autolinks unless your `markdown` sets them, and a template of yours with a hook's or container's name replaces its markup.
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `fromVitepress()`. In 0.12.0, VitePress's Markdown is `markdown: { dialect: "vitepress" }`, which does the same.
-
 ## What maps
 
 | VitePress | SiteSquatch |

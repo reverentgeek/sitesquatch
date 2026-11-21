@@ -2,9 +2,6 @@
 title: "Writing a plugin"
 description: "A plugin is an object with the config's parts, plus what only a plugin can give: steps in ssqch's Markdown, render hooks as functions, and defaults the site's own config replaces."
 ---
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: a plugin's `markdown` and `defaults`. The config's parts in a plugin work in 0.12.0.
-
 A plugin is an object in the config's `plugins`, or a function that returns one. It can have any of the config's parts (`data`, `filters`, `collections`, `transforms`, `engines`, `passthrough`, `watch`, `beforeBuild`, `afterBuild`, `plugins`), which add to the site's own, and three things of its own: a `name` for its errors, `markdown` (steps in ssqch's Markdown and render hooks as functions) and `defaults` (settings the site's config replaces). Settings that change where files go (`dirs`, `base`) are the site's, and a plugin that sets one is an error.
 
 Here's a plugin that turns `[[Page title]]` into a link to the page with that title, and writes `::: aside` blocks as `<aside>`:

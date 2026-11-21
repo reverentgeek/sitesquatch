@@ -26,9 +26,6 @@ export default defineConfig({
 
 `fromMkdocs()` from `ssqch/from-mkdocs` is MkDocs' Markdown as one plugin, each part a default your own `markdown` can change: `dialect: "python-markdown"` (a raw HTML block runs to its closing tag, lists nest at four spaces), `admonitions` and `tabs` as Material writes them, toc's heading ids (`headingIds: "python-markdown"`) and `.md` links from the page (`sourceLinks: "relative"`). `fromMkdocs({ templates: true, config: "mkdocs.yml" })` adds the theme's context, below.
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `fromMkdocs()`. In 0.12.0, write its parts as options: `markdown: { dialect: "python-markdown", admonitions: "mkdocs", tabs: "mkdocs", headingIds: "python-markdown", sourceLinks: "relative" }`, and `mkdocsTemplates: true` for `templates`.
-
 ## The theme
 
 `fromMkdocs({ templates: true })` gives templates what MkDocs gives a theme's, so the theme's Jinja templates, Material for MkDocs' included, run as they're written: `config` (`mkdocs.yml`, with the theme's `mkdocs_theme.yml` under its `theme`), `nav` (MkDocs' Sections, Pages and Links, with `active` on the page being rendered), `page` (MkDocs' page, with `content`, `toc`, `meta`, `previous_page` and `next_page`), `base_url`, and the `url` and `script_tag` filters, which make URLs relative to the page. Each Markdown page renders with the theme's `main.html` (or its front matter's `template`), the theme's `404.html` makes `/404.html`, and Jinja doesn't escape, as MkDocs' doesn't. `ssqch docs fromMkdocs` has the details.

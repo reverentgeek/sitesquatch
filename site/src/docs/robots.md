@@ -2,9 +2,6 @@
 title: "Posted signs: robots.txt and AI crawlers"
 description: "robotsPlugin() writes robots.txt: the sitemap's address, the paths no crawler reads, and what AI crawlers may do, by what they're for. With llmsPlugin() and three links in the layout, a site is ready for agents."
 ---
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
-
 A crawler reads the signs at the trailhead before it walks in: `robots.txt` says what it may read and where the sitemap is, and `llms.txt` is the map an agent reads first. ssqch writes both with plugins, and three links in the layout's `<head>` point agents at them.
 
 ```js

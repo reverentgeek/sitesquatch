@@ -2,9 +2,6 @@
 title: "Patrol: what agents and crawlers find"
 description: "ssqch patrol walks a built site the way a coding agent or a crawler reads it: the posted signs, each page's shape, and each page's Markdown copy."
 ---
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
-
 `ssqch patrol` walks a built site the way a coding agent or a crawler reads it, and warns about what would trip one up: a missing `robots.txt`, sitemap or `llms.txt`, a page with two `<h1>`s or no description, a Markdown copy that doesn't say what its page says.
 
 ```text

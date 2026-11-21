@@ -49,9 +49,6 @@ export default defineConfig({
 
 `fromJekyll()` from `ssqch/from-jekyll` is what a Jekyll site's templates and Markdown expect, as one plugin. `templates` (on by default) gives templates Jekyll's `page` and `site` (below). `kramdown` (on by default) is kramdown's habits, each a default your own `markdown` can change: Markdown inside `markdown="1"` HTML (`htmlMarkdown: "kramdown"`), kramdown's heading ids (`headingIds: "kramdown"`), smart quotes (`smartPunctuation: true`), and no links from bare URLs (`autolinks: false`). `fromJekyll({ templates: false })` leaves templates as ssqch's.
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `fromJekyll()`. In 0.12.0, write its parts as options: `jekyllTemplates: true`, and `markdown: { htmlMarkdown: "kramdown", headingIds: "kramdown", smartPunctuation: true, autolinks: false }`.
-
 | Jekyll (`_config.yml`) | ssqch (`ssqch.config.js`) |
 | --- | --- |
 | `title`, `description`, `url`, any key | `readData("_config.yml")` as `data: { site }`, so `site.title` still works |

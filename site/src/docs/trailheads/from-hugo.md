@@ -23,9 +23,6 @@ export default defineConfig({
 
 `fromHugo()` from `ssqch/from-hugo` reads Hugo's shortcodes as containers, below: a default (`shortcodes: "hugo"`) your own `markdown` can change.
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `fromHugo()`. In 0.12.0, write it as an option: `markdown: { shortcodes: "hugo" }`.
-
 ## The config
 
 | Hugo (`hugo.toml`) | SiteSquatch (`ssqch.config.js`) |
