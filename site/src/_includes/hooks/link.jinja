@@ -1,3 +1,0 @@
-{#- A Markdown link. The docs pages link each other with relative .md links (which GitHub follows),
-    and `docsHref` turns one into its page's URL here (lib/docs.ts). -#}
-<a href="{{ link.href | docsHref(page.inputPath) }}"{% if link.title %} title="{{ link.title }}"{% endif %}>{{ link.content | safe }}</a>

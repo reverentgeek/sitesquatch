@@ -164,7 +164,7 @@ Run from `packages/ssqch/` unless it says otherwise.
   `contract/shapes.test.js` and run it with `SSQCH_FREEZE_SHAPES=new`, which leaves the others as
   they are.
 - **ssqch's own designs stay ssqch's** (the cascade, schemas, the link checker, `diff`,
-  `inspect`, `scout`, the equivalents table, the voice lines). To see what one does, read
+  `trace`, `scout`, the equivalents table, the voice lines). To see what one does, read
   its module and its tests here and in the oracle; 0.7's Rust is on `release/0.7`, and a
   subagent can brief you on a module.
 - **TypeScript with erasable syntax only** (`erasableSyntaxOnly` in `tsconfig.json`): no

@@ -1,4 +1,4 @@
-// `ssqch inspect`: where a page comes from, and where each value in its data was set.
+// `ssqch trace` (`inspect` until 0.13): where a page comes from, and where each value in its data was set.
 //
 // A page's data is a cascade. From the bottom: global data (`_data/` files, the config's
 // `data`), the front matter of its layouts (outermost first), directory data files (outermost
@@ -11,8 +11,8 @@
 // run. Ported from 0.7's `inspect.rs`.
 import fs from "node:fs";
 import path from "node:path";
-import { inspectPages } from "./build.ts";
-import type { InspectedPage } from "./build.ts";
+import { tracePages } from "./build.ts";
+import type { TracedPage } from "./build.ts";
 import type { Config, Dirs } from "./config.ts";
 import type { Data } from "./data.ts";
 import { getPath } from "./data.ts";
@@ -37,7 +37,7 @@ export interface Field {
 	setBy: SetBy[];
 }
 
-export interface Inspection {
+export interface Trace {
 	/** The page's URL, or `null` for `permalink: false`. */
 	url: string | null;
 	inputPath: string;
@@ -73,7 +73,7 @@ function globalOrigin(config: Config, dirs: Dirs, key: string): string {
 	return "global data";
 }
 
-function fieldsOf(config: Config, dirs: Dirs, global: Data, page: InspectedPage): Field[] {
+function fieldsOf(config: Config, dirs: Dirs, global: Data, page: TracedPage): Field[] {
 	const computed = page.data.computed !== null && typeof page.data.computed === "object" && !Array.isArray(page.data.computed) ? page.data.computed : {};
 	const pagination = page.data.pagination;
 	const alias = pagination === undefined ? "" : jsString(nullish(pagination) ? undefined : pagination.alias);
@@ -96,8 +96,8 @@ function fieldsOf(config: Config, dirs: Dirs, global: Data, page: InspectedPage)
 }
 
 /** The page at `target`: a URL (`/guides/install/`) or a template's path (`src/guides/install.md`, from the project root or the input folder). */
-export async function inspect(config: Config, target: string): Promise<Inspection> {
-	const { dirs, global, pages } = await inspectPages(config);
+export async function trace(config: Config, target: string): Promise<Trace> {
+	const { dirs, global, pages } = await tracePages(config);
 	// `/trail/`, `/trail/index.html` and `/trail` are one page; `/trailindex.html` isn't. The exact URL first.
 	const trim = (u: string) => {
 		const rest = u.endsWith("index.html") ? u.slice(0, -10) : undefined;
@@ -109,7 +109,7 @@ export async function inspect(config: Config, target: string): Promise<Inspectio
 	// Only a file with the same name can be the one (asking the disk for every page's real path is slow on a big site).
 	const names = new Set(wanted.map((w) => path.basename(w)));
 	const byFile = pages.filter((p) => names.has(path.basename(p.input)) && wanted.includes(realPath(p.input)));
-	let page: InspectedPage;
+	let page: TracedPage;
 	if (target.startsWith("/") && byUrl.length) page = byUrl[0];
 	else if (byFile.length === 1) page = byFile[0];
 	else if (byFile.length === 0) {
@@ -176,27 +176,27 @@ function valueAt(value: unknown, key: string): unknown {
 }
 
 /** A field by name, or by a dotted path into one (`hero.alt`): the top field, and the value at the path in it and in each level that set it. */
-export function field(inspection: Inspection, dotted: string): Field | undefined {
+export function field(traced: Trace, dotted: string): Field | undefined {
 	const at = dotted.indexOf(".");
 	const [top, rest] = at === -1 ? [dotted, ""] : [dotted.slice(0, at), dotted.slice(at + 1)];
-	const found = inspection.fields.find((f) => f.name === top);
+	const found = traced.fields.find((f) => f.name === top);
 	if (!found || rest === "") return found;
 	const pathIn = (v: unknown) => rest.split(".").reduce<unknown>(valueAt, v);
 	const setBy = found.setBy.filter((s) => !nullish(pathIn(s.value))).map((s) => ({ from: s.from, value: pathIn(s.value) }));
 	return { name: dotted, value: pathIn(found.value), from: setBy.length ? setBy[setBy.length - 1].from : found.from, setBy };
 }
 
-export function inspectionText(inspection: Inspection): string {
-	let out = `${inspection.url ?? "(no URL: permalink is false)"}\n`;
+export function traceText(traced: Trace): string {
+	let out = `${traced.url ?? "(no URL: permalink is false)"}\n`;
 	const row = (label: string, value: string) => { out += `  ${padEnd(label, 12)}${value}\n`; };
-	row("From", `${inspection.inputPath} (${inspection.engines.length ? inspection.engines.join(", ") : "as it is"})`);
-	if (inspection.outputPath !== null) row("Writes", inspection.outputPath);
-	if (inspection.layouts.length) row("Layouts", inspection.layouts.join(" > "));
-	row("Date", `${inspection.date} (from ${inspection.dateFrom})`);
-	row("Collections", inspection.collections.length ? inspection.collections.join(", ") : "none");
+	row("From", `${traced.inputPath} (${traced.engines.length ? traced.engines.join(", ") : "as it is"})`);
+	if (traced.outputPath !== null) row("Writes", traced.outputPath);
+	if (traced.layouts.length) row("Layouts", traced.layouts.join(" > "));
+	row("Date", `${traced.date} (from ${traced.dateFrom})`);
+	row("Collections", traced.collections.length ? traced.collections.join(", ") : "none");
 	out += "\n  Data (name, value, and the level of the cascade that set it)\n";
-	const width = Math.min(24, Math.max(0, ...inspection.fields.map((f) => charCount(f.name))));
-	for (const f of inspection.fields) {
+	const width = Math.min(24, Math.max(0, ...traced.fields.map((f) => charCount(f.name))));
+	for (const f of traced.fields) {
 		const overrides = f.setBy.length > 1 ? ` (over ${f.setBy.slice(0, -1).map((s) => s.from).join(", ")})` : "";
 		out += `    ${padEnd(f.name, width)}  ${padEnd(brief(f.value), 52)}  ${f.from}${overrides}\n`;
 	}
@@ -220,18 +220,18 @@ export function fieldText(f: Field): string {
 const setByJson = (f: Field) => f.setBy.map((s) => ({ from: s.from, value: toJsonValue(s.value) }));
 
 /** The report as JSON (`schemaVersion` 1), or one field of it. */
-export function inspectionJson(inspection: Inspection, one: Field | undefined): Record<string, unknown> {
+export function traceJson(traced: Trace, one: Field | undefined): Record<string, unknown> {
 	const out: Record<string, unknown> = {
 		schemaVersion: 1,
-		url: inspection.url,
-		inputPath: inspection.inputPath,
-		outputPath: inspection.outputPath,
-		engines: inspection.engines,
-		layouts: inspection.layouts,
-		date: { value: inspection.date, from: inspection.dateFrom },
-		collections: inspection.collections,
+		url: traced.url,
+		inputPath: traced.inputPath,
+		outputPath: traced.outputPath,
+		engines: traced.engines,
+		layouts: traced.layouts,
+		date: { value: traced.date, from: traced.dateFrom },
+		collections: traced.collections,
 	};
 	if (one) out.field = { name: one.name, value: toJsonValue(one.value), from: one.from, setBy: setByJson(one) };
-	else out.data = Object.fromEntries(inspection.fields.map((f) => [f.name, { value: toJsonValue(f.value), from: f.from, setBy: setByJson(f) }]));
+	else out.data = Object.fromEntries(traced.fields.map((f) => [f.name, { value: toJsonValue(f.value), from: f.from, setBy: setByJson(f) }]));
 	return out;
 }

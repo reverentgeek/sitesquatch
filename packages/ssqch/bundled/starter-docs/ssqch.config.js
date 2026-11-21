@@ -1,8 +1,14 @@
 // A documentation site. `ssqch serve` serves it with live reload, and
 // `ssqch build` builds it into dist/. ssqch.d.ts gives your editor the types.
-import { defineConfig } from "ssqch";
+import { defineConfig, readData } from "ssqch";
 import { linksPlugin } from "ssqch/links";
+import { llmsPlugin } from "ssqch/llms";
 import { minifyPlugin } from "ssqch/minify";
+import { robotsPlugin } from "ssqch/robots";
+import { sitemapPlugin } from "ssqch/sitemap";
+
+// The site's address, from src/_data/site.json: put yours there.
+const { url } = readData("src/_data/site.json");
 
 // Search is Pagefind (https://pagefind.app), which indexes the built pages.
 // It's a program of its own that npx fetches, so it's opt-in:
@@ -35,6 +41,13 @@ export default defineConfig(({ env }) => ({
   plugins: [
     // Broken internal links (and anchors) fail a production build.
     linksPlugin({ ignore: ["/pagefind/"] }),
+    // What crawlers and agents read: sitemap.xml, robots.txt, and llms.txt with a
+    // Markdown copy of each page (each page links its copy). `ssqch patrol` checks them.
+    sitemapPlugin({ url }),
+    // `false` keeps that kind of AI crawler out: training (collecting pages to train
+    // models), search (AI search answers) or fetch (a page a person asked about).
+    robotsPlugin({ ai: { training: true, search: true, fetch: true } }),
+    llmsPlugin({ url }),
     env === "production" && minifyPlugin(),
   ],
 }));

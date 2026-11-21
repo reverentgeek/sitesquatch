@@ -1,50 +1,47 @@
 // sitesquatch.dev's one script. Everything else is static files (wrangler.jsonc). It runs for
-// /docs and /docs/* only (`run_worker_first`), and answers a request that would rather have
-// Markdown (`Accept: text/markdown`, as Claude Code, Cursor and OpenCode send it) with the page's
-// Markdown copy (lib/agents.ts). Its answers vary by `Accept`, so caches keep the two apart.
+// the pages that have a Markdown copy (`run_worker_first`), and answers a request that would
+// rather have Markdown (`Accept: text/markdown`, as Claude Code, Cursor and OpenCode send it)
+// with the page's copy (llmsPlugin in ssqch.config.js). Its answers vary by `Accept`, so caches
+// keep the two apart. It's the code src/docs/serving-markdown.md gives people to paste, as it is
+// there (tests/serving-markdown.test.ts keeps them the same).
 
-/** Whether `accept` prefers text/markdown to text/html, by their q values (a missing one is 1). */
+/** Whether `accept` asks for text/markdown by name, at least as much as for HTML (by q-values). */
 function prefersMarkdown(accept) {
-	const q = (type) => {
-		for (const part of accept.split(",")) {
-			const [name, ...params] = part.trim().split(";").map((s) => s.trim().toLowerCase());
-			if (name !== type) continue;
-			const value = params.find((p) => p.startsWith("q="));
-			return value === undefined ? 1 : Number(value.slice(2)) || 0;
-		}
-		return 0;
-	};
-	const markdown = q("text/markdown");
-	return markdown > 0 && markdown >= q("text/html");
+  const q = new Map();
+  for (const part of accept.split(",")) {
+    const [type, ...params] = part.split(";").map((p) => p.trim().toLowerCase());
+    const given = params.find((p) => p.startsWith("q="));
+    if (type) q.set(type, given === undefined ? 1 : Number(given.slice(2)) || 0);
+  }
+  const markdown = q.get("text/markdown") ?? 0;
+  return markdown > 0 && markdown >= (q.get("text/html") ?? q.get("text/*") ?? q.get("*/*") ?? 0);
 }
 
-/** The Markdown copy of a docs page's path: `/docs/install/` is `/docs/install.md`, `/docs/` is `/docs/index.md`. */
+/** A page's Markdown copy, as llmsPlugin() writes it: `/guide/intro/` (or `/guide/intro`) is `/guide/intro/index.md`, `/about.html` is `/about.md`; a file of another kind has none. */
 function copyOf(pathname) {
-	const trimmed = pathname.replace(/\/+$/, "");
-	return trimmed === "/docs" ? "/docs/index.md" : `${trimmed}.md`;
-}
-
-/** `response`, with `Vary: Accept` added. */
-function varying(response) {
-	const out = new Response(response.body, response);
-	out.headers.append("Vary", "Accept");
-	return out;
+  if (pathname.endsWith("/")) return `${pathname}index.md`;
+  if (/\.html?$/.test(pathname)) return pathname.replace(/\.html?$/, ".md");
+  return /\.[a-z0-9]+$/i.test(pathname) ? undefined : `${pathname}/index.md`;
 }
 
 export default {
-	async fetch(request, env) {
-		const url = new URL(request.url);
-		// A file of its own (a .md copy, an image) is what it is.
-		const page = !/\.[a-z0-9]+$/i.test(url.pathname);
-		if (page && prefersMarkdown(request.headers.get("Accept") ?? "")) {
-			const copy = await env.ASSETS.fetch(new URL(copyOf(url.pathname), url));
-			if (copy.ok) {
-				const out = varying(copy);
-				out.headers.set("Content-Type", "text/markdown; charset=utf-8");
-				return out;
-			}
-		}
-		const response = await env.ASSETS.fetch(request);
-		return page ? varying(response) : response;
-	},
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const copy = copyOf(url.pathname);
+    if (copy && prefersMarkdown(request.headers.get("Accept") ?? "")) {
+      const found = await env.ASSETS.fetch(new URL(copy, url));
+      if (found.ok) {
+        const out = new Response(found.body, found);
+        out.headers.set("Content-Type", "text/markdown; charset=utf-8");
+        out.headers.set("Link", `<${url.origin}${url.pathname}>; rel="canonical"`);
+        out.headers.append("Vary", "Accept");
+        return out;
+      }
+    }
+    const response = await env.ASSETS.fetch(request);
+    if (!copy) return response;
+    const out = new Response(response.body, response);
+    out.headers.append("Vary", "Accept");
+    return out;
+  },
 };

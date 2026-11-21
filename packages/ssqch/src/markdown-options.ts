@@ -25,16 +25,14 @@ export interface MarkdownOptions {
 	figures: boolean;
 	/** GitHub's `> [!NOTE]` alerts (note, tip, important, warning, caution). */
 	alerts: boolean;
-	/** `::: name args` blocks; `"markdown-it"` closes one at an indented `:::`, as markdown-it-container does. */
-	containers: boolean | "markdown-it";
+	/** `::: name args` blocks; a `:::` indented less than four spaces closes the innermost open one, as markdown-it-container reads them. */
+	containers: boolean;
 	/** `Term` followed by `: definition` lines. */
 	definitionLists: boolean;
 	/** Curly quotes, dashes and ellipses. */
 	smartPunctuation: boolean;
 	/** Lines indented four spaces are code. Off, they're ordinary Markdown; fences are still code. */
 	indentedCode: boolean;
-	/** Link and image URLs percent-encoded (`#كتابة` as `#%D9%83...`), as CommonMark's reference renderer writes them; `false` writes them as the page has them, HTML-escaped only, as kramdown does. */
-	encodeUrls: boolean;
 	/** Highlight fenced code at build time. */
 	highlight: boolean;
 	/** Where the build writes the highlighting stylesheet (a URL path like `/highlight.css`), or `null` to leave it out. */
@@ -61,6 +59,36 @@ export interface MarkdownOptions {
 	dialect: "python-markdown" | "vitepress" | null;
 	/** The site's `urls` is `"html"`: the `vitepress` dialect's links get `.html`. Set from the config, not from `markdown`. */
 	htmlUrls: boolean;
+	/** Plugins' Markdown steps (a plugin's `markdown: { before, after, hooks }`), in the order the plugins are listed. Set from the plugins, not from `markdown`. */
+	steps: MarkdownSteps;
+}
+
+/** What a plugin's Markdown step or hook gets besides its text: the page, and the engine's own tools. */
+export interface StepContext {
+	/** The page's data, as its templates see it (`page`, front matter, global data). */
+	data: Record<string, unknown>;
+	/** The page (`data.page`): `url`, `inputPath` and the rest. */
+	page: Record<string, unknown> | undefined;
+	/** The site's `urls`: `"html"` writes `/guide/intro.html`. */
+	urls: "folders" | "html";
+	/** Markdown rendered with the site's options and hooks (`{ inline: true }` without the `<p>`). */
+	markdown(text: string, options?: { inline?: boolean }): string;
+	/** Whether the site (or a plugin) has the render hook or container `name` (`containers/tip`). */
+	hasHook(name: string): boolean;
+	/** The render hook `name` with `value`, as ssqch's Markdown calls it: the site's template if it has one, else a plugin's. */
+	renderHook(name: string, key: string, value: Record<string, unknown>): string;
+}
+
+/** A plugin's render hook: what the template of the same name would write. */
+export type HookFn = (value: Record<string, unknown>, context: StepContext) => string;
+
+export interface MarkdownSteps {
+	/** The page's Markdown before ssqch's reads it. */
+	before: Array<[where: string, step: (source: string, context: StepContext) => string]>;
+	/** The HTML ssqch's Markdown wrote, before the page's layouts. */
+	after: Array<[where: string, step: (html: string, context: StepContext) => string]>;
+	/** Render hooks and containers (`heading`, `containers/tip`), which a site's template of the same name replaces. */
+	hooks: Map<string, [where: string, hook: HookFn]>;
 }
 
 export function defaultMarkdownOptions(): MarkdownOptions {
@@ -77,7 +105,6 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		definitionLists: false,
 		smartPunctuation: false,
 		indentedCode: true,
-		encodeUrls: true,
 		highlight: false,
 		highlightCss: "/highlight.css",
 		highlightClasses: null,
@@ -91,13 +118,14 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		preprocess: null,
 		dialect: null,
 		htmlUrls: false,
+		steps: { before: [], after: [], hooks: new Map() },
 	};
 }
 
 /** The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`). */
-export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "htmlMarkdown", "encodeUrls", "admonitions", "tabs", "shortcodes", "sourceLinks", "preprocess", "dialect"] as const;
+export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "sourceLinks", "preprocess"] as const;
 
-const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures", "encodeUrls"] as const;
+const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures"] as const;
 
 /** What a highlighted token can be: the `hl-*` names, without the prefix. */
 export const HIGHLIGHT_KINDS = ["comment", "keyword", "operator", "string", "regexp", "escape", "number", "constant", "builtin", "property", "attribute", "function", "type", "parameter", "tag", "heading", "strong", "emphasis", "link", "inserted", "deleted"] as const;
@@ -128,9 +156,28 @@ function highlightClasses(value: unknown): MarkdownOptions["highlightClasses"] {
 /** JavaScript's `typeof`, with a list or `null` as "object": how these errors name a value's type. */
 const typeOf = (v: unknown) => typeof v;
 
-/** Applies a `markdown` object from the config. Errors start with the key (`markdown.footnotes must be true or false`). */
-export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): void {
+/**
+ * Options that were another generator's ways, now each the job of a module (`fromJekyll()` and the
+ * rest, the audit's plan, step 6): a site's config that sets one is told which. The modules set
+ * them themselves (`applyMarkdownOptions(..., "module")`).
+ */
+const RETIRED_MARKDOWN: Record<string, (value: unknown) => string> = {
+	dialect: (v) => (v === "vitepress" ? "fromVitepress() from \"ssqch/from-vitepress\"" : "fromMkdocs() from \"ssqch/from-mkdocs\""),
+	admonitions: () => "fromMkdocs() from \"ssqch/from-mkdocs\"",
+	tabs: () => "fromMkdocs() from \"ssqch/from-mkdocs\"",
+	shortcodes: () => "fromHugo() from \"ssqch/from-hugo\"",
+	htmlMarkdown: () => "fromJekyll() from \"ssqch/from-jekyll\"",
+};
+
+/** Applies a `markdown` object: the site's config's (`"site"`), or a built-in module's own settings (`"module"`). Errors start with the key (`markdown.footnotes must be true or false`). */
+export function applyMarkdownOptions(options: MarkdownOptions, value: unknown, from: "site" | "module" = "site"): void {
 	if (!isPlainObject(value)) bail(`markdown must be an object, not ${typeOf(value)}`);
+	if (from === "site") {
+		for (const [key, v] of Object.entries(value)) {
+			// `false` and `null` turned it off, which is where a site without the module is already.
+			if (Object.hasOwn(RETIRED_MARKDOWN, key) && v !== false && v !== null && v !== undefined) bail(`markdown.${key} is ${RETIRED_MARKDOWN[key](v)} now: add it to plugins, and leave markdown.${key} out (\`ssqch docs ${RETIRED_MARKDOWN[key](v).split("(")[0]}\`)`);
+		}
+	}
 	for (const [key, v] of Object.entries(value)) {
 		if (key === "headingIds") {
 			// `headingIds: text => id`: a slugger of the site's own.
@@ -184,11 +231,16 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 			if (typeof v !== "boolean" && v !== "fuzzy" && v !== "email") bail(`markdown.autolinks must be true, false, "email" or "fuzzy", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.autolinks = v;
 		} else if (key === "containers") {
-			if (typeof v !== "boolean" && v !== "markdown-it") bail(`markdown.containers must be true, false or "markdown-it", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+			// `"markdown-it"` (0.12) is what `true` does now (the audit's plan, step 7).
+			if (v === "markdown-it") bail("markdown.containers: \"markdown-it\" is what `containers: true` does now (a closing `:::` indented under a list closes its container): write true, or leave it out");
+			if (typeof v !== "boolean") bail(`markdown.containers must be true or false, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.containers = v;
 		} else if ((FLAGS as readonly string[]).includes(key)) {
 			if (typeof v !== "boolean") bail(`markdown.${key} must be true or false, not ${typeOf(v)}`);
 			options[key as typeof FLAGS[number]] = v;
+		} else if (key === "encodeUrls") {
+			// Taken out (the audit's plan, 2026-11-21): it was there so a move could match kramdown's bytes.
+			bail("markdown.encodeUrls is gone: link and image URLs are percent-encoded, as CommonMark writes them, and browsers go to the same place either way (so does `ssqch diff`). Leave it out");
 		} else {
 			const near = closest(key, MARKDOWN_KEYS);
 			bail(`markdown.${key} isn't an option${near ? ` (did you mean \`${near}\`?)` : ""} (options: ${MARKDOWN_KEYS.join(", ")})`);
@@ -196,11 +248,28 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 	}
 	// VitePress's markdown-it, for what the site doesn't set itself: its heading ids, linkify
 	// without bare domains, and markdown-it-container's closing `:::`.
-	if (options.dialect === "vitepress") {
-		const given = value as Record<string, unknown>;
-		if (!("headingIds" in given)) { options.sluggerFn = vitepressSlug; options.headingIds = "github"; }
-		if (!("autolinks" in given)) options.autolinks = "email";
-		if (!("containers" in given)) options.containers = "markdown-it";
+}
+
+/** The keys a plugin's `markdown` part can have. */
+const STEP_KEYS = ["before", "after", "hooks"];
+
+/** A plugin's `markdown: { before, after, hooks }`, added to the site's steps in the order the plugins are listed. A later plugin's hook of the same name replaces an earlier one's. */
+export function addMarkdownSteps(steps: MarkdownSteps, where: string, value: unknown): void {
+	if (!isPlainObject(value)) bail(`${where}: markdown must be an object of { before, after, hooks }`);
+	for (const key of Object.keys(value)) if (!STEP_KEYS.includes(key)) bail(`${where}: markdown.${key} isn't a plugin's Markdown step${closest(key, STEP_KEYS) ? ` (did you mean \`${closest(key, STEP_KEYS)}\`?)` : ""} (a plugin's markdown has before, after and hooks; the site's own options go in the config's markdown, or in the plugin's defaults)`);
+	for (const key of ["before", "after"] as const) {
+		const fn = value[key];
+		if (fn === undefined) continue;
+		if (typeof fn !== "function") bail(`${where}: markdown.${key} must be a function, (${key === "before" ? "source" : "html"}, context) => text`);
+		steps[key].push([where, fn as (text: string, context: StepContext) => string]);
+	}
+	if (value.hooks !== undefined) {
+		if (!isPlainObject(value.hooks)) bail(`${where}: markdown.hooks must be an object of { name: (value, context) => html }, like { heading: ..., "containers/tip": ... }`);
+		for (const [name, hook] of Object.entries(value.hooks)) {
+			if (typeof hook !== "function") bail(`${where}: markdown.hooks["${name}"] must be a function, (value, context) => html`);
+			// `heading` is the engine's `hooks/heading`; `containers/tip` is as it is.
+			steps.hooks.set(/^(?:hooks|containers)\//.test(name) ? name : `hooks/${name}`, [where, hook as HookFn]);
+		}
 	}
 }
 

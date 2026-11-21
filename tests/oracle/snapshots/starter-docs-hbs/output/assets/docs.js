@@ -65,3 +65,20 @@ const { PagefindUI } = /** @type {any} */ (window);
 if (PagefindUI && document.getElementById("search")) {
   new PagefindUI({ element: "#search", showSubResults: true });
 }
+
+// Copy as Markdown: the page's Markdown copy (llmsPlugin() writes it), for pasting into a chat
+// with an agent. The button stays hidden where there's no clipboard to copy to.
+for (const button of document.querySelectorAll("[data-copy-markdown]")) {
+  if (!navigator.clipboard) continue;
+  button.hidden = false;
+  button.addEventListener("click", async () => {
+    try {
+      const response = await fetch(button.dataset.copyMarkdown);
+      await navigator.clipboard.writeText(await response.text());
+      button.textContent = "Copied";
+    } catch {
+      button.textContent = "Couldn't copy";
+    }
+    setTimeout(() => { button.textContent = "Copy as Markdown"; }, 2000);
+  });
+}

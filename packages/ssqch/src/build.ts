@@ -167,8 +167,8 @@ export async function build(config: Config): Promise<BuildReport> {
 	return report;
 }
 
-/** A page as `ssqch inspect` sees it. */
-export interface InspectedPage {
+/** A page as `ssqch trace` sees it. */
+export interface TracedPage {
 	url: string | null;
 	input: string;
 	output: string | null;
@@ -188,14 +188,14 @@ export interface InspectedPage {
  * them (a plugin that learns the build's context there, a command that writes a data file). No
  * page is rendered or written, and `afterBuild` hooks don't run.
  */
-export async function inspectPages(config: Config): Promise<{ dirs: Dirs; global: Data; pages: InspectedPage[] }> {
+export async function tracePages(config: Config): Promise<{ dirs: Dirs; global: Data; pages: TracedPage[] }> {
 	const site = new Site(config, true);
 	const { dirs } = site;
 	if (!isDir(dirs.input)) bail(`input directory ${shownDir(config, config.input)} does not exist`);
 	await runFileBuilders(config, dirs);
 	await runHooks(config, dirs, "beforeBuild", config.beforeBuild, undefined);
 	await site.prepare(new Timer());
-	const pages = site.pages.map((p): InspectedPage => ({
+	const pages = site.pages.map((p): TracedPage => ({
 		url: p.url,
 		input: p.tpl.input,
 		output: p.output,
@@ -302,6 +302,8 @@ class Renderer {
 			for (let i = from; i < tpl.engines.length; i++) {
 				const name = tpl.engines[i];
 				const engine = this.site.engines.get(name);
+				// The page's Markdown as its template engine left it, for llmsPlugin()'s copy.
+				if (name === "md" && page.url !== null) this.site.config.markdownSources?.set(page.url, content);
 				let out: string | Promise<string>;
 				try {
 					out = engine.render(content, data, ctx);

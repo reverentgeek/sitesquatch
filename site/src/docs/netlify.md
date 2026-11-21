@@ -18,13 +18,15 @@ Netlify can build the site itself, with no deploy token to manage. With `ssqch` 
     paths = [".cache/ssqch"]
 ```
 
-- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.12.0`) and bump it when you're ready.
+- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.13.0`) and bump it when you're ready.
 - **`NODE_VERSION`** is the Node that runs the build: anything from 22.18 on. ssqch builds the same bytes on every supported Node, so pick the one your other build tools like.
 - **[`netlify-plugin-cache`](https://github.com/jakejarvis/netlify-plugin-cache)** carries `.cache/ssqch` (the encoded images and their hashes, highlighted code, and any `fetch` copies) over to the next build. Add it to your `devDependencies`.
 
-A site without a `package.json` can run a pinned release straight from npm in the build command, with `SSQCH_VERSION = "0.12.0"` under `[build.environment]` to pin it (and `NODE_VERSION` there as well):
+A site without a `package.json` can run a pinned release straight from npm in the build command, with `SSQCH_VERSION = "0.13.0"` under `[build.environment]` to pin it (and `NODE_VERSION` there as well):
 
 ```toml
 [build]
   command = "npx --yes ssqch@$SSQCH_VERSION build"
 ```
+
+To answer a coding agent's `Accept: text/markdown` with a page's Markdown copy, add an edge function: [Serving Markdown to agents](serving-markdown.md#netlify) has it, ready to paste.

@@ -823,18 +823,16 @@ export default { base: "/trail/", templateFormats: ["njk"], plugins: [sitemapPlu
 });
 
 // Added in 0.11, from the fresh opensource.guide move: a Jekyll site's `url` is often empty, and
-// jekyll-sitemap writes paths then. So does sitemapPlugin(), and it says why that's not enough.
-test("a_sitemap_without_a_url_writes_paths_and_says_so", () => {
+// jekyll-sitemap writes paths then. DELIBERATE (0.13): a sitemap of paths is one search engines
+// can't read, so sitemapPlugin() asks for the address instead of warning on every build.
+test("a_sitemap_without_a_url_asks_for_one", () => {
 	const root = tempDir("sitemap-no-url");
-	write(root, {
-		"ssqch.config.js": "import { sitemapPlugin } from \"ssqch/sitemap\";\nexport default { plugins: [sitemapPlugin({ url: \"\", lastmod: false })] };\n",
-		"index.md": "# Pine\n",
-		"trail.md": "# Trail\n",
-	});
-	const r = ssqch(["build", "--root", root]);
-	assert.ok(r.ok, r.log);
-	assert.ok(r.log.includes("warn: sitemapPlugin() has no url, so /sitemap.xml's <loc>s are paths from the site's root"), r.log);
-	assert.equal(read(root, "_site/sitemap.xml"), "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>/</loc>\n  </url>\n  <url>\n    <loc>/trail/</loc>\n  </url>\n</urlset>\n");
+	write(root, { "index.md": "# Pine\n" });
+	for (const options of ["{ url: \"\" }", "{}"]) {
+		write(root, { "ssqch.config.js": `import { sitemapPlugin } from "ssqch/sitemap";\nexport default { plugins: [sitemapPlugin(${options})] };\n` });
+		const r = ssqch(["build", "--root", root]);
+		assert.ok(!r.ok && r.log.includes("needs the site's address, like sitemapPlugin({ url: \"https://example.com\" })"), r.log);
+	}
 });
 
 // Added in 0.11, from the fresh opensource.guide move: grass starts CSS with a character outside
@@ -866,34 +864,41 @@ test("rss_has_the_eleventy_plugins_first_names", () => {
 });
 
 // Added in 0.12, from the fresh vuejs.org run: vitepress-plugin-llms wrote 96 files the move left
-// out. `llms.txt` lists the pages from Markdown, each with a Markdown copy, and llms-full.txt has them all.
+// out. `llms.txt` lists the pages, each with a Markdown copy, and llms-full.txt has them all.
+// DELIBERATE (0.13): a copy is what the page says (its Markdown after its template engine, or a
+// page from a template as Markdown), its links are whole addresses that go to the copies, and
+// `hint` is gone for `markdownCopy(page.url)`: a build adds no markup of its own, and hidden text
+// for models reads as cloaking (the audit's plan, 2026-11-21).
 test("llms_plugin_writes_the_site_for_language_models", () => {
 	const dir = tempDir("llms");
 	write(dir, {
-		"ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { urls: \"html\", data: { layout: \"base.jinja\" }, plugins: [llmsPlugin({ url: \"https://trail.example\", description: \"Hikes and the gear for them.\", exclude: [\"/drafts/**\"], hint: true })] };\n",
-		"_data/site.json": "{ \"title\": \"Trail Guide\" }\n",
-		"_includes/base.jinja": "<html><body>{{ content | safe }}</body></html>",
-		"index.md": "---\ntitle: Home\n---\nWelcome to the trails.\n",
+		"ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { urls: \"html\", data: { layout: \"base.jinja\" }, plugins: [llmsPlugin({ url: \"https://trail.example\", description: \"Hikes and the gear for them.\", exclude: [\"/drafts/**\"] })] };\n",
+		"_data/site.json": "{ \"title\": \"Trail Guide\", \"trails\": [\"Cedar\", \"Old Growth\"] }\n",
+		"_includes/base.jinja": "<html><head>{% if markdownCopy(page.url) %}<link rel=\"alternate\" type=\"text/markdown\" href=\"{{ markdownCopy(page.url) }}\">{% endif %}</head><body><nav><a href=\"/\">Home</a></nav><main>{{ content | safe }}</main></body></html>",
+		"index.md": "---\ntitle: Home\n---\nWelcome to the trails. Start with [the intro](guide/intro.md).\n",
 		"guide/index.md": "# Guide\n",
-		"guide/intro.md": "---\ndescription: Where to start.\n---\n# Getting started\n\nPack water.\n",
+		"guide/intro.md": "---\ndescription: Where to start.\n---\n# Getting started\n\nOn {{ site.title }}:\n{% for t in site.trails %}\n- {{ t }}\n{% endfor %}\n\nPack water, then [the gear](/about.html#packs).\n",
+		"guide/secret.md": "---\nllms: false\n---\n# Ranger only\n",
 		"drafts/wip.md": "# Not yet\n",
-		"about.jinja": "<p>Not Markdown</p>",
+		"about.jinja": "---\ntitle: About\n---\n<h1>About</h1><p>Squatch <em>Snacks</em> for the <a href=\"guide/intro.html\">trail</a>.</p><ul><li>Pine Cone Crunch</ul>",
 	});
 	const r = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(r.ok, r.log);
-	assert.equal(read(dir, "_site/llms.txt"), "# Trail Guide\n\n> Hikes and the gear for them.\n\n## Pages\n\n- [Home](https://trail.example/index.md)\n\n## Guide\n\n- [Guide](https://trail.example/guide.md)\n- [Getting started](https://trail.example/guide/intro.md): Where to start.\n");
-	assert.equal(read(dir, "_site/guide/intro.md"), "# Getting started\n\nPack water.\n");
-	assert.equal(read(dir, "_site/index.md"), "# Home\n\nWelcome to the trails.\n");
-	assert.ok(read(dir, "_site/llms-full.txt").startsWith("---\nurl: https://trail.example/\n---\n\n# Home\n"));
-	assert.ok(!fs.existsSync(path.join(dir, "_site/drafts/wip.md")) && !fs.existsSync(path.join(dir, "_site/about.md")));
-	assert.ok(read(dir, "_site/guide/intro.html").startsWith("<html><body><div hidden aria-hidden=\"true\">This page is also Markdown, for language models: https://trail.example/guide/intro.md</div><h1"));
-	// Without `hint`, a page has no markup of the plugin's.
-	write(dir, { "ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { plugins: [llmsPlugin()] };\n" });
-	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
-	assert.ok(!read(dir, "_site/guide/intro/index.html").includes("hidden"));
-	write(dir, { "ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { plugins: [llmsPlugin({ hints: true })] };\n" });
+	assert.equal(read(dir, "_site/llms.txt"), "# Trail Guide\n\n> Hikes and the gear for them.\n\n## Pages\n\n- [Home](https://trail.example/index.md)\n- [About](https://trail.example/about.md)\n\n## Guide\n\n- [Guide](https://trail.example/guide/index.md)\n- [Getting started](https://trail.example/guide/intro.md): Where to start.\n");
+	assert.equal(read(dir, "_site/guide/intro.md"), "# Getting started\n\nOn Trail Guide:\n\n- Cedar\n\n- Old Growth\n\nPack water, then [the gear](https://trail.example/about.md#packs).\n");
+	assert.equal(read(dir, "_site/index.md"), "# Home\n\nWelcome to the trails. Start with [the intro](https://trail.example/guide/intro.md).\n");
+	assert.equal(read(dir, "_site/about.md"), "# About\n\nSquatch *Snacks* for the [trail](https://trail.example/guide/intro.md).\n\n- Pine Cone Crunch\n");
+	assert.ok(read(dir, "_site/llms-full.txt").startsWith("# Trail Guide\n\n> Hikes and the gear for them.\n\n---\nurl: https://trail.example/\n---\n\n# Home\n"));
+	assert.ok(!fs.existsSync(path.join(dir, "_site/drafts/wip.md")) && !fs.existsSync(path.join(dir, "_site/guide/secret.md")));
+	// The layout links the copy; a page without one gets "".
+	assert.ok(read(dir, "_site/guide/intro.html").startsWith("<html><head><link rel=\"alternate\" type=\"text/markdown\" href=\"/guide/intro.md\"></head><body><nav>"));
+	assert.ok(read(dir, "_site/guide/secret.html").startsWith("<html><head></head>"));
+	write(dir, { "ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { plugins: [llmsPlugin({ hint: true })] };\n" });
+	const gone = ssqch(["build", "--root", dir]);
+	assert.ok(!gone.ok && gone.log.includes("`hint` is gone") && gone.log.includes("markdownCopy(page.url)"), gone.log);
+	write(dir, { "ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { plugins: [llmsPlugin({ detail: \"x\" })] };\n" });
 	const bad = ssqch(["build", "--root", dir]);
-	assert.ok(!bad.ok && bad.log.includes("unknown option \"hints\" (did you mean \"hint\"?)"), bad.log);
+	assert.ok(!bad.ok && bad.log.includes("unknown option \"detail\" (did you mean \"details\"?)"), bad.log);
 });
 
 // Added in 0.12, from the fresh vuejs.org run: Vue's components render with the site's own Vite,
@@ -911,4 +916,121 @@ test("vue_plugin_without_vite_says_what_to_install", () => {
 	write(dir, { "ssqch.config.js": "import { vuePlugin } from \"ssqch/vue\";\nexport default { plugins: [vuePlugin({ hydrate: \"later\" })] };\n" });
 	const bad = ssqch(["build", "--root", dir]);
 	assert.ok(!bad.ok && bad.log.includes("hydrate must be false, \"load\", \"idle\" or \"visible\" (got \"later\")"), bad.log);
+});
+
+// Added in 0.13 (the audit's plan, step 6): a plugin's own Markdown steps, its render hooks as
+// functions (which a site's template replaces), and defaults under the site's own options.
+test("a_plugin_adds_markdown_steps_hooks_and_defaults", () => {
+	const dir = tempDir("plugin-markdown");
+	const plugin = (extra = "") => `const trail = {
+	name: "trailLinks",
+	markdown: {
+		before: (source, context) => source.replace(/\\[\\[([^\\]]+)\\]\\]/g, (_, t) => \`[\${t}](/trails/\${t.toLowerCase()}/)\`),
+		after: (html, context) => html + \`<!-- \${context.page.url} -->\`,
+		hooks: { "containers/aside": (c, context) => \`<aside class="\${c.args}">\${c.content}</aside>\`, heading: (h) => \`<h\${h.level} class="trail">\${h.content}</h\${h.level}>\` },
+	},
+	defaults: { markdown: { headingIds: false, smartPunctuation: true } },${extra}
+};
+export default { markdown: { smartPunctuation: false }, plugins: [trail] };
+`;
+	write(dir, { "ssqch.config.js": plugin(), "index.md": "# Pine\n\nSee [[Cedar]], \"quoted\".\n\n::: aside tip\nPack *water*.\n:::\n" });
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	// The step's link, the plugin's hooks, its `headingIds: false` (no id), and the site's own smartPunctuation over the plugin's.
+	assert.equal(read(dir, "_site/index.html"), "<h1 class=\"trail\">Pine</h1>\n<p>See <a href=\"/trails/cedar/\">Cedar</a>, &quot;quoted&quot;.</p>\n<aside class=\"tip\"><p>Pack <em>water</em>.</p>\n</aside>\n<!-- / -->");
+	// A site's own template of a hook's name replaces the plugin's.
+	write(dir, { "_includes/hooks/heading.jinja": "<h{{ heading.level }}>{{ heading.text }}!</h{{ heading.level }}>" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok && read(dir, "_site/index.html").startsWith("<h1>Pine!</h1>"), read(dir, "_site/index.html"));
+	for (const [extra, says] of [
+		["\n\tmarkdown: { befor: () => \"\" },", "plugin \"trailLinks\": markdown.befor isn't a plugin's Markdown step (did you mean `before`?)"],
+		["\n\tdefaults: { urls: \"html\" },", "plugin \"trailLinks\": defaults.urls: a plugin's defaults can be markdown options only"],
+	]) {
+		write(dir, { "ssqch.config.js": plugin(extra).replace(/\n\tmarkdown: \{\n[\s\S]*?\n\t\},\n\tdefaults: \{ markdown: \{ headingIds: false, smartPunctuation: true \} \},/, "") });
+		r = ssqch(["build", "--root", dir]);
+		assert.ok(!r.ok && r.log.includes(says), r.log);
+	}
+	write(dir, { "ssqch.config.js": "export default { plugins: [{ name: \"slow\", markdown: { after: async (html) => html } }] };\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("plugin \"slow\": markdown.after answered with a promise"), r.log);
+});
+
+// Added in 0.13: `ssqch/from-vitepress`, VitePress's Markdown as a plugin, writes what the dialect did.
+test("from_vitepress_is_the_vitepress_dialect_as_a_plugin", () => {
+	const dir = tempDir("from-vitepress");
+	const page = "<script setup>\nimport X from './x.vue'\n</script>\n\n# What's Vue?\n\n::: tip\nPack *water*.\n:::\n\n[[toc]]\n";
+	write(dir, { "ssqch.config.js": "import { fromVitepress } from \"ssqch/from-vitepress\";\nexport default { plugins: [fromVitepress()] };\n", "index.md": page });
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	const before = read(dir, "_site/index.html");
+	// DELIBERATE (0.13): the old option is refused with the module's name.
+	write(dir, { "ssqch.config.js": "export default { markdown: { dialect: \"vitepress\" } };\n" });
+	const old = ssqch(["build", "--root", dir]);
+	assert.ok(!old.ok && old.log.includes("markdown.dialect is fromVitepress() from \"ssqch/from-vitepress\" now"), old.log);
+	assert.ok(before.includes("id=\"what-s-vue\"") && before.includes("class=\"tip custom-block\"") && !before.includes("<script"), before);
+});
+
+// Added in 0.13: `fromJekyll()` from "ssqch/from-jekyll": kramdown's Markdown as defaults the
+// site's own options replace, and Jekyll's `page` and `site` in templates.
+test("from_jekyll_gives_kramdown_and_jekylls_templates", () => {
+	const dir = tempDir("from-jekyll");
+	write(dir, {
+		"ssqch.config.js": "import { fromJekyll } from \"ssqch/from-jekyll\";\nexport default { templateFormats: [\"liquid\", \"md\"], markdownEngine: \"liquid\", markdown: { smartPunctuation: false }, data: { layout: \"base.liquid\" }, plugins: [fromJekyll()] };\n",
+		"_includes/base.liquid": "<title>{{ page.title }}</title>{{ content }}",
+		"index.md": "---\ntitle: Pine\n---\n<aside markdown=\"1\">\n*Hush*, \"pine\" at https://example.com\n</aside>\n",
+	});
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	// `page.title` is the front matter's; Markdown inside the aside; the site's own smartPunctuation; no bare-URL link.
+	assert.equal(read(dir, "_site/index.html"), "<title>Pine</title><aside>\n<p><em>Hush</em>, &quot;pine&quot; at https://example.com</p>\n</aside>\n");
+	write(dir, { "ssqch.config.js": "import { fromJekyll } from \"ssqch/from-jekyll\";\nexport default { plugins: [fromJekyll({ kramdwon: true })] };\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("unknown option \"kramdwon\" (did you mean \"kramdown\"?)"), r.log);
+	// DELIBERATE (0.13): the old options are refused with their module's name.
+	for (const [config, says] of [["{ jekyllTemplates: true }", "\"jekyllTemplates\" is gone: it's fromJekyll() from \"ssqch/from-jekyll\" now"], ["{ markdown: { admonitions: \"mkdocs\" } }", "markdown.admonitions is fromMkdocs() from \"ssqch/from-mkdocs\" now"]]) {
+		write(dir, { "ssqch.config.js": `export default ${config};\n` });
+		r = ssqch(["build", "--root", dir]);
+		assert.ok(!r.ok && r.log.includes(says), r.log);
+	}
+});
+
+// Added in 0.13: `fromHugo()` from "ssqch/from-hugo": Hugo's shortcodes as containers, as
+// `markdown: { shortcodes: "hugo" }` reads them.
+test("from_hugo_reads_shortcodes_as_containers", () => {
+	const dir = tempDir("from-hugo");
+	write(dir, {
+		"ssqch.config.js": "import { fromHugo } from \"ssqch/from-hugo\";\nexport default { markdownEngine: false, plugins: [fromHugo()] };\n",
+		"_includes/containers/note.jinja": "<div class=\"note {{ container.props.type }}\">{{ container.content | safe }}</div>",
+		"index.md": "{{< note type=\"tip\" >}}\nPack *water*.\n{{< /note >}}\n",
+	});
+	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
+	const withPlugin = read(dir, "_site/index.html");
+	assert.ok(withPlugin.startsWith("<div class=\"note tip\"><p>Pack <em>water</em>.</p>"), withPlugin);
+	// DELIBERATE (0.13): the option on its own is refused with the module's name.
+	write(dir, { "ssqch.config.js": "export default { markdownEngine: false, markdown: { shortcodes: \"hugo\" } };\n" });
+	const old = ssqch(["build", "--root", dir]);
+	assert.ok(!old.ok && old.log.includes("markdown.shortcodes is fromHugo() from \"ssqch/from-hugo\" now"), old.log);
+	write(dir, { "ssqch.config.js": "import { fromHugo } from \"ssqch/from-hugo\";\nexport default { plugins: [fromHugo({ shortcodes: true })] };\n" });
+	const bad = ssqch(["build", "--root", dir]);
+	assert.ok(!bad.ok && bad.log.includes("this plugin takes no options (got \"shortcodes\")"), bad.log);
+});
+
+// Added in 0.13, from the ReverentGeek blog's first build with llmsPlugin(): a copy's pictures
+// and links to them had the source's path, which imagePlugin() publishes under another name.
+// They take the addresses the page shows, and `ssqch patrol` checks a copy's own links.
+test("llms_copies_link_the_pictures_the_page_publishes", () => {
+	const dir = project({
+		"ssqch.config.js": "import { imagePlugin } from \"ssqch/image\";\nimport { llmsPlugin } from \"ssqch/llms\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [imagePlugin({ widths: [32], formats: [\"auto\"] }), llmsPlugin({ url: \"https://trail.example\" })] };\n",
+		"src/img/squatch.png": PNG,
+		"src/index.md": "# Pine\n\n![A squatch](/img/squatch.png)\n\n<img src=\"/img/squatch.png\" alt=\"Also a squatch\">\n\n[The full size](/img/squatch.png)\n",
+	}, "llms-images");
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	const copy = read(dir, "dist/index.md");
+	const published = [...copy.matchAll(/https:\/\/trail\.example(\/img\/[^)"\s]+)/g)].map((m) => m[1]);
+	assert.equal(published.length, 3, copy);
+	for (const p of published) assert.ok(fs.existsSync(path.join(dir, "dist", p)), `${p} isn't in the build: ${copy}`);
+	assert.ok(!copy.includes("/img/squatch.png"), copy);
+	const patrol = ssqch(["patrol", path.join(dir, "dist"), "--format", "json"]);
+	assert.ok(!JSON.parse(patrol.stdout).warnings.some((w) => w.code === "copy-broken"), patrol.stdout);
 });

@@ -1,5 +1,5 @@
 {
-  "version": "0.10.1",
+  "version": "0.12.0",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -45,7 +45,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed siting. Built in <time> (production)\n  Pages   11 written from 11 templates, 62.4 KB\n  Links   116 checked, 0 broken\n  Output  dist: 13 files, 66.2 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   11 written from 11 templates, 62.4 KB\n  Links   116 checked, 0 broken\n  Output  dist: 13 files, 66.2 KB\n",
   "files": {
     "blog/hello-1-0/index.html": "text",
     "blog/index.html": "text",

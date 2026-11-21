@@ -1,5 +1,5 @@
 {
-  "version": "0.10.1",
+  "version": "0.12.0",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -42,7 +42,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed siting. Built in <time> (production)\n  Pages     4 written from 4 templates, 12.4 KB\n  Copied    11 files, 34.9 KB\n  Elements  4 defined, 4 used on 3 pages\n  Links     35 checked, 0 broken\n  Output    dist: 16 files, 47.8 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages     4 written from 4 templates, 12.4 KB\n  Copied    11 files, 34.9 KB\n  Elements  4 defined, 4 used on 3 pages\n  Links     35 checked, 0 broken\n  Output    dist: 16 files, 47.8 KB\n",
   "files": {
     "about/index.html": "text",
     "elements/like-button.css": "text",

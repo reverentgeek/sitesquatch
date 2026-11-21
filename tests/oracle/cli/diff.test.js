@@ -142,7 +142,8 @@ test("diff_of_several_builds_lists_what_varies", () => {
 	assert.match(r.stdout, /~ \/stray\.txt  \(2 versions: missing from ref-1, ref-3; only in ref-2\)/);
 	// A fingerprint doesn't count, as in a diff of two.
 	assert.ok(!r.stdout.includes("app."), r.stdout);
-	assert.match(r.stdout, /2 files vary between builds made the same way; 1 page and 1 other file are the same in all of them\./);
+	// DELIBERATE (0.13): the line has its themed words in front (the audit's plan, step 5).
+	assert.match(r.stdout, /The eyewitness accounts differ: 2 files vary between builds made the same way; 1 page and 1 other file are the same in all of them\./);
 	const json = JSON.parse(ssqch(["diff", "ref-1", "ref-2", "ref-3", "--format", "json"], { cwd: dir }).stdout);
 	assert.deepEqual(json.summary, { varies: 2, steadyPages: 1, steadyFiles: 1 });
 	assert.deepEqual(json.varies.find((v) => v.url === "/stray.txt").versions, [{ runs: ["ref-1", "ref-3"], missing: true }, { runs: ["ref-2"], missing: false }]);

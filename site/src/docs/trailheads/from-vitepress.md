@@ -13,6 +13,7 @@ VitePress builds each Markdown page into a Vue component and ships a client app 
 // ssqch.config.js, as scout drafts it for vuejs.org
 import { sitemapPlugin } from "ssqch/sitemap";
 import { vuePlugin } from "ssqch/vue";
+import { fromVitepress } from "ssqch/from-vitepress";
 
 export default {
 	dirs: { input: "src", output: "dist" },
@@ -21,10 +22,11 @@ export default {
 	urls: "html",
 	ignore: ["api/api.data.ts", "error-reference/errors.data.ts", "examples/examples.data.ts", "tutorial/tutorial.data.ts", "tutorial/**/description.md", ".vitepress/**", "public/**"],
 	passthrough: { "src/public/**": "." },
-	markdown: { dialect: "vitepress", highlight: true },
+	markdown: { highlight: true },
 	plugins: [
+		fromVitepress(),
 		vuePlugin({ components: { VueSchoolLink: ".vitepress/theme/components/VueSchoolLink.vue", ScrimbaLink: ".vitepress/theme/components/ScrimbaLink.vue" }, hydrate: "visible" }),
-		sitemapPlugin({ url: "https://vuejs.org", format: "vitepress" }),
+		sitemapPlugin({ url: "https://vuejs.org" }),
 	],
 };
 ```
@@ -34,29 +36,29 @@ export default {
 - **`ignore`:** VitePress's data loaders are `*.data.ts`, and `api/api.data.ts` is the name ssqch gives a folder's data. Listed by their paths, they aren't read as data, and the `.data.js` files the move adds (a dynamic route's pagination) still are; `vuePlugin()` runs the loaders for the components and pages that import their `data`.
 - **`vuePlugin()`:** the Vue components the pages use, rendered with your Vite and Vue (`npm install -D vite @vitejs/plugin-vue vue`, which a VitePress site has already), with the ones the theme registers for every page in `components`, and `hydrate: "visible"` when one has state.
 - **`passthrough: { "src/public/**": "." }`:** `public/`'s files at the site's root. `{ "src/public": "." }` would copy the folder by its name.
-- **`dialect: "vitepress"`:** VitePress's Markdown (below).
+- **`fromVitepress()`** from `ssqch/from-vitepress`: VitePress's Markdown (below), as one plugin. It turns on VitePress's heading ids and email autolinks unless your `markdown` sets them, and a template of yours with a hook's or container's name replaces its markup.
 
 ## What maps
 
 | VitePress | SiteSquatch |
 | --- | --- |
 | Pages, front matter, `{#id}` on headings | The same |
-| `::: tip`, `info`, `warning`, `danger`, `details`, `raw`, `code-group` | `dialect: "vitepress"` writes VitePress's markup, default titles and all. A template in `_includes/containers/tip.*` replaces one. |
-| A closing `:::` indented under a list (Prettier writes them) | `containers: "markdown-it"`, which the dialect turns on |
-| Heading anchors, `tabindex`, VitePress's ids | The dialect's heading, with `headingIds: "vitepress"` (`What's Vue?` is `what-s-vue`) |
-| Links to `.md` files, external links in a new tab | The dialect's links: `.html` with `urls: "html"`, `./` in front of a relative one, `target="_blank" rel="noreferrer"` on an external one |
-| Code blocks, `[title]`, `vue-html`, `-vue` fences | The dialect's wrapper, copy button and label; `highlight: true` for colors, with ssqch's classes rather than Shiki's |
+| `::: tip`, `info`, `warning`, `danger`, `details`, `raw`, `code-group` | `fromVitepress()` writes VitePress's markup, default titles and all. A template in `_includes/containers/tip.*` replaces one. |
+| A closing `:::` indented under a list (Prettier writes them) | The same: it closes its container |
+| Heading anchors, `tabindex`, VitePress's ids | `fromVitepress()`'s heading, with `headingIds: "vitepress"` (`What's Vue?` is `what-s-vue`) |
+| Links to `.md` files, external links in a new tab | `fromVitepress()`'s links: `.html` with `urls: "html"`, `./` in front of a relative one, `target="_blank" rel="noreferrer"` on an external one |
+| Code blocks, `[title]`, `vue-html`, `-vue` fences | `fromVitepress()`'s wrapper, copy button and label; `highlight: true` for colors, with ssqch's classes rather than Shiki's |
 | `[[toc]]` | The same, in any case |
-| `<script setup>`, `<style>`, `<ClientOnly>` in a page | Left out by the dialect, as VitePress writes none of it |
+| `<script setup>`, `<style>`, `<ClientOnly>` in a page | Left out by `fromVitepress()`, as VitePress writes none of it |
 | A component in a page (`<VueSchoolLink href="..." />`) | A template in `_includes/components/VueSchoolLink.*`, with `component.props` and `component.content` ([components](../templates.md)) |
-| A `.vue` component a page imports, or the theme registers | `vuePlugin()` from `ssqch/vue` renders it with your Vite and Vue at build time, loaders and `useData()` included; `hydrate: "visible"` runs it in the browser as an island (the vuejs.org demos work this way). Scout drafts it, with the theme's `app.component()`s. |
+| A `.vue` component a page imports, or the theme registers | `vuePlugin()` from `ssqch/vue` renders it with your Vite and Vue at build time; with `fromVitepress()`, VitePress's loaders and `useData()` work in it too; `hydrate: "visible"` runs it in the browser as an island (the vuejs.org demos work this way). Scout drafts it, with the theme's `app.component()`s. |
 | A component with state, without Vue | Its HTML from a template, and what it does from a custom element in `ssqch/elements` |
 | `themeConfig.nav` and `sidebar` | Data: move them to `_data/themeConfig.js` and import that file in `.vitepress/config.ts`, so both read one list. `navTree` marks the page you're on; a sidebar keyed by path is the longest key the page's URL starts with. In Jinja, read `link.get("items")`: `link.items` is the dict's method where there's no key. |
 | The default theme's `Layout`, a theme's slots | A layout in `_includes/`. The theme's markup is in your build's HTML; `toc()`, `navTree` and `navPager` make the outline, the sidebar and the pager. |
 | `page: true`, `layout: home` | `page` is ssqch's own (it's warned about): give those pages a layout of their own (`layout: home.jinja`) |
 | `[param].md` with `[param].paths.ts` | `pagination` over the same list, `size: 1`, a `permalink` with the item's value, and `addAllPagesToCollections: true`, in `[param].data.js` beside the page |
 | `head` in the config | The layout's `<head>` |
-| `sitemap: { hostname }` | `sitemapPlugin({ url, format: "vitepress" })`, the same file byte for byte |
+| `sitemap: { hostname }` | `sitemapPlugin({ url })`, with the same URLs. The file is ssqch's own (a tag a line, pages by URL, with `<lastmod>`; `lastmod: false` leaves it out), so `ssqch diff` lists `sitemap.xml` as changed, and that's expected: no reader of a sitemap needs VitePress's bytes |
 | `markdown.config(md)` plugins | A render hook, a container, or `markdown.preprocess` |
 | `vitepress-plugin-llms` | `llmsPlugin()` from `ssqch/llms`: `llms.txt`, a Markdown copy of each page and `llms-full.txt` |
 

@@ -1,6 +1,6 @@
 // sitesquatch.dev: one Cloudflare Worker that serves the built site as static assets. Its one
-// script (worker.js) runs for /docs and /docs/* only, to answer `Accept: text/markdown` with a
-// page's Markdown copy; everything else is a file, served without it.
+// script (worker.js) runs for the pages with a Markdown copy (the home page, /docs and
+// /changelog), to answer `Accept: text/markdown` with the copy; everything else is a file, served without it.
 // .github/workflows/site.yml deploys it: `wrangler preview` for each pull request, `wrangler
 // deploy` from main.
 {
@@ -17,7 +17,7 @@
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS",
-		"run_worker_first": ["/docs", "/docs/*"],
+		"run_worker_first": ["/", "/docs", "/docs/*", "/changelog", "/changelog/*"],
 		// The nearest 404.html going up the folders, with a 404 status.
 		"not_found_handling": "404-page"
 		// html_handling stays the default (auto-trailing-slash), which serves docs/index.html at

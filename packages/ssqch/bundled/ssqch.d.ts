@@ -85,35 +85,23 @@ declare module "ssqch" {
 		taskLists?: boolean;
 		/** Bare `https://` and `www.` URLs become links. `"fuzzy"` links bare domains (`example.com`, with a common or two-letter country TLD) and email addresses too, as markdown-it's `linkify` does. `"email"` links email addresses (with `mailto:`) and URLs, not bare domains, as markdown-it's `linkify` with `fuzzyLink: false` does (VitePress's setting). Default `true`. */
 		autolinks?: boolean | "fuzzy" | "email";
-		/** A single newline inside a paragraph (or a list item) becomes a `<br>`, as markdown-it's `breaks: true` makes it. Default `false`. */
+		/** A single newline inside a paragraph (or a list item) becomes a `<br>`. Default `false`. (markdown-it's `breaks: true` writes the same.) */
 		breaks?: boolean;
-		/** An image (or a linked image) alone in a paragraph becomes `<figure><img alt=""><figcaption>its alt text</figcaption></figure>`, as markdown-it-implicit-figures with `figcaption: true` writes it. Default `false`. */
+		/** An image (or a linked image) alone in a paragraph becomes `<figure><img alt=""><figcaption>its alt text</figcaption></figure>`. Default `false`. (markdown-it-implicit-figures with `figcaption: true` writes the same.) */
 		figures?: boolean;
 		/** GitHub's `> [!NOTE]` alerts: note, tip, important, warning and caution. Default `true`. */
 		alerts?: boolean;
-		/** `::: name args` blocks, rendered by `_includes/containers/name.*`. A container closes inside the block it opened in (a list item's closes in that item). `"markdown-it"` reads them as markdown-it-container (and VitePress) does: a closing `:::` indented less than four spaces closes the innermost open container, so Prettier's `:::` indented under the list it ends works. Default `true`. */
-		containers?: boolean | "markdown-it";
+		/** `::: name args` blocks, rendered by `_includes/containers/name.*`. A closing `:::` indented less than four spaces closes the innermost open container, so Prettier's `:::`, indented under the list it ends, works (as markdown-it-container and VitePress read them). Default `true`. */
+		containers?: boolean;
 		/** A term, then `: definition` lines. Default `false`. */
 		definitionLists?: boolean;
 		/** Curly quotes, dashes and ellipses. Default `false`. */
 		smartPunctuation?: boolean;
 		/** Lines indented four spaces are code blocks. `false` renders them as ordinary Markdown (HTML indented inside Markdown, say); fences are still code. Default `true`. */
 		indentedCode?: boolean;
-		/** Link and image URLs are percent-encoded, as CommonMark's reference renderer writes them (`#كتابة` as `#%D9%83...`, `café.png` as `caf%C3%A9.png`). `false` writes them as the page has them, HTML-escaped only (`&` as `&amp;`), as kramdown (Jekyll) does; browsers go to the same place either way. A link or image hook gets the URL as written in both. Default `true`. */
-		encodeUrls?: boolean;
 		/** Highlight fenced code at build time, with `hl-*` classes. The build writes their stylesheet to `/highlight.css`, or to `css` (a URL path), or not at all with `css: false`. `languages` adds languages or replaces built-in ones. `classes` names the tokens as another highlighter does, so a site keeps its theme's CSS: `"prism"` (`token keyword`, `<pre class="language-js">`, marked lines as `<mark class="highlight-line highlight-line-active">`), `"pygments"` or `"chroma"` (Pygments' short names, `k`, `s`, `nf`, which MkDocs' and Hugo's themes style), or `{ keyword: "tok-keyword" }` for some kinds; the stylesheet uses the same names. Default `false`. */
-		/** Markdown inside HTML, as Jekyll's kramdown reads it: `"kramdown"` renders the content of an element with `markdown="1"` (span-level for `p`, headings and inline elements, block-level for the others; `"block"` and `"span"` choose) and drops the attribute, and keeps kramdown's HTML rules: a block-level element is raw HTML to its end tag, blank lines and all. Default `false`: HTML is CommonMark's, and Markdown inside it stays text. */
-		htmlMarkdown?: "kramdown" | false;
-		/** MkDocs' admonitions: `"mkdocs"` writes `!!! note "Title"` (body indented four spaces) as Python-Markdown's `<div class="admonition note"><p class="admonition-title">Title</p>...</div>`, and `??? note` and `???+ note` (pymdownx.details) as `<details class="note">`, open with `+`. The title is the type's name when there's none, and left out for `""`. Default `false`. */
-		admonitions?: "mkdocs" | false;
-		/** MkDocs' content tabs: `"mkdocs"` writes `=== "Tab"` blocks (body indented four spaces; tabs one after another are one set, `===+` selected, `===!` a new set) as pymdownx.tabbed's `alternate_style` writes them (`<div class="tabbed-set tabbed-alternate">`), which Material's CSS styles. Default `false`. */
-		tabs?: "mkdocs" | false;
-		/** Hugo's shortcodes: `"hugo"` reads a shortcode on a line of its own as a container: `{{< note type="tip" >}}` to `{{< /note >}}` (or `{{% %}}`) renders `_includes/containers/note.*` with `container.args`, `container.props` and the content as Markdown; one with no closing tag has no content. One inside a line of text renders through the same template in its place, with `container.inline` true (one with no template is left as written). Default `false`. */
-		shortcodes?: "hugo" | false;
 		/** Links to `.md` files (`[Setup](setup/install.md#first)`) go to the page built from that file, with the `#` part: `true` writes its URL from the site's root (`/setup/install/#first`), `"relative"` from the page, as MkDocs does (`setup/install/#first`). A link to a file that isn't a page stays as written, for the link checker. Default `false`. */
 		sourceLinks?: boolean | "relative";
-		/** Another Markdown's ways, where they're CommonMark's otherwise. `"python-markdown"` (MkDocs'): a raw HTML block runs to its closing tag, blank lines and all; a list nests at four spaces (an item indented less is the next item); and the HTML is Python-Markdown's: `"` as it is in text, `<hr />`, `<br />`, `<img alt="" src="" />`, a tight item's nested list right after its text, nothing at the end. Default `false`. `"vitepress"`: Markdown as VitePress reads and writes it: Vue's `<script>`, `<style>` and `<ClientOnly>` left out, `-vue` fences, `[[toc]]`, and VitePress's markup for headings, links, code blocks, tables and the `tip`, `info`, `warning`, `danger`, `details`, `raw` and `code-group` containers, as built-in hooks a site's own templates replace; with `headingIds: "vitepress"`, `autolinks: "email"` and `containers: "markdown-it"` unless set. */
-		dialect?: "python-markdown" | "vitepress" | false;
 		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter>; classes?: "prism" | "pygments" | "chroma" | Partial<Record<TokenKind, string>> };
 	}
 
@@ -231,11 +219,47 @@ declare module "ssqch" {
 		plugins?: Plugin[];
 	}
 
+	/** What a plugin's Markdown steps and hooks get besides their text. */
+	export interface MarkdownStepContext {
+		/** The page's data, as its templates see it. */
+		data: Record<string, any>;
+		/** The page (`data.page`): `url`, `inputPath` and the rest. */
+		page: Record<string, any> | undefined;
+		/** The site's `urls`: `"html"` when pages are `/guide/intro.html`. */
+		urls: "folders" | "html";
+		/** Markdown rendered with the site's options and hooks; `{ inline: true }` leaves out the `<p>`. */
+		markdown(text: string, options?: { inline?: boolean }): string;
+		/** Whether the site or a plugin has the render hook or container `name` (`"heading"`, `"containers/tip"`). */
+		hasHook(name: string): boolean;
+		/** Calls the render hook `name` with `value` under `key` (`renderHook("containers/tip", "container", { args, content })`): the site's template if it has one, else a plugin's. */
+		renderHook(name: string, key: string, value: Record<string, any>): string;
+	}
+
+	/** A plugin's own steps in ssqch's Markdown. Each answers at once with text. */
+	export interface PluginMarkdown {
+		/** The page's Markdown, before ssqch's Markdown reads it (after its template engine). Runs in the order the plugins are listed, before the site's `markdown.preprocess`. */
+		before?: (source: string, context: MarkdownStepContext) => string;
+		/** The HTML ssqch's Markdown wrote for the page, before its layouts. */
+		after?: (html: string, context: MarkdownStepContext) => string;
+		/** Render hooks and containers, as functions that return HTML: `heading`, `link`, `image`, `fence`, `code`, `table`, `containers/<name>`. Each gets what the template of the same name would (`heading.level`, `container.content`). A site's own template of the same name (`_includes/hooks/heading.*`) replaces it; a later plugin's replaces an earlier one's. */
+		hooks?: Record<string, (value: Record<string, any>, context: MarkdownStepContext) => string>;
+	}
+
+	/** A plugin: the config's parts, and what only a plugin can give. */
+	export interface PluginParts extends ConfigParts {
+		/** The plugin's name, for its errors. */
+		name?: string;
+		/** Steps in ssqch's Markdown, and render hooks as functions. */
+		markdown?: PluginMarkdown;
+		/** Values for the site's settings that its own config replaces: `markdown` options (`{ markdown: { headingIds: "ascii" } }`) for any key the site's `markdown` doesn't set. */
+		defaults?: { markdown?: MarkdownOptions };
+	}
+
 	export type Plugin =
-		| ConfigParts
+		| PluginParts
 		| BuiltinPlugin
 		| RustPlugin
-		| ((context: ConfigContext) => MaybePromise<ConfigParts | BuiltinPlugin | RustPlugin | false | null | undefined>)
+		| ((context: ConfigContext) => MaybePromise<PluginParts | BuiltinPlugin | RustPlugin | false | null | undefined>)
 		| false
 		| null
 		| undefined;
@@ -264,21 +288,13 @@ declare module "ssqch" {
 		deepMerge?: boolean;
 		/** Delete output files an earlier build wrote or copied that this one didn't (a deleted post's page). Files other tools write are never touched. Default `false`. */
 		leaveNoTrace?: boolean;
-		/** Another name for `leaveNoTrace`. Set one of them. */
-		clean?: boolean;
 		/** Globs (relative to the input folder) of files that aren't pages, like `["drafts/**", "notes/*.wip.md"]`. */
 		ignore?: string | string[];
 		/** Page bundles: copy the other files in a folder whose page is `index.*` (images, downloads) next to the page. Default `false`. */
 		bundles?: boolean;
 		/** Printing an undefined value (`{{ titel }}`) is an error, in every template language. Conditionals and defaults still work. Default `false`. */
 		strict?: boolean;
-		/** Start a template's body at its first line with text, dropping the blank lines after the closing `---`, as Jekyll does (its layouts and includes print no blank line there). Off by default: the body starts on the line after `---`, as Eleventy and gray-matter have it. */
-		trimAfterFrontMatter?: boolean;
-		/** Templates see Jekyll's `page` and `site`, so a Jekyll site's layouts and includes run as written: `page` has the page's front matter too (`page.title`; ssqch's own keys, like `url` and `date`, win) and `page.path` and `page.categories`; `site` has the site's own keys, `posts` (newest first), each collection by its tag (`site.articles`), `pages`, `html_pages`, `categories`, `tags`, `data` (the global data) and `time`; and their items read in Jekyll's shape (`post.title`, `post.content`, `post.excerpt`). Off by default: front matter is at the top level (`title`) and items keep it under `data`. */
-		jekyllTemplates?: boolean;
-		/** Templates see what MkDocs gives a theme's, so an MkDocs theme's Jinja templates (Material for MkDocs') run as written: `config` (mkdocs.yml, with the theme's `mkdocs_theme.yml` under its `theme`), `nav` (Sections, Pages and Links, with `active` on the page being rendered), `page` in a layout (MkDocs' page: `title`, `url` without its first `/`, `abs_url`, `canonical_url`, `edit_url`, `content`, `toc`, `meta`, `previous_page`, `next_page`, `ancestors`, `is_homepage`), `base_url`, `mkdocs_version` and `build_date_utc`, and the `url` and `script_tag` filters, relative to the page. A Markdown page's layout is `main.html` (or its front matter's `template`), the theme's `404.html` makes `/404.html`, and Jinja doesn't escape (`jinja: { autoescape }` says otherwise). `true` reads `mkdocs.yml`; a string names another file. Off by default. */
-		mkdocsTemplates?: boolean | string;
-		/** Jinja's settings for `.jinja` and `.j2` templates. `autoescape: false` prints values as they are, as MkDocs' Jinja does (`| e` still escapes); default `true`, or `false` with `mkdocsTemplates`. `.njk` always escapes. */
+		/** Jinja's settings for `.jinja` and `.j2` templates. `autoescape: false` prints values as they are (`| e` still escapes); default `true`, or `false` with `fromMkdocs({ templates: true })`, since MkDocs' Jinja doesn't escape. `.njk` always escapes. */
 		jinja?: { autoescape?: boolean };
 		/** `page.lastModified`: `"git"` for the last commit that changed the page's file (its modification time when it has uncommitted changes), or `"file"` for the modification time. Off by default. Needs the full history in CI (`fetch-depth: 0`). */
 		lastModified?: "git" | "file" | false;
@@ -286,9 +302,9 @@ declare module "ssqch" {
 		dateFallback?: "git" | "file";
 		/** The time zone the site's own JavaScript runs in, as an IANA name (`"UTC"`, `"America/New_York"`): `Date`'s local methods and libraries like luxon and date-fns, in data files, filters, hooks and Edge templates, so a laptop and CI build the same pages. ssqch's own date filters are UTC whatever this says. Default: the machine's. The config's own top-level code runs before it applies. */
 		timeZone?: string;
-		/** A page's URL when it has no `permalink`: `"folders"` (the default) writes `guide/intro.md` as `/guide/intro/` (`guide/intro/index.html`), `"html"` as `/guide/intro.html`, as VitePress without `cleanUrls`, Hugo's `uglyURLs` and Docusaurus's `trailingSlash: false` do. An index page is its folder either way (`guide/index.md` is `/guide/`). */
+		/** A page's URL when it has no `permalink`: `"folders"` (the default) writes `guide/intro.md` as `/guide/intro/` (`guide/intro/index.html`), `"html"` as `/guide/intro.html`. An index page is its folder either way (`guide/index.md` is `/guide/`). (`"html"` is VitePress without `cleanUrls`, Hugo's `uglyURLs` and Docusaurus's `trailingSlash: false`.) */
 		urls?: "folders" | "html";
-		/** Other names for layouts: `{ post: "layouts/post.njk" }` makes `layout: post` that file (where it would be `_includes/post.*`), as Eleventy's `addLayoutAlias` did. A page's `layout` is still the name it gave. */
+		/** Other names for layouts: `{ post: "layouts/post.njk" }` makes `layout: post` that file (where it would be `_includes/post.*`). A page's `layout` is still the name it gave. (Eleventy's `addLayoutAlias` does the same.) */
 		layoutAliases?: Record<string, string>;
 		/** The path the site is served under, when that isn't the root of its domain: `"/repo/"` for `https://you.github.io/repo/`. Templates and `page.url` stay as they are; ssqch adds the base to URLs from the site's root in the HTML it writes. Use the `withBase()` filter outside HTML attributes. */
 		base?: string;
@@ -537,14 +553,12 @@ declare module "ssqch/sitemap" {
 	import type { BuiltinPlugin } from "ssqch";
 
 	export interface SitemapPluginOptions {
-		/** The site's address, like `"https://example.com"`. Without one (or with `""`, as a Jekyll site's `url` often is), each `<loc>` is a path from the site's root, as jekyll-sitemap writes it, and every build warns: search engines read only whole addresses. */
-		url?: string;
+		/** The site's address, like `"https://example.com"`: required, since a sitemap lists whole addresses and search engines read only those. With a `base`, it can be the domain or include the base. */
+		url: string;
 		/** URL globs to leave out, like `["/tags/**"]`. Pages with `sitemap: false` and 404 pages are always left out. */
 		exclude?: string[];
-		/** Add `<lastmod>` from each page's date. Default `true` (`false` with `format: "vitepress"`). */
+		/** Add `<lastmod>` from each page's date. Default `true`. */
 		lastmod?: boolean;
-		/** How the file is written: `"ssqch"` (the default: one tag per line, pages by URL) or `"vitepress"`, the sitemap VitePress's `sitemap` option writes (one line, its five namespaces, pages in the order of their files, no `<lastmod>` unless `lastmod: true`), so a move from VitePress compares byte for byte. */
-		format?: "ssqch" | "vitepress";
 		/** Where to write it. Default `"/sitemap.xml"`. */
 		output?: string;
 		/** List every page of a list split into pages (`/2/`, `/3/`), not just the first. Pagination with `size: 1` (a page per tag, say) is always listed. Default `false`. */
@@ -555,6 +569,42 @@ declare module "ssqch/sitemap" {
 
 	/** Writes `sitemap.xml` listing every HTML page. */
 	export function sitemapPlugin(options: SitemapPluginOptions): BuiltinPlugin;
+}
+
+declare module "ssqch/from-vitepress" {
+	import type { BuiltinPlugin } from "ssqch";
+	/** VitePress's Markdown, for a site moving from VitePress, and VitePress's ways for `vuePlugin()`'s components (`useData()` and the rest from "vitepress", `@theme/`, and `./x.data` imports running its data loaders): Vue's `<script>` and `<style>` blocks and `<ClientOnly>` left out, VitePress's markup for headings (`header-anchor`), links (`.html` with `urls: "html"`, external ones in a new tab), code blocks and tables, its `tip`, `info`, `warning`, `danger`, `details`, `raw` and `code-group` containers, `[[toc]]`, and, under the site's own `markdown` options, its heading ids and email autolinks. A site's own hook or container template of the same name replaces VitePress's. Takes no options. */
+	export function fromVitepress(): BuiltinPlugin;
+}
+
+declare module "ssqch/from-mkdocs" {
+	import type { BuiltinPlugin } from "ssqch";
+	export interface FromMkdocsOptions {
+		/** The mkdocs.yml, from the project root, that `templates` reads. Default `"mkdocs.yml"`. */
+		config?: string;
+		/** What MkDocs gives a theme's templates, so an MkDocs theme's Jinja (Material for MkDocs') runs as written: `config`, `nav`, `page` (with `content` and `toc` in layouts), `base_url`, the `url` filter, `main.html` (or a page's `template`) as a Markdown page's layout, the theme's `404.html` as the 404 page, and `.jinja` not escaping what it prints, as MkDocs' Jinja doesn't. Default `false`: turn it on once the theme's templates are in the site (`theme: "theme"`). */
+		templates?: boolean;
+	}
+	/** MkDocs' Markdown for a site moving from MkDocs, each a default under the site's own `markdown` options: Python-Markdown's reading (`dialect: "python-markdown"`: raw HTML blocks to their closing tag, lists at four spaces), its toc's heading ids, `!!! note` admonitions and `=== "Tab"` tabs as Material writes them, and `.md` links from the page; and with `templates`, MkDocs' context for a theme's templates. */
+	export function fromMkdocs(options?: FromMkdocsOptions): BuiltinPlugin;
+}
+
+declare module "ssqch/from-jekyll" {
+	import type { BuiltinPlugin } from "ssqch";
+	export interface FromJekyllOptions {
+		/** Templates see Jekyll's `page` and `site`, so a Jekyll site's layouts and includes run as written: `page` has the page's front matter too (`page.title`; ssqch's own keys, like `url` and `date`, win), `page.path` and `page.categories`; `site` has the site's own keys, `posts` (newest first), each collection by its tag (`site.articles`), `pages`, `html_pages`, `categories`, `tags`, `data` (the global data) and `time`; and items read in Jekyll's shape (`post.title`, `post.content`, `post.excerpt`). Default `true`. */
+		templates?: boolean;
+		/** kramdown's Markdown, each a default under the site's own `markdown` options: Markdown inside HTML with `markdown="1"` (`htmlMarkdown: "kramdown"`), kramdown's heading ids (`headingIds: "kramdown"`), smart quotes (`smartPunctuation: true`) and no links from bare URLs (`autolinks: false`). Default `true`. */
+		kramdown?: boolean;
+	}
+	/** What a Jekyll site's templates and Markdown expect, for a site moving from Jekyll: Jekyll's `page` and `site` in templates, and kramdown's Markdown. */
+	export function fromJekyll(options?: FromJekyllOptions): BuiltinPlugin;
+}
+
+declare module "ssqch/from-hugo" {
+	import type { BuiltinPlugin } from "ssqch";
+	/** Hugo's shortcodes for a site moving from Hugo, as a default under the site's own `markdown` options (`shortcodes: "hugo"`): a shortcode on a line of its own (`{{< note type="tip" >}}` to `{{< /note >}}`, or `{{% %}}`) is a container rendered by `_includes/containers/<name>.*`, with its arguments as `container.props`, and one inside a line of text renders the same template in its place, with `container.inline` true. Takes no options. */
+	export function fromHugo(): BuiltinPlugin;
 }
 
 declare module "ssqch/vue" {
@@ -577,26 +627,44 @@ declare module "ssqch/vue" {
 
 declare module "ssqch/llms" {
 	import type { BuiltinPlugin } from "ssqch";
+	/** A page as `section` and `sort` get it. */
+	export interface LlmsPage { url: string; inputPath: string; outputPath: string; date: Date; data: Record<string, any> }
 	export interface LlmsPluginOptions {
 		/** The `# heading` of `llms.txt`. Default: `site.title` in the site's data, or the home page's title. */
 		title?: string;
 		/** A line under it, as `> description`. */
 		description?: string;
-		/** The site's address, like `"https://example.com"`, for whole links. Default: links from the site's root. */
+		/** Markdown after the description, in `llms.txt` and `llms-full.txt`: what a model should know before it reads on, like a list of where else the docs are. */
+		details?: string;
+		/** The site's address, like `"https://example.com"`, for whole links in `llms.txt` and in every copy. Default: links from the site's root. */
 		url?: string;
-		/** URL globs of pages to leave out, like `["/blog/**"]`. 404 pages are always left out. */
+		/** URL globs of pages to leave out, like `["/blog/**"]`. 404 pages are always left out, and so is a page whose front matter says `llms: false`. */
 		exclude?: string[];
-		/** A Markdown copy of each listed page beside its URL (`/guide/intro.html` and `/guide/intro.md`; `/guide/` is `/guide.md`), which `llms.txt` links to. Default `true`; with `false`, it links to the pages. */
+		/** A Markdown copy of each listed page beside its URL (`/guide/intro.html` is `/guide/intro.md`, and `/guide/intro/` is `/guide/intro/index.md`, as llms.txt's v2 proposal has them), which `llms.txt` links to. A Markdown page's copy is its Markdown after its template engine ran; another page's is its `<article>`, `<main>` or `<body>` as Markdown. Links in a copy are whole addresses, and a link to a page with a copy goes to the copy. Default `true`; with `false`, `llms.txt` links to the pages. */
 		copies?: boolean;
 		/** `/llms-full.txt`, every listed page's Markdown in one file, each after a `url:` line. Default `true`. */
 		full?: boolean;
-		/** A hidden `<div hidden aria-hidden="true">` at the top of each listed page's `<body>`, naming its Markdown copy, for a model that reads the HTML. Default `false`: a build adds no markup of its own unless asked. */
-		hint?: boolean;
-		/** A page's section in `llms.txt`: a function that gets each page and returns a name. Default: its first folder (`/guide/...` is "Guide"; the top's pages are "Pages"). */
-		section?: (page: { url: string; inputPath: string; outputPath: string; date: Date; data: Record<string, any> }) => string | undefined;
+		/** A page's section in `llms.txt`: a function that gets each page and returns a name. Default: its first folder (`/guide/...` is "Guide"; the top's pages are "Pages"). Sections are in the order their first page comes. */
+		section?: (page: LlmsPage) => string | undefined;
+		/** The pages' order, as `Array.prototype.sort` takes it: `(a, b) => a.data.order - b.data.order`. Default: by URL. */
+		sort?: (a: LlmsPage, b: LlmsPage) => number;
 	}
-	/** Writes `/llms.txt` (the pages that came from Markdown, with links to their Markdown), a Markdown copy of each, and `/llms-full.txt`, for language models, as llmstxt.org describes. */
+	/** Writes `/llms.txt` (the site's pages, with links to their Markdown), a Markdown copy of each, and `/llms-full.txt`, for language models, as llmstxt.org describes; and adds the template function `markdownCopy(page.url)`, the URL of a page's copy (or `""` when it has none), for a layout's `<link rel="alternate" type="text/markdown">`. */
 	export function llmsPlugin(options?: LlmsPluginOptions): BuiltinPlugin;
+}
+
+declare module "ssqch/robots" {
+	import type { BuiltinPlugin } from "ssqch";
+	export interface RobotsPluginOptions {
+		/** What AI crawlers may do, by what they're for: `training` (collecting pages to train models: GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot, meta-externalagent, Bytespider), `search` (indexing them for an AI search: OAI-SearchBot, Claude-SearchBot, PerplexityBot) and `fetch` (reading a page a person asked about: ChatGPT-User, Claude-User, Perplexity-User, meta-externalfetcher). `false` gives that purpose's crawlers a group with `Disallow: /`. Each defaults to `true`: no group, so they read everyone's. */
+		ai?: { training?: boolean; search?: boolean; fetch?: boolean };
+		/** URL paths no crawler should read, like `["/drafts/"]`, as `Disallow:` lines in everyone's group. */
+		disallow?: string[];
+		/** The `Sitemap:` line: by default `sitemapPlugin()`'s address when it's on (none without it); `false` leaves it out; a string is another sitemap's whole address. */
+		sitemap?: boolean | string;
+	}
+	/** Writes `/robots.txt`: the paths no crawler reads, a group for each kind of AI crawler that's turned off, and the sitemap's address. */
+	export function robotsPlugin(options?: RobotsPluginOptions): BuiltinPlugin;
 }
 
 declare module "ssqch/elements" {
@@ -641,7 +709,7 @@ declare module "ssqch/sass" {
 		style?: "compressed" | "expanded";
 		/** More folders `@use` and `@import` look in, relative to the project root. */
 		loadPaths?: string[];
-		/** `false` leaves out what CSS with a character outside ASCII starts with: a byte order mark (compressed) or `@charset "UTF-8";` (expanded), as Dart Sass's `--no-charset` does and jekyll-sass-converter's output has it. Default `true`. */
+		/** `false` leaves out what CSS with a character outside ASCII starts with: a byte order mark (compressed) or `@charset "UTF-8";` (expanded). Default `true`. (Dart Sass's `--no-charset`; jekyll-sass-converter's CSS has neither.) */
 		charset?: boolean;
 	}
 

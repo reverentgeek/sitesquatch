@@ -1,7 +1,8 @@
 // What the dev server answers: a file from the output folder, with the reload script and a tab
 // icon added to pages as they're sent, the questions that script asks (`/__ssqch/build`,
 // `/__ssqch/missing`), and a 404 page of its own for a site without one. `ssqch serve --built`
-// answers with the files as they are, compressed as a host would.
+// answers with the files as they are, compressed as a host would. Both answer a request for a
+// page that asks for `text/markdown` with the page's Markdown copy, when it has one.
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
@@ -120,6 +121,7 @@ export function contentType(file: string): string {
 		case "json": return "application/json";
 		case "xml": return "application/xml; charset=utf-8";
 		case "txt": return "text/plain; charset=utf-8";
+		case "md": return "text/markdown; charset=utf-8";
 		case "svg": return "image/svg+xml";
 		case "png": return "image/png";
 		case "jpg": case "jpeg": return "image/jpeg";
@@ -132,6 +134,35 @@ export function contentType(file: string): string {
 		case "pdf": return "application/pdf";
 		default: return "application/octet-stream";
 	}
+}
+
+/**
+ * Whether a request would rather have Markdown than HTML: `text/markdown` among what its
+ * `Accept` lists, by name, with a q-value above 0 and at least the one HTML gets (`text/html`, or
+ * else `text/*` or `*\/*`). Claude Code, Cursor and OpenCode ask this way; a browser lists
+ * `text/html` and never `text/markdown`, and `*\/*` alone (curl's) doesn't count for Markdown, so
+ * neither gets it.
+ */
+export function prefersMarkdown(accept: string | undefined): boolean {
+	if (!accept) return false;
+	const q = new Map<string, number>();
+	for (const part of accept.split(",")) {
+		const [type, ...params] = part.split(";").map((p) => p.trim().toLowerCase());
+		if (!type) continue;
+		const given = params.find((p) => p.startsWith("q="));
+		const value = given === undefined ? 1 : Number(given.slice(2));
+		q.set(type, Number.isFinite(value) ? value : 0);
+	}
+	const markdown = q.get("text/markdown") ?? 0;
+	const html = q.get("text/html") ?? q.get("text/*") ?? q.get("*/*") ?? 0;
+	return markdown > 0 && markdown >= html;
+}
+
+/** A page's Markdown copy beside it, where llmsPlugin() writes one (`about/index.html` has `about/index.md`), if it's there. */
+function copyOf(file: string): string | undefined {
+	if (!/\.html?$/.test(file)) return undefined;
+	const copy = file.replace(/\.html?$/, ".md");
+	return isFile(copy) ? copy : undefined;
 }
 
 /** Whether a page has an icon of its own: a `<link>` whose `rel` has `icon`. */
@@ -221,6 +252,9 @@ export function handle(req: http.IncomingMessage, res: http.ServerResponse, root
 	const url = at.path;
 	const found = locate(res, root, rawUrl, url);
 	if (!found) return;
+	// A page with a Markdown copy is two answers, by what the request asks for.
+	const copy = found.status === 200 ? copyOf(found.file) : undefined;
+	if (copy && prefersMarkdown(req.headers.accept)) return respond(res, 200, { "Content-Type": "text/markdown; charset=utf-8", Vary: "Accept", ...noCache, "X-Powered-By": "pine cones" }, read(copy) ?? "");
 	let body = read(found.file);
 	let ctype = contentType(found.file);
 	if (!body) {
@@ -240,7 +274,7 @@ export function handle(req: http.IncomingMessage, res: http.ServerResponse, root
 		body = Buffer.from(end === -1 ? `${html}<script>${LIVE_SCRIPT}</script>` : `${html.slice(0, end)}<script>${LIVE_SCRIPT}</script>${html.slice(end)}`);
 	}
 	// The dev server's own; a deployed site's headers are its host's.
-	respond(res, found.status, { "Content-Type": ctype, ...noCache, "X-Powered-By": "pine cones" }, body);
+	respond(res, found.status, { "Content-Type": ctype, ...(copy ? { Vary: "Accept" } : {}), ...noCache, "X-Powered-By": "pine cones" }, body);
 }
 
 /** Whether a browser takes gzip: `gzip` among what its `Accept-Encoding` lists. */
@@ -257,8 +291,10 @@ export function handleBuilt(req: http.IncomingMessage, res: http.ServerResponse,
 	if ("redirect" in at) return respond(res, 302, { Location: at.redirect });
 	const found = locate(res, root, rawUrl, at.path);
 	if (!found) return;
-	let body = read(found.file);
-	let ctype = contentType(found.file);
+	const copy = found.status === 200 ? copyOf(found.file) : undefined;
+	const markdown = copy !== undefined && prefersMarkdown(req.headers.accept);
+	let body = read(markdown ? copy : found.file);
+	let ctype = markdown ? "text/markdown; charset=utf-8" : contentType(found.file);
 	if (!body) {
 		body = Buffer.from(`Not found: ${fullUrl}`);
 		ctype = "text/plain; charset=utf-8";
@@ -266,7 +302,7 @@ export function handleBuilt(req: http.IncomingMessage, res: http.ServerResponse,
 	const compressible = ctype.startsWith("text/") || ctype.startsWith("application/json") || ctype.startsWith("application/xml") || ctype === "image/svg+xml";
 	const gzip = compressible && body.length > 256 && takesGzip(req);
 	const headers: Headers = { "Content-Type": ctype };
-	if (compressible) headers.Vary = "Accept-Encoding";
+	if (compressible) headers.Vary = copy ? "Accept, Accept-Encoding" : "Accept-Encoding";
 	if (gzip) headers["Content-Encoding"] = "gzip";
 	respond(res, found.status, headers, gzip ? zlib.gzipSync(body) : body);
 }

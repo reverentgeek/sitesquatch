@@ -1,5 +1,5 @@
 ---
-title: "Where a value comes from"
+title: "Following the tracks: where a value comes from"
 description: "A page's data is a cascade."
 ---
 A page's data is a cascade. From the lowest level to the highest:
@@ -13,10 +13,10 @@ A page's data is a cascade. From the lowest level to the highest:
 
 A higher level replaces what a lower one set. Objects merge key by key and lists are joined (a post's `tags` add to its folder's), unless `deepMerge` is off. `page` and `ssqch` are built in.
 
-When a value isn't what you expected, `ssqch inspect` follows its tracks back to the level that set it. Give it a page's URL or its template's path:
+When a value isn't what you expected, `ssqch trace` follows its tracks back to the level that set it. Give it a page's URL or its template's path:
 
 ```sh
-ssqch inspect /guides/pine/
+ssqch trace /guides/pine/
 ```
 
 ```text
@@ -39,7 +39,7 @@ ssqch inspect /guides/pine/
 `--field` shows one value in full, with every level that set it:
 
 ```sh
-ssqch inspect src/guides/2024-03-02-pine.md --field level
+ssqch trace src/guides/2024-03-02-pine.md --field level
 ```
 
 ```text
@@ -52,6 +52,6 @@ Set by (the last one wins):
 ```
 
 - **Inside a value:** a dotted path reaches into objects (`--field site.author.name`, `--field hero.alt`).
-- **Pages made by pagination:** a template that makes many pages needs the URL of one of them. `ssqch inspect src/tags.jinja` lists them.
+- **Pages made by pagination:** a template that makes many pages needs the URL of one of them. `ssqch trace src/tags.jinja` lists them.
 - **Scripts and agents:** `--format json` prints the report as JSON (`schemaVersion: 1`), with `value`, `from` and `setBy` for each field.
 - **No page is built:** it reads the site as a build does, up to the point of rendering. `beforeBuild` hooks run, since data can depend on them (a command that writes a data file, a plugin that sets itself up there), but no page is rendered or written, and `afterBuild` doesn't run. Standard output is only the report; anything a hook or `console.log` prints goes to standard error.

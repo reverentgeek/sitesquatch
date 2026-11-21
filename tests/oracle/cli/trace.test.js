@@ -1,4 +1,5 @@
-// From crates/ssqch/tests/cli.rs.
+// From crates/ssqch/tests/cli.rs. DELIBERATE (0.13): `ssqch inspect` is `ssqch trace` (the audit's
+// plan, step 5: it follows a value's tracks back through the cascade), with the same options and JSON.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ssqch, tempDir, write, exists } from "../lib/ssqch.js";
@@ -19,7 +20,7 @@ test("inspect_says_where_a_page_and_its_data_come_from", () => {
 	});
 	// The report (standard output), or what went wrong.
 	const run = (args) => {
-		const r = ssqch(["inspect", "--root", d, ...args]);
+		const r = ssqch(["trace", "--root", d, ...args]);
 		return [r.ok, r.ok ? r.stdout : r.stderr];
 	};
 
@@ -46,7 +47,7 @@ test("inspect_says_where_a_page_and_its_data_come_from", () => {
 	// No page was built, and `afterBuild` didn't run.
 	assert.ok(!exists(dir, "dist") && !exists(dir, "after.txt"));
 	// `beforeBuild` did, since data can depend on it. What it and the config print isn't in the report.
-	let r = ssqch(["inspect", "--root", d, "/guides/pine/", "--field", "made.by", "--format", "json"]);
+	let r = ssqch(["trace", "--root", d, "/guides/pine/", "--field", "made.by", "--format", "json"]);
 	assert.ok(r.ok, r.stderr);
 	let json;
 	try { json = JSON.parse(r.stdout); } catch (e) { throw new Error(`${e.message}: ${r.stdout}`); }

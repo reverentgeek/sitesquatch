@@ -26,6 +26,7 @@ import { diffOps } from "./myers.ts";
 import { compareText } from "./paths.ts";
 import { firstChars, quoted } from "./quote.ts";
 import { bytes, count } from "./report.ts";
+import * as voice from "./voice.ts";
 
 export interface DiffOptions {
 	/** Compare bytes: no fingerprint matching, and nothing ignored but the `ignore` patterns. */
@@ -407,6 +408,33 @@ function attributeValue(raw: string): string {
 	return raw.replace(ENTITY_OR_AMP, (whole, name: string | undefined) => (name === undefined ? whole : name === "nbsp" ? "\u00a0" : (entityChar(name) ?? whole)));
 }
 
+/** Attributes that hold one URL, which browsers read the same percent-encoded or not. */
+const URL_ATTRS = new Set(["href", "src", "action", "formaction", "poster", "cite", "data"]);
+const UTF8 = new TextDecoder("utf-8", { fatal: true });
+
+/**
+ * A URL with the characters a browser encodes itself written as themselves: `#%D9%83` is `#ك`,
+ * `caf%C3%A9.png` is `café.png` and `%20` a space, as CommonMark's renderer and kramdown write the
+ * same link (opensource.guide's Arabic pages). ASCII that means something in a URL (`%2F`, `%23`,
+ * `%3F`) stays encoded: `a%2Fb` and `a/b` are different paths.
+ */
+export function canonicalUrl(url: string): string {
+	if (!url.includes("%")) return url;
+	return url.replace(/(?:%[0-9A-Fa-f]{2})+/g, (run) => {
+		const bytes = Uint8Array.from(run.slice(1).split("%"), (h) => Number.parseInt(h, 16));
+		let text: string;
+		try { text = UTF8.decode(bytes); } catch { return run; }
+		let out = "";
+		let at = 0;
+		for (const c of text) {
+			const n = Buffer.byteLength(c);
+			out += c.charCodeAt(0) > 0x7f || " \"<>`{}".includes(c) ? c : run.slice(at * 3, (at + n) * 3);
+			at += n;
+		}
+		return out;
+	});
+}
+
 const NO_ATTRIBUTES = /^<\/?[a-z][a-z0-9-]*>$/;
 
 /**
@@ -475,6 +503,7 @@ export function canonicalTag(tag: string, foreign: boolean, xml = false): [strin
 		if (attrs.has(attr)) continue;
 		if (value !== undefined && BOOLEAN.has(attr) && !foreign && (value === "" || asciiLower(value) === attr)) value = undefined;
 		if (value !== undefined && SPACED.has(attr)) value = collapse(value).replace(/ ?, ?/g, ", ");
+		if (value !== undefined && URL_ATTRS.has(attr)) value = canonicalUrl(value);
 		attrs.set(attr, value);
 	}
 	if (closing) return [`</${element}>`, false];
@@ -1112,7 +1141,7 @@ function onlyDates(list: Hunk[]): [string, string] | undefined {
 // ---- output ----------------------------------------------------------------------------------
 
 /** What a comparison that isn't `--exact` leaves out, said first: what differs only in these doesn't count. */
-const IGNORING = "Ignoring asset fingerprints, image ids, integrity hashes, the generator's version, Vue's and Astro's scope ids and fragment markers, whitespace between tags, and how tags are written where browsers read them the same (attribute order, quotes, entities, `<br/>`) (--exact compares bytes).\n";
+const IGNORING = "Ignoring asset fingerprints, image ids, integrity hashes, the generator's version, Vue's and Astro's scope ids and fragment markers, whitespace between tags, and how tags are written where browsers read them the same (attribute order, quotes, entities, percent-encoding in URLs, `<br/>`) (--exact compares bytes).\n";
 
 /** More images named by their id than this, added or removed, are counted in one line rather than listed. */
 const IMAGES_LISTED = 5;
@@ -1444,7 +1473,7 @@ export function runsText(report: RunsReport, limit: number, color: boolean): str
 		for (const note of sample.notes) out += `      ${note}\n`;
 		out += grouped ? linesText(sample.ownHunks, sample.ownLines, limit, paint) : linesText(sample.hunks, sample.changedLines, limit, paint);
 	}
-	out += `\n${plural(report.varies.length, "file varies", "files vary")} between builds made the same way; ${steady} are the same in all of them. Pin what changes (the build's time, random ids) before comparing another build with these, or leave it out with --ignore.\n`;
+	out += `\n${voice.ACCOUNTS_DIFFER} ${plural(report.varies.length, "file varies", "files vary")} between builds made the same way; ${steady} are the same in all of them. Pin what changes (the build's time, random ids) before comparing another build with these, or leave it out with --ignore.\n`;
 	const common = report.varies.filter((v) => !v.versions[0].missing && v.versions[0].runs.includes(report.typical)).length;
 	// With no file in a most common version, no build is more like the others than another.
 	if (common > 0 && report.varies.some((v) => v.versions[0].runs.length >= 2)) out += `The build most like the others: ${report.runs[report.typical]}, with the most common version of ${common} of the ${plural(report.varies.length, "file", "files")} that vary.\n`;

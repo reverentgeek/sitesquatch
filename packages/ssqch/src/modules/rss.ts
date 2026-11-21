@@ -5,7 +5,8 @@ import { withBaseOnce } from "../base.ts";
 import { BUILTINS } from "../config.ts";
 import type { Config } from "../config.ts";
 import { toDate } from "../data.ts";
-import { bail } from "../diagnostics.ts";
+import { aliasUsed, bail } from "../diagnostics.ts";
+import * as equivalents from "../equivalents.ts";
 import { rewriteHtml } from "../html.ts";
 import * as image from "./image.ts";
 import { Options } from "./options.ts";
@@ -109,9 +110,12 @@ BUILTINS.set("ssqch/rss", (config: Config, options) => {
 	filters.set("getNewestCollectionItemDate", (items?: unknown) => getNewestCollectionItemDate(items));
 	filters.set("dateToRfc3339", (date?: unknown) => dateToRfc3339(date));
 	filters.set("dateToRfc822", (date?: unknown) => dateToRfc822(date));
-	// The Eleventy RSS plugin's first names, which its sample feed and many sites' feeds still use.
-	filters.set("rssDate", (date?: unknown) => dateToRfc3339(date));
-	filters.set("rssLastUpdatedDate", (items?: unknown) => dateToRfc3339(getNewestCollectionItemDate(items)));
+	// The Eleventy RSS plugin's first names, which its sample feed and many sites' feeds still use:
+	// aliases (src/equivalents.ts), which work and say ssqch's names once.
+	const rssDate = equivalents.find("rssDate", "filter")!;
+	const rssLastUpdatedDate = equivalents.find("rssLastUpdatedDate", "filter")!;
+	filters.set("rssDate", (date?: unknown) => { aliasUsed(rssDate); return dateToRfc3339(date); });
+	filters.set("rssLastUpdatedDate", (items?: unknown) => { aliasUsed(rssLastUpdatedDate); return dateToRfc3339(getNewestCollectionItemDate(items)); });
 	// As filters, they know the site's `base` (absoluteUrl).
 	filters.set("absoluteUrl", (url?: unknown, base?: unknown) => absoluteUrl(output(url), output(base), config.base));
 	filters.set("htmlToAbsoluteUrls", (html?: unknown, base?: unknown) => htmlToAbsoluteUrls(output(html), output(base), config.base));

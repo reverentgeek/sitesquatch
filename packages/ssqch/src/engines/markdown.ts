@@ -17,7 +17,6 @@
 // (see "the cache of highlighted fences" below), so a first build doesn't load syntect's
 // grammars for fences it has highlighted before.
 import { kramdownHtml, restoreBlankLines, withKramdownIds } from "./kramdown-html.ts";
-import { VITEPRESS_HOOKS, vitepressAfter, vitepressBefore } from "./vitepress-dialect.ts";
 import { hugoShortcodes, INLINE_SHORTCODE_MARKER, type InlineShortcode, inlineShortcodeNumber, pythonMarkdownAfter, pythonMarkdownBefore, pythonMarkdownBlocks, pythonMarkdownIds, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
@@ -27,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import type { Data } from "../data.ts";
 import { isPlainObject, parseFrontMatter, readText } from "../data.ts";
 import { BuildError, Diagnostics, context, messageOf, warn, warning } from "../diagnostics.ts";
-import type { MarkdownOptions } from "../markdown-options.ts";
+import type { MarkdownOptions, StepContext } from "../markdown-options.ts";
 import { describeThrown, settle } from "../modules.ts";
 import { comparePaths } from "../paths.ts";
 import * as voice from "../voice.ts";
@@ -238,8 +237,10 @@ class WasmMarkdown implements Markdown {
 		// Python-Markdown's raw HTML blocks are set aside first, before the other dialects write HTML.
 		const python = this.#options.dialect === "python-markdown" ? pythonMarkdownBefore(source) : undefined;
 		if (python) source = python.source;
-		const vitepress = this.#options.dialect === "vitepress";
-		if (vitepress) source = vitepressBefore(source);
+		// Plugins' steps (a plugin's `markdown: { before, after }`, fromVitepress()'s among them).
+		const steps = this.#options.steps;
+		const stepContext = steps.before.length || steps.after.length ? this.#context(data, file) : undefined;
+		for (const [where, step] of steps.before) source = this.#step(step, source, stepContext!, where, "before");
 		const shortcodes: InlineShortcode[] = [];
 		source = this.#dialects(source, shortcodes, data, file);
 		const links = this.#options.sourceLinks;
@@ -248,10 +249,10 @@ class WasmMarkdown implements Markdown {
 			if (shortcodes.length) html = this.#inlineShortcodes(html, shortcodes, data, file);
 			if (links) html = sourceLinks(html, data, links, this.#inputRoot);
 			if (ids) html = pythonMarkdownIds(html);
-			if (vitepress) html = vitepressAfter(html);
+			for (const [where, step] of steps.after) html = this.#step(step, html, stepContext!, where, "after");
 			return python ? pythonMarkdownAfter(html, python.raw) : html;
 		};
-		const changes = Boolean(links || ids || python || vitepress || shortcodes.length);
+		const changes = Boolean(links || ids || python || steps.after.length || shortcodes.length);
 		if (!this.#options.htmlMarkdown) {
 			const out = this.#page(source, data, file);
 			if (!changes) return out;
@@ -501,11 +502,11 @@ class WasmMarkdown implements Markdown {
 			breaks: o.breaks,
 			figures: o.figures,
 			alerts: o.alerts,
-			containers: o.containers,
+			// The wasm's markdown-it reading of a closing `:::`, which is ssqch's own now.
+			containers: o.containers ? "markdown-it" : false,
 			definitionLists: o.definitionLists,
 			smartPunctuation: o.smartPunctuation,
 			indentedCode: o.indentedCode,
-			encodeUrls: o.encodeUrls,
 			highlight: o.highlight,
 			highlightCss: o.highlightCss,
 			highlightClasses: o.highlightClasses,
@@ -528,9 +529,30 @@ class WasmMarkdown implements Markdown {
 		return this.#hooks.has(template) ? this.renderHook(template, "component", value, data) : undefined;
 	}
 
-	/** The dialect's built-in render hooks and containers (`dialect: "vitepress"`), which a site's own templates replace. */
+	/** Plugins' render hooks and containers (`markdown: { hooks }`), which a site's own templates replace. */
 	#builtinHooks(): string[] {
-		return this.#options.dialect === "vitepress" ? Object.keys(VITEPRESS_HOOKS) : [];
+		return [...this.#options.steps.hooks.keys()];
+	}
+
+	/** What a plugin's step or hook gets besides its text. */
+	#context(data: Data, file: string | undefined): StepContext {
+		return {
+			data,
+			page: isPlainObject(data.page) ? data.page : undefined,
+			urls: this.#options.htmlUrls ? "html" : "folders",
+			markdown: (text, options) => this.#markdown(String(text ?? ""), HOOKS | (options?.inline ? INLINE : 0), data, file, undefined, "a plugin's Markdown step"),
+			hasHook: (name) => this.#hooks.has(name) || this.#options.steps.hooks.has(name),
+			renderHook: (name, key, value) => this.renderHook(name, key, value, data),
+		};
+	}
+
+	/** One plugin step, which answers at once with text. */
+	#step(step: (text: string, context: StepContext) => unknown, text: string, stepContext: StepContext, where: string, which: "before" | "after"): string {
+		let out: unknown;
+		try { out = step(text, stepContext); } catch (e) { throw context(e, `${where}: markdown.${which}`); }
+		if (typeof out === "string") return out;
+		if (out instanceof Promise) { out.catch(() => {}); throw new BuildError(`${where}: markdown.${which} answered with a promise; a plugin's Markdown step answers at once (work out what it needs in beforeBuild or a data file first)`); }
+		throw new BuildError(`${where}: markdown.${which} must return text, not ${out === null ? "null" : typeof out}`);
 	}
 
 	/** A render hook for the wasm: the template `name` with the page's data and `value` as `key`. */
@@ -543,8 +565,14 @@ class WasmMarkdown implements Markdown {
 		}
 		const template = this.#hooks.get(name);
 		const engines = this.#engines;
-		// A dialect's own hook, where the site has no template of that name.
-		if (!template && this.#builtinHooks().includes(name) && isPlainObject(value)) return VITEPRESS_HOOKS[name](value, { htmlUrls: this.#options.htmlUrls });
+		// A plugin's own hook, where the site has no template of that name.
+		const own = template ? undefined : this.#options.steps.hooks.get(name);
+		if (own && isPlainObject(value)) {
+			let out: unknown;
+			try { out = own[1](value, this.#context(data, pageOf(data))); } catch (e) { throw context(e, `${own[0]}: markdown.hooks["${name.replace(/^hooks\//, "")}"]`); }
+			if (typeof out !== "string") throw new BuildError(`${own[0]}: markdown.hooks["${name.replace(/^hooks\//, "")}"] must return HTML as text, not ${out === null ? "null" : typeof out}`);
+			return out;
+		}
 		if (!template || !engines) throw new BuildError(`no template for \`${name}\``);
 		const hookData: Data = { ...(isPlainObject(data) ? data : {}), [key]: value };
 		let text = template.body;

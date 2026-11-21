@@ -1,7 +1,7 @@
 # The docs' order: the site's sidebar, and the order `ssqch docs` reads the pages in (a page that
 # isn't listed is on the site but not in `ssqch docs`). Each is a page's file, or a page the site
 # makes itself.
-- title: Start here
+- title: Base camp
   pages:
     - index.md
     - install.md
@@ -11,12 +11,14 @@
     - configuring.md
     - data-files.md
     - plugins.md
+    - writing-plugins.md
     - templates.md
     - markdown.md
     - template-languages.md
     - css-and-javascript.md
     - multilingual.md
     - seo.md
+    - robots.md
     - themes.md
     - new-pages.md
 - title: Check
@@ -26,11 +28,13 @@
     - build-summary.md
     - comparing-builds.md
     - footprint.md
+    - patrol.md
 - title: Ship
   pages:
     - deploying.md
     - netlify.md
     - github-pages.md
+    - serving-markdown.md
     - agents.md
     - rust-plugins.md
 - title: Trailheads

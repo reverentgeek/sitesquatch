@@ -1,5 +1,5 @@
 {
-  "version": "0.9.0",
+  "version": "0.12.0",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -40,7 +40,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed siting. Built in <time> (production)\n  Pages   5 written from 8 templates, 15.4 KB\n  Links   43 checked, 0 broken\n  Output  dist: 7 files, 16.1 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   5 written from 8 templates, 15.4 KB\n  Links   43 checked, 0 broken\n  Output  dist: 7 files, 16.1 KB\n",
   "files": {
     "_redirects": "text",
     "docs/concepts/nodes/index.html": "text",

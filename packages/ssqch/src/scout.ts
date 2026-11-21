@@ -2151,9 +2151,28 @@ const JEKYLL_PAGE: Record<string, string> = {
 /** Liquid's tags, Jekyll's and ssqch's, which a `{% name %}` isn't a plugin's tag for. */
 const LIQUID_TAGS = new Set(["assign", "capture", "endcapture", "case", "when", "endcase", "comment", "endcomment", "cycle", "decrement", "increment", "echo", "for", "endfor", "break", "continue", "if", "elsif", "else", "endif", "unless", "endunless", "include", "include_relative", "render", "layout", "liquid", "raw", "endraw", "tablerow", "endtablerow", "highlight", "endhighlight", "link", "post_url", "block", "endblock"]);
 
+/** A template with the blank lines after its front matter's closing `---` taken out, or undefined when there are none. */
+export function withoutBlankAfterFrontMatter(text: string): string | undefined {
+	const open = /^---[ \t]*\r?\n/.exec(text);
+	if (!open) return undefined;
+	const close = /^---[ \t]*(?:\r?\n|$)/m.exec(text.slice(open[0].length));
+	if (!close) return undefined;
+	const end = open[0].length + close.index + close[0].length;
+	const blank = /^(?:[ \t]*\r?\n)+/.exec(text.slice(end));
+	return blank ? text.slice(0, end) + text.slice(end + blank[0].length) : undefined;
+}
+
+/** Whether a Jekyll template writes HTML: a page in Markdown or HTML, unless its permalink names another kind of file (`permalink: /feed.xml`). Layouts and includes are checked by the caller. */
+function writesHtml(rel: string, text: string): boolean {
+	const front = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text)?.[1] ?? "";
+	const permalink = /^permalink:\s*["']?([^"'\s#]+)/m.exec(front)?.[1];
+	if (permalink && /\.[A-Za-z0-9]+$/.test(permalink)) return /\.html?$/i.test(permalink);
+	return /\.(?:md|markdown|html?)$/i.test(rel);
+}
+
 /** The Jekyll plugins a site can name, and what each is in ssqch: an import and a plugin, or what to do. */
 const JEKYLL_PLUGINS: Record<string, { use?: [string, string]; say: string }> = {
-	"jekyll-sitemap": { use: ["import { sitemapPlugin } from \"ssqch/sitemap\";", "sitemapPlugin({ url: site.url })"], say: "`sitemapPlugin({ url: site.url })`, in the draft (an empty `url` writes paths, as jekyll-sitemap did, and warns). jekyll-sitemap also wrote `/robots.txt` when the site had none: `robots.liquid`, in the plan. Its own sitemap's format (the order, `xsi:schemaLocation`) is a template of your own if the bytes matter" },
+	"jekyll-sitemap": { use: ["import { sitemapPlugin } from \"ssqch/sitemap\";", "sitemapPlugin({ url: site.url })"], say: "`sitemapPlugin({ url: site.url })`, in the draft (it needs the site's address: with no `url` in the config, the draft leaves it commented out until there is one). jekyll-sitemap also wrote `/robots.txt` when the site had none: `robots.liquid`, in the plan. Its own sitemap's format (the order, `xsi:schemaLocation`) is a template of your own if the bytes matter" },
 	"jekyll-redirect-from": { use: ["import { redirectsPlugin } from \"ssqch/redirects\";", "redirectsPlugin()"], say: "`redirectsPlugin()`, in the draft: `redirect_from` works as it is (templates read it as `aliases`); `_includes/hooks/redirect.*` is its page's markup. jekyll-redirect-from also wrote `/redirects.json`: `redirects.liquid`, in the plan" },
 	"jekyll-feed": { use: ["import { rssPlugin } from \"ssqch/rss\";", "rssPlugin()"], say: "`rssPlugin()` is in the draft; the feed itself is a template of the site's (`feed.xml.liquid` with `permalink: /feed.xml`): `ssqch docs rssPlugin`" },
 	"jekyll-seo-tag": { say: "`{% seo %}` becomes an include: `ssqch docs \"From jekyll-seo-tag\"` has one that writes its tags" },
@@ -2338,6 +2357,14 @@ export function jekyll(dir: string): Plan {
 		if (/\{%-?\s*seo\b[^%]*%\}/.test(next)) {
 			next = next.replace(/\{%(-?)\s*seo\b[^%]*?(-?)%\}/g, "{%$1 include seo.liquid $2%}");
 			changes = [...changes, "{% seo %} -> {% include seo.liquid %}"];
+		}
+		// Jekyll dropped the blank lines after the closing `---`; ssqch keeps them, as other
+		// generators do. In HTML that's whitespace browsers don't see, but a feed has to start with
+		// `<?xml`, and a text file's first line is its first line: take them out there.
+		const trimmed = withoutBlankAfterFrontMatter(next);
+		if (trimmed !== undefined && !templateDir && !writesHtml(entry.rel, next)) {
+			next = trimmed;
+			changes = [...changes, "the blank line after the front matter out (Jekyll dropped it; here it would be the file's first line)"];
 		}
 		if (changes.length) plan.edits.push([entry.rel, changes, next]);
 		for (const what of left) plan.byHand.push([entry.rel, what]);
@@ -2530,8 +2557,9 @@ export function jekyll(dir: string): Plan {
 	const gemfile = readUtf8(path.join(dir, "Gemfile")) ?? "";
 	const named = new Set([...list("plugins"), ...list("gems"), ...[...gemfile.matchAll(/^\s*gem\s+["']([^"']+)["']/gm)].map((m) => m[1])]);
 	if (named.has("github-pages")) for (const p of GITHUB_PAGES_PLUGINS) named.add(p);
-	const imports = ["import { defineConfig, readData } from \"ssqch\";"];
-	const plugins: string[] = [];
+	const imports = ["import { defineConfig, readData } from \"ssqch\";", "import { fromJekyll } from \"ssqch/from-jekyll\";"];
+	// Templates see Jekyll's `page` and `site`, and pages read as kramdown reads them.
+	const plugins: string[] = ["fromJekyll()"];
 	for (const name of [...named].sort(compareText)) {
 		const known = JEKYLL_PLUGINS[name];
 		if (!known) {
@@ -2603,9 +2631,10 @@ export function jekyll(dir: string): Plan {
 		plugins.push(`sassPlugin({ files: { ${files.join(", ")} }${loadPaths.length ? `, loadPaths: ${JSON.stringify(loadPaths)}` : ""}, charset: false })`);
 	}
 
-	const markdown = ["htmlMarkdown: \"kramdown\"", "headingIds: \"kramdown\"", "smartPunctuation: true", "autolinks: false", "encodeUrls: false"];
+	// kramdown's habits (markdown="1", its heading ids, smart quotes, no bare-URL links) are fromJekyll()'s.
+	const markdown: string[] = [];
 	const kramdown = isPlainObject(config.kramdown) ? config.kramdown : {};
-	if (kramdown.auto_ids === false) markdown[1] = "headingIds: false";
+	if (kramdown.auto_ids === false) markdown.push("headingIds: false");
 	if (kramdown.smart_quotes !== undefined || kramdown.input === "GFM" && kramdown.hard_wrap === true) plan.byHand.push([configFile!, "kramdown's `smart_quotes` or `hard_wrap`: check the draft's `markdown` against them (`breaks: true` for `hard_wrap`)"]);
 	if (typeof config.markdown === "string" && !/kramdown/i.test(config.markdown)) plan.byHand.push([configFile!, `markdown: ${config.markdown}: the draft's options are kramdown's; ssqch's Markdown is CommonMark with extensions (\`ssqch docs markdown\`)`]);
 	let out = `// A first draft, written by \`ssqch scout\` from ${configFile}.\n// \`ssqch docs --from jekyll\` has the whole mapping.\n${[...new Set(imports)].join("\n")}\n\n`;
@@ -2616,6 +2645,13 @@ export function jekyll(dir: string): Plan {
 	out += urlFromCname
 		? `// \`site.title\` and every other key of ${configFile} in templates read this. GitHub Pages gave\n// \`site.url\` from the CNAME (jekyll-github-metadata).\nconst site = { ...readData(${JSON.stringify(configFile)}), url: ${JSON.stringify(`https://${cname}`)} };\n\nexport default defineConfig({\n`
 		: `// \`site.title\` and every other key of ${configFile} in templates read this.\nconst site = readData(${JSON.stringify(configFile)});\n\nexport default defineConfig({\n`;
+	// jekyll-sitemap wrote paths without a `url`; sitemapPlugin() needs the address, so the draft
+	// leaves it out until the config has one (the first build works either way).
+	const SITEMAP = "sitemapPlugin({ url: site.url })";
+	if (plugins.includes(SITEMAP) && (typeof config.url !== "string" || config.url === "") && !urlFromCname) {
+		plugins[plugins.indexOf(SITEMAP)] = `/* ${SITEMAP}: needs \`url\` in ${configFile} */`;
+		plan.byHand.push([configFile!, "no `url`: `sitemapPlugin()` needs the site's address (`url: https://example.com`), so it's commented out in the draft until there is one"]);
+	}
 	const builtIn = new Set(["txt"]);
 	out += `  // Markdown and HTML pages run through Liquid first, as in Jekyll.\n  templateFormats: ${JSON.stringify(["liquid", "md", "html", ...otherFormats]).replaceAll(",", ", ")},\n  markdownEngine: "liquid",\n  htmlEngine: "liquid",\n`;
 	const own = otherFormats.filter((e) => !builtIn.has(e));
@@ -2625,9 +2661,7 @@ export function jekyll(dir: string): Plan {
 	if (dataDir !== "_data") dirs.push(`data: ${JSON.stringify(dataDir)}`);
 	if (output !== "_site") dirs.push(`output: ${JSON.stringify(output)}`);
 	out += `  dirs: { ${dirs.join(", ")} },\n`;
-	out += "  // Jekyll drops the blank lines after the closing `---`.\n  trimAfterFrontMatter: true,\n";
-	out += "  // Templates see Jekyll's `page` (front matter too: `page.title`) and `site` (`site.posts`,\n  // each collection, `site.data`, `site.categories`), so the layouts and includes run as written.\n  jekyllTemplates: true,\n";
-	out += `  // kramdown's habits: markdown="1", its heading ids, smart quotes, no bare-URL links, URLs as written.\n  markdown: { ${markdown.join(", ")} },\n`;
+	if (markdown.length) out += `  // kramdown's auto_ids is off in ${configFile}.\n  markdown: { ${markdown.join(", ")} },\n`;
 	out += `  // ${configFile}'s \`exclude\`, and what Jekyll leaves out by itself.\n  ignore: [${ignores.map((g) => JSON.stringify(g)).join(", ")}],\n`;
 	const passed = [...passthrough.map((p) => JSON.stringify(p)), ...copied.map(([from, to]) => `{ ${JSON.stringify(from)}: ${JSON.stringify(to)} }`)];
 	if (passed.length) out += `  // What Jekyll copied as it is: files without front matter.\n  passthrough: [${passed.join(", ")}],\n`;
@@ -2837,7 +2871,7 @@ export function hugo(dir: string): Plan {
 	const calls = blockCalls.sorted();
 	if (calls.length || inlineCalls.seen.size) {
 		const pages = new Set([...calls, ...inlineCalls.sorted()].flatMap(([, { files }]) => [...files])).size;
-		plan.byHand.push([contentDir, `${new Set([...blockCalls.seen.keys(), ...inlineCalls.seen.keys()]).size} shortcodes, called in ${pages} ${pages === 1 ? "page" : "pages"}: \`markdown: { shortcodes: "hugo" }\` (in the draft) reads each call as a container, rendered by \`_includes/containers/<name>.*\` (one inside a line of text too, in its place); the draft has a template to port for each of the site's own`, { code: "hugo-shortcodes", status: "option", files: pages, option: "markdown: { shortcodes: \"hugo\" }", docs: "shortcodes" }]);
+		plan.byHand.push([contentDir, `${new Set([...blockCalls.seen.keys(), ...inlineCalls.seen.keys()]).size} shortcodes, called in ${pages} ${pages === 1 ? "page" : "pages"}: \`fromHugo()\` (in the draft) reads each call as a container, rendered by \`_includes/containers/<name>.*\` (one inside a line of text too, in its place); the draft has a template to port for each of the site's own`, { code: "hugo-shortcodes", status: "option", files: pages, option: "markdown: { shortcodes: \"hugo\" }", defines: ["plugin:fromHugo"], docs: "shortcodes" }]);
 	}
 	for (const [name, { count, files, first }] of calls) {
 		const own = shortcodeFiles.get(name);
@@ -2889,15 +2923,16 @@ export function hugo(dir: string): Plan {
 	if (baseURL) site.url = baseURL;
 	if (isPlainObject(hugoKey(config, "params"))) site.params = hugoKey(config, "params");
 	const dirs = [`input: ${JSON.stringify(contentDir)}`, `output: ${JSON.stringify(output)}`, "includes: \"../_includes\"", ...(hasDir("data") ? ["data: \"../data\""] : [])];
-	const imports = ["import { defineConfig } from \"ssqch\";", "import { linksPlugin } from \"ssqch/links\";", ...(baseURL ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : [])];
+	const imports = ["import { defineConfig } from \"ssqch\";", "import { fromHugo } from \"ssqch/from-hugo\";", "import { linksPlugin } from \"ssqch/links\";", ...(baseURL ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : [])];
 	let out = `// A first draft, written by \`ssqch scout\` from ${configFile ?? "the Hugo site"}.\n// \`ssqch docs --from hugo\` has the whole mapping.\n${imports.join("\n")}\n\nexport default defineConfig({\n`;
 	out += `  dirs: { ${dirs.join(", ")} },\n`;
 	if (basePath(baseURL) !== undefined) out += `  // baseURL's path: the site is served under it.\n  base: ${JSON.stringify(basePath(baseURL))},\n`;
 	out += "  // Hugo doesn't run template code in content, and its shortcodes on a line of their own are\n  // containers (_includes/containers/<name>.jinja).\n  markdownEngine: false,\n";
-	out += "  markdown: { shortcodes: \"hugo\", highlight: { classes: \"pygments\" } },\n";
+	// Chroma's classes (Hugo's highlighter) are Pygments' names, which the theme's CSS styles.
+	out += "  markdown: { highlight: { classes: \"pygments\" } },\n";
 	if (hasDir("static")) out += "  passthrough: [{ static: \".\" }],\n";
 	out += `  data: { site: ${JSON.stringify(sortedKeys(site))} },\n`;
-	out += `  plugins: [${[...(baseURL ? [`sitemapPlugin({ url: ${JSON.stringify(baseURL)} })`] : []), // Hugo doesn't check links, so one that was broken there warns rather than failing the move's build.
+	out += `  plugins: [${["fromHugo()", ...(baseURL ? [`sitemapPlugin({ url: ${JSON.stringify(baseURL)} })`] : []), // Hugo doesn't check links, so one that was broken there warns rather than failing the move's build.
 		"linksPlugin({ fail: false })"].join(", ")}],\n});\n`;
 	plan.newFiles.unshift(["ssqch.config.js", `a first draft, from ${configFile ?? "the Hugo site"}`, out]);
 	return plan;
@@ -2926,9 +2961,9 @@ const MKDOCS_PLUGINS: Record<string, Mapping> = {
 	i18n: { say: "`ssqch docs multilingual`", status: "ssqch" },
 };
 const MKDOCS_EXTENSIONS: Record<string, Mapping> = {
-	admonition: { say: "`!!!` admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft) writes them as Python-Markdown does", status: "option", option: "markdown: { admonitions: \"mkdocs\" }" },
-	"pymdownx.details": { say: "`???` collapsible admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft)", status: "option", option: "markdown: { admonitions: \"mkdocs\" }" },
-	"pymdownx.tabbed": { say: "`===` tabs: `markdown: { tabs: \"mkdocs\" }` (in the draft) writes them in the alternate style", status: "option", option: "markdown: { tabs: \"mkdocs\" }" },
+	admonition: { say: "`!!!` admonitions: `fromMkdocs()` (in the draft) writes them as Python-Markdown does", status: "option", option: "markdown: { admonitions: \"mkdocs\" }" },
+	"pymdownx.details": { say: "`???` collapsible admonitions: `fromMkdocs()` (in the draft)", status: "option", option: "markdown: { admonitions: \"mkdocs\" }" },
+	"pymdownx.tabbed": { say: "`===` tabs: `fromMkdocs()` (in the draft) writes them in the alternate style", status: "option", option: "markdown: { tabs: \"mkdocs\" }" },
 	"pymdownx.superfences": { say: "fences, built in; custom fences (mermaid) are a fence hook (`_includes/hooks/fence-mermaid.<ext>`)", status: "ssqch" },
 	"pymdownx.highlight": { say: "`markdown: { highlight: { classes: \"pygments\" } }` (in the draft): Pygments' class names, cut by ssqch's grammars (the tokens can differ from Pygments', and the wrapper is a fence hook's: `_includes/hooks/fence.*`)", status: "option", option: "markdown: { highlight: { classes: \"pygments\" } }" },
 	codehilite: { say: "`markdown: { highlight: { classes: \"pygments\" } }` (in the draft) gives tokens Pygments' class names, cut by ssqch's grammars; codehilite's markup isn't the same (`<div class=\"codehilite\"><pre><span></span><code>`), and its tokens are Pygments', so a byte-for-byte move needs Pygments itself, or a fence hook (`_includes/hooks/fence.*`) for the wrapper", status: "option", option: "markdown: { highlight: { classes: \"pygments\" } }" },
@@ -2950,7 +2985,7 @@ const MKDOCS_EXTENSIONS: Record<string, Mapping> = {
 	attr_list: { say: "attributes (`{#id .class}`), built in; on headings, ssqch keeps ids and classes", status: "ssqch" },
 	md_in_html: { say: "Markdown inside HTML with the bare `markdown` attribute: not in ssqch yet as written; `markdown: { htmlMarkdown: \"kramdown\" }` reads `markdown=\"1\"`", status: "not-yet" },
 	footnotes: { say: "footnotes, built in (their markup is a `footnotes` hook's)", status: "ssqch" },
-	toc: { say: "`markdown: { headingIds: \"python-markdown\" }` (in the draft): toc's default ids (a repeated heading's `_1` too; a `slugify` of the site's own needs a function). The table of contents is `page.headings` and the `toc` filter", status: "option", option: "markdown: { headingIds: \"python-markdown\" }" },
+	toc: { say: "`fromMkdocs()` (in the draft): toc's default ids (a repeated heading's `_1` too; a `slugify` of the site's own needs a function). The table of contents is `page.headings` and the `toc` filter", status: "option", option: "markdown: { headingIds: \"python-markdown\" }" },
 	def_list: { say: "`markdown: { definitionLists: true }` (in the draft)", status: "option", option: "markdown: { definitionLists: true }" },
 	abbr: { say: "abbreviations: not in ssqch yet", status: "not-yet" },
 	tables: { say: "tables, built in", status: "ssqch" },
@@ -2986,7 +3021,7 @@ export function mkdocs(dir: string): Plan {
 	// MkDocs turns on `search` when the config names no plugins.
 	const plugins = config.plugins === undefined ? ["search"] : named(config.plugins);
 	const theme = isPlainObject(config.theme) ? config.theme.name : config.theme;
-	if (typeof theme === "string") plan.byHand.push([`${configFile}: theme`, `the ${theme === "material" ? "Material" : theme} theme's templates are Jinja, which ssqch runs as written with \`mkdocsTemplates: true\` (in the draft, to turn on once they're there): it gives them MkDocs' context (\`config\`, \`nav\`, \`page\`, \`base_url\`, the \`url\` filter). Copy the theme's templates from its Python package into an ssqch theme first (\`ssqch docs --from mkdocs\`, "The theme")`, { code: "mkdocs-theme", status: "option", option: "mkdocsTemplates: true", docs: "mkdocsTemplates" }]);
+	if (typeof theme === "string") plan.byHand.push([`${configFile}: theme`, `the ${theme === "material" ? "Material" : theme} theme's templates are Jinja, which ssqch runs as written with \`fromMkdocs({ templates: true })\` (in the draft, to turn on once they're there): it gives them MkDocs' context (\`config\`, \`nav\`, \`page\`, \`base_url\`, the \`url\` filter). Copy the theme's templates from its Python package into an ssqch theme first (\`ssqch docs --from mkdocs\`, "The theme")`, { code: "mkdocs-theme", status: "option", option: "mkdocsTemplates: true", docs: "mkdocsTemplates" }]);
 	for (const name of plugins) {
 		const known = MKDOCS_PLUGINS[name.replace(/^material\//, "")];
 		plan.byHand.push([`${configFile}: plugins`, `\`${name}\`: ${known?.say ?? "not in ssqch yet: port it as a plugin (`ssqch docs plugins`)"}`, { code: "mkdocs-plugin", status: known?.status ?? "site" }]);
@@ -3005,9 +3040,9 @@ export function mkdocs(dir: string): Plan {
 	if (isFile(path.join(dir, "hooks.py")) || config.hooks) plan.byHand.push([`${configFile}: hooks`, "Python hooks don't run in ssqch: port each as a plugin or a filter (`ssqch docs plugins`)", { code: "mkdocs-hooks", status: "site", docs: "plugins" }]);
 	// The syntax the pages use, counted: what each option reads, and what nothing does yet.
 	const syntax: Array<[string, RegExp, string, string, NonNullable<Todo["status"]>]> = [
-		["links to .md files", /\]\((?![a-z]+:)[^)\s#]*\.md(?:#[^)\s]*)?\)|^[ \t]*\[[^\]\n]+\]:[ \t]*(?![a-z]+:)[^\s#]*\.md(?:#\S*)?[ \t]*$/gm, "`markdown: { sourceLinks: \"relative\" }` (in the draft) links each to its page's URL, as MkDocs does", "mkdocs-md-links", "option"],
-		["admonitions (`!!!`, `???`)", /^[ \t]*(?:!!!|\?\?\?\+?)[ \t]+\w/gm, "`markdown: { admonitions: \"mkdocs\" }` (in the draft)", "mkdocs-admonitions", "option"],
-		["tabs (`===`)", /^[ \t]*===[+!]{0,2}[ \t]+"/gm, "`markdown: { tabs: \"mkdocs\" }` (in the draft)", "mkdocs-tabs", "option"],
+		["links to .md files", /\]\((?![a-z]+:)[^)\s#]*\.md(?:#[^)\s]*)?\)|^[ \t]*\[[^\]\n]+\]:[ \t]*(?![a-z]+:)[^\s#]*\.md(?:#\S*)?[ \t]*$/gm, "`fromMkdocs()` (in the draft) links each to its page's URL, as MkDocs does", "mkdocs-md-links", "option"],
+		["admonitions (`!!!`, `???`)", /^[ \t]*(?:!!!|\?\?\?\+?)[ \t]+\w/gm, "`fromMkdocs()` (in the draft)", "mkdocs-admonitions", "option"],
+		["tabs (`===`)", /^[ \t]*===[+!]{0,2}[ \t]+"/gm, "`fromMkdocs()` (in the draft)", "mkdocs-tabs", "option"],
 		["snippets (`--8<--`)", /^[ \t]*-+8<-+/gm, "not in ssqch yet as written", "mkdocs-snippets", "not-yet"],
 		["icons and emoji (`:name:`)", /:(?:material|fontawesome|octicons|simple)-[\w-]+:/g, "not in ssqch yet", "mkdocs-icons", "not-yet"],
 		["bare `markdown` attributes", /<[a-z][^>]*\smarkdown(?=[\s>])/g, "not in ssqch yet as written: `htmlMarkdown: \"kramdown\"` reads `markdown=\"1\"`", "mkdocs-md-in-html", "not-yet"],
@@ -3031,7 +3066,8 @@ export function mkdocs(dir: string): Plan {
 	const site: Data = {};
 	for (const [from, to] of [["site_name", "name"], ["site_url", "url"], ["site_description", "description"], ["site_author", "author"], ["repo_url", "repo_url"], ["edit_uri", "edit_uri"], ["copyright", "copyright"]] as const) if (typeof config[from] === "string") site[to] = config[from];
 	if (isPlainObject(config.extra)) site.extra = config.extra;
-	const markdown = ["admonitions: \"mkdocs\"", "tabs: \"mkdocs\"", "sourceLinks: \"relative\"", "headingIds: \"python-markdown\"", "dialect: \"python-markdown\""];
+	// MkDocs' own Markdown (Python-Markdown, admonitions, tabs, toc's ids, `.md` links) is fromMkdocs()'s.
+	const markdown: string[] = [];
 	if (extensions.some((e) => e === "pymdownx.highlight" || e === "codehilite")) markdown.push("highlight: { classes: \"pygments\" }");
 	if (extensions.includes("def_list")) markdown.push("definitionLists: true");
 	if (extensions.includes("smarty")) markdown.push("smartPunctuation: true");
@@ -3046,14 +3082,14 @@ export function mkdocs(dir: string): Plan {
 		return out;
 	})();
 	const url = typeof config.site_url === "string" ? config.site_url.replace(/\/$/, "") : undefined;
-	const imports = ["import { defineConfig } from \"ssqch\";", "import { linksPlugin } from \"ssqch/links\";", ...(url ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : []), ...(redirects ? ["import { redirectsPlugin } from \"ssqch/redirects\";"] : [])];
+	const imports = ["import { defineConfig } from \"ssqch\";", "import { fromMkdocs } from \"ssqch/from-mkdocs\";", "import { linksPlugin } from \"ssqch/links\";", ...(url ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : []), ...(redirects ? ["import { redirectsPlugin } from \"ssqch/redirects\";"] : [])];
 	let out = `// A first draft, written by \`ssqch scout\` from ${configFile}.\n// \`ssqch docs --from mkdocs\` has the whole mapping. The sidebar is _data/nav.yml (navTree).\n${imports.join("\n")}\n\nexport default defineConfig({\n`;
 	if (customDir) out += `  // theme.custom_dir: the theme's overrides, read before the theme's own templates.\n`;
 	out += `  dirs: { input: ${JSON.stringify(docsDir)}, output: ${JSON.stringify(siteDir)}, includes: ${JSON.stringify(customDir ? path.posix.relative(docsDir, customDir) : "../_includes")}, data: "../_data" },\n`;
 	if (basePath(url) !== undefined) out += `  // site_url's path: the site is served under it.\n  base: ${JSON.stringify(basePath(url))},\n`;
 	out += "  // MkDocs doesn't run template code in pages; its blocks and links read as it writes them.\n  markdownEngine: false,\n";
 	if (typeof theme === "string") out += `  // The ${theme} theme's templates as they are: copy them into theme/ (\`ssqch docs --from mkdocs\`,\n  // "The theme"), then turn these on.\n  // theme: "theme", mkdocsTemplates: true,\n`;
-	out += `  markdown: { ${markdown.join(", ")} },\n`;
+	if (markdown.length) out += `  markdown: { ${markdown.join(", ")} },\n`;
 	// MkDocs copies every file in the docs folder that isn't Markdown, at its own path.
 	const copied = walk(path.join(dir, docsDir), (name) => name.startsWith(".") || name === "node_modules", false).filter((e) => e.isFile && !/\.md$/i.test(e.name) && !(customDir && path.join(dir, docsDir, e.rel).startsWith(path.join(dir, customDir) + path.sep)));
 	const others = [...new Set(copied.filter((e) => /\.[A-Za-z0-9]+$/.test(e.name)).map((e) => extensionOf(e.name).toLowerCase()))].sort(compareText);
@@ -3063,7 +3099,7 @@ export function mkdocs(dir: string): Plan {
 	if (entries.length) out += `  passthrough: [${entries.join(", ")}],\n`;
 	out += `  data: { site: ${JSON.stringify(sortedKeys(site))} },\n`;
 	// MkDocs warns about a broken link unless `strict: true`, and so does the draft.
-	const pluginCalls = [...(url ? [`sitemapPlugin({ url: ${JSON.stringify(url)} })`] : []), ...(redirects ? [`redirectsPlugin({ redirects: ${JSON.stringify(redirects)} })`] : []), config.strict === true ? "linksPlugin()" : "linksPlugin({ fail: false })"];
+	const pluginCalls = ["fromMkdocs()", ...(url ? [`sitemapPlugin({ url: ${JSON.stringify(url)} })`] : []), ...(redirects ? [`redirectsPlugin({ redirects: ${JSON.stringify(redirects)} })`] : []), config.strict === true ? "linksPlugin()" : "linksPlugin({ fail: false })"];
 	out += `  plugins: [${pluginCalls.join(", ")}],\n});\n`;
 	plan.newFiles.push(["ssqch.config.js", `a first draft, from ${configFile}`, out]);
 	// The wrapper codehilite or pymdownx.highlight writes around the code, which the theme's CSS
@@ -3088,6 +3124,11 @@ export function mkdocs(dir: string): Plan {
 		const nav = convert(config.nav as unknown[]);
 		plan.newFiles.push(["_data/nav.yml", `the nav from ${configFile} (${entries} entries), for \`navTree\``, `# From ${configFile}'s nav, by ssqch scout: titles as the nav gives them, or each page's first heading.\n${dumpYaml(nav)}`]);
 	} else plan.byHand.push([configFile, "no `nav`: MkDocs builds the sidebar from the folders; ssqch's is `_data/nav.yml` (`navTree`) or `pagesTree(collections.all)`", { code: "mkdocs-nav", status: "ssqch", docs: "navTree" }]);
+	// What fromMkdocs() turns on is done with it in the plugins, as with the options themselves.
+	for (const entry of plan.byHand) {
+		const meta = entry[2];
+		if (meta?.option && /admonitions: "mkdocs"|tabs: "mkdocs"|sourceLinks: "relative"|headingIds: "python-markdown"|dialect: "python-markdown"/.test(meta.option)) entry[2] = { ...meta, defines: ["plugin:fromMkdocs", ...(meta.defines ?? [])] };
+	}
 	return plan;
 }
 
@@ -3150,7 +3191,7 @@ const vitepressGlob = (glob: string) => new RegExp(`^${glob.replace(/[.+^$()|[\]
 /**
  * VitePress, from the vuejs.org move: its config (`srcDir`, `srcExclude`, `cleanUrls`, the
  * sitemap's hostname, `head`, markdown-it plugins), the pages it builds, what they use, and a
- * draft config with `dialect: "vitepress"`. Each to-do says what in ssqch does it, and counts as
+ * draft config with `fromVitepress()`. Each to-do says what in ssqch does it, and counts as
  * done once the config or a template does (`Todo.defines`), so a second run shows what's left.
  */
 export function vitepress(dir: string): Plan {
@@ -3188,18 +3229,20 @@ export function vitepress(dir: string): Plan {
 	const dialect = 'markdown: { dialect: "vitepress" }';
 	const item = (pattern: RegExp, what: string, say: string, todo: Todo, inProse = true) => {
 		const { n, files, first } = count(pattern, inProse);
-		if (first) plan.byHand.push([first, `${what} (${uses(n, files)}): ${say}`, { ...todo, count: n, files }]);
+		// What fromVitepress() does is done with it in the plugins (or the old option, until it's retired).
+		const own = todo.option === dialect ? { defines: ["plugin:fromVitepress", ...(todo.defines ?? [])] } : {};
+		if (first) plan.byHand.push([first, `${what} (${uses(n, files)}): ${say}`, { ...todo, ...own, count: n, files }]);
 	};
 
 	// What the dialect reads as VitePress does.
-	item(/^<script\b[^>]*>/m, "Vue's `<script setup>` and `<script>` blocks in pages", "VitePress compiles them and writes none of it; `dialect: \"vitepress\"` leaves them out (the components they import are listed one by one)", { code: "vitepress-script-setup", status: "option", option: dialect });
-	item(/^<style\b[^>]*>/m, "`<style>` blocks in pages", "left out by `dialect: \"vitepress\"`; put the CSS in the site's stylesheet", { code: "vitepress-style", status: "option", option: dialect });
-	item(/<ClientOnly>/, "`<ClientOnly>`", "renders nothing on the server: `dialect: \"vitepress\"` leaves it out; what's inside needs JavaScript in the browser (a custom element from `ssqch/elements`)", { code: "vitepress-client-only", status: "option", option: dialect });
-	item(/^[ \t]{1,3}:{3,}[ \t]*$/m, "a container's closing `:::` indented under a list (Prettier's)", "markdown-it-container closes the container there; so does `containers: \"markdown-it\"`, which `dialect: \"vitepress\"` turns on", { code: "vitepress-indented-container", status: "option", option: dialect });
-	item(/^:::+\s*(?:tip|info|warning|danger|details|raw)\b/m, "containers (`::: tip`)", "VitePress's markup and default titles, built into `dialect: \"vitepress\"`", { code: "vitepress-containers", status: "option", option: dialect });
-	item(/^:::+\s*code-group\b/m, "code groups (`::: code-group`)", "built into `dialect: \"vitepress\"`", { code: "vitepress-code-group", status: "option", option: dialect });
-	item(/^\s*(?:`{3,}|~{3,})\s*[\w-]+-vue\b/m, "`-vue` fences (Vue's `{{ }}` evaluated in them)", "`dialect: \"vitepress\"` prints their string literals; anything else stays as written", { code: "vitepress-vue-fences", status: "option", option: dialect }, false);
-	item(/^\[\[toc\]\]\s*$/im, "`[[toc]]`", "markdown-it-table-of-contents' list, built into `dialect: \"vitepress\"`", { code: "vitepress-toc", status: "option", option: dialect });
+	item(/^<script\b[^>]*>/m, "Vue's `<script setup>` and `<script>` blocks in pages", "VitePress compiles them and writes none of it; `fromVitepress()` leaves them out (the components they import are listed one by one)", { code: "vitepress-script-setup", status: "option", option: dialect });
+	item(/^<style\b[^>]*>/m, "`<style>` blocks in pages", "left out by `fromVitepress()`; put the CSS in the site's stylesheet", { code: "vitepress-style", status: "option", option: dialect });
+	item(/<ClientOnly>/, "`<ClientOnly>`", "renders nothing on the server: `fromVitepress()` leaves it out; what's inside needs JavaScript in the browser (a custom element from `ssqch/elements`)", { code: "vitepress-client-only", status: "option", option: dialect });
+	item(/^[ \t]{1,3}:{3,}[ \t]*$/m, "a container's closing `:::` indented under a list (Prettier's)", "markdown-it-container closes the container there, and so does ssqch's `:::`", { code: "vitepress-indented-container", status: "option", option: dialect });
+	item(/^:::+\s*(?:tip|info|warning|danger|details|raw)\b/m, "containers (`::: tip`)", "VitePress's markup and default titles, built into `fromVitepress()`", { code: "vitepress-containers", status: "option", option: dialect });
+	item(/^:::+\s*code-group\b/m, "code groups (`::: code-group`)", "built into `fromVitepress()`", { code: "vitepress-code-group", status: "option", option: dialect });
+	item(/^\s*(?:`{3,}|~{3,})\s*[\w-]+-vue\b/m, "`-vue` fences (Vue's `{{ }}` evaluated in them)", "`fromVitepress()` prints their string literals; anything else stays as written", { code: "vitepress-vue-fences", status: "option", option: dialect }, false);
+	item(/^\[\[toc\]\]\s*$/im, "`[[toc]]`", "markdown-it-table-of-contents' list, built into `fromVitepress()`", { code: "vitepress-toc", status: "option", option: dialect });
 	item(/^<<<\s*@\//m, "`<<< @/` code snippets from files", "not in ssqch yet as written: an include in a template engine, or the code copied into a fence", { code: "vitepress-snippets", status: "not-yet" });
 	item(/\{\{[^}]*\}\}/, "Vue interpolations in pages (`{{ count }}`, `{{ $frontmatter.title }}`)", "Vue renders these; with `markdownEngine: false` (in the draft) ssqch prints them as written. Write the text itself, or move the part into a `.vue` component of its own that `vuePlugin()` renders (`ssqch docs \"inline vue in pages\"`)", { code: "vitepress-interpolations", status: "site", docs: "inline vue in pages" });
 	item(/^<(?![A-Z])[a-z][\w-]*\b[^>\n]*\s(?:v-[\w:-]+|@[\w.-]+)(?:=|[\s>])/m, "Vue directives on HTML in pages (`v-if`, `@click`)", "they do something in the browser that ssqch's HTML doesn't: a custom element from `ssqch/elements` for that part", { code: "vitepress-directives", status: "site" });
@@ -3271,7 +3314,7 @@ export function vitepress(dir: string): Plan {
 		const clean = /\bcleanUrls\s*:\s*true\b/.test(configText);
 		if (!clean) plan.byHand.push([configFile, "`cleanUrls` is off (VitePress's default), so pages are `/guide/intro.html`: `urls: \"html\"` (in the draft)", { code: "vitepress-urls", status: "option", option: 'urls: "html"' }]);
 		const hostname = /\bsitemap\s*:\s*\{[^}]*\bhostname\s*:\s*["'`]([^"'`]+)["'`]/.exec(configText)?.[1];
-		if (hostname) plan.byHand.push([configFile, `\`sitemap\`: \`sitemapPlugin({ url: "${hostname}", format: "vitepress" })\` writes the same file (in the draft)`, { code: "vitepress-sitemap", status: "ssqch", defines: ["plugin:ssqch/sitemap"] }]);
+		if (hostname) plan.byHand.push([configFile, `\`sitemap\`: \`sitemapPlugin({ url: "${hostname}" })\` (in the draft) lists the same URLs; the file is ssqch's own, so \`ssqch diff\` shows sitemap.xml as changed`, { code: "vitepress-sitemap", status: "ssqch", defines: ["plugin:ssqch/sitemap"] }]);
 		const head = /\bhead\s*:\s*\[/.exec(configText);
 		if (head) {
 			const close = closingBracket(configText, head.index + head[0].length - 1);
@@ -3283,7 +3326,7 @@ export function vitepress(dir: string): Plan {
 		if (/\bthemeConfig\b[\s\S]*\b(?:sidebar|nav)\s*:/.test(configText)) plan.byHand.push([configFile, "`themeConfig`'s `nav` and `sidebar`: data for ssqch's layout. Move them to a `_data/*.js` file that the VitePress config imports too, so both read one list; `navTree` marks the page you're on (a sidebar keyed by path picks the longest key that the page's URL starts with)", { code: "vitepress-sidebar", status: "site", docs: "navTree" }]);
 	}
 	for (const pkg of packagesLike(dir, /^vitepress-plugin-|^@?[\w-]*\/?vitepress-plugin-/)) {
-		const say = /llms/.test(pkg) ? "`llms.txt`, a Markdown copy of each page and `llms-full.txt`: `llmsPlugin()` from \"ssqch/llms\"" : /group-icons/.test(pkg) ? "icons on code groups' tabs: its CSS keyed by the tab's label (`data-title`), which `dialect: \"vitepress\"` writes" : "not in ssqch yet: port what it does as a hook, a transform or a plugin";
+		const say = /llms/.test(pkg) ? "`llms.txt`, a Markdown copy of each page and `llms-full.txt`: `llmsPlugin()` from \"ssqch/llms\"" : /group-icons/.test(pkg) ? "icons on code groups' tabs: its CSS keyed by the tab's label (`data-title`), which `fromVitepress()` writes" : "not in ssqch yet: port what it does as a hook, a transform or a plugin";
 		plan.byHand.push(["package.json", `${pkg}: ${say}`, { code: "vitepress-plugin", status: /group-icons|llms/.test(pkg) ? "ssqch" : "site", ...(/llms/.test(pkg) ? { defines: ["plugin:ssqch/llms"] } : {}) }]);
 	}
 	if (themeIndex !== undefined) {
@@ -3311,6 +3354,7 @@ export function vitepress(dir: string): Plan {
 			...(hostname ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : []),
 			...(vue ? ["import { vuePlugin } from \"ssqch/vue\";"] : []),
 			...(llms ? ["import { llmsPlugin } from \"ssqch/llms\";"] : []),
+			"import { fromVitepress } from \"ssqch/from-vitepress\";",
 			"",
 			"export default {",
 			`\tdirs: { input: ${JSON.stringify(src)}, output: "dist" },`,
@@ -3321,17 +3365,19 @@ export function vitepress(dir: string): Plan {
 			"\t// VitePress's data loaders, `srcExclude`, its own folder, and `public/` (copied below).",
 			`\tignore: [${ignore.join(", ")}],`,
 			...(isDir(path.join(dir, ...publicDir.split("/"))) ? [`\tpassthrough: { ${JSON.stringify(`${publicDir}/**`)}: "." },`] : []),
-			"\tmarkdown: { dialect: \"vitepress\", highlight: true },",
-			...(hostname || vue || llms ? [
+			"\tmarkdown: { highlight: true },",
+			...[
 				"\tplugins: [",
+				"\t\t// VitePress's Markdown: its containers, headings, links, code blocks and `[[toc]]`.",
+				"\t\tfromVitepress(),",
 				...(vue ? [
 					"\t\t// The Vue components the pages use, rendered with the site's Vite and Vue (and run in the browser with `hydrate`).",
 					`\t\tvuePlugin({ ${vueGlobals.length ? `components: { ${vueGlobals.map(([n, f]) => `${n}: ${JSON.stringify(f)}`).join(", ")} }${stateful ? ", " : ""}` : ""}${stateful ? "hydrate: \"visible\"" : ""} }),`,
 				] : []),
-				...(hostname ? [`\t\tsitemapPlugin({ url: ${JSON.stringify(hostname)}, format: "vitepress" }),`] : []),
+				...(hostname ? [`\t\tsitemapPlugin({ url: ${JSON.stringify(hostname)} }),`] : []),
 				...(llms ? [`\t\tllmsPlugin({ ${[siteTitle ? `title: ${JSON.stringify(siteTitle)}` : "", siteDescription ? `description: ${JSON.stringify(siteDescription)}` : "", hostname ? `url: ${JSON.stringify(hostname)}` : ""].filter(Boolean).join(", ")} }),`] : []),
 				"\t],",
-			] : []),
+			],
 			"};",
 			"",
 		];

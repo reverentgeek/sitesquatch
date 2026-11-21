@@ -295,10 +295,11 @@ test("config_markdown_takes_inline_as_templates_do", () => {
 
 // Added in 0.11, from opensource.guide (3,791 `markdown="1"` elements, 325 pages with raw
 // `[@name](url)` credits without them): kramdown's Markdown inside HTML, and its heading ids.
+// DELIBERATE (0.13): kramdown's Markdown inside HTML is fromJekyll()'s (the audit's plan, step 6).
 test("kramdowns_markdown_inside_html", () => {
 	const dir = tempDir("markdown-kramdown");
 	write(dir, {
-		"ssqch.config.js": "export default { markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\" } };\n",
+		"ssqch.config.js": "import { fromJekyll } from \"ssqch/from-jekyll\";\nexport default { markdown: { smartPunctuation: false, autolinks: true }, plugins: [fromJekyll({ templates: false })] };\n",
 		"index.md": "# Pine 🌲 trail\n\n<aside markdown=\"1\" class=\"note\">\n## Café *notes*\n\n- [@ranger](https://example.com)\n\n</aside>\n## After\n\n<p markdown=\"1\">A *quote*</p>\n\n<div>\nraw *stays*\n\nstill raw\n</div>\n",
 		"other.jinja": "{{ markdown('<p markdown=\"1\">*a*</p>') | safe }}",
 	});
@@ -311,9 +312,10 @@ test("kramdowns_markdown_inside_html", () => {
 	write(dir, { "ssqch.config.js": "export default {};\n" });
 	r = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(read(dir, "_site/index.html").includes("<p markdown=\"1\">A *quote*</p>"), read(dir, "_site/index.html"));
-	write(dir, { "ssqch.config.js": "export default { markdown: { htmlMarkdown: true } };\n" });
+	// The option on its own is refused with the module's name.
+	write(dir, { "ssqch.config.js": "export default { markdown: { htmlMarkdown: \"kramdown\" } };\n" });
 	r = ssqch(["build", "--root", dir, "-q"]);
-	assert.ok(!r.ok && r.log.includes("markdown.htmlMarkdown must be \"kramdown\" or false, not boolean"), r.log);
+	assert.ok(!r.ok && r.log.includes("markdown.htmlMarkdown is fromJekyll() from \"ssqch/from-jekyll\" now: add it to plugins"), r.log);
 });
 
 // Added in 0.11, from the a11yproject.com rerun: a layout adds the only `h2` on some pages, so

@@ -17,6 +17,10 @@ sidebar: true
     {{ content }}
 
     <footer class="page-footer">
+      {% assign copy = page.url | markdownCopy %}
+      {% if copy != "" %}
+      <p class="page-markdown"><a href="{{ copy }}">View as Markdown</a> <button type="button" data-copy-markdown="{{ copy }}" hidden>Copy as Markdown</button></p>
+      {% endif %}
       {% if site.editUrl and site.editUrl != "" %}
       <p><a href="{{ site.editUrl }}{{ page.inputPath | replace_first: './', '' }}">Edit this page</a></p>
       {% endif %}

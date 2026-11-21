@@ -333,11 +333,21 @@ function also(all: Section[], name: string, not: number): number[] {
 }
 
 /** The section with heading `title`, by its words (`content schemas`, `Content schemas`) or its anchor. */
+/**
+ * A display title's plain words, after its theme: "Getting spotted: SEO tags" is "SEO tags", and
+ * "Has the stump moved? Comparing two builds" is "Comparing two builds". A title without one is
+ * itself. `ssqch docs` finds a page by either, and names it by the plain words.
+ */
+export function plainTitle(title: string): string {
+	const at = /[:?] /.exec(title);
+	return at ? title.slice(at.index + 2) : title;
+}
+
 function heading(all: Section[], query: string): number | undefined {
 	const q = words(query);
 	if (q.length === 0) return undefined;
 	const anchor = query.replace(/^#+/, "");
-	const exact = all.findIndex((s) => words(s.title).join(" ") === q.join(" ") || slug(s.title) === anchor);
+	const exact = all.findIndex((s) => words(s.title).join(" ") === q.join(" ") || words(plainTitle(s.title)).join(" ") === q.join(" ") || slug(s.title) === anchor);
 	if (exact !== -1) return exact;
 	// Every word of the query starts a word of the heading (`schema` finds "Content schemas"); the shortest heading wins.
 	let best: number | undefined;
@@ -472,7 +482,7 @@ function answerText(all: Section[], a: Answer): string {
 	for (const name of described) out += `${what(name)}: ${name.summary}\n`;
 	if (described.length) out += "\n";
 	if (a.section !== undefined && a.passages.length) {
-		out += `From "${all[a.section].title}" (ssqch docs "${all[a.section].title}"):\n\n${a.passages.join("\n\n")}\n`;
+		out += `From "${all[a.section].title}" (ssqch docs "${plainTitle(all[a.section].title)}"):\n\n${a.passages.join("\n\n")}\n`;
 	} else if (a.section !== undefined) {
 		out += sectionText(all, a.section);
 	} else if (a.help === undefined && a.equivalent) {
@@ -687,11 +697,14 @@ export function runDocs(grammar: Grammar, command: DocsCommand): number {
 			return out(json ? JSON.stringify({ query, found: true, page: { file: `site/src/docs/${page.file}`, url: guideUrl(page.file.replace(/^trailheads\//, "")), text } }, null, 2) + "\n" : text);
 		}
 	}
-	const a = page?.title !== undefined ? { query, names: [], passages: [], also: [], section: all.findIndex((s) => s.level <= 2 && s.title === page.title) } : answer(grammar, all, known, query);
-	if (a && a.section !== -1) return out(json ? JSON.stringify(answerJson(all, a), null, 2) + "\n" : answerText(all, a));
 	// A heading in a trailhead (`"moving with identical output first"`): the main docs don't have
-	// the trailheads (`--from` prints them), but scout's lines and the trailheads point at their sections.
-	const trail = trailheadSection(query);
+	// the trailheads (`--from` prints them), but scout's lines and the trailheads point at their
+	// sections. A heading's own words beat a page that only mentions them, unless the main docs
+	// have that heading or name too.
+	const trail = page === undefined ? trailheadSection(query) : undefined;
+	const exact = trail !== undefined && !known.some((n) => n.name === query) && !all.some((s) => s.title.toLowerCase() === query.trim().toLowerCase() || plainTitle(s.title).toLowerCase() === query.trim().toLowerCase());
+	const a = page?.title !== undefined ? { query, names: [], passages: [], also: [], section: all.findIndex((s) => s.level <= 2 && s.title === page.title) } : exact ? undefined : answer(grammar, all, known, query);
+	if (a && a.section !== -1) return out(json ? JSON.stringify(answerJson(all, a), null, 2) + "\n" : answerText(all, a));
 	if (trail) return out(json ? JSON.stringify({ query, found: true, trailhead: trail }, null, 2) + "\n" : `From "${trail.page}" (ssqch docs --from ${trail.generator}):\n\n${trail.text}`);
 	const near = closestName(all, known, query);
 	const next = near === undefined ? nextStep(grammar, all, known, query) : undefined;

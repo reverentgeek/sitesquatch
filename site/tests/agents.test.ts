@@ -1,13 +1,13 @@
 // What agents get equals what people get. Reads the built site (`node build.ts` first; CI's
-// `check` job builds before it tests): every docs page has its two Markdown copies, /llms.txt
-// lists exactly the docs pages, and each copy, rendered, has the same text as its page (the
+// `check` job builds before it tests): every docs page has its Markdown copy, /llms.txt
+// lists every docs page, and each copy, rendered, has the same text as its page (the
 // title and the part marked `data-copy` in src/_includes/doc.jinja).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { markdown } from "../../packages/ssqch/src/exports/ssqch.ts";
-import { copyOf } from "../lib/agents.ts";
+import { copyUrl as copyOf } from "../../packages/ssqch/src/modules/llms.ts";
 import { SITE } from "../lib/docs.ts";
 
 const dist = path.join(SITE, "dist");
@@ -35,21 +35,19 @@ function text(html: string): string {
 
 test("the site is built", { skip: built ? false : "run `node build.ts` first" }, () => {});
 
-test("every docs page has its Markdown copies", { skip: !built }, () => {
+test("every docs page has its Markdown copy", { skip: !built }, () => {
 	const urls = docsPages();
 	assert.ok(urls.length > 30, `only ${urls.length} docs pages in dist/`);
 	for (const url of urls) {
 		const copy = copyOf(url);
 		assert.ok(existsSync(path.join(dist, copy)), `${url} has no ${copy}`);
-		const other = url === "/docs/" ? "/docs.md" : `${url}index.md`;
-		assert.ok(existsSync(path.join(dist, other)), `${url} has no ${other}`);
 		const html = readFileSync(path.join(dist, url, "index.html"), "utf8");
 		assert.match(html, new RegExp(`<link rel="?alternate"? type="?text/markdown"? href="?${copy.replace(/\./g, "\\.")}"?>`), `${url} doesn't link its copy in <head>`);
 	}
 });
 
-test("/llms.txt lists exactly the docs pages", { skip: !built }, () => {
-	const listed = [...readFileSync(path.join(dist, "llms.txt"), "utf8").matchAll(/\]\(https:\/\/sitesquatch\.dev(\/docs\/[^)]*\.md)\)/g)].map(([, url]) => url).sort();
+test("/llms.txt lists every docs page", { skip: !built }, () => {
+	const listed = [...readFileSync(path.join(dist, "llms.txt"), "utf8").matchAll(/\]\(https:\/\/sitesquatch\.dev(\/docs[^)]*\.md)\)/g)].map(([, url]) => url).sort();
 	assert.deepEqual(listed, docsPages().map(copyOf).sort());
 });
 

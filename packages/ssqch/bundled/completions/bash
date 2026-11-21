@@ -34,6 +34,9 @@ _ssqch() {
             ssqch,footprint)
                 cmd="ssqch__subcmd__footprint"
                 ;;
+            ssqch,patrol)
+                cmd="ssqch__subcmd__patrol"
+                ;;
             ssqch,help)
                 cmd="ssqch__subcmd__help"
                 ;;
@@ -46,8 +49,8 @@ _ssqch() {
             ssqch,init)
                 cmd="ssqch__subcmd__init"
                 ;;
-            ssqch,inspect)
-                cmd="ssqch__subcmd__inspect"
+            ssqch,trace)
+                cmd="ssqch__subcmd__trace"
                 ;;
             ssqch,new)
                 cmd="ssqch__subcmd__new"
@@ -76,6 +79,9 @@ _ssqch() {
             ssqch__subcmd__help,footprint)
                 cmd="ssqch__subcmd__help__subcmd__footprint"
                 ;;
+            ssqch__subcmd__help,patrol)
+                cmd="ssqch__subcmd__help__subcmd__patrol"
+                ;;
             ssqch__subcmd__help,help)
                 cmd="ssqch__subcmd__help__subcmd__help"
                 ;;
@@ -88,8 +94,8 @@ _ssqch() {
             ssqch__subcmd__help,init)
                 cmd="ssqch__subcmd__help__subcmd__init"
                 ;;
-            ssqch__subcmd__help,inspect)
-                cmd="ssqch__subcmd__help__subcmd__inspect"
+            ssqch__subcmd__help,trace)
+                cmd="ssqch__subcmd__help__subcmd__trace"
                 ;;
             ssqch__subcmd__help,new)
                 cmd="ssqch__subcmd__help__subcmd__new"
@@ -107,7 +113,7 @@ _ssqch() {
 
     case "${cmd}" in
         ssqch)
-            opts="-o -q -v -h -V --root --output --base --offline --env --quiet --verbose --help --version build serve new inspect completions diff footprint init types baseline scout capabilities docs help"
+            opts="-o -q -v -h -V --root --output --base --offline --env --quiet --verbose --help --version build serve new trace completions diff footprint patrol init types baseline scout capabilities docs help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -388,8 +394,46 @@ _ssqch() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        ssqch__subcmd__patrol)
+            opts="-o -q -v -h --format --root --output --base --offline --env --quiet --verbose --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --format)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --root)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --output)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -o)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --base)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --env)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         ssqch__subcmd__help)
-            opts="build serve new inspect completions diff footprint init types baseline scout capabilities docs help"
+            opts="build serve new trace completions diff footprint patrol init types baseline scout capabilities docs help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -486,6 +530,20 @@ _ssqch() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        ssqch__subcmd__help__subcmd__patrol)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         ssqch__subcmd__help__subcmd__help)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
@@ -542,7 +600,7 @@ _ssqch() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        ssqch__subcmd__help__subcmd__inspect)
+        ssqch__subcmd__help__subcmd__trace)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -696,7 +754,7 @@ _ssqch() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        ssqch__subcmd__inspect)
+        ssqch__subcmd__trace)
             opts="-o -q -v -h --field --format --root --output --base --offline --env --quiet --verbose --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

@@ -98,7 +98,7 @@ _arguments "${_arguments_options[@]}" : \
 ':path -- The new file, from the input folder (posts/pine-cones.md), or a folder, with --title:_default' \
 && ret=0
 ;;
-(inspect)
+(trace)
 _arguments "${_arguments_options[@]}" : \
 '--field=[One field of its data, in full, with every level that set it (a dotted path reaches inside\: hero.alt)]:NAME:_default' \
 '--format=[text or json]:FORMAT:_default' \
@@ -163,6 +163,24 @@ _arguments "${_arguments_options[@]}" : \
 (footprint)
 _arguments "${_arguments_options[@]}" : \
 '--top=[How many of the heaviest pages and files to list (0 for none)]:TOP:_default' \
+'--format=[text or json]:FORMAT:_default' \
+'--root=[Project root (defaults to the current directory)]:ROOT:_files' \
+'-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
+'--base=[Serve the site under a path, like /repo/ (overrides the config'\''s \`base\`)]:BASE:_default' \
+'--env=[development or production (default\: \$SSQCH_ENV, \$NODE_ENV, then production for \`build\` and development for \`serve\`)]:ENV:_default' \
+'--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
+'-q[Print only warnings and errors]' \
+'--quiet[Print only warnings and errors]' \
+'-v[Also list the slowest images to encode]' \
+'--verbose[Also list the slowest images to encode]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::dir -- The build folder (default\: the site'\''s output folder):_files' \
+&& ret=0
+;;
+(patrol)
+_arguments "${_arguments_options[@]}" : \
 '--format=[text or json]:FORMAT:_default' \
 '--root=[Project root (defaults to the current directory)]:ROOT:_files' \
 '-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
@@ -305,7 +323,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(inspect)
+(trace)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -318,6 +336,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (footprint)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(patrol)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -360,10 +382,11 @@ _ssqch_commands() {
 'build:Build the site (default)' \
 'serve:Build, serve, watch for changes and live-reload the browser' \
 'new:Create a page from a blueprint (a file in _blueprints/), with its title and date filled in' \
-'inspect:Show where a page comes from, and which level of the data cascade set each value' \
+'trace:Follow a page'\''s tracks\: where it comes from, and which level of the data cascade set each value' \
 'completions:Print a completion script for your shell, so Tab finishes commands and options' \
 'diff:Compare two builds of a site\: URLs added and removed, and what changed on each page' \
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
+'patrol:Check a build for what agents and crawlers read\: robots.txt, the sitemap, llms.txt, Markdown copies, headings and descriptions' \
 'init:Create a starter site (config, layout, five posts, data and editor types)' \
 'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
 'baseline:Build the site with its old generator in fresh copies and compare the builds' \
@@ -404,16 +427,22 @@ _ssqch__subcmd__footprint_commands() {
     local commands; commands=()
     _describe -t commands 'ssqch footprint commands' commands "$@"
 }
+(( $+functions[_ssqch__subcmd__patrol_commands] )) ||
+_ssqch__subcmd__patrol_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch patrol commands' commands "$@"
+}
 (( $+functions[_ssqch__subcmd__help_commands] )) ||
 _ssqch__subcmd__help_commands() {
     local commands; commands=(
 'build:Build the site (default)' \
 'serve:Build, serve, watch for changes and live-reload the browser' \
 'new:Create a page from a blueprint (a file in _blueprints/), with its title and date filled in' \
-'inspect:Show where a page comes from, and which level of the data cascade set each value' \
+'trace:Follow a page'\''s tracks\: where it comes from, and which level of the data cascade set each value' \
 'completions:Print a completion script for your shell, so Tab finishes commands and options' \
 'diff:Compare two builds of a site\: URLs added and removed, and what changed on each page' \
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
+'patrol:Check a build for what agents and crawlers read\: robots.txt, the sitemap, llms.txt, Markdown copies, headings and descriptions' \
 'init:Create a starter site (config, layout, five posts, data and editor types)' \
 'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
 'baseline:Build the site with its old generator in fresh copies and compare the builds' \
@@ -454,6 +483,11 @@ _ssqch__subcmd__help__subcmd__footprint_commands() {
     local commands; commands=()
     _describe -t commands 'ssqch help footprint commands' commands "$@"
 }
+(( $+functions[_ssqch__subcmd__help__subcmd__patrol_commands] )) ||
+_ssqch__subcmd__help__subcmd__patrol_commands() {
+    local commands; commands=()
+    _describe -t commands 'ssqch help patrol commands' commands "$@"
+}
 (( $+functions[_ssqch__subcmd__help__subcmd__help_commands] )) ||
 _ssqch__subcmd__help__subcmd__help_commands() {
     local commands; commands=()
@@ -469,10 +503,10 @@ _ssqch__subcmd__help__subcmd__init_commands() {
     local commands; commands=()
     _describe -t commands 'ssqch help init commands' commands "$@"
 }
-(( $+functions[_ssqch__subcmd__help__subcmd__inspect_commands] )) ||
-_ssqch__subcmd__help__subcmd__inspect_commands() {
+(( $+functions[_ssqch__subcmd__help__subcmd__trace_commands] )) ||
+_ssqch__subcmd__help__subcmd__trace_commands() {
     local commands; commands=()
-    _describe -t commands 'ssqch help inspect commands' commands "$@"
+    _describe -t commands 'ssqch help trace commands' commands "$@"
 }
 (( $+functions[_ssqch__subcmd__help__subcmd__new_commands] )) ||
 _ssqch__subcmd__help__subcmd__new_commands() {
@@ -504,10 +538,10 @@ _ssqch__subcmd__init_commands() {
     local commands; commands=()
     _describe -t commands 'ssqch init commands' commands "$@"
 }
-(( $+functions[_ssqch__subcmd__inspect_commands] )) ||
-_ssqch__subcmd__inspect_commands() {
+(( $+functions[_ssqch__subcmd__trace_commands] )) ||
+_ssqch__subcmd__trace_commands() {
     local commands; commands=()
-    _describe -t commands 'ssqch inspect commands' commands "$@"
+    _describe -t commands 'ssqch trace commands' commands "$@"
 }
 (( $+functions[_ssqch__subcmd__new_commands] )) ||
 _ssqch__subcmd__new_commands() {

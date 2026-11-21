@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { canonicalTag, canonicalText, compare, compareRuns, diffJson, diffText, isSame, keyed, knownChange, runsJson, runsText, tokens, withoutFingerprints } from "./diff.ts";
+import { canonicalTag, canonicalText, canonicalUrl, compare, compareRuns, diffJson, diffText, isSame, keyed, knownChange, runsJson, runsText, tokens, withoutFingerprints } from "./diff.ts";
 import type { DiffOptions } from "./diff.ts";
 import { globToRegExp } from "./glob.ts";
 
@@ -246,24 +246,24 @@ test("links_are_compared_by_their_targets", { skip: process.platform === "win32"
 test("changes_on_several_files_are_grouped", async () => {
 	const page = (body: string) => `<html><head><title>T</title></head><body>${body}</body></html>`;
 	const before = build({
-		"a/index.html": page("<footer>Built with Eleventy</footer><a href=\"#é\">x</a>"),
-		"b/index.html": page("<footer>Built with Eleventy</footer><a href=\"#ü\">y</a><p>Old</p>"),
+		"a/index.html": page("<footer>Built with Eleventy</footer><a href=\"#pine\">x</a>"),
+		"b/index.html": page("<footer>Built with Eleventy</footer><a href=\"#cedar\">y</a><p>Old</p>"),
 		"c/index.html": page("<footer>Built with Eleventy</footer>"),
 		"d/index.html": page("<p>Alone</p>"),
 	});
 	const after = build({
-		"a/index.html": page("<footer>Built with ssqch</footer><a href=\"#%C3%A9\">x</a>"),
-		"b/index.html": page("<footer>Built with ssqch</footer><a href=\"#%C3%BC\">y</a><p>New</p>"),
+		"a/index.html": page("<footer>Built with ssqch</footer><a href=\"#pine-1\">x</a>"),
+		"b/index.html": page("<footer>Built with ssqch</footer><a href=\"#cedar-1\">y</a><p>New</p>"),
 		"c/index.html": page("<footer>Built with ssqch</footer>"),
 		"d/index.html": page("<p>Alone, changed</p>"),
 	});
 	const report = await compare(before, after, options());
 	assert.deepEqual(report.groups.map((g) => [g.urls, g.same, g.kind, g.hunk]), [
 		[["/a/", "/b/", "/c/"], true, "text", { removed: ["Built with Eleventy"], added: ["Built with ssqch"] }],
-		[["/a/", "/b/"], false, "markup", { removed: ["<a href=\"#é\">"], added: ["<a href=\"#%C3%A9\">"] }],
+		[["/a/", "/b/"], false, "markup", { removed: ["<a href=\"#pine\">"], added: ["<a href=\"#pine-1\">"] }],
 	]);
 	const text = diffText(report, 10, false);
-	assert.ok(text.includes("Changed (4)\n  The same change on more than one file, the most files first (--ungrouped lists each file with all of it):\n  ~ 3 pages: /a/, /b/, /c/\n      - Built with Eleventy\n      + Built with ssqch\n  ~ 2 pages, the same but for attribute values: /a/, /b/\n      - <a href=\"#é\">\n      + <a href=\"#%C3%A9\">\n  And what's left on 2 files:\n  ~ /b/  (text and markup)\n      - Old\n      + New\n  ~ /d/  (text)\n"), text);
+	assert.ok(text.includes("Changed (4)\n  The same change on more than one file, the most files first (--ungrouped lists each file with all of it):\n  ~ 3 pages: /a/, /b/, /c/\n      - Built with Eleventy\n      + Built with ssqch\n  ~ 2 pages, the same but for attribute values: /a/, /b/\n      - <a href=\"#pine\">\n      + <a href=\"#pine-1\">\n  And what's left on 2 files:\n  ~ /b/  (text and markup)\n      - Old\n      + New\n  ~ /d/  (text)\n"), text);
 	assert.ok(!text.includes("~ /a/  ("), text);
 	const json = diffJson(report, 0) as { groups: Array<{ files: number; kind: string }>; changed: Array<{ url: string; groups: number[] }> };
 	assert.deepEqual(json.groups.map((g) => [g.files, g.kind]), [[3, "text"], [2, "markup"]]);
@@ -406,4 +406,13 @@ test("a_long_changed_line_is_shown_where_it_differs", async () => {
 	const css = (color: string) => `${"a{b:c}".repeat(500)}.pine{color:${color}}${"d{e:f}".repeat(100)}`;
 	const text = diffText(await compare(build({ "app.css": css("green") }), build({ "app.css": css("teal") }), options()), 10, false);
 	assert.ok(text.includes("- (from character 2,973) …") && text.includes(".pine{color:green}") && text.includes(".pine{color:teal}"), text);
+});
+
+test("a URL reads the same percent-encoded or not, where a browser would encode it itself", () => {
+	assert.equal(canonicalUrl("#%D9%83%D8%AA%D8%A7%D8%A8%D8%A9"), "#كتابة");
+	assert.equal(canonicalUrl("caf%C3%A9%20menu.png"), "café menu.png");
+	// ASCII that means something in a URL stays encoded, and bytes that aren't UTF-8 stay as written.
+	assert.equal(canonicalUrl("a%2Fb%23c%3Fd"), "a%2Fb%23c%3Fd");
+	assert.equal(canonicalUrl("x%FFy"), "x%FFy");
+	assert.equal(canonicalUrl("%C3%A9%2F"), "é%2F");
 });

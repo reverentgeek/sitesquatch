@@ -170,24 +170,21 @@ test("layout_aliases_name_another_layout", () => {
 });
 
 // Added in 0.11, from the fresh opensource.guide move: Jekyll drops the blank lines after the
-// closing `---` (every page and layout had one more `\n` in ssqch's build).
-test("trim_after_front_matter_starts_the_body_at_its_text", () => {
+// closing `---` (every page and layout had one more `\n` in ssqch's build). DELIBERATE (0.13):
+// `trimAfterFrontMatter` is gone. Those lines are whitespace browsers and `ssqch diff` don't see;
+// where one matters (a feed), the template loses it, which `ssqch scout --patch` does.
+test("trim_after_front_matter_is_gone", () => {
 	const dir = tempDir("trim-front-matter");
 	write(dir, {
 		"ssqch.config.js": "export default { trimAfterFrontMatter: true, templateFormats: [\"liquid\"] };\n",
-		"index.liquid": "---\nlayout: base.liquid\n---\n\n\n<p>{{ \"x\" | nope }}</p>\n",
-		"_includes/base.liquid": "---\n---\n\n<main>{{ content }}</main>\n",
+		"index.liquid": "---\n---\n\n<p>x</p>\n",
 	});
 	let r = ssqch(["build", "--root", dir, "-q"]);
-	// The error's line is the file's.
-	assert.ok(!r.ok && r.log.includes("--> index.liquid:6"), r.log);
-	write(dir, { "index.liquid": "---\nlayout: base.liquid\n---\n\n\n<p>x</p>\n" });
+	assert.ok(!r.ok && r.log.includes("\"trimAfterFrontMatter\" is gone: the blank lines after a template's front matter") && r.log.includes("`ssqch scout --patch`"), r.log);
+	write(dir, { "ssqch.config.js": "export default { templateFormats: [\"liquid\"] };\n" });
 	r = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(r.ok, r.log);
-	assert.equal(read(dir, "_site/index.html"), "<main><p>x</p>\n</main>\n");
-	write(dir, { "ssqch.config.js": "export default { trimAfterFrontMatter: \"yes\", templateFormats: [\"liquid\"] };\n" });
-	r = ssqch(["build", "--root", dir, "-q"]);
-	assert.ok(!r.ok && r.log.includes("trimAfterFrontMatter must be true or false, not string"), r.log);
+	assert.equal(read(dir, "_site/index.html"), "\n<p>x</p>\n");
 });
 
 // Added in 0.11, from the fresh opensource.guide move: Jekyll's own `_site` was read as 405 more
@@ -288,6 +285,8 @@ test("the_same_error_on_many_pages_is_one_line", () => {
 });
 
 // Added in 0.12, from the fresh vuejs.org run: what a VitePress site needed as hooks and filters.
+// DELIBERATE (0.13): `containers: "markdown-it"` is what `containers: true` does (step 7), so the
+// indented closing `:::` below needs no option.
 test("vitepress_habits_have_options", () => {
 	const dir = tempDir("vitepress-options");
 	write(dir, {
@@ -295,8 +294,8 @@ test("vitepress_habits_have_options", () => {
 			"import { sitemapPlugin } from \"ssqch/sitemap\";",
 			"export default {",
 			"\turls: \"html\",",
-			"\tmarkdown: { autolinks: \"email\", containers: \"markdown-it\", preprocess: async (source) => source.replace(/<script setup>[\\s\\S]*?<\\/script>\\n?/g, \"\") },",
-			"\tplugins: [sitemapPlugin({ url: \"https://trail.example\", format: \"vitepress\" })],",
+			"\tmarkdown: { autolinks: \"email\", preprocess: async (source) => source.replace(/<script setup>[\\s\\S]*?<\\/script>\\n?/g, \"\") },",
+			"\tplugins: [sitemapPlugin({ url: \"https://trail.example\" })],",
 			"};",
 		].join("\n"),
 		"_includes/hooks/table.jinja": "<table tabindex=\"0\">{{ table.content | safe }}</table>",
@@ -308,18 +307,29 @@ test("vitepress_habits_have_options", () => {
 	assert.ok(r.ok, r.log);
 	assert.ok(exists(dir, "_site/guide/intro.html") && exists(dir, "_site/guide/index.html") && exists(dir, "_site/index.html"));
 	assert.equal(read(dir, "_site/guide/intro.html"), "<div class=\"info\">\n<ul>\n<li>Write <a href=\"mailto:ranger@example.com\">ranger@example.com</a></li>\n<li>not example.com</li>\n</ul>\n</div>\n<table tabindex=\"0\"><thead><tr><th>Trail</th><th>Miles</th></tr></thead><tbody>\n<tr><td>Cedar</td><td>3</td></tr>\n</tbody></table>\n");
-	assert.equal(read(dir, "_site/sitemap.xml"), "<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\" xmlns:news=\"http://www.google.com/schemas/sitemap-news/0.9\" xmlns:xhtml=\"http://www.w3.org/1999/xhtml\" xmlns:image=\"http://www.google.com/schemas/sitemap-image/1.1\" xmlns:video=\"http://www.google.com/schemas/sitemap-video/1.1\"><url><loc>https://trail.example/guide/</loc></url><url><loc>https://trail.example/guide/intro.html</loc></url><url><loc>https://trail.example/</loc></url></urlset>");
+	// DELIBERATE (0.13): `format: "vitepress"` is gone (byte parity no reader of a sitemap needs);
+	// `urls: "html"` still gives the same URLs, in ssqch's sitemap.
+	const sitemap = read(dir, "_site/sitemap.xml");
+	for (const loc of ["https://trail.example/</loc>", "https://trail.example/guide/</loc>", "https://trail.example/guide/intro.html</loc>"]) assert.ok(sitemap.includes(`<loc>${loc}`), sitemap);
+	write(dir, { "ssqch.config.js": "import { sitemapPlugin } from \"ssqch/sitemap\";\nexport default { plugins: [sitemapPlugin({ url: \"https://trail.example\", format: \"vitepress\" })] };\n" });
+	const gone = ssqch(["build", "--root", dir]);
+	assert.ok(!gone.ok && gone.log.includes("`format` is gone: the sitemap is ssqch's own"), gone.log);
 	// Wrong values say what they can be.
 	write(dir, { "ssqch.config.js": "export default { urls: \"ugly\" };\n" });
 	const bad = ssqch(["build", "--root", dir]);
 	assert.ok(!bad.ok && bad.log.includes("urls must be \"folders\" (/guide/intro/) or \"html\" (/guide/intro.html), not \"ugly\""), bad.log);
+	write(dir, { "ssqch.config.js": "export default { markdown: { containers: \"markdown-it\" } };\n" });
+	const old = ssqch(["build", "--root", dir]);
+	assert.ok(!old.ok && old.log.includes("markdown.containers: \"markdown-it\" is what `containers: true` does now"), old.log);
 });
 
 // Added in 0.12, from the fresh vuejs.org run: VitePress's Markdown, as one option.
+// DELIBERATE (0.13): VitePress's Markdown is fromVitepress() from "ssqch/from-vitepress" (the
+// audit's plan, step 6), which writes what `dialect: "vitepress"` did.
 test("the_vitepress_dialect_writes_vitepress_markup", () => {
 	const dir = tempDir("vitepress-dialect");
 	write(dir, {
-		"ssqch.config.js": "export default { urls: \"html\", markdownEngine: false, markdown: { dialect: \"vitepress\" } };\n",
+		"ssqch.config.js": "import { fromVitepress } from \"ssqch/from-vitepress\";\nexport default { urls: \"html\", markdownEngine: false, plugins: [fromVitepress()] };\n",
 		"_includes/containers/warning.jinja": "<aside class=\"own\">{{ container.content | safe }}</aside>",
 		"guide/intro.md": "<script setup>\nimport { ref } from 'vue'\n</script>\n\n## What's Vue?\n\nRead [the guide](./next.md) or [Vue School](https://vueschool.io).\n\n::: tip\n- one\n  :::\n\n::: warning\nOurs\n:::\n",
 		"guide/next.md": "# Next\n",

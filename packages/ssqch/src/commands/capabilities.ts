@@ -18,7 +18,12 @@ export const MODULE_EXPORTS: ReadonlyArray<readonly [name: string, exports: read
 	["ssqch/elements", ["elementsPlugin"]],
 	["ssqch/minify", ["minifyPlugin", "minify", "minifyCss"]],
 	["ssqch/llms", ["llmsPlugin"]],
+	["ssqch/robots", ["robotsPlugin"]],
 	["ssqch/vue", ["vuePlugin"]],
+	["ssqch/from-vitepress", ["fromVitepress"]],
+	["ssqch/from-mkdocs", ["fromMkdocs"]],
+	["ssqch/from-jekyll", ["fromJekyll"]],
+	["ssqch/from-hugo", ["fromHugo"]],
 ];
 
 /** The Node modules a config, a data file or a package can import. They are Node's own, so every one works (0.7's QuickJS had stand-ins for some that threw when used, listed as `stubs`). */
@@ -71,7 +76,7 @@ export async function capabilities(commands: string[]): Promise<Capabilities> {
 		schemaVersion: 1,
 		version: VERSION,
 		commands,
-		json: ["build --format json", "inspect --format json", "diff --format json", "capabilities --format json", "docs --format json", "serve --ready-file"],
+		json: ["build --format json", "trace --format json", "diff --format json", "capabilities --format json", "docs --format json", "serve --ready-file"],
 		features,
 		configFiles: [...CONFIG_FILES, "sitesquatch.toml"],
 		configOptions: configOptions(),

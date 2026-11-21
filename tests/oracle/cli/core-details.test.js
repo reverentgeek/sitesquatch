@@ -136,7 +136,7 @@ test("the_command_line_reads_as_clap_did", () => {
 	// What it printed, when it isn't what's expected (once on Windows CI, 2026-11-18).
 	const has = (text, part) => assert.ok(text.includes(part), `expected ${JSON.stringify(part)} in:\n${text}`);
 	has(usage(["build", "--verbos"]), "tip: a similar argument exists: '--verbose'\n\nUsage: ssqch build --verbose\n");
-	assert.ok(usage(["inspect", "--formt", "json", "x"]).includes("\n\nUsage: ssqch inspect --format <FORMAT> <PAGE>\n"));
+	assert.ok(usage(["trace", "--formt", "json", "x"]).includes("\n\nUsage: ssqch trace --format <FORMAT> <PAGE>\n"));
 	assert.ok(usage(["--root", "x", "--verbos", "build"]).includes("\n\nUsage: ssqch --root <ROOT> --verbose\n"));
 	assert.ok(usage(["--quiet=1"]).includes("\n\nUsage: ssqch --quiet\n"));
 	assert.ok(usage(["--", "build"]).includes("tip: subcommand 'build' exists; to use it, remove the '--' before it"));
@@ -171,7 +171,7 @@ test("sighting_with_a_list_that_isnt_one", () => {
 	const dir = tempDir("sighting-null");
 	write(dir, { ".cache/ssqch/output-files.json": "null" });
 	const r = ssqch(["sighting"], { cwd: dir });
-	assert.ok(r.ok && r.log.includes("No confirmed sitings here yet."), r.log);
+	assert.ok(r.ok && r.log.includes("No confirmed sightings here yet."), r.log);
 });
 
 test("capabilities_lists_completions_after_footprint", () => {
@@ -195,12 +195,12 @@ test("a_walk_names_what_it_found_as_given", unix, () => {
 test("inspect_prints_numbers_as_0_7_did", () => {
 	const dir = tempDir("inspect-numbers");
 	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\" }, data: { nums: { big: 1e16, whole: 1e15, small: 1e-6 }, when: new Date(NaN) } };\n", "src/index.html": "hi" });
-	let r = ssqch(["inspect", "/", "--field", "nums", "--format", "json"], { cwd: dir });
+	let r = ssqch(["trace", "/", "--field", "nums", "--format", "json"], { cwd: dir });
 	assert.ok(r.ok, r.log);
 	assert.ok(r.stdout.includes("\"big\": 1e+16,\n") && r.stdout.includes("\"whole\": 1000000000000000,\n") && r.stdout.includes("\"small\": 1e-6\n"), r.stdout);
 	// A date that isn't one is `null`, as JSON.stringify writes it (CHANGELOG.md, 0.8.0); 0.7
 	// showed the start of 1970.
-	r = ssqch(["inspect", "/", "--field", "when", "--format", "json"], { cwd: dir });
+	r = ssqch(["trace", "/", "--field", "when", "--format", "json"], { cwd: dir });
 	assert.ok(r.ok, r.log);
 	assert.equal(JSON.parse(r.stdout).field.value, null);
 });

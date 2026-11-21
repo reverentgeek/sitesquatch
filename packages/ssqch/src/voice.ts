@@ -15,7 +15,7 @@ export const SQUATCH_WATCH = "Squatch Watch is on.";
 export const FRESH_TRACKS = "Fresh tracks in";
 
 /** A site's first build, in front of `Built in ...`. */
-export const FIRST_SITING = "First confirmed siting.";
+export const FIRST_SIGHTING = "First confirmed sighting.";
 
 /** While serving, a build that works after one that failed, in front of `Built in ...`. */
 export const RECOVERED = "Build recovered. Back on the trail.";
@@ -31,6 +31,9 @@ export const CAMPSITE_DISTURBED = "Campsite disturbed:";
 
 /** A layout, include or component that leads back to itself. The names of the loop follow it. */
 export const PASSED_THIS_TREE = "we've passed this tree before";
+
+/** Builds made the same way that came out different, in front of how many files vary (`ssqch diff` with three builds, and `ssqch baseline`). */
+export const ACCOUNTS_DIFFER = "The eyewitness accounts differ:";
 
 /** A link that leads nowhere. */
 export const TRAIL_GOES_COLD = "the trail goes cold";

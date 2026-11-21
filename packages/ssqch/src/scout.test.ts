@@ -553,7 +553,7 @@ test("jekyll_templates_are_listed_not_rewritten", () => {
 });
 
 test("the_seo_include_is_the_docs_one", () => {
-	const docs = fs.readFileSync(new URL("../../../site/src/docs/seo.md", import.meta.url), "utf8");
+	const docs = fs.readFileSync(new URL("../../../site/src/docs/trailheads/from-jekyll.md", import.meta.url), "utf8");
 	assert.equal(SEO_INCLUDE, /```liquid\n([\s\S]*?)```/.exec(docs)?.[1]);
 });
 
@@ -635,7 +635,7 @@ test("jekyll_import_reads_a_site_like_rubys", () => {
 	// `site.data` stays as it's written, and the config puts the data under it.
 	assert.ok(!plan.edits.some(([f]) => f.startsWith("en/news/")), JSON.stringify(plan.edits.map(([f]) => f)));
 	const config = plan.newFiles.find(([f]) => f === "ssqch.config.js")![2];
-	assert.ok(config.includes("jekyllTemplates: true,"), config);
+	assert.ok(config.includes("import { fromJekyll } from \"ssqch/from-jekyll\";") && config.includes("plugins: [fromJekyll()"), config);
 	assert.ok(config.includes("passthrough: [\"images/logo.png\"]"), config);
 	const posts = plan.newFiles.find(([f]) => f === "en/news/_posts/_posts.json")?.[2] ?? "";
 	assert.ok(posts.includes("\"permalink\": \"/en/news{% if categories %}"), posts);
@@ -707,7 +707,7 @@ test("scout_lists_what_a_hugo_site_uses", () => {
 	const plan = hugo(dir);
 	const said = plan.byHand.map(([at, what]) => `${at}: ${what}`);
 	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
-	has("content: 3 shortcodes, called in 1 page: `markdown: { shortcodes: \"hugo\" }` (in the draft)");
+	has("content: 3 shortcodes, called in 1 page: `fromHugo()` (in the draft)");
 	has("content/trails/cedar.md:4: `{{< note >}}`, the site's own (layouts/shortcodes/note.html) (1 use in 1 file; this is the first): a container; port its template into _includes/containers/note.jinja (in the draft)");
 	has("content/trails/cedar.md:8: `{{< youtube >}}`, Hugo's (1 use in 1 file; this is the first): a container; write `_includes/containers/youtube.jinja`");
 	has("content/trails/cedar.md:9: `{{< ref >}}` inside a line of text, Hugo's (1 use in 1 file; this is the first): its container template renders it in place, with `container.inline` true; write `_includes/containers/ref.jinja`");
@@ -722,7 +722,7 @@ test("scout_lists_what_a_hugo_site_uses", () => {
 	assert.ok(!said.some((line) => line.includes("{{< /note")), said.join("\n"));
 	// The draft reads the content as it is, with a container to port for the site's own shortcode.
 	const config = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
-	for (const part of ["dirs: { input: \"content\", output: \"public\", includes: \"../_includes\" },", "markdownEngine: false,", "markdown: { shortcodes: \"hugo\", highlight: { classes: \"pygments\" } },", "passthrough: [{ static: \".\" }],", "data: { site: {\"url\":\"https://example.com\"} },", "plugins: [sitemapPlugin({ url: \"https://example.com\" }), linksPlugin({ fail: false })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	for (const part of ["dirs: { input: \"content\", output: \"public\", includes: \"../_includes\" },", "markdownEngine: false,", "markdown: { highlight: { classes: \"pygments\" } },", "passthrough: [{ static: \".\" }],", "data: { site: {\"url\":\"https://example.com\"} },", "plugins: [fromHugo(), sitemapPlugin({ url: \"https://example.com\" }), linksPlugin({ fail: false })],", "import { fromHugo } from \"ssqch/from-hugo\";"]) assert.ok(config.includes(part), `${part}\n${config}`);
 	assert.ok(plan.newFiles.some(([file]) => file === "_includes/containers/note.jinja"));
 	assert.equal(plan.pages, 3);
 });
@@ -736,14 +736,14 @@ test("scout_lists_what_an_mkdocs_site_uses", () => {
 	});
 	const said = mkdocs(dir).byHand.map(([at, what]) => `${at}: ${what}`);
 	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
-	has("mkdocs.yml: theme: the Material theme's templates are Jinja, which ssqch runs as written with `mkdocsTemplates: true`");
+	has("mkdocs.yml: theme: the Material theme's templates are Jinja, which ssqch runs as written with `fromMkdocs({ templates: true })`");
 	has("mkdocs.yml: plugins: `search`: MkDocs writes `search/search_index.json`");
 	has("mkdocs.yml: plugins: `redirects`: `redirectsPlugin({ redirects })`");
-	has("mkdocs.yml: markdown_extensions: `admonition`: `!!!` admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft)");
+	has("mkdocs.yml: markdown_extensions: `admonition`: `!!!` admonitions: `fromMkdocs()` (in the draft)");
 	has("mkdocs.yml: plugins: `pine-cones`: not in ssqch yet: port it as a plugin");
-	has("mkdocs.yml: markdown_extensions: `toc`: `markdown: { headingIds: \"python-markdown\" }` (in the draft)");
+	has("mkdocs.yml: markdown_extensions: `toc`: `fromMkdocs()` (in the draft)");
 	has("mkdocs.yml: markdown_extensions: `pymdownx.emoji`: `:icon:` shortcodes: not in ssqch yet");
-	has("docs/index.md:10: links to .md files (2 uses in 1 file; this is the first): `markdown: { sourceLinks: \"relative\" }` (in the draft)");
+	has("docs/index.md:10: links to .md files (2 uses in 1 file; this is the first): `fromMkdocs()` (in the draft)");
 	has("docs/index.md:3: admonitions (`!!!`, `???`) (1 use in 1 file");
 	has("docs/index.md:6: tabs (`===`) (1 use in 1 file");
 	has("docs/trails/cedar.md:5: icons and emoji (`:name:`) (1 use in 1 file");
@@ -751,7 +751,7 @@ test("scout_lists_what_an_mkdocs_site_uses", () => {
 	// The draft: the config with the pages' syntax on, and the nav as data, with URLs for paths.
 	const plan = mkdocs(dir);
 	const config = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
-	for (const part of ["dirs: { input: \"docs\", output: \"site\", includes: \"../_includes\", data: \"../_data\" },", "markdown: { admonitions: \"mkdocs\", tabs: \"mkdocs\", sourceLinks: \"relative\", headingIds: \"python-markdown\", dialect: \"python-markdown\", footnotes: false },", "\"name\":\"Trail\"", "redirectsPlugin({ redirects: {} })", "sitemapPlugin({ url: \"https://example.com\" })"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	for (const part of ["dirs: { input: \"docs\", output: \"site\", includes: \"../_includes\", data: \"../_data\" },", "markdown: { footnotes: false },", "import { fromMkdocs } from \"ssqch/from-mkdocs\";", "plugins: [fromMkdocs(), ", "\"name\":\"Trail\"", "redirectsPlugin({ redirects: {} })", "sitemapPlugin({ url: \"https://example.com\" })"]) assert.ok(config.includes(part), `${part}\n${config}`);
 	assert.equal(plan.newFiles.find(([file]) => file === "_data/nav.yml")![2], "# From mkdocs.yml's nav, by ssqch scout: titles as the nav gives them, or each page's first heading.\n- title: Home\n  url: /\n- title: Trails\n  children:\n    - title: cedar\n      url: /trails/cedar/\n    - title: Old Growth\n      url: /trails/old/\n");
 	assert.equal(plan.pages, 2);
 });
@@ -881,9 +881,9 @@ test("scout_reads_a_vitepress_site_and_drafts_its_config", async () => {
 	assert.equal(report.build.command, "pnpm run build");
 	assert.equal(report.build.output, ".vitepress/dist");
 	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
-	assert.ok(draft.includes("dirs: { input: \"src\", output: \"dist\" },") && draft.includes("urls: \"html\",") && draft.includes("ignore: [\"api/api.data.ts\", \"tutorial/**/description.md\", \".vitepress/**\", \"public/**\"],") && draft.includes("passthrough: { \"src/public/**\": \".\" },") && draft.includes("markdown: { dialect: \"vitepress\", highlight: true },") && draft.includes("vuePlugin({ components: { Badge: \".vitepress/theme/components/Badge.vue\" }, hydrate: \"visible\" }),") && draft.includes("sitemapPlugin({ url: \"https://trail.example\", format: \"vitepress\" }),"), draft);
+	assert.ok(draft.includes("dirs: { input: \"src\", output: \"dist\" },") && draft.includes("urls: \"html\",") && draft.includes("ignore: [\"api/api.data.ts\", \"tutorial/**/description.md\", \".vitepress/**\", \"public/**\"],") && draft.includes("passthrough: { \"src/public/**\": \".\" },") && draft.includes("markdown: { highlight: true },") && draft.includes("import { fromVitepress } from \"ssqch/from-vitepress\";") && draft.includes("\t\tfromVitepress(),") && draft.includes("vuePlugin({ components: { Badge: \".vitepress/theme/components/Badge.vue\" }, hydrate: \"visible\" }),") && draft.includes("sitemapPlugin({ url: \"https://trail.example\" }),"), draft);
 	// With the draft and a template for `<Badge>`, those are done.
-	fs.writeFileSync(path.join(dir, "ssqch.config.js"), draft.replace(/^import .*\n/gm, "").replace(/\tplugins: \[[\s\S]*?\n\t\],\n/, "\tplugins: [{ name: \"ssqch/sitemap\" }],\n"));
+	fs.writeFileSync(path.join(dir, "ssqch.config.js"), draft.replace(/^import .*\n/gm, "").replace(/\tplugins: \[[\s\S]*?\n\t\],\n/, "\tplugins: [{ name: \"ssqch/sitemap\" }, { name: \"fromVitepress\" }],\n"));
 	fs.mkdirSync(path.join(dir, "src/_includes/components"), { recursive: true });
 	fs.writeFileSync(path.join(dir, "src/_includes/components/Badge.jinja"), "<span>{{ component.content | safe }}</span>");
 	// The layout's own work counts too (the vuejs.org rerun: 11 of 17 to-dos were done in files scout didn't read).

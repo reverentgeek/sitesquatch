@@ -124,22 +124,23 @@ test("the_ranger_reports_what_happened", () => {
 		"trail.ejs": "<%- include(\"footer\") %>",
 	});
 	// The site's first build: that's the report's themed line. The second's is this one.
+	// DELIBERATE (0.13): "sighting", spelled as the command is ("siting" until 0.12; the owner's pick).
 	r = ssqch(["build", "--verbose", "--root", other]);
-	assert.ok(r.ok && r.log.includes("First confirmed siting.") && r.log.includes("Unused: 2 templates that nothing used in this build (_includes/old.jinja, _includes/spare.ejs).\n"), r.log);
+	assert.ok(r.ok && r.log.includes("First confirmed sighting.") && r.log.includes("Unused: 2 templates that nothing used in this build (_includes/old.jinja, _includes/spare.ejs).\n"), r.log);
 	r = ssqch(["build", "--verbose", "--root", other]);
 	assert.ok(r.ok && r.log.includes("Uninhabited: 2 templates that nothing used in this build (_includes/old.jinja, _includes/spare.ejs).\n"), r.log);
 
 	// Completions for a shell, with every command that's in --help.
 	r = ssqch(["completions", "zsh"]);
-	assert.ok(r.ok && r.log.includes("#compdef ssqch") && r.log.includes("inspect") && r.log.includes("capabilities") && !r.log.includes("sighting"), r.log);
+	assert.ok(r.ok && r.log.includes("#compdef ssqch") && r.log.includes("trace") && r.log.includes("capabilities") && !r.log.includes("sighting"), r.log);
 	r = ssqch(["completions", "klingon"]);
 	assert.ok(!r.ok && r.log.includes("possible values: bash, elvish, fish, powershell, zsh"), r.log);
 
 	// `ssqch sighting` is there for whoever finds it, and knows when the site was last built.
 	r = ssqch(["sighting", "--root", d]);
-	assert.ok(r.ok && r.log.includes("Image quality meets cryptozoological standards.") && r.log.includes("Last confirmed siting: 3 pages in dist/, just now."), r.log);
+	assert.ok(r.ok && r.log.includes("Image quality meets cryptozoological standards.") && r.log.includes("Last confirmed sighting: 3 pages in dist/, just now."), r.log);
 	const help = ssqch(["--help"]).log;
-	assert.ok(help.includes("inspect") && !help.includes("sighting"), help);
+	assert.ok(help.includes("trace") && !help.includes("sighting"), help);
 	const caps = ssqch(["capabilities", "--format", "json"]).log;
 	assert.ok(!caps.includes("sighting"), caps);
 });

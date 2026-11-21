@@ -16,8 +16,8 @@ const PHOTO = `
 `;
 
 /** The last build of the site in `root`, from the list a build keeps of what it wrote: how many pages, where, and how long ago. */
-export function lastSiting(root: string, now: number): string {
-	const none = "No confirmed sitings here yet. `ssqch build` would be the first.";
+export function lastSighting(root: string, now: number): string {
+	const none = "No confirmed sightings here yet. `ssqch build` would be the first.";
 	let list: { output?: unknown; pages?: unknown; files?: unknown };
 	try {
 		// Whatever JSON it is: `null` has no keys either, as 0.7 read it.
@@ -40,11 +40,11 @@ export function lastSiting(root: string, now: number): string {
 	const minutes = Math.max(0, Math.floor((now - newest) / 60_000));
 	const unit = (n: number, name: string) => `${n} ${name}${n === 1 ? "" : "s"} ago`;
 	const ago = minutes === 0 ? "just now" : minutes < 60 ? unit(minutes, "minute") : minutes < 1440 ? unit(Math.floor(minutes / 60), "hour") : unit(Math.floor(minutes / 1440), "day");
-	return `Last confirmed siting: ${count(pages.length)} page${pages.length === 1 ? "" : "s"} in ${output}/, ${ago}.`;
+	return `Last confirmed sighting: ${count(pages.length)} page${pages.length === 1 ? "" : "s"} in ${output}/, ${ago}.`;
 }
 
 /** `ssqch sighting`. */
 export function runSighting(root: string): number {
-	process.stdout.write(`${PHOTO}\n  Image quality meets cryptozoological standards.\n\n  ${lastSiting(root, Date.now())}\n`);
+	process.stdout.write(`${PHOTO}\n  Image quality meets cryptozoological standards.\n\n  ${lastSighting(root, Date.now())}\n`);
 	return 0;
 }

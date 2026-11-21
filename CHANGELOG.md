@@ -9,6 +9,157 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## 0.13.0 - 2026-11-21
+
+### Breaking
+
+- `llmsPlugin()` no longer has `hint`, the hidden `<div>` it wrote at the top of each page's
+  `<body>`: hidden text written for models reads as cloaking, and a build adds no markup of its
+  own. A config that sets it fails with what to write instead: the plugin's new template function,
+  `markdownCopy(page.url)`, in the layout's `<head>`:
+  `<link rel="alternate" type="text/markdown" href="{{ markdownCopy(page.url) }}">`.
+- `llmsPlugin()`'s copies are what the page says, not the file it came from. A Markdown page's
+  copy is its Markdown after its template engine ran, so `{{ site.title }}` is the title and a
+  `{% for %}` is the list it wrote (before, a copy had the template code in it). Pages that aren't
+  Markdown (a home page in Jinja) are listed now too, with their `<article>`, `<main>` or `<body>`
+  as Markdown. Links in a copy are whole addresses, and a link to a page that has a copy goes to
+  the copy. Its pictures, and links to them, are the files the page shows (`imagePlugin()`'s
+  resized copies, where the source isn't published). A page leaves the list with `llms: false` in its front matter, or with `exclude`.
+- `llms-full.txt` starts with `llms.txt`'s heading and description, then the pages.
+- `llmsPlugin()` writes a page's copy where llms.txt's v2 proposal (August 2026) puts it: a URL
+  without a file name gets `index.md` (`/guide/intro/` is `/guide/intro/index.md`, where it was
+  `/guide/intro.md`); one with a file name has its extension replaced (`/guide/intro.html` is
+  `/guide/intro.md`, as before). `markdownCopy(page.url)` gives the new address.
+- Options that were there only so a move could match another generator's bytes are gone, each
+  with an error that says what to do instead:
+  - `trimAfterFrontMatter`. The blank lines after a template's front matter are whitespace that
+    browsers and `ssqch diff` don't see. Where one matters (a feed that has to start with `<?xml`,
+    a text file), take it out of that template; `ssqch scout --patch` does it for a Jekyll site.
+  - `markdown.encodeUrls`. Link and image URLs are percent-encoded, as CommonMark writes them;
+    browsers go to the same place either way.
+  - `sitemapPlugin({ format: "vitepress" })`. The sitemap is ssqch's own, with the same URLs.
+- `sitemapPlugin()` needs `url`: a sitemap of paths from the root (what it wrote without one, as
+  jekyll-sitemap does) is one search engines can't read. A build without it stops and asks for the
+  site's address, where it used to warn on every build. `ssqch scout` leaves the plugin commented
+  out in a Jekyll draft until `_config.yml` has a `url`.
+- `ssqch inspect` is `ssqch trace`: it follows a page's values back along their tracks through
+  the data cascade. The options and the JSON are the same. `ssqch inspect` is refused with the
+  new name, and the starters' `AGENTS.md`, the completions and the docs say `trace`.
+- "First confirmed siting." is "First confirmed sighting.", spelled as `ssqch sighting` is, and so
+  are `ssqch sighting`'s own lines ("Last confirmed sighting", "No confirmed sightings here
+  yet"). A script that looked for the old spelling in the build summary needs the new one.
+- Another generator's options are modules now, each a plugin documented in its trailhead (the
+  audit's plan, step 6), so a site that doesn't move from one never meets them. Each old name is
+  refused with its module's:
+  - `jekyllTemplates: true` and `markdown: { htmlMarkdown: "kramdown" }`: `fromJekyll()` from
+    `ssqch/from-jekyll` (both on by default; `templates: false` or `kramdown: false` for one).
+  - `mkdocsTemplates`, and `markdown: { dialect: "python-markdown" }`, `admonitions: "mkdocs"` and
+    `tabs: "mkdocs"`: `fromMkdocs()` from `ssqch/from-mkdocs` (`templates: true` for the theme's
+    context, `config` for another mkdocs.yml).
+  - `markdown: { dialect: "vitepress" }`: `fromVitepress()` from `ssqch/from-vitepress`.
+  - `markdown: { shortcodes: "hugo" }`: `fromHugo()` from `ssqch/from-hugo`.
+
+  Add the module to `plugins` and leave the option out; the module's Markdown settings are
+  defaults, so the site's own `markdown` still changes one (`headingIds: false`). `ssqch scout`
+  drafts the modules. The `jekyll-guides` example uses `fromJekyll()`.
+- `markdown: { containers: "markdown-it" }` is what `containers: true` does now: a closing `:::`
+  indented less than four spaces closes the innermost open container, so Prettier's `:::` under a
+  list closes it. The old value is refused; write `true`, or leave it out. Every site in the oracle
+  builds the same.
+- `vuePlugin({ vitepress })` is gone, and a `.vitepress` folder no longer turns VitePress's ways on
+  by itself: `fromVitepress()` does, before or after `vuePlugin()` in `plugins` (VitePress's
+  `useData()` stand-in, `@theme/`, and `./x.data` imports running its data loaders). The vuejs.org
+  port builds byte for byte the same with both plugins.
+- `clean` is no longer another name for `leaveNoTrace` in `ssqch.config.js` (a rename replaces the
+  old name): it's refused with ssqch's name, as the `clean` command is. `sitesquatch.toml` keeps
+  it.
+
+### Fixed
+
+- The dev server and `ssqch serve --built` send a `.md` file as `text/markdown; charset=utf-8`,
+  where they sent `application/octet-stream`.
+- `ssqch diff` reads a URL the same percent-encoded or not (`#كتابة` and `#%D9%83...`, `café.png`
+  and `caf%C3%A9.png`), as browsers do. ASCII that means something in a URL (`%2F`) still counts.
+- `ssqch docs "<heading>"` answers with a trailhead's section when that's the heading's own page,
+  rather than with a page that only mentions the words (`ssqch docs "From jekyll-seo-tag"`).
+
+### Added
+
+- `ssqch patrol [DIR]` checks a build for what agents and crawlers read, in any generator's
+  output: the posted signs (`robots.txt`, a sitemap, `llms.txt`, a real `404.html`), each page's
+  shape (one `<h1>`, its content in `<main>` or `<article>` and before the navigation, a
+  description), and each page's Markdown copy (there when it's linked, saying what its page says,
+  under the length an agent's fetch reads, its code fences closed, its links whole, and the site's
+  own files it links there). Each warning
+  has a code (`ssqch docs "what patrol checks"`), `--format json` gives them with every file, and
+  it exits with 0 when it found nothing, 1 when it warned and 2 on an error. On the ReverentGeek
+  blog, its first real site, it found two links in the hand-written `llms.txt` to pages that
+  aren't there.
+- `robotsPlugin()` from `ssqch/robots` writes `robots.txt`: the paths no crawler reads
+  (`disallow`), the sitemap's address from `sitemapPlugin()`, and what AI crawlers may do by what
+  they're for (`ai: { training, search, fetch }`), from one table of their names, each from its
+  company's documentation. A docs page, "Posted signs", lists them.
+- The starters are ready for agents: `sitemapPlugin()`, `robotsPlugin()` and `llmsPlugin()` are on
+  (with the site's `url` in `src/_data/site.json`), and the layouts link each page's canonical
+  address, its Markdown copy and `llms.txt` (`rel="describedby"`). The docs starter's pages have
+  "View as Markdown" and a "Copy as Markdown" button, and the blog starter's home page an `<h1>`.
+  Their `AGENTS.md` names `ssqch patrol`.
+- `ssqch check`, refused with ssqch's word, names `ssqch patrol` too.
+- A plugin can add to ssqch's Markdown: `markdown: { before, after, hooks }` (the page's Markdown
+  before ssqch's reads it, the HTML after, and render hooks and containers as functions, which a
+  site's own template of the same name replaces), and `defaults: { markdown }`, options for any
+  key the site's own `markdown` doesn't set. Each step gets the page and the engine's tools
+  (`markdown()`, `renderHook()`, `hasHook()`). A new docs page, "Writing a plugin", has a worked
+  example.
+- `fromVitepress()` from `ssqch/from-vitepress` is VitePress's Markdown as a plugin of that kind:
+  the same steps, hooks and defaults as `markdown: { dialect: "vitepress" }`, which it replaces
+  (the vuejs.org port builds byte for byte the same with either). `ssqch scout` drafts it.
+- `fromMkdocs()` from `ssqch/from-mkdocs` is MkDocs' Markdown as one plugin (Python-Markdown's
+  reading, admonitions, tabs, toc's ids and `.md` links from the page, each a default under the
+  site's own `markdown`), and with `templates: true` what `mkdocsTemplates` gives an MkDocs
+  theme's templates. The httpx docs, with Material's own templates, build byte for byte the same
+  with it as with those options and `mkdocsTemplates` written out. `ssqch scout` drafts it.
+- `fromJekyll()` from `ssqch/from-jekyll` is what a Jekyll site's templates and Markdown expect,
+  as one plugin: Jekyll's `page` and `site` in templates (what `jekyllTemplates` did), and
+  kramdown's habits as defaults under the site's own `markdown` (`markdown="1"`, its heading
+  ids, smart quotes, no bare-URL links). www.ruby-lang.org's port (7,647 pages) builds the same
+  with it as with those options written out, and the `jekyll-guides` example uses it with its
+  output unchanged. `ssqch scout` drafts it.
+- `fromHugo()` from `ssqch/from-hugo` reads Hugo's shortcodes as containers, as
+  `markdown: { shortcodes: "hugo" }` does, as a default under the site's own `markdown`.
+  `ssqch scout` drafts it.
+- `ssqch serve` and `ssqch serve --built` answer a request for a page with its Markdown copy
+  when the request asks for `text/markdown` by name, at a q-value at least HTML's, as Claude Code,
+  Cursor and OpenCode do: `text/markdown; charset=utf-8`, with `Vary: Accept` on both of a page's
+  answers. A browser's request (and curl's `*/*`) gets the page. A new docs page, "Serving
+  Markdown to agents", has the same for Cloudflare (sitesquatch.dev's own Worker), Netlify (an
+  edge function) and Vercel (Routing Middleware), ready to paste, and what GitHub Pages does
+  instead.
+- `llmsPlugin()`: `details` (Markdown after the description: what a model should know first),
+  `sort` (the pages' order), and the template function `markdownCopy(page.url)`, the URL of a
+  page's copy, or an empty string when it has none.
+
+### Changed
+
+- Options' descriptions say what each does first, and another generator's name for it last
+  (`urls`, `jinja`, `layoutAliases`, `breaks`, `figures`, `sassPlugin({ charset })`). The Markdown
+  page says why ssqch keeps other generators' heading id styles: an id is part of a URL others
+  link to.
+- The docs pages have display titles, with their plain words after the theme: "Gear up:
+  install", "The gear shed: built-in plugins", "Getting spotted: SEO tags", "Following the tracks:
+  where a value comes from", "Has the stump moved? Comparing two builds", "Out of the woods:
+  deploying" and "Uncharted territory: known gaps". `ssqch docs` finds each by either, and names
+  it by the plain words (`ssqch docs "SEO tags"`). The first group of the docs is "Base camp", and
+  sitesquatch.dev's changelog is the "Trail log".
+- When builds made the same way differ, the report starts its last line with "The eyewitness
+  accounts differ:" (`ssqch diff` with three builds, and `ssqch baseline`).
+- `rssDate` and `rssLastUpdatedDate` (the Eleventy RSS plugin's first names, with `rssPlugin()`)
+  are aliases: they work as before, and say ssqch's names once (`dateToRfc3339`,
+  `getNewestCollectionItemDate`).
+- jekyll-seo-tag's include moved from "SEO tags" to the Jekyll trailhead.
+- `llmsPlugin()` knows nothing of VitePress: `<script>` and `<style>` blocks are left out of every
+  copy (a VitePress page's `<script setup>` among them), and so are pictures with `alt=""`.
+
 ## 0.12.0 - 2026-11-21
 
 ### Added

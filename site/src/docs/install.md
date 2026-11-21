@@ -1,5 +1,5 @@
 ---
-title: "Install"
+title: "Gear up: install"
 description: "You'll need Node.js 22.18 or newer."
 ---
 <img align="right" src="../../../docs/assets/stickers/backpack.svg" alt="" width="96">

@@ -683,7 +683,9 @@ test("mkdocs_templates_see_mkdocs_context", () => {
 	const dir = tempDir("mkdocs-templates");
 	write(dir, {
 		"mkdocs.yml": "site_name: Trail & Co\nsite_url: https://example.com/\nnav:\n  - Home: index.md\n  - Trails:\n    - trails/cedar.md\n",
-		"ssqch.config.js": "export default { dirs: { input: \"docs\", output: \"site\" }, theme: \"theme\", mkdocsTemplates: true, markdownEngine: false };\n",
+		// DELIBERATE (0.13): MkDocs' context is fromMkdocs({ templates: true }) (the audit's plan, step 6); `dialect: false`
+		// keeps CommonMark's reading, as this test was written for.
+		"ssqch.config.js": "import { fromMkdocs } from \"ssqch/from-mkdocs\";\nexport default { dirs: { input: \"docs\", output: \"site\" }, theme: \"theme\", markdownEngine: false, markdown: { dialect: false }, plugins: [fromMkdocs({ templates: true })] };\n",
 		"theme/_includes/main.html": "{% extends \"base.html\" %}",
 		"theme/_includes/base.html": "<title>{{ page.title }} - {{ config.site_name }}</title><link href=\"{{ 'assets/app.css' | url }}\">{% for item in nav %}[{{ item.title }}{% if item.active %}*{% endif %}]{% endfor %}<b>{{ base_url }}</b>{% for t in page.toc %}({{ t.title }}{% for c in t.children %}/{{ c.title }}{% endfor %}){% endfor %}<main>{{ page.content }}</main>{% if page.next_page %}<next>{{ page.next_page.url | url }}</next>{% endif %}",
 		"theme/_includes/404.html": "<h1>Lost{% if page %} in {{ page.title }}{% endif %}</h1><link href=\"{{ 'assets/app.css' | url }}\">",
@@ -698,5 +700,12 @@ test("mkdocs_templates_see_mkdocs_context", () => {
 	assert.equal(read(dir, "site/trails/cedar/index.html"), "<title>Cedar - Trail & Co</title><link href=\"../../assets/app.css\">[Home][Trails*]<b>../..</b>(Cedar)<main><h1 id=\"cedar\">Cedar</h1>\n</main>");
 	// MkDocs' 404 page, from the theme's 404.html, with no page and the site's path.
 	assert.equal(read(dir, "site/404.html"), "<h1>Lost</h1><link href=\"/assets/app.css\">");
+	// DELIBERATE (0.13): the old option is refused with the module's name.
+	write(dir, { "ssqch.config.js": "export default { mkdocsTemplates: true };\n" });
+	const old = ssqch(["build", "--root", dir]);
+	assert.ok(!old.ok && old.log.includes("\"mkdocsTemplates\" is gone: it's fromMkdocs({ templates: true }) from \"ssqch/from-mkdocs\" now"), old.log);
+	write(dir, { "ssqch.config.js": "import { fromMkdocs } from \"ssqch/from-mkdocs\";\nexport default { plugins: [fromMkdocs({ template: true })] };\n" });
+	const bad = ssqch(["build", "--root", dir]);
+	assert.ok(!bad.ok && bad.log.includes("unknown option \"template\" (did you mean \"templates\"?)"), bad.log);
 	assert.equal(read(dir, "site/assets/app.css"), "body { color: pine }\n");
 });

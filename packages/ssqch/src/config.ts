@@ -23,7 +23,7 @@ import type { Equivalent } from "./equivalents.ts";
 import { checkLanguages } from "./engines/markdown.ts";
 import { installFetch, summary as fetchSummary } from "./fetch.ts";
 import { useImages } from "./image/processor.ts";
-import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
+import { addMarkdownSteps, applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
 import type { MarkdownOptions } from "./markdown-options.ts";
 import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
 import { withPage } from "./rendering.ts";
@@ -101,8 +101,6 @@ export interface Config {
 	ignore: string[];
 	bundles: boolean;
 	strict: boolean;
-	/** `trimAfterFrontMatter`: a template's body starts at its first line with text, as Jekyll's does, not right after the closing `---`. */
-	trimAfterFrontMatter: boolean;
 	/** `jekyllTemplates`: templates see Jekyll's `page` (front matter too) and `site` (`posts`, collections, `data`, `categories`). */
 	jekyllTemplates: boolean;
 	/** `mkdocsTemplates`: the mkdocs.yml (from the root) whose context templates see, as MkDocs gives a theme's (`config`, `nav`, `page`, `base_url`, the `url` filter), or `null`. */
@@ -146,6 +144,14 @@ export interface Config {
 	transforms: Array<[string, TransformFn]>;
 	/** Transforms that run before every other, whatever order plugins were added in (images). */
 	htmlTransforms: Array<[string, TransformFn]>;
+	/** While `llmsPlugin()` is on: each Markdown page's text as its Markdown engine got it (after its template engine), by URL, for the page's copy. */
+	markdownSources?: Map<string, string>;
+	/** While `sitemapPlugin()` is on: the sitemap's whole address (with `base`), for robots.txt's `Sitemap:` line. */
+	sitemap?: () => string;
+	/** The `markdown` options the site's config sets itself, which plugins' `defaults` don't replace. */
+	markdownGiven: Set<string>;
+	/** With fromVitepress(): vuePlugin() gives components VitePress's `useData()`, `@theme/` and data loaders. */
+	vitepress: boolean;
 	/** Plugins that render a component tag the site has no template for (`vuePlugin()`): its HTML, or `undefined` for one it doesn't know. Asked in order, after `_includes/components/`. */
 	componentRenderers: Array<(name: string, value: { name: string; props: Record<string, unknown>; content: string; attrs: string; bindings: Record<string, string> }, inputPath: string, data: Data) => string | undefined>;
 	engines: Map<string, EngineFn>;
@@ -207,7 +213,6 @@ function emptyConfig(options: ConfigOptions): Config {
 		ignore: [],
 		bundles: false,
 		strict: false,
-		trimAfterFrontMatter: false,
 		jekyllTemplates: false,
 		mkdocsTemplates: null,
 		jinjaAutoescape: null,
@@ -230,6 +235,8 @@ function emptyConfig(options: ConfigOptions): Config {
 		collections: [],
 		transforms: [],
 		htmlTransforms: [],
+		markdownGiven: new Set(),
+		vitepress: false,
 		engines: new Map(),
 		engineCaches: [],
 		beforeBuild: [],
@@ -360,7 +367,7 @@ export class EngineCache {
 
 // ---- ssqch.config.js -------------------------------------------------------------------------
 
-const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "clean", "ignore", "bundles", "strict", "trimAfterFrontMatter", "jekyllTemplates", "mkdocsTemplates", "jinja", "lastModified", "dateFallback", "timeZone", "urls", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
+const SETTINGS = ["dirs", "templateFormats", "markdownEngine", "htmlEngine", "markdown", "deepMerge", "leaveNoTrace", "ignore", "bundles", "strict", "jinja", "lastModified", "dateFallback", "timeZone", "urls", "layoutAliases", "base", "schemas", "theme", "serve", "budgets"];
 const PARTS = ["data", "filters", "collections", "transforms", "engines", "passthrough", "watch", "beforeBuild", "afterBuild", "plugins"];
 /**
  * Engine names a config can't replace. `md` can be: a site that keeps its markdown-it replaces
@@ -399,6 +406,17 @@ export function meant(key: unknown, options: readonly string[]): string {
 }
 
 const configWord = (key: string): Equivalent | undefined => equivalents.find(key, "config");
+
+/**
+ * Options ssqch had and took out, with what to do instead: they were there only so a move could
+ * match another generator's bytes, which nothing that reads a site needs (the audit's plan,
+ * 2026-11-21).
+ */
+const RETIRED: Record<string, string> = {
+	jekyllTemplates: "it's fromJekyll() from \"ssqch/from-jekyll\" now, which also turns on kramdown's Markdown (`fromJekyll({ kramdown: false })` leaves that out): add it to plugins (`ssqch docs fromJekyll`)",
+	mkdocsTemplates: "it's fromMkdocs({ templates: true }) from \"ssqch/from-mkdocs\" now (`config: \"docs/mkdocs.yml\"` names another mkdocs.yml), which also turns on MkDocs' Markdown: add it to plugins (`ssqch docs fromMkdocs`)",
+	trimAfterFrontMatter: "the blank lines after a template's front matter are whitespace between tags in HTML, which browsers and `ssqch diff` read as the same. Where one matters (a feed that has to start with `<?xml`, a text file), take it out of that template: `ssqch scout --patch` does it for a Jekyll site",
+};
 
 /** A check that failed: the message is the whole error (`ssqch.config.js: ...`). */
 const fail = (message: string): never => { throw new TypeError(message); };
@@ -448,7 +466,7 @@ export type BuiltinPlugin = (config: Config, options: Data) => void | Promise<vo
 
 /** The built-in plugins, by the module that makes them. The plugins register themselves here as they're ported. */
 export const BUILTINS = new Map<string, BuiltinPlugin>();/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
-const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/llms", "ssqch/vue"];
+const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/llms", "ssqch/vue", "ssqch/robots", "ssqch/from-mkdocs", "ssqch/from-jekyll", "ssqch/from-hugo", "ssqch/from-vitepress"];
 
 async function loadJs(config: Config, file: string): Promise<void> {
 	const name = path.basename(file);
@@ -532,6 +550,8 @@ async function loadJs(config: Config, file: string): Promise<void> {
 		let guessed = false;
 		for (const key of Object.keys(part)) {
 			if ((key === "name" || key === "rust") && !top) continue;
+			// A plugin's `markdown` is its Markdown steps, and its `defaults` what the site doesn't set itself.
+			if (!top && (key === "markdown" || key === "defaults")) continue;
 			if (SETTINGS.includes(key)) {
 				if (!top) fail(`${where}: "${key}" can only be set in the config itself, not in a plugin`);
 			} else if (!PARTS.includes(key)) {
@@ -545,6 +565,10 @@ async function loadJs(config: Config, file: string): Promise<void> {
 					unknown.push(`${where}: "${key}" isn't a config option. ${equivalent.say}\n  More: ${equivalent.more}`);
 					continue;
 				}
+				if (top && Object.hasOwn(RETIRED, key)) {
+					unknown.push(`${where}: "${key}" is gone: ${RETIRED[key]}`);
+					continue;
+				}
 				// `output: "dist"` at the top is a folder that belongs in `dirs`.
 				const hint = top && DIRS.includes(key) ? ` (it goes in dirs: { ${key}: "..." })` : meant(key, options);
 				unknown.push(`${where}: "${key}" isn't a config option${hint}`);
@@ -554,6 +578,23 @@ async function loadJs(config: Config, file: string): Promise<void> {
 		if (unknown.length) {
 			const options = top ? [...SETTINGS, ...PARTS] : PARTS;
 			fail(unknown.join("\n") + (guessed ? ` (options: ${options.join(", ")})` : ""));
+		}
+
+		if (!top && part.markdown !== undefined) {
+			const steps = part.markdown;
+			ops.push(() => { addMarkdownSteps(config.markdown.steps, where, steps); });
+		}
+		if (!top && part.defaults !== undefined) {
+			const defaults = part.defaults;
+			if (!isObject(defaults)) fail(`${where}: defaults must be an object, like { markdown: { headingIds: "ascii" } }`);
+			for (const key of Object.keys(defaults)) if (key !== "markdown") fail(`${where}: defaults.${key}: a plugin's defaults can be markdown options only`);
+			if (defaults.markdown !== undefined && !isObject(defaults.markdown)) fail(`${where}: defaults.markdown must be an object of markdown options`);
+			// Under the site's own: only the keys its config's `markdown` doesn't set.
+			ops.push(() => {
+				const own = Object.fromEntries(Object.entries((defaults.markdown ?? {}) as Data).filter(([key]) => !config.markdownGiven.has(key)));
+				if (!Object.keys(own).length) return;
+				try { applyMarkdownOptions(config.markdown, own); } catch (e) { throw context(e, `${where}: defaults`); }
+			});
 		}
 
 		// A plugin written in Rust (`{ name, rust: { wasm, options } }`, what its npm package
@@ -724,32 +765,21 @@ function applySettings(config: Config, settings: Data): void {
 		else bail(`${key} must be a string or false, not ${typeof value}`);
 	}
 	if (settings.markdown !== undefined) applyMarkdownOptions(config.markdown, settings.markdown);
+	if (isObject(settings.markdown)) config.markdownGiven = new Set(Object.keys(settings.markdown));
 	checkLanguages(config.markdown, config.root);
 	if (settings.deepMerge !== undefined) {
 		if (typeof settings.deepMerge !== "boolean") bail(`deepMerge must be true or false, not ${typeof settings.deepMerge}`);
 		config.deepMerge = settings.deepMerge;
 	}
-	// `leaveNoTrace`, or `clean`, its other name.
-	let trace: boolean | undefined;
-	for (const key of ["leaveNoTrace", "clean"]) {
-		const value = settings[key];
-		if (value === undefined) continue;
-		if (typeof value !== "boolean") bail(`${key} must be true or false, not ${typeof value}`);
-		if (trace !== undefined) bail("leaveNoTrace and clean are two names for one option; set one of them");
-		trace = value;
-	}
+	const trace = settings.leaveNoTrace;
+	if (trace !== undefined && typeof trace !== "boolean") bail(`leaveNoTrace must be true or false, not ${typeof trace}`);
 	if (trace !== undefined) config.leaveNoTrace = trace;
-	for (const key of ["bundles", "strict", "trimAfterFrontMatter", "jekyllTemplates"] as const) {
+	for (const key of ["bundles", "strict"] as const) {
 		const value = settings[key];
 		if (value === undefined) continue;
 		if (typeof value !== "boolean") bail(`${key} must be true or false, not ${typeof value}`);
 		config[key] = value;
 	}
-	// `mkdocsTemplates: true` reads mkdocs.yml; a string names another file.
-	const mkdocs = settings.mkdocsTemplates;
-	if (mkdocs === true) config.mkdocsTemplates = "mkdocs.yml";
-	else if (typeof mkdocs === "string" && mkdocs.trim() !== "") config.mkdocsTemplates = mkdocs;
-	else if (mkdocs !== undefined && mkdocs !== false && mkdocs !== null) bail(`mkdocsTemplates must be true, false or the path of an mkdocs.yml, not ${typeof mkdocs === "string" ? "an empty string" : typeof mkdocs}`);
 	const jinja = settings.jinja;
 	if (isObject(jinja)) {
 		const unknown = Object.keys(jinja).find((k) => k !== "autoescape");
@@ -787,7 +817,6 @@ function applySettings(config: Config, settings: Data): void {
 	const themes = theme === undefined || theme === null || theme === false ? [] : Array.isArray(theme) ? theme : [theme];
 	for (const one of themes) addTheme(config, one);
 	// MkDocs' own pages (its 404) go under every theme, from the theme's 404.html.
-	if (config.mkdocsTemplates !== null) addMkdocsTheme(config);
 	if (isObject(settings.schemas)) {
 		for (const [name, spec] of Object.entries(settings.schemas)) {
 			const schema = parseSchema(name, spec);
@@ -816,8 +845,9 @@ function applySettings(config: Config, settings: Data): void {
 	else if (ignore !== undefined) bail(`ignore must be a glob or an array of globs, not ${typeof ignore}`);
 }
 
-/** `mkdocsTemplates`' own theme, under every other: the 404 page MkDocs renders from the theme's `404.html`. */
-function addMkdocsTheme(config: Config): void {
+
+/** MkDocs' context's own theme, under every other: the 404 page MkDocs renders from the theme's `404.html` (`mkdocsTemplates`, and `fromMkdocs({ templates: true })`). */
+export function addMkdocsTheme(config: Config): void {
 	const dir = bundledPath("mkdocs");
 	if (!config.themes.includes(dir)) config.themes.push(dir);
 }

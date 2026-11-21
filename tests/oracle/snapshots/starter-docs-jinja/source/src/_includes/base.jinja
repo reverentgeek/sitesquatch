@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% if title %}{{ title }} | {% endif %}{{ site.name }}</title>
   <meta name="description" content="{{ description or site.description }}">
+  <link rel="canonical" href="{{ site.url }}{{ page.url }}">
+  {# For agents: the page as Markdown and the site's map (llmsPlugin() in ssqch.config.js). #}
+  {% if markdownCopy(page.url) %}<link rel="alternate" type="text/markdown" href="{{ markdownCopy(page.url) }}">{% endif %}
+  <link rel="describedby" href="/llms.txt">
   <meta name="generator" content="{{ ssqch.generator }}">
   <link rel="stylesheet" href="/highlight.css">
   <link rel="stylesheet" href="/assets/docs.css">
