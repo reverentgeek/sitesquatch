@@ -125,3 +125,22 @@ test("length_counts_lists_and_strings_in_nunjucks_and_jinja", () => {
 	assert.equal(read(dir, "dist/index.html"), want);
 	assert.equal(read(dir, "dist/jinja/index.html"), want);
 });
+
+// Added in 0.11: a `layout` in global data gave no page a layout, and `inspect` said it did (the
+// fresh httpx move). It's every page's now, below directory data and front matter.
+test("a_global_layout_is_every_pages", () => {
+	const dir = tempDir("global-layout");
+	write(dir, {
+		"ssqch.config.js": "export default { data: { layout: \"base.jinja\" } };\n",
+		"_includes/base.jinja": "<main>{{ content }}</main>",
+		"_includes/bare.jinja": "<div>{{ content }}</div>",
+		"index.md": "# Camp\n",
+		"trails/cedar.md": "---\nlayout: bare.jinja\n---\nCedar\n",
+		"raw.md": "---\nlayout: false\n---\nRaw\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), "<main><h1 id=\"camp\">Camp</h1>\n</main>");
+	assert.equal(read(dir, "_site/trails/cedar/index.html"), "<div><p>Cedar</p>\n</div>");
+	assert.equal(read(dir, "_site/raw/index.html"), "<p>Raw</p>\n");
+});

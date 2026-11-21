@@ -243,7 +243,7 @@ function relativeUrl(from: string, to: string): string {
  * (`../setup/#install`), as MkDocs does; `true` from the site's root. A link to a `.md` file
  * that isn't a page is left as it is, for the link checker to report.
  */
-export function sourceLinks(html: string, data: Data, mode: true | "relative"): string {
+export function sourceLinks(html: string, data: Data, mode: true | "relative", input?: string): string {
 	const page = data.page as Data | undefined;
 	const inputPath = typeof page?.inputPath === "string" ? page.inputPath.replace(/^\.\//, "") : undefined;
 	const pageUrl = typeof page?.url === "string" ? page.url : undefined;
@@ -251,7 +251,10 @@ export function sourceLinks(html: string, data: Data, mode: true | "relative"): 
 	if (!inputPath || !urls || !pageUrl) return html;
 	// The URL of the page's own source folder: where its relative URLs start.
 	const sourceDir = path.posix.dirname(inputPath);
-	const inputRoot = inputRoots.get(urls);
+	// The site's input folder when it's known: the common folder of the pages' sources is the
+	// project's root once a theme has pages of its own (its 404 page), which sent every image
+	// to `../../docs/img/` (the fresh httpx move).
+	const inputRoot = input ?? inputRoots.get(urls);
 	return html.replace(/(<(?:a|img|source)\s[^>]*?(?:href|src)=")([^"#?]*)((?:[#?][^"]*)?)"/g, (whole, start: string, ref: string, rest: string) => {
 		if (ref === "" || /^[a-z][a-z0-9+.-]*:|^\/|^\/\//i.test(ref)) return whole;
 		let target: string;

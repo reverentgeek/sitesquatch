@@ -149,8 +149,8 @@ const INLINE = 1;
 const HOOKS = 2;
 
 /** ssqch's Markdown with the site's options. `root` is the project root, where grammar files are read from. */
-export function markdownEngine(options: MarkdownOptions, root = process.cwd()): Markdown {
-	return new WasmMarkdown(options, root);
+export function markdownEngine(options: MarkdownOptions, root = process.cwd(), input?: string): Markdown {
+	return new WasmMarkdown(options, root, input);
 }
 
 /**
@@ -185,6 +185,8 @@ type Answer = Asked & ({ value: unknown } | { error: unknown });
 class WasmMarkdown implements Markdown {
 	#options: MarkdownOptions;
 	#root: string;
+	/** The input folder, from the root with a `/` after it (`docs/`): where `sourceLinks` finds a relative URL's file in the output. */
+	#inputRoot: string | undefined;
 	#hooks = new Map<string, HookTemplate>();
 	#engines: Engines | undefined;
 	/** The config's functions, by the numbers the wasm calls them with. */
@@ -193,9 +195,13 @@ class WasmMarkdown implements Markdown {
 	#handle = -1;
 	#wasm: Wasm | undefined;
 
-	constructor(options: MarkdownOptions, root: string) {
+	constructor(options: MarkdownOptions, root: string, input?: string) {
 		this.#options = options;
 		this.#root = root;
+		if (input !== undefined) {
+			const rel = path.relative(root, input).split(path.sep).join("/");
+			this.#inputRoot = rel === "" ? "" : rel.startsWith("..") ? undefined : `${rel}/`;
+		}
 	}
 
 	/**
@@ -211,7 +217,7 @@ class WasmMarkdown implements Markdown {
 		this.#ready();
 		source = this.#dialects(source);
 		const links = this.#options.sourceLinks;
-		const after = (html: string) => (links ? sourceLinks(html, data, links) : html);
+		const after = (html: string) => (links ? sourceLinks(html, data, links, this.#inputRoot) : html);
 		if (!this.#options.htmlMarkdown) {
 			const out = this.#page(source, data, file);
 			if (!links) return out;

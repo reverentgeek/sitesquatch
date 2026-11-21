@@ -27,6 +27,8 @@ import type { Data } from "./data.ts";
 import { red } from "./diagnostics.ts";
 import { TABLE } from "./equivalents.ts";
 import { jinjaFilters } from "./engines/jinja.ts";
+import { importFile } from "./modules.ts";
+import { baselineTime } from "./commands/baseline.ts";
 import { BUILTIN_FILTERS } from "./filters.ts";
 import { JsonText } from "./json-edit.ts";
 import { compareText, isDir, isFile } from "./paths.ts";
@@ -108,6 +110,8 @@ export interface Comparison {
 	summary: { added: number; removed: number; changed: number; unchangedPages: number; unchangedFiles: number } | null;
 	/** The biggest groups of differences, the most files first: what to fix next. */
 	groups: Array<{ files: number; kind: string; first: string; removed: string[]; added: string[] }>;
+	/** The files that differ, by their paths in the output, the first 20 of each. */
+	files: { changed: string[]; added: string[]; removed: string[] };
 	/** What went wrong before a comparison could be made. */
 	problem: string | null;
 }
@@ -116,9 +120,11 @@ export interface Comparison {
 function compareBuilds(dir: string, given: string): Comparison {
 	const cache = path.join(dir, ".cache/ssqch/baseline");
 	const reference = given !== "" ? given : fs.existsSync(path.join(cache, "ref-common")) ? ".cache/ssqch/baseline/ref-common" : ".cache/ssqch/baseline/ref-1";
-	const none: Comparison = { reference, output: null, built: false, errors: [], same: false, summary: null, groups: [], problem: null };
+	const none: Comparison = { reference, output: null, built: false, errors: [], same: false, summary: null, groups: [], files: { changed: [], added: [], removed: [] }, problem: null };
 	if (!isDir(path.resolve(dir, reference))) return { ...none, problem: `there's no reference build in ${reference}: \`ssqch baseline "<the old build command>"\` makes one` };
-	const run = (args: string[]) => spawnSync(process.execPath, [...process.execArgv, process.argv[1], ...args], { cwd: dir, encoding: "utf8", env: { ...process.env, TZ: "UTC" }, maxBuffer: 1 << 30 });
+	// Pinned as \`ssqch baseline\` pins the reference: UTC, and the build's time the commit's, so
+	// a sitemap's or a feed's dates aren't a difference of their own.
+	const run = (args: string[]) => spawnSync(process.execPath, [...process.execArgv, process.argv[1], ...args], { cwd: dir, encoding: "utf8", env: { ...process.env, TZ: "UTC", SOURCE_DATE_EPOCH: process.env.SOURCE_DATE_EPOCH ?? String(baselineTime(dir)) }, maxBuffer: 1 << 30 });
 	const built = run(["build", "--format", "json"]);
 	let build: Data;
 	try { build = JSON.parse(built.stdout); } catch { return { ...none, problem: `\`ssqch build\` printed no report: ${(built.stderr || built.stdout).trim().split("\n")[0]}` }; }
@@ -129,7 +135,8 @@ function compareBuilds(dir: string, given: string): Comparison {
 	let diff: Data;
 	try { diff = JSON.parse(compared.stdout); } catch { return { ...none, output, built: true, problem: `\`ssqch diff\` printed no report: ${(compared.stderr || compared.stdout).trim().split("\n")[0]}` }; }
 	const groups = Array.isArray(diff.groups) ? (diff.groups as Data[]).slice(0, 10).map((g) => ({ files: Number(g.files), kind: String(g.kind), first: Array.isArray(g.urls) ? String(g.urls[0]) : "", removed: (g.hunk?.removed ?? []).slice(0, 3).map(String), added: (g.hunk?.added ?? []).slice(0, 3).map(String) })) : [];
-	return { reference, output, built: true, errors, same: diff.same === true, summary: isPlainObject(diff.summary) ? diff.summary as Comparison["summary"] : null, groups, problem: null };
+	const paths = (list: unknown) => (Array.isArray(list) ? list.slice(0, 20).map((f) => (isPlainObject(f) ? String(f.path ?? f.url) : String(f))) : []);
+	return { reference, output, built: true, errors, same: diff.same === true, summary: isPlainObject(diff.summary) ? diff.summary as Comparison["summary"] : null, groups, files: { changed: paths(diff.changed), added: paths(diff.added), removed: paths(diff.removed) }, problem: null };
 }
 
 /** Which generator builds the site in `dir`, and the file that says so; every one that matches, when it's more than one. */
@@ -168,7 +175,7 @@ export function detect(dir: string): Array<[string, string]> {
 }
 
 /** `ssqch scout [dir]`: prints the report, writes the draft and the patch when asked, and answers with the exit code. */
-export function runScout(dir: string, options: ScoutOptions): number {
+export async function runScout(dir: string, options: ScoutOptions): Promise<number> {
 	try {
 		if (!isDir(dir)) fail(`${dir} isn't a folder`);
 		let id: string;
@@ -187,7 +194,7 @@ export function runScout(dir: string, options: ScoutOptions): number {
 			[id, how] = found[0];
 		}
 		const plan = id === "eleventy" ? eleventy(dir) : id === "jekyll" ? jekyll(dir) : id === "zola" ? zola(dir) : id === "hugo" ? hugo(dir) : id === "mkdocs" ? mkdocs(dir) : other(dir, id);
-		const report = scoutReport(plan, dir, id, how);
+		const report = scoutReport(plan, dir, id, how, await siteConfig(dir));
 		if (options.compare !== undefined) report.compare = compareBuilds(dir, options.compare);
 		if (options.writeDraft) for (const file of report.draft) if (!file.there) writeNew(dir, file.path, plan.newFiles.find(([p]) => p === file.path)![2]);
 		if (options.patch !== undefined) attempt(() => fs.writeFileSync(options.patch!, patchOf(plan, dir)), `writing ${options.patch}`);
@@ -211,16 +218,53 @@ export interface Report {
 	build: { command: string; output: string; baseline: string; needs: string[] };
 	todo: Array<{ at: string; what: string; code: string; status: NonNullable<Todo["status"]>; count: number | null; files: number | null; option: string | null; docs: string | null }>;
 	/** How many to-dos have each status, and how many pages the site has. */
-	summary: { pages: number | null; ssqch: number; option: number; notYet: number; site: number };
+	summary: { pages: number | null; ssqch: number; option: number; notYet: number; site: number; done: number };
 	draft: Array<{ path: string; from: string; there: boolean }>;
 	edits: Array<{ path: string; to?: string; changes: string[] }>;
 	/** Whether the site has an ssqch.config.js already: a move under way. */
 	underWay: boolean;
+	/** The to-dos an option does that the site's config sets already: out of `todo`, and counted in `summary.done`. */
+	done: Array<{ at: string; what: string; code: string; option: string }>;
+	/** Why the site's config couldn't be read, when it couldn't: then nothing counts as done. */
+	configError: string | null;
 	/** With `--compare`: how ssqch's build compares with the reference. */
 	compare?: Comparison;
 }
 
-export function scoutReport(plan: Plan, dir: string, id: string, how: string): Report {
+/** The site's ssqch config as it's written (its default export), to see which options a move has set already. */
+export interface SiteConfig { config?: Record<string, unknown>; error?: string }
+export async function siteConfig(dir: string): Promise<SiteConfig> {
+	const file = findConfig(dir);
+	if (!file) return {};
+	try {
+		const value = (await importFile(file)).default;
+		return isPlainObject(value) ? { config: value as Record<string, unknown> } : { error: `${path.basename(file)}'s default export isn't an object` };
+	} catch (e) {
+		return { error: `${path.basename(file)}: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}` };
+	}
+}
+
+/**
+ * Whether `config` sets what `option` says (`markdown: { admonitions: "mkdocs" }`): each value
+ * the option names, at its place in the config. An option scout can't read as values (a plugin
+ * call, a list) is never set, so it stays on the list for a person to check.
+ */
+export function setIn(config: Record<string, unknown>, option: string): boolean {
+	let want: unknown;
+	try {
+		want = new Function(`"use strict"; return ({ ${option} });`)();
+	} catch {
+		return false;
+	}
+	const covers = (have: unknown, wanted: unknown): boolean => {
+		if (isPlainObject(wanted)) return isPlainObject(have) && Object.entries(wanted as object).every(([k, v]) => covers((have as Record<string, unknown>)[k], v));
+		if (Array.isArray(wanted) || typeof wanted === "function") return false;
+		return Object.is(have, wanted);
+	};
+	return isPlainObject(want) && Object.keys(want as object).length > 0 && covers(config, want);
+}
+
+export function scoutReport(plan: Plan, dir: string, id: string, how: string, site: SiteConfig = {}): Report {
 	const g = GENERATORS[id];
 	const { command, output, needs } = referenceBuild(dir, id);
 	const baseline = `ssqch baseline ${JSON.stringify(command)}${output === "_site" ? "" : ` --from ${output}`}`;
@@ -229,21 +273,30 @@ export function scoutReport(plan: Plan, dir: string, id: string, how: string): R
 	for (const [file, changes] of plan.edits) edits.push({ path: file, ...(renamed.has(file) ? { to: renamed.get(file) } : {}), changes });
 	for (const [from, to] of plan.renames) if (!plan.edits.some(([file]) => file === from)) edits.push({ path: from, to, changes: ["renamed"] });
 	// The most files first, as \`ssqch diff\` lists its groups; what has no count keeps its place after them.
-	const todo = plan.byHand.map(([at, what, meta], order) => ({
+	const all = plan.byHand.map(([at, what, meta], order) => ({
 		at, what,
 		code: meta?.code ?? `${id}-other`,
 		status: meta?.status ?? statusOf(what),
 		count: meta?.count ?? null, files: meta?.files ?? null, option: meta?.option ?? null, docs: meta?.docs ?? null,
 		order,
 	})).sort((a, b) => (b.files ?? -1) - (a.files ?? -1) || a.order - b.order).map(({ order: _, ...t }) => t);
+	// What the config sets already is done: off the list, so a second run shows what's left.
+	const done: Report["done"] = [];
+	const todo = all.filter((t) => {
+		if (t.status !== "option" || !t.option || !site.config || !setIn(site.config, t.option)) return true;
+		done.push({ at: t.at, what: t.what, code: t.code, option: t.option });
+		return false;
+	});
 	return {
 		dir, generator: id, name: g.name, detectedBy: how,
 		build: { command, output, baseline, needs },
 		todo,
-		summary: { pages: plan.pages ?? null, ssqch: todo.filter((t) => t.status === "ssqch").length, option: todo.filter((t) => t.status === "option").length, notYet: todo.filter((t) => t.status === "not-yet").length, site: todo.filter((t) => t.status === "site").length },
+		summary: { pages: plan.pages ?? null, ssqch: todo.filter((t) => t.status === "ssqch").length, option: todo.filter((t) => t.status === "option").length, notYet: todo.filter((t) => t.status === "not-yet").length, site: todo.filter((t) => t.status === "site").length, done: done.length },
 		draft: plan.newFiles.map(([file, from]) => ({ path: file, from, there: fs.existsSync(path.join(dir, file)) || (file === "ssqch.config.js" && findConfig(dir) !== undefined) })),
 		edits,
 		underWay: findConfig(dir) !== undefined,
+		done,
+		configError: site.error ?? null,
 	};
 }
 
@@ -270,6 +323,14 @@ function referenceBuild(dir: string, id: string): { command: string; output: str
 	if (netlifyCommand && words[id].test(netlifyCommand)) command = netlifyCommand;
 	else if (typeof scripts.build === "string" && words[id].test(scripts.build)) command = "npm run build";
 	if (netlifyPublish && command === netlifyCommand) output = netlifyPublish.replace(/^\.\//, "").replace(/\/$/, "");
+	if (id === "mkdocs") {
+		const requirements = ["requirements.txt", "requirements-docs.txt", "docs/requirements.txt", "requirements/docs.txt"].filter((f) => isFile(path.join(dir, f)));
+		const venv = [".venv", "venv"].find((v) => isFile(path.join(dir, v, "bin", "mkdocs")) || isFile(path.join(dir, v, "Scripts", "mkdocs.exe")));
+		if (venv && command === g.build) command = `${venv}/bin/mkdocs build`;
+		const pyproject = readUtf8(path.join(dir, "pyproject.toml"));
+		const imports = /\b(?:mkautodoc|mkdocstrings)\b/.test(readUtf8(path.join(dir, "mkdocs.yml")) ?? readUtf8(path.join(dir, "mkdocs.yaml")) ?? "");
+		needs.push(`Python with MkDocs and the site's packages, in a virtual environment: ${requirements.length ? `\`pip install -r ${requirements[0]}\`` : pyproject ? "the packages pyproject.toml lists" : "`pip install mkdocs` and the theme and plugins mkdocs.yml names"}${imports && pyproject ? ", and `pip install -e .`: the API pages import the package itself" : ""}${venv ? ` (${venv} is there, so the command runs its mkdocs)` : "; then give baseline that environment's mkdocs (`ssqch baseline \".venv/bin/mkdocs build\" --from site`)"}`);
+	}
 	if (id === "jekyll") {
 		const gemfile = readUtf8(path.join(dir, "Gemfile")) ?? "";
 		if (/\bgithub-pages\b/.test(gemfile)) {
@@ -287,6 +348,8 @@ export function scoutText(report: Report, options: Pick<ScoutOptions, "writeDraf
 	let out = `Scouting the ${report.name} site in ${report.dir} (found ${report.detectedBy === "--from" ? "with --from" : report.detectedBy})${report.underWay ? ": a move under way, with an ssqch.config.js" : ""}\n`;
 	const { summary } = report;
 	if (report.todo.length) out += `\n${report.todo.length} to do${summary.pages !== null ? ` across ${summary.pages} ${summary.pages === 1 ? "page" : "pages"}` : ""}: ${[[summary.ssqch, "ssqch does"], [summary.option, "an option does (the draft turns it on)"], [summary.notYet, "not in ssqch yet"], [summary.site, "the site's own code to port"]].filter(([n]) => n).map(([n, what]) => `${n} ${what}`).join(", ")}.\n`;
+	if (report.done.length) out += `${report.todo.length ? "" : "\n"}${report.done.length} done already: ssqch.config.js sets ${report.done.map((d) => `\`${d.option}\``).filter((o, i, all) => all.indexOf(o) === i).join(", ")}.\n`;
+	if (report.configError) out += `\nCouldn't read the site's config, so nothing counts as done yet: ${report.configError}\n`;
 	out += `\nReference build\n  ${report.build.baseline}\n`;
 	for (const need of report.build.needs) out += `  needs ${need}\n`;
 	if (report.todo.length) {
@@ -329,9 +392,11 @@ export function scoutJson(report: Report, options: Pick<ScoutOptions, "writeDraf
 		name: report.name,
 		detectedBy: report.detectedBy,
 		underWay: report.underWay,
+		configError: report.configError,
 		build: report.build,
 		summary: report.summary,
 		todo: report.todo,
+		done: report.done,
 		draft: report.draft,
 		edits: report.edits,
 		wroteDraft: options.writeDraft ? report.draft.filter((f) => !f.there).map((f) => f.path) : [],
@@ -2662,7 +2727,8 @@ export function hugo(dir: string): Plan {
 	out += "  markdown: { shortcodes: \"hugo\", highlight: { classes: \"pygments\" } },\n";
 	if (hasDir("static")) out += "  passthrough: [{ static: \".\" }],\n";
 	out += `  data: { site: ${JSON.stringify(sortedKeys(site))} },\n`;
-	out += `  plugins: [${[...(baseURL ? [`sitemapPlugin({ url: ${JSON.stringify(baseURL)} })`] : []), "linksPlugin()"].join(", ")}],\n});\n`;
+	out += `  plugins: [${[...(baseURL ? [`sitemapPlugin({ url: ${JSON.stringify(baseURL)} })`] : []), // Hugo doesn't check links, so one that was broken there warns rather than failing the move's build.
+		"linksPlugin({ fail: false })"].join(", ")}],\n});\n`;
 	plan.newFiles.unshift(["ssqch.config.js", `a first draft, from ${configFile ?? "the Hugo site"}`, out]);
 	return plan;
 }
@@ -2676,7 +2742,8 @@ function readMkdocsYaml(text: string): Data {
 type Mapping = { say: string; status: NonNullable<Todo["status"]>; option?: string };
 
 const MKDOCS_PLUGINS: Record<string, Mapping> = {
-	search: { say: "ssqch has no search index of its own: Pagefind indexes the built site (`ssqch docs search`)", status: "ssqch" },
+	search: { say: "MkDocs writes `search/search_index.json`, which the theme's search box reads (MkDocs turns `search` on when `plugins` isn't set): not in ssqch yet in that format; a page that loops over `collections.all` can write it, and Pagefind indexes the built site for a search of ssqch's own (`ssqch docs search`)", status: "not-yet" },
+	mkdocstrings: { say: "API pages from Python docstrings (`::: package.module`): Python writes them, so it's not in ssqch yet; its `:::` lines would read as ssqch's containers, so the draft sets `markdown: { containers: false }`", status: "not-yet" },
 	blog: { say: "a blog is a collection in ssqch: posts in a folder with directory data, with pagination for the index and categories", status: "ssqch" },
 	redirects: { say: "`redirectsPlugin({ redirects })` from \"ssqch/redirects\", with `redirect_maps` (in the draft)", status: "option" },
 	minify: { say: "`minifyPlugin()` from \"ssqch/minify\"", status: "ssqch" },
@@ -2694,8 +2761,9 @@ const MKDOCS_EXTENSIONS: Record<string, Mapping> = {
 	"pymdownx.details": { say: "`???` collapsible admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft)", status: "option", option: "markdown: { admonitions: \"mkdocs\" }" },
 	"pymdownx.tabbed": { say: "`===` tabs: `markdown: { tabs: \"mkdocs\" }` (in the draft) writes them in the alternate style", status: "option", option: "markdown: { tabs: \"mkdocs\" }" },
 	"pymdownx.superfences": { say: "fences, built in; custom fences (mermaid) are a fence hook (`_includes/hooks/fence-mermaid.<ext>`)", status: "ssqch" },
-	"pymdownx.highlight": { say: "`markdown: { highlight: { classes: \"pygments\" } }` (in the draft): Pygments' class names, cut by ssqch's grammars", status: "option", option: "markdown: { highlight: { classes: \"pygments\" } }" },
-	codehilite: { say: "`markdown: { highlight: { classes: \"pygments\" } }` (in the draft)", status: "option", option: "markdown: { highlight: { classes: \"pygments\" } }" },
+	"pymdownx.highlight": { say: "`markdown: { highlight: { classes: \"pygments\" } }` (in the draft): Pygments' class names, cut by ssqch's grammars (the tokens can differ from Pygments', and the wrapper is a fence hook's: `_includes/hooks/fence.*`)", status: "option", option: "markdown: { highlight: { classes: \"pygments\" } }" },
+	codehilite: { say: "`markdown: { highlight: { classes: \"pygments\" } }` (in the draft) gives tokens Pygments' class names, cut by ssqch's grammars; codehilite's markup isn't the same (`<div class=\"codehilite\"><pre><span></span><code>`), and its tokens are Pygments', so a byte-for-byte move needs Pygments itself, or a fence hook (`_includes/hooks/fence.*`) for the wrapper", status: "option", option: "markdown: { highlight: { classes: \"pygments\" } }" },
+	mkautodoc: { say: "API pages from Python docstrings (`::: package.module`): Python writes them, so it's not in ssqch yet; its `:::` lines would read as ssqch's containers, so the draft sets `markdown: { containers: false }`", status: "not-yet" },
 	"pymdownx.inlinehilite": { say: "not in ssqch yet: inline code with a language", status: "not-yet" },
 	"pymdownx.snippets": { say: "`--8<--` snippets: not in ssqch yet as written; an include in a template engine (`markdownEngine`)", status: "not-yet" },
 	"pymdownx.emoji": { say: "`:icon:` shortcodes: not in ssqch yet", status: "not-yet" },
@@ -2746,9 +2814,10 @@ export function mkdocs(dir: string): Plan {
 	plan.pages = pages.length;
 	const named = (list: unknown) => (Array.isArray(list) ? list.map((item) => (isPlainObject(item) ? Object.keys(item)[0] : String(item))) : isPlainObject(list) ? Object.keys(list) : []);
 	const extensions = named(config.markdown_extensions);
-	const plugins = named(config.plugins);
+	// MkDocs turns on `search` when the config names no plugins.
+	const plugins = config.plugins === undefined ? ["search"] : named(config.plugins);
 	const theme = isPlainObject(config.theme) ? config.theme.name : config.theme;
-	if (typeof theme === "string") plan.byHand.push([`${configFile}: theme`, theme === "material" ? "Material's templates are Jinja, which ssqch runs, but they need the context MkDocs gives them (`config`, `nav`, `page`, a page-relative `url` filter): not in ssqch yet as built in. The fresh MkDocs move ran all 49 unchanged with a module of its own that makes it" : `the ${theme} theme's templates are Jinja, which ssqch runs; they need the context MkDocs gives them (\`config\`, \`nav\`, \`page\`)`, { code: "mkdocs-theme", status: theme === "material" ? "not-yet" : "site" }]);
+	if (typeof theme === "string") plan.byHand.push([`${configFile}: theme`, theme === "material" ? "Material's templates are Jinja, which ssqch runs as written, but they read the context MkDocs gives them, which isn't in ssqch yet: `config` (mkdocs.yml), `nav` and `page` (`title`, `toc`, `content`, `meta`, `previous_page`, `next_page`, `canonical_url`, `is_homepage`), `base_url`, and the `url` filter, which makes a URL relative to the page. Give them those as global data, `computed` data and filters in ssqch.config.js; the fresh MkDocs moves ran Material's templates unchanged with about 220 lines of it" : `the ${theme} theme's templates are Jinja, which ssqch runs; they need the context MkDocs gives them (\`config\`, \`nav\`, \`page\`)`, { code: "mkdocs-theme", status: theme === "material" ? "not-yet" : "site" }]);
 	for (const name of plugins) {
 		const known = MKDOCS_PLUGINS[name.replace(/^material\//, "")];
 		plan.byHand.push([`${configFile}: plugins`, `\`${name}\`: ${known?.say ?? "not in ssqch yet: port it as a plugin (`ssqch docs plugins`)"}`, { code: "mkdocs-plugin", status: known?.status ?? "site" }]);
@@ -2757,6 +2826,13 @@ export function mkdocs(dir: string): Plan {
 		const known = MKDOCS_EXTENSIONS[name];
 		plan.byHand.push([`${configFile}: markdown_extensions`, `\`${name}\`: ${known?.say ?? "not in ssqch yet"}`, { code: "mkdocs-extension", status: known?.status ?? "not-yet", ...(known?.option ? { option: known.option } : {}) }]);
 	}
+	const customDir = isPlainObject(config.theme) && typeof config.theme.custom_dir === "string" ? config.theme.custom_dir : undefined;
+	if (customDir) {
+		const overrides = walk(path.join(dir, customDir), (name) => name.startsWith("."), false).filter((e) => e.isFile).length;
+		plan.byHand.push([`${configFile}: theme.custom_dir`, `\`${customDir}\` (${overrides} ${overrides === 1 ? "file" : "files"}) overrides the theme's templates: in ssqch it's the includes folder (\`dirs.includes\`, in the draft), which is read before a theme's, so a template there replaces the theme's of the same name and \`{% extends %}\` reaches the theme's`, { code: "mkdocs-custom-dir", status: "option", files: overrides, option: `dirs: { includes: ${JSON.stringify(path.posix.relative(docsDir, customDir))} }` }]);
+	}
+	plan.byHand.push([`${configFile}: theme`, "MkDocs writes `404.html` from the theme's `404.html` template, with absolute URLs: a page of its own in ssqch (`404.md` or `404.jinja` with `permalink: /404.html`)", { code: "mkdocs-404", status: "ssqch", docs: "404" }]);
+	plan.byHand.push([`${configFile}: site_url`, "MkDocs writes `sitemap.xml.gz` beside `sitemap.xml`: `sitemapPlugin()` writes the `.xml`; the gzipped copy isn't in ssqch yet (an `afterBuild` step with `node:zlib`)", { code: "mkdocs-sitemap-gz", status: "not-yet" }]);
 	if (isFile(path.join(dir, "hooks.py")) || config.hooks) plan.byHand.push([`${configFile}: hooks`, "Python hooks don't run in ssqch: port each as a plugin or a filter (`ssqch docs plugins`)", { code: "mkdocs-hooks", status: "site", docs: "plugins" }]);
 	// The syntax the pages use, counted: what each option reads, and what nothing does yet.
 	const syntax: Array<[string, RegExp, string, string, NonNullable<Todo["status"]>]> = [
@@ -2766,6 +2842,7 @@ export function mkdocs(dir: string): Plan {
 		["snippets (`--8<--`)", /^[ \t]*-+8<-+/gm, "not in ssqch yet as written", "mkdocs-snippets", "not-yet"],
 		["icons and emoji (`:name:`)", /:(?:material|fontawesome|octicons|simple)-[\w-]+:/g, "not in ssqch yet", "mkdocs-icons", "not-yet"],
 		["bare `markdown` attributes", /<[a-z][^>]*\smarkdown(?=[\s>])/g, "not in ssqch yet as written: `htmlMarkdown: \"kramdown\"` reads `markdown=\"1\"`", "mkdocs-md-in-html", "not-yet"],
+		["API docs (`::: package.name`)", /^:::[ \t]+[\w.]+\.[\w.]+/gm, "mkautodoc's or mkdocstrings' blocks, which Python writes, so they're not in ssqch yet; `:::` is how ssqch's containers start, so the draft sets `markdown: { containers: false }`", "mkdocs-autodoc", "not-yet"],
 	];
 	for (const [what, pattern, say, code, status] of syntax) {
 		let count = 0;
@@ -2790,6 +2867,7 @@ export function mkdocs(dir: string): Plan {
 	if (extensions.includes("def_list")) markdown.push("definitionLists: true");
 	if (extensions.includes("smarty")) markdown.push("smartPunctuation: true");
 	if (!extensions.includes("footnotes")) markdown.push("footnotes: false");
+	if (pages.some((e) => /^:::[ \t]+[\w.]+\.[\w.]+/m.test(readUtf8(e.abs) ?? ""))) markdown.push("containers: false");
 	const redirects = (() => {
 		const entry = Array.isArray(config.plugins) ? (config.plugins as unknown[]).find((p) => isPlainObject(p) && "redirects" in p) as Data | undefined : undefined;
 		const maps = entry && isPlainObject(entry.redirects) && isPlainObject(entry.redirects.redirect_maps) ? entry.redirects.redirect_maps : undefined;
@@ -2801,17 +2879,30 @@ export function mkdocs(dir: string): Plan {
 	const url = typeof config.site_url === "string" ? config.site_url.replace(/\/$/, "") : undefined;
 	const imports = ["import { defineConfig } from \"ssqch\";", "import { linksPlugin } from \"ssqch/links\";", ...(url ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : []), ...(redirects ? ["import { redirectsPlugin } from \"ssqch/redirects\";"] : [])];
 	let out = `// A first draft, written by \`ssqch scout\` from ${configFile}.\n// \`ssqch docs --from mkdocs\` has the whole mapping. The sidebar is _data/nav.yml (navTree).\n${imports.join("\n")}\n\nexport default defineConfig({\n`;
-	out += `  dirs: { input: ${JSON.stringify(docsDir)}, output: ${JSON.stringify(siteDir)}, includes: "../_includes", data: "../_data" },\n`;
+	if (customDir) out += `  // theme.custom_dir: the theme's overrides, read before the theme's own templates.\n`;
+	out += `  dirs: { input: ${JSON.stringify(docsDir)}, output: ${JSON.stringify(siteDir)}, includes: ${JSON.stringify(customDir ? path.posix.relative(docsDir, customDir) : "../_includes")}, data: "../_data" },\n`;
 	if (basePath(url) !== undefined) out += `  // site_url's path: the site is served under it.\n  base: ${JSON.stringify(basePath(url))},\n`;
 	out += "  // MkDocs doesn't run template code in pages; its blocks and links read as it writes them.\n  markdownEngine: false,\n";
 	out += `  markdown: { ${markdown.join(", ")} },\n`;
 	// MkDocs copies every file in the docs folder that isn't Markdown, at its own path.
-	const others = [...new Set(walk(path.join(dir, docsDir), (name) => name.startsWith(".") || name === "node_modules", false).filter((e) => e.isFile && !/\.md$/i.test(e.name) && /\.[A-Za-z0-9]+$/.test(e.name)).map((e) => extensionOf(e.name).toLowerCase()))].sort(compareText);
-	if (others.length) out += `  passthrough: [${others.map((ext) => `{ ${JSON.stringify(`${docsDir}/**/*.${ext}`)}: "." }`).join(", ")}],\n`;
+	const copied = walk(path.join(dir, docsDir), (name) => name.startsWith(".") || name === "node_modules", false).filter((e) => e.isFile && !/\.md$/i.test(e.name) && !(customDir && path.join(dir, docsDir, e.rel).startsWith(path.join(dir, customDir) + path.sep)));
+	const others = [...new Set(copied.filter((e) => /\.[A-Za-z0-9]+$/.test(e.name)).map((e) => extensionOf(e.name).toLowerCase()))].sort(compareText);
+	// A file with no extension (CNAME) is copied by its name.
+	const bare = copied.filter((e) => !/\.[A-Za-z0-9]+$/.test(e.name)).map((e) => `${docsDir}/${e.rel}`).sort(compareText);
+	const entries = [...others.map((ext) => `{ ${JSON.stringify(`${docsDir}/**/*.${ext}`)}: "." }`), ...bare.map((file) => `{ ${JSON.stringify(file)}: ${JSON.stringify(file.slice(docsDir.length + 1))} }`)];
+	if (entries.length) out += `  passthrough: [${entries.join(", ")}],\n`;
 	out += `  data: { site: ${JSON.stringify(sortedKeys(site))} },\n`;
-	const pluginCalls = [...(url ? [`sitemapPlugin({ url: ${JSON.stringify(url)} })`] : []), ...(redirects ? [`redirectsPlugin({ redirects: ${JSON.stringify(redirects)} })`] : []), "linksPlugin()"];
+	// MkDocs warns about a broken link unless `strict: true`, and so does the draft.
+	const pluginCalls = [...(url ? [`sitemapPlugin({ url: ${JSON.stringify(url)} })`] : []), ...(redirects ? [`redirectsPlugin({ redirects: ${JSON.stringify(redirects)} })`] : []), config.strict === true ? "linksPlugin()" : "linksPlugin({ fail: false })"];
 	out += `  plugins: [${pluginCalls.join(", ")}],\n});\n`;
 	plan.newFiles.push(["ssqch.config.js", `a first draft, from ${configFile}`, out]);
+	// The wrapper codehilite or pymdownx.highlight writes around the code, which the theme's CSS
+	// reads, around ssqch's highlighted code (its tokens are ssqch's grammars', with Pygments' names).
+	const highlighter = extensions.includes("pymdownx.highlight") ? "pymdownx.highlight" : extensions.includes("codehilite") ? "codehilite" : undefined;
+	if (highlighter) {
+		const open = highlighter === "codehilite" ? "<div class=\"codehilite\">" : "<div class=\"{% if fence.lang %}language-{{ fence.lang }} {% endif %}highlight\">";
+		plan.newFiles.push([path.posix.join(customDir ?? "_includes", "hooks/fence.jinja"), `${highlighter}'s wrapper around highlighted code`, `{# ${highlighter}'s markup around a code block, by ssqch scout: the theme's CSS reads it. #}\n${open}<pre><span></span><code>{% if fence.highlighted %}{{ fence.highlighted | safe }}{% else %}{{ fence.code }}{% endif %}</code></pre></div>\n`]);
+	}
 	if (Array.isArray(config.nav)) {
 		const titleOf = (file: string) => /^#[ \t]+(.+?)[ \t#]*$/m.exec(readUtf8(path.join(dir, docsDir, file)) ?? "")?.[1] ?? file.replace(/\.md$/, "").split("/").pop()!;
 		let entries = 0;

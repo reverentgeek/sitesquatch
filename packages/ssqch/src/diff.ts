@@ -4,7 +4,8 @@
 // it into another, and this says what the change did to the output: which URLs were added and
 // removed, and what changed on the pages that differ.
 //
-// Unless `exact` is set, differences that don't matter are ignored:
+// Unless `exact` is set, differences that don't matter are ignored (with `exact`, only the `ignore`
+// patterns are, so "byte for byte but this" can be said):
 //
 // - asset fingerprints (`index.3f2a1b4c.css` and `index.9d8e7f6a.css` are the same file,
 //   compared by content) and `integrity` hashes,
@@ -27,7 +28,7 @@ import { charCount, firstChars, quoted } from "./quote.ts";
 import { bytes, count } from "./report.ts";
 
 export interface DiffOptions {
-	/** Compare bytes: no fingerprint matching, and nothing ignored. */
+	/** Compare bytes: no fingerprint matching, and nothing ignored but the `ignore` patterns. */
 	exact: boolean;
 	/** Text matching one of these is left out of both sides before comparing. */
 	ignore: RegExp[];
@@ -192,9 +193,9 @@ function isInline(tag: string): boolean {
 
 /** The text to compare for a file's contents. */
 function normalize(text: string, options: DiffOptions): string {
-	if (options.exact) return text;
-	let out = text.replaceAll("\r\n", "\n");
+	let out = options.exact ? text : text.replaceAll("\r\n", "\n");
 	for (const re of options.ignore) out = out.replace(re, "");
+	if (options.exact) return out;
 	out = withoutFingerprints(out);
 	out = withoutImageIds(out);
 	if (out.includes("integrity=")) out = out.replace(INTEGRITY, "");

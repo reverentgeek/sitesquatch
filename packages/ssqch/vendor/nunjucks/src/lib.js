@@ -317,6 +317,9 @@ _exports._assign = _exports.extend = extend;
 function inOperator(key, val) {
   if (isArray(val) || isString(val)) {
     return val.indexOf(key) !== -1;
+  } else if (val instanceof String) {
+    // ssqch: a safe string (a SafeString is a String) is searched as text, as Jinja searches Markup.
+    return String(val).indexOf(String(key)) !== -1;
   } else if (isObject(val)) {
     return key in val;
   }

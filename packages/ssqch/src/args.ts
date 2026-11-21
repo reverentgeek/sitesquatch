@@ -49,6 +49,10 @@ export interface Command {
 	raw?: boolean;
 	/** The global options its `--help` lists, when only some do anything for it (every one is still accepted): `diff` reads no config, so `--offline` and `--base` say nothing there. */
 	helpGlobals?: string[];
+	/** Refuse the global options `helpGlobals` leaves out, rather than accept them and do nothing: for commands newer than 0.7's, which had no line of their own to keep. */
+	strictGlobals?: boolean;
+	/** Its own option for a global one it refuses, for the tip: baseline's `--to` for `--output`. */
+	insteadOf?: Record<string, string>;
 }
 
 /** The global options a command's help lists. */
@@ -183,7 +187,8 @@ function similarValue(value: string, values: string[]): string {
 export function parse(grammar: Grammar, argv: string[]): Parsed {
 	const out: Parsed = { command: undefined, options: {}, positionals: [] };
 	let command: Command | undefined;
-	const find = (test: (o: Option) => boolean): Option | undefined => command?.options.find(test) ?? grammar.globals.find(test) ?? [HELP, ...(command ? [] : [VERSION])].find(test);
+	const globals = () => (command?.strictGlobals ? globalsFor(grammar, command) : grammar.globals);
+	const find = (test: (o: Option) => boolean): Option | undefined => command?.options.find(test) ?? globals().find(test) ?? [HELP, ...(command ? [] : [VERSION])].find(test);
 	const usage = () => usageOf(grammar, command);
 	// The options given so far, as clap listed them in the usage line after an unknown flag or a
 	// missing argument (`Usage: ssqch build --root <ROOT> --quiet`).
@@ -288,8 +293,12 @@ export function parse(grammar: Grammar, argv: string[]): Parsed {
 			const eq = arg.indexOf("=");
 			const name = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
 			const option = find((o) => o.long === name);
+			if (!option && command?.strictGlobals && grammar.globals.some((o) => o.long === name)) {
+				const instead = command.insteadOf?.[name];
+				unexpected(arg, [`'--${name}' does nothing for ${grammar.name} ${command.name}${instead ? `: use '--${instead}'` : ""}`], usageUsed());
+			}
 			if (!option) {
-				const longs = [...(command?.options ?? []), ...grammar.globals, HELP].map((o) => o.long);
+				const longs = [...(command?.options ?? []), ...globals(), HELP].map((o) => o.long);
 				const like = similar(name, longs).pop();
 				// clap counted the option it suggested as given, in the usage line.
 				const suggested = like === undefined ? undefined : find((o) => o.long === like);

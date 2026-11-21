@@ -599,7 +599,7 @@ _ssqch() {
             return 0
             ;;
         ssqch__subcmd__baseline)
-            opts="-o -q -v -h --from --runs --commit --to --link --patch --copy-installs --root --output --base --offline --env --quiet --verbose --help"
+            opts="-q -h --from --runs --commit --to --link --patch --copy-installs --root --quiet --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -633,22 +633,6 @@ _ssqch() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
-                --output)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -o)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --base)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --env)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
                 *)
                     COMPREPLY=()
                     ;;
@@ -657,32 +641,12 @@ _ssqch() {
             return 0
             ;;
         ssqch__subcmd__scout)
-            opts="-o -q -v -h --write-draft --from --format --patch --compare --reference --root --output --base --offline --env --quiet --verbose --help"
+            opts="-h --write-draft --from --format --patch --compare --reference --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
-                --root)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --output)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -o)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --base)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --env)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
                 *)
                     COMPREPLY=()
                     ;;

@@ -99,7 +99,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	const { pages } = site;
 	const renderer = new Renderer(site);
 	// Pages paginated over a collection render last too: their items come from the finished collections.
-	const collectionIncludes = includesUsingCollections([dirs.includes, ...site.themeIncludes]);
+	const collectionIncludes = includesUsingCollections(site);
 	const overCollections = (p: Page) => typeof p.data.pagination?.data === "string" && p.data.pagination.data.startsWith("collections.");
 	const wanted = pages.filter((p) => p.output !== null || p.inCollections);
 	const late = new Set(wanted.filter((p) => usesCollections(p.tpl, collectionIncludes) || overCollections(p)));
@@ -507,17 +507,35 @@ function sameContents(file: string, contents: string): boolean {
 	return same;
 }
 
+/**
+ * Files in an include folder that can't hold template code, which the checks below don't read:
+ * images (SVG too), fonts, media and archives. Material for MkDocs ships 14,376 icons as includes,
+ * and reading each on every build made a 25-page site take a second (the fresh httpx move).
+ */
+const NOT_TEMPLATES = /\.(?:svg|png|jpe?g|gif|webp|avif|ico|bmp|tiff?|woff2?|ttf|otf|eot|pdf|zip|gz|br|mp[34]|webm|ogg|wav|mov)$/i;
+const includeTexts = new WeakMap<Site, Array<{ dir: string; file: string; text: string }>>();
+
+/** The text of each file in the includes folders that can be a template, read once per build. */
+function includeSources(site: Site): Array<{ dir: string; file: string; text: string }> {
+	let list = includeTexts.get(site);
+	if (list) return list;
+	list = [];
+	for (const dir of [site.dirs.includes, ...site.themeIncludes]) {
+		for (const file of walkFiles(dir)) {
+			if (NOT_TEMPLATES.test(file)) continue;
+			try { list.push({ dir, file, text: fs.readFileSync(file, "utf8") }); } catch { /* not text */ }
+		}
+	}
+	includeTexts.set(site, list);
+	return list;
+}
+
 /** Whether any template, layout or include reads a page's rendered content (cheap: it decides whether bodies are kept from the start). */
 function mentionsContent(site: Site): boolean {
 	const reads = (text: string) => text.includes("templateContent") || /\.content\b/.test(text);
 	if (site.tpls.some((t) => reads(t.body))) return true;
 	for (const layout of site.layouts.values()) if (reads(layout.body)) return true;
-	for (const dir of [site.dirs.includes, ...site.themeIncludes]) {
-		for (const file of walkFiles(dir)) {
-			try { if (reads(fs.readFileSync(file, "utf8"))) return true; } catch { /* not text */ }
-		}
-	}
-	return false;
+	return includeSources(site).some(({ text }) => reads(text));
 }
 
 // ---- which pages read collections ------------------------------------------------------------
@@ -571,13 +589,8 @@ function includeKey(name: string): string {
 }
 
 /** The files in the includes folders (as `includeKey`s) whose code reads `collections`, or that include one that does. */
-function includesUsingCollections(dirs: string[]): Set<string> {
-	const files: Array<[string, string]> = [];
-	for (const dir of dirs) {
-		for (const file of walkFiles(dir)) {
-			try { files.push([includeKey(relative(dir, file)), fs.readFileSync(file, "utf8")]); } catch { /* not text */ }
-		}
-	}
+function includesUsingCollections(site: Site): Set<string> {
+	const files: Array<[string, string]> = includeSources(site).map(({ dir, file, text }) => [includeKey(relative(dir, file)), text]);
 	const using = new Set<string>();
 	for (const [key, text] of files) {
 		if (text.includes("collections") && (edgeCodeMentions(text, "collections") || tagCodeMentions(text, "collections"))) using.add(key);
@@ -689,12 +702,10 @@ function checkForeignGlobals(site: Site): void {
 			sources.push([site.display(layout.path), layout.body, undefined]);
 		}
 	}
-	for (const dir of [site.dirs.includes, ...site.themeIncludes]) {
-		for (const file of walkFiles(dir)) {
-			if (seen.has(file)) continue;
-			seen.add(file);
-			try { sources.push([site.display(file), fs.readFileSync(file, "utf8"), undefined]); } catch { /* not text */ }
-		}
+	for (const { file, text } of includeSources(site)) {
+		if (seen.has(file)) continue;
+		seen.add(file);
+		sources.push([site.display(file), text, undefined]);
 	}
 	// `site.articles`, a Jekyll collection's name, is a collection here too: `collections.articles`.
 	// opensource.guide's language menus and guide lists were empty on 380 pages, with no word. Each
@@ -1022,7 +1033,9 @@ async function passthroughCopy(config: Config, dirs: Dirs, extra: CopyJob[]): Pr
 			const broken = (link: string): never => bail(`passthrough ${from}: ${shown(dirs.root, link)} is a link to ${fs.readlinkSync(link)}, which doesn't exist`);
 			for (const file of walkFollowing(src, broken)) jobs.push([file, path.join(dest, path.relative(src, file))]);
 		} else {
-			jobs.push([src, dest]);
+			// A file given a folder (`"."`, `"img/"`, or one that's there) goes into it, by its own name.
+			const into = to !== undefined && (to === "." || /[\\/]$/.test(to) || isDir(dest));
+			jobs.push([src, into ? path.join(dest, path.basename(src)) : dest]);
 		}
 	}
 	sameDestinations(jobs, dirs);

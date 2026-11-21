@@ -142,6 +142,9 @@ const STRICT = "attempted to output null or undefined value";
 
 export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): TemplateEngine {
 	installRuntime();
+	// Jinja drops one newline at the end of each template (`keep_trailing_newline=False`), so an
+	// include doesn't add a blank line where it's included. 0.7 kept it; Nunjucks keeps it in `.njk`.
+	const lastLine = (src: string) => (flavor === "jinja" ? src.replace(/(?:\r\n|\r|\n)$/, "") : src);
 	const root = env.config.root;
 	const loaded = new Set<string>();
 	const sources = new Map<string, { src: string; path: string; noCache: boolean } | null>();
@@ -158,7 +161,7 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 				loaded.add(name.replaceAll("\\", "/"));
 				names.set(found, name.replaceAll("\\", "/"));
 			}
-			const source = found ? { src: fs.readFileSync(found, "utf8"), path: found, noCache: false } : null;
+			const source = found ? { src: lastLine(fs.readFileSync(found, "utf8")), path: found, noCache: false } : null;
 			if (source) shadows(source.src, found!);
 			sources.set(name, source);
 			return source;
@@ -275,7 +278,7 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 		const kept = ctx.cacheKey === undefined ? undefined : compiled.get(ctx.cacheKey);
 		if (kept) return kept;
 		shadows(source, path.resolve(root, ctx.inputPath));
-		const made = new nunjucks.Template(MARKDOWN.test(ctx.inputPath) ? markdownAttributes(source) : source, njk, ctx.inputPath, true);
+		const made = new nunjucks.Template(MARKDOWN.test(ctx.inputPath) ? markdownAttributes(source) : lastLine(source), njk, ctx.inputPath, true);
 		if (ctx.cacheKey !== undefined) compiled.set(ctx.cacheKey, made);
 		return made;
 	};
@@ -335,7 +338,7 @@ interface Where {
  */
 function describe(e: unknown, source: string, ctx: RenderContext, at: Where): string {
 	if (e instanceof BuildError) return e.message;
-	const err = (e ?? {}) as { message?: unknown; lineno?: number; colno?: number; cause?: unknown };
+	const err = (e ?? {}) as { message?: unknown; lineno?: number; colno?: number; cause?: unknown; ssqchFile?: string };
 	let message = String(err.message ?? e);
 	// `(page path)\n (include path) [Line 2, Column 7]\n  Error: what happened`: the template with
 	// the line is where it happened; without one, the last one named.
@@ -347,7 +350,10 @@ function describe(e: unknown, source: string, ctx: RenderContext, at: Where): st
 		else if (!label) break;
 		message = message.slice((place ?? label)![0].length);
 	}
-	const where = places.find((p) => p.line !== undefined) ?? places[places.length - 1];
+	// The fork names the template the error happened in (`ssqchFile`): the places in the message
+	// are the renders it passed through, and a layout's code runs inside its child's.
+	const own = typeof err.ssqchFile === "string" ? { file: err.ssqchFile, line: undefined } : undefined;
+	const where = own ?? places.find((p) => p.line !== undefined) ?? places[places.length - 1];
 	const line = typeof err.lineno === "number" && err.lineno > 0 ? err.lineno : where?.line;
 	const include = where === undefined ? undefined : at.names.get(where.file);
 	const name = include ?? ctx.name;

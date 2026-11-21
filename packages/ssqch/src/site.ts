@@ -195,7 +195,7 @@ export class Site {
 
 	async prepare(timer: Timer): Promise<void> {
 		const { config, dirs } = this;
-		this.markdown = markdownEngine(config.markdown, dirs.root);
+		this.markdown = markdownEngine(config.markdown, dirs.root, dirs.input);
 		// The `ssqch` module's `markdown()` has the site's options and no render hooks.
 		Object.assign(api.site, { root: dirs.root, input: dirs.input, markdown: (text: string, inline: boolean) => this.markdown.plain(text, inline) });
 		const globals = builtinFilters(this.markdown, config);
@@ -709,7 +709,9 @@ export class Site {
 			if (isPlainObject(own.computed) && Object.hasOwn(own.computed, "page")) bail("`page` in computed isn't applied, because `page` is ssqch's: its url, inputPath, date and headings. Give the value another name (`computed: { meta: ... }`); front matter is at the top level already (`title`, not `page.title`)");
 			// Layout chain; layout front matter sits below template data. `layout: ""`, like `false`
 			// and `null`, means no layout.
-			const chain = this.layoutChain(own.layout);
+			// A `layout` in global data (the config's `data`, `_data/layout.*`) is every page's, below
+			// directory data and front matter, as any other global value is.
+			const chain = this.layoutChain(Object.hasOwn(own, "layout") ? own.layout : this.global.layout);
 			let data = this.global;
 			let layoutLayers = 0;
 			for (const layout of [...chain].reverse()) {

@@ -43,6 +43,9 @@ test("source_links_go_to_the_pages_built_from_them", () => {
 	// Images and other files are read from the Markdown file's folder too.
 	assert.equal(sourceLinks("<img src=\"img/stump.png\" alt=\"\"> <img src=\"/abs.png\"> <img src=\"https://x.org/a.png\">", data("./docs/setup/install.md", "/setup/install/"), "relative"), "<img src=\"../img/stump.png\" alt=\"\"> <img src=\"/abs.png\"> <img src=\"https://x.org/a.png\">");
 	assert.equal(sourceLinks("<img src=\"img/stump.png\">", data("./docs/setup/install.md", "/setup/install/"), true), "<img src=\"/setup/img/stump.png\">");
+	// A theme's own page (its 404) is outside the input folder; the site's input folder still decides.
+	const themed = { page: { inputPath: "./docs/setup/install.md", url: "/setup/install/" }, collections: { all: [...all, { inputPath: "./theme/404.jinja", url: "/404.html" }] } };
+	assert.equal(sourceLinks("<img src=\"../img/stump.png\">", themed, "relative", "docs/"), "<img src=\"../../img/stump.png\">");
 });
 
 test("python_markdown_slugs_as_tocs_default", () => {

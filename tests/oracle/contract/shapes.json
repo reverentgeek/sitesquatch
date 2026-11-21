@@ -563,6 +563,7 @@
     "name": "string",
     "detectedBy": "string",
     "underWay": "boolean",
+    "configError": "null",
     "build": {
       "command": "string",
       "output": "string",
@@ -576,7 +577,8 @@
       "ssqch": "number",
       "option": "number",
       "notYet": "number",
-      "site": "number"
+      "site": "number",
+      "done": "number"
     },
     "todo": [
       {
@@ -588,6 +590,14 @@
         "files": "null|number",
         "option": "null|string",
         "docs": "null|string"
+      }
+    ],
+    "done": [
+      {
+        "at": "string",
+        "what": "string",
+        "code": "string",
+        "option": "string"
       }
     ],
     "draft": [
@@ -638,6 +648,17 @@
           ]
         }
       ],
+      "files": {
+        "changed": [
+          "string"
+        ],
+        "added": [
+          "empty"
+        ],
+        "removed": [
+          "empty"
+        ]
+      },
       "problem": "null"
     }
   }

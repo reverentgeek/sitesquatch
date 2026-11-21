@@ -9,6 +9,7 @@ import type { Filter } from "../config.ts";
 import { BuildError } from "../diagnostics.ts";
 import type { EngineEnv, RenderContext } from "./engine.ts";
 import { markdownAttributes } from "./jinja.ts";
+import nunjucks from "nunjucks";
 import { nunjucksEngine } from "./nunjucks.ts";
 import type { Flavor } from "./nunjucks.ts";
 
@@ -298,4 +299,36 @@ test("small_things_print_as_in_0_7", async () => {
 	// A function's own stack frame, as 0.7 named it.
 	const boom = engine("jinja", { boom: function boom() { throw new Error("kaboom"); } });
 	assert.doesNotMatch(await error(() => boom.render("{{ boom() }}", {}, ctx("p.jinja"))), /Context\.boom/);
+});
+
+test("jinja_reads_templates_as_jinja_does", () => {
+	const e = engine("jinja", {}, { "p.jinja": "<p>inc</p>\n", "pr.njk": "x\n" });
+	// Python's escapes in strings, `in` on a safe string's text, one final newline dropped, and sorted keys.
+	assert.equal(e.render(String.raw`{{ "<h1" }}|{{ "\x3c" }}|{{ "\U0001F332" }}|{{ "\q" }}`, {}, ctx("page.jinja")), "&lt;h1|&lt;|\u{1F332}|q");
+	assert.equal(e.render(`{{ "<h1" in body }}|{{ "<h2" not in body }}`, { body: new (nunjucks.runtime.SafeString as any)("<h1>Hi</h1>") }, ctx("page.jinja")), "True|True");
+	assert.equal(e.render(`[{% include "p.jinja" %}]\n`, {}, ctx("page.jinja")), "[<p>inc</p>]");
+	assert.equal(e.render(`{{ {"b": 1, "a": {"d": 2, "c": 3} } | tojson }}`, {}, ctx("page.jinja")), `{"a": {"c": 3, "d": 2}, "b": 1}`);
+	// `.njk` keeps Nunjucks' newline and the keys' order.
+	const n = engine("njk", {}, { "p.njk": "<p>inc</p>\n" });
+	assert.equal(n.render(`[{% include "p.njk" %}]\n`, {}, ctx()), "[<p>inc</p>\n]\n");
+	assert.equal(n.render(`{{ "\\u003c" }}|{{ {"b": 1, "a": 2} | tojson }}`, {}, ctx()), `&lt;|{"b": 1, "a": 2}`);
+});
+
+test("self_renders_a_block_by_name", () => {
+	const e = engine("jinja", {}, { "base.jinja": "<title>{% block title %}Camp{% endblock %}</title><h1>{{ self.title() }}</h1>{% block announce %}{% endblock %}[{{ self.announce() }}]" });
+	assert.equal(e.render(`{% extends "base.jinja" %}{% block title %}Cedar {{ 1 + 1 }}{% endblock %}`, {}, ctx("page.jinja")), "<title>Cedar 2</title><h1>Cedar 2</h1>[]");
+	// A value named `self` is that value.
+	assert.equal(e.render(`{{ self.name }}`, { self: { name: "Stump" } }, ctx("page.jinja")), "Stump");
+});
+
+test("an_error_after_an_include_or_in_a_layout_names_its_own_file_and_line", async () => {
+	for (const flavor of ["njk", "jinja"] as const) {
+		const e = engine(flavor, {}, { "p.jinja": "<p>inc</p>\n", "b2.jinja": "one\ntwo\n{% block main %}{% endblock %}\n{{ 'x' in nothing }}\n" });
+		// The rest of a page after an include ran inside the include's render, and was named p.jinja:1.
+		assert.match(await error(() => e.render("one\n{% include \"p.jinja\" %}\n{{ 'x' in nothing }}\n", {}, ctx())), /^page\.njk:3: Cannot use "in" operator/);
+		// A parent template's code ran inside its child's block, and was named the child's line 1.
+		assert.match(await error(() => e.render("{% extends \"b2.jinja\" %}{% block main %}hi{% endblock %}", {}, ctx())), /^b2\.jinja:4: Cannot use "in" operator/);
+		// An error in an `{% if %}` names the if's line.
+		assert.match(await error(() => e.render("a\nb\n{% if 'x' in nothing %}y{% endif %}", {}, ctx())), /^page\.njk:3: /);
+	}
 });

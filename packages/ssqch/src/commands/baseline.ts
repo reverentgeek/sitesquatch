@@ -39,6 +39,12 @@ export interface BaselineOptions {
 /** The time every copied file gets, so pages dated by their file's time agree from build to build: the commit's, or 2026-01-01. */
 const FALLBACK_TIME = Date.UTC(2026, 0, 1) / 1000;
 
+/** The build time baseline pins for a site with no `--commit`: its HEAD commit's, or 2026-01-01. `ssqch scout --compare` builds with it too. */
+export function baselineTime(root: string, rev = "HEAD"): number {
+	const inGit = git(root, ["rev-parse", "--is-inside-work-tree"]).status === 0;
+	return inGit ? Number(git(root, ["log", "-1", "--format=%ct", rev]).stdout.toString().trim()) || FALLBACK_TIME : FALLBACK_TIME;
+}
+
 class BaselineError extends Error {}
 
 const git = (root: string, args: string[]) => spawnSync("git", ["-C", root, ...args], { encoding: "buffer", maxBuffer: 1 << 30 });
@@ -58,7 +64,7 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 		const inGit = git(root, ["rev-parse", "--is-inside-work-tree"]).status === 0;
 		if (options.commit !== undefined && !inGit) throw new BaselineError(`--commit ${options.commit}: ${root} isn't in a git repository`);
 		const rev = options.commit ?? "HEAD";
-		const time = inGit ? Number(git(root, ["log", "-1", "--format=%ct", rev]).stdout.toString().trim()) || FALLBACK_TIME : FALLBACK_TIME;
+		const time = baselineTime(root, rev);
 		if (options.commit !== undefined && git(root, ["rev-parse", "--verify", "--quiet", `${options.commit}^{commit}`]).status !== 0) throw new BaselineError(`--commit ${options.commit}: no such commit`);
 		const patch = options.patch === undefined ? undefined : path.resolve(options.patch);
 		if (patch !== undefined && !fs.statSync(patch, { throwIfNoEntry: false })?.isFile()) throw new BaselineError(`--patch ${options.patch}: no such file (a patch, as \`git diff > fix.patch\` writes)`);

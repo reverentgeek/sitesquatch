@@ -124,7 +124,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	},
 	{ name: "types", about: "Write ssqch.d.ts, the types editors use for ssqch.config.js", options: [{ long: "out", value: "out", help: "Where to write it", default: "ssqch.d.ts" }], positionals: [], own: true },
 	{
-		name: "scout", helpGlobals: [],
+		name: "scout", helpGlobals: [], strictGlobals: true,
 		about: "Scout a site built with another generator: what moving it to ssqch takes, with file and line, and what's left during a move. Changes nothing unless asked",
 		options: [
 			{ long: "from", value: "GENERATOR", help: "The generator the site is built with, when it isn't the one scout finds: eleventy, jekyll, zola, hugo, mkdocs, docusaurus, astro, vitepress or hexo" },
@@ -140,7 +140,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	},
 
 	{
-		name: "baseline", helpGlobals: ["root", "quiet"],
+		name: "baseline", helpGlobals: ["root", "quiet"], strictGlobals: true, insteadOf: { output: "to" },
 		about: "Build the site with its old generator, in fresh copies with the clock pinned, and compare the builds: what to compare ssqch's with",
 		options: [
 			{ long: "from", value: "DIR", help: "The folder the command writes (Eleventy and Jekyll: _site; Hugo: public; Astro: dist)", default: "_site" },

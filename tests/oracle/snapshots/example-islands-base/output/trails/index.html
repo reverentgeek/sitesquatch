@@ -45,7 +45,6 @@
 </trail-filter>
 
 <like-button key="trails"><a href="/repo/about/">How likes work</a></like-button>
-
 <script type="module" src="/repo/elements/like-button.js"></script>
 <script type="module">const idle=window.requestIdleCallback||((f)=>setTimeout(f,200));for(const[tag,src,when]of[["trail-filter","/repo/elements/trail-filter.js","visible"]]){if(when==="idle"){idle(()=>import(src));continue}const seen=new IntersectionObserver((entries)=>{if(entries.some((e)=>e.isIntersecting)){seen.disconnect();import(src)}},{rootMargin:"200px"});document.querySelectorAll(tag).forEach((el)=>seen.observe(el))}</script>
 </body>

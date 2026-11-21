@@ -213,10 +213,6 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
         }
         'ssqch;baseline' {
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
-            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
-            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
-            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
-            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
             [CompletionResult]::new('--from', '--from', [CompletionResultType]::ParameterName, 'The folder the command writes (default _site)')
             [CompletionResult]::new('--runs', '--runs', [CompletionResultType]::ParameterName, 'How many builds to make and compare (default 3)')
             [CompletionResult]::new('--commit', '--commit', [CompletionResultType]::ParameterName, 'Build this commit instead of the working tree')
@@ -224,32 +220,19 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('--link', '--link', [CompletionResultType]::ParameterName, 'Link this folder of the site into each copy (repeatable)')
             [CompletionResult]::new('--patch', '--patch', [CompletionResultType]::ParameterName, 'Apply this patch to each copy before building')
             [CompletionResult]::new('--copy-installs', '--copy-installs', [CompletionResultType]::ParameterName, 'Copy the installs into each copy instead of linking them')
-            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
-            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
-            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
         'ssqch;scout' {
-            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
-            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
-            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
-            [CompletionResult]::new('--base', '--base', [CompletionResultType]::ParameterName, 'Serve the site under a path, like /repo/ (overrides the config''s `base`)')
-            [CompletionResult]::new('--env', '--env', [CompletionResultType]::ParameterName, 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)')
             [CompletionResult]::new('--from', '--from', [CompletionResultType]::ParameterName, 'The generator the site is built with, when scout finds another')
             [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'text or json')
             [CompletionResult]::new('--write-draft', '--write-draft', [CompletionResultType]::ParameterName, 'Write the new files of the draft; never overwrites a file')
             [CompletionResult]::new('--patch', '--patch', [CompletionResultType]::ParameterName, 'Write the mechanical edits to FILE as a patch to review; nothing is applied')
             [CompletionResult]::new('--compare', '--compare', [CompletionResultType]::ParameterName, 'Also build with ssqch and compare with the reference build')
             [CompletionResult]::new('--reference', '--reference', [CompletionResultType]::ParameterName, 'The reference build to compare with')
-            [CompletionResult]::new('--offline', '--offline', [CompletionResultType]::ParameterName, 'Don''t use the network: `fetch()` answers from the copies its `cache` option saved')
-            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
-            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Print only warnings and errors')
-            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
-            [CompletionResult]::new('--verbose', '--verbose', [CompletionResultType]::ParameterName, 'Also list the slowest images to encode')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break

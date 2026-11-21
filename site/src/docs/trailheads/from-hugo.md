@@ -20,7 +20,7 @@ export default defineConfig({
   markdown: { shortcodes: "hugo", highlight: { classes: "pygments" } },
   passthrough: [{ static: "." }],
   data: { site: { title: "Trail Notes", url: "https://example.com", params: {} } },
-  plugins: [sitemapPlugin({ url: "https://example.com" }), linksPlugin()],
+  plugins: [sitemapPlugin({ url: "https://example.com" }), linksPlugin({ fail: false })],
 });
 ```
 

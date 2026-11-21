@@ -26,9 +26,33 @@ where that version matches.
   templates, Hugo Pipes) and MkDocs sites (the nav, theme, plugins and Markdown extensions, and
   the MkDocs syntax pages use), from the fresh moves of gohugo.io and Material for MkDocs' docs.
   `ssqch capabilities` lists them under "Scout reads" (`importers` in its JSON).
+- `.jinja` and `.j2` templates read as Jinja reads them, so a theme written for Jinja (Material
+  for MkDocs) prints what it printed there (from the fresh httpx move, where these four cost 45
+  minutes): each template loses one newline at its end (Jinja's `keep_trailing_newline=False`;
+  0.7 kept it), so an include adds no blank line and a page's output has no final newline, and
+  `tojson` writes a dict's keys sorted. A site that wants the blank line back adds an empty line
+  at the end of the template. In both flavors, `"\u003c"`, `"\x3c"` and `"\U0001F332"` in a
+  string are the characters they name (they were `u003c`), and `in` searches a safe string's
+  text (`"<h1" in content` was always false).
 
 ### Added
 
+- `ssqch scout` loads a move's `ssqch.config.js`, so an `[option]` it sets already is done: off
+  the list, counted in the summary (`3 done already`), and in `done` and `summary.done` in its
+  JSON, with `configError` when the config doesn't load. In the httpx move, "what's left" listed
+  the same six items before, halfway and after.
+- `ssqch scout` on MkDocs sites, from the fresh httpx move: it finds `search` when `plugins`
+  isn't set (MkDocs turns it on), mkautodoc's and mkdocstrings' `::: package.name` blocks (the
+  draft sets `markdown: { containers: false }`, since `:::` starts ssqch's containers),
+  `theme.custom_dir` (the draft's includes folder), the `404.html` and `sitemap.xml.gz` MkDocs
+  writes, and the Python environment the reference build needs (and a `.venv`'s `mkdocs`). The
+  draft copies files with no extension (`CNAME`), and its `linksPlugin({ fail: false })` warns
+  about broken links, as MkDocs and Hugo do. codehilite is no longer called the same as
+  `highlight: { classes: "pygments" }`, and the draft writes its wrapper (or
+  pymdownx.highlight's) as a fence hook. `--compare` builds with the clock baseline pins
+  (`SOURCE_DATE_EPOCH`), and lists the files that differ (`compare.files`).
+- `passthrough`: a file given a folder (`{ "docs/CNAME": "." }`, a `to` ending in `/`, or a
+  folder that's there) goes into it by its own name. It was an EISDIR error.
 - Other generators' Markdown, read as it's written, so a site's pages move unchanged (from the
   fresh MkDocs and Hugo moves, whose agents wrote 624 and 674 lines to do it):
   `markdown: { admonitions: "mkdocs" }` writes `!!! note "Title"` and `??? note` as
@@ -255,6 +279,26 @@ where that version matches.
 
 ### Fixed
 
+- Jinja and Nunjucks errors named the wrong place: one after an `{% include %}` was the include's
+  line 1, and one in a layout (a template another `{% extends %}`) the page's `{% block %}` line.
+  Each names its own file and line now, an error in `{{ }}` or an `{% if %}` included: they
+  named the last tag before them that had a filter or a call. (Material's `self.announce()` was
+  reported at the site's own layout, line 83, from the theme's `base.html:111`.)
+- Jinja's `self`: `{{ self.title() }}` renders a block by name, as the page's templates have it.
+  Material for MkDocs' `base.html` calls `self.announce()` and `self.outdated()`.
+- A `layout` in global data (the config's `data`, `_data/layout.*`) gave no page a layout, though
+  `ssqch inspect` said it did. It's every page's that doesn't set one lower down.
+- With `markdown: { sourceLinks }`, a theme that had pages of its own (a 404 page) sent every
+  relative image to `../../docs/img/...`: the input folder was the common folder of every page's
+  source, which a theme's page moved up to the project's root. It's the site's input folder.
+- Includes are read once a build, and images (SVG too), fonts and media in them not at all:
+  every file of every include folder was read three times for checks on template code. A
+  25-page site with Material for MkDocs' 14,376 icons took 614 ms to build; it takes 46 ms.
+- `ssqch diff --exact` ignored `--ignore`: `--exact --ignore 'object at 0x[0-9a-f]+'` checks
+  every byte but a Python memory address.
+- `ssqch baseline` and `ssqch scout` accepted the global options that do nothing for them, and
+  did nothing: `baseline --output x` built into `.cache/ssqch/baseline/` all the same. They're
+  refused now, and `--output` says to use `--to`.
 - `ssqch baseline` couldn't build a Hugo site that bundles JavaScript: Hugo's `js.Build` refused the
   linked `node_modules` ("outside the project"). For a `hugo` command the installs are copied
   (copy-on-write where the file system has it), and `--copy-installs` copies them for any other.

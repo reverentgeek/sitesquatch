@@ -144,9 +144,6 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s q -l quiet -d 'Pri
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s v -l verbose -d 'Also list the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l root -d 'Project root (defaults to the current directory)' -r -F
-complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
-complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
-complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l from -d 'The folder the command writes (default _site)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l runs -d 'How many builds to make and compare (default 3)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l commit -d 'Build this commit instead of the working tree' -r
@@ -154,23 +151,14 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l to -d 'What to 
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l link -d 'Link this folder of the site into each copy (repeatable)' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l patch -d 'Apply this patch to each copy before building' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l copy-installs -d 'Copy the installs into each copy instead of linking them'
-complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -s v -l verbose -d 'Also list the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -s h -l help -d 'Print help'
-complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l root -d 'Project root (defaults to the current directory)' -r -F
-complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
-complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r
-complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l from -d 'The generator the site is built with, when scout finds another' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l format -d 'text or json' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l write-draft -d 'Write the new files of the draft; never overwrites a file'
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l patch -d 'Write the mechanical edits to FILE as a patch to review; nothing is applied' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l compare -d 'Also build with ssqch and compare with the reference build'
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l reference -d 'The reference build to compare with' -r -F
-complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
-complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -s v -l verbose -d 'Also list the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand scout" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l format -d 'text or json' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l root -d 'Project root (defaults to the current directory)' -r -F

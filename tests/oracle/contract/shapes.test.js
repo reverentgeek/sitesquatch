@@ -119,8 +119,8 @@ test("build report, profiled", () => {
 	assert.equal(json(["build", "--root", dir]).profile, undefined);
 });
 
-// `ssqch scout --format json`, with every list filled: a to-do, a draft, an edit and a rename, and
-// what the reference build needs.
+// `ssqch scout --format json`, with every list filled: a to-do, a draft, an edit and a rename, what
+// the reference build needs, and what the config does already.
 test("scout_json_shape", () => {
 	const dir = project({
 		"_config.yml": "title: Trail\nurl: https://example.com\n",
@@ -139,15 +139,18 @@ test("scout_json_shape", () => {
 		"docs/index.md": "# Trail\n\n!!! tip\n    Water\n\n[Cedar](cedar.md)\n",
 		"docs/cedar.md": "# Cedar\n",
 	}, "shapes-scout-mkdocs");
-	json(["scout", mkdocs, "--write-draft"]);
+	const fresh = json(["scout", mkdocs, "--write-draft"]);
+	assert.ok(fresh.todo.some((t) => t.count !== null && t.option !== null) && fresh.summary.pages === 2, JSON.stringify(fresh));
 	// A reference that differs from ssqch's build in one file, so the comparison has a group.
-	assert.ok(ssqch(["build", "--root", mkdocs, "-q"]).ok);
+	// Built at the time `--compare` pins (2026-01-01, outside git), as `ssqch baseline` builds a reference.
+	assert.ok(ssqch(["build", "--root", mkdocs, "-q"], { env: { SOURCE_DATE_EPOCH: "1767225600" } }).ok);
 	fs.cpSync(path.join(mkdocs, "site"), path.join(mkdocs, "ref"), { recursive: true });
 	for (const file of ["ref/index.html", "ref/cedar/index.html"]) fs.appendFileSync(path.join(mkdocs, file), "<p>Fresh tracks</p>\n");
 	const compared = json(["scout", mkdocs, "--compare", "--reference", "ref"]);
-	assert.ok(compared.todo.some((t) => t.count !== null && t.option !== null) && compared.summary.pages === 2, JSON.stringify(compared));
+	// The draft's config sets the options, so the second run counts them as done.
+	assert.ok(compared.done.length > 0 && compared.summary.done === compared.done.length, JSON.stringify(compared));
 	assert.ok(compared.compare.built && compared.compare.summary.changed === 2 && compared.compare.groups.length === 1, JSON.stringify(compared.compare));
-	check("scout", report, compared);
+	check("scout", report, fresh, compared);
 });
 
 test("inspect report", () => {

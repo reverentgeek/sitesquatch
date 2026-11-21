@@ -197,9 +197,10 @@ function quote(s: string): string {
 
 /**
  * JSON as Jinja's `tojson` writes it: `{"a": 1, "b": [2, 3]}`, or indented, with `<`, `>`, `&`
- * and `'` escaped so it's safe in HTML and in a `<script>`.
+ * and `'` escaped so it's safe in HTML and in a `<script>`. `sortKeys` writes a dict's keys in
+ * order, as Jinja does (`json.dumps(sort_keys=True)`); `.njk` keeps them as they were set.
  */
-function toJson(value: unknown, indent?: number): string {
+function toJson(value: unknown, indent?: number, sortKeys = false): string {
 	const write = (v: unknown, depth: number): string => {
 		if (v === undefined || v === null || (typeof v === "number" && !Number.isFinite(v))) return "null";
 		if (typeof v === "boolean" || typeof v === "number") return String(v);
@@ -207,6 +208,7 @@ function toJson(value: unknown, indent?: number): string {
 		if (v instanceof Date) return JSON.stringify(pyString(v));
 		if (typeof v === "function") return "null";
 		const entries: Array<[string | undefined, unknown]> = Array.isArray(v) ? v.map((item) => [undefined, item]) : Object.entries(v as object).filter(([, item]) => item !== undefined && typeof item !== "function");
+		if (sortKeys && !Array.isArray(v)) entries.sort(([a], [b]) => (a! < b! ? -1 : a! > b! ? 1 : 0));
 		const [open, close] = Array.isArray(v) ? ["[", "]"] : ["{", "}"];
 		if (!entries.length) return open + close;
 		const parts = entries.map(([k, item]) => (k === undefined ? "" : `${JSON.stringify(k)}: `) + write(item, depth + 1));
@@ -443,6 +445,43 @@ export function installRuntime(): void {
 		if (value === undefined) throw new lib.TemplateError("attempted to output null or undefined value", lineno + 1, colno + 1);
 		return value;
 	};
+
+	// Jinja's `self`: `{{ self.title() }}` renders the block `title` as the page's templates have
+	// it (the child's over the parent's), wherever it's called, as Material for MkDocs' base.html
+	// does with `self.announce()`. A variable or a value named `self` comes first.
+	const lookup = runtime.contextOrFrameLookup;
+	runtime.contextOrFrameLookup = function contextOrFrameLookup(context: unknown, frame: unknown, name: string) {
+		const found = lookup(context, frame, name);
+		if (found !== undefined || name !== "self" || !isBlockContext(context)) return found;
+		return selfOf(context);
+	};
+}
+
+interface BlockContext { env: unknown; blocks: Record<string, Fn[]>; getBlock(name: string): Fn }
+const isBlockContext = (v: unknown): v is BlockContext => typeof v === "object" && v !== null && typeof (v as BlockContext).blocks === "object" && typeof (v as BlockContext).getBlock === "function";
+const selves = new WeakMap<BlockContext, object>();
+
+/** The `self` of a render: each block of its templates as a function that renders it. */
+function selfOf(context: BlockContext): object {
+	let self = selves.get(context);
+	if (self) return self;
+	const Frame = (nunjucks.runtime as unknown as { Frame: new () => unknown }).Frame;
+	self = new Proxy({}, {
+		get(_target, name) {
+			if (typeof name !== "string" || !context.blocks[name]) return undefined;
+			return () => {
+				let out = "";
+				context.getBlock(name)(context.env, context, new Frame(), nunjucks.runtime, (err: unknown, text: string) => {
+					if (err) throw err;
+					out = text;
+				});
+				return safe(out);
+			};
+		},
+		has: (_target, name) => typeof name === "string" && Boolean(context.blocks[name]),
+	});
+	selves.set(context, self);
+	return self;
 }
 
 // ---- filters --------------------------------------------------------------------------------
@@ -692,7 +731,7 @@ export function jinjaFilters(escape: (text: string) => string, flavor: "njk" | "
 		truncate,
 		tojson: (v: unknown, ...args: unknown[]) => {
 			const [indent] = named(args, ["indent"]);
-			return safe(toJson(v, indent === true ? 2 : typeof indent === "number" ? indent : undefined));
+			return safe(toJson(v, indent === true ? 2 : typeof indent === "number" ? indent : undefined, flavor === "jinja"));
 		},
 		pprint: (v: unknown) => pyRepr(v, new Set(), 4),
 		pluralize: (v: unknown, ...args: unknown[]) => {

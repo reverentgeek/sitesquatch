@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readToml } from "./data.ts";
-import { blankComments, detect, draftConfig, eleventy, hugo, jekyll, mkdocs, other, patchOf, unifiedHunks, jekyllPermalink, rewriteData, jekyllTemplateNotes, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./scout.ts";
+import { blankComments, detect, draftConfig, eleventy, hugo, jekyll, mkdocs, other, patchOf, scoutReport, scoutText, setIn, siteConfig, unifiedHunks, jekyllPermalink, rewriteData, jekyllTemplateNotes, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./scout.ts";
 import { VERSION } from "./version.ts";
 
 test("zola_front_matter_gets_ssqch_names", () => {
@@ -653,7 +653,7 @@ test("scout_lists_what_a_hugo_site_uses", () => {
 	assert.ok(!said.some((line) => line.includes("{{< /note")), said.join("\n"));
 	// The draft reads the content as it is, with a container to port for the site's own shortcode.
 	const config = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
-	for (const part of ["dirs: { input: \"content\", output: \"public\", includes: \"../_includes\" },", "markdownEngine: false,", "markdown: { shortcodes: \"hugo\", highlight: { classes: \"pygments\" } },", "passthrough: [{ static: \".\" }],", "data: { site: {\"url\":\"https://example.com\"} },", "plugins: [sitemapPlugin({ url: \"https://example.com\" }), linksPlugin()],"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	for (const part of ["dirs: { input: \"content\", output: \"public\", includes: \"../_includes\" },", "markdownEngine: false,", "markdown: { shortcodes: \"hugo\", highlight: { classes: \"pygments\" } },", "passthrough: [{ static: \".\" }],", "data: { site: {\"url\":\"https://example.com\"} },", "plugins: [sitemapPlugin({ url: \"https://example.com\" }), linksPlugin({ fail: false })],"]) assert.ok(config.includes(part), `${part}\n${config}`);
 	assert.ok(plan.newFiles.some(([file]) => file === "_includes/containers/note.jinja"));
 	assert.equal(plan.pages, 3);
 });
@@ -668,7 +668,7 @@ test("scout_lists_what_an_mkdocs_site_uses", () => {
 	const said = mkdocs(dir).byHand.map(([at, what]) => `${at}: ${what}`);
 	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
 	has("mkdocs.yml: theme: Material's templates are Jinja");
-	has("mkdocs.yml: plugins: `search`: ssqch has no search index of its own");
+	has("mkdocs.yml: plugins: `search`: MkDocs writes `search/search_index.json`");
 	has("mkdocs.yml: plugins: `redirects`: `redirectsPlugin({ redirects })`");
 	has("mkdocs.yml: markdown_extensions: `admonition`: `!!!` admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft)");
 	has("mkdocs.yml: plugins: `pine-cones`: not in ssqch yet: port it as a plugin");
@@ -717,4 +717,66 @@ test("scout_lists_what_docusaurus_astro_vitepress_and_hexo_sites_use", () => {
 	has(hexo, "not-yet: source/_posts/pine.md:3: tag plugins");
 	has(hexo, "ssqch: scaffolds: scaffolds are ssqch's blueprints");
 	has(hexo, "ssqch: package.json: hexo-generator-feed: `rssPlugin()`");
+});
+
+test("scout_counts_what_the_sites_config_sets_as_done", async () => {
+	const dir = site("mkdocs-done", {
+		"mkdocs.yml": "site_name: Trail\nmarkdown_extensions:\n  - admonition\n  - pymdownx.tabbed\n",
+		"docs/index.md": "!!! note\n    Pack out what you pack in.\n\n=== \"Cedar\"\n    Shady.\n",
+	});
+	const before = scoutReport(mkdocs(dir), dir, "mkdocs", "mkdocs.yml", await siteConfig(dir));
+	assert.ok(before.todo.some((t) => t.code === "mkdocs-admonitions"));
+	assert.equal(before.summary.done, 0);
+	fs.writeFileSync(path.join(dir, "ssqch.config.js"), `export default { markdown: { admonitions: "mkdocs", highlight: { classes: "pygments" } } };\n`);
+	const after = scoutReport(mkdocs(dir), dir, "mkdocs", "mkdocs.yml", await siteConfig(dir));
+	assert.ok(!after.todo.some((t) => t.code === "mkdocs-admonitions"), "the admonitions are done");
+	assert.ok(after.todo.some((t) => t.code === "mkdocs-tabs"), "the tabs aren't");
+	assert.deepEqual([...new Set(after.done.map((d) => d.option))], ['markdown: { admonitions: "mkdocs" }']);
+	assert.equal(after.summary.done, after.done.length);
+	assert.match(scoutText(after, { writeDraft: false }), /done already: ssqch\.config\.js sets `markdown: \{ admonitions: "mkdocs" \}`/);
+	// A config that doesn't load counts nothing as done, and says why.
+	fs.writeFileSync(path.join(dir, "ssqch.config.js"), "export default {\n");
+	const broken = scoutReport(mkdocs(dir), dir, "mkdocs", "mkdocs.yml", await siteConfig(dir));
+	assert.equal(broken.done.length, 0);
+	assert.ok(broken.configError?.startsWith("ssqch.config.js: "), String(broken.configError));
+	// Values only: a plugin call or a list is for a person to check.
+	assert.equal(setIn({ markdown: { tabs: "mkdocs" } }, 'markdown: { tabs: "mkdocs" }'), true);
+	assert.equal(setIn({ markdown: { tabs: "mkdocs" } }, "markdown: { tabs: true }"), false);
+	assert.equal(setIn({ plugins: [] }, "plugins: [sitemapPlugin()]"), false);
+});
+
+test("scout_finds_what_mkdocs_writes_on_its_own", () => {
+	const dir = site("mkdocs-own", {
+		// No `plugins`: MkDocs turns search on. mkautodoc's `:::` and a CNAME.
+		"mkdocs.yml": "site_name: Trail\nsite_url: https://example.com/\ntheme:\n  name: material\n  custom_dir: docs/overrides\nmarkdown_extensions:\n  - mkautodoc\n  - codehilite\n",
+		"requirements.txt": "mkdocs\nmkautodoc\n",
+		"docs/index.md": "# Home\n",
+		"docs/api.md": "# API\n\n::: trail.Client\n    :docstring:\n",
+		"docs/CNAME": "trail.example.com\n",
+		"docs/img/pine.png": "",
+		"docs/overrides/partials/nav.html": "<nav></nav>",
+	});
+	const plan = mkdocs(dir);
+	const said = plan.byHand.map(([at, what]) => `${at}: ${what}`);
+	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
+	has("mkdocs.yml: plugins: `search`: MkDocs writes `search/search_index.json`");
+	has("mkdocs.yml: markdown_extensions: `mkautodoc`: API pages from Python docstrings");
+	has("mkdocs.yml: markdown_extensions: `codehilite`: `markdown: { highlight: { classes: \"pygments\" } }` (in the draft) gives tokens Pygments' class names");
+	has("docs/api.md:3: API docs (`::: package.name`) (1 use in 1 file");
+	has("mkdocs.yml: theme.custom_dir: `docs/overrides` (1 file) overrides the theme's templates");
+	has("mkdocs.yml: theme: MkDocs writes `404.html`");
+	has("mkdocs.yml: site_url: MkDocs writes `sitemap.xml.gz`");
+	assert.ok(!said.some((line) => line.includes("module of its own")));
+	const config = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
+	for (const part of ["includes: \"overrides\"", "containers: false", "{ \"docs/**/*.png\": \".\" }, { \"docs/CNAME\": \"CNAME\" }", "linksPlugin({ fail: false })"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	assert.ok(!config.includes("*.html"), "the overrides aren't copied");
+	const report = scoutReport(plan, dir, "mkdocs", "mkdocs.yml");
+	assert.ok(report.build.needs.some((n) => n.startsWith("Python with MkDocs and the site's packages, in a virtual environment: `pip install -r requirements.txt`")), report.build.needs.join("\n"));
+});
+
+test("scout_drafts_codehilites_wrapper_as_a_fence_hook", () => {
+	const dir = site("mkdocs-hilite", { "mkdocs.yml": "site_name: Trail\nmarkdown_extensions:\n  - codehilite\n", "docs/index.md": "# Home\n\n```py\nx = 1\n```\n" });
+	const hook = mkdocs(dir).newFiles.find(([file]) => file === "_includes/hooks/fence.jinja");
+	assert.ok(hook, "a fence hook");
+	assert.match(hook![2], /<div class="codehilite"><pre><span><\/span><code>\{% if fence\.highlighted %\}/);
 });

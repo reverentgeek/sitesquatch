@@ -12,7 +12,7 @@ The [`docs-sidebar`](https://github.com/reverentgeek/sitesquatch/tree/main/examp
 > [!NOTE]
 > **Not released yet.** This ships with the next version of ssqch: `ssqch scout` for MkDocs sites, and the `admonitions`, `tabs`, `sourceLinks`, `headingIds: "python-markdown"` and `highlight: { classes: "pygments" }` Markdown options.
 
-`ssqch scout` (see [Scouting a site](../trailheads.md#scouting-a-site)) reads `mkdocs.yml` and the pages: each plugin and Markdown extension with ssqch's way to do it, and the MkDocs syntax the pages use, counted (links to `.md` files, admonitions, tabs, snippets, icons). Its draft (`--write-draft`) is an `ssqch.config.js` that reads the pages as MkDocs writes them, with no page changed, and the nav as `_data/nav.yml` (titles from the nav, or each page's first heading). On Material for MkDocs' own docs, the draft built every page from a fresh checkout:
+`ssqch scout` (see [Scouting a site](../trailheads.md#scouting-a-site)) reads `mkdocs.yml` and the pages: each plugin and Markdown extension with ssqch's way to do it, and the MkDocs syntax the pages use, counted (links to `.md` files, admonitions, tabs, snippets, icons, mkautodoc's and mkdocstrings' `:::` blocks), and what MkDocs writes on its own (`search/search_index.json`, `404.html`, `sitemap.xml.gz`). Its reference build names the Python environment MkDocs needs (`pip install -r requirements.txt`, and a `.venv`'s `mkdocs` when there is one). Its draft (`--write-draft`) is an `ssqch.config.js` that reads the pages as MkDocs writes them, with no page changed, and the nav as `_data/nav.yml` (titles from the nav, or each page's first heading). On Material for MkDocs' own docs, the draft built every page from a fresh checkout:
 
 ```js
 export default defineConfig({
@@ -20,8 +20,9 @@ export default defineConfig({
   base: "/mkdocs-material/",   // site_url's path
   markdownEngine: false,       // MkDocs doesn't run template code in pages
   markdown: { admonitions: "mkdocs", tabs: "mkdocs", sourceLinks: "relative", headingIds: "python-markdown", highlight: { classes: "pygments" } },
-  passthrough: [{ "docs/**/*.png": "." }],   // MkDocs copies the docs folder's other files
-  plugins: [sitemapPlugin({ url: "https://squidfunk.github.io/mkdocs-material" }), redirectsPlugin({ redirects: { "/old/": "/new/" } }), linksPlugin()],
+  passthrough: [{ "docs/**/*.png": "." }, { "docs/CNAME": "CNAME" }],   // MkDocs copies the docs folder's other files
+  // MkDocs warns about a broken link unless strict: true, and so does the draft.
+  plugins: [sitemapPlugin({ url: "https://squidfunk.github.io/mkdocs-material" }), redirectsPlugin({ redirects: { "/old/": "/new/" } }), linksPlugin({ fail: false })],
 });
 ```
 
@@ -32,15 +33,16 @@ export default defineConfig({
 | `docs_dir`, `site_dir` | `dirs: { input, output }` |
 | `nav:` | `_data/nav.yml`, in the shape the nav helpers read: `- { title: Install, url: /install/ }`, with sections holding `children` (or `items`, `pages`). `navTree(nav, page.url)` marks the current page and its sections, `navPager` gives previous and next, `navBreadcrumbs` the trail. |
 | `theme: material` and its options | Templates of your own (start from `docs-sidebar`) |
-| `theme.custom_dir` / `overrides/` (Jinja) | `.jinja` templates in `_includes`; `{% extends %}`, blocks and macros work |
+| `theme.custom_dir` / `overrides/` (Jinja) | The includes folder (`dirs.includes`, which the draft sets to it): read before a theme's, so a template there replaces the theme's of the same name; `{% extends %}`, blocks and macros work |
 | `extra:` | `_data/site.yml` |
 | `use_directory_urls: true` | The default: `install.md` is `/install/` |
-| `plugins: [search]` | [Pagefind](https://pagefind.app) after the build: `afterBuild: { run: "npx -y pagefind --site dist" }` |
+| `plugins: [search]` (on when `plugins` isn't set) | [Pagefind](https://pagefind.app) after the build: `afterBuild: { run: "npx -y pagefind --site dist" }`. Material's own search box reads MkDocs' `search/search_index.json`, which isn't in ssqch yet: a page that loops over `collections.all` can write it |
 | `mkdocs-redirects` | `redirectsPlugin({ redirects })` from `ssqch/redirects`, or `aliases` on each page |
 | `git-revision-date-localized` | `lastModified: "git"`, then `page.lastModified` |
 | `mkdocs-macros` (Jinja in Markdown) | Built in: Markdown runs through Jinja first (`markdownEngine: "jinja"`, the default) |
 | `extra_css` with Sass | `sassPlugin()` from `ssqch/sass` |
-| `strict: true` | `linksPlugin()` for broken links, and `strict: true` for undefined template values |
+| `strict: true` | `linksPlugin()` fails the build on a broken link (`linksPlugin({ fail: false })` warns, as MkDocs does without `strict`), and `strict: true` for undefined template values |
+| `404.html`, `sitemap.xml.gz` (written by MkDocs) | A page with `permalink: /404.html`; `sitemapPlugin()` writes `sitemap.xml`, and the gzipped copy is an `afterBuild` step (`node:zlib`) |
 
 ## Markdown extensions
 
@@ -50,7 +52,8 @@ export default defineConfig({
 | `pymdownx.details`: `??? note` | `admonitions: "mkdocs"` too: `<details class="note">`, open with `???+`. Or a container whose template writes `<details>` (see `docs-sidebar`'s `details` container) |
 | `pymdownx.tabbed`: `=== "Tab"` | `markdown: { tabs: "mkdocs" }` reads them as they are, in the alternate style's markup. Or `:::: tabs` holding `::: tab Name` containers (see `versioned-docs`) |
 | `pymdownx.superfences` custom fences (`mermaid`) | A `fence-mermaid` hook |
-| `pymdownx.highlight`, `hl_lines="2 3"` | `markdown: { highlight: { classes: "pygments" } }`, with Pygments' class names for the theme's CSS, and `{2,3}` in the fence's info string |
+| `pymdownx.highlight`, `codehilite`, `hl_lines="2 3"` | `markdown: { highlight: { classes: "pygments" } }`, with Pygments' class names for the theme's CSS, and `{2,3}` in the fence's info string. The tokens are cut by ssqch's grammars, not Pygments', and the wrapper (`<div class="highlight"><pre><span></span><code>`) is a fence hook's (`_includes/hooks/fence.jinja`, which the draft writes), so the theme's styles fit, but not byte for byte |
+| `mkautodoc`, `mkdocstrings` (`::: package.module`) | Not in ssqch yet: Python writes the API pages. Their `:::` lines would read as ssqch's containers, so set `markdown: { containers: false }` (the draft does), and render the pages with the extension in Python |
 | `pymdownx.snippets`: `--8<-- "file.py"` | `{% include "samples/file.py" %}` inside the fence |
 | `toc` with `permalink: true` | `markdown: { headingIds: "python-markdown" }` gives toc's default ids (a repeated heading gets `-1`, not `_1`); a heading hook adds the permalink. `toc(page.headings)` builds the table of contents. |
 | `attr_list`: `## Title { #id }` | `## Title {#id}` |
@@ -59,6 +62,9 @@ export default defineConfig({
 | `def_list` | `markdown: { definitionLists: true }` |
 | `md_in_html` (`markdown="1"`) | The `markdown` filter, or a container |
 | `pymdownx.emoji` (`:smile:`) | Not built in; write the emoji |
+
+> [!NOTE]
+> **Byte for byte:** a move that has to match MkDocs' output exactly needs four things from Python today: Pygments for highlighted code (codehilite's markup and tokens), mkautodoc or mkdocstrings for API pages, Material's search indexer for `search/search_index.json`, and Python's gzip for `sitemap.xml.gz`. Run them once per build in `beforeBuild` or `afterBuild`. Python-Markdown also writes `"` as `&quot;`, `<hr />`, raw HTML blocks to their closing tag, and nests lists at four spaces, which ssqch's Markdown doesn't yet. The fresh httpx move matched MkDocs byte for byte this way.
 
 ## Pages
 

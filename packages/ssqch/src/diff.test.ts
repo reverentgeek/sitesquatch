@@ -108,10 +108,14 @@ test("noise_is_ignored_and_changes_are_classified", async () => {
 	assert.equal(homeJson.changedLines, 4);
 	assert.equal(homeJson.hunks.length, 1);
 
-	// --exact: fingerprints are different files, and every byte counts.
+	// --exact: fingerprints are different files, and every byte counts but what --ignore leaves out.
 	const exact = await compare(before, after, options({ exact: true }));
 	assert.ok(exact.added.includes("/assets/index.22222222.css") && exact.removed.includes("/assets/index.11111111.css"));
 	assert.ok(exact.changed.some((f) => f.url === "/same/"));
+	const addresses = build({ "api/index.html": "<p>&lt;Client object at 0x108946cf0&gt;</p>\n" });
+	const others = build({ "api/index.html": "<p>&lt;Client object at 0x10a2b3c4d&gt;</p>\n" });
+	assert.equal((await compare(addresses, others, options({ exact: true }))).changed.length, 1);
+	assert.equal((await compare(addresses, others, options({ exact: true, ignore: [/object at 0x[0-9a-f]+/gu] }))).changed.length, 0);
 
 	// An ignore pattern, and only some files.
 	report = await compare(before, after, options({ ignore: [/(Old|New)\s+text/gu], only: [globToRegExp("index.html")] }));
