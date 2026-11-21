@@ -38,7 +38,8 @@ test("baseline_builds_the_old_site_and_says_what_varies", { skip: !hasGit && "ne
 	// What varies is put together from each file's most common version, and compared with.
 	assert.ok(r.log.includes("Wrote .cache/ssqch/baseline/ref-common: each file's most common version of the 3 builds"), r.log);
 	assert.ok(exists(dir, ".cache/ssqch/baseline/ref-common/index.html") && exists(dir, ".cache/ssqch/baseline/ref-common/trail/index.html"));
-	assert.ok(r.log.includes("Varies (1)\n  ~ /  (") && r.log.includes(`Next: build with ssqch into an empty folder, then \`ssqch diff ${ref}-common <ssqch's output>\`, with an --ignore for what varies above, and fix the biggest group first. The whole loop: \`ssqch docs "moving a site with an agent"\`.`), r.log);
+	// DELIBERATE (0.12): the Next line names `--text` (from the fresh vuejs.org run).
+	assert.ok(r.log.includes("Varies (1)\n  ~ /  (") && r.log.includes(`Next: build with ssqch into an empty folder, then \`ssqch diff ${ref}-common <ssqch's output>\`, with an --ignore for what varies above, and fix the biggest group first. \`--text\` says how much of each page's text matches, for a move that can't be byte for byte. The whole loop: \`ssqch docs "moving a site with an agent"\`.`), r.log);
 	// Every file's time is the commit's, in every copy, and the clock is UTC.
 	assert.equal(read(dir, `${ref}-2/trail/index.html`), "<p>2026-03-01T12:00:00.000Z UTC 1772366400</p>");
 	assert.ok(!exists(dir, ".cache/ssqch/baseline-copies"), "the copies are removed");

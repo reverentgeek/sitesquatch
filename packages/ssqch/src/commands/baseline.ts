@@ -187,7 +187,12 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 				say(`Wrote ${reference}: each file's most common version of the ${names.length} builds, to compare ssqch's with.`);
 			}
 		}
-		process.stdout.write(`\nNext: build with ssqch into an empty folder, then \`ssqch diff ${reference} <ssqch's output>\`${code ? ", with an --ignore for what varies above" : ""}, and fix the biggest group first. The whole loop: \`ssqch docs "moving a site with an agent"\`.\n`);
+		// A Vite build (VitePress, Astro) names its assets and scopes its components' styles by their
+		// paths, so the copies' are their own, not the site's own build's (vuejs.org's move).
+		let pkg = "";
+		try { pkg = fs.readFileSync(path.join(root, "package.json"), "utf8"); } catch { /* no package.json */ }
+		if (/"(?:vite|vitepress|astro|@vitejs\/[\w-]+)"\s*:/.test(pkg)) say("This site builds with Vite: its asset names (`style.Bfpn8qS8.css`) and Vue's scope ids (`data-v-*`) come from each file's path, so these builds' differ from a build in the site's own folder. `ssqch diff` leaves both out; to compare a build of your own with these, build it in a copy too, or use `--copy-installs`.");
+		process.stdout.write(`\nNext: build with ssqch into an empty folder, then \`ssqch diff ${reference} <ssqch's output>\`${code ? ", with an --ignore for what varies above" : ""}, and fix the biggest group first. \`--text\` says how much of each page's text matches, for a move that can't be byte for byte. The whole loop: \`ssqch docs "moving a site with an agent"\`.\n`);
 		return code;
 	} catch (e) {
 		process.stderr.write(`${red("error:")} ${e instanceof BaselineError ? e.message : e instanceof Error ? e.message : String(e)}\n`);

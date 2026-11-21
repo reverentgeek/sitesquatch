@@ -102,7 +102,7 @@ Pine Cone Crunch
 | --- | --- | --- |
 | `heading.*` | `heading.level`, `id`, `text`, `content` (the inner HTML) and `attrs` | Anchor links next to headings |
 | `table.*` | `table.content` (the table's rows as ssqch writes them, `<thead>` to `</tbody>`, alignment included) and `columns` (how many); the template writes the `<table>` | VitePress's `<table tabindex="0">{{ table.content \| safe }}</table>`, or a wrapper that scrolls |
-| `link.*` | `link.href`, `title`, `text` and `content` | `target="_blank"` and an icon on external links |
+| `link.*` | `link.href` (the URL as the page wrote it: `encodeUrls` doesn't apply to what a hook writes, so percent-encode it yourself if the old generator did, as `encodeURI` does), `title`, `text` and `content` | `target="_blank"` and an icon on external links |
 | `image.*` | `image.src`, `alt` and `title` | `<figure>` with a caption |
 | `footnote-ref.*` | `footnote.number`, `label`, `id` (the note's), `refId` (this reference's) and `index` (1 for a note's first reference) | Footnote links in another generator's markup |
 | `footnotes.*` | `footnotes`: a list of `number`, `label`, `id`, `content` (the note's HTML) and `refs` (the ids of its references) | The notes as a `<div>` each, or as sidenotes |

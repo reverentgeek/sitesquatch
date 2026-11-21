@@ -17,7 +17,7 @@ import { DEFAULT_ENGINE } from "./commands/init.ts";
 import type { NewCommand } from "./commands/new.ts";
 import type { Field as InspectedField, Inspection } from "./inspect.ts";
 import { describeThrown } from "./modules.ts";
-import { relative } from "./paths.ts";
+import { isDir, relative } from "./paths.ts";
 import { prettyJson, quoted } from "./quote.ts";
 import { BUILDER } from "./serve/builder.ts";
 import type { BuilderStart } from "./serve/builder.ts";
@@ -96,6 +96,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		options: [
 			{ long: "exact", help: "Compare bytes: don't match fingerprinted files or ignore whitespace" },
 			{ long: "ungrouped", help: "List each file with all its changes, without grouping the ones shared by several files" },
+			{ long: "text", help: "Compare the article text of each page, word by word, and say how much of it matches" },
 			{ long: "ignore", value: "REGEX", help: "Leave out text matching this regular expression before comparing (repeatable)", many: true },
 			{ long: "only", value: "GLOB", help: "Only compare files matching this glob, like '**/*.html' (repeatable)", many: true },
 			{ long: "exclude", value: "GLOB", help: "Leave out files matching this glob, like 'img/**' (repeatable)", many: true },
@@ -357,7 +358,7 @@ export async function main(argv: string[]): Promise<number> {
 	const many = (name: string) => (Array.isArray(cli.options[name]) ? cli.options[name] as string[] : typeof cli.options[name] === "string" ? [cli.options[name] as string] : []);
 	const top = Number(value("top") ?? "5");
 	// Two build folders need no config, and neither does a folder given to `footprint`.
-	if (command === "diff") return runDiff(cli.positionals, { exact: flag("exact"), ignore: many("ignore"), only: many("only"), exclude: many("exclude"), ungrouped: flag("ungrouped"), lines: Number(value("lines") ?? "10"), format });
+	if (command === "diff") return runDiff(cli.positionals, { exact: flag("exact"), ignore: many("ignore"), only: many("only"), exclude: many("exclude"), ungrouped: flag("ungrouped"), text: flag("text"), lines: Number(value("lines") ?? "10"), format });
 	if (command === "footprint" && cli.positionals[0] !== undefined) {
 		try {
 			await runFootprint(cli.positionals[0], cli.positionals[0], top, format);
@@ -490,7 +491,7 @@ async function runInspect(config: Config, target: string, name: string | undefin
 }
 
 /** `ssqch diff`: prints the comparison, and answers 0 when the builds are the same, 1 when they differ and 2 on an error. */
-async function runDiff(dirs: string[], options: { exact: boolean; ignore: string[]; only: string[]; exclude: string[]; ungrouped: boolean; lines: number; format: string }): Promise<number> {
+async function runDiff(dirs: string[], options: { exact: boolean; ignore: string[]; only: string[]; exclude: string[]; ungrouped: boolean; text: boolean; lines: number; format: string }): Promise<number> {
 	const [before, after] = dirs;
 	try {
 		checkFormat(options.format);
@@ -508,6 +509,18 @@ async function runDiff(dirs: string[], options: { exact: boolean; ignore: string
 		});
 		const only = options.only.length ? globs("only", options.only) : undefined;
 		const exclude = globs("exclude", options.exclude);
+		// `--text`: how much of each page's article text matches, for a move that can't be byte for byte.
+		if (options.text) {
+			if (dirs.length > 2) bail("--text compares two builds; give it the reference and ssqch's (`ssqch diff ref dist --text`)");
+			for (const dir of [before, after]) if (!isDir(dir)) bail(`${dir} isn't a folder; give \`ssqch diff --text\` two build folders, like \`ssqch diff .cache/ssqch/baseline/ref-1 dist --text\``);
+			const { compareArticleText, textMatchJson, textMatchText, textSummary } = await import("./text-match.ts");
+			const keep = (file: string) => (!only || only.some((re) => re.test(file))) && !exclude.some((re) => re.test(file));
+			const report = compareArticleText(before, after, keep, ignore);
+			if (options.format === "json") process.stdout.write(JSON.stringify(textMatchJson(report), null, 2) + "\n");
+			else process.stdout.write(textMatchText(report, options.lines));
+			const s = textSummary(report);
+			return s.identical === s.pages && !s.missing.length ? 0 : 1;
+		}
 		if (dirs.length > 2) {
 			const runs = await compareRuns(dirs, { exact: options.exact, ungrouped: options.ungrouped, ignore, only, onlyGiven: options.only, exclude, lines: options.lines });
 			if (options.format === "json") process.stdout.write(JSON.stringify(runsJson(runs, options.lines), null, 2) + "\n");

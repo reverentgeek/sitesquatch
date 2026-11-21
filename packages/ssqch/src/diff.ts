@@ -100,6 +100,8 @@ export interface DiffGroup {
 	kind: string;
 	/** The change, as the first file has it. */
 	hunk: Hunk;
+	/** What the change is, when it's one a move from another generator always has (`a client app's scripts`, Shiki's colors): it's expected, not a mistake in the port. */
+	known?: string;
 }
 
 export interface DiffReport {
@@ -1059,7 +1061,8 @@ export function groupChanges(changed: FileDiff[]): DiffGroup[] {
 	const number = new Map(order.map((old, i) => [old, i]));
 	const groups: DiffGroup[] = order.map((i) => {
 		const d = drafts[i];
-		return { urls: [...d.files].sort((a, b) => a - b).map((f) => changed[f].url), same: d.match === "lines", match: d.match, kind: kindOf(d.hunk), hunk: d.hunk };
+		const known = knownChange(d.hunk);
+		return { urls: [...d.files].sort((a, b) => a - b).map((f) => changed[f].url), same: d.match === "lines", match: d.match, kind: kindOf(d.hunk), hunk: d.hunk, ...(known ? { known } : {}) };
 	});
 	for (const f of changed) {
 		const at = placed.get(f)!;
@@ -1156,6 +1159,23 @@ function linesText(hunks: Hunk[], total: number, limit: number, paint: Paint, in
 
 const isPageUrl = (url: string) => url.endsWith("/") || isPage(url);
 
+/**
+ * A change every move from a component framework has, by what it removes and adds: the old
+ * generator's client app (the scripts and preloads it puts in each page), and Shiki's inline colors
+ * where ssqch's highlighter writes classes. From the vuejs.org move, whose two biggest groups were
+ * these on every page, and which an agent took time to rule out.
+ */
+export function knownChange(hunk: Hunk): string | undefined {
+	const removed = hunk.removed.join("\n");
+	const added = hunk.added.join("\n");
+	if (/__VP_HASH_MAP__|__VP_SITE_DATA__|\/assets\/chunks\/|\/assets\/app\.[\w-]+\.js/.test(removed) && !/__VP_/.test(added)) return "VitePress's client app: the scripts and preloads it puts in each page, to run the page in the browser. ssqch writes the HTML alone";
+	if (/<astro-island\b|\/_astro\/[\w.-]+\.js/.test(removed) && !/<astro-island\b/.test(added)) return "Astro's islands and scripts, which run the page's components in the browser. ssqch writes the HTML alone";
+	if (/__NEXT_DATA__|\/_next\/static\//.test(removed)) return "Next.js's client app: its scripts and page data. ssqch writes the HTML alone";
+	if (/___gatsby|\/page-data\/|webpack-runtime-/.test(removed)) return "Gatsby's client app: its scripts and page data. ssqch writes the HTML alone";
+	if (/style="(?:color:#|--shiki-)|class="shiki\b/.test(removed) && /class="(?:hl-|token |highlight)/.test(added)) return "Shiki's inline colors, where ssqch's highlighter writes classes (its stylesheet colors them): the code's text is the same";
+	return undefined;
+}
+
 /** The groups, the most files first: how many files, the first three, how alike, and the change. `what` is the heading's verb phrase. */
 function groupsText(groups: DiffGroup[], limit: number, paint: Paint, heading: string): string {
 	let out = `  ${heading}, the most files first (--ungrouped lists each file with all of it):\n`;
@@ -1165,6 +1185,7 @@ function groupsText(groups: DiffGroup[], limit: number, paint: Paint, heading: s
 		const some = group.urls.slice(0, 3).join(", ");
 		const alike = group.match === "lines" ? "" : group.match === "values" ? ", the same but for attribute values" : group.match === "dates" ? ", the same dates in other text" : ", the same tags with other attributes";
 		out += `  ~ ${count(n)} ${what}${alike}: ${some}${n > 3 ? ` and ${count(n - 3)} more` : ""}\n`;
+		if (group.known) out += `      expected in a move: ${group.known}\n`;
 		out += linesText([group.hunk], group.hunk.removed.length + group.hunk.added.length, limit, paint);
 	}
 	return out;
@@ -1250,7 +1271,7 @@ export function diffJson(report: DiffReport, limit: number): Record<string, unkn
 		removed: report.removed,
 		changed,
 		// Each change on more than one file, the most files first; a file's `groups` are places in this list.
-		groups: report.groups.map((g) => ({ files: g.urls.length, urls: g.urls, same: g.same, match: g.match, kind: g.kind, hunk: g.hunk })),
+		groups: report.groups.map((g) => ({ files: g.urls.length, urls: g.urls, same: g.same, match: g.match, kind: g.kind, hunk: g.hunk, ...(g.known ? { known: g.known } : {}) })),
 	};
 }
 
@@ -1433,6 +1454,6 @@ export function runsJson(report: RunsReport, limit: number): Record<string, unkn
 			groups: f.sample?.groups ?? [],
 		})),
 		// Each difference on more than one varying file, the most files first; a file's `groups` are places in this list.
-		groups: report.groups.map((g) => ({ files: g.urls.length, urls: g.urls, same: g.same, match: g.match, kind: g.kind, hunk: g.hunk })),
+		groups: report.groups.map((g) => ({ files: g.urls.length, urls: g.urls, same: g.same, match: g.match, kind: g.kind, hunk: g.hunk, ...(g.known ? { known: g.known } : {}) })),
 	};
 }
