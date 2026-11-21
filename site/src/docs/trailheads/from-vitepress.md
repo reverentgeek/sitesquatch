@@ -3,9 +3,6 @@ title: "Trailhead: moving from VitePress"
 navTitle: "From VitePress"
 description: "VitePress builds each Markdown page into a Vue component; SiteSquatch reads the same Markdown and writes HTML."
 ---
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: scout's VitePress draft, `dialect: "vitepress"`, components, `urls: "html"`, `sitemapPlugin({ format: "vitepress" })`, `ssqch/llms` and `ssqch/vue`.
-
 VitePress builds each Markdown page into a Vue component and ships a client app that hydrates it. SiteSquatch reads the same Markdown and writes HTML, so a move keeps your pages as they are and turns the theme into templates. What takes the work is Vue in your pages: the components they use, and the parts that run in the browser. The vuejs.org docs (111 pages, 33 component names) moved with no Markdown page edited, 99.9% of their article text the same as VitePress's, and the generator step at 0.54 s against VitePress's 5.7 s.
 
 ## Scouting
