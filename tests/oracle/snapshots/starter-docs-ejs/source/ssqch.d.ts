@@ -603,6 +603,18 @@ declare module "ssqch/from-mkdocs" {
 	export function fromMkdocs(options?: FromMkdocsOptions): BuiltinPlugin;
 }
 
+declare module "ssqch/from-jekyll" {
+	import type { BuiltinPlugin } from "ssqch";
+	export interface FromJekyllOptions {
+		/** Templates see Jekyll's `page` and `site`, so a Jekyll site's layouts and includes run as written: `page` has the page's front matter too (`page.title`; ssqch's own keys, like `url` and `date`, win), `page.path` and `page.categories`; `site` has the site's own keys, `posts` (newest first), each collection by its tag (`site.articles`), `pages`, `html_pages`, `categories`, `tags`, `data` (the global data) and `time`; and items read in Jekyll's shape (`post.title`, `post.content`, `post.excerpt`). Default `true`. */
+		templates?: boolean;
+		/** kramdown's Markdown, each a default under the site's own `markdown` options: Markdown inside HTML with `markdown="1"` (`htmlMarkdown: "kramdown"`), kramdown's heading ids (`headingIds: "kramdown"`), smart quotes (`smartPunctuation: true`) and no links from bare URLs (`autolinks: false`). Default `true`. */
+		kramdown?: boolean;
+	}
+	/** What a Jekyll site's templates and Markdown expect, for a site moving from Jekyll: Jekyll's `page` and `site` in templates, and kramdown's Markdown. */
+	export function fromJekyll(options?: FromJekyllOptions): BuiltinPlugin;
+}
+
 declare module "ssqch/vue" {
 	import type { BuiltinPlugin } from "ssqch";
 	export interface VuePluginOptions {

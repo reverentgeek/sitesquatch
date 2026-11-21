@@ -288,7 +288,7 @@ test("scout_jekyll_drafts_a_config_that_builds", () => {
 	r = move(dir, "jekyll");
 	assert.ok(r.ok, r.log);
 	const config = read(dir, "ssqch.config.js");
-	for (const part of ["markdown: { htmlMarkdown: \"kramdown\", headingIds: \"kramdown\", smartPunctuation: true, autolinks: false },", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets/img\", { \"_guides/zh/README.md\": \"guides/zh/README.md\" }],", "jekyllTemplates: true,", "data: { site, image: \"/og.png\" },", "plugins: [redirectsPlugin(), /* sitemapPlugin({ url: site.url }): needs `url` in _config.yml */],"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	for (const part of ["import { fromJekyll } from \"ssqch/from-jekyll\";", "ignore: [\"script/**\", \"README.md\", \"Gemfile\", \"Gemfile.lock\"],", "passthrough: [\"robots.txt\", \"assets/img\", { \"_guides/zh/README.md\": \"guides/zh/README.md\" }],", "data: { site, image: \"/og.png\" },", "plugins: [fromJekyll(), redirectsPlugin(), /* sitemapPlugin({ url: site.url }): needs `url` in _config.yml */],"]) assert.ok(config.includes(part), `${part}\n${config}`);
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(r.ok && !r.log.includes("`//`"), r.log);
 	assert.ok(read(dir, "_site/guides/trail/index.html").includes("<aside>\n<p><em>Hush</em></p>\n</aside>"), read(dir, "_site/guides/trail/index.html"));

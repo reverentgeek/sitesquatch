@@ -16,7 +16,7 @@ import { realPath } from "./paths.ts";
 /** This package's folder: frames inside it are ssqch's own, not the site's. */
 const SELF = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 /** The modules a site imports from ssqch itself, besides `ssqch`. */
-export const BUILT_IN = ["ssqch/image", "ssqch/rss", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/minify", "ssqch/llms", "ssqch/vue", "ssqch/robots", "ssqch/from-vitepress", "ssqch/from-mkdocs"];
+export const BUILT_IN = ["ssqch/image", "ssqch/rss", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/minify", "ssqch/llms", "ssqch/vue", "ssqch/robots", "ssqch/from-vitepress", "ssqch/from-mkdocs", "ssqch/from-jekyll"];
 /**
  * Where `ssqch` and `ssqch/image` are, as Node loads them: from source, `src/exports/ssqch.ts`
  * and `src/exports/image.ts`, which export what ssqch.d.ts declares and nothing else; in the npm

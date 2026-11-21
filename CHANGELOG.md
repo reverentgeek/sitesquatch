@@ -95,6 +95,12 @@ where that version matches.
   site's own `markdown`), and with `templates: true` what `mkdocsTemplates` gives an MkDocs
   theme's templates. The httpx docs, with Material's own templates, build byte for byte the same
   with it as with those options and `mkdocsTemplates` written out. `ssqch scout` drafts it.
+- `fromJekyll()` from `ssqch/from-jekyll` is what a Jekyll site's templates and Markdown expect,
+  as one plugin: Jekyll's `page` and `site` in templates (what `jekyllTemplates` did), and
+  kramdown's habits as defaults under the site's own `markdown` (`markdown="1"`, its heading
+  ids, smart quotes, no bare-URL links). www.ruby-lang.org's port (7,647 pages) builds the same
+  with it as with those options written out, and the `jekyll-guides` example uses it with its
+  output unchanged. `ssqch scout` drafts it.
 - `ssqch serve` and `ssqch serve --built` answer a request for a page with its Markdown copy
   when the request asks for `text/markdown` by name, at a q-value at least HTML's, as Claude Code,
   Cursor and OpenCode do: `text/markdown; charset=utf-8`, with `Vary: Accept` on both of a page's

@@ -968,3 +968,21 @@ test("from_vitepress_is_the_vitepress_dialect_as_a_plugin", () => {
 	assert.equal(read(dir, "_site/index.html"), before);
 	assert.ok(before.includes("id=\"what-s-vue\"") && before.includes("class=\"tip custom-block\"") && !before.includes("<script"), before);
 });
+
+// Added in 0.13: `fromJekyll()` from "ssqch/from-jekyll": kramdown's Markdown as defaults the
+// site's own options replace, and Jekyll's `page` and `site` in templates.
+test("from_jekyll_gives_kramdown_and_jekylls_templates", () => {
+	const dir = tempDir("from-jekyll");
+	write(dir, {
+		"ssqch.config.js": "import { fromJekyll } from \"ssqch/from-jekyll\";\nexport default { templateFormats: [\"liquid\", \"md\"], markdownEngine: \"liquid\", markdown: { smartPunctuation: false }, data: { layout: \"base.liquid\" }, plugins: [fromJekyll()] };\n",
+		"_includes/base.liquid": "<title>{{ page.title }}</title>{{ content }}",
+		"index.md": "---\ntitle: Pine\n---\n<aside markdown=\"1\">\n*Hush*, \"pine\" at https://example.com\n</aside>\n",
+	});
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	// `page.title` is the front matter's; Markdown inside the aside; the site's own smartPunctuation; no bare-URL link.
+	assert.equal(read(dir, "_site/index.html"), "<title>Pine</title><aside>\n<p><em>Hush</em>, &quot;pine&quot; at https://example.com</p>\n</aside>\n");
+	write(dir, { "ssqch.config.js": "import { fromJekyll } from \"ssqch/from-jekyll\";\nexport default { plugins: [fromJekyll({ kramdwon: true })] };\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("unknown option \"kramdwon\" (did you mean \"kramdown\"?)"), r.log);
+});

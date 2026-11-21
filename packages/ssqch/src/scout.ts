@@ -2557,8 +2557,9 @@ export function jekyll(dir: string): Plan {
 	const gemfile = readUtf8(path.join(dir, "Gemfile")) ?? "";
 	const named = new Set([...list("plugins"), ...list("gems"), ...[...gemfile.matchAll(/^\s*gem\s+["']([^"']+)["']/gm)].map((m) => m[1])]);
 	if (named.has("github-pages")) for (const p of GITHUB_PAGES_PLUGINS) named.add(p);
-	const imports = ["import { defineConfig, readData } from \"ssqch\";"];
-	const plugins: string[] = [];
+	const imports = ["import { defineConfig, readData } from \"ssqch\";", "import { fromJekyll } from \"ssqch/from-jekyll\";"];
+	// Templates see Jekyll's `page` and `site`, and pages read as kramdown reads them.
+	const plugins: string[] = ["fromJekyll()"];
 	for (const name of [...named].sort(compareText)) {
 		const known = JEKYLL_PLUGINS[name];
 		if (!known) {
@@ -2630,9 +2631,10 @@ export function jekyll(dir: string): Plan {
 		plugins.push(`sassPlugin({ files: { ${files.join(", ")} }${loadPaths.length ? `, loadPaths: ${JSON.stringify(loadPaths)}` : ""}, charset: false })`);
 	}
 
-	const markdown = ["htmlMarkdown: \"kramdown\"", "headingIds: \"kramdown\"", "smartPunctuation: true", "autolinks: false"];
+	// kramdown's habits (markdown="1", its heading ids, smart quotes, no bare-URL links) are fromJekyll()'s.
+	const markdown: string[] = [];
 	const kramdown = isPlainObject(config.kramdown) ? config.kramdown : {};
-	if (kramdown.auto_ids === false) markdown[1] = "headingIds: false";
+	if (kramdown.auto_ids === false) markdown.push("headingIds: false");
 	if (kramdown.smart_quotes !== undefined || kramdown.input === "GFM" && kramdown.hard_wrap === true) plan.byHand.push([configFile!, "kramdown's `smart_quotes` or `hard_wrap`: check the draft's `markdown` against them (`breaks: true` for `hard_wrap`)"]);
 	if (typeof config.markdown === "string" && !/kramdown/i.test(config.markdown)) plan.byHand.push([configFile!, `markdown: ${config.markdown}: the draft's options are kramdown's; ssqch's Markdown is CommonMark with extensions (\`ssqch docs markdown\`)`]);
 	let out = `// A first draft, written by \`ssqch scout\` from ${configFile}.\n// \`ssqch docs --from jekyll\` has the whole mapping.\n${[...new Set(imports)].join("\n")}\n\n`;
@@ -2659,8 +2661,7 @@ export function jekyll(dir: string): Plan {
 	if (dataDir !== "_data") dirs.push(`data: ${JSON.stringify(dataDir)}`);
 	if (output !== "_site") dirs.push(`output: ${JSON.stringify(output)}`);
 	out += `  dirs: { ${dirs.join(", ")} },\n`;
-	out += "  // Templates see Jekyll's `page` (front matter too: `page.title`) and `site` (`site.posts`,\n  // each collection, `site.data`, `site.categories`), so the layouts and includes run as written.\n  jekyllTemplates: true,\n";
-	out += `  // kramdown's habits: markdown="1", its heading ids, smart quotes and no bare-URL links.\n  markdown: { ${markdown.join(", ")} },\n`;
+	if (markdown.length) out += `  // kramdown's auto_ids is off in ${configFile}.\n  markdown: { ${markdown.join(", ")} },\n`;
 	out += `  // ${configFile}'s \`exclude\`, and what Jekyll leaves out by itself.\n  ignore: [${ignores.map((g) => JSON.stringify(g)).join(", ")}],\n`;
 	const passed = [...passthrough.map((p) => JSON.stringify(p)), ...copied.map(([from, to]) => `{ ${JSON.stringify(from)}: ${JSON.stringify(to)} }`)];
 	if (passed.length) out += `  // What Jekyll copied as it is: files without front matter.\n  passthrough: [${passed.join(", ")}],\n`;

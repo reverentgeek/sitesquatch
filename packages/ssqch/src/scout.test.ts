@@ -635,7 +635,7 @@ test("jekyll_import_reads_a_site_like_rubys", () => {
 	// `site.data` stays as it's written, and the config puts the data under it.
 	assert.ok(!plan.edits.some(([f]) => f.startsWith("en/news/")), JSON.stringify(plan.edits.map(([f]) => f)));
 	const config = plan.newFiles.find(([f]) => f === "ssqch.config.js")![2];
-	assert.ok(config.includes("jekyllTemplates: true,"), config);
+	assert.ok(config.includes("import { fromJekyll } from \"ssqch/from-jekyll\";") && config.includes("plugins: [fromJekyll()"), config);
 	assert.ok(config.includes("passthrough: [\"images/logo.png\"]"), config);
 	const posts = plan.newFiles.find(([f]) => f === "en/news/_posts/_posts.json")?.[2] ?? "";
 	assert.ok(posts.includes("\"permalink\": \"/en/news{% if categories %}"), posts);
