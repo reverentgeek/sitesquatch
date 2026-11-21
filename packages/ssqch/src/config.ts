@@ -461,7 +461,7 @@ export type BuiltinPlugin = (config: Config, options: Data) => void | Promise<vo
 
 /** The built-in plugins, by the module that makes them. The plugins register themselves here as they're ported. */
 export const BUILTINS = new Map<string, BuiltinPlugin>();/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
-const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/llms", "ssqch/vue", "ssqch/robots"];
+const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/llms", "ssqch/vue", "ssqch/robots", "ssqch/from-mkdocs"];
 
 async function loadJs(config: Config, file: string): Promise<void> {
 	const name = path.basename(file);
@@ -846,8 +846,9 @@ function applySettings(config: Config, settings: Data): void {
 	else if (ignore !== undefined) bail(`ignore must be a glob or an array of globs, not ${typeof ignore}`);
 }
 
-/** `mkdocsTemplates`' own theme, under every other: the 404 page MkDocs renders from the theme's `404.html`. */
-function addMkdocsTheme(config: Config): void {
+
+/** MkDocs' context's own theme, under every other: the 404 page MkDocs renders from the theme's `404.html` (`mkdocsTemplates`, and `fromMkdocs({ templates: true })`). */
+export function addMkdocsTheme(config: Config): void {
 	const dir = bundledPath("mkdocs");
 	if (!config.themes.includes(dir)) config.themes.push(dir);
 }

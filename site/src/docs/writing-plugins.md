@@ -64,4 +64,4 @@ Steps run on a page's own Markdown (not on the `markdown()` function's text), in
 
 ## Plugins that come with ssqch
 
-The built-in plugins (`ssqch docs "built-in plugins"`) are written this way where they can be. `fromVitepress()` from `ssqch/from-vitepress` is VitePress's Markdown as a plugin: a `before` and an `after` step, eleven hooks and three defaults ([Moving from VitePress](trailheads/from-vitepress.md)).
+The built-in plugins (`ssqch docs "built-in plugins"`) are written this way where they can be. `fromVitepress()` from `ssqch/from-vitepress` is VitePress's Markdown as a plugin: a `before` and an `after` step, eleven hooks and three defaults ([Moving from VitePress](trailheads/from-vitepress.md)). `fromMkdocs()` from `ssqch/from-mkdocs` gives MkDocs' Markdown as defaults, and its theme context with `templates: true` ([Moving from MkDocs](trailheads/from-mkdocs.md)).

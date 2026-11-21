@@ -2959,9 +2959,9 @@ const MKDOCS_PLUGINS: Record<string, Mapping> = {
 	i18n: { say: "`ssqch docs multilingual`", status: "ssqch" },
 };
 const MKDOCS_EXTENSIONS: Record<string, Mapping> = {
-	admonition: { say: "`!!!` admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft) writes them as Python-Markdown does", status: "option", option: "markdown: { admonitions: \"mkdocs\" }" },
-	"pymdownx.details": { say: "`???` collapsible admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft)", status: "option", option: "markdown: { admonitions: \"mkdocs\" }" },
-	"pymdownx.tabbed": { say: "`===` tabs: `markdown: { tabs: \"mkdocs\" }` (in the draft) writes them in the alternate style", status: "option", option: "markdown: { tabs: \"mkdocs\" }" },
+	admonition: { say: "`!!!` admonitions: `fromMkdocs()` (in the draft) writes them as Python-Markdown does", status: "option", option: "markdown: { admonitions: \"mkdocs\" }" },
+	"pymdownx.details": { say: "`???` collapsible admonitions: `fromMkdocs()` (in the draft)", status: "option", option: "markdown: { admonitions: \"mkdocs\" }" },
+	"pymdownx.tabbed": { say: "`===` tabs: `fromMkdocs()` (in the draft) writes them in the alternate style", status: "option", option: "markdown: { tabs: \"mkdocs\" }" },
 	"pymdownx.superfences": { say: "fences, built in; custom fences (mermaid) are a fence hook (`_includes/hooks/fence-mermaid.<ext>`)", status: "ssqch" },
 	"pymdownx.highlight": { say: "`markdown: { highlight: { classes: \"pygments\" } }` (in the draft): Pygments' class names, cut by ssqch's grammars (the tokens can differ from Pygments', and the wrapper is a fence hook's: `_includes/hooks/fence.*`)", status: "option", option: "markdown: { highlight: { classes: \"pygments\" } }" },
 	codehilite: { say: "`markdown: { highlight: { classes: \"pygments\" } }` (in the draft) gives tokens Pygments' class names, cut by ssqch's grammars; codehilite's markup isn't the same (`<div class=\"codehilite\"><pre><span></span><code>`), and its tokens are Pygments', so a byte-for-byte move needs Pygments itself, or a fence hook (`_includes/hooks/fence.*`) for the wrapper", status: "option", option: "markdown: { highlight: { classes: \"pygments\" } }" },
@@ -2983,7 +2983,7 @@ const MKDOCS_EXTENSIONS: Record<string, Mapping> = {
 	attr_list: { say: "attributes (`{#id .class}`), built in; on headings, ssqch keeps ids and classes", status: "ssqch" },
 	md_in_html: { say: "Markdown inside HTML with the bare `markdown` attribute: not in ssqch yet as written; `markdown: { htmlMarkdown: \"kramdown\" }` reads `markdown=\"1\"`", status: "not-yet" },
 	footnotes: { say: "footnotes, built in (their markup is a `footnotes` hook's)", status: "ssqch" },
-	toc: { say: "`markdown: { headingIds: \"python-markdown\" }` (in the draft): toc's default ids (a repeated heading's `_1` too; a `slugify` of the site's own needs a function). The table of contents is `page.headings` and the `toc` filter", status: "option", option: "markdown: { headingIds: \"python-markdown\" }" },
+	toc: { say: "`fromMkdocs()` (in the draft): toc's default ids (a repeated heading's `_1` too; a `slugify` of the site's own needs a function). The table of contents is `page.headings` and the `toc` filter", status: "option", option: "markdown: { headingIds: \"python-markdown\" }" },
 	def_list: { say: "`markdown: { definitionLists: true }` (in the draft)", status: "option", option: "markdown: { definitionLists: true }" },
 	abbr: { say: "abbreviations: not in ssqch yet", status: "not-yet" },
 	tables: { say: "tables, built in", status: "ssqch" },
@@ -3019,7 +3019,7 @@ export function mkdocs(dir: string): Plan {
 	// MkDocs turns on `search` when the config names no plugins.
 	const plugins = config.plugins === undefined ? ["search"] : named(config.plugins);
 	const theme = isPlainObject(config.theme) ? config.theme.name : config.theme;
-	if (typeof theme === "string") plan.byHand.push([`${configFile}: theme`, `the ${theme === "material" ? "Material" : theme} theme's templates are Jinja, which ssqch runs as written with \`mkdocsTemplates: true\` (in the draft, to turn on once they're there): it gives them MkDocs' context (\`config\`, \`nav\`, \`page\`, \`base_url\`, the \`url\` filter). Copy the theme's templates from its Python package into an ssqch theme first (\`ssqch docs --from mkdocs\`, "The theme")`, { code: "mkdocs-theme", status: "option", option: "mkdocsTemplates: true", docs: "mkdocsTemplates" }]);
+	if (typeof theme === "string") plan.byHand.push([`${configFile}: theme`, `the ${theme === "material" ? "Material" : theme} theme's templates are Jinja, which ssqch runs as written with \`fromMkdocs({ templates: true })\` (in the draft, to turn on once they're there): it gives them MkDocs' context (\`config\`, \`nav\`, \`page\`, \`base_url\`, the \`url\` filter). Copy the theme's templates from its Python package into an ssqch theme first (\`ssqch docs --from mkdocs\`, "The theme")`, { code: "mkdocs-theme", status: "option", option: "mkdocsTemplates: true", docs: "mkdocsTemplates" }]);
 	for (const name of plugins) {
 		const known = MKDOCS_PLUGINS[name.replace(/^material\//, "")];
 		plan.byHand.push([`${configFile}: plugins`, `\`${name}\`: ${known?.say ?? "not in ssqch yet: port it as a plugin (`ssqch docs plugins`)"}`, { code: "mkdocs-plugin", status: known?.status ?? "site" }]);
@@ -3038,9 +3038,9 @@ export function mkdocs(dir: string): Plan {
 	if (isFile(path.join(dir, "hooks.py")) || config.hooks) plan.byHand.push([`${configFile}: hooks`, "Python hooks don't run in ssqch: port each as a plugin or a filter (`ssqch docs plugins`)", { code: "mkdocs-hooks", status: "site", docs: "plugins" }]);
 	// The syntax the pages use, counted: what each option reads, and what nothing does yet.
 	const syntax: Array<[string, RegExp, string, string, NonNullable<Todo["status"]>]> = [
-		["links to .md files", /\]\((?![a-z]+:)[^)\s#]*\.md(?:#[^)\s]*)?\)|^[ \t]*\[[^\]\n]+\]:[ \t]*(?![a-z]+:)[^\s#]*\.md(?:#\S*)?[ \t]*$/gm, "`markdown: { sourceLinks: \"relative\" }` (in the draft) links each to its page's URL, as MkDocs does", "mkdocs-md-links", "option"],
-		["admonitions (`!!!`, `???`)", /^[ \t]*(?:!!!|\?\?\?\+?)[ \t]+\w/gm, "`markdown: { admonitions: \"mkdocs\" }` (in the draft)", "mkdocs-admonitions", "option"],
-		["tabs (`===`)", /^[ \t]*===[+!]{0,2}[ \t]+"/gm, "`markdown: { tabs: \"mkdocs\" }` (in the draft)", "mkdocs-tabs", "option"],
+		["links to .md files", /\]\((?![a-z]+:)[^)\s#]*\.md(?:#[^)\s]*)?\)|^[ \t]*\[[^\]\n]+\]:[ \t]*(?![a-z]+:)[^\s#]*\.md(?:#\S*)?[ \t]*$/gm, "`fromMkdocs()` (in the draft) links each to its page's URL, as MkDocs does", "mkdocs-md-links", "option"],
+		["admonitions (`!!!`, `???`)", /^[ \t]*(?:!!!|\?\?\?\+?)[ \t]+\w/gm, "`fromMkdocs()` (in the draft)", "mkdocs-admonitions", "option"],
+		["tabs (`===`)", /^[ \t]*===[+!]{0,2}[ \t]+"/gm, "`fromMkdocs()` (in the draft)", "mkdocs-tabs", "option"],
 		["snippets (`--8<--`)", /^[ \t]*-+8<-+/gm, "not in ssqch yet as written", "mkdocs-snippets", "not-yet"],
 		["icons and emoji (`:name:`)", /:(?:material|fontawesome|octicons|simple)-[\w-]+:/g, "not in ssqch yet", "mkdocs-icons", "not-yet"],
 		["bare `markdown` attributes", /<[a-z][^>]*\smarkdown(?=[\s>])/g, "not in ssqch yet as written: `htmlMarkdown: \"kramdown\"` reads `markdown=\"1\"`", "mkdocs-md-in-html", "not-yet"],
@@ -3064,7 +3064,8 @@ export function mkdocs(dir: string): Plan {
 	const site: Data = {};
 	for (const [from, to] of [["site_name", "name"], ["site_url", "url"], ["site_description", "description"], ["site_author", "author"], ["repo_url", "repo_url"], ["edit_uri", "edit_uri"], ["copyright", "copyright"]] as const) if (typeof config[from] === "string") site[to] = config[from];
 	if (isPlainObject(config.extra)) site.extra = config.extra;
-	const markdown = ["admonitions: \"mkdocs\"", "tabs: \"mkdocs\"", "sourceLinks: \"relative\"", "headingIds: \"python-markdown\"", "dialect: \"python-markdown\""];
+	// MkDocs' own Markdown (Python-Markdown, admonitions, tabs, toc's ids, `.md` links) is fromMkdocs()'s.
+	const markdown: string[] = [];
 	if (extensions.some((e) => e === "pymdownx.highlight" || e === "codehilite")) markdown.push("highlight: { classes: \"pygments\" }");
 	if (extensions.includes("def_list")) markdown.push("definitionLists: true");
 	if (extensions.includes("smarty")) markdown.push("smartPunctuation: true");
@@ -3079,14 +3080,14 @@ export function mkdocs(dir: string): Plan {
 		return out;
 	})();
 	const url = typeof config.site_url === "string" ? config.site_url.replace(/\/$/, "") : undefined;
-	const imports = ["import { defineConfig } from \"ssqch\";", "import { linksPlugin } from \"ssqch/links\";", ...(url ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : []), ...(redirects ? ["import { redirectsPlugin } from \"ssqch/redirects\";"] : [])];
+	const imports = ["import { defineConfig } from \"ssqch\";", "import { fromMkdocs } from \"ssqch/from-mkdocs\";", "import { linksPlugin } from \"ssqch/links\";", ...(url ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : []), ...(redirects ? ["import { redirectsPlugin } from \"ssqch/redirects\";"] : [])];
 	let out = `// A first draft, written by \`ssqch scout\` from ${configFile}.\n// \`ssqch docs --from mkdocs\` has the whole mapping. The sidebar is _data/nav.yml (navTree).\n${imports.join("\n")}\n\nexport default defineConfig({\n`;
 	if (customDir) out += `  // theme.custom_dir: the theme's overrides, read before the theme's own templates.\n`;
 	out += `  dirs: { input: ${JSON.stringify(docsDir)}, output: ${JSON.stringify(siteDir)}, includes: ${JSON.stringify(customDir ? path.posix.relative(docsDir, customDir) : "../_includes")}, data: "../_data" },\n`;
 	if (basePath(url) !== undefined) out += `  // site_url's path: the site is served under it.\n  base: ${JSON.stringify(basePath(url))},\n`;
 	out += "  // MkDocs doesn't run template code in pages; its blocks and links read as it writes them.\n  markdownEngine: false,\n";
 	if (typeof theme === "string") out += `  // The ${theme} theme's templates as they are: copy them into theme/ (\`ssqch docs --from mkdocs\`,\n  // "The theme"), then turn these on.\n  // theme: "theme", mkdocsTemplates: true,\n`;
-	out += `  markdown: { ${markdown.join(", ")} },\n`;
+	if (markdown.length) out += `  markdown: { ${markdown.join(", ")} },\n`;
 	// MkDocs copies every file in the docs folder that isn't Markdown, at its own path.
 	const copied = walk(path.join(dir, docsDir), (name) => name.startsWith(".") || name === "node_modules", false).filter((e) => e.isFile && !/\.md$/i.test(e.name) && !(customDir && path.join(dir, docsDir, e.rel).startsWith(path.join(dir, customDir) + path.sep)));
 	const others = [...new Set(copied.filter((e) => /\.[A-Za-z0-9]+$/.test(e.name)).map((e) => extensionOf(e.name).toLowerCase()))].sort(compareText);
@@ -3096,7 +3097,7 @@ export function mkdocs(dir: string): Plan {
 	if (entries.length) out += `  passthrough: [${entries.join(", ")}],\n`;
 	out += `  data: { site: ${JSON.stringify(sortedKeys(site))} },\n`;
 	// MkDocs warns about a broken link unless `strict: true`, and so does the draft.
-	const pluginCalls = [...(url ? [`sitemapPlugin({ url: ${JSON.stringify(url)} })`] : []), ...(redirects ? [`redirectsPlugin({ redirects: ${JSON.stringify(redirects)} })`] : []), config.strict === true ? "linksPlugin()" : "linksPlugin({ fail: false })"];
+	const pluginCalls = ["fromMkdocs()", ...(url ? [`sitemapPlugin({ url: ${JSON.stringify(url)} })`] : []), ...(redirects ? [`redirectsPlugin({ redirects: ${JSON.stringify(redirects)} })`] : []), config.strict === true ? "linksPlugin()" : "linksPlugin({ fail: false })"];
 	out += `  plugins: [${pluginCalls.join(", ")}],\n});\n`;
 	plan.newFiles.push(["ssqch.config.js", `a first draft, from ${configFile}`, out]);
 	// The wrapper codehilite or pymdownx.highlight writes around the code, which the theme's CSS
@@ -3121,6 +3122,11 @@ export function mkdocs(dir: string): Plan {
 		const nav = convert(config.nav as unknown[]);
 		plan.newFiles.push(["_data/nav.yml", `the nav from ${configFile} (${entries} entries), for \`navTree\``, `# From ${configFile}'s nav, by ssqch scout: titles as the nav gives them, or each page's first heading.\n${dumpYaml(nav)}`]);
 	} else plan.byHand.push([configFile, "no `nav`: MkDocs builds the sidebar from the folders; ssqch's is `_data/nav.yml` (`navTree`) or `pagesTree(collections.all)`", { code: "mkdocs-nav", status: "ssqch", docs: "navTree" }]);
+	// What fromMkdocs() turns on is done with it in the plugins, as with the options themselves.
+	for (const entry of plan.byHand) {
+		const meta = entry[2];
+		if (meta?.option && /admonitions: "mkdocs"|tabs: "mkdocs"|sourceLinks: "relative"|headingIds: "python-markdown"|dialect: "python-markdown"/.test(meta.option)) entry[2] = { ...meta, defines: ["plugin:fromMkdocs", ...(meta.defines ?? [])] };
+	}
 	return plan;
 }
 

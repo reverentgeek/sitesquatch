@@ -591,6 +591,18 @@ declare module "ssqch/from-vitepress" {
 	export function fromVitepress(): PluginParts;
 }
 
+declare module "ssqch/from-mkdocs" {
+	import type { BuiltinPlugin } from "ssqch";
+	export interface FromMkdocsOptions {
+		/** The mkdocs.yml, from the project root, that `templates` reads. Default `"mkdocs.yml"`. */
+		config?: string;
+		/** What MkDocs gives a theme's templates, so an MkDocs theme's Jinja (Material for MkDocs') runs as written: `config`, `nav`, `page` (with `content` and `toc` in layouts), `base_url`, the `url` filter, `main.html` (or a page's `template`) as a Markdown page's layout, the theme's `404.html` as the 404 page, and `.jinja` not escaping what it prints, as MkDocs' Jinja doesn't. Default `false`: turn it on once the theme's templates are in the site (`theme: "theme"`). */
+		templates?: boolean;
+	}
+	/** MkDocs' Markdown for a site moving from MkDocs, each a default under the site's own `markdown` options: Python-Markdown's reading (`dialect: "python-markdown"`: raw HTML blocks to their closing tag, lists at four spaces), its toc's heading ids, `!!! note` admonitions and `=== "Tab"` tabs as Material writes them, and `.md` links from the page; and with `templates`, MkDocs' context for a theme's templates. */
+	export function fromMkdocs(options?: FromMkdocsOptions): BuiltinPlugin;
+}
+
 declare module "ssqch/vue" {
 	import type { BuiltinPlugin } from "ssqch";
 	export interface VuePluginOptions {

@@ -736,14 +736,14 @@ test("scout_lists_what_an_mkdocs_site_uses", () => {
 	});
 	const said = mkdocs(dir).byHand.map(([at, what]) => `${at}: ${what}`);
 	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
-	has("mkdocs.yml: theme: the Material theme's templates are Jinja, which ssqch runs as written with `mkdocsTemplates: true`");
+	has("mkdocs.yml: theme: the Material theme's templates are Jinja, which ssqch runs as written with `fromMkdocs({ templates: true })`");
 	has("mkdocs.yml: plugins: `search`: MkDocs writes `search/search_index.json`");
 	has("mkdocs.yml: plugins: `redirects`: `redirectsPlugin({ redirects })`");
-	has("mkdocs.yml: markdown_extensions: `admonition`: `!!!` admonitions: `markdown: { admonitions: \"mkdocs\" }` (in the draft)");
+	has("mkdocs.yml: markdown_extensions: `admonition`: `!!!` admonitions: `fromMkdocs()` (in the draft)");
 	has("mkdocs.yml: plugins: `pine-cones`: not in ssqch yet: port it as a plugin");
-	has("mkdocs.yml: markdown_extensions: `toc`: `markdown: { headingIds: \"python-markdown\" }` (in the draft)");
+	has("mkdocs.yml: markdown_extensions: `toc`: `fromMkdocs()` (in the draft)");
 	has("mkdocs.yml: markdown_extensions: `pymdownx.emoji`: `:icon:` shortcodes: not in ssqch yet");
-	has("docs/index.md:10: links to .md files (2 uses in 1 file; this is the first): `markdown: { sourceLinks: \"relative\" }` (in the draft)");
+	has("docs/index.md:10: links to .md files (2 uses in 1 file; this is the first): `fromMkdocs()` (in the draft)");
 	has("docs/index.md:3: admonitions (`!!!`, `???`) (1 use in 1 file");
 	has("docs/index.md:6: tabs (`===`) (1 use in 1 file");
 	has("docs/trails/cedar.md:5: icons and emoji (`:name:`) (1 use in 1 file");
@@ -751,7 +751,7 @@ test("scout_lists_what_an_mkdocs_site_uses", () => {
 	// The draft: the config with the pages' syntax on, and the nav as data, with URLs for paths.
 	const plan = mkdocs(dir);
 	const config = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
-	for (const part of ["dirs: { input: \"docs\", output: \"site\", includes: \"../_includes\", data: \"../_data\" },", "markdown: { admonitions: \"mkdocs\", tabs: \"mkdocs\", sourceLinks: \"relative\", headingIds: \"python-markdown\", dialect: \"python-markdown\", footnotes: false },", "\"name\":\"Trail\"", "redirectsPlugin({ redirects: {} })", "sitemapPlugin({ url: \"https://example.com\" })"]) assert.ok(config.includes(part), `${part}\n${config}`);
+	for (const part of ["dirs: { input: \"docs\", output: \"site\", includes: \"../_includes\", data: \"../_data\" },", "markdown: { footnotes: false },", "import { fromMkdocs } from \"ssqch/from-mkdocs\";", "plugins: [fromMkdocs(), ", "\"name\":\"Trail\"", "redirectsPlugin({ redirects: {} })", "sitemapPlugin({ url: \"https://example.com\" })"]) assert.ok(config.includes(part), `${part}\n${config}`);
 	assert.equal(plan.newFiles.find(([file]) => file === "_data/nav.yml")![2], "# From mkdocs.yml's nav, by ssqch scout: titles as the nav gives them, or each page's first heading.\n- title: Home\n  url: /\n- title: Trails\n  children:\n    - title: cedar\n      url: /trails/cedar/\n    - title: Old Growth\n      url: /trails/old/\n");
 	assert.equal(plan.pages, 2);
 });

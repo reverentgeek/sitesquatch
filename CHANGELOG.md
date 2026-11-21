@@ -90,6 +90,11 @@ where that version matches.
 - `fromVitepress()` from `ssqch/from-vitepress` is VitePress's Markdown as a plugin of that kind:
   the same steps, hooks and defaults as `markdown: { dialect: "vitepress" }`, which it replaces
   (the vuejs.org port builds byte for byte the same with either). `ssqch scout` drafts it.
+- `fromMkdocs()` from `ssqch/from-mkdocs` is MkDocs' Markdown as one plugin (Python-Markdown's
+  reading, admonitions, tabs, toc's ids and `.md` links from the page, each a default under the
+  site's own `markdown`), and with `templates: true` what `mkdocsTemplates` gives an MkDocs
+  theme's templates. The httpx docs, with Material's own templates, build byte for byte the same
+  with it as with those options and `mkdocsTemplates` written out. `ssqch scout` drafts it.
 - `ssqch serve` and `ssqch serve --built` answer a request for a page with its Markdown copy
   when the request asks for `text/markdown` by name, at a q-value at least HTML's, as Claude Code,
   Cursor and OpenCode do: `text/markdown; charset=utf-8`, with `Vary: Accept` on both of a page's

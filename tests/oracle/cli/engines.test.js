@@ -698,5 +698,17 @@ test("mkdocs_templates_see_mkdocs_context", () => {
 	assert.equal(read(dir, "site/trails/cedar/index.html"), "<title>Cedar - Trail & Co</title><link href=\"../../assets/app.css\">[Home][Trails*]<b>../..</b>(Cedar)<main><h1 id=\"cedar\">Cedar</h1>\n</main>");
 	// MkDocs' 404 page, from the theme's 404.html, with no page and the site's path.
 	assert.equal(read(dir, "site/404.html"), "<h1>Lost</h1><link href=\"/assets/app.css\">");
+	// Added in 0.13: `fromMkdocs({ templates: true })` from "ssqch/from-mkdocs" is the same context,
+	// as a plugin, with MkDocs' Markdown too: the same as both written out.
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"docs\", output: \"site\" }, theme: \"theme\", mkdocsTemplates: true, markdownEngine: false, markdown: { dialect: \"python-markdown\", admonitions: \"mkdocs\", tabs: \"mkdocs\", headingIds: \"python-markdown\", sourceLinks: \"relative\" } };\n" });
+	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
+	const before = ["index.html", "trails/cedar/index.html", "404.html"].map((f) => read(dir, `site/${f}`));
+	write(dir, { "ssqch.config.js": "import { fromMkdocs } from \"ssqch/from-mkdocs\";\nexport default { dirs: { input: \"docs\", output: \"site\" }, theme: \"theme\", markdownEngine: false, plugins: [fromMkdocs({ templates: true })] };\n" });
+	const again = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(again.ok, again.log);
+	assert.deepEqual(["index.html", "trails/cedar/index.html", "404.html"].map((f) => read(dir, `site/${f}`)), before);
+	write(dir, { "ssqch.config.js": "import { fromMkdocs } from \"ssqch/from-mkdocs\";\nexport default { plugins: [fromMkdocs({ template: true })] };\n" });
+	const bad = ssqch(["build", "--root", dir]);
+	assert.ok(!bad.ok && bad.log.includes("unknown option \"template\" (did you mean \"templates\"?)"), bad.log);
 	assert.equal(read(dir, "site/assets/app.css"), "body { color: pine }\n");
 });
