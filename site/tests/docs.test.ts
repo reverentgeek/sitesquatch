@@ -40,8 +40,8 @@ test("each page's `ssqch docs` command prints that page", () => {
 
 test("each trailhead is what `ssqch docs --from` prints", () => {
 	const trailheads = pages().filter((p) => p.file.startsWith("trailheads/"));
-	// Hugo's added in 0.11, from the fresh gohugo.io move.
-	assert.equal(trailheads.length, 8);
+	// Hugo's added in 0.11, from the fresh gohugo.io move, and VitePress's in 0.12, from vuejs.org's.
+	assert.equal(trailheads.length, 9);
 	for (const page of trailheads) {
 		const generator = /^ssqch docs --from (\S+)$/.exec(commandOf(page))?.[1];
 		assert.ok(generator, `${page.file}: ${commandOf(page)}`);

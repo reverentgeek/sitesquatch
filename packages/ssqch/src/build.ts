@@ -742,7 +742,15 @@ function checkForeignKeys(site: Site): void {
  * once a name, with the pages it's on.
  */
 function warnUnknownComponents(site: Site): void {
-	for (const [name, files] of [...site.unknownComponents].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+	const unknown = [...site.unknownComponents].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+	// Many at once (a move from VitePress has dozens): one warning, the most-used first.
+	if (unknown.length > 3) {
+		const ranked = [...unknown].sort(([a, x], [b, y]) => y.size - x.size || (a < b ? -1 : 1));
+		const listed = ranked.slice(0, 8).map(([name, files]) => `<${name}> (${files.size === 1 ? [...files][0] : `${files.size} pages`})`).join(", ");
+		warn(warning("template", `${unknown.length} components (PascalCase tags) have no template: ${listed}${unknown.length > 8 ? `, and ${unknown.length - 8} more` : ""}. Browsers drop the tags and show what's inside them. Give each one in _includes/components/<Name>.* (it gets \`component.props\` and \`component.content\`; \`ssqch docs components\`), or write the HTML it stands for`));
+		return;
+	}
+	for (const [name, files] of unknown) {
 		const list = [...files].sort();
 		const where = list.length === 1 ? list[0] : `${list.length} pages (${list.slice(0, 3).join(", ")}${list.length > 3 ? ", ..." : ""})`;
 		warn(warning("template", `\`<${name}>\` in ${where} is a component (a PascalCase tag) with no template: browsers drop the tag and show what's inside it. Give it one in _includes/components/${name}.* (it gets \`component.props\` and \`component.content\`; \`ssqch docs components\`), or write the HTML it stands for`, list.length === 1 ? { file: list[0] } : {}));

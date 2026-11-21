@@ -69,6 +69,8 @@ export interface Todo {
 	 * What in the site's ssqch config does it, any one of them: a value at a path
 	 * (`filters.slugify`, `engines.md`), a plugin by its name (`plugin:ssqch/rss`), or the old
 	 * package imported as it is (`import:markdown-it`: kept on purpose, for identical output).
+	 * A template the move wrote counts too
+	 * (`file:src/_includes/components/Badge.*`), and a value in a list (`has:ignore:**\/*.data.ts`).
 	 * Scout counts the to-do as done when the config has one.
 	 */
 	defines?: string[];
@@ -201,7 +203,7 @@ export async function runScout(dir: string, options: ScoutOptions): Promise<numb
 			if (found.length > 1) fail(`more than one generator's files are in ${dir} (${found.map(([g, file]) => `${GENERATORS[g].name}: ${file}`).join("; ")}): choose with --from`);
 			[id, how] = found[0];
 		}
-		const plan = id === "eleventy" ? eleventy(dir) : id === "jekyll" ? jekyll(dir) : id === "zola" ? zola(dir) : id === "hugo" ? hugo(dir) : id === "mkdocs" ? mkdocs(dir) : other(dir, id);
+		const plan = id === "eleventy" ? eleventy(dir) : id === "jekyll" ? jekyll(dir) : id === "zola" ? zola(dir) : id === "hugo" ? hugo(dir) : id === "mkdocs" ? mkdocs(dir) : id === "vitepress" ? vitepress(dir) : other(dir, id);
 		const report = scoutReport(plan, dir, id, how, await siteConfig(dir));
 		if (options.compare !== undefined) report.compare = compareBuilds(dir, options.compare);
 		if (options.writeDraft) for (const file of report.draft) if (!file.there) writeNew(dir, file.path, plan.newFiles.find(([p]) => p === file.path)![2]);
@@ -240,7 +242,7 @@ export interface Report {
 }
 
 /** The site's ssqch config as it's written (its default export, and its source), to see what a move has done already. */
-export interface SiteConfig { config?: Record<string, unknown>; source?: string; error?: string }
+export interface SiteConfig { config?: Record<string, unknown>; source?: string; error?: string; dir?: string }
 export async function siteConfig(dir: string): Promise<SiteConfig> {
 	const file = findConfig(dir);
 	if (!file) return {};
@@ -256,7 +258,7 @@ export async function siteConfig(dir: string): Promise<SiteConfig> {
 	try {
 		const value = (await importFile(file)).default;
 		const source = readUtf8(file);
-		return isPlainObject(value) ? { config: value as Record<string, unknown>, ...(source === undefined ? {} : { source }) } : { error: `${path.basename(file)}'s default export isn't an object` };
+		return isPlainObject(value) ? { config: value as Record<string, unknown>, dir, ...(source === undefined ? {} : { source }) } : { error: `${path.basename(file)}'s default export isn't an object` };
 	} catch (e) {
 		return { error: `${path.basename(file)}: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}` };
 	} finally {
@@ -273,6 +275,26 @@ export function definedIn(site: SiteConfig, defines: readonly string[]): string 
 	if (!config) return undefined;
 	const code = site.source === undefined ? "" : blankComments(site.source);
 	for (const want of defines) {
+		// `file:src/_includes/components/Badge.*`: a template the move made (`*` is any extension).
+		if (want.startsWith("file:")) {
+			if (site.dir === undefined) continue;
+			const rel = want.slice("file:".length);
+			const folder = path.join(site.dir, ...path.posix.dirname(rel).split("/"));
+			const base = path.posix.basename(rel);
+			let names: string[] = [];
+			try { names = fs.readdirSync(folder); } catch { /* no folder yet */ }
+			const found = base.endsWith(".*") ? names.find((n) => n.startsWith(base.slice(0, -1)) && n.length > base.length - 1) : names.find((n) => n === base);
+			if (found !== undefined) return path.posix.join(path.posix.dirname(rel), found);
+			continue;
+		}
+		// `has:ignore:**/*.data.ts`: a list at that path with the value in it.
+		if (want.startsWith("has:")) {
+			const [, at, value] = /^has:([^:]+):(.*)$/.exec(want) ?? [];
+			let list: unknown = config;
+			for (const key of (at ?? "").split(".")) list = isPlainObject(list) ? (list as Record<string, unknown>)[key] : undefined;
+			if (Array.isArray(list) && list.includes(value)) return `${at}: "${value}"`;
+			continue;
+		}
 		if (want.startsWith("plugin:")) {
 			const name = want.slice("plugin:".length);
 			const plugins = Array.isArray(config.plugins) ? config.plugins.flat(Infinity) : [];
@@ -367,7 +389,10 @@ function referenceBuild(dir: string, id: string): { command: string; output: str
 	const netlifyCommand = /^\s*command\s*=\s*"([^"]+)"/m.exec(netlify)?.[1];
 	const netlifyPublish = /^\s*publish\s*=\s*"([^"]+)"/m.exec(netlify)?.[1];
 	let scripts: Record<string, string> = {};
-	try { scripts = JSON.parse(readUtf8(path.join(dir, "package.json")) ?? "{}").scripts ?? {}; } catch { /* no package.json */ }
+	let pkgJson: unknown = {};
+	try { pkgJson = JSON.parse(readUtf8(path.join(dir, "package.json")) ?? "{}"); scripts = (pkgJson as { scripts?: Record<string, string> }).scripts ?? {}; } catch { /* no package.json */ }
+	// `pnpm run build` for a pnpm site (vuejs.org's `preinstall` refuses npm).
+	const pm = packageManager(dir, pkgJson);
 	const words: Record<string, RegExp> = { eleventy: /\beleventy\b/, jekyll: /\bjekyll\b/, hugo: /\bhugo\b/, zola: /\bzola\b/, mkdocs: /\bmkdocs\b/, docusaurus: /\bdocusaurus\b/, astro: /\bastro\b/, vitepress: /\bvitepress\b/, hexo: /\bhexo\b/ };
 	// The script that builds the site: `build`, or another that runs the generator (a11yproject.com's
 	// `publish`), and not one that watches. Mid-move, scout's patch made it run `ssqch build`, which
@@ -384,7 +409,7 @@ function referenceBuild(dir: string, id: string): { command: string; output: str
 		const parts = script.split(/\s*&&?\s*/).filter((p) => p !== "");
 		const own = /\bssqch\s+build\b/.test(script);
 		if (parts.length > 1) command = parts.map((p) => (/\bssqch\s+build\b/.test(p) ? g.build : p)).join(" && ");
-		else if (!own) command = named === "build" ? "npm run build" : `npm run ${named}`;
+		else if (!own) command = `${pm} run ${named}`;
 	}
 	if (netlifyPublish && command === netlifyCommand) output = netlifyPublish.replace(/^\.\//, "").replace(/\/$/, "");
 	// Eleventy's output folder, from its config (`dir: { output: "dist" }`).
@@ -395,6 +420,14 @@ function referenceBuild(dir: string, id: string): { command: string; output: str
 		// Gulp writes part of the output (a11yproject.com: 458 of 597 files), so the reference
 		// needs it too, after the generator.
 		if (["gulpfile.js", "gulpfile.mjs", "gulpfile.cjs"].some((f) => isFile(path.join(dir, f))) && !/\bgulp\b/.test(command)) command += " && npx gulp";
+	}
+	// VitePress writes `.vitepress/dist` beside `.vitepress` (in `docs/`, if that's where it is), or its `outDir`.
+	if (id === "vitepress") {
+		const config = VITEPRESS_CONFIGS.find((f) => isFile(path.join(dir, f)));
+		const root = config?.startsWith("docs/") ? "docs/" : "";
+		const outDir = config === undefined ? undefined : /\boutDir\s*:\s*["'`]([^"'`]+)["'`]/.exec(blankComments(readUtf8(path.join(dir, config)) ?? ""))?.[1];
+		// `outDir` is from VitePress's root, as `.vitepress/dist` is.
+		output = outDir !== undefined ? path.posix.normalize(`${root}${outDir.replace(/^\.\//, "")}`).replace(/\/+$/, "") : `${root}.vitepress/dist`;
 	}
 	// The Node the site asks for: an old generator may need it, and ssqch needs 22.18 or later.
 	if (["eleventy", "docusaurus", "astro", "vitepress", "hexo"].includes(id)) {
@@ -3057,7 +3090,7 @@ function dumpYaml(nav: Data[], indent = ""): string {
 	return out;
 }
 
-const TRAILHEADS: Record<string, string> = { docusaurus: "from-docusaurus", hexo: "from-hexo", astro: "from-component-frameworks", vitepress: "from-component-frameworks" };
+const TRAILHEADS: Record<string, string> = { docusaurus: "from-docusaurus", hexo: "from-hexo", astro: "from-component-frameworks", vitepress: "from-vitepress" };
 
 /** Counts a pattern across files: how many uses, in how many files, and the first. */
 function countIn(entries: Entry[], pattern: RegExp): { count: number; files: number; first?: string } {
@@ -3088,6 +3121,185 @@ function packagesLike(dir: string, pattern: RegExp): string[] {
 }
 
 const SKIP_BUILT = (name: string) => name.startsWith(".git") || name === "node_modules" || name === ".cache" || name === "build" || name === "dist" || name === ".docusaurus" || name === ".astro";
+
+const VITEPRESS_CONFIGS = [".vitepress/config.ts", ".vitepress/config.mts", ".vitepress/config.js", ".vitepress/config.mjs", "docs/.vitepress/config.ts", "docs/.vitepress/config.mts", "docs/.vitepress/config.js", "docs/.vitepress/config.mjs"];
+
+/** A page's text with its fenced code and inline code blanked (newlines kept): what VitePress reads as Markdown and Vue. */
+function prose(text: string): string {
+	return text
+		.replace(/^([ \t]*)(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1\2[ \t]*$/gm, (m) => m.replace(/[^\n]/g, " "))
+		.replace(/`[^`\n]+`/g, (m) => " ".repeat(m.length));
+}
+
+/** A glob from VitePress's `srcExclude` (`tutorial/**\/description.md`) as a test of a path from the source folder. */
+const vitepressGlob = (glob: string) => new RegExp(`^${glob.replace(/[.+^$()|[\]\\]/g, "\\$&").replace(/\*\*\/?/g, "\0").replace(/\*/g, "[^/]*").replace(/\0/g, ".*")}$`);
+
+/**
+ * VitePress, from the vuejs.org move: its config (`srcDir`, `srcExclude`, `cleanUrls`, the
+ * sitemap's hostname, `head`, markdown-it plugins), the pages it builds, what they use, and a
+ * draft config with `dialect: "vitepress"`. Each to-do says what in ssqch does it, and counts as
+ * done once the config or a template does (`Todo.defines`), so a second run shows what's left.
+ */
+export function vitepress(dir: string): Plan {
+	const plan: Plan = { from: "VitePress", renames: [], edits: [], newFiles: [], byHand: [] };
+	const configFile = VITEPRESS_CONFIGS.find((f) => isFile(path.join(dir, f)));
+	const configText = configFile === undefined ? "" : blankComments(readUtf8(path.join(dir, configFile)) ?? "");
+	// VitePress's root is the folder that holds `.vitepress`; `srcDir` is from there.
+	const root = configFile?.startsWith("docs/") ? "docs" : ".";
+	const fromRoot = (rel: string) => (root === "." ? rel : `${root}/${rel}`).replace(/^\.\//, "").replace(/\/\.$/, "") || ".";
+	const srcSetting = /\bsrcDir\s*:\s*["'`]([^"'`]+)["'`]/.exec(configText)?.[1]?.replace(/^\.\//, "").replace(/\/+$/, "");
+	const src = fromRoot(srcSetting ?? ".");
+	const excludes = [...(/\bsrcExclude\s*:\s*\[([^\]]*)\]/.exec(configText)?.[1] ?? "").matchAll(/["'`]([^"'`]+)["'`]/g)].map((m) => m[1]);
+	const excluded = excludes.map(vitepressGlob);
+	const inSrc = (rel: string) => src === "." || rel.startsWith(`${src}/`);
+	const fromSrc = (rel: string) => (src === "." ? rel : rel.slice(src.length + 1));
+	const entries = walk(dir, (n, rel) => SKIP_BUILT(n) || /(?:^|\/)\.vitepress\/(?:cache|dist)$/.test(rel), false).filter((e) => e.isFile && inSrc(e.rel));
+	// VitePress's pages: the Markdown in the source folder, but `srcExclude` and what's under `.vitepress` or `public`.
+	const isPage = (e: Entry) => /\.md$/i.test(e.name) && !/(?:^|\/)(?:\.vitepress|public|node_modules)\//.test(fromSrc(e.rel)) && !excluded.some((re) => re.test(fromSrc(e.rel)));
+	const pages = entries.filter(isPage);
+	plan.pages = pages.filter((e) => !/\[[^\]]+\]\.md$/.test(e.name)).length;
+	const texts = new Map(pages.map((e) => [e.rel, readUtf8(e.abs) ?? ""]));
+	const proseOf = new Map([...texts].map(([rel, text]) => [rel, prose(text)]));
+	const includes = `${src === "." ? "" : `${src}/`}_includes`;
+	const where = (rel: string, text: string, index: number) => `${rel}:${occurrences(text.slice(0, index), "\n") + 1}`;
+	/** Counts `pattern` in the pages' prose (or text): uses, files, the first. */
+	const count = (pattern: RegExp, inProse = true) => {
+		let n = 0;
+		let first: string | undefined;
+		const files = new Set<string>();
+		for (const [rel, text] of inProse ? proseOf : texts) {
+			for (const m of text.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`))) { n++; files.add(rel); first ??= where(rel, text, m.index!); }
+		}
+		return { n, files: files.size, first };
+	};
+	const dialect = 'markdown: { dialect: "vitepress" }';
+	const item = (pattern: RegExp, what: string, say: string, todo: Todo, inProse = true) => {
+		const { n, files, first } = count(pattern, inProse);
+		if (first) plan.byHand.push([first, `${what} (${uses(n, files)}): ${say}`, { ...todo, count: n, files }]);
+	};
+
+	// What the dialect reads as VitePress does.
+	item(/^<script\b[^>]*>/m, "Vue's `<script setup>` and `<script>` blocks in pages", "VitePress compiles them and writes none of it; `dialect: \"vitepress\"` leaves them out (the components they import are listed one by one)", { code: "vitepress-script-setup", status: "option", option: dialect });
+	item(/^<style\b[^>]*>/m, "`<style>` blocks in pages", "left out by `dialect: \"vitepress\"`; put the CSS in the site's stylesheet", { code: "vitepress-style", status: "option", option: dialect });
+	item(/<ClientOnly>/, "`<ClientOnly>`", "renders nothing on the server: `dialect: \"vitepress\"` leaves it out; what's inside needs JavaScript in the browser (a custom element from `ssqch/elements`)", { code: "vitepress-client-only", status: "option", option: dialect });
+	item(/^[ \t]{1,3}:{3,}[ \t]*$/m, "a container's closing `:::` indented under a list (Prettier's)", "markdown-it-container closes the container there; so does `containers: \"markdown-it\"`, which `dialect: \"vitepress\"` turns on", { code: "vitepress-indented-container", status: "option", option: dialect });
+	item(/^:::+\s*(?:tip|info|warning|danger|details|raw)\b/m, "containers (`::: tip`)", "VitePress's markup and default titles, built into `dialect: \"vitepress\"`", { code: "vitepress-containers", status: "option", option: dialect });
+	item(/^:::+\s*code-group\b/m, "code groups (`::: code-group`)", "built into `dialect: \"vitepress\"`", { code: "vitepress-code-group", status: "option", option: dialect });
+	item(/^\s*(?:`{3,}|~{3,})\s*[\w-]+-vue\b/m, "`-vue` fences (Vue's `{{ }}` evaluated in them)", "`dialect: \"vitepress\"` prints their string literals; anything else stays as written", { code: "vitepress-vue-fences", status: "option", option: dialect }, false);
+	item(/^\[\[toc\]\]\s*$/im, "`[[toc]]`", "markdown-it-table-of-contents' list, built into `dialect: \"vitepress\"`", { code: "vitepress-toc", status: "option", option: dialect });
+	item(/^<<<\s*@\//m, "`<<< @/` code snippets from files", "not in ssqch yet as written: an include in a template engine, or the code copied into a fence", { code: "vitepress-snippets", status: "not-yet" });
+	item(/\{\{[^}]*\}\}/, "Vue interpolations in pages (`{{ count }}`, `{{ $frontmatter.title }}`)", "Vue renders these; with `markdownEngine: false` (in the draft) ssqch prints them as written. Write the text itself, or move the part to a template", { code: "vitepress-interpolations", status: "site" });
+	item(/^<(?![A-Z])[a-z][\w-]*\b[^>\n]*\s(?:v-[\w:-]+|@[\w.-]+)(?:=|[\s>])/m, "Vue directives on HTML in pages (`v-if`, `@click`)", "they do something in the browser that ssqch's HTML doesn't: a custom element from `ssqch/elements` for that part", { code: "vitepress-directives", status: "site" });
+
+	// Components by name: a template for each makes it done.
+	const used = new Map<string, { n: number; files: Set<string>; first: string }>();
+	for (const [rel, text] of proseOf) {
+		for (const m of text.matchAll(/<([A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*)(?=[\s/>])/g)) {
+			if (m[1] === "ClientOnly") continue;
+			const u = used.get(m[1]) ?? { n: 0, files: new Set<string>(), first: where(rel, text, m.index!) };
+			u.n++;
+			u.files.add(rel);
+			used.set(m[1], u);
+		}
+	}
+	// Where each comes from: a page's `<script setup>` import, or the theme's `app.component()`.
+	const sources = new Map<string, string>();
+	for (const [rel, text] of texts) {
+		for (const m of text.matchAll(/import\s+([A-Z]\w*)\s+from\s+['"]([^'"]+\.vue)['"]/g)) if (!sources.has(m[1])) sources.set(m[1], path.posix.normalize(path.posix.join(path.posix.dirname(rel), m[2])));
+	}
+	const themeIndex = [".vitepress/theme/index.ts", ".vitepress/theme/index.js", ".vitepress/theme/index.mts"].map(fromRoot).find((f) => isFile(path.join(dir, f)));
+	const themeText = themeIndex === undefined ? "" : readUtf8(path.join(dir, themeIndex)) ?? "";
+	for (const m of themeText.matchAll(/app\.component\(\s*['"](\w+)['"]\s*,\s*(\w+)/g)) {
+		const imported = new RegExp(`import\\s+${m[2]}\\s+from\\s+['"]([^'"]+)['"]`).exec(themeText)?.[1];
+		if (imported && !sources.has(m[1])) sources.set(m[1], imported.startsWith(".") ? path.posix.normalize(path.posix.join(path.posix.dirname(themeIndex!), imported)) : imported);
+	}
+	for (const [name, u] of [...used].sort(([a, x], [b, y]) => y.files.size - x.files.size || y.n - x.n || compareText(a, b))) {
+		const from = sources.get(name);
+		const vue = from !== undefined && from.endsWith(".vue") ? readUtf8(path.join(dir, ...from.split("/"))) : undefined;
+		const state = vue !== undefined && /\b(?:ref|reactive|computed|onMounted|watch)\s*\(|v-model|@click|v-on:/.test(vue);
+		const say = state
+			? "it has state (it runs in the browser): a template for its HTML (`_includes/components/" + name + ".*`), and a custom element from `ssqch/elements` for what it does"
+			: "a template for its HTML: `_includes/components/" + name + ".*` gets `component.props` and `component.content`";
+		plan.byHand.push([u.first, `\`<${name}>\`${from ? ` (${from})` : ""} (${uses(u.n, u.files.size)}): ${say}`, { code: "vitepress-component", status: "site", count: u.n, files: u.files.size, docs: "components", defines: [`file:${includes}/components/${name}.*`] }]);
+	}
+
+	// The theme reads these from front matter; ssqch's layouts get them as they are, but one.
+	const keys: Array<[string, string]> = [["layout", "layout: home and page: the theme's; ssqch's `layout` names a template, so give these pages one (`layout: home.jinja`)"], ["hero", "the home layout's"], ["features", "the home layout's"], ["aside", "the layout's"], ["outline", "the layout's (`toc()` makes it)"], ["sidebar", "the layout's"], ["footer", "the layout's"], ["editLink", "the layout's"], ["prev", "the pager's"], ["next", "the pager's"], ["lastUpdated", "the layout's (`lastModified: \"git\"`)"]];
+	for (const [key, say] of keys) {
+		const files = [...texts].filter(([, t]) => new RegExp(`^---[\\s\\S]*?^${key}\\s*:[\\s\\S]*?^---`, "m").test(t)).map(([rel]) => rel);
+		if (files.length) plan.byHand.push([files[0], `\`${key}\` front matter (in ${files.length} ${files.length === 1 ? "page" : "pages"}; this is the first): ${say}; a layout reads it as \`${key}\``, { code: "vitepress-front-matter", status: "site", files: files.length }]);
+	}
+	const pageKey = [...texts].filter(([, t]) => /^---[\s\S]*?^page\s*:\s*true\b[\s\S]*?^---/m.test(t)).map(([rel]) => rel);
+	if (pageKey.length) plan.byHand.push([pageKey[0], `\`page: true\` (in ${pageKey.length} ${pageKey.length === 1 ? "page" : "pages"}; this is the first): a page without the docs layout. \`page\` is ssqch's own, so it's replaced (and warned about): give these pages a layout of their own instead`, { code: "vitepress-page", status: "site", files: pageKey.length }]);
+
+	// Data loaders and dynamic routes.
+	const loaders = entries.filter((e) => /\.data\.[cm]?[jt]s$/.test(e.name));
+	if (loaders.length) {
+		const named = loaders.filter((e) => { const folder = path.posix.basename(path.posix.dirname(e.rel)); return e.name.startsWith(`${folder}.data.`) || pages.some((p) => p.rel === e.rel.replace(/\.data\.[cm]?[jt]s$/, ".md")); });
+		plan.byHand.push([loaders[0].rel, `${loaders.length} VitePress data ${loaders.length === 1 ? "loader" : "loaders"} (\`*.data.ts\`)${named.length ? `, ${named.length} named like a folder's or a page's data, which ssqch would read as data` : ""}: \`ignore: ["**/*.data.ts"]\` keeps them out (in the draft). Their data, if pages need it, is a \`_data/*.js\` file that imports the loader's \`load()\``, { code: "vitepress-loaders", status: "option", option: 'ignore: ["**/*.data.ts"]', files: loaders.length, defines: ["has:ignore:**/*.data.ts", "has:ignore:**/*.data.js"] }]);
+	}
+	for (const route of pages.filter((e) => /\[[^\]]+\]\.md$/.test(e.name))) {
+		const paths = entries.find((e) => e.rel === route.rel.replace(/\.md$/, ".paths.ts") || e.rel === route.rel.replace(/\.md$/, ".paths.js"));
+		plan.byHand.push([route.rel, `a dynamic route${paths ? ` (its pages from ${paths.rel})` : ""}: in ssqch, \`pagination\` over the same list, with \`size: 1\`, a \`permalink\` with the item's value, and \`addAllPagesToCollections: true\`, in a \`.data.js\` beside it (\`ssqch docs pagination\`)`, { code: "vitepress-dynamic-route", status: "site", docs: "pagination" }]);
+	}
+
+	// The config.
+	if (configFile !== undefined) {
+		const clean = /\bcleanUrls\s*:\s*true\b/.test(configText);
+		if (!clean) plan.byHand.push([configFile, "`cleanUrls` is off (VitePress's default), so pages are `/guide/intro.html`: `urls: \"html\"` (in the draft)", { code: "vitepress-urls", status: "option", option: 'urls: "html"' }]);
+		const hostname = /\bsitemap\s*:\s*\{[^}]*\bhostname\s*:\s*["'`]([^"'`]+)["'`]/.exec(configText)?.[1];
+		if (hostname) plan.byHand.push([configFile, `\`sitemap\`: \`sitemapPlugin({ url: "${hostname}", format: "vitepress" })\` writes the same file (in the draft)`, { code: "vitepress-sitemap", status: "ssqch", defines: ["plugin:ssqch/sitemap"] }]);
+		const head = /\bhead\s*:\s*\[/.exec(configText);
+		if (head) {
+			const close = closingBracket(configText, head.index + head[0].length - 1);
+			const body = close === undefined ? "" : configText.slice(head.index, close);
+			const tags = (body.match(/\[\s*["'`](?:meta|link|script|style)["'`]/g) ?? []).length;
+			if (tags) plan.byHand.push([configFile, `\`head\` (${tags} ${tags === 1 ? "tag" : "tags"}${/["'`]script["'`]/.test(body) ? ", scripts among them" : ""}): VitePress writes them into every page's \`<head>\`; put them in the layout`, { code: "vitepress-head", status: "site", count: tags }]);
+		}
+		for (const m of configText.matchAll(/\bmd\.use\(\s*([\w$]+)/g)) plan.byHand.push([configFile, `\`md.use(${m[1]})\`: a markdown-it plugin of the site's (or a package's). In ssqch, what it writes is a render hook, a container, or \`markdown.preprocess\``, { code: "vitepress-markdown-plugin", status: "site" }]);
+		if (/\bthemeConfig\b[\s\S]*\b(?:sidebar|nav)\s*:/.test(configText)) plan.byHand.push([configFile, "`themeConfig`'s `nav` and `sidebar`: data for ssqch's layout. Move them to a `_data/*.js` file that the VitePress config imports too, so both read one list; `navTree` marks the page you're on (a sidebar keyed by path picks the longest key that the page's URL starts with)", { code: "vitepress-sidebar", status: "site", docs: "navTree" }]);
+	}
+	for (const pkg of packagesLike(dir, /^vitepress-plugin-|^@?[\w-]*\/?vitepress-plugin-/)) {
+		const say = /llms/.test(pkg) ? "`llms.txt` and a Markdown copy of each page: not in ssqch yet as a plugin; a page with `permalink: /llms.txt` lists the pages, from `collections.all`" : /group-icons/.test(pkg) ? "icons on code groups' tabs: its CSS keyed by the tab's label (`data-title`), which `dialect: \"vitepress\"` writes" : "not in ssqch yet: port what it does as a hook, a transform or a plugin";
+		plan.byHand.push(["package.json", `${pkg}: ${say}`, { code: "vitepress-plugin", status: /group-icons/.test(pkg) ? "ssqch" : /llms/.test(pkg) ? "not-yet" : "site" }]);
+	}
+	if (themeIndex !== undefined) {
+		const extendsDefault = /\bextends\s*:\s*DefaultTheme\b|from\s+['"]vitepress\/theme['"]/.test(themeText);
+		const slots = [...themeText.matchAll(/['"]?([a-z][\w-]*)['"]?\s*:\s*\(\)\s*=>\s*h\(/g)].map((m) => m[1]);
+		plan.byHand.push([themeIndex, `a ${extendsDefault ? "theme that extends VitePress's default one" : "custom theme"}${slots.length ? ` (with ${slots.map((sl) => `\`${sl}\``).join(", ")} slots)` : ""}: ssqch's layouts are templates. The theme's markup is in the reference build's HTML: rebuild the layout from it, with \`navTree\`, \`navPager\` and \`toc()\` for the sidebar, the pager and the outline`, { code: "vitepress-theme", status: "site", docs: "navTree" }]);
+	}
+	const publicDir = src === "." ? "public" : `${src}/public`;
+	if (isDir(path.join(dir, ...publicDir.split("/")))) plan.byHand.push([publicDir, `\`public/\`, copied to the site's root: \`passthrough: { "${publicDir}/**": "." }\` (in the draft; \`{ "${publicDir}": "." }\` would copy the folder by its name)`, { code: "vitepress-public", status: "option", defines: [`passthrough`] }]);
+
+	// The draft.
+	if (configFile !== undefined) {
+		const hostname = /\bsitemap\s*:\s*\{[^}]*\bhostname\s*:\s*["'`]([^"'`]+)["'`]/.exec(configText)?.[1];
+		const clean = /\bcleanUrls\s*:\s*true\b/.test(configText);
+		const ignore = ["**/*.data.ts", "**/*.data.js", ...excludes, ".vitepress/**", "public/**"].map((g) => JSON.stringify(g));
+		const lines = [
+			`// A first draft, from ${configFile} (\`ssqch scout\`): VitePress's pages and Markdown. The layout,`,
+			"// the components and the theme's CSS are the move's own; `ssqch scout` lists them.",
+			...(hostname ? ["import { sitemapPlugin } from \"ssqch/sitemap\";", ""] : [""]),
+			"export default {",
+			`\tdirs: { input: ${JSON.stringify(src)}, output: "dist" },`,
+			"\t// VitePress's pages are its Markdown, and Vue's `{{ }}` in them isn't a template language's.",
+			"\ttemplateFormats: [\"md\"],",
+			"\tmarkdownEngine: false,",
+			...(clean ? [] : ["\t// `cleanUrls` is off: /guide/intro.html.", "\turls: \"html\","]),
+			"\t// VitePress's data loaders, `srcExclude`, its own folder, and `public/` (copied below).",
+			`\tignore: [${ignore.join(", ")}],`,
+			...(isDir(path.join(dir, ...publicDir.split("/"))) ? [`\tpassthrough: { ${JSON.stringify(`${publicDir}/**`)}: "." },`] : []),
+			"\tmarkdown: { dialect: \"vitepress\", highlight: true },",
+			...(hostname ? [`\tplugins: [sitemapPlugin({ url: ${JSON.stringify(hostname)}, format: "vitepress" })],`] : []),
+			"};",
+			"",
+		];
+		plan.newFiles.push(["ssqch.config.js", `a first draft, from ${configFile}`, lines.join("\n")]);
+	} else {
+		plan.byHand.push([".", `no VitePress config here (${VITEPRESS_CONFIGS.slice(0, 4).join(", ")}): is this the site's folder?`]);
+	}
+	return plan;
+}
 
 /**
  * Docusaurus, Astro, VitePress and Hexo: what their pages use, counted, with ssqch's way to do
@@ -3123,19 +3335,6 @@ export function other(dir: string, id: string): Plan {
 		if (collections) plan.byHand.push([collections, "content collections with schemas: ssqch's are collections and `schemas` (`ssqch docs schemas`)", { code: "astro-content-collections", status: "ssqch", docs: "schemas" }]);
 		listSyntax(plan, pages, [["`import` in MDX pages", /^import\s+.+\s+from\s+['"][^'"]+['"]/m, "not in ssqch yet as written: Edge components or containers", "astro-mdx-imports", "not-yet"]]);
 		for (const pkg of packagesLike(dir, /^@astrojs\//)) plan.byHand.push(["package.json", `${pkg}: ${/sitemap/.test(pkg) ? "`sitemapPlugin()` from \"ssqch/sitemap\"" : /mdx/.test(pkg) ? "MDX pages: see the MDX line" : /rss/.test(pkg) ? "`rssPlugin()` from \"ssqch/rss\"" : /react|vue|svelte|preact|solid/.test(pkg) ? "framework islands: custom elements" : "not in ssqch yet: port it as a plugin"}`, { code: "astro-integration", status: /sitemap|rss/.test(pkg) ? "ssqch" : "site" }]);
-	} else if (id === "vitepress") {
-		listSyntax(plan, pages, [
-			["containers (`::: tip`)", /^:::\s*(?:tip|info|warning|danger|details)\b/m, "containers, built in: `_includes/containers/tip.*` gives each its markup", "vitepress-containers", "ssqch"],
-			["code groups (`::: code-group`)", /^:::\s*code-group\b/m, "a container with a template of its own", "vitepress-code-group", "ssqch"],
-			["Vue components in pages", /^<[A-Z][\w-]*[\s/>]/m, "not in ssqch yet as written: custom elements, or Edge components", "vitepress-vue", "not-yet"],
-			["Vue expressions (`{{ $frontmatter.x }}`)", /\{\{\s*\$\w+/, "template code: with `markdownEngine` on, ssqch's templates read front matter as `{{ x }}`", "vitepress-expressions", "site"],
-			["`[[toc]]`", /^\[\[toc\]\]\s*$/m, "the `toc` filter in the layout, from `page.headings`", "vitepress-toc", "ssqch"],
-			["`<<< @/` snippets", /^<<<\s*@\//m, "not in ssqch yet as written: an include in a template engine", "vitepress-snippets", "not-yet"],
-		]);
-		const config = [".vitepress/config.ts", ".vitepress/config.mts", ".vitepress/config.js", ".vitepress/config.mjs", "docs/.vitepress/config.ts", "docs/.vitepress/config.mts", "docs/.vitepress/config.js"].find((f) => isFile(path.join(dir, f)));
-		if (config) plan.byHand.push([config, "the config's `sidebar` and `nav`: ssqch's are data (`_data/nav.yml`) and `navTree`", { code: "vitepress-sidebar", status: "ssqch", docs: "navTree" }]);
-		const theme = entries.find((e) => /(?:^|\/)\.vitepress\/theme\/index\.[jt]s$/.test(e.rel));
-		if (theme) plan.byHand.push([theme.rel, "a custom theme (Vue): ssqch's layouts are templates; the theme's components become templates and custom elements", { code: "vitepress-theme", status: "site" }]);
 	} else if (id === "hexo") {
 		listSyntax(plan, pages, [
 			["tag plugins (`{% codeblock %}`, `{% asset_img %}`, `{% post_link %}`)", /\{%\s*(?:codeblock|asset_img|asset_link|asset_path|post_link|post_path|blockquote|youtube|iframe|img|link|include_code|raw)\b/, "not in ssqch yet as written: filters or shortcodes of the site's own (Liquid's and Nunjucks' `{% %}` read them as tags)", "hexo-tag-plugins", "not-yet"],

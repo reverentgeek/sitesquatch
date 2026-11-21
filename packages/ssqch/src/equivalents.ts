@@ -147,8 +147,9 @@ export const OTHER_CONFIGS: ReadonlyArray<readonly [string, string, string | nul
 	["astro.config.mjs", "Astro", null, "from-component-frameworks.md"],
 	["astro.config.ts", "Astro", null, "from-component-frameworks.md"],
 	["gatsby-config.js", "Gatsby", null, "from-component-frameworks.md"],
-	[".vitepress/config.mts", "VitePress", null, "from-component-frameworks.md"],
-	[".vitepress/config.js", "VitePress", null, "from-component-frameworks.md"],
+	[".vitepress/config.ts", "VitePress", null, "from-vitepress.md"],
+	[".vitepress/config.mts", "VitePress", null, "from-vitepress.md"],
+	[".vitepress/config.js", "VitePress", null, "from-vitepress.md"],
 ];
 
 /** What to say about a folder that has another generator's config and none of ssqch's: the generator's name, `ssqch scout`, and the guide for it. */

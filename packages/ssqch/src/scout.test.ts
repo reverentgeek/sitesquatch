@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readToml } from "./data.ts";
-import { blankComments, detect, draftConfig, eleventy, hugo, jekyll, mkdocs, other, patchOf, scoutReport, scoutText, setIn, siteConfig, unifiedHunks, jekyllPermalink, rewriteData, jekyllTemplateNotes, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./scout.ts";
+import { blankComments, detect, draftConfig, eleventy, hugo, jekyll, mkdocs, other, vitepress, patchOf, scoutReport, scoutText, setIn, siteConfig, unifiedHunks, jekyllPermalink, rewriteData, jekyllTemplateNotes, rewriteScript, rewriteTemplate, rewriteZolaFrontMatter, SEO_INCLUDE, tomlError, zola } from "./scout.ts";
 import { VERSION } from "./version.ts";
 
 test("zola_front_matter_gets_ssqch_names", () => {
@@ -776,12 +776,6 @@ test("scout_lists_what_docusaurus_astro_vitepress_and_hexo_sites_use", () => {
 	has(astro, "site: src/pages/index.astro: 1 `.astro` component to port");
 	has(astro, "ssqch: src/content.config.ts: content collections");
 	has(astro, "ssqch: package.json: @astrojs/sitemap: `sitemapPlugin()`");
-	const vitepress = lines(other(site("vitepress-list", { ".vitepress/config.mts": "", "guide.md": "# Guide\n\n[[toc]]\n\n::: tip\nx\n:::\n\n<Badge type=\"tip\" />\n\n{{ $frontmatter.title }}\n" }), "vitepress"));
-	has(vitepress, "ssqch: guide.md:5: containers (`::: tip`)");
-	has(vitepress, "not-yet: guide.md:9: Vue components in pages");
-	has(vitepress, "site: guide.md:11: Vue expressions");
-	has(vitepress, "ssqch: guide.md:3: `[[toc]]`");
-	has(vitepress, "ssqch: .vitepress/config.mts: the config's `sidebar` and `nav`");
 	const hexo = lines(other(site("hexo-list", { "_config.yml": "", "scaffolds/post.md": "", "source/_posts/pine.md": "Hi\n<!-- more -->\n{% asset_img stump.png %}\n", "package.json": "{\"dependencies\":{\"hexo\":\"7\",\"hexo-generator-feed\":\"3\"}}" }), "hexo"));
 	has(hexo, "not-yet: source/_posts/pine.md:3: tag plugins");
 	has(hexo, "ssqch: scaffolds: scaffolds are ssqch's blueprints");
@@ -848,4 +842,52 @@ test("scout_drafts_codehilites_wrapper_as_a_fence_hook", () => {
 	const hook = mkdocs(dir).newFiles.find(([file]) => file === "_includes/hooks/fence.jinja");
 	assert.ok(hook, "a fence hook");
 	assert.match(hook![2], /<div class="codehilite"><pre><span><\/span><code>\{% if fence\.highlighted %\}/);
+});
+
+// The fresh vuejs.org run: scout listed 7 items, the same before, halfway and done, counted every
+// `.md` in the repository (121; VitePress builds 111) and drafted nothing.
+test("scout_reads_a_vitepress_site_and_drafts_its_config", async () => {
+	const dir = site("vitepress-scout", {
+		".vitepress/config.ts": "export default defineConfig({\n  srcDir: 'src',\n  srcExclude: ['tutorial/**/description.md'],\n  sitemap: { hostname: 'https://trail.example' },\n  head: [['meta', { name: 'x' }], ['script', {}, 'y']],\n  markdown: { config(md) { md.use(headerPlugin) } },\n  themeConfig: { nav: [], sidebar: {} },\n})\n",
+		".vitepress/theme/index.ts": "import DefaultTheme from 'vitepress/theme'\nimport Badge from './components/Badge.vue'\nexport default { extends: DefaultTheme, enhanceApp({ app }) { app.component('Badge', Badge) } }\n",
+		".vitepress/theme/components/Badge.vue": "<template><span><slot /></span></template>\n",
+		"README.md": "# Not a page\n",
+		"package.json": JSON.stringify({ scripts: { dev: "vitepress", build: "vitepress build" }, packageManager: "pnpm@10.33.0" }),
+		"src/index.md": "---\npage: true\nlayout: home\n---\n<script setup>\nimport Counter from './Counter.vue'\n</script>\n\n# Trails <Badge text=\"new\" />\n\n<Counter />\n\n::: tip\n- one\n  :::\n\n{{ count }}\n\n```js\n<Badge /> {{ not.counted }}\n```\n",
+		"src/Counter.vue": "<script setup>\nimport { ref } from 'vue'\nconst n = ref(0)\n</script>\n<template><button @click=\"n++\">{{ n }}</button></template>\n",
+		"src/api/api.data.ts": "export default { load() { return [] } }\n",
+		"src/api/index.md": "# API\n",
+		"src/tutorial/step-1/description.md": "# Not a page either\n",
+		"src/public/logo.svg": "<svg/>",
+	});
+	const plan = vitepress(dir);
+	assert.equal(plan.pages, 2);
+	const said = plan.byHand.map(([at, what, meta]) => `${meta?.code}: ${at}: ${what}`);
+	const has = (text: string) => assert.ok(said.some((line) => line.includes(text)), `${text}\n${said.join("\n")}`);
+	has("vitepress-script-setup: src/index.md:5:");
+	has("vitepress-indented-container: src/index.md:15:");
+	has("vitepress-interpolations: src/index.md:17:");
+	has("vitepress-component: src/index.md:9: `<Badge>` (.vitepress/theme/components/Badge.vue) (1 use in 1 file; this is the first): a template for its HTML");
+	has("vitepress-component: src/index.md:11: `<Counter>` (src/Counter.vue) (1 use in 1 file; this is the first): it has state");
+	has("vitepress-page: src/index.md: `page: true`");
+	has("vitepress-loaders: src/api/api.data.ts: 1 VitePress data loader (`*.data.ts`), 1 named like a folder's or a page's data");
+	has("vitepress-urls: .vitepress/config.ts:");
+	has("vitepress-head: .vitepress/config.ts: `head` (2 tags, scripts among them)");
+	has("vitepress-markdown-plugin: .vitepress/config.ts: `md.use(headerPlugin)`");
+	has("vitepress-theme: .vitepress/theme/index.ts: a theme that extends VitePress's default one");
+	has("vitepress-public: src/public:");
+	assert.ok(!said.some((line) => line.includes("not.counted")), "fences aren't read");
+	const report = scoutReport(plan, dir, "vitepress", ".vitepress", await siteConfig(dir));
+	assert.equal(report.build.command, "pnpm run build");
+	assert.equal(report.build.output, ".vitepress/dist");
+	const draft = plan.newFiles.find(([file]) => file === "ssqch.config.js")![2];
+	assert.ok(draft.includes("dirs: { input: \"src\", output: \"dist\" },") && draft.includes("urls: \"html\",") && draft.includes("ignore: [\"**/*.data.ts\", \"**/*.data.js\", \"tutorial/**/description.md\", \".vitepress/**\", \"public/**\"],") && draft.includes("passthrough: { \"src/public/**\": \".\" },") && draft.includes("markdown: { dialect: \"vitepress\", highlight: true },") && draft.includes("plugins: [sitemapPlugin({ url: \"https://trail.example\", format: \"vitepress\" })],"), draft);
+	// With the draft and a template for `<Badge>`, those are done.
+	fs.writeFileSync(path.join(dir, "ssqch.config.js"), draft.replace(/^import .*\n/m, "").replace(/plugins: \[.*\],\n/, "plugins: [{ name: \"ssqch/sitemap\" }],\n"));
+	fs.mkdirSync(path.join(dir, "src/_includes/components"), { recursive: true });
+	fs.writeFileSync(path.join(dir, "src/_includes/components/Badge.jinja"), "<span>{{ component.content | safe }}</span>");
+	const after = scoutReport(vitepress(dir), dir, "vitepress", ".vitepress", await siteConfig(dir));
+	const done = after.done.map((d) => d.code);
+	for (const code of ["vitepress-script-setup", "vitepress-indented-container", "vitepress-containers", "vitepress-urls", "vitepress-loaders", "vitepress-sitemap", "vitepress-public", "vitepress-component"]) assert.ok(done.includes(code), `${code} done: ${JSON.stringify(after.done)}`);
+	assert.ok(after.todo.some((t) => t.what.startsWith("`<Counter>`")), "Counter has no template yet");
 });
