@@ -3209,18 +3209,27 @@ export function vitepress(dir: string): Plan {
 	}
 	const themeIndex = [".vitepress/theme/index.ts", ".vitepress/theme/index.js", ".vitepress/theme/index.mts"].map(fromRoot).find((f) => isFile(path.join(dir, f)));
 	const themeText = themeIndex === undefined ? "" : readUtf8(path.join(dir, themeIndex)) ?? "";
+	// The theme's `app.component()`s: every page can use them without importing them.
+	const themeGlobals = new Map<string, string>();
 	for (const m of themeText.matchAll(/app\.component\(\s*['"](\w+)['"]\s*,\s*(\w+)/g)) {
 		const imported = new RegExp(`import\\s+${m[2]}\\s+from\\s+['"]([^'"]+)['"]`).exec(themeText)?.[1];
-		if (imported && !sources.has(m[1])) sources.set(m[1], imported.startsWith(".") ? path.posix.normalize(path.posix.join(path.posix.dirname(themeIndex!), imported)) : imported);
+		const file = imported === undefined ? undefined : imported.startsWith(".") ? path.posix.normalize(path.posix.join(path.posix.dirname(themeIndex!), imported)) : imported;
+		if (file !== undefined) themeGlobals.set(m[1], file);
+		if (file !== undefined && !sources.has(m[1])) sources.set(m[1], file);
 	}
+	let stateful = false;
 	for (const [name, u] of [...used].sort(([a, x], [b, y]) => y.files.size - x.files.size || y.n - x.n || compareText(a, b))) {
 		const from = sources.get(name);
 		const vue = from !== undefined && from.endsWith(".vue") ? readUtf8(path.join(dir, ...from.split("/"))) : undefined;
 		const state = vue !== undefined && /\b(?:ref|reactive|computed|onMounted|watch)\s*\(|v-model|@click|v-on:/.test(vue);
-		const say = state
-			? "it has state (it runs in the browser): a template for its HTML (`_includes/components/" + name + ".*`), and a custom element from `ssqch/elements` for what it does"
-			: "a template for its HTML: `_includes/components/" + name + ".*` gets `component.props` and `component.content`";
-		plan.byHand.push([u.first, `\`<${name}>\`${from ? ` (${from})` : ""} (${uses(u.n, u.files.size)}): ${say}`, { code: "vitepress-component", status: "site", count: u.n, files: u.files.size, docs: "components", defines: [`file:${includes}/components/${name}.*`] }]);
+		if (state) stateful = true;
+		const known = from !== undefined && from.endsWith(".vue");
+		const say = !known
+			? "a template for its HTML: `_includes/components/" + name + ".*` gets `component.props` and `component.content`"
+			: state
+				? "it has state (it runs in the browser): `vuePlugin()` from \"ssqch/vue\" renders it with Vue, and `hydrate` runs it in the browser too (both in the draft); or a template for its HTML and a custom element from `ssqch/elements` for what it does"
+				: "`vuePlugin()` from \"ssqch/vue\" renders it with Vue (in the draft); or a template for its HTML, `_includes/components/" + name + ".*`, which gets `component.props` and `component.content`";
+		plan.byHand.push([u.first, `\`<${name}>\`${from ? ` (${from})` : ""} (${uses(u.n, u.files.size)}): ${say}`, { code: "vitepress-component", status: known ? "ssqch" : "site", count: u.n, files: u.files.size, docs: known ? "vuePlugin" : "components", defines: [`file:${includes}/components/${name}.*`, ...(known ? ["plugin:ssqch/vue"] : [])] }]);
 	}
 
 	// The theme reads these from front matter; ssqch's layouts get them as they are, but one.
@@ -3236,7 +3245,8 @@ export function vitepress(dir: string): Plan {
 	const loaders = entries.filter((e) => /\.data\.[cm]?[jt]s$/.test(e.name));
 	if (loaders.length) {
 		const named = loaders.filter((e) => { const folder = path.posix.basename(path.posix.dirname(e.rel)); return e.name.startsWith(`${folder}.data.`) || pages.some((p) => p.rel === e.rel.replace(/\.data\.[cm]?[jt]s$/, ".md")); });
-		plan.byHand.push([loaders[0].rel, `${loaders.length} VitePress data ${loaders.length === 1 ? "loader" : "loaders"} (\`*.data.ts\`)${named.length ? `, ${named.length} named like a folder's or a page's data, which ssqch would read as data` : ""}: \`ignore: ["**/*.data.ts"]\` keeps them out (in the draft). Their data, if pages need it, is a \`_data/*.js\` file that imports the loader's \`load()\``, { code: "vitepress-loaders", status: "option", option: 'ignore: ["**/*.data.ts"]', files: loaders.length, defines: ["has:ignore:**/*.data.ts", "has:ignore:**/*.data.js"] }]);
+		// Each one by its path, not a glob: the move's own `.data.js` files (a dynamic route's pagination) are ssqch's data.
+		plan.byHand.push([loaders[0].rel, `${loaders.length} VitePress data ${loaders.length === 1 ? "loader" : "loaders"} (\`*.data.ts\`)${named.length ? `, ${named.length} named like a folder's or a page's data, which ssqch would read as data` : ""}: \`ignore\` lists them (in the draft), by their paths, so the data files the move adds stay ssqch's. \`vuePlugin()\` runs them for the components and pages that import their \`data\`, as VitePress does`, { code: "vitepress-loaders", status: "option", files: loaders.length, defines: [`has:ignore:${fromSrc(loaders[0].rel)}`] }]);
 	}
 	for (const route of pages.filter((e) => /\[[^\]]+\]\.md$/.test(e.name))) {
 		const paths = entries.find((e) => e.rel === route.rel.replace(/\.md$/, ".paths.ts") || e.rel === route.rel.replace(/\.md$/, ".paths.js"));
@@ -3275,11 +3285,15 @@ export function vitepress(dir: string): Plan {
 	if (configFile !== undefined) {
 		const hostname = /\bsitemap\s*:\s*\{[^}]*\bhostname\s*:\s*["'`]([^"'`]+)["'`]/.exec(configText)?.[1];
 		const clean = /\bcleanUrls\s*:\s*true\b/.test(configText);
-		const ignore = ["**/*.data.ts", "**/*.data.js", ...excludes, ".vitepress/**", "public/**"].map((g) => JSON.stringify(g));
+		const ignore = [...loaders.map((e) => fromSrc(e.rel)), ...excludes, ".vitepress/**", "public/**"].map((g) => JSON.stringify(g));
+		const vueGlobals = [...themeGlobals].filter(([name]) => used.has(name) && themeGlobals.get(name)!.endsWith(".vue"));
+		const vue = [...used.keys()].some((name) => sources.get(name)?.endsWith(".vue"));
 		const lines = [
 			`// A first draft, from ${configFile} (\`ssqch scout\`): VitePress's pages and Markdown. The layout,`,
 			"// the components and the theme's CSS are the move's own; `ssqch scout` lists them.",
-			...(hostname ? ["import { sitemapPlugin } from \"ssqch/sitemap\";", ""] : [""]),
+			...(hostname ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : []),
+			...(vue ? ["import { vuePlugin } from \"ssqch/vue\";"] : []),
+			"",
 			"export default {",
 			`\tdirs: { input: ${JSON.stringify(src)}, output: "dist" },`,
 			"\t// VitePress's pages are its Markdown, and Vue's `{{ }}` in them isn't a template language's.",
@@ -3290,7 +3304,15 @@ export function vitepress(dir: string): Plan {
 			`\tignore: [${ignore.join(", ")}],`,
 			...(isDir(path.join(dir, ...publicDir.split("/"))) ? [`\tpassthrough: { ${JSON.stringify(`${publicDir}/**`)}: "." },`] : []),
 			"\tmarkdown: { dialect: \"vitepress\", highlight: true },",
-			...(hostname ? [`\tplugins: [sitemapPlugin({ url: ${JSON.stringify(hostname)}, format: "vitepress" })],`] : []),
+			...(hostname || vue ? [
+				"\tplugins: [",
+				...(vue ? [
+					"\t\t// The Vue components the pages use, rendered with the site's Vite and Vue (and run in the browser with `hydrate`).",
+					`\t\tvuePlugin({ ${vueGlobals.length ? `components: { ${vueGlobals.map(([n, f]) => `${n}: ${JSON.stringify(f)}`).join(", ")} }${stateful ? ", " : ""}` : ""}${stateful ? "hydrate: \"visible\"" : ""} }),`,
+				] : []),
+				...(hostname ? [`\t\tsitemapPlugin({ url: ${JSON.stringify(hostname)}, format: "vitepress" }),`] : []),
+				"\t],",
+			] : []),
 			"};",
 			"",
 		];

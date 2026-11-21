@@ -895,3 +895,20 @@ test("llms_plugin_writes_the_site_for_language_models", () => {
 	const bad = ssqch(["build", "--root", dir]);
 	assert.ok(!bad.ok && bad.log.includes("unknown option \"hints\" (did you mean \"hint\"?)"), bad.log);
 });
+
+// Added in 0.12, from the fresh vuejs.org run: Vue's components render with the site's own Vite,
+// @vitejs/plugin-vue and Vue. Without them, the error says what to install.
+test("vue_plugin_without_vite_says_what_to_install", () => {
+	const dir = tempDir("vue-no-vite");
+	write(dir, {
+		"package.json": "{ \"name\": \"trail\", \"private\": true }\n",
+		"ssqch.config.js": "import { vuePlugin } from \"ssqch/vue\";\nexport default { plugins: [vuePlugin({ hydrate: \"visible\" })] };\n",
+		"index.md": "<script setup>\nimport Counter from './Counter.vue'\n</script>\n\n# Trail\n\n<Counter />\n",
+		"Counter.vue": "<template><button>0</button></template>\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("vuePlugin() needs vite in the site's packages, as a VitePress site has it: `npm install -D vite @vitejs/plugin-vue vue`"), r.log);
+	write(dir, { "ssqch.config.js": "import { vuePlugin } from \"ssqch/vue\";\nexport default { plugins: [vuePlugin({ hydrate: \"later\" })] };\n" });
+	const bad = ssqch(["build", "--root", dir]);
+	assert.ok(!bad.ok && bad.log.includes("hydrate must be false, \"load\", \"idle\" or \"visible\" (got \"later\")"), bad.log);
+});

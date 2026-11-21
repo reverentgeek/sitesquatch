@@ -145,6 +145,8 @@ export interface Config {
 	transforms: Array<[string, TransformFn]>;
 	/** Transforms that run before every other, whatever order plugins were added in (images). */
 	htmlTransforms: Array<[string, TransformFn]>;
+	/** Plugins that render a component tag the site has no template for (`vuePlugin()`): its HTML, or `undefined` for one it doesn't know. Asked in order, after `_includes/components/`. */
+	componentRenderers: Array<(name: string, value: { name: string; props: Record<string, unknown>; content: string; attrs: string; bindings: Record<string, string> }, inputPath: string, data: Data) => string | undefined>;
 	engines: Map<string, EngineFn>;
 	/** The caches of engines with `cache: true`, which each build starts (`startBuild`). */
 	engineCaches: EngineCache[];
@@ -235,6 +237,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		plugins: [],
 		summaries: [],
 		generators: [],
+		componentRenderers: [],
 		fileBuilders: [],
 		settle: [],
 	};
@@ -444,7 +447,7 @@ export type BuiltinPlugin = (config: Config, options: Data) => void | Promise<vo
 
 /** The built-in plugins, by the module that makes them. The plugins register themselves here as they're ported. */
 export const BUILTINS = new Map<string, BuiltinPlugin>();/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
-const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/llms"];
+const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/llms", "ssqch/vue"];
 
 async function loadJs(config: Config, file: string): Promise<void> {
 	const name = path.basename(file);

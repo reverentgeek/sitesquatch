@@ -557,6 +557,24 @@ declare module "ssqch/sitemap" {
 	export function sitemapPlugin(options: SitemapPluginOptions): BuiltinPlugin;
 }
 
+declare module "ssqch/vue" {
+	import type { BuiltinPlugin } from "ssqch";
+	export interface VuePluginOptions {
+		/** Components every page can use without importing them, by name: `{ VueSchoolLink: ".vitepress/theme/components/VueSchoolLink.vue" }` (VitePress's `app.component()`), paths from the project's root. A page's own come from its `<script setup>` imports. */
+		components?: Record<string, string>;
+		/** Vite's root for the build, from the project's root. Default: the input folder (VitePress's `srcDir`), so the components' scope ids are the ones VitePress gave them. */
+		root?: string;
+		/** Run each component in the browser too, as an island: `"load"` (at once), `"idle"` (when the browser is idle) or `"visible"` (when it scrolls into view). Its server HTML is wrapped in `<ssqch-vue>` and the page gets one script, `/assets/vue/islands.js`. Default `false`: HTML only. */
+		hydrate?: false | "load" | "idle" | "visible";
+		/** Where the components' styles go: a path like `"/assets/vue.css"` (the default), for the layout to link, or `false`. */
+		css?: string | false;
+		/** Vite's options to add (`resolve.alias`, more `plugins`), as a Vite config has them. */
+		vite?: Record<string, unknown>;
+	}
+	/** Renders the Vue components a page uses (`<ApiIndex />`, imported in its `<script setup>`) with the site's own Vite, @vitejs/plugin-vue and Vue, at build time; with `hydrate`, as islands in the browser too. */
+	export function vuePlugin(options?: VuePluginOptions): BuiltinPlugin;
+}
+
 declare module "ssqch/llms" {
 	import type { BuiltinPlugin } from "ssqch";
 	export interface LlmsPluginOptions {
