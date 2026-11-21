@@ -642,7 +642,7 @@ test("scout_lists_what_a_hugo_site_uses", () => {
 	has("content: 3 shortcodes, called in 1 page: `markdown: { shortcodes: \"hugo\" }` (in the draft)");
 	has("content/trails/cedar.md:4: `{{< note >}}`, the site's own (layouts/shortcodes/note.html) (1 use in 1 file; this is the first): a container; port its template into _includes/containers/note.jinja (in the draft)");
 	has("content/trails/cedar.md:8: `{{< youtube >}}`, Hugo's (1 use in 1 file; this is the first): a container; write `_includes/containers/youtube.jinja`");
-	has("content/trails/cedar.md:9: `{{< ref >}}` inside a line of text (1 use in 1 file; this is the first): not in ssqch yet as written");
+	has("content/trails/cedar.md:9: `{{< ref >}}` inside a line of text, Hugo's (1 use in 1 file; this is the first): its container template renders it in place, with `container.inline` true; write `_includes/containers/ref.jinja`");
 	has("content/trails/old-growth.md:4: `{{ }}` or `{% %}` as text in 1 page");
 	has("content: 1 section (`_index.md`)");
 	has("`cascade` in 1 page's front matter");

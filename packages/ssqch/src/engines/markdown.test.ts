@@ -57,6 +57,22 @@ test("render_hooks_get_the_page_and_can_render_markdown_themselves", () => {
 	assert.equal(md.plain("# Hi", false), "<h1 id=\"hi\">Hi</h1>\n");
 });
 
+test("hugo_shortcodes_inside_a_line_render_through_their_container_templates", () => {
+	const md = hooked({ "containers/new-in": "<b>{{ container.args }}</b>", "containers/ref": "/docs/about/", "containers/kbd": "<kbd>{{ container.content }}|{{ container.source }}|{{ container.inline }}</kbd>" }, tiny, { shortcodes: "hugo" });
+	const out = md.render("## Formats {{< new-in 1.2 />}}\n\nSee [it]({{< ref \"about\" >}}), press {{% kbd %}}*K* {{< new-in 2 />}}{{% /kbd %}}, {{< unknown x >}} and `{{< new-in 3 />}}`.\n", {}, ctx);
+	assert.equal(out, "<h2 id=\"formats\">Formats <b>1.2</b></h2>\n<p>See <a href=\"/docs/about/\">it</a>, press <kbd><em>K</em> <b>2</b>|*K* {{< new-in 2 />}}|true</kbd>, {{&lt; unknown x &gt;}} and <code><b>3</b></code>.</p>\n");
+	// In `markdown()` in a template too, and a shortcode in a fence or written with `/* */` stays.
+	assert.equal(md.html("A {{< new-in 4 />}} {{</* new-in 5 */>}}\n\n```\n{{< new-in 6 />}}\n```", false), "<p>A <b>4</b> {{&lt; new-in 5 &gt;}}</p>\n<pre><code>{{&lt; new-in 6 /&gt;}}\n</code></pre>\n");
+});
+
+test("mkdocs_titles_are_inline_markdown", () => {
+	const md = markdownEngine(options({ admonitions: "mkdocs", tabs: "mkdocs" }));
+	const out = md.render("??? tip \"Read [the guide]\"\n    Body\n\n=== \"`base.html`\"\n    A\n\n!!! note\n    C\n\n[the guide]: /guide/\n", {}, ctx) as string;
+	assert.ok(out.includes("<summary>Read <a href=\"/guide/\">the guide</a></summary>"), out);
+	assert.ok(out.includes("<label for=\"__tabbed_1_1\"><code>base.html</code></label>"), out);
+	assert.ok(out.includes("<p class=\"admonition-title\">Note</p>"), out);
+});
+
 test("a_hook_that_fails_or_waits_says_which_it_is", () => {
 	const failing = hooked({ "hooks/link": "x" }, () => ({ render: () => { throw new Error("no pine cones"); } }));
 	assert.throws(() => failing.render("[a](/b)\n", {}, ctx), { message: "rendering _includes/hooks/link.t: no pine cones" });

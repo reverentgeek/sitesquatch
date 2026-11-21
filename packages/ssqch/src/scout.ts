@@ -2676,7 +2676,7 @@ export function hugo(dir: string): Plan {
 	const calls = blockCalls.sorted();
 	if (calls.length || inlineCalls.seen.size) {
 		const pages = new Set([...calls, ...inlineCalls.sorted()].flatMap(([, { files }]) => [...files])).size;
-		plan.byHand.push([contentDir, `${new Set([...blockCalls.seen.keys(), ...inlineCalls.seen.keys()]).size} shortcodes, called in ${pages} ${pages === 1 ? "page" : "pages"}: \`markdown: { shortcodes: "hugo" }\` (in the draft) reads each call on a line of its own as a container, rendered by \`_includes/containers/<name>.*\`; the draft has a template to port for each of the site's own`, { code: "hugo-shortcodes", status: "option", files: pages, option: "markdown: { shortcodes: \"hugo\" }", docs: "shortcodes" }]);
+		plan.byHand.push([contentDir, `${new Set([...blockCalls.seen.keys(), ...inlineCalls.seen.keys()]).size} shortcodes, called in ${pages} ${pages === 1 ? "page" : "pages"}: \`markdown: { shortcodes: "hugo" }\` (in the draft) reads each call as a container, rendered by \`_includes/containers/<name>.*\` (one inside a line of text too, in its place); the draft has a template to port for each of the site's own`, { code: "hugo-shortcodes", status: "option", files: pages, option: "markdown: { shortcodes: \"hugo\" }", docs: "shortcodes" }]);
 	}
 	for (const [name, { count, files, first }] of calls) {
 		const own = shortcodeFiles.get(name);
@@ -2685,7 +2685,15 @@ export function hugo(dir: string): Plan {
 		plan.byHand.push([first, `\`{{< ${name} >}}\`, ${whose} (${uses(count, files.size)}): a container${draft ? `; port its template into ${draft} (in the draft)` : `; write \`_includes/containers/${name}.jinja\``}`, { code: "hugo-shortcode", status: own ? "site" : "ssqch", count, files: files.size, docs: "containers" }]);
 		if (draft) plan.newFiles.push([draft, `a container for the ${name} shortcode, to port from ${own}`, `{#- The ${name} shortcode (${own}), as a container: port its Go template here.\n    container.args is what the call wrote after the name, container.props its named\n    parameters (key="value"), and container.content the inside, rendered. -#}\n<div class="${name}">{{ container.content | safe }}</div>\n`]);
 	}
-	for (const [name, { count, files, first }] of inlineCalls.sorted()) plan.byHand.push([first, `\`{{< ${name} >}}\` inside a line of text (${uses(count, files.size)}): not in ssqch yet as written (only a shortcode on a line of its own is a container); a filter or an include, with \`markdownEngine\` on for those pages`, { code: "hugo-inline-shortcode", status: "not-yet", count, files: files.size }]);
+	// Inside a line of text, the same template renders it in place, with `container.inline` true.
+	for (const [name, { count, files, first }] of inlineCalls.sorted()) {
+		const own = shortcodeFiles.get(name);
+		const whose = own ? `the site's own (${own})` : HUGO_BUILT_IN_SHORTCODES.has(name) ? "Hugo's" : "nobody's (no template for it)";
+		const draft = own && /^[\w-]+$/.test(name) ? `_includes/containers/${name}.jinja` : undefined;
+		const drafted = draft !== undefined && plan.newFiles.some(([file]) => file === draft);
+		plan.byHand.push([first, `\`{{< ${name} >}}\` inside a line of text, ${whose} (${uses(count, files.size)}): its container template renders it in place, with \`container.inline\` true${draft ? `; port its template into ${draft} (in the draft)` : `; write \`_includes/containers/${name}.jinja\``}`, { code: "hugo-inline-shortcode", status: own ? "site" : "ssqch", count, files: files.size, docs: "shortcodes" }]);
+		if (draft && !drafted) plan.newFiles.push([draft, `a container for the ${name} shortcode, to port from ${own}`, `{#- The ${name} shortcode (${own}), as a container: port its Go template here.\n    It's called inside a line of text, so container.inline is true and what it writes goes in\n    the line. container.args is what the call wrote after the name, container.props its\n    named parameters (key="value"), and container.content what's between its tags, rendered. -#}\n<span class="${name}">{{ container.content | safe }}</span>\n`]);
+	}
 	if (templated) plan.byHand.push([templated, `\`{{ }}\` or \`{% %}\` as text in ${templatedCount} ${templatedCount === 1 ? "page" : "pages"} (this is the first): Hugo prints them as they are, and so does ssqch with \`markdownEngine: false\` (in the draft)`, { code: "hugo-template-text", status: "option", files: templatedCount, option: "markdownEngine: false" }]);
 	if (sections) plan.byHand.push([contentDir, `${sections} ${sections === 1 ? "section" : "sections"} (\`_index.md\`): ssqch's sections are folders with directory data (\`<folder>/<folder>.json\` for layout and permalink) and a collection (\`tags\`), and the section page a page of its own`, { code: "hugo-sections", status: "ssqch", count: sections, files: sections, docs: "directory data" }]);
 	if (cascades) plan.byHand.push([contentDir, `\`cascade\` in ${cascades} ${cascades === 1 ? "page's" : "pages'"} front matter: ssqch's is directory data, which every page below it gets`, { code: "hugo-cascade", status: "ssqch", files: cascades, docs: "directory data" }]);

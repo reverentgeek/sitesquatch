@@ -65,7 +65,16 @@ export interface PythonMarkdownOptions {
 	admonitions: boolean;
 	/** `=== "Tab"` blocks, as pymdownx.tabbed's `alternate_style` writes them. */
 	tabs: boolean;
+	/**
+	 * A title as HTML (`!!! note "Run \`ssqch\`"`, `=== "\`base.html\`"`): Python-Markdown reads
+	 * it as inline Markdown, so the engine renders it, with `refs` (the page's link reference
+	 * definitions, for a `[link]` defined elsewhere on the page). Escaped text without it.
+	 */
+	title?: (text: string, refs: string) => string;
 }
+
+// A link reference definition on a line of its own: `[name]: url "title"`.
+const REFERENCE = /^ {0,3}\[[^\]]+\]:[ \t]*\S+(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/;
 
 /**
  * MkDocs' blocks as Python-Markdown's extensions write them: `!!! note "Title"` as
@@ -76,10 +85,21 @@ export interface PythonMarkdownOptions {
 export function pythonMarkdownBlocks(source: string, options: PythonMarkdownOptions): string {
 	if (!(options.admonitions && /^[ \t]*(?:!!!|\?\?\?)/m.test(source)) && !(options.tabs && /^[ \t]*===/m.test(source))) return source;
 	const counter = { sets: 0 };
-	return convertBlocks(source.split("\n"), options, counter).join("\n");
+	const lines = source.split("\n");
+	let refs: string | undefined;
+	const title = (text: string): string => {
+		if (!options.title) return escapeHtml(text);
+		if (refs === undefined) {
+			const found: string[] = [];
+			outsideFences(lines, (line) => { if (REFERENCE.test(line)) found.push(line.trim()); });
+			refs = found.join("\n");
+		}
+		return options.title(text, text.includes("[") ? refs : "");
+	};
+	return convertBlocks(lines, options, counter, title).join("\n");
 }
 
-function convertBlocks(lines: string[], options: PythonMarkdownOptions, counter: { sets: number }): string[] {
+function convertBlocks(lines: string[], options: PythonMarkdownOptions, counter: { sets: number }, title: (text: string) => string): string[] {
 	const out: string[] = [];
 	let copied = 0;
 	const flush = (to: number) => { out.push(...lines.slice(copied, to)); copied = to; };
@@ -90,14 +110,14 @@ function convertBlocks(lines: string[], options: PythonMarkdownOptions, counter:
 			flush(i);
 			const pad = a[1];
 			const end = blockBody(lines, i + 1, pad.length);
-			const body = convertBlocks(dedent(lines.slice(i + 1, end), pad.length + 4), options, counter);
+			const body = convertBlocks(dedent(lines.slice(i + 1, end), pad.length + 4), options, counter, title);
 			const classes = (a[3] ?? "note").trim().split(/[ \t]+/).join(" ");
 			const first = classes.split(" ")[0];
-			const title = a[4] ?? first[0].toUpperCase() + first.slice(1);
+			const heading = a[4] ?? first[0].toUpperCase() + first.slice(1);
 			const details = a[2] !== "!!!";
 			const open = details
-				? `<details class="${escapeHtml(classes)}"${a[2] === "???+" ? " open=\"open\"" : ""}>${title === "" ? "" : `\n${pad}<summary>${escapeHtml(title)}</summary>`}`
-				: `<div class="admonition ${escapeHtml(classes)}">${title === "" ? "" : `\n${pad}<p class="admonition-title">${escapeHtml(title)}</p>`}`;
+				? `<details class="${escapeHtml(classes)}"${a[2] === "???+" ? " open=\"open\"" : ""}>${heading === "" ? "" : `\n${pad}<summary>${title(heading)}</summary>`}`
+				: `<div class="admonition ${escapeHtml(classes)}">${heading === "" ? "" : `\n${pad}<p class="admonition-title">${title(heading)}</p>`}`;
 			out.push(`${pad}${open}`, "", ...body.map((l) => (l === "" ? l : pad + l)), "", `${pad}${details ? "</details>" : "</div>"}`);
 			copied = end;
 			return end;
@@ -112,7 +132,7 @@ function convertBlocks(lines: string[], options: PythonMarkdownOptions, counter:
 				const m = TAB.exec(lines[at] ?? "");
 				if (!m || m[1] !== pad || (tabs.length && m[2].includes("!"))) break;
 				const end = blockBody(lines, at + 1, pad.length);
-				tabs.push({ title: m[3], selected: m[2].includes("+"), body: convertBlocks(dedent(lines.slice(at + 1, end), pad.length + 4), options, counter) });
+				tabs.push({ title: m[3], selected: m[2].includes("+"), body: convertBlocks(dedent(lines.slice(at + 1, end), pad.length + 4), options, counter, title) });
 				// The next tab of the same set follows after blank lines only.
 				let next = end;
 				while (next < lines.length && lines[next].trim() === "") next++;
@@ -122,7 +142,7 @@ function convertBlocks(lines: string[], options: PythonMarkdownOptions, counter:
 			const set = ++counter.sets;
 			const selected = Math.max(0, tabs.findIndex((tab) => tab.selected));
 			const inputs = tabs.map((_, n) => `<input${n === selected ? " checked=\"checked\"" : ""} id="__tabbed_${set}_${n + 1}" name="__tabbed_${set}" type="radio" />`).join("");
-			const labels = tabs.map((tab, n) => `<label for="__tabbed_${set}_${n + 1}">${escapeHtml(tab.title)}</label>`).join("");
+			const labels = tabs.map((tab, n) => `<label for="__tabbed_${set}_${n + 1}">${title(tab.title)}</label>`).join("");
 			out.push(`${pad}<div class="tabbed-set tabbed-alternate" data-tabs="${set}:${tabs.length}">${inputs}<div class="tabbed-labels">${labels}</div>`, `${pad}<div class="tabbed-content">`);
 			for (const tab of tabs) out.push(`${pad}<div class="tabbed-block">`, "", ...tab.body.map((l) => (l === "" ? l : pad + l)), "", `${pad}</div>`);
 			out.push(`${pad}</div>`, `${pad}</div>`);
@@ -136,18 +156,104 @@ function convertBlocks(lines: string[], options: PythonMarkdownOptions, counter:
 
 // ---- Hugo's shortcodes -----------------------------------------------------------------------
 
-const SHORTCODE_LINE = /^([ \t]*)\{\{([<%])[ \t]*(\/?)[ \t]*([\w./-]+)((?:[^}]|\}(?!\}))*?)[ \t]*(\/?)[ \t]*[>%]\}\}[ \t]*$/;
+const SHORTCODE_LINE = /^([ \t]*)\{\{([<%])[ \t]*(\/?)[ \t]*(\w[\w./-]*)((?:[^}]|\}(?!\}))*?)[ \t]*(\/?)[ \t]*[>%]\}\}[ \t]*$/;
+
+/** A shortcode inside a line of text, kept for after the Markdown (`InlineShortcodes`). */
+export interface InlineShortcode {
+	name: string;
+	/** The rest of the tag, as written (`0.148.0`, `type="tip"`). */
+	args: string;
+	/** What's between its opening and closing tags, as written, or `undefined` for one with no closing tag. */
+	inner: string | undefined;
+	/** In a heading, the spaces around it, written around its output so the heading's id doesn't end in `-` for them. */
+	spaces?: [string, string];
+}
 
 /**
  * Hugo's shortcodes on lines of their own as ssqch's containers: `{{< note type="tip" >}}` to
  * `{{< /note >}}` is `::: note type="tip"` to `:::`, rendered by `_includes/containers/note.*`
  * (`container.args`, `container.props`, `container.content`). One without a closing tag is a
- * container with no content. An outer one gets more colons. A shortcode inside a line of text is
- * left as it is: `ssqch scout` lists those.
+ * container with no content. An outer one gets more colons.
+ *
+ * A shortcode inside a line of text (`Added in {{< new-in 0.148.0 />}}`, `[About]({{< ref
+ * "about" >}})`) whose container template `hasTemplate` says the site has is pushed onto
+ * `inline` and replaced by a marker the Markdown leaves alone, for the template's output to take
+ * its place after (`inlineShortcodeMarker`). The gohugo.io move had 65 files with one, and no
+ * way to give them a template. Without a template, it's left as written, as it always was.
  */
-export function hugoShortcodes(source: string): string {
+export function hugoShortcodes(source: string, inline?: InlineShortcode[], hasTemplate?: (name: string) => boolean): string {
 	if (!source.includes("{{<") && !source.includes("{{%")) return source;
-	return unescapeShortcodes(shortcodeContainers(source));
+	let out = shortcodeContainers(source);
+	if (inline && hasTemplate) out = inlineShortcodes(out, inline, hasTemplate);
+	return unescapeShortcodes(out);
+}
+
+// The marker for the nth inline shortcode: private-use characters, so a slugger drops them from
+// a heading's id, nothing in Markdown reads them as syntax, and a URL encodes them in a way that
+// can be found again (`[a]({{< ref "b" >}})` is an `href`). Not U+E000 and U+E001, which named
+// slots and Python-Markdown's kept spaces use.
+const MARK_OPEN = "";
+const MARK_CLOSE = "";
+/** The marker that stands for the `n`th inline shortcode until its template's output replaces it. */
+export const inlineShortcodeMarker = (n: number): string => MARK_OPEN + [...String(n)].map((d) => String.fromCharCode(0xe030 + Number(d))).join("") + MARK_CLOSE;
+/** A marker, as written or percent-encoded (in a URL): its number is the digits in one of the two groups. */
+export const INLINE_SHORTCODE_MARKER = /([-]+)|%EE%80%A0((?:%EE%80%B[0-9])+)%EE%80%A1/gi;
+/** The number in a match of `INLINE_SHORTCODE_MARKER`. */
+export function inlineShortcodeNumber(plain: string | undefined, encoded: string | undefined): number {
+	if (plain) return Number([...plain].map((c) => c.charCodeAt(0) - 0xe030).join(""));
+	return Number((encoded ?? "").replace(/%EE%80%B([0-9])/gi, "$1"));
+}
+
+const SHORTCODE_TAG = /\{\{([<%])[ \t]*(\/?)[ \t]*(\w[\w./-]*)((?:[^}]|\}(?!\}))*?)[ \t]*(\/?)[ \t]*[>%]\}\}/g;
+
+/**
+ * The shortcodes left inside lines of text, outside fences: each that has a template becomes a
+ * marker. A pair (`{{< kbd >}}Ctrl{{< /kbd >}}`) is one, with what's between as its `inner`, on
+ * one line; a closing tag with nothing to close is left as written.
+ */
+function inlineShortcodes(source: string, found: InlineShortcode[], hasTemplate: (name: string) => boolean): string {
+	const lines = source.split("\n");
+	outsideFences(lines, (line, i) => {
+		if (!line.includes("{{<") && !line.includes("{{%")) return;
+		interface Tag { start: number; end: number; name: string; args: string; closing: boolean; self: boolean }
+		const tags: Tag[] = [];
+		for (const m of line.matchAll(SHORTCODE_TAG)) tags.push({ start: m.index, end: m.index + m[0].length, name: m[3], args: m[4].trim(), closing: m[2] === "/", self: m[5] === "/" });
+		// The spans to replace: pairs, then tags with no partner, leaving out what's inside a pair.
+		const spans: Array<{ start: number; end: number; call: InlineShortcode }> = [];
+		const open: Tag[] = [];
+		for (const tag of tags) {
+			if (!tag.closing) {
+				if (tag.self) spans.push({ start: tag.start, end: tag.end, call: { name: tag.name, args: tag.args, inner: undefined } });
+				else open.push(tag);
+				continue;
+			}
+			const k = open.findLastIndex((o) => o.name === tag.name);
+			if (k === -1) continue;
+			const o = open[k];
+			open.length = k;
+			spans.push({ start: o.start, end: tag.end, call: { name: o.name, args: o.args, inner: line.slice(o.end, tag.start) } });
+		}
+		for (const o of open) spans.push({ start: o.start, end: o.end, call: { name: o.name, args: o.args, inner: undefined } });
+		spans.sort((a, b) => a.start - b.start || b.end - a.end);
+		// In a heading, a shortcode takes the spaces before it (or after, at the start), so the
+		// id is the text's alone: `## Formats {{< new-in 1 />}}` is `formats`, not `formats-`.
+		const heading = /^ {0,3}#{1,6}[ \t]+/.exec(line)?.[0].length;
+		let out = "";
+		let at = 0;
+		for (const span of spans) {
+			if (span.start < at || !hasTemplate(span.call.name)) continue;
+			let { start, end } = span;
+			if (heading !== undefined) {
+				while (start > Math.max(at, heading) && /[ \t]/.test(line[start - 1])) start--;
+				if (start === heading) while (end < line.length && /[ \t]/.test(line[end])) end++;
+				if (start !== span.start || end !== span.end) span.call.spaces = [line.slice(start, span.start), line.slice(span.end, end)];
+			}
+			out += line.slice(at, start) + inlineShortcodeMarker(found.push(span.call) - 1);
+			at = end;
+		}
+		if (at) lines[i] = out + line.slice(at);
+	});
+	return lines.join("\n");
 }
 
 // Hugo's docs show a shortcode without calling it by putting `/*` and `*/` inside the braces

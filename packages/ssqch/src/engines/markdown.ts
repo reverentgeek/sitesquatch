@@ -17,7 +17,7 @@
 // (see "the cache of highlighted fences" below), so a first build doesn't load syntect's
 // grammars for fences it has highlighted before.
 import { kramdownHtml, restoreBlankLines, withKramdownIds } from "./kramdown-html.ts";
-import { hugoShortcodes, pythonMarkdownAfter, pythonMarkdownBefore, pythonMarkdownBlocks, pythonMarkdownIds, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
+import { hugoShortcodes, INLINE_SHORTCODE_MARKER, type InlineShortcode, inlineShortcodeNumber, pythonMarkdownAfter, pythonMarkdownBefore, pythonMarkdownBlocks, pythonMarkdownIds, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -218,15 +218,17 @@ class WasmMarkdown implements Markdown {
 		// Python-Markdown's raw HTML blocks are set aside first, before the other dialects write HTML.
 		const python = this.#options.dialect === "python-markdown" ? pythonMarkdownBefore(source) : undefined;
 		if (python) source = python.source;
-		source = this.#dialects(source);
+		const shortcodes: InlineShortcode[] = [];
+		source = this.#dialects(source, shortcodes, data, file);
 		const links = this.#options.sourceLinks;
 		const ids = this.#options.sluggerFn === pythonMarkdownSlug;
 		const after = (html: string) => {
+			if (shortcodes.length) html = this.#inlineShortcodes(html, shortcodes, data, file);
 			if (links) html = sourceLinks(html, data, links, this.#inputRoot);
 			if (ids) html = pythonMarkdownIds(html);
 			return python ? pythonMarkdownAfter(html, python.raw) : html;
 		};
-		const changes = Boolean(links || ids || python);
+		const changes = Boolean(links || ids || python || shortcodes.length);
 		if (!this.#options.htmlMarkdown) {
 			const out = this.#page(source, data, file);
 			if (!changes) return out;
@@ -238,11 +240,36 @@ class WasmMarkdown implements Markdown {
 	}
 
 	/** Other generators' syntax as ssqch's (markdown-dialects.ts): Hugo's shortcodes as containers, MkDocs' blocks as Python-Markdown's HTML. */
-	#dialects(source: string): string {
+	#dialects(source: string, inline?: InlineShortcode[], data: Data = {}, file: string | undefined = page): string {
 		const o = this.#options;
-		if (o.shortcodes === "hugo") source = hugoShortcodes(source);
-		if (o.admonitions || o.tabs) source = pythonMarkdownBlocks(source, { admonitions: o.admonitions === "mkdocs", tabs: o.tabs === "mkdocs" });
+		if (o.shortcodes === "hugo") source = hugoShortcodes(source, inline, (name) => this.#hooks.has(`containers/${name}`));
+		// A title is inline Markdown, as Python-Markdown reads it: `!!! tip "Run \`ssqch\`"`.
+		const title = (text: string, refs: string) => this.#markdown(refs ? `${text}\n\n${refs}` : text, HOOKS | INLINE, data, file, undefined, "an admonition's or a tab's title");
+		if (o.admonitions || o.tabs) source = pythonMarkdownBlocks(source, { admonitions: o.admonitions === "mkdocs", tabs: o.tabs === "mkdocs", title });
 		return source;
+	}
+
+	/**
+	 * Hugo's shortcodes inside a line of text, each through its container template, in place of
+	 * the marker `#dialects` left: `container.content` is what's between its tags as inline
+	 * Markdown (its own shortcodes too) and `container.source` that as written, and
+	 * `container.inline` is true. What the template writes goes in as it is, as Hugo puts in a
+	 * `{{< >}}` shortcode's output.
+	 */
+	#inlineShortcodes(html: string, calls: InlineShortcode[], data: Data, file: string | undefined): string {
+		return html.replace(INLINE_SHORTCODE_MARKER, (whole, plain?: string, encoded?: string) => {
+			const call = calls[inlineShortcodeNumber(plain, encoded)];
+			if (!call) return whole;
+			let content = "";
+			if (call.inner !== undefined) {
+				const inner: InlineShortcode[] = [];
+				const text = hugoShortcodes(call.inner, inner, (name) => this.#hooks.has(`containers/${name}`));
+				content = this.#markdown(text, HOOKS | INLINE, data, file, undefined, `the inside of {{< ${call.name} >}}`);
+				if (inner.length) content = this.#inlineShortcodes(content, inner, data, file);
+			}
+			const out = this.renderHook(`containers/${call.name}`, "container", { name: call.name, args: call.args, content, source: call.inner ?? "", inline: true }, data);
+			return call.spaces ? call.spaces[0] + out + call.spaces[1] : out;
+		});
 	}
 
 	#page(source: string, data: Data, file: string | undefined): string | Promise<string> {
@@ -258,9 +285,12 @@ class WasmMarkdown implements Markdown {
 	}
 
 	html(text: string, inline: boolean): string {
-		if (!inline) text = this.#dialects(text);
-		if (this.#options.htmlMarkdown) return restoreBlankLines(this.#markdown(this.#inHtml(text, HOOKS, {}, page, "markdown() in a template"), HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template"));
-		return this.#markdown(text, HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template");
+		const shortcodes: InlineShortcode[] = [];
+		if (!inline) text = this.#dialects(text, shortcodes);
+		const html = this.#options.htmlMarkdown
+			? restoreBlankLines(this.#markdown(this.#inHtml(text, HOOKS, {}, page, "markdown() in a template"), HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template"))
+			: this.#markdown(text, HOOKS | (inline ? INLINE : 0), {}, page, undefined, "markdown() in a template");
+		return shortcodes.length ? this.#inlineShortcodes(html, shortcodes, {}, page) : html;
 	}
 
 	plain(text: string, inline: boolean): string {

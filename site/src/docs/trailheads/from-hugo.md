@@ -45,12 +45,15 @@ export default defineConfig({
 ## Content
 
 - **Template code in your Markdown:** Hugo's docs and many tutorials have `{{ .Title }}` in code samples. ssqch runs Markdown through a template engine first unless `markdownEngine: false`, so set that before the first build.
-- **Shortcodes:** with `markdown: { shortcodes: "hugo" }`, a shortcode on a line of its own is a container ([Markdown](../markdown.md), "Containers"): `{{< note type="tip" >}}` to `{{< /note >}}` (or `{{% %}}`) renders `_includes/containers/note.*`, with `container.args` (what the call wrote), `container.props` (its `key="value"` parameters) `container.content` (the inside, rendered as Markdown) and `container.source` (the inside as written, for a `{{< >}}` shortcode, whose inside Hugo doesn't read as Markdown). One without a closing tag (`{{< youtube abc >}}`) has no content. Port each shortcode's Go template into its container template. A shortcode inside a line of text isn't read: scout lists those, for a filter of your own.
+- **Shortcodes:** with `markdown: { shortcodes: "hugo" }`, a shortcode on a line of its own is a container ([Markdown](../markdown.md), "Containers"): `{{< note type="tip" >}}` to `{{< /note >}}` (or `{{% %}}`) renders `_includes/containers/note.*`, with `container.args` (what the call wrote), `container.props` (its `key="value"` parameters) `container.content` (the inside, rendered as Markdown) and `container.source` (the inside as written, for a `{{< >}}` shortcode, whose inside Hugo doesn't read as Markdown). One without a closing tag (`{{< youtube abc >}}`) has no content. Port each shortcode's Go template into its container template. A shortcode inside a line of text (`{{< new-in 0.148 />}}`, `[About]({{< ref "about" >}})`) renders through the same container template in its place, with `container.inline` true, so a template that's called both ways can check it: `{% if container.inline %}<span>...</span>{% else %}<div>...</div>{% endif %}`.
 - **URLs:** Hugo lowercases paths and reads `slug` and `url`. In ssqch, `permalink` in front matter or directory data sets a page's URL; `computed` can make one from the path for every page.
 - **Sections:** an `_index.md` is a section's list page. In ssqch it's a page like any other: give it a layout in its folder's directory data, and list its folder's pages with a collection: a tag, or one in the config (`collections: { functions: (api) => api.byGlob("content/functions/**") }`).
 - **Page bundles:** a folder with `index.md` and its images is a bundle in both; set `bundles: true`.
 - **Headless pages** (`build.render: never`, snippets included elsewhere): `permalink: false`, or `ignore` them.
 - **Summaries:** Hugo's `.Summary` is about the first 70 words, in whole paragraphs; ssqch's `page.excerpt` is what's before `<!-- more -->`, or else the first paragraph.
+
+> [!NOTE]
+> **Not released yet.** This ships with the next version of ssqch: a shortcode inside a line of text through its container template.
 
 ## Templates: Go templates in Jinja
 

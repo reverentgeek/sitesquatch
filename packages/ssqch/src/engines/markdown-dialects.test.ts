@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hugoShortcodes, pythonMarkdownAfter, pythonMarkdownBefore, pythonMarkdownBlocks, pythonMarkdownIds, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
+import { hugoShortcodes, INLINE_SHORTCODE_MARKER, type InlineShortcode, inlineShortcodeMarker, inlineShortcodeNumber, pythonMarkdownAfter, pythonMarkdownBefore, pythonMarkdownBlocks, pythonMarkdownIds, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
 
 const both = { admonitions: true, tabs: true };
 
@@ -31,6 +31,16 @@ test("hugo_shortcodes_become_containers", () => {
 	assert.equal(hugoShortcodes("{{< img src=\"a.png\" />}}"), "::: img src=\"a.png\"\n:::");
 	// Inside a line of text, and inside fences, they stay; `/* */` shows one without calling it.
 	assert.equal(hugoShortcodes("See {{< ref \"a\" >}} here.\n```\n{{< note >}}\n{{</* note */>}}\n```"), "See {{< ref \"a\" >}} here.\n```\n{{< note >}}\n{{< note >}}\n```");
+	// One written with `/* */` on a line of its own is shown, not called.
+	assert.equal(hugoShortcodes("{{</* note */>}}\n"), "{{< note >}}\n");
+	// With a template for it, one inside a line is a marker, kept with its arguments and what's inside a pair.
+	const inline: InlineShortcode[] = [];
+	const has = (name: string) => name !== "unknown";
+	const out = hugoShortcodes("A {{< ref \"a\" >}} {{% b %}}x {{< c />}}{{% /b %}} {{< unknown >}} {{</* ref */>}}\n# Title {{< c />}}", inline, has);
+	assert.equal(out, `A ${inlineShortcodeMarker(0)} ${inlineShortcodeMarker(1)} {{< unknown >}} {{< ref >}}\n# Title${inlineShortcodeMarker(2)}`);
+	assert.deepEqual(inline, [{ name: "ref", args: "\"a\"", inner: undefined }, { name: "b", args: "", inner: "x {{< c />}}" }, { name: "c", args: "", inner: undefined, spaces: [" ", ""] }]);
+	assert.equal(inlineShortcodeMarker(12), "\uE020\uE031\uE032\uE021");
+	assert.deepEqual([..."%EE%80%A0%EE%80%B1%EE%80%B2%EE%80%A1".matchAll(INLINE_SHORTCODE_MARKER)].map((m) => inlineShortcodeNumber(m[1], m[2])), [12]);
 });
 
 test("source_links_go_to_the_pages_built_from_them", () => {
