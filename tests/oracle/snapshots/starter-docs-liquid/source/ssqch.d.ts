@@ -557,6 +557,30 @@ declare module "ssqch/sitemap" {
 	export function sitemapPlugin(options: SitemapPluginOptions): BuiltinPlugin;
 }
 
+declare module "ssqch/llms" {
+	import type { BuiltinPlugin } from "ssqch";
+	export interface LlmsPluginOptions {
+		/** The `# heading` of `llms.txt`. Default: `site.title` in the site's data, or the home page's title. */
+		title?: string;
+		/** A line under it, as `> description`. */
+		description?: string;
+		/** The site's address, like `"https://example.com"`, for whole links. Default: links from the site's root. */
+		url?: string;
+		/** URL globs of pages to leave out, like `["/blog/**"]`. 404 pages are always left out. */
+		exclude?: string[];
+		/** A Markdown copy of each listed page beside its URL (`/guide/intro.html` and `/guide/intro.md`; `/guide/` is `/guide.md`), which `llms.txt` links to. Default `true`; with `false`, it links to the pages. */
+		copies?: boolean;
+		/** `/llms-full.txt`, every listed page's Markdown in one file, each after a `url:` line. Default `true`. */
+		full?: boolean;
+		/** A hidden `<div hidden aria-hidden="true">` at the top of each listed page's `<body>`, naming its Markdown copy, for a model that reads the HTML. Default `false`: a build adds no markup of its own unless asked. */
+		hint?: boolean;
+		/** A page's section in `llms.txt`: a function that gets each page and returns a name. Default: its first folder (`/guide/...` is "Guide"; the top's pages are "Pages"). */
+		section?: (page: { url: string; inputPath: string; outputPath: string; date: Date; data: Record<string, any> }) => string | undefined;
+	}
+	/** Writes `/llms.txt` (the pages that came from Markdown, with links to their Markdown), a Markdown copy of each, and `/llms-full.txt`, for language models, as llmstxt.org describes. */
+	export function llmsPlugin(options?: LlmsPluginOptions): BuiltinPlugin;
+}
+
 declare module "ssqch/elements" {
 	import type { BuiltinPlugin } from "ssqch";
 

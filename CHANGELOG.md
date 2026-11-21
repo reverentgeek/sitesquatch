@@ -70,6 +70,12 @@ where that version matches.
   manager (`pnpm run build`). On vuejs.org, 57 to-dos became 44 with the draft written, and the
   draft built the site first time. A trailhead of its own: `ssqch docs --from vitepress`.
 
+- `llmsPlugin()` from `ssqch/llms` writes the site for language models, as llmstxt.org describes
+  it: `/llms.txt` lists the pages that came from Markdown with links to their Markdown, each gets
+  a Markdown copy beside its URL (`/guide/intro.md`), and `/llms-full.txt` has them all. A hidden
+  link to the copy in each page is opt-in (`hint: true`). vitepress-plugin-llms wrote 96 files
+  that the vuejs.org move left out.
+
 ### Fixed
 
 - A Hugo shortcode shown with `/* */` (`{{</* note */>}}`) on a line of its own was read as a

@@ -4,7 +4,7 @@ navTitle: "From VitePress"
 description: "VitePress builds each Markdown page into a Vue component; SiteSquatch reads the same Markdown and writes HTML."
 ---
 > [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: scout's VitePress draft, `dialect: "vitepress"`, components, `urls: "html"` and `sitemapPlugin({ format: "vitepress" })`.
+> **Not released yet.** This ships with the next version of ssqch: scout's VitePress draft, `dialect: "vitepress"`, components, `urls: "html"`, `sitemapPlugin({ format: "vitepress" })` and `ssqch/llms`.
 
 VitePress builds each Markdown page into a Vue component and ships a client app that hydrates it. SiteSquatch reads the same Markdown and writes HTML, so a move keeps your pages as they are and turns the theme into templates. What takes the work is Vue in your pages: the components they use, and the parts that run in the browser. The vuejs.org docs (111 pages, 33 component names) moved with no Markdown page edited, 99.9% of their article text the same as VitePress's, and the generator step at 0.54 s against VitePress's 5.7 s.
 
@@ -55,7 +55,7 @@ export default {
 | `head` in the config | The layout's `<head>` |
 | `sitemap: { hostname }` | `sitemapPlugin({ url, format: "vitepress" })`, the same file byte for byte |
 | `markdown.config(md)` plugins | A render hook, a container, or `markdown.preprocess` |
-| `vitepress-plugin-llms` | Not in ssqch yet: a page with `permalink: /llms.txt` that lists `collections.all` |
+| `vitepress-plugin-llms` | `llmsPlugin()` from `ssqch/llms`: `llms.txt`, a Markdown copy of each page and `llms-full.txt` |
 
 ## Checking the move
 

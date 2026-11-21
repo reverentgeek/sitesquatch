@@ -444,7 +444,7 @@ export type BuiltinPlugin = (config: Config, options: Data) => void | Promise<vo
 
 /** The built-in plugins, by the module that makes them. The plugins register themselves here as they're ported. */
 export const BUILTINS = new Map<string, BuiltinPlugin>();/** Every built-in plugin's module, in the order errors list them. One that isn't in `BUILTINS` isn't in the Node build yet, and its error says so rather than "unknown". */
-const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements"];
+const BUILTIN_NAMES = ["ssqch/rss", "ssqch/image", "ssqch/minify", "ssqch/assets", "ssqch/links", "ssqch/sitemap", "ssqch/redirects", "ssqch/sass", "ssqch/elements", "ssqch/llms"];
 
 async function loadJs(config: Config, file: string): Promise<void> {
 	const name = path.basename(file);
