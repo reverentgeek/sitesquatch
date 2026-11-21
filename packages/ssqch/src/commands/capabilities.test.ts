@@ -13,12 +13,13 @@ import * as minify from "../exports/minify.ts";
 import * as llms from "../exports/llms.ts";
 import * as robots from "../exports/robots.ts";
 import * as vue from "../exports/vue.ts";
+import * as fromVitepress from "../exports/from-vitepress.ts";
 import { typedNames } from "./docs.ts";
 import { MODULE_EXPORTS } from "./capabilities.ts";
 
 // What `ssqch capabilities` says each module exports is what the module has, what `ssqch.d.ts` declares, and all it has.
 test("each module exports what capabilities says", () => {
-	const actual: Record<string, Record<string, unknown>> = { ssqch: api, "ssqch/image": image, "ssqch/rss": rss, "ssqch/assets": assets, "ssqch/links": links, "ssqch/sitemap": sitemap, "ssqch/redirects": redirects, "ssqch/sass": sass, "ssqch/elements": elements, "ssqch/minify": minify, "ssqch/llms": llms, "ssqch/robots": robots, "ssqch/vue": vue };
+	const actual: Record<string, Record<string, unknown>> = { ssqch: api, "ssqch/image": image, "ssqch/rss": rss, "ssqch/assets": assets, "ssqch/links": links, "ssqch/sitemap": sitemap, "ssqch/redirects": redirects, "ssqch/sass": sass, "ssqch/elements": elements, "ssqch/minify": minify, "ssqch/llms": llms, "ssqch/robots": robots, "ssqch/vue": vue, "ssqch/from-vitepress": fromVitepress };
 	assert.deepEqual(MODULE_EXPORTS.map(([name]) => name), Object.keys(actual));
 	const declared = typedNames().filter((n) => n.kind === "module export");
 	for (const [name, exports] of MODULE_EXPORTS) {

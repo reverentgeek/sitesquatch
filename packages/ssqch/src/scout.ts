@@ -3183,7 +3183,7 @@ const vitepressGlob = (glob: string) => new RegExp(`^${glob.replace(/[.+^$()|[\]
 /**
  * VitePress, from the vuejs.org move: its config (`srcDir`, `srcExclude`, `cleanUrls`, the
  * sitemap's hostname, `head`, markdown-it plugins), the pages it builds, what they use, and a
- * draft config with `dialect: "vitepress"`. Each to-do says what in ssqch does it, and counts as
+ * draft config with `fromVitepress()`. Each to-do says what in ssqch does it, and counts as
  * done once the config or a template does (`Todo.defines`), so a second run shows what's left.
  */
 export function vitepress(dir: string): Plan {
@@ -3221,18 +3221,20 @@ export function vitepress(dir: string): Plan {
 	const dialect = 'markdown: { dialect: "vitepress" }';
 	const item = (pattern: RegExp, what: string, say: string, todo: Todo, inProse = true) => {
 		const { n, files, first } = count(pattern, inProse);
-		if (first) plan.byHand.push([first, `${what} (${uses(n, files)}): ${say}`, { ...todo, count: n, files }]);
+		// What fromVitepress() does is done with it in the plugins (or the old option, until it's retired).
+		const own = todo.option === dialect ? { defines: ["plugin:fromVitepress", ...(todo.defines ?? [])] } : {};
+		if (first) plan.byHand.push([first, `${what} (${uses(n, files)}): ${say}`, { ...todo, ...own, count: n, files }]);
 	};
 
 	// What the dialect reads as VitePress does.
-	item(/^<script\b[^>]*>/m, "Vue's `<script setup>` and `<script>` blocks in pages", "VitePress compiles them and writes none of it; `dialect: \"vitepress\"` leaves them out (the components they import are listed one by one)", { code: "vitepress-script-setup", status: "option", option: dialect });
-	item(/^<style\b[^>]*>/m, "`<style>` blocks in pages", "left out by `dialect: \"vitepress\"`; put the CSS in the site's stylesheet", { code: "vitepress-style", status: "option", option: dialect });
-	item(/<ClientOnly>/, "`<ClientOnly>`", "renders nothing on the server: `dialect: \"vitepress\"` leaves it out; what's inside needs JavaScript in the browser (a custom element from `ssqch/elements`)", { code: "vitepress-client-only", status: "option", option: dialect });
-	item(/^[ \t]{1,3}:{3,}[ \t]*$/m, "a container's closing `:::` indented under a list (Prettier's)", "markdown-it-container closes the container there; so does `containers: \"markdown-it\"`, which `dialect: \"vitepress\"` turns on", { code: "vitepress-indented-container", status: "option", option: dialect });
-	item(/^:::+\s*(?:tip|info|warning|danger|details|raw)\b/m, "containers (`::: tip`)", "VitePress's markup and default titles, built into `dialect: \"vitepress\"`", { code: "vitepress-containers", status: "option", option: dialect });
-	item(/^:::+\s*code-group\b/m, "code groups (`::: code-group`)", "built into `dialect: \"vitepress\"`", { code: "vitepress-code-group", status: "option", option: dialect });
-	item(/^\s*(?:`{3,}|~{3,})\s*[\w-]+-vue\b/m, "`-vue` fences (Vue's `{{ }}` evaluated in them)", "`dialect: \"vitepress\"` prints their string literals; anything else stays as written", { code: "vitepress-vue-fences", status: "option", option: dialect }, false);
-	item(/^\[\[toc\]\]\s*$/im, "`[[toc]]`", "markdown-it-table-of-contents' list, built into `dialect: \"vitepress\"`", { code: "vitepress-toc", status: "option", option: dialect });
+	item(/^<script\b[^>]*>/m, "Vue's `<script setup>` and `<script>` blocks in pages", "VitePress compiles them and writes none of it; `fromVitepress()` leaves them out (the components they import are listed one by one)", { code: "vitepress-script-setup", status: "option", option: dialect });
+	item(/^<style\b[^>]*>/m, "`<style>` blocks in pages", "left out by `fromVitepress()`; put the CSS in the site's stylesheet", { code: "vitepress-style", status: "option", option: dialect });
+	item(/<ClientOnly>/, "`<ClientOnly>`", "renders nothing on the server: `fromVitepress()` leaves it out; what's inside needs JavaScript in the browser (a custom element from `ssqch/elements`)", { code: "vitepress-client-only", status: "option", option: dialect });
+	item(/^[ \t]{1,3}:{3,}[ \t]*$/m, "a container's closing `:::` indented under a list (Prettier's)", "markdown-it-container closes the container there; so does `containers: \"markdown-it\"`, which `fromVitepress()` turns on", { code: "vitepress-indented-container", status: "option", option: dialect });
+	item(/^:::+\s*(?:tip|info|warning|danger|details|raw)\b/m, "containers (`::: tip`)", "VitePress's markup and default titles, built into `fromVitepress()`", { code: "vitepress-containers", status: "option", option: dialect });
+	item(/^:::+\s*code-group\b/m, "code groups (`::: code-group`)", "built into `fromVitepress()`", { code: "vitepress-code-group", status: "option", option: dialect });
+	item(/^\s*(?:`{3,}|~{3,})\s*[\w-]+-vue\b/m, "`-vue` fences (Vue's `{{ }}` evaluated in them)", "`fromVitepress()` prints their string literals; anything else stays as written", { code: "vitepress-vue-fences", status: "option", option: dialect }, false);
+	item(/^\[\[toc\]\]\s*$/im, "`[[toc]]`", "markdown-it-table-of-contents' list, built into `fromVitepress()`", { code: "vitepress-toc", status: "option", option: dialect });
 	item(/^<<<\s*@\//m, "`<<< @/` code snippets from files", "not in ssqch yet as written: an include in a template engine, or the code copied into a fence", { code: "vitepress-snippets", status: "not-yet" });
 	item(/\{\{[^}]*\}\}/, "Vue interpolations in pages (`{{ count }}`, `{{ $frontmatter.title }}`)", "Vue renders these; with `markdownEngine: false` (in the draft) ssqch prints them as written. Write the text itself, or move the part into a `.vue` component of its own that `vuePlugin()` renders (`ssqch docs \"inline vue in pages\"`)", { code: "vitepress-interpolations", status: "site", docs: "inline vue in pages" });
 	item(/^<(?![A-Z])[a-z][\w-]*\b[^>\n]*\s(?:v-[\w:-]+|@[\w.-]+)(?:=|[\s>])/m, "Vue directives on HTML in pages (`v-if`, `@click`)", "they do something in the browser that ssqch's HTML doesn't: a custom element from `ssqch/elements` for that part", { code: "vitepress-directives", status: "site" });
@@ -3316,7 +3318,7 @@ export function vitepress(dir: string): Plan {
 		if (/\bthemeConfig\b[\s\S]*\b(?:sidebar|nav)\s*:/.test(configText)) plan.byHand.push([configFile, "`themeConfig`'s `nav` and `sidebar`: data for ssqch's layout. Move them to a `_data/*.js` file that the VitePress config imports too, so both read one list; `navTree` marks the page you're on (a sidebar keyed by path picks the longest key that the page's URL starts with)", { code: "vitepress-sidebar", status: "site", docs: "navTree" }]);
 	}
 	for (const pkg of packagesLike(dir, /^vitepress-plugin-|^@?[\w-]*\/?vitepress-plugin-/)) {
-		const say = /llms/.test(pkg) ? "`llms.txt`, a Markdown copy of each page and `llms-full.txt`: `llmsPlugin()` from \"ssqch/llms\"" : /group-icons/.test(pkg) ? "icons on code groups' tabs: its CSS keyed by the tab's label (`data-title`), which `dialect: \"vitepress\"` writes" : "not in ssqch yet: port what it does as a hook, a transform or a plugin";
+		const say = /llms/.test(pkg) ? "`llms.txt`, a Markdown copy of each page and `llms-full.txt`: `llmsPlugin()` from \"ssqch/llms\"" : /group-icons/.test(pkg) ? "icons on code groups' tabs: its CSS keyed by the tab's label (`data-title`), which `fromVitepress()` writes" : "not in ssqch yet: port what it does as a hook, a transform or a plugin";
 		plan.byHand.push(["package.json", `${pkg}: ${say}`, { code: "vitepress-plugin", status: /group-icons|llms/.test(pkg) ? "ssqch" : "site", ...(/llms/.test(pkg) ? { defines: ["plugin:ssqch/llms"] } : {}) }]);
 	}
 	if (themeIndex !== undefined) {
@@ -3344,6 +3346,7 @@ export function vitepress(dir: string): Plan {
 			...(hostname ? ["import { sitemapPlugin } from \"ssqch/sitemap\";"] : []),
 			...(vue ? ["import { vuePlugin } from \"ssqch/vue\";"] : []),
 			...(llms ? ["import { llmsPlugin } from \"ssqch/llms\";"] : []),
+			"import { fromVitepress } from \"ssqch/from-vitepress\";",
 			"",
 			"export default {",
 			`\tdirs: { input: ${JSON.stringify(src)}, output: "dist" },`,
@@ -3354,9 +3357,11 @@ export function vitepress(dir: string): Plan {
 			"\t// VitePress's data loaders, `srcExclude`, its own folder, and `public/` (copied below).",
 			`\tignore: [${ignore.join(", ")}],`,
 			...(isDir(path.join(dir, ...publicDir.split("/"))) ? [`\tpassthrough: { ${JSON.stringify(`${publicDir}/**`)}: "." },`] : []),
-			"\tmarkdown: { dialect: \"vitepress\", highlight: true },",
-			...(hostname || vue || llms ? [
+			"\tmarkdown: { highlight: true },",
+			...[
 				"\tplugins: [",
+				"\t\t// VitePress's Markdown: its containers, headings, links, code blocks and `[[toc]]`.",
+				"\t\tfromVitepress(),",
 				...(vue ? [
 					"\t\t// The Vue components the pages use, rendered with the site's Vite and Vue (and run in the browser with `hydrate`).",
 					`\t\tvuePlugin({ ${vueGlobals.length ? `components: { ${vueGlobals.map(([n, f]) => `${n}: ${JSON.stringify(f)}`).join(", ")} }${stateful ? ", " : ""}` : ""}${stateful ? "hydrate: \"visible\"" : ""} }),`,
@@ -3364,7 +3369,7 @@ export function vitepress(dir: string): Plan {
 				...(hostname ? [`\t\tsitemapPlugin({ url: ${JSON.stringify(hostname)} }),`] : []),
 				...(llms ? [`\t\tllmsPlugin({ ${[siteTitle ? `title: ${JSON.stringify(siteTitle)}` : "", siteDescription ? `description: ${JSON.stringify(siteDescription)}` : "", hostname ? `url: ${JSON.stringify(hostname)}` : ""].filter(Boolean).join(", ")} }),`] : []),
 				"\t],",
-			] : []),
+			],
 			"};",
 			"",
 		];

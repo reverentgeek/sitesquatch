@@ -229,11 +229,47 @@ declare module "ssqch" {
 		plugins?: Plugin[];
 	}
 
+	/** What a plugin's Markdown steps and hooks get besides their text. */
+	export interface MarkdownStepContext {
+		/** The page's data, as its templates see it. */
+		data: Record<string, any>;
+		/** The page (`data.page`): `url`, `inputPath` and the rest. */
+		page: Record<string, any> | undefined;
+		/** The site's `urls`: `"html"` when pages are `/guide/intro.html`. */
+		urls: "folders" | "html";
+		/** Markdown rendered with the site's options and hooks; `{ inline: true }` leaves out the `<p>`. */
+		markdown(text: string, options?: { inline?: boolean }): string;
+		/** Whether the site or a plugin has the render hook or container `name` (`"heading"`, `"containers/tip"`). */
+		hasHook(name: string): boolean;
+		/** Calls the render hook `name` with `value` under `key` (`renderHook("containers/tip", "container", { args, content })`): the site's template if it has one, else a plugin's. */
+		renderHook(name: string, key: string, value: Record<string, any>): string;
+	}
+
+	/** A plugin's own steps in ssqch's Markdown. Each answers at once with text. */
+	export interface PluginMarkdown {
+		/** The page's Markdown, before ssqch's Markdown reads it (after its template engine). Runs in the order the plugins are listed, before the site's `markdown.preprocess`. */
+		before?: (source: string, context: MarkdownStepContext) => string;
+		/** The HTML ssqch's Markdown wrote for the page, before its layouts. */
+		after?: (html: string, context: MarkdownStepContext) => string;
+		/** Render hooks and containers, as functions that return HTML: `heading`, `link`, `image`, `fence`, `code`, `table`, `containers/<name>`. Each gets what the template of the same name would (`heading.level`, `container.content`). A site's own template of the same name (`_includes/hooks/heading.*`) replaces it; a later plugin's replaces an earlier one's. */
+		hooks?: Record<string, (value: Record<string, any>, context: MarkdownStepContext) => string>;
+	}
+
+	/** A plugin: the config's parts, and what only a plugin can give. */
+	export interface PluginParts extends ConfigParts {
+		/** The plugin's name, for its errors. */
+		name?: string;
+		/** Steps in ssqch's Markdown, and render hooks as functions. */
+		markdown?: PluginMarkdown;
+		/** Values for the site's settings that its own config replaces: `markdown` options (`{ markdown: { headingIds: "ascii" } }`) for any key the site's `markdown` doesn't set. */
+		defaults?: { markdown?: MarkdownOptions };
+	}
+
 	export type Plugin =
-		| ConfigParts
+		| PluginParts
 		| BuiltinPlugin
 		| RustPlugin
-		| ((context: ConfigContext) => MaybePromise<ConfigParts | BuiltinPlugin | RustPlugin | false | null | undefined>)
+		| ((context: ConfigContext) => MaybePromise<PluginParts | BuiltinPlugin | RustPlugin | false | null | undefined>)
 		| false
 		| null
 		| undefined;
@@ -547,6 +583,12 @@ declare module "ssqch/sitemap" {
 
 	/** Writes `sitemap.xml` listing every HTML page. */
 	export function sitemapPlugin(options: SitemapPluginOptions): BuiltinPlugin;
+}
+
+declare module "ssqch/from-vitepress" {
+	import type { PluginParts } from "ssqch";
+	/** VitePress's Markdown, for a site moving from VitePress: Vue's `<script>` and `<style>` blocks and `<ClientOnly>` left out, VitePress's markup for headings (`header-anchor`), links (`.html` with `urls: "html"`, external ones in a new tab), code blocks and tables, its `tip`, `info`, `warning`, `danger`, `details`, `raw` and `code-group` containers, `[[toc]]`, and, under the site's own `markdown` options, its heading ids, email autolinks and markdown-it's `:::`. A site's own hook or container template of the same name replaces VitePress's. Takes no options. */
+	export function fromVitepress(): PluginParts;
 }
 
 declare module "ssqch/vue" {

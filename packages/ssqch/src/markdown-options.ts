@@ -5,6 +5,7 @@ import { isPlainObject } from "./data.ts";
 import { closest } from "./suggest.ts";
 import { pythonMarkdownSlug } from "./engines/markdown-dialects.ts";
 import { vitepressSlug } from "./engines/vitepress-dialect.ts";
+import { VITEPRESS_DEFAULTS, vitepressMarkdown } from "./modules/from-vitepress.ts";
 
 export type Slugger = "github" | "blackfriday" | "ascii" | "kramdown" | "markdown-it-anchor";
 
@@ -59,6 +60,36 @@ export interface MarkdownOptions {
 	dialect: "python-markdown" | "vitepress" | null;
 	/** The site's `urls` is `"html"`: the `vitepress` dialect's links get `.html`. Set from the config, not from `markdown`. */
 	htmlUrls: boolean;
+	/** Plugins' Markdown steps (a plugin's `markdown: { before, after, hooks }`), in the order the plugins are listed. Set from the plugins, not from `markdown`. */
+	steps: MarkdownSteps;
+}
+
+/** What a plugin's Markdown step or hook gets besides its text: the page, and the engine's own tools. */
+export interface StepContext {
+	/** The page's data, as its templates see it (`page`, front matter, global data). */
+	data: Record<string, unknown>;
+	/** The page (`data.page`): `url`, `inputPath` and the rest. */
+	page: Record<string, unknown> | undefined;
+	/** The site's `urls`: `"html"` writes `/guide/intro.html`. */
+	urls: "folders" | "html";
+	/** Markdown rendered with the site's options and hooks (`{ inline: true }` without the `<p>`). */
+	markdown(text: string, options?: { inline?: boolean }): string;
+	/** Whether the site (or a plugin) has the render hook or container `name` (`containers/tip`). */
+	hasHook(name: string): boolean;
+	/** The render hook `name` with `value`, as ssqch's Markdown calls it: the site's template if it has one, else a plugin's. */
+	renderHook(name: string, key: string, value: Record<string, unknown>): string;
+}
+
+/** A plugin's render hook: what the template of the same name would write. */
+export type HookFn = (value: Record<string, unknown>, context: StepContext) => string;
+
+export interface MarkdownSteps {
+	/** The page's Markdown before ssqch's reads it. */
+	before: Array<[where: string, step: (source: string, context: StepContext) => string]>;
+	/** The HTML ssqch's Markdown wrote, before the page's layouts. */
+	after: Array<[where: string, step: (html: string, context: StepContext) => string]>;
+	/** Render hooks and containers (`heading`, `containers/tip`), which a site's template of the same name replaces. */
+	hooks: Map<string, [where: string, hook: HookFn]>;
 }
 
 export function defaultMarkdownOptions(): MarkdownOptions {
@@ -88,6 +119,7 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		preprocess: null,
 		dialect: null,
 		htmlUrls: false,
+		steps: { before: [], after: [], hooks: new Map() },
 	};
 }
 
@@ -196,11 +228,35 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown): 
 	}
 	// VitePress's markdown-it, for what the site doesn't set itself: its heading ids, linkify
 	// without bare domains, and markdown-it-container's closing `:::`.
+	// The old name for fromVitepress() (ssqch/from-vitepress): the same steps, hooks and defaults.
 	if (options.dialect === "vitepress") {
+		addMarkdownSteps(options.steps, "markdown.dialect", vitepressMarkdown());
 		const given = value as Record<string, unknown>;
-		if (!("headingIds" in given)) { options.sluggerFn = vitepressSlug; options.headingIds = "github"; }
-		if (!("autolinks" in given)) options.autolinks = "email";
-		if (!("containers" in given)) options.containers = "markdown-it";
+		const defaults = Object.fromEntries(Object.entries(VITEPRESS_DEFAULTS).filter(([key]) => !(key in given)));
+		if (Object.keys(defaults).length) applyMarkdownOptions(options, defaults);
+	}
+}
+
+/** The keys a plugin's `markdown` part can have. */
+const STEP_KEYS = ["before", "after", "hooks"];
+
+/** A plugin's `markdown: { before, after, hooks }`, added to the site's steps in the order the plugins are listed. A later plugin's hook of the same name replaces an earlier one's. */
+export function addMarkdownSteps(steps: MarkdownSteps, where: string, value: unknown): void {
+	if (!isPlainObject(value)) bail(`${where}: markdown must be an object of { before, after, hooks }`);
+	for (const key of Object.keys(value)) if (!STEP_KEYS.includes(key)) bail(`${where}: markdown.${key} isn't a plugin's Markdown step${closest(key, STEP_KEYS) ? ` (did you mean \`${closest(key, STEP_KEYS)}\`?)` : ""} (a plugin's markdown has before, after and hooks; the site's own options go in the config's markdown, or in the plugin's defaults)`);
+	for (const key of ["before", "after"] as const) {
+		const fn = value[key];
+		if (fn === undefined) continue;
+		if (typeof fn !== "function") bail(`${where}: markdown.${key} must be a function, (${key === "before" ? "source" : "html"}, context) => text`);
+		steps[key].push([where, fn as (text: string, context: StepContext) => string]);
+	}
+	if (value.hooks !== undefined) {
+		if (!isPlainObject(value.hooks)) bail(`${where}: markdown.hooks must be an object of { name: (value, context) => html }, like { heading: ..., "containers/tip": ... }`);
+		for (const [name, hook] of Object.entries(value.hooks)) {
+			if (typeof hook !== "function") bail(`${where}: markdown.hooks["${name}"] must be a function, (value, context) => html`);
+			// `heading` is the engine's `hooks/heading`; `containers/tip` is as it is.
+			steps.hooks.set(/^(?:hooks|containers)\//.test(name) ? name : `hooks/${name}`, [where, hook as HookFn]);
+		}
 	}
 }
 

@@ -23,7 +23,7 @@ import type { Equivalent } from "./equivalents.ts";
 import { checkLanguages } from "./engines/markdown.ts";
 import { installFetch, summary as fetchSummary } from "./fetch.ts";
 import { useImages } from "./image/processor.ts";
-import { applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
+import { addMarkdownSteps, applyMarkdownOptions, defaultMarkdownOptions } from "./markdown-options.ts";
 import type { MarkdownOptions } from "./markdown-options.ts";
 import { describeThrown, hookModules, importFile, loadedFiles, settle, watchSettle } from "./modules.ts";
 import { withPage } from "./rendering.ts";
@@ -148,6 +148,8 @@ export interface Config {
 	markdownSources?: Map<string, string>;
 	/** While `sitemapPlugin()` is on: the sitemap's whole address (with `base`), for robots.txt's `Sitemap:` line. */
 	sitemap?: () => string;
+	/** The `markdown` options the site's config sets itself, which plugins' `defaults` don't replace. */
+	markdownGiven: Set<string>;
 	/** Plugins that render a component tag the site has no template for (`vuePlugin()`): its HTML, or `undefined` for one it doesn't know. Asked in order, after `_includes/components/`. */
 	componentRenderers: Array<(name: string, value: { name: string; props: Record<string, unknown>; content: string; attrs: string; bindings: Record<string, string> }, inputPath: string, data: Data) => string | undefined>;
 	engines: Map<string, EngineFn>;
@@ -231,6 +233,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		collections: [],
 		transforms: [],
 		htmlTransforms: [],
+		markdownGiven: new Set(),
 		engines: new Map(),
 		engineCaches: [],
 		beforeBuild: [],
@@ -542,6 +545,8 @@ async function loadJs(config: Config, file: string): Promise<void> {
 		let guessed = false;
 		for (const key of Object.keys(part)) {
 			if ((key === "name" || key === "rust") && !top) continue;
+			// A plugin's `markdown` is its Markdown steps, and its `defaults` what the site doesn't set itself.
+			if (!top && (key === "markdown" || key === "defaults")) continue;
 			if (SETTINGS.includes(key)) {
 				if (!top) fail(`${where}: "${key}" can only be set in the config itself, not in a plugin`);
 			} else if (!PARTS.includes(key)) {
@@ -568,6 +573,23 @@ async function loadJs(config: Config, file: string): Promise<void> {
 		if (unknown.length) {
 			const options = top ? [...SETTINGS, ...PARTS] : PARTS;
 			fail(unknown.join("\n") + (guessed ? ` (options: ${options.join(", ")})` : ""));
+		}
+
+		if (!top && part.markdown !== undefined) {
+			const steps = part.markdown;
+			ops.push(() => { addMarkdownSteps(config.markdown.steps, where, steps); });
+		}
+		if (!top && part.defaults !== undefined) {
+			const defaults = part.defaults;
+			if (!isObject(defaults)) fail(`${where}: defaults must be an object, like { markdown: { headingIds: "ascii" } }`);
+			for (const key of Object.keys(defaults)) if (key !== "markdown") fail(`${where}: defaults.${key}: a plugin's defaults can be markdown options only`);
+			if (defaults.markdown !== undefined && !isObject(defaults.markdown)) fail(`${where}: defaults.markdown must be an object of markdown options`);
+			// Under the site's own: only the keys its config's `markdown` doesn't set.
+			ops.push(() => {
+				const own = Object.fromEntries(Object.entries((defaults.markdown ?? {}) as Data).filter(([key]) => !config.markdownGiven.has(key)));
+				if (!Object.keys(own).length) return;
+				try { applyMarkdownOptions(config.markdown, own); } catch (e) { throw context(e, `${where}: defaults`); }
+			});
 		}
 
 		// A plugin written in Rust (`{ name, rust: { wasm, options } }`, what its npm package
@@ -738,6 +760,7 @@ function applySettings(config: Config, settings: Data): void {
 		else bail(`${key} must be a string or false, not ${typeof value}`);
 	}
 	if (settings.markdown !== undefined) applyMarkdownOptions(config.markdown, settings.markdown);
+	if (isObject(settings.markdown)) config.markdownGiven = new Set(Object.keys(settings.markdown));
 	checkLanguages(config.markdown, config.root);
 	if (settings.deepMerge !== undefined) {
 		if (typeof settings.deepMerge !== "boolean") bail(`deepMerge must be true or false, not ${typeof settings.deepMerge}`);

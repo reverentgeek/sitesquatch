@@ -81,6 +81,15 @@ where that version matches.
   "View as Markdown" and a "Copy as Markdown" button, and the blog starter's home page an `<h1>`.
   Their `AGENTS.md` names `ssqch patrol`.
 - `ssqch check`, refused with ssqch's word, names `ssqch patrol` too.
+- A plugin can add to ssqch's Markdown: `markdown: { before, after, hooks }` (the page's Markdown
+  before ssqch's reads it, the HTML after, and render hooks and containers as functions, which a
+  site's own template of the same name replaces), and `defaults: { markdown }`, options for any
+  key the site's own `markdown` doesn't set. Each step gets the page and the engine's tools
+  (`markdown()`, `renderHook()`, `hasHook()`). A new docs page, "Writing a plugin", has a worked
+  example.
+- `fromVitepress()` from `ssqch/from-vitepress` is VitePress's Markdown as a plugin of that kind:
+  the same steps, hooks and defaults as `markdown: { dialect: "vitepress" }`, which it replaces
+  (the vuejs.org port builds byte for byte the same with either). `ssqch scout` drafts it.
 - `ssqch serve` and `ssqch serve --built` answer a request for a page with its Markdown copy
   when the request asks for `text/markdown` by name, at a q-value at least HTML's, as Claude Code,
   Cursor and OpenCode do: `text/markdown; charset=utf-8`, with `Vary: Accept` on both of a page's

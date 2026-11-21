@@ -917,3 +917,54 @@ test("vue_plugin_without_vite_says_what_to_install", () => {
 	const bad = ssqch(["build", "--root", dir]);
 	assert.ok(!bad.ok && bad.log.includes("hydrate must be false, \"load\", \"idle\" or \"visible\" (got \"later\")"), bad.log);
 });
+
+// Added in 0.13 (the audit's plan, step 6): a plugin's own Markdown steps, its render hooks as
+// functions (which a site's template replaces), and defaults under the site's own options.
+test("a_plugin_adds_markdown_steps_hooks_and_defaults", () => {
+	const dir = tempDir("plugin-markdown");
+	const plugin = (extra = "") => `const trail = {
+	name: "trailLinks",
+	markdown: {
+		before: (source, context) => source.replace(/\\[\\[([^\\]]+)\\]\\]/g, (_, t) => \`[\${t}](/trails/\${t.toLowerCase()}/)\`),
+		after: (html, context) => html + \`<!-- \${context.page.url} -->\`,
+		hooks: { "containers/aside": (c, context) => \`<aside class="\${c.args}">\${c.content}</aside>\`, heading: (h) => \`<h\${h.level} class="trail">\${h.content}</h\${h.level}>\` },
+	},
+	defaults: { markdown: { headingIds: false, smartPunctuation: true } },${extra}
+};
+export default { markdown: { smartPunctuation: false }, plugins: [trail] };
+`;
+	write(dir, { "ssqch.config.js": plugin(), "index.md": "# Pine\n\nSee [[Cedar]], \"quoted\".\n\n::: aside tip\nPack *water*.\n:::\n" });
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	// The step's link, the plugin's hooks, its `headingIds: false` (no id), and the site's own smartPunctuation over the plugin's.
+	assert.equal(read(dir, "_site/index.html"), "<h1 class=\"trail\">Pine</h1>\n<p>See <a href=\"/trails/cedar/\">Cedar</a>, &quot;quoted&quot;.</p>\n<aside class=\"tip\"><p>Pack <em>water</em>.</p>\n</aside>\n<!-- / -->");
+	// A site's own template of a hook's name replaces the plugin's.
+	write(dir, { "_includes/hooks/heading.jinja": "<h{{ heading.level }}>{{ heading.text }}!</h{{ heading.level }}>" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok && read(dir, "_site/index.html").startsWith("<h1>Pine!</h1>"), read(dir, "_site/index.html"));
+	for (const [extra, says] of [
+		["\n\tmarkdown: { befor: () => \"\" },", "plugin \"trailLinks\": markdown.befor isn't a plugin's Markdown step (did you mean `before`?)"],
+		["\n\tdefaults: { urls: \"html\" },", "plugin \"trailLinks\": defaults.urls: a plugin's defaults can be markdown options only"],
+	]) {
+		write(dir, { "ssqch.config.js": plugin(extra).replace(/\n\tmarkdown: \{\n[\s\S]*?\n\t\},\n\tdefaults: \{ markdown: \{ headingIds: false, smartPunctuation: true \} \},/, "") });
+		r = ssqch(["build", "--root", dir]);
+		assert.ok(!r.ok && r.log.includes(says), r.log);
+	}
+	write(dir, { "ssqch.config.js": "export default { plugins: [{ name: \"slow\", markdown: { after: async (html) => html } }] };\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("plugin \"slow\": markdown.after answered with a promise"), r.log);
+});
+
+// Added in 0.13: `ssqch/from-vitepress`, VitePress's Markdown as a plugin, writes what the dialect did.
+test("from_vitepress_is_the_vitepress_dialect_as_a_plugin", () => {
+	const dir = tempDir("from-vitepress");
+	const page = "<script setup>\nimport X from './x.vue'\n</script>\n\n# What's Vue?\n\n::: tip\nPack *water*.\n:::\n\n[[toc]]\n";
+	write(dir, { "ssqch.config.js": "export default { markdown: { dialect: \"vitepress\" } };\n", "index.md": page });
+	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
+	const before = read(dir, "_site/index.html");
+	write(dir, { "ssqch.config.js": "import { fromVitepress } from \"ssqch/from-vitepress\";\nexport default { plugins: [fromVitepress()] };\n" });
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/index.html"), before);
+	assert.ok(before.includes("id=\"what-s-vue\"") && before.includes("class=\"tip custom-block\"") && !before.includes("<script"), before);
+});
