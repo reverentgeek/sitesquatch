@@ -1,5 +1,6 @@
 ---
 title: "Getting started with flat config"
+description: "A first look at Squatch Lint's flat config: one file that says which rules your project follows, and how to start one."
 date: 2024-02-01
 categories: [Tutorials]
 ---

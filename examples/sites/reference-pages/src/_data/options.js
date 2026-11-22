@@ -9,6 +9,8 @@ export default function () {
 			category: o.category,
 			type: o.type,
 			description: o.description,
+			// The description as plain text, for the page's <meta name="description">.
+			summary: o.description.replaceAll( "`", "" ),
 			// Written out as JSON (`false`, `["pine cones"]`), or null for none.
 			default: o.default === undefined ? null : JSON.stringify( o.default ),
 			related: o.related ?? []

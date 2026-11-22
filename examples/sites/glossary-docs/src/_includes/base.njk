@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{% set summary = description or (site.description if page.url == "/" else "") -%}
+{% if summary %}<meta name="description" content="{{ summary }}">{% endif %}
 <title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
 <style>
   /* Ranger Station '76: soft white (green charcoal in dark mode), pine headings and navigation,

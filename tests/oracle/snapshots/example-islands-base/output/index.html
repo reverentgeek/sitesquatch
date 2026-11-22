@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A static page with two islands: the next hike&#39;s time in your own time zone and a like button, each loading its script only where it&#39;s used.">
 <title>Islands of interactivity | Squatch Trails</title>
 <style>
   /* Ranger Station '76: soft white (green charcoal in dark mode), pine headings and navigation,
@@ -25,12 +26,14 @@
 </head>
 <body>
 <nav><a href="/repo/">Home</a> <a href="/repo/trails/">Trails</a> <a href="/repo/trail-cam/">Trail cam</a> <a href="/repo/about/">About</a></nav>
+<main>
 <h1>Islands of interactivity</h1>
 <p>This page is static HTML with two islands. Each is a custom element: a tag with a script that loads only on the pages that use it.</p>
 <p>The next hike leaves at <local-time datetime="2026-06-14T15:00:00Z">June 14, 2026 at 15:00 UTC</local-time>.</p>
 <p><like-button key="home"><a href="/repo/about/">How likes work</a></like-button></p>
 <p>Without JavaScript, the time reads in UTC and the button is a link. With it, the time is in your time zone and the button counts.</p>
 
+</main>
 <script type="module" src="/repo/elements/like-button.js"></script>
 <script type="module">const idle=window.requestIdleCallback||((f)=>setTimeout(f,200));for(const[tag,src,when]of[["local-time","/repo/elements/local-time.js","idle"]]){if(when==="idle"){idle(()=>import(src));continue}const seen=new IntersectionObserver((entries)=>{if(entries.some((e)=>e.isIntersecting)){seen.disconnect();import(src)}},{rootMargin:"200px"});document.querySelectorAll(tag).forEach((el)=>seen.observe(el))}</script>
 </body>

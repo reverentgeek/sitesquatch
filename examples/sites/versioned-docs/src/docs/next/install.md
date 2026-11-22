@@ -1,5 +1,6 @@
 ---
 title: Installation
+description: "Install the unreleased next version of Pinecone Native's command line tool with npm or yarn, then create an app."
 ---
 Install the command line tool with your package manager:
 

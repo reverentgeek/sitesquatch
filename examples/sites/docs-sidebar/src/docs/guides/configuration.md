@@ -1,5 +1,6 @@
 ---
 title: Configuration
+description: "Pinecone's config file, pinecone.toml, and every server option it takes: port and trust_proxy, with their defaults."
 ---
 ## The config file
 

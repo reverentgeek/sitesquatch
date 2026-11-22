@@ -1,5 +1,6 @@
 ---
 title: The Cedar trail
+description: "The Cedar trail: two and a half flat miles from the trailhead. Read the pine cone season notes before you go."
 ---
 
 # The Cedar trail

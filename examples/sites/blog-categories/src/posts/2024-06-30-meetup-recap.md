@@ -1,5 +1,6 @@
 ---
 title: "Meetup recap"
+description: "Forty creatures at the ranger station for the June meetup: Beaver on how to lint a dam, Owl's questions after dark, and the snacks."
 date: 2024-06-30
 categories: [Community]
 ---

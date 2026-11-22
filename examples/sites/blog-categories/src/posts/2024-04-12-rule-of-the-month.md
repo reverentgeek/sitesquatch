@@ -1,5 +1,6 @@
 ---
 title: "Rule of the month: no-unused-snacks"
+description: "This month's rule, no-unused-snacks: what it catches, and why a Squatch Snack left in your code is one nobody eats."
 date: 2024-04-12
 categories: [Tutorials,Community]
 ---

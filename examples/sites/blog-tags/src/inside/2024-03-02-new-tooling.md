@@ -1,5 +1,6 @@
 ---
 title: New tooling for the team
+description: "The team moved its builds to a single binary with one config file and no node_modules: builds take a tenth of a second now."
 date: 2024-03-02
 tags: [tooling, announcements]
 ---

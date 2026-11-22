@@ -1,5 +1,6 @@
 ---
 title: Colors
+description: "Pinecone's palette of pine, bark and moss, with a swatch for each and the Sass variables they come from."
 ---
 The palette, straight from `scss/_variables.scss`:
 

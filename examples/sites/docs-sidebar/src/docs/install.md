@@ -1,5 +1,6 @@
 ---
 title: Installation
+description: "Install Pinecone with a package manager or build it from source, and what your forest needs first: at least one clearing."
 ---
 ## With a package manager
 

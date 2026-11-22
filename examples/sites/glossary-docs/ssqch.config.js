@@ -8,7 +8,7 @@ export default defineConfig( {
 	templateFormats: [ "njk", "md" ],
 	markdownEngine: "njk",
 
-	data: { site: { title: "Squatchernetes", url: "https://sitesquatch.dev" } },
+	data: { site: { title: "Squatchernetes", description: "Squatchernetes runs your squatches in pods across nodes: the concepts, a first deploy, and a glossary of every word.", url: "https://sitesquatch.dev" } },
 	collections: {
 		docs: pages => pages.byGlob( "src/docs/**/*.md" ).sort( ( a, b ) => ( a.data.weight ?? 0 ) - ( b.data.weight ?? 0 ) ),
 		glossary: pages => pages.byTag( "glossary" ).sort( ( a, b ) => a.data.title.localeCompare( b.data.title ) )

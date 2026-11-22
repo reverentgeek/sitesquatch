@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{% if description %}<meta name="description" content="{{ description }}">{% endif %}
 <title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
 <link rel="alternate" type="application/atom+xml" href="/feed.xml" title="{{ site.title }}">
 <style>

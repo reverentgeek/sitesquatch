@@ -1,6 +1,7 @@
 ---
 title: The Old Growth trail
 lang: en
+description: "Four miles under the big trees on the Old Growth trail, with a stop at the stump. Pack Pine Cone Crunch and water."
 ---
 
 # The Old Growth trail
