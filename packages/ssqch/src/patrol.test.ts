@@ -65,6 +65,24 @@ test("a copy is compared with its page without the page's navigation", () => {
 	assert.equal(differs(files(map.replace(/<\/?nav[^>]*>/g, ""))), true);
 });
 
+test("a post's copy is compared with its article, not the related posts and comments around it", () => {
+	const extras = `<section><h2>Related posts</h2><ul>${Array.from({ length: 30 }, (_, i) => `<li>Squatch Snacks for the Cedar trail, part ${i}, and the stump where the rangers meet</li>`).join("")}</ul></section>`;
+	const dir = built({
+		"post/index.html": `<!doctype html><html><head><title>Post</title><meta name="description" content="x"></head><body><main><article><h1>Post</h1><p>${TEXT}</p></article>${extras}</main></body></html>`,
+		"post/index.md": `# Post\n\n${TEXT}\n`,
+	});
+	assert.equal(patrol(dir).findings.some((f) => f.code === "copy-differs"), false);
+});
+
+test("a minified page's list items are separate words, as a browser shows them", () => {
+	const items = Array.from({ length: 12 }, (_, i) => `<li><a href="/p${i}/">Trail ${i}</a> <span>May 1, 20${10 + i}</span></li>`).join("");
+	const dir = built({
+		"archive/index.html": `<!doctype html><html><head><title>Archive</title><meta name="description" content="x"></head><body><main><h1>Archive</h1><ul>${items}</ul></main></body></html>`,
+		"archive/index.md": `# Archive\n\n${Array.from({ length: 12 }, (_, i) => `- [Trail ${i}](https://trail.example/p${i}/index.md) May 1, 20${10 + i}`).join("\n")}\n`,
+	});
+	assert.equal(patrol(dir).findings.some((f) => f.code === "copy-differs"), false);
+});
+
 test("a folder that isn't there says so", () => {
 	assert.throws(() => patrol(path.join(os.tmpdir(), "no-such-build-folder")), /isn't there: build the site first/);
 });

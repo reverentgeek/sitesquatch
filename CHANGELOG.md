@@ -15,6 +15,16 @@ where that version matches.
 - `ssqch patrol`'s `copy-differs` leaves a page's `<nav>` elements out when it compares the page
   with its Markdown copy: breadcrumbs, a pager or a map of the site inside `<main>` is navigation
   the layout adds, not what the page says. A layout's map that isn't in a `<nav>` still counts.
+- `copy-differs` compares a copy with the page's own part as `llmsPlugin()` reads it (its one
+  `<article>`, so a post's related posts and comments around it don't count), and reads a
+  minified page as a browser shows it: `2017</span></li><li>Community` was one word, so a
+  minified list's copy looked like it said something else.
+
+### Fixed
+- `llmsPlugin()`'s copy of a page with several `<article>`s (a list of posts, each a card) is
+  the page's `<main>`, not the first card: a blog's topic pages were copied as their newest post.
+- The code on "Serving Markdown" names a folder's page with its slash in the `Link` header
+  (`/about` is `/about/`), and is checked on Netlify now (the ReverentGeek blog).
 
 ## 0.13.2 - 2026-11-22
 

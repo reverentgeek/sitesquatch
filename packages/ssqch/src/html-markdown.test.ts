@@ -7,6 +7,13 @@ test("a page's own part is its article, then its main, then its body", () => {
 	assert.equal(htmlToMarkdown(chrome("<main><p>Lead</p><article><h1>Pines</h1><p>Tall.</p></article></main>")), "# Pines\n\nTall.\n");
 	assert.equal(htmlToMarkdown(chrome("<main><h1>Pines</h1><p>Tall.</p></main>")), "# Pines\n\nTall.\n");
 	assert.equal(htmlToMarkdown("<body><p>Only</p></body>"), "Only\n");
+	// A list of articles (a topic's posts, each a card) is the main's, not the first card's.
+	const cards = "<main><h1>Pine cones</h1><article><h2>Crunch</h2><p>One.</p></article><article><h2>Snacks</h2><p>Two.</p></article></main>";
+	assert.equal(htmlToMarkdown(chrome(cards)), "# Pine cones\n\n## Crunch\n\nOne.\n\n## Snacks\n\nTwo.\n");
+	// An article with articles inside it (comments) is still the page's one article.
+	assert.equal(htmlToMarkdown(chrome("<main><p>Lead</p><article><h1>Pines</h1><article><p>Nice.</p></article></article></main>")), "# Pines\n\nNice.\n");
+	// Several articles and no main: the first, as before.
+	assert.equal(htmlToMarkdown("<body><article><p>A</p></article><article><p>B</p></article></body>"), "A\n");
 });
 
 test("what a reader reads becomes Markdown", () => {

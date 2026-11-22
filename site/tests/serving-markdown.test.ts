@@ -15,11 +15,13 @@ const shared = blocks[0];
 const load = (code: string) => import(`data:text/javascript,${encodeURIComponent(code)}`);
 
 test("the pasted functions answer as ssqch serve does", async () => {
-	const { prefersMarkdown, copyOf } = await load(`${shared}\nexport { prefersMarkdown, copyOf };`);
+	const { prefersMarkdown, copyOf, pageOf } = await load(`${shared}\nexport { prefersMarkdown, copyOf, pageOf };`);
 	for (const accept of ["text/markdown", "text/markdown, text/html;q=0.9", "text/html, text/markdown;q=0.5", "*/*", "text/html,application/xhtml+xml,*/*;q=0.8", "text/markdown;q=0", ""]) assert.equal(prefersMarkdown(accept), ours(accept), accept);
 	for (const url of ["/", "/guide/intro/", "/about.html"]) assert.equal(copyOf(url), copyUrl(url), url);
 	assert.equal(copyOf("/guide/intro"), "/guide/intro/index.md");
 	assert.equal(copyOf("/app.css"), undefined);
+	// The Link header names the page as it's served: a folder's with its slash (Netlify, 2026-11-22).
+	for (const [asked, page] of [["/guide/intro", "/guide/intro/"], ["/guide/intro/", "/guide/intro/"], ["/about.html", "/about.html"], ["/", "/"]]) assert.equal(pageOf(asked), page, asked);
 });
 
 test("the Cloudflare Worker answers Markdown to an agent and the page to a browser", async () => {
@@ -52,6 +54,8 @@ test("the Netlify edge function answers Markdown to an agent and hands a browser
 		const md = await edge(new Request("https://trail.example/guide/", { headers: { accept: "text/markdown" } }));
 		assert.equal(md.headers.get("content-type"), "text/markdown; charset=utf-8");
 		assert.equal(await md.text(), "# Guide\n");
+		const bare = await edge(new Request("https://trail.example/guide", { headers: { accept: "text/markdown" } }));
+		assert.equal(bare.headers.get("link"), "<https://trail.example/guide/>; rel=\"canonical\"");
 		assert.equal(await edge(new Request("https://trail.example/guide/", { headers: { accept: "text/html" } })), undefined);
 		assert.equal(await edge(new Request("https://trail.example/missing/", { headers: { accept: "text/markdown" } })), undefined);
 	} finally {
