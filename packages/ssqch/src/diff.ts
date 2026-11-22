@@ -416,11 +416,13 @@ const UTF8 = new TextDecoder("utf-8", { fatal: true });
  * A URL with the characters a browser encodes itself written as themselves: `#%D9%83` is `#ك`,
  * `caf%C3%A9.png` is `café.png` and `%20` a space, as CommonMark's renderer and kramdown write the
  * same link (opensource.guide's Arabic pages). ASCII that means something in a URL (`%2F`, `%23`,
- * `%3F`) stays encoded: `a%2Fb` and `a/b` are different paths.
+ * `%3F`) stays encoded: `a%2Fb` and `a/b` are different paths. A `%` that doesn't start an escape
+ * is the same as `%25` (`100%` and `100%25`, as CommonMark writes it), but `%2541` stays: it's the
+ * text `%41`, where `%41` is `A`.
  */
 export function canonicalUrl(url: string): string {
 	if (!url.includes("%")) return url;
-	return url.replace(/(?:%[0-9A-Fa-f]{2})+/g, (run) => {
+	return url.replace(/%25(?![0-9A-Fa-f]{2})/g, "%").replace(/(?:%[0-9A-Fa-f]{2})+/g, (run) => {
 		const bytes = Uint8Array.from(run.slice(1).split("%"), (h) => Number.parseInt(h, 16));
 		let text: string;
 		try { text = UTF8.decode(bytes); } catch { return run; }

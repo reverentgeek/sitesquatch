@@ -415,4 +415,9 @@ test("a URL reads the same percent-encoded or not, where a browser would encode 
 	assert.equal(canonicalUrl("a%2Fb%23c%3Fd"), "a%2Fb%23c%3Fd");
 	assert.equal(canonicalUrl("x%FFy"), "x%FFy");
 	assert.equal(canonicalUrl("%C3%A9%2F"), "é%2F");
+	// A `%` that doesn't start an escape reads the same bare or as `%25`; one before two hex digits doesn't.
+	assert.equal(canonicalUrl("#sec-%25arrayiteratorprototype%25-object"), canonicalUrl("#sec-%arrayiteratorprototype%-object"));
+	assert.equal(canonicalUrl("/100%25"), "/100%");
+	assert.equal(canonicalUrl("/%2541"), "/%2541");
+	assert.equal(canonicalUrl("/%25%41"), canonicalUrl("/%%41"));
 });

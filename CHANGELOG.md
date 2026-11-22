@@ -23,6 +23,15 @@ where that version matches.
   (`llmsPlugin({ paths })`) points each page at the right one. Their output is the same until
   then.
 
+### Fixed
+- A `%` in a Markdown link or image URL that doesn't start an escape is written `%25`, as
+  CommonMark's reference implementation and markdown-it write it:
+  `[spec](https://tc39.es/ecma262/#sec-%arrayiteratorprototype%-object)` was an invalid URL. An
+  escape (`%2F`, `%C3%A9`) stays as it is, and a link hook's `link.href` is still the URL as the
+  page wrote it.
+- `ssqch diff` reads a bare `%` and `%25` as the same, where the `%` doesn't start an escape
+  (`/100%` and `/100%25`), as it already did the rest of percent-encoding.
+
 ## 0.13.1 - 2026-11-21
 
 ### Added
