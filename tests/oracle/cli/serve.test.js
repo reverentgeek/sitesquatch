@@ -507,7 +507,9 @@ test("serve_tells_before_build_what_changed", async () => {
 		"ssqch.config.js": "export default { dirs: { input: \"src\" }, beforeBuild: ({ changed }) => { globalThis.changes = changed === undefined ? \"everything\" : changed.join(\" \"); }, filters: { changes: () => globalThis.changes } };\n",
 		"src/index.jinja": "{{ changes() }}|one",
 	});
-	const log = path.join(dir, "serve.log");
+	// The log goes outside the project: the server watches its root, and a log line written while
+	// the edit lands was itself a change (`./src/index.jinja ./serve.log`, CI on Linux, 2026-11-22).
+	const log = path.join(tempDir("serve-changed-log"), "serve.log");
 	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
 	try {
 		const page = path.join(dir, "_site/index.html");
