@@ -15,6 +15,39 @@ the switch. The Rust left in `crates/` is what the `.wasm` files are built from,
 SDK. Comments that say a file is "from" or "ported from" `crates/...` or `plugins/...` name 0.7's
 source, on `release/0.7`.
 
+## What ssqch is for
+
+ssqch is for developers, and more and more for builders who work with a coding agent. What comes
+first is the least friction and a tool that's a delight to use, one that's genuinely useful to
+them (the owner, 2026-11-17 and 2026-11-22). Judge a design choice by that: does what the builder
+already has just work, does the error say what to fix, is the install one line, does `ssqch docs`
+have the answer an agent needs. Don't judge it by the size of the install, by "no Node", or by
+keeping the Rust: one binary with no runtime was an experiment, and 0.8 moved to Node because a
+site's own npm packages working unchanged mattered more.
+
+- **Its own design:** the best ideas from many generators and the gaps they leave (checking
+  content, knowing what a change did, errors that point at the spot, a site that agents can
+  read), and a clone of none. "Working with the blog", below, has the rules.
+- **Easy for everyone:** every option is documented, tested and learned by every user, so a
+  feature has to be worth that to all of them ("Gaps a move finds", below).
+- **Fun:** "If you're going to use a tool, make it fun to work with." "The Sasquatch voice",
+  below, says how.
+- **Speed and memory are "icing on the cake":** they're part of done ("Speed is part of done",
+  below), and not what the next piece of work is chosen for.
+
+When two pieces of work compete, this is the order:
+
+1. A bug, or a page that's silently wrong, in what ships.
+2. Friction any site meets: installing, starting, writing with the dev server, reading what a
+   command prints, deploying.
+3. What makes a site ready for the agents that read it.
+4. Documentation owed for what shipped: an agent can use only what `ssqch docs` answers.
+5. Moving in from another generator, by "Gaps a move finds".
+6. Bets, each waiting on its evidence.
+
+`research/TODO.md` opens with the same list ("What the list is measured against") and is in that
+order, and `research/positioning.md` has the reasons and what changed on 2026-11-17.
+
 ## Working with the blog
 
 The ReverentGeek blog in `../blog` (github.com/reverentgeek/blog) is the main real-world site and
@@ -58,15 +91,17 @@ change affects it.
   or copies ssqch's internals, doesn't count. Bugs in what ssqch already has are fixed as bugs.
   Why: ssqch is meant to be approachable and easy for everyone, with the best ideas from many
   frameworks, not a set of compatibility layers for each. Every option is documented, tested and
-  learned by every user, so it has to be worth that to all of them. In `research/TODO.md`, mark
-  each gap from a run **document**, **build** or **known gap**, with the reason.
+  learned by every user, so it has to be worth that to all of them. In `research/TODO.md`
+  ("Moving in: what the runs left, sorted"), mark each gap from a run **document**, **build** or
+  **known gap**, with the reason.
 - After a change that affects output, build the blog with the Node build and run its smoke tests:
   in `../blog`, `SSQCH_BIN=../ssqch/packages/ssqch/bin/ssqch.ts pnpm test`. The oracle has the
   blog's frozen output too (`node --test --test-name-pattern="^blog builds" sites.test.js` in
   `tests/oracle/`, where `../blog` and the local snapshot are there).
 - The two TODO lists coordinate the work. This repository's `research/TODO.md` marks what the
-  blog is waiting on with **Blog:**, and `../blog/TODO.md` marks what needs a change here with
-  **Needs ssqch:**. When work lands on one side, update both lists.
+  blog is waiting on with **Blog:**, and `../blog/notes/TODO.md` (the blog's `notes/` folder,
+  gitignored too) marks what needs a change here with **Needs ssqch:**. When work lands on one
+  side, update both lists.
 - A change that breaks existing sites goes under a "Breaking" heading in the changelog, saying
   what a site has to change. Then update the blog in the same session.
 - `../blog` has its own `CLAUDE.md` (run `pnpm run lint` after JavaScript changes). Follow it
@@ -199,6 +234,21 @@ Run from `packages/ssqch/` unless it says otherwise.
   in `BUILT_IN`; a bundled library that looks for files beside itself goes in `KNOWN_LOOKUPS`.
 - **Style:** tabs, double quotes and semicolons, as the rest of the repository's JavaScript;
   long lines are fine. Comments say why, in the voice of the docs.
+
+## Skills
+
+Three procedures are skills in `.claude/skills/`, each a `SKILL.md` that an agent loads when the
+work calls for it (or reads as a page, if it doesn't load skills):
+
+- `release`: a release from the commit to the blog's bump, with what to do when a step fails.
+  `scripts/preflight.mjs` checks a release commit for what the workflow would refuse its tag for.
+- `done-check`: what "done" means for a change, as one pass over "Commands", "Rules" and
+  "Conventions". `scripts/checks.mjs` lists the checks the changed files call for.
+- `fresh-run`: an agent that has never seen ssqch builds a new site or moves a real one, and how
+  its findings are sorted into `research/TODO.md`. Its briefs are in `references/`.
+
+This file says why each rule is as it is; a skill is the order to do things in. When one changes,
+change the other.
 
 ## Releasing
 
