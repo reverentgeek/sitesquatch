@@ -833,6 +833,37 @@ fn figures(events: Vec<Event>) -> Vec<Event> {
     out
 }
 
+/// A `%` that doesn't start an escape (`%ar`, `100%`) as `%25`, as CommonMark's reference
+/// implementation and markdown-it write it (mdurl); `escape_href` encodes the rest and leaves every
+/// `%` as it is, which makes `#sec-%arrayiteratorprototype%-object` an invalid URL.
+fn bare_percents(url: &str) -> Cow<'_, str> {
+    let b = url.as_bytes();
+    let escape = |i: usize| i + 2 < b.len() && b[i + 1].is_ascii_hexdigit() && b[i + 2].is_ascii_hexdigit();
+    if !(0..b.len()).any(|i| b[i] == b'%' && !escape(i)) {
+        return Cow::Borrowed(url);
+    }
+    let mut out = String::with_capacity(url.len() + 4);
+    for (i, c) in url.char_indices() {
+        if c == '%' && !escape(i) {
+            out.push_str("%25");
+        } else {
+            out.push(c);
+        }
+    }
+    Cow::Owned(out)
+}
+
+/// A link's event with its URL's bare `%`s encoded, for pulldown-cmark's writer.
+fn encode_link<'a>(event: Event<'a>) -> Event<'a> {
+    match event {
+        Event::Start(Tag::Link { link_type, dest_url, title, id }) if matches!(bare_percents(&dest_url), Cow::Owned(_)) => {
+            let fixed = bare_percents(&dest_url).into_owned();
+            Event::Start(Tag::Link { link_type, dest_url: fixed.into(), title, id })
+        }
+        other => other,
+    }
+}
+
 fn trim_url(mut url: &str) -> &str {
     loop {
         let before = url;
@@ -991,7 +1022,7 @@ impl Writer<'_, '_> {
 
     fn write<'a>(&mut self, events: &[Event<'a>], out: &mut String) -> Result<()> {
         let mut plain: Vec<Event<'a>> = Vec::new();
-        let flush = |plain: &mut Vec<Event<'a>>, out: &mut String| html::push_html(out, plain.drain(..));
+        let flush = |plain: &mut Vec<Event<'a>>, out: &mut String| html::push_html(out, plain.drain(..).map(encode_link));
         let mut i = 0;
         while i < events.len() {
             match &events[i] {
@@ -1048,7 +1079,7 @@ impl Writer<'_, '_> {
                         out.push_str(self.hook("hooks/image", "image", image)?.trim_end());
                     } else {
                         out.push_str("<img src=\"");
-                        escape_href(&mut *out, dest_url).ok();
+                        escape_href(&mut *out, &bare_percents(dest_url)).ok();
                         out.push_str("\" alt=\"");
                         escape_html(&mut *out, &alt).ok();
                         out.push('"');
@@ -1860,6 +1891,10 @@ mod tests {
     fn urls_are_percent_encoded() {
         let src = "[a](../start/#كتابة-ملف \"T & c\") [b](/x?a=1&b=2) <ranger@example.com> ![c](/café.png)\n";
         assert_eq!(md(src), "<p><a href=\"../start/#%D9%83%D8%AA%D8%A7%D8%A8%D8%A9-%D9%85%D9%84%D9%81\" title=\"T &amp; c\">a</a> <a href=\"/x?a=1&amp;b=2\">b</a> <a href=\"mailto:ranger@example.com\">ranger@example.com</a> <img src=\"/caf%C3%A9.png\" alt=\"c\"></p>\n");
+        // A `%` that doesn't start an escape is `%25`, as commonmark.js and markdown-it write it;
+        // an escape stays as it is, and the link's text is the page's.
+        let src = "[a](https://tc39.es/ecma262/#sec-%arrayiteratorprototype%-object) [b](/100%) [c](/a%2Fb) [d](/%zz%4) ![e](/50%off.png) <https://example.com/%ar>\n";
+        assert_eq!(md(src), "<p><a href=\"https://tc39.es/ecma262/#sec-%25arrayiteratorprototype%25-object\">a</a> <a href=\"/100%25\">b</a> <a href=\"/a%2Fb\">c</a> <a href=\"/%25zz%254\">d</a> <img src=\"/50%25off.png\" alt=\"e\"> <a href=\"https://example.com/%25ar\">https://example.com/%ar</a></p>\n");
     }
 
     #[test]
