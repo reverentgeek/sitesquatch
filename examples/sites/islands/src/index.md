@@ -1,6 +1,7 @@
 ---
 title: Islands of interactivity
 layout: base.jinja
+description: "A static page with two islands: the next hike's time in your own time zone and a like button, each loading its script only where it's used."
 ---
 This page is static HTML with two islands. Each is a custom element: a tag with a script that loads only on the pages that use it.
 

@@ -1,5 +1,5 @@
 {
-  "version": "0.12.0",
+  "version": "0.13.2",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -9,7 +9,7 @@
     "pages": {
       "written": 4,
       "templates": 4,
-      "bytes": 12259,
+      "bytes": 13014,
       "new": null,
       "gone": null
     },
@@ -42,7 +42,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages     4 written from 4 templates, 12.3 KB\n  Copied    11 files, 34.9 KB\n  Elements  4 defined, 4 used on 3 pages\n  Links     35 checked, 0 broken\n  Output    dist: 16 files, 47.6 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages     4 written from 4 templates, 13.0 KB\n  Copied    11 files, 34.9 KB\n  Elements  4 defined, 4 used on 3 pages\n  Links     35 checked, 0 broken\n  Output    dist: 16 files, 48.4 KB\n",
   "files": {
     "about/index.html": "text",
     "elements/like-button.css": "text",

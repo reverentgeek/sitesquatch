@@ -1,5 +1,5 @@
 {
-  "version": "0.12.0",
+  "version": "0.13.2",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -9,7 +9,7 @@
     "pages": {
       "written": 14,
       "templates": 10,
-      "bytes": 49447,
+      "bytes": 50624,
       "new": null,
       "gone": null
     },
@@ -49,7 +49,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   14 written from 10 templates, 49.4 KB\n  Links   143 checked, 0 broken\n  Output  dist: 17 files, 53.6 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   14 written from 10 templates, 50.6 KB\n  Links   143 checked, 0 broken\n  Output  dist: 17 files, 54.8 KB\n",
   "files": {
     "2024/01/15/hello-squatch.html": "text",
     "blog/2024/01/15/hello-squatch/index.html": "text",

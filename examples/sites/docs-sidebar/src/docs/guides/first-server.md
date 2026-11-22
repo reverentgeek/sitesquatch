@@ -1,5 +1,6 @@
 ---
 title: Your first server
+description: "Write a Pinecone server in a few lines of JavaScript, run it with pinecone run, and what to do when port 8080 is taken."
 ---
 ## Write the server
 

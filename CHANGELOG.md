@@ -9,6 +9,13 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Changed
+- `ssqch patrol`'s `copy-differs` leaves a page's `<nav>` elements out when it compares the page
+  with its Markdown copy: breadcrumbs, a pager or a map of the site inside `<main>` is navigation
+  the layout adds, not what the page says. A layout's map that isn't in a `<nav>` still counts.
+
 ## 0.13.2 - 2026-11-22
 
 ### Changed

@@ -53,6 +53,18 @@ test("each kind of trouble has its code", () => {
 	assert.equal(p.pages, 4, "the redirect isn't a page");
 });
 
+test("a copy is compared with its page without the page's navigation", () => {
+	const map = `<nav aria-label="The map"><ul>${Array.from({ length: 40 }, (_, i) => `<li><a href="/docs/${i}/">Trail ${i}</a>: where the ranger counts pine cones on stretch ${i} of the Old Growth loop</li>`).join("")}</ul></nav>`;
+	const files = (around: string) => built({
+		"index.html": page("Docs", `<p>${TEXT}</p>${around}`, "<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">"),
+		"index.md": `# Docs\n\n${TEXT}\n`,
+	});
+	const differs = (dir: string) => patrol(dir).findings.some((f) => f.code === "copy-differs");
+	assert.equal(differs(files(map)), false, "a map in a <nav> is navigation");
+	// The same map as the page's own text is what the page says, and the copy leaves it out.
+	assert.equal(differs(files(map.replace(/<\/?nav[^>]*>/g, ""))), true);
+});
+
 test("a folder that isn't there says so", () => {
 	assert.throws(() => patrol(path.join(os.tmpdir(), "no-such-build-folder")), /isn't there: build the site first/);
 });

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="The trail camera&#39;s photos, listed from a folder by files(), in a gallery island: click one to see it larger, then the arrow keys.">
 <title>Trail cam | Squatch Trails</title>
 <style>
   /* Ranger Station '76: soft white (green charcoal in dark mode), pine headings and navigation,
@@ -25,6 +26,7 @@
 </head>
 <body>
 <nav><a href="/repo/">Home</a> <a href="/repo/trails/">Trails</a> <a href="/repo/trail-cam/">Trail cam</a> <a href="/repo/about/">About</a></nav>
+<main>
 <h1>Trail cam</h1>
 <p>4 photos from the trail camera, listed from the folder by <code>files()</code> in <code>src/_data/trailCam.js</code>. The gallery is an island: click a photo to see it larger, then use the arrow keys, and Escape to close.</p>
 
@@ -61,6 +63,7 @@
     
   </ul>
 </photo-gallery>
+</main>
 <script type="module">const idle=window.requestIdleCallback||((f)=>setTimeout(f,200));for(const[tag,src,when]of[["photo-gallery","/repo/elements/photo-gallery.js","idle"]]){if(when==="idle"){idle(()=>import(src));continue}const seen=new IntersectionObserver((entries)=>{if(entries.some((e)=>e.isIntersecting)){seen.disconnect();import(src)}},{rootMargin:"200px"});document.querySelectorAll(tag).forEach((el)=>seen.observe(el))}</script>
 </body>
 </html>

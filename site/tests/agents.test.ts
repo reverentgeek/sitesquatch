@@ -56,7 +56,7 @@ test("each copy has the same text as its page", { skip: !built }, () => {
 		const html = readFileSync(path.join(dist, url, "index.html"), "utf8");
 		const title = /<h1 data-copy[^>]*>([\s\S]*?)<\/h1>/.exec(html)?.[1];
 		// The page's own text runs from its data-copy <div> to what the layout adds after it.
-		const body = /<div data-copy[^>]*>([\s\S]*?)<\/div>\s*(?=<h2 id="?the-map|<aside class="?see-it|<nav class="?pager)/.exec(html)?.[1];
+		const body = /<div data-copy[^>]*>([\s\S]*?)<\/div>\s*(?=<nav aria-labelledby="?the-map|<aside class="?see-it|<nav class="?pager)/.exec(html)?.[1];
 		assert.ok(title !== undefined && body !== undefined, `${url}: no data-copy title and text`);
 		const copy = readFileSync(path.join(dist, copyOf(url)), "utf8");
 		assert.equal(text(markdown(copy)), text(`<h1>${title}</h1>${body}`), `${copyOf(url)} doesn't read as ${url} does`);

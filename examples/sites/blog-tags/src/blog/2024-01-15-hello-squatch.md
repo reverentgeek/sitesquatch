@@ -1,5 +1,6 @@
 ---
 title: Hello, Squatch
+description: "Welcome to the Squatch blog: forest snacks, the tools we build, and how we forage for pine cones in code."
 date: 2024-01-15
 tags: [announcements, pine-cones]
 aliases: [/2024/01/15/hello-squatch.html]

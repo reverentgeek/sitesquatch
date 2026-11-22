@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{{#if description}}<meta name="description" content="{{description}}">{{/if}}
 <title>{{#if title}}{{title}} | {{/if}}squatchrc reference</title>
 <style>
   /* Ranger Station '76: soft white (green charcoal in dark mode), pine headings and navigation,
@@ -25,6 +26,8 @@
 </head>
 <body>
 <p><a href="/reference/">squatchrc reference</a></p>
+<main>
 {{{content}}}
+</main>
 </body>
 </html>

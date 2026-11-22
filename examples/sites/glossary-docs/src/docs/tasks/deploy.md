@@ -1,5 +1,6 @@
 ---
 title: Deploy your first pod
+description: "What you need before you begin, and the one squatchctl command that deploys snack-finder as your first pod."
 weight: 3
 aliases: /docs/getting-started/
 ---

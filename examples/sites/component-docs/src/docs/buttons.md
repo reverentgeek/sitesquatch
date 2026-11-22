@@ -1,5 +1,6 @@
 ---
 title: Buttons
+description: "The .btn class for buttons and links, its outline style, and the Sass variables that restyle every button at once."
 ---
 Use `.btn` on a `<button>` or a link.
 

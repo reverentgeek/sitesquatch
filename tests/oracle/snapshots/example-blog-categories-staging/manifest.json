@@ -1,5 +1,5 @@
 {
-  "version": "0.12.0",
+  "version": "0.13.2",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -9,7 +9,7 @@
     "pages": {
       "written": 14,
       "templates": 10,
-      "bytes": 39200,
+      "bytes": 40646,
       "new": null,
       "gone": null
     },
@@ -48,7 +48,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   14 written from 10 templates, 39.2 KB\n  Links   108 checked, 0 broken\n  Output  dist: 15 files, 41.0 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   14 written from 10 templates, 40.6 KB\n  Links   108 checked, 0 broken\n  Output  dist: 15 files, 42.5 KB\n",
   "files": {
     "blog/flat-config/index.html": "text",
     "blog/meetup-recap/index.html": "text",

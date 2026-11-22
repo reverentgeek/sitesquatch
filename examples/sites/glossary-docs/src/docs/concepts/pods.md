@@ -1,5 +1,6 @@
 ---
 title: Pods
+description: "A pod is the unit you deploy, on one node: its lifecycle from pending to finished, and why squatches in different pods can't share snacks."
 weight: 1
 aliases: [/docs/pods/, /concepts/pods.html]
 ---

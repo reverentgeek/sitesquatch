@@ -2,6 +2,7 @@
 <html lang="{{ page.lang | default: 'en' }}">
 <head>
   <meta charset="utf-8">
+  {% assign description = page.description | default: site.description %}{% if description %}<meta name="description" content="{{ description | escape }}">{% endif %}
   <title>{% if page.title %}{{ page.title }} | {% endif %}{{ site.title }}</title>
   <link rel="stylesheet" href="/assets/guides.css">
 </head>

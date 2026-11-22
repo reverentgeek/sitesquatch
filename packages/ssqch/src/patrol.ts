@@ -229,9 +229,11 @@ export function patrol(dir: string): Patrol {
 		if ([...linksIn(md), ...[...prose(md).matchAll(/<(?:img|a|source)\b[^>]*\s(?:src|href)\s*=\s*["']([^"']+)["']/gi)].map((m) => m[1])].some((href) => !relative(href) && fileOf(href) === "")) say("copy-broken", "Markdown copies that link the site's own files that aren't in the build (an image's source path, say)", copy);
 		// The copy says what the page says: most of each one's words are in the other.
 		if (content) {
-			const page = words(textOf(content.html));
+			// Navigation isn't what the page says: a layout's `<nav>` inside `<main>` (breadcrumbs, a
+			// pager, a map of the docs) is left out, and the rest a layout adds (an "Edit" link, a
+			// date) is why the page's side asks for half.
+			const page = words(textOf(content.html.replace(/<nav\b[\s\S]*?<\/nav\s*>/gi, " ")));
 			const own = words(textOf(markdown(md)));
-			// A layout can add to the page (breadcrumbs, a pager), so the page's side asks for half.
 			if (page.length >= 20 && (covered(own, page) < 0.8 || covered(page, own) < 0.5)) say("copy-differs", "Markdown copies that don't say what their page says (under 80% of the copy's words on the page, or under half the page's in the copy)", copy);
 		}
 	}

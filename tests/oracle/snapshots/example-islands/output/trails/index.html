@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Every trail near the ranger station with its miles and level, and a filter island that loads only when it scrolls into view.">
 <title>Trails | Squatch Trails</title>
 <style>
   /* Ranger Station '76: soft white (green charcoal in dark mode), pine headings and navigation,
@@ -25,6 +26,7 @@
 </head>
 <body>
 <nav><a href="/">Home</a> <a href="/trails/">Trails</a> <a href="/trail-cam/">Trail cam</a> <a href="/about/">About</a></nav>
+<main>
 <h1>Trails</h1>
 <p>All 5 trails are in the page. The filter box is an island that loads when it scrolls into view.</p>
 
@@ -45,6 +47,7 @@
 </trail-filter>
 
 <like-button key="trails"><a href="/about/">How likes work</a></like-button>
+</main>
 <script type="module" src="/elements/like-button.js"></script>
 <script type="module">const idle=window.requestIdleCallback||((f)=>setTimeout(f,200));for(const[tag,src,when]of[["trail-filter","/elements/trail-filter.js","visible"]]){if(when==="idle"){idle(()=>import(src));continue}const seen=new IntersectionObserver((entries)=>{if(entries.some((e)=>e.isIntersecting)){seen.disconnect();import(src)}},{rootMargin:"200px"});document.querySelectorAll(tag).forEach((el)=>seen.observe(el))}</script>
 </body>

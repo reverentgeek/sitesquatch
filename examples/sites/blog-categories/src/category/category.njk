@@ -8,6 +8,7 @@ permalink: "{{ category.url }}"
 excludeFromCollections: true
 computed:
   title: "{{ category.name }}"
+  description: "Squatch Lint posts in {{ category.name }}{% if category.number > 1 %}, page {{ category.number }} of {{ category.pages }}{% endif %}."
 ---
 <h1>{{ category.name }}{% if category.pages > 1 %} <small>(page {{ category.number }} of {{ category.pages }})</small>{% endif %}</h1>
 {% set posts = category.posts %}
