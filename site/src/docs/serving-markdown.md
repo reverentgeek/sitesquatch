@@ -144,4 +144,4 @@ A copy at its own address is a second version of the page, which a search engine
 
 Cloudflare allows 100 rules in `_headers`; Netlify's apply only to the files it serves, not to an edge function's answers (which set their own, above).
 
-`ssqch patrol` checks the copies themselves; whether a host answers `Accept: text/markdown` needs the live site, which it doesn't check yet.
+`ssqch patrol` checks the copies themselves, and with `--url https://example.com`, whether the deployed site answers an agent with the copy, with `Vary: Accept`, and a browser with the page ([Patrol](patrol.md#the-live-site)).

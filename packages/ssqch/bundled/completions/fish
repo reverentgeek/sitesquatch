@@ -118,6 +118,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -s v -l verbose -d 'Al
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l top -d 'How many of the heaviest pages and files to list (0 for none)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l format -d 'text or json' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand patrol" -l url -d 'Also ask the deployed site at this address about ten of the build\'s pages, as an agent and as a browser' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand patrol" -l format -d 'text or json' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l root -d 'Project root (defaults to the current directory)' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand patrol" -l root -d 'Project root (defaults to the current directory)' -r -F

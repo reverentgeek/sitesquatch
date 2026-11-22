@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { patrol, patrolJson, patrolText } from "./patrol.ts";
+import { patrol, patrolJson, patrolLive, patrolText } from "./patrol.ts";
 
 const built = (files: Record<string, string>) => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-patrol-"));
@@ -115,4 +115,50 @@ test("an llms.txt that llms.txt links is checked too, and its pages count for co
 	});
 	const codes = patrol(dir).findings.map((f) => `${f.code} ${f.files.join(",")}`);
 	assert.deepEqual(codes, ["llms-broken https://trail.example/docs/gone.md"]);
+});
+
+// `--url`: a host for the tests, answering as `serve` asks (Markdown for an agent, by its Accept).
+const host = (serve: (path: string, accept: string) => { status?: number; type: string; vary?: string }) => (async (input: string | URL | Request, init?: RequestInit) => {
+	const u = new URL(String(input));
+	const accept = new Headers(init?.headers).get("accept") ?? "";
+	const r = serve(u.pathname, accept);
+	return new Response("x", { status: r.status ?? 200, headers: { "Content-Type": r.type, ...(r.vary ? { Vary: r.vary } : {}) } });
+}) as typeof fetch;
+const trail = () => built(Object.fromEntries(Array.from({ length: 14 }, (_, i) => [[`t${i}/index.html`, page(`Trail ${i}`, `<p>${TEXT}</p>`, `<link rel="alternate" type="text/markdown" href="/t${i}/index.md">`)], [`t${i}/index.md`, `# Trail ${i}\n\n${TEXT}\n`]]).flat()));
+
+test("--url asks the live site about ten pages, the same ten each time, as an agent and as a browser", async () => {
+	const asked: string[] = [];
+	const good = host((path, accept) => {
+		asked.push(path);
+		if (path.endsWith(".md")) return { type: "text/markdown; charset=utf-8" };
+		return accept.startsWith("text/markdown") ? { type: "text/markdown; charset=utf-8", vary: "Accept-Encoding, Accept" } : { type: "text/html" };
+	});
+	const p = await patrolLive(patrol(trail()), "https://trail.example/", good);
+	assert.deepEqual(p.findings.filter((f) => f.code.startsWith("live-")), []);
+	assert.deepEqual(p.live, { url: "https://trail.example", asked: 10 });
+	// Spread over the sorted addresses: t0, t1, t10 ... (14 pages, every 1.4th).
+	assert.equal(new Set(asked.filter((a) => !a.endsWith(".md"))).size, 10);
+	assert.ok(patrolText(p, "dist").includes("Live at https://trail.example: asked about 10 pages"));
+	assert.deepEqual(patrolJson(p, "dist").live, { url: "https://trail.example", asked: 10 });
+	// Without --url, no live key: the report is as it was.
+	assert.equal("live" in patrolJson(patrol(trail()), "dist"), false);
+});
+
+test("--url names what the host gets wrong", async () => {
+	const codes = async (serve: Parameters<typeof host>[0]) => (await patrolLive(patrol(trail()), "https://trail.example", host(serve))).findings.map((f) => f.code).filter((c) => c.startsWith("live-"));
+	// A static host: the page whatever is asked.
+	assert.deepEqual(await codes((path) => ({ type: path.endsWith(".md") ? "text/markdown" : "text/html" })), ["live-no-markdown"]);
+	// Markdown for an agent, but no Vary: Accept.
+	assert.deepEqual(await codes((path, accept) => ({ type: path.endsWith(".md") || accept.startsWith("text/markdown") ? "text/markdown" : "text/html" })), ["live-no-vary"]);
+	// Markdown for everyone.
+	assert.deepEqual(await codes(() => ({ type: "text/markdown", vary: "Accept" })), ["live-browser-markdown"]);
+	// The build isn't deployed: its copies aren't there.
+	assert.deepEqual(await codes((path) => (path.endsWith(".md") ? { status: 404, type: "text/html" } : { type: "text/html" })), ["live-copy-missing"]);
+});
+
+test("--url that isn't an address, or a site that doesn't answer, is an error", async () => {
+	await assert.rejects(patrolLive(patrol(trail()), "trail.example"), /--url trail\.example: not an address/);
+	await assert.rejects(patrolLive(patrol(trail()), "ftp://trail.example"), /over https or http/);
+	const down = (async () => { throw new TypeError("fetch failed"); }) as typeof fetch;
+	await assert.rejects(patrolLive(patrol(trail()), "https://trail.example", down), /https:\/\/trail\.example\/t0\/index\.md: the site didn't answer \(fetch failed\)/);
 });

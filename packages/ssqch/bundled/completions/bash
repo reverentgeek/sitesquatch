@@ -395,12 +395,16 @@ _ssqch() {
             return 0
             ;;
         ssqch__subcmd__patrol)
-            opts="-o -q -v -h --format --root --output --base --offline --env --quiet --verbose --help"
+            opts="-o -q -v -h --url --format --root --output --base --offline --env --quiet --verbose --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --url)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 --format)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0

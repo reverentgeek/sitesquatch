@@ -28,7 +28,11 @@ export interface Patrol {
 	/** The signs it found: the files agents and crawlers look for first. */
 	signs: { robots: boolean; sitemap: boolean; llms: boolean; notFound: boolean };
 	copies: number;
+	/** Each page with a Markdown copy, by address (`/about/`, `/about/index.md`), for `--url`. */
+	withCopies: Array<{ page: string; copy: string }>;
 	findings: Finding[];
+	/** What `--url` found on the live site: its address and how many pages it asked about. */
+	live?: { url: string; asked: number };
 }
 
 /** llms.txt over this many characters is more than an agent reads before it decides (the specs' 50,000). */
@@ -191,6 +195,7 @@ export function patrol(dir: string): Patrol {
 
 	// Each page, and its copy.
 	let copies = 0;
+	const withCopies: Array<{ page: string; copy: string }> = [];
 	const pageUrls: string[] = [];
 	for (const file of pages) {
 		const html = read(file);
@@ -224,6 +229,7 @@ export function patrol(dir: string): Patrol {
 		}
 		if (!copy) continue;
 		copies++;
+		withCopies.push({ page: urlOf(file), copy: `/${copy}` });
 		const md = read(copy);
 		if (md.length > COPY_CUT) say("copy-cut-off", `Markdown copies over ${count(COPY_CUT)} characters, where Claude Code's fetch stops reading`, copy);
 		else if (md.length > COPY_LONG) say("copy-long", `Markdown copies over ${count(COPY_LONG)} characters: long for one fetch`, copy);
@@ -259,8 +265,57 @@ export function patrol(dir: string): Patrol {
 		pages: pageUrls.length,
 		signs: { robots: robots !== undefined, sitemap: sitemapFile !== undefined || Boolean(sitemapLine), llms: llms !== undefined, notFound: has.has("404.html") },
 		copies,
+		withCopies,
 		findings: [...found.values()].map((f) => ({ ...f, files: [...new Set(f.files)] })),
 	};
+}
+
+/** How many pages `--url` asks the live site about: enough to see how the host answers, few enough to be quick and polite. */
+const LIVE_PAGES = 10;
+/** What a browser sends (Chrome's, for a page), and what an agent that wants Markdown sends. */
+const BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+const AGENT_ACCEPT = "text/markdown, text/html;q=0.9";
+
+/**
+ * `ssqch patrol --url`: asks the deployed site at `url` about up to ten of the build's pages with a
+ * Markdown copy (the same ones each time: spread evenly over their sorted addresses), the way
+ * agents and browsers do. An agent's `Accept: text/markdown` should get the copy, with `Vary:
+ * Accept`; a browser's should still get the page; and each copy should be at its own address.
+ * Adds what it finds to `p`'s findings (its files are addresses on the site).
+ */
+export async function patrolLive(p: Patrol, url: string, fetcher: typeof fetch = fetch): Promise<Patrol> {
+	let base: URL;
+	try { base = new URL(url); } catch { bail(`--url ${url}: not an address (https://example.com)`); }
+	if (base.protocol !== "https:" && base.protocol !== "http:") bail(`--url ${url}: patrol asks a site over https or http`);
+	const root = base.href.replace(/\/+$/, "");
+	const pick = p.withCopies.length <= LIVE_PAGES ? p.withCopies : Array.from({ length: LIVE_PAGES }, (_, i) => p.withCopies[Math.floor((i * p.withCopies.length) / LIVE_PAGES)]);
+	const found = new Map(p.findings.map((f) => [f.code, { ...f, files: [...f.files] }]));
+	const say = (code: string, message: string, address: string) => {
+		const f = found.get(code) ?? { code, message, files: [] };
+		f.files.push(address);
+		found.set(code, f);
+	};
+	const ask = async (address: string, accept: string) => {
+		try {
+			return await fetcher(root + address, { headers: { Accept: accept, "User-Agent": "ssqch-patrol" }, redirect: "follow", signal: AbortSignal.timeout(15_000) });
+		} catch (e) {
+			bail(`${root}${address}: the site didn't answer (${e instanceof Error ? e.message : String(e)})`);
+		}
+	};
+	const markdown = (r: Response) => /^text\/markdown\b/i.test(r.headers.get("content-type") ?? "");
+	for (const { page, copy } of pick) {
+		const own = await ask(copy, "*/*");
+		await own.body?.cancel();
+		if (!own.ok) { say("live-copy-missing", "copies the build has that the live site doesn't serve at their own address (deploy the build, or check the host's rules)", copy); continue; }
+		const agent = await ask(page, AGENT_ACCEPT);
+		await agent.body?.cancel();
+		if (!markdown(agent)) say("live-no-markdown", "pages that answer an agent's `Accept: text/markdown` with HTML: it gets the page's chrome, not the copy (`ssqch docs \"serving markdown\"` has the host's few lines)", page);
+		else if (!/(^|,)\s*accept\s*(,|$)/i.test(agent.headers.get("vary") ?? "")) say("live-no-vary", "Markdown answers without `Vary: Accept`: a cache can hand the Markdown to a browser, or the page to an agent", page);
+		const browser = await ask(page, BROWSER_ACCEPT);
+		await browser.body?.cancel();
+		if (markdown(browser)) say("live-browser-markdown", "pages that answer a browser with Markdown: people get the copy, not the page", page);
+	}
+	return { ...p, findings: [...found.values()], live: { url: root, asked: pick.length } };
 }
 
 /** The report, for people: the signs, then each kind of finding with up to five of its files. */
@@ -268,6 +323,7 @@ export function patrolText(p: Patrol, shown: string): string {
 	const sign = (name: string, there: boolean) => `${name} ${there ? "posted" : "missing"}`;
 	let out = `Patrol of ${shown}: ${p.pages} page${p.pages === 1 ? "" : "s"}, ${p.copies} with a Markdown copy\n`;
 	out += `  ${[sign("robots.txt", p.signs.robots), sign("sitemap", p.signs.sitemap), sign("llms.txt", p.signs.llms), sign("404.html", p.signs.notFound)].join(", ")}\n`;
+	if (p.live) out += `  Live at ${p.live.url}: asked about ${p.live.asked} page${p.live.asked === 1 ? "" : "s"} as an agent and as a browser\n`;
 	if (!p.findings.length) return `${out}\nAll clear: nothing on the trail for an agent to trip on.\n`;
 	out += "\n";
 	for (const f of p.findings) {
@@ -283,5 +339,5 @@ export function patrolText(p: Patrol, shown: string): string {
 
 /** The report as JSON (`schemaVersion` 1). */
 export function patrolJson(p: Patrol, output: string): Record<string, unknown> {
-	return { schemaVersion: 1, output, pages: p.pages, copies: p.copies, signs: p.signs, warnings: p.findings.map((f) => ({ code: f.code, message: f.message, files: f.files })) };
+	return { schemaVersion: 1, output, pages: p.pages, copies: p.copies, signs: p.signs, ...(p.live ? { live: p.live } : {}), warnings: p.findings.map((f) => ({ code: f.code, message: f.message, files: f.files })) };
 }

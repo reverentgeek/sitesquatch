@@ -181,6 +181,7 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (patrol)
 _arguments "${_arguments_options[@]}" : \
+'--url=[Also ask the deployed site at this address about ten of the build'\''s pages, as an agent and as a browser]:URL:_default' \
 '--format=[text or json]:FORMAT:_default' \
 '--root=[Project root (defaults to the current directory)]:ROOT:_files' \
 '-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \

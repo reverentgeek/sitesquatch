@@ -170,6 +170,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
             cand --help 'Print help'
         }
         &'ssqch;patrol'= {
+            cand --url 'Also ask the deployed site at this address about ten of the build''s pages, as an agent and as a browser'
             cand --format 'text or json'
             cand --root 'Project root (defaults to the current directory)'
             cand -o 'Override the output directory (relative to the root)'

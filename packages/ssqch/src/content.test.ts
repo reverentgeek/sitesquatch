@@ -8,6 +8,10 @@ test("entities_decode_and_others_stay", () => {
 	// An object's own keys aren't entities: `&constructor;` stays as written.
 	assert.equal(decodeEntities("Use &constructor; and &toString; here"), "Use &constructor; and &toString; here");
 	assert.equal(decodeEntities("&#xD800; &#1114112;"), "&#xD800; &#1114112;");
+	// Every name HTML has, as a browser shows it (the blog's topic pages wrote `&middot;`), digits too.
+	assert.equal(decodeEntities("3 posts &middot; all &mdash; &frac12; &hellip; &copy;"), "3 posts · all — ½ … ©");
+	// A name HTML doesn't have stays as written.
+	assert.equal(decodeEntities("&pinecone; &Middot;"), "&pinecone; &Middot;");
 });
 
 // A heading's own inline code is part of its text (`## The \`toc\` filter`): six of
