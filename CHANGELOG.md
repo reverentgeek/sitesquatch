@@ -9,6 +9,20 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Changed
+- Liquid's `where` looks a value up instead of going through the whole list each time, when the
+  list's items are plain objects and the values are text, numbers or `nil`: a multilingual layout
+  that finds each language's pages (`site.articles | where: "lang", lang` in a loop) builds about
+  a third faster (the bench's Liquid case, 1.63 s to 1.07 s; opensource.guide, 1.30 s to 1.05 s,
+  with the same output). The answers are liquidjs' own, and each page looks again, so a list a
+  site changes between pages is read as it is.
+- The starters' layouts link the `llms.txt` that covers each page, `llmsTxt(page.url)`, in
+  place of `/llms.txt`, so a starter site that gives a part of itself an `llms.txt` of its own
+  (`llmsPlugin({ paths })`) points each page at the right one. Their output is the same until
+  then.
+
 ## 0.13.1 - 2026-11-21
 
 ### Added

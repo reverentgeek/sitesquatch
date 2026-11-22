@@ -627,15 +627,18 @@ const round = (n: number) => Math.sign(n) * Math.round(Math.abs(n));
  * way liquidjs does (its scope's `findScope` and `readProperty`: `size`, `first`, drops, methods)
  * and compares with its `equals`, so the answers are the same. Anything else (strict variables, a
  * `[x]` in the property, an item that isn't an object, a value that's a promise) goes to liquidjs'
- * own. expressjs.com's layouts call `where` 56 times a page over 380 items: its idiomatic port built
- * in 7.4 s with liquidjs' `where` and in 1.06 s with a config filter like this one (ex #2).
+ * own. opensource.guide's layouts call `where` 56 times a page over 380 items: its idiomatic port built
+ * in 7.4 s with liquidjs' `where` and in 1.06 s with a config filter like this one (osg #2).
  */
 function fastWhere(liquid: Liquid): void {
 	const { Tokenizer, TypeGuards, evalTokenValue, toValueSync, isTruthy, toValue } = liquidjs();
 	const comparable = (v: any) => v && typeof v.equals === "function" && typeof v.gt === "function" && typeof v.geq === "function" && typeof v.lt === "function" && typeof v.leq === "function";
 	const SLOW = Symbol("slow");
+	const primitive = (v: unknown) => v === null || (typeof v !== "object" && typeof v !== "function");
 	// liquidjs' `equals`, synchronous; SLOW when a drop answers with something else.
 	const equals = (lhs: any, rhs: any): boolean | typeof SLOW => {
+		// Two primitives (the usual `where: "lang", "en"`) aren't drops, so `equals` is `===`.
+		if (primitive(lhs) && primitive(rhs)) return lhs === rhs;
 		if (comparable(lhs)) { const r = lhs.equals(rhs); return typeof r === "boolean" ? r : SLOW; }
 		if (comparable(rhs)) { const r = rhs.equals(lhs); return typeof r === "boolean" ? r : SLOW; }
 		lhs = toValue(lhs);
@@ -651,6 +654,54 @@ function fastWhere(liquid: Liquid): void {
 		return lhs === rhs;
 	};
 	const isAsync = (v: any) => v !== null && typeof v === "object" && (typeof v.then === "function" || typeof v.next === "function");
+	// liquidjs' `readProperty`, without its general steps where they can't change the answer: on a
+	// plain object (no `toLiquid`, not a drop or a list), a key that isn't `size`, `first` or
+	// `last` is the property itself, unless it's a function, which liquidjs calls.
+	const NOT_PLAIN = Symbol("not plain");
+	const plainRead = (ctx: any, obj: any, key: unknown): unknown => {
+		if (typeof key === "string" && key !== "size" && key !== "first" && key !== "last" && obj !== null && typeof obj === "object") {
+			const proto = Object.getPrototypeOf(obj);
+			if ((proto === Object.prototype || proto === null) && typeof obj.toLiquid !== "function") {
+				const value = ctx.ownPropertyOnly && !Object.hasOwn(obj, key) ? undefined : obj[key];
+				if (typeof value !== "function") return value;
+			}
+		}
+		return NOT_PLAIN;
+	};
+	const read = (ctx: any, obj: any, key: unknown): unknown => {
+		const value = plainRead(ctx, obj, key);
+		return value === NOT_PLAIN ? ctx.readProperty(obj, key) : value;
+	};
+	// Multilingual layouts look the same list up again and again with a different value
+	// (`site.articles | where: "lang", lang` in a loop over the languages, in the head and again in
+	// the nav), each a pass over the whole list. When every item is a plain object whose value is a
+	// primitive, `where` is `===` on that value, so one pass groups the list by it and each call
+	// after is a lookup. The groups last for one render (liquidjs' context), so a list a site changes
+	// between pages is grouped again; a list that can't be grouped is remembered as such.
+	const groupsByRender = new WeakMap<object, WeakMap<unknown[], Map<string, Map<unknown, unknown[]> | null>>>();
+	const groupsFor = (ctx: any, list: unknown[], keys: unknown[]): Map<unknown, unknown[]> | null => {
+		if (!keys.every((k) => typeof k === "string")) return null;
+		let lists = groupsByRender.get(ctx);
+		if (!lists) groupsByRender.set(ctx, (lists = new WeakMap()));
+		let byPath = lists.get(list);
+		if (!byPath) lists.set(list, (byPath = new Map()));
+		const path = (keys as string[]).join("\0");
+		let groups = byPath.get(path);
+		if (groups !== undefined) return groups;
+		groups = new Map();
+		for (const item of list) {
+			// An item without the first name reads it from the globals (see below): not grouped.
+			if (item === null || typeof item !== "object" || !((keys[0] as string) in item)) { groups = null; break; }
+			let value: unknown = item;
+			for (const key of keys) if ((value = plainRead(ctx, value, key)) === NOT_PLAIN) break;
+			if (value === NOT_PLAIN || !primitive(value)) { groups = null; break; }
+			const group = groups.get(value);
+			if (group) group.push(item);
+			else groups.set(value, [item]);
+		}
+		byPath.set(path, groups);
+		return groups;
+	};
 	for (const [name, include] of [["where", true], ["reject", false]] as const) {
 		const slow = liquid.filters[name] as any;
 		const slowHandler = typeof slow === "function" ? slow : slow.handler;
@@ -664,13 +715,18 @@ function fastWhere(liquid: Liquid): void {
 			const keys = token.props.map((p: any) => toValueSync(evalTokenValue(p, ctx)));
 			const expected = rest.length ? asText(rest[0]) : undefined;
 			ctx.memoryLimit.use(list.length);
+			// A Map matches NaN with NaN, where `===` doesn't: NaN takes the pass below.
+			if (include && primitive(expected) && expected !== undefined && !Number.isNaN(expected)) {
+				const groups = groupsFor(ctx, list, keys);
+				if (groups) return (groups.get(expected) ?? []).slice();
+			}
 			const out: unknown[] = [];
 			for (const item of list) {
 				if (item === null || (typeof item !== "object" && typeof item !== "function")) return fallback();
 				// A scope spawned on the item: the first name from the item if it has it, else the globals.
 				let value: any = keys[0] in (item as object) ? item : ctx.globals;
 				for (const key of keys) {
-					value = ctx.readProperty(value, key);
+					value = read(ctx, value, key);
 					if (isAsync(value)) return fallback();
 				}
 				const matched = expected === undefined ? isTruthy(value, ctx) : equals(value, expected);

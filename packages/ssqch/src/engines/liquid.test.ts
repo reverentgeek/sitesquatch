@@ -210,3 +210,36 @@ test("where_and_reject_answer_as_liquidjs_does", async () => {
 		assert.equal(await liquid.render(template, data, site.ctx("page.liquid")), await plain.parseAndRender(template, data), template);
 	}
 });
+
+// A list whose items are plain objects with primitive values is grouped once a render, and each
+// `where` after is a lookup (liquid.ts groupsFor): the answers are still liquidjs' own.
+test("where_looks_a_grouped_list_up_as_liquidjs_does", async () => {
+	const { Liquid } = await import("liquidjs");
+	const plain = new Liquid({ jekyllInclude: true, strictFilters: true });
+	const site = testSite({});
+	const liquid = liquidEngine(site.env);
+	const articles = [
+		{ title: "Pine", lang: "en", order: 1, data: { slug: "pine" } },
+		{ title: "Pin", lang: "fr", order: "1", data: { slug: "pin" } },
+		{ title: "Cedar", lang: "en", order: 2, data: { slug: "cedar" } },
+		{ title: "Nothing", lang: null, order: Number.NaN, data: { slug: null } },
+		{ title: "Unset", order: 0, data: {} },
+	];
+	const template = [
+		"{% for lang in langs %}{{ articles | where: 'lang', lang | map: 'title' | json }}{% endfor %}",
+		"{% for lang in langs %}{{ articles | where: 'lang', lang | map: 'title' | json }}{% endfor %}",
+		"{{ articles | where: 'order', 1 | map: 'title' | json }} {{ articles | where: 'order', '1' | map: 'title' | json }}",
+		"{{ articles | where: 'order', nan | map: 'title' | json }} {{ articles | where: 'lang', nil | map: 'title' | json }}",
+		"{{ articles | where: 'data.slug', 'cedar' | map: 'title' | json }} {{ articles | where: 'data.slug', nil | map: 'title' | json }}",
+		"{{ articles | where: 'lang', 'en' | where: 'order', 2 | map: 'title' | json }} {{ articles | reject: 'lang', 'en' | map: 'title' | json }}",
+	].join("\n");
+	const data = { articles, langs: ["en", "fr", "de", ""], nan: Number.NaN };
+	assert.equal(await liquid.render(template, data, site.ctx("page.liquid")), await plain.parseAndRender(template, data));
+	// The groups last one render: a list the site changes before the next page answers anew.
+	articles[0].lang = "fr";
+	assert.equal(await liquid.render(template, data, site.ctx("page.liquid")), await plain.parseAndRender(template, data));
+	// An item without the first name reads it from the globals, as liquidjs' scope does.
+	const globals = { articles, langs: ["en", "fr"], lang: "fr" };
+	const missing = "{{ articles | where: 'lang', 'fr' | map: 'title' | json }}";
+	assert.equal(await liquid.render(missing, globals, site.ctx("page.liquid")), await plain.parseAndRender(missing, globals));
+});
