@@ -26,6 +26,8 @@ docs: true
 		{{ content }}
 		</div>
 		{%- if page.url == "/docs/" %}
+		{#- Every page, from nav.yml: navigation, so the page's Markdown copy leaves it out (llms.txt is its map). #}
+		<nav aria-labelledby="the-map">
 		<h2 id="the-map">The map <a class="anchor" data-pagefind-ignore href="#the-map" aria-hidden="true" tabindex="-1">#</a></h2>
 		{%- for section in nav %}
 		<h3>{{ section.title }}</h3>
@@ -35,6 +37,7 @@ docs: true
 			{%- endif %}{% endfor %}
 		</ul>
 		{%- endfor %}
+		</nav>
 		{%- endif %}
 		{#- The examples that show this page's features (src/_data/seeIt.js, from examples.yml). #}
 		{%- set seen = seeIt[page.url] %}
