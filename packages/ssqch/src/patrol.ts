@@ -47,7 +47,11 @@ const walk = (dir: string, rel = ""): string[] => fs.readdirSync(path.join(dir, 
 const urlOf = (file: string) => `/${file.replace(/(^|\/)index\.html?$/, "$1")}`;
 
 /** Text a reader reads: scripts, styles and SVG left out. */
-const textOf = (html: string) => htmlText(html.replace(/<(script|style|svg|template|noscript)\b[\s\S]*?<\/\1\s*>/gi, " "));
+// Block elements' edges are a break between words, as a browser shows them: a minified list's
+// `2017</span></li><li><a>Community` is two words, not `2017community`. Inline tags (`<a>`,
+// `<em>`) stay as they are, so `pine<em>cone</em>s` is still one.
+const BLOCK_EDGE = /<\/?(?:address|article|aside|blockquote|dd|details|dialog|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|summary|table|tbody|td|tfoot|th|thead|tr|ul|caption)\b[^>]*>/gi;
+const textOf = (html: string) => htmlText(html.replace(/<(script|style|svg|template|noscript)\b[\s\S]*?<\/\1\s*>/gi, " ").replace(BLOCK_EDGE, (tag) => ` ${tag} `));
 
 /** The part of a page inside its first `<name>` and the last `</name>`, or undefined. */
 function part(html: string, name: string): { start: number; html: string } | undefined {
@@ -228,13 +232,16 @@ export function patrol(dir: string): Patrol {
 		// A link or picture to the site's own file that isn't in the build (a picture's source path, which an image plugin published under another name).
 		if ([...linksIn(md), ...[...prose(md).matchAll(/<(?:img|a|source)\b[^>]*\s(?:src|href)\s*=\s*["']([^"']+)["']/gi)].map((m) => m[1])].some((href) => !relative(href) && fileOf(href) === "")) say("copy-broken", "Markdown copies that link the site's own files that aren't in the build (an image's source path, say)", copy);
 		// The copy says what the page says: most of each one's words are in the other.
-		if (content) {
-			// Navigation isn't what the page says: a layout's `<nav>` inside `<main>` (breadcrumbs, a
+		// The page's own part, as llmsPlugin() reads one (html-markdown.ts): its article when it has
+		// just one (a post, without the related posts and comments around it in <main>), else <main>.
+		const own = (body.match(/<article\b/gi) ?? []).length === 1 ? part(body, "article") : content;
+		if (own) {
+			// Navigation isn't what the page says: a layout's `<nav>` inside it (breadcrumbs, a
 			// pager, a map of the docs) is left out, and the rest a layout adds (an "Edit" link, a
 			// date) is why the page's side asks for half.
-			const page = words(textOf(content.html.replace(/<nav\b[\s\S]*?<\/nav\s*>/gi, " ")));
-			const own = words(textOf(markdown(md)));
-			if (page.length >= 20 && (covered(own, page) < 0.8 || covered(page, own) < 0.5)) say("copy-differs", "Markdown copies that don't say what their page says (under 80% of the copy's words on the page, or under half the page's in the copy)", copy);
+			const page = words(textOf(own.html.replace(/<nav\b[\s\S]*?<\/nav\s*>/gi, " ")));
+			const copied = words(textOf(markdown(md)));
+			if (page.length >= 20 && (covered(copied, page) < 0.8 || covered(page, copied) < 0.5)) say("copy-differs", "Markdown copies that don't say what their page says (under 80% of the copy's words on the page, or under half the page's in the copy)", copy);
 		}
 	}
 
