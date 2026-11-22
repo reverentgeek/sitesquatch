@@ -5,7 +5,7 @@ resolver = "2"
 members = ["crates/*", "examples/rust-plugin"]
 
 [workspace.package]
-version = "0.13.2"
+version = "0.13.3"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/reverentgeek/sitesquatch"
