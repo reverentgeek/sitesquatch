@@ -1,6 +1,8 @@
 // What the build reads from a page's rendered HTML: its headings (`page.headings`), its excerpt
 // (`page.excerpt`), its text (for `readingTime`), and the table of contents the `toc` filter makes.
 
+import { createRequire } from "node:module";
+
 /** A heading found in a page's HTML, for `page.headings`. `text` is without tags and without anything inside an `aria-hidden="true"` element or a `header-anchor` link (such as an anchor link's `#`). */
 export interface Heading {
 	level: number;
@@ -58,16 +60,24 @@ export function splitWhitespace(text: string): string[] {
 	return text.split(/[\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/).filter((word) => word !== "");
 }
 
-const ENTITY = /&(#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z]+);/g;
+const ENTITY = /&(#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]*);/g;
 const NAMED: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " " };
 
-/** Decodes the entities Markdown and templates write: `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&#39;`, `&apos;`, `&nbsp;` and numeric ones. */
+// Every other name HTML has (`&middot;`, `&mdash;`, `&frac12;`), from `he`'s table: a page's text
+// is what a browser shows, and `&middot;` left as written reads as those letters in a Markdown
+// copy or a table of contents. Loaded the first time a name needs it.
+let he: { decode(html: string): string } | undefined;
+
+/** Decodes HTML's entities: every named one (`&amp;`, `&middot;`; `&nbsp;` as a space) and numeric ones. A name HTML doesn't have stays as written. */
 export function decodeEntities(s: string): string {
 	if (!s.includes("&")) return s;
 	return s.replace(ENTITY, (whole, name: string) => {
 		// Its own keys only: `&constructor;` isn't an entity.
 		if (Object.hasOwn(NAMED, name)) return NAMED[name];
-		if (name[0] !== "#") return whole;
+		if (name[0] !== "#") {
+			he ??= createRequire(import.meta.url)("he") as { decode(html: string): string };
+			return he.decode(whole);
+		}
 		const code = name[1] === "x" || name[1] === "X" ? Number.parseInt(name.slice(2), 16) : Number.parseInt(name.slice(1), 10);
 		// A number that isn't a character (a surrogate, or past the last one) stays as written.
 		return code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : whole;

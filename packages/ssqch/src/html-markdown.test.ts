@@ -16,6 +16,10 @@ test("a page's own part is its article, then its main, then its body", () => {
 	assert.equal(htmlToMarkdown("<body><article><p>A</p></article><article><p>B</p></article></body>"), "A\n");
 });
 
+test("an entity in the page is its character in the copy", () => {
+	assert.equal(htmlToMarkdown("<main><p>3 posts &middot; <a href=\"/topics/\">all topics</a> &mdash; &amp; more</p></main>"), "3 posts · [all topics](/topics/) — & more\n");
+});
+
 test("what a reader reads becomes Markdown", () => {
 	const html = [
 		"<h2 id=\"gear\">Gear <a class=\"anchor\" href=\"#gear\">#</a></h2>",
