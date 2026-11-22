@@ -55,6 +55,16 @@ Not written yet, because nothing reads them yet: the IETF draft's shared group f
 
 `llmsPlugin()` writes `/llms.txt`, a Markdown copy of each page and `/llms-full.txt` ([Built-in plugins](plugins.md)). A copy is what the page says (a Markdown page's text after its template ran, a template page's `<article>` or `<main>` as Markdown), at the address llms.txt's proposal gives it: `/guide/intro/` has `/guide/intro/index.md`.
 
+### A big site's llms.txt
+
+`llms.txt` is the map an agent reads before it decides where to go, so it has to stay short enough to read whole (llms.txt's proposal: "small enough to fit in context"). Three options keep it that way:
+
+- `paths`: parts of the site that get an `llms.txt` of their own, which covers the pages under it (llms.txt's v2 has agents use the most specific one). `paths: ["/docs/"]` writes `/docs/llms.txt` with the pages under `/docs/`, and `/llms.txt` lists that file once, where its first page would be, in place of them. An item is a URL path that starts and ends with `/`, or `{ path: "/docs/api/", title: "Trail API", description: "Every endpoint.", details: "..." }` for the file's `#` heading (default: the site's title and the folder's name, `Trail Guide: Docs`), its `>` line and its Markdown after that; the title and description are also its line in the file above it. Inside a file, a page's section is its folder under the path (`/docs/guide/start/` is "Guide" in `/docs/llms.txt`), unless `section` names one. A path can be under another (`/docs/` and `/docs/api/`), and a path with no listed pages writes no file and warns. `llms-full.txt` stays one file with every page.
+- A section named "Optional" always comes last: llms.txt's convention for links an agent can skip when its context is short. `section: (page) => (page.date < new Date("2020-01-01") ? "Optional" : undefined)` puts old posts there and leaves the rest in their folder's section.
+- `budget`: the most characters an `llms.txt` may have, 50,000 by default (where `ssqch patrol` warns, `llms-long`). Past it, pages from the end of the file move into "Optional" without their descriptions until it fits. A file that wouldn't fit even with every page moved stays as it is, and the build warns with what to do: give a part of the site its own file with `paths`, or raise `budget`. `budget: false` turns it off.
+
+`ssqch patrol` reads `/llms.txt` and every `llms.txt` it links, with the same checks, and counts the pages they all list.
+
 ## The links in the layout
 
 llms.txt's proposal (v2) has agents find both from any page by two links, which a layout writes in its `<head>` (a build adds no markup of its own):
@@ -62,10 +72,13 @@ llms.txt's proposal (v2) has agents find both from any page by two links, which 
 ```html
 <link rel="canonical" href="{{ site.url }}{{ page.url }}">
 {% if markdownCopy(page.url) %}<link rel="alternate" type="text/markdown" href="{{ markdownCopy(page.url) }}">{% endif %}
-<link rel="describedby" href="/llms.txt">
+<link rel="describedby" href="{{ llmsTxt(page.url) }}">
 ```
 
-`markdownCopy(page.url)` comes with `llmsPlugin()`: the copy's URL, or `""` for a page without one. The starters' layouts have all three.
+`markdownCopy(page.url)` comes with `llmsPlugin()`: the copy's URL, or `""` for a page without one. The starters' layouts have all three, with `/llms.txt` written out.
+`llmsTxt(page.url)` comes with it too: the `llms.txt` that covers the page, `/docs/llms.txt` for a page under `/docs/` when `paths` has it and `/llms.txt` for the rest.
+
+A copy is a Markdown file, with no `<head>` to point from: llms.txt's v2 points from it with an HTTP `Link` header, which a host's `_headers` file (Netlify, Cloudflare) sends for a folder, like `/docs/*` with `Link: </docs/llms.txt>; rel="describedby"`. ssqch adds no line to the copy itself, so a copy says what its page says and nothing more.
 
 ## When an agent asks for Markdown
 

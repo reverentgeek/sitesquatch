@@ -68,3 +68,21 @@ test("a copy's links to the site's own files that aren't there are copy-broken, 
 	const broken = patrol(dir).findings.find((f) => f.code === "copy-broken");
 	assert.deepEqual(broken?.files, ["index.md"]);
 });
+
+test("an llms.txt that llms.txt links is checked too, and its pages count for coverage", () => {
+	const dir = built({
+		"robots.txt": "Sitemap: https://trail.example/sitemap.xml\n",
+		"sitemap.xml": "<urlset><url><loc>https://trail.example/</loc></url><url><loc>https://trail.example/docs/</loc></url><url><loc>https://trail.example/docs/start/</loc></url></urlset>",
+		"llms.txt": "# Trail\n\n## Pages\n\n- [Home](https://trail.example/index.md)\n- [Docs](https://trail.example/docs/llms.txt)\n",
+		"docs/llms.txt": "# Trail: Docs\n\n## Pages\n\n- [Docs](https://trail.example/docs/index.md)\n- [Start](https://trail.example/docs/start/index.md)\n- [Gone](https://trail.example/docs/gone.md)\n",
+		"index.html": page("Home", `<p>${TEXT}</p>`, "<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">"),
+		"index.md": `# Home\n\n${TEXT}\n`,
+		"docs/index.html": page("Docs", `<p>${TEXT}</p>`, "<link rel=\"alternate\" type=\"text/markdown\" href=\"/docs/index.md\">"),
+		"docs/index.md": `# Docs\n\n${TEXT}\n`,
+		"docs/start/index.html": page("Start", `<p>${TEXT}</p>`, "<link rel=\"alternate\" type=\"text/markdown\" href=\"/docs/start/index.md\">"),
+		"docs/start/index.md": `# Start\n\n${TEXT}\n`,
+		"404.html": page("Not found", "<p>Lost.</p>"),
+	});
+	const codes = patrol(dir).findings.map((f) => `${f.code} ${f.files.join(",")}`);
+	assert.deepEqual(codes, ["llms-broken https://trail.example/docs/gone.md"]);
+});

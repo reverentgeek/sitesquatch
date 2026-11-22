@@ -1034,3 +1034,61 @@ test("llms_copies_link_the_pictures_the_page_publishes", () => {
 	const patrol = ssqch(["patrol", path.join(dir, "dist"), "--format", "json"]);
 	assert.ok(!JSON.parse(patrol.stdout).warnings.some((w) => w.code === "copy-broken"), patrol.stdout);
 });
+
+// Added in 0.13, from the ReverentGeek blog's move to llmsPlugin() and llms.txt's v2 (August
+// 2026): a part of the site gets an llms.txt of its own, which covers the pages under it and which
+// the site's lists in their place; "Optional" (links an agent can skip) comes last; and past the
+// budget, pages from the end move into it without their notes.
+test("llms_txt_for_a_part_of_the_site_and_an_optional_section", () => {
+	const dir = tempDir("llms-paths");
+	const config = (options) => `import { llmsPlugin } from "ssqch/llms";\nexport default { data: { layout: "base.jinja" }, plugins: [llmsPlugin(${options})] };\n`;
+	write(dir, {
+		"ssqch.config.js": config(`{ url: "https://trail.example", title: "Trail Guide", paths: ["/docs/", { path: "/docs/api/", title: "Trail API", description: "Every endpoint." }], section: (page) => (page.data.old ? "Optional" : undefined) }`),
+		"_includes/base.jinja": "<html><head><link rel=\"describedby\" href=\"{{ llmsTxt(page.url) }}\"></head><body><main>{{ content | safe }}</main></body></html>",
+		"index.md": "# Home\n",
+		"old.md": "---\nold: true\ndescription: The 2019 trail map.\n---\n# Old map\n",
+		"news.md": "# News\n",
+		"docs/index.md": "# Docs\n",
+		"docs/guide/start.md": "---\ndescription: Where to start.\n---\n# Start\n",
+		"docs/api/index.md": "# API\n",
+		"docs/api/trails.md": "# Trails\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/llms.txt"), "# Trail Guide\n\n## Pages\n\n- [Home](https://trail.example/index.md)\n\n## Docs\n\n- [Docs](https://trail.example/docs/llms.txt)\n\n## News\n\n- [News](https://trail.example/news/index.md)\n\n## Optional\n\n- [Old map](https://trail.example/old/index.md): The 2019 trail map.\n");
+	assert.equal(read(dir, "_site/docs/llms.txt"), "# Trail Guide: Docs\n\n## Pages\n\n- [Docs](https://trail.example/docs/index.md)\n\n## Api\n\n- [Trail API](https://trail.example/docs/api/llms.txt): Every endpoint.\n\n## Guide\n\n- [Start](https://trail.example/docs/guide/start/index.md): Where to start.\n");
+	assert.equal(read(dir, "_site/docs/api/llms.txt"), "# Trail API\n\n> Every endpoint.\n\n## Pages\n\n- [API](https://trail.example/docs/api/index.md)\n\n## Trails\n\n- [Trails](https://trail.example/docs/api/trails/index.md)\n");
+	// The layout links the file that covers each page.
+	assert.ok(read(dir, "_site/docs/guide/start/index.html").includes("href=\"/docs/llms.txt\""));
+	assert.ok(read(dir, "_site/docs/api/trails/index.html").includes("href=\"/docs/api/llms.txt\""));
+	assert.ok(read(dir, "_site/news/index.html").includes("href=\"/llms.txt\""));
+
+	// Past the budget, pages from the end move into "Optional", without their notes.
+	// The last page's note is what it takes to fit 5 characters under.
+	const tightConfig = (budget) => config(`{ title: "Trail Guide", budget: ${budget}, section: () => "Trails" }`);
+	write(dir, { "ssqch.config.js": tightConfig(false), "_includes/base.jinja": "{{ content | safe }}" });
+	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
+	const roomy = read(dir, "_site/llms.txt");
+	assert.ok(roomy.endsWith("- [Old map](/old/index.md): The 2019 trail map.\n"), roomy);
+	write(dir, { "ssqch.config.js": tightConfig(roomy.length - 5) });
+	const tight = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(tight.ok, tight.log);
+	const txt = read(dir, "_site/llms.txt");
+	assert.equal(txt, roomy.replace("- [Old map](/old/index.md): The 2019 trail map.\n", "\n## Optional\n\n- [Old map](/old/index.md)\n"));
+	assert.ok(txt.length <= roomy.length - 5);
+	// A budget the notes can't make up leaves the file as it is, and says so.
+	write(dir, { "ssqch.config.js": config(`{ budget: 20 }`) });
+	const over = ssqch(["build", "--root", dir]);
+	assert.ok(over.ok && over.log.includes("over the budget of 20 even without its pages' notes: give a part of the site an llms.txt of its own"), over.log);
+	assert.ok(!read(dir, "_site/llms.txt").includes("## Optional"));
+
+	write(dir, { "ssqch.config.js": config(`{ paths: ["/missing/"] }`) });
+	const empty = ssqch(["build", "--root", dir]);
+	assert.ok(empty.ok && empty.log.includes("no listed pages under /missing/, so /missing/llms.txt isn't written"), empty.log);
+	assert.ok(!fs.existsSync(path.join(dir, "_site/missing/llms.txt")));
+	for (const [options, says] of [[`{ paths: ["docs"] }`, "must be a folder's URL path, starting and ending with /"], [`{ paths: "/docs/" }`, "paths must be a list"], [`{ paths: [{ path: "/docs/", name: "x" }] }`, "has `name`, which isn't an option"], [`{ budget: "big" }`, "budget must be a number of characters"]]) {
+		write(dir, { "ssqch.config.js": config(options) });
+		const bad = ssqch(["build", "--root", dir]);
+		assert.ok(!bad.ok && bad.log.includes(says), `${options}: ${bad.log}`);
+	}
+});

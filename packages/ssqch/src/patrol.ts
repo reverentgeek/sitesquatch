@@ -161,20 +161,26 @@ export function patrol(dir: string): Patrol {
 	else if (has.has("index.html") && read("404.html") === read("index.html")) say("no-404", "404.html is the home page: a missing page should say it's missing");
 
 	// llms.txt: there, an H1 first, short enough to read whole, its links working, to Markdown.
+	// The same for each llms.txt it links (a part of the site's own, as llms.txt's v2 has them),
+	// and what they all list counts for coverage.
 	const llms = has.has("llms.txt") ? read("llms.txt") : undefined;
 	const listed = new Set<string>();
 	if (llms === undefined) say("no-llms", "no llms.txt: an agent gets no map of the site (llmsPlugin() writes one, with a Markdown copy of each page)");
-	else {
-		if (!/^﻿?# \S/.test(llms)) say("llms-shape", "llms.txt doesn't start with a `# ` heading (the site's name), which llmstxt.org's format requires", "llms.txt");
-		if (llms.length > LLMS_LIMIT) say("llms-long", `llms.txt is ${count(llms.length)} characters, over ${count(LLMS_LIMIT)}: more than an agent reads before deciding where to go (link section files from it instead)`, "llms.txt");
-		for (const href of linksIn(llms)) {
-			if (relative(href)) { say("relative-links", "links that aren't whole addresses (or from the site's root): they break once the text is read on its own", "llms.txt"); continue; }
+	const maps = llms === undefined ? [] : ["llms.txt"];
+	for (let i = 0; i < maps.length; i++) {
+		const name = maps[i];
+		const text = i === 0 ? (llms as string) : read(name);
+		if (!/^\uFEFF?# \S/.test(text)) say("llms-shape", "llms.txt doesn't start with a `# ` heading (the site's name), which llmstxt.org's format requires", name);
+		if (text.length > LLMS_LIMIT) say("llms-long", `llms.txt is ${count(text.length)} characters, over ${count(LLMS_LIMIT)}: more than an agent reads before deciding where to go (link section files from it instead)`, name);
+		for (const href of linksIn(text)) {
+			if (relative(href)) { say("relative-links", "links that aren't whole addresses (or from the site's root): they break once the text is read on its own", name); continue; }
 			const file = fileOf(href);
 			if (file === undefined) continue;
 			if (file === "") say("llms-broken", `llms.txt links to files that aren't in the build`, href);
 			else {
 				if (!/\.(md|markdown|txt)$/i.test(file)) say("llms-html", "llms.txt links to pages, not their Markdown: an agent reads Markdown without the page's chrome", href);
 				listed.add(file);
+				if (/(^|\/)llms\.txt$/.test(file) && !maps.includes(file)) maps.push(file);
 			}
 		}
 	}

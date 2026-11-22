@@ -9,6 +9,19 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## 0.13.1 - 2026-11-21
+
+### Added
+- **A big site's `llms.txt`** (llms.txt's v2, August 2026): `llmsPlugin({ paths: ["/docs/"] })`
+  gives a part of the site an `llms.txt` of its own, which covers the pages under it and which
+  `/llms.txt` lists in their place; a section named "Optional" (links an agent can skip) always
+  comes last; and past `budget` characters (default 50,000, where `ssqch patrol` warns), pages
+  from the end move into "Optional" without their descriptions. A file that can't fit warns.
+  The template function `llmsTxt(page.url)` gives the `llms.txt` that covers a page, for the
+  layout's `<link rel="describedby">`.
+- `ssqch patrol` checks every `llms.txt` that `/llms.txt` links, and counts their pages for
+  `llms-coverage`.
+
 ## 0.13.0 - 2026-11-21
 
 ### Breaking
