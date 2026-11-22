@@ -1,6 +1,6 @@
 // A page's HTML as Markdown, for `llmsPlugin()`'s copy of a page that wasn't written in Markdown
-// (a home page in Jinja, a list made by a template). The page's own part is its `<article>`, or
-// its `<main>`, or else its `<body>`; what's around it (the header, the sidebar) is the site's,
+// (a home page in Jinja, a list made by a template). The page's own part is its `<article>` (when
+// it has one, not a list of them), or its `<main>`, or else its `<body>`; what's around it (the header, the sidebar) is the site's,
 // not the page's. Inside it, what a reader reads becomes Markdown: headings, paragraphs, lists,
 // links, emphasis, code, quotes, tables and pictures with a description. What isn't text is left
 // out: scripts and styles, forms and buttons, navigation, anything `hidden` or `aria-hidden`, a
@@ -103,6 +103,16 @@ function find(el: Element, name: string): Element | undefined {
 		if (inner) return inner;
 	}
 	return undefined;
+}
+
+/** Every `<name>` that isn't inside another (a card's own, not a comment inside it). */
+function findAll(el: Element, name: string, out: Element[] = []): Element[] {
+	for (const c of el.children) {
+		if (typeof c === "string") continue;
+		if (c.name === name) out.push(c);
+		else findAll(c, name, out);
+	}
+	return out;
 }
 
 const hidden = (el: Element) => el.attrs.has("hidden") || el.attrs.get("aria-hidden") === "true";
@@ -298,10 +308,15 @@ function table(el: Element): string[] {
 	return out;
 }
 
-/** A page's HTML as Markdown: its `<article>`, or its `<main>`, or its `<body>`. */
+/**
+ * A page's HTML as Markdown: its `<article>` when it has one, or its `<main>`, or its `<body>`. A
+ * page with several articles side by side is a list of them (a topic's posts, each a card), so its
+ * `<main>` is the page's own part, not the first card.
+ */
 export function htmlToMarkdown(html: string): string {
 	const root = parse(html);
-	const part = find(root, "article") ?? find(root, "main") ?? find(root, "body") ?? root;
+	const articles = findAll(root, "article");
+	const part = (articles.length === 1 ? articles[0] : undefined) ?? find(root, "main") ?? articles[0] ?? find(root, "body") ?? root;
 	const text = blocks(part.children).join("\n\n").trim();
 	return text ? `${text}\n` : "";
 }

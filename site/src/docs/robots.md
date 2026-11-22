@@ -53,7 +53,7 @@ Not written yet, because nothing reads them yet: the IETF draft's shared group f
 
 ## llms.txt and the Markdown copies
 
-`llmsPlugin()` writes `/llms.txt`, a Markdown copy of each page and `/llms-full.txt` ([Built-in plugins](plugins.md)). A copy is what the page says (a Markdown page's text after its template ran, a template page's `<article>` or `<main>` as Markdown), at the address llms.txt's proposal gives it: `/guide/intro/` has `/guide/intro/index.md`.
+`llmsPlugin()` writes `/llms.txt`, a Markdown copy of each page and `/llms-full.txt` ([Built-in plugins](plugins.md)). A copy is what the page says (a Markdown page's text after its template ran, a template page's `<article>`, or its `<main>` when it has several articles, as Markdown), at the address llms.txt's proposal gives it: `/guide/intro/` has `/guide/intro/index.md`.
 
 ### A big site's llms.txt
 
