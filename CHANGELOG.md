@@ -11,6 +11,13 @@ where that version matches.
 
 ## Unreleased
 
+### Added
+- `ssqch patrol --url https://example.com` asks the deployed site too: up to ten of the build's
+  pages with a Markdown copy (the same ten each run), each as an agent (`Accept: text/markdown`)
+  and as a browser, and its copy at its own address. New warnings: `live-no-markdown` (the agent
+  gets HTML), `live-no-vary` (no `Vary: Accept`), `live-browser-markdown` (people get the copy)
+  and `live-copy-missing`. The JSON report adds `live` (`url`, `asked`) when it's given.
+
 ### Fixed
 - Every named HTML entity is decoded where ssqch reads a page's text: `llmsPlugin()`'s copy of a
   template page and its titles, and a heading's text (`page.headings`, the `toc` filter). Only six
