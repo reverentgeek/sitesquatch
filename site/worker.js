@@ -24,6 +24,11 @@ function copyOf(pathname) {
   return /\.[a-z0-9]+$/i.test(pathname) ? undefined : `${pathname}/index.md`;
 }
 
+/** The page's own address, for the copy's `Link` header: `/guide/intro` is the folder's page, `/guide/intro/`. */
+function pageOf(pathname) {
+  return pathname.endsWith("/") || /\.[a-z0-9]+$/i.test(pathname) ? pathname : `${pathname}/`;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -33,7 +38,7 @@ export default {
       if (found.ok) {
         const out = new Response(found.body, found);
         out.headers.set("Content-Type", "text/markdown; charset=utf-8");
-        out.headers.set("Link", `<${url.origin}${url.pathname}>; rel="canonical"`);
+        out.headers.set("Link", `<${url.origin}${pageOf(url.pathname)}>; rel="canonical"`);
         out.headers.append("Vary", "Accept");
         return out;
       }

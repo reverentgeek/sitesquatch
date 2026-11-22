@@ -16,7 +16,7 @@ curl -H "Accept: text/markdown" http://localhost:8080/guide/intro/
 
 A static host sends the HTML file for a page's address whatever the request asks for, so answering with the copy takes a few lines of the host's own code. Each version below does the same thing: it checks the `Accept` header as `ssqch serve` does, finds the copy beside the page, sends it as Markdown with `Vary: Accept` and a `Link` header naming the page as the canonical address, and leaves every other request alone. They differ in where the code lives and what it costs.
 
-Every version uses these two functions; paste them above it:
+Every version uses these three functions; paste them above it:
 
 ```js
 /** Whether `accept` asks for text/markdown by name, at least as much as for HTML (by q-values). */
@@ -36,6 +36,11 @@ function copyOf(pathname) {
   if (pathname.endsWith("/")) return `${pathname}index.md`;
   if (/\.html?$/.test(pathname)) return pathname.replace(/\.html?$/, ".md");
   return /\.[a-z0-9]+$/i.test(pathname) ? undefined : `${pathname}/index.md`;
+}
+
+/** The page's own address, for the copy's `Link` header: `/guide/intro` is the folder's page, `/guide/intro/`. */
+function pageOf(pathname) {
+  return pathname.endsWith("/") || /\.[a-z0-9]+$/i.test(pathname) ? pathname : `${pathname}/`;
 }
 ```
 
@@ -68,7 +73,7 @@ export default {
       if (found.ok) {
         const out = new Response(found.body, found);
         out.headers.set("Content-Type", "text/markdown; charset=utf-8");
-        out.headers.set("Link", `<${url.origin}${url.pathname}>; rel="canonical"`);
+        out.headers.set("Link", `<${url.origin}${pageOf(url.pathname)}>; rel="canonical"`);
         out.headers.append("Vary", "Accept");
         return out;
       }
@@ -96,13 +101,13 @@ export default async (request) => {
   if (!copy) return;
   const found = await fetch(new URL(copy, url));
   if (!found.ok) return;
-  return new Response(found.body, { headers: { "Content-Type": "text/markdown; charset=utf-8", "Vary": "Accept", "Link": `<${url.origin}${url.pathname}>; rel="canonical"` } });
+  return new Response(found.body, { headers: { "Content-Type": "text/markdown; charset=utf-8", "Vary": "Accept", "Link": `<${url.origin}${pageOf(url.pathname)}>; rel="canonical"` } });
 };
 
 export const config = { path: "/*", excludedPath: ["/*.md"], header: { accept: "text/markdown" } };
 ```
 
-Returning nothing hands the request on to the page as usual. `_redirects` can't do this: its conditions are country, language, role and cookie, not `Accept`. Edge functions are billed by invocation; with the `header` setting, only agents' requests count. Not run on Netlify yet: the ReverentGeek blog will be the first site to.
+Returning nothing hands the request on to the page as usual. `_redirects` can't do this: its conditions are country, language, role and cookie, not `Accept`. Edge functions are billed by invocation; with the `header` setting, only agents' requests count. Checked on Netlify (the ReverentGeek blog, November 2026): an agent's `Accept: text/markdown`, or one that prefers it by q-value, gets the copy, and a browser's request, `*/*`, a missing page and a feed get what they always did. Edge functions run before Netlify's cache, so a page Netlify has cached as HTML still answers an agent with Markdown. The HTML itself goes out without `Vary: Accept`, and adding it to every page would split Netlify's cache by each browser's `Accept`, so a shared cache between Netlify and an agent could hand it the HTML; agents fetch directly, so it's rare. A deploy preview adds `X-Robots-Tag: noindex` to everything; production doesn't.
 
 ### Vercel
 
@@ -117,7 +122,7 @@ export default async function middleware(request) {
   if (!copy || !prefersMarkdown(request.headers.get("accept") ?? "")) return next();
   const found = await fetch(new URL(copy, url));
   if (!found.ok) return next();
-  return new Response(found.body, { headers: { "Content-Type": "text/markdown; charset=utf-8", "Vary": "Accept", "Link": `<${url.origin}${url.pathname}>; rel="canonical"` } });
+  return new Response(found.body, { headers: { "Content-Type": "text/markdown; charset=utf-8", "Vary": "Accept", "Link": `<${url.origin}${pageOf(url.pathname)}>; rel="canonical"` } });
 }
 ```
 
