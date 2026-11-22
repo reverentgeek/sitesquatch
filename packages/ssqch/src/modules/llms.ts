@@ -16,7 +16,7 @@ import path from "node:path";
 import { BUILTINS } from "../config.ts";
 import type { Config, GeneratedFile, PageSummary } from "../config.ts";
 import { decodeEntities } from "../content.ts";
-import { bail } from "../diagnostics.ts";
+import { bail, warn, warning } from "../diagnostics.ts";
 import { globSet } from "../glob.ts";
 import { htmlToMarkdown, rewriteLinks } from "../html-markdown.ts";
 import { compareText } from "../paths.ts";
@@ -38,15 +38,27 @@ export function copyUrl(url: string): string {
 	return url.replace(/\.html?$/, "") + ".md";
 }
 
+/** A folder's name as a heading: `api-reference` is "Api reference". */
+function folderName(folder: string): string {
+	const name = folder.replace(/[-_]+/g, " ");
+	return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** The length past which `llms.txt` moves pages into "Optional": patrol's `llms-long` limit, what an agent reads before it decides. */
+const BUDGET = 50_000;
+
 /** A section's name from a page's first folder: `/guide/intro.html` is "Guide", `/api-reference/` is "Api reference", the top's pages are "Pages". */
 function sectionOf(url: string): string {
 	const first = url.split("/").filter(Boolean);
 	if (first.length < 2 && !url.endsWith("/")) return "Pages";
 	if (first.length === 0) return "Pages";
-	const name = first[0].replace(/[-_]+/g, " ");
-	return name.charAt(0).toUpperCase() + name.slice(1);
+	return folderName(first[0]);
 }
 
+/** 50000 as "50,000", without Intl (its output changes between Node releases). */
+const grouped = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+/** A value as an error shows it: a string quoted, anything else as JSON. */
+const shown = (v: unknown) => (typeof v === "string" ? debugString(v) : (JSON.stringify(v) ?? typeof v));
 const oneLine = (s: unknown) => (typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "");
 const isPageUrl = (url: string) => url.endsWith("/") || url.endsWith(".html");
 
@@ -142,9 +154,52 @@ function publishedImages(markdown: string, outputPath: string, base: string, out
 		.replace(/(<a\b[^>]*\shref\s*=\s*)(?:"([^"]*)"|'([^']*)')/gi, (whole, open: string, d?: string, q?: string) => { const href = decodeEntities(d ?? q ?? ""); return became.has(href) ? `${open}"${became.get(href)}"` : whole; });
 }
 
+/** A part of the site with an llms.txt of its own (`paths`). */
+interface LlmsFile { path: string; title?: string; description?: string; details?: string }
+
+/** A listed page: its section is the one `section()` gave, or undefined for its folder's. */
+interface Entry { url: string; copy: string; title: string; description: string; section: string | undefined; markdown: string }
+
+/**
+ * An llms.txt: its heading, then a `##` section for each name, in the order of their first item,
+ * with "Optional" last (llms.txt's convention for links an agent can skip when its context is
+ * short). Past `budget` characters, pages from the end move into "Optional" without their notes
+ * until it fits; a file that wouldn't fit even so stays as it is, and the build says so.
+ */
+function listing(head: string, items: Array<{ section: string; line: string; short: string }>, budget: number, file: string): string {
+	const render = (list: typeof items) => {
+		const sections = new Map<string, string[]>();
+		for (const item of list) sections.set(item.section, [...(sections.get(item.section) ?? []), item.line]);
+		const optional = sections.get("Optional");
+		if (optional) { sections.delete("Optional"); sections.set("Optional", optional); }
+		let txt = head;
+		for (const [name, lines] of sections) txt += `\n## ${name}\n\n${lines.join("")}`;
+		return txt;
+	};
+	let txt = render(items);
+	if (txt.length <= budget) return txt;
+	// What moving each page saves, counted rather than rendered again for each: its note, less the
+	// "Optional" heading the first one adds. A section a move empties saves its heading too, which
+	// this doesn't count, so it can move a page or two more than it had to.
+	const moved = items.map((item) => ({ ...item }));
+	let over = txt.length - budget + (items.some((i) => i.section === "Optional") ? 0 : "\n## Optional\n\n".length);
+	// When moving every page wouldn't make it fit, moving them only hides pages: leave them.
+	const most = items.reduce((n, i) => n + (i.section === "Optional" ? 0 : i.line.length - i.short.length), 0);
+	if (most < over) {
+		warn(warning("build", `llmsPlugin: ${file} is ${grouped(txt.length)} characters, over the budget of ${grouped(budget)} even without its pages' notes: give a part of the site an llms.txt of its own (paths: ["/docs/"]), or raise budget`));
+		return txt;
+	}
+	for (let i = moved.length - 1; i >= 0 && over > 0; i--) {
+		if (moved[i].section === "Optional") continue;
+		over -= moved[i].line.length - moved[i].short.length;
+		moved[i] = { section: "Optional", line: moved[i].short, short: moved[i].short };
+	}
+	return render(moved);
+}
+
 BUILTINS.set("ssqch/llms", (config: Config, given) => {
 	if (given !== null && typeof given === "object" && Object.hasOwn(given, "hint")) bail("`hint` is gone: a build adds no markup of its own. Link the copy from your layout's <head> instead: <link rel=\"alternate\" type=\"text/markdown\" href=\"{{ markdownCopy(page.url) }}\">");
-	const o = new Options(given, ["title", "description", "details", "url", "exclude", "copies", "full", "section", "sort"]);
+	const o = new Options(given, ["title", "description", "details", "url", "exclude", "copies", "full", "section", "sort", "paths", "budget"]);
 	const url = o.string("url");
 	if (url !== undefined && url !== "" && !/^https?:\/\//.test(url)) bail(`url must be the site's address, like "https://example.com" (got ${debugString(url)})`);
 	const exclude = o.list("exclude") ?? [];
@@ -160,6 +215,30 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 	const description = o.string("description");
 	const details = o.string("details");
 	const address = (url ?? "").replace(/\/+$/, "");
+	const givenBudget = o.get("budget");
+	if (givenBudget !== undefined && givenBudget !== false && !(typeof givenBudget === "number" && Number.isInteger(givenBudget) && givenBudget > 0)) bail(`budget must be a number of characters, like 50000, or false for no limit (got ${shown(givenBudget)})`);
+	const budget = givenBudget === false ? Infinity : (givenBudget as number | undefined) ?? BUDGET;
+	// The parts of the site with an llms.txt of their own, most specific first, so a page belongs
+	// to the deepest one it's under (llms.txt's v2: "agents should use the most specific one").
+	const paths: LlmsFile[] = [];
+	const givenPaths = o.get("paths");
+	if (givenPaths !== undefined && !Array.isArray(givenPaths)) bail(`paths must be a list of URL paths that get an llms.txt of their own, like ["/docs/"] (got ${shown(givenPaths)})`);
+	for (const item of (givenPaths ?? []) as unknown[]) {
+		const one = typeof item === "string" ? { path: item } : item;
+		if (one === null || typeof one !== "object" || typeof (one as Record<string, unknown>).path !== "string") bail(`paths: each one is a URL path like "/docs/", or { path: "/docs/", title, description, details } (got ${shown(item)})`);
+		const { path: at, ...rest } = one as Record<string, unknown>;
+		for (const [key, value] of Object.entries(rest)) {
+			if (!["title", "description", "details"].includes(key)) bail(`paths: ${shown(at)} has \`${key}\`, which isn't an option; it takes title, description and details`);
+			if (typeof value !== "string") bail(`paths: ${shown(at)}'s ${key} must be a string (got ${shown(value)})`);
+		}
+		const folder = at as string;
+		if (!folder.startsWith("/") || !folder.endsWith("/") || folder === "/") bail(`paths: ${shown(folder)} must be a folder's URL path, starting and ending with /, like "/docs/" (/llms.txt is the site's)`);
+		if (paths.some((f) => f.path === folder)) bail(`paths: ${shown(folder)} is listed twice`);
+		paths.push({ path: folder, ...(rest as { title?: string; description?: string; details?: string }) });
+	}
+	paths.sort((a, b) => b.path.length - a.path.length || compareText(a.path, b.path));
+	/** The llms.txt that covers a URL: the deepest of `paths` it's under, or the site's. */
+	const coveringFile = (pageUrl: string) => paths.find((f) => pageUrl.startsWith(f.path))?.path ?? "/";
 
 	/** Whether a page at `pageUrl` gets a copy: written as HTML, not excluded, not a 404. Its front matter's `llms: false` is checked where the data is. */
 	const listedUrl = (pageUrl: string) => isPageUrl(pageUrl) && !excluded(pageUrl) && pageUrl !== "/404.html" && pageUrl !== "/404/";
@@ -195,6 +274,10 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 		return copyUrl(pageUrl);
 	});
 
+	// `llmsTxt(page.url)`: the llms.txt that covers the page, for a layout's
+	// `<link rel="describedby">` (`/docs/llms.txt` for a page under a path in `paths`).
+	config.filters.set("llmsTxt", (value: unknown) => `${coveringFile(value === undefined || value === null ? "/" : String(value))}llms.txt`);
+
 	config.generators.push(["ssqch/llms", (config, pages) => {
 		const base = config.base.replace(/\/$/, "");
 		const output = path.resolve(config.root, config.output);
@@ -225,7 +308,7 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 			return whole(page ? linkTo(page) : resolved) + rest;
 		};
 
-		const entries: Array<{ url: string; copy: string; title: string; description: string; section: string; markdown: string }> = [];
+		const entries: Entry[] = [];
 		for (const p of chosen) {
 			const source = sources.get(p.url);
 			let body = source !== undefined ? pageText(source) : converted.get(p.url) ?? "";
@@ -236,7 +319,7 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 			if (!/^#\s/.test(body) && oneLine(p.data.title)) body = `# ${oneLine(p.data.title)}\n\n${body}`;
 			body = publishedImages(body, p.outputPath, base, output);
 			body = rewriteLinks(body, (href) => target(href, p));
-			let name = sectionOf(p.url);
+			let name: string | undefined;
 			if (typeof section === "function") {
 				let out: unknown;
 				try { out = (section as (page: PageSummary) => unknown)(p); } catch (e) { bail(`section(), for ${p.url}: ${e instanceof Error ? e.message : String(e)}`); }
@@ -253,14 +336,45 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 		let head = `# ${siteTitle}\n`;
 		if (description) head += `\n> ${oneLine(description)}\n`;
 		if (details?.trim()) head += `\n${details.trim()}\n`;
-		let txt = head;
-		const sections = new Map<string, typeof entries>();
-		for (const e of entries) sections.set(e.section, [...(sections.get(e.section) ?? []), e]);
-		for (const [name, list] of sections) {
-			txt += `\n## ${name}\n\n`;
-			for (const e of list) txt += `- [${e.title.replace(/([[\]])/g, "\\$1")}](${whole(copies ? e.copy : e.url)})${e.description ? `: ${e.description}` : ""}\n`;
+		// Each llms.txt lists its own pages, and in place of the pages under a part of the site with
+		// a file of its own, that file, once, where its first page would be.
+		const written = paths.filter((f) => {
+			if (entries.some((e) => coveringFile(e.url) === f.path)) return true;
+			warn(warning("build", `llmsPlugin: no listed pages under ${f.path}, so ${f.path}llms.txt isn't written (paths in ssqch.config.js)`));
+			return false;
+		});
+		const fileFor = (pageUrl: string) => written.find((f) => pageUrl.startsWith(f.path))?.path ?? "/";
+		/** The file `inner` is listed in: the deepest written one above it. */
+		const parentOf = (inner: string) => written.find((f) => f.path !== inner && inner.startsWith(f.path))?.path ?? "/";
+		const nameOf = (f: LlmsFile) => f.title ?? folderName(f.path.split("/").filter(Boolean).at(-1) ?? "");
+		const link = (title: string, href: string, note: string) => `- [${title.replace(/([[\]])/g, "\\$1")}](${href})${note ? `: ${note}` : ""}\n`;
+		for (const file of [{ path: "/" } as LlmsFile, ...written]) {
+			const items: Array<{ section: string; line: string; short: string }> = [];
+			const listedFiles = new Set<string>();
+			for (const e of entries) {
+				let at = fileFor(e.url);
+				if (at === file.path) {
+					const name = e.section ?? sectionOf(`/${e.url.slice(file.path.length)}`);
+					items.push({ section: name, line: link(e.title, whole(copies ? e.copy : e.url), e.description), short: link(e.title, whole(copies ? e.copy : e.url), "") });
+					continue;
+				}
+				// A page in a file under this one: list the file that's directly under this one.
+				if (file.path !== "/" && !at.startsWith(file.path)) continue;
+				while (at !== "/" && parentOf(at) !== file.path) at = parentOf(at);
+				if (at === "/" || listedFiles.has(at)) continue;
+				listedFiles.add(at);
+				const inner = written.find((f) => f.path === at) as LlmsFile;
+				const name = e.section ?? sectionOf(`/${e.url.slice(file.path.length)}`);
+				items.push({ section: name, line: link(nameOf(inner), whole(`${inner.path}llms.txt`), oneLine(inner.description)), short: link(nameOf(inner), whole(`${inner.path}llms.txt`), "") });
+			}
+			let top = head;
+			if (file.path !== "/") {
+				top = `# ${file.title ?? `${siteTitle}: ${nameOf(file)}`}\n`;
+				if (file.description) top += `\n> ${oneLine(file.description)}\n`;
+				if (file.details?.trim()) top += `\n${file.details.trim()}\n`;
+			}
+			files.push({ path: `${file.path}llms.txt`, contents: listing(top, items, budget, `${file.path}llms.txt`) });
 		}
-		files.push({ path: "/llms.txt", contents: txt });
 		if (copies) for (const e of entries) files.push({ path: e.copy, contents: e.markdown });
 		if (full) files.push({ path: "/llms-full.txt", contents: `${head}\n${entries.map((e) => `---\nurl: ${whole(e.url)}\n---\n\n${e.markdown}`).join("\n")}` });
 		return files;

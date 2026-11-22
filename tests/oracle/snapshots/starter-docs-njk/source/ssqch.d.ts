@@ -644,12 +644,18 @@ declare module "ssqch/llms" {
 		copies?: boolean;
 		/** `/llms-full.txt`, every listed page's Markdown in one file, each after a `url:` line. Default `true`. */
 		full?: boolean;
-		/** A page's section in `llms.txt`: a function that gets each page and returns a name. Default: its first folder (`/guide/...` is "Guide"; the top's pages are "Pages"). Sections are in the order their first page comes. */
+		/** A page's section in `llms.txt`: a function that gets each page and returns a name. Default: its first folder (`/guide/...` is "Guide"; the top's pages are "Pages"). Sections are in the order their first page comes, with "Optional" (links an agent can skip) last. Inside a file of `paths`, the default is the page's folder under that path. */
 		section?: (page: LlmsPage) => string | undefined;
 		/** The pages' order, as `Array.prototype.sort` takes it: `(a, b) => a.data.order - b.data.order`. Default: by URL. */
 		sort?: (a: LlmsPage, b: LlmsPage) => number;
+		/** Parts of the site with an `llms.txt` of their own, as llms.txt's v2 has them: `["/docs/"]` writes `/docs/llms.txt` with the pages under `/docs/`, and `/llms.txt` lists that file in their place. An item is a URL path that starts and ends with `/`, or an object with its `path` and the file's `title` (its heading; default the site's title and the folder's name), `description` and `details`. A page belongs to the deepest path it's under. A path with no listed pages writes no file, and the build warns. */
+		paths?: Array<string | LlmsPath>;
+		/** The most characters an `llms.txt` has: past it, pages from the end move into "Optional" without their descriptions until it fits. A file that wouldn't fit even so stays as it is, and the build warns. Default `50000` (where `ssqch patrol` warns); `false` for no limit. */
+		budget?: number | false;
 	}
-	/** Writes `/llms.txt` (the site's pages, with links to their Markdown), a Markdown copy of each, and `/llms-full.txt`, for language models, as llmstxt.org describes; and adds the template function `markdownCopy(page.url)`, the URL of a page's copy (or `""` when it has none), for a layout's `<link rel="alternate" type="text/markdown">`. */
+	/** A part of the site with an `llms.txt` of its own, in `paths`. */
+	export interface LlmsPath { path: string; title?: string; description?: string; details?: string }
+	/** Writes `/llms.txt` (the site's pages, with links to their Markdown), a Markdown copy of each, and `/llms-full.txt`, for language models, as llmstxt.org describes; and adds the template functions `markdownCopy(page.url)`, the URL of a page's copy (or `""` when it has none), for a layout's `<link rel="alternate" type="text/markdown">`, and `llmsTxt(page.url)`, the `llms.txt` that covers the page, for its `<link rel="describedby">`. */
 	export function llmsPlugin(options?: LlmsPluginOptions): BuiltinPlugin;
 }
 
