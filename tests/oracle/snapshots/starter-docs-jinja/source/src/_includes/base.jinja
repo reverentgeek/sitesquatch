@@ -8,7 +8,7 @@
   <link rel="canonical" href="{{ site.url }}{{ page.url }}">
   {# For agents: the page as Markdown and the site's map (llmsPlugin() in ssqch.config.js). #}
   {% if markdownCopy(page.url) %}<link rel="alternate" type="text/markdown" href="{{ markdownCopy(page.url) }}">{% endif %}
-  <link rel="describedby" href="/llms.txt">
+  <link rel="describedby" href="{{ llmsTxt(page.url) }}">
   <meta name="generator" content="{{ ssqch.generator }}">
   <link rel="stylesheet" href="/highlight.css">
   <link rel="stylesheet" href="/assets/docs.css">

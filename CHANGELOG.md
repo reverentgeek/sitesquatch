@@ -9,6 +9,29 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## 0.13.2 - 2026-11-22
+
+### Changed
+- Liquid's `where` looks a value up instead of going through the whole list each time, when the
+  list's items are plain objects and the values are text, numbers or `nil`: a multilingual layout
+  that finds each language's pages (`site.articles | where: "lang", lang` in a loop) builds about
+  a third faster (the bench's Liquid case, 1.63 s to 1.07 s; opensource.guide, 1.30 s to 1.05 s,
+  with the same output). The answers are liquidjs' own, and each page looks again, so a list a
+  site changes between pages is read as it is.
+- The starters' layouts link the `llms.txt` that covers each page, `llmsTxt(page.url)`, in
+  place of `/llms.txt`, so a starter site that gives a part of itself an `llms.txt` of its own
+  (`llmsPlugin({ paths })`) points each page at the right one. Their output is the same until
+  then.
+
+### Fixed
+- A `%` in a Markdown link or image URL that doesn't start an escape is written `%25`, as
+  CommonMark's reference implementation and markdown-it write it:
+  `[spec](https://tc39.es/ecma262/#sec-%arrayiteratorprototype%-object)` was an invalid URL. An
+  escape (`%2F`, `%C3%A9`) stays as it is, and a link hook's `link.href` is still the URL as the
+  page wrote it.
+- `ssqch diff` reads a bare `%` and `%25` as the same, where the `%` doesn't start an escape
+  (`/100%` and `/100%25`), as it already did the rest of percent-encoding.
+
 ## 0.13.1 - 2026-11-21
 
 ### Added

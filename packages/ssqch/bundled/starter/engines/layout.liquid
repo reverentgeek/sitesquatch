@@ -8,7 +8,7 @@
     <link rel="canonical" href="{{ site.url }}{{ page.url }}">
     {% comment %} For agents: the page as Markdown and the site's map (llmsPlugin() in ssqch.config.js). {% endcomment %}
     {% assign copy = page.url | markdownCopy %}{% if copy != "" %}<link rel="alternate" type="text/markdown" href="{{ copy }}">{% endif %}
-    <link rel="describedby" href="/llms.txt">
+    <link rel="describedby" href="{{ page.url | llmsTxt }}">
     <style>
       /* Ranger Station '76: soft white (or green charcoal in dark mode), neutral text, pine
          headings, burnt orange links, and a four-color stripe under the header. */
