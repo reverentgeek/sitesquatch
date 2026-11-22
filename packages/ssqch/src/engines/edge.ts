@@ -81,6 +81,9 @@ export function edgeEngine(env: EngineEnv): TemplateEngine {
 	for (const [name, fn] of env.globals) edge.global(name, settled(name, fn, root, running));
 	const functions: Record<string, unknown> = {};
 	for (const [name, value] of Object.entries(edge.globals)) if (typeof value === "function") functions[name] = value;
+	// Other generators' filters that are aliases (`url`, `markdownify`) work here as calls only:
+	// `url("/about/")` reaches the alias, and `{{ url }}` stays the page's data (blog #4).
+	for (const [name, fn] of env.pipeFilters) if (!(name in functions)) functions[name] = settled(name, fn, root, running);
 	const globals = new Set(["stringify", "safe", "escape", "truncate", ...env.globals.keys()]);
 	ENGINES.set(edge.tags, { strict: env.strict, functions: new Set(Object.keys(functions)), globals });
 

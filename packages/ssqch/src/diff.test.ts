@@ -200,6 +200,10 @@ test("markup_browsers_read_the_same_is_the_same", () => {
 	// The first of two attributes with one name is the one a browser keeps.
 	assert.deepEqual(canonicalTag("<a href=\"/one\" HREF=\"/two\">", false), ["<a href=\"/one\">", false]);
 	assert.deepEqual(canonicalTag("<path d=\"M0\" />", true), ["<path d=\"M0\">", true]);
+	// httpx: a Python repr printed unescaped is shown as it's written, not as a tag; a custom
+	// element's name is still a tag's.
+	assert.deepEqual(canonicalTag("<httpx._client.UseClientDefault object at 0x10>", false), ["<httpx._client.UseClientDefault object at 0x10>", false]);
+	assert.deepEqual(canonicalTag("<Pine-Cone.Snack B=1>", false), ["<pine-cone.snack b=\"1\">", false]);
 	assert.equal(canonicalText("&copy; &#169; &#xA0; & &amp;amp;"), "&copy; \u00a9 &nbsp; &amp; &amp;amp;");
 });
 

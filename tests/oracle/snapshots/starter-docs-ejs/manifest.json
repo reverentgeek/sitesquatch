@@ -1,5 +1,5 @@
 {
-  "version": "0.13.1",
+  "version": "0.13.4",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -48,7 +48,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   6 written from 6 templates, 23.9 KB\n  Copied  2 files, 15.4 KB\n  Links   127 checked, 0 broken\n  Output  dist: 18 files, 55.7 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   6 written from 6 templates, 23.9 KB\n  Copied  2 files, 15.4 KB\n  Links   127 checked, 0 broken\n  Output  dist: 18 files, 55.6 KB\n",
   "files": {
     "404.html": "text",
     "assets/docs.css": "text",

@@ -152,6 +152,9 @@ export async function build(config: Config): Promise<BuildReport> {
 		summary: [],
 	};
 	await runHooks(config, dirs, "afterBuild", config.afterBuild, report, site.profile);
+	// The summary's size is what's on disk: a hook can minify the pages (4.43 MB said, 4.07 MB
+	// written, a11y #20), or remove one.
+	if (config.afterBuild.length) report.pageBytes = written.reduce((sum, w) => sum + (fs.statSync(w.file, { throwIfNoEntry: false })?.size ?? 0), 0);
 	// After the hooks, which can fingerprint or minify what's measured.
 	if (config.budgets.length) for (const found of overBudget(await measure(dirs.output), config.budgets)) warn(found);
 	for (const [label, line] of config.summaries) {

@@ -93,10 +93,12 @@ test("a copy's links to the site's own files that aren't there are copy-broken, 
 		"index.html": page("Home", `<p>${TEXT}</p>`, "<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">"),
 		"index.md": `# Home\n\n${TEXT}\n\n![Stump](https://trail.example/content/stump.jpg)\n\n\`\`\`html\n<a href="/logout">Log out</a>\n\`\`\`\n`,
 		"guide/index.html": page("Guide", `<p>${TEXT}</p>`, "<link rel=\"alternate\" type=\"text/markdown\" href=\"/guide/index.md\">"),
-		"guide/index.md": `# Guide\n\n${TEXT} Use \`<a href="/nope">\` in a template.\n`,
+		"guide/index.md": `# Guide\n\n${TEXT} Use \`<a href="/nope">\` in a template.[^1]\n\n[^1]: Two raccoons agree.\n`,
 	});
-	const broken = patrol(dir).findings.find((f) => f.code === "copy-broken");
-	assert.deepEqual(broken?.files, ["index.md"]);
+	// A footnote's text isn't a link (the new-blog run): guide/index.md isn't listed.
+	const findings = patrol(dir).findings;
+	assert.deepEqual(findings.find((f) => f.code === "copy-broken")?.files, ["index.md"]);
+	assert.ok(!findings.some((f) => f.code === "relative-links"), JSON.stringify(findings));
 });
 
 test("an llms.txt that llms.txt links is checked too, and its pages count for coverage", () => {

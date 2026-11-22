@@ -334,6 +334,20 @@ test("hooks_run_commands", unixOnly, () => {
 	assert.ok(!r.ok && r.log.includes("afterBuild: \"cmd\" isn't an option (use { run: \"command\" })"), r.log);
 });
 
+// a11y #20: the summary said 4.43 MB of pages, measured before a minifying hook, and 4.07 MB were
+// on disk. DELIBERATE (0.13.5): the size is measured after `afterBuild`.
+test("the_pages_size_is_measured_after_after_build", () => {
+	const dir = tempDir("pages-size-after-build");
+	const page = `<p>${"pine ".repeat(400)}</p>`;
+	write(dir, {
+		"index.html": page,
+		"ssqch.config.js": "import fs from \"node:fs\";\nexport default { afterBuild: [() => fs.writeFileSync(new URL(\"_site/index.html\", import.meta.url), \"<p>pine</p>\")] };\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.ok(r.log.includes("  Pages   1 written from 1 template, 11 B"), r.log);
+});
+
 // expressjs.com (ex #11): a broken include in a layout failed 222 pages, and the error printed the
 // same lines three times. Each place is shown once, so a second, different one gets a frame too.
 test("each_error_location_is_shown_once", () => {

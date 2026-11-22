@@ -53,6 +53,11 @@ test("text that Markdown would read as markup is escaped", () => {
 	assert.equal(htmlToMarkdown("<p># not a heading</p><p>1. not a list</p><p>&lt;div&gt; is text</p>"), "\\# not a heading\n\n1\\. not a list\n\n\\<div> is text\n");
 });
 
+test("a footnote's text isn't a link to rewrite", () => {
+	// The new-blog run: `[^raccoons]: Two raccoons...` became `[^raccoons]: https://.../Two raccoons...`.
+	assert.equal(rewriteLinks("Crunch.[^1]\n\n[^1]: Two raccoons agree.\n[^a b]: also.\n[ref]: one.md", (h) => `/X/${h}`), "Crunch.[^1]\n\n[^1]: Two raccoons agree.\n[^a b]: also.\n[ref]: /X/one.md");
+});
+
 test("links are rewritten outside code", () => {
 	const md = "[a](one.md) ![b](pic.png \"t\") `[c](kept.md)` <a href=\"two.md\">x</a>\n\n[ref]: three.md\n\n```\n[d](kept.md)\n```\n[e](<with space.md>)";
 	assert.equal(rewriteLinks(md, (h) => `/X/${h}`), "[a](/X/one.md) ![b](/X/pic.png \"t\") `[c](kept.md)` <a href=\"/X/two.md\">x</a>\n\n[ref]: /X/three.md\n\n```\n[d](kept.md)\n```\n[e](</X/with space.md>)");
