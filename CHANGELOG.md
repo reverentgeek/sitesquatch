@@ -9,7 +9,7 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
-## Unreleased
+## 0.13.1 - 2026-11-21
 
 ### Added
 - **A big site's `llms.txt`** (llms.txt's v2, August 2026): `llmsPlugin({ paths: ["/docs/"] })`

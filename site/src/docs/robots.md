@@ -57,9 +57,6 @@ Not written yet, because nothing reads them yet: the IETF draft's shared group f
 
 ### A big site's llms.txt
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
-
 `llms.txt` is the map an agent reads before it decides where to go, so it has to stay short enough to read whole (llms.txt's proposal: "small enough to fit in context"). Three options keep it that way:
 
 - `paths`: parts of the site that get an `llms.txt` of their own, which covers the pages under it (llms.txt's v2 has agents use the most specific one). `paths: ["/docs/"]` writes `/docs/llms.txt` with the pages under `/docs/`, and `/llms.txt` lists that file once, where its first page would be, in place of them. An item is a URL path that starts and ends with `/`, or `{ path: "/docs/api/", title: "Trail API", description: "Every endpoint.", details: "..." }` for the file's `#` heading (default: the site's title and the folder's name, `Trail Guide: Docs`), its `>` line and its Markdown after that; the title and description are also its line in the file above it. Inside a file, a page's section is its folder under the path (`/docs/guide/start/` is "Guide" in `/docs/llms.txt`), unless `section` names one. A path can be under another (`/docs/` and `/docs/api/`), and a path with no listed pages writes no file and warns. `llms-full.txt` stays one file with every page.
@@ -79,10 +76,6 @@ llms.txt's proposal (v2) has agents find both from any page by two links, which 
 ```
 
 `markdownCopy(page.url)` comes with `llmsPlugin()`: the copy's URL, or `""` for a page without one. The starters' layouts have all three, with `/llms.txt` written out.
-
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: until then, write `/llms.txt` for `llmsTxt(page.url)`.
-
 `llmsTxt(page.url)` comes with it too: the `llms.txt` that covers the page, `/docs/llms.txt` for a page under `/docs/` when `paths` has it and `/llms.txt` for the rest.
 
 A copy is a Markdown file, with no `<head>` to point from: llms.txt's v2 points from it with an HTTP `Link` header, which a host's `_headers` file (Netlify, Cloudflare) sends for a folder, like `/docs/*` with `Link: </docs/llms.txt>; rel="describedby"`. ssqch adds no line to the copy itself, so a copy says what its page says and nothing more.
