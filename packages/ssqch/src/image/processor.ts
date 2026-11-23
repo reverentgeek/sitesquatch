@@ -1164,7 +1164,7 @@ export class ImageProcessor {
 	 * Some HTML made ready for a feed (what `feedHtml()` does before making URLs absolute): each
 	 * local `<img src>` points at one generated copy (`width` pixels wide at most, or less when the
 	 * tag's own `width` says so, in `format`), since feed readers drop `<picture>` and `srcset`; a
-	 * link to a local image points at the copy a page's link would; and `srcset`, `sizes`,
+	 * link to a local image points at the copy a page's link would; a `<source srcset>` goes; and `srcset`, `sizes`,
 	 * `loading`, `decoding`, `fetchpriority` and `ssqch:*` attributes go. `pageUrl` is the page
 	 * the HTML is from (a path or a whole URL), for relative image paths.
 	 */
@@ -1175,6 +1175,15 @@ export class ImageProcessor {
 		const sitePath = (src: string) => (src.startsWith("/") || src.includes("://") || src.startsWith("data:") ? this.resolveSiteSrc(src) : this.resolveSiteSrc(joinUrlPath(pagePath, src)));
 		return rewriteHtml(html, {
 			tag: (el) => {
+				// A `<picture>`'s `<source srcset>` (a crop for phones, say) would point at the
+				// original, which the page's transform publishes under another name, so a reader that
+				// shows it shows nothing. The `<img>` is the feed's one copy. (A `<video>`'s `<source>`
+				// has a `src`, and stays.)
+				if (el.name === "source" && el.get("srcset") !== undefined) {
+					if (el.get("ssqch:ignore") !== undefined) el.remove("ssqch:ignore");
+					else el.replaceWith("");
+					return;
+				}
 				if (el.name === "img" && el.get("src") !== undefined) {
 					const ignored = el.get("ssqch:ignore") !== undefined;
 					for (const n of el.names().filter((n) => n.startsWith("ssqch:"))) el.remove(n);

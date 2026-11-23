@@ -531,7 +531,7 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge
 const d = await image("src/img/squatch.png", { formats: ["auto"], widths: [20] });
 export default { keys: Object.keys(d).join(","), same: d.auto[0].url === d.png[0].url, url: imageUrl("/img/squatch.png", { width: 10, format: "webp" }).url };
 `,
-		"src/posts/hike/index.md": "---\ntags: posts\n---\n<img src=\"./map.png\" alt=\"Map\" loading=\"lazy\" ssqch:widths=\"16\"> <a href=\"/img/squatch.png\">big</a> <img src=\"/img/squatch.png\" width=\"20\" alt=\"Small\">\n",
+		"src/posts/hike/index.md": "---\ntags: posts\n---\n<img src=\"./map.png\" alt=\"Map\" loading=\"lazy\" ssqch:widths=\"16\"> <a href=\"/img/squatch.png\">big</a> <img src=\"/img/squatch.png\" width=\"20\" alt=\"Small\"> <picture><source media=\"(max-width: 40rem)\" srcset=\"./map.png\"><img src=\"/img/squatch.png\" alt=\"Cropped\"></picture>\n",
 		"src/feed.edge": "---\npermalink: feed.xml\n---\n@each(post in collections.posts)\n<content>{{ feedHtml(post.templateContent, \"https://example.com\" + post.url) }}</content>\n@end\n",
 		"src/index.edge": "<html><head><meta property=\"og:image\" content=\"{{ imageUrl('/img/squatch.png', { width: 1200 }).url }}\"><link rel=\"stylesheet\" href=\"/s.css\"></head><body><img src=\"/img/squatch.png\" alt=\"Banner\" ssqch:preload sizes=\"auto, 50vw\"><p>{{ logo.keys }} {{ logo.same }} {{ logo.url }} {{ JSON.stringify(imageUrl('https://cdn.example.com/a.png')) }}</p></body></html>",
 		"src/bad.edge": "---\npermalink: false\n---\n",
@@ -555,7 +555,10 @@ export default { keys: Object.keys(d).join(","), same: d.auto[0].url === d.png[0
 	const feed = read(root, "dist/feed.xml");
 	// One absolute URL per image (the page's own width when it has one), no srcset or lazy loading,
 	// and a link to an image goes to its published copy.
-	assert.ok(!feed.includes("srcset") && !feed.includes("loading") && !feed.includes("ssqch:") && !feed.includes("picture"), feed);
+	// A picture of the author's keeps only its `<img>`: its `<source srcset>` pointed at the
+	// original, which isn't published under that name (0.14.1).
+	assert.ok(!feed.includes("srcset") && !feed.includes("loading") && !feed.includes("ssqch:") && !feed.includes("source"), feed);
+	assert.ok(/&lt;picture&gt;&lt;img src=&quot;https:\/\/example\.com\/img\/[^&]+-64\.png&quot; alt=&quot;Cropped&quot;&gt;&lt;\/picture&gt;/.test(feed), feed);
 	assert.ok(feed.includes("&lt;img src=&quot;https://example.com/img/") && feed.includes("-64.png&quot; alt=&quot;Map&quot;&gt;"), feed);
 	assert.ok(feed.includes("-20.png&quot; width=&quot;20&quot; alt=&quot;Small&quot;&gt;"), feed);
 	assert.ok(feed.includes("&lt;a href=&quot;https://example.com/img/") && !feed.includes("/img/squatch.png"), feed);

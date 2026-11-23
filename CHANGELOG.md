@@ -17,6 +17,10 @@ where that version matches.
   `<kbd>`, `<samp>`, `<pre>` and `<var>`) as a link and fails the build on it. A path in code is
   an example, as it already was on a page. A link in a `<pre>` (`<a href>`) is still checked.
   The summary's `Links` count is lower by those paths (the starter's, 222 to 219).
+- `feedHtml()`, and so `feedPlugin()`, takes out a `<picture>`'s `<source srcset>` (a crop for
+  phones, say). It pointed at the original file, which the page's images publish under another
+  name, so a reader that showed it showed nothing. The `<img>` is the feed's one copy, as it was
+  already; `ssqch:ignore` on a `<source>` keeps it as written.
 
 ## 0.14.0 - 2026-11-23
 
