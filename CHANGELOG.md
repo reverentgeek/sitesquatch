@@ -9,6 +9,19 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Changed
+- `ssqch build` and `ssqch serve` print the summary without a line for each page:
+  `[ssqch] Writing ./dist/index.html from ./src/index.jinja (jinja)` comes with `--verbose`.
+  opensource.guide printed 404 of them on every build, and a dev server every one of its pages on
+  every save, which an agent reads as tokens and a person scrolls past. Images still say when
+  they're encoded.
+- Output conflicts are one line for each pair of templates, with how many paths and the first
+  three (a paginated template whose pages share a permalink printed a line for every page), from
+  the site's root rather than as absolute paths; a template that conflicts with itself says to
+  give its pages a part of their own (`{{ pagination.pageNumber }}`).
+
 ## 0.13.4 - 2026-11-22
 
 ### Added

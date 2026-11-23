@@ -37,7 +37,7 @@ const GLOBALS: Option[] = [
 	{ long: "offline", help: "Don't use the network: `fetch()` answers from the copies its `cache` option saved" },
 	{ long: "env", value: "ENV", help: "development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)" },
 	{ long: "quiet", short: "q", help: "Print only warnings and errors" },
-	{ long: "verbose", short: "v", help: "Also list the slowest images to encode" },
+	{ long: "verbose", short: "v", help: "Also list every page written, and the slowest images to encode" },
 ];
 
 const SHELLS = ["bash", "elvish", "fish", "powershell", "zsh"];

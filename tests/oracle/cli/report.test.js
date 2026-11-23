@@ -42,9 +42,13 @@ test("build_reports_in_json", () => {
 		{ code: "links", message: "/posts/pine/ -> /nope/ (not found)", url: "/posts/pine/" },
 	]);
 	// What a person would have read went to standard error.
-	for (const line of ["from the config", "from-a-command", "[ssqch] Writing "]) {
+	for (const line of ["from the config", "from-a-command"]) {
 		assert.ok(stderr.includes(line), `missing ${JSON.stringify(line)} in ${stderr}`);
 	}
+	// DELIBERATE (0.13.5): a line per page only with --verbose (osg, the new-blog run).
+	assert.ok(!stderr.includes("[ssqch] Writing "), stderr);
+	[, stderr] = report(["--verbose"]);
+	assert.ok(stderr.includes("[ssqch] Writing ./dist/index.html from ./src/index.edge (edge)"), stderr);
 	assert.ok(!stderr.includes("warn:") && !stderr.includes("Built in"), stderr);
 	[, stderr] = report(["--quiet"]);
 	assert.ok(!stderr.includes("[ssqch]"), stderr);

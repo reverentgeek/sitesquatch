@@ -334,6 +334,23 @@ test("hooks_run_commands", unixOnly, () => {
 	assert.ok(!r.ok && r.log.includes("afterBuild: \"cmd\" isn't an option (use { run: \"command\" })"), r.log);
 });
 
+// v8 #6: a paginated template whose pages shared a permalink printed 58 lines of `blog/tag.njk and
+// blog/tag.njk both write to ...`. DELIBERATE (0.13.5): one line for each pair of templates, with
+// how many paths, and a template that conflicts with itself says what to give its pages.
+test("output_conflicts_are_grouped_by_template", () => {
+	const dir = tempDir("conflicts-grouped");
+	write(dir, {
+		"ssqch.config.js": "export default {};\n",
+		"tag.jinja": "---\npagination:\n  data: trails\n  size: 1\ntrails: [cedar, ridge, creek, meadow, cedar, ridge, creek, meadow]\npermalink: \"/trails/{{ pagination.items[0] }}/\"\n---\nx\n",
+		"a.md": "---\npermalink: /about/\n---\nA\n",
+		"b.md": "---\npermalink: /about/\n---\nB\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok, r.log);
+	assert.ok(r.log.includes("output conflicts (two sets of tracks lead to the same place):\n  - a.md and b.md both write to ./_site/about/index.html\n  - tag.jinja makes 8 pages that write to 4 paths: ./_site/trails/cedar/index.html, ./_site/trails/ridge/index.html, ./_site/trails/creek/index.html, and 1 more (its pages share a permalink: give each page a part of its own, like `{{ pagination.pageNumber }}`)\n"), r.log);
+	assert.equal(r.log.split(" write to ").length - 1, 2, r.log);
+});
+
 // expressjs.com (ex #11): a broken include in a layout failed 222 pages, and the error printed the
 // same lines three times. Each place is shown once, so a second, different one gets a frame too.
 test("each_error_location_is_shown_once", () => {

@@ -96,11 +96,9 @@ title: Squatch Snacks
 ssqch build
 ```
 
-You'll see a line for each page, then a summary:
+You'll see a summary of what it built (`--verbose` adds a line for each page as it's written):
 
 ```text
-[ssqch] Writing ./dist/index.html from ./src/index.jinja (jinja)
-[ssqch] Writing ./dist/posts/pine-cone-crunch/index.html from ./src/posts/pine-cone-crunch.md (jinja, md)
 First confirmed sighting. Built in 2.75 ms (production)
   Pages   2 written from 2 templates, 410 B
   Output  dist: 2 files, 410 B
@@ -141,4 +139,4 @@ None of that is written to the output folder: the server adds it to pages as it 
 
 To look at a production build the way a host will serve it (for Lighthouse, or a last check before deploying), run `ssqch build`, then `ssqch serve --built`: it serves the output folder as the build left it, with no build, no watching and nothing added to pages, and compresses text with gzip as hosts do. `ssqch preview` is the same command, for people coming from Vite or Astro.
 
-`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](deploying.md#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list the slowest images to encode and the templates nothing used. Errors are red on a terminal and plain in a pipe, a log, or anywhere `NO_COLOR` is set. The other commands are `ssqch init`, `ssqch types`, `ssqch completions`, [`ssqch new`](new-pages.md), [`ssqch trace`](where-values-come-from.md), [`ssqch diff`](comparing-builds.md), [`ssqch footprint`](footprint.md), [`ssqch scout`](trailheads.md#scouting-a-site), [`ssqch capabilities`](agents.md) and [`ssqch docs`](agents.md), and `ssqch build --format json` reports to a [script or a coding agent](agents.md).
+`ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](deploying.md#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--quiet` to print only warnings and errors, and `--verbose` to also list each page as it's written (`[ssqch] Writing ./dist/index.html from ./src/index.jinja (jinja)`), the slowest images to encode and the templates nothing used. Errors are red on a terminal and plain in a pipe, a log, or anywhere `NO_COLOR` is set. The other commands are `ssqch init`, `ssqch types`, `ssqch completions`, [`ssqch new`](new-pages.md), [`ssqch trace`](where-values-come-from.md), [`ssqch diff`](comparing-builds.md), [`ssqch footprint`](footprint.md), [`ssqch scout`](trailheads.md#scouting-a-site), [`ssqch capabilities`](agents.md) and [`ssqch docs`](agents.md), and `ssqch build --format json` reports to a [script or a coding agent](agents.md).
