@@ -2,7 +2,7 @@
 // in `bundled/starter/` (the site) and `bundled/starter-docs/` (the documentation site).
 import fs from "node:fs";
 import path from "node:path";
-import { bundled, types } from "../bundled.ts";
+import { bundled, bundledPath, types } from "../bundled.ts";
 import { red } from "../diagnostics.ts";
 import { CONFIG_FILES } from "../dirs.ts";
 import { joinAsGiven, parentAsGiven, slashes } from "../paths.ts";
@@ -19,6 +19,7 @@ const STARTER: Array<[string, string]> = [
 	["src/posts/the-cache-of-the-wild.md", "starter/src/posts/the-cache-of-the-wild.md"],
 	["src/404.md", "starter/src/404.md"],
 	["src/favicon.svg", "starter/src/favicon.svg"],
+	["src/img/stump.jpg", "starter/src/img/stump.jpg"],
 	["src/_blueprints/posts.md", "starter/src/_blueprints/posts.md"],
 	["ssqch.d.ts", "ssqch.d.ts"],
 	["jsconfig.json", "starter/jsconfig.json"],
@@ -140,16 +141,19 @@ This site is built with SiteSquatch (\`ssqch\`), a static site generator. ${file
 `;
 }
 
-/** The starter's files for `engine`, as (path in the site, contents). */
-export function starterFiles(starter: string, engine: string): Array<[string, string]> {
-	const common = (starter === "docs" ? DOCS_STARTER : STARTER).map(([rel, file]): [string, string] => [rel, adapt(engine, rel, rel === "ssqch.d.ts" ? types() : bundled(file))]);
+/** A starter's file that's copied as its bytes: a picture. */
+const isBinary = (rel: string) => /\.(?:jpe?g|png|gif|webp|avif)$/i.test(rel);
+
+/** The starter's files for `engine`, as (path in the site, contents: text, or a picture's bytes). */
+export function starterFiles(starter: string, engine: string): Array<[string, string | Buffer]> {
+	const common = (starter === "docs" ? DOCS_STARTER : STARTER).map(([rel, file]): [string, string | Buffer] => [rel, isBinary(rel) ? fs.readFileSync(bundledPath(file)) : adapt(engine, rel, rel === "ssqch.d.ts" ? types() : bundled(file))]);
 	const set = (starter === "docs" ? DOCS_TEMPLATES : SITE_TEMPLATES)[engine === "njk" ? "jinja" : engine];
 	const templates = set.map(([rel, file]): [string, string] => [`${rel}.${engine}`, rename(engine, bundled(file))]);
 	return [...common, ...templates, ["AGENTS.md", agentsMd({ starter, engine })], ["CLAUDE.md", "@AGENTS.md\n"]];
 }
 
 /** Writes `contents` to `file`, making its folders. */
-export function write(file: string, contents: string, shown = file): void {
+export function write(file: string, contents: string | Buffer, shown = file): void {
 	// Its folder first, then the file, each error naming which (as given), as 0.7's did.
 	const parent = parentAsGiven(shown);
 	if (parent !== "") {

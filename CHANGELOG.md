@@ -42,8 +42,14 @@ where that version matches.
   warned on every build (`not a git repository, so pages use their files' times`), which every
   new site met before `git init`. `SOURCE_DATE_EPOCH` pins a `page.lastModified` that comes from
   a file's time, as it does an undated page's date.
+- The blog starter's second post has its photo: a blurry one of something tall between the
+  birches, which the post insists is the stump. It shows the image plugin on a real picture (a
+  `<picture>` in three sizes, and one copy in the feed).
 
 ### Fixed
+- A Markdown copy (`llmsPlugin()`) keeps picture paths in code as they're written: a code span
+  or fenced block showing `![The stump](/img/stump.jpg)` got the published file's name, as the
+  page's own picture does.
 - A footnote in a page's Markdown copy (`llmsPlugin()`'s `index.md` and `llms-full.txt`) keeps
   its text: `[^1]: Two raccoons agree.` was read as a link definition and written as
   `[^1]: https://example.com/post/Two raccoons agree.`, which `ssqch patrol` then reported as

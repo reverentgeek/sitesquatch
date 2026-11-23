@@ -76,10 +76,12 @@ of what you saw.&lt;/p&gt;
     <content type="html">&lt;p&gt;I went back in daylight. It was a stump. A tall one, to be fair to me.&lt;/p&gt;
 &lt;p&gt;The &lt;code&gt;description&lt;/code&gt; in this post&#x27;s front matter is the page&#x27;s meta description; posts without
 one get the site&#x27;s, from &lt;code&gt;src/_data/site.json&lt;/code&gt;.&lt;/p&gt;
-&lt;p&gt;I didn&#x27;t take a picture, since it was a stump. When you have one worth showing, save it as
-&lt;code&gt;src/img/stump.jpg&lt;/code&gt; and write &lt;code&gt;![The stump](/img/stump.jpg)&lt;/code&gt;. The build turns it into a
-&lt;code&gt;&amp;lt;picture&amp;gt;&lt;/code&gt; in three sizes, so it stays sharp on any screen. Whether it was sharp to begin
-with is between you and your camera.&lt;/p&gt;
+&lt;p&gt;I did get a picture this time. It&#x27;s a little blurry, but you can clearly see the stump.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://example.com/img/jsuIfm9F_f-1200.jpeg&quot; alt=&quot;A blurry photo of something tall and dark, mid-stride between the birches. The stump.&quot;&gt;&lt;/p&gt;
+&lt;p&gt;The picture is &lt;code&gt;src/img/stump.jpg&lt;/code&gt;, and this post shows it with
+&lt;code&gt;![A blurry photo...](/img/stump.jpg)&lt;/code&gt;. The build turns it into a &lt;code&gt;&amp;lt;picture&amp;gt;&lt;/code&gt; in three sizes,
+so it stays sharp on any screen. Whether it was sharp to begin with is between you and your
+camera.&lt;/p&gt;
 &lt;p&gt;A raccoon who keeps everything told me the trick for deploying: keep &lt;code&gt;dist/img/&lt;/code&gt; and
 &lt;code&gt;.cache/&lt;/code&gt; between builds, and the build never encodes the same picture twice. Raccoon&#x27;s cache.
 Raccoon did not see anything tall.&lt;/p&gt;

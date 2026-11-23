@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildPackage, ownModules, rewriteSource } from "./build.ts";
 
 test("import.meta.url becomes the URL the source file would have in the package", () => {
@@ -44,6 +44,9 @@ test("the built package runs, and finds its .wasm, its docs and its starters", a
 		// A module has ssqch.d.ts's exports, not its own helpers.
 		assert.deepEqual(Object.keys(await import(pathToFileURL(path.join(out, "lib/links.js")).href)), ["linksPlugin"]);
 
+		// Its one dependency, as an install would put it beside the package: the starter's photo is
+		// encoded with sharp.
+		fs.symlinkSync(fileURLToPath(new URL("../node_modules", import.meta.url)), path.join(out, "node_modules"), "junction");
 		const ssqch = (...args: string[]) => spawnSync(process.execPath, [path.join(out, "bin/ssqch.js"), ...args], { encoding: "utf8", cwd: dir });
 		assert.equal(ssqch("--version").stdout.trim(), `ssqch ${built.version}`);
 		assert.match(ssqch("docs", "passthrough").stdout, /passthrough/);

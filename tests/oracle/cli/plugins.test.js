@@ -1033,6 +1033,14 @@ test("llms_copies_link_the_pictures_the_page_publishes", () => {
 	assert.ok(!copy.includes("/img/squatch.png"), copy);
 	const patrol = ssqch(["patrol", path.join(dir, "dist"), "--format", "json"]);
 	assert.ok(!JSON.parse(patrol.stdout).warnings.some((w) => w.code === "copy-broken"), patrol.stdout);
+
+	// Code is an example, and stays as it's written (the blog starter's post that shows how to add
+	// a picture had the published file's name in its copy).
+	write(dir, { "src/how.md": "# How\n\n![A squatch](/img/squatch.png)\n\nWrite `![A squatch](/img/squatch.png)`, or:\n\n```md\n[The full size](/img/squatch.png)\n```\n" });
+	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
+	const how = read(dir, "dist/how/index.md");
+	assert.ok(how.includes("Write `![A squatch](/img/squatch.png)`, or:") && how.includes("```md\n[The full size](/img/squatch.png)\n```"), how);
+	assert.ok(/!\[A squatch\]\(https:\/\/trail\.example\/img\/[^)]+\)\n/.test(how) && !how.startsWith("# How\n\n![A squatch](/img/squatch.png)"), how);
 });
 
 // Added in 0.13, from the ReverentGeek blog's move to llmsPlugin() and llms.txt's v2 (August

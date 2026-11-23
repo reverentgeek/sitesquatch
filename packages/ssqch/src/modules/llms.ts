@@ -106,6 +106,29 @@ function pageText(markdown: string): string {
  * with the same `alt`, in order (two pictures can share one), from the page as it was written.
  */
 function publishedImages(markdown: string, outputPath: string, base: string, output: string): string {
+	// Code is an example: `![The stump](/img/stump.jpg)` in a code span stays as it's written (the
+	// starter's post showing how to add a picture got the published file's name in its copy).
+	return outsideCode(markdown, (text) => publishedImagesIn(text, outputPath, base, output));
+}
+
+/** `fn` over the Markdown with its fenced blocks and code spans set aside, then put back as they were. */
+function outsideCode(markdown: string, fn: (text: string) => string): string {
+	const kept: string[] = [];
+	const keep = (code: string) => `\u0000${kept.push(code) - 1}\u0000`;
+	let fenced: string | undefined;
+	const lines = markdown.split("\n").map((line) => {
+		const marker = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+		if (fenced !== undefined) {
+			if (marker && marker[0] === fenced[0] && marker.length >= fenced.length && line.trim() === marker) fenced = undefined;
+			return keep(line);
+		}
+		if (marker) { fenced = marker; return keep(line); }
+		return line.replace(/(`+)[^`]*?\1/g, keep);
+	});
+	return fn(lines.join("\n")).replace(/\u0000(\d+)\u0000/g, (_, i: string) => kept[Number(i)]);
+}
+
+function publishedImagesIn(markdown: string, outputPath: string, base: string, output: string): string {
 	let html: string;
 	try { html = fs.readFileSync(outputPath, "utf8"); } catch { return markdown; }
 	const attr = (tag: string, name: string) => new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag)?.slice(1).find((v) => v !== undefined);

@@ -9,7 +9,7 @@
     "pages": {
       "written": 13,
       "templates": 10,
-      "bytes": 44997,
+      "bytes": 45770,
       "new": null,
       "gone": null
     },
@@ -52,8 +52,12 @@
     ],
     "summary": [
       {
+        "label": "Images",
+        "value": "6 files from 1 source, 107 KB: 6 encoded, 0 reused"
+      },
+      {
         "label": "Links",
-        "value": "164 checked, 0 broken"
+        "value": "172 checked, 0 broken"
       }
     ],
     "warnings": [],
@@ -61,12 +65,36 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   13 written from 10 templates, 45.0 KB\n  Copied  1 file, 4.41 KB\n  Links   164 checked, 0 broken\n  Output  dist: 30 files, 66.1 KB\n",
+  "log": "[ssqch] Encoded ./src/img/stump.jpg into 6 files (webp, jpeg) in <time>\nFirst confirmed sighting. Built in <time> (production)\n  Pages   13 written from 10 templates, 45.8 KB\n  Copied  1 file, 4.41 KB\n  Images  6 files from 1 source, 107 KB: 6 encoded, 0 reused\n  Links   172 checked, 0 broken\n  Output  dist: 36 files, 174 KB\n",
   "files": {
     "404.html": "text",
     "favicon.svg": "text",
     "feed.xml": "text",
     "highlight.css": "text",
+    "img/jsuIfm9F_f-1200.jpeg": {
+      "sha256": "702b8a69392493bb0ca35de24a83e7c02cfab17a8a2e3791a72de49e613a9220",
+      "bytes": 42258
+    },
+    "img/jsuIfm9F_f-1200.webp": {
+      "sha256": "c0ef6eab8f032d2d0befed4ed64006c16c0a932a8b92634b168d543bfa89bcc3",
+      "bytes": 14674
+    },
+    "img/jsuIfm9F_f-400.jpeg": {
+      "sha256": "381ea3af0c38c9d5dfa58c67f15d6fda51ebd1267217017800a6167a1103cbb4",
+      "bytes": 10569
+    },
+    "img/jsuIfm9F_f-400.webp": {
+      "sha256": "ff3c2b6a2fb8903d701c0580ea32a286c267bf7427d6bf700b3595ae30ffc0dc",
+      "bytes": 4906
+    },
+    "img/jsuIfm9F_f-800.jpeg": {
+      "sha256": "5b5a42ddf70cd8e9787c5b5bb982b164f74ccc24c4eb09428ebc9f85a75b8cc5",
+      "bytes": 24770
+    },
+    "img/jsuIfm9F_f-800.webp": {
+      "sha256": "223e7468844c28791af3646abd84302d08ad21784f7210c6d6cc5f3515644d53",
+      "bytes": 9526
+    },
     "index.html": "text",
     "index.md": "text",
     "llms-full.txt": "text",
@@ -105,6 +133,10 @@
     "src/_includes/layout.hbs": "text",
     "src/favicon.svg": "text",
     "src/feed.hbs": "text",
+    "src/img/stump.jpg": {
+      "sha256": "ca2c35057e1e01ba84afcb52f7aca37c92d3c9da2d7c9fe76fb5a9566f14d4c2",
+      "bytes": 47888
+    },
     "src/index.hbs": "text",
     "src/posts/i-know-what-i-saw.md": "text",
     "src/posts/posts.json": "text",
