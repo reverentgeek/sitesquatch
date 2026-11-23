@@ -59,6 +59,8 @@ test("front matter errors say where", () => {
 	assert.throws(() => parseFrontMatter("---json\n{ \"a\": 1, }\n---\n"), /invalid JSON front matter: .* at line 1 column \d+/s);
 	assert.throws(() => parseFrontMatter("+++\ntitle = \n+++\n"), /invalid TOML front matter: .* at line 1 column \d+/s);
 	assert.throws(() => parseFrontMatter("---\n- a\n---\n"), /invalid YAML front matter: expected a mapping at the top level/);
+	// A plain value with ": " in it says to quote it, before js-yaml's reason and its place.
+	assert.throws(() => parseFrontMatter("---\ntitle: Hours\nsummary: Hours: early mornings\n---\nx\n"), /invalid YAML front matter: summary's value has a ": " in it, so YAML reads it as another key; put the value in quotes: summary: "Hours: early mornings" \(bad indentation of a mapping entry at line 2 column 15\)/);
 });
 
 // YAML timestamps are dates in every key, as js-yaml makes them (0.7 kept them as text).

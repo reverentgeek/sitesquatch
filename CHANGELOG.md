@@ -68,6 +68,11 @@ where that version matches.
   sitesquatch.dev/examples/searchable-directory/.
 
 ### Changed
+- A value in YAML front matter with a second `: ` in it (`summary: Hours: early mornings`) says
+  what to do: `summary's value has a ": " in it, so YAML reads it as another key; put the value in
+  quotes: summary: "Hours: early mornings"`, before the parser's own words and place. It's the
+  mistake a second author makes first, and the parser's "bad indentation of a mapping entry"
+  didn't say.
 - `--quiet` holds a `{ run }` hook's own output, as it holds ssqch's, and prints it only when the
   command fails, where it's what says why. A Tailwind build in `beforeBuild` printed its banner on
   every quiet build. The command gets `SSQCH_QUIET=true`, as before.
