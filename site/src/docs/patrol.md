@@ -22,9 +22,6 @@ It reads the site's output folder, or any build folder you name, another generat
 
 The `AI crawlers` line reads `robots.txt` the way each crawler does: the group that names it, or the `*` group when none does, and it's kept out by `Disallow: /`. It counts the crawlers `robotsPlugin()` writes rules for, by what they're for (training models, AI search, a fetch a person asked for; [robots.txt](robots.md) lists them), so it answers "what does my site let AI do?" for any build, `robotsPlugin()`'s or a robots.txt of your own. A purpose split both ways says so: `training 5 refused, 2 allowed`.
 
-> [!NOTE]
-> **Not released yet.** The `AI crawlers` line and `ai` ship with the next version of ssqch.
-
 ## What patrol checks
 
 Each warning has a code. The checks are the ones a build folder can answer from the two public lists of what agents need (the Agent-Friendly Documentation Spec and isitagentready.com), and with `--url`, how the deployed site answers ([below](#the-live-site)).

@@ -26,7 +26,4 @@ It reads the site's output folder, or any build folder you name (`ssqch footprin
 
 To keep a site light, give the config `budgets`. Every build then checks the output against them, after plugins like `assetsPlugin()` have run, and warns about whatever is over: `warn: 2 pages are over the pages budget of 100 KB: /build-a-secure-node-js-application-with-javascript-async-await-using-hapi/ (108 KB), /avatars/ (104 KB)`.
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
-
 To make a budget a rule rather than a reminder, add `fail: true`: `budgets: { pages: "100 KB", images: "500 KB", fail: true }`. Then whatever is over is an error (`error: /avatars/ (104 KB) is over the pages budget of 100 KB`, with the same `over-budget` code in `--format json`), and a production build exits 1, so CI or a host's deploy stops there. A development build (`--env development`) and `ssqch serve` still only warn, as they do for broken links, so you can fix the page while it's open. `fail` must be `true` or `false`.
