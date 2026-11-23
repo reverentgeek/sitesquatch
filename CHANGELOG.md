@@ -9,7 +9,7 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
-## Unreleased
+## 0.13.5 - 2026-11-23
 
 ### Added
 - `feedPlugin({ url })` from `ssqch/rss` writes the site's feed: Atom (or `format: "rss"`) at

@@ -7,18 +7,12 @@ description: "The quickest way in is ssqch init, which sets up camp (a config, a
 
 The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, five posts with tags, a page for each tag and one listing them, an Atom feed at `/feed.xml`, a 404 page, a data file, a blueprint for the next post, editor types, and an `AGENTS.md` for coding agents) and then leaves you to it:
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: the blog starter's tags, tag pages and feed.
-
 ```sh
 ssqch init my-site
 cd my-site && ssqch serve
 ```
 
 Haven't installed it yet? `npx ssqch init my-site`, then `npx ssqch serve` in the new folder, works too. Open <http://localhost:8080>, edit `src/posts/i-know-what-i-saw.md`, and watch the page reload. (The starter is an amateur investigator's field notes: a sighting, a correction, a stump, an old map and a raccoon's cache. The posts are short, and each one shows you something.) `ssqch init` never overwrites a file that's already there, so it's safe to run in a folder you've started. In a folder with a `package.json`, it sets `"type": "module"` (the config is an ES module, and `npm init -y` writes `"type": "commonjs"`) and adds `build` and `serve` scripts that aren't there, and says so (`updated package.json: ...`). A project with JavaScript of its own keeps its `type`, since its files may be CommonJS, and gets `ssqch.config.mjs` instead of `ssqch.config.js`. Without a `package.json`, it writes none.
-
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `ssqch init` making `package.json` ready.
 
 The layout and home page are [Jinja](template-languages.md#jinja-and-nunjucks) templates, ssqch's default language. To start in another one, pass `--engine edge`, `--engine liquid`, `--engine njk` (Nunjucks) or `--engine hbs` (Handlebars); the config then lists that engine in `templateFormats` and runs Markdown through it. `--engine` works with `--starter docs` too.
 
@@ -143,12 +137,6 @@ None of that is written to the output folder: the server adds it to pages as it 
 
 **What it watches:** the input folder, a theme's folder, the config and the modules it imports, the config's `watch` paths, and the files plugins read (a Sass partial in a folder the config never named). The watch begins before the first build, so an edit made while it runs is built next. An editor's own files beside the one you edit start no build: `sed -i`'s `.!12345!post.md`, backups (`post.md~`), Emacs' `.#post.md`, Vim's `.post.md.swp` and `4913`, and JetBrains' `___jb_tmp___` files. A change to the config, or to code it imports, reloads all of it, so a filter you edited is the new one on the next build. Builds run in a process of their own, so the server keeps answering while a build runs, and a site's code that crashes or calls `process.exit()` fails that one build rather than the server. A build that stops making progress for a minute (no page written, no image encoded, none of your code starting or finishing) is ended, and the error says what it was waiting on: `in src/index.jinja: the build stopped making progress: for 60 s nothing happened, and it was waiting on filter `latest` (rendering src/index.jinja)`. That's a promise in your code that never settles while something else keeps Node running (a `setInterval`, an open connection); code that never returns says `the build stopped answering`. The minute counts from the last thing the build did, so a long first build isn't cut short, and a `run` command (Pagefind) can take as long as it takes. The next change builds again. Something of yours that waits a minute on purpose (a hook that runs a long tool through its API) is ended too: make it a `{ run: "..." }` command, which isn't counted, or skip it while serving (a hook gets `serving`: `if (serving) return;`). It listens on `127.0.0.1` only, this machine, unless you give it `--host`: `ssqch serve --host 0.0.0.0` listens on every network the machine is on, and prints the address to open on a phone on the same Wi-Fi (`On your network: http://192.168.1.20:8080/ (anyone on it can see the site)`); `--host 192.168.1.20` listens on that address alone. An address that isn't an IP address, or isn't this machine's, is an error. `--built` takes it too. The ready file's `url` stays `localhost`'s.
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: the watch beginning before the first build, an editor's own files starting no build, the limit on a build that stops making progress, and `ssqch serve --host`.
-
 To look at a production build the way a host will serve it (for Lighthouse, or a last check before deploying), run `ssqch build`, then `ssqch serve --built`: it serves the output folder as the build left it, with no build, no watching and nothing added to pages, and compresses text with gzip as hosts do. `ssqch preview` is the same command, for people coming from Vite or Astro.
 
 `ssqch build` uses production mode and `ssqch serve` uses development mode, unless you pass `--env development|production` (or set `$SSQCH_ENV` or `$NODE_ENV`). The other options are `--output DIR`, `--base /path/` to serve the site [under a path](deploying.md#serving-a-site-under-a-path), `--offline` to answer `fetch()` from saved copies only, `--port N` for `serve` (0 picks a free port), `--host 0.0.0.0` for `serve` to open the site from another device on your network, `--quiet` to print only warnings and errors, and `--verbose` to also list each page as it's written (`[ssqch] Writing ./dist/index.html from ./src/index.jinja (jinja)`), the slowest images to encode and the templates nothing used. Errors are red on a terminal and plain in a pipe, a log, or anywhere `NO_COLOR` is set. The other commands are `ssqch init`, `ssqch types`, `ssqch completions`, [`ssqch new`](new-pages.md), [`ssqch trace`](where-values-come-from.md), [`ssqch diff`](comparing-builds.md), [`ssqch footprint`](footprint.md), [`ssqch scout`](trailheads.md#scouting-a-site), [`ssqch capabilities`](agents.md) and [`ssqch docs`](agents.md), and `ssqch build --format json` reports to a [script or a coding agent](agents.md).
-
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: the summary without a line for each page, which `--verbose` lists.

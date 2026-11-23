@@ -54,6 +54,3 @@ Then Pagefind's Component UI in your layout: its stylesheet and script, and a se
 ```
 
 Its colors are custom properties (`--pf-text`, `--pf-background`, `--pf-border` and the rest). Pagefind's stylesheet sets them on `:root`, so set yours on an element around the search (`#search { --pf-text: var(--text); }`), and they follow your light and dark themes. `ssqch serve` builds without the `afterBuild` command, so to try search, build for production and serve that build: `ssqch build`, then `ssqch serve --built`. The docs starter (`ssqch init --starter docs`) has all of this, behind `SEARCH=1`.
-
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: the docs starter's search with Pagefind's Component UI, pinned to 1.6.0.
