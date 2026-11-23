@@ -766,6 +766,48 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"]
 	assert.ok(read(root, "dist/2019-05-15/index.html").includes("url=/b/"));
 });
 
+// Squatch Snacks (Seam1): a host takes the first `_redirects` line that matches, and the lines were
+// sorted together, so `/snacks/*` came before `/snacks/pine-cone-crunch/` and took its address.
+// DELIBERATE (0.13.7): an old URL with a `*` or a `:name` is a pattern. Its line comes after the
+// exact addresses, the one with the most fixed in front first, and it gets no page (it was written
+// at `snacks/*/index.html`, which answers nobody and isn't a file name Windows takes). A colon
+// inside a segment is part of a name (tried without pages: Windows has no file of that name).
+test("redirect_patterns_come_after_the_exact_addresses", () => {
+	const config = (options) => `import { redirectsPlugin } from "ssqch/redirects";
+import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], plugins: [redirectsPlugin(${options}), linksPlugin()] };`;
+	const redirects = "{ \"/snacks/*\": \"/provisions/:splat\", \"/snacks/2019/*\": \"/provisions/\", \"/news/:year/:slug\": \"/provisions/\", \"/zebra/\": \"/provisions/\" }";
+	const files = {
+		"src/provisions.md": "---\naliases: [/snacks/, /snacks/crunch/, /a/*]\n---\n[The old shelf](/snacks/gone/)\n",
+	};
+	const root = project({ "ssqch.config.js": config(`{ netlify: true, redirects: ${redirects} }`), ...files });
+	const { ok, log } = build(root);
+	assert.ok(ok, log);
+	assert.equal(read(root, "dist/_redirects"), [
+		"/snacks/  /provisions/  301",
+		"/snacks/crunch/  /provisions/  301",
+		"/zebra/  /provisions/  301",
+		"/snacks/2019/*  /provisions/  301",
+		"/snacks/*  /provisions/:splat  301",
+		"/news/:year/:slug  /provisions/  301",
+		"/a/*  /provisions/  301",
+		"",
+	].join("\n"));
+	// A page for each exact address, and none for a pattern.
+	assert.ok(read(root, "dist/snacks/crunch/index.html").includes("url=/provisions/"));
+	for (const none of ["dist/snacks/*", "dist/snacks/2019", "dist/news", "dist/a"]) assert.ok(!fs.existsSync(path.join(root, none)), none);
+	const named = project({ "ssqch.config.js": config("{ netlify: true, pages: false, redirects: { \"/wiki/*\": \"/provisions/\", \"/wiki/Help:Contents\": \"/provisions/\" } }"), "src/provisions.md": "Provisions\n" });
+	assert.ok(build(named).ok);
+	assert.equal(read(named, "dist/_redirects"), "/wiki/Help:Contents  /provisions/  301\n/wiki/*  /provisions/  301\n");
+	// Without the lines nothing redirects a pattern, so the build says what to set.
+	const pagesOnly = project({ "ssqch.config.js": config(`{ redirects: ${redirects} }`), ...files });
+	const refused = build(pagesOnly);
+	assert.ok(!refused.ok, refused.log);
+	assert.match(refused.log, /the redirects option: \/snacks\/2019\/\* is a pattern \(a `\*` or a `:name`\), which only a host can match, and a redirect page can't\. Set netlify: true, so it's a line in _redirects/);
+	const alias = project({ "ssqch.config.js": config(""), ...files });
+	assert.match(build(alias).log, /src\/provisions\.md: \/a\/\* is a pattern/);
+});
+
 // Not from a Rust test: a link to a path the system can't look up (a NUL byte, from `%00`, or a
 // name too long) is broken, not an error of the build.
 test("a_link_the_system_cant_look_up_is_not_found", () => {

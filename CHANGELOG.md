@@ -61,6 +61,15 @@ where that version matches.
   page without its script, and the copy ran it together into one line: three pricing plans
   inside `<billing-toggle>` came out as `4 snacks a monthFree shippingSkip any month`. A custom
   element with only text inside (`<x-badge>New</x-badge>`) is still part of its line.
+- `redirectsPlugin()` reads an old URL with a `*` or a `:name` segment as a pattern (`redirects:
+  { "/snacks/*": "/provisions/:splat" }`). Its line in `_redirects` comes after the exact
+  addresses, the pattern with the most fixed in front first: a host takes the first line that
+  matches, and sorted with the rest, `/snacks/*` came before `/snacks/pine-cone-crunch/` and
+  took its address. A pattern gets no redirect page, either. It got one at `snacks/*/index.html`,
+  which answers nobody, isn't a file name Windows takes, and was a broken link to `linksPlugin()`.
+  So a pattern needs `netlify: true`: without it nothing redirects it, and the build now stops
+  and says what to set, where it wrote that page. A `_redirects` file without patterns is byte
+  for byte what it was.
 
 ## 0.13.6 - 2026-11-23
 
