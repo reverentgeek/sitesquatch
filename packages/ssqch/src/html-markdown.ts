@@ -323,7 +323,8 @@ export function htmlToMarkdown(html: string): string {
 
 /** A Markdown link's destination, `<...>` or bare (with balanced parentheses), and its title. */
 const INLINE_LINK = /(\]\()(\s*)(<[^>\n]*>|(?:[^\s()\\]|\\.|\((?:[^\s()\\]|\\.)*\))+)/g;
-const REFERENCE = /^( {0,3}\[[^\]\n]+\]:[ \t]*)(<[^>\n]*>|\S+)/;
+// Not a footnote (`[^1]: Two raccoons agree.`): its text isn't a destination (new-blog run).
+const REFERENCE = /^( {0,3}\[(?!\^)[^\]\n]+\]:[ \t]*)(<[^>\n]*>|\S+)/;
 const HTML_URL = /(<(?:a|img|source|link)\b[^>]*?\s(?:href|src)\s*=\s*)("([^"]*)"|'([^']*)')/gi;
 
 /**

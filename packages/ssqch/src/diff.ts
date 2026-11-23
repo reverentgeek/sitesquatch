@@ -461,6 +461,11 @@ export function canonicalTag(tag: string, foreign: boolean, xml = false): [strin
 	// Custom elements' names go on past letters and digits (`<site-header>`).
 	while (i < tag.length && /[A-Za-z0-9_:.-]/.test(tag[i])) i++;
 	const element = lower(tag.slice(closing ? 2 : 1, i));
+	// A name no element has (`.` or `_`, and no `-` as a custom element's has): text that a page
+	// printed unescaped, like a Python repr (`<httpx._client.UseClientDefault object at 0x10>`,
+	// httpx). Browsers read it as a tag, but shown lowercased with its words sorted as attributes it
+	// can't be found in the source, so it's compared as it's written.
+	if (!xml && /[._]/.test(element) && !element.includes("-")) return [tag, false];
 	const attrs = new Map<string, string | undefined>();
 	let selfClosing = false;
 	const end = tag.length - 1;

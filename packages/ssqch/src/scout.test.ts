@@ -133,6 +133,13 @@ test("package_scripts_run_ssqch", () => {
 	}
 });
 
+// blog #2: the header said "listed at the end" when nothing was.
+test("a_draft_promises_a_list_only_when_there_is_one", () => {
+	const [draft] = draftConfig("eleventy.config.js", "export default function (eleventyConfig) {\n\televentyConfig.addPassthroughCopy(\"img\");\n}\n", new Set(["md"]));
+	assert.ok(!draft.includes("listed at the end") && !draft.includes("// To port from"), draft);
+	assert.ok(draft.includes("// `ssqch docs --from eleventy` has the whole mapping.\n"), draft);
+});
+
 test("a_config_becomes_a_draft_and_a_list", () => {
 	let config = `const pluginRss = require("@11ty/eleventy-plugin-rss");
 const markdownItAnchor = require("markdown-it-anchor");
@@ -170,6 +177,7 @@ module.exports = function (eleventyConfig) {
 		assert.ok(draft.includes(expected), `missing ${JSON.stringify(expected)} in\n${draft}`);
 	}
 	assert.ok(!draft.includes("//   filters:"), draft);
+	assert.ok(draft.includes("// What it couldn't carry over is listed at the end;"), draft);
 	let list = byHand.map(([at, what]) => `${at}: ${what.split(" -> ")[0]}`);
 	assert.deepEqual(list, [".eleventy.js:4: addPlugin(pluginRss) (from @11ty/eleventy-plugin-rss)", ".eleventy.js:11: addCollection(\"posts\")", ".eleventy.js:12: on(\"eleventy.after\")", ".eleventy.js: @11ty/eleventy-plugin-rss", ".eleventy.js: markdown-it-anchor"]);
 

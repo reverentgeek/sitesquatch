@@ -1728,7 +1728,9 @@ export function draftConfig(name: string, text: string, extensions: ReadonlySet<
 		if (value !== undefined) dirs.push(`${key}: "${value}"`);
 	}
 	const [open, close] = style.padded ? ["( {", "} )"] : ["({", "})"];
-	let out = `// A first draft, written by \`ssqch scout\` from ${name}.\n// What it couldn't carry over is listed at the end; \`ssqch docs --from eleventy\` has the whole\n// mapping.\nimport { defineConfig } from "ssqch";\n\nexport default defineConfig${open}\n`;
+	// The list at the end is there only when something's left to port (blog #2).
+	const atTheEnd = todo.length ? "// What it couldn't carry over is listed at the end; `ssqch docs --from eleventy` has the whole\n// mapping.\n" : "// `ssqch docs --from eleventy` has the whole mapping.\n";
+	let out = `// A first draft, written by \`ssqch scout\` from ${name}.\n${atTheEnd}import { defineConfig } from "ssqch";\n\nexport default defineConfig${open}\n`;
 	const entries: string[] = [];
 	if (dirs.length) entries.push(`${ind}dirs: { ${dirs.join(", ")} }`);
 	if (formats.length) entries.push(`${ind}templateFormats: ${quotedList(formats)}`);

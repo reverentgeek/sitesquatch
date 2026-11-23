@@ -60,4 +60,4 @@ export function trail(name) {
 
 Front matter and the files in `src/_data/` are available in every page: this site is called Squatch Docs.
 
-[^1]: https://example.com/docs/guides/writing/Footnotes collect at the end of the page.
+[^1]: Footnotes collect at the end of the page.

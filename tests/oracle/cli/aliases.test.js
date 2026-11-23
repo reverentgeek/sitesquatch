@@ -146,6 +146,14 @@ function aliasWorks(row, dir) {
 			write(dir, { "index.jinja": `{{ "/x/" | ${word} }}` });
 			result = ssqch(["build", "--root", d]);
 			assert.ok(rd("_site/index.html").startsWith(word === "markdownify" ? "&lt;p&gt;/x/" : "/x/"), `${row.word}: ${rd("_site/index.html")}`);
+			// DELIBERATE (0.13.5): an alias works in every template language. Edge writes a filter as a
+			// call, and `{{ url }}` there is still the page's data (blog #4: `url` wasn't a function).
+			write(dir, { "ssqch.config.js": "export default { templateFormats: [\"edge\"] };\n", "index.edge": `{{ ${word}("/x/") }}|{{ typeof ${word} }}` });
+			const edge = ssqch(["build", "--root", d]);
+			assert.ok(edge.ok, `${row.word} in Edge: ${edge.log}`);
+			const page = rd("_site/index.html");
+			assert.ok(page.startsWith(word === "markdownify" ? "&lt;p&gt;/x/" : "/x/") && page.endsWith("|undefined"), `${row.word} in Edge: ${page}`);
+			fs.rmSync(path.join(dir, "index.edge"));
 		}
 		fs.rmSync(path.join(dir, "index.jinja"));
 	} else {

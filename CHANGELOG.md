@@ -9,6 +9,24 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Fixed
+- A footnote in a page's Markdown copy (`llmsPlugin()`'s `index.md` and `llms-full.txt`) keeps
+  its text: `[^1]: Two raccoons agree.` was read as a link definition and written as
+  `[^1]: https://example.com/post/Two raccoons agree.`, which `ssqch patrol` then reported as
+  `copy-broken`. Patrol doesn't read a footnote as a link either.
+- Other generators' filters that work in ssqch (`url`, `relative_url`, `markdownify`) work in
+  Edge too, as calls: `{{ url("/about/") }}` was an error (`` `url` is not a function ``) while
+  Jinja, Nunjucks and Liquid took it. `{{ url }}` in Edge is still the page's data.
+- The build summary's `Pages` size is what's on disk after the `afterBuild` hooks, which can
+  minify the pages (it said 4.43 MB for 4.07 MB).
+- `ssqch diff` shows text printed unescaped that browsers read as a tag with a name no element
+  has (a Python repr, `<httpx._client.UseClientDefault object at 0x10>`) as it's written, not
+  lowercased with its words sorted as attributes.
+- `ssqch scout`'s config draft says "what it couldn't carry over is listed at the end" only when
+  there's a list at the end.
+
 ## 0.13.4 - 2026-11-22
 
 ### Added

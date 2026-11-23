@@ -88,7 +88,8 @@ function linksIn(md: string): string[] {
 		const marker = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1];
 		if (fence !== undefined) { if (marker && marker[0] === fence[0] && marker.length >= fence.length && line.trim() === marker) fence = undefined; continue; }
 		if (marker) { fence = marker; continue; }
-		const ref = /^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)/.exec(line);
+		// A footnote (`[^1]: text`) isn't a reference definition.
+		const ref = /^ {0,3}\[(?!\^)[^\]]+\]:\s*<?([^\s>]+)/.exec(line);
 		if (ref) out.push(ref[1]);
 		for (const m of line.replace(/`+[^`]*`+/g, "").matchAll(/\]\(\s*<?([^\s)>]+)/g)) out.push(m[1]);
 	}
