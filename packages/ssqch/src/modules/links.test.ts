@@ -69,3 +69,15 @@ test("redirect rules cover their sources", () => {
 	assert.ok(redirected(sources, "/archive/2019/"));
 	assert.ok(!redirected(sources, "/new-post/"));
 });
+
+test("a redirect with placeholders covers each segment they stand for", () => {
+	const sources = ["/news/:year/:slug/", "/trails/:name/*"];
+	assert.ok(redirected(sources, "/news/2019/pine-cones/"));
+	assert.ok(redirected(sources, "/news/2019/pine-cones"));
+	assert.ok(!redirected(sources, "/news/2019/"));
+	assert.ok(!redirected(sources, "/news/2019/pine-cones/photos/"));
+	assert.ok(!redirected(sources, "/news//pine-cones/"));
+	assert.ok(redirected(sources, "/trails/cedar/map/"));
+	assert.ok(redirected(sources, "/trails/cedar/"));
+	assert.ok(!redirected(sources, "/trail/cedar/map/"));
+});

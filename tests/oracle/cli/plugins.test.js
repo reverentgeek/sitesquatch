@@ -798,9 +798,11 @@ import { linksPlugin } from "ssqch/links";
 export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], plugins: [redirectsPlugin(${options}), linksPlugin()] };`;
 	const redirects = "{ \"/snacks/*\": \"/provisions/:splat\", \"/snacks/2019/*\": \"/provisions/\", \"/news/:year/:slug\": \"/provisions/\", \"/zebra/\": \"/provisions/\" }";
 	const files = {
-		"src/provisions.md": "---\naliases: [/snacks/, /snacks/crunch/, /a/*]\n---\n[The old shelf](/snacks/gone/)\n",
+		"src/provisions.md": "---\naliases: [/snacks/, /snacks/crunch/, /a/*]\n---\n[The old shelf](/snacks/gone/) [The old news](/news/2019/pine-cones)\n",
 	};
 	const root = project({ "ssqch.config.js": config(`{ hostFile: true, pages: true, redirects: ${redirects} }`), ...files });
+	// The links are followed through the lines: `/snacks/gone/` by a `*`, and (0.14.1) the old
+	// news by `:year/:slug`, which the link checker reported as broken in 0.14.0.
 	const { ok, log } = build(root);
 	assert.ok(ok, log);
 	assert.equal(read(root, "dist/_redirects"), [

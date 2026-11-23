@@ -384,7 +384,24 @@ function redirectSources(output: string, base: string): string[] {
 }
 
 export function redirected(sources: string[], p: string): boolean {
-	return sources.some((from) => (from.endsWith("*") ? p.startsWith(from.slice(0, -1)) : from === p || from.replace(/\/+$/, "") === p.replace(/\/+$/, "")));
+	return sources.some((from) => (from.includes("/:") ? placeholdersMatch(from, p) : from.endsWith("*") ? p.startsWith(from.slice(0, -1)) : from === p || from.replace(/\/+$/, "") === p.replace(/\/+$/, "")));
+}
+
+/**
+ * A source with placeholders (`/news/:year/:slug/`), as a host matches it: each `:name` is one
+ * whole segment of the path, the rest are equal, and a last `*` is whatever follows. A trailing
+ * slash doesn't matter, as it doesn't for an exact path.
+ */
+function placeholdersMatch(from: string, p: string): boolean {
+	const want = from.replace(/\/+$/, "").split("/");
+	const got = p.replace(/\/+$/, "").split("/");
+	for (let i = 0; i < want.length; i++) {
+		const w = want[i];
+		if (w === "*" && i === want.length - 1) return got.length >= i;
+		if (i >= got.length) return false;
+		if (w.startsWith(":") ? got[i] === "" : w !== got[i]) return false;
+	}
+	return want.length === got.length;
 }
 
 const HEX2 = /^[0-9a-fA-F]{2}$/;

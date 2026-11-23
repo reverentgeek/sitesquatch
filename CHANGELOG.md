@@ -21,6 +21,9 @@ where that version matches.
   phones, say). It pointed at the original file, which the page's images publish under another
   name, so a reader that showed it showed nothing. The `<img>` is the feed's one copy, as it was
   already; `ssqch:ignore` on a `<source>` keeps it as written.
+- `linksPlugin()` follows a `_redirects` line with `:name` placeholders (`/news/:year/:slug/`),
+  as it did one with a `*`: a link that only such a line covers was reported as broken. Each
+  `:name` is one whole segment of the path.
 
 ## 0.14.0 - 2026-11-23
 
