@@ -1,6 +1,7 @@
 ---
 title: Raiders of the Lost Path
 date: 2026-01-22
+tags: [trails]
 description: An old map, a renamed heading, and the build that caught it.
 ---
 A ranger came by with an old map of these notes. It pointed to a heading called "The tracks".

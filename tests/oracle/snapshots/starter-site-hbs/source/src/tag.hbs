@@ -1,0 +1,16 @@
+---
+layout: layout.hbs
+pagination:
+  data: collections.tagList
+  size: 1
+  alias: tag
+permalink: /tags/{{tag.name}}/
+computed:
+  title: "Tagged {{tag.name}}"
+---
+<ul>
+  {{#each tag.posts}}
+    <li><a href="{{url}}">{{data.title}}</a> ({{readableDate date}})</li>
+  {{/each}}
+</ul>
+<p><a href="/tags/">Every tag</a></p>

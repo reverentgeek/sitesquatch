@@ -1,0 +1,9 @@
+---
+layout: layout.liquid
+title: Tags
+---
+<ul>
+  {% for tag in collections.tagList %}
+    <li><a href="/tags/{{ tag.name }}/">{{ tag.name }}</a> ({{ tag.posts.size }})</li>
+  {% endfor %}
+</ul>

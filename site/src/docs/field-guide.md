@@ -1,11 +1,11 @@
 ---
 title: "Field guide: build your first site"
 navTitle: "Field guide"
-description: "The quickest way in is ssqch init, which sets up camp (a config, a layout, a home page, five posts, a 404 page, a data file, a blueprint for the next post, editor types, and an AGENTS.md for coding agents) and then leaves you to it."
+description: "The quickest way in is ssqch init, which sets up camp (a config, a layout, a home page, five posts with tags, a page for each tag and one listing them, an Atom feed, a 404 page, a data file, a blueprint for the next post, editor types, and an AGENTS.md for coding agents) and then leaves you to it."
 ---
 <img align="right" src="../../../docs/assets/stickers/compass.svg" alt="" width="96">
 
-The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, five posts, a 404 page, a data file, a blueprint for the next post, editor types, and an `AGENTS.md` for coding agents) and then leaves you to it:
+The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, five posts with tags, a page for each tag and one listing them, an Atom feed at `/feed.xml`, a 404 page, a data file, a blueprint for the next post, editor types, and an `AGENTS.md` for coding agents) and then leaves you to it:
 
 ```sh
 ssqch init my-site

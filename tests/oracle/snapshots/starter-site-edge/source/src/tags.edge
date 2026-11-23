@@ -1,0 +1,9 @@
+---
+layout: layout.edge
+title: Tags
+---
+<ul>
+  @each(tag in collections.tagList)
+    <li><a href="/tags/{{ tag.name }}/">{{ tag.name }}</a> ({{ tag.posts.length }})</li>
+  @end
+</ul>
