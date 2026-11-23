@@ -28,6 +28,9 @@ where that version matches.
   element, as 0.14.0 did for a custom element: a `<search>`, or a `<span>` or a link around a
   card, ran them together into one line. A link around a card makes its first heading or
   paragraph the link (`### [Day Hike](/plans/day/)`).
+- `ssqch serve` gives a site without an icon of its own sitesquatch.dev's tab icon, the
+  illustrated footprint, instead of the hand-drawn stand-in it replaced. It's still burnt orange
+  while the build is broken. The trail patch on its 404 page has the illustrated footprint too.
 
 ## 0.14.0 - 2026-11-23
 
