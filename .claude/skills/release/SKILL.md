@@ -11,7 +11,7 @@ AGENTS.md ("Releasing") says why each piece is as it is. If this page and the wo
 
 ## Before you start
 
-- **Ask before the steps that publish.** Merging the pull request, pushing the tag, `cargo publish` and pushing to the blog are the owner's to approve, each time, unless they said to carry the whole release through. Everything before the merge is safe to do.
+- **Ask before the steps that publish.** Merging the pull request, pushing the tag and pushing to the blog are the owner's to approve, each time, unless they said to carry the whole release through. Publishing `ssqch-plugin` to crates.io is part of every release (the owner, 2026-11-23): a go for the release is a go for it, so it isn't asked about or left for later. Everything before the merge is safe to do.
 - **Pick the version.** While ssqch is 0.x, a `### Breaking` heading under `## Unreleased` in `CHANGELOG.md` means the minor version goes up (0.13.4 to 0.14.0); anything else is a patch. No `## Unreleased` section, or an empty one, means there's nothing to release: say so.
 - **Start from an up-to-date `main`** with a clean tree, on a branch named `release-<version>`. When the release rides on a feature's pull request, the release commit is that branch's last commit instead.
 
@@ -79,7 +79,15 @@ git tag v<version> "$sha" && git push origin v<version>
 ## 5. After it's out
 
 1. **Confirm it:** `npm view ssqch version` is the new one, `gh release view v<version>` has the tarball and its checksum, and `reverentgeek/homebrew-tap`'s `Formula/ssqch.rb` names it (not for a prerelease, which goes to npm's `next` tag and gets no formula).
-2. **`ssqch-plugin` on crates.io**, by hand, from the tag, with the owner's go: `git checkout v<version> && cargo publish -p ssqch-plugin`. No workflow does it.
+2. **`ssqch-plugin` on crates.io, every release.** No workflow does it, so it's a step of the release, not something to offer afterwards (0.13.6 went out without it). From the tag, in a worktree so the working tree is left alone:
+
+   ```sh
+   git worktree add --detach /tmp/ssqch-v<version> v<version>
+   (cd /tmp/ssqch-v<version> && cargo publish -p ssqch-plugin)
+   git worktree remove /tmp/ssqch-v<version>
+   ```
+
+   It needs `cargo login` on this machine (`~/.cargo/credentials.toml`). Check it with `cargo search ssqch-plugin --limit 1`, which names the new version. A version that's already there can't be published again; a release that skipped one stays skipped.
 3. **The blog** (`../blog`; follow its `CLAUDE.md`): `pnpm add -D ssqch@<version>`, `pnpm test`, and `pnpm run lint` if JavaScript changed. Do it in the same session when the release has a Breaking item the blog meets. Its deploy preview's `<meta name="generator">` says the new version.
 4. **The two lists:** in `research/TODO.md`, mark what the release shipped (`released in <version>`), update each **Blog:** note, and move ticked items to `research/archive/`. The blog's list is `../blog/notes/TODO.md`.
-5. **Tell the owner** what was published and where, what was skipped, and anything that's still waiting (the formula, crates.io, the site's changelog entry for them to edit).
+5. **Tell the owner** what was published and where, what was skipped, and anything that's still waiting (the formula, the site's changelog entry for them to edit).

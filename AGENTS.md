@@ -312,13 +312,16 @@ skips, see `already-tested` in `ci.yml`):
    commit with the same version (delete the old tag first). The job that publishes names every
    job before it in `needs` and has no `always()`, on purpose: dist's published when its builds
    were skipped, and a red commit got an empty release marked Latest (0.3.4). Keep it so.
+5. Publish `ssqch-plugin` to crates.io from the tag (`cargo publish -p ssqch-plugin`, below).
+   It's part of every release, by hand, since no workflow does it (the owner, 2026-11-23; 0.13.6
+   went out without it).
 
 The 0.7 line is released from `release/0.7` (cut before these workflows), with dist, as it
 always was; see "One last 0.7.x" in `docs/node-migration.md`. The `sitesquatch` crates and the
 `ssqch` crate end at 0.7. From `main`, only `ssqch-plugin` goes to crates.io: with 0.8.0, set
 the workspace's version in `Cargo.toml` to the release's, remove `publish = false` from
-`crates/ssqch-plugin/Cargo.toml`, and `cargo publish -p ssqch-plugin` from the tag (by hand; no
-workflow does it).
+`crates/ssqch-plugin/Cargo.toml`, and `cargo publish -p ssqch-plugin` from the tag with every
+release (step 5 above; by hand, since no workflow does it).
 
 ### npm
 
