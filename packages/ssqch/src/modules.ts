@@ -10,6 +10,7 @@ import { execFileSync } from "node:child_process";
 import os from "node:os";
 import { registerHooks } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { tracked } from "./activity.ts";
 import { BuildError } from "./diagnostics.ts";
 import { realPath } from "./paths.ts";
 
@@ -236,7 +237,8 @@ let watching = false;
  * `promise`, or a failure when it can never settle: Node is about to exit because nothing is
  * left to resolve it (no timers, no requests), which would end the build without a word.
  */
-export function watchSettle<T>(promise: Promise<T>): Promise<T> {
+export function watchSettle<T>(promise: Promise<T>, label = "the site's code"): Promise<T> {
+	promise = tracked(promise, label);
 	if (!watching) {
 		watching = true;
 		process.on("beforeExit", () => {
@@ -252,8 +254,8 @@ export function watchSettle<T>(promise: Promise<T>): Promise<T> {
 }
 
 /** Awaits a value a site's code returned, when it's a promise. */
-export function settle<T>(value: T | Promise<T>): T | Promise<T> {
-	return value instanceof Promise ? watchSettle(value) : value;
+export function settle<T>(value: T | Promise<T>, label?: string): T | Promise<T> {
+	return value instanceof Promise ? watchSettle(value, label) : value;
 }
 
 // ---- a site's errors, as ssqch says them -----------------------------------------------------

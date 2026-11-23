@@ -82,7 +82,9 @@ export type FromBuilder =
 	| { type: "failed" }
 	| ({ type: "built"; ok: boolean; error?: string; assets: string[] } & State)
 	/** The site's code threw where nothing caught it, and the process is ending: the error, said as a build's is. */
-	| { type: "crashed"; error: string };
+	| { type: "crashed"; error: string }
+	/** Each second of a build: how long since it last did anything, and what it waits on (`activity.ts`); `blocking` before a `run` command, which holds its process until it ends. */
+	| { type: "progress"; idleMs: number; doing: string[]; blocking?: string };
 
 export type ToBuilder = { type: "build"; recovered: boolean; changed?: string[] };
 
@@ -113,6 +115,13 @@ export function stopBuilders(): void {
 	for (const builder of [...builders]) builder.stop();
 }
 
+/**
+ * How long a build can go without doing anything (no page written, no image encoded, none of the
+ * site's code starting or settling) before the server ends it: a minute, from the last thing it
+ * did. `SSQCH_STUCK_MS` is for ssqch's own tests, which can't wait a minute.
+ */
+const STUCK_MS = Number(process.env.SSQCH_STUCK_MS) || 60_000;
+
 /** What a build the server is stopping comes to: nothing, ever (it's ending). */
 const never = () => new Promise<never>(() => {});
 
@@ -134,6 +143,10 @@ export class Builder {
 	private starting: Promise<boolean> | undefined;
 	/** What the site's code threw after a build had reported, ending its process: the next build's error. */
 	private crashed: string | undefined;
+	/** Why the server ended a build that had stopped making progress: that build's error. */
+	private stuck: string | undefined;
+	/** The last progress report of the build that's running, and when it came. */
+	private progress: { at: number; idleMs: number; doing: string[]; blocking?: string } | undefined;
 
 	private constructor(args: string[]) {
 		this.args = args;
@@ -171,6 +184,10 @@ export class Builder {
 		};
 		child.on("message", (message: FromBuilder) => {
 			if (!current()) return;
+			if (message.type === "progress") {
+				this.progress = { at: performance.now(), idleMs: message.idleMs, doing: message.doing, blocking: message.blocking };
+				return;
+			}
 			if (message.type !== "crashed") return this.waiting?.(message);
 			// It's ending: the next build is another process's.
 			this.crashed = message.error;
@@ -260,8 +277,20 @@ export class Builder {
 		const child = this.child;
 		const answer = this.next();
 		child.send({ type: "build", recovered, ...(changed ? { changed } : {}) } satisfies ToBuilder);
+		this.progress = { at: performance.now(), idleMs: 0, doing: [] };
+		this.stuck = undefined;
+		const watchdog = setInterval(() => this.checkProgress(child), 1000);
+		watchdog.unref();
 		const message = await answer;
+		clearInterval(watchdog);
+		this.progress = undefined;
 		if (stopping) return never();
+		// Ended by the watchdog: why, rather than that its process ended.
+		if (this.stuck !== undefined) {
+			const error = this.stuck;
+			this.stuck = undefined;
+			return this.failed(error);
+		}
 		if (message?.type === "crashed") {
 			this.crashed = undefined;
 			return this.failed(message.error);
@@ -272,6 +301,37 @@ export class Builder {
 		}
 		this.note(message);
 		return { ok: message.ok, error: message.error, assets: message.assets };
+	}
+
+	/**
+	 * Ends a build that's stopped making progress (`STUCK_MS`), saying what it was waiting on: a
+	 * promise in the site's code that never settles, while something else keeps Node running, or
+	 * (when the reports stop) code that never returns. A `run` command holds the process while it
+	 * runs, which it said before it started (`blocking`), and its own output is on the screen.
+	 * The next change builds in a new process; this one isn't built again by itself, since the
+	 * same code would most likely wait the same way.
+	 */
+	private checkProgress(child: ChildProcess): void {
+		const p = this.progress;
+		if (!p || this.child !== child || p.blocking !== undefined) return;
+		const silent = performance.now() - p.at;
+		const seconds = Math.round(STUCK_MS / 1000);
+		let why: string | undefined;
+		// A report in the last second and a half (they come each second): the process is answering,
+		// and its build is waiting. None since: something holds its event loop.
+		if (p.idleMs + silent >= STUCK_MS && silent <= 1500) {
+			const doing = p.doing.length ? `it was waiting on ${p.doing.join(", ")}` : "it was waiting on nothing ssqch can name";
+			why = `the build stopped making progress: for ${seconds} s nothing happened, and ${doing}. A promise in the site's code that never settles, while something else keeps Node running (a setInterval, an open connection), looks like this`;
+		} else if (silent >= STUCK_MS) {
+			why = `the build stopped answering for ${seconds} s${p.doing.length ? `, last waiting on ${p.doing.at(-1)}` : ""}: code that never returns (a loop that doesn't end) looks like this`;
+		}
+		if (why === undefined) return;
+		// The page it was rendering, where the error points (`in <file>: `).
+		const page = /\(rendering (\S+)\)$/.exec(p.doing[0] ?? "")?.[1];
+		this.stuck = `${page ? `in ${page}: ` : ""}${why}. ssqch ended that build; the next change builds again.`;
+		this.progress = undefined;
+		this.stop();
+		this.waiting?.(undefined);
 	}
 
 	stop(): void {

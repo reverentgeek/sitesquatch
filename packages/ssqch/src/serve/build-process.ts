@@ -2,6 +2,7 @@
 // the server's side). The server starts it with the arguments `BUILDER` and its JSON; `cli.ts`
 // imports this only then, so the server itself never loads the build, its engines or plugins.
 import path from "node:path";
+import * as activity from "../activity.ts";
 import type { Config } from "../config.ts";
 import { dirsOf } from "../dirs.ts";
 import { build } from "../build.ts";
@@ -110,6 +111,12 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 		const { recovered, changed } = asked.shift()!;
 		config.changed = changed;
 		let result: { ok: boolean; error?: string; assets: string[] };
+		// What the build is doing, each second, for the server's limit on a stuck one. Unref'd,
+		// so a build with nothing left to wait for still ends as Node ends it (`watchSettle`).
+		activity.reset();
+		const reporting = setInterval(() => { process.send!({ type: "progress", ...activity.current() } satisfies FromBuilder); }, 1000);
+		reporting.unref();
+		activity.setTell((label) => send({ type: "progress", ...activity.current(), blocking: label }));
 		try {
 			const report = await working(() => build(config));
 			if (!config.quiet) process.stdout.write(summary(config, report, recovered));
@@ -120,6 +127,8 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 			process.stderr.write(`${diagnostics.red("Build failed:")} ${said}\n`);
 			result = { ok: false, error: said, assets: [] };
 		}
+		clearInterval(reporting);
+		activity.setTell(undefined);
 		await flushed();
 		await send({ type: "built", ...result, ...state(config) });
 	}

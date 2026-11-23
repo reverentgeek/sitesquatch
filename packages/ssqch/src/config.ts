@@ -640,11 +640,11 @@ async function loadJs(config: Config, file: string): Promise<void> {
 			}
 		}
 		// A filter that's a `function` gets the page being rendered as `this.page` (src/rendering.ts).
-		functions("filters", "filter", part.filters, where, (key, fn) => ops.push(() => { config.filters.set(key, withPage(fn)); config.siteFilters.add(key); }));
+		functions("filters", "filter", part.filters, where, (key, fn) => ops.push(() => { config.filters.set(key, withPage(fn, `filter \`${key}\``)); config.siteFilters.add(key); }));
 		functions("collections", "collection", part.collections, where, (key, fn) => ops.push(() => { config.collections.push([key, fn]); }));
 		functions("transforms", "transform", part.transforms, where, (key, fn) => {
 			const run: TransformFn = async (content, page) => {
-				const out = await settle(fn(content, page));
+				const out = await settle(fn(content, page), `transform \`${key}\` (${page.outputPath})`);
 				if (typeof out !== "string") {
 					throw new TypeError(`transform "${key}" returned ${out === undefined ? "undefined" : typeof out} for ${page.outputPath}; return the content (unchanged if there's nothing to do)`);
 				}
@@ -674,7 +674,7 @@ async function loadJs(config: Config, file: string): Promise<void> {
 				// has `source` and `data` had to guess whether it was a page, a layout or a permalink.
 				const run: EngineFn = (source, data, inputPath, context) => {
 					const out = render.call(engine, source, data, context);
-					return out instanceof Promise ? watchSettle(out).then((v) => checked(v, inputPath)) : checked(out, inputPath);
+					return out instanceof Promise ? watchSettle(out, `engine \`${key}\` (${inputPath})`).then((v) => checked(v, inputPath)) : checked(out, inputPath);
 				};
 				ops.push(() => {
 					if (!cache) {

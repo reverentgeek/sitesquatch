@@ -620,3 +620,66 @@ test("serve_answers_markdown_to_a_request_that_asks_for_it", async () => {
 		}
 	}
 });
+
+// From the move to Node: a promise in the site's code that never settles, while something else
+// keeps Node running (a setInterval in the config), wedged every rebuild with no word. DELIBERATE
+// (0.13.5): after a minute with nothing done (2 s here), the server ends the build, says what it
+// waited on, and the next change builds in a new process. SSQCH_STUCK_MS is the tests' limit.
+test("serve_ends_a_build_that_stops_making_progress", async () => {
+	const dir = tempDir("serve-stuck");
+	write(dir, {
+		"ssqch.config.js": "setInterval(() => {}, 1000);\nexport default { filters: { never: () => new Promise(() => {}) } };\n",
+		"index.jinja": "{{ never() }}",
+	});
+	const log = path.join(tempDir("serve-stuck-log"), "serve.log");
+	const ready = path.join(tempDir("serve-stuck-ready"), "ready.json");
+	const server = start(["serve", "--port", "0", "--root", dir, "--ready-file", ready], { logFile: log, env: { SSQCH_STUCK_MS: "2000" } });
+	try {
+		await waitFor(log, "the build stopped making progress");
+		const said = readOr(log);
+		assert.ok(said.includes("in index.jinja: the build stopped making progress: for 2 s nothing happened, and it was waiting on filter `never` (rendering index.jinja)."), said);
+		assert.ok(said.includes("ssqch ended that build; the next change builds again."), said);
+		await waitFor(ready, "\"ok\": false");
+		// Fixed, the next change builds, in a new process.
+		await changeAndWait(path.join(dir, "index.jinja"), "camp", path.join(dir, "_site/index.html"), "camp");
+	} finally {
+		await server.stop();
+	}
+});
+
+// A `run` command holds the build's process while it runs (spawnSync), so the server is told
+// first: one that takes longer than the limit (Pagefind's first download) isn't ended.
+test("serve_lets_a_long_run_command_finish", async () => {
+	const dir = tempDir("serve-long-command");
+	write(dir, {
+		"ssqch.config.js": "export default { afterBuild: [{ run: \"node -e \\\"setTimeout(() => {}, 3500)\\\"\" }] };\n",
+		"index.jinja": "camp",
+	});
+	const log = path.join(tempDir("serve-long-command-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_STUCK_MS: "1500" } });
+	try {
+		await waitFor(log, "Squatch Watch is on.");
+		assert.ok(!readOr(log).includes("stopped"), readOr(log));
+		assert.ok(readOr(log).includes("First confirmed sighting. Built in"), readOr(log));
+	} finally {
+		await server.stop();
+	}
+});
+
+// Code that never returns holds the event loop, so the reports stop: the server ends it too.
+test("serve_ends_a_build_that_stops_answering", async () => {
+	const dir = tempDir("serve-loop");
+	write(dir, {
+		"ssqch.config.js": "export default { filters: { forever: () => { for (;;) {} } } };\n",
+		"index.jinja": "{{ forever() }}",
+	});
+	const log = path.join(tempDir("serve-loop-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_STUCK_MS: "2000" } });
+	try {
+		await waitFor(log, "the build stopped answering");
+		assert.ok(readOr(log).includes("the build stopped answering for 2 s"), readOr(log));
+		await changeAndWait(path.join(dir, "index.jinja"), "camp", path.join(dir, "_site/index.html"), "camp");
+	} finally {
+		await server.stop();
+	}
+});

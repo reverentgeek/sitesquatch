@@ -25,6 +25,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { progressed } from "../activity.ts";
 import { createRequire } from "node:module";
 import { blake3 } from "../blake3.ts";
 import type { Config } from "../config.ts";
@@ -961,6 +962,7 @@ export class ImageProcessor {
 
 	/** A line for each source encoded, as it's done. */
 	private encoded(src: string, files: number, meta: ImageMetadata, ms: number): void {
+		progressed();
 		if (!this.quiet) progress(`[ssqch] Encoded ${this.display(src)} into ${files} file${files === 1 ? "" : "s"} (${[...meta.formats.keys()].join(", ")}) in ${rustDuration(ms)}`);
 		this.timings.push([src, files, ms]);
 	}

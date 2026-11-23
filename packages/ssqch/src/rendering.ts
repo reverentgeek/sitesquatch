@@ -8,12 +8,18 @@
 // hand from the prototype of a layout's `content`.
 import { AsyncLocalStorage } from "node:async_hooks";
 import nunjucks from "nunjucks";
+import { setPageOf, tracked } from "./activity.ts";
 import type { Data } from "./data.ts";
 
 /** What's rendering: the data the template sees (a layout's, while the layouts render). */
 export interface Rendering { data: Data }
 
 const store = new AsyncLocalStorage<Rendering>();
+// The page a label names (`activity.ts`, for `ssqch serve`'s limit on a stuck build).
+setPageOf(() => {
+	const page = store.getStore()?.data.page as { inputPath?: unknown } | undefined;
+	return typeof page?.inputPath === "string" ? page.inputPath.replace(/^\.\//, "") : undefined;
+});
 
 /** Runs `fn` as the render of `rendering`, so the config's functions it calls see it. */
 export function renderingAs<T>(rendering: Rendering, fn: () => T): T {
@@ -27,10 +33,12 @@ export const currentRendering = (): Rendering | undefined => store.getStore();
  * The config's function `fn`, called with `this` as `{ page, data }` while a page renders (and
  * `undefined` otherwise: in a collection, a data file, a hook). Its name and length are `fn`'s.
  */
-export function withPage<F extends (...args: any[]) => any>(fn: F): F {
+export function withPage<F extends (...args: any[]) => any>(fn: F, label?: string): F {
 	const wrapped = function (this: unknown, ...args: unknown[]) {
 		const rendering = store.getStore();
-		return fn.apply(rendering ? { page: rendering.data.page, data: rendering.data } : undefined, args);
+		const out = fn.apply(rendering ? { page: rendering.data.page, data: rendering.data } : undefined, args);
+		// An async filter of the site's own is something the build waits on (`activity.ts`).
+		return label !== undefined && out instanceof Promise ? tracked(out, label) : out;
 	};
 	Object.defineProperty(wrapped, "name", { value: fn.name });
 	Object.defineProperty(wrapped, "length", { value: fn.length });

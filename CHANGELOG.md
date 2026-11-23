@@ -12,6 +12,12 @@ where that version matches.
 ## Unreleased
 
 ### Added
+- `ssqch serve` ends a build that's stopped making progress for a minute (no page written, no
+  image encoded, none of the site's code starting or settling), and says what it waited on:
+  `in src/index.jinja: the build stopped making progress: for 60 s nothing happened, and it was
+  waiting on filter \`latest\` (rendering src/index.jinja)`. A promise that never settled, while a
+  `setInterval` kept Node running, wedged every rebuild after it with no word. Code that never
+  returns is ended too (`the build stopped answering`). A `run` command isn't counted.
 - `ssqch serve --host 0.0.0.0` listens on every network the machine is on, so the site opens on
   a phone, and prints the address for it: `On your network: http://192.168.1.20:8080/ (anyone on
   it can see the site)`. `--host <address>` listens on that one. The default is still
