@@ -44,6 +44,11 @@ where that version matches.
   the order sitemaps.org's schema checks. With the links first, a validator refused the sitemap
   (`Element lastmod: This element is not expected`). A sitemap without `alternates`, or with
   `lastmod: false`, is byte for byte what it was.
+- A page's Markdown copy (`llmsPlugin()`) reads a custom element around headings, lists or
+  paragraphs as it reads a `<div>`. What's inside one of `elementsPlugin()`'s elements is the
+  page without its script, and the copy ran it together into one line: three pricing plans
+  inside `<billing-toggle>` came out as `4 snacks a monthFree shippingSkip any month`. A custom
+  element with only text inside (`<x-badge>New</x-badge>`) is still part of its line.
 
 ## 0.13.6 - 2026-11-23
 
