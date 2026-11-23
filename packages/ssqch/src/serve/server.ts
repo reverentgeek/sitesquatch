@@ -29,6 +29,7 @@ import { handle, handleBuilt } from "./http.ts";
 import { Live, assetStamps, fingerprint, isAsset, sameStamps } from "./live.ts";
 import type { Written } from "./live.ts";
 import { Channel, Watcher } from "./watch.ts";
+import { globSet } from "../glob.ts";
 
 /** How `ssqch serve` serves. */
 export interface ServeOptions {
@@ -401,6 +402,22 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 		// What a build writes for itself (`.cache`, in a site whose input folder is the project
 		// root) isn't a change to the site: rebuilding for it would never end.
 		const own = (file: string) => isInside(site.root, file) && path.relative(site.root, file).split(path.sep).some((part) => part === ".cache" || part === ".git" || part === "node_modules");
+		const isConfig = (file: string) => builder.files.has(file) || (path.dirname(file) === root && CONFIG_NAMES.has(path.basename(file)));
+		// `serve.ignore`: files only a `serve.run` tool reads (PostCSS's sources), which a rebuild
+		// would do nothing for (v8 #18). Never the config or its modules, and never a file the last
+		// build said it read (a Sass partial): ignoring that would leave a page stale with no word,
+		// so it rebuilds and says why, once a file.
+		const ignored = globSet("serve.ignore", site.serveIgnore);
+		const readAnyway = new Set<string>();
+		const skipped = (file: string) => {
+			if (isInside(output, file) || !isInside(root, file) || !ignored(relative(root, file)) || isConfig(file)) return false;
+			if (!builder.read.has(file)) return true;
+			if (!readAnyway.has(file)) {
+				readAnyway.add(file);
+				diagnostics.warn(diagnostics.warning("build", `serve.ignore lists ${show(file)}, but the last build read it, so a change to it rebuilds the site all the same. Take it out of serve.ignore, or the glob that matches it`));
+			}
+			return false;
+		};
 		for (;;) {
 			const paths = carried.length ? carried.splice(0) : await rx.recv();
 			// Debounce bursts of events (editors often write several times), for a second at most:
@@ -411,7 +428,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				if (!more) break;
 				paths.push(...more);
 			}
-			const changed = paths.map(realPath).filter((file) => !own(file) && !editorsOwn(file));
+			const changed = paths.map(realPath).filter((file) => !own(file) && !editorsOwn(file) && !skipped(file));
 			const outputs = changed.filter((file) => isInside(output, file));
 			// A source written again with the same contents hasn't changed: a `beforeBuild` command
 			// that writes into the input folder on every build would rebuild forever.
@@ -422,7 +439,6 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				contents.set(file, now);
 				return !seen || before !== now;
 			});
-			const isConfig = (file: string) => builder.files.has(file) || (path.dirname(file) === root && CONFIG_NAMES.has(path.basename(file)));
 			// Folders watched for a config file see their other files change too.
 			const inSources = (file: string) => watchPaths.some((p) => isInside(p, file)) || isConfig(file) || builder.read.has(file);
 			const config = sources.find(isConfig);

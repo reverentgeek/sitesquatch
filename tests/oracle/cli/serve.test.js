@@ -55,10 +55,10 @@ test("serve_runs_companion_processes", unixOnly, async () => {
 	} finally {
 		await quiet.stop();
 	}
-	// Not an option it knows: an error that says so.
+	// Not an option it knows: an error that says so. DELIBERATE (0.14): it lists `ignore` too.
 	write(dir, { "ssqch.config.js": "export default { serve: { runs: [\"x\"] } };\n" });
 	const r = ssqch(["build", "--root", dir]);
-	assert.ok(!r.ok && r.log.includes("serve: \"runs\" isn't an option (options: run)"), r.log);
+	assert.ok(!r.ok && r.log.includes("serve: \"runs\" isn't an option (options: run, ignore)"), r.log);
 });
 
 // Another build into the output folder (a production build, which cleans it and renames the
@@ -277,6 +277,50 @@ test("serve_ignores_an_editors_own_files", async () => {
 	} finally {
 		await server.stop();
 	}
+});
+
+// v8 #18: saving a stylesheet only PostCSS reads rebuilt the whole site (1.6 s, 0 pages changed).
+// DELIBERATE (0.14): `serve.ignore` lists such files, and a change to one starts no build. A file
+// the last build read (a Sass partial) rebuilds all the same, and the server says so once.
+test("serve_skips_what_serve_ignore_lists", async () => {
+	const dir = tempDir("serve-ignore");
+	write(dir, {
+		"ssqch.config.js": "import { sassPlugin } from \"ssqch/sass\";\nexport default { dirs: { input: \"src\" }, plugins: [sassPlugin({ files: { \"src/_scss/site.scss\": \"/site.css\" } })], serve: { ignore: [\"src/_css/**\", \"src/_scss/**\"] } };\n",
+		"src/index.jinja": "one",
+		"src/_css/main.css": "body { color: pine; }",
+		"src/_scss/site.scss": "@use \"vars\";\nbody { color: vars.$pine; }\n",
+		"src/_scss/_vars.scss": "$pine: #233b2b;\n",
+	});
+	const log = path.join(tempDir("serve-ignore-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "_site/index.html");
+		await waitFor(page, "one");
+		// The first build's summary, so the count below is only what the edit started.
+		await waitFor(log, "Built in", 60_000);
+		fs.writeFileSync(path.join(dir, "src/_css/main.css"), "body { color: gold; }");
+		await sleep(2000);
+		let said = readOr(log);
+		assert.equal(count(said, "Built in"), 1, said);
+		assert.ok(!said.includes("Fresh tracks"), said);
+		// A partial the build read: rebuilt, with a word about the glob, once.
+		await changeAndWait(path.join(dir, "src/_scss/_vars.scss"), "$pine: #a23e20;\n", path.join(dir, "_site/site.css"), "#a23e20");
+		await changeAndWait(path.join(dir, "src/_scss/_vars.scss"), "$pine: #e8af43;\n", path.join(dir, "_site/site.css"), "#e8af43");
+		said = readOr(log);
+		assert.equal(count(said, "serve.ignore lists src/_scss/_vars.scss, but the last build read it, so a change to it rebuilds the site all the same"), 1, said);
+		// A page is still seen.
+		await changeAndWait(path.join(dir, "src/index.jinja"), "two", page, "two");
+		assert.ok(readOr(log).includes("Fresh tracks in src/index.jinja\n"), readOr(log));
+	} finally {
+		await server.stop();
+	}
+	// A glob that isn't one is the config's error; so is something that isn't a glob.
+	write(dir, { "ssqch.config.js": "export default { serve: { ignore: [\"src/[css\"] } };\n" });
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("serve.ignore: invalid glob"), r.log);
+	write(dir, { "ssqch.config.js": "export default { serve: { ignore: 5 } };\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("serve.ignore must be a glob or an array of globs from the project root"), r.log);
 });
 
 // A config saved after the build process loaded it and before the server's watch began (during

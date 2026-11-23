@@ -56,6 +56,7 @@ const TABLE = [
 	{"word":"addTransform","kind":"Config","alias":false,"ssqch":"transforms","say":"In ssqch it's `transforms`: transforms: { tidy: (content, page) => content }.","more":"ssqch docs transforms"},
 	{"word":"addGlobalData","kind":"Config","alias":false,"ssqch":"data","say":"In ssqch it's `data`: data: { buildTime: () => new Date() }.","more":"ssqch docs data"},
 	{"word":"addWatchTarget","kind":"Config","alias":false,"ssqch":"watch","say":"In ssqch it's `watch`: watch: [\"src/assets/\"].","more":"ssqch docs watch"},
+	{"word":"watchIgnores","kind":"Config","alias":false,"ssqch":"serve.ignore","say":"In ssqch it's `serve.ignore`: serve: { ignore: [\"src/_css/**\"] }.","more":"ssqch docs serve.ignore"},
 	{"word":"addPlugin","kind":"Config","alias":false,"ssqch":"plugins","say":"In ssqch it's `plugins`: plugins: [rssPlugin()].","more":"ssqch docs plugins"},
 	{"word":"setTemplateFormats","kind":"Config","alias":false,"ssqch":"templateFormats","say":"In ssqch it's `templateFormats`: templateFormats: [\"njk\", \"md\"].","more":"ssqch docs templateFormats"},
 	{"word":"eleventyComputed","kind":"FrontMatter","alias":true,"ssqch":"computed","say":"ssqch's name is `computed`.","more":"ssqch docs computed"},

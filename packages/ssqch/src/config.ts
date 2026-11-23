@@ -31,6 +31,7 @@ import { loadRustPart } from "./rust-plugin.ts";
 import { resolveTheme } from "./theme.ts";
 import { compareText, realPath, slashes } from "./paths.ts";
 import { bundledPath } from "./bundled.ts";
+import { globSet } from "./glob.ts";
 import { CONFIG_FILES } from "./dirs.ts";
 import type { Environment } from "./dirs.ts";
 // The folders, config file names and environments live in dirs.ts, which the dev server loads
@@ -126,6 +127,8 @@ export interface Config {
 	/** The path the site is served under: empty for the domain's root, or `/repo` (no `/` at the end). */
 	base: string;
 	serveRun: string[];
+	/** `serve.ignore`: globs from the project root whose changes `ssqch serve` doesn't rebuild for. */
+	serveIgnore: string[];
 	/** Size budgets by kind of file, in bytes. */
 	budgets: Array<[string, number]>;
 	/** Content schemas, in the order they were added; one with the same name replaces the earlier one. */
@@ -232,6 +235,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		layoutAliases: new Map(),
 		base: "",
 		serveRun: [],
+		serveIgnore: [],
 		budgets: [],
 		schemas: [],
 		themes: [],
@@ -837,11 +841,13 @@ function applySettings(config: Config, settings: Data): void {
 	// `budgets: { pages: "150 KB", total: "300 MB" }`: sizes a build is checked against.
 	if (isObject(settings.budgets)) config.budgets = Object.entries(settings.budgets).map(([name, size]) => budget(name, size));
 	else if (settings.budgets !== undefined && settings.budgets !== null) bail(`budgets must be an object, like { pages: "150 KB", images: "1 MB" }, not ${typeof settings.budgets}`);
-	// `serve: { run: ["npx postcss ... --watch"] }`: programs `ssqch serve` runs alongside.
+	// `serve: { run: ["npx postcss ... --watch"] }`: programs `ssqch serve` runs alongside, and
+	// `ignore: ["src/_css/**"]`: files only they read, which a rebuild would do nothing for.
 	const serve = settings.serve;
 	if (isObject(serve)) {
-		const unknown = Object.keys(serve).find((k) => k !== "run");
-		if (unknown !== undefined) bail(`serve: "${unknown}" isn't an option (options: run)`);
+		const unknown = Object.keys(serve).find((k) => k !== "run" && k !== "ignore");
+		if (unknown !== undefined) bail(`serve: "${unknown}" isn't an option (options: run, ignore)`);
+		config.serveIgnore = serveIgnore(serve.ignore, "[\"src/_css/**\"]");
 		const run = serve.run;
 		if (run === undefined || run === null) config.serveRun = [];
 		else if (typeof run === "string") config.serveRun = [run];
@@ -992,8 +998,9 @@ function applyToml(config: Config, file: string): void {
 		if (site.serve !== undefined) {
 			at = ["serve"];
 			if (!isPlainObject(site.serve)) bail("serve must be a table");
-			const unknownServe = Object.keys(site.serve).find((k) => k !== "run");
-			if (unknownServe !== undefined) bail(`unknown field \`${unknownServe}\`, expected \`run\``);
+			const unknownServe = Object.keys(site.serve).find((k) => k !== "run" && k !== "ignore");
+			if (unknownServe !== undefined) bail(`unknown field \`${unknownServe}\`, expected one of \`run\`, \`ignore\``);
+			config.serveIgnore = serveIgnore(site.serve.ignore, "ignore = [\"src/_css/**\"]");
 			const run = site.serve.run ?? [];
 			if (!Array.isArray(run) || !run.every((command: unknown) => typeof command === "string")) bail("serve.run must be an array of commands, like run = [\"npx postcss src/app.css -o dist/app.css --watch\"]");
 			config.serveRun = run;
@@ -1040,4 +1047,13 @@ function applyToml(config: Config, file: string): void {
 	} catch (e) {
 		invalid(e);
 	}
+}
+
+/** `serve.ignore`: a glob or a list of them, from the project root, checked here so a bad one is the config's error. */
+function serveIgnore(value: unknown, example: string): string[] {
+	if (value === undefined || value === null) return [];
+	const globs = typeof value === "string" ? [value] : value;
+	if (!Array.isArray(globs) || !globs.every((glob) => typeof glob === "string" && glob.trim() !== "")) bail(`serve.ignore must be a glob or an array of globs from the project root, like ${example}`);
+	globSet("serve.ignore", globs);
+	return globs;
 }
