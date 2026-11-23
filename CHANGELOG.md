@@ -42,6 +42,10 @@ where that version matches.
   change: set `hostFile: true`, or take the pattern out.
 
 ### Added
+- `ssqch patrol` says what the site's robots.txt lets AI crawlers do, by purpose: `AI crawlers:
+  training refused (7), search allowed (3), fetch allowed (4)`, and `ai` in its JSON. It reads
+  the file the way each crawler `robotsPlugin()` knows reads it, so it works on any build's
+  robots.txt. Squatch Snacks wrote 35 lines to learn this from its own file.
 - The starters (`ssqch init`, both, in every language) set `strict: true`, so a misspelled name
   in a template is an error with its file and line instead of an empty spot on the page;
   `dateFallback: "git"`, so a page with no date of its own, and the sitemap's `<lastmod>`, are

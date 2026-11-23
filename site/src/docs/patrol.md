@@ -9,6 +9,7 @@ $ ssqch build
 $ ssqch patrol
 Patrol of _site: 12 pages, 12 with a Markdown copy
   robots.txt posted, sitemap posted, llms.txt posted, 404.html posted
+  AI crawlers: training refused (7), search allowed (3), fetch allowed (4)
 
 warn[no-description]: pages with no <meta name="description">: what search results and agents show for a link (2)
   posts/pine-cones/index.html
@@ -17,7 +18,12 @@ warn[no-description]: pages with no <meta name="description">: what search resul
 1 kind of warning in 2 files. `ssqch docs "what patrol checks"` says what each code means.
 ```
 
-It reads the site's output folder, or any build folder you name, another generator's included (`ssqch patrol _site` before a move shows what the move can fix). It needs no config and changes nothing. With `--format json`, standard output is one JSON document: `pages`, `copies` (the pages with a Markdown copy), `signs` (`robots`, `sitemap`, `llms` and `notFound`, each `true` or `false`) and `warnings`, each with its `code`, `message` and every one of its `files`. It exits with 0 when it found nothing, 1 when it warned, and 2 on an error (a folder that isn't there), so a CI step can run it after the build.
+It reads the site's output folder, or any build folder you name, another generator's included (`ssqch patrol _site` before a move shows what the move can fix). It needs no config and changes nothing. With `--format json`, standard output is one JSON document: `pages`, `copies` (the pages with a Markdown copy), `signs` (`robots`, `sitemap`, `llms` and `notFound`, each `true` or `false`), `ai` (when there's a robots.txt: `training`, `search` and `fetch`, each with how many of the AI crawlers `robotsPlugin()` knows are `allowed` and `refused`) and `warnings`, each with its `code`, `message` and every one of its `files`. It exits with 0 when it found nothing, 1 when it warned, and 2 on an error (a folder that isn't there), so a CI step can run it after the build.
+
+The `AI crawlers` line reads `robots.txt` the way each crawler does: the group that names it, or the `*` group when none does, and it's kept out by `Disallow: /`. It counts the crawlers `robotsPlugin()` writes rules for, by what they're for (training models, AI search, a fetch a person asked for; [robots.txt](robots.md) lists them), so it answers "what does my site let AI do?" for any build, `robotsPlugin()`'s or a robots.txt of your own. A purpose split both ways says so: `training 5 refused, 2 allowed`.
+
+> [!NOTE]
+> **Not released yet.** The `AI crawlers` line and `ai` ship with the next version of ssqch.
 
 ## What patrol checks
 
