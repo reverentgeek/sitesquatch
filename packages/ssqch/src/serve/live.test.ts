@@ -109,7 +109,7 @@ test("a_missing_file_names_who_could_have_written_it", () => {
 });
 
 // Blog #14: Tailwind's first compile took longer than the first build's wait, and the page's
-// stylesheet was warned about as missing, though it turned up a moment later. DELIBERATE (0.14):
+// stylesheet was warned about as missing, though it turned up a moment later. DELIBERATE (0.13.6):
 // while the tools are on their first compile, a missing file isn't warned about; once that's
 // over (the time is up, or none is running), the ones still missing are, and browsers hear so.
 test("a_file_the_tools_are_still_compiling_isnt_warned_about", () => {
@@ -121,7 +121,7 @@ test("a_file_the_tools_are_still_compiling_isnt_warned_about", () => {
 		let running = true;
 		live.startFirstCompile(dir, 60_000, () => running);
 		assert.equal(live.missing("assets/index.css", "/assets/index.css"), compilingMessage("/assets/index.css", ["tailwindcss"], "dist"));
-		assert.equal(compilingMessage("/assets/index.css", ["tailwindcss"], "dist"), "/assets/index.css isn't in dist yet: serve.run's tailwindcss is still on the first compile. The page gets it when it's written");
+		assert.equal(compilingMessage("/assets/index.css", ["tailwindcss"], "dist"), "/assets/index.css isn't in dist yet: serve.run's tailwindcss is still running and hasn't written it. The page gets it when it's written");
 		live.missing("assets/app.js", "/assets/app.js");
 		assert.deepEqual(diagnostics.takeWarnings(), []);
 		// One turned up; the other didn't, and is warned about when the compile is over.

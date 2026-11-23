@@ -580,7 +580,7 @@ async function firstCompile(output: string, quiet: boolean): Promise<void> {
 		} else if (wroteAt !== undefined) {
 			if (performance.now() - wroteAt >= QUIET) return;
 		} else if (performance.now() - started >= FIRST_COMPILE) {
-			if (!quiet) diagnostics.progress(`[ssqch] serve.run's tools are still on their first compile after ${FIRST_COMPILE / 1000} s; building now, and what they write goes in when it's ready`);
+			if (!quiet) diagnostics.progress(`[ssqch] serve.run's tools wrote no CSS or JavaScript in ${FIRST_COMPILE / 1000} s; building now, and what they write goes in when it's ready`);
 			return;
 		}
 	}

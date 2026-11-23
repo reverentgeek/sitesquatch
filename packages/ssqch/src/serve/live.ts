@@ -104,8 +104,8 @@ export function missingMessage(url: string, tools: string[], output: string): st
 
 /** What's said about such a file while the `serve.run` tools are on their first compile, which may not have written it yet (blog #14: Tailwind's took longer than the first build's wait). */
 export function compilingMessage(url: string, tools: string[], output: string): string {
-	const who = tools.length === 1 ? `serve.run's ${tools[0]} is` : "serve.run's tools are";
-	return `${url} isn't in ${output} yet: ${who} still on the first compile. The page gets it when it's written`;
+	const who = tools.length === 1 ? `serve.run's ${tools[0]} is still running and hasn't written it` : "serve.run's tools are still running and haven't written it";
+	return `${url} isn't in ${output} yet: ${who}. The page gets it when it's written`;
 }
 
 /** What `/__ssqch/build` answers with. */

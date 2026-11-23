@@ -23,13 +23,14 @@ where that version matches.
   tag that has a space in it. `ssqch docs tags` answers with it.
 
 ### Changed
-- `ssqch serve` doesn't warn about a stylesheet or script a page links while the `serve.run` tools
-  are on their first compile: the page's note says they're still compiling, and the warning comes
-  only if the file isn't there after 30 seconds, or once none of them is running. Tailwind's first
-  compile on the blog took longer than the 2 s the first build waits, and the page's stylesheet was
-  warned about as missing a moment before it turned up (blog #14). The line the first build prints
-  then says they're still compiling (`serve.run's tools are still on their first compile after 2 s;
-  building now, ...`), where it said they wrote nothing.
+- `ssqch serve` doesn't warn about a stylesheet or script a page links while a `serve.run` tool is
+  still running and hasn't written it, for 30 seconds from the tool's start: the page's note says it
+  hasn't written it yet, and the warning comes only if the file still isn't there after that, or
+  once none of the tools is running. Tailwind's first compile on the blog took longer than the 2 s
+  the first build waits, and the page's stylesheet was warned about as missing a moment before it
+  turned up (blog #14). The line the first build prints when the tools haven't written yet says what
+  happens next: `serve.run's tools wrote no CSS or JavaScript in 2 s; building now, and what they
+  write goes in when it's ready`.
 - The blog starter (`ssqch init`) puts its tag pages' addresses through `slugify` (`/tags/{{
   tag.name | slugify }}/`, in its tag page, its list of tags and its layout, in each of its template
   languages), so a tag with a space or a capital (`Old Growth`) gets `/tags/old-growth/` and its
