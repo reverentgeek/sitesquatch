@@ -567,6 +567,15 @@ export default { keys: Object.keys(d).join(","), same: d.auto[0].url === d.png[0
 	fs.writeFileSync(path.join(root, "src/bad.edge"), "---\npermalink: /bad/\n---\n{{ imageUrl('/img/nope.png').url }}");
 	({ ok, log } = build(root));
 	assert.ok(!ok && log.includes("imageUrl(): image not found: /img/nope.png (looked for ./src/img/nope.png)") && !log.includes("imageUrl(): imageUrl()"), log);
+	// Added in 0.14.1: each given the other's kind of path names the one it meant (Squatch Snacks, D5).
+	fs.writeFileSync(path.join(root, "src/bad.edge"), "---\npermalink: /bad/\n---\n{{ imageUrl('src/img/squatch.png').url }}");
+	({ ok, log } = build(root));
+	assert.ok(!ok && log.includes("imageUrl(): image not found: src/img/squatch.png (looked for ./src/src/img/squatch.png; imageUrl() takes a path from the site's root: \"/img/squatch.png\")"), log);
+	fs.writeFileSync(path.join(root, "src/bad.edge"), "---\npermalink: false\n---\n");
+	fs.writeFileSync(path.join(root, "src/_data/hero.js"), "import { image } from \"ssqch/image\";\nexport default await image(\"/img/squatch.png\");\n");
+	({ ok, log } = build(root));
+	assert.ok(!ok && log.includes("that's a path from the site's root, which imageUrl() takes: image() takes one from the project, \"src/img/squatch.png\")"), log);
+	fs.rmSync(path.join(root, "src/_data/hero.js"));
 	fs.writeFileSync(path.join(root, "src/bad.edge"), "---\npermalink: /bad/\n---\n{{ imageUrl('/img/squatch.png', { size: 3 }).url }}");
 	({ ok, log } = build(root));
 	assert.ok(!ok && log.includes("imageUrl(): unknown option \"size\" (options: width, format)"), log);

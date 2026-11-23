@@ -649,7 +649,13 @@ export class ImageProcessor {
 		if (src.trim() === "") throw new BuildError("imageUrl(): no image given");
 		const file = this.resolveSiteSrc(src);
 		if (file === undefined) return { url: src };
-		if (!this.isSource(file)) throw new BuildError(`imageUrl(): image not found: ${src} (looked for ${this.display(file)})`);
+		if (!this.isSource(file)) {
+			// A path from the project (`src/img/hero.jpg`) is image()'s kind: the site's address for it.
+			const fromProject = src.startsWith("/") ? undefined : path.resolve(this.root(), src);
+			const input = this.context().input;
+			const meant = fromProject !== undefined && this.isSource(fromProject) && !path.relative(input, fromProject).startsWith("..") ? `; imageUrl() takes a path from the site's root: "/${path.relative(input, fromProject).split(path.sep).join("/")}"` : "";
+			throw new BuildError(`imageUrl(): image not found: ${src} (looked for ${this.display(file)}${meant})`);
+		}
 		const meta = this.generate(file, [width], [format]);
 		// The page uses the URL now; the file has to be there by the end of the build.
 		this.watch(meta, file, { name: "imageUrl()" });

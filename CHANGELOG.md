@@ -78,6 +78,9 @@ where that version matches.
 - `ssqch trace` said an undated page's date came from `the file's modification time` when
   `dateFallback: "git"` had taken it from git. It says `git: the last commit to <file>`, or why
   git had nothing.
+- `image()` takes a path from the project and `imageUrl()` one from the site's root, and each
+  given the other kind says where it looked and names the path it meant, where `image()` said
+  only `file not found` with a whole path. The docs say which takes which.
 
 ## 0.14.0 - 2026-11-23
 

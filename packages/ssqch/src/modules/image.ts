@@ -83,7 +83,14 @@ export async function image(src: unknown, options: Record<string, unknown> = {})
 	const checkedWidths = checkWidths(widths);
 	const checkedFormats = checkFormats(formats);
 	const p = currentProcessor();
-	if (!(fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false)) bail(`image(): file not found: ${file}`);
+	if (!(fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false)) {
+		// image() takes a path from the project and imageUrl() one from the site's root, and Squatch
+		// Snacks (D5) and the blog (#15) both gave image() the site's: say which, and the one meant.
+		const shown = (f: string) => { const rel = path.relative(p.root(), f); return rel.startsWith("..") || path.isAbsolute(rel) ? f : rel.split(path.sep).join("/"); };
+		const site = src.startsWith("/") ? p.resolveSiteSrc(src) : undefined;
+		const meant = site !== undefined && (fs.statSync(site, { throwIfNoEntry: false })?.isFile() ?? false) ? `; that's a path from the site's root, which imageUrl() takes: image() takes one from the project, "${shown(site)}"` : "; image() takes a path from the project, like \"src/img/hero.jpg\"";
+		bail(`image(): file not found: ${src} (looked for ${shown(file)}${meant})`);
+	}
 	let meta;
 	try { meta = p.generateNamed(file, checkedWidths, checkedFormats, name as string | undefined); } catch (e) { bail(`image(): ${(e as Error).message}`); }
 	const failed = await meta.ready;
