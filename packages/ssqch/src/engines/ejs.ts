@@ -14,6 +14,7 @@ import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closestPath } from "../suggest.ts";
 import { isDataString, lazyEngine, siteFunction } from "./engine.ts";
 import type { EngineEnv, TemplateEngine } from "./engine.ts";
+import { didYouMean, undefinedMessage, undefinedOnLine } from "../strict-hint.ts";
 
 /** A template as code: its function, or its text when it has no tags. */
 interface Compiled {
@@ -36,6 +37,9 @@ type Rethrow = (e: unknown, lines: string, name: string, line: number) => never;
 /** An error that says which template and line it's from (`index.ejs:3: ...`); an include's error keeps its own place. */
 class Located extends BuildError {}
 
+/** `strict`: a `<%=` or `<%-` printed `undefined`. `rethrow` names it from the line. */
+class PrintedUndefined extends Error {}
+
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&#34;", "'": "&#39;" };
 
 // The code around a template's own, in place of ejs' (`Template.compile` uses a source it's
@@ -44,7 +48,7 @@ const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;"
 // copied. The variables are the page's data seen through `scope`, which keeps the names the
 // code itself uses (`include`, `locals`) the engine's, as 0.7 did: a page with `include:` in its
 // front matter can still include.
-const BEFORE = "  var __output = \"\", __scope = escapeFn.scope(locals || {});\n  function __append(s) { if (s !== undefined && s !== null) __output += escapeFn(s, true, __line, __filename) }\n  with (escapeFn.globals) { with (__scope) {\n";
+const BEFORE = "  var __output = \"\", __scope = escapeFn.scope(locals || {});\n  function __append(s) { if (s !== null) __output += escapeFn(s, true, __line, __filename) }\n  with (escapeFn.globals) { with (__scope) {\n";
 const AFTER = "  } }\n  return __output;\n";
 
 /** The names a page's data can't take over (`with` skips them), as 0.7 reserved them. */
@@ -165,8 +169,19 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 		throw new Error(`template not found: can't include \`${wanted}\`: no sightings in ${dirs.length ? shown(dirs[0]) : ""}${hint}`);
 	};
 
-	const rethrow: Rethrow = (e, _lines, name, line) => {
+	const rethrow: Rethrow = (e, lines, name, line) => {
 		if (e instanceof Located) throw e;
+		if (e instanceof PrintedUndefined) {
+			// The one name on the line that's undefined, from what `<%=` and `<%-` print.
+			const named = undefinedOnLine((String(lines).split("\n")[line - 1] ?? "").replaceAll("<%-", "<%="), "<%=", "%>");
+			throw new Located(`${name}:${line}: ${named === undefined ? e.message : undefinedMessage(named)}`);
+		}
+		// A name that isn't anywhere is JavaScript's ReferenceError, strict or not: the nearest one.
+		const missing = e instanceof ReferenceError ? /^([A-Za-z_$][\w$]*) is not defined$/.exec(e.message)?.[1] : undefined;
+		if (missing !== undefined) {
+			const hint = didYouMean(missing);
+			throw new Located(`${name}:${line}: ${(e as Error).message}${hint ? ` (${hint.slice(2)})` : ""}`);
+		}
 		throw new Located(`${name}:${line}: ${describeThrown(e, root)}`);
 	};
 
@@ -179,6 +194,11 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 			const waiting: Array<{ mark: string; raw: boolean; promise: Promise<unknown>; name?: string; line?: number }> = [];
 			const plain = isDataString(ctx);
 			const print = ((value: unknown, raw?: boolean, line?: number, name?: string) => {
+				// `undefined` prints nothing, or with `strict` is an error, as in the other languages.
+				if (value === undefined) {
+					if (env.strict) throw new PrintedUndefined("printed an undefined value (strict is on)");
+					return "";
+				}
 				if (value instanceof Promise) {
 					const mark = `${MARK}${waiting.length}\u0000`;
 					waiting.push({ mark, raw: Boolean(raw), promise: watchSettle(value), name, line });

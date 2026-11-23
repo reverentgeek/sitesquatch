@@ -22,6 +22,7 @@ import * as voice from "../voice.ts";
 import { isDataString } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 import { JINJA_ESCAPE, JINJA_RAW, JinjaError, escapeJinja, installRuntime, jinjaFilters, jinjaGlobals, jinjaTests, markdownAttributes, njkString, pyString, siteArgs } from "./jinja.ts";
+import { undefinedMessage, undefinedOnLine } from "../strict-hint.ts";
 
 /** `.njk` (Nunjucks' escaping and the config's functions as tags) or `.jinja` and `.j2`. */
 export type Flavor = "njk" | "jinja";
@@ -400,7 +401,9 @@ function describe(e: unknown, source: string, ctx: RenderContext, at: Where): st
 		const including = new RegExp(`\\{%-?\\s*include\\s[^%]*["']${word(wanted)}["']`).test(tag) || (line === undefined && /\{%-?\s*include\b/.test(text));
 		message = `template not found: ${including ? "can't include" : "no template named"} \`${wanted}\`${near ? ` (did you mean \`${near}\`?)` : ""}`;
 	} else if (message === STRICT) {
-		message = "printed an undefined value (strict is on)";
+		// Nunjucks says only that something was: the one name on the line that's undefined, if one is.
+		const named = line === undefined ? undefined : undefinedOnLine(text.split("\n")[line - 1] ?? "", "{{", "}}");
+		message = named === undefined ? "printed an undefined value (strict is on)" : undefinedMessage(named);
 	}
 	return `${name}${line === undefined ? "" : `:${line}`}: ${message}`;
 }

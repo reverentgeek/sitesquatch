@@ -43,6 +43,14 @@ where that version matches.
 - A schema's `file` field that names a missing file says where it looked, from the project
   (`looked for src/posts/cedar.jpg`), and the nearest name in that folder when one is close
   (`did you mean "photo.jpg"?`).
+- `strict` names the value that printed undefined and the nearest name in the page's data:
+  `` `t.buttons.allSnaks` is undefined (strict is on; did you mean `t.buttons.allSnacks`?) ``.
+  Nunjucks and Jinja said only `printed an undefined value`, and the others named it without a
+  suggestion; Liquid keeps 0.7's lines, with the suggestion in the first.
+- `strict` works in EJS, as the docs said it did in every language: a `<%= %>` or `<%- %>` that
+  printed `undefined` printed nothing. A strict EJS site that prints an undefined value now
+  fails its build there, naming it. A name EJS doesn't have at all (`titel is not defined`)
+  gets the nearest name too.
 
 ## 0.14.0 - 2026-11-23
 

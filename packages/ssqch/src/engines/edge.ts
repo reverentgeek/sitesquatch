@@ -38,6 +38,7 @@ import * as voice from "../voice.ts";
 import * as values from "./edge-values.ts";
 import { isDataString, siteFunction } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
+import { undefinedMessage } from "../strict-hint.ts";
 
 /** How deep includes and components go before it's a loop, as in 0.7. */
 const MAX_DEPTH = 64;
@@ -280,7 +281,7 @@ function stringify(value: unknown, replacer?: unknown, indent?: unknown): string
 function makeHelpers(functions: Record<string, unknown>): Helpers {
 	const text = (value: unknown, source: string | undefined, escape: boolean): string => {
 		if (value === undefined || value === null) {
-			if (value === undefined && source !== undefined) throw new BuildError(`\`${source}\` is undefined (strict is on)`);
+			if (value === undefined && source !== undefined) throw new BuildError(undefinedMessage(source));
 			return "";
 		}
 		if (value instanceof Promise) {

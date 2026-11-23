@@ -16,6 +16,7 @@ import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
 import { isDataString, lazyEngine } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
+import { undefinedMessage } from "../strict-hint.ts";
 
 /** The extensions that are Handlebars: a partial with one that doesn't parse is an error, and other files that don't are skipped. */
 const EXTENSIONS = ["hbs", "handlebars", "mustache"];
@@ -461,12 +462,12 @@ function located(e: unknown, source: string, file: string | undefined, partials:
 			const index = lines.findIndex((text) => new RegExp(`\\{\\{[{~#^&]?\\s*(?:[\\w@$-]+[./])*${word(wanted)}\\s*~?\\}`).test(text));
 			if (index !== -1) line = index + 1;
 		}
-		message = `\`${wanted}\` is undefined (strict is on)`;
+		message = undefinedMessage(wanted);
 	} else if ((found = /^"([^"]+)" not defined in /.exec(message))) {
 		// The whole path, from the line handlebars.js names (it says only the last part).
 		const text = line === undefined ? "" : lines[line - 1] ?? "";
 		const whole = new RegExp(`\\{\\{[{~#^&]?\\s*((?:[\\w@$-]+[./])*${word(found[1])})\\s*~?\\}`).exec(text)?.[1] ?? found[1];
-		message = `\`${whole}\` is undefined (strict is on)`;
+		message = undefinedMessage(whole);
 	}
 	return new Located(message, line, file);
 }
