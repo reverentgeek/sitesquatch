@@ -768,7 +768,7 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"]
 
 // Squatch Snacks (Seam1): a host takes the first `_redirects` line that matches, and the lines were
 // sorted together, so `/snacks/*` came before `/snacks/pine-cone-crunch/` and took its address.
-// DELIBERATE (0.13.7): an old URL with a `*` or a `:name` is a pattern. Its line comes after the
+// DELIBERATE (0.14): an old URL with a `*` or a `:name` is a pattern. Its line comes after the
 // exact addresses, the one with the most fixed in front first, and it gets no page (it was written
 // at `snacks/*/index.html`, which answers nobody and isn't a file name Windows takes). A colon
 // inside a segment is part of a name (tried without pages: Windows has no file of that name).
@@ -858,7 +858,7 @@ export default { base: "/trail/", templateFormats: ["njk"], plugins: [sitemapPlu
 	// With its date, a page's `<lastmod>` comes before the links. sitemaps.org's schema lists
 	// `loc`, `lastmod`, `changefreq`, `priority` and then other namespaces' elements, so a
 	// validator refuses a `<lastmod>` after an `<xhtml:link>` (Squatch Snacks, B2: xmllint's
-	// "Element lastmod: This element is not expected"). DELIBERATE (0.13.7): the links came first.
+	// "Element lastmod: This element is not expected"). DELIBERATE (0.14): the links came first.
 	const dated = project({
 		"ssqch.config.js": "import { sitemapPlugin } from \"ssqch/sitemap\";\nexport default { templateFormats: [\"njk\"], plugins: [sitemapPlugin({ url: \"https://example.com\", alternates: () => [{ hreflang: \"fr\", href: \"/fr/\" }] })] };\n",
 		"index.njk": "---\ndate: 2024-03-04\n---\nSquatch Snacks\n",

@@ -26,6 +26,12 @@ where that version matches.
   An `afterBuild` hook's `written` and the
   pages a plugin's function gets (`sitemapPlugin()`'s `alternates`, `llmsPlugin()`'s `section`)
   keep whole paths. An output folder outside the project root is still its whole path.
+- `redirectsPlugin()` stops a build whose `redirects` or `aliases` have a pattern (an old URL
+  with a `*` or a `:name` segment, `"/snacks/*": "/provisions/:splat"`) when `netlify: true`
+  isn't set: `/snacks/* is a pattern (a * or a :name), which only a host can match, and a
+  redirect page can't. Set netlify: true, so it's a line in _redirects`. Before, it wrote a
+  redirect page at `snacks/*/index.html`, which nobody is ever sent to. What a site has to
+  change: set `netlify: true`, or take the pattern out.
 
 ### Added
 - The docs starter (`ssqch init --starter docs`) copies a section's link: clicking the `#` beside
@@ -82,10 +88,9 @@ where that version matches.
   addresses, the pattern with the most fixed in front first: a host takes the first line that
   matches, and sorted with the rest, `/snacks/*` came before `/snacks/pine-cone-crunch/` and
   took its address. A pattern gets no redirect page, either. It got one at `snacks/*/index.html`,
-  which answers nobody, isn't a file name Windows takes, and was a broken link to `linksPlugin()`.
-  So a pattern needs `netlify: true`: without it nothing redirects it, and the build now stops
-  and says what to set, where it wrote that page. A `_redirects` file without patterns is byte
-  for byte what it was.
+  which answers nobody, isn't a file name Windows takes, and was a broken link to `linksPlugin()`
+  (so a pattern needs `netlify: true`: see "Breaking"). A `_redirects` file without patterns is
+  byte for byte what it was.
 - `ssqch diff` says where a change on more than one file is (`@ under #visit`, and `at` in the
   JSON) only when it's under the same heading on every one of them. It printed the first file's:
   a footer that changed on 16 pages was "under" the 404 page's heading, which the other 15 don't
