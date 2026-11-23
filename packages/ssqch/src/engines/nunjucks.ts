@@ -19,6 +19,7 @@ import * as equivalents from "../equivalents.ts";
 import { describeThrown, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
 import * as voice from "../voice.ts";
+import { isDataString } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 import { JINJA_ESCAPE, JINJA_RAW, JinjaError, escapeJinja, installRuntime, jinjaFilters, jinjaGlobals, jinjaTests, markdownAttributes, njkString, pyString, siteArgs } from "./jinja.ts";
 
@@ -301,6 +302,12 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 		const pass = new Pass(previous);
 		const outer = current;
 		current = pass;
+		// A `permalink` or `computed` string is data: nothing in it is escaped. The compiled
+		// template reads `autoescape` as it prints, and the render is synchronous, so it's off for
+		// just this one.
+		const opts = (njk as unknown as { opts: { autoescape: unknown } }).opts;
+		const escaping = opts.autoescape;
+		if (isDataString(ctx)) opts.autoescape = flavor === "jinja" ? JINJA_RAW : false;
 		let out: string | undefined, failure: unknown, failed = false;
 		try {
 			out = template(source, ctx).render(data);
@@ -309,6 +316,7 @@ export function nunjucksEngine(env: EngineEnv, flavor: Flavor = "njk"): Template
 			failure = e;
 		} finally {
 			current = outer;
+			opts.autoescape = escaping;
 		}
 		// What failed while a promise was outstanding may have failed for want of its answer.
 		if (!pass.promises.length) return failed ? fail(failure, source, ctx) : out!;

@@ -28,6 +28,12 @@ where that version matches.
   sitesquatch.dev/examples/searchable-directory/.
 
 ### Fixed
+- A `computed` or `permalink` string isn't HTML-escaped as it's worked out, in any template
+  language: it's data, and the template that prints it escapes it once. Before, it was escaped
+  twice, so the blog starter's page for a tag `Rock & Roll` was titled `Tagged Rock &amp;amp;
+  Roll` (in Jinja, Nunjucks, Handlebars, Edge and EJS; Liquid escapes nothing it prints). A site
+  that worked around it by printing raw in its `computed` (`<%-`, `{{{ }}}`, `| safe`) gets the
+  same output as before.
 - Search in the docs starter (`SEARCH=1`) and the `docs-sidebar` example works under a `base`,
   as on a GitHub Pages project site. Pagefind's script is a module, which can't see where it was
   loaded from, so it looked for its index in `/pagefind/` at the root of the domain and found

@@ -14,7 +14,7 @@ import { isPlainObject } from "../data.ts";
 import { BuildError } from "../diagnostics.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
-import { lazyEngine } from "./engine.ts";
+import { isDataString, lazyEngine } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 
 /** The extensions that are Handlebars: a partial with one that doesn't parse is an error, and other files that don't are skipped. */
@@ -331,7 +331,8 @@ function makeHandlebars(env: EngineEnv): TemplateEngine {
 	const template = (source: string, ctx: RenderContext) => {
 		let made = ctx.cacheKey === undefined ? undefined : compiled.get(ctx.cacheKey);
 		if (!made) {
-			made = hb.compile(source, compileOptions);
+			// A `permalink` or `computed` string is data: `{{ }}` prints it as `{{{ }}}` does.
+			made = hb.compile(source, isDataString(ctx) ? { ...compileOptions, noEscape: true } : compileOptions);
 			if (ctx.cacheKey !== undefined) compiled.set(ctx.cacheKey, made);
 		}
 		return made;

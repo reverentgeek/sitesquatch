@@ -184,6 +184,28 @@ test("computed_values_see_collections", () => {
 	assert.match(read(root, "_site/learn/index.html"), /Pine, Cedar \(2\)/);
 });
 
+// DELIBERATE (0.13.7): a `computed` or `permalink` string is data, so it isn't HTML-escaped as it's
+// worked out; the template that prints it escapes it once. Escaped twice, the blog starter's page
+// for a tag "Rock & Roll" was titled "Tagged Rock &amp;amp; Roll" (in every language but Liquid,
+// which escapes nothing it prints).
+test("computed_and_permalink_strings_are_escaped_once_where_printed", () => {
+	const pages = {
+		jinja: ["Tagged {{ name }}", "{{ title }}"],
+		njk: ["Tagged {{ name }}", "{{ title }}"],
+		liquid: ["Tagged {{ name }}", "{{ title | escape }}"],
+		hbs: ["Tagged {{name}}", "{{title}}"],
+		edge: ["Tagged {{ name }}", "{{ title }}"],
+		ejs: ["Tagged <%= name %>", "<%= title %>"],
+	};
+	const files = { "ssqch.config.js": `export default { templateFormats: ${JSON.stringify(Object.keys(pages))} };\n` };
+	for (const [ext, [computed, print]] of Object.entries(pages)) files[`${ext}.${ext}`] = `---\nname: "Rock & <Roll>"\ncomputed:\n  title: "${computed}"\n---\n<h1>${print}</h1>\n`;
+	files["moved.njk"] = "---\nq: \"a&b\"\npermalink: \"/p/{{ q }}/\"\n---\nMoved\n";
+	const root = project(files);
+	buildOk(root);
+	for (const ext of Object.keys(pages)) assert.equal(read(root, `_site/${ext}/index.html`).trim(), "<h1>Tagged Rock &amp; &lt;Roll&gt;</h1>", ext);
+	assert.equal(read(root, "_site/p/a&b/index.html").trim(), "Moved");
+});
+
 // opensource.guide (osg #12): Bundler's `--path vendor/gems` put Jekyll's own templates in the
 // site, and ssqch built them as pages (5 errors, from gems' layouts). A Bundler install folder is
 // skipped as node_modules is; a site's own `vendor/` folder isn't.

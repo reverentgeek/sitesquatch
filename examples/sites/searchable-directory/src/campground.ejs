@@ -6,8 +6,8 @@ pagination:
   alias: camp
 permalink: /campgrounds/<%= camp.slug %>/
 computed:
-  title: "<%- camp.name %>"
-  description: "<%- camp.description %>"
+  title: "<%= camp.name %>"
+  description: "<%= camp.description %>"
 ---
 <%# One page for each record in src/_data/campgrounds.json. data-pagefind-body marks what search indexes: these pages, and not the home page that lists them all. %>
 <main data-pagefind-body>
