@@ -68,6 +68,13 @@ where that version matches.
   sitesquatch.dev/examples/searchable-directory/.
 
 ### Changed
+- A schema's problem on a paginated page says which item it's on: `src/snack.jinja (item 4 of
+  snacks, "Ridge Runner Jerky"): price is required`, by the item's `title`, `name` or `slug`, or
+  `(page 2 of posts)` for a page of several. Six errors from one template all said
+  `src/snack.jinja`.
+- A misspelled required field is one problem: ``location` is required (a string), and the page
+  has `loaction`: did you mean `location`?``. It was two, and the one that said what happened
+  came second.
 - A value in YAML front matter with a second `: ` in it (`summary: Hours: early mornings`) says
   what to do: `summary's value has a ": " in it, so YAML reads it as another key; put the value in
   quotes: summary: "Hours: early mornings"`, before the parser's own words and place. It's the
