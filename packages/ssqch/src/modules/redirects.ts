@@ -82,9 +82,14 @@ function asWritten(alias: unknown): unknown {
 }
 
 BUILTINS.set("ssqch/redirects", (config: Config, given) => {
-	const o = new Options(given, ["pages", "netlify", "redirects"]);
-	const pages = o.bool("pages") ?? true;
-	const netlify = o.bool("netlify") ?? false;
+	// `netlify` was this option's name until 0.14: Cloudflare reads the same `_redirects`, so it's
+	// named for what it writes, and the old name says the new one rather than "unknown option".
+	if (typeof given === "object" && given !== null && "netlify" in given && (given as Record<string, unknown>).netlify !== undefined) bail("netlify is called hostFile now (Netlify and Cloudflare both read _redirects): redirectsPlugin({ hostFile: true })");
+	const o = new Options(given, ["pages", "hostFile", "redirects"]);
+	const hostFile = o.bool("hostFile") ?? false;
+	// A host serves a file that exists before it reads `_redirects`, so with both, an old address
+	// answers 200 with the redirect page and never the 301 line: pages are off when the file is on.
+	const pages = o.bool("pages") ?? !hostFile;
 	const redirects = new Map<string, string>();
 	const map = o.get("redirects");
 	if (map !== undefined) {
@@ -94,7 +99,7 @@ BUILTINS.set("ssqch/redirects", (config: Config, given) => {
 			redirects.set(from, to);
 		}
 	}
-	if (!pages && !netlify) bail("pages and netlify are both false, so there's nothing to write; turn one on");
+	if (!pages && !hostFile) bail("pages and hostFile are both false, so there's nothing to write; turn one on");
 	for (const from of redirects.keys()) {
 		try { checkPath(from); } catch (e) { throw context(e, "redirects"); }
 	}
@@ -137,7 +142,7 @@ BUILTINS.set("ssqch/redirects", (config: Config, given) => {
 			// A page can't stand for every address a pattern matches (it was written at `news/*/index.html`,
 			// which answers nobody, and isn't a file name Windows takes), so without the lines there's
 			// nothing that redirects it.
-			if (pattern && !netlify) bail(`${source}: ${from} is a pattern (a \`*\` or a \`:name\`), which only a host can match, and a redirect page can't. Set netlify: true, so it's a line in _redirects`);
+			if (pattern && !hostFile) bail(`${source}: ${from} is a pattern (a \`*\` or a \`:name\`), which only a host can match, and a redirect page can't. Set hostFile: true, so it's a line in _redirects`);
 			if (pages && !pattern) {
 				const path = from.endsWith("/") || hasExtension(from) ? from : `${from}/`;
 				// Generated files aren't rewritten for `base`, so the target gets it here.
@@ -147,7 +152,7 @@ BUILTINS.set("ssqch/redirects", (config: Config, given) => {
 			// Hosts match a line against the whole URL path, which has the base in front.
 			lines += `${withBase(config.base, from)}  ${withBase(config.base, to)}  301\n`;
 		}
-		if (netlify && lines !== "") files.push({ path: "/_redirects", contents: lines, append: true });
+		if (hostFile && lines !== "") files.push({ path: "/_redirects", contents: lines, append: true });
 		return files;
 	}]);
 });

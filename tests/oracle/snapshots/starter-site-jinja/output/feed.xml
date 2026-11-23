@@ -54,8 +54,8 @@ address goes in the post's front matter:&lt;/p&gt;
 &lt;p&gt;&lt;code&gt;redirectsPlugin()&lt;/code&gt; in &lt;code&gt;ssqch.config.js&lt;/code&gt; gives each old address a small page that sends
 readers, and search engines, on to the new one. An old address that's another page's address
 stops the build, so a redirect never hides a post.&lt;/p&gt;
-&lt;p&gt;On Netlify, &lt;code&gt;redirectsPlugin({ netlify: true })&lt;/code&gt; also writes each one to &lt;code&gt;_redirects&lt;/code&gt;, and
-the host answers with a real 301 before the page is even asked for.&lt;/p&gt;
+&lt;p&gt;On Netlify or Cloudflare, &lt;code&gt;redirectsPlugin({ hostFile: true })&lt;/code&gt; writes each one to &lt;code&gt;_redirects&lt;/code&gt;
+instead, and the host answers with a real 301.&lt;/p&gt;
 &lt;p&gt;The tracks lead back to the stump. They always do.&lt;/p&gt;
 </content>
   </entry>

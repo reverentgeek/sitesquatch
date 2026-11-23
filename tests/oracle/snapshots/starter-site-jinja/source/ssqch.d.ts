@@ -44,7 +44,7 @@ declare module "ssqch" {
 		/** The file name without extensions (`pine` for `pine.md`; empty for an `index` page). */
 		fileSlug: string;
 		filePathStem: string;
-		/** Where the page is written, or `false`. */
+		/** Where the page is written, from the project root like `inputPath` (`./dist/posts/pine/index.html`), or `false`. */
 		outputPath: string | false;
 		/** `url`, `inputPath`, `date` and the rest, plus `headings` from the rendered body. */
 		page: Record<string, unknown> & { headings?: Heading[]; excerpt?: string; lastModified?: Date };
@@ -121,7 +121,9 @@ declare module "ssqch" {
 	/** What a transform gets with the content. */
 	export interface TransformPage {
 		url: string;
+		/** The template's path, like `./src/posts/pine.md`. */
 		inputPath: string;
+		/** The file being written, from the project root: `./dist/posts/pine/index.html`. */
 		outputPath: string;
 	}
 
@@ -714,10 +716,10 @@ declare module "ssqch/redirects" {
 	import type { BuiltinPlugin } from "ssqch";
 
 	export interface RedirectsPluginOptions {
-		/** Write a redirect page (meta refresh, canonical link, `noindex`) at each old URL. Default `true`. */
+		/** Write a redirect page (meta refresh, canonical link, `noindex`) at each old URL. Default `true`, and `false` with `hostFile`, since a host serves a page that exists before it reads `_redirects`. */
 		pages?: boolean;
-		/** Add `/old /new 301` lines to `_redirects`, after any your own `_redirects` template writes. Default `false`. */
-		netlify?: boolean;
+		/** Add `/old /new 301` lines to `_redirects`, the file Netlify and Cloudflare read, after any your own `_redirects` template writes. Default `false`. (Called `netlify` before 0.14.) */
+		hostFile?: boolean;
 		/** Redirects that aren't a page's `aliases`: `{ "/old/": "/new/" }`. The new URL can be on another site. */
 		redirects?: Record<string, string>;
 	}

@@ -9,7 +9,7 @@
     "pages": {
       "written": 15,
       "templates": 11,
-      "bytes": 48752,
+      "bytes": 48736,
       "new": null,
       "gone": null
     },
@@ -72,7 +72,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "[ssqch] Encoded ./src/img/stump.jpg into 6 files (webp, jpeg) in <time>\nFirst confirmed sighting. Built in <time> (production)\n  Pages   15 written from 11 templates, 48.8 KB\n  Copied  1 file, 4.41 KB\n  Images  6 files from 1 source, <size>: 6 encoded, 0 reused\n  Links   222 checked, 0 broken\n  Output  dist: 43 files, <size>\n",
+  "log": "[ssqch] Encoded ./src/img/stump.jpg into 6 files (webp, jpeg) in <time>\nFirst confirmed sighting. Built in <time> (production)\n  Pages   15 written from 11 templates, 48.7 KB\n  Copied  1 file, 4.41 KB\n  Images  6 files from 1 source, <size>: 6 encoded, 0 reused\n  Links   222 checked, 0 broken\n  Output  dist: 43 files, <size>\n",
   "files": {
     "404.html": "text",
     "favicon.svg": "text",
