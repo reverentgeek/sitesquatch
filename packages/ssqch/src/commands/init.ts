@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { bundled, types } from "../bundled.ts";
 import { red } from "../diagnostics.ts";
+import { CONFIG_FILES } from "../dirs.ts";
 import { joinAsGiven, parentAsGiven, slashes } from "../paths.ts";
 
 /** The starter site: (path in the new site, file in `bundled/`). It's an amateur investigator's field notes: five posts that each show one thing. */
@@ -165,20 +166,96 @@ export interface InitOptions {
 /** Whether `dir` is the current folder as Rust compares paths (`.`, `./`, `./.`), where 0.7 printed no `cd`. */
 const isCurrentFolder = (dir: string) => dir.startsWith(".") && dir.split(path.sep === "/" ? "/" : /[\\/]/).every((part) => part === "" || part === ".");
 
+/** Folders a project's own code isn't in: installs, a repository's files, builds. */
+const NOT_OWN_CODE = new Set(["node_modules", ".git", ".cache", "dist", "_site", "public", "build"]);
+
+/** A JavaScript or TypeScript file of the project's own that Node could read as CommonJS (`.js`, `.cjs`, `.ts`, `.cts`), outside `skip`. */
+function ownCode(dir: string, skip: Set<string>, depth = 0): boolean {
+	let entries: fs.Dirent[];
+	try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+	for (const entry of entries) {
+		const file = path.join(dir, entry.name);
+		if (entry.isDirectory()) {
+			if (!NOT_OWN_CODE.has(entry.name) && depth < 6 && ownCode(file, skip, depth + 1)) return true;
+		} else if (/\.(?:c?js|c?ts)$/.test(entry.name) && !entry.name.endsWith(".d.ts") && !skip.has(file)) return true;
+	}
+	return false;
+}
+
+/**
+ * The project's `package.json`, made ready for the starter: `"type": "module"`, which the
+ * config's `export default` needs (`npm init -y` on npm 12 writes `"type": "commonjs"`, and every
+ * command then warned `Failed to load the ES module ... ssqch.config.js`: both new-site runs),
+ * and `build` and `serve` scripts. A project with JavaScript of its own keeps its `type` (its
+ * files may be CommonJS), and the config is written as `ssqch.config.mjs` instead, which is a
+ * module whatever the type. No `package.json`, no change: a site needs none to build. Answers
+ * what was changed, for the output, and whether the config is to be `.mjs`.
+ */
+function preparePackage(dir: string, skip: Set<string>): { changes: string[]; mjs: boolean; write?: () => void } {
+	const file = path.join(dir, "package.json");
+	let text: string;
+	try { text = fs.readFileSync(file, "utf8"); } catch { return { changes: [], mjs: false }; }
+	let pkg: Record<string, unknown>;
+	try {
+		const parsed: unknown = JSON.parse(text);
+		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return { changes: [], mjs: false };
+		pkg = parsed as Record<string, unknown>;
+	} catch { return { changes: [], mjs: false }; }
+	const changes: string[] = [];
+	let mjs = false;
+	if (pkg.type !== "module") {
+		if (ownCode(dir, skip)) mjs = true;
+		else {
+			pkg.type = "module";
+			changes.push("\"type\": \"module\"");
+		}
+	}
+	const scripts = pkg.scripts !== null && typeof pkg.scripts === "object" && !Array.isArray(pkg.scripts) ? pkg.scripts as Record<string, unknown> : pkg.scripts === undefined ? {} : undefined;
+	if (scripts) {
+		const added = [["build", "ssqch build"], ["serve", "ssqch serve"]].filter(([name]) => scripts[name] === undefined);
+		for (const [name, command] of added) scripts[name] = command;
+		if (added.length) {
+			pkg.scripts = scripts;
+			changes.push(`the ${added.map(([name]) => name).join(" and ")} script${added.length > 1 ? "s" : ""}`);
+		}
+	}
+	if (!changes.length) return { changes, mjs };
+	// The file's own indent (npm's is two spaces), and its final newline.
+	const indent = /^[ \t]+(?=")/m.exec(text)?.[0] ?? "  ";
+	const out = JSON.stringify(pkg, null, indent) + (text.endsWith("\n") ? "\n" : "");
+	return { changes, mjs, write: () => fs.writeFileSync(file, out) };
+}
+
 /** `ssqch init`: writes the starter into `dir`, keeping any file that's there. Answers the exit code. */
 export function runInit(options: InitOptions): number {
 	const { dir, starter, engine, quiet } = options;
 	const written: string[] = [], skipped: string[] = [];
+	let packageChanges: string[] = [];
 	try {
 		if (!STARTERS.includes(starter)) throw new Error(`--starter ${starter}: not a starter (use ${STARTERS.join(" or ")})`);
 		if (!ENGINES.includes(engine)) throw new Error(`--engine ${engine}: not a starter engine (use ${ENGINES.join(", ")})`);
-		for (const [rel, contents] of starterFiles(starter, engine)) {
+		const files = starterFiles(starter, engine);
+		// A config that's there already, under any of its names, is the site's.
+		const hasConfig = CONFIG_FILES.find((name) => fs.existsSync(path.join(dir, name)));
+		const prepared = preparePackage(dir, new Set(files.map(([rel]) => path.join(dir, rel))));
+		for (let [rel, contents] of files) {
+			if (rel === "ssqch.config.js") {
+				if (hasConfig !== undefined) {
+					skipped.push(hasConfig);
+					continue;
+				}
+				if (prepared.mjs) rel = "ssqch.config.mjs";
+			}
 			const file = path.join(dir, rel);
 			if (fs.existsSync(file)) skipped.push(rel);
 			else {
 				write(file, contents, joinAsGiven(dir, rel));
 				written.push(rel);
 			}
+		}
+		if (prepared.write) {
+			try { prepared.write(); } catch (e) { throw new Error(`writing ${joinAsGiven(dir, "package.json")}: ${(e as Error).message}`); }
+			packageChanges = prepared.changes;
 		}
 	} catch (e) {
 		process.stderr.write(`${red("error:")} ${(e as Error).message}\n`);
@@ -189,6 +266,8 @@ export function runInit(options: InitOptions): number {
 	let out = "";
 	for (const rel of written) out += `  created ${slashes(rel)}\n`;
 	for (const rel of skipped) out += `  kept    ${slashes(rel)} (already there)\n`;
+	if (packageChanges.length) out += `  updated package.json: ${packageChanges.join(" and ")}\n`;
+	if (written.includes("ssqch.config.mjs")) out += "  (ssqch.config.mjs, not .js: package.json isn't \"type\": \"module\" and this project has JavaScript of its own, so it's left as it is)\n";
 	if (written.length === 0) out += "Nothing to do: camp is already set up (every starter file is there).\n";
 	else out += `\nCamp is set up. Next: ${isCurrentFolder(dir) ? "" : `cd ${dir} && `}ssqch serve, then open http://localhost:8080\n`;
 	process.stdout.write(out);

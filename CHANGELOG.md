@@ -11,6 +11,14 @@ where that version matches.
 
 ## Unreleased
 
+### Changed
+- `ssqch init` makes a `package.json` that's there ready for the site: `"type": "module"`, which
+  the config's `export default` needs (`npm init -y` on npm 12 writes `"type": "commonjs"`, and
+  every command warned `Failed to load the ES module ... ssqch.config.js`), and `build` and
+  `serve` scripts that aren't there, said as `updated package.json: ...`. A project with
+  JavaScript of its own keeps its `type` and gets `ssqch.config.mjs`. A config that's there under
+  any of its names is kept. Without a `package.json`, none is written.
+
 ### Fixed
 - A footnote in a page's Markdown copy (`llmsPlugin()`'s `index.md` and `llms-full.txt`) keeps
   its text: `[^1]: Two raccoons agree.` was read as a link definition and written as
