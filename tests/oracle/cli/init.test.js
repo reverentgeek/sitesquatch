@@ -36,7 +36,7 @@ test("init_creates_a_site_that_builds", () => {
 	// (the audit's plan, step 3), and the copies' links are checked too.
 	// DELIBERATE (0.13.5): the starter is a blog, with a page for each tag, a page of tags and a feed
 	// (the new-blog run), so it has more links.
-	// DELIBERATE (0.13.7): two more posts, on redirects and footprint budgets (the 0.5 review's
+	// DELIBERATE (0.14): two more posts, on redirects and footprint budgets (the 0.5 review's
 	// examples), and a redirect page for the one that moved.
 	assert.ok(r.log.includes("Links   222 checked, 0 broken"), r.log);
 	// The post that moved: its old address sends readers on, and stays out of the sitemap.

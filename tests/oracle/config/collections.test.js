@@ -184,7 +184,7 @@ test("computed_values_see_collections", () => {
 	assert.match(read(root, "_site/learn/index.html"), /Pine, Cedar \(2\)/);
 });
 
-// DELIBERATE (0.13.7): a `computed` or `permalink` string is data, so it isn't HTML-escaped as it's
+// DELIBERATE (0.14): a `computed` or `permalink` string is data, so it isn't HTML-escaped as it's
 // worked out; the template that prints it escapes it once. Escaped twice, the blog starter's page
 // for a tag "Rock & Roll" was titled "Tagged Rock &amp;amp; Roll" (in every language but Liquid,
 // which escapes nothing it prints).
