@@ -102,6 +102,12 @@ export function missingMessage(url: string, tools: string[], output: string): st
 	return `${url} is linked but isn't in ${output}: none of serve.run's ${tools.slice(0, -1).join(", ")} or ${tools[tools.length - 1]} has written it (their output is in the terminal)`;
 }
 
+/** What's said about such a file while the `serve.run` tools are on their first compile, which may not have written it yet (blog #14: Tailwind's took longer than the first build's wait). */
+export function compilingMessage(url: string, tools: string[], output: string): string {
+	const who = tools.length === 1 ? `serve.run's ${tools[0]} is` : "serve.run's tools are";
+	return `${url} isn't in ${output} yet: ${who} still on the first compile. The page gets it when it's written`;
+}
+
 /** What `/__ssqch/build` answers with. */
 export interface Answer {
 	id: number;
@@ -124,6 +130,10 @@ export class Live {
 	private changedAt = new Map<string, number>();
 	/** Stylesheets and scripts a page linked that weren't in the output, by their path from the output folder, with the URL a page used. */
 	private missingFiles = new Map<string, string>();
+	/** While the `serve.run` tools are on their first compile: whether one is still running, and the timer that gives up on them. */
+	private compiling: { running: () => boolean; timer: NodeJS.Timeout } | undefined;
+	/** Files a page linked while they were compiling, which they may still write, by path from the output folder, with the URL. */
+	private pending = new Map<string, string>();
 	/** The `serve.run` tools (`tailwindcss`), and the output folder as shown, for what's said about a missing file. */
 	tools: string[] = [];
 	private outputName = "";
@@ -143,8 +153,41 @@ export class Live {
 		this.outputName = outputName;
 	}
 
-	/** A page linked `url` (the file `rel` in the output), and it wasn't there. The message, said in the terminal the first time. */
+	/**
+	 * The `serve.run` tools started: until `graceMs` from now, or until none of them is running,
+	 * a file a page links that isn't there yet is one they're still compiling, and isn't warned
+	 * about. When that's over, the ones still missing are (`endFirstCompile`).
+	 */
+	startFirstCompile(output: string, graceMs: number, running: () => boolean): void {
+		if (this.compiling) clearTimeout(this.compiling.timer);
+		const timer = setTimeout(() => this.endFirstCompile(output), graceMs);
+		timer.unref();
+		this.compiling = { running, timer };
+	}
+
+	/** The first compile is over (or given up on): what pages linked meanwhile that's still not in `output` is warned about now. */
+	endFirstCompile(output: string): void {
+		if (this.compiling) clearTimeout(this.compiling.timer);
+		this.compiling = undefined;
+		const pending = [...this.pending].sort(([a], [b]) => compareText(a, b));
+		this.pending.clear();
+		let still = false;
+		for (const [rel, url] of pending) {
+			if (fs.statSync(path.join(output, rel), { throwIfNoEntry: false })?.isFile()) continue;
+			this.missing(rel, url);
+			still = true;
+		}
+		// Browsers ask about their missing files after each update: this one has nothing new but
+		// what's said about them, which the note in the corner then shows.
+		if (still) this.id += 1;
+	}
+
+	/** A page linked `url` (the file `rel` in the output), and it wasn't there. The message, said in the terminal the first time (not while the tools are on their first compile). */
 	missing(rel: string, url: string): string {
+		if (this.compiling?.running() && this.tools.length > 0) {
+			this.pending.set(rel, url);
+			return compilingMessage(url, this.tools, this.outputName);
+		}
 		const message = missingMessage(url, this.tools, this.outputName);
 		if (!this.missingFiles.has(rel)) diagnostics.warn(diagnostics.warning("missing-asset", message));
 		this.missingFiles.set(rel, url);

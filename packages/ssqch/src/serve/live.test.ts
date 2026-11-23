@@ -6,7 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import vm from "node:vm";
 import { setTimeout as sleep } from "node:timers/promises";
-import { Live, missingMessage } from "./live.ts";
+import * as diagnostics from "../diagnostics.ts";
+import { Live, compilingMessage, missingMessage } from "./live.ts";
 
 function tempDir(name: string): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), `ssqch-${name}-`));
@@ -105,6 +106,52 @@ test("a_missing_file_names_who_could_have_written_it", () => {
 	assert.equal(missingMessage("/app.css", [], "dist"), "/app.css is linked but nothing wrote it to dist. If a tool makes it, run its watcher with `serve.run` (`ssqch docs \"CSS and JavaScript\"`)");
 	assert.equal(missingMessage("/app.css", ["postcss"], "dist"), "/app.css is linked but isn't in dist: serve.run's postcss hasn't written it (its output is in the terminal)");
 	assert.equal(missingMessage("/app.css", ["postcss", "esbuild", "tsc"], "dist"), "/app.css is linked but isn't in dist: none of serve.run's postcss, esbuild or tsc has written it (their output is in the terminal)");
+});
+
+// Blog #14: Tailwind's first compile took longer than the first build's wait, and the page's
+// stylesheet was warned about as missing, though it turned up a moment later. DELIBERATE (0.14):
+// while the tools are on their first compile, a missing file isn't warned about; once that's
+// over (the time is up, or none is running), the ones still missing are, and browsers hear so.
+test("a_file_the_tools_are_still_compiling_isnt_warned_about", () => {
+	const dir = tempDir("live-compiling");
+	diagnostics.capture();
+	try {
+		const live = new Live(1);
+		live.setSite(["tailwindcss"], "dist");
+		let running = true;
+		live.startFirstCompile(dir, 60_000, () => running);
+		assert.equal(live.missing("assets/index.css", "/assets/index.css"), compilingMessage("/assets/index.css", ["tailwindcss"], "dist"));
+		assert.equal(compilingMessage("/assets/index.css", ["tailwindcss"], "dist"), "/assets/index.css isn't in dist yet: serve.run's tailwindcss is still on the first compile. The page gets it when it's written");
+		live.missing("assets/app.js", "/assets/app.js");
+		assert.deepEqual(diagnostics.takeWarnings(), []);
+		// One turned up; the other didn't, and is warned about when the compile is over.
+		fs.mkdirSync(path.join(dir, "assets"));
+		fs.writeFileSync(path.join(dir, "assets/index.css"), "body {}");
+		const before = live.answer(undefined, "index.html", "").id;
+		live.endFirstCompile(dir);
+		assert.deepEqual(diagnostics.takeWarnings().map((w) => w.message), [missingMessage("/assets/app.js", ["tailwindcss"], "dist")]);
+		// The page asks again, without reloading, and now hears the plain message.
+		const answer = live.answer(before, "index.html", "");
+		assert.ok(answer.id > before && !answer.reload, JSON.stringify(answer));
+		assert.equal(live.missing("assets/app.js", "/assets/app.js"), missingMessage("/assets/app.js", ["tailwindcss"], "dist"));
+		// A tool that's no longer running isn't compiling anything: warned about at once.
+		live.startFirstCompile(dir, 60_000, () => running);
+		running = false;
+		live.missing("assets/print.css", "/assets/print.css");
+		assert.equal(diagnostics.takeWarnings().length, 1);
+		live.endFirstCompile(dir);
+		// Without tools, at once too.
+		const plain = new Live(1);
+		plain.setSite([], "dist");
+		plain.startFirstCompile(dir, 60_000, () => true);
+		plain.missing("app.css", "/app.css");
+		assert.equal(diagnostics.takeWarnings().length, 1);
+		plain.endFirstCompile(dir);
+	} finally {
+		diagnostics.capture(false);
+		diagnostics.takeWarnings();
+		remove(dir);
+	}
 });
 
 // The new-docs run: once the server stopped, the page asked every 0.7 s forever, and the console

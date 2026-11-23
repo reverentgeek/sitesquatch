@@ -23,6 +23,13 @@ where that version matches.
   tag that has a space in it. `ssqch docs tags` answers with it.
 
 ### Changed
+- `ssqch serve` doesn't warn about a stylesheet or script a page links while the `serve.run` tools
+  are on their first compile: the page's note says they're still compiling, and the warning comes
+  only if the file isn't there after 30 seconds, or once none of them is running. Tailwind's first
+  compile on the blog took longer than the 2 s the first build waits, and the page's stylesheet was
+  warned about as missing a moment before it turned up (blog #14). The line the first build prints
+  then says they're still compiling (`serve.run's tools are still on their first compile after 2 s;
+  building now, ...`), where it said they wrote nothing.
 - The blog starter (`ssqch init`) puts its tag pages' addresses through `slugify` (`/tags/{{
   tag.name | slugify }}/`, in its tag page, its list of tags and its layout, in each of its template
   languages), so a tag with a space or a capital (`Old Growth`) gets `/tags/old-growth/` and its
@@ -30,6 +37,11 @@ where that version matches.
   tags are one lowercase word, so its output doesn't change.
 - An unknown `serve` option's error lists `ignore` among the options: `serve: "runs" isn't an option
   (options: run, ignore)`.
+
+### Fixed
+- The configuring page's table of options, on sitesquatch.dev and in `ssqch docs`, has `timeZone`,
+  `urls`, `layoutAliases` and `plugins` in it again: a blank line the 0.13.5 release left split it,
+  and those four rows showed as a line of text.
 
 ## 0.13.5 - 2026-11-23
 

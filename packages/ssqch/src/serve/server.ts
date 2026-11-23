@@ -257,6 +257,10 @@ async function serving(first: Builder, { args, options, live, site, port, quiet 
 			companions = await Companions.start(info, info.serveRun);
 		}
 		live.setSite(companions.names(), info.outputName);
+		if (startedTools && info.serveRun.length > 0) {
+			const started = companions;
+			live.startFirstCompile(info.output, FIRST_COMPILE_GRACE, () => started.anyRunning());
+		}
 		const firstBuild = (ok: boolean) => {
 			if (options.readyFile === undefined) return;
 			try { writeReady(options.readyFile, site, port, ok, options.host ?? LOOPBACK); } catch (e) { process.stderr.write(`${diagnostics.red("error:")} ${messageOf(e)}\n`); }
@@ -269,6 +273,8 @@ async function serving(first: Builder, { args, options, live, site, port, quiet 
 			await companions.stop();
 			companions = Companions.none();
 			try { companions = await Companions.start(info, info.serveRun); } catch (e) { process.stderr.write(`${diagnostics.red("error:")} ${messageOf(e)}\n`); }
+			const started = companions;
+			live.startFirstCompile(info.output, FIRST_COMPILE_GRACE, () => started.anyRunning());
 		};
 		// Returns once a changed configuration has loaded.
 		builder = await watch({ builder, live, args, quiet, startedTools, firstBuild, sayWhere, restart });
@@ -283,6 +289,8 @@ export const QUIET = 150;
  * hold the first build this long.
  */
 const FIRST_COMPILE = 2000;
+/** How long a missing stylesheet or script is taken for one the `serve.run` tools are still compiling, before it's warned about. */
+const FIRST_COMPILE_GRACE = 30_000;
 /** How much longer a tool that keeps writing can hold an update. */
 const KEEPS_WRITING = 2000;
 
@@ -572,7 +580,7 @@ async function firstCompile(output: string, quiet: boolean): Promise<void> {
 		} else if (wroteAt !== undefined) {
 			if (performance.now() - wroteAt >= QUIET) return;
 		} else if (performance.now() - started >= FIRST_COMPILE) {
-			if (!quiet) diagnostics.progress(`[ssqch] serve.run's tools wrote no CSS or JavaScript in ${FIRST_COMPILE / 1000} s; building without it`);
+			if (!quiet) diagnostics.progress(`[ssqch] serve.run's tools are still on their first compile after ${FIRST_COMPILE / 1000} s; building now, and what they write goes in when it's ready`);
 			return;
 		}
 	}
