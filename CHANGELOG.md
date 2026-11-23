@@ -27,6 +27,14 @@ where that version matches.
   Pagefind search of the campground pages only. It's live at
   sitesquatch.dev/examples/searchable-directory/.
 
+### Fixed
+- Search in the docs starter (`SEARCH=1`) and the `docs-sidebar` example works under a `base`,
+  as on a GitHub Pages project site. Pagefind's script is a module, which can't see where it was
+  loaded from, so it looked for its index in `/pagefind/` at the root of the domain and found
+  nothing (or, on sitesquatch.dev, the site's own docs). The layouts set `<pagefind-config
+  bundle-path>` with `withBase("/pagefind/")`, and "Search" in "Deploying" shows it. A site made
+  from the docs starter before this adds the same element to its layout.
+
 ## 0.13.6 - 2026-11-23
 
 ### Added

@@ -32,7 +32,7 @@
       {% endif %}
     </nav>
     {% if search %}
-    <div id="search"><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
+    <div id="search"><pagefind-config bundle-path="{{ "/pagefind/" | withBase }}"></pagefind-config><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
     {% endif %}
     {% comment %} docs.js shows it. Without JavaScript, the theme follows the system. {% endcomment %}
     <button class="theme-switch" type="button" hidden>Switch theme</button>

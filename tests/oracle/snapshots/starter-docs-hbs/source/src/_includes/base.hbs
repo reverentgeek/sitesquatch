@@ -32,7 +32,7 @@
       {{/if}}
     </nav>
     {{#if search}}
-    <div id="search"><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
+    <div id="search"><pagefind-config bundle-path="{{withBase "/pagefind/"}}"></pagefind-config><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
     {{/if}}
     {{!-- docs.js shows it. Without JavaScript, the theme follows the system. --}}
     <button class="theme-switch" type="button" hidden>Switch theme</button>
