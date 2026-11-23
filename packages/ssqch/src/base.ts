@@ -50,11 +50,11 @@ const REFRESH = /^(\s*[\d.]+\s*[;,]\s*url\s*=\s*["']?)(\/.*)$/is;
 const SPACE = /[\t\n\f\r ]/;
 
 /**
- * A `srcset` with `base` in front of each candidate's URL that's from the site's root. Read as
- * browsers read it: a URL runs to the next whitespace (so the commas in a `data:` URI are part
- * of it), then its descriptors run to the next comma.
+ * A `srcset` with each candidate's URL given to `to`. Read as browsers read it: a URL runs to the
+ * next whitespace (so the commas in a `data:` URI are part of it), then its descriptors run to
+ * the next comma. Everything but the URLs is kept as written.
  */
-export function srcsetWithBase(base: string, srcset: string): string {
+export function mapSrcset(srcset: string, to: (url: string) => string): string {
 	let out = "";
 	let i = 0;
 	const n = srcset.length;
@@ -65,16 +65,23 @@ export function srcsetWithBase(base: string, srcset: string): string {
 		start = i;
 		while (i < n && !SPACE.test(srcset[i])) i++;
 		const url = srcset.slice(start, i);
-		if (fromRoot(url)) out += base;
-		out += url;
 		// A URL that ends in a comma ends its candidate; otherwise its descriptors follow.
-		if (!url.endsWith(",")) {
+		if (url.endsWith(",")) {
+			const end = url.search(/,+$/);
+			out += (end > 0 ? to(url.slice(0, end)) : "") + url.slice(end);
+		} else {
+			if (url !== "") out += to(url);
 			start = i;
 			while (i < n && srcset[i] !== ",") i++;
 			out += srcset.slice(start, i);
 		}
 	}
 	return out;
+}
+
+/** A `srcset` with `base` in front of each candidate's URL that's from the site's root. */
+export function srcsetWithBase(base: string, srcset: string): string {
+	return mapSrcset(srcset, (url) => (fromRoot(url) ? base + url : url));
 }
 
 /** `css` with `base` in front of every `url()` from the site's root. */

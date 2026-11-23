@@ -198,6 +198,41 @@ test("a page's images become a picture, and the files are made", async () => {
 	fs.rmSync(root, { recursive: true });
 });
 
+// Squatch Snacks (B1): a hero with another crop on a phone. The `<img>` was wrapped in a second
+// `<picture>` inside the page's own, which isn't HTML, and the `<source>`'s file was never in the
+// output, so the phone got a broken picture.
+test("a picture the page wrote keeps its sources, and its img isn't wrapped in another", async () => {
+	const { root, p } = project({ "src/img/wide.png": await pixels(64, 32, "#228b22"), "src/img/tall.png": await pixels(24, 48, "#a0522d"), "src/img/big.png": await pixels(48, 96, "#a0522d") }, { ...defaultImageOptions(), formats: ["webp", "auto"], widths: [16, 32] });
+	const page = path.join(root, "src/index.html");
+	capture();
+	try {
+		const html = p.transformHtml("<picture><source media=\"(max-width: 40rem)\" srcset=\"/img/tall.png\"><img src=\"/img/wide.png\" alt=\"A\"></picture>", page);
+		// The crop at its own size and in its own format, then the img's formats, then the img.
+		assert.match(html, /^<picture><source media="\(max-width: 40rem\)" srcset="\/img\/[\w-]{10}-24\.png"><source type="image\/webp" srcset="\/img\/[\w-]{10}-16\.webp 16w, \/img\/[\w-]{10}-32\.webp 32w" sizes="auto"><img loading="lazy" decoding="async" src="\/img\/[\w-]{10}-16\.png" alt="A" srcset="[^"]+" sizes="auto" width="32" height="16"><\/picture>$/);
+		// Each candidate, with its descriptor as written; what isn't a picture in the input folder
+		// (another site's, a file that's already a copy, one that isn't there) stays, without a word.
+		const several = p.transformHtml("<picture>\n<source srcset=\"/img/tall.png 1x, /img/big.png 2x,https://x.example/c.png 3x, /img/aBcDeFgHiJ-48.webp 4x, /img/gone.png 5x\">\n<img src=\"/img/wide.png\" alt=\"A\" ssqch:ignore>\n</picture>", page);
+		assert.match(several, /^<picture>\n<source srcset="\/img\/[\w-]{10}-24\.png 1x, \/img\/[\w-]{10}-48\.png 2x,https:\/\/x\.example\/c\.png 3x, \/img\/aBcDeFgHiJ-48\.webp 4x, \/img\/gone\.png 5x">\n<img src="\/img\/wide\.png" alt="A">\n<\/picture>$/);
+		// `ssqch:ignore` on a source leaves it alone; a picture that's closed is over; and a
+		// `<source>` that isn't a picture's is nothing to do with images.
+		assert.equal(p.transformHtml("<picture><source srcset=\"/img/tall.png\" ssqch:ignore><img src=\"/img/wide.png\" ssqch:ignore></picture>", page), "<picture><source srcset=\"/img/tall.png\"><img src=\"/img/wide.png\"></picture>");
+		assert.match(p.transformHtml("<picture><img src=\"https://x.example/b.png\"></picture><p><img src=\"/img/wide.png\" alt=\"A\" width=\"16\"></p>", page), /^<picture><img src="https:\/\/x\.example\/b\.png"><\/picture><p><picture><source type="image\/webp" [^>]+><img [^>]+><\/picture><\/p>$/);
+		assert.equal(p.transformHtml("<video><source src=\"/a.mp4\" srcset=\"/img/tall.png\"></video>", page), "<video><source src=\"/a.mp4\" srcset=\"/img/tall.png\"></video>");
+		// A picture that's never closed is over at its img: the next one is wrapped as any other.
+		assert.match(p.transformHtml("<picture><img src=\"/img/wide.png\" alt=\"A\" width=\"16\"><p><img src=\"/img/wide.png\" alt=\"B\" width=\"16\"></p>", page), /^<picture><source type="image\/webp" [^>]+><img [^>]+ alt="A"[^>]*><p><picture><source type="image\/webp" [^>]+><img [^>]+ alt="B"[^>]*><\/picture><\/p>$/);
+		await p.settle();
+		assert.deepEqual(takeWarnings(), []);
+		const files = fs.readdirSync(path.join(root, "dist/img")).sort();
+		// tall and big as they are, and wide at 16 and 32 in two formats.
+		assert.deepEqual(files.map((n) => n.slice(11)).sort(), ["16.png", "16.webp", "24.png", "32.png", "32.webp", "48.png"]);
+		const tall = await sharp(path.join(root, "dist/img", files.find((n) => n.endsWith("-24.png"))!)).metadata();
+		assert.deepEqual([tall.format, tall.width, tall.height], ["png", 24, 48]);
+	} finally {
+		capture(false);
+		fs.rmSync(root, { recursive: true });
+	}
+});
+
 // A build into an empty output folder (every CI build) puts each cached file there with a hard
 // link, made on the thread pool while pages go on rendering: the files are there, as links to
 // the cache's, once settle() returns, and the summary has them as reused.

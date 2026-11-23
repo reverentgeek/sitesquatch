@@ -40,6 +40,16 @@ where that version matches.
   nothing (or, on sitesquatch.dev, the site's own docs). The layouts set `<pagefind-config
   bundle-path>` with `withBase("/pagefind/")`, and "Search" in "Deploying" shows it. A site made
   from the docs starter before this adds the same element to its layout.
+- `imagePlugin()` leaves a `<picture>` the page wrote itself as one picture. For another crop on
+  a phone (`<picture><source media="(max-width: 40rem)" srcset="/img/tall.jpg"><img
+  src="/img/wide.jpg"></picture>`), the `<img>` was wrapped in a second `<picture>` inside the
+  first, which isn't valid HTML, and `/img/tall.jpg` was never published, so the phone got a
+  broken picture (the link checker said `/img/tall.jpg (not found)`). Now the `<img>`'s formats
+  are `<source>`s after the page's own, and each local picture a `<source srcset>` names is
+  published as one copy in its own format and at its own size, its `2x` or `800w` as written. A
+  candidate that isn't a picture in the input folder stays as it is, and `ssqch:ignore` on a
+  `<source>` leaves it alone. A site that worked around it with `image()` and `ssqch:ignore` on
+  its `<img>` builds as before.
 - `sitemapPlugin({ alternates })` writes a page's `<lastmod>` before its `<xhtml:link>` lines,
   the order sitemaps.org's schema checks. With the links first, a validator refused the sitemap
   (`Element lastmod: This element is not expected`). A sitemap without `alternates`, or with
