@@ -87,7 +87,7 @@ export default {
 };
 ```
 
-It costs a Worker request for each page view in `run_worker_first` (the free plan has 100,000 a day); files outside it don't run the Worker. `_headers` rules don't apply to what a Worker answers, so the headers are set here.
+It costs a Worker request for each page view in `run_worker_first` (the free plan has 100,000 a day); files outside it don't run the Worker. `_headers` rules don't apply to what a Worker answers, so the headers are set here. Checked on Cloudflare (sitesquatch.dev, November 2026): a browser's request and an agent's, one after the other on the same address, each get theirs, with `Vary: Accept`, even while Cloudflare's cache has the page (`cf-cache-status: HIT`): the Worker runs before the cache and picks which file to answer with.
 
 ### Netlify
 
@@ -142,7 +142,7 @@ A copy at its own address is a second version of the page, which a search engine
   Content-Type: text/markdown; charset=utf-8
 ```
 
-Cloudflare allows 100 rules in `_headers`; Netlify's apply only to the files it serves, not to an edge function's answers (which set their own, above).
+Cloudflare allows 100 rules in `_headers`, each with one `*` at most; Netlify's apply only to the files it serves, not to an edge function's answers (which set their own, above). Checked on Netlify (the ReverentGeek blog, November 2026): a copy at its own address gets both headers.
 
 On Vercel, the same headers go in `vercel.json` (checked: the copy at its own address gets both, and the middleware's answers set their own):
 
