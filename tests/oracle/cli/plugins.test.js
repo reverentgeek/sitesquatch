@@ -813,6 +813,21 @@ export default { base: "/trail/", templateFormats: ["njk"], plugins: [sitemapPlu
 		"</urlset>", "",
 	].join("\n"));
 
+	// With its date, a page's `<lastmod>` comes before the links. sitemaps.org's schema lists
+	// `loc`, `lastmod`, `changefreq`, `priority` and then other namespaces' elements, so a
+	// validator refuses a `<lastmod>` after an `<xhtml:link>` (Squatch Snacks, B2: xmllint's
+	// "Element lastmod: This element is not expected"). DELIBERATE (0.13.7): the links came first.
+	const dated = project({
+		"ssqch.config.js": "import { sitemapPlugin } from \"ssqch/sitemap\";\nexport default { templateFormats: [\"njk\"], plugins: [sitemapPlugin({ url: \"https://example.com\", alternates: () => [{ hreflang: \"fr\", href: \"/fr/\" }] })] };\n",
+		"index.njk": "---\ndate: 2024-03-04\n---\nSquatch Snacks\n",
+	});
+	const built = ssqch(["build", "--root", dated, "--quiet"]);
+	assert.ok(built.ok, built.log);
+	assert.ok(read(dated, "_site/sitemap.xml").includes([
+		"  <url>", "    <loc>https://example.com/</loc>", "    <lastmod>2024-03-04</lastmod>",
+		"    <xhtml:link rel=\"alternate\" hreflang=\"fr\" href=\"https://example.com/fr/\"/>", "  </url>",
+	].join("\n")), read(dated, "_site/sitemap.xml"));
+
 	const wrong = (alternates) => {
 		const site = project({ "ssqch.config.js": `import { sitemapPlugin } from "ssqch/sitemap";\nexport default { templateFormats: ["njk"], plugins: [sitemapPlugin({ url: "https://example.com", alternates: ${alternates} })] };\n`, "index.njk": "x\n" });
 		return ssqch(["build", "--root", site]).log;

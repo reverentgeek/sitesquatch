@@ -40,6 +40,10 @@ where that version matches.
   nothing (or, on sitesquatch.dev, the site's own docs). The layouts set `<pagefind-config
   bundle-path>` with `withBase("/pagefind/")`, and "Search" in "Deploying" shows it. A site made
   from the docs starter before this adds the same element to its layout.
+- `sitemapPlugin({ alternates })` writes a page's `<lastmod>` before its `<xhtml:link>` lines,
+  the order sitemaps.org's schema checks. With the links first, a validator refused the sitemap
+  (`Element lastmod: This element is not expected`). A sitemap without `alternates`, or with
+  `lastmod: false`, is byte for byte what it was.
 
 ## 0.13.6 - 2026-11-23
 

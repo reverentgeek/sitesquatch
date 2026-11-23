@@ -91,8 +91,10 @@ BUILTINS.set("ssqch/sitemap", (config: Config, given) => {
 		let xml = `<?xml version="1.0" encoding="utf-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${xhtml}>\n`;
 		for (const [pageUrl, date, links] of entries) {
 			xml += `  <url>\n    <loc>${loc}${escapeHtml(pageUrl)}</loc>\n`;
-			for (const [hreflang, href] of links) xml += `    <xhtml:link rel="alternate" hreflang="${escapeHtml(hreflang)}" href="${escapeHtml(href)}"/>\n`;
+			// The sitemap schema's order: `loc`, `lastmod`, then other namespaces' elements. With the
+			// links first, a validator refuses the `<lastmod>` after them.
 			if (lastmod) xml += `    <lastmod>${date}</lastmod>\n`;
+			for (const [hreflang, href] of links) xml += `    <xhtml:link rel="alternate" hreflang="${escapeHtml(hreflang)}" href="${escapeHtml(href)}"/>\n`;
 			xml += "  </url>\n";
 		}
 		xml += "</urlset>\n";
