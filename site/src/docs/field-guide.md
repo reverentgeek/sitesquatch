@@ -14,6 +14,9 @@ cd my-site && ssqch serve
 
 Haven't installed it yet? `npx ssqch init my-site`, then `npx ssqch serve` in the new folder, works too. Open <http://localhost:8080>, edit `src/posts/i-know-what-i-saw.md`, and watch the page reload. (The starter is an amateur investigator's field notes: a sighting, a correction, a stump, an old map and a raccoon's cache. The posts are short, and each one shows you something.) `ssqch init` never overwrites a file that's already there, so it's safe to run in a folder you've started. In a folder with a `package.json`, it sets `"type": "module"` (the config is an ES module, and `npm init -y` writes `"type": "commonjs"`) and adds `build` and `serve` scripts that aren't there, and says so (`updated package.json: ...`). A project with JavaScript of its own keeps its `type`, since its files may be CommonJS, and gets `ssqch.config.mjs` instead of `ssqch.config.js`. Without a `package.json`, it writes none.
 
+> [!NOTE]
+> **Not released yet.** This ships with the next version of ssqch: `ssqch init` making `package.json` ready.
+
 The layout and home page are [Jinja](template-languages.md#jinja-and-nunjucks) templates, ssqch's default language. To start in another one, pass `--engine edge`, `--engine liquid`, `--engine njk` (Nunjucks) or `--engine hbs` (Handlebars); the config then lists that engine in `templateFormats` and runs Markdown through it. `--engine` works with `--starter docs` too.
 
 Writing documentation? `ssqch init my-docs --starter docs` creates a docs site instead: a light and dark switch, a sidebar, breadcrumbs and previous/next links from one `nav.yml`, a table of contents on each page, notes and tabs, highlighted code, a schema that checks each page's front matter, the link checker, and Pagefind search with `SEARCH=1`. The pages are plain HTML that reads fine without JavaScript (a small script turns tab sections into tabs), and every file is yours to edit: there's no theme package underneath.
