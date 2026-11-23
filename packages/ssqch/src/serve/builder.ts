@@ -213,6 +213,11 @@ export class Builder {
 		});
 	}
 
+	/** A configuration file that's changed since this process loaded it, if one has. */
+	changedSinceLoad(): string | undefined {
+		return Object.entries(this.loadedAs).find(([file, hash]) => fileHash(file) !== hash)?.[0];
+	}
+
 	private next(): Promise<FromBuilder | undefined> {
 		return new Promise((resolve) => {
 			this.waiting = (message) => {
