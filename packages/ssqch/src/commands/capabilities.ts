@@ -2,6 +2,7 @@
 // guessing from documentation for another version. Ported from `crates/ssqch/src/capabilities.rs`.
 import { CONFIG_FILES, DEFAULTS, configOptions } from "../config.ts";
 import { red } from "../diagnostics.ts";
+import { BUILTIN_FILTERS, PLUGIN_FUNCTIONS } from "../filters.ts";
 import { VERSION } from "../version.ts";
 import { starterEngines } from "./init.ts";
 
@@ -58,6 +59,8 @@ export interface Capabilities {
 	frontMatter: string[];
 	dataFiles: string[];
 	modules: Array<{ name: string; exports: string[] }>;
+	/** Every template function: the built-in ones, and each plugin's (when the config adds it). */
+	templateFunctions: { builtIn: string[]; plugins: Record<string, string[]> };
 	nodeModules: { available: string[]; stubs: string[] };
 	globals: string[];
 	imageFormats: string[];
@@ -95,6 +98,7 @@ export async function capabilities(commands: string[]): Promise<Capabilities> {
 		frontMatter: ["yaml", "json", "toml"],
 		dataFiles: ["json", "yaml", "yml", "toml", "js", "mjs", "cjs"],
 		modules: modules(),
+		templateFunctions: { builtIn: BUILTIN_FILTERS.map(([name]) => name), plugins: Object.fromEntries(PLUGIN_FUNCTIONS.map(([plugin, names]) => [plugin, [...names]])) },
 		nodeModules: { available: NODE_MODULES.map((m) => `node:${m}`), stubs: [] },
 		globals,
 		imageFormats: avif ? ["avif", "webp", "jpeg", "png", "gif", "svg"] : ["webp", "jpeg", "png", "gif", "svg"],
@@ -116,6 +120,7 @@ function text(caps: Capabilities): string {
 	row("Config files", caps.configFiles.join(", "));
 	row("Config options", caps.configOptions.join(", "));
 	row("Modules", caps.modules.map((m) => m.name).join(", "));
+	row("Template functions", `${caps.templateFunctions.builtIn.join(", ")}; from plugins: ${Object.entries(caps.templateFunctions.plugins).map(([plugin, names]) => `${names.join(", ")} (${plugin})`).join("; ")}`);
 	row("Node modules", caps.nodeModules.available.join(", "));
 	row("Globals", caps.globals.join(", "));
 	row("Image formats", caps.imageFormats.join(", "));

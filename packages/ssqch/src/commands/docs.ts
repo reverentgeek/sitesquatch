@@ -18,7 +18,7 @@ import { configOptions } from "../config.ts";
 import { red } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import type { Equivalent } from "../equivalents.ts";
-import { BUILTIN_FILTERS } from "../filters.ts";
+import { BUILTIN_FILTERS, PLUGIN_FUNCTIONS } from "../filters.ts";
 import { compareText } from "../paths.ts";
 import { closest } from "../suggest.ts";
 import { VERSION } from "../version.ts";
@@ -551,6 +551,9 @@ function card(all: Section[], known: Name[]): string {
 	group("Commands", of("command"), 2);
 	group("Config options (ssqch.config.js)", of("config option"), 2);
 	group("Template functions", of("template function"), 2);
+	// The rest, so one list has them all: the plugins' (when the config adds them), and each language's own.
+	out += `  From plugins: ${PLUGIN_FUNCTIONS.map(([plugin, names]) => `${names.map((n) => `\`${n}\``).join(", ")} (${plugin})`).join("; ")}.\n`;
+	out += "  Each template language's own filters work too (Jinja's and Nunjucks' `dateformat`, Liquid's `date`): `ssqch docs \"template languages\"`.\n";
 	const mods: string[] = [];
 	for (const n of known.filter((n) => n.kind === "module export")) if (n.module !== null && !mods.includes(n.module)) mods.push(n.module);
 	out += "\nModules (import { name } from \"module\")\n";

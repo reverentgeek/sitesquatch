@@ -34,6 +34,10 @@ where that version matches.
   word of it in them (`nearest names: feedHtml, feedPlugin`, and `nearest` in the JSON).
 - `ssqch baseline`'s help and "Comparing builds" say it checks that an ssqch site's own build
   repeats: `ssqch baseline "npx ssqch build" --from dist`.
+- One list has every template function: `ssqch docs` adds each plugin's (`imageUrl`,
+  `feedHtml`, `markdownCopy`, ... with the plugin that adds it) under "Template functions", and
+  says where each language's own are; `ssqch capabilities` lists them all, and its JSON has
+  `templateFunctions`.
 
 ### Changed
 
