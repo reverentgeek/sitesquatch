@@ -1295,7 +1295,7 @@ function packageDefines(pkg: string): string[] {
 	const kept = `import:${pkg}`;
 	switch (pkg) {
 		case "@11ty/eleventy-img": return ["plugin:ssqch/image", kept];
-		case "@11ty/eleventy-plugin-rss": return ["plugin:ssqch/rss", kept];
+		case "@11ty/eleventy-plugin-rss": return ["plugin:ssqch/rss", "plugin:ssqch/feed", kept];
 		case "@11ty/eleventy-plugin-syntaxhighlight": return ["markdown.highlight", "engines.md", kept];
 		case "@11ty/eleventy-navigation": return ["filters.eleventyNavigation", kept];
 		case "@11ty/eleventy-plugin-bundle": case "@11ty/eleventy-plugin-webc": case "@11ty/is-land": return ["plugin:ssqch/elements", kept];

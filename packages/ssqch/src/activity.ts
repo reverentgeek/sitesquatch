@@ -26,9 +26,25 @@ export function setTell(fn: ((label: string) => Promise<void>) | undefined): voi
 	tell = fn;
 }
 
-/** Something the build did: a page written, an image encoded. */
+/** Something the build did: a page written, an image encoded, a phase finished. */
 export function progressed(): void {
 	last = performance.now();
+}
+
+/** ssqch's own work underway (an image encoding: one large AVIF can take a while), during which the build isn't idle. */
+let own = 0;
+
+/** ssqch's own work has started; the answer says it's done. */
+export function working(): () => void {
+	own++;
+	last = performance.now();
+	let done = false;
+	return () => {
+		if (done) return;
+		done = true;
+		own--;
+		last = performance.now();
+	};
 }
 
 /**
@@ -70,11 +86,12 @@ export async function aboutToBlock(label: string): Promise<void> {
 
 /** How long since the build last did anything, and what it's waiting on, oldest first. */
 export function current(): { idleMs: number; doing: string[] } {
-	return { idleMs: Math.round(performance.now() - last), doing: [...waiting.values()] };
+	return { idleMs: own > 0 ? 0 : Math.round(performance.now() - last), doing: [...waiting.values()] };
 }
 
 /** A new build: nothing waited on, and the clock from now. */
 export function reset(): void {
 	waiting.clear();
+	own = 0;
 	last = performance.now();
 }

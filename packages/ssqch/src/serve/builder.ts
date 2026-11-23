@@ -328,7 +328,7 @@ export class Builder {
 		if (why === undefined) return;
 		// The page it was rendering, where the error points (`in <file>: `).
 		const page = /\(rendering (\S+)\)$/.exec(p.doing[0] ?? "")?.[1];
-		this.stuck = `${page ? `in ${page}: ` : ""}${why}. ssqch ended that build; the next change builds again.`;
+		this.stuck = `${page ? `in ${page}: ` : ""}${why}. ssqch ended that build; the next change builds again. If it was still working (a long wait on purpose), make it a \`{ run: "..." }\` command, which isn't counted, or skip it while serving (a hook gets \`serving\`).`;
 		this.progress = undefined;
 		this.stop();
 		this.waiting?.(undefined);

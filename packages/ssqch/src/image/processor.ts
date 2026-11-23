@@ -25,7 +25,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { progressed } from "../activity.ts";
+import { progressed, working } from "../activity.ts";
 import { createRequire } from "node:module";
 import { blake3 } from "../blake3.ts";
 import type { Config } from "../config.ts";
@@ -464,9 +464,12 @@ class Queue {
 	async run<T>(task: () => Promise<T>, first = false): Promise<T> {
 		if (this.running >= this.limit) await new Promise<void>((resolve) => (first ? this.waiting.unshift(resolve) : this.waiting.push(resolve)));
 		this.running++;
+		// An encode running is the build working, however long one takes (`activity.ts`).
+		const done = working();
 		try {
 			return await task();
 		} finally {
+			done();
 			this.running--;
 			this.waiting.shift()?.();
 		}

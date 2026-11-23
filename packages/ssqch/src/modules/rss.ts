@@ -149,6 +149,14 @@ export function feedPlugin(options: Record<string, unknown> = {}) {
 const xml = (text: unknown) => output(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 BUILTINS.set("ssqch/feed", (config: Config, given) => {
+	// Eleventy's RSS plugin (v2) has a `feedPlugin` too, with other options: a config moved from it
+	// passes those, so each is named with ssqch's.
+	if (given !== null && typeof given === "object") {
+		const g = given as Record<string, unknown>;
+		if (["type", "outputPath", "metadata"].some((k) => k in g) || (g.collection !== null && typeof g.collection === "object")) {
+			bail("these are the options of Eleventy's feedPlugin, which ssqch's names differently: `type` is `format` (\"atom\" or \"rss\"), `outputPath` is `output`, `collection: { name, limit }` is `collection` and `limit`, and `metadata`'s `base`, `title`, `subtitle` and `author` are `url`, `title`, `description` and `author`. Like feedPlugin({ url: \"https://example.com\", collection: \"posts\", limit: 10 })");
+		}
+	}
 	const o = new Options(given, ["url", "collection", "limit", "format", "output", "title", "description", "author"]);
 	const url = o.string("url");
 	if (url === undefined || url === "") bail("needs the site's address, like feedPlugin({ url: \"https://example.com\" }): a feed's links are whole addresses, which feed readers need");
@@ -164,6 +172,9 @@ BUILTINS.set("ssqch/feed", (config: Config, given) => {
 	if (author !== undefined && typeof author !== "string" && !(author !== null && typeof author === "object" && typeof (author as { name?: unknown }).name === "string")) bail(`author must be a name, or { name, email, url } (got ${JSON.stringify(author)})`);
 	const titleGiven = o.string("title");
 	const descriptionGiven = o.string("description");
+	// Each entry is a post's rendered body: kept from its render, since one that awaits something
+	// (an async filter) can't render again on demand once the pages are written.
+	config.readsContent = true;
 
 	config.generators.push(["ssqch/feed", async (config, _pages, site) => {
 		const items = site.collection(collection);
@@ -176,8 +187,13 @@ BUILTINS.set("ssqch/feed", (config: Config, given) => {
 		const email = typeof author === "object" && author !== null ? (author as { email?: unknown }).email : undefined;
 		const home = absoluteUrl("/", url, config.base);
 		const self = absoluteUrl(out, url, config.base);
-		// Newest first: collections are oldest first. Pages with the same date keep their order.
-		const newest = [...items].reverse().slice(0, limit === 0 ? undefined : limit);
+		// A page in the collection, with an address: one with `permalink: false` has none, and isn't
+		// in a feed (`https://example.com/false`, as the `url` alias once printed in a sitemap).
+		if (items.some((item) => item === null || typeof item !== "object" || !("url" in item) || !("date" in item))) bail(`the collection \`${collection}\` has items that aren't pages (no \`url\` or \`date\`): a feed's entries are pages, like a tag's (\`posts\`)`);
+		const pages = items.filter((item) => typeof item.url === "string" && toDate(item.date) !== undefined);
+		// Newest first, by date, whatever order the collection is in (the starter's `newestPosts` is
+		// newest first already); pages with the same date keep the collection's order.
+		const newest = pages.map((item, i) => ({ item, i, date: toDate(item.date)! })).sort((a, b) => b.date.getTime() - a.date.getTime() || a.i - b.i).map((e) => e.item).slice(0, limit === 0 ? undefined : limit);
 		const entries: Array<{ title: string; link: string; date: Date; summary?: string; content: string }> = [];
 		for (const item of newest) {
 			const link = absoluteUrl(output(item.url), url, config.base);

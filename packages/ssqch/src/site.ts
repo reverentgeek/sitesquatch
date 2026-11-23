@@ -4,6 +4,7 @@
 //
 // The cascade, lowest first: global data < layout front matter < directory data < template data
 // file < front matter < `computed`.
+import { progressed } from "./activity.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -115,6 +116,8 @@ export class Timer {
 	last = performance.now();
 	timings: Array<[string, number]> = [];
 	lap(label: string): void {
+		// A phase done (setup, data, read, paginate) is progress, for `ssqch serve`'s limit.
+		progressed();
 		const now = performance.now();
 		this.timings.push([label, now - this.last]);
 		this.last = now;

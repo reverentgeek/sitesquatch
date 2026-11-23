@@ -638,7 +638,7 @@ test("serve_ends_a_build_that_stops_making_progress", async () => {
 		await waitFor(log, "the build stopped making progress");
 		const said = readOr(log);
 		assert.ok(said.includes("in index.jinja: the build stopped making progress: for 2 s nothing happened, and it was waiting on filter `never` (rendering index.jinja)."), said);
-		assert.ok(said.includes("ssqch ended that build; the next change builds again."), said);
+		assert.ok(said.includes("ssqch ended that build; the next change builds again. If it was still working (a long wait on purpose), make it a `{ run: \"...\" }` command"), said);
 		await waitFor(ready, "\"ok\": false");
 		// Fixed, the next change builds, in a new process.
 		await changeAndWait(path.join(dir, "index.jinja"), "camp", path.join(dir, "_site/index.html"), "camp");
@@ -652,11 +652,11 @@ test("serve_ends_a_build_that_stops_making_progress", async () => {
 test("serve_lets_a_long_run_command_finish", async () => {
 	const dir = tempDir("serve-long-command");
 	write(dir, {
-		"ssqch.config.js": "export default { afterBuild: [{ run: \"node -e \\\"setTimeout(() => {}, 3500)\\\"\" }] };\n",
+		"ssqch.config.js": "export default { afterBuild: [{ run: \"node -e \\\"setTimeout(() => {}, 5000)\\\"\" }] };\n",
 		"index.jinja": "camp",
 	});
 	const log = path.join(tempDir("serve-long-command-log"), "serve.log");
-	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_STUCK_MS: "1500" } });
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_STUCK_MS: "2500" } });
 	try {
 		await waitFor(log, "Squatch Watch is on.");
 		assert.ok(!readOr(log).includes("stopped"), readOr(log));

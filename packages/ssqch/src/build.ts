@@ -257,7 +257,7 @@ class Renderer {
 
 	constructor(site: Site) {
 		this.site = site;
-		this.keep = mentionsContent(site);
+		this.keep = mentionsContent(site) || site.config.readsContent;
 		site.contentOf = (page) => this.contentNow(page);
 	}
 

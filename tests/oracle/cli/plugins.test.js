@@ -1089,6 +1089,19 @@ test("feed_plugin_writes_the_feed", () => {
 	config("{ url: \"https://trail.example\", format: \"json\" }");
 	r = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(!r.ok && r.log.includes("format must be \"atom\" or \"rss\" (got \"json\")"), r.log);
+
+	// Newest first whatever order the collection is in, without a page that has no address, and
+	// with a body that awaits an async filter (kept from its render: it can't render again later).
+	write(dir, {
+		"ssqch.config.js": "import { feedPlugin } from \"ssqch/rss\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, filters: { later: async (s) => { await new Promise((r) => setTimeout(r, 20)); return `${s}!`; } }, collections: { newest: (pages) => [...pages.byTag(\"posts\")].reverse() }, plugins: [feedPlugin({ url: \"https://trail.example\", collection: \"newest\" })] };\n",
+		"src/c.md": "---\ntitle: Cedar\ndate: 2026-01-03\ntags: posts\n---\nCedar {{ later(\"trail\") }}\n",
+		"src/d.md": "---\ntitle: Hidden\ndate: 2026-01-04\ntags: posts\npermalink: false\n---\nNo page.\n",
+	});
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	feed = read(dir, "dist/feed.xml");
+	assert.deepEqual([...feed.matchAll(/<entry>\n    <title>([^<]*)<\/title>/g)].map((m) => m[1]), ["Cedar", "Pine cone 2 &amp; co", "Pine cone 1 &amp; co"]);
+	assert.ok(feed.includes("<content type=\"html\">&lt;p&gt;Cedar trail!&lt;/p&gt;") && !feed.includes("false"), feed);
 });
 
 // Added in 0.13, from the ReverentGeek blog's move to llmsPlugin() and llms.txt's v2 (August

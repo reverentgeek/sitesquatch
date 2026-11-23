@@ -171,6 +171,8 @@ export interface Config {
 	/** Lines plugins add to the build summary; a function that answers nothing leaves its line out. */
 	summaries: Array<[string, (config: Config) => string | undefined]>;
 	generators: Array<[string, (config: Config, pages: PageSummary[], site: GeneratorSite) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
+	/** A plugin reads pages' `templateContent` after they're written (`feedPlugin()`): the renderer keeps every body, as it does for a template that reads it, so an async one needn't render again. */
+	readsContent: boolean;
 	fileBuilders: Array<[string, (config: Config) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
 	/** What the build waits for once every page is written (the image files they point at), before the generators; counted as writing. */
 	settle: Array<() => Promise<void>>;
@@ -252,6 +254,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		plugins: [],
 		summaries: [],
 		generators: [],
+		readsContent: false,
 		componentRenderers: [],
 		fileBuilders: [],
 		settle: [],
