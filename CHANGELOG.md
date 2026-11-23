@@ -32,6 +32,8 @@ where that version matches.
   the Netlify page), `dark mode` (how the starters do it), and `art direction` (a crop for a
   phone). A query nothing answers, and nothing is spelled like, names up to three names with a
   word of it in them (`nearest names: feedHtml, feedPlugin`, and `nearest` in the JSON).
+- `ssqch baseline`'s help and "Comparing builds" say it checks that an ssqch site's own build
+  repeats: `ssqch baseline "npx ssqch build" --from dist`.
 
 ### Changed
 
@@ -40,6 +42,8 @@ where that version matches.
   On one page it's `page -> link (reason)` as before, and the JSON still has an entry for each.
 - The Netlify edge function in "Serving Markdown to agents" is one block to paste, with the
   three functions it uses.
+- `navTree`'s entry says its marks follow the tree, not the URL (a flat menu's "Snacks" isn't
+  `ancestor` on a snack's page), with the template check for a flat menu.
 
 ### Fixed
 
