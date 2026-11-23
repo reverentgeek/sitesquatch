@@ -67,6 +67,11 @@ where that version matches.
   Pagefind search of the campground pages only. It's live at
   sitesquatch.dev/examples/searchable-directory/.
 
+### Changed
+- `--quiet` holds a `{ run }` hook's own output, as it holds ssqch's, and prints it only when the
+  command fails, where it's what says why. A Tailwind build in `beforeBuild` printed its banner on
+  every quiet build. The command gets `SSQCH_QUIET=true`, as before.
+
 ### Fixed
 - A `computed` or `permalink` string isn't HTML-escaped as it's worked out, in any template
   language: it's data, and the template that prints it escapes it once. Before, it was escaped

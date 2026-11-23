@@ -946,12 +946,20 @@ async function runHooks(config: Config, dirs: Dirs, event: "beforeBuild" | "afte
 export function runCommand(config: Config, dirs: Dirs, event: string, command: string): void {
 	if (!config.quiet) progress(`[ssqch] ${event}: ${command}`);
 	const { file, args, options } = commandLine(command, dirs.root, { SSQCH_ENV: config.env, SSQCH_SERVING: config.serving ? "true" : "false", SSQCH_QUIET: config.quiet ? "true" : "false", SSQCH_INPUT: dirs.input, SSQCH_OUTPUT: dirs.output });
+	// Under `-q` the tool's own output is held (Tailwind's banner printed on every quiet build,
+	// Squatch Snacks E10), and shown only when it fails, where it's the part that says why.
+	const held = config.quiet;
 	const ran = spawnSync(file, args, {
 		...options,
 		// Standard output is kept for the JSON report, so the command's goes to standard error.
-		stdio: ["inherit", isCapturing() ? 2 : "inherit", "inherit"],
+		stdio: held ? ["inherit", "pipe", "pipe"] : ["inherit", isCapturing() ? 2 : "inherit", "inherit"],
+		maxBuffer: 256 * 1024 * 1024,
 	});
 	if (ran.error) bail(`${event}: couldn't run \`${command}\`: ${ran.error.message}`);
+	if (held && ran.status !== 0) {
+		if (ran.stdout?.length) process.stderr.write(ran.stdout);
+		if (ran.stderr?.length) process.stderr.write(ran.stderr);
+	}
 	if (ran.status !== 0) bail(`${event}: \`${command}\` ${ran.status === null ? "was stopped" : `exited with status ${ran.status}`}`);
 }
 

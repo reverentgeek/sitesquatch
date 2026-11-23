@@ -242,6 +242,21 @@ export default {
 	assert.equal(read(root, "quiet.txt"), "false");
 });
 
+// Added in 0.14 (Squatch Snacks, E10): under `-q`, a command's own output is held, as ssqch's is
+// (Tailwind's banner printed on every quiet build), and printed when the command fails, since then
+// it's what says why.
+test("quiet_holds_a_commands_output_unless_it_fails", () => {
+	const config = (code) => `export default { templateFormats: ["md"], beforeBuild: [{ run: "node -e \\"console.log('tailwind banner'); console.error('a note'); process.exit(${code})\\"" }] };\n`;
+	const root = project({ "ssqch.config.js": config(0), "index.md": "# Home\n" });
+	let r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok && !r.log.includes("tailwind banner") && !r.log.includes("a note"), r.log);
+	r = ssqch(["build", "--root", root]);
+	assert.ok(r.ok && r.log.includes("tailwind banner") && r.log.includes("a note"), r.log);
+	fs.writeFileSync(path.join(root, "ssqch.config.js"), config(3));
+	r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(!r.ok && r.log.includes("tailwind banner") && r.log.includes("a note") && r.log.includes("exited with status 3"), r.log);
+});
+
 // opensource.guide (osg #13, #14): Jekyll's `time:` pins `site.time` and the date of every page
 // without one, which made its baseline the same on every build. SOURCE_DATE_EPOCH does that in
 // ssqch: `now()`, and undated pages' dates, which then sort by path, not by when a checkout wrote them.
