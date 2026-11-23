@@ -179,7 +179,8 @@ Run from `packages/ssqch/` unless it says otherwise.
   whose tree a pull request's CI already passed with (a merge commit, when the branch was up to
   date) skips those jobs and passes (`already-tested`), and a change only to `site/` (and its
   workflow) or the repository's prose (the README, `CONTRIBUTING.md`, `AGENTS.md`,
-  `CHANGELOG.md`, `docs/`) doesn't run CI at all: `site.yml` checks and deploys the site. A
+  `CHANGELOG.md`, `docs/`) or the agents' skills (`.claude/`) doesn't run CI at all: `site.yml`
+  checks and deploys the site. A
   change to a docs page (`site/src/docs/`) does run CI, since `ssqch docs` reads the pages. When
   something CI tests starts reading one of those files, take it out of `paths` in `ci.yml`. A
   pull request that changes the
@@ -312,13 +313,16 @@ skips, see `already-tested` in `ci.yml`):
    commit with the same version (delete the old tag first). The job that publishes names every
    job before it in `needs` and has no `always()`, on purpose: dist's published when its builds
    were skipped, and a red commit got an empty release marked Latest (0.3.4). Keep it so.
+5. Publish `ssqch-plugin` to crates.io from the tag (`cargo publish -p ssqch-plugin`, below).
+   It's part of every release, by hand, since no workflow does it (the owner, 2026-11-23; 0.13.6
+   went out without it).
 
 The 0.7 line is released from `release/0.7` (cut before these workflows), with dist, as it
 always was; see "One last 0.7.x" in `docs/node-migration.md`. The `sitesquatch` crates and the
 `ssqch` crate end at 0.7. From `main`, only `ssqch-plugin` goes to crates.io: with 0.8.0, set
 the workspace's version in `Cargo.toml` to the release's, remove `publish = false` from
-`crates/ssqch-plugin/Cargo.toml`, and `cargo publish -p ssqch-plugin` from the tag (by hand; no
-workflow does it).
+`crates/ssqch-plugin/Cargo.toml`, and `cargo publish -p ssqch-plugin` from the tag with every
+release (step 5 above; by hand, since no workflow does it).
 
 ### npm
 
