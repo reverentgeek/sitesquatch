@@ -70,6 +70,10 @@ where that version matches.
   So a pattern needs `netlify: true`: without it nothing redirects it, and the build now stops
   and says what to set, where it wrote that page. A `_redirects` file without patterns is byte
   for byte what it was.
+- `ssqch diff` says where a change on more than one file is (`@ under #visit`, and `at` in the
+  JSON) only when it's under the same heading on every one of them. It printed the first file's:
+  a footer that changed on 16 pages was "under" the 404 page's heading, which the other 15 don't
+  have. A file listed on its own still says where each of its changes is.
 
 ## 0.13.6 - 2026-11-23
 
