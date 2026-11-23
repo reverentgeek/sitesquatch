@@ -89,6 +89,8 @@ where that version matches.
 - `image()` takes a path from the project and `imageUrl()` one from the site's root, and each
   given the other kind says where it looked and names the path it meant, where `image()` said
   only `file not found` with a whole path. The docs say which takes which.
+- A link with a query in a page's Markdown copy goes to the page (`/contact/?plan=day-hike`),
+  which reads it, not to `/contact/index.md?plan=day-hike`.
 
 ## 0.14.0 - 2026-11-23
 

@@ -316,19 +316,21 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 		const withCopy = new Set(chosen);
 		const byUrl = new Map(pages.map((p) => [keyOf(p.url), p]));
 		const byFile = new Map(pages.map((p) => [path.resolve(p.inputPath), p]));
-		const linkTo = (page: PageSummary) => (copies && withCopy.has(page) ? copyUrl(page.url) : page.url);
+		// A link with a query (`/contact/?plan=day-hike`) is for the page, which reads it; the copy
+		// is a file, and `/contact/index.md?plan=day-hike` means nothing more than without it.
+		const linkTo = (page: PageSummary, rest = "") => (copies && withCopy.has(page) && !rest.startsWith("?") ? copyUrl(page.url) : page.url);
 		const target = (href: string, from: PageSummary): string => {
 			if (href === "" || href.startsWith("#") || href.startsWith("//") || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(href)) return href;
 			const cut = href.search(/[?#]/);
 			const [file, rest] = cut === -1 ? [href, ""] : [href.slice(0, cut), href.slice(cut)];
 			if (/\.(?:md|markdown)$/i.test(file) && !file.startsWith("/")) {
 				const page = byFile.get(path.resolve(path.dirname(from.inputPath), decodeURIComponent(file)));
-				if (page) return whole(linkTo(page)) + rest;
+				if (page) return whole(linkTo(page, rest)) + rest;
 			}
 			let resolved: string;
 			try { resolved = new URL(file, `https://ssqch.invalid${from.url}`).pathname; } catch { return href; }
 			const page = byUrl.get(keyOf(resolved)) ?? byUrl.get(keyOf(`${resolved}/`));
-			return whole(page ? linkTo(page) : resolved) + rest;
+			return whole(page ? linkTo(page, rest) : resolved) + rest;
 		};
 
 		const entries: Entry[] = [];

@@ -1020,7 +1020,7 @@ test("llms_plugin_writes_the_site_for_language_models", () => {
 		"ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { urls: \"html\", data: { layout: \"base.jinja\" }, plugins: [llmsPlugin({ url: \"https://trail.example\", description: \"Hikes and the gear for them.\", exclude: [\"/drafts/**\"] })] };\n",
 		"_data/site.json": "{ \"title\": \"Trail Guide\", \"trails\": [\"Cedar\", \"Old Growth\"] }\n",
 		"_includes/base.jinja": "<html><head>{% if markdownCopy(page.url) %}<link rel=\"alternate\" type=\"text/markdown\" href=\"{{ markdownCopy(page.url) }}\">{% endif %}</head><body><nav><a href=\"/\">Home</a></nav><main>{{ content | safe }}</main></body></html>",
-		"index.md": "---\ntitle: Home\n---\nWelcome to the trails. Start with [the intro](guide/intro.md).\n",
+		"index.md": "---\ntitle: Home\n---\nWelcome to the trails. Start with [the intro](guide/intro.md), or [plan a day hike](/about.html?plan=day).\n",
 		"guide/index.md": "# Guide\n",
 		"guide/intro.md": "---\ndescription: Where to start.\n---\n# Getting started\n\nOn {{ site.title }}:\n{% for t in site.trails %}\n- {{ t }}\n{% endfor %}\n\nPack water, then [the gear](/about.html#packs).\n",
 		"guide/secret.md": "---\nllms: false\n---\n# Ranger only\n",
@@ -1031,7 +1031,8 @@ test("llms_plugin_writes_the_site_for_language_models", () => {
 	assert.ok(r.ok, r.log);
 	assert.equal(read(dir, "_site/llms.txt"), "# Trail Guide\n\n> Hikes and the gear for them.\n\n## Pages\n\n- [Home](https://trail.example/index.md)\n- [About](https://trail.example/about.md)\n\n## Guide\n\n- [Guide](https://trail.example/guide/index.md)\n- [Getting started](https://trail.example/guide/intro.md): Where to start.\n");
 	assert.equal(read(dir, "_site/guide/intro.md"), "# Getting started\n\nOn Trail Guide:\n\n- Cedar\n\n- Old Growth\n\nPack water, then [the gear](https://trail.example/about.md#packs).\n");
-	assert.equal(read(dir, "_site/index.md"), "# Home\n\nWelcome to the trails. Start with [the intro](https://trail.example/guide/intro.md).\n");
+	// DELIBERATE (0.14.1): a link with a query goes to the page, which reads it, not to the copy (Squatch Snacks).
+	assert.equal(read(dir, "_site/index.md"), "# Home\n\nWelcome to the trails. Start with [the intro](https://trail.example/guide/intro.md), or [plan a day hike](https://trail.example/about.html?plan=day).\n");
 	assert.equal(read(dir, "_site/about.md"), "# About\n\nSquatch *Snacks* for the [trail](https://trail.example/guide/intro.md).\n\n- Pine Cone Crunch\n");
 	assert.ok(read(dir, "_site/llms-full.txt").startsWith("# Trail Guide\n\n> Hikes and the gear for them.\n\n---\nurl: https://trail.example/\n---\n\n# Home\n"));
 	assert.ok(!fs.existsSync(path.join(dir, "_site/drafts/wip.md")) && !fs.existsSync(path.join(dir, "_site/guide/secret.md")));
