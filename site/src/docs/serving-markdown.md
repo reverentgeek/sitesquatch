@@ -79,6 +79,13 @@ export default {
       }
     }
     const response = await env.ASSETS.fetch(request);
+    // A copy at its own address: _headers rules don't reach what a Worker answers.
+    if (url.pathname.endsWith(".md") && response.ok) {
+      const out = new Response(response.body, response);
+      out.headers.set("Content-Type", "text/markdown; charset=utf-8");
+      out.headers.set("X-Robots-Tag", "noindex");
+      return out;
+    }
     if (!copy) return response;
     const out = new Response(response.body, response);
     out.headers.append("Vary", "Accept");
@@ -87,7 +94,7 @@ export default {
 };
 ```
 
-It costs a Worker request for each page view in `run_worker_first` (the free plan has 100,000 a day); files outside it don't run the Worker. `_headers` rules don't apply to what a Worker answers, so the headers are set here. Checked on Cloudflare (sitesquatch.dev, November 2026): a browser's request and an agent's, one after the other on the same address, each get theirs, with `Vary: Accept`, even while Cloudflare's cache has the page (`cf-cache-status: HIT`): the Worker runs before the cache and picks which file to answer with.
+It costs a Worker request for each page view in `run_worker_first` (the free plan has 100,000 a day); files outside it don't run the Worker. `_headers` rules don't apply to what a Worker answers, so the headers are set here, a copy's at its own address included (a copy outside `run_worker_first` gets them from `_headers`, below). Checked on Cloudflare (sitesquatch.dev, November 2026): a browser's request and an agent's, one after the other on the same address, each get theirs, with `Vary: Accept`, even while Cloudflare's cache has the page (`cf-cache-status: HIT`): the Worker runs before the cache and picks which file to answer with.
 
 ### Netlify
 

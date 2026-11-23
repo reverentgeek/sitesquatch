@@ -44,6 +44,13 @@ export default {
       }
     }
     const response = await env.ASSETS.fetch(request);
+    // A copy at its own address: _headers rules don't reach what a Worker answers.
+    if (url.pathname.endsWith(".md") && response.ok) {
+      const out = new Response(response.body, response);
+      out.headers.set("Content-Type", "text/markdown; charset=utf-8");
+      out.headers.set("X-Robots-Tag", "noindex");
+      return out;
+    }
     if (!copy) return response;
     const out = new Response(response.body, response);
     out.headers.append("Vary", "Accept");
