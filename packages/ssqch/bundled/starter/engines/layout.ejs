@@ -6,6 +6,7 @@
     <title><% if (locals.title) { %><%= title %> | <% } %><%= site.title %></title>
     <meta name="description" content="<%= locals.description || site.description %>">
     <link rel="canonical" href="<%= site.url %><%= page.url %>">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <%# For agents: the page as Markdown and the site's map (llmsPlugin() in ssqch.config.js). %>
     <% const copy = markdownCopy(page.url); if (copy) { %><link rel="alternate" type="text/markdown" href="<%= copy %>"><% } %>
     <link rel="describedby" href="<%= llmsTxt(page.url) %>">

@@ -12,9 +12,10 @@
   <meta name="generator" content="<%= ssqch.generator %>">
   <link rel="stylesheet" href="/highlight.css">
   <link rel="stylesheet" href="/assets/docs.css">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
   <%_ if (locals.search) { _%>
-  <link rel="stylesheet" href="/pagefind/pagefind-ui.css">
-  <script src="/pagefind/pagefind-ui.js" defer></script>
+  <link rel="stylesheet" href="/pagefind/pagefind-component-ui.css">
+  <script src="/pagefind/pagefind-component-ui.js" type="module"></script>
   <%_ } _%>
   <script src="/assets/docs.js" defer></script>
   <%_ /* Before the page is drawn, so a reader who picked a theme doesn't see the other one first. */ _%>
@@ -31,7 +32,7 @@
       <%_ } _%>
     </nav>
     <%_ if (locals.search) { _%>
-    <div id="search"></div>
+    <div id="search"><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
     <%_ } _%>
     <%_ /* docs.js shows it. Without JavaScript, the theme follows the system. */ _%>
     <button class="theme-switch" type="button" hidden>Switch theme</button>

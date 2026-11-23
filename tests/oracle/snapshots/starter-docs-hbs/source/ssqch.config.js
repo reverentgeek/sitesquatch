@@ -11,8 +11,9 @@ import { sitemapPlugin } from "ssqch/sitemap";
 const { url } = readData("src/_data/site.json");
 
 // Search is Pagefind (https://pagefind.app), which indexes the built pages.
-// It's a program of its own that npx fetches, so it's opt-in:
-// SEARCH=1 ssqch build
+// It's a program of its own that npx fetches, so it's opt-in, and pinned, so
+// every build gets the same one: SEARCH=1 ssqch build, then ssqch serve --built
+// to try it (ssqch serve builds without it).
 const search = Boolean(process.env.SEARCH);
 
 export default defineConfig(({ env }) => ({
@@ -42,7 +43,7 @@ export default defineConfig(({ env }) => ({
   },
 
   data: { search },
-  afterBuild: search ? [{ run: "npx -y pagefind --site dist" }] : [],
+  afterBuild: search ? [{ run: "npx -y pagefind@1.6.0 --site dist" }] : [],
 
   plugins: [
     // Broken internal links (and anchors) fail a production build.

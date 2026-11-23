@@ -36,7 +36,9 @@ test("init_creates_a_site_that_builds", () => {
 	// (the audit's plan, step 3), and the copies' links are checked too.
 	// DELIBERATE (0.13.5): the starter is a blog, with a page for each tag, a page of tags and a feed
 	// (the new-blog run), so it has more links.
-	assert.ok(r.log.includes("Links   152 checked, 0 broken"), r.log);
+	assert.ok(r.log.includes("Links   164 checked, 0 broken"), r.log);
+	// The tab icon: the footprint, linked from every page.
+	assert.ok(isFile(dir, "dist/favicon.svg") && read(dir, "dist/index.html").includes("<link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">"), r.log);
 	assert.ok(read(dir, "dist/tags/stumps/index.html").includes("<title>Tagged stumps | Field Notes</title>") && read(dir, "dist/tags/index.html").includes("<a href=\"/tags/trails/\">trails</a> (2)"), r.log);
 	assert.ok(read(dir, "dist/posts/the-cache-of-the-wild/index.html").includes("Tagged <a href=\"/tags/raccoons/\">raccoons</a>, <a href=\"/tags/trails/\">trails</a></p>"));
 	assert.ok(read(dir, "dist/feed.xml").includes("<entry>\n    <title>The Cache of the Wild</title>\n    <link href=\"https://example.com/posts/the-cache-of-the-wild/\"/>") && read(dir, "dist/feed.xml").includes("<content type=\"html\">&lt;p&gt;"), read(dir, "dist/feed.xml"));
@@ -91,7 +93,7 @@ test("init_starts_a_site_in_each_engine", () => {
 
 		r = ssqch(["build", "--root", d]);
 		assert.ok(r.ok, `${engine}: ${r.log}`);
-		assert.ok(r.log.includes("Links   152 checked, 0 broken") && !r.log.includes("warn"), `${engine}: ${r.log}`);
+		assert.ok(r.log.includes("Links   164 checked, 0 broken") && !r.log.includes("warn"), `${engine}: ${r.log}`);
 		assert.ok(read(dir, "dist/posts/the-cache-of-the-wild/index.html").includes("Tagged <a href=\"/tags/raccoons/\">raccoons</a>, <a href=\"/tags/trails/\">trails</a></p>") && read(dir, "dist/feed.xml").includes("<content type=\"html\">&lt;p&gt;"), `${engine}: tags and feed`);
 		const home = read(dir, "dist/index.html");
 		assert.ok(home.includes("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), `${engine}: ${home}`);

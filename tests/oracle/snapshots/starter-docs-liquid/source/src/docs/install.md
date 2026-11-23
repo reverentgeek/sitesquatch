@@ -38,5 +38,5 @@ npx ssqch build
 The site is in `dist/`, ready for any static host. A broken link or a page without a `title` stops the build and says where.
 
 :::tip
-`SEARCH=1 npx ssqch build` also builds a search index with [Pagefind](https://pagefind.app) and adds a search box to the header. Pagefind is a program of its own, which `npx` fetches for that one step.
+`SEARCH=1 npx ssqch build` also builds a search index with [Pagefind](https://pagefind.app) and adds a search button to the header (or press Ctrl+K, or Cmd+K on a Mac). Pagefind is a program of its own, which `npx` fetches for that one step, at the version `ssqch.config.js` pins. `npx ssqch serve` builds without it, so to try search, build with it and serve that build: `SEARCH=1 npx ssqch build`, then `npx ssqch serve --built`.
 :::

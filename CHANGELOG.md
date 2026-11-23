@@ -29,6 +29,11 @@ where that version matches.
   is at `/feed.xml` (`src/feed.jinja`, with `rssPlugin()`'s filters), linked from every page.
   Code is highlighted (`markdown: { highlight: true }`, and the layout links `/highlight.css`),
   and `leaveNoTrace: true` deletes a removed post's page. The same in every `--engine`.
+- The docs starter's search is Pagefind's Component UI (a search button and dialog, Ctrl+K or
+  Cmd+K), in the theme's colors in light and dark, with Pagefind pinned to 1.6.0: it was the
+  newest Pagefind, whose 1.5 and later print a notice about the old UI. Its install page says
+  how to try search locally (`SEARCH=1 npx ssqch build`, then `npx ssqch serve --built`). Both
+  starters have a tab icon, the footprint.
 
 ### Fixed
 - A footnote in a page's Markdown copy (`llmsPlugin()`'s `index.md` and `llms-full.txt`) keeps

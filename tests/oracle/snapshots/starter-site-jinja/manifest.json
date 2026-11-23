@@ -9,14 +9,14 @@
     "pages": {
       "written": 13,
       "templates": 10,
-      "bytes": 43261,
+      "bytes": 43957,
       "new": null,
       "gone": null
     },
     "copied": {
-      "files": 0,
+      "files": 1,
       "unchanged": 0,
-      "bytes": 0
+      "bytes": 4409
     },
     "removed": 0,
     "drafts": 0,
@@ -53,7 +53,7 @@
     "summary": [
       {
         "label": "Links",
-        "value": "152 checked, 0 broken"
+        "value": "164 checked, 0 broken"
       }
     ],
     "warnings": [],
@@ -61,9 +61,10 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   13 written from 10 templates, 43.3 KB\n  Links   152 checked, 0 broken\n  Output  dist: 29 files, 60.0 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   13 written from 10 templates, 44.0 KB\n  Copied  1 file, 4.41 KB\n  Links   164 checked, 0 broken\n  Output  dist: 30 files, 65.1 KB\n",
   "files": {
     "404.html": "text",
+    "favicon.svg": "text",
     "feed.xml": "text",
     "highlight.css": "text",
     "index.html": "text",
@@ -102,6 +103,7 @@
     "src/_blueprints/posts.md": "text",
     "src/_data/site.json": "text",
     "src/_includes/layout.jinja": "text",
+    "src/favicon.svg": "text",
     "src/feed.jinja": "text",
     "src/index.jinja": "text",
     "src/posts/i-know-what-i-saw.md": "text",

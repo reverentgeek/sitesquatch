@@ -15,6 +15,8 @@ const { url } = readData("src/_data/site.json");
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
   templateFormats: ["jinja", "md"],
+  // Copied as they are: the tab icon.
+  passthrough: ["src/favicon.svg"],
   // Delete what an earlier build wrote that this one didn't (a deleted post's page).
   leaveNoTrace: true,
   // Highlight code while building; the layout links /highlight.css.

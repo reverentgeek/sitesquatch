@@ -6,6 +6,7 @@
     <title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
     <meta name="description" content="{{ description or site.description }}">
     <link rel="canonical" href="{{ site.url }}{{ page.url }}">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     {# For agents: the page as Markdown and the site's map (llmsPlugin() in ssqch.config.js). #}
     {% if markdownCopy(page.url) %}<link rel="alternate" type="text/markdown" href="{{ markdownCopy(page.url) }}">{% endif %}
     <link rel="describedby" href="{{ llmsTxt(page.url) }}">
