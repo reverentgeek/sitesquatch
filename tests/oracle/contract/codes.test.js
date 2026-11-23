@@ -6,7 +6,10 @@
 // (`ssqch serve` only; cli/serve.test.js covers it).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { project, ssqch } from "../lib/ssqch.js";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { project, ssqch, tempDir } from "../lib/ssqch.js";
 
 const base = (more = "") => `export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md", "njk"]${more} };\n`;
 const plugin = (mod, fn, opts = "") => `import { ${fn} } from "ssqch/${mod}";\nexport default { dirs: { input: "src", output: "dist" }, plugins: [${fn}(${opts})] };\n`;
@@ -23,7 +26,6 @@ const CASES = [
 	["images", { "ssqch.config.js": plugin("image", "imagePlugin"), "src/index.md": "![x](/img/missing.png)" }, { ok: true, in: "warnings" }],
 	["assets", { "ssqch.config.js": plugin("assets", "assetsPlugin", "{ files: [\"/app.css\"] }"), "src/index.md": "hi" }, { ok: true, in: "warnings" }, ["--env", "development"]],
 	["passthrough", { "ssqch.config.js": base(", passthrough: [\"./src/**/*.nope\"]"), "src/index.md": "hi" }, { ok: true, in: "warnings" }],
-	["last-modified", { "ssqch.config.js": base(", lastModified: \"git\""), "src/index.md": "hi" }, { ok: true, in: "warnings" }],
 	["hook", { "ssqch.config.js": base(", afterBuild: [{ run: \"exit 3\" }]"), "src/index.md": "hi" }, { ok: false, in: "errors" }],
 	["console", { "ssqch.config.js": `console.warn("careful");\n${base()}`, "src/index.md": "hi" }, { ok: true, in: "warnings" }],
 	["template-formats", { "ssqch.config.js": `export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"] };\n`, "src/index.md": "hi", "src/other.liquid": "x" }, { ok: true, in: "warnings", file: "src/other.liquid" }],
@@ -61,3 +63,25 @@ for (const [code, files, want, args = []] of CASES) {
 		for (const key of ["file", "line", "field", "url"]) assert.equal(d[key], want[key], `${code}.${key}: ${JSON.stringify(d)}`);
 	});
 }
+
+// DELIBERATE (0.13.5): a folder that isn't a repository is quiet now (the starters set
+// `lastModified: "git"`), so the code is provoked by what it's still for: a shallow clone, whose
+// dates come from the commits it has.
+test("the last-modified code", () => {
+	const origin = project({ "ssqch.config.js": base(", lastModified: \"git\""), "src/index.md": "hi" }, "last-modified-origin");
+	const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.com", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.com" };
+	const git = (...args) => execFileSync("git", args, { stdio: "pipe", env });
+	git("-C", origin, "init", "-q");
+	git("-C", origin, "add", ".");
+	git("-C", origin, "commit", "-q", "-m", "first");
+	git("-C", origin, "commit", "-q", "--allow-empty", "-m", "second");
+	const dir = path.join(tempDir("last-modified-shallow"), "site");
+	git("clone", "-q", "--depth", "1", pathToFileURL(origin).href, dir);
+	const r = ssqch(["build", "--root", dir, "--format", "json"]);
+	const report = JSON.parse(r.stdout);
+	assert.ok(report.ok && r.ok, r.log);
+	const found = report.warnings.filter((d) => d.code === "last-modified");
+	assert.equal(found.length, 1, JSON.stringify(report.warnings));
+	assert.ok(found[0].message.includes("shallow clone"), found[0].message);
+	assert.deepEqual(report.errors.filter((d) => d.code === "last-modified"), []);
+});

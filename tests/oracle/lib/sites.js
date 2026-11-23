@@ -38,7 +38,9 @@ export function sites() {
 	}
 	for (const starter of ["site", "docs"]) {
 		for (const engine of ENGINES) {
-			list.push({ name: `starter-${starter}-${engine}`, starter: { starter, engine }, prepare: (dir) => { init(dir, starter, engine); return dir; } });
+			// The pages show `page.lastModified`, which is a file's time in a folder that isn't a
+			// repository: the clock is pinned (2026-01-01), so the dates are the same every run.
+			list.push({ name: `starter-${starter}-${engine}`, starter: { starter, engine }, env: { SOURCE_DATE_EPOCH: "1767225600" }, prepare: (dir) => { init(dir, starter, engine); return dir; } });
 		}
 	}
 	const local = (name, from, { root = ".", extra = [], args = [], env = {} } = {}) => {

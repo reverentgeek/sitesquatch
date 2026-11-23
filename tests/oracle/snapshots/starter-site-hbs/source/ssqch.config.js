@@ -9,11 +9,17 @@ import { robotsPlugin } from "ssqch/robots";
 import { rssPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
 
+// A date as people write it: January 1, 2026.
+const readableDate = (date) => new Date(date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+
 // The site's address, from src/_data/site.json: put yours there.
 const { url } = readData("src/_data/site.json");
 
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
+  // page.lastModified, for a post's "updated" date: when its file last changed in a commit (in
+  // CI, check out the whole history: `fetch-depth: 0`). Before the first commit, the file's time.
+  lastModified: "git",
   templateFormats: ["hbs", "md"],
   markdownEngine: "hbs",
   // Copied as they are: the tab icon.
@@ -25,7 +31,15 @@ export default defineConfig(({ env }) => ({
 
   // Functions templates can call: {{readableDate post.date}}
   filters: {
-    readableDate: (date) => new Date(date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }),
+    readableDate,
+    // A post's date, and the day it last changed when that's later: {{ postDates(page, tags) }}
+    // gives "January 8, 2026 (updated March 2, 2026)", or nothing on a page that isn't a post.
+    postDates: (page, tags) => {
+      if (!Array.isArray(tags) || !tags.includes("posts")) return "";
+      const posted = readableDate(page.date);
+      const changed = page.lastModified && page.lastModified > page.date ? readableDate(page.lastModified) : posted;
+      return changed === posted ? posted : `${posted} (updated ${changed})`;
+    },
     // A post's own tags, without the `posts` tag every post has: {{ ownTags(tags) }}
     ownTags: (tags) => (Array.isArray(tags) ? tags : []).filter((name) => name !== "posts"),
   },

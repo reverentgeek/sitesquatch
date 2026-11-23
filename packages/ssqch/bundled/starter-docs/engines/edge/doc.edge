@@ -17,6 +17,7 @@ sidebar: true
     {{{ content }}}
 
     <footer class="page-footer">
+      <p class="page-updated">Last updated <time datetime="{{ isoDay(page.lastModified) }}">{{ readableDate(page.lastModified) }}</time></p>
       @let(copy = markdownCopy(page.url))
       @if(copy)
       <p class="page-markdown"><a href="{{ copy }}">View as Markdown</a> <button type="button" data-copy-markdown="{{ copy }}" hidden>Copy as Markdown</button></p>

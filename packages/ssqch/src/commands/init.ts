@@ -94,7 +94,7 @@ function adapt(engine: string, rel: string, contents: string): string {
 		}
 		if (engine === "hbs" && config.includes("data: { search },")) {
 			// Handlebars has no `replace`, so the docs layout's edit link gets its path from a helper.
-			config = replaceOnce(config, "  data: { search },", "  // The path after `site.editUrl` in each page's \"Edit this page\" link.\n  filters: {\n    sourcePath: (inputPath) => inputPath.replace(\"./\", \"\"),\n  },\n\n  data: { search },");
+			config = replaceOnce(config, "  filters: {\n", "  filters: {\n    // The path after `site.editUrl` in each page's \"Edit this page\" link.\n    sourcePath: (inputPath) => inputPath.replace(\"./\", \"\"),\n");
 		}
 		return config;
 	}

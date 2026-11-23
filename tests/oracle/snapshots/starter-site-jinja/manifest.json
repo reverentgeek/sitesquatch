@@ -9,7 +9,7 @@
     "pages": {
       "written": 13,
       "templates": 10,
-      "bytes": 43957,
+      "bytes": 44848,
       "new": null,
       "gone": null
     },
@@ -61,7 +61,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   13 written from 10 templates, 44.0 KB\n  Copied  1 file, 4.41 KB\n  Links   164 checked, 0 broken\n  Output  dist: 30 files, 65.1 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   13 written from 10 templates, 44.8 KB\n  Copied  1 file, 4.41 KB\n  Links   164 checked, 0 broken\n  Output  dist: 30 files, 66.0 KB\n",
   "files": {
     "404.html": "text",
     "favicon.svg": "text",

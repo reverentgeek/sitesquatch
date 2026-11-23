@@ -29,6 +29,7 @@
       header nav a { font-weight: 400; font-size: 1rem; margin-left: 1rem; }
       footer { margin-top: 3rem; padding-top: 0.75rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.9rem; }
       img { max-width: 100%; height: auto; }
+      .dates { margin-top: -0.5rem; color: var(--muted); }
       :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
     </style>
   </head>
@@ -37,6 +38,9 @@
     <main>
       @if(title)
         <h1>{{ title }}</h1>
+        @if(postDates(page, tags))
+        <p class="dates">{{ postDates(page, tags) }}</p>
+        @end
       @end
       {{{ content }}}
       @if(ownTags(tags).length)

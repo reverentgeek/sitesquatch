@@ -184,6 +184,7 @@ img { max-width: 100%; height: auto; }
 .site-name { font-weight: 700; font-size: 1.15rem; color: var(--heading); }
 .menu-link { display: none; }
 #search { margin-left: auto; }
+.page-updated { color: var(--muted); font-size: 0.9rem; }
 /* Pagefind's search (SEARCH=1): its colors are the theme's, so it follows light and dark and
    the switch in the header. On #search, not :root, where Pagefind's stylesheet, which loads
    after this one, sets its own. */

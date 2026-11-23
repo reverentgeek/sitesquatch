@@ -34,6 +34,14 @@ where that version matches.
   newest Pagefind, whose 1.5 and later print a notice about the old UI. Its install page says
   how to try search locally (`SEARCH=1 npx ssqch build`, then `npx ssqch serve --built`). Both
   starters have a tab icon, the footprint.
+- Both starters show a date a reader can see: each docs page ends with "Last updated" (its
+  `page.lastModified`, from git), and each post shows its date under the title, with "updated"
+  when it last changed on a later day. The starters set `lastModified: "git"`, and the docs
+  starter's GitHub Pages workflow checks out the whole history (`fetch-depth: 0`).
+- `lastModified: "git"` in a folder that isn't a repository yet uses the files' times quietly; it
+  warned on every build (`not a git repository, so pages use their files' times`), which every
+  new site met before `git init`. `SOURCE_DATE_EPOCH` pins a `page.lastModified` that comes from
+  a file's time, as it does an undated page's date.
 
 ### Fixed
 - A footnote in a page's Markdown copy (`llmsPlugin()`'s `index.md` and `llms-full.txt`) keeps

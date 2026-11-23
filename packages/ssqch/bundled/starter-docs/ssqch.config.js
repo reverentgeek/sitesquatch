@@ -18,6 +18,10 @@ const search = Boolean(process.env.SEARCH);
 
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
+  // page.lastModified, which each page shows as "Last updated": when its file last changed in a
+  // commit (in CI, check out the whole history: `fetch-depth: 0`). Before the first commit,
+  // the file's time.
+  lastModified: "git",
   templateFormats: ["jinja", "md"],
   passthrough: ["src/assets"],
 
@@ -34,6 +38,14 @@ export default defineConfig(({ env }) => ({
       fields: { title: "string", description: "string?" },
       unknown: "warn",
     },
+  },
+
+  // Functions templates can call: the "Last updated" date at the foot of each page.
+  filters: {
+    // A date as people write it: January 1, 2026.
+    readableDate: (date) => new Date(date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }),
+    // The day, as <time datetime> takes it: 2026-01-01.
+    isoDay: (date) => new Date(date).toISOString().slice(0, 10),
   },
 
   data: { search },

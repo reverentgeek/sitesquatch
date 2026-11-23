@@ -18,6 +18,10 @@ const search = Boolean(process.env.SEARCH);
 
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
+  // page.lastModified, which each page shows as "Last updated": when its file last changed in a
+  // commit (in CI, check out the whole history: `fetch-depth: 0`). Before the first commit,
+  // the file's time.
+  lastModified: "git",
   templateFormats: ["hbs", "md"],
   markdownEngine: "hbs",
   passthrough: ["src/assets"],
@@ -37,9 +41,14 @@ export default defineConfig(({ env }) => ({
     },
   },
 
-  // The path after `site.editUrl` in each page's "Edit this page" link.
+  // Functions templates can call: the "Last updated" date at the foot of each page.
   filters: {
+    // The path after `site.editUrl` in each page's "Edit this page" link.
     sourcePath: (inputPath) => inputPath.replace("./", ""),
+    // A date as people write it: January 1, 2026.
+    readableDate: (date) => new Date(date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }),
+    // The day, as <time datetime> takes it: 2026-01-01.
+    isoDay: (date) => new Date(date).toISOString().slice(0, 10),
   },
 
   data: { search },

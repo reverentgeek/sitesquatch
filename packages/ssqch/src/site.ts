@@ -124,6 +124,9 @@ export class Timer {
 /** A file to copy, and where to. */
 export type CopyJob = [from: string, to: string];
 
+/** A file's modification time, or the pinned build time when `SOURCE_DATE_EPOCH` is set. */
+const fileTime = (mtime: Date): Date => (sourceDateEpoch() === undefined ? mtime : new Date(sourceDateEpoch()!));
+
 export class Site {
 	config: Config;
 	dirs: Dirs;
@@ -574,8 +577,10 @@ export class Site {
 
 	/**
 	 * When each file in the git repository last changed in a commit, from one `git log`. Files
-	 * with uncommitted changes are left out (they use their modification time). Not a
-	 * repository, or no git: nothing, with a warning.
+	 * with uncommitted changes are left out (they use their modification time). No git: nothing,
+	 * with a warning. Not a repository: nothing, quietly, since a site made with `ssqch init`
+	 * builds before anyone runs `git init`, and a warning on every build there names nothing to
+	 * fix; its pages use their files' times until the first commit.
 	 */
 	private gitDates(setting: string): Map<string, Date> {
 		const { config, dirs } = this;
@@ -584,7 +589,7 @@ export class Site {
 		const lost = (message: string) => { if (!config.quiet) warn(warning("last-modified", `${setting}: ${message}`)); };
 		const top = git("rev-parse", "--show-toplevel");
 		if (top.error) { lost(`can't run git (${top.error.message}), so pages use their files' times`); return dates; }
-		if (top.status !== 0) { lost("not a git repository, so pages use their files' times"); return dates; }
+		if (top.status !== 0) return dates;
 		const toplevel = realPath(top.stdout.trim());
 		if (git("rev-parse", "--is-shallow-repository").stdout?.trim() === "true") {
 			lost("this is a shallow clone, so dates come from the commits it has (fetch the full history, like `fetch-depth: 0` in GitHub Actions)");
@@ -789,7 +794,9 @@ export class Site {
 				filePathStem: parent === "" ? `/${stem}` : `/${parent}/${stem}`,
 				mtime,
 				fileDate,
-				lastModified: config.lastModified === "git" ? commitDates.get(file) ?? mtime : config.lastModified === "file" ? mtime : undefined,
+				// A file's time is when this checkout (or an editor) wrote it, so `SOURCE_DATE_EPOCH`
+				// pins it, as it does an undated page's date: the same build gives the same pages.
+				lastModified: config.lastModified === "git" ? commitDates.get(file) ?? fileTime(mtime) : config.lastModified === "file" ? fileTime(mtime) : undefined,
 				commitDate: config.dateFallback === "git" ? commitDates.get(file) : undefined,
 			};
 		} catch (e) {

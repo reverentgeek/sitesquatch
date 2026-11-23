@@ -22,6 +22,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # every commit, for `lastModified: "git"` (the starters set it)
       - uses: actions/setup-node@v4
         with:
           node-version: 24
