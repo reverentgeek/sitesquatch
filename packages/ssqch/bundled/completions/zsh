@@ -382,7 +382,7 @@ esac
 _ssqch_commands() {
     local commands; commands=(
 'build:Build the site (default)' \
-'serve:Build, serve, watch for changes and live-reload the browser' \
+'serve:Build, serve, watch for changes and live-reload the browser (--built serves the last build as it is)' \
 'new:Create a page from a blueprint (a file in _blueprints/), with its title and date filled in' \
 'trace:Follow a page'\''s tracks\: where it comes from, and which level of the data cascade set each value' \
 'completions:Print a completion script for your shell, so Tab finishes commands and options' \
@@ -438,7 +438,7 @@ _ssqch__subcmd__patrol_commands() {
 _ssqch__subcmd__help_commands() {
     local commands; commands=(
 'build:Build the site (default)' \
-'serve:Build, serve, watch for changes and live-reload the browser' \
+'serve:Build, serve, watch for changes and live-reload the browser (--built serves the last build as it is)' \
 'new:Create a page from a blueprint (a file in _blueprints/), with its title and date filled in' \
 'trace:Follow a page'\''s tracks\: where it comes from, and which level of the data cascade set each value' \
 'completions:Print a completion script for your shell, so Tab finishes commands and options' \

@@ -36,7 +36,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('build', 'build', [CompletionResultType]::ParameterValue, 'Build the site (default)')
-            [CompletionResult]::new('serve', 'serve', [CompletionResultType]::ParameterValue, 'Build, serve, watch for changes and live-reload the browser')
+            [CompletionResult]::new('serve', 'serve', [CompletionResultType]::ParameterValue, 'Build, serve, watch for changes and live-reload the browser (--built serves the last build as it is)')
             [CompletionResult]::new('new', 'new', [CompletionResultType]::ParameterValue, 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in')
             [CompletionResult]::new('trace', 'trace', [CompletionResultType]::ParameterValue, 'Follow a page''s tracks: where it comes from, and which level of the data cascade set each value')
             [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Print a completion script for your shell, so Tab finishes commands and options')
@@ -292,7 +292,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
         }
         'ssqch;help' {
             [CompletionResult]::new('build', 'build', [CompletionResultType]::ParameterValue, 'Build the site (default)')
-            [CompletionResult]::new('serve', 'serve', [CompletionResultType]::ParameterValue, 'Build, serve, watch for changes and live-reload the browser')
+            [CompletionResult]::new('serve', 'serve', [CompletionResultType]::ParameterValue, 'Build, serve, watch for changes and live-reload the browser (--built serves the last build as it is)')
             [CompletionResult]::new('new', 'new', [CompletionResultType]::ParameterValue, 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in')
             [CompletionResult]::new('trace', 'trace', [CompletionResultType]::ParameterValue, 'Follow a page''s tracks: where it comes from, and which level of the data cascade set each value')
             [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Print a completion script for your shell, so Tab finishes commands and options')

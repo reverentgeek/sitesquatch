@@ -412,7 +412,7 @@ declare module "ssqch/image" {
 		jpegQuality?: number;
 		/** A width larger than the original is clamped to it only when the width before it is this many times smaller. Default 1.25. */
 		minimumThreshold?: number;
-		/** Delete generated images the build didn't use. Only for full builds. */
+		/** Delete generated images in the output that the build didn't use. Only for full builds; `leaveNoTrace` leaves them. */
 		prune?: boolean;
 		/** Remember image ids between builds in `.cache/ssqch`. Default `true`. */
 		hashCache?: boolean;

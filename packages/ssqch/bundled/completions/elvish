@@ -33,7 +33,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
             cand -V 'Print version'
             cand --version 'Print version'
             cand build 'Build the site (default)'
-            cand serve 'Build, serve, watch for changes and live-reload the browser'
+            cand serve 'Build, serve, watch for changes and live-reload the browser (--built serves the last build as it is)'
             cand new 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in'
             cand trace 'Follow a page''s tracks: where it comes from, and which level of the data cascade set each value'
             cand completions 'Print a completion script for your shell, so Tab finishes commands and options'
@@ -274,7 +274,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
         }
         &'ssqch;help'= {
             cand build 'Build the site (default)'
-            cand serve 'Build, serve, watch for changes and live-reload the browser'
+            cand serve 'Build, serve, watch for changes and live-reload the browser (--built serves the last build as it is)'
             cand new 'Create a page from a blueprint (a file in _blueprints/), with its title and date filled in'
             cand trace 'Follow a page''s tracks: where it comes from, and which level of the data cascade set each value'
             cand completions 'Print a completion script for your shell, so Tab finishes commands and options'

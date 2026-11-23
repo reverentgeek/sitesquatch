@@ -72,6 +72,16 @@ where that version matches.
   sitesquatch.dev/examples/searchable-directory/.
 
 ### Changed
+- `serve`'s line in `ssqch --help` says `--built serves the last build as it is`, and `ssqch
+  serve --help` that a host's own rules (`_redirects`, `_headers`) aren't applied, so its CLI
+  (`netlify dev`, `wrangler dev`) is the one to check them with. Squatch Snacks served its builds
+  with Python until it found `--built`.
+- The docs: the Tailwind recipe writes to `$SSQCH_OUTPUT` (a build with `--output` or `--base`
+  goes to another folder than `dist/`) and tells Tailwind where the templates are with
+  `source(none)` and `@source`, so it doesn't ship classes from the site's notes; `elementsPlugin()`
+  goes before `assetsPlugin()` when an element's script is fingerprinted (the other way round, the
+  page keeps the old name); and `leaveNoTrace` leaves encoded images, which `imagePlugin({ prune:
+  true })` removes, and which `prune` now says.
 - `ssqch docs <word>` weighs a word written as code (`<picture>`) over the same word in prose,
   and searches for a plain word that no entry defines: `picture` answered with `slugger`'s "Misc
   Pictures" and is the responsive images paragraph now, and `feed` was a list about `diff`.
