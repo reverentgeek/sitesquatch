@@ -281,6 +281,25 @@ test("changes_on_several_files_are_grouped", async () => {
 // The same tags with other attributes are one change too (the blog's `<picture>`s with another
 // number of widths), when the change is a run of three lines or more; one changed `<meta>` isn't
 // another's.
+// Squatch Snacks (B4): a footer that changed on 16 pages was `@ under` the 404 page's heading,
+// which the other 15 don't have. A group says where it is only when that's true of every file.
+test("a_group_is_under_a_heading_only_when_every_file_is", async () => {
+	const page = (heading: string, footer: string) => `<main><h1 id="${heading}">Title</h1><p>Words of ${heading}.</p></main><footer><h2 id="visit">Visit</h2>${footer}</footer>`;
+	const site = (footer: string, tail: string) => build(Object.fromEntries(["alpha", "beta", "gamma"].map((n) => [`${n}/index.html`, page(n, footer).replace("</main>", `${tail}</main>`)])));
+	// Under each page's own heading: no place. The second change is under the footer's, on all three.
+	const report = await compare(site("<p>Old hours</p>", "<p>Old note</p>"), site("<p>New hours</p>", "<p>New note</p>"), options());
+	assert.deepEqual(report.groups.map((g) => [g.urls.length, g.hunk]), [
+		[3, { removed: ["Old note"], added: ["New note"] }],
+		[3, { removed: ["Old hours"], added: ["New hours"], at: "#visit" }],
+	]);
+	const text = diffText(report, 0, false);
+	assert.ok(text.includes("  ~ 3 pages: /alpha/, /beta/, /gamma/\n      - Old note\n      + New note\n  ~ 3 pages: /alpha/, /beta/, /gamma/\n      @ under #visit\n      - Old hours\n"), text);
+	assert.ok(!text.includes("#alpha"), text);
+	// A file listed on its own still says where each change is.
+	const ungrouped = diffText(await compare(site("<p>Old hours</p>", "<p>Old note</p>"), site("<p>New hours</p>", "<p>New note</p>"), options({ ungrouped: true })), 0, false);
+	assert.ok(ungrouped.includes("  ~ /beta/  (text)\n      @ under #beta\n      - Old note\n      + New note\n      @ under #visit\n"), ungrouped);
+});
+
 test("the_same_tags_with_other_attributes_are_grouped", async () => {
 	const picture = (widths: number[], extra = "") => `<picture>${widths.map((w) => `<source srcset="/img/a-${w}.webp">`).join("")}<img src="/img/a.gif"${extra}></picture>`;
 	const before = build({

@@ -5,6 +5,16 @@ import { ssqch, tempDir, write, read, expectedVersion, hasCapability } from "../
 
 const names = (value) => value.map((v) => v);
 
+// Squatch Snacks (B5): the starter's AGENTS.md sends an agent to this list, and it had five of the
+// nine commands that print JSON. DELIBERATE (0.14): `new`, `footprint`, `patrol` and `scout`
+// are in it, in `--help`'s order, and this reads each command's own help so the next one is too.
+test("capabilities_lists_every_command_with_json", () => {
+	const caps = JSON.parse(ssqch(["capabilities", "--format", "json"]).stdout);
+	const withJson = caps.commands.filter((command) => /--format <FORMAT>\s+text or json/.test(ssqch([command, "--help"]).log));
+	assert.ok(withJson.length >= 9, withJson.join(", "));
+	assert.deepEqual(caps.json, [...withJson.map((command) => `${command} --format json`), "serve --ready-file"]);
+});
+
 test("capabilities_match_what_a_config_can_use", () => {
 	let r = ssqch(["capabilities", "--format", "json"]);
 	assert.ok(r.ok);

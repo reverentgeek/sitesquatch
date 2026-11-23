@@ -48,6 +48,23 @@ test("what a reader reads becomes Markdown", () => {
 	].join("\n\n") + "\n");
 });
 
+// Squatch Snacks (B3): three pricing plans inside `<billing-toggle>` were one line in the copy,
+// `4 snacks a monthFree shippingSkip any month`. What's inside an element of `elementsPlugin()`'s
+// is the page as it reads without the script, so its blocks are blocks.
+test("a custom element around blocks is read as a div is", () => {
+	const inside = "<section><h2>Day Hike</h2><p>For weekend walkers.</p><ul><li>4 snacks a month</li><li>Free shipping</li></ul></section>";
+	const plain = htmlToMarkdown(`<main><h1>Plans</h1><div>${inside}</div></main>`);
+	assert.equal(plain, "# Plans\n\n## Day Hike\n\nFor weekend walkers.\n\n- 4 snacks a month\n- Free shipping\n");
+	assert.equal(htmlToMarkdown(`<main><h1>Plans</h1><billing-toggle>${inside}</billing-toggle></main>`), plain);
+	// One inside another, and text beside the wrapper, which is a paragraph of its own.
+	assert.equal(htmlToMarkdown("<main>Before <x-outer><x-inner><p>One</p><p>Two</p></x-inner></x-outer> after</main>"), "Before\n\nOne\n\nTwo\n\nafter\n");
+	// In a list item, as any block there.
+	assert.equal(htmlToMarkdown("<main><ul><li><x-card><h3>Crunch</h3><p>Pine cones.</p></x-card></li></ul></main>"), "- ### Crunch\n  Pine cones.\n");
+	// One with only text stays in its line, and a hidden one stays out, with what it wraps.
+	assert.equal(htmlToMarkdown("<main><p>Pine Cone Crunch <x-badge>New</x-badge> today</p><x-badge>Sold out</x-badge> everywhere</main>"), "Pine Cone Crunch New today\n\nSold out everywhere\n");
+	assert.equal(htmlToMarkdown("<main><p>Shown</p><x-menu hidden><p>Not shown</p></x-menu><x-tip><p hidden>Nor this</p> but this</x-tip></main>"), "Shown\n\nbut this\n");
+});
+
 test("text that Markdown would read as markup is escaped", () => {
 	assert.equal(htmlToMarkdown("<p>2 * 3 is [six] and <b>_x_</b> but snake_case stays</p>"), "2 \\* 3 is \\[six\\] and **\\_x\\_** but snake_case stays\n");
 	assert.equal(htmlToMarkdown("<p># not a heading</p><p>1. not a list</p><p>&lt;div&gt; is text</p>"), "\\# not a heading\n\n1\\. not a list\n\n\\<div> is text\n");

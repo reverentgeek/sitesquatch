@@ -1,0 +1,72 @@
+{
+  "version": "0.13.6",
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 13,
+      "templates": 2,
+      "bytes": 59907,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 1,
+      "unchanged": 0,
+      "bytes": 1963
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "campgrounds/beaver-dam-flats/index.html",
+      "campgrounds/cedar-hollow/index.html",
+      "campgrounds/deer-meadow/index.html",
+      "campgrounds/footprint-ridge/index.html",
+      "campgrounds/huckleberry-bend/index.html",
+      "campgrounds/loon-point/index.html",
+      "campgrounds/mossy-log/index.html",
+      "campgrounds/owl-roost/index.html",
+      "campgrounds/pine-cone-pass/index.html",
+      "campgrounds/raccoon-ridge/index.html",
+      "campgrounds/stump-lake/index.html",
+      "campgrounds/trout-creek/index.html",
+      "index.html",
+      "sitemap.xml"
+    ],
+    "summary": [
+      {
+        "label": "Elements",
+        "value": "1 defined, 1 used on 1 page"
+      },
+      {
+        "label": "Links",
+        "value": "89 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages     13 written from 2 templates, 59.9 KB\n  Copied    1 file, 1.96 KB\n  Elements  1 defined, 1 used on 1 page\n  Links     89 checked, 0 broken\n  Output    dist: 15 files, 63.5 KB\n",
+  "files": {
+    "campgrounds/beaver-dam-flats/index.html": "text",
+    "campgrounds/cedar-hollow/index.html": "text",
+    "campgrounds/deer-meadow/index.html": "text",
+    "campgrounds/footprint-ridge/index.html": "text",
+    "campgrounds/huckleberry-bend/index.html": "text",
+    "campgrounds/loon-point/index.html": "text",
+    "campgrounds/mossy-log/index.html": "text",
+    "campgrounds/owl-roost/index.html": "text",
+    "campgrounds/pine-cone-pass/index.html": "text",
+    "campgrounds/raccoon-ridge/index.html": "text",
+    "campgrounds/stump-lake/index.html": "text",
+    "campgrounds/trout-creek/index.html": "text",
+    "elements/campground-filter.js": "text",
+    "index.html": "text",
+    "sitemap.xml": "text"
+  }
+}

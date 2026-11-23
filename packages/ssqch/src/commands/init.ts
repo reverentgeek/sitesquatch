@@ -7,7 +7,7 @@ import { red } from "../diagnostics.ts";
 import { CONFIG_FILES } from "../dirs.ts";
 import { joinAsGiven, parentAsGiven, slashes } from "../paths.ts";
 
-/** The starter site: (path in the new site, file in `bundled/`). It's an amateur investigator's field notes: five posts that each show one thing. */
+/** The starter site: (path in the new site, file in `bundled/`). It's an amateur investigator's field notes: seven posts that each show one thing. */
 const STARTER: Array<[string, string]> = [
 	["ssqch.config.js", "starter/ssqch.config.js"],
 	["src/_data/site.json", "starter/src/_data/site.json"],
@@ -17,6 +17,8 @@ const STARTER: Array<[string, string]> = [
 	["src/posts/the-stump-has-moved.md", "starter/src/posts/the-stump-has-moved.md"],
 	["src/posts/raiders-of-the-lost-path.md", "starter/src/posts/raiders-of-the-lost-path.md"],
 	["src/posts/the-cache-of-the-wild.md", "starter/src/posts/the-cache-of-the-wild.md"],
+	["src/posts/the-stump-has-a-forwarding-address.md", "starter/src/posts/the-stump-has-a-forwarding-address.md"],
+	["src/posts/honey-i-shrunk-the-site.md", "starter/src/posts/honey-i-shrunk-the-site.md"],
 	["src/404.md", "starter/src/404.md"],
 	["src/favicon.svg", "starter/src/favicon.svg"],
 	["src/img/stump.jpg", "starter/src/img/stump.jpg"],

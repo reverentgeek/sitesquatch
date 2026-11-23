@@ -9,6 +9,149 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## 0.14.0 - 2026-11-23
+
+### Breaking
+
+- `page.outputPath` is a path from the project root, written as `page.inputPath` is:
+  `./dist/about/index.html`. It was the machine's whole path (`/Users/sam/site/dist/about/
+  index.html`), so a page that printed it wasn't the same on two machines, and `ssqch trace
+  --format json` had that path in its report. It's the same value everywhere a page has one: a
+  template's `page`, a collection's item, `this.page` in a filter, and the `page` a transform
+  gets (a plugin in Rust too). What a site has to change: nothing if it compares the value or
+  looks at how it ends (`page.outputPath.endsWith(".html")`), which is what the sites ssqch is
+  tested with do, and nothing if it opens the file with it, since a site's code runs in the
+  project root (with `--root` too). Code that needs the whole path, to compare it with another
+  or hand it to a tool that runs somewhere else, resolves it: `path.resolve(page.outputPath)`.
+  An `afterBuild` hook's `written` and the
+  pages a plugin's function gets (`sitemapPlugin()`'s `alternates`, `llmsPlugin()`'s `section`)
+  keep whole paths. An output folder outside the project root is still its whole path.
+- `redirectsPlugin({ netlify: true })` is `redirectsPlugin({ hostFile: true })`: Netlify and
+  Cloudflare both read `_redirects`, so the option is named for the file it writes. The old name
+  stops the build with `netlify is called hostFile now`. And with `hostFile` on, `pages` defaults
+  to `false`: a host serves a file that exists before it reads `_redirects`, so with both, an old
+  address answered 200 with the redirect page, and the 301 line never ran. What a site has to
+  change: `netlify: true` becomes `hostFile: true`, and `pages: false` beside it can go. To keep
+  the pages too (a host that doesn't read `_redirects` is also serving the folder), add `pages:
+  true`.
+- `redirectsPlugin()` stops a build whose `redirects` or `aliases` have a pattern (an old URL
+  with a `*` or a `:name` segment, `"/snacks/*": "/provisions/:splat"`) when `hostFile: true`
+  isn't set: `/snacks/* is a pattern (a * or a :name), which only a host can match, and a
+  redirect page can't. Set hostFile: true, so it's a line in _redirects`. Before, it wrote a
+  redirect page at `snacks/*/index.html`, which nobody is ever sent to. What a site has to
+  change: set `hostFile: true`, or take the pattern out.
+
+### Added
+- `ssqch patrol` says what the site's robots.txt lets AI crawlers do, by purpose: `AI crawlers:
+  training refused (7), search allowed (3), fetch allowed (4)`, and `ai` in its JSON. It reads
+  the file the way each crawler `robotsPlugin()` knows reads it, so it works on any build's
+  robots.txt. Squatch Snacks wrote 35 lines to learn this from its own file.
+- The starters (`ssqch init`, both, in every language) set `strict: true`, so a misspelled name
+  in a template is an error with its file and line instead of an empty spot on the page;
+  `dateFallback: "git"`, so a page with no date of its own, and the sitemap's `<lastmod>`, are
+  the same in every clone; and `timeZone: "UTC"`. Their `readableDate` filter spells the month
+  out itself instead of calling `toLocaleDateString`, whose answers can change between Node
+  releases. Every page they build is the same as before. Squatch Snacks found each of these.
+- `budgets` take `fail: true` (`budgets: { pages: "150 KB", fail: true }`): whatever is over
+  budget is then an error, and a production build exits 1, so a deploy stops at a page that grew
+  too big. A development build and `ssqch serve` still warn, as they do for broken links. Without
+  it, a budget warns as it did. Squatch Snacks wrote a 40-line `afterBuild` hook to do this.
+- The docs starter (`ssqch init --starter docs`) copies a section's link: clicking the `#` beside
+  a heading goes there as before and puts the section's address on the clipboard, with "Link
+  copied" beside it for a moment, ready to paste into an issue or a chat. It's in the starter's
+  `docs.js` and `docs.css`; without a clipboard the `#` is the plain link it was.
+- The blog starter (`ssqch init`) has two more posts, each showing one thing: *The Stump Has a
+  Forwarding Address* moved, and its old address still gets readers there (`aliases` in its
+  front matter, and `redirectsPlugin()`, now in the starter's config), and *Honey, I Shrunk the
+  Site* weighs the build with `ssqch footprint` and sets `budgets`, with the starter's own
+  numbers.
+- A new example, `searchable-directory` (EJS): twelve campgrounds from one data file, a page for
+  each by pagination, a list filtered by region and amenity with a custom element
+  (`elementsPlugin()`, the choice kept in the address so a filtered list can be linked), and
+  Pagefind search of the campground pages only. It's live at
+  sitesquatch.dev/examples/searchable-directory/.
+
+### Changed
+- `serve`'s line in `ssqch --help` says `--built serves the last build as it is`, and `ssqch
+  serve --help` that a host's own rules (`_redirects`, `_headers`) aren't applied, so its CLI
+  (`netlify dev`, `wrangler dev`) is the one to check them with. Squatch Snacks served its builds
+  with Python until it found `--built`.
+- The docs: the Tailwind recipe writes to `$SSQCH_OUTPUT` (a build with `--output` or `--base`
+  goes to another folder than `dist/`) and tells Tailwind where the templates are with
+  `source(none)` and `@source`, so it doesn't ship classes from the site's notes; `elementsPlugin()`
+  goes before `assetsPlugin()` when an element's script is fingerprinted (the other way round, the
+  page keeps the old name); and `leaveNoTrace` leaves encoded images, which `imagePlugin({ prune:
+  true })` removes, and which `prune` now says.
+- `ssqch docs <word>` weighs a word written as code (`<picture>`) over the same word in prose,
+  and searches for a plain word that no entry defines: `picture` answered with `slugger`'s "Misc
+  Pictures" and is the responsive images paragraph now, and `feed` was a list about `diff`.
+- A schema's problem on a paginated page says which item it's on: `src/snack.jinja (item 4 of
+  snacks, "Ridge Runner Jerky"): price is required`, by the item's `title`, `name` or `slug`, or
+  `(page 2 of posts)` for a page of several. Six errors from one template all said
+  `src/snack.jinja`.
+- A misspelled required field is one problem: ``location` is required (a string), and the page
+  has `loaction`: did you mean `location`?``. It was two, and the one that said what happened
+  came second.
+- A value in YAML front matter with a second `: ` in it (`summary: Hours: early mornings`) says
+  what to do: `summary's value has a ": " in it, so YAML reads it as another key; put the value in
+  quotes: summary: "Hours: early mornings"`, before the parser's own words and place. It's the
+  mistake a second author makes first, and the parser's "bad indentation of a mapping entry"
+  didn't say.
+- `--quiet` holds a `{ run }` hook's own output, as it holds ssqch's, and prints it only when the
+  command fails, where it's what says why. A Tailwind build in `beforeBuild` printed its banner on
+  every quiet build. `ssqch trace` holds it too, as it holds the build's own lines. The command
+  gets `SSQCH_QUIET=true`, as before.
+
+### Fixed
+- A `computed` or `permalink` string isn't HTML-escaped as it's worked out, in any template
+  language: it's data, and the template that prints it escapes it once. Before, it was escaped
+  twice, so the blog starter's page for a tag `Rock & Roll` was titled `Tagged Rock &amp;amp;
+  Roll` (in Jinja, Nunjucks, Handlebars, Edge and EJS; Liquid escapes nothing it prints). A site
+  that worked around it by printing raw in its `computed` (`<%-`, `{{{ }}}`, `| safe`) gets the
+  same output as before.
+- Search in the docs starter (`SEARCH=1`) and the `docs-sidebar` example works under a `base`,
+  as on a GitHub Pages project site. Pagefind's script is a module, which can't see where it was
+  loaded from, so it looked for its index in `/pagefind/` at the root of the domain and found
+  nothing (or, on sitesquatch.dev, the site's own docs). The layouts set `<pagefind-config
+  bundle-path>` with `withBase("/pagefind/")`, and "Search" in "Deploying" shows it. A site made
+  from the docs starter before this adds the same element to its layout.
+- `imagePlugin()` leaves a `<picture>` the page wrote itself as one picture. For another crop on
+  a phone (`<picture><source media="(max-width: 40rem)" srcset="/img/tall.jpg"><img
+  src="/img/wide.jpg"></picture>`), the `<img>` was wrapped in a second `<picture>` inside the
+  first, which isn't valid HTML, and `/img/tall.jpg` was never published, so the phone got a
+  broken picture (the link checker said `/img/tall.jpg (not found)`). Now the `<img>`'s formats
+  are `<source>`s after the page's own, and each local picture a `<source srcset>` names is
+  published as one copy in its own format and at its own size, its `2x` or `800w` as written. A
+  candidate that isn't a picture in the input folder stays as it is. A site that worked around
+  it with `image()` and `ssqch:ignore` on its `<img>` builds as before, since its `<source>`s
+  name files that are already copies. One that published its crops itself (a passthrough copy)
+  now gets them from the image folder: `ssqch:ignore` is for the tag it's on, so put it on each
+  `<source>` as well as the `<img>` to leave a whole `<picture>` alone.
+- `sitemapPlugin({ alternates })` writes a page's `<lastmod>` before its `<xhtml:link>` lines,
+  the order sitemaps.org's schema checks. With the links first, a validator refused the sitemap
+  (`Element lastmod: This element is not expected`). A sitemap without `alternates`, or with
+  `lastmod: false`, is byte for byte what it was.
+- A page's Markdown copy (`llmsPlugin()`) reads a custom element around headings, lists or
+  paragraphs as it reads a `<div>`. What's inside one of `elementsPlugin()`'s elements is the
+  page without its script, and the copy ran it together into one line: three pricing plans
+  inside `<billing-toggle>` came out as `4 snacks a monthFree shippingSkip any month`. A custom
+  element with only text inside (`<x-badge>New</x-badge>`) is still part of its line.
+- `redirectsPlugin()` reads an old URL with a `*` or a `:name` segment as a pattern (`redirects:
+  { "/snacks/*": "/provisions/:splat" }`). Its line in `_redirects` comes after the exact
+  addresses, the pattern with the most fixed in front first: a host takes the first line that
+  matches, and sorted with the rest, `/snacks/*` came before `/snacks/pine-cone-crunch/` and
+  took its address. A pattern gets no redirect page, either. It got one at `snacks/*/index.html`,
+  which answers nobody, isn't a file name Windows takes, and was a broken link to `linksPlugin()`
+  (so a pattern needs `hostFile: true`: see "Breaking"). A `_redirects` file without patterns is
+  byte for byte what it was.
+- `ssqch diff` says where a change on more than one file is (`@ under #visit`, and `at` in the
+  JSON) only when it's under the same heading on every one of them. It printed the first file's:
+  a footer that changed on 16 pages was "under" the 404 page's heading, which the other 15 don't
+  have. A file listed on its own still says where each of its changes is.
+- `ssqch capabilities --format json` lists every command that prints JSON in `json`: `new`,
+  `footprint`, `patrol` and `scout` were missing from it, and the starters' `AGENTS.md` sends an
+  agent there to learn what it can ask for.
+
 ## 0.13.6 - 2026-11-23
 
 ### Added

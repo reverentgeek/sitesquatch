@@ -184,6 +184,28 @@ test("computed_values_see_collections", () => {
 	assert.match(read(root, "_site/learn/index.html"), /Pine, Cedar \(2\)/);
 });
 
+// DELIBERATE (0.14): a `computed` or `permalink` string is data, so it isn't HTML-escaped as it's
+// worked out; the template that prints it escapes it once. Escaped twice, the blog starter's page
+// for a tag "Rock & Roll" was titled "Tagged Rock &amp;amp; Roll" (in every language but Liquid,
+// which escapes nothing it prints).
+test("computed_and_permalink_strings_are_escaped_once_where_printed", () => {
+	const pages = {
+		jinja: ["Tagged {{ name }}", "{{ title }}"],
+		njk: ["Tagged {{ name }}", "{{ title }}"],
+		liquid: ["Tagged {{ name }}", "{{ title | escape }}"],
+		hbs: ["Tagged {{name}}", "{{title}}"],
+		edge: ["Tagged {{ name }}", "{{ title }}"],
+		ejs: ["Tagged <%= name %>", "<%= title %>"],
+	};
+	const files = { "ssqch.config.js": `export default { templateFormats: ${JSON.stringify(Object.keys(pages))} };\n` };
+	for (const [ext, [computed, print]] of Object.entries(pages)) files[`${ext}.${ext}`] = `---\nname: "Rock & <Roll>"\ncomputed:\n  title: "${computed}"\n---\n<h1>${print}</h1>\n`;
+	files["moved.njk"] = "---\nq: \"a&b\"\npermalink: \"/p/{{ q }}/\"\n---\nMoved\n";
+	const root = project(files);
+	buildOk(root);
+	for (const ext of Object.keys(pages)) assert.equal(read(root, `_site/${ext}/index.html`).trim(), "<h1>Tagged Rock &amp; &lt;Roll&gt;</h1>", ext);
+	assert.equal(read(root, "_site/p/a&b/index.html").trim(), "Moved");
+});
+
 // opensource.guide (osg #12): Bundler's `--path vendor/gems` put Jekyll's own templates in the
 // site, and ssqch built them as pages (5 errors, from gems' layouts). A Bundler install folder is
 // skipped as node_modules is; a site's own `vendor/` folder isn't.
@@ -218,6 +240,21 @@ export default {
 	assert.ok(ssqch(["build", "--root", root, "--verbose"]).ok);
 	assert.equal(read(root, "hooks.txt"), "false true");
 	assert.equal(read(root, "quiet.txt"), "false");
+});
+
+// Added in 0.14 (Squatch Snacks, E10): under `-q`, a command's own output is held, as ssqch's is
+// (Tailwind's banner printed on every quiet build), and printed when the command fails, since then
+// it's what says why.
+test("quiet_holds_a_commands_output_unless_it_fails", () => {
+	const config = (code) => `export default { templateFormats: ["md"], beforeBuild: [{ run: "node -e \\"console.log('tailwind banner'); console.error('a note'); process.exit(${code})\\"" }] };\n`;
+	const root = project({ "ssqch.config.js": config(0), "index.md": "# Home\n" });
+	let r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(r.ok && !r.log.includes("tailwind banner") && !r.log.includes("a note"), r.log);
+	r = ssqch(["build", "--root", root]);
+	assert.ok(r.ok && r.log.includes("tailwind banner") && r.log.includes("a note"), r.log);
+	fs.writeFileSync(path.join(root, "ssqch.config.js"), config(3));
+	r = ssqch(["build", "--root", root, "--quiet"]);
+	assert.ok(!r.ok && r.log.includes("tailwind banner") && r.log.includes("a note") && r.log.includes("exited with status 3"), r.log);
 });
 
 // opensource.guide (osg #13, #14): Jekyll's `time:` pins `site.time` and the date of every page

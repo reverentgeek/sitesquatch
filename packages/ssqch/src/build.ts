@@ -157,7 +157,15 @@ export async function build(config: Config): Promise<BuildReport> {
 	// written, a11y #20), or remove one.
 	if (config.afterBuild.length) report.pageBytes = written.reduce((sum, w) => sum + (fs.statSync(w.file, { throwIfNoEntry: false })?.size ?? 0), 0);
 	// After the hooks, which can fingerprint or minify what's measured.
-	if (config.budgets.length) for (const found of overBudget(await measure(dirs.output), config.budgets)) warn(found);
+	if (config.budgets.length) {
+		const over = overBudget(await measure(dirs.output), config.budgets);
+		// `budgets.fail` makes them errors where a broken link is one: a production build, not
+		// `ssqch serve`, which keeps going so the page can be fixed.
+		if (over.length && config.budgetsFail && config.env === "production" && !config.serving) {
+			throw new Diagnostics(over.map((d) => d.message).join("\n"), over.map((d) => ({ ...d, severity: "error" })));
+		}
+		for (const found of over) warn(found);
+	}
 	for (const [label, line] of config.summaries) {
 		const value = line(config);
 		if (value !== undefined) report.summary.push([label, value]);
@@ -483,7 +491,8 @@ class Renderer {
 		}
 
 		const output = page.output;
-		const info = { url: page.url ?? "", inputPath: site.display(tpl.input), outputPath: output };
+		// What a transform gets, both paths from the project root as templates have them.
+		const info = { url: page.url ?? "", inputPath: site.display(tpl.input), outputPath: site.display(output) };
 		const transforms = [...config.htmlTransforms, ...config.transforms];
 		for (let i = 0; i < transforms.length; i++) {
 			const [name, transform] = transforms[i];
@@ -937,12 +946,20 @@ async function runHooks(config: Config, dirs: Dirs, event: "beforeBuild" | "afte
 export function runCommand(config: Config, dirs: Dirs, event: string, command: string): void {
 	if (!config.quiet) progress(`[ssqch] ${event}: ${command}`);
 	const { file, args, options } = commandLine(command, dirs.root, { SSQCH_ENV: config.env, SSQCH_SERVING: config.serving ? "true" : "false", SSQCH_QUIET: config.quiet ? "true" : "false", SSQCH_INPUT: dirs.input, SSQCH_OUTPUT: dirs.output });
+	// Under `-q` the tool's own output is held (Tailwind's banner printed on every quiet build,
+	// Squatch Snacks E10), and shown only when it fails, where it's the part that says why.
+	const held = config.quiet;
 	const ran = spawnSync(file, args, {
 		...options,
 		// Standard output is kept for the JSON report, so the command's goes to standard error.
-		stdio: ["inherit", isCapturing() ? 2 : "inherit", "inherit"],
+		stdio: held ? ["inherit", "pipe", "pipe"] : ["inherit", isCapturing() ? 2 : "inherit", "inherit"],
+		maxBuffer: 256 * 1024 * 1024,
 	});
 	if (ran.error) bail(`${event}: couldn't run \`${command}\`: ${ran.error.message}`);
+	if (held && ran.status !== 0) {
+		if (ran.stdout?.length) process.stderr.write(ran.stdout);
+		if (ran.stderr?.length) process.stderr.write(ran.stderr);
+	}
 	if (ran.status !== 0) bail(`${event}: \`${command}\` ${ran.status === null ? "was stopped" : `exited with status ${ran.status}`}`);
 }
 

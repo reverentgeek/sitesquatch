@@ -17,7 +17,7 @@ export default defineConfig( {
 	plugins: [
 		sitemapPlugin( { url: "https://sitesquatch.dev" } ),
 		// Netlify follows these; no redirect pages needed.
-		redirectsPlugin( { netlify: true, pages: false } ),
+		redirectsPlugin( { hostFile: true } ),
 		linksPlugin()
 	]
 } );

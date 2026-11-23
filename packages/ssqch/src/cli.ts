@@ -56,7 +56,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	},
 	{
 		name: "serve",
-		about: "Build, serve, watch for changes and live-reload the browser",
+		about: "Build, serve, watch for changes and live-reload the browser (--built serves the last build as it is)",
 		options: [
 			{ long: "port", short: "p", value: "PORT", help: "The port to listen on (0 picks a free one)", default: "8080", check: port },
 			{ long: "host", value: "ADDRESS", help: "The address to listen on: 0.0.0.0 to open the site from a phone on the same network", default: "127.0.0.1", check: host },
@@ -64,7 +64,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 			{ long: "ready-file", value: "FILE", path: true, help: "Write this file once the first build is done: JSON with the url, port and output folder" },
 		],
 		positionals: [],
-		afterHelp: "With --built, it serves the output folder as the last build left it, the way a host would: no build, no\nwatching, no reload script, and text compressed with gzip. For checking a production build (Lighthouse,\na deploy's files) before it goes out:\n\n  ssqch build\n  ssqch serve --built",
+		afterHelp: "With --built, it serves the output folder as the last build left it, the way a host would: no build, no\nwatching, no reload script, and text compressed with gzip. For checking a production build (Lighthouse,\na deploy's files) before it goes out:\n\n  ssqch build\n  ssqch serve --built\n\nA host's own rules (_redirects, _headers) aren't applied: the host's CLI serves with them (netlify dev,\nwrangler dev).",
 	},
 	{
 		name: "new",
@@ -126,7 +126,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	},
 	{
 		name: "init",
-		about: "Create a starter site (config, layout, five posts, data and editor types)",
+		about: "Create a starter site (config, layout, seven posts, data and editor types)",
 		options: [
 			{ long: "starter", value: "NAME", help: "What to start with: site (a small blog) or docs (documentation with a sidebar, tabs and search)", default: "site" },
 			{ long: "engine", value: "NAME", help: "The template language for the starter's layouts and templates: jinja, njk, edge, liquid, hbs or ejs", default: DEFAULT_ENGINE },

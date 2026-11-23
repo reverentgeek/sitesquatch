@@ -958,7 +958,9 @@ export class Site {
 				if (url.endsWith("/index.html")) url = url.slice(0, -10);
 				if (!isInside(dirs.output, output) || rel.split("/").includes("..")) bail(`permalink ${show(url)} points outside the output directory`);
 			}
-			data.page = basePage(url ?? false, output ?? false, pageDate);
+			// `page.outputPath` is named as `page.inputPath` is, from the project root (`./dist/about/index.html`):
+			// the machine's whole path made a page that prints it another page on every machine.
+			data.page = basePage(url ?? false, output === null ? false : this.display(output), pageDate);
 			// Like js-yaml, front matter dates become real dates.
 			if (data.date !== undefined && data.date !== null) data.date = pageDate;
 			delete data.collections;
@@ -1069,7 +1071,7 @@ export class Site {
 			inputPath: page.data.page.inputPath,
 			fileSlug: page.tpl.fileSlug,
 			filePathStem: page.tpl.filePathStem,
-			outputPath: page.output ?? false,
+			outputPath: page.output === null ? false : this.display(page.output),
 			// `page` with `headings` and `excerpt` from the rendered body.
 			get page() { return withBody ??= site.pageWithBody(page); },
 			data: page.data,

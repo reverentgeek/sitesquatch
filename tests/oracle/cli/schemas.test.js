@@ -87,3 +87,28 @@ test("a_date_that_isnt_one_points_at_its_line", () => {
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(!r.ok && r.log.includes("1 content error:\n  - src/t.md: `date` isn't a date"), r.log);
 });
+
+// Added in 0.14 (Squatch Snacks, E1 and E6). A paginated template's problems say which item each
+// is on (six errors that all said `src/snack.jinja` sent the site to rule functions on made-up
+// fields), and a misspelled required field is one problem, not a "required" and then, second, the
+// "isn't a field" that says what happened.
+test("schema_problems_name_the_item_and_the_misspelling", () => {
+	const dir = tempDir("schemas-items");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"jinja\", \"md\"], schemas: { snacks: { files: \"snack.jinja\", fields: { title: \"string\", price: \"number\" } }, events: { files: \"events/*.md\", fields: { title: \"string\", location: \"string\" }, unknown: \"error\" } } };\n",
+		"src/_data/snacks.json": "[{ \"name\": \"Pine Cone Crunch\", \"price\": 3 }, { \"name\": \"Ridge Runner Jerky\" }]",
+		"src/snack.jinja": "---\npagination: { data: snacks, size: 1, alias: snack }\npermalink: \"/snacks/{{ snack.name | slugify }}/\"\ntitle: Snack\ncomputed:\n  price: \"{{ snack.price }}\"\n---\n{{ snack.name }}\n",
+		"src/events/hike.md": "---\ntitle: Hike\nloaction: Cedar Trail\n---\nGo\n",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok, r.log);
+	for (const expected of [
+		"3 content errors:",
+		"  - src/events/hike.md: `location` is required (a string), and the page has `loaction`: did you mean `location`? (schema `events`)",
+		"  - src/snack.jinja (item 1 of snacks, \"Pine Cone Crunch\"): `price` must be a number, not \"3\" (schema `snacks`)",
+		"  - src/snack.jinja (item 2 of snacks, \"Ridge Runner Jerky\"): `price` must be a number, not \"\" (schema `snacks`)",
+	]) {
+		assert.ok(r.log.includes(expected), `missing ${JSON.stringify(expected)} in\n${r.log}`);
+	}
+	assert.ok(!r.log.includes("isn't a field"), r.log);
+});

@@ -101,6 +101,10 @@ test("docs_answer_for_every_name", () => {
 		r = ssqch(["docs", ...query]);
 		assert.ok(r.ok && r.log.includes(want), `${JSON.stringify(query)}: ${r.log}`);
 	}
+	// Added in 0.14 (Squatch Snacks, D1): a plain word counts more where it's written as code, so
+	// `picture` finds `<picture>` and not slugger's "Misc Pictures".
+	r = ssqch(["docs", "picture"]);
+	assert.ok(r.ok && r.log.includes("**Responsive images:**") && !r.log.includes("slugger"), r.log);
 	// The image quality options, on sharp's scale, with their defaults.
 	r = ssqch(["docs", "avifEffort"]);
 	assert.ok(r.ok && r.log.includes("`avifQuality` 41") && r.log.includes("`avifEffort` 2"), r.log);

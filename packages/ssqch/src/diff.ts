@@ -1095,10 +1095,23 @@ export function groupChanges(changed: FileDiff[]): DiffGroup[] {
 	// The most files first; the groups' places in the report follow. A merged group is gone.
 	const order = drafts.map((_, i) => i).filter((i) => !merged.has(i)).sort((a, b) => drafts[b].files.size - drafts[a].files.size || drafts[a].first - drafts[b].first);
 	const number = new Map(order.map((old, i) => [old, i]));
+	// Where a group is: the heading every one of its hunks is under, or nowhere. The hunk shown is
+	// the first file's, and its own place (`@ under #contact-us`) read as every file's: a footer
+	// that changed on 16 pages was "under" the 404 page's heading (the Squatch Snacks study, B4).
+	const places = new Map<number, Set<string | undefined>>();
+	for (const at of placed.values()) {
+		for (const [h, draft] of at) {
+			const seen = places.get(draft);
+			if (seen) seen.add(h.at);
+			else places.set(draft, new Set([h.at]));
+		}
+	}
 	const groups: DiffGroup[] = order.map((i) => {
 		const d = drafts[i];
 		const known = knownChange(d.hunk);
-		return { urls: [...d.files].sort((a, b) => a - b).map((f) => changed[f].url), same: d.match === "lines", match: d.match, kind: kindOf(d.hunk), hunk: d.hunk, ...(known ? { known } : {}) };
+		// A copy: the hunk is still the first file's, with its place, for `--ungrouped` and a file's own list.
+		const hunk: Hunk = d.hunk.at === undefined || places.get(i)?.size === 1 ? d.hunk : { removed: d.hunk.removed, added: d.hunk.added };
+		return { urls: [...d.files].sort((a, b) => a - b).map((f) => changed[f].url), same: d.match === "lines", match: d.match, kind: kindOf(d.hunk), hunk, ...(known ? { known } : {}) };
 	});
 	for (const f of changed) {
 		const at = placed.get(f)!;

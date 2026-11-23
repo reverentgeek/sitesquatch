@@ -32,7 +32,7 @@
       <%_ } _%>
     </nav>
     <%_ if (locals.search) { _%>
-    <div id="search"><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
+    <div id="search"><pagefind-config bundle-path="<%= withBase("/pagefind/") %>"></pagefind-config><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
     <%_ } _%>
     <%_ /* docs.js shows it. Without JavaScript, the theme follows the system. */ _%>
     <button class="theme-switch" type="button" hidden>Switch theme</button>

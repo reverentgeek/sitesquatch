@@ -12,6 +12,8 @@ import { markdown } from "./api.ts";
 import { htmlText } from "./content.ts";
 import { bail } from "./diagnostics.ts";
 import { compareText } from "./paths.ts";
+import { CRAWLERS } from "./modules/robots.ts";
+import type { Purpose } from "./modules/robots.ts";
 import { count } from "./report.ts";
 
 /** One kind of finding, and where. */
@@ -28,6 +30,8 @@ export interface Patrol {
 	/** The signs it found: the files agents and crawlers look for first. */
 	signs: { robots: boolean; sitemap: boolean; llms: boolean; notFound: boolean };
 	copies: number;
+	/** What robots.txt lets the AI crawlers ssqch knows do, by purpose: how many of each are let in and kept out. None without a robots.txt. */
+	ai?: Record<Purpose, { allowed: number; refused: number }>;
 	/** Each page with a Markdown copy, by address (`/about/`, `/about/index.md`), for `--url`. */
 	withCopies: Array<{ page: string; copy: string }>;
 	findings: Finding[];
@@ -120,6 +124,41 @@ function fencesClose(md: string): boolean {
 
 /** A link that doesn't work once the text is read away from its page: not a whole address, a path from the root or a fragment. */
 const relative = (href: string) => !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(href) && !href.startsWith("#") && !href.startsWith("/");
+
+/**
+ * What a robots.txt lets each AI crawler in `CRAWLERS` do, by purpose. A crawler reads the group
+ * that names it, or the `*` group when none does, and it's refused when that group has
+ * `Disallow: /` and no `Allow: /`. Squatch Snacks wrote 35 lines to learn this from its own file
+ * (F6), where patrol only said robots.txt was posted.
+ */
+export function aiPolicy(robots: string): Record<Purpose, { allowed: number; refused: number }> {
+	const groups: Array<{ agents: string[]; rules: Array<[string, string]> }> = [];
+	let open = false;
+	for (const raw of robots.split(/\r?\n/)) {
+		const line = raw.replace(/#.*$/, "").trim();
+		const m = /^([A-Za-z-]+)\s*:\s*(.*)$/.exec(line);
+		if (!m) continue;
+		const key = m[1].toLowerCase();
+		const value = m[2].trim();
+		if (key === "user-agent") {
+			if (!open) groups.push({ agents: [], rules: [] });
+			groups[groups.length - 1].agents.push(value.toLowerCase());
+			open = true;
+		} else if (key === "allow" || key === "disallow") {
+			if (groups.length) groups[groups.length - 1].rules.push([key, value]);
+			open = false;
+		}
+	}
+	const refuses = (rules: Array<[string, string]>) => rules.some(([k, v]) => k === "disallow" && v === "/") && !rules.some(([k, v]) => k === "allow" && v === "/");
+	const out = { training: { allowed: 0, refused: 0 }, search: { allowed: 0, refused: 0 }, fetch: { allowed: 0, refused: 0 } };
+	for (const crawler of CRAWLERS) {
+		const token = crawler.token.toLowerCase();
+		const own = groups.filter((g) => g.agents.includes(token));
+		const rules = (own.length ? own : groups.filter((g) => g.agents.includes("*"))).flatMap((g) => g.rules);
+		out[crawler.purpose][refuses(rules) ? "refused" : "allowed"]++;
+	}
+	return out;
+}
 
 /** Checks the build in `dir`. */
 export function patrol(dir: string): Patrol {
@@ -266,6 +305,7 @@ export function patrol(dir: string): Patrol {
 		pages: pageUrls.length,
 		signs: { robots: robots !== undefined, sitemap: sitemapFile !== undefined || Boolean(sitemapLine), llms: llms !== undefined, notFound: has.has("404.html") },
 		copies,
+		...(robots === undefined ? {} : { ai: aiPolicy(robots) }),
 		withCopies,
 		findings: [...found.values()].map((f) => ({ ...f, files: [...new Set(f.files)] })),
 	};
@@ -324,6 +364,15 @@ export function patrolText(p: Patrol, shown: string): string {
 	const sign = (name: string, there: boolean) => `${name} ${there ? "posted" : "missing"}`;
 	let out = `Patrol of ${shown}: ${p.pages} page${p.pages === 1 ? "" : "s"}, ${p.copies} with a Markdown copy\n`;
 	out += `  ${[sign("robots.txt", p.signs.robots), sign("sitemap", p.signs.sitemap), sign("llms.txt", p.signs.llms), sign("404.html", p.signs.notFound)].join(", ")}\n`;
+	if (p.ai) {
+		// `AI crawlers: training refused (7), search allowed (3), fetch allowed (4)`.
+		const each = (Object.entries(p.ai) as Array<[string, { allowed: number; refused: number }]>).map(([purpose, n]) => {
+			if (!n.refused) return `${purpose} allowed (${n.allowed})`;
+			if (!n.allowed) return `${purpose} refused (${n.refused})`;
+			return `${purpose} ${n.refused} refused, ${n.allowed} allowed`;
+		});
+		out += `  AI crawlers: ${each.join(", ")}\n`;
+	}
 	if (p.live) out += `  Live at ${p.live.url}: asked about ${p.live.asked} page${p.live.asked === 1 ? "" : "s"} as an agent and as a browser\n`;
 	if (!p.findings.length) return `${out}\nAll clear: nothing on the trail for an agent to trip on.\n`;
 	out += "\n";
@@ -340,5 +389,5 @@ export function patrolText(p: Patrol, shown: string): string {
 
 /** The report as JSON (`schemaVersion` 1). */
 export function patrolJson(p: Patrol, output: string): Record<string, unknown> {
-	return { schemaVersion: 1, output, pages: p.pages, copies: p.copies, signs: p.signs, ...(p.live ? { live: p.live } : {}), warnings: p.findings.map((f) => ({ code: f.code, message: f.message, files: f.files })) };
+	return { schemaVersion: 1, output, pages: p.pages, copies: p.copies, signs: p.signs, ...(p.ai ? { ai: p.ai } : {}), ...(p.live ? { live: p.live } : {}), warnings: p.findings.map((f) => ({ code: f.code, message: f.message, files: f.files })) };
 }

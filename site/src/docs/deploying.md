@@ -50,7 +50,9 @@ Then Pagefind's Component UI in your layout: its stylesheet and script, and a se
 <link rel="stylesheet" href="/pagefind/pagefind-component-ui.css">
 <script src="/pagefind/pagefind-component-ui.js" type="module"></script>
 
-<div id="search"><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
+<div id="search"><pagefind-config bundle-path="{{ "/pagefind/" | withBase }}"></pagefind-config><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
 ```
+
+`<pagefind-config bundle-path>` tells the search where its index is. Pagefind's script is a module, which can't see the address it was loaded from, so without it the search looks in `/pagefind/` at the root of the domain: under a [`base`](#serving-a-site-under-a-path) (a GitHub Pages project site, `/repo/`), that's nothing, or another site's index, and every search comes up empty. ssqch adds the base to URL attributes, and `bundle-path` isn't one, so `withBase` adds it (`{{ withBase("/pagefind/") }}` in Edge, `<%= withBase("/pagefind/") %>` in EJS, `{{withBase "/pagefind/"}}` in Handlebars).
 
 Its colors are custom properties (`--pf-text`, `--pf-background`, `--pf-border` and the rest). Pagefind's stylesheet sets them on `:root`, so set yours on an element around the search (`#search { --pf-text: var(--text); }`), and they follow your light and dark themes. `ssqch serve` builds without the `afterBuild` command, so to try search, build for production and serve that build: `ssqch build`, then `ssqch serve --built`. The docs starter (`ssqch init --starter docs`) has all of this, behind `SEARCH=1`.

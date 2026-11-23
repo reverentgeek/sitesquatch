@@ -250,8 +250,20 @@ export async function check(schema: Schema, data: Data, frontKeys: string[], fil
 	checkFields(schema.fields, data, "", { page: data, files, root }, found);
 	// Only a check that returns a promise is waited for, and the problems stay in the fields' order.
 	const problems = found.some((p) => p instanceof Promise) ? (await Promise.all(found)).filter((p) => p !== undefined) : found as Problem[];
+	// A misspelled field is two problems, and the one to read came second: `location` is
+	// required, then `loaction` isn't a field (Squatch Snacks, E6). It's one: the required field,
+	// and the key in the page that's nearly it.
+	const misspelt = new Set<string>();
+	for (const [i, problem] of problems.entries()) {
+		if (!problem.message.startsWith(`\`${problem.field}\` is required`) || problem.field.includes(".")) continue;
+		const typo = frontKeys.find((key) => !schema.fields.some((f) => f.name === key) && closest(key, [problem.field]) === problem.field);
+		if (typo === undefined) continue;
+		misspelt.add(typo);
+		problems[i] = { ...problem, message: `${problem.message}, and the page has \`${typo}\`: did you mean \`${problem.field}\`?` };
+	}
 	if (schema.unknown !== "allow") {
 		for (const key of frontKeys) {
+			if (misspelt.has(key)) continue;
 			const row = equivalents.find(key, "frontMatter");
 			const readAs = row?.alias ? row.ssqch : key;
 			if (schema.fields.some((f) => f.name === key || f.name === readAs) || BUILT_IN_KEYS.includes(readAs)) continue;
@@ -445,6 +457,23 @@ function typeTs(type: Type, depth: number): string {
  * found; errors fail the build, listed together (the first 30, or all with `--verbose`). A
  * template that makes many pages reports each problem once.
  */
+/**
+ * Which of a paginated template's pages a problem is on: ` (item 4 of snacks, "Ridge Runner
+ * Jerky")`, named by the item's `title`, `name` or `slug` when it has one, or ` (page 2 of
+ * posts)` for a page of several. Empty for a page that isn't paginated. Six errors that all said
+ * `src/snack.jinja` sent Squatch Snacks to rule functions on made-up fields to find the item (E1).
+ */
+function paginated(data: Data): string {
+	const p = data.pagination;
+	if (!isObject(p) || typeof p.pageNumber !== "number" || typeof p.data !== "string") return "";
+	const items = Array.isArray(p.items) ? p.items : [];
+	const one = items.length === 1 && Number(p.size ?? 1) === 1;
+	if (!one) return ` (page ${p.pageNumber + 1} of ${p.data})`;
+	const item = items[0];
+	const label = isObject(item) ? [item.title, item.name, item.slug].find((v) => typeof v === "string" && v.trim() !== "") : typeof item === "string" || typeof item === "number" ? item : undefined;
+	return ` (item ${p.pageNumber + 1} of ${p.data}${label === undefined ? "" : `, ${JSON.stringify(String(label))}`})`;
+}
+
 export async function checkPages(site: Site): Promise<void> {
 	const { config, dirs } = site;
 	// Front matter dates that aren't dates come first, with the schemas' errors on the same pages.
@@ -458,7 +487,7 @@ export async function checkPages(site: Site): Promise<void> {
 		for (const schema of config.schemas) {
 			if (!covers(schema, page.tpl.rel, tags, page.inCollections)) continue;
 			for (const problem of await check(schema, page.data, page.tpl.frontKeys, files, dirs.root)) {
-				const message = `${file.replace(/^(\.\/)+/, "")}: ${problem.message} (schema \`${schema.name}\`)`;
+				const message = `${file.replace(/^(\.\/)+/, "")}${paginated(page.data)}: ${problem.message} (schema \`${schema.name}\`)`;
 				if (seen.has(message)) continue;
 				seen.add(message);
 				const found = (problem.warning ? warning : error)("schema", message, { file, field: problem.field });

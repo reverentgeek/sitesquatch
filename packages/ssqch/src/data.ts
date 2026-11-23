@@ -94,7 +94,8 @@ export function parseFrontMatter(src: string): { data: Data; body: string; dupli
 						return { data: frontMatterObject(value ?? {}, "YAML"), body, duplicate: { key: key ?? "", line } };
 					} catch { /* the error below says what's wrong */ }
 				}
-				throw new BuildError(`invalid YAML front matter: ${yamlReason(e)}`);
+				const hint = colonHint(e, text);
+				throw new BuildError(`invalid YAML front matter: ${hint ? `${hint} (${yamlReason(e)})` : yamlReason(e)}`);
 			}
 		}
 		offset = next;
@@ -155,6 +156,19 @@ export function parseYaml(src: string): Data {
 
 // A parser's error as one line that ends in where it is (`... at line 3 column 5`), which
 // diagnostics read the line from.
+/**
+ * What to do about the YAML mistake a second author makes first: a plain value with `: ` inside
+ * (`summary: Hours: early mornings`), which js-yaml calls "bad indentation of a mapping entry".
+ * Empty for any other mistake. It has no line number: the reason after it has the one the excerpt is found by.
+ */
+function colonHint(e: unknown, text: string): string {
+	if (!(e instanceof yaml.YAMLException) || !e.mark || !/bad indentation of a mapping entry/.test(e.reason)) return "";
+	const found = /^\s*([\w.-]+):[ \t]+([^"'\s[{|>&*!#-][^#]*?:[ \t].*?)\s*$/.exec(text.split("\n")[e.mark.line] ?? "");
+	if (!found) return "";
+	const [, key, value] = found;
+	return `${key}'s value has a ": " in it, so YAML reads it as another key; put the value in quotes: ${key}: ${JSON.stringify(value)}`;
+}
+
 function yamlReason(e: unknown): string {
 	if (e instanceof yaml.YAMLException) {
 		const where = e.mark ? ` at line ${e.mark.line + 1} column ${e.mark.column + 1}` : "";

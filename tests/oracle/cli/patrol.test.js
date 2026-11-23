@@ -60,3 +60,21 @@ test("robots_plugin_writes_rules_by_purpose", () => {
 	const both = ssqch(["build", "--root", dir]);
 	assert.ok(!both.ok && both.log.includes("the site copies its own robots.txt (passthrough) and robotsPlugin() writes one"), both.log);
 });
+
+// Added in 0.14 (Squatch Snacks, F6): patrol says what robots.txt lets AI crawlers do, by purpose,
+// read the way each crawler reads it: its own group, or `*`. A site's own robots.txt counts too.
+test("patrol_reports_the_ai_policy", () => {
+	const dir = project({
+		"ssqch.config.js": "import { robotsPlugin } from \"ssqch/robots\";\nexport default { plugins: [robotsPlugin({ ai: { training: false } })] };",
+		"index.md": "# Home\n",
+	}, "patrol-ai");
+	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
+	let r = ssqch(["patrol", "--root", dir]);
+	assert.ok(r.stdout.includes("\n  AI crawlers: training refused (7), search allowed (3), fetch allowed (4)\n"), r.stdout);
+	r = ssqch(["patrol", "--root", dir, "--format", "json"]);
+	assert.deepEqual(JSON.parse(r.stdout).ai, { training: { allowed: 0, refused: 7 }, search: { allowed: 3, refused: 0 }, fetch: { allowed: 4, refused: 0 } });
+	// Everyone out but one: a crawler with a group of its own reads only that group.
+	write(dir, { "_site/robots.txt": "User-agent: *\nDisallow: /\n\nUser-agent: ClaudeBot\nAllow: /\n" });
+	r = ssqch(["patrol", path.join(dir, "_site")]);
+	assert.ok(r.stdout.includes("\n  AI crawlers: training 6 refused, 1 allowed, search refused (3), fetch refused (4)\n"), r.stdout);
+});

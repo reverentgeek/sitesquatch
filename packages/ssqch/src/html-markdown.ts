@@ -5,7 +5,8 @@
 // links, emphasis, code, quotes, tables and pictures with a description. What isn't text is left
 // out: scripts and styles, forms and buttons, navigation, anything `hidden` or `aria-hidden`, a
 // heading's `#` link to itself, and a picture with `alt=""` (the HTML spec's word for one that's
-// only decoration).
+// only decoration). A custom element around headings, lists or paragraphs is read as a `<div>`
+// is: what's inside it is the page.
 //
 // It reads HTML as browsers mostly do without building the spec's whole tree: void elements, the
 // end tags HTML lets a page leave out (`<p>`, `<li>`, `<td>`...), raw text in `<script>` and
@@ -118,6 +119,14 @@ function findAll(el: Element, name: string, out: Element[] = []): Element[] {
 const hidden = (el: Element) => el.attrs.has("hidden") || el.attrs.get("aria-hidden") === "true";
 const skipped = (el: Element) => SKIP.has(el.name) || hidden(el);
 const isBlock = (n: Node) => typeof n !== "string" && BLOCK.has(n.name);
+/**
+ * A custom element (a hyphen in its name, as `elementsPlugin()`'s are) with a block somewhere
+ * inside: a wrapper, read as a `<div>` is. What's inside the tag is the page without its script,
+ * and as inline text its headings and lists ran together into one line. One with only text
+ * (`<x-badge>New</x-badge>`) stays part of the line it's in.
+ */
+const wraps = (el: Element): boolean => el.name.includes("-") && el.children.some(holdsBlock);
+const holdsBlock = (n: Node): boolean => typeof n !== "string" && !skipped(n) && (BLOCK.has(n.name) || n.children.some(holdsBlock));
 
 /** All the text inside, as it is (for code). */
 function textOf(n: Node): string {
@@ -225,6 +234,11 @@ function blocks(nodes: Node[]): string[] {
 	for (const n of nodes) {
 		if (typeof n === "string" || !isBlock(n)) {
 			if (typeof n !== "string" && skipped(n)) continue;
+			if (typeof n !== "string" && wraps(n)) {
+				endRun();
+				out.push(...blocks(n.children));
+				continue;
+			}
 			run.push(n);
 			continue;
 		}

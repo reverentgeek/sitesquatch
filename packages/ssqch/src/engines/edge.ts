@@ -36,7 +36,7 @@ import { compareText, isFile, relative, walkFiles } from "../paths.ts";
 import { closest } from "../suggest.ts";
 import * as voice from "../voice.ts";
 import * as values from "./edge-values.ts";
-import { siteFunction } from "./engine.ts";
+import { isDataString, siteFunction } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 
 /** How deep includes and components go before it's a loop, as in 0.7. */
@@ -121,6 +121,12 @@ export function edgeEngine(env: EngineEnv): TemplateEngine {
 		if (e instanceof BuildError) return e;
 		return new BuildError(`${ctx.name}: ${describeThrown(e, root)}`);
 	};
+	// A `permalink` or `computed` string is data: `{{ }}` prints it as `{{{ }}}` does.
+	const plainHelpers: Helpers = { ...engine.helpers, esc: engine.helpers.raw };
+	const dataString = (template: Render, ctx: RenderContext) => {
+		if (isDataString(ctx)) template.ssqch = plainHelpers;
+		return template;
+	};
 	const finish = (template: Render, out: string) => template.stacks.fillPlaceholders(out.replace(/^\r?\n/, "").replace(/\r?\n$/, ""));
 
 	return {
@@ -134,7 +140,7 @@ export function edgeEngine(env: EngineEnv): TemplateEngine {
 			if (!entry.async) {
 				let fn: CompiledTemplate;
 				try { fn = entry.sync ??= edge.compiler.compileRaw(source, ctx.name); } catch (e) { throw fail(e, ctx); }
-				const template = new Render(engine, edge.compiler, ctx.name, source);
+				const template = dataString(new Render(engine, edge.compiler, ctx.name, source), ctx);
 				const outer = running.recording;
 				running.recording = calls;
 				running.syncDepth++;
@@ -150,7 +156,7 @@ export function edgeEngine(env: EngineEnv): TemplateEngine {
 			}
 			let fn: CompiledTemplate;
 			try { fn = entry.asyncFn ??= edge.asyncCompiler.compileRaw(source, ctx.name); } catch (e) { throw fail(e, ctx); }
-			const template = new Render(engine, edge.asyncCompiler, ctx.name, source);
+			const template = dataString(new Render(engine, edge.asyncCompiler, ctx.name, source), ctx);
 			return replays.run({ calls, at: 0 }, () => watchSettle(fn(template, { ...edge.globals, ...data }, {}) as Promise<string>)).then((out) => finish(template, out), (e) => { throw fail(e, ctx); });
 		},
 		included: () => [...used],

@@ -19,7 +19,8 @@ Tailwind, for example, built once for `ssqch build` and watched for `ssqch serve
 import { defineConfig } from "ssqch";
 import { assetsPlugin } from "ssqch/assets";
 
-const tailwind = "npx @tailwindcss/cli -i src/app.css -o dist/assets/app.css";
+// $SSQCH_OUTPUT is the output folder, wherever --output or --base puts it (%SSQCH_OUTPUT% in cmd on Windows).
+const tailwind = "npx @tailwindcss/cli -i src/app.css -o $SSQCH_OUTPUT/assets/app.css";
 
 export default defineConfig(({ serving }) => ({
   dirs: { input: "src", output: "dist" },
@@ -30,6 +31,13 @@ export default defineConfig(({ serving }) => ({
 }));
 ```
 
-The layout links `/assets/app.css`. Tailwind reads the templates for class names on its own; `@source "../src";` in `app.css` tells it where they are if it doesn't find them.
+The command writes into `$SSQCH_OUTPUT`, the output folder ssqch is building, rather than `dist/` by name: with `--output` or `--base` the build goes to another folder, and a stylesheet written to `dist/` isn't in it (the link checker then fails the build). In `src/app.css`, tell Tailwind where the class names are and nowhere else, so it doesn't scan the site's notes and scripts and ship classes no page uses:
+
+```css
+@import "tailwindcss" source(none);
+@source "../src";
+```
+
+The layout links `/assets/app.css`.
 
 When a page links a stylesheet or script that isn't in the output, `ssqch serve` says so instead of leaving an unstyled page to explain itself: a note in the corner of the page, and a warning in the terminal that names the `serve.run` tool that should have written it (or suggests one), repeated after each build until the file turns up. For the first 30 seconds of a tool that's still running, the note says it hasn't written the file yet instead (`/assets/index.css isn't in dist yet: serve.run's tailwindcss is still running and hasn't written it`), and the warning comes only if the file still isn't there after that, or once none of them is running. So a stylesheet that's linked wrong waits those 30 seconds for its warning.

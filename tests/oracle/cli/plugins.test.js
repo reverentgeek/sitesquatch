@@ -300,6 +300,8 @@ test("an_image_that_cant_be_decoded_is_left_as_written", () => {
 	assert.ok(!ok && log.includes("meta.edge") && log.includes("pics/t.png: unexpected end of file") && !/vips|\.tmp|\.cache/.test(log), log);
 });
 
+// DELIBERATE (0.14): `netlify` is `hostFile` (Cloudflare reads `_redirects` too), and with it on,
+// `pages` defaults to false, so the tests that check both pages and lines set `pages: true`.
 test("sitemap_and_redirects", () => {
 	const root = project({
 		"ssqch.config.js": `
@@ -312,7 +314,7 @@ export default {
   markdownEngine: "edge",
   plugins: [
     sitemapPlugin({ url: "https://example.com/", exclude: ["/tags/**"] }),
-    redirectsPlugin({ netlify: true, redirects: { "/feed/": "/feed.xml", "/elsewhere": "https://other.example/" } }),
+    redirectsPlugin({ hostFile: true, pages: true, redirects: { "/feed/": "/feed.xml", "/elsewhere": "https://other.example/" } }),
     linksPlugin(),
   ],
 };
@@ -741,7 +743,7 @@ test("redirects_under_a_base", () => {
 	const root = project({
 		"ssqch.config.js": `import { redirectsPlugin } from "ssqch/redirects";
 import { linksPlugin } from "ssqch/links";
-export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], base: "/repo/", plugins: [redirectsPlugin({ pages: false, netlify: true, redirects: { "/elsewhere": "https://other.example/" } }), linksPlugin()] };`,
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], base: "/repo/", plugins: [redirectsPlugin({ hostFile: true, redirects: { "/elsewhere": "https://other.example/" } }), linksPlugin()] };`,
 		"src/index.md": "See [the old post](/old/).",
 		"src/posts/pine.md": "---\naliases: [/old/]\n---\nPine",
 	});
@@ -755,7 +757,7 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"]
 test("aliases_that_look_like_dates_are_paths", () => {
 	const root = project({
 		"ssqch.config.js": `import { redirectsPlugin } from "ssqch/redirects";
-export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], plugins: [redirectsPlugin({ netlify: true })] };`,
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], plugins: [redirectsPlugin({ hostFile: true, pages: true })] };`,
 		"src/a.md": "---\naliases: 2024-01-01\n---\nA\n",
 		"src/b.md": "---\naliases: [2019-05-15, /old/]\n---\nB\n",
 	});
@@ -764,6 +766,71 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"]
 	assert.equal(read(root, "dist/_redirects"), "/2019-05-15  /b/  301\n/2024-01-01  /a/  301\n/old/  /b/  301\n");
 	assert.ok(read(root, "dist/2024-01-01/index.html").includes("url=/a/"));
 	assert.ok(read(root, "dist/2019-05-15/index.html").includes("url=/b/"));
+});
+
+// Squatch Snacks (Seam1): a host takes the first `_redirects` line that matches, and the lines were
+// sorted together, so `/snacks/*` came before `/snacks/pine-cone-crunch/` and took its address.
+// DELIBERATE (0.14): an old URL with a `*` or a `:name` is a pattern. Its line comes after the
+// exact addresses, the one with the most fixed in front first, and it gets no page (it was written
+// at `snacks/*/index.html`, which answers nobody and isn't a file name Windows takes). A colon
+// inside a segment is part of a name (tried without pages: Windows has no file of that name).
+test("redirect_patterns_come_after_the_exact_addresses", () => {
+	const config = (options) => `import { redirectsPlugin } from "ssqch/redirects";
+import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], plugins: [redirectsPlugin(${options}), linksPlugin()] };`;
+	const redirects = "{ \"/snacks/*\": \"/provisions/:splat\", \"/snacks/2019/*\": \"/provisions/\", \"/news/:year/:slug\": \"/provisions/\", \"/zebra/\": \"/provisions/\" }";
+	const files = {
+		"src/provisions.md": "---\naliases: [/snacks/, /snacks/crunch/, /a/*]\n---\n[The old shelf](/snacks/gone/)\n",
+	};
+	const root = project({ "ssqch.config.js": config(`{ hostFile: true, pages: true, redirects: ${redirects} }`), ...files });
+	const { ok, log } = build(root);
+	assert.ok(ok, log);
+	assert.equal(read(root, "dist/_redirects"), [
+		"/snacks/  /provisions/  301",
+		"/snacks/crunch/  /provisions/  301",
+		"/zebra/  /provisions/  301",
+		"/snacks/2019/*  /provisions/  301",
+		"/snacks/*  /provisions/:splat  301",
+		"/news/:year/:slug  /provisions/  301",
+		"/a/*  /provisions/  301",
+		"",
+	].join("\n"));
+	// A page for each exact address, and none for a pattern.
+	assert.ok(read(root, "dist/snacks/crunch/index.html").includes("url=/provisions/"));
+	for (const none of ["dist/snacks/*", "dist/snacks/2019", "dist/news", "dist/a"]) assert.ok(!fs.existsSync(path.join(root, none)), none);
+	const named = project({ "ssqch.config.js": config("{ hostFile: true, redirects: { \"/wiki/*\": \"/provisions/\", \"/wiki/Help:Contents\": \"/provisions/\" } }"), "src/provisions.md": "Provisions\n" });
+	assert.ok(build(named).ok);
+	assert.equal(read(named, "dist/_redirects"), "/wiki/Help:Contents  /provisions/  301\n/wiki/*  /provisions/  301\n");
+	// Without the lines nothing redirects a pattern, so the build says what to set.
+	const pagesOnly = project({ "ssqch.config.js": config(`{ redirects: ${redirects} }`), ...files });
+	const refused = build(pagesOnly);
+	assert.ok(!refused.ok, refused.log);
+	assert.match(refused.log, /the redirects option: \/snacks\/2019\/\* is a pattern \(a `\*` or a `:name`\), which only a host can match, and a redirect page can't\. Set hostFile: true, so it's a line in _redirects/);
+	const alias = project({ "ssqch.config.js": config(""), ...files });
+	assert.match(build(alias).log, /src\/provisions\.md: \/a\/\* is a pattern/);
+});
+
+// DELIBERATE (0.14): `redirectsPlugin({ netlify: true })` is `hostFile`, since Netlify and
+// Cloudflare both read `_redirects`, and the old name stops the build and names the new one. With
+// the file on, an old URL gets no page unless `pages: true` says so: a host serves a file that
+// exists before it reads `_redirects`, so the page answered 200 where the line said 301.
+test("redirects_host_file_turns_pages_off", () => {
+	const config = (options) => `import { redirectsPlugin } from "ssqch/redirects";
+import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], plugins: [redirectsPlugin(${options}), linksPlugin()] };`;
+	const files = { "src/index.md": "See [the old post](/old/).", "src/posts/pine.md": "---\naliases: [/old/]\n---\nPine" };
+	const lines = project({ "ssqch.config.js": config("{ hostFile: true }"), ...files });
+	const { ok, log } = build(lines);
+	assert.ok(ok, log);
+	assert.equal(read(lines, "dist/_redirects"), "/old/  /posts/pine/  301\n");
+	assert.ok(!fs.existsSync(path.join(lines, "dist/old")), "a page at /old/ beside the line");
+	const both = project({ "ssqch.config.js": config("{ hostFile: true, pages: true }"), ...files });
+	assert.ok(build(both).ok);
+	assert.ok(read(both, "dist/old/index.html").includes("url=/posts/pine/"));
+	const old = project({ "ssqch.config.js": config("{ netlify: true }"), ...files });
+	const refused = build(old);
+	assert.ok(!refused.ok, refused.log);
+	assert.match(refused.log, /netlify is called hostFile now \(Netlify and Cloudflare both read _redirects\): redirectsPlugin\(\{ hostFile: true \}\)/);
 });
 
 // Not from a Rust test: a link to a path the system can't look up (a NUL byte, from `%00`, or a
@@ -812,6 +879,21 @@ export default { base: "/trail/", templateFormats: ["njk"], plugins: [sitemapPlu
 		"  <url>", "    <loc>https://example.com/trail/fr/cedar/</loc>", ...links, "  </url>",
 		"</urlset>", "",
 	].join("\n"));
+
+	// With its date, a page's `<lastmod>` comes before the links. sitemaps.org's schema lists
+	// `loc`, `lastmod`, `changefreq`, `priority` and then other namespaces' elements, so a
+	// validator refuses a `<lastmod>` after an `<xhtml:link>` (Squatch Snacks, B2: xmllint's
+	// "Element lastmod: This element is not expected"). DELIBERATE (0.14): the links came first.
+	const dated = project({
+		"ssqch.config.js": "import { sitemapPlugin } from \"ssqch/sitemap\";\nexport default { templateFormats: [\"njk\"], plugins: [sitemapPlugin({ url: \"https://example.com\", alternates: () => [{ hreflang: \"fr\", href: \"/fr/\" }] })] };\n",
+		"index.njk": "---\ndate: 2024-03-04\n---\nSquatch Snacks\n",
+	});
+	const built = ssqch(["build", "--root", dated, "--quiet"]);
+	assert.ok(built.ok, built.log);
+	assert.ok(read(dated, "_site/sitemap.xml").includes([
+		"  <url>", "    <loc>https://example.com/</loc>", "    <lastmod>2024-03-04</lastmod>",
+		"    <xhtml:link rel=\"alternate\" hreflang=\"fr\" href=\"https://example.com/fr/\"/>", "  </url>",
+	].join("\n")), read(dated, "_site/sitemap.xml"));
 
 	const wrong = (alternates) => {
 		const site = project({ "ssqch.config.js": `import { sitemapPlugin } from "ssqch/sitemap";\nexport default { templateFormats: ["njk"], plugins: [sitemapPlugin({ url: "https://example.com", alternates: ${alternates} })] };\n`, "index.njk": "x\n" });

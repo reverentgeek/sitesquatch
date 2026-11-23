@@ -76,3 +76,19 @@ for (const button of document.querySelectorAll("[data-copy-markdown]")) {
     setTimeout(() => { button.textContent = "Copy as Markdown"; }, 2000);
   });
 }
+
+// Copy link: the # beside each heading copies the address of that section as well as going
+// there, ready to paste into a message, an issue or a chat with an agent. Without a clipboard
+// it's the plain link it always was.
+if (navigator.clipboard) {
+  for (const anchor of /** @type {NodeListOf<HTMLAnchorElement>} */ (document.querySelectorAll("a.anchor"))) {
+    anchor.title = "Copy link";
+    anchor.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(anchor.href);
+        anchor.dataset.copied = "";
+        setTimeout(() => { delete anchor.dataset.copied; }, 2000);
+      } catch {}
+    });
+  }
+}

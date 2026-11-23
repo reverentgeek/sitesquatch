@@ -382,14 +382,14 @@ esac
 _ssqch_commands() {
     local commands; commands=(
 'build:Build the site (default)' \
-'serve:Build, serve, watch for changes and live-reload the browser' \
+'serve:Build, serve, watch for changes and live-reload the browser (--built serves the last build as it is)' \
 'new:Create a page from a blueprint (a file in _blueprints/), with its title and date filled in' \
 'trace:Follow a page'\''s tracks\: where it comes from, and which level of the data cascade set each value' \
 'completions:Print a completion script for your shell, so Tab finishes commands and options' \
 'diff:Compare two builds of a site\: URLs added and removed, and what changed on each page' \
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
 'patrol:Check a build for what agents and crawlers read\: robots.txt, the sitemap, llms.txt, Markdown copies, headings and descriptions' \
-'init:Create a starter site (config, layout, five posts, data and editor types)' \
+'init:Create a starter site (config, layout, seven posts, data and editor types)' \
 'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
 'baseline:Build the site with its old generator in fresh copies and compare the builds' \
 'scout:Scout a site built with another generator\: what moving it to ssqch takes, and what remains during a move' \
@@ -438,14 +438,14 @@ _ssqch__subcmd__patrol_commands() {
 _ssqch__subcmd__help_commands() {
     local commands; commands=(
 'build:Build the site (default)' \
-'serve:Build, serve, watch for changes and live-reload the browser' \
+'serve:Build, serve, watch for changes and live-reload the browser (--built serves the last build as it is)' \
 'new:Create a page from a blueprint (a file in _blueprints/), with its title and date filled in' \
 'trace:Follow a page'\''s tracks\: where it comes from, and which level of the data cascade set each value' \
 'completions:Print a completion script for your shell, so Tab finishes commands and options' \
 'diff:Compare two builds of a site\: URLs added and removed, and what changed on each page' \
 'footprint:Show how much a build weighs\: its files by kind, and the heaviest pages and files' \
 'patrol:Check a build for what agents and crawlers read\: robots.txt, the sitemap, llms.txt, Markdown copies, headings and descriptions' \
-'init:Create a starter site (config, layout, five posts, data and editor types)' \
+'init:Create a starter site (config, layout, seven posts, data and editor types)' \
 'types:Write ssqch.d.ts, the types editors use for ssqch.config.js' \
 'baseline:Build the site with its old generator in fresh copies and compare the builds' \
 'scout:Scout a site built with another generator\: what moving it to ssqch takes, and what remains during a move' \

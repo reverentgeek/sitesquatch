@@ -36,6 +36,13 @@ export interface RenderContext {
 
 export type EngineKind = "body" | "layout" | "hook" | "permalink" | "computed";
 
+/**
+ * Whether what's rendering is a `permalink` or `computed` string. Those are data, not HTML, so
+ * nothing in them is escaped: a page's title is printed (and escaped) where a layout prints it,
+ * and escaped here as well it read `Tagged Rock &amp;amp; Roll`.
+ */
+export const isDataString = (ctx: RenderContext): boolean => ctx.kind === "permalink" || ctx.kind === "computed";
+
 export interface TemplateEngine {
 	/**
 	 * Renders `source` with `data`. The answer is a string when everything the template called

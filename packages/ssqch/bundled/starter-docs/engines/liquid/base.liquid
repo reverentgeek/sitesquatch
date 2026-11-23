@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% if title and title != "" %}{{ title }} | {% endif %}{{ site.name }}</title>
-  <meta name="description" content="{{ description | default: site.description }}">
+  <meta name="description" content="{% if description %}{{ description }}{% else %}{{ site.description }}{% endif %}">
   <link rel="canonical" href="{{ site.url }}{{ page.url }}">
   {% comment %} For agents: the page as Markdown and the site's map (llmsPlugin() in ssqch.config.js). {% endcomment %}
   {% assign copy = page.url | markdownCopy %}{% if copy != "" %}<link rel="alternate" type="text/markdown" href="{{ copy }}">{% endif %}
@@ -32,7 +32,7 @@
       {% endif %}
     </nav>
     {% if search %}
-    <div id="search"><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
+    <div id="search"><pagefind-config bundle-path="{{ "/pagefind/" | withBase }}"></pagefind-config><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
     {% endif %}
     {% comment %} docs.js shows it. Without JavaScript, the theme follows the system. {% endcomment %}
     <button class="theme-switch" type="button" hidden>Switch theme</button>

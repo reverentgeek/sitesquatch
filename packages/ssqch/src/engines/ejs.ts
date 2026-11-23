@@ -12,7 +12,7 @@ import { BuildError } from "../diagnostics.ts";
 import { isSafe } from "../rendering.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closestPath } from "../suggest.ts";
-import { lazyEngine, siteFunction } from "./engine.ts";
+import { isDataString, lazyEngine, siteFunction } from "./engine.ts";
 import type { EngineEnv, TemplateEngine } from "./engine.ts";
 
 /** A template as code: its function, or its text when it has no tags. */
@@ -177,14 +177,16 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 			// A promise printed by `<%= %>` (an async function's answer) is awaited, and its answer
 			// takes the place it was printed in.
 			const waiting: Array<{ mark: string; raw: boolean; promise: Promise<unknown>; name?: string; line?: number }> = [];
+			const plain = isDataString(ctx);
 			const print = ((value: unknown, raw?: boolean, line?: number, name?: string) => {
 				if (value instanceof Promise) {
 					const mark = `${MARK}${waiting.length}\u0000`;
 					waiting.push({ mark, raw: Boolean(raw), promise: watchSettle(value), name, line });
 					return mark;
 				}
-				// A function's answer marked with `safe()` prints as it is.
-				if (!raw) return value === undefined || value === null ? "" : isSafe(value) ? String(value) : text(value).replace(/[&<>"']/g, (c) => ESCAPES[c]);
+				// A function's answer marked with `safe()` prints as it is, and so does all of a
+				// `permalink` or `computed` string, which is data.
+				if (!raw) return value === undefined || value === null ? "" : isSafe(value) ? String(value) : plain ? text(value) : text(value).replace(/[&<>"']/g, (c) => ESCAPES[c]);
 				if (typeof value !== "string") return text(value);
 				// `<%= %>` has printed it already; this is where it goes, for a promise's error to name.
 				if (value.startsWith(MARK)) {

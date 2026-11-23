@@ -27,6 +27,7 @@ import os from "node:os";
 import path from "node:path";
 import { progressed, working } from "../activity.ts";
 import { createRequire } from "node:module";
+import { mapSrcset } from "../base.ts";
 import { blake3 } from "../blake3.ts";
 import type { Config } from "../config.ts";
 import { BuildError, error, progress, warn, warning } from "../diagnostics.ts";
@@ -1100,8 +1101,11 @@ export class ImageProcessor {
 		return this.pictureMarkup(meta, attrs, false)[0];
 	}
 
-	/** `pictureHtml`, and with `preload`, its `<link rel="preload">`: the image loads eagerly with `fetchpriority="high"`, and `sizes="auto"` (lazy images only) is left out. */
-	private pictureMarkup(meta: ImageMetadata, attrs: Array<[string, string]>, preload: boolean): [string, string | undefined] {
+	/**
+	 * `pictureHtml`, and with `preload`, its `<link rel="preload">`: the image loads eagerly with `fetchpriority="high"`, and `sizes="auto"` (lazy images only) is left out.
+	 * With `wrap` off, the `<source>`s and the `<img>` come without a `<picture>` around them, for an `<img>` that's inside one the page wrote.
+	 */
+	private pictureMarkup(meta: ImageMetadata, attrs: Array<[string, string]>, preload: boolean, wrap = true): [string, string | undefined] {
 		const fallback = fallbackOf(meta);
 		const low = fallback[0];
 		const high = fallback.at(-1);
@@ -1146,14 +1150,14 @@ export class ImageProcessor {
 			link += ">";
 		}
 		if (meta.formats.size < 2) return [tag, link];
-		let html = "<picture>";
+		let html = wrap ? "<picture>" : "";
 		const formats = [...meta.formats.entries()];
 		for (const [format, entries] of formats.slice(0, -1)) {
 			html += `<source type="${mime(format)}" srcset="${escapeHtml(srcsetAttr(entries))}"`;
 			if (sizes !== undefined) html += ` sizes="${sizes.replaceAll("\"", "&quot;")}"`;
 			html += ">";
 		}
-		return [`${html}${tag}</picture>`, link];
+		return [`${html}${tag}${wrap ? "</picture>" : ""}`, link];
 	}
 
 	/**
@@ -1216,9 +1220,46 @@ export class ImageProcessor {
 		if (!html.includes("<img") && !links) return html;
 		const preloads: string[] = [];
 		const by: Pointer = { name: this.display(pageInput), url };
+		// A `<picture>` the page wrote itself, for a different crop at a `media` width (art
+		// direction). Its `<img>` gets its formats beside the page's own `<source>`s, not a second
+		// `<picture>` inside the first, which HTML doesn't allow; and each local picture a
+		// `<source>` names is published as one copy, in its own format and at its own size, so the
+		// crop the page chose is the one a reader gets (the Squatch Snacks study, B1: the `<source>`
+		// pointed at a file that was never in the output). A picture is over at its `<img>`, so one
+		// that's never closed doesn't take the rest of the page's images with it.
+		let inPicture = false;
 		const out = rewriteHtml(html, {
+			endTag: (name) => {
+				if (name === "picture") inPicture = false;
+			},
 			tag: (el) => {
-				if (el.name === "a" && el.get("href") !== undefined) {
+				const inside = inPicture;
+				if (el.name === "img") inPicture = false;
+				if (el.name === "picture" && el.namespace === "html") {
+					inPicture = true;
+				} else if (el.name === "source" && inside && el.get("srcset") !== undefined) {
+					if (el.get("ssqch:ignore") !== undefined) {
+						el.remove("ssqch:ignore");
+						return;
+					}
+					// A candidate that isn't a picture in the input folder stays as written, with no
+					// warning: a page that makes its own `<picture>` with `image()` names files that are
+					// already copies, and its `ssqch:ignore` is on the `<img>`, which comes later.
+					const srcset = el.get("srcset") ?? "";
+					const published = mapSrcset(srcset, (candidate) => {
+						const file = this.resolveSrc(candidate, pageInput);
+						if (file === undefined || fromPath(file) === undefined || !this.isSource(file)) return candidate;
+						try {
+							const meta = this.generate(file, [0], ["auto"]);
+							this.watch(meta, file, by);
+							return widest([...meta.formats.values()].flat())?.url ?? candidate;
+						} catch (e) {
+							this.warnOnce((e as Error).message);
+							return candidate;
+						}
+					});
+					if (published !== srcset) el.set("srcset", published);
+				} else if (el.name === "a" && el.get("href") !== undefined) {
 					// Links to local images (click to enlarge), pointed at a generated copy.
 					if (el.get("ssqch:ignore") !== undefined) {
 						el.remove("ssqch:ignore");
@@ -1258,7 +1299,7 @@ export class ImageProcessor {
 					}
 					this.watch(meta, file, by);
 					const attrs = el.entries().filter(([name]) => !name.startsWith("ssqch:"));
-					const [markup, link] = this.pictureMarkup(meta, attrs, preload);
+					const [markup, link] = this.pictureMarkup(meta, attrs, preload, !inside);
 					el.replaceWith(markup);
 					if (link !== undefined) preloads.push(link);
 				}

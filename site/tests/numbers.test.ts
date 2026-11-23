@@ -47,7 +47,7 @@ const claims: [string, string, string][] = [
 	["Uncharted territory: known gaps", "HDR photos need converting to sRGB first", "converting the source to sRGB once fixes it"],
 	["Has the stump moved? Comparing two builds", "No differences: 148 pages and 4,730 other files are the same.", "No differences: 148 pages and 4,730 other files are the same."],
 	["Content schemas", "`hero.src` is \"cedar.jpg\", but there's no such file next to the page (schema `posts`)", "`hero.src` is \"cedar.jpg\", but there's no such file next to the page (schema `posts`)"],
-	["Field guide: build your first site", "five posts with tag pages and a feed", "five posts with tags, a page for each tag and one listing them, an Atom feed"],
+	["Field guide: build your first site", "seven posts with tag pages and a feed", "seven posts with tags, a page for each tag and one listing them, an Atom feed"],
 ];
 
 test("the page's other claims are the docs'", () => {
