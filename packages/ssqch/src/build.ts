@@ -16,7 +16,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { aboutToBlock, progressed } from "./activity.ts";
 import { rewriteBase } from "./base.ts";
-import type { Config, Dirs, GeneratedFile, Hook, PageSummary } from "./config.ts";
+import type { Config, Dirs, GeneratedFile, GeneratorSite, Hook, PageSummary } from "./config.ts";
 import { shownDir, shownOutput } from "./config.ts";
 import type { Data } from "./data.ts";
 import { sourceDateEpoch, STATIC_DATA_EXTENSIONS } from "./data.ts";
@@ -989,9 +989,14 @@ async function runGenerators(config: Config, dirs: Dirs, pages: Page[], pageOutp
 	const summaries: PageSummary[] = pages.flatMap((p) => (p.url !== null && p.output !== null ? [{ url: p.url, outputPath: p.output, inputPath: p.tpl.input, date: p.date, data: p.data }] : []));
 	const owners = new Map<string, string>();
 	const out: string[] = [];
+	const view: GeneratorSite = {
+		collection: (name) => (Array.isArray(site.collections[name]) ? site.collections[name] : undefined),
+		collectionNames: () => Object.keys(site.collections).filter((n) => Array.isArray(site.collections[n])).sort(compareText),
+		global: site.global,
+	};
 	for (const [name, generator] of config.generators) {
 		let files: GeneratedFile[];
-		try { files = await generator(config, summaries); } catch (e) { throw context(e, `${name} failed`); }
+		try { files = await generator(config, summaries, view); } catch (e) { throw context(e, `${name} failed`); }
 		for (const file of files) {
 			const rel = file.path.replace(/^\/+/, "");
 			if (!file.path.startsWith("/") || rel.split("/").includes("..")) bail(`${name}: ${JSON.stringify(file.path)} must be a URL path in the output, starting with /`);

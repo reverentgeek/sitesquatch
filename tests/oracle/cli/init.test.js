@@ -13,7 +13,7 @@ test("init_creates_a_site_that_builds", () => {
 	const d = dir;
 	let r = ssqch(["init", d]);
 	assert.ok(r.ok, r.log);
-	for (const file of ["ssqch.config.js", "src/_includes/layout.jinja", "src/index.jinja", "src/tags.jinja", "src/tag.jinja", "src/feed.jinja", "src/img/stump.jpg", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/posts/raiders-of-the-lost-path.md", "src/posts/the-cache-of-the-wild.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore", "AGENTS.md", "CLAUDE.md"]) {
+	for (const file of ["ssqch.config.js", "src/_includes/layout.jinja", "src/index.jinja", "src/tags.jinja", "src/tag.jinja", "src/img/stump.jpg", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/posts/raiders-of-the-lost-path.md", "src/posts/the-cache-of-the-wild.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore", "AGENTS.md", "CLAUDE.md"]) {
 		assert.ok(isFile(dir, file), `${file} wasn't created:\n${r.log}`);
 	}
 	assert.ok(r.log.includes("Camp is set up. Next: cd "), r.log);
@@ -87,7 +87,7 @@ test("init_starts_a_site_in_each_engine", () => {
 		const d = dir;
 		let r = ssqch(["init", d, "--engine", engine]);
 		assert.ok(r.ok, r.log);
-		for (const file of [`src/_includes/layout.${engine}`, `src/index.${engine}`, `src/tags.${engine}`, `src/tag.${engine}`, `src/feed.${engine}`]) {
+		for (const file of [`src/_includes/layout.${engine}`, `src/index.${engine}`, `src/tags.${engine}`, `src/tag.${engine}`]) {
 			assert.ok(isFile(dir, file), `${file} wasn't created:\n${r.log}`);
 		}
 		assert.ok(!exists(dir, "src/index.jinja"), engine);

@@ -12,6 +12,11 @@ where that version matches.
 ## Unreleased
 
 ### Added
+- `feedPlugin({ url })` from `ssqch/rss` writes the site's feed: Atom (or `format: "rss"`) at
+  `/feed.xml`, from the `posts` collection, newest first (`limit`, default 20), each entry's
+  content as `feedHtml()` makes it, its title and subtitle from the site's data. A new blog wrote
+  its feed by hand in a template (the new-blog fresh run did it from memory). The blog starter
+  uses it in place of its feed template.
 - `ssqch serve` ends a build that's stopped making progress for a minute (no page written, no
   image encoded, none of the site's code starting or settling), and says what it waited on:
   `in src/index.jinja: the build stopped making progress: for 60 s nothing happened, and it was
@@ -32,7 +37,7 @@ where that version matches.
   any of its names is kept. Without a `package.json`, none is written.
 - The blog starter (`ssqch init`) is a blog: its posts have tags, with a page for each tag
   (`/tags/stumps/`) and one listing them (`/tags/`), each post links its tags, and an Atom feed
-  is at `/feed.xml` (`src/feed.jinja`, with `rssPlugin()`'s filters), linked from every page.
+  is at `/feed.xml` (`feedPlugin()`), linked from every page.
   Code is highlighted (`markdown: { highlight: true }`, and the layout links `/highlight.css`),
   and `leaveNoTrace: true` deletes a removed post's page. The same in every `--engine`.
 - The docs starter's search is Pagefind's Component UI (a search button and dialog, Ctrl+K or

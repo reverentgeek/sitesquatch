@@ -57,6 +57,13 @@ export interface GeneratedFile {
 	hook?: { name: string; value: unknown };
 }
 
+/** What a generator can read of the site beyond its pages: a collection by name, as templates see it (with each item's `templateContent`), and the global data. */
+export interface GeneratorSite {
+	collection(name: string): Data[] | undefined;
+	collectionNames(): string[];
+	global: Data;
+}
+
 /** A page the build wrote, as generators see it. */
 export interface PageSummary {
 	url: string;
@@ -163,7 +170,7 @@ export interface Config {
 	plugins: string[];
 	/** Lines plugins add to the build summary; a function that answers nothing leaves its line out. */
 	summaries: Array<[string, (config: Config) => string | undefined]>;
-	generators: Array<[string, (config: Config, pages: PageSummary[]) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
+	generators: Array<[string, (config: Config, pages: PageSummary[], site: GeneratorSite) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
 	fileBuilders: Array<[string, (config: Config) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
 	/** What the build waits for once every page is written (the image files they point at), before the generators; counted as writing. */
 	settle: Array<() => Promise<void>>;

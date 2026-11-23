@@ -131,6 +131,11 @@ export function feedImages(html: string, base: string, options?: unknown): strin
 	return currentProcessor().feedImages(html, base, width, format);
 }
 
+/** Every encode asked for so far, done: for a generator that asks for copies after the pages' were made (`feedPlugin()`). */
+export function settleImages(): Promise<void> {
+	return currentProcessor().settle();
+}
+
 BUILTINS.set("ssqch/image", (config, given) => {
 	// 0.7's AVIF speed is sharp's effort now, which counts the other way.
 	if (typeof given === "object" && given !== null && (given as Record<string, unknown>).avifSpeed !== undefined) {

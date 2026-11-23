@@ -1043,6 +1043,54 @@ test("llms_copies_link_the_pictures_the_page_publishes", () => {
 	assert.ok(/!\[A squatch\]\(https:\/\/trail\.example\/img\/[^)]+\)\n/.test(how) && !how.startsWith("# How\n\n![A squatch](/img/squatch.png)"), how);
 });
 
+// The new-blog fresh run wrote its feed from memory: no docs page had one. Added in 0.13.5:
+// feedPlugin() writes it from a collection, newest first, each entry's content as feedHtml()
+// makes it (a picture as one generated copy, every URL whole), in Atom or RSS.
+test("feed_plugin_writes_the_feed", () => {
+	const post = (n, extra = "") => `---\ntitle: Pine cone ${n} & co\ndate: 2026-01-0${n}\ntags: posts\ndescription: The ${n} one.\n---\nCone ${n}.${extra}\n`;
+	const dir = project({
+		"ssqch.config.js": "import { imagePlugin } from \"ssqch/image\";\nimport { feedPlugin } from \"ssqch/rss\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [imagePlugin({ widths: [32], formats: [\"auto\"] }), feedPlugin({ url: \"https://trail.example\" })] };\n",
+		"src/_data/site.json": "{ \"title\": \"Field Notes\", \"description\": \"Cones, counted.\" }",
+		"src/img/squatch.png": PNG,
+		"src/a.md": post(1),
+		"src/b.md": post(2, "\n\n![A squatch](/img/squatch.png)"),
+		"src/c.md": post(3),
+	}, "feed-plugin");
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	let feed = read(dir, "dist/feed.xml");
+	assert.ok(feed.startsWith("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<feed xmlns=\"http://www.w3.org/2005/Atom\">\n  <title>Field Notes</title>\n  <subtitle>Cones, counted.</subtitle>\n  <link href=\"https://trail.example/feed.xml\" rel=\"self\"/>\n"), feed);
+	assert.ok(feed.includes("<updated>2026-01-03T00:00:00Z</updated>"), feed);
+	// Newest first, the title escaped, the description as the summary.
+	const titles = [...feed.matchAll(/<entry>\n    <title>([^<]*)<\/title>/g)].map((m) => m[1]);
+	assert.deepEqual(titles, ["Pine cone 3 &amp; co", "Pine cone 2 &amp; co", "Pine cone 1 &amp; co"]);
+	assert.ok(feed.includes("<summary>The 2 one.</summary>"), feed);
+	// The picture: one generated copy, whole address, and the file is there.
+	const src = /img src=&quot;https:\/\/trail\.example(\/img\/[^&]+)&quot;/.exec(feed)?.[1];
+	assert.ok(src && fs.existsSync(path.join(dir, "dist", src)), feed);
+
+	// RSS, two entries, under a base.
+	write(dir, { "ssqch.config.js": "import { feedPlugin } from \"ssqch/rss\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, base: \"/trail\", plugins: [feedPlugin({ url: \"https://trail.example\", format: \"rss\", limit: 2, output: \"/rss.xml\" })] };\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	feed = read(dir, "dist/rss.xml");
+	assert.ok(feed.includes("<rss version=\"2.0\"") && feed.includes("<link>https://trail.example/trail/</link>") && feed.includes("<atom:link href=\"https://trail.example/trail/rss.xml\""), feed);
+	assert.equal((feed.match(/<item>/g) ?? []).length, 2, feed);
+	assert.ok(feed.includes("<link>https://trail.example/trail/c/</link>") && feed.includes("<pubDate>Sat, 03 Jan 2026 00:00:00 +0000</pubDate>"), feed);
+
+	// What's wrong is said.
+	const config = (opts) => write(dir, { "ssqch.config.js": `import { feedPlugin } from "ssqch/rss";\nexport default { dirs: { input: "src", output: "dist" }, plugins: [feedPlugin(${opts})] };\n` });
+	config("");
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("needs the site's address, like feedPlugin({ url: \"https://example.com\" })"), r.log);
+	config("{ url: \"https://trail.example\", collection: \"notes\" }");
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("there's no collection `notes` to make the feed from (the collections are `all`, `posts`)"), r.log);
+	config("{ url: \"https://trail.example\", format: \"json\" }");
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("format must be \"atom\" or \"rss\" (got \"json\")"), r.log);
+});
+
 // Added in 0.13, from the ReverentGeek blog's move to llmsPlugin() and llms.txt's v2 (August
 // 2026): a part of the site gets an llms.txt of its own, which covers the pages under it and which
 // the site's lists in their place; "Optional" (links an agent can skip) comes last; and past the
