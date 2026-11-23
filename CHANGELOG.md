@@ -47,9 +47,11 @@ where that version matches.
   broken picture (the link checker said `/img/tall.jpg (not found)`). Now the `<img>`'s formats
   are `<source>`s after the page's own, and each local picture a `<source srcset>` names is
   published as one copy in its own format and at its own size, its `2x` or `800w` as written. A
-  candidate that isn't a picture in the input folder stays as it is, and `ssqch:ignore` on a
-  `<source>` leaves it alone. A site that worked around it with `image()` and `ssqch:ignore` on
-  its `<img>` builds as before.
+  candidate that isn't a picture in the input folder stays as it is. A site that worked around
+  it with `image()` and `ssqch:ignore` on its `<img>` builds as before, since its `<source>`s
+  name files that are already copies. One that published its crops itself (a passthrough copy)
+  now gets them from the image folder: `ssqch:ignore` is for the tag it's on, so put it on each
+  `<source>` as well as the `<img>` to leave a whole `<picture>` alone.
 - `sitemapPlugin({ alternates })` writes a page's `<lastmod>` before its `<xhtml:link>` lines,
   the order sitemaps.org's schema checks. With the links first, a validator refused the sitemap
   (`Element lastmod: This element is not expected`). A sitemap without `alternates`, or with
