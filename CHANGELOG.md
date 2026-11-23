@@ -39,6 +39,14 @@ where that version matches.
   lowercased with its words sorted as attributes.
 - `ssqch scout`'s config draft says "what it couldn't carry over is listed at the end" only when
   there's a list at the end.
+- `ssqch serve` sees an edit made during its first build: the watch began after it, so a page
+  edited after the build read it was served as it was until the next edit, with no word why (an
+  agent that edits as soon as a page answers lands there).
+- `ssqch serve` reads a config saved after its build process loaded it and before the watch
+  began (during a reload's first build), where it was missed until the next save.
+- An editor's own files start no rebuild while serving: `sed -i`'s `.!12345!post.md`, backups
+  (`post.md~`), Emacs' locks, Vim's swap files and JetBrains' safe writes. The server said
+  `Fresh tracks in src/posts/.!64277!post.md` and rebuilt for nothing.
 
 ## 0.13.4 - 2026-11-22
 

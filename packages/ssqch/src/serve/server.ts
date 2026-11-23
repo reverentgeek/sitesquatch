@@ -63,6 +63,18 @@ const CONFIG_NAMES = new Set([...CONFIG_FILES, "sitesquatch.toml"]);
  * away and back again (`git stash`, an editor's undo) was gone between, and is a change each time
  * (0.7 counted every folder the same, so the second rename didn't rebuild).
  */
+/**
+ * An editor's or a tool's file of its own beside the one being edited, which says nothing about
+ * the site: BSD and macOS `sed -i` (`.!64277!hello.md`, which an agent's edits make all the time),
+ * backups (`hello.md~`), Emacs' locks (`.#hello.md`), Vim's swap files (`.hello.md.swp`) and the
+ * file it writes to see whether it can (`4913`), and JetBrains' safe writes (`hello.md___jb_tmp___`).
+ * A rebuild for one changed no pages and named the wrong file (a11y #20, the new-blog run).
+ */
+export function editorsOwn(file: string): boolean {
+	const name = path.basename(file);
+	return /^\.![0-9]+!/.test(name) || name.endsWith("~") || name.startsWith(".#") || /^\..+\.sw[a-p]$/.test(name) || name === "4913" || /___jb_(?:tmp|old|bak)___$/.test(name);
+}
+
 function sourceState(file: string): string | undefined {
 	if (!isDir(file)) return fingerprint(file);
 	try { return `folder:${crypto.hash("sha1", fs.readdirSync(file).sort().join("\n"), "base64")}`; } catch { return undefined; }
@@ -266,19 +278,6 @@ interface Watching {
 async function watch({ builder, live, args, quiet, startedTools, firstBuild, sayWhere, restart }: Watching): Promise<Builder> {
 	const site: SiteInfo = builder.site;
 	const tools = live.tools.length > 0;
-	if (tools && startedTools) await firstCompile(site.output, quiet);
-	// What the build left, to tell a tool's write from the build's own: the output as it was,
-	// with the files the build put there as it left them.
-	const afterBuild = assetStamps(site.output);
-	const report = await buildAndReport(builder, live);
-	const ok = report.ok;
-	for (const asset of report.assets) {
-		const file = realPath(asset);
-		const stat = fs.statSync(file, { throwIfNoEntry: false });
-		if (stat) afterBuild.set(file, [stat.size, stat.mtimeMs]);
-		else afterBuild.delete(file);
-	}
-
 	const rx = new Channel<string[]>();
 	const watcher = new Watcher((file) => rx.send([file]));
 	watcher.onError = (dir, e) => diagnostics.warn(diagnostics.warning("build", `can't watch ${dir}, or some of the folders beside it: ${messageOf(e)}. A change there won't be seen until the server starts again`));
@@ -300,7 +299,8 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 			if (!isDir(output) || watchPaths.some((p) => isInside(p, output))) return;
 			try { watching(output, true); } catch (e) { if (must) throw e; }
 		};
-		watchOutput(true);
+		// The output may not be there before the first build: it's watched again after it.
+		watchOutput(false);
 		// The configuration's own files that aren't in a watched folder (the config file in the
 		// project root, the modules it imports). A build can add to them (a data file's imports),
 		// so this runs after each one.
@@ -321,6 +321,33 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 		if (!watchPaths.some((p) => isInside(p, root))) {
 			try { watcher.watch(root, false); } catch { /* the root's gone: nothing builds anyway */ }
 		}
+		// The watch begins before the first build, so an edit made while it runs is seen: one made
+		// after the build read the page and before the watch began was missed, and the server went
+		// on serving the old page (a11y #21: an agent that edits as soon as a page answers).
+		// What the build itself writes while it's watched is told apart as after a rebuild: the
+		// output's files by their contents, and sources by whether they've changed.
+		const built = async () => {
+			if (tools && startedTools) await firstCompile(site.output, quiet);
+			// What the build left, to tell a tool's write from the build's own: the output as it was,
+			// with the files the build put there as it left them.
+			const stamps = assetStamps(site.output);
+			const report = await buildAndReport(builder, live);
+			for (const asset of report.assets) {
+				const file = realPath(asset);
+				const stat = fs.statSync(file, { throwIfNoEntry: false });
+				if (stat) stamps.set(file, [stat.size, stat.mtimeMs]);
+				else stamps.delete(file);
+			}
+			return [report.ok, stamps] as const;
+		};
+		const [ok, afterBuild] = await built();
+		watchOutput(true);
+		watchConfigFiles();
+		// A config saved after this process loaded it and before the watch began (a reload loads
+		// it before this runs) was heard by no watcher: it's a change all the same, so the loop
+		// below reads the configuration again (CI's `serve_restarts_companions_on_reload`).
+		const savedMeanwhile = builder.changedSinceLoad();
+		if (savedMeanwhile !== undefined) rx.send([savedMeanwhile]);
 		// Changes seen while an update was held, for the loop to look at next.
 		const carried: string[] = [];
 		if (ok) {
@@ -355,7 +382,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				if (!more) break;
 				paths.push(...more);
 			}
-			const changed = paths.map(realPath).filter((file) => !own(file));
+			const changed = paths.map(realPath).filter((file) => !own(file) && !editorsOwn(file));
 			const outputs = changed.filter((file) => isInside(output, file));
 			// A source written again with the same contents hasn't changed: a `beforeBuild` command
 			// that writes into the input folder on every build would rebuild forever.
