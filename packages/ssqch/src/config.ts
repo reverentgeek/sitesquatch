@@ -131,6 +131,8 @@ export interface Config {
 	serveIgnore: string[];
 	/** Size budgets by kind of file, in bytes. */
 	budgets: Array<[string, number]>;
+	/** `budgets.fail`: over budget fails a production build, and stays a warning while serving. */
+	budgetsFail: boolean;
 	/** Content schemas, in the order they were added; one with the same name replaces the earlier one. */
 	schemas: Schema[];
 	/** The themes' folders, the one on top first. */
@@ -237,6 +239,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		serveRun: [],
 		serveIgnore: [],
 		budgets: [],
+		budgetsFail: false,
 		schemas: [],
 		themes: [],
 		passthrough: [],
@@ -839,7 +842,12 @@ function applySettings(config: Config, settings: Data): void {
 		}
 	} else if (settings.schemas !== undefined && settings.schemas !== null) bail(`schemas must be an object of { name: { fields } }, not ${typeof settings.schemas}`);
 	// `budgets: { pages: "150 KB", total: "300 MB" }`: sizes a build is checked against.
-	if (isObject(settings.budgets)) config.budgets = Object.entries(settings.budgets).map(([name, size]) => budget(name, size));
+	if (isObject(settings.budgets)) {
+		const { fail, ...sizes } = settings.budgets as Record<string, unknown>;
+		if (fail !== undefined && typeof fail !== "boolean") bail(`budgets.fail must be true or false, not ${typeof fail}`);
+		config.budgetsFail = fail === true;
+		config.budgets = Object.entries(sizes).map(([name, size]) => budget(name, size));
+	}
 	else if (settings.budgets !== undefined && settings.budgets !== null) bail(`budgets must be an object, like { pages: "150 KB", images: "1 MB" }, not ${typeof settings.budgets}`);
 	// `serve: { run: ["npx postcss ... --watch"] }`: programs `ssqch serve` runs alongside, and
 	// `ignore: ["src/_css/**"]`: files only they read, which a rebuild would do nothing for.
@@ -992,6 +1000,11 @@ function applyToml(config: Config, file: string): void {
 			// rounded, and `[1]` isn't one). In the order of their names, as 0.7 read them.
 			for (const [name, value] of Object.entries(byName(site.budgets))) {
 				at = ["budgets", name];
+				if (name === "fail") {
+					if (typeof value !== "boolean") bail("budgets.fail must be true or false");
+					config.budgetsFail = value;
+					continue;
+				}
 				config.budgets.push(budget(name, Number.isInteger(value) || typeof value === "string" ? value : tomlText(value)));
 			}
 		}

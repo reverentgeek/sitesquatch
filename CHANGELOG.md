@@ -42,6 +42,10 @@ where that version matches.
   change: set `hostFile: true`, or take the pattern out.
 
 ### Added
+- `budgets` take `fail: true` (`budgets: { pages: "150 KB", fail: true }`): whatever is over
+  budget is then an error, and a production build exits 1, so a deploy stops at a page that grew
+  too big. A development build and `ssqch serve` still warn, as they do for broken links. Without
+  it, a budget warns as it did. Squatch Snacks wrote a 40-line `afterBuild` hook to do this.
 - The docs starter (`ssqch init --starter docs`) copies a section's link: clicking the `#` beside
   a heading goes there as before and puts the section's address on the clipboard, with "Link
   copied" beside it for a moment, ready to paste into an issue or a chat. It's in the starter's

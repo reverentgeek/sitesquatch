@@ -34,4 +34,16 @@ test("footprint_weighs_a_build", () => {
 	write(dir, { "ssqch.config.js": "export default { budgets: { page: \"100 KB\" } };\n" });
 	r = ssqch(["build", "--root", d]);
 	assert.ok(!r.ok && r.log.includes("budgets.page isn't a kind of file (did you mean `pages`?)"), r.log);
+	// Added in 0.14 (Squatch Snacks, F1): `budgets.fail` makes over budget an error in a production
+	// build, and leaves it a warning in a development one (and while serving), as broken links are.
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, passthrough: [{ \"src/big.bin\": \"big.bin\" }], budgets: { other: \"4 KB\", fail: true } };\n" });
+	r = ssqch(["build", "--root", d]);
+	assert.ok(!r.ok && r.log.includes("error: /big.bin (5.00 KB) is over the other budget of 4.00 KB"), r.log);
+	r = ssqch(["build", "--root", d, "--format", "json"]);
+	assert.ok(!r.ok && JSON.parse(r.stdout).errors.some((e) => e.code === "over-budget"), r.stdout);
+	r = ssqch(["build", "--root", d, "--env", "development"]);
+	assert.ok(r.ok && r.log.includes("warn: /big.bin (5.00 KB) is over the other budget"), r.log);
+	write(dir, { "ssqch.config.js": "export default { budgets: { pages: \"1 MB\", fail: \"yes\" } };\n" });
+	r = ssqch(["build", "--root", d]);
+	assert.ok(!r.ok && r.log.includes("budgets.fail must be true or false, not string"), r.log);
 });
