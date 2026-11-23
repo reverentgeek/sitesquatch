@@ -72,6 +72,9 @@ where that version matches.
   sitesquatch.dev/examples/searchable-directory/.
 
 ### Changed
+- `ssqch docs <word>` weighs a word written as code (`<picture>`) over the same word in prose,
+  and searches for a plain word that no entry defines: `picture` answered with `slugger`'s "Misc
+  Pictures" and is the responsive images paragraph now, and `feed` was a list about `diff`.
 - A schema's problem on a paginated page says which item it's on: `src/snack.jinja (item 4 of
   snacks, "Ridge Runner Jerky"): price is required`, by the item's `title`, `name` or `slug`, or
   `(page 2 of posts)` for a page of several. Six errors from one template all said

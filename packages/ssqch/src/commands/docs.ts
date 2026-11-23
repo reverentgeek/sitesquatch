@@ -303,7 +303,7 @@ function leadsWith(block: string, name: string): boolean {
  * as code, as in a table row or a list item), in the section that has the best one, and that
  * section. Without a definition, the block that writes it as code most often.
  */
-function passages(all: Section[], name: string): [number, string[]] | undefined {
+function passages(all: Section[], name: string): [number, string[], boolean] | undefined {
 	let best: [number, number, string] | undefined;
 	const defining: Array<[number, string]> = [];
 	all.forEach((s, i) => {
@@ -321,8 +321,9 @@ function passages(all: Section[], name: string): [number, string[]] | undefined 
 	if (best === undefined) return undefined;
 	const [section, , block] = best;
 	let found = defining.filter(([i]) => i === section).map(([, b]) => b).slice(0, 3);
-	if (found.length === 0) found = [block];
-	return [section, found];
+	const defined = found.length > 0;
+	if (!defined) found = [block];
+	return [section, found, defined];
 }
 
 /** Other sections that write `name` as code, most often first. */
@@ -368,6 +369,11 @@ function search(all: Section[], query: string): Array<[number, string]> {
 			const text = words(block);
 			const hits = q.map((w) => [...text, ...title].filter((t) => t.startsWith(w)).length);
 			if (hits.every((n) => n > 0)) {
+				// A word written as code (`<picture>`, `feedPlugin()`) is the thing itself, where prose
+				// can use it in passing: `picture` found slugger's "Misc Pictures" before imagePlugin's
+				// `<picture>`s, and `feed` a list about diff (Squatch Snacks, D1). Each, as the whole word, counts four times.
+				const code = words((block.match(/`[^`\n]+`/g) ?? []).join(" "));
+				for (const [k, w] of q.entries()) hits[k] += 3 * code.filter((t) => t === w).length;
 				// A paragraph's bold label is a small heading (`**Your own languages:**`): one that has every word of the query is the answer.
 				const labelEnd = block.startsWith("**") ? block.indexOf(":**") : -1;
 				const label = labelEnd === -1 ? [] : words(block.slice(2, labelEnd));
@@ -441,7 +447,10 @@ export function answer(grammar: Grammar, all: Section[], known: Name[], rawQuery
 	const bare = query.replace(/^`+|`+$/g, "");
 	if (!/\s/.test(bare)) {
 		const found = passages(all, bare);
-		if (found) return { ...blank, also: also(all, bare, found[0]), section: found[0], passages: found[1] };
+		// A plain word no block defines, only mentions (`feed`, in a list about diff that names a
+		// `feed.xml`), is a word to search for, as several are. One that looks like code
+		// (`avifEffort`, `page.url`) keeps the block that writes it most.
+		if (found && (found[2] || !/^[a-z]+$/.test(bare) || search(all, bare).length === 0)) return { ...blank, also: also(all, bare, found[0]), section: found[0], passages: found[1] };
 	}
 	const hits = search(all, query);
 	if (hits.length === 0) return undefined;
