@@ -48,6 +48,10 @@ where that version matches.
   three functions it uses.
 - `navTree`'s entry says its marks follow the tree, not the URL (a flat menu's "Snacks" isn't
   `ancestor` on a snack's page), with the template check for a flat menu.
+- The docs say `ssqch.base` is there in every template, and in `data.ssqch` for a `computed`
+  function and `this.data.ssqch` in a filter; that `ssqch types` has to run again after a schema
+  changes; and the starters' `AGENTS.md` says to build the "before" copy into a folder that
+  isn't there yet, so leftovers don't show up as differences.
 
 ### Fixed
 
