@@ -54,7 +54,9 @@ test("inspect_says_where_a_page_and_its_data_come_from", () => {
 	let json;
 	try { json = JSON.parse(r.stdout); } catch (e) { throw new Error(`${e.message}: ${r.stdout}`); }
 	assert.deepEqual(json.field, { name: "made.by", value: "the hook", from: "src/_data/made.json", setBy: [{ from: "src/_data/made.json", value: "the hook" }] });
-	assert.ok(r.stderr.includes("from the config") && r.stderr.includes("from-a-command"), r.stderr);
+	// DELIBERATE (0.14): a command's output is held while tracing, as under `-q` (Squatch Snacks,
+	// E10: Tailwind's banner printed on every trace), and printed only if the command fails.
+	assert.ok(r.stderr.includes("from the config") && !r.stderr.includes("from-a-command"), r.stderr);
 
 	// One field, by the template's path, with every level that set it.
 	[ok, log] = run(["src/guides/2024-03-02-pine.md", "--field", "level"]);
