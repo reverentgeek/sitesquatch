@@ -322,7 +322,7 @@ test("serve_ignores_an_editors_own_files", async () => {
 test("serve_skips_what_serve_ignore_lists", async () => {
 	const dir = tempDir("serve-ignore");
 	write(dir, {
-		"ssqch.config.js": "import { sassPlugin } from \"ssqch/sass\";\nexport default { dirs: { input: \"src\" }, plugins: [sassPlugin({ files: { \"src/_scss/site.scss\": \"/site.css\" } })], serve: { ignore: [\"src/_css/**\", \"src/_scss/**\"] } };\n",
+		"ssqch.config.js": "import { sassPlugin } from \"ssqch/sass\";\nexport default { dirs: { input: \"src\" }, plugins: [sassPlugin({ files: { \"src/_scss/site.scss\": \"/site.css\" } })], serve: { ignore: [\"src/_css\", \"src/_scss/**\"] } };\n",
 		"src/index.jinja": "one",
 		"src/_css/main.css": "body { color: pine; }",
 		"src/_scss/site.scss": "@use \"vars\";\nbody { color: vars.$pine; }\n",
@@ -335,6 +335,7 @@ test("serve_skips_what_serve_ignore_lists", async () => {
 		await waitFor(page, "one");
 		// The first build's summary, so the count below is only what the edit started.
 		await waitFor(log, "Built in", 60_000);
+		// A folder named covers what's in it (and Windows reports the folder itself as well).
 		fs.writeFileSync(path.join(dir, "src/_css/main.css"), "body { color: gold; }");
 		await sleep(2000);
 		let said = readOr(log);

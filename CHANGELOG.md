@@ -13,11 +13,12 @@ where that version matches.
 
 ### Added
 - `serve: { ignore: ["src/_css/**"] }` lists files only a `serve.run` tool reads, so saving one
-  doesn't rebuild the site (globs from the project root; `ignore = [...]` under `[serve]` in
-  `sitesquatch.toml`). Saving a stylesheet only PostCSS read rebuilt all of v8.dev for nothing (1.6
-  s, 0 pages changed). The tool's output still reaches the browser. The config, its modules and a
-  file the last build read (a Sass partial) rebuild all the same, and for the last the server says
-  once that the glob matches a file the build reads. Eleventy's `watchIgnores` says ssqch's name.
+  doesn't rebuild the site (globs from the project root, and a folder covers what's in it; `ignore =
+  [...]` under `[serve]` in `sitesquatch.toml`). Saving a stylesheet only PostCSS read rebuilt all
+  of v8.dev for nothing (1.6 s, 0 pages changed). The tool's output still reaches the browser. The
+  config, its modules and a file the last build read (a Sass partial) rebuild all the same, and for
+  the last the server says once that the glob matches a file the build reads. Eleventy's
+  `watchIgnores` says ssqch's name.
 - "Tags and tag pages" in "Templates and data" is the blog starter's tag pages as a worked example:
   the `tagList` collection, a page for each tag, the page that lists them, and what happens with a
   tag that has a space in it. `ssqch docs tags` answers with it.

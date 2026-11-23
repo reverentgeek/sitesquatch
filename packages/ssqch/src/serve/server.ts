@@ -415,7 +415,15 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 		// would do nothing for (v8 #18). Never the config or its modules, and never a file the last
 		// build said it read (a Sass partial): ignoring that would leave a page stale with no word,
 		// so it rebuilds and says why, once a file.
-		const ignored = globSet("serve.ignore", site.serveIgnore);
+		const globs = globSet("serve.ignore", site.serveIgnore);
+		// A folder a glob names covers what's in it (`src/_css`), and a folder whose contents a
+		// glob covers (`src/_css/**`) is covered itself: Windows reports the folder when a file in
+		// it changes, which rebuilt for the file all the same.
+		const ignored = (rel: string) => {
+			if (globs(rel) || globs(`${rel}/`)) return true;
+			for (let at = rel.lastIndexOf("/"); at > 0; at = rel.lastIndexOf("/", at - 1)) if (globs(rel.slice(0, at))) return true;
+			return false;
+		};
 		const readAnyway = new Set<string>();
 		const skipped = (file: string) => {
 			if (isInside(output, file) || !isInside(root, file) || !ignored(relative(root, file)) || isConfig(file)) return false;

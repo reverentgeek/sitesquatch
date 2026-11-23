@@ -318,7 +318,7 @@ declare module "ssqch" {
 		serve?: {
 			/** Programs to start with the server and stop with it, like the watchers of your CSS and JavaScript tools: `["npx postcss src/app.css -o dist/app.css --watch"]`. Their output is shown with the tool's name in front. They get `SSQCH_ENV`, `SSQCH_SERVING` (`true`), `SSQCH_QUIET`, `SSQCH_INPUT` and `SSQCH_OUTPUT`, as build commands do. Builds don't run them. */
 			run?: string | string[];
-			/** Globs from the project root whose changes don't rebuild the site, for files only a `run` tool reads (`["src/_css/**"]` while PostCSS compiles it; a saved file it compiles still reaches the browser). Never the config or a file the last build read (a Sass partial). */
+			/** Globs (or folders, with what's in them) from the project root whose changes don't rebuild the site, for files only a `run` tool reads (`["src/_css/**"]` while PostCSS compiles it; a saved file it compiles still reaches the browser). Never the config or a file the last build read (a Sass partial). */
 			ignore?: string | string[];
 		};
 	}
