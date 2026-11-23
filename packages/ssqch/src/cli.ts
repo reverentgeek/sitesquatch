@@ -1,4 +1,5 @@
 // The command line: every command and flag is the 0.7 binary's.
+import { isIP } from "node:net";
 import path from "node:path";
 import util from "node:util";
 import { Printed, UsageError, parse } from "./args.ts";
@@ -28,6 +29,8 @@ const FORMAT: Option = { long: "format", value: "FORMAT", help: "text or json", 
 // What 0.7 said for a number it couldn't read, word for word.
 const digits = (value: string) => (/^\+?\d+$/.test(value) ? undefined : value === "" ? "cannot parse integer from empty string" : "invalid digit found in string");
 const number = (value: string) => digits(value) ?? (BigInt(value) > 0xffff_ffff_ffff_ffffn ? "number too large to fit in target type" : undefined);
+// An address to listen on: an IP address, or `localhost`.
+const host = (value: string) => (value === "localhost" || isIP(value) !== 0 ? undefined : `${JSON.stringify(value)} isn't an IP address: use 0.0.0.0 for every network this machine is on, or one of its addresses (192.168.1.20)`);
 const port = (value: string) => digits(value) ?? (BigInt(value) > 0x7fff_ffff_ffff_ffffn ? "number too large to fit in target type" : BigInt(value) > 65535n ? `${BigInt(value)} is not in 0..=65535` : undefined);
 
 const GLOBALS: Option[] = [
@@ -56,6 +59,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		about: "Build, serve, watch for changes and live-reload the browser",
 		options: [
 			{ long: "port", short: "p", value: "PORT", help: "The port to listen on (0 picks a free one)", default: "8080", check: port },
+			{ long: "host", value: "ADDRESS", help: "The address to listen on: 0.0.0.0 to open the site from a phone on the same network", default: "127.0.0.1", check: host },
 			{ long: "built", help: "Serve the output folder as it was built: no build, no watching, no reload script, gzip on" },
 			{ long: "ready-file", value: "FILE", path: true, help: "Write this file once the first build is done: JSON with the url, port and output folder" },
 		],
@@ -398,7 +402,7 @@ export async function main(argv: string[]): Promise<number> {
 		if (building) return (await import("./serve/build-process.ts")).runBuilder(building, makeConfig, root);
 		// From where the command was run, wherever the site's code runs.
 		const readyFile = value("ready-file") === undefined ? undefined : path.resolve(value("ready-file")!);
-		const options = { port: Number(value("port") ?? "8080"), readyFile, quiet: flag("quiet") };
+		const options = { port: Number(value("port") ?? "8080"), host: value("host") ?? "127.0.0.1", readyFile, quiet: flag("quiet") };
 		if (!flag("built")) {
 			try {
 				return await (await import("./serve/server.ts")).serve(argv, options);

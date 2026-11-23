@@ -43,7 +43,6 @@ test("the Node version the page asks for is the package's and the docs'", () => 
 // [what the landing page says, what the docs say]
 const claims: [string, string, string][] = [
 	["Uncharted territory: known gaps", "about 0.9 s after one edit on a 10,000-page site", "a 10,000-page site takes about 0.9 s"],
-	["Uncharted territory: known gaps", "listens on <code>127.0.0.1</code> only. There's no <code>--host</code>", "it listens on `127.0.0.1` only (no `--host`)"],
 	["Uncharted territory: known gaps", "Pages render one at a time on one thread", "pages render one at a time on one thread"],
 	["Uncharted territory: known gaps", "HDR photos need converting to sRGB first", "converting the source to sRGB once fixes it"],
 	["Has the stump moved? Comparing two builds", "No differences: 148 pages and 4,730 other files are the same.", "No differences: 148 pages and 4,730 other files are the same."],

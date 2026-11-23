@@ -11,6 +11,12 @@ where that version matches.
 
 ## Unreleased
 
+### Added
+- `ssqch serve --host 0.0.0.0` listens on every network the machine is on, so the site opens on
+  a phone, and prints the address for it: `On your network: http://192.168.1.20:8080/ (anyone on
+  it can see the site)`. `--host <address>` listens on that one. The default is still
+  `127.0.0.1`. `ssqch serve --built` takes it too.
+
 ### Changed
 - `ssqch init` makes a `package.json` that's there ready for the site: `"type": "module"`, which
   the config's `export default` needs (`npm init -y` on npm 12 writes `"type": "commonjs"`, and

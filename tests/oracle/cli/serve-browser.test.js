@@ -199,3 +199,32 @@ test("serve_rebuilds_sass_when_a_partial_changes", async () => {
 		await server.stop();
 	}
 });
+
+// a11y #20 and the known gaps: the dev server listened on 127.0.0.1 only, so a site couldn't be
+// looked at on a phone. DELIBERATE (0.13.5): `--host 0.0.0.0` listens on every network and says
+// where, with a word that anyone on it can see the site; the default is still this machine only.
+test("serve_listens_on_the_network_with_host", async () => {
+	const dir = tempDir("serve-host");
+	write(dir, { "ssqch.config.js": "export default {};\n", "index.md": "Camp\n" });
+	const ready = path.join(tempDir("serve-host-ready"), "ready.json");
+	const log = path.join(tempDir("serve-host-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--host", "0.0.0.0", "--ready-file", ready, "--root", dir], { logFile: log });
+	try {
+		await waitFor(ready, READY);
+		const { url, port } = JSON.parse(fs.readFileSync(ready, "utf8"));
+		assert.equal(url, `http://localhost:${port}/`);
+		const said = await until(() => readOr(log).includes("Squatch Watch is on.") && readOr(log), () => readOr(log));
+		const network = /\nOn your network: (http:\/\/[\d.]+:\d+\/)[^\n]* \(anyone on it can see the site\)\n/.exec(said);
+		if (network) {
+			// The address a phone would open answers.
+			assert.equal((await fetch(network[1])).status, 200, network[1]);
+		} else {
+			assert.ok(said.includes("\nOn your network: no network address found (is this machine on one?)\n"), said);
+		}
+	} finally {
+		await server.stop();
+	}
+	// An address that isn't one is refused before anything starts.
+	const r = ssqch(["serve", "--host", "camp", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("error: invalid value 'camp' for '--host <ADDRESS>': \"camp\" isn't an IP address: use 0.0.0.0"), r.log);
+});

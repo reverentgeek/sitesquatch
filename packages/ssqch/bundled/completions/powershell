@@ -72,6 +72,7 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
         'ssqch;serve' {
             [CompletionResult]::new('-p', '-p', [CompletionResultType]::ParameterName, 'The port to listen on (0 picks a free one)')
             [CompletionResult]::new('--port', '--port', [CompletionResultType]::ParameterName, 'The port to listen on (0 picks a free one)')
+            [CompletionResult]::new('--host', '--host', [CompletionResultType]::ParameterName, 'The address to listen on: 0.0.0.0 to open the site from a phone on the same network')
             [CompletionResult]::new('--ready-file', '--ready-file', [CompletionResultType]::ParameterName, 'Write this file once the first build is done: JSON with the url, port and output folder')
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
             [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')

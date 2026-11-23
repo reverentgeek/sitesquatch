@@ -59,6 +59,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand build" -s q -l quiet -d 'Pri
 complete -c ssqch -n "__fish_ssqch_using_subcommand build" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand build" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s p -l port -d 'The port to listen on (0 picks a free one)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l host -d 'The address to listen on: 0.0.0.0 to open the site from a phone on the same network' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l ready-file -d 'Write this file once the first build is done: JSON with the url, port and output folder' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l root -d 'Project root (defaults to the current directory)' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
