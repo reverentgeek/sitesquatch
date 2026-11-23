@@ -24,4 +24,24 @@
     <loc>https://example.com/posts/upon-further-review-a-stump/</loc>
     <lastmod>2026-01-08</lastmod>
   </url>
+  <url>
+    <loc>https://example.com/tags/</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+  <url>
+    <loc>https://example.com/tags/raccoons/</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+  <url>
+    <loc>https://example.com/tags/sightings/</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+  <url>
+    <loc>https://example.com/tags/stumps/</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+  <url>
+    <loc>https://example.com/tags/trails/</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
 </urlset>

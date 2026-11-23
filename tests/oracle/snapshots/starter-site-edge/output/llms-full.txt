@@ -26,7 +26,9 @@ It was tall, it was in a hurry, and it was gone before I found my camera. I'm wr
 anyway. This is the first entry in my field notes.
 
 It's also your first post. Every Markdown file in `src/posts/` is a post: `posts.json` gives
-them all the layout and the `posts` tag, so they show up on the home page, newest first.
+them all the layout and the `posts` tag, so they show up on the home page, newest first. The
+`tags` in a post's front matter add it to a page for each tag (this one's on
+[sightings](https://example.com/tags/sightings/index.md)), and every post is in the feed, `/feed.xml`.
 
 Edit this file while `ssqch serve` is running, and the page reloads by itself.
 
@@ -124,3 +126,57 @@ with is between you and your camera.
 A raccoon who keeps everything told me the trick for deploying: keep `dist/img/` and
 `.cache/` between builds, and the build never encodes the same picture twice. Raccoon's cache.
 Raccoon did not see anything tall.
+
+---
+url: https://example.com/tags/
+---
+
+# Tags
+
+- [raccoons](https://example.com/tags/raccoons/index.md) (1)
+- [sightings](https://example.com/tags/sightings/index.md) (2)
+- [stumps](https://example.com/tags/stumps/index.md) (2)
+- [trails](https://example.com/tags/trails/index.md) (2)
+
+---
+url: https://example.com/tags/raccoons/
+---
+
+# Tagged raccoons
+
+- [The Cache of the Wild](https://example.com/posts/the-cache-of-the-wild/index.md) (January 29, 2026)
+
+[Every tag](https://example.com/tags/index.md)
+
+---
+url: https://example.com/tags/sightings/
+---
+
+# Tagged sightings
+
+- [Upon Further Review, a Stump](https://example.com/posts/upon-further-review-a-stump/index.md) (January 8, 2026)
+- [I Know What I Saw](https://example.com/posts/i-know-what-i-saw/index.md) (January 1, 2026)
+
+[Every tag](https://example.com/tags/index.md)
+
+---
+url: https://example.com/tags/stumps/
+---
+
+# Tagged stumps
+
+- [The Stump Has Moved](https://example.com/posts/the-stump-has-moved/index.md) (January 15, 2026)
+- [Upon Further Review, a Stump](https://example.com/posts/upon-further-review-a-stump/index.md) (January 8, 2026)
+
+[Every tag](https://example.com/tags/index.md)
+
+---
+url: https://example.com/tags/trails/
+---
+
+# Tagged trails
+
+- [The Cache of the Wild](https://example.com/posts/the-cache-of-the-wild/index.md) (January 29, 2026)
+- [Raiders of the Lost Path](https://example.com/posts/raiders-of-the-lost-path/index.md) (January 22, 2026)
+
+[Every tag](https://example.com/tags/index.md)

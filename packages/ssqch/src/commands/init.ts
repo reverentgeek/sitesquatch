@@ -57,8 +57,8 @@ export const starterEngines = (): string[] => [...ENGINES];
 
 /** A starter's templates in one language: (path in the new site without the extension, file in `bundled/`). The Jinja ones are the starters' own; the rest are translations of them. */
 const SITE_TEMPLATES: Record<string, Array<[string, string]>> = {
-	jinja: [["src/_includes/layout", "starter/src/_includes/layout.jinja"], ["src/index", "starter/src/index.jinja"]],
-	...Object.fromEntries(["edge", "liquid", "hbs", "ejs"].map((e) => [e, [["src/_includes/layout", `starter/engines/layout.${e}`], ["src/index", `starter/engines/index.${e}`]] as Array<[string, string]>])),
+	jinja: ["_includes/layout", "index", "tags", "tag", "feed"].map((name) => [`src/${name}`, `starter/src/${name}.jinja`]),
+	...Object.fromEntries(["edge", "liquid", "hbs", "ejs"].map((e) => [e, ["layout", "index", "tags", "tag", "feed"].map((name) => [`src/${name === "layout" ? "_includes/layout" : name}`, `starter/engines/${name}.${e}`]) as Array<[string, string]>])),
 };
 
 /** The documentation starter's templates, in the same order in each language. */

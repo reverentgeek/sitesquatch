@@ -1,6 +1,7 @@
 ---
 title: The Stump Has Moved
 date: 2026-01-15
+tags: [stumps]
 ---
 I went back a third time. The stump is gone. There are tracks.
 

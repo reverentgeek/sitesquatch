@@ -1,6 +1,7 @@
 ---
 title: Upon Further Review, a Stump
 date: 2026-01-08
+tags: [sightings, stumps]
 description: A correction to the previous entry.
 ---
 I went back in daylight. It was a stump. A tall one, to be fair to me.

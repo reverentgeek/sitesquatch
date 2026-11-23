@@ -11,6 +11,13 @@ where that version matches.
 
 ## Unreleased
 
+### Changed
+- The blog starter (`ssqch init`) is a blog: its posts have tags, with a page for each tag
+  (`/tags/stumps/`) and one listing them (`/tags/`), each post links its tags, and an Atom feed
+  is at `/feed.xml` (`src/feed.jinja`, with `rssPlugin()`'s filters), linked from every page.
+  Code is highlighted (`markdown: { highlight: true }`, and the layout links `/highlight.css`),
+  and `leaveNoTrace: true` deletes a removed post's page. The same in every `--engine`.
+
 ### Fixed
 - A footnote in a page's Markdown copy (`llmsPlugin()`'s `index.md` and `llms-full.txt`) keeps
   its text: `[^1]: Two raccoons agree.` was read as a link definition and written as

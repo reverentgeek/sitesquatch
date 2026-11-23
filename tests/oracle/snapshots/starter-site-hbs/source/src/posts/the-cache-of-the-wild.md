@@ -1,6 +1,7 @@
 ---
 title: The Cache of the Wild
 date: 2026-01-29
+tags: [raccoons, trails]
 description: A raccoon, the trail conditions, and a copy for when the network is down.
 ---
 The raccoon keeps a dated copy of the trail conditions. He checks the ranger station once a
