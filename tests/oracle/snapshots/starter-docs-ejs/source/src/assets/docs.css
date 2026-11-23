@@ -211,7 +211,9 @@ img { max-width: 100%; height: auto; }
 h1 { margin: 0.25rem 0 1rem; font-size: 2.25rem; line-height: 1.2; }
 main h2 { margin-top: 2.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
 .anchor { margin-left: 0.25rem; color: var(--muted); text-decoration: none; opacity: 0; }
-:is(h2, h3, h4):hover .anchor, .anchor:focus { opacity: 1; }
+:is(h2, h3, h4):hover .anchor, .anchor:focus, .anchor[data-copied] { opacity: 1; }
+/* docs.js copies a section's link when its # is clicked, and says so for a moment. */
+.anchor[data-copied]::after { content: "Link copied"; margin-left: 0.5rem; padding: 0.1rem 0.45rem; border-radius: 0.375rem; background: var(--selected); color: var(--heading); font-size: 0.8rem; font-weight: 400; vertical-align: middle; }
 
 code { padding: 0.15em 0.35em; border-radius: 0.375rem; background: var(--surface); color: var(--code); font-size: 0.9em; }
 pre { padding: 1rem; overflow-x: auto; border-radius: 0.5rem; background: var(--surface); line-height: 1.5; }

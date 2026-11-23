@@ -9,6 +9,14 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Added
+- The docs starter (`ssqch init --starter docs`) copies a section's link: clicking the `#` beside
+  a heading goes there as before and puts the section's address on the clipboard, with "Link
+  copied" beside it for a moment, ready to paste into an issue or a chat. It's in the starter's
+  `docs.js` and `docs.css`; without a clipboard the `#` is the plain link it was.
+
 ## 0.13.6 - 2026-11-23
 
 ### Added
