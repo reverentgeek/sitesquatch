@@ -69,6 +69,8 @@ export interface Tpl {
 	lastModified: Date | undefined;
 	/** When its file last changed in a commit, with `dateFallback: "git"`, for a page with no date of its own. */
 	commitDate: Date | undefined;
+	/** Whether git had a date for its file (with either setting): what `ssqch trace` says `page.lastModified` came from. */
+	committed: boolean;
 	/** Plain text with no front matter: copied as it is and kept out of collections. */
 	plainCopy: boolean;
 	/** The keys in the file's own front matter, for schemas' `unknown`. */
@@ -197,6 +199,9 @@ export class Site {
 	}
 
 	private seenLower: Set<string> | undefined;
+	/** Why git gave no dates at all (`gitDates`), and the files it left out for changes not committed: for `ssqch trace`. */
+	private gitNote: string | undefined;
+	private gitChanged = new Set<string>();
 	private caseBlind: boolean | undefined;
 
 	/**
@@ -587,18 +592,20 @@ export class Site {
 	 */
 	private gitDates(setting: string): Map<string, Date> {
 		const { config, dirs } = this;
+		this.gitNote = undefined;
+		this.gitChanged.clear();
 		const git = (...args: string[]) => spawnSync("git", ["-C", dirs.root, "-c", "core.quotepath=off", ...args], { encoding: "utf8", maxBuffer: 1 << 30 });
 		const dates = new Map<string, Date>();
 		const lost = (message: string) => { if (!config.quiet) warn(warning("last-modified", `${setting}: ${message}`)); };
 		const top = git("rev-parse", "--show-toplevel");
-		if (top.error) { lost(`can't run git (${top.error.message}), so pages use their files' times`); return dates; }
-		if (top.status !== 0) return dates;
+		if (top.error) { lost(`can't run git (${top.error.message}), so pages use their files' times`); this.gitNote = "git couldn't run"; return dates; }
+		if (top.status !== 0) { this.gitNote = "the project isn't in a git repository"; return dates; }
 		const toplevel = realPath(top.stdout.trim());
 		if (git("rev-parse", "--is-shallow-repository").stdout?.trim() === "true") {
 			lost("this is a shallow clone, so dates come from the commits it has (fetch the full history, like `fetch-depth: 0` in GitHub Actions)");
 		}
 		const log = git("log", "--format=@%ct", "--name-only", "--no-merges", "--", ".");
-		if (log.error || log.status !== 0) return dates;
+		if (log.error || log.status !== 0) { this.gitNote = "git log failed"; return dates; }
 		let current: Date | undefined;
 		for (const line of log.stdout.split("\n")) {
 			if (line.startsWith("@")) {
@@ -614,11 +621,17 @@ export class Site {
 			for (const line of status.stdout.split("\n")) {
 				if (line.length <= 3) continue;
 				const changed = line.slice(3).split(" -> ").pop()!;
-				dates.delete(path.join(toplevel, changed));
+				if (dates.delete(path.join(toplevel, changed))) this.gitChanged.add(realPath(path.join(toplevel, changed)));
 			}
 		}
 		// Templates are found through the input folder's real path.
 		return new Map([...dates].map(([file, date]) => [realPath(file), date]));
+	}
+
+	/** Why git gave a page's file no date, for `ssqch trace`: the whole project's reason, or the file's own. */
+	gitWhy(file: string): string {
+		if (this.gitNote !== undefined) return this.gitNote;
+		return this.gitChanged.has(file) ? "it has changes that aren't committed" : "it isn't in a commit yet";
 	}
 
 	// ---- the cascade ---------------------------------------------------------------------------
@@ -801,6 +814,7 @@ export class Site {
 				// pins it, as it does an undated page's date: the same build gives the same pages.
 				lastModified: config.lastModified === "git" ? commitDates.get(file) ?? fileTime(mtime) : config.lastModified === "file" ? fileTime(mtime) : undefined,
 				commitDate: config.dateFallback === "git" ? commitDates.get(file) : undefined,
+				committed: commitDates.has(file),
 			};
 		} catch (e) {
 			throw context(e, `in ${rel}`);

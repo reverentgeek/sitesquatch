@@ -16,6 +16,10 @@ where that version matches.
 - `ssqch footprint` and a budget's warning name the picture an encoded image came from:
   `/img/P_kN5ULxZN-1600.jpeg (from src/img/snacks/summit-seed-brittle.jpg)`, and `source` in
   the JSON, where the id alone sent people to `.cache/ssqch/image-hashes.json`.
+- `ssqch trace` says where `page.lastModified` came from, on a `Modified` row (and
+  `lastModified` in the JSON, and with `--field page.lastModified`): `git: the last commit to
+  src/privacy.md`, or why it's the file's time (`` `lastModified: "git"`, but the project isn't
+  in a git repository ``). The build falls back quietly, and `trace` said "built in".
 
 ### Fixed
 
@@ -51,6 +55,9 @@ where that version matches.
   printed `undefined` printed nothing. A strict EJS site that prints an undefined value now
   fails its build there, naming it. A name EJS doesn't have at all (`titel is not defined`)
   gets the nearest name too.
+- `ssqch trace` said an undated page's date came from `the file's modification time` when
+  `dateFallback: "git"` had taken it from git. It says `git: the last commit to <file>`, or why
+  git had nothing.
 
 ## 0.14.0 - 2026-11-23
 

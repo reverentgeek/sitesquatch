@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { ssqch, tempDir, write, exists } from "../lib/ssqch.js";
 
 test("inspect_says_where_a_page_and_its_data_come_from", () => {
@@ -124,4 +125,33 @@ test("a_pages_output_path_is_from_the_project_root", () => {
 	// A page that isn't written has none, as before (`[item False]` above is its item, in Jinja).
 	const unwritten = JSON.parse(ssqch(["trace", "--root", dir, "src/none.jinja", "--format", "json"]).stdout);
 	assert.equal(unwritten.data.page.value.outputPath, false);
+});
+
+// Added in 0.14.1: where `page.lastModified` (and an undated page's date, with `dateFallback:
+// "git"`) came from, and why it's the file's time when git had nothing: Squatch Snacks' request 2
+// was this question, and `trace` said "built in" while the build fell back quietly (E8).
+test("trace_says_where_git_dates_came_from", () => {
+	const dir = tempDir("trace-git");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, lastModified: \"git\", dateFallback: \"git\" };\n",
+		"src/privacy.md": "---\ntitle: Privacy\n---\nHi\n",
+	});
+	let r = ssqch(["trace", "/privacy/", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.match(r.log, /Date {8}\S+ \(from the file's modification time: `dateFallback: "git"`, but the project isn't in a git repository\)/);
+	assert.match(r.log, /Modified {4}\S+ \(from the file's modification time: `lastModified: "git"`, but the project isn't in a git repository\)/);
+	r = ssqch(["trace", "/privacy/", "--root", dir, "--field", "page.lastModified"]);
+	assert.ok(r.log.includes("> the file's modification time: `lastModified: \"git\"`, but the project isn't in a git repository"), r.log);
+	const git = (...args) => spawnSync("git", ["-C", dir, "-c", "user.email=ranger@example.com", "-c", "user.name=Ranger", ...args], { encoding: "utf8", env: { ...process.env, GIT_AUTHOR_DATE: "2026-03-01T12:00:00Z", GIT_COMMITTER_DATE: "2026-03-01T12:00:00Z" } });
+	if (git("--version").status !== 0) return;
+	git("init", "-q");
+	git("add", "-A");
+	git("commit", "-qm", "First tracks");
+	r = ssqch(["trace", "/privacy/", "--root", dir, "--format", "json"]);
+	const report = JSON.parse(r.log);
+	assert.deepEqual(report.lastModified, { value: "2026-03-01T12:00:00Z", from: "git: the last commit to src/privacy.md" }, r.log);
+	assert.equal(report.date.from, "git: the last commit to src/privacy.md", r.log);
+	fs.appendFileSync(path.join(dir, "src/privacy.md"), "More\n");
+	r = ssqch(["trace", "/privacy/", "--root", dir]);
+	assert.ok(r.log.includes("`lastModified: \"git\"`, but it has changes that aren't committed"), r.log);
 });
