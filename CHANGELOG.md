@@ -23,6 +23,8 @@ where that version matches.
 - `linksPlugin()` notes a link that works through a redirect (a `_redirects` line, or a redirect
   page): `note: 1 link goes through a redirect` with each link, where it ends up, and the pages
   it's on. A note, not a warning, and none for a page's link to its own old address.
+- `ssqch diff` says where a removed page goes when the second build's `_redirects` sends it on:
+  `- /old/ (redirected to /new/)`, and `redirects` in the JSON.
 
 ### Changed
 

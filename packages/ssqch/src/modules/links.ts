@@ -377,7 +377,7 @@ function find(output: string, urlPath: string, written: Set<string>): string | u
  * off). A line without the base is kept as it is, as a `_redirects` template written for the root
  * has it.
  */
-function redirectRules(output: string, base: string): Array<{ from: string; to: string }> {
+export function redirectRules(output: string, base: string): Array<{ from: string; to: string }> {
 	let text: string;
 	try { text = fs.readFileSync(path.join(output, "_redirects"), "utf8"); } catch { return []; }
 	const rules: Array<{ from: string; to: string }> = [];
@@ -391,7 +391,7 @@ function redirectRules(output: string, base: string): Array<{ from: string; to: 
 }
 
 /** Whether the line from `from` covers the path `p`. */
-const covers = (from: string, p: string) => (from.includes("/:") ? placeholdersMatch(from, p) : from.endsWith("*") ? p.startsWith(from.slice(0, -1)) : from === p || from.replace(/\/+$/, "") === p.replace(/\/+$/, ""));
+export const covers = (from: string, p: string) => (from.includes("/:") ? placeholdersMatch(from, p) : from.endsWith("*") ? p.startsWith(from.slice(0, -1)) : from === p || from.replace(/\/+$/, "") === p.replace(/\/+$/, ""));
 
 export function redirected(sources: string[], p: string): boolean {
 	return sources.some((from) => covers(from, p));

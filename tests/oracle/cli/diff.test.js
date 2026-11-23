@@ -182,3 +182,17 @@ test("diff_only_takes_a_folder_and_says_when_it_matches_nothing", () => {
 	r = ssqch(["diff", "a", "b", "--only", "/posts/fir/"], { cwd: dir });
 	assert.ok(r.code === 2 && r.log.includes("--only \"/posts/fir/\" matched no file in either build"), r.log);
 });
+
+// Added in 0.14.1: a removed page the second build's `_redirects` sends on isn't gone for a
+// visitor, so the list says where it goes (Squatch Snacks' log), and the JSON has `redirects`.
+test("diff_says_where_a_removed_page_is_redirected", () => {
+	const dir = tempDir("diff-redirected");
+	write(dir, {
+		"a/index.html": "<p>Camp</p>", "a/old/index.html": "<p>Old</p>", "a/gone/index.html": "<p>Gone</p>",
+		"b/index.html": "<p>Camp</p>", "b/_redirects": "/old/  /new/  301\n",
+	});
+	let r = ssqch(["diff", path.join(dir, "a"), path.join(dir, "b")]);
+	assert.ok(r.log.includes("Removed (2)\n  - /gone/\n  - /old/ (redirected to /new/)\n"), r.log);
+	r = ssqch(["diff", path.join(dir, "a"), path.join(dir, "b"), "--format", "json"]);
+	assert.deepEqual(JSON.parse(r.log).redirects, { "/old/": "/new/" }, r.log);
+});
