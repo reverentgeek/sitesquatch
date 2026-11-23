@@ -9,6 +9,18 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Changed
+- A front matter `date` that isn't one (`date: last Tuesday`) is a `front-matter` error that
+  points at its line (`src/t.md: \`date\` isn't a date: "last Tuesday". Write it as
+  2026-11-22, ...`), listed with the page's schema errors. It was `in t.md: can't parse date
+  "last Tuesday"`, with the code `build`, no line, and the page's other mistakes unsaid.
+
+### Fixed
+- A page open in a browser asks a stopped `ssqch serve` less and less often (up to every 10 s),
+  and says so once in the console; it asked every 0.7 s, and logged an error each time.
+
 ## 0.13.4 - 2026-11-22
 
 ### Added

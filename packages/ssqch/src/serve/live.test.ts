@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import vm from "node:vm";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Live, missingMessage } from "./live.ts";
 
@@ -104,4 +105,37 @@ test("a_missing_file_names_who_could_have_written_it", () => {
 	assert.equal(missingMessage("/app.css", [], "dist"), "/app.css is linked but nothing wrote it to dist. If a tool makes it, run its watcher with `serve.run` (`ssqch docs \"CSS and JavaScript\"`)");
 	assert.equal(missingMessage("/app.css", ["postcss"], "dist"), "/app.css is linked but isn't in dist: serve.run's postcss hasn't written it (its output is in the terminal)");
 	assert.equal(missingMessage("/app.css", ["postcss", "esbuild", "tsc"], "dist"), "/app.css is linked but isn't in dist: none of serve.run's postcss, esbuild or tsc has written it (their output is in the terminal)");
+});
+
+// The new-docs run: once the server stopped, the page asked every 0.7 s forever, and the console
+// had 184 errors in two minutes. It asks less and less often (up to every 10 s), says so once, and
+// goes back to its pace when the server answers.
+test("a_page_asks_less_often_once_the_server_stops", async () => {
+	const timers: Array<[() => Promise<void>, number]> = [];
+	const logged: string[] = [];
+	let answering = false;
+	const context = vm.createContext({
+		URL,
+		console: { log: (line: string) => logged.push(line) },
+		document: { title: "", querySelectorAll: () => [] },
+		location: { pathname: "/", href: "http://localhost/", origin: "http://localhost" },
+		setTimeout: (fn: () => Promise<void>, ms: number) => timers.push([fn, ms]),
+		fetch: async () => {
+			if (!answering) throw new TypeError("Failed to fetch");
+			return { ok: true, json: async () => ({ id: 1, error: null, css: [] }) };
+		},
+	});
+	vm.runInContext(fs.readFileSync(new URL("./live.js", import.meta.url), "utf8"), context);
+	const waits: number[] = [];
+	const step = async () => {
+		const [fn, ms] = timers.shift()!;
+		waits.push(ms);
+		await fn();
+	};
+	for (let i = 0; i < 6; i++) await step();
+	answering = true;
+	await step();
+	await step();
+	assert.deepEqual(waits, [700, 1400, 2800, 5600, 10_000, 10_000, 10_000, 700]);
+	assert.deepEqual(logged, ["[ssqch] The server isn't answering (stopped?). Checking now and then.", "[ssqch] The server's back."]);
 });
