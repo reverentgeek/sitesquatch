@@ -7,6 +7,9 @@ description: "The quickest way in is ssqch init, which sets up camp (a config, a
 
 The quickest way in is `ssqch init`, which sets up camp (a config, a layout, a home page, five posts with tags, a page for each tag and one listing them, an Atom feed at `/feed.xml`, a 404 page, a data file, a blueprint for the next post, editor types, and an `AGENTS.md` for coding agents) and then leaves you to it:
 
+> [!NOTE]
+> **Not released yet.** This ships with the next version of ssqch: the blog starter's tags, tag pages and feed.
+
 ```sh
 ssqch init my-site
 cd my-site && ssqch serve
