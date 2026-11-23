@@ -19,10 +19,10 @@ Largest footprints: pages
 
 Largest footprints: other files
   3.15 MB  /static/job-hunt-ai-cheat-sheet.pdf
-  2.10 MB  /img/ElD54Br0Nm-1200.png
+  2.10 MB  /img/ElD54Br0Nm-1200.png (from src/img/trail-map.png)
 ```
 
-It reads the site's output folder, or any build folder you name (`ssqch footprint dist-before`), so build first. `--top 20` lists more of the heaviest (0 for none), and `--format json` gives the same as data: `files`, `bytes`, `kinds` and `largest.pages` and `largest.files`, each with its `path` and `bytes`.
+It reads the site's output folder, or any build folder you name (`ssqch footprint dist-before`), so build first. `--top 20` lists more of the heaviest (0 for none), and `--format json` gives the same as data: `files`, `bytes`, `kinds` and `largest.pages` and `largest.files`, each with its `path` and `bytes`. An image `imagePlugin()` encoded is named by an id, so the list says which picture it came from (`(from src/img/trail-map.png)`, and `source` in the JSON), from the image cache in `.cache/ssqch/`; a budget's warning says it too. A folder named without a config is looked up in the current folder's cache.
 
 To keep a site light, give the config `budgets`. Every build then checks the output against them, after plugins like `assetsPlugin()` have run, and warns about whatever is over: `warn: 2 pages are over the pages budget of 100 KB: /build-a-secure-node-js-application-with-javascript-async-await-using-hapi/ (108 KB), /avatars/ (104 KB)`.
 

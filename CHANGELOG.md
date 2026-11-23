@@ -11,6 +11,12 @@ where that version matches.
 
 ## Unreleased
 
+### Added
+
+- `ssqch footprint` and a budget's warning name the picture an encoded image came from:
+  `/img/P_kN5ULxZN-1600.jpeg (from src/img/snacks/summit-seed-brittle.jpg)`, and `source` in
+  the JSON, where the id alone sent people to `.cache/ssqch/image-hashes.json`.
+
 ### Fixed
 
 - `linksPlugin()` no longer reads a path in a feed entry's code (`<code>/snacks/*</code>`, and

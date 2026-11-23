@@ -1,8 +1,9 @@
 // From crates/ssqch/tests/cli.rs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
-import { ssqch, project, write } from "../lib/ssqch.js";
+import { ssqch, project, write, FIXTURES } from "../lib/ssqch.js";
 
 test("footprint_weighs_a_build", () => {
 	const dir = project({
@@ -46,4 +47,24 @@ test("footprint_weighs_a_build", () => {
 	write(dir, { "ssqch.config.js": "export default { budgets: { pages: \"1 MB\", fail: \"yes\" } };\n" });
 	r = ssqch(["build", "--root", d]);
 	assert.ok(!r.ok && r.log.includes("budgets.fail must be true or false, not string"), r.log);
+});
+
+// An encoded image is named by its id, so footprint and a budget say which picture it is, from the
+// image cache (Squatch Snacks, E7: the agent read `.cache/ssqch/image-hashes.json` to find it).
+// Added in 0.14.1.
+test("footprint_names_an_encoded_images_picture", () => {
+	const PNG = fs.readFileSync(path.join(FIXTURES, "cli/squatch.png"));
+	const dir = project({
+		"ssqch.config.js": "import { imagePlugin } from \"ssqch/image\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [imagePlugin({ widths: [32], formats: [\"png\"] })], budgets: { images: \"10 B\" } };\n",
+		"src/index.html": "<img src=\"/img/squatch.png\" alt=\"Squatch\">",
+		"src/img/squatch.png": PNG,
+	}, "footprint-images");
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.match(r.log, /warn: \/img\/[\w-]+-32\.png \([\d.]+ \w?B, from src\/img\/squatch\.png\) is over the images budget/);
+	r = ssqch(["footprint", "--root", dir]);
+	assert.match(r.log, /  \/img\/[\w-]+-32\.png \(from src\/img\/squatch\.png\)\n/);
+	r = ssqch(["footprint", "--root", dir, "--format", "json"]);
+	const image = JSON.parse(r.log).largest.files.find((f) => f.kind === "Images");
+	assert.equal(image.source, "src/img/squatch.png", r.log);
 });

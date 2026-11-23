@@ -373,7 +373,7 @@ export async function main(argv: string[]): Promise<number> {
 	if (command === "patrol" && cli.positionals[0] !== undefined) return runPatrol(cli.positionals[0], cli.positionals[0], format, value("url"));
 	if (command === "footprint" && cli.positionals[0] !== undefined) {
 		try {
-			await runFootprint(cli.positionals[0], cli.positionals[0], top, format);
+			await runFootprint(cli.positionals[0], cli.positionals[0], top, format, process.cwd());
 			return 0;
 		} catch (e) {
 			process.stderr.write(`${diagnostics.red("error:")} ${describeThrown(e, process.cwd())}\n`);
@@ -447,7 +447,7 @@ export async function main(argv: string[]): Promise<number> {
 		if (command === "footprint") {
 			const dirs = dirsOf(config);
 			// Read from the folder as 0.7 named it, so an error names it the same way (`nope/_site`).
-			await runFootprint(shownDir(config, config.output), shownOutput(config), top, format);
+			await runFootprint(shownDir(config, config.output), shownOutput(config), top, format, config.root);
 			return 0;
 		}
 		const [{ build }, { summary, profileText }] = await Promise.all([import("./build.ts"), import("./report.ts")]);
@@ -565,10 +565,10 @@ async function runPatrol(dir: string, shown: string, format: string, url?: strin
 }
 
 /** `ssqch footprint`: what the build in `dir` weighs. `shown` is how the report names the folder. */
-async function runFootprint(dir: string, shown: string, top: number, format: string): Promise<void> {
+async function runFootprint(dir: string, shown: string, top: number, format: string, root: string): Promise<void> {
 	checkFormat(format);
 	const { footprintJson, footprintText, measure } = await import("./footprint.ts");
-	const measured = await measure(dir);
+	const measured = await measure(dir, root);
 	if (format === "json") process.stdout.write(JSON.stringify(footprintJson(measured, shown, top), null, 2) + "\n");
 	else process.stdout.write(footprintText(measured, shown, top));
 }

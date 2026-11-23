@@ -158,7 +158,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	if (config.afterBuild.length) report.pageBytes = written.reduce((sum, w) => sum + (fs.statSync(w.file, { throwIfNoEntry: false })?.size ?? 0), 0);
 	// After the hooks, which can fingerprint or minify what's measured.
 	if (config.budgets.length) {
-		const over = overBudget(await measure(dirs.output), config.budgets);
+		const over = overBudget(await measure(dirs.output, config.root), config.budgets);
 		// `budgets.fail` makes them errors where a broken link is one: a production build, not
 		// `ssqch serve`, which keeps going so the page can be fixed.
 		if (over.length && config.budgetsFail && config.env === "production" && !config.serving) {
