@@ -25,6 +25,27 @@ test("nav.yml lists every docs page once", () => {
 	assert.equal(listed[0], "index.md", "the docs' front page comes first: `ssqch docs` reads it as the top section");
 });
 
+// A table that a blank line splits renders its later rows as a paragraph of pipes: the release
+// of 0.13.5 took a note out of the configuring page's table and left the line behind, and four
+// options fell out of it. A callout can't go inside a table either.
+test("no table is split by a blank line", () => {
+	const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+	const split: string[] = [];
+	for (const file of walk(DOCS_DIR).filter((f) => f.endsWith(".md"))) {
+		const lines = readFileSync(file, "utf8").split("\n");
+		let fenced = false;
+		lines.forEach((line, i) => {
+			if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+			if (fenced || !line.startsWith("|") || line.startsWith("| ---") || line.startsWith("|---")) return;
+			// A row with no header above it: what's above is a blank line, then more rows.
+			let j = i - 1;
+			while (j >= 0 && lines[j].trim() === "") j--;
+			if (j < i - 1 && j >= 0 && lines[j].startsWith("|") && !(lines[i + 1] ?? "").match(/^\|\s*:?-/)) split.push(`${path.relative(DOCS_DIR, file)}:${i + 1}`);
+		});
+	}
+	assert.deepEqual(split, [], "a blank line splits a table here");
+});
+
 test("each page's `ssqch docs` command prints that page", () => {
 	const all = sections();
 	const known = names(GRAMMAR);
