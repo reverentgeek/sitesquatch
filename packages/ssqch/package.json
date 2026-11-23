@@ -1,6 +1,6 @@
 {
 	"name": "ssqch",
-	"version": "0.13.5",
+	"version": "0.13.6",
 	"private": true,
 	"description": "SiteSquatch (ssqch): a fast, pluggable static site generator",
 	"license": "MIT",
