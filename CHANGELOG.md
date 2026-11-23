@@ -21,6 +21,11 @@ where that version matches.
   front matter, and `redirectsPlugin()`, now in the starter's config), and *Honey, I Shrunk the
   Site* weighs the build with `ssqch footprint` and sets `budgets`, with the starter's own
   numbers.
+- A new example, `searchable-directory` (EJS): twelve campgrounds from one data file, a page for
+  each by pagination, a list filtered by region and amenity with a custom element
+  (`elementsPlugin()`, the choice kept in the address so a filtered list can be linked), and
+  Pagefind search of the campground pages only. It's live at
+  sitesquatch.dev/examples/searchable-directory/.
 
 ## 0.13.6 - 2026-11-23
 

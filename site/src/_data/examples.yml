@@ -79,3 +79,12 @@
     - { label: One page per item, by pagination, docs: /docs/templates/ }
     - { label: Data from a JSON schema, docs: /docs/data-files/ }
     - { label: Handlebars templates, docs: /docs/template-languages/#handlebars-and-mustache }
+- name: searchable-directory
+  engine: EJS
+  from: what a directory of plugins, themes or campgrounds looks like
+  shows: A page per record from one data file, filters as a custom element, search of the records.
+  features:
+    - { label: One page per record, by pagination, docs: /docs/templates/ }
+    - { label: Filters as a custom element, docs: /docs/plugins/ }
+    - { label: Pagefind search, docs: /docs/deploying/#search }
+    - { label: EJS templates, docs: /docs/template-languages/#ejs }

@@ -1,0 +1,38 @@
+---
+layout: base.ejs
+title: Every campground
+description: "The campgrounds of the Squatch Woods, filtered by region and amenity, with a page for each one."
+---
+<main>
+<h1>Every campground</h1>
+<p>All <%= campgrounds.length %> campgrounds in the Squatch Woods, from <code>src/_data/campgrounds.json</code>. Pick a region or what you need, or search every campground's page from the header.</p>
+
+<campground-filter>
+  <%# The filters are in the page, hidden: the element shows them and makes them work. Without JavaScript, the whole list is there. %>
+  <form class="filters" hidden>
+    <label>Region
+      <select name="region">
+        <option value="">Any region</option>
+        <%_ for (const region of [...new Set(campgrounds.map((camp) => camp.region))].sort()) { _%>
+        <option><%= region %></option>
+        <%_ } _%>
+      </select>
+    </label>
+    <fieldset>
+      <legend>Has</legend>
+      <%_ for (const [key, label] of Object.entries(amenities)) { _%>
+      <label><input type="checkbox" name="has" value="<%= key %>"> <%= label %></label>
+      <%_ } _%>
+    </fieldset>
+  </form>
+  <p class="muted" role="status"></p>
+  <ul class="campgrounds">
+    <%_ for (const camp of campgrounds) { _%>
+    <li data-region="<%= camp.region %>" data-amenities="<%= camp.amenities.join(" ") %>">
+      <a href="/campgrounds/<%= camp.slug %>/"><%= camp.name %></a> <span class="muted"><%= camp.region %>, <%= camp.sites %> sites</span>
+      <ul class="tags"><% for (const key of camp.amenities) { %><li><%= amenities[key] %></li><% } %></ul>
+    </li>
+    <%_ } _%>
+  </ul>
+</campground-filter>
+</main>

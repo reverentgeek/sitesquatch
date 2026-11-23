@@ -1,0 +1,25 @@
+---
+layout: base.ejs
+pagination:
+  data: campgrounds
+  size: 1
+  alias: camp
+permalink: /campgrounds/<%= camp.slug %>/
+computed:
+  title: "<%- camp.name %>"
+  description: "<%- camp.description %>"
+---
+<%# One page for each record in src/_data/campgrounds.json. data-pagefind-body marks what search indexes: these pages, and not the home page that lists them all. %>
+<main data-pagefind-body>
+<h1><%= camp.name %></h1>
+<p><%= camp.description %></p>
+<dl>
+  <dt>Region</dt><dd><a href="/?region=<%= encodeURIComponent(camp.region) %>"><%= camp.region %></a></dd>
+  <dt>Sites</dt><dd><%= camp.sites %></dd>
+  <dt>Season</dt><dd><%= camp.season %></dd>
+  <dt>Reservations</dt><dd><%= camp.reservable ? "Taken" : "First come, first served" %></dd>
+  <dt>Nearest trail</dt><dd><%= camp.trail %></dd>
+  <dt>Has</dt><dd><%= camp.amenities.map((key) => amenities[key]).join(", ") %></dd>
+</dl>
+</main>
+<p><a href="/">Every campground</a></p>

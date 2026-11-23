@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Owl Roost | Campgrounds of the Squatch Woods</title>
+<meta name="description" content="Quiet sites in a stand of cedars. No fires, by order of the owls, who are trying to sleep during the day.">
+
+<link rel="stylesheet" href="/pagefind/pagefind-component-ui.css">
+<script src="/pagefind/pagefind-component-ui.js" type="module"></script>
+<style>
+  /* Ranger Station '76: soft white (green charcoal in dark mode), pine headings, burnt orange
+     links, avocado for what's selected, and the four-color stripe under the header. */
+  :root { color-scheme: light dark; --page: #fafaf7; --text: #29332c; --heading: #233b2b; --muted: #5e6a61; --link: #a23e20; --rule: #dcddd4; --surface: #eeefe7; --selected: #e6ecda; --stripe-pine: #233b2b; }
+  @media (prefers-color-scheme: dark) { :root { --page: #1b201d; --text: #e5e9e1; --heading: #d6e4c8; --muted: #a2aca3; --link: #f0a17d; --rule: #3a413b; --surface: #252b27; --selected: #2e3f2b; --stripe-pine: #2e5a3c; } }
+  body { font: 17px/1.6 system-ui, sans-serif; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; color: var(--text); background: var(--page); }
+  h1, h2, h3 { color: var(--heading); }
+  a { color: var(--link); text-underline-offset: 0.18em; }
+  body > header { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 5px solid; border-image: linear-gradient(to right, var(--stripe-pine) 0 25%, #a23e20 25% 50%, #e8af43 50% 75%, #a9b66a 75%) 1; }
+  body > header > a { color: var(--heading); font-weight: 700; text-decoration: none; }
+  .muted { color: var(--muted); }
+  .campgrounds { list-style: none; padding: 0; }
+  .campgrounds li { padding: 0.6rem 0; border-bottom: 1px solid var(--rule); }
+  .campgrounds li a { font-weight: 600; }
+  .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.3rem 0 0; padding: 0; list-style: none; font-size: 0.85rem; }
+  .tags li { padding: 0 0.5rem; border: 0; border-radius: 999px; background: var(--selected); }
+  .filters { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; align-items: center; padding: 0.75rem 1rem; border-radius: 0.5rem; background: var(--surface); }
+  .filters fieldset { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; padding: 0; border: 0; }
+  .filters legend { float: left; margin-right: 0.5rem; font-weight: 600; }
+  .filters label { white-space: nowrap; }
+  .filters select { font: inherit; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+  dt { font-weight: 600; }
+  dd { margin: 0; }
+  :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  /* Pagefind's search in the palette. On #search, not :root, where Pagefind's own stylesheet sets its own. */
+  #search { --pf-text: #29332c; --pf-text-secondary: #5e6a61; --pf-text-muted: #5e6a61; --pf-background: #fafaf7; --pf-border: #dcddd4; --pf-border-focus: #a23e20; --pf-hover: #eeefe7; --pf-outline-focus: #a23e20; --pf-mark: rgba(232, 175, 67, 0.35); --pf-font: inherit; }
+  @media (prefers-color-scheme: dark) { #search { --pf-text: #e5e9e1; --pf-text-secondary: #a2aca3; --pf-text-muted: #a2aca3; --pf-background: #252b27; --pf-border: #3a413b; --pf-border-focus: #f0a17d; --pf-hover: #2e3f2b; --pf-outline-focus: #f0a17d; --pf-mark: rgba(232, 175, 67, 0.25); } }
+</style>
+</head>
+<body>
+<header>
+  <a href="/">Campgrounds of the Squatch Woods</a>
+  
+  <div id="search"><pagefind-config bundle-path="/pagefind/"></pagefind-config><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
+</header>
+
+<main data-pagefind-body>
+<h1>Owl Roost</h1>
+<p>Quiet sites in a stand of cedars. No fires, by order of the owls, who are trying to sleep during the day.</p>
+<dl>
+  <dt>Region</dt><dd><a href="/?region=Cedar%20Ridge">Cedar Ridge</a></dd>
+  <dt>Sites</dt><dd>16</dd>
+  <dt>Season</dt><dd>May to October</dd>
+  <dt>Reservations</dt><dd>Taken</dd>
+  <dt>Nearest trail</dt><dd>Cedar Trail</dd>
+  <dt>Has</dt><dd>Drinking water, Dogs welcome, Accessible sites</dd>
+</dl>
+</main>
+<p><a href="/">Every campground</a></p>
+
+</body>
+</html>
