@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
-    <meta name="description" content="{{ description | default: site.description }}">
+    <meta name="description" content="{% if description %}{{ description }}{% else %}{{ site.description }}{% endif %}">
     <link rel="canonical" href="{{ site.url }}{{ page.url }}">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     {% comment %} For agents: the page as Markdown and the site's map (llmsPlugin() in ssqch.config.js). {% endcomment %}
@@ -35,10 +35,10 @@
     <main>
       {% if title %}
         <h1>{{ title }}</h1>
-        {% assign dates = page | postDates: tags %}{% if dates != "" %}<p class="dates">{{ dates }}</p>{% endif %}
+        {% if tags %}{% assign dates = page | postDates: tags %}{% if dates != "" %}<p class="dates">{{ dates }}</p>{% endif %}{% endif %}
       {% endif %}
       {{ content }}
-      {% assign own = tags | ownTags %}
+      {% if tags %}{% assign own = tags | ownTags %}{% else %}{% assign own = "" | split: "," %}{% endif %}
       {% if own.size > 0 %}
         <p>Tagged {% for name in own %}<a href="/tags/{{ name | slugify }}/">{{ name }}</a>{% unless forloop.last %}, {% endunless %}{% endfor %}</p>
       {% endif %}

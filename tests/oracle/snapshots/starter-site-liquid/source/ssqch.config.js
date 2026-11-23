@@ -10,8 +10,13 @@ import { robotsPlugin } from "ssqch/robots";
 import { feedPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
 
-// A date as people write it: January 1, 2026.
-const readableDate = (date) => new Date(date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+// A date as people write it: January 1, 2026. In UTC, and spelled out here rather than with
+// toLocaleDateString, whose answers can change between Node releases.
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const readableDate = (value) => {
+  const date = new Date(value);
+  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
+};
 
 // The site's address, from src/_data/site.json: put yours there.
 const { url } = readData("src/_data/site.json");
@@ -21,6 +26,14 @@ export default defineConfig(({ env }) => ({
   // page.lastModified, for a post's "updated" date: when its file last changed in a commit (in
   // CI, check out the whole history: `fetch-depth: 0`). Before the first commit, the file's time.
   lastModified: "git",
+  // page.date for a page with no date of its own: its file's first commit, which is the same in
+  // every clone (a checkout writes every file at once, so the file's time isn't).
+  dateFallback: "git",
+  // The site's own JavaScript runs in UTC, so a laptop and CI build the same dates.
+  timeZone: "UTC",
+  // Printing a name that isn't defined (a misspelled post.titel) is an error with the file and
+  // line, not an empty spot on the page. Checking it first (an if, or a default) still works.
+  strict: true,
   templateFormats: ["liquid", "md"],
   markdownEngine: "liquid",
   // Copied as they are: the tab icon.

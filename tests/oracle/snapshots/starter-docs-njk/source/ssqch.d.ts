@@ -314,8 +314,8 @@ declare module "ssqch" {
 		theme?: ThemeSource | ThemeSource[];
 		/** Content schemas, by name: `{ posts: { fields: { title: "string", date: "date" } } }` checks every page tagged `posts`. */
 		schemas?: Record<string, Schema>;
-		/** Size budgets by kind of file, checked after each build: a file over its kind's budget is an `over-budget` warning. Sizes are bytes or strings like `"150 KB"` and `"1.5 MB"` (powers of 1,000). */
-		budgets?: Partial<Record<"pages" | "images" | "css" | "javascript" | "fonts" | "media" | "documents" | "data" | "other" | "total", number | string>>;
+		/** Size budgets by kind of file, checked after each build: a file over its kind's budget is an `over-budget` warning, or with `fail: true` an error that fails a production build (development builds and `ssqch serve` still warn). Sizes are bytes or strings like `"150 KB"` and `"1.5 MB"` (powers of 1,000). */
+		budgets?: Partial<Record<"pages" | "images" | "css" | "javascript" | "fonts" | "media" | "documents" | "data" | "other" | "total", number | string>> & { fail?: boolean };
 		/** What `ssqch serve` runs besides the server. (The server builds in a process of its own, starts it again when the config or a module it imports changes, and listens on 127.0.0.1 only.) */
 		serve?: {
 			/** Programs to start with the server and stop with it, like the watchers of your CSS and JavaScript tools: `["npx postcss src/app.css -o dist/app.css --watch"]`. Their output is shown with the tool's name in front. They get `SSQCH_ENV`, `SSQCH_SERVING` (`true`), `SSQCH_QUIET`, `SSQCH_INPUT` and `SSQCH_OUTPUT`, as build commands do. Builds don't run them. */
@@ -716,10 +716,10 @@ declare module "ssqch/redirects" {
 	import type { BuiltinPlugin } from "ssqch";
 
 	export interface RedirectsPluginOptions {
-		/** Write a redirect page (meta refresh, canonical link, `noindex`) at each old URL. Default `true`. */
+		/** Write a redirect page (meta refresh, canonical link, `noindex`) at each old URL. Default `true`, and `false` with `hostFile`, since a host serves a page that exists before it reads `_redirects`. */
 		pages?: boolean;
-		/** Add `/old /new 301` lines to `_redirects`, after any your own `_redirects` template writes. Default `false`. */
-		netlify?: boolean;
+		/** Add `/old /new 301` lines to `_redirects`, the file Netlify and Cloudflare read, after any your own `_redirects` template writes. Default `false`. (Called `netlify` before 0.14.) */
+		hostFile?: boolean;
 		/** Redirects that aren't a page's `aliases`: `{ "/old/": "/new/" }`. The new URL can be on another site. */
 		redirects?: Record<string, string>;
 	}

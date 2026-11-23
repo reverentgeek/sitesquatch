@@ -42,6 +42,12 @@ where that version matches.
   change: set `hostFile: true`, or take the pattern out.
 
 ### Added
+- The starters (`ssqch init`, both, in every language) set `strict: true`, so a misspelled name
+  in a template is an error with its file and line instead of an empty spot on the page;
+  `dateFallback: "git"`, so a page with no date of its own, and the sitemap's `<lastmod>`, are
+  the same in every clone; and `timeZone: "UTC"`. Their `readableDate` filter spells the month
+  out itself instead of calling `toLocaleDateString`, whose answers can change between Node
+  releases. Every page they build is the same as before. Squatch Snacks found each of these.
 - `budgets` take `fail: true` (`budgets: { pages: "150 KB", fail: true }`): whatever is over
   budget is then an error, and a production build exits 1, so a deploy stops at a page that grew
   too big. A development build and `ssqch serve` still warn, as they do for broken links. Without

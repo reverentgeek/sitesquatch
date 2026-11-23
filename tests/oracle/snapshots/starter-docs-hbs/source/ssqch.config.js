@@ -16,12 +16,22 @@ const { url } = readData("src/_data/site.json");
 // to try it (ssqch serve builds without it).
 const search = Boolean(process.env.SEARCH);
 
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
   // page.lastModified, which each page shows as "Last updated": when its file last changed in a
   // commit (in CI, check out the whole history: `fetch-depth: 0`). Before the first commit,
   // the file's time.
   lastModified: "git",
+  // page.date for a page with no date of its own: its file's first commit, which is the same in
+  // every clone (a checkout writes every file at once, so the file's time isn't).
+  dateFallback: "git",
+  // The site's own JavaScript runs in UTC, so a laptop and CI build the same dates.
+  timeZone: "UTC",
+  // Printing a name that isn't defined (a misspelled page.titel) is an error with the file and
+  // line, not an empty spot on the page. Checking it first (an if, or a default) still works.
+  strict: true,
   templateFormats: ["hbs", "md"],
   markdownEngine: "hbs",
   passthrough: ["src/assets"],
@@ -45,8 +55,12 @@ export default defineConfig(({ env }) => ({
   filters: {
     // The path after `site.editUrl` in each page's "Edit this page" link.
     sourcePath: (inputPath) => inputPath.replace("./", ""),
-    // A date as people write it: January 1, 2026.
-    readableDate: (date) => new Date(date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }),
+    // A date as people write it: January 1, 2026. In UTC, and spelled out here rather than
+    // with toLocaleDateString, whose answers can change between Node releases.
+    readableDate: (value) => {
+      const date = new Date(value);
+      return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
+    },
     // The day, as <time datetime> takes it: 2026-01-01.
     isoDay: (date) => new Date(date).toISOString().slice(0, 10),
   },
