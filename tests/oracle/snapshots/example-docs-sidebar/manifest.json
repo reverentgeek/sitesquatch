@@ -1,5 +1,5 @@
 {
-  "version": "0.13.2",
+  "version": "0.13.4",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -9,7 +9,7 @@
     "pages": {
       "written": 5,
       "templates": 5,
-      "bytes": 32440,
+      "bytes": 33760,
       "new": null,
       "gone": null
     },
@@ -39,7 +39,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   5 written from 5 templates, 32.4 KB\n  Links   68 checked, 0 broken\n  Output  dist: 7 files, 35.6 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   5 written from 5 templates, 33.8 KB\n  Links   68 checked, 0 broken\n  Output  dist: 7 files, 36.9 KB\n",
   "files": {
     "docs/guides/configuration/index.html": "text",
     "docs/guides/first-server/index.html": "text",
