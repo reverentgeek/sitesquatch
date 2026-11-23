@@ -147,6 +147,8 @@ export class Site {
 	private seen = new Set<string>();
 	/** PascalCase tags the pages have with no template in `_includes/components/`, with the pages each is on. */
 	unknownComponents = new Map<string, Set<string>>();
+	/** Front matter dates that aren't dates, said with the schemas' errors (`checkPages`), so a page's other mistakes are said with them. */
+	badDates: Diagnostic[] = [];
 	private keepLayers: boolean;
 	/** Set by the build: a page's rendered body, on demand (for `templateContent`). */
 	contentOf: (page: Page) => string | undefined = () => undefined;
@@ -830,7 +832,16 @@ export class Site {
 		// Material for MkDocs' blog writes `date: { created, updated }`: the page's date is `created`,
 		// and `date.updated` stays in its data for a template that shows it.
 		const given = isPlainObject(tpl.data.date) && tpl.data.date.created !== undefined ? tpl.data.date.created : tpl.data.date;
-		if (given !== undefined && given !== null) date = toDate(given) ?? bail(`can't parse date ${show(tpl.data.date)}`);
+		const parsed = given === undefined || given === null ? undefined : toDate(given);
+		// A date that isn't one points at its line, and the build goes on to the schemas, so it's
+		// said with the page's other mistakes (the new-docs run: `can't parse date "last Tuesday"`,
+		// with no field or line, and a missing title unsaid). The page gets the date it would have
+		// had without one, which the build never writes: it fails.
+		if (given !== undefined && given !== null && parsed === undefined) {
+			const file = inputPath.replace(/^(\.\/)+/, "");
+			if (!this.badDates.some((d) => d.file === inputPath)) this.badDates.push(errorOf("front-matter", `${file}: \`date\` isn't a date: ${show(tpl.data.date)}. Write it as 2026-11-22, or with a time, 2026-11-22T09:30:00Z`, { file: inputPath, field: "date" }));
+		}
+		if (parsed !== undefined) date = parsed;
 		// Then the date in the file name, then the last commit that changed the file
 		// (`dateFallback: "git"`, the same in every checkout, where a file's time is when the checkout
 		// wrote it), then the pinned build time (`SOURCE_DATE_EPOCH`, as Jekyll's `time:` gives undated

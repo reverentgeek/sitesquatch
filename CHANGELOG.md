@@ -47,6 +47,12 @@ where that version matches.
 - An editor's own files start no rebuild while serving: `sed -i`'s `.!12345!post.md`, backups
   (`post.md~`), Emacs' locks, Vim's swap files and JetBrains' safe writes. The server said
   `Fresh tracks in src/posts/.!64277!post.md` and rebuilt for nothing.
+- A front matter `date` that isn't one (`date: last Tuesday`) is a `front-matter` error that
+  points at its line (`src/t.md: \`date\` isn't a date: "last Tuesday". Write it as
+  2026-11-22, ...`), listed with the page's schema errors. It was `in t.md: can't parse date
+  "last Tuesday"`, with the code `build`, no line, and the page's other mistakes unsaid.
+- A page open in a browser asks a stopped `ssqch serve` less and less often (up to every 10 s),
+  and says so once in the console; it asked every 0.7 s, and logged an error each time.
 
 ## 0.13.4 - 2026-11-22
 
