@@ -159,11 +159,29 @@ test("docs_explain_what_migrations_asked_about", () => {
 		["this.page", "`this.page` is the page being rendered"],
 		["safe", "marks a function's answer as HTML"],
 		["fromMkdocs", "MkDocs' Markdown as defaults (Python-Markdown's reading"],
+		// Added in 0.14.1, from Squatch Snacks (D1, D6): what it asked and couldn't find, and a
+		// section inside another by `Parent > Child`, its code whole.
+		["art direction", "another crop on a phone (art direction"],
+		["netlify forms", "Netlify Forms work on a page ssqch built"],
+		["forms", "Netlify Forms work on a page ssqch built"],
+		["dark mode", "the starters follow the reader's setting"],
+		["On a host > Netlify", "function prefersMarkdown(accept)"],
+		["Serving Markdown to agents > Netlify", "export const config = { path: \"/*\""],
 	]) {
 		const a = answer(query);
 		// DELIBERATE (0.13): a trailhead's own heading answers with its section (`From jekyll-seo-tag`, which moved there).
 		assert.ok(a.found && (a.section?.text ?? a.trailhead?.text ?? "").includes(says), `${query}: ${JSON.stringify(a).slice(0, 400)}`);
 	}
+});
+
+// Added in 0.14.1: a query nothing answers and nothing is spelled like names the names with a
+// word of it in them, and a section lists a title two pages share with its parent.
+test("docs_name_what_is_nearest_when_nothing_answers", () => {
+	let r = ssqch(["docs", "feeds and things zzq"]);
+	assert.ok(!r.ok && r.log.includes("no tracks of \"feeds and things zzq\" in the docs; nearest names: `feedHtml`, `feedPlugin`."), r.log);
+	assert.deepEqual(JSON.parse(ssqch(["docs", "--format", "json", "feeds and things zzq"]).stdout).nearest, ["feedHtml", "feedPlugin"]);
+	r = ssqch(["docs", "On a host"]);
+	assert.ok(r.log.includes("\"On a host > Netlify\""), r.log);
 });
 
 // Added in 0.11, from the fresh a11yproject.com rerun: a page's file name (as its link ends)

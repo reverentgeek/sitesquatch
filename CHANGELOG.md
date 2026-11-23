@@ -25,12 +25,21 @@ where that version matches.
   it's on. A note, not a warning, and none for a page's link to its own old address.
 - `ssqch diff` says where a removed page goes when the second build's `_redirects` sends it on:
   `- /old/ (redirected to /new/)`, and `redirects` in the JSON.
+- `ssqch docs "Parent > Child"` prints a section inside another, for a title two pages share:
+  `ssqch docs "On a host > Netlify"` is the edge function for serving Markdown, where `Netlify`
+  alone is the deploy page. A section's list of what's in it writes a shared title that way.
+- `ssqch docs` answers what Squatch Snacks asked and couldn't find: `forms` (Netlify Forms, on
+  the Netlify page), `dark mode` (how the starters do it), and `art direction` (a crop for a
+  phone). A query nothing answers, and nothing is spelled like, names up to three names with a
+  word of it in them (`nearest names: feedHtml, feedPlugin`, and `nearest` in the JSON).
 
 ### Changed
 
 - A link broken on several pages (a sidebar's) is one line in the build's list, with the pages
   it's on: `/a/, /b/, /c/ and 5 more -> /team/ (not found)`, where it was a line for each page.
   On one page it's `page -> link (reason)` as before, and the JSON still has an entry for each.
+- The Netlify edge function in "Serving Markdown to agents" is one block to paste, with the
+  three functions it uses.
 
 ### Fixed
 

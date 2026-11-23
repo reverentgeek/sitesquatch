@@ -29,4 +29,6 @@ A site without a `package.json` can run a pinned release straight from npm in th
   command = "npx --yes ssqch@$SSQCH_VERSION build"
 ```
 
+**Forms:** Netlify Forms work on a page ssqch built as on any static page: when it deploys, Netlify reads the HTML for a `<form>` with a `name` and `data-netlify="true"`, and takes its submissions. Write the form as Netlify's docs describe it (a form sent with JavaScript also needs a hidden `<input type="hidden" name="form-name" value="contact">`); ssqch changes none of it, and `minifyPlugin()` keeps `data-netlify`, `netlify-honeypot` and hidden inputs as written. Since Netlify finds forms at deploy, try one on a deploy preview: `ssqch serve` has no server behind a form's `action`.
+
 To answer a coding agent's `Accept: text/markdown` with a page's Markdown copy, add an edge function: [Serving Markdown to agents](serving-markdown.md#netlify) has it, ready to paste.
