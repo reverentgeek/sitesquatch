@@ -254,6 +254,73 @@ test("serve_does_not_rebuild_for_its_own_files", async () => {
 	}
 });
 
+// a11y #20 and the new-blog run: macOS `sed -i` writes `.!64277!hello.md` beside the post, and the
+// server said `Fresh tracks in .!64277!hello.md` and rebuilt for nothing. DELIBERATE (0.13.5): an
+// editor's own files (sed's, backups, Emacs' locks, Vim's swap files) start no build.
+test("serve_ignores_an_editors_own_files", async () => {
+	const dir = tempDir("serve-editor-files");
+	write(dir, { "index.jinja": "one", "ssqch.config.js": "export default {};\n" });
+	const log = path.join(tempDir("serve-editor-files-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "_site/index.html");
+		await waitFor(page, "one");
+		for (const name of [".!64277!index.jinja", "index.jinja~", ".#index.jinja", ".index.jinja.swp"]) fs.writeFileSync(path.join(dir, name), "two");
+		fs.rmSync(path.join(dir, ".!64277!index.jinja"));
+		await sleep(2000);
+		const said = readOr(log);
+		assert.equal(count(said, "Built in"), 1, said);
+		assert.ok(!said.includes("Fresh tracks"), said);
+		// The real edit after them is still seen.
+		await changeAndWait(path.join(dir, "index.jinja"), "three", page, "three");
+		assert.ok(readOr(log).includes("Fresh tracks in index.jinja\n"), readOr(log));
+	} finally {
+		await server.stop();
+	}
+});
+
+// A config saved after the build process loaded it and before the server's watch began (during
+// the first build, or a reload's) was missed until the next save (CI, in
+// `serve_restarts_companions_on_reload`). DELIBERATE (0.13.5): the server compares what it
+// loaded with what's there once it's watching, and reads the configuration again.
+test("serve_reads_a_config_saved_before_its_watch_began", async () => {
+	const dir = tempDir("serve-config-meanwhile");
+	const marker = path.join(tempDir("serve-config-meanwhile-marker"), "loaded");
+	const config = (word) => `import fs from "node:fs";\nexport default { data: { word: "${word}" }, beforeBuild: async () => { fs.writeFileSync(${JSON.stringify(marker)}, "${word}"); await new Promise((r) => setTimeout(r, 1500)); } };\n`;
+	write(dir, { "index.jinja": "{{ word }}", "ssqch.config.js": config("pine") });
+	const log = path.join(tempDir("serve-config-meanwhile-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		// The first build has loaded the config and is in its hook: save the config now.
+		await waitFor(marker, "pine");
+		fs.writeFileSync(path.join(dir, "ssqch.config.js"), config("cedar"));
+		await waitFor(path.join(dir, "_site/index.html"), "cedar");
+		assert.ok(readOr(log).includes("Fresh tracks in ssqch.config.js (reading the configuration again)"), readOr(log));
+	} finally {
+		await server.stop();
+	}
+});
+
+// a11y #21 (2 of 17 runs): an edit made during the first build, after it read the page and before
+// the watch began, was never seen, and the old page was served with no word why. An agent that
+// edits as soon as a page answers lands there. DELIBERATE (0.13.5): the watch begins first.
+test("serve_sees_an_edit_made_during_its_first_build", async () => {
+	const dir = tempDir("serve-edit-first-build");
+	const marker = path.join(tempDir("serve-edit-first-build-marker"), "built");
+	write(dir, { "index.jinja": "one", "ssqch.config.js": `import fs from "node:fs";\nexport default { afterBuild: async () => { fs.writeFileSync(${JSON.stringify(marker)}, "x"); await new Promise((r) => setTimeout(r, 1500)); } };\n` });
+	const log = path.join(tempDir("serve-edit-first-build-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		// The page is written and the build is in its hook: edit it now.
+		await waitFor(marker, "x");
+		fs.writeFileSync(path.join(dir, "index.jinja"), "two");
+		await waitFor(path.join(dir, "_site/index.html"), "two");
+		assert.ok(readOr(log).includes("Fresh tracks in index.jinja\n"), readOr(log));
+	} finally {
+		await server.stop();
+	}
+});
+
 /** Waits (up to 20 s) until `log` has `text` `n` times. */
 async function waitCount(log, text, n) {
 	const started = Date.now();

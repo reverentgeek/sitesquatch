@@ -12,13 +12,14 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Config } from "../config.ts";
 import { CONFIG_FILES, dirsOf } from "../dirs.ts";
 import * as diagnostics from "../diagnostics.ts";
 import { BuildError, messageOf } from "../diagnostics.ts";
-import { isInside, realPath, relative, slashes } from "../paths.ts";
+import { compareText, isInside, realPath, relative, slashes } from "../paths.ts";
 import * as voice from "../voice.ts";
 import { Builder, stopBuilders } from "./builder.ts";
 import type { Built, SiteInfo } from "./builder.ts";
@@ -33,6 +34,8 @@ import { Channel, Watcher } from "./watch.ts";
 export interface ServeOptions {
 	/** The port to listen on; 0 picks a free one. */
 	port: number;
+	/** The address to listen on: `127.0.0.1` (the default), `0.0.0.0` for every network, or one of the machine's. */
+	host?: string;
 	/**
 	 * A file to write once the first build is done and the site is being served: JSON with the
 	 * `url`, the `port`, the `output` folder, this process's `pid`, and `ok` (whether that build
@@ -63,16 +66,53 @@ const CONFIG_NAMES = new Set([...CONFIG_FILES, "sitesquatch.toml"]);
  * away and back again (`git stash`, an editor's undo) was gone between, and is a change each time
  * (0.7 counted every folder the same, so the second rename didn't rebuild).
  */
+/**
+ * An editor's or a tool's file of its own beside the one being edited, which says nothing about
+ * the site: BSD and macOS `sed -i` (`.!64277!hello.md`, which an agent's edits make all the time),
+ * backups (`hello.md~`), Emacs' locks (`.#hello.md`), Vim's swap files (`.hello.md.swp`) and the
+ * file it writes to see whether it can (`4913`), and JetBrains' safe writes (`hello.md___jb_tmp___`).
+ * A rebuild for one changed no pages and named the wrong file (a11y #20, the new-blog run).
+ */
+export function editorsOwn(file: string): boolean {
+	const name = path.basename(file);
+	return /^\.![0-9]+!/.test(name) || name.endsWith("~") || name.startsWith(".#") || /^\..+\.sw[a-p]$/.test(name) || name === "4913" || /___jb_(?:tmp|old|bak)___$/.test(name);
+}
+
 function sourceState(file: string): string | undefined {
 	if (!isDir(file)) return fingerprint(file);
 	try { return `folder:${crypto.hash("sha1", fs.readdirSync(file).sort().join("\n"), "base64")}`; } catch { return undefined; }
 }
 
+const LOOPBACK = "127.0.0.1";
+
+/** Whether `host` answers only this machine. */
+const loopbackOnly = (host: string) => host === LOOPBACK || host === "localhost" || host === "::1";
+
+/** Every address this machine (IPv4) has on a network, for the URLs a phone can open: with `0.0.0.0`, all of them; otherwise the one given. */
+function networkAddresses(host: string): string[] {
+	if (loopbackOnly(host)) return [];
+	if (host !== "0.0.0.0" && host !== "::") return [host];
+	const found: string[] = [];
+	for (const list of Object.values(os.networkInterfaces())) for (const a of list ?? []) if (a.family === "IPv4" && !a.internal) found.push(a.address);
+	return [...new Set(found)].sort(compareText);
+}
+
+/** Where a browser on this machine reaches the server: `localhost`, unless it listens on one other address only. */
+const localUrl = (host: string, port: number, base: string) => `http://${loopbackOnly(host) || host === "0.0.0.0" || host === "::" ? "localhost" : host}:${port}${base}/`;
+
+/** The line after the address when the site can be seen from other machines: where, and that anyone on the network can. */
+function onTheNetwork(host: string, port: number, base: string): string {
+	const addresses = networkAddresses(host).filter((a) => a !== host || (host !== "0.0.0.0" && host !== "::"));
+	if (!addresses.length) return host === "0.0.0.0" || host === "::" ? "\nOn your network: no network address found (is this machine on one?)" : "";
+	const urls = addresses.map((a) => `http://${a}:${port}${base}/`);
+	return `\nOn your network: ${urls.join(", ")} (anyone on it can see the site)`;
+}
+
 /** Write the ready file in one step, so a reader never sees half of it. */
-function writeReady(file: string, site: Served, port: number, ok: boolean): void {
+function writeReady(file: string, site: Served, port: number, ok: boolean, host = LOOPBACK): void {
 	const ready = {
 		schemaVersion: 1,
-		url: `http://localhost:${port}${site.base}/`,
+		url: localUrl(host, port, site.base),
 		port,
 		base: site.base,
 		output: realPath(site.output),
@@ -86,7 +126,7 @@ function writeReady(file: string, site: Served, port: number, ok: boolean): void
 }
 
 /** Start answering requests. Resolves with the port. */
-function listen(port: number, answer: (req: http.IncomingMessage, res: http.ServerResponse) => void): Promise<number> {
+function listen(port: number, answer: (req: http.IncomingMessage, res: http.ServerResponse) => void, host = LOOPBACK): Promise<number> {
 	const server = http.createServer((req, res) => {
 		try {
 			answer(req, res);
@@ -105,9 +145,9 @@ function listen(port: number, answer: (req: http.IncomingMessage, res: http.Serv
 	});
 	return new Promise((resolve, reject) => {
 		server.once("error", (e: NodeJS.ErrnoException) => {
-			reject(new BuildError(e.code === "EADDRINUSE" ? `can't listen on port ${port}: something else is squatting on it (--port 0 picks a free one)` : `can't listen on port ${port}: ${e.message}`));
+			reject(new BuildError(e.code === "EADDRINUSE" ? `can't listen on port ${port}: something else is squatting on it (--port 0 picks a free one)` : e.code === "EADDRNOTAVAIL" ? `can't listen on ${host}: it isn't one of this machine's addresses (0.0.0.0 listens on all of them)` : `can't listen on port ${port}: ${e.message}`));
 		});
-		server.listen(port, "127.0.0.1", () => {
+		server.listen(port, host, () => {
 			const address = server.address();
 			resolve(typeof address === "object" && address !== null ? address.port : port);
 		});
@@ -126,10 +166,11 @@ export async function serveBuilt(config: Config, options: ServeOptions): Promise
 	const shown = isInside(dirs.root, site.output) ? relative(dirs.root, site.output) : slashes(site.output);
 	if (!isDir(site.output)) throw new BuildError(`${shown} doesn't exist: build the site first (ssqch build), then serve it with ssqch serve --built`);
 	if (options.readyFile !== undefined) fs.rmSync(options.readyFile, { force: true });
-	const port = await listen(options.port, (req, res) => handleBuilt(req, res, site.output, site.base));
-	if (options.readyFile !== undefined) writeReady(options.readyFile, site, port, true);
-	const url = `http://localhost:${port}${site.base}/`;
-	say(config.quiet ? url : `Serving ${shown} as built at ${url}. It stays as it is until the next ssqch build.`);
+	const host = options.host ?? LOOPBACK;
+	const port = await listen(options.port, (req, res) => handleBuilt(req, res, site.output, site.base), host);
+	if (options.readyFile !== undefined) writeReady(options.readyFile, site, port, true, host);
+	const url = localUrl(host, port, site.base);
+	say((config.quiet ? url : `Serving ${shown} as built at ${url}. It stays as it is until the next ssqch build.`) + onTheNetwork(host, port, site.base));
 	return new Promise<never>(() => {});
 }
 
@@ -138,13 +179,13 @@ export async function serveBuilt(config: Config, options: ServeOptions): Promise
  * build, so a long build's output doesn't bury the address. With `--quiet`, just the address,
  * after the first build.
  */
-function banner(site: Served, port: number, quiet: boolean): string {
+function banner(site: Served, port: number, quiet: boolean, host = LOOPBACK): string {
 	// The output folder from where the command was run (`dist`), when it's below it.
 	const here = realPath(process.cwd());
 	const output = realPath(site.output);
 	const shown = isInside(here, output) && output !== here ? relative(here, output) : site.output;
-	const serving = `Serving ${shown} at http://localhost:${port}${site.base}/`;
-	return quiet ? serving : `${serving}. ${voice.SQUATCH_WATCH}`;
+	const serving = `Serving ${shown} at ${localUrl(host, port, site.base)}`;
+	return (quiet ? serving : `${serving}. ${voice.SQUATCH_WATCH}`) + onTheNetwork(host, port, site.base);
 }
 
 /** Ends the run when ssqch is told to stop: the companions first (and what they started), and the process that builds. */
@@ -189,7 +230,7 @@ export async function serve(args: string[], options: ServeOptions): Promise<numb
 	}
 	const { quiet } = options;
 	try {
-		const port = await listen(options.port, (req, res) => handle(req, res, site.output, live, site.base));
+		const port = await listen(options.port, (req, res) => handle(req, res, site.output, live, site.base), options.host ?? LOOPBACK);
 		return await serving(first, { args, options, live, site, port, quiet });
 	} catch (e) {
 		// Nothing is left running behind an error.
@@ -200,7 +241,7 @@ export async function serve(args: string[], options: ServeOptions): Promise<numb
 }
 
 async function serving(first: Builder, { args, options, live, site, port, quiet }: { args: string[]; options: ServeOptions; live: Live; site: Served; port: number; quiet: boolean }): Promise<never> {
-	const sayWhere = () => say(banner(site, port, quiet));
+	const sayWhere = () => say(banner(site, port, quiet, options.host ?? LOOPBACK));
 	let builder = first;
 	let companions = Companions.none();
 	for (;;) {
@@ -217,7 +258,7 @@ async function serving(first: Builder, { args, options, live, site, port, quiet 
 		live.setSite(companions.names(), info.outputName);
 		const firstBuild = (ok: boolean) => {
 			if (options.readyFile === undefined) return;
-			try { writeReady(options.readyFile, site, port, ok); } catch (e) { process.stderr.write(`${diagnostics.red("error:")} ${messageOf(e)}\n`); }
+			try { writeReady(options.readyFile, site, port, ok, options.host ?? LOOPBACK); } catch (e) { process.stderr.write(`${diagnostics.red("error:")} ${messageOf(e)}\n`); }
 		};
 		// Stop `serve.run`'s tools and start them again, so they write their files into the output
 		// again (a `--watch` tool writes when it starts, and then only when a source changes).
@@ -266,19 +307,6 @@ interface Watching {
 async function watch({ builder, live, args, quiet, startedTools, firstBuild, sayWhere, restart }: Watching): Promise<Builder> {
 	const site: SiteInfo = builder.site;
 	const tools = live.tools.length > 0;
-	if (tools && startedTools) await firstCompile(site.output, quiet);
-	// What the build left, to tell a tool's write from the build's own: the output as it was,
-	// with the files the build put there as it left them.
-	const afterBuild = assetStamps(site.output);
-	const report = await buildAndReport(builder, live);
-	const ok = report.ok;
-	for (const asset of report.assets) {
-		const file = realPath(asset);
-		const stat = fs.statSync(file, { throwIfNoEntry: false });
-		if (stat) afterBuild.set(file, [stat.size, stat.mtimeMs]);
-		else afterBuild.delete(file);
-	}
-
 	const rx = new Channel<string[]>();
 	const watcher = new Watcher((file) => rx.send([file]));
 	watcher.onError = (dir, e) => diagnostics.warn(diagnostics.warning("build", `can't watch ${dir}, or some of the folders beside it: ${messageOf(e)}. A change there won't be seen until the server starts again`));
@@ -300,7 +328,8 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 			if (!isDir(output) || watchPaths.some((p) => isInside(p, output))) return;
 			try { watching(output, true); } catch (e) { if (must) throw e; }
 		};
-		watchOutput(true);
+		// The output may not be there before the first build: it's watched again after it.
+		watchOutput(false);
 		// The configuration's own files that aren't in a watched folder (the config file in the
 		// project root, the modules it imports). A build can add to them (a data file's imports),
 		// so this runs after each one.
@@ -321,6 +350,33 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 		if (!watchPaths.some((p) => isInside(p, root))) {
 			try { watcher.watch(root, false); } catch { /* the root's gone: nothing builds anyway */ }
 		}
+		// The watch begins before the first build, so an edit made while it runs is seen: one made
+		// after the build read the page and before the watch began was missed, and the server went
+		// on serving the old page (a11y #21: an agent that edits as soon as a page answers).
+		// What the build itself writes while it's watched is told apart as after a rebuild: the
+		// output's files by their contents, and sources by whether they've changed.
+		const built = async () => {
+			if (tools && startedTools) await firstCompile(site.output, quiet);
+			// What the build left, to tell a tool's write from the build's own: the output as it was,
+			// with the files the build put there as it left them.
+			const stamps = assetStamps(site.output);
+			const report = await buildAndReport(builder, live);
+			for (const asset of report.assets) {
+				const file = realPath(asset);
+				const stat = fs.statSync(file, { throwIfNoEntry: false });
+				if (stat) stamps.set(file, [stat.size, stat.mtimeMs]);
+				else stamps.delete(file);
+			}
+			return [report.ok, stamps] as const;
+		};
+		const [ok, afterBuild] = await built();
+		watchOutput(true);
+		watchConfigFiles();
+		// A config saved after this process loaded it and before the watch began (a reload loads
+		// it before this runs) was heard by no watcher: it's a change all the same, so the loop
+		// below reads the configuration again (CI's `serve_restarts_companions_on_reload`).
+		const savedMeanwhile = builder.changedSinceLoad();
+		if (savedMeanwhile !== undefined) rx.send([savedMeanwhile]);
 		// Changes seen while an update was held, for the loop to look at next.
 		const carried: string[] = [];
 		if (ok) {
@@ -355,7 +411,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				if (!more) break;
 				paths.push(...more);
 			}
-			const changed = paths.map(realPath).filter((file) => !own(file));
+			const changed = paths.map(realPath).filter((file) => !own(file) && !editorsOwn(file));
 			const outputs = changed.filter((file) => isInside(output, file));
 			// A source written again with the same contents hasn't changed: a `beforeBuild` command
 			// that writes into the input folder on every build would rebuild forever.

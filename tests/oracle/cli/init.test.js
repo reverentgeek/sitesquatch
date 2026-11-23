@@ -13,7 +13,7 @@ test("init_creates_a_site_that_builds", () => {
 	const d = dir;
 	let r = ssqch(["init", d]);
 	assert.ok(r.ok, r.log);
-	for (const file of ["ssqch.config.js", "src/_includes/layout.jinja", "src/index.jinja", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/posts/raiders-of-the-lost-path.md", "src/posts/the-cache-of-the-wild.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore", "AGENTS.md", "CLAUDE.md"]) {
+	for (const file of ["ssqch.config.js", "src/_includes/layout.jinja", "src/index.jinja", "src/tags.jinja", "src/tag.jinja", "src/feed.jinja", "src/img/stump.jpg", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/posts/raiders-of-the-lost-path.md", "src/posts/the-cache-of-the-wild.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore", "AGENTS.md", "CLAUDE.md"]) {
 		assert.ok(isFile(dir, file), `${file} wasn't created:\n${r.log}`);
 	}
 	assert.ok(r.log.includes("Camp is set up. Next: cd "), r.log);
@@ -34,7 +34,17 @@ test("init_creates_a_site_that_builds", () => {
 	assert.ok(r.ok, r.log);
 	// DELIBERATE (0.13): the starter links each page's canonical address, its Markdown copy and llms.txt
 	// (the audit's plan, step 3), and the copies' links are checked too.
-	assert.ok(r.log.includes("Links   40 checked, 0 broken"), r.log);
+	// DELIBERATE (0.13.5): the starter is a blog, with a page for each tag, a page of tags and a feed
+	// (the new-blog run), so it has more links.
+	assert.ok(r.log.includes("Links   172 checked, 0 broken"), r.log);
+	// The stump's photo, copied as its bytes, and made a <picture> in the post.
+	assert.ok(fs.readFileSync(path.join(dir, "src/img/stump.jpg")).subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])), "a JPEG");
+	assert.ok(read(dir, "dist/posts/upon-further-review-a-stump/index.html").includes("<picture><source type=\"image/webp\""), r.log);
+	// The tab icon: the footprint, linked from every page.
+	assert.ok(isFile(dir, "dist/favicon.svg") && read(dir, "dist/index.html").includes("<link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">"), r.log);
+	assert.ok(read(dir, "dist/tags/stumps/index.html").includes("<title>Tagged stumps | Field Notes</title>") && read(dir, "dist/tags/index.html").includes("<a href=\"/tags/trails/\">trails</a> (2)"), r.log);
+	assert.ok(read(dir, "dist/posts/the-cache-of-the-wild/index.html").includes("Tagged <a href=\"/tags/raccoons/\">raccoons</a>, <a href=\"/tags/trails/\">trails</a></p>"));
+	assert.ok(read(dir, "dist/feed.xml").includes("<entry>\n    <title>The Cache of the Wild</title>\n    <link href=\"https://example.com/posts/the-cache-of-the-wild/\"/>") && read(dir, "dist/feed.xml").includes("<content type=\"html\">&lt;p&gt;"), read(dir, "dist/feed.xml"));
 	let home = read(dir, "dist/index.html");
 	assert.ok(home.includes("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), home);
 	// Newest first.
@@ -77,7 +87,7 @@ test("init_starts_a_site_in_each_engine", () => {
 		const d = dir;
 		let r = ssqch(["init", d, "--engine", engine]);
 		assert.ok(r.ok, r.log);
-		for (const file of [`src/_includes/layout.${engine}`, `src/index.${engine}`]) {
+		for (const file of [`src/_includes/layout.${engine}`, `src/index.${engine}`, `src/tags.${engine}`, `src/tag.${engine}`, `src/feed.${engine}`]) {
 			assert.ok(isFile(dir, file), `${file} wasn't created:\n${r.log}`);
 		}
 		assert.ok(!exists(dir, "src/index.jinja"), engine);
@@ -86,7 +96,8 @@ test("init_starts_a_site_in_each_engine", () => {
 
 		r = ssqch(["build", "--root", d]);
 		assert.ok(r.ok, `${engine}: ${r.log}`);
-		assert.ok(r.log.includes("Links   40 checked, 0 broken") && !r.log.includes("warn"), `${engine}: ${r.log}`);
+		assert.ok(r.log.includes("Links   172 checked, 0 broken") && !r.log.includes("warn"), `${engine}: ${r.log}`);
+		assert.ok(read(dir, "dist/posts/the-cache-of-the-wild/index.html").includes("Tagged <a href=\"/tags/raccoons/\">raccoons</a>, <a href=\"/tags/trails/\">trails</a></p>") && read(dir, "dist/feed.xml").includes("<content type=\"html\">&lt;p&gt;"), `${engine}: tags and feed`);
 		const home = read(dir, "dist/index.html");
 		assert.ok(home.includes("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), `${engine}: ${home}`);
 		assert.ok(home.includes("<title>Field Notes</title>"), `${engine}: ${home}`);
@@ -166,4 +177,41 @@ test("init_rejects_an_unknown_engine", () => {
 	assert.ok(!r.ok);
 	assert.ok(r.log.includes("--engine pug: not a starter engine (use jinja, njk, edge, liquid, hbs, ejs)"), r.log);
 	assert.ok(!fs.existsSync(dir));
+});
+
+// Both new-site runs (2026-11-22): `npm init -y` on npm 12 writes `"type": "commonjs"`, and every
+// command then warned `Failed to load the ES module ... ssqch.config.js`. DELIBERATE (0.13.5):
+// init sets `"type": "module"` and adds `build` and `serve` scripts; a project with JavaScript of
+// its own keeps its type and gets `ssqch.config.mjs`. No package.json, none written.
+test("init_makes_package_json_ready", () => {
+	const npmInit = "{\n  \"name\": \"camp\",\n  \"version\": \"1.0.0\",\n  \"main\": \"index.js\",\n  \"scripts\": {\n    \"test\": \"echo \\\"Error: no test specified\\\" && exit 1\"\n  },\n  \"type\": \"commonjs\"\n}\n";
+	let dir = tempDir("init-package");
+	write(dir, { "package.json": npmInit });
+	let r = ssqch(["init", dir]);
+	assert.ok(r.ok && r.stdout.includes("  updated package.json: \"type\": \"module\" and the build and serve scripts\n"), r.log);
+	const pkg = JSON.parse(read(dir, "package.json"));
+	assert.equal(pkg.type, "module");
+	assert.deepEqual(pkg.scripts, { test: "echo \"Error: no test specified\" && exit 1", build: "ssqch build", serve: "ssqch serve" });
+	assert.ok(read(dir, "package.json").startsWith("{\n  \"name\": \"camp\",") && read(dir, "package.json").endsWith("}\n"));
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && !r.log.includes("Failed to load the ES module"), r.log);
+	// Again: nothing to change.
+	r = ssqch(["init", dir]);
+	assert.ok(r.ok && !r.stdout.includes("package.json") && r.stdout.includes("Nothing to do"), r.log);
+
+	// A project with CommonJS of its own keeps its type, and the config is a .mjs.
+	dir = tempDir("init-package-cjs");
+	write(dir, { "package.json": npmInit, "lib/server.js": "module.exports = 1;\n" });
+	r = ssqch(["init", dir]);
+	assert.ok(r.ok && r.stdout.includes("  created ssqch.config.mjs\n") && !exists(dir, "ssqch.config.js"), r.log);
+	assert.equal(JSON.parse(read(dir, "package.json")).type, "commonjs");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && !r.log.includes("Failed to load the ES module"), r.log);
+	r = ssqch(["init", dir]);
+	assert.ok(r.stdout.includes("  kept    ssqch.config.mjs (already there)\n") && !exists(dir, "ssqch.config.js"), r.log);
+
+	// No package.json: none is written.
+	dir = fresh("init-no-package");
+	assert.ok(ssqch(["init", dir]).ok);
+	assert.ok(!exists(dir, "package.json"));
 });

@@ -2,8 +2,9 @@
 // in `bundled/starter/` (the site) and `bundled/starter-docs/` (the documentation site).
 import fs from "node:fs";
 import path from "node:path";
-import { bundled, types } from "../bundled.ts";
+import { bundled, bundledPath, types } from "../bundled.ts";
 import { red } from "../diagnostics.ts";
+import { CONFIG_FILES } from "../dirs.ts";
 import { joinAsGiven, parentAsGiven, slashes } from "../paths.ts";
 
 /** The starter site: (path in the new site, file in `bundled/`). It's an amateur investigator's field notes: five posts that each show one thing. */
@@ -17,6 +18,8 @@ const STARTER: Array<[string, string]> = [
 	["src/posts/raiders-of-the-lost-path.md", "starter/src/posts/raiders-of-the-lost-path.md"],
 	["src/posts/the-cache-of-the-wild.md", "starter/src/posts/the-cache-of-the-wild.md"],
 	["src/404.md", "starter/src/404.md"],
+	["src/favicon.svg", "starter/src/favicon.svg"],
+	["src/img/stump.jpg", "starter/src/img/stump.jpg"],
 	["src/_blueprints/posts.md", "starter/src/_blueprints/posts.md"],
 	["ssqch.d.ts", "ssqch.d.ts"],
 	["jsconfig.json", "starter/jsconfig.json"],
@@ -30,6 +33,7 @@ const DOCS_STARTER: Array<[string, string]> = [
 	["src/_data/nav.yml", "starter-docs/src/_data/nav.yml"],
 	["src/assets/docs.css", "starter-docs/src/assets/docs.css"],
 	["src/assets/docs.js", "starter-docs/src/assets/docs.js"],
+	["src/assets/favicon.svg", "starter-docs/src/assets/favicon.svg"],
 	["src/index.md", "starter-docs/src/index.md"],
 	["src/404.md", "starter-docs/src/404.md"],
 	["src/docs/docs.json", "starter-docs/src/docs/docs.json"],
@@ -57,8 +61,8 @@ export const starterEngines = (): string[] => [...ENGINES];
 
 /** A starter's templates in one language: (path in the new site without the extension, file in `bundled/`). The Jinja ones are the starters' own; the rest are translations of them. */
 const SITE_TEMPLATES: Record<string, Array<[string, string]>> = {
-	jinja: [["src/_includes/layout", "starter/src/_includes/layout.jinja"], ["src/index", "starter/src/index.jinja"]],
-	...Object.fromEntries(["edge", "liquid", "hbs", "ejs"].map((e) => [e, [["src/_includes/layout", `starter/engines/layout.${e}`], ["src/index", `starter/engines/index.${e}`]] as Array<[string, string]>])),
+	jinja: ["_includes/layout", "index", "tags", "tag", "feed"].map((name) => [`src/${name}`, `starter/src/${name}.jinja`]),
+	...Object.fromEntries(["edge", "liquid", "hbs", "ejs"].map((e) => [e, ["layout", "index", "tags", "tag", "feed"].map((name) => [`src/${name === "layout" ? "_includes/layout" : name}`, `starter/engines/${name}.${e}`]) as Array<[string, string]>])),
 };
 
 /** The documentation starter's templates, in the same order in each language. */
@@ -91,7 +95,7 @@ function adapt(engine: string, rel: string, contents: string): string {
 		}
 		if (engine === "hbs" && config.includes("data: { search },")) {
 			// Handlebars has no `replace`, so the docs layout's edit link gets its path from a helper.
-			config = replaceOnce(config, "  data: { search },", "  // The path after `site.editUrl` in each page's \"Edit this page\" link.\n  filters: {\n    sourcePath: (inputPath) => inputPath.replace(\"./\", \"\"),\n  },\n\n  data: { search },");
+			config = replaceOnce(config, "  filters: {\n", "  filters: {\n    // The path after `site.editUrl` in each page's \"Edit this page\" link.\n    sourcePath: (inputPath) => inputPath.replace(\"./\", \"\"),\n");
 		}
 		return config;
 	}
@@ -137,16 +141,19 @@ This site is built with SiteSquatch (\`ssqch\`), a static site generator. ${file
 `;
 }
 
-/** The starter's files for `engine`, as (path in the site, contents). */
-export function starterFiles(starter: string, engine: string): Array<[string, string]> {
-	const common = (starter === "docs" ? DOCS_STARTER : STARTER).map(([rel, file]): [string, string] => [rel, adapt(engine, rel, rel === "ssqch.d.ts" ? types() : bundled(file))]);
+/** A starter's file that's copied as its bytes: a picture. */
+const isBinary = (rel: string) => /\.(?:jpe?g|png|gif|webp|avif)$/i.test(rel);
+
+/** The starter's files for `engine`, as (path in the site, contents: text, or a picture's bytes). */
+export function starterFiles(starter: string, engine: string): Array<[string, string | Buffer]> {
+	const common = (starter === "docs" ? DOCS_STARTER : STARTER).map(([rel, file]): [string, string | Buffer] => [rel, isBinary(rel) ? fs.readFileSync(bundledPath(file)) : adapt(engine, rel, rel === "ssqch.d.ts" ? types() : bundled(file))]);
 	const set = (starter === "docs" ? DOCS_TEMPLATES : SITE_TEMPLATES)[engine === "njk" ? "jinja" : engine];
 	const templates = set.map(([rel, file]): [string, string] => [`${rel}.${engine}`, rename(engine, bundled(file))]);
 	return [...common, ...templates, ["AGENTS.md", agentsMd({ starter, engine })], ["CLAUDE.md", "@AGENTS.md\n"]];
 }
 
 /** Writes `contents` to `file`, making its folders. */
-export function write(file: string, contents: string, shown = file): void {
+export function write(file: string, contents: string | Buffer, shown = file): void {
 	// Its folder first, then the file, each error naming which (as given), as 0.7's did.
 	const parent = parentAsGiven(shown);
 	if (parent !== "") {
@@ -165,20 +172,96 @@ export interface InitOptions {
 /** Whether `dir` is the current folder as Rust compares paths (`.`, `./`, `./.`), where 0.7 printed no `cd`. */
 const isCurrentFolder = (dir: string) => dir.startsWith(".") && dir.split(path.sep === "/" ? "/" : /[\\/]/).every((part) => part === "" || part === ".");
 
+/** Folders a project's own code isn't in: installs, a repository's files, builds. */
+const NOT_OWN_CODE = new Set(["node_modules", ".git", ".cache", "dist", "_site", "public", "build"]);
+
+/** A JavaScript or TypeScript file of the project's own that Node could read as CommonJS (`.js`, `.cjs`, `.ts`, `.cts`), outside `skip`. */
+function ownCode(dir: string, skip: Set<string>, depth = 0): boolean {
+	let entries: fs.Dirent[];
+	try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+	for (const entry of entries) {
+		const file = path.join(dir, entry.name);
+		if (entry.isDirectory()) {
+			if (!NOT_OWN_CODE.has(entry.name) && depth < 6 && ownCode(file, skip, depth + 1)) return true;
+		} else if (/\.(?:c?js|c?ts)$/.test(entry.name) && !entry.name.endsWith(".d.ts") && !skip.has(file)) return true;
+	}
+	return false;
+}
+
+/**
+ * The project's `package.json`, made ready for the starter: `"type": "module"`, which the
+ * config's `export default` needs (`npm init -y` on npm 12 writes `"type": "commonjs"`, and every
+ * command then warned `Failed to load the ES module ... ssqch.config.js`: both new-site runs),
+ * and `build` and `serve` scripts. A project with JavaScript of its own keeps its `type` (its
+ * files may be CommonJS), and the config is written as `ssqch.config.mjs` instead, which is a
+ * module whatever the type. No `package.json`, no change: a site needs none to build. Answers
+ * what was changed, for the output, and whether the config is to be `.mjs`.
+ */
+function preparePackage(dir: string, skip: Set<string>): { changes: string[]; mjs: boolean; write?: () => void } {
+	const file = path.join(dir, "package.json");
+	let text: string;
+	try { text = fs.readFileSync(file, "utf8"); } catch { return { changes: [], mjs: false }; }
+	let pkg: Record<string, unknown>;
+	try {
+		const parsed: unknown = JSON.parse(text);
+		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return { changes: [], mjs: false };
+		pkg = parsed as Record<string, unknown>;
+	} catch { return { changes: [], mjs: false }; }
+	const changes: string[] = [];
+	let mjs = false;
+	if (pkg.type !== "module") {
+		if (ownCode(dir, skip)) mjs = true;
+		else {
+			pkg.type = "module";
+			changes.push("\"type\": \"module\"");
+		}
+	}
+	const scripts = pkg.scripts !== null && typeof pkg.scripts === "object" && !Array.isArray(pkg.scripts) ? pkg.scripts as Record<string, unknown> : pkg.scripts === undefined ? {} : undefined;
+	if (scripts) {
+		const added = [["build", "ssqch build"], ["serve", "ssqch serve"]].filter(([name]) => scripts[name] === undefined);
+		for (const [name, command] of added) scripts[name] = command;
+		if (added.length) {
+			pkg.scripts = scripts;
+			changes.push(`the ${added.map(([name]) => name).join(" and ")} script${added.length > 1 ? "s" : ""}`);
+		}
+	}
+	if (!changes.length) return { changes, mjs };
+	// The file's own indent (npm's is two spaces), and its final newline.
+	const indent = /^[ \t]+(?=")/m.exec(text)?.[0] ?? "  ";
+	const out = JSON.stringify(pkg, null, indent) + (text.endsWith("\n") ? "\n" : "");
+	return { changes, mjs, write: () => fs.writeFileSync(file, out) };
+}
+
 /** `ssqch init`: writes the starter into `dir`, keeping any file that's there. Answers the exit code. */
 export function runInit(options: InitOptions): number {
 	const { dir, starter, engine, quiet } = options;
 	const written: string[] = [], skipped: string[] = [];
+	let packageChanges: string[] = [];
 	try {
 		if (!STARTERS.includes(starter)) throw new Error(`--starter ${starter}: not a starter (use ${STARTERS.join(" or ")})`);
 		if (!ENGINES.includes(engine)) throw new Error(`--engine ${engine}: not a starter engine (use ${ENGINES.join(", ")})`);
-		for (const [rel, contents] of starterFiles(starter, engine)) {
+		const files = starterFiles(starter, engine);
+		// A config that's there already, under any of its names, is the site's.
+		const hasConfig = CONFIG_FILES.find((name) => fs.existsSync(path.join(dir, name)));
+		const prepared = preparePackage(dir, new Set(files.map(([rel]) => path.join(dir, rel))));
+		for (let [rel, contents] of files) {
+			if (rel === "ssqch.config.js") {
+				if (hasConfig !== undefined) {
+					skipped.push(hasConfig);
+					continue;
+				}
+				if (prepared.mjs) rel = "ssqch.config.mjs";
+			}
 			const file = path.join(dir, rel);
 			if (fs.existsSync(file)) skipped.push(rel);
 			else {
 				write(file, contents, joinAsGiven(dir, rel));
 				written.push(rel);
 			}
+		}
+		if (prepared.write) {
+			try { prepared.write(); } catch (e) { throw new Error(`writing ${joinAsGiven(dir, "package.json")}: ${(e as Error).message}`); }
+			packageChanges = prepared.changes;
 		}
 	} catch (e) {
 		process.stderr.write(`${red("error:")} ${(e as Error).message}\n`);
@@ -189,6 +272,8 @@ export function runInit(options: InitOptions): number {
 	let out = "";
 	for (const rel of written) out += `  created ${slashes(rel)}\n`;
 	for (const rel of skipped) out += `  kept    ${slashes(rel)} (already there)\n`;
+	if (packageChanges.length) out += `  updated package.json: ${packageChanges.join(" and ")}\n`;
+	if (written.includes("ssqch.config.mjs")) out += "  (ssqch.config.mjs, not .js: package.json isn't \"type\": \"module\" and this project has JavaScript of its own, so it's left as it is)\n";
 	if (written.length === 0) out += "Nothing to do: camp is already set up (every starter file is there).\n";
 	else out += `\nCamp is set up. Next: ${isCurrentFolder(dir) ? "" : `cd ${dir} && `}ssqch serve, then open http://localhost:8080\n`;
 	process.stdout.write(out);

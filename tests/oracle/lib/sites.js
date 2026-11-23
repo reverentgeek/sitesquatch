@@ -38,7 +38,9 @@ export function sites() {
 	}
 	for (const starter of ["site", "docs"]) {
 		for (const engine of ENGINES) {
-			list.push({ name: `starter-${starter}-${engine}`, starter: { starter, engine }, prepare: (dir) => { init(dir, starter, engine); return dir; } });
+			// The pages show `page.lastModified`, which is a file's time in a folder that isn't a
+			// repository: the clock is pinned (2026-01-01), so the dates are the same every run.
+			list.push({ name: `starter-${starter}-${engine}`, starter: { starter, engine }, env: { SOURCE_DATE_EPOCH: "1767225600" }, prepare: (dir) => { init(dir, starter, engine); return dir; } });
 		}
 	}
 	const local = (name, from, { root = ".", extra = [], args = [], env = {} } = {}) => {
@@ -133,15 +135,28 @@ export function normalizeReport(report, build) {
 	const paths = (v) => JSON.parse(JSON.stringify(v).replaceAll(JSON.stringify(build.root).slice(1, -1), "<root>").replaceAll(JSON.stringify(build.dir).slice(1, -1), "<root>"));
 	const out = paths(rest);
 	if (Array.isArray(out.written)) out.written = [...out.written].sort();
+	// The summary lines plugins add (`Images`), as the text summary has them.
+	if (Array.isArray(out.summary)) out.summary = out.summary.map((row) => (row?.label === "Images" ? { ...row, value: String(row.value).replace(/\b\d+(\.\d+)? (B|KB|MB|GB)\b/g, "<size>") } : row));
 	out.timings = Array.isArray(timings) ? "(left out)" : timings;
 	return JSON.parse(normalizeText(JSON.stringify(out)));
 }
 
-/** The build's summary (stdout and stderr): no "Writing" lines, times as <time>, paths as <root>. */
+/**
+ * The sizes that count encoded images, as <size>: their bytes depend on the machine
+ * (`encodedImage`), so the `Images` line's size, and the `Output` line's when the site has
+ * images, aren't frozen. A site without encoded images keeps its sizes.
+ */
+function imageSizes(lines) {
+	const size = /\b\d+(\.\d+)? (B|KB|MB|GB)\b/g;
+	const images = lines.some((line) => /^\s*Images\s/.test(line));
+	return lines.map((line) => (/^\s*Images\s/.test(line) || (images && /^\s*Output\s/.test(line)) ? line.replace(size, "<size>") : line));
+}
+
+/** The build's summary (stdout and stderr): no "Writing" lines, times as <time>, paths as <root>, images' sizes as <size>. */
 export function normalizeLog(stderr, build) {
-	return normalizeText(stderr.split(/\r?\n/)
+	return normalizeText(imageSizes(stderr.split(/\r?\n/)
 		.filter((line) => !line.startsWith("[ssqch] Writing") && !/^\s*Time\s/.test(line))
-		.map((line) => line.replaceAll(build.root, "<root>").replaceAll(build.dir, "<root>").replace(/\b\d+(\.\d+)? ?(µs|ms|s)\b/g, "<time>"))
+		.map((line) => line.replaceAll(build.root, "<root>").replaceAll(build.dir, "<root>").replace(/\b\d+(\.\d+)? ?(µs|ms|s)\b/g, "<time>")))
 		.join("\n").trim() + "\n");
 }
 
@@ -150,6 +165,34 @@ const decoder = new TextDecoder("utf-8", { fatal: true });
 export function asText(buffer) {
 	if (buffer.includes(0)) return null;
 	try { return decoder.decode(buffer); } catch { return null; }
+}
+
+/**
+ * An image the image plugin encoded (`img/<id>-<width>.<format>`): its format and size, from its
+ * header. Its bytes depend on the machine: libvips's JPEG encoder rounds differently on x86 and
+ * ARM (the starter's photo, frozen on an Apple laptop, differed on Linux at the same size), and
+ * the image is right either way. Undefined for any other file, which is compared by hash.
+ */
+export function encodedImage(file, buf) {
+	if (!/(^|\/)img\/[\w-]{10}-\d+\.(?:jpe?g|webp|png|avif|gif)$/.test(file)) return undefined;
+	const size = (w, h) => `${w}x${h}`;
+	if (buf[0] === 0x89 && buf.toString("latin1", 1, 4) === "PNG") return `png ${size(buf.readUInt32BE(16), buf.readUInt32BE(20))}`;
+	if (buf.toString("latin1", 0, 4) === "RIFF" && buf.toString("latin1", 8, 12) === "WEBP") {
+		const chunk = buf.toString("latin1", 12, 16);
+		if (chunk === "VP8 ") return `webp ${size(buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff)}`;
+		if (chunk === "VP8L") { const b = buf.readUInt32LE(21); return `webp ${size((b & 0x3fff) + 1, ((b >> 14) & 0x3fff) + 1)}`; }
+		if (chunk === "VP8X") return `webp ${size(buf.readUIntLE(24, 3) + 1, buf.readUIntLE(27, 3) + 1)}`;
+	}
+	if (buf[0] === 0xff && buf[1] === 0xd8) {
+		for (let i = 2; i + 9 < buf.length; ) {
+			if (buf[i] !== 0xff) { i++; continue; }
+			const marker = buf[i + 1];
+			// A start of frame (not DHT, JPG or DAC): its height, then its width.
+			if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) return `jpeg ${size(buf.readUInt16BE(i + 7), buf.readUInt16BE(i + 5))}`;
+			i += 2 + buf.readUInt16BE(i + 2);
+		}
+	}
+	return undefined;
 }
 
 /** Every file under `dir`, with forward slashes, sorted. Links are listed as links. */
@@ -164,7 +207,7 @@ export function listFiles(dir, rel = "") {
 }
 
 /**
- * The snapshot of a built site, as `{ version, files: { path: { text } | { sha256, bytes } | { link } }, report, log }`.
+ * The snapshot of a built site, as `{ version, files: { path: { text } | { sha256, bytes } | { image } | { link } }, report, log }`.
  * `starter` sites also record the files `ssqch init` wrote.
  *
  * The JSON report counts the bytes of the pages written, and those include the version wherever a
@@ -184,7 +227,8 @@ export function snapshotOf(build, site, asVersion) {
 			const buf = fs.readFileSync(abs);
 			const text = asText(buf);
 			if (text !== null && written.has(file)) printed += text.match(versionPattern(version))?.length ?? 0;
-			files[file] = text === null ? { sha256: crypto.createHash("sha256").update(buf).digest("hex"), bytes: buf.length } : { text: normalizeText(text) };
+			const image = text === null ? encodedImage(file, buf) : undefined;
+			files[file] = image !== undefined ? { image } : text === null ? { sha256: crypto.createHash("sha256").update(buf).digest("hex"), bytes: buf.length } : { text: normalizeText(text) };
 		}
 	}
 	let source = null;

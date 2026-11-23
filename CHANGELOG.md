@@ -11,7 +11,45 @@ where that version matches.
 
 ## Unreleased
 
+### Added
+- `ssqch serve --host 0.0.0.0` listens on every network the machine is on, so the site opens on
+  a phone, and prints the address for it: `On your network: http://192.168.1.20:8080/ (anyone on
+  it can see the site)`. `--host <address>` listens on that one. The default is still
+  `127.0.0.1`. `ssqch serve --built` takes it too.
+
+### Changed
+- `ssqch init` makes a `package.json` that's there ready for the site: `"type": "module"`, which
+  the config's `export default` needs (`npm init -y` on npm 12 writes `"type": "commonjs"`, and
+  every command warned `Failed to load the ES module ... ssqch.config.js`), and `build` and
+  `serve` scripts that aren't there, said as `updated package.json: ...`. A project with
+  JavaScript of its own keeps its `type` and gets `ssqch.config.mjs`. A config that's there under
+  any of its names is kept. Without a `package.json`, none is written.
+- The blog starter (`ssqch init`) is a blog: its posts have tags, with a page for each tag
+  (`/tags/stumps/`) and one listing them (`/tags/`), each post links its tags, and an Atom feed
+  is at `/feed.xml` (`src/feed.jinja`, with `rssPlugin()`'s filters), linked from every page.
+  Code is highlighted (`markdown: { highlight: true }`, and the layout links `/highlight.css`),
+  and `leaveNoTrace: true` deletes a removed post's page. The same in every `--engine`.
+- The docs starter's search is Pagefind's Component UI (a search button and dialog, Ctrl+K or
+  Cmd+K), in the theme's colors in light and dark, with Pagefind pinned to 1.6.0: it was the
+  newest Pagefind, whose 1.5 and later print a notice about the old UI. Its install page says
+  how to try search locally (`SEARCH=1 npx ssqch build`, then `npx ssqch serve --built`). Both
+  starters have a tab icon, the footprint.
+- Both starters show a date a reader can see: each docs page ends with "Last updated" (its
+  `page.lastModified`, from git), and each post shows its date under the title, with "updated"
+  when it last changed on a later day. The starters set `lastModified: "git"`, and the docs
+  starter's GitHub Pages workflow checks out the whole history (`fetch-depth: 0`).
+- `lastModified: "git"` in a folder that isn't a repository yet uses the files' times quietly; it
+  warned on every build (`not a git repository, so pages use their files' times`), which every
+  new site met before `git init`. `SOURCE_DATE_EPOCH` pins a `page.lastModified` that comes from
+  a file's time, as it does an undated page's date.
+- The blog starter's second post has its photo: a blurry one of something tall between the
+  birches, which the post insists is the stump. It shows the image plugin on a real picture (a
+  `<picture>` in three sizes, and one copy in the feed).
+
 ### Fixed
+- A Markdown copy (`llmsPlugin()`) keeps picture paths in code as they're written: a code span
+  or fenced block showing `![The stump](/img/stump.jpg)` got the published file's name, as the
+  page's own picture does.
 - A footnote in a page's Markdown copy (`llmsPlugin()`'s `index.md` and `llms-full.txt`) keeps
   its text: `[^1]: Two raccoons agree.` was read as a link definition and written as
   `[^1]: https://example.com/post/Two raccoons agree.`, which `ssqch patrol` then reported as
@@ -26,6 +64,31 @@ where that version matches.
   lowercased with its words sorted as attributes.
 - `ssqch scout`'s config draft says "what it couldn't carry over is listed at the end" only when
   there's a list at the end.
+- `ssqch serve` sees an edit made during its first build: the watch began after it, so a page
+  edited after the build read it was served as it was until the next edit, with no word why (an
+  agent that edits as soon as a page answers lands there).
+- `ssqch serve` reads a config saved after its build process loaded it and before the watch
+  began (during a reload's first build), where it was missed until the next save.
+- An editor's own files start no rebuild while serving: `sed -i`'s `.!12345!post.md`, backups
+  (`post.md~`), Emacs' locks, Vim's swap files and JetBrains' safe writes. The server said
+  `Fresh tracks in src/posts/.!64277!post.md` and rebuilt for nothing.
+- A front matter `date` that isn't one (`date: last Tuesday`) is a `front-matter` error that
+  points at its line (`src/t.md: \`date\` isn't a date: "last Tuesday". Write it as
+  2026-11-22, ...`), listed with the page's schema errors. It was `in t.md: can't parse date
+  "last Tuesday"`, with the code `build`, no line, and the page's other mistakes unsaid.
+- A page open in a browser asks a stopped `ssqch serve` less and less often (up to every 10 s),
+  and says so once in the console; it asked every 0.7 s, and logged an error each time.
+- `ssqch build` and `ssqch serve` print the summary without a line for each page:
+  `[ssqch] Writing ./dist/index.html from ./src/index.jinja (jinja)` comes with `--verbose`.
+  opensource.guide printed 404 of them on every build, and a dev server every one of its pages on
+  every save, which an agent reads as tokens and a person scrolls past. Images still say when
+  they're encoded.
+- Output conflicts are one line for each pair of templates, with how many paths and the first
+  three (a paginated template whose pages share a permalink printed a line for every page), from
+  the site's root rather than as absolute paths; a template that conflicts with itself says to
+  give its pages a part of their own (`{{ pagination.pageNumber }}`).
+- Edge's `$loop` has edge.js's `isFirst` and `isLast` as well as `first` and `last`: `isLast` was
+  undefined, with no warning, so `{{ $loop.isLast ? "" : ", " }}` put a comma after every item.
 
 ## 0.13.4 - 2026-11-22
 

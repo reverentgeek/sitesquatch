@@ -11,12 +11,17 @@ import { sitemapPlugin } from "ssqch/sitemap";
 const { url } = readData("src/_data/site.json");
 
 // Search is Pagefind (https://pagefind.app), which indexes the built pages.
-// It's a program of its own that npx fetches, so it's opt-in:
-// SEARCH=1 ssqch build
+// It's a program of its own that npx fetches, so it's opt-in, and pinned, so
+// every build gets the same one: SEARCH=1 ssqch build, then ssqch serve --built
+// to try it (ssqch serve builds without it).
 const search = Boolean(process.env.SEARCH);
 
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
+  // page.lastModified, which each page shows as "Last updated": when its file last changed in a
+  // commit (in CI, check out the whole history: `fetch-depth: 0`). Before the first commit,
+  // the file's time.
+  lastModified: "git",
   templateFormats: ["liquid", "md"],
   markdownEngine: "liquid",
   passthrough: ["src/assets"],
@@ -36,8 +41,16 @@ export default defineConfig(({ env }) => ({
     },
   },
 
+  // Functions templates can call: the "Last updated" date at the foot of each page.
+  filters: {
+    // A date as people write it: January 1, 2026.
+    readableDate: (date) => new Date(date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }),
+    // The day, as <time datetime> takes it: 2026-01-01.
+    isoDay: (date) => new Date(date).toISOString().slice(0, 10),
+  },
+
   data: { search },
-  afterBuild: search ? [{ run: "npx -y pagefind --site dist" }] : [],
+  afterBuild: search ? [{ run: "npx -y pagefind@1.6.0 --site dist" }] : [],
 
   plugins: [
     // Broken internal links (and anchors) fail a production build.

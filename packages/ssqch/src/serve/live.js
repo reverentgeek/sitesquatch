@@ -154,9 +154,15 @@
 			link.after(next);
 		}
 	};
-	setInterval(async () => {
+	// Every 0.7 s while the server answers. Once it doesn't (it was stopped), less and less often,
+	// up to every 10 s, said once in the console: polling at the same pace filled it with an error
+	// every 0.7 s (184 in two minutes, the new-docs run). When it answers again, the pace is back.
+	let wait = 700;
+	const poll = async () => {
 		try {
 			const now = await (await fetch(`/__ssqch/build?v=${seen ?? ""}&p=${encodeURIComponent(location.pathname)}`)).json();
+			if (wait !== 700) console.log("[ssqch] The server's back.");
+			wait = 700;
 			show(now.error);
 			if (seen !== undefined && now.id !== seen && !now.error) {
 				if (now.reload) {
@@ -169,6 +175,11 @@
 				if (missing.size) check([...missing.keys()]);
 			}
 			seen = now.id;
-		} catch {}
-	}, 700);
+		} catch {
+			if (wait === 700) console.log("[ssqch] The server isn't answering (stopped?). Checking now and then.");
+			wait = Math.min(wait * 2, 10_000);
+		}
+		setTimeout(poll, wait);
+	};
+	setTimeout(poll, wait);
 })();

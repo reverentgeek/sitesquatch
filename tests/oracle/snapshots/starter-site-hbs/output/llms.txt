@@ -11,3 +11,11 @@
 - [The Cache of the Wild](https://example.com/posts/the-cache-of-the-wild/index.md): A raccoon, the trail conditions, and a copy for when the network is down.
 - [The Stump Has Moved](https://example.com/posts/the-stump-has-moved/index.md)
 - [Upon Further Review, a Stump](https://example.com/posts/upon-further-review-a-stump/index.md): A correction to the previous entry.
+
+## Tags
+
+- [Tags](https://example.com/tags/index.md)
+- [Tagged raccoons](https://example.com/tags/raccoons/index.md)
+- [Tagged sightings](https://example.com/tags/sightings/index.md)
+- [Tagged stumps](https://example.com/tags/stumps/index.md)
+- [Tagged trails](https://example.com/tags/trails/index.md)

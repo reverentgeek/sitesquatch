@@ -44,7 +44,7 @@ description: SiteSquatch (ssqch) turns your Markdown and templates into a websit
 		<div>
 			<p class="kicker">Your first minute</p>
 			<h2 id="first-minute">Two commands, and you've got a website</h2>
-			<p><code>ssqch init</code> sets up camp: a config, a layout, a home page, five posts, a 404 page, a blueprint for the next post, editor types, and an <code>AGENTS.md</code> for your coding agent. Then it leaves you to it. Run <code>ssqch serve</code>, edit a post, and the page you're looking at reloads.</p>
+			<p><code>ssqch init</code> sets up camp: a config, a layout, a home page, five posts with tag pages and a feed, a 404 page, a blueprint for the next post, editor types, and an <code>AGENTS.md</code> for your coding agent. Then it leaves you to it. Run <code>ssqch serve</code>, edit a post, and the page you're looking at reloads.</p>
 			<p><a href="{{ links.fieldGuide }}">The field guide walks you through it</a></p>
 		</div>
 		<figure class="terminal">
@@ -252,7 +252,6 @@ No differences: 148 pages and 4,730 other files are the same. <span class="v">Th
 	<ul class="gaps">
 		<li>Pages render one at a time on one thread. Image encoding uses every core, but heavy per-page JavaScript doesn't spread across them.</li>
 		<li>The dev server rebuilds the whole site on a change: about 0.9 s after one edit on a 10,000-page site.</li>
-		<li>The dev server listens on <code>127.0.0.1</code> only. There's no <code>--host</code>.</li>
 		<li>No SVG rasterizing, and HDR photos need converting to sRGB first (the build warns about them).</li>
 	</ul>
 	<p class="also"><a href="{{ links.knownGaps }}">Every known gap, as of this release</a></p>

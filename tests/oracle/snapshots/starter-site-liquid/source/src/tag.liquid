@@ -1,0 +1,16 @@
+---
+layout: layout.liquid
+pagination:
+  data: collections.tagList
+  size: 1
+  alias: tag
+permalink: /tags/{{ tag.name }}/
+computed:
+  title: "Tagged {{ tag.name }}"
+---
+<ul>
+  {% for post in tag.posts %}
+    <li><a href="{{ post.url }}">{{ post.data.title }}</a> ({{ post.date | readableDate }})</li>
+  {% endfor %}
+</ul>
+<p><a href="/tags/">Every tag</a></p>

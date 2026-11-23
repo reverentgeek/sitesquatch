@@ -9,14 +9,14 @@
     "pages": {
       "written": 6,
       "templates": 6,
-      "bytes": 23931,
+      "bytes": 25179,
       "new": null,
       "gone": null
     },
     "copied": {
-      "files": 2,
+      "files": 3,
       "unchanged": 0,
-      "bytes": 15393
+      "bytes": 20115
     },
     "removed": 0,
     "drafts": 0,
@@ -40,7 +40,7 @@
     "summary": [
       {
         "label": "Links",
-        "value": "127 checked, 0 broken"
+        "value": "133 checked, 0 broken"
       }
     ],
     "warnings": [],
@@ -48,11 +48,12 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   6 written from 6 templates, 23.9 KB\n  Copied  2 files, 15.4 KB\n  Links   127 checked, 0 broken\n  Output  dist: 18 files, 55.6 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   6 written from 6 templates, 25.2 KB\n  Copied  3 files, 20.1 KB\n  Links   133 checked, 0 broken\n  Output  dist: 19 files, 62.3 KB\n",
   "files": {
     "404.html": "text",
     "assets/docs.css": "text",
     "assets/docs.js": "text",
+    "assets/favicon.svg": "text",
     "docs/guides/deploying/index.html": "text",
     "docs/guides/deploying/index.md": "text",
     "docs/guides/writing/index.html": "text",
@@ -86,6 +87,7 @@
     "src/_includes/hooks/heading.njk": "text",
     "src/assets/docs.css": "text",
     "src/assets/docs.js": "text",
+    "src/assets/favicon.svg": "text",
     "src/docs/docs.json": "text",
     "src/docs/guides/deploying.md": "text",
     "src/docs/guides/writing.md": "text",

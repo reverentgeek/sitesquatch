@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Field Notes</title>
+  <subtitle>An amateur investigation, with corrections. Built with SiteSquatch.</subtitle>
+  <link href="https://example.com/feed.xml" rel="self"/>
+  <link href="https://example.com/"/>
+  <id>https://example.com/</id>
+  <updated>2026-01-29T00:00:00Z</updated>
+  <author><name>Field Notes</name></author>
+  <entry>
+    <title>The Cache of the Wild</title>
+    <link href="https://example.com/posts/the-cache-of-the-wild/"/>
+    <id>https://example.com/posts/the-cache-of-the-wild/</id>
+    <updated>2026-01-29T00:00:00Z</updated>
+    <content type="html">&lt;p&gt;The raccoon keeps a dated copy of the trail conditions. He checks the ranger station once a
+day, and the rest of the time he reads you his copy. When the station doesn&#x27;t answer, he reads
+you his copy anyway and mentions how old it is.&lt;/p&gt;
+&lt;p&gt;A data file that asks a server for something can do the same. Save this as
+&lt;code&gt;src/_data/conditions.js&lt;/code&gt;, and every page has &lt;code&gt;conditions&lt;/code&gt;:&lt;/p&gt;
+&lt;pre class=&quot;highlight&quot;&gt;&lt;code class=&quot;language-js&quot;&gt;&lt;span class=&quot;hl-keyword&quot;&gt;export&lt;/span&gt; &lt;span class=&quot;hl-keyword&quot;&gt;default&lt;/span&gt; &lt;span class=&quot;hl-keyword&quot;&gt;async&lt;/span&gt; &lt;span class=&quot;hl-keyword&quot;&gt;function&lt;/span&gt; () {
+  &lt;span class=&quot;hl-comment&quot;&gt;// Asked once a day; until then, the saved copy in .cache/ssqch/fetch/.&lt;/span&gt;
+  &lt;span class=&quot;hl-keyword&quot;&gt;const&lt;/span&gt; response &lt;span class=&quot;hl-operator&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;hl-keyword&quot;&gt;await&lt;/span&gt; &lt;span class=&quot;hl-function&quot;&gt;fetch&lt;/span&gt;(&lt;span class=&quot;hl-string&quot;&gt;&amp;quot;https://api.example.com/trails/cedar&amp;quot;&lt;/span&gt;, { cache: &lt;span class=&quot;hl-string&quot;&gt;&amp;quot;1d&amp;quot;&lt;/span&gt; });
+  &lt;span class=&quot;hl-keyword&quot;&gt;return&lt;/span&gt; response.&lt;span class=&quot;hl-function&quot;&gt;json&lt;/span&gt;();
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;While &lt;code&gt;ssqch serve&lt;/code&gt; rebuilds on every save, the server is asked once a day, not once a save.&lt;/li&gt;
+&lt;li&gt;When the server is down and there&#x27;s a copy, the build uses it and says how old it is.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;ssqch build --offline&lt;/code&gt; uses only the saved copies, whatever their age, so a build on a plane
+never touches the network.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The raccoon has never been on a plane. He has opinions about the Old Growth trail.&lt;/p&gt;
+</content>
+  </entry>
+  <entry>
+    <title>Raiders of the Lost Path</title>
+    <link href="https://example.com/posts/raiders-of-the-lost-path/"/>
+    <id>https://example.com/posts/raiders-of-the-lost-path/</id>
+    <updated>2026-01-22T00:00:00Z</updated>
+    <content type="html">&lt;p&gt;A ranger came by with an old map of these notes. It pointed to a heading called &amp;quot;The tracks&amp;quot;.
+I had renamed it &amp;quot;Where they lead&amp;quot; the week before. The ranger was not pleased, and neither
+was the build.&lt;/p&gt;
+&lt;h2 id=&quot;what-the-build-said&quot;&gt;What the build said&lt;/h2&gt;
+&lt;p&gt;The link checker (&lt;code&gt;linksPlugin()&lt;/code&gt; in &lt;code&gt;ssqch.config.js&lt;/code&gt;) follows every link inside the site
+after a production build. A link to a page that isn&#x27;t there, or to a heading that isn&#x27;t on it,
+fails the build and says where:&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&quot;language-text&quot;&gt;error: after_build hook failed: the trail goes cold on 1 broken link:
+  /posts/i-know-what-i-saw/ -&amp;gt; /posts/the-stump-has-moved/#the-tracks (no id &amp;quot;the-tracks&amp;quot; on that page)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2 id=&quot;the-correction&quot;&gt;The correction&lt;/h2&gt;
+&lt;p&gt;A heading&#x27;s id comes from its text, so renaming a heading moves its address. Point the link at
+the new one, &lt;code&gt;#where-they-lead&lt;/code&gt;, or keep the old heading. In &lt;code&gt;ssqch serve&lt;/code&gt; it&#x27;s a warning, so
+you can keep writing while you look for it.&lt;/p&gt;
+&lt;p&gt;This link works, for comparison: &lt;a href=&quot;https://example.com/posts/raiders-of-the-lost-path/#what-the-build-said&quot;&gt;back to what the build said&lt;/a&gt;.&lt;/p&gt;
+</content>
+  </entry>
+  <entry>
+    <title>The Stump Has Moved</title>
+    <link href="https://example.com/posts/the-stump-has-moved/"/>
+    <id>https://example.com/posts/the-stump-has-moved/</id>
+    <updated>2026-01-15T00:00:00Z</updated>
+    <content type="html">&lt;p&gt;I went back a third time. The stump is gone. There are tracks.&lt;/p&gt;
+&lt;p&gt;More as it develops. To start an entry of your own:&lt;/p&gt;
+&lt;pre class=&quot;highlight&quot;&gt;&lt;code class=&quot;language-sh&quot;&gt;&lt;span class=&quot;hl-function&quot;&gt;ssqch&lt;/span&gt; new posts &lt;span class=&quot;hl-parameter&quot;&gt;--title&lt;/span&gt; &lt;span class=&quot;hl-string&quot;&gt;&amp;quot;My second sighting&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;It copies &lt;code&gt;src/_blueprints/posts.md&lt;/code&gt; and fills in the title and today&#x27;s date. Add
+&lt;code&gt;draft: true&lt;/code&gt; to a post&#x27;s front matter to keep it out of production builds until you&#x27;re sure
+of what you saw.&lt;/p&gt;
+</content>
+  </entry>
+  <entry>
+    <title>Upon Further Review, a Stump</title>
+    <link href="https://example.com/posts/upon-further-review-a-stump/"/>
+    <id>https://example.com/posts/upon-further-review-a-stump/</id>
+    <updated>2026-01-08T00:00:00Z</updated>
+    <content type="html">&lt;p&gt;I went back in daylight. It was a stump. A tall one, to be fair to me.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;description&lt;/code&gt; in this post&#x27;s front matter is the page&#x27;s meta description; posts without
+one get the site&#x27;s, from &lt;code&gt;src/_data/site.json&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;I did get a picture this time. It&#x27;s a little blurry, but you can clearly see the stump.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://example.com/img/jsuIfm9F_f-1200.jpeg&quot; alt=&quot;A blurry photo of something tall and dark, mid-stride between the birches. The stump.&quot;&gt;&lt;/p&gt;
+&lt;p&gt;The picture is &lt;code&gt;src/img/stump.jpg&lt;/code&gt;, and this post shows it with
+&lt;code&gt;![A blurry photo...](/img/stump.jpg)&lt;/code&gt;. The build turns it into a &lt;code&gt;&amp;lt;picture&amp;gt;&lt;/code&gt; in three sizes,
+so it stays sharp on any screen. Whether it was sharp to begin with is between you and your
+camera.&lt;/p&gt;
+&lt;p&gt;A raccoon who keeps everything told me the trick for deploying: keep &lt;code&gt;dist/img/&lt;/code&gt; and
+&lt;code&gt;.cache/&lt;/code&gt; between builds, and the build never encodes the same picture twice. Raccoon&#x27;s cache.
+Raccoon did not see anything tall.&lt;/p&gt;
+</content>
+  </entry>
+  <entry>
+    <title>I Know What I Saw</title>
+    <link href="https://example.com/posts/i-know-what-i-saw/"/>
+    <id>https://example.com/posts/i-know-what-i-saw/</id>
+    <updated>2026-01-01T00:00:00Z</updated>
+    <content type="html">&lt;p&gt;It was tall, it was in a hurry, and it was gone before I found my camera. I&#x27;m writing it down
+anyway. This is the first entry in my field notes.&lt;/p&gt;
+&lt;p&gt;It&#x27;s also your first post. Every Markdown file in &lt;code&gt;src/posts/&lt;/code&gt; is a post: &lt;code&gt;posts.json&lt;/code&gt; gives
+them all the layout and the &lt;code&gt;posts&lt;/code&gt; tag, so they show up on the home page, newest first. The
+&lt;code&gt;tags&lt;/code&gt; in a post&#x27;s front matter add it to a page for each tag (this one&#x27;s on
+&lt;a href=&quot;https://example.com/tags/sightings/&quot;&gt;sightings&lt;/a&gt;), and every post is in the feed, &lt;code&gt;/feed.xml&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Edit this file while &lt;code&gt;ssqch serve&lt;/code&gt; is running, and the page reloads by itself.&lt;/p&gt;
+</content>
+  </entry>
+</feed>

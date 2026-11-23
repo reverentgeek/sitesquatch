@@ -65,3 +65,25 @@ export default defineConfig({
 	r = ssqch(["build", "--root", d, "-q"]);
 	assert.ok(!r.ok && r.log.includes("ssqch.config.js: schemas.posts: \"title\" isn't an option (options: fields, files, unknown); a schema's fields go in `fields`"), r.log);
 });
+
+// The new-docs run: `date: last Tuesday` failed the build with `in t.md: can't parse date "last
+// Tuesday"` (no field, no line, the code `build`), and the page's missing title went unsaid.
+// DELIBERATE (0.13.5): a `front-matter` error that points at the line, with the schemas' errors.
+test("a_date_that_isnt_one_points_at_its_line", () => {
+	const dir = tempDir("schema-bad-date");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\" }, schemas: { page: { files: \"**/*.md\", fields: { title: \"string\" } } } };\n",
+		"src/t.md": "---\ndescription: Pine cones\ndate: last Tuesday\n---\nHi\n",
+	});
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok, r.log);
+	assert.ok(r.log.includes("2 content errors:\n  - src/t.md: `date` isn't a date: \"last Tuesday\". Write it as 2026-11-22, or with a time, 2026-11-22T09:30:00Z\n  - src/t.md: `title` is required (a string) (schema `page`)\n"), r.log);
+	assert.ok(r.log.includes("  --> src/t.md:3\n") && r.log.includes("   3 | date: last Tuesday\n"), r.log);
+	r = ssqch(["build", "--root", dir, "--format", "json"]);
+	const [first] = JSON.parse(r.stdout).errors;
+	assert.deepEqual([first.code, first.file, first.field], ["front-matter", "src/t.md", "date"], r.stdout);
+	// Without a schema, the same error.
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\" } };\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("1 content error:\n  - src/t.md: `date` isn't a date"), r.log);
+});

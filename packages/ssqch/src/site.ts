@@ -124,6 +124,9 @@ export class Timer {
 /** A file to copy, and where to. */
 export type CopyJob = [from: string, to: string];
 
+/** A file's modification time, or the pinned build time when `SOURCE_DATE_EPOCH` is set. */
+const fileTime = (mtime: Date): Date => (sourceDateEpoch() === undefined ? mtime : new Date(sourceDateEpoch()!));
+
 export class Site {
 	config: Config;
 	dirs: Dirs;
@@ -147,6 +150,8 @@ export class Site {
 	private seen = new Set<string>();
 	/** PascalCase tags the pages have with no template in `_includes/components/`, with the pages each is on. */
 	unknownComponents = new Map<string, Set<string>>();
+	/** Front matter dates that aren't dates, said with the schemas' errors (`checkPages`), so a page's other mistakes are said with them. */
+	badDates: Diagnostic[] = [];
 	private keepLayers: boolean;
 	/** Set by the build: a page's rendered body, on demand (for `templateContent`). */
 	contentOf: (page: Page) => string | undefined = () => undefined;
@@ -572,8 +577,10 @@ export class Site {
 
 	/**
 	 * When each file in the git repository last changed in a commit, from one `git log`. Files
-	 * with uncommitted changes are left out (they use their modification time). Not a
-	 * repository, or no git: nothing, with a warning.
+	 * with uncommitted changes are left out (they use their modification time). No git: nothing,
+	 * with a warning. Not a repository: nothing, quietly, since a site made with `ssqch init`
+	 * builds before anyone runs `git init`, and a warning on every build there names nothing to
+	 * fix; its pages use their files' times until the first commit.
 	 */
 	private gitDates(setting: string): Map<string, Date> {
 		const { config, dirs } = this;
@@ -582,7 +589,7 @@ export class Site {
 		const lost = (message: string) => { if (!config.quiet) warn(warning("last-modified", `${setting}: ${message}`)); };
 		const top = git("rev-parse", "--show-toplevel");
 		if (top.error) { lost(`can't run git (${top.error.message}), so pages use their files' times`); return dates; }
-		if (top.status !== 0) { lost("not a git repository, so pages use their files' times"); return dates; }
+		if (top.status !== 0) return dates;
 		const toplevel = realPath(top.stdout.trim());
 		if (git("rev-parse", "--is-shallow-repository").stdout?.trim() === "true") {
 			lost("this is a shallow clone, so dates come from the commits it has (fetch the full history, like `fetch-depth: 0` in GitHub Actions)");
@@ -787,7 +794,9 @@ export class Site {
 				filePathStem: parent === "" ? `/${stem}` : `/${parent}/${stem}`,
 				mtime,
 				fileDate,
-				lastModified: config.lastModified === "git" ? commitDates.get(file) ?? mtime : config.lastModified === "file" ? mtime : undefined,
+				// A file's time is when this checkout (or an editor) wrote it, so `SOURCE_DATE_EPOCH`
+				// pins it, as it does an undated page's date: the same build gives the same pages.
+				lastModified: config.lastModified === "git" ? commitDates.get(file) ?? fileTime(mtime) : config.lastModified === "file" ? fileTime(mtime) : undefined,
 				commitDate: config.dateFallback === "git" ? commitDates.get(file) : undefined,
 			};
 		} catch (e) {
@@ -830,7 +839,16 @@ export class Site {
 		// Material for MkDocs' blog writes `date: { created, updated }`: the page's date is `created`,
 		// and `date.updated` stays in its data for a template that shows it.
 		const given = isPlainObject(tpl.data.date) && tpl.data.date.created !== undefined ? tpl.data.date.created : tpl.data.date;
-		if (given !== undefined && given !== null) date = toDate(given) ?? bail(`can't parse date ${show(tpl.data.date)}`);
+		const parsed = given === undefined || given === null ? undefined : toDate(given);
+		// A date that isn't one points at its line, and the build goes on to the schemas, so it's
+		// said with the page's other mistakes (the new-docs run: `can't parse date "last Tuesday"`,
+		// with no field or line, and a missing title unsaid). The page gets the date it would have
+		// had without one, which the build never writes: it fails.
+		if (given !== undefined && given !== null && parsed === undefined) {
+			const file = inputPath.replace(/^(\.\/)+/, "");
+			if (!this.badDates.some((d) => d.file === inputPath)) this.badDates.push(errorOf("front-matter", `${file}: \`date\` isn't a date: ${show(tpl.data.date)}. Write it as 2026-11-22, or with a time, 2026-11-22T09:30:00Z`, { file: inputPath, field: "date" }));
+		}
+		if (parsed !== undefined) date = parsed;
 		// Then the date in the file name, then the last commit that changed the file
 		// (`dateFallback: "git"`, the same in every checkout, where a file's time is when the checkout
 		// wrote it), then the pinned build time (`SOURCE_DATE_EPOCH`, as Jekyll's `time:` gives undated
@@ -1006,14 +1024,31 @@ export class Site {
 
 	private checkConflicts(): void {
 		const seen = new Map<string, string>();
-		const errors: Array<[string, string]> = [];
+		// By the two templates, in the order found: a paginated template whose pages share a
+		// permalink conflicts at every path (v8 #6: 58 lines of `blog/tag.njk and blog/tag.njk both
+		// write to ...`), which is one mistake, said once with how many paths.
+		const groups = new Map<string, { first: string; second: string; input: string; outputs: string[] }>();
 		for (const p of this.pages) {
 			if (p.output === null) continue;
 			const other = seen.get(p.output);
-			if (other !== undefined) errors.push([`${other} and ${p.tpl.rel} both write to ${p.output}`, p.tpl.input]);
+			if (other !== undefined) {
+				const key = `${other}\0${p.tpl.rel}`;
+				const group = groups.get(key) ?? { first: other, second: p.tpl.rel, input: p.tpl.input, outputs: [] };
+				group.outputs.push(p.output);
+				groups.set(key, group);
+			}
 			seen.set(p.output, p.tpl.rel);
 		}
-		if (!errors.length) return;
+		if (!groups.size) return;
+		const errors = [...groups.values()].map(({ first, second, input, outputs }) => {
+			const paths = [...new Set(outputs)].map((o) => this.display(o));
+			// Each path's first page, and the ones after it that conflict.
+			const pages = paths.length + outputs.length;
+			const who = first === second ? `${first} makes ${pages} pages that write to` : `${first} and ${second} both write to`;
+			const where = paths.length === 1 ? paths[0] : `${paths.length} paths: ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? `, and ${paths.length - 3} more` : ""}`;
+			const why = first === second ? " (its pages share a permalink: give each page a part of its own, like `{{ pagination.pageNumber }}`)" : "";
+			return [`${who} ${where}${why}`, input] as const;
+		});
 		const message = `output conflicts (two sets of tracks lead to the same place):\n  - ${errors.map(([m]) => m).join("\n  - ")}`;
 		throw new Diagnostics(message, errors.map(([m, input]) => errorOf("conflict", m, { file: this.display(input) })));
 	}

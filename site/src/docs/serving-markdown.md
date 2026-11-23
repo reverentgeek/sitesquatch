@@ -126,7 +126,7 @@ export default async function middleware(request) {
 }
 ```
 
-Without a `matcher`, it runs for every request, files included, and each counts as a middleware invocation. A `rewrites` entry in `vercel.json` with a `has` condition on the `accept` header is the other way people try; Vercel's docs don't say it wins over a page's own file, so the middleware is the one to rely on. Not run on Vercel yet.
+Without a `matcher`, it runs for every request, files included, and each counts as a middleware invocation. A `rewrites` entry in `vercel.json` with a `has` condition on the `accept` header is the other way people try; Vercel's docs don't say it wins over a page's own file, so the middleware is the one to rely on. With no framework, a `vercel.json` of `{ "buildCommand": "ssqch build", "outputDirectory": "dist" }` builds the site and serves it, with `ssqch` in the `devDependencies` (pinned, as everywhere) and the middleware's `@vercel/functions` in `dependencies`. Checked on Vercel (the blog starter, built there with ssqch 0.13.4, November 2026): an agent's `Accept: text/markdown`, or one that prefers it by q-value, gets the copy with `Vary: Accept` and the `Link` header, with or without the trailing slash, and a browser's request, `*/*`, a missing page (404) and `robots.txt` get what they always did. The middleware runs before Vercel's cache, so a page cached as HTML (`x-vercel-cache: HIT`) still answers an agent with Markdown; the HTML goes out without `Vary: Accept`, as on Netlify. A preview's own address (`<project>-<hash>-<team>.vercel.app`) is behind Vercel's login by default (Deployment Protection), so ask the project's public alias, or production, and `ssqch patrol --url` it.
 
 ### GitHub Pages
 
@@ -143,5 +143,15 @@ A copy at its own address is a second version of the page, which a search engine
 ```
 
 Cloudflare allows 100 rules in `_headers`; Netlify's apply only to the files it serves, not to an edge function's answers (which set their own, above).
+
+On Vercel, the same headers go in `vercel.json` (checked: the copy at its own address gets both, and the middleware's answers set their own):
+
+```json
+{
+  "headers": [
+    { "source": "/(.*)\\.md", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }, { "key": "Content-Type", "value": "text/markdown; charset=utf-8" }] }
+  ]
+}
+```
 
 `ssqch patrol` checks the copies themselves, and with `--url https://example.com`, whether the deployed site answers an agent with the copy, with `Vary: Accept`, and a browser with the page ([Patrol](patrol.md#the-live-site)).

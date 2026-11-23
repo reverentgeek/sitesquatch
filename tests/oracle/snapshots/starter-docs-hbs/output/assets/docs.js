@@ -60,12 +60,6 @@ if (themeSwitch) {
   themeSwitch.hidden = false;
 }
 
-// Search, when the site was built with SEARCH=1 (Pagefind's script defines PagefindUI).
-const { PagefindUI } = /** @type {any} */ (window);
-if (PagefindUI && document.getElementById("search")) {
-  new PagefindUI({ element: "#search", showSubResults: true });
-}
-
 // Copy as Markdown: the page's Markdown copy (llmsPlugin() writes it), for pasting into a chat
 // with an agent. The button stays hidden where there's no clipboard to copy to.
 for (const button of document.querySelectorAll("[data-copy-markdown]")) {

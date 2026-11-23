@@ -36,12 +36,24 @@ export default defineConfig({
 
 ## Search
 
-ssqch doesn't build a search index itself; [Pagefind](https://pagefind.app) does it well and runs after the build. Add it as a command (`npx` comes with Node, or install Pagefind's own binary):
+ssqch doesn't build a search index itself; [Pagefind](https://pagefind.app) does it well and runs after the build. Add it as a command, with its version pinned so every build gets the same one (`npx` comes with Node; or `npm install --save-dev pagefind` and run `pagefind`):
 
 ```js
 export default defineConfig(({ env }) => ({
-  afterBuild: env === "production" ? [{ run: "npx -y pagefind --site dist" }] : [],
+  afterBuild: env === "production" ? [{ run: "npx -y pagefind@1.6.0 --site dist" }] : [],
 }));
 ```
 
-Then load `/pagefind/pagefind-ui.js` and `pagefind-ui.css` in your layout and add a `<div id="search">` for its search box. The `docs-sidebar` example does this.
+Then Pagefind's Component UI in your layout: its stylesheet and script, and a search button with its dialog (Ctrl+K or Cmd+K opens it too). Mark the part of each page to index with `data-pagefind-body` (the `<main>`), or Pagefind indexes everything, navigation included:
+
+```html
+<link rel="stylesheet" href="/pagefind/pagefind-component-ui.css">
+<script src="/pagefind/pagefind-component-ui.js" type="module"></script>
+
+<div id="search"><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
+```
+
+Its colors are custom properties (`--pf-text`, `--pf-background`, `--pf-border` and the rest). Pagefind's stylesheet sets them on `:root`, so set yours on an element around the search (`#search { --pf-text: var(--text); }`), and they follow your light and dark themes. `ssqch serve` builds without the `afterBuild` command, so to try search, build for production and serve that build: `ssqch build`, then `ssqch serve --built`. The docs starter (`ssqch init --starter docs`) has all of this, behind `SEARCH=1`.
+
+> [!NOTE]
+> **Not released yet.** This ships with the next version of ssqch: the docs starter's search with Pagefind's Component UI, pinned to 1.6.0.

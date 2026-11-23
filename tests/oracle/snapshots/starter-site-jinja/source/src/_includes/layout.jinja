@@ -6,9 +6,12 @@
     <title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
     <meta name="description" content="{{ description or site.description }}">
     <link rel="canonical" href="{{ site.url }}{{ page.url }}">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     {# For agents: the page as Markdown and the site's map (llmsPlugin() in ssqch.config.js). #}
     {% if markdownCopy(page.url) %}<link rel="alternate" type="text/markdown" href="{{ markdownCopy(page.url) }}">{% endif %}
     <link rel="describedby" href="{{ llmsTxt(page.url) }}">
+    <link rel="alternate" type="application/atom+xml" href="/feed.xml" title="{{ site.title }}">
+    <link rel="stylesheet" href="/highlight.css">
     <style>
       /* Ranger Station '76: soft white (or green charcoal in dark mode), neutral text, pine
          headings, burnt orange links, and a four-color stripe under the header. */
@@ -18,19 +21,26 @@
       h1, h2, h3 { color: var(--heading); }
       a { color: var(--link); text-decoration: underline; text-underline-offset: 0.18em; }
       header { padding-bottom: 0.75rem; border-bottom: 5px solid; border-image: linear-gradient(to right, var(--stripe-pine) 0 25%, #a23e20 25% 50%, #e8af43 50% 75%, #a9b66a 75%) 1; }
+      header { display: flex; justify-content: space-between; align-items: baseline; }
       header a { color: var(--heading); font-weight: 700; font-size: 1.15rem; text-decoration: none; }
+      header nav a { font-weight: 400; font-size: 1rem; margin-left: 1rem; }
       footer { margin-top: 3rem; padding-top: 0.75rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.9rem; }
       img { max-width: 100%; height: auto; }
+      .dates { margin-top: -0.5rem; color: var(--muted); }
       :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
     </style>
   </head>
   <body>
-    <header><a href="/">{{ site.title }}</a></header>
+    <header><a href="/">{{ site.title }}</a> <nav><a href="/tags/">Tags</a> <a href="/feed.xml">Feed</a></nav></header>
     <main>
       {% if title %}
         <h1>{{ title }}</h1>
+        {% if postDates(page, tags) %}<p class="dates">{{ postDates(page, tags) }}</p>{% endif %}
       {% endif %}
       {{ content }}
+      {% if ownTags(tags) | length %}
+        <p>Tagged {% for name in ownTags(tags) %}<a href="/tags/{{ name }}/">{{ name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+      {% endif %}
     </main>
     <footer>
       <p>Built with SiteSquatch {{ ssqch.version }}. Allegedly.</p>

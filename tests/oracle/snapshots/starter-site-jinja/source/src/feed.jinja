@@ -1,0 +1,24 @@
+---
+permalink: /feed.xml
+excludeFromCollections: true
+---
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>{{ site.title }}</title>
+  <subtitle>{{ site.description }}</subtitle>
+  <link href="{{ absoluteUrl("/feed.xml", site.url) }}" rel="self"/>
+  <link href="{{ absoluteUrl("/", site.url) }}"/>
+  <id>{{ absoluteUrl("/", site.url) }}</id>
+  <updated>{{ collections.posts | getNewestCollectionItemDate | dateToRfc3339 }}</updated>
+  <author><name>{{ site.title }}</name></author>
+  {%- for post in collections.newestPosts %}
+  {%- set url = absoluteUrl(post.url, site.url) %}
+  <entry>
+    <title>{{ post.data.title }}</title>
+    <link href="{{ url }}"/>
+    <id>{{ url }}</id>
+    <updated>{{ post.date | dateToRfc3339 }}</updated>
+    <content type="html">{{ feedHtml(post.templateContent, url) }}</content>
+  </entry>
+  {%- endfor %}
+</feed>

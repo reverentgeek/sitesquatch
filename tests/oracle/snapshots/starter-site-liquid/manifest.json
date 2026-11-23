@@ -1,5 +1,5 @@
 {
-  "version": "0.13.1",
+  "version": "0.13.4",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -7,21 +7,22 @@
     "environment": "production",
     "output": "dist",
     "pages": {
-      "written": 7,
-      "templates": 7,
-      "bytes": 18878,
+      "written": 13,
+      "templates": 10,
+      "bytes": 45612,
       "new": null,
       "gone": null
     },
     "copied": {
-      "files": 0,
+      "files": 1,
       "unchanged": 0,
-      "bytes": 0
+      "bytes": 4409
     },
     "removed": 0,
     "drafts": 0,
     "written": [
       "404.html",
+      "feed.xml",
       "index.html",
       "index.md",
       "llms-full.txt",
@@ -37,12 +38,26 @@
       "posts/upon-further-review-a-stump/index.html",
       "posts/upon-further-review-a-stump/index.md",
       "robots.txt",
-      "sitemap.xml"
+      "sitemap.xml",
+      "tags/index.html",
+      "tags/index.md",
+      "tags/raccoons/index.html",
+      "tags/raccoons/index.md",
+      "tags/sightings/index.html",
+      "tags/sightings/index.md",
+      "tags/stumps/index.html",
+      "tags/stumps/index.md",
+      "tags/trails/index.html",
+      "tags/trails/index.md"
     ],
     "summary": [
       {
+        "label": "Images",
+        "value": "6 files from 1 source, <size>: 6 encoded, 0 reused"
+      },
+      {
         "label": "Links",
-        "value": "40 checked, 0 broken"
+        "value": "172 checked, 0 broken"
       }
     ],
     "warnings": [],
@@ -50,9 +65,30 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   7 written from 7 templates, 18.9 KB\n  Links   40 checked, 0 broken\n  Output  dist: 17 files, 29.2 KB\n",
+  "log": "[ssqch] Encoded ./src/img/stump.jpg into 6 files (webp, jpeg) in <time>\nFirst confirmed sighting. Built in <time> (production)\n  Pages   13 written from 10 templates, 45.6 KB\n  Copied  1 file, 4.41 KB\n  Images  6 files from 1 source, <size>: 6 encoded, 0 reused\n  Links   172 checked, 0 broken\n  Output  dist: 36 files, <size>\n",
   "files": {
     "404.html": "text",
+    "favicon.svg": "text",
+    "feed.xml": "text",
+    "highlight.css": "text",
+    "img/jsuIfm9F_f-1200.jpeg": {
+      "image": "jpeg 1200x654"
+    },
+    "img/jsuIfm9F_f-1200.webp": {
+      "image": "webp 1200x654"
+    },
+    "img/jsuIfm9F_f-400.jpeg": {
+      "image": "jpeg 400x218"
+    },
+    "img/jsuIfm9F_f-400.webp": {
+      "image": "webp 400x218"
+    },
+    "img/jsuIfm9F_f-800.jpeg": {
+      "image": "jpeg 800x436"
+    },
+    "img/jsuIfm9F_f-800.webp": {
+      "image": "webp 800x436"
+    },
     "index.html": "text",
     "index.md": "text",
     "llms-full.txt": "text",
@@ -68,7 +104,17 @@
     "posts/upon-further-review-a-stump/index.html": "text",
     "posts/upon-further-review-a-stump/index.md": "text",
     "robots.txt": "text",
-    "sitemap.xml": "text"
+    "sitemap.xml": "text",
+    "tags/index.html": "text",
+    "tags/index.md": "text",
+    "tags/raccoons/index.html": "text",
+    "tags/raccoons/index.md": "text",
+    "tags/sightings/index.html": "text",
+    "tags/sightings/index.md": "text",
+    "tags/stumps/index.html": "text",
+    "tags/stumps/index.md": "text",
+    "tags/trails/index.html": "text",
+    "tags/trails/index.md": "text"
   },
   "source": {
     ".gitignore": "text",
@@ -79,6 +125,12 @@
     "src/_blueprints/posts.md": "text",
     "src/_data/site.json": "text",
     "src/_includes/layout.liquid": "text",
+    "src/favicon.svg": "text",
+    "src/feed.liquid": "text",
+    "src/img/stump.jpg": {
+      "sha256": "ca2c35057e1e01ba84afcb52f7aca37c92d3c9da2d7c9fe76fb5a9566f14d4c2",
+      "bytes": 47888
+    },
     "src/index.liquid": "text",
     "src/posts/i-know-what-i-saw.md": "text",
     "src/posts/posts.json": "text",
@@ -86,6 +138,8 @@
     "src/posts/the-cache-of-the-wild.md": "text",
     "src/posts/the-stump-has-moved.md": "text",
     "src/posts/upon-further-review-a-stump.md": "text",
+    "src/tag.liquid": "text",
+    "src/tags.liquid": "text",
     "ssqch.config.js": "text",
     "ssqch.d.ts": "text"
   }

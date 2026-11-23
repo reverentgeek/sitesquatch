@@ -447,9 +447,10 @@ function typeTs(type: Type, depth: number): string {
  */
 export async function checkPages(site: Site): Promise<void> {
 	const { config, dirs } = site;
-	if (!config.schemas.length) return;
+	// Front matter dates that aren't dates come first, with the schemas' errors on the same pages.
+	const errors: Diagnostic[] = [...site.badDates];
+	if (!config.schemas.length && !errors.length) return;
 	const seen = new Set<string>();
-	const errors: Diagnostic[] = [];
 	for (const page of site.pages) {
 		const tags = Array.isArray(page.data.tags) ? page.data.tags.filter((t: unknown): t is string => typeof t === "string") : [];
 		const files: PageFiles = { input: dirs.input, pageDir: path.dirname(page.tpl.input) };
