@@ -661,6 +661,21 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge
 	assert.ok(!ok && log.includes("5 broken links:"), log);
 });
 
+// A path in a feed entry's code is an example, as it is on a page: 0.14.0's own changelog feed
+// failed the build on `<code>/snacks/*</code>`. A link in a `<pre>` is still a link.
+test("the_link_checker_skips_paths_in_a_feeds_code", () => {
+	const root = project({
+		"ssqch.config.js": `import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge"], plugins: [linksPlugin()] };`,
+		"src/index.edge": "<p>Home</p>",
+		"src/feed.edge": "---\npermalink: feed.xml\n---\n<feed><entry><id>/</id><content type=\"html\">{{ '<p>A pattern (<code>/snacks/*</code>) and <kbd>/help</kbd>.</p><pre><code>/etc/pine-cones</code></pre><pre><a href=\"/gone/\">gone</a></pre>' }}</content></entry></feed>",
+	});
+	const { ok, log } = build(root);
+	assert.ok(!ok, log);
+	assert.ok(log.includes("/feed.xml -> /gone/ (not found)"), log);
+	for (const path of ["/snacks/*", "/help", "/etc/pine-cones"]) assert.ok(!log.includes(`-> ${path} `), `${path}: ${log}`);
+});
+
 // A listed asset can be a passthrough copy, and imports in inline module scripts are rewritten.
 test("assets_rewrite_inline_module_imports_of_passthrough_files", () => {
 	const root = project({

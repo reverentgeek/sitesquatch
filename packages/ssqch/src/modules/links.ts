@@ -104,6 +104,10 @@ function srcsetUrls(srcset: string, out: string[], keep: Keep): void {
 const XML_ATTR = /[\s<](?:href|src|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
 const XML_SRCSET = /[\s<](?:srcset|imagesrcset)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
 const XML_TEXT = />\s*((?:https?:\/\/|\/)[^<>\s]*)\s*</g;
+// Code in a feed entry's HTML (`<code>/snacks/*</code>`) is an example, not a link, as it is on a
+// page, whose text isn't scanned at all. Only the text scan skips it: an `<a href>` in a `<pre>` is
+// still a link.
+const XML_CODE = /<(code|kbd|samp|pre|var)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
 
 /** What a scan keeps of a string it found: by default the string, which may be a slice that keeps its whole page alive (V8 slices long strings rather than copying them). */
 type Keep = (found: string) => string;
@@ -124,7 +128,8 @@ export function scanXml(xml: string, keep: Keep = asFound): string[] {
 			if (url !== undefined) out.push(keep(unescapeXml(url)));
 		}
 	}
-	for (const c of unescaped.matchAll(XML_TEXT)) out.push(keep(unescapeXml(c[1])));
+	const text = /<(?:code|kbd|samp|pre|var)\b/i.test(unescaped) ? unescaped.replace(XML_CODE, "<>") : unescaped;
+	for (const c of text.matchAll(XML_TEXT)) out.push(keep(unescapeXml(c[1])));
 	return out;
 }
 

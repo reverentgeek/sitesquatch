@@ -46,6 +46,11 @@ test("feeds and their escaped HTML are scanned", () => {
 	assert.equal(unescapeXml("a &amp;lt; &#39;b&#x27; &bogus; &"), "a &lt; 'b' &bogus; &");
 });
 
+test("a path in a feed's code is an example, not a link", () => {
+	const feed = `<feed><entry><id>/posts/a/</id><content type="html">&lt;p&gt;&lt;code&gt;/snacks/*&lt;/code&gt; and &lt;kbd&gt;/help&lt;/kbd&gt;&lt;/p&gt;&lt;pre class=&quot;x&quot;&gt;&lt;code&gt;/etc/hosts&lt;/code&gt;&lt;/pre&gt;&lt;pre&gt;&lt;a href=&quot;/real/&quot;&gt;r&lt;/a&gt;&lt;/pre&gt;</content></entry></feed>`;
+	assert.deepEqual(scanXml(feed).sort(), ["/posts/a/", "/real/"]);
+});
+
 test("absolute links on the site are its paths", () => {
 	assert.equal(originOf("https://Example.com/blog/"), "https://example.com");
 	assert.equal(originOf("example.com"), undefined);

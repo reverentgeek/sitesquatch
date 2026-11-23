@@ -9,6 +9,15 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Fixed
+
+- `linksPlugin()` no longer reads a path in a feed entry's code (`<code>/snacks/*</code>`, and
+  `<kbd>`, `<samp>`, `<pre>` and `<var>`) as a link and fails the build on it. A path in code is
+  an example, as it already was on a page. A link in a `<pre>` (`<a href>`) is still checked.
+  The summary's `Links` count is lower by those paths (the starter's, 222 to 219).
+
 ## 0.14.0 - 2026-11-23
 
 ### Breaking
