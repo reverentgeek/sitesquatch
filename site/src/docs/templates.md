@@ -93,7 +93,4 @@ title: Tags
 
 A post links its own tags the same way. The starter's layout has `ownTags(tags)`, a function in its config that leaves out `posts`: `{% for name in ownTags(tags) %}<a href="/tags/{{ name | slugify }}/">{{ name }}</a>{% endfor %}`. With `slugify` in every URL, a tag with spaces or capitals (`Old Growth`) gets a clean address (`/tags/old-growth/`). Use it in all three places (the permalink, `tags.jinja` and the layout): a link without it fails the production build's link check with `/tags/Old Growth/ (not found; did you mean /tags/old-growth/?)`. Two tags that slugify alike (`Old Growth` and `old-growth`) would write the same page, which fails the build with `output conflicts` and `tag.jinja makes 2 pages that write to .../tags/old-growth/index.html`. The sitemap lists every tag page (`exclude: ["/tags/**"]` leaves them out).
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch. Until then, the starter's tag URLs don't use `slugify`, so add it in all three places yourself.
-
 Without a config collection, pagination over `collections` itself makes a page per tag too: `pagination: { data: "collections", size: 1, alias: "tag", filter: ["all", "posts"] }`, then `collections[tag]` for its pages, oldest first. `collections` has the config's own collections in it as well (the starter's `newestPosts` and `tagList`), so add those to `filter`. The `tagList` collection above is what gives newest first and the counts, in one place.
