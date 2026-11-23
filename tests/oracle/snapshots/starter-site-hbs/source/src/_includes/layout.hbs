@@ -39,7 +39,7 @@
       {{/if}}
       {{{content}}}
       {{#if (ownTags tags)}}
-        <p>Tagged {{#each (ownTags tags)}}<a href="/tags/{{this}}/">{{this}}</a>{{#unless @last}}, {{/unless}}{{/each}}</p>
+        <p>Tagged {{#each (ownTags tags)}}<a href="/tags/{{slugify this}}/">{{this}}</a>{{#unless @last}}, {{/unless}}{{/each}}</p>
       {{/if}}
     </main>
     <footer>

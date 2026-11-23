@@ -4,6 +4,6 @@ title: Tags
 ---
 <ul>
   {{#each collections.tagList}}
-    <li><a href="/tags/{{name}}/">{{name}}</a> ({{posts.length}})</li>
+    <li><a href="/tags/{{slugify name}}/">{{name}}</a> ({{posts.length}})</li>
   {{/each}}
 </ul>

@@ -9,6 +9,20 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Changed
+- The blog starter (`ssqch init`) puts its tag pages' addresses through `slugify`
+  (`/tags/{{ tag.name | slugify }}/`, in its tag page, its list of tags and its layout, in each
+  of its template languages), so a tag with a space or a capital (`Old Growth`) gets `/tags/old-growth/` and its links work. Before,
+  the first such tag failed the production build's link check. The starter's own tags are one
+  lowercase word, so its output doesn't change.
+
+### Added
+- "Tags and tag pages" in "Templates and data" is the blog starter's tag pages as a worked
+  example: the `tagList` collection, a page for each tag, the page that lists them, and what
+  happens with a tag that has a space in it. `ssqch docs tags` answers with it.
+
 ## 0.13.5 - 2026-11-23
 
 ### Added
