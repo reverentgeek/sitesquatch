@@ -73,8 +73,8 @@ test("the_built_in_plugins_work_together", () => {
 	// RSS plugin filters and the named absoluteUrl export (WHATWG URL rules).
 	assert.ok(html.includes("https://example.com/blog/#top https://example.com/ 2026-03-14T00:00:00Z"), html);
 
-	// A line per page written and per image encoded.
-	assert.ok(log.includes("[ssqch] Writing ./dist/index.html from ./src/index.edge (edge)"), log);
+	// A line per image encoded. DELIBERATE (0.13.5): a line per page written only with --verbose.
+	assert.ok(!log.includes("[ssqch] Writing "), log);
 	assert.ok(log.includes("[ssqch] Encoded ./src/img/squatch.png into "), log);
 	assert.ok(!log.includes("warn"), log);
 

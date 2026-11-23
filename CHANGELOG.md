@@ -53,6 +53,15 @@ where that version matches.
   "last Tuesday"`, with the code `build`, no line, and the page's other mistakes unsaid.
 - A page open in a browser asks a stopped `ssqch serve` less and less often (up to every 10 s),
   and says so once in the console; it asked every 0.7 s, and logged an error each time.
+- `ssqch build` and `ssqch serve` print the summary without a line for each page:
+  `[ssqch] Writing ./dist/index.html from ./src/index.jinja (jinja)` comes with `--verbose`.
+  opensource.guide printed 404 of them on every build, and a dev server every one of its pages on
+  every save, which an agent reads as tokens and a person scrolls past. Images still say when
+  they're encoded.
+- Output conflicts are one line for each pair of templates, with how many paths and the first
+  three (a paginated template whose pages share a permalink printed a line for every page), from
+  the site's root rather than as absolute paths; a template that conflicts with itself says to
+  give its pages a part of their own (`{{ pagination.pageNumber }}`).
 
 ## 0.13.4 - 2026-11-22
 

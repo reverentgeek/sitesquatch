@@ -505,7 +505,10 @@ class Renderer {
 		const changed = !(config.serving && sameContents(output, content));
 		this.written.set(page.index, { file: output, bytes: Buffer.byteLength(content), changed });
 		if (changed) await this.write(output, content);
-		if (!config.quiet) progress(`[ssqch] Writing ${site.display(output)} from ${site.display(tpl.input)} (${tpl.engines.join(", ")})`);
+		// A line per page only with `--verbose`: 404 of them for opensource.guide, on every build and
+		// every save while serving, are tokens an agent pays for and lines a person scrolls past
+		// (the osg fresh run, the new-blog run). The summary says what was written.
+		if (config.verbose && !config.quiet) progress(`[ssqch] Writing ${site.display(output)} from ${site.display(tpl.input)} (${tpl.engines.join(", ")})`);
 	}
 
 	/**

@@ -1017,14 +1017,31 @@ export class Site {
 
 	private checkConflicts(): void {
 		const seen = new Map<string, string>();
-		const errors: Array<[string, string]> = [];
+		// By the two templates, in the order found: a paginated template whose pages share a
+		// permalink conflicts at every path (v8 #6: 58 lines of `blog/tag.njk and blog/tag.njk both
+		// write to ...`), which is one mistake, said once with how many paths.
+		const groups = new Map<string, { first: string; second: string; input: string; outputs: string[] }>();
 		for (const p of this.pages) {
 			if (p.output === null) continue;
 			const other = seen.get(p.output);
-			if (other !== undefined) errors.push([`${other} and ${p.tpl.rel} both write to ${p.output}`, p.tpl.input]);
+			if (other !== undefined) {
+				const key = `${other}\0${p.tpl.rel}`;
+				const group = groups.get(key) ?? { first: other, second: p.tpl.rel, input: p.tpl.input, outputs: [] };
+				group.outputs.push(p.output);
+				groups.set(key, group);
+			}
 			seen.set(p.output, p.tpl.rel);
 		}
-		if (!errors.length) return;
+		if (!groups.size) return;
+		const errors = [...groups.values()].map(({ first, second, input, outputs }) => {
+			const paths = [...new Set(outputs)].map((o) => this.display(o));
+			// Each path's first page, and the ones after it that conflict.
+			const pages = paths.length + outputs.length;
+			const who = first === second ? `${first} makes ${pages} pages that write to` : `${first} and ${second} both write to`;
+			const where = paths.length === 1 ? paths[0] : `${paths.length} paths: ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? `, and ${paths.length - 3} more` : ""}`;
+			const why = first === second ? " (its pages share a permalink: give each page a part of its own, like `{{ pagination.pageNumber }}`)" : "";
+			return [`${who} ${where}${why}`, input] as const;
+		});
 		const message = `output conflicts (two sets of tracks lead to the same place):\n  - ${errors.map(([m]) => m).join("\n  - ")}`;
 		throw new Diagnostics(message, errors.map(([m, input]) => errorOf("conflict", m, { file: this.display(input) })));
 	}

@@ -23,8 +23,8 @@ _ssqch() {
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '-V[Print version]' \
@@ -50,8 +50,8 @@ _arguments "${_arguments_options[@]}" : \
 '--profile[Also time every page, template, layout, engine, filter, transform, data file, collection and hook, and list the slowest]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -70,8 +70,8 @@ _arguments "${_arguments_options[@]}" : \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -91,8 +91,8 @@ _arguments "${_arguments_options[@]}" : \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ':path -- The new file, from the input folder (posts/pine-cones.md), or a folder, with --title:_default' \
@@ -110,8 +110,8 @@ _arguments "${_arguments_options[@]}" : \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ':page -- The page\: its URL (/about/), or its template'\''s path:_default' \
@@ -127,8 +127,8 @@ _arguments "${_arguments_options[@]}" : \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ':shell -- bash, zsh, fish, powershell or elvish:(bash elvish fish powershell zsh)' \
@@ -152,8 +152,8 @@ _arguments "${_arguments_options[@]}" : \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ':before -- The build from before the change:_files' \
@@ -172,8 +172,8 @@ _arguments "${_arguments_options[@]}" : \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::dir -- The build folder (default\: the site'\''s output folder):_files' \
@@ -191,8 +191,8 @@ _arguments "${_arguments_options[@]}" : \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::dir -- The build folder (default\: the site'\''s output folder):_files' \
@@ -210,8 +210,8 @@ _arguments "${_arguments_options[@]}" : \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '::dir -- Where to create it (default\: the current folder):_default' \
@@ -228,8 +228,8 @@ _arguments "${_arguments_options[@]}" : \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -275,8 +275,8 @@ _arguments "${_arguments_options[@]}" : \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -293,8 +293,8 @@ _arguments "${_arguments_options[@]}" : \
 '--offline[Don'\''t use the network\: \`fetch()\` answers from the copies its \`cache\` option saved]' \
 '-q[Print only warnings and errors]' \
 '--quiet[Print only warnings and errors]' \
-'-v[Also list the slowest images to encode]' \
-'--verbose[Also list the slowest images to encode]' \
+'-v[Also list every page written, and the slowest images to encode]' \
+'--verbose[Also list every page written, and the slowest images to encode]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '*::query -- A name (base, imagePlugin, toc, serve), another generator'\''s word (pathPrefix), or words from a heading ("content schemas"):_default' \

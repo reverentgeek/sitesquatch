@@ -30,7 +30,7 @@ complete -c ssqch -n "__fish_ssqch_needs_command" -l base -d 'Serve the site und
 complete -c ssqch -n "__fish_ssqch_needs_command" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
 complete -c ssqch -n "__fish_ssqch_needs_command" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_needs_command" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_needs_command" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_needs_command" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_needs_command" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_needs_command" -s V -l version -d 'Print version'
 complete -c ssqch -n "__fish_ssqch_needs_command" -f -a "build" -d 'Build the site (default)'
@@ -56,7 +56,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand build" -l env -d 'developmen
 complete -c ssqch -n "__fish_ssqch_using_subcommand build" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand build" -l profile -d 'Also time every page, template, layout, engine, filter, transform, data file, collection and hook, and list the slowest'
 complete -c ssqch -n "__fish_ssqch_using_subcommand build" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand build" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand build" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand build" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s p -l port -d 'The port to listen on (0 picks a free one)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l ready-file -d 'Write this file once the first build is done: JSON with the url, port and output folder' -r -F
@@ -67,7 +67,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l env -d 'developmen
 complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l built -d 'Serve the output folder as it was built: no build, no watching, no reload script, gzip on'
 complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand serve" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l title -d 'The page\'s title (default: from the file\'s name)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l date -d 'The page\'s date, as it\'s written in front matter (default: today)' -r
@@ -80,7 +80,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l base -d 'Serve the s
 complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand new" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand new" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand new" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand new" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand new" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand trace" -l field -d 'One field of its data, in full, with every level that set it (a dotted path reaches inside: hero.alt)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand trace" -l format -d 'text or json' -r
@@ -90,7 +90,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand trace" -l base -d 'Serve the
 complete -c ssqch -n "__fish_ssqch_using_subcommand trace" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand trace" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand trace" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand trace" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand trace" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand trace" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -l root -d 'Project root (defaults to the current directory)' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
@@ -98,7 +98,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -l base -d 'Ser
 complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand completions" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l ignore -d 'Leave out text matching this regular expression before comparing (repeatable)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l only -d 'Only compare files matching this glob, like \'**/*.html\' (repeatable)' -r
@@ -114,7 +114,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l env -d 'development
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l exact -d 'Compare bytes: don\'t match fingerprinted files or ignore whitespace'
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand diff" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l top -d 'How many of the heaviest pages and files to list (0 for none)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l format -d 'text or json' -r
@@ -132,8 +132,8 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -l offline -d 'Do
 complete -c ssqch -n "__fish_ssqch_using_subcommand patrol" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -s q -l quiet -d 'Print only warnings and errors'
 complete -c ssqch -n "__fish_ssqch_using_subcommand patrol" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -s v -l verbose -d 'Also list the slowest images to encode'
-complete -c ssqch -n "__fish_ssqch_using_subcommand patrol" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand patrol" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand footprint" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand patrol" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand init" -l starter -d 'What to start with: site (a small blog) or docs (documentation with a sidebar, tabs and search)' -r
@@ -144,7 +144,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand init" -l base -d 'Serve the 
 complete -c ssqch -n "__fish_ssqch_using_subcommand init" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand init" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand init" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand init" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand init" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand init" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l out -d 'Where to write it' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l root -d 'Project root (defaults to the current directory)' -r -F
@@ -153,7 +153,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l base -d 'Serve the
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l root -d 'Project root (defaults to the current directory)' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand baseline" -l from -d 'The folder the command writes (default _site)' -r
@@ -179,7 +179,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l base -d 'Se
 complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand capabilities" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l from -d 'Another generator\'s words and ssqch\'s names for them: eleventy, hugo, jekyll, zola, ...' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l format -d 'text or json' -r
@@ -189,7 +189,7 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l base -d 'Serve the 
 complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l env -d 'development or production (default: $SSQCH_ENV, $NODE_ENV, then production for `build` and development for `serve`)' -r
 complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -l offline -d 'Don\'t use the network: `fetch()` answers from the copies its `cache` option saved'
 complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -s q -l quiet -d 'Print only warnings and errors'
-complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -s v -l verbose -d 'Also list the slowest images to encode'
+complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand docs" -s h -l help -d 'Print help'
 complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new trace completions diff footprint patrol init types baseline scout capabilities docs help" -f -a "build" -d 'Build the site (default)'
 complete -c ssqch -n "__fish_ssqch_using_subcommand help; and not __fish_seen_subcommand_from build serve new trace completions diff footprint patrol init types baseline scout capabilities docs help" -f -a "serve" -d 'Build, serve, watch for changes and live-reload the browser'
