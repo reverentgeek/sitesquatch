@@ -830,6 +830,21 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"]
 	assert.match(build(alias).log, /src\/provisions\.md: \/a\/\* is a pattern/);
 });
 
+// Added in 0.14.1: a link broken on several pages (a sidebar's) is one line with the pages, not a
+// line for each; on one page it's `page -> link (reason)` as before. The JSON keeps one entry each.
+test("a_link_broken_on_many_pages_is_one_line", () => {
+	const files = { "ssqch.config.js": "import { linksPlugin } from \"ssqch/links\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"md\"], plugins: [linksPlugin()] };" };
+	for (const name of ["a", "b", "c", "d", "e"]) files[`src/${name}.md`] = "[Ranger station](/station/)";
+	files["src/f.md"] = "[Old Growth](/old-growth/)";
+	const root = project(files);
+	let r = ssqch(["build", "--root", root]);
+	assert.ok(!r.ok && r.log.includes("6 broken links:\n  /a/, /b/, /c/ and 2 more -> /station/ (not found)\n  /f/ -> /old-growth/ (not found)"), r.log);
+	r = ssqch(["build", "--root", root, "--verbose"]);
+	assert.ok(r.log.includes("  /a/, /b/, /c/, /d/, /e/ -> /station/ (not found)"), r.log);
+	r = ssqch(["build", "--root", root, "--format", "json"]);
+	assert.equal(JSON.parse(r.log).errors.filter((d) => d.code === "links").length, 6, r.log);
+});
+
 // Added in 0.14.1: a link that works through a redirect is a note, not a warning: after a move,
 // it's the link to update (Squatch Snacks, E9). A redirect page's or a `_redirects` line's, and
 // never a page's link to its own old address, which shows the move off.

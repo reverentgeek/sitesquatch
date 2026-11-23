@@ -600,8 +600,22 @@ function describeDetours(detours: Detour[], shown: number): string {
 /** The broken links, the first `shown` of them listed (all of them with `--verbose`). */
 function describe(broken: Broken[], shown: number): string {
 	let out = `${voice.TRAIL_GOES_COLD} on ${broken.length} broken link${broken.length === 1 ? "" : "s"}:`;
-	for (const b of broken.slice(0, shown)) out += `\n  ${b.page} -> ${b.link} (${b.reason})`;
-	if (broken.length > shown) out += `\n  ... and ${broken.length - shown} more (--verbose lists them all)`;
+	// One line for each link and why, with the pages it's on: a sidebar's broken link was a line
+	// for every page (Squatch Snacks' log). On one page, it's the line it always was.
+	const groups = new Map<string, { link: string; reason: string; pages: string[] }>();
+	for (const b of broken) {
+		const key = `${b.link}\0${b.reason}`;
+		const g = groups.get(key);
+		if (g) g.pages.push(b.page);
+		else groups.set(key, { link: b.link, reason: b.reason, pages: [b.page] });
+	}
+	const lines = [...groups.values()];
+	for (const g of lines.slice(0, shown)) {
+		// Three pages each, or every page with `--verbose`.
+		const from = shown === Infinity || g.pages.length <= 3 ? g.pages.join(", ") : `${g.pages.slice(0, 3).join(", ")} and ${g.pages.length - 3} more`;
+		out += `\n  ${from} -> ${g.link} (${g.reason})`;
+	}
+	if (lines.length > shown) out += `\n  ... and ${lines.length - shown} more (--verbose lists them all)`;
 	return out;
 }
 

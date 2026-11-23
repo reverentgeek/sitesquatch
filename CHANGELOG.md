@@ -24,6 +24,12 @@ where that version matches.
   page): `note: 1 link goes through a redirect` with each link, where it ends up, and the pages
   it's on. A note, not a warning, and none for a page's link to its own old address.
 
+### Changed
+
+- A link broken on several pages (a sidebar's) is one line in the build's list, with the pages
+  it's on: `/a/, /b/, /c/ and 5 more -> /team/ (not found)`, where it was a line for each page.
+  On one page it's `page -> link (reason)` as before, and the JSON still has an entry for each.
+
 ### Fixed
 
 - `linksPlugin()` no longer reads a path in a feed entry's code (`<code>/snacks/*</code>`, and
