@@ -104,6 +104,8 @@ test("values_print_as_0_7_printed_them", () => {
 	assert.deepEqual(tags, ["a", "b"]);
 	assert.equal(edge.render("@let(n = n - 1)\n@let(n = n - 1)\n{{ n }}", { n: 3 }, ctx()), "1");
 	assert.equal(edge.render("@each(x in xs)\n{{ $loop.index }}{{ x }}{{ $loop.last ? '.' : ',' }}\n@end", { xs: ["a", "b"] }, ctx()), "0a,\n1b.");
+	// edge.js's names too: `isLast` was undefined, so every item got the comma.
+	assert.equal(edge.render("@each(x in xs)\n{{ $loop.isFirst ? '[' : '' }}{{ x }}{{ $loop.isLast ? ']' : ',' }}\n@end", { xs: ["a", "b"] }, ctx()), "[a,\nb]");
 	// A JavaScript global's name is the page's when the page has it.
 	assert.equal(edge.render("{{ crypto }}", { crypto: "secret" }, ctx()), "secret");
 });

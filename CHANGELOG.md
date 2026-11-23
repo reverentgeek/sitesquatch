@@ -62,6 +62,8 @@ where that version matches.
   three (a paginated template whose pages share a permalink printed a line for every page), from
   the site's root rather than as absolute paths; a template that conflicts with itself says to
   give its pages a part of their own (`{{ pagination.pageNumber }}`).
+- Edge's `$loop` has edge.js's `isFirst` and `isLast` as well as `first` and `last`: `isLast` was
+  undefined, with no warning, so `{{ $loop.isLast ? "" : ", " }}` put a comma after every item.
 
 ## 0.13.4 - 2026-11-22
 
