@@ -260,7 +260,8 @@ interface Helpers {
 	stringify(value: unknown, replacer?: unknown, indent?: unknown): string;
 }
 
-interface LoopInfo { index: number; total: number; first: boolean; last: boolean; isOdd: boolean; isEven: boolean }
+/** `$loop`: 0.7's `first` and `last`, and edge.js's own names for them, `isFirst` and `isLast`, which were undefined here, silently (a trailing comma after the last item). */
+interface LoopInfo { index: number; total: number; first: boolean; last: boolean; isFirst: boolean; isLast: boolean; isOdd: boolean; isEven: boolean }
 
 function stringify(value: unknown, replacer?: unknown, indent?: unknown): string {
 	const space = typeof indent === "number" || typeof indent === "string" ? indent : undefined;
@@ -293,7 +294,7 @@ function makeHelpers(functions: Record<string, unknown>): Helpers {
 		if (collection && typeof collection === "object") return Object.entries(collection).map(([k, v]) => [v, k]);
 		return [];
 	};
-	const info = (index: number, total: number): LoopInfo => ({ index, total, first: index === 0, last: index === total - 1, isOdd: index % 2 === 1, isEven: index % 2 === 0 });
+	const info = (index: number, total: number): LoopInfo => ({ index, total, first: index === 0, last: index === total - 1, isFirst: index === 0, isLast: index === total - 1, isOdd: index % 2 === 1, isEven: index % 2 === 0 });
 	return {
 		esc: (value, source) => text(value, source, true),
 		raw: (value, source) => text(value, source, false),
@@ -917,7 +918,7 @@ const letTag: TagContract = {
 let lists = 0;
 
 /**
- * `@each`, as 0.7 had it: with `$loop` (`index`, `total`, `first`, `last`, `isOdd`, `isEven`),
+ * `@each`, as 0.7 had it: with `$loop` (`index`, `total`, `first`, `last`, edge.js's `isFirst` and `isLast`, `isOdd`, `isEven`),
  * which edge.js 6 doesn't have, and the list read once, where edge.js reads it again for `@else`.
  */
 const eachTag: TagContract = {

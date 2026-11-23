@@ -9,6 +9,12 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Fixed
+- Edge's `$loop` has edge.js's `isFirst` and `isLast` as well as `first` and `last`: `isLast` was
+  undefined, with no warning, so `{{ $loop.isLast ? "" : ", " }}` put a comma after every item.
+
 ## 0.13.4 - 2026-11-22
 
 ### Added
