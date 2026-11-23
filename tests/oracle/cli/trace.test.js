@@ -2,6 +2,8 @@
 // plan, step 5: it follows a value's tracks back through the cascade), with the same options and JSON.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { ssqch, tempDir, write, exists } from "../lib/ssqch.js";
 
 test("inspect_says_where_a_page_and_its_data_come_from", () => {
@@ -88,4 +90,36 @@ test("inspect_says_where_a_page_and_its_data_come_from", () => {
 		json = JSON.parse(log);
 		assert.equal(JSON.stringify(json.field.value), title, `${url}: ${log}`);
 	}
+});
+
+// Squatch Snacks (B6): `trace --format json` had the machine's whole path in it, as
+// `data.page.outputPath`, which is the value a template gets. 0.7 gave the output folder's path
+// joined to the page's, and a page that printed it wasn't the same on two machines.
+// DELIBERATE (0.14): `page.outputPath` is named as `page.inputPath` is, from the project root
+// (`./dist/about/index.html`), for a template, a collection's item, `this.page` in a filter and a
+// transform. A plugin's pages (`alternates()`, an `afterBuild` hook's `written`) keep whole paths,
+// with which they read files.
+test("a_pages_output_path_is_from_the_project_root", () => {
+	const dir = tempDir("output-path");
+	write(dir, {
+		"ssqch.config.js": `export default {
+  dirs: { input: "src", output: "dist" },
+  filters: { where() { return this.page.outputPath; } },
+  transforms: { stamp: (content, page) => (page.outputPath.endsWith(".html") ? content + "[transform " + page.outputPath + " " + page.inputPath + "]" : content) },
+};
+`,
+		"src/about.jinja": "[page {{ page.outputPath }} {{ page.inputPath }}][filter {{ where() }}]{% for p in collections.all %}[item {{ p.outputPath }}]{% endfor %}",
+		"src/none.jinja": "---\npermalink: false\n---\n{{ page.outputPath }}",
+	});
+	const built = ssqch(["build", "--root", dir, "--quiet"]);
+	assert.ok(built.ok, built.log);
+	assert.equal(fs.readFileSync(path.join(dir, "dist/about/index.html"), "utf8"), "[page ./dist/about/index.html ./src/about.jinja][filter ./dist/about/index.html][item ./dist/about/index.html][item False][transform ./dist/about/index.html ./src/about.jinja]");
+	const traced = JSON.parse(ssqch(["trace", "--root", dir, "/about/", "--format", "json"]).stdout);
+	assert.equal(traced.outputPath, "dist/about/index.html");
+	assert.equal(traced.data.page.value.outputPath, "./dist/about/index.html");
+	// Nothing in the report says where the project is on this machine.
+	assert.ok(!JSON.stringify(traced).includes(JSON.stringify(dir).slice(1, -1)), JSON.stringify(traced));
+	// A page that isn't written has none, as before (`[item False]` above is its item, in Jinja).
+	const unwritten = JSON.parse(ssqch(["trace", "--root", dir, "src/none.jinja", "--format", "json"]).stdout);
+	assert.equal(unwritten.data.page.value.outputPath, false);
 });

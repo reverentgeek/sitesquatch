@@ -11,6 +11,22 @@ where that version matches.
 
 ## Unreleased
 
+### Breaking
+
+- `page.outputPath` is a path from the project root, written as `page.inputPath` is:
+  `./dist/about/index.html`. It was the machine's whole path (`/Users/sam/site/dist/about/
+  index.html`), so a page that printed it wasn't the same on two machines, and `ssqch trace
+  --format json` had that path in its report. It's the same value everywhere a page has one: a
+  template's `page`, a collection's item, `this.page` in a filter, and the `page` a transform
+  gets (a plugin in Rust too). What a site has to change: nothing if it compares the value or
+  looks at how it ends (`page.outputPath.endsWith(".html")`), which is what the sites ssqch is
+  tested with do, and nothing if it opens the file with it, since a site's code runs in the
+  project root (with `--root` too). Code that needs the whole path, to compare it with another
+  or hand it to a tool that runs somewhere else, resolves it: `path.resolve(page.outputPath)`.
+  An `afterBuild` hook's `written` and the
+  pages a plugin's function gets (`sitemapPlugin()`'s `alternates`, `llmsPlugin()`'s `section`)
+  keep whole paths. An output folder outside the project root is still its whole path.
+
 ### Added
 - The docs starter (`ssqch init --starter docs`) copies a section's link: clicking the `#` beside
   a heading goes there as before and puts the section's address on the clipboard, with "Link

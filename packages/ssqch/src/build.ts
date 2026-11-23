@@ -483,7 +483,8 @@ class Renderer {
 		}
 
 		const output = page.output;
-		const info = { url: page.url ?? "", inputPath: site.display(tpl.input), outputPath: output };
+		// What a transform gets, both paths from the project root as templates have them.
+		const info = { url: page.url ?? "", inputPath: site.display(tpl.input), outputPath: site.display(output) };
 		const transforms = [...config.htmlTransforms, ...config.transforms];
 		for (let i = 0; i < transforms.length; i++) {
 			const [name, transform] = transforms[i];

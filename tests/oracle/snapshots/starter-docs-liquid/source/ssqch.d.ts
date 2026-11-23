@@ -44,7 +44,7 @@ declare module "ssqch" {
 		/** The file name without extensions (`pine` for `pine.md`; empty for an `index` page). */
 		fileSlug: string;
 		filePathStem: string;
-		/** Where the page is written, or `false`. */
+		/** Where the page is written, from the project root like `inputPath` (`./dist/posts/pine/index.html`), or `false`. */
 		outputPath: string | false;
 		/** `url`, `inputPath`, `date` and the rest, plus `headings` from the rendered body. */
 		page: Record<string, unknown> & { headings?: Heading[]; excerpt?: string; lastModified?: Date };
@@ -121,7 +121,9 @@ declare module "ssqch" {
 	/** What a transform gets with the content. */
 	export interface TransformPage {
 		url: string;
+		/** The template's path, like `./src/posts/pine.md`. */
 		inputPath: string;
+		/** The file being written, from the project root: `./dist/posts/pine/index.html`. */
 		outputPath: string;
 	}
 
