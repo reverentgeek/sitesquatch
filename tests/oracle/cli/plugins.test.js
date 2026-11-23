@@ -830,6 +830,25 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"]
 	assert.match(build(alias).log, /src\/provisions\.md: \/a\/\* is a pattern/);
 });
 
+// Added in 0.14.1: a link that works through a redirect is a note, not a warning: after a move,
+// it's the link to update (Squatch Snacks, E9). A redirect page's or a `_redirects` line's, and
+// never a page's link to its own old address, which shows the move off.
+test("links_through_a_redirect_are_a_note", () => {
+	const config = (options) => `import { redirectsPlugin } from "ssqch/redirects";
+import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], plugins: [redirectsPlugin(${options}), linksPlugin()] };`;
+	const files = { "src/index.md": "See [the old post](/old/) and [again](/old/).", "src/about.md": "[Pine](/old/)", "src/posts/pine.md": "---\naliases: [/old/]\n---\nPine, which [used to be here](/old/)." };
+	const note = "note: 1 link goes through a redirect; linking to where it ends up saves a hop:\n  /old/ -> /posts/pine/ (from /, /about/)\n";
+	const pages = project({ "ssqch.config.js": config(""), ...files });
+	let r = ssqch(["build", "--root", pages]);
+	assert.ok(r.ok && r.log.includes(note) && !r.log.includes("warn"), r.log);
+	const lines = project({ "ssqch.config.js": config("{ hostFile: true }"), ...files });
+	r = ssqch(["build", "--root", lines]);
+	assert.ok(r.ok && r.log.includes(note), r.log);
+	r = ssqch(["build", "--root", lines, "-q"]);
+	assert.ok(r.ok && !r.log.includes("note:"), r.log);
+});
+
 // DELIBERATE (0.14): `redirectsPlugin({ netlify: true })` is `hostFile`, since Netlify and
 // Cloudflare both read `_redirects`, and the old name stops the build and names the new one. With
 // the file on, an old URL gets no page unless `pages: true` says so: a host serves a file that

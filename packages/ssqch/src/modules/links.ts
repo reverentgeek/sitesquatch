@@ -62,6 +62,8 @@ interface PageScan {
 	siteLinks: string[];
 	/** JSON-LD strings: their `#fragment` names a thing, not an id on a page. */
 	sitePaths: string[];
+	/** Where a redirect page sends a browser: its `<meta http-equiv="refresh">`'s `url`. */
+	refresh?: string;
 }
 
 const asciiLower = (s: string) => s.replace(/[A-Z]+/g, (m) => m.toLowerCase());
@@ -201,6 +203,11 @@ export function scanHtml(html: string, keep: Keep = asFound): PageScan {
 				case "meta": {
 					const content = el.get("content");
 					if (content === undefined) break;
+					if (asciiLower(el.get("http-equiv") ?? "") === "refresh") {
+						const url = /;\s*url\s*=\s*['"]?([^'"]+)/i.exec(content)?.[1];
+						if (url !== undefined) found.refresh = keep(url.trim());
+						break;
+					}
 					const name = el.get("property") ?? el.get("name") ?? el.get("itemprop") ?? "";
 					if (metaIsUrl(name)) found.siteLinks.push(keep(content));
 					break;
@@ -370,21 +377,24 @@ function find(output: string, urlPath: string, written: Set<string>): string | u
  * off). A line without the base is kept as it is, as a `_redirects` template written for the root
  * has it.
  */
-function redirectSources(output: string, base: string): string[] {
+function redirectRules(output: string, base: string): Array<{ from: string; to: string }> {
 	let text: string;
 	try { text = fs.readFileSync(path.join(output, "_redirects"), "utf8"); } catch { return []; }
-	const sources: string[] = [];
+	const rules: Array<{ from: string; to: string }> = [];
 	for (const line of text.split(/\r?\n/)) {
 		const l = trim(line);
 		if (l === "" || l.startsWith("#")) continue;
-		const from = firstWord(l);
-		if (from !== undefined && from.startsWith("/")) sources.push(inSite(from, base) ?? from);
+		const [from, to] = l.split(/\s+/);
+		if (from !== undefined && from.startsWith("/")) rules.push({ from: inSite(from, base) ?? from, to: to ?? "" });
 	}
-	return sources;
+	return rules;
 }
 
+/** Whether the line from `from` covers the path `p`. */
+const covers = (from: string, p: string) => (from.includes("/:") ? placeholdersMatch(from, p) : from.endsWith("*") ? p.startsWith(from.slice(0, -1)) : from === p || from.replace(/\/+$/, "") === p.replace(/\/+$/, ""));
+
 export function redirected(sources: string[], p: string): boolean {
-	return sources.some((from) => (from.includes("/:") ? placeholdersMatch(from, p) : from.endsWith("*") ? p.startsWith(from.slice(0, -1)) : from === p || from.replace(/\/+$/, "") === p.replace(/\/+$/, "")));
+	return sources.some((from) => covers(from, p));
 }
 
 /**
@@ -427,7 +437,11 @@ function percentDecode(s: string): string {
 interface Checked {
 	checked: number;
 	broken: Broken[];
+	/** Links that work by going through a redirect: each link, where it ends up, and the pages it's on. */
+	detours: Detour[];
 }
+
+interface Detour { link: string; to: string; pages: string[] }
 
 /** Checks every HTML and XML page the build wrote. */
 async function check(config: Config, output: string, written: string[], options: LinksOptions): Promise<Checked> {
@@ -459,7 +473,11 @@ async function check(config: Config, output: string, written: string[], options:
 	const origin = (options.url === undefined ? undefined : originOf(options.url)) ?? sitemapOrigin(output);
 	const ids = new Map<string, Set<string>>(scans.map(([file, scan]) => [file, scan.ids]));
 	const writtenFiles = new Set(written);
-	const redirects = redirectSources(output, config.base);
+	const rules = redirectRules(output, config.base);
+	const redirects = rules.map((r) => r.from);
+	// Redirect pages (`redirectsPlugin()`'s, or a site's own meta refresh): where each sends a browser.
+	const refreshes = new Map<string, string>();
+	for (const [file, scan] of scans) if (scan.refresh !== undefined) refreshes.set(file, scan.refresh);
 	const anchors = options.anchors ?? true;
 
 	let checked = 0;
@@ -497,6 +515,33 @@ async function check(config: Config, output: string, written: string[], options:
 		}
 		return undefined;
 	};
+	// A link that works through a redirect, by its target: where it ends up (Squatch Snacks, E9:
+	// after a move, that's the link to hear about). Only links that aren't broken get here.
+	const detourOf = new Map<string, string | undefined>();
+	const detours = new Map<string, Detour>();
+	const detour = (pageUrl: string, inside: string, shown: string) => {
+		if (!rules.length && !refreshes.size) return;
+		const targetPath = resolve(pageUrl, inside)?.[0];
+		if (targetPath === undefined || targetPath === "") return;
+		let to = detourOf.get(targetPath);
+		if (!detourOf.has(targetPath)) {
+			const rule = options.ignore.some((p) => targetPath.startsWith(p)) ? undefined : rules.find((r) => covers(r.from, targetPath));
+			if (rule !== undefined) to = rule.to;
+			else {
+				if (!found.has(targetPath)) found.set(targetPath, find(output, targetPath, writtenFiles));
+				const target = found.get(targetPath);
+				to = target === undefined ? undefined : refreshes.get(target);
+			}
+			detourOf.set(targetPath, to);
+		}
+		if (to === undefined) return;
+		// A page that links its own old address is showing it off ("this page moved; try it").
+		if ((inSite(to, config.base) ?? to) === pageUrl) return;
+		const key = `${shown}\0${to}`;
+		let d = detours.get(key);
+		if (!d) detours.set(key, (d = { link: shown, to, pages: [] }));
+		if (!d.pages.includes(pageUrl)) d.pages.push(pageUrl);
+	};
 	// A link from the site's root with no `#fragment` leads to the same place from every page (every sidebar lists the same pages), so its answer is kept.
 	const fromRoot = new Map<string, string | undefined>();
 	const one = (pageUrl: string, page: PageScan, written: string, relativeOk: boolean, ignoreFragment: boolean) => {
@@ -517,9 +562,12 @@ async function check(config: Config, output: string, written: string[], options:
 		} else {
 			reason = reasonFor(pageUrl, page, inside, ignoreFragment);
 		}
-		if (reason === undefined) return;
 		// Reported as the template has it: from the root without the base, or the whole address.
 		const shown = onSite !== undefined ? trim(written) : inside;
+		if (reason === undefined) {
+			if (relativeOk) detour(pageUrl, inside, shown);
+			return;
+		}
 		const key = `${pageUrl}\0${shown}\0${reason}`;
 		if (!seen.has(key)) {
 			seen.add(key);
@@ -535,7 +583,18 @@ async function check(config: Config, output: string, written: string[], options:
 	}
 	// A set of (page, link, reason) in the order of the three, each compared by its bytes.
 	broken.sort((a, b) => compareText(a.page, b.page) || compareText(a.link, b.link) || compareText(a.reason, b.reason));
-	return { checked, broken };
+	const went = [...detours.values()].sort((a, b) => compareText(a.link, b.link) || compareText(a.to, b.to));
+	for (const d of went) d.pages.sort(compareText);
+	return { checked, broken, detours: went };
+}
+
+/** The links that go through a redirect, as a note: each link, where it ends up, and the pages it's on (the first `shown`, and three pages each). */
+function describeDetours(detours: Detour[], shown: number): string {
+	const n = detours.length;
+	let out = `note: ${n} link${n === 1 ? " goes" : "s go"} through a redirect; linking to where ${n === 1 ? "it ends" : "they end"} up saves a hop:`;
+	for (const d of detours.slice(0, shown)) out += `\n  ${d.link} -> ${d.to} (from ${d.pages.slice(0, 3).join(", ")}${d.pages.length > 3 ? `, and ${d.pages.length - 3} more` : ""})`;
+	if (n > shown) out += `\n  ... and ${n - shown} more (--verbose lists them all)`;
+	return `${out}\n`;
 }
 
 /** The broken links, the first `shown` of them listed (all of them with `--verbose`). */
@@ -561,6 +620,8 @@ BUILTINS.set("ssqch/links", (config: Config, given) => {
 			const output = dirsOf(config).output;
 			const result = await check(config, output, event.written as string[], options);
 			counts = [result.checked, result.broken.length];
+			// A note, not a warning: the link works, and a site may link an old address on purpose.
+			if (result.detours.length && !config.quiet && !isCapturing()) process.stderr.write(describeDetours(result.detours, config.verbose ? Infinity : 20));
 			if (result.broken.length === 0) return;
 			const fail = options.fail ?? (config.env === "production" && !config.serving);
 			const message = describe(result.broken, config.verbose ? Infinity : 20);

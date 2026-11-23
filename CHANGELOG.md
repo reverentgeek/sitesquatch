@@ -20,6 +20,9 @@ where that version matches.
   `lastModified` in the JSON, and with `--field page.lastModified`): `git: the last commit to
   src/privacy.md`, or why it's the file's time (`` `lastModified: "git"`, but the project isn't
   in a git repository ``). The build falls back quietly, and `trace` said "built in".
+- `linksPlugin()` notes a link that works through a redirect (a `_redirects` line, or a redirect
+  page): `note: 1 link goes through a redirect` with each link, where it ends up, and the pages
+  it's on. A note, not a warning, and none for a page's link to its own old address.
 
 ### Fixed
 
