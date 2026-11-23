@@ -24,6 +24,10 @@ where that version matches.
 - `linksPlugin()` follows a `_redirects` line with `:name` placeholders (`/news/:year/:slug/`),
   as it did one with a `*`: a link that only such a line covers was reported as broken. Each
   `:name` is one whole segment of the path.
+- `llmsPlugin()`'s Markdown copy of a page keeps the headings, lists and paragraphs inside any
+  element, as 0.14.0 did for a custom element: a `<search>`, or a `<span>` or a link around a
+  card, ran them together into one line. A link around a card makes its first heading or
+  paragraph the link (`### [Day Hike](/plans/day/)`).
 
 ## 0.14.0 - 2026-11-23
 
