@@ -855,13 +855,17 @@ _ssqch() {
             return 0
             ;;
         ssqch__subcmd__serve)
-            opts="-p -o -q -v -h --port --built --ready-file --root --output --base --offline --env --quiet --verbose --help"
+            opts="-p -o -q -v -h --port --host --built --ready-file --root --output --base --offline --env --quiet --verbose --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
                 --port)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --host)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;

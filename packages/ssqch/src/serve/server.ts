@@ -12,13 +12,14 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Config } from "../config.ts";
 import { CONFIG_FILES, dirsOf } from "../dirs.ts";
 import * as diagnostics from "../diagnostics.ts";
 import { BuildError, messageOf } from "../diagnostics.ts";
-import { isInside, realPath, relative, slashes } from "../paths.ts";
+import { compareText, isInside, realPath, relative, slashes } from "../paths.ts";
 import * as voice from "../voice.ts";
 import { Builder, stopBuilders } from "./builder.ts";
 import type { Built, SiteInfo } from "./builder.ts";
@@ -33,6 +34,8 @@ import { Channel, Watcher } from "./watch.ts";
 export interface ServeOptions {
 	/** The port to listen on; 0 picks a free one. */
 	port: number;
+	/** The address to listen on: `127.0.0.1` (the default), `0.0.0.0` for every network, or one of the machine's. */
+	host?: string;
 	/**
 	 * A file to write once the first build is done and the site is being served: JSON with the
 	 * `url`, the `port`, the `output` folder, this process's `pid`, and `ok` (whether that build
@@ -68,11 +71,36 @@ function sourceState(file: string): string | undefined {
 	try { return `folder:${crypto.hash("sha1", fs.readdirSync(file).sort().join("\n"), "base64")}`; } catch { return undefined; }
 }
 
+const LOOPBACK = "127.0.0.1";
+
+/** Whether `host` answers only this machine. */
+const loopbackOnly = (host: string) => host === LOOPBACK || host === "localhost" || host === "::1";
+
+/** Every address this machine (IPv4) has on a network, for the URLs a phone can open: with `0.0.0.0`, all of them; otherwise the one given. */
+function networkAddresses(host: string): string[] {
+	if (loopbackOnly(host)) return [];
+	if (host !== "0.0.0.0" && host !== "::") return [host];
+	const found: string[] = [];
+	for (const list of Object.values(os.networkInterfaces())) for (const a of list ?? []) if (a.family === "IPv4" && !a.internal) found.push(a.address);
+	return [...new Set(found)].sort(compareText);
+}
+
+/** Where a browser on this machine reaches the server: `localhost`, unless it listens on one other address only. */
+const localUrl = (host: string, port: number, base: string) => `http://${loopbackOnly(host) || host === "0.0.0.0" || host === "::" ? "localhost" : host}:${port}${base}/`;
+
+/** The line after the address when the site can be seen from other machines: where, and that anyone on the network can. */
+function onTheNetwork(host: string, port: number, base: string): string {
+	const addresses = networkAddresses(host).filter((a) => a !== host || (host !== "0.0.0.0" && host !== "::"));
+	if (!addresses.length) return host === "0.0.0.0" || host === "::" ? "\nOn your network: no network address found (is this machine on one?)" : "";
+	const urls = addresses.map((a) => `http://${a}:${port}${base}/`);
+	return `\nOn your network: ${urls.join(", ")} (anyone on it can see the site)`;
+}
+
 /** Write the ready file in one step, so a reader never sees half of it. */
-function writeReady(file: string, site: Served, port: number, ok: boolean): void {
+function writeReady(file: string, site: Served, port: number, ok: boolean, host = LOOPBACK): void {
 	const ready = {
 		schemaVersion: 1,
-		url: `http://localhost:${port}${site.base}/`,
+		url: localUrl(host, port, site.base),
 		port,
 		base: site.base,
 		output: realPath(site.output),
@@ -86,7 +114,7 @@ function writeReady(file: string, site: Served, port: number, ok: boolean): void
 }
 
 /** Start answering requests. Resolves with the port. */
-function listen(port: number, answer: (req: http.IncomingMessage, res: http.ServerResponse) => void): Promise<number> {
+function listen(port: number, answer: (req: http.IncomingMessage, res: http.ServerResponse) => void, host = LOOPBACK): Promise<number> {
 	const server = http.createServer((req, res) => {
 		try {
 			answer(req, res);
@@ -105,9 +133,9 @@ function listen(port: number, answer: (req: http.IncomingMessage, res: http.Serv
 	});
 	return new Promise((resolve, reject) => {
 		server.once("error", (e: NodeJS.ErrnoException) => {
-			reject(new BuildError(e.code === "EADDRINUSE" ? `can't listen on port ${port}: something else is squatting on it (--port 0 picks a free one)` : `can't listen on port ${port}: ${e.message}`));
+			reject(new BuildError(e.code === "EADDRINUSE" ? `can't listen on port ${port}: something else is squatting on it (--port 0 picks a free one)` : e.code === "EADDRNOTAVAIL" ? `can't listen on ${host}: it isn't one of this machine's addresses (0.0.0.0 listens on all of them)` : `can't listen on port ${port}: ${e.message}`));
 		});
-		server.listen(port, "127.0.0.1", () => {
+		server.listen(port, host, () => {
 			const address = server.address();
 			resolve(typeof address === "object" && address !== null ? address.port : port);
 		});
@@ -126,10 +154,11 @@ export async function serveBuilt(config: Config, options: ServeOptions): Promise
 	const shown = isInside(dirs.root, site.output) ? relative(dirs.root, site.output) : slashes(site.output);
 	if (!isDir(site.output)) throw new BuildError(`${shown} doesn't exist: build the site first (ssqch build), then serve it with ssqch serve --built`);
 	if (options.readyFile !== undefined) fs.rmSync(options.readyFile, { force: true });
-	const port = await listen(options.port, (req, res) => handleBuilt(req, res, site.output, site.base));
-	if (options.readyFile !== undefined) writeReady(options.readyFile, site, port, true);
-	const url = `http://localhost:${port}${site.base}/`;
-	say(config.quiet ? url : `Serving ${shown} as built at ${url}. It stays as it is until the next ssqch build.`);
+	const host = options.host ?? LOOPBACK;
+	const port = await listen(options.port, (req, res) => handleBuilt(req, res, site.output, site.base), host);
+	if (options.readyFile !== undefined) writeReady(options.readyFile, site, port, true, host);
+	const url = localUrl(host, port, site.base);
+	say((config.quiet ? url : `Serving ${shown} as built at ${url}. It stays as it is until the next ssqch build.`) + onTheNetwork(host, port, site.base));
 	return new Promise<never>(() => {});
 }
 
@@ -138,13 +167,13 @@ export async function serveBuilt(config: Config, options: ServeOptions): Promise
  * build, so a long build's output doesn't bury the address. With `--quiet`, just the address,
  * after the first build.
  */
-function banner(site: Served, port: number, quiet: boolean): string {
+function banner(site: Served, port: number, quiet: boolean, host = LOOPBACK): string {
 	// The output folder from where the command was run (`dist`), when it's below it.
 	const here = realPath(process.cwd());
 	const output = realPath(site.output);
 	const shown = isInside(here, output) && output !== here ? relative(here, output) : site.output;
-	const serving = `Serving ${shown} at http://localhost:${port}${site.base}/`;
-	return quiet ? serving : `${serving}. ${voice.SQUATCH_WATCH}`;
+	const serving = `Serving ${shown} at ${localUrl(host, port, site.base)}`;
+	return (quiet ? serving : `${serving}. ${voice.SQUATCH_WATCH}`) + onTheNetwork(host, port, site.base);
 }
 
 /** Ends the run when ssqch is told to stop: the companions first (and what they started), and the process that builds. */
@@ -189,7 +218,7 @@ export async function serve(args: string[], options: ServeOptions): Promise<numb
 	}
 	const { quiet } = options;
 	try {
-		const port = await listen(options.port, (req, res) => handle(req, res, site.output, live, site.base));
+		const port = await listen(options.port, (req, res) => handle(req, res, site.output, live, site.base), options.host ?? LOOPBACK);
 		return await serving(first, { args, options, live, site, port, quiet });
 	} catch (e) {
 		// Nothing is left running behind an error.
@@ -200,7 +229,7 @@ export async function serve(args: string[], options: ServeOptions): Promise<numb
 }
 
 async function serving(first: Builder, { args, options, live, site, port, quiet }: { args: string[]; options: ServeOptions; live: Live; site: Served; port: number; quiet: boolean }): Promise<never> {
-	const sayWhere = () => say(banner(site, port, quiet));
+	const sayWhere = () => say(banner(site, port, quiet, options.host ?? LOOPBACK));
 	let builder = first;
 	let companions = Companions.none();
 	for (;;) {
@@ -217,7 +246,7 @@ async function serving(first: Builder, { args, options, live, site, port, quiet 
 		live.setSite(companions.names(), info.outputName);
 		const firstBuild = (ok: boolean) => {
 			if (options.readyFile === undefined) return;
-			try { writeReady(options.readyFile, site, port, ok); } catch (e) { process.stderr.write(`${diagnostics.red("error:")} ${messageOf(e)}\n`); }
+			try { writeReady(options.readyFile, site, port, ok, options.host ?? LOOPBACK); } catch (e) { process.stderr.write(`${diagnostics.red("error:")} ${messageOf(e)}\n`); }
 		};
 		// Stop `serve.run`'s tools and start them again, so they write their files into the output
 		// again (a `--watch` tool writes when it starts, and then only when a source changes).

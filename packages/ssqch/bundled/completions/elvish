@@ -67,6 +67,7 @@ set edit:completion:arg-completer[ssqch] = {|@words|
         &'ssqch;serve'= {
             cand -p 'The port to listen on (0 picks a free one)'
             cand --port 'The port to listen on (0 picks a free one)'
+            cand --host 'The address to listen on: 0.0.0.0 to open the site from a phone on the same network'
             cand --ready-file 'Write this file once the first build is done: JSON with the url, port and output folder'
             cand --root 'Project root (defaults to the current directory)'
             cand -o 'Override the output directory (relative to the root)'

@@ -60,6 +60,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '-p+[The port to listen on (0 picks a free one)]:PORT:_default' \
 '--port=[The port to listen on (0 picks a free one)]:PORT:_default' \
+'--host=[The address to listen on\: 0.0.0.0 to open the site from a phone on the same network]:ADDRESS:_default' \
 '--ready-file=[Write this file once the first build is done\: JSON with the url, port and output folder]:FILE:_files' \
 '--root=[Project root (defaults to the current directory)]:ROOT:_files' \
 '-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \

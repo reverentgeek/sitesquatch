@@ -252,7 +252,6 @@ No differences: 148 pages and 4,730 other files are the same. <span class="v">Th
 	<ul class="gaps">
 		<li>Pages render one at a time on one thread. Image encoding uses every core, but heavy per-page JavaScript doesn't spread across them.</li>
 		<li>The dev server rebuilds the whole site on a change: about 0.9 s after one edit on a 10,000-page site.</li>
-		<li>The dev server listens on <code>127.0.0.1</code> only. There's no <code>--host</code>.</li>
 		<li>No SVG rasterizing, and HDR photos need converting to sRGB first (the build warns about them).</li>
 	</ul>
 	<p class="also"><a href="{{ links.knownGaps }}">Every known gap, as of this release</a></p>

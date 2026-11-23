@@ -9,6 +9,14 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Added
+- `ssqch serve --host 0.0.0.0` listens on every network the machine is on, so the site opens on
+  a phone, and prints the address for it: `On your network: http://192.168.1.20:8080/ (anyone on
+  it can see the site)`. `--host <address>` listens on that one. The default is still
+  `127.0.0.1`. `ssqch serve --built` takes it too.
+
 ## 0.13.4 - 2026-11-22
 
 ### Added
