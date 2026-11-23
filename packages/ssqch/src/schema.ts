@@ -334,7 +334,7 @@ function checkValue(type: Type, value: unknown, fieldPath: string, at: Checking,
 			const clean = value.split(/[?#]/)[0];
 			const fromRoot = clean.startsWith("/");
 			const file = fromRoot ? path.join(at.files.input, clean.slice(1)) : path.join(at.files.pageDir, clean);
-			if (!(fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false)) wrong(`\`${fieldPath}\` is ${quoted(value)}, but there's no such file ${fromRoot ? "in the input folder" : "next to the page"}`);
+			if (!(fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false)) wrong(`\`${fieldPath}\` is ${quoted(value)}, but there's no such file ${fromRoot ? "in the input folder" : "next to the page"} (${lookedFor(file, clean, at.root)})`);
 			return;
 		}
 		case "object": if (!isObject(value)) mismatch(); return;
@@ -357,7 +357,7 @@ function checkValue(type: Type, value: unknown, fieldPath: string, at: Checking,
 			const failed = (e: unknown) => problem(`\`${fieldPath}\`: the check failed: ${describeThrown(e, at.root)}`);
 			const judge = (answer: unknown): Problem | undefined => {
 				if (answer === true || answer === undefined || answer === null) return undefined;
-				if (typeof answer === "string") return problem(`\`${fieldPath}\` ${answer}`);
+				if (typeof answer === "string") return problem(`\`${fieldPath}\`${PREDICATE.test(answer) ? " " : ": "}${answer}`);
 				if (answer === false) return problem(`\`${fieldPath}\` isn't valid (${show(value)})`);
 				return problem(`\`${fieldPath}\`: the check returned ${typeOf(answer)}; return true, false or a message`);
 			};
@@ -378,6 +378,25 @@ function checkValue(type: Type, value: unknown, fieldPath: string, at: Checking,
 		}
 	}
 }
+
+/**
+ * Where a `file` field was looked for, from the project, and the nearest name in that folder as
+ * the field would write it (Squatch Snacks, E5: "no such file" alone sent the agent looking).
+ */
+function lookedFor(file: string, written: string, root: string): string {
+	const at = `looked for ${path.relative(root, file).split(path.sep).join("/")}`;
+	let names: string[];
+	try { names = fs.readdirSync(path.dirname(file), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name); } catch { return at; }
+	const near = closest(path.basename(file), names);
+	return near === undefined ? at : `${at}; did you mean ${quoted(written.slice(0, written.lastIndexOf("/") + 1) + near)}?`;
+}
+
+/**
+ * A rule's answer that goes on from the field (`must be lowercase`, `isn't a trail`) follows it
+ * with a space; anything else (`write the opening's own summary`, from Squatch Snacks, E3) after
+ * a colon, so the two don't read as one sentence.
+ */
+const PREDICATE = /^(?:must|should|is|isn't|is not|are|aren't|needs?|has|hasn't|have|can|can't|cannot|may|will|won't|was|wasn't|does|doesn't|contains?|starts?|ends?|looks?|matches?|goes|comes|repeats?)\b/i;
 
 /** A type in words, for "must be ...". */
 function describe(type: Type): string {

@@ -31,6 +31,12 @@ where that version matches.
 - `ssqch serve` gives a site without an icon of its own sitesquatch.dev's tab icon, the
   illustrated footprint, instead of the hand-drawn stand-in it replaced. It's still burnt orange
   while the build is broken. The trail patch on its 404 page has the illustrated footprint too.
+- A schema rule's message that doesn't go on from the field's name comes after a colon:
+  `` `summary`: write the opening's own summary ``, where it read as one sentence. An answer
+  that does (`must be lowercase`) still follows the name.
+- A schema's `file` field that names a missing file says where it looked, from the project
+  (`looked for src/posts/cedar.jpg`), and the nearest name in that folder when one is close
+  (`did you mean "photo.jpg"?`).
 
 ## 0.14.0 - 2026-11-23
 
