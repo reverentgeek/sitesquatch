@@ -1295,7 +1295,7 @@ function packageDefines(pkg: string): string[] {
 	const kept = `import:${pkg}`;
 	switch (pkg) {
 		case "@11ty/eleventy-img": return ["plugin:ssqch/image", kept];
-		case "@11ty/eleventy-plugin-rss": return ["plugin:ssqch/rss", kept];
+		case "@11ty/eleventy-plugin-rss": return ["plugin:ssqch/rss", "plugin:ssqch/feed", kept];
 		case "@11ty/eleventy-plugin-syntaxhighlight": return ["markdown.highlight", "engines.md", kept];
 		case "@11ty/eleventy-navigation": return ["filters.eleventyNavigation", kept];
 		case "@11ty/eleventy-plugin-bundle": case "@11ty/eleventy-plugin-webc": case "@11ty/is-land": return ["plugin:ssqch/elements", kept];
@@ -1310,7 +1310,7 @@ function packageDefines(pkg: string): string[] {
 function replacement(pkg: string): string | undefined {
 	switch (pkg) {
 		case "@11ty/eleventy-img": return "`imagePlugin()` from \"ssqch/image\" (every <img> becomes a <picture>), or `image()` in data files";
-		case "@11ty/eleventy-plugin-rss": return "`rssPlugin()` from \"ssqch/rss\"";
+		case "@11ty/eleventy-plugin-rss": return "`rssPlugin()` from \"ssqch/rss\" for a feed template's filters, or its `feedPlugin({ url })` for the feed itself (Eleventy's v2 `feedPlugin` options differ: `collection`, `limit`, `format`, `output`)";
 		case "@11ty/eleventy-plugin-syntaxhighlight": return "`markdown: { highlight: { classes: \"prism\", css: false } }`: Prism's class names and `<pre class=\"language-x\">`, so your Prism theme's CSS still colors the code";
 		case "@11ty/eleventy-navigation": return "`nav` front matter and `pagesTree(collections.all)`, with `navTree`, `navPager` and `navBreadcrumbs`";
 		case "@11ty/eleventy-fetch": return "`fetch(url, { cache: \"1d\" })`";

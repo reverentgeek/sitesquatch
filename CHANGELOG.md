@@ -9,9 +9,20 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
-## Unreleased
+## 0.13.5 - 2026-11-23
 
 ### Added
+- `feedPlugin({ url })` from `ssqch/rss` writes the site's feed: Atom (or `format: "rss"`) at
+  `/feed.xml`, from the `posts` collection, newest first (`limit`, default 20), each entry's
+  content as `feedHtml()` makes it, its title and subtitle from the site's data. A new blog wrote
+  its feed by hand in a template (the new-blog fresh run did it from memory). The blog starter
+  uses it in place of its feed template.
+- `ssqch serve` ends a build that's stopped making progress for a minute (no page written, no
+  image encoded, none of the site's code starting or settling), and says what it waited on:
+  `in src/index.jinja: the build stopped making progress: for 60 s nothing happened, and it was
+  waiting on filter \`latest\` (rendering src/index.jinja)`. A promise that never settled, while a
+  `setInterval` kept Node running, wedged every rebuild after it with no word. Code that never
+  returns is ended too (`the build stopped answering`). A `run` command isn't counted.
 - `ssqch serve --host 0.0.0.0` listens on every network the machine is on, so the site opens on
   a phone, and prints the address for it: `On your network: http://192.168.1.20:8080/ (anyone on
   it can see the site)`. `--host <address>` listens on that one. The default is still
@@ -26,7 +37,7 @@ where that version matches.
   any of its names is kept. Without a `package.json`, none is written.
 - The blog starter (`ssqch init`) is a blog: its posts have tags, with a page for each tag
   (`/tags/stumps/`) and one listing them (`/tags/`), each post links its tags, and an Atom feed
-  is at `/feed.xml` (`src/feed.jinja`, with `rssPlugin()`'s filters), linked from every page.
+  is at `/feed.xml` (`feedPlugin()`), linked from every page.
   Code is highlighted (`markdown: { highlight: true }`, and the layout links `/highlight.css`),
   and `leaveNoTrace: true` deletes a removed post's page. The same in every `--engine`.
 - The docs starter's search is Pagefind's Component UI (a search button and dialog, Ctrl+K or

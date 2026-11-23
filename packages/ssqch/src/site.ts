@@ -4,6 +4,7 @@
 //
 // The cascade, lowest first: global data < layout front matter < directory data < template data
 // file < front matter < `computed`.
+import { progressed } from "./activity.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -115,6 +116,8 @@ export class Timer {
 	last = performance.now();
 	timings: Array<[string, number]> = [];
 	lap(label: string): void {
+		// A phase done (setup, data, read, paginate) is progress, for `ssqch serve`'s limit.
+		progressed();
 		const now = performance.now();
 		this.timings.push([label, now - this.last]);
 		this.last = now;
@@ -348,7 +351,7 @@ export class Site {
 		global = merge(global, siteData, config.deepMerge);
 		const provided = await Promise.all(config.globalData.map(async ({ name, value, fn }) => {
 			if (!fn) return [name, value] as const;
-			try { return [name, await settle(this.profile.detailed ? this.profile.time("data", `data.${name}`, false, fn) : fn())] as const; } catch (e) { throw new BuildError(`global data \`${name}\` failed: data.${name}: ${describeThrown(e, dirs.root)}`); }
+			try { return [name, await settle(this.profile.detailed ? this.profile.time("data", `data.${name}`, false, fn) : fn(), `data.${name}`)] as const; } catch (e) { throw new BuildError(`global data \`${name}\` failed: data.${name}: ${describeThrown(e, dirs.root)}`); }
 		}));
 		for (const [name, value] of provided) global[name] = value;
 		try { aliasDataKeys(global); } catch (e) { throw context(e, "in global data"); }
@@ -1017,7 +1020,7 @@ export class Site {
 		}
 		// A function (from a JavaScript data file) gets the page's data.
 		if (typeof value === "function") {
-			try { return await settle(value(data)); } catch (e) { throw new BuildError(describeThrown(e, this.dirs.root)); }
+			try { return await settle(value(data), "a computed value"); } catch (e) { throw new BuildError(describeThrown(e, this.dirs.root)); }
 		}
 		return value;
 	}
@@ -1136,7 +1139,7 @@ export class Site {
 		const pages = collectionApi(all);
 		for (const [name, fn] of this.config.collections) {
 			const from = this.config.definedIn.get(`collections.${name}`);
-			try { collections[name] = await settle(this.profile.time("collections", name, true, () => fn(pages as any), from)); } catch (e) { throw new BuildError(`collection \`${name}\` failed: ${describeThrown(e, this.dirs.root)}`); }
+			try { collections[name] = await settle(this.profile.time("collections", name, true, () => fn(pages as any), from), `collection \`${name}\``); } catch (e) { throw new BuildError(`collection \`${name}\` failed: ${describeThrown(e, this.dirs.root)}`); }
 		}
 		this.collections = collections;
 	}

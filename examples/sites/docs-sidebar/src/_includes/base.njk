@@ -6,9 +6,8 @@
 {% if description %}<meta name="description" content="{{ description }}">{% endif %}
 <title>{% if title %}{{ title }} | {% endif %}{{ site.title }}</title>
 <link rel="stylesheet" href="/highlight.css">
-<link rel="stylesheet" href="/pagefind/pagefind-ui.css">
-<script src="/pagefind/pagefind-ui.js" defer></script>
-<script>addEventListener("DOMContentLoaded", () => window.PagefindUI && new PagefindUI({ element: "#search", showSubResults: true }));</script>
+<link rel="stylesheet" href="/pagefind/pagefind-component-ui.css">
+<script src="/pagefind/pagefind-component-ui.js" type="module"></script>
 <style>
   /* Ranger Station '76: soft white (green charcoal in dark mode), pine headings and navigation,
      burnt orange links, avocado for what's selected and for code, harvest gold callouts, and
@@ -41,15 +40,16 @@
   /* Code in the palette, over /highlight.css's colors. */
   html:root { --hl-comment: #5e6a61; --hl-keyword: #a23e20; --hl-operator: #a23e20; --hl-string: #4e5e24; --hl-regexp: #4e5e24; --hl-escape: #4e5e24; --hl-number: #7a500a; --hl-constant: #7a500a; --hl-builtin: #7a500a; --hl-property: #233b2b; --hl-attribute: #7a500a; --hl-function: #233b2b; --hl-type: #7a500a; --hl-parameter: #7a500a; --hl-tag: #a23e20; --hl-heading: #a23e20; --hl-link: #a23e20; --hl-inserted: #4e5e24; --hl-inserted-bg: #e6ecda; --hl-deleted: #a23e20; --hl-deleted-bg: #f8eae4; --hl-line-bg: rgba(232, 175, 67, 0.25); }
   @media (prefers-color-scheme: dark) { html:root { --hl-comment: #a2aca3; --hl-keyword: #f0a17d; --hl-operator: #f0a17d; --hl-string: #b9c77e; --hl-regexp: #b9c77e; --hl-escape: #b9c77e; --hl-number: #e8af43; --hl-constant: #e8af43; --hl-builtin: #e8af43; --hl-property: #e5e9e1; --hl-attribute: #e8af43; --hl-function: #d6e4c8; --hl-type: #e8af43; --hl-parameter: #e8af43; --hl-tag: #f0a17d; --hl-heading: #f0a17d; --hl-link: #f0a17d; --hl-inserted: #b9c77e; --hl-inserted-bg: #2e3f2b; --hl-deleted: #f0a17d; --hl-deleted-bg: #33241f; --hl-line-bg: rgba(232, 175, 67, 0.15); } }
-  /* Pagefind's search box in the palette. */
-  html:root { --pagefind-ui-primary: #a23e20; --pagefind-ui-text: #29332c; --pagefind-ui-background: #fafaf7; --pagefind-ui-border: #dcddd4; --pagefind-ui-tag: #eeefe7; }
-  @media (prefers-color-scheme: dark) { html:root { --pagefind-ui-primary: #f0a17d; --pagefind-ui-text: #e5e9e1; --pagefind-ui-background: #252b27; --pagefind-ui-border: #3a413b; --pagefind-ui-tag: #2e3f2b; } }
+  /* Pagefind's search in the palette. On #search, not :root, where Pagefind's own stylesheet,
+     which loads after this one, sets them. */
+  #search { margin: 0 0 1rem; --pf-text: #29332c; --pf-text-secondary: #5e6a61; --pf-text-muted: #5e6a61; --pf-background: #fafaf7; --pf-border: #dcddd4; --pf-border-focus: #a23e20; --pf-hover: #eeefe7; --pf-outline-focus: #a23e20; --pf-mark: rgba(232, 175, 67, 0.35); --pf-font: inherit; }
+  @media (prefers-color-scheme: dark) { #search { --pf-text: #e5e9e1; --pf-text-secondary: #a2aca3; --pf-text-muted: #a2aca3; --pf-background: #252b27; --pf-border: #3a413b; --pf-border-focus: #f0a17d; --pf-hover: #2e3f2b; --pf-outline-focus: #f0a17d; --pf-mark: rgba(232, 175, 67, 0.25); } }
 </style>
 </head>
 <body>
 <aside class="sidebar">
   <p><a href="/">{{ site.title }}</a></p>
-  <div id="search"></div>
+  <div id="search"><pagefind-modal-trigger></pagefind-modal-trigger><pagefind-modal></pagefind-modal></div>
   {# navTree marks the current page and the section it's in. #}
   {% for section in nav | navTree(page.url) %}
   <h2{% if section.open %} class="open"{% endif %}>{{ section.title }}</h2>

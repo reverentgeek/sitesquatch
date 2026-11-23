@@ -131,3 +131,90 @@ BUILTINS.set("ssqch/rss", (config: Config, options) => {
 		} catch (e) { throw unprefixed(e); }
 	});
 });
+
+// ---- feedPlugin(): the feed itself -------------------------------------------------------------
+
+/**
+ * `feedPlugin({ url })`: writes the site's feed, Atom (or RSS), from a collection: the newest
+ * posts first, each with its title, address, date, description and its content as a feed needs it
+ * (`feedHtml`: pictures as one generated copy each, every URL absolute). A new blog needed a
+ * template for it in each template language (the new-blog fresh run wrote one from memory); this
+ * is that template, as an option.
+ */
+export function feedPlugin(options: Record<string, unknown> = {}) {
+	return { name: "ssqch/feed", builtin: "ssqch/feed", options };
+}
+
+/** Text for XML: `&`, `<`, `>` and `"` escaped. */
+const xml = (text: unknown) => output(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+BUILTINS.set("ssqch/feed", (config: Config, given) => {
+	// Eleventy's RSS plugin (v2) has a `feedPlugin` too, with other options: a config moved from it
+	// passes those, so each is named with ssqch's.
+	if (given !== null && typeof given === "object") {
+		const g = given as Record<string, unknown>;
+		if (["type", "outputPath", "metadata"].some((k) => k in g) || (g.collection !== null && typeof g.collection === "object")) {
+			bail("these are the options of Eleventy's feedPlugin, which ssqch's names differently: `type` is `format` (\"atom\" or \"rss\"), `outputPath` is `output`, `collection: { name, limit }` is `collection` and `limit`, and `metadata`'s `base`, `title`, `subtitle` and `author` are `url`, `title`, `description` and `author`. Like feedPlugin({ url: \"https://example.com\", collection: \"posts\", limit: 10 })");
+		}
+	}
+	const o = new Options(given, ["url", "collection", "limit", "format", "output", "title", "description", "author"]);
+	const url = o.string("url");
+	if (url === undefined || url === "") bail("needs the site's address, like feedPlugin({ url: \"https://example.com\" }): a feed's links are whole addresses, which feed readers need");
+	if (!(url.startsWith("https://") || url.startsWith("http://"))) bail(`url must be the site's address, like "https://example.com" (got ${JSON.stringify(url)})`);
+	const collection = o.string("collection") ?? "posts";
+	const limit = o.number("limit") ?? 20;
+	if (!Number.isInteger(limit) || limit < 0) bail(`limit must be a whole number of entries, like 20, or 0 for all of them (got ${JSON.stringify(o.get("limit"))})`);
+	const format = o.string("format") ?? "atom";
+	if (format !== "atom" && format !== "rss") bail(`format must be "atom" or "rss" (got ${JSON.stringify(format)})`);
+	const out = o.string("output") ?? "/feed.xml";
+	if (!out.startsWith("/") || out.endsWith("/")) bail(`output must be a URL path to a file, like "/feed.xml" (got ${JSON.stringify(out)})`);
+	const author = o.get("author");
+	if (author !== undefined && typeof author !== "string" && !(author !== null && typeof author === "object" && typeof (author as { name?: unknown }).name === "string")) bail(`author must be a name, or { name, email, url } (got ${JSON.stringify(author)})`);
+	const titleGiven = o.string("title");
+	const descriptionGiven = o.string("description");
+	// Each entry is a post's rendered body: kept from its render, since one that awaits something
+	// (an async filter) can't render again on demand once the pages are written.
+	config.readsContent = true;
+
+	config.generators.push(["ssqch/feed", async (config, _pages, site) => {
+		const items = site.collection(collection);
+		if (!items) bail(`there's no collection \`${collection}\` to make the feed from (the collections are ${site.collectionNames().map((n) => `\`${n}\``).join(", ")}): name one with feedPlugin({ collection: "posts" }), a tag the posts have`);
+		const data = (site.global.site ?? {}) as Record<string, unknown>;
+		const title = titleGiven ?? (typeof data.title === "string" ? data.title : undefined);
+		if (!title) bail("needs the feed's title: feedPlugin({ title: \"Field Notes\" }), or `title` in the site's data (src/_data/site.json)");
+		const description = descriptionGiven ?? (typeof data.description === "string" ? data.description : undefined);
+		const name = typeof author === "string" ? author : (author as { name?: string } | undefined)?.name ?? title;
+		const email = typeof author === "object" && author !== null ? (author as { email?: unknown }).email : undefined;
+		const home = absoluteUrl("/", url, config.base);
+		const self = absoluteUrl(out, url, config.base);
+		// A page in the collection, with an address: one with `permalink: false` has none, and isn't
+		// in a feed (`https://example.com/false`, as the `url` alias once printed in a sitemap).
+		if (items.some((item) => item === null || typeof item !== "object" || !("url" in item) || !("date" in item))) bail(`the collection \`${collection}\` has items that aren't pages (no \`url\` or \`date\`): a feed's entries are pages, like a tag's (\`posts\`)`);
+		const pages = items.filter((item) => typeof item.url === "string" && toDate(item.date) !== undefined);
+		// Newest first, by date, whatever order the collection is in (the starter's `newestPosts` is
+		// newest first already); pages with the same date keep the collection's order.
+		const newest = pages.map((item, i) => ({ item, i, date: toDate(item.date)! })).sort((a, b) => b.date.getTime() - a.date.getTime() || a.i - b.i).map((e) => e.item).slice(0, limit === 0 ? undefined : limit);
+		const entries: Array<{ title: string; link: string; date: Date; summary?: string; content: string }> = [];
+		for (const item of newest) {
+			const link = absoluteUrl(output(item.url), url, config.base);
+			const itemData = (item.data ?? {}) as Record<string, unknown>;
+			const content = await feedHtml(item.templateContent ?? "", link, undefined, config.base);
+			entries.push({ title: output(itemData.title) || link, link, date: toDate(item.date) ?? new Date(0), summary: typeof itemData.description === "string" ? itemData.description : undefined, content });
+		}
+		// The pictures the entries point at, made before the feed is out (the pages' own were made
+		// before the generators ran).
+		await image.settleImages();
+		const updated = entries.reduce<Date | undefined>((latest, e) => (latest === undefined || e.date > latest ? e.date : latest), undefined) ?? new Date(0);
+		let feed: string;
+		if (format === "atom") {
+			feed = `<?xml version="1.0" encoding="utf-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom">\n  <title>${xml(title)}</title>\n${description ? `  <subtitle>${xml(description)}</subtitle>\n` : ""}  <link href="${xml(self)}" rel="self"/>\n  <link href="${xml(home)}"/>\n  <id>${xml(home)}</id>\n  <updated>${dateToRfc3339(updated)}</updated>\n  <author><name>${xml(name)}</name>${typeof email === "string" ? `<email>${xml(email)}</email>` : ""}</author>\n`;
+			for (const e of entries) feed += `  <entry>\n    <title>${xml(e.title)}</title>\n    <link href="${xml(e.link)}"/>\n    <id>${xml(e.link)}</id>\n    <updated>${dateToRfc3339(e.date)}</updated>\n${e.summary ? `    <summary>${xml(e.summary)}</summary>\n` : ""}    <content type="html">${xml(e.content)}</content>\n  </entry>\n`;
+			feed += "</feed>\n";
+		} else {
+			feed = `<?xml version="1.0" encoding="utf-8"?>\n<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n  <channel>\n    <title>${xml(title)}</title>\n    <link>${xml(home)}</link>\n    <atom:link href="${xml(self)}" rel="self" type="application/rss+xml"/>\n    <description>${xml(description ?? title)}</description>\n    <lastBuildDate>${dateToRfc822(updated)}</lastBuildDate>\n`;
+			for (const e of entries) feed += `    <item>\n      <title>${xml(e.title)}</title>\n      <link>${xml(e.link)}</link>\n      <guid>${xml(e.link)}</guid>\n      <pubDate>${dateToRfc822(e.date)}</pubDate>\n      <description>${xml(e.content)}</description>\n    </item>\n`;
+			feed += "  </channel>\n</rss>\n";
+		}
+		return [{ path: out, contents: feed }];
+	}]);
+});

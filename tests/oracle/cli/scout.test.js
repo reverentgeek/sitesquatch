@@ -333,3 +333,23 @@ test("scout_compare_builds_and_lists_the_biggest_groups", () => {
 	r = ssqch(["scout", dir, "--compare"]);
 	assert.ok(r.log.includes("  1 changed, 0 only in ssqch's, 0 only in the reference; 1 pages and 0 other files the same\n") && r.log.includes("Next: fix the biggest group above"), r.log);
 });
+
+// Added in 0.13.5: an Eleventy site that used the RSS plugin's v2 `feedPlugin`, moved to ssqch's
+// `feedPlugin()`, has nothing left to do for it; and Eleventy's options, passed as they were,
+// say ssqch's names.
+test("scout_counts_feed_plugin_for_the_rss_plugin", () => {
+	const dir = tempDir("scout-feed");
+	write(dir, {
+		"package.json": "{ \"devDependencies\": { \"@11ty/eleventy\": \"3.1.0\", \"@11ty/eleventy-plugin-rss\": \"2.0.0\" } }\n",
+		"eleventy.config.js": "import { feedPlugin } from \"@11ty/eleventy-plugin-rss\";\nexport default function (c) { c.addPlugin(feedPlugin, { type: \"atom\", outputPath: \"/feed.xml\", collection: { name: \"posts\", limit: 10 } }); }\n",
+		"src/index.md": "hi\n",
+		"ssqch.config.js": "import { feedPlugin } from \"ssqch/rss\";\nexport default { plugins: [feedPlugin({ url: \"https://example.com\" })] };\n",
+	});
+	const r = ssqch(["scout", "--format", "json", dir]);
+	const report = JSON.parse(r.stdout);
+	assert.deepEqual(report.todo.filter((t) => /eleventy-plugin-rss/.test(t.what)), [], r.stdout);
+	assert.ok(report.done.some((t) => t.option === "ssqch/feed"), r.stdout);
+	write(dir, { "ssqch.config.js": "import { feedPlugin } from \"ssqch/rss\";\nexport default { plugins: [feedPlugin({ type: \"atom\", outputPath: \"/feed.xml\" })] };\n" });
+	const built = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!built.ok && built.log.includes("these are the options of Eleventy's feedPlugin, which ssqch's names differently: `type` is `format`"), built.log);
+});

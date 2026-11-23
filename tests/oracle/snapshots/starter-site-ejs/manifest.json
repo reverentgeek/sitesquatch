@@ -7,9 +7,9 @@
     "environment": "production",
     "output": "dist",
     "pages": {
-      "written": 13,
-      "templates": 10,
-      "bytes": 45558,
+      "written": 12,
+      "templates": 9,
+      "bytes": 37509,
       "new": null,
       "gone": null
     },
@@ -65,7 +65,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "[ssqch] Encoded ./src/img/stump.jpg into 6 files (webp, jpeg) in <time>\nFirst confirmed sighting. Built in <time> (production)\n  Pages   13 written from 10 templates, 45.6 KB\n  Copied  1 file, 4.41 KB\n  Images  6 files from 1 source, <size>: 6 encoded, 0 reused\n  Links   172 checked, 0 broken\n  Output  dist: 36 files, <size>\n",
+  "log": "[ssqch] Encoded ./src/img/stump.jpg into 6 files (webp, jpeg) in <time>\nFirst confirmed sighting. Built in <time> (production)\n  Pages   12 written from 9 templates, 37.5 KB\n  Copied  1 file, 4.41 KB\n  Images  6 files from 1 source, <size>: 6 encoded, 0 reused\n  Links   172 checked, 0 broken\n  Output  dist: 36 files, <size>\n",
   "files": {
     "404.html": "text",
     "favicon.svg": "text",
@@ -126,7 +126,6 @@
     "src/_data/site.json": "text",
     "src/_includes/layout.ejs": "text",
     "src/favicon.svg": "text",
-    "src/feed.ejs": "text",
     "src/img/stump.jpg": {
       "sha256": "ca2c35057e1e01ba84afcb52f7aca37c92d3c9da2d7c9fe76fb5a9566f14d4c2",
       "bytes": 47888

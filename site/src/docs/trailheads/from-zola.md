@@ -18,7 +18,7 @@ blog.rust-lang.org was ported this way as a trial: all of its URLs and most page
 | `base_url` | Data: `data: { site: { url: "https://example.com" } }`, then `{{ site.url }}`. For a site under a path, `base: "/repo/"`. |
 | `title`, `description`, `[extra]` | The same `site` data, or `_data/site.toml` (TOML data files work) |
 | `highlight_code = true`, `highlight_theme` | `markdown: { highlight: true }`. Colors come from `/highlight.css` and its `--hl-*` properties instead of a theme name. |
-| `generate_feeds = true` | `rssPlugin()` from `ssqch/rss`, plus a feed template (see `blog-tags/src/feed.njk`) |
+| `generate_feeds = true` | `feedPlugin({ url })` from `ssqch/rss` (Atom, or `format: "rss"`), or `rssPlugin()` and a feed template of your own (see `blog-tags/src/feed.njk`) |
 | `taxonomies = [{ name = "tags", feed = true }]` | Tags are built in: `tags: [...]` in front matter, `collections.<tag>` in templates. Tag pages and per-tag feeds are a template paginated over the tag list. |
 | Automatic `sitemap.xml` | `sitemapPlugin({ url })` from `ssqch/sitemap` |
 | `insert_anchor_links` | A heading render hook: `_includes/hooks/heading.njk` |

@@ -9,7 +9,7 @@ import { starterEngines } from "./init.ts";
 export const MODULE_EXPORTS: ReadonlyArray<readonly [name: string, exports: readonly string[]]> = [
 	["ssqch", ["defineConfig", "markdown", "readData", "files", "slugify", "slugger", "safe"]],
 	["ssqch/image", ["imagePlugin", "image", "imageUrl"]],
-	["ssqch/rss", ["rssPlugin", "getNewestCollectionItemDate", "dateToRfc3339", "dateToRfc822", "absoluteUrl", "htmlToAbsoluteUrls", "feedHtml"]],
+	["ssqch/rss", ["rssPlugin", "feedPlugin", "getNewestCollectionItemDate", "dateToRfc3339", "dateToRfc822", "absoluteUrl", "htmlToAbsoluteUrls", "feedHtml"]],
 	["ssqch/assets", ["assetsPlugin"]],
 	["ssqch/links", ["linksPlugin"]],
 	["ssqch/sitemap", ["sitemapPlugin"]],

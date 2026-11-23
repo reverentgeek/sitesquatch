@@ -6,7 +6,7 @@ import { linksPlugin } from "ssqch/links";
 import { llmsPlugin } from "ssqch/llms";
 import { minifyPlugin } from "ssqch/minify";
 import { robotsPlugin } from "ssqch/robots";
-import { rssPlugin } from "ssqch/rss";
+import { feedPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
 
 // A date as people write it: January 1, 2026.
@@ -61,8 +61,8 @@ export default defineConfig(({ env }) => ({
   plugins: [
     // Every <img> becomes a responsive <picture>.
     imagePlugin({ formats: ["webp", "auto"], widths: [400, 800, 1200] }),
-    // The feed's filters (src/feed.jinja): absoluteUrl, dateToRfc3339, feedHtml and friends.
-    rssPlugin(),
+    // The feed, /feed.xml: the newest posts in Atom, each with its content and pictures.
+    feedPlugin({ url }),
     // Broken internal links fail a production build.
     linksPlugin(),
     // What crawlers and agents read: sitemap.xml, robots.txt, and llms.txt with a

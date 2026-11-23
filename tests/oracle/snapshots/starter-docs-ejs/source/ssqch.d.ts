@@ -469,6 +469,25 @@ declare module "ssqch/rss" {
 
 	/** Adds the filters getNewestCollectionItemDate, dateToRfc3339, dateToRfc822, absoluteUrl, htmlToAbsoluteUrls and feedHtml. */
 	export function rssPlugin(): BuiltinPlugin;
+	/** Writes the site's feed (Atom, or RSS) from a collection, newest first, each entry's content as feedHtml makes it: `feedPlugin({ url: "https://example.com" })` writes /feed.xml from the `posts` collection. */
+	export function feedPlugin(options: {
+		/** The site's address, for the feed's whole links. Required. */
+		url: string;
+		/** The collection the entries come from: a tag (`posts`) or a collection of the config's. Default `"posts"`. */
+		collection?: string;
+		/** How many of the newest entries; 0 for all. Default 20. */
+		limit?: number;
+		/** `"atom"` (default) or `"rss"`. */
+		format?: "atom" | "rss";
+		/** Where it's written: a URL path to a file. Default `"/feed.xml"`. */
+		output?: string;
+		/** The feed's title. Default the site data's `site.title`. */
+		title?: string;
+		/** The feed's subtitle (RSS: description). Default the site data's `site.description`. */
+		description?: string;
+		/** Who writes it: a name, or `{ name, email }`. Default the title. */
+		author?: string | { name: string; email?: string; url?: string };
+	}): BuiltinPlugin;
 	/** The newest `date` in a collection, for a feed's `updated`. */
 	export function getNewestCollectionItemDate(collection: unknown[]): Date | undefined;
 	/** A date as RFC 3339 (`2024-06-01T00:00:00Z`), for Atom feeds. */

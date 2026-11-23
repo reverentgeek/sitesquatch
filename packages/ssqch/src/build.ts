@@ -14,8 +14,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { aboutToBlock, progressed } from "./activity.ts";
 import { rewriteBase } from "./base.ts";
-import type { Config, Dirs, GeneratedFile, Hook, PageSummary } from "./config.ts";
+import type { Config, Dirs, GeneratedFile, GeneratorSite, Hook, PageSummary } from "./config.ts";
 import { shownDir, shownOutput } from "./config.ts";
 import type { Data } from "./data.ts";
 import { sourceDateEpoch, STATIC_DATA_EXTENSIONS } from "./data.ts";
@@ -256,7 +257,7 @@ class Renderer {
 
 	constructor(site: Site) {
 		this.site = site;
-		this.keep = mentionsContent(site);
+		this.keep = mentionsContent(site) || site.config.readsContent;
 		site.contentOf = (page) => this.contentNow(page);
 	}
 
@@ -504,6 +505,7 @@ class Renderer {
 		// reloads for a page that changed.
 		const changed = !(config.serving && sameContents(output, content));
 		this.written.set(page.index, { file: output, bytes: Buffer.byteLength(content), changed });
+		progressed();
 		if (changed) await this.write(output, content);
 		// A line per page only with `--verbose`: 404 of them for opensource.guide, on every build and
 		// every save while serving, are tokens an agent pays for and lines a person scrolls past
@@ -904,13 +906,21 @@ async function runHooks(config: Config, dirs: Dirs, event: "beforeBuild" | "afte
 			// (ssqch.config.js)`); a built-in plugin's has none. A hook runs once a build, and a long
 			// one (Pagefind) is often the point, so it's no `slow-call`.
 			if ("run" in hook) {
+				// spawnSync holds the event loop for as long as the command runs: the server is told
+				// first, so a long one (Pagefind's first download) isn't taken for a stuck build.
+				await aboutToBlock(`${event}: ${hook.run}`);
 				const run = () => runCommand(config, dirs, event, hook.run);
-				if (profile?.detailed) profile.time("hooks", `${event}: ${hook.run}`, false, run);
-				else run();
+				try {
+					if (profile?.detailed) profile.time("hooks", `${event}: ${hook.run}`, false, run);
+					else run();
+				} finally {
+					// The command's time isn't time the build stood still.
+					progressed();
+				}
 			} else {
 				const call = () => hook.fn(hookEvent(config, dirs, report));
 				// A built-in plugin's hook has no label: its errors already say who it is.
-				try { await settle(profile?.detailed ? profile.time("hooks", hook.label || `${event} (built in)`, false, call) : call()); } catch (e) { throw hook.label === "" && e instanceof Error ? e : new BuildError(`${hook.label}: ${describeThrown(e, dirs.root)}`); }
+				try { await settle(profile?.detailed ? profile.time("hooks", hook.label || `${event} (built in)`, false, call) : call(), `${event} hook ${hook.label || "(built in)"}`); } catch (e) { throw hook.label === "" && e instanceof Error ? e : new BuildError(`${hook.label}: ${describeThrown(e, dirs.root)}`); }
 			}
 		} catch (e) {
 			throw context(e, failed);
@@ -979,9 +989,14 @@ async function runGenerators(config: Config, dirs: Dirs, pages: Page[], pageOutp
 	const summaries: PageSummary[] = pages.flatMap((p) => (p.url !== null && p.output !== null ? [{ url: p.url, outputPath: p.output, inputPath: p.tpl.input, date: p.date, data: p.data }] : []));
 	const owners = new Map<string, string>();
 	const out: string[] = [];
+	const view: GeneratorSite = {
+		collection: (name) => (Array.isArray(site.collections[name]) ? site.collections[name] : undefined),
+		collectionNames: () => Object.keys(site.collections).filter((n) => Array.isArray(site.collections[n])).sort(compareText),
+		global: site.global,
+	};
 	for (const [name, generator] of config.generators) {
 		let files: GeneratedFile[];
-		try { files = await generator(config, summaries); } catch (e) { throw context(e, `${name} failed`); }
+		try { files = await generator(config, summaries, view); } catch (e) { throw context(e, `${name} failed`); }
 		for (const file of files) {
 			const rel = file.path.replace(/^\/+/, "");
 			if (!file.path.startsWith("/") || rel.split("/").includes("..")) bail(`${name}: ${JSON.stringify(file.path)} must be a URL path in the output, starting with /`);

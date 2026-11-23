@@ -12,9 +12,6 @@ npm install --save-dev ssqch
 
 (Or `pnpm add -D ssqch`, or `yarn add -D ssqch`.) Then run `npx ssqch build`, or `ssqch build` from a `package.json` script. Starting a site with `npx ssqch init` sets `"type": "module"` in the `package.json` and adds those scripts (`npm run serve`, `npm run build`). For a site you didn't start with `init`, `"type": "module"` is what keeps Node from warning `Failed to load the ES module ... ssqch.config.js` (`npm pkg set type=module`), or name the config `ssqch.config.mjs`.
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch: `ssqch init` setting `"type": "module"` and the scripts.
-
 A site whose `.npmrc` holds new releases back (`min-release-age=2`, a supply-chain cooldown) gets a new ssqch that many days after it's published, and until then npm says `ETARGET No matching version found for ssqch@<version> with a date before ...`: install the version before it, or wait. `ignore-scripts=true` is fine: ssqch runs no install script, and sharp, its one dependency, comes with its binaries prebuilt.
 
 To have `ssqch` everywhere instead, install it globally with `npm install --global ssqch`, or with [Homebrew](https://brew.sh) on macOS or Linux: `brew install reverentgeek/tap/ssqch` (it brings Node along if you don't have it).

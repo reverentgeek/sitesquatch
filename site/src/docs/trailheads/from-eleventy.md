@@ -75,7 +75,7 @@ Where Eleventy's word means the same thing in ssqch, it works as it is: `ssqch d
 | Eleventy plugin | SiteSquatch |
 | --- | --- |
 | `@11ty/eleventy-img` | `imagePlugin()` from `ssqch/image`: every `<img>` becomes a `<picture>` |
-| `@11ty/eleventy-plugin-rss` | `rssPlugin()` from `ssqch/rss` |
+| `@11ty/eleventy-plugin-rss` | `rssPlugin()` from `ssqch/rss` for a feed template's filters, or its `feedPlugin({ url })` for the feed itself (v2's `feedPlugin`, with ssqch's names: `type` is `format`, `outputPath` is `output`, `collection: { name, limit }` is `collection` and `limit`, `metadata` is `url`, `title`, `description` and `author`) |
 | `@11ty/eleventy-plugin-syntaxhighlight` | `markdown: { highlight: true }`, or `highlight: { classes: "prism", css: false }` to keep your Prism theme's CSS ([Another highlighter's classes](../markdown.md#another-highlighters-classes)) |
 | A Prism language added in the plugin's `init({ Prism })`, or its `alias` option | `markdown: { highlight: { languages } }`: a function that returns `[text, kind]` tokens, another language's name (`cho: "chordpro"`), or a `.sublime-syntax` file (`ssqch docs languages`) |
 | markdown-it-anchor | Heading IDs are built in; add anchor links with a heading render hook |
