@@ -76,7 +76,9 @@ export async function capabilities(commands: string[]): Promise<Capabilities> {
 		schemaVersion: 1,
 		version: VERSION,
 		commands,
-		json: ["build --format json", "trace --format json", "diff --format json", "capabilities --format json", "docs --format json", "serve --ready-file"],
+		// Every command that takes `--format json`, in `--help`'s order (the oracle's
+		// `capabilities_lists_every_command_with_json` reads each command's help), and the ready file.
+		json: [...["build", "new", "trace", "diff", "footprint", "patrol", "scout", "capabilities", "docs"].map((command) => `${command} --format json`), "serve --ready-file"],
 		features,
 		configFiles: [...CONFIG_FILES, "sitesquatch.toml"],
 		configOptions: configOptions(),

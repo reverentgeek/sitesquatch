@@ -74,6 +74,9 @@ where that version matches.
   JSON) only when it's under the same heading on every one of them. It printed the first file's:
   a footer that changed on 16 pages was "under" the 404 page's heading, which the other 15 don't
   have. A file listed on its own still says where each of its changes is.
+- `ssqch capabilities --format json` lists every command that prints JSON in `json`: `new`,
+  `footprint`, `patrol` and `scout` were missing from it, and the starters' `AGENTS.md` sends an
+  agent there to learn what it can ask for.
 
 ## 0.13.6 - 2026-11-23
 
