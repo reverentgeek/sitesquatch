@@ -16,6 +16,11 @@ where that version matches.
   a heading goes there as before and puts the section's address on the clipboard, with "Link
   copied" beside it for a moment, ready to paste into an issue or a chat. It's in the starter's
   `docs.js` and `docs.css`; without a clipboard the `#` is the plain link it was.
+- The blog starter (`ssqch init`) has two more posts, each showing one thing: *The Stump Has a
+  Forwarding Address* moved, and its old address still gets readers there (`aliases` in its
+  front matter, and `redirectsPlugin()`, now in the starter's config), and *Honey, I Shrunk the
+  Site* weighs the build with `ssqch footprint` and sets `budgets`, with the starter's own
+  numbers.
 
 ## 0.13.6 - 2026-11-23
 

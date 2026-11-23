@@ -10,11 +10,55 @@ An amateur investigation, with corrections. Built with SiteSquatch.
 
 ## Posts
 
+- [Honey, I Shrunk the Site](https://example.com/posts/honey-i-shrunk-the-site/index.md) (February 12, 2026)
+- [The Stump Has a Forwarding Address](https://example.com/posts/the-stump-has-a-forwarding-address/index.md) (February 5, 2026)
 - [The Cache of the Wild](https://example.com/posts/the-cache-of-the-wild/index.md) (January 29, 2026)
 - [Raiders of the Lost Path](https://example.com/posts/raiders-of-the-lost-path/index.md) (January 22, 2026)
 - [The Stump Has Moved](https://example.com/posts/the-stump-has-moved/index.md) (January 15, 2026)
 - [Upon Further Review, a Stump](https://example.com/posts/upon-further-review-a-stump/index.md) (January 8, 2026)
 - [I Know What I Saw](https://example.com/posts/i-know-what-i-saw/index.md) (January 1, 2026)
+
+---
+url: https://example.com/posts/honey-i-shrunk-the-site/
+---
+
+# Honey, I Shrunk the Site
+
+The beaver weighs her pack before every hike, so she asked what this site weighs. After
+`ssqch build`:
+
+```sh
+ssqch footprint
+```
+
+It lists the build by kind of file (pages, images, CSS, feeds), then the heaviest pages and
+files. Most of this site's weight is one picture: the stump, from
+[the second entry](https://example.com/posts/upon-further-review-a-stump/index.md).
+
+The camera's copy, `src/img/stump.jpg`, is 47.9 KB. The build makes six copies of it, three
+widths in WebP and JPEG, 107 KB together, and the footprint weighs every one. A reader carries
+only one: the browser picks the width its screen needs, in WebP when it can read it. On a phone
+or a laptop's sharp screen that's the widest WebP, 14.7 KB, under a third of the camera's copy.
+The JPEG copies are for browsers that can't read WebP.
+
+To hear about it when something gets heavy, give each kind of file a budget in
+`ssqch.config.js`:
+
+```js
+budgets: { pages: "50 KB", images: "40 KB" },
+```
+
+A file over its kind's budget is a warning after every build, saying which file and by how
+much:
+
+```text
+warn: /img/jsuIfm9F_f-1200.jpeg (42.3 KB) is over the images budget of 40.0 KB
+```
+
+`ssqch footprint dist-before` weighs another build, to compare before and after a change, and
+`--format json` gives the same numbers to a script or an agent.
+
+The beaver's pack came in under budget. She would like that noted.
 
 ---
 url: https://example.com/posts/i-know-what-i-saw/
@@ -91,6 +135,32 @@ export default async function () {
 The raccoon has never been on a plane. He has opinions about the Old Growth trail.
 
 ---
+url: https://example.com/posts/the-stump-has-a-forwarding-address/
+---
+
+# The Stump Has a Forwarding Address
+
+This entry used to be at `/posts/where-did-the-stump-go/`. I renamed it, because the stump
+didn't go anywhere: it has a forwarding address. A ranger had already pinned the old link to the
+station's notice board, and it still works. Try it: [the old address](https://example.com/posts/where-did-the-stump-go/).
+
+A post's address comes from its file name, so renaming the file moves the post. The old
+address goes in the post's front matter:
+
+```yaml
+aliases: [/posts/where-did-the-stump-go/]
+```
+
+`redirectsPlugin()` in `ssqch.config.js` gives each old address a small page that sends
+readers, and search engines, on to the new one. An old address that's another page's address
+stops the build, so a redirect never hides a post.
+
+On Netlify, `redirectsPlugin({ netlify: true })` also writes each one to `_redirects`, and
+the host answers with a real 301 before the page is even asked for.
+
+The tracks lead back to the stump. They always do.
+
+---
 url: https://example.com/posts/the-stump-has-moved/
 ---
 
@@ -138,10 +208,21 @@ url: https://example.com/tags/
 
 # Tags
 
+- [gear](https://example.com/tags/gear/index.md) (1)
 - [raccoons](https://example.com/tags/raccoons/index.md) (1)
 - [sightings](https://example.com/tags/sightings/index.md) (2)
-- [stumps](https://example.com/tags/stumps/index.md) (2)
+- [stumps](https://example.com/tags/stumps/index.md) (3)
 - [trails](https://example.com/tags/trails/index.md) (2)
+
+---
+url: https://example.com/tags/gear/
+---
+
+# Tagged gear
+
+- [Honey, I Shrunk the Site](https://example.com/posts/honey-i-shrunk-the-site/index.md) (February 12, 2026)
+
+[Every tag](https://example.com/tags/index.md)
 
 ---
 url: https://example.com/tags/raccoons/
@@ -170,6 +251,7 @@ url: https://example.com/tags/stumps/
 
 # Tagged stumps
 
+- [The Stump Has a Forwarding Address](https://example.com/posts/the-stump-has-a-forwarding-address/index.md) (February 5, 2026)
 - [The Stump Has Moved](https://example.com/posts/the-stump-has-moved/index.md) (January 15, 2026)
 - [Upon Further Review, a Stump](https://example.com/posts/upon-further-review-a-stump/index.md) (January 8, 2026)
 

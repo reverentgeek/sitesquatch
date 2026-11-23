@@ -13,7 +13,7 @@ test("init_creates_a_site_that_builds", () => {
 	const d = dir;
 	let r = ssqch(["init", d]);
 	assert.ok(r.ok, r.log);
-	for (const file of ["ssqch.config.js", "src/_includes/layout.jinja", "src/index.jinja", "src/tags.jinja", "src/tag.jinja", "src/img/stump.jpg", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/posts/raiders-of-the-lost-path.md", "src/posts/the-cache-of-the-wild.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore", "AGENTS.md", "CLAUDE.md"]) {
+	for (const file of ["ssqch.config.js", "src/_includes/layout.jinja", "src/index.jinja", "src/tags.jinja", "src/tag.jinja", "src/img/stump.jpg", "src/posts/i-know-what-i-saw.md", "src/posts/upon-further-review-a-stump.md", "src/posts/the-stump-has-moved.md", "src/posts/raiders-of-the-lost-path.md", "src/posts/the-cache-of-the-wild.md", "src/posts/the-stump-has-a-forwarding-address.md", "src/posts/honey-i-shrunk-the-site.md", "src/404.md", "src/_data/site.json", "ssqch.d.ts", "jsconfig.json", ".gitignore", "AGENTS.md", "CLAUDE.md"]) {
 		assert.ok(isFile(dir, file), `${file} wasn't created:\n${r.log}`);
 	}
 	assert.ok(r.log.includes("Camp is set up. Next: cd "), r.log);
@@ -36,7 +36,11 @@ test("init_creates_a_site_that_builds", () => {
 	// (the audit's plan, step 3), and the copies' links are checked too.
 	// DELIBERATE (0.13.5): the starter is a blog, with a page for each tag, a page of tags and a feed
 	// (the new-blog run), so it has more links.
-	assert.ok(r.log.includes("Links   172 checked, 0 broken"), r.log);
+	// DELIBERATE (0.13.7): two more posts, on redirects and footprint budgets (the 0.5 review's
+	// examples), and a redirect page for the one that moved.
+	assert.ok(r.log.includes("Links   222 checked, 0 broken"), r.log);
+	// The post that moved: its old address sends readers on, and stays out of the sitemap.
+	assert.ok(read(dir, "dist/posts/where-did-the-stump-go/index.html").includes("<meta http-equiv=\"refresh\" content=\"0; url=/posts/the-stump-has-a-forwarding-address/\">") && !read(dir, "dist/sitemap.xml").includes("where-did-the-stump-go"), r.log);
 	// The stump's photo, copied as its bytes, and made a <picture> in the post.
 	assert.ok(fs.readFileSync(path.join(dir, "src/img/stump.jpg")).subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])), "a JPEG");
 	assert.ok(read(dir, "dist/posts/upon-further-review-a-stump/index.html").includes("<picture><source type=\"image/webp\""), r.log);
@@ -96,7 +100,7 @@ test("init_starts_a_site_in_each_engine", () => {
 
 		r = ssqch(["build", "--root", d]);
 		assert.ok(r.ok, `${engine}: ${r.log}`);
-		assert.ok(r.log.includes("Links   172 checked, 0 broken") && !r.log.includes("warn"), `${engine}: ${r.log}`);
+		assert.ok(r.log.includes("Links   222 checked, 0 broken") && !r.log.includes("warn"), `${engine}: ${r.log}`);
 		assert.ok(read(dir, "dist/posts/the-cache-of-the-wild/index.html").includes("Tagged <a href=\"/tags/raccoons/\">raccoons</a>, <a href=\"/tags/trails/\">trails</a></p>") && read(dir, "dist/feed.xml").includes("<content type=\"html\">&lt;p&gt;"), `${engine}: tags and feed`);
 		const home = read(dir, "dist/index.html");
 		assert.ok(home.includes("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), `${engine}: ${home}`);

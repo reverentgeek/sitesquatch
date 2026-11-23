@@ -47,7 +47,7 @@ cd my-site
 npx ssqch serve
 ```
 
-That sets up camp (a config, a layout, a home page, five posts, a 404 page and an `AGENTS.md` for coding agents) and serves it at http://localhost:8080, reloading the page you're on when you save. `npx ssqch init my-docs --starter docs` makes a docs site with a sidebar and search instead. The [field guide](https://sitesquatch.dev/docs/field-guide/) builds one from scratch, a file at a time.
+That sets up camp (a config, a layout, a home page, seven posts, a 404 page and an `AGENTS.md` for coding agents) and serves it at http://localhost:8080, reloading the page you're on when you save. `npx ssqch init my-docs --starter docs` makes a docs site with a sidebar and search instead. The [field guide](https://sitesquatch.dev/docs/field-guide/) builds one from scratch, a file at a time.
 
 ## The documentation
 

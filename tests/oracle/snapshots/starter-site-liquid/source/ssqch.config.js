@@ -5,6 +5,7 @@ import { imagePlugin } from "ssqch/image";
 import { linksPlugin } from "ssqch/links";
 import { llmsPlugin } from "ssqch/llms";
 import { minifyPlugin } from "ssqch/minify";
+import { redirectsPlugin } from "ssqch/redirects";
 import { robotsPlugin } from "ssqch/robots";
 import { feedPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
@@ -63,6 +64,8 @@ export default defineConfig(({ env }) => ({
     imagePlugin({ formats: ["webp", "auto"], widths: [400, 800, 1200] }),
     // The feed, /feed.xml: the newest posts in Atom, each with its content and pictures.
     feedPlugin({ url }),
+    // Old addresses that still lead somewhere: a post lists its own in `aliases`.
+    redirectsPlugin(),
     // Broken internal links fail a production build.
     linksPlugin(),
     // What crawlers and agents read: sitemap.xml, robots.txt, and llms.txt with a

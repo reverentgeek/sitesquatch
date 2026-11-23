@@ -6,15 +6,18 @@
 
 ## Posts
 
+- [Honey, I Shrunk the Site](https://example.com/posts/honey-i-shrunk-the-site/index.md): What the build weighs, and a picture that got lighter on the way out.
 - [I Know What I Saw](https://example.com/posts/i-know-what-i-saw/index.md)
 - [Raiders of the Lost Path](https://example.com/posts/raiders-of-the-lost-path/index.md): An old map, a renamed heading, and the build that caught it.
 - [The Cache of the Wild](https://example.com/posts/the-cache-of-the-wild/index.md): A raccoon, the trail conditions, and a copy for when the network is down.
+- [The Stump Has a Forwarding Address](https://example.com/posts/the-stump-has-a-forwarding-address/index.md): A post that moved, and the old address that still gets you here.
 - [The Stump Has Moved](https://example.com/posts/the-stump-has-moved/index.md)
 - [Upon Further Review, a Stump](https://example.com/posts/upon-further-review-a-stump/index.md): A correction to the previous entry.
 
 ## Tags
 
 - [Tags](https://example.com/tags/index.md)
+- [Tagged gear](https://example.com/tags/gear/index.md)
 - [Tagged raccoons](https://example.com/tags/raccoons/index.md)
 - [Tagged sightings](https://example.com/tags/sightings/index.md)
 - [Tagged stumps](https://example.com/tags/stumps/index.md)

@@ -5,8 +5,60 @@
   <link href="https://example.com/feed.xml" rel="self"/>
   <link href="https://example.com/"/>
   <id>https://example.com/</id>
-  <updated>2026-01-29T00:00:00Z</updated>
+  <updated>2026-02-12T00:00:00Z</updated>
   <author><name>Field Notes</name></author>
+  <entry>
+    <title>Honey, I Shrunk the Site</title>
+    <link href="https://example.com/posts/honey-i-shrunk-the-site/"/>
+    <id>https://example.com/posts/honey-i-shrunk-the-site/</id>
+    <updated>2026-02-12T00:00:00Z</updated>
+    <summary>What the build weighs, and a picture that got lighter on the way out.</summary>
+    <content type="html">&lt;p&gt;The beaver weighs her pack before every hike, so she asked what this site weighs. After
+&lt;code&gt;ssqch build&lt;/code&gt;:&lt;/p&gt;
+&lt;pre class=&quot;highlight&quot;&gt;&lt;code class=&quot;language-sh&quot;&gt;&lt;span class=&quot;hl-function&quot;&gt;ssqch&lt;/span&gt; footprint
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;It lists the build by kind of file (pages, images, CSS, feeds), then the heaviest pages and
+files. Most of this site's weight is one picture: the stump, from
+&lt;a href=&quot;https://example.com/posts/upon-further-review-a-stump/&quot;&gt;the second entry&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;The camera's copy, &lt;code&gt;src/img/stump.jpg&lt;/code&gt;, is 47.9 KB. The build makes six copies of it, three
+widths in WebP and JPEG, 107 KB together, and the footprint weighs every one. A reader carries
+only one: the browser picks the width its screen needs, in WebP when it can read it. On a phone
+or a laptop's sharp screen that's the widest WebP, 14.7 KB, under a third of the camera's copy.
+The JPEG copies are for browsers that can't read WebP.&lt;/p&gt;
+&lt;p&gt;To hear about it when something gets heavy, give each kind of file a budget in
+&lt;code&gt;ssqch.config.js&lt;/code&gt;:&lt;/p&gt;
+&lt;pre class=&quot;highlight&quot;&gt;&lt;code class=&quot;language-js&quot;&gt;&lt;span class=&quot;hl-type&quot;&gt;budgets&lt;/span&gt;: { &lt;span class=&quot;hl-type&quot;&gt;pages&lt;/span&gt;: &lt;span class=&quot;hl-string&quot;&gt;&amp;quot;50 KB&amp;quot;&lt;/span&gt;&lt;span class=&quot;hl-operator&quot;&gt;,&lt;/span&gt; images: &lt;span class=&quot;hl-string&quot;&gt;&amp;quot;40 KB&amp;quot;&lt;/span&gt; }&lt;span class=&quot;hl-operator&quot;&gt;,&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;A file over its kind's budget is a warning after every build, saying which file and by how
+much:&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&quot;language-text&quot;&gt;warn: /img/jsuIfm9F_f-1200.jpeg (42.3 KB) is over the images budget of 40.0 KB
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;&lt;code&gt;ssqch footprint dist-before&lt;/code&gt; weighs another build, to compare before and after a change, and
+&lt;code&gt;--format json&lt;/code&gt; gives the same numbers to a script or an agent.&lt;/p&gt;
+&lt;p&gt;The beaver's pack came in under budget. She would like that noted.&lt;/p&gt;
+</content>
+  </entry>
+  <entry>
+    <title>The Stump Has a Forwarding Address</title>
+    <link href="https://example.com/posts/the-stump-has-a-forwarding-address/"/>
+    <id>https://example.com/posts/the-stump-has-a-forwarding-address/</id>
+    <updated>2026-02-05T00:00:00Z</updated>
+    <summary>A post that moved, and the old address that still gets you here.</summary>
+    <content type="html">&lt;p&gt;This entry used to be at &lt;code&gt;/posts/where-did-the-stump-go/&lt;/code&gt;. I renamed it, because the stump
+didn't go anywhere: it has a forwarding address. A ranger had already pinned the old link to the
+station's notice board, and it still works. Try it: &lt;a href=&quot;https://example.com/posts/where-did-the-stump-go/&quot;&gt;the old address&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;A post's address comes from its file name, so renaming the file moves the post. The old
+address goes in the post's front matter:&lt;/p&gt;
+&lt;pre class=&quot;highlight&quot;&gt;&lt;code class=&quot;language-yaml&quot;&gt;&lt;span class=&quot;hl-tag&quot;&gt;aliases&lt;/span&gt;: [&lt;span class=&quot;hl-string&quot;&gt;/posts/where-did-the-stump-go/&lt;/span&gt;]
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;&lt;code&gt;redirectsPlugin()&lt;/code&gt; in &lt;code&gt;ssqch.config.js&lt;/code&gt; gives each old address a small page that sends
+readers, and search engines, on to the new one. An old address that's another page's address
+stops the build, so a redirect never hides a post.&lt;/p&gt;
+&lt;p&gt;On Netlify, &lt;code&gt;redirectsPlugin({ netlify: true })&lt;/code&gt; also writes each one to &lt;code&gt;_redirects&lt;/code&gt;, and
+the host answers with a real 301 before the page is even asked for.&lt;/p&gt;
+&lt;p&gt;The tracks lead back to the stump. They always do.&lt;/p&gt;
+</content>
+  </entry>
   <entry>
     <title>The Cache of the Wild</title>
     <link href="https://example.com/posts/the-cache-of-the-wild/"/>
