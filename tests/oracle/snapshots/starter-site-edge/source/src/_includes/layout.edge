@@ -46,7 +46,7 @@
       @if(ownTags(tags).length)
         <p>Tagged
         @each(name in ownTags(tags))~
-          <a href="/tags/{{ name }}/">{{ name }}</a>{{ $loop.last ? "" : ", " }}
+          <a href="/tags/{{ slugify(name) }}/">{{ name }}</a>{{ $loop.last ? "" : ", " }}
         @end~
         </p>
       @end

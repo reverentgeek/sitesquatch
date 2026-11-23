@@ -4,6 +4,6 @@ title: Tags
 ---
 <ul>
   {% for tag in collections.tagList %}
-    <li><a href="/tags/{{ tag.name }}/">{{ tag.name }}</a> ({{ tag.posts | length }})</li>
+    <li><a href="/tags/{{ tag.name | slugify }}/">{{ tag.name }}</a> ({{ tag.posts | length }})</li>
   {% endfor %}
 </ul>

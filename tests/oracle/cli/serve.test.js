@@ -55,10 +55,10 @@ test("serve_runs_companion_processes", unixOnly, async () => {
 	} finally {
 		await quiet.stop();
 	}
-	// Not an option it knows: an error that says so.
+	// Not an option it knows: an error that says so. DELIBERATE (0.13.6): it lists `ignore` too.
 	write(dir, { "ssqch.config.js": "export default { serve: { runs: [\"x\"] } };\n" });
 	const r = ssqch(["build", "--root", dir]);
-	assert.ok(!r.ok && r.log.includes("serve: \"runs\" isn't an option (options: run)"), r.log);
+	assert.ok(!r.ok && r.log.includes("serve: \"runs\" isn't an option (options: run, ignore)"), r.log);
 });
 
 // Another build into the output folder (a production build, which cleans it and renames the
@@ -178,6 +178,43 @@ test("serve_says_when_a_linked_file_is_missing", async () => {
 	}
 });
 
+// Blog #14: Tailwind's first compile took longer than the first build's 2 s wait, and the page's
+// stylesheet was warned about as missing a moment before it turned up. DELIBERATE (0.13.6): while a
+// `serve.run` tool is still running and hasn't written it, the page hears that, and the terminal
+// says nothing; once it's written, nothing is said at all.
+test("serve_waits_for_a_slow_first_compile_before_warning", unixOnly, async () => {
+	const dir = tempDir("serve-slow-compile");
+	// A stand-in for a slow Tailwind: it writes the stylesheet only once the test says so.
+	const script = "#!/bin/sh\ncat > /dev/null &\nwhile [ ! -f \"$SSQCH_INPUT/../go\" ]; do sleep 0.1; done\nmkdir -p \"$SSQCH_OUTPUT/assets\"\necho 'body { color: pine; }' > \"$SSQCH_OUTPUT/assets/app.css\"\necho wrote app.css\nwhile true; do sleep 0.2; done\n";
+	write(dir, { "bin/slowcss": script });
+	fs.chmodSync(path.join(dir, "bin/slowcss"), 0o755);
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\" }, serve: { run: [\"./bin/slowcss --watch\"] } };\n",
+		"src/index.html": "<link rel=\"stylesheet\" href=\"/assets/app.css\"><p>camp</p>",
+	});
+	const log = path.join(tempDir("serve-slow-compile-log"), "serve.log");
+	const ready = path.join(tempDir("serve-slow-compile-ready"), "ready.json");
+	const server = start(["serve", "--port", "0", "--root", dir, "--ready-file", ready], { logFile: log });
+	try {
+		await waitFor(ready, "\"ok\": true");
+		const { port } = JSON.parse(fs.readFileSync(ready, "utf8"));
+		const ask = async () => {
+			const response = await httpGet(port, "/__ssqch/missing?path=%2Fassets%2Fapp.css");
+			try { return JSON.parse(body(response)).message ?? null; } catch (e) { throw new Error(`${e.message}: ${response}`); }
+		};
+		assert.ok(readOr(log).includes("[ssqch] serve.run's tools wrote no CSS or JavaScript in 2 s; building now, and what they write goes in when it's ready"), readOr(log));
+		assert.equal(await ask(), "/assets/app.css isn't in _site yet: serve.run's slowcss is still running and hasn't written it. The page gets it when it's written");
+		assert.ok(!readOr(log).includes("warn:"), readOr(log));
+		fs.writeFileSync(path.join(dir, "go"), "");
+		await waitFor(path.join(dir, "_site/assets/app.css"), "color: pine");
+		assert.equal(await ask(), null);
+		await waitFor(log, "Fresh tracks in ");
+		assert.ok(!readOr(log).includes("warn:"), readOr(log));
+	} finally {
+		await server.stop();
+	}
+});
+
 test("serve_reads_a_changed_config_again", async () => {
 	const dir = tempDir("serve-reload");
 	write(dir, {
@@ -277,6 +314,52 @@ test("serve_ignores_an_editors_own_files", async () => {
 	} finally {
 		await server.stop();
 	}
+});
+
+// v8 #18: saving a stylesheet only PostCSS reads rebuilt the whole site (1.6 s, 0 pages changed).
+// DELIBERATE (0.13.6): `serve.ignore` lists such files, and a change to one starts no build. A file
+// the last build read (a Sass partial) rebuilds all the same, and the server says so once.
+test("serve_skips_what_serve_ignore_lists", async () => {
+	const dir = tempDir("serve-ignore");
+	write(dir, {
+		"ssqch.config.js": "import { sassPlugin } from \"ssqch/sass\";\nexport default { dirs: { input: \"src\" }, plugins: [sassPlugin({ files: { \"src/_scss/site.scss\": \"/site.css\" } })], serve: { ignore: [\"src/_css\", \"src/_scss/**\"] } };\n",
+		"src/index.jinja": "one",
+		"src/_css/main.css": "body { color: pine; }",
+		"src/_scss/site.scss": "@use \"vars\";\nbody { color: vars.$pine; }\n",
+		"src/_scss/_vars.scss": "$pine: #233b2b;\n",
+	});
+	const log = path.join(tempDir("serve-ignore-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "_site/index.html");
+		await waitFor(page, "one");
+		// The first build's summary, so the count below is only what the edit started.
+		await waitFor(log, "Built in", 60_000);
+		// A folder named covers what's in it (and Windows reports the folder itself as well).
+		fs.writeFileSync(path.join(dir, "src/_css/main.css"), "body { color: gold; }");
+		await sleep(2000);
+		let said = readOr(log);
+		assert.equal(count(said, "Built in"), 1, said);
+		assert.ok(!said.includes("Fresh tracks"), said);
+		// A partial the build read: rebuilt, with a word about the glob, once.
+		await changeAndWait(path.join(dir, "src/_scss/_vars.scss"), "$pine: #a23e20;\n", path.join(dir, "_site/site.css"), "#a23e20");
+		await changeAndWait(path.join(dir, "src/_scss/_vars.scss"), "$pine: #e8af43;\n", path.join(dir, "_site/site.css"), "#e8af43");
+		said = readOr(log);
+		// The server names files the way the platform writes them (`src\_scss` on Windows).
+		assert.equal(count(said, `serve.ignore lists ${path.join("src", "_scss", "_vars.scss")}, but the last build read it, so a change to it rebuilds the site all the same`), 1, said);
+		// A page is still seen. (Which file the line names isn't checked: a late event from the
+		// partial's save can land in the same burst, and the line names the first.)
+		await changeAndWait(path.join(dir, "src/index.jinja"), "two", page, "two");
+	} finally {
+		await server.stop();
+	}
+	// A glob that isn't one is the config's error; so is something that isn't a glob.
+	write(dir, { "ssqch.config.js": "export default { serve: { ignore: [\"src/[css\"] } };\n" });
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("serve.ignore: invalid glob"), r.log);
+	write(dir, { "ssqch.config.js": "export default { serve: { ignore: 5 } };\n" });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("serve.ignore must be a glob or an array of globs from the project root"), r.log);
 });
 
 // A config saved after the build process loaded it and before the server's watch began (during

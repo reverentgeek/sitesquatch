@@ -39,7 +39,7 @@
       {% endif %}
       {{ content }}
       {% if ownTags(tags) | length %}
-        <p>Tagged {% for name in ownTags(tags) %}<a href="/tags/{{ name }}/">{{ name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+        <p>Tagged {% for name in ownTags(tags) %}<a href="/tags/{{ name | slugify }}/">{{ name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
       {% endif %}
     </main>
     <footer>

@@ -114,6 +114,11 @@ export class Companions {
 		return this.commands.map(toolName);
 	}
 
+	/** Whether one of them is still running. */
+	anyRunning(): boolean {
+		return this.running.some((r) => !r.exited);
+	}
+
 	/** Stop them, and what they started. Done when they're gone. */
 	async stop(): Promise<void> {
 		const all = this.running;

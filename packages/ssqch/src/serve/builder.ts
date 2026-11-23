@@ -57,6 +57,8 @@ export interface SiteInfo {
 	outputName: string;
 	base: string;
 	serveRun: string[];
+	/** `serve.ignore`: globs from the project root whose changes don't rebuild. */
+	serveIgnore: string[];
 	/** The folders (and files) to watch, absolute: the input folder first, then the config's `watch`, its themes' and its plugins'. */
 	watch: string[];
 	/** Where an error's files can be named from. */

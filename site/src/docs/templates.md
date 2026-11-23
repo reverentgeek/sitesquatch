@@ -5,7 +5,7 @@ description: "The lay of the land."
 The lay of the land:
 
 - **The data cascade:** a page's data comes from several places, and each one replaces what the ones before it set: global data, the front matter of its layouts, directory data, the page's data file, its front matter, then `computed`. [Where a value comes from](where-values-come-from.md) has the exact order, and `ssqch trace` shows it for any page.
-- **Collections:** tags become collections, sorted by date, plus your custom ones. `excludeFromCollections: true` keeps a page out. A page for each tag: the blog starter (`ssqch init`) has a `tagList` collection in its config (each tag with its posts, newest first) and `src/tag.jinja`, which paginates over it with `size: 1` and `permalink: /tags/{{ tag.name }}/`, and `src/tags.jinja` lists them all.
+- **Collections:** tags become collections, sorted by date, plus your custom ones. `excludeFromCollections: true` keeps a page out. A page for each tag: the blog starter (`ssqch init`) has a `tagList` collection in its config (each tag with its posts, newest first) and `src/tag.jinja`, which paginates over it with `size: 1` and `permalink: /tags/{{ tag.name | slugify }}/`, and `src/tags.jinja` lists them all ([Tags and tag pages](#tags-and-tag-pages) has the whole example).
 
 - **Pagination:** one template makes a page for each item, or each group of items, in a list. In its front matter, `pagination: { data: "collections.posts", size: 10, alias: "posts" }` and a `permalink` with the page number (`/blog/{% if pagination.pageNumber > 0 %}{{ pagination.pageNumber + 1 }}/{% endif %}`). `data` names the list: global data (`snacks`), a collection (`collections.posts`, a custom collection included, even one that returns plain objects, so one template can write a page per route of a route table), or `collections` itself, the collections' names, for a page per tag (`filter: [all]` leaves `all` out). `size: 1` gives a page per item, and `alias` names the item (`alias: post`, then `{{ post.data.title }}`). Each page gets `pagination.items` (its items), `pageNumber` (from 0), `pages` (every page's items), `hrefs` (every page's URL), `href.previous`, `href.next`, `href.first` and `href.last`. More options: `reverse`, `filter` (values to leave out) and `addAllPagesToCollections` (every page in the template's collections, not just the first). A `computed` value in a data file beside the template sees the alias, so each page's data can come from its item.
 - **Permalinks:** dynamic permalinks, `permalink: false` and `dynamicPermalink`. A permalink (or `computed` value) with `{{ }}` renders in the page's own template language, so a Liquid page can write `permalink: "/{{ title | slugify }}/"`; Markdown and HTML pages use their `markdownEngine` or `htmlEngine` (Edge when that's `false`).
@@ -38,3 +38,62 @@ error: 1 error(s):
 ```
 
 A Jinja filter, test or function that doesn't exist says which one you probably meant, and so does a layout, a Jinja or Nunjucks template (`include`, `extends`, `import`) or an Edge include that isn't there (``layout `bse` not found: no sightings in src/_includes (did you mean `base`?)``). One that leads back to itself names the loop instead of running out of patience: `we've passed this tree before. Layout loop: base.edge -> wrap.edge -> base.edge`.
+
+## Tags and tag pages
+
+A post's `tags` (`tags: [sightings, trails]` in its front matter, or in a directory data file such as `src/posts/posts.json`, which gives every post the `posts` tag) put it in a collection for each tag: `collections.sightings` is every page tagged `sightings`, oldest first. The blog starter (`ssqch init`) builds a page for each tag and one that lists them all from three pieces, ready to copy.
+
+**The list of tags,** a collection in `ssqch.config.js`: each tag on a post, with its posts newest first, sorted by name. `posts` is left out, since every post has it.
+
+```js
+collections: {
+  tagList: (pages) => {
+    const tags = new Map();
+    for (const post of [...pages.byTag("posts")].reverse()) {
+      for (const name of post.data.tags) if (name !== "posts") tags.set(name, [...(tags.get(name) ?? []), post]);
+    }
+    return [...tags.keys()].sort().map((name) => ({ name, posts: tags.get(name) }));
+  },
+},
+```
+
+**A page for each tag,** `src/tag.jinja`: pagination over that list with `size: 1` writes one page per tag, `alias: tag` names the one a page is for, and the permalink and title come from it.
+
+```jinja
+---
+layout: layout.jinja
+pagination:
+  data: collections.tagList
+  size: 1
+  alias: tag
+permalink: /tags/{{ tag.name | slugify }}/
+computed:
+  title: "Tagged {{ tag.name }}"
+---
+<ul>
+  {% for post in tag.posts %}
+    <li><a href="{{ post.url }}">{{ post.data.title }}</a></li>
+  {% endfor %}
+</ul>
+```
+
+**Every tag,** `src/tags.jinja`, at `/tags/`:
+
+```jinja
+---
+layout: layout.jinja
+title: Tags
+---
+<ul>
+  {% for tag in collections.tagList %}
+    <li><a href="/tags/{{ tag.name | slugify }}/">{{ tag.name }}</a> ({{ tag.posts | length }})</li>
+  {% endfor %}
+</ul>
+```
+
+A post links its own tags the same way. The starter's layout has `ownTags(tags)`, a function in its config that leaves out `posts`: `{% for name in ownTags(tags) %}<a href="/tags/{{ name | slugify }}/">{{ name }}</a>{% endfor %}`. With `slugify` in every URL, a tag with spaces or capitals (`Old Growth`) gets a clean address (`/tags/old-growth/`). Use it in all three places (the permalink, `tags.jinja` and the layout): a link without it fails the production build's link check with `/tags/Old Growth/ (not found; did you mean /tags/old-growth/?)`. Two tags that slugify alike (`Old Growth` and `old-growth`) would write the same page, which fails the build with `output conflicts` and `tag.jinja makes 2 pages that write to .../tags/old-growth/index.html`. The sitemap lists every tag page (`exclude: ["/tags/**"]` leaves them out).
+
+> [!NOTE]
+> **Not released yet.** This ships with the next version of ssqch. Until then, the starter's tag URLs don't use `slugify`, so add it in all three places yourself.
+
+Without a config collection, pagination over `collections` itself makes a page per tag too: `pagination: { data: "collections", size: 1, alias: "tag", filter: ["all", "posts"] }`, then `collections[tag]` for its pages, oldest first. `collections` has the config's own collections in it as well (the starter's `newestPosts` and `tagList`), so add those to `filter`. The `tagList` collection above is what gives newest first and the counts, in one place.

@@ -39,7 +39,7 @@
       <%_ } _%>
       <%- content %>
       <%_ const own = ownTags(locals.tags); if (own.length) { _%>
-        <p>Tagged <% own.forEach((name, i) => { %><a href="/tags/<%= name %>/"><%= name %></a><%= i < own.length - 1 ? ", " : "" %><% }) %></p>
+        <p>Tagged <% own.forEach((name, i) => { %><a href="/tags/<%= slugify(name) %>/"><%= name %></a><%= i < own.length - 1 ? ", " : "" %><% }) %></p>
       <%_ } _%>
     </main>
     <footer>

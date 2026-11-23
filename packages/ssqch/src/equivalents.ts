@@ -84,6 +84,7 @@ export const TABLE: readonly Equivalent[] = [
 	{ word: "addTransform", kind: "config", alias: false, from: ["Eleventy"], ssqch: "transforms", say: "In ssqch it's `transforms`: transforms: { tidy: (content, page) => content }.", more: "ssqch docs transforms" },
 	{ word: "addGlobalData", kind: "config", alias: false, from: ["Eleventy"], ssqch: "data", say: "In ssqch it's `data`: data: { buildTime: () => new Date() }.", more: "ssqch docs data" },
 	{ word: "addWatchTarget", kind: "config", alias: false, from: ["Eleventy"], ssqch: "watch", say: "In ssqch it's `watch`: watch: [\"src/assets/\"].", more: "ssqch docs watch" },
+	{ word: "watchIgnores", kind: "config", alias: false, from: ["Eleventy"], ssqch: "serve.ignore", say: "In ssqch it's `serve.ignore`: serve: { ignore: [\"src/_css/**\"] }.", more: "ssqch docs serve.ignore" },
 	{ word: "addPlugin", kind: "config", alias: false, from: ["Eleventy"], ssqch: "plugins", say: "In ssqch it's `plugins`: plugins: [rssPlugin()].", more: "ssqch docs plugins" },
 	{ word: "setTemplateFormats", kind: "config", alias: false, from: ["Eleventy"], ssqch: "templateFormats", say: "In ssqch it's `templateFormats`: templateFormats: [\"njk\", \"md\"].", more: "ssqch docs templateFormats" },
 	// Front-matter keys that can't be a site's own.

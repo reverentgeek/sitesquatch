@@ -4,6 +4,6 @@ title: Tags
 ---
 <ul>
   <%_ for (const tag of collections.tagList) { _%>
-    <li><a href="/tags/<%= tag.name %>/"><%= tag.name %></a> (<%= tag.posts.length %>)</li>
+    <li><a href="/tags/<%= slugify(tag.name) %>/"><%= tag.name %></a> (<%= tag.posts.length %>)</li>
   <%_ } _%>
 </ul>

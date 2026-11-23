@@ -9,6 +9,42 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Added
+- `serve: { ignore: ["src/_css/**"] }` lists files only a `serve.run` tool reads, so saving one
+  doesn't rebuild the site (globs from the project root, and a folder covers what's in it; `ignore =
+  [...]` under `[serve]` in `sitesquatch.toml`). Saving a stylesheet only PostCSS read rebuilt all
+  of v8.dev for nothing (1.6 s, 0 pages changed). The tool's output still reaches the browser. The
+  config, its modules and a file the last build read (a Sass partial) rebuild all the same, and for
+  the last the server says once that the glob matches a file the build reads. Eleventy's
+  `watchIgnores` says ssqch's name.
+- "Tags and tag pages" in "Templates and data" is the blog starter's tag pages as a worked example:
+  the `tagList` collection, a page for each tag, the page that lists them, and what happens with a
+  tag that has a space in it. `ssqch docs tags` answers with it.
+
+### Changed
+- `ssqch serve` doesn't warn about a stylesheet or script a page links while a `serve.run` tool is
+  still running and hasn't written it, for 30 seconds from the tool's start: the page's note says it
+  hasn't written it yet, and the warning comes only if the file still isn't there after that, or
+  once none of the tools is running. Tailwind's first compile on the blog took longer than the 2 s
+  the first build waits, and the page's stylesheet was warned about as missing a moment before it
+  turned up (blog #14). The line the first build prints when the tools haven't written yet says what
+  happens next: `serve.run's tools wrote no CSS or JavaScript in 2 s; building now, and what they
+  write goes in when it's ready`.
+- The blog starter (`ssqch init`) puts its tag pages' addresses through `slugify` (`/tags/{{
+  tag.name | slugify }}/`, in its tag page, its list of tags and its layout, in each of its template
+  languages), so a tag with a space or a capital (`Old Growth`) gets `/tags/old-growth/` and its
+  links work. Before, the first such tag failed the production build's link check. The starter's own
+  tags are one lowercase word, so its output doesn't change.
+- An unknown `serve` option's error lists `ignore` among the options: `serve: "runs" isn't an option
+  (options: run, ignore)`.
+
+### Fixed
+- The configuring page's table of options, on sitesquatch.dev and in `ssqch docs`, has `timeZone`,
+  `urls`, `layoutAliases` and `plugins` in it again: a blank line the 0.13.5 release left split it,
+  and those four rows showed as a line of text.
+
 ## 0.13.5 - 2026-11-23
 
 ### Added

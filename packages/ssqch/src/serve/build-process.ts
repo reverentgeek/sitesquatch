@@ -35,6 +35,7 @@ function siteInfo(config: Config): SiteInfo {
 		outputName: isInside(dirs.root, dirs.output) ? relative(dirs.root, dirs.output) : slashes(dirs.output),
 		base: config.base,
 		serveRun: config.serveRun,
+		serveIgnore: config.serveIgnore,
 		watch: [dirs.input, ...config.watch.map((target) => path.resolve(dirs.root, target))],
 		locate: locatorDirs(config),
 	};
