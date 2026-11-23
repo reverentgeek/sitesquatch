@@ -167,3 +167,40 @@ test("init_rejects_an_unknown_engine", () => {
 	assert.ok(r.log.includes("--engine pug: not a starter engine (use jinja, njk, edge, liquid, hbs, ejs)"), r.log);
 	assert.ok(!fs.existsSync(dir));
 });
+
+// Both new-site runs (2026-11-22): `npm init -y` on npm 12 writes `"type": "commonjs"`, and every
+// command then warned `Failed to load the ES module ... ssqch.config.js`. DELIBERATE (0.13.5):
+// init sets `"type": "module"` and adds `build` and `serve` scripts; a project with JavaScript of
+// its own keeps its type and gets `ssqch.config.mjs`. No package.json, none written.
+test("init_makes_package_json_ready", () => {
+	const npmInit = "{\n  \"name\": \"camp\",\n  \"version\": \"1.0.0\",\n  \"main\": \"index.js\",\n  \"scripts\": {\n    \"test\": \"echo \\\"Error: no test specified\\\" && exit 1\"\n  },\n  \"type\": \"commonjs\"\n}\n";
+	let dir = tempDir("init-package");
+	write(dir, { "package.json": npmInit });
+	let r = ssqch(["init", dir]);
+	assert.ok(r.ok && r.stdout.includes("  updated package.json: \"type\": \"module\" and the build and serve scripts\n"), r.log);
+	const pkg = JSON.parse(read(dir, "package.json"));
+	assert.equal(pkg.type, "module");
+	assert.deepEqual(pkg.scripts, { test: "echo \"Error: no test specified\" && exit 1", build: "ssqch build", serve: "ssqch serve" });
+	assert.ok(read(dir, "package.json").startsWith("{\n  \"name\": \"camp\",") && read(dir, "package.json").endsWith("}\n"));
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && !r.log.includes("Failed to load the ES module"), r.log);
+	// Again: nothing to change.
+	r = ssqch(["init", dir]);
+	assert.ok(r.ok && !r.stdout.includes("package.json") && r.stdout.includes("Nothing to do"), r.log);
+
+	// A project with CommonJS of its own keeps its type, and the config is a .mjs.
+	dir = tempDir("init-package-cjs");
+	write(dir, { "package.json": npmInit, "lib/server.js": "module.exports = 1;\n" });
+	r = ssqch(["init", dir]);
+	assert.ok(r.ok && r.stdout.includes("  created ssqch.config.mjs\n") && !exists(dir, "ssqch.config.js"), r.log);
+	assert.equal(JSON.parse(read(dir, "package.json")).type, "commonjs");
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && !r.log.includes("Failed to load the ES module"), r.log);
+	r = ssqch(["init", dir]);
+	assert.ok(r.stdout.includes("  kept    ssqch.config.mjs (already there)\n") && !exists(dir, "ssqch.config.js"), r.log);
+
+	// No package.json: none is written.
+	dir = fresh("init-no-package");
+	assert.ok(ssqch(["init", dir]).ok);
+	assert.ok(!exists(dir, "package.json"));
+});
