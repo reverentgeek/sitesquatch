@@ -51,10 +51,17 @@ Publish `dist-preview`. Their lines have the base in them already (`redirectsPlu
 ssqch doesn't build a search index itself; [Pagefind](https://pagefind.app) does it well and runs after the build. Add it as a command, with its version pinned so every build gets the same one (`npx` comes with Node; or `npm install --save-dev pagefind` and run `pagefind`):
 
 ```js
+import fs from "node:fs";
+
 export default defineConfig(({ env }) => ({
-  afterBuild: env === "production" ? [{ run: "npx -y pagefind@1.6.0 --site dist" }] : [],
+  afterBuild: env === "production" ? [
+    ({ dirs }) => fs.rmSync(`${dirs.output}pagefind`, { recursive: true, force: true }),
+    { run: "npx -y pagefind@1.6.0 --site dist" },
+  ] : [],
 }));
 ```
+
+The first hook empties the last index: Pagefind names its files by their contents and never deletes any, and `leaveNoTrace` leaves another tool's files alone, so without it every build's index stays in `dist/pagefind/` beside the new one, and a fresh copy of the site builds something else (The North Fake study's fresh copy had six such files). A function and not `rm -rf`, so it works on Windows too.
 
 Then Pagefind's Component UI in your layout: its stylesheet and script, and a search button with its dialog (Ctrl+K or Cmd+K opens it too). Mark the part of each page to index with `data-pagefind-body` (the `<main>`), or Pagefind indexes everything, navigation included:
 

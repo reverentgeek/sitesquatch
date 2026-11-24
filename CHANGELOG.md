@@ -13,6 +13,16 @@ where that version matches.
 
 ### Fixed
 
+- The docs starter's search, the deploy guide's Pagefind recipe and two examples empty
+  `dist/pagefind/` before Pagefind runs: it names its files by their contents and deletes none, so
+  every build's index stayed beside the new one, and a fresh copy of a site built something else
+  (The North Fake study). A site from the docs starter can add the same first hook:
+  ``({ dirs }) => fs.rmSync(`${dirs.output}pagefind`, { recursive: true, force: true })``.
+- `ssqch scout --format json` prints `{ "ok": false, "error": "..." }` when it can't scout, where it
+  printed nothing on standard output (the message is still on standard error, and it exits 1).
+- `ssqch trace` prints a date written without a time as that day, as its data rows and ssqch's
+  other printers do: under `timeZone` its date row said `2025-01-31T05:00:00Z` and the page's
+  `date` field `2025-01-31T00:00:00.000Z`.
 - `ssqch serve` rebuilds when a file the site's code read with `readData()`, `files()` or `image()`
   changes outside the input folder (`readData("data/snacks.yml")` with `input: "src"`), and when
   `mkdocs.yml` or a Markdown grammar file changes: nothing watched them, so the page stayed as it
@@ -25,8 +35,22 @@ where that version matches.
   cells.
 - The Hexo trailhead said `absoluteUrl` comes from `rssPlugin()`; it's on every site since 0.15.0.
 
+### Changed
+
+- A broken link that fails a build says whose check it was: `error: after_build hook failed:
+  linksPlugin: the trail goes cold on 1 broken link:` ("after_build hook failed" alone sent The
+  North Fake study looking for a hook of its own). The JSON's code is `links`, as it was.
+
 ### Added
 
+- Docs, from The North Fake study: a spreadsheet's export (CSV) in a data file, with each row
+  checked and named, and the searchable-directory example for a catalog (`ssqch docs csv`
+  answered with the benchmarks); rebuilding on a schedule on Netlify and Cloudflare; what a
+  failed `fetch` with no saved copy means for a deploy; `defaultAttributes`' default
+  (`loading="lazy"` on every image unless it has its own); that `shortDoctype` writes a lowercase
+  doctype; that `ssqch serve` builds into the output folder a production build used; what
+  `dateFallback: "git"` does outside a repository; and what the multilingual fallback pages cost
+  a catalog, with the cheaper choice.
 - Docs: the first build after a release that renames encoded images (0.15.0 renamed every one)
   encodes them all again, as with an empty cache: the blog's first build on 0.15.0 took 5 minutes
   on Netlify, where it usually takes 37 seconds. In `imagePlugin()`'s entry and the Netlify

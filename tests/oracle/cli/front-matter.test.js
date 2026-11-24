@@ -69,5 +69,10 @@ test("a_date_without_a_time_is_that_day_in_every_zone", () => {
 		assert.equal(read(dir, "dist/j/index.html"), "11/2 2026-11-02 2026-11-02T00:00:00.000Z 2", zone);
 		assert.equal(read(dir, "dist/l/index.html"), "2026-11-02 2026-11-02 00:00:00 +0000\n", zone);
 		assert.ok(read(dir, "dist/sitemap.xml").includes("<lastmod>2026-11-02</lastmod>"), zone);
+		// `trace` too, in its date row and its data rows alike (it said 2026-11-02T08:00:00Z for the
+		// page and 2026-11-02T00:00:00.000Z for its `date` field, The North Fake study's B2).
+		const traced = ssqch(["trace", "/j/", "--root", dir]);
+		assert.match(traced.stdout, /Date +2026-11-02T00:00:00Z \(from front matter\)/, traced.log);
+		assert.ok(!traced.stdout.includes("2026-11-02T08:") && !traced.stdout.includes("2026-11-01T15:"), traced.log);
 	}
 });

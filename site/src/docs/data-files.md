@@ -53,3 +53,23 @@ export default readData("data/albums.json").map((album) => ({ ...album, slug: sl
 ```
 
 - `slugger({ separator })`: a function that slugifies like `slugify(text, { separator })` and counts what it has made: the first `Misc Pictures` is `misc-pictures`, the next `misc-pictures-1`, then `misc-pictures-2`, skipping a number another title already took. Each `slugger()` counts on its own, so make one per list. In the template, `permalink: "photos/{{ album.slug }}/"` and the index page's `<a href="/photos/{{ album.slug }}/">` agree. `slugify(text, { separator })` from `ssqch` is the template filter, for data files.
+
+**A spreadsheet's export (CSV):** `readData()` reads JSON, YAML and TOML, not CSV, so a data file parses it with a package from npm (`npm install csv-parse`), and checks each row as it goes, so a wrong row stops the build with the spreadsheet's row and column. Content schemas check pages, not rows, and can't see a value used twice in a column, so a check like that is a line in the data file too. The file is outside the input folder, so `watch: ["inventory.csv"]` in the config makes `ssqch serve` rebuild when it changes:
+
+```js
+// src/_data/products.js
+import { readFileSync } from "node:fs";
+import { parse } from "csv-parse/sync";
+
+export default function () {
+  const rows = parse(readFileSync("inventory.csv"), { columns: true, bom: true, skip_empty_lines: true, info: true });
+  return rows.map(({ record, info }) => {
+    // The spreadsheet's row: the header is row 1.
+    const row = info.records + 1;
+    if (!record.Price) throw new Error(`inventory.csv row ${row}, column "Price": empty`);
+    return { name: record.Name, sku: record.SKU, price: Number(record.Price) };
+  });
+}
+```
+
+A missing price stops the build there: `error: src/_data/products.js: inventory.csv row 3, column "Price": empty`. A page for each product is `pagination: { data: products, size: 1, alias: product }`. The [searchable-directory example](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/searchable-directory) is a catalog's shape end to end: a page for each record, a list with numbered pages, filters in the browser, and Pagefind.

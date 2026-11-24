@@ -15,7 +15,7 @@ after a production build. A link to a page that isn't there, or to a heading tha
 fails the build and says where:
 
 ```text
-error: after_build hook failed: the trail goes cold on 1 broken link:
+error: after_build hook failed: linksPlugin: the trail goes cold on 1 broken link:
   /posts/i-know-what-i-saw/ -> /posts/the-stump-has-moved/#the-tracks (no id "the-tracks" on that page)
 ```
 

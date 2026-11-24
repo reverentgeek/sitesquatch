@@ -212,7 +212,11 @@ export async function runScout(dir: string, options: ScoutOptions): Promise<numb
 		else process.stdout.write(scoutText(report, options));
 		return 0;
 	} catch (e) {
-		process.stderr.write(`${red("error:")} ${e instanceof Error ? e.message : String(e)}\n`);
+		const message = e instanceof Error ? e.message : String(e);
+		// A script that asked for JSON gets JSON either way (The North Fake study, B1: nothing on
+		// standard output, where `build --format json` reports a failure in its JSON).
+		if (options.format === "json") process.stdout.write(`${JSON.stringify({ ok: false, error: message }, null, 2)}\n`);
+		process.stderr.write(`${red("error:")} ${message}\n`);
 		return 1;
 	}
 }

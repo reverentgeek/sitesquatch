@@ -15,7 +15,7 @@ import { tracePages } from "./build.ts";
 import type { TracedPage } from "./build.ts";
 import type { Config, Dirs } from "./config.ts";
 import type { Data } from "./data.ts";
-import { getPath } from "./data.ts";
+import { getPath, shownAsUtc } from "./data.ts";
 import { bail } from "./diagnostics.ts";
 import { comparePaths, compareText, realPath, shown } from "./paths.ts";
 import { charCount, firstChars, jsString, padEnd, prettyJson, quoted, toJsonValue } from "./quote.ts";
@@ -140,7 +140,10 @@ export async function trace(config: Config, target: string): Promise<Trace> {
 		outputPath: page.output === null ? null : shown(dirs.root, page.output),
 		engines: page.engines,
 		layouts: page.layouts,
-		date: page.date.toISOString().replace(/\.\d{3}Z$/, "Z"),
+		// A date written without a time as the day written, as ssqch's other printers show it: under
+		// `timeZone` it's midnight there, and the data rows below said one time and this another
+		// (The North Fake study, B2).
+		date: shownAsUtc(page.date).toISOString().replace(/\.\d{3}Z$/, "Z"),
 		dateFrom,
 		lastModified: modified instanceof Date && page.lastModifiedFrom !== undefined ? { value: modified.toISOString().replace(/\.\d{3}Z$/, "Z"), from: page.lastModifiedFrom } : undefined,
 		collections,

@@ -660,7 +660,9 @@ BUILTINS.set("ssqch/links", (config: Config, given) => {
 			const message = describe(result.broken, config.verbose ? Infinity : 20);
 			// One for each link, for `ssqch build --format json`.
 			const each = (severity: "error" | "warning"): Diagnostic[] => result.broken.map((b) => ({ ...(severity === "error" ? error : warning)("links", `${b.page} -> ${b.link} (${b.reason})`), url: b.page }));
-			if (fail) throw new Diagnostics(message, each("error"));
+			// Named for the plugin after the hook's words: "after_build hook failed" alone sent The North
+			// Fake study looking for a hook of its own (E6). The JSON's code is `links` either way.
+			if (fail) throw new Diagnostics(`linksPlugin: ${message}`, each("error"));
 			if (isCapturing()) each("warning").forEach(warn);
 			else if (!config.quiet) warn(warning("links", message));
 		},

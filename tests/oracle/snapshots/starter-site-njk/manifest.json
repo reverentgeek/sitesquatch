@@ -1,5 +1,5 @@
 {
-  "version": "0.14.2",
+  "version": "0.15.0",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -9,7 +9,7 @@
     "pages": {
       "written": 15,
       "templates": 11,
-      "bytes": 48736,
+      "bytes": 48749,
       "new": null,
       "gone": null
     },

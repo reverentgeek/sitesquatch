@@ -93,6 +93,10 @@ Only cache a folder forever when everything in it is named by its contents: a st
 
 Netlify Forms work on a page ssqch built as on any static page: when it deploys, Netlify reads the HTML for a `<form>` with a `name` and `data-netlify="true"`, and takes its submissions. Write the form as Netlify's docs describe it (a form sent with JavaScript also needs a hidden `<input type="hidden" name="form-name" value="contact">`); ssqch changes none of it, and `minifyPlugin()` keeps `data-netlify`, `netlify-honeypot` and hidden inputs as written. Since Netlify finds forms at deploy, try one on a deploy preview: `ssqch serve` has no server behind a form's `action`. It answers a form's `POST` with the page at the `action`'s address, as it answers a `GET`, so a form whose `action` is its thank-you page (`action="/thanks/"`) clicks through locally, though nothing is kept.
 
+## Rebuilding on a schedule
+
+A page made from an outside answer (stock from an API, a `fetch` in a data file) or from the build's day ("new this week") is only as fresh as the last build. Netlify builds when it's asked to: make a build hook in the site's build settings, which gives a URL that starts a build when it's sent a `POST`, and call it on a schedule, from a GitHub Actions workflow with `on: { schedule: [{ cron: "15 5 * * *" }] }` and a step that runs `curl -X POST -d '{}' "$BUILD_HOOK"` (the URL in a repository secret), or from a Netlify scheduled function. With `netlify-plugin-cache` keeping `.cache/ssqch` (above), a scheduled build encodes no picture twice, and a `fetch` with a `cache` has its last answer when the API is down; a build that fails leaves the last deploy serving.
+
 ## Deploy previews and branch deploys
 
 Netlify builds every pull request as a deploy preview, and any branch you turn on as a branch deploy, with the same `[build]` command, so a preview is the production build of that branch at its own address. The build can tell which it is from the `CONTEXT` variable Netlify sets (`production`, `deploy-preview` or `branch-deploy`), and `DEPLOY_PRIME_URL` is the preview's address:
