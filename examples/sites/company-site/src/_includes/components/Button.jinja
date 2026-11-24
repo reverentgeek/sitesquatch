@@ -1,0 +1,3 @@
+{#- <Button href="/x/" variant="primary|secondary|inverse" label="...">Label</Button> -#}
+{%- set p = component.props -%}
+<a href="{{ p.href }}" class="button{% if p.variant %} button-{{ p.variant }}{% endif %}"{% if p.label %} aria-label="{{ p.label }}"{% endif %}>{{ component.content | safe }}</a>

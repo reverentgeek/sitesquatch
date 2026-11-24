@@ -1,0 +1,11 @@
+---
+layout: layout.jinja
+---
+<article class="wrap narrow page-top">
+	<p><a href="/careers/">All openings</a></p>
+	<h1>{{ title }}</h1>
+	<p class="muted">{{ team }} · {{ type }} · {{ location }} · posted <time datetime="{{ page.date | dateformat('%Y-%m-%d') }}">{{ page.date | dateformat('%B %-d, %Y') }}</time></p>
+	<img src="{{ picture }}" alt="{{ pictureAlt }}" sizes="(min-width: 48rem) 48rem, 100vw" class="wide">
+	<div class="prose">{{ content }}</div>
+	<p><Button href="mailto:jobs@squatchsnacks.example?subject={{ title | urlencode }}" label="Apply to be our {{ title }}">Apply</Button></p>
+</article>

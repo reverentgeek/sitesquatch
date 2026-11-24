@@ -1,0 +1,388 @@
+{
+  "version": "0.14.2",
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 21,
+      "templates": 16,
+      "bytes": 127037,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 1,
+      "unchanged": 0,
+      "bytes": 4409
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "404.html",
+      "_headers",
+      "_redirects",
+      "about/index.html",
+      "about/index.md",
+      "careers/index.html",
+      "careers/index.md",
+      "careers/jobs/fulfillment-lead/index.html",
+      "careers/jobs/fulfillment-lead/index.md",
+      "careers/jobs/snack-scientist/index.html",
+      "careers/jobs/snack-scientist/index.md",
+      "careers/jobs/trail-ambassador/index.html",
+      "careers/jobs/trail-ambassador/index.md",
+      "contact/index.html",
+      "contact/index.md",
+      "index.html",
+      "index.md",
+      "llms-full.txt",
+      "llms.txt",
+      "pricing/index.html",
+      "pricing/index.md",
+      "privacy/index.html",
+      "privacy/index.md",
+      "provisions/bigfoot-jerky/index.html",
+      "provisions/bigfoot-jerky/index.md",
+      "provisions/huckleberry-hustle/index.html",
+      "provisions/huckleberry-hustle/index.md",
+      "provisions/index.html",
+      "provisions/index.md",
+      "provisions/moss-mix/index.html",
+      "provisions/moss-mix/index.md",
+      "provisions/pine-cone-crunch/index.html",
+      "provisions/pine-cone-crunch/index.md",
+      "provisions/summit-smores/index.html",
+      "provisions/summit-smores/index.md",
+      "provisions/trailhead-toffee/index.html",
+      "provisions/trailhead-toffee/index.md",
+      "robots.txt",
+      "sitemap.xml",
+      "terms/index.html",
+      "terms/index.md",
+      "thanks/index.html"
+    ],
+    "summary": [
+      {
+        "label": "Elements",
+        "value": "1 defined, 1 used on 1 page"
+      },
+      {
+        "label": "Images",
+        "value": "83 files from 13 sources, <size>: 83 encoded, 0 reused"
+      },
+      {
+        "label": "Assets",
+        "value": "3 fingerprinted (site.037c4992.css, price-toggle.1e5c8c95.js, price-toggle.e1641879.css)"
+      },
+      {
+        "label": "Links",
+        "value": "974 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages     21 written from 16 templates, 127 KB\n  Copied    1 file, 4.41 KB\n  Elements  1 defined, 1 used on 1 page\n  Images    83 files from 13 sources, <size>: 83 encoded, 0 reused\n  Assets    3 fingerprinted (site.037c4992.css, price-toggle.1e5c8c95.js, price-toggle.e1641879.css)\n  Links     974 checked, 0 broken\n  Output    dist: 129 files, <size>\n",
+  "files": {
+    "404.html": "text",
+    "_headers": "text",
+    "_redirects": "text",
+    "about/index.html": "text",
+    "about/index.md": "text",
+    "assets/site.037c4992.css": "text",
+    "careers/index.html": "text",
+    "careers/index.md": "text",
+    "careers/jobs/fulfillment-lead/index.html": "text",
+    "careers/jobs/fulfillment-lead/index.md": "text",
+    "careers/jobs/snack-scientist/index.html": "text",
+    "careers/jobs/snack-scientist/index.md": "text",
+    "careers/jobs/trail-ambassador/index.html": "text",
+    "careers/jobs/trail-ambassador/index.md": "text",
+    "contact/index.html": "text",
+    "contact/index.md": "text",
+    "elements/price-toggle.1e5c8c95.js": "text",
+    "elements/price-toggle.e1641879.css": "text",
+    "favicon.svg": "text",
+    "img/1XfOgqUT-h-400.webp": {
+      "image": "webp 400x400"
+    },
+    "img/1XfOgqUT-h-800.webp": {
+      "image": "webp 800x800"
+    },
+    "img/5NjH9Nd70A-400.webp": {
+      "image": "webp 400x400"
+    },
+    "img/5NjH9Nd70A-800.webp": {
+      "image": "webp 800x800"
+    },
+    "img/6Mz-BGE8vU-400.avif": {
+      "image": "avif 400x225"
+    },
+    "img/6Mz-BGE8vU-800.avif": {
+      "image": "avif 800x450"
+    },
+    "img/6OdOijvxjA-400.avif": {
+      "image": "avif 400x400"
+    },
+    "img/6OdOijvxjA-800.avif": {
+      "image": "avif 800x800"
+    },
+    "img/7FmpfcLMRB-1600.avif": {
+      "image": "avif 1600x733"
+    },
+    "img/7FmpfcLMRB-400.avif": {
+      "image": "avif 400x183"
+    },
+    "img/7FmpfcLMRB-800.avif": {
+      "image": "avif 800x366"
+    },
+    "img/8fNY-iV1zI-400.webp": {
+      "image": "webp 400x225"
+    },
+    "img/8fNY-iV1zI-800.webp": {
+      "image": "webp 800x450"
+    },
+    "img/9L2njcUML4-400.webp": {
+      "image": "webp 400x400"
+    },
+    "img/9L2njcUML4-800.webp": {
+      "image": "webp 800x800"
+    },
+    "img/AJS21RLVkn-1200.webp": {
+      "image": "webp 1200x675"
+    },
+    "img/AJS21RLVkn-400.webp": {
+      "image": "webp 400x225"
+    },
+    "img/AJS21RLVkn-800.webp": {
+      "image": "webp 800x450"
+    },
+    "img/DKXbjxh243-400.jpeg": {
+      "image": "jpeg 400x225"
+    },
+    "img/DKXbjxh243-800.jpeg": {
+      "image": "jpeg 800x450"
+    },
+    "img/EEFFqDefsW-400.webp": {
+      "image": "webp 400x400"
+    },
+    "img/EEFFqDefsW-800.webp": {
+      "image": "webp 800x800"
+    },
+    "img/FKpQccFmyi-1600.webp": {
+      "image": "webp 1600x733"
+    },
+    "img/FKpQccFmyi-400.webp": {
+      "image": "webp 400x183"
+    },
+    "img/FKpQccFmyi-800.webp": {
+      "image": "webp 800x366"
+    },
+    "img/HBee2iM_yS-1200.jpeg": {
+      "image": "jpeg 1200x675"
+    },
+    "img/HBee2iM_yS-400.jpeg": {
+      "image": "jpeg 400x225"
+    },
+    "img/HBee2iM_yS-800.jpeg": {
+      "image": "jpeg 800x450"
+    },
+    "img/J3cJhw-bOZ-400.avif": {
+      "image": "avif 400x225"
+    },
+    "img/J3cJhw-bOZ-800.avif": {
+      "image": "avif 800x450"
+    },
+    "img/KnIu-FdGjj-400.jpeg": {
+      "image": "jpeg 400x400"
+    },
+    "img/KnIu-FdGjj-800.jpeg": {
+      "image": "jpeg 800x800"
+    },
+    "img/Lu8zh-Vegv-36.webp": {
+      "image": "webp 36x36"
+    },
+    "img/NwurpDEq8c-300.jpeg": {
+      "image": "jpeg 300x433"
+    },
+    "img/NwurpDEq8c-600.jpeg": {
+      "image": "jpeg 600x867"
+    },
+    "img/OWHXewAxPA-400.jpeg": {
+      "image": "jpeg 400x400"
+    },
+    "img/OWHXewAxPA-800.jpeg": {
+      "image": "jpeg 800x800"
+    },
+    "img/QgJCuUH8Ym-400.jpeg": {
+      "image": "jpeg 400x225"
+    },
+    "img/QgJCuUH8Ym-800.jpeg": {
+      "image": "jpeg 800x450"
+    },
+    "img/TExfrBfRkF-400.avif": {
+      "image": "avif 400x225"
+    },
+    "img/TExfrBfRkF-800.avif": {
+      "image": "avif 800x450"
+    },
+    "img/TVAOZ__n44-1200.avif": {
+      "image": "avif 1200x675"
+    },
+    "img/TVAOZ__n44-400.avif": {
+      "image": "avif 400x225"
+    },
+    "img/TVAOZ__n44-800.avif": {
+      "image": "avif 800x450"
+    },
+    "img/TwW_5Qpiu2-144.png": {
+      "image": "png 144x144"
+    },
+    "img/TwW_5Qpiu2-36.png": {
+      "image": "png 36x36"
+    },
+    "img/_atDewfNCl-400.jpeg": {
+      "image": "jpeg 400x400"
+    },
+    "img/_atDewfNCl-800.jpeg": {
+      "image": "jpeg 800x800"
+    },
+    "img/aKmuOihscD-1200.jpeg": {
+      "image": "jpeg 1200x549"
+    },
+    "img/aKmuOihscD-1600.jpeg": {
+      "image": "jpeg 1600x733"
+    },
+    "img/aKmuOihscD-400.jpeg": {
+      "image": "jpeg 400x183"
+    },
+    "img/aKmuOihscD-800.jpeg": {
+      "image": "jpeg 800x366"
+    },
+    "img/adg6uXnwQC-400.webp": {
+      "image": "webp 400x225"
+    },
+    "img/adg6uXnwQC-800.webp": {
+      "image": "webp 800x450"
+    },
+    "img/bohUtohsoJ-400.avif": {
+      "image": "avif 400x400"
+    },
+    "img/bohUtohsoJ-800.avif": {
+      "image": "avif 800x800"
+    },
+    "img/g1uxKkcbY9-36.avif": {
+      "image": "avif 36x36"
+    },
+    "img/g3YuEzDhpg-300.avif": {
+      "image": "avif 300x433"
+    },
+    "img/g3YuEzDhpg-600.avif": {
+      "image": "avif 600x867"
+    },
+    "img/g4F426TlM_-400.avif": {
+      "image": "avif 400x400"
+    },
+    "img/g4F426TlM_-800.avif": {
+      "image": "avif 800x800"
+    },
+    "img/jg-l8npDEJ-400.avif": {
+      "image": "avif 400x400"
+    },
+    "img/jg-l8npDEJ-800.avif": {
+      "image": "avif 800x800"
+    },
+    "img/kUhDDmQshl-400.webp": {
+      "image": "webp 400x400"
+    },
+    "img/kUhDDmQshl-800.webp": {
+      "image": "webp 800x800"
+    },
+    "img/lt0Y5ZQ_5E-400.webp": {
+      "image": "webp 400x225"
+    },
+    "img/lt0Y5ZQ_5E-800.webp": {
+      "image": "webp 800x450"
+    },
+    "img/mj2Ff7oqlX-400.avif": {
+      "image": "avif 400x400"
+    },
+    "img/mj2Ff7oqlX-800.avif": {
+      "image": "avif 800x800"
+    },
+    "img/ppqW3UEzme-300.webp": {
+      "image": "webp 300x433"
+    },
+    "img/ppqW3UEzme-600.webp": {
+      "image": "webp 600x867"
+    },
+    "img/rTrKIOI52_-400.jpeg": {
+      "image": "jpeg 400x400"
+    },
+    "img/rTrKIOI52_-800.jpeg": {
+      "image": "jpeg 800x800"
+    },
+    "img/rdhUwTy1UB-400.avif": {
+      "image": "avif 400x400"
+    },
+    "img/rdhUwTy1UB-800.avif": {
+      "image": "avif 800x800"
+    },
+    "img/sJEh2sW1Ms-400.jpeg": {
+      "image": "jpeg 400x400"
+    },
+    "img/sJEh2sW1Ms-800.jpeg": {
+      "image": "jpeg 800x800"
+    },
+    "img/tZNPT_tCaK-400.jpeg": {
+      "image": "jpeg 400x400"
+    },
+    "img/tZNPT_tCaK-800.jpeg": {
+      "image": "jpeg 800x800"
+    },
+    "img/xQeyToiNOd-400.jpeg": {
+      "image": "jpeg 400x225"
+    },
+    "img/xQeyToiNOd-800.jpeg": {
+      "image": "jpeg 800x450"
+    },
+    "img/xzj93JPRdR-400.webp": {
+      "image": "webp 400x400"
+    },
+    "img/xzj93JPRdR-800.webp": {
+      "image": "webp 800x800"
+    },
+    "index.html": "text",
+    "index.md": "text",
+    "llms-full.txt": "text",
+    "llms.txt": "text",
+    "pricing/index.html": "text",
+    "pricing/index.md": "text",
+    "privacy/index.html": "text",
+    "privacy/index.md": "text",
+    "provisions/bigfoot-jerky/index.html": "text",
+    "provisions/bigfoot-jerky/index.md": "text",
+    "provisions/huckleberry-hustle/index.html": "text",
+    "provisions/huckleberry-hustle/index.md": "text",
+    "provisions/index.html": "text",
+    "provisions/index.md": "text",
+    "provisions/moss-mix/index.html": "text",
+    "provisions/moss-mix/index.md": "text",
+    "provisions/pine-cone-crunch/index.html": "text",
+    "provisions/pine-cone-crunch/index.md": "text",
+    "provisions/summit-smores/index.html": "text",
+    "provisions/summit-smores/index.md": "text",
+    "provisions/trailhead-toffee/index.html": "text",
+    "provisions/trailhead-toffee/index.md": "text",
+    "robots.txt": "text",
+    "sitemap.xml": "text",
+    "terms/index.html": "text",
+    "terms/index.md": "text",
+    "thanks/index.html": "text"
+  }
+}

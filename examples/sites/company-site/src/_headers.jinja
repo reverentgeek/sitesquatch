@@ -1,0 +1,22 @@
+---
+permalink: /_headers
+excludeFromCollections: true
+---
+{#- Netlify's and Cloudflare's headers file. Pictures the image plugin published and the fingerprinted CSS and JavaScript are named by their contents, so they can be kept for a year. -#}
+{{ "/img/*" | withBase }}
+  Cache-Control: public, max-age=31536000, immutable
+
+{{ "/assets/*" | withBase }}
+  Cache-Control: public, max-age=31536000, immutable
+
+{{ "/elements/*" | withBase }}
+  Cache-Control: public, max-age=31536000, immutable
+
+{{ "/*.md" | withBase }}
+  X-Robots-Tag: noindex
+  Content-Type: text/markdown; charset=utf-8
+
+{{ "/*" | withBase }}
+  Content-Security-Policy: default-src 'self'; img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

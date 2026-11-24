@@ -1,0 +1,6 @@
+
+/go/crunch  /provisions/pine-cone-crunch/  301
+/go/berry  /provisions/huckleberry-hustle/  301
+/go/smores  /provisions/summit-smores/  301
+/snacks  /provisions/  301
+/snacks/*  /provisions/:splat  301

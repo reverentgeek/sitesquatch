@@ -1,0 +1,9 @@
+---
+layout: layout.jinja
+---
+{#- page.lastModified is the last commit to the page's file (lastModified: "git" in ssqch.config.js), or its modification time when it has changes that aren't committed. -#}
+<article class="wrap narrow page-top">
+	<h1>{{ title }}</h1>
+	<p class="muted">Last changed <time datetime="{{ page.lastModified | dateformat('%Y-%m-%d') }}">{{ page.lastModified | dateformat('%B %-d, %Y') }}</time></p>
+	<div class="prose">{{ content }}</div>
+</article>

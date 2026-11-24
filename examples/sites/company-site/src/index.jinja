@@ -1,0 +1,52 @@
+---
+layout: layout.jinja
+description: Trail snacks so good, even Sasquatch comes out of hiding. Pine Cone Crunch, Huckleberry Hustle and four more, by the bag or by subscription.
+---
+<section class="hero">
+	<picture>
+		{{ "src/img/hero-tall.jpg" | crop("(max-width: 40rem)", "100vw") }}
+		<img src="/img/hero-wide.jpg" alt="A tall, shaggy figure at the edge of a pine forest at sunset" sizes="100vw" loading="eager" fetchpriority="high">
+	</picture>
+	<div class="wrap">
+		<h1>Trail snacks with a legendary following.</h1>
+		<p>Small-batch snacks for long days outside. Eyewitnesses agree: once you've tried Pine Cone Crunch, you'll be spotted at the trailhead with a bag of it.</p>
+		<p class="actions">
+			<Button href="/provisions/pine-cone-crunch/">Try Pine Cone Crunch</Button>
+			<Button href="/pricing/" variant="inverse">See subscriptions</Button>
+		</p>
+	</div>
+</section>
+
+<Section id="featured" title="Spotted on every trail" intro="Three snacks hikers keep reporting. Each one is made in Bend, Oregon, in batches small enough to carry.">
+	<div class="grid">
+		{%- for snack in snacks | selectattr("featured") %}
+		<Card title="{{ snack.name }}" href="/provisions/{{ snack.slug }}/" image="{{ snack.image }}" alt="{{ snack.imageAlt }}" eyebrow="{{ snack.price | money }} · {{ snack.weight }}">
+			<p>{{ snack.tagline }}</p>
+		</Card>
+		{%- endfor %}
+	</div>
+	<p><a href="/provisions/">See all six snacks</a></p>
+</Section>
+
+<Section id="eyewitnesses" title="What eyewitnesses say" tone="raised">
+	<div class="grid">
+		{%- for q in testimonials[:3] %}
+		<Testimonial name="{{ q.name }}" where="{{ q.where }}">{{ q.quote }}</Testimonial>
+		{%- endfor %}
+	</div>
+</Section>
+
+<Section id="questions" title="Common questions">
+	<div class="faq">
+		{%- for faq in faqs %}
+		<details>
+			<summary>{{ faq.q }}</summary>
+			<p>{{ faq.a }}</p>
+		</details>
+		{%- endfor %}
+	</div>
+</Section>
+
+<Section id="signup" title="Get trail reports" intro="New flavors, restocks and the occasional sighting. One email a month, no more." tone="raised">
+	{% include "signup-form.jinja" %}
+</Section>

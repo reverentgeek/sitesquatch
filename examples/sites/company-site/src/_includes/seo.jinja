@@ -1,0 +1,37 @@
+{#- The title, the description, the one true address, the link-preview card and structured data.
+    A page can set title, description, ogImage (a picture on the site), ogImageAlt, ogType and
+    jsonld (a list of objects, one <script> each). absoluteUrl() is rssPlugin()'s: a whole address,
+    with the site's base when it has one. -#}
+{%- set pageTitle = (title ~ " · " ~ site.title) if title else site.title -%}
+{%- set pageDescription = description or site.description -%}
+{%- set canonical = absoluteUrl(page.url, site.url) -%}
+{%- set card = imageUrl(ogImage or site.ogImage, { width: 1200 }) -%}
+<title>{{ pageTitle }}</title>
+	<meta name="description" content="{{ pageDescription }}">
+	<link rel="canonical" href="{{ canonical }}">
+	<meta property="og:site_name" content="{{ site.title }}">
+	<meta property="og:type" content="{{ ogType or 'website' }}">
+	<meta property="og:title" content="{{ title or site.title }}">
+	<meta property="og:description" content="{{ pageDescription }}">
+	<meta property="og:url" content="{{ canonical }}">
+	<meta property="og:image" content="{{ absoluteUrl(card.url, site.url) }}">
+	<meta property="og:image:width" content="{{ card.width }}">
+	<meta property="og:image:height" content="{{ card.height }}">
+	<meta property="og:image:type" content="{{ card.type }}">
+	<meta property="og:image:alt" content="{{ ogImageAlt or (title or site.title) }}">
+	<meta name="twitter:card" content="summary_large_image">
+{%- set org = {
+	"@context": "https://schema.org",
+	"@type": "Organization",
+	"@id": absoluteUrl("/", site.url) ~ "#org",
+	"name": site.title,
+	"url": absoluteUrl("/", site.url),
+	"logo": absoluteUrl(imageUrl(site.logo).url, site.url),
+	"email": site.email,
+	"telephone": site.phone,
+	"address": { "@type": "PostalAddress", "streetAddress": site.address.street, "addressLocality": site.address.city, "addressRegion": site.address.region, "postalCode": site.address.postal, "addressCountry": site.address.country }
+} %}
+	<script type="application/ld+json">{{ org | tojson }}</script>
+	{%- for block in (jsonld or []) %}
+	<script type="application/ld+json">{{ block | tojson }}</script>
+	{%- endfor %}

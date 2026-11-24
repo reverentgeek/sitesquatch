@@ -1,0 +1,14 @@
+---
+layout: layout.jinja
+title: Our snacks
+description: Six trail snacks made in Bend, Oregon, from Pine Cone Crunch to Bigfoot Jerky. By the bag, or in a monthly subscription.
+---
+<Section id="all" level="1" title="Every snack in the pantry" intro="Six snacks, all made in small batches in Bend, Oregon. Buy them by the bag, or get them every month in a subscription.">
+	<div class="grid">
+		{%- for snack in snacks %}
+		<Card level="2" title="{{ snack.name }}" href="/provisions/{{ snack.slug }}/" image="{{ snack.image }}" alt="{{ snack.imageAlt }}" eyebrow="{{ snack.price | money }} · {{ snack.weight }}">
+			<p>{{ snack.tagline }}</p>
+		</Card>
+		{%- endfor %}
+	</div>
+</Section>

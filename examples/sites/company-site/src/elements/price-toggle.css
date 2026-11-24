@@ -1,0 +1,21 @@
+/* <price-toggle>'s switch and the prices it picks. Loaded only on pages with a <price-toggle>. */
+price-toggle { display: block; }
+
+price-toggle [data-toggle] { display: flex; gap: 0.25rem; width: fit-content; margin: 0 auto 2.5rem; padding: 0.25rem; border: 1px solid var(--line); border-radius: 999px; background: var(--raised); }
+price-toggle [data-toggle] label { padding: 0.5rem 1.25rem; border-radius: 999px; font-weight: 600; cursor: pointer; }
+price-toggle [data-toggle] input { position: absolute; opacity: 0; pointer-events: none; }
+price-toggle [data-toggle] label:has(:checked) { background: var(--accent); color: var(--on-accent); }
+price-toggle [data-toggle] label:has(:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* One period at a time once the script has run. Without it, data-period is never set and both show. */
+price-toggle[data-period="monthly"] .price-yearly,
+price-toggle[data-period="yearly"] .price-monthly,
+price-toggle[data-period] .price-or { display: none; }
+
+/* Before the script defines the element, in a browser that runs scripts: hold the switch's place and
+   show what it will show (monthly), so nothing moves when it arrives. With scripting off this
+   doesn't match, and both prices show. */
+@media (scripting: enabled) {
+	price-toggle:not(:defined) { padding-top: calc(2.75rem + 2.5rem); }
+	price-toggle:not(:defined) .price-yearly { display: none; }
+}

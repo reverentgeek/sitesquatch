@@ -1,0 +1,108 @@
+[
+	{
+		"slug": "pine-cone-crunch",
+		"name": "Pine Cone Crunch",
+		"tagline": "The one the eyewitnesses can't stop talking about.",
+		"description": "Toasted oat clusters with pine nuts, maple and a pinch of sea salt, pressed into cone-shaped bites that survive the bottom of any pack.",
+		"price": 6.5,
+		"weight": "5 oz",
+		"image": "/img/snacks/pine-cone-crunch.jpg",
+		"imageAlt": "A pile of golden, cone-shaped oat clusters on a mossy log",
+		"featured": true,
+		"ingredients": [
+			"rolled oats",
+			"pine nuts",
+			"maple syrup",
+			"sunflower oil",
+			"sea salt"
+		],
+		"goLink": "crunch"
+	},
+	{
+		"slug": "huckleberry-hustle",
+		"name": "Huckleberry Hustle",
+		"tagline": "Tart berries for the last mile.",
+		"description": "Chewy huckleberry and apple fruit leather, rolled and tied with a strip of parchment so it doesn't stick to your fingers on the climb.",
+		"price": 5.25,
+		"weight": "3 oz",
+		"image": "/img/snacks/huckleberry-hustle.jpg",
+		"imageAlt": "Purple fruit leather rolls tied with parchment on a granite rock",
+		"featured": true,
+		"ingredients": [
+			"huckleberries",
+			"apples",
+			"lemon juice"
+		],
+		"goLink": "berry"
+	},
+	{
+		"slug": "summit-smores",
+		"name": "Summit S'mores",
+		"tagline": "Campfire not required.",
+		"description": "Graham cracker squares sandwiching dark chocolate and a toasted marshmallow layer that stays put up to 9,000 feet.",
+		"price": 7,
+		"weight": "6 oz",
+		"image": "/img/snacks/summit-smores.jpg",
+		"imageAlt": "Stacked s'mores squares beside a tin camp mug",
+		"featured": true,
+		"ingredients": [
+			"wheat flour",
+			"dark chocolate",
+			"marshmallow",
+			"honey"
+		],
+		"goLink": "smores"
+	},
+	{
+		"slug": "moss-mix",
+		"name": "Moss Mix",
+		"tagline": "Green, salty and suspiciously good.",
+		"description": "Roasted pumpkin seeds, pistachios and dried edamame tossed in seaweed and lime. It looks like the forest floor and tastes better.",
+		"price": 6,
+		"weight": "5 oz",
+		"image": "/img/snacks/moss-mix.jpg",
+		"imageAlt": "A green trail mix of seeds and pistachios in a wooden bowl",
+		"featured": false,
+		"ingredients": [
+			"pumpkin seeds",
+			"pistachios",
+			"edamame",
+			"nori",
+			"lime"
+		]
+	},
+	{
+		"slug": "bigfoot-jerky",
+		"name": "Bigfoot Jerky",
+		"tagline": "Plant-based. Size 17.",
+		"description": "Smoky mushroom and soy jerky strips, cut long enough that you'll wonder who they were sized for.",
+		"price": 8.75,
+		"weight": "4 oz",
+		"image": "/img/snacks/bigfoot-jerky.jpg",
+		"imageAlt": "Long strips of dark mushroom jerky on butcher paper",
+		"featured": false,
+		"ingredients": [
+			"shiitake mushrooms",
+			"soy sauce",
+			"smoked paprika",
+			"brown sugar"
+		]
+	},
+	{
+		"slug": "trailhead-toffee",
+		"name": "Trailhead Toffee",
+		"tagline": "A small reward for leaving the car.",
+		"description": "Brittle almond toffee broken into thumb-sized shards and dusted with cocoa. Best eaten while reading the trail map.",
+		"price": 5.75,
+		"weight": "4 oz",
+		"image": "/img/snacks/trailhead-toffee.jpg",
+		"imageAlt": "Shards of amber almond toffee on a folded trail map",
+		"featured": false,
+		"ingredients": [
+			"butter",
+			"cane sugar",
+			"almonds",
+			"cocoa"
+		]
+	}
+]

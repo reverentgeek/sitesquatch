@@ -1,0 +1,12 @@
+---
+permalink: /_redirects
+excludeFromCollections: true
+---
+{#- Netlify's and Cloudflare's redirects file. Short campaign addresses, from each snack's `goLink` in snacks.json: /go/crunch is Pine Cone Crunch's page. -#}
+{%- for snack in snacks %}{% if snack.goLink %}
+{{ ("/go/" ~ snack.goLink) | withBase }}  {{ ("/provisions/" ~ snack.slug ~ "/") | withBase }}  301
+{%- endif %}{% endfor %}
+
+{#- The snacks' pages moved from /snacks/ to /provisions/: every old address. #}
+{{ "/snacks" | withBase }}  {{ "/provisions/" | withBase }}  301
+{{ "/snacks/*" | withBase }}  {{ "/provisions/:splat" | withBase }}  301

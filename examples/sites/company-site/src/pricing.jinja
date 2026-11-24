@@ -1,0 +1,32 @@
+---
+layout: layout.jinja
+title: Subscriptions
+description: Three snack subscriptions, Day Hike, Overnight and Thru-Hike, billed monthly or yearly. Skip or cancel any time.
+permalink: /pricing/
+---
+{#- <price-toggle> (src/elements/price-toggle.js) adds a monthly/yearly switch. Without JavaScript it's never defined, and both prices show, as written. -#}
+<Section id="plans" level="1" title="Snacks, every month" intro="Pick a plan: pay monthly, or pay for a year and save. Skip a month or cancel whenever you like.">
+	<price-toggle data-label="Billing period" data-monthly="Monthly" data-yearly="Yearly (save 10% or more)">
+		<div class="grid">
+			{%- for plan in plans %}
+			<Card level="2" title="{{ plan.name }}" eyebrow="{% if plan.highlight %}Most popular{% else %}{{ plan.snacks }} snacks a month{% endif %}">
+				<p class="muted">{{ plan.summary }}</p>
+				<p class="price price-monthly">{{ plan.monthly | money }} <span>a month</span></p>
+				<p class="price price-yearly"><span class="price-or">or </span>{{ plan.yearly | money }} <span>a year</span></p>
+				<ul>
+					{%- for f in plan.features %}<li>{{ f }}</li>{% endfor %}
+				</ul>
+				<p class="card-action"><Button href="/contact/?plan={{ plan.id }}">Choose {{ plan.name }}</Button></p>
+			</Card>
+			{%- endfor %}
+		</div>
+	</price-toggle>
+</Section>
+
+<Section id="subscribers" title="From the subscribers" tone="raised">
+	<div class="grid">
+		{%- for q in testimonials[3:5] %}
+		<Testimonial name="{{ q.name }}" where="{{ q.where }}">{{ q.quote }}</Testimonial>
+		{%- endfor %}
+	</div>
+</Section>

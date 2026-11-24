@@ -43,6 +43,10 @@ where that version matches.
   folder moved, its checks were off without a word.
 - A build notes when `ssqch.d.ts` doesn't have the config's schemas (`run ssqch types`), and the
   docs starter's `ssqch.d.ts` has its schema from `ssqch init`.
+- A new example, `company-site` (Jinja): Squatch Snacks' marketing site, from a new-site study.
+  Product pages from a data file checked by a schema, pricing with a custom element and a no-JS
+  fallback, a form for the host, careers from Markdown with a blueprint, structured data, and
+  another crop of the hero on a phone, in plain CSS.
 - The `multilingual` example ships in the package, at
   `node_modules/ssqch/bundled/examples/multilingual/`, where an agent in a site's folder finds it.
 - The starters' `AGENTS.md` names `ssqch baseline "npx ssqch build" --from dist`, the check that a
