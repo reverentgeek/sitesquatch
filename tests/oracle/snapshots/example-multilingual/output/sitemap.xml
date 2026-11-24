@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://sitesquatch.dev/en/</loc>
+    <lastmod>2026-01-01</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://sitesquatch.dev/en/"/>
+    <xhtml:link rel="alternate" hreflang="es" href="https://sitesquatch.dev/es/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://sitesquatch.dev/en/"/>
+  </url>
+  <url>
+    <loc>https://sitesquatch.dev/en/snacks/</loc>
+    <lastmod>2026-01-01</lastmod>
+  </url>
+  <url>
+    <loc>https://sitesquatch.dev/en/trails/</loc>
+    <lastmod>2026-01-01</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://sitesquatch.dev/en/trails/"/>
+    <xhtml:link rel="alternate" hreflang="es" href="https://sitesquatch.dev/es/senderos/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://sitesquatch.dev/en/trails/"/>
+  </url>
+  <url>
+    <loc>https://sitesquatch.dev/es/</loc>
+    <lastmod>2026-01-01</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://sitesquatch.dev/en/"/>
+    <xhtml:link rel="alternate" hreflang="es" href="https://sitesquatch.dev/es/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://sitesquatch.dev/en/"/>
+  </url>
+  <url>
+    <loc>https://sitesquatch.dev/es/senderos/</loc>
+    <lastmod>2026-01-01</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://sitesquatch.dev/en/trails/"/>
+    <xhtml:link rel="alternate" hreflang="es" href="https://sitesquatch.dev/es/senderos/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://sitesquatch.dev/en/trails/"/>
+  </url>
+</urlset>

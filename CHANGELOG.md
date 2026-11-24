@@ -9,6 +9,25 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Added
+
+- A new example, `multilingual` (Jinja): a ranger station in English and Spanish, from a folder
+  each, with a language switch, hreflang links and the sitemap's alternates, strings that fall
+  back to English, and a fallback page for one that isn't translated yet. The multilingual page
+  of the docs starts from it, and its fallback recipe is the example's.
+
+### Changed
+
+- The Netlify page says how to write a redirect with another status (`302`, `410`) or a forced
+  one beside `redirectsPlugin()`'s lines, with `withBase` on each path, and that
+  `netlify.toml`'s `[[headers]]` paths don't follow `--base` where a `_headers` template does.
+- `ssqch serve --built` is documented as a plain static server: a host's `_redirects`,
+  `_headers` and functions need the host's own CLI, which the docs name.
+- `redirectsPlugin()`'s entry says what a strict Content-Security-Policy does to a redirect
+  page, and how to keep its script.
+
 ## 0.14.1 - 2026-11-24
 
 ### Added

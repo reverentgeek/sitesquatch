@@ -1,0 +1,26 @@
+---
+permalink: /
+sitemap: false
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cedar Ridge Ranger Station</title>
+{# The choice of language is the visitor's: links, not a redirect by the browser's language. #}
+{% for l in languages %}<link rel="alternate" hreflang="{{ l.code }}" href="/{{ l.code }}/">
+{% endfor %}<link rel="alternate" hreflang="x-default" href="/">
+<style>
+  :root { color-scheme: light dark; --page: #fafaf7; --text: #29332c; --heading: #233b2b; --link: #a23e20; }
+  @media (prefers-color-scheme: dark) { :root { --page: #1b201d; --text: #e5e9e1; --heading: #d6e4c8; --link: #f0a17d; } }
+  body { color: var(--text); background: var(--page); font: 20px/1.6 system-ui, sans-serif; text-align: center; padding: 4rem 1rem; }
+  h1 { color: var(--heading); }
+  a { color: var(--link); }
+</style>
+</head>
+<body>
+<h1>Cedar Ridge Ranger Station</h1>
+<p>{% for l in languages %}<a href="/{{ l.code }}/" hreflang="{{ l.code }}" lang="{{ l.code }}">{{ l.name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+</body>
+</html>

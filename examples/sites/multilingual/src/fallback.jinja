@@ -1,0 +1,14 @@
+---
+pagination:
+  data: collections.untranslated
+  size: 1
+  alias: stand_in
+permalink: "{{ stand_in.url }}"
+layout: base.jinja
+sitemap: false
+computed:
+  lang: "{{ stand_in.lang }}"
+  key: "{{ stand_in.key }}"
+  title: "{{ stand_in.page.data.title }}"
+---
+{{ stand_in.page.templateContent | safe }}
