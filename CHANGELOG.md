@@ -15,8 +15,9 @@ where that version matches.
 
 - A schema keyed by a tag checks every page a paginated template makes. Before, only the first
   page was checked, since only it joins the tag's collection, so a site's schema on `tags: snack`
-  checked one snack of six. A build that passed with bad data on a later page now fails and names
-  the item (`src/snack.jinja (item 4 of snacks, "Moss Mix")`): fix the data.
+  checked one snack of six, and the same goes for `all`. A build that passed with bad data on a
+  later page now fails and names the item (`src/snack.jinja (item 4 of snacks, "Moss Mix")`): fix
+  the data. The same problem on several pages of one template is one line, naming the others.
 - `linksPlugin()` reads `_redirects` as Netlify does. A `4xx` line (a catch-all `/*  /404.html
   404`, a `410`) isn't a redirect, so a link it answers is broken, and a line that isn't forced
   covers only an address with no file. A site with a catch-all used to pass every broken link (and
@@ -28,7 +29,7 @@ where that version matches.
 
 - `redirectsPlugin({ hostFile: true, notFound: "/404.html" })` writes a catch-all to the 404 page
   as the last line of `_redirects`, with the site's `base` in front, for a site served under a
-  path, where a host doesn't answer a miss with the 404 page by itself.
+  path on Netlify, which doesn't answer a miss there with the 404 page by itself.
 - A schema whose `files` match no page is a warning (``schema `snack` matches no pages``): after a
   folder moved, its checks were off without a word.
 - A build notes when `ssqch.d.ts` doesn't have the config's schemas (`run ssqch types`), and the

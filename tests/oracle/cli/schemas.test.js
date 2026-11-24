@@ -131,6 +131,10 @@ test("a_tags_schema_checks_every_paginated_page_and_one_for_no_files_says_so", (
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(r.ok && r.log.includes("warn: schema `snack` matches no pages (files: \"snacks/snack.jinja\"), so nothing is checked"), r.log);
 	assert.ok(!r.log.includes("schema `jobs`"), "a tag with no pages yet is an empty collection, not a mistake");
+	// A problem in the template's own front matter is on every page it makes: one line.
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, schemas: { all: { fields: { title: \"string\" } } } };\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("1 content error:\n  - src/snack.jinja (item 1 of snacks, \"Pine Cone Crunch\"): `title` is required (a string) (schema `all`) (and 1 more page of it with the same problem: item 2 of snacks, \"Moss Mix\")"), r.log);
 });
 
 // Not from a Rust test (the Squatch Snacks rerun, 2026-11-23): a misspelled field's frame points

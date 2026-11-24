@@ -47,6 +47,9 @@ ssqch build --format json
 
 `ssqch init` writes an `AGENTS.md` for coding agents, with a one-line `CLAUDE.md` that imports it: what each file is, and the commands above for looking a name up, checking a change and comparing builds. It's about 1 KB, since an agent carries it through a whole session, and `init` never replaces one a site already has. For a site that doesn't have one, `ssqch docs agents > AGENTS.md` writes it, or `ssqch init` in the site's folder: beside a config of the site's own, it writes `AGENTS.md`, `CLAUDE.md` and the editor types and leaves the starter's pages out (`left out the starter's 17 files in src/: they need the starter's config, and ssqch.config.js is this site's own`), since they'd need the starter's config to build.
 
+> [!NOTE]
+> **Not released yet.** `init` leaving the starter's pages out beside a site's own config ships with the next version of ssqch.
+
 `ssqch serve --ready-file <file>` writes a file once the first build is done and the site is being served, so a script can wait for the file instead of reading the server's output or sleeping:
 
 ```sh

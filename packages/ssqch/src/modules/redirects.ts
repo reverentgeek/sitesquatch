@@ -87,7 +87,7 @@ BUILTINS.set("ssqch/redirects", (config: Config, given) => {
 	if (typeof given === "object" && given !== null && "netlify" in given && (given as Record<string, unknown>).netlify !== undefined) bail("netlify is called hostFile now (Netlify and Cloudflare both read _redirects): redirectsPlugin({ hostFile: true })");
 	const o = new Options(given, ["pages", "hostFile", "redirects", "notFound"]);
 	const hostFile = o.bool("hostFile") ?? false;
-	// A host answers a miss with the site's 404 page only at its domain's root: under a path, the
+	// Netlify answers a miss with the site's 404 page only at its domain's root: under a path, the
 	// site's own catch-all line does it, and it has to come after every other line, since a host
 	// takes the first match (the Squatch Snacks rerun wrote its whole `_redirects` for this).
 	const notFound = o.get("notFound");

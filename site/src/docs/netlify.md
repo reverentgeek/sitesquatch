@@ -62,6 +62,9 @@ permalink: /_redirects
 
 `linksPlugin()` reads every line, yours too, as Netlify does: a link to `/store/` is a working link and not a broken one, a line that isn't forced covers only an address with no file there, and a `4xx` line isn't a redirect, so a link to `/old-map.pdf` is still a broken link (as is any link a catch-all `/*  /404.html  404` answers). Netlify takes the first line that matches, which is why yours come first. A site under a path needs its own catch-all to its 404 page, after every other line: `redirectsPlugin({ hostFile: true, notFound: "/404.html" })` writes it last ([Serving a site under a path](deploying.md#serving-a-site-under-a-path) has the rest).
 
+> [!NOTE]
+> **Not released yet.** The link checker reading a not-found line and an unforced one as Netlify does, and the redirects plugin's catch-all line to the 404 page, ship with the next version of ssqch.
+
 ## Headers
 
 A `_headers` file in the output sets response headers, and Cloudflare reads the same file, so headers there move with the site if it changes hosts. Write it as a template, so its paths can follow `base`. Images that `imagePlugin()` encoded, and files `assetsPlugin()` fingerprinted, are named by their contents, so a browser can keep them for good: a new version is a new name.

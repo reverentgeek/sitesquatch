@@ -518,7 +518,7 @@ export async function checkPages(site: Site): Promise<void> {
 	// Front matter dates that aren't dates come first, with the schemas' errors on the same pages.
 	const errors: Diagnostic[] = [...site.badDates];
 	if (!config.schemas.length && !errors.length) return;
-	const seen = new Set<string>();
+	const groups = new Map<string, { file: string; problem: Problem; schema: string; items: string[] }>();
 	// A paginated template puts only its first page in its tags' collections, but a schema keyed
 	// by a tag checks every page it makes: Squatch Snacks' schema on `tags: snack` checked one
 	// snack of six, and said nothing of the rest (the rerun, 2026-11-23).
@@ -532,14 +532,24 @@ export async function checkPages(site: Site): Promise<void> {
 			if (!covers(schema, page.tpl.rel, tags, page.inCollections || collected.has(page.tpl))) continue;
 			matched.add(schema);
 			for (const problem of await check(schema, page.data, page.tpl.frontKeys, files, dirs.root)) {
-				const message = `${file.replace(/^(\.\/)+/, "")}${paginated(page.data)}: ${problem.message} (schema \`${schema.name}\`)`;
-				if (seen.has(message)) continue;
-				seen.add(message);
-				const found = (problem.warning ? warning : error)("schema", message, { file, field: problem.field, ...(problem.at === undefined ? {} : { at: problem.at }) });
-				if (problem.warning) warn(found);
-				else errors.push(found);
+				const key = `${file}\0${problem.message}\0${schema.name}`;
+				const group = groups.get(key);
+				if (group) group.items.push(paginated(page.data));
+				else groups.set(key, { file, problem, schema: schema.name, items: [paginated(page.data)] });
 			}
 		}
+	}
+	// The same problem on several pages of one template is one line, which names the first page
+	// and how many more: now that every page of a paginated template is checked, a problem in the
+	// template's own front matter would otherwise be a line for each of them.
+	for (const { file, problem, schema, items } of groups.values()) {
+		const pages = [...new Set(items)];
+		const more = pages.slice(1);
+		const others = more.length ? ` (and ${more.length} more ${more.length === 1 ? "page" : "pages"} of it with the same problem: ${more.slice(0, 3).map((label) => label.slice(2, -1)).join("; ")}${more.length > 3 ? "; ..." : ""})` : "";
+		const message = `${file.replace(/^(\.\/)+/, "")}${pages[0]}: ${problem.message} (schema \`${schema}\`)${others}`;
+		const found = (problem.warning ? warning : error)("schema", message, { file, field: problem.field, ...(problem.at === undefined ? {} : { at: problem.at }) });
+		if (problem.warning) warn(found);
+		else errors.push(found);
 	}
 	// A schema for files that match no page checks nothing, and a build that passes says nothing
 	// of it: after a folder moved, Squatch Snacks' validation was off without a word (the rerun).

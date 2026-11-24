@@ -12,6 +12,8 @@ import { DOCS_SCHEMAS, starterFiles } from "./init.ts";
 // writes it.
 test("the docs starter's types have its config's schemas", async () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-init-docs-"));
+	// Loading the config moves the process into the site's folder, which Windows won't remove.
+	const cwd = process.cwd();
 	try {
 		for (const [rel, contents] of starterFiles("docs", "jinja")) {
 			fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
@@ -21,6 +23,7 @@ test("the docs starter's types have its config's schemas", async () => {
 		assert.deepEqual(schemaTypes(config), DOCS_SCHEMAS);
 		assert.ok(fs.readFileSync(path.join(dir, "ssqch.d.ts"), "utf8").includes(`docs: ${DOCS_SCHEMAS[0][1]};`));
 	} finally {
+		process.chdir(cwd);
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
 });

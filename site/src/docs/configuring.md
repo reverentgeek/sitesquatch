@@ -75,6 +75,9 @@ The default export is the config: an object, or a function (sync or async) that 
 | `layoutAliases` | Other names for layouts: `layoutAliases: { post: "layouts/post.njk" }` makes `layout: post` that file, where it would otherwise be `_includes/post.*` (a partial, on a site moving from Eleventy). A page's `layout` is still the name it gave, so a template that tests `layout == "post"` keeps working. An alias can name another alias; a loop of them is an error, and so is a value that isn't a layout's name. `ssqch scout`'s draft for an Eleventy site writes it from `addLayoutAlias`. |
 | `plugins` | More config: objects with any of the keys above except the settings (`dirs`, `templateFormats`, `markdownEngine`, `htmlEngine`, `markdown`, `deepMerge`, `leaveNoTrace`, `ignore`, `bundles`, `strict`, `lastModified`, `dateFallback`, `base`, `schemas`, `theme`), or functions that return one, or a plugin written in Rust (`{ name, rust: { wasm, options } }`, what its npm package's function returns: see [Plugins in Rust](rust-plugins.md)). `false`, `null` and `undefined` are skipped, so `env === "production" && minifyPlugin()` works. Give a plugin a `name` and errors will mention it. |
 
+> [!NOTE]
+> **Not released yet.** Two things in the table ship with the next version of ssqch: `leaveNoTrace` keeping a list for each output folder and removing the image plugin's copies no page uses.
+
 Mistakes get caught at the trailhead. A misspelled key or option is an error that says what you probably meant (`"templateFormat" isn't a config option (did you mean "templateFormats"?)`, or `unknown option "widhts" (did you mean "widths"?)` for a plugin), and so are two plugins that define the same filter, data or collection name (the message names both). When something in your code throws, you get `ssqch.config.js: too many pine cones` and a stack trace that points at your file, like `at bad (lib/filters.js:3:9)`.
 
 ## What a hook and a transform get

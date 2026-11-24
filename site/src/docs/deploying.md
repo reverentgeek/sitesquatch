@@ -44,7 +44,7 @@ mv dist-preview/preview/snacks/_redirects dist-preview/preview/snacks/_headers d
 > [!NOTE]
 > **Not released yet.** The redirects plugin's catch-all line to the 404 page ships with the next version of ssqch.
 
-Publish `dist-preview`. Their lines have the base in them already (`redirectsPlugin()` writes it, and a `_redirects` or `_headers` template uses `withBase`), so they match where they are now. A host answers a miss with the site's 404 page by itself only at the root, so add `notFound: "/404.html"` to `redirectsPlugin({ hostFile: true })`, which writes `/preview/snacks/*  /preview/snacks/404.html  404` as the file's last line.
+Publish `dist-preview`. Their lines have the base in them already (`redirectsPlugin()` writes it, and a `_redirects` or `_headers` template uses `withBase`), so they match where they are now. Netlify answers a miss with the site's 404 page by itself only at the root, so there, add `notFound: "/404.html"` to `redirectsPlugin({ hostFile: true })`, which writes `/preview/snacks/*  /preview/snacks/404.html  404` as the file's last line. Cloudflare doesn't need it: its `not_found_handling: "404-page"` finds the nearest `404.html` going up the folders.
 
 `ssqch build --base /repo/` sets it from the command line (for a preview deployed under another path, say) and wins over the config. In `sitesquatch.toml` it's `base = "/repo/"`.
 

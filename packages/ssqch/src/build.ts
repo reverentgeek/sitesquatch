@@ -1298,7 +1298,8 @@ function recordOutputs(config: Config, dirs: Dirs, outputs: string[], pagePaths:
 	}
 
 	const entry: Record<string, unknown> = { output: outputName, files: [...current].sort(compareText), pages: [...pages].sort(compareText) };
-	const otherNames = Object.keys(others).sort(compareText);
+	// A folder that's gone (a `dist-before` deleted after its diff) has nothing left to clean.
+	const otherNames = Object.keys(others).filter((name) => isDir(path.resolve(dirs.root, name))).sort(compareText);
 	if (otherNames.length) entry.outputs = Object.fromEntries(otherNames.map((name) => [name, others[name]]));
 	const list = JSON.stringify(entry, null, 2);
 	// Left alone when nothing changed, so a build with nothing new touches no files.
