@@ -5,7 +5,7 @@ A study is a longer run than tasks A and B of the new-site brief: a complete sit
 This is `research/new-site-prompt.md` as it was on 2026-11-23. This copy is the one runs use. `research/new-site-studies-plan.md` has why each requirement is there, and the answer key (what ssqch has for each); the agent sees neither.
 
 1. Fill in the three blanks. For **Site**, paste one section from "The sites" at the end of this file, and leave the others out.
-2. Write each of "The requests" into its own file in a `requests/` folder beside the site's folder (`01.md` to `07.md`), with the words in brackets filled in from the table there. The agent opens them one at a time, in part 2.
+2. Write each of "The requests" into its own file in a `requests/` folder beside the site's folder, with the words in brackets filled in from the table there. Number the files with no gap (`01.md` up): without the upgrade, request 7 is `06.md`. Start each file with `Request <n>.`, the request's own number, so runs still compare. An agent told not to read ahead stops at a gap (The North Fake, 2026-11-24). The agent opens them one at a time, in part 2.
 3. Give everything between the two lines to the agent as its whole prompt, in a session started in the run's `site/` folder, not in ssqch's repository: the agent mustn't be handed ssqch's `AGENTS.md`, `research/`, or any run's notes, its own included (they're in `research/runs/`, not beside `site/`). Starting it in `site/` keeps `requests/` outside its working folder, so a search of the site doesn't read them ahead.
 
 Keep the rest as it is, so runs can be compared.
