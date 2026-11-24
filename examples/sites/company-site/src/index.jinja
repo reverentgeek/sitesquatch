@@ -17,7 +17,7 @@ description: Trail snacks so good, even Sasquatch comes out of hiding. Pine Cone
 	</div>
 </section>
 
-<Section id="featured" title="Spotted on every trail" intro="Three snacks hikers keep reporting. Each one is made in Bend, Oregon, in batches small enough to carry.">
+<Section id="featured" title="Spotted on every trail" intro="Three snacks hikers keep reporting. Each one is made in Pine Cone Gap, West Virginia, in batches small enough to carry.">
 	<div class="grid">
 		{%- for snack in snacks | selectattr("featured") %}
 		<Card title="{{ snack.name }}" href="/provisions/{{ snack.slug }}/" image="{{ snack.image }}" alt="{{ snack.imageAlt }}" eyebrow="{{ snack.price | money }} · {{ snack.weight }}">

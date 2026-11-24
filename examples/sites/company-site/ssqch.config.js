@@ -61,7 +61,7 @@ export default defineConfig(({ env }) => ({
 		robotsPlugin({ ai: { training: false, search: true, fetch: true } }),
 		llmsPlugin({
 			url,
-			description: "Trail snacks made in Bend, Oregon, sold by the bag and by monthly or yearly subscription.",
+			description: "Trail snacks made in Pine Cone Gap, West Virginia, sold by the bag and by monthly or yearly subscription.",
 			details: "Each snack has a page under /provisions/ with its price, weight and ingredients. The subscriptions (Day Hike, Overnight, Thru-Hike) and their monthly and yearly prices are on /pricing/. Prices are in US dollars."
 		}),
 		env === "production" && minifyPlugin(),

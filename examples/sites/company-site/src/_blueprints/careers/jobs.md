@@ -5,7 +5,7 @@ title:
 date:
 # Kitchen, Community or Operations
 team:
-# Where the job is, like: Bend, Oregon
+# Where the job is, like: Pine Cone Gap, West Virginia
 location:
 # One of: Full time, Part time, Seasonal
 type:

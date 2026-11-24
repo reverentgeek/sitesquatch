@@ -1,10 +1,10 @@
 ---
 layout: layout.jinja
 title: Careers
-description: Work at Squatch Snacks. Openings in our Bend kitchen, our warehouse and on the trail.
+description: Work at Squatch Snacks. Openings in our Pine Cone Gap kitchen, our warehouse and on the trail.
 permalink: /careers/
 ---
-<Section id="openings" level="1" title="Join the search party" intro="We're a small team in Bend, Oregon, and on trails all over the West. Here's who we're looking for right now.">
+<Section id="openings" level="1" title="Join the search party" intro="We're a small team in Pine Cone Gap, West Virginia, and on trails up and down the Appalachians. Here's who we're looking for right now.">
 	<div class="grid">
 		{%- for job in collections.jobs | reverse %}
 		<Card level="2" title="{{ job.data.title }}" href="{{ job.url }}" image="{{ job.data.picture }}" alt="{{ job.data.pictureAlt }}" eyebrow="{{ job.data.team }} · {{ job.data.type }}">

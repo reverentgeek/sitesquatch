@@ -2,7 +2,7 @@
 title: Fulfillment Lead
 date: 2026-11-16
 team: Operations
-location: Bend, Oregon
+location: Pine Cone Gap, West Virginia
 type: Full time
 picture: /img/jobs/warehouse.jpg
 pictureAlt: Evening light over the warehouse roofline and pines

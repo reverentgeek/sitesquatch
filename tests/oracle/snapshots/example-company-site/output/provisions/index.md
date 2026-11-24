@@ -1,6 +1,6 @@
 # Every snack in the pantry
 
-Six snacks, all made in small batches in Bend, Oregon. Buy them by the bag, or get them every month in a subscription.
+Six snacks, all made in small batches in Pine Cone Gap, West Virginia. Buy them by the bag, or get them every month in a subscription.
 
 ![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
 

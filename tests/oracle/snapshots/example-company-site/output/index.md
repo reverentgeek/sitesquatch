@@ -8,7 +8,7 @@ Small-batch snacks for long days outside. Eyewitnesses agree: once you've tried 
 
 ## Spotted on every trail
 
-Three snacks hikers keep reporting. Each one is made in Bend, Oregon, in batches small enough to carry.
+Three snacks hikers keep reporting. Each one is made in Pine Cone Gap, West Virginia, in batches small enough to carry.
 
 ![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
 

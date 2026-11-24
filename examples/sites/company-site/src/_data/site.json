@@ -4,12 +4,12 @@
 	"description": "Trail snacks so good, even Sasquatch comes out of hiding. Home of Pine Cone Crunch.",
 	"tagline": "Trail snacks with a legendary following.",
 	"email": "hello@squatchsnacks.example",
-	"phone": "+1-541-555-0142",
+	"phone": "+1-304-555-0142",
 	"address": {
 		"street": "1 Cedar Hollow Rd",
-		"city": "Bend",
-		"region": "OR",
-		"postal": "97701",
+		"city": "Pine Cone Gap",
+		"region": "WV",
+		"postal": "24999",
 		"country": "US"
 	},
 	"logo": "/img/logo.png",

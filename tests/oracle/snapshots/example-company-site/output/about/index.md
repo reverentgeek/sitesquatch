@@ -1,14 +1,14 @@
 # About Squatch Snacks
 
-![The pine ridge above our kitchen in Bend, at sunset](https://squatchsnacks.example/img/HBee2iM_yS-400.jpeg)
+![The pine ridge above our kitchen in Pine Cone Gap, at sunset](https://squatchsnacks.example/img/HBee2iM_yS-400.jpeg)
 
 ## It started with a blurry photo
 
 In 2019, a hiker left a bag of homemade oat clusters on a stump near the Cedar trailhead. The next morning it was gone, and there was one very large footprint.
 
-That hiker was our founder, Juniper Hale. The oat clusters became Pine Cone Crunch, and the footprint became our logo. We now make six snacks in a converted ranger station in Bend, Oregon, and mail them to hikers in all fifty states.
+That hiker was our founder, Juniper Hale. The oat clusters became Pine Cone Crunch, and the footprint became our logo. We now make six snacks in a converted ranger station in Pine Cone Gap, West Virginia, and mail them to hikers in all fifty states.
 
-We cook in small batches, we buy oats and berries from farms in the Pacific Northwest, and we test every recipe on the trail before it ships.
+We cook in small batches, we buy oats and berries from farms in the Blue Ridge, and we test every recipe on the trail before it ships.
 
 ## Why we keep doing it
 

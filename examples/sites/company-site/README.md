@@ -1,6 +1,6 @@
 # company-site
 
-The marketing site of Squatch Snacks, a trail-snack company in Bend, Oregon, in Jinja and plain CSS. It has what a company's site needs: a home page with a hero, featured products, testimonials and questions; a page per product from one data file; pricing with a monthly and yearly switch; a contact form; careers with a page per opening; the legal pages; and what search engines, link previews, hosts and agents read.
+The marketing site of Squatch Snacks, a trail-snack company in Pine Cone Gap, West Virginia, in Jinja and plain CSS. It has what a company's site needs: a home page with a hero, featured products, testimonials and questions; a page per product from one data file; pricing with a monthly and yearly switch; a contact form; careers with a page per opening; the legal pages; and what search engines, link previews, hosts and agents read.
 
 What it shows:
 

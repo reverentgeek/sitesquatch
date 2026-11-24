@@ -1,6 +1,6 @@
 # Squatch Snacks
 
-> Trail snacks made in Bend, Oregon, sold by the bag and by monthly or yearly subscription.
+> Trail snacks made in Pine Cone Gap, West Virginia, sold by the bag and by monthly or yearly subscription.
 
 Each snack has a page under /provisions/ with its price, weight and ingredients. The subscriptions (Day Hike, Overnight, Thru-Hike) and their monthly and yearly prices are on /pricing/. Prices are in US dollars.
 
@@ -18,7 +18,7 @@ Small-batch snacks for long days outside. Eyewitnesses agree: once you've tried 
 
 ## Spotted on every trail
 
-Three snacks hikers keep reporting. Each one is made in Bend, Oregon, in batches small enough to carry.
+Three snacks hikers keep reporting. Each one is made in Pine Cone Gap, West Virginia, in batches small enough to carry.
 
 ![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
 
@@ -92,15 +92,15 @@ url: https://squatchsnacks.example/about/
 
 # About Squatch Snacks
 
-![The pine ridge above our kitchen in Bend, at sunset](https://squatchsnacks.example/img/HBee2iM_yS-400.jpeg)
+![The pine ridge above our kitchen in Pine Cone Gap, at sunset](https://squatchsnacks.example/img/HBee2iM_yS-400.jpeg)
 
 ## It started with a blurry photo
 
 In 2019, a hiker left a bag of homemade oat clusters on a stump near the Cedar trailhead. The next morning it was gone, and there was one very large footprint.
 
-That hiker was our founder, Juniper Hale. The oat clusters became Pine Cone Crunch, and the footprint became our logo. We now make six snacks in a converted ranger station in Bend, Oregon, and mail them to hikers in all fifty states.
+That hiker was our founder, Juniper Hale. The oat clusters became Pine Cone Crunch, and the footprint became our logo. We now make six snacks in a converted ranger station in Pine Cone Gap, West Virginia, and mail them to hikers in all fifty states.
 
-We cook in small batches, we buy oats and berries from farms in the Pacific Northwest, and we test every recipe on the trail before it ships.
+We cook in small batches, we buy oats and berries from farms in the Blue Ridge, and we test every recipe on the trail before it ships.
 
 ## Why we keep doing it
 
@@ -114,7 +114,7 @@ url: https://squatchsnacks.example/careers/
 
 # Join the search party
 
-We're a small team in Bend, Oregon, and on trails all over the West. Here's who we're looking for right now.
+We're a small team in Pine Cone Gap, West Virginia, and on trails up and down the Appalachians. Here's who we're looking for right now.
 
 ![Evening light over the warehouse roofline and pines](https://squatchsnacks.example/img/QgJCuUH8Ym-400.jpeg)
 
@@ -122,7 +122,7 @@ Operations · Full time
 
 ## [Fulfillment Lead](https://squatchsnacks.example/careers/jobs/fulfillment-lead/index.md)
 
-Bend, Oregon
+Pine Cone Gap, West Virginia
 
 Run the warehouse that packs every subscription box, and keep the trail-town shipments on time.
 
@@ -136,13 +136,13 @@ Remote (on trail)
 
 Hike, hand out samples at trailheads, and write down what hikers tell you. Boots provided.
 
-![The ridge above our kitchen in Bend at sunset](https://squatchsnacks.example/img/xQeyToiNOd-400.jpeg)
+![The ridge above our kitchen in Pine Cone Gap at sunset](https://squatchsnacks.example/img/xQeyToiNOd-400.jpeg)
 
 Kitchen · Full time
 
 ## [Snack Scientist](https://squatchsnacks.example/careers/jobs/snack-scientist/index.md)
 
-Bend, Oregon
+Pine Cone Gap, West Virginia
 
 Develop new flavors that hold up at altitude, in the rain and in the bottom of a bear canister.
 
@@ -176,7 +176,7 @@ url: https://squatchsnacks.example/careers/jobs/trail-ambassador/
 
 # Trail Ambassador
 
-From April to October you'll work trailheads across the Cascades with a cooler of samples and a notebook. Weekly check-ins by satellite messenger.
+From April to October you'll work trailheads across the Appalachians with a cooler of samples and a notebook. Weekly check-ins by satellite messenger.
 
 ---
 url: https://squatchsnacks.example/contact/
@@ -283,7 +283,7 @@ url: https://squatchsnacks.example/provisions/
 
 # Every snack in the pantry
 
-Six snacks, all made in small batches in Bend, Oregon. Buy them by the bag, or get them every month in a subscription.
+Six snacks, all made in small batches in Pine Cone Gap, West Virginia. Buy them by the bag, or get them every month in a subscription.
 
 ![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
 

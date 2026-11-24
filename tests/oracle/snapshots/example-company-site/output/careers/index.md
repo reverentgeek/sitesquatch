@@ -1,6 +1,6 @@
 # Join the search party
 
-We're a small team in Bend, Oregon, and on trails all over the West. Here's who we're looking for right now.
+We're a small team in Pine Cone Gap, West Virginia, and on trails up and down the Appalachians. Here's who we're looking for right now.
 
 ![Evening light over the warehouse roofline and pines](https://squatchsnacks.example/img/QgJCuUH8Ym-400.jpeg)
 
@@ -8,7 +8,7 @@ Operations · Full time
 
 ## [Fulfillment Lead](https://squatchsnacks.example/careers/jobs/fulfillment-lead/index.md)
 
-Bend, Oregon
+Pine Cone Gap, West Virginia
 
 Run the warehouse that packs every subscription box, and keep the trail-town shipments on time.
 
@@ -22,13 +22,13 @@ Remote (on trail)
 
 Hike, hand out samples at trailheads, and write down what hikers tell you. Boots provided.
 
-![The ridge above our kitchen in Bend at sunset](https://squatchsnacks.example/img/xQeyToiNOd-400.jpeg)
+![The ridge above our kitchen in Pine Cone Gap at sunset](https://squatchsnacks.example/img/xQeyToiNOd-400.jpeg)
 
 Kitchen · Full time
 
 ## [Snack Scientist](https://squatchsnacks.example/careers/jobs/snack-scientist/index.md)
 
-Bend, Oregon
+Pine Cone Gap, West Virginia
 
 Develop new flavors that hold up at altitude, in the rain and in the bottom of a bear canister.
 
