@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { BuildError } from "./diagnostics.ts";
-import { loadStaticDataFile } from "./data.ts";
+import { dayDate, loadStaticDataFile } from "./data.ts";
 import { globBase, globProblem, globToRegExp, isGlob } from "./glob.ts";
 import { imageSize } from "./image/header.ts";
 import { markdownEngine } from "./engines/markdown.ts";
@@ -150,16 +150,16 @@ function imageSizes(found: Array<[string, string, fs.Stats]>): Array<[number, nu
 	return sizes;
 }
 
-/** A date at the start of a file name: `2001-12-22-camp.jpg` or `20011222_08.JPG`, at midnight UTC. */
+/** A date at the start of a file name: `2001-12-22-camp.jpg` or `20011222_08.JPG`, a day without a time (midnight in the site's `timeZone`, or UTC). */
 export function dateInName(name: string): Date | undefined {
 	const compact = /^(\d{4})(\d{2})(\d{2})(?!\d)/.exec(name);
 	const dashed = /^(\d{4})-(\d{2})-(\d{2})/.exec(name);
 	const found = compact ?? dashed;
 	if (!found) return undefined;
 	const [year, month, day] = [Number(found[1]), Number(found[2]), Number(found[3])];
-	const date = new Date(Date.UTC(year, month - 1, day));
+	const check = new Date(Date.UTC(year, month - 1, day));
 	// A month or a day that doesn't exist isn't a date.
-	return date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date : undefined;
+	return check.getUTCMonth() === month - 1 && check.getUTCDate() === day ? dayDate(year, month, day) : undefined;
 }
 
 export function slugify(text: unknown, options?: unknown): string {

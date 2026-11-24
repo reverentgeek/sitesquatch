@@ -25,7 +25,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Config } from "./config.ts";
 import type { Data } from "./data.ts";
-import { toDate } from "./data.ts";
+import { shownAsUtc, toDate } from "./data.ts";
 import type { Diagnostic } from "./diagnostics.ts";
 import { BuildError, Diagnostics, bail, error, isCapturing, warn, warning } from "./diagnostics.ts";
 import * as equivalents from "./equivalents.ts";
@@ -439,7 +439,7 @@ function show(value: unknown): string {
 	if (value === null) return "null";
 	if (typeof value === "string") return `${quoted(firstChars(value, 60))}${charCount(value) > 60 ? "..." : ""}`;
 	if (typeof value === "number" || typeof value === "boolean") return String(value);
-	if (value instanceof Date) return `the date ${Number.isNaN(value.getTime()) ? "Invalid Date" : value.toISOString().slice(0, 10)}`;
+	if (value instanceof Date) return `the date ${Number.isNaN(value.getTime()) ? "Invalid Date" : shownAsUtc(value).toISOString().slice(0, 10)}`;
 	if (Array.isArray(value)) return "a list";
 	if (typeof value === "function") return "a function";
 	return "an object";

@@ -40,7 +40,7 @@ import type { ColorPlan } from "./color.ts";
 import { CACHE_FILE, HashCache, stamp } from "./hashes.ts";
 import { oriented, probeFile, undecodable } from "./header.ts";
 import type { Decodable, Probe } from "./header.ts";
-import { DEFAULTS, encodeSettings, legacySettings } from "./quality.ts";
+import { DEFAULTS, encodeSettings, formatSettings } from "./quality.ts";
 import type { EncodeSettings } from "./quality.ts";
 
 export type Format = "avif" | "webp" | "jpeg" | "png" | "gif" | "svg" | "auto";
@@ -558,13 +558,10 @@ export class ImageProcessor {
 	holdEncodesForTest(): () => void {
 		return this.queue.hold();
 	}
-	/** The settings as image names hold them (`legacySettings`). */
-	private named: string;
 
 	constructor(options: ImageOptions) {
 		this.options = options;
 		this.settings = encodeSettings(options);
-		this.named = legacySettings(options);
 	}
 
 	/** The project root, once the build has started. */
@@ -839,7 +836,9 @@ export class ImageProcessor {
 		const copyGif = srcFormat === "gif" && formats.every((f) => f === "auto" || f === "gif" || f === "webp" || f === "avif");
 		if (srcFormat === "svg" || copyGif) {
 			const [w, h] = srcFormat === "gif" ? [readHeader().width, readHeader().height] : svgDimensions(src) ?? [0, 0];
-			const e = entry(srcFormat, w, h, w > 0 ? `${id}-${w}.${srcFormat}` : `${id}.${srcFormat}`);
+			const copyId = name === undefined ? this.idFor(id, srcFormat) : id;
+			if (name === undefined && this.options.hashCache) this.hashes.addName(src, copyId);
+			const e = entry(srcFormat, w, h, w > 0 ? `${copyId}-${w}.${srcFormat}` : `${copyId}.${srcFormat}`);
 			const t = mtimeOf(e.path);
 			if (!(t !== undefined && (sourceTime === undefined || t >= sourceTime)) && !this.files.has(e.path)) {
 				// A copy of the source, not an encode: counted as copied, and made on the thread
@@ -867,10 +866,12 @@ export class ImageProcessor {
 			const f = asked === "auto" ? srcFormat : asked;
 			if (meta.formats.has(f)) continue;
 			const entries: ImageEntry[] = [];
+			const formatId = name === undefined ? this.idFor(id, f) : id;
+			if (name === undefined && this.options.hashCache) this.hashes.addName(src, formatId);
 			for (const w of targets) {
 				// Heights round down.
 				const h = Math.max(1, Math.floor((h0 * w) / w0));
-				const e = entry(f, w, h, `${id}-${w}.${f}`);
+				const e = entry(f, w, h, `${formatId}-${w}.${f}`);
 				const file = cacheDir === undefined ? e.path : path.join(cacheDir, path.basename(e.path));
 				const step: (typeof steps)[number] = { e, file, earlier: this.files.get(file) };
 				if (step.earlier === undefined) {
@@ -1020,8 +1021,9 @@ export class ImageProcessor {
 	 */
 	private hashId(src: string, header: (() => Probe) | undefined, read?: (contents: Buffer) => void): string {
 		const o = this.options;
-		const settings = this.named;
-		const cacheKey = `${settings}|color1`;
+		// The source's own id, the same whatever the settings: each format's name is made from it
+		// and that format's settings (`idFor`), so the file is read once for them all.
+		const cacheKey = "content|color1";
 		let size: number;
 		let mtime: string;
 		try { ({ size, mtime } = stamp(src)); } catch { throw new Error(`image not found: ${src}`); }
@@ -1032,12 +1034,20 @@ export class ImageProcessor {
 		let contents: Buffer;
 		try { contents = fs.readFileSync(src); } catch (e) { throw new Error(`reading ${src}: ${(e as Error).message}`); }
 		read?.(contents);
-		const parts = [contents, Buffer.from(settings)];
+		const parts = [contents];
 		if (header && colorPlan(header().icc).kind === "convert") parts.push(Buffer.from("|srgb"));
 		const hash = blake3(Buffer.concat(parts));
 		let id = "";
-		for (let i = 0; i < 10; i++) id += ALPHABET[hash[i] & 63];
+		for (let i = 0; i < 22; i++) id += ALPHABET[hash[i] & 63];
 		if (o.hashCache) this.hashes.put(src, size, mtime, cacheKey, id);
+		return id;
+	}
+
+	/** A format's copies' name: the source's id and that format's own settings, hashed to ten characters. */
+	private idFor(source: string, format: string): string {
+		const hash = blake3(Buffer.from(`${source}|${formatSettings(this.options, format)}`));
+		let id = "";
+		for (let i = 0; i < 10; i++) id += ALPHABET[hash[i] & 63];
 		return id;
 	}
 

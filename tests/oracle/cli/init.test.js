@@ -66,7 +66,7 @@ test("init_creates_a_site_that_builds", () => {
 
 	// The next post starts from the starter's blueprint, and is on the home page.
 	r = ssqch(["new", "--root", d, "posts", "--title", "My second post", "--date", "2026-02-03"]);
-	assert.deepEqual([r.ok, r.log], [true, "Created src/posts/my-second-post.md from src/_blueprints/posts.md. Field notes started.\n"]);
+	assert.deepEqual([r.ok, r.log], [true, "Created src/posts/my-second-post.md from src/_blueprints/posts.md. Fresh tracks: fill in its fields, then build.\n"]);
 	assert.equal(read(dir, "src/posts/my-second-post.md"), "---\ntitle: My second post\ndate: 2026-02-03\n---\nWrite down what you saw.\n");
 	r = ssqch(["build", "--root", d]);
 	assert.ok(r.ok, r.log);
@@ -156,7 +156,7 @@ test("init_starts_a_docs_site", () => {
 	const rd = (p) => read(dir, path.join("dist", p));
 	// A new page from the starter's blueprint passes the starter's schema.
 	r = ssqch(["new", "--root", d, "docs/guides", "--title", "Search"]);
-	assert.deepEqual([r.ok, r.log], [true, "Created src/docs/guides/search.md from src/_blueprints/docs.md. Field notes started.\n"]);
+	assert.deepEqual([r.ok, r.log], [true, "Created src/docs/guides/search.md from src/_blueprints/docs.md. Fresh tracks: fill in its fields, then build.\n"]);
 	r = ssqch(["build", "--root", d]);
 	assert.ok(r.ok && !r.log.includes("warn") && rd("docs/guides/search/index.html").includes("<title>Search | Squatch Docs</title>"), r.log);
 	assert.ok(isFile(dir, "dist/assets/docs.js") && isFile(dir, "dist/highlight.css"));

@@ -132,7 +132,7 @@ of what you saw.&lt;/p&gt;
 &lt;p&gt;The &lt;code&gt;description&lt;/code&gt; in this post's front matter is the page's meta description; posts without
 one get the site's, from &lt;code&gt;src/_data/site.json&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;I did get a picture this time. It's a little blurry, but you can clearly see the stump.&lt;/p&gt;
-&lt;p&gt;&lt;img src=&quot;https://example.com/img/jsuIfm9F_f-1200.jpeg&quot; alt=&quot;A blurry photo of something tall and dark, mid-stride between the birches. The stump.&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://example.com/img/63axLGB_mj-1200.jpeg&quot; alt=&quot;A blurry photo of something tall and dark, mid-stride between the birches. The stump.&quot;&gt;&lt;/p&gt;
 &lt;p&gt;The picture is &lt;code&gt;src/img/stump.jpg&lt;/code&gt;, and this post shows it with
 &lt;code&gt;![A blurry photo...](/img/stump.jpg)&lt;/code&gt;. The build turns it into a &lt;code&gt;&amp;lt;picture&amp;gt;&lt;/code&gt; in three sizes,
 so it stays sharp on any screen. Whether it was sharp to begin with is between you and your

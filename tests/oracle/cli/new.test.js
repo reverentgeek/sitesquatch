@@ -29,7 +29,7 @@ test("new_creates_a_page_from_an_blueprint", () => {
 	// No blueprint: a title from the file's name, and today's date.
 	let { ok, log } = make(["posts/pine-cone-crunch.md"]);
 	assert.ok(ok, log);
-	assert.equal(log, "Created src/posts/pine-cone-crunch.md from the built-in blueprint (a title and a date; src/_blueprints/ has none for it). Field notes started.\n");
+	assert.equal(log, "Created src/posts/pine-cone-crunch.md from the built-in blueprint (a title and a date; src/_blueprints/ has none for it). Fresh tracks: fill in its fields, then build.\n");
 	assert.equal(read(dir, "src/posts/pine-cone-crunch.md"), `---\ntitle: Pine cone crunch\ndate: ${today}\n---\n\n`);
 	// Nothing is overwritten.
 	({ ok, log } = make(["posts/pine-cone-crunch.md", "--title", "Other"]));
@@ -42,19 +42,19 @@ test("new_creates_a_page_from_an_blueprint", () => {
 	w("src/_blueprints/docs/guides.jinja", "---\ntitle:\n---\n<p>A guide.</p>\n");
 	w("src/_blueprints/default.md", "---\ntitle:\n---\n\nA page.\n");
 	({ ok, log } = make(["src/posts/2026-01-05-winter-trails.md", "--title", "Winter trails: a guide", "--set", "tags=[news, trails]", "--set", "draft=false"]));
-	assert.deepEqual([ok, log], [true, "Created src/posts/2026-01-05-winter-trails.md from src/_blueprints/posts.md. Field notes started.\n"]);
+	assert.deepEqual([ok, log], [true, "Created src/posts/2026-01-05-winter-trails.md from src/_blueprints/posts.md. Fresh tracks: fill in its fields, then build.\n"]);
 	assert.equal(read(dir, "src/posts/2026-01-05-winter-trails.md"), `---\n# Fill in the description.\ntitle: "Winter trails: a guide"\ndate: ${today}\ndescription:\ndraft: false\ntags: [news, trails]\n---\n\nThe title is {{ title }}.\n`);
 
 	// The most specific folder's blueprint, by the new file's extension; then the folders above; then `default`.
 	({ ok, log } = make(["docs/guides/install.jinja"]));
-	assert.ok(ok && log.endsWith("from src/_blueprints/docs/guides.jinja. Field notes started.\n"), log);
+	assert.ok(ok && log.endsWith("from src/_blueprints/docs/guides.jinja. Fresh tracks: fill in its fields, then build.\n"), log);
 	assert.equal(read(dir, "src/docs/guides/install.jinja"), "---\ntitle: Install\n---\n<p>A guide.</p>\n");
 	({ ok, log } = make(["docs/reference/cli/index.md", "--date", "2026-03-02"]));
-	assert.ok(ok && log.endsWith("from src/_blueprints/docs.md. Field notes started.\n"), log);
+	assert.ok(ok && log.endsWith("from src/_blueprints/docs.md. Fresh tracks: fill in its fields, then build.\n"), log);
 	// An index page is named by its folder, and --date adds a date the blueprint doesn't have.
 	assert.equal(read(dir, "src/docs/reference/cli/index.md"), "---\ntitle: Cli\norder: 0\ndate: 2026-03-02\n---\n\nA doc.\n");
 	({ ok, log } = make(["about.md"]));
-	assert.ok(ok && log.endsWith("from src/_blueprints/default.md. Field notes started.\n"), log);
+	assert.ok(ok && log.endsWith("from src/_blueprints/default.md. Fresh tracks: fill in its fields, then build.\n"), log);
 	assert.equal(read(dir, "src/about.md"), "---\ntitle: About\n---\n\nA page.\n");
 	// By name, and from a theme.
 	({ ok, log } = make(["ideas/cedar.md", "--blueprint", "notes", "--format", "json"]));
@@ -66,11 +66,11 @@ test("new_creates_a_page_from_an_blueprint", () => {
 
 	// A folder and a title: the file is named as the folder's other pages are.
 	({ ok, log } = make(["docs", "--title", "Getting started"]));
-	assert.deepEqual([ok, log], [true, "Created src/docs/getting-started.md from src/_blueprints/docs.md. Field notes started.\n"]);
+	assert.deepEqual([ok, log], [true, "Created src/docs/getting-started.md from src/_blueprints/docs.md. Fresh tracks: fill in its fields, then build.\n"]);
 	// Most of the pages in posts/ have the date in front now.
 	w("src/posts/2026-01-09-snow.md", "---\ntitle: Snow\n---\n");
 	({ ok, log } = make(["posts/", "--title", "What's new in 0.4?", "--date", "2026-03-02"]));
-	assert.deepEqual([ok, log], [true, "Created src/posts/2026-03-02-whats-new-in-0-4.md from src/_blueprints/posts.md. Field notes started.\n"]);
+	assert.deepEqual([ok, log], [true, "Created src/posts/2026-03-02-whats-new-in-0-4.md from src/_blueprints/posts.md. Fresh tracks: fill in its fields, then build.\n"]);
 	assert.ok(read(dir, "src/posts/2026-03-02-whats-new-in-0-4.md").includes("title: What's new in 0.4?\ndate: 2026-03-02\n"));
 	// Folders with an index file.
 	w("src/trails/cedar/index.jinja", "---\ntitle: Cedar\n---\n");

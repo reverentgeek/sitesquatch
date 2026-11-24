@@ -4,7 +4,7 @@
 import { withBaseOnce } from "../base.ts";
 import { BUILTINS } from "../config.ts";
 import type { Config } from "../config.ts";
-import { toDate } from "../data.ts";
+import { shownAsUtc, toDate } from "../data.ts";
 import { aliasUsed, bail } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { rewriteHtml } from "../html.ts";
@@ -17,7 +17,7 @@ export function rssPlugin(_options?: unknown) {
 }
 
 /** How a value prints in a template's `{{ }}`: nothing for `null` and `undefined`, a date as ISO 8601. */
-const output = (v: unknown): string => (v === undefined || v === null ? "" : v instanceof Date ? v.toISOString() : String(v));
+const output = (v: unknown): string => (v === undefined || v === null ? "" : v instanceof Date ? shownAsUtc(v).toISOString() : String(v));
 
 /** A value as 0.7's error messages showed it. An invalid `Date` and `NaN` (which 0.7 took for 1970) are shown as JavaScript writes them. */
 function shown(v: unknown): string {
@@ -44,15 +44,17 @@ export function getNewestCollectionItemDate(items?: unknown): Date | undefined {
 
 /** `2026-03-14T00:00:00Z` */
 export function dateToRfc3339(date?: unknown): string {
-	const d = toDate(date);
-	if (d === undefined) bail(`dateToRfc3339: not a date: ${shown(date)}`);
+	const given = toDate(date);
+	if (given === undefined) bail(`dateToRfc3339: not a date: ${shown(date)}`);
+	const d = shownAsUtc(given);
 	return `${year(d)}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())}T${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())}Z`;
 }
 
 /** `Sat, 14 Mar 2026 00:00:00 +0000` */
 export function dateToRfc822(date?: unknown): string {
-	const d = toDate(date);
-	if (d === undefined) bail(`dateToRfc822: not a date: ${shown(date)}`);
+	const given = toDate(date);
+	if (given === undefined) bail(`dateToRfc822: not a date: ${shown(date)}`);
+	const d = shownAsUtc(given);
 	return `${DAYS[d.getUTCDay()]}, ${two(d.getUTCDate())} ${MONTHS[d.getUTCMonth()]} ${year(d)} ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())} +0000`;
 }
 

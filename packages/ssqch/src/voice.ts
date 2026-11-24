@@ -21,7 +21,9 @@ export const FIRST_SIGHTING = "First confirmed sighting.";
 export const RECOVERED = "Build recovered. Back on the trail.";
 
 /** After `ssqch new` says which page it created, and from what. */
-export const FIELD_NOTES = "Field notes started.";
+// DELIBERATE (0.15): it says what to do next, on any site (the owner, 2026-11-24: "Field notes
+// started." was the blog starter's line, odd on a careers page an office manager fills in).
+export const FIELD_NOTES = "Fresh tracks: fill in its fields, then build.";
 
 /** After the stale files `leaveNoTrace` removed. */
 export const LEFT_NO_TRACE = "left no trace";

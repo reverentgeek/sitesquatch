@@ -20,7 +20,7 @@ ssqch new posts --title "Pine cones: a field guide"
 ```
 
 ```text
-Created src/posts/pine-cones-a-field-guide.md from src/_blueprints/posts.md. Field notes started.
+Created src/posts/pine-cones-a-field-guide.md from src/_blueprints/posts.md. Fresh tracks: fill in its fields, then build.
 ```
 
 The new post:

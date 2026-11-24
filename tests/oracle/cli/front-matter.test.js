@@ -51,3 +51,23 @@ test("front_matter_errors_name_the_page", () => {
 	r = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(!r.ok && r.log.includes("in open.edge: invalid YAML front matter: "), r.log);
 });
+
+// Not from a Rust test (the owner, 2026-11-24, after the Squatch Snacks rerun): a date written
+// without a time is that day wherever it's read. With `timeZone`, it's midnight there, so a site's
+// own `Date` code prints the day as written (west of UTC it printed the day before), and ssqch's
+// own printers print the written day in every zone, as they did in UTC.
+test("a_date_without_a_time_is_that_day_in_every_zone", () => {
+	for (const zone of ["America/Los_Angeles", "Asia/Tokyo"]) {
+		const dir = tempDir(`date-only-${zone.replace("/", "-")}`);
+		write(dir, {
+			"ssqch.config.js": `import { sitemapPlugin } from "ssqch/sitemap";\nexport default { dirs: { input: "src", output: "dist" }, timeZone: "${zone}", templateFormats: ["jinja", "liquid"], plugins: [sitemapPlugin({ url: "https://example.com" })], filters: { own: (d) => \`\${d.getMonth() + 1}/\${d.getDate()}\` } };\n`,
+			"src/j.jinja": "---\ndate: 2026-11-02\n---\n{{ page.date | own }} {{ page.date | dateformat(\"%Y-%m-%d\") }} {{ page.date }} {{ page.date.getDate() }}\n",
+			"src/l.liquid": "---\ndate: 2026-11-02\n---\n{{ page.date | date: \"%Y-%m-%d\" }} {{ page.date }}\n",
+		});
+		const r = ssqch(["build", "--root", dir, "-q"]);
+		assert.ok(r.ok, r.log);
+		assert.equal(read(dir, "dist/j/index.html"), "11/2 2026-11-02 2026-11-02T00:00:00.000Z 2", zone);
+		assert.equal(read(dir, "dist/l/index.html"), "2026-11-02 2026-11-02 00:00:00 +0000\n", zone);
+		assert.ok(read(dir, "dist/sitemap.xml").includes("<lastmod>2026-11-02</lastmod>"), zone);
+	}
+});

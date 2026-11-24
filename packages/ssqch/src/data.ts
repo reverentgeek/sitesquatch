@@ -126,6 +126,7 @@ const YAML_SCHEMA = yaml.CORE_SCHEMA.extend({
 				const [year, month, day] = text.slice(0, 10).split("-").map(Number);
 				const real = new Date(Date.UTC(2000, month - 1, day));
 				if (month < 1 || month > 12 || real.getUTCMonth() !== month - 1 || (month === 2 && day === 29 && !leapYear(year))) return text;
+				if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(text.trim())) return dayDate(year, month, day);
 				const date = timestamp.construct(text) as Date;
 				if (year < 100) date.setUTCFullYear(date.getUTCFullYear() - 1900);
 				return date;
@@ -618,7 +619,7 @@ export function normalizeTags(data: Data): void {
  */
 function tagName(value: unknown): string {
 	if (!(value instanceof Date) || Number.isNaN(value.getTime())) return String(value);
-	const iso = value.toISOString();
+	const iso = shownAsUtc(value).toISOString();
 	return iso.endsWith("T00:00:00.000Z") ? iso.slice(0, 10) : iso;
 }
 
@@ -638,6 +639,52 @@ export function getPath(value: unknown, dotted: string): unknown {
 }
 
 // ---- dates ---------------------------------------------------------------------------------
+
+/**
+ * A date written without a time (`date: 2026-11-02`) is that day wherever it's read (the owner,
+ * 2026-11-24, after the Squatch Snacks rerun: a page dated November 2 said November 1 west of
+ * UTC). It's midnight in the site's `timeZone`, so a site's own `Date` code (`toLocaleDateString()`,
+ * `getDate()`) prints the day as written, and midnight UTC without one, as it always was. ssqch's
+ * own printers (`dateformat`, Liquid's `date`, the feed and sitemap dates, a date printed as
+ * text) take `shownAsUtc()` first, so they print the written day too: the same text as before in
+ * every zone, and nothing that depends on Node's time-zone data.
+ */
+const WRITTEN_DAY = new WeakMap<Date, { day: number; ms: number }>();
+let localDays = false;
+
+/** Whether a date without a time is midnight in the site's zone: on when the config sets `timeZone`. */
+export function setLocalDays(on: boolean): void {
+	localDays = on;
+}
+
+/** The day `year`-`month`-`day` (month from 1) as a date without a time: midnight in the site's zone, or UTC. */
+export function dayDate(year: number, month: number, day: number): Date {
+	const date = new Date(0);
+	if (localDays) {
+		// The local setters take the year as it is, as `setUTCFullYear` does (`Date.UTC` reads 24 as 1924).
+		date.setFullYear(year, month - 1, day);
+		date.setHours(0, 0, 0, 0);
+	} else {
+		date.setUTCFullYear(year, month - 1, day);
+		date.setUTCHours(0, 0, 0, 0);
+	}
+	const utc = new Date(0);
+	utc.setUTCFullYear(year, month - 1, day);
+	WRITTEN_DAY.set(date, { day: utc.getTime(), ms: date.getTime() });
+	return date;
+}
+
+/** For a date written without a time, its day at midnight UTC (what ssqch prints); any other date as it is. A date changed since it was read is a moment. */
+export function shownAsUtc(d: Date): Date {
+	const written = WRITTEN_DAY.get(d);
+	return written === undefined || written.ms !== d.getTime() || written.day === written.ms ? d : new Date(written.day);
+}
+
+/** Whether `d` was written without a time and hasn't changed since. */
+export function isWrittenDay(d: Date): boolean {
+	const written = WRITTEN_DAY.get(d);
+	return written !== undefined && written.ms === d.getTime();
+}
 
 /**
  * A value as a date: dates pass through, numbers are milliseconds, and strings are ISO 8601,
@@ -688,7 +735,7 @@ export function parseDate(text: string): Date | undefined {
 	m = DATE_ONLY.exec(s);
 	if (m) {
 		const utc = utcMs(m[1], m[2], m[3]);
-		return utc === undefined ? undefined : new Date(utc);
+		return utc === undefined ? undefined : dayDate(Number(m[1]), Number(m[2]), Number(m[3]));
 	}
 	m = NAIVE.exec(s);
 	if (m) {

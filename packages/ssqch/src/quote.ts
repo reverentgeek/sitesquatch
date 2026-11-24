@@ -5,6 +5,7 @@
 // character such as a zero-width space, any space but the plain one, and a combining mark) as
 // `\u{hex}`. `JSON.stringify` is close, but not the same for those, so messages that quote what
 // a site wrote use this.
+import { shownAsUtc } from "./data.ts";
 
 /** Characters Rust's `{:?}` writes as `\u{hex}`: what isn't printable (any space but ` `), and combining marks. */
 const UNPRINTABLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}\p{Zs}\p{Grapheme_Extend}]/u;
@@ -63,7 +64,7 @@ export function firstChars(text: string, n: number): string {
 
 /** JavaScript's `String(value)` as 0.7 had it: a date in UTC with milliseconds (`String(date)` is in the machine's time zone, and a report mustn't depend on that), and a list's items joined with commas. */
 export function jsString(value: unknown): string {
-	if (value instanceof Date) return Number.isNaN(value.getTime()) ? "Invalid Date" : value.toISOString();
+	if (value instanceof Date) return Number.isNaN(value.getTime()) ? "Invalid Date" : shownAsUtc(value).toISOString();
 	if (Array.isArray(value)) return value.map((v) => (v === undefined || v === null ? "" : jsString(v))).join(",");
 	if (typeof value === "function") return "function () { [native code] }";
 	if (value !== null && typeof value === "object") return "[object Object]";
@@ -112,7 +113,7 @@ export function toJsonValue(value: unknown, above: Set<object> = new Set()): unk
 	if (typeof value === "number") return Number.isFinite(value) ? value : null;
 	if (typeof value === "bigint") return Number(value);
 	if (typeof value !== "object") return value;
-	if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+	if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : shownAsUtc(value).toISOString();
 	if (above.has(value)) return null;
 	above.add(value);
 	let out: unknown;

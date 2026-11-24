@@ -25,6 +25,15 @@ where that version matches.
   production build: fix them. `ssqch diff` doesn't call a removed page "redirected" to a 4xx line
   either.
 
+- A date written without a time (`date: 2026-11-02`, a TOML or JSON date, a file name's date) is
+  midnight in the config's `timeZone`, not midnight UTC, so a site's own `Date` code prints the
+  day as written: west of UTC, `toLocaleDateString()` and `getDate()` printed the day before.
+  ssqch's own printers (`dateformat`, Liquid's `date`, the feed filters, the sitemap, a date
+  printed as text) print the written day as they did, in every zone. A site with a `timeZone`
+  east of UTC whose own code prints such a date with UTC methods (`getUTCDate()`,
+  `toISOString().slice(0, 10)`) now gets the day before: use the local methods, as the starters'
+  `readableDate` and `isoDay` do now. A site without `timeZone`, or with `"UTC"`, sees no change.
+
 ### Added
 
 - `redirectsPlugin({ hostFile: true, notFound: "/404.html" })` writes a catch-all to the 404 page
@@ -43,6 +52,15 @@ where that version matches.
   and a product; scripts for production only (`ssqch.env`); another crop on a phone in modern
   formats, with `image()`; what `timeZone` does to a date without a time; that `patrol --url`
   finds a host answering agents with HTML; and that `ssqch serve` answers a form's `POST`.
+
+### Changed
+
+- `ssqch new` says what to do next: `Created src/careers/trail-cook.md from
+  src/_blueprints/careers.md. Fresh tracks: fill in its fields, then build.` (it said "Field notes
+  started.", the blog starter's line, on every site).
+- Each image format's copies are named from the source and that format's own settings, so
+  changing `jpegQuality` renames the JPEG copies and leaves the AVIF and WebP ones. Every
+  encoded image's name changes once with this release, and browsers download them again once.
 
 ### Fixed
 

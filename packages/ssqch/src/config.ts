@@ -16,7 +16,7 @@ import { parseSchema } from "./schema.ts";
 import type { Schema } from "./schema.ts";
 import { BuildError, aliasUsed, bail, context, error, messageOf, warn, warning } from "./diagnostics.ts";
 import type { Data, DataLoader } from "./data.ts";
-import { isPlainObject, readToml, tomlReason } from "./data.ts";
+import { isPlainObject, readToml, setLocalDays, tomlReason } from "./data.ts";
 import { TomlError } from "smol-toml";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
@@ -317,6 +317,7 @@ export async function loadConfig(options: ConfigOptions): Promise<Config> {
 	// JavaScript data files and templates can make images even without the plugin.
 	useImages(config);
 	useTimeZone(config.timeZone);
+	setLocalDays(config.timeZone !== null);
 	return config;
 }
 

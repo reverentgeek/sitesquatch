@@ -10,12 +10,13 @@ import { robotsPlugin } from "ssqch/robots";
 import { feedPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
 
-// A date as people write it: January 1, 2026. In UTC, and spelled out here rather than with
-// toLocaleDateString, whose answers can change between Node releases.
+// A date as people write it: January 1, 2026. In the site's timeZone (below), where a date
+// written without a time is that day, and spelled out here rather than with toLocaleDateString,
+// whose answers can change between Node releases.
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const readableDate = (value) => {
-  const date = new Date(value);
-  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
+  const date = value instanceof Date ? value : new Date(value);
+  return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 };
 
 // The site's address, from src/_data/site.json: put yours there.

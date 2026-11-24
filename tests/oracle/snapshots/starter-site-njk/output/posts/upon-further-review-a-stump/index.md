@@ -7,7 +7,7 @@ one get the site's, from `src/_data/site.json`.
 
 I did get a picture this time. It's a little blurry, but you can clearly see the stump.
 
-![A blurry photo of something tall and dark, mid-stride between the birches. The stump.](https://example.com/img/jsuIfm9F_f-400.jpeg)
+![A blurry photo of something tall and dark, mid-stride between the birches. The stump.](https://example.com/img/63axLGB_mj-400.jpeg)
 
 The picture is `src/img/stump.jpg`, and this post shows it with
 `![A blurry photo...](/img/stump.jpg)`. The build turns it into a `<picture>` in three sizes,

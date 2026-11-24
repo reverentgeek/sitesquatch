@@ -16,6 +16,7 @@ import { withBase } from "../base.ts";
 import { compareText, displayPath, isInside, relative, slashes } from "../paths.ts";
 import { Options } from "./options.ts";
 import { debugString, escapeHtml } from "./plugin-util.ts";
+import { shownAsUtc } from "../data.ts";
 
 export function redirectsPlugin(options: Record<string, unknown> = {}) {
 	return { name: "ssqch/redirects", builtin: "ssqch/redirects", options };
@@ -77,7 +78,7 @@ const byMatch = (a: string, b: string) => Number(isPattern(a)) - Number(isPatter
  */
 function asWritten(alias: unknown): unknown {
 	if (!(alias instanceof Date) || Number.isNaN(alias.getTime())) return alias;
-	const iso = alias.toISOString();
+	const iso = shownAsUtc(alias).toISOString();
 	return iso.endsWith("T00:00:00.000Z") ? iso.slice(0, 10) : iso.replace(/\.000Z$/, "Z");
 }
 

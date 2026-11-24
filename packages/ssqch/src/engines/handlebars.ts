@@ -10,7 +10,7 @@ import { createRequire } from "node:module";
 import type HandlebarsLib from "handlebars";
 import type { Filter } from "../config.ts";
 import type { Data } from "../data.ts";
-import { isPlainObject } from "../data.ts";
+import { isPlainObject, shownAsUtc } from "../data.ts";
 import { BuildError } from "../diagnostics.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
@@ -62,7 +62,7 @@ function handlebarsLib(): typeof HandlebarsLib {
 }
 
 function printable(value: unknown): unknown {
-	if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+	if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : shownAsUtc(value).toISOString();
 	if (typeof value === "number") return jsonNumber(value);
 	if (Array.isArray(value)) return `[${value.map((item) => { const s = printable(item); return s === undefined || s === null ? "" : String(s); }).join(", ")}]`;
 	if (isPlainObject(value)) return "[object]";
@@ -137,7 +137,7 @@ export function handlebarsEngine(env: EngineEnv): TemplateEngine {
 }
 
 /** A value as a helper gets it, as 0.7 gave it after turning the data into JSON: a date as ISO 8601 text, a missing value as `null`. */
-const given = (v: unknown) => (v === undefined ? null : v instanceof Date ? (Number.isNaN(v.getTime()) ? null : v.toISOString()) : v);
+const given = (v: unknown) => (v === undefined ? null : v instanceof Date ? (Number.isNaN(v.getTime()) ? null : shownAsUtc(v).toISOString()) : v);
 
 function makeHandlebars(env: EngineEnv): TemplateEngine {
 	const root = env.config.root;
