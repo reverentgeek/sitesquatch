@@ -21,6 +21,7 @@ The [`docs-sidebar`](https://github.com/reverentgeek/sitesquatch/tree/main/examp
 | `permalink: :year/:month/:day/:title/` | A `permalink` in the posts' directory data: `"/{{ page.date \| dateformat('%Y/%m/%d') }}/{{ page.fileSlug }}/"` |
 | `new_post_name: :year-:month-:day-:title.md` | The same file names: a date at the start of a file name is the page's date |
 | `root: /blog/` | `base: "/blog/"`. Links stay as written; `url_for()` isn't needed. |
+| `timezone: America/New_York` | `timeZone: "America/New_York"`. A date written without a time (`date: 2026-11-02`) is that day, midnight in this zone, as Hexo reads it; without `timeZone`, ssqch uses UTC |
 | `per_page`, `pagination_dir` | `pagination: { data: collections.posts, size: 10 }` on the index template |
 | `skip_render` | `passthrough`, or `ignore` |
 | `highlight` / `prismjs` | `markdown: { highlight: true }`, at build time |
@@ -56,7 +57,7 @@ Nunjucks templates render with Nunjucks (ssqch's fork of it), the library Hexo's
 | `page.title`, `page.content`, `page.date` | `title`, `content` and `page.date`: front matter is at the top level, and `page` has the URL, the date and the file's details |
 | `site.posts`, `site.pages`, `site.tags` | `collections.posts`, `collections.all`, and one collection per tag. Collections are oldest first: `collections.posts \| reverse`. |
 | `url_for(path)`, `relative_url` | The path itself; with `base` set, ssqch adds it to links in the HTML (`relative_url` works, and gives the path back as it is) |
-| `full_url_for(path)` | `absoluteUrl(path, config.url)` from `rssPlugin()` |
+| `full_url_for(path)` | `absoluteUrl(path, config.url)`, a template function on every site, with the site's `base` in front |
 | `date(post.date, "YYYY-MM-DD")` (Moment formats) | `post.date \| dateformat("%Y-%m-%d")`, or a config filter that uses luxon or date-fns from `node_modules` |
 | `css('css/style')`, `js('js/app')` | Plain `<link>` and `<script>` tags |
 | `is_home()`, `is_post()`, `is_current(path)` | Compare `page.url`, or set a flag in each layout's front matter |

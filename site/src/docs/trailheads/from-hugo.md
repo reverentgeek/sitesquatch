@@ -34,6 +34,7 @@ export default defineConfig({
 | `data/` | `dirs.data` |
 | `static/` | `passthrough: [{ static: "." }]` |
 | `publishDir` | `dirs.output` (`publishDir` works, and says ssqch's name) |
+| `timeZone = "America/New_York"` | `timeZone: "America/New_York"`, the same name. A date written without a time (`date: 2026-11-02`) is that day, midnight in this zone, as Hugo reads it; without `timeZone`, ssqch uses UTC |
 | `baseURL` | the site's address goes in data and in `sitemapPlugin({ url })`; `base` is the path only, for a site served under one (`/repo/`) |
 | `title`, `params` | global data: `data: { site: { title, params } }`, read as `site.title` |
 | `menus` | global data (`_data/nav.yml`), and `navTree` |
@@ -73,8 +74,9 @@ export default defineConfig({
 | `{{- ... -}}` | `{%- ... -%}` and `{{- ... -}}` (the same trimming) |
 | `{{/* comment */}}` | `{# comment #}` |
 | `{{ .Content }}` | `{{ content }}` in a layout |
-| `{{ .TableOfContents }}` | `{{ toc(page.headings) | safe }}` |
-| `{{ .Date.Format "January 2, 2006" }}` | `{{ page.date | dateformat("%B %-d, %Y") }}` |
+| `{{ .TableOfContents }}` | `{{ toc(page.headings) \| safe }}` |
+| `{{ .Date.Format "January 2, 2006" }}` | `{{ page.date \| dateformat("%B %-d, %Y") }}` |
+| `{{ .Permalink }}`, `{{ "x/" \| absURL }}` | `{{ absoluteUrl(page.url, site.url) }}`, `{{ absoluteUrl("/x/", site.url) }}`, with `site.url` from a data file; `base` goes in front |
 | `markdownify`, `.RenderString` | `markdown(text)`, `markdown(text, "inline")` |
 | `urlize`, `anchorize` | `slugify` |
 | `site.GetPage "/x"` | a filter over `collections.all` |

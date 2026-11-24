@@ -106,7 +106,7 @@ A command for one context goes in `netlify.toml` under `[context.deploy-preview]
 
 ## Updating ssqch
 
-The version in the lockfile is the one Netlify builds with, so a new release never reaches the site until you choose it. To move up: `pnpm add -D ssqch@0.15.0` (or `npm install -D ssqch@0.15.0`), build and test locally, and open a pull request: its deploy preview is the site on the new version, and `ssqch diff` between the old build and the new one shows every page that changed. The [changelog](https://sitesquatch.dev/changelog/) says what each release changes, with what a site has to change under "Breaking".
+The version in the lockfile is the one Netlify builds with, so a new release never reaches the site until you choose it. To move up: `pnpm add -D ssqch@0.15.0` (or `npm install -D ssqch@0.15.0`), build and test locally, and open a pull request: its deploy preview is the site on the new version, and `ssqch diff` between the old build and the new one shows every page that changed. The [changelog](https://sitesquatch.dev/changelog/) says what each release changes, with what a site has to change under "Breaking". When it says a release renames encoded images, the first build after the move encodes every picture again, as if the cache were empty, so expect that one build to take as long as a site's first (the blog's took 5 minutes instead of 37 seconds); the cache keeps the new copies, and the next build is fast.
 
 ## Markdown for agents
 

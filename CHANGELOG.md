@@ -9,6 +9,26 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Fixed
+
+- Five rows of the docs' tables lost the end of their text to a `|` inside code, on the site and
+  on GitHub: Hugo's `.Date.Format` and `.TableOfContents` rows, the configuring page's `filters`
+  and `jinja` rows, and Eleventy's `eleventyNavigation` row. A site test now counts every row's
+  cells.
+- The Hexo trailhead said `absoluteUrl` comes from `rssPlugin()`; it's on every site since 0.15.0.
+
+### Added
+
+- Docs: the first build after a release that renames encoded images (0.15.0 renamed every one)
+  encodes them all again, as with an empty cache: the blog's first build on 0.15.0 took 5 minutes
+  on Netlify, where it usually takes 37 seconds. In `imagePlugin()`'s entry and the Netlify
+  guide's "Updating ssqch".
+- Docs: `timezone`'s row in the Jekyll and Hexo trailheads and `timeZone`'s in Hugo's (a date
+  without a time is that day, in that zone), Hugo's `.Permalink` and `absURL` as `absoluteUrl`,
+  and that Eleventy's `rss.absoluteUrl` is only needed for Eleventy's answer to the letter.
+
 ## 0.15.0 - 2026-11-24
 
 ### Breaking
