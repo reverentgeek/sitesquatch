@@ -6,7 +6,6 @@ import { linksPlugin } from "ssqch/links";
 import { llmsPlugin } from "ssqch/llms";
 import { minifyPlugin } from "ssqch/minify";
 import { robotsPlugin } from "ssqch/robots";
-import { rssPlugin } from "ssqch/rss";
 import { sitemapPlugin } from "ssqch/sitemap";
 
 const { url } = readData("src/_data/site.json");
@@ -55,9 +54,6 @@ export default defineConfig(({ env }) => ({
 	},
 
 	plugins: [
-		// absoluteUrl() for the canonical address, the link-preview card and the structured data:
-		// a whole address, with the site's base when it has one.
-		rssPlugin(),
 		// src/elements/price-toggle.js loads on the pricing page, the one page with a <price-toggle>.
 		elementsPlugin(),
 		imagePlugin({ formats: ["avif", "webp", "auto"], widths: [400, 800, 1600] }),

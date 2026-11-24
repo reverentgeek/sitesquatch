@@ -3,3 +3,4 @@
 // it (`src/modules.ts` resolves them here, and the npm package builds `lib/*.js` from them);
 // `capabilities.test.ts` checks that each exports exactly what ssqch.d.ts declares.
 export { default, defineConfig, files, markdown, readData, safe, slugger, slugify, withBase } from "../api.ts";
+export { absoluteUrl } from "../modules/rss.ts";

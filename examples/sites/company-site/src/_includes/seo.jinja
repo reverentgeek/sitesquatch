@@ -1,7 +1,7 @@
 {#- The title, the description, the one true address, the link-preview card and structured data.
     A page can set title, description, ogImage (a picture on the site), ogImageAlt, ogType and
-    jsonld (a list of objects, one <script> each). absoluteUrl() is rssPlugin()'s: a whole address,
-    with the site's base when it has one. -#}
+    jsonld (a list of objects, one <script> each). absoluteUrl() is a whole address, with the
+    site's base when it has one. -#}
 {%- set pageTitle = (title ~ " · " ~ site.title) if title else site.title -%}
 {%- set pageDescription = description or site.description -%}
 {%- set canonical = absoluteUrl(page.url, site.url) -%}

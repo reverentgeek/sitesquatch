@@ -1,11 +1,11 @@
 // Each snack page's title, description, link-preview card and Product structured data, from its
 // snack. Structured data wants whole addresses, under the site's base when it has one
-// (withBase); imageUrl() is the address of the picture's published copy.
-import { readData, withBase } from "ssqch";
+// (absoluteUrl); imageUrl() is the address of the picture's published copy.
+import { absoluteUrl, readData } from "ssqch";
 import { imageUrl } from "ssqch/image";
 
 const site = readData("src/_data/site.json");
-const whole = (path) => new URL(withBase(path), site.url).href;
+const whole = (path) => absoluteUrl(path, site.url);
 
 export default {
 	computed: {

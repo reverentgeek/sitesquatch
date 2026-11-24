@@ -34,8 +34,16 @@ where that version matches.
   `toISOString().slice(0, 10)`) now gets the day before: use the local methods, as the starters'
   `readableDate` and `isoDay` do now. A site without `timeZone`, or with `"UTC"`, sees no change.
 
+- `absoluteUrl` and `htmlToAbsoluteUrls` from `ssqch/rss`, called from a site's code, put the
+  build's `base` in front of a URL from the site's root, as the template functions do. They
+  resolved it as `new URL()` does, which dropped a path in the address. Code that added the base
+  itself (`withBase` first, or `ssqch.base` by hand) still gets it once.
+
 ### Added
 
+- `absoluteUrl` is a template function on every site, and an export of `ssqch`: a canonical link,
+  a link-preview card or structured data needed `rssPlugin()` for it, which a site without a feed
+  added only for that. `rssPlugin()` still works as it did.
 - `redirectsPlugin({ hostFile: true, notFound: "/404.html" })` writes a catch-all to the 404 page
   as the last line of `_redirects`, with the site's `base` in front, for a site served under a
   path on Netlify, which doesn't answer a miss there with the 404 page by itself.
