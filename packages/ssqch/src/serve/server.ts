@@ -453,6 +453,9 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				const seen = contents.has(file);
 				const before = contents.get(file);
 				contents.set(file, now);
+				// The configuration's files by what the last build used of them, which a hook may
+				// have written while it ran.
+				if (isConfig(file) && builder.usedAsIs(file)) return false;
 				return !seen || before !== now;
 			});
 			// Folders watched for a config file see their other files change too.

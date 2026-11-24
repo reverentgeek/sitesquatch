@@ -16,6 +16,7 @@
 // didn't use them). Between processes they're kept in `.cache/ssqch/highlight/fences.json`
 // (see "the cache of highlighted fences" below), so a first build doesn't load syntect's
 // grammars for fences it has highlighted before.
+import { readValues } from "../plugin-files.ts";
 import { kramdownHtml, restoreBlankLines, withKramdownIds } from "./kramdown-html.ts";
 import { hugoShortcodes, INLINE_SHORTCODE_MARKER, type InlineShortcode, inlineShortcodeNumber, pythonMarkdownAfter, pythonMarkdownBefore, pythonMarkdownBlocks, pythonMarkdownIds, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
 import { Buffer } from "node:buffer";
@@ -709,6 +710,7 @@ function failure(message: string, thrown: unknown): Error {
 /** A grammar file, from the project root, or the error 0.7 gave for one it couldn't read. */
 function readGrammar(root: string, name: string, file: string): Buffer {
 	try {
+		readValues(path.resolve(root, file));
 		return fs.readFileSync(path.resolve(root, file));
 	} catch (e) {
 		throw new BuildError(`markdown.highlight.languages.${name}: reading ${file}: ${ioError(e)}`);

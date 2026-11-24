@@ -20,6 +20,7 @@ import { addImagePlugin, currentProcessor, defaultImageOptions, imageOptionsFor,
 import type { Format } from "../image/processor.ts";
 import { Options } from "./options.ts";
 import { ssqchWork } from "../profile.ts";
+import { readFile } from "../plugin-files.ts";
 
 const FORMATS = ["avif", "webp", "jpeg", "jpg", "png", "gif", "svg", "auto"];
 const IMAGE_OPTIONS = ["widths", "formats", "name"];
@@ -92,6 +93,7 @@ export async function image(src: unknown, options: Record<string, unknown> = {})
 		const meant = site !== undefined && (fs.statSync(site, { throwIfNoEntry: false })?.isFile() ?? false) ? `; that's a path from the site's root, which imageUrl() takes: image() takes one from the project, "${shown(site)}"` : "; image() takes a path from the project, like \"src/img/hero.jpg\"";
 		bail(`image(): file not found: ${src} (looked for ${shown(file)}${meant})`);
 	}
+	readFile(file);
 	let meta;
 	try { meta = p.generateNamed(file, checkedWidths, checkedFormats, name as string | undefined); } catch (e) { bail(`image(): ${(e as Error).message}`); }
 	// Encoding is ssqch's time, not the calling filter's (see `ssqchWork`).

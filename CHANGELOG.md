@@ -13,6 +13,12 @@ where that version matches.
 
 ### Fixed
 
+- `ssqch serve` rebuilds when a file the site's code read with `readData()`, `files()` or `image()`
+  changes outside the input folder (`readData("data/snacks.yml")` with `input: "src"`), and when
+  `mkdocs.yml` or a Markdown grammar file changes: nothing watched them, so the page stayed as it
+  was until the server started again. A file `readData()` read reads the configuration again (a
+  `beforeBuild` hook's own write before the read isn't a change); a `files()` or `image()` file
+  rebuilds. Found writing the dev server's design.
 - Five rows of the docs' tables lost the end of their text to a `|` inside code, on the site and
   on GitHub: Hugo's `.Date.Format` and `.TableOfContents` rows, the configuring page's `filters`
   and `jinja` rows, and Eleventy's `eleventyNavigation` row. A site test now counts every row's

@@ -248,6 +248,62 @@ test("serve_reads_a_changed_config_again", async () => {
 	}
 });
 
+// A file the site's code reads with readData() or files(), outside the input
+// folder, is watched like a module the config imports: an edit to it showed
+// nothing until the server started again (0.15.1). Read while the config
+// loads, and read in a data function on each build.
+test("serve_rebuilds_for_a_data_file_its_code_read", async () => {
+	const dir = tempDir("serve-read-data");
+	write(dir, {
+		"ssqch.config.js": "import { files, readData } from \"ssqch\";\nconst site = readData(\"data/site.yml\");\nexport default { dirs: { input: \"src\", output: \"dist\" }, data: { site, snack: () => readData(\"data/snack.yml\"), photos: () => files(\"photos/*.txt\").map((f) => f.size) } };\n",
+		"data/site.yml": "title: Squatch Snacks\n",
+		"data/snack.yml": "name: Pine Cone Crunch\n",
+		"photos/a.txt": "ab",
+		"src/index.jinja": "{{ site.title }}: {{ snack.name }} {{ photos | join(\",\") }}",
+	});
+	const log = path.join(dir, "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "dist/index.html");
+		await waitFor(page, "Squatch Snacks: Pine Cone Crunch 2");
+		// Read in a data function, on each build.
+		await changeAndWait(path.join(dir, "data/snack.yml"), "name: Moss Mix\n", page, "Squatch Snacks: Moss Mix 2");
+		// Read while the config loaded: in the config's values.
+		await changeAndWait(path.join(dir, "data/site.yml"), "title: Squatch Provisions\n", page, "Squatch Provisions: Moss Mix 2");
+		// A file files() matched.
+		await changeAndWait(path.join(dir, "photos/a.txt"), "abcd", page, "Squatch Provisions: Moss Mix 4");
+		assert.ok(readOr(log).includes("Fresh tracks in data/snack.yml (reading the configuration again)"), readOr(log));
+	} finally {
+		await server.stop();
+	}
+});
+
+// A `beforeBuild` hook that writes a file the config reads with readData()
+// (stock, fetched on each build) changes it on every build: that's what the
+// build used, not an edit, so an edit to a page is one build, not a reload.
+test("serve_does_not_reload_for_a_data_file_its_own_build_wrote", async () => {
+	const dir = tempDir("serve-hook-data");
+	write(dir, {
+		"ssqch.config.js": "import fs from \"node:fs\";\nimport { readData } from \"ssqch\";\nlet n = 0;\nexport default { dirs: { input: \"src\", output: \"dist\" }, beforeBuild: [() => fs.writeFileSync(\"data/stock.json\", JSON.stringify({ n: ++n }))], data: { stock: () => readData(\"data/stock.json\") } };\n",
+		"data/stock.json": "{\"n\":0}",
+		"src/index.jinja": "one {{ stock.n }}",
+	});
+	const log = path.join(dir, "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "dist/index.html");
+		await waitFor(page, "one 1");
+		await changeAndWait(path.join(dir, "src/index.jinja"), "two {{ stock.n }}", page, "two 2");
+		await changeAndWait(path.join(dir, "src/index.jinja"), "three {{ stock.n }}", page, "three 3");
+		// The same process counted every build: a reload would have started n again.
+		await sleep(2500);
+		assert.ok(fs.readFileSync(page, "utf8").includes("three 3"), fs.readFileSync(page, "utf8"));
+		assert.equal(count(readOr(log), "reading the configuration again"), 0, readOr(log));
+	} finally {
+		await server.stop();
+	}
+});
+
 // A site whose input folder is the project root (the default) has ssqch's
 // own `.cache` and the output inside what's watched. Writing them isn't a change.
 test("serve_does_not_rebuild_for_its_own_files", async () => {

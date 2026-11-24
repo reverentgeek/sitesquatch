@@ -76,6 +76,8 @@ export interface State {
 	loadedAs: Record<string, string>;
 	/** The files the plugins read for the last build, beyond the pages and the data (a stylesheet's partials): a change to one rebuilds the site. */
 	read: string[];
+	/** Of `files`, the data the site's code read (`readData()`), which a `beforeBuild` hook may write itself before it's read. */
+	values: string[];
 	said: string[];
 }
 
@@ -134,6 +136,8 @@ export class Builder {
 	files = new Set<string>();
 	/** What the plugins read for the last build. */
 	read = new Set<string>();
+	/** Of `files`, the data files the site's code read (`State.values`). */
+	private values = new Set<string>();
 	/** Other generators' words noted so far. */
 	said: string[] = [];
 	private args: string[];
@@ -232,6 +236,17 @@ export class Builder {
 		});
 	}
 
+	/**
+	 * Whether a configuration file holds what this process's last build used: a data file the
+	 * site's code read, written by a `beforeBuild` hook just before it read it, is no change.
+	 */
+	usedAsIs(file: string): boolean {
+		// Not the config or a module: saving one as it was starts a `serve.run` tool that finished.
+		if (!this.values.has(file)) return false;
+		const hash = this.loadedAs[file];
+		return hash !== undefined && fileHash(file) === hash;
+	}
+
 	/** A configuration file that's changed since this process loaded it, if one has. */
 	changedSinceLoad(): string | undefined {
 		return Object.entries(this.loadedAs).find(([file, hash]) => fileHash(file) !== hash)?.[0];
@@ -250,6 +265,7 @@ export class Builder {
 		this.files = new Set(state.files);
 		this.loadedAs = state.loadedAs;
 		this.read = new Set(state.read);
+		this.values = new Set(state.values);
 		this.said = state.said;
 	}
 
