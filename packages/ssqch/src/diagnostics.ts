@@ -30,9 +30,11 @@ export interface Diagnostic {
 	field?: string;
 	/** The page's URL, when the problem is in what was written (a broken link). */
 	url?: string;
+	/** The key of the page's front matter the code frame points at, when it isn't `field`: a misspelled field's frame shows the misspelling. Not in the JSON. */
+	at?: string;
 }
 
-type Extra = Pick<Diagnostic, "file" | "line" | "field" | "url">;
+type Extra = Pick<Diagnostic, "file" | "line" | "field" | "url" | "at">;
 
 /** A file as diagnostics name it: from the root, forward slashes, no `./` in front. */
 const shownFile = (file: string) => file.replaceAll("\\", "/").replace(/^(\.\/)+/, "");
@@ -356,8 +358,9 @@ function frame(problem: Diagnostic, at: Locator): string | undefined {
 	const lines = splitLines(source);
 	let number: number | undefined = problem.line;
 	if (number === undefined) {
-		if (problem.field === undefined) return undefined;
-		number = fieldLine(lines, problem.field);
+		const key = problem.at ?? problem.field;
+		if (key === undefined) return undefined;
+		number = fieldLine(lines, key);
 		if (number === undefined) return undefined;
 	}
 	if (number < 1 || number > lines.length) return undefined;
@@ -378,7 +381,7 @@ function frame(problem: Diagnostic, at: Locator): string | undefined {
 	}
 	// Longest first; the sort is stable, so ties keep the order they were found in.
 	quoted.sort((a, b) => Buffer.byteLength(b) - Buffer.byteLength(a));
-	const field = problem.field?.split(".")[0];
+	const field = (problem.at ?? problem.field)?.split(".")[0];
 	let under: [number, number] | undefined;
 	for (const part of [...(field === undefined ? [] : [field]), ...quoted]) {
 		if (Buffer.byteLength(part.trim()) <= 1) continue;

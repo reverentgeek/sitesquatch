@@ -27,7 +27,7 @@ import type { Config } from "./config.ts";
 import type { Data } from "./data.ts";
 import { toDate } from "./data.ts";
 import type { Diagnostic } from "./diagnostics.ts";
-import { BuildError, Diagnostics, bail, error, warn, warning } from "./diagnostics.ts";
+import { BuildError, Diagnostics, bail, error, isCapturing, warn, warning } from "./diagnostics.ts";
 import * as equivalents from "./equivalents.ts";
 import { globProblem, globToRegExp } from "./glob.ts";
 import { describeThrown } from "./modules.ts";
@@ -72,6 +72,8 @@ export interface Problem {
 	message: string;
 	/** From `unknown: "warn"`: reported, but the build goes on. */
 	warning: boolean;
+	/** The front matter key the code frame points at, when it isn't `field` (a misspelling). */
+	at?: string;
 }
 
 /** Where a page is, for `file` fields. */
@@ -263,7 +265,7 @@ export async function check(schema: Schema, data: Data, frontKeys: string[], fil
 		const typo = frontKeys.find((key) => !schema.fields.some((f) => f.name === key) && closest(key, [problem.field]) === problem.field);
 		if (typo === undefined) continue;
 		misspelt.add(typo);
-		problems[i] = { ...problem, message: `${problem.message}, and the page has \`${typo}\`: did you mean \`${problem.field}\`?` };
+		problems[i] = { ...problem, message: `${problem.message}, and the page has \`${typo}\`: did you mean \`${problem.field}\`?`, at: typo };
 	}
 	if (schema.unknown !== "allow") {
 		for (const key of frontKeys) {
@@ -486,7 +488,7 @@ function typeTs(type: Type, depth: number): string {
  * posts)` for a page of several. Empty for a page that isn't paginated. Six errors that all said
  * `src/snack.jinja` sent Squatch Snacks to rule functions on made-up fields to find the item (E1).
  */
-function paginated(data: Data): string {
+export function paginated(data: Data): string {
 	const p = data.pagination;
 	if (!isObject(p) || typeof p.pageNumber !== "number" || typeof p.data !== "string") return "";
 	const items = Array.isArray(p.items) ? p.items : [];
@@ -497,8 +499,22 @@ function paginated(data: Data): string {
 	return ` (item ${p.pageNumber + 1} of ${p.data}${label === undefined ? "" : `, ${JSON.stringify(String(label))}`})`;
 }
 
+/**
+ * A note when the site's `ssqch.d.ts` doesn't have its schemas as they are now: an editor then
+ * offers last week's fields, and nothing said to run `ssqch types` (the Squatch Snacks rerun found
+ * it on the tour). Only for a site that has the file, and not while serving or for `--format json`.
+ */
+function noteStaleTypes(config: Config, root: string): void {
+	if (config.serving || config.quiet || isCapturing() || !config.schemas.length) return;
+	let text: string;
+	try { text = fs.readFileSync(path.join(root, "ssqch.d.ts"), "utf8"); } catch { return; }
+	const stale = schemaTypes(config).filter(([name, ts]) => !text.includes(`${/^[A-Za-z0-9_]+$/.test(name) && !/^\d/.test(name) ? name : JSON.stringify(name)}: ${ts};`)).map(([name]) => name);
+	if (stale.length) process.stderr.write(`note: ssqch.d.ts doesn't have ${stale.length === 1 ? "the schema" : "the schemas"} ${stale.map((n) => `\`${n}\``).join(", ")} as the config has ${stale.length === 1 ? "it" : "them"}, so an editor shows old fields: run ssqch types\n`);
+}
+
 export async function checkPages(site: Site): Promise<void> {
 	const { config, dirs } = site;
+	noteStaleTypes(config, dirs.root);
 	// Front matter dates that aren't dates come first, with the schemas' errors on the same pages.
 	const errors: Diagnostic[] = [...site.badDates];
 	if (!config.schemas.length && !errors.length) return;
@@ -519,7 +535,7 @@ export async function checkPages(site: Site): Promise<void> {
 				const message = `${file.replace(/^(\.\/)+/, "")}${paginated(page.data)}: ${problem.message} (schema \`${schema.name}\`)`;
 				if (seen.has(message)) continue;
 				seen.add(message);
-				const found = (problem.warning ? warning : error)("schema", message, { file, field: problem.field });
+				const found = (problem.warning ? warning : error)("schema", message, { file, field: problem.field, ...(problem.at === undefined ? {} : { at: problem.at }) });
 				if (problem.warning) warn(found);
 				else errors.push(found);
 			}

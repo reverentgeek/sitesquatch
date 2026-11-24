@@ -7,6 +7,7 @@ import { red } from "../diagnostics.ts";
 import { CONFIG_FILES } from "../dirs.ts";
 import { joinAsGiven, parentAsGiven, slashes } from "../paths.ts";
 import { count } from "../report.ts";
+import { schemaDeclarations } from "./types.ts";
 
 /** The starter site: (path in the new site, file in `bundled/`). It's an amateur investigator's field notes: seven posts that each show one thing. */
 const STARTER: Array<[string, string]> = [
@@ -49,6 +50,13 @@ const DOCS_STARTER: Array<[string, string]> = [
 	["jsconfig.json", "starter/jsconfig.json"],
 	[".gitignore", "starter-docs/gitignore"],
 ];
+
+/**
+ * The docs starter's schemas as `ssqch types` writes them, so its `ssqch.d.ts` has them from the
+ * start and the first build has nothing to say about stale types. `init.test.ts` keeps them equal
+ * to the starter's config.
+ */
+export const DOCS_SCHEMAS: Array<[name: string, typescript: string]> = [["docs", "{\n\t\t\ttitle: string;\n\t\t\tdescription?: string;\n\t\t}"]];
 
 /** What `ssqch init --starter` can create. */
 export const STARTERS = ["site", "docs"];
@@ -149,7 +157,7 @@ const isBinary = (rel: string) => /\.(?:jpe?g|png|gif|webp|avif)$/i.test(rel);
 
 /** The starter's files for `engine`, as (path in the site, contents: text, or a picture's bytes). */
 export function starterFiles(starter: string, engine: string): Array<[string, string | Buffer]> {
-	const common = (starter === "docs" ? DOCS_STARTER : STARTER).map(([rel, file]): [string, string | Buffer] => [rel, isBinary(rel) ? fs.readFileSync(bundledPath(file)) : adapt(engine, rel, rel === "ssqch.d.ts" ? types() : bundled(file))]);
+	const common = (starter === "docs" ? DOCS_STARTER : STARTER).map(([rel, file]): [string, string | Buffer] => [rel, isBinary(rel) ? fs.readFileSync(bundledPath(file)) : adapt(engine, rel, rel === "ssqch.d.ts" ? types() + (starter === "docs" ? schemaDeclarations(DOCS_SCHEMAS) : "") : bundled(file))]);
 	const set = (starter === "docs" ? DOCS_TEMPLATES : SITE_TEMPLATES)[engine === "njk" ? "jinja" : engine];
 	const templates = set.map(([rel, file]): [string, string] => [`${rel}.${engine}`, rename(engine, bundled(file))]);
 	return [...common, ...templates, ["AGENTS.md", agentsMd({ starter, engine })], ["CLAUDE.md", "@AGENTS.md\n"]];

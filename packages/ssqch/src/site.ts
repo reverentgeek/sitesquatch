@@ -36,6 +36,7 @@ import { describeThrown, loadedFiles, settle } from "./modules.ts";
 import { comparePaths, displayPath, isDir, isFile, isInside, readFollowing, realPath, relative, shown, slashes, walkFiles } from "./paths.ts";
 import { closest } from "./suggest.ts";
 import { Profile } from "./profile.ts";
+import { paginated } from "./schema.ts";
 import { VERSION } from "./version.ts";
 import * as voice from "./voice.ts";
 
@@ -915,7 +916,7 @@ export class Site {
 			const computed = tpl.data.computed;
 			if (isPlainObject(computed)) {
 				for (const [key, value] of Object.entries(computed)) {
-					try { data[key] = await this.renderComputed(value, data, tpl); } catch (e) { throw context(e, `computed.${key}`); }
+					try { data[key] = await this.renderComputed(value, data, tpl); } catch (e) { throw context(e, `computed.${key}${paginated(data)}`); }
 				}
 			}
 			// A computed `layout` that depends on the page chooses this page's chain (one that's plain
@@ -1327,11 +1328,17 @@ export function sameErrorsTogether(messages: string[]): string[] {
 	// Where a message names its page: `in <page>: `, `rendering layout <layout> for <page>: `,
 	// `rendering <page> with `. The rest, with the page left out, is the error.
 	const PAGE = /^(?:in |rendering layout [^\s]+ for |rendering )([^\s:]+?\.[A-Za-z0-9]+)(?:: | with )/;
+	// A paginated page's item (` (item 2 of snacks, "Moss Mix")`) is where, not what: the same
+	// error on two items is one line, and the "more" names each item.
+	const ITEM = / \((?:item|page) \d+ of [^)]*\)(?=: )/;
 	const keyOf = (m: string): [string, string] | undefined => {
 		const found = PAGE.exec(m);
 		if (!found) return undefined;
 		const at = found[0].indexOf(found[1]);
-		return [m.slice(0, at) + "\0" + m.slice(at + found[1].length), found[1]];
+		const rest = m.slice(at + found[1].length);
+		const item = ITEM.exec(rest);
+		const key = m.slice(0, at) + "\0" + (item ? rest.slice(0, item.index) + rest.slice(item.index + item[0].length) : rest);
+		return [key, item ? `${found[1]}${item[0]}` : found[1]];
 	};
 	const pages = new Map<string, string[]>();
 	for (const m of messages) {

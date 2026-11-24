@@ -80,7 +80,9 @@ export function fingerprint(output: string, file: string): string {
 	} else if (copies.length === 1) {
 		hashed = path.basename(copies[0]);
 	} else if (copies.length === 0) {
-		bail(`${plain} doesn't exist; build the CSS and JS before ssqch`);
+		// Named for the plugin and the entry in its `files`: "before_build hook failed" alone sent
+		// the Squatch Snacks rerun to its Tailwind command, when the file was one it hadn't written.
+		bail(`assetsPlugin: ${file} is in its files, and ${plain} doesn't exist; build the CSS and JS before ssqch (a beforeBuild run), or take it out of files`);
 	} else {
 		bail(`${plain} doesn't exist, and there are ${copies.length} fingerprinted copies of it; rebuild it`);
 	}

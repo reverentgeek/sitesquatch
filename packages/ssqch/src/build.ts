@@ -33,7 +33,7 @@ import { commandLine } from "./command-line.ts";
 export { commandLine, toolPath } from "./command-line.ts";
 import { mkdocsGlobals, tocOf } from "./mkdocs.ts";
 import { currentRendering, renderingAs, safe } from "./rendering.ts";
-import { checkPages } from "./schema.ts";
+import { checkPages, paginated } from "./schema.ts";
 import type { CopyJob, Page, Tpl } from "./site.ts";
 import { Site, Timer, errorsTogether } from "./site.ts";
 import type { Profile, ProfileReport } from "./profile.ts";
@@ -331,8 +331,8 @@ class Renderer {
 				try {
 					out = engine.render(content, data, ctx);
 					if (typeof out !== "string") out = asText(out, name, tpl.rel);
-				} catch (e) { throw rendering(e, tpl, name); }
-				if (typeof out !== "string") return out.then((text) => run(i + 1, text), (e) => { throw rendering(e, tpl, name); });
+				} catch (e) { throw rendering(e, tpl, name, data); }
+				if (typeof out !== "string") return out.then((text) => run(i + 1, text), (e) => { throw rendering(e, tpl, name, data); });
 				content = out;
 			}
 			return content;
@@ -551,7 +551,10 @@ class Renderer {
 	}
 }
 
-const rendering = (e: unknown, tpl: Tpl, engine: string) => context(e, `rendering ${tpl.rel} with \`${engine}\``);
+// A paginated page says which item it was rendering, after the engine's name, so the parts
+// `locate` reads stay as they are: six errors that all said `snacks/snack.jinja` didn't say which
+// snack (the Squatch Snacks rerun, as schema errors already did).
+const rendering = (e: unknown, tpl: Tpl, engine: string, data?: Data) => context(e, `rendering ${tpl.rel} with \`${engine}\`${data ? paginated(data) : ""}`);
 
 /**
  * An engine's answer that isn't a string: a promise of one. Anything else (a `null` from a

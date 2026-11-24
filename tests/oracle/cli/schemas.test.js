@@ -132,3 +132,21 @@ test("a_tags_schema_checks_every_paginated_page_and_one_for_no_files_says_so", (
 	assert.ok(r.ok && r.log.includes("warn: schema `snack` matches no pages (files: \"snacks/snack.jinja\"), so nothing is checked"), r.log);
 	assert.ok(!r.log.includes("schema `jobs`"), "a tag with no pages yet is an empty collection, not a mistake");
 });
+
+// Not from a Rust test (the Squatch Snacks rerun, 2026-11-23): a misspelled field's frame points
+// at the misspelling, as a bad date's points at the date; and a build says when `ssqch.d.ts`
+// doesn't have the schemas the config has, since an editor then offers old fields.
+test("a_misspelling_has_a_frame_and_stale_types_get_a_note", () => {
+	const dir = tempDir("schemas-frame-types");
+	const config = (fields) => `export default { dirs: { input: "src", output: "dist" }, schemas: { jobs: { files: "*.md", fields: ${fields} } } };\n`;
+	write(dir, { "ssqch.config.js": config("{ title: \"string\", location: \"string\" }"), "src/job.md": "---\ntitle: Trail cook\nlocaton: Cedar Trail\n---\nHi\n" });
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("  --> src/job.md:3\n") && r.log.includes("   3 | locaton: Cedar Trail\n     | ^^^^^^^\n"), r.log);
+	write(dir, { "src/job.md": "---\ntitle: Trail cook\nlocation: Cedar Trail\n---\nHi\n" });
+	assert.ok(ssqch(["types", "--root", dir]).ok);
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && !r.log.includes("ssqch types"), r.log);
+	write(dir, { "ssqch.config.js": config("{ title: \"string\", location: \"string\", pay: \"number?\" }") });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && r.log.includes("note: ssqch.d.ts doesn't have the schema `jobs` as the config has it, so an editor shows old fields: run ssqch types\n"), r.log);
+});
