@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snacks for the trail | Cedar Ridge Ranger Station</title>
+
+<style>
+  /* Ranger Station '76: soft white (green charcoal in dark mode), pine headings and navigation,
+     burnt orange links, avocado for the selected language, harvest gold for the notice, and the
+     four-color stripe under the header. */
+  :root { color-scheme: light dark; --page: #fafaf7; --text: #29332c; --heading: #233b2b; --link: #a23e20; --selected: #e6ecda; --callout: #f6efdf; --stripe-pine: #233b2b; }
+  @media (prefers-color-scheme: dark) { :root { --page: #1b201d; --text: #e5e9e1; --heading: #d6e4c8; --link: #f0a17d; --selected: #2e3f2b; --callout: #2e2b21; --stripe-pine: #2e5a3c; } }
+  body { color: var(--text); background: var(--page); font: 17px/1.6 system-ui, sans-serif; margin: 0; }
+  h1, h2 { color: var(--heading); }
+  a { color: var(--link); text-underline-offset: 0.18em; }
+  header { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 5px solid; border-image: linear-gradient(to right, var(--stripe-pine) 0 25%, #a23e20 25% 50%, #e8af43 50% 75%, #a9b66a 75%) 1; }
+  header a { color: var(--heading); }
+  header nav { display: flex; gap: 1rem; }
+  .languages a[aria-current] { background: var(--selected); border-bottom: 3px solid #a9b66a; text-decoration: none; padding: 0 0.3rem; }
+  .notice { background: var(--callout); border-left: 4px solid #e8af43; padding: 0.5rem 1rem; }
+  main, footer { padding: 1rem 2rem; max-width: 46rem; }
+</style>
+</head>
+<body>
+<header>
+  <nav>
+    <a href="/en/">Home</a>
+    <a href="/en/trails/">Trails</a>
+    <a href="/en/snacks/">Snacks</a>
+  </nav>
+  <nav class="languages" aria-label="Language">
+    
+    <a href="/en/snacks/" hreflang="en" lang="en" aria-current="true">English</a>
+    
+    <a href="/es/snacks/" hreflang="es" lang="es">Español</a>
+    
+  </nav>
+</header>
+<main>
+  
+  <h1>Snacks for the trail</h1>
+  <p>The camp store has Squatch Snacks in three flavors, and Pine Cone Crunch by the bag. Everything comes in a wrapper you can carry out.</p>
+
+</main>
+<footer>Leave no trace. Pack out your pine cones.</footer>
+</body>
+</html>

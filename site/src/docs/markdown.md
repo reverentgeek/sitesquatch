@@ -45,6 +45,24 @@ export default { markdown: { highlight: { languages: { trailnotes, trail: "trail
 
 **A table of contents:** after a page's content renders, `page.headings` lists its headings (`level`, `id` and `text`), so its layouts can build a table of contents. The built-in `toc` filter does it for you: `{{{ toc(page.headings) }}}` writes nested `<ul>` links to the `h2` and `h3` headings, and `toc(page.headings, { from: 2, to: 4, ordered: true })` changes the levels or uses `<ol>`. `id` and `class` go on the outer list, `sublistClass` on the lists inside it, `itemClass` on each `<li>` (with `{level}` replaced by the heading's level) and `linkClass` on each link, so jekyll-toc's markup is `toc(page.headings, { class: "section-nav", itemClass: "toc-entry toc-h{level}" })`, and an unknown option is an error that lists them. In Liquid that's `{{ page.headings | toc: 2, 4 }}`, or `{{ page.headings | toc: class: "section-nav" }}` with options, and in Nunjucks, `{{ toc(page.headings) | safe }}`. The headings come from the HTML, so they work for pages in any template language. Collections have them too (`post.page.headings`). They're there once the page has rendered: in its layouts, and in a collection item after that item's `templateContent` has been read. Read in `computed`, which runs before any page renders, they're an empty list. `page.headings` are the page's own; for headings a layout adds around them, give `toc` the HTML instead, `toc(content)` in an outer layout (the same options), as eleventy-plugin-nesting-toc took it.
 
+For example, a docs layout with the page's own contents beside it, and a base layout around it that lists every `h2`, the one its child layout adds included. `_includes/doc.jinja` lists the page's headings, `h2` and `h3`:
+
+```jinja
+---
+layout: base.jinja
+---
+<aside class="toc">{{ toc(page.headings) | safe }}</aside>
+<main>{{ content }}<h2 id="trail-report">Trail report</h2></main>
+```
+
+`_includes/base.jinja` lists what the layouts inside it wrote, `h2` only:
+
+```jinja
+<body><aside class="all">{{ toc(content, { to: 2 }) | safe }}</aside>{{ content }}</body>
+```
+
+A page with `## Food`, `## Water` and `### Filters` gets Food, Water and Filters in the first list, and Food, Water and Trail report in the second. In Jinja and Nunjucks, `toc` needs `| safe`, or its links print as text.
+
 **Highlighting anywhere:** `highlight(code, lang)` returns the highlighted HTML for the inside of a `<code>` (escaped text for a language without a grammar), for code that isn't a Markdown fence: an example container's source, a snippet from a data file.
 
 **The highlighting cache:** each build keeps the code it highlighted in `.cache/ssqch/highlight/fences.json`, beside `fetch`'s copies and the images, and the next build takes the HTML from there instead of loading the grammars, which is most of what highlighting costs a new process: the ReverentGeek blog's `ssqch build` takes 0.64 s with it and 1.0 s without (rendering, 48 ms against 390 ms). `ssqch serve` keeps the same fences in memory between rebuilds, so the file is for its first build and for `ssqch build`. A fence is kept by its language, code and marked lines, the site's `languages` (a `.sublime-syntax` file by its contents), and the highlighter's own version: a hash of what ssqch's highlighter is built from, so a release that changes highlighting starts afresh by itself. Fences a site's own function highlights aren't kept, because a function can answer differently each time, and `highlight(code, lang)` in a template uses the cache too. The file holds the fences the last build used and no others, it's written only when they change (beside its place, then moved in), and a build that fails doesn't write it. A file that's damaged or from another version of ssqch is ignored and written again, never an error, and the cache never changes a page: a build with it writes the same bytes as a build without. `leaveNoTrace` cleans the output, not `.cache`; delete the file (or `.cache/`) to highlight everything again, and restore `.cache/ssqch` in CI to keep it, as for images.
@@ -122,6 +140,55 @@ A fence hook writes the whole block, so it has to write `<pre><code>` itself: `f
 ```
 
 **Code spans:** a `code.*` hook writes each inline code span (`` `ssqch build` ``) from its text, `code.code`, which the template escapes as a fence hook's does (Jinja and Nunjucks do it by themselves; in Liquid, `{{ code.code | escape }}`). A site moving from GitHub Pages keeps its CSS for Rouge's markup with `<code class="language-plaintext highlighter-rouge">{{ code.code }}</code>`. Fences don't go through it; they have `fence.*`.
+
+## Your own highlighter, step by step
+
+A ranger's trail log, highlighted: dates, trails, counts and comments. The highlighter is a file of its own, so it can be tested on its own, and the config imports it.
+
+`highlighters/trail-log.js` cuts the code into tokens with one regular expression, and keeps everything between the matches as plain text, so the tokens' text adds up to the code:
+
+```js
+// A ranger's trail log: `2026-06-01` dates, `@Cedar` trails, `#` comments, and counts.
+const TOKEN = /(#.*$)|(\d{4}-\d{2}-\d{2})|(@[A-Za-z-]+)|(\b\d+\b)/gm;
+
+export default function trailLog( code ) {
+	const tokens = [];
+	let last = 0;
+	for ( const m of code.matchAll( TOKEN ) ) {
+		if ( m.index > last ) tokens.push( code.slice( last, m.index ) );
+		const kind = m[ 1 ] ? "comment" : m[ 2 ] ? "constant" : m[ 3 ] ? "type" : "number";
+		tokens.push( [ m[ 0 ], kind ] );
+		last = m.index + m[ 0 ].length;
+	}
+	if ( last < code.length ) tokens.push( code.slice( last ) );
+	return tokens;
+}
+```
+
+`ssqch.config.js` names it, and `log` as another name for the same language:
+
+```js
+import trailLog from "./highlighters/trail-log.js";
+
+export default {
+  markdown: { highlight: { languages: { "trail-log": trailLog, log: "trail-log" } } },
+};
+```
+
+A fence with `{2}` marks its second line, as it does for a built-in language:
+
+````md
+```trail-log {2}
+2026-06-01 @Cedar 3 pine cones # all on the bench
+2026-06-02 @Old-Growth 1 footprint # probably a bear
+```
+````
+
+Each line is a `<span class="line">` (the marked one `line highlighted`), and each token a span with its kind: `<span class="hl-constant">2026-06-01</span> <span class="hl-type">@Cedar</span> <span class="hl-number">3</span> pine cones <span class="hl-comment"># all on the bench</span>`. `/highlight.css` colors them as it colors JavaScript's.
+
+- **What the function gets:** the fence's code without its last newline, and the fence's language as it's written (`log` for the alias) as the second argument. It runs for each fence on every build: a site's own function isn't kept in the highlighting cache.
+- **When it's wrong:** the fence is plain text and the build warns, naming the page, so a mistake never prints broken markup. Tokens that don't add up to the code: `` warn: src/log.md: a `trail-log` fence is plain text: markdown.highlight.languages.trail-log returned tokens whose text isn't the code (they differ from line 1) ``. A kind that isn't one: `returned the kind "sparkle", which isn't one of comment, keyword, ...`, with the whole list. A function that throws: `markdown.highlight.languages.trail-log failed: lost the trail`.
+- **When not to write one:** a language with a Sublime Text grammar (most have one) is a `.sublime-syntax` path instead, `{ snack: "grammars/snack.sublime-syntax" }`, which highlights it fully and is kept in the cache. A language ssqch has under another name is an alias: `{ jsx: "js" }`. A function is for a small language of your own, where a grammar would be more than it needs.
 
 ## Another highlighter's classes
 

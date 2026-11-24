@@ -41,7 +41,8 @@ Moving one section at a time works: build the docs or blog with ssqch into a fol
 | Extra Shiki languages (Astro `shikiConfig.langs`) | `markdown: { highlight: { languages } }`: an alias (`mdx: "markdown"`), a function that returns tokens, or a `.sublime-syntax` file. Shiki's TextMate JSON grammars don't load as they are (`ssqch docs languages`) |
 | Twoslash, or anything that needs a compiler at build time | A `beforeBuild` command that writes HTML or JSON for templates to include |
 | `<Image>` / `gatsby-plugin-image` | `imagePlugin()`: every `<img>`, including Markdown images, becomes a responsive `<picture>` |
-| i18n routing | Not yet |
+| `@astrojs/rss`, `gatsby-plugin-feed` | `feedPlugin({ url })` from `ssqch/rss`: an Atom or RSS feed of a collection, no template ([A feed for a blog](../plugins.md#a-feed-for-a-blog)) |
+| i18n routing | Not built in: a folder per language, as [Multilingual sites](../multilingual.md) does, with the `multilingual` example to copy |
 
 ## MDX and components
 

@@ -9,6 +9,8 @@ Hugo and SiteSquatch both build pages from Markdown with front matter, a data fo
 
 `ssqch scout` (see [Scouting a site](../trailheads.md#scouting-a-site)) lists what your site uses, each with its file and line: every shortcode with how many pages call it, the sections (`_index.md`) and `cascade`, the render hooks and ssqch's hook for each, the Go templates, and the Hugo Pipes and functions they call (`js.Build`, `css.TailwindCSS`, `.GetPage`, `.Related`). Its draft (`--write-draft`) is an `ssqch.config.js` that reads the content as Hugo does, and a container template to port for each of the site's own shortcodes:
 
+A whole move with the loop, scout's report before, halfway and at the end, with `baseline` and `diff` between: [A move, step by step](../agents.md#a-move-step-by-step).
+
 ```js
 export default defineConfig({
   dirs: { input: "content", output: "public", includes: "../_includes", data: "../data" },
@@ -36,7 +38,7 @@ export default defineConfig({
 | `title`, `params` | global data: `data: { site: { title, params } }`, read as `site.title` |
 | `menus` | global data (`_data/nav.yml`), and `navTree` |
 | `taxonomies` | tags are collections; a page per tag is a page paginated over `collections` |
-| `outputs` (RSS, `_redirects`) | a page per output file, with its `permalink` (`/index.xml`) and `layout: false`; `rssPlugin()` for feeds |
+| `outputs` (RSS, `_redirects`) | a page per output file, with its `permalink` (`/index.xml`) and `layout: false`; `feedPlugin({ url, format: "rss", output: "/index.xml" })` for the RSS feed ([A feed for a blog](../plugins.md#a-feed-for-a-blog)) |
 | `markup.goldmark.parser.autoHeadingIDType` | `markdown.headingIds`: `"github"` (Hugo's default) or `"blackfriday"` |
 | `markup.goldmark.extensions.typographer` | `markdown.smartPunctuation` (it writes characters, where Goldmark writes entities) |
 | `markup.highlight` | `markdown.highlight`, with `classes: "pygments"` for Chroma's class names; inline styles (`noClasses`, Hugo's default) aren't in ssqch, so make a stylesheet (`hugo gen chromastyles`) |

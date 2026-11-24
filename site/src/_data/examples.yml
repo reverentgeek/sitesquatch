@@ -88,3 +88,12 @@
     - { label: Filters as a custom element, docs: /docs/plugins/ }
     - { label: Pagefind search, docs: /docs/deploying/#search }
     - { label: EJS templates, docs: /docs/template-languages/#ejs }
+- name: multilingual
+  engine: Jinja
+  from: what a site in more than one language looks like
+  shows: English and Spanish, a language switch, hreflang and the sitemap's alternates, a fallback for a page not translated yet.
+  features:
+    - { label: A folder per language, docs: /docs/multilingual/ }
+    - { label: hreflang in the sitemap, docs: /docs/plugins/ }
+    - { label: Fallback pages, by pagination, docs: /docs/templates/ }
+    - { label: Jinja templates, docs: /docs/template-languages/#jinja-and-nunjucks }

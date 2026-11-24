@@ -11,6 +11,8 @@ blog.rust-lang.org was ported this way as a trial: all of its URLs and most page
 
 `ssqch scout` (see [Scouting a site](../trailheads.md#scouting-a-site)) lists what this guide describes for your site and drafts the mechanical part. Its edits, in each page's `+++` front matter, move `tags` out of `[taxonomies]` to the top level and turn `path` into a `permalink`. Its draft is a first `ssqch.config.js` from `config.toml`: `content/` as the input and `templates/` for layouts, `config.title` and `config.extra` as data so templates keep reading them, the Markdown options, Sass, a sitemap, redirects for `aliases`, and `static/` copied as it is. Then it lists what's left with where it is: each section (`_index.md`), each shortcode used in the content, and counts of the Tera constructs in your templates that read differently in Jinja. It changes nothing on its own: `--write-draft` writes the draft and `--patch move.patch` the edits, to read and `git apply`.
 
+A whole move with the loop, scout's report before, halfway and at the end, with `baseline` and `diff` between: [A move, step by step](../agents.md#a-move-step-by-step).
+
 ## The config
 
 | Zola (`config.toml`) | SiteSquatch (`ssqch.config.js`) |

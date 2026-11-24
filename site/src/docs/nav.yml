@@ -33,6 +33,7 @@
   pages:
     - deploying.md
     - netlify.md
+    - cloudflare.md
     - github-pages.md
     - serving-markdown.md
     - agents.md

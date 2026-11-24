@@ -1,0 +1,55 @@
+{
+  "version": "0.14.1",
+  "ok": true,
+  "report": {
+    "schemaVersion": 1,
+    "ok": true,
+    "environment": "production",
+    "output": "dist",
+    "pages": {
+      "written": 7,
+      "templates": 7,
+      "bytes": 16408,
+      "new": null,
+      "gone": null
+    },
+    "copied": {
+      "files": 0,
+      "unchanged": 0,
+      "bytes": 0
+    },
+    "removed": 0,
+    "drafts": 0,
+    "written": [
+      "en/index.html",
+      "en/snacks/index.html",
+      "en/trails/index.html",
+      "es/index.html",
+      "es/senderos/index.html",
+      "es/snacks/index.html",
+      "index.html",
+      "sitemap.xml"
+    ],
+    "summary": [
+      {
+        "label": "Links",
+        "value": "69 checked, 0 broken"
+      }
+    ],
+    "warnings": [],
+    "aliases": [],
+    "errors": [],
+    "timings": "(left out)"
+  },
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   7 written from 7 templates, 16.4 KB\n  Links   69 checked, 0 broken\n  Output  dist: 8 files, 18.1 KB\n",
+  "files": {
+    "en/index.html": "text",
+    "en/snacks/index.html": "text",
+    "en/trails/index.html": "text",
+    "es/index.html": "text",
+    "es/senderos/index.html": "text",
+    "es/snacks/index.html": "text",
+    "index.html": "text",
+    "sitemap.xml": "text"
+  }
+}

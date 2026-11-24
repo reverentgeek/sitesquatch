@@ -9,6 +9,8 @@ VitePress builds each Markdown page into a Vue component and ships a client app 
 
 `ssqch scout` (see [Scouting a site](../trailheads.md#scouting-a-site)) reads `.vitepress/config.ts` (`srcDir`, `srcExclude`, `cleanUrls`, the sitemap's `hostname`, `head`, the markdown-it plugins it `use`s) and lists what your pages use, each with its file and line: Vue's `<script setup>` blocks, containers and the closing `:::`s Prettier indents, `-vue` fences, `[[toc]]`, every component by name with the `.vue` file it comes from and whether it has state, the front matter the theme reads (`layout`, `hero`, `outline`, `aside`, `page: true`), data loaders named like ssqch's data, and dynamic routes. `--write-draft` writes a first `ssqch.config.js`, and `ssqch baseline "pnpm run build" --from .vitepress/dist` builds the reference to compare with. Run scout again as you go: what the config or a template does counts as done.
 
+A whole move with the loop, scout's report before, halfway and at the end, with `baseline` and `diff` between: [A move, step by step](../agents.md#a-move-step-by-step).
+
 ```js
 // ssqch.config.js, as scout drafts it for vuejs.org
 import { sitemapPlugin } from "ssqch/sitemap";
