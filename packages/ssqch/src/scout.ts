@@ -256,9 +256,12 @@ export async function siteConfig(dir: string): Promise<SiteConfig> {
 		return (emitWarning as (...args: unknown[]) => void).call(process, warning, ...rest);
 	}) as typeof process.emitWarning;
 	try {
-		const value = (await importFile(file)).default;
+		let value = (await importFile(file)).default;
+		// A config can be a function of the build (`({ env, serving }) => ({...})`), as `ssqch build`
+		// calls it: what it returns for a production build is what's read here.
+		if (typeof value === "function") value = await value(Object.freeze({ env: "production", serving: false }));
 		const source = readUtf8(file);
-		return isPlainObject(value) ? { config: value as Record<string, unknown>, dir, ...(source === undefined ? {} : { source }) } : { error: `${path.basename(file)}'s default export isn't an object` };
+		return isPlainObject(value) ? { config: value as Record<string, unknown>, dir, ...(source === undefined ? {} : { source }) } : { error: `${path.basename(file)}'s default export isn't an object (or a function that returns one)` };
 	} catch (e) {
 		return { error: `${path.basename(file)}: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}` };
 	} finally {

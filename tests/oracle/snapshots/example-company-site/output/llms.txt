@@ -1,0 +1,46 @@
+# Squatch Snacks
+
+> Trail snacks made in Pine Cone Gap, West Virginia, sold by the bag and by monthly or yearly subscription.
+
+Each snack has a page under /provisions/ with its price, weight and ingredients. The subscriptions (Day Hike, Overnight, Thru-Hike) and their monthly and yearly prices are on /pricing/. Prices are in US dollars.
+
+## Pages
+
+- [Trail snacks with a legendary following.](https://squatchsnacks.example/index.md): Trail snacks so good, even Sasquatch comes out of hiding. Pine Cone Crunch, Huckleberry Hustle and four more, by the bag or by subscription.
+
+## About
+
+- [About us](https://squatchsnacks.example/about/index.md): Squatch Snacks started at a trailhead in Pine Cone Gap, West Virginia, with one batch of Pine Cone Crunch and a blurry photo.
+
+## Careers
+
+- [Careers](https://squatchsnacks.example/careers/index.md): Work at Squatch Snacks. Openings in our Pine Cone Gap kitchen, our warehouse and on the trail.
+- [Fulfillment Lead](https://squatchsnacks.example/careers/jobs/fulfillment-lead/index.md): Run the warehouse that packs every subscription box, and keep the trail-town shipments on time.
+- [Snack Scientist](https://squatchsnacks.example/careers/jobs/snack-scientist/index.md): Develop new flavors that hold up at altitude, in the rain and in the bottom of a bear canister.
+- [Trail Ambassador](https://squatchsnacks.example/careers/jobs/trail-ambassador/index.md): Hike, hand out samples at trailheads, and write down what hikers tell you. Boots provided.
+
+## Contact
+
+- [Contact us](https://squatchsnacks.example/contact/index.md): Questions about a snack, a subscription or a sighting? Write to Squatch Snacks.
+
+## Pricing
+
+- [Subscriptions](https://squatchsnacks.example/pricing/index.md): Three snack subscriptions, Day Hike, Overnight and Thru-Hike, billed monthly or yearly. Skip or cancel any time.
+
+## Privacy
+
+- [Privacy policy](https://squatchsnacks.example/privacy/index.md): What Squatch Snacks collects when you visit, subscribe or write to us, and what we do with it.
+
+## Provisions
+
+- [Our snacks](https://squatchsnacks.example/provisions/index.md): Six trail snacks made in Pine Cone Gap, West Virginia, from Pine Cone Crunch to Bigfoot Jerky. By the bag, or in a monthly subscription.
+- [Bigfoot Jerky](https://squatchsnacks.example/provisions/bigfoot-jerky/index.md): Plant-based. Size 17. Smoky mushroom and soy jerky strips, cut long enough that you'll wonder who they were sized for.
+- [Huckleberry Hustle](https://squatchsnacks.example/provisions/huckleberry-hustle/index.md): Tart berries for the last mile. Chewy huckleberry and apple fruit leather, rolled and tied with a strip of parchment so it doesn't stick to your fingers on the climb.
+- [Moss Mix](https://squatchsnacks.example/provisions/moss-mix/index.md): Green, salty and suspiciously good. Roasted pumpkin seeds, pistachios and dried edamame tossed in seaweed and lime. It looks like the forest floor and tastes better.
+- [Pine Cone Crunch](https://squatchsnacks.example/provisions/pine-cone-crunch/index.md): The one the eyewitnesses can't stop talking about. Toasted oat clusters with pine nuts, maple and a pinch of sea salt, pressed into cone-shaped bites that survive the bottom of any pack.
+- [Summit S'mores](https://squatchsnacks.example/provisions/summit-smores/index.md): Campfire not required. Graham cracker squares sandwiching dark chocolate and a toasted marshmallow layer that stays put up to 9,000 feet.
+- [Trailhead Toffee](https://squatchsnacks.example/provisions/trailhead-toffee/index.md): A small reward for leaving the car. Brittle almond toffee broken into thumb-sized shards and dusted with cocoa. Best eaten while reading the trail map.
+
+## Terms
+
+- [Terms of service](https://squatchsnacks.example/terms/index.md): The terms for buying Squatch Snacks and for subscriptions.

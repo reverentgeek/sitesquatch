@@ -1,10 +1,11 @@
 // `ssqch/rss`: helpers for feeds. `rssPlugin()` adds them to templates as filters; the named
 // exports are the same functions for a site's own code. Ported from `plugins/rss` and the module
 // in `crates/ssqch/src/js/rss.js`. Dates are read and written in UTC with no `Intl`, as 0.7 did.
+import { site } from "../api.ts";
 import { withBaseOnce } from "../base.ts";
 import { BUILTINS } from "../config.ts";
 import type { Config } from "../config.ts";
-import { toDate } from "../data.ts";
+import { shownAsUtc, toDate } from "../data.ts";
 import { aliasUsed, bail } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { rewriteHtml } from "../html.ts";
@@ -17,7 +18,7 @@ export function rssPlugin(_options?: unknown) {
 }
 
 /** How a value prints in a template's `{{ }}`: nothing for `null` and `undefined`, a date as ISO 8601. */
-const output = (v: unknown): string => (v === undefined || v === null ? "" : v instanceof Date ? v.toISOString() : String(v));
+const output = (v: unknown): string => (v === undefined || v === null ? "" : v instanceof Date ? shownAsUtc(v).toISOString() : String(v));
 
 /** A value as 0.7's error messages showed it. An invalid `Date` and `NaN` (which 0.7 took for 1970) are shown as JavaScript writes them. */
 function shown(v: unknown): string {
@@ -44,15 +45,17 @@ export function getNewestCollectionItemDate(items?: unknown): Date | undefined {
 
 /** `2026-03-14T00:00:00Z` */
 export function dateToRfc3339(date?: unknown): string {
-	const d = toDate(date);
-	if (d === undefined) bail(`dateToRfc3339: not a date: ${shown(date)}`);
+	const given = toDate(date);
+	if (given === undefined) bail(`dateToRfc3339: not a date: ${shown(date)}`);
+	const d = shownAsUtc(given);
 	return `${year(d)}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())}T${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())}Z`;
 }
 
 /** `Sat, 14 Mar 2026 00:00:00 +0000` */
 export function dateToRfc822(date?: unknown): string {
-	const d = toDate(date);
-	if (d === undefined) bail(`dateToRfc822: not a date: ${shown(date)}`);
+	const given = toDate(date);
+	if (given === undefined) bail(`dateToRfc822: not a date: ${shown(date)}`);
+	const d = shownAsUtc(given);
 	return `${DAYS[d.getUTCDay()]}, ${two(d.getUTCDate())} ${MONTHS[d.getUTCMonth()]} ${year(d)} ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())} +0000`;
 }
 
@@ -68,15 +71,16 @@ function year(d: Date): string {
  * resolved comes back unchanged. `siteBase` is the site's `base` (the filters pass it): a URL from
  * the site's root gets it first, unless it has it already, since `page.url` doesn't, and `new URL`
  * would drop a path in the address (`/posts/x/` against `https://example.com/repo/` is
- * `https://example.com/posts/x/`).
+ * `https://example.com/posts/x/`). Called from a site's code, it's the build's base, as the
+ * template function's is: the named export dropped it, and the Squatch Snacks rerun wrote its own.
  */
-export function absoluteUrl(url: unknown, base: unknown, siteBase = ""): string {
+export function absoluteUrl(url: unknown, base: unknown, siteBase = site.base): string {
 	const text = withBaseOnce(siteBase, String(url));
 	try { return new URL(text, String(base)).toString(); } catch { return text; }
 }
 
 /** `html` with `href`, `src`, `poster` and `srcset` made absolute against `base` (and `siteBase`, as `absoluteUrl` has it); everything else is as it was. */
-export function htmlToAbsoluteUrls(html: unknown, base: unknown, siteBase = ""): string {
+export function htmlToAbsoluteUrls(html: unknown, base: unknown, siteBase = site.base): string {
 	const baseUrl = String(base);
 	return rewriteHtml(String(html ?? ""), {
 		tag(el) {
@@ -96,7 +100,7 @@ export function htmlToAbsoluteUrls(html: unknown, base: unknown, siteBase = ""):
 }
 
 /** A post's HTML for a feed: one generated copy for each local image, and every URL absolute. */
-export function feedHtml(html?: unknown, base?: unknown, options?: unknown, siteBase = ""): string | Promise<string> {
+export function feedHtml(html?: unknown, base?: unknown, options?: unknown, siteBase = site.base): string | Promise<string> {
 	const feedImages = (image as { feedImages?: (html: string, base: string, options: unknown) => string | Promise<string> }).feedImages;
 	if (typeof feedImages !== "function") bail("feedHtml() isn't in the Node build of ssqch yet (the move to Node, stage 5)");
 	const source = html === undefined || html === null ? "" : String(html);
@@ -116,8 +120,7 @@ BUILTINS.set("ssqch/rss", (config: Config, options) => {
 	const rssLastUpdatedDate = equivalents.find("rssLastUpdatedDate", "filter")!;
 	filters.set("rssDate", (date?: unknown) => { aliasUsed(rssDate); return dateToRfc3339(date); });
 	filters.set("rssLastUpdatedDate", (items?: unknown) => { aliasUsed(rssLastUpdatedDate); return dateToRfc3339(getNewestCollectionItemDate(items)); });
-	// As filters, they know the site's `base` (absoluteUrl).
-	filters.set("absoluteUrl", (url?: unknown, base?: unknown) => absoluteUrl(output(url), output(base), config.base));
+	// As filters, they know the site's `base` (absoluteUrl, which every site has: src/filters.ts).
 	filters.set("htmlToAbsoluteUrls", (html?: unknown, base?: unknown) => htmlToAbsoluteUrls(output(html), output(base), config.base));
 	// Template engines name the function in front of its errors already.
 	const unprefixed = (e: unknown) => {

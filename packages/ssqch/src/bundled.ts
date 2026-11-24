@@ -16,6 +16,9 @@ export const BUNDLED = path.join(PACKAGE, "bundled");
 /** What's read from the repository when it isn't in `bundled/`: (path under `bundled/`, the original from the repository's root). */
 export const FROM_REPOSITORY: ReadonlyArray<readonly [rel: string, original: string]> = [
 	["docs", "site/src/docs"],
+	// The example `multilingual.md` starts from, in the package where an agent in a site's folder
+	// can copy it: the Squatch Snacks rerun looked in node_modules/ssqch and wrote its own.
+	["examples/multilingual", "examples/sites/multilingual"],
 ];
 
 /** Where a bundled file or folder is: in `bundled/`, or (running from the source) its original. */

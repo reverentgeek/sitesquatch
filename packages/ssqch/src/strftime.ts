@@ -1,6 +1,7 @@
 // `strftime` patterns, as 0.7 formatted them (Rust's chrono), in UTC. ssqch's date filters
 // (`dateformat`, `date.strftime()`) use it, so a page's dates don't depend on the machine's time
 // zone, its locale, or `Intl`, whose answers change between Node releases.
+import { shownAsUtc } from "./data.ts";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -38,7 +39,9 @@ export function strftime(date: Date, pattern: string): string {
 	return out;
 }
 
-function field(d: Date, spec: string, pad: string | undefined): string {
+function field(given: Date, spec: string, pad: string | undefined): string {
+	// A date written without a time is its written day (data.ts, `shownAsUtc`).
+	const d = shownAsUtc(given);
 	const num = (n: number, width: number, fill: "0" | " ") => {
 		const text = String(Math.abs(n));
 		const by = pad === "-" ? "" : pad === "_" ? " " : pad === "0" ? "0" : fill;

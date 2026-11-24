@@ -25,9 +25,9 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Config } from "./config.ts";
 import type { Data } from "./data.ts";
-import { toDate } from "./data.ts";
+import { shownAsUtc, toDate } from "./data.ts";
 import type { Diagnostic } from "./diagnostics.ts";
-import { BuildError, Diagnostics, bail, error, warn, warning } from "./diagnostics.ts";
+import { BuildError, Diagnostics, bail, error, isCapturing, warn, warning } from "./diagnostics.ts";
 import * as equivalents from "./equivalents.ts";
 import { globProblem, globToRegExp } from "./glob.ts";
 import { describeThrown } from "./modules.ts";
@@ -59,6 +59,8 @@ export interface Schema {
 	name: string;
 	/** The `files` globs, or none: the pages tagged with the schema's name. */
 	files: RegExp[] | undefined;
+	/** The `files` globs as written, for a message. */
+	globs?: string[];
 	fields: Field[];
 	unknown: Unknown;
 }
@@ -70,6 +72,8 @@ export interface Problem {
 	message: string;
 	/** From `unknown: "warn"`: reported, but the build goes on. */
 	warning: boolean;
+	/** The front matter key the code frame points at, when it isn't `field` (a misspelling). */
+	at?: string;
 }
 
 /** Where a page is, for `file` fields. */
@@ -209,12 +213,14 @@ export function parseSchema(name: string, spec: unknown): Schema {
 	if (!("fields" in spec) || spec.fields === undefined) bail(`${at} needs \`fields\`: { title: "string", date: "date" }`);
 	const fields = parseFields(spec.fields, `${at}.fields`);
 	let files: RegExp[] | undefined;
+	let written: string[] | undefined;
 	const given = spec.files;
 	if (given !== undefined && given !== null) {
 		let globs: string[];
 		if (typeof given === "string") globs = [given];
 		else if (Array.isArray(given)) globs = given.map((g) => (typeof g === "string" ? g : bail(`${at}.files must be a glob or a list of globs`)));
 		else bail(`${at}.files must be a glob or a list of globs, not ${typeOf(given)}`);
+		written = globs;
 		files = globs.map((g) => {
 			const glob = g.replace(/^(\.\/)+/, "");
 			const problem = globProblem(glob);
@@ -228,7 +234,7 @@ export function parseSchema(name: string, spec: unknown): Schema {
 		if (word !== "allow" && word !== "warn" && word !== "error") bail(`${at}.unknown must be "allow", "warn" or "error", not ${quoted(word)}`);
 		unknown = word;
 	}
-	return { name, files, fields, unknown };
+	return { name, files, ...(written ? { globs: written } : {}), fields, unknown };
 }
 
 /** The site's schemas as TypeScript object types, for `ssqch types`: each name, and its type as 0.7's `Schema::typescript` wrote it (fields three tabs in). */
@@ -259,7 +265,7 @@ export async function check(schema: Schema, data: Data, frontKeys: string[], fil
 		const typo = frontKeys.find((key) => !schema.fields.some((f) => f.name === key) && closest(key, [problem.field]) === problem.field);
 		if (typo === undefined) continue;
 		misspelt.add(typo);
-		problems[i] = { ...problem, message: `${problem.message}, and the page has \`${typo}\`: did you mean \`${problem.field}\`?` };
+		problems[i] = { ...problem, message: `${problem.message}, and the page has \`${typo}\`: did you mean \`${problem.field}\`?`, at: typo };
 	}
 	if (schema.unknown !== "allow") {
 		for (const key of frontKeys) {
@@ -433,7 +439,7 @@ function show(value: unknown): string {
 	if (value === null) return "null";
 	if (typeof value === "string") return `${quoted(firstChars(value, 60))}${charCount(value) > 60 ? "..." : ""}`;
 	if (typeof value === "number" || typeof value === "boolean") return String(value);
-	if (value instanceof Date) return `the date ${Number.isNaN(value.getTime()) ? "Invalid Date" : value.toISOString().slice(0, 10)}`;
+	if (value instanceof Date) return `the date ${Number.isNaN(value.getTime()) ? "Invalid Date" : shownAsUtc(value).toISOString().slice(0, 10)}`;
 	if (Array.isArray(value)) return "a list";
 	if (typeof value === "function") return "a function";
 	return "an object";
@@ -482,7 +488,7 @@ function typeTs(type: Type, depth: number): string {
  * posts)` for a page of several. Empty for a page that isn't paginated. Six errors that all said
  * `src/snack.jinja` sent Squatch Snacks to rule functions on made-up fields to find the item (E1).
  */
-function paginated(data: Data): string {
+export function paginated(data: Data): string {
 	const p = data.pagination;
 	if (!isObject(p) || typeof p.pageNumber !== "number" || typeof p.data !== "string") return "";
 	const items = Array.isArray(p.items) ? p.items : [];
@@ -493,27 +499,63 @@ function paginated(data: Data): string {
 	return ` (item ${p.pageNumber + 1} of ${p.data}${label === undefined ? "" : `, ${JSON.stringify(String(label))}`})`;
 }
 
+/**
+ * A note when the site's `ssqch.d.ts` doesn't have its schemas as they are now: an editor then
+ * offers last week's fields, and nothing said to run `ssqch types` (the Squatch Snacks rerun found
+ * it on the tour). Only for a site that has the file, and not while serving or for `--format json`.
+ */
+function noteStaleTypes(config: Config, root: string): void {
+	if (config.serving || config.quiet || isCapturing() || !config.schemas.length) return;
+	let text: string;
+	try { text = fs.readFileSync(path.join(root, "ssqch.d.ts"), "utf8"); } catch { return; }
+	const stale = schemaTypes(config).filter(([name, ts]) => !text.includes(`${/^[A-Za-z0-9_]+$/.test(name) && !/^\d/.test(name) ? name : JSON.stringify(name)}: ${ts};`)).map(([name]) => name);
+	if (stale.length) process.stderr.write(`note: ssqch.d.ts doesn't have ${stale.length === 1 ? "the schema" : "the schemas"} ${stale.map((n) => `\`${n}\``).join(", ")} as the config has ${stale.length === 1 ? "it" : "them"}, so an editor shows old fields: run ssqch types\n`);
+}
+
 export async function checkPages(site: Site): Promise<void> {
 	const { config, dirs } = site;
+	noteStaleTypes(config, dirs.root);
 	// Front matter dates that aren't dates come first, with the schemas' errors on the same pages.
 	const errors: Diagnostic[] = [...site.badDates];
 	if (!config.schemas.length && !errors.length) return;
-	const seen = new Set<string>();
+	const groups = new Map<string, { file: string; problem: Problem; schema: string; items: string[] }>();
+	// A paginated template puts only its first page in its tags' collections, but a schema keyed
+	// by a tag checks every page it makes: Squatch Snacks' schema on `tags: snack` checked one
+	// snack of six, and said nothing of the rest (the rerun, 2026-11-23).
+	const collected = new Set(site.pages.filter((p) => p.inCollections).map((p) => p.tpl));
+	const matched = new Set<Schema>();
 	for (const page of site.pages) {
 		const tags = Array.isArray(page.data.tags) ? page.data.tags.filter((t: unknown): t is string => typeof t === "string") : [];
 		const files: PageFiles = { input: dirs.input, pageDir: path.dirname(page.tpl.input) };
 		const file = site.display(page.tpl.input);
 		for (const schema of config.schemas) {
-			if (!covers(schema, page.tpl.rel, tags, page.inCollections)) continue;
+			if (!covers(schema, page.tpl.rel, tags, page.inCollections || collected.has(page.tpl))) continue;
+			matched.add(schema);
 			for (const problem of await check(schema, page.data, page.tpl.frontKeys, files, dirs.root)) {
-				const message = `${file.replace(/^(\.\/)+/, "")}${paginated(page.data)}: ${problem.message} (schema \`${schema.name}\`)`;
-				if (seen.has(message)) continue;
-				seen.add(message);
-				const found = (problem.warning ? warning : error)("schema", message, { file, field: problem.field });
-				if (problem.warning) warn(found);
-				else errors.push(found);
+				const key = `${file}\0${problem.message}\0${schema.name}`;
+				const group = groups.get(key);
+				if (group) group.items.push(paginated(page.data));
+				else groups.set(key, { file, problem, schema: schema.name, items: [paginated(page.data)] });
 			}
 		}
+	}
+	// The same problem on several pages of one template is one line, which names the first page
+	// and how many more: now that every page of a paginated template is checked, a problem in the
+	// template's own front matter would otherwise be a line for each of them.
+	for (const { file, problem, schema, items } of groups.values()) {
+		const pages = [...new Set(items)];
+		const more = pages.slice(1);
+		const others = more.length ? ` (and ${more.length} more ${more.length === 1 ? "page" : "pages"} of it with the same problem: ${more.slice(0, 3).map((label) => label.slice(2, -1)).join("; ")}${more.length > 3 ? "; ..." : ""})` : "";
+		const message = `${file.replace(/^(\.\/)+/, "")}${pages[0]}: ${problem.message} (schema \`${schema}\`)${others}`;
+		const found = (problem.warning ? warning : error)("schema", message, { file, field: problem.field, ...(problem.at === undefined ? {} : { at: problem.at }) });
+		if (problem.warning) warn(found);
+		else errors.push(found);
+	}
+	// A schema for files that match no page checks nothing, and a build that passes says nothing
+	// of it: after a folder moved, Squatch Snacks' validation was off without a word (the rerun).
+	// A tag's schema with no pages is a collection that's empty for now, so it's left alone.
+	for (const schema of config.schemas) {
+		if (schema.globs && !matched.has(schema)) warn(warning("schema", `schema \`${schema.name}\` matches no pages (files: ${schema.globs.map((g) => JSON.stringify(g)).join(", ")}), so nothing is checked; a page that moved needs its new path here`));
 	}
 	if (!errors.length) return;
 	const shown = config.verbose ? errors.length : 30;

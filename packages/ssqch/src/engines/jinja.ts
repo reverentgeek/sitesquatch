@@ -4,7 +4,7 @@
 // dates, and values printed as 0.7 printed them. Where nunjucks has something 0.7 didn't
 // (`forceescape`, `nl2br`, `urlize`), it stays.
 import nunjucks from "nunjucks";
-import { toDate } from "../data.ts";
+import { shownAsUtc, toDate } from "../data.ts";
 import { BadPattern, strftime } from "../strftime.ts";
 
 // nunjucks' internals, which its type definitions leave out.
@@ -144,7 +144,7 @@ export function njkString(v: unknown): string {
 	if (typeof v === "string") return v;
 	if (v === undefined || v === null) return "";
 	if (typeof v === "function") return FUNCTION;
-	if (v instanceof Date) return Number.isNaN(v.getTime()) ? String(v) : v.toISOString();
+	if (v instanceof Date) return Number.isNaN(v.getTime()) ? String(v) : shownAsUtc(v).toISOString();
 	if (Array.isArray(v)) return v.map(njkString).join(",");
 	return String(v);
 }
@@ -164,7 +164,7 @@ function pyStringOf(v: unknown): string {
 	if (v === null) return "None";
 	if (typeof v === "boolean") return v ? "True" : "False";
 	if (typeof v === "function") return FUNCTION;
-	if (v instanceof Date) return Number.isNaN(v.getTime()) ? String(v) : v.toISOString();
+	if (v instanceof Date) return Number.isNaN(v.getTime()) ? String(v) : shownAsUtc(v).toISOString();
 	if (Array.isArray(v) || isPlain(v)) return pyRepr(v, new Set());
 	return String(v);
 }
@@ -291,14 +291,14 @@ const DATE_METHODS: Record<string, (d: Date, ...args: any[]) => unknown> = {
 // A date's parts in UTC, as 0.7 gave them: `page.date.getFullYear()` mustn't depend on where the
 // site is built.
 const DATE_UTC: Record<string, (d: Date) => number> = {
-	getFullYear: (d) => d.getUTCFullYear(),
-	getMonth: (d) => d.getUTCMonth(),
-	getDate: (d) => d.getUTCDate(),
-	getDay: (d) => d.getUTCDay(),
-	getHours: (d) => d.getUTCHours(),
-	getMinutes: (d) => d.getUTCMinutes(),
-	getSeconds: (d) => d.getUTCSeconds(),
-	getMilliseconds: (d) => d.getUTCMilliseconds(),
+	getFullYear: (d) => shownAsUtc(d).getUTCFullYear(),
+	getMonth: (d) => shownAsUtc(d).getUTCMonth(),
+	getDate: (d) => shownAsUtc(d).getUTCDate(),
+	getDay: (d) => shownAsUtc(d).getUTCDay(),
+	getHours: (d) => shownAsUtc(d).getUTCHours(),
+	getMinutes: (d) => shownAsUtc(d).getUTCMinutes(),
+	getSeconds: (d) => shownAsUtc(d).getUTCSeconds(),
+	getMilliseconds: (d) => shownAsUtc(d).getUTCMilliseconds(),
 	getTimezoneOffset: () => 0,
 };
 // `loop.cycle()` and `loop.changed()`, which nunjucks' loops don't have.

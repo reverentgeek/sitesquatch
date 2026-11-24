@@ -55,14 +55,18 @@ export default defineConfig(({ env }) => ({
   filters: {
     // The path after `site.editUrl` in each page's "Edit this page" link.
     sourcePath: (inputPath) => inputPath.replace("./", ""),
-    // A date as people write it: January 1, 2026. In UTC, and spelled out here rather than
-    // with toLocaleDateString, whose answers can change between Node releases.
+    // A date as people write it: January 1, 2026. In the site's timeZone, where a date written
+    // without a time is that day, and spelled out here rather than with toLocaleDateString,
+    // whose answers can change between Node releases.
     readableDate: (value) => {
-      const date = new Date(value);
-      return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
+      const date = value instanceof Date ? value : new Date(value);
+      return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
     },
     // The day, as <time datetime> takes it: 2026-01-01.
-    isoDay: (date) => new Date(date).toISOString().slice(0, 10),
+    isoDay: (value) => {
+      const date = value instanceof Date ? value : new Date(value);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    },
   },
 
   data: { search },

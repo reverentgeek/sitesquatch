@@ -1,0 +1,20 @@
+---
+layout: layout.jinja
+title: Careers
+description: Work at Squatch Snacks. Openings in our Pine Cone Gap kitchen, our warehouse and on the trail.
+permalink: /careers/
+---
+<Section id="openings" level="1" title="Join the search party" intro="We're a small team in Pine Cone Gap, West Virginia, and on trails up and down the Appalachians. Here's who we're looking for right now.">
+	<div class="grid">
+		{%- for job in collections.jobs | reverse %}
+		<Card level="2" title="{{ job.data.title }}" href="{{ job.url }}" image="{{ job.data.picture }}" alt="{{ job.data.pictureAlt }}" eyebrow="{{ job.data.team }} · {{ job.data.type }}">
+			<p class="muted">{{ job.data.location }}</p>
+			<p>{{ job.data.summary }}</p>
+		</Card>
+		{%- endfor %}
+	</div>
+</Section>
+
+<Section id="team-says" title="From the team" tone="raised">
+	<Testimonial name="Rosa M." where="Trail Ambassador since 2023">The best part of the job is the look on a hiker's face when you hand them Pine Cone Crunch at mile 18.</Testimonial>
+</Section>

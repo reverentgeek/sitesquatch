@@ -1,0 +1,45 @@
+[
+	{
+		"id": "day-hike",
+		"name": "Day Hike",
+		"summary": "Two snacks a month, for the weekend wanderer.",
+		"monthly": 12,
+		"yearly": 120,
+		"snacks": 2,
+		"features": [
+			"2 snacks a month",
+			"Pick or let us pick",
+			"Free shipping over $25"
+		],
+		"highlight": false
+	},
+	{
+		"id": "overnight",
+		"name": "Overnight",
+		"summary": "Four snacks a month and first dibs on new flavors.",
+		"monthly": 22,
+		"yearly": 216,
+		"snacks": 4,
+		"features": [
+			"4 snacks a month",
+			"First dibs on new flavors",
+			"Free shipping"
+		],
+		"highlight": true
+	},
+	{
+		"id": "thru-hike",
+		"name": "Thru-Hike",
+		"summary": "Eight snacks a month, mailed to any trail town.",
+		"monthly": 40,
+		"yearly": 384,
+		"snacks": 8,
+		"features": [
+			"8 snacks a month",
+			"Ship to any trail town post office",
+			"Free shipping",
+			"A patch for your pack"
+		],
+		"highlight": false
+	}
+]

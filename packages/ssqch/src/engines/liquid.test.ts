@@ -11,7 +11,7 @@ test("an_unknown_filter_names_its_line_and_what_was_meant", async () => {
 	assert.equal(message, "page.liquid:2: unknown filter `shot` (did you mean `shout`?)");
 	// Another generator's filter gets ssqch's way instead of a guess.
 	const other = await failure(() => liquid.render("{{ url | absolute_url }}", {}, site.ctx("page.liquid")));
-	assert.ok(other.startsWith("page.liquid:1: unknown filter `absolute_url`. `absoluteUrl(url, base)`"), other);
+	assert.ok(other.startsWith("page.liquid:1: unknown filter `absolute_url`. `absoluteUrl(url, site.url)` is on every site"), other);
 });
 
 test("a_filter_that_throws_names_its_line_and_the_function", async () => {

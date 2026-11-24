@@ -16,7 +16,7 @@ import { parseSchema } from "./schema.ts";
 import type { Schema } from "./schema.ts";
 import { BuildError, aliasUsed, bail, context, error, messageOf, warn, warning } from "./diagnostics.ts";
 import type { Data, DataLoader } from "./data.ts";
-import { isPlainObject, readToml, tomlReason } from "./data.ts";
+import { isPlainObject, readToml, setLocalDays, tomlReason } from "./data.ts";
 import { TomlError } from "smol-toml";
 import * as equivalents from "./equivalents.ts";
 import type { Equivalent } from "./equivalents.ts";
@@ -181,6 +181,8 @@ export interface Config {
 	fileBuilders: Array<[string, (config: Config) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
 	/** What the build waits for once every page is written (the image files they point at), before the generators; counted as writing. */
 	settle: Array<() => Promise<void>>;
+	/** Files a built-in plugin wrote into the output beside the pages (the image plugin's copies), once they're settled: on `leaveNoTrace`'s list with the rest, so a picture no page uses any more goes with them. */
+	written: Array<() => Iterable<string>>;
 }
 
 export interface ConfigOptions {
@@ -265,6 +267,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		componentRenderers: [],
 		fileBuilders: [],
 		settle: [],
+		written: [],
 	};
 }
 
@@ -282,7 +285,7 @@ export async function loadConfig(options: ConfigOptions): Promise<Config> {
 	// and `readData("x")` are all from there.
 	// (A root that isn't there is the build's to report: nothing can be read from it.)
 	if (fs.statSync(config.root, { throwIfNoEntry: false })?.isDirectory()) process.chdir(config.root);
-	Object.assign(api.site, { root: config.root, input: null, markdown: null });
+	Object.assign(api.site, { root: config.root, input: null, base: "", markdown: null });
 	// `fetch` gets 0.7's error words and its `cache` option, before any of the site's code runs.
 	installFetch(config.root);
 	config.summaries.push(["Fetch", fetchSummary]);
@@ -314,6 +317,7 @@ export async function loadConfig(options: ConfigOptions): Promise<Config> {
 	// JavaScript data files and templates can make images even without the plugin.
 	useImages(config);
 	useTimeZone(config.timeZone);
+	setLocalDays(config.timeZone !== null);
 	return config;
 }
 

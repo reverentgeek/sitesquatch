@@ -15,5 +15,6 @@ Small, complete sites, each distilled from a real one and written against a feat
 | [`reference-pages`](reference-pages/) | Handlebars | One page per option, generated from a JSON schema, grouped by category | [sitesquatch.dev/examples/reference-pages/](https://sitesquatch.dev/examples/reference-pages/) |
 | [`searchable-directory`](searchable-directory/) | EJS | A page per record from one data file, filters as a custom element with the choice in the address, Pagefind search of the records only | [sitesquatch.dev/examples/searchable-directory/](https://sitesquatch.dev/examples/searchable-directory/) |
 | [`multilingual`](multilingual/) | Jinja | English and Spanish from a folder each, a language switch, hreflang and the sitemap's alternates, strings that fall back, a fallback page for one not translated yet | [sitesquatch.dev/examples/multilingual/](https://sitesquatch.dev/examples/multilingual/) |
+| [`company-site`](company-site/) | Jinja | A company's marketing site: product pages from data checked by a schema, pricing with a custom element and a no-JS fallback, Netlify forms, careers from Markdown with a blueprint, SEO and structured data, responsive pictures, plain CSS | [sitesquatch.dev/examples/company-site/](https://sitesquatch.dev/examples/company-site/) |
 
 To try one, copy its folder and run `ssqch serve` in it.

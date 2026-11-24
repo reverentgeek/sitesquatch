@@ -97,3 +97,12 @@
     - { label: hreflang in the sitemap, docs: /docs/plugins/ }
     - { label: Fallback pages, by pagination, docs: /docs/templates/ }
     - { label: Jinja templates, docs: /docs/template-languages/#jinja-and-nunjucks }
+- name: company-site
+  engine: Jinja
+  from: what a company's marketing site looks like
+  shows: Product pages from a data file checked by a schema, pricing with a custom element, a form for the host, careers from Markdown, structured data.
+  features:
+    - { label: Pages from a data file, checked by a schema, docs: /docs/content-schemas/ }
+    - { label: A custom element with a no-JS fallback, docs: /docs/plugins/ }
+    - { label: Another crop on a phone, docs: /docs/plugins/#another-crop-on-a-phone }
+    - { label: Structured data, docs: /docs/seo/#structured-data-json-ld }

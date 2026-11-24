@@ -6,6 +6,8 @@ import { bundled, bundledPath, types } from "../bundled.ts";
 import { red } from "../diagnostics.ts";
 import { CONFIG_FILES } from "../dirs.ts";
 import { joinAsGiven, parentAsGiven, slashes } from "../paths.ts";
+import { count } from "../report.ts";
+import { schemaDeclarations } from "./types.ts";
 
 /** The starter site: (path in the new site, file in `bundled/`). It's an amateur investigator's field notes: seven posts that each show one thing. */
 const STARTER: Array<[string, string]> = [
@@ -48,6 +50,13 @@ const DOCS_STARTER: Array<[string, string]> = [
 	["jsconfig.json", "starter/jsconfig.json"],
 	[".gitignore", "starter-docs/gitignore"],
 ];
+
+/**
+ * The docs starter's schemas as `ssqch types` writes them, so its `ssqch.d.ts` has them from the
+ * start and the first build has nothing to say about stale types. `init.test.ts` keeps them equal
+ * to the starter's config.
+ */
+export const DOCS_SCHEMAS: Array<[name: string, typescript: string]> = [["docs", "{\n\t\t\ttitle: string;\n\t\t\tdescription?: string;\n\t\t}"]];
 
 /** What `ssqch init --starter` can create. */
 export const STARTERS = ["site", "docs"];
@@ -134,9 +143,10 @@ This site is built with SiteSquatch (\`ssqch\`), a static site generator. ${file
 - How to use something: \`ssqch docs <name>\` (a config option, template function, command or topic) answers for the installed version, and \`ssqch docs\` lists everything.
 - What this ssqch supports: \`ssqch capabilities --format json\`.
 - Check a change: \`ssqch build --format json\`. \`ok\` is the result, and each problem has a \`code\`, a \`file\` and a \`line\`.
-- What agents and crawlers find in the build (robots.txt, the sitemap, llms.txt, each page's Markdown copy): \`ssqch patrol --format json\` after \`ssqch build\`.
+- What agents and crawlers find in the build (robots.txt, the sitemap, llms.txt, each page's Markdown copy): \`ssqch patrol --format json\` after \`ssqch build\`, and with \`--url <address>\` on a deploy.
 - Why a page's value is what it is: \`ssqch trace <url or file> --format json\`.
 - Before changing layouts or the config: \`ssqch build --output ${out}-before\` into a folder that isn't there yet, and afterwards \`ssqch build\` and \`ssqch diff ${out}-before ${out}\`.
+- That a fresh copy builds the same: \`ssqch baseline "npx ssqch build" --from ${out}\`.
 - A new page: ${newPage}.
 - \`ssqch serve\` is for a person watching the browser. Check with \`ssqch build\`.
 - A \`note:\` or hint naming another generator's word (\`pathPrefix\`): use ssqch's name.
@@ -148,7 +158,7 @@ const isBinary = (rel: string) => /\.(?:jpe?g|png|gif|webp|avif)$/i.test(rel);
 
 /** The starter's files for `engine`, as (path in the site, contents: text, or a picture's bytes). */
 export function starterFiles(starter: string, engine: string): Array<[string, string | Buffer]> {
-	const common = (starter === "docs" ? DOCS_STARTER : STARTER).map(([rel, file]): [string, string | Buffer] => [rel, isBinary(rel) ? fs.readFileSync(bundledPath(file)) : adapt(engine, rel, rel === "ssqch.d.ts" ? types() : bundled(file))]);
+	const common = (starter === "docs" ? DOCS_STARTER : STARTER).map(([rel, file]): [string, string | Buffer] => [rel, isBinary(rel) ? fs.readFileSync(bundledPath(file)) : adapt(engine, rel, rel === "ssqch.d.ts" ? types() + (starter === "docs" ? schemaDeclarations(DOCS_SCHEMAS) : "") : bundled(file))]);
 	const set = (starter === "docs" ? DOCS_TEMPLATES : SITE_TEMPLATES)[engine === "njk" ? "jinja" : engine];
 	const templates = set.map(([rel, file]): [string, string] => [`${rel}.${engine}`, rename(engine, bundled(file))]);
 	return [...common, ...templates, ["AGENTS.md", agentsMd({ starter, engine })], ["CLAUDE.md", "@AGENTS.md\n"]];
@@ -237,14 +247,15 @@ function preparePackage(dir: string, skip: Set<string>): { changes: string[]; mj
 /** `ssqch init`: writes the starter into `dir`, keeping any file that's there. Answers the exit code. */
 export function runInit(options: InitOptions): number {
 	const { dir, starter, engine, quiet } = options;
-	const written: string[] = [], skipped: string[] = [];
+	const written: string[] = [], skipped: string[] = [], leftOut: string[] = [];
+	let keptConfig: string | undefined;
 	let packageChanges: string[] = [];
 	try {
 		if (!STARTERS.includes(starter)) throw new Error(`--starter ${starter}: not a starter (use ${STARTERS.join(" or ")})`);
 		if (!ENGINES.includes(engine)) throw new Error(`--engine ${engine}: not a starter engine (use ${ENGINES.join(", ")})`);
 		const files = starterFiles(starter, engine);
 		// A config that's there already, under any of its names, is the site's.
-		const hasConfig = CONFIG_FILES.find((name) => fs.existsSync(path.join(dir, name)));
+		const hasConfig = (keptConfig = CONFIG_FILES.find((name) => fs.existsSync(path.join(dir, name))));
 		const prepared = preparePackage(dir, new Set(files.map(([rel]) => path.join(dir, rel))));
 		for (let [rel, contents] of files) {
 			if (rel === "ssqch.config.js") {
@@ -256,6 +267,10 @@ export function runInit(options: InitOptions): number {
 			}
 			const file = path.join(dir, rel);
 			if (fs.existsSync(file)) skipped.push(rel);
+			// The starter's pages, layouts and posts read what its config sets up (the tag pages,
+			// `collections.tagList`), so beside a config of the site's own they'd stop the build:
+			// they're left out, and the rest (AGENTS.md, the types) is written (the Squatch Snacks rerun).
+			else if (hasConfig !== undefined && rel.startsWith("src/")) leftOut.push(rel);
 			else {
 				write(file, contents, joinAsGiven(dir, rel));
 				written.push(rel);
@@ -274,9 +289,10 @@ export function runInit(options: InitOptions): number {
 	let out = "";
 	for (const rel of written) out += `  created ${slashes(rel)}\n`;
 	for (const rel of skipped) out += `  kept    ${slashes(rel)} (already there)\n`;
+	if (leftOut.length) out += `  left out the starter's ${count(leftOut.length)} file${leftOut.length === 1 ? "" : "s"} in src/: they need the starter's config, and ${keptConfig} is this site's own\n`;
 	if (packageChanges.length) out += `  updated package.json: ${packageChanges.join(" and ")}\n`;
 	if (written.includes("ssqch.config.mjs")) out += "  (ssqch.config.mjs, not .js: package.json isn't \"type\": \"module\" and this project has JavaScript of its own, so it's left as it is)\n";
-	if (written.length === 0) out += "Nothing to do: camp is already set up (every starter file is there).\n";
+	if (written.length === 0 && leftOut.length === 0) out += "Nothing to do: camp is already set up (every starter file is there).\n";
 	else out += `\nCamp is set up. Next: ${isCurrentFolder(dir) ? "" : `cd ${dir} && `}ssqch serve, then open http://localhost:8080\n`;
 	process.stdout.write(out);
 	return 0;

@@ -1,0 +1,8 @@
+{#- The email sign-up: a Netlify form (data-netlify). bot-field is the spam trap: hidden from people, filled in by bots, and Netlify drops what it catches. -#}
+<form name="signup" method="POST" action="/thanks/" data-netlify="true" netlify-honeypot="bot-field" class="signup">
+	<input type="hidden" name="form-name" value="signup">
+	<p hidden><label>Leave this empty: <input type="text" name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+	<label for="signup-email" class="visually-hidden">Email address</label>
+	<input id="signup-email" type="email" name="email" required autocomplete="email" placeholder="you@trailhead.example">
+	<button type="submit" class="button">Sign me up</button>
+</form>

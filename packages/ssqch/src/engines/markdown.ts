@@ -24,7 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Data } from "../data.ts";
-import { isPlainObject, parseFrontMatter, readText } from "../data.ts";
+import { isPlainObject, parseFrontMatter, readText, shownAsUtc } from "../data.ts";
 import { BuildError, Diagnostics, context, messageOf, warn, warning } from "../diagnostics.ts";
 import type { MarkdownOptions, StepContext } from "../markdown-options.ts";
 import { describeThrown, settle } from "../modules.ts";
@@ -1165,7 +1165,7 @@ const FUNCTION = { "\0": "function" };
 function toWasm(value: unknown): string {
 	return JSON.stringify(value, function (this: Record<string, unknown>, key: string, v: unknown) {
 		const original = this[key];
-		if (original instanceof Date) return { "\0": "date", v: Number.isNaN(original.getTime()) ? "" : original.toISOString() };
+		if (original instanceof Date) return { "\0": "date", v: Number.isNaN(original.getTime()) ? "" : shownAsUtc(original).toISOString() };
 		if (v === undefined || typeof v === "symbol") return UNDEFINED;
 		if (typeof v === "function") return FUNCTION;
 		if (typeof v === "number" && !Number.isFinite(v)) return { "\0": String(v) };

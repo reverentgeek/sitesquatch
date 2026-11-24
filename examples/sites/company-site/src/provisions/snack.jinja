@@ -1,0 +1,48 @@
+---
+layout: layout.jinja
+# One page per snack in src/_data/snacks.json. Each is tagged `snack`, and the `snack` schema in
+# ssqch.config.js checks every one of them: a snack without a price or a picture fails the build.
+pagination:
+  data: snacks
+  size: 1
+  alias: snack
+  addAllPagesToCollections: true
+permalink: "/provisions/{{ snack.slug }}/"
+tags: snack
+ogType: product
+---
+{%- set others = snacks | rejectattr("slug", "equalto", snack.slug) | list -%}
+{%- set said = testimonials | selectattr("snack", "equalto", snack.slug) | list -%}
+<article class="wrap product">
+	<img src="{{ snack.image }}" alt="{{ snack.imageAlt }}" sizes="(min-width: 48rem) 36rem, 100vw" ssqch:preload>
+	<div>
+		<p><a href="/provisions/">All snacks</a></p>
+		<h1>{{ snack.name }}</h1>
+		<p class="lede">{{ snack.tagline }}</p>
+		<p class="price">{{ snack.price | money }} <span>/ {{ snack.weight }} bag</span></p>
+		<p>{{ snack.description }}</p>
+		<p class="muted"><strong>Ingredients:</strong> {{ snack.ingredients | join(", ") }}.</p>
+		<p class="actions">
+			<Button href="/pricing/">Get it in a subscription</Button>
+			<Button href="/contact/?about={{ snack.slug }}" variant="secondary">Ask about wholesale</Button>
+		</p>
+	</div>
+</article>
+
+{%- if said | length %}
+<Section id="eyewitness" title="An eyewitness account" tone="raised">
+	{%- for q in said %}
+	<Testimonial name="{{ q.name }}" where="{{ q.where }}">{{ q.quote }}</Testimonial>
+	{%- endfor %}
+</Section>
+{%- endif %}
+
+<Section id="more" title="More from the pantry">
+	<div class="grid">
+		{%- for other in others[:3] %}
+		<Card title="{{ other.name }}" href="/provisions/{{ other.slug }}/" image="{{ other.image }}" alt="{{ other.imageAlt }}" eyebrow="{{ other.price | money }}">
+			<p>{{ other.tagline }}</p>
+		</Card>
+		{%- endfor %}
+	</div>
+</Section>

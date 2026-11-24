@@ -1,5 +1,5 @@
 {
-  "version": "0.14.0",
+  "version": "0.14.2",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -72,28 +72,28 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "[ssqch] Encoded ./src/img/stump.jpg into 6 files (webp, jpeg) in <time>\nFirst confirmed sighting. Built in <time> (production)\n  Pages   15 written from 11 templates, 48.7 KB\n  Copied  1 file, 4.41 KB\n  Images  6 files from 1 source, <size>: 6 encoded, 0 reused\n  Links   219 checked, 0 broken\n  Output  dist: 43 files, <size>\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   15 written from 11 templates, 48.7 KB\n  Copied  1 file, 4.41 KB\n  Images  6 files from 1 source, <size>: 6 encoded, 0 reused\n  Links   219 checked, 0 broken\n  Output  dist: 43 files, <size>\n",
   "files": {
     "404.html": "text",
     "favicon.svg": "text",
     "feed.xml": "text",
     "highlight.css": "text",
-    "img/jsuIfm9F_f-1200.jpeg": {
+    "img/63axLGB_mj-1200.jpeg": {
       "image": "jpeg 1200x654"
     },
-    "img/jsuIfm9F_f-1200.webp": {
-      "image": "webp 1200x654"
-    },
-    "img/jsuIfm9F_f-400.jpeg": {
+    "img/63axLGB_mj-400.jpeg": {
       "image": "jpeg 400x218"
     },
-    "img/jsuIfm9F_f-400.webp": {
-      "image": "webp 400x218"
-    },
-    "img/jsuIfm9F_f-800.jpeg": {
+    "img/63axLGB_mj-800.jpeg": {
       "image": "jpeg 800x436"
     },
-    "img/jsuIfm9F_f-800.webp": {
+    "img/Eth37mRW1w-1200.webp": {
+      "image": "webp 1200x654"
+    },
+    "img/Eth37mRW1w-400.webp": {
+      "image": "webp 400x218"
+    },
+    "img/Eth37mRW1w-800.webp": {
       "image": "webp 800x436"
     },
     "index.html": "text",

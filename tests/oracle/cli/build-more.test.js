@@ -338,3 +338,21 @@ test("the_vitepress_dialect_writes_vitepress_markup", () => {
 	assert.ok(r.ok, r.log);
 	assert.equal(read(dir, "_site/guide/intro.html"), "<h2 id=\"what-s-vue\" tabindex=\"-1\">What's Vue? <a class=\"header-anchor\" href=\"#what-s-vue\" aria-label=\"Permalink to “What's Vue?”\">​</a></h2>\n<p>Read <a href=\"./next.html\">the guide</a> or <a href=\"https://vueschool.io\" target=\"_blank\" rel=\"noreferrer\">Vue School</a>.</p>\n<div class=\"tip custom-block\"><p class=\"custom-block-title custom-block-title-default\">TIP</p>\n<ul>\n<li>one</li>\n</ul>\n</div>\n<aside class=\"own\"><p>Ours</p>\n</aside>\n");
 });
+
+// Not from a Rust test (the Squatch Snacks rerun, 2026-11-23): an error rendering a paginated
+// page, or working out its `computed`, says which item it was on, as a schema's error does, and
+// the same error on two items is still one line, naming the others.
+test("errors_on_a_paginated_page_name_the_item", () => {
+	const dir = tempDir("paginated-errors");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, filters: { money: (n) => n.toFixed(2) } };\n",
+		"src/_data/snacks.json": "[{ \"name\": \"Pine Cone Crunch\", \"price\": 3 }, { \"name\": \"Moss Mix\" }, { \"name\": \"Summit Brittle\" }]",
+		"src/snack.jinja": "---\npagination: { data: snacks, size: 1, alias: snack }\npermalink: \"/{{ snack.name | slugify }}/\"\n---\n{{ snack.price | money }}\n",
+	});
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("  - rendering snack.jinja with `jinja` (item 2 of snacks, \"Moss Mix\"): snack.jinja:5: money(): "), r.log);
+	assert.ok(r.log.includes("(and 1 more page with the same error: snack.jinja (item 3 of snacks, \"Summit Brittle\"))"), r.log);
+	write(dir, { "src/snack.jinja": "---\npagination: { data: snacks, size: 1, alias: snack }\npermalink: \"/{{ snack.name | slugify }}/\"\ncomputed:\n  cents: \"{{ snack.price.toFixed(2) }}\"\n---\nx\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("in snack.jinja: computed.cents (item 2 of snacks, \"Moss Mix\"): "), r.log);
+});

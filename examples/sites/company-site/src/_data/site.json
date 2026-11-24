@@ -1,0 +1,17 @@
+{
+	"title": "Squatch Snacks",
+	"url": "https://squatchsnacks.example",
+	"description": "Trail snacks so good, even Sasquatch comes out of hiding. Home of Pine Cone Crunch.",
+	"tagline": "Trail snacks with a legendary following.",
+	"email": "hello@squatchsnacks.example",
+	"phone": "+1-304-555-0142",
+	"address": {
+		"street": "1 Cedar Hollow Rd",
+		"city": "Pine Cone Gap",
+		"region": "WV",
+		"postal": "24999",
+		"country": "US"
+	},
+	"logo": "/img/logo.png",
+	"ogImage": "/img/hero-wide.jpg"
+}

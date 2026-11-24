@@ -94,6 +94,14 @@ change affects it.
   learned by every user, so it has to be worth that to all of them. In `research/TODO.md`
   ("Moving in: what the runs left, sorted"), mark each gap from a run **document**, **build** or
   **known gap**, with the reason.
+- Gaps a kind of site finds are sorted the same way. A new-site study (the `fresh-run` skill)
+  builds a kind of site no starter fits (a company's marketing site, a catalog), and what only
+  that kind of site needs gets the test above with "a kind of site" for "a framework":
+  **document** when what ssqch has gets there in minutes (a how-to, an example in
+  `examples/sites/`), **build** when there's no reasonable way and every site would gain, or it's
+  small, and **known gap** when only that kind of site needs it, said in the docs where someone
+  would look. What any site would meet is sorted as friction, by "What ssqch is for". One study
+  asking twice (a rerun of the same spec) isn't a second site asking.
 - After a change that affects output, build the blog with the Node build and run its smoke tests:
   in `../blog`, `SSQCH_BIN=../ssqch/packages/ssqch/bin/ssqch.ts pnpm test`. The oracle has the
   blog's frozen output too (`node --test --test-name-pattern="^blog builds" sites.test.js` in

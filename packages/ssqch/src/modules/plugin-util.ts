@@ -1,4 +1,5 @@
 // Small helpers the built-in plugins share.
+import { shownAsUtc } from "../data.ts";
 
 /** Escapes text for HTML as 0.7's `escape_html` did (the same entities as Edge): `&`, `<`, `>`, `"`, `'` and `` ` ``. */
 export function escapeHtml(s: string): string {
@@ -23,6 +24,7 @@ export function debugString(s: string): string {
 }
 
 /** `YYYY-MM-DD`, in UTC. */
-export function isoDay(d: Date): string {
+export function isoDay(given: Date): string {
+	const d = shownAsUtc(given);
 	return `${String(d.getUTCFullYear()).padStart(4, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }

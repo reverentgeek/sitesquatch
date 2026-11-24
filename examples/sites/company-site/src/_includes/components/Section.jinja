@@ -1,0 +1,10 @@
+{#- <Section title="..." id="..." intro="..." tone="plain|raised" level="1|2">Body HTML</Section>: level="1" for the page's own heading. -#}
+{%- set p = component.props -%}
+{%- set h = "h1" if p.level == "1" else "h2" -%}
+<section{% if p.id %} id="{{ p.id }}" aria-labelledby="{{ p.id }}-title"{% endif %} class="section{% if p.tone == 'raised' %} raised{% endif %}">
+	<div class="wrap">
+		<{{ h }}{% if p.id %} id="{{ p.id }}-title"{% endif %}>{{ p.title }}</{{ h }}>
+		{%- if p.intro %}<p class="intro">{{ p.intro }}</p>{% endif %}
+		<div class="section-body">{{ component.content | safe }}</div>
+	</div>
+</section>

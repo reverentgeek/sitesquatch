@@ -12,7 +12,7 @@
 //
 // The template's code calls these through `template.ssqch` (see `adjust` in `edge.ts`), so a
 // site's own JavaScript, and the values themselves, stay JavaScript's.
-import { buildTime } from "../data.ts";
+import { buildTime, shownAsUtc } from "../data.ts";
 
 /** How a function prints, as 0.7 printed every one (JavaScript prints its source, ssqch's own wrappers included). */
 const FUNCTION_TEXT = "function () { [native code] }";
@@ -39,7 +39,7 @@ export function jsString(value: unknown): string {
 		case "function": return FUNCTION_TEXT;
 		case "object":
 			if (value === null) return "null";
-			if (value instanceof Date) return Number.isNaN(value.getTime()) ? "Invalid Date" : value.toISOString();
+			if (value instanceof Date) return Number.isNaN(value.getTime()) ? "Invalid Date" : shownAsUtc(value).toISOString();
 			if (Array.isArray(value)) return value.map((item) => (item === undefined || item === null ? "" : jsString(item))).join(",");
 			return String(value);
 		default: return String(value);
@@ -62,15 +62,15 @@ const two = (n: number) => String(n).padStart(2, "0");
 
 /** The methods of a date that answer in the machine's time zone, as 0.7 answered them: in UTC. */
 const DATE_METHODS: Record<string, (d: Date, args: unknown[]) => unknown> = {
-	getFullYear: (d) => d.getUTCFullYear(),
-	getYear: (d) => d.getUTCFullYear() - 1900,
-	getMonth: (d) => d.getUTCMonth(),
-	getDate: (d) => d.getUTCDate(),
-	getDay: (d) => d.getUTCDay(),
-	getHours: (d) => d.getUTCHours(),
-	getMinutes: (d) => d.getUTCMinutes(),
-	getSeconds: (d) => d.getUTCSeconds(),
-	getMilliseconds: (d) => d.getUTCMilliseconds(),
+	getFullYear: (d) => shownAsUtc(d).getUTCFullYear(),
+	getYear: (d) => shownAsUtc(d).getUTCFullYear() - 1900,
+	getMonth: (d) => shownAsUtc(d).getUTCMonth(),
+	getDate: (d) => shownAsUtc(d).getUTCDate(),
+	getDay: (d) => shownAsUtc(d).getUTCDay(),
+	getHours: (d) => shownAsUtc(d).getUTCHours(),
+	getMinutes: (d) => shownAsUtc(d).getUTCMinutes(),
+	getSeconds: (d) => shownAsUtc(d).getUTCSeconds(),
+	getMilliseconds: (d) => shownAsUtc(d).getUTCMilliseconds(),
 	getTimezoneOffset: () => 0,
 	setFullYear: (d, a) => d.setUTCFullYear(...(a as [number])),
 	setMonth: (d, a) => d.setUTCMonth(...(a as [number])),
@@ -80,15 +80,15 @@ const DATE_METHODS: Record<string, (d: Date, args: unknown[]) => unknown> = {
 	setSeconds: (d, a) => d.setUTCSeconds(...(a as [number])),
 	setMilliseconds: (d, a) => d.setUTCMilliseconds(...(a as [number])),
 	toString: (d: Date) => jsString(d),
-	toDateString: (d) => (Number.isNaN(d.getTime()) ? "Invalid Date" : `${DAYS[d.getUTCDay()]} ${MONTHS[d.getUTCMonth()].slice(0, 3)} ${two(d.getUTCDate())} ${String(d.getUTCFullYear()).padStart(4, "0")}`),
-	toTimeString: (d) => (Number.isNaN(d.getTime()) ? "Invalid Date" : `${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())} GMT+0000 (Coordinated Universal Time)`),
+	toDateString: (d) => (Number.isNaN(d.getTime()) ? "Invalid Date" : `${DAYS[shownAsUtc(d).getUTCDay()]} ${MONTHS[shownAsUtc(d).getUTCMonth()].slice(0, 3)} ${two(shownAsUtc(d).getUTCDate())} ${String(shownAsUtc(d).getUTCFullYear()).padStart(4, "0")}`),
+	toTimeString: (d) => (Number.isNaN(d.getTime()) ? "Invalid Date" : `${two(shownAsUtc(d).getUTCHours())}:${two(shownAsUtc(d).getUTCMinutes())}:${two(shownAsUtc(d).getUTCSeconds())} GMT+0000 (Coordinated Universal Time)`),
 	// 0.7's, word for word: `{ month: "long" }` is `March 4, 2024`, `"short"` is `Mar 4, 2024`, and
 	// anything else `3/4/2024`, whatever the locale (which keeps it off `Intl`, whose answers
 	// change between Node releases).
 	toLocaleDateString: (d, args) => {
 		const options = args[1];
 		const month = options !== null && typeof options === "object" ? (options as Record<string, unknown>).month : undefined;
-		const [y, m, day] = [d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()];
+		const [y, m, day] = [shownAsUtc(d).getUTCFullYear(), shownAsUtc(d).getUTCMonth(), shownAsUtc(d).getUTCDate()];
 		if (month === "long") return `${MONTHS[m]} ${day}, ${y}`;
 		if (month === "short") return `${MONTHS[m].slice(0, 3)} ${day}, ${y}`;
 		return `${m + 1}/${day}/${y}`;

@@ -142,7 +142,9 @@ export async function buildPackage({ out, release = false, quiet = false }: { ou
 	// the site's own data files.
 	for (const [rel, original] of FROM_REPOSITORY) {
 		const from = path.join(REPO, original);
-		if (fs.statSync(from).isDirectory()) copyTree(from, path.join(out, "bundled", rel), (name) => name.endsWith(".md") || name === "nav.yml");
+		// An example is its source: not its build, its cache or its installs.
+		if (rel.startsWith("examples/")) copyTree(from, path.join(out, "bundled", rel), () => true, new Set(["dist", ".cache", "node_modules"]));
+		else if (fs.statSync(from).isDirectory()) copyTree(from, path.join(out, "bundled", rel), (name) => name.endsWith(".md") || name === "nav.yml");
 		else fs.copyFileSync(from, path.join(out, "bundled", rel));
 	}
 	fs.copyFileSync(path.join(REPO, "LICENSE"), path.join(out, "LICENSE"));
@@ -217,12 +219,13 @@ export function shown(file: string): string {
 	return rel === "" ? "." : rel.startsWith("..") || path.isAbsolute(rel) ? file : rel;
 }
 
-function copyTree(from: string, to: string, keep: (name: string) => boolean = () => true): void {
+function copyTree(from: string, to: string, keep: (name: string) => boolean = () => true, skipDirs: Set<string> = new Set()): void {
 	for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
 		const src = path.join(from, entry.name);
 		const dest = path.join(to, entry.name);
-		if (entry.isDirectory()) copyTree(src, dest, keep);
-		else if (keep(entry.name)) {
+		if (entry.isDirectory()) {
+			if (!skipDirs.has(entry.name)) copyTree(src, dest, keep, skipDirs);
+		} else if (keep(entry.name)) {
 			fs.mkdirSync(to, { recursive: true });
 			fs.copyFileSync(src, dest);
 		}

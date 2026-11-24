@@ -22,7 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { BuildError, bail } from "./diagnostics.ts";
 import { buildFiles, urlOf } from "./footprint.ts";
-import { covers, redirectRules } from "./modules/links.ts";
+import { redirectRules, ruleFor } from "./modules/links.ts";
 import { diffOps } from "./myers.ts";
 import { compareText } from "./paths.ts";
 import { firstChars, quoted } from "./quote.ts";
@@ -936,8 +936,10 @@ export async function compare(before: string, after: string, options: DiffOption
 	if (report.removed.length) {
 		const rules = redirectRules(after, "");
 		for (const url of report.removed) {
-			const rule = rules.find((r) => covers(r.from, url));
-			if (rule !== undefined) report.redirects[url] = rule.to;
+			// The page is gone from the second build, so the first line that covers it is the one
+			// a host follows, and a 4xx line (a catch-all to the 404 page) isn't a redirect.
+			const rule = ruleFor(rules, url, false);
+			if (rule !== undefined && !rule.notFound) report.redirects[url] = rule.to;
 		}
 	}
 	for (const key of b.keys()) if (!a.has(key)) report.added.push(urlOf(key));

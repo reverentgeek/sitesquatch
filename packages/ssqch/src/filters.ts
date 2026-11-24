@@ -1,6 +1,6 @@
 // The functions every template has, whatever the site defines. A config filter with the same
 // name replaces one.
-import { withBase } from "./base.ts";
+import { withBase, withBaseOnce } from "./base.ts";
 import type { Config, Filter } from "./config.ts";
 import { escapeText, headings as headingsOf, htmlText, splitWhitespace, toc } from "./content.ts";
 import type { TocMarkup } from "./content.ts";
@@ -19,7 +19,7 @@ import { slugOptions, slugText, slugWith } from "./slug.ts";
 export const PLUGIN_FUNCTIONS: ReadonlyArray<readonly [plugin: string, functions: readonly string[]]> = [
 	["imagePlugin()", ["imageUrl"]],
 	["assetsPlugin()", ["assetUrl"]],
-	["rssPlugin()", ["absoluteUrl", "htmlToAbsoluteUrls", "feedHtml", "dateToRfc3339", "dateToRfc822", "getNewestCollectionItemDate"]],
+	["rssPlugin()", ["htmlToAbsoluteUrls", "feedHtml", "dateToRfc3339", "dateToRfc822", "getNewestCollectionItemDate"]],
 	["llmsPlugin()", ["markdownCopy", "llmsTxt"]],
 ];
 
@@ -34,6 +34,7 @@ export const BUILTIN_FILTERS: ReadonlyArray<readonly [string, string]> = [
 	["highlight", "`highlight(code, lang)` is highlighted HTML for inside a `<code>`, with `hl-*` classes."],
 	["readingTime", "`readingTime(content)` is the minutes it takes to read some HTML, at 200 words a minute."],
 	["withBase", "`withBase(\"/feed.xml\")` puts the site's `base` in front of a URL, for places outside HTML attributes."],
+	["absoluteUrl", "`absoluteUrl(page.url, site.url)` is a whole address: the URL against the site's, with the site's `base` in front of a URL from the root that doesn't have it yet."],
 	["slugify", "`slugify(\"Pine Cone Crunch!\")` is `pine-cone-crunch`: lowercase letters and digits, with a dash for each run of anything else; `slugify(title, { separator: \"_\" })` uses another separator, `apostrophes: \"separate\"` splits words at an apostrophe instead of dropping it, `ascii: true` takes accents off and spells out symbols as the slugify package does (`Sjögren & co` is `sjogren-and-co`), and `stripTags: true` drops HTML tags first."],
 ];
 
@@ -100,5 +101,12 @@ export function builtinFilters(markdown: Markdown, config: Config): Map<string, 
 	// withBase("/feed.xml"): the URL with the site's `base` in front, for places outside HTML
 	// attributes (which the build rewrites itself).
 	filters.set("withBase", (url?: unknown) => withBase(config.base, url === undefined ? "" : String(url)));
+	// absoluteUrl(page.url, site.url): on every site, for a canonical link or structured data, where it
+	// was rssPlugin()'s, and a site with no feed added the plugin for it (the Squatch Snacks rerun).
+	filters.set("absoluteUrl", (url?: unknown, address?: unknown) => {
+		// As `absoluteUrl` from ssqch/rss: the base in front of a URL from the root once, then against the address.
+		const text = withBaseOnce(config.base, url === undefined || url === null ? "" : String(url));
+		try { return new URL(text, address === undefined || address === null ? "" : String(address)).toString(); } catch { return text; }
+	});
 	return filters;
 }

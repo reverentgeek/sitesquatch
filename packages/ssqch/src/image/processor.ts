@@ -40,7 +40,7 @@ import type { ColorPlan } from "./color.ts";
 import { CACHE_FILE, HashCache, stamp } from "./hashes.ts";
 import { oriented, probeFile, undecodable } from "./header.ts";
 import type { Decodable, Probe } from "./header.ts";
-import { DEFAULTS, encodeSettings, legacySettings } from "./quality.ts";
+import { DEFAULTS, encodeSettings, formatSettings } from "./quality.ts";
 import type { EncodeSettings } from "./quality.ts";
 
 export type Format = "avif" | "webp" | "jpeg" | "png" | "gif" | "svg" | "auto";
@@ -289,6 +289,34 @@ export function joinUrlPath(page: string, rel: string): string {
 	return `/${parts.join("/")}`;
 }
 
+/**
+ * The `<img>`'s `width` and `height`: the page's own when it wrote them, since they're the size
+ * it's shown at (a 36-pixel logo with a copy at 72 for sharp screens), with the other worked out
+ * from the picture's shape when it wrote only one; otherwise the largest copy's, for the shape.
+ * Each pair is `[name, value]`, in that order.
+ */
+function shownSize(attrs: Array<[string, string]>, copies: Array<{ width: number; height: number }>): Array<[string, string]> {
+	const high = copies[copies.length - 1];
+	const given = (name: string) => attrs.find(([a]) => a === name)?.[1];
+	const [w, h] = [given("width"), given("height")];
+	const known = high.width > 0 && high.height > 0;
+	const number = (v: string) => (/^\s*\d+(\.\d+)?\s*$/.test(v) ? Number(v) : undefined);
+	if (w !== undefined && h !== undefined) return [["width", w], ["height", h]];
+	// A size that's a copy's (a plain `width` pins the picture to one) is that copy's other
+	// size, as the encoder rounded it; any other follows the largest copy's shape.
+	if (w !== undefined) {
+		const n = number(w);
+		const copy = copies.find((c) => c.width === n);
+		return known && n !== undefined ? [["width", w], ["height", String(copy ? copy.height : Math.round((n * high.height) / high.width))]] : [["width", w]];
+	}
+	if (h !== undefined) {
+		const n = number(h);
+		const copy = copies.find((c) => c.height === n);
+		return known && n !== undefined ? [["width", String(copy ? copy.width : Math.round((n * high.width) / high.height))], ["height", h]] : [["height", h]];
+	}
+	return known ? [["width", String(high.width)], ["height", String(high.height)]] : [];
+}
+
 /** Width and height of an SVG from its root `width` and `height`, or its `viewBox`. */
 function svgDimensions(file: string): [number, number] | undefined {
 	let text: string;
@@ -530,13 +558,10 @@ export class ImageProcessor {
 	holdEncodesForTest(): () => void {
 		return this.queue.hold();
 	}
-	/** The settings as image names hold them (`legacySettings`). */
-	private named: string;
 
 	constructor(options: ImageOptions) {
 		this.options = options;
 		this.settings = encodeSettings(options);
-		this.named = legacySettings(options);
 	}
 
 	/** The project root, once the build has started. */
@@ -612,6 +637,11 @@ export class ImageProcessor {
 		const items = failures.map((f) => error("images", said(f), { file: f.file, url: [...f.by.values()].find((b) => b.url !== undefined)?.url }));
 		const more = failures.length > 1 ? ` (and ${count(failures.length - 1)} more ${failures.length === 2 ? "image" : "images"} that failed)` : "";
 		throw new BuildError(`${said(failures[0])}${more}`, items);
+	}
+
+	/** The image files this build used in the output, made or reused: `leaveNoTrace` keeps them, and removes one an earlier build used and this one didn't. */
+	usedFiles(): Iterable<string> {
+		return this.used;
 	}
 
 	/** After the build: `prune`, the hash cache, and with `--verbose` the slowest encodes. */
@@ -806,7 +836,9 @@ export class ImageProcessor {
 		const copyGif = srcFormat === "gif" && formats.every((f) => f === "auto" || f === "gif" || f === "webp" || f === "avif");
 		if (srcFormat === "svg" || copyGif) {
 			const [w, h] = srcFormat === "gif" ? [readHeader().width, readHeader().height] : svgDimensions(src) ?? [0, 0];
-			const e = entry(srcFormat, w, h, w > 0 ? `${id}-${w}.${srcFormat}` : `${id}.${srcFormat}`);
+			const copyId = name === undefined ? this.idFor(id, srcFormat) : id;
+			if (name === undefined && this.options.hashCache) this.hashes.addName(src, copyId);
+			const e = entry(srcFormat, w, h, w > 0 ? `${copyId}-${w}.${srcFormat}` : `${copyId}.${srcFormat}`);
 			const t = mtimeOf(e.path);
 			if (!(t !== undefined && (sourceTime === undefined || t >= sourceTime)) && !this.files.has(e.path)) {
 				// A copy of the source, not an encode: counted as copied, and made on the thread
@@ -834,10 +866,12 @@ export class ImageProcessor {
 			const f = asked === "auto" ? srcFormat : asked;
 			if (meta.formats.has(f)) continue;
 			const entries: ImageEntry[] = [];
+			const formatId = name === undefined ? this.idFor(id, f) : id;
+			if (name === undefined && this.options.hashCache) this.hashes.addName(src, formatId);
 			for (const w of targets) {
 				// Heights round down.
 				const h = Math.max(1, Math.floor((h0 * w) / w0));
-				const e = entry(f, w, h, `${id}-${w}.${f}`);
+				const e = entry(f, w, h, `${formatId}-${w}.${f}`);
 				const file = cacheDir === undefined ? e.path : path.join(cacheDir, path.basename(e.path));
 				const step: (typeof steps)[number] = { e, file, earlier: this.files.get(file) };
 				if (step.earlier === undefined) {
@@ -987,8 +1021,9 @@ export class ImageProcessor {
 	 */
 	private hashId(src: string, header: (() => Probe) | undefined, read?: (contents: Buffer) => void): string {
 		const o = this.options;
-		const settings = this.named;
-		const cacheKey = `${settings}|color1`;
+		// The source's own id, the same whatever the settings: each format's name is made from it
+		// and that format's settings (`idFor`), so the file is read once for them all.
+		const cacheKey = "content|color1";
 		let size: number;
 		let mtime: string;
 		try { ({ size, mtime } = stamp(src)); } catch { throw new Error(`image not found: ${src}`); }
@@ -999,12 +1034,20 @@ export class ImageProcessor {
 		let contents: Buffer;
 		try { contents = fs.readFileSync(src); } catch (e) { throw new Error(`reading ${src}: ${(e as Error).message}`); }
 		read?.(contents);
-		const parts = [contents, Buffer.from(settings)];
+		const parts = [contents];
 		if (header && colorPlan(header().icc).kind === "convert") parts.push(Buffer.from("|srgb"));
 		const hash = blake3(Buffer.concat(parts));
 		let id = "";
-		for (let i = 0; i < 10; i++) id += ALPHABET[hash[i] & 63];
+		for (let i = 0; i < 22; i++) id += ALPHABET[hash[i] & 63];
 		if (o.hashCache) this.hashes.put(src, size, mtime, cacheKey, id);
+		return id;
+	}
+
+	/** A format's copies' name: the source's id and that format's own settings, hashed to ten characters. */
+	private idFor(source: string, format: string): string {
+		const hash = blake3(Buffer.from(`${source}|${formatSettings(this.options, format)}`));
+		let id = "";
+		for (let i = 0; i < 10; i++) id += ALPHABET[hash[i] & 63];
 		return id;
 	}
 
@@ -1139,7 +1182,7 @@ export class ImageProcessor {
 			img.push(["srcset", srcsetAttr(fallback)]);
 			if (sizes !== undefined) img.push(["sizes", sizes]);
 		}
-		if (high.width > 0) img.push(["width", String(high.width)], ["height", String(high.height)]);
+		img.push(...shownSize(attrs, fallback));
 		// Values copied from the original tag are still entity-encoded, so only quotes need
 		// escaping; generated values are plain URLs and numbers.
 		const tag = `<img${img.map(([k, v]) => ` ${k}="${v.replaceAll("\"", "&quot;")}"`).join("")}>`;
@@ -1466,6 +1509,7 @@ function register(config: Config, p: ImageProcessor, transform: boolean): void {
 	// sitemap, the link checker), `afterBuild` hooks and the summary. Waiting for them is part of
 	// writing, as 0.7's `Time` line had it, where they were encoded with the pages.
 	config.settle.push(() => p.settle());
+	config.written.push(() => p.usedFiles());
 	config.afterBuild.push({ label: "", fn: () => p.finishBuild() });
 	config.summaries.push(["Images", () => p.summary()]);
 }

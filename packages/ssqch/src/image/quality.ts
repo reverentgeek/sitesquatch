@@ -87,6 +87,20 @@ export function legacySettings(o: Pick<ImageOptions, "webpQuality" | "avifQualit
 	return `${quality(WEBP, o.webpQuality)}|${quality(AVIF, o.avifQuality)}|${speed}|${quality(JPEG, o.jpegQuality)}`;
 }
 
+/**
+ * One format's part of `legacySettings`, which its copies' names hash: changing `jpegQuality`
+ * renames the JPEG copies and leaves the AVIF and WebP ones as they were (the owner, 2026-11-24,
+ * after the Squatch Snacks rerun, where it renamed them all and browsers fetched them again).
+ * PNG, GIF and SVG have no settings of their own.
+ */
+export function formatSettings(o: Pick<ImageOptions, "webpQuality" | "avifQuality" | "avifEffort" | "jpegQuality">, format: string): string {
+	const [webp, avif, speed, jpeg] = legacySettings(o).split("|");
+	if (format === "webp") return `webp|${webp}`;
+	if (format === "avif") return `avif|${avif}|${speed}`;
+	if (format === "jpeg") return `jpeg|${jpeg}`;
+	return format;
+}
+
 export interface EncodeSettings {
 	jpeg: { quality: number; mozjpeg: boolean };
 	png: { adaptiveFiltering: boolean; compressionLevel: number };

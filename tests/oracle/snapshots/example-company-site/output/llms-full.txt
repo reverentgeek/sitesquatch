@@ -1,0 +1,672 @@
+# Squatch Snacks
+
+> Trail snacks made in Pine Cone Gap, West Virginia, sold by the bag and by monthly or yearly subscription.
+
+Each snack has a page under /provisions/ with its price, weight and ingredients. The subscriptions (Day Hike, Overnight, Thru-Hike) and their monthly and yearly prices are on /pricing/. Prices are in US dollars.
+
+---
+url: https://squatchsnacks.example/
+---
+
+![A tall, shaggy figure at the edge of a pine forest at sunset](https://squatchsnacks.example/img/aKmuOihscD-400.jpeg)
+
+# Trail snacks with a legendary following.
+
+Small-batch snacks for long days outside. Eyewitnesses agree: once you've tried Pine Cone Crunch, you'll be spotted at the trailhead with a bag of it.
+
+[Try Pine Cone Crunch](https://squatchsnacks.example/provisions/pine-cone-crunch/index.md) [See subscriptions](https://squatchsnacks.example/pricing/index.md)
+
+## Spotted on every trail
+
+Three snacks hikers keep reporting. Each one is made in Pine Cone Gap, West Virginia, in batches small enough to carry.
+
+![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
+
+$6.50 · 5 oz
+
+### [Pine Cone Crunch](https://squatchsnacks.example/provisions/pine-cone-crunch/index.md)
+
+The one the eyewitnesses can't stop talking about.
+
+![Purple fruit leather rolls tied with parchment on a granite rock](https://squatchsnacks.example/img/_atDewfNCl-400.jpeg)
+
+$5.25 · 3 oz
+
+### [Huckleberry Hustle](https://squatchsnacks.example/provisions/huckleberry-hustle/index.md)
+
+Tart berries for the last mile.
+
+![Stacked s'mores squares beside a tin camp mug](https://squatchsnacks.example/img/KnIu-FdGjj-400.jpeg)
+
+$7 · 6 oz
+
+### [Summit S'mores](https://squatchsnacks.example/provisions/summit-smores/index.md)
+
+Campfire not required.
+
+[See all six snacks](https://squatchsnacks.example/provisions/index.md)
+
+## What eyewitnesses say
+
+> “I saw a large figure leave a trail of Pine Cone Crunch wrappers. I followed it. Best decision of my hiking career.”
+
+**Marta O.**, Cascade Crest, mile 2,214
+
+> “The Huckleberry Hustle got me up the last switchback. Something else up there was eating one too.”
+
+**Devon R.**, Mount Hood loop
+
+> “My camera only caught a blur, but my tent smelled like s'mores the next morning.”
+
+**Priya K.**, Olympic coast
+
+## Common questions
+
+**Are the snacks really eaten by Sasquatch?**
+
+We can neither confirm nor deny. We can confirm that hikers eat them, and that the testimonials are real eyewitness accounts of the snacks.
+
+**How does the subscription work?**
+
+Pick a plan, pick monthly or yearly, and we mail a box on the first of each month. Skip a month or cancel any time from your account.
+
+**Do you ship to trail towns?**
+
+Yes. Thru-Hike members can send any box to a post office General Delivery address along the trail, and change it month to month.
+
+**What about allergies?**
+
+Every snack page lists its ingredients. Pine Cone Crunch, Moss Mix and Trailhead Toffee contain tree nuts; our kitchen also handles wheat and soy.
+
+**How long do the snacks keep?**
+
+Six months sealed, and about two weeks once the bag is open, if they last that long.
+
+## Get trail reports
+
+New flavors, restocks and the occasional sighting. One email a month, no more.
+
+---
+url: https://squatchsnacks.example/about/
+---
+
+# About Squatch Snacks
+
+![The pine ridge above our kitchen in Pine Cone Gap, at sunset](https://squatchsnacks.example/img/HBee2iM_yS-400.jpeg)
+
+## It started with a blurry photo
+
+In 2019, a hiker left a bag of homemade oat clusters on a stump near the Cedar trailhead. The next morning it was gone, and there was one very large footprint.
+
+That hiker was our founder, Juniper Hale. The oat clusters became Pine Cone Crunch, and the footprint became our logo. We now make six snacks in a converted ranger station in Pine Cone Gap, West Virginia, and mail them to hikers in all fifty states.
+
+We cook in small batches, we buy oats and berries from farms in the Blue Ridge, and we test every recipe on the trail before it ships.
+
+## Why we keep doing it
+
+> “I still leave a bag on that stump every spring. It's always gone by morning.”
+
+**Juniper Hale**, founder
+
+---
+url: https://squatchsnacks.example/careers/
+---
+
+# Join the search party
+
+We're a small team in Pine Cone Gap, West Virginia, and on trails up and down the Appalachians. Here's who we're looking for right now.
+
+![Evening light over the warehouse roofline and pines](https://squatchsnacks.example/img/QgJCuUH8Ym-400.jpeg)
+
+Operations · Full time
+
+## [Fulfillment Lead](https://squatchsnacks.example/careers/jobs/fulfillment-lead/index.md)
+
+Pine Cone Gap, West Virginia
+
+Run the warehouse that packs every subscription box, and keep the trail-town shipments on time.
+
+![Pine forest along a ridge trail](https://squatchsnacks.example/img/DKXbjxh243-400.jpeg)
+
+Community · Seasonal
+
+## [Trail Ambassador](https://squatchsnacks.example/careers/jobs/trail-ambassador/index.md)
+
+Remote (on trail)
+
+Hike, hand out samples at trailheads, and write down what hikers tell you. Boots provided.
+
+![The ridge above our kitchen in Pine Cone Gap at sunset](https://squatchsnacks.example/img/xQeyToiNOd-400.jpeg)
+
+Kitchen · Full time
+
+## [Snack Scientist](https://squatchsnacks.example/careers/jobs/snack-scientist/index.md)
+
+Pine Cone Gap, West Virginia
+
+Develop new flavors that hold up at altitude, in the rain and in the bottom of a bear canister.
+
+## From the team
+
+> “The best part of the job is the look on a hiker's face when you hand them Pine Cone Crunch at mile 18.”
+
+**Rosa M.**, Trail Ambassador since 2023
+
+---
+url: https://squatchsnacks.example/careers/jobs/fulfillment-lead/
+---
+
+# Fulfillment Lead
+
+You'll lead a team of four, own the packing schedule for the first of each month, and make sure General Delivery boxes reach trail towns before the hikers do.
+
+---
+url: https://squatchsnacks.example/careers/jobs/snack-scientist/
+---
+
+# Snack Scientist
+
+You'll run the test kitchen: new recipes, shelf-life trials, and the field tests where we hand a prototype to a hiker at mile 12 and write down what they say.
+
+A food science degree helps; a bear canister full of trail snacks you've already perfected helps more.
+
+---
+url: https://squatchsnacks.example/careers/jobs/trail-ambassador/
+---
+
+# Trail Ambassador
+
+From April to October you'll work trailheads across the Appalachians with a cooler of samples and a notebook. Weekly check-ins by satellite messenger.
+
+---
+url: https://squatchsnacks.example/contact/
+---
+
+# Write to the ranger station
+
+Questions about a snack, a subscription, wholesale, or something you saw on the trail. We answer within two working days.
+
+Or email [hello@squatchsnacks.example](mailto:hello@squatchsnacks.example).
+
+---
+url: https://squatchsnacks.example/pricing/
+---
+
+# Snacks, every month
+
+Pick a plan: pay monthly, or pay for a year and save. Skip a month or cancel whenever you like.
+
+2 snacks a month
+
+## Day Hike
+
+Two snacks a month, for the weekend wanderer.
+
+$12 a month
+
+or $120 a year
+
+- 2 snacks a month
+- Pick or let us pick
+- Free shipping over $25
+
+[Choose Day Hike](https://squatchsnacks.example/contact/?plan=day-hike)
+
+Most popular
+
+## Overnight
+
+Four snacks a month and first dibs on new flavors.
+
+$22 a month
+
+or $216 a year
+
+- 4 snacks a month
+- First dibs on new flavors
+- Free shipping
+
+[Choose Overnight](https://squatchsnacks.example/contact/?plan=overnight)
+
+8 snacks a month
+
+## Thru-Hike
+
+Eight snacks a month, mailed to any trail town.
+
+$40 a month
+
+or $384 a year
+
+- 8 snacks a month
+- Ship to any trail town post office
+- Free shipping
+- A patch for your pack
+
+[Choose Thru-Hike](https://squatchsnacks.example/contact/?plan=thru-hike)
+
+## From the subscribers
+
+> “Moss Mix is the only trail mix I don't pick the raisins out of. There are no raisins.”
+
+**Sam T.**, Wonderland Trail
+
+> “Bigfoot Jerky: I have questions about the sizing, and none about the taste.”
+
+**Lee W.**, Three Sisters
+
+---
+url: https://squatchsnacks.example/privacy/
+---
+
+# Privacy policy
+
+We collect as little as we can, and we never sell it.
+
+## What we collect
+
+- **When you visit:** a count of visits from a privacy-friendly analytics service. No cookies, and nothing that identifies you.
+- **When you sign up or write to us:** the email address and message you send, kept by our form provider.
+- **When you subscribe:** your shipping address and order history, kept by our payment provider.
+
+## What we do with it
+
+We use your email address to send the trail reports you asked for, and to answer your messages. Every email has a link to stop them.
+
+## Questions
+
+Write to [hello@squatchsnacks.example](mailto:hello@squatchsnacks.example).
+
+---
+url: https://squatchsnacks.example/provisions/
+---
+
+# Every snack in the pantry
+
+Six snacks, all made in small batches in Pine Cone Gap, West Virginia. Buy them by the bag, or get them every month in a subscription.
+
+![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
+
+$6.50 · 5 oz
+
+## [Pine Cone Crunch](https://squatchsnacks.example/provisions/pine-cone-crunch/index.md)
+
+The one the eyewitnesses can't stop talking about.
+
+![Purple fruit leather rolls tied with parchment on a granite rock](https://squatchsnacks.example/img/_atDewfNCl-400.jpeg)
+
+$5.25 · 3 oz
+
+## [Huckleberry Hustle](https://squatchsnacks.example/provisions/huckleberry-hustle/index.md)
+
+Tart berries for the last mile.
+
+![Stacked s'mores squares beside a tin camp mug](https://squatchsnacks.example/img/KnIu-FdGjj-400.jpeg)
+
+$7 · 6 oz
+
+## [Summit S'mores](https://squatchsnacks.example/provisions/summit-smores/index.md)
+
+Campfire not required.
+
+![A green trail mix of seeds and pistachios in a wooden bowl](https://squatchsnacks.example/img/rTrKIOI52_-400.jpeg)
+
+$6 · 5 oz
+
+## [Moss Mix](https://squatchsnacks.example/provisions/moss-mix/index.md)
+
+Green, salty and suspiciously good.
+
+![Long strips of dark mushroom jerky on butcher paper](https://squatchsnacks.example/img/sJEh2sW1Ms-400.jpeg)
+
+$8.75 · 4 oz
+
+## [Bigfoot Jerky](https://squatchsnacks.example/provisions/bigfoot-jerky/index.md)
+
+Plant-based. Size 17.
+
+![Shards of amber almond toffee on a folded trail map](https://squatchsnacks.example/img/OWHXewAxPA-400.jpeg)
+
+$5.75 · 4 oz
+
+## [Trailhead Toffee](https://squatchsnacks.example/provisions/trailhead-toffee/index.md)
+
+A small reward for leaving the car.
+
+---
+url: https://squatchsnacks.example/provisions/bigfoot-jerky/
+---
+
+# Bigfoot Jerky
+
+![Long strips of dark mushroom jerky on butcher paper](https://squatchsnacks.example/img/sJEh2sW1Ms-400.jpeg)
+
+[All snacks](https://squatchsnacks.example/provisions/index.md)
+
+# Bigfoot Jerky
+
+Plant-based. Size 17.
+
+$8.75 / 4 oz bag
+
+Smoky mushroom and soy jerky strips, cut long enough that you'll wonder who they were sized for.
+
+**Ingredients:** shiitake mushrooms, soy sauce, smoked paprika, brown sugar.
+
+[Get it in a subscription](https://squatchsnacks.example/pricing/index.md) [Ask about wholesale](https://squatchsnacks.example/contact/?about=bigfoot-jerky)
+
+## An eyewitness account
+
+> “Bigfoot Jerky: I have questions about the sizing, and none about the taste.”
+
+**Lee W.**, Three Sisters
+
+## More from the pantry
+
+![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
+
+$6.50
+
+### [Pine Cone Crunch](https://squatchsnacks.example/provisions/pine-cone-crunch/index.md)
+
+The one the eyewitnesses can't stop talking about.
+
+![Purple fruit leather rolls tied with parchment on a granite rock](https://squatchsnacks.example/img/_atDewfNCl-400.jpeg)
+
+$5.25
+
+### [Huckleberry Hustle](https://squatchsnacks.example/provisions/huckleberry-hustle/index.md)
+
+Tart berries for the last mile.
+
+![Stacked s'mores squares beside a tin camp mug](https://squatchsnacks.example/img/KnIu-FdGjj-400.jpeg)
+
+$7
+
+### [Summit S'mores](https://squatchsnacks.example/provisions/summit-smores/index.md)
+
+Campfire not required.
+
+---
+url: https://squatchsnacks.example/provisions/huckleberry-hustle/
+---
+
+# Huckleberry Hustle
+
+![Purple fruit leather rolls tied with parchment on a granite rock](https://squatchsnacks.example/img/_atDewfNCl-400.jpeg)
+
+[All snacks](https://squatchsnacks.example/provisions/index.md)
+
+# Huckleberry Hustle
+
+Tart berries for the last mile.
+
+$5.25 / 3 oz bag
+
+Chewy huckleberry and apple fruit leather, rolled and tied with a strip of parchment so it doesn't stick to your fingers on the climb.
+
+**Ingredients:** huckleberries, apples, lemon juice.
+
+[Get it in a subscription](https://squatchsnacks.example/pricing/index.md) [Ask about wholesale](https://squatchsnacks.example/contact/?about=huckleberry-hustle)
+
+## An eyewitness account
+
+> “The Huckleberry Hustle got me up the last switchback. Something else up there was eating one too.”
+
+**Devon R.**, Mount Hood loop
+
+## More from the pantry
+
+![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
+
+$6.50
+
+### [Pine Cone Crunch](https://squatchsnacks.example/provisions/pine-cone-crunch/index.md)
+
+The one the eyewitnesses can't stop talking about.
+
+![Stacked s'mores squares beside a tin camp mug](https://squatchsnacks.example/img/KnIu-FdGjj-400.jpeg)
+
+$7
+
+### [Summit S'mores](https://squatchsnacks.example/provisions/summit-smores/index.md)
+
+Campfire not required.
+
+![A green trail mix of seeds and pistachios in a wooden bowl](https://squatchsnacks.example/img/rTrKIOI52_-400.jpeg)
+
+$6
+
+### [Moss Mix](https://squatchsnacks.example/provisions/moss-mix/index.md)
+
+Green, salty and suspiciously good.
+
+---
+url: https://squatchsnacks.example/provisions/moss-mix/
+---
+
+# Moss Mix
+
+![A green trail mix of seeds and pistachios in a wooden bowl](https://squatchsnacks.example/img/rTrKIOI52_-400.jpeg)
+
+[All snacks](https://squatchsnacks.example/provisions/index.md)
+
+# Moss Mix
+
+Green, salty and suspiciously good.
+
+$6 / 5 oz bag
+
+Roasted pumpkin seeds, pistachios and dried edamame tossed in seaweed and lime. It looks like the forest floor and tastes better.
+
+**Ingredients:** pumpkin seeds, pistachios, edamame, nori, lime.
+
+[Get it in a subscription](https://squatchsnacks.example/pricing/index.md) [Ask about wholesale](https://squatchsnacks.example/contact/?about=moss-mix)
+
+## An eyewitness account
+
+> “Moss Mix is the only trail mix I don't pick the raisins out of. There are no raisins.”
+
+**Sam T.**, Wonderland Trail
+
+## More from the pantry
+
+![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
+
+$6.50
+
+### [Pine Cone Crunch](https://squatchsnacks.example/provisions/pine-cone-crunch/index.md)
+
+The one the eyewitnesses can't stop talking about.
+
+![Purple fruit leather rolls tied with parchment on a granite rock](https://squatchsnacks.example/img/_atDewfNCl-400.jpeg)
+
+$5.25
+
+### [Huckleberry Hustle](https://squatchsnacks.example/provisions/huckleberry-hustle/index.md)
+
+Tart berries for the last mile.
+
+![Stacked s'mores squares beside a tin camp mug](https://squatchsnacks.example/img/KnIu-FdGjj-400.jpeg)
+
+$7
+
+### [Summit S'mores](https://squatchsnacks.example/provisions/summit-smores/index.md)
+
+Campfire not required.
+
+---
+url: https://squatchsnacks.example/provisions/pine-cone-crunch/
+---
+
+# Pine Cone Crunch
+
+![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
+
+[All snacks](https://squatchsnacks.example/provisions/index.md)
+
+# Pine Cone Crunch
+
+The one the eyewitnesses can't stop talking about.
+
+$6.50 / 5 oz bag
+
+Toasted oat clusters with pine nuts, maple and a pinch of sea salt, pressed into cone-shaped bites that survive the bottom of any pack.
+
+**Ingredients:** rolled oats, pine nuts, maple syrup, sunflower oil, sea salt.
+
+[Get it in a subscription](https://squatchsnacks.example/pricing/index.md) [Ask about wholesale](https://squatchsnacks.example/contact/?about=pine-cone-crunch)
+
+## An eyewitness account
+
+> “I saw a large figure leave a trail of Pine Cone Crunch wrappers. I followed it. Best decision of my hiking career.”
+
+**Marta O.**, Cascade Crest, mile 2,214
+
+## More from the pantry
+
+![Purple fruit leather rolls tied with parchment on a granite rock](https://squatchsnacks.example/img/_atDewfNCl-400.jpeg)
+
+$5.25
+
+### [Huckleberry Hustle](https://squatchsnacks.example/provisions/huckleberry-hustle/index.md)
+
+Tart berries for the last mile.
+
+![Stacked s'mores squares beside a tin camp mug](https://squatchsnacks.example/img/KnIu-FdGjj-400.jpeg)
+
+$7
+
+### [Summit S'mores](https://squatchsnacks.example/provisions/summit-smores/index.md)
+
+Campfire not required.
+
+![A green trail mix of seeds and pistachios in a wooden bowl](https://squatchsnacks.example/img/rTrKIOI52_-400.jpeg)
+
+$6
+
+### [Moss Mix](https://squatchsnacks.example/provisions/moss-mix/index.md)
+
+Green, salty and suspiciously good.
+
+---
+url: https://squatchsnacks.example/provisions/summit-smores/
+---
+
+# Summit S'mores
+
+![Stacked s'mores squares beside a tin camp mug](https://squatchsnacks.example/img/KnIu-FdGjj-400.jpeg)
+
+[All snacks](https://squatchsnacks.example/provisions/index.md)
+
+# Summit S'mores
+
+Campfire not required.
+
+$7 / 6 oz bag
+
+Graham cracker squares sandwiching dark chocolate and a toasted marshmallow layer that stays put up to 9,000 feet.
+
+**Ingredients:** wheat flour, dark chocolate, marshmallow, honey.
+
+[Get it in a subscription](https://squatchsnacks.example/pricing/index.md) [Ask about wholesale](https://squatchsnacks.example/contact/?about=summit-smores)
+
+## An eyewitness account
+
+> “My camera only caught a blur, but my tent smelled like s'mores the next morning.”
+
+**Priya K.**, Olympic coast
+
+## More from the pantry
+
+![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
+
+$6.50
+
+### [Pine Cone Crunch](https://squatchsnacks.example/provisions/pine-cone-crunch/index.md)
+
+The one the eyewitnesses can't stop talking about.
+
+![Purple fruit leather rolls tied with parchment on a granite rock](https://squatchsnacks.example/img/_atDewfNCl-400.jpeg)
+
+$5.25
+
+### [Huckleberry Hustle](https://squatchsnacks.example/provisions/huckleberry-hustle/index.md)
+
+Tart berries for the last mile.
+
+![A green trail mix of seeds and pistachios in a wooden bowl](https://squatchsnacks.example/img/rTrKIOI52_-400.jpeg)
+
+$6
+
+### [Moss Mix](https://squatchsnacks.example/provisions/moss-mix/index.md)
+
+Green, salty and suspiciously good.
+
+---
+url: https://squatchsnacks.example/provisions/trailhead-toffee/
+---
+
+# Trailhead Toffee
+
+![Shards of amber almond toffee on a folded trail map](https://squatchsnacks.example/img/OWHXewAxPA-400.jpeg)
+
+[All snacks](https://squatchsnacks.example/provisions/index.md)
+
+# Trailhead Toffee
+
+A small reward for leaving the car.
+
+$5.75 / 4 oz bag
+
+Brittle almond toffee broken into thumb-sized shards and dusted with cocoa. Best eaten while reading the trail map.
+
+**Ingredients:** butter, cane sugar, almonds, cocoa.
+
+[Get it in a subscription](https://squatchsnacks.example/pricing/index.md) [Ask about wholesale](https://squatchsnacks.example/contact/?about=trailhead-toffee)
+
+## More from the pantry
+
+![A pile of golden, cone-shaped oat clusters on a mossy log](https://squatchsnacks.example/img/tZNPT_tCaK-400.jpeg)
+
+$6.50
+
+### [Pine Cone Crunch](https://squatchsnacks.example/provisions/pine-cone-crunch/index.md)
+
+The one the eyewitnesses can't stop talking about.
+
+![Purple fruit leather rolls tied with parchment on a granite rock](https://squatchsnacks.example/img/_atDewfNCl-400.jpeg)
+
+$5.25
+
+### [Huckleberry Hustle](https://squatchsnacks.example/provisions/huckleberry-hustle/index.md)
+
+Tart berries for the last mile.
+
+![Stacked s'mores squares beside a tin camp mug](https://squatchsnacks.example/img/KnIu-FdGjj-400.jpeg)
+
+$7
+
+### [Summit S'mores](https://squatchsnacks.example/provisions/summit-smores/index.md)
+
+Campfire not required.
+
+---
+url: https://squatchsnacks.example/terms/
+---
+
+# Terms of service
+
+By buying from Squatch Snacks or subscribing, you agree to these terms.
+
+## Subscriptions
+
+A subscription renews each month, or each year if you chose yearly billing, until you cancel. You can skip a month or cancel at any time before the 25th for the next box.
+
+## Refunds
+
+If a snack arrives damaged, write to us within 30 days and we'll send another or refund it.
+
+## Sightings
+
+Any resemblance between our mascot and a real cryptid is entirely alleged.

@@ -15,6 +15,7 @@ import { closestPath } from "../suggest.ts";
 import { isDataString, lazyEngine, siteFunction } from "./engine.ts";
 import type { EngineEnv, TemplateEngine } from "./engine.ts";
 import { didYouMean, undefinedMessage, undefinedOnLine } from "../strict-hint.ts";
+import { shownAsUtc } from "../data.ts";
 
 /** A template as code: its function, or its text when it has no tags. */
 interface Compiled {
@@ -68,8 +69,8 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 function showDate(d: Date): string {
 	if (Number.isNaN(d.getTime())) return "Invalid Date";
 	const two = (n: number) => String(n).padStart(2, "0");
-	const year = d.getUTCFullYear();
-	return `${DAYS[d.getUTCDay()]} ${MONTHS[d.getUTCMonth()]} ${two(d.getUTCDate())} ${year < 0 ? "-" : ""}${String(Math.abs(year)).padStart(4, "0")} ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())} GMT+0000`;
+	const year = shownAsUtc(d).getUTCFullYear();
+	return `${DAYS[shownAsUtc(d).getUTCDay()]} ${MONTHS[shownAsUtc(d).getUTCMonth()]} ${two(shownAsUtc(d).getUTCDate())} ${year < 0 ? "-" : ""}${String(Math.abs(year)).padStart(4, "0")} ${two(shownAsUtc(d).getUTCHours())}:${two(shownAsUtc(d).getUTCMinutes())}:${two(shownAsUtc(d).getUTCSeconds())} GMT+0000`;
 }
 
 /** A value as JavaScript prints it (`String(value)`), with dates, in a list too, at UTC. */

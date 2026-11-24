@@ -11,6 +11,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { ssqch, tempDir, write, REPO } from "../lib/ssqch.js";
 
+// DELIBERATE (0.15): `absolute_url`'s hint says `absoluteUrl` is on every site, where it came
+// with `rssPlugin()` until 0.15.
 const TABLE = [
 	{"word":"dev","kind":"Command","alias":true,"ssqch":"serve","say":"ssqch's dev server is `ssqch serve`: it builds, watches and reloads the browser.","more":"ssqch docs serve"},
 	{"word":"start","kind":"Command","alias":true,"ssqch":"serve","say":"ssqch's dev server is `ssqch serve`: it builds, watches and reloads the browser.","more":"ssqch docs serve"},
@@ -72,7 +74,7 @@ const TABLE = [
 	{"word":"slug","kind":"Filter","alias":false,"ssqch":"slugify","say":"ssqch's is `slugify`, which differs: Eleventy's `slug` (the `slugify` npm package) keeps `.` and some punctuation, so `Node.js` is `node.js` there and `node-js` in ssqch. To keep old URLs, define `slug` in `filters` with that package: slug: (s) => slugify(String(s), { lower: true }).","more":"ssqch docs slugify"},
 	{"word":"rssDate","kind":"Filter","alias":true,"ssqch":"dateToRfc3339","say":"With `rssPlugin()` it's `dateToRfc3339`: {{ post.date | dateToRfc3339 }}.","more":"ssqch docs rssPlugin"},
 	{"word":"rssLastUpdatedDate","kind":"Filter","alias":true,"ssqch":"getNewestCollectionItemDate","say":"With `rssPlugin()` it's `getNewestCollectionItemDate`, then `dateToRfc3339`: {{ collections.posts | getNewestCollectionItemDate | dateToRfc3339 }}.","more":"ssqch docs rssPlugin"},
-	{"word":"absolute_url","kind":"Filter","alias":false,"ssqch":"absoluteUrl","say":"`absoluteUrl(url, base)` comes with `rssPlugin()` from \"ssqch/rss\".","more":"ssqch docs absoluteUrl"},
+	{"word":"absolute_url","kind":"Filter","alias":false,"ssqch":"absoluteUrl","say":"`absoluteUrl(url, site.url)` is on every site: the whole address, with the site's `base`.","more":"ssqch docs absoluteUrl"},
 	{"word":"markdownify","kind":"Filter","alias":true,"ssqch":"markdown","say":"ssqch's function is `markdown(text)` (or `markdown(text, \"inline\")`).","more":"ssqch docs markdown"},
 	{"word":"jsonify","kind":"Filter","alias":false,"ssqch":"dump","say":"`jsonify` works in Liquid templates; in Jinja it's `tojson`, and in Nunjucks `dump`.","more":"ssqch docs \"Jinja and Nunjucks\""},
 	{"word":"eleventy.","kind":"Global","alias":false,"ssqch":"ssqch","say":"ssqch's is `ssqch`: `ssqch.generator`, `ssqch.version`, `ssqch.env` and `ssqch.serving`, so this prints nothing.","more":"ssqch docs ssqch.generator"},

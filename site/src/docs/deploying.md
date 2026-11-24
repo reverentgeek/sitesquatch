@@ -29,11 +29,19 @@ export default defineConfig({
 ```
 
 - **HTML:** in every page ssqch writes, a URL that starts with `/` gets the base in front: `href`, `src`, `srcset`, `action`, `poster` and the other URL attributes, a meta refresh, and `url()` in `style` attributes and `<style>` elements. That covers Markdown links, images from `imagePlugin()`, fingerprinted assets, redirect pages and Sass output. Relative URLs, `#fragments` and URLs with a domain aren't changed, so a link to something else on the same domain needs the whole address (`https://you.github.io/other-project/`).
-- **Everywhere else:** in an inline script, a JSON file or a feed, call `withBase("/search.json")`, or print `ssqch.base` (`/repo`, or an empty string without a base). The feed filters add it for you: `absoluteUrl(post.url, site.url)` is `https://example.com/repo/posts/pine/`, with or without the path in `site.url`, and a URL that already has the base keeps one. Don't use `withBase()` inside an HTML attribute, or the URL gets the base twice (the link checker reports it).
+- **Everywhere else:** in an inline script, a JSON file or a feed, call `withBase("/search.json")`, or print `ssqch.base` (`/repo`, or an empty string without a base). In a site's own code (a data file, a filter, `computed`), it's an export: `import { withBase } from "ssqch"`, and `absoluteUrl("/provisions/moss-mix/", site.url)` (also from `ssqch`) for a whole address with the base in it (structured data wants those). It has the build's base, `--base` included, so the config's own top-level code, which runs first, gets none. The feed filters add it for you: `absoluteUrl(post.url, site.url)` is `https://example.com/repo/posts/pine/`, with or without the path in `site.url`, and a URL that already has the base keeps one. Don't use `withBase()` inside an HTML attribute, or the URL gets the base twice (the link checker reports it).
 - **`page.url` and collections:** unchanged, so `page.url == item.url` and the navigation helpers work the same with or without a base.
 - **The output folder:** unchanged too. `dist/about/index.html` is what the host serves at `/repo/about/`.
 - **Plugins:** `linksPlugin()` checks links under the base (other paths on the domain count as external), and `sitemapPlugin({ url })` takes the address with or without the base in it.
 - **`ssqch serve`:** serves the site at `http://localhost:8080/repo/`, so what you click through locally is what the host will serve.
+- **The host's own files:** Netlify and Cloudflare read `_redirects` and `_headers` only at the top of the folder they publish, and crawlers look for `robots.txt` and `sitemap.xml` only at the domain's root. A GitHub Pages project site is the domain's folder already, so there's nothing to do there. On Netlify or Cloudflare, where the folder you publish is the domain's root and the site is one path in it (a preview beside the real site, say), build into that path inside the folder and move the host's two files to its top:
+
+```sh
+ssqch build --base /preview/snacks/ --output dist-preview/preview/snacks
+mv dist-preview/preview/snacks/_redirects dist-preview/preview/snacks/_headers dist-preview/
+```
+
+Publish `dist-preview`. Their lines have the base in them already (`redirectsPlugin()` writes it, and a `_redirects` or `_headers` template uses `withBase`), so they match where they are now. Netlify answers a miss with the site's 404 page by itself only at the root, so there, add `notFound: "/404.html"` to `redirectsPlugin({ hostFile: true })`, which writes `/preview/snacks/*  /preview/snacks/404.html  404` as the file's last line. Cloudflare doesn't need it: its `not_found_handling: "404-page"` finds the nearest `404.html` going up the folders.
 
 `ssqch build --base /repo/` sets it from the command line (for a preview deployed under another path, say) and wins over the config. In `sitesquatch.toml` it's `base = "/repo/"`.
 

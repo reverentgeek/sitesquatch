@@ -1,0 +1,6 @@
+{#- <Testimonial name="..." where="...">The quote</Testimonial> -#}
+{%- set p = component.props -%}
+<figure class="testimonial">
+	<blockquote>“{{ component.content | safe }}”</blockquote>
+	<figcaption><strong>{{ p.name }}</strong>{% if p.where %}, {{ p.where }}{% endif %}</figcaption>
+</figure>

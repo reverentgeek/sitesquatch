@@ -152,10 +152,11 @@ function imageSizes(lines) {
 	return lines.map((line) => (/^\s*Images\s/.test(line) || (images && /^\s*Output\s/.test(line)) ? line.replace(size, "<size>") : line));
 }
 
-/** The build's summary (stdout and stderr): no "Writing" lines, times as <time>, paths as <root>, images' sizes as <size>. */
+/** The build's summary (stdout and stderr): no "Writing" or "Encoded" lines, times as <time>, paths as <root>, images' sizes as <size>. */
 export function normalizeLog(stderr, build) {
 	return normalizeText(imageSizes(stderr.split(/\r?\n/)
-		.filter((line) => !line.startsWith("[ssqch] Writing") && !/^\s*Time\s/.test(line))
+		// `Encoded` lines come as each picture's encodes finish, in whatever order that is.
+		.filter((line) => !line.startsWith("[ssqch] Writing") && !line.startsWith("[ssqch] Encoded") && !/^\s*Time\s/.test(line))
 		.map((line) => line.replaceAll(build.root, "<root>").replaceAll(build.dir, "<root>").replace(/\b\d+(\.\d+)? ?(µs|ms|s)\b/g, "<time>")))
 		.join("\n").trim() + "\n");
 }
@@ -182,6 +183,12 @@ export function encodedImage(file, buf) {
 		if (chunk === "VP8 ") return `webp ${size(buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff)}`;
 		if (chunk === "VP8L") { const b = buf.readUInt32LE(21); return `webp ${size((b & 0x3fff) + 1, ((b >> 14) & 0x3fff) + 1)}`; }
 		if (chunk === "VP8X") return `webp ${size(buf.readUIntLE(24, 3) + 1, buf.readUIntLE(27, 3) + 1)}`;
+	}
+	// An AVIF's size is in its `ispe` box: the box's name, its version and flags, then the width
+	// and the height. Its bytes are the encoder's, as a WebP's and a JPEG's are.
+	if (buf.toString("latin1", 4, 12) === "ftypavif") {
+		const at = buf.indexOf("ispe", 0, "latin1");
+		if (at !== -1 && at + 16 <= buf.length) return `avif ${size(buf.readUInt32BE(at + 8), buf.readUInt32BE(at + 12))}`;
 	}
 	if (buf[0] === 0xff && buf[1] === 0xd8) {
 		for (let i = 2; i + 9 < buf.length; ) {

@@ -33,7 +33,7 @@ import { commandLine } from "./command-line.ts";
 export { commandLine, toolPath } from "./command-line.ts";
 import { mkdocsGlobals, tocOf } from "./mkdocs.ts";
 import { currentRendering, renderingAs, safe } from "./rendering.ts";
-import { checkPages } from "./schema.ts";
+import { checkPages, paginated } from "./schema.ts";
 import type { CopyJob, Page, Tpl } from "./site.ts";
 import { Site, Timer, errorsTogether } from "./site.ts";
 import type { Profile, ProfileReport } from "./profile.ts";
@@ -129,7 +129,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	timer.lap("copy");
 
 	const pagePaths = written.map((w) => w.file);
-	const outputs = [...pagePaths, ...generated, ...built, ...copy.paths, ...stylesheet];
+	const outputs = [...pagePaths, ...generated, ...built, ...copy.paths, ...stylesheet, ...config.written.flatMap((files) => [...files()])];
 	const recorded = recordOutputs(config, dirs, outputs, pagePaths);
 
 	const report: BuildReport = {
@@ -331,8 +331,8 @@ class Renderer {
 				try {
 					out = engine.render(content, data, ctx);
 					if (typeof out !== "string") out = asText(out, name, tpl.rel);
-				} catch (e) { throw rendering(e, tpl, name); }
-				if (typeof out !== "string") return out.then((text) => run(i + 1, text), (e) => { throw rendering(e, tpl, name); });
+				} catch (e) { throw rendering(e, tpl, name, data); }
+				if (typeof out !== "string") return out.then((text) => run(i + 1, text), (e) => { throw rendering(e, tpl, name, data); });
 				content = out;
 			}
 			return content;
@@ -551,7 +551,10 @@ class Renderer {
 	}
 }
 
-const rendering = (e: unknown, tpl: Tpl, engine: string) => context(e, `rendering ${tpl.rel} with \`${engine}\``);
+// A paginated page says which item it was rendering, after the engine's name, so the parts
+// `locate` reads stay as they are: six errors that all said `snacks/snack.jinja` didn't say which
+// snack (the Squatch Snacks rerun, as schema errors already did).
+const rendering = (e: unknown, tpl: Tpl, engine: string, data?: Data) => context(e, `rendering ${tpl.rel} with \`${engine}\`${data ? paginated(data) : ""}`);
 
 /**
  * An engine's answer that isn't a string: a promise of one. Anything else (a `null` from a
@@ -1254,10 +1257,17 @@ function recordOutputs(config: Config, dirs: Dirs, outputs: string[], pagePaths:
 	const rel = (files: string[]) => new Set(files.filter((f) => isInside(dirs.output, f) && f !== dirs.output).map((f) => relative(dirs.output, f)));
 	const current = rel(outputs);
 	const pages = rel(pagePaths);
-	let before: any;
+	let last: any;
 	let text: string | undefined;
-	try { text = fs.readFileSync(listPath, "utf8"); before = JSON.parse(text); } catch { /* no list, or not one of ours */ }
-	if (before === null || typeof before !== "object" || before.output !== outputName) before = undefined;
+	try { text = fs.readFileSync(listPath, "utf8"); last = JSON.parse(text); } catch { /* no list, or not one of ours */ }
+	if (last === null || typeof last !== "object" || Array.isArray(last)) last = undefined;
+	// The top of the list is the last build; each other folder built into keeps its own under
+	// `outputs`, so a build into `dist-before` doesn't make the next build forget `dist`'s files.
+	const others: Record<string, unknown> = last?.outputs !== null && typeof last?.outputs === "object" && !Array.isArray(last.outputs) ? { ...last.outputs } : {};
+	if (typeof last?.output === "string" && last.output !== outputName) others[last.output] = { files: last.files, pages: last.pages };
+	const kept: any = last?.output === outputName ? last : others[outputName];
+	const before: any = kept !== null && typeof kept === "object" ? kept : undefined;
+	delete others[outputName];
 	const names = (key: string): string[] | undefined => (Array.isArray(before?.[key]) ? before[key].filter((f: unknown) => typeof f === "string") : undefined);
 	const previous = names("files") ?? [];
 	// A list from before 0.4 has no pages: nothing to compare with.
@@ -1287,7 +1297,11 @@ function recordOutputs(config: Config, dirs: Dirs, outputs: string[], pagePaths:
 		}
 	}
 
-	const list = JSON.stringify({ output: outputName, files: [...current].sort(compareText), pages: [...pages].sort(compareText) }, null, 2);
+	const entry: Record<string, unknown> = { output: outputName, files: [...current].sort(compareText), pages: [...pages].sort(compareText) };
+	// A folder that's gone (a `dist-before` deleted after its diff) has nothing left to clean.
+	const otherNames = Object.keys(others).filter((name) => isDir(path.resolve(dirs.root, name))).sort(compareText);
+	if (otherNames.length) entry.outputs = Object.fromEntries(otherNames.map((name) => [name, others[name]]));
+	const list = JSON.stringify(entry, null, 2);
 	// Left alone when nothing changed, so a build with nothing new touches no files.
 	if (text !== list) {
 		fs.mkdirSync(path.dirname(listPath), { recursive: true });

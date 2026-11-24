@@ -19,6 +19,7 @@ import { bail } from "../diagnostics.ts";
 import { addImagePlugin, currentProcessor, defaultImageOptions, imageOptionsFor, parseFormat } from "../image/processor.ts";
 import type { Format } from "../image/processor.ts";
 import { Options } from "./options.ts";
+import { ssqchWork } from "../profile.ts";
 
 const FORMATS = ["avif", "webp", "jpeg", "jpg", "png", "gif", "svg", "auto"];
 const IMAGE_OPTIONS = ["widths", "formats", "name"];
@@ -93,7 +94,8 @@ export async function image(src: unknown, options: Record<string, unknown> = {})
 	}
 	let meta;
 	try { meta = p.generateNamed(file, checkedWidths, checkedFormats, name as string | undefined); } catch (e) { bail(`image(): ${(e as Error).message}`); }
-	const failed = await meta.ready;
+	// Encoding is ssqch's time, not the calling filter's (see `ssqchWork`).
+	const failed = await ssqchWork.wait(meta.ready);
 	if (failed) bail(`image(): ${failed.message}`);
 	const root = p.root();
 	const out: Record<string, Entry[]> = {};

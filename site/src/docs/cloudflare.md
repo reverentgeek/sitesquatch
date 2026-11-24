@@ -74,4 +74,4 @@ Workers' static assets read `_redirects` and `_headers` in the output folder, in
 
 ## Markdown for agents
 
-To answer a coding agent's `Accept: text/markdown` with a page's Markdown copy, the Worker gets a script: [Serving Markdown to agents](serving-markdown.md#cloudflare) has it, ready to paste, with the `run_worker_first` that sends only pages through it.
+Cloudflare answers a coding agent's `Accept: text/markdown` with the HTML page, the build's Markdown copies notwithstanding, until the Worker gets a script for it: [Serving Markdown to agents](serving-markdown.md#cloudflare) has it, ready to paste, with the `run_worker_first` that sends only pages through it. `ssqch patrol --url https://your-site.example/` checks a deploy (`live-no-markdown` names each page that answers with HTML).

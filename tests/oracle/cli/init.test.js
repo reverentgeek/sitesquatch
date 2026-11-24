@@ -66,7 +66,7 @@ test("init_creates_a_site_that_builds", () => {
 
 	// The next post starts from the starter's blueprint, and is on the home page.
 	r = ssqch(["new", "--root", d, "posts", "--title", "My second post", "--date", "2026-02-03"]);
-	assert.deepEqual([r.ok, r.log], [true, "Created src/posts/my-second-post.md from src/_blueprints/posts.md. Field notes started.\n"]);
+	assert.deepEqual([r.ok, r.log], [true, "Created src/posts/my-second-post.md from src/_blueprints/posts.md. Fresh tracks: fill in its fields, then build.\n"]);
 	assert.equal(read(dir, "src/posts/my-second-post.md"), "---\ntitle: My second post\ndate: 2026-02-03\n---\nWrite down what you saw.\n");
 	r = ssqch(["build", "--root", d]);
 	assert.ok(r.ok, r.log);
@@ -156,7 +156,7 @@ test("init_starts_a_docs_site", () => {
 	const rd = (p) => read(dir, path.join("dist", p));
 	// A new page from the starter's blueprint passes the starter's schema.
 	r = ssqch(["new", "--root", d, "docs/guides", "--title", "Search"]);
-	assert.deepEqual([r.ok, r.log], [true, "Created src/docs/guides/search.md from src/_blueprints/docs.md. Field notes started.\n"]);
+	assert.deepEqual([r.ok, r.log], [true, "Created src/docs/guides/search.md from src/_blueprints/docs.md. Fresh tracks: fill in its fields, then build.\n"]);
 	r = ssqch(["build", "--root", d]);
 	assert.ok(r.ok && !r.log.includes("warn") && rd("docs/guides/search/index.html").includes("<title>Search | Squatch Docs</title>"), r.log);
 	assert.ok(isFile(dir, "dist/assets/docs.js") && isFile(dir, "dist/highlight.css"));
@@ -220,4 +220,19 @@ test("init_makes_package_json_ready", () => {
 	dir = fresh("init-no-package");
 	assert.ok(ssqch(["init", dir]).ok);
 	assert.ok(!exists(dir, "package.json"));
+});
+
+// Not from a Rust test (the Squatch Snacks rerun, 2026-11-23): beside a config of the site's own,
+// init writes what any site uses (AGENTS.md, the types) and leaves the starter's pages out, since
+// they need its config: 0.14.2 wrote src/tag.jinja, and the site stopped building on
+// `collections.tagList`.
+test("init_beside_a_config_of_its_own_leaves_the_starters_pages_out", () => {
+	const dir = tempDir("init-own-config");
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n", "src/index.md": "Ours\n" });
+	let r = ssqch(["init", dir]);
+	assert.ok(r.ok && r.stdout.includes("  kept    ssqch.config.js (already there)\n") && r.stdout.includes("  created AGENTS.md\n"), r.log);
+	assert.match(r.stdout, /  left out the starter's \d+ files in src\/: they need the starter's config, and ssqch.config.js is this site's own\n/);
+	assert.ok(!exists(dir, "src/tag.jinja") && !exists(dir, "src/posts") && isFile(dir, "ssqch.d.ts"), r.log);
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
 });

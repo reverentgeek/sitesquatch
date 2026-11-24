@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	{% include "seo.jinja" %}
+	<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+	{% if markdownCopy(page.url) %}<link rel="alternate" type="text/markdown" href="{{ markdownCopy(page.url) }}">{% endif %}
+	<link rel="describedby" href="{{ llmsTxt(page.url) }}">
+	<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+	<a href="#main" class="skip">Skip to content</a>
+	<aside class="notice" aria-label="News">Winter restock: Trailhead Toffee is back. <a href="/provisions/trailhead-toffee/">Get it before it disappears</a></aside>
+	<header class="site-header">
+		<div class="wrap">
+			<a href="/" class="brand"><img src="/img/logo.png" alt="" width="36" height="36" sizes="36px">Squatch Snacks</a>
+			<nav aria-label="Main">
+				<ul>
+					{%- for item in [{"url": "/provisions/", "name": "Snacks"}, {"url": "/pricing/", "name": "Subscribe"}, {"url": "/about/", "name": "About"}, {"url": "/careers/", "name": "Careers"}, {"url": "/contact/", "name": "Contact"}] %}
+					<li><a href="{{ item.url }}"{% if page.url.startswith(item.url) %} aria-current="page"{% endif %}>{{ item.name }}</a></li>
+					{%- endfor %}
+				</ul>
+			</nav>
+		</div>
+	</header>
+	<main id="main">
+		{{ content }}
+	</main>
+	<footer class="site-footer">
+		<div class="wrap">
+			<div>
+				<p class="brand">Squatch Snacks</p>
+				<p>{{ site.tagline }}</p>
+				<p>{{ site.address.street }}, {{ site.address.city }}, {{ site.address.region }} {{ site.address.postal }}</p>
+			</div>
+			<ul aria-label="Favorites">
+				{%- for snack in snacks | selectattr("featured") %}
+				<li><a href="/provisions/{{ snack.slug }}/">{{ snack.name }}</a></li>
+				{%- endfor %}
+			</ul>
+			<ul>
+				<li><a href="/provisions/">All snacks</a></li>
+				<li><a href="/pricing/">Subscriptions</a></li>
+				<li><a href="/careers/">Careers</a></li>
+				<li><a href="/contact/">Contact</a></li>
+			</ul>
+			<ul>
+				<li><a href="/privacy/">Privacy</a></li>
+				<li><a href="/terms/">Terms</a></li>
+				<li>© 2026 Squatch Snacks Co.</li>
+			</ul>
+		</div>
+	</footer>
+</body>
+</html>

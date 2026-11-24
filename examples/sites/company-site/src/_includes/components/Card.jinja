@@ -1,0 +1,13 @@
+{#- <Card title="..." href="/x/" image="/img/x.jpg" alt="..." eyebrow="..." level="2|3">Body HTML</Card>: level is the title's heading level (3, under a section's h2, by default). -#}
+{%- set p = component.props -%}
+{%- set h = "h2" if p.level == "2" else "h3" -%}
+<article class="card">
+	{%- if p.image %}
+	<img src="{{ p.image }}" alt="{{ p.alt }}" sizes="(min-width: 64rem) 22rem, (min-width: 40rem) 45vw, 100vw">
+	{%- endif %}
+	<div class="card-body">
+		{%- if p.eyebrow %}<p class="eyebrow">{{ p.eyebrow }}</p>{% endif %}
+		<{{ h }}>{% if p.href %}<a href="{{ p.href }}">{{ p.title }}</a>{% else %}{{ p.title }}{% endif %}</{{ h }}>
+		{{ component.content | safe }}
+	</div>
+</article>

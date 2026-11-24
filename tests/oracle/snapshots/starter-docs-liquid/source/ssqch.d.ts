@@ -288,7 +288,7 @@ declare module "ssqch" {
 		markdown?: MarkdownOptions;
 		/** Merge objects and concatenate arrays through the data cascade. Default `true`. */
 		deepMerge?: boolean;
-		/** Delete output files an earlier build wrote or copied that this one didn't (a deleted post's page). Files other tools write are never touched. Default `false`. */
+		/** Delete output files an earlier build wrote or copied that this one didn't (a deleted post's page, a picture `imagePlugin()` encoded that no page uses now). Each output folder has its own list, so a build into another folder (`--output dist-before`) doesn't make the next forget `dist`'s. Files other tools write are never touched. Default `false`. */
 		leaveNoTrace?: boolean;
 		/** Globs (relative to the input folder) of files that aren't pages, like `["drafts/**", "notes/*.wip.md"]`. */
 		ignore?: string | string[];
@@ -302,7 +302,7 @@ declare module "ssqch" {
 		lastModified?: "git" | "file" | false;
 		/** The date of a page with no date of its own (in its data or its file name): `"git"` for the last commit that changed its file, the same in every checkout, or `"file"` (the default) for the file's modification time, which is when the checkout wrote it. Either way it sorts after the dated pages, by path. Needs the full history in CI (`fetch-depth: 0`). */
 		dateFallback?: "git" | "file";
-		/** The time zone the site's own JavaScript runs in, as an IANA name (`"UTC"`, `"America/New_York"`): `Date`'s local methods and libraries like luxon and date-fns, in data files, filters, hooks and Edge templates, so a laptop and CI build the same pages. ssqch's own date filters are UTC whatever this says. Default: the machine's. The config's own top-level code runs before it applies. */
+		/** The time zone the site's own JavaScript runs in, as an IANA name (`"UTC"`, `"America/New_York"`): `Date`'s local methods and libraries like luxon and date-fns, in data files, filters, hooks and Edge templates, so a laptop and CI build the same pages. A date written without a time (`date: 2026-11-02`) is midnight in this zone, so it's that day by `Date`'s local methods, and ssqch's own date filters and the sitemap print its written day in every zone; a date with a time they print in UTC. Default: the machine's. The config's own top-level code runs before it applies. */
 		timeZone?: string;
 		/** A page's URL when it has no `permalink`: `"folders"` (the default) writes `guide/intro.md` as `/guide/intro/` (`guide/intro/index.html`), `"html"` as `/guide/intro.html`. An index page is its folder either way (`guide/index.md` is `/guide/`). (`"html"` is VitePress without `cleanUrls`, Hugo's `uglyURLs` and Docusaurus's `trailingSlash: false`.) */
 		urls?: "folders" | "html";
@@ -380,7 +380,11 @@ declare module "ssqch" {
 	export function slugify(text: string, options?: SlugifyOptions | string): string;
 	/** A `slugify` that counts, so every slug it makes is different: the first "Misc Pictures" is `misc-pictures`, the next `misc-pictures-1`, then `misc-pictures-2`. Make one per list, in a data file, and store the slug with each item, so a paginated page's permalink and the links to it agree. */
 	export function slugger(options?: SlugifyOptions): (text: string) => string;
-	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown; readData: typeof readData; files: typeof files; slugify: typeof slugify; slugger: typeof slugger };
+	/** The `withBase` template function, for a site's own code (a data file, a filter, `computed`): a URL from the site's root with the site's `base` in front, `withBase("/provisions/moss-mix/")` is `"/repo/provisions/moss-mix/"` under `base: "/repo/"`, and the URL as it is without one. Anything that isn't from the root (relative, `#top`, `https:`) is returned as it is. The base is the build's, so in the config's own top-level code, which runs before the build, it's `""`: call it from a function. */
+	export function withBase(url: string): string;
+	/** The `absoluteUrl` template function, for a site's own code: `absoluteUrl("/provisions/moss-mix/", "https://example.com")` is `"https://example.com/repo/provisions/moss-mix/"` under `base: "/repo/"`: the site's `base` goes in front of a URL from the root that doesn't have it yet, then the URL is resolved against the address, as `new URL()` does. A URL that can't be resolved comes back as it is. For a canonical link, link-preview cards and structured data. */
+	export function absoluteUrl(url: string, address: string): string;
+	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown; readData: typeof readData; files: typeof files; slugify: typeof slugify; slugger: typeof slugger; withBase: typeof withBase };
 	export default ssqch;
 }
 
@@ -412,7 +416,7 @@ declare module "ssqch/image" {
 		jpegQuality?: number;
 		/** A width larger than the original is clamped to it only when the width before it is this many times smaller. Default 1.25. */
 		minimumThreshold?: number;
-		/** Delete generated images in the output that the build didn't use. Only for full builds; `leaveNoTrace` leaves them. */
+		/** Delete every file in the image folder that the build didn't use, ones no build of ssqch listed included. Only for full builds. `leaveNoTrace` removes the copies an earlier build used and this one didn't, without this. */
 		prune?: boolean;
 		/** Remember image ids between builds in `.cache/ssqch`. Default `true`. */
 		hashCache?: boolean;
@@ -471,7 +475,7 @@ declare module "ssqch/image" {
 declare module "ssqch/rss" {
 	import type { BuiltinPlugin } from "ssqch";
 
-	/** Adds the filters getNewestCollectionItemDate, dateToRfc3339, dateToRfc822, absoluteUrl, htmlToAbsoluteUrls and feedHtml. */
+	/** Adds the filters getNewestCollectionItemDate, dateToRfc3339, dateToRfc822, htmlToAbsoluteUrls and feedHtml. (`absoluteUrl` is on every site.) */
 	export function rssPlugin(): BuiltinPlugin;
 	/** Writes the site's feed (Atom, or RSS) from a collection, newest first, each entry's content as feedHtml makes it: `feedPlugin({ url: "https://example.com" })` writes /feed.xml from the `posts` collection. */
 	export function feedPlugin(options: {
@@ -498,9 +502,9 @@ declare module "ssqch/rss" {
 	export function dateToRfc3339(date: Date | string): string;
 	/** A date as RFC 822 (`Sat, 01 Jun 2024 00:00:00 +0000`), for RSS feeds. */
 	export function dateToRfc822(date: Date | string): string;
-	/** A URL made absolute against the site's address: `absoluteUrl(post.url, "https://example.com")`. As a template filter, it puts the site's `base` in front of a URL from the root that doesn't have it yet; called from code, it resolves as `new URL(url, base)` does. */
+	/** A URL made absolute against the site's address: `absoluteUrl(post.url, "https://example.com")`, with the site's `base` in front of a URL from the root that doesn't have it yet, as the template function does. The same function as `absoluteUrl` from "ssqch". */
 	export function absoluteUrl(url: string, base: string): string;
-	/** Every link and image in some HTML made absolute, for a feed's content. */
+	/** Every link and image in some HTML made absolute, for a feed's content, with the site's `base` in front of a URL from the root, as `absoluteUrl` does. */
 	export function htmlToAbsoluteUrls(html: string, base: string): string;
 	/** A post's HTML for a feed: each local image points at one generated copy (`width` 1200 and the source's format by default), a `<picture>`'s `<source srcset>` goes, page-only attributes go, and every URL is made absolute against `base`, the post's address. The images are made by the image plugin, so the config needs `imagePlugin()` too. */
 	export function feedHtml(html: string, base: string, options?: { width?: number | "auto"; format?: string }): string;
@@ -722,6 +726,8 @@ declare module "ssqch/redirects" {
 		hostFile?: boolean;
 		/** Redirects that aren't a page's `aliases`: `{ "/old/": "/new/" }`. The new URL can be on another site. */
 		redirects?: Record<string, string>;
+		/** The not-found page's URL path (`"/404.html"`): with `hostFile`, the last line of `_redirects` is `/*  /404.html  404`, with the site's `base` in front of both. Netlify answers a miss with the 404 page by itself only at the domain's root, so a site served under a path there needs this line, after every other (Cloudflare's `not_found_handling: "404-page"` doesn't). */
+		notFound?: string;
 	}
 
 	/** Redirects from each page's `aliases` front matter and from `redirects`. */
@@ -744,4 +750,14 @@ declare module "ssqch/sass" {
 
 	/** Compiles Sass at the start of each build, with grass (Rust, as WebAssembly: no Dart Sass), so fingerprinting and the link checker see the CSS. */
 	export function sassPlugin(options: SassPluginOptions): BuiltinPlugin;
+}
+
+// This site's `schemas`. Run `ssqch types` again after changing them.
+declare module "ssqch" {
+	interface Schemas {
+		docs: {
+			title: string;
+			description?: string;
+		};
+	}
 }

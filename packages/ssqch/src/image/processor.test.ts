@@ -128,9 +128,14 @@ test("ids depend on the contents, not the path or the time", async () => {
 	const again = new ImageProcessor(defaultImageOptions());
 	again.startBuild({ root, input: "src", output: "dist", verbose: false } as Config);
 	assert.equal(idOf(again.imageUrl("/a.png", 0, "auto").url as string), id);
+	// A format's own settings are part of its files' names, and only that format's (the owner,
+	// 2026-11-24): a WebP setting renames the WebP copies and leaves the PNG's as they were.
+	const webp = idOf(again.imageUrl("/a.png", 0, "webp").url as string);
+	assert.notEqual(webp, id, "each format has a name of its own");
 	const tuned = new ImageProcessor({ ...defaultImageOptions(), webpQuality: 90 });
 	tuned.startBuild({ root, input: "src", output: "dist", verbose: false } as Config);
-	assert.notEqual(idOf(tuned.imageUrl("/a.png", 0, "auto").url as string), id, "encoder settings are part of the id");
+	assert.equal(idOf(tuned.imageUrl("/a.png", 0, "auto").url as string), id, "another format's settings leave the PNG's name");
+	assert.notEqual(idOf(tuned.imageUrl("/a.png", 0, "webp").url as string), webp, "the WebP's own settings are part of its name");
 	await p.settle();
 	await again.settle();
 	await tuned.settle();
@@ -149,7 +154,8 @@ test("the hash cache skips unchanged files and reads changed ones again", async 
 	const cache = JSON.parse(fs.readFileSync(path.join(root, CACHE_FILE), "utf8"));
 	const entry = cache.files[path.join(root, "src/a.png")];
 	assert.equal(cache.version, 1);
-	assert.deepEqual([entry.id, entry.settings, typeof entry.mtime], [id, "75|50|8|80|color1", "string"]);
+	// The source's own id, whatever the settings, and the names its copies have this build.
+	assert.deepEqual([entry.id.length, entry.settings, typeof entry.mtime, entry.names], [22, "content|color1", "string", [id]]);
 	// The same size and time with other bytes (another green, as long): the id comes from the
 	// cache. That's the trade.
 	const other = await pixels(8, 4, "#228b23");

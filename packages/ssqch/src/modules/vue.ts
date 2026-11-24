@@ -17,6 +17,7 @@ import type { Config, GeneratedFile } from "../config.ts";
 import { BuildError, bail } from "../diagnostics.ts";
 import { Options } from "./options.ts";
 import { debugString } from "./plugin-util.ts";
+import { shownAsUtc } from "../data.ts";
 
 /** A value in an error: a string as Rust's `{:?}` writes it, anything else as JSON. */
 const shown = (v: unknown) => (typeof v === "string" ? debugString(v) : JSON.stringify(v) ?? String(v));
@@ -340,7 +341,7 @@ BUILTINS.set("ssqch/vue", (config: Config, given) => {
 			try { props[prop] = new Function(...Object.keys(scope), `"use strict"; return (${expr});`)(...Object.values(scope)); } catch { /* left as the page's data read it */ }
 		}
 		// The components inside its slot first: Vue gets their HTML, not their markers.
-		const pageJson = JSON.parse(JSON.stringify(page, (_, v) => (v instanceof Date ? v.toISOString() : v)));
+		const pageJson = JSON.parse(JSON.stringify(page, (_, v) => (v instanceof Date ? shownAsUtc(v).toISOString() : v)));
 		const html = fill(value.content).then((content) => render!(id, { ...props, ...attrs }, content, pageJson)).then(
 			(h) => {
 				if (!hydrate) return h;

@@ -20,6 +20,8 @@ interface Entry {
 	mtime: string;
 	settings: string;
 	id: string;
+	/** The names its copies have, a format's own each (`ImageProcessor.idFor`), so a report can name their source. */
+	names?: string[];
 }
 
 /** A file's size and modification time in nanoseconds (as text), what its id is checked against. */
@@ -37,6 +39,7 @@ export class HashCache {
 	/** The cache at `file`, once per process: later builds reuse what's in memory. A missing or unreadable file is an empty cache. */
 	load(file: string): void {
 		this.used.clear();
+		this.named.clear();
 		if (this.file === file) return;
 		this.entries = parse(file) ?? new Map();
 		this.file = file;
@@ -55,10 +58,20 @@ export class HashCache {
 	put(src: string, size: number, mtime: string, settings: string, id: string): void {
 		const e = this.entries.get(src);
 		if (!(e && e.size === size && e.mtime === mtime && e.settings === settings && e.id === id)) {
-			this.entries.set(src, { size, mtime, settings, id });
+			this.entries.set(src, { size, mtime, settings, id, ...(e && e.id === id && e.names ? { names: e.names } : {}) });
 			this.dirty = true;
 		}
 		this.used.add(src);
+	}
+
+	/** The names each source's copies have this build, which replace the entry's when it's saved. */
+	private named = new Map<string, Set<string>>();
+
+	/** A name `src`'s copies have this build (one for each format). */
+	addName(src: string, name: string): void {
+		let names = this.named.get(src);
+		if (!names) this.named.set(src, (names = new Set()));
+		names.add(name);
 	}
 
 	/** Writes the cache if it changed, keeping only the images this build used. Nothing for a build that used no images and has no cache. */
@@ -67,6 +80,15 @@ export class HashCache {
 		if (file === undefined) return;
 		const before = this.entries.size;
 		for (const key of [...this.entries.keys()]) if (!this.used.has(key)) this.entries.delete(key);
+		for (const [src, names] of this.named) {
+			const e = this.entries.get(src);
+			const sorted = [...names].sort();
+			if (e && (e.names ?? []).join(" ") !== sorted.join(" ")) {
+				e.names = sorted;
+				this.dirty = true;
+			}
+		}
+		this.named.clear();
 		if (!this.dirty && this.entries.size === before) return;
 		if (this.entries.size === 0 && !fs.existsSync(file)) return;
 		fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -83,7 +105,7 @@ function serialize(entries: Map<string, Entry>): string {
 	const files: Record<string, unknown> = {};
 	for (const key of keys) {
 		const e = entries.get(key)!;
-		files[key] = { size: e.size, mtime: e.mtime, settings: e.settings, id: e.id };
+		files[key] = { size: e.size, mtime: e.mtime, settings: e.settings, id: e.id, ...(e.names?.length ? { names: e.names } : {}) };
 	}
 	return JSON.stringify({ version: 1, files }, null, 2) + "\n";
 }
@@ -94,7 +116,10 @@ function serialize(entries: Map<string, Entry>): string {
  */
 export function imageSources(root: string): Map<string, string> {
 	const out = new Map<string, string>();
-	for (const [src, e] of parse(path.join(root, CACHE_FILE)) ?? []) out.set(e.id, path.relative(root, src).split(path.sep).join("/"));
+	for (const [src, e] of parse(path.join(root, CACHE_FILE)) ?? []) {
+		const shown = path.relative(root, src).split(path.sep).join("/");
+		for (const name of [e.id, ...(e.names ?? [])]) out.set(name, shown);
+	}
 	return out;
 }
 
@@ -105,7 +130,8 @@ function parse(file: string): Map<string, Entry> | undefined {
 	const out = new Map<string, Entry>();
 	for (const [key, v] of Object.entries<any>(doc.files)) {
 		if (Number.isInteger(v?.size) && v.size >= 0 && typeof v.mtime === "string" && /^\d+$/.test(v.mtime) && typeof v.settings === "string" && typeof v.id === "string") {
-			out.set(key, { size: v.size, mtime: v.mtime, settings: v.settings, id: v.id });
+			const names = Array.isArray(v.names) ? v.names.filter((n: unknown): n is string => typeof n === "string") : undefined;
+			out.set(key, { size: v.size, mtime: v.mtime, settings: v.settings, id: v.id, ...(names?.length ? { names } : {}) });
 		}
 	}
 	return out;

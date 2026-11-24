@@ -20,7 +20,7 @@ ssqch new posts --title "Pine cones: a field guide"
 ```
 
 ```text
-Created src/posts/pine-cones-a-field-guide.md from src/_blueprints/posts.md. Field notes started.
+Created src/posts/pine-cones-a-field-guide.md from src/_blueprints/posts.md. Fresh tracks: fill in its fields, then build.
 ```
 
 The new post:
@@ -41,3 +41,12 @@ Write here. The title is {{ title }}.
 - **A file, or a folder and a title:** `ssqch new posts/pine-cones.md` names the file itself (the title is then "Pine cones", unless you pass `--title`). Given a folder, the file is named after the title, the way the folder's other pages are: with the date in front (`2026-11-10-pine-cones.md`) when most of them have one, and as `pine-cones/index.md` when most are folders with an index file.
 - **A page that has to be filled in:** a page `ssqch new` makes passes its section's schema as the blueprint wrote it, example sentence and all. Leave a field the schema requires empty in the blueprint (`summary:`), and the build stops with `` `summary` is required (a string) `` until someone writes it; text that's only an example is better as a comment in the blueprint than as a value.
 - **Nothing is overwritten,** and `--format json` prints the new file's `path`, its `blueprint`, `title` and `date`.
+
+## Moving a page
+
+A page that moves (a new folder, a new slug) keeps its old address working with a redirect, and `ssqch diff` shows what moved:
+
+- **One page:** `aliases: [/snacks/moss-mix/]` in its front matter, with `redirectsPlugin()` in the config, which writes a redirect page at the old address, or with `hostFile: true` a `301` line in `_redirects` for Netlify and Cloudflare ([`redirectsPlugin`](plugins.md)).
+- **A folder:** one line covers every page in it: `redirectsPlugin({ hostFile: true, redirects: { "/snacks/*": "/provisions/:splat" } })`, or the same line in a `_redirects` template of the site's own (`{{ "/snacks/*" | withBase }}  {{ "/provisions/:splat" | withBase }}  301`).
+- **The proof:** build the site before the move into another folder, then after it, and compare: `ssqch build --output dist-before`, move the pages, `ssqch build`, `ssqch diff dist-before dist`. Each page that's gone is listed with where it goes (`- /snacks/moss-mix/ (redirected to /provisions/:splat)`), and one that isn't redirected is a link someone will find broken. `linksPlugin()` then notes the site's own links that still go through the redirect, to point at the new address.
+- **A schema** that names the page's files (`files: "snacks/*.md"`) needs the new path: until then it checks no page, and the build warns `schema ... matches no pages`. One keyed by a tag moves with the page.
