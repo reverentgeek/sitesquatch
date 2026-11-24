@@ -51,6 +51,30 @@ export interface ProfileEntry {
 
 export type ProfileReport = Record<Kind, ProfileEntry[]>;
 
+/**
+ * How long ssqch's own work that a site's function waits on has been in progress (`image()`
+ * encoding a picture), as one clock: the time when at least one such wait was pending. A call
+ * subtracts what this clock gained while it ran before it's judged slow, so a filter that asks
+ * for another crop isn't blamed for the AVIF encoder's second on a cold build (the company-site
+ * example on CI). Its time in `--profile` still includes it, as it includes any call it makes.
+ */
+export const ssqchWork = {
+	pending: 0,
+	since: 0,
+	total: 0,
+	now(): number {
+		return this.total + (this.pending ? performance.now() - this.since : 0);
+	},
+	async wait<T>(work: Promise<T>): Promise<T> {
+		if (this.pending++ === 0) this.since = performance.now();
+		try {
+			return await work;
+		} finally {
+			if (--this.pending === 0) this.total += performance.now() - this.since;
+		}
+	},
+};
+
 const isPromise = (v: unknown): v is Promise<unknown> => typeof (v as { then?: unknown } | null)?.then === "function";
 
 export class Profile {
@@ -65,26 +89,29 @@ export class Profile {
 	}
 
 	/** Records one call of `name`, which took `ms`. */
-	add(kind: Kind, name: string, ms: number, own: boolean, from?: string, at = this.at, async = false): void {
-		if (!this.detailed && !(own && ms >= SLOW_MS)) return;
+	add(kind: Kind, name: string, ms: number, own: boolean, from?: string, at = this.at, async = false, waited = 0): void {
+		// Slow is the call's own time, without ssqch's work it waited on.
+		const slow = ms - waited >= SLOW_MS;
+		if (!this.detailed && !(own && slow)) return;
 		const of = this.stats.get(kind)!;
 		let stat = of.get(name);
 		if (!stat) of.set(name, stat = { calls: 0, ms: 0, own, from, slowCalls: 0, async: false });
 		stat.calls++;
 		if (async) stat.async = true;
 		stat.ms += ms;
-		if (ms >= SLOW_MS && stat.slowCalls++ === 0) [stat.firstSlow, stat.firstSlowAt] = [ms, at];
+		if (slow && stat.slowCalls++ === 0) [stat.firstSlow, stat.firstSlowAt] = [ms, at];
 	}
 
 	/** Runs `call` and records its time, until it returns or, for a promise, settles. */
 	time<T>(kind: Kind, name: string, own: boolean, call: () => T, from?: string): T {
 		const at = this.at;
 		const start = performance.now();
+		const work = ssqchWork.now();
 		const out = call();
 		if (isPromise(out)) {
-			const done = () => this.add(kind, name, performance.now() - start, own, from, at, true);
+			const done = () => this.add(kind, name, performance.now() - start, own, from, at, true, ssqchWork.now() - work);
 			out.then(done, done);
-		} else this.add(kind, name, performance.now() - start, own, from, at);
+		} else this.add(kind, name, performance.now() - start, own, from, at, false, ssqchWork.now() - work);
 		return out;
 	}
 

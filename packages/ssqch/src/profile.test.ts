@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Profile, SLOW_MS } from "./profile.ts";
+import { Profile, SLOW_MS, ssqchWork } from "./profile.ts";
 
 test("a wrapped function is timed, keeps its `this`, and returns what it returns", () => {
 	const profile = new Profile(true);
@@ -53,4 +53,15 @@ test("a call under a second is no warning", () => {
 	const profile = new Profile(true);
 	profile.add("filters", "toc", SLOW_MS - 1, true);
 	assert.deepEqual(profile.slowCalls(), []);
+});
+
+test("a site's call isn't slow for the time it waits on ssqch's own image work", async () => {
+	const profile = new Profile(false);
+	const pause = (ms: number) => new Promise((done) => setTimeout(done, ms));
+	// A filter that asks image() for a crop: the encoding is ssqch's second, not the filter's.
+	await profile.time("filters", "crop", true, () => ssqchWork.wait(pause(SLOW_MS + 50)), "ssqch.config.js");
+	assert.deepEqual(profile.slowCalls(), []);
+	// Its own second still counts.
+	await profile.time("filters", "slow", true, async () => { await ssqchWork.wait(pause(20)); await pause(SLOW_MS + 50); }, "ssqch.config.js");
+	assert.equal(profile.slowCalls().length, 1);
 });

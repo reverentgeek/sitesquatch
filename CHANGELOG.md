@@ -79,6 +79,9 @@ where that version matches.
 
 ### Fixed
 
+- A filter that calls `image()` (another crop on a phone) is no `slow-call` warning for the time
+  ssqch spends encoding the picture: the company-site example warned on a cold build on a slower
+  machine. Its own time still counts.
 - `leaveNoTrace` keeps a list for each output folder. A build into another one (`ssqch build
   --output dist-before`, `ssqch diff`'s own before-and-after recipe) made the next build into
   `dist` forget its files, so a deleted page stayed there.
