@@ -27,6 +27,35 @@ where that version matches.
   `_headers` and functions need the host's own CLI, which the docs name.
 - `redirectsPlugin()`'s entry says what a strict Content-Security-Policy does to a redirect
   page, and how to keep its script.
+- The Netlify page is a full guide: the build with tests in its command, redirects and a
+  `_headers` template with cache headers (with `withBase`), deploy previews and branch deploys
+  (`CONTEXT`, `DEPLOY_PRIME_URL`), and moving to a new ssqch.
+- A new docs page, Cloudflare: a Worker with static assets from a `wrangler.jsonc`, deployed from
+  GitHub Actions (with a preview for each pull request) or with Workers Builds, and its
+  `_redirects` and `_headers` limits. `ssqch docs cloudflare` answers from it.
+- "Moving a site with an agent" has a whole move, step by step, with each command's real output:
+  scout's report before, halfway and at the end, `baseline` for builds that agree and builds that
+  vary (`ref-common`, `--ignore`), the draft and patch, `diff`'s groups and `@ under`, and the
+  JSON each step answers with for an agent's loop. Each trailhead's "Scouting" points at it.
+- The Eleventy trailhead says ssqch's `slugify` drops symbols where Eleventy's spells them out
+  (`&amp;` is `and`), and that `slugify(title, { ascii: true })` matches it, and has a row for
+  `watchIgnores` (`serve.ignore`).
+- The docs have a feed how-to, "A feed for a blog": `feedPlugin()` from the posts to the feed it
+  writes, with RSS, another collection and its errors. The Jekyll, Hugo, Hexo and component
+  frameworks trailheads name `feedPlugin()` for a feed, where they said `rssPlugin()` and a
+  template.
+- The dev server's page says how to open the site on a phone (`ssqch serve --host 0.0.0.0`, and
+  why a phone can't connect), and what each message about a build that stopped making progress
+  means and how to fix it.
+- The Tailwind example in "CSS and JavaScript" uses `serve.ignore`, and a PostCSS example shows
+  it for a folder of stylesheets.
+- The docs have worked examples for every site: a Jinja layout with `self`, includes and
+  escaping; a table of contents in a layout (`toc(page.headings)` and `toc(content)`); a sidebar
+  from front matter with `pagesTree` and `root`; a photo album from a folder (`files()`,
+  `slugger()` for albums with the same name, `imagePlugin()`); your own highlighter, step by
+  step, with the warnings a wrong one gives; and what a hook and a transform get.
+- "Templates and data" says how pages with the same date are ordered (their paths, folder by
+  folder), and that a config collection named `all` replaces `collections.all`.
 
 ## 0.14.1 - 2026-11-24
 

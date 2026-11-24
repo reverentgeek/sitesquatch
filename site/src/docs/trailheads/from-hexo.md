@@ -24,7 +24,7 @@ The [`docs-sidebar`](https://github.com/reverentgeek/sitesquatch/tree/main/examp
 | `per_page`, `pagination_dir` | `pagination: { data: collections.posts, size: 10 }` on the index template |
 | `skip_render` | `passthrough`, or `ignore` |
 | `highlight` / `prismjs` | `markdown: { highlight: true }`, at build time |
-| `hexo-generator-feed` | A feed template with `rssPlugin()`'s filters (see `blog-tags`) |
+| `hexo-generator-feed` | `feedPlugin({ url })` from `ssqch/rss` (`format: "rss"` for RSS 2.0); a template with `rssPlugin()`'s filters for a feed of your own (see `blog-tags`) |
 | `hexo-generator-sitemap` | `sitemapPlugin({ url })` |
 | `hexo-generator-alias` (`alias:` front matter) | `redirectsPlugin()` and `aliases` front matter |
 | `hexo-generator-search`, a build-time lunr index | Pagefind after the build: `afterBuild: { run: "npx -y pagefind --site public" }` |

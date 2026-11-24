@@ -13,6 +13,7 @@ The lay of the land:
 - **Navigation:** `navTree(nav, page.url)` takes a tree from data (`_data/nav.yml`: entries with `title`, `url`, and children under `children`, `items` or `pages`) and marks each entry `current`, `ancestor` or `open`, for a sidebar that highlights where you are. The marks follow the tree, not the URL: an entry is `ancestor` when the page is among its children, so a flat menu's "Snacks" (`/snacks/`) isn't marked on `/snacks/pine-cone-crunch/` unless that page is in the tree under it. For a flat menu, compare the URL in the template instead: `{% if page.url.startswith(item.url) and item.url != "/" %}` (`page.url.startsWith(item.url)` in Edge and EJS). `navPager(nav, page.url)` returns `{ previous, next }` in reading order (a collection works as the tree too: `navPager(collections.posts, page.url).next` is the next post, which is Eleventy's `collections.posts | getNextCollectionItem(page)`, and that and `getPreviousCollectionItem` work as they are), and `navBreadcrumbs(nav, page.url)` the entries from the top down to the page. To build the tree from front matter instead, give pages `nav: { title, parent, order }` (or `nav: true`) and use `pagesTree(collections.docs)`: an entry's key is its `nav.key`, or else its title; `parent` names another entry's key, and a `parent` no page has becomes a heading (an entry with that title and no `url`) holding its children. The title is `nav.title`, the page's `title`, or `nav.key`; `nav.url` replaces the page's URL (a link elsewhere), and any other `nav` key (`excerpt`) is copied onto the entry. `pagesTree(collections.all, { root: "Feature" })` (`{{ collections.all | pagesTree: root: "Feature" }}` in Liquid) is the tree below the key `Feature`, page or heading, which is eleventy-navigation's `eleventyNavigation: "Feature"`; an unknown option is an error. URLs match with or without `index.html` and the last `/`.
 - **Components:** a PascalCase tag in a page or a layout, `<VueSchoolLink href="https://vueschool.io/lessons/x" title="Free lesson">Watch it</VueSchoolLink>` or `<Badge type="tip" text="new" />`, renders `_includes/components/VueSchoolLink.*` in its place, a template in any engine, as VitePress, Astro and MDX pages use components. It gets the page's data and `component`: `component.name`, `component.props` (each attribute: `href="x"` is `"x"`, a bare `disabled` is `true`, a `kebab-case` name is there in camelCase too, and Vue's bindings are read against the page's data: `:text="title"` is the page's title, `:count="3"` is 3, `:items="['a', 'b']"` a list; anything more is the expression as written), `component.content` (what's between its tags, as HTML, with the components inside it rendered: print it with `| safe`) and `component.attrs` (the plain attributes as written, ` class="x" href="y"`, to put on the element the template writes). Vue's directives and events (`v-if`, `@click`, `#title`) are left out of both. The page's components render with its body, so its layouts and `templateContent` get the HTML, and a layout's own (`<SiteFooter />`) after the layouts. What's inside `<pre>`, `<code>`, `<script>`, `<style>`, `<textarea>` and comments isn't read, so a code sample's `<Badge />` stays text; HTML's names are lower case and SVG's camelCase ones start lower case, so only PascalCase tags are components, and a custom element (`<trail-map>`) has a hyphen. A PascalCase tag with no template is a warning that names the pages it's on (browsers would drop the tag and show what's inside it), and is left as written. A component with state (a counter, a REPL) needs JavaScript in the browser: a custom element from `ssqch/elements` for that part, or, for Vue's own `.vue` components, `vuePlugin()` from `ssqch/vue`, which renders the tags `_includes/components/` has no template for, and with `hydrate` runs them in the browser too.
 - **Dates:** a page's `date` comes from its data, then from the start of its file name (`2024-06-01-post.md`), then from when the file last changed. `computed.date` works too. A date is `2026-11-22`, or with a time, `2026-11-22T09:30:00Z` (YAML's own dates, and text a JavaScript `Date` reads, work too); one that isn't (`date: last Tuesday`) fails the build with a `front-matter` error at its line, listed with the page's schema errors. Collections are oldest first; undated pages come after the dated ones, in path order, so a fresh checkout or an edit (which changes file times) doesn't reorder them.
+- **Equal dates:** pages with the same date are in the order of their files' paths (the tie-break), compared folder by folder from the input folder down, and each name by its bytes, so uppercase comes before lowercase and a folder's pages before a file named like it: `posts/Z.md`, `posts/b.md`, `posts/cedar/a.md`, `posts/cedar-b.md`, `posts/cedar.md`. The pages one template paginates into keep their own order. It's the same on every machine, whatever order the file system lists files in. To order them another way (by an `order` in front matter, say), sort in a config collection: `collections: { posts: (pages) => pages.byTag("posts").sort((a, b) => a.date - b.date || (a.data.order ?? 0) - (b.data.order ?? 0)) }`. (`localeCompare` sorts titles by language, but its answers can change between Node releases.) A config collection named `all` replaces `collections.all` (the tag collections keep their order), and for every template that reads it, so give it another name unless that's what you mean.
 
 - **`SOURCE_DATE_EPOCH`:** set it (whole seconds since 1970, the reproducible-builds convention: `SOURCE_DATE_EPOCH=1767225600 ssqch build`) to pin the build's time, as Jekyll's `time:` does. `now()` in every engine, Liquid's `"now"`, Edge's `new Date()`, the date of every page without one and a `page.lastModified` that comes from a file's time become that time, so two builds of the same files write the same pages. A value that isn't a number is an error before the build starts. A site's own JavaScript (`Date.now()` in a filter) isn't changed.
 - **Drafts:** `draft: true` builds the page in development (`ssqch serve`, or `--env development`) and leaves it out of production builds, collections included.
@@ -38,6 +39,95 @@ error: 1 error(s):
 ```
 
 A Jinja filter, test or function that doesn't exist says which one you probably meant, and so does a layout, a Jinja or Nunjucks template (`include`, `extends`, `import`) or an Edge include that isn't there (``layout `bse` not found: no sightings in src/_includes (did you mean `base`?)``). One that leads back to itself names the loop instead of running out of patience: `we've passed this tree before. Layout loop: base.edge -> wrap.edge -> base.edge`.
+
+## A sidebar from front matter
+
+`pagesTree` builds the sidebar from the pages themselves, so a new page shows up in it by saying where it goes. Each page names its parent in `nav`, and `order` sorts the entries under each parent:
+
+```yaml
+# guide/index.md
+title: Guide
+nav: { key: Guide, order: 1 }
+
+# guide/packing.md
+title: Packing
+nav: { parent: Guide, order: 2 }
+
+# trails/cedar.md: no page has the key "Trails", so it's a heading
+title: Cedar Trail
+nav: { parent: Trails, order: 1 }
+```
+
+A Jinja macro prints the tree, calling itself for each entry's `children`. An entry without a `url` is a heading:
+
+```jinja
+{% macro tree(entries) %}<ul>
+{% for e in entries %}<li>{% if e.url %}<a href="{{ e.url }}"{% if e.url == page.url %} aria-current="page"{% endif %}>{{ e.title }}</a>{% else %}<span>{{ e.title }}</span>{% endif %}{% if e.children %}{{ tree(e.children) }}{% endif %}</li>
+{% endfor %}</ul>{% endmacro %}
+<nav class="sidebar">{{ tree(collections.all | pagesTree) }}</nav>
+<nav class="section">{{ tree(collections.all | pagesTree({ root: "Guide" })) }}</nav>
+```
+
+The first is the whole site: Guide (with Getting there and Packing under it), then the Trails heading with the Cedar and Old Growth trails. The second, with `root`, is what's below Guide only, for a sidebar that shows one section. A page without `nav` isn't in either. For a sidebar you'd rather write out by hand, `_data/nav.yml` and `navTree` do the same from data (the [`docs-sidebar` example](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/docs-sidebar/)).
+
+## A photo album from a folder
+
+A page for each album, with every photo in the album's folder, sized for the screen. Three pieces: a data file that lists the albums and their photos, a template that paginates over them, and `imagePlugin()` for the sizes.
+
+The photos live in a folder each, `src/photos/2025-summer/` and the rest, and `data/albums.json` names them. Two albums can have the same name:
+
+```json
+[
+	{ "name": "Camp Photos", "folder": "2025-summer" },
+	{ "name": "Camp Photos", "folder": "2026-spring" },
+	{ "name": "The Cedar Trail", "folder": "cedar-trail" }
+]
+```
+
+`src/_data/albums.js` adds each album's photos, with [`files()`](data-files.md), and a slug that's different for each album, with `slugger()`:
+
+```js
+import { files, readData, slugger } from "ssqch";
+
+const slug = slugger();
+
+export default readData( "data/albums.json" ).map( album => ( {
+	...album,
+	slug: slug( album.name ),
+	photos: files( `src/photos/${ album.folder }/*.{jpg,jpeg,png}` ).sort( ( a, b ) => a.date - b.date )
+} ) );
+```
+
+`src/album.jinja` is a page for each album:
+
+```jinja
+---
+pagination: { data: albums, size: 1, alias: album }
+permalink: "/photos/{{ album.slug }}/"
+---
+<h1>{{ album.name }}</h1>
+{% for photo in album.photos %}
+<figure>
+  <img src="{{ photo.url }}" alt="">
+  {% if photo.dateFrom == "name" %}<figcaption>{{ photo.date | dateformat("%B %-d, %Y") }}</figcaption>{% endif %}
+</figure>
+{% endfor %}
+```
+
+And the index links each one, with the same slug: `{% for album in albums %}<a href="/photos/{{ album.slug }}/">{{ album.name }}</a> ({{ album.photos | length }} photos){% endfor %}`. The config turns the photos into sizes:
+
+```js
+import { imagePlugin } from "ssqch/image";
+
+export default {
+	plugins: [ imagePlugin( { widths: [ 400, 800 ], formats: [ "webp", "jpeg" ] } ) ],
+};
+```
+
+- **The addresses:** the albums are `/photos/camp-photos/`, `/photos/camp-photos-1/` and `/photos/the-cedar-trail/`. With `slugify` in the permalink instead of `slugger()` in the data, the two "Camp Photos" would both be `/photos/camp-photos/`, and the build stops with `output conflicts`: `album.jinja makes 2 pages that write to ./dist/photos/camp-photos/index.html`. `slugger({ separator: "_" })` makes `camp_photos` and `camp_photos_1`.
+- **The photos:** each `<img>` becomes a `<picture>` with a WebP and a JPEG at 400 and 800 pixels, and its `width` and `height`. Don't write a `width` on the `<img>`: that pins it to one size. The originals aren't copied to the output, only the sizes the pages use.
+- **The dates:** `20250704_01.jpg` and `2026-04-12-stump.jpg` have a date in their names, which `files()` reads (`dateFrom: "name"`); `bench.jpg` doesn't, so its date is when the file last changed, and the template leaves its caption out. The sort puts each album's photos oldest first.
+- **A new album** is a folder and a line in `albums.json`. A new photo is a file in the folder: `files()` reads the folders again on every build, and `ssqch serve` rebuilds when a file in `src/` changes.
 
 ## Tags and tag pages
 

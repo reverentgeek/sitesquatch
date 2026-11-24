@@ -135,7 +135,43 @@ The address comes after each build's report, so it's on the last line however lo
 
 None of that is written to the output folder: the server adds it to pages as it sends them.
 
-**What it watches:** the input folder, a theme's folder, the config and the modules it imports, the config's `watch` paths, and the files plugins read (a Sass partial in a folder the config never named). The watch begins before the first build, so an edit made while it runs is built next. An editor's own files beside the one you edit start no build: `sed -i`'s `.!12345!post.md`, backups (`post.md~`), Emacs' `.#post.md`, Vim's `.post.md.swp` and `4913`, and JetBrains' `___jb_tmp___` files. A change to the config, or to code it imports, reloads all of it, so a filter you edited is the new one on the next build. Builds run in a process of their own, so the server keeps answering while a build runs, and a site's code that crashes or calls `process.exit()` fails that one build rather than the server. A build that stops making progress for a minute (no page written, no image encoded, none of your code starting or finishing) is ended, and the error says what it was waiting on: `in src/index.jinja: the build stopped making progress: for 60 s nothing happened, and it was waiting on filter `latest` (rendering src/index.jinja)`. That's a promise in your code that never settles while something else keeps Node running (a `setInterval`, an open connection); code that never returns says `the build stopped answering`. The minute counts from the last thing the build did, so a long first build isn't cut short, and a `run` command (Pagefind) can take as long as it takes. The next change builds again. Something of yours that waits a minute on purpose (a hook that runs a long tool through its API) is ended too: make it a `{ run: "..." }` command, which isn't counted, or skip it while serving (a hook gets `serving`: `if (serving) return;`). It listens on `127.0.0.1` only, this machine, unless you give it `--host`: `ssqch serve --host 0.0.0.0` listens on every network the machine is on, and prints the address to open on a phone on the same Wi-Fi (`On your network: http://192.168.1.20:8080/ (anyone on it can see the site)`); `--host 192.168.1.20` listens on that address alone. An address that isn't an IP address, or isn't this machine's, is an error. `--built` takes it too. The ready file's `url` stays `localhost`'s.
+**What it watches:** the input folder, a theme's folder, the config and the modules it imports, the config's `watch` paths, and the files plugins read (a Sass partial in a folder the config never named). The watch begins before the first build, so an edit made while it runs is built next. An editor's own files beside the one you edit start no build: `sed -i`'s `.!12345!post.md`, backups (`post.md~`), Emacs' `.#post.md`, Vim's `.post.md.swp` and `4913`, and JetBrains' `___jb_tmp___` files. A change to the config, or to code it imports, reloads all of it, so a filter you edited is the new one on the next build. Builds run in a process of their own, so the server keeps answering while a build runs, and a site's code that crashes or calls `process.exit()` fails that one build rather than the server. A build that stops making progress is ended, and the next change builds again: [A build that stops making progress](#a-build-that-stops-making-progress), below. It listens on this machine only, unless you give it `--host`: [On your phone](#on-your-phone).
+
+### On your phone
+
+The dev server listens on `127.0.0.1`, so only this machine can open the site. To look at it on a phone or a tablet (a real touch screen, the real small screen, a browser you don't have on your laptop), give it `--host`:
+
+```sh
+ssqch serve --host 0.0.0.0
+```
+
+```text
+Serving dist at http://localhost:8080/. Squatch Watch is on.
+On your network: http://192.168.1.20:8080/ (anyone on it can see the site)
+```
+
+Open the second address on the phone, on the same Wi-Fi as the machine. It's the same server: an edit reloads the page on the phone as it does on the laptop, a stylesheet swaps in place, and a failed build shows its error over the page. `0.0.0.0` listens on every network the machine is on, so anyone on that network can see the site while the server runs, as the line says: use it at home or the office, not on a café's Wi-Fi. `--host 192.168.1.20` listens on that one address. `ssqch serve --built --host 0.0.0.0` does the same for a production build.
+
+- **The phone can't open it:** the machine's firewall may be refusing the connection (on macOS, allow incoming connections for `node` when it asks), or the phone is on another network (a guest network, or mobile data).
+- **`On your network: no network address found (is this machine on one?)`:** the machine isn't on a network; connect it and start the server again.
+- **Wrong:** a name isn't an address (`` "example.com" isn't an IP address: use 0.0.0.0 for every network this machine is on, or one of its addresses (192.168.1.20) ``), and neither is an address the machine doesn't have (`can't listen on 10.9.9.9: it isn't one of this machine's addresses`).
+
+The ready file's `url` stays `localhost`'s, for the tools on this machine that read it.
+
+### A build that stops making progress
+
+A build that stops making progress for a minute (no page written, no image encoded, none of your code starting or finishing) is ended by the dev server, and the error says what it was waiting on. There are two messages, each with what it looks like:
+
+- **`the build stopped making progress: for 60 s nothing happened, and it was waiting on ...`:** your code started something that never finished, while something else kept Node running. A promise that never settles is the usual one, with a `setInterval` or an open connection keeping the process alive. The message names what the build was waiting on, and the page it was rendering, which is where the error points:
+
+  ```text
+  Build failed: in src/index.jinja: the build stopped making progress: for 60 s nothing happened, and it was waiting on filter `latest` (rendering src/index.jinja). A promise in the site's code that never settles, while something else keeps Node running (a setInterval, an open connection), looks like this. ssqch ended that build; the next change builds again. ...
+  ```
+
+  Look at that filter (or hook, or data file) for a promise that never resolves: a `fetch` with no timeout to a server that never answers, a `new Promise` whose `resolve` is never called, an event that never fires.
+- **`the build stopped answering for 60 s`:** code that never returns, so the build couldn't even say what it was doing: a loop that doesn't end, in a filter, a `computed` function or a collection. When the build was waiting on something of yours before it, the message names that too (`, last waiting on ...`).
+
+The minute counts from the last thing the build did, so a long build that's still writing pages isn't cut short, and a `{ run: "..." }` command (Pagefind, a CSS tool) is never counted: it takes as long as it takes. The ended build stays failed, with its error in the terminal and over the page; it isn't tried again by itself, since the same code would most likely wait the same way. Fix the code, save, and the next build runs. Something that waits a minute on purpose (a hook that runs a long tool through its API, not as a command) is ended too: make it a `{ run: "..." }` command, or skip it while serving (a hook gets `serving`: `if (serving) return;`). `ssqch build` has no such limit; there, a promise that can never settle (nothing left to resolve it) fails the build when Node is about to exit, naming the code it was waiting on.
 
 To look at a production build the way a host will serve it (for Lighthouse, or a last check before deploying), run `ssqch build`, then `ssqch serve --built`: it serves the output folder as the build left it, with no build, no watching and nothing added to pages, and compresses text with gzip as hosts do. `ssqch preview` is the same command, for people coming from Vite or Astro. It's a plain static server, so it doesn't follow a host's own rules: `_redirects` lines (the redirect pages `redirectsPlugin()` writes do work), `_headers`, `netlify.toml`'s `[[redirects]]` and `[[headers]]`, forms, or a host's functions. To try those before a deploy, serve the output folder with the host's own CLI: `npx netlify-cli dev --dir dist` for Netlify, `npx wrangler pages dev dist` for Cloudflare Pages.
 

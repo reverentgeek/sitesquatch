@@ -79,3 +79,109 @@ Every move from another generator so far ran the same loop: build the old site, 
 4. **The biggest group first.** `ssqch diff .cache/ssqch/baseline/ref-1 dist --format json --lines 0` lists the changes on more than one file as `groups`, the most files first. One cause (a filter that formats dates another way, a layout that lost a `<meta>`) is often hundreds of pages, and fixing it shows what's under it. Each change on a page says which heading it's under (`@ under #its-id`, or `at` in the JSON), to find it in the source, and the notes call out what moves a reader: a changed `<title>`, canonical link or redirect, ids that links point at, and a feed's entries. Build and compare again after each fix. What browsers read the same (attribute order, quotes, entities, percent-encoding in URLs, `<br/>`), fingerprints and image ids don't count, so what's left is a real difference.
 5. **Done is a decision.** Stop at `No differences`, or when what's left is on purpose: write each one down with why (an `--ignore` pattern with a comment, or a line in the move's notes). `ssqch diff --exact` shows the bytes that still differ, such as a minifier's.
 6. **Then ssqch's own features,** one at a time (its Markdown, highlighting, minifying, `toc()`), with a diff after each, so every change in the output has one cause.
+
+### A move, step by step
+
+A small Eleventy blog (three posts, an About page, a feed from `@11ty/eleventy-plugin-rss`, a `posts` collection and two date filters) moved with the loop above, with each command's real output, trimmed. The site is in git, and each step is a commit an agent can go back to.
+
+**1. Scout it.** In the old site's folder, before changing anything:
+
+```text
+$ ssqch scout
+Scouting the Eleventy site in . (found eleventy.config.js)
+
+4 to do: 4 ssqch does.
+
+Reference build
+  ssqch baseline "npm run build"
+
+To do (4)
+  package-lock.json: run `npm install` to update it for ssqch
+  eleventy.config.js:8: addCollection("posts") -> `collections: { posts: (pages) => ... }`: getAll() is pages.all(), getFilteredByTag is pages.byTag, getFilteredByGlob is pages.byGlob
+  eleventy.config.js:9: addPlugin(feedPlugin) (from @11ty/eleventy-plugin-rss) -> see its package below
+  eleventy.config.js: @11ty/eleventy-plugin-rss -> `rssPlugin()` from "ssqch/rss" for a feed template's filters, or its `feedPlugin({ url })` for the feed itself (...)
+
+Draft (1 to write): --write-draft writes them, and never overwrites a file
+  ssqch.config.js (a first draft, from eleventy.config.js)
+
+Edits (1): --patch <file> writes them as a patch to review, and changes nothing
+  package.json: @11ty/eleventy -> ssqch 0.14.1 in devDependencies, scripts: eleventy -> ssqch build, eleventy --serve -> ssqch serve
+```
+
+**2. Build the reference.** The command is the one scout found. After the move has started, `--commit HEAD` (or the commit before the move) builds the old site and not the working tree, whose `npm run build` is ssqch's by then:
+
+```text
+$ ssqch baseline "npm run build" --commit HEAD
+Base camp is set: .cache/ssqch/baseline/ref-1, .cache/ssqch/baseline/ref-2 and .cache/ssqch/baseline/ref-3, built from ... with TZ=UTC, SOURCE_DATE_EPOCH and every file's time pinned; ...
+Every build is the same: 5 pages and 2 other files. The tracks match every time.
+```
+
+When the builds don't agree, it says what varies before anything is compared. With a random `?v=` on the stylesheet's link, and `--runs 5`:
+
+```text
+Varies (4)
+  ~ 4 pages, the same but for attribute values: /, /posts/cedar-trail-reopens/, /posts/footprints-at-the-stump/ and 1 more
+      - <link href="/style.css?v=p3eijx" rel="stylesheet">
+      + <link href="/style.css?v=8fvwrb" rel="stylesheet">
+
+The eyewitness accounts differ: 4 files vary between builds made the same way; 0 pages and 2 other files are the same in all of them. Pin what changes (the build's time, random ids) before comparing another build with these, or leave it out with --ignore.
+4 files have no most common version: each build has its own. More builds (--runs 20) show whether one is usual.
+Wrote .cache/ssqch/baseline/ref-common: each file's most common version of the 5 builds, to compare ssqch's with.
+```
+
+Pin it in the old site if you can (a fixed value, or one from the commit). If not, leave it out of every comparison: `ssqch diff .cache/ssqch/baseline/ref-common dist --ignore '\?v=\w+'`. Compare with `ref-common` whenever builds vary: it's each file's version that most builds wrote, where `ref-1` is one build's luck. A file with no most common version (each build its own, as here) is what `--ignore` is for.
+
+**3. The draft and the patch.** `ssqch scout --write-draft --patch move.patch` writes `ssqch.config.js` (the old config's directories, engines, passthrough copies and self-contained filters, as written) and the patch, which changes only `package.json` here. Read it, then `git apply move.patch` and `npm install`. The draft ends with what it couldn't carry over:
+
+```js
+// To port from eleventy.config.js:
+//   collections: posts
+```
+
+**4. Build, and compare.** Into an empty folder, so nothing an earlier build left looks like a difference:
+
+```text
+$ rm -rf _site && TZ=UTC ssqch build
+$ ssqch diff .cache/ssqch/baseline/ref-1 _site
+Removed (1)
+  - /feed.xml
+
+Changed (1)
+  ~ /  (text and markup)
+      the same lines, in another order
+      - <a href="/posts/pine-cone-count/">
+      + <a href="/posts/cedar-trail-reopens/">
+      ...
+```
+
+The two differences are the two to-dos: the home page lists the posts oldest first without the `posts` collection, and there's no feed without a feed plugin. Port the collection (`posts: (pages) => pages.byGlob("src/posts/*.md").reverse()`), build and compare again, and the home page is the same.
+
+**5. Scout again, halfway.** It reads the config the move has written so far, and what's done is off the list:
+
+```text
+$ ssqch scout
+Scouting the Eleventy site in . (found eleventy.config.js): a move under way, with an ssqch.config.js
+
+3 to do: 3 ssqch does.
+1 done already: ssqch.config.js has `collections.posts`.
+```
+
+**6. The next group.** After `feedPlugin({ url: "https://example.com", limit: 10, author: "A Ranger" })` from `ssqch/rss`, a change on the About page says which heading it's under, to find it in the template:
+
+```text
+Changed (1)
+  ~ /about/  (markup)
+      @ under #trails
+      - <a href="/maps/#old-growth-and-cedar">
+      + <a href="/maps/#old-growth-cedar">
+```
+
+Eleventy's `slugify` spells out `&` as `and`, and ssqch's drops it; `slugify({ ascii: true })` spells out symbols as Eleventy's does. With that in the template, every page is the same.
+
+**7. Done is a decision.** What's left is the feed, and it's on purpose: Eleventy's listed the posts oldest first (the plugin reverses the collection, which this site had already put newest first) and its subtitle was the plugin's placeholder (`This is a longer description about your blog.`), and ssqch's is newest first, which is what feed readers expect, with the site's `description` as the subtitle. Its picture is a generated copy (`/img/uAgOSjhLVO-4.png`), as `feedHtml()` writes one. Each goes in the move's notes with why, and scout's last to-do is `npm install`.
+
+**An agent's loop, as data.** Each step has a JSON answer, so an agent can run the loop without reading prose:
+
+- `ssqch scout --format json`: `todo` (each with `code`, `at` and `what`), `done`, `summary` (`ssqch`, `option`, `notYet`, `site` and `done` counts) and `build.baseline` (the command for step 2). The move is finished when `todo` is empty or each one left is written down.
+- `rm -rf dist && TZ=UTC ssqch build --format json`: `ok`, and `errors`, each with `code`, `file` and `line`. Fix until `ok` is true.
+- `ssqch diff <reference> dist --format json --lines 0`: `groups` (changes on more than one file, the most files first: fix the first), then `changed` (each file's `hunks`, with `at`, the heading a change is under), `added` and `removed`. `summary` says how many are left, which is the loop's measure of progress.

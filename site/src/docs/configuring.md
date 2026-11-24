@@ -77,6 +77,33 @@ The default export is the config: an object, or a function (sync or async) that 
 
 Mistakes get caught at the trailhead. A misspelled key or option is an error that says what you probably meant (`"templateFormat" isn't a config option (did you mean "templateFormats"?)`, or `unknown option "widhts" (did you mean "widths"?)` for a plugin), and so are two plugins that define the same filter, data or collection name (the message names both). When something in your code throws, you get `ssqch.config.js: too many pine cones` and a stack trace that points at your file, like `at bad (lib/filters.js:3:9)`.
 
+## What a hook and a transform get
+
+The `beforeBuild`, `afterBuild` and `transforms` rows above in one config, and what each part gets:
+
+```js
+export default {
+	transforms: {
+		// Each file a template writes, one at a time.
+		shout: ( content, page ) => ( page.url === "/cedar/" ? content.replace( "Cedar", "CEDAR" ) : content ),
+	},
+	beforeBuild: ( { env, dirs } ) => console.log( `building ${ dirs.input } for ${ env }` ),
+	afterBuild: [
+		( { written } ) => console.log( `${ written.length } pages` ),
+		{ run: "npx -y pagefind@1.6.0 --site $SSQCH_OUTPUT" },
+		() => console.log( "search is ready" ),
+	],
+};
+```
+
+- **The hooks' order:** an array of hooks runs one after another, functions and `{ run }` commands mixed, each when the one before it has finished (an async function's promise included), so the third line prints after Pagefind is done. A hook that throws, or a command that fails, stops the build there.
+- **`dirs`:** the folders from the project root as they're configured (`dirs.input` is `./src/`, `dirs.output` `./dist/`, and `includes` and `data`), with `--output` applied. They don't show in `console.log(dirs)`, which prints `{}`; read them by name.
+- **`written`, after the build:** the pages it wrote, as absolute paths (`/home/ranger/site/dist/cedar/index.html`); not passthrough copies, images or files a plugin wrote. To go over the whole output, read `dirs.output`.
+- **Write where `--output` says:** a command writes into `$SSQCH_OUTPUT`, and a function into `dirs.output`, not into `dist/` by name. `ssqch build --output out` (or a deploy that builds somewhere else) then gets the file where the pages are, and `dist/` isn't written to behind its back. The same goes for `serve.run` commands, which get `SSQCH_OUTPUT` too.
+- **A transform sees each file a template writes, as it's written:** a page after its layouts, and a feed or a `robots.txt` from a template too, so check `page.url` or `page.outputPath` before changing one. Passthrough copies aren't transformed. It doesn't reach what another page reads: a list that prints `post.templateContent` gets the post's body as it rendered, before any transform, so the change above shows on `/cedar/` and not where a list prints Cedar's body. To change how Markdown renders everywhere it's read, use a render hook (`_includes/hooks/heading.*`, `fence.*`, `link.*` and the rest, in [Markdown](markdown.md)), which runs as the body renders.
+- **`collections.all`:** a config collection named `all` replaces it, for every template that reads it, and the order it had with it ([Templates and data](templates.md)).
+- **In Jinja and Nunjucks, `templateContent` is text**, so printing it escapes it: `{{ post.templateContent | safe }}`.
+
 ## What a filter sees
 
 A filter's arguments are what the template passes it. Two more things make the filters a theme from another generator calls (MkDocs' page-relative `url`, Hugo's `relURL`, a `toc` that writes HTML) work as they're written:

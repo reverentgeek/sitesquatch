@@ -5,6 +5,10 @@ description: "Encoding images is by far the slowest part of a build, so it's wor
 <img align="right" src="../../../docs/assets/stickers/canoe.svg" alt="" width="96">
 
 
+## Pick a host
+
+A build is a folder of files, so any static host serves it. Three have a page of their own here, with a config to copy: [Netlify](netlify.md) (it builds the site itself, and reads `_redirects` and `_headers`), [Cloudflare](cloudflare.md) (a Worker with static assets, the same `_redirects` and `_headers`) and [GitHub Pages](github-pages.md) (a project site under its repository's path). Whichever it is, keep ssqch's cache between builds (below), and give the build a `base` if the site lives under a path.
+
 ## Keep the image cache between builds
 
 Encoding images is by far the slowest part of a build, so it's worth never doing it twice. Each image file is named by a hash of the source image's contents and the encoder settings, not its path or modification time, and it's encoded into `.cache/ssqch/img/`, outside the output. Each build links the files it uses into the output's `img/` folder (a hard link, so no extra space, or a copy where links don't work), so you can delete the output folder whenever you like and the next build encodes nothing. Restore `.cache/ssqch` from the last build in CI, and a build with no new images encodes nothing there either, even on a fresh clone. (An output folder from before the cache, or one a deploy cache restored, is taken in as it is: its files move into the cache instead of being encoded again.) `cacheDir` on `imagePlugin()` puts the cache somewhere else, and `cacheDir: false` encodes straight into the output, which then has to be kept to keep the images.

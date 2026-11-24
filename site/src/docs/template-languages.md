@@ -34,6 +34,49 @@ title: Squatch Snacks
 - **Errors** name the template and line: `broken.njk:2: syntax error`. An error in a layout (a template that another `{% extends %}`) or after an `{% include %}` names that template's own line, not the page's `{% block %}` or the include's.
 
 
+### A Jinja layout, worked through
+
+The rows above, in one site: a base layout with blocks, a layout for posts that fills one in, a Jinja page and a Markdown page, and what each prints.
+
+`_includes/base.jinja` names its blocks, and prints the title block a second time with `self`:
+
+```jinja
+<!doctype html>
+<html lang="en">
+<head>
+<title>{% block title %}Cedar Ridge{% endblock %} | Ranger Station</title>
+</head>
+<body>
+{% include "nav.jinja" %}
+<main>
+<h1>{{ self.title() }}</h1>
+{% block body %}{{ content }}{% endblock %}
+</main>
+</body>
+</html>
+```
+
+`_includes/post.jinja` is a layout for Markdown posts: it extends the base and fills in only the title, so the post's body arrives through the base's `{{ content }}`:
+
+```jinja
+{% extends "base.jinja" %}
+{% block title %}{{ title }}{% endblock %}
+```
+
+A post (`posts/cones.md`, with `layout: post.jinja` and `title: Pine cone season`) gets `<title>Pine cone season | Ranger Station</title>` and `<h1>Pine cone season</h1>`: `self.title()` renders the child's block, not the base's `Cedar Ridge`. A Jinja page can extend the base itself and fill both blocks, with no `layout` at all:
+
+```jinja
+{% extends "base.jinja" %}
+{% block title %}The Cedar Trail{% endblock %}
+{% block body %}
+<p>{{ note }}</p>
+{% endblock %}
+```
+
+- **The include adds no blank line.** `nav.jinja` ends with a newline, and a `.jinja` template loses one at its end, so `<nav>...</nav>` is followed straight by `<main>`. The page itself ends at `</html>`, with no newline after it. In `.njk` both newlines stay.
+- **Values are escaped.** With `note: "Pine cones <em>everywhere</em> & a stump"` in the page's data, `{{ note }}` prints `Pine cones &lt;em&gt;everywhere&lt;/em&gt; &amp; a stump`, and `{{ note | safe }}` prints the `<em>`. With `jinja: { autoescape: false }` in the config, `{{ note }}` prints it as it is, and `{{ note | e }}` is the escaped one: the choice for a theme written for MkDocs, where nothing is escaped unless it asks.
+- **Wrong on purpose:** a block name that's misspelled in the child (`{% block titel %}`) isn't an error, as in Jinja: the base's own `Cedar Ridge` prints. `strict: true` doesn't catch it either, since nothing undefined printed, so a page whose title is the default's is the sign to look for.
+
 ## Edge
 
 [Edge.js](https://edgejs.dev) templates (`.edge`) render with edge.js itself (6.5), so what its documentation describes works. Add `"edge"` to `templateFormats`, and `markdownEngine: "edge"` to run Markdown through it (`ssqch init --engine edge` does both). Its components with slots are handy in Markdown: [`component-docs`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/component-docs/) uses them in place of MDX.

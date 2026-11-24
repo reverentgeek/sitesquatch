@@ -27,7 +27,8 @@ export default defineConfig(({ serving }) => ({
   dirs: { input: "src", output: "dist" },
   // A build runs it once; the server keeps it watching instead of running it on every rebuild.
   beforeBuild: serving ? [] : { run: `${tailwind} --minify` },
-  serve: { run: [`${tailwind} --watch`] },
+  // Tailwind's watcher reads src/app.css, and the build never does: saving it needs no rebuild.
+  serve: { run: [`${tailwind} --watch`], ignore: ["src/app.css"] },
   plugins: [assetsPlugin({ files: ["/assets/app.css"] })],
 }));
 ```
@@ -39,6 +40,23 @@ The command writes into `$SSQCH_OUTPUT`, the output folder ssqch is building, ra
 @source "../src";
 ```
 
-The layout links `/assets/app.css`.
+The layout links `/assets/app.css`. With `ignore`, saving `src/app.css` while serving rebuilds nothing: Tailwind writes the new stylesheet, and the server swaps it into the page. Without it, the save also starts a build that renders every page and changes none. A template you edit still rebuilds, and Tailwind's watcher sees it too, so a new class is one reload with its CSS.
+
+PostCSS, the same way, with its stylesheets in a folder of their own (`src/_css/`, which holds only CSS: the build doesn't read a `.css` file in the input folder, or copy it, unless `passthrough` says to):
+
+```js
+import { defineConfig } from "ssqch";
+
+const postcss = "npx postcss src/_css/main.css -o $SSQCH_OUTPUT/main.css";
+
+export default defineConfig(({ serving }) => ({
+  dirs: { input: "src", output: "dist" },
+  beforeBuild: serving ? [] : { run: postcss },
+  // The folder covers every file in it, so a partial that main.css imports doesn't rebuild either.
+  serve: { run: [`${postcss} --watch`], ignore: ["src/_css"] },
+}));
+```
+
+List only what the build never reads. A Sass partial that `sassPlugin()` compiles is the build's, so it rebuilds anyway, and the server says so once (`serve.ignore lists src/_css/_vars.scss, but the last build read it`); a data file or a template in an ignored folder would be left stale until something else rebuilds. [Eleventy's](trailheads/from-eleventy.md) `watchIgnores` is the same idea.
 
 When a page links a stylesheet or script that isn't in the output, `ssqch serve` says so instead of leaving an unstyled page to explain itself: a note in the corner of the page, and a warning in the terminal that names the `serve.run` tool that should have written it (or suggests one), repeated after each build until the file turns up. For the first 30 seconds of a tool that's still running, the note says it hasn't written the file yet instead (`/assets/index.css isn't in dist yet: serve.run's tailwindcss is still running and hasn't written it`), and the warning comes only if the file still isn't there after that, or once none of them is running. So a stylesheet that's linked wrong waits those 30 seconds for its warning.

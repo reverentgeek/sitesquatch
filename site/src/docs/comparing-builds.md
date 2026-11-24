@@ -62,6 +62,8 @@ It works on any two folders of HTML, so it can also compare another generator's 
 
 **Reference builds:** before comparing a move's output with the site its old generator built, make that build trustworthy: `ssqch baseline "<command>"` runs the old generator's build command in fresh copies of the site, three times, and compares the builds, so what changes by itself (the build's time, ids from `Math.random()`) is known before anything is compared with ssqch's:
 
+[A move, step by step](agents.md#a-move-step-by-step) has `baseline`'s output for builds that agree and for builds that vary, with `ref-common` and the `--ignore` that goes with it.
+
 ```sh
 ssqch baseline "npx @11ty/eleventy"                        # .cache/ssqch/baseline/ref-1 to ref-3
 ssqch baseline "bundle exec jekyll build" --commit main    # the commit before the move
