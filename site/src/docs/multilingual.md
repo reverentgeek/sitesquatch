@@ -5,9 +5,6 @@ description: "ssqch has no built-in i18n yet."
 ---
 ssqch has no built-in i18n yet. What two real sites (one from Jekyll, one from Astro) did instead, with what ssqch has. The [`multilingual` example](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/multilingual/) is all of it in one site that runs (English and Spanish, in Jinja, [live](https://sitesquatch.dev/examples/multilingual/)): copy its `ssqch.config.js`, `src/_includes/base.jinja` and `src/fallback.jinja` to start. It ships with ssqch, so a site that installed it has the files beside its own: `node_modules/ssqch/bundled/examples/multilingual/` (`cp -R node_modules/ssqch/bundled/examples/multilingual/src/_includes/base.jinja src/_includes/`, and so on).
 
-> [!NOTE]
-> **Not released yet.** The example in the package (`node_modules/ssqch/bundled/examples/multilingual/`) ships with the next version of ssqch; until then it's on GitHub.
-
 - **A folder per language** (`content/fr/guide.md`), and the language from directory data (`content/fr/fr.json`: `{ "lang": "fr" }`) or front matter. A key that groups a page's translations (the file's path below the language folder, or a front matter key like `translationKey`).
 - **A page's translations** are a lookup in a collection: `collections.docs | where: "data.key", key` in Liquid, or a filter of your own that groups pages by key once. A loop over every page on every page (a language menu built with `where`) is the slow way on a big site; a filter that groups them once is fast, and the same in every template language:
 

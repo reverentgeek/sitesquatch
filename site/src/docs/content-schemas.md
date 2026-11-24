@@ -51,7 +51,4 @@ error: 3 content errors:
 - **`unknown`:** what to do about keys in a page's own front matter that aren't fields: `"allow"` (the default), `"warn"` or `"error"`. Keys ssqch reads itself (`layout`, `tags`, `permalink`, `date` and the like) are always fine, and so is data from the rest of the cascade.
 - **Editor types:** `ssqch types` adds the schemas to `ssqch.d.ts`, so `pages.byTag("posts")` in a collection function knows each page's fields. A build doesn't write the file, so run `ssqch types` again after adding or changing a schema; until then the editor knows the old fields, and a build says so: `note: ssqch.d.ts doesn't have the schema \`jobs\` as the config has it, so an editor shows old fields: run ssqch types` (not while serving, and only when the site has the file).
 
-> [!NOTE]
-> **Not released yet.** A tag's schema checking every page a paginated template makes, the warning for a schema that matches no pages, and the note about stale types ship with the next version of ssqch.
-
 In `sitesquatch.toml`, a schema is a table: `[schemas.posts]` with `fields = { title = "string", date = "date" }`.

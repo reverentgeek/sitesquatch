@@ -21,11 +21,11 @@ Netlify can build the site itself, with no deploy token to manage. With `ssqch` 
     paths = [".cache/ssqch"]
 ```
 
-- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.14.2`) and bump it when you're ready.
+- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.15.0`) and bump it when you're ready.
 - **`NODE_VERSION`** is the Node that runs the build: anything from 22.18 on. ssqch builds the same bytes on every supported Node, so pick the one your other build tools like.
 - **[`netlify-plugin-cache`](https://github.com/jakejarvis/netlify-plugin-cache)** carries `.cache/ssqch` (the encoded images and their hashes, highlighted code, and any `fetch` copies) over to the next build. Add it to your `devDependencies`.
 
-A site without a `package.json` can run a pinned release straight from npm in the build command, with `SSQCH_VERSION = "0.14.2"` under `[build.environment]` to pin it (and `NODE_VERSION` there as well):
+A site without a `package.json` can run a pinned release straight from npm in the build command, with `SSQCH_VERSION = "0.15.0"` under `[build.environment]` to pin it (and `NODE_VERSION` there as well):
 
 ```toml
 [build]
@@ -61,9 +61,6 @@ permalink: /_redirects
 ```
 
 `linksPlugin()` reads every line, yours too, as Netlify does: a link to `/store/` is a working link and not a broken one, a line that isn't forced covers only an address with no file there, and a `4xx` line isn't a redirect, so a link to `/old-map.pdf` is still a broken link (as is any link a catch-all `/*  /404.html  404` answers). Netlify takes the first line that matches, which is why yours come first. A site under a path needs its own catch-all to its 404 page, after every other line: `redirectsPlugin({ hostFile: true, notFound: "/404.html" })` writes it last ([Serving a site under a path](deploying.md#serving-a-site-under-a-path) has the rest).
-
-> [!NOTE]
-> **Not released yet.** The link checker reading a not-found line and an unforced one as Netlify does, and the redirects plugin's catch-all line to the 404 page, ship with the next version of ssqch.
 
 ## Headers
 
@@ -109,7 +106,7 @@ A command for one context goes in `netlify.toml` under `[context.deploy-preview]
 
 ## Updating ssqch
 
-The version in the lockfile is the one Netlify builds with, so a new release never reaches the site until you choose it. To move up: `pnpm add -D ssqch@0.14.2` (or `npm install -D ssqch@0.14.2`), build and test locally, and open a pull request: its deploy preview is the site on the new version, and `ssqch diff` between the old build and the new one shows every page that changed. The [changelog](https://sitesquatch.dev/changelog/) says what each release changes, with what a site has to change under "Breaking".
+The version in the lockfile is the one Netlify builds with, so a new release never reaches the site until you choose it. To move up: `pnpm add -D ssqch@0.15.0` (or `npm install -D ssqch@0.15.0`), build and test locally, and open a pull request: its deploy preview is the site on the new version, and `ssqch diff` between the old build and the new one shows every page that changed. The [changelog](https://sitesquatch.dev/changelog/) says what each release changes, with what a site has to change under "Breaking".
 
 ## Markdown for agents
 

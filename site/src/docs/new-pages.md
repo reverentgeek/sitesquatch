@@ -44,9 +44,6 @@ Write here. The title is {{ title }}.
 
 ## Moving a page
 
-> [!NOTE]
-> **Not released yet.** The warning for a schema that matches no pages ships with the next version of ssqch.
-
 A page that moves (a new folder, a new slug) keeps its old address working with a redirect, and `ssqch diff` shows what moved:
 
 - **One page:** `aliases: [/snacks/moss-mix/]` in its front matter, with `redirectsPlugin()` in the config, which writes a redirect page at the old address, or with `hostFile: true` a `301` line in `_redirects` for Netlify and Cloudflare ([`redirectsPlugin`](plugins.md)).
