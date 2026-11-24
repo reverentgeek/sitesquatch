@@ -6,7 +6,7 @@ This is `research/new-site-prompt.md` as it was on 2026-11-23. This copy is the 
 
 1. Fill in the three blanks. For **Site**, paste one section from "The sites" at the end of this file, and leave the others out.
 2. Write each of "The requests" into its own file in a `requests/` folder beside the site's folder (`01.md` to `07.md`), with the words in brackets filled in from the table there. The agent opens them one at a time, in part 2.
-3. Give everything between the two lines to the agent as its whole prompt, in a session started in the run's `site/` folder, not in ssqch's repository: the agent mustn't be handed ssqch's `AGENTS.md`, `research/`, or another run's notes. Starting it in `site/` keeps `requests/` outside its working folder, so a search of the site doesn't read them ahead.
+3. Give everything between the two lines to the agent as its whole prompt, in a session started in the run's `site/` folder, not in ssqch's repository: the agent mustn't be handed ssqch's `AGENTS.md`, `research/`, or any run's notes, its own included (they're in `research/runs/`, not beside `site/`). Starting it in `site/` keeps `requests/` outside its working folder, so a search of the site doesn't read them ahead.
 
 Keep the rest as it is, so runs can be compared.
 

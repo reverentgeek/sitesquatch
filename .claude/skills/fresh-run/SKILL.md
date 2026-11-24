@@ -25,10 +25,12 @@ Runs live outside this repository, in `../trials/fresh/`, whose `README.md` has 
    npm pack ./dist --pack-destination <run> && mv <run>/ssqch-*.tgz <run>/ssqch-next.tgz
    ```
 
-   Write down which it was (the version, and the commit for a tarball) in the run's folder as `SSQCH.txt`.
+   Write down which it was (the version, and the commit for a tarball) in the run's notes: `research/runs/<run>.md` in this repository (gitignored), named after the run's folder. Nothing about the run goes in the run's folder itself, which the agent can read: the Snacks rerun's agent read its `SSQCH.txt`, which said it was a rerun and named the first run's folder (the owner, 2026-11-24, moved the notes).
 3. **For a move, clone the site** into the run's folder (`git clone <url> <run>/<site>`), and note the commit. For a new site or a study, make an empty folder `<run>/site/`.
 4. **For a study, write the requests** into `<run>/requests/`, beside `site/` and not in it: `01.md` to `07.md`, each one request from the brief's "The requests" with the site's words filled in from its table. Leave out `06.md` (the upgrade) unless the run has two versions of ssqch, a release and a tarball. The agent opens them one at a time, so they mustn't be where a search of the site finds them.
 5. **Fill in the brief.** Copy the brief's text, and fill in the blanks at its top: the folder, the version or tarball, and for a new site, which task; for a study, paste the one site's spec. Change nothing else. The brief stays the same from run to run so that runs can be compared; if a brief needs to change, change the file in `references/` and say so in the run's notes.
+
+   The run's folder then holds only what the agent may read: the site's folder, `requests/` for a study, and the tarball. The notes (`research/runs/<run>.md`) have the version, the brief as filled in, when and how it started, anything said or fixed mid-run, and later the checks and the sorting.
 
 ## 2. Start the agent, and leave it alone
 
@@ -36,8 +38,8 @@ Start one background agent for the run (the Agent tool, a general-purpose agent)
 
 - **It must be fresh.** Don't tell it anything you know about ssqch, the site, or what earlier runs found. Don't hand it this repository's `research/` folder or another run's notes: an agent given the answers finds no friction.
 - **Know the limit of "fresh".** An agent started from this session may be handed this repository's `AGENTS.md`, which describes ssqch from the inside. For a move that's acceptable (the brief asks it to find causes in ssqch). For a new-site run it weakens the result: say so in the run's notes, or have the owner start a new session in the run's folder with the brief, which is cleaner.
-- **A study isn't started from here at all.** Its spec never names a part of ssqch, and an agent that has read `AGENTS.md` knows them all, so the run would measure nothing. Set the run up, hand the owner the filled-in brief (save it as `<run>/BRIEF.md`), and have them start a new session in `<run>/site/` with it as the prompt. Note in `SSQCH.txt` how and when it was started. The starter's own `AGENTS.md`, if the agent runs `ssqch init`, is fair: it ships.
-- **Don't help it mid-run.** Each hint you give is a finding the run loses. If it's blocked by something that isn't ssqch (no network, a missing toolchain for the old generator), fix that, note it in the run's folder, and let it continue.
+- **A study isn't started from here at all.** Its spec never names a part of ssqch, and an agent that has read `AGENTS.md` knows them all, so the run would measure nothing. Set the run up, hand the owner the filled-in brief (save it in the run's notes, `research/runs/<run>.md`, under "Brief"), and have them start a new session in `<run>/site/` with it as the prompt. Note in the run's notes how and when it was started. The starter's own `AGENTS.md`, if the agent runs `ssqch init`, is fair: it ships.
+- **Don't help it mid-run.** Each hint you give is a finding the run loses. If it's blocked by something that isn't ssqch (no network, a missing toolchain for the old generator), fix that, note it in the run's notes, and let it continue.
 - **Note when it started.** The time a run takes is one of its results.
 
 While it runs, carry on with other work. You're told when it finishes.
@@ -57,7 +59,7 @@ Every finding gets one of these, and goes into `research/TODO.md` with the run's
 
 - **A bug in what ssqch has:** fix it as a bug. It goes in "Bugs in what ships".
 - **From a new-site run:** it's friction every site meets, so there's nothing more to sort. Place it by the order in AGENTS.md ("What ssqch is for"): the dev server, what a command prints, the docs `ssqch docs` didn't have, the starters.
-- **From a study,** `suggestions.md` marks each finding "every site" or "this kind of site". A study's suggestions are numbered inside their groups, so cite the group and the number (`snacks B3`, `snacks F1`), and say so in the tag's row. The first is sorted as a new-site run's. The second is what a blog and a docs site never showed, and it gets the test AGENTS.md gives a move's gaps ("Gaps a move finds"), for the same reason (every option is documented, tested and learned by every user), with "a kind of site" where that says "a framework":
+- **From a study,** `suggestions.md` marks each finding "every site" or "this kind of site". A study's suggestions are numbered inside their groups, so cite the group and the number (`snacks B3`, `snacks F1`), and say so in the tag's row. The first is sorted as a new-site run's. The second is what a blog and a docs site never showed, and it gets the test AGENTS.md gives a move's gaps ("Gaps a move finds", and the paragraph after it for a kind of site), for the same reason (every option is documented, tested and learned by every user), with "a kind of site" where that says "a framework":
   - **document:** a person or an agent gets there with what ssqch has, in minutes, without reading ssqch's source, and it keeps working. Write it as a how-to on the docs page it belongs to, an example in `examples/sites/`, or a line in a deploy guide. A podcast feed's enclosures are a recipe.
   - **build:** there's no reasonable way and every site would gain, or it's small and worth having for everyone.
   - **known gap:** only that kind of site needs it, and ssqch isn't the tool for that part. Say so in the docs where someone would look.
