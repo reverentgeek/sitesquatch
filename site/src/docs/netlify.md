@@ -60,7 +60,7 @@ permalink: /_redirects
 {{ "/old-map.pdf" | withBase }}  {{ "/404.html" | withBase }}  410
 ```
 
-`linksPlugin()` reads every line, yours too, so a link to `/store/` is a working link and not a broken one. Netlify takes the first line that matches, which is why yours come first.
+`linksPlugin()` reads every line, yours too, as Netlify does: a link to `/store/` is a working link and not a broken one, a line that isn't forced covers only an address with no file there, and a `4xx` line isn't a redirect, so a link to `/old-map.pdf` is still a broken link (as is any link a catch-all `/*  /404.html  404` answers). Netlify takes the first line that matches, which is why yours come first. A site under a path needs its own catch-all to its 404 page, after every other line: `redirectsPlugin({ hostFile: true, notFound: "/404.html" })` writes it last ([Serving a site under a path](deploying.md#serving-a-site-under-a-path) has the rest).
 
 ## Headers
 
@@ -91,7 +91,7 @@ Only cache a folder forever when everything in it is named by its contents: a st
 
 ## Forms
 
-Netlify Forms work on a page ssqch built as on any static page: when it deploys, Netlify reads the HTML for a `<form>` with a `name` and `data-netlify="true"`, and takes its submissions. Write the form as Netlify's docs describe it (a form sent with JavaScript also needs a hidden `<input type="hidden" name="form-name" value="contact">`); ssqch changes none of it, and `minifyPlugin()` keeps `data-netlify`, `netlify-honeypot` and hidden inputs as written. Since Netlify finds forms at deploy, try one on a deploy preview: `ssqch serve` has no server behind a form's `action`.
+Netlify Forms work on a page ssqch built as on any static page: when it deploys, Netlify reads the HTML for a `<form>` with a `name` and `data-netlify="true"`, and takes its submissions. Write the form as Netlify's docs describe it (a form sent with JavaScript also needs a hidden `<input type="hidden" name="form-name" value="contact">`); ssqch changes none of it, and `minifyPlugin()` keeps `data-netlify`, `netlify-honeypot` and hidden inputs as written. Since Netlify finds forms at deploy, try one on a deploy preview: `ssqch serve` has no server behind a form's `action`. It answers a form's `POST` with the page at the `action`'s address, as it answers a `GET`, so a form whose `action` is its thank-you page (`action="/thanks/"`) clicks through locally, though nothing is kept.
 
 ## Deploy previews and branch deploys
 
@@ -110,4 +110,4 @@ The version in the lockfile is the one Netlify builds with, so a new release nev
 
 ## Markdown for agents
 
-To answer a coding agent's `Accept: text/markdown` with a page's Markdown copy, add an edge function: [Serving Markdown to agents](serving-markdown.md#netlify) has it, ready to paste.
+Netlify answers a coding agent's `Accept: text/markdown` with the HTML page, the build's Markdown copies notwithstanding, until the site has an edge function for it: [Serving Markdown to agents](serving-markdown.md#netlify) has it, ready to paste (`netlify/edge-functions/markdown.js`). `ssqch patrol --url https://your-site.netlify.app/` checks a deploy (`live-no-markdown` names each page that answers with HTML), and `--url http://localhost:8888` checks `netlify dev`.

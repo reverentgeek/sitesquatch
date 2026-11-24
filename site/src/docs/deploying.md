@@ -34,6 +34,17 @@ export default defineConfig({
 - **The output folder:** unchanged too. `dist/about/index.html` is what the host serves at `/repo/about/`.
 - **Plugins:** `linksPlugin()` checks links under the base (other paths on the domain count as external), and `sitemapPlugin({ url })` takes the address with or without the base in it.
 - **`ssqch serve`:** serves the site at `http://localhost:8080/repo/`, so what you click through locally is what the host will serve.
+- **The host's own files:** Netlify and Cloudflare read `_redirects` and `_headers` only at the top of the folder they publish, and crawlers look for `robots.txt` and `sitemap.xml` only at the domain's root. A GitHub Pages project site is the domain's folder already, so there's nothing to do there. On Netlify or Cloudflare, where the folder you publish is the domain's root and the site is one path in it (a preview beside the real site, say), build into that path inside the folder and move the host's two files to its top:
+
+```sh
+ssqch build --base /preview/snacks/ --output dist-preview/preview/snacks
+mv dist-preview/preview/snacks/_redirects dist-preview/preview/snacks/_headers dist-preview/
+```
+
+> [!NOTE]
+> **Not released yet.** The redirects plugin's catch-all line to the 404 page ships with the next version of ssqch.
+
+Publish `dist-preview`. Their lines have the base in them already (`redirectsPlugin()` writes it, and a `_redirects` or `_headers` template uses `withBase`), so they match where they are now. A host answers a miss with the site's 404 page by itself only at the root, so add `notFound: "/404.html"` to `redirectsPlugin({ hostFile: true })`, which writes `/preview/snacks/*  /preview/snacks/404.html  404` as the file's last line.
 
 `ssqch build --base /repo/` sets it from the command line (for a preview deployed under another path, say) and wins over the config. In `sitesquatch.toml` it's `base = "/repo/"`.
 

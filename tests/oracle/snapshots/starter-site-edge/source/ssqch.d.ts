@@ -288,7 +288,7 @@ declare module "ssqch" {
 		markdown?: MarkdownOptions;
 		/** Merge objects and concatenate arrays through the data cascade. Default `true`. */
 		deepMerge?: boolean;
-		/** Delete output files an earlier build wrote or copied that this one didn't (a deleted post's page). Files other tools write are never touched. Default `false`. */
+		/** Delete output files an earlier build wrote or copied that this one didn't (a deleted post's page, a picture `imagePlugin()` encoded that no page uses now). Each output folder has its own list, so a build into another folder (`--output dist-before`) doesn't make the next forget `dist`'s. Files other tools write are never touched. Default `false`. */
 		leaveNoTrace?: boolean;
 		/** Globs (relative to the input folder) of files that aren't pages, like `["drafts/**", "notes/*.wip.md"]`. */
 		ignore?: string | string[];
@@ -302,7 +302,7 @@ declare module "ssqch" {
 		lastModified?: "git" | "file" | false;
 		/** The date of a page with no date of its own (in its data or its file name): `"git"` for the last commit that changed its file, the same in every checkout, or `"file"` (the default) for the file's modification time, which is when the checkout wrote it. Either way it sorts after the dated pages, by path. Needs the full history in CI (`fetch-depth: 0`). */
 		dateFallback?: "git" | "file";
-		/** The time zone the site's own JavaScript runs in, as an IANA name (`"UTC"`, `"America/New_York"`): `Date`'s local methods and libraries like luxon and date-fns, in data files, filters, hooks and Edge templates, so a laptop and CI build the same pages. ssqch's own date filters are UTC whatever this says. Default: the machine's. The config's own top-level code runs before it applies. */
+		/** The time zone the site's own JavaScript runs in, as an IANA name (`"UTC"`, `"America/New_York"`): `Date`'s local methods and libraries like luxon and date-fns, in data files, filters, hooks and Edge templates, so a laptop and CI build the same pages. ssqch's own date filters and the sitemap's `<lastmod>` are UTC whatever this says, and a front matter date without a time is midnight UTC (the day before, west of UTC, by `Date`'s local methods). Default: the machine's. The config's own top-level code runs before it applies. */
 		timeZone?: string;
 		/** A page's URL when it has no `permalink`: `"folders"` (the default) writes `guide/intro.md` as `/guide/intro/` (`guide/intro/index.html`), `"html"` as `/guide/intro.html`. An index page is its folder either way (`guide/index.md` is `/guide/`). (`"html"` is VitePress without `cleanUrls`, Hugo's `uglyURLs` and Docusaurus's `trailingSlash: false`.) */
 		urls?: "folders" | "html";
@@ -412,7 +412,7 @@ declare module "ssqch/image" {
 		jpegQuality?: number;
 		/** A width larger than the original is clamped to it only when the width before it is this many times smaller. Default 1.25. */
 		minimumThreshold?: number;
-		/** Delete generated images in the output that the build didn't use. Only for full builds; `leaveNoTrace` leaves them. */
+		/** Delete every file in the image folder that the build didn't use, ones no build of ssqch listed included. Only for full builds. `leaveNoTrace` removes the copies an earlier build used and this one didn't, without this. */
 		prune?: boolean;
 		/** Remember image ids between builds in `.cache/ssqch`. Default `true`. */
 		hashCache?: boolean;
@@ -722,6 +722,8 @@ declare module "ssqch/redirects" {
 		hostFile?: boolean;
 		/** Redirects that aren't a page's `aliases`: `{ "/old/": "/new/" }`. The new URL can be on another site. */
 		redirects?: Record<string, string>;
+		/** The not-found page's URL path (`"/404.html"`): with `hostFile`, the last line of `_redirects` is `/*  /404.html  404`, with the site's `base` in front of both. A host answers a miss with the 404 page by itself only at its domain's root, so a site served under a path needs this line, after every other. */
+		notFound?: string;
 	}
 
 	/** Redirects from each page's `aliases` front matter and from `redirects`. */

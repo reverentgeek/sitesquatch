@@ -9,6 +9,62 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Breaking
+
+- A schema keyed by a tag checks every page a paginated template makes. Before, only the first
+  page was checked, since only it joins the tag's collection, so a site's schema on `tags: snack`
+  checked one snack of six. A build that passed with bad data on a later page now fails and names
+  the item (`src/snack.jinja (item 4 of snacks, "Moss Mix")`): fix the data.
+- `linksPlugin()` reads `_redirects` as Netlify does. A `4xx` line (a catch-all `/*  /404.html
+  404`, a `410`) isn't a redirect, so a link it answers is broken, and a line that isn't forced
+  covers only an address with no file. A site with a catch-all used to pass every broken link (and
+  0.14.1's note called its working links "redirected to /404.html"); its broken links now fail a
+  production build: fix them. `ssqch diff` doesn't call a removed page "redirected" to a 4xx line
+  either.
+
+### Added
+
+- `redirectsPlugin({ hostFile: true, notFound: "/404.html" })` writes a catch-all to the 404 page
+  as the last line of `_redirects`, with the site's `base` in front, for a site served under a
+  path, where a host doesn't answer a miss with the 404 page by itself.
+- A schema whose `files` match no page is a warning (``schema `snack` matches no pages``): after a
+  folder moved, its checks were off without a word.
+- A build notes when `ssqch.d.ts` doesn't have the config's schemas (`run ssqch types`), and the
+  docs starter's `ssqch.d.ts` has its schema from `ssqch init`.
+- The `multilingual` example ships in the package, at
+  `node_modules/ssqch/bundled/examples/multilingual/`, where an agent in a site's folder finds it.
+- The starters' `AGENTS.md` names `ssqch baseline "npx ssqch build" --from dist`, the check that a
+  fresh copy builds the same, and `ssqch patrol --url` for a deploy.
+- Docs: where a host's `_redirects` and `_headers` go for a site under a path; "Moving a page"
+  (aliases, a folder's line, `ssqch diff` as the proof); structured data with `tojson`, a company
+  and a product; scripts for production only (`ssqch.env`); another crop on a phone in modern
+  formats, with `image()`; what `timeZone` does to a date without a time; that `patrol --url`
+  finds a host answering agents with HTML; and that `ssqch serve` answers a form's `POST`.
+
+### Fixed
+
+- `leaveNoTrace` keeps a list for each output folder. A build into another one (`ssqch build
+  --output dist-before`, `ssqch diff`'s own before-and-after recipe) made the next build into
+  `dist` forget its files, so a deleted page stayed there.
+- `leaveNoTrace` removes `imagePlugin()`'s copies that no page uses any more, as it does a deleted
+  page: a removed photo's 15 copies stayed, and a weight budget failed on them.
+- `imagePlugin()` keeps an `<img>`'s own `width` and `height` under `ssqch:widths`: a 36-pixel
+  logo with a 72-pixel copy for sharp screens showed at 72. With one of them, the other follows
+  the picture's shape.
+- `ssqch init` beside a config of the site's own leaves the starter's pages out, since they need
+  its config: the starter's `tag.jinja` stopped the build on `collections.tagList`.
+- `ssqch scout` reads a config that's a function (`({ env }) => ({...})`) as the build does,
+  rather than saying its default export isn't an object.
+- An error rendering a paginated page, or working out its `computed`, names the item
+  (``rendering snack.jinja with `jinja` (item 2 of snacks, "Moss Mix")``), and the same error on
+  several items is still one line, naming the others.
+- `assetsPlugin()`'s missing file names the entry in its `files`, not only the hook.
+- A misspelled field's code frame points at the misspelling.
+- The `leaveNoTrace` entry no longer says `clean` is another name for it (it's refused since
+  0.13).
+
 ## 0.14.2 - 2026-11-24
 
 ### Added

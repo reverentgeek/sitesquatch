@@ -295,19 +295,24 @@ export function joinUrlPath(page: string, rel: string): string {
  * from the picture's shape when it wrote only one; otherwise the largest copy's, for the shape.
  * Each pair is `[name, value]`, in that order.
  */
-function shownSize(attrs: Array<[string, string]>, high: { width: number; height: number }): Array<[string, string]> {
+function shownSize(attrs: Array<[string, string]>, copies: Array<{ width: number; height: number }>): Array<[string, string]> {
+	const high = copies[copies.length - 1];
 	const given = (name: string) => attrs.find(([a]) => a === name)?.[1];
 	const [w, h] = [given("width"), given("height")];
 	const known = high.width > 0 && high.height > 0;
 	const number = (v: string) => (/^\s*\d+(\.\d+)?\s*$/.test(v) ? Number(v) : undefined);
 	if (w !== undefined && h !== undefined) return [["width", w], ["height", h]];
+	// A size that's a copy's (a plain `width` pins the picture to one) is that copy's other
+	// size, as the encoder rounded it; any other follows the largest copy's shape.
 	if (w !== undefined) {
 		const n = number(w);
-		return known && n !== undefined ? [["width", w], ["height", String(Math.round((n * high.height) / high.width))]] : [["width", w]];
+		const copy = copies.find((c) => c.width === n);
+		return known && n !== undefined ? [["width", w], ["height", String(copy ? copy.height : Math.round((n * high.height) / high.width))]] : [["width", w]];
 	}
 	if (h !== undefined) {
 		const n = number(h);
-		return known && n !== undefined ? [["width", String(Math.round((n * high.width) / high.height))], ["height", h]] : [["height", h]];
+		const copy = copies.find((c) => c.height === n);
+		return known && n !== undefined ? [["width", String(copy ? copy.width : Math.round((n * high.width) / high.height))], ["height", h]] : [["height", h]];
 	}
 	return known ? [["width", String(high.width)], ["height", String(high.height)]] : [];
 }
@@ -1167,7 +1172,7 @@ export class ImageProcessor {
 			img.push(["srcset", srcsetAttr(fallback)]);
 			if (sizes !== undefined) img.push(["sizes", sizes]);
 		}
-		img.push(...shownSize(attrs, high));
+		img.push(...shownSize(attrs, fallback));
 		// Values copied from the original tag are still entity-encoded, so only quotes need
 		// escaping; generated values are plain URLs and numbers.
 		const tag = `<img${img.map(([k, v]) => ` ${k}="${v.replaceAll("\"", "&quot;")}"`).join("")}>`;
