@@ -37,6 +37,12 @@ where that version matches.
 
 ### Changed
 
+- The build summary counts a `fetch()` whose refresh failed as one request, answered from the
+  cache: `Fetch 1 request, 1 from the cache (1 out of date: its request failed, so the last copy
+  was used)`, where it said 2 requests for one call.
+- A schema problem in a nested field (`hero.src`) points at that field's line, not its parent's,
+  and a `file` field that names a folder says so (`a folder in the input folder, not a file: name
+  the file in it`), where it said there was no such file.
 - A broken link that fails a build says whose check it was: `error: after_build hook failed:
   linksPlugin: the trail goes cold on 1 broken link:` ("after_build hook failed" alone sent The
   North Fake study looking for a hook of its own). The JSON's code is `links`, as it was.
@@ -51,6 +57,9 @@ where that version matches.
   doctype; that `ssqch serve` builds into the output folder a production build used; what
   `dateFallback: "git"` does outside a repository; and what the multilingual fallback pages cost
   a catalog, with the cheaper choice.
+- Docs: three how-tos for a catalog in "Templates": a page for each category with numbered pages,
+  money and units without `Intl`, and a default date that a page's own beats; and which of
+  Pagefind's UIs fits a search page, and what its Default UI needs to pass an accessibility check.
 - Docs: the first build after a release that renames encoded images (0.15.0 renamed every one)
   encodes them all again, as with an empty cache: the blog's first build on 0.15.0 took 5 minutes
   on Netlify, where it usually takes 37 seconds. In `imagePlugin()`'s entry and the Netlify

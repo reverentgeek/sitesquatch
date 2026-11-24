@@ -154,3 +154,18 @@ test("a_misspelling_has_a_frame_and_stale_types_get_a_note", () => {
 	r = ssqch(["build", "--root", dir]);
 	assert.ok(r.ok && r.log.includes("note: ssqch.d.ts doesn't have the schema `jobs` as the config has it, so an editor shows old fields: run ssqch types\n"), r.log);
 });
+
+// A nested field's frame is on its own line, not its parent's, and a `file` field that names a
+// folder says so (The North Fake study, E5: the caret was on `hero:`, and the message said there
+// was no such file, for `src: /img/guides/`).
+test("a_nested_fields_frame_is_on_its_line_and_a_folder_isnt_a_file", () => {
+	const dir = tempDir("schemas-nested-frame");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, schemas: { guides: { files: \"*.md\", fields: { hero: { src: \"file\", alt: \"string\" } } } } };\n",
+		"src/img/guides/ridge.jpg": "not a picture",
+		"src/w.md": "---\nhero:\n  alt: A ridge\n  src: /img/guides/\n---\nHi\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("`hero.src` is \"/img/guides/\", a folder in the input folder, not a file: name the file in it"), r.log);
+	assert.ok(r.log.includes("  --> src/w.md:4\n") && r.log.includes("   4 |   src: /img/guides/\n     |   ^^^\n"), r.log);
+});

@@ -340,7 +340,11 @@ function checkValue(type: Type, value: unknown, fieldPath: string, at: Checking,
 			const clean = value.split(/[?#]/)[0];
 			const fromRoot = clean.startsWith("/");
 			const file = fromRoot ? path.join(at.files.input, clean.slice(1)) : path.join(at.files.pageDir, clean);
-			if (!(fs.statSync(file, { throwIfNoEntry: false })?.isFile() ?? false)) wrong(`\`${fieldPath}\` is ${quoted(value)}, but there's no such file ${fromRoot ? "in the input folder" : "next to the page"} (${lookedFor(file, clean, at.root)})`);
+			const stat = fs.statSync(file, { throwIfNoEntry: false });
+			// A folder is there, and isn't a file: saying "no such file" sent The North Fake study
+			// looking for a missing picture (E5).
+			if (stat?.isDirectory()) wrong(`\`${fieldPath}\` is ${quoted(value)}, a folder ${fromRoot ? "in the input folder" : "next to the page"}, not a file: name the file in it`);
+			else if (!(stat?.isFile() ?? false)) wrong(`\`${fieldPath}\` is ${quoted(value)}, but there's no such file ${fromRoot ? "in the input folder" : "next to the page"} (${lookedFor(file, clean, at.root)})`);
 			return;
 		}
 		case "object": if (!isObject(value)) mismatch(); return;
