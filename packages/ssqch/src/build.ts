@@ -129,7 +129,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	timer.lap("copy");
 
 	const pagePaths = written.map((w) => w.file);
-	const outputs = [...pagePaths, ...generated, ...built, ...copy.paths, ...stylesheet];
+	const outputs = [...pagePaths, ...generated, ...built, ...copy.paths, ...stylesheet, ...config.written.flatMap((files) => [...files()])];
 	const recorded = recordOutputs(config, dirs, outputs, pagePaths);
 
 	const report: BuildReport = {

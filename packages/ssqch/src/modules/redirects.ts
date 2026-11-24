@@ -85,8 +85,17 @@ BUILTINS.set("ssqch/redirects", (config: Config, given) => {
 	// `netlify` was this option's name until 0.14: Cloudflare reads the same `_redirects`, so it's
 	// named for what it writes, and the old name says the new one rather than "unknown option".
 	if (typeof given === "object" && given !== null && "netlify" in given && (given as Record<string, unknown>).netlify !== undefined) bail("netlify is called hostFile now (Netlify and Cloudflare both read _redirects): redirectsPlugin({ hostFile: true })");
-	const o = new Options(given, ["pages", "hostFile", "redirects"]);
+	const o = new Options(given, ["pages", "hostFile", "redirects", "notFound"]);
 	const hostFile = o.bool("hostFile") ?? false;
+	// A host answers a miss with the site's 404 page only at its domain's root: under a path, the
+	// site's own catch-all line does it, and it has to come after every other line, since a host
+	// takes the first match (the Squatch Snacks rerun wrote its whole `_redirects` for this).
+	const notFound = o.get("notFound");
+	if (notFound !== undefined && (typeof notFound !== "string" || !notFound.startsWith("/"))) bail("notFound must be the not-found page's URL path, like \"/404.html\"");
+	if (notFound !== undefined && !hostFile) bail("notFound is a line in _redirects: set hostFile: true too");
+	if (notFound !== undefined) {
+		try { checkPath(notFound as string); } catch (e) { throw context(e, "notFound"); }
+	}
 	// A host serves a file that exists before it reads `_redirects`, so with both, an old address
 	// answers 200 with the redirect page and never the 301 line: pages are off when the file is on.
 	const pages = o.bool("pages") ?? !hostFile;
@@ -152,6 +161,7 @@ BUILTINS.set("ssqch/redirects", (config: Config, given) => {
 			// Hosts match a line against the whole URL path, which has the base in front.
 			lines += `${withBase(config.base, from)}  ${withBase(config.base, to)}  301\n`;
 		}
+		if (typeof notFound === "string") lines += `${withBase(config.base, "/*")}  ${withBase(config.base, notFound)}  404\n`;
 		if (hostFile && lines !== "") files.push({ path: "/_redirects", contents: lines, append: true });
 		return files;
 	}]);

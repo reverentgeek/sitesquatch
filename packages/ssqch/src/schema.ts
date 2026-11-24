@@ -59,6 +59,8 @@ export interface Schema {
 	name: string;
 	/** The `files` globs, or none: the pages tagged with the schema's name. */
 	files: RegExp[] | undefined;
+	/** The `files` globs as written, for a message. */
+	globs?: string[];
 	fields: Field[];
 	unknown: Unknown;
 }
@@ -209,12 +211,14 @@ export function parseSchema(name: string, spec: unknown): Schema {
 	if (!("fields" in spec) || spec.fields === undefined) bail(`${at} needs \`fields\`: { title: "string", date: "date" }`);
 	const fields = parseFields(spec.fields, `${at}.fields`);
 	let files: RegExp[] | undefined;
+	let written: string[] | undefined;
 	const given = spec.files;
 	if (given !== undefined && given !== null) {
 		let globs: string[];
 		if (typeof given === "string") globs = [given];
 		else if (Array.isArray(given)) globs = given.map((g) => (typeof g === "string" ? g : bail(`${at}.files must be a glob or a list of globs`)));
 		else bail(`${at}.files must be a glob or a list of globs, not ${typeOf(given)}`);
+		written = globs;
 		files = globs.map((g) => {
 			const glob = g.replace(/^(\.\/)+/, "");
 			const problem = globProblem(glob);
@@ -228,7 +232,7 @@ export function parseSchema(name: string, spec: unknown): Schema {
 		if (word !== "allow" && word !== "warn" && word !== "error") bail(`${at}.unknown must be "allow", "warn" or "error", not ${quoted(word)}`);
 		unknown = word;
 	}
-	return { name, files, fields, unknown };
+	return { name, files, ...(written ? { globs: written } : {}), fields, unknown };
 }
 
 /** The site's schemas as TypeScript object types, for `ssqch types`: each name, and its type as 0.7's `Schema::typescript` wrote it (fields three tabs in). */
@@ -499,12 +503,18 @@ export async function checkPages(site: Site): Promise<void> {
 	const errors: Diagnostic[] = [...site.badDates];
 	if (!config.schemas.length && !errors.length) return;
 	const seen = new Set<string>();
+	// A paginated template puts only its first page in its tags' collections, but a schema keyed
+	// by a tag checks every page it makes: Squatch Snacks' schema on `tags: snack` checked one
+	// snack of six, and said nothing of the rest (the rerun, 2026-11-23).
+	const collected = new Set(site.pages.filter((p) => p.inCollections).map((p) => p.tpl));
+	const matched = new Set<Schema>();
 	for (const page of site.pages) {
 		const tags = Array.isArray(page.data.tags) ? page.data.tags.filter((t: unknown): t is string => typeof t === "string") : [];
 		const files: PageFiles = { input: dirs.input, pageDir: path.dirname(page.tpl.input) };
 		const file = site.display(page.tpl.input);
 		for (const schema of config.schemas) {
-			if (!covers(schema, page.tpl.rel, tags, page.inCollections)) continue;
+			if (!covers(schema, page.tpl.rel, tags, page.inCollections || collected.has(page.tpl))) continue;
+			matched.add(schema);
 			for (const problem of await check(schema, page.data, page.tpl.frontKeys, files, dirs.root)) {
 				const message = `${file.replace(/^(\.\/)+/, "")}${paginated(page.data)}: ${problem.message} (schema \`${schema.name}\`)`;
 				if (seen.has(message)) continue;
@@ -514,6 +524,12 @@ export async function checkPages(site: Site): Promise<void> {
 				else errors.push(found);
 			}
 		}
+	}
+	// A schema for files that match no page checks nothing, and a build that passes says nothing
+	// of it: after a folder moved, Squatch Snacks' validation was off without a word (the rerun).
+	// A tag's schema with no pages is a collection that's empty for now, so it's left alone.
+	for (const schema of config.schemas) {
+		if (schema.globs && !matched.has(schema)) warn(warning("schema", `schema \`${schema.name}\` matches no pages (files: ${schema.globs.map((g) => JSON.stringify(g)).join(", ")}), so nothing is checked; a page that moved needs its new path here`));
 	}
 	if (!errors.length) return;
 	const shown = config.verbose ? errors.length : 30;

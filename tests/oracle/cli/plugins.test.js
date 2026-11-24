@@ -63,6 +63,26 @@ test("an_img_keeps_its_own_width_and_height", () => {
 	assert.match(html, /alt="None" srcset="[^"]+" sizes="auto" width="40" height="20">/);
 });
 
+// Not from a Rust test (the Squatch Snacks rerun, 2026-11-23): the image plugin's files are on
+// `leaveNoTrace`'s list, so a picture no page uses any more goes, as a page does. 0.14.2 left a
+// removed photo's 15 copies, and the weight budget failed on them.
+test("leave_no_trace_removes_images_no_page_uses", () => {
+	const root = project({
+		"ssqch.config.js": "import { imagePlugin } from \"ssqch/image\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, leaveNoTrace: true, plugins: [imagePlugin({ formats: [\"webp\", \"auto\"], widths: [20] })] };\n",
+		"src/img/squatch.png": PNG,
+		"src/img/other.png": PNG,
+		"src/index.html": "<img src=\"/img/squatch.png\" alt=\"Kept\">\n<img src=\"/img/other.png\" alt=\"Gone\" ssqch:widths=\"16\">\n",
+	});
+	let r = build(root);
+	assert.ok(r.ok, r.log);
+	const images = () => fs.readdirSync(path.join(root, "dist/img")).sort();
+	assert.equal(images().length, 4, images().join(" "));
+	write(root, { "src/index.html": "<img src=\"/img/squatch.png\" alt=\"Kept\">\n" });
+	r = build(root);
+	assert.ok(r.ok && r.log.includes("Removed  2 stale files, left no trace"), r.log);
+	assert.equal(images().length, 2, images().join(" "));
+});
+
 test("the_built_in_plugins_work_together", () => {
 	const root = project({
 		"ssqch.config.js": CONFIG,
@@ -796,6 +816,27 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"]
 	assert.ok(ok, log);
 	assert.equal(read(root, "dist/_redirects"), "/repo/elsewhere  https://other.example/  301\n/repo/old/  /repo/posts/pine/  301\n");
 	assert.ok(read(root, "dist/index.html").includes("href=\"/repo/old/\""));
+});
+
+// Not from a Rust test (the Squatch Snacks rerun, 2026-11-23): under a path, a miss needs the
+// site's own catch-all to its 404 page, after every other line (a host takes the first match),
+// and the site's own `_redirects` template comes first. `notFound` writes it last.
+test("redirects_not_found_is_the_last_line", () => {
+	const config = (options) => `import { redirectsPlugin } from "ssqch/redirects";
+import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md", "html"], base: "/repo/", plugins: [redirectsPlugin(${options}), linksPlugin()] };`;
+	const files = {
+		"src/index.md": "See [the old post](/old/) and [the map](/go/map).",
+		"src/404.md": "Lost",
+		"src/posts/pine.md": "---\naliases: [/old/]\n---\nPine",
+		"src/_redirects.html": "---\npermalink: /_redirects\n---\n{{ \"/go/map\" | withBase }}  {{ \"/posts/pine/\" | withBase }}  302\n",
+	};
+	const root = project({ "ssqch.config.js": config("{ hostFile: true, notFound: \"/404.html\" }"), ...files });
+	const { ok, log } = build(root);
+	assert.ok(ok, log);
+	assert.equal(read(root, "dist/_redirects"), "/repo/go/map  /repo/posts/pine/  302\n/repo/old/  /repo/posts/pine/  301\n/repo/*  /repo/404.html  404\n");
+	const refused = build(project({ "ssqch.config.js": config("{ notFound: \"/404.html\" }"), ...files }));
+	assert.ok(!refused.ok && refused.log.includes("notFound is a line in _redirects: set hostFile: true too"), refused.log);
 });
 
 // Not from a Rust test: an alias YAML reads as a date is the path it looks like.

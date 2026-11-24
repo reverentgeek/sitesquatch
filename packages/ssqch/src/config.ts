@@ -181,6 +181,8 @@ export interface Config {
 	fileBuilders: Array<[string, (config: Config) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
 	/** What the build waits for once every page is written (the image files they point at), before the generators; counted as writing. */
 	settle: Array<() => Promise<void>>;
+	/** Files a built-in plugin wrote into the output beside the pages (the image plugin's copies), once they're settled: on `leaveNoTrace`'s list with the rest, so a picture no page uses any more goes with them. */
+	written: Array<() => Iterable<string>>;
 }
 
 export interface ConfigOptions {
@@ -265,6 +267,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		componentRenderers: [],
 		fileBuilders: [],
 		settle: [],
+		written: [],
 	};
 }
 

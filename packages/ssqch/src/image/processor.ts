@@ -637,6 +637,11 @@ export class ImageProcessor {
 		throw new BuildError(`${said(failures[0])}${more}`, items);
 	}
 
+	/** The image files this build used in the output, made or reused: `leaveNoTrace` keeps them, and removes one an earlier build used and this one didn't. */
+	usedFiles(): Iterable<string> {
+		return this.used;
+	}
+
 	/** After the build: `prune`, the hash cache, and with `--verbose` the slowest encodes. */
 	finishBuild(): void {
 		const ctx = this.context();
@@ -1489,6 +1494,7 @@ function register(config: Config, p: ImageProcessor, transform: boolean): void {
 	// sitemap, the link checker), `afterBuild` hooks and the summary. Waiting for them is part of
 	// writing, as 0.7's `Time` line had it, where they were encoded with the pages.
 	config.settle.push(() => p.settle());
+	config.written.push(() => p.usedFiles());
 	config.afterBuild.push({ label: "", fn: () => p.finishBuild() });
 	config.summaries.push(["Images", () => p.summary()]);
 }

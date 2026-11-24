@@ -722,6 +722,8 @@ declare module "ssqch/redirects" {
 		hostFile?: boolean;
 		/** Redirects that aren't a page's `aliases`: `{ "/old/": "/new/" }`. The new URL can be on another site. */
 		redirects?: Record<string, string>;
+		/** The not-found page's URL path (`"/404.html"`): with `hostFile`, the last line of `_redirects` is `/*  /404.html  404`, with the site's `base` in front of both. A host answers a miss with the 404 page by itself only at its domain's root, so a site served under a path needs this line, after every other. */
+		notFound?: string;
 	}
 
 	/** Redirects from each page's `aliases` front matter and from `redirects`. */
