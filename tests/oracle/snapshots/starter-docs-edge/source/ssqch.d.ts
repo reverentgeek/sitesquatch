@@ -502,7 +502,7 @@ declare module "ssqch/rss" {
 	export function absoluteUrl(url: string, base: string): string;
 	/** Every link and image in some HTML made absolute, for a feed's content. */
 	export function htmlToAbsoluteUrls(html: string, base: string): string;
-	/** A post's HTML for a feed: each local image points at one generated copy (`width` 1200 and the source's format by default), page-only attributes go, and every URL is made absolute against `base`, the post's address. The images are made by the image plugin, so the config needs `imagePlugin()` too. */
+	/** A post's HTML for a feed: each local image points at one generated copy (`width` 1200 and the source's format by default), a `<picture>`'s `<source srcset>` goes, page-only attributes go, and every URL is made absolute against `base`, the post's address. The images are made by the image plugin, so the config needs `imagePlugin()` too. */
 	export function feedHtml(html: string, base: string, options?: { width?: number | "auto"; format?: string }): string;
 }
 

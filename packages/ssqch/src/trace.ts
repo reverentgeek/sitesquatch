@@ -48,6 +48,8 @@ export interface Trace {
 	date: string;
 	/** Where the date came from. */
 	dateFrom: string;
+	/** `page.lastModified` and where it came from, with the `lastModified` setting. */
+	lastModified: { value: string; from: string } | undefined;
 	/** The collections the page is in. */
 	collections: string[];
 	fields: Field[];
@@ -125,7 +127,8 @@ export async function trace(config: Config, target: string): Promise<Trace> {
 
 	const setIn = (key: string) => [...page.layers].reverse().find(([, layer]) => has(layer, key) && !nullish(layer[key]))?.[0];
 	const computedDate = has(page.data, "computed") && !nullish(getPath(page.data.computed, "date"));
-	const dateFrom = computedDate ? "computed" : setIn("date") ?? (page.dateFromName ? "the file's name" : "the file's modification time");
+	const dateFrom = computedDate ? "computed" : setIn("date") ?? (page.dateFromName ? "the file's name" : page.commitFrom ?? "the file's modification time");
+	const modified = (page.data.page as Data | undefined)?.lastModified;
 	const collections: string[] = [];
 	if (page.inCollections) {
 		collections.push("all");
@@ -139,6 +142,7 @@ export async function trace(config: Config, target: string): Promise<Trace> {
 		layouts: page.layouts,
 		date: page.date.toISOString().replace(/\.\d{3}Z$/, "Z"),
 		dateFrom,
+		lastModified: modified instanceof Date && page.lastModifiedFrom !== undefined ? { value: modified.toISOString().replace(/\.\d{3}Z$/, "Z"), from: page.lastModifiedFrom } : undefined,
 		collections,
 		fields: fieldsOf(config, dirs, global, page),
 	};
@@ -181,6 +185,11 @@ export function field(traced: Trace, dotted: string): Field | undefined {
 	const [top, rest] = at === -1 ? [dotted, ""] : [dotted.slice(0, at), dotted.slice(at + 1)];
 	const found = traced.fields.find((f) => f.name === top);
 	if (!found || rest === "") return found;
+	// `page` is built in, but its `lastModified` has a source worth naming (git, or why not).
+	if (dotted === "page.lastModified" && traced.lastModified) {
+		const value = valueAt(found.value, "lastModified");
+		return { name: dotted, value, from: traced.lastModified.from, setBy: [{ from: traced.lastModified.from, value }] };
+	}
 	const pathIn = (v: unknown) => rest.split(".").reduce<unknown>(valueAt, v);
 	const setBy = found.setBy.filter((s) => !nullish(pathIn(s.value))).map((s) => ({ from: s.from, value: pathIn(s.value) }));
 	return { name: dotted, value: pathIn(found.value), from: setBy.length ? setBy[setBy.length - 1].from : found.from, setBy };
@@ -193,6 +202,7 @@ export function traceText(traced: Trace): string {
 	if (traced.outputPath !== null) row("Writes", traced.outputPath);
 	if (traced.layouts.length) row("Layouts", traced.layouts.join(" > "));
 	row("Date", `${traced.date} (from ${traced.dateFrom})`);
+	if (traced.lastModified) row("Modified", `${traced.lastModified.value} (from ${traced.lastModified.from})`);
 	row("Collections", traced.collections.length ? traced.collections.join(", ") : "none");
 	out += "\n  Data (name, value, and the level of the cascade that set it)\n";
 	const width = Math.min(24, Math.max(0, ...traced.fields.map((f) => charCount(f.name))));
@@ -229,6 +239,7 @@ export function traceJson(traced: Trace, one: Field | undefined): Record<string,
 		engines: traced.engines,
 		layouts: traced.layouts,
 		date: { value: traced.date, from: traced.dateFrom },
+		...(traced.lastModified ? { lastModified: traced.lastModified } : {}),
 		collections: traced.collections,
 	};
 	if (one) out.field = { name: one.name, value: toJsonValue(one.value), from: one.from, setBy: setByJson(one) };

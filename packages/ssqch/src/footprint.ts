@@ -7,6 +7,7 @@ import path from "node:path";
 import { BUDGETS } from "./budgets.ts";
 import type { Diagnostic } from "./diagnostics.ts";
 import { BuildError, bail, warning } from "./diagnostics.ts";
+import { imageSources } from "./image/hashes.ts";
 import { compareText, realPath } from "./paths.ts";
 import { padEnd, padStart } from "./quote.ts";
 import { bytes, count, fixed } from "./report.ts";
@@ -29,6 +30,8 @@ const KIND_OF_EXTENSION = new Map(KINDS.flatMap(([name, exts]) => exts.map((ext)
 export interface File {
 	path: string;
 	bytes: number;
+	/** An encoded image's picture, from the project (`src/img/brittle.jpg`), when the cache knows it. */
+	source?: string;
 }
 
 /** A kind of file, and how much of it there is. */
@@ -163,8 +166,11 @@ export function buildFiles(dir: string, sizes: boolean): Promise<Array<[path: st
 	});
 }
 
-/** Measures the build in `dir`. */
-export async function measure(dir: string): Promise<Footprint> {
+/** An encoded image's id, from its name (`P_kN5ULxZN-1600.jpeg`). */
+const ENCODED = /^([A-Za-z0-9_-]+)-\d+\.[a-z0-9]+$/;
+
+/** Measures the build in `dir`; with the project's `root`, each encoded image names its picture (Squatch Snacks, E7). */
+export async function measure(dir: string, root?: string): Promise<Footprint> {
 	if (!(fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory() ?? false)) bail(`${dir} isn't a folder; build the site first, or give \`ssqch footprint\` a build folder (\`ssqch footprint dist\`)`);
 	const pages: File[] = [];
 	const others: File[] = [];
@@ -172,6 +178,14 @@ export async function measure(dir: string): Promise<Footprint> {
 	const heaviest = (a: File, b: File) => b.bytes - a.bytes || compareText(a.path, b.path);
 	pages.sort(heaviest);
 	others.sort(heaviest);
+	const sources = root === undefined ? undefined : imageSources(root);
+	if (sources?.size) {
+		for (const f of others) {
+			const id = ENCODED.exec(f.path.slice(f.path.lastIndexOf("/") + 1))?.[1];
+			const source = id === undefined ? undefined : sources.get(id);
+			if (source !== undefined) f.source = source;
+		}
+	}
 	const kinds: Kind[] = [...KINDS.map(([name]) => name), OTHER].map((name) => ({ name, files: 0, bytes: 0 }));
 	for (const file of [...pages, ...others]) {
 		const kind = kinds.find((k) => k.name === kindOf(file.path))!;
@@ -205,13 +219,13 @@ export function footprintText(footprint: Footprint, shown: string, top: number):
 		for (const [size, file] of listed) out += `  ${padStart(size, w)}  ${file}\n`;
 	};
 	list("Largest footprints: pages", footprint.pages, (f) => urlOf(f.path));
-	list("Largest footprints: other files", footprint.others, (f) => `/${f.path}`);
+	list("Largest footprints: other files", footprint.others, (f) => `/${f.path}${f.source === undefined ? "" : ` (from ${f.source})`}`);
 	return out;
 }
 
 /** The report as JSON (`schemaVersion` 1). */
 export function footprintJson(footprint: Footprint, output: string, top: number): Record<string, unknown> {
-	const files = (list: File[], page: boolean) => list.slice(0, top).map((f) => (page ? { path: f.path, bytes: f.bytes, url: urlOf(f.path) } : { path: f.path, bytes: f.bytes, kind: kindOf(f.path) }));
+	const files = (list: File[], page: boolean) => list.slice(0, top).map((f) => (page ? { path: f.path, bytes: f.bytes, url: urlOf(f.path) } : { path: f.path, bytes: f.bytes, kind: kindOf(f.path), ...(f.source === undefined ? {} : { source: f.source }) }));
 	return {
 		schemaVersion: 1,
 		output,
@@ -234,7 +248,7 @@ export function overBudget(footprint: Footprint, budgets: Array<[string, number]
 		if (kind === undefined) continue;
 		const page = kind === "Pages";
 		const over = [...footprint.pages, ...footprint.others].filter((f) => kindOf(f.path) === kind && f.bytes > limit);
-		const shown = (f: File) => `${page ? urlOf(f.path) : `/${f.path}`} (${bytes(f.bytes)})`;
+		const shown = (f: File) => `${page ? urlOf(f.path) : `/${f.path}`} (${bytes(f.bytes)}${f.source === undefined ? "" : `, from ${f.source}`})`;
 		const what = page ? "page" : "file";
 		if (!over.length) continue;
 		const message = over.length === 1

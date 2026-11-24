@@ -709,3 +709,21 @@ test("mkdocs_templates_see_mkdocs_context", () => {
 	assert.ok(!bad.ok && bad.log.includes("unknown option \"template\" (did you mean \"templates\"?)"), bad.log);
 	assert.equal(read(dir, "site/assets/app.css"), "body { color: pine }\n");
 });
+
+// Added in 0.14.1: under `strict`, every language names the value that printed undefined and the
+// nearest name in the data (Squatch Snacks, E4: a mistyped key in a strings file named only the
+// line). EJS had no `strict` until then.
+test("strict_names_the_value_and_the_nearest_name_in_every_language", () => {
+	const tags = { njk: "{{ t.buttons.allSnaks }}", jinja: "{{ t.buttons.allSnaks }}", liquid: "{{ t.buttons.allSnaks }}", hbs: "{{ t.buttons.allSnaks }}", edge: "{{ t.buttons.allSnaks }}", ejs: "<%= t.buttons.allSnaks %>" };
+	for (const [engine, tag] of Object.entries(tags)) {
+		const dir = project({
+			"ssqch.config.js": `export default { strict: true, dirs: { input: "src", output: "dist" }, templateFormats: ["${engine}"] };\n`,
+			"src/_data/t.json": "{ \"buttons\": { \"allSnacks\": \"All snacks\" } }",
+			[`src/index.${engine}`]: `line one\n<a>${tag}</a>\n`,
+		}, `strict-${engine}`);
+		const r = ssqch(["build", "--root", dir, "-q"]);
+		assert.ok(!r.ok, `${engine}: ${r.log}`);
+		const said = engine === "liquid" ? "index.liquid:2: Unknown index (strict is on; did you mean `t.buttons.allSnacks`?)" : `index.${engine}:2: \`t.buttons.allSnaks\` is undefined (strict is on; did you mean \`t.buttons.allSnacks\`?)`;
+		assert.ok(r.log.includes(said), `${engine}: ${r.log}`);
+	}
+});

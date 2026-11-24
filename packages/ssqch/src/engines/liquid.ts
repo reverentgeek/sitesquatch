@@ -17,6 +17,7 @@ import { closest, closestPath } from "../suggest.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 import { DateFormatError, showDate, strftime, toInstant } from "./liquid-date.ts";
 import type { Instant } from "./liquid-date.ts";
+import { didYouMean } from "../strict-hint.ts";
 
 /** What a filter throws in a synchronous render when its function answered with a promise: the template is rendered again, asynchronously. */
 class NeedsAsync extends Error {}
@@ -950,8 +951,10 @@ function describe(e: unknown, ctx: RenderContext, env: EngineEnv, filters: strin
 /** 0.7's words for a variable or property that isn't there while `strict` is on. */
 function strictMessage(wanted: string): string {
 	const parts = wanted.split(".");
-	if (parts.length === 1) return `Unknown variable (strict is on)\n  with:\n    requested variable=${wanted}`;
-	return `Unknown index (strict is on)\n  with:\n    variable=${parts.slice(0, -1).join(".")}\n    requested index=${parts[parts.length - 1]}`;
+	// 0.7's lines, with the nearest name in the data when one is close (Squatch Snacks, E4).
+	const hint = didYouMean(wanted);
+	if (parts.length === 1) return `Unknown variable (strict is on${hint})\n  with:\n    requested variable=${wanted}`;
+	return `Unknown index (strict is on${hint})\n  with:\n    variable=${parts.slice(0, -1).join(".")}\n    requested index=${parts[parts.length - 1]}`;
 }
 
 /** Every file under `dir`, as paths from it with forward slashes, in a fixed order. */

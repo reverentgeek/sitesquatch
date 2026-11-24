@@ -5,8 +5,8 @@
 // links, emphasis, code, quotes, tables and pictures with a description. What isn't text is left
 // out: scripts and styles, forms and buttons, navigation, anything `hidden` or `aria-hidden`, a
 // heading's `#` link to itself, and a picture with `alt=""` (the HTML spec's word for one that's
-// only decoration). A custom element around headings, lists or paragraphs is read as a `<div>`
-// is: what's inside it is the page.
+// only decoration). Any element around headings, lists or paragraphs (a custom element, a
+// `<search>`, a link around a card) is read as a `<div>` is: what's inside it is the page.
 //
 // It reads HTML as browsers mostly do without building the spec's whole tree: void elements, the
 // end tags HTML lets a page leave out (`<p>`, `<li>`, `<td>`...), raw text in `<script>` and
@@ -120,12 +120,14 @@ const hidden = (el: Element) => el.attrs.has("hidden") || el.attrs.get("aria-hid
 const skipped = (el: Element) => SKIP.has(el.name) || hidden(el);
 const isBlock = (n: Node) => typeof n !== "string" && BLOCK.has(n.name);
 /**
- * A custom element (a hyphen in its name, as `elementsPlugin()`'s are) with a block somewhere
- * inside: a wrapper, read as a `<div>` is. What's inside the tag is the page without its script,
- * and as inline text its headings and lists ran together into one line. One with only text
- * (`<x-badge>New</x-badge>`) stays part of the line it's in.
+ * An element that isn't a block with a block somewhere inside: a wrapper, read as a `<div>` is.
+ * A custom element (`elementsPlugin()`'s, whose inside is the page without its script), a
+ * `<search>`, a `<span>` around a card, a link around one: as inline text, their headings and
+ * lists ran together into one line. One with only text (`<x-badge>New</x-badge>`) stays part of
+ * the line it's in. Code is read as its text, whatever is inside it.
  */
-const wraps = (el: Element): boolean => el.name.includes("-") && el.children.some(holdsBlock);
+const wraps = (el: Element): boolean => !AS_TEXT.has(el.name) && el.children.some(holdsBlock);
+const AS_TEXT = new Set(["code", "kbd", "samp", "tt"]);
 const holdsBlock = (n: Node): boolean => typeof n !== "string" && !skipped(n) && (BLOCK.has(n.name) || n.children.some(holdsBlock));
 
 /** All the text inside, as it is (for code). */
@@ -236,7 +238,8 @@ function blocks(nodes: Node[]): string[] {
 			if (typeof n !== "string" && skipped(n)) continue;
 			if (typeof n !== "string" && wraps(n)) {
 				endRun();
-				out.push(...blocks(n.children));
+				const inside = blocks(n.children);
+				out.push(...(n.name === "a" && n.attrs.get("href") ? linkFirst(inside, n.attrs.get("href")!, n.attrs.get("title")) : inside));
 				continue;
 			}
 			run.push(n);
@@ -248,6 +251,23 @@ function blocks(nodes: Node[]): string[] {
 	}
 	endRun();
 	return out;
+}
+
+/**
+ * A link around blocks (a card: `<a href><h3>Day Hike</h3><p>...</p></a>`), which Markdown has no
+ * way to write: the first heading or paragraph is the link (`### [Day Hike](/plans/day/)`), so
+ * the copy keeps where the card goes. When the first block is something else (a list, a quote,
+ * a link already), the address follows as a line of its own.
+ */
+function linkFirst(inside: string[], href: string, title: string | undefined): string[] {
+	const to = `(${destination(href)}${title ? ` "${title.replace(/"/g, "\\\"")}"` : ""})`;
+	const first = inside[0];
+	if (first !== undefined && !first.includes("\n") && !first.includes("](")) {
+		const heading = /^(#{1,6}) (.+)$/.exec(first);
+		if (heading) return [`${heading[1]} [${heading[2]}]${to}`, ...inside.slice(1)];
+		if (!/^(?:[-*+>|]\s|\d+[.)]\s|`{3}|---$|!\[)/.test(first)) return [`[${first}]${to}`, ...inside.slice(1)];
+	}
+	return [...inside, `[${escape(href)}]${to}`];
 }
 
 function block(el: Element): string[] {

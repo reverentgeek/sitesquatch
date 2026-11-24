@@ -44,7 +44,8 @@ export default defineConfig({
 		"  - src/posts/cedar.md: `date` is required (a date, like 2026-03-14) (schema `posts`)",
 		"  - src/posts/cedar.md: `title` must be a string of 20 characters or fewer (schema `posts`)",
 		"  - src/posts/cedar.md: `status` must be \"draft\" or \"published\", not \"drfat\" (schema `posts`)",
-		"  - src/posts/cedar.md: `hero.src` is \"cedar.jpg\", but there's no such file next to the page (schema `posts`)",
+		// DELIBERATE (0.14.1): where it looked, and the nearest name there when one is close (E5).
+		"  - src/posts/cedar.md: `hero.src` is \"cedar.jpg\", but there's no such file next to the page (looked for src/posts/cedar.jpg) (schema `posts`)",
 		"  - src/posts/cedar.md: `hero.alt` is required (a string) (schema `posts`)",
 		"  - src/posts/cedar.md: `descripton` isn't a field of this schema (did you mean `description`?) (schema `posts`)",
 		"  - src/guides/next.md: `order` must be a whole number, not \"second\" (schema `guides`)",

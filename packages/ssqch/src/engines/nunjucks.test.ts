@@ -155,7 +155,9 @@ test("jinja_says_what_it_cant_do", async () => {
 test("strict_mode_refuses_undefined_and_prints_none", async () => {
 	const e = engine("jinja", {}, {}, true);
 	assert.equal(e.render("[{{ n }}]", { n: null }, ctx()), "[]");
-	assert.equal(await error(() => e.render("a\n{{ nope }}", {}, ctx("p.jinja"))), "p.jinja:2: printed an undefined value (strict is on)");
+	// DELIBERATE (0.14.1): the name on the line, when one name there is undefined (Squatch Snacks, E4).
+	assert.equal(await error(() => e.render("a\n{{ nope }}", {}, ctx("p.jinja"))), "p.jinja:2: `nope` is undefined (strict is on)");
+	assert.equal(await error(() => e.render("a\n{{ one }} {{ two }}", {}, ctx("p.jinja"))), "p.jinja:2: printed an undefined value (strict is on)");
 });
 
 test("dates_in_templates_are_utc", () => {

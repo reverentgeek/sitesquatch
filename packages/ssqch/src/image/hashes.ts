@@ -88,6 +88,16 @@ function serialize(entries: Map<string, Entry>): string {
 	return JSON.stringify({ version: 1, files }, null, 2) + "\n";
 }
 
+/**
+ * The source of each image id in a project's cache (`P_kN5ULxZN` -> `src/img/snacks/brittle.jpg`,
+ * from the project), so a report can name an encoded file's picture; empty without a cache.
+ */
+export function imageSources(root: string): Map<string, string> {
+	const out = new Map<string, string>();
+	for (const [src, e] of parse(path.join(root, CACHE_FILE)) ?? []) out.set(e.id, path.relative(root, src).split(path.sep).join("/"));
+	return out;
+}
+
 function parse(file: string): Map<string, Entry> | undefined {
 	let doc: any;
 	try { doc = JSON.parse(fs.readFileSync(file, "utf8")); } catch { return undefined; }

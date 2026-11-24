@@ -30,7 +30,7 @@ export default defineConfig({
 ```text
 error: 3 content errors:
   - src/posts/cedar.md: `status` must be "draft" or "published", not "drfat" (schema `posts`)
-  - src/posts/cedar.md: `hero.src` is "cedar.jpg", but there's no such file next to the page (schema `posts`)
+  - src/posts/cedar.md: `hero.src` is "cedar.jpg", but there's no such file next to the page (looked for src/posts/cedar.jpg) (schema `posts`)
   - src/posts/cedar.md: `descripton` isn't a field of this schema (did you mean `description`?) (schema `posts`)
 
   --> src/posts/cedar.md:5
@@ -47,8 +47,8 @@ error: 3 content errors:
 - **What's checked:** each page's data after the data cascade and `computed`, so a value from a directory data file counts. Every problem in every page is reported in one go, with the file and the field.
 - **Types:** `string`, `number`, `integer`, `boolean`, `date` (a date, or a string that reads as one), `file` (a path to a file that exists: next to the page, or from the input folder with a leading `/`), `object`, `array` and `any`. A quoted value, number, `true`, `false` or `null` is that exact value, `|` is either-or, `[]` is a list, and a `?` at the end makes the field optional.
 - **Nested data:** an object of fields, or a one-item array for a list of them: `links: [{ href: "string", text: "string" }]`. A key that ends in `?` is optional too.
-- **Your own rules:** a function gets the value and the page's data, and returns `true`, `false`, or what's wrong (`` `slug` must be lowercase letters, digits and dashes ``).
+- **Your own rules:** a function gets the value and the page's data, and returns `true`, `false`, or what's wrong (`` `slug` must be lowercase letters, digits and dashes ``). An answer that goes on from the field's name (`must`, `should`, `is`, `needs`...) follows it; anything else follows a colon (`` `summary`: write the opening's own summary ``).
 - **`unknown`:** what to do about keys in a page's own front matter that aren't fields: `"allow"` (the default), `"warn"` or `"error"`. Keys ssqch reads itself (`layout`, `tags`, `permalink`, `date` and the like) are always fine, and so is data from the rest of the cascade.
-- **Editor types:** `ssqch types` adds the schemas to `ssqch.d.ts`, so `pages.byTag("posts")` in a collection function knows each page's fields.
+- **Editor types:** `ssqch types` adds the schemas to `ssqch.d.ts`, so `pages.byTag("posts")` in a collection function knows each page's fields. A build doesn't write the file, so run `ssqch types` again after adding or changing a schema; until then the editor knows the old fields.
 
 In `sitesquatch.toml`, a schema is a table: `[schemas.posts]` with `fields = { title = "string", date = "date" }`.

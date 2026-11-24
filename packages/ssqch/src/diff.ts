@@ -22,6 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { BuildError, bail } from "./diagnostics.ts";
 import { buildFiles, urlOf } from "./footprint.ts";
+import { covers, redirectRules } from "./modules/links.ts";
 import { diffOps } from "./myers.ts";
 import { compareText } from "./paths.ts";
 import { firstChars, quoted } from "./quote.ts";
@@ -113,6 +114,8 @@ export interface DiffReport {
 	added: string[];
 	/** URLs only in the first build. */
 	removed: string[];
+	/** Each removed URL the second build's `_redirects` sends on, and where. */
+	redirects: Record<string, string>;
 	changed: FileDiff[];
 	/** Changes on more than one file, the most files first. Empty with `--ungrouped`. */
 	groups: DiffGroup[];
@@ -927,8 +930,16 @@ export async function compare(before: string, after: string, options: DiffOption
 	checkOnly([listA, listB], options);
 	const a = keyed(keep(listA), options.exact);
 	const b = keyed(keep(listB), options.exact);
-	const report: DiffReport = { before, after, exact: options.exact, added: [], removed: [], changed: [], groups: [], unchangedPages: 0, unchangedFiles: 0 };
+	const report: DiffReport = { before, after, exact: options.exact, added: [], removed: [], redirects: {}, changed: [], groups: [], unchangedPages: 0, unchangedFiles: 0 };
 	for (const key of a.keys()) if (!b.has(key)) report.removed.push(urlOf(key));
+	// A removed page the second build redirects isn't gone for a visitor: say where it goes.
+	if (report.removed.length) {
+		const rules = redirectRules(after, "");
+		for (const url of report.removed) {
+			const rule = rules.find((r) => covers(r.from, url));
+			if (rule !== undefined) report.redirects[url] = rule.to;
+		}
+	}
 	for (const key of b.keys()) if (!a.has(key)) report.added.push(urlOf(key));
 	const pairs: Pair[] = [];
 	for (const [key, from] of a) {
@@ -1275,7 +1286,10 @@ export function diffText(report: DiffReport, limit: number, color: boolean): str
 	}
 	if (report.removed.length) {
 		out += `\nRemoved (${report.removed.length})\n`;
-		for (const line of listed(report.removed, "-")) out += paint("31", line);
+		for (const line of listed(report.removed, "-")) {
+			const url = line.slice(4, -1);
+			out += paint("31", Object.hasOwn(report.redirects, url) ? `${line.slice(0, -1)} (redirected to ${report.redirects[url]})\n` : line);
+		}
 	}
 	if (report.changed.length) out += `\nChanged (${report.changed.length})\n`;
 	const grouped = report.groups.length > 0;
@@ -1339,6 +1353,7 @@ export function diffJson(report: DiffReport, limit: number): Record<string, unkn
 		summary: { added: report.added.length, removed: report.removed.length, changed: report.changed.length, unchangedPages: report.unchangedPages, unchangedFiles: report.unchangedFiles },
 		added: report.added,
 		removed: report.removed,
+		redirects: report.redirects,
 		changed,
 		// Each change on more than one file, the most files first; a file's `groups` are places in this list.
 		groups: report.groups.map((g) => ({ files: g.urls.length, urls: g.urls, same: g.same, match: g.match, kind: g.kind, hunk: g.hunk, ...(g.known ? { known: g.known } : {}) })),

@@ -164,7 +164,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 			{ long: "copy-installs", help: "Copy node_modules and the other installs into each copy instead of linking them, for a tool that won't follow a link out of its folder (Hugo's are copied without it)" },
 		],
 		positionals: [{ name: "COMMAND", help: "The old generator's build command, quoted: \"npx @11ty/eleventy\"", required: true, many: true }],
-		afterHelp: "Each build runs in a fresh copy of the site (the files git would commit, or the --commit), with TZ=UTC, SOURCE_DATE_EPOCH and every file's time set to the commit's, and node_modules linked in. Then the builds are compared as `ssqch diff ref-1 ref-2 ref-3` compares them, so what changes by itself is known before anything is compared with ssqch's build.\n\n  ssqch baseline \"npx @11ty/eleventy\"\n  ssqch baseline \"bundle exec jekyll build\" --commit main\n  ssqch baseline \"npx @11ty/eleventy\" --commit HEAD~3 --patch fix-build.patch\n  ssqch diff ref-1 dist",
+		afterHelp: "Each build runs in a fresh copy of the site (the files git would commit, or the --commit), with TZ=UTC, SOURCE_DATE_EPOCH and every file's time set to the commit's, and node_modules linked in. Then the builds are compared as `ssqch diff ref-1 ref-2 ref-3` compares them, so what changes by itself is known before anything is compared with ssqch's build. On an ssqch site, it's the check that the build repeats: ssqch baseline \"npx ssqch build\" --from dist.\n\n  ssqch baseline \"npx @11ty/eleventy\"\n  ssqch baseline \"bundle exec jekyll build\" --commit main\n  ssqch baseline \"npx @11ty/eleventy\" --commit HEAD~3 --patch fix-build.patch\n  ssqch diff ref-1 dist",
 		own: true,
 	},
 	{ name: "capabilities", about: "Say what this binary supports: template languages, modules, config options and optional features", options: [FORMAT], positionals: [], own: true },
@@ -373,7 +373,7 @@ export async function main(argv: string[]): Promise<number> {
 	if (command === "patrol" && cli.positionals[0] !== undefined) return runPatrol(cli.positionals[0], cli.positionals[0], format, value("url"));
 	if (command === "footprint" && cli.positionals[0] !== undefined) {
 		try {
-			await runFootprint(cli.positionals[0], cli.positionals[0], top, format);
+			await runFootprint(cli.positionals[0], cli.positionals[0], top, format, process.cwd());
 			return 0;
 		} catch (e) {
 			process.stderr.write(`${diagnostics.red("error:")} ${describeThrown(e, process.cwd())}\n`);
@@ -447,7 +447,7 @@ export async function main(argv: string[]): Promise<number> {
 		if (command === "footprint") {
 			const dirs = dirsOf(config);
 			// Read from the folder as 0.7 named it, so an error names it the same way (`nope/_site`).
-			await runFootprint(shownDir(config, config.output), shownOutput(config), top, format);
+			await runFootprint(shownDir(config, config.output), shownOutput(config), top, format, config.root);
 			return 0;
 		}
 		const [{ build }, { summary, profileText }] = await Promise.all([import("./build.ts"), import("./report.ts")]);
@@ -565,10 +565,10 @@ async function runPatrol(dir: string, shown: string, format: string, url?: strin
 }
 
 /** `ssqch footprint`: what the build in `dir` weighs. `shown` is how the report names the folder. */
-async function runFootprint(dir: string, shown: string, top: number, format: string): Promise<void> {
+async function runFootprint(dir: string, shown: string, top: number, format: string, root: string): Promise<void> {
 	checkFormat(format);
 	const { footprintJson, footprintText, measure } = await import("./footprint.ts");
-	const measured = await measure(dir);
+	const measured = await measure(dir, root);
 	if (format === "json") process.stdout.write(JSON.stringify(footprintJson(measured, shown, top), null, 2) + "\n");
 	else process.stdout.write(footprintText(measured, shown, top));
 }

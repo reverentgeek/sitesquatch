@@ -158,7 +158,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	if (config.afterBuild.length) report.pageBytes = written.reduce((sum, w) => sum + (fs.statSync(w.file, { throwIfNoEntry: false })?.size ?? 0), 0);
 	// After the hooks, which can fingerprint or minify what's measured.
 	if (config.budgets.length) {
-		const over = overBudget(await measure(dirs.output), config.budgets);
+		const over = overBudget(await measure(dirs.output, config.root), config.budgets);
 		// `budgets.fail` makes them errors where a broken link is one: a production build, not
 		// `ssqch serve`, which keeps going so the page can be fixed.
 		if (over.length && config.budgetsFail && config.env === "production" && !config.serving) {
@@ -189,6 +189,9 @@ export interface TracedPage {
 	date: Date;
 	/** Whether the date is the one at the start of the file's name. */
 	dateFromName: boolean;
+	/** Where an undated page's date came from with `dateFallback: "git"`, and `page.lastModified`'s, in words; `undefined` when there's nothing to say. */
+	commitFrom: string | undefined;
+	lastModifiedFrom: string | undefined;
 	inCollections: boolean;
 	data: Data;
 	layers: Array<[string, Data]>;
@@ -215,11 +218,19 @@ export async function tracePages(config: Config): Promise<{ dirs: Dirs; global: 
 		layouts: (p.layouts ?? p.tpl.layouts).map((l) => l.name),
 		date: p.date,
 		dateFromName: p.tpl.fileDate !== undefined,
+		commitFrom: config.dateFallback === "git" ? gitFrom(p.tpl.commitDate !== undefined, "dateFallback", p.tpl.input) : undefined,
+		lastModifiedFrom: config.lastModified === "git" ? gitFrom(p.tpl.committed, "lastModified", p.tpl.input) : config.lastModified === "file" ? "the file's modification time: `lastModified: \"file\"`" : undefined,
 		inCollections: p.inCollections,
 		data: p.data,
 		layers: p.tpl.layers,
 	}));
 	return { dirs, global: site.global, pages };
+
+	/** "git: the last commit to src/privacy.md", or why it's the file's time: git's answer fell back quietly in a build (Squatch Snacks, E8). */
+	function gitFrom(fromGit: boolean, setting: string, file: string): string {
+		const rel = path.relative(dirs.root, file).split(path.sep).join("/");
+		return fromGit ? `git: the last commit to ${rel}` : `the file's modification time: \`${setting}: "git"\`, but ${site.gitWhy(file)}`;
+	}
 }
 
 // ---- render ----------------------------------------------------------------------------------

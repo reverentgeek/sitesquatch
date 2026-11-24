@@ -98,7 +98,10 @@ test("files_have_to_exist", async () => {
 	fs.writeFileSync(path.join(dir, "logo.svg"), "x");
 	const schema = parseSchema("posts", { fields: { photo: "file", logo: "file", missing: "file" } });
 	const found = await check(schema, { photo: "photo.jpg", logo: "/logo.svg?v=2", missing: "/nope.png" }, [], { input: dir, pageDir: path.join(dir, "posts/pine") }, dir);
-	assert.deepEqual(found.map((p) => p.message), ["`missing` is \"/nope.png\", but there's no such file in the input folder"]);
+	assert.deepEqual(found.map((p) => p.message), ["`missing` is \"/nope.png\", but there's no such file in the input folder (looked for nope.png)"]);
+	// The nearest name in the folder it looked in, written as the field writes it (Squatch Snacks, E5).
+	const near = await check(schema, { photo: "photo.jpeg", logo: "/logo.svg", missing: "/lgo.svg" }, [], { input: dir, pageDir: path.join(dir, "posts/pine") }, dir);
+	assert.deepEqual(near.map((p) => p.message), ["`photo` is \"photo.jpeg\", but there's no such file next to the page (looked for posts/pine/photo.jpeg; did you mean \"photo.jpg\"?)", "`missing` is \"/lgo.svg\", but there's no such file in the input folder (looked for lgo.svg; did you mean \"/logo.svg\"?)"]);
 	fs.rmSync(dir, { recursive: true });
 });
 
@@ -106,6 +109,8 @@ test("functions_check_values", async () => {
 	const spec = { fields: { slug: (v: unknown) => (typeof v === "string" && /^[a-z-]+$/.test(v)) || "must be lowercase letters and dashes", flag: (v: unknown) => Boolean(v) } };
 	assert.deepEqual(await problems(spec, { slug: "pine-cone", flag: true }), []);
 	assert.deepEqual(await problems(spec, { slug: "Pine Cone" }), ["`slug` must be lowercase letters and dashes", "`flag` isn't valid (missing)"]);
+	// An answer that doesn't go on from the field's name comes after a colon (Squatch Snacks, E3).
+	assert.deepEqual(await problems({ fields: { summary: () => "write the opening's own summary", trail: () => "Isn't on the map" } }, {}), ["`summary`: write the opening's own summary", "`trail` Isn't on the map"]);
 	// One that's async is waited for, and its answer keeps the field's place.
 	const later = { fields: { first: async () => "comes first", second: () => "comes second", third: () => { throw new Error("pine cones"); } } };
 	const said = await problems(later, {});

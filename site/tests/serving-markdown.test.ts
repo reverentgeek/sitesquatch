@@ -46,7 +46,9 @@ test("the Cloudflare Worker answers Markdown to an agent and the page to a brows
 test("the Netlify edge function answers Markdown to an agent and hands a browser on", async () => {
 	const fn = blocks.find((b) => b.includes("export const config = { path: \"/*\""));
 	assert.ok(fn, "no edge function on the page");
-	const { default: edge, config } = await load(`${shared}\n${fn}`);
+	// One block to paste, the shared functions in it as they are above (Squatch Snacks, D6).
+	assert.ok(fn.startsWith(shared), "the edge function's block doesn't start with the shared functions");
+	const { default: edge, config } = await load(fn);
 	assert.deepEqual(config.header, { accept: "text/markdown" });
 	const real = globalThis.fetch;
 	globalThis.fetch = (async (u: URL) => (new URL(u).pathname === "/guide/index.md" ? new Response("# Guide\n") : new Response("gone", { status: 404 }))) as typeof fetch;

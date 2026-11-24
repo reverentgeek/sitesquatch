@@ -46,6 +46,13 @@ test("feeds and their escaped HTML are scanned", () => {
 	assert.equal(unescapeXml("a &amp;lt; &#39;b&#x27; &bogus; &"), "a &lt; 'b' &bogus; &");
 });
 
+test("a path in a feed's code is an example, not a link", () => {
+	const feed = `<feed><entry><id>/posts/a/</id><content type="html">&lt;p&gt;&lt;code&gt;/snacks/*&lt;/code&gt; and &lt;kbd&gt;/help&lt;/kbd&gt;&lt;/p&gt;&lt;pre class=&quot;x&quot;&gt;&lt;code&gt;/etc/hosts&lt;/code&gt;&lt;/pre&gt;&lt;pre&gt;&lt;a href=&quot;/real/&quot;&gt;r&lt;/a&gt;&lt;/pre&gt;</content></entry></feed>`;
+	assert.deepEqual(scanXml(feed).sort(), ["/posts/a/", "/real/"]);
+	// A custom element named like one isn't code.
+	assert.deepEqual(scanXml(`<feed><content type="html">&lt;code-block&gt;&lt;/code-block&gt;&lt;p&gt;/one/&lt;/p&gt;&lt;code&gt;x&lt;/code&gt;</content></feed>`), ["/one/"]);
+});
+
 test("absolute links on the site are its paths", () => {
 	assert.equal(originOf("https://Example.com/blog/"), "https://example.com");
 	assert.equal(originOf("example.com"), undefined);
@@ -63,4 +70,16 @@ test("redirect rules cover their sources", () => {
 	assert.ok(redirected(sources, "/old-post/"));
 	assert.ok(redirected(sources, "/archive/2019/"));
 	assert.ok(!redirected(sources, "/new-post/"));
+});
+
+test("a redirect with placeholders covers each segment they stand for", () => {
+	const sources = ["/news/:year/:slug/", "/trails/:name/*"];
+	assert.ok(redirected(sources, "/news/2019/pine-cones/"));
+	assert.ok(redirected(sources, "/news/2019/pine-cones"));
+	assert.ok(!redirected(sources, "/news/2019/"));
+	assert.ok(!redirected(sources, "/news/2019/pine-cones/photos/"));
+	assert.ok(!redirected(sources, "/news//pine-cones/"));
+	assert.ok(redirected(sources, "/trails/cedar/map/"));
+	assert.ok(redirected(sources, "/trails/cedar/"));
+	assert.ok(!redirected(sources, "/trail/cedar/map/"));
 });

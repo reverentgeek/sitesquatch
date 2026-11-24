@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { contentType, inside, linksAnIcon, mounted, notFoundPage, pageFile, pageUrls, percentDecode, prefersMarkdown, queryValue } from "./http.ts";
+import { contentType, icon, inside, linksAnIcon, mounted, notFoundPage, pageFile, pageUrls, percentDecode, prefersMarkdown, queryValue } from "./http.ts";
 
 function tempDir(name: string): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), `ssqch-${name}-`));
@@ -94,4 +94,23 @@ test("a_request_that_prefers_markdown_by_name_gets_it", () => {
 	// A browser's, curl's, and a request that ranks HTML higher or turns Markdown off.
 	for (const no of [undefined, "", "*/*", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "text/html, text/markdown;q=0.5", "text/markdown;q=0", "text/*"]) assert.ok(!prefersMarkdown(no), String(no));
 	assert.equal(contentType("guide/index.md"), "text/markdown; charset=utf-8");
+});
+
+// The tab icon for a site without one is sitesquatch.dev's, so a new site's tab looks like the
+// site's (it was the hand-drawn stand-in after the site's changed in ba21477).
+test("the tab icon is sitesquatch.dev's (copy site/src/favicon.svg into tab-icon.ts after it changes)", () => {
+	const site = fs.readFileSync(path.join(import.meta.dirname, "..", "..", "..", "..", "site", "src", "favicon.svg"), "utf8").trimEnd();
+	assert.equal(icon(false), site);
+	assert.equal(icon(true), site.replace("fill=\"#233b2b\"", "fill=\"#a23e20\""));
+	assert.notEqual(icon(true), site);
+});
+
+// The 404 page's patch has the same drawing, in pine on its stripes, placed as the site's trail
+// patch places it.
+test("the 404 page's patch is the illustrated footprint", () => {
+	const page = notFoundPage(fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-patch-")), "/nope/", "");
+	const drawing = /<g fill="#fff3d6" transform="[^"]*">([\s\S]*)<\/g><\/svg>$/.exec(icon(false))?.[1];
+	assert.ok(drawing && drawing.length > 1000);
+	assert.ok(page.includes(`<g fill="#233b2b" transform="rotate(14 100 100) translate(100 100) scale(0.2272) translate(-186.5 -290.5)">${drawing}</g></svg>`), page);
+	assert.ok(page.includes("#e8af43") && page.includes("#a9b66a"), page);
 });

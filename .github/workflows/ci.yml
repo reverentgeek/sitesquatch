@@ -3,7 +3,8 @@
 # which site.yml checks and deploys with this commit's ssqch, and the repository's own prose
 # (the README, CONTRIBUTING.md, AGENTS.md, CHANGELOG.md and docs/), and the agents' skills
 # (.claude/, which no test reads). The docs pages (site/src/docs/) are the exception: `ssqch docs`
-# reads them and the package carries them, so a change to one runs CI. A release commit changes
+# reads them and the package carries them, so a change to one runs CI; so is site/src/favicon.svg,
+# which the dev server's tab icon is a copy of (serve/http.test.ts checks). A release commit changes
 # packages/ssqch/package.json, so CI always runs on what check-ci.yml waits for. A path that
 # matches a later pattern follows that one.
 name: CI
@@ -11,9 +12,9 @@ name: CI
 on:
   push:
     branches: [main, "release/**"]
-    paths: ["**", "!site/**", "site/src/docs/**", "!.github/workflows/site.yml", "!README.md", "!CONTRIBUTING.md", "!AGENTS.md", "!CHANGELOG.md", "!docs/**", "!.claude/**"]
+    paths: ["**", "!site/**", "site/src/docs/**", "site/src/favicon.svg", "!.github/workflows/site.yml", "!README.md", "!CONTRIBUTING.md", "!AGENTS.md", "!CHANGELOG.md", "!docs/**", "!.claude/**"]
   pull_request:
-    paths: ["**", "!site/**", "site/src/docs/**", "!.github/workflows/site.yml", "!README.md", "!CONTRIBUTING.md", "!AGENTS.md", "!CHANGELOG.md", "!docs/**", "!.claude/**"]
+    paths: ["**", "!site/**", "site/src/docs/**", "site/src/favicon.svg", "!.github/workflows/site.yml", "!README.md", "!CONTRIBUTING.md", "!AGENTS.md", "!CHANGELOG.md", "!docs/**", "!.claude/**"]
   workflow_dispatch:
 
 concurrency:

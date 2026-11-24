@@ -18,7 +18,8 @@ import { configOptions } from "../config.ts";
 import { red } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import type { Equivalent } from "../equivalents.ts";
-import { BUILTIN_FILTERS } from "../filters.ts";
+import { BUILTIN_FILTERS, PLUGIN_FUNCTIONS } from "../filters.ts";
+import { compareText } from "../paths.ts";
 import { closest } from "../suggest.ts";
 import { VERSION } from "../version.ts";
 import { modules } from "./capabilities.ts";
@@ -103,12 +104,12 @@ export function sections(readme: string = docsText()): Section[] {
 }
 
 /** The sections inside section `i` (one level down). */
-function children(all: Section[], i: number): number[] {
+function children(all: Section[], i: number, deep = false): number[] {
 	const level = all[i].level;
 	const out: number[] = [];
 	for (let j = i + 1; j < all.length; j++) {
 		if (all[j].level <= level) break;
-		if (all[j].level === level + 1) out.push(j);
+		if (deep || all[j].level === level + 1) out.push(j);
 	}
 	return out;
 }
@@ -345,6 +346,19 @@ export function plainTitle(title: string): string {
 }
 
 function heading(all: Section[], query: string): number | undefined {
+	// `Parent > Child`: a section by the one it's in, for a title two pages share ("Serving
+	// Markdown to agents > Netlify", which `Netlify` alone doesn't reach: the deploy page has it).
+	const parts = query.split(/\s+>\s+/);
+	if (parts.length > 1) {
+		let at: number | undefined = heading(all, parts[0]);
+		for (const part of parts.slice(1)) {
+			if (at === undefined) return undefined;
+			const inside = children(all, at, true);
+			const q = words(part);
+			at = inside.find((j) => words(all[j].title).join(" ") === q.join(" ") || words(plainTitle(all[j].title)).join(" ") === q.join(" ")) ?? inside.find((j) => q.every((w) => words(all[j].title).some((t) => t.startsWith(w))));
+		}
+		return at;
+	}
 	const q = words(query);
 	if (q.length === 0) return undefined;
 	const anchor = query.replace(/^#+/, "");
@@ -460,6 +474,14 @@ export function answer(grammar: Grammar, all: Section[], known: Name[], rawQuery
 	return { ...blank, section, passages: [block], also: others.slice(0, 4) };
 }
 
+/** Up to three names with a word of `query` in them (a word of four letters or more, its plural's `s` off), shortest first. */
+function namesWith(known: Name[], query: string): string[] {
+	const stems = words(query).filter((w) => w.length >= 4).map((w) => (w.length > 4 && w.endsWith("s") ? w.slice(0, -1) : w));
+	if (!stems.length) return [];
+	const found = [...new Set(known.filter((n) => n.kind !== "flag" && stems.some((w) => n.name.toLowerCase().includes(w))).map((n) => n.name))];
+	return found.sort((a, b) => a.length - b.length || compareText(a, b)).slice(0, 3);
+}
+
 /** A name, heading or word close to `query`, for "did you mean". */
 function closestName(all: Section[], known: Name[], query: string): string | undefined {
 	return closest(query, [...known.map((n) => n.name), ...all.map((s) => s.title), ...equivalents.TABLE.map((e) => e.word)]);
@@ -475,7 +497,9 @@ function sectionText(all: Section[], i: number): string {
 	let out = `${"#".repeat(Math.max(s.level, 2))} ${s.title}\n`;
 	if (s.body !== "") out += `\n${s.body}\n`;
 	const inside = children(all, i);
-	if (inside.length) out += `\nIn this section (ssqch docs "<title>"): ${inside.map((j) => `"${all[j].title}"`).join(", ")}\n`;
+	// A title another section has too is asked for with this one's (`"On a host > Netlify"`).
+	const shared = (j: number) => all.some((t, k) => k !== j && words(t.title).join(" ") === words(all[j].title).join(" "));
+	if (inside.length) out += `\nIn this section (ssqch docs "<title>"): ${inside.map((j) => `"${shared(j) ? `${plainTitle(s.title)} > ` : ""}${all[j].title}"`).join(", ")}\n`;
 	return out;
 }
 
@@ -527,6 +551,9 @@ function card(all: Section[], known: Name[]): string {
 	group("Commands", of("command"), 2);
 	group("Config options (ssqch.config.js)", of("config option"), 2);
 	group("Template functions", of("template function"), 2);
+	// The rest, so one list has them all: the plugins' (when the config adds them), and each language's own.
+	out += `  From plugins: ${PLUGIN_FUNCTIONS.map(([plugin, names]) => `${names.map((n) => `\`${n}\``).join(", ")} (${plugin})`).join("; ")}.\n`;
+	out += "  Each template language's own filters work too (Jinja's and Nunjucks' `dateformat`, Liquid's `date`): `ssqch docs \"template languages\"`.\n";
 	const mods: string[] = [];
 	for (const n of known.filter((n) => n.kind === "module export")) if (n.module !== null && !mods.includes(n.module)) mods.push(n.module);
 	out += "\nModules (import { name } from \"module\")\n";
@@ -717,10 +744,13 @@ export function runDocs(grammar: Grammar, command: DocsCommand): number {
 	if (trail) return out(json ? JSON.stringify({ query, found: true, trailhead: trail }, null, 2) + "\n" : `From "${trail.page}" (ssqch docs --from ${trail.generator}):\n\n${trail.text}`);
 	const near = closestName(all, known, query);
 	const next = near === undefined ? nextStep(grammar, all, known, query) : undefined;
+	// Names with a word of the query in them (`images` -> imagePlugin, image()), when nothing is
+	// spelled like it: a start for an agent that guessed a word the docs don't use.
+	const nearest = near === undefined && next === undefined ? namesWith(known, query) : [];
 	if (json) {
-		out(JSON.stringify({ query, found: false, didYouMean: near ?? null, tryInstead: next ?? null }, null, 2) + "\n");
+		out(JSON.stringify({ query, found: false, didYouMean: near ?? null, tryInstead: next ?? null, nearest }, null, 2) + "\n");
 	} else {
-		const hint = near ? ` (did you mean \`${near}\`?)` : "";
+		const hint = near ? ` (did you mean \`${near}\`?)` : nearest.length ? `; nearest names: ${nearest.map((n) => `\`${n}\``).join(", ")}` : "";
 		process.stderr.write(`${red("error:")} no tracks of "${query}" in the docs${hint}. ${next ? `Try \`${next}\`, or \`ssqch docs\` for everything.` : "`ssqch docs` lists everything."}\n`);
 	}
 	return 1;

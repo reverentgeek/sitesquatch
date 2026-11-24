@@ -65,6 +65,17 @@ test("a custom element around blocks is read as a div is", () => {
 	assert.equal(htmlToMarkdown("<main><p>Shown</p><x-menu hidden><p>Not shown</p></x-menu><x-tip><p hidden>Nor this</p> but this</x-tip></main>"), "Shown\n\nbut this\n");
 });
 
+test("any element around blocks is read as a div is, and a link around them links the first", () => {
+	// A `<search>` and a `<span>` around a card, which ran together as `Find a trailCedarOld Growth`.
+	assert.equal(htmlToMarkdown("<main><search><h2>Find a trail</h2><ul><li>Cedar</li><li>Old Growth</li></ul></search><span class=\"card\"><h3>Ranger</h3><p>On duty.</p></span></main>"), "## Find a trail\n\n- Cedar\n- Old Growth\n\n### Ranger\n\nOn duty.\n");
+	// A link around a card: its heading is the link, or its first paragraph.
+	assert.equal(htmlToMarkdown("<main><a href=\"/plans/day/\" title=\"The plan\"><h3>Day Hike</h3><p>For weekend walkers.</p></a><a href=\"/plans/thru/\"><p>Thru Hike</p><p>For the long trail.</p></a></main>"), "### [Day Hike](/plans/day/ \"The plan\")\n\nFor weekend walkers.\n\n[Thru Hike](/plans/thru/)\n\nFor the long trail.\n");
+	// When the first block can't be the link (a list), the address follows on its own line.
+	assert.equal(htmlToMarkdown("<main><a href=\"/snacks/\"><ul><li>Crunch</li></ul></a></main>"), "- Crunch\n\n[/snacks/](/snacks/)\n");
+	// Text only, a link stays in its line; code is its text.
+	assert.equal(htmlToMarkdown("<main><p>See <a href=\"/x/\">the trail</a> and <span>this</span>.</p></main>"), "See [the trail](/x/) and this.\n");
+});
+
 test("text that Markdown would read as markup is escaped", () => {
 	assert.equal(htmlToMarkdown("<p>2 * 3 is [six] and <b>_x_</b> but snake_case stays</p>"), "2 \\* 3 is \\[six\\] and **\\_x\\_** but snake_case stays\n");
 	assert.equal(htmlToMarkdown("<p># not a heading</p><p>1. not a list</p><p>&lt;div&gt; is text</p>"), "\\# not a heading\n\n1\\. not a list\n\n\\<div> is text\n");

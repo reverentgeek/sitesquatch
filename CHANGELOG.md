@@ -9,6 +9,93 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## 0.14.1 - 2026-11-24
+
+### Added
+
+- `ssqch footprint` and a budget's warning name the picture an encoded image came from:
+  `/img/P_kN5ULxZN-1600.jpeg (from src/img/snacks/summit-seed-brittle.jpg)`, and `source` in
+  the JSON, where the id alone sent people to `.cache/ssqch/image-hashes.json`.
+- `ssqch trace` says where `page.lastModified` came from, on a `Modified` row (and
+  `lastModified` in the JSON, and with `--field page.lastModified`): `git: the last commit to
+  src/privacy.md`, or why it's the file's time (`` `lastModified: "git"`, but the project isn't
+  in a git repository ``). The build falls back quietly, and `trace` said "built in".
+- `linksPlugin()` notes a link that works through a redirect (a `_redirects` line, or a redirect
+  page): `note: 1 link goes through a redirect` with each link, where it ends up, and the pages
+  it's on. A note, not a warning, and none for a page's link to its own old address.
+- `ssqch diff` says where a removed page goes when the second build's `_redirects` sends it on:
+  `- /old/ (redirected to /new/)`, and `redirects` in the JSON.
+- `ssqch docs "Parent > Child"` prints a section inside another, for a title two pages share:
+  `ssqch docs "On a host > Netlify"` is the edge function for serving Markdown, where `Netlify`
+  alone is the deploy page. A section's list of what's in it writes a shared title that way.
+- `ssqch docs` answers what Squatch Snacks asked and couldn't find: `forms` (Netlify Forms, on
+  the Netlify page), `dark mode` (how the starters do it), and `art direction` (a crop for a
+  phone). A query nothing answers, and nothing is spelled like, names up to three names with a
+  word of it in them (`nearest names: feedHtml, feedPlugin`, and `nearest` in the JSON).
+- `ssqch baseline`'s help and "Comparing builds" say it checks that an ssqch site's own build
+  repeats: `ssqch baseline "npx ssqch build" --from dist`.
+- One list has every template function: `ssqch docs` adds each plugin's (`imageUrl`,
+  `feedHtml`, `markdownCopy`, ... with the plugin that adds it) under "Template functions", and
+  says where each language's own are; `ssqch capabilities` lists them all, and its JSON has
+  `templateFunctions`.
+
+### Changed
+
+- A link broken on several pages (a sidebar's) is one line in the build's list, with the pages
+  it's on: `/a/, /b/, /c/ and 5 more -> /team/ (not found)`, where it was a line for each page.
+  On one page it's `page -> link (reason)` as before, and the JSON still has an entry for each.
+- The Netlify edge function in "Serving Markdown to agents" is one block to paste, with the
+  three functions it uses.
+- `navTree`'s entry says its marks follow the tree, not the URL (a flat menu's "Snacks" isn't
+  `ancestor` on a snack's page), with the template check for a flat menu.
+- The docs say `ssqch.base` is there in every template, and in `data.ssqch` for a `computed`
+  function and `this.data.ssqch` in a filter; that `ssqch types` has to run again after a schema
+  changes; and the starters' `AGENTS.md` says to build the "before" copy into a folder that
+  isn't there yet, so leftovers don't show up as differences.
+
+### Fixed
+
+- `linksPlugin()` no longer reads a path in a feed entry's code (`<code>/snacks/*</code>`, and
+  `<kbd>`, `<samp>`, `<pre>` and `<var>`) as a link and fails the build on it. A path in code is
+  an example, as it already was on a page. A link in a `<pre>` (`<a href>`) is still checked.
+  The summary's `Links` count is lower by those paths (the starter's, 222 to 219).
+- `feedHtml()`, and so `feedPlugin()`, takes out a `<picture>`'s `<source srcset>` (a crop for
+  phones, say). It pointed at the original file, which the page's images publish under another
+  name, so a reader that showed it showed nothing. The `<img>` is the feed's one copy, as it was
+  already; `ssqch:ignore` on a `<source>` keeps it as written.
+- `linksPlugin()` follows a `_redirects` line with `:name` placeholders (`/news/:year/:slug/`),
+  as it did one with a `*`: a link that only such a line covers was reported as broken. Each
+  `:name` is one whole segment of the path.
+- `llmsPlugin()`'s Markdown copy of a page keeps the headings, lists and paragraphs inside any
+  element, as 0.14.0 did for a custom element: a `<search>`, or a `<span>` or a link around a
+  card, ran them together into one line. A link around a card makes its first heading or
+  paragraph the link (`### [Day Hike](/plans/day/)`).
+- `ssqch serve` gives a site without an icon of its own sitesquatch.dev's tab icon, the
+  illustrated footprint, instead of the hand-drawn stand-in it replaced. It's still burnt orange
+  while the build is broken. The trail patch on its 404 page has the illustrated footprint too.
+- A schema rule's message that doesn't go on from the field's name comes after a colon:
+  `` `summary`: write the opening's own summary ``, where it read as one sentence. An answer
+  that does (`must be lowercase`) still follows the name.
+- A schema's `file` field that names a missing file says where it looked, from the project
+  (`looked for src/posts/cedar.jpg`), and the nearest name in that folder when one is close
+  (`did you mean "photo.jpg"?`).
+- `strict` names the value that printed undefined and the nearest name in the page's data:
+  `` `t.buttons.allSnaks` is undefined (strict is on; did you mean `t.buttons.allSnacks`?) ``.
+  Nunjucks and Jinja said only `printed an undefined value`, and the others named it without a
+  suggestion; Liquid keeps 0.7's lines, with the suggestion in the first.
+- `strict` works in EJS, as the docs said it did in every language: a `<%= %>` or `<%- %>` that
+  printed `undefined` printed nothing. A strict EJS site that prints an undefined value now
+  fails its build there, naming it. A name EJS doesn't have at all (`titel is not defined`)
+  gets the nearest name too.
+- `ssqch trace` said an undated page's date came from `the file's modification time` when
+  `dateFallback: "git"` had taken it from git. It says `git: the last commit to <file>`, or why
+  git had nothing.
+- `image()` takes a path from the project and `imageUrl()` one from the site's root, and each
+  given the other kind says where it looked and names the path it meant, where `image()` said
+  only `file not found` with a whole path. The docs say which takes which.
+- A link with a query in a page's Markdown copy goes to the page (`/contact/?plan=day-hike`),
+  which reads it, not to `/contact/index.md?plan=day-hike`.
+
 ## 0.14.0 - 2026-11-23
 
 ### Breaking

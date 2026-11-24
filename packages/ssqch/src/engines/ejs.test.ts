@@ -89,3 +89,16 @@ test("a_printed_promise_that_fails_names_its_line", async () => {
 	// A syntax error that isn't an unclosed block says what JavaScript said.
 	assert.equal(await failure(() => ejs.render("<%= ) %>", {}, site.ctx("bad.ejs"))), "bad.ejs:1: syntax error in the template's code: Unexpected token ')'");
 });
+
+// `strict` in EJS too, as the docs say of every language (it printed nothing before 0.14.1): what
+// `<%=` or `<%-` prints undefined is an error naming the name on the line, and without `strict`
+// it prints nothing.
+test("strict_names_what_printed_undefined", async () => {
+	const strict = ejsEngine(testSite({}, {}, true).env);
+	const ctx = testSite({}).ctx("page.ejs");
+	assert.equal(await failure(() => strict.render("one\n<a><%= t.titel %></a>", { t: { title: "x" } }, ctx)), "page.ejs:2: `t.titel` is undefined (strict is on)");
+	assert.equal(await failure(() => strict.render("<%- t.nope %>", { t: {} }, ctx)), "page.ejs:1: `t.nope` is undefined (strict is on)");
+	assert.equal(strict.render("<%= locals.title ?? \"Untitled\" %>|<%= locals.subtitle ? 1 : 0 %>|<%= null %>", {}, ctx), "Untitled|0|");
+	const lenient = ejsEngine(testSite({}).env);
+	assert.equal(lenient.render("[<%= nope %>][<%- t.nope %>]", { nope: undefined, t: {} }, ctx), "[][]");
+});

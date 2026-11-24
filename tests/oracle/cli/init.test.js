@@ -38,7 +38,9 @@ test("init_creates_a_site_that_builds", () => {
 	// (the new-blog run), so it has more links.
 	// DELIBERATE (0.14): two more posts, on redirects and footprint budgets (the 0.5 review's
 	// examples), and a redirect page for the one that moved.
-	assert.ok(r.log.includes("Links   222 checked, 0 broken"), r.log);
+	// DELIBERATE (0.14.1): paths in the feed's code (`/feed.xml`, the old address in backticks) are
+	// examples, not links, as they are on a page.
+	assert.ok(r.log.includes("Links   219 checked, 0 broken"), r.log);
 	// The post that moved: its old address sends readers on, and stays out of the sitemap.
 	assert.ok(read(dir, "dist/posts/where-did-the-stump-go/index.html").includes("<meta http-equiv=\"refresh\" content=\"0; url=/posts/the-stump-has-a-forwarding-address/\">") && !read(dir, "dist/sitemap.xml").includes("where-did-the-stump-go"), r.log);
 	// The stump's photo, copied as its bytes, and made a <picture> in the post.
@@ -100,7 +102,7 @@ test("init_starts_a_site_in_each_engine", () => {
 
 		r = ssqch(["build", "--root", d]);
 		assert.ok(r.ok, `${engine}: ${r.log}`);
-		assert.ok(r.log.includes("Links   222 checked, 0 broken") && !r.log.includes("warn"), `${engine}: ${r.log}`);
+		assert.ok(r.log.includes("Links   219 checked, 0 broken") && !r.log.includes("warn"), `${engine}: ${r.log}`);
 		assert.ok(read(dir, "dist/posts/the-cache-of-the-wild/index.html").includes("Tagged <a href=\"/tags/raccoons/\">raccoons</a>, <a href=\"/tags/trails/\">trails</a></p>") && read(dir, "dist/feed.xml").includes("<content type=\"html\">&lt;p&gt;"), `${engine}: tags and feed`);
 		const home = read(dir, "dist/index.html");
 		assert.ok(home.includes("<a href=\"/posts/i-know-what-i-saw/\">I Know What I Saw</a> (January 1, 2026)"), `${engine}: ${home}`);

@@ -9,6 +9,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { relative, walkFiles } from "../paths.ts";
 import { closestPath } from "../suggest.ts";
+import { TAB_ICON } from "./tab-icon.ts";
 import type { Live } from "./live.ts";
 
 /** The script added to each HTML page the server sends. It asks `/__ssqch/build` what changed since it last looked. */
@@ -21,22 +22,22 @@ const NOT_FOUND_PAGE = fs.readFileSync(new URL("./not-found.html", import.meta.u
  * The footprint as a 1970s trail patch: broad harvest-gold and avocado stripes behind it, in a
  * pine ring. The picture on the dev server's 404 page.
  */
-const PATCH = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\" role=\"img\" aria-label=\"A trail patch with one very large footprint\"><defs><clipPath id=\"ssqch-patch\"><circle cx=\"100\" cy=\"100\" r=\"96\"/></clipPath></defs><g clip-path=\"url(#ssqch-patch)\"><rect width=\"200\" height=\"200\" fill=\"#e8af43\"/><rect y=\"40\" width=\"200\" height=\"40\" fill=\"#a9b66a\"/><rect y=\"120\" width=\"200\" height=\"40\" fill=\"#a9b66a\"/></g><circle cx=\"100\" cy=\"100\" r=\"92\" fill=\"none\" stroke=\"#233b2b\" stroke-width=\"8\"/><g fill=\"#233b2b\" transform=\"rotate(12 100 100) translate(48 20) scale(0.8)\">";
+const PATCH = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\" role=\"img\" aria-label=\"A trail patch with one very large footprint\"><defs><clipPath id=\"ssqch-patch\"><circle cx=\"100\" cy=\"100\" r=\"96\"/></clipPath></defs><g clip-path=\"url(#ssqch-patch)\"><rect width=\"200\" height=\"200\" fill=\"#e8af43\"/><rect y=\"40\" width=\"200\" height=\"40\" fill=\"#a9b66a\"/><rect y=\"120\" width=\"200\" height=\"40\" fill=\"#a9b66a\"/></g><circle cx=\"100\" cy=\"100\" r=\"92\" fill=\"none\" stroke=\"#233b2b\" stroke-width=\"8\"/>";
 
 /**
- * The tab icon: a map-paper footprint on a solid circle, big enough to read at 16 pixels.
- * `{circle}` is pine, or burnt orange while the build is broken.
+ * The illustrated footprint (docs/assets/footprint.svg, 373 by 581), from the tab icon, so there's
+ * one copy of the drawing. On the patch it's pine, placed as sitesquatch.dev's trail patch places
+ * it (`.trail-patch::before` in site/src/assets/site.css: a box 44% wide and 66% tall, the drawing
+ * contained in it, turned 14 degrees).
  */
-const ICON = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\"><circle cx=\"100\" cy=\"100\" r=\"100\" fill=\"{circle}\"/><g fill=\"#fff3d6\" transform=\"rotate(10 100 100) translate(42 5) scale(0.9)\">";
-
-/** The footprint itself, from the 404 page's patch and the tab icon. */
-const FOOTPRINT = "<path d=\"M62 72c27 0 39 22 35 56-4 31-13 64-37 64s-32-33-35-64c-3-34 10-56 37-56z\"/><circle cx=\"20\" cy=\"62\" r=\"8\"/><circle cx=\"37\" cy=\"44\" r=\"9\"/><circle cx=\"57\" cy=\"33\" r=\"10\"/><circle cx=\"79\" cy=\"30\" r=\"11\"/><circle cx=\"102\" cy=\"42\" r=\"14\"/></g></svg>";
+const DRAWING = /<g fill="#fff3d6" transform="[^"]*">([\s\S]*)<\/g><\/svg>$/.exec(TAB_ICON)?.[1] ?? "";
+const FOOTPRINT = `<g fill="#233b2b" transform="rotate(14 100 100) translate(100 100) scale(${Number(Math.min((200 * 0.44) / 373, (200 * 0.66) / 581).toFixed(4))}) translate(-186.5 -290.5)">${DRAWING}</g></svg>`;
 
 /** The 404 page's trail patch. */
 const patch = () => `${PATCH}${FOOTPRINT}`;
 
-/** The tab icon, pine or (while the build is broken) burnt orange. */
-export const icon = (broken: boolean) => `${ICON.replace("{circle}", broken ? "#a23e20" : "#233b2b")}${FOOTPRINT}`;
+/** The tab icon, sitesquatch.dev's: its circle pine, or burnt orange while the build is broken. */
+export const icon = (broken: boolean) => (broken ? TAB_ICON.replace("fill=\"#233b2b\"", "fill=\"#a23e20\"") : TAB_ICON);
 
 /** Text for a page of the server's own: `&`, `<`, `>`, `"`, `'` and a backtick, as 0.7 wrote them. */
 function escapeHtml(s: string): string {

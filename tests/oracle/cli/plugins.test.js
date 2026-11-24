@@ -531,7 +531,7 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge
 const d = await image("src/img/squatch.png", { formats: ["auto"], widths: [20] });
 export default { keys: Object.keys(d).join(","), same: d.auto[0].url === d.png[0].url, url: imageUrl("/img/squatch.png", { width: 10, format: "webp" }).url };
 `,
-		"src/posts/hike/index.md": "---\ntags: posts\n---\n<img src=\"./map.png\" alt=\"Map\" loading=\"lazy\" ssqch:widths=\"16\"> <a href=\"/img/squatch.png\">big</a> <img src=\"/img/squatch.png\" width=\"20\" alt=\"Small\">\n",
+		"src/posts/hike/index.md": "---\ntags: posts\n---\n<img src=\"./map.png\" alt=\"Map\" loading=\"lazy\" ssqch:widths=\"16\"> <a href=\"/img/squatch.png\">big</a> <img src=\"/img/squatch.png\" width=\"20\" alt=\"Small\"> <picture><source media=\"(max-width: 40rem)\" srcset=\"./map.png\"><img src=\"/img/squatch.png\" alt=\"Cropped\"></picture>\n",
 		"src/feed.edge": "---\npermalink: feed.xml\n---\n@each(post in collections.posts)\n<content>{{ feedHtml(post.templateContent, \"https://example.com\" + post.url) }}</content>\n@end\n",
 		"src/index.edge": "<html><head><meta property=\"og:image\" content=\"{{ imageUrl('/img/squatch.png', { width: 1200 }).url }}\"><link rel=\"stylesheet\" href=\"/s.css\"></head><body><img src=\"/img/squatch.png\" alt=\"Banner\" ssqch:preload sizes=\"auto, 50vw\"><p>{{ logo.keys }} {{ logo.same }} {{ logo.url }} {{ JSON.stringify(imageUrl('https://cdn.example.com/a.png')) }}</p></body></html>",
 		"src/bad.edge": "---\npermalink: false\n---\n",
@@ -555,7 +555,10 @@ export default { keys: Object.keys(d).join(","), same: d.auto[0].url === d.png[0
 	const feed = read(root, "dist/feed.xml");
 	// One absolute URL per image (the page's own width when it has one), no srcset or lazy loading,
 	// and a link to an image goes to its published copy.
-	assert.ok(!feed.includes("srcset") && !feed.includes("loading") && !feed.includes("ssqch:") && !feed.includes("picture"), feed);
+	// A picture of the author's keeps only its `<img>`: its `<source srcset>` pointed at the
+	// original, which isn't published under that name (0.14.1).
+	assert.ok(!feed.includes("srcset") && !feed.includes("loading") && !feed.includes("ssqch:") && !feed.includes("source"), feed);
+	assert.ok(/&lt;picture&gt;&lt;img src=&quot;https:\/\/example\.com\/img\/[^&]+-64\.png&quot; alt=&quot;Cropped&quot;&gt;&lt;\/picture&gt;/.test(feed), feed);
 	assert.ok(feed.includes("&lt;img src=&quot;https://example.com/img/") && feed.includes("-64.png&quot; alt=&quot;Map&quot;&gt;"), feed);
 	assert.ok(feed.includes("-20.png&quot; width=&quot;20&quot; alt=&quot;Small&quot;&gt;"), feed);
 	assert.ok(feed.includes("&lt;a href=&quot;https://example.com/img/") && !feed.includes("/img/squatch.png"), feed);
@@ -564,6 +567,15 @@ export default { keys: Object.keys(d).join(","), same: d.auto[0].url === d.png[0
 	fs.writeFileSync(path.join(root, "src/bad.edge"), "---\npermalink: /bad/\n---\n{{ imageUrl('/img/nope.png').url }}");
 	({ ok, log } = build(root));
 	assert.ok(!ok && log.includes("imageUrl(): image not found: /img/nope.png (looked for ./src/img/nope.png)") && !log.includes("imageUrl(): imageUrl()"), log);
+	// Added in 0.14.1: each given the other's kind of path names the one it meant (Squatch Snacks, D5).
+	fs.writeFileSync(path.join(root, "src/bad.edge"), "---\npermalink: /bad/\n---\n{{ imageUrl('src/img/squatch.png').url }}");
+	({ ok, log } = build(root));
+	assert.ok(!ok && log.includes("imageUrl(): image not found: src/img/squatch.png (looked for ./src/src/img/squatch.png; imageUrl() takes a path from the site's root: \"/img/squatch.png\")"), log);
+	fs.writeFileSync(path.join(root, "src/bad.edge"), "---\npermalink: false\n---\n");
+	fs.writeFileSync(path.join(root, "src/_data/hero.js"), "import { image } from \"ssqch/image\";\nexport default await image(\"/img/squatch.png\");\n");
+	({ ok, log } = build(root));
+	assert.ok(!ok && log.includes("that's a path from the site's root, which imageUrl() takes: image() takes one from the project, \"src/img/squatch.png\")"), log);
+	fs.rmSync(path.join(root, "src/_data/hero.js"));
 	fs.writeFileSync(path.join(root, "src/bad.edge"), "---\npermalink: /bad/\n---\n{{ imageUrl('/img/squatch.png', { size: 3 }).url }}");
 	({ ok, log } = build(root));
 	assert.ok(!ok && log.includes("imageUrl(): unknown option \"size\" (options: width, format)"), log);
@@ -659,6 +671,21 @@ import { sitemapPlugin } from "ssqch/sitemap";
 export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge"], passthrough: ["src/content"], plugins: [sitemapPlugin({ url: "https://example.com" }), linksPlugin()] };`);
 	({ ok, log } = build(root));
 	assert.ok(!ok && log.includes("5 broken links:"), log);
+});
+
+// A path in a feed entry's code is an example, as it is on a page: 0.14.0's own changelog feed
+// failed the build on `<code>/snacks/*</code>`. A link in a `<pre>` is still a link.
+test("the_link_checker_skips_paths_in_a_feeds_code", () => {
+	const root = project({
+		"ssqch.config.js": `import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["edge"], plugins: [linksPlugin()] };`,
+		"src/index.edge": "<p>Home</p>",
+		"src/feed.edge": "---\npermalink: feed.xml\n---\n<feed><entry><id>/</id><content type=\"html\">{{ '<p>A pattern (<code>/snacks/*</code>) and <kbd>/help</kbd>.</p><pre><code>/etc/pine-cones</code></pre><pre><a href=\"/gone/\">gone</a></pre>' }}</content></entry></feed>",
+	});
+	const { ok, log } = build(root);
+	assert.ok(!ok, log);
+	assert.ok(log.includes("/feed.xml -> /gone/ (not found)"), log);
+	for (const path of ["/snacks/*", "/help", "/etc/pine-cones"]) assert.ok(!log.includes(`-> ${path} `), `${path}: ${log}`);
 });
 
 // A listed asset can be a passthrough copy, and imports in inline module scripts are rewritten.
@@ -780,9 +807,11 @@ import { linksPlugin } from "ssqch/links";
 export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], plugins: [redirectsPlugin(${options}), linksPlugin()] };`;
 	const redirects = "{ \"/snacks/*\": \"/provisions/:splat\", \"/snacks/2019/*\": \"/provisions/\", \"/news/:year/:slug\": \"/provisions/\", \"/zebra/\": \"/provisions/\" }";
 	const files = {
-		"src/provisions.md": "---\naliases: [/snacks/, /snacks/crunch/, /a/*]\n---\n[The old shelf](/snacks/gone/)\n",
+		"src/provisions.md": "---\naliases: [/snacks/, /snacks/crunch/, /a/*]\n---\n[The old shelf](/snacks/gone/) [The old news](/news/2019/pine-cones)\n",
 	};
 	const root = project({ "ssqch.config.js": config(`{ hostFile: true, pages: true, redirects: ${redirects} }`), ...files });
+	// The links are followed through the lines: `/snacks/gone/` by a `*`, and (0.14.1) the old
+	// news by `:year/:slug`, which the link checker reported as broken in 0.14.0.
 	const { ok, log } = build(root);
 	assert.ok(ok, log);
 	assert.equal(read(root, "dist/_redirects"), [
@@ -808,6 +837,40 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"]
 	assert.match(refused.log, /the redirects option: \/snacks\/2019\/\* is a pattern \(a `\*` or a `:name`\), which only a host can match, and a redirect page can't\. Set hostFile: true, so it's a line in _redirects/);
 	const alias = project({ "ssqch.config.js": config(""), ...files });
 	assert.match(build(alias).log, /src\/provisions\.md: \/a\/\* is a pattern/);
+});
+
+// Added in 0.14.1: a link broken on several pages (a sidebar's) is one line with the pages, not a
+// line for each; on one page it's `page -> link (reason)` as before. The JSON keeps one entry each.
+test("a_link_broken_on_many_pages_is_one_line", () => {
+	const files = { "ssqch.config.js": "import { linksPlugin } from \"ssqch/links\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"md\"], plugins: [linksPlugin()] };" };
+	for (const name of ["a", "b", "c", "d", "e"]) files[`src/${name}.md`] = "[Ranger station](/station/)";
+	files["src/f.md"] = "[Old Growth](/old-growth/)";
+	const root = project(files);
+	let r = ssqch(["build", "--root", root]);
+	assert.ok(!r.ok && r.log.includes("6 broken links:\n  /a/, /b/, /c/ and 2 more -> /station/ (not found)\n  /f/ -> /old-growth/ (not found)"), r.log);
+	r = ssqch(["build", "--root", root, "--verbose"]);
+	assert.ok(r.log.includes("  /a/, /b/, /c/, /d/, /e/ -> /station/ (not found)"), r.log);
+	r = ssqch(["build", "--root", root, "--format", "json"]);
+	assert.equal(JSON.parse(r.log).errors.filter((d) => d.code === "links").length, 6, r.log);
+});
+
+// Added in 0.14.1: a link that works through a redirect is a note, not a warning: after a move,
+// it's the link to update (Squatch Snacks, E9). A redirect page's or a `_redirects` line's, and
+// never a page's link to its own old address, which shows the move off.
+test("links_through_a_redirect_are_a_note", () => {
+	const config = (options) => `import { redirectsPlugin } from "ssqch/redirects";
+import { linksPlugin } from "ssqch/links";
+export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"], plugins: [redirectsPlugin(${options}), linksPlugin()] };`;
+	const files = { "src/index.md": "See [the old post](/old/) and [again](/old/).", "src/about.md": "[Pine](/old/)", "src/posts/pine.md": "---\naliases: [/old/]\n---\nPine, which [used to be here](/old/)." };
+	const note = "note: 1 link goes through a redirect; linking to where it ends up saves a hop:\n  /old/ -> /posts/pine/ (from /, /about/)\n";
+	const pages = project({ "ssqch.config.js": config(""), ...files });
+	let r = ssqch(["build", "--root", pages]);
+	assert.ok(r.ok && r.log.includes(note) && !r.log.includes("warn"), r.log);
+	const lines = project({ "ssqch.config.js": config("{ hostFile: true }"), ...files });
+	r = ssqch(["build", "--root", lines]);
+	assert.ok(r.ok && r.log.includes(note), r.log);
+	r = ssqch(["build", "--root", lines, "-q"]);
+	assert.ok(r.ok && !r.log.includes("note:"), r.log);
 });
 
 // DELIBERATE (0.14): `redirectsPlugin({ netlify: true })` is `hostFile`, since Netlify and
@@ -957,7 +1020,7 @@ test("llms_plugin_writes_the_site_for_language_models", () => {
 		"ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { urls: \"html\", data: { layout: \"base.jinja\" }, plugins: [llmsPlugin({ url: \"https://trail.example\", description: \"Hikes and the gear for them.\", exclude: [\"/drafts/**\"] })] };\n",
 		"_data/site.json": "{ \"title\": \"Trail Guide\", \"trails\": [\"Cedar\", \"Old Growth\"] }\n",
 		"_includes/base.jinja": "<html><head>{% if markdownCopy(page.url) %}<link rel=\"alternate\" type=\"text/markdown\" href=\"{{ markdownCopy(page.url) }}\">{% endif %}</head><body><nav><a href=\"/\">Home</a></nav><main>{{ content | safe }}</main></body></html>",
-		"index.md": "---\ntitle: Home\n---\nWelcome to the trails. Start with [the intro](guide/intro.md).\n",
+		"index.md": "---\ntitle: Home\n---\nWelcome to the trails. Start with [the intro](guide/intro.md), or [plan a day hike](/about.html?plan=day).\n",
 		"guide/index.md": "# Guide\n",
 		"guide/intro.md": "---\ndescription: Where to start.\n---\n# Getting started\n\nOn {{ site.title }}:\n{% for t in site.trails %}\n- {{ t }}\n{% endfor %}\n\nPack water, then [the gear](/about.html#packs).\n",
 		"guide/secret.md": "---\nllms: false\n---\n# Ranger only\n",
@@ -968,7 +1031,8 @@ test("llms_plugin_writes_the_site_for_language_models", () => {
 	assert.ok(r.ok, r.log);
 	assert.equal(read(dir, "_site/llms.txt"), "# Trail Guide\n\n> Hikes and the gear for them.\n\n## Pages\n\n- [Home](https://trail.example/index.md)\n- [About](https://trail.example/about.md)\n\n## Guide\n\n- [Guide](https://trail.example/guide/index.md)\n- [Getting started](https://trail.example/guide/intro.md): Where to start.\n");
 	assert.equal(read(dir, "_site/guide/intro.md"), "# Getting started\n\nOn Trail Guide:\n\n- Cedar\n\n- Old Growth\n\nPack water, then [the gear](https://trail.example/about.md#packs).\n");
-	assert.equal(read(dir, "_site/index.md"), "# Home\n\nWelcome to the trails. Start with [the intro](https://trail.example/guide/intro.md).\n");
+	// DELIBERATE (0.14.1): a link with a query goes to the page, which reads it, not to the copy (Squatch Snacks).
+	assert.equal(read(dir, "_site/index.md"), "# Home\n\nWelcome to the trails. Start with [the intro](https://trail.example/guide/intro.md), or [plan a day hike](https://trail.example/about.html?plan=day).\n");
 	assert.equal(read(dir, "_site/about.md"), "# About\n\nSquatch *Snacks* for the [trail](https://trail.example/guide/intro.md).\n\n- Pine Cone Crunch\n");
 	assert.ok(read(dir, "_site/llms-full.txt").startsWith("# Trail Guide\n\n> Hikes and the gear for them.\n\n---\nurl: https://trail.example/\n---\n\n# Home\n"));
 	assert.ok(!fs.existsSync(path.join(dir, "_site/drafts/wip.md")) && !fs.existsSync(path.join(dir, "_site/guide/secret.md")));

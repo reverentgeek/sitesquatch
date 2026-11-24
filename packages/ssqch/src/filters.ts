@@ -10,6 +10,19 @@ import type { Markdown } from "./engines/markdown.ts";
 import { breadcrumbsOf, fromPages, pagerOf, treeOf } from "./nav.ts";
 import { slugOptions, slugText, slugWith } from "./slug.ts";
 
+/**
+ * The template functions a plugin adds, by plugin, for the one list `ssqch docs` and
+ * `ssqch capabilities` give (Squatch Snacks: no list had them all). `plugin-functions.test.ts`
+ * keeps it the same as what the plugins register. `rssDate` and `rssLastUpdatedDate` are Eleventy's
+ * names for two of them, aliases, and not listed.
+ */
+export const PLUGIN_FUNCTIONS: ReadonlyArray<readonly [plugin: string, functions: readonly string[]]> = [
+	["imagePlugin()", ["imageUrl"]],
+	["assetsPlugin()", ["assetUrl"]],
+	["rssPlugin()", ["absoluteUrl", "htmlToAbsoluteUrls", "feedHtml", "dateToRfc3339", "dateToRfc822", "getNewestCollectionItemDate"]],
+	["llmsPlugin()", ["markdownCopy", "llmsTxt"]],
+];
+
 /** The built-in functions, with what each does, for `ssqch docs`. A test keeps it the same as what `builtinFilters` makes. */
 export const BUILTIN_FILTERS: ReadonlyArray<readonly [string, string]> = [
 	["markdown", "`markdown(text)` renders Markdown with the site's options; `markdown(text, \"inline\")` without the `<p>`."],
