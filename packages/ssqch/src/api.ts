@@ -10,6 +10,7 @@ import { markdownEngine } from "./engines/markdown.ts";
 import { safe } from "./rendering.ts";
 import { defaultMarkdownOptions } from "./markdown-options.ts";
 import { slugify as slug } from "./slug.ts";
+import { withBase as prefixBase } from "./base.ts";
 
 function defaultMarkdown() {
 	const engine = markdownEngine(defaultMarkdownOptions());
@@ -20,9 +21,20 @@ function defaultMarkdown() {
  * What the functions here need from the site being built: its root (paths are from there), its
  * input folder, and its Markdown. The build sets these before it runs any of the site's code.
  */
-export const site: { root: string; input: string | null; markdown: ((text: string, inline: boolean) => string) | null } = { root: process.cwd(), input: null, markdown: null };
+export const site: { root: string; input: string | null; base: string; markdown: ((text: string, inline: boolean) => string) | null } = { root: process.cwd(), input: null, base: "", markdown: null };
 
 export const defineConfig = <T>(config: T): T => config;
+
+/**
+ * `withBase("/search.json")`: a URL from the site's root with the site's `base` in front, as the
+ * template function gives it, for a site's own code (a data file, a filter, `computed`). The
+ * feed's named exports and a whole address built by hand need it: under `--base /repo/`, they
+ * missed the path (the company-site example built its addresses from `ssqch.base` by hand).
+ * The base is the build's, so the config's own top-level code, which runs first, gets none.
+ */
+export function withBase(url: unknown): string {
+	return prefixBase(site.base, url === undefined || url === null ? "" : String(url));
+}
 
 export function markdown(text: unknown, options: { inline?: boolean } | "inline" | null = {}): string {
 	// `markdown(text, "inline")`, as the template function takes it.
@@ -189,4 +201,4 @@ export function slugger(options: unknown = {}): (text: unknown) => string {
 }
 
 export { safe } from "./rendering.ts";
-export default { defineConfig, markdown, readData, files, slugify, slugger, safe };
+export default { defineConfig, markdown, readData, files, slugify, slugger, safe, withBase };

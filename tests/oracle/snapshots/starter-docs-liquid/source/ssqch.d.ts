@@ -380,7 +380,9 @@ declare module "ssqch" {
 	export function slugify(text: string, options?: SlugifyOptions | string): string;
 	/** A `slugify` that counts, so every slug it makes is different: the first "Misc Pictures" is `misc-pictures`, the next `misc-pictures-1`, then `misc-pictures-2`. Make one per list, in a data file, and store the slug with each item, so a paginated page's permalink and the links to it agree. */
 	export function slugger(options?: SlugifyOptions): (text: string) => string;
-	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown; readData: typeof readData; files: typeof files; slugify: typeof slugify; slugger: typeof slugger };
+	/** The `withBase` template function, for a site's own code (a data file, a filter, `computed`): a URL from the site's root with the site's `base` in front, `withBase("/provisions/moss-mix/")` is `"/repo/provisions/moss-mix/"` under `base: "/repo/"`, and the URL as it is without one. Anything that isn't from the root (relative, `#top`, `https:`) is returned as it is. The base is the build's, so in the config's own top-level code, which runs before the build, it's `""`: call it from a function. */
+	export function withBase(url: string): string;
+	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown; readData: typeof readData; files: typeof files; slugify: typeof slugify; slugger: typeof slugger; withBase: typeof withBase };
 	export default ssqch;
 }
 

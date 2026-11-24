@@ -285,7 +285,7 @@ export async function loadConfig(options: ConfigOptions): Promise<Config> {
 	// and `readData("x")` are all from there.
 	// (A root that isn't there is the build's to report: nothing can be read from it.)
 	if (fs.statSync(config.root, { throwIfNoEntry: false })?.isDirectory()) process.chdir(config.root);
-	Object.assign(api.site, { root: config.root, input: null, markdown: null });
+	Object.assign(api.site, { root: config.root, input: null, base: "", markdown: null });
 	// `fetch` gets 0.7's error words and its `cache` option, before any of the site's code runs.
 	installFetch(config.root);
 	config.summaries.push(["Fetch", fetchSummary]);

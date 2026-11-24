@@ -43,6 +43,9 @@ where that version matches.
   folder moved, its checks were off without a word.
 - A build notes when `ssqch.d.ts` doesn't have the config's schemas (`run ssqch types`), and the
   docs starter's `ssqch.d.ts` has its schema from `ssqch init`.
+- `withBase` is an export of `ssqch` too, for a site's own code: `import { withBase } from "ssqch"`
+  in a data file, a filter or `computed`, with the build's base (`--base` included). The feed's
+  named exports and whole addresses built by hand (structured data) needed it.
 - A new example, `company-site` (Jinja): Squatch Snacks' marketing site, from a new-site study.
   Product pages from a data file checked by a schema, pricing with a custom element and a no-JS
   fallback, a form for the host, careers from Markdown with a blueprint, structured data, and

@@ -239,7 +239,7 @@ export class Site {
 		const { config, dirs } = this;
 		this.markdown = markdownEngine(config.markdown, dirs.root, dirs.input);
 		// The `ssqch` module's `markdown()` has the site's options and no render hooks.
-		Object.assign(api.site, { root: dirs.root, input: dirs.input, markdown: (text: string, inline: boolean) => this.markdown.plain(text, inline) });
+		Object.assign(api.site, { root: dirs.root, input: dirs.input, base: config.base, markdown: (text: string, inline: boolean) => this.markdown.plain(text, inline) });
 		const globals = builtinFilters(this.markdown, config);
 		// Other generators' filters that are aliases here: `url` and `relative_url` give the URL
 		// back (the build adds `base` itself), and `markdownify` is `markdown`. A config filter with

@@ -144,3 +144,20 @@ test("a_global_layout_is_every_pages", () => {
 	assert.equal(read(dir, "_site/trails/cedar/index.html"), "<div><p>Cedar</p>\n</div>");
 	assert.equal(read(dir, "_site/raw/index.html"), "<p>Raw</p>\n");
 });
+
+// Not from a Rust test (2026-11-24, the company-site example built its addresses from
+// `ssqch.base` by hand): `withBase` is an export of `ssqch` too, for a site's own code, with the
+// build's base, `--base` included.
+test("with_base_is_an_export_for_data_files", () => {
+	const dir = tempDir("with-base-export");
+	write(dir, {
+		"ssqch.config.js": "import { withBase } from \"ssqch\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, base: \"/repo/\", filters: { whole: (path) => new URL(withBase(path), \"https://example.com\").href } };\n",
+		"src/_data/links.js": "import { withBase } from \"ssqch\";\nexport default () => ({ search: withBase(\"/search.json\"), away: withBase(\"https://other.example/\") });\n",
+		"src/index.jinja": "{{ links.search }} {{ links.away }} {{ \"/about/\" | whole }}\n",
+	});
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "dist/index.html"), "/repo/search.json https://other.example/ https://example.com/repo/about/");
+	r = ssqch(["build", "--root", dir, "-q", "--base", "/preview/"]);
+	assert.ok(r.ok && read(dir, "dist/index.html").startsWith("/preview/search.json "), r.log);
+});
