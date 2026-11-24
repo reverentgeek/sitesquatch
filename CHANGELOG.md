@@ -25,6 +25,8 @@ where that version matches.
   encodes them all again, as with an empty cache: the blog's first build on 0.15.0 took 5 minutes
   on Netlify, where it usually takes 37 seconds. In `imagePlugin()`'s entry and the Netlify
   guide's "Updating ssqch".
+- Docs: a data file that builds structured data under a base, with `absoluteUrl` and `withBase`
+  from `ssqch`, in "Structured data", from the company-site example.
 - Docs: `timezone`'s row in the Jekyll and Hexo trailheads and `timeZone`'s in Hugo's (a date
   without a time is that day, in that zone), Hugo's `.Permalink` and `absURL` as `absoluteUrl`,
   and that Eleventy's `rss.absoluteUrl` is only needed for Eleventy's answer to the letter.

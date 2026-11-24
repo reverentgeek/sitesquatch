@@ -38,6 +38,29 @@ Structured data, the JSON-LD that search engines read for a company, a product o
 ```
 
 - **Addresses:** structured data wants whole ones. `imageUrl()` is a picture's published copy, and `site.url ~` makes it whole. Under a [`base`](deploying.md#serving-a-site-under-a-path), use `absoluteUrl(url, site.url)` instead, which every site has and which puts the base in (in a data file, `import { absoluteUrl } from "ssqch"`).
+- **From a data file:** when the block is built in code, beside a paginated template, `absoluteUrl` and `withBase` are exports of `ssqch` and get the build's base, `--base` included. The [company-site example](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/company-site)'s `src/provisions/snack.data.js`, shortened, and its layout prints `{{ jsonld | tojson }}`:
+
+  ```js
+  import { absoluteUrl, readData } from "ssqch";
+  import { imageUrl } from "ssqch/image";
+
+  const site = readData("src/_data/site.json");
+
+  export default {
+    computed: {
+      jsonld: ({ snack }) => ({
+        "@context": "https://schema.org",
+        "@type": "Product",
+        name: snack.name,
+        url: absoluteUrl(`/provisions/${snack.slug}/`, site.url),
+        image: absoluteUrl(imageUrl(snack.image, { width: 800 }).url, site.url),
+        offers: { "@type": "Offer", price: String(snack.price), priceCurrency: "USD" }
+      })
+    }
+  };
+  ```
+
+  Under `--base /preview/`, `url` is `https://squatchsnacks.example/preview/provisions/pine-cone-crunch/`, and the base is added once even to a URL that has it (`imageUrl()`'s does). `withBase("/search.json")` is the same without the domain, for a path. The config's own top-level code runs before the build knows its base, so call them inside `computed` or a function, as here.
 - **Escaping:** `tojson` writes `'` as `\u0027` (`"S\u0027mores Mix"`) and `<` as `\u003c`, which is the same JSON, and keeps a `</script>` in a value from closing the block.
 - **Checking:** `linksPlugin()` checks the site's own addresses in a JSON-LD block, and Schema.org's validator (validator.schema.org) or Google's Rich Results Test reads the rest.
 
