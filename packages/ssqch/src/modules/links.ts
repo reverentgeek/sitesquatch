@@ -377,17 +377,35 @@ function find(output: string, urlPath: string, written: Set<string>): string | u
  * off). A line without the base is kept as it is, as a `_redirects` template written for the root
  * has it.
  */
-export function redirectRules(output: string, base: string): Array<{ from: string; to: string }> {
+export function redirectRules(output: string, base: string): RedirectRule[] {
 	let text: string;
 	try { text = fs.readFileSync(path.join(output, "_redirects"), "utf8"); } catch { return []; }
-	const rules: Array<{ from: string; to: string }> = [];
+	const rules: RedirectRule[] = [];
 	for (const line of text.split(/\r?\n/)) {
 		const l = trim(line);
 		if (l === "" || l.startsWith("#")) continue;
-		const [from, to] = l.split(/\s+/);
-		if (from !== undefined && from.startsWith("/")) rules.push({ from: inSite(from, base) ?? from, to: to ?? "" });
+		const [from, to, status = ""] = l.split(/\s+/);
+		if (from === undefined || !from.startsWith("/")) continue;
+		const code = Number.parseInt(status, 10);
+		rules.push({ from: inSite(from, base) ?? from, to: to ?? "", notFound: code >= 400 && code < 500, forced: status.endsWith("!") });
 	}
 	return rules;
+}
+
+/**
+ * A line of `_redirects`. `notFound` is a 4xx line (`/*  /404.html  404`): the host answers
+ * with that page and that status, so a link it covers is broken, not redirected. `forced` (`301!`)
+ * is followed even where a file exists; a line that isn't is only for paths with no file, as
+ * Netlify and Cloudflare serve a file before they read the rules.
+ */
+export interface RedirectRule { from: string; to: string; notFound: boolean; forced: boolean }
+
+/**
+ * The line a host follows for `p`: the first that covers it, as hosts take the first match, and
+ * for a path with a file (`exists`), only a forced one. `undefined` when none applies.
+ */
+export function ruleFor(rules: RedirectRule[], p: string, exists: boolean): RedirectRule | undefined {
+	return rules.find((r) => (!exists || r.forced) && covers(r.from, p));
 }
 
 /** Whether the line from `from` covers the path `p`. */
@@ -474,7 +492,6 @@ async function check(config: Config, output: string, written: string[], options:
 	const ids = new Map<string, Set<string>>(scans.map(([file, scan]) => [file, scan.ids]));
 	const writtenFiles = new Set(written);
 	const rules = redirectRules(output, config.base);
-	const redirects = rules.map((r) => r.from);
 	// Redirect pages (`redirectsPlugin()`'s, or a site's own meta refresh): where each sends a browser.
 	const refreshes = new Map<string, string>();
 	for (const [file, scan] of scans) if (scan.refresh !== undefined) refreshes.set(file, scan.refresh);
@@ -501,9 +518,13 @@ async function check(config: Config, output: string, written: string[], options:
 			// `#top`: this page.
 			return anchors && !hasId(page.ids, fragment!) ? `no id "${fragment}" on this page${didYouMean(closest(fragment!, page.ids), "#")}` : undefined;
 		}
-		if (options.ignore.some((p) => targetPath.startsWith(p)) || redirected(redirects, targetPath)) return undefined;
+		if (options.ignore.some((p) => targetPath.startsWith(p))) return undefined;
 		if (!found.has(targetPath)) found.set(targetPath, find(output, targetPath, writtenFiles));
 		const target = found.get(targetPath);
+		// A line of `_redirects` rescues a link, unless it's a 4xx one: a catch-all `/*  /404.html
+		// 404` covers every path, and a link it answers is still broken (the Squatch Snacks rerun).
+		const rule = rules.length ? ruleFor(rules, targetPath, target !== undefined) : undefined;
+		if (rule !== undefined && !rule.notFound) return undefined;
 		if (target === undefined) {
 			// A site with hundreds of dead links has a bigger problem than typos.
 			if (!meant.has(targetPath) && meant.size < 500) meant.set(targetPath, didYouMean((nearest ??= closestPathFinder(urls))(targetPath), ""));
@@ -525,13 +546,11 @@ async function check(config: Config, output: string, written: string[], options:
 		if (targetPath === undefined || targetPath === "") return;
 		let to = detourOf.get(targetPath);
 		if (!detourOf.has(targetPath)) {
-			const rule = options.ignore.some((p) => targetPath.startsWith(p)) ? undefined : rules.find((r) => covers(r.from, targetPath));
-			if (rule !== undefined) to = rule.to;
-			else {
-				if (!found.has(targetPath)) found.set(targetPath, find(output, targetPath, writtenFiles));
-				const target = found.get(targetPath);
-				to = target === undefined ? undefined : refreshes.get(target);
-			}
+			if (!found.has(targetPath)) found.set(targetPath, find(output, targetPath, writtenFiles));
+			const target = found.get(targetPath);
+			const rule = options.ignore.some((p) => targetPath.startsWith(p)) ? undefined : ruleFor(rules, targetPath, target !== undefined);
+			if (rule !== undefined) to = rule.notFound ? undefined : rule.to;
+			else to = target === undefined ? undefined : refreshes.get(target);
 			detourOf.set(targetPath, to);
 		}
 		if (to === undefined) return;

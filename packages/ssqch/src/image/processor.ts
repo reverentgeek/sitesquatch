@@ -289,6 +289,29 @@ export function joinUrlPath(page: string, rel: string): string {
 	return `/${parts.join("/")}`;
 }
 
+/**
+ * The `<img>`'s `width` and `height`: the page's own when it wrote them, since they're the size
+ * it's shown at (a 36-pixel logo with a copy at 72 for sharp screens), with the other worked out
+ * from the picture's shape when it wrote only one; otherwise the largest copy's, for the shape.
+ * Each pair is `[name, value]`, in that order.
+ */
+function shownSize(attrs: Array<[string, string]>, high: { width: number; height: number }): Array<[string, string]> {
+	const given = (name: string) => attrs.find(([a]) => a === name)?.[1];
+	const [w, h] = [given("width"), given("height")];
+	const known = high.width > 0 && high.height > 0;
+	const number = (v: string) => (/^\s*\d+(\.\d+)?\s*$/.test(v) ? Number(v) : undefined);
+	if (w !== undefined && h !== undefined) return [["width", w], ["height", h]];
+	if (w !== undefined) {
+		const n = number(w);
+		return known && n !== undefined ? [["width", w], ["height", String(Math.round((n * high.height) / high.width))]] : [["width", w]];
+	}
+	if (h !== undefined) {
+		const n = number(h);
+		return known && n !== undefined ? [["width", String(Math.round((n * high.width) / high.height))], ["height", h]] : [["height", h]];
+	}
+	return known ? [["width", String(high.width)], ["height", String(high.height)]] : [];
+}
+
 /** Width and height of an SVG from its root `width` and `height`, or its `viewBox`. */
 function svgDimensions(file: string): [number, number] | undefined {
 	let text: string;
@@ -1139,7 +1162,7 @@ export class ImageProcessor {
 			img.push(["srcset", srcsetAttr(fallback)]);
 			if (sizes !== undefined) img.push(["sizes", sizes]);
 		}
-		if (high.width > 0) img.push(["width", String(high.width)], ["height", String(high.height)]);
+		img.push(...shownSize(attrs, high));
 		// Values copied from the original tag are still entity-encoded, so only quotes need
 		// escaping; generated values are plain URLs and numbers.
 		const tag = `<img${img.map(([k, v]) => ` ${k}="${v.replaceAll("\"", "&quot;")}"`).join("")}>`;

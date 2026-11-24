@@ -221,3 +221,18 @@ test("init_makes_package_json_ready", () => {
 	assert.ok(ssqch(["init", dir]).ok);
 	assert.ok(!exists(dir, "package.json"));
 });
+
+// Not from a Rust test (the Squatch Snacks rerun, 2026-11-23): beside a config of the site's own,
+// init writes what any site uses (AGENTS.md, the types) and leaves the starter's pages out, since
+// they need its config: 0.14.2 wrote src/tag.jinja, and the site stopped building on
+// `collections.tagList`.
+test("init_beside_a_config_of_its_own_leaves_the_starters_pages_out", () => {
+	const dir = tempDir("init-own-config");
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n", "src/index.md": "Ours\n" });
+	let r = ssqch(["init", dir]);
+	assert.ok(r.ok && r.stdout.includes("  kept    ssqch.config.js (already there)\n") && r.stdout.includes("  created AGENTS.md\n"), r.log);
+	assert.match(r.stdout, /  left out the starter's \d+ files in src\/: they need the starter's config, and ssqch.config.js is this site's own\n/);
+	assert.ok(!exists(dir, "src/tag.jinja") && !exists(dir, "src/posts") && isFile(dir, "ssqch.d.ts"), r.log);
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+});

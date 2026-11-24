@@ -71,6 +71,24 @@ test("types_writes_the_declarations", () => {
 	});
 });
 
+// The before-and-after recipe (`ssqch diff --help`) builds into a second folder between two
+// builds into the first: the second build mustn't forget what the first folder holds (the
+// Squatch Snacks rerun, 2026-11-23: moved pages stayed in dist/ and answered 200).
+test("leave_no_trace_remembers_each_output_folder", () => {
+	const dir = tempDir("leave-no-trace-outputs");
+	write(dir, { "ssqch.config.js": "export default { leaveNoTrace: true };\n", "a.md": "A\n", "b.md": "B\n" });
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	r = ssqch(["build", "--root", dir, "--output", "dist-before"]);
+	assert.ok(r.ok && isFile(dir, "dist-before/b/index.html"), r.log);
+	fs.rmSync(path.join(dir, "b.md"));
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && r.log.includes("Removed  1 stale file, left no trace"), r.log);
+	assert.ok(!exists(dir, "_site/b") && isFile(dir, "dist-before/b/index.html"), "the other folder is left as it was");
+	r = ssqch(["build", "--root", dir, "--output", "dist-before"]);
+	assert.ok(r.ok && r.log.includes("Removed  1 stale file") && !exists(dir, "dist-before/b"), r.log);
+});
+
 test("leave_no_trace_removes_only_stale_files_ssqch_wrote", () => {
 	const dir = tempDir("leave-no-trace");
 	const d = dir;

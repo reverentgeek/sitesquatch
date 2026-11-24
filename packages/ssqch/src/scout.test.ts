@@ -805,6 +805,12 @@ test("scout_counts_what_the_sites_config_sets_as_done", async () => {
 	assert.deepEqual([...new Set(after.done.map((d) => d.option))], ['markdown: { admonitions: "mkdocs" }']);
 	assert.equal(after.summary.done, after.done.length);
 	assert.match(scoutText(after, { writeDraft: false }), /done already: ssqch\.config\.js has `markdown: \{ admonitions: "mkdocs" \}`/);
+	// A config that's a function of the build is read as a production build calls it (the
+	// Squatch Snacks rerun: 0.14.2 said its default export wasn't an object).
+	fs.writeFileSync(path.join(dir, "ssqch.config.js"), `export default ({ env }) => ({ markdown: { admonitions: env === "production" ? "mkdocs" : false } });\n`);
+	const called = await siteConfig(dir);
+	assert.equal(called.error, undefined);
+	assert.ok(!scoutReport(mkdocs(dir), dir, "mkdocs", "mkdocs.yml", called).todo.some((t) => t.code === "mkdocs-admonitions"));
 	// A config that doesn't load counts nothing as done, and says why.
 	fs.writeFileSync(path.join(dir, "ssqch.config.js"), "export default {\n");
 	const broken = scoutReport(mkdocs(dir), dir, "mkdocs", "mkdocs.yml", await siteConfig(dir));

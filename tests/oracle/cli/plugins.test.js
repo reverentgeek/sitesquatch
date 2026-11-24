@@ -45,6 +45,24 @@ export default async function () {
 
 const PAGE = "---\ndate: 2026-03-14\n---\n<!-- a comment -->\n<p>\n  <img src=\"/img/squatch.png\" alt=\"Squatch\">\n  <img src=\"/img/squatch.png\" alt=\"Small\" ssqch:widths=\"16\">\n  <img src=\"/img/squatch.png\" alt=\"Plain\" ssqch:ignore>\n</p>\n<p>{{ hero.formats.join(',') }} | {{ hero.png.join(' / ') }}</p>\n<p>{{ abs('#top') }} {{ abs('https://example.com') }} {{ dateToRfc3339(page.date) }}</p>\n";
 
+// Not from a Rust test (the Squatch Snacks rerun, 2026-11-23): an `<img>`'s own `width` and
+// `height` are the size it's shown at, so they stay; 0.14.2 replaced them with the largest
+// copy's, and a 36-pixel logo with a copy for sharp screens showed at 72. With one of the two,
+// the other follows the picture's shape (64 by 32 here).
+test("an_img_keeps_its_own_width_and_height", () => {
+	const root = project({
+		"ssqch.config.js": "import { imagePlugin } from \"ssqch/image\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [imagePlugin({ formats: [\"auto\"] })] };\n",
+		"src/img/squatch.png": PNG,
+		"src/index.html": "<img src=\"/img/squatch.png\" alt=\"Both\" width=\"20\" height=\"12\" ssqch:widths=\"20,40\" sizes=\"20px\">\n<img src=\"/img/squatch.png\" alt=\"Width\" width=\"20\" ssqch:widths=\"20,40\">\n<img src=\"/img/squatch.png\" alt=\"None\" ssqch:widths=\"20,40\">\n",
+	});
+	const { ok, log } = build(root);
+	assert.ok(ok, log);
+	const html = read(root, "dist/index.html");
+	assert.match(html, /alt="Both" srcset="[^"]+" sizes="20px" width="20" height="12">/);
+	assert.match(html, /alt="Width" srcset="[^"]+" sizes="auto" width="20" height="10">/);
+	assert.match(html, /alt="None" srcset="[^"]+" sizes="auto" width="40" height="20">/);
+});
+
 test("the_built_in_plugins_work_together", () => {
 	const root = project({
 		"ssqch.config.js": CONFIG,
@@ -871,6 +889,23 @@ export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"]
 	assert.ok(r.ok && r.log.includes(note), r.log);
 	r = ssqch(["build", "--root", lines, "-q"]);
 	assert.ok(r.ok && !r.log.includes("note:"), r.log);
+});
+
+// Not from a Rust test (the Squatch Snacks rerun, 2026-11-23): a 4xx line in `_redirects` (a
+// catch-all to the 404 page) doesn't rescue a link, and a line that isn't forced doesn't apply
+// to a path with a file, since a host serves the file first. 0.14.1 called every link on such a
+// site "redirected to /404.html" and passed the broken ones; 0.13.6 passed them without a word.
+test("a_catch_all_404_in_redirects_hides_no_broken_link", () => {
+	const root = project({
+		"ssqch.config.js": "import { linksPlugin } from \"ssqch/links\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [linksPlugin()] };\n",
+		"src/index.html": "<a href=\"/about/\">here</a> <a href=\"/nowhere/\">gone</a> <a href=\"/go/map\">moved</a>",
+		"src/about.html": "About",
+		"src/404.html": "Lost",
+		"src/_redirects.html": "---\npermalink: /_redirects\n---\n/go/map  /about/  301\n/*  /404.html  404\n",
+	});
+	const r = ssqch(["build", "--root", root]);
+	assert.ok(!r.ok && r.log.includes("/ -> /nowhere/ (not found)"), r.log);
+	assert.ok(r.log.includes("/go/map -> /about/ (from /)") && !r.log.includes("/about/ -> /404.html"), r.log);
 });
 
 // DELIBERATE (0.14): `redirectsPlugin({ netlify: true })` is `hostFile`, since Netlify and

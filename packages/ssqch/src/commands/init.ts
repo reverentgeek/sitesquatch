@@ -6,6 +6,7 @@ import { bundled, bundledPath, types } from "../bundled.ts";
 import { red } from "../diagnostics.ts";
 import { CONFIG_FILES } from "../dirs.ts";
 import { joinAsGiven, parentAsGiven, slashes } from "../paths.ts";
+import { count } from "../report.ts";
 
 /** The starter site: (path in the new site, file in `bundled/`). It's an amateur investigator's field notes: seven posts that each show one thing. */
 const STARTER: Array<[string, string]> = [
@@ -237,14 +238,15 @@ function preparePackage(dir: string, skip: Set<string>): { changes: string[]; mj
 /** `ssqch init`: writes the starter into `dir`, keeping any file that's there. Answers the exit code. */
 export function runInit(options: InitOptions): number {
 	const { dir, starter, engine, quiet } = options;
-	const written: string[] = [], skipped: string[] = [];
+	const written: string[] = [], skipped: string[] = [], leftOut: string[] = [];
+	let keptConfig: string | undefined;
 	let packageChanges: string[] = [];
 	try {
 		if (!STARTERS.includes(starter)) throw new Error(`--starter ${starter}: not a starter (use ${STARTERS.join(" or ")})`);
 		if (!ENGINES.includes(engine)) throw new Error(`--engine ${engine}: not a starter engine (use ${ENGINES.join(", ")})`);
 		const files = starterFiles(starter, engine);
 		// A config that's there already, under any of its names, is the site's.
-		const hasConfig = CONFIG_FILES.find((name) => fs.existsSync(path.join(dir, name)));
+		const hasConfig = (keptConfig = CONFIG_FILES.find((name) => fs.existsSync(path.join(dir, name))));
 		const prepared = preparePackage(dir, new Set(files.map(([rel]) => path.join(dir, rel))));
 		for (let [rel, contents] of files) {
 			if (rel === "ssqch.config.js") {
@@ -256,6 +258,10 @@ export function runInit(options: InitOptions): number {
 			}
 			const file = path.join(dir, rel);
 			if (fs.existsSync(file)) skipped.push(rel);
+			// The starter's pages, layouts and posts read what its config sets up (the tag pages,
+			// `collections.tagList`), so beside a config of the site's own they'd stop the build:
+			// they're left out, and the rest (AGENTS.md, the types) is written (the Squatch Snacks rerun).
+			else if (hasConfig !== undefined && rel.startsWith("src/")) leftOut.push(rel);
 			else {
 				write(file, contents, joinAsGiven(dir, rel));
 				written.push(rel);
@@ -274,9 +280,10 @@ export function runInit(options: InitOptions): number {
 	let out = "";
 	for (const rel of written) out += `  created ${slashes(rel)}\n`;
 	for (const rel of skipped) out += `  kept    ${slashes(rel)} (already there)\n`;
+	if (leftOut.length) out += `  left out the starter's ${count(leftOut.length)} file${leftOut.length === 1 ? "" : "s"} in src/: they need the starter's config, and ${keptConfig} is this site's own\n`;
 	if (packageChanges.length) out += `  updated package.json: ${packageChanges.join(" and ")}\n`;
 	if (written.includes("ssqch.config.mjs")) out += "  (ssqch.config.mjs, not .js: package.json isn't \"type\": \"module\" and this project has JavaScript of its own, so it's left as it is)\n";
-	if (written.length === 0) out += "Nothing to do: camp is already set up (every starter file is there).\n";
+	if (written.length === 0 && leftOut.length === 0) out += "Nothing to do: camp is already set up (every starter file is there).\n";
 	else out += `\nCamp is set up. Next: ${isCurrentFolder(dir) ? "" : `cd ${dir} && `}ssqch serve, then open http://localhost:8080\n`;
 	process.stdout.write(out);
 	return 0;

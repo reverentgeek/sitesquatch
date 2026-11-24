@@ -1254,10 +1254,17 @@ function recordOutputs(config: Config, dirs: Dirs, outputs: string[], pagePaths:
 	const rel = (files: string[]) => new Set(files.filter((f) => isInside(dirs.output, f) && f !== dirs.output).map((f) => relative(dirs.output, f)));
 	const current = rel(outputs);
 	const pages = rel(pagePaths);
-	let before: any;
+	let last: any;
 	let text: string | undefined;
-	try { text = fs.readFileSync(listPath, "utf8"); before = JSON.parse(text); } catch { /* no list, or not one of ours */ }
-	if (before === null || typeof before !== "object" || before.output !== outputName) before = undefined;
+	try { text = fs.readFileSync(listPath, "utf8"); last = JSON.parse(text); } catch { /* no list, or not one of ours */ }
+	if (last === null || typeof last !== "object" || Array.isArray(last)) last = undefined;
+	// The top of the list is the last build; each other folder built into keeps its own under
+	// `outputs`, so a build into `dist-before` doesn't make the next build forget `dist`'s files.
+	const others: Record<string, unknown> = last?.outputs !== null && typeof last?.outputs === "object" && !Array.isArray(last.outputs) ? { ...last.outputs } : {};
+	if (typeof last?.output === "string" && last.output !== outputName) others[last.output] = { files: last.files, pages: last.pages };
+	const kept: any = last?.output === outputName ? last : others[outputName];
+	const before: any = kept !== null && typeof kept === "object" ? kept : undefined;
+	delete others[outputName];
 	const names = (key: string): string[] | undefined => (Array.isArray(before?.[key]) ? before[key].filter((f: unknown) => typeof f === "string") : undefined);
 	const previous = names("files") ?? [];
 	// A list from before 0.4 has no pages: nothing to compare with.
@@ -1287,7 +1294,10 @@ function recordOutputs(config: Config, dirs: Dirs, outputs: string[], pagePaths:
 		}
 	}
 
-	const list = JSON.stringify({ output: outputName, files: [...current].sort(compareText), pages: [...pages].sort(compareText) }, null, 2);
+	const entry: Record<string, unknown> = { output: outputName, files: [...current].sort(compareText), pages: [...pages].sort(compareText) };
+	const otherNames = Object.keys(others).sort(compareText);
+	if (otherNames.length) entry.outputs = Object.fromEntries(otherNames.map((name) => [name, others[name]]));
+	const list = JSON.stringify(entry, null, 2);
 	// Left alone when nothing changed, so a build with nothing new touches no files.
 	if (text !== list) {
 		fs.mkdirSync(path.dirname(listPath), { recursive: true });
