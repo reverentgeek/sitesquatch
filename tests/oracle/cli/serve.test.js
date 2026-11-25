@@ -538,6 +538,46 @@ for (const [engine, files, part] of [
 	});
 }
 
+// A page added, or a page deleted, renders the new page and the pages that read collections, as
+// a front matter edit does: the others show nothing of it.
+test("serve_renders_only_the_collection_readers_for_a_page_added_or_deleted", async () => {
+	const dir = tempDir("serve-incremental-added");
+	const renders = path.join(tempDir("serve-incremental-added-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }}</p>",
+		"src/titles.njk": "{{ \"titles\" | noted }}{% for p in collections.posts %}<li>{{ p.data.title }}</li>{% endfor %}",
+		"src/about.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"about\" | noted }}</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-added-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	const rebuilt = () => {
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		return lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name).sort();
+	};
+	try {
+		await waitFor(log, "Serving ");
+		fs.writeFileSync(renders, "");
+		let said = readOr(log).length;
+		fs.writeFileSync(path.join(dir, "src/posts/stump.njk"), "---\ntitle: The stump\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>");
+		await waitFor(log, "check-rebuilds: ");
+		assert.match(readOr(log).slice(said), /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.deepEqual(rebuilt(), ["stump", "titles"]);
+		assert.ok(fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes("The stump"));
+		await sleep(500);
+		fs.writeFileSync(renders, "");
+		said = readOr(log).length;
+		fs.rmSync(path.join(dir, "src/posts/stump.njk"));
+		for (let i = 0; i < 400 && !/check-rebuilds: /.test(readOr(log).slice(said)); i++) await sleep(25);
+		assert.match(readOr(log).slice(said), /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.deepEqual(rebuilt(), ["titles"]);
+		assert.ok(!fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes("The stump"));
+	} finally {
+		await server.stop();
+	}
+});
+
 // A rebuild that failed renders nothing for the pages it was given, so the next rebuild doesn't take
 // them as the last build wrote them: a page broken in one save is still broken after a save to
 // another page, as a clean build would say.

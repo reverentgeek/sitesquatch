@@ -170,6 +170,9 @@ export class Site {
 	 * matter (or the file time their date is) changed: their own data did. For `SSQCH_INCREMENTAL=1`.
 	 */
 	ownData = new Set<string>();
+	/** Templates new since the last build, and templates it had that this one doesn't (`lastPages`). */
+	added = new Set<string>();
+	gone = new Set<string>();
 	/** Why templates aren't kept this build, when they aren't: for the serve timeline. */
 	notKept = "";
 	get keepingTemplates(): boolean { return this.shared !== undefined; }
@@ -413,6 +416,15 @@ export class Site {
 			return !draft;
 		});
 		this.drafts = tpls.length - this.tpls.length;
+		// Pages added and gone since the last build from the same shared inputs, for
+		// `SSQCH_INCREMENTAL=1`: an added one whose data is all its own (kept, as `loadTemplate`
+		// keeps one: no data file of its own, no warning).
+		if (this.shared !== undefined && lastPages?.shared === this.shared) {
+			const now = new Set(this.files);
+			for (const file of this.files) if (!lastPages.files.has(file) && keptTemplates.has(file)) this.added.add(file);
+			for (const file of lastPages.files) if (!now.has(file)) this.gone.add(file);
+		}
+		lastPages = this.shared === undefined ? undefined : { shared: this.shared, files: new Set(this.files) };
 		timer.lap("read");
 
 		// ---- pagination, computed data and permalinks
@@ -1386,6 +1398,9 @@ const keptSources = new Map<string, { size: number; mtimeMs: number; bytes: Buff
  * (`Site.sharedInputs`), its layouts' files are as they were, and its commit date (git dates) too.
  * Making them was 200 to 290 ms of a 10,000-page rebuild.
  */
+/** While serving with templates kept: the last build's template files and the shared inputs they were made from, for `Site.added` and `Site.gone`. */
+let lastPages: { shared: string; files: Set<string> } | undefined;
+
 const keptTemplates = new Map<string, { bytes: Buffer; shared: string; commit: number | undefined; time: number | undefined; layouts: Array<[string, string]>; front: string; tpl: Tpl }>();
 
 /**

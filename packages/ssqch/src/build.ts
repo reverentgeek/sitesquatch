@@ -366,16 +366,19 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	const { config } = site;
 	if (process.env.SSQCH_INCREMENTAL !== "1" || !config.serving) return "off";
 	if (!config.changed?.length) return "the first build";
-	if (!(site.bodyOnly.size || site.ownData.size)) return site.keepingTemplates ? "no template's body or front matter alone changed" : `templates aren't kept: ${site.notKept}`;
+	if (!(site.bodyOnly.size || site.ownData.size || site.added.size || site.gone.size)) return site.keepingTemplates ? "no template's body or front matter alone changed" : `templates aren't kept: ${site.notKept}`;
 	// By real paths on both sides: the server names files by theirs, and the site may not (a
 	// temporary folder's `/var` is `/private/var` on macOS).
-	const bodyOnly = new Set([...site.bodyOnly].map(realPath));
-	const ownData = new Set([...site.ownData].map(realPath));
-	const other = config.changed.find((file) => !bodyOnly.has(realPath(file)) && !ownData.has(realPath(file)));
-	if (other !== undefined) return `${site.display(other)} isn't a page's body or front matter`;
-	// A page's own data changed (its front matter, a date that's its file's time): what other
-	// pages show of it comes through collections, which every page's data is made from again.
-	const dataChanged = config.changed.some((file) => ownData.has(realPath(file)));
+	// A file that's gone has no real path of its own: its folder's, and its name.
+	const real = (file: string) => path.join(realPath(path.dirname(file)), path.basename(file));
+	const bodyOnly = new Set([...site.bodyOnly].map(real));
+	// A page's own data changed (its front matter, a date that's its file's time), or a page came
+	// or went: what other pages show of it comes through collections, which every page's data is
+	// made from again.
+	const ownData = new Set([...site.ownData, ...site.added, ...site.gone].map(real));
+	const other = config.changed.find((file) => !bodyOnly.has(real(file)) && !ownData.has(real(file)));
+	if (other !== undefined) return `${site.display(other)} isn't a page's body or front matter, or a page added or gone`;
+	const dataChanged = config.changed.some((file) => ownData.has(real(file)));
 	const plugin = config.plugins.find((name) => !REPLAYABLE.has(name));
 	if (plugin !== undefined) return `the plugin ${plugin}`;
 	if (config.afterBuild.some((hook) => !("label" in hook) || hook.label !== "")) return "an afterBuild hook of the config's own";
@@ -384,9 +387,9 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	// MkDocs' and Jekyll's templates read more of other pages than that, past `collections`.
 	const everyLate = config.mkdocsTemplates !== null || config.jekyllTemplates;
 	if (dataChanged && everyLate) return "front matter with MkDocs' or Jekyll's templates";
-	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input) || site.ownData.has(page.tpl.input)));
+	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input) || site.ownData.has(page.tpl.input) || site.added.has(page.tpl.input)));
 	const changedKeys = new Set([...only].map(pageKey));
-	const changedFiles = new Set(config.changed.map(realPath));
+	const changedFiles = new Set(config.changed.flatMap((file) => [realPath(file), real(file)]));
 	for (const page of wanted) {
 		if (only.has(page) || page.output === null) continue;
 		const read = keptReads.get(page.output);
