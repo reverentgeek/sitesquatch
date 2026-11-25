@@ -222,6 +222,35 @@ test("a picture's sizes are what HTML allows: none for one copy, and auto only w
 	fs.rmSync(root, { recursive: true });
 });
 
+// Pack Mule wrote width and height on every <img> to reserve its space, so each was pinned to one
+// copy and the config's widths made none: 96-pixel thumbnails fetched 800-pixel copies, unsaid.
+test("the config's widths unused because every picture is pinned is a warning, and one pin isn't", async () => {
+	const files = { "src/img/a.png": await pixels(64, 32, "#228b22") };
+	const given = { ...defaultImageOptions(), formats: ["webp" as const], widths: [16, 32], widthsGiven: true };
+	const pinned = "<img src=\"/img/a.png\" alt=\"\" width=\"32\" height=\"16\">";
+	capture();
+	try {
+		for (const [options, html, said] of [
+			[given, pinned + pinned, true],
+			// A logo pinned beside a picture that uses the widths.
+			[given, pinned + "<img src=\"/img/a.png\" alt=\"\">", false],
+			// widths not given: the defaults weren't asked for.
+			[{ ...given, widthsGiven: false }, pinned, false],
+		] as const) {
+			const { root, p } = project(files, options);
+			p.transformHtml(html, path.join(root, "src/index.html"));
+			await p.settle();
+			p.finishBuild();
+			const messages = takeWarnings().map((w) => w.message);
+			if (said) assert.deepEqual(messages, ["widths: [16, 32] made no copies: all 2 pictures have a plain width attribute, which pins each to one copy at that width (/img/a.png, in ./src/index.html). To keep width and height as the space it takes and still get the widths, add ssqch:widths=\"16,32\" to the <img>"]);
+			else assert.deepEqual(messages, []);
+			fs.rmSync(root, { recursive: true });
+		}
+	} finally {
+		capture(false);
+	}
+});
+
 // Squatch Snacks (B1): a hero with another crop on a phone. The `<img>` was wrapped in a second
 // `<picture>` inside the page's own, which isn't HTML, and the `<source>`'s file was never in the
 // output, so the phone got a broken picture.

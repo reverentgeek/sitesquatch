@@ -163,6 +163,7 @@ BUILTINS.set("ssqch/image", (config, given) => {
 	if (widths !== undefined) {
 		if (!Array.isArray(widths)) bail("widths must be an array of numbers");
 		opts.widths = widths.map((w) => (Number.isInteger(w) && w >= 0 ? Math.min(w, 0xffffffff) : bail(`widths must be positive whole numbers, got ${JSON.stringify(w) ?? "null"}`)));
+		opts.widthsGiven = true;
 	}
 	const attributes = o.get("defaultAttributes");
 	if (attributes !== undefined) {

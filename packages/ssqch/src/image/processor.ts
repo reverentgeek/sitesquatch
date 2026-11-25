@@ -71,6 +71,8 @@ export interface ImageOptions {
 	/** Output formats; the last one is the `<img>` fallback. */
 	formats: Format[];
 	widths: number[];
+	/** The config gave `widths` (for the note when no picture used them). */
+	widthsGiven?: boolean;
 	/** Attributes added to every `<img>` unless it already sets them. */
 	defaultAttributes: Array<[string, string]>;
 	/** The output folder (from the output directory) and its public URL. */
@@ -574,6 +576,11 @@ export class ImageProcessor {
 		return this.ctx;
 	}
 
+	/** Pictures this build that a plain `width` pinned to one copy, the first of them, and whether any used the config's `widths`. */
+	private pinned = 0;
+	private pinnedAt: [src: string, page: string] | undefined;
+	private usedWidths = false;
+
 	private warnOnce(message: string): void {
 		if (this.warned.has(message)) return;
 		this.warned.add(message);
@@ -598,6 +605,9 @@ export class ImageProcessor {
 		this.pending = [];
 		this.placing = [];
 		this.watched.clear();
+		this.pinned = 0;
+		this.pinnedAt = undefined;
+		this.usedWidths = false;
 		this.used.clear();
 		this.sources.clear();
 		this.converted.clear();
@@ -676,6 +686,14 @@ export class ImageProcessor {
 	/** After the build: `prune`, the hash cache, and with `--verbose` the slowest encodes. */
 	finishBuild(): void {
 		const ctx = this.context();
+		// The config's `widths`, and every picture pinned to one copy by its `width`, written to
+		// reserve its space as speed guides say: 96-pixel thumbnails fetched the 800-pixel copy, and
+		// nothing said so (Pack Mule). Pinning one picture on purpose (a logo) says nothing.
+		if (this.options.widthsGiven && this.pinned > 0 && !this.usedWidths && this.pinnedAt) {
+			const [src, page] = this.pinnedAt;
+			const pictures = this.pinned === 1 ? "the one picture has" : `all ${this.pinned} pictures have`;
+			this.warnOnce(`widths: [${this.options.widths.join(", ")}] made no copies: ${pictures} a plain width attribute, which pins each to one copy at that width (${src}, in ${this.display(page)}). To keep width and height as the space it takes and still get the widths, add ssqch:widths="${this.options.widths.join(",")}" to the <img>`);
+		}
 		this.pruned = this.options.prune ? this.prune(path.join(ctx.output, this.options.outputSubdir)) : 0;
 		if (this.options.hashCache) {
 			// A cache that can't be written only costs time, so a warning, and on.
@@ -1383,6 +1401,10 @@ export class ImageProcessor {
 					const listed = el.get("ssqch:widths");
 					const own = parseU32(el.get("width"));
 					const widths = listed !== undefined ? listed.split(",").map(parseU32).filter((w): w is number => w !== undefined) : own !== undefined ? [own] : this.options.widths;
+					if (listed === undefined && own !== undefined) {
+						this.pinned += 1;
+						this.pinnedAt ??= [src, pageInput];
+					} else if (listed === undefined) this.usedWidths = true;
 					let meta: ImageMetadata;
 					try { meta = this.generate(file, widths, this.options.formats); } catch (e) {
 						this.warnOnce((e as Error).message);
