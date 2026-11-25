@@ -140,6 +140,10 @@ Run from `packages/ssqch/` unless it says otherwise.
   whether the rebuild wrote the same, byte for byte (`src/serve/check.ts`); a change that makes
   rebuilds skip work runs under it. `SSQCH_SERVE_TIMELINE=<file>` is what the script reads
   (`src/serve/timeline.ts`). Both are for ssqch's own measurements and tests, not the docs.
+  `SSQCH_KEEP_TEMPLATES=1` (reuse templates between rebuilds) and `SSQCH_INCREMENTAL=1` (with it,
+  render only the pages whose bodies changed) are the dev server's stage 3 behind switches, off by
+  default until `node bench/rebuilds.ts` (a sequence of cross-page edits, each rebuild checked
+  against a clean build) has run clean with them across the examples and frozen sites.
 - `node scripts/build.ts` builds the npm package into `dist/` (bundled with esbuild; sharp is its
   one dependency), and `node scripts/check-package.ts` installs that tarball in an empty folder
   and builds every example with it. "Releasing" has the rest.
