@@ -51,13 +51,13 @@ test("the served build's own files come from its folder's entry on the build's l
 });
 
 // With leaveNoTrace off, a rebuild after a page was renamed or deleted leaves its old file, as
-// ssqch build does: not a page the dev server got wrong. One the rebuild failed to write still is.
-test("with leaveNoTrace off, what an earlier build left is said apart, and a missing page still fails", () => {
-	const served = folder({ "index.html": "camp", "old-post/index.html": "renamed since" });
+// ssqch build does: said apart, by the build's own list of what it left. Another file only in the
+// served output is still a difference, and so is a page the rebuild failed to write.
+test("what the build said an earlier one left is said apart, and nothing else is", () => {
+	const served = folder({ "index.html": "camp", "old-post/index.html": "renamed since", "stray.html": "?" });
 	const clean = folder({ "index.html": "camp", "new-post/index.html": "here" });
-	const c = compareOutputs(served, clean, undefined, true);
-	assert.deepEqual([c.left, c.onlyServed, c.onlyClean], [["old-post/index.html"], [], ["new-post/index.html"]]);
-	assert.match(verdict(c, "src/new-post.md", "dist"), /isn't what a clean build writes: 1 only in the clean build \(new-post\/index\.html\); left out 1 only in dist \(old-post\/index\.html\), which an earlier build may have written: with leaveNoTrace off they stay/);
-	const fine = compareOutputs(served, folder({ "index.html": "camp" }), undefined, true);
-	assert.match(verdict(fine, "src/old-post.md", "dist"), /wrote what a clean build writes \(1 file the same; left out 1 only in dist/);
+	const c = compareOutputs(served, clean, undefined, new Set(["old-post/index.html"]));
+	assert.deepEqual([c.left, c.onlyServed, c.onlyClean], [["old-post/index.html"], ["stray.html"], ["new-post/index.html"]]);
+	const fine = compareOutputs(folder({ "index.html": "camp", "old-post/index.html": "x" }), folder({ "index.html": "camp" }), undefined, new Set(["old-post/index.html"]));
+	assert.match(verdict(fine, "src/old-post.md", "dist"), /wrote what a clean build writes \(1 file the same; left out 1 an earlier build wrote and this one didn't \(old-post\/index\.html\), which stay with leaveNoTrace off/);
 });

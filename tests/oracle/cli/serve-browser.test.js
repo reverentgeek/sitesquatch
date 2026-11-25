@@ -70,6 +70,29 @@ test("serve_writes_a_ready_file", async () => {
 	}
 });
 
+// A deleted or renamed page's file stays in the output with leaveNoTrace off (its default), as
+// ssqch build leaves it, and the dev server served it: the page was still there while serving.
+// The server answers it as not found, and a page put back is served again.
+test("serve_doesnt_serve_a_deleted_page", async () => {
+	const dir = tempDir("serve-deleted");
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n", "src/index.md": "Home\n", "src/cedar.md": "Cedar Trail\n" });
+	const ready = path.join(dir, "ready.json");
+	const log = path.join(tempDir("serve-deleted-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--ready-file", ready, "--root", dir], { logFile: log });
+	try {
+		await waitFor(ready, READY);
+		const port = JSON.parse(fs.readFileSync(ready, "utf8")).port;
+		assert.ok((await httpGet(port, "/cedar/")).startsWith("HTTP/1.1 200"));
+		fs.rmSync(path.join(dir, "src/cedar.md"));
+		await until(async () => (await httpGet(port, "/cedar/")).startsWith("HTTP/1.1 404"), () => readOr(log));
+		assert.ok(exists(dir, "dist/cedar/index.html"), "the file stays, as ssqch build leaves it");
+		write(dir, { "src/cedar.md": "Cedar Trail again\n" });
+		await until(async () => (await httpGet(port, "/cedar/")).includes("Cedar Trail again"), () => readOr(log));
+	} finally {
+		await server.stop();
+	}
+});
+
 // A browser hears a rebuild at once: the server pushes it on /__ssqch/events, where a page
 // asked every 0.7 s (0.35 s late on average). The stream's first answer comes when it opens.
 test("serve_pushes_each_change_to_the_browser", async () => {

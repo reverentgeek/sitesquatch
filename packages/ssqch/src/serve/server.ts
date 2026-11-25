@@ -548,7 +548,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				if (!quiet) sayWhere();
 				record({ kind: "rebuild", file: show(source), heard: heardAt, debounced, asked, ...marks, said: Date.now() });
 				watchConfigFiles();
-				if (CHECKING && marks.ok) await checkRebuild({ args, builder, rx, carried, tools, changed: show(source), moved: (file) => !own(file) && !editorsOwn(file) && !skipped(file) && !isInside(output, file) && inSources(file) && sourceState(file) !== contents.get(file), show });
+				if (CHECKING && marks.ok) await checkRebuild({ args, builder, rx, carried, tools, stale: live.stale, changed: show(source), moved: (file) => !own(file) && !editorsOwn(file) && !skipped(file) && !isInside(output, file) && inSources(file) && sourceState(file) !== contents.get(file), show });
 			} else if (outputs.some((file) => isAsset(file) || !exists(file))) {
 				// Another tool (PostCSS, esbuild) wrote a stylesheet or a script, or ssqch's own
 				// write is late to arrive: the contents say which, so a tool's write that landed
@@ -643,7 +643,7 @@ const CHECKING = process.env.SSQCH_CHECK_REBUILDS === "1";
  * meanwhile (other than the check's own files) means the two didn't build the same files, so
  * nothing is said but that.
  */
-async function checkRebuild({ args, builder, rx, carried, tools, changed, moved, show }: { args: string[]; builder: Builder; rx: Channel<string[]>; carried: string[]; tools: boolean; changed: string; moved: (file: string) => boolean; show: (file: string) => string }): Promise<void> {
+async function checkRebuild({ args, builder, rx, carried, tools, stale, changed, moved, show }: { args: string[]; builder: Builder; rx: Channel<string[]>; carried: string[]; tools: boolean; stale: ReadonlySet<string>; changed: string; moved: (file: string) => boolean; show: (file: string) => string }): Promise<void> {
 	const site = builder.site;
 	const dir = checkFolder(site.root);
 	const started = Date.now();
@@ -663,7 +663,7 @@ async function checkRebuild({ args, builder, rx, carried, tools, changed, moved,
 	if (!built.ok) line = `check-rebuilds: the clean build after ${changed} failed where the rebuild worked: ${built.error ?? "its error is above"}`;
 	else if (meanwhile !== undefined) line = `check-rebuilds: ${show(meanwhile)} changed while the clean build ran, so the two didn't build the same files; not judged`;
 	else {
-		found = compareOutputs(site.output, dir, tools ? ownFiles(site.root, site.outputName) : undefined, !site.leaveNoTrace);
+		found = compareOutputs(site.output, dir, tools ? ownFiles(site.root, site.outputName) : undefined, stale);
 		line = verdict(found, changed, site.outputName);
 	}
 	say(line);
@@ -674,6 +674,8 @@ async function checkRebuild({ args, builder, rx, carried, tools, changed, moved,
 async function buildAndReport(builder: Builder, live: Live, changed?: string[]): Promise<Built> {
 	const built = await builder.build(live.error !== null, changed);
 	if (!built.ok) live.failed(built.error ?? "");
+	// A page a source no longer makes isn't served, though `leaveNoTrace` off leaves its file.
+	else if (built.stale) live.stale = new Set(built.stale);
 	return built;
 }
 

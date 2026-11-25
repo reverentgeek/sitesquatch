@@ -69,8 +69,6 @@ export interface SiteInfo {
 	watch: string[];
 	/** Where an error's files can be named from. */
 	locate: string[];
-	/** `leaveNoTrace`: whether a build deletes what an earlier one wrote and it didn't. */
-	leaveNoTrace: boolean;
 }
 
 /** After the configuration loaded, and after each build. */
@@ -92,7 +90,7 @@ export interface State {
 export type FromBuilder =
 	| ({ type: "loaded"; site: SiteInfo } & State)
 	| { type: "failed" }
-	| ({ type: "built"; ok: boolean; error?: string; assets: string[]; times?: BuilderTimes } & State)
+	| ({ type: "built"; ok: boolean; error?: string; assets: string[]; stale?: string[]; times?: BuilderTimes } & State)
 	/** The site's code threw where nothing caught it, and the process is ending: the error, said as a build's is. */
 	| { type: "crashed"; error: string }
 	/** Each second of a build: how long since it last did anything, and what it waits on (`activity.ts`); `blocking` before a `run` command, which holds its process until it ends. */
@@ -114,6 +112,8 @@ export interface Built {
 	error?: string;
 	/** The stylesheets and scripts the build put in the output, absolute. */
 	assets: string[];
+	/** What an earlier build left that this one didn't write (`BuildReport.stale`), which isn't served. */
+	stale?: string[];
 	/** With `SSQCH_SERVE_TIMELINE`, the builder's own times (`timeline.ts`). */
 	times?: BuilderTimes;
 }
@@ -328,7 +328,7 @@ export class Builder {
 			return this.failed(`The build's process ended before the build did (${how}). What it said is in the terminal.`);
 		}
 		this.note(message);
-		return { ok: message.ok, error: message.error, assets: message.assets, ...(message.times ? { times: message.times } : {}) };
+		return { ok: message.ok, error: message.error, assets: message.assets, ...(message.stale ? { stale: message.stale } : {}), ...(message.times ? { times: message.times } : {}) };
 	}
 
 	/**

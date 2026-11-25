@@ -7,7 +7,7 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import zlib from "node:zlib";
-import { relative, walkFiles } from "../paths.ts";
+import { relative, slashes, walkFiles } from "../paths.ts";
 import { closestPath } from "../suggest.ts";
 import { TAB_ICON } from "./tab-icon.ts";
 import type { Live } from "./live.ts";
@@ -284,8 +284,12 @@ export function handle(req: http.IncomingMessage, res: http.ServerResponse, root
 	// The build the page is from, asked before its file is read: a rebuild in between makes the
 	// page newer than this, and the script reloads once for nothing, rather than never.
 	const build = live.id;
-	const found = locate(res, root, rawUrl, url);
+	let found = locate(res, root, rawUrl, url);
 	if (!found) return;
+	// A file an earlier build wrote and the last one didn't (a deleted or renamed page, which
+	// `leaveNoTrace` off leaves in the output, as `ssqch build` does): not there, as far as a
+	// browser here can tell.
+	if (found.status === 200 && live.stale.size && live.stale.has(slashes(path.relative(root, found.file)))) found = { status: 404, file: path.join(root, "404.html") };
 	// A page with a Markdown copy is two answers, by what the request asks for.
 	const copy = found.status === 200 ? copyOf(found.file) : undefined;
 	if (copy && prefersMarkdown(req.headers.accept)) return respond(res, 200, { "Content-Type": "text/markdown; charset=utf-8", Vary: "Accept", ...noCache, "X-Powered-By": "pine cones" }, read(copy) ?? "");

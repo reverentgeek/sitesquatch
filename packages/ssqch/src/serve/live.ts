@@ -129,6 +129,13 @@ export class Live {
 	/** The `serve.run` tools (`tailwindcss`), and the output folder as shown, for what's said about a missing file. */
 	tools: string[] = [];
 	private outputName = "";
+	/**
+	 * Files the last build didn't write that an earlier one did, by their path from the output
+	 * folder with `/`: with `leaveNoTrace` off they stay in the output, as `ssqch build` leaves
+	 * them, and the server answers them as not found, so a deleted or renamed page isn't served
+	 * while its file is still there.
+	 */
+	stale = new Set<string>();
 	/** Who's told when `id` goes up: each browser's open `/__ssqch/events`. */
 	private listeners = new Set<() => void>();
 

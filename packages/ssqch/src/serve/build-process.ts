@@ -35,7 +35,6 @@ function siteInfo(config: Config): SiteInfo {
 		input: dirs.input,
 		output: dirs.output,
 		outputName: isInside(dirs.root, dirs.output) ? relative(dirs.root, dirs.output) : slashes(dirs.output),
-		leaveNoTrace: config.leaveNoTrace,
 		base: config.base,
 		serveRun: config.serveRun,
 		serveIgnore: config.serveIgnore,
@@ -125,7 +124,7 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 		const { recovered, changed } = asked.shift()!;
 		const received = Date.now();
 		config.changed = changed;
-		let result: { ok: boolean; error?: string; assets: string[] };
+		let result: { ok: boolean; error?: string; assets: string[]; stale?: string[] };
 		let times: Omit<BuilderTimes, "said"> | undefined;
 		// What the build is doing, each second, for the server's limit on a stuck one. Unref'd,
 		// so a build with nothing left to wait for still ends as Node ends it (`watchSettle`).
@@ -138,7 +137,7 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 			const report = await working(() => build(config));
 			if (timing) times = { received, started, finished: Date.now(), phases: report.timings };
 			if (!config.quiet) process.stdout.write(summary(config, report, recovered));
-			result = { ok: true, assets: report.outputs.filter(isAsset) };
+			result = { ok: true, assets: report.outputs.filter(isAsset), stale: report.stale };
 		} catch (e) {
 			// With the lines it's about, in the terminal and over the page.
 			const said = diagnostics.describe(e, "build", at);

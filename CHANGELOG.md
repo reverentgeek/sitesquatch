@@ -42,6 +42,9 @@ where that version matches.
   setting to raise and says polling needs neither.
 - Sublime Text's temporary files (`.subl*.tmp`) don't start a rebuild, as Vim's and JetBrains'
   don't.
+- `ssqch serve` doesn't serve a deleted or renamed page. With `leaveNoTrace` off (the default),
+  its old file stays in the output, as `ssqch build` leaves it, and the dev server went on
+  serving it; it answers it as not found now, and the file stays.
 
 ## 0.16.0 - 2026-11-25
 
