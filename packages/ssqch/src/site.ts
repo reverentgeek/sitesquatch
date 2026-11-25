@@ -793,7 +793,7 @@ export class Site {
 		// Something it can't serialize (a function in the data) means no reuse. The blog's global
 		// data serialized and hashed in about a millisecond.
 		let values: string;
-		try { values = crypto.createHash("sha1").update(v8.serialize([this.global, [...dirData]])).digest("base64"); } catch (e) { return this.notKeeping(`the data has something that can't be compared (${messageOf(e)})`); }
+		try { values = crypto.createHash("sha1").update(serializedData([this.global, [...dirData]])).digest("base64"); } catch (e) { return this.notKeeping(`the data has something that can't be compared (${messageOf(e)})`); }
 		return JSON.stringify([values, files.map((file) => [file, fileMark(file)])]);
 	}
 
@@ -1387,6 +1387,52 @@ const keptSources = new Map<string, { size: number; mtimeMs: number; bytes: Buff
  * Making them was 200 to 290 ms of a 10,000-page rebuild.
  */
 const keptTemplates = new Map<string, { bytes: Buffer; shared: string; commit: number | undefined; time: number | undefined; layouts: Array<[string, string]>; front: string; tpl: Tpl }>();
+
+/**
+ * Data as bytes to hash (`sharedInputs`), as `v8.serialize` writes it, with each function as a
+ * number of its own: the same function object is the same number from one build to the next.
+ * A function comes from a module the builder loaded (a JavaScript data file's `computed`), and a
+ * change to one starts a new builder, so the same object means the same code. Without functions,
+ * serializing is all it does.
+ */
+function serializedData(value: unknown): Buffer {
+	try { return v8.serialize(value); } catch { /* a function, most likely: numbered below */ }
+	const copies = new Map<object, unknown>();
+	const copy = (item: unknown): unknown => {
+		if (typeof item === "function") {
+			let id = functionIds.get(item);
+			if (id === undefined) functionIds.set(item, id = functionIds.size + 1);
+			return `\0function ${id}`;
+		}
+		if (item === null || typeof item !== "object" || item instanceof Date || item instanceof RegExp || ArrayBuffer.isView(item)) return item;
+		const done = copies.get(item);
+		if (done !== undefined) return done;
+		if (Array.isArray(item)) {
+			const out: unknown[] = [];
+			copies.set(item, out);
+			for (const entry of item) out.push(copy(entry));
+			return out;
+		}
+		if (item instanceof Map) {
+			const out = new Map();
+			copies.set(item, out);
+			for (const [key, entry] of item) out.set(copy(key), copy(entry));
+			return out;
+		}
+		if (item instanceof Set) {
+			const out = new Set();
+			copies.set(item, out);
+			for (const entry of item) out.add(copy(entry));
+			return out;
+		}
+		const out: Record<string, unknown> = {};
+		copies.set(item, out);
+		for (const key of Object.keys(item)) out[key] = copy((item as Record<string, unknown>)[key]);
+		return out;
+	};
+	return v8.serialize(copy(value));
+}
+const functionIds = new Map<Function, number>();
 
 /** A file's size and time, as one string: what tells it's as it was. */
 function fileMark(file: string): string {
