@@ -35,7 +35,7 @@ import { mkdocsGlobals, tocOf } from "./mkdocs.ts";
 import { currentRendering, renderingAs, safe } from "./rendering.ts";
 import { checkPages, paginated } from "./schema.ts";
 import type { CopyJob, Page, Tpl } from "./site.ts";
-import { Site, Timer, errorsTogether } from "./site.ts";
+import { Site, Timer, errorsTogether, readsCollections } from "./site.ts";
 import type { Profile, ProfileReport } from "./profile.ts";
 import * as voice from "./voice.ts";
 import { jekyllPage, jekyllSite } from "./jekyll.ts";
@@ -125,8 +125,17 @@ export async function build(config: Config): Promise<BuildReport> {
 	const rendering = only ? wanted.filter((p) => only.has(p)) : wanted;
 	renderedCount = [rendering.filter((p) => p.output !== null).length, wanted.filter((p) => p.output !== null).length];
 	await renderer.renderAll([...rendering.filter((p) => !late.has(p)), ...rendering.filter((p) => late.has(p))], late);
-	// Whose content each page that reads collections read, for the next rebuild's choice.
-	if (config.serving) for (const page of rendering) if (late.has(page) && page.output !== null) keptReads.set(page.output, renderer.reads.get(page.index) ?? new Set());
+	// Whose content each page read, and whether it read collections, for the next rebuild's choice.
+	if (config.serving) {
+		for (const page of rendering) {
+			if (page.output === null) continue;
+			const read = renderer.reads.get(page.index);
+			if (read || late.has(page)) keptReads.set(page.output, read ?? new Set());
+			else keptReads.delete(page.output);
+			if (renderer.collectionReaders.has(page.index)) keptCollectionReaders.add(page.output);
+			else keptCollectionReaders.delete(page.output);
+		}
+	}
 	// What the built-in plugins learned from each page, said again for the pages taken as they
 	// were (the image plugin's pictures in use), with the rendered pages' new records.
 	if (config.serving) {
@@ -289,6 +298,13 @@ const keptWritten = new Map<string, number>();
  */
 const keptReads = new Map<string, Set<string>>();
 
+/**
+ * While serving with `SSQCH_INCREMENTAL=1`: the pages (by output file) whose last render read
+ * `collections`, by anything: the template, a layout, an include, or a site's filter through
+ * `this.data.collections`. A change to another page's front matter can change what they show.
+ */
+const keptCollectionReaders = new Set<string>();
+
 /** While serving: what a generator last wrote to each file, with the size and time the file had then. */
 const keptGenerated = new Map<string, { text: string; mark: string }>();
 
@@ -309,28 +325,39 @@ const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/
 /**
  * `SSQCH_INCREMENTAL=1` while serving (the dev server's design, stage 3, its first slice): the
  * pages to render when every changed file is a template whose body alone changed
- * (`Site.bodyOnly`), the site's plugins are all `REPLAYABLE`, and the config has no transforms or
+ * (`Site.bodyOnly`) or whose own data did (`Site.ownData`: its front matter), the site's plugins are all `REPLAYABLE`, and the config has no transforms or
  * after-build hooks of its own (code that sees rendered pages; a `beforeBuild` hook runs before any
  * page, every build). `undefined` means render everything.
  */
 function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page> | undefined {
 	const { config } = site;
-	if (process.env.SSQCH_INCREMENTAL !== "1" || !config.serving || !site.bodyOnly.size || !config.changed?.length) return undefined;
+	if (process.env.SSQCH_INCREMENTAL !== "1" || !config.serving || !(site.bodyOnly.size || site.ownData.size) || !config.changed?.length) return undefined;
 	// By real paths on both sides: the server names files by theirs, and the site may not (a
 	// temporary folder's `/var` is `/private/var` on macOS).
 	const bodyOnly = new Set([...site.bodyOnly].map(realPath));
-	if (!config.changed.every((file) => bodyOnly.has(realPath(file)))) return undefined;
+	const ownData = new Set([...site.ownData].map(realPath));
+	if (!config.changed.every((file) => bodyOnly.has(realPath(file)) || ownData.has(realPath(file)))) return undefined;
+	// A page's own data changed (its front matter, a date that's its file's time): what other
+	// pages show of it comes through collections, which every page's data is made from again.
+	const dataChanged = config.changed.some((file) => ownData.has(realPath(file)));
 	if (!config.plugins.every((name) => REPLAYABLE.has(name))) return undefined;
 	if (config.afterBuild.some((hook) => !("label" in hook) || hook.label !== "")) return undefined;
 	if (config.transforms.some(([name]) => name !== "minify-html")) return undefined;
-	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input)));
-	const changedKeys = new Set([...only].map(pageKey));
-	// A page that reads collections, when it read a changed page's content last time, or has no
-	// record of what it read. MkDocs' and Jekyll's templates read more of other pages than that.
+	// MkDocs' and Jekyll's templates read more of other pages than that, past `collections`.
 	const everyLate = config.mkdocsTemplates !== null || config.jekyllTemplates;
-	for (const page of late) {
-		const read = page.output === null ? undefined : keptReads.get(page.output);
-		if (everyLate || !read || [...read].some((key) => changedKeys.has(key))) only.add(page);
+	if (dataChanged && everyLate) return undefined;
+	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input) || site.ownData.has(page.tpl.input)));
+	const changedKeys = new Set([...only].map(pageKey));
+	for (const page of wanted) {
+		if (only.has(page) || page.output === null) continue;
+		const read = keptReads.get(page.output);
+		// A page that read a changed page's content last time (a feed), or reads collections in its
+		// own templates and has no record of what it read.
+		if (read && [...read].some((key) => changedKeys.has(key))) only.add(page);
+		else if (late.has(page) && (everyLate || !read)) only.add(page);
+		// After a change to a page's own data, every page that read collections (its title in a
+		// list, its place in prev and next), is paginated over one, or has computed data from them.
+		else if (dataChanged && (late.has(page) || keptCollectionReaders.has(page.output) || readsCollections(page.tpl.data.computed))) only.add(page);
 	}
 	// A page the last build didn't write (new to the output) is rendered.
 	for (const page of wanted) if (!only.has(page) && page.output !== null && !keptWritten.has(page.output)) only.add(page);
@@ -354,6 +381,12 @@ class Renderer {
 	/** The page rendering now (pages render one at a time), and whose content each page read, by page index. */
 	private rendering: Page | undefined;
 	reads = new Map<number, Set<string>>();
+	/** The page whose body is rendering now: `rendering`, or another page's body that it asked for. */
+	private reader: Page | undefined;
+	/** The pages, by index, whose render read `collections` (`keptCollectionReaders`). */
+	collectionReaders = new Set<number>();
+	/** `collections` as pages see them, which notes who reads it, with `SSQCH_INCREMENTAL=1` while serving. */
+	private collectionsView: Data | undefined;
 	/** Time spent rendering bodies, as the summary's `render`. */
 	renderMs = 0;
 	/**
@@ -380,7 +413,7 @@ class Renderer {
 
 	/** The data a page's templates get: its own, and the collections. */
 	private data(page: Page): Data {
-		const data: Data = { ...page.data, collections: this.site.collections };
+		const data: Data = { ...page.data, collections: this.collections() };
 		if (this.site.config.jekyllTemplates) {
 			data.site = this.jekyllSite();
 			data.page = jekyllPage(page.data, page.data.page, this.globalKeys());
@@ -397,6 +430,28 @@ class Renderer {
 		}
 		return data;
 	}
+	/**
+	 * The collections for a page's templates. With `SSQCH_INCREMENTAL=1` while serving, a view that
+	 * notes the page reading it, whatever reads it (a template, a layout, a site's filter): a
+	 * rebuild after a change to one page's front matter renders those pages again. Anything an
+	 * engine does to look at it counts, so at worst a page renders when it needn't have.
+	 */
+	private collections(): Data {
+		const { collections, config } = this.site;
+		if (process.env.SSQCH_INCREMENTAL !== "1" || !config.serving) return collections;
+		if (this.collectionsView) return this.collectionsView;
+		const note = () => {
+			const who = this.reader ?? this.rendering;
+			if (who) this.collectionReaders.add(who.index);
+		};
+		return (this.collectionsView = new Proxy(collections, {
+			get: (target, key, receiver) => { note(); return Reflect.get(target, key, receiver); },
+			has: (target, key) => { note(); return Reflect.has(target, key); },
+			ownKeys: (target) => { note(); return Reflect.ownKeys(target); },
+			getOwnPropertyDescriptor: (target, key) => { note(); return Reflect.getOwnPropertyDescriptor(target, key); },
+		}));
+	}
+
 	/** Each page's MkDocs page, by the data its layouts render with. */
 	private mkdocsPageOf = new WeakMap<Data, Data>();
 
@@ -493,7 +548,9 @@ class Renderer {
 			// Another page's body, read now: its functions see that page, then this one's again.
 			const now = currentRendering();
 			const was = now?.data;
-			try { out = this.body(page); } finally { if (now && was) now.data = was; }
+			const reader = this.reader;
+			this.reader = page;
+			try { out = this.body(page); } finally { if (now && was) now.data = was; this.reader = reader; }
 		} catch (e) {
 			this.bodies.delete(page.index);
 			// That page's own turn reports this; the page that asked isn't a second error.

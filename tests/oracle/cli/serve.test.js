@@ -395,14 +395,17 @@ test("serve_renders_again_only_the_collection_pages_that_read_the_changed_conten
 });
 
 // A page with no date of its own takes its file's time, so an edit to its text alone moves its date:
-// a listing that shows it (or sorts by it) renders again, as it would for its front matter.
+// a listing that shows it (or sorts by it) renders again, as it would for its front matter, and a
+// page that reads no collections doesn't.
 test("serve_renders_a_listing_again_when_an_undated_pages_text_moves_its_date", async () => {
 	const dir = tempDir("serve-incremental-undated");
+	const renders = path.join(tempDir("serve-incremental-undated-renders"), "renders.log");
 	write(dir, {
-		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"njk\"] };\n",
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
 		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
-		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\n---\n<p>Cedar</p>",
-		"src/titles.njk": "{% for p in collections.posts %}<li>{{ p.data.title }} {{ p.date.getTime() }}</li>{% endfor %}",
+		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\n---\n<p>{{ \"cedar\" | noted }}</p>",
+		"src/titles.njk": "{{ \"titles\" | noted }}{% for p in collections.posts %}<li>{{ p.data.title }} {{ p.date.getTime() }}</li>{% endfor %}",
+		"src/about.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"about\" | noted }}</p>",
 	});
 	const old = new Date("2026-01-01T00:00:00Z");
 	fs.utimesSync(path.join(dir, "src/posts/cedar.njk"), old, old);
@@ -411,10 +414,74 @@ test("serve_renders_a_listing_again_when_an_undated_pages_text_moves_its_date", 
 	try {
 		await waitFor(path.join(dir, "dist/titles/index.html"), String(old.getTime()));
 		await waitFor(log, "Serving ");
+		fs.writeFileSync(renders, "");
 		fs.appendFileSync(path.join(dir, "src/posts/cedar.njk"), "<p>Four miles.</p>");
 		const said = await waitFor(log, "check-rebuilds: ");
 		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
 		assert.ok(!fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes(String(old.getTime())));
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		const rebuilt = lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name).sort();
+		assert.deepEqual(rebuilt, ["cedar", "titles"], JSON.stringify(lines));
+	} finally {
+		await server.stop();
+	}
+});
+
+// A change to a page's front matter renders that page and every page whose last render read
+// collections, by anything: a listing's template, or a layout's filter of the site's own that reads
+// \`this.data.collections\`, which no template text names. A page that read none renders not at all.
+test("serve_renders_the_collection_readers_again_after_a_front_matter_edit", async () => {
+	const dir = tempDir("serve-incremental-front");
+	const renders = path.join(tempDir("serve-incremental-front-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; }, newest: function () { return this.data.collections.posts.at(-1).data.title; } } };\n`,
+		"src/_includes/side.njk": "<aside>{{ page.url | noted }} {{ \"\" | newest }}</aside>{{ content | safe }}",
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\ndate: 2026-01-02\n---\n<p>{{ \"cedar\" | noted }}</p>",
+		"src/posts/stump.njk": "---\ntitle: The stump\ndate: 2026-01-01\n---\n<p>{{ \"stump\" | noted }}</p>",
+		"src/titles.njk": "{{ \"titles\" | noted }}{% for p in collections.posts %}<li>{{ p.data.title }}</li>{% endfor %}",
+		"src/ranger.njk": "---\nlayout: side.njk\ndate: 2026-01-01\n---\n<p>Ranger station</p>",
+		"src/about.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"about\" | noted }}</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-front-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(dir, "dist/ranger/index.html"), "Cedar Trail");
+		await waitFor(log, "Serving ");
+		fs.writeFileSync(renders, "");
+		const cedar = path.join(dir, "src/posts/cedar.njk");
+		fs.writeFileSync(cedar, fs.readFileSync(cedar, "utf8").replace("Cedar Trail", "Cedar Loop"));
+		const said = await waitFor(log, "check-rebuilds: ");
+		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		const rebuilt = lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name).sort();
+		assert.deepEqual(rebuilt, ["/ranger/", "cedar", "titles"], JSON.stringify(lines));
+		assert.ok(fs.readFileSync(path.join(dir, "dist/ranger/index.html"), "utf8").includes("Cedar Loop"));
+	} finally {
+		await server.stop();
+	}
+});
+
+// A page that shows another page's body through a site's filter (\`this.data.collections\`, in a
+// layout, where no template text names collections) renders again when that body changes.
+test("serve_renders_a_page_whose_filter_read_the_changed_body", async () => {
+	const dir = tempDir("serve-incremental-filter-body");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"njk\"], filters: { oldest: function () { return this.data.collections.posts[0].templateContent; } } };\n",
+		"src/_includes/side.njk": "<aside>{{ \"\" | oldest | safe }}</aside>{{ content | safe }}",
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/stump.njk": "---\ntitle: The stump\ndate: 2026-01-01\n---\n<p>Stump</p>",
+		"src/ranger.njk": "---\nlayout: side.njk\ndate: 2026-01-01\n---\n<p>Ranger station</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-filter-body-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(dir, "dist/ranger/index.html"), "Stump");
+		await waitFor(log, "Serving ");
+		fs.appendFileSync(path.join(dir, "src/posts/stump.njk"), "<p>Four miles.</p>");
+		const said = await waitFor(log, "check-rebuilds: ");
+		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.ok(fs.readFileSync(path.join(dir, "dist/ranger/index.html"), "utf8").includes("Four miles."));
 	} finally {
 		await server.stop();
 	}

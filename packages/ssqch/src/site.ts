@@ -165,6 +165,11 @@ export class Site {
 	 * inputs, layouts and commit date): only their bodies changed. For `SSQCH_INCREMENTAL=1`.
 	 */
 	bodyOnly = new Set<string>();
+	/**
+	 * Templates made again this build from the same shared inputs and commit date whose front
+	 * matter (or the file time their date is) changed: their own data did. For `SSQCH_INCREMENTAL=1`.
+	 */
+	ownData = new Set<string>();
 	/** PascalCase tags the pages have with no template in `_includes/components/`, with the pages each is on. */
 	unknownComponents = new Map<string, Set<string>>();
 	/** Front matter dates that aren't dates, said with the schemas' errors (`checkPages`), so a page's other mistakes are said with them. */
@@ -743,7 +748,10 @@ export class Site {
 			// Its data is what it was when everything it comes from is: only the body changed.
 			// A page whose date or lastModified is its file's time has new data with every save.
 			const time = this.usesFileTime(tpl) ? tpl.mtime.getTime() : undefined;
-			if (kept && kept.shared === this.shared && kept.front === front && kept.commit === commit && kept.time === time && JSON.stringify(kept.layouts) === JSON.stringify(layouts)) this.bodyOnly.add(file);
+			if (kept && kept.shared === this.shared && kept.commit === commit) {
+				if (kept.front !== front || kept.time !== time) this.ownData.add(file);
+				else if (JSON.stringify(kept.layouts) === JSON.stringify(layouts)) this.bodyOnly.add(file);
+			}
 			keptTemplates.set(file, { bytes: source, shared: this.shared, commit, time, layouts, front, tpl });
 		} else keptTemplates.delete(file);
 		return tpl;
