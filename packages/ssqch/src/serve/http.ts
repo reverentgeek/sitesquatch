@@ -14,6 +14,8 @@ import type { Live } from "./live.ts";
 
 /** The script added to each HTML page the server sends. It asks `/__ssqch/build` what changed since it last looked. */
 const LIVE_SCRIPT = fs.readFileSync(new URL("./live.js", import.meta.url), "utf8");
+/** The styles of what the script shows in a page (the build-error overlay, the missing-file note). */
+const OVERLAY_CSS = fs.readFileSync(new URL("./overlay.css", import.meta.url), "utf8");
 
 /** The page for a URL that isn't there, when the site has no `404.html` of its own. Only the dev server sends it: it's never written to the output. */
 const NOT_FOUND_PAGE = fs.readFileSync(new URL("./not-found.html", import.meta.url), "utf8");
@@ -236,6 +238,10 @@ export function handle(req: http.IncomingMessage, res: http.ServerResponse, root
 		const message = inside(rel) && !isFile(path.join(root, rel)) ? live.missing(rel, url) : null;
 		return respond(res, 200, { "Content-Type": "application/json", ...noCache }, JSON.stringify({ message }));
 	}
+	// The script and its styles are files, not inline, so a site's Content-Security-Policy (its
+	// `_headers`, applied by `netlify dev` in front of this server) allows them with 'self'.
+	if (rawUrl === "/__ssqch/live.js") return respond(res, 200, { "Content-Type": "text/javascript; charset=utf-8", ...noCache }, LIVE_SCRIPT);
+	if (rawUrl === "/__ssqch/overlay.css") return respond(res, 200, { "Content-Type": "text/css; charset=utf-8", ...noCache }, OVERLAY_CSS);
 	if (rawUrl === "/__ssqch/build") {
 		const v = queryValue(query, "v");
 		const since = v !== undefined && /^\+?\d+$/.test(v) ? Number(v) : undefined;
@@ -251,6 +257,9 @@ export function handle(req: http.IncomingMessage, res: http.ServerResponse, root
 	if (at === "outside") return respond(res, 404, PLAIN, `Wrong trailhead: this site is served under ${base}/ (its \`base\`).`);
 	if ("redirect" in at) return respond(res, 302, { Location: at.redirect });
 	const url = at.path;
+	// The build the page is from, asked before its file is read: a rebuild in between makes the
+	// page newer than this, and the script reloads once for nothing, rather than never.
+	const build = live.id;
 	const found = locate(res, root, rawUrl, url);
 	if (!found) return;
 	// A page with a Markdown copy is two answers, by what the request asks for.
@@ -272,7 +281,8 @@ export function handle(req: http.IncomingMessage, res: http.ServerResponse, root
 			html = head === -1 ? `${link}${html}` : `${html.slice(0, head)}${link}${html.slice(head)}`;
 		}
 		const end = html.lastIndexOf("</body>");
-		body = Buffer.from(end === -1 ? `${html}<script>${LIVE_SCRIPT}</script>` : `${html.slice(0, end)}<script>${LIVE_SCRIPT}</script>${html.slice(end)}`);
+		const script = `<script src="/__ssqch/live.js" data-build="${build}"></script>`;
+		body = Buffer.from(end === -1 ? `${html}${script}` : `${html.slice(0, end)}${script}${html.slice(end)}`);
 	}
 	// The dev server's own; a deployed site's headers are its host's.
 	respond(res, found.status, { "Content-Type": ctype, ...(copy ? { Vary: "Accept" } : {}), ...noCache, "X-Powered-By": "pine cones" }, body);

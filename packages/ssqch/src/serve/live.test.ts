@@ -157,6 +157,30 @@ test("a_file_the_tools_are_still_compiling_isnt_warned_about", () => {
 // The new-docs run: once the server stopped, the page asked every 0.7 s forever, and the console
 // had 184 errors in two minutes. It asks less and less often (up to every 10 s), says so once, and
 // goes back to its pace when the server answers.
+// A rebuild that finished before the page's first poll (they take 40 ms; the poll is at 0.7 s)
+// reloads it: the page says which build it was sent from, and the first poll asks since then.
+// The script took the server's first answer as its start, and missed an edit saved in the first
+// 0.7 s after a page loaded (Pack Mule: 5 of 5 at 50 ms and at 300 ms).
+test("a_page_hears_a_rebuild_that_finished_before_its_first_poll", async () => {
+	const timers: Array<() => Promise<void>> = [];
+	const asked: string[] = [];
+	let reloaded = 0;
+	const context = vm.createContext({
+		URL,
+		console: { log: () => {} },
+		document: { title: "", querySelectorAll: () => [], currentScript: { dataset: { build: "41" } } },
+		location: { pathname: "/", href: "http://localhost/", origin: "http://localhost", reload: () => { reloaded += 1; } },
+		setTimeout: (fn: () => Promise<void>) => timers.push(fn),
+		fetch: async (url: string) => {
+			asked.push(url);
+			return { ok: true, json: async () => ({ id: 42, error: null, reload: true, css: [] }) };
+		},
+	});
+	vm.runInContext(fs.readFileSync(new URL("./live.js", import.meta.url), "utf8"), context);
+	await timers.shift()!();
+	assert.deepEqual([asked, reloaded], [["/__ssqch/build?v=41&p=%2F"], 1]);
+});
+
 test("a_page_asks_less_often_once_the_server_stops", async () => {
 	const timers: Array<[() => Promise<void>, number]> = [];
 	const logged: string[] = [];

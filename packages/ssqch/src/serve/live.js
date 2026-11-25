@@ -1,7 +1,12 @@
 (() => {
 	// What `ssqch serve` adds to each page it sends: it asks the server what changed,
 	// and reloads, swaps a stylesheet or shows a build error. It's never written to the output.
-	let seen;
+	// It's a file (`/__ssqch/live.js`), not inline, so a site's Content-Security-Policy allows it.
+	// The page says which build it was sent from: a rebuild that finished before the first poll
+	// (they take 40 ms) is news to it. Taking the server's answer as the start missed an edit saved
+	// in the first 0.7 s after a page loaded (Pack Mule).
+	const sent = document.currentScript?.dataset.build;
+	let seen = sent && /^\d+$/.test(sent) ? Number(sent) : undefined;
 	let panel;
 	let icon;
 	let hidden;
@@ -32,17 +37,7 @@
 		}
 		if (!panel) {
 			panel = document.createElement("div");
-			panel.attachShadow({ mode: "open" }).innerHTML = `<style>
-				section { position: fixed; inset: 0; z-index: 2147483647; overflow: auto; box-sizing: border-box; padding: 2rem 1rem; background: rgba(27, 32, 29, 0.97); color: #e5e9e1; font: 16px/1.5 system-ui, sans-serif; }
-				div { max-width: 60rem; margin: 0 auto; }
-				h1 { margin: 0 0 0.25rem; font-size: 1.4rem; color: #f0a17d; }
-				p { margin: 0 0 1rem; color: #a2aca3; }
-				pre { margin: 0 0 1rem; padding: 1rem; border-left: 5px solid #e8af43; background: #252b27; color: #e5e9e1; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-				section:focus { outline: none; }
-				button { margin-right: 0.5rem; padding: 0.35rem 0.9rem; border: 0; border-radius: 4px; background: #a23e20; color: #fafaf7; font: inherit; cursor: pointer; }
-				button:focus-visible { outline: 3px solid #e8af43; outline-offset: 2px; }
-				small { margin-left: 0.25rem; color: #a2aca3; }
-			</style><section role="alert" aria-labelledby="ssqch-title" tabindex="-1"><div><h1 id="ssqch-title">Build failed</h1><p>This page is from the last build that worked. Fix the error and this goes away.</p><pre></pre><button type="button" data-copy>Copy diagnostic</button><button type="button" data-hide>Hide</button><small>Escape hides it. Squatch Watch (ssqch serve)</small></div></section>`;
+			panel.attachShadow({ mode: "open" }).innerHTML = `<link rel="stylesheet" href="/__ssqch/overlay.css"><section role="alert" aria-labelledby="ssqch-title" tabindex="-1"><div><h1 id="ssqch-title">Build failed</h1><p>This page is from the last build that worked. Fix the error and this goes away.</p><pre></pre><button type="button" data-copy>Copy diagnostic</button><button type="button" data-hide>Hide</button><small>Escape hides it. Squatch Watch (ssqch serve)</small></div></section>`;
 			const root = panel.shadowRoot;
 			const copy = root.querySelector("[data-copy]");
 			copy.addEventListener("click", async () => {
@@ -92,12 +87,7 @@
 		}
 		if (!note) {
 			note = document.createElement("div");
-			note.attachShadow({ mode: "open" }).innerHTML = `<style>
-				aside { position: fixed; right: 1rem; bottom: 1rem; z-index: 2147483646; max-width: 32rem; box-sizing: border-box; padding: 0.75rem 1rem; border-left: 5px solid #e8af43; background: #1b201d; color: #e5e9e1; font: 14px/1.5 system-ui, sans-serif; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
-				strong { display: block; color: #f0a17d; }
-				p { margin: 0.35rem 0 0; overflow-wrap: anywhere; }
-				button { margin-top: 0.5rem; padding: 0.2rem 0.7rem; border: 0; border-radius: 4px; background: #a23e20; color: #fafaf7; font: inherit; cursor: pointer; }
-			</style><aside role="status"><strong>Missing from the output</strong><div></div><button type="button">Hide</button></aside>`;
+			note.attachShadow({ mode: "open" }).innerHTML = `<link rel="stylesheet" href="/__ssqch/overlay.css"><aside role="status"><strong>Missing from the output</strong><div></div><button type="button">Hide</button></aside>`;
 			note.shadowRoot.querySelector("button").addEventListener("click", () => note.remove());
 			document.body.append(note);
 		}
