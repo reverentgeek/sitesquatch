@@ -482,6 +482,35 @@ function namesWith(known: Name[], query: string): string[] {
 	return found.sort((a, b) => a.length - b.length || compareText(a, b)).slice(0, 3);
 }
 
+/**
+ * When no name has a word of the query: the sections whose text has one, most mentions first,
+ * as `ssqch docs "<title>"` takes them. "environment variables" had no name to point at, and the
+ * answer was only "ssqch docs lists everything" (Pack Mule).
+ */
+function topicsWith(all: Section[], query: string): string[] {
+	const stems = words(query).filter((w) => w.length >= 4).map((w) => (w.length > 4 && w.endsWith("s") ? w.slice(0, -1) : w));
+	if (!stems.length) return [];
+	const texts = all.filter((s) => s.level >= 2).map((s) => [plainTitle(s.title), `${s.title}\n${s.body}`.toLowerCase()] as const);
+	const count = (text: string, w: string) => { let n = 0; for (let at = text.indexOf(w); at !== -1; at = text.indexOf(w, at + w.length)) n += 1; return n; };
+	// A word in every section says nothing about which one: each counts by how few have it, so in
+	// "environment variables" the rare word decides, not the one every template page uses.
+	const weight = new Map(stems.map((w) => [w, Math.log((texts.length + 1) / (1 + texts.filter(([, t]) => t.includes(w)).length))]));
+	// Every word the docs use anywhere, in the one section: a section with only the common word
+	// ("variable", on every template page) sent "environment variables" to Liquid's.
+	const used = stems.filter((w) => texts.some(([, t]) => t.includes(w)));
+	const scored: Array<[number, string]> = [];
+	// A word the docs never use: they don't cover it, and the rest alone would guess.
+	if (used.length < stems.length) return [];
+	for (const [title, text] of texts) {
+		if (!used.every((w) => text.includes(w))) continue;
+		let n = 0;
+		for (const w of used) n += Math.min(count(text, w), 5) * weight.get(w)!;
+		scored.push([n, title]);
+	}
+	scored.sort((a, b) => b[0] - a[0] || compareText(a[1], b[1]));
+	return [...new Set(scored.map(([, title]) => title))].slice(0, 3);
+}
+
 /** A name, heading or word close to `query`, for "did you mean". */
 function closestName(all: Section[], known: Name[], query: string): string | undefined {
 	return closest(query, [...known.map((n) => n.name), ...all.map((s) => s.title), ...equivalents.TABLE.map((e) => e.word)]);
@@ -747,10 +776,11 @@ export function runDocs(grammar: Grammar, command: DocsCommand): number {
 	// Names with a word of the query in them (`images` -> imagePlugin, image()), when nothing is
 	// spelled like it: a start for an agent that guessed a word the docs don't use.
 	const nearest = near === undefined && next === undefined ? namesWith(known, query) : [];
+	const topics = near === undefined && next === undefined && !nearest.length ? topicsWith(all, query) : [];
 	if (json) {
-		out(JSON.stringify({ query, found: false, didYouMean: near ?? null, tryInstead: next ?? null, nearest }, null, 2) + "\n");
+		out(JSON.stringify({ query, found: false, didYouMean: near ?? null, tryInstead: next ?? null, nearest, topics }, null, 2) + "\n");
 	} else {
-		const hint = near ? ` (did you mean \`${near}\`?)` : nearest.length ? `; nearest names: ${nearest.map((n) => `\`${n}\``).join(", ")}` : "";
+		const hint = near ? ` (did you mean \`${near}\`?)` : nearest.length ? `; nearest names: ${nearest.map((n) => `\`${n}\``).join(", ")}` : topics.length ? `; its words are in ${topics.map((t) => `"${t}"`).join(", ")}` : "";
 		process.stderr.write(`${red("error:")} no tracks of "${query}" in the docs${hint}. ${next ? `Try \`${next}\`, or \`ssqch docs\` for everything.` : "`ssqch docs` lists everything."}\n`);
 	}
 	return 1;

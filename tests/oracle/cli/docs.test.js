@@ -180,6 +180,18 @@ test("docs_explain_what_migrations_asked_about", () => {
 	}
 });
 
+// Added in 0.16: with no name to point at, a miss names the sections that have every word of it
+// ("service workers" had only "ssqch docs lists everything", Pack Mule), and none when a word is
+// one the docs never use, or the only sections are a common word's ("environment variables" went
+// to Liquid's page for "variable").
+test("docs_name_the_topics_with_the_words_when_no_name_has_them", () => {
+	const r = ssqch(["docs", "service workers"]);
+	assert.ok(!r.ok && r.log.includes("no tracks of \"service workers\" in the docs; its words are in \"What a hook and a transform get\"."), r.log);
+	const miss = (query) => JSON.parse(ssqch(["docs", "--format", "json", query]).stdout);
+	assert.deepEqual([miss("service workers").topics, miss("pinecone counter").topics, miss("environment variables").topics], [["What a hook and a transform get"], [], []]);
+	assert.deepEqual(miss("feeds and things zzq").topics, []);
+});
+
 // Added in 0.14.1: a query nothing answers and nothing is spelled like names the names with a
 // word of it in them, and a section lists a title two pages share with its parent.
 test("docs_name_what_is_nearest_when_nothing_answers", () => {
