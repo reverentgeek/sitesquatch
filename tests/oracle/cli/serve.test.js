@@ -955,6 +955,9 @@ test("serve_brackets_an_ipv6_host_in_its_urls", async () => {
 // whose pages list a collection, highlight a fence and copy a file passes; one whose data
 // function counts its calls (state kept in the builder's process, as a stale cache would be)
 // doesn't, and the check names the page. `SSQCH_SERVE_TIMELINE` writes each step's time.
+/** How far two processes' `Date.now()` can disagree on Windows, for timelines that mix them. */
+const SKEW_MS = 20;
+
 test("serve_checks_each_rebuild_against_a_clean_build", async () => {
 	const dir = tempDir("serve-check");
 	write(dir, {
@@ -983,7 +986,9 @@ test("serve_checks_each_rebuild_against_a_clean_build", async () => {
 		// Each step after the one before it, on one clock.
 		const b = rebuild.builder;
 		const steps = [rebuild.heard, rebuild.debounced, rebuild.asked, b.received, b.started, b.finished, b.said, rebuild.built, rebuild.held, rebuild.published, rebuild.said];
-		assert.ok(steps.every((t, i) => typeof t === "number" && (i === 0 || t >= steps[i - 1])), JSON.stringify(rebuild));
+		// Two processes' clocks (the server's, the builder's) can differ by a millisecond or so on
+		// Windows: the builder heard at ...968 what the server asked at ...969 (Node 24, CI).
+		assert.ok(steps.every((t, i) => typeof t === "number" && (i === 0 || t >= steps[i - 1] - SKEW_MS)), JSON.stringify(rebuild));
 		assert.deepEqual(b.phases.map(([name]) => name).slice(0, 2), ["setup", "data"]);
 	} finally {
 		await server.stop();
@@ -1056,7 +1061,8 @@ test("serve_times_each_rebuild_from_its_own_change", async () => {
 				await sleep(20);
 			}
 			const line = rebuilds()[i - 1];
-			assert.ok(line.heard >= saved, `edit ${i} saved at ${saved}, heard at ${line.heard}: ${JSON.stringify(line)}`);
+			// The server's clock and this one's, give or take Windows' skew: the bug this guards was 1.3 s early.
+			assert.ok(line.heard >= saved - SKEW_MS, `edit ${i} saved at ${saved}, heard at ${line.heard}: ${JSON.stringify(line)}`);
 		}
 	} finally {
 		await server.stop();
