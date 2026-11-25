@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import v8 from "node:v8";
 // The site model: everything up to the list of pages. Engines, global data, templates with
 // their data (the cascade), pagination, computed data, permalinks and collections. It's what
 // `build` renders, and what `ssqch trace` reports on.
@@ -389,7 +391,7 @@ export class Site {
 		this.themeCopies = themeCopies;
 		const commitDates = config.lastModified === "git" || config.dateFallback === "git" ? this.gitDates(config.lastModified === "git" ? "lastModified" : "dateFallback") : new Map<string, Date>();
 		const dirData = await this.loadDirectoryData();
-		this.shared = this.sharedInputs();
+		this.shared = this.sharedInputs(dirData);
 		const sources = await readAll(this.files, config.serving ? new Set((config.changed ?? []).map(realPath)) : undefined);
 		const tpls = await collectErrors(this.files.map((file, i) => () => this.loadTemplate(file, sources[i], dirData, commitDates)));
 		// Drafts (`draft: true`) are built in development only.
@@ -747,17 +749,21 @@ export class Site {
 
 	/**
 	 * With `SSQCH_KEEP_TEMPLATES=1` while serving: the inputs every template's data has besides its
-	 * own file, as one string, or `undefined` when they can't be known from files (a data function
-	 * in the config, a JavaScript data file: code, which can answer differently each build). Each
-	 * data file read so far (global, the themes', directory data) by its size and time.
+	 * own file, as one string, or `undefined` when they can't be known: each data file read so far
+	 * (global, the themes', directory data) by its size and time, and a hash of the values.
 	 */
-	private sharedInputs(): string | undefined {
+	private sharedInputs(dirData: Map<string, Data>): string | undefined {
 		const { config } = this;
 		if (process.env.SSQCH_KEEP_TEMPLATES !== "1" || !config.serving || this.keepLayers || config.profile) return undefined;
-		if (config.globalData.some((entry) => entry.fn)) return undefined;
 		const files = [...this.dataFilesRead].sort(compareText);
-		if (files.some((file) => !STATIC_DATA_EXTENSIONS.includes(path.extname(file).slice(1).toLowerCase()))) return undefined;
-		return JSON.stringify(files.map((file) => [file, fileMark(file)]));
+		// The values themselves too, for what code made (a data function in the config, a
+		// JavaScript data file, which can answer differently each build): the global and directory
+		// data, serialized as Node does (Maps, Sets and Dates kept, where JSON drops them) and hashed.
+		// Something it can't serialize (a function in the data) means no reuse. The blog's global
+		// data serialized and hashed in about a millisecond.
+		let values: string;
+		try { values = crypto.createHash("sha1").update(v8.serialize([this.global, [...dirData]])).digest("base64"); } catch { return undefined; }
+		return JSON.stringify([values, files.map((file) => [file, fileMark(file)])]);
 	}
 
 	private async makeTemplate(file: string, source: Buffer, dirData: Map<string, Data>, commitDates: Map<string, Date>): Promise<Tpl> {
