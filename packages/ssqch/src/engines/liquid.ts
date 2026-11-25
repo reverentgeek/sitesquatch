@@ -14,6 +14,7 @@ import { BuildError, warn, warning } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closest, closestPath } from "../suggest.ts";
+import { includedBeside } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 import { DateFormatError, showDate, strftime, toInstant } from "./liquid-date.ts";
 import type { Instant } from "./liquid-date.ts";
@@ -213,6 +214,7 @@ function liquidRenderer(env: EngineEnv, loaded: Set<string>): TemplateEngine["re
 			if (name.includes("{{")) name = String(yield r.renderTemplates((this.liquid as any).parse(name), ctx));
 			if (name.split(/[\\/]/).includes("..")) throw new BuildError(`include_relative "${name}": the file has to be in the template's folder or below it, without ".."`);
 			const file = path.resolve(this.from, name);
+			includedBeside(file);
 			let templates = relative.get(file);
 			if (!templates) {
 				if (!isFile(file)) throw new BuildError(`include_relative "${name}": ${path.relative(root, file).split(path.sep).join("/")} not found (it's read beside the template, not in _includes)`);

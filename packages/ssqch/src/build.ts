@@ -22,6 +22,7 @@ import type { Data } from "./data.ts";
 import { sourceDateEpoch, STATIC_DATA_EXTENSIONS } from "./data.ts";
 import { renderComponents } from "./components.ts";
 import { BuildError, Diagnostics, bail, context, hearWarnings, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
+import { hearOpened } from "./engines/engine.ts";
 import type { RenderContext } from "./engines/engine.ts";
 import { beginFenceCache, rendering as markdownRendering, saveFenceCache, writeHighlightCss } from "./engines/markdown.ts";
 import * as equivalents from "./equivalents.ts";
@@ -139,6 +140,9 @@ export async function build(config: Config): Promise<BuildReport> {
 			const said = renderer.said.get(page.index);
 			if (said) keptSaid.set(page.output, said);
 			else keptSaid.delete(page.output);
+			const beside = renderer.beside.get(page.index);
+			if (beside) keptBeside.set(page.output, beside);
+			else keptBeside.delete(page.output);
 		}
 		// What a page taken as it was said when it last rendered, said again.
 		if (only) {
@@ -324,6 +328,9 @@ const keptReads = new Map<string, Set<string>>();
  */
 const keptCollectionReaders = new Set<string>();
 
+/** While serving: the files each page's templates included from beside them when it last rendered (by real path), by output file. */
+const keptBeside = new Map<string, Set<string>>();
+
 /** While serving: what each page's last render said (its warnings, its components with no template), by output file, for a rebuild that takes it as it was. */
 const keptSaid = new Map<string, { warnings: Diagnostic[]; components: Set<string> }>();
 
@@ -379,12 +386,15 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	if (dataChanged && everyLate) return "front matter with MkDocs' or Jekyll's templates";
 	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input) || site.ownData.has(page.tpl.input)));
 	const changedKeys = new Set([...only].map(pageKey));
+	const changedFiles = new Set(config.changed.map(realPath));
 	for (const page of wanted) {
 		if (only.has(page) || page.output === null) continue;
 		const read = keptReads.get(page.output);
 		// A page that read a changed page's content last time (a feed), or reads collections in its
 		// own templates and has no record of what it read.
 		if (read && [...read].some((key) => changedKeys.has(key))) only.add(page);
+		// A page that included a changed file from beside it (EJS's `include("./part")`, Liquid's `include_relative`).
+		else if ([...keptBeside.get(page.output) ?? []].some((file) => changedFiles.has(file))) only.add(page);
 		else if (late.has(page) && (everyLate || !read)) only.add(page);
 		// After a change to a page's own data, every page that read collections (its title in a
 		// list, its place in prev and next), is paginated over one, or has computed data from them.
@@ -418,6 +428,8 @@ class Renderer {
 	collectionReaders = new Set<number>();
 	/** While serving, what each page's render said (`keptSaid`): its warnings, and its components with no template. */
 	said = new Map<number, { warnings: Diagnostic[]; components: Set<string> }>();
+	/** The files beside them each page's templates included (`keptBeside`), by page index. */
+	beside = new Map<number, Set<string>>();
 	saidFor(page: Page): { warnings: Diagnostic[]; components: Set<string> } {
 		let found = this.said.get(page.index);
 		if (!found) this.said.set(page.index, found = { warnings: [], components: new Set() });
@@ -617,8 +629,16 @@ class Renderer {
 				const who = this.reader ?? this.rendering;
 				if (who) this.saidFor(who).warnings.push(diagnostic);
 			});
+			hearOpened((file) => {
+				for (const who of [this.reader, this.rendering]) {
+					if (!who) continue;
+					let files = this.beside.get(who.index);
+					if (!files) this.beside.set(who.index, files = new Set());
+					files.add(realPath(file));
+				}
+			});
 		}
-		try { await this.renderEach(pages, late); } finally { hearWarnings(undefined); }
+		try { await this.renderEach(pages, late); } finally { hearWarnings(undefined); hearOpened(undefined); }
 	}
 
 	/** Every warning's message said while the pages rendered, so one said again isn't said twice. */

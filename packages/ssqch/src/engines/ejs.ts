@@ -12,7 +12,7 @@ import { BuildError } from "../diagnostics.ts";
 import { isSafe } from "../rendering.ts";
 import { describeThrown, shownPath, watchSettle } from "../modules.ts";
 import { closestPath } from "../suggest.ts";
-import { isDataString, lazyEngine, siteFunction } from "./engine.ts";
+import { includedBeside, isDataString, lazyEngine, siteFunction } from "./engine.ts";
 import type { EngineEnv, TemplateEngine } from "./engine.ts";
 import { didYouMean, undefinedMessage, undefinedOnLine } from "../strict-hint.ts";
 import { shownAsUtc } from "../data.ts";
@@ -146,7 +146,10 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 		const relative = name.startsWith("./") || name.startsWith("../");
 		const key = `${relative ? path.dirname(from) : ""}\0${name}`;
 		const known = found.get(key);
-		if (known) return known;
+		if (known) {
+			if (relative) includedBeside(known.file);
+			return known;
+		}
 		const dirs = relative ? [path.dirname(from)] : env.includeDirs;
 		for (const dir of dirs) {
 			const file = path.join(dir, name);
@@ -161,6 +164,7 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 			}
 			const include = { file, source, name: shown(file) };
 			found.set(key, include);
+			if (relative) includedBeside(file);
 			return include;
 		}
 		// Not found: the closest file name in the same folders.

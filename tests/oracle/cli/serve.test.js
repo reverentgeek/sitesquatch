@@ -515,6 +515,29 @@ test("serve_still_warns_about_a_page_it_took_as_it_was", async () => {
 	}
 });
 
+// A page that includes a file from beside it (EJS's \`include("./part.ejs")\`, Liquid's
+// \`include_relative\`), when that file is a page too, renders again when the file's text changes.
+for (const [engine, files, part] of [
+	["ejs", { "src/a.ejs": "---\ndate: 2026-01-01\n---\n<p>A</p><%- include('./part.ejs') %>", "src/part.ejs": "---\ndate: 2026-01-01\n---\n<p>Part</p>" }, "src/part.ejs"],
+	["liquid", { "src/a.liquid": "---\ndate: 2026-01-01\n---\n<p>A</p>{% include_relative part.md %}", "src/part.md": "---\ndate: 2026-01-01\n---\nPart" }, "src/part.md"],
+]) {
+	test(`serve_renders_a_page_again_when_a_file_it_includes_from_beside_it_changes_${engine}`, async () => {
+		const dir = tempDir(`serve-incremental-beside-${engine}`);
+		write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"ejs\", \"liquid\", \"md\"] };\n", ...files });
+		const log = path.join(tempDir(`serve-incremental-beside-${engine}-log`), "serve.log");
+		const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+		try {
+			await waitFor(log, "Serving ");
+			fs.appendFileSync(path.join(dir, part), "\n\nFour miles.\n");
+			const said = await waitFor(log, "check-rebuilds: ");
+			assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+			assert.ok(fs.readFileSync(path.join(dir, "dist/a/index.html"), "utf8").includes("Four miles."));
+		} finally {
+			await server.stop();
+		}
+	});
+}
+
 // A rebuild that failed renders nothing for the pages it was given, so the next rebuild doesn't take
 // them as the last build wrote them: a page broken in one save is still broken after a save to
 // another page, as a clean build would say.
