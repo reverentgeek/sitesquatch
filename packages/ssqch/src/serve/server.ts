@@ -111,6 +111,17 @@ export const DEBOUNCE_MS = 50;
 /** How much longer a burst waits when a file it names is gone, for a save that's half done. */
 const GONE_MS = 200;
 
+/**
+ * Whether `file` was written at `since` (a `Date.now()`) or later. For the checked mode's race:
+ * an event can come after the rebuild it belongs to (Windows names the folder first, and the file
+ * a moment later, while the clean build runs), and a file written before the rebuild began was in it.
+ */
+function writtenSince(file: string, since: number): boolean {
+	const stat = fs.statSync(file, { throwIfNoEntry: false });
+	// A file that's gone went during the check, or the check can't tell: not judged, to be safe.
+	return stat === undefined || stat.mtimeMs >= since - 1;
+}
+
 const LOOPBACK = "127.0.0.1";
 
 /** Whether `host` answers only this machine. */
@@ -549,7 +560,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				if (!quiet) sayWhere();
 				record({ kind: "rebuild", file: show(source), heard: heardAt, debounced, asked, ...marks, said: Date.now() });
 				watchConfigFiles();
-				if (CHECKING && marks.ok) await checkRebuild({ args, builder, rx, carried, tools, stale: live.stale, changed: show(source), moved: (file) => !own(file) && !editorsOwn(file) && !skipped(file) && !isInside(output, file) && inSources(file) && sourceState(file) !== contents.get(file), show });
+				if (CHECKING && marks.ok) await checkRebuild({ args, builder, rx, carried, tools, stale: live.stale, changed: show(source), moved: (file) => !own(file) && !editorsOwn(file) && !skipped(file) && !isInside(output, file) && inSources(file) && sourceState(file) !== contents.get(file) && writtenSince(file, asked), show });
 			} else if (outputs.some((file) => isAsset(file) || !exists(file))) {
 				// Another tool (PostCSS, esbuild) wrote a stylesheet or a script, or ssqch's own
 				// write is late to arrive: the contents say which, so a tool's write that landed
