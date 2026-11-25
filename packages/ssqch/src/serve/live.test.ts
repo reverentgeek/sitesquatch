@@ -210,3 +210,115 @@ test("a_page_asks_less_often_once_the_server_stops", async () => {
 	assert.deepEqual(waits, [700, 1400, 2800, 5600, 10_000, 10_000, 10_000, 700]);
 	assert.deepEqual(logged, ["[ssqch] The server isn't answering (stopped?). Checking now and then.", "[ssqch] The server's back."]);
 });
+
+// The server pushes each change on `/__ssqch/events`, so a page hears a rebuild at once, not at
+// its next ask (every 0.7 s, 0.35 s late on average). A stream that says nothing (a proxy holding
+// it back) falls back to asking, and so does one that closes, until the server's back.
+function pushed() {
+	const streams: Array<{ url: string; closed: boolean; onmessage?: (e: { data: string }) => void; onerror?: () => void; close(): void }> = [];
+	const timers: Array<[() => unknown, number]> = [];
+	const asked: string[] = [];
+	let reloaded = 0;
+	class EventSource {
+		url: string;
+		closed = false;
+		onmessage?: (e: { data: string }) => void;
+		onerror?: () => void;
+		constructor(url: string) { this.url = url; streams.push(this); }
+		close() { this.closed = true; }
+	}
+	const context = vm.createContext({
+		URL, EventSource,
+		console: { log: () => {} },
+		document: { title: "", querySelectorAll: () => [], currentScript: { dataset: { build: "41" } } },
+		location: { pathname: "/", href: "http://localhost/", origin: "http://localhost", reload: () => { reloaded += 1; } },
+		setTimeout: (fn: () => unknown, ms: number) => { timers.push([fn, ms]); return timers.length; },
+		clearTimeout: () => {},
+		fetch: async (url: string) => {
+			asked.push(url);
+			return { ok: true, json: async () => ({ id: 41, error: null, reload: false, css: [] }) };
+		},
+	});
+	vm.runInContext(fs.readFileSync(new URL("./live.js", import.meta.url), "utf8"), context);
+	return { streams, timers, asked, reloaded: () => reloaded };
+}
+
+test("a_page_hears_a_rebuild_pushed_at_once", () => {
+	const page = pushed();
+	assert.equal(page.streams.length, 1);
+	assert.equal(page.streams[0].url, "/__ssqch/events?v=41&p=%2F");
+	assert.deepEqual(page.asked, [], "no asking while the stream is open");
+	page.streams[0].onmessage!({ data: JSON.stringify({ id: 41, error: null, reload: false, css: [] }) });
+	page.streams[0].onmessage!({ data: JSON.stringify({ id: 42, error: null, reload: true, css: [] }) });
+	assert.equal(page.reloaded(), 1);
+});
+
+test("a_stream_that_says_nothing_or_closes_falls_back_to_asking", async () => {
+	const quiet = pushed();
+	const [watchdog, ms] = quiet.timers.find(([, ms]) => ms === 2000)!;
+	assert.equal(ms, 2000);
+	watchdog();
+	assert.ok(quiet.streams[0].closed);
+	await quiet.timers.at(-1)![0]();
+	assert.deepEqual(quiet.asked, ["/__ssqch/build?v=41&p=%2F"]);
+	assert.equal(quiet.streams.length, 1, "a stream held back isn't tried again");
+
+	const closed = pushed();
+	closed.streams[0].onmessage!({ data: JSON.stringify({ id: 41, error: null, reload: false, css: [] }) });
+	closed.streams[0].onerror!();
+	assert.ok(closed.streams[0].closed);
+	await closed.timers.at(-1)![0]();
+	assert.equal(closed.asked.length, 1);
+	assert.equal(closed.streams.length, 2, "listening again once the server answers");
+});
+
+// A stream keeps one of the six connections a browser gives a site, and a seventh tab couldn't
+// load at all (tried in Chromium). One tab holds the lock and the stream, and says each new id on
+// a channel; the others ask for their own page's answer then, and open no stream.
+test("one_tab_holds_the_stream_and_the_others_hear_from_it", async () => {
+	// Every channel on the site's name, as a browser keeps them: a message goes to each but its sender.
+	const channels: Array<{ onmessage: ((e: { data: unknown }) => void) | null }> = [];
+	class BroadcastChannel {
+		onmessage: ((e: { data: unknown }) => void) | null = null;
+		constructor() { channels.push(this); }
+		postMessage(data: unknown) { for (const other of channels) if (other !== this) other.onmessage?.({ data }); }
+	}
+	let granted = false;
+	const tab = (page: string) => {
+		const streams: string[] = [];
+		const asked: string[] = [];
+		const timers: Array<() => unknown> = [];
+		let reloaded = 0;
+		const context = vm.createContext({
+			URL,
+			BroadcastChannel,
+			EventSource: class { onmessage?: (e: { data: string }) => void; constructor(url: string) { streams.push(url); stream = this; } close() {} },
+			navigator: { locks: { request: (_name: string, fn: () => unknown) => { if (!granted) { granted = true; fn(); } } } },
+			console: { log: () => {} },
+			document: { title: "", querySelectorAll: () => [], currentScript: { dataset: { build: "41" } } },
+			location: { pathname: page, href: `http://localhost${page}`, origin: "http://localhost", reload: () => { reloaded += 1; } },
+			setTimeout: (fn: () => unknown) => { timers.push(fn); return timers.length; },
+			clearTimeout: () => {},
+			fetch: async (url: string) => {
+				asked.push(url);
+				return { ok: true, json: async () => ({ id: answering, error: null, reload: answering > 41, css: [] }) };
+			},
+		});
+		let stream: { onmessage?: (e: { data: string }) => void } | undefined;
+		vm.runInContext(fs.readFileSync(new URL("./live.js", import.meta.url), "utf8"), context);
+		return { streams, asked, reloaded: () => reloaded, stream: () => stream };
+	};
+	let answering = 41;
+	const first = tab("/a/");
+	const second = tab("/b/");
+	await new Promise((r) => setImmediate(r));
+	assert.deepEqual([first.streams.length, second.streams.length], [1, 0], "one stream for the site");
+	assert.deepEqual(second.asked, ["/__ssqch/build?v=41&p=%2Fb%2F"], "one look of its own on load");
+	// A rebuild: the stream says it, and the other tab asks for its own page.
+	answering = 42;
+	first.stream()!.onmessage!({ data: JSON.stringify({ id: 42, error: null, reload: true, css: [] }) });
+	await new Promise((r) => setImmediate(r));
+	assert.equal(first.reloaded(), 1);
+	assert.deepEqual(second.asked.at(-1), "/__ssqch/build?v=41&p=%2Fb%2F");
+	assert.equal(second.reloaded(), 1);
+});

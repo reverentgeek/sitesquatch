@@ -96,6 +96,8 @@ export interface Config {
 	/** The folders as the config gives them: `input` and `output` from the root, the rest from the input folder. */
 	input: string;
 	output: string;
+	/** A check's clean build (`SSQCH_CHECK_REBUILDS`): the output the server serves, from the root, left out of the input as the output is. */
+	servedOutput?: string;
 	includes: string;
 	layouts: string | null;
 	data: string;
@@ -197,6 +199,8 @@ export interface ConfigOptions {
 	profile?: boolean;
 	/** `--output`: overrides the config's output folder. */
 	output?: string;
+	/** A check's clean build: where it writes, in place of the output (which it then leaves out of the input). */
+	checkOutput?: string;
 	/** `--base`: overrides the config's `base`. */
 	base?: string;
 }
@@ -312,6 +316,10 @@ export async function loadConfig(options: ConfigOptions): Promise<Config> {
 		}
 	}
 	if (options.output !== undefined) config.output = options.output;
+	if (options.checkOutput !== undefined) {
+		config.servedOutput = config.output;
+		config.output = options.checkOutput;
+	}
 	if (options.base !== undefined) {
 		try { config.base = normalizeBase(options.base); } catch (e) { throw context(e, "--base"); }
 	}

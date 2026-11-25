@@ -3,7 +3,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { comparePaths, compareText, joinAsGiven, parentAsGiven } from "./paths.ts";
+import fs from "node:fs";
+import os from "node:os";
+import { comparePaths, compareText, filesBelow, joinAsGiven, parentAsGiven } from "./paths.ts";
 
 test("paths are ordered folder by folder", () => {
 	const p = (s: string) => s.split("/").join(path.sep);
@@ -28,4 +30,23 @@ test("paths are joined and split as rust did", () => {
 	assert.equal(parentAsGiven("x.d.ts"), "");
 	assert.equal(parentAsGiven(`.${s}x`), ".");
 	assert.equal(parentAsGiven(`a${s}${s}b${s}`), "a");
+});
+
+// Every file below a folder, in one listing, and links not followed: what the summary and the
+// dev server walk an output with.
+test("filesBelow lists every file, by name if asked, and doesn't follow links", () => {
+	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-files-below-")));
+	try {
+		for (const rel of ["index.html", "posts/a/index.html", "assets/app.css", "deep/er/still/x.txt"]) {
+			fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+			fs.writeFileSync(path.join(dir, rel), "x");
+		}
+		fs.symlinkSync(path.join(dir, "posts"), path.join(dir, "link"), "junction");
+		const rel = (files: string[]) => files.map((f) => path.relative(dir, f).split(path.sep).join("/")).sort();
+		assert.deepEqual(rel(filesBelow(dir)), ["assets/app.css", "deep/er/still/x.txt", "index.html", "posts/a/index.html"]);
+		assert.deepEqual(rel(filesBelow(dir, (name) => name.endsWith(".css"))), ["assets/app.css"]);
+		assert.deepEqual(filesBelow(path.join(dir, "gone")), []);
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
 });

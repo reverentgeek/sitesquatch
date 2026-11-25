@@ -52,6 +52,8 @@ export interface BuildReport {
 	/** Pages the last build to this folder didn't have, and pages it had that this one doesn't. Left out when there's no earlier build to compare with. */
 	pagesNew?: number;
 	pagesGone?: number;
+	/** Files an earlier build wrote that this one didn't, left in the output because `leaveNoTrace` is off (from the output folder, with `/`): `ssqch serve` doesn't serve them. */
+	stale: string[];
 	/** Passthrough files copied because they were new or changed. */
 	filesCopied: number;
 	/** Passthrough files already up to date in the output. */
@@ -139,6 +141,7 @@ export async function build(config: Config): Promise<BuildReport> {
 		pagesChanged: config.serving ? written.filter((w) => w.changed).length : undefined,
 		pagesNew: recorded.pagesNew,
 		pagesGone: recorded.pagesGone,
+		stale: recorded.stale,
 		filesCopied: copy.copied,
 		filesUnchanged: copy.unchanged,
 		passthroughBytes: copy.bytes,
@@ -1255,6 +1258,8 @@ interface Recorded {
 	/** Pages the last build to this folder didn't write, and pages it wrote that this one didn't. Left out when the last build's pages aren't known. */
 	pagesNew?: number;
 	pagesGone?: number;
+	/** Files an earlier build to this folder wrote that this one didn't, still there because `leaveNoTrace` is off: by their path from the output folder, with `/`. */
+	stale: string[];
 }
 
 /**
@@ -1291,6 +1296,7 @@ function recordOutputs(config: Config, dirs: Dirs, outputs: string[], pagePaths:
 	const pagesGone = oldPages ? [...oldPages].filter((p) => !pages.has(p)).length : undefined;
 
 	let removed = 0;
+	const left: string[] = [];
 	for (const stale of previous.filter((f) => !current.has(f))) {
 		// Only plain relative paths inside the output folder.
 		if (path.isAbsolute(stale) || stale.split(/[/\\]/).some((part) => part === "" || part === "." || part === "..")) continue;
@@ -1299,6 +1305,7 @@ function recordOutputs(config: Config, dirs: Dirs, outputs: string[], pagePaths:
 		if (!config.leaveNoTrace) {
 			// Still ours, and stale: remember it for when `leaveNoTrace` is turned on.
 			current.add(stale);
+			left.push(stale);
 			continue;
 		}
 		try { fs.rmSync(file); } catch (e) { throw new BuildError(`removing stale ${file}: ${messageOf(e)}`); }
@@ -1320,5 +1327,5 @@ function recordOutputs(config: Config, dirs: Dirs, outputs: string[], pagePaths:
 		fs.mkdirSync(path.dirname(listPath), { recursive: true });
 		fs.writeFileSync(listPath, list);
 	}
-	return { removed, firstBuild, pagesNew, pagesGone };
+	return { removed, firstBuild, pagesNew, pagesGone, stale: left.map(slashes).sort(compareText) };
 }

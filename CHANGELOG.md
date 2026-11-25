@@ -9,6 +9,43 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Changed
+
+- `ssqch serve` shows an edit sooner: on v8.dev, 232 ms from the save to the browser hearing of it,
+  where it was about 800.
+  - The server pushes each change to the browser as it happens (`/__ssqch/events`), where the
+    page asked every 0.7 s and heard of a rebuild 0.35 s late on average. One tab of the site holds
+    the stream and tells the others, since a browser gives a site about six connections; a page
+    whose stream is held back (by a proxy) asks as before.
+  - A burst of changes ends after 50 ms of quiet, where it was 120. A save whose file is gone at
+    that point (Vim renames it away for its backup and writes it again 40 to 50 ms later) waits up
+    to 200 ms more for it, so the page isn't dropped and put back.
+  - A `serve.run` tool that hasn't written after three rebuilds in a row isn't waited for (it was
+    150 ms after every rebuild); one that has written after a rebuild (Tailwind, when an edit adds
+    a class) is waited for from then on.
+- Behind `netlify dev`, the server says once what `netlify dev` does in front of it: rewrites
+  need `200!`, the site's `_headers` apply while serving, and it wants an output folder of its
+  own.
+
+### Fixed
+
+- `ssqch serve` sees changes where the system sends no file events: a Windows drive opened from
+  WSL (`/mnt/c/...`), some Docker bind mounts, network shares. It built once there and never
+  again, without a word. Under WSL a site on a Windows drive is polled on its own, and anywhere
+  else `SSQCH_WATCH=poll` does it: every watched file's size and time, every quarter of a second
+  or four times as long as a look takes (44 ms for 10,000 files on a laptop). The server says
+  when it polls, and `SSQCH_WATCH=events` turns it off. (Lessons from chokidar, which landed on
+  the same design: the system's own events, and polling where there are none.)
+- When Linux runs out of file watches, or the system out of open files, the warning names the
+  setting to raise and says polling needs neither.
+- Sublime Text's temporary files (`.subl*.tmp`) don't start a rebuild, as Vim's and JetBrains'
+  don't.
+- `ssqch serve` doesn't serve a deleted or renamed page. With `leaveNoTrace` off (the default),
+  its old file stays in the output, as `ssqch build` leaves it, and the dev server went on
+  serving it; it answers it as not found now, and the file stays.
+
 ## 0.16.0 - 2026-11-25
 
 ### Breaking

@@ -8,6 +8,7 @@
 // them), and whose behavior has changed between Node releases. Every change is reported as the
 // path it happened to; what a change means is the server's to decide.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { realPath } from "../paths.ts";
 
@@ -50,16 +51,68 @@ export class Channel<T> {
 		return this.items.shift();
 	}
 
+	/** What's waiting, left where it is. */
+	peek(): readonly T[] {
+		return this.items;
+	}
+
 	/** Forget what's waiting. */
 	drain(): void {
 		this.items.length = 0;
 	}
 }
 
-/** `tree`: one watcher for a folder and everything below it, where the system has one. `folders`: a watcher for each folder. */
-export type Strategy = "tree" | "folders";
+/**
+ * `tree`: one watcher for a folder and everything below it, where the system has one. `folders`:
+ * a watcher for each folder. `poll`: no watchers, a look at every file's size and time now and
+ * then, for a file system that sends no events (a Windows drive under WSL, some Docker mounts,
+ * network shares), where the server otherwise built once and never again, without a word.
+ */
+export type Strategy = "tree" | "folders" | "poll";
 
 export const defaultStrategy = (): Strategy => (process.platform === "darwin" || process.platform === "win32" ? "tree" : "folders");
+
+/** The least time between two looks while polling, in ms; a look that takes longer stretches it (four times what it took). */
+export const POLL_MS = 250;
+
+/**
+ * How to watch these paths, and why when it isn't the system's own events: `SSQCH_WATCH=poll`
+ * or `events` says, and otherwise a site on a Windows drive under WSL (`/mnt/c/...`) polls,
+ * since Linux hears nothing of what Windows writes there. `env` and `release` are for tests.
+ */
+export function chooseStrategy(paths: string[], env: NodeJS.ProcessEnv = process.env, release = os.release(), platform = process.platform): { strategy: Strategy; why?: string; unknown?: string } {
+	const asked = env.SSQCH_WATCH?.trim().toLowerCase();
+	if (asked === "poll") return { strategy: "poll", why: "SSQCH_WATCH=poll" };
+	if (asked === "events") return { strategy: defaultStrategy() };
+	const unknown = asked ? env.SSQCH_WATCH : undefined;
+	const wsl = platform === "linux" && (env.WSL_DISTRO_NAME !== undefined || /microsoft/i.test(release));
+	if (wsl && paths.some((p) => /^\/mnt\/[a-z](\/|$)/i.test(p))) return { strategy: "poll", why: "the site is on a Windows drive, and WSL sends Linux no file events for one", unknown };
+	return { strategy: defaultStrategy(), unknown };
+}
+
+/** What a poll compares: each file's size and time, and each folder, by its path. */
+function snapshot(dir: string, recursive: boolean): Map<string, string> {
+	const found = new Map<string, string>();
+	const real = new Set<string>();
+	const visit = (folder: string, depth: number) => {
+		const at = realPath(folder);
+		if (real.has(at)) return;
+		real.add(at);
+		let entries: fs.Dirent[];
+		try { entries = fs.readdirSync(folder, { withFileTypes: true }); } catch { return; }
+		for (const entry of entries) {
+			const file = path.join(folder, entry.name);
+			const stat = fs.statSync(file, { throwIfNoEntry: false });
+			if (!stat) continue;
+			if (stat.isDirectory()) {
+				found.set(file, "folder");
+				if (recursive && !SKIPPED.has(entry.name) && depth < 32) visit(file, depth + 1);
+			} else found.set(file, `${stat.size}:${stat.mtimeMs}`);
+		}
+	};
+	visit(dir, 0);
+	return found;
+}
 
 /**
  * Folders a watch of each folder doesn't go into: what a build writes for itself, a repository's
@@ -91,6 +144,11 @@ export class Watcher {
 	private onChange: (file: string) => void;
 	private strategy: Strategy;
 	private watched = new Map<string, Watched>();
+	/** With `poll`: each watched folder, and what its last look found. */
+	private polled = new Map<string, { recursive: boolean; seen: Map<string, string> }>();
+	private timer: NodeJS.Timeout | undefined;
+	/** With `poll`: the time until the next look, in ms. */
+	pollEvery = POLL_MS;
 	/** A folder below a watched one that couldn't be watched itself. */
 	onError: (dir: string, e: unknown) => void = () => {};
 
@@ -105,6 +163,15 @@ export class Watcher {
 	 * watched throws; one below it that can't goes to `onError`.
 	 */
 	watch(dir: string, recursive: boolean): void {
+		if (this.strategy === "poll") {
+			const had = this.polled.get(dir);
+			if (had && (had.recursive || !recursive)) return;
+			// A folder that isn't there throws, as a watcher's does.
+			if (!fs.statSync(dir).isDirectory()) throw new Error(`ENOTDIR: not a folder, watch '${dir}'`);
+			this.polled.set(dir, { recursive, seen: snapshot(dir, recursive) });
+			this.schedule();
+			return;
+		}
 		const had = this.watched.get(dir);
 		if (had && (had.recursive || !recursive)) return;
 		if (had) this.unwatch(dir);
@@ -115,6 +182,7 @@ export class Watcher {
 	}
 
 	unwatch(dir: string): void {
+		this.polled.delete(dir);
 		const top = this.watched.get(dir);
 		if (!top) return;
 		for (const folder of top.folders.values()) folder.watcher.close();
@@ -123,11 +191,36 @@ export class Watcher {
 
 	close(): void {
 		for (const dir of [...this.watched.keys()]) this.unwatch(dir);
+		this.polled.clear();
+		clearTimeout(this.timer);
+		this.timer = undefined;
+	}
+
+	private schedule(): void {
+		if (this.timer || !this.polled.size) return;
+		this.timer = setTimeout(() => this.look(), this.pollEvery);
+		// The server's own listening keeps the process alive; a poll mustn't on its own.
+		this.timer.unref();
+	}
+
+	/** One look at every polled folder: what changed, appeared or went since the last. */
+	private look(): void {
+		this.timer = undefined;
+		const started = performance.now();
+		for (const [dir, top] of this.polled) {
+			const now = snapshot(dir, top.recursive);
+			for (const [file, mark] of now) if (top.seen.get(file) !== mark) this.onChange(file);
+			for (const file of top.seen.keys()) if (!now.has(file)) this.onChange(file);
+			top.seen = now;
+		}
+		// A big site's look takes a while: it isn't made back to back.
+		this.pollEvery = Math.max(POLL_MS, Math.round(4 * (performance.now() - started)));
+		this.schedule();
 	}
 
 	/** How many folders have a watcher (for tests). */
 	get size(): number {
-		let n = 0;
+		let n = this.polled.size;
 		for (const top of this.watched.values()) n += top.folders.size;
 		return n;
 	}

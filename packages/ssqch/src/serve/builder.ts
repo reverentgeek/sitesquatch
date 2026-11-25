@@ -29,6 +29,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import * as diagnostics from "../diagnostics.ts";
+import type { BuilderTimes } from "./timeline.ts";
 
 /** The first argument of the process that builds, before its JSON and the server's own arguments. Not a command: `--help` doesn't list it. */
 export const BUILDER = "__serve-builder";
@@ -44,6 +45,11 @@ export interface BuilderStart {
 	 * building, which an error says. Not when this one takes the place of one that ended.
 	 */
 	fallback?: boolean;
+	/**
+	 * For `SSQCH_CHECK_REBUILDS`: build once, quietly, into this folder (absolute) instead of the
+	 * output, for the server to compare with what its rebuild wrote (`checkRebuild` in `server.ts`).
+	 */
+	check?: string;
 }
 
 /** What the server needs to know about a site: what a reloaded configuration can change. */
@@ -84,7 +90,7 @@ export interface State {
 export type FromBuilder =
 	| ({ type: "loaded"; site: SiteInfo } & State)
 	| { type: "failed" }
-	| ({ type: "built"; ok: boolean; error?: string; assets: string[] } & State)
+	| ({ type: "built"; ok: boolean; error?: string; assets: string[]; stale?: string[]; times?: BuilderTimes } & State)
 	/** The site's code threw where nothing caught it, and the process is ending: the error, said as a build's is. */
 	| { type: "crashed"; error: string }
 	/** Each second of a build: how long since it last did anything, and what it waits on (`activity.ts`); `blocking` before a `run` command, which holds its process until it ends. */
@@ -106,6 +112,10 @@ export interface Built {
 	error?: string;
 	/** The stylesheets and scripts the build put in the output, absolute. */
 	assets: string[];
+	/** What an earlier build left that this one didn't write (`BuildReport.stale`), which isn't served. */
+	stale?: string[];
+	/** With `SSQCH_SERVE_TIMELINE`, the builder's own times (`timeline.ts`). */
+	times?: BuilderTimes;
 }
 
 /** Every builder running, for when the server stops. */
@@ -318,7 +328,7 @@ export class Builder {
 			return this.failed(`The build's process ended before the build did (${how}). What it said is in the terminal.`);
 		}
 		this.note(message);
-		return { ok: message.ok, error: message.error, assets: message.assets };
+		return { ok: message.ok, error: message.error, assets: message.assets, ...(message.stale ? { stale: message.stale } : {}), ...(message.times ? { times: message.times } : {}) };
 	}
 
 	/**

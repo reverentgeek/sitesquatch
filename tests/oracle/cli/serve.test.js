@@ -252,6 +252,100 @@ test("serve_reads_a_changed_config_again", async () => {
 // folder, is watched like a module the config imports: an edit to it showed
 // nothing until the server started again (0.15.1). Read while the config
 // loads, and read in a data function on each build.
+// A serve.run tool that doesn't write after rebuilds (PostCSS watching only its CSS) was waited for
+// after every one: 150 ms for nothing, each page edit. After three rebuilds with no write it
+// isn't, and once it has written after a rebuild it's waited for from then on: the blog's
+// Tailwind writes only when an edit adds a class (timed by SSQCH_SERVE_TIMELINE).
+test("serve_stops_waiting_for_tools_that_dont_write_after_a_rebuild", async () => {
+	const dir = tempDir("serve-tools-learn");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, serve: { run: [\"node tool.mjs\"] } };\n",
+		// It writes the stylesheet once, then only when told to (a file it watches).
+		"tool.mjs": "import fs from \"node:fs\";\nconst out = process.env.SSQCH_OUTPUT;\nfs.mkdirSync(out, { recursive: true });\nfs.writeFileSync(`${out}/app.css`, \"body {}\");\nfs.watch(\".\", (e, name) => { if (name === \"poke\") fs.writeFileSync(`${out}/app.css`, `body { --n: ${Date.now()}; }`); });\nprocess.stdin.on(\"end\", () => process.exit());\nprocess.stdin.resume();\n",
+		"src/index.jinja": "<link rel=\"stylesheet\" href=\"/app.css\">camp 0",
+	});
+	const timeline = path.join(tempDir("serve-tools-learn-line"), "times.jsonl");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: path.join(tempDir("serve-tools-learn-log"), "serve.log"), env: { SSQCH_SERVE_TIMELINE: timeline } });
+	const held = () => readOr(timeline).split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((line) => line.kind === "rebuild").map((line) => line.held - line.built);
+	const edit = async (i) => {
+		await sleep(400);
+		await changeAndWait(path.join(dir, "src/index.jinja"), `<link rel="stylesheet" href="/app.css">camp ${i}`, path.join(dir, "dist/index.html"), `camp ${i}`);
+		const started = Date.now();
+		while (held().length < i) {
+			assert.ok(Date.now() - started < 10_000, readOr(timeline));
+			await sleep(20);
+		}
+	};
+	try {
+		await waitFor(path.join(dir, "dist/index.html"), "camp 0");
+		for (let i = 1; i <= 5; i++) await edit(i);
+		const waits = held();
+		assert.ok(waits.slice(0, 3).every((ms) => ms >= 140) && waits.slice(3).every((ms) => ms < 60), JSON.stringify(waits));
+		// The tool writes after a rebuild: every one from then on waits for it.
+		await edit(6);
+		fs.writeFileSync(path.join(dir, "poke"), "1");
+		await sleep(600);
+		for (let i = 7; i <= 9; i++) await edit(i);
+		assert.ok(held().slice(6).every((ms) => ms >= 140), JSON.stringify(held()));
+	} finally {
+		await server.stop();
+	}
+});
+
+// The debounce is 50 ms of quiet (it was 120). Vim's save renames the file away for its backup
+// and writes it again 40 to 50 ms later: a rebuild in between would drop the page and put it back
+// a moment later. A file that's gone when the quiet ends waits up to 200 ms more for its return.
+test("serve_waits_for_a_save_that_renames_the_file_away_first", async () => {
+	const dir = tempDir("serve-vim-save");
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n", "src/post.md": "Cedar Trail\n" });
+	const log = path.join(tempDir("serve-vim-save-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "dist/post/index.html");
+		await waitFor(page, "Cedar Trail");
+		await waitFor(log, "Serving ");
+		await sleep(300);
+		const before = readOr(log).split("Built in").length;
+		const source = path.join(dir, "src/post.md");
+		fs.renameSync(source, `${source}~`);
+		await sleep(45);
+		fs.writeFileSync(source, "Old Growth Trail\n");
+		fs.rmSync(`${source}~`);
+		await waitFor(page, "Old Growth Trail");
+		await sleep(800);
+		const said = readOr(log);
+		assert.equal(said.split("Built in").length - before, 1, said);
+		assert.ok(fs.existsSync(page));
+	} finally {
+		await server.stop();
+	}
+});
+
+// Where the system sends no file events (a Windows drive under WSL, some Docker mounts), the
+// server built once and never again, without a word. SSQCH_WATCH=poll looks at the files now and
+// then instead, and says so once.
+test("serve_polls_for_changes_when_asked", async () => {
+	const dir = tempDir("serve-poll");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n",
+		"src/index.md": "Cedar Trail\n",
+	});
+	const log = path.join(tempDir("serve-poll-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_WATCH: "poll" } });
+	try {
+		const page = path.join(dir, "dist/index.html");
+		await waitFor(page, "Cedar Trail");
+		await changeAndWait(path.join(dir, "src/index.md"), "Old Growth Trail\n", page, "Old Growth Trail");
+		// A page added in a new folder.
+		write(dir, { "src/trails/cedar.md": "Four miles\n" });
+		await waitFor(path.join(dir, "dist/trails/cedar/index.html"), "Four miles");
+		const said = readOr(log);
+		assert.equal(said.split("Watching by looking at every file now and then (SSQCH_WATCH=poll)").length, 2, said);
+	} finally {
+		await server.stop();
+	}
+});
+
 test("serve_rebuilds_for_a_data_file_its_code_read", async () => {
 	const dir = tempDir("serve-read-data");
 	write(dir, {
@@ -851,6 +945,125 @@ test("serve_brackets_an_ipv6_host_in_its_urls", async () => {
 		// It parses, as an IPv6 host (URL writes it in its own form, `[::ffff:7f00:1]`).
 		assert.ok(new URL(info.url).hostname.startsWith("[::ffff:"), info.url);
 		assert.ok(server.log().includes(`at ${info.url}`), server.log());
+	} finally {
+		await server.stop();
+	}
+});
+
+// `SSQCH_CHECK_REBUILDS=1` (the dev server's design, stage 0): after each rebuild, a clean build
+// of the same files in a new process, compared byte for byte with what the rebuild wrote. A site
+// whose pages list a collection, highlight a fence and copy a file passes; one whose data
+// function counts its calls (state kept in the builder's process, as a stale cache would be)
+// doesn't, and the check names the page. `SSQCH_SERVE_TIMELINE` writes each step's time.
+/** How far two processes' `Date.now()` can disagree on Windows, for timelines that mix them. */
+const SKEW_MS = 20;
+
+test("serve_checks_each_rebuild_against_a_clean_build", async () => {
+	const dir = tempDir("serve-check");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, passthrough: [\"src/camp.txt\"] };\n",
+		"src/index.jinja": "{% for post in collections.posts %}<a href=\"{{ post.url }}\">{{ post.data.title }}</a>{% endfor %}",
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/hike.md": "---\ntitle: Cedar Trail\n---\n```js\nconst cones = 3;\n```\n",
+		"src/posts/stump.md": "---\ntitle: The stump\n---\nStill there.\n",
+		"src/camp.txt": "pine cones",
+	});
+	const timeline = path.join(tempDir("serve-check-times"), "times.jsonl");
+	// The log beside the project, not in its root, which is watched for config files.
+	const log = path.join(tempDir("serve-check-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1", SSQCH_SERVE_TIMELINE: timeline } });
+	try {
+		await waitFor(path.join(dir, "dist/index.html"), "Cedar Trail");
+		await changeAndWait(path.join(dir, "src/posts/hike.md"), "---\ntitle: Old Growth Trail\n---\n```js\nconst cones = 4;\n```\n", path.join(dir, "dist/index.html"), "Old Growth Trail");
+		const said = await waitFor(log, "check-rebuilds: ");
+		// Windows reports the folder a file changed in (`src\\posts`), as the server says too.
+		assert.ok([path.join("src", "posts", "hike.md"), path.join("src", "posts")].some((changed) => said.includes(`check-rebuilds: the rebuild after ${changed} wrote what a clean build writes (4 files the same)`)), said);
+		// The timeline's line comes just after the log's: waited for, not assumed (Node 24, once).
+		await waitFor(timeline, "\"kind\":\"check\"");
+		const lines = readOr(timeline).trim().split("\n").map((line) => JSON.parse(line));
+		const rebuild = lines.find((line) => line.kind === "rebuild");
+		assert.ok(rebuild && lines.some((line) => line.kind === "check"), readOr(timeline));
+		// Each step after the one before it, on one clock.
+		const b = rebuild.builder;
+		const steps = [rebuild.heard, rebuild.debounced, rebuild.asked, b.received, b.started, b.finished, b.said, rebuild.built, rebuild.held, rebuild.published, rebuild.said];
+		// Two processes' clocks (the server's, the builder's) can differ by a millisecond or so on
+		// Windows: the builder heard at ...968 what the server asked at ...969 (Node 24, CI).
+		assert.ok(steps.every((t, i) => typeof t === "number" && (i === 0 || t >= steps[i - 1] - SKEW_MS)), JSON.stringify(rebuild));
+		assert.deepEqual(b.phases.map(([name]) => name).slice(0, 2), ["setup", "data"]);
+	} finally {
+		await server.stop();
+	}
+
+	const counting = tempDir("serve-check-stale");
+	write(counting, {
+		"ssqch.config.js": "let builds = 0;\nexport default { dirs: { input: \"src\", output: \"dist\" }, data: { builds: () => ++builds } };\n",
+		"src/index.jinja": "build {{ builds }}",
+		"src/camp.jinja": "camp",
+	});
+	const staleLog = path.join(tempDir("serve-check-stale-log"), "serve.log");
+	const again = start(["serve", "--port", "0", "--root", counting], { logFile: staleLog, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(counting, "dist/index.html"), "build 1");
+		await changeAndWait(path.join(counting, "src/camp.jinja"), "camp two", path.join(counting, "dist/camp/index.html"), "camp two");
+		const said = await waitFor(staleLog, "check-rebuilds: ");
+		assert.ok([path.join("src", "camp.jinja"), "src"].some((changed) => said.includes(`check-rebuilds: the rebuild after ${changed} isn't what a clean build writes: 1 differ (index.html)`)), said);
+	} finally {
+		await again.stop();
+	}
+
+	// A site whose input folder is its root (a Jekyll layout): the clean build writes elsewhere,
+	// and still leaves the served output out of its input, as the build does with its own.
+	const rooted = tempDir("serve-check-rooted");
+	write(rooted, {
+		"ssqch.config.js": "export default { dirs: { output: \"dist\" } };\n",
+		"index.html": "camp",
+		"cedar.md": "# Cedar Trail\n",
+	});
+	const rootedLog = path.join(tempDir("serve-check-rooted-log"), "serve.log");
+	const third = start(["serve", "--port", "0", "--root", rooted], { logFile: rootedLog, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(rooted, "dist/cedar/index.html"), "Cedar Trail");
+		await changeAndWait(path.join(rooted, "cedar.md"), "# Old Growth Trail\n", path.join(rooted, "dist/cedar/index.html"), "Old Growth Trail");
+		const said = await waitFor(rootedLog, "check-rebuilds: ");
+		// The file, or on Windows the folder it changed in (here the project root).
+		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes \(2 files the same\)/);
+	} finally {
+		await third.stop();
+	}
+});
+
+// The timeline times a rebuild from the change that started it, after the save. A `serve.run`
+// tool that writes into the output after each build (Tailwind scanning the pages) is heard while
+// the server waits for it, and the next rebuild was stamped with that: 1.8 s before its own save,
+// on the blog.
+test("serve_times_each_rebuild_from_its_own_change", async () => {
+	const dir = tempDir("serve-times");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, serve: { run: [\"node tool.mjs\"] } };\n",
+		// It writes the stylesheet at the start, and again after each build writes the page.
+		"tool.mjs": "import fs from \"node:fs\";\nconst out = process.env.SSQCH_OUTPUT;\nlet n = 0;\nconst css = () => fs.writeFileSync(`${out}/app.css`, `body { --n: ${++n}; }`);\nfs.mkdirSync(out, { recursive: true });\ncss();\nfs.watch(out, (event, name) => { if (name === \"index.html\") setTimeout(css, 20); });\nprocess.stdin.on(\"end\", () => process.exit());\nprocess.stdin.resume();\n",
+		"src/index.jinja": "<link rel=\"stylesheet\" href=\"/app.css\">camp 0",
+	});
+	const timeline = path.join(tempDir("serve-times-line"), "times.jsonl");
+	const log = path.join(tempDir("serve-times-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_SERVE_TIMELINE: timeline } });
+	const rebuilds = () => readOr(timeline).split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((line) => line.kind === "rebuild" && (line.file === path.join("src", "index.jinja") || line.file === "src"));
+	try {
+		await waitFor(path.join(dir, "dist/index.html"), "camp 0");
+		for (let i = 1; i <= 2; i++) {
+			// Past the tool's write for the build before.
+			await sleep(1000);
+			const saved = Date.now();
+			await changeAndWait(path.join(dir, "src/index.jinja"), `<link rel="stylesheet" href="/app.css">camp ${i}`, path.join(dir, "dist/index.html"), `camp ${i}`);
+			const started = Date.now();
+			while (rebuilds().length < i) {
+				assert.ok(Date.now() - started < 10_000, `no timeline line for edit ${i}:\n${readOr(timeline)}\n${readOr(log)}`);
+				await sleep(20);
+			}
+			const line = rebuilds()[i - 1];
+			// The server's clock and this one's, give or take Windows' skew: the bug this guards was 1.3 s early.
+			assert.ok(line.heard >= saved - SKEW_MS, `edit ${i} saved at ${saved}, heard at ${line.heard}: ${JSON.stringify(line)}`);
+		}
 	} finally {
 		await server.stop();
 	}

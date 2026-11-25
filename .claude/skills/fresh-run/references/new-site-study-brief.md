@@ -2,9 +2,9 @@
 
 A study is a longer run than tasks A and B of the new-site brief: a complete site of a kind no starter fits, then seven requests from its owner, a tour of everything the agent didn't use, and checks with tools that aren't ssqch's. The requirements say what the site does and never which part of ssqch does it: whether the agent finds that part is what's measured, so don't add hints, and don't tell it anything you know.
 
-This is `research/new-site-prompt.md` as it was on 2026-11-23. This copy is the one runs use. `research/new-site-studies-plan.md` has why each requirement is there, and the answer key (what ssqch has for each); the agent sees neither.
+This is `research/new-site-prompt.md` as it was on 2026-11-23, changed on 2026-11-24 so a study deploys (the owner's call: the host's command-line tools, already signed in on this machine, with a name of the run's own; Pack Mule is the first). This copy is the one runs use. `research/new-site-studies-plan.md` has why each requirement is there, and the answer key (what ssqch has for each); the agent sees neither.
 
-1. Fill in the three blanks. For **Site**, paste one section from "The sites" at the end of this file, and leave the others out.
+1. Fill in the four blanks. For **Site**, paste one section from "The sites" at the end of this file, and leave the others out.
 2. Write each of "The requests" into its own file in a `requests/` folder beside the site's folder, with the words in brackets filled in from the table there. Number the files with no gap (`01.md` up): without the upgrade, request 7 is `06.md`. Start each file with `Request <n>.`, the request's own number, so runs still compare. An agent told not to read ahead stops at a gap (The North Fake, 2026-11-24). The agent opens them one at a time, in part 2.
 3. Give everything between the two lines to the agent as its whole prompt, in a session started in the run's `site/` folder, not in ssqch's repository: the agent mustn't be handed ssqch's `AGENTS.md`, `research/`, or any run's notes, its own included (they're in `research/runs/`, not beside `site/`). Starting it in `site/` keeps `requests/` outside its working folder, so a search of the site doesn't read them ahead.
 
@@ -13,6 +13,9 @@ Keep the rest as it is, so runs can be compared.
 - **Folder:** `<the run's site/ folder>`
 - **ssqch:** `<"the latest release on npm" or "the tarball ../ssqch-next.tgz">`
 - **Site:** `<A, B or C, pasted below>`
+- **Deploy name:** `<ssqch-study-` and the run's folder name, such as `ssqch-study-2026-11-24-new-app`>`
+
+Before starting it, check that the host's command-line tools are signed in (`npx netlify-cli status`, `npx wrangler whoami`), and give the session permission to run them and to read `../requests/` (the run's `site/.claude/settings.json`), so it isn't stopped at the deploy or at a request. The agent deploys only to projects it creates with the deploy name; once the run is sorted, they're deleted, with the owner's go.
 
 ---
 
@@ -72,7 +75,11 @@ Keep a **friction log** as you go (`friction-log.md`), one line per stumble, wit
   - features: what's missing, the shape you'd expect it to have (names, arguments, an example), and what you did instead;
   - the seams: where ssqch met another tool (a CSS or JavaScript tool, a host, a search index, a browser library), what the joint cost, and what would make it smooth without ssqch taking over the other tool's job.
 
-Out of scope: editing ssqch itself, deploying anything, committing or pushing. Don't stop until every part is done or you've proven what can't be; if something blocks you, write it down, work around it, and keep going.
+## Deploying
+
+Deploy the finished site to the host you chose, with that host's command-line tool (`npx netlify-cli` for Netlify, `npx wrangler` for Cloudflare), which is already signed in on this machine. Name everything you create there **[Deploy name]**: the site or project, and any store or function it needs. The account has other sites on it that are in use: create only new ones with that name, and never change, link to, deploy to or delete anything else in the account. If a command would touch something else, don't run it: write it down and go on. Deploy when part 1 is done and again at the end, write down each address it gave you, and run part 4's checks against the deployed site as well as the local one. Write down what it took to deploy, and what differed between the host and your machine.
+
+Out of scope: editing ssqch itself, committing or pushing. Don't stop until every part is done or you've proven what can't be; if something blocks you, write it down, work around it, and keep going.
 
 ---
 
@@ -117,7 +124,7 @@ Squatch Snacks makes trail snacks; Pine Cone Crunch is the one people know. The 
 10. A visitor-counting script that's on the page in a production build and absent while developing.
 11. Three short campaign addresses (`/go/crunch` and two more) that send people to a snack's page, and a page for addresses that don't exist.
 12. The whole site also works when it's served under a path instead of at the top of a domain (`/preview/squatch-snacks/`), every link, picture and stylesheet included, with no file edited to switch between the two.
-13. What the host needs to build and deploy it (Netlify or Cloudflare, your choice; don't deploy it): the build, caching between builds, long-lived caching for files whose names change with their content, and security headers.
+13. What the host needs to build and deploy it (Netlify or Cloudflare, your choice), and deploy it: the build, caching between builds, long-lived caching for files whose names change with their content, and security headers.
 
 ### Site B: The North Fake, a gear catalog
 
@@ -135,7 +142,7 @@ The North Fake sells outdoor gear. The catalog is the site: about 120 products, 
 10. Each product page describes the product and its price as structured data, shows four related products from its category, and has a "buy" link to a checkout that lives elsewhere (no cart on this site).
 11. A discontinued product keeps its address: the page says what replaced it and links there, and it's left out of the lists, the search and the sitemap.
 12. Then make it big: 5,000 products (reuse the 120 pictures). Record the build time, the slowest parts of the build and how you found them, the memory it took, and how long an edit to one product and to the product page's template takes to show while developing.
-13. What the host needs to build and deploy it (Netlify or Cloudflare, your choice; don't deploy it), with the build run again each night for stock and for the "new" marks.
+13. What the host needs to build and deploy it (Netlify or Cloudflare, your choice), and deploy it, with the build run again each night for stock and for the "new" marks.
 
 ### Site C: Pack Mule, a packing-list planner
 
@@ -152,6 +159,6 @@ Pack Mule helps people pack for a trip: a small web application on top of a stat
 9. Pages send no inline scripts or styles a strict Content-Security-Policy would refuse. List anything ssqch itself wrote into a page that the policy had to allow.
 10. One test that opens the planner in a real browser, ticks three items and checks the total, run against the dev server and against the production build.
 11. The dev loop: how long an edit to a template, to a stylesheet, to the planner's TypeScript and to the function takes to show, and whether the planner keeps its state through each.
-12. What the host needs to build and deploy the site and the function together (don't deploy it).
+12. What the host needs to build and deploy the site and the function together, and deploy them.
 
 Then, in `ssqch-case-study/boundary.md`: for each requirement, where ssqch's job ended; what you'd want from ssqch to make it a comfortable base for a site like this, ranked, with the shape you'd expect; and what should stay another tool's job, with the reason.

@@ -1,14 +1,15 @@
 // What the browsers ask about: what changed in the output, and whether the build works.
 //
 // A page reloads when its own file changed, or a file any page may use (a script, an image). A
-// stylesheet is swapped in place, and another page's change is no news. The reload script asks
-// `/__ssqch/build?v=<the id it last heard>&p=<its page>` and gets `answer`.
+// stylesheet is swapped in place, and another page's change is no news. The reload script listens
+// on `/__ssqch/events?v=<the id it last heard>&p=<its page>`, which sends `answer` at once and at
+// each change (`listen`), and asks `/__ssqch/build` with the same query where it can't.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import * as diagnostics from "../diagnostics.ts";
-import { compareText, realPath } from "../paths.ts";
+import { compareText, filesBelow, realPath, slashes } from "../paths.ts";
 
 /** What tells one version of an output file from the next: its size, and a mark (see `stamp`). */
 type Stamp = readonly [size: number, mark: number | string];
@@ -35,22 +36,13 @@ function stamp(file: string, stat: fs.Stats): Stamp {
 	return [stat.size, isAsset(file) ? fingerprint(file) ?? 0 : stat.mtimeMs];
 }
 
-/** Every file under `dir` with what `fs.stat` says of it, by its path from `dir` with `/`. Links aren't followed. */
-function walk(dir: string, each: (rel: string, file: string, stat: fs.Stats) => void): void {
-	const visit = (folder: string, prefix: string) => {
-		let entries: fs.Dirent[];
-		try { entries = fs.readdirSync(folder, { withFileTypes: true }); } catch { return; }
-		for (const entry of entries) {
-			const file = path.join(folder, entry.name);
-			if (entry.isDirectory()) visit(file, `${prefix}${entry.name}/`);
-			else if (entry.isFile()) {
-				// A file that went between the listing and the look isn't there.
-				const stat = fs.statSync(file, { throwIfNoEntry: false });
-				if (stat) each(`${prefix}${entry.name}`, file, stat);
-			}
-		}
-	};
-	visit(dir, "");
+/** Every file under `dir` (or those `only` names) with what `fs.stat` says of it, by its path from `dir` with `/`. Links aren't followed. */
+function walk(dir: string, each: (rel: string, file: string, stat: fs.Stats) => void, only?: (name: string) => boolean): void {
+	for (const file of filesBelow(dir, only)) {
+		// A file that went between the listing and the look isn't there.
+		const stat = fs.statSync(file, { throwIfNoEntry: false });
+		if (stat) each(slashes(path.relative(dir, file)), file, stat);
+	}
 }
 
 /** A file's size and when it was written: what a build left, so a tool's write (even of the same contents) is told from it. */
@@ -59,7 +51,7 @@ export type Written = readonly [size: number, mtimeMs: number];
 /** Each stylesheet and script in `output`, by its resolved path, with its size and when it was written. */
 export function assetStamps(output: string): Map<string, Written> {
 	const found = new Map<string, Written>();
-	walk(realPath(output), (_, file, stat) => { if (isAsset(file)) found.set(file, [stat.size, stat.mtimeMs]); });
+	walk(realPath(output), (_, file, stat) => found.set(file, [stat.size, stat.mtimeMs]), isAsset);
 	return found;
 }
 
@@ -137,6 +129,25 @@ export class Live {
 	/** The `serve.run` tools (`tailwindcss`), and the output folder as shown, for what's said about a missing file. */
 	tools: string[] = [];
 	private outputName = "";
+	/**
+	 * Files the last build didn't write that an earlier one did, by their path from the output
+	 * folder with `/`: with `leaveNoTrace` off they stay in the output, as `ssqch build` leaves
+	 * them, and the server answers them as not found, so a deleted or renamed page isn't served
+	 * while its file is still there.
+	 */
+	stale = new Set<string>();
+	/** Who's told when `id` goes up: each browser's open `/__ssqch/events`. */
+	private listeners = new Set<() => void>();
+
+	/** Call `fn` each time there's something for browsers to hear; the answer stops it. */
+	listen(fn: () => void): () => void {
+		this.listeners.add(fn);
+		return () => { this.listeners.delete(fn); };
+	}
+
+	private tell(): void {
+		for (const fn of [...this.listeners]) fn();
+	}
 
 	/**
 	 * Counting from `id`: by default from now, in milliseconds since 1970. A browser that was
@@ -179,7 +190,10 @@ export class Live {
 		}
 		// Browsers ask about their missing files after each update: this one has nothing new but
 		// what's said about them, which the note in the corner then shows.
-		if (still) this.id += 1;
+		if (still) {
+			this.id += 1;
+			this.tell();
+		}
 	}
 
 	/** A page linked `url` (the file `rel` in the output), and it wasn't there. The message, said in the terminal the first time (not while the tools are on their first compile). */
@@ -235,6 +249,7 @@ export class Live {
 		this.error = null;
 		for (const file of changed) this.changedAt.set(file, this.id);
 		this.seen = now;
+		this.tell();
 		return changed;
 	}
 
@@ -242,6 +257,7 @@ export class Live {
 	failed(error: string): void {
 		this.id += 1;
 		this.error = error;
+		this.tell();
 	}
 
 	/** The size the file `rel` had when it was last looked at. */

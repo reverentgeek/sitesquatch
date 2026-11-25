@@ -1,13 +1,13 @@
 // What the dev server answers: a file from the output folder, with the reload script and a tab
-// icon added to pages as they're sent, the questions that script asks (`/__ssqch/build`,
-// `/__ssqch/missing`), and a 404 page of its own for a site without one. `ssqch serve --built`
+// icon added to pages as they're sent, the stream it listens on (`/__ssqch/events`), the
+// questions it asks (`/__ssqch/build`, `/__ssqch/missing`), and a 404 page of its own for a site without one. `ssqch serve --built`
 // answers with the files as they are, compressed as a host would. Both answer a request for a
 // page that asks for `text/markdown` with the page's Markdown copy, when it has one.
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import zlib from "node:zlib";
-import { relative, walkFiles } from "../paths.ts";
+import { relative, slashes, walkFiles } from "../paths.ts";
 import { closestPath } from "../suggest.ts";
 import { TAB_ICON } from "./tab-icon.ts";
 import type { Live } from "./live.ts";
@@ -242,6 +242,30 @@ export function handle(req: http.IncomingMessage, res: http.ServerResponse, root
 	// `_headers`, applied by `netlify dev` in front of this server) allows them with 'self'.
 	if (rawUrl === "/__ssqch/live.js") return respond(res, 200, { "Content-Type": "text/javascript; charset=utf-8", ...noCache }, LIVE_SCRIPT);
 	if (rawUrl === "/__ssqch/overlay.css") return respond(res, 200, { "Content-Type": "text/css; charset=utf-8", ...noCache }, OVERLAY_CSS);
+	// The same answer, pushed: the stream stays open and says each change as it happens, so a
+	// browser hears a rebuild at once, not at its next ask (every 0.7 s: 0.35 s late on average).
+	// A browser that can't keep it open (a proxy that holds the stream back) asks, as before.
+	if (rawUrl === "/__ssqch/events") {
+		const v = queryValue(query, "v");
+		let since = v !== undefined && /^\+?\d+$/.test(v) ? Number(v) : undefined;
+		const page = pageFile(queryValue(query, "p") ?? "", base);
+		res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", ...noCache, Connection: "keep-alive", "X-Accel-Buffering": "no" });
+		const send = () => {
+			const now = live.answer(since, page, base);
+			since = now.id;
+			res.write(`data: ${JSON.stringify(now)}\n\n`);
+		};
+		send();
+		const stop = live.listen(send);
+		// A comment now and then, so a proxy doesn't close a stream that's quiet for a while.
+		const ping = setInterval(() => res.write(": ping\n\n"), 15_000);
+		ping.unref();
+		res.on("close", () => {
+			stop();
+			clearInterval(ping);
+		});
+		return;
+	}
 	if (rawUrl === "/__ssqch/build") {
 		const v = queryValue(query, "v");
 		const since = v !== undefined && /^\+?\d+$/.test(v) ? Number(v) : undefined;
@@ -260,8 +284,12 @@ export function handle(req: http.IncomingMessage, res: http.ServerResponse, root
 	// The build the page is from, asked before its file is read: a rebuild in between makes the
 	// page newer than this, and the script reloads once for nothing, rather than never.
 	const build = live.id;
-	const found = locate(res, root, rawUrl, url);
+	let found = locate(res, root, rawUrl, url);
 	if (!found) return;
+	// A file an earlier build wrote and the last one didn't (a deleted or renamed page, which
+	// `leaveNoTrace` off leaves in the output, as `ssqch build` does): not there, as far as a
+	// browser here can tell.
+	if (found.status === 200 && live.stale.size && live.stale.has(slashes(path.relative(root, found.file)))) found = { status: 404, file: path.join(root, "404.html") };
 	// A page with a Markdown copy is two answers, by what the request asks for.
 	const copy = found.status === 200 ? copyOf(found.file) : undefined;
 	if (copy && prefersMarkdown(req.headers.accept)) return respond(res, 200, { "Content-Type": "text/markdown; charset=utf-8", Vary: "Accept", ...noCache, "X-Powered-By": "pine cones" }, read(copy) ?? "");

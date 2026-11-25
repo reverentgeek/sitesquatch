@@ -473,7 +473,7 @@ export class Site {
 		const passthroughGlobs = globSet("passthrough", config.passthrough.map((p) => p.from).filter(isGlob));
 		// `_blueprints` holds the pages `ssqch new` starts from, which aren't pages of the site.
 		// A theme folder inside the input folder is a theme, not pages of the site's own.
-		const skipDirs = new Set([dirs.includes, dirs.layouts, dirs.data, dirs.output, path.join(dirs.input, "_blueprints"), ...config.themes, ...config.passthrough.map((p) => path.resolve(dirs.root, p.from))].map(realPath));
+		const skipDirs = new Set([dirs.includes, dirs.layouts, dirs.data, dirs.output, path.join(dirs.input, "_blueprints"), ...(config.servedOutput === undefined ? [] : [path.resolve(dirs.root, config.servedOutput)]), ...config.themes, ...config.passthrough.map((p) => path.resolve(dirs.root, p.from))].map(realPath));
 		// Files in a template language the site has but doesn't render, by extension: usually a
 		// missing `templateFormats` entry.
 		const engines = this.engineLanguages();

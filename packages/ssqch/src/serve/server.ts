@@ -28,7 +28,9 @@ import { Companions } from "./companions.ts";
 import { handle, handleBuilt } from "./http.ts";
 import { Live, assetStamps, fingerprint, isAsset, sameStamps } from "./live.ts";
 import type { Written } from "./live.ts";
-import { Channel, Watcher } from "./watch.ts";
+import { Channel, Watcher, chooseStrategy } from "./watch.ts";
+import { checkFolder, compareOutputs, ownFiles, verdict } from "./check.ts";
+import { record, timing } from "./timeline.ts";
 import { globSet } from "../glob.ts";
 
 /** How `ssqch serve` serves. */
@@ -76,13 +78,37 @@ const CONFIG_NAMES = new Set([...CONFIG_FILES, "sitesquatch.toml"]);
  */
 export function editorsOwn(file: string): boolean {
 	const name = path.basename(file);
-	return /^\.![0-9]+!/.test(name) || name.endsWith("~") || name.startsWith(".#") || /^\..+\.sw[a-p]$/.test(name) || name === "4913" || /___jb_(?:tmp|old|bak)___$/.test(name);
+	return /^\.![0-9]+!/.test(name) || /^\.subl\w*\.tmp$/.test(name) || name.endsWith("~") || name.startsWith(".#") || /^\..+\.sw[a-p]$/.test(name) || name === "4913" || /___jb_(?:tmp|old|bak)___$/.test(name);
 }
 
 function sourceState(file: string): string | undefined {
 	if (!isDir(file)) return fingerprint(file);
 	try { return `folder:${crypto.hash("sha1", fs.readdirSync(file).sort().join("\n"), "base64")}`; } catch { return undefined; }
 }
+
+/** What to do when the system has no watches left: what it's called, and polling, which needs none. */
+export function outOfWatches(e: unknown): string {
+	const code = (e as NodeJS.ErrnoException | undefined)?.code;
+	if (code === "ENOSPC") return ". Linux ran out of file watches: raise fs.inotify.max_user_watches (sudo sysctl fs.inotify.max_user_watches=524288), or set SSQCH_WATCH=poll, which needs none";
+	if (code === "EMFILE") return ". The system ran out of open files: raise the limit (ulimit -n 65536), or set SSQCH_WATCH=poll, which needs none";
+	return "";
+}
+
+/**
+ * `netlify dev` runs this server behind its own (it sets `NETLIFY_DEV`), and does what this one
+ * doesn't: it applies the site's `_redirects` and `_headers` in front of it, so a rewrite to a
+ * page here needs `200!` (one without the `!` is passed by), and a Content-Security-Policy there
+ * applies while serving. Pack Mule spent ten minutes on the two.
+ */
+export const behindNetlifyDev = (env: NodeJS.ProcessEnv = process.env) => env.NETLIFY_DEV !== undefined && env.NETLIFY_DEV !== "" && env.NETLIFY_DEV !== "false";
+export const NETLIFY_DEV_NOTE = "note: behind netlify dev, which applies the site's _redirects and _headers in front of this server: a rewrite to a page here needs 200! (without the !, netlify dev passes it by), and a Content-Security-Policy in _headers applies while serving. Give it an output folder of its own, so a production build's _headers aren't read too: ssqch serve --output .build/dev, with publish = \".build/dev\" under [dev].";
+
+/** Rebuilds in a row with no write from `serve.run`'s tools, after which they aren't waited for. */
+const TOOLS_LEARN = 3;
+/** The quiet that ends a burst of changes, in ms. */
+export const DEBOUNCE_MS = 50;
+/** How much longer a burst waits when a file it names is gone, for a save that's half done. */
+const GONE_MS = 200;
 
 const LOOPBACK = "127.0.0.1";
 
@@ -320,8 +346,18 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 	const site: SiteInfo = builder.site;
 	const tools = live.tools.length > 0;
 	const rx = new Channel<string[]>();
-	const watcher = new Watcher((file) => rx.send([file]));
-	watcher.onError = (dir, e) => diagnostics.warn(diagnostics.warning("build", `can't watch ${dir}, or some of the folders beside it: ${messageOf(e)}. A change there won't be seen until the server starts again`));
+	// Polling where the system sends no events (a Windows drive under WSL), said once.
+	const how = chooseStrategy([site.root, ...site.watch].map(realPath));
+	if (how.unknown !== undefined) diagnostics.warn(diagnostics.warning("build", `SSQCH_WATCH=${how.unknown} isn't a way to watch: use poll, or events (the system's own, the default)`));
+	if (behindNetlifyDev() && !quiet) say(NETLIFY_DEV_NOTE);
+	if (how.why !== undefined && !quiet) say(`Watching by looking at every file now and then (${how.why}): a change shows a moment later than with the system's events. SSQCH_WATCH=events turns it off.`);
+	// When the first change of the next rebuild was heard (`SSQCH_SERVE_TIMELINE`).
+	let heard: number | undefined;
+	const watcher = new Watcher((file) => {
+		if (timing) heard ??= Date.now();
+		rx.send([file]);
+	}, how.strategy);
+	watcher.onError = (dir, e) => diagnostics.warn(diagnostics.warning("build", `can't watch ${dir}, or some of the folders beside it: ${messageOf(e)}. A change there won't be seen until the server starts again${outOfWatches(e)}`));
 	try {
 		const watching = (dir: string, recursive: boolean) => {
 			try { watcher.watch(dir, recursive); } catch (e) { throw new BuildError(`watching ${dir}: ${messageOf(e)}`); }
@@ -403,6 +439,12 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 		sayWhere();
 		// What each changed source held the last time it was seen.
 		const contents = new Map<string, string | undefined>();
+		// Rebuilds in a row after which no `serve.run` tool wrote anything, and whether one has
+		// written after a rebuild since the server started (then it's waited for every time).
+		let quietRebuilds = 0;
+		let toolsWriteAfter = false;
+		// When the last rebuild's update went out, for telling a tool's write after it.
+		let rebuiltAt = 0;
 		// From the site's root, for a watched file outside it too (`../docs/guide.md`), as the
 		// files inside are named; absolute only when there's no way there (another drive).
 		const show = (file: string) => {
@@ -438,15 +480,30 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 			return false;
 		};
 		for (;;) {
+			// What a tool wrote during the last rebuild was heard and read while it was held: with
+			// nothing waiting, the next change is the first one since.
+			if (!carried.length && !rx.peek().length) heard = undefined;
 			const paths = carried.length ? carried.splice(0) : await rx.recv();
+			const heardAt = heard ?? Date.now();
 			// Debounce bursts of events (editors often write several times), for a second at most:
-			// a folder that's written to all the time mustn't hold a rebuild back forever.
+			// a folder that's written to all the time mustn't hold a rebuild back forever. 50 ms of
+			// quiet ends one: it was 120, which every edit waited for. A save whose source is gone
+			// at that point may be half done (Vim renames the file away for its backup, and writes it
+			// again 40 to 50 ms later), so it waits up to 200 ms more for it to come back, rather than
+			// rebuild without the page and put it back a moment later.
 			const burst = performance.now();
+			let waitedForGone = false;
 			while (performance.now() - burst < 1000) {
-				const more = await rx.recvTimeout(120);
+				let more = await rx.recvTimeout(DEBOUNCE_MS);
+				if (!more && !waitedForGone && paths.some((file) => !own(file) && !editorsOwn(file) && !isInside(output, file) && !exists(file))) {
+					waitedForGone = true;
+					more = await rx.recvTimeout(GONE_MS);
+				}
 				if (!more) break;
 				paths.push(...more);
 			}
+			const debounced = Date.now();
+			heard = undefined;
 			const changed = paths.map(realPath).filter((file) => !own(file) && !editorsOwn(file) && !skipped(file));
 			const outputs = changed.filter((file) => isInside(output, file));
 			// A source written again with the same contents hasn't changed: a `beforeBuild` command
@@ -474,18 +531,31 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				}
 			} else if (source !== undefined) {
 				if (!quiet) say(`${voice.FRESH_TRACKS} ${show(source)}`);
+				const asked = Date.now();
 				// The tools watch the same sources, and write what this edit changes for them (new
 				// classes, say) a moment later: the update waits for that, so it's one.
-				await runBuild(builder, live, async () => {
-					if (tools) await settle(rx, output, assetStamps(output), QUIET, carried);
+				// A tool that hasn't written after the last few rebuilds (PostCSS, which watches only its
+				// CSS) isn't waited for: v8.dev waited 150 ms after every page edit for a write that
+				// never came. One that has written after a rebuild is waited for from then on: the
+				// blog's Tailwind writes only when an edit adds a class, and that edit's page would go
+				// out before its CSS. Not waiting skips the output's stamps too (60 ms on the blog).
+				const marks = await runBuild(builder, live, async () => {
+					if (!tools || (!toolsWriteAfter && quietRebuilds >= TOOLS_LEARN)) return;
+					if (await settle(rx, output, assetStamps(output), QUIET, carried)) toolsWriteAfter = true;
+					else quietRebuilds += 1;
 				}, sources);
+				rebuiltAt = performance.now();
 				if (!quiet) sayWhere();
+				record({ kind: "rebuild", file: show(source), heard: heardAt, debounced, asked, ...marks, said: Date.now() });
 				watchConfigFiles();
+				if (CHECKING && marks.ok) await checkRebuild({ args, builder, rx, carried, tools, stale: live.stale, changed: show(source), moved: (file) => !own(file) && !editorsOwn(file) && !skipped(file) && !isInside(output, file) && inSources(file) && sourceState(file) !== contents.get(file), show });
 			} else if (outputs.some((file) => isAsset(file) || !exists(file))) {
 				// Another tool (PostCSS, esbuild) wrote a stylesheet or a script, or ssqch's own
 				// write is late to arrive: the contents say which, so a tool's write that landed
 				// during a build isn't missed.
 				const differs = await live.changed(site.output);
+				// A tool's write that came after a rebuild's update had gone: waited for from now on.
+				if (tools && differs.some(isAsset) && performance.now() - rebuiltAt < 2000) toolsWriteAfter = true;
 				let gone = differs.filter((file) => isAsset(file) && !exists(path.join(site.output, file)));
 				// Still gone once the output is quiet: not a tool that deletes a file before it
 				// writes the new one (which is then seen like any of its writes).
@@ -552,19 +622,60 @@ async function recover(rx: Channel<string[]>, gone: string[], restart: () => Pro
  * Build, print the summary (or the error), and tell the browsers. `hold` runs between a build
  * that worked and telling them, to wait for what the `serve.run` tools write (`settle`).
  */
-async function runBuild(builder: Builder, live: Live, hold: () => Promise<void>, changed?: string[]): Promise<boolean> {
-	const { ok } = await buildAndReport(builder, live, changed);
+async function runBuild(builder: Builder, live: Live, hold: () => Promise<void>, changed?: string[]): Promise<{ ok: boolean; built: number; held: number; published: number; builder?: Built["times"] }> {
+	const { ok, times } = await buildAndReport(builder, live, changed);
+	const built = Date.now();
+	let held = built;
 	if (ok) {
 		await hold();
+		held = Date.now();
 		await publish(builder.site, live);
 	}
-	return ok;
+	return { ok, built, held, published: Date.now(), ...(times ? { builder: times } : {}) };
+}
+
+/** `SSQCH_CHECK_REBUILDS=1`: check each rebuild against a clean build (`check.ts`). */
+const CHECKING = process.env.SSQCH_CHECK_REBUILDS === "1";
+
+/**
+ * After a rebuild that worked: build the same files again in a new process, into
+ * `.cache/ssqch/check-rebuilds/`, and say whether the rebuild wrote the same. A change heard
+ * meanwhile (other than the check's own files) means the two didn't build the same files, so
+ * nothing is said but that.
+ */
+async function checkRebuild({ args, builder, rx, carried, tools, stale, changed, moved, show }: { args: string[]; builder: Builder; rx: Channel<string[]>; carried: string[]; tools: boolean; stale: ReadonlySet<string>; changed: string; moved: (file: string) => boolean; show: (file: string) => string }): Promise<void> {
+	const site = builder.site;
+	const dir = checkFolder(site.root);
+	const started = Date.now();
+	fs.rmSync(dir, { recursive: true, force: true });
+	const checker = await Builder.start(args, { reload: true, fallback: true, said: builder.said, check: dir });
+	if (!checker) {
+		say("check-rebuilds: the configuration didn't load for the clean build (its error is above)");
+		return;
+	}
+	let built: Built;
+	try { built = await checker.build(false); } finally { checker.stop(); }
+	// By the loop's own rule: a source the next rebuild would be for (its contents differ from
+	// what the loop last saw), not any event (a save of the same text, a log in the project root).
+	const meanwhile = [...carried, ...rx.peek().flat()].map(realPath).find(moved);
+	let line: string;
+	let found: ReturnType<typeof compareOutputs> | undefined;
+	if (!built.ok) line = `check-rebuilds: the clean build after ${changed} failed where the rebuild worked: ${built.error ?? "its error is above"}`;
+	else if (meanwhile !== undefined) line = `check-rebuilds: ${show(meanwhile)} changed while the clean build ran, so the two didn't build the same files; not judged`;
+	else {
+		found = compareOutputs(site.output, dir, tools ? ownFiles(site.root, site.outputName) : undefined, stale);
+		line = verdict(found, changed, site.outputName);
+	}
+	say(line);
+	record({ kind: "check", file: changed, started, finished: Date.now(), verdict: line, ...(found ?? {}) });
 }
 
 /** Build and print the summary, or the error (which browsers are told at once). */
 async function buildAndReport(builder: Builder, live: Live, changed?: string[]): Promise<Built> {
 	const built = await builder.build(live.error !== null, changed);
 	if (!built.ok) live.failed(built.error ?? "");
+	// A page a source no longer makes isn't served, though `leaveNoTrace` off leaves its file.
+	else if (built.stale) live.stale = new Set(built.stale);
 	return built;
 }
 
@@ -605,9 +716,9 @@ async function firstCompile(output: string, quiet: boolean): Promise<void> {
  * stylesheet or script in `output` (resolved) differs from `before`, for `first` at most, and
  * then until the output has been quiet for `QUIET` (`KEEPS_WRITING` more at most). Then browsers
  * hear about the page and its new CSS at once, instead of the page first and its CSS a moment
- * later. Other changes seen meanwhile go in `carried`.
+ * later. Other changes seen meanwhile go in `carried`. Answers whether a tool wrote.
  */
-export async function settle(rx: Channel<string[]>, output: string, before: Map<string, Written>, first: number, carried: string[]): Promise<void> {
+export async function settle(rx: Channel<string[]>, output: string, before: Map<string, Written>, first: number, carried: string[]): Promise<boolean> {
 	const started = performance.now();
 	const cap = started + first + KEEPS_WRITING;
 	// A tool may have written already, between the build and now.
@@ -615,9 +726,9 @@ export async function settle(rx: Channel<string[]>, output: string, before: Map<
 	let until = wrote ? started + QUIET : started + first;
 	for (;;) {
 		const left = Math.min(until, cap) - performance.now();
-		if (left <= 0) return;
+		if (left <= 0) return wrote;
 		const paths = await rx.recvTimeout(left);
-		if (!paths) return;
+		if (!paths) return wrote;
 		for (const given of paths) {
 			const file = realPath(given);
 			if (!isInside(output, file)) {
