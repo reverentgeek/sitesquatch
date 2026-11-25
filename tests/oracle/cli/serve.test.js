@@ -292,6 +292,37 @@ test("serve_stops_waiting_for_tools_that_dont_write_after_a_rebuild", async () =
 	}
 });
 
+// A rebuild reads again only the templates that changed since the last read (their size and time),
+// and always the files whose change started it: an edit that keeps both (the same length, the
+// time put back) is still read, where a file kept by its size and time would build the old page.
+test("serve_reads_an_edit_that_keeps_the_files_size_and_time", async () => {
+	const dir = tempDir("serve-same-size");
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n", "src/post.md": "Cedar Trail\n", "src/other.md": "Other\n" });
+	// A whole second, which every file system keeps exactly, so putting it back below is exact
+	// (a fraction set again came back 0.0003 ms off on Linux).
+	const second = Math.floor(Date.now() / 1000) - 60;
+	fs.utimesSync(path.join(dir, "src/post.md"), second, second);
+	const log = path.join(tempDir("serve-same-size-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "dist/post/index.html");
+		await waitFor(page, "Cedar Trail");
+		await waitFor(log, "Serving ");
+		// Another rebuild first, so the post is one the server has read before.
+		await changeAndWait(path.join(dir, "src/other.md"), "Other again\n", path.join(dir, "dist/other/index.html"), "Other again");
+		const source = path.join(dir, "src/post.md");
+		// Written, and its time put back at once, inside the debounce: the rebuild sees the size and
+		// time it kept.
+		const same = "Cedar Hike\n\n".slice(0, "Cedar Trail\n".length);
+		fs.writeFileSync(source, same);
+		fs.utimesSync(source, second, second);
+		assert.deepEqual([fs.statSync(source).size, fs.statSync(source).mtimeMs], ["Cedar Trail\n".length, second * 1000]);
+		await waitFor(page, "Cedar Hike");
+	} finally {
+		await server.stop();
+	}
+});
+
 // The debounce is 50 ms of quiet (it was 120). Vim's save renames the file away for its backup
 // and writes it again 40 to 50 ms later: a rebuild in between would drop the page and put it back
 // a moment later. A file that's gone when the quiet ends waits up to 200 ms more for its return.
