@@ -1,0 +1,18 @@
+/* What `ssqch serve` shows in a page, each in a shadow root of its own (live.js): the build-error
+   overlay (`section`) and the note about files missing from the output (`aside`). A file, not a
+   <style>, so a site's Content-Security-Policy (style-src 'self') allows it. */
+
+section { position: fixed; inset: 0; z-index: 2147483647; overflow: auto; box-sizing: border-box; padding: 2rem 1rem; background: rgba(27, 32, 29, 0.97); color: #e5e9e1; font: 16px/1.5 system-ui, sans-serif; }
+section > div { max-width: 60rem; margin: 0 auto; }
+section h1 { margin: 0 0 0.25rem; font-size: 1.4rem; color: #f0a17d; }
+section p { margin: 0 0 1rem; color: #a2aca3; }
+section pre { margin: 0 0 1rem; padding: 1rem; border-left: 5px solid #e8af43; background: #252b27; color: #e5e9e1; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+section:focus { outline: none; }
+section button { margin-right: 0.5rem; padding: 0.35rem 0.9rem; border: 0; border-radius: 4px; background: #a23e20; color: #fafaf7; font: inherit; cursor: pointer; }
+section button:focus-visible { outline: 3px solid #e8af43; outline-offset: 2px; }
+section small { margin-left: 0.25rem; color: #a2aca3; }
+
+aside { position: fixed; right: 1rem; bottom: 1rem; z-index: 2147483646; max-width: 32rem; box-sizing: border-box; padding: 0.75rem 1rem; border-left: 5px solid #e8af43; background: #1b201d; color: #e5e9e1; font: 14px/1.5 system-ui, sans-serif; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
+aside strong { display: block; color: #f0a17d; }
+aside p { margin: 0.35rem 0 0; overflow-wrap: anywhere; }
+aside button { margin-top: 0.5rem; padding: 0.2rem 0.7rem; border: 0; border-radius: 4px; background: #a23e20; color: #fafaf7; font: inherit; cursor: pointer; }

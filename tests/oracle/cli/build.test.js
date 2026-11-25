@@ -71,6 +71,32 @@ test("types_writes_the_declarations", () => {
 	});
 });
 
+// `ssqch types` in a `beforeBuild` command printed its line above every build's report, `--quiet`
+// or not, and asked for the file to be listed in jsconfig.json when it was (Pack Mule).
+test("types_says_what_it_wrote_once_and_quiet_says_nothing", () => {
+	const dir = tempDir("types-quiet");
+	write(dir, { "ssqch.config.js": "export default {};\n" });
+	let r = ssqch(["types", "--root", dir]);
+	assert.ok(r.ok && r.stdout === "Wrote " + path.join(dir, "ssqch.d.ts") + ". List it in jsconfig.json's \"include\" so editors pick it up.\n", r.log);
+	write(dir, { "jsconfig.json": "{ \"include\": [\"ssqch.config.js\", \"ssqch.d.ts\"] }\n" });
+	r = ssqch(["types", "--root", dir]);
+	assert.ok(r.ok && r.stdout === "Wrote " + path.join(dir, "ssqch.d.ts") + ".\n", r.log);
+	r = ssqch(["types", "--root", dir, "--quiet"]);
+	assert.ok(r.ok && r.stdout === "" && fs.existsSync(path.join(dir, "ssqch.d.ts")), r.log);
+});
+
+// Browser code that included ssqch.d.ts for `Schemas` believed in the config's Node `process`
+// (Pack Mule): --schemas-only writes the schemas alone.
+test("types_schemas_only_writes_the_schemas_without_node", () => {
+	const dir = tempDir("types-schemas-only");
+	write(dir, { "ssqch.config.js": "export default { schemas: { gear: { files: \"gear/*.md\", fields: { weight: \"number\" } } } };\n" });
+	const r = ssqch(["types", "--root", dir, "--schemas-only"]);
+	assert.ok(r.ok && r.stdout.includes("ssqch-schemas.d.ts (with 1 schema)"), r.log);
+	const text = fs.readFileSync(path.join(dir, "ssqch-schemas.d.ts"), "utf8");
+	assert.ok(text.includes("interface Schemas {") && text.includes("weight: number;") && !text.includes("declare var process") && !text.includes("namespace NodeJS"), text);
+	assert.ok(!fs.existsSync(path.join(dir, "ssqch.d.ts")));
+});
+
 // The before-and-after recipe (`ssqch diff --help`) builds into a second folder between two
 // builds into the first: the second build mustn't forget what the first folder holds (the
 // Squatch Snacks rerun, 2026-11-23: moved pages stayed in dist/ and answered 200).
@@ -339,6 +365,23 @@ test("date_fallback_from_git", () => {
 	w("ssqch.config.js", "export default { dateFallback: \"created\" };\n");
 	r = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(!r.ok && r.log.includes("dateFallback must be \"git\" or \"file\", not \"created\""), r.log);
+});
+
+// DELIBERATE (0.16): before the build, the config's hooks run first and then the plugins', in
+// their order; after it, the plugins' run first and the config's last, so it sees the output as
+// they left it. The config's ran first after the build too, and a service worker it listed had
+// 122 image copies imagePlugin({ prune }) removed a moment later (Pack Mule).
+test("the_configs_after_build_hook_runs_after_the_plugins", () => {
+	const dir = tempDir("hook-order");
+	const said = (who) => `(e) => { console.log("${who} " + (e.written ? "after" : "before")); }`;
+	write(dir, {
+		"ssqch.config.js": `export default {\n  beforeBuild: ${said("config")},\n  afterBuild: ${said("config")},\n  plugins: [\n    { name: "first", beforeBuild: ${said("first")}, afterBuild: ${said("first")} },\n    { name: "second", plugins: [{ name: "inner", afterBuild: ${said("inner")} }], afterBuild: ${said("second")} },\n  ],\n};\n`,
+		"index.md": "Camp\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	const order = r.stdout.split("\n").filter((line) => / (before|after)$/.test(line));
+	assert.deepEqual(order, ["config before", "first before", "first after", "inner after", "second after", "config after"]);
 });
 
 test("hooks_run_commands", unixOnly, () => {

@@ -26,7 +26,9 @@ export default defineConfig(({ env }) => ({
   // the file's time.
   lastModified: "git",
   // page.date for a page with no date of its own: its file's first commit, which is the same in
-  // every clone (a checkout writes every file at once, so the file's time isn't).
+  // every clone (a checkout writes every file at once, so the file's time isn't). Outside a git
+  // repository, or before a file's first commit, it's the file's time, which a copy of the folder
+  // changes: `git init` and a first commit settle it.
   dateFallback: "git",
   // The site's own JavaScript runs in UTC, so a laptop and CI build the same dates.
   timeZone: "UTC",
@@ -56,12 +58,12 @@ export default defineConfig(({ env }) => ({
     // A date as people write it: January 1, 2026. In the site's timeZone, where a date written
     // without a time is that day, and spelled out here rather than with toLocaleDateString,
     // whose answers can change between Node releases.
-    readableDate: (value) => {
+    readableDate: (/** @type {Date | string | number} */ value) => {
       const date = value instanceof Date ? value : new Date(value);
       return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
     },
     // The day, as <time datetime> takes it: 2026-01-01.
-    isoDay: (value) => {
+    isoDay: (/** @type {Date | string | number} */ value) => {
       const date = value instanceof Date ? value : new Date(value);
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
     },

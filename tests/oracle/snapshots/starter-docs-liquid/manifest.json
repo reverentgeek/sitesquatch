@@ -1,5 +1,5 @@
 {
-  "version": "0.15.0",
+  "version": "0.15.1",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -16,7 +16,7 @@
     "copied": {
       "files": 3,
       "unchanged": 0,
-      "bytes": 21115
+      "bytes": 21227
     },
     "removed": 0,
     "drafts": 0,
@@ -48,7 +48,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   6 written from 6 templates, 25.2 KB\n  Copied  3 files, 21.1 KB\n  Links   133 checked, 0 broken\n  Output  dist: 19 files, 63.4 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   6 written from 6 templates, 25.2 KB\n  Copied  3 files, 21.2 KB\n  Links   133 checked, 0 broken\n  Output  dist: 19 files, 63.5 KB\n",
   "files": {
     "404.html": "text",
     "assets/docs.css": "text",

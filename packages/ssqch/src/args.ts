@@ -116,7 +116,10 @@ export function help(grammar: Grammar, command?: Command): string {
 		const commands: Array<[string, string]> = grammar.commands.filter((c) => !c.hidden).map((c) => [c.name, c.about]);
 		commands.push(["help", "Print this message or the help of the given subcommand(s)"]);
 		const options: Array<[string, string]> = [...grammar.globals, HELP, VERSION].map((o) => [optionLabel(o), describe(o)]);
-		return `${grammar.about}\n\n${usageOf(grammar, undefined)}\n\nCommands:\n${table(commands)}\n\nOptions:\n${table(options)}\n`;
+		// Each command has options of its own (`build --format json`, `build --profile`), which this
+		// list doesn't show: an agent that read only this wrote a wrapper that scraped the build's text
+		// (Pack Mule).
+		return `${grammar.about}\n\n${usageOf(grammar, undefined)}\n\nCommands:\n${table(commands)}\n\nEach command has options of its own: ssqch <command> --help (ssqch build --help: --format json, --profile).\n\nOptions:\n${table(options)}\n`;
 	}
 	let out = `${command.about}\n\n${usageOf(grammar, command)}\n`;
 	if (command.positionals.length) {

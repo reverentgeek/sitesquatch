@@ -14,6 +14,7 @@ import { sitemapPlugin } from "ssqch/sitemap";
 // written without a time is that day, and spelled out here rather than with toLocaleDateString,
 // whose answers can change between Node releases.
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+/** @param {Date | string | number} value */
 const readableDate = (value) => {
   const date = value instanceof Date ? value : new Date(value);
   return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
@@ -28,7 +29,9 @@ export default defineConfig(({ env }) => ({
   // CI, check out the whole history: `fetch-depth: 0`). Before the first commit, the file's time.
   lastModified: "git",
   // page.date for a page with no date of its own: its file's first commit, which is the same in
-  // every clone (a checkout writes every file at once, so the file's time isn't).
+  // every clone (a checkout writes every file at once, so the file's time isn't). Outside a git
+  // repository, or before a file's first commit, it's the file's time, which a copy of the folder
+  // changes: `git init` and a first commit settle it.
   dateFallback: "git",
   // The site's own JavaScript runs in UTC, so a laptop and CI build the same dates.
   timeZone: "UTC",

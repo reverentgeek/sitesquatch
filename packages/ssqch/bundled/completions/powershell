@@ -216,7 +216,8 @@ Register-ArgumentCompleter -Native -CommandName 'ssqch' -ScriptBlock {
             break
         }
         'ssqch;types' {
-            [CompletionResult]::new('--out', '--out', [CompletionResultType]::ParameterName, 'Where to write it')
+            [CompletionResult]::new('--out', '--out', [CompletionResultType]::ParameterName, 'Where to write it (default ssqch.d.ts, or ssqch-schemas.d.ts with --schemas-only)')
+            [CompletionResult]::new('--schemas-only', '--schemas-only', [CompletionResultType]::ParameterName, 'Write only the site''s schemas as types, for code that runs in the browser')
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root (defaults to the current directory)')
             [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')
             [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Override the output directory (relative to the root)')

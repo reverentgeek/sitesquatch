@@ -53,7 +53,7 @@ test("serve_writes_a_ready_file", async () => {
 		let missing = await httpGet(port, "/docs/contactt/");
 		assert.ok(missing.startsWith("HTTP/1.1 404") && missing.includes("The trail goes cold at <code>/contactt/</code>"), missing);
 		assert.ok(missing.includes("Did you mean <a href=\"/docs/contact/\">/contact/</a>?") && missing.includes("<a href=\"/docs/\">Back to the trailhead</a>"), missing);
-		assert.ok(missing.includes("/__ssqch/build") && !fs.existsSync(path.join(output, "404.html")), missing);
+		assert.ok(missing.includes("<script src=\"/__ssqch/live.js\" data-build=") && !fs.existsSync(path.join(output, "404.html")), missing);
 		// The site's own 404.html wins.
 		fs.writeFileSync(path.join(output, "404.html"), "<p>Mine</p>");
 		missing = await httpGet(port, "/docs/contactt/");
@@ -96,8 +96,11 @@ test("serve_tells_the_browser_what_changed", async () => {
 		const first = await live(port, "", "/");
 		assert.deepEqual([first.error, first.reload], [null, false], JSON.stringify(first));
 		const since = String(first.id);
-		// The page it gets has the script, which isn't in the file.
-		assert.ok((await httpGet(port, "/")).includes("/__ssqch/build?v=") && !read(dir, "dist/index.html").includes("__ssqch"));
+		// The page it gets has the script, which isn't in the file: a file of the server's (so a
+		// site's Content-Security-Policy allows it), with the build the page was sent from.
+		const sent = await httpGet(port, "/");
+		assert.ok(sent.includes(`<script src="/__ssqch/live.js" data-build="${since}"></script>`) && !read(dir, "dist/index.html").includes("__ssqch"), sent);
+		assert.ok((await httpGet(port, "/__ssqch/live.js")).includes("/__ssqch/build?v=") && (await httpGet(port, "/__ssqch/overlay.css")).includes("section"));
 
 		// Another page changes: only a browser showing that page reloads.
 		await changeAndWait(path.join(dir, "src/about.md"), "About us\n", path.join(dir, "dist/about/index.html"), "About us");

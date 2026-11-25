@@ -147,7 +147,8 @@ complete -c ssqch -n "__fish_ssqch_using_subcommand init" -l offline -d 'Don\'t 
 complete -c ssqch -n "__fish_ssqch_using_subcommand init" -s q -l quiet -d 'Print only warnings and errors'
 complete -c ssqch -n "__fish_ssqch_using_subcommand init" -s v -l verbose -d 'Also list every page written, and the slowest images to encode'
 complete -c ssqch -n "__fish_ssqch_using_subcommand init" -s h -l help -d 'Print help'
-complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l out -d 'Where to write it' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l out -d 'Where to write it (default ssqch.d.ts, or ssqch-schemas.d.ts with --schemas-only)' -r
+complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l schemas-only -d 'Write only the site\'s schemas as types, for code that runs in the browser'
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l root -d 'Project root (defaults to the current directory)' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -s o -l output -d 'Override the output directory (relative to the root)' -r -F
 complete -c ssqch -n "__fish_ssqch_using_subcommand types" -l base -d 'Serve the site under a path, like /repo/ (overrides the config\'s `base`)' -r

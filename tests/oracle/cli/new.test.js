@@ -16,6 +16,22 @@ function todayAsNewWritesIt() {
 	return date;
 }
 
+// Pack Mule's first trail tip, in an empty folder of a site with bundles, was a file, and nothing
+// said a page with its photo beside it is a folder. The next page follows the folder's shape.
+test("new_in_an_empty_folder_with_bundles_says_a_page_with_files_is_a_folder", () => {
+	const dir = tempDir("new-bundles");
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\" }, bundles: true };\n" });
+	fs.mkdirSync(path.join(dir, "src/tips"), { recursive: true });
+	let r = ssqch(["new", "--root", dir, "tips", "--title", "Pack light"]);
+	assert.ok(r.ok && isFile(dir, "src/tips/pack-light.md"), r.log);
+	assert.ok(r.stdout.includes(`note: the folder had no pages to follow, so this one is a file. With bundles, a page with files of its own (a photo) is a folder, ${["src", "tips", "pack-light", "index.md"].join("/")},`), r.log);
+	r = ssqch(["new", "--root", dir, "tips", "--title", "Leave no trace"]);
+	assert.ok(r.ok && !r.stdout.includes("note:"), r.log);
+	// JSON stays as it is.
+	r = ssqch(["new", "--root", dir, "src/other/", "--title", "Camp", "--format", "json"]);
+	assert.ok(r.ok && !r.stdout.includes("note:"), r.log);
+});
+
 test("new_creates_a_page_from_an_blueprint", () => {
 	const dir = tempDir("new");
 	const d = dir;

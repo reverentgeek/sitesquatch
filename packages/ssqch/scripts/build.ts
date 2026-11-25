@@ -143,7 +143,7 @@ export async function buildPackage({ out, release = false, quiet = false }: { ou
 	for (const [rel, original] of FROM_REPOSITORY) {
 		const from = path.join(REPO, original);
 		// An example is its source: not its build, its cache or its installs.
-		if (rel.startsWith("examples/")) copyTree(from, path.join(out, "bundled", rel), () => true, new Set(["dist", ".cache", "node_modules"]));
+		if (rel === "examples" || rel.startsWith("examples/")) copyTree(from, path.join(out, "bundled", rel), () => true, new Set(["dist", ".cache", "node_modules"]));
 		else if (fs.statSync(from).isDirectory()) copyTree(from, path.join(out, "bundled", rel), (name) => name.endsWith(".md") || name === "nav.yml");
 		else fs.copyFileSync(from, path.join(out, "bundled", rel));
 	}

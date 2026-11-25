@@ -652,6 +652,8 @@ BUILTINS.set("ssqch/links", (config: Config, given) => {
 	let counts: [number, number] | undefined;
 	config.afterBuild.push({
 		label: "",
+		// After every other hook: a link to what the config's makes (Pagefind's files) resolves.
+		check: true,
 		fn: async (event) => {
 			const output = dirsOf(config).output;
 			const result = await check(config, output, event.written as string[], options);

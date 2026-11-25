@@ -264,6 +264,11 @@ export function patrol(dir: string): Patrol {
 		const html = read(file);
 		// A page that only sends a reader on (a redirect) isn't one to check.
 		if (/<meta\s[^>]*http-equiv=["']?refresh/i.test(html)) continue;
+		// Nor is a piece of one: HTML a script fetches into a page (a search's result cards, from a
+		// template with no layout), with no doctype, <html>, <head>, <body> or <title>. Each was a
+		// page with no <h1> and no description (Pack Mule: 60 of them). A minified page can leave
+		// out the optional tags, not all five.
+		if (!/<!doctype|<(html|head|body|title)[\s>]/i.test(html)) continue;
 		pageUrls.push(urlOf(file));
 		const h1 = (html.match(/<h1[\s>]/gi) ?? []).length;
 		if (h1 === 0) say("no-h1", "pages with no <h1>: an agent takes the first heading as what the page is about", file);

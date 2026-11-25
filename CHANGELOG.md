@@ -9,6 +9,65 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## 0.16.0 - 2026-11-25
+
+### Breaking
+
+- The config's `afterBuild` runs after the plugins' hooks, where it ran before them, so it sees
+  the output as they left it: a service worker's list in the Pack Mule study had 122 image copies
+  that `imagePlugin({ prune: true })` removed a moment later. Before the build, the config's hooks
+  still run first. `linksPlugin()` checks links after every hook, the config's included, so a
+  link to what a hook makes (Pagefind's files) resolves as it did. A config hook that relied on
+  running before a plugin's moves into a plugin listed before it: `plugins: [{ name: "first",
+  afterBuild: myHook }, ...]`.
+
+### Added
+
+- `ssqch types --schemas-only` writes the site's schemas alone, to `ssqch-schemas.d.ts`, for code
+  that runs in the browser (`import type { Schemas } from "ssqch"`): browser code that included
+  `ssqch.d.ts` for them believed in the config's Node `process` too.
+- Every example site comes with the package, in `node_modules/ssqch/bundled/examples/<name>/`,
+  where only `multilingual` did: `ssqch docs examples` says what each shows.
+
+### Fixed
+
+- From the Pack Mule study (a small app on a static site, 2026-11-24):
+  - `ssqch serve` reloads a page for an edit saved in the first 0.7 seconds after it loaded: the
+    page didn't know which build it came from, so a rebuild that finished before its first check
+    was never shown. Each page now carries its build's number.
+  - Live reload works under a strict Content-Security-Policy (`script-src 'self'`), such as a
+    site's `_headers` applied by `netlify dev` in front of `ssqch serve`: the reload script and
+    its overlay's styles were inline, so the policy blocked them and reloading stopped without a
+    word. They're files now (`/__ssqch/live.js`, `/__ssqch/overlay.css`), never in the output.
+  - `imagePlugin()` writes `sizes` as HTML allows: none on a `<source>` with one copy, and no
+    `auto` on an image that isn't lazy (`loading="eager"`, as the docs say to write above the
+    fold), which the W3C checker rejected. A site's own `sizes` stays, without `auto`.
+  - The starters type-check with the `jsconfig.json` they come with, under TypeScript 7, whose
+    default is `strict`: the site starter's `readableDate` failed, and the docs starter's
+    `docs.js` failed on TypeScript 5 too.
+  - `ssqch types --quiet` prints nothing, for a `beforeBuild` command, and without `--quiet` it
+    leaves out "List it in jsconfig.json" when the root's `jsconfig.json` or `tsconfig.json`
+    names the file already.
+  - `ssqch patrol` leaves out HTML pieces a script fetches (a search's result cards): a file with
+    no doctype, `<html>`, `<head>`, `<body>` or `<title>` isn't a page. Each was warned about as
+    a page with no `<h1>` and no description.
+  - What a hook's `written` holds, in `ssqch.d.ts` and the docs: the pages and the files plugins
+    make beside them, not passthrough copies, images or assets, and the order hooks run in
+    (Breaking, above).
+  - A build says when the config's `widths` made no copies because every picture had a plain
+    `width` attribute, which pins it to one copy: written to reserve space, it sent 96-pixel
+    thumbnails the 800-pixel copy. One picture pinned on purpose (a logo) says nothing.
+  - A `ssqch docs` search that finds nothing names the sections that have every word of it, when
+    no name does (`topics` in the JSON).
+  - `ssqch new`, making the first page in an empty folder of a site with `bundles`, says a page
+    with files of its own is a folder, and where.
+  - Smaller: `ssqch --help` says each command has options of its own (`ssqch build --help`), and
+    `baseline`'s line that it checks a build repeats too; the image docs warn that a plain
+    `width` on an `<img>` keeps the config's `widths` from it; the `serve.run` docs say a watcher
+    stops when its standard input closes, so esbuild wants `--watch`, not `--watch=forever`; and
+    `now()` is Jinja's and Nunjucks', not every engine's; the starters say what `dateFallback:
+    "git"` does outside a git repository.
+
 ## 0.15.1 - 2026-11-25
 
 ### Fixed

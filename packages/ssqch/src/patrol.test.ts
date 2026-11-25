@@ -36,6 +36,20 @@ test("a site with its signs posted and its copies right is all clear", () => {
 	assert.deepEqual(patrolJson(p, "dist").signs, { robots: true, sitemap: true, llms: true, notFound: true });
 });
 
+// Pack Mule's search fetched 60 result cards, from a template with no layout: each was a page
+// with no <h1> and no description, and patrol exited 1 for them.
+test("a piece of HTML a script fetches isn't a page, and a minified page still is", () => {
+	const dir = built({
+		"index.html": page("Home", `<p>${TEXT}</p>`),
+		"cards/cedar.html": "<article class=\"card\"><h3>Cedar Trail</h3><p>Four miles.</p></article>",
+		"bare/index.html": "<title>Bare</title><p>A minified page without its optional tags.</p>",
+	});
+	const p = patrol(dir);
+	assert.equal(p.pages, 2);
+	assert.ok(!p.findings.some((f) => f.files.includes("cards/cedar.html")), JSON.stringify(p.findings));
+	assert.ok(p.findings.some((f) => f.code === "no-h1" && f.files.includes("bare/index.html")), JSON.stringify(p.findings));
+});
+
 test("each kind of trouble has its code", () => {
 	const dir = built({
 		"llms.txt": "Trail\n\n- [Guide](guide/)\n- [Gone](/gone.md)\n- [Page](/guide/)\n",
