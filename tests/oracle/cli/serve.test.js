@@ -975,6 +975,8 @@ test("serve_checks_each_rebuild_against_a_clean_build", async () => {
 		const said = await waitFor(log, "check-rebuilds: ");
 		const hike = path.join("src", "posts", "hike.md");
 		assert.ok(said.includes(`check-rebuilds: the rebuild after ${hike} wrote what a clean build writes (4 files the same)`), said);
+		// The timeline's line comes just after the log's: waited for, not assumed (Node 24, once).
+		await waitFor(timeline, "\"kind\":\"check\"");
 		const lines = readOr(timeline).trim().split("\n").map((line) => JSON.parse(line));
 		const rebuild = lines.find((line) => line.kind === "rebuild");
 		assert.ok(rebuild && lines.some((line) => line.kind === "check"), readOr(timeline));
