@@ -362,6 +362,38 @@ test("serve_renders_only_the_page_whose_text_changed_and_keeps_the_others_pictur
 	}
 });
 
+// A page that reads collections renders again only when its last render read a changed page's
+// content (templateContent, an excerpt): a page that lists titles is taken as it was, and one that
+// prints the bodies, as a feed does, renders.
+test("serve_renders_again_only_the_collection_pages_that_read_the_changed_content", async () => {
+	const dir = tempDir("serve-incremental-reads");
+	const renders = path.join(tempDir("serve-incremental-reads-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\n---\n<p>{{ \"cedar\" | noted }}</p>",
+		"src/posts/stump.njk": "---\ntitle: The stump\n---\n<p>{{ \"stump\" | noted }}</p>",
+		"src/titles.njk": "{{ \"titles\" | noted }}{% for p in collections.posts %}<li>{{ p.data.title }}</li>{% endfor %}",
+		"src/bodies.njk": "{{ \"bodies\" | noted }}{% for p in collections.posts %}<article>{{ p.templateContent | safe }}</article>{% endfor %}",
+	});
+	const log = path.join(tempDir("serve-incremental-reads-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(dir, "dist/bodies/index.html"), "stump");
+		await waitFor(log, "Serving ");
+		fs.writeFileSync(renders, "");
+		fs.appendFileSync(path.join(dir, "src/posts/cedar.njk"), "<p>Four miles.</p>");
+		const said = await waitFor(log, "check-rebuilds: ");
+		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		const rebuilt = lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name);
+		assert.ok(rebuilt.includes("cedar") && rebuilt.includes("bodies") && !rebuilt.includes("titles"), JSON.stringify(rebuilt));
+		assert.ok(fs.readFileSync(path.join(dir, "dist/bodies/index.html"), "utf8").includes("Four miles."));
+	} finally {
+		await server.stop();
+	}
+});
+
 // The debounce is 50 ms of quiet (it was 120). Vim's save renames the file away for its backup
 // and writes it again 40 to 50 ms later: a rebuild in between would drop the page and put it back
 // a moment later. A file that's gone when the quiet ends waits up to 200 ms more for its return.

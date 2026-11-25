@@ -118,14 +118,16 @@ export async function build(config: Config): Promise<BuildReport> {
 	// `SSQCH_INCREMENTAL=1`: only the pages whose bodies changed, and those that read collections
 	// (a feed shows the bodies); the rest are as the last build wrote them.
 	const only = incrementalPages(site, wanted, late);
-	if (only) for (const page of wanted) if (!only.has(page) && !late.has(page) && page.output !== null) renderer.written.set(page.index, { file: page.output, bytes: keptWritten.get(page.output)!, changed: false });
-	const rendering = only ? wanted.filter((p) => only.has(p) || late.has(p)) : wanted;
+	if (only) for (const page of wanted) if (!only.has(page) && page.output !== null) renderer.written.set(page.index, { file: page.output, bytes: keptWritten.get(page.output)!, changed: false });
+	const rendering = only ? wanted.filter((p) => only.has(p)) : wanted;
 	await renderer.renderAll([...rendering.filter((p) => !late.has(p)), ...rendering.filter((p) => late.has(p))], late);
+	// Whose content each page that reads collections read, for the next rebuild's choice.
+	if (config.serving) for (const page of rendering) if (late.has(page) && page.output !== null) keptReads.set(page.output, renderer.reads.get(page.index) ?? new Set());
 	// What the built-in plugins learned from each page, said again for the pages taken as they
 	// were (the image plugin's pictures in use), with the rendered pages' new records.
 	if (config.serving) {
 		const urls = (list: Page[]) => list.flatMap((p) => (typeof p.url === "string" ? [p.url] : []));
-		const skipped = only ? urls(wanted.filter((p) => !only.has(p) && !late.has(p))) : [];
+		const skipped = only ? urls(wanted.filter((p) => !only.has(p))) : [];
 		for (const replay of config.replays) replay(skipped, urls(rendering));
 	}
 	warnUnknownComponents(site);
@@ -264,6 +266,17 @@ interface Written {
 const keptWritten = new Map<string, number>();
 
 /**
+ * While serving: whose content (templateContent, content, an excerpt, headings: all through
+ * `contentOf`) each page that reads collections read when it last rendered, by its output file. A
+ * page that read none of the changed pages' content (a tag page that lists titles) is taken as it
+ * was: its data, and every page's data, is what it was.
+ */
+const keptReads = new Map<string, Set<string>>();
+
+/** A page, as `keptReads` names it: its file and its URL (a paginated template has several). */
+const pageKey = (page: Page) => `${page.tpl.input}\0${page.url}`;
+
+/**
  * Built-in plugins a rebuild that renders only some pages can't get wrong: what they do comes from
  * the pages' data (the sitemap, redirects, robots), from every page's file on disk (the link
  * checker), from a page that reads collections, which always renders (a feed), or from the one
@@ -292,8 +305,16 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	if (config.afterBuild.some((hook) => !("label" in hook) || hook.label !== "")) return undefined;
 	if (config.transforms.some(([name]) => name !== "minify-html")) return undefined;
 	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input)));
+	const changedKeys = new Set([...only].map(pageKey));
+	// A page that reads collections, when it read a changed page's content last time, or has no
+	// record of what it read. MkDocs' and Jekyll's templates read more of other pages than that.
+	const everyLate = config.mkdocsTemplates !== null || config.jekyllTemplates;
+	for (const page of late) {
+		const read = page.output === null ? undefined : keptReads.get(page.output);
+		if (everyLate || !read || [...read].some((key) => changedKeys.has(key))) only.add(page);
+	}
 	// A page the last build didn't write (new to the output) is rendered.
-	for (const page of wanted) if (!only.has(page) && !late.has(page) && page.output !== null && !keptWritten.has(page.output)) only.add(page);
+	for (const page of wanted) if (!only.has(page) && page.output !== null && !keptWritten.has(page.output)) only.add(page);
 	return only;
 }
 
@@ -311,6 +332,9 @@ class Renderer {
 	 */
 	private keep: boolean;
 	written = new Map<number, Written>();
+	/** The page rendering now (pages render one at a time), and whose content each page read, by page index. */
+	private rendering: Page | undefined;
+	reads = new Map<number, Set<string>>();
 	/** Time spent rendering bodies, as the summary's `render`. */
 	renderMs = 0;
 	/**
@@ -434,6 +458,12 @@ class Renderer {
 	 */
 	private contentNow(page: Page): string | undefined {
 		this.keep = true;
+		// Which pages' content each page read, for a rebuild that renders only some (`keptReads`).
+		if (this.rendering && this.rendering !== page) {
+			let read = this.reads.get(this.rendering.index);
+			if (!read) this.reads.set(this.rendering.index, read = new Set());
+			read.add(pageKey(page));
+		}
 		const kept = this.bodies.get(page.index);
 		if (kept === RENDERING) return undefined;
 		if (kept !== undefined) return kept;
@@ -470,6 +500,7 @@ class Renderer {
 			markdownRendering(this.site.display(page.tpl.input));
 			// What a slow call was working on (src/profile.ts): pages render one at a time.
 			this.site.profile.at = shown(this.site.dirs.root, page.tpl.input);
+			this.rendering = page;
 			try {
 				await renderingAs({ data: page.data }, () => this.render(page));
 			} catch (e) {
@@ -478,6 +509,8 @@ class Renderer {
 				const error = e instanceof BuildError || e instanceof Diagnostics ? e : internal(e, page.tpl.rel);
 				const inBody = typeof e === "object" && e !== null && this.bodyErrors.has(e);
 				this.errors.push({ error, phase: inBody ? (late.has(page) ? 1 : 0) : 2 });
+			} finally {
+				this.rendering = undefined;
 			}
 		}
 		markdownRendering(undefined);
