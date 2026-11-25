@@ -272,7 +272,8 @@ test("serve_rebuilds_for_a_data_file_its_code_read", async () => {
 		await changeAndWait(path.join(dir, "data/site.yml"), "title: Squatch Provisions\n", page, "Squatch Provisions: Moss Mix 2");
 		// A file files() matched.
 		await changeAndWait(path.join(dir, "photos/a.txt"), "abcd", page, "Squatch Provisions: Moss Mix 4");
-		assert.ok(readOr(log).includes("Fresh tracks in data/snack.yml (reading the configuration again)"), readOr(log));
+		// The server names a file with the platform's separator (`data\\snack.yml` on Windows).
+		assert.ok(readOr(log).includes(`Fresh tracks in ${path.join("data", "snack.yml")} (reading the configuration again)`), readOr(log));
 	} finally {
 		await server.stop();
 	}
