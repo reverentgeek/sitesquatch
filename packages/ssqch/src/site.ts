@@ -379,7 +379,7 @@ export class Site {
 		this.themeCopies = themeCopies;
 		const commitDates = config.lastModified === "git" || config.dateFallback === "git" ? this.gitDates(config.lastModified === "git" ? "lastModified" : "dateFallback") : new Map<string, Date>();
 		const dirData = await this.loadDirectoryData();
-		const sources = await readAll(this.files);
+		const sources = await readAll(this.files, config.serving ? new Set((config.changed ?? []).map(realPath)) : undefined);
 		const tpls = await collectErrors(this.files.map((file, i) => () => this.loadTemplate(file, sources[i], dirData, commitDates)));
 		// Drafts (`draft: true`) are built in development only.
 		this.tpls = config.env !== "production" ? tpls : tpls.filter((t) => {
@@ -1288,14 +1288,42 @@ function hasTags(tpl: Tpl, config: Config, s: string): boolean {
 	return dataStringEngine(tpl, config) === "ejs" ? s.includes("<%") : s.includes("{{") || s.includes("{%");
 }
 
-/** Reads files through Node's thread pool, 64 at a time. A file's bytes are decoded when its template is read, where an error can name it. */
-async function readAll(files: string[]): Promise<Buffer[]> {
+/**
+ * While serving: each template's bytes as the last build read them, with the size and time the
+ * file had just before, so a rebuild reads again only what changed. Reading 10,000 pages took 175
+ * ms of a rebuild's 321 ms "read" (stat-ing them, 23). The builder's process keeps it until the
+ * configuration is read again, which starts a new one.
+ */
+const keptSources = new Map<string, { size: number; mtimeMs: number; bytes: Buffer }>();
+
+/**
+ * Reads files through Node's thread pool, 64 at a time. A file's bytes are decoded when its
+ * template is read, where an error can name it. With `changed` (serving), a file whose size and
+ * time are what they were when it was last read is taken as it was, unless it's one of the files
+ * (or in a folder: Windows names the folder) whose change started this build. A file is stat-ed
+ * before it's read, so one written in between is read again next time, never kept stale.
+ */
+async function readAll(files: string[], changed?: ReadonlySet<string>): Promise<Buffer[]> {
 	const out = new Array<Buffer>(files.length);
 	let next = 0;
+	const named = (file: string) => changed!.has(file) || changed!.has(path.dirname(file));
 	await Promise.all(Array.from({ length: Math.min(64, files.length) }, async () => {
 		while (next < files.length) {
 			const i = next++;
-			out[i] = await fs.promises.readFile(files[i]);
+			const file = files[i];
+			if (!changed) {
+				out[i] = await fs.promises.readFile(file);
+				continue;
+			}
+			const stat = fs.statSync(file, { throwIfNoEntry: false });
+			const was = keptSources.get(file);
+			if (stat && was && was.size === stat.size && was.mtimeMs === stat.mtimeMs && !named(file)) {
+				out[i] = was.bytes;
+				continue;
+			}
+			const bytes = await fs.promises.readFile(file);
+			if (stat) keptSources.set(file, { size: stat.size, mtimeMs: stat.mtimeMs, bytes });
+			out[i] = bytes;
 		}
 	}));
 	return out;
