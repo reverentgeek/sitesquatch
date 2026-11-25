@@ -16,8 +16,9 @@ where that version matches.
 - `ssqch serve` shows an edit sooner: on v8.dev, 232 ms from the save to the browser hearing of it,
   where it was about 800.
   - The server pushes each change to the browser as it happens (`/__ssqch/events`), where the
-    page asked every 0.7 s and heard of a rebuild 0.35 s late on average. A page whose stream is
-    held back (by a proxy) asks as before.
+    page asked every 0.7 s and heard of a rebuild 0.35 s late on average. One tab of the site holds
+    the stream and tells the others, since a browser gives a site about six connections; a page
+    whose stream is held back (by a proxy) asks as before.
   - A burst of changes ends after 50 ms of quiet, where it was 120. A save whose file is gone at
     that point (Vim renames it away for its backup and writes it again 40 to 50 ms later) waits up
     to 200 ms more for it, so the page isn't dropped and put back.

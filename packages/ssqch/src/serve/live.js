@@ -162,6 +162,18 @@
 		return true;
 	};
 	let wait = 700;
+	const ask = async () => (await fetch(`/__ssqch/build?v=${seen ?? ""}&p=${encodeURIComponent(location.pathname)}`)).json();
+	// One tab of the site holds the stream, and says each new id to the others on a channel: a
+	// browser gives a site about six connections and a stream keeps one, so a seventh tab couldn't
+	// load at all (tried). The tab that holds the lock listens; each of the others asks for its own
+	// page's answer when the id moves, a request that gives its connection back. When the tab with
+	// the lock goes, another takes it.
+	const channel = typeof BroadcastChannel === "function" ? new BroadcastChannel("ssqch-live") : undefined;
+	const locks = typeof navigator === "object" && navigator.locks;
+	const heard = now => {
+		channel?.postMessage(now.id);
+		return hear(now);
+	};
 	// A stream that never said anything (a proxy holding it back): asking from then on.
 	let streamless = false;
 	// The server says each change as it happens (`/__ssqch/events`). It answers at once when the
@@ -170,16 +182,16 @@
 	const listen = () => {
 		if (streamless || typeof EventSource !== "function") return false;
 		const events = new EventSource(`/__ssqch/events?v=${seen ?? ""}&p=${encodeURIComponent(location.pathname)}`);
-		let heard = false;
+		let said = false;
 		const quiet = setTimeout(() => {
-			if (heard) return;
+			if (said) return;
 			streamless = true;
 			events.close();
 			setTimeout(poll, 0);
 		}, 2000);
 		events.onmessage = event => {
-			heard = true;
-			if (!hear(JSON.parse(event.data))) events.close();
+			said = true;
+			if (!heard(JSON.parse(event.data))) events.close();
 		};
 		events.onerror = () => {
 			clearTimeout(quiet);
@@ -193,10 +205,10 @@
 	// every 0.7 s (184 in two minutes, the new-docs run). When it answers again, the pace is back.
 	const poll = async () => {
 		try {
-			const now = await (await fetch(`/__ssqch/build?v=${seen ?? ""}&p=${encodeURIComponent(location.pathname)}`)).json();
+			const now = await ask();
 			if (wait !== 700) console.log("[ssqch] The server's back.");
 			wait = 700;
-			if (!hear(now)) return;
+			if (!heard(now)) return;
 			if (listen()) return;
 		} catch {
 			if (wait === 700) console.log("[ssqch] The server isn't answering (stopped?). Checking now and then.");
@@ -204,5 +216,23 @@
 		}
 		setTimeout(poll, wait);
 	};
-	if (!listen()) setTimeout(poll, wait);
+	const lead = () => {
+		if (!listen()) setTimeout(poll, wait);
+	};
+	if (locks && channel) {
+		// Until this tab has the lock: what the one with it says, and one look of its own now, for a
+		// rebuild since the page was sent.
+		const look = async () => {
+			try { hear(await ask()); } catch { /* the tab with the lock says when the server's back */ }
+		};
+		channel.onmessage = event => {
+			if (event.data !== seen) look();
+		};
+		look();
+		// Held while the page is open: the promise doesn't settle, and a page that goes lets it go.
+		locks.request("ssqch-live", () => new Promise(() => {
+			channel.onmessage = null;
+			lead();
+		}));
+	} else lead();
 })();
