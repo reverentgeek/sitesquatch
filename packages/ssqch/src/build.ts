@@ -123,6 +123,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	const only = afterAWorkingBuild ? incrementalPages(site, wanted, late) : undefined;
 	if (only) for (const page of wanted) if (!only.has(page) && page.output !== null) renderer.written.set(page.index, { file: page.output, bytes: keptWritten.get(page.output)!, changed: false });
 	const rendering = only ? wanted.filter((p) => only.has(p)) : wanted;
+	renderedCount = [rendering.filter((p) => p.output !== null).length, wanted.filter((p) => p.output !== null).length];
 	await renderer.renderAll([...rendering.filter((p) => !late.has(p)), ...rendering.filter((p) => late.has(p))], late);
 	// Whose content each page that reads collections read, for the next rebuild's choice.
 	if (config.serving) for (const page of rendering) if (late.has(page) && page.output !== null) keptReads.set(page.output, renderer.reads.get(page.index) ?? new Set());
@@ -272,6 +273,10 @@ interface Written {
  * renders every page: taken as the last build wrote it, a broken page would look fixed.
  */
 let lastBuildWorked = false;
+
+/** The last build's pages rendered, of the pages it wrote, for the serve timeline. */
+let renderedCount: [number, number] = [0, 0];
+export const lastRendered = (): [number, number] => renderedCount;
 
 /** While serving: each page's size as the last build wrote it, by its output file, for a page `SSQCH_INCREMENTAL=1` doesn't render. */
 const keptWritten = new Map<string, number>();
