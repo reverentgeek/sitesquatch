@@ -86,6 +86,9 @@ const MAX_WRITES = 64;
 export async function build(config: Config): Promise<BuildReport> {
 	// A SOURCE_DATE_EPOCH that isn't a number is one error now, not one for every page.
 	sourceDateEpoch();
+	// Until this build finishes, the next one can't take a page as this one wrote it.
+	const afterAWorkingBuild = lastBuildWorked;
+	lastBuildWorked = false;
 	const started = performance.now();
 	const timer = new Timer();
 	const site = new Site(config);
@@ -117,7 +120,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	}
 	// `SSQCH_INCREMENTAL=1`: only the pages whose bodies changed, and those that read collections
 	// (a feed shows the bodies); the rest are as the last build wrote them.
-	const only = incrementalPages(site, wanted, late);
+	const only = afterAWorkingBuild ? incrementalPages(site, wanted, late) : undefined;
 	if (only) for (const page of wanted) if (!only.has(page) && page.output !== null) renderer.written.set(page.index, { file: page.output, bytes: keptWritten.get(page.output)!, changed: false });
 	const rendering = only ? wanted.filter((p) => only.has(p)) : wanted;
 	await renderer.renderAll([...rendering.filter((p) => !late.has(p)), ...rendering.filter((p) => late.has(p))], late);
@@ -196,6 +199,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	report.timings = timer.timings;
 	for (const slow of site.profile.slowCalls()) warn(slow);
 	if (config.profile) report.profile = site.profile.report();
+	lastBuildWorked = true;
 	return report;
 }
 
@@ -261,6 +265,13 @@ interface Written {
 	/** Whether its contents changed (while serving, a page that comes out the same is left alone). */
 	changed: boolean;
 }
+
+/**
+ * Whether the last build in this process finished. One that failed rendered some of the pages it
+ * was given and not others (a page whose filter threw, and what came after it), so the next
+ * renders every page: taken as the last build wrote it, a broken page would look fixed.
+ */
+let lastBuildWorked = false;
 
 /** While serving: each page's size as the last build wrote it, by its output file, for a page `SSQCH_INCREMENTAL=1` doesn't render. */
 const keptWritten = new Map<string, number>();

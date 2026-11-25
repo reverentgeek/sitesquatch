@@ -420,6 +420,39 @@ test("serve_renders_a_listing_again_when_an_undated_pages_text_moves_its_date", 
 	}
 });
 
+// A rebuild that failed renders nothing for the pages it was given, so the next rebuild doesn't take
+// them as the last build wrote them: a page broken in one save is still broken after a save to
+// another page, as a clean build would say.
+test("serve_keeps_failing_for_a_broken_page_after_an_edit_to_another", async () => {
+	const dir = tempDir("serve-incremental-failed");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"njk\"] };\n",
+		"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>Cedar</p>",
+		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>Stump</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-failed-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1" } });
+	try {
+		await waitFor(log, "Serving ");
+		fs.appendFileSync(path.join(dir, "src/cedar.njk"), "{{ \"x\" | noSuchFilter }}");
+		await waitFor(log, "noSuchFilter");
+		const said = readOr(log).length;
+		fs.appendFileSync(path.join(dir, "src/stump.njk"), "<p>Four miles.</p>");
+		await waitFor(log, "Fresh tracks in src/stump.njk");
+		// The rebuild's outcome: its error again, or a summary it shouldn't have.
+		let after = "";
+		for (let i = 0; i < 200 && !/Built in|noSuchFilter/.test(after); i++) {
+			await sleep(25);
+			const text = readOr(log).slice(said);
+			after = text.slice(text.indexOf("src/stump.njk"));
+		}
+		assert.match(after, /noSuchFilter/);
+		assert.doesNotMatch(after, /Built in/);
+	} finally {
+		await server.stop();
+	}
+});
+
 // While serving, the link checker scans again only the pages whose files changed, and checks every
 // page's links against this build's files and ids: a page that didn't change, linking to an anchor
 // a changed page lost, is still broken.
