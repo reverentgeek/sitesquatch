@@ -170,6 +170,13 @@ export class Site {
 	 * matter (or the file time their date is) changed: their own data did. For `SSQCH_INCREMENTAL=1`.
 	 */
 	ownData = new Set<string>();
+	/** Why templates aren't kept this build, when they aren't: for the serve timeline. */
+	notKept = "";
+	get keepingTemplates(): boolean { return this.shared !== undefined; }
+	private notKeeping(why: string): undefined {
+		this.notKept = why;
+		return undefined;
+	}
 	/** PascalCase tags the pages have with no template in `_includes/components/`, with the pages each is on. */
 	unknownComponents = new Map<string, Set<string>>();
 	/** Front matter dates that aren't dates, said with the schemas' errors (`checkPages`), so a page's other mistakes are said with them. */
@@ -777,7 +784,8 @@ export class Site {
 	 */
 	private sharedInputs(dirData: Map<string, Data>): string | undefined {
 		const { config } = this;
-		if (process.env.SSQCH_KEEP_TEMPLATES !== "1" || !config.serving || this.keepLayers || config.profile) return undefined;
+		if (process.env.SSQCH_KEEP_TEMPLATES !== "1" || !config.serving) return this.notKeeping("SSQCH_KEEP_TEMPLATES is off");
+		if (this.keepLayers || config.profile) return this.notKeeping("trace or --profile");
 		const files = [...this.dataFilesRead].sort(compareText);
 		// The values themselves too, for what code made (a data function in the config, a
 		// JavaScript data file, which can answer differently each build): the global and directory
@@ -785,7 +793,7 @@ export class Site {
 		// Something it can't serialize (a function in the data) means no reuse. The blog's global
 		// data serialized and hashed in about a millisecond.
 		let values: string;
-		try { values = crypto.createHash("sha1").update(v8.serialize([this.global, [...dirData]])).digest("base64"); } catch { return undefined; }
+		try { values = crypto.createHash("sha1").update(v8.serialize([this.global, [...dirData]])).digest("base64"); } catch (e) { return this.notKeeping(`the data has something that can't be compared (${messageOf(e)})`); }
 		return JSON.stringify([values, files.map((file) => [file, fileMark(file)])]);
 	}
 

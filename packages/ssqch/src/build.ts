@@ -120,10 +120,11 @@ export async function build(config: Config): Promise<BuildReport> {
 	}
 	// `SSQCH_INCREMENTAL=1`: only the pages whose bodies changed, and those that read collections
 	// (a feed shows the bodies); the rest are as the last build wrote them.
-	const only = afterAWorkingBuild ? incrementalPages(site, wanted, late) : undefined;
+	const chosen = afterAWorkingBuild ? incrementalPages(site, wanted, late) : "the last build failed";
+	const only = typeof chosen === "string" ? undefined : chosen;
 	if (only) for (const page of wanted) if (!only.has(page) && page.output !== null) renderer.written.set(page.index, { file: page.output, bytes: keptWritten.get(page.output)!, changed: false });
 	const rendering = only ? wanted.filter((p) => only.has(p)) : wanted;
-	renderedCount = [rendering.filter((p) => p.output !== null).length, wanted.filter((p) => p.output !== null).length];
+	renderedCount = [rendering.filter((p) => p.output !== null).length, wanted.filter((p) => p.output !== null).length, typeof chosen === "string" ? chosen : undefined];
 	await renderer.renderAll([...rendering.filter((p) => !late.has(p)), ...rendering.filter((p) => late.has(p))], late);
 	// Whose content each page read, and whether it read collections, for the next rebuild's choice.
 	if (config.serving) {
@@ -283,9 +284,9 @@ interface Written {
  */
 let lastBuildWorked = false;
 
-/** The last build's pages rendered, of the pages it wrote, for the serve timeline. */
-let renderedCount: [number, number] = [0, 0];
-export const lastRendered = (): [number, number] => renderedCount;
+/** The last build's pages rendered, of the pages it wrote, and why it rendered them all when it did, for the serve timeline. */
+let renderedCount: [number, number, string?] = [0, 0];
+export const lastRendered = (): [number, number, string?] => renderedCount;
 
 /** While serving: each page's size as the last build wrote it, by its output file, for a page `SSQCH_INCREMENTAL=1` doesn't render. */
 const keptWritten = new Map<string, number>();
@@ -318,9 +319,13 @@ const pageKey = (page: Page) => `${page.tpl.input}\0${page.url}`;
  * page they're given (minify), or a replay of what each page told them (`config.replays`: the
  * image plugin, whose pictures a page not rendered asks for again, so `prune` and `leaveNoTrace`
  * keep them; llms, whose copies and llms-full.txt read each page's text; elements' summary). The
- * assets plugin fingerprints the files it's given before the build, whatever renders.
+ * assets plugin fingerprints the files it's given before the build, whatever renders, and Sass
+ * compiles its own files before any page. The feed is written after the pages from its posts'
+ * `templateContent`, which renders on demand for a post this build didn't render. `fromHugo()`
+ * only sets Markdown's options. `fromJekyll()` and `fromMkdocs()` aren't here: their templates
+ * read other pages through `site` and `nav`, past the collections' view.
  */
-const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/redirects", "ssqch/robots", "ssqch/minify", "ssqch/image", "ssqch/assets", "ssqch/elements", "ssqch/llms"]);
+const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/feed", "ssqch/redirects", "ssqch/robots", "ssqch/minify", "ssqch/image", "ssqch/assets", "ssqch/elements", "ssqch/llms", "ssqch/sass", "ssqch/from-hugo"]);
 
 /**
  * `SSQCH_INCREMENTAL=1` while serving (the dev server's design, stage 3, its first slice): the
@@ -329,23 +334,28 @@ const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/
  * after-build hooks of its own (code that sees rendered pages; a `beforeBuild` hook runs before any
  * page, every build). `undefined` means render everything.
  */
-function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page> | undefined {
+function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page> | string {
 	const { config } = site;
-	if (process.env.SSQCH_INCREMENTAL !== "1" || !config.serving || !(site.bodyOnly.size || site.ownData.size) || !config.changed?.length) return undefined;
+	if (process.env.SSQCH_INCREMENTAL !== "1" || !config.serving) return "off";
+	if (!config.changed?.length) return "the first build";
+	if (!(site.bodyOnly.size || site.ownData.size)) return site.keepingTemplates ? "no template's body or front matter alone changed" : `templates aren't kept: ${site.notKept}`;
 	// By real paths on both sides: the server names files by theirs, and the site may not (a
 	// temporary folder's `/var` is `/private/var` on macOS).
 	const bodyOnly = new Set([...site.bodyOnly].map(realPath));
 	const ownData = new Set([...site.ownData].map(realPath));
-	if (!config.changed.every((file) => bodyOnly.has(realPath(file)) || ownData.has(realPath(file)))) return undefined;
+	const other = config.changed.find((file) => !bodyOnly.has(realPath(file)) && !ownData.has(realPath(file)));
+	if (other !== undefined) return `${site.display(other)} isn't a page's body or front matter`;
 	// A page's own data changed (its front matter, a date that's its file's time): what other
 	// pages show of it comes through collections, which every page's data is made from again.
 	const dataChanged = config.changed.some((file) => ownData.has(realPath(file)));
-	if (!config.plugins.every((name) => REPLAYABLE.has(name))) return undefined;
-	if (config.afterBuild.some((hook) => !("label" in hook) || hook.label !== "")) return undefined;
-	if (config.transforms.some(([name]) => name !== "minify-html")) return undefined;
+	const plugin = config.plugins.find((name) => !REPLAYABLE.has(name));
+	if (plugin !== undefined) return `the plugin ${plugin}`;
+	if (config.afterBuild.some((hook) => !("label" in hook) || hook.label !== "")) return "an afterBuild hook of the config's own";
+	const transform = config.transforms.find(([name]) => name !== "minify-html");
+	if (transform) return `the transform ${transform[0]}`;
 	// MkDocs' and Jekyll's templates read more of other pages than that, past `collections`.
 	const everyLate = config.mkdocsTemplates !== null || config.jekyllTemplates;
-	if (dataChanged && everyLate) return undefined;
+	if (dataChanged && everyLate) return "front matter with MkDocs' or Jekyll's templates";
 	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input) || site.ownData.has(page.tpl.input)));
 	const changedKeys = new Set([...only].map(pageKey));
 	for (const page of wanted) {

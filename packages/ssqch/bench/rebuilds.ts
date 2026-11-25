@@ -158,7 +158,7 @@ try {
 		if (!pass) failed += 1;
 		// How much the rebuild rendered, so a pass that rendered everything is told from one that took pages as they were.
 		const rendered = lastRebuild.builder?.rendered;
-		const share = rendered ? ` [rendered ${rendered[0]} of ${rendered[1]}]` : "";
+		const share = rendered ? ` [rendered ${rendered[0]} of ${rendered[1]}${rendered[2] ? `: ${rendered[2]}` : ""}]` : "";
 		console.log(`  ${pass ? "pass" : "FAIL"} ${name}${share}: ${lastRebuild.ok ? last?.verdict ?? "no check" : "the build failed (the server's output says why)"}`);
 	}
 	// The server's view of what changed, from the builder's listing, against a walk of its own.
