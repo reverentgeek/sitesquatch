@@ -525,6 +525,9 @@ async function check(config: Config, output: string, written: string[], options:
 		// 404` covers every path, and a link it answers is still broken (the Squatch Snacks rerun).
 		const rule = rules.length ? ruleFor(rules, targetPath, target !== undefined) : undefined;
 		if (rule !== undefined && !rule.notFound) return undefined;
+		// A forced 4xx line answers the link before the file it would find (`/trail/ /404.html
+		// 404!`): broken, though the file is there (the 2026-11-24 review).
+		if (rule !== undefined && target !== undefined) return `a forced 4xx line in _redirects answers it: \`${rule.from} ${rule.to}\``;
 		if (target === undefined) {
 			// A site with hundreds of dead links has a bigger problem than typos.
 			if (!meant.has(targetPath) && meant.size < 500) meant.set(targetPath, didYouMean((nearest ??= closestPathFinder(urls))(targetPath), ""));

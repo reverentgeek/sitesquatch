@@ -934,11 +934,19 @@ export async function compare(before: string, after: string, options: DiffOption
 	for (const key of a.keys()) if (!b.has(key)) report.removed.push(urlOf(key));
 	// A removed page the second build redirects isn't gone for a visitor: say where it goes.
 	if (report.removed.length) {
-		const rules = redirectRules(after, "");
+		// Under a base (`/repo/`), the lines have it and the build's own paths don't: the first folder
+		// every line starts with, when the build has no such folder, is the base, and comes off before
+		// a removed page is compared with them (the 2026-11-24 review: `/repo/old/ /repo/new/ 301`
+		// didn't count for a removed `/old/`).
+		const raw = redirectRules(after, "");
+		const firsts = new Set(raw.map((r) => /^\/([^/*]+)\//.exec(r.from)?.[1]));
+		const only = firsts.size === 1 ? [...firsts][0] : undefined;
+		const based = only !== undefined && !fs.existsSync(path.join(after, only)) ? redirectRules(after, `/${only}`) : undefined;
 		for (const url of report.removed) {
 			// The page is gone from the second build, so the first line that covers it is the one
-			// a host follows, and a 4xx line (a catch-all to the 404 page) isn't a redirect.
-			const rule = ruleFor(rules, url, false);
+			// a host follows, and a 4xx line (a catch-all to the 404 page) isn't a redirect. The
+			// lines as written first: `/old/ /new/` starts with a folder the build lacks too.
+			const rule = ruleFor(raw, url, false) ?? (based && ruleFor(based, url, false));
 			if (rule !== undefined && !rule.notFound) report.redirects[url] = rule.to;
 		}
 	}

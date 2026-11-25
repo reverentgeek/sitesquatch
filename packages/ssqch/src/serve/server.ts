@@ -98,14 +98,17 @@ function networkAddresses(host: string): string[] {
 	return [...new Set(found)].sort(compareText);
 }
 
+/** A host as a URL has it: an IPv6 address in brackets (`[::1]`), which a URL needs to tell its colons from the port's (the 2026-11-24 review). */
+const urlHost = (host: string) => (host.includes(":") && !host.startsWith("[") ? `[${host}]` : host);
+
 /** Where a browser on this machine reaches the server: `localhost`, unless it listens on one other address only. */
-const localUrl = (host: string, port: number, base: string) => `http://${loopbackOnly(host) || host === "0.0.0.0" || host === "::" ? "localhost" : host}:${port}${base}/`;
+const localUrl = (host: string, port: number, base: string) => `http://${loopbackOnly(host) || host === "0.0.0.0" || host === "::" ? "localhost" : urlHost(host)}:${port}${base}/`;
 
 /** The line after the address when the site can be seen from other machines: where, and that anyone on the network can. */
 function onTheNetwork(host: string, port: number, base: string): string {
 	const addresses = networkAddresses(host).filter((a) => a !== host || (host !== "0.0.0.0" && host !== "::"));
 	if (!addresses.length) return host === "0.0.0.0" || host === "::" ? "\nOn your network: no network address found (is this machine on one?)" : "";
-	const urls = addresses.map((a) => `http://${a}:${port}${base}/`);
+	const urls = addresses.map((a) => `http://${urlHost(a)}:${port}${base}/`);
 	return `\nOn your network: ${urls.join(", ")} (anyone on it can see the site)`;
 }
 

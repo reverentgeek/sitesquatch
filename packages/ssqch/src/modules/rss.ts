@@ -188,6 +188,9 @@ BUILTINS.set("ssqch/feed", (config: Config, given) => {
 		const description = descriptionGiven ?? (typeof data.description === "string" ? data.description : undefined);
 		const name = typeof author === "string" ? author : (author as { name?: string } | undefined)?.name ?? title;
 		const email = typeof author === "object" && author !== null ? (author as { email?: unknown }).email : undefined;
+		// The author's page, as Atom's `<uri>`: accepted and documented, and dropped (the 2026-11-24
+		// review). RSS has no place for it: its author is an email address.
+		const uri = typeof author === "object" && author !== null ? (author as { url?: unknown }).url : undefined;
 		const home = absoluteUrl("/", url, config.base);
 		const self = absoluteUrl(out, url, config.base);
 		// A page in the collection, with an address: one with `permalink: false` has none, and isn't
@@ -210,7 +213,7 @@ BUILTINS.set("ssqch/feed", (config: Config, given) => {
 		const updated = entries.reduce<Date | undefined>((latest, e) => (latest === undefined || e.date > latest ? e.date : latest), undefined) ?? new Date(0);
 		let feed: string;
 		if (format === "atom") {
-			feed = `<?xml version="1.0" encoding="utf-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom">\n  <title>${xml(title)}</title>\n${description ? `  <subtitle>${xml(description)}</subtitle>\n` : ""}  <link href="${xml(self)}" rel="self"/>\n  <link href="${xml(home)}"/>\n  <id>${xml(home)}</id>\n  <updated>${dateToRfc3339(updated)}</updated>\n  <author><name>${xml(name)}</name>${typeof email === "string" ? `<email>${xml(email)}</email>` : ""}</author>\n`;
+			feed = `<?xml version="1.0" encoding="utf-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom">\n  <title>${xml(title)}</title>\n${description ? `  <subtitle>${xml(description)}</subtitle>\n` : ""}  <link href="${xml(self)}" rel="self"/>\n  <link href="${xml(home)}"/>\n  <id>${xml(home)}</id>\n  <updated>${dateToRfc3339(updated)}</updated>\n  <author><name>${xml(name)}</name>${typeof uri === "string" ? `<uri>${xml(uri)}</uri>` : ""}${typeof email === "string" ? `<email>${xml(email)}</email>` : ""}</author>\n`;
 			for (const e of entries) feed += `  <entry>\n    <title>${xml(e.title)}</title>\n    <link href="${xml(e.link)}"/>\n    <id>${xml(e.link)}</id>\n    <updated>${dateToRfc3339(e.date)}</updated>\n${e.summary ? `    <summary>${xml(e.summary)}</summary>\n` : ""}    <content type="html">${xml(e.content)}</content>\n  </entry>\n`;
 			feed += "</feed>\n";
 		} else {

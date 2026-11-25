@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { ssqch, tempDir, write } from "../lib/ssqch.js";
-import { start, sleep, waitFor, changeAndWait, httpGet, body } from "../lib/serve.js";
+import { start, sleep, waitFor, changeAndWait, httpGet, body, serveSite } from "../lib/serve.js";
 
 const unixOnly = { skip: process.platform === "win32" && "unix only" };
 const readOr = (file) => { try { return fs.readFileSync(file, "utf8"); } catch { return ""; } };
@@ -834,6 +834,22 @@ test("serve_ends_a_build_that_stops_answering", async () => {
 		await waitFor(log, "the build stopped answering");
 		assert.ok(readOr(log).includes("the build stopped answering for 2 s"), readOr(log));
 		await changeAndWait(path.join(dir, "index.jinja"), "camp", path.join(dir, "_site/index.html"), "camp");
+	} finally {
+		await server.stop();
+	}
+});
+
+// An IPv6 address the server listens on is in brackets in its URLs, which a URL needs to tell its
+// colons from the port's: `http://::ffff:127.0.0.1:58738/` parsed nowhere (the 2026-11-24 review).
+test("serve_brackets_an_ipv6_host_in_its_urls", async () => {
+	const dir = tempDir("serve-ipv6");
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n", "src/index.html": "<p>camp</p>" });
+	const { server, info } = await serveSite(dir, ["--host", "::ffff:127.0.0.1"]);
+	try {
+		assert.match(info.url, /^http:\/\/\[::ffff:127\.0\.0\.1\]:\d+\/$/);
+		// It parses, as an IPv6 host (URL writes it in its own form, `[::ffff:7f00:1]`).
+		assert.ok(new URL(info.url).hostname.startsWith("[::ffff:"), info.url);
+		assert.ok(server.log().includes(`at ${info.url}`), server.log());
 	} finally {
 		await server.stop();
 	}

@@ -13,6 +13,24 @@ where that version matches.
 
 ### Fixed
 
+- From a code review (2026-11-24):
+  - A passthrough copy onto a file a plugin writes is an error naming both: a glob that copied a
+    `robots.txt` replaced `robotsPlugin()`'s without a word, `ai.training: false` and all.
+  - A page's Markdown copy points a picture at its own published copy, by its source: a layout's
+    `<img>` with the same alt text, earlier on the page, took its place.
+  - A link with a `%` that starts no escape (`/100%-complete/`) no longer stops a build with
+    `llmsPlugin()` (`URI malformed`), or stops `ssqch patrol`, which reports it if it's broken.
+  - `ssqch patrol` reads a site built under a base: its `llms.txt` and copies' links were all
+    called broken.
+  - `ssqch patrol --url` reports `live-page-failed` for a page that answers a browser or an agent
+    with an error, though its copy answered; it passed.
+  - The link checker counts a link a forced 4xx line answers as broken, though the file is there
+    (`/trail/  /404.html  404!`), as 0.15.0's "a 4xx line isn't a redirect" says.
+  - `ssqch serve --host` with an IPv6 address puts it in brackets in the banner and the ready file
+    (`http://[::ffff:127.0.0.1]:8080/`), which a URL needs.
+  - `ssqch diff` matches a removed page with a redirect line under the site's base
+    (`/repo/old/  /repo/new/  301`).
+  - `feedPlugin()`'s `author: { url }` is the Atom feed's `<uri>`; it was accepted and dropped.
 - The docs starter's search, the deploy guide's Pagefind recipe and two examples empty
   `dist/pagefind/` before Pagefind runs: it names its files by their contents and deletes none, so
   every build's index stayed beside the new one, and a fresh copy of a site built something else

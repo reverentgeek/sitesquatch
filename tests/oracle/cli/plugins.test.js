@@ -947,6 +947,11 @@ test("a_catch_all_404_in_redirects_hides_no_broken_link", () => {
 	const r = ssqch(["build", "--root", root]);
 	assert.ok(!r.ok && r.log.includes("/ -> /nowhere/ (not found)"), r.log);
 	assert.ok(r.log.includes("/go/map -> /about/ (from /)") && !r.log.includes("/about/ -> /404.html"), r.log);
+	// A forced 4xx line answers before the file it would find: broken, with the file there (the
+	// 2026-11-24 review: a page taken down with `/trail/ /404.html 404!` passed).
+	write(root, { "src/index.html": "<a href=\"/trail/\">trail</a>", "src/trail.html": "Trail", "src/_redirects.html": "---\npermalink: /_redirects\n---\n/trail/  /404.html  404!\n" });
+	const forced = ssqch(["build", "--root", root]);
+	assert.ok(!forced.ok && forced.log.includes("/ -> /trail/ (a forced 4xx line in _redirects answers it: `/trail/ /404.html`)"), forced.log);
 });
 
 // DELIBERATE (0.14): `redirectsPlugin({ netlify: true })` is `hostFile`, since Netlify and
@@ -1291,6 +1296,13 @@ test("feed_plugin_writes_the_feed", () => {
 	const src = /img src=&quot;https:\/\/trail\.example(\/img\/[^&]+)&quot;/.exec(feed)?.[1];
 	assert.ok(src && fs.existsSync(path.join(dir, "dist", src)), feed);
 
+	// An author's page is Atom's `<uri>`, as `author: { name, email, url }` says (it was dropped,
+	// the 2026-11-24 review).
+	write(dir, { "ssqch.config.js": "import { feedPlugin } from \"ssqch/rss\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [feedPlugin({ url: \"https://trail.example\", author: { name: \"A ranger\", email: \"ranger@trail.example\", url: \"https://trail.example/about/\" } })] };\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.ok(read(dir, "dist/feed.xml").includes("<author><name>A ranger</name><uri>https://trail.example/about/</uri><email>ranger@trail.example</email></author>"), read(dir, "dist/feed.xml"));
+
 	// RSS, two entries, under a base.
 	write(dir, { "ssqch.config.js": "import { feedPlugin } from \"ssqch/rss\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, base: \"/trail\", plugins: [feedPlugin({ url: \"https://trail.example\", format: \"rss\", limit: 2, output: \"/rss.xml\" })] };\n" });
 	r = ssqch(["build", "--root", dir, "-q"]);
@@ -1330,6 +1342,29 @@ test("feed_plugin_writes_the_feed", () => {
 // 2026): a part of the site gets an llms.txt of its own, which covers the pages under it and which
 // the site's lists in their place; "Optional" (links an agent can skip) comes last; and past the
 // budget, pages from the end move into it without their notes.
+// A layout's picture with the same alt as one in the body isn't the body's: the copy took the
+// first `<img>` with that alt on the page, a logo before the tree (the 2026-11-24 review).
+test("llms_copies_match_a_picture_by_its_source_not_its_alt", () => {
+	const dir = project({
+		"ssqch.config.js": "import { llmsPlugin } from \"ssqch/llms\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [llmsPlugin({ url: \"https://trail.example\" })] };\n",
+		"src/_includes/base.jinja": "<html><body><img src=\"/img/logo.png\" alt=\"Pine\"><main>{{ content }}</main></body></html>",
+		"src/img/logo.png": PNG,
+		"src/img/tree.png": PNG,
+		"src/t.md": "---\nlayout: base.jinja\ntitle: T\n---\n# T\n\n![Pine](/img/tree.png)\n",
+	}, "llms-image-alt");
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	const copy = read(dir, "dist/t/index.md");
+	assert.ok(copy.includes("![Pine](https://trail.example/img/tree.png)") && !copy.includes("logo"), copy);
+	// With the image plugin, two files with the same picture are one copy, and either is its
+	// source (the blog's post and its feature image).
+	write(dir, { "ssqch.config.js": "import { imagePlugin } from \"ssqch/image\";\nimport { llmsPlugin } from \"ssqch/llms\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [imagePlugin({ widths: [32], formats: [\"auto\"] }), llmsPlugin({ url: \"https://trail.example\" })] };\n" });
+	assert.ok(ssqch(["build", "--root", dir, "-q"]).ok);
+	const encoded = read(dir, "dist/t/index.md");
+	const src = /!\[Pine\]\(https:\/\/trail\.example(\/img\/[^)]+)\)/.exec(encoded)?.[1];
+	assert.ok(src && !src.includes("tree") && fs.existsSync(path.join(dir, "dist", src)), encoded);
+});
+
 test("llms_txt_for_a_part_of_the_site_and_an_optional_section", () => {
 	const dir = tempDir("llms-paths");
 	const config = (options) => `import { llmsPlugin } from "ssqch/llms";\nexport default { data: { layout: "base.jinja" }, plugins: [llmsPlugin(${options})] };\n`;
