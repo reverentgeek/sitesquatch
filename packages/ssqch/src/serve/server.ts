@@ -94,6 +94,11 @@ export function outOfWatches(e: unknown): string {
 	return "";
 }
 
+/** The quiet that ends a burst of changes, in ms. */
+export const DEBOUNCE_MS = 50;
+/** How much longer a burst waits when a file it names is gone, for a save that's half done. */
+const GONE_MS = 200;
+
 const LOOPBACK = "127.0.0.1";
 
 /** Whether `host` answers only this machine. */
@@ -463,10 +468,19 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 			const paths = carried.length ? carried.splice(0) : await rx.recv();
 			const heardAt = heard ?? Date.now();
 			// Debounce bursts of events (editors often write several times), for a second at most:
-			// a folder that's written to all the time mustn't hold a rebuild back forever.
+			// a folder that's written to all the time mustn't hold a rebuild back forever. 50 ms of
+			// quiet ends one: it was 120, which every edit waited for. A save whose source is gone
+			// at that point may be half done (Vim renames the file away for its backup, and writes it
+			// again 40 to 50 ms later), so it waits up to 200 ms more for it to come back, rather than
+			// rebuild without the page and put it back a moment later.
 			const burst = performance.now();
+			let waitedForGone = false;
 			while (performance.now() - burst < 1000) {
-				const more = await rx.recvTimeout(120);
+				let more = await rx.recvTimeout(DEBOUNCE_MS);
+				if (!more && !waitedForGone && paths.some((file) => !own(file) && !editorsOwn(file) && !isInside(output, file) && !exists(file))) {
+					waitedForGone = true;
+					more = await rx.recvTimeout(GONE_MS);
+				}
 				if (!more) break;
 				paths.push(...more);
 			}
