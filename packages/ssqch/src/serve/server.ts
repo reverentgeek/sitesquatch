@@ -663,7 +663,7 @@ async function checkRebuild({ args, builder, rx, carried, tools, changed, moved,
 	if (!built.ok) line = `check-rebuilds: the clean build after ${changed} failed where the rebuild worked: ${built.error ?? "its error is above"}`;
 	else if (meanwhile !== undefined) line = `check-rebuilds: ${show(meanwhile)} changed while the clean build ran, so the two didn't build the same files; not judged`;
 	else {
-		found = compareOutputs(site.output, dir, tools ? ownFiles(site.root, site.outputName) : undefined);
+		found = compareOutputs(site.output, dir, tools ? ownFiles(site.root, site.outputName) : undefined, !site.leaveNoTrace);
 		line = verdict(found, changed, site.outputName);
 	}
 	say(line);

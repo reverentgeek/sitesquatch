@@ -35,6 +35,7 @@ function siteInfo(config: Config): SiteInfo {
 		input: dirs.input,
 		output: dirs.output,
 		outputName: isInside(dirs.root, dirs.output) ? relative(dirs.root, dirs.output) : slashes(dirs.output),
+		leaveNoTrace: config.leaveNoTrace,
 		base: config.base,
 		serveRun: config.serveRun,
 		serveIgnore: config.serveIgnore,

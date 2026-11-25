@@ -69,6 +69,8 @@ export interface SiteInfo {
 	watch: string[];
 	/** Where an error's files can be named from. */
 	locate: string[];
+	/** `leaveNoTrace`: whether a build deletes what an earlier one wrote and it didn't. */
+	leaveNoTrace: boolean;
 }
 
 /** After the configuration loaded, and after each build. */

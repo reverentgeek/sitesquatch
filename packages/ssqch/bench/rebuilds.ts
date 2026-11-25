@@ -68,18 +68,8 @@ const renamed = path.join(path.dirname(pageRel), `rebuilds-check-renamed${ext}`)
 
 /** Each step: what it does to the site. */
 const steps: Array<[string, () => void]> = [
-	["a page's body", () => { keep(pageRel); fs.appendFileSync(page, "\n\nA line the rebuild check added.\n"); }],
-	["the page's title", () => {
-		keep(pageRel);
-		const text = fs.readFileSync(page, "utf8");
-		const titled = text.replace(/^(title:\s*)(["']?)(.*?)\2\s*$/m, (_m, key, quote, title) => `${key}${quote}${title} (rebuilt)${quote}`);
-		if (titled === text) throw new Error(`${pageRel} has no title: line in its front matter`);
-		fs.writeFileSync(page, titled);
-	}],
-	["a page added beside it", () => fs.copyFileSync(page, at(added))],
-	["that page renamed", () => fs.renameSync(at(added), at(renamed))],
-	["that page deleted", () => fs.rmSync(at(renamed))],
-	...(layoutRel ? [[`a layout (${layoutRel})`, () => { keep(layoutRel); fs.appendFileSync(at(layoutRel), "\n"); }] as [string, () => void]] : []),
+	// A data file first, and back: its change can read the configuration again, which starts a new
+	// process, so it goes before the edits whose history the last step checks.
 	...(dataRel ? [[`a data file (${dataRel})`, () => {
 		keep(dataRel);
 		const data = JSON.parse(fs.readFileSync(at(dataRel), "utf8"));
@@ -88,7 +78,26 @@ const steps: Array<[string, () => void]> = [
 		if (Array.isArray(changed)) changed.reverse();
 		fs.writeFileSync(at(dataRel), JSON.stringify(changed, null, 2) + "\n");
 	}] as [string, () => void]] : []),
-	["everything put back", () => {
+	...(dataRel ? [["the data file put back", () => { fs.writeFileSync(at(dataRel), originals.get(dataRel)!); originals.delete(dataRel); }] as [string, () => void]] : []),
+	["a page's body", () => { keep(pageRel); fs.appendFileSync(page, "\n\nA line the rebuild check added.\n"); }],
+	["the page's title", () => {
+		keep(pageRel);
+		const text = fs.readFileSync(page, "utf8");
+		const titled = text.replace(/^(title:\s*)(["']?)(.*?)\2\s*$/m, (_m, key, quote, title) => `${key}${quote}${title} (rebuilt)${quote}`);
+		if (titled === text) throw new Error(`${pageRel} has no title: line in its front matter`);
+		fs.writeFileSync(page, titled);
+	}],
+	// A page like it, with the same one-line front matter but its title and its address.
+	["a page added beside it", () => {
+		const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(page, "utf8"))?.[1] ?? "";
+		// Every one-line key but those that make an address, which the copy would share.
+		const plain = front.split(/\r?\n/).filter((line) => /^[A-Za-z_][\w-]*:\s*\S/.test(line) && !/^(permalink|aliases|slug|redirect_from|url|eleventyNavigation):/.test(line)).map((line) => (line.startsWith("title:") ? "title: Added by the rebuild check" : line));
+		fs.writeFileSync(at(added), `---\n${plain.join("\n")}\n---\nA page the rebuild check added.\n`);
+	}],
+	["that page renamed", () => fs.renameSync(at(added), at(renamed))],
+	["that page deleted", () => fs.rmSync(at(renamed))],
+	...(layoutRel ? [[`a layout (${layoutRel})`, () => { keep(layoutRel); fs.appendFileSync(at(layoutRel), "\n"); }] as [string, () => void]] : []),
+	["everything else put back, in the process that saw it all", () => {
 		for (const [rel, text] of originals) fs.writeFileSync(at(rel), text);
 	}],
 ];
@@ -100,7 +109,8 @@ const server = spawn(process.execPath, [path.join(here, "../bin/ssqch.ts"), "ser
 	env: { ...process.env, SSQCH_SERVE_TIMELINE: timeline, SSQCH_CHECK_REBUILDS: "1", NO_COLOR: "1" },
 	stdio: ["ignore", log, log],
 });
-const checks = () => { try { return fs.readFileSync(timeline, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((line) => line.kind === "check"); } catch { return []; } };
+const serveLog = () => { try { return fs.readFileSync(path.join(work, "serve.log"), "utf8"); } catch { return ""; } };
+const timed = () => { try { return fs.readFileSync(timeline, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)); } catch { return []; } };
 
 async function until<T>(what: string, look: () => T | undefined, ms = 300_000): Promise<T> {
 	const started = Date.now();
@@ -118,15 +128,28 @@ try {
 	await sleep(1500);
 	console.log(`${given}: ${steps.length} edits in a row, each rebuild checked against a clean build`);
 	for (const [name, act] of steps) {
-		const before = checks().length;
+		const before = timed().length;
+		const said = serveLog().length;
 		act();
-		const check = await until(`the check after "${name}"`, () => checks().slice(before).at(-1));
+		// A rebuild's line, then its check's (none when the build failed). An edit that reads the
+		// configuration again (a data file its code read) builds in a new process instead: a clean
+		// build by construction, which isn't checked.
+		const outcome = await until(`the rebuild after "${name}"`, () => timed().slice(before).find((line) => line.kind === "rebuild") ?? (/reading the configuration again[\s\S]*Serving /.test(serveLog().slice(said)) ? "reloaded" : undefined));
+		if (outcome === "reloaded") {
+			console.log(`  pass ${name}: the configuration read again, so a new process built it (a clean build)`);
+			await sleep(1500);
+			continue;
+		}
+		const rebuild = outcome;
+		if (rebuild.ok) await until(`the check after "${name}"`, () => timed().slice(before).find((line) => line.kind === "check"));
 		// Let the output settle, and a second rebuild the edit set off (a rename's two events).
 		await sleep(1500);
-		const last = checks().slice(before).at(-1) ?? check;
-		const pass = / wrote what a clean build writes /.test(last.verdict);
+		const lines = timed().slice(before);
+		const lastRebuild = lines.filter((line) => line.kind === "rebuild").at(-1);
+		const last = lines.filter((line) => line.kind === "check").at(-1);
+		const pass = lastRebuild.ok && last !== undefined && / wrote what a clean build writes /.test(last.verdict);
 		if (!pass) failed += 1;
-		console.log(`  ${pass ? "pass" : "FAIL"} ${name}: ${last.verdict}`);
+		console.log(`  ${pass ? "pass" : "FAIL"} ${name}: ${lastRebuild.ok ? last?.verdict ?? "no check" : "the build failed (the server's output says why)"}`);
 	}
 } finally {
 	server.kill("SIGTERM");

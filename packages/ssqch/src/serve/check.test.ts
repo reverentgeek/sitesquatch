@@ -19,7 +19,7 @@ test("a rebuild that wrote what a clean build writes is the same, file for file"
 	const served = folder({ "index.html": "camp", "posts/hike/index.html": "cedar" });
 	const clean = folder({ "index.html": "camp", "posts/hike/index.html": "cedar" });
 	const c = compareOutputs(served, clean);
-	assert.deepEqual(c, { differ: [], onlyClean: [], onlyServed: [], tools: [], same: 2 });
+	assert.deepEqual(c, { differ: [], onlyClean: [], onlyServed: [], tools: [], left: [], same: 2 });
 	assert.equal(verdict(c, "src/index.md", "dist"), "check-rebuilds: the rebuild after src/index.md wrote what a clean build writes (2 files the same)");
 });
 
@@ -48,4 +48,16 @@ test("the served build's own files come from its folder's entry on the build's l
 	assert.deepEqual([...ownFiles(root, "dist")], ["index.html", "camp/index.html"]);
 	assert.deepEqual([...ownFiles(root, ".cache/ssqch/check-rebuilds")], ["index.html"]);
 	assert.deepEqual([...ownFiles(folder({}), "dist")], []);
+});
+
+// With leaveNoTrace off, a rebuild after a page was renamed or deleted leaves its old file, as
+// ssqch build does: not a page the dev server got wrong. One the rebuild failed to write still is.
+test("with leaveNoTrace off, what an earlier build left is said apart, and a missing page still fails", () => {
+	const served = folder({ "index.html": "camp", "old-post/index.html": "renamed since" });
+	const clean = folder({ "index.html": "camp", "new-post/index.html": "here" });
+	const c = compareOutputs(served, clean, undefined, true);
+	assert.deepEqual([c.left, c.onlyServed, c.onlyClean], [["old-post/index.html"], [], ["new-post/index.html"]]);
+	assert.match(verdict(c, "src/new-post.md", "dist"), /isn't what a clean build writes: 1 only in the clean build \(new-post\/index\.html\); left out 1 only in dist \(old-post\/index\.html\), which an earlier build may have written: with leaveNoTrace off they stay/);
+	const fine = compareOutputs(served, folder({ "index.html": "camp" }), undefined, true);
+	assert.match(verdict(fine, "src/old-post.md", "dist"), /wrote what a clean build writes \(1 file the same; left out 1 only in dist/);
 });

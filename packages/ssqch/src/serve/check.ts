@@ -42,6 +42,8 @@ export interface Comparison {
 	onlyServed: string[];
 	/** Files only the served output has that its build didn't write, left out because `serve.run`'s tools write into the output. */
 	tools: string[];
+	/** Files only the served output has that its build didn't write, left there by an earlier one because `leaveNoTrace` is off, as `ssqch build` leaves them. */
+	left: string[];
 	/** How many files both have. */
 	same: number;
 }
@@ -67,32 +69,36 @@ const sameBytes = (a: string, b: string) => {
 };
 
 /**
- * Compare what a rebuild left in `served` with a clean build in `clean`. `own` is given when the
+ * Compare what a rebuild left in `served` with a clean build in `clean`. With `leaves` (the
+ * site's `leaveNoTrace` is off), every file only the served output has may be one an earlier
+ * build wrote, which stays, as it does with `ssqch build`: the build's list keeps those as its
+ * own on purpose, so it can't tell them apart. A page the rebuild failed to write is still
+ * caught: it's only in the clean build. `own` is given when the
  * site has `serve.run` tools, which write into the output and not into the clean build's folder:
  * it's what the served build recorded as its own (`ownFiles`), and a file only the served output
  * has that isn't on it is a tool's, and isn't counted (Tailwind's stylesheet, a11yproject.com's
  * gulp writing images and a style guide's pages, v8.dev's `.webmanifest`). A file the build
  * recorded and the clean build didn't write is still a difference.
  */
-export function compareOutputs(served: string, clean: string, own?: ReadonlySet<string>): Comparison {
+export function compareOutputs(served: string, clean: string, own?: ReadonlySet<string>, leaves = false): Comparison {
 	const a = files(served);
 	const b = files(clean);
-	const out: Comparison = { differ: [], onlyClean: [], onlyServed: [], tools: [], same: 0 };
+	const out: Comparison = { differ: [], onlyClean: [], onlyServed: [], tools: [], left: [], same: 0 };
 	for (const [rel, file] of a) {
 		const other = b.get(rel);
-		if (other === undefined) (own && !own.has(rel) ? out.tools : out.onlyServed).push(rel);
+		if (other === undefined) (leaves ? out.left : own && !own.has(rel) ? out.tools : out.onlyServed).push(rel);
 		else if (sameBytes(file, other)) out.same += 1;
 		else out.differ.push(rel);
 	}
 	for (const rel of b.keys()) if (!a.has(rel)) out.onlyClean.push(rel);
-	for (const list of [out.differ, out.onlyClean, out.onlyServed, out.tools]) list.sort(compareText);
+	for (const list of [out.differ, out.onlyClean, out.onlyServed, out.tools, out.left]) list.sort(compareText);
 	return out;
 }
 
 /** What the terminal says about a comparison: one line, with up to three files of each kind. */
 export function verdict(c: Comparison, changed: string, outputName: string): string {
 	const some = (list: string[]) => list.slice(0, 3).join(", ") + (list.length > 3 ? ` and ${list.length - 3} more` : "");
-	const tools = c.tools.length ? `; left out ${c.tools.length} file${c.tools.length === 1 ? "" : "s"} only in ${outputName} that its build didn't write, which serve.run's tools did` : "";
+	const tools = (c.tools.length ? `; left out ${c.tools.length} file${c.tools.length === 1 ? "" : "s"} only in ${outputName} that its build didn't write, which serve.run's tools did` : "") + (c.left.length ? `; left out ${c.left.length} only in ${outputName} (${some(c.left)}), which an earlier build may have written: with leaveNoTrace off they stay, as ssqch build leaves them` : "");
 	if (!c.differ.length && !c.onlyClean.length && !c.onlyServed.length) return `check-rebuilds: the rebuild after ${changed} wrote what a clean build writes (${c.same} file${c.same === 1 ? "" : "s"} the same${tools})`;
 	const parts = [
 		c.differ.length ? `${c.differ.length} differ (${some(c.differ)})` : "",
