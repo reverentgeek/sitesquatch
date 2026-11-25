@@ -252,6 +252,45 @@ test("serve_reads_a_changed_config_again", async () => {
 // folder, is watched like a module the config imports: an edit to it showed
 // nothing until the server started again (0.15.1). Read while the config
 // loads, and read in a data function on each build.
+// A serve.run tool that doesn't write after rebuilds (PostCSS watching only its CSS) was waited for
+// after every one: 150 ms for nothing, each page edit. After three rebuilds with no write it
+// isn't, and a write after a rebuild brings the waiting back (timed by SSQCH_SERVE_TIMELINE).
+test("serve_stops_waiting_for_tools_that_dont_write_after_a_rebuild", async () => {
+	const dir = tempDir("serve-tools-learn");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, serve: { run: [\"node tool.mjs\"] } };\n",
+		// It writes the stylesheet once, then only when told to (a file it watches).
+		"tool.mjs": "import fs from \"node:fs\";\nconst out = process.env.SSQCH_OUTPUT;\nfs.mkdirSync(out, { recursive: true });\nfs.writeFileSync(`${out}/app.css`, \"body {}\");\nfs.watch(\".\", (e, name) => { if (name === \"poke\") fs.writeFileSync(`${out}/app.css`, `body { --n: ${Date.now()}; }`); });\nprocess.stdin.on(\"end\", () => process.exit());\nprocess.stdin.resume();\n",
+		"src/index.jinja": "<link rel=\"stylesheet\" href=\"/app.css\">camp 0",
+	});
+	const timeline = path.join(tempDir("serve-tools-learn-line"), "times.jsonl");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: path.join(tempDir("serve-tools-learn-log"), "serve.log"), env: { SSQCH_SERVE_TIMELINE: timeline } });
+	const held = () => readOr(timeline).split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((line) => line.kind === "rebuild").map((line) => line.held - line.built);
+	const edit = async (i) => {
+		await sleep(400);
+		await changeAndWait(path.join(dir, "src/index.jinja"), `<link rel="stylesheet" href="/app.css">camp ${i}`, path.join(dir, "dist/index.html"), `camp ${i}`);
+		const started = Date.now();
+		while (held().length < i) {
+			assert.ok(Date.now() - started < 10_000, readOr(timeline));
+			await sleep(20);
+		}
+	};
+	try {
+		await waitFor(path.join(dir, "dist/index.html"), "camp 0");
+		for (let i = 1; i <= 5; i++) await edit(i);
+		const waits = held();
+		assert.ok(waits.slice(0, 3).every((ms) => ms >= 140) && waits.slice(3).every((ms) => ms < 60), JSON.stringify(waits));
+		// The tool writes after a rebuild: the next one waits for it again.
+		await edit(6);
+		fs.writeFileSync(path.join(dir, "poke"), "1");
+		await sleep(600);
+		await edit(7);
+		assert.ok(held()[6] >= 140, JSON.stringify(held()));
+	} finally {
+		await server.stop();
+	}
+});
+
 // The debounce is 50 ms of quiet (it was 120). Vim's save renames the file away for its backup
 // and writes it again 40 to 50 ms later: a rebuild in between would drop the page and put it back
 // a moment later. A file that's gone when the quiet ends waits up to 200 ms more for its return.

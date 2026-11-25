@@ -94,6 +94,8 @@ export function outOfWatches(e: unknown): string {
 	return "";
 }
 
+/** Rebuilds in a row with no write from `serve.run`'s tools, after which they aren't waited for. */
+const TOOLS_LEARN = 3;
 /** The quiet that ends a burst of changes, in ms. */
 export const DEBOUNCE_MS = 50;
 /** How much longer a burst waits when a file it names is gone, for a save that's half done. */
@@ -427,6 +429,8 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 		sayWhere();
 		// What each changed source held the last time it was seen.
 		const contents = new Map<string, string | undefined>();
+		// Rebuilds in a row after which no `serve.run` tool wrote anything.
+		let quietRebuilds = 0;
 		// From the site's root, for a watched file outside it too (`../docs/guide.md`), as the
 		// files inside are named; absolute only when there's no way there (another drive).
 		const show = (file: string) => {
@@ -516,8 +520,13 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				const asked = Date.now();
 				// The tools watch the same sources, and write what this edit changes for them (new
 				// classes, say) a moment later: the update waits for that, so it's one.
+				// A tool that hasn't written after the last few rebuilds (PostCSS, which watches only its
+				// CSS) isn't waited for: v8.dev waited 150 ms after every page edit for a write that
+				// never came. The first write it makes after one starts the waiting again.
 				const marks = await runBuild(builder, live, async () => {
-					if (tools) await settle(rx, output, assetStamps(output), QUIET, carried);
+					if (!tools) return;
+					const wrote = await settle(rx, output, assetStamps(output), quietRebuilds >= TOOLS_LEARN ? 0 : QUIET, carried);
+					quietRebuilds = wrote ? 0 : quietRebuilds + 1;
 				}, sources);
 				if (!quiet) sayWhere();
 				record({ kind: "rebuild", file: show(source), heard: heardAt, debounced, asked, ...marks, said: Date.now() });
@@ -528,6 +537,8 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				// write is late to arrive: the contents say which, so a tool's write that landed
 				// during a build isn't missed.
 				const differs = await live.changed(site.output);
+				// A tool that writes after a rebuild is waited for again from the next one.
+				if (differs.some(isAsset)) quietRebuilds = 0;
 				let gone = differs.filter((file) => isAsset(file) && !exists(path.join(site.output, file)));
 				// Still gone once the output is quiet: not a tool that deletes a file before it
 				// writes the new one (which is then seen like any of its writes).
@@ -686,9 +697,9 @@ async function firstCompile(output: string, quiet: boolean): Promise<void> {
  * stylesheet or script in `output` (resolved) differs from `before`, for `first` at most, and
  * then until the output has been quiet for `QUIET` (`KEEPS_WRITING` more at most). Then browsers
  * hear about the page and its new CSS at once, instead of the page first and its CSS a moment
- * later. Other changes seen meanwhile go in `carried`.
+ * later. Other changes seen meanwhile go in `carried`. Answers whether a tool wrote.
  */
-export async function settle(rx: Channel<string[]>, output: string, before: Map<string, Written>, first: number, carried: string[]): Promise<void> {
+export async function settle(rx: Channel<string[]>, output: string, before: Map<string, Written>, first: number, carried: string[]): Promise<boolean> {
 	const started = performance.now();
 	const cap = started + first + KEEPS_WRITING;
 	// A tool may have written already, between the build and now.
@@ -696,9 +707,9 @@ export async function settle(rx: Channel<string[]>, output: string, before: Map<
 	let until = wrote ? started + QUIET : started + first;
 	for (;;) {
 		const left = Math.min(until, cap) - performance.now();
-		if (left <= 0) return;
+		if (left <= 0) return wrote;
 		const paths = await rx.recvTimeout(left);
-		if (!paths) return;
+		if (!paths) return wrote;
 		for (const given of paths) {
 			const file = realPath(given);
 			if (!isInside(output, file)) {
