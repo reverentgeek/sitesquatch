@@ -158,6 +158,11 @@ export class Site {
 	private dataFilesRead = new Set<string>();
 	/** With `SSQCH_KEEP_TEMPLATES=1` while serving, what a template's data came from besides its own file, when it can be reused at all: `undefined` when it can't. */
 	private shared: string | undefined;
+	/**
+	 * Templates made again this build whose data is what it was (the same front matter, shared
+	 * inputs, layouts and commit date): only their bodies changed. For `SSQCH_INCREMENTAL=1`.
+	 */
+	bodyOnly = new Set<string>();
 	/** PascalCase tags the pages have with no template in `_includes/components/`, with the pages each is on. */
 	unknownComponents = new Map<string, Set<string>>();
 	/** Front matter dates that aren't dates, said with the schemas' errors (`checkPages`), so a page's other mistakes are said with them. */
@@ -727,10 +732,15 @@ export class Site {
 		const warned = warnedCount;
 		const ownData = this.dataFilesRead.size;
 		const tpl = await this.makeTemplate(file, source, dirData, commitDates);
+		const text = decodeText(source);
+		const front = text.slice(0, text.length - tpl.body.length);
+		const layouts = tpl.layouts.map((layout): [string, string] => [layout.path, fileMark(layout.path)]);
 		// Kept when nothing in it can differ next time with the same bytes and the same shared
 		// inputs: no data file of its own (read just now), no warning said (it would be lost).
 		if (this.shared !== undefined && warnedCount === warned && this.dataFilesRead.size === ownData) {
-			keptTemplates.set(file, { bytes: source, shared: this.shared, commit, layouts: tpl.layouts.map((layout) => [layout.path, fileMark(layout.path)]), tpl });
+			// Its data is what it was when everything it comes from is: only the body changed.
+			if (kept && kept.shared === this.shared && kept.front === front && kept.commit === commit && JSON.stringify(kept.layouts) === JSON.stringify(layouts)) this.bodyOnly.add(file);
+			keptTemplates.set(file, { bytes: source, shared: this.shared, commit, layouts, front, tpl });
 		} else keptTemplates.delete(file);
 		return tpl;
 	}
@@ -1339,7 +1349,7 @@ const keptSources = new Map<string, { size: number; mtimeMs: number; bytes: Buff
  * (`Site.sharedInputs`), its layouts' files are as they were, and its commit date (git dates) too.
  * Making them was 200 to 290 ms of a 10,000-page rebuild.
  */
-const keptTemplates = new Map<string, { bytes: Buffer; shared: string; commit: number | undefined; layouts: Array<[string, string]>; tpl: Tpl }>();
+const keptTemplates = new Map<string, { bytes: Buffer; shared: string; commit: number | undefined; layouts: Array<[string, string]>; front: string; tpl: Tpl }>();
 
 /** A file's size and time, as one string: what tells it's as it was. */
 function fileMark(file: string): string {
