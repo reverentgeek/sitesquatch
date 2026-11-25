@@ -23,7 +23,8 @@ where that version matches.
     that point (Vim renames it away for its backup and writes it again 40 to 50 ms later) waits up
     to 200 ms more for it, so the page isn't dropped and put back.
   - A `serve.run` tool that hasn't written after three rebuilds in a row isn't waited for (it was
-    150 ms after every rebuild), and one that writes after a rebuild is waited for again.
+    150 ms after every rebuild); one that has written after a rebuild (Tailwind, when an edit adds
+    a class) is waited for from then on.
 - Behind `netlify dev`, the server says once what `netlify dev` does in front of it: rewrites
   need `200!`, the site's `_headers` apply while serving, and it wants an output folder of its
   own.

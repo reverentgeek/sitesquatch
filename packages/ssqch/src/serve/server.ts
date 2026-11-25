@@ -439,8 +439,12 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 		sayWhere();
 		// What each changed source held the last time it was seen.
 		const contents = new Map<string, string | undefined>();
-		// Rebuilds in a row after which no `serve.run` tool wrote anything.
+		// Rebuilds in a row after which no `serve.run` tool wrote anything, and whether one has
+		// written after a rebuild since the server started (then it's waited for every time).
 		let quietRebuilds = 0;
+		let toolsWriteAfter = false;
+		// When the last rebuild's update went out, for telling a tool's write after it.
+		let rebuiltAt = 0;
 		// From the site's root, for a watched file outside it too (`../docs/guide.md`), as the
 		// files inside are named; absolute only when there's no way there (another drive).
 		const show = (file: string) => {
@@ -532,12 +536,15 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				// classes, say) a moment later: the update waits for that, so it's one.
 				// A tool that hasn't written after the last few rebuilds (PostCSS, which watches only its
 				// CSS) isn't waited for: v8.dev waited 150 ms after every page edit for a write that
-				// never came. The first write it makes after one starts the waiting again.
+				// never came. One that has written after a rebuild is waited for from then on: the
+				// blog's Tailwind writes only when an edit adds a class, and that edit's page would go
+				// out before its CSS. Not waiting skips the output's stamps too (60 ms on the blog).
 				const marks = await runBuild(builder, live, async () => {
-					if (!tools) return;
-					const wrote = await settle(rx, output, assetStamps(output), quietRebuilds >= TOOLS_LEARN ? 0 : QUIET, carried);
-					quietRebuilds = wrote ? 0 : quietRebuilds + 1;
+					if (!tools || (!toolsWriteAfter && quietRebuilds >= TOOLS_LEARN)) return;
+					if (await settle(rx, output, assetStamps(output), QUIET, carried)) toolsWriteAfter = true;
+					else quietRebuilds += 1;
 				}, sources);
+				rebuiltAt = performance.now();
 				if (!quiet) sayWhere();
 				record({ kind: "rebuild", file: show(source), heard: heardAt, debounced, asked, ...marks, said: Date.now() });
 				watchConfigFiles();
@@ -547,8 +554,8 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				// write is late to arrive: the contents say which, so a tool's write that landed
 				// during a build isn't missed.
 				const differs = await live.changed(site.output);
-				// A tool that writes after a rebuild is waited for again from the next one.
-				if (differs.some(isAsset)) quietRebuilds = 0;
+				// A tool's write that came after a rebuild's update had gone: waited for from now on.
+				if (tools && differs.some(isAsset) && performance.now() - rebuiltAt < 2000) toolsWriteAfter = true;
 				let gone = differs.filter((file) => isAsset(file) && !exists(path.join(site.output, file)));
 				// Still gone once the output is quiet: not a tool that deletes a file before it
 				// writes the new one (which is then seen like any of its writes).

@@ -254,7 +254,8 @@ test("serve_reads_a_changed_config_again", async () => {
 // loads, and read in a data function on each build.
 // A serve.run tool that doesn't write after rebuilds (PostCSS watching only its CSS) was waited for
 // after every one: 150 ms for nothing, each page edit. After three rebuilds with no write it
-// isn't, and a write after a rebuild brings the waiting back (timed by SSQCH_SERVE_TIMELINE).
+// isn't, and once it has written after a rebuild it's waited for from then on: the blog's
+// Tailwind writes only when an edit adds a class (timed by SSQCH_SERVE_TIMELINE).
 test("serve_stops_waiting_for_tools_that_dont_write_after_a_rebuild", async () => {
 	const dir = tempDir("serve-tools-learn");
 	write(dir, {
@@ -280,12 +281,12 @@ test("serve_stops_waiting_for_tools_that_dont_write_after_a_rebuild", async () =
 		for (let i = 1; i <= 5; i++) await edit(i);
 		const waits = held();
 		assert.ok(waits.slice(0, 3).every((ms) => ms >= 140) && waits.slice(3).every((ms) => ms < 60), JSON.stringify(waits));
-		// The tool writes after a rebuild: the next one waits for it again.
+		// The tool writes after a rebuild: every one from then on waits for it.
 		await edit(6);
 		fs.writeFileSync(path.join(dir, "poke"), "1");
 		await sleep(600);
-		await edit(7);
-		assert.ok(held()[6] >= 140, JSON.stringify(held()));
+		for (let i = 7; i <= 9; i++) await edit(i);
+		assert.ok(held().slice(6).every((ms) => ms >= 140), JSON.stringify(held()));
 	} finally {
 		await server.stop();
 	}
