@@ -741,10 +741,25 @@ export class Site {
 		// inputs: no data file of its own (read just now), no warning said (it would be lost).
 		if (this.shared !== undefined && warnedCount === warned && this.dataFilesRead.size === ownData) {
 			// Its data is what it was when everything it comes from is: only the body changed.
-			if (kept && kept.shared === this.shared && kept.front === front && kept.commit === commit && JSON.stringify(kept.layouts) === JSON.stringify(layouts)) this.bodyOnly.add(file);
-			keptTemplates.set(file, { bytes: source, shared: this.shared, commit, layouts, front, tpl });
+			// A page whose date or lastModified is its file's time has new data with every save.
+			const time = this.usesFileTime(tpl) ? tpl.mtime.getTime() : undefined;
+			if (kept && kept.shared === this.shared && kept.front === front && kept.commit === commit && kept.time === time && JSON.stringify(kept.layouts) === JSON.stringify(layouts)) this.bodyOnly.add(file);
+			keptTemplates.set(file, { bytes: source, shared: this.shared, commit, time, layouts, front, tpl });
 		} else keptTemplates.delete(file);
 		return tpl;
+	}
+
+	/**
+	 * Whether a template's data can come from its file's time: `lastModified` from the file (or
+	 * from git, for a file no commit has), or a date from nowhere else (`pageData`'s fallbacks). A
+	 * `date` the directory data gives isn't in the template's own data, so it counts as the file's
+	 * time here: only a rebuild that renders more.
+	 */
+	private usesFileTime(tpl: Tpl): boolean {
+		const { config } = this;
+		if (config.lastModified === "file" || (config.lastModified === "git" && !tpl.committed)) return sourceDateEpoch() === undefined;
+		const given = tpl.data.date;
+		return (given === undefined || given === null) && !tpl.fileDate && !tpl.commitDate && sourceDateEpoch() === undefined;
 	}
 
 	/**
@@ -1355,7 +1370,7 @@ const keptSources = new Map<string, { size: number; mtimeMs: number; bytes: Buff
  * (`Site.sharedInputs`), its layouts' files are as they were, and its commit date (git dates) too.
  * Making them was 200 to 290 ms of a 10,000-page rebuild.
  */
-const keptTemplates = new Map<string, { bytes: Buffer; shared: string; commit: number | undefined; layouts: Array<[string, string]>; front: string; tpl: Tpl }>();
+const keptTemplates = new Map<string, { bytes: Buffer; shared: string; commit: number | undefined; time: number | undefined; layouts: Array<[string, string]>; front: string; tpl: Tpl }>();
 
 /** A file's size and time, as one string: what tells it's as it was. */
 function fileMark(file: string): string {

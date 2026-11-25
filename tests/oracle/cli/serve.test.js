@@ -333,8 +333,8 @@ test("serve_renders_only_the_page_whose_text_changed_and_keeps_the_others_pictur
 	const renders = path.join(tempDir("serve-incremental-renders"), "renders.log");
 	write(dir, {
 		"ssqch.config.js": `import fs from "node:fs";\nimport { imagePlugin } from "ssqch/image";\nimport { llmsPlugin } from "ssqch/llms";\nexport default { dirs: { input: "src", output: "dist" }, leaveNoTrace: true, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } }, plugins: [imagePlugin({ formats: ["webp"], widths: [16], prune: true }), llmsPlugin({ full: true })] };\n`,
-		"src/cedar.njk": "<p>{{ \"cedar\" | noted }}</p><img src=\"/img/cedar.png\" alt=\"\">",
-		"src/stump.njk": "<p>{{ \"stump\" | noted }}</p><img src=\"/img/stump.svg\" alt=\"\">",
+		"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }}</p><img src=\"/img/cedar.png\" alt=\"\">",
+		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p><img src=\"/img/stump.svg\" alt=\"\">",
 		"src/img/stump.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><rect width=\"16\" height=\"16\"/></svg>",
 	});
 	fs.copyFileSync(path.join(FIXTURES, "cli/squatch.png"), path.join(dir, "src/img/cedar.png"));
@@ -371,8 +371,8 @@ test("serve_renders_again_only_the_collection_pages_that_read_the_changed_conten
 	write(dir, {
 		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
 		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
-		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\n---\n<p>{{ \"cedar\" | noted }}</p>",
-		"src/posts/stump.njk": "---\ntitle: The stump\n---\n<p>{{ \"stump\" | noted }}</p>",
+		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }}</p>",
+		"src/posts/stump.njk": "---\ntitle: The stump\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>",
 		"src/titles.njk": "{{ \"titles\" | noted }}{% for p in collections.posts %}<li>{{ p.data.title }}</li>{% endfor %}",
 		"src/bodies.njk": "{{ \"bodies\" | noted }}{% for p in collections.posts %}<article>{{ p.templateContent | safe }}</article>{% endfor %}",
 	});
@@ -389,6 +389,32 @@ test("serve_renders_again_only_the_collection_pages_that_read_the_changed_conten
 		const rebuilt = lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name);
 		assert.ok(rebuilt.includes("cedar") && rebuilt.includes("bodies") && !rebuilt.includes("titles"), JSON.stringify(rebuilt));
 		assert.ok(fs.readFileSync(path.join(dir, "dist/bodies/index.html"), "utf8").includes("Four miles."));
+	} finally {
+		await server.stop();
+	}
+});
+
+// A page with no date of its own takes its file's time, so an edit to its text alone moves its date:
+// a listing that shows it (or sorts by it) renders again, as it would for its front matter.
+test("serve_renders_a_listing_again_when_an_undated_pages_text_moves_its_date", async () => {
+	const dir = tempDir("serve-incremental-undated");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"njk\"] };\n",
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\n---\n<p>Cedar</p>",
+		"src/titles.njk": "{% for p in collections.posts %}<li>{{ p.data.title }} {{ p.date.getTime() }}</li>{% endfor %}",
+	});
+	const old = new Date("2026-01-01T00:00:00Z");
+	fs.utimesSync(path.join(dir, "src/posts/cedar.njk"), old, old);
+	const log = path.join(tempDir("serve-incremental-undated-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(dir, "dist/titles/index.html"), String(old.getTime()));
+		await waitFor(log, "Serving ");
+		fs.appendFileSync(path.join(dir, "src/posts/cedar.njk"), "<p>Four miles.</p>");
+		const said = await waitFor(log, "check-rebuilds: ");
+		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.ok(!fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes(String(old.getTime())));
 	} finally {
 		await server.stop();
 	}
