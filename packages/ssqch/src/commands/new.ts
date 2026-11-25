@@ -44,6 +44,8 @@ export interface Created {
 	blueprint: string | null;
 	title: string;
 	date: string;
+	/** The folder had no pages to follow, and the site has `bundles`: a page with files of its own is a folder, which the file made isn't. */
+	firstInBundles?: boolean;
 }
 
 /** Lowercase letters and digits, with a dash for each run of anything else. */
@@ -413,6 +415,7 @@ export function newPage(config: Config, options: NewOptions): Created {
 	const date = options.date ?? today();
 	const isFolder = given.endsWith("/") || isDir(target) || parts(target).ext === undefined;
 	let file: string, blueprint: string | null, title: string;
+	let firstInBundles = false;
 	if (isFolder) {
 		const given = options.title;
 		if (given === undefined || given.trim() === "") bail(`${options.path} is a folder, so give the page a title to name its file after: ssqch new ${options.path.replace(/\/+$/, "")} --title "Pine cones"`);
@@ -436,6 +439,7 @@ export function newPage(config: Config, options: NewOptions): Created {
 		const day = date.slice(0, 10);
 		const stem = dated * 2 > files.length + folders.length && DATE_PREFIX.test(`${day}-`) ? `${day}-${name}` : name;
 		file = folders.length > files.length ? path.join(target, stem, `index.${ext}`) : path.join(target, `${stem}.${ext}`);
+		firstInBundles = config.bundles && files.length + folders.length === 0;
 	} else {
 		const slash = rel.lastIndexOf("/");
 		let folders = slash === -1 ? "" : rel.slice(0, slash);
@@ -471,7 +475,7 @@ export function newPage(config: Config, options: NewOptions): Created {
 	}
 	try { fs.mkdirSync(path.dirname(file), { recursive: true }); } catch (e) { throw context(e, `creating ${path.dirname(file)}`); }
 	try { fs.writeFileSync(file, text); } catch (e) { throw context(e, `writing ${file}`); }
-	return { path: file, blueprint: blueprint === null ? null : realPath(blueprint), title, date };
+	return { path: file, blueprint: blueprint === null ? null : realPath(blueprint), title, date, firstInBundles };
 }
 
 export interface NewCommand {
@@ -504,4 +508,10 @@ export function runNew(config: Config, command: NewCommand): void {
 	const from = created.blueprint !== null ? shown(created.blueprint) : `the built-in blueprint (a title and a date; ${shown(realPath(dirs.input))}/_blueprints/ has none for it)`;
 	const aside = config.quiet ? "" : ` ${FIELD_NOTES}`;
 	process.stdout.write(`Created ${shown(created.path)} from ${from}.${aside}\n`);
+	// The folder's first page is a file, as nothing says otherwise: with `bundles`, one that keeps its
+	// photo beside it is a folder (Pack Mule's first trail tip). The next page follows the folder's.
+	if (created.firstInBundles && !config.quiet) {
+		const folder = shown(path.join(path.dirname(created.path), path.basename(created.path, path.extname(created.path)), `index${path.extname(created.path)}`));
+		process.stdout.write(`note: the folder had no pages to follow, so this one is a file. With bundles, a page with files of its own (a photo) is a folder, ${folder}, and the next page made here follows whichever the folder has more of.\n`);
+	}
 }
