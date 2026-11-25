@@ -153,7 +153,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 
 	{
 		name: "baseline", helpGlobals: ["root", "quiet"], strictGlobals: true, insteadOf: { output: "to" },
-		about: "Build the site with its old generator, in fresh copies with the clock pinned, and compare the builds: what to compare ssqch's with",
+		about: "Build the site in fresh copies with the clock pinned, and compare the builds: that an ssqch build repeats, or, before a move, what to compare ssqch's with",
 		options: [
 			{ long: "from", value: "DIR", help: "The folder the command writes (Eleventy and Jekyll: _site; Hugo: public; Astro: dist)", default: "_site" },
 			{ long: "runs", value: "RUNS", help: "How many builds to make and compare", default: "3", check: number },

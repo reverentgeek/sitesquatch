@@ -53,7 +53,7 @@ Each warning has a code. The checks are the ones a build folder can answer from 
 | `live-no-vary` | With `--url`: a Markdown answer without `Vary: Accept`, so a cache in between can hand the Markdown to a browser, or the page to an agent. |
 | `live-browser-markdown` | With `--url`: a page that answers a browser with Markdown, so people get the copy instead of the page. |
 
-A page that only sends a reader on (a redirect, with `http-equiv="refresh"`) isn't checked, and neither is `404.html`. A Markdown copy is the one the page links, or the one at the address llms.txt's proposal gives it (`/guide/intro/` has `/guide/intro/index.md`).
+A page that only sends a reader on (a redirect, with `http-equiv="refresh"`) isn't checked, and neither is `404.html`, or a piece of HTML a script fetches into a page (a search's result cards, from a template with no layout): a file with no doctype, `<html>`, `<head>`, `<body>` or `<title>` isn't a page. A Markdown copy is the one the page links, or the one at the address llms.txt's proposal gives it (`/guide/intro/` has `/guide/intro/index.md`).
 
 ## The live site
 
