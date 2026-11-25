@@ -273,6 +273,9 @@ const keptWritten = new Map<string, number>();
  */
 const keptReads = new Map<string, Set<string>>();
 
+/** While serving: what a generator last wrote to each file, with the size and time the file had then. */
+const keptGenerated = new Map<string, { text: string; mark: string }>();
+
 /** A page, as `keptReads` names it: its file and its URL (a paginated template has several). */
 const pageKey = (page: Page) => `${page.tpl.input}\0${page.url}`;
 
@@ -1143,8 +1146,19 @@ async function runGenerators(config: Config, dirs: Dirs, pages: Page[], pageOutp
 				if (existing !== "" && !existing.endsWith("\n")) existing += "\n";
 				contents = existing + contents;
 			}
-			fs.mkdirSync(path.dirname(target), { recursive: true });
-			if (!sameText(target, contents)) fs.writeFileSync(target, contents);
+			// While serving: the same text this build wrote last time, into a file that's as it was
+			// left (its size and time), is left as it is without reading it (the llms plugin's copies:
+			// one a page).
+			const was = config.serving && typeof contents === "string" ? keptGenerated.get(target) : undefined;
+			const stat = was ? fs.statSync(target, { throwIfNoEntry: false }) : undefined;
+			if (!(was && stat && was.text === contents && was.mark === `${stat.size}:${stat.mtimeMs}`)) {
+				fs.mkdirSync(path.dirname(target), { recursive: true });
+				if (!sameText(target, contents)) fs.writeFileSync(target, contents);
+				if (config.serving && typeof contents === "string") {
+					const now = fs.statSync(target);
+					keptGenerated.set(target, { text: contents, mark: `${now.size}:${now.mtimeMs}` });
+				}
+			}
 			if (!isPage) {
 				if (!owners.has(target)) out.push(target);
 				owners.set(target, name);
