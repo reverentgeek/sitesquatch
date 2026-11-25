@@ -462,6 +462,14 @@ interface Checked {
 interface Detour { link: string; to: string; pages: string[] }
 
 /** Checks every HTML and XML page the build wrote. */
+/**
+ * While serving: each page's scan (its links and ids) with the size and time its file had, so a
+ * rebuild reads and scans only the pages whose files changed (on the blog, reading every page
+ * again was most of the link check). Every page's links are still checked against this build's
+ * files and ids, so a link to an anchor a changed page lost is still broken.
+ */
+const keptScans = new Map<string, { mark: string; scan: PageScan }>();
+
 async function check(config: Config, output: string, written: string[], options: LinksOptions): Promise<Checked> {
 	const scans: Array<[string, PageScan]> = [];
 	// The scans are kept until every page is read, so each string they keep is a copy, made once
@@ -480,11 +488,28 @@ async function check(config: Config, output: string, written: string[], options:
 	const pages = written.filter((file) => { const ext = path.extname(file); return ext === ".html" || ext === ".xml"; });
 	const reading = new Map<number, Promise<string>>();
 	const AHEAD = 32;
-	for (let i = 0; i < pages.length; i++) {
-		for (let j = i; j < Math.min(i + AHEAD, pages.length); j++) if (!reading.has(j)) reading.set(j, fs.promises.readFile(pages[j], "utf8"));
+	// While serving, a page whose file is as it was (size and time) is taken as it was scanned.
+	const marks = new Map<string, string>();
+	const mark = (file: string) => {
+		const stat = fs.statSync(file, { throwIfNoEntry: false });
+		return stat ? `${stat.size}:${stat.mtimeMs}` : "gone";
+	};
+	const todo = config.serving ? pages.filter((file) => {
+		const now = mark(file);
+		marks.set(file, now);
+		return keptScans.get(file)?.mark !== now;
+	}) : pages;
+	const fresh = new Map<string, PageScan>();
+	for (let i = 0; i < todo.length; i++) {
+		for (let j = i; j < Math.min(i + AHEAD, todo.length); j++) if (!reading.has(j)) reading.set(j, fs.promises.readFile(todo[j], "utf8"));
 		const text = await reading.get(i)!;
 		reading.delete(i);
-		scans.push([pages[i], path.extname(pages[i]) === ".xml" ? { ids: new Set(), links: [], siteLinks: scanXml(text, keep), sitePaths: [] } : scanHtml(text, keep)]);
+		fresh.set(todo[i], path.extname(todo[i]) === ".xml" ? { ids: new Set(), links: [], siteLinks: scanXml(text, keep), sitePaths: [] } : scanHtml(text, keep));
+	}
+	for (const file of pages) {
+		const scan = fresh.get(file) ?? keptScans.get(file)!.scan;
+		scans.push([file, scan]);
+		if (config.serving) keptScans.set(file, { mark: marks.get(file)!, scan });
 	}
 	kept.clear();
 	// The site's address, so absolute links to it are checked.

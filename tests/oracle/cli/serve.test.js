@@ -394,6 +394,28 @@ test("serve_renders_again_only_the_collection_pages_that_read_the_changed_conten
 	}
 });
 
+// While serving, the link checker scans again only the pages whose files changed, and checks every
+// page's links against this build's files and ids: a page that didn't change, linking to an anchor
+// a changed page lost, is still broken.
+test("serve_finds_a_broken_anchor_on_a_page_that_didnt_change", async () => {
+	const dir = tempDir("serve-links-kept");
+	write(dir, {
+		"ssqch.config.js": "import { linksPlugin } from \"ssqch/links\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [linksPlugin()] };\n",
+		"src/a.html": "<p><a href=\"/b/#trail\">the trail</a></p>",
+		"src/b.html": "<h2 id=\"trail\">Cedar Trail</h2>",
+	});
+	const log = path.join(tempDir("serve-links-kept-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		await waitFor(log, "Serving ");
+		assert.ok(!readOr(log).includes("no id"), readOr(log));
+		await changeAndWait(path.join(dir, "src/b.html"), "<h2 id=\"cedar\">Cedar Trail</h2>", path.join(dir, "dist/b/index.html"), "cedar");
+		await waitFor(log, "no id \"trail\"");
+	} finally {
+		await server.stop();
+	}
+});
+
 // The debounce is 50 ms of quiet (it was 120). Vim's save renames the file away for its backup
 // and writes it again 40 to 50 ms later: a rebuild in between would drop the page and put it back
 // a moment later. A file that's gone when the quiet ends waits up to 200 ms more for its return.
