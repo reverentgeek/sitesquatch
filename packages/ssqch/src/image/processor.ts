@@ -1203,10 +1203,12 @@ export class ImageProcessor {
 			else if (k === "loading" && preload && v.toLowerCase() === "lazy") continue;
 			else img.push([k, v]);
 		}
-		if (preload) {
-			sizes = sizes === undefined ? undefined : withoutAuto(sizes) || undefined;
-			if (!has("fetchpriority")) img.push(["fetchpriority", "high"]);
-		}
+		if (preload && !has("fetchpriority")) img.push(["fetchpriority", "high"]);
+		// `sizes="auto"` is for lazy images only (the HTML spec, for an `<img>` and the `<source>`s
+		// before it): one written `loading="eager"`, as the docs say to above the fold, or preloaded,
+		// keeps the rest of its `sizes`. The validator rejected the page (Pack Mule).
+		const lazy = img.some(([k, v]) => k === "loading" && v.toLowerCase() === "lazy");
+		if (!lazy && sizes !== undefined) sizes = withoutAuto(sizes) || undefined;
 		if (fallback.length > 1) {
 			img.push(["srcset", srcsetAttr(fallback)]);
 			if (sizes !== undefined) img.push(["sizes", sizes]);
@@ -1232,7 +1234,9 @@ export class ImageProcessor {
 		const formats = [...meta.formats.entries()];
 		for (const [format, entries] of formats.slice(0, -1)) {
 			html += `<source type="${mime(format)}" srcset="${escapeHtml(srcsetAttr(entries))}"`;
-			if (sizes !== undefined) html += ` sizes="${sizes.replaceAll("\"", "&quot;")}"`;
+			// One copy has no width in its `srcset`, and `sizes` needs one on every copy, as the
+			// `<img>` above leaves it out.
+			if (sizes !== undefined && entries.length > 1) html += ` sizes="${sizes.replaceAll("\"", "&quot;")}"`;
 			html += ">";
 		}
 		return [`${html}${tag}${wrap ? "</picture>" : ""}`, link];

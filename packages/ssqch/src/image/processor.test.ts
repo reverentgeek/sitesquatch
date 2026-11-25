@@ -204,6 +204,24 @@ test("a page's images become a picture, and the files are made", async () => {
 	fs.rmSync(root, { recursive: true });
 });
 
+// Pack Mule: the W3C checker rejected two pictures this wrote. A `<source>` with one copy had
+// `sizes` (which needs a width on every copy), and `sizes="auto"` came before an `<img>` written
+// `loading="eager"`, as the docs say to above the fold (`auto` is for lazy images).
+test("a picture's sizes are what HTML allows: none for one copy, and auto only when it's lazy", async () => {
+	const { root, p } = project({ "src/img/a.png": await pixels(64, 32, "#228b22") }, { ...defaultImageOptions(), formats: ["webp", "jpeg"], widths: [16, 32] });
+	const page = path.join(root, "src/index.html");
+	const one = p.transformHtml("<img src=\"/img/a.png\" alt=\"\" width=\"32\" height=\"16\">", page);
+	assert.match(one, /^<picture><source type="image\/webp" srcset="\/img\/[\w-]{10}-32\.webp"><img loading="lazy"/);
+	const eager = p.transformHtml("<img src=\"/img/a.png\" alt=\"\" loading=\"eager\">", page);
+	assert.ok(!eager.includes("sizes"), eager);
+	const eagerWithMore = p.transformHtml("<img src=\"/img/a.png\" alt=\"\" loading=\"eager\" sizes=\"auto, 50vw\">", page);
+	assert.equal((eagerWithMore.match(/ sizes="50vw"/g) ?? []).length, 2, eagerWithMore);
+	const lazy = p.transformHtml("<img src=\"/img/a.png\" alt=\"\">", page);
+	assert.equal((lazy.match(/ sizes="auto"/g) ?? []).length, 2, lazy);
+	await p.settle();
+	fs.rmSync(root, { recursive: true });
+});
+
 // Squatch Snacks (B1): a hero with another crop on a phone. The `<img>` was wrapped in a second
 // `<picture>` inside the page's own, which isn't HTML, and the `<source>`'s file was never in the
 // output, so the phone got a broken picture.
