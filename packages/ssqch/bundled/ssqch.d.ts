@@ -137,7 +137,7 @@ declare module "ssqch" {
 		verbose: boolean;
 		/** Folders relative to the project root, like `./src/`. */
 		dirs: { input: string; output: string; includes: string; data: string };
-		/** The files the build wrote (`afterBuild` only). */
+		/** The pages the build wrote and the files plugins made beside them (a sitemap, a feed, Markdown copies), absolute (`afterBuild` only). Not passthrough copies, encoded images or fingerprinted assets: for the whole output, read `dirs.output`. */
 		written?: string[];
 		/** While serving, the files whose change started this build, relative to the project root (`./src/guide/intro.md`), so a hook can skip work the change doesn't touch: `if (changed && !changed.some((f) => f.endsWith(".vue"))) return;`. Not there on the first build or a build of everything (`ssqch build`). */
 		changed?: string[];
@@ -215,7 +215,7 @@ declare module "ssqch" {
 		watch?: string | string[];
 		/** Run before each build: a function, `{ run: "command" }`, or a list of them. */
 		beforeBuild?: Hook | Hook[];
-		/** Run after each build, with `written` (the files the build wrote). */
+		/** Run after each build, with `written` (the pages it wrote and the files plugins made beside them). The config's hooks run before plugins' (`imagePlugin({ prune })` removes its copies after), so a hook that reads the whole output goes in a plugin listed last. */
 		afterBuild?: Hook | Hook[];
 		/** More config, from plugins. A plugin is an object with any of these keys, a function that returns one, a built-in plugin (`imagePlugin()`), and plugins written in Rust (`{ name, rust: { wasm, options } }`). `false`, `null` and `undefined` are skipped. */
 		plugins?: Plugin[];

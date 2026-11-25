@@ -71,6 +71,20 @@ test("types_writes_the_declarations", () => {
 	});
 });
 
+// `ssqch types` in a `beforeBuild` command printed its line above every build's report, `--quiet`
+// or not, and asked for the file to be listed in jsconfig.json when it was (Pack Mule).
+test("types_says_what_it_wrote_once_and_quiet_says_nothing", () => {
+	const dir = tempDir("types-quiet");
+	write(dir, { "ssqch.config.js": "export default {};\n" });
+	let r = ssqch(["types", "--root", dir]);
+	assert.ok(r.ok && r.stdout === "Wrote " + path.join(dir, "ssqch.d.ts") + ". List it in jsconfig.json's \"include\" so editors pick it up.\n", r.log);
+	write(dir, { "jsconfig.json": "{ \"include\": [\"ssqch.config.js\", \"ssqch.d.ts\"] }\n" });
+	r = ssqch(["types", "--root", dir]);
+	assert.ok(r.ok && r.stdout === "Wrote " + path.join(dir, "ssqch.d.ts") + ".\n", r.log);
+	r = ssqch(["types", "--root", dir, "--quiet"]);
+	assert.ok(r.ok && r.stdout === "" && fs.existsSync(path.join(dir, "ssqch.d.ts")), r.log);
+});
+
 // The before-and-after recipe (`ssqch diff --help`) builds into a second folder between two
 // builds into the first: the second build mustn't forget what the first folder holds (the
 // Squatch Snacks rerun, 2026-11-23: moved pages stayed in dist/ and answered 200).

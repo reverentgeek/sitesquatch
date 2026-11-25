@@ -362,7 +362,7 @@ export async function main(argv: string[]): Promise<number> {
 		}
 		case "types": {
 			routeConsole();
-			return (await import("./commands/types.ts")).runTypes({ root: value("root"), out: value("out") ?? "ssqch.d.ts" });
+			return (await import("./commands/types.ts")).runTypes({ root: value("root"), out: value("out") ?? "ssqch.d.ts", quiet: flag("quiet") });
 		}
 	}
 

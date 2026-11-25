@@ -1,6 +1,7 @@
 // `ssqch types`: writes `ssqch.d.ts`, the types editors use for `ssqch.config.js`, with the
 // site's content schemas added to the `Schemas` interface so `pages.byTag("posts")` knows each
 // page's fields. Ported from `run_types` in `crates/ssqch/src/init.rs`.
+import fs from "node:fs";
 import path from "node:path";
 import { types } from "../bundled.ts";
 import { loadConfig } from "../config.ts";
@@ -25,6 +26,16 @@ export interface TypesOptions {
 	/** `--root` as it was given. */
 	root: string | undefined;
 	out: string;
+	/** `--quiet`: nothing on success (a `beforeBuild` command's line above every build's report). */
+	quiet?: boolean;
+}
+
+/** Whether the root's jsconfig.json or tsconfig.json names `out` already, so the hint to list it is noise. */
+function listed(root: string, out: string): boolean {
+	const name = path.basename(out);
+	return ["jsconfig.json", "tsconfig.json"].some((config) => {
+		try { return fs.readFileSync(path.join(root, config), "utf8").includes(name); } catch { return false; }
+	});
 }
 
 /** `ssqch types`. Answers the exit code. */
@@ -52,7 +63,9 @@ export async function runTypes(options: TypesOptions): Promise<number> {
 		process.stderr.write(`${red("error:")} ${(e as Error).message}\n`);
 		return 1;
 	}
+	if (options.quiet) return 0;
 	const withSchemas = schemas === 0 ? "" : schemas === 1 ? " (with 1 schema)" : ` (with ${schemas} schemas)`;
-	process.stdout.write(`Wrote ${out}${withSchemas}. List it in jsconfig.json's "include" so editors pick it up.\n`);
+	const hint = listed(path.dirname(file), out) ? "" : ` List it in jsconfig.json's "include" so editors pick it up.`;
+	process.stdout.write(`Wrote ${out}${withSchemas}.${hint}\n`);
 	return 0;
 }
