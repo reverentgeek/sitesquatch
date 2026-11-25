@@ -457,6 +457,9 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 			return false;
 		};
 		for (;;) {
+			// What a tool wrote during the last rebuild was heard and read while it was held: with
+			// nothing waiting, the next change is the first one since.
+			if (!carried.length && !rx.peek().length) heard = undefined;
 			const paths = carried.length ? carried.splice(0) : await rx.recv();
 			const heardAt = heard ?? Date.now();
 			// Debounce bursts of events (editors often write several times), for a second at most:

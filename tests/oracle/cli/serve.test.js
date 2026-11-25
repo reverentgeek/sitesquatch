@@ -935,3 +935,39 @@ test("serve_checks_each_rebuild_against_a_clean_build", async () => {
 		await again.stop();
 	}
 });
+
+// The timeline times a rebuild from the change that started it, after the save. A `serve.run`
+// tool that writes into the output after each build (Tailwind scanning the pages) is heard while
+// the server waits for it, and the next rebuild was stamped with that: 1.8 s before its own save,
+// on the blog.
+test("serve_times_each_rebuild_from_its_own_change", async () => {
+	const dir = tempDir("serve-times");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, serve: { run: [\"node tool.mjs\"] } };\n",
+		// It writes the stylesheet at the start, and again after each build writes the page.
+		"tool.mjs": "import fs from \"node:fs\";\nconst out = process.env.SSQCH_OUTPUT;\nlet n = 0;\nconst css = () => fs.writeFileSync(`${out}/app.css`, `body { --n: ${++n}; }`);\nfs.mkdirSync(out, { recursive: true });\ncss();\nfs.watch(out, (event, name) => { if (name === \"index.html\") setTimeout(css, 20); });\nprocess.stdin.on(\"end\", () => process.exit());\nprocess.stdin.resume();\n",
+		"src/index.jinja": "<link rel=\"stylesheet\" href=\"/app.css\">camp 0",
+	});
+	const timeline = path.join(tempDir("serve-times-line"), "times.jsonl");
+	const log = path.join(tempDir("serve-times-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_SERVE_TIMELINE: timeline } });
+	const rebuilds = () => readOr(timeline).split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((line) => line.kind === "rebuild" && line.file === path.join("src", "index.jinja"));
+	try {
+		await waitFor(path.join(dir, "dist/index.html"), "camp 0");
+		for (let i = 1; i <= 2; i++) {
+			// Past the tool's write for the build before.
+			await sleep(1000);
+			const saved = Date.now();
+			await changeAndWait(path.join(dir, "src/index.jinja"), `<link rel="stylesheet" href="/app.css">camp ${i}`, path.join(dir, "dist/index.html"), `camp ${i}`);
+			const started = Date.now();
+			while (rebuilds().length < i) {
+				assert.ok(Date.now() - started < 10_000, `no timeline line for edit ${i}:\n${readOr(timeline)}\n${readOr(log)}`);
+				await sleep(20);
+			}
+			const line = rebuilds()[i - 1];
+			assert.ok(line.heard >= saved, `edit ${i} saved at ${saved}, heard at ${line.heard}: ${JSON.stringify(line)}`);
+		}
+	} finally {
+		await server.stop();
+	}
+});
