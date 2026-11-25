@@ -298,6 +298,10 @@ test("serve_stops_waiting_for_tools_that_dont_write_after_a_rebuild", async () =
 test("serve_reads_an_edit_that_keeps_the_files_size_and_time", async () => {
 	const dir = tempDir("serve-same-size");
 	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n", "src/post.md": "Cedar Trail\n", "src/other.md": "Other\n" });
+	// A whole second, which every file system keeps exactly, so putting it back below is exact
+	// (a fraction set again came back 0.0003 ms off on Linux).
+	const second = Math.floor(Date.now() / 1000) - 60;
+	fs.utimesSync(path.join(dir, "src/post.md"), second, second);
 	const log = path.join(tempDir("serve-same-size-log"), "serve.log");
 	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
 	try {
@@ -307,13 +311,12 @@ test("serve_reads_an_edit_that_keeps_the_files_size_and_time", async () => {
 		// Another rebuild first, so the post is one the server has read before.
 		await changeAndWait(path.join(dir, "src/other.md"), "Other again\n", path.join(dir, "dist/other/index.html"), "Other again");
 		const source = path.join(dir, "src/post.md");
-		const { atimeMs, mtimeMs } = fs.statSync(source);
-		// Written, and its time put back at once (in seconds, which keeps the fraction a Date
-		// drops), inside the debounce: the rebuild sees the size and time it kept.
+		// Written, and its time put back at once, inside the debounce: the rebuild sees the size and
+		// time it kept.
 		const same = "Cedar Hike\n\n".slice(0, "Cedar Trail\n".length);
 		fs.writeFileSync(source, same);
-		fs.utimesSync(source, atimeMs / 1000, mtimeMs / 1000);
-		assert.deepEqual([fs.statSync(source).size, fs.statSync(source).mtimeMs], ["Cedar Trail\n".length, mtimeMs]);
+		fs.utimesSync(source, second, second);
+		assert.deepEqual([fs.statSync(source).size, fs.statSync(source).mtimeMs], ["Cedar Trail\n".length, second * 1000]);
 		await waitFor(page, "Cedar Hike");
 	} finally {
 		await server.stop();
