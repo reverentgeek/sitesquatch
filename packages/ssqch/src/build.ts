@@ -269,9 +269,10 @@ const keptWritten = new Map<string, number>();
  * checker), from a page that reads collections, which always renders (a feed), or from the one
  * page they're given (minify), or a replay of what each page told them (`config.replays`: the
  * image plugin, whose pictures a page not rendered asks for again, so `prune` and `leaveNoTrace`
- * keep them).
+ * keep them; llms, whose copies and llms-full.txt read each page's text; elements' summary). The
+ * assets plugin fingerprints the files it's given before the build, whatever renders.
  */
-const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/redirects", "ssqch/robots", "ssqch/minify", "ssqch/image"]);
+const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/redirects", "ssqch/robots", "ssqch/minify", "ssqch/image", "ssqch/assets", "ssqch/elements", "ssqch/llms"]);
 
 /**
  * `SSQCH_INCREMENTAL=1` while serving (the dev server's design, stage 3, its first slice): the

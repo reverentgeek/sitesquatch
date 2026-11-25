@@ -147,6 +147,24 @@ BUILTINS.set("ssqch/elements", (config: Config, given) => {
 	let known = new Map<string, Element>();
 	let pages = 0;
 	const usedNames = new Set<string>();
+	// While serving: the elements each page used, by its URL, for the summary of a rebuild that
+	// takes some pages as they were (`SSQCH_INCREMENTAL=1`).
+	const perPage = new Map<string, string[]>();
+	let thisBuild = new Map<string, string[]>();
+	config.replays.push((skipped, rendered) => {
+		for (const url of rendered) {
+			const names = thisBuild.get(url);
+			if (names) perPage.set(url, names);
+			else perPage.delete(url);
+		}
+		for (const url of skipped) {
+			const names = perPage.get(url);
+			if (!names) continue;
+			pages++;
+			for (const name of names) usedNames.add(name);
+		}
+		thisBuild = new Map();
+	});
 	config.beforeBuild.push({
 		label: "",
 		fn: () => {
@@ -175,6 +193,7 @@ BUILTINS.set("ssqch/elements", (config: Config, given) => {
 		}
 		pages++;
 		for (const tag of used.keys()) usedNames.add(tag);
+		if (config.serving) thisBuild.set(page.url, [...used.keys()]);
 		return out;
 	}]);
 

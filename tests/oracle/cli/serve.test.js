@@ -325,13 +325,14 @@ test("serve_reads_an_edit_that_keeps_the_files_size_and_time", async () => {
 
 // SSQCH_INCREMENTAL=1 (with SSQCH_KEEP_TEMPLATES=1): an edit to one page's text renders that page
 // alone, and the image plugin asks for the other pages' pictures again (a replay of what they asked
-// when they last rendered), so prune and leaveNoTrace keep them. A filter that notes each render
+// when they last rendered), so prune and leaveNoTrace keep them, and the llms plugin its text. A
+// filter that notes each render
 // shows which pages rendered; the checked mode, that the output is what a clean build writes.
 test("serve_renders_only_the_page_whose_text_changed_and_keeps_the_others_pictures", async () => {
 	const dir = tempDir("serve-incremental");
 	const renders = path.join(tempDir("serve-incremental-renders"), "renders.log");
 	write(dir, {
-		"ssqch.config.js": `import fs from "node:fs";\nimport { imagePlugin } from "ssqch/image";\nexport default { dirs: { input: "src", output: "dist" }, leaveNoTrace: true, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } }, plugins: [imagePlugin({ formats: ["webp"], widths: [16], prune: true })] };\n`,
+		"ssqch.config.js": `import fs from "node:fs";\nimport { imagePlugin } from "ssqch/image";\nimport { llmsPlugin } from "ssqch/llms";\nexport default { dirs: { input: "src", output: "dist" }, leaveNoTrace: true, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } }, plugins: [imagePlugin({ formats: ["webp"], widths: [16], prune: true }), llmsPlugin({ full: true })] };\n`,
 		"src/cedar.njk": "<p>{{ \"cedar\" | noted }}</p><img src=\"/img/cedar.png\" alt=\"\">",
 		"src/stump.njk": "<p>{{ \"stump\" | noted }}</p><img src=\"/img/stump.svg\" alt=\"\">",
 		"src/img/stump.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><rect width=\"16\" height=\"16\"/></svg>",
@@ -354,6 +355,8 @@ test("serve_renders_only_the_page_whose_text_changed_and_keeps_the_others_pictur
 		const rebuilt = lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name);
 		assert.deepEqual(rebuilt, ["cedar"], JSON.stringify(lines));
 		assert.equal(stumpCopies().length, 1, "the page not rendered kept its picture");
+		// And its text in llms-full.txt, which the llms plugin read from each page as it rendered.
+		assert.ok(fs.readFileSync(path.join(dir, "dist/llms-full.txt"), "utf8").includes("stump"));
 	} finally {
 		await server.stop();
 	}
