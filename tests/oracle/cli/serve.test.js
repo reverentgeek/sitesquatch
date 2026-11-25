@@ -252,6 +252,31 @@ test("serve_reads_a_changed_config_again", async () => {
 // folder, is watched like a module the config imports: an edit to it showed
 // nothing until the server started again (0.15.1). Read while the config
 // loads, and read in a data function on each build.
+// Where the system sends no file events (a Windows drive under WSL, some Docker mounts), the
+// server built once and never again, without a word. SSQCH_WATCH=poll looks at the files now and
+// then instead, and says so once.
+test("serve_polls_for_changes_when_asked", async () => {
+	const dir = tempDir("serve-poll");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n",
+		"src/index.md": "Cedar Trail\n",
+	});
+	const log = path.join(tempDir("serve-poll-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_WATCH: "poll" } });
+	try {
+		const page = path.join(dir, "dist/index.html");
+		await waitFor(page, "Cedar Trail");
+		await changeAndWait(path.join(dir, "src/index.md"), "Old Growth Trail\n", page, "Old Growth Trail");
+		// A page added in a new folder.
+		write(dir, { "src/trails/cedar.md": "Four miles\n" });
+		await waitFor(path.join(dir, "dist/trails/cedar/index.html"), "Four miles");
+		const said = readOr(log);
+		assert.equal(said.split("Watching by looking at every file now and then (SSQCH_WATCH=poll)").length, 2, said);
+	} finally {
+		await server.stop();
+	}
+});
+
 test("serve_rebuilds_for_a_data_file_its_code_read", async () => {
 	const dir = tempDir("serve-read-data");
 	write(dir, {

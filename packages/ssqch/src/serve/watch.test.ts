@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { realPath } from "../paths.ts";
-import { Channel, Watcher } from "./watch.ts";
+import { Channel, POLL_MS, Watcher, chooseStrategy, defaultStrategy } from "./watch.ts";
 import type { Strategy } from "./watch.ts";
 
 function tempDir(name: string): string {
@@ -28,7 +28,7 @@ async function until(found: () => boolean, what: () => string): Promise<void> {
 	}
 }
 
-for (const strategy of ["tree", "folders"] as Strategy[]) {
+for (const strategy of ["tree", "folders", "poll"] as Strategy[]) {
 	test(`changes below a watched folder are seen (${strategy})`, async () => {
 		const dir = tempDir(`watch-${strategy}`);
 		const write = (rel: string, text: string) => {
@@ -160,7 +160,7 @@ test("deleting a tree of thousands of watched folders takes time in step with it
 });
 
 test("a folder that isn't there can't be watched", () => {
-	for (const strategy of ["tree", "folders"] as Strategy[]) {
+	for (const strategy of ["tree", "folders", "poll"] as Strategy[]) {
 		const watcher = new Watcher(() => {}, strategy);
 		assert.throws(() => watcher.watch(path.join(os.tmpdir(), "ssqch-no-such-folder"), true));
 		assert.equal(watcher.size, 0);
@@ -185,4 +185,43 @@ test("a channel hands over what it's sent, in order", async () => {
 	rx.send(5);
 	rx.drain();
 	assert.equal(rx.tryRecv(), undefined);
+});
+
+// Where the system sends no events, the server built once and never again, without a word: a
+// Windows drive under WSL, some Docker mounts, network shares. SSQCH_WATCH says, and a site on a
+// Windows drive under WSL polls by itself.
+test("polling is chosen by SSQCH_WATCH, and by itself for a Windows drive under WSL", () => {
+	const linux = (env: NodeJS.ProcessEnv, paths = ["/home/ranger/site"], release = "6.6.0-generic") => chooseStrategy(paths, env, release, "linux");
+	assert.deepEqual(linux({ SSQCH_WATCH: "poll" }), { strategy: "poll", why: "SSQCH_WATCH=poll" });
+	assert.equal(linux({}).strategy, defaultStrategy());
+	assert.equal(linux({}, ["/mnt/c/Users/ranger/site"]).strategy, defaultStrategy(), "a /mnt that isn't WSL's");
+	const wsl = linux({ WSL_DISTRO_NAME: "Ubuntu" }, ["/mnt/c/Users/ranger/site"]);
+	assert.equal(wsl.strategy, "poll");
+	assert.match(wsl.why!, /Windows drive/);
+	assert.equal(linux({}, ["/mnt/d/site"], "5.15.167.4-microsoft-standard-WSL2").strategy, "poll");
+	assert.equal(linux({ WSL_DISTRO_NAME: "Ubuntu" }, ["/home/ranger/site"]).strategy, defaultStrategy(), "WSL's own disk sends events");
+	assert.equal(linux({ WSL_DISTRO_NAME: "Ubuntu", SSQCH_WATCH: "events" }, ["/mnt/c/site"]).strategy, defaultStrategy());
+	assert.equal(linux({ SSQCH_WATCH: "sometimes" }).unknown, "sometimes");
+});
+
+// A look at a big site takes a while, so the next waits four times as long as it took, and a
+// watcher with nothing to poll doesn't keep looking.
+test("polling waits at least its interval, and stops when it's closed", async () => {
+	const dir = tempDir("watch-poll-timing");
+	fs.writeFileSync(path.join(dir, "a.md"), "a");
+	let seen = 0;
+	const watcher = new Watcher(() => { seen++; }, "poll");
+	try {
+		watcher.watch(dir, true);
+		assert.ok(watcher.pollEvery >= POLL_MS);
+		await sleep(POLL_MS * 3);
+		assert.equal(seen, 0, "nothing changed, nothing said");
+		watcher.close();
+		fs.writeFileSync(path.join(dir, "a.md"), "changed");
+		await sleep(POLL_MS * 3);
+		assert.equal(seen, 0, "closed");
+	} finally {
+		watcher.close();
+		remove(dir);
+	}
 });

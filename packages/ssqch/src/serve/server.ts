@@ -28,7 +28,7 @@ import { Companions } from "./companions.ts";
 import { handle, handleBuilt } from "./http.ts";
 import { Live, assetStamps, fingerprint, isAsset, sameStamps } from "./live.ts";
 import type { Written } from "./live.ts";
-import { Channel, Watcher } from "./watch.ts";
+import { Channel, Watcher, chooseStrategy } from "./watch.ts";
 import { globSet } from "../glob.ts";
 
 /** How `ssqch serve` serves. */
@@ -76,12 +76,20 @@ const CONFIG_NAMES = new Set([...CONFIG_FILES, "sitesquatch.toml"]);
  */
 export function editorsOwn(file: string): boolean {
 	const name = path.basename(file);
-	return /^\.![0-9]+!/.test(name) || name.endsWith("~") || name.startsWith(".#") || /^\..+\.sw[a-p]$/.test(name) || name === "4913" || /___jb_(?:tmp|old|bak)___$/.test(name);
+	return /^\.![0-9]+!/.test(name) || /^\.subl\w*\.tmp$/.test(name) || name.endsWith("~") || name.startsWith(".#") || /^\..+\.sw[a-p]$/.test(name) || name === "4913" || /___jb_(?:tmp|old|bak)___$/.test(name);
 }
 
 function sourceState(file: string): string | undefined {
 	if (!isDir(file)) return fingerprint(file);
 	try { return `folder:${crypto.hash("sha1", fs.readdirSync(file).sort().join("\n"), "base64")}`; } catch { return undefined; }
+}
+
+/** What to do when the system has no watches left: what it's called, and polling, which needs none. */
+export function outOfWatches(e: unknown): string {
+	const code = (e as NodeJS.ErrnoException | undefined)?.code;
+	if (code === "ENOSPC") return ". Linux ran out of file watches: raise fs.inotify.max_user_watches (sudo sysctl fs.inotify.max_user_watches=524288), or set SSQCH_WATCH=poll, which needs none";
+	if (code === "EMFILE") return ". The system ran out of open files: raise the limit (ulimit -n 65536), or set SSQCH_WATCH=poll, which needs none";
+	return "";
 }
 
 const LOOPBACK = "127.0.0.1";
@@ -320,8 +328,12 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 	const site: SiteInfo = builder.site;
 	const tools = live.tools.length > 0;
 	const rx = new Channel<string[]>();
-	const watcher = new Watcher((file) => rx.send([file]));
-	watcher.onError = (dir, e) => diagnostics.warn(diagnostics.warning("build", `can't watch ${dir}, or some of the folders beside it: ${messageOf(e)}. A change there won't be seen until the server starts again`));
+	// Polling where the system sends no events (a Windows drive under WSL), said once.
+	const how = chooseStrategy([site.root, ...site.watch].map(realPath));
+	if (how.unknown !== undefined) diagnostics.warn(diagnostics.warning("build", `SSQCH_WATCH=${how.unknown} isn't a way to watch: use poll, or events (the system's own, the default)`));
+	if (how.why !== undefined && !quiet) say(`Watching by looking at every file now and then (${how.why}): a change shows a moment later than with the system's events. SSQCH_WATCH=events turns it off.`);
+	const watcher = new Watcher((file) => rx.send([file]), how.strategy);
+	watcher.onError = (dir, e) => diagnostics.warn(diagnostics.warning("build", `can't watch ${dir}, or some of the folders beside it: ${messageOf(e)}. A change there won't be seen until the server starts again${outOfWatches(e)}`));
 	try {
 		const watching = (dir: string, recursive: boolean) => {
 			try { watcher.watch(dir, recursive); } catch (e) { throw new BuildError(`watching ${dir}: ${messageOf(e)}`); }

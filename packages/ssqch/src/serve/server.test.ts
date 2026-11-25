@@ -10,7 +10,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { realPath } from "../paths.ts";
 import { assetStamps } from "./live.ts";
-import { QUIET, editorsOwn, settle } from "./server.ts";
+import { QUIET, editorsOwn, outOfWatches, settle } from "./server.ts";
 import { Channel } from "./watch.ts";
 
 const BIN = fileURLToPath(new URL("../../bin/ssqch.ts", import.meta.url));
@@ -331,6 +331,14 @@ test("the server answers during a build, and survives a site that ends its proce
 });
 
 test("an editor's own files aren't the site's", () => {
-	for (const file of [".!64277!i-know-what-i-saw.md", "hello.md~", ".#hello.md", ".hello.md.swp", ".hello.md.swo", "4913", "hello.md___jb_tmp___", "hello.md___jb_old___"]) assert.ok(editorsOwn(path.join("src", "posts", file)), file);
-	for (const file of ["hello.md", ".eleventy.js", ".well-known", "swp.md", "!important.md", "49130", ".swp"]) assert.ok(!editorsOwn(path.join("src", file)), file);
+	for (const file of [".!64277!i-know-what-i-saw.md", "hello.md~", ".#hello.md", ".hello.md.swp", ".hello.md.swo", "4913", "hello.md___jb_tmp___", "hello.md___jb_old___", ".subl1a2b.tmp"]) assert.ok(editorsOwn(path.join("src", "posts", file)), file);
+	for (const file of ["hello.md", ".eleventy.js", ".well-known", "swp.md", "!important.md", "49130", ".swp", "sublime.tmp.md"]) assert.ok(!editorsOwn(path.join("src", file)), file);
+});
+
+// The system's limits, named with what raises them: polling needs no watches.
+test("running out of watches says what to raise, or to poll", () => {
+	const err = (code: string) => Object.assign(new Error(code), { code });
+	assert.match(outOfWatches(err("ENOSPC")), /fs\.inotify\.max_user_watches.*SSQCH_WATCH=poll/);
+	assert.match(outOfWatches(err("EMFILE")), /ulimit -n.*SSQCH_WATCH=poll/);
+	assert.equal(outOfWatches(err("EACCES")), "");
 });

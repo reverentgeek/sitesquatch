@@ -9,6 +9,22 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Fixed
+
+- `ssqch serve` sees changes where the system sends no file events: a Windows drive opened from
+  WSL (`/mnt/c/...`), some Docker bind mounts, network shares. It built once there and never
+  again, without a word. Under WSL a site on a Windows drive is polled on its own, and anywhere
+  else `SSQCH_WATCH=poll` does it: every watched file's size and time, every quarter of a second
+  or four times as long as a look takes (44 ms for 10,000 files on a laptop). The server says
+  when it polls, and `SSQCH_WATCH=events` turns it off. (Lessons from chokidar, which landed on
+  the same design: the system's own events, and polling where there are none.)
+- When Linux runs out of file watches, or the system out of open files, the warning names the
+  setting to raise and says polling needs neither.
+- Sublime Text's temporary files (`.subl*.tmp`) don't start a rebuild, as Vim's and JetBrains'
+  don't.
+
 ## 0.16.0 - 2026-11-25
 
 ### Breaking
