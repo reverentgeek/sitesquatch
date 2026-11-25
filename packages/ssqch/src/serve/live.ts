@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import * as diagnostics from "../diagnostics.ts";
-import { compareText, realPath } from "../paths.ts";
+import { compareText, filesBelow, realPath, slashes } from "../paths.ts";
 
 /** What tells one version of an output file from the next: its size, and a mark (see `stamp`). */
 type Stamp = readonly [size: number, mark: number | string];
@@ -36,22 +36,13 @@ function stamp(file: string, stat: fs.Stats): Stamp {
 	return [stat.size, isAsset(file) ? fingerprint(file) ?? 0 : stat.mtimeMs];
 }
 
-/** Every file under `dir` with what `fs.stat` says of it, by its path from `dir` with `/`. Links aren't followed. */
-function walk(dir: string, each: (rel: string, file: string, stat: fs.Stats) => void): void {
-	const visit = (folder: string, prefix: string) => {
-		let entries: fs.Dirent[];
-		try { entries = fs.readdirSync(folder, { withFileTypes: true }); } catch { return; }
-		for (const entry of entries) {
-			const file = path.join(folder, entry.name);
-			if (entry.isDirectory()) visit(file, `${prefix}${entry.name}/`);
-			else if (entry.isFile()) {
-				// A file that went between the listing and the look isn't there.
-				const stat = fs.statSync(file, { throwIfNoEntry: false });
-				if (stat) each(`${prefix}${entry.name}`, file, stat);
-			}
-		}
-	};
-	visit(dir, "");
+/** Every file under `dir` (or those `only` names) with what `fs.stat` says of it, by its path from `dir` with `/`. Links aren't followed. */
+function walk(dir: string, each: (rel: string, file: string, stat: fs.Stats) => void, only?: (name: string) => boolean): void {
+	for (const file of filesBelow(dir, only)) {
+		// A file that went between the listing and the look isn't there.
+		const stat = fs.statSync(file, { throwIfNoEntry: false });
+		if (stat) each(slashes(path.relative(dir, file)), file, stat);
+	}
 }
 
 /** A file's size and when it was written: what a build left, so a tool's write (even of the same contents) is told from it. */
@@ -60,7 +51,7 @@ export type Written = readonly [size: number, mtimeMs: number];
 /** Each stylesheet and script in `output`, by its resolved path, with its size and when it was written. */
 export function assetStamps(output: string): Map<string, Written> {
 	const found = new Map<string, Written>();
-	walk(realPath(output), (_, file, stat) => { if (isAsset(file)) found.set(file, [stat.size, stat.mtimeMs]); });
+	walk(realPath(output), (_, file, stat) => found.set(file, [stat.size, stat.mtimeMs]), isAsset);
 	return found;
 }
 

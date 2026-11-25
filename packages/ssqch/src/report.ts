@@ -11,11 +11,10 @@
 // Plugins add lines (like `Images`) through the config's `summaries`, and can use `count`,
 // `bytes` and `duration` to format them the same way.
 import fs from "node:fs";
-import path from "node:path";
 import type { BuildReport } from "./build.ts";
 import type { Config } from "./config.ts";
 import { dirsOf, shownOutput } from "./dirs.ts";
-import { relative } from "./paths.ts";
+import { filesBelow, relative } from "./paths.ts";
 import { KINDS } from "./profile.ts";
 import type { Kind, ProfileReport } from "./profile.ts";
 import * as voice from "./voice.ts";
@@ -86,21 +85,10 @@ export function summary(config: Config, report: BuildReport, recovered = false):
 
 /** Every file under `dir` (in every folder, not following links) and their total size. */
 function dirSize(dir: string): [number, number] {
-	let files = 0, size = 0;
-	const walk = (folder: string) => {
-		let entries: fs.Dirent[];
-		try { entries = fs.readdirSync(folder, { withFileTypes: true }); } catch { return; }
-		for (const entry of entries) {
-			const p = path.join(folder, entry.name);
-			if (entry.isDirectory()) walk(p);
-			else if (entry.isFile()) {
-				files++;
-				size += fs.statSync(p, { throwIfNoEntry: false })?.size ?? 0;
-			}
-		}
-	};
-	walk(dir);
-	return [files, size];
+	const files = filesBelow(dir);
+	let size = 0;
+	for (const file of files) size += fs.statSync(file, { throwIfNoEntry: false })?.size ?? 0;
+	return [files.length, size];
 }
 
 const plural = (n: number) => (n === 1 ? "" : "s");
