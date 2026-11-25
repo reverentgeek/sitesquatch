@@ -115,7 +115,12 @@ export async function build(config: Config): Promise<BuildReport> {
 			try { site.refreshPagination(page); } catch (e) { throw context(e, `in ${page.tpl.rel}`); }
 		}
 	}
-	await renderer.renderAll([...wanted.filter((p) => !late.has(p)), ...wanted.filter((p) => late.has(p))], late);
+	// `SSQCH_INCREMENTAL=1`: only the pages whose bodies changed, and those that read collections
+	// (a feed shows the bodies); the rest are as the last build wrote them.
+	const only = incrementalPages(site, wanted, late);
+	if (only) for (const page of wanted) if (!only.has(page) && !late.has(page) && page.output !== null) renderer.written.set(page.index, { file: page.output, bytes: keptWritten.get(page.output)!, changed: false });
+	const rendering = only ? wanted.filter((p) => only.has(p) || late.has(p)) : wanted;
+	await renderer.renderAll([...rendering.filter((p) => !late.has(p)), ...rendering.filter((p) => late.has(p))], late);
 	warnUnknownComponents(site);
 	for (const wait of config.settle) await wait();
 	timer.timings.push(["render", renderer.renderMs], ["write", performance.now() - timer.last - renderer.renderMs]);
@@ -246,6 +251,41 @@ interface Written {
 	bytes: number;
 	/** Whether its contents changed (while serving, a page that comes out the same is left alone). */
 	changed: boolean;
+}
+
+/** While serving: each page's size as the last build wrote it, by its output file, for a page `SSQCH_INCREMENTAL=1` doesn't render. */
+const keptWritten = new Map<string, number>();
+
+/**
+ * Built-in plugins a rebuild that renders only some pages can't get wrong: what they do comes from
+ * the pages' data (the sitemap, redirects, robots), from every page's file on disk (the link
+ * checker), from a page that reads collections, which always renders (a feed), or from the one
+ * page they're given (minify). The image plugin isn't: a page not rendered doesn't say which
+ * pictures it uses, and `prune` and `leaveNoTrace` would take them.
+ */
+const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/redirects", "ssqch/robots", "ssqch/minify"]);
+
+/**
+ * `SSQCH_INCREMENTAL=1` while serving (the dev server's design, stage 3, its first slice): the
+ * pages to render when every changed file is a template whose body alone changed
+ * (`Site.bodyOnly`), the site's plugins are all `REPLAYABLE`, and the config has no transforms or
+ * after-build hooks of its own (code that sees rendered pages; a `beforeBuild` hook runs before any
+ * page, every build). `undefined` means render everything.
+ */
+function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page> | undefined {
+	const { config } = site;
+	if (process.env.SSQCH_INCREMENTAL !== "1" || !config.serving || !site.bodyOnly.size || !config.changed?.length) return undefined;
+	// By real paths on both sides: the server names files by theirs, and the site may not (a
+	// temporary folder's `/var` is `/private/var` on macOS).
+	const bodyOnly = new Set([...site.bodyOnly].map(realPath));
+	if (!config.changed.every((file) => bodyOnly.has(realPath(file)))) return undefined;
+	if (!config.plugins.every((name) => REPLAYABLE.has(name))) return undefined;
+	if (config.afterBuild.some((hook) => !("label" in hook) || hook.label !== "")) return undefined;
+	if (config.transforms.some(([name]) => name !== "minify-html")) return undefined;
+	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input)));
+	// A page the last build didn't write (new to the output) is rendered.
+	for (const page of wanted) if (!only.has(page) && !late.has(page) && page.output !== null && !keptWritten.has(page.output)) only.add(page);
+	return only;
 }
 
 /** Marks a body that's being rendered, so a page that reads its own content (through a collection it's in) gets nothing rather than a loop. */
@@ -531,6 +571,7 @@ class Renderer {
 		// reloads for a page that changed.
 		const changed = !(config.serving && sameContents(output, content));
 		this.written.set(page.index, { file: output, bytes: Buffer.byteLength(content), changed });
+		if (config.serving) keptWritten.set(output, Buffer.byteLength(content));
 		progressed();
 		if (changed) await this.write(output, content);
 		// A line per page only with `--verbose`: 404 of them for opensource.guide, on every build and
