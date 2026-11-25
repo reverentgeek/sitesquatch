@@ -144,32 +144,65 @@
 			link.after(next);
 		}
 	};
+	// What the server said: its error shown, the page reloaded, or stylesheets swapped. False
+	// once the page is reloading.
+	const hear = now => {
+		show(now.error);
+		if (seen !== undefined && now.id !== seen && !now.error) {
+			if (now.reload) {
+				console.log("[ssqch] Fresh tracks. Reloading.");
+				location.reload();
+				return false;
+			}
+			for (const path of now.css) swap(path, now.id);
+			// A file that was missing may be there now.
+			if (missing.size) check([...missing.keys()]);
+		}
+		seen = now.id;
+		return true;
+	};
+	let wait = 700;
+	// A stream that never said anything (a proxy holding it back): asking from then on.
+	let streamless = false;
+	// The server says each change as it happens (`/__ssqch/events`). It answers at once when the
+	// stream opens, so one that's quiet for 2 s is held back somewhere, and the page asks instead.
+	// Where it closes (the server stopped), the page asks until the server's back, then listens again.
+	const listen = () => {
+		if (streamless || typeof EventSource !== "function") return false;
+		const events = new EventSource(`/__ssqch/events?v=${seen ?? ""}&p=${encodeURIComponent(location.pathname)}`);
+		let heard = false;
+		const quiet = setTimeout(() => {
+			if (heard) return;
+			streamless = true;
+			events.close();
+			setTimeout(poll, 0);
+		}, 2000);
+		events.onmessage = event => {
+			heard = true;
+			if (!hear(JSON.parse(event.data))) events.close();
+		};
+		events.onerror = () => {
+			clearTimeout(quiet);
+			events.close();
+			setTimeout(poll, wait);
+		};
+		return true;
+	};
 	// Every 0.7 s while the server answers. Once it doesn't (it was stopped), less and less often,
 	// up to every 10 s, said once in the console: polling at the same pace filled it with an error
 	// every 0.7 s (184 in two minutes, the new-docs run). When it answers again, the pace is back.
-	let wait = 700;
 	const poll = async () => {
 		try {
 			const now = await (await fetch(`/__ssqch/build?v=${seen ?? ""}&p=${encodeURIComponent(location.pathname)}`)).json();
 			if (wait !== 700) console.log("[ssqch] The server's back.");
 			wait = 700;
-			show(now.error);
-			if (seen !== undefined && now.id !== seen && !now.error) {
-				if (now.reload) {
-					console.log("[ssqch] Fresh tracks. Reloading.");
-					location.reload();
-					return;
-				}
-				for (const path of now.css) swap(path, now.id);
-				// A file that was missing may be there now.
-				if (missing.size) check([...missing.keys()]);
-			}
-			seen = now.id;
+			if (!hear(now)) return;
+			if (listen()) return;
 		} catch {
 			if (wait === 700) console.log("[ssqch] The server isn't answering (stopped?). Checking now and then.");
 			wait = Math.min(wait * 2, 10_000);
 		}
 		setTimeout(poll, wait);
 	};
-	setTimeout(poll, wait);
+	if (!listen()) setTimeout(poll, wait);
 })();

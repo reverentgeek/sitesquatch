@@ -1,6 +1,6 @@
 // What the dev server answers: a file from the output folder, with the reload script and a tab
-// icon added to pages as they're sent, the questions that script asks (`/__ssqch/build`,
-// `/__ssqch/missing`), and a 404 page of its own for a site without one. `ssqch serve --built`
+// icon added to pages as they're sent, the stream it listens on (`/__ssqch/events`), the
+// questions it asks (`/__ssqch/build`, `/__ssqch/missing`), and a 404 page of its own for a site without one. `ssqch serve --built`
 // answers with the files as they are, compressed as a host would. Both answer a request for a
 // page that asks for `text/markdown` with the page's Markdown copy, when it has one.
 import fs from "node:fs";
@@ -242,6 +242,30 @@ export function handle(req: http.IncomingMessage, res: http.ServerResponse, root
 	// `_headers`, applied by `netlify dev` in front of this server) allows them with 'self'.
 	if (rawUrl === "/__ssqch/live.js") return respond(res, 200, { "Content-Type": "text/javascript; charset=utf-8", ...noCache }, LIVE_SCRIPT);
 	if (rawUrl === "/__ssqch/overlay.css") return respond(res, 200, { "Content-Type": "text/css; charset=utf-8", ...noCache }, OVERLAY_CSS);
+	// The same answer, pushed: the stream stays open and says each change as it happens, so a
+	// browser hears a rebuild at once, not at its next ask (every 0.7 s: 0.35 s late on average).
+	// A browser that can't keep it open (a proxy that holds the stream back) asks, as before.
+	if (rawUrl === "/__ssqch/events") {
+		const v = queryValue(query, "v");
+		let since = v !== undefined && /^\+?\d+$/.test(v) ? Number(v) : undefined;
+		const page = pageFile(queryValue(query, "p") ?? "", base);
+		res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", ...noCache, Connection: "keep-alive", "X-Accel-Buffering": "no" });
+		const send = () => {
+			const now = live.answer(since, page, base);
+			since = now.id;
+			res.write(`data: ${JSON.stringify(now)}\n\n`);
+		};
+		send();
+		const stop = live.listen(send);
+		// A comment now and then, so a proxy doesn't close a stream that's quiet for a while.
+		const ping = setInterval(() => res.write(": ping\n\n"), 15_000);
+		ping.unref();
+		res.on("close", () => {
+			stop();
+			clearInterval(ping);
+		});
+		return;
+	}
 	if (rawUrl === "/__ssqch/build") {
 		const v = queryValue(query, "v");
 		const since = v !== undefined && /^\+?\d+$/.test(v) ? Number(v) : undefined;

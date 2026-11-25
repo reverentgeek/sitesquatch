@@ -17,10 +17,9 @@
 // builder's own machine (a check lists those files as only in the output; `--without dist`
 // leaves them out). The server runs ssqch from this
 // checkout's source, with SSQCH_SERVE_TIMELINE (src/serve/timeline.ts); each edit appends a
-// line to the file, the script stamps the save itself, and asks the server what a browser asks
-// (`/__ssqch/build`) every 5 ms, to see when a browser could first hear of it. The reload script
-// asks every 700 ms, so a browser hears up to 0.7 s later than that (0.35 s on average): that's
-// a row of its own, not measured.
+// line to the file, the script stamps the save itself, and listens on the stream a page listens
+// on (`/__ssqch/events`), to see when a browser hears of it. (A page whose stream is held back,
+// by a proxy, asks every 0.7 s instead: up to 0.7 s later, 0.35 s on average.)
 //
 // Run it alone, like bench.ts: a study or a compiler beside it slows every row.
 import { spawn } from "node:child_process";
@@ -83,25 +82,42 @@ interface Row { save: number; heard: number; entry: any; check?: any }
 const rows: Row[] = [];
 try {
 	const info = await until("the first build (the ready file)", () => (fs.existsSync(ready) ? JSON.parse(fs.readFileSync(ready, "utf8")) : undefined));
-	const ask = async () => (await (await fetch(`${info.url.replace(/\/$/, "")}/__ssqch/build`)).json()).id as number;
+	// The stream a page listens on: when each answer with a new id arrives.
+	let latest = -1;
+	let arrived = 0;
+	const stream = await fetch(`${info.url.replace(/\/$/, "")}/__ssqch/events?p=%2F`);
+	const reader = stream.body!.pipeThrough(new TextDecoderStream()).getReader();
+	void (async () => {
+		let buffered = "";
+		for (;;) {
+			const { value, done } = await reader.read().catch(() => ({ value: undefined, done: true }));
+			if (done) return;
+			buffered += value;
+			for (let at = buffered.indexOf("\n\n"); at !== -1; at = buffered.indexOf("\n\n")) {
+				const event = buffered.slice(0, at);
+				buffered = buffered.slice(at + 2);
+				if (event.startsWith("data: ")) {
+					latest = JSON.parse(event.slice(6)).id;
+					arrived = Date.now();
+				}
+			}
+		}
+	})();
+	await until("the stream's first answer", () => (latest === -1 ? undefined : true));
 	for (let i = 0; i <= edits; i++) {
 		const before = lines().length;
-		const id = await ask();
+		const id = latest;
 		// Text that changes this page's own output and no other's.
 		fs.writeFileSync(editing, `${original}\n\nEdit ${i} of the bench.\n`);
 		const save = Date.now();
-		let heard: number | undefined;
-		for (;;) {
-			if ((await ask()) !== id) { heard = Date.now(); break; }
-			if (Date.now() - save > 600_000) throw new Error("the server never said the build changed");
-			await sleep(5);
-		}
+		const heard = await until("the stream's news of the rebuild", () => (latest !== id ? arrived : undefined));
 		const entry = await until("the rebuild's line", () => lines().slice(before).find((line) => line.kind === "rebuild"));
 		const check = checking ? await until("the check's line", () => lines().slice(before).find((line) => line.kind === "check")) : undefined;
 		// Let the output settle (the server's last walks, a tool's writes) before the next edit.
 		await sleep(1500);
-		if (i > 0) rows.push({ save, heard: heard!, entry, check });
+		if (i > 0) rows.push({ save, heard, entry, check });
 	}
+	void reader.cancel().catch(() => {});
 } finally {
 	server.kill("SIGTERM");
 	fs.writeFileSync(editing, original);
@@ -126,8 +142,7 @@ for (const [label, of] of steps) console.log(`  ${pad(label, 46)} ${msText(media
 const phases = rows[0]?.entry.builder.phases.map(([name]: [string, number]) => name) ?? [];
 console.log(`  ${pad("  the build's phases", 46)} ${phases.map((name: string, i: number) => `${name} ${msText(median(rows.map((r) => r.entry.builder.phases[i][1])))}`).join(", ")}`);
 console.log(`  ${pad("save to the Serving line", 46)} ${msText(median(rows.map((r) => r.entry.said - r.save)))}`);
-console.log(`  ${pad("save to a browser could hear (asked every 5 ms)", 46)} ${msText(median(rows.map((r) => r.heard - r.save)))}`);
-console.log(`  ${pad("then the reload script's poll (every 700 ms)", 46)} 0 to 700 ms, 350 on average (not measured)`);
+console.log(`  ${pad("save to the browser hearing it (pushed)", 46)} ${msText(median(rows.map((r) => r.heard - r.save)))}`);
 if (checking) for (const r of rows) console.log(`  ${r.check.verdict}`);
 console.log(`The copy, its timeline and the server's output: ${work}`);
 if (checking && rows.some((r) => !/ wrote what a clean build writes /.test(r.check.verdict))) process.exitCode = 1;

@@ -70,6 +70,47 @@ test("serve_writes_a_ready_file", async () => {
 	}
 });
 
+// A browser hears a rebuild at once: the server pushes it on /__ssqch/events, where a page
+// asked every 0.7 s (0.35 s late on average). The stream's first answer comes when it opens.
+test("serve_pushes_each_change_to_the_browser", async () => {
+	const dir = tempDir("serve-push");
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n", "src/index.md": "Home\n" });
+	const ready = path.join(dir, "ready.json");
+	const server = start(["serve", "--port", "0", "--ready-file", ready, "--root", dir], { logFile: path.join(tempDir("serve-push-log"), "serve.log") });
+	const http = await import("node:http");
+	let stream;
+	try {
+		await waitFor(ready, READY);
+		const port = JSON.parse(fs.readFileSync(ready, "utf8")).port;
+		const first = (await live(port, "", "/")).id;
+		const heard = [];
+		await new Promise((resolve, reject) => {
+			stream = http.get({ host: "127.0.0.1", port, path: `/__ssqch/events?v=${first}&p=%2F` }, (res) => {
+				assert.match(res.headers["content-type"], /^text\/event-stream/);
+				res.setEncoding("utf8");
+				let buffered = "";
+				res.on("data", (chunk) => {
+					buffered += chunk;
+					for (let at = buffered.indexOf("\n\n"); at !== -1; at = buffered.indexOf("\n\n")) {
+						const event = buffered.slice(0, at);
+						buffered = buffered.slice(at + 2);
+						if (event.startsWith("data: ")) heard.push(JSON.parse(event.slice(6)));
+					}
+				});
+				resolve();
+			}).on("error", reject);
+		});
+		await until(() => heard.length >= 1, () => JSON.stringify(heard));
+		assert.deepEqual([heard[0].id, heard[0].reload], [first, false], "it answers when it opens");
+		fs.writeFileSync(path.join(dir, "src/index.md"), "Home again\n");
+		const news = await until(() => heard.find((h) => h.id > first), () => JSON.stringify(heard));
+		assert.equal(news.reload, true, JSON.stringify(news));
+	} finally {
+		stream?.destroy();
+		await server.stop();
+	}
+});
+
 // The dev server reloads a browser only for the page it's showing, and shows it a build that failed.
 test("serve_tells_the_browser_what_changed", async () => {
 	const dir = tempDir("serve-live");

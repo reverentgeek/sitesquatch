@@ -1,8 +1,9 @@
 // What the browsers ask about: what changed in the output, and whether the build works.
 //
 // A page reloads when its own file changed, or a file any page may use (a script, an image). A
-// stylesheet is swapped in place, and another page's change is no news. The reload script asks
-// `/__ssqch/build?v=<the id it last heard>&p=<its page>` and gets `answer`.
+// stylesheet is swapped in place, and another page's change is no news. The reload script listens
+// on `/__ssqch/events?v=<the id it last heard>&p=<its page>`, which sends `answer` at once and at
+// each change (`listen`), and asks `/__ssqch/build` with the same query where it can't.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -137,6 +138,18 @@ export class Live {
 	/** The `serve.run` tools (`tailwindcss`), and the output folder as shown, for what's said about a missing file. */
 	tools: string[] = [];
 	private outputName = "";
+	/** Who's told when `id` goes up: each browser's open `/__ssqch/events`. */
+	private listeners = new Set<() => void>();
+
+	/** Call `fn` each time there's something for browsers to hear; the answer stops it. */
+	listen(fn: () => void): () => void {
+		this.listeners.add(fn);
+		return () => { this.listeners.delete(fn); };
+	}
+
+	private tell(): void {
+		for (const fn of [...this.listeners]) fn();
+	}
 
 	/**
 	 * Counting from `id`: by default from now, in milliseconds since 1970. A browser that was
@@ -179,7 +192,10 @@ export class Live {
 		}
 		// Browsers ask about their missing files after each update: this one has nothing new but
 		// what's said about them, which the note in the corner then shows.
-		if (still) this.id += 1;
+		if (still) {
+			this.id += 1;
+			this.tell();
+		}
 	}
 
 	/** A page linked `url` (the file `rel` in the output), and it wasn't there. The message, said in the terminal the first time (not while the tools are on their first compile). */
@@ -235,6 +251,7 @@ export class Live {
 		this.error = null;
 		for (const file of changed) this.changedAt.set(file, this.id);
 		this.seen = now;
+		this.tell();
 		return changed;
 	}
 
@@ -242,6 +259,7 @@ export class Live {
 	failed(error: string): void {
 		this.id += 1;
 		this.error = error;
+		this.tell();
 	}
 
 	/** The size the file `rel` had when it was last looked at. */
