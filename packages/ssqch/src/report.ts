@@ -15,6 +15,7 @@ import type { BuildReport } from "./build.ts";
 import type { Config } from "./config.ts";
 import { dirsOf, shownOutput } from "./dirs.ts";
 import { filesBelow, relative } from "./paths.ts";
+import type { Listed } from "./paths.ts";
 import { KINDS } from "./profile.ts";
 import type { Kind, ProfileReport } from "./profile.ts";
 import * as voice from "./voice.ts";
@@ -23,7 +24,7 @@ import * as voice from "./voice.ts";
 type Aside = "recovered" | "nothingSighted" | "firstSighting" | "leftNoTrace" | "unconfirmed" | "uninhabited";
 
 /** The whole summary, ending in a newline. `recovered`: for a build that worked after one that failed (while serving), which is the aside then. */
-export function summary(config: Config, report: BuildReport, recovered = false): string {
+export function summary(config: Config, report: BuildReport, recovered = false, listing?: Listed[]): string {
 	const dirs = dirsOf(config);
 	// One themed line at most, the one that says the most, in this order; the rest are plain.
 	const nothing = report.templates === 0 && report.drafts === 0 && report.pagesWritten === 0;
@@ -59,7 +60,8 @@ export function summary(config: Config, report: BuildReport, recovered = false):
 
 	lines.push(...report.summary);
 
-	const [files, size] = dirSize(dirs.output);
+	// The listing the dev server gets too, when it was made: the output listed once a build.
+	const [files, size] = listing ? [listing.length, listing.reduce((sum, [, bytes]) => sum + bytes, 0)] : dirSize(dirs.output);
 	const output = shownOutput(config, true);
 	lines.push(["Output", `${output}: ${count(files)} file${plural(files)}, ${bytes(size)}`]);
 

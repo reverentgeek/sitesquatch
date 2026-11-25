@@ -151,6 +151,10 @@ try {
 		if (!pass) failed += 1;
 		console.log(`  ${pass ? "pass" : "FAIL"} ${name}: ${lastRebuild.ok ? last?.verdict ?? "no check" : "the build failed (the server's output says why)"}`);
 	}
+	// The server's view of what changed, from the builder's listing, against a walk of its own.
+	const off = serveLog().split("\n").filter((line) => line.includes("check-rebuilds: the builder's listing"));
+	for (const line of off) console.log(`  FAIL what browsers are told: ${line.trim()}`);
+	failed += off.length;
 } finally {
 	server.kill("SIGTERM");
 }

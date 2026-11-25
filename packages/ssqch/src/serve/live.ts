@@ -9,7 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import * as diagnostics from "../diagnostics.ts";
-import { compareText, filesBelow, realPath, slashes } from "../paths.ts";
+import { compareText, filesBelow, isInside, realPath, slashes } from "../paths.ts";
+import type { Listed } from "../paths.ts";
 
 /** What tells one version of an output file from the next: its size, and a mark (see `stamp`). */
 type Stamp = readonly [size: number, mark: number | string];
@@ -43,6 +44,53 @@ function walk(dir: string, each: (rel: string, file: string, stat: fs.Stats) => 
 		const stat = fs.statSync(file, { throwIfNoEntry: false });
 		if (stat) each(slashes(path.relative(dir, file)), file, stat);
 	}
+}
+
+/** The output as a walk of it finds it now: each file's stamp, by its path from `output`. */
+export function walked(output: string): Map<string, Stamp> {
+	const now = new Map<string, Stamp>();
+	walk(output, (rel, file, stat) => now.set(rel, stamp(file, stat)));
+	return now;
+}
+
+/**
+ * The output from the builder's listing after its build (`listOutput`), without a walk of the
+ * server's own: on 10,000 pages, listing it took 140 ms in each process. What's changed since
+ * the listing is looked at again: every stylesheet and script (told apart by their contents,
+ * and what the tools write), and the files the watcher named meanwhile (`touched`, absolute).
+ */
+export function fromListing(output: string, listing: Listed[], touched?: Iterable<string>): Map<string, Stamp> {
+	const now = new Map<string, Stamp>();
+	for (const [rel, size, mtimeMs] of listing) {
+		if (!isAsset(rel)) {
+			now.set(rel, [size, mtimeMs]);
+			continue;
+		}
+		const file = path.join(output, rel);
+		const stat = fs.statSync(file, { throwIfNoEntry: false });
+		if (stat?.isFile()) now.set(rel, stamp(file, stat));
+	}
+	const root = realPath(output);
+	for (const file of touched ?? []) {
+		if (!isInside(root, file) || file === root) continue;
+		const rel = slashes(path.relative(root, file));
+		const stat = fs.statSync(file, { throwIfNoEntry: false });
+		if (stat?.isFile()) now.set(rel, stamp(file, stat));
+		else if (!stat) now.delete(rel);
+	}
+	return now;
+}
+
+/**
+ * Where two views of the output disagree, for the checked mode: the files only one has, and
+ * the pages and other files (not stylesheets or scripts, which are looked at again anyway) whose
+ * stamps differ. Empty when they agree.
+ */
+export function disagreements(a: Map<string, Stamp>, b: Map<string, Stamp>): string[] {
+	const out: string[] = [];
+	for (const [rel, at] of a) if (!b.has(rel) || (!isAsset(rel) && !sameStamp(at, b.get(rel)))) out.push(rel);
+	for (const rel of b.keys()) if (!a.has(rel)) out.push(rel);
+	return out.sort(compareText);
 }
 
 /** A file's size and when it was written: what a build left, so a tool's write (even of the same contents) is told from it. */
@@ -225,9 +273,8 @@ export class Live {
 	 * differs is looked at again once it has stopped changing, so browsers never fetch one half
 	 * written.
 	 */
-	async changed(output: string): Promise<string[]> {
-		const now = new Map<string, Stamp>();
-		walk(output, (rel, file, stat) => now.set(rel, stamp(file, stat)));
+	async changed(output: string, listing?: Listed[], touched?: Iterable<string>): Promise<string[]> {
+		const now = listing ? fromListing(output, listing, touched) : walked(output);
 		const differs = () => {
 			const out: string[] = [];
 			for (const [file, at] of now) if (!sameStamp(this.seen.get(file), at)) out.push(file);

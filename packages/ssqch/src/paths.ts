@@ -172,3 +172,17 @@ export function filesBelow(dir: string, only?: (name: string) => boolean): strin
 	visit(dir);
 	return out;
 }
+
+/** A file in an output folder as one listing found it: its path from the folder with `/`, its size, and when it was written. */
+export type Listed = [rel: string, size: number, mtimeMs: number];
+
+/** Every file below `dir` (`filesBelow`), with its size and time: one listing, for the summary and the dev server both. */
+export function listOutput(dir: string): Listed[] {
+	const out: Listed[] = [];
+	for (const file of filesBelow(dir)) {
+		// A file that went between the listing and the look isn't there.
+		const stat = fs.statSync(file, { throwIfNoEntry: false });
+		if (stat) out.push([slashes(path.relative(dir, file)), stat.size, stat.mtimeMs]);
+	}
+	return out;
+}
