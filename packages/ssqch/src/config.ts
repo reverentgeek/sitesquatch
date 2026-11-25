@@ -184,6 +184,12 @@ export interface Config {
 	fileBuilders: Array<[string, (config: Config) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
 	/** What the build waits for once every page is written (the image files they point at), before the generators; counted as writing. */
 	settle: Array<() => Promise<void>>;
+	/**
+	 * While serving, after the pages render: what a built-in plugin learned from each page, said
+	 * again for the pages a rebuild took as they were (`SSQCH_INCREMENTAL=1`), by their URLs, with
+	 * the pages it rendered (whose records are new). The image plugin's pictures in use.
+	 */
+	replays: Array<(skipped: string[], rendered: string[]) => void>;
 	/** Files a built-in plugin wrote into the output beside the pages (the image plugin's copies), once they're settled: on `leaveNoTrace`'s list with the rest, so a picture no page uses any more goes with them. */
 	written: Array<() => Iterable<string>>;
 }
@@ -272,6 +278,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		componentRenderers: [],
 		fileBuilders: [],
 		settle: [],
+		replays: [],
 		written: [],
 	};
 }

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write } from "../lib/ssqch.js";
+import { FIXTURES, ssqch, tempDir, write } from "../lib/ssqch.js";
 import { start, sleep, waitFor, changeAndWait, httpGet, body, serveSite } from "../lib/serve.js";
 
 const unixOnly = { skip: process.platform === "win32" && "unix only" };
@@ -318,6 +318,42 @@ test("serve_reads_an_edit_that_keeps_the_files_size_and_time", async () => {
 		fs.utimesSync(source, second, second);
 		assert.deepEqual([fs.statSync(source).size, fs.statSync(source).mtimeMs], ["Cedar Trail\n".length, second * 1000]);
 		await waitFor(page, "Cedar Hike");
+	} finally {
+		await server.stop();
+	}
+});
+
+// SSQCH_INCREMENTAL=1 (with SSQCH_KEEP_TEMPLATES=1): an edit to one page's text renders that page
+// alone, and the image plugin asks for the other pages' pictures again (a replay of what they asked
+// when they last rendered), so prune and leaveNoTrace keep them. A filter that notes each render
+// shows which pages rendered; the checked mode, that the output is what a clean build writes.
+test("serve_renders_only_the_page_whose_text_changed_and_keeps_the_others_pictures", async () => {
+	const dir = tempDir("serve-incremental");
+	const renders = path.join(tempDir("serve-incremental-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nimport { imagePlugin } from "ssqch/image";\nexport default { dirs: { input: "src", output: "dist" }, leaveNoTrace: true, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } }, plugins: [imagePlugin({ formats: ["webp"], widths: [16], prune: true })] };\n`,
+		"src/cedar.njk": "<p>{{ \"cedar\" | noted }}</p><img src=\"/img/cedar.png\" alt=\"\">",
+		"src/stump.njk": "<p>{{ \"stump\" | noted }}</p><img src=\"/img/stump.svg\" alt=\"\">",
+		"src/img/stump.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><rect width=\"16\" height=\"16\"/></svg>",
+	});
+	fs.copyFileSync(path.join(FIXTURES, "cli/squatch.png"), path.join(dir, "src/img/cedar.png"));
+	const log = path.join(tempDir("serve-incremental-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(dir, "dist/stump/index.html"), "stump");
+		await waitFor(log, "Serving ");
+		const stumpCopies = () => fs.readdirSync(path.join(dir, "dist/img")).filter((name) => name.endsWith(".svg"));
+		assert.equal(stumpCopies().length, 1, fs.readdirSync(path.join(dir, "dist/img")).join(", "));
+		fs.writeFileSync(renders, "");
+		fs.appendFileSync(path.join(dir, "src/cedar.njk"), "<p>Four miles.</p>");
+		const said = await waitFor(log, "check-rebuilds: ");
+		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		// The clean build renders both pages too, in a process of its own: the rebuild's renders are
+		// the first process's lines.
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		const rebuilt = lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name);
+		assert.deepEqual(rebuilt, ["cedar"], JSON.stringify(lines));
+		assert.equal(stumpCopies().length, 1, "the page not rendered kept its picture");
 	} finally {
 		await server.stop();
 	}

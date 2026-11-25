@@ -121,6 +121,13 @@ export async function build(config: Config): Promise<BuildReport> {
 	if (only) for (const page of wanted) if (!only.has(page) && !late.has(page) && page.output !== null) renderer.written.set(page.index, { file: page.output, bytes: keptWritten.get(page.output)!, changed: false });
 	const rendering = only ? wanted.filter((p) => only.has(p) || late.has(p)) : wanted;
 	await renderer.renderAll([...rendering.filter((p) => !late.has(p)), ...rendering.filter((p) => late.has(p))], late);
+	// What the built-in plugins learned from each page, said again for the pages taken as they
+	// were (the image plugin's pictures in use), with the rendered pages' new records.
+	if (config.serving) {
+		const urls = (list: Page[]) => list.flatMap((p) => (typeof p.url === "string" ? [p.url] : []));
+		const skipped = only ? urls(wanted.filter((p) => !only.has(p) && !late.has(p))) : [];
+		for (const replay of config.replays) replay(skipped, urls(rendering));
+	}
 	warnUnknownComponents(site);
 	for (const wait of config.settle) await wait();
 	timer.timings.push(["render", renderer.renderMs], ["write", performance.now() - timer.last - renderer.renderMs]);
@@ -260,10 +267,11 @@ const keptWritten = new Map<string, number>();
  * Built-in plugins a rebuild that renders only some pages can't get wrong: what they do comes from
  * the pages' data (the sitemap, redirects, robots), from every page's file on disk (the link
  * checker), from a page that reads collections, which always renders (a feed), or from the one
- * page they're given (minify). The image plugin isn't: a page not rendered doesn't say which
- * pictures it uses, and `prune` and `leaveNoTrace` would take them.
+ * page they're given (minify), or a replay of what each page told them (`config.replays`: the
+ * image plugin, whose pictures a page not rendered asks for again, so `prune` and `leaveNoTrace`
+ * keep them).
  */
-const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/redirects", "ssqch/robots", "ssqch/minify"]);
+const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/redirects", "ssqch/robots", "ssqch/minify", "ssqch/image"]);
 
 /**
  * `SSQCH_INCREMENTAL=1` while serving (the dev server's design, stage 3, its first slice): the
