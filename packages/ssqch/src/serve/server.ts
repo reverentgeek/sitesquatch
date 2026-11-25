@@ -29,7 +29,7 @@ import { handle, handleBuilt } from "./http.ts";
 import { Live, assetStamps, fingerprint, isAsset, sameStamps } from "./live.ts";
 import type { Written } from "./live.ts";
 import { Channel, Watcher, chooseStrategy } from "./watch.ts";
-import { checkFolder, compareOutputs, verdict } from "./check.ts";
+import { checkFolder, compareOutputs, ownFiles, verdict } from "./check.ts";
 import { record, timing } from "./timeline.ts";
 import { globSet } from "../glob.ts";
 
@@ -621,7 +621,7 @@ async function checkRebuild({ args, builder, rx, carried, tools, changed, moved,
 	if (!built.ok) line = `check-rebuilds: the clean build after ${changed} failed where the rebuild worked: ${built.error ?? "its error is above"}`;
 	else if (meanwhile !== undefined) line = `check-rebuilds: ${show(meanwhile)} changed while the clean build ran, so the two didn't build the same files; not judged`;
 	else {
-		found = compareOutputs(site.output, dir, tools);
+		found = compareOutputs(site.output, dir, tools ? ownFiles(site.root, site.outputName) : undefined);
 		line = verdict(found, changed, site.outputName);
 	}
 	say(line);

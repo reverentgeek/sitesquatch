@@ -15,17 +15,32 @@
 import fs from "node:fs";
 import path from "node:path";
 import { compareText } from "../paths.ts";
-import { isAsset } from "./live.ts";
+
+/** `OUTPUT_LIST` in build.ts (the server doesn't load the build; `check.test.ts` keeps them the same). */
+export const OUTPUT_LIST = ".cache/ssqch/output-files.json";
 
 /** Where a check builds, under the project root: `.cache` is never a change to the site, so the server doesn't rebuild for it. */
 export const checkFolder = (root: string) => path.join(root, ".cache", "ssqch", "check-rebuilds");
+
+/**
+ * What the served build recorded as its own files in `outputName` (`OUTPUT_LIST` in build.ts,
+ * where each folder built into keeps its own list), by their path from it with `/`.
+ */
+export function ownFiles(root: string, outputName: string): Set<string> {
+	try {
+		const list = JSON.parse(fs.readFileSync(path.join(root, OUTPUT_LIST), "utf8"));
+		const entry = list?.output === outputName ? list : list?.outputs?.[outputName];
+		if (Array.isArray(entry?.files)) return new Set(entry.files.filter((f: unknown) => typeof f === "string"));
+	} catch { /* no list: nothing is the build's, so nothing is counted against it */ }
+	return new Set();
+}
 
 /** What a check found: the files that differ, and those only one side has, by their path from the output folder with `/`. */
 export interface Comparison {
 	differ: string[];
 	onlyClean: string[];
 	onlyServed: string[];
-	/** Stylesheets and scripts only the served output has, left out because `serve.run`'s tools write them there. */
+	/** Files only the served output has that its build didn't write, left out because `serve.run`'s tools write into the output. */
 	tools: string[];
 	/** How many files both have. */
 	same: number;
@@ -52,18 +67,20 @@ const sameBytes = (a: string, b: string) => {
 };
 
 /**
- * Compare what a rebuild left in `served` with a clean build in `clean`. With `tools` (the site
- * has `serve.run` tools, which write stylesheets and scripts into the output and not into the
- * clean build's folder), a stylesheet or script only the served output has is theirs, not a
- * difference.
+ * Compare what a rebuild left in `served` with a clean build in `clean`. `own` is given when the
+ * site has `serve.run` tools, which write into the output and not into the clean build's folder:
+ * it's what the served build recorded as its own (`ownFiles`), and a file only the served output
+ * has that isn't on it is a tool's, and isn't counted (Tailwind's stylesheet, a11yproject.com's
+ * gulp writing images and a style guide's pages, v8.dev's `.webmanifest`). A file the build
+ * recorded and the clean build didn't write is still a difference.
  */
-export function compareOutputs(served: string, clean: string, tools: boolean): Comparison {
+export function compareOutputs(served: string, clean: string, own?: ReadonlySet<string>): Comparison {
 	const a = files(served);
 	const b = files(clean);
 	const out: Comparison = { differ: [], onlyClean: [], onlyServed: [], tools: [], same: 0 };
 	for (const [rel, file] of a) {
 		const other = b.get(rel);
-		if (other === undefined) (tools && isAsset(rel) ? out.tools : out.onlyServed).push(rel);
+		if (other === undefined) (own && !own.has(rel) ? out.tools : out.onlyServed).push(rel);
 		else if (sameBytes(file, other)) out.same += 1;
 		else out.differ.push(rel);
 	}
@@ -75,7 +92,7 @@ export function compareOutputs(served: string, clean: string, tools: boolean): C
 /** What the terminal says about a comparison: one line, with up to three files of each kind. */
 export function verdict(c: Comparison, changed: string, outputName: string): string {
 	const some = (list: string[]) => list.slice(0, 3).join(", ") + (list.length > 3 ? ` and ${list.length - 3} more` : "");
-	const tools = c.tools.length ? `; left out ${c.tools.length} stylesheet${c.tools.length === 1 ? "" : "s"} or script${c.tools.length === 1 ? "" : "s"} only serve.run's tools wrote` : "";
+	const tools = c.tools.length ? `; left out ${c.tools.length} file${c.tools.length === 1 ? "" : "s"} only in ${outputName} that its build didn't write, which serve.run's tools did` : "";
 	if (!c.differ.length && !c.onlyClean.length && !c.onlyServed.length) return `check-rebuilds: the rebuild after ${changed} wrote what a clean build writes (${c.same} file${c.same === 1 ? "" : "s"} the same${tools})`;
 	const parts = [
 		c.differ.length ? `${c.differ.length} differ (${some(c.differ)})` : "",

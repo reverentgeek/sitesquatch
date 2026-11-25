@@ -397,7 +397,7 @@ export async function main(argv: string[]): Promise<number> {
 	const root = path.resolve(value("root") ?? ".");
 	siteRoot = root;
 	routeConsole();
-	const makeConfig = async () => (await import("./config.ts")).loadConfig({ root, rootGiven: value("root") ?? ".", env, serving, quiet: flag("quiet") || tracing || building?.check !== undefined, verbose: flag("verbose"), profile: command === "build" && flag("profile"), output: building?.check ?? value("output"), base: value("base") });
+	const makeConfig = async () => (await import("./config.ts")).loadConfig({ root, rootGiven: value("root") ?? ".", env, serving, quiet: flag("quiet") || tracing || building?.check !== undefined, verbose: flag("verbose"), profile: command === "build" && flag("profile"), output: value("output"), checkOutput: building?.check, base: value("base") });
 
 	if (command === "new") return newPage(makeConfig, root, { path: cli.positionals[0], title: value("title"), date: value("date"), blueprint: value("blueprint"), set: (cli.options.set as string[] | undefined) ?? [], format });
 	if (serving) {

@@ -934,6 +934,25 @@ test("serve_checks_each_rebuild_against_a_clean_build", async () => {
 	} finally {
 		await again.stop();
 	}
+
+	// A site whose input folder is its root (a Jekyll layout): the clean build writes elsewhere,
+	// and still leaves the served output out of its input, as the build does with its own.
+	const rooted = tempDir("serve-check-rooted");
+	write(rooted, {
+		"ssqch.config.js": "export default { dirs: { output: \"dist\" } };\n",
+		"index.html": "camp",
+		"cedar.md": "# Cedar Trail\n",
+	});
+	const rootedLog = path.join(tempDir("serve-check-rooted-log"), "serve.log");
+	const third = start(["serve", "--port", "0", "--root", rooted], { logFile: rootedLog, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(rooted, "dist/cedar/index.html"), "Cedar Trail");
+		await changeAndWait(path.join(rooted, "cedar.md"), "# Old Growth Trail\n", path.join(rooted, "dist/cedar/index.html"), "Old Growth Trail");
+		const said = await waitFor(rootedLog, "check-rebuilds: ");
+		assert.ok(said.includes("check-rebuilds: the rebuild after cedar.md wrote what a clean build writes (2 files the same)"), said);
+	} finally {
+		await third.stop();
+	}
 });
 
 // The timeline times a rebuild from the change that started it, after the save. A `serve.run`
