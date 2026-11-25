@@ -29,6 +29,8 @@ import { handle, handleBuilt } from "./http.ts";
 import { Live, assetStamps, fingerprint, isAsset, sameStamps } from "./live.ts";
 import type { Written } from "./live.ts";
 import { Channel, Watcher, chooseStrategy } from "./watch.ts";
+import { checkFolder, compareOutputs, verdict } from "./check.ts";
+import { record, timing } from "./timeline.ts";
 import { globSet } from "../glob.ts";
 
 /** How `ssqch serve` serves. */
@@ -332,7 +334,12 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 	const how = chooseStrategy([site.root, ...site.watch].map(realPath));
 	if (how.unknown !== undefined) diagnostics.warn(diagnostics.warning("build", `SSQCH_WATCH=${how.unknown} isn't a way to watch: use poll, or events (the system's own, the default)`));
 	if (how.why !== undefined && !quiet) say(`Watching by looking at every file now and then (${how.why}): a change shows a moment later than with the system's events. SSQCH_WATCH=events turns it off.`);
-	const watcher = new Watcher((file) => rx.send([file]), how.strategy);
+	// When the first change of the next rebuild was heard (`SSQCH_SERVE_TIMELINE`).
+	let heard: number | undefined;
+	const watcher = new Watcher((file) => {
+		if (timing) heard ??= Date.now();
+		rx.send([file]);
+	}, how.strategy);
 	watcher.onError = (dir, e) => diagnostics.warn(diagnostics.warning("build", `can't watch ${dir}, or some of the folders beside it: ${messageOf(e)}. A change there won't be seen until the server starts again${outOfWatches(e)}`));
 	try {
 		const watching = (dir: string, recursive: boolean) => {
@@ -451,6 +458,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 		};
 		for (;;) {
 			const paths = carried.length ? carried.splice(0) : await rx.recv();
+			const heardAt = heard ?? Date.now();
 			// Debounce bursts of events (editors often write several times), for a second at most:
 			// a folder that's written to all the time mustn't hold a rebuild back forever.
 			const burst = performance.now();
@@ -459,6 +467,8 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				if (!more) break;
 				paths.push(...more);
 			}
+			const debounced = Date.now();
+			heard = undefined;
 			const changed = paths.map(realPath).filter((file) => !own(file) && !editorsOwn(file) && !skipped(file));
 			const outputs = changed.filter((file) => isInside(output, file));
 			// A source written again with the same contents hasn't changed: a `beforeBuild` command
@@ -486,13 +496,16 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				}
 			} else if (source !== undefined) {
 				if (!quiet) say(`${voice.FRESH_TRACKS} ${show(source)}`);
+				const asked = Date.now();
 				// The tools watch the same sources, and write what this edit changes for them (new
 				// classes, say) a moment later: the update waits for that, so it's one.
-				await runBuild(builder, live, async () => {
+				const marks = await runBuild(builder, live, async () => {
 					if (tools) await settle(rx, output, assetStamps(output), QUIET, carried);
 				}, sources);
 				if (!quiet) sayWhere();
+				record({ kind: "rebuild", file: show(source), heard: heardAt, debounced, asked, ...marks, said: Date.now() });
 				watchConfigFiles();
+				if (CHECKING && marks.ok) await checkRebuild({ args, builder, rx, carried, tools, changed: show(source), own });
 			} else if (outputs.some((file) => isAsset(file) || !exists(file))) {
 				// Another tool (PostCSS, esbuild) wrote a stylesheet or a script, or ssqch's own
 				// write is late to arrive: the contents say which, so a tool's write that landed
@@ -564,13 +577,51 @@ async function recover(rx: Channel<string[]>, gone: string[], restart: () => Pro
  * Build, print the summary (or the error), and tell the browsers. `hold` runs between a build
  * that worked and telling them, to wait for what the `serve.run` tools write (`settle`).
  */
-async function runBuild(builder: Builder, live: Live, hold: () => Promise<void>, changed?: string[]): Promise<boolean> {
-	const { ok } = await buildAndReport(builder, live, changed);
+async function runBuild(builder: Builder, live: Live, hold: () => Promise<void>, changed?: string[]): Promise<{ ok: boolean; built: number; held: number; published: number; builder?: Built["times"] }> {
+	const { ok, times } = await buildAndReport(builder, live, changed);
+	const built = Date.now();
+	let held = built;
 	if (ok) {
 		await hold();
+		held = Date.now();
 		await publish(builder.site, live);
 	}
-	return ok;
+	return { ok, built, held, published: Date.now(), ...(times ? { builder: times } : {}) };
+}
+
+/** `SSQCH_CHECK_REBUILDS=1`: check each rebuild against a clean build (`check.ts`). */
+const CHECKING = process.env.SSQCH_CHECK_REBUILDS === "1";
+
+/**
+ * After a rebuild that worked: build the same files again in a new process, into
+ * `.cache/ssqch/check-rebuilds/`, and say whether the rebuild wrote the same. A change heard
+ * meanwhile (other than the check's own files) means the two didn't build the same files, so
+ * nothing is said but that.
+ */
+async function checkRebuild({ args, builder, rx, carried, tools, changed, own }: { args: string[]; builder: Builder; rx: Channel<string[]>; carried: string[]; tools: boolean; changed: string; own: (file: string) => boolean }): Promise<void> {
+	const site = builder.site;
+	const dir = checkFolder(site.root);
+	const started = Date.now();
+	fs.rmSync(dir, { recursive: true, force: true });
+	const checker = await Builder.start(args, { reload: true, fallback: true, said: builder.said, check: dir });
+	if (!checker) {
+		say("check-rebuilds: the configuration didn't load for the clean build (its error is above)");
+		return;
+	}
+	let built: Built;
+	try { built = await checker.build(false); } finally { checker.stop(); }
+	const output = realPath(site.output);
+	const moved = [...carried, ...rx.peek().flat()].map(realPath).some((file) => !own(file) && !editorsOwn(file) && !isInside(output, file));
+	let line: string;
+	let found: ReturnType<typeof compareOutputs> | undefined;
+	if (!built.ok) line = `check-rebuilds: the clean build after ${changed} failed where the rebuild worked: ${built.error ?? "its error is above"}`;
+	else if (moved) line = "check-rebuilds: a file changed while the clean build ran, so the two didn't build the same files; not judged";
+	else {
+		found = compareOutputs(site.output, dir, tools);
+		line = verdict(found, changed, site.outputName);
+	}
+	say(line);
+	record({ kind: "check", file: changed, started, finished: Date.now(), verdict: line, ...(found ?? {}) });
 }
 
 /** Build and print the summary, or the error (which browsers are told at once). */

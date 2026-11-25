@@ -336,6 +336,8 @@ export async function main(argv: string[]): Promise<number> {
 	if (command === "build" && format === "json") diagnostics.capture();
 	// (The server has said the command line's own already.)
 	if (building) diagnostics.aliasesKnown(aliases);
+	// A check's clean build (`SSQCH_CHECK_REBUILDS`) keeps its warnings: the rebuild said them.
+	if (building?.check !== undefined) diagnostics.capture();
 	else for (const row of aliases) diagnostics.aliasUsed(row);
 
 	const later = COMMANDS.find((c) => c.name === command)?.stage;
@@ -395,7 +397,7 @@ export async function main(argv: string[]): Promise<number> {
 	const root = path.resolve(value("root") ?? ".");
 	siteRoot = root;
 	routeConsole();
-	const makeConfig = async () => (await import("./config.ts")).loadConfig({ root, rootGiven: value("root") ?? ".", env, serving, quiet: flag("quiet") || tracing, verbose: flag("verbose"), profile: command === "build" && flag("profile"), output: value("output"), base: value("base") });
+	const makeConfig = async () => (await import("./config.ts")).loadConfig({ root, rootGiven: value("root") ?? ".", env, serving, quiet: flag("quiet") || tracing || building?.check !== undefined, verbose: flag("verbose"), profile: command === "build" && flag("profile"), output: building?.check ?? value("output"), base: value("base") });
 
 	if (command === "new") return newPage(makeConfig, root, { path: cli.positionals[0], title: value("title"), date: value("date"), blueprint: value("blueprint"), set: (cli.options.set as string[] | undefined) ?? [], format });
 	if (serving) {

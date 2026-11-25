@@ -880,3 +880,57 @@ test("serve_brackets_an_ipv6_host_in_its_urls", async () => {
 		await server.stop();
 	}
 });
+
+// `SSQCH_CHECK_REBUILDS=1` (the dev server's design, stage 0): after each rebuild, a clean build
+// of the same files in a new process, compared byte for byte with what the rebuild wrote. A site
+// whose pages list a collection, highlight a fence and copy a file passes; one whose data
+// function counts its calls (state kept in the builder's process, as a stale cache would be)
+// doesn't, and the check names the page. `SSQCH_SERVE_TIMELINE` writes each step's time.
+test("serve_checks_each_rebuild_against_a_clean_build", async () => {
+	const dir = tempDir("serve-check");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, passthrough: [\"src/camp.txt\"] };\n",
+		"src/index.jinja": "{% for post in collections.posts %}<a href=\"{{ post.url }}\">{{ post.data.title }}</a>{% endfor %}",
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/hike.md": "---\ntitle: Cedar Trail\n---\n```js\nconst cones = 3;\n```\n",
+		"src/posts/stump.md": "---\ntitle: The stump\n---\nStill there.\n",
+		"src/camp.txt": "pine cones",
+	});
+	const timeline = path.join(tempDir("serve-check-times"), "times.jsonl");
+	const log = path.join(dir, "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1", SSQCH_SERVE_TIMELINE: timeline } });
+	try {
+		await waitFor(path.join(dir, "dist/index.html"), "Cedar Trail");
+		await changeAndWait(path.join(dir, "src/posts/hike.md"), "---\ntitle: Old Growth Trail\n---\n```js\nconst cones = 4;\n```\n", path.join(dir, "dist/index.html"), "Old Growth Trail");
+		const said = await waitFor(log, "check-rebuilds: ");
+		const hike = path.join("src", "posts", "hike.md");
+		assert.ok(said.includes(`check-rebuilds: the rebuild after ${hike} wrote what a clean build writes (4 files the same)`), said);
+		const lines = readOr(timeline).trim().split("\n").map((line) => JSON.parse(line));
+		const rebuild = lines.find((line) => line.kind === "rebuild");
+		assert.ok(rebuild && lines.some((line) => line.kind === "check"), readOr(timeline));
+		// Each step after the one before it, on one clock.
+		const b = rebuild.builder;
+		const steps = [rebuild.heard, rebuild.debounced, rebuild.asked, b.received, b.started, b.finished, b.said, rebuild.built, rebuild.held, rebuild.published, rebuild.said];
+		assert.ok(steps.every((t, i) => typeof t === "number" && (i === 0 || t >= steps[i - 1])), JSON.stringify(rebuild));
+		assert.deepEqual(b.phases.map(([name]) => name).slice(0, 2), ["setup", "data"]);
+	} finally {
+		await server.stop();
+	}
+
+	const counting = tempDir("serve-check-stale");
+	write(counting, {
+		"ssqch.config.js": "let builds = 0;\nexport default { dirs: { input: \"src\", output: \"dist\" }, data: { builds: () => ++builds } };\n",
+		"src/index.jinja": "build {{ builds }}",
+		"src/camp.jinja": "camp",
+	});
+	const staleLog = path.join(counting, "serve.log");
+	const again = start(["serve", "--port", "0", "--root", counting], { logFile: staleLog, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(counting, "dist/index.html"), "build 1");
+		await changeAndWait(path.join(counting, "src/camp.jinja"), "camp two", path.join(counting, "dist/camp/index.html"), "camp two");
+		const said = await waitFor(staleLog, "check-rebuilds: ");
+		assert.ok(said.includes(`check-rebuilds: the rebuild after ${path.join("src", "camp.jinja")} isn't what a clean build writes: 1 differ (index.html)`), said);
+	} finally {
+		await again.stop();
+	}
+});

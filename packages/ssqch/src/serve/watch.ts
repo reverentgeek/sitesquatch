@@ -51,6 +51,11 @@ export class Channel<T> {
 		return this.items.shift();
 	}
 
+	/** What's waiting, left where it is. */
+	peek(): readonly T[] {
+		return this.items;
+	}
+
 	/** Forget what's waiting. */
 	drain(): void {
 		this.items.length = 0;

@@ -16,6 +16,8 @@ import { summary } from "../report.ts";
 import { isAsset } from "./live.ts";
 import { fileHash } from "./builder.ts";
 import type { BuilderStart, FromBuilder, SiteInfo, State, ToBuilder } from "./builder.ts";
+import { timing } from "./timeline.ts";
+import type { BuilderTimes } from "./timeline.ts";
 
 const key = (row: equivalents.Equivalent) => `${row.kind}:${row.word}`;
 
@@ -120,8 +122,10 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 		while (!asked.length) await new Promise<void>((resolve) => { wake = resolve; });
 		wake = undefined;
 		const { recovered, changed } = asked.shift()!;
+		const received = Date.now();
 		config.changed = changed;
 		let result: { ok: boolean; error?: string; assets: string[] };
+		let times: Omit<BuilderTimes, "said"> | undefined;
 		// What the build is doing, each second, for the server's limit on a stuck one. Unref'd,
 		// so a build with nothing left to wait for still ends as Node ends it (`watchSettle`).
 		activity.reset();
@@ -129,7 +133,9 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 		reporting.unref();
 		activity.setTell((label) => send({ type: "progress", ...activity.current(), blocking: label }));
 		try {
+			const started = Date.now();
 			const report = await working(() => build(config));
+			if (timing) times = { received, started, finished: Date.now(), phases: report.timings };
 			if (!config.quiet) process.stdout.write(summary(config, report, recovered));
 			result = { ok: true, assets: report.outputs.filter(isAsset) };
 		} catch (e) {
@@ -141,6 +147,6 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 		clearInterval(reporting);
 		activity.setTell(undefined);
 		await flushed();
-		await send({ type: "built", ...result, ...state(config) });
+		await send({ type: "built", ...result, ...state(config), ...(times ? { times: { ...times, said: Date.now() } } : {}) });
 	}
 }

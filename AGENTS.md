@@ -133,6 +133,13 @@ Run from `packages/ssqch/` unless it says otherwise.
   0.72 s, on the machine those limits were set on (an Apple M-series laptop). Run it alone,
   with nothing compiling beside it. With `--baseline <another checkout's packages/ssqch>` it
   compares two builds instead, which is what CI does.
+- `node bench/serve.ts` times the dev server instead: from a save to the browser hearing of it,
+  step by step (the watcher, the debounce, the build and its phases, the output's comparison), on
+  a copy of the 10,000-page site or of `--site <folder> --edit <file>`. `--check` also runs
+  `SSQCH_CHECK_REBUILDS=1`, which builds each rebuild's files again in a new process and says
+  whether the rebuild wrote the same, byte for byte (`src/serve/check.ts`); a change that makes
+  rebuilds skip work runs under it. `SSQCH_SERVE_TIMELINE=<file>` is what the script reads
+  (`src/serve/timeline.ts`). Both are for ssqch's own measurements and tests, not the docs.
 - `node scripts/build.ts` builds the npm package into `dist/` (bundled with esbuild; sharp is its
   one dependency), and `node scripts/check-package.ts` installs that tarball in an empty folder
   and builds every example with it. "Releasing" has the rest.
