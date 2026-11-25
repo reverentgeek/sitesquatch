@@ -46,6 +46,29 @@ test("no table is split by a blank line", () => {
 	assert.deepEqual(split, [], "a blank line splits a table here");
 });
 
+// A `|` splits a table's cell even inside backticks (GitHub's tables, and the site's), so a row
+// with `{{ title | slug }}` in it lost the rest of its text: Hugo's `.Date.Format` row showed
+// half its answer, and five others were cut short too, until 0.15.1. Inside a table, a pipe in code is `\|`.
+test("every table row has as many cells as its header", () => {
+	const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+	const cells = (row: string) => row.trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/).length;
+	const delimiter = /^\|\s*:?-{3}/;
+	const wrong: string[] = [];
+	for (const file of [...walk(DOCS_DIR).filter((f) => f.endsWith(".md")), path.join(REPO, "README.md")]) {
+		const lines = readFileSync(file, "utf8").split("\n");
+		let fenced = false;
+		let header: number | undefined;
+		lines.forEach((line, i) => {
+			if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+			if (fenced || !line.startsWith("|")) return void (header = undefined);
+			if (delimiter.test(line)) return;
+			if (header === undefined && delimiter.test(lines[i + 1] ?? "")) return void (header = cells(line));
+			if (header !== undefined && cells(line) !== header) wrong.push(`${path.relative(REPO, file)}:${i + 1}`);
+		});
+	}
+	assert.deepEqual(wrong, [], "a row here has a `|` in its text that isn't `\\|`");
+});
+
 test("each page's `ssqch docs` command prints that page", () => {
 	const all = sections();
 	const known = names(GRAMMAR);

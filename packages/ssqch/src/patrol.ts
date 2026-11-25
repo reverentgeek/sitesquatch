@@ -6,6 +6,7 @@
 // each page's shape (one <h1>, its content in <main> or <article> and early in the page, a
 // description), and each page's Markdown copy (there when it's linked, the page's own text, not
 // too long for an agent's fetch, code fences that close, links that work from anywhere).
+import { percentDecode } from "./serve/http.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { markdown } from "./api.ts";
@@ -186,6 +187,25 @@ export function patrol(dir: string): Patrol {
 	for (const u of [sitemapLine, ...locs.slice(0, 1)]) {
 		try { if (u) origins.add(new URL(u).origin); } catch { /* not an address */ }
 	}
+	// The path the site is served under (`/repo/`), which its links have and its folder doesn't: from
+	// robots.txt's sitemap line when the sitemap is at the folder's top, or from the first page in
+	// the sitemap whose file is there once a prefix is taken off (the 2026-11-24 review: under
+	// `base: "/repo"`, every link llmsPlugin() wrote was called broken).
+	const index = (rel: string) => (rel === "" || rel.endsWith("/") ? `${rel}index.html` : rel);
+	let base = "";
+	try {
+		const at = sitemapLine && sitemapFile ? new URL(sitemapLine).pathname : undefined;
+		if (at !== undefined && at.endsWith("/sitemap.xml")) base = at.slice(0, -"sitemap.xml".length).replace(/^\/+/, "");
+	} catch { /* not an address */ }
+	if (base === "" && locs.length) {
+		try {
+			const parts = percentDecode(new URL(locs[0]).pathname).replace(/^\/+/, "").split("/");
+			for (let n = 0; n < parts.length && base === ""; n++) {
+				if (n > 0 && has.has(index(parts.slice(n).join("/")))) base = `${parts.slice(0, n).join("/")}/`;
+				if (n === 0 && has.has(index(parts.join("/")))) break;
+			}
+		} catch { /* not an address */ }
+	}
 	/** A link's file in the folder, when it's the site's own: a path from the root, or a whole address on the site. */
 	const fileOf = (href: string): string | undefined => {
 		let p: string;
@@ -197,7 +217,10 @@ export function patrol(dir: string): Patrol {
 				p = u.pathname;
 			} catch { return undefined; }
 		}
-		p = decodeURIComponent(p.replace(/[?#].*$/, "")).replace(/^\/+/, "");
+		// Decoded where it can be: a `%` that starts no escape (`/100%-complete/`) is a `%` in the
+		// file's name, where `decodeURIComponent` threw and patrol stopped (the 2026-11-24 review).
+		p = percentDecode(p.replace(/[?#].*$/, "")).replace(/^\/+/, "");
+		if (base !== "" && p.startsWith(base)) p = p.slice(base.length);
 		if (has.has(p)) return p;
 		if (has.has(`${p.replace(/\/$/, "")}/index.html`.replace(/^\//, ""))) return `${p.replace(/\/$/, "")}/index.html`.replace(/^\//, "");
 		return "";
@@ -350,10 +373,14 @@ export async function patrolLive(p: Patrol, url: string, fetcher: typeof fetch =
 		if (!own.ok) { say("live-copy-missing", "copies the build has that the live site doesn't serve at their own address (deploy the build, or check the host's rules)", copy); continue; }
 		const agent = await ask(page, AGENT_ACCEPT);
 		await agent.body?.cancel();
-		if (!markdown(agent)) say("live-no-markdown", "pages that answer an agent's `Accept: text/markdown` with HTML: it gets the page's chrome, not the copy (`ssqch docs \"serving markdown\"` has the host's few lines)", page);
-		else if (!/(^|,)\s*accept\s*(,|$)/i.test(agent.headers.get("vary") ?? "")) say("live-no-vary", "Markdown answers without `Vary: Accept`: a cache can hand the Markdown to a browser, or the page to an agent", page);
 		const browser = await ask(page, BROWSER_ACCEPT);
 		await browser.body?.cancel();
+		// A page that fails (a 404 or a 500) isn't one that passes, whatever its type: the copy at its
+		// own address answered, and the page didn't (the 2026-11-24 review).
+		const failed = [agent, browser].find((r) => !r.ok);
+		if (failed) { say("live-page-failed", "pages that don't answer with success, for a browser or an agent, though the build has them (deploy the build, or check the host's rules)", `${page} (${failed.status})`); continue; }
+		if (!markdown(agent)) say("live-no-markdown", "pages that answer an agent's `Accept: text/markdown` with HTML: it gets the page's chrome, not the copy (`ssqch docs \"serving markdown\"` has the host's few lines)", page);
+		else if (!/(^|,)\s*accept\s*(,|$)/i.test(agent.headers.get("vary") ?? "")) say("live-no-vary", "Markdown answers without `Vary: Accept`: a cache can hand the Markdown to a browser, or the page to an agent", page);
 		if (markdown(browser)) say("live-browser-markdown", "pages that answer a browser with Markdown: people get the copy, not the page", page);
 	}
 	return { ...p, findings: [...found.values()], live: { url: root, asked: pick.length } };

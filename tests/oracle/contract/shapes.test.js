@@ -20,7 +20,7 @@ const frozen = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, "utf8")) :
 const freezing = process.env.SSQCH_FREEZE_SHAPES === "1";
 const freezingNew = process.env.SSQCH_FREEZE_SHAPES === "new";
 /** Documents 0.7.0 didn't print, and the version whose shape is frozen for each. */
-const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.10.1", "scout": "0.11.0", "diff --text": "0.12.0", "patrol": "0.13.0" };
+const ADDED = { "diff (several builds)": "0.8.1", "build --profile": "0.10.1", "scout": "0.11.0", "diff --text": "0.12.0", "patrol": "0.13.0", "scout (failed)": "0.15.1" };
 const shapes = {};
 
 /** A value's shape: "string", "number", "boolean", "null", { key: shape }, or [shape of every element merged]. */
@@ -117,6 +117,17 @@ test("build report, profiled", () => {
 	check("build --profile", report);
 	// Without --profile there's no profile.
 	assert.equal(json(["build", "--root", dir]).profile, undefined);
+});
+
+// `ssqch scout --format json` when it can't scout: JSON on standard output too, and exit 1.
+test("scout_json_when_it_fails", () => {
+	const dir = project({ "ssqch.config.js": "export default {};\n" }, "shapes-scout-failed");
+	const r = ssqch(["scout", dir, "--format", "json"]);
+	assert.equal(r.code, 1, r.log);
+	const report = JSON.parse(r.stdout);
+	assert.equal(report.ok, false);
+	assert.match(report.error, /couldn't tell which generator builds the site/);
+	check("scout (failed)", report);
 });
 
 // `ssqch scout --format json`, with every list filled: a to-do, a draft, an edit and a rename, what

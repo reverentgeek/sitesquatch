@@ -703,5 +703,9 @@
         ]
       }
     ]
+  },
+  "scout (failed)": {
+    "ok": "boolean",
+    "error": "string"
   }
 }

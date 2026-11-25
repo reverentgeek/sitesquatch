@@ -21,11 +21,11 @@ Netlify can build the site itself, with no deploy token to manage. With `ssqch` 
     paths = [".cache/ssqch"]
 ```
 
-- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.15.0`) and bump it when you're ready.
+- **The `ssqch` dev dependency** pins the version, so a new SiteSquatch release can't surprise a deploy. Pin it exactly (`pnpm add -D ssqch@0.15.1`) and bump it when you're ready.
 - **`NODE_VERSION`** is the Node that runs the build: anything from 22.18 on. ssqch builds the same bytes on every supported Node, so pick the one your other build tools like.
 - **[`netlify-plugin-cache`](https://github.com/jakejarvis/netlify-plugin-cache)** carries `.cache/ssqch` (the encoded images and their hashes, highlighted code, and any `fetch` copies) over to the next build. Add it to your `devDependencies`.
 
-A site without a `package.json` can run a pinned release straight from npm in the build command, with `SSQCH_VERSION = "0.15.0"` under `[build.environment]` to pin it (and `NODE_VERSION` there as well):
+A site without a `package.json` can run a pinned release straight from npm in the build command, with `SSQCH_VERSION = "0.15.1"` under `[build.environment]` to pin it (and `NODE_VERSION` there as well):
 
 ```toml
 [build]
@@ -93,6 +93,10 @@ Only cache a folder forever when everything in it is named by its contents: a st
 
 Netlify Forms work on a page ssqch built as on any static page: when it deploys, Netlify reads the HTML for a `<form>` with a `name` and `data-netlify="true"`, and takes its submissions. Write the form as Netlify's docs describe it (a form sent with JavaScript also needs a hidden `<input type="hidden" name="form-name" value="contact">`); ssqch changes none of it, and `minifyPlugin()` keeps `data-netlify`, `netlify-honeypot` and hidden inputs as written. Since Netlify finds forms at deploy, try one on a deploy preview: `ssqch serve` has no server behind a form's `action`. It answers a form's `POST` with the page at the `action`'s address, as it answers a `GET`, so a form whose `action` is its thank-you page (`action="/thanks/"`) clicks through locally, though nothing is kept.
 
+## Rebuilding on a schedule
+
+A page made from an outside answer (stock from an API, a `fetch` in a data file) or from the build's day ("new this week") is only as fresh as the last build. Netlify builds when it's asked to: make a build hook in the site's build settings, which gives a URL that starts a build when it's sent a `POST`, and call it on a schedule, from a GitHub Actions workflow with `on: { schedule: [{ cron: "15 5 * * *" }] }` and a step that runs `curl -X POST -d '{}' "$BUILD_HOOK"` (the URL in a repository secret), or from a Netlify scheduled function. With `netlify-plugin-cache` keeping `.cache/ssqch` (above), a scheduled build encodes no picture twice, and a `fetch` with a `cache` has its last answer when the API is down; a build that fails leaves the last deploy serving.
+
 ## Deploy previews and branch deploys
 
 Netlify builds every pull request as a deploy preview, and any branch you turn on as a branch deploy, with the same `[build]` command, so a preview is the production build of that branch at its own address. The build can tell which it is from the `CONTEXT` variable Netlify sets (`production`, `deploy-preview` or `branch-deploy`), and `DEPLOY_PRIME_URL` is the preview's address:
@@ -106,7 +110,7 @@ A command for one context goes in `netlify.toml` under `[context.deploy-preview]
 
 ## Updating ssqch
 
-The version in the lockfile is the one Netlify builds with, so a new release never reaches the site until you choose it. To move up: `pnpm add -D ssqch@0.15.0` (or `npm install -D ssqch@0.15.0`), build and test locally, and open a pull request: its deploy preview is the site on the new version, and `ssqch diff` between the old build and the new one shows every page that changed. The [changelog](https://sitesquatch.dev/changelog/) says what each release changes, with what a site has to change under "Breaking".
+The version in the lockfile is the one Netlify builds with, so a new release never reaches the site until you choose it. To move up: `pnpm add -D ssqch@0.15.1` (or `npm install -D ssqch@0.15.1`), build and test locally, and open a pull request: its deploy preview is the site on the new version, and `ssqch diff` between the old build and the new one shows every page that changed. The [changelog](https://sitesquatch.dev/changelog/) says what each release changes, with what a site has to change under "Breaking". When it says a release renames encoded images, the first build after the move encodes every picture again, as if the cache were empty, so expect that one build to take as long as a site's first (the blog's took 5 minutes instead of 37 seconds); the cache keeps the new copies, and the next build is fast.
 
 ## Markdown for agents
 

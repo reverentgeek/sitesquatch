@@ -195,4 +195,8 @@ test("diff_says_where_a_removed_page_is_redirected", () => {
 	assert.ok(r.log.includes("Removed (2)\n  - /gone/\n  - /old/ (redirected to /new/)\n"), r.log);
 	r = ssqch(["diff", path.join(dir, "a"), path.join(dir, "b"), "--format", "json"]);
 	assert.deepEqual(JSON.parse(r.log).redirects, { "/old/": "/new/" }, r.log);
+	// Under a base, the lines have it and the build's paths don't (the 2026-11-24 review).
+	write(dir, { "b/_redirects": "/repo/old/  /repo/new/  301\n" });
+	r = ssqch(["diff", path.join(dir, "a"), path.join(dir, "b")]);
+	assert.ok(r.log.includes("  - /old/ (redirected to /repo/new/)\n"), r.log);
 });

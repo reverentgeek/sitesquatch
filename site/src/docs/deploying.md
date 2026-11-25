@@ -51,10 +51,17 @@ Publish `dist-preview`. Their lines have the base in them already (`redirectsPlu
 ssqch doesn't build a search index itself; [Pagefind](https://pagefind.app) does it well and runs after the build. Add it as a command, with its version pinned so every build gets the same one (`npx` comes with Node; or `npm install --save-dev pagefind` and run `pagefind`):
 
 ```js
+import fs from "node:fs";
+
 export default defineConfig(({ env }) => ({
-  afterBuild: env === "production" ? [{ run: "npx -y pagefind@1.6.0 --site dist" }] : [],
+  afterBuild: env === "production" ? [
+    ({ dirs }) => fs.rmSync(`${dirs.output}pagefind`, { recursive: true, force: true }),
+    { run: "npx -y pagefind@1.6.0 --site dist" },
+  ] : [],
 }));
 ```
+
+The first hook empties the last index: Pagefind names its files by their contents and never deletes any, and `leaveNoTrace` leaves another tool's files alone, so without it every build's index stays in `dist/pagefind/` beside the new one, and a fresh copy of the site builds something else (The North Fake study's fresh copy had six such files). A function and not `rm -rf`, so it works on Windows too.
 
 Then Pagefind's Component UI in your layout: its stylesheet and script, and a search button with its dialog (Ctrl+K or Cmd+K opens it too). Mark the part of each page to index with `data-pagefind-body` (the `<main>`), or Pagefind indexes everything, navigation included:
 
@@ -68,3 +75,5 @@ Then Pagefind's Component UI in your layout: its stylesheet and script, and a se
 `<pagefind-config bundle-path>` tells the search where its index is. Pagefind's script is a module, which can't see the address it was loaded from, so without it the search looks in `/pagefind/` at the root of the domain: under a [`base`](#serving-a-site-under-a-path) (a GitHub Pages project site, `/repo/`), that's nothing, or another site's index, and every search comes up empty. ssqch adds the base to URL attributes, and `bundle-path` isn't one, so `withBase` adds it (`{{ withBase("/pagefind/") }}` in Edge, `<%= withBase("/pagefind/") %>` in EJS, `{{withBase "/pagefind/"}}` in Handlebars).
 
 Its colors are custom properties (`--pf-text`, `--pf-background`, `--pf-border` and the rest). Pagefind's stylesheet sets them on `:root`, so set yours on an element around the search (`#search { --pf-text: var(--text); }`), and they follow your light and dark themes. `ssqch serve` builds without the `afterBuild` command, so to try search, build for production and serve that build: `ssqch build`, then `ssqch serve --built`. The docs starter (`ssqch init --starter docs`) has all of this, behind `SEARCH=1`.
+
+**Which of Pagefind's UIs:** the Component UI above is a search for every page, a button and a dialog over the page. For results on a page of their own (`/search/?q=boots`, which a site's own search form can send people to), Pagefind's Default UI (`pagefind-ui.js` and `pagefind-ui.css`, with `new PagefindUI({ element: "#search" })`) shows them in place. It's older, and it needs two things the Component UI does itself to pass an accessibility checker: an `aria-label` on its input, which has only a `title`, and its colors set for a dark theme (`--pagefind-ui-text`, `--pagefind-ui-background`), or its messages fail contrast there (The North Fake study, with axe).

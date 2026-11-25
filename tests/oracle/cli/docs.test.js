@@ -107,7 +107,7 @@ test("docs_answer_for_every_name", () => {
 	assert.ok(r.ok && r.log.includes("**Responsive images:**") && !r.log.includes("slugger"), r.log);
 	// Added with the Squatch Snacks rerun: the plugin option, and the topics its agent looked for
 	// and didn't find.
-	for (const [query, want] of [[["notFound"], "`notFound: \"/404.html\"` (with `hostFile: true`)"], [["moving", "a", "page"], "### Moving a page"], [["structured", "data"], "### Structured data (JSON-LD)"], [["analytics"], "A script for production only, such as analytics"]]) {
+	for (const [query, want] of [[["notFound"], "`notFound: \"/404.html\"` (with `hostFile: true`)"], [["moving", "a", "page"], "### Moving a page"], [["structured", "data"], "### Structured data (JSON-LD)"], [["analytics"], "A script for production only, such as analytics"], [["csv"], "**A spreadsheet's export (CSV):**"], [["money", "and", "units"], "### Money and units"], [["a", "default", "date"], "### A default date that a page's own beats"]]) {
 		r = ssqch(["docs", ...query]);
 		assert.ok(r.ok && r.log.includes(want), `${JSON.stringify(query)}: ${r.log}`);
 	}

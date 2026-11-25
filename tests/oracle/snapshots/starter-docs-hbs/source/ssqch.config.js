@@ -1,5 +1,6 @@
 // A documentation site. `ssqch serve` serves it with live reload, and
 // `ssqch build` builds it into dist/. ssqch.d.ts gives your editor the types.
+import fs from "node:fs";
 import { defineConfig, readData } from "ssqch";
 import { linksPlugin } from "ssqch/links";
 import { llmsPlugin } from "ssqch/llms";
@@ -70,7 +71,9 @@ export default defineConfig(({ env }) => ({
   },
 
   data: { search },
-  afterBuild: search ? [{ run: "npx -y pagefind@1.6.0 --site dist" }] : [],
+  // Pagefind names its files by their contents, so the last index is emptied first: its old
+  // files would stay in dist/ beside the new ones.
+  afterBuild: search ? [({ dirs }) => fs.rmSync(`${dirs.output}pagefind`, { recursive: true, force: true }), { run: "npx -y pagefind@1.6.0 --site dist" }] : [],
 
   plugins: [
     // Broken internal links (and anchors) fail a production build.

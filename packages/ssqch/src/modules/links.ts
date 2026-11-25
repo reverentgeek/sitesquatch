@@ -525,6 +525,9 @@ async function check(config: Config, output: string, written: string[], options:
 		// 404` covers every path, and a link it answers is still broken (the Squatch Snacks rerun).
 		const rule = rules.length ? ruleFor(rules, targetPath, target !== undefined) : undefined;
 		if (rule !== undefined && !rule.notFound) return undefined;
+		// A forced 4xx line answers the link before the file it would find (`/trail/ /404.html
+		// 404!`): broken, though the file is there (the 2026-11-24 review).
+		if (rule !== undefined && target !== undefined) return `a forced 4xx line in _redirects answers it: \`${rule.from} ${rule.to}\``;
 		if (target === undefined) {
 			// A site with hundreds of dead links has a bigger problem than typos.
 			if (!meant.has(targetPath) && meant.size < 500) meant.set(targetPath, didYouMean((nearest ??= closestPathFinder(urls))(targetPath), ""));
@@ -660,7 +663,9 @@ BUILTINS.set("ssqch/links", (config: Config, given) => {
 			const message = describe(result.broken, config.verbose ? Infinity : 20);
 			// One for each link, for `ssqch build --format json`.
 			const each = (severity: "error" | "warning"): Diagnostic[] => result.broken.map((b) => ({ ...(severity === "error" ? error : warning)("links", `${b.page} -> ${b.link} (${b.reason})`), url: b.page }));
-			if (fail) throw new Diagnostics(message, each("error"));
+			// Named for the plugin after the hook's words: "after_build hook failed" alone sent The North
+			// Fake study looking for a hook of its own (E6). The JSON's code is `links` either way.
+			if (fail) throw new Diagnostics(`linksPlugin: ${message}`, each("error"));
 			if (isCapturing()) each("warning").forEach(warn);
 			else if (!config.quiet) warn(warning("links", message));
 		},

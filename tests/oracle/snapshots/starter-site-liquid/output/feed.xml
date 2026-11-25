@@ -98,7 +98,7 @@ was the build.&lt;/p&gt;
 &lt;p&gt;The link checker (&lt;code&gt;linksPlugin()&lt;/code&gt; in &lt;code&gt;ssqch.config.js&lt;/code&gt;) follows every link inside the site
 after a production build. A link to a page that isn't there, or to a heading that isn't on it,
 fails the build and says where:&lt;/p&gt;
-&lt;pre&gt;&lt;code class=&quot;language-text&quot;&gt;error: after_build hook failed: the trail goes cold on 1 broken link:
+&lt;pre&gt;&lt;code class=&quot;language-text&quot;&gt;error: after_build hook failed: linksPlugin: the trail goes cold on 1 broken link:
   /posts/i-know-what-i-saw/ -&amp;gt; /posts/the-stump-has-moved/#the-tracks (no id &amp;quot;the-tracks&amp;quot; on that page)
 &lt;/code&gt;&lt;/pre&gt;
 &lt;h2 id=&quot;the-correction&quot;&gt;The correction&lt;/h2&gt;

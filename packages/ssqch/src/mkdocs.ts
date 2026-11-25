@@ -14,6 +14,7 @@ import type { Data } from "./data.ts";
 import { isPlainObject, parseYaml, sourceDateEpoch } from "./data.ts";
 import { compareText } from "./paths.ts";
 import { safe } from "./rendering.ts";
+import { readValues } from "./plugin-files.ts";
 
 export const MKDOCS_VERSION = "1.6.1";
 
@@ -38,6 +39,7 @@ export interface MkDocs {
 export function loadMkdocs(root: string, file: string, includeDirs: string[]): MkDocs {
 	const full = path.resolve(root, file);
 	let text: string;
+	readValues(full);
 	try { text = fs.readFileSync(full, "utf8"); } catch { throw new BuildError(`mkdocsTemplates: there's no ${file} in ${root} (give its path: \`mkdocsTemplates: "docs/mkdocs.yml"\`)`); }
 	const raw = readMkdocsYaml(text, file);
 	const themeFile = includeDirs.map((dir) => path.join(dir, "mkdocs_theme.yml")).find((f) => fs.existsSync(f));

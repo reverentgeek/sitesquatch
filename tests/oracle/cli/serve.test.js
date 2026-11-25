@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { ssqch, tempDir, write } from "../lib/ssqch.js";
-import { start, sleep, waitFor, changeAndWait, httpGet, body } from "../lib/serve.js";
+import { start, sleep, waitFor, changeAndWait, httpGet, body, serveSite } from "../lib/serve.js";
 
 const unixOnly = { skip: process.platform === "win32" && "unix only" };
 const readOr = (file) => { try { return fs.readFileSync(file, "utf8"); } catch { return ""; } };
@@ -243,6 +243,79 @@ test("serve_reads_a_changed_config_again", async () => {
 		await changeAndWait(path.join(dir, "ssqch.config.js"), "import { shout } from \"./lib/filters.js\";\nimport { rssPlugin } from \"ssqch/rss\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, filters: { shout }, data: { greeting: \"howdy\" }, plugins: [rssPlugin()] };\n", page, "HOWDY? 2");
 		// Templates still rebuild as before.
 		await changeAndWait(path.join(dir, "src/index.jinja"), "plain {{ info.n }}", page, "plain 2");
+	} finally {
+		await server.stop();
+	}
+});
+
+// A file the site's code reads with readData() or files(), outside the input
+// folder, is watched like a module the config imports: an edit to it showed
+// nothing until the server started again (0.15.1). Read while the config
+// loads, and read in a data function on each build.
+test("serve_rebuilds_for_a_data_file_its_code_read", async () => {
+	const dir = tempDir("serve-read-data");
+	write(dir, {
+		"ssqch.config.js": "import { files, readData } from \"ssqch\";\nconst site = readData(\"data/site.yml\");\nexport default { dirs: { input: \"src\", output: \"dist\" }, data: { site, snack: () => readData(\"data/snack.yml\"), photos: () => files(\"photos/*.txt\").map((f) => f.size) } };\n",
+		"data/site.yml": "title: Squatch Snacks\n",
+		"data/snack.yml": "name: Pine Cone Crunch\n",
+		"photos/a.txt": "ab",
+		"src/index.jinja": "{{ site.title }}: {{ snack.name }} {{ photos | join(\",\") }}",
+	});
+	const log = path.join(dir, "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "dist/index.html");
+		await waitFor(page, "Squatch Snacks: Pine Cone Crunch 2");
+		// Read in a data function, on each build.
+		await changeAndWait(path.join(dir, "data/snack.yml"), "name: Moss Mix\n", page, "Squatch Snacks: Moss Mix 2");
+		// Read while the config loaded: in the config's values.
+		await changeAndWait(path.join(dir, "data/site.yml"), "title: Squatch Provisions\n", page, "Squatch Provisions: Moss Mix 2");
+		// A file files() matched.
+		await changeAndWait(path.join(dir, "photos/a.txt"), "abcd", page, "Squatch Provisions: Moss Mix 4");
+		// The server names a file with the platform's separator (`data\snack.yml` on Windows).
+		assert.ok(readOr(log).includes(`Fresh tracks in ${path.join("data", "snack.yml")} (reading the configuration again)`), readOr(log));
+	} finally {
+		await server.stop();
+	}
+	// In a folder `watch` names, a value read while the config loaded is still the config's: a
+	// rebuild alone kept the old one (the 2026-11-24 review).
+	const watched = tempDir("serve-read-watched");
+	write(watched, {
+		"ssqch.config.js": "import { readData } from \"ssqch\";\nconst snack = readData(\"data/snack.json\");\nexport default { dirs: { input: \"src\", output: \"dist\" }, watch: [\"data\"], data: { snack } };\n",
+		"data/snack.json": "{\"name\":\"Pine\"}",
+		"src/index.jinja": "{{ snack.name }}",
+	});
+	const again = start(["serve", "--port", "0", "--root", watched], { logFile: path.join(watched, "serve.log") });
+	try {
+		const page = path.join(watched, "dist/index.html");
+		await waitFor(page, "Pine");
+		await changeAndWait(path.join(watched, "data/snack.json"), "{\"name\":\"Moss\"}", page, "Moss");
+	} finally {
+		await again.stop();
+	}
+});
+
+// A `beforeBuild` hook that writes a file the config reads with readData()
+// (stock, fetched on each build) changes it on every build: that's what the
+// build used, not an edit, so an edit to a page is one build, not a reload.
+test("serve_does_not_reload_for_a_data_file_its_own_build_wrote", async () => {
+	const dir = tempDir("serve-hook-data");
+	write(dir, {
+		"ssqch.config.js": "import fs from \"node:fs\";\nimport { readData } from \"ssqch\";\nlet n = 0;\nexport default { dirs: { input: \"src\", output: \"dist\" }, beforeBuild: [() => fs.writeFileSync(\"data/stock.json\", JSON.stringify({ n: ++n }))], data: { stock: () => readData(\"data/stock.json\") } };\n",
+		"data/stock.json": "{\"n\":0}",
+		"src/index.jinja": "one {{ stock.n }}",
+	});
+	const log = path.join(dir, "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		const page = path.join(dir, "dist/index.html");
+		await waitFor(page, "one 1");
+		await changeAndWait(path.join(dir, "src/index.jinja"), "two {{ stock.n }}", page, "two 2");
+		await changeAndWait(path.join(dir, "src/index.jinja"), "three {{ stock.n }}", page, "three 3");
+		// The same process counted every build: a reload would have started n again.
+		await sleep(2500);
+		assert.ok(fs.readFileSync(page, "utf8").includes("three 3"), fs.readFileSync(page, "utf8"));
+		assert.equal(count(readOr(log), "reading the configuration again"), 0, readOr(log));
 	} finally {
 		await server.stop();
 	}
@@ -762,6 +835,22 @@ test("serve_ends_a_build_that_stops_answering", async () => {
 		await waitFor(log, "the build stopped answering");
 		assert.ok(readOr(log).includes("the build stopped answering for 2 s"), readOr(log));
 		await changeAndWait(path.join(dir, "index.jinja"), "camp", path.join(dir, "_site/index.html"), "camp");
+	} finally {
+		await server.stop();
+	}
+});
+
+// An IPv6 address the server listens on is in brackets in its URLs, which a URL needs to tell its
+// colons from the port's: `http://::ffff:127.0.0.1:58738/` parsed nowhere (the 2026-11-24 review).
+test("serve_brackets_an_ipv6_host_in_its_urls", async () => {
+	const dir = tempDir("serve-ipv6");
+	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n", "src/index.html": "<p>camp</p>" });
+	const { server, info } = await serveSite(dir, ["--host", "::ffff:127.0.0.1"]);
+	try {
+		assert.match(info.url, /^http:\/\/\[::ffff:127\.0\.0\.1\]:\d+\/$/);
+		// It parses, as an IPv6 host (URL writes it in its own form, `[::ffff:7f00:1]`).
+		assert.ok(new URL(info.url).hostname.startsWith("[::ffff:"), info.url);
+		assert.ok(server.log().includes(`at ${info.url}`), server.log());
 	} finally {
 		await server.stop();
 	}

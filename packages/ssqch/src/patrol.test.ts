@@ -156,6 +156,9 @@ test("--url names what the host gets wrong", async () => {
 	assert.deepEqual(await codes(() => ({ type: "text/markdown", vary: "Accept" })), ["live-browser-markdown"]);
 	// The build isn't deployed: its copies aren't there.
 	assert.deepEqual(await codes((path) => (path.endsWith(".md") ? { status: 404, type: "text/html" } : { type: "text/html" })), ["live-copy-missing"]);
+	// The copy and the agent's Markdown are right, and the browser's page is a 404 (or a 500): not a pass.
+	assert.deepEqual(await codes((path, accept) => (path.endsWith(".md") || accept.startsWith("text/markdown") ? { type: "text/markdown", vary: "Accept" } : { status: 404, type: "text/html" })), ["live-page-failed"]);
+	assert.deepEqual(await codes((path, accept) => (path.endsWith(".md") ? { type: "text/markdown" } : accept.startsWith("text/markdown") ? { status: 500, type: "text/markdown", vary: "Accept" } : { type: "text/html" })), ["live-page-failed"]);
 });
 
 test("--url that isn't an address, or a site that doesn't answer, is an error", async () => {

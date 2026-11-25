@@ -381,9 +381,12 @@ function frame(problem: Diagnostic, at: Locator): string | undefined {
 	}
 	// Longest first; the sort is stable, so ties keep the order they were found in.
 	quoted.sort((a, b) => Buffer.byteLength(b) - Buffer.byteLength(a));
-	const field = (problem.at ?? problem.field)?.split(".")[0];
+	// The field's own key: the last part of a dotted path (`src` of `hero.src`, on its own line now),
+	// then the first, where the nested key wasn't found.
+	const parts = (problem.at ?? problem.field)?.split(".").filter((p) => !/^\d+$/.test(p)) ?? [];
+	const keys = [...new Set([parts.at(-1), parts[0]].filter((p): p is string => p !== undefined))];
 	let under: [number, number] | undefined;
-	for (const part of [...(field === undefined ? [] : [field]), ...quoted]) {
+	for (const part of [...keys, ...quoted]) {
 		if (Buffer.byteLength(part.trim()) <= 1) continue;
 		const at = text.indexOf(part);
 		if (at === -1) continue;
@@ -412,20 +415,50 @@ function splitLines(text: string): string[] {
 	return lines;
 }
 
-/** The line of a file's front matter that sets `field` (the first part of a dotted path), from 1. */
+/**
+ * The line of a file's front matter that sets `field`, from 1: for a dotted path in YAML
+ * (`hero.src`), the nested key's line under its parent's, or the deepest one found (The North
+ * Fake study, E5: the caret was on `hero:` for a problem in `src:`).
+ */
 function fieldLine(lines: string[], field: string): number | undefined {
-	const key = field.split(".")[0];
+	const [key, ...rest] = field.split(".");
 	if (!lines.length) return undefined;
 	const fence = lines[0].trimEnd();
 	const close = fence === "+++" ? "+++" : fence.startsWith("---") ? "---" : undefined;
 	if (close === undefined) return undefined;
-	for (let i = 1; i < lines.length; i++) {
-		if (lines[i].trimEnd() === close) break;
-		const line = lines[i].replace(/^["']+/, "");
-		if (!line.startsWith(key)) continue;
-		if (/^[:=]/.test(line.slice(key.length).replace(/^["']+/, "").trimStart())) return i + 1;
+	let end = lines.length;
+	for (let i = 1; i < lines.length; i++) if (lines[i].trimEnd() === close) { end = i; break; }
+	const sets = (line: string, name: string) => {
+		const text = line.replace(/^["']+/, "");
+		return text.startsWith(name) && /^[:=]/.test(text.slice(name.length).replace(/^["']+/, "").trimStart());
+	};
+	let found: number | undefined;
+	for (let i = 1; i < end; i++) if (sets(lines[i], key)) { found = i; break; }
+	if (found === undefined || close !== "---") return found === undefined ? undefined : found + 1;
+	// Down through the nested keys, each indented under the one before (a list item's `- ` too).
+	const indent = (line: string) => line.length - line.trimStart().length;
+	for (const part of rest) {
+		if (/^\d+$/.test(part)) continue;
+		const parent = indent(lines[found]);
+		// Only the parent's own keys, at the indent of its first one: `hero.related.src` isn't
+		// `hero.src` (the 2026-11-24 review). A key on a list item's line (`- src:`) counts at the
+		// indent after its dash.
+		let own: number | undefined;
+		let next: number | undefined;
+		for (let i = found + 1; i < end; i++) {
+			const line = lines[i];
+			if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
+			const item = /^(\s*)-\s+/.exec(line);
+			const at = item ? item[0].length : indent(line);
+			if (indent(line) <= parent && !(item && indent(line) === parent)) break;
+			own ??= at;
+			if (at !== own) continue;
+			if (sets(line.slice(at), part)) { next = i; break; }
+		}
+		if (next === undefined) break;
+		found = next;
 	}
-	return undefined;
+	return found + 1;
 }
 
 /** An error as a person reads it: its message, then the lines it's about (`frames`), when they can be found. */

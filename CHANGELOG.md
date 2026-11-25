@@ -9,6 +9,85 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## 0.15.1 - 2026-11-25
+
+### Fixed
+
+- From a code review (2026-11-24):
+  - A passthrough copy onto a file a plugin writes is an error naming both: a glob that copied a
+    `robots.txt` replaced `robotsPlugin()`'s without a word, `ai.training: false` and all.
+  - A page's Markdown copy points a picture at its own published copy, by its source: a layout's
+    `<img>` with the same alt text, earlier on the page, took its place.
+  - A link with a `%` that starts no escape (`/100%-complete/`) no longer stops a build with
+    `llmsPlugin()` (`URI malformed`), or stops `ssqch patrol`, which reports it if it's broken.
+  - `ssqch patrol` reads a site built under a base: its `llms.txt` and copies' links were all
+    called broken.
+  - `ssqch patrol --url` reports `live-page-failed` for a page that answers a browser or an agent
+    with an error, though its copy answered; it passed.
+  - The link checker counts a link a forced 4xx line answers as broken, though the file is there
+    (`/trail/  /404.html  404!`), as 0.15.0's "a 4xx line isn't a redirect" says.
+  - `ssqch serve --host` with an IPv6 address puts it in brackets in the banner and the ready file
+    (`http://[::ffff:127.0.0.1]:8080/`), which a URL needs.
+  - `ssqch diff` matches a removed page with a redirect line under the site's base
+    (`/repo/old/  /repo/new/  301`).
+  - `feedPlugin()`'s `author: { url }` is the Atom feed's `<uri>`; it was accepted and dropped.
+- The docs starter's search, the deploy guide's Pagefind recipe and two examples empty
+  `dist/pagefind/` before Pagefind runs: it names its files by their contents and deletes none, so
+  every build's index stayed beside the new one, and a fresh copy of a site built something else
+  (The North Fake study). A site from the docs starter can add the same first hook:
+  ``({ dirs }) => fs.rmSync(`${dirs.output}pagefind`, { recursive: true, force: true })``.
+- `ssqch scout --format json` prints `{ "ok": false, "error": "..." }` when it can't scout, where it
+  printed nothing on standard output (the message is still on standard error, and it exits 1).
+- `ssqch trace` prints a date written without a time as that day, as its data rows and ssqch's
+  other printers do: under `timeZone` its date row said `2025-01-31T05:00:00Z` and the page's
+  `date` field `2025-01-31T00:00:00.000Z`.
+- `ssqch serve` rebuilds when a file the site's code read with `readData()`, `files()` or `image()`
+  changes outside the input folder (`readData("data/snacks.yml")` with `input: "src"`), and when
+  `mkdocs.yml` or a Markdown grammar file changes: nothing watched them, so the page stayed as it
+  was until the server started again. A file `readData()` read reads the configuration again (a
+  `beforeBuild` hook's own write before the read isn't a change); a `files()` or `image()` file
+  rebuilds. Found writing the dev server's design.
+- Five rows of the docs' tables lost the end of their text to a `|` inside code, on the site and
+  on GitHub: Hugo's `.Date.Format` and `.TableOfContents` rows, the configuring page's `filters`
+  and `jinja` rows, and Eleventy's `eleventyNavigation` row. A site test now counts every row's
+  cells.
+- The Hexo trailhead said `absoluteUrl` comes from `rssPlugin()`; it's on every site since 0.15.0.
+
+### Changed
+
+- The build summary counts a `fetch()` whose refresh failed as one request, answered from the
+  cache: `Fetch 1 request, 1 from the cache (1 out of date: its request failed, so the last copy
+  was used)`, where it said 2 requests for one call.
+- A schema problem in a nested field (`hero.src`) points at that field's line, not its parent's,
+  and a `file` field that names a folder says so (`a folder in the input folder, not a file: name
+  the file in it`), where it said there was no such file.
+- A broken link that fails a build says whose check it was: `error: after_build hook failed:
+  linksPlugin: the trail goes cold on 1 broken link:` ("after_build hook failed" alone sent The
+  North Fake study looking for a hook of its own). The JSON's code is `links`, as it was.
+
+### Added
+
+- Docs, from The North Fake study: a spreadsheet's export (CSV) in a data file, with each row
+  checked and named, and the searchable-directory example for a catalog (`ssqch docs csv`
+  answered with the benchmarks); rebuilding on a schedule on Netlify and Cloudflare; what a
+  failed `fetch` with no saved copy means for a deploy; `defaultAttributes`' default
+  (`loading="lazy"` on every image unless it has its own); that `shortDoctype` writes a lowercase
+  doctype; that `ssqch serve` builds into the output folder a production build used; what
+  `dateFallback: "git"` does outside a repository; and what the multilingual fallback pages cost
+  a catalog, with the cheaper choice.
+- Docs: three how-tos for a catalog in "Templates": a page for each category with numbered pages,
+  money and units without `Intl`, and a default date that a page's own beats; and which of
+  Pagefind's UIs fits a search page, and what its Default UI needs to pass an accessibility check.
+- Docs: the first build after a release that renames encoded images (0.15.0 renamed every one)
+  encodes them all again, as with an empty cache: the blog's first build on 0.15.0 took 5 minutes
+  on Netlify, where it usually takes 37 seconds. In `imagePlugin()`'s entry and the Netlify
+  guide's "Updating ssqch".
+- Docs: a data file that builds structured data under a base, with `absoluteUrl` and `withBase`
+  from `ssqch`, in "Structured data", from the company-site example.
+- Docs: `timezone`'s row in the Jekyll and Hexo trailheads and `timeZone`'s in Hugo's (a date
+  without a time is that day, in that zone), Hugo's `.Permalink` and `absURL` as `absoluteUrl`,
+  and that Eleventy's `rss.absoluteUrl` is only needed for Eleventy's answer to the letter.
+
 ## 0.15.0 - 2026-11-24
 
 ### Breaking

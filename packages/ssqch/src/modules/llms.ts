@@ -22,6 +22,9 @@ import { htmlToMarkdown, rewriteLinks } from "../html-markdown.ts";
 import { compareText } from "../paths.ts";
 import { currentRendering } from "../rendering.ts";
 import { Options } from "./options.ts";
+import { percentDecode } from "../serve/http.ts";
+import { currentProcessor } from "../image/processor.ts";
+import type { ImageProcessor } from "../image/processor.ts";
 import { debugString } from "./plugin-util.ts";
 
 export function llmsPlugin(options: Record<string, unknown> = {}) {
@@ -105,10 +108,10 @@ function pageText(markdown: string): string {
  * the source's path, which isn't published. Each picture takes the page's address for the picture
  * with the same `alt`, in order (two pictures can share one), from the page as it was written.
  */
-function publishedImages(markdown: string, outputPath: string, base: string, output: string): string {
+function publishedImages(markdown: string, outputPath: string, inputPath: string, base: string, output: string): string {
 	// Code is an example: `![The stump](/img/stump.jpg)` in a code span stays as it's written (the
 	// starter's post showing how to add a picture got the published file's name in its copy).
-	return outsideCode(markdown, (text) => publishedImagesIn(text, outputPath, base, output));
+	return outsideCode(markdown, (text) => publishedImagesIn(text, outputPath, inputPath, base, output));
 }
 
 /** `fn` over the Markdown with its fenced blocks and code spans set aside, then put back as they were. */
@@ -128,7 +131,7 @@ function outsideCode(markdown: string, fn: (text: string) => string): string {
 	return fn(lines.join("\n")).replace(/\u0000(\d+)\u0000/g, (_, i: string) => kept[Number(i)]);
 }
 
-function publishedImagesIn(markdown: string, outputPath: string, base: string, output: string): string {
+function publishedImagesIn(markdown: string, outputPath: string, inputPath: string, base: string, output: string): string {
 	let html: string;
 	try { html = fs.readFileSync(outputPath, "utf8"); } catch { return markdown; }
 	const attr = (tag: string, name: string) => new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag)?.slice(1).find((v) => v !== undefined);
@@ -149,25 +152,41 @@ function publishedImagesIn(markdown: string, outputPath: string, base: string, o
 		if (key) byText.set(key, [...(byText.get(key) ?? []), base && href.startsWith(`${base}/`) ? href.slice(base.length) : href]);
 	}
 	if (!byAlt.size && !byText.size) return markdown;
-	const next = (alt: string) => byAlt.get(alt)?.shift();
+	let images: ImageProcessor | undefined;
+	try { images = currentProcessor(); } catch { /* no image plugin: a page's pictures are as written */ }
+	// The page's picture for one in the copy: one with the same alt that is that picture, as written
+	// or encoded from it. Another picture with the same alt (a layout's logo before the body's tree)
+	// isn't, so the copy keeps its own address then.
+	const next = (alt: string, dest: string) => {
+		const list = byAlt.get(alt);
+		if (!list?.length) return undefined;
+		const written = dest.replace(/^<|>$/g, "");
+		let file: string | undefined;
+		// From the site's root, or beside the page, as the image plugin reads it.
+		try { file = images?.resolveSrc(written, inputPath); } catch { file = undefined; }
+		const i = list.findIndex((src) => src === written || (file !== undefined && images !== undefined && (images.madeFrom(src, file) || images.madeFrom(base + src, file))));
+		return i === -1 ? undefined : list.splice(i, 1)[0];
+	};
 	// One pass, so Markdown's pictures and raw `<img>` tags take their addresses in the page's order.
 	// What each source path became, for a link to it (a picture that links to its full size).
 	const became = new Map<string, string>();
 	const out = !byAlt.size ? markdown : markdown.replace(/(!\[([^\]]*)\]\()(<[^>]*>|[^\s)]+)|<img\b[^>]*>/gi, (whole, open?: string, alt?: string, dest?: string) => {
 		if (open !== undefined) {
-			const src = next((alt ?? "").replace(/\\(.)/g, "$1"));
+			const src = next((alt ?? "").replace(/\\(.)/g, "$1"), dest ?? "");
 			if (src === undefined) return whole;
 			became.set((dest ?? "").replace(/^<|>$/g, ""), src);
 			return open + src;
 		}
-		const src = next(decodeEntities(attr(whole, "alt") ?? ""));
-		if (src === undefined) return whole;
 		const was = attr(whole, "src");
+		const src = next(decodeEntities(attr(whole, "alt") ?? ""), decodeEntities(was ?? ""));
+		if (src === undefined) return whole;
 		if (was !== undefined) became.set(decodeEntities(was), src);
 		return whole.replace(/(\ssrc\s*=\s*)(?:"[^"]*"|'[^']*'|[^\s>]+)/i, `$1"${src}"`);
 	});
 	// A link from the site's root to a file the build doesn't have.
-	const missing = (href: string) => href.startsWith("/") && !href.startsWith("//") && !fs.existsSync(path.join(output, decodeURIComponent(href.split(/[?#]/)[0])));
+	// Decoded where it can be (a bare `%` stays one: `decodeURIComponent` threw on `/100%-complete/`
+	// and stopped the build, the 2026-11-24 review).
+	const missing = (href: string) => href.startsWith("/") && !href.startsWith("//") && !fs.existsSync(path.join(output, percentDecode(href.split(/[?#]/)[0])));
 	return out
 		.replace(/(\[([^\]]*)\]\()([^\s)]+)/g, (whole, open: string, text: string, href: string) => {
 			if (became.has(href)) return open + became.get(href);
@@ -324,7 +343,7 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 			const cut = href.search(/[?#]/);
 			const [file, rest] = cut === -1 ? [href, ""] : [href.slice(0, cut), href.slice(cut)];
 			if (/\.(?:md|markdown)$/i.test(file) && !file.startsWith("/")) {
-				const page = byFile.get(path.resolve(path.dirname(from.inputPath), decodeURIComponent(file)));
+				const page = byFile.get(path.resolve(path.dirname(from.inputPath), percentDecode(file)));
 				if (page) return whole(linkTo(page, rest)) + rest;
 			}
 			let resolved: string;
@@ -342,7 +361,7 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 			// page shows it. Only a heading the page starts with counts: a `#` further down can be a
 			// shell comment in a code block.
 			if (!/^#\s/.test(body) && oneLine(p.data.title)) body = `# ${oneLine(p.data.title)}\n\n${body}`;
-			body = publishedImages(body, p.outputPath, base, output);
+			body = publishedImages(body, p.outputPath, p.inputPath, base, output);
 			body = rewriteLinks(body, (href) => target(href, p));
 			let name: string | undefined;
 			if (typeof section === "function") {

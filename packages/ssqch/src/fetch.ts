@@ -45,7 +45,7 @@ export function summary(): string | undefined {
 	if (total === 0) return undefined;
 	let line = `${total} request${total === 1 ? "" : "s"}`;
 	if (hits + stale > 0) line += `, ${hits + stale} from the cache`;
-	if (stale > 0) line += ` (${stale} out of date, after a failed request)`;
+	if (stale > 0) line += stale === 1 ? " (1 out of date: its request failed, so the last copy was used)" : ` (${stale} out of date: their requests failed, so their last copies were used)`;
 	if (offline()) line += " (--offline: living off the cache)";
 	return line;
 }
@@ -244,7 +244,6 @@ async function answer(request: Request, ask: Ask, shown: string, cache: Cache, i
 	if (!copy && isOffline) throw new TypeError(`fetch failed: ${shown}: offline (SSQCH_OFFLINE), and there's no saved copy in ${cacheDir}`);
 	if (!copy && cache.mode === "only") throw new TypeError(`fetch failed: ${shown}: no saved copy (cache: "only-if-cached")`);
 
-	counts.asked++;
 	let response: Response | undefined;
 	let failure: string | undefined;
 	let thrown: unknown;
@@ -260,9 +259,12 @@ async function answer(request: Request, ask: Ask, shown: string, cache: Cache, i
 	// An older copy is better than no build.
 	if (failure !== undefined && copy) {
 		warn(warning("fetch", `fetch: ${shown} ${failure}; using the copy saved ${age(copy.old)}`));
+		// One request, answered from the cache: counted once, as that (it read as two to The North
+		// Fake study, a request and a copy, for one call).
 		counts.stale++;
 		return fromCache(copy, request.url, "stale");
 	}
+	counts.asked++;
 	if (failure !== undefined && response === undefined) throw thrown;
 	if (response && response.status >= 200 && response.status < 300) {
 		// Read now, to save it and to hand the build a response that has its body in hand. The

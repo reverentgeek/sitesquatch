@@ -49,6 +49,7 @@ Each warning has a code. The checks are the ones a build folder can answer from 
 | `relative-links` | A link in `llms.txt` or a copy that isn't a whole address or a path from the root: it breaks once the text is read away from its page. `llmsPlugin({ url })` writes whole addresses. |
 | `live-copy-missing` | With `--url`: a copy the build has that the live site doesn't serve at its own address. The build isn't deployed yet, or the host's rules hide `.md` files. |
 | `live-no-markdown` | With `--url`: a page that answers an agent's `Accept: text/markdown` with its HTML. The host needs a few lines of its own code ([Serving Markdown](serving-markdown.md)). |
+| `live-page-failed` | With `--url`: a page the build has that answers a browser or an agent with an error (a 404 or a 500) though its copy answered: the finding names the page and the status. The deploy is missing the page, or a host's rule answers it with something else. |
 | `live-no-vary` | With `--url`: a Markdown answer without `Vary: Accept`, so a cache in between can hand the Markdown to a browser, or the page to an agent. |
 | `live-browser-markdown` | With `--url`: a page that answers a browser with Markdown, so people get the copy instead of the page. |
 

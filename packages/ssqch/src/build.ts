@@ -121,10 +121,10 @@ export async function build(config: Config): Promise<BuildReport> {
 
 	// In the order of the pages, whatever order they were rendered in.
 	const written = pages.flatMap((p) => (renderer.written.has(p.index) ? [renderer.written.get(p.index)!] : []));
-	const generated = await runGenerators(config, dirs, pages, new Set(written.map((w) => w.file)), site);
+	const { files: generated, owners: generatedBy } = await runGenerators(config, dirs, pages, new Set(written.map((w) => w.file)), site);
 	const bundles = config.bundles ? bundleFiles(site) : [];
 	bundles.push(...site.themeCopies);
-	const copy = await passthroughCopy(config, dirs, bundles);
+	const copy = await passthroughCopy(config, dirs, bundles, generatedBy);
 	const stylesheet = writeHighlightCss(config.markdown, dirs.output, site.markdown);
 	timer.lap("copy");
 
@@ -1015,8 +1015,11 @@ const displayOf = (dirs: Dirs, file: string) => (isInside(dirs.root, file) ? `./
  * written pages and writes their files. Returns the paths written (not counting appends to a
  * page's own file).
  */
-async function runGenerators(config: Config, dirs: Dirs, pages: Page[], pageOutputs: Set<string>, site: Site): Promise<string[]> {
-	if (!config.generators.length) return [];
+/** The files generators wrote (not pages'), and which generator wrote each. */
+interface Generated { files: string[]; owners: Map<string, string> }
+
+async function runGenerators(config: Config, dirs: Dirs, pages: Page[], pageOutputs: Set<string>, site: Site): Promise<Generated> {
+	if (!config.generators.length) return { files: [], owners: new Map() };
 	const summaries: PageSummary[] = pages.flatMap((p) => (p.url !== null && p.output !== null ? [{ url: p.url, outputPath: p.output, inputPath: p.tpl.input, date: p.date, data: p.data }] : []));
 	const owners = new Map<string, string>();
 	const out: string[] = [];
@@ -1059,7 +1062,7 @@ async function runGenerators(config: Config, dirs: Dirs, pages: Page[], pageOutp
 			}
 		}
 	}
-	return out;
+	return { files: out, owners };
 }
 
 // ---- passthrough -----------------------------------------------------------------------------
@@ -1174,7 +1177,7 @@ function sameDestinations(jobs: CopyJob[], dirs: Dirs): void {
 	jobs.splice(0, jobs.length, ...kept);
 }
 
-async function passthroughCopy(config: Config, dirs: Dirs, extra: CopyJob[]): Promise<CopyStats> {
+async function passthroughCopy(config: Config, dirs: Dirs, extra: CopyJob[], generatedBy: Map<string, string> = new Map()): Promise<CopyStats> {
 	const jobs: CopyJob[] = [...extra];
 	for (const { from, to } of config.passthrough) {
 		if (isGlob(from)) {
@@ -1196,6 +1199,13 @@ async function passthroughCopy(config: Config, dirs: Dirs, extra: CopyJob[]): Pr
 		}
 	}
 	sameDestinations(jobs, dirs);
+	// A copy onto a file a plugin wrote would replace it, silently: a glob that copied a robots.txt
+	// dropped robotsPlugin()'s, `ai.training: false` and all (the 2026-11-24 review). The file is
+	// named by where it lands, so a glob is caught as a path is.
+	for (const [from, to] of jobs) {
+		const owner = generatedBy.get(to);
+		if (owner !== undefined) bail(`passthrough copies ${shown(dirs.root, from)} to ${displayOf(dirs, to)}, which ${owner} writes: keep one of them`);
+	}
 	// What a plugin already wrote under another name stays that way (config.renamedCopies).
 	const renamed = jobs.filter(([, to]) => config.renamedCopies.has(to)).map(([, to]) => config.renamedCopies.get(to)!);
 	if (renamed.length) jobs.splice(0, jobs.length, ...jobs.filter(([, to]) => !config.renamedCopies.has(to)));

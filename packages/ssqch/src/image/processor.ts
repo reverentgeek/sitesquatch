@@ -639,6 +639,35 @@ export class ImageProcessor {
 		throw new BuildError(`${said(failures[0])}${more}`, items);
 	}
 
+	/**
+	 * Each encoded copy's URL and the sources it was made from (as `samePath` spells them), rebuilt
+	 * when the memo grows. Several: two files with the same picture are one copy (the blog's
+	 * `hey-buddy.png` and its feature image `hey-buddy-1.png`).
+	 */
+	private bySource: { size: number; map: Map<string, Set<string>> } | undefined;
+
+	/**
+	 * Whether the copy at `url` was made from `file` (absolute), in this process: a page's Markdown
+	 * copy points each picture at its published copy by this, and not by its alt text alone, which a
+	 * layout's logo with the same alt took first (the 2026-11-24 review).
+	 */
+	madeFrom(url: string, file: string): boolean {
+		if (this.bySource?.size !== this.memo.size) {
+			const map = new Map<string, Set<string>>();
+			for (const [key, meta] of this.memo) {
+				if (meta instanceof Error) continue;
+				const src = (JSON.parse(key) as [string])[0];
+				for (const e of [...meta.formats.values()].flat()) {
+					let sources = map.get(e.url);
+					if (!sources) map.set(e.url, sources = new Set());
+					sources.add(src);
+				}
+			}
+			this.bySource = { size: this.memo.size, map };
+		}
+		return this.bySource.map.get(url)?.has(samePath(file)) ?? false;
+	}
+
 	/** The image files this build used in the output, made or reused: `leaveNoTrace` keeps them, and removes one an earlier build used and this one didn't. */
 	usedFiles(): Iterable<string> {
 		return this.used;

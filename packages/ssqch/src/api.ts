@@ -11,6 +11,7 @@ import { safe } from "./rendering.ts";
 import { defaultMarkdownOptions } from "./markdown-options.ts";
 import { slugify as slug } from "./slug.ts";
 import { withBase as prefixBase } from "./base.ts";
+import { readFile, readValues } from "./plugin-files.ts";
 
 function defaultMarkdown() {
 	const engine = markdownEngine(defaultMarkdownOptions());
@@ -56,6 +57,7 @@ export function readData(file: unknown): unknown {
 	// The kind of file first, as 0.7 checked it: a folder, or a name without one of these endings, isn't data.
 	if (!/\.(json|ya?ml|toml)$/i.test(rel)) throw new BuildError(`${call}: not a JSON, YAML or TOML file`);
 	if (!fs.statSync(abs, { throwIfNoEntry: false })?.isFile()) throw new BuildError(`${call}: no such file (reading ${abs})`);
+	readValues(abs);
 	const value = loadStaticDataFile(abs);
 	if (value === undefined) throw new BuildError(`${call}: not a JSON, YAML or TOML file`);
 	return value;
@@ -108,6 +110,7 @@ export function files(pattern: unknown, options: { dimensions?: boolean } | null
 	walk(path.join(site.root, base), base);
 	found.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 	const sizes = options?.dimensions ? imageSizes(found) : [];
+	for (const [, abs] of found) readFile(abs);
 	return found.map(([rel, abs, stat], i) => {
 		const name = path.basename(abs);
 		const dot = name.lastIndexOf(".");

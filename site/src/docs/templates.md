@@ -184,3 +184,69 @@ title: Tags
 A post links its own tags the same way. The starter's layout has `ownTags(tags)`, a function in its config that leaves out `posts`: `{% for name in ownTags(tags) %}<a href="/tags/{{ name | slugify }}/">{{ name }}</a>{% endfor %}`. With `slugify` in every URL, a tag with spaces or capitals (`Old Growth`) gets a clean address (`/tags/old-growth/`). Use it in all three places (the permalink, `tags.jinja` and the layout): a link without it fails the production build's link check with `/tags/Old Growth/ (not found; did you mean /tags/old-growth/?)`. Two tags that slugify alike (`Old Growth` and `old-growth`) would write the same page, which fails the build with `output conflicts` and `tag.jinja makes 2 pages that write to .../tags/old-growth/index.html`. The sitemap lists every tag page (`exclude: ["/tags/**"]` leaves them out).
 
 Without a config collection, pagination over `collections` itself makes a page per tag too: `pagination: { data: "collections", size: 1, alias: "tag", filter: ["all", "posts"] }`, then `collections[tag]` for its pages, oldest first. `collections` has the config's own collections in it as well (the starter's `newestPosts` and `tagList`), so add those to `filter`. The `tagList` collection above is what gives newest first and the counts, in one place.
+
+## A page for each group, with numbered pages
+
+A catalog's category pages are pagination in two levels: a page for each category, and in it 24 products to a page, with page numbers. `pagination` pages through one list, so a data file makes that list: one entry for each page of each category, with its products and its neighbours' addresses. The template, `src/categories/category.jinja`, pages through it one entry at a time:
+
+```js
+// src/_data/categoryPages.js
+import { slugify } from "ssqch";
+import products from "./products.js";
+
+const SIZE = 24;
+const byCategory = Map.groupBy(products, (p) => p.category);
+export default [...byCategory].flatMap(([category, items]) => {
+  const slug = slugify(category);
+  const count = Math.ceil(items.length / SIZE);
+  const hrefs = Array.from({ length: count }, (_, n) => (n === 0 ? `/categories/${slug}/` : `/categories/${slug}/${n + 1}/`));
+  return hrefs.map((href, n) => ({ category, href, number: n + 1, hrefs, items: items.slice(n * SIZE, (n + 1) * SIZE) }));
+});
+```
+
+```jinja
+---
+pagination: { data: categoryPages, size: 1, alias: listing }
+permalink: "{{ listing.href }}"
+---
+<h1>{{ listing.category }}{% if listing.number > 1 %}, page {{ listing.number }}{% endif %}</h1>
+<ul>{% for p in listing.items %}<li>{{ p.name }}</li>{% endfor %}</ul>
+<nav aria-label="Pages">{% for href in listing.hrefs %}<a href="{{ href }}"{% if href == listing.href %} aria-current="page"{% endif %}>{{ loop.index }}</a> {% endfor %}</nav>
+```
+
+With 40 packs, that's `/categories/packs/` with 24 and `/categories/packs/2/` with 16, each with the numbers 1 and 2, and a brand's pages are the same file with `p.brand`. The link checker checks every one of them, as it does any page. A link to a category's first page elsewhere (a product's breadcrumb) is `/categories/{{ product.category | slugify }}/`.
+
+## Money and units
+
+Prices and weights print the same on every machine when they're spelled out by a filter of the site's own, as ssqch's date filters are, rather than with `Intl` or `toLocaleString`, whose answers can change between Node releases:
+
+```js
+// ssqch.config.js
+export default {
+  filters: {
+    // $1,234.50, with the thousands marked by hand.
+    money: (n) => {
+      const [whole, cents] = Number(n).toFixed(2).split(".");
+      return `$${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${cents}`;
+    },
+    // 1,250 g is 44.1 oz.
+    ounces: (grams) => `${(Number(grams) / 28.349523125).toFixed(1)} oz`,
+  },
+};
+```
+
+`{{ product.price | money }}` and `{{ product.grams }} g ({{ product.grams | ounces }})`. Another currency is another symbol and separators in the same few lines; a site in several languages passes the language and picks them by it.
+
+## A default date that a page's own beats
+
+A page with no `date` of its own takes its file's time, or its last commit's with `dateFallback: "git"`. A group of pages that should take another date when they have none (a guide, the newest product's day) gets it from `computed` in the folder's directory data, which sees the page's own `date` first:
+
+```js
+// src/guides/guides.data.js
+import products from "../_data/products.js";
+
+const newest = products.map((p) => p.added).sort().at(-1);
+export default { computed: { date: (data) => data.date ?? newest } };
+```
+
+A guide with `date: 2026-10-05` keeps it, and one without gets the newest product's. A layout's `computed: { date: ... }` that returns a value without looking at `data.date` replaces every page's own, so a page that sets one, and even one with a date that isn't one, shows the layout's instead (The North Fake study's first guide showed the wrong day).

@@ -10,7 +10,7 @@ import * as diagnostics from "../diagnostics.ts";
 import { Locator } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { describeThrown, loadedFiles } from "../modules.ts";
-import { filesRead } from "../plugin-files.ts";
+import { filesRead, siteRead } from "../plugin-files.ts";
 import { isInside, realPath, relative, slashes } from "../paths.ts";
 import { summary } from "../report.ts";
 import { isAsset } from "./live.ts";
@@ -54,9 +54,17 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 	// Each file as it was when it first loaded: the configuration this process has.
 	const loadedAs = new Map<string, string>();
 	const state = (config: Config): State => {
-		const files = [...loadedFiles].map(realPath);
+		// What the site's code read as values (`readData()`), watched or not: a value read while the
+		// config loaded (or by a data module's top level) is only read again by a new process, so a
+		// change to one reads the configuration again even in a watched folder, where it would only
+		// have rebuilt with the old value (the 2026-11-24 review: `readData("data/snack.json")` at
+		// load time beside `watch: ["data"]`).
+		const values = [...siteRead.values].map(([file, hash]) => [realPath(file), hash] as const);
+		const files = [...new Set([...[...loadedFiles].map(realPath), ...values.map(([file]) => file)])];
 		for (const file of files) if (!loadedAs.has(file)) loadedAs.set(file, fileHash(file));
-		return { files, loadedAs: Object.fromEntries(loadedAs), read: filesRead(config), said: diagnostics.aliasesUsed().map(key) };
+		// As the build read it, which a hook may have written just before: the last read wins.
+		for (const [file, hash] of values) loadedAs.set(file, hash);
+		return { files, loadedAs: Object.fromEntries(loadedAs), read: filesRead(config), values: values.map(([file]) => file), said: diagnostics.aliasesUsed().map(key) };
 	};
 	diagnostics.aliasesKnown(equivalents.TABLE.filter((row) => start.said.includes(key(row))));
 	// The server went away without stopping this (it was killed): nothing to build for.
@@ -74,6 +82,8 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 	};
 	let config: Config;
 	try {
+		// What the site's code reads through ssqch's functions, from the config's first line on.
+		siteRead.on = true;
 		config = await working(makeConfig);
 	} catch (e) {
 		if (!start.reload) diagnostics.printError("error:", e, "config", new Locator(root));

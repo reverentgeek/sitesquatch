@@ -134,11 +134,13 @@ test("a failed refresh uses the older copy, and warns", async () => {
 	takeWarnings();
 	assert.equal(await get("/flaky", { cache: "0s" }), "ok:network");
 	await new Promise((resolve) => setTimeout(resolve, 1100));
+	summary();
 	assert.equal(await get("/flaky", { cache: "0s" }), "ok:stale");
 	const [warning] = takeWarnings();
 	assert.match(warning.message, /^fetch: .*\/flaky answered 503; using the copy saved \d+ seconds? ago$/);
 	assert.equal(warning.code, "fetch");
-	assert.match(summary()!, /\(1 out of date, after a failed request\)/);
+	// One call, so one request: the failed attempt and the copy it fell back on aren't two.
+	assert.equal(summary(), "1 request, 1 from the cache (1 out of date: its request failed, so the last copy was used)");
 	// Without a copy, the failure is the answer.
 	assert.equal(await get("/flaky"), "down:network");
 });

@@ -380,7 +380,11 @@ declare module "ssqch" {
 	export function slugify(text: string, options?: SlugifyOptions | string): string;
 	/** A `slugify` that counts, so every slug it makes is different: the first "Misc Pictures" is `misc-pictures`, the next `misc-pictures-1`, then `misc-pictures-2`. Make one per list, in a data file, and store the slug with each item, so a paginated page's permalink and the links to it agree. */
 	export function slugger(options?: SlugifyOptions): (text: string) => string;
-	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown; readData: typeof readData; files: typeof files; slugify: typeof slugify; slugger: typeof slugger };
+	/** The `withBase` template function, for a site's own code (a data file, a filter, `computed`): a URL from the site's root with the site's `base` in front, `withBase("/provisions/moss-mix/")` is `"/repo/provisions/moss-mix/"` under `base: "/repo/"`, and the URL as it is without one. Anything that isn't from the root (relative, `#top`, `https:`) is returned as it is. The base is the build's, so in the config's own top-level code, which runs before the build, it's `""`: call it from a function. */
+	export function withBase(url: string): string;
+	/** The `absoluteUrl` template function, for a site's own code: `absoluteUrl("/provisions/moss-mix/", "https://example.com")` is `"https://example.com/repo/provisions/moss-mix/"` under `base: "/repo/"`: the site's `base` goes in front of a URL from the root that doesn't have it yet, then the URL is resolved against the address, as `new URL()` does. A URL that can't be resolved comes back as it is. For a canonical link, link-preview cards and structured data. */
+	export function absoluteUrl(url: string, address: string): string;
+	const ssqch: { defineConfig: typeof defineConfig; markdown: typeof markdown; readData: typeof readData; files: typeof files; slugify: typeof slugify; slugger: typeof slugger; withBase: typeof withBase };
 	export default ssqch;
 }
 
@@ -471,7 +475,7 @@ declare module "ssqch/image" {
 declare module "ssqch/rss" {
 	import type { BuiltinPlugin } from "ssqch";
 
-	/** Adds the filters getNewestCollectionItemDate, dateToRfc3339, dateToRfc822, absoluteUrl, htmlToAbsoluteUrls and feedHtml. */
+	/** Adds the filters getNewestCollectionItemDate, dateToRfc3339, dateToRfc822, htmlToAbsoluteUrls and feedHtml. (`absoluteUrl` is on every site.) */
 	export function rssPlugin(): BuiltinPlugin;
 	/** Writes the site's feed (Atom, or RSS) from a collection, newest first, each entry's content as feedHtml makes it: `feedPlugin({ url: "https://example.com" })` writes /feed.xml from the `posts` collection. */
 	export function feedPlugin(options: {
@@ -498,9 +502,9 @@ declare module "ssqch/rss" {
 	export function dateToRfc3339(date: Date | string): string;
 	/** A date as RFC 822 (`Sat, 01 Jun 2024 00:00:00 +0000`), for RSS feeds. */
 	export function dateToRfc822(date: Date | string): string;
-	/** A URL made absolute against the site's address: `absoluteUrl(post.url, "https://example.com")`. As a template filter, it puts the site's `base` in front of a URL from the root that doesn't have it yet; called from code, it resolves as `new URL(url, base)` does. */
+	/** A URL made absolute against the site's address: `absoluteUrl(post.url, "https://example.com")`, with the site's `base` in front of a URL from the root that doesn't have it yet, as the template function does. The same function as `absoluteUrl` from "ssqch". */
 	export function absoluteUrl(url: string, base: string): string;
-	/** Every link and image in some HTML made absolute, for a feed's content. */
+	/** Every link and image in some HTML made absolute, for a feed's content, with the site's `base` in front of a URL from the root, as `absoluteUrl` does. */
 	export function htmlToAbsoluteUrls(html: string, base: string): string;
 	/** A post's HTML for a feed: each local image points at one generated copy (`width` 1200 and the source's format by default), a `<picture>`'s `<source srcset>` goes, page-only attributes go, and every URL is made absolute against `base`, the post's address. The images are made by the image plugin, so the config needs `imagePlugin()` too. */
 	export function feedHtml(html: string, base: string, options?: { width?: number | "auto"; format?: string }): string;
