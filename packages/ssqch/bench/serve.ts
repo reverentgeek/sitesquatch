@@ -5,11 +5,17 @@
 //     node bench/serve.ts --pages 1000                    a smaller one
 //     node bench/serve.ts --site <folder> --edit <file>   a copy of another site, an edit to <file> (from its root)
 //     node bench/serve.ts ... --edits 10                  how many edits to time (5), after one that isn't counted
-//     node bench/serve.ts ... --check                     with SSQCH_CHECK_REBUILDS=1, and each check's verdict
+//     node bench/serve.ts ... --check                     with SSQCH_CHECK_REBUILDS=1, each check's verdict, and exit
+//                                                         code 1 when one isn't a pass (time and check in separate runs:
+//                                                         the check's build starts as the browser would ask)
+//     node bench/serve.ts --site <folder> --without dist  leave a folder of the site's root out of the copy (repeatable)
 //
 // The site is always a copy, in a folder of the system's temporary ones: a site's own folder (the
-// blog, a study's) is never edited. Its `node_modules` is linked, not copied, and its `.cache`
-// copied (encoded images), so the first build isn't a cold one. The server runs ssqch from this
+// blog, a study's) is never edited. Its `node_modules` is linked, not copied, `.git` is left
+// out, and everything else is copied as it is: `.cache` (encoded images), so the first build
+// isn't a cold one, and the output folder with what a production build left in it, as on the
+// builder's own machine (a check lists those files as only in the output; `--without dist`
+// leaves them out). The server runs ssqch from this
 // checkout's source, with SSQCH_SERVE_TIMELINE (src/serve/timeline.ts); each edit appends a
 // line to the file, the script stamps the save itself, and asks the server what a browser asks
 // (`/__ssqch/build`) every 5 ms, to see when a browser could first hear of it. The reload script
@@ -44,7 +50,8 @@ if (given !== undefined) {
 	edit = option("edit") ?? "";
 	if (!edit) throw new Error("--site needs --edit <file>, from the site's root");
 	// Everything but installs, the repository and outputs a fresh copy wouldn't have.
-	fs.cpSync(from, site, { recursive: true, filter: (file) => !["node_modules", ".git"].includes(path.basename(file)) || path.dirname(file) !== from });
+	const without = new Set(["node_modules", ".git", ...args.flatMap((arg, i) => (args[i - 1] === "--without" ? [arg] : []))]);
+	fs.cpSync(from, site, { recursive: true, filter: (file) => path.dirname(file) !== from || !without.has(path.basename(file)) });
 	if (fs.existsSync(path.join(from, "node_modules"))) fs.symlinkSync(path.join(from, "node_modules"), path.join(site, "node_modules"), "junction");
 } else {
 	makeSite(site, Number(option("pages") ?? 10_000));
@@ -123,3 +130,4 @@ console.log(`  ${pad("save to a browser could hear (asked every 5 ms)", 46)} ${m
 console.log(`  ${pad("then the reload script's poll (every 700 ms)", 46)} 0 to 700 ms, 350 on average (not measured)`);
 if (checking) for (const r of rows) console.log(`  ${r.check.verdict}`);
 console.log(`The copy, its timeline and the server's output: ${work}`);
+if (checking && rows.some((r) => !/ wrote what a clean build writes /.test(r.check.verdict))) process.exitCode = 1;

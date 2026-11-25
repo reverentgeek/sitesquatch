@@ -505,7 +505,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				if (!quiet) sayWhere();
 				record({ kind: "rebuild", file: show(source), heard: heardAt, debounced, asked, ...marks, said: Date.now() });
 				watchConfigFiles();
-				if (CHECKING && marks.ok) await checkRebuild({ args, builder, rx, carried, tools, changed: show(source), own });
+				if (CHECKING && marks.ok) await checkRebuild({ args, builder, rx, carried, tools, changed: show(source), moved: (file) => !own(file) && !editorsOwn(file) && !skipped(file) && !isInside(output, file) && inSources(file) && sourceState(file) !== contents.get(file), show });
 			} else if (outputs.some((file) => isAsset(file) || !exists(file))) {
 				// Another tool (PostCSS, esbuild) wrote a stylesheet or a script, or ssqch's own
 				// write is late to arrive: the contents say which, so a tool's write that landed
@@ -598,7 +598,7 @@ const CHECKING = process.env.SSQCH_CHECK_REBUILDS === "1";
  * meanwhile (other than the check's own files) means the two didn't build the same files, so
  * nothing is said but that.
  */
-async function checkRebuild({ args, builder, rx, carried, tools, changed, own }: { args: string[]; builder: Builder; rx: Channel<string[]>; carried: string[]; tools: boolean; changed: string; own: (file: string) => boolean }): Promise<void> {
+async function checkRebuild({ args, builder, rx, carried, tools, changed, moved, show }: { args: string[]; builder: Builder; rx: Channel<string[]>; carried: string[]; tools: boolean; changed: string; moved: (file: string) => boolean; show: (file: string) => string }): Promise<void> {
 	const site = builder.site;
 	const dir = checkFolder(site.root);
 	const started = Date.now();
@@ -610,12 +610,13 @@ async function checkRebuild({ args, builder, rx, carried, tools, changed, own }:
 	}
 	let built: Built;
 	try { built = await checker.build(false); } finally { checker.stop(); }
-	const output = realPath(site.output);
-	const moved = [...carried, ...rx.peek().flat()].map(realPath).some((file) => !own(file) && !editorsOwn(file) && !isInside(output, file));
+	// By the loop's own rule: a source the next rebuild would be for (its contents differ from
+	// what the loop last saw), not any event (a save of the same text, a log in the project root).
+	const meanwhile = [...carried, ...rx.peek().flat()].map(realPath).find(moved);
 	let line: string;
 	let found: ReturnType<typeof compareOutputs> | undefined;
 	if (!built.ok) line = `check-rebuilds: the clean build after ${changed} failed where the rebuild worked: ${built.error ?? "its error is above"}`;
-	else if (moved) line = "check-rebuilds: a file changed while the clean build ran, so the two didn't build the same files; not judged";
+	else if (meanwhile !== undefined) line = `check-rebuilds: ${show(meanwhile)} changed while the clean build ran, so the two didn't build the same files; not judged`;
 	else {
 		found = compareOutputs(site.output, dir, tools);
 		line = verdict(found, changed, site.outputName);

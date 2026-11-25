@@ -7,6 +7,11 @@
 // with `cache: true`, what each page's file held), and anything that skips work later has to be
 // proven right the same way. This is the proof, for ssqch's own tests and for a builder who wants
 // to look. It's slow: every rebuild is built twice.
+//
+// What a pass proves: the rebuild wrote what a new process writes. Both builds share
+// `.cache/ssqch` (encoded images, fetched answers), so it isn't "what an empty cache writes": a
+// result kept on disk there would pass stale. Anything that keeps work between rebuilds on disk
+// is checked another way.
 import fs from "node:fs";
 import path from "node:path";
 import { compareText } from "../paths.ts";

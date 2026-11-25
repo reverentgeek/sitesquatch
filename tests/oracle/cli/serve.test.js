@@ -897,7 +897,8 @@ test("serve_checks_each_rebuild_against_a_clean_build", async () => {
 		"src/camp.txt": "pine cones",
 	});
 	const timeline = path.join(tempDir("serve-check-times"), "times.jsonl");
-	const log = path.join(dir, "serve.log");
+	// The log beside the project, not in its root, which is watched for config files.
+	const log = path.join(tempDir("serve-check-log"), "serve.log");
 	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1", SSQCH_SERVE_TIMELINE: timeline } });
 	try {
 		await waitFor(path.join(dir, "dist/index.html"), "Cedar Trail");
@@ -923,7 +924,7 @@ test("serve_checks_each_rebuild_against_a_clean_build", async () => {
 		"src/index.jinja": "build {{ builds }}",
 		"src/camp.jinja": "camp",
 	});
-	const staleLog = path.join(counting, "serve.log");
+	const staleLog = path.join(tempDir("serve-check-stale-log"), "serve.log");
 	const again = start(["serve", "--port", "0", "--root", counting], { logFile: staleLog, env: { SSQCH_CHECK_REBUILDS: "1" } });
 	try {
 		await waitFor(path.join(counting, "dist/index.html"), "build 1");
