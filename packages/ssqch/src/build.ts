@@ -21,7 +21,7 @@ import { shownDir, shownOutput } from "./config.ts";
 import type { Data } from "./data.ts";
 import { sourceDateEpoch, STATIC_DATA_EXTENSIONS } from "./data.ts";
 import { renderComponents } from "./components.ts";
-import { BuildError, Diagnostics, bail, context, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
+import { BuildError, Diagnostics, bail, context, hearWarnings, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import type { RenderContext } from "./engines/engine.ts";
 import { beginFenceCache, rendering as markdownRendering, saveFenceCache, writeHighlightCss } from "./engines/markdown.ts";
 import * as equivalents from "./equivalents.ts";
@@ -35,6 +35,7 @@ import { mkdocsGlobals, tocOf } from "./mkdocs.ts";
 import { currentRendering, renderingAs, safe } from "./rendering.ts";
 import { checkPages, paginated } from "./schema.ts";
 import type { CopyJob, Page, Tpl } from "./site.ts";
+import type { Diagnostic } from "./diagnostics.ts";
 import { Site, Timer, errorsTogether, readsCollections } from "./site.ts";
 import type { Profile, ProfileReport } from "./profile.ts";
 import * as voice from "./voice.ts";
@@ -135,6 +136,23 @@ export async function build(config: Config): Promise<BuildReport> {
 			else keptReads.delete(page.output);
 			if (renderer.collectionReaders.has(page.index)) keptCollectionReaders.add(page.output);
 			else keptCollectionReaders.delete(page.output);
+			const said = renderer.said.get(page.index);
+			if (said) keptSaid.set(page.output, said);
+			else keptSaid.delete(page.output);
+		}
+		// What a page taken as it was said when it last rendered, said again.
+		if (only) {
+			for (const page of wanted) {
+				if (only.has(page) || page.output === null) continue;
+				const said = keptSaid.get(page.output);
+				if (!said) continue;
+				for (const diagnostic of said.warnings) if (!renderer.heard.has(diagnostic.message)) { renderer.heard.add(diagnostic.message); warn(diagnostic); }
+				for (const name of said.components) {
+					const files = site.unknownComponents.get(name) ?? new Set<string>();
+					files.add(site.display(page.tpl.input));
+					site.unknownComponents.set(name, files);
+				}
+			}
 		}
 	}
 	// What the built-in plugins learned from each page, said again for the pages taken as they
@@ -306,6 +324,9 @@ const keptReads = new Map<string, Set<string>>();
  */
 const keptCollectionReaders = new Set<string>();
 
+/** While serving: what each page's last render said (its warnings, its components with no template), by output file, for a rebuild that takes it as it was. */
+const keptSaid = new Map<string, { warnings: Diagnostic[]; components: Set<string> }>();
+
 /** While serving: what a generator last wrote to each file, with the size and time the file had then. */
 const keptGenerated = new Map<string, { text: string; mark: string }>();
 
@@ -395,6 +416,13 @@ class Renderer {
 	private reader: Page | undefined;
 	/** The pages, by index, whose render read `collections` (`keptCollectionReaders`). */
 	collectionReaders = new Set<number>();
+	/** While serving, what each page's render said (`keptSaid`): its warnings, and its components with no template. */
+	said = new Map<number, { warnings: Diagnostic[]; components: Set<string> }>();
+	saidFor(page: Page): { warnings: Diagnostic[]; components: Set<string> } {
+		let found = this.said.get(page.index);
+		if (!found) this.said.set(page.index, found = { warnings: [], components: new Set() });
+		return found;
+	}
 	/** `collections` as pages see them, which notes who reads it, with `SSQCH_INCREMENTAL=1` while serving. */
 	private collectionsView: Data | undefined;
 	/** Time spent rendering bodies, as the summary's `render`. */
@@ -532,6 +560,7 @@ class Renderer {
 				const files = unknown.get(name) ?? new Set<string>();
 				files.add(this.site.display(page.tpl.input));
 				unknown.set(name, files);
+				if (this.site.config.serving) this.saidFor(page).components.add(name);
 			});
 		} catch (e) { throw context(e, `in ${page.tpl.rel}`); }
 	}
@@ -580,6 +609,22 @@ class Renderer {
 	}
 
 	async renderAll(pages: Page[], late: Set<Page> = new Set()): Promise<void> {
+		// While serving, each page's warnings are kept with it, to be said again by a rebuild that
+		// takes the page as it was: a warning doesn't go quiet because its page didn't render.
+		if (this.site.config.serving) {
+			hearWarnings((diagnostic) => {
+				this.heard.add(diagnostic.message);
+				const who = this.reader ?? this.rendering;
+				if (who) this.saidFor(who).warnings.push(diagnostic);
+			});
+		}
+		try { await this.renderEach(pages, late); } finally { hearWarnings(undefined); }
+	}
+
+	/** Every warning's message said while the pages rendered, so one said again isn't said twice. */
+	heard = new Set<string>();
+
+	private async renderEach(pages: Page[], late: Set<Page>): Promise<void> {
 		for (const page of pages) {
 			this.borrowedFailure = false;
 			// Markdown's warnings (a site's highlighter that failed) name the page.

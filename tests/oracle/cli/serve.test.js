@@ -487,6 +487,34 @@ test("serve_renders_a_page_whose_filter_read_the_changed_body", async () => {
 	}
 });
 
+// A page a rebuild takes as it was says again what it said when it last rendered: its component
+// with no template is still warned about after an edit to another page, as a full rebuild would.
+test("serve_still_warns_about_a_page_it_took_as_it_was", async () => {
+	const dir = tempDir("serve-incremental-warned");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"njk\"] };\n",
+		"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>Cedar</p><TrailBadge>Open</TrailBadge>",
+		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>Stump</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-warned-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1" } });
+	try {
+		await waitFor(log, "Serving ");
+		assert.match(readOr(log), /<TrailBadge>/);
+		const said = readOr(log).length;
+		fs.appendFileSync(path.join(dir, "src/stump.njk"), "<p>Four miles.</p>");
+		await waitFor(log, "Fresh tracks in src/stump.njk");
+		let after = "";
+		for (let i = 0; i < 200 && !/Serving /.test(after); i++) {
+			await sleep(25);
+			after = readOr(log).slice(said);
+		}
+		assert.match(after, /<TrailBadge>` in (\.\/)?src\/cedar\.njk/);
+	} finally {
+		await server.stop();
+	}
+});
+
 // A rebuild that failed renders nothing for the pages it was given, so the next rebuild doesn't take
 // them as the last build wrote them: a page broken in one save is still broken after a save to
 // another page, as a clean build would say.
