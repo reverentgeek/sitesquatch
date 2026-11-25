@@ -440,11 +440,20 @@ function fieldLine(lines: string[], field: string): number | undefined {
 	for (const part of rest) {
 		if (/^\d+$/.test(part)) continue;
 		const parent = indent(lines[found]);
+		// Only the parent's own keys, at the indent of its first one: `hero.related.src` isn't
+		// `hero.src` (the 2026-11-24 review). A key on a list item's line (`- src:`) counts at the
+		// indent after its dash.
+		let own: number | undefined;
 		let next: number | undefined;
 		for (let i = found + 1; i < end; i++) {
-			if (lines[i].trim() === "" || lines[i].trimStart().startsWith("#")) continue;
-			if (indent(lines[i]) <= parent && !lines[i].trimStart().startsWith("- ")) break;
-			if (sets(lines[i].trimStart().replace(/^-\s+/, ""), part)) { next = i; break; }
+			const line = lines[i];
+			if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
+			const item = /^(\s*)-\s+/.exec(line);
+			const at = item ? item[0].length : indent(line);
+			if (indent(line) <= parent && !(item && indent(line) === parent)) break;
+			own ??= at;
+			if (at !== own) continue;
+			if (sets(line.slice(at), part)) { next = i; break; }
 		}
 		if (next === undefined) break;
 		found = next;

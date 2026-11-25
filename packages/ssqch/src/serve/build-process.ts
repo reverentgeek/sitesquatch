@@ -54,11 +54,12 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 	// Each file as it was when it first loaded: the configuration this process has.
 	const loadedAs = new Map<string, string>();
 	const state = (config: Config): State => {
-		// What the site's code read that no watched folder holds: a change to one in the input folder
-		// rebuilds as any change there does, without reading the configuration again.
-		const watched = siteInfo(config).watch.map(realPath);
-		const outside = (file: string) => !watched.some((dir) => isInside(dir, file));
-		const values = [...siteRead.values].map(([file, hash]) => [realPath(file), hash] as const).filter(([file]) => outside(file));
+		// What the site's code read as values (`readData()`), watched or not: a value read while the
+		// config loaded (or by a data module's top level) is only read again by a new process, so a
+		// change to one reads the configuration again even in a watched folder, where it would only
+		// have rebuilt with the old value (the 2026-11-24 review: `readData("data/snack.json")` at
+		// load time beside `watch: ["data"]`).
+		const values = [...siteRead.values].map(([file, hash]) => [realPath(file), hash] as const);
 		const files = [...new Set([...[...loadedFiles].map(realPath), ...values.map(([file]) => file)])];
 		for (const file of files) if (!loadedAs.has(file)) loadedAs.set(file, fileHash(file));
 		// As the build read it, which a hook may have written just before: the last read wins.

@@ -276,6 +276,22 @@ test("serve_rebuilds_for_a_data_file_its_code_read", async () => {
 	} finally {
 		await server.stop();
 	}
+	// In a folder `watch` names, a value read while the config loaded is still the config's: a
+	// rebuild alone kept the old one (the 2026-11-24 review).
+	const watched = tempDir("serve-read-watched");
+	write(watched, {
+		"ssqch.config.js": "import { readData } from \"ssqch\";\nconst snack = readData(\"data/snack.json\");\nexport default { dirs: { input: \"src\", output: \"dist\" }, watch: [\"data\"], data: { snack } };\n",
+		"data/snack.json": "{\"name\":\"Pine\"}",
+		"src/index.jinja": "{{ snack.name }}",
+	});
+	const again = start(["serve", "--port", "0", "--root", watched], { logFile: path.join(watched, "serve.log") });
+	try {
+		const page = path.join(watched, "dist/index.html");
+		await waitFor(page, "Pine");
+		await changeAndWait(path.join(watched, "data/snack.json"), "{\"name\":\"Moss\"}", page, "Moss");
+	} finally {
+		await again.stop();
+	}
 });
 
 // A `beforeBuild` hook that writes a file the config reads with readData()

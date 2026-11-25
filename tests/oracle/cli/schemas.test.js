@@ -168,4 +168,8 @@ test("a_nested_fields_frame_is_on_its_line_and_a_folder_isnt_a_file", () => {
 	const r = ssqch(["build", "--root", dir]);
 	assert.ok(!r.ok && r.log.includes("`hero.src` is \"/img/guides/\", a folder in the input folder, not a file: name the file in it"), r.log);
 	assert.ok(r.log.includes("  --> src/w.md:4\n") && r.log.includes("   4 |   src: /img/guides/\n     |   ^^^\n"), r.log);
+	// A missing `hero.src` isn't the `src` of something deeper: the frame falls back to `hero:`.
+	write(dir, { "src/w.md": "---\nhero:\n  alt: A ridge\n  related:\n    src: /img/x.jpg\n---\nHi\n", "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, schemas: { guides: { files: \"*.md\", fields: { hero: { src: \"file\", alt: \"string\", related: \"object?\" } } } } };\n" });
+	const missing = ssqch(["build", "--root", dir]);
+	assert.ok(!missing.ok && missing.log.includes("  --> src/w.md:2\n") && missing.log.includes("   2 | hero:\n"), missing.log);
 });
