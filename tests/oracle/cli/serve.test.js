@@ -944,7 +944,12 @@ test("serve_brackets_an_ipv6_host_in_its_urls", async () => {
 		assert.match(info.url, /^http:\/\/\[::ffff:127\.0\.0\.1\]:\d+\/$/);
 		// It parses, as an IPv6 host (URL writes it in its own form, `[::ffff:7f00:1]`).
 		assert.ok(new URL(info.url).hostname.startsWith("[::ffff:"), info.url);
-		assert.ok(server.log().includes(`at ${info.url}`), server.log());
+		// The log comes through a pipe, so its last line can arrive after the ready file (Node 24, CI).
+		const started = Date.now();
+		while (!server.log().includes(`at ${info.url}`)) {
+			assert.ok(Date.now() - started < 10_000, server.log());
+			await sleep(20);
+		}
 	} finally {
 		await server.stop();
 	}

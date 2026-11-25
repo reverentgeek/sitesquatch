@@ -26,8 +26,9 @@ import type { Built, SiteInfo } from "./builder.ts";
 import * as companionProcesses from "./companions.ts";
 import { Companions } from "./companions.ts";
 import { handle, handleBuilt } from "./http.ts";
-import { Live, assetStamps, fingerprint, isAsset, sameStamps } from "./live.ts";
+import { Live, assetStamps, disagreements, fingerprint, fromListing, isAsset, sameStamps, walked } from "./live.ts";
 import type { Written } from "./live.ts";
+import type { Listed } from "../paths.ts";
 import { Channel, Watcher, chooseStrategy } from "./watch.ts";
 import { checkFolder, compareOutputs, ownFiles, verdict } from "./check.ts";
 import { record, timing } from "./timeline.ts";
@@ -109,6 +110,17 @@ const TOOLS_LEARN = 3;
 export const DEBOUNCE_MS = 50;
 /** How much longer a burst waits when a file it names is gone, for a save that's half done. */
 const GONE_MS = 200;
+
+/**
+ * Whether `file` was written at `since` (a `Date.now()`) or later. For the checked mode's race:
+ * an event can come after the rebuild it belongs to (Windows names the folder first, and the file
+ * a moment later, while the clean build runs), and a file written before the rebuild began was in it.
+ */
+function writtenSince(file: string, since: number): boolean {
+	const stat = fs.statSync(file, { throwIfNoEntry: false });
+	// A file that's gone went during the check, or the check can't tell: not judged, to be safe.
+	return stat === undefined || stat.mtimeMs >= since - 1;
+}
 
 const LOOPBACK = "127.0.0.1";
 
@@ -520,6 +532,20 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 			});
 			// Folders watched for a config file see their other files change too.
 			const inSources = (file: string) => watchPaths.some((p) => isInside(p, file)) || isConfig(file) || builder.read.has(file);
+			// The checked mode's race needs what each source held when the rebuild began. Windows
+			// names the folder a file changed in, and the file a moment later: the files directly in
+			// a folder named are noted now, so the late event for one the rebuild read isn't a change
+			// (a test that wrote the same text again was judged a race, Node 26 on Windows). Only
+			// in the checked mode: it reads every file in the folder.
+			if (CHECKING) {
+				for (const folder of changed) {
+					if (!isDir(folder) || !inSources(folder)) continue;
+					for (const name of fs.readdirSync(folder)) {
+						const file = path.join(folder, name);
+						if (!isDir(file)) contents.set(file, sourceState(file));
+					}
+				}
+			}
 			const config = sources.find(isConfig);
 			const source = config === undefined ? sources.find(inSources) : undefined;
 			if (config !== undefined) {
@@ -539,16 +565,16 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				// never came. One that has written after a rebuild is waited for from then on: the
 				// blog's Tailwind writes only when an edit adds a class, and that edit's page would go
 				// out before its CSS. Not waiting skips the output's stamps too (60 ms on the blog).
-				const marks = await runBuild(builder, live, async () => {
+				const marks = await runBuild(builder, live, async (touched) => {
 					if (!tools || (!toolsWriteAfter && quietRebuilds >= TOOLS_LEARN)) return;
-					if (await settle(rx, output, assetStamps(output), QUIET, carried)) toolsWriteAfter = true;
+					if (await settle(rx, output, assetStamps(output), QUIET, carried, touched)) toolsWriteAfter = true;
 					else quietRebuilds += 1;
 				}, sources);
 				rebuiltAt = performance.now();
 				if (!quiet) sayWhere();
 				record({ kind: "rebuild", file: show(source), heard: heardAt, debounced, asked, ...marks, said: Date.now() });
 				watchConfigFiles();
-				if (CHECKING && marks.ok) await checkRebuild({ args, builder, rx, carried, tools, stale: live.stale, changed: show(source), moved: (file) => !own(file) && !editorsOwn(file) && !skipped(file) && !isInside(output, file) && inSources(file) && sourceState(file) !== contents.get(file), show });
+				if (CHECKING && marks.ok) await checkRebuild({ args, builder, rx, carried, tools, stale: live.stale, changed: show(source), moved: (file) => !own(file) && !editorsOwn(file) && !skipped(file) && !isInside(output, file) && inSources(file) && sourceState(file) !== contents.get(file) && writtenSince(file, asked), show });
 			} else if (outputs.some((file) => isAsset(file) || !exists(file))) {
 				// Another tool (PostCSS, esbuild) wrote a stylesheet or a script, or ssqch's own
 				// write is late to arrive: the contents say which, so a tool's write that landed
@@ -622,14 +648,16 @@ async function recover(rx: Channel<string[]>, gone: string[], restart: () => Pro
  * Build, print the summary (or the error), and tell the browsers. `hold` runs between a build
  * that worked and telling them, to wait for what the `serve.run` tools write (`settle`).
  */
-async function runBuild(builder: Builder, live: Live, hold: () => Promise<void>, changed?: string[]): Promise<{ ok: boolean; built: number; held: number; published: number; builder?: Built["times"] }> {
-	const { ok, times } = await buildAndReport(builder, live, changed);
+async function runBuild(builder: Builder, live: Live, hold: (touched: Set<string>) => Promise<void>, changed?: string[]): Promise<{ ok: boolean; built: number; held: number; published: number; builder?: Built["times"] }> {
+	const { ok, times, listing } = await buildAndReport(builder, live, changed);
 	const built = Date.now();
 	let held = built;
 	if (ok) {
-		await hold();
+		// The output files the watcher named while the tools were waited for: the listing is from before.
+		const touched = new Set<string>();
+		await hold(touched);
 		held = Date.now();
-		await publish(builder.site, live);
+		await publish(builder.site, live, listing, touched);
 	}
 	return { ok, built, held, published: Date.now(), ...(times ? { builder: times } : {}) };
 }
@@ -680,9 +708,15 @@ async function buildAndReport(builder: Builder, live: Live, changed?: string[]):
 }
 
 /** After a build that worked: tell the browsers what changed in the output. */
-async function publish(site: SiteInfo, live: Live): Promise<void> {
+async function publish(site: SiteInfo, live: Live, listing?: Listed[], touched?: Set<string>): Promise<void> {
 	live.repeatMissing(site.output);
-	await live.changed(site.output);
+	// With the checked mode, the listing is compared with a walk of the server's own: what browsers
+	// are told isn't checked otherwise, and a file missing from the listing is a page not reloaded.
+	if (CHECKING && listing) {
+		const off = disagreements(fromListing(site.output, listing, touched), walked(site.output));
+		if (off.length) diagnostics.warn(diagnostics.warning("build", `check-rebuilds: the builder's listing of ${site.outputName} and the server's walk of it differ on ${off.length} file${off.length === 1 ? "" : "s"} (${off.slice(0, 3).join(", ")}${off.length > 3 ? ", ..." : ""}): browsers may not hear of a change`));
+	}
+	await live.changed(site.output, listing, touched);
 }
 
 /**
@@ -718,7 +752,7 @@ async function firstCompile(output: string, quiet: boolean): Promise<void> {
  * hear about the page and its new CSS at once, instead of the page first and its CSS a moment
  * later. Other changes seen meanwhile go in `carried`. Answers whether a tool wrote.
  */
-export async function settle(rx: Channel<string[]>, output: string, before: Map<string, Written>, first: number, carried: string[]): Promise<boolean> {
+export async function settle(rx: Channel<string[]>, output: string, before: Map<string, Written>, first: number, carried: string[], touched?: Set<string>): Promise<boolean> {
 	const started = performance.now();
 	const cap = started + first + KEEPS_WRITING;
 	// A tool may have written already, between the build and now.
@@ -735,6 +769,8 @@ export async function settle(rx: Channel<string[]>, output: string, before: Map<
 				carried.push(file);
 				continue;
 			}
+			// The builder's listing is from before this: what a tool wrote meanwhile is looked at.
+			touched?.add(file);
 			if (!isAsset(file)) continue;
 			// The build's own copy of a script (a passthrough file) reports a write too.
 			const stat = fs.statSync(file, { throwIfNoEntry: false });

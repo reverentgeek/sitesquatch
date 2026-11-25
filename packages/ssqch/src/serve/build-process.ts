@@ -11,7 +11,8 @@ import { Locator } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { describeThrown, loadedFiles } from "../modules.ts";
 import { filesRead, siteRead } from "../plugin-files.ts";
-import { isInside, realPath, relative, slashes } from "../paths.ts";
+import { isInside, listOutput, realPath, relative, slashes } from "../paths.ts";
+import type { Listed } from "../paths.ts";
 import { summary } from "../report.ts";
 import { isAsset } from "./live.ts";
 import { fileHash } from "./builder.ts";
@@ -124,7 +125,7 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 		const { recovered, changed } = asked.shift()!;
 		const received = Date.now();
 		config.changed = changed;
-		let result: { ok: boolean; error?: string; assets: string[]; stale?: string[] };
+		let result: { ok: boolean; error?: string; assets: string[]; stale?: string[]; listing?: Listed[] };
 		let times: Omit<BuilderTimes, "said"> | undefined;
 		// What the build is doing, each second, for the server's limit on a stuck one. Unref'd,
 		// so a build with nothing left to wait for still ends as Node ends it (`watchSettle`).
@@ -136,8 +137,11 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 			const started = Date.now();
 			const report = await working(() => build(config));
 			if (timing) times = { received, started, finished: Date.now(), phases: report.timings };
-			if (!config.quiet) process.stdout.write(summary(config, report, recovered));
-			result = { ok: true, assets: report.outputs.filter(isAsset), stale: report.stale };
+			// The output, listed once: for the summary's Output line, and for the server, which listed it
+			// again to tell browsers what changed (on 10,000 pages, 140 ms each).
+			const listing = listOutput(dirsOf(config).output);
+			if (!config.quiet) process.stdout.write(summary(config, report, recovered, listing));
+			result = { ok: true, assets: report.outputs.filter(isAsset), stale: report.stale, listing };
 		} catch (e) {
 			// With the lines it's about, in the terminal and over the page.
 			const said = diagnostics.describe(e, "build", at);
