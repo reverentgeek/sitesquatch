@@ -525,7 +525,7 @@ let temporary = 0;
  */
 /** One page's image requests: `generateNamed`'s arguments and whom they were for, and its pinned pictures. */
 interface PageImages {
-	calls: Array<[src: string, widths: number[], formats: Format[], name: string | undefined, by: string | undefined]>;
+	calls: Array<[src: string, widths: number[], formats: Format[], name: string | undefined, by: string | undefined, made: ImageMetadata | undefined]>;
 	pinned: number;
 	pinnedAt?: [src: string, page: string];
 	usedWidths: boolean;
@@ -808,7 +808,8 @@ export class ImageProcessor {
 	 * encoded again when its source is newer than it.
 	 */
 	generateNamed(src: string, widths: number[], formats: Format[], name: string | undefined, by?: string): ImageMetadata {
-		this.pageRecord()?.calls.push([src, widths, formats, name, by]);
+		const call: PageImages["calls"][number] = [src, widths, formats, name, by, undefined];
+		this.pageRecord()?.calls.push(call);
 		if (name !== undefined) {
 			const last = name.split("/").at(-1) ?? "";
 			if (last === "" || name.split("/").includes("..") || /[\\?#]/.test(name)) {
@@ -832,6 +833,8 @@ export class ImageProcessor {
 			this.memo.set(key, found);
 		}
 		if (found instanceof Error) throw found;
+		// What it came to, for a replay that puts it back without working it out again.
+		call[5] = found;
 		return found;
 	}
 
@@ -1390,7 +1393,19 @@ export class ImageProcessor {
 		for (const url of skipped) {
 			const record = this.perPage.get(url);
 			if (!record) continue;
-			for (const [src, widths, formats, name, by] of record.calls) {
+			for (const [src, widths, formats, name, by, made] of record.calls) {
+				// What it came to last time, with every file there: put back as this build's answer (the
+				// memo, which madeFrom() reads for the llms plugin's copies) and in use, without working
+				// it out again (asking again was 130 ms of the blog's rebuild, 760 sources). One with a
+				// file gone is asked for, and made again. A changed source isn't a page: a whole rebuild.
+				const files = made ? [...made.formats.values()].flat().map((e) => e.path) : [];
+				if (made && files.every((file) => fs.existsSync(file))) {
+					const key = JSON.stringify([samePath(src), widths, formats, name ?? null]);
+					if (!this.memo.has(key)) this.memo.set(key, made);
+					for (const file of files) this.used.add(file);
+					this.sources.add(samePath(src));
+					continue;
+				}
 				const meta = this.generateNamed(src, widths, formats, name);
 				this.watch(meta, src, { name: by ?? url, url });
 			}
