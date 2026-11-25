@@ -9,7 +9,7 @@ const groups = [...document.querySelectorAll(".tabs")].map((tabs) => {
   for (const panel of panels) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = panel.dataset.label;
+    button.textContent = panel.dataset.label ?? "";
     button.setAttribute("role", "tab");
     button.addEventListener("click", () => choose(panel.dataset.label));
     list.append(button);
@@ -20,6 +20,7 @@ const groups = [...document.querySelectorAll(".tabs")].map((tabs) => {
   return { panels, buttons: /** @type {HTMLElement[]} */ ([...list.children]) };
 });
 
+/** @param {string | undefined} label */
 function choose(label) {
   for (const { panels, buttons } of groups) {
     // A group without that label keeps what it shows.
@@ -62,12 +63,12 @@ if (themeSwitch) {
 
 // Copy as Markdown: the page's Markdown copy (llmsPlugin() writes it), for pasting into a chat
 // with an agent. The button stays hidden where there's no clipboard to copy to.
-for (const button of document.querySelectorAll("[data-copy-markdown]")) {
+for (const button of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll("[data-copy-markdown]"))) {
   if (!navigator.clipboard) continue;
   button.hidden = false;
   button.addEventListener("click", async () => {
     try {
-      const response = await fetch(button.dataset.copyMarkdown);
+      const response = await fetch(/** @type {string} */ (button.dataset.copyMarkdown));
       await navigator.clipboard.writeText(await response.text());
       button.textContent = "Copied";
     } catch {

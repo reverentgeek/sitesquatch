@@ -14,6 +14,7 @@ import { sitemapPlugin } from "ssqch/sitemap";
 // written without a time is that day, and spelled out here rather than with toLocaleDateString,
 // whose answers can change between Node releases.
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+/** @param {Date | string | number} value */
 const readableDate = (value) => {
   const date = value instanceof Date ? value : new Date(value);
   return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
