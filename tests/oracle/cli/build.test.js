@@ -355,6 +355,23 @@ test("date_fallback_from_git", () => {
 	assert.ok(!r.ok && r.log.includes("dateFallback must be \"git\" or \"file\", not \"created\""), r.log);
 });
 
+// DELIBERATE (0.16): before the build, the config's hooks run first and then the plugins', in
+// their order; after it, the plugins' run first and the config's last, so it sees the output as
+// they left it. The config's ran first after the build too, and a service worker it listed had
+// 122 image copies imagePlugin({ prune }) removed a moment later (Pack Mule).
+test("the_configs_after_build_hook_runs_after_the_plugins", () => {
+	const dir = tempDir("hook-order");
+	const said = (who) => `(e) => { console.log("${who} " + (e.written ? "after" : "before")); }`;
+	write(dir, {
+		"ssqch.config.js": `export default {\n  beforeBuild: ${said("config")},\n  afterBuild: ${said("config")},\n  plugins: [\n    { name: "first", beforeBuild: ${said("first")}, afterBuild: ${said("first")} },\n    { name: "second", plugins: [{ name: "inner", afterBuild: ${said("inner")} }], afterBuild: ${said("second")} },\n  ],\n};\n`,
+		"index.md": "Camp\n",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	const order = r.stdout.split("\n").filter((line) => / (before|after)$/.test(line));
+	assert.deepEqual(order, ["config before", "first before", "first after", "inner after", "second after", "config after"]);
+});
+
 test("hooks_run_commands", unixOnly, () => {
 	const dir = tempDir("run");
 	const d = dir;

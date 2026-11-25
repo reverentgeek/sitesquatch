@@ -215,7 +215,7 @@ declare module "ssqch" {
 		watch?: string | string[];
 		/** Run before each build: a function, `{ run: "command" }`, or a list of them. */
 		beforeBuild?: Hook | Hook[];
-		/** Run after each build, with `written` (the pages it wrote and the files plugins made beside them). The config's hooks run before plugins' (`imagePlugin({ prune })` removes its copies after), so a hook that reads the whole output goes in a plugin listed last. */
+		/** Run after each build, with `written` (the pages it wrote and the files plugins made beside them). The config's run after every plugin's, so it sees the whole output as they left it (`imagePlugin({ prune })`'s old copies gone); before the build, the config's run first. */
 		afterBuild?: Hook | Hook[];
 		/** More config, from plugins. A plugin is an object with any of these keys, a function that returns one, a built-in plugin (`imagePlugin()`), and plugins written in Rust (`{ name, rust: { wasm, options } }`). `false`, `null` and `undefined` are skipped. */
 		plugins?: Plugin[];

@@ -152,7 +152,10 @@ export async function build(config: Config): Promise<BuildReport> {
 		timings: [],
 		summary: [],
 	};
-	await runHooks(config, dirs, "afterBuild", config.afterBuild, report, site.profile);
+	// The plugins' hooks, the config's own (after them: it sees the output as they left it), then
+	// the checks of the finished output (the link checker).
+	const isCheck = (hook: Hook) => "check" in hook && hook.check === true;
+	await runHooks(config, dirs, "afterBuild", [...config.afterBuild.filter((h) => !isCheck(h)), ...config.afterBuild.filter(isCheck)], report, site.profile);
 	// The summary's size is what's on disk: a hook can minify the pages (4.43 MB said, 4.07 MB
 	// written, a11y #20), or remove one.
 	if (config.afterBuild.length) report.pageBytes = written.reduce((sum, w) => sum + (fs.statSync(w.file, { throwIfNoEntry: false })?.size ?? 0), 0);

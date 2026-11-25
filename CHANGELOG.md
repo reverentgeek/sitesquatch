@@ -11,6 +11,16 @@ where that version matches.
 
 ## Unreleased
 
+### Breaking
+
+- The config's `afterBuild` runs after the plugins' hooks, where it ran before them, so it sees
+  the output as they left it: a service worker's list in the Pack Mule study had 122 image copies
+  that `imagePlugin({ prune: true })` removed a moment later. Before the build, the config's hooks
+  still run first. `linksPlugin()` checks links after every hook, the config's included, so a
+  link to what a hook makes (Pagefind's files) resolves as it did. A config hook that relied on
+  running before a plugin's moves into a plugin listed before it: `plugins: [{ name: "first",
+  afterBuild: myHook }, ...]`.
+
 ### Fixed
 
 - From the Pack Mule study (a small app on a static site, 2026-11-24):
@@ -34,9 +44,8 @@ where that version matches.
     no doctype, `<html>`, `<head>`, `<body>` or `<title>` isn't a page. Each was warned about as
     a page with no `<h1>` and no description.
   - What a hook's `written` holds, in `ssqch.d.ts` and the docs: the pages and the files plugins
-    make beside them, not passthrough copies, images or assets. And the order hooks run in: the
-    config's `afterBuild` before the plugins', so a step that reads the whole output (a service
-    worker's list) goes in a plugin listed last.
+    make beside them, not passthrough copies, images or assets, and the order hooks run in
+    (Breaking, above).
   - Smaller: `ssqch --help` says each command has options of its own (`ssqch build --help`), and
     `baseline`'s line that it checks a build repeats too; the image docs warn that a plain
     `width` on an `<img>` keeps the config's `widths` from it; the `serve.run` docs say a watcher

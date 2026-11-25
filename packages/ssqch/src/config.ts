@@ -45,7 +45,8 @@ export type EngineFn = (source: string, data: Data, name: string, context: { kin
 export type TransformFn = (content: string, page: { url: string; inputPath: string; outputPath: string }) => string | Promise<string>;
 export type CollectionFn = (items: any[]) => unknown;
 /** A hook: the site's function (told about the build), or a command to run. */
-export type Hook = { label: string; fn: (event: Data) => unknown } | { run: string };
+/** A hook: a function, or a command. `check` (the link checker's) runs after every other `afterBuild`, the config's included, on the output as they all left it. */
+export type Hook = { label: string; fn: (event: Data) => unknown; check?: boolean } | { run: string };
 
 /** A file a plugin adds to the output: a URL path (`/sitemap.xml`) and its contents. */
 export interface GeneratedFile {
@@ -735,7 +736,6 @@ async function loadJs(config: Config, file: string): Promise<void> {
 			ops.push(() => { config.watch.push(target as string); });
 		}
 		hooks("beforeBuild", part.beforeBuild, where);
-		hooks("afterBuild", part.afterBuild, where);
 
 		const plugins = list(part.plugins) as any[];
 		for (let i = 0; i < plugins.length; i++) {
@@ -743,6 +743,11 @@ async function loadJs(config: Config, file: string): Promise<void> {
 			const label = plugin?.name ? `plugin "${plugin.name}"` : `plugins[${i}]`;
 			await apply(plugin, top ? label : `${where} > ${label}`, false);
 		}
+		// After the build, a config's (or a plugin's) own hook runs after the plugins it lists, so it
+		// sees the output as they left it: before, the config's ran first, and a service worker it
+		// listed had 122 image copies `imagePlugin({ prune })` removed a moment later (Pack Mule).
+		// Before the build, its own hook still runs first.
+		hooks("afterBuild", part.afterBuild, where);
 	}
 
 	// Name the config file in an error, unless the message already starts with it
