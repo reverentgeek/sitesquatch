@@ -10,7 +10,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { realPath } from "../paths.ts";
 import { assetStamps } from "./live.ts";
-import { QUIET, editorsOwn, outOfWatches, settle } from "./server.ts";
+import { NETLIFY_DEV_NOTE, QUIET, behindNetlifyDev, editorsOwn, outOfWatches, settle } from "./server.ts";
 import { Channel } from "./watch.ts";
 
 const BIN = fileURLToPath(new URL("../../bin/ssqch.ts", import.meta.url));
@@ -341,4 +341,13 @@ test("running out of watches says what to raise, or to poll", () => {
 	assert.match(outOfWatches(err("ENOSPC")), /fs\.inotify\.max_user_watches.*SSQCH_WATCH=poll/);
 	assert.match(outOfWatches(err("EMFILE")), /ulimit -n.*SSQCH_WATCH=poll/);
 	assert.equal(outOfWatches(err("EACCES")), "");
+});
+
+// Pack Mule ran ssqch serve behind netlify dev, which applied the site's _redirects and _headers
+// in front of it: an unforced rewrite was passed by, and the site's CSP applied while serving.
+test("behind netlify dev, the server says what netlify dev does in front of it", () => {
+	assert.equal(behindNetlifyDev({ NETLIFY_DEV: "true" }), true);
+	assert.equal(behindNetlifyDev({}), false);
+	assert.equal(behindNetlifyDev({ NETLIFY_DEV: "false" }), false);
+	assert.match(NETLIFY_DEV_NOTE, /200!.*Content-Security-Policy.*--output \.build\/dev/);
 });

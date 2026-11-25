@@ -94,6 +94,15 @@ export function outOfWatches(e: unknown): string {
 	return "";
 }
 
+/**
+ * `netlify dev` runs this server behind its own (it sets `NETLIFY_DEV`), and does what this one
+ * doesn't: it applies the site's `_redirects` and `_headers` in front of it, so a rewrite to a
+ * page here needs `200!` (one without the `!` is passed by), and a Content-Security-Policy there
+ * applies while serving. Pack Mule spent ten minutes on the two.
+ */
+export const behindNetlifyDev = (env: NodeJS.ProcessEnv = process.env) => env.NETLIFY_DEV !== undefined && env.NETLIFY_DEV !== "" && env.NETLIFY_DEV !== "false";
+export const NETLIFY_DEV_NOTE = "note: behind netlify dev, which applies the site's _redirects and _headers in front of this server: a rewrite to a page here needs 200! (without the !, netlify dev passes it by), and a Content-Security-Policy in _headers applies while serving. Give it an output folder of its own, so a production build's _headers aren't read too: ssqch serve --output .build/dev, with publish = \".build/dev\" under [dev].";
+
 /** Rebuilds in a row with no write from `serve.run`'s tools, after which they aren't waited for. */
 const TOOLS_LEARN = 3;
 /** The quiet that ends a burst of changes, in ms. */
@@ -340,6 +349,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 	// Polling where the system sends no events (a Windows drive under WSL), said once.
 	const how = chooseStrategy([site.root, ...site.watch].map(realPath));
 	if (how.unknown !== undefined) diagnostics.warn(diagnostics.warning("build", `SSQCH_WATCH=${how.unknown} isn't a way to watch: use poll, or events (the system's own, the default)`));
+	if (behindNetlifyDev() && !quiet) say(NETLIFY_DEV_NOTE);
 	if (how.why !== undefined && !quiet) say(`Watching by looking at every file now and then (${how.why}): a change shows a moment later than with the system's events. SSQCH_WATCH=events turns it off.`);
 	// When the first change of the next rebuild was heard (`SSQCH_SERVE_TIMELINE`).
 	let heard: number | undefined;

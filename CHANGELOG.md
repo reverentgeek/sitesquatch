@@ -11,6 +11,22 @@ where that version matches.
 
 ## Unreleased
 
+### Changed
+
+- `ssqch serve` shows an edit sooner: on v8.dev, 232 ms from the save to the browser hearing of it,
+  where it was about 800.
+  - The server pushes each change to the browser as it happens (`/__ssqch/events`), where the
+    page asked every 0.7 s and heard of a rebuild 0.35 s late on average. A page whose stream is
+    held back (by a proxy) asks as before.
+  - A burst of changes ends after 50 ms of quiet, where it was 120. A save whose file is gone at
+    that point (Vim renames it away for its backup and writes it again 40 to 50 ms later) waits up
+    to 200 ms more for it, so the page isn't dropped and put back.
+  - A `serve.run` tool that hasn't written after three rebuilds in a row isn't waited for (it was
+    150 ms after every rebuild), and one that writes after a rebuild is waited for again.
+- Behind `netlify dev`, the server says once what `netlify dev` does in front of it: rewrites
+  need `200!`, the site's `_headers` apply while serving, and it wants an output folder of its
+  own.
+
 ### Fixed
 
 - `ssqch serve` sees changes where the system sends no file events: a Windows drive opened from
