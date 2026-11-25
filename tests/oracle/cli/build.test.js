@@ -85,6 +85,18 @@ test("types_says_what_it_wrote_once_and_quiet_says_nothing", () => {
 	assert.ok(r.ok && r.stdout === "" && fs.existsSync(path.join(dir, "ssqch.d.ts")), r.log);
 });
 
+// Browser code that included ssqch.d.ts for `Schemas` believed in the config's Node `process`
+// (Pack Mule): --schemas-only writes the schemas alone.
+test("types_schemas_only_writes_the_schemas_without_node", () => {
+	const dir = tempDir("types-schemas-only");
+	write(dir, { "ssqch.config.js": "export default { schemas: { gear: { files: \"gear/*.md\", fields: { weight: \"number\" } } } };\n" });
+	const r = ssqch(["types", "--root", dir, "--schemas-only"]);
+	assert.ok(r.ok && r.stdout.includes("ssqch-schemas.d.ts (with 1 schema)"), r.log);
+	const text = fs.readFileSync(path.join(dir, "ssqch-schemas.d.ts"), "utf8");
+	assert.ok(text.includes("interface Schemas {") && text.includes("weight: number;") && !text.includes("declare var process") && !text.includes("namespace NodeJS"), text);
+	assert.ok(!fs.existsSync(path.join(dir, "ssqch.d.ts")));
+});
+
 // The before-and-after recipe (`ssqch diff --help`) builds into a second folder between two
 // builds into the first: the second build mustn't forget what the first folder holds (the
 // Squatch Snacks rerun, 2026-11-23: moved pages stayed in dist/ and answered 200).

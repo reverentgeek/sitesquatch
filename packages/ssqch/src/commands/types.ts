@@ -28,6 +28,18 @@ export interface TypesOptions {
 	out: string;
 	/** `--quiet`: nothing on success (a `beforeBuild` command's line above every build's report). */
 	quiet?: boolean;
+	/** `--schemas-only`: only the `Schemas` interface, for a browser program, which mustn't see the config's Node `process`. */
+	schemasOnly?: boolean;
+}
+
+/**
+ * The schemas alone: what browser code imports (`import type { Schemas } from "ssqch"`), without
+ * the config's types, whose global `process` told a browser program that `process.env` was
+ * there (Pack Mule). An empty `Schemas` when the site has none, so the import still works.
+ */
+export function schemasOnly(schemas: Array<[name: string, typescript: string]>): string {
+	const header = "// The site's `schemas` as types, for code that runs in the browser: `import type { Schemas } from \"ssqch\"`.\n// Written by `ssqch types --schemas-only`; run it again after changing them. The config's own\n// types, Node's `process` among them, are in ssqch.d.ts.\n";
+	return header + (schemas.length ? schemaDeclarations(schemas) : "\ndeclare module \"ssqch\" {\n\tinterface Schemas {}\n}\n");
 }
 
 /** Whether the root's jsconfig.json or tsconfig.json names `out` already, so the hint to list it is noise. */
@@ -46,14 +58,14 @@ export async function runTypes(options: TypesOptions): Promise<number> {
 	const file = path.resolve(out);
 	// A site's schemas become types too. Without a config (or with one that doesn't load), the
 	// types are the same for every site.
-	let text = types();
+	let text = options.schemasOnly ? "" : types();
 	let schemas = 0;
 	try {
 		const env: Environment = "development";
 		const config = await loadConfig({ root: root ?? ".", env, quiet: true });
 		const found = await schemaTypes(config);
 		schemas = found.length;
-		text += schemaDeclarations(found);
+		text += options.schemasOnly ? schemasOnly(found) : schemaDeclarations(found);
 	} catch (e) {
 		process.stderr.write(`warn: couldn't read the site's config, so its schemas aren't in the types: ${messageOf(e)}\n`);
 	}
@@ -65,7 +77,7 @@ export async function runTypes(options: TypesOptions): Promise<number> {
 	}
 	if (options.quiet) return 0;
 	const withSchemas = schemas === 0 ? "" : schemas === 1 ? " (with 1 schema)" : ` (with ${schemas} schemas)`;
-	const hint = listed(path.dirname(file), out) ? "" : ` List it in jsconfig.json's "include" so editors pick it up.`;
+	const hint = options.schemasOnly ? ` Include it in the tsconfig.json of the code that runs in the browser.` : listed(path.dirname(file), out) ? "" : ` List it in jsconfig.json's "include" so editors pick it up.`;
 	process.stdout.write(`Wrote ${out}${withSchemas}.${hint}\n`);
 	return 0;
 }

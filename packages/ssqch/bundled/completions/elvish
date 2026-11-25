@@ -203,7 +203,8 @@ set edit:completion:arg-completer[ssqch] = {|@words|
             cand --help 'Print help'
         }
         &'ssqch;types'= {
-            cand --out 'Where to write it'
+            cand --out 'Where to write it (default ssqch.d.ts, or ssqch-schemas.d.ts with --schemas-only)'
+            cand --schemas-only 'Write only the site''s schemas as types, for code that runs in the browser'
             cand --root 'Project root (defaults to the current directory)'
             cand -o 'Override the output directory (relative to the root)'
             cand --output 'Override the output directory (relative to the root)'

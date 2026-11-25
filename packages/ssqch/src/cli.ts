@@ -134,7 +134,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		positionals: [{ name: "dir", help: "Where to create it (default: the current folder)", required: false, default: "." }],
 		own: true,
 	},
-	{ name: "types", about: "Write ssqch.d.ts, the types editors use for ssqch.config.js", options: [{ long: "out", value: "out", help: "Where to write it", default: "ssqch.d.ts" }], positionals: [], own: true },
+	{ name: "types", about: "Write ssqch.d.ts, the types editors use for ssqch.config.js", options: [{ long: "out", value: "out", help: "Where to write it (default ssqch.d.ts, or ssqch-schemas.d.ts with --schemas-only)" }, { long: "schemas-only", help: "Write only the site's schemas as types, for code that runs in the browser" }], positionals: [], own: true },
 	{
 		name: "scout", helpGlobals: [], strictGlobals: true,
 		about: "Scout a site built with another generator: what moving it to ssqch takes, with file and line, and what's left during a move. Changes nothing unless asked",
@@ -362,7 +362,7 @@ export async function main(argv: string[]): Promise<number> {
 		}
 		case "types": {
 			routeConsole();
-			return (await import("./commands/types.ts")).runTypes({ root: value("root"), out: value("out") ?? "ssqch.d.ts", quiet: flag("quiet") });
+			return (await import("./commands/types.ts")).runTypes({ root: value("root"), out: value("out") ?? (flag("schemas-only") ? "ssqch-schemas.d.ts" : "ssqch.d.ts"), quiet: flag("quiet"), schemasOnly: flag("schemas-only") });
 		}
 	}
 

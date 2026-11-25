@@ -905,7 +905,7 @@ _ssqch() {
             return 0
             ;;
         ssqch__subcmd__types)
-            opts="-o -q -v -h --out --root --output --base --offline --env --quiet --verbose --help"
+            opts="-o -q -v -h --out --schemas-only --root --output --base --offline --env --quiet --verbose --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

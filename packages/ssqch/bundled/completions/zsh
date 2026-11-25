@@ -220,7 +220,8 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (types)
 _arguments "${_arguments_options[@]}" : \
-'--out=[Where to write it]: :_default' \
+'--out=[Where to write it \(default ssqch.d.ts, or ssqch-schemas.d.ts with --schemas-only\)]: :_default' \
+'--schemas-only[Write only the site'\''s schemas as types, for code that runs in the browser]' \
 '--root=[Project root (defaults to the current directory)]:ROOT:_files' \
 '-o+[Override the output directory (relative to the root)]:OUTPUT:_files' \
 '--output=[Override the output directory (relative to the root)]:OUTPUT:_files' \
