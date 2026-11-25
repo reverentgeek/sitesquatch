@@ -973,8 +973,8 @@ test("serve_checks_each_rebuild_against_a_clean_build", async () => {
 		await waitFor(path.join(dir, "dist/index.html"), "Cedar Trail");
 		await changeAndWait(path.join(dir, "src/posts/hike.md"), "---\ntitle: Old Growth Trail\n---\n```js\nconst cones = 4;\n```\n", path.join(dir, "dist/index.html"), "Old Growth Trail");
 		const said = await waitFor(log, "check-rebuilds: ");
-		const hike = path.join("src", "posts", "hike.md");
-		assert.ok(said.includes(`check-rebuilds: the rebuild after ${hike} wrote what a clean build writes (4 files the same)`), said);
+		// Windows reports the folder a file changed in (`src\\posts`), as the server says too.
+		assert.ok([path.join("src", "posts", "hike.md"), path.join("src", "posts")].some((changed) => said.includes(`check-rebuilds: the rebuild after ${changed} wrote what a clean build writes (4 files the same)`)), said);
 		// The timeline's line comes just after the log's: waited for, not assumed (Node 24, once).
 		await waitFor(timeline, "\"kind\":\"check\"");
 		const lines = readOr(timeline).trim().split("\n").map((line) => JSON.parse(line));
@@ -1001,7 +1001,7 @@ test("serve_checks_each_rebuild_against_a_clean_build", async () => {
 		await waitFor(path.join(counting, "dist/index.html"), "build 1");
 		await changeAndWait(path.join(counting, "src/camp.jinja"), "camp two", path.join(counting, "dist/camp/index.html"), "camp two");
 		const said = await waitFor(staleLog, "check-rebuilds: ");
-		assert.ok(said.includes(`check-rebuilds: the rebuild after ${path.join("src", "camp.jinja")} isn't what a clean build writes: 1 differ (index.html)`), said);
+		assert.ok([path.join("src", "camp.jinja"), "src"].some((changed) => said.includes(`check-rebuilds: the rebuild after ${changed} isn't what a clean build writes: 1 differ (index.html)`)), said);
 	} finally {
 		await again.stop();
 	}
@@ -1020,7 +1020,8 @@ test("serve_checks_each_rebuild_against_a_clean_build", async () => {
 		await waitFor(path.join(rooted, "dist/cedar/index.html"), "Cedar Trail");
 		await changeAndWait(path.join(rooted, "cedar.md"), "# Old Growth Trail\n", path.join(rooted, "dist/cedar/index.html"), "Old Growth Trail");
 		const said = await waitFor(rootedLog, "check-rebuilds: ");
-		assert.ok(said.includes("check-rebuilds: the rebuild after cedar.md wrote what a clean build writes (2 files the same)"), said);
+		// The file, or on Windows the folder it changed in (here the project root).
+		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes \(2 files the same\)/);
 	} finally {
 		await third.stop();
 	}
@@ -1041,7 +1042,7 @@ test("serve_times_each_rebuild_from_its_own_change", async () => {
 	const timeline = path.join(tempDir("serve-times-line"), "times.jsonl");
 	const log = path.join(tempDir("serve-times-log"), "serve.log");
 	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_SERVE_TIMELINE: timeline } });
-	const rebuilds = () => readOr(timeline).split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((line) => line.kind === "rebuild" && line.file === path.join("src", "index.jinja"));
+	const rebuilds = () => readOr(timeline).split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((line) => line.kind === "rebuild" && (line.file === path.join("src", "index.jinja") || line.file === "src"));
 	try {
 		await waitFor(path.join(dir, "dist/index.html"), "camp 0");
 		for (let i = 1; i <= 2; i++) {
