@@ -21,6 +21,14 @@ where that version matches.
   running before a plugin's moves into a plugin listed before it: `plugins: [{ name: "first",
   afterBuild: myHook }, ...]`.
 
+### Added
+
+- `ssqch types --schemas-only` writes the site's schemas alone, to `ssqch-schemas.d.ts`, for code
+  that runs in the browser (`import type { Schemas } from "ssqch"`): browser code that included
+  `ssqch.d.ts` for them believed in the config's Node `process` too.
+- Every example site comes with the package, in `node_modules/ssqch/bundled/examples/<name>/`,
+  where only `multilingual` did: `ssqch docs examples` says what each shows.
+
 ### Fixed
 
 - From the Pack Mule study (a small app on a static site, 2026-11-24):
@@ -46,11 +54,19 @@ where that version matches.
   - What a hook's `written` holds, in `ssqch.d.ts` and the docs: the pages and the files plugins
     make beside them, not passthrough copies, images or assets, and the order hooks run in
     (Breaking, above).
+  - A build says when the config's `widths` made no copies because every picture had a plain
+    `width` attribute, which pins it to one copy: written to reserve space, it sent 96-pixel
+    thumbnails the 800-pixel copy. One picture pinned on purpose (a logo) says nothing.
+  - A `ssqch docs` search that finds nothing names the sections that have every word of it, when
+    no name does (`topics` in the JSON).
+  - `ssqch new`, making the first page in an empty folder of a site with `bundles`, says a page
+    with files of its own is a folder, and where.
   - Smaller: `ssqch --help` says each command has options of its own (`ssqch build --help`), and
     `baseline`'s line that it checks a build repeats too; the image docs warn that a plain
     `width` on an `<img>` keeps the config's `widths` from it; the `serve.run` docs say a watcher
     stops when its standard input closes, so esbuild wants `--watch`, not `--watch=forever`; and
-    `now()` is Jinja's and Nunjucks', not every engine's.
+    `now()` is Jinja's and Nunjucks', not every engine's; the starters say what `dateFallback:
+    "git"` does outside a git repository.
 
 ## 0.15.1 - 2026-11-25
 
