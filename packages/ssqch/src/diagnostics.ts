@@ -127,7 +127,11 @@ export function takeWarnings(): Diagnostic[] {
 }
 
 /** Report a warning: printed as `warn: <message>`, or kept when capturing. */
+/** How many warnings have been said in this process: a step that said none can be skipped later without losing one. */
+export let warnedCount = 0;
+
 export function warn(diagnostic: Diagnostic): void {
+	warnedCount += 1;
 	if (capturing) warnings.push(diagnostic);
 	else process.stderr.write(`warn: ${diagnostic.message}\n`);
 }

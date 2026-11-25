@@ -19,7 +19,7 @@ import { withPage } from "./rendering.ts";
 import type { Data } from "./data.ts";
 import { NOT_DATA, decodeText, getPath, isPlainObject, loadDataFile, merge, normalizeTags, parseFrontMatter, readText, sameValue, setOwn, sourceDateEpoch, STATIC_DATA_EXTENSIONS, toDate } from "./data.ts";
 import type { Diagnostic } from "./diagnostics.ts";
-import { BuildError, Diagnostics, aliasUsed, bail, context, error as errorOf, messageOf, progress, warn, warning } from "./diagnostics.ts";
+import { BuildError, Diagnostics, aliasUsed, bail, context, error as errorOf, messageOf, progress, warn, warning, warnedCount } from "./diagnostics.ts";
 import { edgeEngine } from "./engines/edge.ts";
 import { ejsEngine } from "./engines/ejs.ts";
 import { Engines, plainEngine } from "./engines/engine.ts";
@@ -33,7 +33,7 @@ import * as equivalents from "./equivalents.ts";
 import { builtinFilters } from "./filters.ts";
 import { globSet, globToRegExp, isGlob } from "./glob.ts";
 import { describeThrown, loadedFiles, settle } from "./modules.ts";
-import { comparePaths, displayPath, isDir, isFile, isInside, readFollowing, realPath, relative, shown, slashes, walkFiles } from "./paths.ts";
+import { comparePaths, compareText, displayPath, isDir, isFile, isInside, readFollowing, realPath, relative, shown, slashes, walkFiles } from "./paths.ts";
 import { closest } from "./suggest.ts";
 import { Profile } from "./profile.ts";
 import { paginated } from "./schema.ts";
@@ -154,6 +154,10 @@ export class Site {
 	collections: Data = {};
 	/** Every file seen while looking for templates, so a data file next to a template is found without asking the disk. */
 	private seen = new Set<string>();
+	/** Every data file this build read (global, a theme's, directory data, a template's own), for `keptTemplates`. */
+	private dataFilesRead = new Set<string>();
+	/** With `SSQCH_KEEP_TEMPLATES=1` while serving, what a template's data came from besides its own file, when it can be reused at all: `undefined` when it can't. */
+	private shared: string | undefined;
 	/** PascalCase tags the pages have with no template in `_includes/components/`, with the pages each is on. */
 	unknownComponents = new Map<string, Set<string>>();
 	/** Front matter dates that aren't dates, said with the schemas' errors (`checkPages`), so a page's other mistakes are said with them. */
@@ -195,6 +199,7 @@ export class Site {
 	}
 
 	private loadData(file: string): ReturnType<typeof loadDataFile> {
+		this.dataFilesRead.add(file);
 		const load = () => loadDataFile(file, this.config.dataExtensions);
 		return this.profile.detailed ? this.profile.time("data", shown(this.dirs.root, file), false, load) : load();
 	}
@@ -379,6 +384,7 @@ export class Site {
 		this.themeCopies = themeCopies;
 		const commitDates = config.lastModified === "git" || config.dateFallback === "git" ? this.gitDates(config.lastModified === "git" ? "lastModified" : "dateFallback") : new Map<string, Date>();
 		const dirData = await this.loadDirectoryData();
+		this.shared = this.sharedInputs();
 		const sources = await readAll(this.files, config.serving ? new Set((config.changed ?? []).map(realPath)) : undefined);
 		const tpls = await collectErrors(this.files.map((file, i) => () => this.loadTemplate(file, sources[i], dirData, commitDates)));
 		// Drafts (`draft: true`) are built in development only.
@@ -715,6 +721,36 @@ export class Site {
 	}
 
 	private async loadTemplate(file: string, source: Buffer, dirData: Map<string, Data>, commitDates: Map<string, Date>): Promise<Tpl> {
+		const commit = commitDates.get(file)?.getTime();
+		const kept = this.shared !== undefined ? keptTemplates.get(file) : undefined;
+		if (kept && kept.bytes === source && kept.shared === this.shared && kept.commit === commit && kept.layouts.every(([layout, mark]) => fileMark(layout) === mark)) return kept.tpl;
+		const warned = warnedCount;
+		const ownData = this.dataFilesRead.size;
+		const tpl = await this.makeTemplate(file, source, dirData, commitDates);
+		// Kept when nothing in it can differ next time with the same bytes and the same shared
+		// inputs: no data file of its own (read just now), no warning said (it would be lost).
+		if (this.shared !== undefined && warnedCount === warned && this.dataFilesRead.size === ownData) {
+			keptTemplates.set(file, { bytes: source, shared: this.shared, commit, layouts: tpl.layouts.map((layout) => [layout.path, fileMark(layout.path)]), tpl });
+		} else keptTemplates.delete(file);
+		return tpl;
+	}
+
+	/**
+	 * With `SSQCH_KEEP_TEMPLATES=1` while serving: the inputs every template's data has besides its
+	 * own file, as one string, or `undefined` when they can't be known from files (a data function
+	 * in the config, a JavaScript data file: code, which can answer differently each build). Each
+	 * data file read so far (global, the themes', directory data) by its size and time.
+	 */
+	private sharedInputs(): string | undefined {
+		const { config } = this;
+		if (process.env.SSQCH_KEEP_TEMPLATES !== "1" || !config.serving || this.keepLayers || config.profile) return undefined;
+		if (config.globalData.some((entry) => entry.fn)) return undefined;
+		const files = [...this.dataFilesRead].sort(compareText);
+		if (files.some((file) => !STATIC_DATA_EXTENSIONS.includes(path.extname(file).slice(1).toLowerCase()))) return undefined;
+		return JSON.stringify(files.map((file) => [file, fileMark(file)]));
+	}
+
+	private async makeTemplate(file: string, source: Buffer, dirData: Map<string, Data>, commitDates: Map<string, Date>): Promise<Tpl> {
 		const { config, dirs } = this;
 		const root = this.rootOf(file);
 		const rel = relative(root, file);
@@ -1295,6 +1331,21 @@ function hasTags(tpl: Tpl, config: Config, s: string): boolean {
  * configuration is read again, which starts a new one.
  */
 const keptSources = new Map<string, { size: number; mtimeMs: number; bytes: Buffer }>();
+
+/**
+ * With `SSQCH_KEEP_TEMPLATES=1` while serving (the dev server's design, stage 1, behind a switch
+ * until the checked mode has run clean with it): each template as the last build made it, reused
+ * when its bytes are the very ones `keptSources` kept (unchanged), the shared inputs are the same
+ * (`Site.sharedInputs`), its layouts' files are as they were, and its commit date (git dates) too.
+ * Making them was 200 to 290 ms of a 10,000-page rebuild.
+ */
+const keptTemplates = new Map<string, { bytes: Buffer; shared: string; commit: number | undefined; layouts: Array<[string, string]>; tpl: Tpl }>();
+
+/** A file's size and time, as one string: what tells it's as it was. */
+function fileMark(file: string): string {
+	const stat = fs.statSync(file, { throwIfNoEntry: false });
+	return stat ? `${stat.size}:${stat.mtimeMs}` : "gone";
+}
 
 /**
  * Reads files through Node's thread pool, 64 at a time. A file's bytes are decoded when its
