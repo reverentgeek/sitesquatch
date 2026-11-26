@@ -1423,7 +1423,7 @@ function serializedData(value: unknown): Buffer {
 	const copy = (item: unknown): unknown => {
 		if (typeof item === "function") {
 			let id = functionIds.get(item);
-			if (id === undefined) functionIds.set(item, id = functionIds.size + 1);
+			if (id === undefined) functionIds.set(item, id = ++functionsSeen);
 			return `\0function ${id}`;
 		}
 		if (item === null || typeof item !== "object" || item instanceof Date || item instanceof RegExp || ArrayBuffer.isView(item)) return item;
@@ -1454,7 +1454,9 @@ function serializedData(value: unknown): Buffer {
 	};
 	return v8.serialize(copy(value));
 }
-const functionIds = new Map<Function, number>();
+/** Weakly, so a data function that makes new functions each build doesn't keep the old ones for the server's life. */
+const functionIds = new WeakMap<Function, number>();
+let functionsSeen = 0;
 
 /** A file's size and time, as one string: what tells it's as it was. */
 function fileMark(file: string): string {

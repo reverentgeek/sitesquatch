@@ -359,9 +359,10 @@ const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/
 /**
  * `SSQCH_INCREMENTAL=1` while serving (the dev server's design, stage 3, its first slice): the
  * pages to render when every changed file is a template whose body alone changed
- * (`Site.bodyOnly`) or whose own data did (`Site.ownData`: its front matter), the site's plugins are all `REPLAYABLE`, and the config has no transforms or
- * after-build hooks of its own (code that sees rendered pages; a `beforeBuild` hook runs before any
- * page, every build). `undefined` means render everything.
+ * (`Site.bodyOnly`), whose own data did (`Site.ownData`: its front matter), or that came or went
+ * (`Site.added`, `Site.gone`); the site's plugins are all `REPLAYABLE`, and the config has no
+ * transforms or after-build hooks of its own (code that sees rendered pages; a `beforeBuild` hook
+ * runs before any page, every build). A string, why it renders every page instead.
  */
 function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page> | string {
 	const { config } = site;
@@ -370,16 +371,18 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	if (!(site.bodyOnly.size || site.ownData.size || site.added.size || site.gone.size)) return site.keepingTemplates ? "no template's body or front matter alone changed" : `templates aren't kept: ${site.notKept}`;
 	// By real paths on both sides: the server names files by theirs, and the site may not (a
 	// temporary folder's `/var` is `/private/var` on macOS).
-	// A file that's gone has no real path of its own: its folder's, and its name.
-	const real = (file: string) => path.join(realPath(path.dirname(file)), path.basename(file));
-	const bodyOnly = new Set([...site.bodyOnly].map(real));
+	// A file that's gone has no real path of its own: its folder's, and its name. Both, for a page
+	// that's a link.
+	const reals = (file: string) => [realPath(file), path.join(realPath(path.dirname(file)), path.basename(file))];
+	const bodyOnly = new Set([...site.bodyOnly].flatMap(reals));
 	// A page's own data changed (its front matter, a date that's its file's time), or a page came
 	// or went: what other pages show of it comes through collections, which every page's data is
 	// made from again.
-	const ownData = new Set([...site.ownData, ...site.added, ...site.gone].map(real));
-	const other = config.changed.find((file) => !bodyOnly.has(real(file)) && !ownData.has(real(file)));
+	const ownData = new Set([...site.ownData, ...site.added, ...site.gone].flatMap(reals));
+	const isIn = (set: Set<string>, file: string) => reals(file).some((name) => set.has(name));
+	const other = config.changed.find((file) => !isIn(bodyOnly, file) && !isIn(ownData, file));
 	if (other !== undefined) return `${site.display(other)} isn't a page's body or front matter, or a page added or gone`;
-	const dataChanged = config.changed.some((file) => ownData.has(real(file)));
+	const dataChanged = config.changed.some((file) => isIn(ownData, file));
 	const plugin = config.plugins.find((name) => !REPLAYABLE.has(name));
 	if (plugin !== undefined) return `the plugin ${plugin}`;
 	if (config.afterBuild.some((hook) => !("label" in hook) || hook.label !== "")) return "an afterBuild hook of the config's own";
@@ -390,7 +393,7 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	if (dataChanged && everyLate) return "front matter with MkDocs' or Jekyll's templates";
 	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input) || site.ownData.has(page.tpl.input) || site.added.has(page.tpl.input)));
 	const changedKeys = new Set([...only].map(pageKey));
-	const changedFiles = new Set(config.changed.flatMap((file) => [realPath(file), real(file)]));
+	const changedFiles = new Set(config.changed.flatMap(reals));
 	for (const page of wanted) {
 		if (only.has(page) || page.output === null) continue;
 		const read = keptReads.get(page.output);
