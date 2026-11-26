@@ -54,3 +54,32 @@ test("the docs starter's types have its config's schemas", async () => {
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+// The docs starter searches on every production build (`npm run build`, a host's), not behind a
+// switch nothing on a host sets (new-docs2: a site deployed as documented had no search), and
+// SEARCH=0 skips it. Pagefind itself isn't run: only the config is loaded.
+test("the docs starter searches on a production build unless SEARCH=0", async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssqch-init-search-"));
+	const cwd = process.cwd();
+	const before = process.env.SEARCH;
+	try {
+		for (const [rel, contents] of starterFiles("docs", "jinja")) {
+			fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+			fs.writeFileSync(path.join(dir, rel), contents);
+		}
+		const searches = async (env: "production" | "development") => {
+			const config = await loadConfig({ root: dir, env, quiet: true });
+			return config.afterBuild.some((hook) => "run" in hook && typeof hook.run === "string" && hook.run.includes("pagefind"));
+		};
+		delete process.env.SEARCH;
+		assert.equal(await searches("production"), true);
+		assert.equal(await searches("development"), false);
+		process.env.SEARCH = "0";
+		assert.equal(await searches("production"), false);
+	} finally {
+		if (before === undefined) delete process.env.SEARCH;
+		else process.env.SEARCH = before;
+		process.chdir(cwd);
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});

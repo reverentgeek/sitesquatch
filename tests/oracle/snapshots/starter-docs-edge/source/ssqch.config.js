@@ -11,11 +11,13 @@ import { sitemapPlugin } from "ssqch/sitemap";
 // The site's address, from src/_data/site.json: put yours there.
 const { url } = readData("src/_data/site.json");
 
-// Search is Pagefind (https://pagefind.app), which indexes the built pages.
-// It's a program of its own that npx fetches, so it's opt-in, and pinned, so
-// every build gets the same one: SEARCH=1 ssqch build, then ssqch serve --built
-// to try it (ssqch serve builds without it).
-const search = Boolean(process.env.SEARCH);
+// Search is Pagefind (https://pagefind.app), which indexes the built pages:
+// on every production build (ssqch build, and so npm run build and a host's
+// build), pinned, so every build gets the same one. It's a program of its own
+// that npx fetches the first time, so SEARCH=0 ssqch build skips it (offline).
+// ssqch serve builds without it: to try it, ssqch build, then ssqch serve --built.
+/** @param {string} env */
+const searching = (env) => env === "production" && process.env.SEARCH !== "0";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -70,10 +72,10 @@ export default defineConfig(({ env }) => ({
     },
   },
 
-  data: { search },
+  data: { search: searching(env) },
   // Pagefind names its files by their contents, so the last index is emptied first: its old
   // files would stay in dist/ beside the new ones.
-  afterBuild: search ? [({ dirs }) => fs.rmSync(`${dirs.output}pagefind`, { recursive: true, force: true }), { run: "npx -y pagefind@1.6.0 --site dist" }] : [],
+  afterBuild: searching(env) ? [({ dirs }) => fs.rmSync(`${dirs.output}pagefind`, { recursive: true, force: true }), { run: "npx -y pagefind@1.6.0 --site dist" }] : [],
 
   plugins: [
     // Broken internal links (and anchors) fail a production build.

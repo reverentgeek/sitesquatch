@@ -29,13 +29,22 @@ where that version matches.
   post and the pages that show its text; an edit to its front matter, or a page added or deleted,
   renders the page and the pages that read `collections`. On a 10,000-page site, a saved post
   reaches the browser in 557 ms, where it was about 1,300; on a 174-page blog, 320 ms, where it
-  was about 720. A page that another tool wrote over in the output is rendered again. A layout, an include, a data file or the config still renders every page, and so
-  does every rebuild on a site with a transform or `afterBuild` hook of its own.
+  was about 720. A page that another tool wrote over in the output is rendered again, and so is
+  one whose own code read a changed page's file with Node's `fs` (a filter that reads a snippet)
+  or listed a folder a page came to. A layout, an include, a data file or the config still
+  renders every page, and so does every rebuild on a site with a transform or `afterBuild` hook
+  of its own.
   `SSQCH_INCREMENTAL=0` renders every page on every rebuild, as before: a page that's right with
   it and out of date without it is a bug to report.
 - Behind `netlify dev`, the server says once what `netlify dev` does in front of it: rewrites
   need `200!`, the site's `_headers` apply while serving, and it wants an output folder of its
   own.
+
+- The docs starter has search on every production build: `ssqch build`, `npm run build` and a
+  host's build run Pagefind, where before only `SEARCH=1` did, and nothing on a host set it, so a
+  docs site deployed as its Deploying page says had no search. `SEARCH=0` skips it, for a build
+  with no network. A site made with an earlier starter keeps its own config: to change it, replace
+  `Boolean(process.env.SEARCH)` with `env === "production" && process.env.SEARCH !== "0"`.
 
 ### Added
 
@@ -52,6 +61,12 @@ where that version matches.
 
 ### Fixed
 
+- In the docs starter's search, the words that match are readable: they were a pale tint on the
+  page's own color in the light theme. And a heading's `#` link isn't in the search's excerpts
+  ("The huckleberry rule # When ...").
+- The blog starter's `.gitignore` has `node_modules/`, as the docs starter's has.
+- `ssqch docs Netlify` shows a `netlify.toml` for a site `ssqch init` started. It ended on the
+  ReverentGeek blog's, which was a section further on.
 - `ssqch serve` sees changes where the system sends no file events: a Windows drive opened from
   WSL (`/mnt/c/...`), some Docker bind mounts, network shares. It built once there and never
   again, without a word. Under WSL a site on a Windows drive is polled on its own, and anywhere
