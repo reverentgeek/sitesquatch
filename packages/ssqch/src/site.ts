@@ -761,7 +761,9 @@ export class Site {
 	private async loadTemplate(file: string, source: Buffer, dirData: Map<string, Data>, commitDates: Map<string, Date>): Promise<Tpl> {
 		const commit = commitDates.get(file)?.getTime();
 		const kept = this.shared !== undefined ? keptTemplates.get(file) : undefined;
-		if (kept && kept.bytes === source && kept.shared === this.shared && kept.commit === commit && kept.layouts.every(([layout, mark]) => this.layoutMark(layout) === mark)) return kept.tpl;
+		// The same bytes, as `keptSources` kept them or read again with nothing different (a file in
+		// a folder Windows named): nothing in it changed, unless its date is its file's time and that moved.
+		if (kept && (kept.bytes === source || (kept.bytes.equals(source) && (kept.time === undefined || new Date(fs.statSync(file).mtimeMs).getTime() === kept.tpl.mtime.getTime()))) && kept.shared === this.shared && kept.commit === commit && kept.layouts.every(([layout, mark]) => this.layoutMark(layout) === mark)) return kept.tpl;
 		const warned = warnedCount;
 		const ownData = this.dataFilesRead.size;
 		const tpl = await this.makeTemplate(file, source, dirData, commitDates);
