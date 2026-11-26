@@ -1042,7 +1042,8 @@ export class Site {
 			const page: Data = { url, outputPath, inputPath, fileSlug: tpl.fileSlug, filePathStem: tpl.filePathStem, date: when };
 			if (tpl.lastModified) page.lastModified = tpl.lastModified;
 			// While serving, a read of the dates is noted (`noteDate`): the page's key is its file and URL, as `pageKey` in build.ts makes it.
-			if (incremental(this.config)) this.watchDates(page, `${tpl.input}\0${url === false ? null : url}`, ["date", "lastModified"]);
+			// Only a page whose date or lastModified is its file's time can have that as its only change.
+			if (incremental(this.config) && this.usesFileTime(tpl)) this.watchDates(page, `${tpl.input}\0${url === false ? null : url}`, ["date", "lastModified"]);
 			return page;
 		};
 
@@ -1257,7 +1258,7 @@ export class Site {
 			get templateContent() { return site.contentOf(page); },
 			get content() { return site.contentOf(page); },
 		};
-		if (incremental(this.config)) this.watchDates(item, `${page.tpl.input}\0${page.url}`, ["date"]);
+		if (incremental(this.config) && this.usesFileTime(page.tpl)) this.watchDates(item, `${page.tpl.input}\0${page.url}`, ["date"]);
 		return page.item = item;
 	}
 

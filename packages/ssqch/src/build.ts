@@ -427,8 +427,17 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	// copy or a picture is named in its own event. An includes folder isn't: an include it names
 	// renders every page.
 	const includeDirs = [site.dirs.includes, ...site.themeIncludes].flatMap(reals);
-	const unchanged = new Set([...site.unchanged].flatMap(reals));
-	const changed = config.changed.filter((file) => !(isDir(file) && !reals(file).some((name) => includeDirs.some((dir) => isInside(dir, name)))) && !isIn(unchanged, file));
+	// Every template taken as it was is unchanged (10,000 on a big site): matched by name first, so
+	// only a named file's namesakes are resolved.
+	const byName = new Map<string, string[]>();
+	for (const file of site.unchanged) {
+		const name = path.basename(file);
+		const same = byName.get(name);
+		if (same) same.push(file);
+		else byName.set(name, [file]);
+	}
+	const isUnchanged = (file: string) => (byName.get(path.basename(file)) ?? []).some((tpl) => isIn(new Set(reals(tpl)), file));
+	const changed = config.changed.filter((file) => !(isDir(file) && !reals(file).some((name) => includeDirs.some((dir) => isInside(dir, name)))) && !isUnchanged(file));
 	const other = changed.find((file) => !isIn(bodyOnly, file) && !isIn(ownData, file));
 	if (other !== undefined) return `${site.display(other)} isn't a page's body or front matter, or a page added or gone`;
 	// A page whose only change is its file's time (its date, with none of its own) reaches the
