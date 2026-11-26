@@ -29,8 +29,11 @@ where that version matches.
   post and the pages that show its text; an edit to its front matter, or a page added or deleted,
   renders the page and the pages that read `collections`. On a 10,000-page site, a saved post
   reaches the browser in 557 ms, where it was about 1,300; on a 174-page blog, 320 ms, where it
-  was about 720. A page that another tool wrote over in the output is rendered again. A layout, an include, a data file or the config still renders every page, and so
-  does every rebuild on a site with a transform or `afterBuild` hook of its own.
+  was about 720. A page that another tool wrote over in the output is rendered again, and so is
+  one whose own code read a changed page's file with Node's `fs` (a filter that reads a snippet)
+  or listed a folder a page came to. A layout, an include, a data file or the config still
+  renders every page, and so does every rebuild on a site with a transform or `afterBuild` hook
+  of its own.
   `SSQCH_INCREMENTAL=0` renders every page on every rebuild, as before: a page that's right with
   it and out of date without it is a bug to report.
 - Behind `netlify dev`, the server says once what `netlify dev` does in front of it: rewrites

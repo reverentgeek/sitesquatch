@@ -611,6 +611,58 @@ for (const [engine, files, part] of [
 	});
 }
 
+// A page that shows another page's file through the site's own code (a filter that reads it with
+// `fs`, the dev server's decision 3) renders again when that file's text changes: the builder
+// hears the read (`src/serve/site-reads.ts`). By `fs`'s default export, a named import, and
+// `fs/promises` in an async filter.
+for (const [name, config] of [
+	["default_import", `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk", "md"], filters: { snippet: (file) => fs.readFileSync("src/snippets/" + file + ".md", "utf8") } };\n`],
+	["named_import", `import { readFileSync } from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk", "md"], filters: { snippet: (file) => readFileSync("src/snippets/" + file + ".md", "utf8") } };\n`],
+	["promises", `import { readFile } from "node:fs/promises";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk", "md"], filters: { snippet: async (file) => readFile("src/snippets/" + file + ".md", "utf8") } };\n`],
+]) {
+	test(`serve_renders_a_page_again_when_its_code_read_a_changed_page_${name}`, async () => {
+		const dir = tempDir(`serve-incremental-fs-${name}`);
+		write(dir, {
+			"ssqch.config.js": config,
+			"src/snippets/install.md": "---\ntitle: Install\ndate: 2026-01-01\n---\nPack the trail mix.\n",
+			"src/guide.njk": "---\ndate: 2026-01-01\n---\n<pre>{{ \"install\" | snippet }}</pre>",
+		});
+		const log = path.join(tempDir(`serve-incremental-fs-${name}-log`), "serve.log");
+		const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+		try {
+			await waitFor(log, "Serving ");
+			const from = await quietLog(log);
+			fs.appendFileSync(path.join(dir, "src/snippets/install.md"), "Four miles.\n");
+			assert.match(await lastCheck(log, from), JUDGED);
+			assert.ok(fs.readFileSync(path.join(dir, "dist/guide/index.html"), "utf8").includes("Four miles."));
+		} finally {
+			await server.stop();
+		}
+	});
+}
+
+// A page whose code lists a folder (`readdirSync`) renders again when a page comes to that folder,
+// though it reads no collection.
+test("serve_renders_a_page_again_when_a_folder_its_code_listed_gains_a_page", async () => {
+	const dir = tempDir("serve-incremental-fs-listing");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk", "md"], filters: { trails: () => fs.readdirSync("src/trails").sort().join(", ") } };\n`,
+		"src/trails/cedar.md": "---\ntitle: Cedar\ndate: 2026-01-01\n---\nCedar.\n",
+		"src/index.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"\" | trails }}</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-fs-listing-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		fs.writeFileSync(path.join(dir, "src/trails/old-growth.md"), "---\ntitle: Old Growth\ndate: 2026-01-02\n---\nOld Growth.\n");
+		assert.match(await lastCheck(log, from), JUDGED);
+		assert.ok(fs.readFileSync(path.join(dir, "dist/index.html"), "utf8").includes("old-growth.md"));
+	} finally {
+		await server.stop();
+	}
+});
+
 // A page added, or a page deleted, renders the new page and the pages that read collections, as
 // a front matter edit does: the others show nothing of it.
 test("serve_renders_only_the_collection_readers_for_a_page_added_or_deleted", async () => {

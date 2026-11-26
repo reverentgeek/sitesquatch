@@ -19,6 +19,11 @@ import { fileHash } from "./builder.ts";
 import type { BuilderStart, FromBuilder, SiteInfo, State, ToBuilder } from "./builder.ts";
 import { timing } from "./timeline.ts";
 import type { BuilderTimes } from "./timeline.ts";
+import { watchSiteReads } from "./site-reads.ts";
+
+// Before the config or any of the site's modules load, so their `fs` is the one that tells the
+// renderer what they read (`site-reads.ts`). Not with every page rendering, which needs it for nothing.
+if (process.env.SSQCH_INCREMENTAL !== "0") watchSiteReads();
 
 const key = (row: equivalents.Equivalent) => `${row.kind}:${row.word}`;
 

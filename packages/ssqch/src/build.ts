@@ -23,6 +23,7 @@ import { sourceDateEpoch, STATIC_DATA_EXTENSIONS } from "./data.ts";
 import { renderComponents } from "./components.ts";
 import { BuildError, Diagnostics, bail, context, hearWarnings, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
 import { hearOpened } from "./engines/engine.ts";
+import { hearSiteReads } from "./serve/site-reads.ts";
 import type { RenderContext } from "./engines/engine.ts";
 import { beginFenceCache, rendering as markdownRendering, saveFenceCache, writeHighlightCss } from "./engines/markdown.ts";
 import * as equivalents from "./equivalents.ts";
@@ -146,6 +147,9 @@ export async function build(config: Config): Promise<BuildReport> {
 			const beside = renderer.beside.get(page.index);
 			if (beside) keptBeside.set(page.output, beside);
 			else keptBeside.delete(page.output);
+			const listed = renderer.listed.get(page.index);
+			if (listed) keptListed.set(page.output, listed);
+			else keptListed.delete(page.output);
 			const dates = renderer.dateReads.get(page.index);
 			if (dates) keptDateReads.set(page.output, dates);
 			else keptDateReads.delete(page.output);
@@ -363,6 +367,9 @@ const keptDateReads = new Map<string, Set<string>>();
 /** While serving: the files each page's templates included from beside them when it last rendered (by real path), by output file. */
 const keptBeside = new Map<string, Set<string>>();
 
+/** While serving: the folders in the input folder each page's render listed (`readdirSync`, by real path), by output file. */
+const keptListed = new Map<string, Set<string>>();
+
 /** While serving: each page's file as the last build that rendered it left it (`outputMark`), by output file. */
 const keptMarks = new Map<string, string>();
 /** A file's inode, size and times, as one string: a write by anything changes the change time. */
@@ -467,6 +474,11 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input) || site.ownData.has(page.tpl.input) || site.added.has(page.tpl.input)));
 	const changedKeys = new Set([...only].map(pageKey));
 	const changedFiles = new Set(changed.flatMap(reals));
+	// What the site's code read from disk itself (`site-reads.ts`) is noted with what a page included
+	// from beside it: a page added or gone is a change to a read of its absence, and to a listing of
+	// its folder.
+	const comeOrGone = [...site.added, ...site.gone].flatMap(reals);
+	for (const file of comeOrGone) changedFiles.add(file);
 	for (const page of wanted) {
 		if (only.has(page) || page.output === null) continue;
 		const read = keptReads.get(page.output);
@@ -474,7 +486,10 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 		// own templates and has no record of what it read.
 		if (read && [...read].some((key) => changedKeys.has(key))) only.add(page);
 		// A page that included a changed file from beside it (EJS's `include("./part")`, Liquid's `include_relative`).
+		// Or read a changed page's file with the site's own code (a filter's `fs.readFileSync`).
 		else if ([...keptBeside.get(page.output) ?? []].some((file) => changedFiles.has(file))) only.add(page);
+		// A page whose code listed a folder that a page came to or left.
+		else if (comeOrGone.length && [...keptListed.get(page.output) ?? []].some((dir) => comeOrGone.some((file) => isInside(dir, file)))) only.add(page);
 		// A page that showed a moved date (a list of "last updated" dates).
 		else if (timeKeys.size && [...keptDateReads.get(page.output) ?? []].some((key) => timeKeys.has(key))) only.add(page);
 		else if (late.has(page) && (everyLate || !read)) only.add(page);
@@ -516,8 +531,10 @@ class Renderer {
 	said = new Map<number, { warnings: Diagnostic[]; components: Set<string> }>();
 	/** Whose dates each page read (`date`, `page.date`, `page.lastModified`), by page index (`keptDateReads`). */
 	dateReads = new Map<number, Set<string>>();
-	/** The files beside them each page's templates included (`keptBeside`), by page index. */
+	/** The files beside them each page's templates included, and the files in the input folder the site's code read itself (`keptBeside`), by page index. */
 	beside = new Map<number, Set<string>>();
+	/** The folders in the input folder the site's code listed (`keptListed`), by page index. */
+	listed = new Map<number, Set<string>>();
 	saidFor(page: Page): { warnings: Diagnostic[]; components: Set<string> } {
 		let found = this.said.get(page.index);
 		if (!found) this.said.set(page.index, found = { warnings: [], components: new Set() });
@@ -734,9 +751,29 @@ class Renderer {
 				}
 			});
 		}
+		if (this.site.config.serving) {
+			// The site's own reads from disk (`site-reads.ts`), inside the input folder: what's outside
+			// it isn't a page. Named by real path once per page, as `keptBeside` is.
+			const input = this.site.dirs.input;
+			const seen = new Map<number, Set<string>>();
+			hearSiteReads((file, isListing) => {
+				const who = this.reader ?? this.rendering;
+				if (!who || !isInside(input, file)) return;
+				let mine = seen.get(who.index);
+				if (!mine) seen.set(who.index, mine = new Set());
+				const key = isListing ? `${file}/` : file;
+				if (mine.has(key)) return;
+				mine.add(key);
+				const into = isListing ? this.listed : this.beside;
+				let files = into.get(who.index);
+				if (!files) into.set(who.index, files = new Set());
+				files.add(realPath(file));
+			});
+		}
 		try { await this.renderEach(pages, late); } finally {
 			hearWarnings(undefined);
 			hearOpened(undefined);
+			hearSiteReads(undefined);
 			// After the pages, what reads a date (a feed, a sitemap) runs every build: not noted.
 			if (this.site.config.serving) this.site.dateRead = () => {};
 		}
