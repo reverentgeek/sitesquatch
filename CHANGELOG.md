@@ -9,13 +9,10 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
-## Unreleased
+## 0.16.1 - 2026-11-26
 
 ### Changed
 
-- The docs starter has `leaveNoTrace` on, as the blog starter has, so a page you delete or
-  rename doesn't stay in `dist/` and deploy.
-- `ssqch --help` says `init` makes a blog, or a docs site with `--starter docs`.
 - `ssqch serve` shows an edit sooner: on v8.dev, 232 ms from the save to the browser hearing of it,
   where it was about 800.
   - The server pushes each change to the browser as it happens (`/__ssqch/events`), where the
@@ -42,12 +39,14 @@ where that version matches.
 - Behind `netlify dev`, the server says once what `netlify dev` does in front of it: rewrites
   need `200!`, the site's `_headers` apply while serving, and it wants an output folder of its
   own.
-
 - The docs starter has search on every production build: `ssqch build`, `npm run build` and a
   host's build run Pagefind, where before only `SEARCH=1` did, and nothing on a host set it, so a
   docs site deployed as its Deploying page says had no search. `SEARCH=0` skips it, for a build
   with no network. A site made with an earlier starter keeps its own config: to change it, replace
   `Boolean(process.env.SEARCH)` with `env === "production" && process.env.SEARCH !== "0"`.
+- The docs starter has `leaveNoTrace` on, as the blog starter has, so a page you delete or
+  rename doesn't stay in `dist/` and deploy.
+- `ssqch --help` says `init` makes a blog, or a docs site with `--starter docs`.
 
 ### Added
 
