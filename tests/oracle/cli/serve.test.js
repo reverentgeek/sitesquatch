@@ -8,12 +8,14 @@ import { start, sleep, waitFor, changeAndWait, httpGet, body, serveSite } from "
 
 const unixOnly = { skip: process.platform === "win32" && "unix only" };
 const readOr = (file) => { try { return fs.readFileSync(file, "utf8"); } catch { return ""; } };
-// Until the server's output has been still for a second: the late events for the files a test
-// wrote before starting it (Windows sends them after the first build, as a folder's) have had
-// their rebuild, so what a test counts after it is its own edit's.
+// Until the server's output has been still for a second (three on Windows, whose slowest runner
+// sent the config's late event more than a second after the first build, and restarted the
+// builder): the late events for the files a test wrote before starting it have had their rebuild,
+// so what a test counts after it is its own edit's.
+const QUIET_MS = process.platform === "win32" ? 3000 : 1000;
 const quietLog = async (log) => {
 	let last = readOr(log), still = Date.now();
-	while (Date.now() - still < 1000) {
+	while (Date.now() - still < QUIET_MS) {
 		await sleep(50);
 		const now = readOr(log);
 		if (now !== last) { last = now; still = Date.now(); }
