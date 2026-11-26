@@ -170,6 +170,8 @@ export class Site {
 	 * matter (or the file time their date is) changed: their own data did. For `incremental`.
 	 */
 	ownData = new Set<string>();
+	/** Templates taken as the last build made them: a change named for one changed nothing (Windows can name a file before a delete is done, or with the folder it's in). */
+	unchanged = new Set<string>();
 	/** Templates new since the last build, and templates it had that this one doesn't (`lastPages`). */
 	added = new Set<string>();
 	gone = new Set<string>();
@@ -763,7 +765,10 @@ export class Site {
 		const kept = this.shared !== undefined ? keptTemplates.get(file) : undefined;
 		// The same bytes, as `keptSources` kept them or read again with nothing different (a file in
 		// a folder Windows named): nothing in it changed, unless its date is its file's time and that moved.
-		if (kept && (kept.bytes === source || (kept.bytes.equals(source) && (kept.time === undefined || new Date(fs.statSync(file).mtimeMs).getTime() === kept.tpl.mtime.getTime()))) && kept.shared === this.shared && kept.commit === commit && kept.layouts.every(([layout, mark]) => this.layoutMark(layout) === mark)) return kept.tpl;
+		if (kept && (kept.bytes === source || (kept.bytes.equals(source) && (kept.time === undefined || new Date(fs.statSync(file).mtimeMs).getTime() === kept.tpl.mtime.getTime()))) && kept.shared === this.shared && kept.commit === commit && kept.layouts.every(([layout, mark]) => this.layoutMark(layout) === mark)) {
+			this.unchanged.add(file);
+			return kept.tpl;
+		}
 		const warned = warnedCount;
 		const ownData = this.dataFilesRead.size;
 		const tpl = await this.makeTemplate(file, source, dirData, commitDates);

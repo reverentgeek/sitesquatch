@@ -381,7 +381,7 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	const { config } = site;
 	if (!incremental(config)) return "off";
 	if (!config.changed?.length) return "the first build";
-	if (!(site.bodyOnly.size || site.ownData.size || site.added.size || site.gone.size)) return site.keepingTemplates ? "no template's body or front matter alone changed" : `templates aren't kept: ${site.notKept}`;
+	if (!site.keepingTemplates) return `templates aren't kept: ${site.notKept}`;
 	// By real paths on both sides: the server names files by theirs, and the site may not (a
 	// temporary folder's `/var` is `/private/var` on macOS).
 	// A file that's gone has no real path of its own: its folder's, and its name. Both, for a page
@@ -399,7 +399,8 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	// rebuild of its own.
 	const named = config.changed;
 	const parents = new Set([...named, ...site.added, ...site.gone].flatMap((file) => reals(path.dirname(file))));
-	const changed = named.filter((file) => !(isDir(file) && reals(file).some((name) => parents.has(name))));
+	const unchanged = new Set([...site.unchanged].flatMap(reals));
+	const changed = named.filter((file) => !(isDir(file) && reals(file).some((name) => parents.has(name))) && !isIn(unchanged, file));
 	const other = changed.find((file) => !isIn(bodyOnly, file) && !isIn(ownData, file));
 	if (other !== undefined) return `${site.display(other)} isn't a page's body or front matter, or a page added or gone`;
 	const dataChanged = site.added.size > 0 || site.gone.size > 0 || changed.some((file) => isIn(ownData, file));
