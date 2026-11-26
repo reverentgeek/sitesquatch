@@ -173,6 +173,13 @@ export class Site {
 	/** Templates new since the last build, and templates it had that this one doesn't (`lastPages`). */
 	added = new Set<string>();
 	gone = new Set<string>();
+	/** Each layout's `fileMark`, asked once a build: 10,000 kept templates share a few layouts. */
+	private layoutMarks = new Map<string, string>();
+	private layoutMark(file: string): string {
+		let mark = this.layoutMarks.get(file);
+		if (mark === undefined) this.layoutMarks.set(file, mark = fileMark(file));
+		return mark;
+	}
 	/** Why templates aren't kept this build, when they aren't: for the serve timeline. */
 	notKept = "";
 	get keepingTemplates(): boolean { return this.shared !== undefined; }
@@ -754,13 +761,13 @@ export class Site {
 	private async loadTemplate(file: string, source: Buffer, dirData: Map<string, Data>, commitDates: Map<string, Date>): Promise<Tpl> {
 		const commit = commitDates.get(file)?.getTime();
 		const kept = this.shared !== undefined ? keptTemplates.get(file) : undefined;
-		if (kept && kept.bytes === source && kept.shared === this.shared && kept.commit === commit && kept.layouts.every(([layout, mark]) => fileMark(layout) === mark)) return kept.tpl;
+		if (kept && kept.bytes === source && kept.shared === this.shared && kept.commit === commit && kept.layouts.every(([layout, mark]) => this.layoutMark(layout) === mark)) return kept.tpl;
 		const warned = warnedCount;
 		const ownData = this.dataFilesRead.size;
 		const tpl = await this.makeTemplate(file, source, dirData, commitDates);
 		const text = decodeText(source);
 		const front = text.slice(0, text.length - tpl.body.length);
-		const layouts = tpl.layouts.map((layout): [string, string] => [layout.path, fileMark(layout.path)]);
+		const layouts = tpl.layouts.map((layout): [string, string] => [layout.path, this.layoutMark(layout.path)]);
 		// Kept when nothing in it can differ next time with the same bytes and the same shared
 		// inputs: no data file of its own (read just now), no warning said (it would be lost).
 		if (this.shared !== undefined && warnedCount === warned && this.dataFilesRead.size === ownData) {
