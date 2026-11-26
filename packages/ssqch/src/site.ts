@@ -170,6 +170,8 @@ export class Site {
 	 * matter (or the file time their date is) changed: their own data did. For `incremental`.
 	 */
 	ownData = new Set<string>();
+	/** Whether the shared inputs (the data files, the data's values) are what the last build had: when they aren't, every page's data may differ. */
+	sameShared = false;
 	/** Templates taken as the last build made them: a change named for one changed nothing (Windows can name a file before a delete is done, or with the folder it's in). */
 	unchanged = new Set<string>();
 	/** Templates new since the last build, and templates it had that this one doesn't (`lastPages`). */
@@ -428,6 +430,7 @@ export class Site {
 		// Pages added and gone since the last build from the same shared inputs, for
 		// `incremental`: an added one only when its data is all its own (kept, as `loadTemplate`
 		// keeps one: no data file of its own, no warning).
+		this.sameShared = this.shared !== undefined && lastPages?.shared === this.shared;
 		if (this.shared !== undefined && lastPages?.shared === this.shared) {
 			const now = new Set(this.files);
 			for (const file of this.files) if (!lastPages.files.has(file) && keptTemplates.has(file)) this.added.add(file);

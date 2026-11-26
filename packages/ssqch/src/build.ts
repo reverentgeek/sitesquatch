@@ -382,6 +382,8 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	if (!incremental(config)) return "off";
 	if (!config.changed?.length) return "the first build";
 	if (!site.keepingTemplates) return `templates aren't kept: ${site.notKept}`;
+	// A data file, or what the data's code made: every page's data may differ, whatever was named.
+	if (!site.sameShared) return "the data changed";
 	// By real paths on both sides: the server names files by theirs, and the site may not (a
 	// temporary folder's `/var` is `/private/var` on macOS).
 	// A file that's gone has no real path of its own: its folder's, and its name. Both, for a page
@@ -393,14 +395,14 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	// made from again.
 	const ownData = new Set([...site.ownData, ...site.added, ...site.gone].flatMap(reals));
 	const isIn = (set: Set<string>, file: string) => reals(file).some((name) => set.has(name));
-	// Windows names the folder a file changed in as well as the file. A folder with a named file
-	// directly in it, or a page that came or went, says nothing more than they do; any other
-	// folder renders every page. A file it names only later (after this build began) starts a
-	// rebuild of its own.
-	const named = config.changed;
-	const parents = new Set([...named, ...site.added, ...site.gone].flatMap((file) => reals(path.dirname(file))));
+	// Windows names the folder a file changed in as well as the file, sometimes alone and late (after
+	// a delete the last rebuild built). What a folder holds the build checks for itself: its pages
+	// by their bytes, pages added or gone by the listing, data files by their size and time; a
+	// copy or a picture is named in its own event. An includes folder isn't: an include it names
+	// renders every page.
+	const includeDirs = [site.dirs.includes, ...site.themeIncludes].flatMap(reals);
 	const unchanged = new Set([...site.unchanged].flatMap(reals));
-	const changed = named.filter((file) => !(isDir(file) && reals(file).some((name) => parents.has(name))) && !isIn(unchanged, file));
+	const changed = config.changed.filter((file) => !(isDir(file) && !reals(file).some((name) => includeDirs.some((dir) => isInside(dir, name)))) && !isIn(unchanged, file));
 	const other = changed.find((file) => !isIn(bodyOnly, file) && !isIn(ownData, file));
 	if (other !== undefined) return `${site.display(other)} isn't a page's body or front matter, or a page added or gone`;
 	const dataChanged = site.added.size > 0 || site.gone.size > 0 || changed.some((file) => isIn(ownData, file));
