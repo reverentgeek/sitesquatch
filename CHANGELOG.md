@@ -43,6 +43,9 @@ where that version matches.
   function (`run` takes a function now too). With every `afterBuild` hook of the site's own saying
   so, `ssqch serve` renders only the pages an edit can reach; without, a hook of the site's own
   still renders every page, since it may read what the site's code kept while pages rendered.
+- Pages with no date of their own take their file's time, which a checkout or a save moves: `ssqch
+  scout` now counts them and suggests `dateFallback: "git"`, and `ssqch serve` says once when a
+  save to one rendered the pages that list it. The trailheads say so beside their date rows.
 
 ### Fixed
 

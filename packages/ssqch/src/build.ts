@@ -39,6 +39,7 @@ import type { CopyJob, Page, Tpl } from "./site.ts";
 import type { Diagnostic } from "./diagnostics.ts";
 import { Site, Timer, errorsTogether, incremental, readsCollections } from "./site.ts";
 import type { Profile, ProfileReport } from "./profile.ts";
+import { count } from "./report.ts";
 import * as voice from "./voice.ts";
 import { jekyllPage, jekyllSite } from "./jekyll.ts";
 
@@ -125,6 +126,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	// (a feed shows the bodies); the rest are as the last build wrote them.
 	const chosen = afterAWorkingBuild ? incrementalPages(site, wanted, late) : "the last build failed";
 	const only = typeof chosen === "string" ? undefined : chosen;
+	if (only) undatedNote(site, only);
 	if (only) for (const page of wanted) if (!only.has(page) && page.output !== null) renderer.written.set(page.index, { file: page.output, bytes: keptWritten.get(page.output)!, changed: false });
 	const rendering = only ? wanted.filter((p) => only.has(p)) : wanted;
 	renderedCount = [rendering.filter((p) => p.output !== null).length, wanted.filter((p) => p.output !== null).length, typeof chosen === "string" ? chosen : undefined];
@@ -315,6 +317,26 @@ let lastBuildWorked = false;
 /** The last build's pages rendered, of the pages it wrote, and why it rendered them all when it did, for the serve timeline. */
 let renderedCount: [number, number, string?] = [0, 0];
 export const lastRendered = (): [number, number, string?] => renderedCount;
+
+/** Whether this process has said why an undated page's save rendered the pages that list it. */
+let saidUndated = false;
+
+/**
+ * While serving, once: a save to a page with no date of its own moved its date (its file's time),
+ * so every page that lists it rendered again, where a dated page renders alone. Said when it made
+ * a rebuild render more, with the option that stops it.
+ */
+function undatedNote(site: Site, only: Set<Page>): void {
+	const { config } = site;
+	if (saidUndated || config.quiet || isCapturing() || !site.timeOnly.size || !config.changed?.length) return;
+	const changed = new Set(config.changed.map(realPath));
+	const file = [...site.timeOnly].find((name) => changed.has(realPath(name)));
+	if (file === undefined) return;
+	const others = [...only].filter((page) => page.tpl.input !== file && page.output !== null).length;
+	if (others === 0) return;
+	saidUndated = true;
+	process.stderr.write(`note: ${site.display(file)} has no date of its own, so its date is its file's time, which the save moved: the ${count(others)} page${others === 1 ? "" : "s"} that list${others === 1 ? "s" : ""} pages rendered again. \`dateFallback: "git"\` in the config gives it its last commit's date, which a save doesn't move\n`);
+}
 
 /** While serving: each page's size as the last build wrote it, by its output file, for a page `incremental` doesn't render. */
 const keptWritten = new Map<string, number>();

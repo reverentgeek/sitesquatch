@@ -489,6 +489,8 @@ test("serve_renders_a_listing_again_when_an_undated_pages_text_moves_its_date", 
 		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
 		const rebuilt = [...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))].sort();
 		assert.deepEqual(rebuilt, ["cedar", "titles"], JSON.stringify(lines));
+		// Said once, with the option that stops it.
+		assert.match(readOr(log).slice(from), /note: (\.\/)?src\/posts\/cedar\.njk has no date of its own, so its date is its file's time, which the save moved: the 1 page that lists pages rendered again\. `dateFallback: "git"`/);
 	} finally {
 		await server.stop();
 	}

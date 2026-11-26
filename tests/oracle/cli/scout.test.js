@@ -353,3 +353,23 @@ test("scout_counts_feed_plugin_for_the_rss_plugin", () => {
 	const built = ssqch(["build", "--root", dir, "-q"]);
 	assert.ok(!built.ok && built.log.includes("these are the options of Eleventy's feedPlugin, which ssqch's names differently: `type` is `format`"), built.log);
 });
+
+// Pages with no date of their own take their file's time in ssqch, which a checkout or a save moves:
+// scout says how many, and `dateFallback: "git"` in the config takes the to-do off the list.
+test("scout_suggests_git_dates_for_undated_pages", () => {
+	const dir = tempDir("scout-undated");
+	write(dir, {
+		"package.json": "{ \"devDependencies\": { \"@11ty/eleventy\": \"3.1.0\" } }\n",
+		"eleventy.config.js": "export default function (c) {}\n",
+		"src/cedar.md": "---\ntitle: Cedar Trail\n---\nFour miles.\n",
+		"src/2026-01-02-stump.md": "---\ntitle: The stump\n---\nA stump.\n",
+		"src/ranger.md": "---\ntitle: Ranger station\ndate: 2026-01-01\n---\nOpen daily.\n",
+		"README.md": "Not a page.\n",
+	});
+	let report = JSON.parse(ssqch(["scout", "--format", "json", dir]).stdout);
+	const todo = report.todo.find((t) => t.code === "undated-pages");
+	assert.ok(todo && todo.count === 1 && todo.what.startsWith("1 of 3 pages have no date of their own (src/cedar.md)") && todo.option === "dateFallback: \"git\"", JSON.stringify(report.todo));
+	write(dir, { "ssqch.config.js": "export default { dateFallback: \"git\" };\n" });
+	report = JSON.parse(ssqch(["scout", "--format", "json", dir]).stdout);
+	assert.ok(!report.todo.some((t) => t.code === "undated-pages") && report.done.some((t) => t.code === "undated-pages"), JSON.stringify(report));
+});

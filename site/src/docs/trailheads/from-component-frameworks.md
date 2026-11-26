@@ -30,6 +30,7 @@ Moving one section at a time works: build the docs or blog with ssqch into a fol
 | Astro, Next.js, Gatsby | SiteSquatch |
 | --- | --- |
 | Markdown with YAML front matter | The same. `title`, `description`, `date`, `tags` are read as they are. |
+| A page with no date of its own | Its file's time in ssqch, which a checkout or a save moves: dates and the order of lists change from one build to the next, and `ssqch serve` renders every page that lists it on each save. `dateFallback: "git"` gives it its last commit's date (`ssqch scout` counts the pages that have none) |
 | Content collections with a Zod schema (`src/content/config.ts`) | `schemas` in the config: `{ posts: { fields: { title: "string", date: "date", tags: "string[]" } } }`, checked on every build, with types from `ssqch types` |
 | `getCollection("blog")`, GraphQL page queries, `getStaticProps` | `collections.<tag>` in templates, custom `collections` in the config, and `_data/*.js` files that fetch or read whatever the query did |
 | `getStaticPaths`, `[slug].astro`, `createPages` | Pagination over data with a `permalink` per item: one template, one page per entry |

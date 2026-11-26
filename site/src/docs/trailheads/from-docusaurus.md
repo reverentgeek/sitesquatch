@@ -35,6 +35,7 @@ Two examples are distilled from reactnative.dev: [`versioned-docs`](https://gith
 | `hide_table_of_contents` | A front-matter flag your layout checks before `toc(page.headings)` |
 | `tags` | `tags` |
 | `last_update` (git) | `lastModified: "git"` in the config, then `page.lastModified` |
+| A page with no date of its own | Its file's time in ssqch, which a checkout or a save moves: dates and the order of lists change from one build to the next, and `ssqch serve` renders every page that lists it on each save. `dateFallback: "git"` gives it its last commit's date (`ssqch scout` counts the pages that have none) |
 
 ## Markdown and MDX
 

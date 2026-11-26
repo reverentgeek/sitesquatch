@@ -204,6 +204,8 @@ export async function runScout(dir: string, options: ScoutOptions): Promise<numb
 			[id, how] = found[0];
 		}
 		const plan = id === "eleventy" ? eleventy(dir) : id === "jekyll" ? jekyll(dir) : id === "zola" ? zola(dir) : id === "hugo" ? hugo(dir) : id === "mkdocs" ? mkdocs(dir) : id === "vitepress" ? vitepress(dir) : other(dir, id);
+		const undated = undatedPages(dir);
+		if (undated) plan.byHand.push(undated);
 		const report = scoutReport(plan, dir, id, how, await siteConfig(dir));
 		if (options.compare !== undefined) report.compare = compareBuilds(dir, options.compare);
 		if (options.writeDraft) for (const file of report.draft) if (!file.there) writeNew(dir, file.path, plan.newFiles.find(([p]) => p === file.path)![2]);
@@ -219,6 +221,46 @@ export async function runScout(dir: string, options: ScoutOptions): Promise<numb
 		process.stderr.write(`${red("error:")} ${message}\n`);
 		return 1;
 	}
+}
+
+/**
+ * Pages with no date of their own (in their front matter or their file name): in ssqch each takes
+ * its file's time, which a checkout or a save moves, so a clean build's dates and order differ from
+ * one checkout to the next, and while serving every save of one renders the pages that list it.
+ * `dateFallback: "git"` gives each its last commit's. Every generator's site, since none of them
+ * has a page's date from its file's time by default (expressjs.com: 2,463 of 2,529 pages rendered
+ * for an edit to an undated doc page).
+ */
+export function undatedPages(dir: string): [string, string, Todo] | undefined {
+	const skip = new Set(["node_modules", ".git", "_site", "dist", "public", "site", "build", "out", ".cache", "vendor", "resources"]);
+	const undated: string[] = [];
+	let pages = 0;
+	const visit = (folder: string, depth: number) => {
+		let entries: fs.Dirent[];
+		try { entries = fs.readdirSync(folder, { withFileTypes: true }); } catch { return; }
+		for (const entry of entries.sort((a, b) => compareText(a.name, b.name))) {
+			if (entry.name.startsWith(".") || (depth === 0 && skip.has(entry.name)) || entry.name === "node_modules") continue;
+			const file = path.join(folder, entry.name);
+			if (entry.isDirectory()) { visit(file, depth + 1); continue; }
+			if (!/\.(md|mdx|markdown)$/i.test(entry.name)) continue;
+			let text: string;
+			try { text = fs.readFileSync(file, "utf8"); } catch { continue; }
+			// A page: front matter at the top. A README or a CHANGELOG without it isn't one.
+			const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+			if (!front) continue;
+			pages++;
+			if (/^\d{4}-\d{2}-\d{2}/.test(entry.name) || /^(date|pubDate|publishDate|published)\s*:/m.test(front[1])) continue;
+			undated.push(path.relative(dir, file).split(path.sep).join("/"));
+		}
+	};
+	visit(dir, 0);
+	if (!undated.length) return undefined;
+	const named = undated.slice(0, 3).join(", ") + (undated.length > 3 ? ", ..." : "");
+	return [
+		"ssqch.config.js",
+		`${undated.length} of ${pages} pages have no date of their own (${named}): in ssqch each takes its file's time, which a checkout or a save moves, so dates and the order of lists change from one build to the next, and ssqch serve renders every page that lists one on each save. Set \`dateFallback: "git"\` for each one's last commit's date (with the site in git, and its history in CI)`,
+		{ code: "undated-pages", status: "ssqch", count: undated.length, files: undated.length, option: 'dateFallback: "git"', docs: "dateFallback", defines: ["dateFallback"] },
+	];
 }
 
 /** What scout found, as both formats print it. */

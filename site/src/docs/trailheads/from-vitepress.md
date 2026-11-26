@@ -61,6 +61,7 @@ export default {
 | `[param].md` with `[param].paths.ts` | `pagination` over the same list, `size: 1`, a `permalink` with the item's value, and `addAllPagesToCollections: true`, in `[param].data.js` beside the page |
 | `head` in the config | The layout's `<head>` |
 | `sitemap: { hostname }` | `sitemapPlugin({ url })`, with the same URLs. The file is ssqch's own (a tag a line, pages by URL, with `<lastmod>`; `lastmod: false` leaves it out), so `ssqch diff` lists `sitemap.xml` as changed, and that's expected: no reader of a sitemap needs VitePress's bytes |
+| A page with no date of its own | Its file's time in ssqch, which a checkout or a save moves: dates and the order of lists change from one build to the next, and `ssqch serve` renders every page that lists it on each save. `dateFallback: "git"` gives it its last commit's date (`ssqch scout` counts the pages that have none) |
 | `markdown.config(md)` plugins | A render hook, a container, or `markdown.preprocess` |
 | `vitepress-plugin-llms` | `llmsPlugin()` from `ssqch/llms`: `llms.txt`, a Markdown copy of each page and `llms-full.txt` |
 

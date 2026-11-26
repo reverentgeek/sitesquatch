@@ -35,6 +35,7 @@ export default defineConfig({
 | `static/` | `passthrough: [{ static: "." }]` |
 | `publishDir` | `dirs.output` (`publishDir` works, and says ssqch's name) |
 | `timeZone = "America/New_York"` | `timeZone: "America/New_York"`, the same name. A date written without a time (`date: 2026-11-02`) is that day, midnight in this zone, as Hugo reads it; without `timeZone`, ssqch uses UTC |
+| A page with no date of its own | Its file's time in ssqch, which a checkout or a save moves: dates and the order of lists change from one build to the next, and `ssqch serve` renders every page that lists it on each save. `dateFallback: "git"` gives it its last commit's date (`ssqch scout` counts the pages that have none) |
 | `baseURL` | the site's address goes in data and in `sitemapPlugin({ url })`; `base` is the path only, for a site served under one (`/repo/`) |
 | `title`, `params` | global data: `data: { site: { title, params } }`, read as `site.title` |
 | `menus` | global data (`_data/nav.yml`), and `navTree` |

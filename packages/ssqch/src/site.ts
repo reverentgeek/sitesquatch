@@ -170,6 +170,8 @@ export class Site {
 	 * matter (or the file time their date is) changed: their own data did. For `incremental`.
 	 */
 	ownData = new Set<string>();
+	/** Templates whose only change was their file's time, which is their date (no `date` of their own). */
+	timeOnly = new Set<string>();
 	/** Whether the shared inputs (the data files, the data's values) are what the last build had: when they aren't, every page's data may differ. */
 	sameShared = false;
 	/** Templates taken as the last build made them: a change named for one changed nothing (Windows can name a file before a delete is done, or with the folder it's in). */
@@ -786,6 +788,8 @@ export class Site {
 			const time = this.usesFileTime(tpl) ? tpl.mtime.getTime() : undefined;
 			if (kept && kept.shared === this.shared && kept.commit === commit) {
 				if (kept.front !== front || kept.time !== time) this.ownData.add(file);
+				// Only its file's time, which is its date: the server says so once (`build.ts`).
+				if (kept.front === front && kept.time !== time) this.timeOnly.add(file);
 				else if (JSON.stringify(kept.layouts) === JSON.stringify(layouts)) this.bodyOnly.add(file);
 			}
 			keptTemplates.set(file, { bytes: source, shared: this.shared, commit, time, layouts, front, tpl });
