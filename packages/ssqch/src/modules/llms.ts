@@ -294,6 +294,19 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 	const converted = new Map<string, string>();
 	// A template page's `<title>`, for its name in llms.txt when it has no title or heading of its own.
 	const titles = new Map<string, string>();
+	// While serving: the three as the last build had them for each page, by its URL, said again
+	// for a page a rebuild takes as it was (`incremental` in site.ts), whose copy and place in
+	// llms-full.txt would be empty otherwise.
+	const kept = { sources: new Map<string, string>(), converted: new Map<string, string>(), titles: new Map<string, string>() };
+	config.replays.push((skipped, rendered) => {
+		for (const url of rendered) for (const map of Object.values(kept)) map.delete(url);
+		for (const url of skipped) {
+			for (const [from, to] of [[kept.sources, sources], [kept.converted, converted], [kept.titles, titles]] as const) {
+				const text = from.get(url);
+				if (text !== undefined) to.set(url, text);
+			}
+		}
+	});
 	config.htmlTransforms.push(["llms", (html, page) => {
 		if (copies || full) {
 			if (page.outputPath.endsWith(".html") && listedUrl(page.url)) {
@@ -371,6 +384,8 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 			}
 			entries.push({ url: p.url, copy: copyUrl(p.url), title: pageTitle, description: oneLine(p.data.description), section: name, markdown: body.replace(/\s+$/, "") + "\n" });
 		}
+		// While serving, each page's as it was, for a rebuild that takes the page as it was.
+		if (config.serving) for (const [from, to] of [[sources, kept.sources], [converted, kept.converted], [titles, kept.titles]] as const) for (const [url, text] of from) to.set(url, text);
 		sources.clear();
 		converted.clear();
 		titles.clear();

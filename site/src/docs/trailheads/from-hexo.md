@@ -38,6 +38,7 @@ The [`docs-sidebar`](https://github.com/reverentgeek/sitesquatch/tree/main/examp
 | --- | --- |
 | `source/_posts/*.md` | The same folder, with a directory data file `source/_posts/_posts.json`: `{ "layout": "post.njk", "tags": "posts" }` plus the `permalink` above |
 | `title`, `date`, `updated`, `tags`, `permalink` | The same. `tags` build `collections.<tag>`. |
+| A page with no date of its own | Its file's time in ssqch, which a checkout or a save moves: dates and the order of lists change from one build to the next, and on each save `ssqch serve` renders the pages that show it (every page that reads collections, when the site's code sorts by dates). `dateFallback: "git"` gives it its last commit's date (`ssqch scout` counts the pages that have none) |
 | `categories` | A front matter list like any other; group pages by it in a custom collection (the `blog-categories` example) |
 | `layout: false` | `layout: false`; `permalink: false` for a page that isn't written |
 | `<!-- more -->` | The same: `page.excerpt` is the HTML before it |

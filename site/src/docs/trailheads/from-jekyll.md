@@ -62,6 +62,7 @@ export default defineConfig({
 | `sass: { load_paths }` | `sassPlugin({ files, loadPaths })` from `ssqch/sass`. Front matter on a `.scss` file is fine. |
 | `time:` | `SOURCE_DATE_EPOCH=1767225600 ssqch build` (seconds since 1970): `now()` and every undated page get that time, as with `time:` |
 | `timezone: America/New_York` | `timeZone: "America/New_York"`. A date written without a time (`date: 2026-11-02`) is that day, midnight in this zone, as Jekyll reads it; without `timeZone`, ssqch uses UTC |
+| A page with no date of its own | Its file's time in ssqch, which a checkout or a save moves: dates and the order of lists change from one build to the next, and on each save `ssqch serve` renders the pages that show it (every page that reads collections, when the site's code sorts by dates). `dateFallback: "git"` gives it its last commit's date (`ssqch scout` counts the pages that have none) |
 
 ## Templates
 

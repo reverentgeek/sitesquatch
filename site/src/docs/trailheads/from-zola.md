@@ -44,6 +44,7 @@ A whole move with the loop, scout's report before, halfway and at the end, with 
 | `[taxonomies]` `tags = [...]` | `tags = [...]` at the top level of the front matter |
 | `[extra]` fields | Stay where they are: `{{ extra.subtitle }}` |
 | No `date`, with the date in `path` | `computed: { date: (data) => ... }` in a directory data file (`content/content.data.js`); a computed date is the page's date |
+| A page with no date of its own | Its file's time in ssqch, which a checkout or a save moves: dates and the order of lists change from one build to the next, and on each save `ssqch serve` renders the pages that show it (every page that reads collections, when the site's code sorts by dates). `dateFallback: "git"` gives it its last commit's date (`ssqch scout` counts the pages that have none) |
 | `_index.md` section front matter | A data file (`_data/sections.json`), and `ignore: ["**/_index.md"]` |
 | `<!-- more -->` summaries | The same: `page.excerpt` is the HTML before it |
 | Internal links (`@/blog/post.md`) | URL paths (`/blog/2024/01/15/post/`); the link checker catches mistakes |

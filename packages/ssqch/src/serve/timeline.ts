@@ -22,6 +22,8 @@ export interface BuilderTimes {
 	finished: number;
 	/** The build's own phases (`setup`, `data`, ..., `after`), in milliseconds each, as the summary's Time line has them. */
 	phases: Array<[string, number]>;
+	/** How many pages the build rendered, of how many it wrote (`incremental` in site.ts takes the rest as the last build wrote them), and why it rendered every one when it did. */
+	rendered?: [number, number, string?];
 	/** The summary was printed, just before the answer went back. */
 	said: number;
 }

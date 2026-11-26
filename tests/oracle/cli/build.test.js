@@ -409,7 +409,16 @@ test("hooks_run_commands", unixOnly, () => {
 	assert.ok(!r.ok && r.log.includes("beforeBuild: `exit 3` exited with status 3"), r.log);
 	w("ssqch.config.js", "export default { afterBuild: { cmd: \"x\" } };\n");
 	r = ssqch(["build", "--root", d, "-q"]);
-	assert.ok(!r.ok && r.log.includes("afterBuild: \"cmd\" isn't an option (use { run: \"command\" })"), r.log);
+	// DELIBERATE (unreleased): the message names reads: "output" too, a hook that reads only the output.
+	assert.ok(!r.ok && r.log.includes("afterBuild: \"cmd\" isn't an option (a hook is { run: \"command\" } or { run: (event) => ... }, with reads: \"output\" if it reads only the output)"), r.log);
+	w("ssqch.config.js", "export default { afterBuild: { run: \"x\", reads: \"pages\" } };\n");
+	r = ssqch(["build", "--root", d, "-q"]);
+	assert.ok(!r.ok && r.log.includes("afterBuild: reads must be \"output\""), r.log);
+	// A function in run, with reads: "output", runs as a function hook does.
+	w("ssqch.config.js", "import fs from \"node:fs\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, afterBuild: { run: ({ dirs }) => fs.writeFileSync(dirs.output + \"ran.txt\", \"yes\"), reads: \"output\" } };\n");
+	r = ssqch(["build", "--root", d, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "dist/ran.txt"), "yes");
 });
 
 // a11y #20: the summary said 4.43 MB of pages, measured before a minifying hook, and 4.07 MB were

@@ -3,11 +3,47 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write } from "../lib/ssqch.js";
+import { FIXTURES, ssqch, tempDir, write } from "../lib/ssqch.js";
 import { start, sleep, waitFor, changeAndWait, httpGet, body, serveSite } from "../lib/serve.js";
 
 const unixOnly = { skip: process.platform === "win32" && "unix only" };
 const readOr = (file) => { try { return fs.readFileSync(file, "utf8"); } catch { return ""; } };
+// Until the server's output has been still for a second (three on Windows, whose slowest runner
+// sent the config's late event more than a second after the first build, and restarted the
+// builder): the late events for the files a test wrote before starting it have had their rebuild,
+// so what a test counts after it is its own edit's.
+const QUIET_MS = process.platform === "win32" ? 3000 : 1000;
+const quietLog = async (log) => {
+	let last = readOr(log), still = Date.now();
+	while (Date.now() - still < QUIET_MS) {
+		await sleep(50);
+		const now = readOr(log);
+		if (now !== last) { last = now; still = Date.now(); }
+	}
+	return last.length;
+};
+// A check that the rebuild wrote what a clean build writes, or one that couldn't judge (a slow
+// Windows runner's late event arrived while the clean build ran, which the check says rather than
+// judge). One that found a difference fails. The tests check what rendered and what it says too.
+const JUDGED = /check-rebuilds: (the rebuild after .+ wrote what a clean build writes|.+ changed while the clean build ran, so the two didn't build the same files; not judged)/;
+// The last check-rebuilds line after `from`, once the server has gone quiet: an edit's late event
+// (Windows sends one while the check's clean build runs, which it doesn't judge) starts a rebuild
+// of its own, and its check is the one that says how the edit came out.
+const lastCheck = async (log, from) => {
+	await waitAfter(log, from, "check-rebuilds: ");
+	await quietLog(log);
+	return readOr(log).slice(from).split("\n").filter((line) => line.startsWith("check-rebuilds: ")).at(-1) ?? "";
+};
+// The server's output after `from` once it has `text`: a line an earlier rebuild wrote isn't this one's.
+const waitAfter = async (log, from, text, timeout = 20_000) => {
+	const started = Date.now();
+	for (;;) {
+		const after = readOr(log).slice(from);
+		if (after.includes(text)) return after;
+		if (Date.now() - started > timeout) throw new Error(`the server never said "${text}" after the edit: ${after}`);
+		await sleep(25);
+	}
+};
 const count = (text, part) => text.split(part).length - 1;
 const alive = (pid) => { try { process.kill(Number(pid), 0); return true; } catch { return false; } };
 
@@ -266,7 +302,9 @@ test("serve_stops_waiting_for_tools_that_dont_write_after_a_rebuild", async () =
 	});
 	const timeline = path.join(tempDir("serve-tools-learn-line"), "times.jsonl");
 	const server = start(["serve", "--port", "0", "--root", dir], { logFile: path.join(tempDir("serve-tools-learn-log"), "serve.log"), env: { SSQCH_SERVE_TIMELINE: timeline } });
-	const held = () => readOr(timeline).split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((line) => line.kind === "rebuild").map((line) => line.held - line.built);
+	// A line the server is still writing isn't one yet.
+	const parsed = (line) => { try { return JSON.parse(line); } catch { return undefined; } };
+	const held = () => readOr(timeline).split("\n").filter(Boolean).map(parsed).filter((line) => line?.kind === "rebuild").map((line) => line.held - line.built);
 	const edit = async (i) => {
 		await sleep(400);
 		await changeAndWait(path.join(dir, "src/index.jinja"), `<link rel="stylesheet" href="/app.css">camp ${i}`, path.join(dir, "dist/index.html"), `camp ${i}`);
@@ -318,6 +356,479 @@ test("serve_reads_an_edit_that_keeps_the_files_size_and_time", async () => {
 		fs.utimesSync(source, second, second);
 		assert.deepEqual([fs.statSync(source).size, fs.statSync(source).mtimeMs], ["Cedar Trail\n".length, second * 1000]);
 		await waitFor(page, "Cedar Hike");
+	} finally {
+		await server.stop();
+	}
+});
+
+// While serving, an edit to one page's text renders that page
+// alone, and the image plugin asks for the other pages' pictures again (a replay of what they asked
+// when they last rendered), so prune and leaveNoTrace keep them, and the llms plugin its text. A
+// filter that notes each render
+// shows which pages rendered; the checked mode, that the output is what a clean build writes.
+test("serve_renders_only_the_page_whose_text_changed_and_keeps_the_others_pictures", async () => {
+	const dir = tempDir("serve-incremental");
+	const renders = path.join(tempDir("serve-incremental-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nimport { imagePlugin } from "ssqch/image";\nimport { llmsPlugin } from "ssqch/llms";\nexport default { dirs: { input: "src", output: "dist" }, leaveNoTrace: true, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } }, plugins: [imagePlugin({ formats: ["webp"], widths: [16], prune: true }), llmsPlugin({ full: true })] };\n`,
+		"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }}</p><img src=\"/img/cedar.png\" alt=\"\">",
+		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p><img src=\"/img/stump.svg\" alt=\"\">",
+		"src/img/stump.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><rect width=\"16\" height=\"16\"/></svg>",
+	});
+	fs.copyFileSync(path.join(FIXTURES, "cli/squatch.png"), path.join(dir, "src/img/cedar.png"));
+	const log = path.join(tempDir("serve-incremental-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(dir, "dist/stump/index.html"), "stump");
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		const stumpCopies = () => fs.readdirSync(path.join(dir, "dist/img")).filter((name) => name.endsWith(".svg"));
+		assert.equal(stumpCopies().length, 1, fs.readdirSync(path.join(dir, "dist/img")).join(", "));
+		fs.writeFileSync(renders, "");
+		fs.appendFileSync(path.join(dir, "src/cedar.njk"), "<p>Four miles.</p>");
+		const said = await lastCheck(log, from);
+		assert.match(said, JUDGED);
+		// The clean build renders both pages too, in a process of its own: the rebuild's renders are
+		// the first process's lines.
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		const rebuilt = [...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))];
+		assert.deepEqual(rebuilt, ["cedar"], JSON.stringify(lines));
+		assert.equal(stumpCopies().length, 1, "the page not rendered kept its picture");
+		// And its text in llms-full.txt, which the llms plugin read from each page as it rendered.
+		assert.ok(fs.readFileSync(path.join(dir, "dist/llms-full.txt"), "utf8").includes("stump"));
+	} finally {
+		await server.stop();
+	}
+});
+
+// SSQCH_INCREMENTAL=0 turns it off: every rebuild renders every page, for a page that looks out of
+// date (right with it off, it's a bug in ssqch).
+test("serve_renders_every_page_with_SSQCH_INCREMENTAL_0", async () => {
+	const dir = tempDir("serve-incremental-off");
+	const renders = path.join(tempDir("serve-incremental-off-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+		"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }}</p>",
+		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-off-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_INCREMENTAL: "0" } });
+	try {
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		fs.writeFileSync(renders, "");
+		const said = readOr(log).length;
+		fs.appendFileSync(path.join(dir, "src/cedar.njk"), "<p>Four miles.</p>");
+		await waitFor(path.join(dir, "dist/cedar/index.html"), "Four miles.");
+		for (let i = 0; i < 200 && !/Serving /.test(readOr(log).slice(said)); i++) await sleep(25);
+		assert.deepEqual(fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" ")[1]).sort(), ["cedar", "stump"]);
+	} finally {
+		await server.stop();
+	}
+});
+
+// A page that reads collections renders again only when its last render read a changed page's
+// content (templateContent, an excerpt): a page that lists titles is taken as it was, and one that
+// prints the bodies, as a feed does, renders.
+test("serve_renders_again_only_the_collection_pages_that_read_the_changed_content", async () => {
+	const dir = tempDir("serve-incremental-reads");
+	const renders = path.join(tempDir("serve-incremental-reads-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }}</p>",
+		"src/posts/stump.njk": "---\ntitle: The stump\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>",
+		"src/titles.njk": "{{ \"titles\" | noted }}{% for p in collections.posts %}<li>{{ p.data.title }}</li>{% endfor %}",
+		"src/bodies.njk": "{{ \"bodies\" | noted }}{% for p in collections.posts %}<article>{{ p.templateContent | safe }}</article>{% endfor %}",
+	});
+	const log = path.join(tempDir("serve-incremental-reads-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(dir, "dist/bodies/index.html"), "stump");
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		fs.writeFileSync(renders, "");
+		fs.appendFileSync(path.join(dir, "src/posts/cedar.njk"), "<p>Four miles.</p>");
+		const said = await lastCheck(log, from);
+		assert.match(said, JUDGED);
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		const rebuilt = [...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))];
+		assert.ok(rebuilt.includes("cedar") && rebuilt.includes("bodies") && !rebuilt.includes("titles"), JSON.stringify(rebuilt));
+		assert.ok(fs.readFileSync(path.join(dir, "dist/bodies/index.html"), "utf8").includes("Four miles."));
+	} finally {
+		await server.stop();
+	}
+});
+
+// A page with no date of its own takes its file's time, so an edit to its text alone moves its date:
+// a listing that shows it (or sorts by it) renders again, as it would for its front matter, and a
+// page that reads no collections doesn't.
+test("serve_renders_a_listing_again_when_an_undated_pages_text_moves_its_date", async () => {
+	const dir = tempDir("serve-incremental-undated");
+	const renders = path.join(tempDir("serve-incremental-undated-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\n---\n<p>{{ \"cedar\" | noted }}</p>",
+		"src/titles.njk": "{{ \"titles\" | noted }}{% for p in collections.posts %}<li>{{ p.data.title }} {{ p.date.getTime() }}</li>{% endfor %}",
+		"src/about.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"about\" | noted }}</p>",
+	});
+	const old = new Date("2026-01-01T00:00:00Z");
+	fs.utimesSync(path.join(dir, "src/posts/cedar.njk"), old, old);
+	const log = path.join(tempDir("serve-incremental-undated-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(dir, "dist/titles/index.html"), String(old.getTime()));
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		fs.writeFileSync(renders, "");
+		fs.appendFileSync(path.join(dir, "src/posts/cedar.njk"), "<p>Four miles.</p>");
+		const said = await lastCheck(log, from);
+		assert.match(said, JUDGED);
+		assert.ok(!fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes(String(old.getTime())));
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		const rebuilt = [...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))].sort();
+		assert.deepEqual(rebuilt, ["cedar", "titles"], JSON.stringify(lines));
+		// Its date was read while the listing rendered, so nothing more rendered: no note.
+		assert.doesNotMatch(readOr(log).slice(from), /has no date of its own/);
+	} finally {
+		await server.stop();
+	}
+});
+
+// A change to a page's front matter renders that page and every page whose last render read
+// collections, by anything: a listing's template, or a layout's filter of the site's own that reads
+// \`this.data.collections\`, which no template text names. A page that read none renders not at all.
+test("serve_renders_the_collection_readers_again_after_a_front_matter_edit", async () => {
+	const dir = tempDir("serve-incremental-front");
+	const renders = path.join(tempDir("serve-incremental-front-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; }, newest: function () { return this.data.collections.posts.at(-1).data.title; } } };\n`,
+		"src/_includes/side.njk": "<aside>{{ page.url | noted }} {{ \"\" | newest }}</aside>{{ content | safe }}",
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\ndate: 2026-01-02\n---\n<p>{{ \"cedar\" | noted }}</p>",
+		"src/posts/stump.njk": "---\ntitle: The stump\ndate: 2026-01-01\n---\n<p>{{ \"stump\" | noted }}</p>",
+		"src/titles.njk": "{{ \"titles\" | noted }}{% for p in collections.posts %}<li>{{ p.data.title }}</li>{% endfor %}",
+		"src/ranger.njk": "---\nlayout: side.njk\ndate: 2026-01-01\n---\n<p>Ranger station</p>",
+		"src/about.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"about\" | noted }}</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-front-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(dir, "dist/ranger/index.html"), "Cedar Trail");
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		fs.writeFileSync(renders, "");
+		const cedar = path.join(dir, "src/posts/cedar.njk");
+		fs.writeFileSync(cedar, fs.readFileSync(cedar, "utf8").replace("Cedar Trail", "Cedar Loop"));
+		const said = await lastCheck(log, from);
+		assert.match(said, JUDGED);
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		const rebuilt = [...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))].sort();
+		assert.deepEqual(rebuilt, ["/ranger/", "cedar", "titles"], JSON.stringify(lines));
+		assert.ok(fs.readFileSync(path.join(dir, "dist/ranger/index.html"), "utf8").includes("Cedar Loop"));
+	} finally {
+		await server.stop();
+	}
+});
+
+// A page that shows another page's body through a site's filter (\`this.data.collections\`, in a
+// layout, where no template text names collections) renders again when that body changes.
+test("serve_renders_a_page_whose_filter_read_the_changed_body", async () => {
+	const dir = tempDir("serve-incremental-filter-body");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"njk\"], filters: { oldest: function () { return this.data.collections.posts[0].templateContent; } } };\n",
+		"src/_includes/side.njk": "<aside>{{ \"\" | oldest | safe }}</aside>{{ content | safe }}",
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/stump.njk": "---\ntitle: The stump\ndate: 2026-01-01\n---\n<p>Stump</p>",
+		"src/ranger.njk": "---\nlayout: side.njk\ndate: 2026-01-01\n---\n<p>Ranger station</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-filter-body-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(dir, "dist/ranger/index.html"), "Stump");
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		fs.appendFileSync(path.join(dir, "src/posts/stump.njk"), "<p>Four miles.</p>");
+		const said = await lastCheck(log, from);
+		assert.match(said, JUDGED);
+		assert.ok(fs.readFileSync(path.join(dir, "dist/ranger/index.html"), "utf8").includes("Four miles."));
+	} finally {
+		await server.stop();
+	}
+});
+
+// A page a rebuild takes as it was says again what it said when it last rendered: its component
+// with no template is still warned about after an edit to another page, as a full rebuild would.
+test("serve_still_warns_about_a_page_it_took_as_it_was", async () => {
+	const dir = tempDir("serve-incremental-warned");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"njk\"] };\n",
+		"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>Cedar</p><TrailBadge>Open</TrailBadge>",
+		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>Stump</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-warned-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		assert.match(readOr(log), /<TrailBadge>/);
+		const said = readOr(log).length;
+		fs.appendFileSync(path.join(dir, "src/stump.njk"), "<p>Four miles.</p>");
+		// The rebuild's lines, whichever file it names first (Windows names the folder too).
+		let after = "";
+		for (let i = 0; i < 400 && !/Fresh tracks in [\s\S]*Serving /.test(after); i++) {
+			await sleep(25);
+			after = readOr(log).slice(said);
+		}
+		assert.match(after, /<TrailBadge>` in (\.\/)?src\/cedar\.njk/);
+	} finally {
+		await server.stop();
+	}
+});
+
+// A page that includes a file from beside it (EJS's \`include("./part.ejs")\`, Liquid's
+// \`include_relative\`), when that file is a page too, renders again when the file's text changes.
+for (const [engine, files, part] of [
+	["ejs", { "src/a.ejs": "---\ndate: 2026-01-01\n---\n<p>A</p><%- include('./part.ejs') %>", "src/part.ejs": "---\ndate: 2026-01-01\n---\n<p>Part</p>" }, "src/part.ejs"],
+	["liquid", { "src/a.liquid": "---\ndate: 2026-01-01\n---\n<p>A</p>{% include_relative part.md %}", "src/part.md": "---\ndate: 2026-01-01\n---\nPart" }, "src/part.md"],
+]) {
+	test(`serve_renders_a_page_again_when_a_file_it_includes_from_beside_it_changes_${engine}`, async () => {
+		const dir = tempDir(`serve-incremental-beside-${engine}`);
+		write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"ejs\", \"liquid\", \"md\"] };\n", ...files });
+		const log = path.join(tempDir(`serve-incremental-beside-${engine}-log`), "serve.log");
+		const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+		try {
+			await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+			fs.appendFileSync(path.join(dir, part), "\n\nFour miles.\n");
+			const said = await lastCheck(log, from);
+			assert.match(said, JUDGED);
+			assert.ok(fs.readFileSync(path.join(dir, "dist/a/index.html"), "utf8").includes("Four miles."));
+		} finally {
+			await server.stop();
+		}
+	});
+}
+
+// A page added, or a page deleted, renders the new page and the pages that read collections, as
+// a front matter edit does: the others show nothing of it.
+test("serve_renders_only_the_collection_readers_for_a_page_added_or_deleted", async () => {
+	const dir = tempDir("serve-incremental-added");
+	const renders = path.join(tempDir("serve-incremental-added-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+		"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+		"src/posts/cedar.njk": "---\ntitle: Cedar Trail\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }}</p>",
+		"src/titles.njk": "{{ \"titles\" | noted }}{% for p in collections.posts %}<li>{{ p.data.title }}</li>{% endfor %}",
+		"src/about.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"about\" | noted }}</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-added-log"), "serve.log");
+	const timeline = path.join(tempDir("serve-incremental-added-timeline"), "times.jsonl");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1", SSQCH_SERVE_TIMELINE: timeline } });
+	// What each rebuild rendered and why, and what the server said, for a failure's message.
+	const why = (from) => JSON.stringify(readOr(timeline).split("\n").filter(Boolean).flatMap((line) => { try { const t = JSON.parse(line); return t.kind === "rebuild" ? [[t.file, t.builder?.rendered]] : []; } catch { return []; } })) + "\n" + readOr(log).slice(from);
+	const rebuilt = () => {
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		return [...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))].sort();
+	};
+	try {
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		fs.writeFileSync(renders, "");
+		let said = readOr(log).length;
+		fs.writeFileSync(path.join(dir, "src/posts/stump.njk"), "---\ntitle: The stump\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>");
+		assert.match(await lastCheck(log, said), JUDGED);
+		assert.deepEqual(rebuilt(), ["stump", "titles"], why(from));
+		assert.ok(fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes("The stump"));
+		await sleep(500);
+		fs.writeFileSync(renders, "");
+		said = readOr(log).length;
+		fs.rmSync(path.join(dir, "src/posts/stump.njk"));
+		assert.match(await lastCheck(log, said), JUDGED);
+		assert.deepEqual(rebuilt(), ["titles"], why(said));
+		assert.ok(!fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes("The stump"));
+	} finally {
+		await server.stop();
+	}
+});
+
+// Data with a function in it (a directory data file's \`computed\`) still lets a rebuild render only
+// the page whose text changed: the same function object is the same code.
+test("serve_renders_only_the_changed_page_when_the_data_has_a_function", async () => {
+	const dir = tempDir("serve-incremental-function");
+	const renders = path.join(tempDir("serve-incremental-function-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+		"src/trails/trails.data.js": "export default { computed: { shout: (data) => String(data.title).toUpperCase() } };\n",
+		"src/trails/cedar.njk": "---\ntitle: Cedar Trail\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }} {{ shout }}</p>",
+		"src/trails/stump.njk": "---\ntitle: The stump\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }} {{ shout }}</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-function-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(path.join(dir, "dist/trails/stump/index.html"), "THE STUMP");
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		fs.writeFileSync(renders, "");
+		fs.appendFileSync(path.join(dir, "src/trails/cedar.njk"), "<p>Four miles.</p>");
+		const said = await lastCheck(log, from);
+		assert.match(said, JUDGED);
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		assert.deepEqual([...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))], ["cedar"], JSON.stringify(lines));
+	} finally {
+		await server.stop();
+	}
+});
+
+// A page with a data file of its own is made again every build; when it comes out with the same
+// bytes and data, it isn't rendered for an edit to another page.
+test("serve_takes_a_page_with_its_own_data_file_as_it_was", async () => {
+	const dir = tempDir("serve-incremental-own-data");
+	const renders = path.join(tempDir("serve-incremental-own-data-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+		"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }} {{ miles }}</p>",
+		"src/cedar.data.js": "export default { miles: 4, computed: { trail: (data) => data.miles + \" miles\" } };\n",
+		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-own-data-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		fs.writeFileSync(renders, "");
+		fs.appendFileSync(path.join(dir, "src/stump.njk"), "<p>Four miles.</p>");
+		assert.match(await lastCheck(log, from), JUDGED);
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		assert.deepEqual([...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))], ["stump"], JSON.stringify(lines));
+	} finally {
+		await server.stop();
+	}
+});
+
+// An afterBuild hook of the site's own renders every page on every rebuild, unless it says it
+// reads only the output (\`{ run, reads: "output" }\`, a function or a command).
+for (const [name, hook, rendered] of [
+	["a bare hook", "() => {}", ["cedar", "stump"]],
+	["a function that reads only the output", "{ run: () => {}, reads: \"output\" }", ["cedar"]],
+	["a command that reads only the output", "{ run: \"node -e 0\", reads: \"output\" }", ["cedar"]],
+]) {
+	test(`serve_renders_${rendered.length > 1 ? "every_page" : "only_the_changed_page"}_with_${name.replace(/ /g, "_")}`, async () => {
+		const dir = tempDir("serve-incremental-hook");
+		const renders = path.join(tempDir("serve-incremental-hook-renders"), "renders.log");
+		write(dir, {
+			"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], afterBuild: ${hook}, filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+			"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }}</p>",
+			"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>",
+		});
+		const log = path.join(tempDir("serve-incremental-hook-log"), "serve.log");
+		const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+		try {
+			await waitFor(log, "Serving ");
+			const from = await quietLog(log);
+			fs.writeFileSync(renders, "");
+			fs.appendFileSync(path.join(dir, "src/cedar.njk"), "<p>Four miles.</p>");
+			assert.match(await lastCheck(log, from), JUDGED);
+			const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+			assert.deepEqual([...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, n]) => n))].sort(), rendered, JSON.stringify(lines));
+		} finally {
+			await server.stop();
+		}
+	});
+}
+
+// A page with no date of its own has its file's time, which a save moves. The pages that showed its
+// date render again, and a list of titles doesn't; a collection of the site's own that sorts by
+// dates read them before any page rendered, so every page that reads collections renders.
+for (const [name, config, listing, rendered] of [
+	["a list of titles", "", "{% for p in collections.posts %}<li>{{ p.data.title }}</li>{% endfor %}", ["cedar"]],
+	["a list of dates", "", "{% for p in collections.posts %}<li>{{ p.date.getTime() }}</li>{% endfor %}", ["cedar", "listing"]],
+	["a collection sorted by date", "collections: { newest: (pages) => pages.byTag(\"posts\").sort((a, b) => b.date - a.date) }, ", "{% for p in collections.newest %}<li>{{ p.data.title }}</li>{% endfor %}", ["cedar", "listing"]],
+]) {
+	test(`serve_renders_for_an_undated_pages_moved_date_${name.replace(/ /g, "_")}`, async () => {
+		const dir = tempDir("serve-incremental-dates");
+		const renders = path.join(tempDir("serve-incremental-dates-renders"), "renders.log");
+		write(dir, {
+			"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], ${config}filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+			"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+			"src/posts/cedar.njk": "---\ntitle: Cedar Trail\n---\n<p>{{ \"cedar\" | noted }}</p>",
+			"src/posts/stump.njk": "---\ntitle: The stump\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>",
+			"src/listing.njk": `{{ "listing" | noted }}${listing}`,
+		});
+		const old = new Date("2026-01-01T00:00:00Z");
+		fs.utimesSync(path.join(dir, "src/posts/cedar.njk"), old, old);
+		const log = path.join(tempDir("serve-incremental-dates-log"), "serve.log");
+		const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+		try {
+			await waitFor(log, "Serving ");
+			const from = await quietLog(log);
+			fs.writeFileSync(renders, "");
+			fs.appendFileSync(path.join(dir, "src/posts/cedar.njk"), "<p>Four miles.</p>");
+			assert.match(await lastCheck(log, from), JUDGED);
+			const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+			assert.deepEqual([...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, n]) => n))].sort(), rendered, JSON.stringify(lines));
+			// Only when the site's code read the date before the pages rendered does it cost every
+			// reader, and the server says so, with the option that stops it.
+			const note = /note: (\.\/)?src\/posts\/cedar\.njk has no date of its own, so its date is its file's time, which the save moved, and the site's code read it before the pages rendered \(a collection sorted by date, computed data\): the 1 page that read collections rendered again\. `dateFallback: "git"`/;
+			if (config) assert.match(readOr(log).slice(from), note);
+			else assert.doesNotMatch(readOr(log).slice(from), /has no date of its own/);
+		} finally {
+			await server.stop();
+		}
+	});
+}
+
+// A rebuild that failed renders nothing for the pages it was given, so the next rebuild doesn't take
+// them as the last build wrote them: a page broken in one save is still broken after a save to
+// another page, as a clean build would say.
+test("serve_keeps_failing_for_a_broken_page_after_an_edit_to_another", async () => {
+	const dir = tempDir("serve-incremental-failed");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"njk\"] };\n",
+		"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>Cedar</p>",
+		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>Stump</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-failed-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		fs.appendFileSync(path.join(dir, "src/cedar.njk"), "{{ \"x\" | noSuchFilter }}");
+		await waitFor(log, "noSuchFilter");
+		const said = readOr(log).length;
+		fs.appendFileSync(path.join(dir, "src/stump.njk"), "<p>Four miles.</p>");
+		// The rebuild's outcome, whichever file it names first (Windows names the folder too): its
+		// error again, or a summary it shouldn't have.
+		let after = "";
+		for (let i = 0; i < 400 && !/Fresh tracks in [\s\S]*(Built in|noSuchFilter)/.test(after); i++) {
+			await sleep(25);
+			after = readOr(log).slice(said);
+		}
+		assert.match(after, /noSuchFilter/);
+		assert.doesNotMatch(after, /Built in/);
+	} finally {
+		await server.stop();
+	}
+});
+
+// While serving, the link checker scans again only the pages whose files changed, and checks every
+// page's links against this build's files and ids: a page that didn't change, linking to an anchor
+// a changed page lost, is still broken.
+test("serve_finds_a_broken_anchor_on_a_page_that_didnt_change", async () => {
+	const dir = tempDir("serve-links-kept");
+	write(dir, {
+		"ssqch.config.js": "import { linksPlugin } from \"ssqch/links\";\nexport default { dirs: { input: \"src\", output: \"dist\" }, plugins: [linksPlugin()] };\n",
+		"src/a.html": "<p><a href=\"/b/#trail\">the trail</a></p>",
+		"src/b.html": "<h2 id=\"trail\">Cedar Trail</h2>",
+	});
+	const log = path.join(tempDir("serve-links-kept-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
+	try {
+		await waitFor(log, "Serving ");
+		assert.ok(!readOr(log).includes("no id"), readOr(log));
+		await changeAndWait(path.join(dir, "src/b.html"), "<h2 id=\"cedar\">Cedar Trail</h2>", path.join(dir, "dist/b/index.html"), "cedar");
+		await waitFor(log, "no id \"trail\"");
 	} finally {
 		await server.stop();
 	}

@@ -21,7 +21,8 @@ import { shownDir, shownOutput } from "./config.ts";
 import type { Data } from "./data.ts";
 import { sourceDateEpoch, STATIC_DATA_EXTENSIONS } from "./data.ts";
 import { renderComponents } from "./components.ts";
-import { BuildError, Diagnostics, bail, context, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
+import { BuildError, Diagnostics, bail, context, hearWarnings, isCapturing, messageOf, progress, warn, warning } from "./diagnostics.ts";
+import { hearOpened } from "./engines/engine.ts";
 import type { RenderContext } from "./engines/engine.ts";
 import { beginFenceCache, rendering as markdownRendering, saveFenceCache, writeHighlightCss } from "./engines/markdown.ts";
 import * as equivalents from "./equivalents.ts";
@@ -35,8 +36,10 @@ import { mkdocsGlobals, tocOf } from "./mkdocs.ts";
 import { currentRendering, renderingAs, safe } from "./rendering.ts";
 import { checkPages, paginated } from "./schema.ts";
 import type { CopyJob, Page, Tpl } from "./site.ts";
-import { Site, Timer, errorsTogether } from "./site.ts";
+import type { Diagnostic } from "./diagnostics.ts";
+import { Site, Timer, errorsTogether, incremental, readsCollections } from "./site.ts";
 import type { Profile, ProfileReport } from "./profile.ts";
+import { count } from "./report.ts";
 import * as voice from "./voice.ts";
 import { jekyllPage, jekyllSite } from "./jekyll.ts";
 
@@ -86,6 +89,9 @@ const MAX_WRITES = 64;
 export async function build(config: Config): Promise<BuildReport> {
 	// A SOURCE_DATE_EPOCH that isn't a number is one error now, not one for every page.
 	sourceDateEpoch();
+	// Until this build finishes, the next one can't take a page as this one wrote it.
+	const afterAWorkingBuild = lastBuildWorked;
+	lastBuildWorked = false;
 	const started = performance.now();
 	const timer = new Timer();
 	const site = new Site(config);
@@ -108,19 +114,69 @@ export async function build(config: Config): Promise<BuildReport> {
 	const collectionIncludes = includesUsingCollections(site);
 	const overCollections = (p: Page) => typeof p.data.pagination?.data === "string" && p.data.pagination.data.startsWith("collections.");
 	const wanted = pages.filter((p) => p.output !== null || p.inCollections);
-	const late = new Set(wanted.filter((p) => usesCollections(p.tpl, collectionIncludes) || overCollections(p)));
+	const includesKey = [...collectionIncludes].sort(compareText).join("\0");
+	const late = new Set(wanted.filter((p) => usesCollectionsKept(p.tpl, collectionIncludes, includesKey) || overCollections(p)));
 	await site.buildCollections();
 	for (const page of late) {
 		if (overCollections(page)) {
 			try { site.refreshPagination(page); } catch (e) { throw context(e, `in ${page.tpl.rel}`); }
 		}
 	}
-	// `SSQCH_INCREMENTAL=1`: only the pages whose bodies changed, and those that read collections
+	// While serving (`incremental`): only the pages whose bodies changed, and those that read collections
 	// (a feed shows the bodies); the rest are as the last build wrote them.
-	const only = incrementalPages(site, wanted, late);
-	if (only) for (const page of wanted) if (!only.has(page) && !late.has(page) && page.output !== null) renderer.written.set(page.index, { file: page.output, bytes: keptWritten.get(page.output)!, changed: false });
-	const rendering = only ? wanted.filter((p) => only.has(p) || late.has(p)) : wanted;
+	const chosen = afterAWorkingBuild ? incrementalPages(site, wanted, late) : "the last build failed";
+	const only = typeof chosen === "string" ? undefined : chosen;
+	if (only) undatedNote(site, only);
+	if (only) for (const page of wanted) if (!only.has(page) && page.output !== null) renderer.written.set(page.index, { file: page.output, bytes: keptWritten.get(page.output)!, changed: false });
+	const rendering = only ? wanted.filter((p) => only.has(p)) : wanted;
+	renderedCount = [rendering.filter((p) => p.output !== null).length, wanted.filter((p) => p.output !== null).length, typeof chosen === "string" ? chosen : undefined];
 	await renderer.renderAll([...rendering.filter((p) => !late.has(p)), ...rendering.filter((p) => late.has(p))], late);
+	// Whose content each page read, and whether it read collections, for the next rebuild's choice.
+	if (config.serving) {
+		for (const page of rendering) {
+			if (page.output === null) continue;
+			const read = renderer.reads.get(page.index);
+			if (read || late.has(page)) keptReads.set(page.output, read ?? new Set());
+			else keptReads.delete(page.output);
+			if (renderer.collectionReaders.has(page.index)) keptCollectionReaders.add(page.output);
+			else keptCollectionReaders.delete(page.output);
+			const said = renderer.said.get(page.index);
+			if (said) keptSaid.set(page.output, said);
+			else keptSaid.delete(page.output);
+			const beside = renderer.beside.get(page.index);
+			if (beside) keptBeside.set(page.output, beside);
+			else keptBeside.delete(page.output);
+			const dates = renderer.dateReads.get(page.index);
+			if (dates) keptDateReads.set(page.output, dates);
+			else keptDateReads.delete(page.output);
+			// The file as this build left it (its writes are done), so the next can tell whether
+			// something else wrote over it.
+			const mark = outputMark(page.output);
+			if (mark !== undefined) keptMarks.set(page.output, mark);
+			else keptMarks.delete(page.output);
+		}
+		// What a page taken as it was said when it last rendered, said again.
+		if (only) {
+			for (const page of wanted) {
+				if (only.has(page) || page.output === null) continue;
+				const said = keptSaid.get(page.output);
+				if (!said) continue;
+				for (const diagnostic of said.warnings) if (!renderer.heard.has(diagnostic.message)) { renderer.heard.add(diagnostic.message); warn(diagnostic); }
+				for (const name of said.components) {
+					const files = site.unknownComponents.get(name) ?? new Set<string>();
+					files.add(site.display(page.tpl.input));
+					site.unknownComponents.set(name, files);
+				}
+			}
+		}
+	}
+	// What the built-in plugins learned from each page, said again for the pages taken as they
+	// were (the image plugin's pictures in use), with the rendered pages' new records.
+	if (config.serving) {
+		const urls = (list: Page[]) => list.flatMap((p) => (typeof p.url === "string" ? [p.url] : []));
+		const skipped = only ? urls(wanted.filter((p) => !only.has(p))) : [];
+		for (const replay of config.replays) replay(skipped, urls(rendering));
+	}
 	warnUnknownComponents(site);
 	for (const wait of config.settle) await wait();
 	timer.timings.push(["render", renderer.renderMs], ["write", performance.now() - timer.last - renderer.renderMs]);
@@ -187,6 +243,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	report.timings = timer.timings;
 	for (const slow of site.profile.slowCalls()) warn(slow);
 	if (config.profile) report.profile = site.profile.report();
+	lastBuildWorked = true;
 	return report;
 }
 
@@ -253,38 +310,184 @@ interface Written {
 	changed: boolean;
 }
 
-/** While serving: each page's size as the last build wrote it, by its output file, for a page `SSQCH_INCREMENTAL=1` doesn't render. */
+/**
+ * Whether the last build in this process finished. One that failed rendered some of the pages it
+ * was given and not others (a page whose filter threw, and what came after it), so the next
+ * renders every page: taken as the last build wrote it, a broken page would look fixed.
+ */
+let lastBuildWorked = false;
+
+/** The last build's pages rendered, of the pages it wrote, and why it rendered them all when it did, for the serve timeline. */
+let renderedCount: [number, number, string?] = [0, 0];
+export const lastRendered = (): [number, number, string?] => renderedCount;
+
+/** Whether this process has said why an undated page's save rendered the pages that list it. */
+let saidUndated = false;
+
+/**
+ * While serving, once: a save to a page with no date of its own moved its date (its file's time),
+ * which the site's code read before the pages rendered, so every page that reads collections
+ * rendered again, where a dated page renders alone. Said with the option that stops it.
+ */
+function undatedNote(site: Site, only: Set<Page>): void {
+	const { config } = site;
+	const file = site.undatedFallback;
+	if (saidUndated || config.quiet || isCapturing() || file === undefined) return;
+	const others = [...only].filter((page) => page.tpl.input !== file && page.output !== null).length;
+	if (others === 0) return;
+	saidUndated = true;
+	process.stderr.write(`note: ${site.display(file)} has no date of its own, so its date is its file's time, which the save moved, and the site's code read it before the pages rendered (a collection sorted by date, computed data): the ${count(others)} page${others === 1 ? "" : "s"} that read collections rendered again. \`dateFallback: "git"\` in the config gives it its last commit's date, which a save doesn't move\n`);
+}
+
+/** While serving: each page's size as the last build wrote it, by its output file, for a page `incremental` doesn't render. */
 const keptWritten = new Map<string, number>();
+
+/**
+ * While serving: whose content (templateContent, content, an excerpt, headings: all through
+ * `contentOf`) each page that reads collections read when it last rendered, by its output file. A
+ * page that read none of the changed pages' content (a tag page that lists titles) is taken as it
+ * was: its data, and every page's data, is what it was.
+ */
+const keptReads = new Map<string, Set<string>>();
+
+/**
+ * While serving: the pages (by output file) whose last render read
+ * `collections`, by anything: the template, a layout, an include, or a site's filter through
+ * `this.data.collections`. A change to another page's front matter can change what they show.
+ */
+const keptCollectionReaders = new Set<string>();
+
+/** While serving: whose dates each page read when it last rendered (page keys), by output file. */
+const keptDateReads = new Map<string, Set<string>>();
+
+/** While serving: the files each page's templates included from beside them when it last rendered (by real path), by output file. */
+const keptBeside = new Map<string, Set<string>>();
+
+/** While serving: each page's file as the last build that rendered it left it (`outputMark`), by output file. */
+const keptMarks = new Map<string, string>();
+/** A file's inode, size and times, as one string: a write by anything changes the change time. */
+function outputMark(file: string): string | undefined {
+	const stat = fs.statSync(file, { throwIfNoEntry: false });
+	return stat ? `${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}` : undefined;
+}
+
+/** While serving: what each page's last render said (its warnings, its components with no template), by output file, for a rebuild that takes it as it was. */
+const keptSaid = new Map<string, { warnings: Diagnostic[]; components: Set<string> }>();
+
+/** While serving: what a generator last wrote to each file, with the size and time the file had then. */
+const keptGenerated = new Map<string, { text: string; mark: string }>();
+
+/** A page, as `keptReads` names it: its file and its URL (a paginated template has several). */
+const pageKey = (page: Page) => `${page.tpl.input}\0${page.url}`;
 
 /**
  * Built-in plugins a rebuild that renders only some pages can't get wrong: what they do comes from
  * the pages' data (the sitemap, redirects, robots), from every page's file on disk (the link
  * checker), from a page that reads collections, which always renders (a feed), or from the one
- * page they're given (minify). The image plugin isn't: a page not rendered doesn't say which
- * pictures it uses, and `prune` and `leaveNoTrace` would take them.
+ * page they're given (minify), or a replay of what each page told them (`config.replays`: the
+ * image plugin, whose pictures a page not rendered asks for again, so `prune` and `leaveNoTrace`
+ * keep them; llms, whose copies and llms-full.txt read each page's text; elements' summary). The
+ * assets plugin fingerprints the files it's given before the build, whatever renders, and Sass
+ * compiles its own files before any page. The feed is written after the pages from its posts'
+ * `templateContent`, which renders on demand for a post this build didn't render. `fromHugo()`
+ * only sets Markdown's options. `fromJekyll()` and `fromMkdocs()` aren't here: their templates
+ * read other pages through `site` and `nav`, past the collections' view.
  */
-const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/redirects", "ssqch/robots", "ssqch/minify"]);
+const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/feed", "ssqch/redirects", "ssqch/robots", "ssqch/minify", "ssqch/image", "ssqch/assets", "ssqch/elements", "ssqch/llms", "ssqch/sass", "ssqch/from-hugo"]);
 
 /**
- * `SSQCH_INCREMENTAL=1` while serving (the dev server's design, stage 3, its first slice): the
+ * While serving (`incremental`, the dev server's design, stage 3): the
  * pages to render when every changed file is a template whose body alone changed
- * (`Site.bodyOnly`), the site's plugins are all `REPLAYABLE`, and the config has no transforms or
- * after-build hooks of its own (code that sees rendered pages; a `beforeBuild` hook runs before any
- * page, every build). `undefined` means render everything.
+ * (`Site.bodyOnly`), whose own data did (`Site.ownData`: its front matter), or that came or went
+ * (`Site.added`, `Site.gone`); the site's plugins are all `REPLAYABLE`, and the config has no
+ * transforms or after-build hooks of its own (code that sees rendered pages; a `beforeBuild` hook
+ * runs before any page, every build). A string, why it renders every page instead.
  */
-function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page> | undefined {
+function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page> | string {
 	const { config } = site;
-	if (process.env.SSQCH_INCREMENTAL !== "1" || !config.serving || !site.bodyOnly.size || !config.changed?.length) return undefined;
+	if (!incremental(config)) return "off";
+	if (!config.changed?.length) return "the first build";
+	if (!site.keepingTemplates) return `templates aren't kept: ${site.notKept}`;
+	// A data file, or what the data's code made: every page's data may differ, whatever was named.
+	if (!site.sameShared) return "the data changed";
 	// By real paths on both sides: the server names files by theirs, and the site may not (a
 	// temporary folder's `/var` is `/private/var` on macOS).
-	const bodyOnly = new Set([...site.bodyOnly].map(realPath));
-	if (!config.changed.every((file) => bodyOnly.has(realPath(file)))) return undefined;
-	if (!config.plugins.every((name) => REPLAYABLE.has(name))) return undefined;
-	if (config.afterBuild.some((hook) => !("label" in hook) || hook.label !== "")) return undefined;
-	if (config.transforms.some(([name]) => name !== "minify-html")) return undefined;
-	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input)));
-	// A page the last build didn't write (new to the output) is rendered.
-	for (const page of wanted) if (!only.has(page) && !late.has(page) && page.output !== null && !keptWritten.has(page.output)) only.add(page);
+	// A file that's gone has no real path of its own: its folder's, and its name. Both, for a page
+	// that's a link.
+	const reals = (file: string) => [realPath(file), path.join(realPath(path.dirname(file)), path.basename(file))];
+	const bodyOnly = new Set([...site.bodyOnly].flatMap(reals));
+	// A page's own data changed (its front matter, a date that's its file's time), or a page came
+	// or went: what other pages show of it comes through collections, which every page's data is
+	// made from again.
+	const ownData = new Set([...site.ownData, ...site.added, ...site.gone].flatMap(reals));
+	const isIn = (set: Set<string>, file: string) => reals(file).some((name) => set.has(name));
+	// Windows names the folder a file changed in as well as the file, sometimes alone and late (after
+	// a delete the last rebuild built). What a folder holds the build checks for itself: its pages
+	// by their bytes, pages added or gone by the listing, data files by their size and time; a
+	// copy or a picture is named in its own event. An includes folder isn't: an include it names
+	// renders every page.
+	const includeDirs = [site.dirs.includes, ...site.themeIncludes].flatMap(reals);
+	// Every template taken as it was is unchanged (10,000 on a big site): matched by name first, so
+	// only a named file's namesakes are resolved.
+	const byName = new Map<string, string[]>();
+	for (const file of site.unchanged) {
+		const name = path.basename(file);
+		const same = byName.get(name);
+		if (same) same.push(file);
+		else byName.set(name, [file]);
+	}
+	const isUnchanged = (file: string) => (byName.get(path.basename(file)) ?? []).some((tpl) => isIn(new Set(reals(tpl)), file));
+	const changed = config.changed.filter((file) => !(isDir(file) && !reals(file).some((name) => includeDirs.some((dir) => isInside(dir, name)))) && !isUnchanged(file));
+	const other = changed.find((file) => !isIn(bodyOnly, file) && !isIn(ownData, file));
+	if (other !== undefined) return `${site.display(other)} isn't a page's body or front matter, or a page added or gone`;
+	// A page whose only change is its file's time (its date, with none of its own) reaches the
+	// others through its date alone: the pages that read it while they rendered. Unless something
+	// read it before the pages rendered (a collection that sorts by dates, computed data that
+	// copies one), whose readers can't be told: then it's a change to its data like any other.
+	const timeTpls = new Set([...site.timeOnly].filter((tpl) => changed.some((file) => isIn(new Set(reals(tpl)), file))));
+	const timePages = wanted.filter((page) => timeTpls.has(page.tpl.input));
+	for (const page of timePages) {
+		if (!site.earlyDateReads.has(pageKey(page))) continue;
+		timeTpls.delete(page.tpl.input);
+		site.undatedFallback ??= page.tpl.input;
+	}
+	const timeOnly = new Set([...timeTpls].flatMap(reals));
+	const dataChanged = site.added.size > 0 || site.gone.size > 0 || changed.some((file) => isIn(ownData, file) && !isIn(timeOnly, file));
+	const timeKeys = new Set(timePages.filter((page) => timeTpls.has(page.tpl.input)).map(pageKey));
+	const plugin = config.plugins.find((name) => !REPLAYABLE.has(name));
+	if (plugin !== undefined) return `the plugin ${plugin}`;
+	// A hook of the site's own may read what its code kept while pages rendered, which a rebuild
+	// that renders only some leaves short, unless it says it reads only the output.
+	if (config.afterBuild.some((hook) => !hook.readsOutput && (!("label" in hook) || hook.label !== ""))) return "an afterBuild hook of the config's own (reads: \"output\" lets it render only some pages)";
+	const transform = config.transforms.find(([name]) => name !== "minify-html");
+	if (transform) return `the transform ${transform[0]}`;
+	// MkDocs' and Jekyll's templates read more of other pages than that, past `collections`.
+	const everyLate = config.mkdocsTemplates !== null || config.jekyllTemplates;
+	if (dataChanged && everyLate) return "front matter with MkDocs' or Jekyll's templates";
+	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input) || site.ownData.has(page.tpl.input) || site.added.has(page.tpl.input)));
+	const changedKeys = new Set([...only].map(pageKey));
+	const changedFiles = new Set(changed.flatMap(reals));
+	for (const page of wanted) {
+		if (only.has(page) || page.output === null) continue;
+		const read = keptReads.get(page.output);
+		// A page that read a changed page's content last time (a feed), or reads collections in its
+		// own templates and has no record of what it read.
+		if (read && [...read].some((key) => changedKeys.has(key))) only.add(page);
+		// A page that included a changed file from beside it (EJS's `include("./part")`, Liquid's `include_relative`).
+		else if ([...keptBeside.get(page.output) ?? []].some((file) => changedFiles.has(file))) only.add(page);
+		// A page that showed a moved date (a list of "last updated" dates).
+		else if (timeKeys.size && [...keptDateReads.get(page.output) ?? []].some((key) => timeKeys.has(key))) only.add(page);
+		else if (late.has(page) && (everyLate || !read)) only.add(page);
+		// After a change to a page's own data, every page that read collections (its title in a
+		// list, its place in prev and next), is paginated over one, or has computed data from them.
+		else if (dataChanged && (late.has(page) || keptCollectionReaders.has(page.output) || readsCollections(page.tpl.data.computed))) only.add(page);
+	}
+	// A page the last build didn't write (new to the output) is rendered, and so is one whose file
+	// something else wrote over or removed since: taken as it was, it would stay as they left it.
+	for (const page of wanted) {
+		if (only.has(page) || page.output === null) continue;
+		if (!keptWritten.has(page.output) || keptMarks.get(page.output) !== outputMark(page.output)) only.add(page);
+	}
 	return only;
 }
 
@@ -302,6 +505,26 @@ class Renderer {
 	 */
 	private keep: boolean;
 	written = new Map<number, Written>();
+	/** The page rendering now (pages render one at a time), and whose content each page read, by page index. */
+	private rendering: Page | undefined;
+	reads = new Map<number, Set<string>>();
+	/** The page whose body is rendering now: `rendering`, or another page's body that it asked for. */
+	private reader: Page | undefined;
+	/** The pages, by index, whose render read `collections` (`keptCollectionReaders`). */
+	collectionReaders = new Set<number>();
+	/** While serving, what each page's render said (`keptSaid`): its warnings, and its components with no template. */
+	said = new Map<number, { warnings: Diagnostic[]; components: Set<string> }>();
+	/** Whose dates each page read (`date`, `page.date`, `page.lastModified`), by page index (`keptDateReads`). */
+	dateReads = new Map<number, Set<string>>();
+	/** The files beside them each page's templates included (`keptBeside`), by page index. */
+	beside = new Map<number, Set<string>>();
+	saidFor(page: Page): { warnings: Diagnostic[]; components: Set<string> } {
+		let found = this.said.get(page.index);
+		if (!found) this.said.set(page.index, found = { warnings: [], components: new Set() });
+		return found;
+	}
+	/** `collections` as pages see them, which notes who reads it, while serving. */
+	private collectionsView: Data | undefined;
 	/** Time spent rendering bodies, as the summary's `render`. */
 	renderMs = 0;
 	/**
@@ -328,7 +551,7 @@ class Renderer {
 
 	/** The data a page's templates get: its own, and the collections. */
 	private data(page: Page): Data {
-		const data: Data = { ...page.data, collections: this.site.collections };
+		const data: Data = { ...page.data, collections: this.collections() };
 		if (this.site.config.jekyllTemplates) {
 			data.site = this.jekyllSite();
 			data.page = jekyllPage(page.data, page.data.page, this.globalKeys());
@@ -345,6 +568,28 @@ class Renderer {
 		}
 		return data;
 	}
+	/**
+	 * The collections for a page's templates. While serving (`incremental`), a view that
+	 * notes the page reading it, whatever reads it (a template, a layout, a site's filter): a
+	 * rebuild after a change to one page's front matter renders those pages again. Anything an
+	 * engine does to look at it counts, so at worst a page renders when it needn't have.
+	 */
+	private collections(): Data {
+		const { collections, config } = this.site;
+		if (!incremental(config)) return collections;
+		if (this.collectionsView) return this.collectionsView;
+		const note = () => {
+			const who = this.reader ?? this.rendering;
+			if (who) this.collectionReaders.add(who.index);
+		};
+		return (this.collectionsView = new Proxy(collections, {
+			get: (target, key, receiver) => { note(); return Reflect.get(target, key, receiver); },
+			has: (target, key) => { note(); return Reflect.has(target, key); },
+			ownKeys: (target) => { note(); return Reflect.ownKeys(target); },
+			getOwnPropertyDescriptor: (target, key) => { note(); return Reflect.getOwnPropertyDescriptor(target, key); },
+		}));
+	}
+
 	/** Each page's MkDocs page, by the data its layouts render with. */
 	private mkdocsPageOf = new WeakMap<Data, Data>();
 
@@ -415,6 +660,7 @@ class Renderer {
 				const files = unknown.get(name) ?? new Set<string>();
 				files.add(this.site.display(page.tpl.input));
 				unknown.set(name, files);
+				if (this.site.config.serving) this.saidFor(page).components.add(name);
 			});
 		} catch (e) { throw context(e, `in ${page.tpl.rel}`); }
 	}
@@ -425,6 +671,12 @@ class Renderer {
 	 */
 	private contentNow(page: Page): string | undefined {
 		this.keep = true;
+		// Which pages' content each page read, for a rebuild that renders only some (`keptReads`).
+		if (this.rendering && this.rendering !== page) {
+			let read = this.reads.get(this.rendering.index);
+			if (!read) this.reads.set(this.rendering.index, read = new Set());
+			read.add(pageKey(page));
+		}
 		const kept = this.bodies.get(page.index);
 		if (kept === RENDERING) return undefined;
 		if (kept !== undefined) return kept;
@@ -435,7 +687,9 @@ class Renderer {
 			// Another page's body, read now: its functions see that page, then this one's again.
 			const now = currentRendering();
 			const was = now?.data;
-			try { out = this.body(page); } finally { if (now && was) now.data = was; }
+			const reader = this.reader;
+			this.reader = page;
+			try { out = this.body(page); } finally { if (now && was) now.data = was; this.reader = reader; }
 		} catch (e) {
 			this.bodies.delete(page.index);
 			// That page's own turn reports this; the page that asked isn't a second error.
@@ -455,12 +709,50 @@ class Renderer {
 	}
 
 	async renderAll(pages: Page[], late: Set<Page> = new Set()): Promise<void> {
+		// While serving, each page's warnings are kept with it, to be said again by a rebuild that
+		// takes the page as it was: a warning doesn't go quiet because its page didn't render.
+		if (this.site.config.serving) {
+			hearWarnings((diagnostic) => {
+				this.heard.add(diagnostic.message);
+				const who = this.reader ?? this.rendering;
+				if (who) this.saidFor(who).warnings.push(diagnostic);
+			});
+			// A read of another page's date, by the page rendering (or whose body is).
+			this.site.dateRead = (key) => {
+				const who = this.reader ?? this.rendering;
+				if (!who || pageKey(who) === key) return;
+				let read = this.dateReads.get(who.index);
+				if (!read) this.dateReads.set(who.index, read = new Set());
+				read.add(key);
+			};
+			hearOpened((file) => {
+				for (const who of [this.reader, this.rendering]) {
+					if (!who) continue;
+					let files = this.beside.get(who.index);
+					if (!files) this.beside.set(who.index, files = new Set());
+					files.add(realPath(file));
+				}
+			});
+		}
+		try { await this.renderEach(pages, late); } finally {
+			hearWarnings(undefined);
+			hearOpened(undefined);
+			// After the pages, what reads a date (a feed, a sitemap) runs every build: not noted.
+			if (this.site.config.serving) this.site.dateRead = () => {};
+		}
+	}
+
+	/** Every warning's message said while the pages rendered, so one said again isn't said twice. */
+	heard = new Set<string>();
+
+	private async renderEach(pages: Page[], late: Set<Page>): Promise<void> {
 		for (const page of pages) {
 			this.borrowedFailure = false;
 			// Markdown's warnings (a site's highlighter that failed) name the page.
 			markdownRendering(this.site.display(page.tpl.input));
 			// What a slow call was working on (src/profile.ts): pages render one at a time.
 			this.site.profile.at = shown(this.site.dirs.root, page.tpl.input);
+			this.rendering = page;
 			try {
 				await renderingAs({ data: page.data }, () => this.render(page));
 			} catch (e) {
@@ -469,6 +761,8 @@ class Renderer {
 				const error = e instanceof BuildError || e instanceof Diagnostics ? e : internal(e, page.tpl.rel);
 				const inBody = typeof e === "object" && e !== null && this.bodyErrors.has(e);
 				this.errors.push({ error, phase: inBody ? (late.has(page) ? 1 : 0) : 2 });
+			} finally {
+				this.rendering = undefined;
 			}
 		}
 		markdownRendering(undefined);
@@ -680,12 +974,33 @@ function includeSources(site: Site): Array<{ dir: string; file: string; text: st
 /** Whether any template, layout or include reads a page's rendered content (cheap: it decides whether bodies are kept from the start). */
 function mentionsContent(site: Site): boolean {
 	const reads = (text: string) => text.includes("templateContent") || /\.content\b/.test(text);
-	if (site.tpls.some((t) => reads(t.body))) return true;
+	if (site.tpls.some((t) => {
+		// A template kept between rebuilds while serving keeps its answer: its body is what it was.
+		let found = bodyReadsContent.get(t);
+		if (found === undefined) bodyReadsContent.set(t, found = reads(t.body));
+		return found;
+	})) return true;
 	for (const layout of site.layouts.values()) if (reads(layout.body)) return true;
 	return includeSources(site).some(({ text }) => reads(text));
 }
 
 // ---- which pages read collections ------------------------------------------------------------
+
+/** Whether a template's body reads a page's rendered content, by template: a kept one is the same object from one rebuild to the next. */
+const bodyReadsContent = new WeakMap<Tpl, boolean>();
+
+/**
+ * `usesCollections`, kept with the template and the includes that read collections it was
+ * answered for: on 10,000 kept templates, the scan was 40 ms of a one-page rebuild.
+ */
+const usesCollectionsAnswers = new WeakMap<Tpl, { includes: string; uses: boolean }>();
+function usesCollectionsKept(tpl: Tpl, includes: Set<string>, includesKey: string): boolean {
+	const kept = usesCollectionsAnswers.get(tpl);
+	if (kept && kept.includes === includesKey) return kept.uses;
+	const uses = usesCollections(tpl, includes);
+	usesCollectionsAnswers.set(tpl, { includes: includesKey, uses });
+	return uses;
+}
 
 /**
  * Whether a template's body reads `collections`, so it renders after every other page (whose
@@ -1101,8 +1416,19 @@ async function runGenerators(config: Config, dirs: Dirs, pages: Page[], pageOutp
 				if (existing !== "" && !existing.endsWith("\n")) existing += "\n";
 				contents = existing + contents;
 			}
-			fs.mkdirSync(path.dirname(target), { recursive: true });
-			if (!sameText(target, contents)) fs.writeFileSync(target, contents);
+			// While serving: the same text this build wrote last time, into a file that's as it was
+			// left (its size and time), is left as it is without reading it (the llms plugin's copies:
+			// one a page).
+			const was = config.serving && typeof contents === "string" ? keptGenerated.get(target) : undefined;
+			const stat = was ? fs.statSync(target, { throwIfNoEntry: false }) : undefined;
+			if (!(was && stat && was.text === contents && was.mark === `${stat.size}:${stat.mtimeMs}`)) {
+				fs.mkdirSync(path.dirname(target), { recursive: true });
+				if (!sameText(target, contents)) fs.writeFileSync(target, contents);
+				if (config.serving && typeof contents === "string") {
+					const now = fs.statSync(target);
+					keptGenerated.set(target, { text: contents, mark: `${now.size}:${now.mtimeMs}` });
+				}
+			}
 			if (!isPage) {
 				if (!owners.has(target)) out.push(target);
 				owners.set(target, name);

@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import v8 from "node:v8";
 // The site model: everything up to the list of pages. Engines, global data, templates with
 // their data (the cascade), pagination, computed data, permalinks and collections. It's what
 // `build` renders, and what `ssqch trace` reports on.
@@ -156,18 +158,73 @@ export class Site {
 	private seen = new Set<string>();
 	/** Every data file this build read (global, a theme's, directory data, a template's own), for `keptTemplates`. */
 	private dataFilesRead = new Set<string>();
-	/** With `SSQCH_KEEP_TEMPLATES=1` while serving, what a template's data came from besides its own file, when it can be reused at all: `undefined` when it can't. */
+	/** While serving (`incremental`), what a template's data came from besides its own file, when it can be reused at all: `undefined` when it can't. */
 	private shared: string | undefined;
 	/**
 	 * Templates made again this build whose data is what it was (the same front matter, shared
-	 * inputs, layouts and commit date): only their bodies changed. For `SSQCH_INCREMENTAL=1`.
+	 * inputs, layouts and commit date): only their bodies changed. For `incremental`.
 	 */
 	bodyOnly = new Set<string>();
+	/**
+	 * Templates made again this build from the same shared inputs and commit date whose front
+	 * matter (or the file time their date is) changed: their own data did. For `incremental`.
+	 */
+	ownData = new Set<string>();
+	/** Templates whose only change was their file's time, which is their date (no `date` of their own). */
+	timeOnly = new Set<string>();
+	/** Whether the shared inputs (the data files, the data's values) are what the last build had: when they aren't, every page's data may differ. */
+	sameShared = false;
+	/** Templates taken as the last build made them: a change named for one changed nothing (Windows can name a file before a delete is done, or with the folder it's in). */
+	unchanged = new Set<string>();
+	/** Templates new since the last build, and templates it had that this one doesn't (`lastPages`). */
+	added = new Set<string>();
+	gone = new Set<string>();
+	/** Each layout's `fileMark`, asked once a build: 10,000 kept templates share a few layouts. */
+	private layoutMarks = new Map<string, string>();
+	private layoutMark(file: string): string {
+		let mark = this.layoutMarks.get(file);
+		if (mark === undefined) this.layoutMarks.set(file, mark = fileMark(file));
+		return mark;
+	}
+	/** Why templates aren't kept this build, when they aren't: for the serve timeline. */
+	notKept = "";
+	get keepingTemplates(): boolean { return this.shared !== undefined; }
+	private notKeeping(why: string): undefined {
+		this.notKept = why;
+		return undefined;
+	}
 	/** PascalCase tags the pages have with no template in `_includes/components/`, with the pages each is on. */
 	unknownComponents = new Map<string, Set<string>>();
 	/** Front matter dates that aren't dates, said with the schemas' errors (`checkPages`), so a page's other mistakes are said with them. */
 	badDates: Diagnostic[] = [];
 	private keepLayers: boolean;
+	/**
+	 * While serving: who reads a page's date, by the page's key. The renderer sets it while pages
+	 * render (a page that shows another's date renders when that date moves); before then a read
+	 * goes in `earlyDateReads` (a collection function or computed data that sorts by dates or copies
+	 * them, whose readers can't be told); after, nothing is noted (generators run every build).
+	 */
+	dateRead: ((key: string) => void) | undefined;
+	/** A changed page whose moved file-time date was read before the pages rendered (`undatedNote` in build.ts). */
+	undatedFallback: string | undefined;
+	earlyDateReads = new Set<string>();
+	/** `obj`'s `keys` as getters that note the read of the page's dates. */
+	private watchDates(obj: Data, key: string, keys: string[]): void {
+		for (const name of keys) {
+			if (!(name in obj)) continue;
+			const value = obj[name];
+			Object.defineProperty(obj, name, {
+				enumerable: true,
+				configurable: true,
+				get: () => {
+					if (this.dateRead) this.dateRead(key);
+					else this.earlyDateReads.add(key);
+					return value;
+				},
+				set: (next) => Object.defineProperty(obj, name, { value: next, enumerable: true, writable: true, configurable: true }),
+			});
+		}
+	}
 	/** Set by the build: a page's rendered body, on demand (for `templateContent`). */
 	contentOf: (page: Page) => string | undefined = () => undefined;
 
@@ -389,7 +446,7 @@ export class Site {
 		this.themeCopies = themeCopies;
 		const commitDates = config.lastModified === "git" || config.dateFallback === "git" ? this.gitDates(config.lastModified === "git" ? "lastModified" : "dateFallback") : new Map<string, Date>();
 		const dirData = await this.loadDirectoryData();
-		this.shared = this.sharedInputs();
+		this.shared = this.sharedInputs(dirData);
 		const sources = await readAll(this.files, config.serving ? new Set((config.changed ?? []).map(realPath)) : undefined);
 		const tpls = await collectErrors(this.files.map((file, i) => () => this.loadTemplate(file, sources[i], dirData, commitDates)));
 		// Drafts (`draft: true`) are built in development only.
@@ -399,6 +456,16 @@ export class Site {
 			return !draft;
 		});
 		this.drafts = tpls.length - this.tpls.length;
+		// Pages added and gone since the last build from the same shared inputs, for
+		// `incremental`: an added one only when its data is all its own (kept, as `loadTemplate`
+		// keeps one: no data file of its own, no warning).
+		this.sameShared = this.shared !== undefined && lastPages?.shared === this.shared;
+		if (this.shared !== undefined && lastPages?.shared === this.shared) {
+			const now = new Set(this.files);
+			for (const file of this.files) if (!lastPages.files.has(file) && keptTemplates.has(file)) this.added.add(file);
+			for (const file of lastPages.files) if (!now.has(file)) this.gone.add(file);
+		}
+		lastPages = this.shared === undefined ? undefined : { shared: this.shared, files: new Set(this.files) };
 		timer.lap("read");
 
 		// ---- pagination, computed data and permalinks
@@ -728,36 +795,85 @@ export class Site {
 	private async loadTemplate(file: string, source: Buffer, dirData: Map<string, Data>, commitDates: Map<string, Date>): Promise<Tpl> {
 		const commit = commitDates.get(file)?.getTime();
 		const kept = this.shared !== undefined ? keptTemplates.get(file) : undefined;
-		if (kept && kept.bytes === source && kept.shared === this.shared && kept.commit === commit && kept.layouts.every(([layout, mark]) => fileMark(layout) === mark)) return kept.tpl;
+		// The same bytes, as `keptSources` kept them or read again with nothing different (a file in
+		// a folder Windows named): nothing in it changed, unless its date is its file's time and that moved.
+		if (kept && (kept.bytes === source || (kept.bytes.equals(source) && (kept.time === undefined || new Date(fs.statSync(file).mtimeMs).getTime() === kept.tpl.mtime.getTime()))) && kept.shared === this.shared && kept.commit === commit && kept.layouts.every(([layout, mark]) => this.layoutMark(layout) === mark)) {
+			this.unchanged.add(file);
+			return kept.tpl;
+		}
 		const warned = warnedCount;
 		const ownData = this.dataFilesRead.size;
 		const tpl = await this.makeTemplate(file, source, dirData, commitDates);
 		const text = decodeText(source);
 		const front = text.slice(0, text.length - tpl.body.length);
-		const layouts = tpl.layouts.map((layout): [string, string] => [layout.path, fileMark(layout.path)]);
+		const layouts = tpl.layouts.map((layout): [string, string] => [layout.path, this.layoutMark(layout.path)]);
 		// Kept when nothing in it can differ next time with the same bytes and the same shared
 		// inputs: no data file of its own (read just now), no warning said (it would be lost).
 		if (this.shared !== undefined && warnedCount === warned && this.dataFilesRead.size === ownData) {
 			// Its data is what it was when everything it comes from is: only the body changed.
-			if (kept && kept.shared === this.shared && kept.front === front && kept.commit === commit && JSON.stringify(kept.layouts) === JSON.stringify(layouts)) this.bodyOnly.add(file);
-			keptTemplates.set(file, { bytes: source, shared: this.shared, commit, layouts, front, tpl });
-		} else keptTemplates.delete(file);
+			// A page whose date or lastModified is its file's time has new data with every save.
+			const time = this.usesFileTime(tpl) ? tpl.mtime.getTime() : undefined;
+			if (kept && kept.shared === this.shared && kept.commit === commit) {
+				if (kept.front !== front || kept.time !== time) this.ownData.add(file);
+				// Only its file's time, which is its date: the server says so once (`build.ts`).
+				if (kept.front === front && kept.time !== time) this.timeOnly.add(file);
+				else if (JSON.stringify(kept.layouts) === JSON.stringify(layouts)) this.bodyOnly.add(file);
+			}
+			keptTemplates.set(file, { bytes: source, shared: this.shared, commit, time, layouts, front, tpl });
+			remadeTemplates.delete(file);
+		} else {
+			keptTemplates.delete(file);
+			// One that can't be kept (a data file of its own, a warning) is made every build: when it
+			// comes out with the same bytes and the same data as last time, it changed nothing.
+			if (this.shared !== undefined) {
+				let data: string | undefined;
+				try { data = crypto.createHash("sha1").update(serializedData(tpl.data)).digest("base64"); } catch { /* data that can't be compared */ }
+				const was = remadeTemplates.get(file);
+				const mark = JSON.stringify([this.shared, commit, layouts, tpl.mtime.getTime()]);
+				if (data !== undefined && was && was.data === data && was.mark === mark && was.bytes.equals(source)) this.unchanged.add(file);
+				if (data !== undefined) remadeTemplates.set(file, { bytes: source, data, mark });
+				else remadeTemplates.delete(file);
+			}
+		}
+		// Any other template made again, from the shared inputs the last build had, changed only its
+		// own data as far as the other pages can tell: they see it through the collections, which
+		// every build makes again. One the last build didn't keep (a warning, a file Windows sent
+		// half-written) or didn't have (a page added) is one of these too.
+		if (!this.bodyOnly.has(file) && !this.unchanged.has(file) && this.shared !== undefined && lastPages?.shared === this.shared) this.ownData.add(file);
 		return tpl;
 	}
 
 	/**
-	 * With `SSQCH_KEEP_TEMPLATES=1` while serving: the inputs every template's data has besides its
-	 * own file, as one string, or `undefined` when they can't be known from files (a data function
-	 * in the config, a JavaScript data file: code, which can answer differently each build). Each
-	 * data file read so far (global, the themes', directory data) by its size and time.
+	 * Whether a template's data can come from its file's time: `lastModified` from the file (or
+	 * from git, for a file no commit has), or a date from nowhere else (`pageData`'s fallbacks). A
+	 * `date` the directory data gives isn't in the template's own data, so it counts as the file's
+	 * time here: only a rebuild that renders more.
 	 */
-	private sharedInputs(): string | undefined {
+	private usesFileTime(tpl: Tpl): boolean {
 		const { config } = this;
-		if (process.env.SSQCH_KEEP_TEMPLATES !== "1" || !config.serving || this.keepLayers || config.profile) return undefined;
-		if (config.globalData.some((entry) => entry.fn)) return undefined;
+		if (config.lastModified === "file" || (config.lastModified === "git" && !tpl.committed)) return sourceDateEpoch() === undefined;
+		const given = tpl.data.date;
+		return (given === undefined || given === null) && !tpl.fileDate && !tpl.commitDate && sourceDateEpoch() === undefined;
+	}
+
+	/**
+	 * While serving (`incremental`): the inputs every template's data has besides its
+	 * own file, as one string, or `undefined` when they can't be known: each data file read so far
+	 * (global, the themes', directory data) by its size and time, and a hash of the values.
+	 */
+	private sharedInputs(dirData: Map<string, Data>): string | undefined {
+		const { config } = this;
+		if (!incremental(config)) return this.notKeeping(config.serving ? "SSQCH_INCREMENTAL=0" : "not serving");
+		if (this.keepLayers || config.profile) return this.notKeeping("trace or --profile");
 		const files = [...this.dataFilesRead].sort(compareText);
-		if (files.some((file) => !STATIC_DATA_EXTENSIONS.includes(path.extname(file).slice(1).toLowerCase()))) return undefined;
-		return JSON.stringify(files.map((file) => [file, fileMark(file)]));
+		// The values themselves too, for what code made (a data function in the config, a
+		// JavaScript data file, which can answer differently each build): the global and directory
+		// data, serialized as Node does (Maps, Sets and Dates kept, where JSON drops them) and hashed.
+		// Something it can't serialize (a function in the data) means no reuse. The blog's global
+		// data serialized and hashed in about a millisecond.
+		let values: string;
+		try { values = crypto.createHash("sha1").update(serializedData([this.global, [...dirData]])).digest("base64"); } catch (e) { return this.notKeeping(`the data has something that can't be compared (${messageOf(e)})`); }
+		return JSON.stringify([values, files.map((file) => [file, fileMark(file)])]);
 	}
 
 	private async makeTemplate(file: string, source: Buffer, dirData: Map<string, Data>, commitDates: Map<string, Date>): Promise<Tpl> {
@@ -925,6 +1041,9 @@ export class Site {
 		const basePage = (url: unknown, outputPath: unknown, when: Date): Data => {
 			const page: Data = { url, outputPath, inputPath, fileSlug: tpl.fileSlug, filePathStem: tpl.filePathStem, date: when };
 			if (tpl.lastModified) page.lastModified = tpl.lastModified;
+			// While serving, a read of the dates is noted (`noteDate`): the page's key is its file and URL, as `pageKey` in build.ts makes it.
+			// Only a page whose date or lastModified is its file's time can have that as its only change.
+			if (incremental(this.config) && this.usesFileTime(tpl)) this.watchDates(page, `${tpl.input}\0${url === false ? null : url}`, ["date", "lastModified"]);
 			return page;
 		};
 
@@ -1139,6 +1258,7 @@ export class Site {
 			get templateContent() { return site.contentOf(page); },
 			get content() { return site.contentOf(page); },
 		};
+		if (incremental(this.config) && this.usesFileTime(page.tpl)) this.watchDates(item, `${page.tpl.input}\0${page.url}`, ["date"]);
 		return page.item = item;
 	}
 
@@ -1169,7 +1289,9 @@ export class Site {
 	pageWithBody(page: Page): Data {
 		const site = this;
 		let found: ReturnType<typeof headings> | undefined;
-		return Object.defineProperties({ ...page.data.page }, {
+		// The page's own properties as they're defined, so a date watched while serving
+		// (`watchDates`) is read when something reads it, not by the copy.
+		return Object.defineProperties(Object.defineProperties({}, Object.getOwnPropertyDescriptors(page.data.page)), {
 			// Not remembered until the page has rendered: a read before that (from `computed`, which
 			// runs before any page renders) gets an empty list, and a later one the real headings.
 			headings: {
@@ -1343,13 +1465,75 @@ function hasTags(tpl: Tpl, config: Config, s: string): boolean {
 const keptSources = new Map<string, { size: number; mtimeMs: number; bytes: Buffer }>();
 
 /**
- * With `SSQCH_KEEP_TEMPLATES=1` while serving (the dev server's design, stage 1, behind a switch
- * until the checked mode has run clean with it): each template as the last build made it, reused
+ * While serving (`incremental`; the dev server's design, stage 1): each template as the last build made it, reused
  * when its bytes are the very ones `keptSources` kept (unchanged), the shared inputs are the same
  * (`Site.sharedInputs`), its layouts' files are as they were, and its commit date (git dates) too.
  * Making them was 200 to 290 ms of a 10,000-page rebuild.
  */
-const keptTemplates = new Map<string, { bytes: Buffer; shared: string; commit: number | undefined; layouts: Array<[string, string]>; front: string; tpl: Tpl }>();
+/**
+ * Whether rebuilds while serving keep templates and render only the pages an edit can reach (the
+ * dev server's design, stage 3). On while serving; `SSQCH_INCREMENTAL=0` turns it off, for a page
+ * that looks out of date: if it's right with it off, that's a bug in ssqch.
+ */
+export function incremental(config: Config): boolean {
+	return config.serving && process.env.SSQCH_INCREMENTAL !== "0";
+}
+
+/** While serving: each template that can't be kept as it was last made, its bytes, a hash of its data, and what else it came from (`loadTemplate`). */
+const remadeTemplates = new Map<string, { bytes: Buffer; data: string; mark: string }>();
+
+/** While serving with templates kept: the last build's template files and the shared inputs they were made from, for `Site.added` and `Site.gone`. */
+let lastPages: { shared: string; files: Set<string> } | undefined;
+
+const keptTemplates = new Map<string, { bytes: Buffer; shared: string; commit: number | undefined; time: number | undefined; layouts: Array<[string, string]>; front: string; tpl: Tpl }>();
+
+/**
+ * Data as bytes to hash (`sharedInputs`), as `v8.serialize` writes it, with each function as a
+ * number of its own: the same function object is the same number from one build to the next.
+ * A function comes from a module the builder loaded (a JavaScript data file's `computed`), and a
+ * change to one starts a new builder, so the same object means the same code. Without functions,
+ * serializing is all it does.
+ */
+function serializedData(value: unknown): Buffer {
+	try { return v8.serialize(value); } catch { /* a function, most likely: numbered below */ }
+	const copies = new Map<object, unknown>();
+	const copy = (item: unknown): unknown => {
+		if (typeof item === "function") {
+			let id = functionIds.get(item);
+			if (id === undefined) functionIds.set(item, id = ++functionsSeen);
+			return `\0function ${id}`;
+		}
+		if (item === null || typeof item !== "object" || item instanceof Date || item instanceof RegExp || ArrayBuffer.isView(item)) return item;
+		const done = copies.get(item);
+		if (done !== undefined) return done;
+		if (Array.isArray(item)) {
+			const out: unknown[] = [];
+			copies.set(item, out);
+			for (const entry of item) out.push(copy(entry));
+			return out;
+		}
+		if (item instanceof Map) {
+			const out = new Map();
+			copies.set(item, out);
+			for (const [key, entry] of item) out.set(copy(key), copy(entry));
+			return out;
+		}
+		if (item instanceof Set) {
+			const out = new Set();
+			copies.set(item, out);
+			for (const entry of item) out.add(copy(entry));
+			return out;
+		}
+		const out: Record<string, unknown> = {};
+		copies.set(item, out);
+		for (const key of Object.keys(item)) out[key] = copy((item as Record<string, unknown>)[key]);
+		return out;
+	};
+	return v8.serialize(copy(value));
+}
+/** Weakly, so a data function that makes new functions each build doesn't keep the old ones for the server's life. */
+const functionIds = new WeakMap<Function, number>();
+let functionsSeen = 0;
 
 /** A file's size and time, as one string: what tells it's as it was. */
 function fileMark(file: string): string {

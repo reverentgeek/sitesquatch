@@ -22,6 +22,7 @@
 // decode is a warning and its tag as written, as in 0.7, before any page points at a file of it.
 // What's left (sharp failing on a source that read well, a full disk) can't take back the pages
 // already written, so it fails the build, naming the source and the pages that point at it.
+import { currentRendering } from "../rendering.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -522,6 +523,14 @@ let temporary = 0;
  * Makes images. Shared by the HTML transform, `image()`, `imageUrl()` and `feedHtml()`, so they
  * share the cache, the encoder settings and the output folder.
  */
+/** One page's image requests: `generateNamed`'s arguments and whom they were for, and its pinned pictures. */
+interface PageImages {
+	calls: Array<[src: string, widths: number[], formats: Format[], name: string | undefined, by: string | undefined, made: ImageMetadata | undefined]>;
+	pinned: number;
+	pinnedAt?: [src: string, page: string];
+	usedWidths: boolean;
+}
+
 export class ImageProcessor {
 	readonly options: ImageOptions;
 	private ctx: Context | undefined;
@@ -581,6 +590,18 @@ export class ImageProcessor {
 	private pinnedAt: [src: string, page: string] | undefined;
 	private usedWidths = false;
 
+	/**
+	 * While serving: each page's image requests (what `generateNamed` was asked while it rendered,
+	 * and whom the files were for) and its pinned pictures, by its URL, kept from build to build,
+	 * so a page a rebuild doesn't render (`incremental` in site.ts) asks for its pictures again
+	 * (`replay`) and they stay in use: `prune` and `leaveNoTrace` would take them otherwise.
+	 */
+	private perPage = new Map<string, PageImages>();
+	/** Whether this build is `ssqch serve`'s: only then are pages' requests kept. */
+	private serving = false;
+	/** This build's requests, by the URL of the page rendering when each was made. */
+	private thisBuild = new Map<string, PageImages>();
+
 	private warnOnce(message: string): void {
 		if (this.warned.has(message)) return;
 		this.warned.add(message);
@@ -608,6 +629,8 @@ export class ImageProcessor {
 		this.pinned = 0;
 		this.pinnedAt = undefined;
 		this.usedWidths = false;
+		this.thisBuild = new Map();
+		this.serving = Boolean(config.serving);
 		this.used.clear();
 		this.sources.clear();
 		this.converted.clear();
@@ -755,6 +778,10 @@ export class ImageProcessor {
 
 	/** Waits, before the build ends, for files of `src` that `by` already points at. One that can't be made fails the build (see `settle`). */
 	private watch(meta: ImageMetadata, src: string, by: Pointer): void {
+		// Whom the last request was for, so a replay points the files at the same page.
+		const record = this.pageRecord();
+		const last = record?.calls.at(-1);
+		if (last && last[0] === src && last[4] === undefined) last[4] = by.name;
 		if (meta.ready === READY) return;
 		// What points at it is noted now, in the order the build asked: the encodes finish in
 		// any order, and the error has to read the same every time.
@@ -780,7 +807,9 @@ export class ImageProcessor {
 	 * `/assets/sponsors/acme-200.webp`), inside the image folder without a leading `/`. A file is
 	 * encoded again when its source is newer than it.
 	 */
-	generateNamed(src: string, widths: number[], formats: Format[], name: string | undefined): ImageMetadata {
+	generateNamed(src: string, widths: number[], formats: Format[], name: string | undefined, by?: string): ImageMetadata {
+		const call: PageImages["calls"][number] = [src, widths, formats, name, by, undefined];
+		this.pageRecord()?.calls.push(call);
 		if (name !== undefined) {
 			const last = name.split("/").at(-1) ?? "";
 			if (last === "" || name.split("/").includes("..") || /[\\?#]/.test(name)) {
@@ -804,6 +833,8 @@ export class ImageProcessor {
 			this.memo.set(key, found);
 		}
 		if (found instanceof Error) throw found;
+		// What it came to, for a replay that puts it back without working it out again.
+		call[5] = found;
 		return found;
 	}
 
@@ -1323,6 +1354,68 @@ export class ImageProcessor {
 
 	/** Every local `<img>` in an HTML page made a `<picture>`, and links to local images pointed at a copy. `url` is the page's, for an error. */
 	transformHtml(html: string, pageInput: string, url?: string): string {
+		const pinned = this.pinned;
+		const usedWidths = this.usedWidths;
+		try {
+			return this.transformPage(html, pageInput, url);
+		} finally {
+			// What this page added to the pinned-width warning's counts, for a replay of it.
+			const record = this.pageRecord();
+			if (record) {
+				record.pinned += this.pinned - pinned;
+				record.usedWidths ||= this.usedWidths && !usedWidths;
+				if (this.pinned > pinned) record.pinnedAt ??= this.pinnedAt;
+			}
+		}
+	}
+
+	/** The record of the page rendering now, while serving, by its URL. */
+	private pageRecord(): PageImages | undefined {
+		if (!this.serving) return undefined;
+		const url = (currentRendering()?.data.page as { url?: unknown } | undefined)?.url;
+		if (typeof url !== "string") return undefined;
+		let record = this.thisBuild.get(url);
+		if (!record) this.thisBuild.set(url, record = { calls: [], pinned: 0, usedWidths: false });
+		return record;
+	}
+
+	/**
+	 * After the pages render, while serving: the pages a rebuild didn't render ask for their
+	 * pictures again, as they asked when they last rendered (the files come from the cache, and are
+	 * in use), and what the rendered ones asked this time is what's kept for them.
+	 */
+	replay(skipped: string[], rendered: string[]): void {
+		for (const url of rendered) {
+			const record = this.thisBuild.get(url);
+			if (record) this.perPage.set(url, record);
+			else this.perPage.delete(url);
+		}
+		for (const url of skipped) {
+			const record = this.perPage.get(url);
+			if (!record) continue;
+			for (const [src, widths, formats, name, by, made] of record.calls) {
+				// What it came to last time, with every file there: put back as this build's answer (the
+				// memo, which madeFrom() reads for the llms plugin's copies) and in use, without working
+				// it out again (asking again was 130 ms of the blog's rebuild, 760 sources). One with a
+				// file gone is asked for, and made again. A changed source isn't a page: a whole rebuild.
+				const files = made ? [...made.formats.values()].flat().map((e) => e.path) : [];
+				if (made && files.every((file) => fs.existsSync(file))) {
+					const key = JSON.stringify([samePath(src), widths, formats, name ?? null]);
+					if (!this.memo.has(key)) this.memo.set(key, made);
+					for (const file of files) this.used.add(file);
+					this.sources.add(samePath(src));
+					continue;
+				}
+				const meta = this.generateNamed(src, widths, formats, name);
+				this.watch(meta, src, { name: by ?? url, url });
+			}
+			this.pinned += record.pinned;
+			this.usedWidths ||= record.usedWidths;
+			if (record.pinned) this.pinnedAt ??= record.pinnedAt;
+		}
+	}
+
+	private transformPage(html: string, pageInput: string, url?: string): string {
 		// Most pages link to other pages, not images: one that names no image file (an extension,
 		// or a %-escape that could spell one) and no `ssqch:ignore` to take off isn't read for links.
 		const links = this.options.linkedImages && mayLinkImages(html);
@@ -1564,6 +1657,7 @@ function register(config: Config, p: ImageProcessor, transform: boolean): void {
 	// sitemap, the link checker), `afterBuild` hooks and the summary. Waiting for them is part of
 	// writing, as 0.7's `Time` line had it, where they were encoded with the pages.
 	config.settle.push(() => p.settle());
+	config.replays.push((skipped, rendered) => p.replay(skipped, rendered));
 	config.written.push(() => p.usedFiles());
 	config.afterBuild.push({ label: "", fn: () => p.finishBuild() });
 	config.summaries.push(["Images", () => p.summary()]);

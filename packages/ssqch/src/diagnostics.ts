@@ -130,8 +130,15 @@ export function takeWarnings(): Diagnostic[] {
 /** How many warnings have been said in this process: a step that said none can be skipped later without losing one. */
 export let warnedCount = 0;
 
+/** Hears each warning as it's said: the dev server's renderer, which keeps each page's (`build.ts`). */
+let hearing: ((diagnostic: Diagnostic) => void) | undefined;
+export function hearWarnings(listener: ((diagnostic: Diagnostic) => void) | undefined): void {
+	hearing = listener;
+}
+
 export function warn(diagnostic: Diagnostic): void {
 	warnedCount += 1;
+	hearing?.(diagnostic);
 	if (capturing) warnings.push(diagnostic);
 	else process.stderr.write(`warn: ${diagnostic.message}\n`);
 }

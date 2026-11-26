@@ -45,8 +45,13 @@ export type EngineFn = (source: string, data: Data, name: string, context: { kin
 export type TransformFn = (content: string, page: { url: string; inputPath: string; outputPath: string }) => string | Promise<string>;
 export type CollectionFn = (items: any[]) => unknown;
 /** A hook: the site's function (told about the build), or a command to run. */
-/** A hook: a function, or a command. `check` (the link checker's) runs after every other `afterBuild`, the config's included, on the output as they all left it. */
-export type Hook = { label: string; fn: (event: Data) => unknown; check?: boolean } | { run: string };
+/**
+ * A hook: a function, or a command. `check` (the link checker's) runs after every other
+ * `afterBuild`, the config's included, on the output as they all left it. `readsOutput`
+ * (`reads: "output"`): it reads only the output, its event and the site's files, so a rebuild
+ * while serving can render only some pages with it there.
+ */
+export type Hook = { label: string; fn: (event: Data) => unknown; check?: boolean; readsOutput?: boolean } | { run: string; readsOutput?: boolean };
 
 /** A file a plugin adds to the output: a URL path (`/sitemap.xml`) and its contents. */
 export interface GeneratedFile {
@@ -184,6 +189,12 @@ export interface Config {
 	fileBuilders: Array<[string, (config: Config) => GeneratedFile[] | Promise<GeneratedFile[]>]>;
 	/** What the build waits for once every page is written (the image files they point at), before the generators; counted as writing. */
 	settle: Array<() => Promise<void>>;
+	/**
+	 * While serving, after the pages render: what a built-in plugin learned from each page, said
+	 * again for the pages a rebuild took as they were (`incremental` in site.ts), by their URLs, with
+	 * the pages it rendered (whose records are new). The image plugin's pictures in use.
+	 */
+	replays: Array<(skipped: string[], rendered: string[]) => void>;
 	/** Files a built-in plugin wrote into the output beside the pages (the image plugin's copies), once they're settled: on `leaveNoTrace`'s list with the rest, so a picture no page uses any more goes with them. */
 	written: Array<() => Iterable<string>>;
 }
@@ -272,6 +283,7 @@ function emptyConfig(options: ConfigOptions): Config {
 		componentRenderers: [],
 		fileBuilders: [],
 		settle: [],
+		replays: [],
 		written: [],
 	};
 }
@@ -531,16 +543,24 @@ async function loadJs(config: Config, file: string): Promise<void> {
 			add(key, fn);
 		}
 	};
-	// A hook is a function, or `{ run: "command" }` to run a program.
+	// A hook is a function, or `{ run: "command" }` to run a program; `{ run, reads: "output" }`
+	// (either) says it reads only the output.
 	const hooks = (event: "beforeBuild" | "afterBuild", value: unknown, where: string) => {
 		for (const hook of list(value)) {
 			if (isObject(hook)) {
 				for (const key of Object.keys(hook)) {
-					if (key !== "run") fail(`${where}: ${event}: "${key}" isn't an option (use { run: "command" })`);
+					if (key !== "run" && key !== "reads") fail(`${where}: ${event}: "${key}" isn't an option (a hook is { run: "command" } or { run: (event) => ... }, with reads: "output" if it reads only the output)`);
 				}
-				if (!(typeof hook.run === "string" && hook.run.trim())) fail(`${where}: ${event}: run must be a command, like { run: "pagefind --site dist" }`);
+				if ("reads" in hook && hook.reads !== "output") fail(`${where}: ${event}: reads must be "output" (the hook reads only the output folder, its event and the site's files, not what the site's code kept while pages rendered), got ${JSON.stringify(hook.reads)}`);
+				const readsOutput = hook.reads === "output" ? { readsOutput: true } : {};
+				if (typeof hook.run === "function") {
+					const fn = hook.run as (event: Data) => unknown;
+					ops.push(() => { config[event].push({ label: `${event} (${where})`, fn, ...readsOutput }); });
+					continue;
+				}
+				if (!(typeof hook.run === "string" && hook.run.trim())) fail(`${where}: ${event}: run must be a command or a function, like { run: "pagefind --site dist" }`);
 				const run: string = hook.run;
-				ops.push(() => { config[event].push({ run }); });
+				ops.push(() => { config[event].push({ run, ...readsOutput }); });
 				continue;
 			}
 			if (typeof hook !== "function") fail(`${where}: ${event} must be a function or { run: "command" } (or an array of them)`);

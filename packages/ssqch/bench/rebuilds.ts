@@ -80,6 +80,13 @@ const steps: Array<[string, () => void]> = [
 	}] as [string, () => void]] : []),
 	...(dataRel ? [["the data file put back", () => { fs.writeFileSync(at(dataRel), originals.get(dataRel)!); originals.delete(dataRel); }] as [string, () => void]] : []),
 	["a page's body", () => { keep(pageRel); fs.appendFileSync(page, "\n\nA line the rebuild check added.\n"); }],
+	// The top of the body too, with a heading (a table of contents, an id) and a link (the link checker's scan).
+	["a heading and a link at the top of its body", () => {
+		const text = fs.readFileSync(page, "utf8");
+		const end = /^---\r?\n[\s\S]*?\r?\n---\r?\n/.exec(text)?.[0].length ?? 0;
+		const added = /\.(md|markdown)$/.test(pageRel) ? "## Added by the rebuild check\n\nSee [the home page](/).\n\n" : "<h2 id=\"rebuilds-check\">Added by the rebuild check</h2>\n<p>See <a href=\"/\">the home page</a>.</p>\n";
+		fs.writeFileSync(page, text.slice(0, end) + added + text.slice(end));
+	}],
 	["the page's title", () => {
 		keep(pageRel);
 		const text = fs.readFileSync(page, "utf8");
@@ -149,7 +156,10 @@ try {
 		const last = lines.filter((line) => line.kind === "check").at(-1);
 		const pass = lastRebuild.ok && last !== undefined && / wrote what a clean build writes /.test(last.verdict);
 		if (!pass) failed += 1;
-		console.log(`  ${pass ? "pass" : "FAIL"} ${name}: ${lastRebuild.ok ? last?.verdict ?? "no check" : "the build failed (the server's output says why)"}`);
+		// How much the rebuild rendered, so a pass that rendered everything is told from one that took pages as they were.
+		const rendered = lastRebuild.builder?.rendered;
+		const share = rendered ? ` [rendered ${rendered[0]} of ${rendered[1]}${rendered[2] ? `: ${rendered[2]}` : ""}]` : "";
+		console.log(`  ${pass ? "pass" : "FAIL"} ${name}${share}: ${lastRebuild.ok ? last?.verdict ?? "no check" : "the build failed (the server's output says why)"}`);
 	}
 	// The server's view of what changed, from the builder's listing, against a walk of its own.
 	const off = serveLog().split("\n").filter((line) => line.includes("check-rebuilds: the builder's listing"));

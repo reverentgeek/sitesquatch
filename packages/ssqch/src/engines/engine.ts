@@ -5,6 +5,20 @@ import type { Data } from "../data.ts";
 import { BuildError, bail } from "../diagnostics.ts";
 import { describeThrown } from "../modules.ts";
 
+/**
+ * Who hears of a file a template includes from beside it (EJS's `include("./part")`, Liquid's
+ * `include_relative`), each time one is used: while serving, the renderer, which notes it against
+ * the page rendering, so an edit to that file renders the page again (`build.ts`). A file from
+ * the includes folders isn't a page, and an edit to one renders every page.
+ */
+let opened: ((file: string) => void) | undefined;
+export function hearOpened(listener: ((file: string) => void) | undefined): void {
+	opened = listener;
+}
+export function includedBeside(file: string): void {
+	opened?.(file);
+}
+
 /** What an engine is made with. */
 export interface EngineEnv {
 	config: Config;

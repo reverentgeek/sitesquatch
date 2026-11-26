@@ -5,7 +5,7 @@ import path from "node:path";
 import * as activity from "../activity.ts";
 import type { Config } from "../config.ts";
 import { dirsOf } from "../dirs.ts";
-import { build } from "../build.ts";
+import { build, lastRendered } from "../build.ts";
 import * as diagnostics from "../diagnostics.ts";
 import { Locator } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
@@ -136,7 +136,7 @@ export async function runBuilder(start: BuilderStart, makeConfig: () => Promise<
 		try {
 			const started = Date.now();
 			const report = await working(() => build(config));
-			if (timing) times = { received, started, finished: Date.now(), phases: report.timings };
+			if (timing) times = { received, started, finished: Date.now(), phases: report.timings, rendered: lastRendered() };
 			// The output, listed once: for the summary's Output line, and for the server, which listed it
 			// again to tell browsers what changed (on 10,000 pages, 140 ms each).
 			const listing = listOutput(dirsOf(config).output);
