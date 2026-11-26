@@ -44,8 +44,11 @@ where that version matches.
   so, `ssqch serve` renders only the pages an edit can reach; without, a hook of the site's own
   still renders every page, since it may read what the site's code kept while pages rendered.
 - Pages with no date of their own take their file's time, which a checkout or a save moves: `ssqch
-  scout` now counts them and suggests `dateFallback: "git"`, and `ssqch serve` says once when a
-  save to one rendered the pages that list it. The trailheads say so beside their date rows.
+  scout` now counts them and suggests `dateFallback: "git"`. While serving, a save to one renders
+  the pages that showed its date, and not every page that lists pages: on expressjs.com's port, one
+  doc page's edit renders 2 pages of 2,529, where it rendered 2,463. When the site's code read the
+  date before the pages rendered (a collection sorted by date), every page that reads collections
+  renders, and `ssqch serve` says so once. The trailheads say so beside their date rows.
 
 ### Fixed
 

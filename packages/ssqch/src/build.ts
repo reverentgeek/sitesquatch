@@ -146,6 +146,9 @@ export async function build(config: Config): Promise<BuildReport> {
 			const beside = renderer.beside.get(page.index);
 			if (beside) keptBeside.set(page.output, beside);
 			else keptBeside.delete(page.output);
+			const dates = renderer.dateReads.get(page.index);
+			if (dates) keptDateReads.set(page.output, dates);
+			else keptDateReads.delete(page.output);
 			// The file as this build left it (its writes are done), so the next can tell whether
 			// something else wrote over it.
 			const mark = outputMark(page.output);
@@ -323,19 +326,17 @@ let saidUndated = false;
 
 /**
  * While serving, once: a save to a page with no date of its own moved its date (its file's time),
- * so every page that lists it rendered again, where a dated page renders alone. Said when it made
- * a rebuild render more, with the option that stops it.
+ * which the site's code read before the pages rendered, so every page that reads collections
+ * rendered again, where a dated page renders alone. Said with the option that stops it.
  */
 function undatedNote(site: Site, only: Set<Page>): void {
 	const { config } = site;
-	if (saidUndated || config.quiet || isCapturing() || !site.timeOnly.size || !config.changed?.length) return;
-	const changed = new Set(config.changed.map(realPath));
-	const file = [...site.timeOnly].find((name) => changed.has(realPath(name)));
-	if (file === undefined) return;
+	const file = site.undatedFallback;
+	if (saidUndated || config.quiet || isCapturing() || file === undefined) return;
 	const others = [...only].filter((page) => page.tpl.input !== file && page.output !== null).length;
 	if (others === 0) return;
 	saidUndated = true;
-	process.stderr.write(`note: ${site.display(file)} has no date of its own, so its date is its file's time, which the save moved: the ${count(others)} page${others === 1 ? "" : "s"} that list${others === 1 ? "s" : ""} pages rendered again. \`dateFallback: "git"\` in the config gives it its last commit's date, which a save doesn't move\n`);
+	process.stderr.write(`note: ${site.display(file)} has no date of its own, so its date is its file's time, which the save moved, and the site's code read it before the pages rendered (a collection sorted by date, computed data): the ${count(others)} page${others === 1 ? "" : "s"} that read collections rendered again. \`dateFallback: "git"\` in the config gives it its last commit's date, which a save doesn't move\n`);
 }
 
 /** While serving: each page's size as the last build wrote it, by its output file, for a page `incremental` doesn't render. */
@@ -355,6 +356,9 @@ const keptReads = new Map<string, Set<string>>();
  * `this.data.collections`. A change to another page's front matter can change what they show.
  */
 const keptCollectionReaders = new Set<string>();
+
+/** While serving: whose dates each page read when it last rendered (page keys), by output file. */
+const keptDateReads = new Map<string, Set<string>>();
 
 /** While serving: the files each page's templates included from beside them when it last rendered (by real path), by output file. */
 const keptBeside = new Map<string, Set<string>>();
@@ -427,7 +431,20 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	const changed = config.changed.filter((file) => !(isDir(file) && !reals(file).some((name) => includeDirs.some((dir) => isInside(dir, name)))) && !isIn(unchanged, file));
 	const other = changed.find((file) => !isIn(bodyOnly, file) && !isIn(ownData, file));
 	if (other !== undefined) return `${site.display(other)} isn't a page's body or front matter, or a page added or gone`;
-	const dataChanged = site.added.size > 0 || site.gone.size > 0 || changed.some((file) => isIn(ownData, file));
+	// A page whose only change is its file's time (its date, with none of its own) reaches the
+	// others through its date alone: the pages that read it while they rendered. Unless something
+	// read it before the pages rendered (a collection that sorts by dates, computed data that
+	// copies one), whose readers can't be told: then it's a change to its data like any other.
+	const timeTpls = new Set([...site.timeOnly].filter((tpl) => changed.some((file) => isIn(new Set(reals(tpl)), file))));
+	const timePages = wanted.filter((page) => timeTpls.has(page.tpl.input));
+	for (const page of timePages) {
+		if (!site.earlyDateReads.has(pageKey(page))) continue;
+		timeTpls.delete(page.tpl.input);
+		site.undatedFallback ??= page.tpl.input;
+	}
+	const timeOnly = new Set([...timeTpls].flatMap(reals));
+	const dataChanged = site.added.size > 0 || site.gone.size > 0 || changed.some((file) => isIn(ownData, file) && !isIn(timeOnly, file));
+	const timeKeys = new Set(timePages.filter((page) => timeTpls.has(page.tpl.input)).map(pageKey));
 	const plugin = config.plugins.find((name) => !REPLAYABLE.has(name));
 	if (plugin !== undefined) return `the plugin ${plugin}`;
 	// A hook of the site's own may read what its code kept while pages rendered, which a rebuild
@@ -449,6 +466,8 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 		if (read && [...read].some((key) => changedKeys.has(key))) only.add(page);
 		// A page that included a changed file from beside it (EJS's `include("./part")`, Liquid's `include_relative`).
 		else if ([...keptBeside.get(page.output) ?? []].some((file) => changedFiles.has(file))) only.add(page);
+		// A page that showed a moved date (a list of "last updated" dates).
+		else if (timeKeys.size && [...keptDateReads.get(page.output) ?? []].some((key) => timeKeys.has(key))) only.add(page);
 		else if (late.has(page) && (everyLate || !read)) only.add(page);
 		// After a change to a page's own data, every page that read collections (its title in a
 		// list, its place in prev and next), is paginated over one, or has computed data from them.
@@ -486,6 +505,8 @@ class Renderer {
 	collectionReaders = new Set<number>();
 	/** While serving, what each page's render said (`keptSaid`): its warnings, and its components with no template. */
 	said = new Map<number, { warnings: Diagnostic[]; components: Set<string> }>();
+	/** Whose dates each page read (`date`, `page.date`, `page.lastModified`), by page index (`keptDateReads`). */
+	dateReads = new Map<number, Set<string>>();
 	/** The files beside them each page's templates included (`keptBeside`), by page index. */
 	beside = new Map<number, Set<string>>();
 	saidFor(page: Page): { warnings: Diagnostic[]; components: Set<string> } {
@@ -687,6 +708,14 @@ class Renderer {
 				const who = this.reader ?? this.rendering;
 				if (who) this.saidFor(who).warnings.push(diagnostic);
 			});
+			// A read of another page's date, by the page rendering (or whose body is).
+			this.site.dateRead = (key) => {
+				const who = this.reader ?? this.rendering;
+				if (!who || pageKey(who) === key) return;
+				let read = this.dateReads.get(who.index);
+				if (!read) this.dateReads.set(who.index, read = new Set());
+				read.add(key);
+			};
 			hearOpened((file) => {
 				for (const who of [this.reader, this.rendering]) {
 					if (!who) continue;
@@ -696,7 +725,12 @@ class Renderer {
 				}
 			});
 		}
-		try { await this.renderEach(pages, late); } finally { hearWarnings(undefined); hearOpened(undefined); }
+		try { await this.renderEach(pages, late); } finally {
+			hearWarnings(undefined);
+			hearOpened(undefined);
+			// After the pages, what reads a date (a feed, a sitemap) runs every build: not noted.
+			if (this.site.config.serving) this.site.dateRead = () => {};
+		}
 	}
 
 	/** Every warning's message said while the pages rendered, so one said again isn't said twice. */

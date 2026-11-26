@@ -226,10 +226,9 @@ export async function runScout(dir: string, options: ScoutOptions): Promise<numb
 /**
  * Pages with no date of their own (in their front matter or their file name): in ssqch each takes
  * its file's time, which a checkout or a save moves, so a clean build's dates and order differ from
- * one checkout to the next, and while serving every save of one renders the pages that list it.
+ * one checkout to the next, and while serving every save of one renders the pages that show its date.
  * `dateFallback: "git"` gives each its last commit's. Every generator's site, since none of them
- * has a page's date from its file's time by default (expressjs.com: 2,463 of 2,529 pages rendered
- * for an edit to an undated doc page).
+ * has a page's date from its file's time by default.
  */
 export function undatedPages(dir: string): [string, string, Todo] | undefined {
 	const skip = new Set(["node_modules", ".git", "_site", "dist", "public", "site", "build", "out", ".cache", "vendor", "resources"]);
@@ -258,7 +257,7 @@ export function undatedPages(dir: string): [string, string, Todo] | undefined {
 	const named = undated.slice(0, 3).join(", ") + (undated.length > 3 ? ", ..." : "");
 	return [
 		"ssqch.config.js",
-		`${undated.length} of ${pages} pages have no date of their own (${named}): in ssqch each takes its file's time, which a checkout or a save moves, so dates and the order of lists change from one build to the next, and ssqch serve renders every page that lists one on each save. Set \`dateFallback: "git"\` for each one's last commit's date (with the site in git, and its history in CI)`,
+		`${undated.length} of ${pages} pages have no date of their own (${named}): in ssqch each takes its file's time, which a checkout or a save moves, so dates and the order of lists change from one build to the next, and on each save ssqch serve renders the pages that show its date (every page that reads collections, when the site's code sorts by dates). Set \`dateFallback: "git"\` for each one's last commit's date (with the site in git, and its history in CI)`,
 		{ code: "undated-pages", status: "ssqch", count: undated.length, files: undated.length, option: 'dateFallback: "git"', docs: "dateFallback", defines: ["dateFallback"] },
 	];
 }

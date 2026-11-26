@@ -64,7 +64,7 @@ On the httpx docs (Material, 24 pages), this config, with no template changed an
 | `plugins: [search]` (on when `plugins` isn't set) | [Pagefind](https://pagefind.app) after the build: `afterBuild: { run: "npx -y pagefind --site dist" }`. Material's own search box reads MkDocs' `search/search_index.json`, which isn't in ssqch yet: a page that loops over `collections.all` can write it |
 | `mkdocs-redirects` | `redirectsPlugin({ redirects })` from `ssqch/redirects`, or `aliases` on each page |
 | `git-revision-date-localized` | `lastModified: "git"`, then `page.lastModified` |
-| A page with no date of its own | Its file's time in ssqch, which a checkout or a save moves: dates and the order of lists change from one build to the next, and `ssqch serve` renders every page that lists it on each save. `dateFallback: "git"` gives it its last commit's date (`ssqch scout` counts the pages that have none) |
+| A page with no date of its own | Its file's time in ssqch, which a checkout or a save moves: dates and the order of lists change from one build to the next, and on each save `ssqch serve` renders the pages that show it (every page that reads collections, when the site's code sorts by dates). `dateFallback: "git"` gives it its last commit's date (`ssqch scout` counts the pages that have none) |
 | `mkdocs-macros` (Jinja in Markdown) | Built in: Markdown runs through Jinja first (`markdownEngine: "jinja"`, the default) |
 | `extra_css` with Sass | `sassPlugin()` from `ssqch/sass` |
 | `strict: true` | `linksPlugin()` fails the build on a broken link (`linksPlugin({ fail: false })` warns, as MkDocs does without `strict`), and `strict: true` for undefined template values |

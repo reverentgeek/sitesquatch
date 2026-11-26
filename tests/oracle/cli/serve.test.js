@@ -489,8 +489,8 @@ test("serve_renders_a_listing_again_when_an_undated_pages_text_moves_its_date", 
 		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
 		const rebuilt = [...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))].sort();
 		assert.deepEqual(rebuilt, ["cedar", "titles"], JSON.stringify(lines));
-		// Said once, with the option that stops it.
-		assert.match(readOr(log).slice(from), /note: (\.\/)?src\/posts\/cedar\.njk has no date of its own, so its date is its file's time, which the save moved: the 1 page that lists pages rendered again\. `dateFallback: "git"`/);
+		// Its date was read while the listing rendered, so nothing more rendered: no note.
+		assert.doesNotMatch(readOr(log).slice(from), /has no date of its own/);
 	} finally {
 		await server.stop();
 	}
@@ -732,6 +732,47 @@ for (const [name, hook, rendered] of [
 			assert.match(await lastCheck(log, from), JUDGED);
 			const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
 			assert.deepEqual([...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, n]) => n))].sort(), rendered, JSON.stringify(lines));
+		} finally {
+			await server.stop();
+		}
+	});
+}
+
+// A page with no date of its own has its file's time, which a save moves. The pages that showed its
+// date render again, and a list of titles doesn't; a collection of the site's own that sorts by
+// dates read them before any page rendered, so every page that reads collections renders.
+for (const [name, config, listing, rendered] of [
+	["a list of titles", "", "{% for p in collections.posts %}<li>{{ p.data.title }}</li>{% endfor %}", ["cedar"]],
+	["a list of dates", "", "{% for p in collections.posts %}<li>{{ p.date.getTime() }}</li>{% endfor %}", ["cedar", "listing"]],
+	["a collection sorted by date", "collections: { newest: (pages) => pages.byTag(\"posts\").sort((a, b) => b.date - a.date) }, ", "{% for p in collections.newest %}<li>{{ p.data.title }}</li>{% endfor %}", ["cedar", "listing"]],
+]) {
+	test(`serve_renders_for_an_undated_pages_moved_date_${name.replace(/ /g, "_")}`, async () => {
+		const dir = tempDir("serve-incremental-dates");
+		const renders = path.join(tempDir("serve-incremental-dates-renders"), "renders.log");
+		write(dir, {
+			"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], ${config}filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+			"src/posts/posts.json": "{ \"tags\": \"posts\" }",
+			"src/posts/cedar.njk": "---\ntitle: Cedar Trail\n---\n<p>{{ \"cedar\" | noted }}</p>",
+			"src/posts/stump.njk": "---\ntitle: The stump\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>",
+			"src/listing.njk": `{{ "listing" | noted }}${listing}`,
+		});
+		const old = new Date("2026-01-01T00:00:00Z");
+		fs.utimesSync(path.join(dir, "src/posts/cedar.njk"), old, old);
+		const log = path.join(tempDir("serve-incremental-dates-log"), "serve.log");
+		const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+		try {
+			await waitFor(log, "Serving ");
+			const from = await quietLog(log);
+			fs.writeFileSync(renders, "");
+			fs.appendFileSync(path.join(dir, "src/posts/cedar.njk"), "<p>Four miles.</p>");
+			assert.match(await lastCheck(log, from), JUDGED);
+			const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+			assert.deepEqual([...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, n]) => n))].sort(), rendered, JSON.stringify(lines));
+			// Only when the site's code read the date before the pages rendered does it cost every
+			// reader, and the server says so, with the option that stops it.
+			const note = /note: (\.\/)?src\/posts\/cedar\.njk has no date of its own, so its date is its file's time, which the save moved, and the site's code read it before the pages rendered \(a collection sorted by date, computed data\): the 1 page that read collections rendered again\. `dateFallback: "git"`/;
+			if (config) assert.match(readOr(log).slice(from), note);
+			else assert.doesNotMatch(readOr(log).slice(from), /has no date of its own/);
 		} finally {
 			await server.stop();
 		}

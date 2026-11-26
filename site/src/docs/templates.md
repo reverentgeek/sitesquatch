@@ -239,7 +239,7 @@ export default {
 
 ## A default date that a page's own beats
 
-A page with no `date` of its own takes its file's time, or its last commit's with `dateFallback: "git"`. A file's time is when a checkout or an editor last wrote it, so it differs from one checkout to the next, and while serving, a save moves it: every page that lists the page renders again ([The field guide](field-guide.md#step-4-build-it), "What a rebuild renders"). With `dateFallback: "git"` (the starters set it), a save doesn't move it. A group of pages that should take another date when they have none (a guide, the newest product's day) gets it from `computed` in the folder's directory data, which sees the page's own `date` first:
+A page with no `date` of its own takes its file's time, or its last commit's with `dateFallback: "git"`. A file's time is when a checkout or an editor last wrote it, so it differs from one checkout to the next, and while serving, a save moves it: the pages that show its date render again, and every page that reads collections when the site's code sorts by dates ([The field guide](field-guide.md#step-4-build-it), "What a rebuild renders"). With `dateFallback: "git"` (the starters set it), a save doesn't move it. A group of pages that should take another date when they have none (a guide, the newest product's day) gets it from `computed` in the folder's directory data, which sees the page's own `date` first:
 
 ```js
 // src/guides/guides.data.js

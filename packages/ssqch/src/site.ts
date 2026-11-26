@@ -198,6 +198,33 @@ export class Site {
 	/** Front matter dates that aren't dates, said with the schemas' errors (`checkPages`), so a page's other mistakes are said with them. */
 	badDates: Diagnostic[] = [];
 	private keepLayers: boolean;
+	/**
+	 * While serving: who reads a page's date, by the page's key. The renderer sets it while pages
+	 * render (a page that shows another's date renders when that date moves); before then a read
+	 * goes in `earlyDateReads` (a collection function or computed data that sorts by dates or copies
+	 * them, whose readers can't be told); after, nothing is noted (generators run every build).
+	 */
+	dateRead: ((key: string) => void) | undefined;
+	/** A changed page whose moved file-time date was read before the pages rendered (`undatedNote` in build.ts). */
+	undatedFallback: string | undefined;
+	earlyDateReads = new Set<string>();
+	/** `obj`'s `keys` as getters that note the read of the page's dates. */
+	private watchDates(obj: Data, key: string, keys: string[]): void {
+		for (const name of keys) {
+			if (!(name in obj)) continue;
+			const value = obj[name];
+			Object.defineProperty(obj, name, {
+				enumerable: true,
+				configurable: true,
+				get: () => {
+					if (this.dateRead) this.dateRead(key);
+					else this.earlyDateReads.add(key);
+					return value;
+				},
+				set: (next) => Object.defineProperty(obj, name, { value: next, enumerable: true, writable: true, configurable: true }),
+			});
+		}
+	}
 	/** Set by the build: a page's rendered body, on demand (for `templateContent`). */
 	contentOf: (page: Page) => string | undefined = () => undefined;
 
@@ -1014,6 +1041,8 @@ export class Site {
 		const basePage = (url: unknown, outputPath: unknown, when: Date): Data => {
 			const page: Data = { url, outputPath, inputPath, fileSlug: tpl.fileSlug, filePathStem: tpl.filePathStem, date: when };
 			if (tpl.lastModified) page.lastModified = tpl.lastModified;
+			// While serving, a read of the dates is noted (`noteDate`): the page's key is its file and URL, as `pageKey` in build.ts makes it.
+			if (incremental(this.config)) this.watchDates(page, `${tpl.input}\0${url === false ? null : url}`, ["date", "lastModified"]);
 			return page;
 		};
 
@@ -1228,6 +1257,7 @@ export class Site {
 			get templateContent() { return site.contentOf(page); },
 			get content() { return site.contentOf(page); },
 		};
+		if (incremental(this.config)) this.watchDates(item, `${page.tpl.input}\0${page.url}`, ["date"]);
 		return page.item = item;
 	}
 
@@ -1258,7 +1288,9 @@ export class Site {
 	pageWithBody(page: Page): Data {
 		const site = this;
 		let found: ReturnType<typeof headings> | undefined;
-		return Object.defineProperties({ ...page.data.page }, {
+		// The page's own properties as they're defined, so a date watched while serving
+		// (`watchDates`) is read when something reads it, not by the copy.
+		return Object.defineProperties(Object.defineProperties({}, Object.getOwnPropertyDescriptors(page.data.page)), {
 			// Not remembered until the page has rendered: a read before that (from `computed`, which
 			// runs before any page renders) gets an empty list, and a later one the real headings.
 			headings: {
