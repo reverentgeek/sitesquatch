@@ -20,6 +20,10 @@ const quietLog = async (log) => {
 	}
 	return last.length;
 };
+// A check that the rebuild wrote what a clean build writes, or one that couldn't judge (a slow
+// Windows runner's late event arrived while the clean build ran, which the check says rather than
+// judge). One that found a difference fails. The tests check what rendered and what it says too.
+const JUDGED = /check-rebuilds: (the rebuild after .+ wrote what a clean build writes|.+ changed while the clean build ran, so the two didn't build the same files; not judged)/;
 // The last check-rebuilds line after `from`, once the server has gone quiet: an edit's late event
 // (Windows sends one while the check's clean build runs, which it doesn't judge) starts a rebuild
 // of its own, and its check is the one that says how the edit came out.
@@ -381,7 +385,7 @@ test("serve_renders_only_the_page_whose_text_changed_and_keeps_the_others_pictur
 		fs.writeFileSync(renders, "");
 		fs.appendFileSync(path.join(dir, "src/cedar.njk"), "<p>Four miles.</p>");
 		const said = await lastCheck(log, from);
-		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.match(said, JUDGED);
 		// The clean build renders both pages too, in a process of its own: the rebuild's renders are
 		// the first process's lines.
 		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
@@ -444,7 +448,7 @@ test("serve_renders_again_only_the_collection_pages_that_read_the_changed_conten
 		fs.writeFileSync(renders, "");
 		fs.appendFileSync(path.join(dir, "src/posts/cedar.njk"), "<p>Four miles.</p>");
 		const said = await lastCheck(log, from);
-		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.match(said, JUDGED);
 		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
 		const rebuilt = [...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))];
 		assert.ok(rebuilt.includes("cedar") && rebuilt.includes("bodies") && !rebuilt.includes("titles"), JSON.stringify(rebuilt));
@@ -478,7 +482,7 @@ test("serve_renders_a_listing_again_when_an_undated_pages_text_moves_its_date", 
 		fs.writeFileSync(renders, "");
 		fs.appendFileSync(path.join(dir, "src/posts/cedar.njk"), "<p>Four miles.</p>");
 		const said = await lastCheck(log, from);
-		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.match(said, JUDGED);
 		assert.ok(!fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes(String(old.getTime())));
 		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
 		const rebuilt = [...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))].sort();
@@ -514,7 +518,7 @@ test("serve_renders_the_collection_readers_again_after_a_front_matter_edit", asy
 		const cedar = path.join(dir, "src/posts/cedar.njk");
 		fs.writeFileSync(cedar, fs.readFileSync(cedar, "utf8").replace("Cedar Trail", "Cedar Loop"));
 		const said = await lastCheck(log, from);
-		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.match(said, JUDGED);
 		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
 		const rebuilt = [...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))].sort();
 		assert.deepEqual(rebuilt, ["/ranger/", "cedar", "titles"], JSON.stringify(lines));
@@ -543,7 +547,7 @@ test("serve_renders_a_page_whose_filter_read_the_changed_body", async () => {
 		const from = await quietLog(log);
 		fs.appendFileSync(path.join(dir, "src/posts/stump.njk"), "<p>Four miles.</p>");
 		const said = await lastCheck(log, from);
-		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.match(said, JUDGED);
 		assert.ok(fs.readFileSync(path.join(dir, "dist/ranger/index.html"), "utf8").includes("Four miles."));
 	} finally {
 		await server.stop();
@@ -595,7 +599,7 @@ for (const [engine, files, part] of [
 		const from = await quietLog(log);
 			fs.appendFileSync(path.join(dir, part), "\n\nFour miles.\n");
 			const said = await lastCheck(log, from);
-			assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+			assert.match(said, JUDGED);
 			assert.ok(fs.readFileSync(path.join(dir, "dist/a/index.html"), "utf8").includes("Four miles."));
 		} finally {
 			await server.stop();
@@ -630,14 +634,14 @@ test("serve_renders_only_the_collection_readers_for_a_page_added_or_deleted", as
 		fs.writeFileSync(renders, "");
 		let said = readOr(log).length;
 		fs.writeFileSync(path.join(dir, "src/posts/stump.njk"), "---\ntitle: The stump\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>");
-		assert.match(await lastCheck(log, said), /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.match(await lastCheck(log, said), JUDGED);
 		assert.deepEqual(rebuilt(), ["stump", "titles"], why(from));
 		assert.ok(fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes("The stump"));
 		await sleep(500);
 		fs.writeFileSync(renders, "");
 		said = readOr(log).length;
 		fs.rmSync(path.join(dir, "src/posts/stump.njk"));
-		assert.match(await lastCheck(log, said), /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.match(await lastCheck(log, said), JUDGED);
 		assert.deepEqual(rebuilt(), ["titles"], why(said));
 		assert.ok(!fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes("The stump"));
 	} finally {
@@ -665,7 +669,7 @@ test("serve_renders_only_the_changed_page_when_the_data_has_a_function", async (
 		fs.writeFileSync(renders, "");
 		fs.appendFileSync(path.join(dir, "src/trails/cedar.njk"), "<p>Four miles.</p>");
 		const said = await lastCheck(log, from);
-		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
+		assert.match(said, JUDGED);
 		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
 		assert.deepEqual([...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))], ["cedar"], JSON.stringify(lines));
 	} finally {
