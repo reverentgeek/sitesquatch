@@ -789,12 +789,26 @@ export class Site {
 				else if (JSON.stringify(kept.layouts) === JSON.stringify(layouts)) this.bodyOnly.add(file);
 			}
 			keptTemplates.set(file, { bytes: source, shared: this.shared, commit, time, layouts, front, tpl });
-		} else keptTemplates.delete(file);
+			remadeTemplates.delete(file);
+		} else {
+			keptTemplates.delete(file);
+			// One that can't be kept (a data file of its own, a warning) is made every build: when it
+			// comes out with the same bytes and the same data as last time, it changed nothing.
+			if (this.shared !== undefined) {
+				let data: string | undefined;
+				try { data = crypto.createHash("sha1").update(serializedData(tpl.data)).digest("base64"); } catch { /* data that can't be compared */ }
+				const was = remadeTemplates.get(file);
+				const mark = JSON.stringify([this.shared, commit, layouts, tpl.mtime.getTime()]);
+				if (data !== undefined && was && was.data === data && was.mark === mark && was.bytes.equals(source)) this.unchanged.add(file);
+				if (data !== undefined) remadeTemplates.set(file, { bytes: source, data, mark });
+				else remadeTemplates.delete(file);
+			}
+		}
 		// Any other template made again, from the shared inputs the last build had, changed only its
 		// own data as far as the other pages can tell: they see it through the collections, which
 		// every build makes again. One the last build didn't keep (a warning, a file Windows sent
 		// half-written) or didn't have (a page added) is one of these too.
-		if (!this.bodyOnly.has(file) && this.shared !== undefined && lastPages?.shared === this.shared) this.ownData.add(file);
+		if (!this.bodyOnly.has(file) && !this.unchanged.has(file) && this.shared !== undefined && lastPages?.shared === this.shared) this.ownData.add(file);
 		return tpl;
 	}
 
@@ -1427,6 +1441,9 @@ const keptSources = new Map<string, { size: number; mtimeMs: number; bytes: Buff
 export function incremental(config: Config): boolean {
 	return config.serving && process.env.SSQCH_INCREMENTAL !== "0";
 }
+
+/** While serving: each template that can't be kept as it was last made, its bytes, a hash of its data, and what else it came from (`loadTemplate`). */
+const remadeTemplates = new Map<string, { bytes: Buffer; data: string; mark: string }>();
 
 /** While serving with templates kept: the last build's template files and the shared inputs they were made from, for `Site.added` and `Site.gone`. */
 let lastPages: { shared: string; files: Set<string> } | undefined;

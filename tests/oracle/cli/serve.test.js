@@ -679,6 +679,32 @@ test("serve_renders_only_the_changed_page_when_the_data_has_a_function", async (
 	}
 });
 
+// A page with a data file of its own is made again every build; when it comes out with the same
+// bytes and data, it isn't rendered for an edit to another page.
+test("serve_takes_a_page_with_its_own_data_file_as_it_was", async () => {
+	const dir = tempDir("serve-incremental-own-data");
+	const renders = path.join(tempDir("serve-incremental-own-data-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+		"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }} {{ miles }}</p>",
+		"src/cedar.data.js": "export default { miles: 4, computed: { trail: (data) => data.miles + \" miles\" } };\n",
+		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-own-data-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	try {
+		await waitFor(log, "Serving ");
+		const from = await quietLog(log);
+		fs.writeFileSync(renders, "");
+		fs.appendFileSync(path.join(dir, "src/stump.njk"), "<p>Four miles.</p>");
+		assert.match(await lastCheck(log, from), JUDGED);
+		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+		assert.deepEqual([...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))], ["stump"], JSON.stringify(lines));
+	} finally {
+		await server.stop();
+	}
+});
+
 // A rebuild that failed renders nothing for the pages it was given, so the next rebuild doesn't take
 // them as the last build wrote them: a page broken in one save is still broken after a save to
 // another page, as a clean build would say.
