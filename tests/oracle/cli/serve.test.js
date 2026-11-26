@@ -616,7 +616,10 @@ test("serve_renders_only_the_collection_readers_for_a_page_added_or_deleted", as
 		"src/about.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"about\" | noted }}</p>",
 	});
 	const log = path.join(tempDir("serve-incremental-added-log"), "serve.log");
-	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+	const timeline = path.join(tempDir("serve-incremental-added-timeline"), "times.jsonl");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1", SSQCH_SERVE_TIMELINE: timeline } });
+	// What each rebuild rendered and why, and what the server said, for a failure's message.
+	const why = (from) => JSON.stringify(readOr(timeline).split("\n").filter(Boolean).flatMap((line) => { try { const t = JSON.parse(line); return t.kind === "rebuild" ? [[t.file, t.builder?.rendered]] : []; } catch { return []; } })) + "\n" + readOr(log).slice(from);
 	const rebuilt = () => {
 		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
 		return [...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name))].sort();
@@ -628,14 +631,14 @@ test("serve_renders_only_the_collection_readers_for_a_page_added_or_deleted", as
 		let said = readOr(log).length;
 		fs.writeFileSync(path.join(dir, "src/posts/stump.njk"), "---\ntitle: The stump\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>");
 		assert.match(await lastCheck(log, said), /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
-		assert.deepEqual(rebuilt(), ["stump", "titles"]);
+		assert.deepEqual(rebuilt(), ["stump", "titles"], why(from));
 		assert.ok(fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes("The stump"));
 		await sleep(500);
 		fs.writeFileSync(renders, "");
 		said = readOr(log).length;
 		fs.rmSync(path.join(dir, "src/posts/stump.njk"));
 		assert.match(await lastCheck(log, said), /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
-		assert.deepEqual(rebuilt(), ["titles"]);
+		assert.deepEqual(rebuilt(), ["titles"], why(said));
 		assert.ok(!fs.readFileSync(path.join(dir, "dist/titles/index.html"), "utf8").includes("The stump"));
 	} finally {
 		await server.stop();
