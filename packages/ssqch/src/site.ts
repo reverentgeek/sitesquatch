@@ -780,6 +780,11 @@ export class Site {
 			}
 			keptTemplates.set(file, { bytes: source, shared: this.shared, commit, time, layouts, front, tpl });
 		} else keptTemplates.delete(file);
+		// Any other template made again, from the shared inputs the last build had, changed only its
+		// own data as far as the other pages can tell: they see it through the collections, which
+		// every build makes again. One the last build didn't keep (a warning, a file Windows sent
+		// half-written) or didn't have (a page added) is one of these too.
+		if (!this.bodyOnly.has(file) && this.shared !== undefined && lastPages?.shared === this.shared) this.ownData.add(file);
 		return tpl;
 	}
 
