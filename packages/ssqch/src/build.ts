@@ -393,9 +393,16 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	// made from again.
 	const ownData = new Set([...site.ownData, ...site.added, ...site.gone].flatMap(reals));
 	const isIn = (set: Set<string>, file: string) => reals(file).some((name) => set.has(name));
-	const other = config.changed.find((file) => !isIn(bodyOnly, file) && !isIn(ownData, file));
+	// Windows names the folder a file changed in as well as the file. A folder with a named file
+	// directly in it, or a page that came or went, says nothing more than they do; any other
+	// folder renders every page. A file it names only later (after this build began) starts a
+	// rebuild of its own.
+	const named = config.changed;
+	const parents = new Set([...named, ...site.added, ...site.gone].flatMap((file) => reals(path.dirname(file))));
+	const changed = named.filter((file) => !(isDir(file) && reals(file).some((name) => parents.has(name))));
+	const other = changed.find((file) => !isIn(bodyOnly, file) && !isIn(ownData, file));
 	if (other !== undefined) return `${site.display(other)} isn't a page's body or front matter, or a page added or gone`;
-	const dataChanged = config.changed.some((file) => isIn(ownData, file));
+	const dataChanged = site.added.size > 0 || site.gone.size > 0 || changed.some((file) => isIn(ownData, file));
 	const plugin = config.plugins.find((name) => !REPLAYABLE.has(name));
 	if (plugin !== undefined) return `the plugin ${plugin}`;
 	if (config.afterBuild.some((hook) => !("label" in hook) || hook.label !== "")) return "an afterBuild hook of the config's own";
@@ -406,7 +413,7 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	if (dataChanged && everyLate) return "front matter with MkDocs' or Jekyll's templates";
 	const only = new Set(wanted.filter((page) => site.bodyOnly.has(page.tpl.input) || site.ownData.has(page.tpl.input) || site.added.has(page.tpl.input)));
 	const changedKeys = new Set([...only].map(pageKey));
-	const changedFiles = new Set(config.changed.flatMap(reals));
+	const changedFiles = new Set(changed.flatMap(reals));
 	for (const page of wanted) {
 		if (only.has(page) || page.output === null) continue;
 		const read = keptReads.get(page.output);

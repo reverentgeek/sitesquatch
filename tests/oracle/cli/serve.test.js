@@ -528,9 +528,9 @@ test("serve_still_warns_about_a_page_it_took_as_it_was", async () => {
 		assert.match(readOr(log), /<TrailBadge>/);
 		const said = readOr(log).length;
 		fs.appendFileSync(path.join(dir, "src/stump.njk"), "<p>Four miles.</p>");
-		await waitFor(log, "Fresh tracks in src/stump.njk");
+		// The rebuild's lines, whichever file it names first (Windows names the folder too).
 		let after = "";
-		for (let i = 0; i < 200 && !/Serving /.test(after); i++) {
+		for (let i = 0; i < 400 && !/Fresh tracks in [\s\S]*Serving /.test(after); i++) {
 			await sleep(25);
 			after = readOr(log).slice(said);
 		}
@@ -648,13 +648,12 @@ test("serve_keeps_failing_for_a_broken_page_after_an_edit_to_another", async () 
 		await waitFor(log, "noSuchFilter");
 		const said = readOr(log).length;
 		fs.appendFileSync(path.join(dir, "src/stump.njk"), "<p>Four miles.</p>");
-		await waitFor(log, "Fresh tracks in src/stump.njk");
-		// The rebuild's outcome: its error again, or a summary it shouldn't have.
+		// The rebuild's outcome, whichever file it names first (Windows names the folder too): its
+		// error again, or a summary it shouldn't have.
 		let after = "";
-		for (let i = 0; i < 200 && !/Built in|noSuchFilter/.test(after); i++) {
+		for (let i = 0; i < 400 && !/Fresh tracks in [\s\S]*(Built in|noSuchFilter)/.test(after); i++) {
 			await sleep(25);
-			const text = readOr(log).slice(said);
-			after = text.slice(text.indexOf("src/stump.njk"));
+			after = readOr(log).slice(said);
 		}
 		assert.match(after, /noSuchFilter/);
 		assert.doesNotMatch(after, /Built in/);
