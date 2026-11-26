@@ -16,12 +16,25 @@ import { slugOptions, slugText, slugWith } from "./slug.ts";
  * keeps it the same as what the plugins register. `rssDate` and `rssLastUpdatedDate` are Eleventy's
  * names for two of them, aliases, and not listed.
  */
-export const PLUGIN_FUNCTIONS: ReadonlyArray<readonly [plugin: string, functions: readonly string[]]> = [
-	["imagePlugin()", ["imageUrl"]],
-	["assetsPlugin()", ["assetUrl"]],
-	["rssPlugin()", ["htmlToAbsoluteUrls", "feedHtml", "dateToRfc3339", "dateToRfc822", "getNewestCollectionItemDate"]],
-	["llmsPlugin()", ["markdownCopy", "llmsTxt"]],
+export const PLUGIN_FUNCTIONS: ReadonlyArray<readonly [plugin: string, functions: readonly string[], module: string]> = [
+	["imagePlugin()", ["imageUrl"], "ssqch/image"],
+	["assetsPlugin()", ["assetUrl"], "ssqch/assets"],
+	["rssPlugin()", ["htmlToAbsoluteUrls", "feedHtml", "dateToRfc3339", "dateToRfc822", "getNewestCollectionItemDate"], "ssqch/rss"],
+	["llmsPlugin()", ["markdownCopy", "llmsTxt"], "ssqch/llms"],
 ];
+
+/**
+ * For an unknown filter or function that a plugin adds, which one: `` `dateToRfc3339` comes with
+ * rssPlugin() (import { rssPlugin } from "ssqch/rss"), which this config doesn't have``. The new
+ * blog's rerun guessed it was there because the docs list it, with `feedPlugin()` from the same
+ * module, which doesn't add it. Starts with ": ", or is "" for a name no plugin adds.
+ */
+export function fromPlugin(name: string): string {
+	const row = PLUGIN_FUNCTIONS.find(([, names]) => names.includes(name));
+	if (!row) return "";
+	const [plugin, , module] = row;
+	return `: it comes with ${plugin} (import { ${plugin.slice(0, -2)} } from "${module}"), which this config doesn't have`;
+}
 
 /** The built-in functions, with what each does, for `ssqch docs`. A test keeps it the same as what `builtinFilters` makes. */
 export const BUILTIN_FILTERS: ReadonlyArray<readonly [string, string]> = [

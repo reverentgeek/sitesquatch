@@ -19,6 +19,7 @@ import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 import { DateFormatError, showDate, strftime, toInstant } from "./liquid-date.ts";
 import type { Instant } from "./liquid-date.ts";
 import { didYouMean } from "../strict-hint.ts";
+import { fromPlugin } from "../filters.ts";
 
 /** What a filter throws in a synchronous render when its function answered with a promise: the template is rendered again, asynchronously. */
 class NeedsAsync extends Error {}
@@ -928,7 +929,7 @@ function describe(e: unknown, ctx: RenderContext, env: EngineEnv, filters: strin
 		if (equivalent) message = `unknown filter \`${wanted}\`. ${equivalent.say}\n  More: ${equivalent.more}`;
 		else {
 			const near = closest(wanted, filters.filter((f) => f !== wanted));
-			message = `unknown filter \`${wanted}\`${near ? ` (did you mean \`${near}\`?)` : ""}`;
+			message = `unknown filter \`${wanted}\`${fromPlugin(wanted) || (near ? ` (did you mean \`${near}\`?)` : "")}`;
 		}
 	} else if ((found = /^tag "([^"]+)" not found$/.exec(message))) {
 		const near = closest(found[1], ["assign", "break", "capture", "case", "comment", "continue", "cycle", "decrement", "echo", "for", "if", "include", "increment", "layout", "liquid", "raw", "render", "tablerow", "unless"].filter((t) => t !== found![1]));

@@ -16,6 +16,7 @@ import { includedBeside, isDataString, lazyEngine, siteFunction } from "./engine
 import type { EngineEnv, TemplateEngine } from "./engine.ts";
 import { didYouMean, undefinedMessage, undefinedOnLine } from "../strict-hint.ts";
 import { shownAsUtc } from "../data.ts";
+import { fromPlugin } from "../filters.ts";
 
 /** A template as code: its function, or its text when it has no tags. */
 interface Compiled {
@@ -185,7 +186,7 @@ function makeEjs(env: EngineEnv): TemplateEngine {
 		const missing = e instanceof ReferenceError ? /^([A-Za-z_$][\w$]*) is not defined$/.exec(e.message)?.[1] : undefined;
 		if (missing !== undefined) {
 			const hint = didYouMean(missing);
-			throw new Located(`${name}:${line}: ${(e as Error).message}${hint ? ` (${hint.slice(2)})` : ""}`);
+			throw new Located(`${name}:${line}: ${(e as Error).message}${fromPlugin(missing) || (hint ? ` (${hint.slice(2)})` : "")}`);
 		}
 		throw new Located(`${name}:${line}: ${describeThrown(e, root)}`);
 	};
