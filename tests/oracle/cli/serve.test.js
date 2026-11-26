@@ -8,6 +8,17 @@ import { start, sleep, waitFor, changeAndWait, httpGet, body, serveSite } from "
 
 const unixOnly = { skip: process.platform === "win32" && "unix only" };
 const readOr = (file) => { try { return fs.readFileSync(file, "utf8"); } catch { return ""; } };
+// Until the server's output has been still for a second: the late events for the files a test
+// wrote before starting it (Windows sends them after the first build, as a folder's) have had
+// their rebuild, so what a test counts after it is its own edit's.
+const quietLog = async (log) => {
+	let last = readOr(log), still = Date.now();
+	while (Date.now() - still < 1000) {
+		await sleep(50);
+		const now = readOr(log);
+		if (now !== last) { last = now; still = Date.now(); }
+	}
+};
 const count = (text, part) => text.split(part).length - 1;
 const alive = (pid) => { try { process.kill(Number(pid), 0); return true; } catch { return false; } };
 
@@ -343,6 +354,7 @@ test("serve_renders_only_the_page_whose_text_changed_and_keeps_the_others_pictur
 	try {
 		await waitFor(path.join(dir, "dist/stump/index.html"), "stump");
 		await waitFor(log, "Serving ");
+		await quietLog(log);
 		const stumpCopies = () => fs.readdirSync(path.join(dir, "dist/img")).filter((name) => name.endsWith(".svg"));
 		assert.equal(stumpCopies().length, 1, fs.readdirSync(path.join(dir, "dist/img")).join(", "));
 		fs.writeFileSync(renders, "");
@@ -376,6 +388,7 @@ test("serve_renders_every_page_with_SSQCH_INCREMENTAL_0", async () => {
 	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_INCREMENTAL: "0" } });
 	try {
 		await waitFor(log, "Serving ");
+		await quietLog(log);
 		fs.writeFileSync(renders, "");
 		const said = readOr(log).length;
 		fs.appendFileSync(path.join(dir, "src/cedar.njk"), "<p>Four miles.</p>");
@@ -406,6 +419,7 @@ test("serve_renders_again_only_the_collection_pages_that_read_the_changed_conten
 	try {
 		await waitFor(path.join(dir, "dist/bodies/index.html"), "stump");
 		await waitFor(log, "Serving ");
+		await quietLog(log);
 		fs.writeFileSync(renders, "");
 		fs.appendFileSync(path.join(dir, "src/posts/cedar.njk"), "<p>Four miles.</p>");
 		const said = await waitFor(log, "check-rebuilds: ");
@@ -439,6 +453,7 @@ test("serve_renders_a_listing_again_when_an_undated_pages_text_moves_its_date", 
 	try {
 		await waitFor(path.join(dir, "dist/titles/index.html"), String(old.getTime()));
 		await waitFor(log, "Serving ");
+		await quietLog(log);
 		fs.writeFileSync(renders, "");
 		fs.appendFileSync(path.join(dir, "src/posts/cedar.njk"), "<p>Four miles.</p>");
 		const said = await waitFor(log, "check-rebuilds: ");
@@ -473,6 +488,7 @@ test("serve_renders_the_collection_readers_again_after_a_front_matter_edit", asy
 	try {
 		await waitFor(path.join(dir, "dist/ranger/index.html"), "Cedar Trail");
 		await waitFor(log, "Serving ");
+		await quietLog(log);
 		fs.writeFileSync(renders, "");
 		const cedar = path.join(dir, "src/posts/cedar.njk");
 		fs.writeFileSync(cedar, fs.readFileSync(cedar, "utf8").replace("Cedar Trail", "Cedar Loop"));
@@ -503,6 +519,7 @@ test("serve_renders_a_page_whose_filter_read_the_changed_body", async () => {
 	try {
 		await waitFor(path.join(dir, "dist/ranger/index.html"), "Stump");
 		await waitFor(log, "Serving ");
+		await quietLog(log);
 		fs.appendFileSync(path.join(dir, "src/posts/stump.njk"), "<p>Four miles.</p>");
 		const said = await waitFor(log, "check-rebuilds: ");
 		assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
@@ -525,6 +542,7 @@ test("serve_still_warns_about_a_page_it_took_as_it_was", async () => {
 	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
 	try {
 		await waitFor(log, "Serving ");
+		await quietLog(log);
 		assert.match(readOr(log), /<TrailBadge>/);
 		const said = readOr(log).length;
 		fs.appendFileSync(path.join(dir, "src/stump.njk"), "<p>Four miles.</p>");
@@ -553,6 +571,7 @@ for (const [engine, files, part] of [
 		const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
 		try {
 			await waitFor(log, "Serving ");
+		await quietLog(log);
 			fs.appendFileSync(path.join(dir, part), "\n\nFour miles.\n");
 			const said = await waitFor(log, "check-rebuilds: ");
 			assert.match(said, /check-rebuilds: the rebuild after .+ wrote what a clean build writes/);
@@ -583,6 +602,7 @@ test("serve_renders_only_the_collection_readers_for_a_page_added_or_deleted", as
 	};
 	try {
 		await waitFor(log, "Serving ");
+		await quietLog(log);
 		fs.writeFileSync(renders, "");
 		let said = readOr(log).length;
 		fs.writeFileSync(path.join(dir, "src/posts/stump.njk"), "---\ntitle: The stump\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>");
@@ -619,6 +639,7 @@ test("serve_renders_only_the_changed_page_when_the_data_has_a_function", async (
 	try {
 		await waitFor(path.join(dir, "dist/trails/stump/index.html"), "THE STUMP");
 		await waitFor(log, "Serving ");
+		await quietLog(log);
 		fs.writeFileSync(renders, "");
 		fs.appendFileSync(path.join(dir, "src/trails/cedar.njk"), "<p>Four miles.</p>");
 		const said = await waitFor(log, "check-rebuilds: ");
@@ -644,6 +665,7 @@ test("serve_keeps_failing_for_a_broken_page_after_an_edit_to_another", async () 
 	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
 	try {
 		await waitFor(log, "Serving ");
+		await quietLog(log);
 		fs.appendFileSync(path.join(dir, "src/cedar.njk"), "{{ \"x\" | noSuchFilter }}");
 		await waitFor(log, "noSuchFilter");
 		const said = readOr(log).length;
