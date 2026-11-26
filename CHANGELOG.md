@@ -40,6 +40,12 @@ where that version matches.
   need `200!`, the site's `_headers` apply while serving, and it wants an output folder of its
   own.
 
+- The docs starter has search on every production build: `ssqch build`, `npm run build` and a
+  host's build run Pagefind, where before only `SEARCH=1` did, and nothing on a host set it, so a
+  docs site deployed as its Deploying page says had no search. `SEARCH=0` skips it, for a build
+  with no network. A site made with an earlier starter keeps its own config: to change it, replace
+  `Boolean(process.env.SEARCH)` with `env === "production" && process.env.SEARCH !== "0"`.
+
 ### Added
 
 - A hook can say it reads only the output: `{ run, reads: "output" }`, with a command or a
@@ -55,6 +61,12 @@ where that version matches.
 
 ### Fixed
 
+- In the docs starter's search, the words that match are readable: they were a pale tint on the
+  page's own color in the light theme. And a heading's `#` link isn't in the search's excerpts
+  ("The huckleberry rule # When ...").
+- The blog starter's `.gitignore` has `node_modules/`, as the docs starter's has.
+- `ssqch docs Netlify` shows a `netlify.toml` for a site `ssqch init` started. It ended on the
+  ReverentGeek blog's, which was a section further on.
 - `ssqch serve` sees changes where the system sends no file events: a Windows drive opened from
   WSL (`/mnt/c/...`), some Docker bind mounts, network shares. It built once there and never
   again, without a word. Under WSL a site on a Windows drive is polled on its own, and anywhere

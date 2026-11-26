@@ -2,14 +2,16 @@
 title: "Netlify"
 description: "Netlify can build the site itself, with no deploy token to manage."
 ---
-Netlify can build the site itself, with no deploy token to manage. With `ssqch` in the site's `devDependencies` (see [Install](install.md)), Netlify installs it with the site's other packages, at the version in the lockfile, and runs it on the Node it has: set `NODE_VERSION` to 22.18 or newer, as below. This is the ReverentGeek blog's `netlify.toml` (it builds its CSS and JavaScript with npm scripts first, so it runs `pnpm run build`; a site without that step can run `npx ssqch build` instead):
+Netlify can build the site itself, with no deploy token to manage. With `ssqch` in the site's `devDependencies` (see [Install](install.md)), Netlify installs it with the site's other packages, at the version in the lockfile, and runs it on the Node it has: set `NODE_VERSION` to 22.18 or newer. The `netlify.toml` for a site that `ssqch init` started is in [The build](#the-build), next.
 
 ## The build
+
+A site that `ssqch init` started builds with `npx ssqch build` (or `npm run build`, the script `init` adds):
 
 ```toml
 # netlify.toml
 [build]
-  command = "pnpm run build && node --test test/smoke.test.js"
+  command = "npx ssqch build"
   publish = "dist/"
 
 [build.environment]
@@ -32,7 +34,7 @@ A site without a `package.json` can run a pinned release straight from npm in th
   command = "npx --yes ssqch@$SSQCH_VERSION build"
 ```
 
-The build command can run more than the build. The ReverentGeek blog, the site ssqch is tested on, runs its smoke tests after it (`node --test`), so a page that renders wrong stops the deploy and the site that's live stays as it was. `ssqch build` already exits with an error on a broken link, a schema that doesn't match or a budget with `fail: true`, so even without tests a broken build never goes out.
+The build command can run more than the build. The ReverentGeek blog, the site ssqch is tested on, builds its CSS and JavaScript with npm scripts first and runs its smoke tests after it (`command = "pnpm run build && node --test test/smoke.test.js"`), so a page that renders wrong stops the deploy and the site that's live stays as it was. `ssqch build` already exits with an error on a broken link, a schema that doesn't match or a budget with `fail: true`, so even without tests a broken build never goes out.
 
 ## Redirects
 

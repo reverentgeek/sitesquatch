@@ -115,6 +115,10 @@ test("init_starts_a_site_in_each_engine", () => {
 	}
 });
 
+// The docs starter runs Pagefind (npx) on a production build; SEARCH=0 skips it, so a test
+// doesn't fetch it.
+const NO_SEARCH = { SEARCH: "0" };
+
 test("init_starts_a_docs_site", () => {
 	const dir = fresh("init-docs");
 	const d = dir;
@@ -125,7 +129,7 @@ test("init_starts_a_docs_site", () => {
 	}
 	// The same pages, whichever language the templates are in.
 	const check = (dir, engine) => {
-		const r = ssqch(["build", "--root", dir]);
+		const r = ssqch(["build", "--root", dir], { env: NO_SEARCH });
 		assert.ok(r.ok, `${engine}: ${r.log}`);
 		assert.ok(r.log.includes(", 0 broken") && !r.log.includes("warn"), `${engine}: ${r.log}`);
 		const rd = (p) => read(dir, path.join("dist", p));
@@ -137,7 +141,7 @@ test("init_starts_a_docs_site", () => {
 			"<a rel=\"prev\" href=\"/docs/install/\">← Installation</a>",
 			"<a rel=\"next\" href=\"/docs/guides/deploying/\">Deploying →</a>",
 			"<a href=\"#tabs\">Tabs</a>",
-			"<h2 id=\"notes\">Notes <a class=\"anchor\" href=\"#notes\"",
+			"<h2 id=\"notes\">Notes <a class=\"anchor\" data-pagefind-ignore href=\"#notes\"",
 			"<div class=\"tabs\"><section class=\"tab\" data-label=\"npm\"><p class=\"tab-label\">npm</p>",
 			"<div class=\"warning\"><p class=\"container-title\">Check twice</p>",
 			"<details><summary>How do these work?</summary>",
@@ -157,7 +161,7 @@ test("init_starts_a_docs_site", () => {
 	// A new page from the starter's blueprint passes the starter's schema.
 	r = ssqch(["new", "--root", d, "docs/guides", "--title", "Search"]);
 	assert.deepEqual([r.ok, r.log], [true, "Created src/docs/guides/search.md from src/_blueprints/docs.md. Fresh tracks: fill in its fields, then build.\n"]);
-	r = ssqch(["build", "--root", d]);
+	r = ssqch(["build", "--root", d], { env: NO_SEARCH });
 	assert.ok(r.ok && !r.log.includes("warn") && rd("docs/guides/search/index.html").includes("<title>Search | Squatch Docs</title>"), r.log);
 	assert.ok(isFile(dir, "dist/assets/docs.js") && isFile(dir, "dist/highlight.css"));
 
