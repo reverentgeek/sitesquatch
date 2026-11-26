@@ -148,7 +148,7 @@ BUILTINS.set("ssqch/elements", (config: Config, given) => {
 	let pages = 0;
 	const usedNames = new Set<string>();
 	// While serving: the elements each page used, by its URL, for the summary of a rebuild that
-	// takes some pages as they were (`SSQCH_INCREMENTAL=1`).
+	// takes some pages as they were (`incremental` in site.ts).
 	const perPage = new Map<string, string[]>();
 	let thisBuild = new Map<string, string[]>();
 	config.replays.push((skipped, rendered) => {

@@ -323,7 +323,7 @@ test("serve_reads_an_edit_that_keeps_the_files_size_and_time", async () => {
 	}
 });
 
-// SSQCH_INCREMENTAL=1 (with SSQCH_KEEP_TEMPLATES=1): an edit to one page's text renders that page
+// While serving, an edit to one page's text renders that page
 // alone, and the image plugin asks for the other pages' pictures again (a replay of what they asked
 // when they last rendered), so prune and leaveNoTrace keep them, and the llms plugin its text. A
 // filter that notes each render
@@ -339,7 +339,7 @@ test("serve_renders_only_the_page_whose_text_changed_and_keeps_the_others_pictur
 	});
 	fs.copyFileSync(path.join(FIXTURES, "cli/squatch.png"), path.join(dir, "src/img/cedar.png"));
 	const log = path.join(tempDir("serve-incremental-log"), "serve.log");
-	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
 	try {
 		await waitFor(path.join(dir, "dist/stump/index.html"), "stump");
 		await waitFor(log, "Serving ");
@@ -362,6 +362,31 @@ test("serve_renders_only_the_page_whose_text_changed_and_keeps_the_others_pictur
 	}
 });
 
+// SSQCH_INCREMENTAL=0 turns it off: every rebuild renders every page, for a page that looks out of
+// date (right with it off, it's a bug in ssqch).
+test("serve_renders_every_page_with_SSQCH_INCREMENTAL_0", async () => {
+	const dir = tempDir("serve-incremental-off");
+	const renders = path.join(tempDir("serve-incremental-off-renders"), "renders.log");
+	write(dir, {
+		"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+		"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }}</p>",
+		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>",
+	});
+	const log = path.join(tempDir("serve-incremental-off-log"), "serve.log");
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_INCREMENTAL: "0" } });
+	try {
+		await waitFor(log, "Serving ");
+		fs.writeFileSync(renders, "");
+		const said = readOr(log).length;
+		fs.appendFileSync(path.join(dir, "src/cedar.njk"), "<p>Four miles.</p>");
+		await waitFor(path.join(dir, "dist/cedar/index.html"), "Four miles.");
+		for (let i = 0; i < 200 && !/Serving /.test(readOr(log).slice(said)); i++) await sleep(25);
+		assert.deepEqual(fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" ")[1]).sort(), ["cedar", "stump"]);
+	} finally {
+		await server.stop();
+	}
+});
+
 // A page that reads collections renders again only when its last render read a changed page's
 // content (templateContent, an excerpt): a page that lists titles is taken as it was, and one that
 // prints the bodies, as a feed does, renders.
@@ -377,7 +402,7 @@ test("serve_renders_again_only_the_collection_pages_that_read_the_changed_conten
 		"src/bodies.njk": "{{ \"bodies\" | noted }}{% for p in collections.posts %}<article>{{ p.templateContent | safe }}</article>{% endfor %}",
 	});
 	const log = path.join(tempDir("serve-incremental-reads-log"), "serve.log");
-	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
 	try {
 		await waitFor(path.join(dir, "dist/bodies/index.html"), "stump");
 		await waitFor(log, "Serving ");
@@ -410,7 +435,7 @@ test("serve_renders_a_listing_again_when_an_undated_pages_text_moves_its_date", 
 	const old = new Date("2026-01-01T00:00:00Z");
 	fs.utimesSync(path.join(dir, "src/posts/cedar.njk"), old, old);
 	const log = path.join(tempDir("serve-incremental-undated-log"), "serve.log");
-	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
 	try {
 		await waitFor(path.join(dir, "dist/titles/index.html"), String(old.getTime()));
 		await waitFor(log, "Serving ");
@@ -444,7 +469,7 @@ test("serve_renders_the_collection_readers_again_after_a_front_matter_edit", asy
 		"src/about.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"about\" | noted }}</p>",
 	});
 	const log = path.join(tempDir("serve-incremental-front-log"), "serve.log");
-	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
 	try {
 		await waitFor(path.join(dir, "dist/ranger/index.html"), "Cedar Trail");
 		await waitFor(log, "Serving ");
@@ -474,7 +499,7 @@ test("serve_renders_a_page_whose_filter_read_the_changed_body", async () => {
 		"src/ranger.njk": "---\nlayout: side.njk\ndate: 2026-01-01\n---\n<p>Ranger station</p>",
 	});
 	const log = path.join(tempDir("serve-incremental-filter-body-log"), "serve.log");
-	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
 	try {
 		await waitFor(path.join(dir, "dist/ranger/index.html"), "Stump");
 		await waitFor(log, "Serving ");
@@ -497,7 +522,7 @@ test("serve_still_warns_about_a_page_it_took_as_it_was", async () => {
 		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>Stump</p>",
 	});
 	const log = path.join(tempDir("serve-incremental-warned-log"), "serve.log");
-	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1" } });
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
 	try {
 		await waitFor(log, "Serving ");
 		assert.match(readOr(log), /<TrailBadge>/);
@@ -525,7 +550,7 @@ for (const [engine, files, part] of [
 		const dir = tempDir(`serve-incremental-beside-${engine}`);
 		write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" }, templateFormats: [\"ejs\", \"liquid\", \"md\"] };\n", ...files });
 		const log = path.join(tempDir(`serve-incremental-beside-${engine}-log`), "serve.log");
-		const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+		const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
 		try {
 			await waitFor(log, "Serving ");
 			fs.appendFileSync(path.join(dir, part), "\n\nFour miles.\n");
@@ -551,7 +576,7 @@ test("serve_renders_only_the_collection_readers_for_a_page_added_or_deleted", as
 		"src/about.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"about\" | noted }}</p>",
 	});
 	const log = path.join(tempDir("serve-incremental-added-log"), "serve.log");
-	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
 	const rebuilt = () => {
 		const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
 		return lines.filter(([pid]) => pid === lines[0][0]).map(([, name]) => name).sort();
@@ -590,7 +615,7 @@ test("serve_renders_only_the_changed_page_when_the_data_has_a_function", async (
 		"src/trails/stump.njk": "---\ntitle: The stump\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }} {{ shout }}</p>",
 	});
 	const log = path.join(tempDir("serve-incremental-function-log"), "serve.log");
-	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1", SSQCH_CHECK_REBUILDS: "1" } });
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
 	try {
 		await waitFor(path.join(dir, "dist/trails/stump/index.html"), "THE STUMP");
 		await waitFor(log, "Serving ");
@@ -616,7 +641,7 @@ test("serve_keeps_failing_for_a_broken_page_after_an_edit_to_another", async () 
 		"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>Stump</p>",
 	});
 	const log = path.join(tempDir("serve-incremental-failed-log"), "serve.log");
-	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_KEEP_TEMPLATES: "1", SSQCH_INCREMENTAL: "1" } });
+	const server = start(["serve", "--port", "0", "--root", dir], { logFile: log });
 	try {
 		await waitFor(log, "Serving ");
 		fs.appendFileSync(path.join(dir, "src/cedar.njk"), "{{ \"x\" | noSuchFilter }}");

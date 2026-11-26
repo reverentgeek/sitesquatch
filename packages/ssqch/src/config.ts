@@ -186,7 +186,7 @@ export interface Config {
 	settle: Array<() => Promise<void>>;
 	/**
 	 * While serving, after the pages render: what a built-in plugin learned from each page, said
-	 * again for the pages a rebuild took as they were (`SSQCH_INCREMENTAL=1`), by their URLs, with
+	 * again for the pages a rebuild took as they were (`incremental` in site.ts), by their URLs, with
 	 * the pages it rendered (whose records are new). The image plugin's pictures in use.
 	 */
 	replays: Array<(skipped: string[], rendered: string[]) => void>;

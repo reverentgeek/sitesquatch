@@ -295,7 +295,7 @@ BUILTINS.set("ssqch/llms", (config: Config, given) => {
 	// A template page's `<title>`, for its name in llms.txt when it has no title or heading of its own.
 	const titles = new Map<string, string>();
 	// While serving: the three as the last build had them for each page, by its URL, said again
-	// for a page a rebuild takes as it was (`SSQCH_INCREMENTAL=1`), whose copy and place in
+	// for a page a rebuild takes as it was (`incremental` in site.ts), whose copy and place in
 	// llms-full.txt would be empty otherwise.
 	const kept = { sources: new Map<string, string>(), converted: new Map<string, string>(), titles: new Map<string, string>() };
 	config.replays.push((skipped, rendered) => {

@@ -158,16 +158,16 @@ export class Site {
 	private seen = new Set<string>();
 	/** Every data file this build read (global, a theme's, directory data, a template's own), for `keptTemplates`. */
 	private dataFilesRead = new Set<string>();
-	/** With `SSQCH_KEEP_TEMPLATES=1` while serving, what a template's data came from besides its own file, when it can be reused at all: `undefined` when it can't. */
+	/** While serving (`incremental`), what a template's data came from besides its own file, when it can be reused at all: `undefined` when it can't. */
 	private shared: string | undefined;
 	/**
 	 * Templates made again this build whose data is what it was (the same front matter, shared
-	 * inputs, layouts and commit date): only their bodies changed. For `SSQCH_INCREMENTAL=1`.
+	 * inputs, layouts and commit date): only their bodies changed. For `incremental`.
 	 */
 	bodyOnly = new Set<string>();
 	/**
 	 * Templates made again this build from the same shared inputs and commit date whose front
-	 * matter (or the file time their date is) changed: their own data did. For `SSQCH_INCREMENTAL=1`.
+	 * matter (or the file time their date is) changed: their own data did. For `incremental`.
 	 */
 	ownData = new Set<string>();
 	/** Templates new since the last build, and templates it had that this one doesn't (`lastPages`). */
@@ -424,7 +424,7 @@ export class Site {
 		});
 		this.drafts = tpls.length - this.tpls.length;
 		// Pages added and gone since the last build from the same shared inputs, for
-		// `SSQCH_INCREMENTAL=1`: an added one whose data is all its own (kept, as `loadTemplate`
+		// `incremental`: an added one only when its data is all its own (kept, as `loadTemplate`
 		// keeps one: no data file of its own, no warning).
 		if (this.shared !== undefined && lastPages?.shared === this.shared) {
 			const now = new Set(this.files);
@@ -797,13 +797,13 @@ export class Site {
 	}
 
 	/**
-	 * With `SSQCH_KEEP_TEMPLATES=1` while serving: the inputs every template's data has besides its
+	 * While serving (`incremental`): the inputs every template's data has besides its
 	 * own file, as one string, or `undefined` when they can't be known: each data file read so far
 	 * (global, the themes', directory data) by its size and time, and a hash of the values.
 	 */
 	private sharedInputs(dirData: Map<string, Data>): string | undefined {
 		const { config } = this;
-		if (process.env.SSQCH_KEEP_TEMPLATES !== "1" || !config.serving) return this.notKeeping("SSQCH_KEEP_TEMPLATES is off");
+		if (!incremental(config)) return this.notKeeping(config.serving ? "SSQCH_INCREMENTAL=0" : "not serving");
 		if (this.keepLayers || config.profile) return this.notKeeping("trace or --profile");
 		const files = [...this.dataFilesRead].sort(compareText);
 		// The values themselves too, for what code made (a data function in the config, a
@@ -1399,12 +1399,20 @@ function hasTags(tpl: Tpl, config: Config, s: string): boolean {
 const keptSources = new Map<string, { size: number; mtimeMs: number; bytes: Buffer }>();
 
 /**
- * With `SSQCH_KEEP_TEMPLATES=1` while serving (the dev server's design, stage 1, behind a switch
- * until the checked mode has run clean with it): each template as the last build made it, reused
+ * While serving (`incremental`; the dev server's design, stage 1): each template as the last build made it, reused
  * when its bytes are the very ones `keptSources` kept (unchanged), the shared inputs are the same
  * (`Site.sharedInputs`), its layouts' files are as they were, and its commit date (git dates) too.
  * Making them was 200 to 290 ms of a 10,000-page rebuild.
  */
+/**
+ * Whether rebuilds while serving keep templates and render only the pages an edit can reach (the
+ * dev server's design, stage 3). On while serving; `SSQCH_INCREMENTAL=0` turns it off, for a page
+ * that looks out of date: if it's right with it off, that's a bug in ssqch.
+ */
+export function incremental(config: Config): boolean {
+	return config.serving && process.env.SSQCH_INCREMENTAL !== "0";
+}
+
 /** While serving with templates kept: the last build's template files and the shared inputs they were made from, for `Site.added` and `Site.gone`. */
 let lastPages: { shared: string; files: Set<string> } | undefined;
 

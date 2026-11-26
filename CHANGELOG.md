@@ -25,6 +25,14 @@ where that version matches.
   - A `serve.run` tool that hasn't written after three rebuilds in a row isn't waited for (it was
     150 ms after every rebuild); one that has written after a rebuild (Tailwind, when an edit adds
     a class) is waited for from then on.
+- `ssqch serve` renders only the pages an edit can reach. An edit to one post's text renders the
+  post and the pages that show its text; an edit to its front matter, or a page added or deleted,
+  renders the page and the pages that read `collections`. On a 10,000-page site, a saved post
+  reaches the browser in 557 ms, where it was about 1,300; on a 174-page blog, 320 ms, where it
+  was about 720. A page that another tool wrote over in the output is rendered again. A layout, an include, a data file or the config still renders every page, and so
+  does every rebuild on a site with a transform or `afterBuild` hook of its own.
+  `SSQCH_INCREMENTAL=0` renders every page on every rebuild, as before: a page that's right with
+  it and out of date without it is a bug to report.
 - Behind `netlify dev`, the server says once what `netlify dev` does in front of it: rewrites
   need `200!`, the site's `_headers` apply while serving, and it wants an output folder of its
   own.

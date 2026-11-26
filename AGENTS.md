@@ -140,13 +140,14 @@ Run from `packages/ssqch/` unless it says otherwise.
   whether the rebuild wrote the same, byte for byte (`src/serve/check.ts`); a change that makes
   rebuilds skip work runs under it. `SSQCH_SERVE_TIMELINE=<file>` is what the script reads
   (`src/serve/timeline.ts`). Both are for ssqch's own measurements and tests, not the docs.
-  `SSQCH_KEEP_TEMPLATES=1` (reuse templates between rebuilds) and `SSQCH_INCREMENTAL=1` (with it,
-  render only the pages a body or front matter edit can reach) are the dev server's stage 3
-  behind switches, off by default until the owner turns them on. `node bench/rebuilds.ts` (a
-  sequence of cross-page edits, each rebuild checked against a clean build) is their check: run it
-  with both set across the examples, the starters' frozen sources and the frozen sites. Each step
-  says how many pages it rendered and, when it rendered all of them, why (a plugin, a hook, data
-  it can't compare), so a pass that skipped nothing is told apart from one that skipped pages.
+  While serving, rebuilds keep templates and render only the pages an edit can reach (the dev
+  server's stage 3, `incremental` in `src/site.ts`; on by default since 2026-11-25, the owner's
+  call). `SSQCH_INCREMENTAL=0` renders every page, as before: the docs give it to builders for a
+  page that looks out of date. A change that lets rebuilds skip more runs `node bench/rebuilds.ts`
+  (a sequence of cross-page edits, each rebuild checked against a clean build) across the
+  examples, the starters' frozen sources and the frozen sites. Each step says how many pages it
+  rendered and, when it rendered all of them, why (a plugin, a hook, data it can't compare), so a
+  pass that skipped nothing is told apart from one that skipped pages.
 - `node scripts/build.ts` builds the npm package into `dist/` (bundled with esbuild; sharp is its
   one dependency), and `node scripts/check-package.ts` installs that tarball in an empty folder
   and builds every example with it. "Releasing" has the rest.

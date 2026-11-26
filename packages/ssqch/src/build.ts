@@ -37,7 +37,7 @@ import { currentRendering, renderingAs, safe } from "./rendering.ts";
 import { checkPages, paginated } from "./schema.ts";
 import type { CopyJob, Page, Tpl } from "./site.ts";
 import type { Diagnostic } from "./diagnostics.ts";
-import { Site, Timer, errorsTogether, readsCollections } from "./site.ts";
+import { Site, Timer, errorsTogether, incremental, readsCollections } from "./site.ts";
 import type { Profile, ProfileReport } from "./profile.ts";
 import * as voice from "./voice.ts";
 import { jekyllPage, jekyllSite } from "./jekyll.ts";
@@ -121,7 +121,7 @@ export async function build(config: Config): Promise<BuildReport> {
 			try { site.refreshPagination(page); } catch (e) { throw context(e, `in ${page.tpl.rel}`); }
 		}
 	}
-	// `SSQCH_INCREMENTAL=1`: only the pages whose bodies changed, and those that read collections
+	// While serving (`incremental`): only the pages whose bodies changed, and those that read collections
 	// (a feed shows the bodies); the rest are as the last build wrote them.
 	const chosen = afterAWorkingBuild ? incrementalPages(site, wanted, late) : "the last build failed";
 	const only = typeof chosen === "string" ? undefined : chosen;
@@ -144,6 +144,11 @@ export async function build(config: Config): Promise<BuildReport> {
 			const beside = renderer.beside.get(page.index);
 			if (beside) keptBeside.set(page.output, beside);
 			else keptBeside.delete(page.output);
+			// The file as this build left it (its writes are done), so the next can tell whether
+			// something else wrote over it.
+			const mark = outputMark(page.output);
+			if (mark !== undefined) keptMarks.set(page.output, mark);
+			else keptMarks.delete(page.output);
 		}
 		// What a page taken as it was said when it last rendered, said again.
 		if (only) {
@@ -311,7 +316,7 @@ let lastBuildWorked = false;
 let renderedCount: [number, number, string?] = [0, 0];
 export const lastRendered = (): [number, number, string?] => renderedCount;
 
-/** While serving: each page's size as the last build wrote it, by its output file, for a page `SSQCH_INCREMENTAL=1` doesn't render. */
+/** While serving: each page's size as the last build wrote it, by its output file, for a page `incremental` doesn't render. */
 const keptWritten = new Map<string, number>();
 
 /**
@@ -323,7 +328,7 @@ const keptWritten = new Map<string, number>();
 const keptReads = new Map<string, Set<string>>();
 
 /**
- * While serving with `SSQCH_INCREMENTAL=1`: the pages (by output file) whose last render read
+ * While serving: the pages (by output file) whose last render read
  * `collections`, by anything: the template, a layout, an include, or a site's filter through
  * `this.data.collections`. A change to another page's front matter can change what they show.
  */
@@ -331,6 +336,14 @@ const keptCollectionReaders = new Set<string>();
 
 /** While serving: the files each page's templates included from beside them when it last rendered (by real path), by output file. */
 const keptBeside = new Map<string, Set<string>>();
+
+/** While serving: each page's file as the last build that rendered it left it (`outputMark`), by output file. */
+const keptMarks = new Map<string, string>();
+/** A file's inode, size and times, as one string: a write by anything changes the change time. */
+function outputMark(file: string): string | undefined {
+	const stat = fs.statSync(file, { throwIfNoEntry: false });
+	return stat ? `${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}` : undefined;
+}
 
 /** While serving: what each page's last render said (its warnings, its components with no template), by output file, for a rebuild that takes it as it was. */
 const keptSaid = new Map<string, { warnings: Diagnostic[]; components: Set<string> }>();
@@ -357,7 +370,7 @@ const pageKey = (page: Page) => `${page.tpl.input}\0${page.url}`;
 const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/feed", "ssqch/redirects", "ssqch/robots", "ssqch/minify", "ssqch/image", "ssqch/assets", "ssqch/elements", "ssqch/llms", "ssqch/sass", "ssqch/from-hugo"]);
 
 /**
- * `SSQCH_INCREMENTAL=1` while serving (the dev server's design, stage 3, its first slice): the
+ * While serving (`incremental`, the dev server's design, stage 3): the
  * pages to render when every changed file is a template whose body alone changed
  * (`Site.bodyOnly`), whose own data did (`Site.ownData`: its front matter), or that came or went
  * (`Site.added`, `Site.gone`); the site's plugins are all `REPLAYABLE`, and the config has no
@@ -366,7 +379,7 @@ const REPLAYABLE = new Set(["ssqch/links", "ssqch/sitemap", "ssqch/rss", "ssqch/
  */
 function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page> | string {
 	const { config } = site;
-	if (process.env.SSQCH_INCREMENTAL !== "1" || !config.serving) return "off";
+	if (!incremental(config)) return "off";
 	if (!config.changed?.length) return "the first build";
 	if (!(site.bodyOnly.size || site.ownData.size || site.added.size || site.gone.size)) return site.keepingTemplates ? "no template's body or front matter alone changed" : `templates aren't kept: ${site.notKept}`;
 	// By real paths on both sides: the server names files by theirs, and the site may not (a
@@ -407,8 +420,12 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 		// list, its place in prev and next), is paginated over one, or has computed data from them.
 		else if (dataChanged && (late.has(page) || keptCollectionReaders.has(page.output) || readsCollections(page.tpl.data.computed))) only.add(page);
 	}
-	// A page the last build didn't write (new to the output) is rendered.
-	for (const page of wanted) if (!only.has(page) && page.output !== null && !keptWritten.has(page.output)) only.add(page);
+	// A page the last build didn't write (new to the output) is rendered, and so is one whose file
+	// something else wrote over or removed since: taken as it was, it would stay as they left it.
+	for (const page of wanted) {
+		if (only.has(page) || page.output === null) continue;
+		if (!keptWritten.has(page.output) || keptMarks.get(page.output) !== outputMark(page.output)) only.add(page);
+	}
 	return only;
 }
 
@@ -442,7 +459,7 @@ class Renderer {
 		if (!found) this.said.set(page.index, found = { warnings: [], components: new Set() });
 		return found;
 	}
-	/** `collections` as pages see them, which notes who reads it, with `SSQCH_INCREMENTAL=1` while serving. */
+	/** `collections` as pages see them, which notes who reads it, while serving. */
 	private collectionsView: Data | undefined;
 	/** Time spent rendering bodies, as the summary's `render`. */
 	renderMs = 0;
@@ -488,14 +505,14 @@ class Renderer {
 		return data;
 	}
 	/**
-	 * The collections for a page's templates. With `SSQCH_INCREMENTAL=1` while serving, a view that
+	 * The collections for a page's templates. While serving (`incremental`), a view that
 	 * notes the page reading it, whatever reads it (a template, a layout, a site's filter): a
 	 * rebuild after a change to one page's front matter renders those pages again. Anything an
 	 * engine does to look at it counts, so at worst a page renders when it needn't have.
 	 */
 	private collections(): Data {
 		const { collections, config } = this.site;
-		if (process.env.SSQCH_INCREMENTAL !== "1" || !config.serving) return collections;
+		if (!incremental(config)) return collections;
 		if (this.collectionsView) return this.collectionsView;
 		const note = () => {
 			const who = this.reader ?? this.rendering;

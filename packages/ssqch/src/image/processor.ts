@@ -593,7 +593,7 @@ export class ImageProcessor {
 	/**
 	 * While serving: each page's image requests (what `generateNamed` was asked while it rendered,
 	 * and whom the files were for) and its pinned pictures, by its URL, kept from build to build,
-	 * so a page a rebuild doesn't render (`SSQCH_INCREMENTAL=1`) asks for its pictures again
+	 * so a page a rebuild doesn't render (`incremental` in site.ts) asks for its pictures again
 	 * (`replay`) and they stay in use: `prune` and `leaveNoTrace` would take them otherwise.
 	 */
 	private perPage = new Map<string, PageImages>();
