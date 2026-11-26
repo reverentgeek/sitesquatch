@@ -17,6 +17,7 @@ import { closest, closestPath } from "../suggest.ts";
 import { isDataString, lazyEngine } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 import { undefinedMessage } from "../strict-hint.ts";
+import { fromPlugin } from "../filters.ts";
 
 /** The extensions that are Handlebars: a partial with one that doesn't parse is an error, and other files that don't are skipped. */
 const EXTENSIONS = ["hbs", "handlebars", "mustache"];
@@ -398,7 +399,7 @@ class Waiting extends Error {}
 
 function unknownHelper(name: string, helpers: string[]): string {
 	const near = closest(name, helpers.filter((h) => h !== name));
-	return `unknown helper \`${name}\`${near ? ` (did you mean \`${near}\`?)` : ""}`;
+	return `unknown helper \`${name}\`${fromPlugin(name) || (near ? ` (did you mean \`${near}\`?)` : "")}`;
 }
 
 /**

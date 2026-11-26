@@ -39,6 +39,7 @@ import * as values from "./edge-values.ts";
 import { isDataString, siteFunction } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 import { undefinedMessage } from "../strict-hint.ts";
+import { fromPlugin } from "../filters.ts";
 
 /** How deep includes and components go before it's a loop, as in 0.7. */
 const MAX_DEPTH = 64;
@@ -496,7 +497,7 @@ class Render extends Template {
 			const equivalent = equivalents.find(name, "filter");
 			const globals = ENGINES.get(this.engine.edge.tags)?.globals ?? new Set<string>();
 			const near = equivalent ? undefined : closest(name, [...globals].filter((f) => f !== name).sort(compareText));
-			more = equivalent ? `. ${equivalent.say}\n  More: ${equivalent.more}` : near ? ` (did you mean \`${near}\`?)` : "";
+			more = equivalent ? `. ${equivalent.say}\n  More: ${equivalent.more}` : fromPlugin(name) || (near ? ` (did you mean \`${near}\`?)` : "");
 		}
 		return `\`${name}\` is not a function${more}${plain.slice(found[0].length)}`;
 	}

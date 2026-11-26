@@ -126,7 +126,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 	},
 	{
 		name: "init",
-		about: "Create a starter site (config, layout, seven posts, data and editor types)",
+		about: "Create a starter site (a blog, or a docs site with --starter docs)",
 		options: [
 			{ long: "starter", value: "NAME", help: "What to start with: site (a small blog) or docs (documentation with a sidebar, tabs and search)", default: "site" },
 			{ long: "engine", value: "NAME", help: "The template language for the starter's layouts and templates: jinja, njk, edge, liquid, hbs or ejs", default: DEFAULT_ENGINE },

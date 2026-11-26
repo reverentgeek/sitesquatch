@@ -13,6 +13,9 @@ where that version matches.
 
 ### Changed
 
+- The docs starter has `leaveNoTrace` on, as the blog starter has, so a page you delete or
+  rename doesn't stay in `dist/` and deploy.
+- `ssqch --help` says `init` makes a blog, or a docs site with `--starter docs`.
 - `ssqch serve` shows an edit sooner: on v8.dev, 232 ms from the save to the browser hearing of it,
   where it was about 800.
   - The server pushes each change to the browser as it happens (`/__ssqch/events`), where the
@@ -48,6 +51,12 @@ where that version matches.
 
 ### Added
 
+- An unknown filter or function that a plugin adds names the plugin: ``unknown filter
+  `dateToRfc3339`: it comes with rssPlugin() (import { rssPlugin } from "ssqch/rss"), which this
+  config doesn't have``, in every template language.
+- A template error on a line inside a Markdown page's code block says how to show the code as
+  it's written (`{% raw %}` in Jinja, Nunjucks and Liquid, `@{{` in Edge, `\{{` in Handlebars,
+  `<%%` in EJS), for GitHub Actions' `${{ }}` and the like; so does the Markdown page.
 - A hook can say it reads only the output: `{ run, reads: "output" }`, with a command or a
   function (`run` takes a function now too). With every `afterBuild` hook of the site's own saying
   so, `ssqch serve` renders only the pages an edit can reach; without, a hook of the site's own

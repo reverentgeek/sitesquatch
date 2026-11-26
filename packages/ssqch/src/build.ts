@@ -932,7 +932,46 @@ class Renderer {
 // A paginated page says which item it was rendering, after the engine's name, so the parts
 // `locate` reads stay as they are: six errors that all said `snacks/snack.jinja` didn't say which
 // snack (the Squatch Snacks rerun, as schema errors already did).
-const rendering = (e: unknown, tpl: Tpl, engine: string, data?: Data) => context(e, `rendering ${tpl.rel} with \`${engine}\`${data ? paginated(data) : ""}`);
+const rendering = (e: unknown, tpl: Tpl, engine: string, data?: Data) => {
+	const error = context(e, `rendering ${tpl.rel} with \`${engine}\`${data ? paginated(data) : ""}`);
+	const hint = inCodeBlock(error.message, tpl, engine);
+	return hint ? new BuildError(`${error.message}\n  ${hint}`, error.items) : error;
+};
+
+/** How each engine writes its own syntax as text, for `inCodeBlock`. */
+const LITERALLY: Record<string, string> = {
+	jinja: "put the block between `{% raw %}` and `{% endraw %}`",
+	njk: "put the block between `{% raw %}` and `{% endraw %}`",
+	liquid: "put the block between `{% raw %}` and `{% endraw %}`",
+	edge: "write `@{{` for each `{{`",
+	hbs: "write `\\{{` for each `{{`",
+	ejs: "write `<%%` for each `<%`",
+};
+
+/**
+ * When a Markdown page's template error is on a line inside a fenced code block, how to keep the
+ * code as written: the new docs site's rerun pasted GitHub Actions' `${{ hashFiles(...) }}` into a
+ * fence, and got `unknown function hashFiles` with nothing about the fix. Only for an engine that
+ * runs before the page's Markdown.
+ */
+function inCodeBlock(message: string, tpl: Tpl, engine: string): string | undefined {
+	const how = LITERALLY[engine];
+	const at = tpl.engines.indexOf(engine);
+	if (how === undefined || at === -1 || !tpl.engines.slice(at + 1).includes("md")) return undefined;
+	const line = Number(new RegExp(`(?:^|\\s)${tpl.rel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:(\\d+):`).exec(message)?.[1]);
+	if (!line) return undefined;
+	// The engine counts lines from the body, after the front matter (the frame the build draws
+	// later numbers the file's).
+	let fence: string | undefined;
+	for (const text of tpl.body.split("\n").slice(0, line - 1)) {
+		const mark = /^\s{0,3}(`{3,}|~{3,})/.exec(text)?.[1];
+		if (!mark) continue;
+		if (fence === undefined) fence = mark;
+		else if (mark[0] === fence[0] && mark.length >= fence.length) fence = undefined;
+	}
+	if (fence === undefined) return undefined;
+	return `That line is in a code block, and a Markdown page runs through \`${engine}\` first: to show the code as it's written, ${how} (or set \`markdownEngine: false\` for no template engine in Markdown).`;
+}
 
 /**
  * An engine's answer that isn't a string: a promise of one. Anything else (a `null` from a

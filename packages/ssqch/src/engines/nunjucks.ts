@@ -23,6 +23,7 @@ import { isDataString } from "./engine.ts";
 import type { EngineEnv, RenderContext, TemplateEngine } from "./engine.ts";
 import { JINJA_ESCAPE, JINJA_RAW, JinjaError, escapeJinja, installRuntime, jinjaFilters, jinjaGlobals, jinjaTests, markdownAttributes, njkString, pyString, siteArgs } from "./jinja.ts";
 import { undefinedMessage, undefinedOnLine } from "../strict-hint.ts";
+import { fromPlugin } from "../filters.ts";
 
 /** `.njk` (Nunjucks' escaping and the config's functions as tags) or `.jinja` and `.j2`. */
 export type Flavor = "njk" | "jinja";
@@ -384,12 +385,12 @@ function describe(e: unknown, source: string, ctx: RenderContext, at: Where): st
 		// Another generator's filter (`slug`, `absolute_url`): ssqch's way, instead of a guess from the spelling.
 		const equivalent = equivalents.find(wanted, "filter");
 		if (equivalent) message = `unknown filter \`${wanted}\`. ${equivalent.say}\n  More: ${equivalent.more}`;
-		else message = `unknown filter \`${wanted}\`${meant(wanted, Object.keys(all.filters))}`;
+		else message = `unknown filter \`${wanted}\`${fromPlugin(wanted) || meant(wanted, Object.keys(all.filters))}`;
 	} else if ((found = /^test not found: (\S+)/.exec(message))) {
 		message = `unknown test \`${found[1]}\`${meant(found[1], Object.keys(all.tests))}`;
 	} else if ((found = /^Unable to call `([A-Za-z_$][\w$]*)`, which is undefined or falsey$/.exec(message))) {
 		const functions = Object.keys(all.globals).filter((key) => typeof all.globals[key] === "function");
-		message = `unknown function \`${found[1]}\`${meant(found[1], functions)}`;
+		message = `unknown function \`${found[1]}\`${fromPlugin(found[1]) || meant(found[1], functions)}`;
 	} else if ((found = /^Unable to call `(.+)\["([^"]+)"\]`, which is undefined or falsey$/.exec(message))) {
 		message = `unknown method \`${found[2]}\` (\`${found[1].replaceAll("\"]", "").replaceAll("[\"", ".")}\` has no method of that name)`;
 	} else if ((found = /^template not found: (.+)$/s.exec(message))) {

@@ -23,6 +23,10 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
+  // Delete what an earlier build wrote that this one didn't (a deleted page and its Markdown
+  // copy), so a page you remove isn't deployed. Pagefind's files are its own: the hook below
+  // empties them.
+  leaveNoTrace: true,
   // page.lastModified, which each page shows as "Last updated": when its file last changed in a
   // commit (in CI, check out the whole history: `fetch-depth: 0`). Before the first commit,
   // the file's time.

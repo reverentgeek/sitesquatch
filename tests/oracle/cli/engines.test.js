@@ -69,6 +69,50 @@ test("jinja_errors_point_at_the_name_and_say_what_was_meant", () => {
 	}
 });
 
+// A function a plugin adds, used without the plugin: which plugin, and its import, instead of a
+// guess from the spelling (the new blog's rerun: `dateToRfc3339` with `feedPlugin()`).
+test("a_plugins_function_without_its_plugin_names_the_plugin", () => {
+	const hint = "`dateToRfc3339`: it comes with rssPlugin() (import { rssPlugin } from \"ssqch/rss\"), which this config doesn't have";
+	for (const [engine, source, said] of [
+		["jinja", "{{ date | dateToRfc3339 }}", `unknown filter ${hint}`],
+		["njk", "{{ dateToRfc3339(date) }}", `unknown function ${hint}`],
+		["liquid", "{{ date | dateToRfc3339 }}", `unknown filter ${hint}`],
+		["hbs", "{{dateToRfc3339 date}}", `unknown helper ${hint}`],
+		["edge", "{{ dateToRfc3339(date) }}", `${hint.replace(":", " is not a function:")}`],
+		["ejs", "<%= dateToRfc3339(date) %>", `dateToRfc3339 is not defined: it comes with rssPlugin()`],
+	]) {
+		const dir = tempDir(`plugin-function-${engine}`);
+		write(dir, { "ssqch.config.js": `export default { templateFormats: ["${engine}"] };\n`, [`index.${engine}`]: `---\ndate: 2026-01-01\n---\n${source}\n` });
+		const r = ssqch(["build", "--root", dir]);
+		assert.ok(!r.ok && r.log.includes(said), `${engine}\n${r.log}`);
+	}
+});
+
+// A template error on a line inside a Markdown page's code block says how to show the code as
+// it's written, in the words of the engine that runs first (the new docs site's rerun: GitHub
+// Actions' `${{ hashFiles() }}` in a fence). Outside a block, nothing extra.
+test("a_template_error_in_a_markdown_code_block_says_how_to_keep_it", () => {
+	const page = (code) => `---\ntitle: CI\n---\n# CI\n\n\`\`\`yaml\n${code}\n\`\`\`\n`;
+	for (const [engine, code, how] of [
+		["jinja", "key: campfire-${{ hashFiles('campfire.yml') }}", "put the block between `{% raw %}` and `{% endraw %}`"],
+		["edge", "key: campfire-${{ hashFiles('campfire.yml') }}", "write `@{{` for each `{{`"],
+		["hbs", "key: {{#campfire}}", "write `\\{{` for each `{{`"],
+	]) {
+		const dir = tempDir(`fence-hint-${engine}`);
+		write(dir, { "ssqch.config.js": `export default { markdownEngine: "${engine}" };\n`, "ci.md": page(code) });
+		const r = ssqch(["build", "--root", dir]);
+		assert.ok(!r.ok && r.log.includes(`That line is in a code block, and a Markdown page runs through \`${engine}\` first: to show the code as it's written, ${how}`), `${engine}\n${r.log}`);
+	}
+	const dir = tempDir("fence-hint-outside");
+	write(dir, { "ssqch.config.js": "export default {};\n", "ci.md": "---\ntitle: CI\n---\n{{ hashFiles('x') }}\n\n```yaml\nkey: x\n```\n" });
+	let r = ssqch(["build", "--root", dir]);
+	assert.ok(!r.ok && r.log.includes("unknown function `hashFiles`") && !r.log.includes("code block"), r.log);
+	// And the way it says works.
+	write(dir, { "ci.md": page("{% raw %}\nkey: campfire-${{ hashFiles('campfire.yml') }}\n{% endraw %}") });
+	r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok && read(dir, "_site/ci/index.html").includes("campfire-${{ hashFiles"), r.log);
+});
+
 test("ejs_templates_render_as_ejs_does", () => {
 	const dir = tempDir("ejs");
 	const d = dir;
