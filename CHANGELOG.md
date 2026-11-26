@@ -37,6 +37,13 @@ where that version matches.
   need `200!`, the site's `_headers` apply while serving, and it wants an output folder of its
   own.
 
+### Added
+
+- A hook can say it reads only the output: `{ run, reads: "output" }`, with a command or a
+  function (`run` takes a function now too). With every `afterBuild` hook of the site's own saying
+  so, `ssqch serve` renders only the pages an edit can reach; without, a hook of the site's own
+  still renders every page, since it may read what the site's code kept while pages rendered.
+
 ### Fixed
 
 - `ssqch serve` sees changes where the system sends no file events: a Windows drive opened from

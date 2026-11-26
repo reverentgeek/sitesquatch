@@ -144,8 +144,8 @@ declare module "ssqch" {
 	}
 
 	type MaybePromise<T> = T | Promise<T>;
-	/** A function, or `{ run: "command" }` to run a program in the project root (through `sh -c`, or `cmd /C` on Windows). It gets `SSQCH_ENV`, `SSQCH_SERVING`, `SSQCH_QUIET`, `SSQCH_INPUT` and `SSQCH_OUTPUT`; a failure fails the build. */
-	type Hook = ((event: BuildEvent) => MaybePromise<void>) | { run: string };
+	/** A function, or `{ run: "command" }` to run a program in the project root (through `sh -c`, or `cmd /C` on Windows). It gets `SSQCH_ENV`, `SSQCH_SERVING`, `SSQCH_QUIET`, `SSQCH_INPUT` and `SSQCH_OUTPUT`; a failure fails the build. `{ run, reads: "output" }` (a command or a function) says the hook reads only the output folder, its event and the site's files, not what the site's code kept while pages rendered: with one, `ssqch serve` still renders only the pages an edit can reach (`afterBuild: { run: (event) => writeSitemap(event), reads: "output" }`). */
+	type Hook = ((event: BuildEvent) => MaybePromise<void>) | { run: string | ((event: BuildEvent) => MaybePromise<void>); reads?: "output" };
 	/** What a site's own engine is rendering, its third argument: a page's body, a layout, a Markdown render hook, or a page's `permalink` or `computed` string; and the file, as `page.inputPath` names it (`./src/posts/pine.md`). */
 	interface EngineContext {
 		kind: "body" | "layout" | "hook" | "permalink" | "computed";

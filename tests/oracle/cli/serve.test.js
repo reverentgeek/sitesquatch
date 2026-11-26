@@ -705,6 +705,37 @@ test("serve_takes_a_page_with_its_own_data_file_as_it_was", async () => {
 	}
 });
 
+// An afterBuild hook of the site's own renders every page on every rebuild, unless it says it
+// reads only the output (\`{ run, reads: "output" }\`, a function or a command).
+for (const [name, hook, rendered] of [
+	["a bare hook", "() => {}", ["cedar", "stump"]],
+	["a function that reads only the output", "{ run: () => {}, reads: \"output\" }", ["cedar"]],
+	["a command that reads only the output", "{ run: \"node -e 0\", reads: \"output\" }", ["cedar"]],
+]) {
+	test(`serve_renders_${rendered.length > 1 ? "every_page" : "only_the_changed_page"}_with_${name.replace(/ /g, "_")}`, async () => {
+		const dir = tempDir("serve-incremental-hook");
+		const renders = path.join(tempDir("serve-incremental-hook-renders"), "renders.log");
+		write(dir, {
+			"ssqch.config.js": `import fs from "node:fs";\nexport default { dirs: { input: "src", output: "dist" }, templateFormats: ["njk"], afterBuild: ${hook}, filters: { noted: (name) => { fs.appendFileSync(${JSON.stringify(renders)}, process.pid + " " + name + "\\n"); return name; } } };\n`,
+			"src/cedar.njk": "---\ndate: 2026-01-01\n---\n<p>{{ \"cedar\" | noted }}</p>",
+			"src/stump.njk": "---\ndate: 2026-01-02\n---\n<p>{{ \"stump\" | noted }}</p>",
+		});
+		const log = path.join(tempDir("serve-incremental-hook-log"), "serve.log");
+		const server = start(["serve", "--port", "0", "--root", dir], { logFile: log, env: { SSQCH_CHECK_REBUILDS: "1" } });
+		try {
+			await waitFor(log, "Serving ");
+			const from = await quietLog(log);
+			fs.writeFileSync(renders, "");
+			fs.appendFileSync(path.join(dir, "src/cedar.njk"), "<p>Four miles.</p>");
+			assert.match(await lastCheck(log, from), JUDGED);
+			const lines = fs.readFileSync(renders, "utf8").split("\n").filter(Boolean).map((line) => line.split(" "));
+			assert.deepEqual([...new Set(lines.filter(([pid]) => pid === lines[0][0]).map(([, n]) => n))].sort(), rendered, JSON.stringify(lines));
+		} finally {
+			await server.stop();
+		}
+	});
+}
+
 // A rebuild that failed renders nothing for the pages it was given, so the next rebuild doesn't take
 // them as the last build wrote them: a page broken in one save is still broken after a save to
 // another page, as a clean build would say.

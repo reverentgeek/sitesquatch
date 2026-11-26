@@ -408,7 +408,9 @@ function incrementalPages(site: Site, wanted: Page[], late: Set<Page>): Set<Page
 	const dataChanged = site.added.size > 0 || site.gone.size > 0 || changed.some((file) => isIn(ownData, file));
 	const plugin = config.plugins.find((name) => !REPLAYABLE.has(name));
 	if (plugin !== undefined) return `the plugin ${plugin}`;
-	if (config.afterBuild.some((hook) => !("label" in hook) || hook.label !== "")) return "an afterBuild hook of the config's own";
+	// A hook of the site's own may read what its code kept while pages rendered, which a rebuild
+	// that renders only some leaves short, unless it says it reads only the output.
+	if (config.afterBuild.some((hook) => !hook.readsOutput && (!("label" in hook) || hook.label !== ""))) return "an afterBuild hook of the config's own (reads: \"output\" lets it render only some pages)";
 	const transform = config.transforms.find(([name]) => name !== "minify-html");
 	if (transform) return `the transform ${transform[0]}`;
 	// MkDocs' and Jekyll's templates read more of other pages than that, past `collections`.
