@@ -7,6 +7,7 @@ import { red } from "../diagnostics.ts";
 import { CONFIG_FILES } from "../dirs.ts";
 import { joinAsGiven, parentAsGiven, slashes } from "../paths.ts";
 import { count } from "../report.ts";
+import { packageManager } from "../scout.ts";
 import { schemaDeclarations } from "./types.ts";
 
 /** The starter site: (path in the new site, file in `bundled/`). It's an amateur investigator's field notes: seven posts that each show one thing. */
@@ -244,6 +245,31 @@ function preparePackage(dir: string, skip: Set<string>): { changes: string[]; mj
 	return { changes, mjs, write: () => fs.writeFileSync(file, out) };
 }
 
+/** How the package managers run a package's own command, `ssqch` from `node_modules/.bin`. */
+const EXEC: Record<string, string> = { npm: "npx", pnpm: "pnpm exec", yarn: "yarn", bun: "bunx" };
+
+/**
+ * The command that starts the dev server in `dir`, as this site has ssqch: `ssqch serve` when it's
+ * installed for the machine, and through the package manager when it's the project's own, where a
+ * bare `ssqch` isn't on the PATH (the new docs site's rerun, `npm install -D ssqch`). The `serve`
+ * script when it runs ssqch's, since that's what the project's README will say.
+ */
+function serveCommand(dir: string): string {
+	let pkg: Record<string, unknown> | undefined;
+	try {
+		const parsed: unknown = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
+		if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) pkg = parsed as Record<string, unknown>;
+	} catch { /* no package.json */ }
+	const listed = (field: string) => { const deps = pkg?.[field]; return deps !== null && typeof deps === "object" && "ssqch" in deps; };
+	const local = listed("dependencies") || listed("devDependencies") || fs.existsSync(path.join(dir, "node_modules", "ssqch", "package.json"));
+	// `npx ssqch init`, with nothing installed: the same way again.
+	if (!local) return process.env.npm_command === "exec" ? "npx ssqch serve" : "ssqch serve";
+	const pm = packageManager(dir, pkg);
+	const scripts = pkg?.scripts as Record<string, unknown> | undefined;
+	if (typeof scripts?.serve === "string" && /^ssqch serve\b/.test(scripts.serve)) return `${pm} run serve`;
+	return `${EXEC[pm] ?? "npx"} ssqch serve`;
+}
+
 /** `ssqch init`: writes the starter into `dir`, keeping any file that's there. Answers the exit code. */
 export function runInit(options: InitOptions): number {
 	const { dir, starter, engine, quiet } = options;
@@ -293,7 +319,7 @@ export function runInit(options: InitOptions): number {
 	if (packageChanges.length) out += `  updated package.json: ${packageChanges.join(" and ")}\n`;
 	if (written.includes("ssqch.config.mjs")) out += "  (ssqch.config.mjs, not .js: package.json isn't \"type\": \"module\" and this project has JavaScript of its own, so it's left as it is)\n";
 	if (written.length === 0 && leftOut.length === 0) out += "Nothing to do: camp is already set up (every starter file is there).\n";
-	else out += `\nCamp is set up. Next: ${isCurrentFolder(dir) ? "" : `cd ${dir} && `}ssqch serve, then open http://localhost:8080\n`;
+	else out += `\nCamp is set up. Next: ${isCurrentFolder(dir) ? "" : `cd ${dir} && `}${serveCommand(dir)}, then open http://localhost:8080\n`;
 	process.stdout.write(out);
 	return 0;
 }

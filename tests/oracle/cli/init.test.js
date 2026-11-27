@@ -220,6 +220,18 @@ test("init_makes_package_json_ready", () => {
 	r = ssqch(["init", dir]);
 	assert.ok(r.stdout.includes("  kept    ssqch.config.mjs (already there)\n") && !exists(dir, "ssqch.config.js"), r.log);
 
+	// DELIBERATE (0.16.2, the new docs site's rerun): with ssqch installed in the project, a bare
+	// `ssqch serve` isn't on the PATH, so the last line says the script, or the package manager's
+	// way to run it.
+	dir = tempDir("init-package-local");
+	write(dir, { "package.json": "{\n  \"name\": \"camp\",\n  \"devDependencies\": { \"ssqch\": \"^0.16.1\" }\n}\n" });
+	r = ssqch(["init", dir], { env: { npm_command: "" } });
+	assert.ok(r.ok && r.stdout.includes(` && npm run serve, then open http://localhost:8080\n`), r.log);
+	dir = tempDir("init-package-pnpm");
+	write(dir, { "package.json": "{\n  \"name\": \"camp\",\n  \"scripts\": { \"serve\": \"vite\" },\n  \"devDependencies\": { \"ssqch\": \"^0.16.1\" }\n}\n", "pnpm-lock.yaml": "" });
+	r = ssqch(["init", dir], { env: { npm_command: "" } });
+	assert.ok(r.ok && r.stdout.includes(` && pnpm exec ssqch serve, then open`), r.log);
+
 	// No package.json: none is written.
 	dir = fresh("init-no-package");
 	assert.ok(ssqch(["init", dir]).ok);

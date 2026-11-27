@@ -309,8 +309,25 @@ export function fromError(e: unknown, fallback: string, at: Locator): Diagnostic
 			if (found.line !== undefined) item.line = found.line;
 		}
 		item.message = fileLines(item.message, at);
+		withFieldLine(item, at);
 	}
 	return items;
+}
+
+/**
+ * `d` with the line of its field's key in the file's front matter, when it names a field and no
+ * line: the line its code frame points at, so `--format json` has it too (the starter's
+ * `AGENTS.md` promises a `line`; the new docs site's rerun had a bad `date` at `:3` in the text and
+ * no `line` in the JSON). A field the front matter doesn't set (a required one left out) has none.
+ */
+export function withFieldLine(d: Diagnostic, at: Locator): Diagnostic {
+	const key = d.at ?? d.field;
+	if (d.line !== undefined || d.file === undefined || key === undefined) return d;
+	let source: string;
+	try { source = fs.readFileSync(path.resolve(at.root, d.file), "utf8"); } catch { return d; }
+	const line = fieldLine(splitLines(source), key);
+	if (line !== undefined) d.line = line;
+	return d;
 }
 
 /**

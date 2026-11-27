@@ -226,6 +226,25 @@ export function patrol(dir: string): Patrol {
 		return "";
 	};
 
+	// The starters' `url` is `https://example.com` until it's changed, and a site built with it
+	// checked clear: canonical links, the sitemap and llms.txt all pointing at a domain that isn't
+	// the site's (the new docs site's rerun). `.example` and the rest of RFC 2606's names are for
+	// tests and docs, and a site's own fixtures use them on purpose, so only example.com, .net and
+	// .org, the ones a placeholder is.
+	let placeholder: string | undefined;
+	const placeholderIn = (u: string | undefined) => {
+		try {
+			const at = u ? new URL(u) : undefined;
+			return at && /(^|\.)example\.(?:com|net|org)$/i.test(at.hostname) ? at.origin : undefined;
+		} catch { return undefined; }
+	};
+	const sayPlaceholder = (origin: string, file: string) => {
+		placeholder ??= origin;
+		say("placeholder-url", `the site's address is ${placeholder}, a placeholder: its canonical links, sitemap and llms.txt point there; give it the real one, which a starter sets as \`url\` in src/_data/site.json`, file);
+	};
+	if (sitemapFile && placeholderIn(locs[0])) sayPlaceholder(placeholderIn(locs[0])!, sitemapFile);
+	if (robots && placeholderIn(sitemapLine || undefined)) sayPlaceholder(placeholderIn(sitemapLine || undefined)!, "robots.txt");
+
 	if (!robots) say("no-robots", "no robots.txt: crawlers find no sitemap line and no rules for AI crawlers (robotsPlugin() writes one)");
 	if (!sitemapFile && !sitemapLine) say("no-sitemap", "no sitemap.xml, and robots.txt names none (sitemapPlugin({ url }) writes one)");
 	if (!has.has("404.html")) say("no-404", "no 404.html: a missing page gets the host's error page, or worse, a 200");
@@ -242,6 +261,8 @@ export function patrol(dir: string): Patrol {
 		const name = maps[i];
 		const text = i === 0 ? (llms as string) : read(name);
 		if (!/^\uFEFF?# \S/.test(text)) say("llms-shape", "llms.txt doesn't start with a `# ` heading (the site's name), which llmstxt.org's format requires", name);
+		const placeholderLink = linksIn(text).map(placeholderIn).find((o) => o !== undefined);
+		if (placeholderLink) sayPlaceholder(placeholderLink, name);
 		if (text.length > LLMS_LIMIT) say("llms-long", `llms.txt is ${count(text.length)} characters, over ${count(LLMS_LIMIT)}: more than an agent reads before deciding where to go (link section files from it instead)`, name);
 		for (const href of linksIn(text)) {
 			if (relative(href)) { say("relative-links", "links that aren't whole addresses (or from the site's root): they break once the text is read on its own", name); continue; }
@@ -270,6 +291,9 @@ export function patrol(dir: string): Patrol {
 		// out the optional tags, not all five.
 		if (!/<!doctype|<(html|head|body|title)[\s>]/i.test(html)) continue;
 		pageUrls.push(urlOf(file));
+		const canonical = /<link\s[^>]*rel=["']?canonical["']?[^>]*>/i.exec(html)?.[0];
+		const canonicalAt = placeholderIn(canonical ? /href=["']?([^"'\s>]+)/i.exec(canonical)?.[1] : undefined);
+		if (canonicalAt) sayPlaceholder(canonicalAt, file);
 		const h1 = (html.match(/<h1[\s>]/gi) ?? []).length;
 		if (h1 === 0) say("no-h1", "pages with no <h1>: an agent takes the first heading as what the page is about", file);
 		else if (h1 > 1) say("h1s", "pages with more than one <h1>", file);

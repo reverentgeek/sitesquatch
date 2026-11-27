@@ -30,7 +30,8 @@ const CASES = [
 	["console", { "ssqch.config.js": `console.warn("careful");\n${base()}`, "src/index.md": "hi" }, { ok: true, in: "warnings" }],
 	["template-formats", { "ssqch.config.js": `export default { dirs: { input: "src", output: "dist" }, templateFormats: ["md"] };\n`, "src/index.md": "hi", "src/other.liquid": "x" }, { ok: true, in: "warnings", file: "src/other.liquid" }],
 	["other-generator", { ".eleventy.js": "module.exports = () => ({});\n", "index.md": "hi" }, { ok: true, in: "warnings" }],
-	["foreign-key", { "ssqch.config.js": base(), "src/index.md": "---\npublished: false\n---\nhi" }, { ok: true, in: "warnings", file: "src/index.md", field: "published" }],
+	// DELIBERATE (0.16.2, the new docs site's rerun): a problem with a field has the line that sets it.
+	["foreign-key", { "ssqch.config.js": base(), "src/index.md": "---\npublished: false\n---\nhi" }, { ok: true, in: "warnings", file: "src/index.md", line: 2, field: "published" }],
 	["foreign-global", { "ssqch.config.js": base(), "src/index.njk": "{{ eleventy.generator }}" }, { ok: true, in: "warnings", file: "src/index.njk" }],
 	["over-budget", { "ssqch.config.js": base(", budgets: { pages: \"10 B\" }"), "src/index.md": "a page longer than ten bytes" }, { ok: true, in: "warnings" }],
 	["slow-call", { "ssqch.config.js": base(", transforms: { squeeze: (html) => { const end = Date.now() + 1100; while (Date.now() < end); return html; } }"), "src/index.md": "hi" }, { ok: true, in: "warnings" }],

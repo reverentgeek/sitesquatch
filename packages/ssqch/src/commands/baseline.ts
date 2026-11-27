@@ -12,7 +12,7 @@ import path from "node:path";
 import { commandLine } from "../command-line.ts";
 import { red } from "../diagnostics.ts";
 import { compareRuns, runsText } from "../diff.ts";
-import { compareText } from "../paths.ts";
+import { compareText, slashes } from "../paths.ts";
 
 export interface BaselineOptions {
 	/** The site's folder: the copies are of it, and the reference builds go beside it. */
@@ -46,6 +46,23 @@ export function baselineTime(root: string, rev = "HEAD"): number {
 }
 
 class BaselineError extends Error {}
+
+// `ssqch build`, `npx ssqch build`, `node bin/ssqch.ts build` and `"C:\...\ssqch.js" build`.
+const SSQCH_BUILD = /(?:^|[\s/\\;&|("'])ssqch(?:\.[cm]?[jt]s)?["']?\s+build\b/;
+
+/** Whether `command` builds with ssqch: `ssqch build`, `npx ssqch build`, or a package script (`npm run build`) that runs it. */
+export function buildsWithSsqch(command: string, root: string): boolean {
+	if (SSQCH_BUILD.test(command)) return true;
+	const script = /^\s*(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?([\w:.-]+)\s*$/.exec(command)?.[1];
+	if (script === undefined) return false;
+	try {
+		const scripts: unknown = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"))?.scripts;
+		const text = scripts !== null && typeof scripts === "object" ? (scripts as Record<string, unknown>)[script] : undefined;
+		return typeof text === "string" && SSQCH_BUILD.test(text);
+	} catch {
+		return false;
+	}
+}
 
 const git = (root: string, args: string[]) => spawnSync("git", ["-C", root, ...args], { encoding: "buffer", maxBuffer: 1 << 30 });
 
@@ -192,6 +209,14 @@ export async function runBaseline(options: BaselineOptions): Promise<number> {
 		let pkg = "";
 		try { pkg = fs.readFileSync(path.join(root, "package.json"), "utf8"); } catch { /* no package.json */ }
 		if (/"(?:vite|vitepress|astro|@vitejs\/[\w-]+)"\s*:/.test(pkg)) say("This site builds with Vite: its asset names (`style.Bfpn8qS8.css`) and Vue's scope ids (`data-v-*`) come from each file's path, so these builds' differ from a build in the site's own folder. `ssqch diff` leaves both out; to compare a build of your own with these, build it in a copy too, or use `--copy-installs`.");
+		// A site that builds with ssqch already is checking its own builds, or keeping one to compare
+		// a change with: a move's advice there is noise (the new docs site's rerun).
+		if (buildsWithSsqch(options.command, root)) {
+			process.stdout.write(code
+				? `\nNext: what varies above changes from one ssqch build to the next by itself, from the site's own code (a clock, \`Math.random()\`, an address it fetches): make it steady, or give \`ssqch diff\` an --ignore for it.\n`
+				: `\nNext: to see what a change does, make it, build, and \`ssqch diff ${reference} ${slashes(options.from)}\`.\n`);
+			return code;
+		}
 		process.stdout.write(`\nNext: build with ssqch into an empty folder, then \`ssqch diff ${reference} <ssqch's output>\`${code ? ", with an --ignore for what varies above" : ""}, and fix the biggest group first. \`--text\` says how much of each page's text matches, for a move that can't be byte for byte. The whole loop: \`ssqch docs "moving a site with an agent"\`.\n`);
 		return code;
 	} catch (e) {

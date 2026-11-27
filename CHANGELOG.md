@@ -9,6 +9,26 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## Unreleased
+
+### Added
+
+- `ssqch patrol` warns when the site's address is still a placeholder (`placeholder-url`): a build
+  whose canonical links, sitemap, robots.txt or llms.txt point at example.com, .net or .org, which
+  the starters' `url` is until it's changed. A site built from a starter checked all clear.
+
+### Changed
+
+- `ssqch init` ends with the command that starts the dev server as the project has ssqch: `npm run
+  serve` (or the package manager's own, from its lockfile) when ssqch is installed in the project,
+  where it said `ssqch serve`, which isn't on the PATH for a local install.
+- `ssqch baseline` of a site that builds with ssqch (`ssqch build`, or a package script that runs
+  it) ends with how to see what a change does, `ssqch diff <reference> <output>`, instead of a
+  move's advice.
+- `ssqch build --format json` gives a content error's or warning's `line` when it names a field
+  the front matter sets (a `date` that isn't a date, a schema's problem, Jekyll's `published`),
+  the line the text output's code frame points at.
+
 ## 0.16.1 - 2026-11-26
 
 ### Changed

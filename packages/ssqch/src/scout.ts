@@ -1836,7 +1836,7 @@ const LOCKFILES: ReadonlyArray<readonly [string, readonly string[]]> = [["pnpm",
 const packageManagerField = (pkg: unknown) => (isPlainObject(pkg) && typeof pkg.packageManager === "string" ? pkg.packageManager : undefined);
 
 /** The package manager a site uses: `packageManager` in package.json, or the lockfile that's there. */
-function packageManager(dir: string, pkg: unknown): string {
+export function packageManager(dir: string, pkg: unknown): string {
 	const named = (packageManagerField(pkg) ?? "").split("@")[0];
 	const byName = LOCKFILES.find(([pm]) => named === pm);
 	if (byName) return byName[0];

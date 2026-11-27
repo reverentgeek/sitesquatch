@@ -615,7 +615,8 @@ async function buildJson(makeConfig: () => Promise<Config>, root: string, env: E
 		}
 	}
 	out.ok = errors!.length === 0;
-	out.warnings = diagnostics.takeWarnings().map(diagnostics.toJson);
+	const at = config ? locatorOf(config) : new Locator(root);
+	out.warnings = diagnostics.takeWarnings().map((d) => diagnostics.toJson(diagnostics.withFieldLine(d, at)));
 	// Other generators' words the site used that work as ssqch's (`pathPrefix`): not warnings.
 	out.aliases = diagnostics.aliasesUsed().map(equivalents.toJson);
 	out.errors = errors!.map(diagnostics.toJson);
