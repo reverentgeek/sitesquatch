@@ -516,7 +516,11 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 			}
 			const debounced = Date.now();
 			heard = undefined;
-			const changed = paths.map(realPath).filter((file) => !own(file) && !editorsOwn(file) && !skipped(file));
+			// Each change by its real path, and the path it was heard by: a file in a folder linked into
+			// the input is heard below the input (watching each folder, or polling) and is outside it by
+			// its real path, which is still a source (the redux.js.org move's docs, linked in from beside it).
+			const heardAs = new Map(paths.map((file) => [realPath(file), file]));
+			const changed = [...heardAs.keys()].filter((file) => !own(file) && !editorsOwn(file) && !skipped(file));
 			const outputs = changed.filter((file) => isInside(output, file));
 			// A source written again with the same contents hasn't changed: a `beforeBuild` command
 			// that writes into the input folder on every build would rebuild forever.
@@ -531,7 +535,8 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				return !seen || before !== now;
 			});
 			// Folders watched for a config file see their other files change too.
-			const inSources = (file: string) => watchPaths.some((p) => isInside(p, file)) || [...watcher.linked].some((p) => isInside(p, file)) || isConfig(file) || builder.read.has(file);
+			const watched = (file: string) => watchPaths.some((p) => isInside(p, file)) || [...watcher.linked].some((p) => isInside(p, file));
+			const inSources = (file: string) => watched(file) || watched(heardAs.get(file) ?? file) || isConfig(file) || builder.read.has(file);
 			// The checked mode's race needs what each source held when the rebuild began. Windows
 			// names the folder a file changed in, and the file a moment later: the files directly in
 			// a folder named are noted now, so the late event for one the rebuild read isn't a change
