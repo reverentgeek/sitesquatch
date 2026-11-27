@@ -146,9 +146,6 @@ A fence hook writes the whole block, so it has to write `<pre><code>` itself: `f
 
 ## Math with KaTeX or MathJax
 
-> [!NOTE]
-> **Not released yet.** This ships with the next version of ssqch.
-
 With `math: true`, TeX between dollar signs is math, kept as written: `$...$` inline and `$$...$$` for display. Without it, Markdown reads TeX as its own, before KaTeX or MathJax can see it, and with no warning: `$a*b*c$` gets an `<em>`, `$\{x\}$` loses its backslashes and `\\` in `\begin{cases}` becomes `\`. With it, the formula reaches the page as you wrote it:
 
 ```js

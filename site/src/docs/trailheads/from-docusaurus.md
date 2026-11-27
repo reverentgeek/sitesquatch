@@ -3,9 +3,6 @@ title: "Trailhead: moving from Docusaurus"
 navTitle: "From Docusaurus"
 description: "Docusaurus sites are React apps that happen to render documentation; ssqch builds the same documentation as static HTML that needs no JavaScript to read."
 ---
-> [!NOTE]
-> **Not released yet.** `reactPlugin()`, `markdown.math`, git dates for docs beside the site and `ssqch scout`'s new rows ship with the next version of ssqch; the MDX engine recipe works today.
-
 Docusaurus sites are React apps that happen to render documentation; ssqch builds the same documentation as static HTML that needs no JavaScript to read. The move is mostly mechanical for Markdown pages, and takes a decision for each React component: an Edge component, a container, or client-side JavaScript that stays.
 
 Two examples are distilled from reactnative.dev: [`versioned-docs`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/versioned-docs/) (versions, sidebars, tabs, a blog with authors) and [`component-docs`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/component-docs/) (components in place of MDX, live examples).

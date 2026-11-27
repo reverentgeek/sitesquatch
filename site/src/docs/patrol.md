@@ -26,9 +26,6 @@ The `AI crawlers` line reads `robots.txt` the way each crawler does: the group t
 
 Each warning has a code. The checks are the ones a build folder can answer from the two public lists of what agents need (the Agent-Friendly Documentation Spec and isitagentready.com), and with `--url`, how the deployed site answers ([below](#the-live-site)).
 
-> [!NOTE]
-> **Not released yet.** `placeholder-url` ships with the next version of ssqch.
-
 | Code | What it means, and the fix |
 | --- | --- |
 | `no-robots` | No `robots.txt`. `robotsPlugin()` writes one, with the sitemap's address and rules for AI crawlers ([Posted signs](robots.md)). |

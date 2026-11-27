@@ -4,9 +4,6 @@ navTitle: "From Astro, Next.js, Gatsby"
 description: "These are component frameworks."
 command: "ssqch docs --from astro"
 ---
-> [!NOTE]
-> **Not released yet.** `reactPlugin()`, `markdown.math`, `ssqch scout` for Gatsby and Next.js, and images found in `static/` ship with the next version of ssqch.
-
 These are component frameworks: a page is a tree of components, rendered on a server or at build time and, for some of them, run again in the browser. ssqch is a template-and-Markdown generator that ships HTML and only the JavaScript you write. So this move isn't a port of the framework. It's a sort of what you have into three piles:
 
 1. **Content** (Markdown, front matter, data files): moves as it is.
