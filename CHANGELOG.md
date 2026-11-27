@@ -13,6 +13,15 @@ where that version matches.
 
 ### Added
 
+- `reactPlugin()` from `ssqch/react` keeps a site's React components: a Markdown page imports
+  them as MDX does (`import Counter from "./Counter.jsx"`, then `<Counter start={3} />`), or
+  `components` names them for every page, and they render with the site's own React, react-dom
+  and esbuild at build time. JSX props read as values, children that are components arrive as
+  React elements (a `<Tabs>` reads its `<TabItem>`s), and `hydrate` (for all, or by name) runs
+  them in the browser as islands, with one script on only the pages that have one. A component
+  that throws, a misspelled tag or a missing import stops the build at the page's line.
+- A component's JSX value (`height={500}`, `style={{ color: "red" }}`) is read as a value in any
+  page or layout, as Vue's `:height="500"` is; it was the text `"{500}"`.
 - Math in Markdown: with `markdown: { math: true }`, TeX between `$` and `$$` reaches the page
   as you wrote it, ready for KaTeX's auto-render or MathJax, where Markdown used to eat its
   backslashes, braces and asterisks. Prices stay prices (`$5 and $10`, `$20-$30`), and `\$` is a

@@ -773,7 +773,7 @@ test("scout_lists_what_docusaurus_astro_vitepress_and_hexo_sites_use", () => {
 		"blog/2026-01-02-pine.md": "Hi\n\n<!-- truncate -->\n",
 	}), "docusaurus"));
 	has(docusaurus, "site: docs/intro.mdx: 1 MDX page");
-	has(docusaurus, "not-yet: docs/intro.mdx:1: `import` of components in pages (1 use in 1 file");
+	has(docusaurus, "ssqch: docs/intro.mdx:1: `import` of components in pages (1 use in 1 file");
 	has(docusaurus, "ssqch: docs/intro.mdx:6: admonitions (`:::note`)");
 	has(docusaurus, "not-yet: blog/2026-01-02-pine.md:3: `<!-- truncate -->`");
 	has(docusaurus, "ssqch: sidebars.js: the sidebar");

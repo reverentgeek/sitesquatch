@@ -103,6 +103,8 @@ declare module "ssqch" {
 		/** Links to `.md` files (`[Setup](setup/install.md#first)`) go to the page built from that file, with the `#` part: `true` writes its URL from the site's root (`/setup/install/#first`), `"relative"` from the page, as MkDocs does (`setup/install/#first`). A link to a file that isn't a page stays as written, for the link checker. Default `false`. */
 		sourceLinks?: boolean | "relative";
 		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter>; classes?: "prism" | "pygments" | "chroma" | Partial<Record<TokenKind, string>> };
+		/** TeX math: `$x^2$` inline and `$$...$$` for display are kept as written (not read as Markdown), in `<span class="math math-inline">\(x^2\)</span>` and `<div class="math math-display">\[...\]</div>`, which KaTeX's auto-render and MathJax render in the browser. A `$` before a space or a closing `$` after one or before a digit isn't math (`$5 and $10`, `$20-$30`), and `\$` is a dollar sign. `{ render: "katex" }` renders each formula while the site builds, with the site's own `katex` package (`npm install -D katex`; the page still needs KaTeX's stylesheet), and `katex` passes KaTeX's options (`{ macros: { "\\RR": "\\mathbb{R}" } }`). A formula KaTeX refuses is an error with its page and line. Default `false`. */
+		math?: boolean | { render?: "katex" | false; katex?: Record<string, unknown> };
 	}
 
 	/** What a collection function gets. */
@@ -650,6 +652,24 @@ declare module "ssqch/vue" {
 	}
 	/** Renders the Vue components a page uses (`<ApiIndex />`, imported in its `<script setup>`) with the site's own Vite, @vitejs/plugin-vue and Vue, at build time; with `hydrate`, as islands in the browser too. */
 	export function vuePlugin(options?: VuePluginOptions): BuiltinPlugin;
+}
+
+declare module "ssqch/react" {
+	import type { BuiltinPlugin } from "ssqch";
+	/** When an island runs in the browser: `"load"` (at once), `"idle"` (when the browser is idle) or `"visible"` (when it scrolls into view), or `false` for HTML only. */
+	export type ReactHydrate = false | "load" | "idle" | "visible";
+	export interface ReactPluginOptions {
+		/** Components every page and layout can use without importing them, by name: `{ Counter: "src/components/Counter.jsx" }`, paths from the project's root (or a package's name). Its default export, or else the export of its name. A Markdown page's own come from its imports (`import Counter from "./Counter.jsx"`). */
+		components?: Record<string, string>;
+		/** Run components in the browser too, as islands: one of `"load"`, `"idle"` or `"visible"` for all of them, or an object by component's name (`{ Counter: "visible" }`) for some. Its server HTML is wrapped in `<ssqch-react>`, and a page that has one gets one script, `/assets/react/islands.js`, which loads only its components. Default `false`: HTML only. */
+		hydrate?: ReactHydrate | Record<string, ReactHydrate>;
+		/** Where the styles the components import go: a path like `"/assets/react.css"` (the default), for the layout to link, or `false`. */
+		css?: string | false;
+		/** esbuild's options to add (`alias`, `define`, `loader`, `external`, `plugins`), as `esbuild.build()` takes them. */
+		esbuild?: Record<string, unknown>;
+	}
+	/** Renders the React components a page uses (`<Counter start={3} />`, imported in the page as MDX does or named in `components`) with the site's own React, react-dom and esbuild, at build time; with `hydrate`, as islands in the browser too. */
+	export function reactPlugin(options?: ReactPluginOptions): BuiltinPlugin;
 }
 
 declare module "ssqch/llms" {

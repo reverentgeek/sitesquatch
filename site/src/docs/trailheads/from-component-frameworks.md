@@ -18,7 +18,7 @@ The [`component-docs`](https://github.com/reverentgeek/sitesquatch/tree/main/exa
 
 | The site is | Then |
 | --- | --- |
-| A blog, docs or marketing site with a few interactive widgets | Yes: content and templates in ssqch, widgets as custom elements |
+| A blog, docs or marketing site with a few interactive widgets | Yes: content and templates in ssqch, widgets as React islands with `reactPlugin()` or as custom elements |
 | Docs where every page embeds a live playground | Partly: the prose pages, with the playground as its own bundle that pages load |
 | Server-rendered per request (auth, personalization, API routes, ISR) | No: ssqch only builds static files. Keep those routes where they are and move the static section. |
 | A framework's own docs (react.dev) | No: they exist to show the framework |
@@ -47,7 +47,9 @@ Moving one section at a time works: build the docs or blog with ssqch into a fol
 
 ## MDX and components
 
-MDX mixes Markdown with JSX. In ssqch, Markdown runs through a template language first (Jinja by default), so a component call sits in the Markdown the same way. With `markdownEngine: "edge"`, an Edge component reads most like MDX:
+MDX mixes Markdown with JSX. A site whose components are React keeps them: `reactPlugin()` from `ssqch/react` renders the components a `.md` page imports (`import Callout from "../components/Callout.jsx"`, then `<Callout type="warning">`), with JSX props and children, using the site's own React, react-dom and esbuild, and `hydrate` runs the interactive ones in the browser as islands ([React components](../plugins.md#react-components)). Rename `.mdx` pages to `.md`; MDX's other syntax (`{expressions}` in text, `export`) needs MDX itself, as an engine ([MDX as written](from-docusaurus.md#mdx-as-written)).
+
+Without React, a component call sits in the Markdown the same way, since Markdown runs through a template language first (Jinja by default). With `markdownEngine: "edge"`, an Edge component reads most like MDX:
 
 ```mdx
 <Callout type="warning" title="Careful">
@@ -78,13 +80,15 @@ This **cannot** be undone.
 | A component that reads data (`Astro.glob`, a `useData()` composable) | The template reads the same data: `collections`, `_data`, front matter |
 | `import` of a JSON or YAML file in a page | A file in `_data/`, available by name |
 | Styles scoped to a component | A class and a stylesheet; `sassPlugin()` if you use Sass |
-| A React, Vue or Svelte component with state or effects | A custom element (below) |
+| A React component with state or effects | The same component, as an island: `reactPlugin({ hydrate: { Counter: "visible" } })` |
+| A Vue component | `vuePlugin()` from `ssqch/vue`, the same way |
+| A Svelte, Solid or other component with state or effects | A custom element (below) |
 
 A codemod is worth writing when one component is used hundreds of times: the JSX call maps to one line of template.
 
 ## Interactive parts
 
-Write each one as a custom element, with what a visitor sees before (or without) JavaScript inside the tag:
+React components run in the browser with `reactPlugin()`'s `hydrate` (`"load"`, `"idle"` or `"visible"`, for all of them or by name), as `client:load`, `client:idle` and `client:visible` did. For other frameworks, or none, write each one as a custom element, with what a visitor sees before (or without) JavaScript inside the tag:
 
 ```html
 <like-button count="3"><a href="/likes/">3 likes</a></like-button>
@@ -107,8 +111,21 @@ What doesn't have an equivalent: client-side routing between pages (links are or
 ## Per framework
 
 - **Astro:** `.astro` components are the closest to templates: the frontmatter script becomes data (front matter, `_data`, or a filter) and the template below it becomes Jinja or Edge. Starlight sites map onto `ssqch init --starter docs`.
-- **Next.js:** only statically exported pages (`output: "export"`) move. `next/link` and `next/image` become `<a>` and `<img>`; `getStaticProps` becomes a data file.
-- **Gatsby:** source plugins become data files (`fetch`, or reading files with `node:fs`), page queries become collections, and `gatsby-node.js` `createPages` becomes pagination. remark plugins map to the `markdown` options, render hooks and containers.
+- **Next.js:** only statically exported pages (`output: "export"`) move. `next/link` and `next/image` become `<a>` and `<img>`; `getStaticProps` becomes a data file, and `generateStaticParams` pagination. `public/` is `passthrough: [{ public: "/" }]`. `ssqch scout` lists the route files and each of these with counts.
+- **Gatsby:** source plugins become data files (`fetch`, or reading files with `node:fs`), page queries become collections, and `gatsby-node.js` `createPages` becomes pagination. `ssqch scout` lists them with counts, and each `gatsby-*` plugin with ssqch's way. The usual remark plugins:
+
+| Gatsby | SiteSquatch |
+| --- | --- |
+| `static/` | `passthrough: [{ static: "/" }]`; `imagePlugin()` finds the pictures there by their URL |
+| `gatsby-remark-prismjs` | `markdown: { highlight: { classes: "prism" } }` and the site's Prism theme; a `fence` render hook for the `<div class="gatsby-highlight">` around each block |
+| `gatsby-remark-katex` | `markdown: { math: true }`, with `render: "katex"` to render at build time ([Math](../markdown.md#math-with-katex-or-mathjax)) |
+| `gatsby-remark-autolink-headers` | Heading ids are built in; the link inside each heading is a `heading` render hook |
+| `gatsby-remark-images` | `imagePlugin()`. It encoded at `quality: 50` unless the site set one, which is lower than ssqch's defaults, so the bytes differ: set `imagePlugin()`'s qualities to match while comparing |
+| `gatsby-remark-smartypants` | `markdown: { smartPunctuation: true }` |
+| `gatsby-remark-responsive-iframe` | CSS (`aspect-ratio`) on the embeds, or a transform |
+| `gatsby-plugin-offline` | A service worker of the site's own, written by Workbox's CLI in `afterBuild` |
+
+Gatsby's own builds vary: its feed has the build's time and posts with the same date in no fixed order, and its sitemap's order changes from build to build. Build the reference with `ssqch baseline "npm run build" --from public --runs 20` and compare with `.cache/ssqch/baseline/ref-common`.
 
 ## Checking the move
 
@@ -117,5 +134,7 @@ Build both and compare the output:
 ```sh
 ssqch diff dist-old dist --ignore 'data-astro-[\w-]+(="[^"]*")?' --ignore '<!--\[?-->'
 ```
+
+For Gatsby, its own markup: `--ignore ' data-react-helmet="true"' --ignore ' id="gatsby-[\w-]+"' --ignore '<style data-href="[^"]*">'`, and `ssqch diff --text` to compare the words while the markup is a different theme's.
 
 `ssqch diff` compares tags and text, so framework noise shows up as markup-only differences: scoped-style attributes, hydration markers, inlined state. `--ignore` takes patterns for those. What's left is what a visitor would notice: the text of each page, its headings and ids, and its links.

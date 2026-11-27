@@ -3478,9 +3478,9 @@ export function other(dir: string, id: string): Plan {
 	plan.pages = pages.length;
 	if (id === "docusaurus") {
 		const mdx = pages.filter((e) => e.name.endsWith(".mdx"));
-		if (mdx.length) plan.byHand.push([mdx[0].rel, `${mdx.length} MDX ${mdx.length === 1 ? "page" : "pages"}: ssqch's Markdown doesn't run JSX; their components become Edge components or containers (\`ssqch docs --from docusaurus\`)`, { code: "docusaurus-mdx", status: "site", files: mdx.length }]);
+		if (mdx.length) plan.byHand.push([mdx[0].rel, `${mdx.length} MDX ${mdx.length === 1 ? "page" : "pages"}: as \`.md\` pages, \`reactPlugin()\` from "ssqch/react" renders the components they import with the site's own React; MDX's expressions and \`export\`s need the site's \`@mdx-js/mdx\` as an engine (\`ssqch docs --from docusaurus\`)`, { code: "docusaurus-mdx", status: "site", files: mdx.length }]);
 		listSyntax(plan, pages, [
-			["`import` of components in pages", /^import\s+[\w{},\s*]+\s+from\s+['"][^'"]+['"];?\s*$/m, "not in ssqch yet as written: Edge components (`@component(...)`) or containers", "docusaurus-imports", "not-yet"],
+			["`import` of components in pages", /^import\s+[\w{},\s*]+\s+from\s+['"][^'"]+['"];?\s*$/m, "`reactPlugin()` from \"ssqch/react\" reads them as they're written, in a `.md` page (`@theme/` and `@site/` through its `esbuild.alias`)", "docusaurus-imports", "ssqch"],
 			["`<Tabs>` and `<TabItem>`", /<Tabs\b/, "tabs from containers (the versioned-docs example has them)", "docusaurus-tabs", "ssqch"],
 			["admonitions (`:::note`)", /^:::(?:note|tip|info|warning|danger|caution)\b/m, "containers, built in: `_includes/containers/note.*` gives each its markup", "docusaurus-admonitions", "ssqch"],
 			["`<!-- truncate -->` and `{/* truncate */}`", /<!--\s*truncate\s*-->|\{\/\*\s*truncate\s*\*\/\}/, "an excerpt's end: ssqch's marker is `<!-- more -->`", "docusaurus-truncate", "not-yet"],
@@ -3494,11 +3494,11 @@ export function other(dir: string, id: string): Plan {
 		const astro = entries.filter((e) => e.name.endsWith(".astro"));
 		if (astro.length) plan.byHand.push([astro[0].rel, `${astro.length} \`.astro\` ${astro.length === 1 ? "component" : "components"} to port: ssqch doesn't run them; layouts and components become templates (Edge's components are closest), and their scripts custom elements from \`ssqch/elements\``, { code: "astro-components", status: "site", files: astro.length, docs: "--from astro" }]);
 		const islands = entries.filter((e) => /\.(jsx|tsx|vue|svelte)$/.test(e.name) && !e.rel.startsWith("node_modules"));
-		if (islands.length) plan.byHand.push([islands[0].rel, `${islands.length} framework ${islands.length === 1 ? "component" : "components"} (React, Vue, Svelte): islands in ssqch are custom elements whose scripts load where they're used (the islands example)`, { code: "astro-islands", status: "site", files: islands.length }]);
+		if (islands.length) plan.byHand.push([islands[0].rel, `${islands.length} framework ${islands.length === 1 ? "component" : "components"} (React, Vue, Svelte): React's render with \`reactPlugin()\` from "ssqch/react" (\`hydrate\` for islands), Vue's with \`vuePlugin()\`, and the others become custom elements whose scripts load where they're used (the islands example)`, { code: "astro-islands", status: "site", files: islands.length }]);
 		const collections = ["src/content/config.ts", "src/content.config.ts", "src/content/config.mjs"].find((f) => isFile(path.join(dir, f)));
 		if (collections) plan.byHand.push([collections, "content collections with schemas: ssqch's are collections and `schemas` (`ssqch docs schemas`)", { code: "astro-content-collections", status: "ssqch", docs: "schemas" }]);
-		listSyntax(plan, pages, [["`import` in MDX pages", /^import\s+.+\s+from\s+['"][^'"]+['"]/m, "not in ssqch yet as written: Edge components or containers", "astro-mdx-imports", "not-yet"]]);
-		for (const pkg of packagesLike(dir, /^@astrojs\//)) plan.byHand.push(["package.json", `${pkg}: ${/sitemap/.test(pkg) ? "`sitemapPlugin()` from \"ssqch/sitemap\"" : /mdx/.test(pkg) ? "MDX pages: see the MDX line" : /rss/.test(pkg) ? "`rssPlugin()` from \"ssqch/rss\"" : /react|vue|svelte|preact|solid/.test(pkg) ? "framework islands: custom elements" : "not in ssqch yet: port it as a plugin"}`, { code: "astro-integration", status: /sitemap|rss/.test(pkg) ? "ssqch" : "site" }]);
+		listSyntax(plan, pages, [["`import` in MDX pages", /^import\s+.+\s+from\s+['"][^'"]+['"]/m, "React components: `reactPlugin()` from \"ssqch/react\" reads the imports in a `.md` page; other frameworks' become templates or custom elements", "astro-mdx-imports", "ssqch"]]);
+		for (const pkg of packagesLike(dir, /^@astrojs\//)) plan.byHand.push(["package.json", `${pkg}: ${/sitemap/.test(pkg) ? "`sitemapPlugin()` from \"ssqch/sitemap\"" : /mdx/.test(pkg) ? "MDX pages: see the MDX line" : /rss/.test(pkg) ? "`rssPlugin()` from \"ssqch/rss\"" : /react/.test(pkg) ? "`reactPlugin()` from \"ssqch/react\"" : /vue/.test(pkg) ? "`vuePlugin()` from \"ssqch/vue\"" : /svelte|preact|solid/.test(pkg) ? "framework islands: custom elements" : "not in ssqch yet: port it as a plugin"}`, { code: "astro-integration", status: /sitemap|rss/.test(pkg) ? "ssqch" : "site" }]);
 	} else if (id === "hexo") {
 		// Hexo's pages are in `source/`: its scaffolds, the theme's own Markdown and a README aren't.
 		const sourcePages = pages.filter((e) => e.rel.startsWith("source/"));
@@ -3558,7 +3558,7 @@ export function other(dir: string, id: string): Plan {
 		const node = ["gatsby-node.js", "gatsby-node.ts", "gatsby-node.mjs"].find((f) => isFile(path.join(dir, f)));
 		if (node && /createPages/.test(readUtf8(path.join(dir, node)) ?? "")) plan.byHand.push([node, "`createPages`: pages made from data become pagination (`pagination: { data: \"collections.posts\", size: 10 }`), and a page per tag pagination over `collections`", { code: "gatsby-create-pages", status: "ssqch", docs: "pagination" }]);
 		if (isDir(path.join(dir, "static"))) plan.byHand.push(["static", "`static/` is copied as it is: `passthrough: [{ static: \"/\" }]`", { code: "gatsby-static", status: "option", option: "passthrough: [{ static: \"/\" }]" }]);
-		listSyntax(plan, pages, [["`import` in MDX pages", /^import\s+.+\s+from\s+['"][^'"]+['"]/m, "MDX through `engines` with the site's own `@mdx-js/mdx` (`ssqch docs --from gatsby`)", "gatsby-mdx-imports", "site"]]);
+		listSyntax(plan, pages, [["`import` in MDX pages", /^import\s+.+\s+from\s+['"][^'"]+['"]/m, "`reactPlugin()` from \"ssqch/react\" reads them in a `.md` page; MDX's expressions need the site's `@mdx-js/mdx` as an engine (`ssqch docs --from gatsby`)", "gatsby-mdx-imports", "ssqch"]]);
 		const plugin = (pkg: string): [string, NonNullable<Todo["status"]>, string[] | undefined] => {
 			if (/plugin-sitemap/.test(pkg)) return ["`sitemapPlugin()` from \"ssqch/sitemap\"", "ssqch", ["plugin:ssqch/sitemap"]];
 			if (/plugin-feed/.test(pkg)) return ["`feedPlugin()` from \"ssqch/rss\"", "ssqch", ["plugin:ssqch/feed", "plugin:ssqch/rss"]];
