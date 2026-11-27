@@ -115,6 +115,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	const collectionIncludes = includesUsingCollections(site);
 	const overCollections = (p: Page) => typeof p.data.pagination?.data === "string" && p.data.pagination.data.startsWith("collections.");
 	const wanted = pages.filter((p) => p.output !== null || p.inCollections);
+	gitDatesNote(site, wanted);
 	const includesKey = [...collectionIncludes].sort(compareText).join("\0");
 	const late = new Set(wanted.filter((p) => usesCollectionsKept(p.tpl, collectionIncludes, includesKey) || overCollections(p)));
 	await site.buildCollections();
@@ -327,6 +328,27 @@ export const lastRendered = (): [number, number, string?] => renderedCount;
 
 /** Whether this process has said why an undated page's save rendered the pages that list it. */
 let saidUndated = false;
+let saidGitDates = false;
+
+/**
+ * Once a build (once while serving): the dates from git came from the files' times, because the
+ * project has no commits to read. Not a warning, since a site made with `ssqch init` builds before
+ * anyone runs `git init` and nothing is wrong; a note, because a post's dates aren't the ones
+ * it'll have once it's committed, and an agent checking the page should know why.
+ */
+function gitDatesNote(site: Site, wanted: Page[]): void {
+	const { config } = site;
+	const why = site.gitProjectNote;
+	if (saidGitDates || config.quiet || isCapturing() || why === undefined) return;
+	const pages = wanted.filter((page) => page.output !== null).length;
+	if (pages === 0) return;
+	saidGitDates = true;
+	const fix = why === "the repository has no commits yet" ? "A first commit dates them" : "`git init` and a first commit date them";
+	const what = config.lastModified === "git"
+		? `${count(pages)} page${pages === 1 ? "" : "s"} use${pages === 1 ? "s" : ""} ${pages === 1 ? "its file's time" : "their files' times"} for page.lastModified, and none has page.updated`
+		: "pages with no date of their own use their files' times";
+	process.stderr.write(`note: \`${config.lastModified === "git" ? "lastModified" : "dateFallback"}: "git"\`, but ${why}, so ${what}. ${fix}\n`);
+}
 
 /**
  * While serving, once: a save to a page with no date of its own moved its date (its file's time),

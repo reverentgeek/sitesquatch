@@ -2185,7 +2185,7 @@ export function tomlError(e: unknown, text: string): string {
 const JEKYLL_EXCLUDES = [".sass-cache", ".jekyll-cache", "gemfiles", "Gemfile", "Gemfile.lock", "node_modules", "vendor/bundle", "vendor/cache", "vendor/gems", "vendor/ruby"];
 
 /** `page.<key>` that's the page's own in ssqch too (its facts, not its front matter): left as it is. */
-const PAGE_KEYS = new Set(["url", "date", "excerpt", "inputPath", "outputPath", "fileSlug", "filePathStem", "headings", "lastModified"]);
+const PAGE_KEYS = new Set(["url", "date", "excerpt", "inputPath", "outputPath", "fileSlug", "filePathStem", "headings", "lastModified", "updated"]);
 
 /** `page.<key>` Jekyll fills in itself, which ssqch's `page` doesn't have: what each is in ssqch. */
 const JEKYLL_PAGE: Record<string, string> = {

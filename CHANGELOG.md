@@ -17,6 +17,14 @@ where that version matches.
   whose canonical links, sitemap, robots.txt or llms.txt point at example.com, .net or .org, which
   the starters' `url` is until it's changed. A site built from a starter checked all clear.
 
+- `page.updated`, with `lastModified: "git"`: a page's last commit when an earlier commit added
+  its file, or its file's time while it has changes that aren't committed, and unset otherwise.
+  The blog starter's posts say "(updated ...)" with it, so a new blog no longer marks every post
+  updated today: outside a repository, and again after the first commit.
+- A note when `lastModified: "git"` (or `dateFallback: "git"`) has no commits to read, once a build
+  and once while serving: `the project isn't in a git repository, so 15 pages use their files'
+  times for page.lastModified, and none has page.updated`, and what dates them. It was quiet.
+
 ### Changed
 
 - `ssqch init` ends with the command that starts the dev server as the project has ssqch: `npm run

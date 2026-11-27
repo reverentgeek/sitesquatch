@@ -47,7 +47,7 @@ declare module "ssqch" {
 		/** Where the page is written, from the project root like `inputPath` (`./dist/posts/pine/index.html`), or `false`. */
 		outputPath: string | false;
 		/** `url`, `inputPath`, `date` and the rest, plus `headings` from the rendered body. */
-		page: Record<string, unknown> & { headings?: Heading[]; excerpt?: string; lastModified?: Date };
+		page: Record<string, unknown> & { headings?: Heading[]; excerpt?: string; lastModified?: Date; updated?: Date };
 		/** The page's data: front matter, data files and the rest of the cascade. */
 		data: Data & Record<string, any>;
 		/** The rendered body, without layouts. */
@@ -298,7 +298,7 @@ declare module "ssqch" {
 		strict?: boolean;
 		/** Jinja's settings for `.jinja` and `.j2` templates. `autoescape: false` prints values as they are (`| e` still escapes); default `true`, or `false` with `fromMkdocs({ templates: true })`, since MkDocs' Jinja doesn't escape. `.njk` always escapes. */
 		jinja?: { autoescape?: boolean };
-		/** `page.lastModified`: `"git"` for the last commit that changed the page's file (its modification time when it has uncommitted changes), or `"file"` for the modification time. Off by default. Needs the full history in CI (`fetch-depth: 0`). */
+		/** `page.lastModified`: `"git"` for the last commit that changed the page's file (its modification time when it has uncommitted changes), or `"file"` for the modification time. Off by default. Needs the full history in CI (`fetch-depth: 0`). With `"git"`, `page.updated` is that commit only when an earlier commit added the file (or the file's time, when it has uncommitted changes), and unset otherwise: a post's "updated" date that its first commit doesn't give. */
 		lastModified?: "git" | "file" | false;
 		/** The date of a page with no date of its own (in its data or its file name): `"git"` for the last commit that changed its file, the same in every checkout, or `"file"` (the default) for the file's modification time, which is when the checkout wrote it. Either way it sorts after the dated pages, by path. Needs the full history in CI (`fetch-depth: 0`). */
 		dateFallback?: "git" | "file";

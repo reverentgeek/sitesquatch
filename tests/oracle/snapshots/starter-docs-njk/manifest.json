@@ -1,5 +1,5 @@
 {
-  "version": "0.16.0",
+  "version": "0.16.1",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -48,7 +48,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   6 written from 6 templates, 25.5 KB\n  Copied  3 files, 21.2 KB\n  Links   133 checked, 0 broken\n  Output  dist: 19 files, 63.9 KB\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages   6 written from 6 templates, 25.5 KB\n  Copied  3 files, 21.2 KB\n  Links   133 checked, 0 broken\n  Output  dist: 19 files, 63.9 KB\nnote: `lastModified: \"git\"`, but the project isn't in a git repository, so 6 pages use their files' times for page.lastModified, and none has page.updated. `git init` and a first commit date them\n",
   "files": {
     "404.html": "text",
     "assets/docs.css": "text",

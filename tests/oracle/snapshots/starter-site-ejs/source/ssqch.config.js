@@ -25,8 +25,10 @@ const { url } = readData("src/_data/site.json");
 
 export default defineConfig(({ env }) => ({
   dirs: { input: "src", output: "dist" },
-  // page.lastModified, for a post's "updated" date: when its file last changed in a commit (in
-  // CI, check out the whole history: `fetch-depth: 0`). Before the first commit, the file's time.
+  // page.lastModified: when a page's file last changed in a commit (in CI, check out the whole
+  // history: `fetch-depth: 0`), and page.updated, for a post's "updated" date: that commit, when
+  // an earlier one added the file. The commit that adds a post isn't an update, so a new blog's
+  // posts say nothing until one is changed and committed again.
   lastModified: "git",
   // page.date for a page with no date of its own: its file's first commit, which is the same in
   // every clone (a checkout writes every file at once, so the file's time isn't). Outside a git
@@ -55,7 +57,7 @@ export default defineConfig(({ env }) => ({
     postDates: (page, tags) => {
       if (!Array.isArray(tags) || !tags.includes("posts")) return "";
       const posted = readableDate(page.date);
-      const changed = page.lastModified && page.lastModified > page.date ? readableDate(page.lastModified) : posted;
+      const changed = page.updated && page.updated > page.date ? readableDate(page.updated) : posted;
       return changed === posted ? posted : `${posted} (updated ${changed})`;
     },
     // A post's own tags, without the `posts` tag every post has: {{ ownTags(tags) }}

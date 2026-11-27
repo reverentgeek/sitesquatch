@@ -70,6 +70,8 @@ export interface Tpl {
 	fileDate: Date | undefined;
 	/** `page.lastModified`, with the `lastModified` setting. */
 	lastModified: Date | undefined;
+	/** `page.updated`, with `lastModified: "git"`: its last commit when an earlier one added it, or its file's time when it has changes that aren't committed. */
+	updated: Date | undefined;
 	/** When its file last changed in a commit, with `dateFallback: "git"`, for a page with no date of its own. */
 	commitDate: Date | undefined;
 	/** Whether git had a date for its file (with either setting): what `ssqch trace` says `page.lastModified` came from. */
@@ -270,6 +272,8 @@ export class Site {
 	/** Why git gave no dates at all (`gitDates`), and the files it left out for changes not committed: for `ssqch trace`. */
 	private gitNote: string | undefined;
 	private gitChanged = new Set<string>();
+	/** The files git has more than one commit for: their last commit changed them after they were added, which `page.updated` takes as an update. */
+	private gitRevised = new Set<string>();
 	private caseBlind: boolean | undefined;
 
 	/**
@@ -673,6 +677,7 @@ export class Site {
 		const { config, dirs } = this;
 		this.gitNote = undefined;
 		this.gitChanged.clear();
+		this.gitRevised.clear();
 		const git = (...args: string[]) => spawnSync("git", ["-C", dirs.root, "-c", "core.quotepath=off", ...args], { encoding: "utf8", maxBuffer: 1 << 30 });
 		const dates = new Map<string, Date>();
 		const lost = (message: string) => { if (!config.quiet) warn(warning("last-modified", `${setting}: ${message}`)); };
@@ -683,8 +688,11 @@ export class Site {
 		if (git("rev-parse", "--is-shallow-repository").stdout?.trim() === "true") {
 			lost("this is a shallow clone, so dates come from the commits it has (fetch the full history, like `fetch-depth: 0` in GitHub Actions)");
 		}
+		// A repository with no commits yet (`git init` and nothing more) has no HEAD, and `git log` fails there.
+		if (git("rev-parse", "--verify", "-q", "HEAD").status !== 0) { this.gitNote = "the repository has no commits yet"; return dates; }
 		const log = git("log", "--format=@%ct", "--name-only", "--no-merges", "--", ".");
 		if (log.error || log.status !== 0) { this.gitNote = "git log failed"; return dates; }
+		const revised = new Set<string>();
 		let current: Date | undefined;
 		for (const line of log.stdout.split("\n")) {
 			if (line.startsWith("@")) {
@@ -692,7 +700,9 @@ export class Site {
 				current = Number.isFinite(seconds) ? new Date(seconds * 1000) : undefined;
 			} else if (line.trim() !== "" && current) {
 				const file = path.join(toplevel, line.trim());
+				// Newest first: a file seen again had a commit before its last one, so the last was an update.
 				if (!dates.has(file)) dates.set(file, current);
+				else revised.add(file);
 			}
 		}
 		const status = git("status", "--porcelain", "--", ".");
@@ -704,7 +714,13 @@ export class Site {
 			}
 		}
 		// Templates are found through the input folder's real path.
+		for (const file of revised) if (dates.has(file)) this.gitRevised.add(realPath(file));
 		return new Map([...dates].map(([file, date]) => [realPath(file), date]));
+	}
+
+	/** Why git gave no file a date, when it was the whole project's reason (not a repository, no commits), for the build's note. */
+	get gitProjectNote(): string | undefined {
+		return this.gitNote === "the project isn't in a git repository" || this.gitNote === "the repository has no commits yet" ? this.gitNote : undefined;
 	}
 
 	/** Why git gave a page's file no date, for `ssqch trace`: the whole project's reason, or the file's own. */
@@ -976,6 +992,9 @@ export class Site {
 				// A file's time is when this checkout (or an editor) wrote it, so `SOURCE_DATE_EPOCH`
 				// pins it, as it does an undated page's date: the same build gives the same pages.
 				lastModified: config.lastModified === "git" ? commitDates.get(file) ?? fileTime(mtime) : config.lastModified === "file" ? fileTime(mtime) : undefined,
+				// A file's first commit adds it, so it's no update: the first commit after `ssqch init`
+				// dates every post that day. Its changes that aren't committed are an edit, as you make it.
+				updated: config.lastModified !== "git" ? undefined : this.gitChanged.has(file) ? fileTime(mtime) : this.gitRevised.has(file) ? commitDates.get(file) : undefined,
 				commitDate: config.dateFallback === "git" ? commitDates.get(file) : undefined,
 				committed: commitDates.has(file),
 			};
@@ -1041,9 +1060,10 @@ export class Site {
 		const basePage = (url: unknown, outputPath: unknown, when: Date): Data => {
 			const page: Data = { url, outputPath, inputPath, fileSlug: tpl.fileSlug, filePathStem: tpl.filePathStem, date: when };
 			if (tpl.lastModified) page.lastModified = tpl.lastModified;
+			if (tpl.updated) page.updated = tpl.updated;
 			// While serving, a read of the dates is noted (`noteDate`): the page's key is its file and URL, as `pageKey` in build.ts makes it.
 			// Only a page whose date or lastModified is its file's time can have that as its only change.
-			if (incremental(this.config) && this.usesFileTime(tpl)) this.watchDates(page, `${tpl.input}\0${url === false ? null : url}`, ["date", "lastModified"]);
+			if (incremental(this.config) && this.usesFileTime(tpl)) this.watchDates(page, `${tpl.input}\0${url === false ? null : url}`, ["date", "lastModified", "updated"]);
 			return page;
 		};
 
